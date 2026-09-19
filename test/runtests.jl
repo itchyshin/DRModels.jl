@@ -24,10 +24,43 @@ _shard_spec = get(ENV, "DRM_TEST_SHARD", "")
 _SHARD = isempty(_shard_spec) ? nothing : _parse_shard_spec(_shard_spec)
 
 _shard_pos = Ref(0)
+
+# --- BLAS thread count: pin once, then guard it per file --------------------
+# The suite's numerical pins were all measured at one BLAS thread (the repo's
+# stated invariant), and ten test files assert or set BLAS=1 themselves. CI
+# does not set OPENBLAS_NUM_THREADS, so without this pin a shard starts at 2
+# and silently switches to 1 partway through (the first test_joint_missing_*
+# file sets it and never restores). Pin it here so every file, on every
+# platform, runs at the same count.
+BLAS.set_num_threads(1)
+
+# Test-isolation guard: the BLAS thread count is process-global, so every
+# file must leave `BLAS.get_num_threads()` where the suite set it and leave
+# no `_with_pinned_blas` scope open. A different count changes the summation
+# order inside dense kernels, which perturbs every tight-tolerance numerical
+# test that runs after the leak. Checked per file so a failure names the
+# leaking file, not a victim far downstream. Measured 2026-09-19 (bisect over
+# the full include order): no file leaks today. The in-suite failures of
+# test_q4_perf_identities.jl's rtol=1e-8 vcov pins that motivated this guard
+# were NOT a leak: `Pkg.test()` runs with `--check-bounds=yes`, and that
+# codegen change alone reproduces them bit-for-bit in a pristine session.
+const _BLAS_THREADS_AT_START = BLAS.get_num_threads()
+function _check_blas_restored(path::AbstractString)
+    nt = BLAS.get_num_threads()
+    scopes = DRModels._blas_pin_scopes[]
+    if nt != _BLAS_THREADS_AT_START || scopes != 0
+        @testset "BLAS state restored after $path" begin
+            @test nt == _BLAS_THREADS_AT_START
+            @test scopes == 0
+        end
+    end
+end
+
 function _shard_include(path::AbstractString)
     _shard_pos[] += 1
     if _SHARD === nothing || (_shard_pos[] - 1) % _SHARD[2] == _SHARD[1] - 1
         include(path)
+        _check_blas_restored(path)
     end
 end
 
