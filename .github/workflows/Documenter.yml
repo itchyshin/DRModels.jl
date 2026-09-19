@@ -62,6 +62,13 @@ jobs:
         with:
           version: '1'
       - uses: julia-actions/cache@v2
+      - name: Check reader-facing source routes
+        # This is a source-text guard, not a claim-validity or accessibility
+        # audit. It follows the literal public routes in docs/make.jl and runs
+        # before the expensive Documenter build.
+        run: |
+          python3 tools/tests/test_reader_surface_audit.py
+          python3 tools/reader_surface_audit.py --public-only
       - name: Instantiate docs environment
         run: |
           julia --project=docs -e '

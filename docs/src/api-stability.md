@@ -19,8 +19,8 @@ their names, meanings, and conventions across the `0.7.x` line and beyond. The c
 
 ## The three tiers
 
-**Stable** — the promise above. The authoritative list is the machine-checked
-stable API contract; its gate keeps this page and the code from drifting apart.
+**Stable** — the promise above. The stable API contract is the authoritative
+list and is checked against the implementation.
 
 **Experimental — exported, usable, exempt.** These work today and are tested, but their shape may
 change between releases, and each carries its reason:
@@ -29,11 +29,10 @@ change between releases, and each carries its reason:
   exactly on a constant-σ Gaussian fit), but the REFUSALS are the part a caller programs against,
   and they may widen. In particular a *marginal* or *conditional* R² for random-effect fits
   (Nakagawa & Schielzeth) would reshape this surface, and that decision has not been taken;
-- the **R bridge** (`drm_bridge`, `drm_bridge_inference`, `drm_listwise`) — the R↔Julia capability
-  ledger holds `r_bridge_status = experimental`, and the bridge's shape follows that ledger;
+- the **R bridge** (`drm_bridge`, `drm_bridge_inference`, `drm_listwise`) — it is experimental,
+  so its accepted models and returned details may change;
 - the **cross-family surface** (`mf_*`, `associate_pairs`, `latent_normal`, `association`,
-  `PairAssociation`, `integration_diagnostics`) — its ledger row carries a permanent owner-signed
-  claim boundary;
+  `PairAssociation`, `integration_diagnostics`) — it has a deliberately narrow documented scope;
 - the **penalized-MAP surface** (`drm_phylo_penalty*`, `PhyloPenalty`,
   `PhyloCorPenaltyNeedsTwoSD`) and **bivariate meta** (`meta_vcov_bivariate`) — newer surfaces
   whose ergonomics are still settling;
