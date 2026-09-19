@@ -195,12 +195,74 @@ Mirrors the repo's own `chol_ref` idiom (gaussian_structured.jl's `eval_all`,
 gaussian_sparse_lss.jl's `eval_core`): if the in-place update ever rejects the
 pattern, `sparse_pd_chol` falls back to a fresh `cholesky` (still tree-sparse
 O(p)) — correctness never depends on the reuse succeeding, only speed does.
+
+`pattern_colptr`/`pattern_rowval` (S5d item 2) record the FIRST `Hr`'s
+pattern and back [`_assert_chol_pattern_matches`](@ref)'s reuse-time check —
+`hzero` does NOT serve this role despite its docstring (see
+`_assert_chol_pattern_matches`'s own note: `0.0 .* Hr` is measured to be the
+EMPTY sparse matrix, so it is not a usable pattern reference).
 """
 mutable struct CholPatternCache
     factor::Any   # ::SparseArrays.CHOLMOD.Factor{Float64} once initialised
     hzero::Any    # ::SparseMatrixCSC{Float64,Int} pattern carrier (all-structural-zero)
+    pattern_colptr::Any   # ::Vector{Int} the FIRST Hr's colptr, recorded at cache creation
+    pattern_rowval::Any   # ::Vector{Int} the FIRST Hr's rowval, recorded at cache creation
 end
-CholPatternCache() = CholPatternCache(nothing, nothing)
+CholPatternCache() = CholPatternCache(nothing, nothing, nothing, nothing)
+
+"""
+    CholPatternMismatch(msg)
+
+Thrown by [`_assert_chol_pattern_matches`](@ref) when a candidate matrix's
+sparsity pattern no longer matches the pattern a `CholPatternCache`'s factor
+was built for (S9 audit, Q2: `cholesky!` does NOT throw on a pattern change —
+it silently reuses the stale symbolic factorisation — so this assertion is
+the only thing standing between a pattern change and a silently wrong
+answer). `_chol_factorize`'s existing `catch` converts this into a fresh
+`cholesky(Symmetric(...))` and counts it in `CHOL_REUSE_FALLBACKS`; the type
+exists so that fallback is a PROVABLE consequence of a caught, named
+condition (see `test/test_q4_perf_identities.jl`'s G5d.4), not an
+unconditional catch-all guess.
+"""
+struct CholPatternMismatch <: Exception
+    msg::String
+end
+Base.showerror(io::IO, e::CholPatternMismatch) = print(io, "CholPatternMismatch: ", e.msg)
+
+"""
+Assert `Hf`'s sparsity pattern (colptr, rowval -- nnz follows from `colptr`)
+is IDENTICAL to the pattern recorded in `chol_ref` at first use
+(`pattern_colptr`/`pattern_rowval`, set once in `_chol_factorize`'s
+cache-creation branch). Throws `CholPatternMismatch` on any mismatch; called
+on every `cholesky!`-reuse attempt in `_chol_factorize`, BEFORE `cholesky!`
+itself, because `cholesky!` does not throw on a pattern change (S9 audit,
+Q2).
+
+Deliberately does NOT use `chol_ref.hzero` as the reference: `hzero = 0.0 .*
+Hr` (the pre-existing S5b "pattern carrier") is, empirically, the EMPTY
+sparse matrix -- Julia's sparse broadcast drops an all-exact-zero result
+rather than keeping `Hr`'s structural pattern with zeroed values (MEASURED:
+`nnz(0.0 .* Hr) == 0` for the real q4 `H_uu`). `Hr + chol_ref.hzero` is
+therefore a no-op (`Hf === ` structurally `Hr`), so `hzero` cannot serve as a
+stable reference pattern -- comparing against it would flag a mismatch on
+EVERY reuse call, not just a genuine pattern change (confirmed: naively
+wired this way, a real p=1000 fit showed 214/215 "mismatches"). This is a
+pre-existing S5b latency, not introduced here; left as-is (out of this
+leaf's scope) since `Hr`'s OWN pattern is independently stable by
+construction (`prior_precision`'s fully-dense diagonal blocks -- MEASURED:
+`build_Huu`/`build_Huu_expected`/`H+λ*I` all reproduce the SAME pattern as
+`P` regardless of `u` or the ridge value), so `hzero`'s intended
+belt-and-suspenders union was never load-bearing for correctness. Flagged
+for a follow-up, not fixed here.
+"""
+function _assert_chol_pattern_matches(Hf::SparseMatrixCSC, chol_ref::CholPatternCache)
+    if Hf.colptr != chol_ref.pattern_colptr || Hf.rowval != chol_ref.pattern_rowval
+        throw(CholPatternMismatch(
+            "sparse_pd_chol: cached sparsity pattern changed on reuse " *
+            "(nnz $(length(chol_ref.pattern_rowval)) -> $(nnz(Hf))) -- falling back to a fresh cholesky"))
+    end
+    return nothing
+end
 
 "Add `ridge` to every diagonal entry of a COPY of `H`, via direct `nzval`
 mutation at a freshly-scanned diagonal index map rather than the generic
@@ -234,6 +296,8 @@ function _chol_factorize(H::SparseMatrixCSC, ridge::Real, chol_ref::CholPatternC
     Hr = ridge == 0.0 ? H : _add_diag(H, ridge)
     if chol_ref.factor === nothing
         chol_ref.hzero = 0.0 .* Hr
+        chol_ref.pattern_colptr = copy(Hr.colptr)
+        chol_ref.pattern_rowval = copy(Hr.rowval)
         ch = cholesky(Symmetric(Hr); check = false)
         chol_ref.factor = ch
         CHOL_FACTORIZATIONS[] += 1
@@ -241,6 +305,11 @@ function _chol_factorize(H::SparseMatrixCSC, ridge::Real, chol_ref::CholPatternC
     end
     Hf = Hr + chol_ref.hzero
     try
+        # S9 audit (Q2): a sparsity-pattern GROWTH into `cholesky!` does not
+        # throw and returns a wrong-but-"successful" factorisation -- G5.4's
+        # "0 fallbacks" alone cannot prove the pattern held. Assert it
+        # explicitly, on every reuse attempt, before `cholesky!` ever runs.
+        _assert_chol_pattern_matches(Hf, chol_ref)
         # `Hf` stores BOTH triangles explicitly (kron/leaf-block accumulation
         # never produces a one-triangle-only sparse matrix here, unlike the
         # ZtWZ-built templates in gaussian_structured.jl/gaussian_sparse_lss.jl,

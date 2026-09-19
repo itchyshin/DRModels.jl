@@ -310,7 +310,7 @@ function gate_fallback(p::Int)
 end
 
 # -----------------------------------------------------------------------------
-# Gate G5.7: --gate headtohead --p 100,1000,5000 -- factorisations per
+# Gate G5.7/G5d.5: --gate headtohead --p 100,1000,5000 -- factorisations per
 # objective evaluation before/after (read as "after", since this always runs
 # against whatever engine is currently built), the p=100 logLik still within
 # 0.05 of -256.51 (the repo's guarded q4_p100 fixture baseline, NOT the
@@ -327,7 +327,18 @@ end
 # hatch ("if the R arm is unavailable in this worktree, run the Julia arm and
 # say so"), only the Julia arm runs here; this is stated in the gate's own
 # printed output and TSV header, not silently skipped.
+#
+# S5d item 3: G5.7's original clause described a `build_M` change ("4 -> 2
+# factorisations per evaluation") that was never made (see the S5/S9 ledgers)
+# -- this gate printed `fact_per_eval` all along but never GATED on it. It now
+# checks the number it prints against the MEASURED post-(b)+(c) baseline
+# recorded in checkpoint.md (7.06 / 11.56 / 8.80 factorisations/eval at
+# p=100/1000/5000), within 5% relative, for whichever of those p values are
+# in `ps`. The old G5.7 ABANDON note in leaf-S5.md is left as history, not
+# edited.
 # -----------------------------------------------------------------------------
+
+const G5D5_FACT_PER_EVAL_BASELINE = Dict(100 => 7.06, 1000 => 11.56, 5000 => 8.80)  # measured, checkpoint.md
 
 function _headtohead_loglik_p100()
     FIX = joinpath(@__DIR__, "fixtures")
@@ -386,7 +397,14 @@ function gate_headtohead(ps::Vector{Int})
         fact_per_eval = nfact === missing ? missing : round(nfact / max(last.f_calls, 1), digits = 2)
         push!(rows, @sprintf("%d\t%d\t%.4f\t%d\t%s\t%s\t%.4f", p, reps, wall, last.f_calls, string(nfact), string(fact_per_eval), last.loglik))
         @printf "p=%d warm_median_wall=%.3fs f_calls=%d chol_factorizations=%s (%.2f/eval) loglik=%.4f\n" p wall last.f_calls string(nfact) (fact_per_eval === missing ? NaN : fact_per_eval) last.loglik
-        ok_all &= last.converged
+        fact_ok = true
+        if haskey(G5D5_FACT_PER_EVAL_BASELINE, p) && fact_per_eval !== missing
+            baseline = G5D5_FACT_PER_EVAL_BASELINE[p]
+            relf = abs(fact_per_eval - baseline) / baseline
+            fact_ok = relf <= 0.05
+            @printf "  factorisations/eval=%.2f baseline=%.2f rel=%.1f%% (<=5%%) %s\n" fact_per_eval baseline (100relf) (fact_ok ? "OK" : "FAIL")
+        end
+        ok_all &= last.converged && fact_ok
     end
 
     out_dir = joinpath(@__DIR__, "results")
@@ -398,6 +416,7 @@ function gate_headtohead(ps::Vector{Int})
     println("wrote ", out_path)
 
     println(ok_all ? "GATE G5.7 PASS" : "GATE G5.7 FAIL see diagnostics above")
+    println(ok_all ? "GATE G5d.5 PASS" : "GATE G5d.5 FAIL see diagnostics above")
     return ok_all
 end
 # -----------------------------------------------------------------------------
