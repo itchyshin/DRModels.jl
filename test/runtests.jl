@@ -103,6 +103,7 @@ end
 # project-extras, unbound args, piracy. Runs early so packaging regressions
 # surface before the numerical suite.
 _shard_include("test_shard_selection.jl")
+_shard_include("test_runtests_include_list.jl")  # this file's own shape: no duplicate or plain includes (see MAINTENANCE NOTE)
 _shard_include("test_load_contract.jl")
 _shard_include("test_aqua.jl")
 
@@ -324,16 +325,6 @@ _shard_include("test_missing_listwise.jl")
 # (fit_q4_sparse_tmb end-to-end; marginal_nll / marginal_and_exact_grad return
 # contract + cross-consistency) and the bivariate bf() meta_V/relmat/animal
 # constructor guard rails.
-include("test_coverage_engine.jl")
-include("test_q4_objective_diagnostic.jl")
-include("test_bridge_formula_translation.jl")
-include("test_bridge_materialization_collision.jl")
-include("test_bridge_formula_labels.jl")
-include("test_bridge_base_r_names.jl")  # #563/#467: the ten design-258 constructs render base-R names
-include("test_bridge_coef_labels_echo.jl")  # #563: options["coef_labels"] echo (design 258 §7.1-7.3)
-include("test_bridge_formula_constructs.jl")  # #467/#609 A6: R-contrast fidelity of the coef_labels echo
-include("test_bridge_lss_labels.jl")
-include("test_bridge_lss_routes.jl")  # #563 S6: bridge-vs-direct parity across every LSS route
 _shard_include("test_coverage_engine.jl")
 _shard_include("test_q4_objective_diagnostic.jl")
 _shard_include("test_bridge_formula_translation.jl")
@@ -341,6 +332,7 @@ _shard_include("test_bridge_materialization_collision.jl")
 _shard_include("test_bridge_formula_labels.jl")
 _shard_include("test_bridge_base_r_names.jl")  # #563/#467: the ten design-258 constructs render base-R names
 _shard_include("test_bridge_coef_labels_echo.jl")  # #563: options["coef_labels"] echo (design 258 §7.1-7.3)
+_shard_include("test_bridge_formula_constructs.jl")  # #467/#609 A6: R-contrast fidelity of the coef_labels echo
 _shard_include("test_bridge_zi_marginal_mean.jl")  # bridge fitted/residuals = drmTMB's unconditional mean for zi count fits
 _shard_include("test_bridge_lss_labels.jl")
 _shard_include("test_bridge_lss_routes.jl")  # #563 S6: bridge-vs-direct parity across every LSS route
