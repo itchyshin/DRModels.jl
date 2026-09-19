@@ -68,7 +68,7 @@ makedocs(
             "reference/package.md",
             "reference/model-specification.md",
             "reference/structured-effect-markers.md",
-            "reference/deprecated-marker-internals.md",
+            "Moving older R code to DRModels.jl" => "reference/deprecated-marker-internals.md",
             "reference/model-fitting-and-postfit.md",
             "reference/visualization.md",
             "reference/engine-internals.md",
