@@ -14,8 +14,8 @@ include(joinpath(@__DIR__, "..", "parity_docs_navigation.jl"))
     end
     real = production_navigation(read(joinpath(@__DIR__, "..", "..", "docs", "make.jl"), String))
     paths = navigation_paths(real)
-    @test length(paths) == 51
-    @test length(unique(paths)) == 51
+    @test length(paths) == 52
+    @test length(unique(paths)) == 52
     @test !("get-started.md" in paths)
     @test "getting-started.md" in paths
     @test length(real) == 5
