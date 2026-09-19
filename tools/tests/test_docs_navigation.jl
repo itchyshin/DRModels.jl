@@ -14,13 +14,16 @@ include(joinpath(@__DIR__, "..", "parity_docs_navigation.jl"))
     end
     real = production_navigation(read(joinpath(@__DIR__, "..", "..", "docs", "make.jl"), String))
     paths = navigation_paths(real)
-    @test length(paths) == 51
-    @test length(unique(paths)) == 51
+    # Keep an explicit reviewed page count: adding a public page must update
+    # this contract deliberately, rather than silently bypassing navigation.
+    @test length(paths) == 52
+    @test length(unique(paths)) == 52
     @test !("get-started.md" in paths)
     @test "getting-started.md" in paths
-    @test length(real) == 5
+    @test length(real) == 6
     @test "reference/engine-internals.md" in paths
     @test count(p -> p isa Pair && p.first == "Tutorials" && p.second isa Vector, real) == 1
+    @test count(p -> p isa Pair && p.first == "Development" && p.second isa Vector, real) == 1
     @test all(isfile(joinpath(@__DIR__, "..", "..", "docs", "src", p)) for p in paths)
 end
 println("PRODUCTION_NAVIGATION_CONTRACT_PASS")

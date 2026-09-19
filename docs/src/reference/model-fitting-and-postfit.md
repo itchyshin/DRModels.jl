@@ -99,7 +99,7 @@ marginal_parameters(fit)            # == predict_parameters(fit, data) in-sample
 
 !!! warning "Experimental"
     Exported for evaluation, not yet stable. API and numerics may
-    change; not covered by the R-parity scoreboard.
+    change. This route is not available through the R bridge.
 
 For one ordinal or categorical missing predictor in the bounded Gaussian joint
 route, construct the predictor model with `impute_model`; use
@@ -256,7 +256,7 @@ chibar_pvalue
 ## Cross-family post-fit
 
 Accessors for a `fit_mixed_family` result. The cross-family bivariate route is
-**experimental** and not release-ready: single-fixture evidence, no interval
+**experimental** and not ready for routine use: narrow documented evidence, no interval
 coverage, and the dependence it reports is a latent-scale scalar correlation
 (`fit.rho_latent`), not a `rho12` formula. [`mf_coef`](@ref) is the tidy
 coefficient table; the other `mf_*` helpers live beside it in the module.

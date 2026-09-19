@@ -125,8 +125,10 @@ reduced = drm(bf(@formula(y ~ 1 + x), @formula(sigma ~ 1)), Gaussian(); data = d
 lrtest(reduced, fit)             # is σ ~ x worth the one extra parameter?
 ```
 
-A small p-value says the moving scale is real signal. The information criteria
-agree — lower is better, and [`aicc`](@ref) is the small-sample-corrected AIC:
+A small p-value supports the moving-scale term within these nested, checked
+candidate models. Also inspect the estimated scale change, residual diagnostics,
+and whether that effect answers the biological question. The information
+criteria agree — lower is better, and [`aicc`](@ref) is the small-sample-corrected AIC:
 
 ```@example postfit
 (aic = aic(fit),   bic = bic(fit),   aicc = aicc(fit)),

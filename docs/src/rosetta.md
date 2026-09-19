@@ -80,10 +80,12 @@ drmTMB(bf(mu1 = y1 ~ x, mu2 = y2 ~ x, sigma1 = ~ x, sigma2 = ~ 1, rho12 = ~ 1),
 ```
 
 ```julia
-# Julia — DRModels.jl  (keyword form; ρ12 is the residual correlation, on atanh ρ12)
-bf(mu1 = @formula(y1 ~ x), mu2 = @formula(y2 ~ x),
-   sigma1 = @formula(sigma1 ~ x), sigma2 = @formula(sigma2 ~ 1),
-   rho12 = @formula(rho12 ~ 1))
+# Julia — DRModels.jl  (ρ12 is the residual correlation, on atanh ρ12)
+fit = drm(
+    bf(mu1 = @formula(y1 ~ x), mu2 = @formula(y2 ~ x),
+       sigma1 = @formula(sigma1 ~ x), sigma2 = @formula(sigma2 ~ 1),
+       rho12 = @formula(rho12 ~ 1)),
+    Gaussian(); data = dat)
 ```
 
 ### Structured effects & meta-analysis
@@ -175,5 +177,6 @@ point.
 - **ML is the default.** REML is an option (the likelihoods are not comparable
   across different fixed-effect structures, so ML is used for model selection).
 
-See also the [R ↔ Julia bridge](r-julia-bridge.md) for the planned
-`drmTMB(..., engine = "julia")` round-trip via JuliaCall.
+See also the [R ↔ Julia bridge](r-julia-bridge.md) for the experimental,
+optional `drmTMB(..., engine = "julia")` route via JuliaCall. It currently
+supports only the documented model types.

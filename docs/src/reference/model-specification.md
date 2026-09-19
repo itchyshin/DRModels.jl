@@ -57,7 +57,7 @@ cbind
 
 !!! warning "Experimental"
     Exported for evaluation, not yet stable. API and numerics may
-    change; not covered by the R-parity scoreboard.
+    change. This route is not available through the R bridge.
 
 For a Gaussian response, `mi(x)` marks an additive predictor whose missing
 values are integrated out under a joint model. Observed predictor values inform
