@@ -7,7 +7,7 @@ You are Claude, picking up a finished sub-lane of the DRModels.jl speed6 arc. Th
 
 1. **All three slices are landed on `claude/lane-speed6-20260919` and pushed.** The only carried-over item is a vault `LESSONS.md` commit (Landing State). The only open item is a runtime confirmation: the last two slices changed `test/runtests.jl` and nine test files after the orchestrator's last full `Pkg.test()` had already read them, so no full suite has yet run on HEAD.
 2. **One Julia process per lane in this worktree.** On 2026-09-19 a `pkill -f 'Pkg.test()'` from this session killed another session's suite (details in the after-task §9). Before starting any Julia here: `for p in $(pgrep -f julia); do lsof -p $p | awk '$4=="cwd"{print $9}'; done` and wait if any cwd is this worktree. Kill by PID only, never by pattern.
-3. `tools/handoff_gate.sh` reports GATE FAIL on `.unlazy/julia-speed-20260919/gates/leaf-S3.md`, `leaf-S5.md`, `leaf-S5d.md`. Those ledgers are the orchestrator's arc, not this sub-lane's (this sub-lane had no unlazy leaf); they were deliberately not marked ABANDONED. `git` state of this branch is clean and pushed.
+3. `tools/handoff_gate.sh` reports GATE FAIL on `.unlazy/julia-speed-20260919/gates/leaf-S3.md`, `leaf-S5.md`, `leaf-S5d.md`. Those ledgers belong to the orchestrator's arc (this sub-lane had no unlazy leaf); they were deliberately left unmarked. `git` state of this branch is clean and pushed.
 
 ## What Was Accomplished
 
@@ -19,15 +19,15 @@ You are Claude, picking up a finished sub-lane of the DRModels.jl speed6 arc. Th
 
 ## Current Working State
 
-- Working: `Pkg.test()` completes under the mandated env (measured on `3f13ffbe3`); every joint_missing file passes with the env pin alone (measured on `d75f76248`); the include-list harness test is green on HEAD.
+- Working: `Pkg.test()` completes under the mandated env (measured on `3f13ffbe3`); every joint_missing file passes with the env pin alone (measured on `d75f76248`); the include-list test is green on HEAD.
 - In progress: nothing.
-- Not yet measured: a full `Pkg.test()` on HEAD (`8b7eeed94`) that includes the merged include block and the pin removal. Expected: "tests passed", top-level testset count near 506 (514 minus nine repeats plus the harness test), the same one `@test_broken`.
+- Not yet measured: a full `Pkg.test()` on HEAD (`8b7eeed94`) that includes the merged include block and the pin removal. Expected: "tests passed", top-level testset count near 506 (514 minus nine repeats plus the include-list test), the same one `@test_broken`.
 
 ## Key Decisions & Rationale
 
 - Drop the Julia-thread clause rather than run those files under `julia -t1` (option c of the brief): the tested code has no such requirement and no runbook does this. (after-task §3a)
-- Keep BLAS==1 as a `@test`, never as `error()`: a module-level `error()` is a suite abort, not a test failure.
-- Harness guard is a text parse, not a runtime `Set` in `_shard_include`: a runtime counter would need the same `error()` anti-pattern and cannot see the plain-include form.
+- Keep BLAS==1 as a `@test`, never as `error()`: a module-level `error()` aborts the whole suite instead of recording one failure.
+- The include-list guard parses the file as text. A runtime `Set` in `_shard_include` would need the same `error()` anti-pattern and would miss the plain-include form.
 - Pins: keep the check, drop the set. Measured aside: with `OPENBLAS_NUM_THREADS` unset, OpenBLAS starts at 1 on this Mac (Julia 1.10.0, aarch64); on a machine where it starts higher, a standalone run of a joint_missing file now fails one named check instead of drifting numerically.
 - Related decisions in the vault: D-88 (lane preflight), D-139 (estimate before run; the 38-min suite was estimated 35 to 40), D-116 (default to acting).
 
@@ -38,7 +38,7 @@ You are Claude, picking up a finished sub-lane of the DRModels.jl speed6 arc. Th
 | Artifact / branch | Committed | Pushed | PR | State |
 |---|---|---|---|---|
 | `DRModels.jl` `claude/lane-speed6-20260919` `3f13ffbe3` (guards) | y | y | none (the arc's PR is the orchestrator's) | LANDED |
-| same branch `bd500a8b3` (includes + harness test) | y | y | none | LANDED, runtime confirmation OWED (Next Steps 1) |
+| same branch `bd500a8b3` (includes + include-list test) | y | y | none | LANDED, runtime confirmation OWED (Next Steps 1) |
 | same branch `d75f76248` (pins) | y | y | none | LANDED, runtime confirmation OWED (Next Steps 1) |
 | same branch `c3a8d82f5`, `8b7eeed94` (after-task) | y | y | none | LANDED |
 | this handover (`docs/dev-log/handover/2026-09-19-claude-handover-speed6-test-hygiene.md`) | y (see chat note) | y | none | LANDED |
@@ -72,7 +72,7 @@ The one `CARRIED-OVER` row: the vault's daily self-update commit, or the human, 
 
 | Repo | Branch / main | CI | What shipped (this sub-lane) | Plan by leverage |
 |---|---|---|---|---|
-| DRModels.jl | `claude/lane-speed6-20260919` @ `8b7eeed94`, pushed; `origin/main` still carries the nine duplicated includes until the arc merges | not run on this branch by this session (local `Pkg.test()` is the gate per hub rule) | `Pkg.test()` completes under the mandated env; nine files stop running twice; one file stops running in every shard; include-list harness test; nine dead pins removed | 1) full suite on HEAD (38 min) · 2) nothing further here |
+| DRModels.jl | `claude/lane-speed6-20260919` @ `8b7eeed94`, pushed; `origin/main` still carries the nine duplicated includes until the arc merges | not run on this branch by this session (local `Pkg.test()` is the gate per hub rule) | `Pkg.test()` completes under the mandated env; nine files stop running twice; one file stops running in every shard; include-list test; nine dead pins removed | 1) full suite on HEAD (38 min) · 2) nothing further here |
 
 ## How to Resume
 
