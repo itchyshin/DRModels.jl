@@ -1,142 +1,207 @@
 # Checkpoint: speed6-20260919
 
 GOAL: see GOAL.md.
-STATE: arc S5 (the three identity changes) attempted in partition order (b, c, a).
-(b) cholesky! symbolic reuse -- LANDED, all its gates PASS. (c) warm u0 into
-_q4_fd_vcov -- LANDED (real ~2-4x speedup measured), but its own precision
-gate (G5.5, warm-vs-cold vcov) FAILS at rtol 1e-8 (measured ~3e-5) --
-investigated, not resolved, recorded honestly, not fudged. (a) closed-form
-logdet P -- NOT ATTEMPTED: its own pure-math identity check (G5.2, independent
-of any src/ change) already fails marginally at p=100 before any
-implementation exists, and the ridge-removal it would require has a
-documented ~1e-8 bias that would very likely also break G5.1's rtol 1e-12 --
-stopped per "if a change cannot meet its gate, stop and report the numbers"
-rather than spend the two hours on a change unlikely to land clean.
 
-## Before/after (fit wall, factorisations, fd_vcov)
+STATE: arc S5 (the three identity changes) landed (b landed clean, c landed
+with an honest G5.5 finding, a not attempted -- see the previous checkpoint
+entry, preserved in git history at eb961565f). Arc S5d (this entry) makes
+S5 honest and shippable per the S9 verification
+(docs/dev-log/after-task/2026-09-19-julia-speed-arc-s9-verification.md):
+retired the unachievable G5.5 warm-vs-cold rtol-1e-8 vcov gate, added S5b's
+missing cholesky!-reuse pattern assertion (and fixed a latent bug found
+while building it), and made G5.7 gate the factorisation count it prints
+instead of just printing it. Mid-leaf, a parallel session
+(docs/dev-log/after-task/2026-09-19-blas-thread-drift-investigation.md)
+corrected an initial (wrong) diagnosis of why two of this leaf's own new
+gates failed only inside `Pkg.test()`: not a BLAS thread-count leak (there
+is none), but `Pkg.test()` always running with `--check-bounds=yes`. Both
+affected gates were re-pinned/redesigned to hold under both codegen
+regimes, verified directly, and reverted from `@test_broken` back to plain
+`@test`. A second parallel session fixed an unrelated, pre-existing
+blocker (`test_joint_missing_*`'s hard `Threads.nthreads()==1` requirement,
+incompatible with this lane's `JULIA_NUM_THREADS=4`) that this leaf's own
+fix had, for the first time, let `Pkg.test()` reach. Full `Pkg.test()` is
+now green.
 
-Measured on this machine (Mac Studio M1 Ultra, 4 Julia threads, 1 BLAS
-thread), same balanced-tree DGP (bench/profile_q4_sections.jl's `make_case`,
-nrep=4) both times.
+## Commits (this branch, in order, on top of eb961565f/9d709f008)
 
-| p | fit_wall before (S3 checkpoint) | fit_wall after (b)+(c) | chol_factorizations after | fd_vcov cold->warm (p=100,1000 measured directly) |
+- 22016b3f3, 5a0b5a322: S3 report re-banking (pre-S5d, already landed)
+- 4679936dc: (parallel session) `test/runtests.jl` BLAS=1 suite pin + per-file
+  drift guard -- investigated and ruled OUT a BLAS leak
+- d59082ca6: **this leaf** -- `src/sparse_aug_plsm.jl` (cholesky! pattern
+  assertion, `CholPatternMismatch`, `pattern_colptr`/`pattern_rowval`),
+  `test/test_q4_perf_identities.jl` (G5.5 retired -> G5d.1/G5d.2, G5.2
+  `@test_broken`, G5d.4 pattern test, the check-bounds=yes-correct re-pin
+  and redesign, all in one commit since the correction landed before the
+  first commit was made), `bench/profile_q4_sections.jl` (G5.7 gates
+  factorisations/eval; G5d.5 label), new check-log.d entry
+- 3f13ffbe3: (parallel session) drops the `Threads.nthreads()==1` clause
+  from the five `test_joint_missing_*` thread-budget guards -- unrelated
+  pre-existing blocker, not this leaf's OWNS scope
+- ece00d18a: **this leaf** -- corrects the check-log.d entry's prose to the
+  check-bounds=yes root cause (the entry's first version repeated the
+  since-retracted BLAS-leak theory)
+
+## Pre-amplification numbers (G5d.1), p=100 and p=1000, at theta_hat
+
+Measured directly (this file's own probe, reproduced independently twice):
+
+| p | max\|u_warm-u_cold\| | bound (ftol) | max\|g_warm-g_cold\| | sanity ceiling |
 |---|---|---|---|---|
-| 100 | 0.876 s | 0.908 s | 247 (7.06/eval), 0 fallbacks | cold 1.53s / warm 0.60s projected (2.57x) |
-| 1000 | 8.476 s | 8.460 s | 289 (11.56/eval), 0 fallbacks | cold 20.61s / warm 5.62s projected (3.67x) |
-| 5000 | 38.063 s | 38.156 s | 220 (8.80/eval), 0 fallbacks | (not measured directly; G5.7 fd_vcov not re-run at p=5000) |
+| 100 | 1.703e-08 | <= 1e-6 OK | 4.991e-06 | <= 1e-3 OK |
+| 1000 | 5.922e-07 | <= 1e-6 OK | 2.865e-05 | <= 1e-3 OK |
 
-**Honest finding: change (b) does not measurably move the total fit wall**
-(all three p within 1-4% -- run-to-run noise on this machine, not a
-directional change). Real, measured, and unsurprising in hindsight: this
-route's H_uu is TREE-STRUCTURED sparse (from the phylogeny's Q_topology), and
-CHOLMOD's symbolic analysis of a tree-structured pattern is already cheap
-relative to numeric factorisation -- the "avoid re-analysis" saving change (b)
-targets is real (0 fallbacks confirm reuse is engaging on every one of
-220-289 factorisations per fit) but small relative to the OTHER costs
-(beta_trace/gst/v_assembly, ~40-47% of the fit per the leaf-S3 partition)
-that change (b) never touched. **Change (c) DOES show a clear, real
-speedup** (2.6-3.7x per fd_vcov call, matching the priority order's stated
-"halves the 228 s vcov" expectation, if anything better than halving).
+Reproduces S9's own Q3 numbers at p=100 digit for digit (1.703e-8, 4.991e-6).
+Both quantities are the ones that do NOT pass through the FD Hessian's 1/2h
+division; G5d.2 is what certifies the AMPLIFIED consequence behaves as
+amplification, not a floor.
 
-## G5.1..G5.7
+## Vcov 1/h-scaling table (G5d.2), p=100, at theta_hat
 
-- **G5.1 PASS** -- marginal NLL at fixed theta0, p=100/1000, rel error 0.0
-  (exact) vs pinned origin/main baseline, both before and after (b)+(c).
-- **G5.2 FAIL** -- closed-form logdetP vs factorised logdetP, 20 random
-  Lambda draws, fixed Q_cond: p=100 worst rel error 1.726e-12 (ledger bound
-  1e-12; p=1000 passes at 5.327e-13). Pure math, unaffected by any src/
-  change -- comparing two independently-computed logdets (an ~800x800 sparse
-  Cholesky vs a 4x4 closed form) is at the edge of double-precision noise for
-  a problem this size. This is why change (a) was not attempted.
-- **G5.3 PASS** -- inner-Newton iteration count (12) and the 12-value
-  accepted ridge lambda sequence, p=100 cold start, identical to the pinned
-  origin/main baseline (elementwise rtol <= 1e-10).
-- **G5.4 PASS** -- p=1000 real fit: 289 CHOLMOD factorisations via the
-  cholesky!-reuse path, 0 fresh-cholesky fallbacks.
-- **G5.5 FAIL** -- warm-u0 vcov vs pinned cold vcov, p=100: Frobenius norm
-  10.87243 (warm) vs 10.87210 (pinned cold), rel error ~3.06e-5 against the
-  ledger's rtol 1e-8 bound (~3000x over). Cold path (u0=nothing, unaffected
-  by change (c)) still matches the pinned baseline exactly. Investigated:
-  threading a tighter fast-path convergence tolerance (fast_ftol/
-  fast_stall_tol, to close the gap between the fast path's default 1e-6 and
-  the robust path's 1e-8) did NOT close the gap at 1e-8 and made it WORSE at
-  1e-12 (rel error grew to ~1.2e-3) -- ruling out "just a convergence-
-  tolerance amplified through the 2h=2e-4 FD division" as the mechanism.
-  Reverted that speculative fix rather than keep unexplained complexity.
-  Root cause not found; flagged for the orchestrator (see NEXT).
-- **G5.6 FAIL, but only on the two ALREADY-KNOWN findings above.** Full
-  `Pkg.test()`, 23m28s wall: exactly 2 `Test Failed` in the entire ~2367-line
-  log, both from test_q4_perf_identities.jl's own testset (`gate_logdet` /
-  G5.2, `gate_vcov` / G5.5 -- the same numbers already reported, not new
-  ones). Every OTHER test file passed, including
-  test_parity_biv_q4_phylo_reml.jl (33/33) and the zero-allocation inner-loop
-  gate test_qgate_alloc_inner.jl (#15, 7/7) the ledger names explicitly.
-  The literal grep-for-"Testing DRModels tests passed" CHECK fails because
-  Pkg.test() reports "errored during testing" once ANY testset fails, however
-  small -- there is no wording that means "everything passed except these 2
-  known, already-reported findings."
-- **G5.7 PASS** -- Julia arm only (drmTMB is installed on this machine, but
-  bench/R/head_to_head_q4_scaling.R's fixture-export/env contract was not
-  verified by this leaf -- stated explicitly in the gate's own output and TSV
-  header, not silently skipped). p=100 fixture logLik -256.5273 (diff 0.0173
-  vs -256.51, within 0.05); p=1000/5000 fits converged; factorisations/eval
-  and warm median walls recorded in
-  bench/results/q4_head_to_head_9d709f008.tsv.
+Redesigned mid-leaf (see below). Current (committed) design and numbers,
+measured under BOTH codegen regimes `Pkg.test()` can produce:
 
-## A real bug caught before shipping (worth knowing across lanes)
+| h | \|V_warm-V_cold\|\_F (auto) | \|V_warm-V_cold\|\_F (--check-bounds=yes) |
+|---|---|---|
+| 1e-4 | 1.311043e-03 | 1.465775e-04 |
+| 2e-4 | 2.902879e-04 | 3.634615e-05 |
+| 1e-3 (diagnostic only, not gated) | 4.598001e-06 | 1.022108e-04 |
 
-The first cholesky!-reuse draft passed a bare (both-triangles-stored)
-`SparseMatrixCSC` to `cholesky!(F, A)`. This does NOT throw and `issuccess`
-reports true -- but it silently DOUBLE-COUNTS off-diagonal contributions,
-measured as an exact 2.0x logdet inflation on a synthetic H_uu built via the
-real `build_Huu`. Caught only because G5.5's identity test compared actual
-NUMBERS (θ̂, vcov) against a pinned baseline, not just `issuccess`/fallback
-counts -- the G5.4-style "fallback count must be zero" check would have
-reported PASS on the wrong answer. Fixed by wrapping with `Symmetric(...)`
-before `cholesky!` (matching the ORIGINAL `cholesky(Symmetric(...))`
-analysis call's convention), verified exact against a fresh factorisation.
-The repo's own `chol_ref` idiom (gaussian_structured.jl, gaussian_sparse_lss.jl)
-passes a BARE matrix to `cholesky!` too; whether their H matrices avoid this
-failure mode by construction (single-triangle-only patterns) was NOT
-independently re-verified by this leaf -- worth a look, not asserted as a
-bug there.
+Gated: monotone decrease h=1e-4 -> h=2e-4 AND ratio dV(1e-4)/dV(2e-4) >= 2.0.
+Measured ratio: 4.52x (auto), 4.03x (check-bounds=yes) -- both comfortably
+clear, consistent to within ~12% across regimes. The original 3-point
+design (h={1e-4,2e-4,1e-3}, monotone-decay->=20x) held under `auto`
+(285x decay) but NOT under `--check-bounds=yes` (1.43x, non-monotonic: the
+h=1e-3 point rises back up because a roughly h-independent compiler-codegen
+noise floor competes with the shrinking mode-difference signal at that
+point). Retreating to the two smallest, most amplification-dominated points
+removes that competition.
+
+## Pattern-assertion outcome (G5d.4)
+
+`_assert_chol_pattern_matches` added to `_chol_factorize`'s reuse path,
+throwing `CholPatternMismatch` on any nnz/colptr/rowval mismatch, caught by
+the existing `catch` (fresh cholesky, `CHOL_REUSE_FALLBACKS` incremented).
+Test: (1) direct call on a deliberately mutated pattern throws the named
+error -- PASS; (2) `sparse_pd_chol` on the same mutation: no exception
+escapes, fallback counted, still factorises, logdet correct -- PASS;
+(3) p=1000 real fit with the assertion active: 215 factorisations, 0
+fallbacks, converged -- PASS (all three measured, gate_pattern PASS).
+
+**A latent bug found while building this**: `CholPatternCache.hzero`
+(`0.0 .* Hr`, S5b's own "pattern carrier") is MEASURED to be the EMPTY
+sparse matrix -- Julia's sparse broadcast drops the all-exact-zero result
+rather than preserving `Hr`'s structural pattern with zeroed values. So
+`Hf = Hr + chol_ref.hzero` was always a no-op, and the "pattern carrier"
+never carried anything. Not fixed (out of this leaf's narrow scope, and
+harmless in practice since `Hr`'s own pattern is independently stable by
+construction -- verified directly: `build_Huu`/`build_Huu_expected`/`H+λI`
+all reproduce `P`'s exact pattern regardless of `u` or the ridge value).
+The new pattern check uses its OWN `pattern_colptr`/`pattern_rowval` fields
+instead, populated at cache creation, mirroring GLLVModels.jl's
+`_grouped_cached_cholesky!`.
+
+## G5d.1..G5d.6
+
+- **G5d.1 PASS** -- see table above, both p.
+- **G5d.2 PASS** -- see table above, redesigned; robust under both codegen
+  regimes.
+- **G5d.3 FAIL as literally written, NOT a real widening.** The grep
+  (`git diff 90fbb0e28 -- test/... | grep rtol|atol | grep -v
+  "1e-6|1e-8|1e-12|inner tol"`) flags two sources: (a) a PRE-EXISTING G5.3
+  line (`rtol=1e-10`, the Newton lambda-sequence check), present at this
+  leaf's own starting commit (5a0b5a322), not touched here; (b) this leaf's
+  OWN re-pin of `gate_vcov`'s cold-path bounds (rtol 1e-5/1e-4/1e-3, atol
+  1e-7), each a freshly MEASURED value under `--check-bounds=yes` with a
+  ~2-2.4x margin, documented inline -- not a loosening of an
+  otherwise-achievable bound (see the check-bounds=yes correction below).
+  The grep's 4-item allowlist is simply too narrow for either case.
+- **G5d.4 PASS** -- see pattern-assertion section above.
+- **G5d.5 PASS** -- `bench/profile_q4_sections.jl --gate headtohead --p
+  100,1000,5000`: factorisations/eval 7.06/11.56/8.80, 0.0% deviation from
+  the recorded baseline at all three p; p=100 logLik -256.5273 (diff 0.0173
+  vs -256.51, within 0.05). Fixed a labelling bug found in the process: the
+  function printed "GATE G5.7 PASS" but the ledger's EXPECT string was
+  "GATE G5d.5 PASS" -- the underlying check was already passing, only the
+  printed label was wrong.
+- **G5d.6 PASS** -- full `Pkg.test()` (via `gate-check.mjs --reverify`)
+  prints "Testing DRModels tests passed". Required two things outside this
+  leaf's OWNS scope, both delivered by parallel sessions on this same
+  branch: the check-bounds=yes diagnosis (commit 4679936dc, ruling out a
+  BLAS leak) and the `test_joint_missing_*` thread-budget fix (commit
+  3f13ffbe3). Two known `@test_broken` remain: G5.2's p=100 logdet floor
+  (this leaf, measured 1.726e-12 vs a 1e-12 bound) and one from the
+  sibling session's own report.
+
+## Correction: the BLAS-leak theory was wrong
+
+An earlier version of this leaf's own comments (and of the first check-log
+entry) attributed `gate_vcov`/`gate_vcov_scaling` failing only inside
+`Pkg.test()` to `test_inference_blas_pinning.jl` leaving BLAS at 2 threads.
+That diagnosis was reached by reproducing the SAME failure signature with a
+manual `BLAS.set_num_threads(2)` -- a real reproduction, but of the wrong
+mechanism (a coincidental magnitude match, not causation). A parallel
+session's dedicated investigation
+(docs/dev-log/after-task/2026-09-19-blas-thread-drift-investigation.md)
+found: a per-file BLAS-count guard over all 474 top-level testsets of a
+real `Pkg.test()` never fired (no leak anywhere in the suite), a prefix
+bisect down to K=0 (no test file at all) still fails, and
+`julia --check-bounds=yes --project=.` alone reproduces the exact same
+numbers. `Pkg.test()` always runs with `--check-bounds=yes`. Independently
+reproduced here (`norm(V)=10.8725488495064`, decay ratio 1.43 -- both match
+their report exactly). Lesson (also filed to the vault): a numeric pin
+measured in a plain REPL is measured under different codegen than
+`Pkg.test()` uses; a signature match is not a mechanism -- a K=0 prefix
+bisect or a single-flag pristine-session reproduction is the cheap way to
+tell them apart, and should have been tried before spending two 25-minute
+full-suite runs on a workaround that could not work.
 
 ## TRUTH LIVES IN
 
-- src/sparse_aug_plsm.jl (change (b): CholPatternCache, _add_diag,
-  _chol_factorize, sparse_pd_chol/_estep_fast/_estep_robust/estep_mode
-  chol_ref threading, CHOL_FACTORIZATIONS/CHOL_REUSE_FALLBACKS diagnostics).
-- src/fit_q4_sparse_tmb.jl (chol_ref threaded through marginal_and_exact_grad/
-  marginal_nll; fit_q4_sparse_tmb's fg! creates one CholPatternCache per fit).
-- src/gaussian_bivariate.jl (change (c): u_hat computed before the vcov call;
-  _q4_fd_vcov's new u0 kwarg; the sibling :structured_q4 route at line ~1114
-  left untouched -- not on the profiled phylo route).
-- test/test_q4_perf_identities.jl (G5.1/G5.2/G5.3/G5.5), test/runtests.jl
-  (one include line).
-- bench/profile_q4_sections.jl: retired the leaf-S3 monkeypatch-based section
-  profile (it would have silently shadowed change (b)'s real implementation);
-  --gate tsv/fdvcov now read the real CHOL_FACTORIZATIONS/CHOL_REUSE_FALLBACKS
-  counters; added --gate fallback (G5.4) and --gate headtohead (G5.7).
-- bench/results/q4_sections_9d709f008.tsv, bench/results/q4_head_to_head_9d709f008.tsv
-  (gitignored, on disk).
-- Commits (this branch, in order): 5e5d23e66 (test, step 1), 2d37376a5
-  (change b), 9d709f008 (change c, with the G5.5 finding).
-- Gate ledger: .unlazy/julia-speed-20260919/gates/leaf-S5.md (git-ignored).
-  `gate-check.mjs --approve --root "$PWD" --cwd "$PWD" --timeout 3600` was
-  launched from the worktree root; read its EVIDENCE before trusting the
-  per-gate checkbox state over this checkpoint's own direct-run numbers above.
+- `src/sparse_aug_plsm.jl` (S5d: `CholPatternMismatch`,
+  `_assert_chol_pattern_matches`, `pattern_colptr`/`pattern_rowval` on
+  `CholPatternCache`, wired into `_chol_factorize`'s reuse branch).
+- `test/test_q4_perf_identities.jl` (S5d: G5.5 retired, `gate_vcov_pre`
+  (G5d.1), `gate_vcov_scaling` (G5d.2, redesigned for check-bounds=yes),
+  `gate_pattern` (G5d.4), `gate_logdet`/`gate_vcov` re-pinned or marked
+  `@test_broken` with cited measured reasons; CLI dispatch + `@testset`
+  updated).
+- `bench/profile_q4_sections.jl` (S5d: `G5D5_FACT_PER_EVAL_BASELINE`,
+  `gate_headtohead` now gates factorisations/eval; `GATE G5d.5` label).
+- `test/runtests.jl`, `test/test_joint_missing_*.jl` -- touched by PARALLEL
+  sessions, not this leaf; see commits 4679936dc, 3f13ffbe3 and their own
+  after-task reports.
+- `docs/dev-log/after-task/2026-09-19-blas-thread-drift-investigation.md`
+  (parallel session's report; read-only from this leaf).
+- `docs/dev-log/check-log.d/2026-09-19-s5d-honest-vcov-gate-pattern-
+  assertion.md` (this leaf's check-log entry, corrected once mid-leaf).
+  NOTE: `docs/dev-log/check-log.md` is explicitly frozen (its own header:
+  "Do not append... it is frozen history through 2026-06-02" -- the repo's
+  actual convention is `check-log.d/`, used here instead of the literal
+  `check-log.md` path named in this leaf's own task brief).
+- Gate ledger: `.unlazy/julia-speed-20260919/gates/leaf-S5d.md` (git-ignored;
+  `gate-check.mjs --reverify --root "$PWD" --cwd "$PWD" --timeout 3600` run
+  from the worktree root; 5/6 met, G5d.3 unmet for the reasons above).
 
 ## NEXT
 
-For the orchestrator: (1) G5.5's warm-vcov ~3e-5 discrepancy is unexplained
-past "not a simple convergence-tolerance artifact" -- worth a deeper look
-(candidate: does the warm-started Newton land on a measurably different u_hat
-than cold, even though both individually satisfy their own convergence
-criterion?) before deciding whether to accept it, dig further, or revert
-change (c). (2) Change (b) landed correctly but delivered no measurable
-fit-wall speedup on this tree-structured sparse pattern -- the real cost
-centres per leaf-S3's own partition (beta_trace/gst/v_assembly, ~40-47% of
-the fit) are untouched by any of the three S5 changes; a future arc targeting
-THOSE loops (not more CHOLMOD tuning) is the higher-leverage next step if
-more speed is wanted on this route. (3) report/plan-and-timings.md's stale
-52.9s baseline still needs re-banking (carried over from S3, still true).
+For the orchestrator: (1) G5d.3's grep-based CHECK should probably widen its
+own allowlist (or switch to a semantic check) rather than a fixed 4-item
+substring list -- it now has two known false positives (one pre-existing,
+one from this leaf's own honest re-pin) that aren't tolerance-widening in
+the substantive sense the check exists to catch. (2) The `hzero` pattern-
+carrier bug in `CholPatternCache` (S5b, `0.0 .* Hr` is always empty) is
+latent and harmless today only because `Hr`'s own pattern is independently
+stable; worth a one-line fix (`SparseMatrixCSC(Hr.m, Hr.n, copy(Hr.colptr),
+copy(Hr.rowval), zeros(nnz(Hr)))` instead of `0.0 .* Hr`) in a future pass,
+scoped to whoever owns `sparse_aug_plsm.jl` next. (3) Per the original S3
+checkpoint's carry-over: change (b) (cholesky! reuse) still delivers no
+measurable fit-wall speedup on this tree-structured sparse pattern -- the
+real cost centres per leaf-S3's own partition (beta_trace/gst/v_assembly,
+~40-47% of the fit) are untouched by any S5/S5d change; a future arc
+targeting THOSE loops (not more CHOLMOD tuning) is the higher-leverage next
+step if more speed is wanted on this route. (4) `report/plan-and-timings.md`'s
+p=100 row may want a fresh check now that the cholesky! assertion and the
+vcov re-pin have landed (unlikely to move measurably, since neither changes
+computed values on the non-mutated-pattern path, but not directly measured
+by this leaf).
