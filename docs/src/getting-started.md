@@ -19,7 +19,14 @@ read what came back.
 
 ## Install
 
-DRModels.jl is pre-release, so develop it from a local checkout:
+This is the direct-Julia route. If Julia is new to you, first install **Julia
+1.10 or later** and open its Julia prompt (the REPL). If you would rather keep
+working in R, you do not need this setup: use the optional
+[drmTMB Julia-engine route](https://itchyshin.github.io/drmTMB/articles/julia-engine.html)
+instead.
+
+DRModels.jl is pre-release, so install it from a local checkout or directly
+from GitHub:
 
 ```julia
 using Pkg
@@ -103,12 +110,11 @@ above:
 is_converged(fit)
 ```
 
-`summary(fit)` prints estimates, standard errors, and 95% Wald intervals for
-every block at once. In this first-fit scale block, the `z` and `p` entries are
-currently unavailable (`NaN`); that is not evidence for a zero scale effect, and
-the estimate, standard error, and interval remain finite outputs. Supplying
-scale-block z/p results consistent with the R-facing post-fit contract remains
-an open parity obligation. Row names are prefixed with the parameter (`mu: …`,
+`summary(fit)` prints estimates, standard errors, Wald intervals, and its
+coefficient-level `z` and `p` summaries for every block at once. Treat those
+summaries as evidence conditional on this fitted model, not as proof that a
+biological effect is real; check diagnostics and the size of the estimated
+scale change as well. Row names are prefixed with the parameter (`mu: …`,
 `sigma: …`) so they stay unique:
 
 ```@example getstarted

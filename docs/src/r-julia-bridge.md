@@ -1,11 +1,40 @@
 # R ↔ Julia bridge
 
-!!! note "Status — Experimental bridge with fixture-backed coefficient-scale checks and measured timing"
+!!! note "Status — experimental optional bridge"
     DRModels.jl exposes `drm_bridge()`, a marshalling-friendly entry point used by
     the optional `drmTMB(formula, ..., engine = "julia")` backend for supported
     models. The companion R glue lives in the **drmTMB R repository** via
     [JuliaCall](https://github.com/JuliaInterop/JuliaCall); the default
     `engine = "tmb"` does not require Julia.
+
+## Start with your current workflow
+
+Stay with native `drmTMB` when you want its default, established R/TMB route.
+Choose the bridge only when your model is within its admitted scope and you want
+to try the Julia backend without rewriting your formula or data workflow.
+
+If you want to keep writing R, follow drmTMB's
+[Julia-engine setup and ordinary-regression example](https://itchyshin.github.io/drmTMB/articles/julia-engine.html).
+It installs Julia and JuliaCall, points R to a local DRModels.jl checkout, and
+then fits the same R formula with `engine = "julia"`. Keep `engine = "tmb"`
+until that optional setup is complete.
+
+If you want to write Julia directly, begin with
+[Getting started](getting-started.md), then use the [Rosetta](rosetta.md) to
+translate a model you already understand in R.
+
+## When native R is the better route
+
+Keep `engine = "tmb"` when your study needs an established R workflow that is
+outside this bridge. In particular, use drmTMB's
+[Coordinate-spatial structured effects](https://itchyshin.github.io/drmTMB/articles/spatial-models.html)
+for its distributional-regression spatial route; use gllvmTMB's
+[Multivariate spatial models with an SPDE mesh](https://itchyshin.github.io/gllvmTMB/articles/spatial-models.html),
+[Temporal covariance for repeated multivariate measurements](https://itchyshin.github.io/gllvmTMB/articles/temporal-ar1.html),
+or [What do repeated survey visits add to an integrated model?](https://itchyshin.github.io/gllvmTMB/articles/integrated-repeated-visits.html)
+when those match your question. These native R spatial, temporal, and
+repeated-visit workflows are not admitted to `engine = "julia"`; a successful
+Julia setup does not extend the bridge to them.
 
     **Admitted fixture-backed coefficient-scale parity** (opt-in
     `DRM_PARITY_TESTS=1`, via `drm_bridge` + committed drmTMB generated

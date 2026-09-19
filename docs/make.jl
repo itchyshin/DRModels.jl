@@ -20,7 +20,7 @@ makedocs(
         "Start" => [
             "Home" => "index.md",
             "Getting started" => "getting-started.md",
-            "Evidence & limits" => "capabilities.md",
+            "Detailed capabilities & limits" => "capabilities.md",
             "R ↔ Julia bridge" => "r-julia-bridge.md",
             "Rosetta (R ↔ Julia)" => "rosetta.md",
         ],
@@ -71,16 +71,15 @@ makedocs(
             "reference/deprecated-marker-internals.md",
             "reference/model-fitting-and-postfit.md",
             "reference/visualization.md",
+        ],
+        "Development" => [
             "reference/engine-internals.md",
-
-            "Development" => [
-                "developer-notes/formula-grammar.md",
-                "developer-notes/adding-families.md",
-                "developer-notes/source-map.md",
-                "developer-notes/reml-q4-exact-gradient.md",
-                "API stability" => "api-stability.md",
-                "Changelog" => "changelog.md",
-            ],
+            "developer-notes/formula-grammar.md",
+            "developer-notes/adding-families.md",
+            "developer-notes/source-map.md",
+            "developer-notes/reml-q4-exact-gradient.md",
+            "API stability" => "api-stability.md",
+            "Changelog" => "changelog.md",
         ],
     ],
 )

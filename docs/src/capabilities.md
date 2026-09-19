@@ -1,17 +1,23 @@
-# Capability matrix
+# Detailed capabilities and limits
 
-This page is the reader-facing map of what `DRModels.jl` can fit today. It is
-deliberately conservative: “tested” means the public route is exercised by the
-regular package checks; “implemented, untested” means code is reachable but its
-behaviour is not yet covered by that suite; and “absent” means the request is
-not currently available in the package.
+Use this page **after** choosing a scientific route, not as a first tutorial.
+For a first distributional model, start with [Getting started](getting-started.md).
+For a tree, start with [Phylogenetic structured effects](tutorials/phylogenetic-models.md).
+For Gaussian meta-analysis with supplied sampling variances, start with
+[Mean effects and residual heterogeneity](tutorials/meta-analysis.md).
+
+This is the detailed map of what `DRModels.jl` can fit today. It is deliberately
+conservative: “tested” means the public route is exercised by regular package
+checks; “implemented, untested” means code is reachable but not yet covered by
+that suite; and “not available” means the request cannot currently be fit with
+DRModels.jl.
 
 Status legend:
 
 - **Tested** — implemented and exercised by the regular package checks.
 - **Impl, untested** — code exists and is reachable, but its behaviour is not
   yet covered by those checks.
-- **Absent** — not implemented in this worktree.
+- **Not available** — this request cannot currently be fit with DRModels.jl.
 
 Use [What can I fit today?](model-guides/model-map.md) for a model-building
 route, and [Getting started](getting-started.md) for runnable syntax.
@@ -95,6 +101,11 @@ Gaussian and is fit in closed form (PGLS / matrix-determinant lemma).
 | `animal(1\|id)` | additive-relatedness `A` | **Tested** |
 | `phylo(1\|species)` on the **mean** | tree (`AugmentedPhy` or Newick) | **Tested** |
 | `spatial(1\|site)` | coordinates; `K(ρ)=exp(-d/ρ)`, with ρ estimated | **Tested** |
+
+The Gaussian table above describes the simple intercept route. It does not rule
+out the supported non-Gaussian phylogenetic mean models or the more specific
+phylogenetic location--scale routes below; those routes have their own family
+and inference boundaries.
 
 ### Non-Gaussian phylogenetic random intercept on the mean (sparse Laplace)
 
@@ -199,7 +210,7 @@ above, and it does so by delegation rather than by a second engine.
 |---|---|
 | `gaussian()` + `meta_V(v)` with **known diagonal** sampling variances; τ on the σ intercept | **Tested** |
 | Bivariate known sampling covariance (`meta_vcov_bivariate`) | **Tested** |
-| Deprecated `meta_known_V` parity stub | — | **Absent** in this worktree (no such symbol) |
+| Deprecated `meta_known_V` parity stub | — | **Not available**; use `meta_V` instead. |
 
 ## Inference
 
@@ -266,7 +277,7 @@ uses only primitive R-reconstructable pieces across the boundary.
 | q2/q4 direct point-export payloads (`q2_point_export`, `q4_point_export`) | **Tested** as point/export evidence only, not broad bridge or interval-coverage evidence |
 | `drm_bridge_inference` (profile + bootstrap), limited to the Gaussian phylo SD block (`param=:resd`) | **Tested** |
 | Newick tree string parsing + small LRU cache | **Tested** |
-| Full R-side glue / `engine="julia"` round-trip in drmTMB | (R repo) | **Absent here** — the Julia primitive is tested; the R package glue lives in the drmTMB repo and is out of scope for this audit |
+| Full R-side glue / `engine="julia"` round-trip in drmTMB | (R repo) | **Not available here** — the Julia primitive is tested; the R package glue lives in the drmTMB repository |
 
 ## Marginal method selection (VA/ELBO)
 

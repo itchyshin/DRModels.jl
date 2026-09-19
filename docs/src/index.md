@@ -32,6 +32,26 @@ features:
 ---
 ```
 
+## Choose your analysis
+
+Start with the scientific question, then choose one complete route:
+
+- **Does a response's average or residual variability change with predictors?**
+  Begin with [Getting started](getting-started.md). It fits a Gaussian
+  location–scale model and explains coefficients for the mean and residual
+  standard deviation.
+- **Are observations related through a phylogeny?** Begin with
+  [Phylogenetic structured effects](tutorials/phylogenetic-models.md). It shows
+  how to supply a tree, fit a phylogenetic random effect, and interpret its
+  scale.
+- **Do studies have known sampling variances in addition to between-study
+  heterogeneity?** Begin with [Mean effects and residual
+  heterogeneity](tutorials/meta-analysis.md). This route is for Gaussian
+  meta-analysis with supplied, known sampling variances.
+
+For another response type or a more specialised structure, use
+[What can I fit today?](model-guides/model-map.md) after one of these routes.
+
 ## Start with the location–scale model
 
 The first question is not which optimiser to use. It is **which feature of the

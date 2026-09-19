@@ -9,10 +9,10 @@
     sparse augmented-state Laplace engine (constant `sigma` by default).
     **Non-Gaussian phylogenetic location–scale** ships for
     `NegBinomial2()` / `Gamma()` via the coupled tag
-    `(1 | p | phylo(species))` on **both** `mu` and `sigma` (grammar B). Dual
-    issue-text `phylo(1|sp)` on both axes is **not** the public acceptance
-    surface. The q=4 bivariate PLSM remains the Gaussian flagship (see
-    `HANDOVER.md`).
+    `(1 | p | phylo(species))` on **both** `mu` and `sigma` (grammar B). Writing
+    separate `phylo(1|sp)` terms on both axes is **not** the public acceptance
+    surface. The q=4 bivariate PLSM remains the Gaussian flagship; its current
+    boundary is recorded in [Detailed capabilities & limits](../capabilities.md).
 
 Related species are not independent: closely related species have correlated
 trait values. `phylo(1 | species)` adds a random intercept with the
@@ -54,6 +54,13 @@ exp(coef(fit, :sigma)[1])     # residual SD (≈ 0.4)
 `σ_phylo * sqrt(C[i, i])`, not necessarily `σ_phylo`. Both the simulation and
 `re_sd` above use that raw-tree scale. Fitting estimates the phylogenetic and
 residual SD parameters jointly using the exact Gaussian marginal likelihood.
+
+To report this result, state that `re_sd` is the phylogenetic SD coefficient for
+the supplied, raw-scaled tree and describe how that tree was scaled. Do not
+compare this coefficient directly with the residual SD, or turn the two into a
+variance proportion, unless the covariance scale makes that comparison valid.
+The tip-specific quantity `σ_phylo * sqrt(C[i, i])` is the relevant SD on the
+trait scale.
 
 ## Non-Gaussian responses (counts, proportions, …)
 
@@ -131,7 +138,8 @@ A few things worth knowing:
   variation. One observation per species does not automatically make a mean-only
   phylogenetic model unidentified; information depends on the family, tree, and
   model. Random effects on dispersion need their own identification checks; see
-  `HANDOVER.md` §6 for the location–scale setting.
+  [Detailed capabilities & limits](../capabilities.md) for the accepted
+  location--scale families and their current inference boundary.
 - **Mean-only phylo keeps constant dispersion.** The default non-Gaussian phylo
   route varies the **mean** with predictors and the structured effect and keeps
   `sigma ~ 1`. Fixed predictors on `sigma` are separate. For a *structured*
