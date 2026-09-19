@@ -131,7 +131,7 @@ package-test coverage.
 | Capability | Status |
 |---|---|
 | Coupled mean and log-dispersion axes for NB2 and Gamma | **Tested** through the public `drm()` interface |
-| Beta and Beta-binomial kernels | **Tested internally**, but not exposed by the public coupled front end |
+| Beta and Beta-binomial kernels | Not available through the public coupled location–scale interface |
 | Poisson and lognormal leaves | **Implemented, untested**; do not rely on them for fitted location–scale models |
 
 !!! note
@@ -184,7 +184,7 @@ support.
 |---|---|
 | `phylo(1\|species)` on `mu1` and `mu2`, with residual `rho12` | **Tested** through `drm()` and direct export |
 | `relmat(1\|id)` and `animal(1\|id)` on `mu1` and `mu2`, using known `K` / `A` | **Tested** |
-| Fixed-covariance spatial q2 fit | **Tested as fixture evidence only**; the range-estimating `spatial(...)` formula route is rejected |
+| Fixed-covariance spatial q2 fit | Available only in the documented fixed-covariance example; the range-estimating `spatial(...)` formula route is rejected |
 
 ## Bivariate and paired responses (residual correlation)
 
@@ -201,7 +201,7 @@ above, and it does so by delegation rather than by a second engine.
 | Bivariate **lognormal** (`drm(bf(…), LogNormal())`, drmTMB's `biv_lognormal()`) | **Tested.** Both responses must be strictly positive and are modeled as bivariate normal on `log(Y)`: `mu1`/`mu2` are log-scale means and `rho12` is a log-residual correlation, not the raw-scale Pearson correlation. Structured `phylo` and `relmat` routes are tested; `animal` and `spatial` are implemented but untested on this route. `method = :REML` is refused for every bivariate-lognormal cell. |
 | Bivariate **Student-t** (`drm(bf(…, nu = …), Student())`, drmTMB's `biv_student()`) | **Tested.** `sigma1`/`sigma2` are scale parameters, not marginal SDs; `rho12` is a scatter correlation; and `nu = 2 + exp(η)`, so `nu > 2`. One `nu` is shared by the two responses (it may vary by row via `nu ~ x`); zero `rho12` does not imply independence at finite `nu`. This is a residual-only model: `phylo`, `relmat`, `animal`, `spatial`, and `method = :REML` are deliberately refused. |
 | **Staged pair association** — `associate_pairs` / `latent_normal` / `association` / `PairAssociation` / `integration_diagnostics` (drmTMB's `associate_pairs()`) | **Tested.** This is a two-stage, frozen-margin estimator, not a joint model. It supports `gaussian_bernoulli`, `gaussian_nbinom2`, `bernoulli_bernoulli`, `bernoulli_nbinom2`, and `nbinom2_nbinom2`; integration diagnostics are available where numerical integration is used. Its uncertainty ignores margin-estimation error, and it offers no simultaneous association bands or profile intervals. The kernel must be explicit; only `association ~ 1` is supported; `marginal = :AGHQ`, non-converged margins, non-Bernoulli binomial margins, and other pair classes are refused. |
-| Cross-family bivariate (different families on `y1` vs `y2`) | **Experimental — implemented, not absent.** `drm(bf(...), (Gaussian(), Poisson()); data = …)` uses a latent-scale scalar correlation in `fit.rho_latent`. It has limited fixture evidence and no interval-coverage claim. `rho12 ~ x` is refused: this route fits a scalar latent correlation, not an observation-specific residual correlation. See [Cross-family methods](model-guides/cross-family-methods.md). |
+| Cross-family bivariate (different families on `y1` vs `y2`) | **Experimental.** `drm(bf(...), (Gaussian(), Poisson()); data = …)` uses a latent-scale scalar correlation in `fit.rho_latent`. It has narrow documented evidence and no interval-coverage claim. `rho12 ~ x` is refused: this route fits a scalar latent correlation, not an observation-specific residual correlation. See [Cross-family methods](model-guides/cross-family-methods.md). |
 
 ## Meta-analysis
 

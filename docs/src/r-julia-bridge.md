@@ -36,10 +36,10 @@ when those match your question. These native R spatial, temporal, and
 repeated-visit workflows are not admitted to `engine = "julia"`; a successful
 Julia setup does not extend the bridge to them.
 
-The bridge is deliberately limited to the R workflows named below. Its results
-are checked against known examples, but that is not a general speed,
-small-sample, or interval-reliability claim. For translating R syntax to Julia
-by hand, see the [Rosetta page](rosetta.md).
+The bridge is deliberately limited to the R workflows named below. The
+documented examples agree with matching R fits, but that is not a general
+speed, small-sample, or interval-reliability claim. For translating R syntax
+to Julia by hand, see the [Rosetta page](rosetta.md).
 
 ## The idea
 
@@ -59,14 +59,14 @@ Two ways to use DRModels.jl from R, in increasing integration:
 
 ### Trees with polytomies
 
-A polytomy is an internal node with more than two immediate children. The development
-bridge accepts these nodes without resolving them into invented binary branches.
+A polytomy is an internal node with more than two immediate children. The bridge
+accepts these nodes without resolving them into invented binary branches.
 The tree must still have positive branch lengths, nonempty unique tip labels, and
 at least two children at every internal node. The R bridge currently requires an
 ultrametric tree for its correlation-scale convention. Zero-length branches
-and unary nodes remain separate parity work.
+and unary nodes are not currently supported through the R bridge.
 
-The development bridge preserves tip labels containing spaces, punctuation,
+The bridge preserves tip labels containing spaces, punctuation,
 Unicode and apostrophes. Keep the same labels in your data; do not replace spaces
 with underscores. The serializer quotes labels where needed, and Julia decodes
 them without changing their spelling. In direct Newick input, use single quotes
@@ -222,8 +222,8 @@ exactly.
 
 ### Materialised columns and `newdata`
 
-`I()`, `scale()`, `factor()` and `poly()` use temporary columns internally. The
-development bridge retains the corresponding formula labels and an explicit
+`I()`, `scale()`, `factor()` and `poly()` are translated before fitting. The
+bridge retains the corresponding formula labels and an explicit
 mapping to the fitted coordinates. Use the returned public coefficient name,
 such as `I(x^2)`, in `parm = "fixef:mu:I(x^2)"`; do not guess a temporary column
 number. Existing data columns are never replaced by a generated column.
