@@ -7,16 +7,15 @@ For Gaussian meta-analysis with supplied sampling variances, start with
 [Mean effects and residual heterogeneity](tutorials/meta-analysis.md).
 
 This is the detailed map of what `DRModels.jl` can fit today. It is deliberately
-conservative: “tested” means the public route is exercised by regular package
-checks; “implemented, untested” means code is reachable but not yet covered by
-that suite; and “not available” means the request cannot currently be fit with
-DRModels.jl.
+conservative: “tested” means the route has a worked example and routine checks
+for the listed use; “implemented, untested” means it is not yet a recommended
+analysis route; and “not available” means the request cannot currently be fit
+with DRModels.jl.
 
 Status legend:
 
-- **Tested** — implemented and exercised by the regular package checks.
-- **Impl, untested** — code exists and is reachable, but its behaviour is not
-  yet covered by those checks.
+- **Tested** — suitable for the listed use after your routine model checks.
+- **Impl, untested** — not yet a recommended analysis route.
 - **Not available** — this request cannot currently be fit with DRModels.jl.
 
 Use [What can I fit today?](model-guides/model-map.md) for a model-building
@@ -318,5 +317,5 @@ To avoid overclaiming, note these boundaries:
 
 ---
 
-*“Tested” means covered by the regular package checks. It is evidence of the
-listed capability, not a package-wide performance or interval-coverage claim.*
+*“Tested” supports the listed use, not a package-wide performance or
+interval-coverage claim. Always assess your fitted model and study design.*

@@ -17,7 +17,8 @@ DEFAULT_DOCS_ROOT = REPO_ROOT / "docs" / "src"
 PATTERNS = {
     "internal_tracking": re.compile(
         r"(?:\b(?:PR|issue)\s*#\d+|\bArc\s+[A-Z0-9][\w.-]*|\b(?:lane|worktree)\b|"
-        r"\bdev-log/|\bagent\s+(?:review|lane|handoff))",
+        r"\bdev-log/|\bagent\s+(?:review|lane|handoff)|\bfixture-backed\b|"
+        r"\bcapability ledger\b|\b(?:live )?catch-up scoreboard\b|\boptimizer-health\b)",
         flags=re.IGNORECASE,
     ),
 }

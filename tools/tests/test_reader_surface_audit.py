@@ -43,6 +43,17 @@ class ReaderSurfaceAuditTests(unittest.TestCase):
             self.assertIn("guide.md:3", result.stdout)
             self.assertIn("internal_tracking", result.stdout)
 
+    def test_fixture_and_ledger_language_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "guide.md").write_text(
+                "# Fit a model\n\nThis fixture-backed capability ledger is current.\n",
+                encoding="utf-8",
+            )
+            result = self.invoke(root)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("guide.md:3", result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
