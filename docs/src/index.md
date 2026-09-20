@@ -5,120 +5,129 @@ layout: home
 hero:
   name: "DRModels.jl"
   text: "What varies besides the mean?"
-  tagline: "A formula-first Julia twin of drmTMB: the mean, the scale, and boundary probabilities of a response each take their own formula, with random effects and sparse phylogenetic structure."
+  tagline: "A Julia package for distributional regression models (DRMs): model how predictors change a response's average, variability, or probability of zero. Use DRModels.jl directly in Julia; no R installation is needed."
   image:
     src: /drmodels-full-logo.png
     alt: "DRModels.jl hexagonal badge with four overlapping response curves"
   actions:
     - theme: brand
-      text: Fit a location–scale model
+      text: Fit your first model
       link: /getting-started
     - theme: alt
-      text: What can I fit today?
+      text: Choose a model
       link: /model-guides/model-map
     - theme: alt
-      text: Evidence & limits
+      text: Supported models & limits
       link: /capabilities
 
 features:
-  - title: "A formula per parameter"
-    details: "bf() bundles one formula per distributional parameter your family admits, so the mean and the spread are modelled separately. The scale formula is on log σ, and the parameter is named sigma, never tau. Zero-inflation, hurdle, and zero/one-inflation parameters take formulas too."
-  - title: "Correlation between two responses"
-    details: "In the two-response bundle, rho12 takes its own formula, so residual correlation can itself depend on a covariate. It is a bivariate parameter and is not available in the univariate bundle."
-  - title: "Read each coefficient on its own scale"
-    details: "Every parameter is reported on the scale named by its link. The capability matrix says which families, structures, and sparse combinations are tested before you interpret a route."
-  - title: "A twin, not a port"
-    details: "MIT-licensed fresh code; drmTMB (GPL) stays the reference. The optional R bridge is experimental and lists its admitted engine = \"julia\" cells; the R-side glue lives in drmTMB, and the default R engine remains TMB."
+  - title: "Study averages and variability"
+    details: "Does a treatment change the average outcome, how much individuals differ, or both? Give the average and the spread separate models."
+  - title: "Account for related observations"
+    details: "Measurements from the same group or related species need not be independent. Include group effects or relationships supplied by a phylogenetic tree."
+  - title: "Combine evidence across studies"
+    details: "Estimate an average effect across studies and examine why effects differ, while accounting for their known sampling variances."
 ---
 ```
+
+## What is distributional regression?
+
+An ordinary regression often asks how the **average response** changes with a
+predictor. **Distributional regression** also asks whether other features of
+the response change, such as its spread or probability of being zero. The
+letters **DR** in DRModels refer to distributional regression.
+
+For example, warmer conditions might change both average body size and how much
+individuals differ in size. In psychology, a treatment might change both average
+reaction time and its variability. These are separate questions, and a change in
+one does not imply a change in the other.
+
+DRModels.jl is a standalone Julia package for fitting these models to one or two
+responses. It is general-purpose; the tutorials draw mainly on ecology,
+evolution, environmental science, and evidence synthesis.
+
+!!! warning "Experimental software"
+    Check the [supported models and current limits](capabilities.md) before
+    choosing a model, and check the fitted model before interpreting it.
+    Validation is specific to the model and method used.
 
 ## Choose your analysis
 
 Start with the scientific question, then choose one complete route:
 
-- **Does a response's average or residual variability change with predictors?**
-  Begin with [Getting started](getting-started.md). It fits a Gaussian
-  location–scale model and explains coefficients for the mean and residual
-  standard deviation.
+- **Does a response's average or variability change with predictors?**
+  Begin with [Getting started](getting-started.md). It fits a model for a
+  continuous response, with separate formulas for the average and the variation
+  left after accounting for that average.
 - **Are observations related through a phylogeny?** Begin with
   [Phylogenetic structured effects](tutorials/phylogenetic-models.md). It shows
-  how to supply a tree, fit a phylogenetic random effect, and interpret its
-  scale.
-- **Do studies have known sampling variances in addition to between-study
-  heterogeneity?** Begin with [Mean effects and residual
-  heterogeneity](tutorials/meta-analysis.md). This route is for Gaussian
-  meta-analysis with supplied, known sampling variances.
+  how to supply a tree, account for shared ancestry, and interpret the results.
+- **What is the average effect across studies, and why do effects differ?**
+  Begin with [Mean effects and residual heterogeneity](tutorials/meta-analysis.md).
+  This example combines study estimates with their known sampling variances.
 
 For another response type or a more specialised structure, use
-[What can I fit today?](model-guides/model-map.md) after one of these routes.
+[What can I fit today?](model-guides/model-map.md) after one of these examples.
 
-## Start with the location–scale model
+## Try a model of average and variability
 
-The first question is not which optimiser to use. It is **which feature of the
-response might change?** A mean-only model asks whether the expected response
-changes. A distributional model can also ask whether its spread, its shape, or
-its boundary probabilities change. DRModels.jl keeps those questions separate by
-giving each admitted parameter its own formula.
+This example creates a continuous response whose average and spread both
+increase with a predictor. Think of `x` as temperature relative to its average
+and `y` as a centred body-size measurement. These are simulated data, so the
+example illustrates the method rather than a biological finding.
 
-Given a table `dat` with numeric columns `y` and `x`, fit a location–scale
-model as below. [Get started](getting-started.md) includes the complete data
-setup and a runnable example.
+After [installing DRModels.jl](getting-started.md#Install), run:
 
 ```julia
-using DRModels
+using DRModels, Random
+Random.seed!(20260610)
 
-# y varies in BOTH its mean and its spread with x:
+x = randn(400)
+y = 1.0 .+ 0.5 .* x .+ exp.(-0.4 .+ 0.3 .* x) .* randn(400)
+dat = (; y, x)
+
+# Separate formulas for the average response and its remaining spread:
 fit = drm(bf(@formula(y ~ x), @formula(sigma ~ x)), Gaussian(); data = dat)
 
-coef(fit, :mu)      # mean coefficients
-coef(fit, :sigma)   # coefficients on log σ — how the spread changes with x
-summary(fit)        # readable coefficient table
+is_converged(fit)            # did the fitting algorithm finish successfully?
+coef(fit, :mu)               # effects on the average response
+exp(coef(fit, :sigma)[2])    # ratio of standard deviations per unit increase in x
 ```
 
-The formula bundle `bf(...)` (alias `drm_formula(...)`) collects one formula per
-available distributional parameter. See [Get started](getting-started.md) for a
-worked, runnable example, or [What can I fit today?](model-guides/model-map.md)
-for the model-space guide and its route-specific boundaries.
+The first formula describes the average response. The second describes its
+remaining spread, measured here by the standard deviation (`sigma`). In these
+simulated data, the average rises by 0.5 per unit of `x`, while the standard
+deviation is multiplied by `exp(0.3)`, about 1.35. Fitted values will differ
+because the data include random variation.
 
-!!! warning "The scale is modelled on the log scale"
-    For a Gaussian fit, `coef(fit, :sigma)` are coefficients on **log σ**, the
-    residual standard deviation. A slope of γ = 0.2 means the residual SD
-    multiplies by exp(0.2) ≈ 1.22 per one-unit increase in `x`, and the residual
-    variance by exp(0.4) ≈ 1.49. Other families keep the log link on `sigma` but
-    interpret it on their own scale: for Gamma it is a coefficient of variation,
-    for Beta it maps to a precision. The parameter is named `sigma`, matching
-    drmTMB, never `tau`.
-
-## What the fit estimates
-
-In the model above, DRModels.jl estimates one coefficient vector for **μ** (the mean)
-and one for **log σ** (the residual standard deviation). A positive σ coefficient
-means a multiplicative increase in residual spread, not an additive change in
-the mean. Other families expose other admitted parameters, but the same rule
-holds: interpret a coefficient on the scale named by that parameter's link.
+The [first-model tutorial](getting-started.md) explains the formulas, how to
+read estimates and confidence intervals, and what to check before reporting
+results. This type of model is often called a **location–scale model**:
+location describes the average and scale describes the spread.
 
 ## Evidence and limitations
 
-DRModels.jl is a pre-release package. Use the [capability matrix](capabilities.md) to
-choose a tested family–structure combination, and the
+Use [supported models and current limits](capabilities.md) to check which
+combinations have been tested, and the
 [diagnostics and validation guides](diagnostics-and-validation/testing-likelihoods.md)
-to see how it was checked. The verified sparse phylogenetic engine, profile
-likelihood, and bootstrap routes are useful evidence — not blanket promises for
-every family, data set, or interval. In particular, an interval method being
-implemented does not claim universal calibrated coverage.
+to see how they were checked. A method being available does not guarantee that
+it will work well for every data set. In particular, the accuracy of confidence
+intervals depends on the model, the data, and the method used to calculate them.
 
-## Relation to drmTMB
+## Coming from R?
 
-DRModels.jl is the Julia twin of [drmTMB](https://itchyshin.github.io/drmTMB/): it
-adopts a closely related `bf()` grammar and vocabulary so R users do not have to
-relearn the model class. It is independent, MIT-licensed Julia code — not a port
-of drmTMB's GPL source. The optional [R ↔ Julia bridge](r-julia-bridge.md) is
-experimental and lists the admitted `engine = "julia"` cells; `engine = "tmb"`
-remains the default R route and does not require Julia. The
+The R package [drmTMB](https://itchyshin.github.io/drmTMB/) also fits
+distributional regression models. DRModels.jl uses related formula conventions,
+but you can install and use it entirely within Julia. The
 [Rosetta page](rosetta.md) compares the two syntaxes directly.
+
+For R users who want to call Julia from R, the optional
+[R ↔ Julia bridge](r-julia-bridge.md) documents the supported uses of
+`engine = "julia"` in drmTMB. That bridge is experimental; the two packages do
+not support every model in the same way.
 
 ---
 
-*MIT licensed. A sister package to [drmTMB](https://itchyshin.github.io/drmTMB/)
-(GPL) and [GLLVModels.jl](https://itchyshin.github.io/GLLVModels.jl). DRModels.jl is fresh code —
-never a port of drmTMB's GPL source.*
+DRModels.jl is independently written Julia software, available under the MIT
+license. For models of many responses together, see
+[GLLVModels.jl](https://itchyshin.github.io/GLLVModels.jl).
