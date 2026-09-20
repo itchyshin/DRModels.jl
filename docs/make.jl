@@ -10,6 +10,10 @@ makedocs(
     sitename = "DRModels.jl",
     authors = "Shinichi Nakagawa",
     modules = [DRModels],
+    # Only pages named below are public. The source tree also retains
+    # development notes and evidence records that are intentionally not a
+    # reader-facing documentation surface.
+    pagesonly = true,
     warnonly = false,
     format = DocumenterVitepress.MarkdownVitepress(
         repo = "github.com/itchyshin/DRModels.jl",
@@ -23,6 +27,7 @@ makedocs(
             "Detailed capabilities & limits" => "capabilities.md",
             "R ↔ Julia bridge" => "r-julia-bridge.md",
             "Rosetta (R ↔ Julia)" => "rosetta.md",
+            hide("Former get started route" => "get-started.md"),
         ],
         "Model guides" => [
             "model-guides/model-map.md",
@@ -68,18 +73,9 @@ makedocs(
             "reference/package.md",
             "reference/model-specification.md",
             "reference/structured-effect-markers.md",
-            "reference/deprecated-marker-internals.md",
             "reference/model-fitting-and-postfit.md",
             "reference/visualization.md",
-        ],
-        "Development" => [
-            "reference/engine-internals.md",
-            "developer-notes/formula-grammar.md",
-            "developer-notes/adding-families.md",
-            "developer-notes/source-map.md",
-            "developer-notes/reml-q4-exact-gradient.md",
             "API stability" => "api-stability.md",
-            "Changelog" => "changelog.md",
         ],
     ],
 )

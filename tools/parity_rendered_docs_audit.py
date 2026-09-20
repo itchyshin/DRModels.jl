@@ -17,7 +17,7 @@ import os
 from pathlib import Path
 import re
 import sys
-from typing import Any
+from typing import Any, Iterable
 from urllib.parse import unquote, urlsplit
 import xml.etree.ElementTree as ElementTree
 
@@ -27,6 +27,11 @@ CSS_URL = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 CSS_IMPORT = re.compile(r"""@import\s+(['"])([^'"]+)\1""", re.IGNORECASE)
+PRIVATE_SOURCE_PATH = re.compile(r"(?:^|/)developer-notes(?:/|$)")
+PRIVATE_SOURCE_LANGUAGE = re.compile(
+    r"(?:developer\s+note|docs/dev-log|reviewer\s+contract|\bissue\s*#\d+|\bphase[- ]\d+)",
+    re.IGNORECASE,
+)
 
 
 def _sha256(path: Path) -> str:
@@ -186,7 +191,24 @@ def _failure(kind: str, page: Path | None = None, target: str | None = None, det
     return result
 
 
-def audit(site_root: Path | str, source_root: Path | str) -> dict[str, Any]:
+def _source_pages(source_root: Path, emitted_source_paths: Iterable[str] | None) -> list[Path]:
+    """Return the source pages Documenter is configured to emit."""
+    if emitted_source_paths is None:
+        return sorted(source_root.rglob("*.md"))
+    pages: list[Path] = []
+    for raw_path in sorted(set(emitted_source_paths)):
+        candidate = source_root / raw_path
+        if candidate.suffix != ".md" or not _inside(candidate.resolve(strict=False), source_root):
+            raise ValueError(f"invalid emitted source path: {raw_path}")
+        pages.append(candidate)
+    return pages
+
+
+def audit(
+    site_root: Path | str,
+    source_root: Path | str,
+    emitted_source_paths: Iterable[str] | None = None,
+) -> dict[str, Any]:
     """Return a JSON-ready report. Any local unresolved reference is a failure."""
     site_root = Path(site_root).resolve()
     source_root = Path(source_root).resolve()
@@ -218,11 +240,19 @@ def audit(site_root: Path | str, source_root: Path | str) -> dict[str, Any]:
             failures.append(_failure("html_parse_error", page.relative_to(site_root), detail=str(error)))
 
     source_pages: list[dict[str, Any]] = []
-    for source in sorted(source_root.rglob("*.md")):
+    for source in _source_pages(source_root, emitted_source_paths):
+        if not source.is_file():
+            failures.append(_failure("missing_emitted_source_page", detail=str(source.relative_to(source_root))))
+            continue
         if source.is_symlink():
             failures.append(_failure("symlinked_source_page", source.relative_to(source_root)))
             continue
         relative = source.relative_to(source_root)
+        source_text = source.read_text(encoding="utf-8")
+        if PRIVATE_SOURCE_PATH.search(relative.as_posix()):
+            failures.append(_failure("forbidden_public_source_path", relative))
+        if PRIVATE_SOURCE_LANGUAGE.search(source_text):
+            failures.append(_failure("forbidden_public_source_language", relative))
         expected = site_root / relative.with_suffix(".html")
         resolved_expected = expected.resolve(strict=False)
         record = {
@@ -335,6 +365,7 @@ def audit(site_root: Path | str, source_root: Path | str) -> dict[str, Any]:
             "external_links": "reported_not_checked",
             "visual_layout": "not_checked",
             "accessibility": "limited_to_image_alt_absence",
+            "source_coverage": "all_markdown_sources" if emitted_source_paths is None else "explicit_emitted_sources",
         },
         "pages": page_records,
         "source_pages": source_pages,
@@ -347,9 +378,22 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--site-root", required=True, type=Path)
     parser.add_argument("--source-root", required=True, type=Path)
+    parser.add_argument(
+        "--make",
+        type=Path,
+        help="Documenter make.jl; requires pagesonly = true and derives emitted source pages from pages =.",
+    )
     parser.add_argument("--report", type=Path, help="Write the complete JSON report here")
     args = parser.parse_args()
-    report = audit(args.site_root, args.source_root)
+    emitted_source_paths = None
+    if args.make:
+        from parity_docs_audit import navigation_entries
+
+        make_text = args.make.read_text(encoding="utf-8")
+        if not re.search(r"\bpagesonly\s*=\s*true\b", make_text):
+            parser.error("--make requires Documenter pagesonly = true")
+        emitted_source_paths = [entry["path"] for entry in navigation_entries(args.make)]
+    report = audit(args.site_root, args.source_root, emitted_source_paths)
     if args.report:
         args.report.parent.mkdir(parents=True, exist_ok=True)
         args.report.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")

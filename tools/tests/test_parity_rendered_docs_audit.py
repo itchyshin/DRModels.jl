@@ -78,6 +78,33 @@ class RenderedDocsFixture(unittest.TestCase):
         report = self.run_audit()
         self.assertTrue(any(item["kind"] == "missing_rendered_source_page" for item in report["failures"]))
 
+    def test_explicit_emitted_source_set_excludes_private_source_notes(self) -> None:
+        (self.source / "developer-note.md").write_text("# Private note\n", encoding="utf-8")
+        report = AUDITOR.audit(
+            self.site,
+            self.source,
+            emitted_source_paths={"index.md", "guide/topic.md"},
+        )
+        self.assertEqual(report["failures"], [])
+        self.assertEqual(
+            {page["source_path"] for page in report["source_pages"]},
+            {"index.md", "guide/topic.md"},
+        )
+
+    def test_public_surface_rejects_developer_notes_and_dev_log_language(self) -> None:
+        (self.source / "developer-notes").mkdir()
+        (self.source / "developer-notes" / "private.md").write_text("# Private\n", encoding="utf-8")
+        (self.source / "index.md").write_text("# Home\n\nSee docs/dev-log/receipt.md\n", encoding="utf-8")
+        report = AUDITOR.audit(
+            self.site,
+            self.source,
+            emitted_source_paths={"index.md", "developer-notes/private.md"},
+        )
+        self.assertTrue(
+            {"forbidden_public_source_path", "forbidden_public_source_language"}
+            <= {item["kind"] for item in report["failures"]}
+        )
+
     def test_missing_asset_fragment_and_image_alt_are_reported(self) -> None:
         (self.site / "index.html").write_text(
             "<html><head><title>Home title</title></head><body>"
