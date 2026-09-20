@@ -136,6 +136,28 @@ class ReaderSurfaceAuditTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("guide.md:3", result.stdout)
 
+    def test_landing_contract_requires_plain_purpose_and_first_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            landing = root / "index.md"
+            landing.write_text("# DRModels.jl\n", encoding="utf-8")
+
+            result = self.invoke(root, "--landing-contract")
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("LANDING CONTRACT FAILED", result.stdout)
+
+            landing.write_text(
+                "# DRModels.jl\n\n"
+                "Distributional regression models how predictors change a response's "
+                "average and variability.\n\n"
+                "A standalone Julia package for scientists.\n\n"
+                "Start with the [runnable first model](getting-started.md).\n",
+                encoding="utf-8",
+            )
+            result = self.invoke(root, "--landing-contract")
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("LANDING CONTRACT PASSED", result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
