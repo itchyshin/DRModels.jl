@@ -5,7 +5,7 @@ You are Claude, picking up a finished sub-lane of the DRModels.jl speed6 arc. Th
 
 ## Critical Context
 
-1. **All three slices are landed on `claude/lane-speed6-20260919` and pushed.** The only carried-over item is a vault `LESSONS.md` commit (Landing State). The only open item is a runtime confirmation: the last two slices changed `test/runtests.jl` and nine test files after the orchestrator's last full `Pkg.test()` had already read them, so no full suite has yet run on HEAD.
+1. **All three slices are landed on `claude/lane-speed6-20260919`, pushed, and runtime-confirmed.** Full `Pkg.test()` on HEAD `948ee7821` passed at 17:50 (272 files, 500 testsets, 0 fail, 0 error, 1 broken, S5d's). Nothing is owed or carried over; this sub-lane is closed.
 2. **One Julia process per lane in this worktree.** On 2026-09-19 a `pkill -f 'Pkg.test()'` from this session killed another session's suite (details in the after-task §9). Before starting any Julia here: `for p in $(pgrep -f julia); do lsof -p $p | awk '$4=="cwd"{print $9}'; done` and wait if any cwd is this worktree. Kill by PID only, never by pattern.
 3. `tools/handoff_gate.sh` reports GATE FAIL on `.unlazy/julia-speed-20260919/gates/leaf-S3.md`, `leaf-S5.md`, `leaf-S5d.md`. Those ledgers belong to the orchestrator's arc (this sub-lane had no unlazy leaf); they were deliberately left unmarked. `git` state of this branch is clean and pushed.
 
@@ -21,7 +21,7 @@ You are Claude, picking up a finished sub-lane of the DRModels.jl speed6 arc. Th
 
 - Working: `Pkg.test()` completes under the mandated env (measured on `3f13ffbe3`); every joint_missing file passes with the env pin alone (measured on `d75f76248`); the include-list test is green on HEAD.
 - In progress: nothing.
-- Not yet measured: a full `Pkg.test()` on HEAD (`8b7eeed94`) that includes the merged include block and the pin removal. Expected: "tests passed", top-level testset count near 506 (514 minus nine repeats plus the include-list test), the same one `@test_broken`.
+- Measured 17:50: full `Pkg.test()` on HEAD `948ee7821` passed; 500 top-level testsets (the nine duplicated files held 15 testsets, plus 1 new), the same one `@test_broken`.
 
 ## Key Decisions & Rationale
 
@@ -38,22 +38,22 @@ You are Claude, picking up a finished sub-lane of the DRModels.jl speed6 arc. Th
 | Artifact / branch | Committed | Pushed | PR | State |
 |---|---|---|---|---|
 | `DRModels.jl` `claude/lane-speed6-20260919` `3f13ffbe3` (guards) | y | y | none (the arc's PR is the orchestrator's) | LANDED |
-| same branch `bd500a8b3` (includes + include-list test) | y | y | none | LANDED, runtime confirmation OWED (Next Steps 1) |
-| same branch `d75f76248` (pins) | y | y | none | LANDED, runtime confirmation OWED (Next Steps 1) |
+| same branch `bd500a8b3` (includes + include-list test) | y | y | none | LANDED, runtime-confirmed 17:50 (check-log.d `2026-09-19-full-suite-on-head-after-test-hygiene.md`) |
+| same branch `d75f76248` (pins) | y | y | none | LANDED, runtime-confirmed 17:50 (same row) |
 | same branch `c3a8d82f5`, `8b7eeed94` (after-task) | y | y | none | LANDED |
 | this handover (`docs/dev-log/handover/2026-09-19-claude-handover-speed6-test-hygiene.md`) | y (see chat note) | y | none | LANDED |
-| `~/shinichi-brain/memory/LESSONS.md` entry (2026-09-19, receipt rule vs test invariant) | n (appended; the file already held another session's uncommitted edits, so not swept into a commit of mine, D-60) | n/a (vault is local-only, D-37) | n/a | CARRIED-OVER |
+| `~/shinichi-brain/memory/LESSONS.md` entry (2026-09-19, receipt rule vs test invariant) | y, vault commit `c593c33c`, staged line-precisely so the sibling session's uncommitted entry in the same file was left for its writer (D-60) | n/a (vault is local-only, D-37) | n/a | LANDED |
 
-The one `CARRIED-OVER` row: the vault's daily self-update commit, or the human, lands `memory/LESSONS.md`; resume command from the vault root: `git add memory/LESSONS.md && git commit -m "lessons: 2026-09-19 receipt rule vs test invariant; kill by PID"` after `tools/session_ownership.sh` confirms the other edits in that file are meant to land too.
+No `CARRIED-OVER` rows.
 
 ## Next Immediate Steps
 
-1. **OWED: one full `Pkg.test()` on HEAD** in this worktree, after confirming no other Julia is running here (Critical Context 2). ~38 min on the Mac Studio (D-139: over the 30-min line, but it is the documented gate, not a campaign):
+1. **DONE 2026-09-19 17:50: one full `Pkg.test()` on HEAD** (38 min, log `scratchpad/pkgtest_head.log`, check-log.d row `2026-09-19-full-suite-on-head-after-test-hygiene.md`). Kept for the record; the command was:
    ```bash
    cd /Users/z3437171/local-scratch/lanes/DRM.jl-speed6-20260919 && env JULIA_NUM_THREADS=4 OPENBLAS_NUM_THREADS=1 julia --project=. -e 'using Pkg; Pkg.test()' > scratchpad/pkgtest_head.log 2>&1; tail -3 scratchpad/pkgtest_head.log
    ```
-   Pass criterion: "Testing DRModels tests passed"; testset count near 506; the include-list testset present and green. If it passes, add one row to `docs/dev-log/check-log.d/` citing the log and this handover. If a joint_missing file fails only its `thread budget` check, the suite pin in `runtests.jl:35` was removed or moved; do not re-add per-file set calls.
-2. Nothing else. The arc's remaining work (S3/S5/S5d ledgers, PR, merge) is the orchestrator's; read `LOOP/lanes/speed6-20260919/checkpoint.md` before touching anything there, and only if that session has handed it to you.
+   Result: "Testing DRModels tests passed"; 500 testsets; include-list testset 276/276; the three `thread budget` checks green. Standing note: if a joint_missing file ever fails only its `thread budget` check, the suite pin in `runtests.jl:35` was removed or moved; do not re-add per-file set calls.
+2. Nothing. The arc's remaining work (S3/S5/S5d ledgers, PR, merge) is the orchestrator's; read `LOOP/lanes/speed6-20260919/checkpoint.md` before touching anything there, and only if that session has handed it to you.
 
 ## Blockers / Open Questions
 
