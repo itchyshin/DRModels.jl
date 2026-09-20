@@ -33,7 +33,6 @@ makedocs(
             "Detailed capabilities & limits" => "capabilities.md",
             "R ↔ Julia bridge" => "r-julia-bridge.md",
             "Rosetta (R ↔ Julia)" => "rosetta.md",
-            hide("Former get started route" => "get-started.md"),
         ],
         "Model guides" => [
             "model-guides/model-map.md",
