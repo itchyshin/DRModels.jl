@@ -87,7 +87,7 @@ Read AGENTS.md and docs/dev-log/handover/2026-09-19-claude-handover-speed6-test-
 ```
 
 
-## Addendum 2026-09-20 06:55 MDT: PR #781 and the one remaining step
+## Addendum 2026-09-20 06:55 MDT: PR #781 and the one remaining step (closed 10:10, see end)
 
 Rehydrated in the authoring session on Shinichi's paste of the resume prompt; everything above reconciles as DONE against git (branch at `983084ffa`, 0 ahead / 0 behind). What happened after the close-out:
 
@@ -96,7 +96,7 @@ Rehydrated in the authoring session on Shinichi's paste of the resume prompt; ev
 - **Noether audit (orchestrator's, on #781): READY-WITH-EDITS, one substantive.** The `cholesky!` reuse is value-correct on every route, but on the default `Lambda0 = 0.3I` and every block-diagonal spec the pattern assertion fires on every reuse (255/256, 112/113 fallbacks measured) because `Hr + hzero` (`src/sparse_aug_plsm.jl:306`) drops stored zeros, so the reuse never engages there; the docstring and two PR-body lines ("fixed a latent bug in the pattern carrier"; "byte for byte") say the opposite, and the default ridge expression is one ulp off the old one. The orchestrator's S5e builder is fixing it (pattern-preserving ridge, restored ridge expression, new `gate_pattern` cases expecting 0 fallbacks on those specs, corrected docstrings, one full suite; ~1.5 h from 06:50).
 - **Maintainer decision (Shinichi, in chat):** first "ready anyway"; after the Noether finding, "let the orchestrator's fix land, then mark ready."
 
-OWED, one step, shared: when the S5e fix commit is on the branch, CI is green on that head, and the PR is still a draft, run `gh pr ready 781` and say so to the orchestrator (session "shinichi-82"), which is also watching and may flip it first. The orchestrator corrects the two body lines with its push. Auto-merge stays off; merging is Shinichi's and the orchestrator's.
+**Closed 2026-09-20 10:10 MDT (Shinichi: "closing here").** The S5e push landed as `5000691b4` (five commits) and CI on it is NOT green: `Julia 1.10 - shard 1/4` fails on one gate, `test/test_q4_perf_identities.jl:695` `gate_vcov_scaling` (G5d.2): |V_warm-V_cold|_F = 1.78e-4 at h=1e-4, 3.24e-4 at h=2e-4 (ratio 0.55, >= 2 required), 1.77e-5 at h=1e-3; below h=2e-4 on that OpenBLAS the gap is inner-solve noise, and the property encoded the Mac regime. Six of the seven q4 gates pass on Linux. The ready flip therefore did not happen; **it is handed, with the fix, to the next DRM arc** as its first item, recorded by the orchestrator in `docs/dev-log/handover/2026-09-20-claude-handover-julia-speed-arc-3.md` (log: `/tmp/s1_run2.txt` on the Mac Studio, session-local). PR #781 stays draft, auto-merge off. Nothing else is owed by this sub-lane.
 
 PROTECTED (not this sub-lane's): the S5e fix itself, the arc ledgers, the PR body's speed-arc paragraphs, the merge.
 
