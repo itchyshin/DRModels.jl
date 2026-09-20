@@ -105,6 +105,21 @@ class RenderedDocsFixture(unittest.TestCase):
             <= {item["kind"] for item in report["failures"]}
         )
 
+    def test_rendered_internal_work_tracking_is_rejected(self) -> None:
+        (self.site / "guide" / "topic.html").write_text(
+            "<html><head><title>Topic title</title></head><body>"
+            "<h1 id='topic'>Topic heading</h1>"
+            "<p>This implementation lane closes PR #456.</p>"
+            "</body></html>",
+            encoding="utf-8",
+        )
+        report = self.run_audit()
+        self.assertTrue(any(
+            item["kind"] == "forbidden_rendered_public_language"
+            and item.get("page") == "guide/topic.html"
+            for item in report["failures"]
+        ))
+
     def test_missing_asset_fragment_and_image_alt_are_reported(self) -> None:
         (self.site / "index.html").write_text(
             "<html><head><title>Home title</title></head><body>"

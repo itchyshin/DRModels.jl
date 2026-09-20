@@ -32,6 +32,19 @@ PRIVATE_SOURCE_LANGUAGE = re.compile(
     r"(?:developer\s+note|docs/dev-log|reviewer\s+contract|\bissue\s*#\d+|\bphase[- ]\d+)",
     re.IGNORECASE,
 )
+# Keep the rendered public surface to the same reader-first standard as the
+# source-route gate.  Documenter can add text from expanded docstrings, so a
+# source-only scan cannot prove that the published HTML is free of process
+# bookkeeping.
+RENDERED_READER_SLOP = re.compile(
+    r"(?:\b(?:PR|issue)\s*#\d+|\bArc\s+\d+\b|"
+    r"\b(?:implementation|development|work|active)\s+lane\b|\bworktree\b|\bdev-log/|"
+    r"\b(?:agent|persona)\s+(?:review|approved|approval|handoff)\b|"
+    r"\b(?:Rose|Pat)\s+(?:reviewed|approved)\b|"
+    r"\bfixture(?:-backed|\s+evidence)\b|\bcapability\s+ledger\b|"
+    r"\b(?:catch-up\s+)?scoreboard\b|\boptimizer-health\b)",
+    re.IGNORECASE,
+)
 
 
 def _sha256(path: Path) -> str:
@@ -66,6 +79,8 @@ class _PageParser(HTMLParser):
         self._style_depth = 0
         self.inline_css: list[str] = []
         self.base_hrefs: list[str] = []
+        self._noncontent_depth = 0
+        self.visible_text: list[str] = []
 
     def handle_starttag(self, tag: str, attrs_list: list[tuple[str, str | None]]) -> None:
         attrs = dict(attrs_list)
@@ -107,6 +122,8 @@ class _PageParser(HTMLParser):
             self.inline_css.append("")
         elif self._style_depth:
             self._style_depth += 1
+        if tag in {"script", "style", "template"}:
+            self._noncontent_depth += 1
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         self.handle_starttag(tag, attrs)
@@ -123,6 +140,8 @@ class _PageParser(HTMLParser):
                 self.h1.append("".join(self._h1_chunks).strip())
         if self._style_depth:
             self._style_depth -= 1
+        if tag in {"script", "style", "template"}:
+            self._noncontent_depth -= 1
 
     def handle_data(self, data: str) -> None:
         if self._title_depth:
@@ -131,6 +150,8 @@ class _PageParser(HTMLParser):
             self._h1_chunks.append(data)
         if self._style_depth and self.inline_css:
             self.inline_css[-1] += data
+        if not self._noncontent_depth:
+            self.visible_text.append(data)
 
 
 def _target(root: Path, page: Path, value: str, kind: str) -> tuple[str, Path | None, str]:
@@ -238,6 +259,15 @@ def audit(
             parsed_pages[page] = _read_html(page)
         except (OSError, UnicodeError, ValueError) as error:
             failures.append(_failure("html_parse_error", page.relative_to(site_root), detail=str(error)))
+
+    for page, parser in parsed_pages.items():
+        visible_text = " ".join(parser.visible_text)
+        for match in RENDERED_READER_SLOP.finditer(visible_text):
+            failures.append(_failure(
+                "forbidden_rendered_public_language",
+                page.relative_to(site_root),
+                detail=match.group(0),
+            ))
 
     source_pages: list[dict[str, Any]] = []
     for source in _source_pages(source_root, emitted_source_paths):
