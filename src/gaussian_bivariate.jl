@@ -1278,6 +1278,16 @@ function _fit_bivariate_q4_phylo(f::BivariateDrmFormula, fam::Gaussian, data, fi
     # Newton cold (u0 = nothing, >= 200 iterations); a perturbation of θ̂ by
     # h = 1e-4 lands very close to θ̂ itself, so û(θ̂) is an excellent warm
     # start for û(θ̂ ± h e_k) too.
+    #
+    # The warm and cold inner Newton do NOT share a stopping criterion: a
+    # warm u0 routes `estep_mode` to `_estep_fast`, which exits at
+    # ‖∇J‖ < ftol = 1e-6 (sparse_aug_plsm.jl); the cold path (u0 = nothing,
+    # every OTHER caller of estep_mode, and every perturbed evaluation before
+    # this S5 change) goes to `_estep_robust`, which exits at tol = 1e-8. So
+    # û(θ̂ ± h e_k) computed here is converged one order of magnitude looser
+    # than the pre-S5 cold reference (Noether audit, Q3) -- exactly the
+    # mechanism test/test_q4_perf_identities.jl's G5d.1/G5d.2 characterise
+    # (u_hat gap ≤ ftol, amplified by the FD Hessian's 1/2h).
     _, u_hat, _, _ = marginal_nll(prob, Q_cond, θ̂; n_newton = q4_n_newton)
     # V is the ML observed-information vcov (FD of the marginal ML NLL) evaluated
     # at θ̂. Under method = :REML this is θ̂_reml, so V is the ML curvature at the
