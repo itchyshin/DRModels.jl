@@ -28,14 +28,14 @@ makedocs(
         build_vitepress = true,
     ),
     pages = [
-        "Start" => [
+        "Start here" => [
             "Home" => "index.md",
-            "Getting started" => "getting-started.md",
-            "Detailed capabilities & limits" => "capabilities.md",
-            "R ↔ Julia bridge" => "r-julia-bridge.md",
-            "Rosetta (R ↔ Julia)" => "rosetta.md",
+            "Fit your first model" => "getting-started.md",
+            "What is tested" => "capabilities.md",
+            "Coming from R?" => "r-julia-bridge.md",
+            "R and Julia vocabulary" => "rosetta.md",
         ],
-        "Model guides" => [
+        "Choose a model" => [
             "model-guides/model-map.md",
             "model-guides/which-scale.md",
             "model-guides/distribution-families.md",
@@ -49,7 +49,7 @@ makedocs(
             "model-guides/large-data.md",
             "Cross-family bivariate" => "cross-family.md",
         ],
-        "Tutorials" => [
+        "Biological examples" => [
             "tutorials/location-scale.md",
             "tutorials/location-scale-scale.md",
             "tutorials/robust-student.md",
@@ -65,7 +65,7 @@ makedocs(
             "tutorials/relmat-known-matrices.md",
             "tutorials/phylogenetic-spatial.md",
         ],
-        "Diagnostics" => [
+        "Check your model" => [
             "diagnostics-and-validation/figure-gallery.md",
             "diagnostics-and-validation/prediction-and-postfit.md",
             "diagnostics-and-validation/profile-likelihood.md",
@@ -75,7 +75,7 @@ makedocs(
             "diagnostics-and-validation/simulation-plot-grammar.md",
             "diagnostics-and-validation/small-sample-behaviour.md",
         ],
-        "Reference" => [
+        "Function reference" => [
             "reference/package.md",
             "reference/model-specification.md",
             "reference/structured-effect-markers.md",
