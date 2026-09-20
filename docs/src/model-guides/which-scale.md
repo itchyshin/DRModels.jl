@@ -91,4 +91,4 @@ conditions are in `report/comparison-grid.md`.
 
 ## See also
 
-- [Get started](../get-started.md) · [What can I fit today?](model-map.md)
+- [Get started](../getting-started.md) · [What can I fit today?](model-map.md)

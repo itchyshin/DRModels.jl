@@ -102,6 +102,6 @@ bres = bootstrap_result(bf(@formula(y ~ x), @formula(sigma ~ x)), Gaussian();
 
 ## See also
 
-- [Get started](../get-started.md) · [When variance carries signal](../tutorials/location-scale.md)
+- [Get started](../getting-started.md) · [When variance carries signal](../tutorials/location-scale.md)
 - Profile and bootstrap intervals, `predict`, and `simulate` are all shown
   above; for their evidence status see [Evidence & limits](../capabilities.md).

@@ -150,7 +150,7 @@ variance boundary (where drmTMB's `sdreport` returns all-`NaN`).
 
 | If you want to… | Go to |
 |---|---|
-| Fit your first model, end to end | [Get started](../get-started.md) |
+| Fit your first model, end to end | [Get started](../getting-started.md) |
 | Choose the right response family | [Choosing response families](distribution-families.md) |
 | Tell residual `σ`, group SD, and known V apart | [Which scale are you modelling?](which-scale.md) |
 | Extract coefficients, CIs, predictions | [Checking and using fitted models](model-workflow.md) |
