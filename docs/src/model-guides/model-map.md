@@ -181,4 +181,3 @@ variance boundary (where drmTMB's `sdreport` returns all-`NaN`).
 | Phylogenetic / spatial / animal models | [Phylogenetic](../tutorials/phylogenetic-models.md) · [Spatial](../tutorials/spatial-models.md) · [Animal](../tutorials/animal-models.md) |
 | Meta-analysis with known variances | [Meta-analysis](../tutorials/meta-analysis.md) |
 | The full API reference | [Model specification](../reference/model-specification.md) · [Fitting & post-fit](../reference/model-fitting-and-postfit.md) |
-| What's planned next | the [roadmap](https://github.com/itchyshin/DRModels.jl/blob/main/ROADMAP.md) |
