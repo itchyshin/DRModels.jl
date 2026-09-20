@@ -14,6 +14,9 @@ makedocs(
     # development notes and evidence records that are intentionally not a
     # reader-facing documentation surface.
     pagesonly = true,
+    # Keep the public API documented without requiring private implementation
+    # helpers to appear on a reader-facing page.
+    checkdocs = :exports,
     warnonly = false,
     format = DocumenterVitepress.MarkdownVitepress(
         repo = "github.com/itchyshin/DRModels.jl",
