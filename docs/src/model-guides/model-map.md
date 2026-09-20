@@ -1,12 +1,27 @@
 # What can I fit today?
 
-This page is the **map of the model space** DRModels.jl covers — the overview for the
-Model Guides. It mirrors drmTMB's
-[What can I fit today?](https://itchyshin.github.io/drmTMB/articles/model-map.html),
-and points you at the guide or tutorial for each piece. Read it top to bottom for
-the big picture, or jump to the [which page next](#Which-page-next) table.
+Use this page when you know what you measured but are deciding what kind of model
+to fit. DRModels.jl is for questions where predictors may change not only the
+average response, but also its variability, its zeros, or the way two responses
+vary together.
 
-## The one idea: a formula per parameter
+Start with the question closest to yours:
+
+| Your response or question | A good first page |
+|---|---|
+| A continuous measurement, such as a trait, concentration, or score | [Fit your first model](../getting-started.md) |
+| Counts, including overdispersed counts or extra zeros | [Count abundance and extra zeros](../tutorials/count-nbinom2.md) |
+| Proportions, success rates, or binomial data | [Proportions and success rates](../tutorials/proportion-beta-binomial.md) |
+| Whether predictors change both the average and the spread | [When variance carries signal](../tutorials/location-scale.md) |
+| Two responses that may be associated | [Changing residual coupling](../tutorials/bivariate-coscale.md) |
+| Observations linked by a phylogeny, space, pedigree, or relatedness matrix | [Biological examples](../tutorials/phylogenetic-models.md) |
+
+The first examples are motivated by ecology, evolution, and environmental
+science, but the models are also useful wherever a response can vary in more
+than its average. Read on for the model choices, or use the
+[which page next](#Which-page-next) table to move directly to a guide.
+
+## The modelling idea: a formula per parameter
 
 DRModels.jl is **distributional regression** — you put predictors on *every*
 parameter of the response distribution, not just the mean. Each parameter gets

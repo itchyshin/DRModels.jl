@@ -108,9 +108,9 @@ location describes the average and scale describes the spread.
 ## Evidence and limitations
 
 Use [supported models and current limits](capabilities.md) to check which
-combinations have been tested, and the
-[diagnostics and validation guides](diagnostics-and-validation/testing-likelihoods.md)
-to see how they were checked. A method being available does not guarantee that
+combinations have been tested. After fitting, use
+[Checking and using fitted models](model-guides/model-workflow.md) to decide
+what to inspect and report. A method being available does not guarantee that
 it will work well for every data set. In particular, the accuracy of confidence
 intervals depends on the model, the data, and the method used to calculate them.
 
