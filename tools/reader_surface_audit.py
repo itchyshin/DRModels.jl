@@ -28,6 +28,25 @@ PATTERNS = {
 PUBLIC_SUFFIXES = {".md", ".qmd", ".rmd"}
 
 
+def landing_contract_findings(root: Path) -> list[str]:
+    """Return missing essentials from a reader's first DRModels page.
+
+    This is intentionally a small floor, not a style scorer: it makes sure the
+    landing page says what the model class is in ordinary words, establishes
+    that Julia can be used directly, and sends a new reader to a runnable path.
+    """
+    landing = root / "index.md"
+    if not landing.is_file():
+        return ["index.md is missing"]
+    text = landing.read_text(encoding="utf-8")
+    checks = {
+        "a plain definition of distributional regression": r"\bdistributional regression\b.*\b(?:average|mean)\b.*\b(?:variability|spread|variation)\b",
+        "a standalone Julia identity": r"\bstandalone Julia\b",
+        "a link to the runnable getting-started route": r"\]\((?:/)?getting-started(?:\.md)?\)",
+    }
+    return [label for label, pattern in checks.items() if not re.search(pattern, text, flags=re.IGNORECASE | re.DOTALL)]
+
+
 def navigation_files(root: Path) -> list[Path]:
     """Return literal Markdown routes declared in the production navigation.
 
@@ -82,6 +101,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--docs-root", type=Path, default=DEFAULT_DOCS_ROOT)
     parser.add_argument("--public-only", action="store_true", help="scan only literal Markdown routes in docs/make.jl; source-text check only")
+    parser.add_argument("--landing-contract", action="store_true", help="require a plain purpose, standalone Julia identity, and runnable first route on index.md")
     args = parser.parse_args()
     root = args.docs_root.resolve()
     if not root.is_dir():
@@ -92,6 +112,13 @@ def main() -> int:
         parser.error(str(error))
     if not files:
         parser.error(f"no documentation sources found under: {root}")
+    if args.landing_contract:
+        missing = landing_contract_findings(root)
+        if missing:
+            print("LANDING CONTRACT FAILED")
+            print("Missing: " + "; ".join(missing))
+            return 1
+        print("LANDING CONTRACT PASSED")
     problems = findings(root, public_only=args.public_only)
     if problems:
         print("READER SURFACE AUDIT FAILED")
