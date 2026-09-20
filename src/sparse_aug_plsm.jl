@@ -190,25 +190,28 @@ and threaded through every `marginal_and_exact_grad`/`estep_mode` call of that
 fit): the sparsity pattern of `H_uu` is fixed for a given `(prob, Q_cond)` (see
 `prior_precision`'s "structurally full axis block" — the pattern never depends
 on Λ's or u's actual VALUES), so the CHOLMOD symbolic analysis is done ONCE on
-first use and every later call is a numeric-only `cholesky!` refactorisation.
-Mirrors the repo's own `chol_ref` idiom (gaussian_structured.jl's `eval_all`,
+first use and every later call is a numeric-only `cholesky!` refactorisation,
+PROVIDED every ridge addition into the cached pattern is pattern-preserving
+(via [`_add_diag`](@ref), never a generic sparse `+` — see
+[`_assert_chol_pattern_matches`](@ref)'s note on the S5e fix). Mirrors the
+repo's own `chol_ref` idiom (gaussian_structured.jl's `eval_all`,
 gaussian_sparse_lss.jl's `eval_core`): if the in-place update ever rejects the
 pattern, `sparse_pd_chol` falls back to a fresh `cholesky` (still tree-sparse
 O(p)) — correctness never depends on the reuse succeeding, only speed does.
 
 `pattern_colptr`/`pattern_rowval` (S5d item 2) record the FIRST `Hr`'s
-pattern and back [`_assert_chol_pattern_matches`](@ref)'s reuse-time check —
-`hzero` does NOT serve this role despite its docstring (see
-`_assert_chol_pattern_matches`'s own note: `0.0 .* Hr` is measured to be the
-EMPTY sparse matrix, so it is not a usable pattern reference).
+pattern and back [`_assert_chol_pattern_matches`](@ref)'s reuse-time check.
+(S5b's original design also carried an `hzero = 0.0 .* Hr` field meant as a
+belt-and-suspenders pattern reference; removed in S5e — see
+`_assert_chol_pattern_matches`'s docstring for why it was actively harmful,
+not just redundant.)
 """
 mutable struct CholPatternCache
     factor::Any   # ::SparseArrays.CHOLMOD.Factor{Float64} once initialised
-    hzero::Any    # ::SparseMatrixCSC{Float64,Int} pattern carrier (all-structural-zero)
     pattern_colptr::Any   # ::Vector{Int} the FIRST Hr's colptr, recorded at cache creation
     pattern_rowval::Any   # ::Vector{Int} the FIRST Hr's rowval, recorded at cache creation
 end
-CholPatternCache() = CholPatternCache(nothing, nothing, nothing, nothing)
+CholPatternCache() = CholPatternCache(nothing, nothing, nothing)
 
 """
     CholPatternMismatch(msg)
@@ -238,22 +241,27 @@ on every `cholesky!`-reuse attempt in `_chol_factorize`, BEFORE `cholesky!`
 itself, because `cholesky!` does not throw on a pattern change (S9 audit,
 Q2).
 
-Deliberately does NOT use `chol_ref.hzero` as the reference: `hzero = 0.0 .*
-Hr` (the pre-existing S5b "pattern carrier") is, empirically, the EMPTY
-sparse matrix -- Julia's sparse broadcast drops an all-exact-zero result
-rather than keeping `Hr`'s structural pattern with zeroed values (MEASURED:
-`nnz(0.0 .* Hr) == 0` for the real q4 `H_uu`). `Hr + chol_ref.hzero` is
-therefore a no-op (`Hf === ` structurally `Hr`), so `hzero` cannot serve as a
-stable reference pattern -- comparing against it would flag a mismatch on
-EVERY reuse call, not just a genuine pattern change (confirmed: naively
-wired this way, a real p=1000 fit showed 214/215 "mismatches"). This is a
-pre-existing S5b latency, not introduced here; left as-is (out of this
-leaf's scope) since `Hr`'s OWN pattern is independently stable by
-construction (`prior_precision`'s fully-dense diagonal blocks -- MEASURED:
-`build_Huu`/`build_Huu_expected`/`H+λ*I` all reproduce the SAME pattern as
-`P` regardless of `u` or the ridge value), so `hzero`'s intended
-belt-and-suspenders union was never load-bearing for correctness. Flagged
-for a follow-up, not fixed here.
+S5e fix (Noether audit, 2026-09-20): `Hf` used to be built as `Hr +
+chol_ref.hzero` (`hzero = 0.0 .* Hr`, a "pattern carrier" S5b intended as a
+belt-and-suspenders reference). That is NOT a no-op in general: generic
+sparse `+` goes through a zero-preserving `map` that drops an addend's
+explicitly stored zero whenever the elementwise sum is exactly zero. On the
+q=4 route's real `H_uu`, `prior_precision` stores Λ⁻¹'s off-diagonal ZEROS
+structurally (a "fully-dense diagonal block" by construction, values and
+all), so at the default `Λ0 = 0.3I` and on every block-diagonal `lc_zero`
+spec, `Hr + hzero` silently shrank `Hf`'s nnz below the pattern recorded at
+first use — MEASURED: `nnz(H + λI) = 2760` vs `nnz(H) = 9440` on the p=1000
+default-Λ0 fixture — so this assertion fired on EVERY reuse attempt on those
+two routes (255/256 and 112/113 fallbacks measured), not just on a genuine
+pattern change. Fix: `Hf` is now `Hr` itself (no `hzero` term), and every
+ridge addition that can reach a cached `Hr` goes through
+[`_add_diag`](@ref), which mutates `nzval` in place at the SAME stored
+positions rather than reassembling via `+` — so no addition into the cache
+can ever drop a stored zero. `Hr`'s own pattern was already independently
+stable by construction (`build_Huu`/`build_Huu_expected`/`_add_diag(H, λ)`
+all reproduce the SAME pattern as `P` regardless of `u` or the ridge
+value), so removing `hzero` loses nothing: it was never load-bearing for
+correctness, only for (accidentally breaking) speed.
 """
 function _assert_chol_pattern_matches(Hf::SparseMatrixCSC, chol_ref::CholPatternCache)
     if Hf.colptr != chol_ref.pattern_colptr || Hf.rowval != chol_ref.pattern_rowval
@@ -289,13 +297,25 @@ end
 # One factorisation attempt at a given ridge, either fresh (chol_ref===nothing,
 # byte-identical to the pre-S5 code) or via the pattern cache.
 function _chol_factorize(H::SparseMatrixCSC, ridge::Real, chol_ref::Nothing)
-    Hs = ridge == 0.0 ? Symmetric(H) : Symmetric(H + ridge * I)
+    # S5e fix (Noether audit, 2026-09-20): restored the literal pre-S5
+    # expression `Symmetric(H) + ridge * I` (was `Symmetric(H + ridge * I)`).
+    # These are NOT bitwise identical when H stores exact zeros (the default
+    # `Λ0 = 0.3I` and every block-diagonal `lc_zero` spec): `Symmetric(H) +
+    # ridge*I` adds only to the diagonal in place on `H`'s OWN pattern, while
+    # `H + ridge*I` reassembles via generic sparse `+` onto the union pattern
+    # of `H` and `ridge*I`, which drops `H`'s stored zeros first -- CHOLMOD
+    # then analyses a different pattern and the two differ at the ulp level
+    # (MEASURED: logdet 16415.083270830539 vs 16415.08327083055 at λ=1e9,
+    # diag Λ). This branch is only ever reached with `chol_ref === nothing`,
+    # i.e. every caller that does not opt into the reuse cache, so this is
+    # the one change needed to make "default reproduces the original
+    # fresh-cholesky behaviour byte for byte" true again.
+    Hs = ridge == 0.0 ? Symmetric(H) : Symmetric(H) + ridge * I
     return cholesky(Hs; check = false)
 end
 function _chol_factorize(H::SparseMatrixCSC, ridge::Real, chol_ref::CholPatternCache)
     Hr = ridge == 0.0 ? H : _add_diag(H, ridge)
     if chol_ref.factor === nothing
-        chol_ref.hzero = 0.0 .* Hr
         chol_ref.pattern_colptr = copy(Hr.colptr)
         chol_ref.pattern_rowval = copy(Hr.rowval)
         ch = cholesky(Symmetric(Hr); check = false)
@@ -303,7 +323,13 @@ function _chol_factorize(H::SparseMatrixCSC, ridge::Real, chol_ref::CholPatternC
         CHOL_FACTORIZATIONS[] += 1
         return ch
     end
-    Hf = Hr + chol_ref.hzero
+    # S5e fix: `Hf` used to be `Hr + chol_ref.hzero` (removed -- see
+    # `_assert_chol_pattern_matches`'s docstring for why that silently
+    # dropped `Hr`'s stored zeros and defeated the reuse on every call at the
+    # default Λ0 and on every block-diagonal spec). `Hr` already carries
+    # `ridge` pattern-preservingly via `_add_diag` above, so it is used
+    # directly.
+    Hf = Hr
     try
         # S9 audit (Q2): a sparsity-pattern GROWTH into `cholesky!` does not
         # throw and returns a wrong-but-"successful" factorisation -- G5.4's
@@ -465,10 +491,22 @@ function _estep_robust(prob::AugProblem, P::SparseMatrixCSC, β;
     H = ng < gswitch ? build_Huu(prob, P, u, β) : build_Huu_expected(prob, P, u, β)
     λ = 1e-2 * mean(abs.(diag(H))); λ = (isfinite(λ) && λ > 0) ? λ : 1.0
     λmax = 1e14
+    # S5e fix (Noether audit, 2026-09-20): when a `chol_ref` cache is in play,
+    # add this LM ridge via `_add_diag` (pattern-preserving in place on `H`'s
+    # OWN stored positions) rather than the generic sparse `H + λ * I`, which
+    # drops `H`'s stored zeros. This call is the FIRST factorisation of every
+    # fit (the cold `_estep_robust` call that seeds the cache), so a
+    # zero-dropped `H + λ*I` here poisoned the cache's recorded pattern for
+    # every later reuse attempt of the whole fit -- measured as 100% fallback
+    # on the default `Λ0 = 0.3I` and every block-diagonal `lc_zero` spec.
+    # `chol_ref === nothing` (every caller other than fit_q4_sparse_tmb's ML
+    # loop) is untouched -- `H + λ * I` there is pre-existing S5 behaviour,
+    # unaffected by this fix.
+    _ridged(Hm) = chol_ref === nothing ? Hm + λ * I : _add_diag(Hm, λ)
     for _ in 1:nit
         ng < tol && break
-        ch_try, extra = sparse_pd_chol(H + λ * I; chol_ref = chol_ref)
-        if extra > 0; λ = min(λmax, max(λ, λ + extra)); ch_try, _ = sparse_pd_chol(H + λ * I; chol_ref = chol_ref); end
+        ch_try, extra = sparse_pd_chol(_ridged(H); chol_ref = chol_ref)
+        if extra > 0; λ = min(λmax, max(λ, λ + extra)); ch_try, _ = sparse_pd_chol(_ridged(H); chol_ref = chol_ref); end
         step = ch_try \ g
         sc = min(1.0, trust / max(maximum(abs, step), eps())); α = sc
         unew = u .- α .* step; fnew = joint_nll(prob, P, unew, β); nbt = 0
