@@ -177,6 +177,6 @@ point.
 - **ML is the default.** REML is an option (the likelihoods are not comparable
   across different fixed-effect structures, so ML is used for model selection).
 
-See also the [R ↔ Julia bridge](r-julia-bridge.md) for the experimental,
+See also [Coming from R](coming-from-r.md) for the optional,
 optional `drmTMB(..., engine = "julia")` route via JuliaCall. It currently
 supports only the documented model types.

@@ -32,7 +32,7 @@ makedocs(
             "Home" => "index.md",
             "Fit your first model" => "getting-started.md",
             "What is tested" => "capabilities.md",
-            "Coming from R?" => "r-julia-bridge.md",
+            "Coming from R?" => "coming-from-r.md",
             "R and Julia vocabulary" => "rosetta.md",
         ],
         "Choose a model" => [
@@ -69,9 +69,7 @@ makedocs(
             "diagnostics-and-validation/figure-gallery.md",
             "diagnostics-and-validation/prediction-and-postfit.md",
             "diagnostics-and-validation/profile-likelihood.md",
-            "diagnostics-and-validation/implementation-map.md",
             "diagnostics-and-validation/exact-gaussian-diagnostics.md",
-            "diagnostics-and-validation/testing-likelihoods.md",
             "diagnostics-and-validation/simulation-plot-grammar.md",
             "diagnostics-and-validation/small-sample-behaviour.md",
         ],

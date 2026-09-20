@@ -108,9 +108,9 @@ location describes the average and scale describes the spread.
 ## Evidence and limitations
 
 Use [supported models and current limits](capabilities.md) to check which
-combinations have been tested, and the
-[diagnostics and validation guides](diagnostics-and-validation/testing-likelihoods.md)
-to see how they were checked. A method being available does not guarantee that
+combinations have been tested. After fitting, use
+[Checking and using fitted models](model-guides/model-workflow.md) to decide
+what to inspect and report. A method being available does not guarantee that
 it will work well for every data set. In particular, the accuracy of confidence
 intervals depends on the model, the data, and the method used to calculate them.
 
@@ -122,7 +122,7 @@ but you can install and use it entirely within Julia. The
 [Rosetta page](rosetta.md) compares the two syntaxes directly.
 
 For R users who want to call Julia from R, the optional
-[R ↔ Julia bridge](r-julia-bridge.md) documents the supported uses of
+[Coming from R](coming-from-r.md) explains the optional
 `engine = "julia"` in drmTMB. That bridge is experimental; the two packages do
 not support every model in the same way.
 

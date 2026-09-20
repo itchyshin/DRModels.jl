@@ -4,13 +4,13 @@
     A standalone first-fit walkthrough. Everything on this page runs against the
     verified Gaussian front end (`drm` / `bf`) and the post-fit accessors
     (`coef`, `loglik`, `confint`, `summary`). For moving between R and Julia,
-    see the [R ↔ Julia bridge](r-julia-bridge.md) and
+    see [Coming from R](coming-from-r.md) and the
     [Rosetta](rosetta.md); for the full capability map see
     [What can I fit today?](model-guides/model-map.md).
 
 DRModels.jl is *distributional* regression: instead of a single linear predictor for
-the mean, you give **each parameter of the response distribution its own
-formula**. The simplest case puts a formula on the mean **μ** and a formula on
+the mean, a chosen response family can let you give its supported parameters
+their own formulas. The simplest case puts a formula on the mean **μ** and a formula on
 the residual scale **σ**, so the spread of the data can change with covariates
 just like the mean does.
 
@@ -161,8 +161,8 @@ The same front end also provides these next steps; the
 
 ## Where to go next
 
-- [R ↔ Julia bridge](r-julia-bridge.md) — the experimental `engine = "julia"`
-  route and the cells it admits today.
+- [Coming from R](coming-from-r.md) — choosing native R, direct Julia, or the
+  optional `engine = "julia"` route.
 - [Rosetta (R ↔ Julia)](rosetta.md) — vocabulary and workflow translation.
 - [Choosing response families](families.md) — the full list of response
   families and how to fit each one.
