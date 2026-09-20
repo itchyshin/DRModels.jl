@@ -476,6 +476,7 @@ end
 #   Mac, default flags                1.311e-3   2.903e-4   4.598e-6
 #   Mac, --check-bounds=yes           1.466e-4   3.635e-5   1.022e-4
 #   Linux ubuntu, Julia 1.10.12       1.780e-4   3.243e-4   1.772e-5
+#   Linux ubuntu, Julia 1.13.0        1.166e-3   9.058e-3   1.805e-3
 #
 # On the Mac under default flags the decay is monotone across both pairs.
 # Under --check-bounds=yes on the Mac the decay is only in the FIRST pair
@@ -484,23 +485,28 @@ end
 # directly -- dominates and the value rises back up. On CI shard 1 (Linux
 # ubuntu, OpenBLAS) the codegen floor instead dominates at h<=2e-4 (the
 # 1e-4 -> 2e-4 step even RISES, ratio 0.549), and the decay only shows up in
-# the SECOND pair (2e-4 -> 1e-3, 18.3x). No single adjacent pair decays on
-# every platform, so the gate now asserts: at least one adjacent pair of the
-# full ladder decays by >= 2x (`decay_ok`), plus a loose sanity ceiling
-# `minimum(dV) <= 1e-3` (`ceiling_ok`) -- the same 1e-3 scale G5d.1 already
-# uses for its own gradient-gap cap, and 1-2 orders of magnitude above every
-# measured minimum (3.6e-5 to 4.6e-6).
+# the SECOND pair (2e-4 -> 1e-3, 18.3x); Linux Julia 1.13 likewise decays
+# only in the second pair (5.02x), at a ~10x larger absolute scale. No
+# single adjacent pair decays on every platform, so the gate asserts: at
+# least one adjacent pair of the full ladder decays by >= 2x (`decay_ok`).
+# `minimum(dV)` is printed as a diagnostic and NOT gated.
 #
-# Two alternatives were considered and rejected in plan review. Gating only
-# the 2e-4 -> 1e-3 pair (the Linux-observed decay point) was rejected
-# because that pair RISES under --check-bounds=yes on the Mac (3.635e-5 ->
-# 1.022e-4). A max/min spread across the whole ladder was rejected because
-# it is order-blind: a ladder that jitters up and down without ever really
+# Three alternatives were considered and rejected. Gating only the 2e-4 ->
+# 1e-3 pair (the Linux-observed decay point) was rejected because that pair
+# RISES under --check-bounds=yes on the Mac (3.635e-5 -> 1.022e-4). A
+# max/min spread across the whole ladder was rejected because it is
+# order-blind: a ladder that jitters up and down without ever really
 # decaying can still show a large max/min spread and pass, which is exactly
-# the failure mode this gate exists to catch.
+# the failure mode this gate exists to catch. An absolute ceiling
+# `minimum(dV) <= 1e-3` (shipped for one CI run, 6d80b18c5) was rejected
+# because Linux Julia 1.13 sits at min(dV) = 1.166e-3 with the decay intact
+# and G5d.1 passing: the ceiling was a Mac-scale pin in disguise, and the
+# quantity it capped (a wrong warm mode) is already bounded before
+# amplification by G5d.1's u_hat (1e-6) and gradient-gap (1e-3) checks.
+# Shinichi's call, 2026-09-20.
 #
 # Follow-up: this ladder is calibrated on one fixture (p=100, one seed) and
-# three observed platform/flag combinations. Re-run at p=1000 or a second
+# four observed platform/flag combinations. Re-run at p=1000 or a second
 # seed before treating "some adjacent pair decays by >=2x" as
 # platform-general rather than specific to this fixture.
 #
@@ -532,8 +538,7 @@ function gate_vcov_scaling(; verbose::Bool = true, n_newton::Int = 40,
     dV = [fd_vcov_diff(h) for h in hs]
     ratios = [dV[i] / dV[i + 1] for i in 1:(length(dV) - 1)]
     decay_ok = any(dV[i] > 2.0 * dV[i + 1] for i in 1:(length(dV) - 1))
-    ceiling_ok = minimum(dV) <= 1e-3
-    ok = decay_ok && ceiling_ok
+    ok = decay_ok
     if verbose || !ok
         for (h, d) in zip(hs, dV)
             @printf "  h=%.1e |V_warm-V_cold|_F=%.6e\n" h d
@@ -541,8 +546,8 @@ function gate_vcov_scaling(; verbose::Bool = true, n_newton::Int = 40,
         for i in 1:(length(dV) - 1)
             @printf "  ratio dV[%d]/dV[%d]=%.3g (h=%.1e -> h=%.1e)\n" i (i + 1) ratios[i] hs[i] hs[i + 1]
         end
-        @printf "  min(dV)=%.6e (<=1.0e-3 required): %s\n" minimum(dV) ceiling_ok
-        @printf "  decay_ok (>=1 adjacent pair decays by >=2x)=%s  ceiling_ok=%s\n" decay_ok ceiling_ok
+        @printf "  min(dV)=%.6e (diagnostic only, not gated)\n" minimum(dV)
+        @printf "  decay_ok (>=1 adjacent pair decays by >=2x)=%s\n" decay_ok
     end
     return ok
 end
