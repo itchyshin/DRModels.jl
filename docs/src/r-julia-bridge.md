@@ -162,7 +162,7 @@ workflows nor the full native missing-data interface.
 For the bridge to work, DRModels.jl exposes a stable, marshalling-friendly surface:
 
 - **Formula** — the R `bf(mu = y ~ x, sigma = ~ x, ...)` is mapped to DRModels.jl's
-  `bf(...)`; the [Rosetta formula grammar](rosetta.md#formula-grammar) gives
+  `bf(...)`; the [Rosetta formula grammar](rosetta.md#Formula-grammar) gives
   the reader-facing spelling map;
 - **Data** — an R `data.frame` crosses as a column table (`NamedTuple` /
   `DataFrame`) keyed by the same column names;

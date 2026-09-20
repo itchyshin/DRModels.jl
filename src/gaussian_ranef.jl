@@ -500,7 +500,7 @@ components — drmTMB's `ranef()`.
 
 Currently populated for the Gaussian closed-form RE paths (exact GLS conditional
 means). Returns an empty `Dict` for models without random effects. Non-Gaussian
-GLMM posterior modes (GHQ/Laplace) are not yet wired — see issue #73.
+GLMM posterior modes (GHQ/Laplace) are not yet available.
 """
 function ranef(fit::DrmFit)
     fit.ranef === nothing && return Dict{Symbol,Vector{Float64}}()

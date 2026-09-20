@@ -25,6 +25,7 @@ makedocs(
         repo = "github.com/itchyshin/DRModels.jl",
         devbranch = "main",
         devurl = "dev",
+        build_vitepress = true,
     ),
     pages = [
         "Start" => [

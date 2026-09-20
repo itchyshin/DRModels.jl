@@ -154,13 +154,38 @@ class _PageParser(HTMLParser):
             self.visible_text.append(data)
 
 
-def _target(root: Path, page: Path, value: str, kind: str) -> tuple[str, Path | None, str]:
+def _absolute_url_path(value: str, label: str) -> str:
+    """Return one normalized absolute URL path or reject an ambiguous contract."""
+    parsed = urlsplit(value)
+    if parsed.scheme or parsed.netloc or parsed.query or parsed.fragment:
+        raise ValueError(f"{label} must be an absolute URL path without query or fragment: {value}")
+    path = unquote(parsed.path)
+    if not path.startswith("/"):
+        raise ValueError(f"{label} must start with '/': {value}")
+    return path.rstrip("/") or "/"
+
+
+def _target(
+    root: Path,
+    page: Path,
+    value: str,
+    kind: str,
+    url_prefix: str = "/",
+    deployment_root_targets: frozenset[str] = frozenset(),
+) -> tuple[str, Path | None, str]:
     """Resolve one local target without allowing escape outside ``root``."""
     if _external(value) or value.startswith(("data:", "javascript:", "mailto:", "tel:")):
         return "external", None, ""
     parsed = urlsplit(value)
     raw_path = unquote(parsed.path)
     fragment = unquote(parsed.fragment)
+    if raw_path in deployment_root_targets:
+        return "deployment", None, fragment
+    if raw_path.startswith("/") and url_prefix != "/":
+        if raw_path == url_prefix:
+            raw_path = "/"
+        elif raw_path.startswith(url_prefix + "/"):
+            raw_path = raw_path[len(url_prefix):]
     base = root if raw_path.startswith("/") else page.parent
     initial = (base / raw_path.lstrip("/")) if raw_path else page
     if not _inside(initial.resolve(strict=False), root):
@@ -229,12 +254,20 @@ def audit(
     site_root: Path | str,
     source_root: Path | str,
     emitted_source_paths: Iterable[str] | None = None,
+    url_prefix: str = "/",
+    deployment_root_targets: Iterable[str] = (),
 ) -> dict[str, Any]:
-    """Return a JSON-ready report. Any local unresolved reference is a failure."""
+    """Return a JSON-ready report. Any in-scope local unresolved reference is a failure."""
     site_root = Path(site_root).resolve()
     source_root = Path(source_root).resolve()
+    url_prefix = _absolute_url_path(url_prefix, "url_prefix")
+    deployment_root_targets = frozenset(
+        _absolute_url_path(value, "deployment_root_target")
+        for value in deployment_root_targets
+    )
     failures: list[dict[str, str]] = []
     external: set[str] = set()
+    deployment: set[str] = set()
     parsed_pages: dict[Path, _PageParser] = {}
 
     if not site_root.is_dir():
@@ -301,10 +334,15 @@ def audit(
             failures.append(_failure("missing_rendered_source_page", relative, record["rendered_path"]))
 
     def resolve(referrer: Path, kind: str, value: str) -> None:
-        status, target, fragment = _target(site_root, referrer, value, kind)
+        status, target, fragment = _target(
+            site_root, referrer, value, kind, url_prefix, deployment_root_targets
+        )
         rel_referrer = referrer.relative_to(site_root)
         if status == "external":
             external.add(value)
+            return
+        if status == "deployment":
+            deployment.add(value)
             return
         if status != "file" or target is None:
             failures.append(_failure("outside_site_root" if status == "outside" else f"missing_{kind}", rel_referrer, value))
@@ -342,7 +380,9 @@ def audit(
     def inspect_css_contents(text: str, referrer: Path) -> None:
         for value in _css_targets(text):
             resolve(referrer, "asset", value)
-            status, target, _ = _target(site_root, referrer, value, "asset")
+            status, target, _ = _target(
+                site_root, referrer, value, "asset", url_prefix, deployment_root_targets
+            )
             if status == "file" and target is not None and target.suffix.lower() == ".css":
                 inspect_css(target)
 
@@ -369,7 +409,9 @@ def audit(
         for kind, value in parser.targets:
             if kind != "asset" or not value.lower().split("?", 1)[0].endswith(".css"):
                 continue
-            status, css_path, _ = _target(site_root, page, value, "asset")
+            status, css_path, _ = _target(
+                site_root, page, value, "asset", url_prefix, deployment_root_targets
+            )
             if status != "file" or css_path is None:
                 continue
             inspect_css(css_path)
@@ -396,10 +438,13 @@ def audit(
             "visual_layout": "not_checked",
             "accessibility": "limited_to_image_alt_absence",
             "source_coverage": "all_markdown_sources" if emitted_source_paths is None else "explicit_emitted_sources",
+            "url_prefix": url_prefix,
+            "deployment_root_targets": "reported_not_checked",
         },
         "pages": page_records,
         "source_pages": source_pages,
         "external_targets": sorted(external),
+        "deployment_root_targets": sorted(deployment),
         "failures": failures,
     }
 
@@ -414,6 +459,17 @@ def main() -> int:
         help="Documenter make.jl; requires pagesonly = true and derives emitted source pages from pages =.",
     )
     parser.add_argument("--report", type=Path, help="Write the complete JSON report here")
+    parser.add_argument(
+        "--url-prefix",
+        default="/",
+        help="Absolute URL prefix represented by --site-root (for example /DRModels.jl/dev)",
+    )
+    parser.add_argument(
+        "--deployment-root-target",
+        action="append",
+        default=[],
+        help="Exact generated target that exists only at the deployed site root; repeatable and reported, not checked",
+    )
     args = parser.parse_args()
     emitted_source_paths = None
     if args.make:
@@ -423,7 +479,13 @@ def main() -> int:
         if not re.search(r"\bpagesonly\s*=\s*true\b", make_text):
             parser.error("--make requires Documenter pagesonly = true")
         emitted_source_paths = [entry["path"] for entry in navigation_entries(args.make)]
-    report = audit(args.site_root, args.source_root, emitted_source_paths)
+    report = audit(
+        args.site_root,
+        args.source_root,
+        emitted_source_paths,
+        url_prefix=args.url_prefix,
+        deployment_root_targets=args.deployment_root_target,
+    )
     if args.report:
         args.report.parent.mkdir(parents=True, exist_ok=True)
         args.report.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
