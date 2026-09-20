@@ -86,5 +86,5 @@ re_sd(fitre)[:grp_logsigma]  # recovered log-σ group-effect SD (≈ 0.5)
 
 - [Part 2: location–scale–scale](location-scale-scale.md) — predictors on the
   SD of a random effect (iid and phylogenetic).
-- [Get started](../get-started.md) — your first fit.
+- [Get started](../getting-started.md) — your first fit.
 - [Changing residual coupling with rho12](bivariate-coscale.md) — two responses.

@@ -144,6 +144,7 @@ loglik
 ml_loglik
 reml_loglik
 estimation_method
+reml_objective_at
 dof
 aic
 bic

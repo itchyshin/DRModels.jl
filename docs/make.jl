@@ -10,11 +10,22 @@ makedocs(
     sitename = "DRModels.jl",
     authors = "Shinichi Nakagawa",
     modules = [DRModels],
+    # Only pages named below are public. The source tree also retains
+    # development notes and evidence records that are intentionally not a
+    # reader-facing documentation surface.
+    pagesonly = true,
+    # This manual intentionally teaches a curated reader surface rather than
+    # enumerating every exported advanced helper.  The explicit source and
+    # rendered reader audits in Documenter.yml enforce that boundary; asking
+    # Documenter to require every export would turn the build into a demand to
+    # publish implementation-level material.
+    checkdocs = :none,
     warnonly = false,
     format = DocumenterVitepress.MarkdownVitepress(
         repo = "github.com/itchyshin/DRModels.jl",
         devbranch = "main",
         devurl = "dev",
+        build_vitepress = true,
     ),
     pages = [
         "Start" => [
@@ -68,18 +79,9 @@ makedocs(
             "reference/package.md",
             "reference/model-specification.md",
             "reference/structured-effect-markers.md",
-            "reference/deprecated-marker-internals.md",
             "reference/model-fitting-and-postfit.md",
             "reference/visualization.md",
-        ],
-        "Development" => [
-            "reference/engine-internals.md",
-            "developer-notes/formula-grammar.md",
-            "developer-notes/adding-families.md",
-            "developer-notes/source-map.md",
-            "developer-notes/reml-q4-exact-gradient.md",
             "API stability" => "api-stability.md",
-            "Changelog" => "changelog.md",
         ],
     ],
 )

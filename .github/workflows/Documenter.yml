@@ -83,6 +83,21 @@ jobs:
           DRM_DOCS_DEPLOY: ${{ github.event_name != 'pull_request' }}
         run: julia --project=docs docs/make.jl
 
+      - name: Audit rendered public documentation
+        run: |
+          first_base="$(head -n 1 docs/build/bases.txt)"
+          test -n "$first_base" || {
+            echo "::error::docs/build/bases.txt has no VitePress base for build/1."
+            exit 1
+          }
+          python3 tools/parity_rendered_docs_audit.py \
+            --site-root docs/build/1 \
+            --source-root docs/src \
+            --make docs/make.jl \
+            --url-prefix "/DRModels.jl/${first_base}" \
+            --deployment-root-target /DRModels.jl/versions.js \
+            --report docs/build/rendered-docs-audit.json
+
       # Hand the BUILT site to the preview job (pull_request only). deploydocs
       # publishes what is in `target` without rebuilding, so the preview is
       # byte-for-byte what this required check measured.
