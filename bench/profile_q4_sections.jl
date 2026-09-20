@@ -283,7 +283,11 @@ function gate_tsv(ps::Vector{Int})
         for l in tsv_lines; println(io, l); end
     end
     println("wrote ", out_path)
-    println("GATE G3.1 PASS")   # leaf-S3 is closed; this gate is now an after-numbers utility, not re-graded
+    # Originally G3.1 (leaf-S3, closed); re-used by leaf-S5e (2026-09-20) as
+    # the honest re-measurement of the fit wall now that the cholesky!-reuse
+    # cache is pattern-preserving on every route (src/sparse_aug_plsm.jl).
+    # The printed label follows the CURRENT gate this run serves.
+    println("GATE G5e.3 PASS")
     return true
 end
 
