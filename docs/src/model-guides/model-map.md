@@ -23,9 +23,9 @@ than its average. Read on for the model choices, or use the
 
 ## The modelling idea: a formula per parameter
 
-DRModels.jl is **distributional regression** — you put predictors on *every*
-parameter of the response distribution, not just the mean. Each parameter gets
-its own formula, bundled together with [`bf`](@ref):
+DRModels.jl is **distributional regression** — it lets you model more than the
+mean of a response. Each parameter supported by the chosen response family can
+have its own formula, bundled together with [`bf`](@ref):
 
 | Parameter | What it controls | Formula |
 |---|---|---|
