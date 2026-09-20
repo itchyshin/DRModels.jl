@@ -23,9 +23,9 @@ route, and [Getting started](getting-started.md) for runnable syntax.
 
 ## Response families
 
-Each family below has a public fixed-effect fitting route. Families are checked
-through simulation parameter recovery; the optional R–Julia parity suite is a
-separate, opt-in comparison.
+Each family below can be fitted with fixed effects. The family-level tests use
+simulated data with known parameters; comparisons with the optional R bridge are
+run separately.
 
 | Family | Mean-axis random effects | Status and boundary |
 |---|---|---|
@@ -35,10 +35,10 @@ separate, opt-in comparison.
 | Poisson | intercepts, slopes, crossed, and phylogenetic effects | **Tested** |
 | NegBinomial2 | intercepts, slopes, crossed, and phylogenetic effects | **Tested** |
 | TruncatedNegBinomial2 | — | **Tested** fixed effects |
-| Beta | intercepts, slopes, crossed, and phylogenetic effects | **Tested**; crossed evidence is kernel-level |
+| Beta | intercepts, slopes, crossed, and phylogenetic effects | **Tested**; crossed random effects have numerical tests but no complete worked analysis |
 | BetaBinomial | intercepts, slopes, crossed, and phylogenetic effects | **Tested**; constant `sigma` only |
 | Binomial | intercepts, crossed, and phylogenetic effects | **Tested**; slope random effects are refused |
-| Gamma | intercepts, slopes, crossed, and phylogenetic effects | **Tested**; crossed evidence is kernel-level |
+| Gamma | intercepts, slopes, crossed, and phylogenetic effects | **Tested**; crossed random effects have numerical tests but no complete worked analysis |
 | LogNormal | intercepts, slopes, phylogenetic, and known-matrix effects | **Tested**; `animal` and coordinate-spatial effects are refused |
 | ZeroOneBeta | — | **Tested** fixed effects |
 | Tweedie | intercepts and independent slopes | **Tested** |
@@ -53,12 +53,13 @@ Poisson/NB2 paths; **Tested**.
 ## Distributional (location–scale) sub-models
 
 A formula per distributional parameter is the core grammar: `bf(...)` gives
-the mean, scale, and any additional admitted parameter their own formulas.
+the mean, scale, and any additional parameter supported by the chosen family
+their own formulas.
 
 | Capability | Status and boundary |
 |---|---|
 | Gaussian mean μ and scale σ formulas | **Tested**; both intercepts and slopes are recovered. |
-| Non-Gaussian `sigma` or dispersion formula | **Tested** where the family admits a dispersion model. |
+| Non-Gaussian `sigma` or dispersion formula | **Tested** for families with a dispersion model. |
 | Student-t `nu` (degrees of freedom) formula | **Tested**. |
 | Random effect on the Gaussian scale axis, `sigma ~ (1\|g)` | **Tested** with Gauss–Hermite integration. |
 | `sigma(fit)` and `corpairs(fit)` | **Tested** post-fit accessors. |
@@ -173,12 +174,12 @@ public formula route are **tested**.
 
 ## Structured q=2 bivariate Gaussian (mu1/mu2 only)
 
-This is a complete-response exact-Gaussian ML point-fit cell for matching
+This is a complete-response exact-Gaussian ML model with matching
 structured random intercepts on `mu1` and `mu2`. It requires the same fixed-effect
 design on both mean formulas and intercept-only `sigma1`, `sigma2`, and `rho12`
-formulas. The payloads are point/export evidence only; they do not promote q2
-REML, interval reliability, interval coverage, non-Gaussian q2, or broad R bridge
-support.
+formulas. Current support covers point estimates and exported summaries only.
+It does not cover q2 REML, calibrated intervals, non-Gaussian q2 models, or the
+full R bridge.
 
 | Capability | Status |
 |---|---|
@@ -198,7 +199,7 @@ above, and it does so by delegation rather than by a second engine.
 |---|---|
 | Bivariate Gaussian with residual `rho12` (`cbind` / `mu1`,`mu2`) | **Tested** |
 | `rho12(fit)` accessor | **Tested** |
-| Bivariate **lognormal** (`drm(bf(…), LogNormal())`, drmTMB's `biv_lognormal()`) | **Tested.** Both responses must be strictly positive and are modeled as bivariate normal on `log(Y)`: `mu1`/`mu2` are log-scale means and `rho12` is a log-residual correlation, not the raw-scale Pearson correlation. Structured `phylo` and `relmat` routes are tested; `animal` and `spatial` are implemented but untested on this route. `method = :REML` is refused for every bivariate-lognormal cell. |
+| Bivariate **lognormal** (`drm(bf(…), LogNormal())`, drmTMB's `biv_lognormal()`) | **Tested.** Both responses must be strictly positive and are modeled as bivariate normal on `log(Y)`: `mu1`/`mu2` are log-scale means and `rho12` is a log-residual correlation, not the raw-scale Pearson correlation. Structured `phylo` and `relmat` routes are tested; `animal` and `spatial` are implemented but untested on this route. `method = :REML` is refused for all bivariate LogNormal models. |
 | Bivariate **Student-t** (`drm(bf(…, nu = …), Student())`, drmTMB's `biv_student()`) | **Tested.** `sigma1`/`sigma2` are scale parameters, not marginal SDs; `rho12` is a scatter correlation; and `nu = 2 + exp(η)`, so `nu > 2`. One `nu` is shared by the two responses (it may vary by row via `nu ~ x`); zero `rho12` does not imply independence at finite `nu`. This is a residual-only model: `phylo`, `relmat`, `animal`, `spatial`, and `method = :REML` are deliberately refused. |
 | **Staged pair association** — `associate_pairs` / `latent_normal` / `association` / `PairAssociation` / `integration_diagnostics` (drmTMB's `associate_pairs()`) | **Tested.** This is a two-stage, frozen-margin estimator, not a joint model. It supports `gaussian_bernoulli`, `gaussian_nbinom2`, `bernoulli_bernoulli`, `bernoulli_nbinom2`, and `nbinom2_nbinom2`; integration diagnostics are available where numerical integration is used. Its uncertainty ignores margin-estimation error, and it offers no simultaneous association bands or profile intervals. The kernel must be explicit; only `association ~ 1` is supported; `marginal = :AGHQ`, non-converged margins, non-Bernoulli binomial margins, and other pair classes are refused. |
 | Cross-family bivariate (different families on `y1` vs `y2`) | **Experimental.** `drm(bf(...), (Gaussian(), Poisson()); data = …)` uses a latent-scale scalar correlation in `fit.rho_latent`. It has narrow documented evidence and no interval-coverage claim. `rho12 ~ x` is refused: this route fits a scalar latent correlation, not an observation-specific residual correlation. See [Cross-family methods](model-guides/cross-family-methods.md). |
@@ -226,7 +227,7 @@ above, and it does so by delegation rather than by a second engine.
 
 !!! warning "REML scope"
     `method=:REML` is opt-in. **ML is the default** (REML likelihoods are not
-    comparable across fixed-effect structures). Wired cells: the fixed-effect
+    comparable across fixed-effect structures). Supported models are the fixed-effect
     Gaussian location–scale model; a single Gaussian mean intercept `(1 | g)`;
     Location–Scale–Scale models (`sd(g) ~ z`,
     `sd(species, phylogenetic) ~ z`, and multi-component LSS); and the
@@ -238,10 +239,9 @@ above, and it does so by delegation rather than by a second engine.
     log-likelihood, so `reml_loglik` is directly comparable to lme4's,
     glmmTMB's, TMB's and drmTMB's `logLik()`. The bivariate q=2/q=4 Laplace
     routes previously omitted the `(n_β/2)·log(2π)` constant while the
-    fixed-effect location–scale and mean `(1 | g)` routes included it, so one
-    package reported two scales under one name. Evidence: the q=4 parity gate's
-    `atol_loglik` fell from **5.5436 to 0.03** once the constant was no longer
-    being absorbed by the tolerance.
+    fixed-effect location–scale and mean `(1 | g)` routes included it. That
+    inconsistency has been corrected; all supported REML models now report the
+    same normalised quantity.
 
 ## Model comparison & accessors
 
@@ -267,13 +267,13 @@ above, and it does so by delegation rather than by a second engine.
 
 ## R → Julia bridge (engine = "julia")
 
-A marshalling-friendly boundary for `drmTMB(..., engine = "julia")`
-uses only primitive R-reconstructable pieces across the boundary.
+The optional R bridge for `drmTMB(..., engine = "julia")` converts formulas and
+data into a form that Julia can fit, then converts the result back to R.
 
 | Capability | Status |
 |---|---|
-| `drm_bridge` (string/dict/named-tuple formula → fit → flattened `Dict`); univariate, bivariate, phylo-mean, and narrow q2 structured Gaussian fixtures | **Tested** for the admitted fixtures |
-| q2/q4 direct point-export payloads (`q2_point_export`, `q4_point_export`) | **Tested** as point/export evidence only, not broad bridge or interval-coverage evidence |
+| `drm_bridge` (string/dict/named-tuple formula → fit → flattened `Dict`); univariate, bivariate, phylo-mean, and narrow q2 structured Gaussian examples | **Tested** for the listed model configurations |
+| q2/q4 direct-export helpers (`q2_point_export`, `q4_point_export`) | **Tested** for point summaries only; broader bridge behaviour and interval calibration have not been established |
 | `drm_bridge_inference` (profile + bootstrap), limited to the Gaussian phylo SD block (`param=:resd`) | **Tested** |
 | Newick tree string parsing + small LRU cache | **Tested** |
 | Full R-side glue / `engine="julia"` round-trip in drmTMB | (R repo) | **Not available here** — the Julia primitive is tested; the R package glue lives in the drmTMB repository |
@@ -301,7 +301,7 @@ To avoid overclaiming, note these boundaries:
 - **VA/ELBO:** experimental random-intercept VA is limited to `(1|g)` for
   Poisson, Binomial, NB2, Gamma, and Beta (`sigma ~ 1` where applicable).
   Phylogenetic, crossed, correlated-slope, and zero-inflated/hurdle variants are
-  not wired.
+  not available.
 - **Experimental prototypes:** experimental optimisation and diagnostic prototypes
   are not public analysis methods. The supported REML and `algorithm = :em`
   routes are listed in the Inference table.
@@ -312,8 +312,9 @@ To avoid overclaiming, note these boundaries:
   deviation block (`param=:resd`); other bridge inference parameters are not yet
   supported claims.
 - Coupled q=2 location–scale fitting is public and tested for NB2 and Gamma.
-  Beta and beta-binomial kernels are not exposed by that front end, while Poisson
-  and lognormal location–scale leaves remain implemented but untested.
+  Beta and beta-binomial cannot currently be requested through `drm()` and
+  `bf()` for this model. Poisson and LogNormal versions are implemented but have
+  not yet been tested as complete analyses.
 
 ---
 

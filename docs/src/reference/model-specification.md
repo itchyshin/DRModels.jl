@@ -67,9 +67,10 @@ Gaussian predictor models, with complete remaining exogenous fixed-effect
 covariates. Neither the response nor either modelled predictor may appear in
 those fixed designs. Other response families, three or more predictors, mixed
 predictor families, random or structured effects, REML, and profile/bootstrap intervals
-are still outside this admission. The same narrow route is available as
-**development** through `drmTMB(..., engine = "julia")`; it does
-not establish full native fitted-result parity.
+are not supported here. The same narrow model is available experimentally through
+`drmTMB(..., engine = "julia")`; it does
+not yet reproduce every fitted result and post-fit method from drmTMB's default
+R/TMB engine.
 
 ```@example joint_formula
 using DRModels, LinearAlgebra
@@ -103,7 +104,7 @@ multiple-imputation draws nor interval-coverage guarantees. Check
 `coef(fit, :sigma_mi_x)` returns natural predictor SD; unqualified `coef(fit)` and
 `vcov(fit)` use the raw coordinates, including its log SD. Complete fixed-effect
 interactions/transforms are allowed; interactions involving `mi(x)` are not yet
-admitted.
+supported.
 
 For the R bridge, write the corresponding R formula and use
 `engine = "julia"`, `impute = list(x = x ~ z)` (or
@@ -111,10 +112,11 @@ For the R bridge, write the corresponding R formula and use
 predictor), and
 `missing = miss_control(response = "drop", predictor = "model")` or
 `miss_control(response = "include", predictor = "model")`.
-The R response-drop preprocessing differs from native-TMB behaviour and is not
-native parity. Its profile/bootstrap methods are explicitly unsupported. The
+Dropping responses before fitting behaves differently from drmTMB's default
+R/TMB engine. Profile and bootstrap intervals are not available here. The
 Gaussian predictor-SD Wald interval is a natural-scale delta interval, can cross
-zero, and is neither native-interval parity nor coverage evidence.
+zero, and has not been shown to have reliable coverage across datasets or
+sample sizes.
 
 With two Gaussian predictors, mark each separately and provide both predictor
 models. The `impute` entry order does not change which model belongs to which
