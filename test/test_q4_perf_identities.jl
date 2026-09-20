@@ -12,8 +12,8 @@
 #
 # Usage:
 #   env JULIA_NUM_THREADS=4 OPENBLAS_NUM_THREADS=1 julia --project=. \
-#       test/test_q4_perf_identities.jl --gate {nll|logdet|newton|vcov}
-#   include("test/test_q4_perf_identities.jl")   # runs all four as a @testset
+#       test/test_q4_perf_identities.jl --gate {nll|logdet|newton|vcov|vcov_pre|vcov_scaling|pattern|nll_cached}
+#   include("test/test_q4_perf_identities.jl")   # runs all gates as a @testset
 #
 # G5.3's "inner-Newton iteration counts and accepted ridge lambda sequence"
 # are measured by a SHADOW copy of _estep_robust's cold-start loop (verbatim
@@ -242,7 +242,8 @@ const LAMBDA_SEQ_PINNED = [
     0.001599803025442994, 0.000799901512721497, 0.0003999507563607485,
 ]
 
-function _shadow_estep_robust_cold(prob, P, β; n_newton = 40, tol = 1e-8, trust = 5.0, gswitch = 1.0)
+function _shadow_estep_robust_cold(prob, P, β; n_newton = 40, tol = 1e-8, trust = 5.0, gswitch = 1.0,
+                                    chol_ref::Union{Nothing,DRModels.CholPatternCache} = nothing)
     lambdas = Float64[]
     iters = 0
     nu = 4 * prob.n_total
@@ -257,8 +258,8 @@ function _shadow_estep_robust_cold(prob, P, β; n_newton = 40, tol = 1e-8, trust
         ng < tol && break
         iters += 1
         push!(lambdas, λ)
-        ch_try, extra = DRModels.sparse_pd_chol(H + λ * I)
-        if extra > 0; λ = min(λmax, max(λ, λ + extra)); ch_try, _ = DRModels.sparse_pd_chol(H + λ * I); end
+        ch_try, extra = DRModels.sparse_pd_chol(H + λ * I; chol_ref = chol_ref)
+        if extra > 0; λ = min(λmax, max(λ, λ + extra)); ch_try, _ = DRModels.sparse_pd_chol(H + λ * I; chol_ref = chol_ref); end
         step = ch_try \ g
         sc = min(1.0, trust / max(maximum(abs, step), eps())); α = sc
         unew = u .- α .* step; fnew = DRModels.joint_nll(prob, P, unew, β); nbt = 0
@@ -292,6 +293,57 @@ function gate_newton(; verbose::Bool = true)
         @printf "  iters=%d pinned=%d %s\n" iters NEWTON_ITERS_PINNED (iters_ok ? "OK" : "FAIL")
         println("  lambda sequence length match: ", len_ok, "; elementwise rtol<=1e-10: ", lam_ok)
     end
+    return ok
+end
+
+# -----------------------------------------------------------------------------
+# G5e.1: G5.1 (marginal NLL) and G5.3 (Newton trajectory), reproduced against
+# the SAME pinned reference values but with a `CholPatternCache` passed via
+# `chol_ref` -- proof that the cholesky!-reuse path is bitwise identical to
+# the pre-S5 fresh-cholesky-every-call code the pins were measured against.
+# Neither G5.1 nor G5.3 above ever passed `chol_ref` (Noether audit, Q4), so
+# neither actually exercised the reuse path; this gate closes that gap. Both
+# sub-checks also assert the cache reuse actually ENGAGED (>=1 reuse beyond
+# the seeding factorisation, 0 fallbacks) so a silently-never-reused cache
+# cannot pass by accident.
+# -----------------------------------------------------------------------------
+
+function gate_nll_cached(; verbose::Bool = true)
+    ok = true
+    for p in (100, 1000)
+        case = id_make_case(p; seed = _id_seed(p))
+        θ0 = pack_theta(case.β0, Λ0_ID)
+        DRModels.reset_chol_diagnostics!()
+        cache = DRModels.CholPatternCache()
+        nll, = marginal_nll(case.prob, case.Q, θ0; n_newton = 40, chol_ref = cache)
+        pinned = NLL_PINNED[p]
+        rel = abs(nll - pinned) / abs(pinned)
+        fac = DRModels.CHOL_FACTORIZATIONS[]; fb = DRModels.CHOL_REUSE_FALLBACKS[]
+        this_ok = rel <= 1e-12 && fb == 0 && fac >= 2
+        if verbose
+            @printf "  [nll,chol_ref] p=%d nll=%.17g pinned=%.17g rel=%.3e factorisations=%d fallbacks=%d %s\n" p nll pinned rel fac fb (this_ok ? "OK" : "FAIL")
+        end
+        ok &= this_ok
+    end
+
+    case = id_make_case(100; seed = _id_seed(100))
+    θ0 = pack_theta(case.β0, Λ0_ID)
+    β0, lc0 = unpack_theta(case.prob, θ0)
+    Λ0m = lc_to_Λ(lc0)
+    P0 = prior_precision(case.Q, inv(Λ0m))
+    DRModels.reset_chol_diagnostics!()
+    cache2 = DRModels.CholPatternCache()
+    iters, lambdas = _shadow_estep_robust_cold(case.prob, P0, β0; n_newton = 40, chol_ref = cache2)
+    iters_ok = iters == NEWTON_ITERS_PINNED
+    len_ok = length(lambdas) == length(LAMBDA_SEQ_PINNED)
+    lam_ok = len_ok && all(isapprox.(lambdas, LAMBDA_SEQ_PINNED; rtol = 1e-10))
+    fac2 = DRModels.CHOL_FACTORIZATIONS[]; fb2 = DRModels.CHOL_REUSE_FALLBACKS[]
+    newton_ok = iters_ok && lam_ok && fb2 == 0 && fac2 >= 2
+    if verbose
+        @printf "  [newton,chol_ref] iters=%d pinned=%d factorisations=%d fallbacks=%d %s\n" iters NEWTON_ITERS_PINNED fac2 fb2 (newton_ok ? "OK" : "FAIL")
+        println("  lambda sequence length match: ", len_ok, "; elementwise rtol<=1e-10: ", lam_ok)
+    end
+    ok &= newton_ok
     return ok
 end
 
@@ -558,6 +610,41 @@ function gate_pattern(; verbose::Bool = true)
     end
     ok &= fit_fallbacks_ok && fit1000.converged
 
+    # (4) S5e (Noether audit): the DEFAULT Lambda0 = 0.3I fit_q4_sparse_tmb
+    # falls back to when Lambda0 is not supplied. Before the S5e fix, this
+    # route showed 256 factorisations / 255 fallbacks -- prior_precision
+    # stores Lambda0's off-diagonal zeros structurally, and the old
+    # `Hr + hzero` carrier dropped them on every reuse. `>=100` factorisations
+    # at p=1000 (a fit takes hundreds of E-step Newton iterations) is direct
+    # evidence the reuse is actually engaging, not just that fallbacks == 0
+    # by having never been attempted.
+    DRModels.reset_chol_diagnostics!()
+    case1000d = id_make_case(1000; seed = _id_seed(1000))
+    fit1000d = fit_q4_sparse_tmb(case1000d.prob, case1000d.Q; β0 = case1000d.β0,
+                                  g_tol = 1e-3, iterations = 300, n_newton = 40)
+    fac_d = DRModels.CHOL_FACTORIZATIONS[]; fb_d = DRModels.CHOL_REUSE_FALLBACKS[]
+    default_ok = fb_d == 0 && fac_d >= 100 && fit1000d.converged
+    if verbose
+        @printf "  p=1000 default Lambda0=0.3I fit: factorisations=%d fallbacks=%d (expect 0, >=100) converged=%s %s\n" fac_d fb_d fit1000d.converged (default_ok ? "OK" : "FAIL")
+    end
+    ok &= default_ok
+
+    # (5) S5e: an `lc_zero` block-diagonal spec (every tagged user model,
+    # `phylo(1 | tag | group)` on all four axes, routes here via
+    # `_q4_block_lc_zero`). Before the fix: 113 factorisations / 112
+    # fallbacks.
+    DRModels.reset_chol_diagnostics!()
+    case1000z = id_make_case(1000; seed = _id_seed(1000))
+    fit1000z = fit_q4_sparse_tmb(case1000z.prob, case1000z.Q; β0 = case1000z.β0, Λ0 = Λ0_ID,
+                                  lc_zero = [3, 4, 6, 7],
+                                  g_tol = 1e-3, iterations = 300, n_newton = 40)
+    fac_z = DRModels.CHOL_FACTORIZATIONS[]; fb_z = DRModels.CHOL_REUSE_FALLBACKS[]
+    zero_ok = fb_z == 0 && fac_z >= 100 && fit1000z.converged
+    if verbose
+        @printf "  p=1000 lc_zero=[3,4,6,7] fit: factorisations=%d fallbacks=%d (expect 0, >=100) converged=%s %s\n" fac_z fb_z fit1000z.converged (zero_ok ? "OK" : "FAIL")
+    end
+    ok &= zero_ok
+
     return ok
 end
 
@@ -575,9 +662,10 @@ function _q4_identities_cli(argv)
             error("unknown argument: $(argv[i])")
         end
     end
-    gate === nothing && error("--gate is required (one of nll|logdet|newton|vcov|vcov_pre|vcov_scaling|pattern)")
+    gate === nothing && error("--gate is required (one of nll|logdet|newton|vcov|vcov_pre|vcov_scaling|pattern|nll_cached)")
     label = Dict("nll" => "G5.1", "logdet" => "G5.2", "newton" => "G5.3", "vcov" => "G5.5(cold-pin)",
-                 "vcov_pre" => "G5d.1", "vcov_scaling" => "G5d.2", "pattern" => "G5d.4")[gate]
+                 "vcov_pre" => "G5d.1", "vcov_scaling" => "G5d.2", "pattern" => "G5e.2",
+                 "nll_cached" => "G5e.1")[gate]
     ok = gate == "nll" ? gate_nll() :
          gate == "logdet" ? gate_logdet() :
          gate == "newton" ? gate_newton() :
@@ -585,7 +673,8 @@ function _q4_identities_cli(argv)
          gate == "vcov_pre" ? gate_vcov_pre() :
          gate == "vcov_scaling" ? gate_vcov_scaling() :
          gate == "pattern" ? gate_pattern() :
-         error("unknown --gate $gate (expected nll|logdet|newton|vcov|vcov_pre|vcov_scaling|pattern)")
+         gate == "nll_cached" ? gate_nll_cached() :
+         error("unknown --gate $gate (expected nll|logdet|newton|vcov|vcov_pre|vcov_scaling|pattern|nll_cached)")
     println(ok ? "GATE $label PASS" : "GATE $label FAIL see diagnostics above")
     exit(ok ? 0 : 1)
 end
@@ -619,5 +708,6 @@ else
         @test gate_vcov_pre(; verbose = false)
         @test gate_vcov_scaling(; verbose = false)
         @test gate_pattern(; verbose = false)
+        @test gate_nll_cached(; verbose = false)
     end
 end
