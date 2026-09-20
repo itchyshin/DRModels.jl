@@ -86,4 +86,18 @@ Paste in a fresh Claude session started in the worktree:
 Read AGENTS.md and docs/dev-log/handover/2026-09-19-claude-handover-speed6-test-hygiene.md. Run the handover rehydration steps, reconcile them with the current git state, then continue only the OWED Next Immediate Steps.
 ```
 
+
+## Addendum 2026-09-20 06:55 MDT: PR #781 and the one remaining step
+
+Rehydrated in the authoring session on Shinichi's paste of the resume prompt; everything above reconciles as DONE against git (branch at `983084ffa`, 0 ahead / 0 behind). What happened after the close-out:
+
+- **PR #781 opened as a draft** (Shinichi's ask): https://github.com/itchyshin/DRModels.jl/pull/781, base `main`, the whole lane branch (arc S3/S5b/S5c/S5d plus this sub-lane). Draft because repo `AGENTS.md` 103-105 gates `src/` engine changes on Noether plus maintainer sign-off.
+- **`docs` check failed, fixed:** four S5b/S5d internals (`CholPatternCache`, `CholPatternMismatch`, `_assert_chol_pattern_matches`, `_add_diag`) were not in the manual under strict Documenter. Listed in `docs/src/reference/engine-internals.md` as a "no stability guarantee" subsection; local `make.jl` exit 0; commit `983084ffa`; CI `docs` now passes.
+- **Noether audit (orchestrator's, on #781): READY-WITH-EDITS, one substantive.** The `cholesky!` reuse is value-correct on every route, but on the default `Lambda0 = 0.3I` and every block-diagonal spec the pattern assertion fires on every reuse (255/256, 112/113 fallbacks measured) because `Hr + hzero` (`src/sparse_aug_plsm.jl:306`) drops stored zeros, so the reuse never engages there; the docstring and two PR-body lines ("fixed a latent bug in the pattern carrier"; "byte for byte") say the opposite, and the default ridge expression is one ulp off the old one. The orchestrator's S5e builder is fixing it (pattern-preserving ridge, restored ridge expression, new `gate_pattern` cases expecting 0 fallbacks on those specs, corrected docstrings, one full suite; ~1.5 h from 06:50).
+- **Maintainer decision (Shinichi, in chat):** first "ready anyway"; after the Noether finding, "let the orchestrator's fix land, then mark ready."
+
+OWED, one step, shared: when the S5e fix commit is on the branch, CI is green on that head, and the PR is still a draft, run `gh pr ready 781` and say so to the orchestrator (session "shinichi-82"), which is also watching and may flip it first. The orchestrator corrects the two body lines with its push. Auto-merge stays off; merging is Shinichi's and the orchestrator's.
+
+PROTECTED (not this sub-lane's): the S5e fix itself, the arc ledgers, the PR body's speed-arc paragraphs, the merge.
+
 > Related: [[2026-09-19-joint-missing-thread-budget-guards]] · [[2026-09-19-blas-thread-drift-investigation]] · `LOOP/lanes/speed6-20260919/checkpoint.md`
