@@ -193,7 +193,7 @@ lrt_boundary
 ## R bridge and preprocessing
 
 These entries document the Julia-side interface used by the optional R bridge.
-The [R ↔ Julia bridge](../r-julia-bridge.md) defines its admitted cells and
+[Coming from R](../coming-from-r.md) explains the optional route and
 refusals; these docstrings do not expand that contract.
 
 ```@docs

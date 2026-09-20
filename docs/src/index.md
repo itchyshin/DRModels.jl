@@ -122,7 +122,7 @@ but you can install and use it entirely within Julia. The
 [Rosetta page](rosetta.md) compares the two syntaxes directly.
 
 For R users who want to call Julia from R, the optional
-[R ↔ Julia bridge](r-julia-bridge.md) documents the supported uses of
+[Coming from R](coming-from-r.md) explains the optional
 `engine = "julia"` in drmTMB. That bridge is experimental; the two packages do
 not support every model in the same way.
 

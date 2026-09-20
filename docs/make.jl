@@ -32,7 +32,7 @@ makedocs(
             "Home" => "index.md",
             "Fit your first model" => "getting-started.md",
             "What is tested" => "capabilities.md",
-            "Coming from R?" => "r-julia-bridge.md",
+            "Coming from R?" => "coming-from-r.md",
             "R and Julia vocabulary" => "rosetta.md",
         ],
         "Choose a model" => [
