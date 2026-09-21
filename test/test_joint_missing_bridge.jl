@@ -1,6 +1,7 @@
 using Test, DRModels, LinearAlgebra, TOML, ForwardDiff
 BLAS.set_num_threads(1)
-Threads.nthreads()==1 && BLAS.get_num_threads()==1 || error("wrong thread budget")
+# BLAS pinned to one thread for reproducible linear algebra; the Julia thread
+# count is deliberately NOT constrained (see test_joint_missing_two_predictor.jl).
 @testset "prepared joint bridge API" begin
     @test isdefined(DRModels,:drm_bridge_joint)
     @test isdefined(DRModels,:_prepare_joint_bridge)

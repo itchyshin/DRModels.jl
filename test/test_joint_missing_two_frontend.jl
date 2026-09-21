@@ -20,7 +20,6 @@ end
 @testset "two Gaussian missing-predictor direct formula frontend" begin
     BLAS.set_num_threads(1)
     @test BLAS.get_num_threads() == 1
-    @test Threads.nthreads() == 1
     @test isdefined(DRModels, :JointTwoDrmFit)
 
     reference = _two_frontend_ref

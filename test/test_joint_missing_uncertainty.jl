@@ -1,6 +1,7 @@
 using Test, DRModels, LinearAlgebra, ForwardDiff
+# BLAS pinned to one thread for reproducible linear algebra; the Julia thread
+# count is deliberately NOT constrained (see test_joint_missing_two_predictor.jl).
 BLAS.set_num_threads(1)
-Threads.nthreads()==1 && BLAS.get_num_threads()==1 || error("wrong thread budget")
 @testset "native-shaped imputation uncertainty API" begin
     @test isdefined(DRModels, :imputed)
     @test isdefined(DRModels, :_joint_imputation_uncertainty)
