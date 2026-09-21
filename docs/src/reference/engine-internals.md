@@ -251,7 +251,7 @@ nuisance-parameter specification, using the prepared group indices.
 
 !!! warning "Experimental"
     Exported for evaluation, not yet stable. API and numerics may
-    change; not covered by the R-parity scoreboard.
+    change. This route is not available through the R bridge.
 
 !!! warning "Limited developer interface"
     This prepared-array interface covers a Gaussian response with one Gaussian

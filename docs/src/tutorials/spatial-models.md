@@ -46,6 +46,12 @@ the robust outputs. `spatial`, `phylo`, `animal`, and `relmat` all share one
 closed-form structured-GLS engine — only the source of the correlation differs
 (coordinates / tree / pedigree / supplied matrix).
 
+Check the fitted model before interpreting the spatial SD or range. Start with
+[`check_drm`](@ref) and read its convergence, gradient, and Hessian messages;
+then use [Improving convergence](../model-guides/convergence.md) if any of those
+checks warn. The [Detailed capabilities & limits](../capabilities.md) page states
+what this Gaussian spatial route does and does not establish about uncertainty.
+
 !!! note "Gaussian only (for now)"
     A coordinate spatial effect is currently supported on the **Gaussian** mean.
     Routing `spatial(1 | site)` through the sparse-Laplace engine for the

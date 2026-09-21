@@ -53,10 +53,11 @@ fit0 = drm(bf(@formula(y ~ 1), @formula(sigma ~ 1)), Gaussian(); data = dat)
 loglik(fit) - loglik(fit0)    # gain from letting σ depend on group
 ```
 
-A large positive gain says the variance structure is real signal. Quantify the
-σ effects with [`confint`](../model-guides/model-workflow.md) (Wald or profile),
-or turn the comparison into a formal test with `lrtest` / `aicc` — see
-[Prediction, residuals & model comparison](../diagnostics-and-validation/prediction-and-postfit.md).
+The gain measures how much better the more flexible model fits these data; it
+does not by itself establish a biological mechanism. Compare the models with
+`lrtest` or `aicc`, then interpret the estimated change in spread and its
+uncertainty with [`confint`](../model-guides/model-workflow.md) (Wald or
+profile). See [Prediction, residuals & model comparison](../diagnostics-and-validation/prediction-and-postfit.md).
 
 ## Random dispersion: a scale that varies by group
 
@@ -86,5 +87,5 @@ re_sd(fitre)[:grp_logsigma]  # recovered log-σ group-effect SD (≈ 0.5)
 
 - [Part 2: location–scale–scale](location-scale-scale.md) — predictors on the
   SD of a random effect (iid and phylogenetic).
-- [Get started](../get-started.md) — your first fit.
+- [Get started](../getting-started.md) — your first fit.
 - [Changing residual coupling with rho12](bivariate-coscale.md) — two responses.

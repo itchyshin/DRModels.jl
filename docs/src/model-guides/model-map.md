@@ -1,16 +1,31 @@
 # What can I fit today?
 
-This page is the **map of the model space** DRModels.jl covers — the overview for the
-Model Guides. It mirrors drmTMB's
-[What can I fit today?](https://itchyshin.github.io/drmTMB/articles/model-map.html),
-and points you at the guide or tutorial for each piece. Read it top to bottom for
-the big picture, or jump to the [which page next](#Which-page-next) table.
+Use this page when you know what you measured but are deciding what kind of model
+to fit. DRModels.jl is for questions where predictors may change not only the
+average response, but also its variability, its zeros, or the way two responses
+vary together.
 
-## The one idea: a formula per parameter
+Start with the question closest to yours:
 
-DRModels.jl is **distributional regression** — you put predictors on *every*
-parameter of the response distribution, not just the mean. Each parameter gets
-its own formula, bundled together with [`bf`](@ref):
+| Your response or question | A good first page |
+|---|---|
+| A continuous measurement, such as a trait, concentration, or score | [Fit your first model](../getting-started.md) |
+| Counts, including overdispersed counts or extra zeros | [Count abundance and extra zeros](../tutorials/count-nbinom2.md) |
+| Proportions, success rates, or binomial data | [Proportions and success rates](../tutorials/proportion-beta-binomial.md) |
+| Whether predictors change both the average and the spread | [When variance carries signal](../tutorials/location-scale.md) |
+| Two responses that may be associated | [Changing residual coupling](../tutorials/bivariate-coscale.md) |
+| Observations linked by a phylogeny, space, pedigree, or relatedness matrix | [Biological examples](../tutorials/phylogenetic-models.md) |
+
+The first examples are motivated by ecology, evolution, and environmental
+science, but the models are also useful wherever a response can vary in more
+than its average. Read on for the model choices, or use the
+[which page next](#Which-page-next) table to move directly to a guide.
+
+## The modelling idea: a formula per parameter
+
+DRModels.jl is **distributional regression** — it lets you model more than the
+mean of a response. Each parameter supported by the chosen response family can
+have its own formula, bundled together with [`bf`](@ref):
 
 | Parameter | What it controls | Formula |
 |---|---|---|
@@ -30,8 +45,8 @@ distinct quantities DRModels.jl keeps separate.
 
 ## The `bf(...)` front end
 
-[`bf`](@ref) (alias `drm_formula`) collects one formula per parameter and reads
-exactly like drmTMB and brms. It has two forms:
+[`bf`](@ref) (alias `drm_formula`) collects one formula per parameter, following
+the same formula-per-parameter pattern as drmTMB and brms. It has two forms:
 
 **Univariate — positional.** The first formula is the mean; the rest name their
 parameter on the left-hand side:
@@ -118,15 +133,16 @@ exception: because `log y` is exactly Gaussian, its `phylo`/`relmat`
 structured markers on the mean delegate WHOLESALE to `Gaussian()` on
 `log y` (exact, not a Laplace approximation) rather than the shared
 non-Gaussian sparse path; `animal`/`spatial` are not implemented for
-`LogNormal()`. So put predictors on `sigma` for Gaussian freely; for the
-count/proportion families, vary the mean and keep dispersion constant when
-adding a structured or phylogenetic effect.
+`LogNormal()`. So put predictors on `sigma` for Gaussian freely. On the
+non-Gaussian phylogenetic path, follow the family-specific boundary: NB2,
+Gamma, and Beta accept `sigma ~ x`; `BetaBinomial()` requires constant
+dispersion; and `Binomial()` has no dispersion formula.
 
 [`CumulativeLogit`](@ref) (ordinal) carries an ordinary random intercept
 `(1 | g)` or an *independent* random slope `(0 + x | g)` on `mu` via the same
 Gauss–Hermite scheme, and an intercept-only `phylo(1 | species)` through the
-same sparse Laplace engine; the correlated form `(1 + x | g)` and the other structured
-(phylo/relmat/animal/spatial) effects are not implemented yet.
+same sparse Laplace engine; the correlated form `(1 + x | g)` and the other
+structured effects (`relmat` / `animal` / `spatial`) are not implemented yet.
 
 For the verified engine behind the phylogenetic models — the q=4 phylogenetic
 bivariate location–scale model, which matches drmTMB's fit and still returns
@@ -135,22 +151,26 @@ usable Wald and bootstrap intervals where drmTMB's Hessian is singular — see
 
 ## After the fit
 
-Every fitted model supports the same post-fit surface: [`coef`](@ref),
-[`stderror`](@ref), Wald **and** profile-likelihood [`confint`](@ref),
-[`fitted`](@ref) / [`residuals`](@ref), [`predict`](@ref), [`simulate`](@ref),
-parametric [`bootstrap_ci`](@ref), `summary` / [`coeftable`](@ref), and
-[`aic`](@ref) / [`bic`](@ref) for ML model selection. Variance components come
-back via [`re_sd`](@ref) (one SD per grouping) and [`vc`](@ref) (the RE
-covariance). See
-[Checking and using fitted models](model-workflow.md) for the workflow, and
-[Which scale are you modelling?](which-scale.md) for honest inference at a
-variance boundary (where drmTMB's `sdreport` returns all-`NaN`).
+The common starting points are [`coef`](@ref), `summary` / [`coeftable`](@ref),
+[`fitted`](@ref), response [`residuals`](@ref), and [`aic`](@ref) / [`bic`](@ref)
+for appropriate ML comparisons. The rest depends on the fitted route:
+standard errors and Wald intervals require an available covariance estimate;
+profile intervals require a stored or precomputed profile target; and bootstrap,
+prediction, simulation, and variance-component summaries apply only where that
+model implements them. Use `profile_targets(fit)` to see which profile intervals
+are ready for a particular fit, and consult the [capability matrix](../capabilities.md)
+before planning an analysis around a post-fit method. [`re_sd`](@ref) and
+[`vc`](@ref) describe mixed or structured models, not every fit.
+
+See [Checking and using fitted models](model-workflow.md) for a worked Gaussian
+workflow, and [Which scale are you modelling?](which-scale.md) for honest
+inference at a variance boundary.
 
 ## Which page next
 
 | If you want to… | Go to |
 |---|---|
-| Fit your first model, end to end | [Get started](../get-started.md) |
+| Fit your first model, end to end | [Get started](../getting-started.md) |
 | Choose the right response family | [Choosing response families](distribution-families.md) |
 | Tell residual `σ`, group SD, and known V apart | [Which scale are you modelling?](which-scale.md) |
 | Extract coefficients, CIs, predictions | [Checking and using fitted models](model-workflow.md) |
@@ -166,4 +186,3 @@ variance boundary (where drmTMB's `sdreport` returns all-`NaN`).
 | Phylogenetic / spatial / animal models | [Phylogenetic](../tutorials/phylogenetic-models.md) · [Spatial](../tutorials/spatial-models.md) · [Animal](../tutorials/animal-models.md) |
 | Meta-analysis with known variances | [Meta-analysis](../tutorials/meta-analysis.md) |
 | The full API reference | [Model specification](../reference/model-specification.md) · [Fitting & post-fit](../reference/model-fitting-and-postfit.md) |
-| What's planned next | the [roadmap](https://github.com/itchyshin/DRModels.jl/blob/main/ROADMAP.md) |

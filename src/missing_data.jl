@@ -62,12 +62,11 @@ how many rows (and which columns) were removed.
 !!! warning "Listwise deletion discards information"
     For the **bivariate / q=4 coevolution** models a row is dropped if *either*
     trait is missing — exactly the information that full-information maximum
-    likelihood (FIML) is designed to keep. Listwise deletion is unbiased only
-    under missing-completely-at-random (MCAR) and is generally less efficient than
-    FIML under missing-at-random (MAR). Native FIML for missing responses, and
-    multiple imputation for missing predictors, are tracked as follow-up under
-    issue #49 (`report/fiml-missing-data-design.md`); this helper is the interim
-    complete-case path, not a substitute.
+likelihood (FIML) is designed to keep. Listwise deletion is unbiased only
+under missing-completely-at-random (MCAR) and is generally less efficient than
+FIML under missing-at-random (MAR). Native FIML for missing responses and
+multiple imputation for missing predictors are not currently available; this
+helper is an interim complete-case path, not a substitute.
 
 Only the columns the model uses are checked, so unrelated columns with missing
 values do not cause rows to be dropped. Set `verbose = false` to suppress the

@@ -17,7 +17,7 @@ import os
 from pathlib import Path
 import re
 import sys
-from typing import Any
+from typing import Any, Iterable
 from urllib.parse import unquote, urlsplit
 import xml.etree.ElementTree as ElementTree
 
@@ -27,6 +27,24 @@ CSS_URL = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 CSS_IMPORT = re.compile(r"""@import\s+(['"])([^'"]+)\1""", re.IGNORECASE)
+PRIVATE_SOURCE_PATH = re.compile(r"(?:^|/)developer-notes(?:/|$)")
+PRIVATE_SOURCE_LANGUAGE = re.compile(
+    r"(?:developer\s+note|docs/dev-log|reviewer\s+contract|\bissue\s*#\d+|\bphase[- ]\d+)",
+    re.IGNORECASE,
+)
+# Keep the rendered public surface to the same reader-first standard as the
+# source-route gate.  Documenter can add text from expanded docstrings, so a
+# source-only scan cannot prove that the published HTML is free of process
+# bookkeeping.
+RENDERED_READER_SLOP = re.compile(
+    r"(?:\b(?:PR|issue)\s*#\d+|\bArc\s+\d+\b|"
+    r"\b(?:implementation|development|work|active)\s+lane\b|\bworktree\b|\bdev-log/|"
+    r"\b(?:agent|persona)\s+(?:review|approved|approval|handoff)\b|"
+    r"\b(?:Rose|Pat)\s+(?:reviewed|approved)\b|"
+    r"\bfixture(?:-backed|\s+evidence)\b|\bcapability\s+ledger\b|"
+    r"\b(?:catch-up\s+)?scoreboard\b|\boptimizer-health\b)",
+    re.IGNORECASE,
+)
 
 
 def _sha256(path: Path) -> str:
@@ -61,6 +79,8 @@ class _PageParser(HTMLParser):
         self._style_depth = 0
         self.inline_css: list[str] = []
         self.base_hrefs: list[str] = []
+        self._noncontent_depth = 0
+        self.visible_text: list[str] = []
 
     def handle_starttag(self, tag: str, attrs_list: list[tuple[str, str | None]]) -> None:
         attrs = dict(attrs_list)
@@ -102,6 +122,8 @@ class _PageParser(HTMLParser):
             self.inline_css.append("")
         elif self._style_depth:
             self._style_depth += 1
+        if tag in {"script", "style", "template"}:
+            self._noncontent_depth += 1
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         self.handle_starttag(tag, attrs)
@@ -118,6 +140,8 @@ class _PageParser(HTMLParser):
                 self.h1.append("".join(self._h1_chunks).strip())
         if self._style_depth:
             self._style_depth -= 1
+        if tag in {"script", "style", "template"}:
+            self._noncontent_depth -= 1
 
     def handle_data(self, data: str) -> None:
         if self._title_depth:
@@ -126,15 +150,42 @@ class _PageParser(HTMLParser):
             self._h1_chunks.append(data)
         if self._style_depth and self.inline_css:
             self.inline_css[-1] += data
+        if not self._noncontent_depth:
+            self.visible_text.append(data)
 
 
-def _target(root: Path, page: Path, value: str, kind: str) -> tuple[str, Path | None, str]:
+def _absolute_url_path(value: str, label: str) -> str:
+    """Return one normalized absolute URL path or reject an ambiguous contract."""
+    parsed = urlsplit(value)
+    if parsed.scheme or parsed.netloc or parsed.query or parsed.fragment:
+        raise ValueError(f"{label} must be an absolute URL path without query or fragment: {value}")
+    path = unquote(parsed.path)
+    if not path.startswith("/"):
+        raise ValueError(f"{label} must start with '/': {value}")
+    return path.rstrip("/") or "/"
+
+
+def _target(
+    root: Path,
+    page: Path,
+    value: str,
+    kind: str,
+    url_prefix: str = "/",
+    deployment_root_targets: frozenset[str] = frozenset(),
+) -> tuple[str, Path | None, str]:
     """Resolve one local target without allowing escape outside ``root``."""
     if _external(value) or value.startswith(("data:", "javascript:", "mailto:", "tel:")):
         return "external", None, ""
     parsed = urlsplit(value)
     raw_path = unquote(parsed.path)
     fragment = unquote(parsed.fragment)
+    if raw_path in deployment_root_targets:
+        return "deployment", None, fragment
+    if raw_path.startswith("/") and url_prefix != "/":
+        if raw_path == url_prefix:
+            raw_path = "/"
+        elif raw_path.startswith(url_prefix + "/"):
+            raw_path = raw_path[len(url_prefix):]
     base = root if raw_path.startswith("/") else page.parent
     initial = (base / raw_path.lstrip("/")) if raw_path else page
     if not _inside(initial.resolve(strict=False), root):
@@ -186,12 +237,37 @@ def _failure(kind: str, page: Path | None = None, target: str | None = None, det
     return result
 
 
-def audit(site_root: Path | str, source_root: Path | str) -> dict[str, Any]:
-    """Return a JSON-ready report. Any local unresolved reference is a failure."""
+def _source_pages(source_root: Path, emitted_source_paths: Iterable[str] | None) -> list[Path]:
+    """Return the source pages Documenter is configured to emit."""
+    if emitted_source_paths is None:
+        return sorted(source_root.rglob("*.md"))
+    pages: list[Path] = []
+    for raw_path in sorted(set(emitted_source_paths)):
+        candidate = source_root / raw_path
+        if candidate.suffix != ".md" or not _inside(candidate.resolve(strict=False), source_root):
+            raise ValueError(f"invalid emitted source path: {raw_path}")
+        pages.append(candidate)
+    return pages
+
+
+def audit(
+    site_root: Path | str,
+    source_root: Path | str,
+    emitted_source_paths: Iterable[str] | None = None,
+    url_prefix: str = "/",
+    deployment_root_targets: Iterable[str] = (),
+) -> dict[str, Any]:
+    """Return a JSON-ready report. Any in-scope local unresolved reference is a failure."""
     site_root = Path(site_root).resolve()
     source_root = Path(source_root).resolve()
+    url_prefix = _absolute_url_path(url_prefix, "url_prefix")
+    deployment_root_targets = frozenset(
+        _absolute_url_path(value, "deployment_root_target")
+        for value in deployment_root_targets
+    )
     failures: list[dict[str, str]] = []
     external: set[str] = set()
+    deployment: set[str] = set()
     parsed_pages: dict[Path, _PageParser] = {}
 
     if not site_root.is_dir():
@@ -217,12 +293,29 @@ def audit(site_root: Path | str, source_root: Path | str) -> dict[str, Any]:
         except (OSError, UnicodeError, ValueError) as error:
             failures.append(_failure("html_parse_error", page.relative_to(site_root), detail=str(error)))
 
+    for page, parser in parsed_pages.items():
+        visible_text = " ".join(parser.visible_text)
+        for match in RENDERED_READER_SLOP.finditer(visible_text):
+            failures.append(_failure(
+                "forbidden_rendered_public_language",
+                page.relative_to(site_root),
+                detail=match.group(0),
+            ))
+
     source_pages: list[dict[str, Any]] = []
-    for source in sorted(source_root.rglob("*.md")):
+    for source in _source_pages(source_root, emitted_source_paths):
+        if not source.is_file():
+            failures.append(_failure("missing_emitted_source_page", detail=str(source.relative_to(source_root))))
+            continue
         if source.is_symlink():
             failures.append(_failure("symlinked_source_page", source.relative_to(source_root)))
             continue
         relative = source.relative_to(source_root)
+        source_text = source.read_text(encoding="utf-8")
+        if PRIVATE_SOURCE_PATH.search(relative.as_posix()):
+            failures.append(_failure("forbidden_public_source_path", relative))
+        if PRIVATE_SOURCE_LANGUAGE.search(source_text):
+            failures.append(_failure("forbidden_public_source_language", relative))
         expected = site_root / relative.with_suffix(".html")
         resolved_expected = expected.resolve(strict=False)
         record = {
@@ -241,10 +334,15 @@ def audit(site_root: Path | str, source_root: Path | str) -> dict[str, Any]:
             failures.append(_failure("missing_rendered_source_page", relative, record["rendered_path"]))
 
     def resolve(referrer: Path, kind: str, value: str) -> None:
-        status, target, fragment = _target(site_root, referrer, value, kind)
+        status, target, fragment = _target(
+            site_root, referrer, value, kind, url_prefix, deployment_root_targets
+        )
         rel_referrer = referrer.relative_to(site_root)
         if status == "external":
             external.add(value)
+            return
+        if status == "deployment":
+            deployment.add(value)
             return
         if status != "file" or target is None:
             failures.append(_failure("outside_site_root" if status == "outside" else f"missing_{kind}", rel_referrer, value))
@@ -282,7 +380,9 @@ def audit(site_root: Path | str, source_root: Path | str) -> dict[str, Any]:
     def inspect_css_contents(text: str, referrer: Path) -> None:
         for value in _css_targets(text):
             resolve(referrer, "asset", value)
-            status, target, _ = _target(site_root, referrer, value, "asset")
+            status, target, _ = _target(
+                site_root, referrer, value, "asset", url_prefix, deployment_root_targets
+            )
             if status == "file" and target is not None and target.suffix.lower() == ".css":
                 inspect_css(target)
 
@@ -309,7 +409,9 @@ def audit(site_root: Path | str, source_root: Path | str) -> dict[str, Any]:
         for kind, value in parser.targets:
             if kind != "asset" or not value.lower().split("?", 1)[0].endswith(".css"):
                 continue
-            status, css_path, _ = _target(site_root, page, value, "asset")
+            status, css_path, _ = _target(
+                site_root, page, value, "asset", url_prefix, deployment_root_targets
+            )
             if status != "file" or css_path is None:
                 continue
             inspect_css(css_path)
@@ -335,10 +437,14 @@ def audit(site_root: Path | str, source_root: Path | str) -> dict[str, Any]:
             "external_links": "reported_not_checked",
             "visual_layout": "not_checked",
             "accessibility": "limited_to_image_alt_absence",
+            "source_coverage": "all_markdown_sources" if emitted_source_paths is None else "explicit_emitted_sources",
+            "url_prefix": url_prefix,
+            "deployment_root_targets": "reported_not_checked",
         },
         "pages": page_records,
         "source_pages": source_pages,
         "external_targets": sorted(external),
+        "deployment_root_targets": sorted(deployment),
         "failures": failures,
     }
 
@@ -347,9 +453,39 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--site-root", required=True, type=Path)
     parser.add_argument("--source-root", required=True, type=Path)
+    parser.add_argument(
+        "--make",
+        type=Path,
+        help="Documenter make.jl; requires pagesonly = true and derives emitted source pages from pages =.",
+    )
     parser.add_argument("--report", type=Path, help="Write the complete JSON report here")
+    parser.add_argument(
+        "--url-prefix",
+        default="/",
+        help="Absolute URL prefix represented by --site-root (for example /DRModels.jl/dev)",
+    )
+    parser.add_argument(
+        "--deployment-root-target",
+        action="append",
+        default=[],
+        help="Exact generated target that exists only at the deployed site root; repeatable and reported, not checked",
+    )
     args = parser.parse_args()
-    report = audit(args.site_root, args.source_root)
+    emitted_source_paths = None
+    if args.make:
+        from parity_docs_audit import navigation_entries
+
+        make_text = args.make.read_text(encoding="utf-8")
+        if not re.search(r"\bpagesonly\s*=\s*true\b", make_text):
+            parser.error("--make requires Documenter pagesonly = true")
+        emitted_source_paths = [entry["path"] for entry in navigation_entries(args.make)]
+    report = audit(
+        args.site_root,
+        args.source_root,
+        emitted_source_paths,
+        url_prefix=args.url_prefix,
+        deployment_root_targets=args.deployment_root_target,
+    )
     if args.report:
         args.report.parent.mkdir(parents=True, exist_ok=True)
         args.report.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")

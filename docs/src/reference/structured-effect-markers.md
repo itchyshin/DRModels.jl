@@ -31,8 +31,8 @@ sd_phylo
 
 These exported helpers prepare or inspect phylogenetic covariance inputs for
 advanced workflows. They do not make every tree or structured-effect
-combination an admitted fitting route; use the capability matrix for that
-boundary.
+combination a supported model; use the capability page to check the combinations
+available for your response family.
 
 ```@docs
 augmented_phy

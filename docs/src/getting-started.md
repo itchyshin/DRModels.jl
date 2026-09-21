@@ -4,13 +4,13 @@
     A standalone first-fit walkthrough. Everything on this page runs against the
     verified Gaussian front end (`drm` / `bf`) and the post-fit accessors
     (`coef`, `loglik`, `confint`, `summary`). For moving between R and Julia,
-    see the [R ↔ Julia bridge](r-julia-bridge.md) and
+    see [Coming from R](coming-from-r.md) and the
     [Rosetta](rosetta.md); for the full capability map see
     [What can I fit today?](model-guides/model-map.md).
 
 DRModels.jl is *distributional* regression: instead of a single linear predictor for
-the mean, you give **each parameter of the response distribution its own
-formula**. The simplest case puts a formula on the mean **μ** and a formula on
+the mean, a chosen response family can let you give its supported parameters
+their own formulas. The simplest case puts a formula on the mean **μ** and a formula on
 the residual scale **σ**, so the spread of the data can change with covariates
 just like the mean does.
 
@@ -19,18 +19,27 @@ read what came back.
 
 ## Install
 
-DRModels.jl is pre-release, so develop it from a local checkout:
+This is the direct-Julia route. If Julia is new to you, first install **Julia
+1.10 or later** and open its Julia prompt (the REPL). If you would rather keep
+working in R, you do not need this setup: use the optional
+[drmTMB Julia-engine route](https://itchyshin.github.io/drmTMB/articles/julia-engine.html)
+instead.
+
+Install the current package directly from GitHub:
 
 ```julia
 using Pkg
-Pkg.develop(path = "/path/to/DRModels.jl")   # or Pkg.add(url = "https://github.com/itchyshin/DRModels.jl")
+Pkg.add(url = "https://github.com/itchyshin/DRModels.jl")
 using DRModels
 ```
+
+If you are developing DRModels.jl from a local clone, replace the installation
+line with `Pkg.develop(path = "/absolute/path/to/your/DRModels.jl")`.
 
 The two verbs you will use the most are exported at the top level:
 
 - `bf(...)` — bundle one formula per distributional parameter (alias
-  `drm_formula`), exactly like drmTMB / brms.
+  `drm_formula`), using the familiar drmTMB / brms pattern.
 - `drm(formula, family; data = ...)` — fit the model by maximum likelihood.
 
 ## Fit your first distributional regression
@@ -103,12 +112,11 @@ above:
 is_converged(fit)
 ```
 
-`summary(fit)` prints estimates, standard errors, and 95% Wald intervals for
-every block at once. In this first-fit scale block, the `z` and `p` entries are
-currently unavailable (`NaN`); that is not evidence for a zero scale effect, and
-the estimate, standard error, and interval remain finite outputs. Supplying
-scale-block z/p results consistent with the R-facing post-fit contract remains
-an open parity obligation. Row names are prefixed with the parameter (`mu: …`,
+`summary(fit)` prints estimates, standard errors, Wald intervals, and its
+coefficient-level `z` and `p` summaries for every block at once. Treat those
+summaries as evidence conditional on this fitted model, not as proof that a
+biological effect is real; check diagnostics and the size of the estimated
+scale change as well. Row names are prefixed with the parameter (`mu: …`,
 `sigma: …`) so they stay unique:
 
 ```@example getstarted
@@ -155,8 +163,8 @@ The same front end also provides these next steps; the
 
 ## Where to go next
 
-- [R ↔ Julia bridge](r-julia-bridge.md) — the experimental `engine = "julia"`
-  route and the cells it admits today.
+- [Coming from R](coming-from-r.md) — choosing native R, direct Julia, or the
+  optional `engine = "julia"` route.
 - [Rosetta (R ↔ Julia)](rosetta.md) — vocabulary and workflow translation.
 - [Choosing response families](families.md) — the full list of response
   families and how to fit each one.
