@@ -65,7 +65,7 @@ species = repeat(phy.leaf_names, inner = 3)
 n = length(species)
 x = randn(n)
 
-# Small runnable example. Use larger, replicated simulations to study recovery.
+# Deliberately small runnable example for learning the formula and result shape.
 u = Dict(name => 0.15 .* randn(4) for name in phy.leaf_names)
 y1 = [1 + 0.4*x[i] + u[species[i]][1] +
       exp(-0.4 + u[species[i]][3]) * randn() for i in 1:n]
@@ -88,6 +88,12 @@ fit_phy = drm(
 fit_phy.ranef.Sigma_a      # 4x4 group-level covariance, axes below
 fit_phy.ranef.axes         # (:mu1, :mu2, :sigma1, :sigma2)
 ```
+
+This six-species fit demonstrates the call and the returned covariance object;
+it is too small to support biological recovery or interval claims. It also sets
+`q4_vcov = false`, so it does not compute the coefficient covariance matrix. For
+an inferential analysis, use a design with enough species and replication, and
+retain the default `q4_vcov = true` when you need Wald uncertainty.
 
 The `:phylocov` coefficient block describes group-level covariance rather than
 a distributional predictor, so

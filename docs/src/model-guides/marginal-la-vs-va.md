@@ -145,10 +145,11 @@ Everything else about the call — the `bf(...)` formulas, the family, the data 
 stays the same; only how the random effects are integrated out changes.
 `method = :VA` on non-Gaussian families is rejected with a pointer to `marginal`.
 
-## Checks that make the experimental result interpretable
+## How to assess the approximation
 
-Three known relationships provide stronger checks than simply asking whether
-the fitted numbers look plausible:
+The Experimental `(1 | g)` path is checked against three mathematical
+expectations with known outcomes, rather than judged only by whether the fitted
+numbers look plausible:
 
 1. **Variance → 0 collapses to independence.** As the random-effect variance is
    driven to zero there is nothing left to integrate, so the ELBO equals the
@@ -157,8 +158,9 @@ the fitted numbers look plausible:
    computed by dense *adaptive* Gauss–Hermite. The ELBO, being a lower bound,
    must sit at or below it — never above. (Non-adaptive engine GHQ centred at 0
    can sit below the ELBO; that is not a counterexample.)
-3. **Family limits.** The negative binomial as its size `r → ∞` becomes Poisson,
-   so NB2-VA should approach Poisson-VA for the same data and model matrix.
+3. **Family limits.** The negative binomial becomes Poisson as its size `r → ∞`,
+   so NB2-VA should approach Poisson-VA when both are applied to the same
+   simulated data.
 
 On Gamma `(1 | g)`, the evaluated comparison finds LA ≈ VA on shape `α` and LA is
 much faster. VA beyond random
