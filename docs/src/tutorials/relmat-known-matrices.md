@@ -40,9 +40,10 @@ data. The same engine powers `animal(1 | id)` (with a pedigree-derived `A`) and
 `phylo(1 | species)` (with a tree-derived correlation).
 
 !!! note "Gaussian mean vs location-scale"
-    This closed-form path is for structured effects on the **mean**. When the
-    structured effect also acts on `log σ` (the q=4 phylogenetic location-scale
-    model), DRModels.jl uses its verified sparse-Laplace engine — see `HANDOVER.md`.
+    This short tutorial covers structured effects on the **mean**. If your
+    scientific question is also about why the amount of between-group variation
+    changes, use [location-scale-scale models](location-scale-scale.md). Those
+    models use a different fitting method and need their own interpretation.
 
 ## See also
 
