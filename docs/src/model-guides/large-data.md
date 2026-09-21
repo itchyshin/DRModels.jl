@@ -10,24 +10,29 @@ phylogenetic covariance, and it gets the gradient from a Takahashi selected
 inverse rather than by differentiating a dense factorisation. The practical
 consequence is near-linear scaling in the number of tips.
 
-## Verified scaling
+## What the timing evidence shows
 
-The biological per-dimension-variance model (a 4×4 Λ: a separate phylogenetic
-variance per axis plus cross-covariance, `nrep = 4` replicates) was timed end to
-end with the O(p) sparse-precision sampler. Iteration counts stay flat and the
-per-observation logLik is stable as the number of tips grows, which is the
-signature of near-linear scaling. The timings, the fitted scaling exponent and
-the measured conditions and caveats are documented with the model guide.
+Two synthetic timing studies define the current evidence boundary. In a
+single-thread Julia sweep with four observations per tip, balanced and
+caterpillar trees at `p = 100`, `1,000`, and `10,000` gave empirical wall-time
+exponents of 0.90 and 0.91. That is evidence of near-linear growth for those
+tree shapes and settings, not a runtime guarantee for a new dataset.
 
-!!! note "On head-to-head claims"
-    The scaling result above is measured for DRModels.jl alone, on a synthetic
-    near-balanced tree grid with equal branch lengths and replicates. A paired drmTMB head-to-head on
-    the same `nrep = 4` grid was measured separately on Totoro against drmTMB
-    0.6.0 and does **not**
-    show DRModels.jl faster everywhere: Julia leads at the smallest tip count, and
-    drmTMB is comparable or faster at larger ones under that protocol. Any
-    extrapolated "N× faster" figure is **retired**. Read the numbers in
-    the measured conditions rather than quoting a ratio here.
+A separate paired benchmark used a synthetic near-balanced ultrametric tree,
+four observations per tip, one discarded warm-up, two timed repetitions,
+single-threaded linear algebra, and drmTMB 0.6.0 on the Totoro server:
+
+| Tips | DRModels.jl median | drmTMB median | drmTMB / DRModels.jl |
+|---:|---:|---:|---:|
+| 100 | 0.529 s | 1.752 s | 3.31 |
+| 1,000 | 6.921 s | 5.581 s | 0.81 |
+| 5,000 | 82.141 s | 41.996 s | 0.51 |
+| 10,000 | 115.178 s | 104.869 s | 0.91 |
+
+DRModels.jl was faster at 100 tips in this comparison; drmTMB was comparable or
+faster at the larger sizes. These figures describe one machine, package version,
+tree shape, and model. They are not a general speed ratio, and the older
+extrapolated “N× faster” claim is retired.
 
 ## Why it scales
 
@@ -39,9 +44,9 @@ the measured conditions and caveats are documented with the model guide.
   selected inverse — the entries of the inverse that the sparse Cholesky already
   touches — instead of an O(p²) or O(p³) dense differentiation. This is the
   difference that keeps the iteration cost near-linear in the number of tips.
-- **A precision sampler for uncertainty.** Posterior draws of the random effects
-  come from the same sparse precision (`Cov(û) ≈ P⁻¹`), so bootstrap and
-  conditional-mode work stays O(p) too.
+- **A precision sampler for uncertainty.** A latent-state draw uses the same
+  sparse precision (`Cov(û) ≈ P⁻¹`) rather than a dense covariance. Total
+  bootstrap time still depends on the number of refits and their convergence.
 
 ## Practical tips for large fits
 
