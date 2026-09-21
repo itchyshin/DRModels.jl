@@ -8,7 +8,7 @@
     DRModels.jl also accepts one known 2×2 sampling-covariance block per study
     through `meta_vcov_bivariate(...)` and the `V =` fit keyword. Arbitrary
     cross-study covariance, REML with `V`, and `V` combined with structured
-    effects are not supported; see the [bivariate guide](../model-guides/meta-analysis.md#Two-responses-and-now-two-correlations).
+    effects are not supported; see the [bivariate guide](../model-guides/meta-analysis.md).
 
 In meta-analysis each study reports an effect `y_i` with a **known** sampling
 variance `v_i`. The model separates that known measurement uncertainty from the
