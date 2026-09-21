@@ -158,9 +158,9 @@ numbers look plausible:
    computed by dense *adaptive* Gauss–Hermite. The ELBO, being a lower bound,
    must sit at or below it — never above. (Non-adaptive engine GHQ centred at 0
    can sit below the ELBO; that is not a counterexample.)
-3. **Family limits.** The negative binomial becomes Poisson as its size `r → ∞`,
-   so NB2-VA should approach Poisson-VA when both are applied to the same
-   simulated data.
+3. **Family limits.** The negative binomial becomes Poisson as its size
+   `r → ∞`, so NB2-VA should approach Poisson-VA when both are applied to the
+   same simulated data.
 
 On Gamma `(1 | g)`, the evaluated comparison finds LA ≈ VA on shape `α` and LA is
 much faster. VA beyond random
