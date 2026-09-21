@@ -523,6 +523,301 @@ function gate_fdvcov(ps::Vector{Int})
 end
 
 # -----------------------------------------------------------------------------
+# Gate GC.1/GC.2 (leaf-S9, 2026-09-20): --gate sections_fine --p 1000,5000 --
+# splits the FIT WALL (not fd_vcov) further into the beta-block trace, the Gst
+# sparse assembly, the v-assembly, the inner Newton mode-search wall (which
+# the numeric CHOLMOD factorisations dominate but do not solely comprise --
+# see the note below), plus kron-prior/logdetP/takahashi/AD-closure sections,
+# and a genuine remainder. Confirms or refutes the leaf-S9 ledger's
+# unmeasured ~23% (beta-block trace) / ~17% (Gst/v assembly) shares at
+# p = 5,000.
+#
+# METHODOLOGY: `_install_sections_fine_methods!` installs measurement-only new
+# methods for `DRModels.marginal_and_exact_grad` and `DRModels.laplace_ll`,
+# each a VERBATIM transcription of the CURRENT (post-S5e) body in
+# src/fit_q4_sparse_tmb.jl / src/sparse_aug_plsm.jl (re-read from this
+# worktree's HEAD for this leaf, including the S5 `chol_ref` threading -- not
+# from a stale git blob), with `time_ns()` brackets added around named,
+# non-overlapping spans. Every numeric primitive these two functions call
+# through to -- `estep_mode` (and therefore `_estep_fast`/`_estep_robust`/
+# `sparse_pd_chol`/`cholesky!`, i.e. S5's cholesky!-reuse pattern cache),
+# `joint_nll`, `joint_nll_T`, `joint_grad_T`, `takahashi_selinv`, `leaf_hess`,
+# `leaf_hess_du`, `prior_precision`, `unpack_theta`, `lc_to_Λ` -- is called
+# UNMODIFIED; none of them is redefined, so S5's cholesky!-reuse behaviour
+# runs exactly as it does in the real fit (this is why the technique is safe
+# here even though the S5 NOTE above retired the OLDER leaf-S3 redefinitions,
+# which covered `_estep_fast`/`_estep_robust`/`estep_mode` themselves -- those
+# are the exact functions S5 changed, and are NOT redefined by this gate).
+# Installed only inside `gate_sections_fine` (never at file-load time), so
+# every other gate in this file is untouched by it.
+#
+# WHAT THIS CANNOT SEPARATE WITHOUT A src/ CHANGE: `estep_mode_wall` times the
+# WHOLE inner Newton mode-search call (`estep_mode`, which may take the fast
+# or the robust-LM path and may run several `sparse_pd_chol` factorisations
+# plus several `joint_nll`/`joint_grad` line-search evaluations per Newton
+# step). It is dominated by the CHOLMOD factorisations but is NOT their cost
+# alone -- isolating just the factorisation wall from the surrounding
+# gradient/line-search cost would need a `time_ns()` bracket placed directly
+# around each `sparse_pd_chol(...)` call site INSIDE `_estep_fast`/
+# `_estep_robust` (src/sparse_aug_plsm.jl:~445-520). That is a src/ change and
+# is not made here; named instead of made, per the gate contract (GC leaf-S9,
+# item 3). The already-tracked COUNT (`DRModels.CHOL_FACTORIZATIONS[]`) is
+# read unchanged and printed alongside `estep_mode_wall` for context, so the
+# cost (this gate's new measurement) and the count (already tracked) are
+# reported separately rather than conflated.
+# -----------------------------------------------------------------------------
+
+const ACC = Dict{Symbol,Vector{Float64}}()
+_reset_acc!() = empty!(ACC)
+function _bump!(sym::Symbol, dt::Real, n::Real = 1)
+    v = get!(ACC, sym, Float64[0.0, 0.0])
+    v[1] += dt; v[2] += n
+    return v
+end
+
+const SECTIONS_FINE_ORDER = [:kron_prior, :estep_mode_wall, :logdetP_chol, :takahashi,
+                              :joint_nll_T, :joint_grad_T, :beta_trace, :gst, :v_assembly]
+
+# Installed UNCONDITIONALLY at file top level (not lazily inside a function):
+# a lazy/nested `function DRModels.foo(...)` install (tried first) left
+# `fit_q4_sparse_tmb`'s already-JIT-specialized `fg!` closure calling the
+# ORIGINAL, un-timed method -- `methods(DRModels.marginal_and_exact_grad)`
+# showed the replacement installed (count stayed 1, at this file's location),
+# but a literal `println` as the first line of the new body never printed
+# across a full fit (measured: 0 hits), i.e. dispatch from inside the
+# optimizer's already-compiled call graph did not pick up the mid-run
+# redefinition. Matches this file's OWN leaf-S3 precedent (top-level
+# `function DRModels.<name>(...)` statements, always active once the file is
+# `include`d) -- the technique that measurably worked there.
+function DRModels.laplace_ll(prob::AugProblem, P::SparseMatrixCSC, β, u, ch_H)
+    jn = joint_nll(prob, P, u, β)
+    (isfinite(jn) && all(isfinite, nonzeros(P))) || return -Inf
+    logdetH = logdet(ch_H)
+    t0 = time_ns()
+    chP = cholesky(Symmetric(P) + 1e-10I; check = false)
+    logdetP = logdet(chP)
+    _bump!(:logdetP_chol, (time_ns() - t0) / 1e9, 1)
+    return -jn - 0.5 * logdetH + 0.5 * logdetP
+end
+
+function DRModels.marginal_and_exact_grad(prob::AugProblem, Q_cond::SparseMatrixCSC,
+                                          θ::Vector{Float64}; u0 = nothing, n_newton::Int = 40,
+                                          chol_ref::Union{Nothing,DRModels.CholPatternCache} = nothing)
+    nθ = length(θ)
+    k1, k2, ks1, ks2, kr = DRModels.beta_widths(prob)
+    o1 = 0; o2 = k1; o3 = o2 + k2; o4 = o3 + ks1; o5 = o4 + ks2; o6 = o5 + kr
+
+    β, lc = unpack_theta(prob, θ)
+    Λ = lc_to_Λ(lc)
+    Λi = inv(Λ)
+
+    t0 = time_ns()
+    P = prior_precision(Q_cond, Λi)
+    _bump!(:kron_prior, (time_ns() - t0) / 1e9, 1)
+
+    t0 = time_ns()
+    u_hat, chH, H = estep_mode(prob, P, β; u0 = u0, n_newton = n_newton, chol_ref = chol_ref)
+    _bump!(:estep_mode_wall, (time_ns() - t0) / 1e9, 1)
+    u_hat = Vector{Float64}(u_hat)
+    nll = -DRModels.laplace_ll(prob, P, β, u_hat, chH)
+
+    grad = zeros(nθ)
+
+    t0 = time_ns()
+    Vsel = takahashi_selinv(chH)
+    _bump!(:takahashi, (time_ns() - t0) / 1e9, 1)
+
+    η1, η2, ηs1, ηs2, ηr = DRModels.leaf_etas(prob, β)
+
+    jn_of_θ = function (t::AbstractVector)
+        βt, lct = unpack_theta(prob, t)
+        Λt = lc_to_Λ(lct)
+        t1 = time_ns()
+        Pt = prior_precision(Q_cond, inv(Λt))
+        _bump!(:kron_prior, (time_ns() - t1) / 1e9, 1)
+        t1 = time_ns()
+        val = DRModels.joint_nll_T(prob, Pt, u_hat, βt)
+        _bump!(:joint_nll_T, (time_ns() - t1) / 1e9, 1)
+        return val
+    end
+    grad .+= ForwardDiff.gradient(jn_of_θ, θ)
+
+    N = prob.n_total
+    glogdetΛ = ForwardDiff.gradient(v -> logdet(Symmetric(lc_to_Λ(v))), lc)
+    grad[o6+1:o6+10] .+= 0.5 * N .* glogdetΛ
+
+    t0 = time_ns()
+    @inbounds for i in eachindex(prob.leaf_node)
+        t = prob.leaf_node[i]; bt = 4(t - 1)
+        Vblk = @view Vsel[bt+1:bt+4, bt+1:bt+4]
+        Jη = ForwardDiff.jacobian(
+            e -> vec(DRModels.leaf_hess([u_hat[bt+1], u_hat[bt+2], u_hat[bt+3], u_hat[bt+4]],
+                               prob.y1[i], prob.y2[i], e[1], e[2], e[3], e[4], e[5],
+                               prob.obs1[i], prob.obs2[i])),
+            [η1[i], η2[i], ηs1[i], ηs2[i], ηr[i]])
+        sη = zeros(5)
+        for m in 1:5
+            acc = 0.0
+            col = @view Jη[:, m]
+            for b in 1:4, a in 1:4
+                acc += Vblk[a, b] * col[(b-1)*4 + a]
+            end
+            sη[m] = acc
+        end
+        for c in 1:k1;  grad[o1+c] += 0.5 * sη[1] * prob.X1[i, c];  end
+        for c in 1:k2;  grad[o2+c] += 0.5 * sη[2] * prob.X2[i, c];  end
+        for c in 1:ks1; grad[o3+c] += 0.5 * sη[3] * prob.Xs1[i, c]; end
+        for c in 1:ks2; grad[o4+c] += 0.5 * sη[4] * prob.Xs2[i, c]; end
+        for c in 1:kr;  grad[o5+c] += 0.5 * sη[5] * prob.Xr[i, c];  end
+    end
+    _bump!(:beta_trace, (time_ns() - t0) / 1e9, 1)
+
+    Gst = zeros(4, 4)
+    t0 = time_ns()
+    rows = rowvals(Q_cond); vals = nonzeros(Q_cond)
+    @inbounds for tcol in 1:N
+        for idx in nzrange(Q_cond, tcol)
+            s = rows[idx]; q = vals[idx]
+            bs = 4(s - 1); bt = 4(tcol - 1)
+            for a in 1:4, b in 1:4
+                Gst[b, a] += q * Vsel[bt + a, bs + b]
+            end
+        end
+    end
+    _bump!(:gst, (time_ns() - t0) / 1e9, 1)
+
+    dΛ = ForwardDiff.jacobian(lc_to_Λ, lc)
+    for k in 1:10
+        dΛk = reshape(@view(dΛ[:, k]), 4, 4)
+        Mk = -Λi * dΛk * Λi
+        acc = 0.0
+        for a in 1:4, b in 1:4
+            acc += Gst[b, a] * Mk[b, a]
+        end
+        grad[o6 + k] += 0.5 * acc
+    end
+
+    nu = 4 * prob.n_total
+    v = zeros(nu)
+    t0 = time_ns()
+    @inbounds for i in eachindex(prob.leaf_node)
+        t = prob.leaf_node[i]; bt = 4(t - 1)
+        Vblk = @view Vsel[bt+1:bt+4, bt+1:bt+4]
+        T = DRModels.leaf_hess_du([u_hat[bt+1], u_hat[bt+2], u_hat[bt+3], u_hat[bt+4]],
+                         prob.y1[i], prob.y2[i], η1[i], η2[i], ηs1[i], ηs2[i], ηr[i],
+                         prob.obs1[i], prob.obs2[i])
+        for c in 1:4
+            acc = 0.0
+            for b in 1:4, a in 1:4
+                acc += Vblk[a, b] * T[a, b, c]
+            end
+            v[bt + c] += 0.5 * acc
+        end
+    end
+    _bump!(:v_assembly, (time_ns() - t0) / 1e9, 1)
+
+    w = chH \ v
+
+    scalar_of_θ = function (t::AbstractVector)
+        βt, lct = unpack_theta(prob, t)
+        Λt = lc_to_Λ(lct)
+        t1 = time_ns()
+        Pt = prior_precision(Q_cond, inv(Λt))
+        _bump!(:kron_prior, (time_ns() - t1) / 1e9, 1)
+        t1 = time_ns()
+        gu = DRModels.joint_grad_T(prob, Pt, u_hat, βt)
+        _bump!(:joint_grad_T, (time_ns() - t1) / 1e9, 1)
+        return dot(gu, w)
+    end
+    grad .-= ForwardDiff.gradient(scalar_of_θ, θ)
+
+    return nll, grad, u_hat, chH
+end
+
+function gate_sections_fine(ps::Vector{Int})
+    rss = RssTracker()
+    tsv_lines = _tsv_header(_git_short_sha(), rss)
+    tsv_lines[1] = "# leaf-S9 GC.1 q4 fit-wall fine section split (beta_trace/gst/v_assembly/estep_mode_wall + remainder)"
+    meta_lines = String[]
+    ok_all = true
+
+    for p in ps
+        seed = _seed_for(p)
+        case = make_case(p; seed = seed, nrep = 4)
+        sample!(rss)
+
+        _reset_acc!(); _reset_chol_diag!()
+        fit_case(case.prob, case.Q, case.β0)   # warmup (not reported)
+        sample!(rss)
+
+        reps = 3
+        budget_s = 8 * 60.0
+        fit_walls = Float64[]
+        accs = Dict{Symbol,Vector{Float64}}[]
+        fits = Any[]
+        factn = Union{Missing,Int}[]
+        fallb = Union{Missing,Int}[]
+        for r in 1:reps
+            _reset_acc!(); _reset_chol_diag!()
+            t = @elapsed (last = fit_case(case.prob, case.Q, case.β0))
+            push!(fit_walls, t)
+            push!(accs, deepcopy(ACC))
+            push!(fits, last)
+            push!(factn, _chol_factorizations())
+            push!(fallb, _chol_fallbacks())
+            sample!(rss)
+            if p == 5000 && r == 1 && t * reps > budget_s
+                push!(meta_lines, "# p=5000: 1 fit ~ $(round(t, digits=1)) s; $(reps)x would exceed the $(Int(budget_s))s (8 min) budget -> dropping to 1 rep")
+                break
+            end
+        end
+        actual_reps = length(fit_walls)
+        med = median(fit_walls)
+        rep_idx = argmin(abs.(fit_walls .- med))
+        fit_wall = fit_walls[rep_idx]
+        acc = accs[rep_idx]
+        last = fits[rep_idx]
+        nfact = factn[rep_idx]
+        nfall = fallb[rep_idx]
+
+        section_wall(sym) = get(acc, sym, Float64[0.0, 0.0])[1]
+        section_count(sym) = Int(round(get(acc, sym, Float64[0.0, 0.0])[2]))
+
+        named_sum = sum(section_wall(s) for s in SECTIONS_FINE_ORDER)
+        other_wall = fit_wall - named_sum
+        within_10pct = abs(other_wall) <= 0.10 * fit_wall
+        ok_all &= within_10pct
+
+        @printf "p=%d fit_wall=%.4fs (reps=%d, chosen_rep=%d) named_sum=%.4fs other=%.4fs (%.3f%% of fit_wall) within_10pct=%s\n" p fit_wall actual_reps rep_idx named_sum other_wall (100 * other_wall / fit_wall) within_10pct
+        for s in SECTIONS_FINE_ORDER
+            w = section_wall(s); c = section_count(s)
+            @printf "  %-16s wall=%.4fs (%.3f%% of fit_wall) count=%d\n" String(s) w (100 * w / fit_wall) c
+        end
+        @printf "  chol_factorizations(existing counter)=%s chol_reuse_fallbacks=%s\n" string(nfact) string(nfall)
+
+        push!(meta_lines, "# p=$p reps_used=$actual_reps chosen_rep=$rep_idx fit_wall_s=$(round(fit_wall, digits=4)) named_sum_s=$(round(named_sum, digits=4)) other_s=$(round(other_wall, digits=4)) other_share_pct=$(round(100 * other_wall / fit_wall, digits=3)) within_10pct=$within_10pct chol_factorizations=$nfact chol_reuse_fallbacks=$nfall converged=$(last.converged) loglik=$(round(last.loglik, digits=4))")
+
+        push!(tsv_lines, @sprintf("%d\t%d\tfit_wall\t%.6f\t%d\t%d", p, rep_idx, fit_wall, nfact === missing ? 0 : nfact, 0))
+        for s in SECTIONS_FINE_ORDER
+            w = section_wall(s); c = section_count(s)
+            push!(tsv_lines, @sprintf("%d\t%d\t%s\t%.6f\t%d\t%d", p, rep_idx, String(s), w, c, 0))
+        end
+        push!(tsv_lines, @sprintf("%d\t%d\tother\t%.6f\t%d\t%d", p, rep_idx, other_wall, 0, 0))
+    end
+
+    out_dir = joinpath(@__DIR__, "results")
+    mkpath(out_dir)
+    out_path = joinpath(out_dir, "q4_sections_$(_git_short_sha()).tsv")
+    open(out_path, "w") do io
+        for l in meta_lines; println(io, l); end
+        for l in tsv_lines; println(io, l); end
+    end
+    println("wrote ", out_path)
+    println(ok_all ? "GATE GC.1 PASS" : "GATE GC.1 FAIL see per-p diagnostics above")
+    return ok_all
+end
+
+# -----------------------------------------------------------------------------
 # CLI
 # -----------------------------------------------------------------------------
 
@@ -541,7 +836,7 @@ function _parse_args(argv)
             error("unknown argument: $a")
         end
     end
-    gate === nothing && error("--gate is required (one of tsv|baseline|loglik|fdvcov|fallback|headtohead)")
+    gate === nothing && error("--gate is required (one of tsv|baseline|loglik|fdvcov|fallback|headtohead|sections_fine)")
     isempty(ps) && error("--p is required")
     return gate, ps
 end
@@ -560,8 +855,10 @@ function main()
         gate_fallback(ps[1])
     elseif gate == "headtohead"
         gate_headtohead(ps)
+    elseif gate == "sections_fine"
+        gate_sections_fine(ps)
     else
-        error("unknown --gate $gate (expected tsv|baseline|loglik|fdvcov|fallback|headtohead)")
+        error("unknown --gate $gate (expected tsv|baseline|loglik|fdvcov|fallback|headtohead|sections_fine)")
     end
     exit(ok ? 0 : 1)
 end
