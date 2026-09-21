@@ -116,7 +116,7 @@ fit = drm(
 | `ranef(fit)` | `ranef(fit)` |
 | random-effect SDs | `re_sd(fit)` / `vc(fit)` |
 | `sigma(fit)` | `sigma(fit)` |
-| `rho12(fit)` | planned (parity gap) |
+| `rho12(fit)` | `rho12(fit)` |
 | `corpairs(fit)` | `corpairs(fit)` / `corpairs_data(fit)` |
 | `fitted(fit)` / `residuals(fit)` | `fitted(fit)` / `residuals(fit)` |
 | `predict(fit, newdata)` (response mean) | `predict(fit, newdata; type = :response)` |
@@ -124,7 +124,7 @@ fit = drm(
 | in-sample fitted per-observation parameters | `marginal_parameters(fit)` |
 | build a covariate grid for prediction | `prediction_grid(reference; predictor = values, …)` |
 | `simulate(fit)` | `simulate(fit)` |
-| `summary(fit)` | `show(fit)` / `coeftable(fit)` (no `summary` method) |
+| `summary(fit)` | `summary(fit)` (prints the Wald coefficient table) |
 | `weights(fit)` | planned (parity gap) |
 | `family(fit)` | `family(fit)` |
 | `is_converged(fit)` / convergence diagnostics | `is_converged(fit)` / `check_drm(fit)` |
