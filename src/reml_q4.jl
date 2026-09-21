@@ -628,7 +628,7 @@ end
 Add the `(n_beta/2)·log(2π)` normalising constant to an unnormalised
 Patterson–Thompson restricted log-likelihood, so DRModels.jl's bivariate REML routes
 report on the same scale as lme4, glmmTMB, TMB — and as DRModels.jl's own univariate
-REML routes, which have always added it (#477).
+REML routes.
 
 `n_beta` counts only the **marginalised** fixed effects. Non-finite input passes
 through unchanged so `-Inf` barriers and `NaN` sentinels keep their meaning.
@@ -647,7 +647,7 @@ effects) by the SAME conditional-Newton alternation `fit_q4_reml` runs
 internally (`reml_ll_and_mode`), rather than re-running the outer LBFGS.
 
 This is the diagnostic primitive behind cross-engine mode-finder-vs-
-objective-translation checks (#575): given another engine's fitted point
+objective-translation checks: given another engine's fitted point
 (mapped into DRModels.jl's `phi`/`beta` scale — see `pack_phi`, `Λ_to_lc`), call
 this to ask "is DRModels.jl's OWN objective, evaluated AT that point, better or
 worse than what DRModels.jl's own solver returned?" without hand-writing the
@@ -659,7 +659,7 @@ respectively) so the inner profile has the best chance of reaching its true
 conditional optimum at `phi` rather than stalling from a cold start.
 
 `reml_loglik` is on the SAME normalised (Patterson–Thompson, `+ (n_β/2)·log(2π)`)
-scale as `fit_q4_reml`'s `.reml_loglik` and as drmTMB/TMB/lme4/glmmTMB (#477);
+scale as `fit_q4_reml`'s `.reml_loglik` and as drmTMB/TMB/lme4/glmmTMB;
 `raw_reml_ll` is the pre-normalisation value, exposed for constant-offset
 sanity checks. `n_β` is `prob`'s combined `X1+X2+Xs1+Xs2` design width — the
 same marginalised-fixed-effect count `fit_q4_reml` uses.
@@ -687,7 +687,7 @@ and scale fixed effects) are profiled out internally; only beta_rho stays outer.
 Returns NamedTuple: (phi, beta, Lambda, reml_loglik, ml_loglik, converged,
                      iterations, g_residual, f_calls, u_hat)
 
-# Automatic warm restart (#484)
+# Automatic warm restart
 
 On some cells the REML LBFGS's first line-search step from the ML warm start
 fails outright (zero accepted steps — a starting-value problem, not slow
@@ -701,7 +701,7 @@ mechanism. Needs `beta0`/`Lambda0` to fire (skipped if the caller supplied
 `phi0` directly, since there is then nothing to re-derive a coarser start
 from).
 
-# Normalisation convention (#477)
+# Normalisation convention
 
 `reml_loglik` reports the **normalised** Patterson–Thompson restricted
 log-likelihood: the raw objective `ℓ_ML(θ, β̂) − ½ logdet(S)` plus
@@ -711,23 +711,14 @@ marginalised fixed effects (`n_β` = the combined width of the `beta_mu1`,
 dimension; `beta_rho` is never marginalised, so it does not count). That matches
 lme4, glmmTMB and TMB, so `reml_loglik` is directly comparable across engines.
 
-**Changed 2026-08-25 (#477).** It previously reported the unnormalised form,
-while DRModels.jl's own univariate REML routes — `_fit_fixed_gaussian_reml`
-(`gaussian_core.jl`), the Gaussian mean `(1 | g)` route (`gaussian_ranef.jl`)
-and `location_only.jl` — already added the constant. So one package reported two
-different scales under one name, and `reml_loglik(fit)` meant different things
-depending on which route produced the fit. That was an inconsistency rather than
-a convention choice: the convention had already been made on the univariate side
-and the bivariate routes simply had not followed it.
+The normalising constant affects the reported value, not the maximising
+parameter estimates. In the q=4 cross-engine comparison, the constant was
+**5.513631** and the remaining difference between optima was within **0.03**.
+Comparisons must use the same normalisation before attributing differences to
+the estimators.
 
-The evidence is the q=4 parity gate. Its `atol_loglik` was **5.5436**, of which
-**5.513631** was this constant — a tolerance that existed almost entirely to
-absorb the offset, and therefore tested almost nothing. It is now **0.03**, the
-cross-optimum spread alone: a 185× tightening, verified 33/33. A constant cannot
-move the argmax, so the optimisation is untouched; only the reported value moved.
-
-`reml_q2.jl` carries the same change and the same derivation, but has no parity
-fixture of its own — it is verified only by sharing this one's arithmetic.
+The q=2 implementation uses the same derivation and normalisation arithmetic.
+This q=4 comparison does not independently validate the q=2 route.
 """
 function fit_q4_reml(prob::AugProblem, Q_cond::SparseMatrixCSC;
                      phi0=nothing, beta0=nothing, Lambda0=nothing,

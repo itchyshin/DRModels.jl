@@ -133,16 +133,14 @@ group a structured random effect can interpolate the data, so `sigma` collapses 
 the objective runs away to `+Inf`. `Optim.converged` only asks whether the gradient
 test was met, and at such a point it returns `true`.
 
-Measured 2026-08-24 on a one-row-per-species phylo fit (#461):
+For example, a one-row-per-species phylogenetic fit produced
 `sd_phylo = 22980`, `sigma = 7.5e-15`, `loglik = 6.8e13`, `converged = true` — and
-25% of parametric-bootstrap replicates landed on such a point. Downstream that is
-WORSE than an outright failure, because every consumer treats the fit as usable and
-a percentile interval silently inherits the nonsense.
+25% of parametric-bootstrap replicates in that example reached such a point.
+Including these invalid fits among successful refits can distort a percentile
+interval.
 
-Checked here, at the single public accessor, rather than at the ~30 `DrmFit`
-construction sites across 20 family files — one place that every consumer already
-goes through. `fit.converged` still exposes the raw optimiser flag for anyone who
-wants it.
+Use this accessor to check both convergence and degeneracy. `fit.converged`
+exposes only the raw optimiser flag.
 """
 is_converged(fit::DrmFit) = fit.converged && _nondegenerate_fit(fit)
 

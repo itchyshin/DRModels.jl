@@ -169,8 +169,8 @@ Confidence intervals for every coefficient, as a vector of
   inspect that limitation.
   An endpoint arm that the search cannot certify is REFUSED, not returned: this
   method throws an `ArgumentError` naming the coefficient, the arm, and the
-  nuisance-solve reason rather than reporting the failed side as a signed `Inf`
-  (DRModels.jl#631). Use [`profile_result`](@ref) when you want the same rows plus
+  nuisance-solve reason rather than reporting the failed side as a signed `Inf`.
+  Use [`profile_result`](@ref) when you want the same rows plus
   the per-endpoint diagnostics instead of an exception.
   Pass `threads = true` to profile coefficients in parallel when the fitted
   objective is thread-safe; if only one coefficient is profiled, its lower and
@@ -256,7 +256,7 @@ Auditable profile-likelihood confidence intervals. Returns a `NamedTuple` with:
 - `ci` — the same rows `confint(fit; method = :profile)` returns, except that a
   FAILED endpoint arm is kept here as a signed `Inf` alongside its
   `lower_endpoint_failed` / `upper_endpoint_failed` flag. This is the auditable
-  surface; `confint` refuses such a row rather than returning it (DRModels.jl#631);
+  surface; `confint` refuses such a row rather than returning it;
 - `stats` — per-coefficient endpoint work counts;
 - `endpoint_diagnostics` — canonical location–scale endpoint reason, last
   evaluated candidate, and residual for each arm; other profile backends omit

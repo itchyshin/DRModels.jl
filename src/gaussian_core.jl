@@ -257,11 +257,11 @@ distinct stops "max allowed" and "actually taken" being confused for each other.
 
 `-1` is not a placeholder to be filled in later on every route — it is the
 honest answer for a fit that has no single outer optimiser call to count, and
-it is preferred over any approximated or borrowed number (#466).
+it is preferred over an approximated count.
 
 # Coverage by family
 
-Wired (reports `Optim.iterations(res)` from the LBFGS run that produced `θ̂`):
+Reports `Optim.iterations(res)` from the LBFGS run that produced `θ̂` for:
 `Gaussian` (both the plain ML fixed-effects fit and the Cox–Reid REML
 fixed-effects fit), `Student`, `SkewNormal`, `Poisson`, `NegBinomial2`,
 `TruncatedNegBinomial2`, `Beta`, `BetaBinomial`, `Binomial`, `Gamma`,
@@ -269,7 +269,7 @@ fixed-effects fit), `Student`, `SkewNormal`, `Poisson`, `NegBinomial2`,
 fit and, where the family has one, its scalar `(1 | g)` random-intercept,
 correlated `(1 + x | g)`, zero-inflated (`zi`), hurdle (`hu`), and (Poisson only)
 AGHQ / coordinate-spatial-range variants. The bivariate residual routes
-(`Gaussian`/`Gaussian`, `Student`/`Student`, `LogNormal`/`LogNormal`) are wired
+(`Gaussian`/`Gaussian`, `Student`/`Student`, `LogNormal`/`LogNormal`) report counts
 the same way; `LogNormal`'s bivariate fit borrows the Gaussian-on-log-y
 optimiser run wholesale (only the reported likelihood is Jacobian-shifted), so
 it carries that run's iteration count rather than re-deriving one.
@@ -277,8 +277,8 @@ it carries that run's iteration count rather than re-deriving one.
 run too, but through the returned `NamedTuple`'s `iterations` field — that route
 does not produce a `DrmFit`, so `niterations` does not apply to it.
 
-Still `-1` (no single outer LBFGS call to attribute the count to, or not yet
-wired): Gaussian's `meta_V`, `phylo`/`relmat`/`animal`/`spatial`, and
+Returns `-1` (no single outer LBFGS call to attribute the count to, or no recorded
+count): Gaussian's `meta_V`, `phylo`/`relmat`/`animal`/`spatial`, and
 multi-random-effect routes (the Cox–Reid REML *random-intercept* route, e.g.
 Poisson `(1 | g)` with `method = :REML`, also stays `-1` — its reported `θ̂`
 comes from a secondary restricted refit, not the counted LBFGS run, so
@@ -417,9 +417,9 @@ phylogenetic engine.
 `method` (default `:ML`) selects the estimator. `:REML` is opt-in and is
 implemented for:
 (a) the fixed-effect Gaussian location–scale cell,
-(b) a single Gaussian mean random intercept `(1 | g)` on the Woodbury spine (#439),
+(b) a single Gaussian mean random intercept `(1 | g)` using the Woodbury identity,
 (c) Location–Scale–Scale (LSS) models (`sd(g) ~ z`, `sd(species, phylogenetic) ~ z`,
-    and multi-component LSS models; #558), and
+    and multi-component LSS models), and
 (d) the bivariate q=4 PLSM Laplace engine (`reml_q4`).
 
 σ-RE, random slopes, and non-Gaussian REML stay rejected. REML likelihoods are
@@ -429,7 +429,7 @@ not comparable across fixed-effect structures.
 
 Incomplete responses (`missing` or `NaN` in `y`) are supported under the
 observed-rows pattern (matching `response = "include"` in the R bridge).
-For Location-Scale-Scale models (#559), the group index and scale design Z_g
+For Location-Scale-Scale models, the group index and scale design Z_g
 are parameterised over all G levels, while the likelihood is evaluated on
 observed rows.
 """
@@ -1984,7 +1984,7 @@ estimation_method(fit::DrmFit) = fit.estim_method
 The restricted (REML) log-likelihood. Returns `NaN` for an ML fit (REML was not
 used). See [`loglik`](@ref) for the cross-structure-comparison caveat.
 
-# A convention gap on the bivariate q=2/q=4 routes (#477)
+# Normalisation convention
 
 For the **univariate** fixed-effect Gaussian location–scale REML and the
 Gaussian mean `(1 | g)` REML, this value is the **normalised** Patterson–
@@ -1993,20 +1993,16 @@ report, so it is directly comparable to `logLik()` from those packages.
 
 The **bivariate q=2 and q=4 Laplace REML routes** (`src/reml_q2.jl`,
 `src/reml_q4.jl` — reached via structured/phylo bivariate fits with
-`method = :REML`) now report the **same normalised scale** (#477, 2026-08-25).
+`method = :REML`) report the **same normalised scale**.
 
-They previously omitted the `(n_β/2)·log(2π)` constant while these univariate
-routes included it, so `reml_loglik(fit)` meant different things depending on
-which route produced the fit. For the q=4 phylo layout with `n_β = 6` the gap was
-`3·log(2π) ≈ 5.51` — large enough to read as a real disagreement between engines
-rather than a labelling difference, which is exactly how it misled this project
-once (see the corrected note in
-`test/parity/q4-reml/biv-q4-phylo-reml/expected.toml`).
+The normalised form includes `(n_β/2)·log(2π)`, where `n_β` counts the
+marginalised fixed effects. For a q=4 phylogenetic model with `n_β = 6`, this
+constant is `3·log(2π) ≈ 5.51`. Omitting it changes the reported likelihood,
+but not the parameter estimates.
 
-Every REML route in DRModels.jl now reports the normalised form, matching lme4,
-glmmTMB, TMB and drmTMB. See `fit_q4_reml`'s docstring in `src/reml_q4.jl` for
-the derivation and for the evidence: the q=4 parity gate's `atol_loglik` fell
-from 5.5436 to 0.03 once the constant was no longer being absorbed.
+Every REML route in DRModels.jl uses this normalised form, matching lme4,
+glmmTMB, TMB and drmTMB. See the `fit_q4_reml` docstring for the derivation and
+the limits of the cross-engine comparison.
 """
 reml_loglik(fit::DrmFit) = fit.reml_loglik
 

@@ -47,12 +47,12 @@ is `log σ`); `nu` is the power `p` on a logit-`(1,2)` link
 (`p = 1 + logistic(coef(fit, :nu))`). `Var(y) = φ·μ^p`. Density via the Dunn–Smyth
 series. Mirrors `drmTMB`'s `tweedie`. An ordinary `(1 | g)` random intercept
 and an independent `(0 + x | g)` random slope on `mu` are both supported
-(32-node Gauss–Hermite marginal, #563); `sigma ~ 1` and `nu ~ 1` remain
+(32-node Gauss–Hermite marginal); `sigma ~ 1` and `nu ~ 1` remain
 fixed-effect sub-models on either route. The CORRELATED random slope
 `(1 + x | g)`, random effects on `sigma`/`nu`, and structured
 (phylo/relmat/animal/spatial) markers on `mu` are not implemented — matches
-`drmTMB` 0.7.0, which rejects the same forms ("Only independent tweedie() mu
-random intercepts and slopes are implemented in this slice").
+`drmTMB` 0.7.0, which also restricts Tweedie mean random effects to
+independent intercepts and slopes.
 
 ```julia
 fit = drm(bf(y ~ x, sigma ~ 1, nu ~ 1), Tweedie(); data = dat)

@@ -29,7 +29,7 @@ fit_phy = drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ 1)),
               Beta(); data = dat, tree = tr, se = false)
 exp(-2 * coef(fit, :sigma)[1])     # estimated precision φ
 
-# Experimental (#136 Rung 1): Beta random-intercept variational (ELBO) marginal.
+# Experimental: Beta random-intercept variational (ELBO) marginal.
 # Requires `sigma ~ 1`. Default remains Laplace (`marginal = :LA`).
 fit_va = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), Beta();
              data = dat, marginal = :VA)
