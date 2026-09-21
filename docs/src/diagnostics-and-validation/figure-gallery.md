@@ -4,7 +4,8 @@
     Mirrors drmTMB's [Figure gallery](https://itchyshin.github.io/drmTMB/articles/figure-gallery.html).
     **In DRModels.jl today:** publication-quality [CairoMakie](https://docs.makie.org/)
     figures rendered straight from fitted models, including the **Confidence Eye**
-    (an interval plot whose lens narrows from the compatibility region to the point estimate).
+    (an interval drawn as a lens: a pale region spanning the interval, widest at the point
+    estimate and tapering to the interval limits).
 
 Every figure below is rendered at build time from a real `drm` fit — nothing is
 mocked.

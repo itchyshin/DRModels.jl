@@ -143,3 +143,30 @@ convention for "available" is to repeat the Julia call itself in both
 columns; introducing a new status word for a single row would have been
 inconsistent with the rest of the table and easy for a future editor to
 misread as a different status tier.
+
+## 12. Review pass (2026-09-21)
+
+Applied one SHOULD-FIX finding from the PR's code review against
+`docs/src/diagnostics-and-validation/figure-gallery.md:7`: the parenthetical
+had the Confidence Eye's direction backwards ("narrows from the compatibility
+region to the point estimate"), contradicting the page's own account two
+sections below ("widest at the point estimate and tapering to the interval
+limits") and the `confidence_eye!` half-width formula
+`sqrt((t - lo) * (hi - t))`, which is maximal at the estimate and zero at the
+limits. "lens" and "compatibility region" were also used at line 7 before
+either term is defined (definition arrives later on the page). **Applied.**
+Replaced the parenthetical with: "(an interval drawn as a lens: a pale region
+spanning the interval, widest at the point estimate and tapering to the
+interval limits)." Lines 47-49, which already stated the direction correctly,
+were left untouched. Re-ran the same four gates as the original slice:
+`python3 tools/tests/test_reader_surface_audit.py` (`OK`, 10 tests),
+`python3 tools/reader_surface_audit.py --public-only` (`READER SURFACE AUDIT
+PASSED files=43`), the Documenter/VitePress docs build
+(`env -u GITHUB_ACTIONS JULIA_NUM_THREADS=4 OPENBLAS_NUM_THREADS=1 julia
+--project=docs docs/make.jl`, exit 0, rendered
+`docs/build/.documenter/diagnostics-and-validation/figure-gallery.md`
+inspected directly and shows the corrected clause with no "Florence" text),
+and `git diff --check` (clean): all passed after the edit. Appended a dated
+correction note to the PR body rather than replacing it, since the body's
+Row 3 section repeated the same inverted "narrows toward the point estimate"
+wording.
