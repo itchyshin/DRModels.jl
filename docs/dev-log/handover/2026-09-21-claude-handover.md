@@ -108,7 +108,7 @@ commands/outcomes in the PR.
 
 | Artifact / branch | Committed | Pushed | PR | State |
 | --- | --- | --- | --- | --- |
-| `claude/drmodels-reader-arc-handover-20260921` | yes | pending | none yet | CARRIED-OVER: push and open a draft PR before a fresh Claude session relies on this note. |
+| `claude/drmodels-reader-arc-handover-20260921` | yes | yes | [#801](https://github.com/itchyshin/DRModels.jl/pull/801), draft | CARRIED-OVER: durable programme brief; its assigned prose work has not yet begun. |
 
 ## How to resume
 
