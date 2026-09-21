@@ -25,19 +25,21 @@ working in R, you do not need this setup: use the optional
 [drmTMB Julia-engine route](https://itchyshin.github.io/drmTMB/articles/julia-engine.html)
 instead.
 
-DRModels.jl is pre-release, so install it from a local checkout or directly
-from GitHub:
+Install the current package directly from GitHub:
 
 ```julia
 using Pkg
-Pkg.develop(path = "/path/to/DRModels.jl")   # or Pkg.add(url = "https://github.com/itchyshin/DRModels.jl")
+Pkg.add(url = "https://github.com/itchyshin/DRModels.jl")
 using DRModels
 ```
+
+If you are developing DRModels.jl from a local clone, replace the installation
+line with `Pkg.develop(path = "/absolute/path/to/your/DRModels.jl")`.
 
 The two verbs you will use the most are exported at the top level:
 
 - `bf(...)` — bundle one formula per distributional parameter (alias
-  `drm_formula`), exactly like drmTMB / brms.
+  `drm_formula`), using the familiar drmTMB / brms pattern.
 - `drm(formula, family; data = ...)` — fit the model by maximum likelihood.
 
 ## Fit your first distributional regression
