@@ -54,11 +54,11 @@ residuals
 ### Predicting distributional parameters
 
 !!! warning "Prediction interpretation"
-    The embedded `predict_parameters` docstring above uses legacy wording about
-    integrating effects out. The current implementation sets random and
-    structured effects to zero. With a nonlinear link, these are different
-    predictions: for example, `exp(η)` differs from averaging `exp(η + b)` over
-    a non-degenerate random effect `b`. Use the fixed-effect interpretation here.
+    `predict_parameters` sets random and structured effects to zero; it does not
+    integrate over their fitted distributions. With a nonlinear link, these are
+    different predictions: for example, `exp(η)` differs from averaging
+    `exp(η + b)` over a non-degenerate random effect `b`. Interpret the result as
+    a fixed-effect prediction.
 
 [`predict`](@ref) returns the response (mean) prediction, but a distributional
 regression also models the scale and—bivariately—the correlation. Use
@@ -105,8 +105,8 @@ For one ordinal or categorical missing predictor in the bounded Gaussian joint
 route, construct the predictor model with `impute_model`; use
 `CategoricalLogit()` for nominal states. `JointFiniteDrmFit` retains the raw
 kernel coefficients and covariance. For ordinal predictors, `cutpoints(fit)`
-provides the constrained cutpoints separately. See the engine-internals
-reference for the prepared-state design and route limits.
+provides the constrained cutpoints separately. [Modelled missing predictors](model-specification.md#joint-predictor-formula)
+shows the public formula route, predictions, and current limits.
 
 ```@docs
 DRModels.CategoricalLogit
@@ -256,7 +256,7 @@ chibar_pvalue
 
 ## Cross-family post-fit
 
-Accessors for a `fit_mixed_family` result. The cross-family bivariate route is
+Accessors for a cross-family `drm(...)` result. The cross-family bivariate route is
 **experimental** and not ready for routine use: narrow documented evidence, no interval
 coverage, and the dependence it reports is a latent-scale scalar correlation
 (`fit.rho_latent`), not a `rho12` formula. [`mf_coef`](@ref) is the tidy

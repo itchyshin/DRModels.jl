@@ -7,12 +7,12 @@
     Gauss–Hermite quadrature, not one-point Laplace or adaptive GHQ. Other
     `:LA` routes are not identified by this statement.
 
-    **Public path today:** Poisson, Binomial, NegBinomial2,
+    **Available scope:** Poisson, Binomial, NegBinomial2,
     Gamma, and Beta `(1 | g)` via `drm(...; marginal = :VA)` (scale families need
     `sigma ~ 1`). That `loglik` is an ELBO, not a Laplace log-likelihood. Mixed
     LA/VA AIC / LRT errors. Phylo / crossed / correlated slopes / ZI / hurdle /
-    `sigma ~ x` stay unwired — not “implemented everywhere.” On the scoped
-    Gamma random-intercept comparison, LA and VA agree on shape while LA is faster.
+    `sigma ~ x` are not supported. In the evaluated Gamma random-intercept
+    model, LA and VA agree on shape while LA is faster.
 
 ## What "the marginal" is, and why it matters
 
@@ -53,10 +53,10 @@ The trouble starts when the integrand is **not** close to Gaussian:
   the integrand, not just its peak, so they absorb the approximation error
   first. Mean (location) parameters are comparatively robust.
 
-## Concrete evidence (from the sister project GLLVModels.jl)
+## Why the approximation can matter
 
-DRModels.jl is a sister of GLLVModels.jl, which fits the same kind of latent-variable
-integrals and has measured where LA bites:
+Related latent-variable models in GLLVModels.jl illustrate two geometries in
+which a one-mode curvature approximation can be unreliable:
 
 - **Two-part Gamma shape.** In a two-part (hurdle) Gamma model, the Gamma shape
   parameter `α` was recovered roughly **7× too low** under Laplace. The mean was
@@ -70,9 +70,11 @@ integrals and has measured where LA bites:
   different modes on different platforms.
 
 Neither failure is a bug in the optimiser; both are the geometry the Laplace
-approximation cannot see.
+approximation cannot see. They motivate checking the marginal approximation,
+but they do not show that DRModels.jl's experimental VA route fixes those
+specific models.
 
-## The variational (VA / ELBO) proposal
+## The variational (VA / ELBO) alternative
 
 The variational path replaces "find one mode and match curvature" with "fit a
 whole approximating distribution." We choose a factorised Gaussian
@@ -115,14 +117,14 @@ against a curvature match at a single point.
 | Fixed-effects-only model | VA adds nothing — there is no latent integral to approximate. |
 | Gaussian response with a Gaussian RE entering the mean linearly and independent residual variance | VA adds nothing — the marginal is already exact here. |
 | Ordinary Gamma `(1\|g)` shape | LA ≈ VA in the scoped Gamma comparison; **prefer LA** (15–20× faster warm). |
-| Two-part / hurdle / ZINB geometry | VA may help (GLLVM evidence) — **not a public DRModels path yet**. |
+| Two-part / hurdle / ZINB geometry | VA may help in principle, but **DRModels.jl does not currently support these VA models**. |
 | Speed-critical fits | Route-specific: `:LA` is the default; Poisson scalar random intercepts use fixed GHQ-32. |
 
 In short: **`:LA` is the default and its numerical implementation is
 route-specific.** On the public Gamma random-intercept cell, Julia matches the
 R/TMB pattern: the two marginals agree on `α` and LA wins on time
-in the scoped Gamma comparison. VA stays an opt-in for the
-bias-sensitive *two-part / ZI* cells — those are still unwired here.
+in the evaluated Gamma comparison. The two-part and zero-inflated models where
+VA could be most useful are not currently supported here.
 
 ## The public API (Experimental)
 
@@ -143,10 +145,10 @@ Everything else about the call — the `bf(...)` formulas, the family, the data 
 stays the same; only how the random effects are integrated out changes.
 `method = :VA` on non-Gaussian families is rejected with a pointer to `marginal`.
 
-## How we trust it (anchors on tip)
+## Checks that make the experimental result interpretable
 
-The Experimental `(1 | g)` path is gated by deterministic anchors with known
-answers, not just "the numbers look plausible":
+Three known relationships provide stronger checks than simply asking whether
+the fitted numbers look plausible:
 
 1. **Variance → 0 collapses to independence.** As the random-effect variance is
    driven to zero there is nothing left to integrate, so the ELBO equals the
@@ -156,20 +158,22 @@ answers, not just "the numbers look plausible":
    must sit at or below it — never above. (Non-adaptive engine GHQ centred at 0
    can sit below the ELBO; that is not a counterexample.)
 3. **Family limits.** The negative binomial as its size `r → ∞` becomes Poisson,
-   so NB2-VA converges to Poisson-VA on a shared fixture.
+   so NB2-VA should approach Poisson-VA for the same data and model matrix.
 
-On Gamma `(1 | g)`, the scoped comparison finds LA ≈ VA on shape `α` and LA is
+On Gamma `(1 | g)`, the evaluated comparison finds LA ≈ VA on shape `α` and LA is
 much faster. VA beyond random
-intercepts (phylo / crossed / ZI / hurdle) and two-part bias cells are not yet
-claimed here.
+intercepts (phylo / crossed / ZI / hurdle) and two-part models is not supported
+here.
 
-## A place DRModels.jl can exceed drmTMB
+## How this differs from drmTMB
 
 drmTMB is built on TMB, which is **Laplace-only**. Offering a variational
-marginal alongside LA is therefore not parity work — it is a capability drmTMB
-does not have. That option is useful **only** where Laplace is known to fail
-(two-part shape, ZINB multimodality). On ordinary Gamma `(1 | g)`, the scoped
-comparison does **not** show a VA accuracy edge; prefer the default Laplace, as in R.
+marginal alongside LA is therefore a Julia-only option; a VA result should not
+be interpreted as reproducing drmTMB's marginal likelihood. The option is most
+relevant where a one-mode approximation is scientifically questionable, such as
+two-part shape or ZINB multimodality, although those VA models are not currently
+supported in DRModels.jl. On ordinary Gamma `(1 | g)`, the evaluated comparison
+does **not** show a VA accuracy edge; prefer the default Laplace route, as in R.
 
 ## See also
 

@@ -6,8 +6,8 @@
     effect (ML + REML), `sd(group, phylogenetic) ~ z` on the per-species
     phylogenetic SD (ML + REML, with dense and $O(p)$ sparse solvers), and
     multi-component LSS models. Both are Experimental-tier
-    ([API stability](../api-stability.md)); every number below is
-    cross-verified against drmTMB on identical data.
+    ([API stability](../api-stability.md)). The examples below use identical
+    data in DRModels.jl and drmTMB when comparing numerical results.
 
 A [location–scale model](location-scale.md) asks whether predictors change the
 expected response `μ` and the residual SD `σ`. A **location–scale–scale** model
@@ -135,9 +135,9 @@ fitq = drm(bf(@formula(y ~ x + phylo(1 | species)),
 ```
 
 The estimates track the simulated truth (mean 1.0 and 0.5; the σ and σ_a
-slopes in the right directions). On the package's cross-engine reference
-fixture, drmTMB's native engine returns the same log-likelihood (−69.1373) and
-the same coefficients to seven significant figures.
+slopes in the right directions). For these same data, drmTMB returns the same
+log-likelihood (−69.1373) and the same coefficients to seven significant
+figures.
 
 Species rows need not follow tree-tip order when fitting an LSS model. String
 labels match `phy.leaf_names` exactly; integer labels are positions in `1:G`,
@@ -222,7 +222,8 @@ Both iid and phylogenetic LSS models support REML estimation. Standard errors
 can be unreliable when a variance approaches zero; a successful fit alone does
 not establish reliable uncertainty estimates.
 
-For an auditable bootstrap, start from the fitted model and retain the result:
+To assess the bootstrap rather than only its interval endpoints, retain the
+full result:
 
 ```@example lss
 boot = bootstrap_result(fit_reml; data = dat, B = 4,
@@ -254,11 +255,11 @@ fit <- drmTMB(
 )
 confint(fit, parm = "fixef:sd_phylo:temp", method = "profile")
 confint(fit, parm = "fixef:sd_phylo:temp", method = "bootstrap", R = 199,
-        threads = TRUE)          # threaded refits; BLAS is pinned internally
+        threads = TRUE)          # threaded refits
 ```
 
-Across the assessed ecogeographical-rules model ladder, the Julia and TMB
-engines gave identical log likelihoods.
+For the ecogeographical-rules formulas assessed here, the Julia and TMB fits
+gave identical log likelihoods.
 
 ## See also
 
