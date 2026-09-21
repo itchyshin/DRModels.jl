@@ -219,13 +219,22 @@ end
 EXACT Laplace (= Gaussian) marginal log-likelihood at the given parameters,
 plus the inner mode `û`, the CHOLMOD factor of `H_uu`, and the sparse prior `P`.
 `β` is `k × q` (trait-major columns), `Λ` is q×q SPD, `σ_res` a length-q vector
-of residual SDs.
+of residual SDs. Rejected q2 covariance states return `-Inf` and `nothing` for
+the factor and prior, which have not been constructed.
 """
 function coevo_marginal_cov(prob::CoevoProblem, Q_cond::SparseMatrixCSC,
                             β::AbstractMatrix, Λ::AbstractMatrix, D::AbstractMatrix)
     q = prob.q
     n = length(prob.leaf_node)
     size(D) == (q, q) || error("residual covariance has size $(size(D)); expected ($q, $q)")
+    # Log-Cholesky is SPD only in exact arithmetic. Apply the same numerical
+    # admissibility boundary as q2 REML before inversion, including on the ML
+    # optimizer, final evaluation, and observed-information paths. A successful
+    # factorization of H alone does not certify the covariance that produced it.
+    if q == 2 && !(_q2_lambda_admissible(Λ) && isposdef(Symmetric(Λ)) &&
+                   all(isfinite, D) && isposdef(Symmetric(D)))
+        return (-Inf, zeros(prob.q * prob.N), nothing, nothing)
+    end
     isposdef(Symmetric(D)) || error("residual covariance must be positive definite")
     Dinv = inv(Symmetric(D))
     P = prior_precision(Q_cond, inv(Λ))
@@ -459,7 +468,7 @@ function fit_coevolution_q2_residual(prob::CoevoProblem, Q_cond::SparseMatrixCSC
     local ℓ, û, cholesky_ok
     try
         ℓ, û, _, _ = coevo_marginal_cov(prob, Q_cond, β̂, Λ̂, D̂)
-        cholesky_ok = true
+        cholesky_ok = isfinite(ℓ)
     catch e
         (e isa DomainError || e isa LinearAlgebra.PosDefException ||
          e isa LinearAlgebra.SingularException) || rethrow(e)
