@@ -1,0 +1,1 @@
+| 2026-09-23 | **speed kinds toward 20** | local J=1 tip + R 0.7.1 shared-CSV H2H; promote 4 #803 bridge cells | 8 new board kinds; DRM 10→18; evidence `docs/dev-log/evidence/2026-09-23-speed-kinds-toward20/` | Shannon |

@@ -1,0 +1,9 @@
+cell_id	kind	script_or_fixture	julia_med_s	tmb_med_s	speedup	abs_delta_ll	host	julia_sha	threads	status_note
+drm-bridge-student	student FE bridge n=180	bench/bridge_six_cell_timing.jl + #803 bank	0.002791	0.020	7.2	~0	Mac Studio w-kw3k3y6229	cf058168b	J=1 OB=1	H2H vs drmTMB 0.7.1 (end-arc bank)
+drm-bridge-biv-rho12	biv_gaussian rho12 bridge n=180	same #372	0.001319	0.020	15.2	~0	Mac Studio	cf058168b	J=1 OB=1	H2H vs drmTMB 0.7.1
+drm-bridge-gamma	gamma FE bridge n=180	plus5 #389/#803	0.000808	0.016	19.8	~0	Mac Studio	cf058168b	J=1 OB=1	H2H vs drmTMB 0.7.1
+drm-bridge-beta	beta FE bridge n=180	#372/#803	0.001356	NA	NA	NA	Mac Studio	cf058168b	J=1 OB=1	Julia tip abs; R arm FAIL argument a missing (fenced)
+drm-missing-gauss-n1000	Gaussian locscale missing-response n=1000	fixtures/missing_gauss_n1000.csv	0.001177	0.033	28.0	2.4e-4	Mac Studio	e9d50a110	J=1 OB=1	shared CSV H2H vs drmTMB 0.7.1
+drm-sigma-re-G40	Gaussian sigma~(1|g) G=40 m=8	fixtures/sigma_re_G40.csv	0.001696	0.113	66.6	0.065	Mac Studio	e9d50a110	J=1 OB=1	shared CSV walls; |dll|~0.065 disclosed (not bit-id)
+drm-tweedie-fe-n400	Tweedie FE n=400	fixtures/tweedie_fe_n400.csv	0.023955	0.061	2.55	~4e-5	Mac Studio	e9d50a110	J=1 OB=1	shared CSV H2H vs drmTMB 0.7.1
+drm-phylo-beta-p128	Beta phylo mu RE p=128 m=4	inline tip abs (fit_phylo_gamma_beta shape)	0.023632	NA	NA	NA	Mac Studio	e9d50a110	J=1 OB=1	tip abs only; no TMB pair this slice
