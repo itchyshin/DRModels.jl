@@ -1,0 +1,11 @@
+package,cell_id,kind,metric,wall_med_s,all_times_s,logLik,converged,sha,host,julia,julia_threads,blas_threads,note,status
+DRModels,drm-h2h-q4-vs-tmb-p1000,D-gauss-q4-phylo,julia_abs_p1000,20.814729,20.814729,NaN,true,e9d50a110,totoro,1.12.6,1,1,Julia arm via head_to_head_q4_scaling; TMB pair not run this receipt (harness/load),has_receipt
+DRModels,drm-crossed-binomial,D-crossed-family,abs_fit_wall_small,0.037384,0.047003;0.037384;0.030787,-1725.59765,true,e9d50a110,totoro,1.12.6,1,1,crossed binomial small G=H=20 n=1000,has_receipt
+DRModels,drm-biv-gauss-rho12,D-biv-gauss,abs_fit_wall_n2000,0.057182,0.197596;0.057182;0.048709,-5332.68918,true,e9d50a110,totoro,1.12.6,1,1,bivariate residual rho12,has_receipt
+DRModels,drm-profile-ci-locscale,D-profile-ci,abs_profile_ci_wall,0.015969,0.017256;0.014682,-579.173276,true,e9d50a110,totoro,1.12.6,1,1,profile CI on loc-scale gaussian n=600,has_receipt
+DRModels,drm-animal-gauss,D-animal,abs_fit_wall_G60,0.017705,0.017688;0.909505;0.017705,-271.95689,true,e9d50a110,totoro,1.12.6,1,1,animal() Gaussian A supplied,has_receipt
+DRModels,drm-lss-sd-slope,D-lss,abs_fit_wall_n480,0.002877,0.003193;0.002877;0.002669,-392.020792,true,e9d50a110,totoro,1.12.6,1,1,sd(id) ~ sex LSS,has_receipt
+DRModels,drm-phylo-poisson,D-phylo-pois,abs_fit_wall_p100,0.022278,0.022278;0.021435;0.052331,-647.721147,true,e9d50a110,totoro,1.12.6,1,1,Julia abs; tip smoke p=100,has_receipt
+DRModels,drm-phylo-nb2,D-phylo-nb2,abs_fit_wall_p100,0.034751,0.034751;0.035077;0.021717,-708.575683,true,e9d50a110,totoro,1.12.6,1,1,Julia abs; tip smoke p=100,has_receipt
+DRModels,drm-phylo-binomial,D-phylo-binom,abs_fit_wall_p128,0.023230,0.300483;0.020199;0.023230,-901.049163,true,e9d50a110,totoro,1.12.6,1,1,Julia abs; tip smoke p=128,has_receipt
+DRModels,drm-phylo-gamma,D-phylo-gamma-beta,abs_fit_wall_p128,0.071680,0.204552;0.033791;0.071680,-440.480003,true,e9d50a110,totoro,1.12.6,1,1,Julia abs; Julia-only fence if TMB cannot,has_receipt

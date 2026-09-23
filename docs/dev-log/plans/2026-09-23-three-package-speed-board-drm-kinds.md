@@ -1,11 +1,11 @@
 # DRM speed-board kinds addendum (2026-09-23)
 
-Companion to the three-package speed board. This file banks the **+8** DRM
-kinds that move the package from **10 → 18** `has_receipt` cells.
+Companion to the three-package speed board and
+`2026-09-23-speed-report-20x3-diversity.md`.
 
 Authoritative numbers: `docs/dev-log/evidence/2026-09-23-speed-kinds-toward20/`.
 
-## Added rows (append to §2.2)
+## Wave A: Mac Studio (+8; 10 → 18)
 
 | package | cell_id | DGP kind | script / fixture | baseline | current | wall before | wall after | speedup | notes | status |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -18,6 +18,22 @@ Authoritative numbers: `docs/dev-log/evidence/2026-09-23-speed-kinds-toward20/`.
 | DRModels | `drm-tweedie-fe-n400` | Tweedie FE n=400 | `…/fixtures/tweedie_fe_n400.csv` | n/a | `e9d50a110` | tmb 0.061 | julia 0.023955 | **2.55×** | shared CSV | `has_receipt` |
 | DRModels | `drm-phylo-beta-p128` | Beta phylo p=128 m=4 | tip abs | n/a | `e9d50a110` | n/a | 0.023632 s | n/a | tip abs Mac | `has_receipt` |
 
+## Wave B: Totoro diversity first-wave (+10)
+
+| package | cell_id | kind | wall_med_s | host | sha | notes | status |
+|---|---|---|---:|---|---|---|---|
+| DRModels | `drm-phylo-poisson` | D-phylo-pois | 0.022278 | totoro | `e9d50a110` | Julia abs | `has_receipt` |
+| DRModels | `drm-phylo-nb2` | D-phylo-nb2 | 0.034751 | totoro | `e9d50a110` | Julia abs | `has_receipt` |
+| DRModels | `drm-phylo-binomial` | D-phylo-binom | 0.023230 | totoro | `e9d50a110` | Julia abs | `has_receipt` |
+| DRModels | `drm-phylo-gamma` | D-phylo-gamma-beta | 0.071680 | totoro | `e9d50a110` | Julia-only fence | `has_receipt` |
+| DRModels | `drm-h2h-q4-vs-tmb-p1000` | D-gauss-q4-phylo | 20.814729 | totoro | `e9d50a110` | TMB pair owed | `has_receipt` |
+| DRModels | `drm-crossed-binomial` | D-crossed-family | 0.037384 | totoro | `e9d50a110` | Julia abs | `has_receipt` |
+| DRModels | `drm-biv-gauss-rho12` | D-biv-gauss | 0.057182 | totoro | `e9d50a110` | Julia abs | `has_receipt` |
+| DRModels | `drm-profile-ci-locscale` | D-profile-ci | 0.015969 | totoro | `e9d50a110` | Julia abs | `has_receipt` |
+| DRModels | `drm-animal-gauss` | D-animal | 0.017705 | totoro | `e9d50a110` | Julia abs | `has_receipt` |
+| DRModels | `drm-lss-sd-slope` | D-lss | 0.002877 | totoro | `e9d50a110` | Julia abs | `has_receipt` |
+
 ## Count
 
-DRModels: **18** `has_receipt` (was 10). Two slots remain toward 20.
+DRModels: **28** `has_receipt` (floor 10 + Wave A 8 + Wave B 10). Diversity
+aim ~20 cleared. Soft A3 skipped. No public speed claim.
