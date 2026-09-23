@@ -1,0 +1,1 @@
+2026-09-23 | speed-kinds toward20 | Wave A Mac +8 (10→18); Wave B Totoro diversity first-wave +10 (board CSV e9d50a110; soft A3 skipped; TMB pairs skipped); DRM has_receipt 28 | tip e9d50a110 | lane cursor/speed-kinds-toward20-20260923
