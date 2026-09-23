@@ -1,0 +1,2 @@
+package,cell_id,script,p,fit_wall_s,reps_used,chosen_rep,f_calls,chol_factorizations,chol_per_eval,chol_fallbacks,loglik,fd_vcov_proj_s,sha,host,julia,julia_threads,blas_threads,cpu,status
+DRModels,drm-gauss-q4-phylo-p5000,bench/profile_q4_sections.jl --gate tsv --p 5000,5000,82.445528,3,1,26,289,11.12,0,-44265.6364,204.005435,12ee8a8c2,totoro,1.12.6,4,1,AMD EPYC 9655 96-Core Processor,has_receipt
