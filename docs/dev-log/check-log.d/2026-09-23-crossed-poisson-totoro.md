@@ -1,0 +1,1 @@
+| 2026-09-23 | **drm-crossed-poisson Totoro tip wall** | `julia --project=. bench/gen_crossed_poisson.jl` + `bench/fit_crossed_poisson.jl` on totoro @ `12ee8a8c2` (`JULIA_NUM_THREADS=1` `OPENBLAS=1`) | FIT_WALL 25.19 s; crossed_large med 0.1884 s; fixedq_n20000 med 0.1742 s; evidence `docs/dev-log/evidence/2026-09-23-crossed-poisson-totoro/` | Shannon |
