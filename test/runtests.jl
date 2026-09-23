@@ -24,10 +24,43 @@ _shard_spec = get(ENV, "DRM_TEST_SHARD", "")
 _SHARD = isempty(_shard_spec) ? nothing : _parse_shard_spec(_shard_spec)
 
 _shard_pos = Ref(0)
+
+# --- BLAS thread count: pin once, then guard it per file --------------------
+# The suite's numerical pins were all measured at one BLAS thread (the repo's
+# stated invariant), and ten test files assert or set BLAS=1 themselves. CI
+# does not set OPENBLAS_NUM_THREADS, so without this pin a shard starts at 2
+# and silently switches to 1 partway through (the first test_joint_missing_*
+# file sets it and never restores). Pin it here so every file, on every
+# platform, runs at the same count.
+BLAS.set_num_threads(1)
+
+# Test-isolation guard: the BLAS thread count is process-global, so every
+# file must leave `BLAS.get_num_threads()` where the suite set it and leave
+# no `_with_pinned_blas` scope open. A different count changes the summation
+# order inside dense kernels, which perturbs every tight-tolerance numerical
+# test that runs after the leak. Checked per file so a failure names the
+# leaking file, not a victim far downstream. Measured 2026-09-19 (bisect over
+# the full include order): no file leaks today. The in-suite failures of
+# test_q4_perf_identities.jl's rtol=1e-8 vcov pins that motivated this guard
+# were NOT a leak: `Pkg.test()` runs with `--check-bounds=yes`, and that
+# codegen change alone reproduces them bit-for-bit in a pristine session.
+const _BLAS_THREADS_AT_START = BLAS.get_num_threads()
+function _check_blas_restored(path::AbstractString)
+    nt = BLAS.get_num_threads()
+    scopes = DRModels._blas_pin_scopes[]
+    if nt != _BLAS_THREADS_AT_START || scopes != 0
+        @testset "BLAS state restored after $path" begin
+            @test nt == _BLAS_THREADS_AT_START
+            @test scopes == 0
+        end
+    end
+end
+
 function _shard_include(path::AbstractString)
     _shard_pos[] += 1
     if _SHARD === nothing || (_shard_pos[] - 1) % _SHARD[2] == _SHARD[1] - 1
         include(path)
+        _check_blas_restored(path)
     end
 end
 
@@ -70,6 +103,7 @@ end
 # project-extras, unbound args, piracy. Runs early so packaging regressions
 # surface before the numerical suite.
 _shard_include("test_shard_selection.jl")
+_shard_include("test_runtests_include_list.jl")  # this file's own shape: no duplicate or plain includes (see MAINTENANCE NOTE)
 _shard_include("test_load_contract.jl")
 _shard_include("test_aqua.jl")
 
@@ -291,16 +325,6 @@ _shard_include("test_missing_listwise.jl")
 # (fit_q4_sparse_tmb end-to-end; marginal_nll / marginal_and_exact_grad return
 # contract + cross-consistency) and the bivariate bf() meta_V/relmat/animal
 # constructor guard rails.
-include("test_coverage_engine.jl")
-include("test_q4_objective_diagnostic.jl")
-include("test_bridge_formula_translation.jl")
-include("test_bridge_materialization_collision.jl")
-include("test_bridge_formula_labels.jl")
-include("test_bridge_base_r_names.jl")  # #563/#467: the ten design-258 constructs render base-R names
-include("test_bridge_coef_labels_echo.jl")  # #563: options["coef_labels"] echo (design 258 §7.1-7.3)
-include("test_bridge_formula_constructs.jl")  # #467/#609 A6: R-contrast fidelity of the coef_labels echo
-include("test_bridge_lss_labels.jl")
-include("test_bridge_lss_routes.jl")  # #563 S6: bridge-vs-direct parity across every LSS route
 _shard_include("test_coverage_engine.jl")
 _shard_include("test_q4_objective_diagnostic.jl")
 _shard_include("test_bridge_formula_translation.jl")
@@ -308,6 +332,7 @@ _shard_include("test_bridge_materialization_collision.jl")
 _shard_include("test_bridge_formula_labels.jl")
 _shard_include("test_bridge_base_r_names.jl")  # #563/#467: the ten design-258 constructs render base-R names
 _shard_include("test_bridge_coef_labels_echo.jl")  # #563: options["coef_labels"] echo (design 258 §7.1-7.3)
+_shard_include("test_bridge_formula_constructs.jl")  # #467/#609 A6: R-contrast fidelity of the coef_labels echo
 _shard_include("test_bridge_zi_marginal_mean.jl")  # bridge fitted/residuals = drmTMB's unconditional mean for zi count fits
 _shard_include("test_bridge_lss_labels.jl")
 _shard_include("test_bridge_lss_routes.jl")  # #563 S6: bridge-vs-direct parity across every LSS route
@@ -378,6 +403,11 @@ _shard_include("test_qgate_fd_gradient.jl")
 # Newton mode-finder's pure-Julia arithmetic (the CHOLMOD factor is excluded as
 # out-of-Julia-control). Cheap → per-PR. (Workflow Q.)
 _shard_include("test_qgate_alloc_inner.jl")
+
+# leaf-S5 (Julia speed lane, 2026-09-19): identity gates for the q=4 ML phylo
+# route's cholesky!-reuse / warm-u0-vcov performance changes. Pins numbers
+# measured on ORIGINAL origin/main so each change is a provable identity.
+_shard_include("test_q4_perf_identities.jl")
 
 # Standing Workflow Q JET gate (Karpinski): type-stability of hot lc↔Λ kernels.
 # JET lives in test/Project.toml — skip gracefully when absent (bare

@@ -247,11 +247,12 @@ the Newton (the optimiser reuses the previous mode). Returns the CHOLMOD factor
 `ch_H` and the sparse prior `P` so callers can reuse them for the gradient.
 """
 function marginal_nll(prob::AugProblem, Q_cond::SparseMatrixCSC, θ::Vector{Float64};
-                      u0 = nothing, n_newton::Int = 40)
+                      u0 = nothing, n_newton::Int = 40,
+                      chol_ref::Union{Nothing,CholPatternCache} = nothing)
     β, lc = unpack_theta(prob, θ)
     Λ = lc_to_Λ(lc)
     P = prior_precision(Q_cond, inv(Λ))
-    u, ch, _ = estep_mode(prob, P, β; u0 = u0, n_newton = n_newton)
+    u, ch, _ = estep_mode(prob, P, β; u0 = u0, n_newton = n_newton, chol_ref = chol_ref)
     nll = -laplace_ll(prob, P, β, u, ch)
     return nll, u, ch, P
 end
@@ -286,7 +287,8 @@ Takahashi selected inverse of H (O(p)); all other pieces are single-level AD.
 Returns `û` and the factor so the caller can warm-start the next evaluation.
 """
 function marginal_and_exact_grad(prob::AugProblem, Q_cond::SparseMatrixCSC,
-                                 θ::Vector{Float64}; u0 = nothing, n_newton::Int = 40)
+                                 θ::Vector{Float64}; u0 = nothing, n_newton::Int = 40,
+                                 chol_ref::Union{Nothing,CholPatternCache} = nothing)
     nθ = length(θ)
     k1, k2, ks1, ks2, kr = beta_widths(prob)
     o1 = 0; o2 = k1; o3 = o2 + k2; o4 = o3 + ks1; o5 = o4 + ks2; o6 = o5 + kr
@@ -297,7 +299,7 @@ function marginal_and_exact_grad(prob::AugProblem, Q_cond::SparseMatrixCSC,
 
     # ---- Step 1: inner Newton mode û (FROZEN) ------------------------------
     P = prior_precision(Q_cond, Λi)
-    u_hat, chH, H = estep_mode(prob, P, β; u0 = u0, n_newton = n_newton)
+    u_hat, chH, H = estep_mode(prob, P, β; u0 = u0, n_newton = n_newton, chol_ref = chol_ref)
     u_hat = Vector{Float64}(u_hat)
     nll = -laplace_ll(prob, P, β, u_hat, chH)
 
@@ -504,12 +506,18 @@ function fit_q4_sparse_tmb(prob::AugProblem, Q_cond::SparseMatrixCSC;
     # Warm-start cache: reuse the previous mode across f/g evaluations. Cleared
     # to `nothing` if an evaluation throws (defensive — estep is PD-guarded).
     u_cache = Ref{Union{Nothing, Vector{Float64}}}(nothing)
+    # S5 change (b): one CHOLMOD pattern cache for the WHOLE fit. H_uu's sparsity
+    # pattern depends only on (prob, Q_cond) -- never on the trial θ/Λ/u values
+    # (prior_precision's structurally-full axis block) -- so every fg! evaluation
+    # of this fit, accepted or rejected, safely shares one analysed pattern.
+    chol_ref = CholPatternCache()
 
     fg! = function (F, G, θ)
         local nll, g, û
         try
             nll, g, û, _ = marginal_and_exact_grad(prob, Q_cond, Vector{Float64}(θ);
-                                                   u0 = u_cache[], n_newton = n_newton)
+                                                   u0 = u_cache[], n_newton = n_newton,
+                                                   chol_ref = chol_ref)
         catch e
             # Implicit-constraint barrier: a trial step that breaks PD-ness or the
             # ρ guard makes the marginal undefined. Return Inf (no gradient) so the

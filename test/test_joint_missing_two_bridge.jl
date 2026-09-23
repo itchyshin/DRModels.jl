@@ -1,5 +1,4 @@
 using Test, DRModels, TOML, LinearAlgebra, ForwardDiff
-BLAS.set_num_threads(1)
 
 function two_joint_payload()
     d=TOML.parsefile(joinpath(@__DIR__,"fixtures/joint_missing_predictor/two_gaussian_reference.toml"))

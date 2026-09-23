@@ -199,6 +199,8 @@ than "one variance per trait." With replicate obs (nrep=4) it CONVERGES near-O(p
 | 1000 | 18.3 s | 21 | −8711 | −2.18 |
 | 2000 | 52.9 s | 21 | −18874 | −2.36 |
 
+> **Re-banked 2026-09-19 (lane speed6-20260919, on 90fbb0e28):** the table above predates OPTIMIZATION PLAN step 1 (fast-path + robust fallback), which has since landed in `src/sparse_aug_plsm.jl`. Measured today: p=2000 warm fit 14.2 to 15.9 s (`bench/run_scaling.jl` 15.86 s, logLik −18062.99 bit-for-bit with the value the fit reports), i.e. the ~3.5x that step predicted is recovered (52.9 / 14.7 = 3.6x). Complete section partition at p=100/1000/5000 in `bench/results/q4_sections_a734d2b90.tsv` (inner-Newton factorisations 53%, beta-block trace 23%, Gst/v assembly 17% at p=5000). The 52.9 s row is kept for provenance, not as the baseline. The p=1000 row (18.3 s) is stale by the same repair: 8.46 to 8.48 s today (`bench/results/q4_sections_a734d2b90.tsv`).
+
 Flat iteration count (p-independent outer convergence), consistent per-obs logLik,
 **empirical k=1.33** (near-O(p)). The EXACT GRADIENT is genuinely O(p) (Takahashi
 at the sparse pattern, never forms dense Σ_phy) — the win over gllvmTMB's
