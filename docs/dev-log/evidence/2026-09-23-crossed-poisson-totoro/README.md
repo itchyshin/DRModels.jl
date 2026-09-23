@@ -24,7 +24,7 @@ median **0.1884 s**; `fixedq_n20000` n=20k median **0.1742 s**.
 Machine-readable twins:
 
 - `julia_crossed_poisson.json` (script output)
-- `board_drm_crossed_poisson_20260923_12ee8a8c2.tsv`
+- `board_drm_crossed_poisson_20260923_12ee8a8c2.csv`
 - `fit_crossed_poisson_20260923T125726Z.log`
 
 ## Cells (Julia median)
