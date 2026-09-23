@@ -1,0 +1,79 @@
+{
+  "arm": "r_drmTMB",
+  "issued": "#389",
+  "timestamp_utc": "2026-09-23 11:42:43 UTC",
+  "drmTMB_version": "0.7.1",
+  "R_version": "R version 4.6.0 (2026-04-24)",
+  "hostname": "w-kw3k3y6229.psych.ualberta.ca",
+  "omp_num_threads": "1",
+  "openblas_num_threads": "1",
+  "mkl_num_threads": "1",
+  "reps": 5,
+  "cells": [
+    {
+      "cell": "count-poisson",
+      "ok": true,
+      "note": "",
+      "n": 180,
+      "reps": 5,
+      "warmup_discarded": true,
+      "times_s": [0.034, 0.012, 0.013, 0.013, 0.014],
+      "median_s": 0.013,
+      "min_s": 0.012,
+      "max_s": 0.034,
+      "logLik": -283.223235205403
+    },
+    {
+      "cell": "positive-gamma",
+      "ok": true,
+      "note": "",
+      "n": 180,
+      "reps": 5,
+      "warmup_discarded": true,
+      "times_s": [0.019, 0.017, 0.016, 0.016, 0.016],
+      "median_s": 0.016,
+      "min_s": 0.016,
+      "max_s": 0.019,
+      "logLik": -122.017688432487
+    },
+    {
+      "cell": "binomial-trials",
+      "ok": true,
+      "note": "",
+      "n": 180,
+      "reps": 5,
+      "warmup_discarded": true,
+      "times_s": [0.014, 0.014, 0.014, 0.014, 0.014],
+      "median_s": 0.014,
+      "min_s": 0.014,
+      "max_s": 0.014,
+      "logLik": -323.544599800832
+    },
+    {
+      "cell": "positive-lognormal",
+      "ok": true,
+      "note": "",
+      "n": 180,
+      "reps": 5,
+      "warmup_discarded": true,
+      "times_s": [0.015, 0.015, 0.018, 0.016, 0.017],
+      "median_s": 0.016,
+      "min_s": 0.015,
+      "max_s": 0.018,
+      "logLik": -147.360064094159
+    },
+    {
+      "cell": "nbinom2-dispersion",
+      "ok": true,
+      "note": "",
+      "n": 200,
+      "reps": 5,
+      "warmup_discarded": true,
+      "times_s": [0.023, 0.025, 0.034, 0.027, 0.022],
+      "median_s": 0.025,
+      "min_s": 0.022,
+      "max_s": 0.034,
+      "logLik": -285.485603130587
+    }
+  ]
+}
