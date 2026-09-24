@@ -27,8 +27,8 @@ is `log σ`). Likelihood `BetaBinomial(n, μφ, (1-μ)φ)`. Requires a two-colum
 response via [`cbind`](@ref). Mirrors `drmTMB`'s `beta_binomial`.
 Crossed random intercepts on the mean, such as `(1 | g) + (1 | h)`, use the
 sparse-Laplace engine when `sigma ~ 1`. A phylogenetic random intercept on the
-mean, `phylo(1 | species)`, also uses the sparse-Laplace engine (#166); both
-routes are constant-σ (overdispersion) only for now.
+mean, `phylo(1 | species)`, also uses the sparse-Laplace engine; both
+routes require constant σ (overdispersion).
 
 ```julia
 fit = drm(bf(cbind(successes, failures) ~ x, sigma ~ 1), BetaBinomial(); data = dat)

@@ -34,7 +34,7 @@ fit_phy = drm(bf(@formula(cbind(successes, failures) ~ x + phylo(1 | species))),
               Binomial(); data = dat, tree = tr, se = false)
 fitted(fit)        # fitted success probabilities μ̂ = logistic(Xβ̂)
 
-# Experimental (#136 Rung 1): Binomial random-intercept variational (ELBO) marginal.
+# Experimental: Binomial random-intercept variational (ELBO) marginal.
 fit_va = drm(bf(@formula(y ~ x + (1 | g))), Binomial(); data = dat, marginal = :VA)
 ```
 """

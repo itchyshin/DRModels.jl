@@ -47,7 +47,7 @@ Crossed random intercepts on the mean, such as `(1 | g) + (1 | h)`, use the
 sparse-Laplace engine when `sigma ~ 1`. A phylogenetic random intercept on the
 mean, `phylo(1 | species)`, also uses the sparse-Laplace engine; here a covariate
 dispersion formula `sigma ~ x` is supported (a per-observation log σ, so a
-per-observation size θ = 1/σ²; #164), while the crossed-intercept route still
+per-observation size θ = 1/σ²), while the crossed-intercept route still
 requires `sigma ~ 1`.
 
 ```julia
@@ -57,13 +57,13 @@ fit_phy = drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ 1)),
               NegBinomial2(); data = dat, tree = tr, se = false)
 fit_disp = drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ x)),
                NegBinomial2(); data = dat, tree = tr, se = false)  # log σ ~ x
-# Coupled phylogenetic location–scale (#202): shared tag + phylo group on both axes.
+# Coupled phylogenetic location–scale: shared tag + phylo group on both axes.
 fit_ls = drm(bf(@formula(y ~ x + (1 | p | phylo(species))),
                 @formula(sigma ~ 1 + (1 | p | phylo(species)))),
              NegBinomial2(); data = dat, tree = tr, se = false)
 exp(-2 * coef(fit, :sigma)[1])  # estimated size θ = 1/σ²
 
-# Experimental (#136 Rung 1): NB2 random-intercept variational (ELBO) marginal.
+# Experimental: NB2 random-intercept variational (ELBO) marginal.
 # Requires `sigma ~ 1`. Default remains Laplace (`marginal = :LA`).
 fit_va = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), NegBinomial2();
              data = dat, marginal = :VA)

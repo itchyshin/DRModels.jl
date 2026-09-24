@@ -30,8 +30,8 @@ fit_reml = drm(bf(@formula(y ~ x + (1 | g))), Poisson(); data = dat, method = :R
 estimation_method(fit_reml)   # :REML
 
 # Opt-in 1-D Liu–Pierce AGHQ for `(1 | g)` only. Default `:LA` stays
-# today's non-adaptive GHQ-32. k=1 ≡ 1-point Laplace plumbing, not a recovery
-# headline. Capability row stays missing. `:REML` is not wired to `:AGHQ`.
+# non-adaptive GHQ-32. k=1 ≡ 1-point Laplace; this identity does not establish
+# parameter recovery. `:REML` is not available with `:AGHQ`.
 fit_aghq = drm(bf(@formula(y ~ x + (1 | g))), Poisson();
                data = dat, marginal = :AGHQ, nAGQ = 5)
 fit_aghq.marginal   # :AGHQ
@@ -52,11 +52,11 @@ adjusted profile likelihood `ℓ_ML − ½·log|I_ββ|` on two Poisson routes:
 On the Gaussian route this correction is exactly Patterson–Thompson REML, so the
 mechanism is anchored rather than ad hoc.
 
-!!! warning "Probe Cell D is not a recovery result"
+!!! warning "Limited evidence for phylogenetic models"
     A 16-tip / 12-seed Poisson phylo cell over-corrected under Cox–Reid
     (ML +8.18%, CR +17.41%). Do not read those percentages as a bias-sign
-    headline or a reason to prefer `:REML` on trees. ADEMP on a larger tree
-    is a follow-on. This is a small exploratory result, not a general
+    headline or a reason to prefer `:REML` on trees. Recovery on larger trees
+    has not been established. This is a small exploratory result, not a general
     performance claim.
 
 !!! warning "It over-corrects when clusters are plentiful"
@@ -70,8 +70,7 @@ estimated range `ρ`, fixed-effects-only, `zi`/`hu`, `marginal = :VA`, and
 `marginal = :AGHQ` still error on `method = :REML` rather than silently
 returning an ML fit. REML
 log-likelihoods are not comparable across different fixed-effect structures, so
-do not use them for model selection over `μ`. This slice does not flip a
-capability chip.
+do not use them for model selection over `μ`.
 """
 struct Poisson end
 
