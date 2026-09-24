@@ -5,7 +5,7 @@ layout: home
 hero:
   name: "DRModels.jl"
   text: "What varies besides the mean?"
-  tagline: "A Julia package for distributional regression models (DRMs): model how predictors change a response's average, variability, or probability of zero. Use DRModels.jl directly in Julia; no R installation is needed."
+  tagline: "Distributional regression models ask how predictors change a response's average, variability, or probability of zero. DRModels.jl fits them directly in Julia; no R installation is needed."
   image:
     src: /drmodels-full-logo.png
     alt: "DRModels.jl hexagonal badge with four overlapping response curves"
