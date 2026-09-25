@@ -83,9 +83,61 @@ The Wald covariance there is NaN, matching the ML routes' PD guard. None of the
 fixtures in this receipt is on the boundary, and after the fix every row of
 `julia.tsv` except the timings is byte-identical.
 
+**Correlation bound (second review fix).** Native drmTMB bounds the phylo
+correlation, `rho = 0.999999 * tanh(eta_cor_phylo)` (`drmTMB.cpp`). A reviewer
+found two coupled fixtures whose native REML optimum sits on or at that bound,
+where Julia stopped at a worse local optimum. `native-fit-boundary.R` writes
+them (`fixture-G1/G2`, byte-identical to the reviewer's files) and
+`native-boundary.tsv`. G1: seed 90210, 37 tips, 2-9 rows per species, n = 194,
+unit height, `sigma ~ 1`. G2: seed 31337, 44 tips, n = 222, tree height 7.22,
+`sigma ~ z`.
+
+Why Julia missed it. Near the bound `P = Q x Lambda^-1` reaches 1e8 and beyond.
+The inner mode then fails its absolute 1e-9 stationarity bound (the gradient's
+rounding noise is ~eps*|P|*|a|), so `nll_R` was Inf from cor ~ 1 - 1e-5, and
+where it was finite the prior quadratic cancelled to ~1e-8 of noise, too much
+for the finite-difference Newton. The fix, on the coupled block only:
+(1) the inner bound is raised to that noise floor, `max(1e-9, eps*|P|)`;
+(2) the bound itself is fitted as a candidate, a 2-D Newton in
+(log sd_mu, log sd_sigma) at cor = +/-0.999999, evaluated in whitened latent
+coordinates (`a = L u`, `u ~ N(0, Q^-1 x I)`, loadings `Z L`); the Laplace
+approximation is invariant to that change of variables, which a new test
+checks against the direct form; (3) interior iterates past the bound do not
+count. The bound wins only when its `nll_R` is lower by more than 1e-9
+relative, and is then reported without a Wald covariance, like native.
+
+| fixture | native REML logLik | julia before | julia now | df | coupled REML time before -> now |
+|---|---|---|---|---|---|
+| G1 | -333.85076879 | -334.82167833 (not converged; sd_mu 1.6e-5, cor -0.45) | -333.85076908 | 6 = 6 | 105 s -> 89 s |
+| G2 | -812.27444353 | -812.27520364 (not converged; cor 0.9997) | -812.27444299 | 7 = 7 | 127 s -> 49 s |
+
+The times include the coupled ML fit that seeds REML (75 s and 31 s); the
+coupled ML route is unchanged. The fixed effects agree with native within
+5e-7 relative. The SDs agree within 1e-4 relative once G2's are put on native's
+unit-height scale (Julia reports them on the raw branch-length scale, times
+sqrt(7.22), a pre-existing convention the fit warns about). G2's native
+optimum is just inside the bound (cor 0.99999825); Julia's sits on it, 5.4e-7
+higher in logLik.
+
+The plateau rule was also made robust. The Julia 1.10 x86-64 CI shard failed
+this file's zero-signal test (seed 1011 not converged), and seed 1019 failed
+locally: the per-step gain hovered around the 1e-10 threshold. A fit is now
+also declared converged on the boundary when a log-SD is below -6 (was -8), the
+gradient is small, pushing the log-SD 6 units further out does not raise
+`nll_R`, and the gradient in the other coordinates is below 1e-6 relative.
+Zero-signal seeds 1001-1040 now all converge (1019 was the one failure);
+interior fits are unchanged to 10 digits.
+
+Guard: every row of `julia.tsv` (F1, F2) except the timings is byte-identical
+after this fix, and on G1/G2 every ML, mean-only and sigma-only row is
+identical to the pre-fix head. The coupled **ML** fits on G1/G2 still stop at
+a worse optimum than native (G1 -331.94079 vs -330.92465); that is the
+pre-existing coupled ML route, not changed here.
+
 **Reproduce.**
 ```
 DRMTMB_PATH=~/local-scratch/lanes/drmTMB-arc1-pr1304-fold Rscript --no-init-file native-fit.R
 JULIA_NUM_THREADS=2 OPENBLAS_NUM_THREADS=1 julia --project=. docs/dev-log/evidence/arc2-gaussian-sigma-phylo-reml/julia-fit.jl
 ```
 Run `native-fit.R` from this directory. It writes the fixtures and `native.tsv`.
+`native-fit-boundary.R` writes the G fixtures and `native-boundary.tsv` the same way.

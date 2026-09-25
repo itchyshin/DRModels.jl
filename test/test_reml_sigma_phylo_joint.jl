@@ -93,6 +93,33 @@ end
     @test r_sep[2] ≈ r_cou[2] atol = 1e-10
 end
 
+# The correlation-bound candidate evaluates the coupled block in whitened latent
+# coordinates, a = L·u with u ~ N(0, Q⁻¹ ⊗ I) and loadings (Zη·L, Zψ·L). The Laplace
+# approximation is invariant to that linear change of variables, so at a
+# well-conditioned Λ the two forms must agree to rounding.
+@testset "Arc 2 joint-Laplace REML: whitened coupled form == direct form" begin
+    Random.seed!(11)
+    ntip = 10; m = 4; n = ntip * m
+    phy = random_balanced_tree(ntip; branch_length = 0.3)
+    species = repeat(1:ntip, inner = m)
+    x = randn(n); y = 0.4 .+ 0.5 .* x .+ 0.5 .* randn(ntip)[species] .+ randn(n)
+    Xμ = hcat(ones(n), x); Xψ = ones(n, 1)
+    Q, gidx, G = _D._locscale_phylo_setup(phy, species)
+    Zη, Zψ = _D._ls_canonical_Zeta(n), _D._ls_canonical_Zpsi(n)
+    kind = Val(:gaussian_mean)
+    for v in ([log(0.5), 0.3, log(0.2)], [log(0.4), -0.35, log(0.05)])
+        L = [exp(v[1]) 0.0; v[2] exp(v[3])]
+        P = _D.prior_precision(Q, _D._ls_inv2x2(_D._glsp_coupled_Λ(v)))
+        P_I = _D.prior_precision(Q, Matrix(1.0I, 2, 2))
+        r_d = _D._glsp_joint_reml_nll(kind, y, Xμ, Xψ, gidx, G, P, Zη, Zψ, zeros(3), zeros(2G))
+        r_w = _D._glsp_joint_reml_nll(kind, y, Xμ, Xψ, gidx, G, P_I, Zη * L, Zψ * L,
+                                      zeros(3), zeros(2G))
+        @test r_d[5] && r_w[5]
+        @test r_w[1] ≈ r_d[1] atol = 1e-8
+        @test r_w[2] ≈ r_d[2] atol = 1e-7
+    end
+end
+
 # ---- same target: native drmTMB numbers from the committed R script ----------
 function _arc2_fixture(fx)
     lines = readlines(joinpath(_ARC2_EV, "fixture-$fx.csv"))
@@ -161,6 +188,55 @@ end
     @testset "F2 mu_only REML" begin _arc2_check(native, "F2", "mu_only", "REML") end
 end
 
+# ---- correlation bound: coupled REML where native sits on |cor| = 0.999999 ------
+# Two fixtures (native-fit-boundary.R, unequal species sizes) where native drmTMB's
+# coupled REML optimum lies on its correlation bound, rho = 0.999999·tanh(eta).
+# Julia used to stop at a worse local optimum: G1 at sd_mu → 0, cor = −0.45, logLik
+# 0.97 below native; G2 7.6e-4 below. G2's tree is 7.22 tall (not unit): its phylo
+# SDs are on the raw branch-length scale, native's on the unit-height scale, so the
+# SDs are compared after that rescaling (the logLik does not depend on it).
+function _arc2_boundary_fixture(fx)
+    lines = readlines(joinpath(_ARC2_EV, "fixture-$fx.csv"))
+    rows = [split(l, ",") for l in lines[2:end]]
+    data = (y  = [parse(Float64, r[1]) for r in rows],
+            x  = [parse(Float64, r[2]) for r in rows],
+            z  = [parse(Float64, r[3]) for r in rows],
+            sp = [String(strip(r[4], '"')) for r in rows])
+    return data, String(strip(read(joinpath(_ARC2_EV, "fixture-$fx.nwk"), String)))
+end
+
+const _ARC2_BOUNDARY_FIXTURES = [("G1", @formula(sigma ~ phylo(1 | sp))),
+                                 ("G2", @formula(sigma ~ z + phylo(1 | sp)))]
+
+@testset "Arc 2 correlation bound: coupled REML == native drmTMB on its bound" begin
+    lines = readlines(joinpath(_ARC2_EV, "native-boundary.tsv"))
+    hdr = split(lines[1], '\t')
+    native = Dict((r["fixture"], r["shape"], r["estimator"]) => r
+                  for r in (Dict(zip(hdr, split(l, '\t'))) for l in lines[2:end]))
+    for (fx, sform) in _ARC2_BOUNDARY_FIXTURES
+        data, nwk = _arc2_boundary_fixture(fx)
+        nr = native[(fx, "mu_sigma", "REML")]
+        fit = drm(bf(@formula(y ~ x + phylo(1 | sp)), sform), Gaussian(); data = data,
+                  tree = nwk, method = :REML, phylo_coupled = true, g_tol = 1e-8)
+        @testset "$fx" begin
+            @test is_converged(fit)
+            @test dof(fit) == parse(Int, nr["df"])
+            ll_n = _arc2_num(nr["logLik"])
+            @test abs(loglik(fit) - ll_n) <= 1e-6
+            β_n = _arc2_num.([nr["mu_intercept"], nr["mu_x"], nr["sigma_intercept"]])
+            fx == "G2" && push!(β_n, _arc2_num(nr["sigma_z"]))
+            @test vcat(coef(fit, :mu), coef(fit, :sigma)) ≈ β_n rtol = 1e-5
+            # Julia's SDs are on the raw branch-length scale (see above).
+            h = _D.phylo_tree_height(augmented_phy(nwk))
+            @test fit.scales[:lambda_sd_mu][1] * sqrt(h) ≈ _arc2_num(nr["sd_mu"]) rtol = 1e-4
+            @test fit.scales[:lambda_sd_sigma][1] * sqrt(h) ≈ _arc2_num(nr["sd_sigma"]) rtol = 1e-4
+            @test fit.scales[:lambda_cor][1] ≈ _D._GLSP_COR_CAP atol = 1e-9
+            @test _arc2_num(nr["cor"]) > 0.99999          # native: on (or at) its bound
+            @test all(isnan, vcov(fit)[end, :])           # boundary fit: no Wald covariance
+        end
+    end
+end
+
 @testset "Arc 2 separate block: REML is the same joint-Laplace quantity" begin
     data, nwk = _arc2_fixture("F2")
     fit = drm(_ARC2_FORMS["mu_sigma"][1], Gaussian(); data = data, tree = nwk, method = :REML)
@@ -209,7 +285,9 @@ function _arc2_nllR(data, phy, Λ, Zη, Zψ)
 end
 
 @testset "Arc 2 boundary: zero-signal REML converges on the plateau supremum" begin
-    for seed in (1011, 1002)          # 1011 was non-converged before the fix
+    # 1011 was non-converged before the plateau rule; 1019 (aarch64) and 1011
+    # (Julia 1.10 x86-64) were still non-converged under its first version.
+    for seed in (1011, 1002, 1019)
         data, phy = _arc2_zero_signal(seed)
         n = length(data.y)
         fit = drm(_ARC2_FORMS["sigma_only"][1], Gaussian(); data = data, tree = phy,

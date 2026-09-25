@@ -156,12 +156,14 @@ package-test coverage.
     coupled blocks, and is refused for the iid `sigma ~ (1|g)` route. On these
     three blocks REML is one joint Laplace approximation over the phylogenetic
     effects and **both** the `mu` and `sigma` fixed effects, the restricted
-    likelihood native drmTMB (`REML = TRUE`) maximises for this model; the
-    scale-only and coupled blocks reproduce drmTMB's REML log-likelihood, df and
-    estimates on two fixtures
-    (`docs/dev-log/evidence/arc2-gaussian-sigma-phylo-reml/`). Under REML the
-    reported `mu`/`sigma` coefficients are the joint mode at the REML variance
-    estimates. Under REML, `profile_ci = true` on the scale-only and separate
+    likelihood native drmTMB (`REML = TRUE`) maximises for this model, and the
+    scale-only and coupled blocks are tested against drmTMB's REML
+    log-likelihood, degrees of freedom and estimates. Under REML the reported
+    `mu`/`sigma` coefficients are the joint mode at the REML variance estimates.
+    As in drmTMB, the coupled block's mean–scale phylogenetic correlation is
+    bounded at |cor| ≤ 0.999999. When the data put the two phylogenetic effects
+    on one axis, the REML estimate sits on that bound and is reported without a
+    Wald covariance. Under REML, `profile_ci = true` on the scale-only and separate
     blocks profiles this restricted likelihood. Earlier versions profiled the ML
     likelihood from the REML estimate, which gave neither an ML nor a REML
     interval. A REML fit whose phylogenetic standard deviation is estimated at

@@ -16,7 +16,11 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   `reml_loglik` change on all three blocks**. The reported fixed effects are the
   joint mode at the REML variance estimates. The scale-only and coupled blocks
   reproduce native drmTMB's df, logLik (≤ 1e-6) and estimates (≤ 1e-5 relative)
-  on two fixtures. The receipt is in
+  on two fixtures, and the coupled block's df and logLik on two more whose
+  mean–scale correlation sits on drmTMB's bound. That bound, |cor| ≤ 0.999999,
+  now applies to the coupled REML fit too: when the data put both phylogenetic
+  effects on one axis, the fit lands on the bound and reports no Wald covariance,
+  where it used to stop at a worse local optimum. The receipt is in
   `docs/dev-log/evidence/arc2-gaussian-sigma-phylo-reml/`. The separate block
   has no native twin, because drmTMB always estimates the mean–scale
   correlation. **The coupled block (`phylo_coupled = true`) now accepts REML**;

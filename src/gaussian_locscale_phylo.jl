@@ -522,17 +522,30 @@ end
 # together, so the restricted NLL is smooth in P to rounding — the outer
 # optimiser differences it. Returns (nll_R, β̂, â, S, ok).
 function _glsp_joint_reml_nll(kind, y, Xμ, Xψ, gidx, G, P, Zη, Zψ, β0, a0;
-                              tol::Real = 1e-7, maxiter::Int = 100)
+                              tol::Real = 1e-7, maxiter::Int = 100,
+                              noise_floor::Bool = false)
     pμ = size(Xμ, 2); pψ = size(Xψ, 2); p = pμ + pψ
     chP = cholesky(Symmetric(P); check = false)
     issuccess(chP) || return Inf, β0, a0, nothing, false
     β = copy(β0)
+    # `noise_floor` (the coupled block only). Near its |cor| → 1 boundary
+    # (logL22 → −∞) the prior precision P = Q ⊗ Λ⁻¹ reaches 1e7 and beyond, and the
+    # rounding noise of the joint gradient at the exact mode, ~eps·‖P‖·‖a‖, exceeds
+    # the inner solver's absolute 1e-9 stationarity bound. Every inner solve then
+    # spins to its iteration cap (~1.5 s) and fails, and nll_R is Inf there (measured:
+    # G1 coupled fixture from cor ≈ 1 − 1e-5 outwards; native drmTMB's bound is
+    # 1 − 1e-6). The bound is therefore raised to that noise floor, eps·‖P‖, when it
+    # exceeds 1e-9. (A 16× looser bound left the mode too rough for the β Newton to
+    # converge.) Off for the other blocks: the asymmetric block pins a zero-loading
+    # axis at a tiny variance, so its ‖P‖ is huge by construction while its solves
+    # are clean.
+    tol_in = noise_floor ? max(1e-9, eps(Float64) * maximum(abs, nonzeros(P))) : 1e-9
     profile(βt, astart) = begin
         η0 = Xμ * βt[1:pμ]; ψ0 = Xψ * βt[pμ+1:p]
-        at, ch, ok = _ls_inner_mode(kind, y, η0, ψ0, gidx, G, P, Zη, Zψ; a0 = astart)
+        at, ch, ok = _ls_inner_mode(kind, y, η0, ψ0, gidx, G, P, Zη, Zψ; a0 = astart, tol = tol_in)
         # A warm start can land within rounding of the mode and then fail the inner
         # stationarity certificate; a cold solve is the documented fallback.
-        ok || ((at, ch, ok) = _ls_inner_mode(kind, y, η0, ψ0, gidx, G, P, Zη, Zψ))
+        ok || ((at, ch, ok) = _ls_inner_mode(kind, y, η0, ψ0, gidx, G, P, Zη, Zψ; tol = tol_in))
         (ok ? _ls_joint(kind, y, η0, ψ0, gidx, at, P, Zη, Zψ) : Inf), at, ch, ok, η0, ψ0
     end
     hval, a, ch, ok, η0, ψ0 = profile(β, a0)
@@ -624,9 +637,25 @@ end
 # profile interval is on the RESTRICTED surface: nll_R with β integrated out, the
 # other variance coordinates re-optimised, thresholded from the REML minimum. It is
 # returned in `ci` as (sd_lo, sd_hi), in the order of `profile_idx`.
+#
+# `cor_edge = true` (the coupled block, v = [logL11, L21, logL22]) also fits the
+# correlation boundary |cor| = `_GLSP_COR_CAP` as its own candidate. Native drmTMB
+# bounds the phylo correlation, rho = 0.999999·tanh(eta_cor_phylo), and when the data
+# put the μ and σ phylo effects on one axis its optimum sits on that bound (G1
+# fixture: eta_cor_phylo = 9.6). The interior FD Newton cannot get there: P = Q ⊗ Λ⁻¹
+# reaches 1e8 and beyond, the prior quadratic in the joint NLL cancels to ~1e-8 of
+# rounding noise, and Newton stalled 1.7e-4 short of native (measured, cor =
+# 0.99994). On the boundary the fit is a 2-D Newton in w = (logL11, log sd_σ) for each
+# sign of the correlation, evaluated in whitened coordinates: a = L·u with
+# u ~ N(0, Q⁻¹ ⊗ I) and loadings (Zη·L, Zψ·L). The Laplace approximation is
+# invariant to that linear change of the latent variables, so this is the same
+# restricted NLL, without the ill-conditioned precision. The bound wins only with an
+# nll_R lower by more than 1e-9 relative. It is then flagged as a boundary fit, with no
+# Wald covariance (native's standard errors there are NaN too).
 function _glsp_joint_reml_fit(kind, y, Xμ, Xψ, gidx, G, Q, Zη, Zψ, Λfun, starts,
                               β_start; se::Bool = true, g_tol::Real = 1e-9,
-                              logsd_idx = (), shrink_idx = (), profile_idx = ())
+                              logsd_idx = (), shrink_idx = (), profile_idx = (),
+                              cor_edge::Bool = false)
     pμ = size(Xμ, 2); pψ = size(Xψ, 2); p = pμ + pψ
     # A rank-deficient fixed-effect design makes the flat-prior β integral improper:
     # S is singular in exact arithmetic, and a numerically-PD S would give a finite
@@ -643,17 +672,41 @@ function _glsp_joint_reml_fit(kind, y, Xμ, Xψ, gidx, G, Q, Zη, Zψ, Λfun, st
                 ci = [(sd_lo = NaN, sd_hi = NaN) for _ in profile_idx])
     end
     warm_β = Ref(copy(β_start)); warm_a = Ref(zeros(2G))
-    function eval_v(v; update::Bool = true)
+    # Bound mode (`cor_edge`): v = [logL11, log sd_σ] at cor = edge_sign[]·cap, in the
+    # whitened coordinates (loadings Zη·L, Zψ·L; prior Q ⊗ I).
+    edge_mode = Ref(false); edge_sign = Ref(1.0)
+    P_edge = cor_edge ? prior_precision(Q, Matrix(1.0I, 2, 2)) : nothing
+    edge_v(w) = (sdσ = exp(w[2]); c = edge_sign[] * _GLSP_COR_CAP;
+                 [w[1], c * sdσ, w[2] + 0.5 * log1p(-c^2)])
+    function model_at(v)
+        if edge_mode[]
+            ve = edge_v(v)
+            L = [exp(ve[1]) 0.0; ve[2] exp(ve[3])]          # Λ = L Lᵀ, as `_glsp_coupled_Λ`
+            all(isfinite, L) || return nothing
+            return P_edge, Zη * L, Zψ * L
+        end
         Λ = Λfun(v)
-        all(isfinite, Λ) || return Inf, warm_β[], warm_a[], nothing, false
+        all(isfinite, Λ) || return nothing
         P = prior_precision(Q, _ls_inv2x2(Λ))
-        all(isfinite, nonzeros(P)) || return Inf, warm_β[], warm_a[], nothing, false
-        r = try
-            _glsp_joint_reml_nll(kind, y, Xμ, Xψ, gidx, G, P, Zη, Zψ, warm_β[], warm_a[])
+        all(isfinite, nonzeros(P)) || return nothing
+        return P, Zη, Zψ
+    end
+    function eval_v(v; update::Bool = true)
+        m = model_at(v)
+        m === nothing && return Inf, warm_β[], warm_a[], nothing, false
+        P, Zηv, Zψv = m
+        solve(β0, a0) = try
+            _glsp_joint_reml_nll(kind, y, Xμ, Xψ, gidx, G, P, Zηv, Zψv, β0, a0;
+                                 noise_floor = cor_edge)
         catch err
             err isa InterruptException && rethrow(err)
             (Inf, warm_β[], warm_a[], nothing, false)
         end
+        r = solve(warm_β[], warm_a[])
+        # A warm start left by a distant evaluation can fail where a cold one succeeds
+        # (measured near the coupled block's |cor| → 1 edge, where P is
+        # ill-conditioned): retry cold there.
+        (r[5] || !cor_edge) || (r = solve(β_start, zeros(2G)))
         if update && r[5]
             warm_β[] = copy(r[2]); warm_a[] = copy(r[3])
         end
@@ -695,11 +748,12 @@ function _glsp_joint_reml_fit(kind, y, Xμ, Xψ, gidx, G, Q, Zη, Zψ, Λfun, st
     # Newton step still buys ~1e-9. Newton then creeps along the plateau until the
     # iteration cap and reports non-convergence (measured: 9/15 zero-signal
     # sigma-only fits). The fit is declared converged on the boundary once a log-SD
-    # coordinate is below `_GLSP_REML_BOUNDARY` (SD < 3.4e-4), the gradient is below
-    # the no-descent tolerance used below, and the last accepted step improved nll_R
-    # by at most 1e-10 relative, i.e. the objective has stopped moving. The boundary
-    # log-SDs are then pushed onto the plateau supremum (below).
-    function newton_min(v0)
+    # coordinate is below `_GLSP_REML_BOUNDARY` (SD < 2.5e-3), the gradient is below
+    # the no-descent tolerance used below, and either the last accepted step improved
+    # nll_R by at most 1e-10 relative (the objective has stopped moving) or pushing the
+    # boundary log-SDs 6 units further out does not raise nll_R (below). The boundary
+    # log-SDs are then left on the plateau supremum.
+    function newton_min(v0; logsd_idx = logsd_idx, shrink_idx = shrink_idx)
         v = copy(v0); f = nllR(v); gain = Inf
         (isfinite(f) && f < 1e17) || return v, Inf, false
         for _ in 1:100
@@ -707,7 +761,7 @@ function _glsp_joint_reml_fit(kind, y, Xμ, Xψ, gidx, G, Q, Zη, Zψ, Λfun, st
             all(isfinite, g) || return v, f, false
             norm(g) <= g_tol * (1 + abs(f)) && return v, f, true
             if any(j -> v[j] < _GLSP_REML_BOUNDARY, logsd_idx) &&
-               norm(g) <= 1e-5 * (1 + abs(f)) && gain <= 1e-10 * (1 + abs(f))
+               norm(g) <= 1e-5 * (1 + abs(f))
                 # Snap each boundary log-SD 6 units further out when that does not
                 # raise nll_R: the plateau's supremum is at SD → 0, and the creeping
                 # Newton iterate can still sit ~2e-6 below it (measured, coupled block
@@ -716,20 +770,35 @@ function _glsp_joint_reml_fit(kind, y, Xμ, Xψ, gidx, G, Q, Zη, Zψ, Λfun, st
                 # also go to zero with a boundary SD; they are tried at e⁻⁶ × their value.
                 # The moves interact (a leftover L21 blocks the logL22 snap), so the pass
                 # repeats, at most three times, while any move is accepted.
+                vs, fs, any_snap = copy(v), f, false
                 for _ in 1:3
                     snapped = false
                     for j in shrink_idx
-                        vt = copy(v); vt[j] *= exp(-6.0); ft = nllR(vt)
-                        (isfinite(ft) && ft <= f) && ((v, f, snapped) = (vt, ft, true))
+                        vt = copy(vs); vt[j] *= exp(-6.0); ft = nllR(vt)
+                        (isfinite(ft) && ft <= fs) && ((vs, fs, snapped) = (vt, ft, true))
                     end
                     for j in logsd_idx
-                        v[j] < _GLSP_REML_BOUNDARY || continue
-                        vt = copy(v); vt[j] -= 6.0; ft = nllR(vt)
-                        (isfinite(ft) && ft <= f) && ((v, f, snapped) = (vt, ft, true))
+                        vs[j] < _GLSP_REML_BOUNDARY || continue
+                        vt = copy(vs); vt[j] -= 6.0; ft = nllR(vt)
+                        (isfinite(ft) && ft <= fs) && ((vs, fs, snapped) = (vt, ft, true))
                     end
                     snapped || break
+                    any_snap = true
                 end
-                return v, f, true
+                # Converged on the boundary when the objective has stopped moving, or
+                # when an accepted snap shows nll_R does not rise as the SD goes 6
+                # log-units further toward zero AND the gradient in the coordinates off
+                # the boundary is small. The snap test is what makes the rule robust:
+                # the creeping iterate's per-step gain hovers around the 1e-10
+                # threshold, so that test alone flipped with platform rounding
+                # (zero-signal seed 1011 on Julia 1.10 x86-64, 1019 on aarch64).
+                gain <= 1e-10 * (1 + abs(f)) && return vs, fs, true
+                if any_snap
+                    free = [j for j in eachindex(v) if !(j in logsd_idx && v[j] < _GLSP_REML_BOUNDARY)]
+                    (isempty(free) || norm(g[free]) <= 1e-6 * (1 + abs(f))) && return vs, fs, true
+                    v, f = vs, fs          # keep the plateau point; refine the rest
+                    continue
+                end
             end
             H = Symmetric(fdhess(v))
             λ = 0.0; moved = false; scale = 1 + maximum(abs, H)
@@ -760,24 +829,57 @@ function _glsp_joint_reml_fit(kind, y, Xμ, Xψ, gidx, G, Q, Zη, Zψ, Λfun, st
     for v0 in starts
         warm_β[] = copy(β_start); warm_a[] = zeros(2G)
         v, f, conv = newton_min(v0)
+        # Native's parameter space stops at |cor| = cap; beyond it lies the boundary
+        # candidate's job (below), so an interior iterate past the cap does not count.
+        cor_edge && abs(v[2]) / hypot(v[2], exp(v[3])) > _GLSP_COR_CAP && continue
         if f < best_f
             best_v, best_f, best_conv = copy(v), f, conv
         end
     end
-    best_v === nothing && error("REML (joint Laplace): no start produced a finite restricted likelihood")
+    (best_v === nothing && !cor_edge) &&
+        error("REML (joint Laplace): no start produced a finite restricted likelihood")
+    # The correlation bound (see the note above the function), for both signs: from SDs of
+    # 0.3, and from the best interior iterate's SDs on its own side. An interior fit
+    # parked on the sd_μ → 0 plateau (measured: G1, sd_μ = 1.6e-5, cor = −0.45, nll_R
+    # 0.97 above native) therefore cannot hide a boundary optimum of either sign.
+    edge_w = nothing; best_sign = 1.0
+    if cor_edge
+        edge_mode[] = true
+        vb = best_v === nothing ? [log(0.3), 0.3, log(0.3)] : best_v
+        sdσ0 = log(max(hypot(vb[2], exp(vb[3])), 0.05))
+        for (sgn, w0) in ((1.0, [log(0.3), log(0.3)]), (-1.0, [log(0.3), log(0.3)]),
+                          ((vb[2] < 0 ? -1.0 : 1.0), [max(vb[1], log(0.05)), sdσ0]))
+            edge_sign[] = sgn
+            warm_β[] = copy(β_start); warm_a[] = zeros(2G)
+            w, f, conv = newton_min(w0; logsd_idx = (1, 2), shrink_idx = ())
+            # A clear win only: on a both-SDs-zero plateau the boundary and the
+            # interior meet, and rounding must not decide between them.
+            if f < (isfinite(best_f) ? best_f - 1e-9 * (1 + abs(best_f)) : Inf)
+                edge_w, best_f, best_conv, best_sign = copy(w), f, conv, sgn
+            end
+        end
+        edge_mode[] = edge_w !== nothing
+        edge_w === nothing && best_v === nothing &&
+            error("REML (joint Laplace): no start produced a finite restricted likelihood")
+        if edge_w !== nothing
+            edge_sign[] = best_sign
+            best_v = edge_v(edge_w)
+        end
+    end
+    eval_at = edge_w === nothing ? best_v : edge_w
     warm_β[] = copy(β_start); warm_a[] = zeros(2G)
-    nll_r, β̂, â, S, ok = eval_v(best_v)
+    nll_r, β̂, â, S, ok = eval_v(eval_at)
     ok || error("REML (joint Laplace): the joint mode failed at the optimum")
-    Λ̂ = Λfun(best_v)
-    P̂ = prior_precision(Q, _ls_inv2x2(Λ̂))
-    ml_nll, _, ml_ok = _ls_marginal_nll(kind, y, Xμ * β̂[1:pμ], Xψ * β̂[pμ+1:p], gidx, G, P̂, Zη, Zψ)
+    P̂, Zη̂, Zψ̂ = model_at(eval_at)
+    ml_nll, _, ml_ok = _ls_marginal_nll(kind, y, Xμ * β̂[1:pμ], Xψ * β̂[pμ+1:p], gidx, G, P̂, Zη̂, Zψ̂)
     ml_ok || (ml_nll = NaN)
     k = length(best_v); np = p + k
     V = fill(NaN, np, np)
     # On the variance boundary the curvature of nll_R in v is FD rounding noise, so
     # no Wald covariance is reported (NaN) — the convention of the ML routes'
-    # PD-guard; `profile_ci = true` gives the boundary-aware interval instead.
-    on_boundary = any(j -> best_v[j] < _GLSP_REML_BOUNDARY, logsd_idx)
+    # PD-guard; `profile_ci = true` gives the boundary-aware interval instead. The
+    # correlation bound is a boundary too.
+    on_boundary = edge_w !== nothing || any(j -> best_v[j] < _GLSP_REML_BOUNDARY, logsd_idx)
     if se && !on_boundary
         try
             Hv = fdhess(best_v)
@@ -807,6 +909,8 @@ function _glsp_joint_reml_fit(kind, y, Xμ, Xψ, gidx, G, Q, Zη, Zψ, Λfun, st
     # extreme log-SDs never leave a stale warm start behind; a failed joint mode is
     # Inf, which `_glsp_profile_ci` reads as "not crossed" (the conservative side).
     ci = map(collect(profile_idx)) do j
+        # No restricted profile on the correlation bound (the coupled route profiles none).
+        edge_w === nothing || return (sd_lo = NaN, sd_hi = NaN)
         warm_β[] = copy(β̂); warm_a[] = copy(â)
         nllP(v) = (r = eval_v(v; update = false); r[5] ? r[1] : Inf)
         gradP(v) = [(vp = copy(v); vp[i] += h; vm = copy(v); vm[i] -= h;
@@ -817,8 +921,11 @@ function _glsp_joint_reml_fit(kind, y, Xμ, Xψ, gidx, G, Q, Zη, Zψ, Λfun, st
             converged = best_conv, V = V, ci = ci)
 end
 
-# Log-SD below which a REML variance coordinate counts as on the boundary (SD < 3.4e-4).
-const _GLSP_REML_BOUNDARY = -8.0
+# Log-SD below which a REML variance coordinate counts as on the boundary (SD < 2.5e-3).
+const _GLSP_REML_BOUNDARY = -6.0
+
+# Native drmTMB's bound on a phylo correlation: rho = 0.999999·tanh(eta) (drmTMB.cpp).
+const _GLSP_COR_CAP = 0.999999
 
 # B2 — boundary-aware PROFILE-LIKELIHOOD CI for one variance (log-SD) parameter.
 # `nll(θ)::Real` and `grad(θ)::Vector` are the route's own marginal NLL and analytic
@@ -1269,13 +1376,13 @@ function _fit_gaussian_locscale_phylo(fam::Gaussian, y, Xμ, Xψ, gidx, G, Q,
         nll_val = coup_obj(θ̂); ml_nll = nll_val; reml_nll = NaN; V_reml = nothing
         if reml
             # Joint-Laplace REML over (a, β_μ, β_ψ) — native drmTMB's restricted likelihood
-            # for this shape (Arc 2; see `_glsp_joint_reml_fit`).
+            # for this shape (Arc 2; see `_glsp_joint_reml_fit`), including its correlation bound.
             rf = _glsp_joint_reml_fit(kind, y, Xμ, Xψ, gidx, G, Q, Zη, Zψ,
                                       _glsp_coupled_Λ,
                                       [[log(0.3), 0.0, log(0.3)],
                                        _glsp_reml_start(θ̂[pμ+pψ+1:end], (1, 3))],
                                       θ̂[1:pμ+pψ]; se = se, logsd_idx = (1, 3),
-                                      shrink_idx = (2,))
+                                      shrink_idx = (2,), cor_edge = true)
             θ̂ = rf.θ; conv = rf.converged
             ml_nll = rf.ml_nll; reml_nll = rf.reml_nll; nll_val = reml_nll; V_reml = rf.V
         end
