@@ -23,7 +23,7 @@ sparse CHOLMOD factorisation those routes rely on. The rows below differ in
 | random intercept `(1\|g)` | closed-form marginal (Woodbury / determinant lemma) | `_fit_ranef_gaussian` |
 | correlated `(1+x\|g)` | per-group 2×2 block capacitance, log-Cholesky Σ | `_fit_correlated_ranef_gaussian` |
 | crossed `(1\|g)+(1\|h)` | whitened-Woodbury dense capacitance `M = I + Z̃ᵀD⁻¹Z̃` | `_fit_multi_ranef_gaussian` |
-| scale RE `sigma ~ (1\|g)` | 32-node Gauss–Hermite marginal on log σ | `_fit_sigma_ranef_gaussian` |
+| scale RE `sigma ~ (1\|g)` | 32-node Gauss–Hermite marginal on log σ (default); per-group 1-D Laplace with `marginal = :Laplace` | `_fit_sigma_ranef_gaussian` |
 | `relmat` / `animal` / `phylo` | structured GLS (determinant lemma + Woodbury, known K) | `_fit_structured_gaussian` |
 | `spatial(1\|site)` | exponential kernel `K(ρ)=exp(-d/ρ)`, range estimated | `_fit_spatial_gaussian` |
 | meta-analysis `meta_V(v)` | known-variance GLS + heterogeneity τ | `_fit_meta_gaussian` |

@@ -17,6 +17,31 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   this unmerged PR landing. Historical
   `docs/dev-log/` records intentionally retain their original spelling.
 
+- **`marginal = :Laplace` for a Gaussian random intercept on `sigma`.**
+  `drm(bf(y ~ x, sigma ~ 1 + (1 | g)), Gaussian(); marginal = :Laplace)` fits
+  each group's log-scale effect by the Laplace approximation, which is what
+  native drmTMB (TMB) computes for this model. The default (`marginal = :LA`)
+  still uses non-adaptive 32-node Gauss–Hermite quadrature and its answers are
+  byte-identical to before. The inner mode is a bracketed 1-D Newton solve
+  (the per-group log-density is strictly concave in the effect), followed by
+  two Newton steps in the optimiser's number type, so ForwardDiff gradients and
+  Hessians carry the implicit derivative of the mode. On seven data sets
+  (five equal-size designs with 10 to 400 rows per group, one with `sigma ~ 1 +
+  x + (1 | g)`, one with 3 to 120 rows per group) the route matches native
+  drmTMB to |ΔlogLik| ≤ 3e-10, ≤ 3e-10 relative on every estimate and ≤ 2e-6
+  relative on every standard error, where the default route differed from
+  drmTMB by 0.002 to 3.3 log-likelihood units
+  (`docs/dev-log/evidence/arc2-sigma-re-laplace/`). The same receipt shows why:
+  against the exact marginal at drmTMB's estimates, GHQ-32 is exact for 10 rows
+  per group but 0.49 and 4.8 units low at 150 and 400 rows per group, where
+  Laplace is within 0.008. The random-effect SD is still reported as
+  `re_sd(fit)[:<g>_logsigma]`. `drm_bridge` now accepts a `marginal` option
+  (refused by name for a `drm` method that has no `marginal` keyword) and
+  reports the integrator it used as `"marginal"`. Refused, with an
+  `ArgumentError`: `:Laplace` on any other Gaussian model (mean random effects,
+  structured terms, `sd()` submodels, random slopes on `sigma`, REML,
+  non-default `algorithm`), and `marginal = :VA` / `:AGHQ` on Gaussian models.
+
 ## v0.7.1 — 2026-09-05
 
 - **Bootstrap replicates keep a masked fit's response mask (drmTMB #1188).** `_bootstrap_data`
