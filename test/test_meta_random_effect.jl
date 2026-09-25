@@ -250,6 +250,65 @@ end
     @test all(r -> isfinite(r.lower) && isfinite(r.upper), res.summary)
 end
 
+# The DENSE Gaussian phylo routes (the single-field fallback taken for `sigma ~ x`
+# or `algorithm = :gls`/`:lbfgs`, and the two-structured route) used to map rows
+# to tips by the order species first appear in the data: a different model from
+# drmTMB's and from `algorithm = :auto` whenever the data were not in tip order,
+# and the head of this PR then bootstrapped them from the by-name model instead.
+# They now map rows by name like every other phylo route, fit the SD on the tip
+# CORRELATION scale (`phylo_scale = :correlation`), and the simulator draws that.
+@testset "dense phylo routes map rows to tips by name and bootstrap their own fit" begin
+    phy = random_balanced_tree(8; branch_length = 0.5)     # height 1.5
+    R = DRModels._phylo_correlation(phy)
+    L = phy.leaf_names
+    sp = repeat(L[[1, 3, 5, 7, 2, 4, 6, 8]], inner = 10)    # NOT tip order
+    d = merge(_mre_phylo_data(phy, sp), (; id = repeat(1:5, 16)))
+    perm = randperm(StableRNG(5), length(sp))               # another first-seen order
+    dp = map(c -> c[perm], d)
+    fp = bf(@formula(y ~ x + phylo(1 | sp)), @formula(sigma ~ 1))
+    fsx = bf(@formula(y ~ x + phylo(1 | sp)), @formula(sigma ~ x))
+    ref = drm(fp, Gaussian(); data = d, tree = phy)         # sparse default route
+    @test ref.phylo_scale === :covariance
+    @test loglik(drm(fp, Gaussian(); data = dp, tree = phy)) ≈ loglik(ref) atol = 1e-6
+    for (f, kw) in ((fsx, (;)), (fp, (; algorithm = :lbfgs)), (fp, (; algorithm = :gls)))
+        fit = drm(f, Gaussian(); data = d, tree = phy, kw...)
+        @test fit.phylo_scale === :correlation
+        # Row order does not change the model (first-seen mapping: it did) ...
+        @test loglik(drm(f, Gaussian(); data = dp, tree = phy, kw...)) ≈ loglik(fit) atol = 1e-5
+        # ... and with `sigma ~ 1` it is the default route's model; only the SD's
+        # unit differs (correlation vs raw covariance: × √height).
+        if f === fp
+            @test loglik(fit) ≈ loglik(ref) atol = 1e-5
+            @test re_sd(fit)[:sp] ≈ re_sd(ref)[:sp] * sqrt(1.5) rtol = 1e-3
+        end
+        # The bootstrap draws this fit's model: rows by name, tip correlation.
+        s2 = re_sd(fit)[:sp]^2
+        sim = DRModels._marginal_simulator(fit, d; tree = phy)
+        @test sim !== nothing
+        Y = reduce(hcat, [sim(StableRNG(q)) for q in 1:4000])
+        i, j, k = (findfirst(==(L[m]), sp) for m in (1, 2, 3))
+        # Sisters L1/L2 correlate 2/3, L1/L3 1/3. MC SE ≈ 0.015; the first-seen
+        # rows (0 in this fit's model) and the raw scale (× 1.5) both miss.
+        @test cov(Y[i, :], Y[j, :]) ≈ s2 * R[1, 2] atol = 0.06
+        @test cov(Y[i, :], Y[k, :]) ≈ s2 * R[1, 3] atol = 0.06
+        @test var(Y[i, :]) ≈ s2 * R[1, 1] + fit.scales[:sigma][i]^2 rtol = 0.1
+    end
+    # Two tips absent from the data: the dense fallback now fits (it used to fail
+    # the G == n_leaves size check) and matches the default route's model.
+    ds = _mre_phylo_data(phy, repeat(L[[3, 1, 6, 2, 5, 4]], inner = 10))
+    @test loglik(drm(fp, Gaussian(); data = ds, tree = phy, algorithm = :lbfgs)) ≈
+          loglik(drm(fp, Gaussian(); data = ds, tree = phy)) atol = 1e-5
+    # Two structured fields (phylo + relmat), dense and sparse: row order does not
+    # change the fit. K is exchangeable, so relmat's first-seen `id` levels are
+    # immaterial and only the phylo mapping could move the logLik.
+    K = 0.6 .* Matrix(1.0I, 5, 5) .+ 0.4
+    f2 = bf(@formula(y ~ x + phylo(1 | sp) + relmat(1 | id)), @formula(sigma ~ 1))
+    two = [drm(f2, Gaussian(); data = dd, tree = phy, K = K, kw...)
+           for dd in (d, dp), kw in ((;), (; algorithm = :sparse))]
+    @test all(t -> t.phylo_scale === :correlation, two)
+    @test all(t -> isapprox(loglik(t), loglik(two[1]); atol = 1e-5), two)
+end
+
 @testset "meta_V + random effect: same target as drmTMB (committed native-fit.R numbers)" begin
     function rd(name)
         lines = filter(!isempty, readlines(joinpath(_MRE_DIR, "fixtures", name * ".tsv")))

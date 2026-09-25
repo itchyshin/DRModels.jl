@@ -1957,7 +1957,7 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing, tree
     # below draws ONE field, so it would silently bootstrap a model with the other
     # field(s) missing. Refuse. A single field is drawn below: `scales[:sigma]` is
     # √(v + σ²) there, a phylo `re_sd` is on the raw scale drawn below, and phylo
-    # rows go to tree leaves by name (`phylo_leaf` below), as the fit maps them.
+    # rows go to tree leaves as the fit maps them (`phylo_leaf` below).
     if metav_ms !== nothing && fit.family isa Gaussian
         nfields = length(re) + length(_collect_structured(rhs[:mu]))
         nfields <= 1 ||
@@ -1993,15 +1993,22 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing, tree
         if structured[1] === :phylo
             phy = tree isa AbstractString ? augmented_phy(tree) : tree
             phy === nothing && return nothing
-            # Rows → tree LEAVES by name / tip index (#482), exactly as every phylo
-            # mean fit maps them (`_phylo_mean_leaf_index`; the sparse, meta_V and
-            # non-Gaussian Laplace routes), NOT by first-seen order. First-seen
-            # order drew the field on the wrong tips whenever the data's species
-            # order differed from the tree's (measured: sister-tip covariance
-            # 0.294 in the model, -0.005 in 6000 draws), and a tree with tips absent
-            # from the data failed the size check and fell back to `simulate`.
+            # Rows → tree LEAVES by name / tip index (#482, `_phylo_mean_leaf_index`),
+            # exactly as every Gaussian and non-Gaussian phylo mean fit maps them,
+            # NOT by first-seen order. First-seen order drew the field on the wrong
+            # tips whenever the data's species order differed from the tree's
+            # (measured: sister-tip covariance 0.294 in the model, -0.005 in 6000
+            # draws), and a tree with tips absent from the data failed the size
+            # check and fell back to `simulate`. The tip matrix follows the fit's
+            # SD scale (`fit.phylo_scale`): the raw covariance on the sparse,
+            # meta_V and Laplace routes; the tip CORRELATION on the dense Gaussian
+            # fallback (`sigma ~ x`, `algorithm = :gls`/`:lbfgs`) and the
+            # two-structured route, where a raw-covariance draw over-disperses the
+            # field by the tree height (measured, height 1.5: drawn cov 0.284 vs
+            # 0.186 in the model; also wrong on main).
             phylo_leaf = (_phylo_mean_leaf_index(phy, getproperty(data, g)), phy.n_leaves)
-            (g, sigma_phy_dense(phy; σ²_phy = 1.0))
+            (g, fit.phylo_scale === :correlation ? _phylo_correlation(phy) :
+                                                   sigma_phy_dense(phy; σ²_phy = 1.0))
         elseif structured[1] === :spatial && K === nothing && coords !== nothing
             cmat = Matrix{Float64}(coords)
             size(cmat, 1) == G0 ||

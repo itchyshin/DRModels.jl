@@ -27,6 +27,25 @@ Branch `claude/arc2-metav` from da8b3f871.
   plain `phylo(1 | sp)`, which the same fix repairs. A `meta_V` + random-effect
   fit whose simulator cannot be built (e.g. no `tree`) now refuses instead of
   falling back. Found by the Arc 2 verifier pass.
+- Review follow-up (third commit): the second commit's by-name simulator no
+  longer matched the dense Gaussian phylo fallback (`sigma ~ x`,
+  `algorithm = :gls` / `:lbfgs`) or the two-structured route, whose FITS still
+  mapped rows to tips by first-seen order; on a 12-tip fixture its draws missed
+  the fit-implied covariance by more than 20 MC SE. That first-seen fit was
+  itself wrong (older than this PR): a different model from drmTMB's and from
+  the default route whenever the data were not in tip order (`sigma ~ x`:
+  logLik -52.141 vs drmTMB -46.142; `:lbfgs` -55.018 vs the default route's
+  -49.119, same data). Fix: those routes now map rows to tips by name
+  (`_structured_group_index`, `src/gaussian_structured.jl`, G = number of
+  tips), and `DrmFit` gains `phylo_scale` (`:covariance` default;
+  `:correlation` on the dense fallback and two-structured route) so the
+  simulator draws on the tip matrix each fit's SD is defined against. The raw
+  covariance over-dispersed the dense fallback's draws by the tree height
+  (height 1.5: drawn 0.284 vs 0.186 in the model; also wrong on main). After
+  the fix all four routes (`sigma ~ x`, `:lbfgs`, default, `meta_V`) equal
+  drmTMB's logLik on that fixture to 1e-9, and every route's draws match its
+  fit (heights 1 and 2). Tip-ordered data give identical fits on all five
+  touched routes (checked against base da8b3f871).
 - Tests: `test/test_meta_random_effect.jl` (registered in `runtests.jl`).
 - Docs: `NEWS.md`, `docs/src/capabilities.md`, receipt under
   `docs/dev-log/evidence/arc2-metav-random-effect/`.
@@ -55,13 +74,8 @@ after the leaf-mapping fix for plain `phylo`, `phylo` with `sigma ~ x`,
   structured route has no ordinary-bar term. drmTMB's bridge already refuses
   this shape (`drm_julia_refuse_structured_with_ordinary_bar`).
 - The marginal bootstrap simulator draws only the FIRST structured field for
-  the two-structured route (`phylo + relmat`) as well.
-- The dense Gaussian phylo fallback route (e.g. `phylo(1 | sp)` with
-  `sigma ~ x`) maps rows to tips by first-seen order in the FIT: reordering the
-  rows of one data set changes its logLik (-25.402 in tip order, -28.489 with
-  species first seen as L1, L3, L5, ...; measured). The sparse default route is
-  row-order invariant. Not fixed here (a different route; fixing it changes
-  that route's answers).
+  the two-structured route (`phylo + relmat`); it refuses more than one field
+  only on `meta_V` fits.
 - `test_bootstrap_formula_structured.jl` Poisson multi-height round-trip fails
   on base da8b3f871 too (identical numbers).
 
