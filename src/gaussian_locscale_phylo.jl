@@ -540,8 +540,45 @@ function _glsp_joint_reml_nll(kind, y, Xμ, Xψ, gidx, G, P, Zη, Zψ, β0, a0;
     # axis at a tiny variance, so its ‖P‖ is huge by construction while its solves
     # are clean.
     tol_in = noise_floor ? max(1e-9, eps(Float64) * maximum(abs, nonzeros(P))) : 1e-9
+    # Certified Newton from a warm start. The outer loops re-solve the inner mode
+    # from a neighbouring one thousands of times. From there one Newton step takes
+    # the gradient to ~1e-7 and the next to ~1e-12, but that last step can raise
+    # jn by a few ULPs of rounding, so `_ls_inner_mode`'s monotone line search
+    # rejects it, damps to its cap and fails after 1-2 s; the cold fallback then
+    # usually succeeds in ~10 ms (measured on the H2 coupled fixture: 17% of warm
+    # solves failed this way and took 87% of the REML time, and inside the β line
+    # search a run of such failures held one evaluation for minutes). So plain
+    # Newton steps come first, and their end point is accepted on the solver's own
+    # certificate (stationary to `tol_in`, PD Hessian), provided the gradient
+    # contracted at every step and jn ends no higher than at the start beyond
+    # rounding. Anything else falls through to the safeguarded solve below.
+    function newton_warm(η0, ψ0, astart)
+        a = copy(astart); gprev = Inf
+        f0 = _ls_joint(kind, y, η0, ψ0, gidx, a, P, Zη, Zψ)
+        isfinite(f0) || return nothing
+        for _ in 1:8
+            g = _ls_joint_grad(kind, y, η0, ψ0, gidx, a, P, Zη, Zψ)
+            all(isfinite, g) || return nothing
+            gn = norm(g)
+            if gn <= tol_in * (1 + norm(a))
+                ft = _ls_joint(kind, y, η0, ψ0, gidx, a, P, Zη, Zψ)
+                (isfinite(ft) && ft <= f0 + 1e-10 * (1 + abs(f0))) || return nothing
+                chc, okc = _ls_inner_certificate(kind, y, η0, ψ0, gidx, G, P, Zη, Zψ, a, tol_in)
+                return okc ? (a, chc, ft) : nothing
+            end
+            gn < gprev || return nothing
+            gprev = gn
+            chn = _ls_hess_chol(kind, y, η0, ψ0, gidx, G, a, P, Zη, Zψ)
+            issuccess(chn) || return nothing
+            a = a .- (chn \ g)
+            all(isfinite, a) || return nothing
+        end
+        return nothing
+    end
     profile(βt, astart) = begin
         η0 = Xμ * βt[1:pμ]; ψ0 = Xψ * βt[pμ+1:p]
+        fast = newton_warm(η0, ψ0, astart)
+        fast === nothing || return fast[3], fast[1], fast[2], true, η0, ψ0
         at, ch, ok = _ls_inner_mode(kind, y, η0, ψ0, gidx, G, P, Zη, Zψ; a0 = astart, tol = tol_in)
         # A warm start can land within rounding of the mode and then fail the inner
         # stationarity certificate; a cold solve is the documented fallback.

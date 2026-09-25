@@ -134,10 +134,68 @@ identical to the pre-fix head. The coupled **ML** fits on G1/G2 still stop at
 a worse optimum than native (G1 -331.94079 vs -330.92465); that is the
 pre-existing coupled ML route, not changed here.
 
+**Speed (third review fix).** A reviewer timed coupled REML on a fixture with a
+strong negative phylo correlation at about 29 minutes (1852 s and 1849 s, of
+which the coupled ML seed was 83 s), against native's 0.68 s. `native-fit-speed.R`
+writes that fixture (`fixture-H2`, byte-identical to the reviewer's files) and
+`native-speed.tsv`. H2: seed 8675309, 41 tips, 1-12 rows per species with 3
+singleton species, n = 299, tree height 3.58, true cor -0.95, `sigma ~ z`.
+
+Measured, not inferred. The REML stage was run from the coupled ML estimate
+with counters on every restricted-likelihood evaluation and every inner solve
+(a scratch copy of the two REML functions; not part of the package). At the
+previous head, the first interior start made 150 evaluations and 341 inner
+solves in its first 60 s. 59 warm-started solves failed (17%) and took 47.0 s
+of the 54.0 s spent evaluating (87%); the cold fallback then succeeded in about
+10 ms, except 11 times. After that one evaluation ran for over 6 minutes inside
+the fixed-effect line search, with every trial repeating the failing warm solve.
+
+Why a warm solve failed. From the neighbouring mode, one Newton step took the
+inner gradient from 2.4e-2 to 5.2e-7, and the next would take it to 6.7e-13.
+That step raised the joint NLL by 4.4e-15 (5 ULP of 6.4), so the inner
+solver's monotone line search rejected it, damped to its cap, repeated for 200
+iterations (about 1.9 s) and reported failure.
+
+The fix (`_glsp_joint_reml_nll`, REML only). From a warm start, plain Newton
+steps come first. Their end point is accepted on the inner solver's own
+certificate (gradient within the same tolerance, positive-definite Hessian),
+and only if the gradient contracted at every step and the joint NLL ends no
+higher than at the start beyond rounding. Anything else falls through to the
+old warm-then-cold solve. The ML routes do not call this function.
+
+After, same counters, H2 REML stage: interior starts 192 and 303 evaluations,
+correlation-bound candidates 237, 61 and 119, final evaluation and Wald SEs 26.
+6 of 1,146 interior inner solves missed the fast path and all were rescued by
+the warm solve, with no cold solve.
+
+| fixture | REML stage, cached ML start | end-to-end `drm(method = :REML)` | of which coupled ML seed | native REML |
+|---|---|---|---|---|
+| H2 | 2.7 s (was about 29 min) | 86.5 s | 83.0 s | 2.28 s |
+| H2, unit height | 2.7 s (was about 9.5 min) | not rerun | 110.5 s | 2.36 s |
+| G1 | 16.0 s | 89.4 s | 71.6 s | |
+| G2 | | 40.6 s | 30.0 s | |
+| F1 | | 13.1 s | 11.3 s | |
+
+Local timings, Julia 1.13 aarch64, 2 threads, on a shared machine (native on
+the same machine: 2.28 s for H2; the reviewer measured 0.68 s). REML-stage
+times exclude compilation. The logLik, fixed effects, SDs and correlation are
+unchanged on H2 (-52.64598679, cor -0.784410, as native), G1 and G2, and every
+row of `julia.tsv` (F1, F2, all shapes and both estimators) is byte-identical
+apart from its timing column. End to end, the coupled ML seed is now the cost.
+That route is not changed here (DRModels issue #818).
+
+Tests. The new "Arc 2 speed" testset runs the REML stage on H2 and G1 from the
+recorded Julia ML estimates, checks native's logLik (1e-6), fixed effects
+(1e-5), SDs (1e-4) and correlation, and fails if the stage takes over 120 s.
+The end-to-end cells whose coupled ML seed is slow (F1 coupled REML, the G1/G2
+correlation-bound testset) run only with `DRM_SLOW_TESTS=1`. The file takes
+64 s locally by default (191 s before) and 209 s with `DRM_SLOW_TESTS=1`.
+
 **Reproduce.**
 ```
 DRMTMB_PATH=~/local-scratch/lanes/drmTMB-arc1-pr1304-fold Rscript --no-init-file native-fit.R
 JULIA_NUM_THREADS=2 OPENBLAS_NUM_THREADS=1 julia --project=. docs/dev-log/evidence/arc2-gaussian-sigma-phylo-reml/julia-fit.jl
 ```
 Run `native-fit.R` from this directory. It writes the fixtures and `native.tsv`.
-`native-fit-boundary.R` writes the G fixtures and `native-boundary.tsv` the same way.
+`native-fit-boundary.R` writes the G fixtures and `native-boundary.tsv` the same way;
+`native-fit-speed.R` writes the H2 fixture and `native-speed.tsv`.

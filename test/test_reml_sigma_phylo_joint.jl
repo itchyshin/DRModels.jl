@@ -13,6 +13,8 @@
 #      native-fit.R, committed next to them.
 #   4. Guard (D-273): the neighbouring routes that already matched native — ML on
 #      both shapes and the mean-only phylo REML cell — still do.
+#   5. Speed: the coupled REML stage reaches native's optimum on H2 and G1 within
+#      a time bound. Cells with a slow coupled ML seed need DRM_SLOW_TESTS=1.
 using DRModels
 using Test, Random, LinearAlgebra, SparseArrays, ForwardDiff
 
@@ -171,11 +173,21 @@ function _arc2_check(native, fx, shape, estimator; se = false)
     return fit
 end
 
+# Slow cells: every end-to-end coupled REML fit first runs the coupled ML fit for its
+# start, and on the F1, G1 and G2 fixtures that ML fit takes 11-72 s locally and
+# roughly ten times that on CI (DRModels issue #818 tracks the ML route). Those
+# cells run only with DRM_SLOW_TESTS=1, as in test_locscale_profile.jl. The default
+# run keeps a coupled REML native match end to end (F2, with Wald SEs) and checks
+# the coupled REML stage itself on H2 and G1 from a cached ML start (below).
+const _ARC2_SLOW = get(ENV, "DRM_SLOW_TESTS", "0") == "1"
+
 @testset "Arc 2 same target: σ-phylo REML == native drmTMB REML" begin
     native = _arc2_native()
     # F1 is the Arc 1 probe fixture (sigma-only: −143.3750 native vs −146.1213 before).
     @testset "F1 sigma_only REML" begin _arc2_check(native, "F1", "sigma_only", "REML"; se = true) end
-    @testset "F1 mu_sigma REML (coupled)" begin _arc2_check(native, "F1", "mu_sigma", "REML") end
+    if _ARC2_SLOW
+        @testset "F1 mu_sigma REML (coupled)" begin _arc2_check(native, "F1", "mu_sigma", "REML") end
+    end
     @testset "F2 sigma_only REML" begin _arc2_check(native, "F2", "sigma_only", "REML"; se = true) end
     @testset "F2 mu_sigma REML (coupled)" begin _arc2_check(native, "F2", "mu_sigma", "REML"; se = true) end
 end
@@ -208,11 +220,16 @@ end
 const _ARC2_BOUNDARY_FIXTURES = [("G1", @formula(sigma ~ phylo(1 | sp))),
                                  ("G2", @formula(sigma ~ z + phylo(1 | sp)))]
 
-@testset "Arc 2 correlation bound: coupled REML == native drmTMB on its bound" begin
-    lines = readlines(joinpath(_ARC2_EV, "native-boundary.tsv"))
+function _arc2_native_tsv(file)
+    lines = readlines(joinpath(_ARC2_EV, file))
     hdr = split(lines[1], '\t')
-    native = Dict((r["fixture"], r["shape"], r["estimator"]) => r
-                  for r in (Dict(zip(hdr, split(l, '\t'))) for l in lines[2:end]))
+    Dict((r["fixture"], r["shape"], r["estimator"]) => r
+         for r in (Dict(zip(hdr, split(l, '\t'))) for l in lines[2:end]))
+end
+
+if _ARC2_SLOW
+@testset "Arc 2 correlation bound: coupled REML == native drmTMB on its bound" begin
+    native = _arc2_native_tsv("native-boundary.tsv")
     for (fx, sform) in _ARC2_BOUNDARY_FIXTURES
         data, nwk = _arc2_boundary_fixture(fx)
         nr = native[(fx, "mu_sigma", "REML")]
@@ -233,6 +250,70 @@ const _ARC2_BOUNDARY_FIXTURES = [("G1", @formula(sigma ~ phylo(1 | sp))),
             @test fit.scales[:lambda_cor][1] ≈ _D._GLSP_COR_CAP atol = 1e-9
             @test _arc2_num(nr["cor"]) > 0.99999          # native: on (or at) its bound
             @test all(isnan, vcov(fit)[end, :])           # boundary fit: no Wald covariance
+        end
+    end
+end
+else
+    @info "Arc 2 end-to-end correlation-bound cells skipped (coupled ML seeds, ~minutes); set DRM_SLOW_TESTS=1 to run"
+end
+
+# ---- speed: the coupled REML stage from a cached ML start --------------------
+# The coupled REML fit re-solves the joint mode thousands of times, each from the
+# neighbouring one. A warm inner solve used to fail at the exact mode on a few-ULP
+# rise of the objective and spin for 1-2 s before a cold solve rescued it; on H2
+# (strong negative phylo correlation, 1-12 rows per species, tree height 3.58) the
+# REML stage took about 29 minutes against native's 1-2 s (native-fit-speed.R). It
+# now takes a few seconds. `_glsp_joint_reml_fit` is called as the coupled route
+# calls it, from the Julia coupled ML estimate (drm(..., method = :ML,
+# phylo_coupled = true, g_tol = 1e-8), recorded below in the route's internal order
+# [β; logL11, L21, logL22]), so the ML seed's own cost stays out of this check.
+# The elapsed-time bound is loose (CI runs several times slower than a laptop) but
+# far below the old cost: it fails if the slowdown returns.
+const _ARC2_ML_START = Dict(
+    "H2" => [1.2882697910798269, 0.6077084992687934, -1.2916003662446642, 0.4860840655836412,
+             -1.0231783198724216, -0.22161799723466435, -1.8624001464918072],
+    "G1" => [-0.16511401166476766, 0.5865758079562735, 0.3268961769415294,
+             -9.315395271195959, -0.657631802472501, -1.3033928365601821])
+
+function _arc2_coupled_reml_stage(fx, has_z)
+    data, nwk = _arc2_boundary_fixture(fx)
+    n = length(data.y)
+    Xμ = hcat(ones(n), data.x)
+    Xψ = has_z ? hcat(ones(n), data.z) : ones(n, 1)
+    p = size(Xμ, 2) + size(Xψ, 2)
+    phy = augmented_phy(nwk)
+    Q, gidx, G = _D._locscale_phylo_setup(phy, data.sp)
+    θml = _ARC2_ML_START[fx]
+    starts = [[log(0.3), 0.0, log(0.3)], _D._glsp_reml_start(θml[p+1:end], (1, 3))]
+    t = @elapsed rf = _D._glsp_joint_reml_fit(Val(:gaussian_mean), data.y, Xμ, Xψ, gidx, G, Q,
+                                              _D._ls_canonical_Zeta(n), _D._ls_canonical_Zpsi(n),
+                                              _D._glsp_coupled_Λ, starts, θml[1:p];
+                                              se = true, logsd_idx = (1, 3), shrink_idx = (2,),
+                                              cor_edge = true)
+    Λ = _D._glsp_coupled_Λ(rf.v)
+    sd = sqrt.([Λ[1, 1], Λ[2, 2]])
+    return rf, t, sd .* sqrt(_D.phylo_tree_height(phy)), Λ[1, 2] / prod(sd)
+end
+
+@testset "Arc 2 speed: coupled REML stage matches native in seconds" begin
+    native = merge(_arc2_native_tsv("native-boundary.tsv"), _arc2_native_tsv("native-speed.tsv"))
+    for (fx, has_z) in (("H2", true), ("G1", false))
+        nr = native[(fx, "mu_sigma", "REML")]
+        rf, t, sd_unit, cor = _arc2_coupled_reml_stage(fx, has_z)
+        @info "Arc 2 coupled REML stage (cached ML start)" fixture = fx seconds = round(t, digits = 2)
+        @testset "$fx" begin
+            @test rf.converged
+            @test abs(-rf.reml_nll - _arc2_num(nr["logLik"])) <= 1e-6
+            β_n = _arc2_num.([nr["mu_intercept"], nr["mu_x"], nr["sigma_intercept"]])
+            has_z && push!(β_n, _arc2_num(nr["sigma_z"]))
+            @test rf.β ≈ β_n rtol = 1e-5
+            @test sd_unit ≈ _arc2_num.([nr["sd_mu"], nr["sd_sigma"]]) rtol = 1e-4
+            if fx == "G1"
+                @test cor ≈ _D._GLSP_COR_CAP atol = 1e-9     # native's optimum is on its bound
+            else
+                @test cor ≈ _arc2_num(nr["cor"]) atol = 1e-5  # H2: interior, cor = -0.784
+            end
+            @test t < 120.0
         end
     end
 end
