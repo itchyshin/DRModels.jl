@@ -51,7 +51,7 @@ function _marginal_method(s::Symbol)
     t === :LAPLACE && throw(ArgumentError(
         "marginal = :Laplace is handled by the ordinary-Laplace front end " *
         "(`_drm_ordinary_laplace`) and is not available on this route"))
-    throw(ArgumentError("unknown marginal method `:$s`; use :LA (Laplace, default), :Laplace (TMB-convention Laplace, ordinary `(1 | g)` on Poisson/Binomial/NegBinomial2/Gamma/Beta), :VA (variational, #136), or :AGHQ (1-D Liu–Pierce, Poisson (1|g) only, #448)"))
+    throw(ArgumentError("unknown marginal method `:$s`; use :LA (default; GHQ-32 on an ordinary `(1 | g)`, Laplace on most other random-effect structures), :Laplace (TMB-convention Laplace, ordinary `(1 | g)` on Poisson/Binomial/NegBinomial2/Gamma/Beta), :VA (variational, #136), or :AGHQ (1-D Liu–Pierce, Poisson (1|g) only, #448)"))
 end
 
 # Route-or-reject for the public `marginal = :AGHQ` front end (#448). The only
@@ -76,7 +76,7 @@ function _fit_va(args...; kwargs...)
           "NegBinomial2 (`_fit_nb2_ranef_va`), Gamma (`_fit_gamma_ranef_va`) and Beta " *
           "(`_fit_beta_ranef_va`) random-intercept cases so far; other families are not " *
           "yet wired — see https://github.com/itchyshin/DRModels.jl/issues/136. Use " *
-          "marginal = :LA (Laplace, the default).")
+          "marginal = :LA (the default integrator: GHQ-32 on an ordinary `(1 | g)`, Laplace on most other random-effect structures).")
 end
 
 # Route-or-reject for the public `marginal = :VA` front end (#136). Public VA
@@ -93,7 +93,7 @@ function _va_reject(fam, what)
         "marginal = :VA (variational ELBO, #136) is not available for $(nameof(typeof(fam)))() with $what. " *
         "The public VA path is Experimental and covers Poisson, Binomial, NegBinomial2, Gamma, and Beta " *
         "with a single random intercept `(1 | g)` (`sigma ~ 1` where the family has a scale). " *
-        "Use marginal = :LA (Laplace, the default) for this model."))
+        "Use marginal = :LA (the default integrator: GHQ-32 on an ordinary `(1 | g)`, Laplace on most other random-effect structures) for this model."))
 end
 
 # `method` is the ML/REML selector. LA/VA is `marginal` (Q1 / #136).
@@ -109,9 +109,11 @@ function _reject_method_as_marginal(fam, method; allow_reml::Bool = false)
     ms = Symbol(uppercase(String(method)))
     famname = nameof(typeof(fam))
     if ms === :VA || ms === :LA || ms === :LAPLACE || ms === :AGHQ
+        canon = ms === :LAPLACE ? :Laplace : ms          # the documented spelling, not the uppercased key
         throw(ArgumentError(
-            "drm ($famname): `method = :$ms` is not the Laplace/VA/AGHQ selector. " *
-            "Use `marginal = :$ms` (`:LA` default; `:Laplace` TMB-convention Laplace on an ordinary `(1 | g)`; " *
+            "drm ($famname): `method = :$method` is not the Laplace/VA/AGHQ selector. " *
+            "Use `marginal = :$canon` (`:LA` default, GHQ-32 on an ordinary `(1 | g)`; " *
+            "`:Laplace` TMB-convention Laplace on an ordinary `(1 | g)`; " *
             "`:VA` opt-in ELBO, #136; " *
             "`:AGHQ` 1-D Liu–Pierce on Poisson (1|g) only, #448). " *
             "`method` is reserved for `:ML`/`:REML`."))
@@ -121,12 +123,12 @@ function _reject_method_as_marginal(fam, method; allow_reml::Bool = false)
         allow_reml && return :REML
         throw(ArgumentError(
             "drm ($famname): unknown `method = :$method`. $famname is ML-only; " *
-            "for Laplace vs variational vs AGHQ use `marginal = :LA`, `:Laplace` " *
+            "for the integrator use `marginal = :LA` (default; GHQ-32 on an ordinary `(1 | g)`), `:Laplace` " *
             "(TMB-convention Laplace, ordinary `(1 | g)`), `:VA` (#136), or `:AGHQ` (#448)."))
     end
     throw(ArgumentError(
         "drm ($famname): unknown `method = :$method`. $famname is ML-only; " *
-        "for Laplace vs variational vs AGHQ use `marginal = :LA`, `:Laplace` " *
+        "for the integrator use `marginal = :LA` (default; GHQ-32 on an ordinary `(1 | g)`), `:Laplace` " *
         "(TMB-convention Laplace, ordinary `(1 | g)`), `:VA` (#136), or `:AGHQ` (#448)."))
 end
 

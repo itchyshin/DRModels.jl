@@ -22,7 +22,10 @@
 #       file) and reports converged = true through the scale-free rule;
 #   (5) every out-of-scope model is refused with this route's message, never
 #       rerouted to :LA;
-#   (6) the bridge forwards `marginal` and reports the integrator it used.
+#   (6) the bridge forwards `marginal` and reports the integrator it used;
+#   (7) lrtest accepts the fixed-effects model against a `:Laplace` random
+#       intercept (its log-likelihood is exact), and still refuses `:LA` vs
+#       `:Laplace` random-effect pairs and any VA ELBO.
 # The same-target numbers against native drmTMB live in
 # docs/dev-log/evidence/arc2-ordinary-laplace/ (native_fit.R, julia_fit.jl).
 
@@ -289,6 +292,37 @@ const _OL_FAMS = (:poisson, :nb2, :binomial, :gamma, :beta)
         @test fitm.marginal === :Laplace
     end
 
+    @testset "lrtest: fixed-effects model vs a :Laplace random intercept" begin
+        for fam in (:poisson, :nb2)
+            d = _ol_sim(fam; seed = 5)
+            f0 = _ol_hassigma(fam) ? bf(@formula(y ~ x), @formula(sigma ~ 1)) : bf(@formula(y ~ x))
+            fit0 = drm(f0, _ol_family(fam); data = d, se = false)       # exact loglik, tagged :LA
+            fitL = drm(_ol_formula(fam), _ol_family(fam); data = d, marginal = :Laplace, se = false)
+            fitLA = drm(_ol_formula(fam), _ol_family(fam); data = d, se = false)
+            @test OL._fit_is_re_free(fit0)
+            @test !OL._fit_is_re_free(fitL) && !OL._fit_is_re_free(fitLA)
+            t = @test_logs (:warn, r"BOUNDARY") match_mode = :any lrtest(fit0, fitL)
+            @test t.statistic ≈ 2 * (loglik(fitL) - loglik(fit0))
+            @test t.dof == 1
+            @test (@test_logs (:warn,) match_mode = :any anova(fit0, fitL)) == t
+            # the default route's own test is unchanged (same tag on both sides)
+            tLA = @test_logs (:warn,) match_mode = :any lrtest(fit0, fitLA)
+            @test tLA.statistic ≈ 2 * (loglik(fitLA) - loglik(fit0))
+            # two random-effect fits with different integrators stay refused, and the
+            # message names the integrators rather than blaming an ELBO
+            err = @test_throws ArgumentError lrtest(fitLA, fitL)
+            msg = sprint(showerror, err.value)
+            @test occursin("GHQ-32", msg) && occursin("`:Laplace`", msg)
+            @test !occursin("ELBO", msg)
+        end
+        # a VA ELBO is still never compared with a log-likelihood, even an exact one
+        d = _ol_sim(:poisson; seed = 5)
+        fit0 = drm(bf(@formula(y ~ x)), Poisson(); data = d, se = false)
+        fitVA = drm(bf(@formula(y ~ x + (1 | g))), Poisson(); data = d, marginal = :VA, se = false)
+        err = @test_throws ArgumentError lrtest(fit0, fitVA)
+        @test occursin("ELBO", sprint(showerror, err.value))
+    end
+
     @testset "out-of-scope models are refused, never rerouted" begin
         dp = _ol_sim(:poisson; seed = 9)
         dp = merge(dp, (h = repeat(["a", "b", "c", "d"], length(dp.y) ÷ 4), z = randn(Random.Xoshiro(1), length(dp.y))))
@@ -319,7 +353,8 @@ const _OL_FAMS = (:poisson, :nb2, :binomial, :gamma, :beta)
         # `method = :Laplace` points the caller at `marginal`
         errm = @test_throws ArgumentError drm(bf(@formula(y ~ x + (1 | g))), Poisson(); data = dp,
                                               method = :Laplace)
-        @test occursin(r"is not the Laplace/VA/AGHQ selector.*Use `marginal = :", sprint(showerror, errm.value))
+        @test occursin(r"is not the Laplace/VA/AGHQ selector.*Use `marginal = :Laplace`", sprint(showerror, errm.value))
+        @test !occursin(":LAPLACE", sprint(showerror, errm.value))   # canonical spelling, not the uppercased key
         # an ML-only family's REML refusal names :Laplace among the marginal options
         for m in (:REML, :bogus)
             errr = @test_throws ArgumentError OL._reject_method_as_marginal(OL.Beta(), m)

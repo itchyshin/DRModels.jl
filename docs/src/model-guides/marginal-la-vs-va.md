@@ -46,8 +46,14 @@ approximation.
 
 drmTMB (TMB) integrates an ordinary random intercept by the one-point Laplace
 approximation, so on `(1 | g)` the default `:LA` route (GHQ-32) and drmTMB fit
-the same model but report slightly different log-likelihoods and estimates
-(0.06 to 1.3 log-likelihood units on the ten receipt fixtures). To reproduce
+the same model with different integrators. On ten test datasets with a moderate
+family `sigma` (0.3 to 0.5) and a random-intercept SD of 0.6, their
+log-likelihoods differed by 0.06 to 1.3 units. The gap does not stay that small.
+When the family `sigma` is small (about 0.03 or less in our Gamma and Beta
+checks), each group's integrand is sharply peaked, the 32 fixed quadrature nodes
+miss it, and the default `:LA` can report convergence at the wrong optimum:
+its reported log-likelihood fell 170 to 300 units below the exact maximum, and
+`sigma` was off by about a factor of three. Use `marginal = :Laplace` for such data. To reproduce
 drmTMB's numbers, request the Laplace approximation explicitly:
 
 ```julia
@@ -61,6 +67,13 @@ This covers one ordinary `(1 | g)` on the mean of Poisson, Binomial,
 NegBinomial2, Gamma and Beta (`sigma ~ 1` for the scale families), by maximum
 likelihood. Any other model with `marginal = :Laplace` is refused; nothing is
 silently fitted by GHQ-32 under that label.
+
+To test the random intercept, compare the `:Laplace` fit with the
+fixed-effects model fitted as usual (no `marginal`): `lrtest(fixed, fit)`. The
+fixed-effects log-likelihood is exact, so the pair is comparable. `lrtest`
+refuses a `:LA` random-effect fit against a `:Laplace` one, because their
+log-likelihoods differ by integration error as well as by model fit; refit both
+with the same `marginal`.
 
 The trouble starts when the integrand is **not** close to Gaussian:
 
