@@ -393,6 +393,9 @@ _ordinary_laplace_check_response(::Gamma, y) =
 _ordinary_laplace_check_response(::Beta, y) =
     all(yi -> 0 < yi < 1, y) || error("Beta() requires a response strictly inside (0, 1)")
 
+# Below this fitted log σ (σ ≈ 3e-4) the scale route re-fits from log σ = −1.
+const _ORDINARY_LAPLACE_PLATEAU_LOGSIGMA = -8.0
+
 function _fit_scale_ordinary_laplace(fam, y, Xμ, gidx, G, nmμ, nmσ, grp, g_tol;
                                      se::Bool = true)
     _ordinary_laplace_check_response(fam, y)
@@ -403,9 +406,22 @@ function _fit_scale_ordinary_laplace(fam, y, Xμ, gidx, G, nmμ, nmσ, grp, g_to
         kind, aux_from, n, Xμ, gidx, Q, 0.0, θ; grad = grad, b0 = b0, raw_scales = true,
         newton_tol = _ORDINARY_LAPLACE_NEWTON_TOL)
     θ0 = vcat(θβ0, θσ0, log(0.4))
+    ctx = "ordinary Laplace $(nameof(typeof(fam))) (1 | $grp)"
     θ̂, nllhat, conv, V, nll, grad! = _ordinary_laplace_optimize(
-        fg, θ0, n, G, g_tol; se = se,
-        context = "ordinary Laplace $(nameof(typeof(fam))) (1 | $grp)")
+        fg, θ0, n, G, g_tol; se = se, context = ctx)
+    # Plateau guard. With the scale unclamped, one large LBFGS step can carry
+    # log σ from the start to −20 or below, where the objective is flat (NB2:
+    # the Poisson limit, ∂nll/∂log σ ~ 1e-14). The optimiser never returns and
+    # the gradient rule reports convergence at a worse point (a review NB2
+    # cell: logLik 0.81 below native drmTMB). Only then, re-fit from an
+    # interior start and keep the lower objective; every other fit is untouched.
+    if θ̂[pμ+1] < _ORDINARY_LAPLACE_PLATEAU_LOGSIGMA
+        θ1 = copy(θ0); θ1[pμ+1] = -1.0
+        alt = _ordinary_laplace_optimize(fg, θ1, n, G, g_tol; se = se, context = ctx)
+        if alt[2] < nllhat
+            θ̂, nllhat, conv, V, nll, grad! = alt
+        end
+    end
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+1), :resd => (pμ+2):(pμ+2)]
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
     auxhat = aux_from(θ̂[pμ+1])

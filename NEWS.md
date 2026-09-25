@@ -28,6 +28,14 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   NegBinomial2 on this route uses its own NB2 kernel that stays accurate when
   the size 1/σ² is huge (near-Poisson data); the structured NB2 kernel lost
   all precision there and reported logLik −0.0014 against drmTMB's −559.55.
+  If a scale-family fit ends with log σ below −8, where the objective is
+  flat (for NB2, the Poisson limit), the route re-fits from log σ = −1 and
+  keeps the lower objective; on one NB2 review cell the first fit had
+  stopped on that plateau, reporting `converged = true`, 0.81 below
+  drmTMB's logLik. `lrtest`/`anova` now accept a random-effect-free fit
+  against any non-VA fit, including `marginal = :AGHQ` (refused before),
+  because a fixed-effects log-likelihood is exact; they still refuse `:LA`
+  vs `:Laplace` random-effect pairs and any VA fit.
 
 - **Package renamed to DRModels.jl.** The Julia package and module are now
   `DRModels`, while the modelling API remains `drm()`, `bf()`, and the existing

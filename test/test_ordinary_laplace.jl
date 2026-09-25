@@ -21,6 +21,9 @@
 #       (test/fixtures/ordinary_laplace/; the only cross-engine constants in this
 #       file) and reports converged = true through the scale-free rule; so do a
 #       near-Poisson NB2 cell and a Gamma sigma = 0.003 cell;
+#   (4c') an NB2 cell whose first optimisation stops on the flat Poisson-limit
+#       plateau (log sigma -19, converged = true) is rescued by the plateau
+#       guard and matches native drmTMB;
 #   (4d) the route's NB2 kernel equals the structured one where that is accurate
 #       and a 1024-bit reference at size r up to e^100, where it is not;
 #   (5) every out-of-scope model is refused with this route's message, never
@@ -28,7 +31,8 @@
 #   (6) the bridge forwards `marginal` and reports the integrator it used;
 #   (7) lrtest accepts the fixed-effects model against a `:Laplace` random
 #       intercept (its log-likelihood is exact), and still refuses `:LA` vs
-#       `:Laplace` random-effect pairs and any VA ELBO.
+#       `:Laplace` random-effect pairs and any VA ELBO; the same holds for a
+#       fixed-effects fit against `marginal = :AGHQ`.
 # The same-target numbers against native drmTMB live in
 # docs/dev-log/evidence/arc2-ordinary-laplace/ (native_fit.R, julia_fit.jl).
 
@@ -218,6 +222,37 @@ const _OL_FAMS = (:poisson, :nb2, :binomial, :gamma, :beta)
         @test fit.theta ≈ θ_native rtol = 1e-5
     end
 
+    # Plateau guard (seed 4417021, 28 unbalanced groups, covariates x and z;
+    # small_sigma_native.R regenerates the CSV and the native numbers). From the
+    # method-of-moments start, the first LBFGS step carried log sigma to about
+    # -24, onto the flat Poisson-limit plateau; the fit stopped at log sigma
+    # -19.03, reported converged = true, and had logLik 0.81 below native.
+    @testset "NB2: plateau guard reaches native's interior optimum" begin
+        lines = readlines(joinpath(@__DIR__, "fixtures", "ordinary_laplace", "nbinom2_sigma005_plateau.csv"))
+        rows = [replace.(split(l, ","), "\"" => "") for l in lines[2:end]]
+        d = (y = [parse(Float64, r[1]) for r in rows], x = [parse(Float64, r[2]) for r in rows],
+             z = [parse(Float64, r[3]) for r in rows], g = [r[4] for r in rows])
+        f = bf(@formula(y ~ x + z + (1 | g)), @formula(sigma ~ 1))
+        fit = drm(f, NegBinomial2(); data = d, marginal = :Laplace, se = false)
+        @test fit.converged
+        @test abs(loglik(fit) - (-472.7624243227)) <= 1e-6
+        @test fit.theta ≈ [0.630459522930, 0.566631438606, -0.367554932004,
+                           -1.641525631985, -0.349387517070] rtol = 1e-5
+        # the guard is not vacuous: without it the first optimisation ends on the plateau
+        n = length(d.y); X = hcat(ones(n), d.x, d.z)
+        gidx, G = OL._group_index(d.g)
+        kind, aux_from, θβ0, θσ0 = OL._ordinary_laplace_scale_setup(NegBinomial2(), d.y, X)
+        Q = OL._ordinary_laplace_Q(G)
+        fg = (θ, b0, grad) -> OL._phylo_mean_laplace_nuisance_fg(
+            kind, aux_from, n, X, gidx, Q, 0.0, θ; grad = grad, b0 = b0, raw_scales = true,
+            newton_tol = OL._ORDINARY_LAPLACE_NEWTON_TOL)
+        θ1, nll1, conv1, _ = OL._ordinary_laplace_optimize(
+            fg, vcat(θβ0, θσ0, log(0.4)), n, G, 1e-8; se = false, context = "test")
+        @test θ1[4] < OL._ORDINARY_LAPLACE_PLATEAU_LOGSIGMA
+        @test conv1                                     # the flag alone does not catch it
+        @test nll1 > -loglik(fit) + 0.5
+    end
+
     # The NB2 kernel on this route (`Val(:nb2_raw)`) is the structured NB2 kernel
     # rewritten without cancellation: equal to it where that one is accurate, and
     # equal to a 1024-bit reference where it is not (size r up to e^100).
@@ -382,6 +417,17 @@ const _OL_FAMS = (:poisson, :nb2, :binomial, :gamma, :beta)
         fitVA = drm(bf(@formula(y ~ x + (1 | g))), Poisson(); data = d, marginal = :VA, se = false)
         err = @test_throws ArgumentError lrtest(fit0, fitVA)
         @test occursin("ELBO", sprint(showerror, err.value))
+        # The same exemption covers any non-VA integrator: a fixed-effects fit
+        # against `marginal = :AGHQ` (refused before this route existed) is
+        # accepted, while an :AGHQ vs :Laplace random-effect pair stays refused.
+        fitQ = drm(bf(@formula(y ~ x + (1 | g))), Poisson(); data = d, marginal = :AGHQ, se = false)
+        @test fitQ.marginal === :AGHQ
+        tQ = @test_logs (:warn, r"BOUNDARY") match_mode = :any lrtest(fit0, fitQ)
+        @test tQ.statistic ≈ 2 * (loglik(fitQ) - loglik(fit0))
+        @test tQ.dof == 1
+        @test (@test_logs (:warn,) match_mode = :any anova(fit0, fitQ)) == tQ
+        fitL = drm(_ol_formula(:poisson), Poisson(); data = d, marginal = :Laplace, se = false)
+        @test_throws ArgumentError lrtest(fitQ, fitL)
     end
 
     @testset "out-of-scope models are refused, never rerouted" begin

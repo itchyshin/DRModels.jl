@@ -5,7 +5,11 @@
 #     of 4 to 13). The loop simulates six review cells in one RNG stream; only
 #     the Gamma sigma = 0.003 and the near-Poisson NB2 (sigma = 0.03) cells are
 #     kept, so the loop must run in full to reproduce them.
-# (2) Fits engine = "tmb" on all four fixtures in test/fixtures/ordinary_laplace/
+# (1b) Regenerates nbinom2_sigma005_plateau.csv (seed 4417021, groups of 3 to
+#     14, covariates x and z): the second of two NB2 cells in one RNG stream, a
+#     cell on which `marginal = :Laplace` once stopped on the flat Poisson-limit
+#     plateau (log sigma -19) instead of native's interior optimum.
+# (2) Fits engine = "tmb" on all five fixtures in test/fixtures/ordinary_laplace/
 #     and writes small_sigma_native.tsv (df, logLik, convergence code, max
 #     |gradient|, every free outer parameter on its working scale).
 #
@@ -47,11 +51,25 @@ for (cn in names(cells)) {
     write.csv(d, file.path(fix_dir, keep[[cn]]), row.names = FALSE)
 }
 
+set.seed(4417021)
+mk2 <- function(n_g, sd_g, sig, b0, b1) {
+  ms <- sample(3:14, n_g, replace = TRUE)
+  g <- factor(sprintf("q%03d", rep(seq_len(n_g), times = ms)))
+  n <- length(g); x <- rnorm(n); z <- runif(n, -1, 1)
+  b <- rnorm(n_g, 0, sd_g)[as.integer(g)]
+  eta <- b0 + b1 * x - 0.3 * z + b
+  data.frame(y = rnbinom(n, mu = exp(eta), size = 1/sig^2), x = x, z = z, g = g)
+}
+invisible(mk2(35, 0.4, 0.02, 1.2, 0.3))                     # first cell: not kept
+write.csv(mk2(28, 0.7, 0.05, 0.6, 0.5),
+          file.path(fix_dir, "nbinom2_sigma005_plateau.csv"), row.names = FALSE)
+
 fits <- list(
   gamma_sigma0012  = list(Gamma(link = "log"), bf(y ~ x + z + f + (1 | g), sigma ~ 1)),
   beta_sigma0012   = list(beta_family(),       bf(y ~ x + z + f + (1 | g), sigma ~ 1)),
   gamma_sigma0003  = list(Gamma(link = "log"), bf(y ~ x + (1 | g), sigma ~ 1)),
-  nbinom2_sigma003 = list(nbinom2(),           bf(y ~ x + (1 | g), sigma ~ 1)))
+  nbinom2_sigma003 = list(nbinom2(),           bf(y ~ x + (1 | g), sigma ~ 1)),
+  nbinom2_sigma005_plateau = list(nbinom2(),   bf(y ~ x + z + (1 | g), sigma ~ 1)))
 rows <- list()
 for (cn in names(fits)) {
   d <- read.csv(file.path(fix_dir, paste0(cn, ".csv")))

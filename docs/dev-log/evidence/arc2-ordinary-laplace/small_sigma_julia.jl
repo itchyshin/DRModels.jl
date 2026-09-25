@@ -1,6 +1,6 @@
 # Arc 2 small-sigma receipt: DRModels side.
 #
-# Fits the four small-sigma fixtures in test/fixtures/ordinary_laplace/ with
+# Fits the five small-sigma fixtures in test/fixtures/ordinary_laplace/ with
 # `marginal = :Laplace` and with the default `marginal = :LA` (GHQ-32), and
 # writes small_sigma_julia.tsv: per cell and route, df, logLik, converged, the
 # fitted log sigma, and (against small_sigma_native.tsv) |ΔlogLik| and the max
@@ -23,6 +23,7 @@ function readfix(path)
     col(n) = [r[findfirst(==(n), hdr)] for r in rows]
     num(n) = parse.(Float64, col(n))
     return "f" in hdr ? (y = num("y"), x = num("x"), z = num("z"), f = col("f"), g = col("g")) :
+           "z" in hdr ? (y = num("y"), x = num("x"), z = num("z"), g = col("g")) :
                         (y = num("y"), x = num("x"), g = col("g"))
 end
 
@@ -30,7 +31,8 @@ const CELLS = [
     ("gamma_sigma0012", D.Gamma(), bf(@formula(y ~ x + z + f + (1 | g)), @formula(sigma ~ 1))),
     ("beta_sigma0012", D.Beta(), bf(@formula(y ~ x + z + f + (1 | g)), @formula(sigma ~ 1))),
     ("gamma_sigma0003", D.Gamma(), bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1))),
-    ("nbinom2_sigma003", NegBinomial2(), bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)))]
+    ("nbinom2_sigma003", NegBinomial2(), bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1))),
+    ("nbinom2_sigma005_plateau", NegBinomial2(), bf(@formula(y ~ x + z + (1 | g)), @formula(sigma ~ 1)))]
 
 nl = readlines(joinpath(DIR, "small_sigma_native.tsv"))
 nh = split(nl[1], '\t')

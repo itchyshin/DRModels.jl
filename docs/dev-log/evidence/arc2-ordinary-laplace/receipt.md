@@ -25,8 +25,8 @@ to ≤ 3.1e-8 in log-likelihood. The `:LA` defect is not fixed by this PR.
 | `fixtures/<family>_ri_s<seed>.csv` | The exact data both engines fitted (n = 300, 30 groups × 10, `x`, `z`, `g`) |
 | `native.tsv` / `julia.tsv` | df, logLik, and every working-scale estimate per cell and engine |
 | `comparison.tsv` | Per cell: df both engines, logLik both engines, abs ΔlogLik, max relative and absolute estimate difference, the `:LA` (GHQ-32) logLik and its gap, verdict |
-| `small_sigma_native.R` | Regenerates the two review fixtures `gamma_sigma0003.csv` and `nbinom2_sigma003.csv` in `test/fixtures/ordinary_laplace/`, fits all four small-sigma fixtures there with `engine = "tmb"`, writes `small_sigma_native.tsv` |
-| `small_sigma_julia.jl` | Fits the same four fixtures with `marginal = :Laplace` and the default `:LA`, writes `small_sigma_julia.tsv` |
+| `small_sigma_native.R` | Regenerates the three review fixtures `gamma_sigma0003.csv`, `nbinom2_sigma003.csv` and `nbinom2_sigma005_plateau.csv` in `test/fixtures/ordinary_laplace/`, fits all five small-sigma fixtures there with `engine = "tmb"`, writes `small_sigma_native.tsv` |
+| `small_sigma_julia.jl` | Fits the same five fixtures with `marginal = :Laplace` and the default `:LA`, writes `small_sigma_julia.tsv` |
 | `small_sigma_native.tsv` / `small_sigma_julia.tsv` | Native df, logLik, convergence code, max gradient, estimates; Julia logLik, converged, log σ and the gaps to native, per route |
 
 Estimates are on the working scale both engines optimise: `mu` coefficients on
@@ -60,14 +60,17 @@ All ten: `SAME_MODEL_MATCH` (df equal, |ΔlogLik| ≤ 1e-6, max relative Δest �
 
 ## Small family σ (added after review)
 
-Four fixtures in `test/fixtures/ordinary_laplace/`, the same files the test
+Five fixtures in `test/fixtures/ordinary_laplace/`, the same files the test
 suite reads. `gamma_sigma0012` and `beta_sigma0012` (family σ ≈ 0.012,
 `y ~ x + z + f + (1 | g)`, simulated in R with seeds 31342 / 31343) were
 already there; `gamma_sigma0003` (DGP σ = 0.003, 24 groups, n = 200) and
 `nbinom2_sigma003` (near-Poisson, DGP σ = 0.03, group SD 0.5, 30 groups,
 n = 246) come from the review cells (seed 99173, unbalanced groups of 4 to 13;
-`small_sigma_native.R` regenerates them byte for byte). Native converged on all
-four (`opt$convergence == 0`, max |gradient| at most 4.03e-4).
+`small_sigma_native.R` regenerates them byte for byte).
+`nbinom2_sigma005_plateau` (DGP σ = 0.05, group SD 0.7, 28 groups of 3 to 14,
+`y ~ x + z + (1 | g)`, n = 265, seed 4417021) comes from review round 4.
+Native converged on all five (`opt$convergence == 0`, max |gradient| at most
+4.03e-4).
 
 | fixture | logLik native | :Laplace abs ΔlogLik | :Laplace max rel Δest | :Laplace converged | default `:LA` logLik | `:LA` log σ vs :Laplace log σ |
 |---|---|---|---|---|---|---|
@@ -75,15 +78,16 @@ four (`opt$convergence == 0`, max |gradient| at most 4.03e-4).
 | beta_sigma0012 | 1047.6527834522 | 3.0e-08 | 2.5e-07 | true | 752.9310228276 | −3.3026 vs −4.4542 |
 | gamma_sigma0003 | 710.1475483826 | 3.1e-08 | 5.6e-12 | true | 209.0563586180 | −2.8398 vs −5.8398 |
 | nbinom2_sigma003 | −559.5469185207 | 8.9e-12 | 4.4e-08 | true | −559.5158610133 | −2.1640 vs −2.1630 |
+| nbinom2_sigma005_plateau | −472.7624243227 | 1.1e-11 | 3.6e-07 | true | −472.3946539557 | −1.6622 vs −1.6415 |
 
-`:Laplace` matches native on all four (bars as above). The default `:LA`
-(GHQ-32) fit reports `converged = true` on all four, but on the three Gamma and
+`:Laplace` matches native on all five (bars as above). The default `:LA`
+(GHQ-32) fit reports `converged = true` on all five, but on the three Gamma and
 Beta fixtures its log-likelihood is 295 to 501 units below native's and its σ
 is 3.2 to 20 times native's (exp of the log σ differences 1.15, 2.06 and 3.00).
-On the near-Poisson NB2 fixture the fitted σ ≈ 0.115 and `:LA` is close to
-native (0.031 units).
+On the two NB2 fixtures the fitted σ is about 0.11 and 0.19, and `:LA` is
+within 0.031 and 0.37 units of native.
 
-Two defects this section closed, both on the `:Laplace` route only:
+Three defects this section closed, all on the `:Laplace` route only:
 
 - **Near-Poisson NB2.** With the dispersion unclamped, the structured NB2
   kernel lost all precision once the size r = 1/σ² exceeded about e^20
@@ -101,6 +105,14 @@ Two defects this section closed, both on the `:Laplace` route only:
   (λ² ≤ 1e-8) accepts points about 1e-4 SE from the optimum. The route now
   solves the inner mode to 1e-13 and takes up to three Newton steps on the
   outer gradient before that check. Max relative Δest is now 5.6e-12.
+- **NB2 Poisson-limit plateau.** On `nbinom2_sigma005_plateau` the first LBFGS
+  step from the method-of-moments start (log σ 0.18, where ∂nll/∂log σ = 125)
+  carried log σ to about −24, onto the Poisson-limit plateau
+  (∂nll/∂log σ ≈ 2e-14). The fit stopped at log σ −19.03 with
+  `converged = true` and logLik 0.81 below native, although the route's own
+  objective is 0.81 lower at native's point. Now, when a scale-family fit ends
+  with log σ < −8, the route re-fits from log σ = −1 and keeps the lower
+  objective; fits that end above −8 are untouched.
 
 ## Environment
 

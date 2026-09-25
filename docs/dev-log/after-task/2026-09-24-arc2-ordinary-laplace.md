@@ -15,10 +15,15 @@ leaving `:LA` untouched.
 
 - `src/ordinary_laplace.jl` (new): front end, shape validation, and the three
   fitters (Poisson; Binomial; NB2/Gamma/Beta through one scale-family fitter).
-  No new likelihood code: it calls the existing sparse-Laplace kernels of the
-  structured routes with Q = I and the group index as the latent map.
+  It calls the existing sparse-Laplace kernels of the structured routes with
+  Q = I and the group index as the latent map, and adds one likelihood kernel
+  of its own: `Val(:nb2_raw)`, an NB2 log-density that stays accurate at a
+  huge size 1/σ² (Stirling tail `_nb2_raw_tail`, ratios through `log1p`).
+  A scale-family fit that ends with log σ < −8 (the flat Poisson-limit
+  plateau for NB2) is re-fitted from log σ = −1, keeping the lower objective.
 - `src/sparse_laplace_glmm.jl`: a `raw_scales = false` keyword on three kernels
-  and three family setups. With `true` the RE log-SD and the dispersion are not
+  plus the Gamma and Beta setups (`_nb2_laplace_setup` is unchanged; the route
+  builds its own NB2 setup). With `true` the RE log-SD and the dispersion are not
   clamped, so value and analytic gradient describe TMB's function everywhere
   (the clamp-with-unclamped-gradient defect found on the earlier #071 branch).
   Default `false`: structured routes unchanged.
@@ -32,6 +37,10 @@ leaving `:LA` untouched.
   `method = :Laplace` points at `marginal`.
 - `src/bridge.jl`: `marginal` bridge option forwarded to `drm`; every bridge
   result now carries `"marginal"` (the integrator the fit used).
+- `src/comparison.jl`: `lrtest`/`anova` accept a random-effect-free fit against
+  any non-VA fit (its log-likelihood is exact). This also admits fixed vs
+  `marginal = :AGHQ`, which `origin/main` refused; `:LA` vs `:Laplace`
+  random-effect pairs and any VA fit are still refused.
 - Covered: Poisson, NB2, Binomial (Bernoulli and `cbind` trials), Gamma, Beta.
   Not covered (refused, never rerouted): `(1 + x | g)` — the kernels map each
   observation to one scalar latent with one σ, so a correlated 2-D per-group
@@ -48,13 +57,17 @@ to 1.34 log-likelihood units.
 
 ## Rose
 
-Claim is point estimates and log-likelihood on the ten fixtures plus four
+Claim is point estimates and log-likelihood on the ten fixtures plus five
 small-sigma fixtures (receipt, "Small family σ"); SEs, intervals, boundary fits
 and NB2 data whose optimum is exactly Poisson (σ → 0) are not claimed. Review
 round 3 fixed two route defects found at small sigma: the NB2 kernel lost all
 precision at size r > e^20 (now a separate large-size-stable kernel,
 `Val(:nb2_raw)`), and Gamma σ = 0.003 reported `converged = true` 7.2e-5 from
-native (now inner tolerance 1e-13 plus a Newton polish). The R
+native (now inner tolerance 1e-13 plus a Newton polish). Review round 4 found
+an NB2 cell (σ = 0.05, x and z, 28 unbalanced groups) whose first fit stopped
+on the Poisson-limit plateau (log σ −19.03, `converged = true`, logLik 0.81
+below native); the plateau guard now reaches native's optimum (|ΔlogLik|
+1.1e-11), and the cell is a test fixture. The R
 bridge refusal stays until the conductor lifts it. `:LA` answers are guarded by
 tests, not merely asserted.
 
