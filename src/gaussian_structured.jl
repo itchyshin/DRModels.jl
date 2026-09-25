@@ -318,6 +318,163 @@ function _fit_phylo_slope_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, C, xs, n
     return _withranef(_withnll(fit, nll), blup)
 end
 
+# One STRUCTURED marker (phylo / relmat / animal, fixed correlation K) PLUS one
+# or more ordinary scalar random effects `(1 | h)` / `(0 + x | h)` on the
+# Gaussian mean (Arc 2 `structured_with_ordinary_bar`). This is the model
+# drmTMB fits natively for e.g. `y ~ x + phylo(1 | sp, tree = tree) + (1 | h)`:
+# every component is its OWN independent block (`src/drmTMB.cpp`: the ordinary
+# bars are the `u_mu` block, N(0, exp(2 log_sd_mu)) iid per level; the marker
+# is the `u_phylo` block, N(0, exp(2 log_sd_phylo) K)), and nothing couples
+# them. Writing the ordinary bars as components with K = I,
+#     yᵢ = xᵢᵀβ + Σ_k w_{k,i} u_{k, g_k(i)} + εᵢ,
+#     u_k ~ N(0, σ_k² K_k),  u_k ⊥ u_l,  ε ~ N(0, D),  D = diag(exp(2 xσᵢᵀβσ)),
+# the marginal is exactly Gaussian,
+#     y ~ N(Xβ, V),  V = D + Σ_k σ_k² Z_k K_k Z_kᵀ,  Z_k[i, g_k(i)] = w_{k,i},
+# so the ML fit is the closed form (drmTMB's Laplace objective is exact here).
+# Before this route existed the dispatcher sent this formula to the
+# single-structured fitter, which silently DROPPED every ordinary bar.
+#
+# `comps` is a vector of `(w, gidx, G, K, label)`: `w` the per-row design
+# weight (ones for an intercept), `K === nothing` for an ordinary (identity)
+# component. θ = [βμ; βσ; log σ_1 … log σ_m] in `comps` order, which the caller
+# lays out in drmTMB's own order: ordinary bars first (formula order), the
+# structured marker last. DENSE assembly (n×n), like
+# `_fit_two_structured_gaussian`; a sparse/Woodbury spine is a follow-up.
+function _fit_structured_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol)
+    n = length(y)
+    pμ, pσ = size(Xμ, 2), size(Xσ, 2)
+    m = length(comps)
+    Zs = Matrix{Float64}[]
+    ZKZt = Matrix{Float64}[]           # constant building blocks (every K fixed)
+    for (w, gidx, G, K, _) in comps
+        length(w) == n || error("drm: internal — component weight has $(length(w)) rows, expected $n")
+        Z = _structured_Z(gidx, G) .* w
+        push!(Zs, Z)
+        push!(ZKZt, K === nothing ? Z * Z' : Z * K * Z')
+    end
+    const_2pi = 0.5 * n * log(2π)
+
+    function nll(θ)
+        βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
+        ημ = Xμ * βμ; ησ = Xσ * βσ
+        T = eltype(θ)
+        V = zeros(T, n, n)
+        for k in 1:m
+            V .+= exp(2 * θ[pμ+pσ+k]) .* ZKZt[k]
+        end
+        @inbounds for i in 1:n
+            V[i, i] += exp(2 * ησ[i])
+        end
+        # `check = false` + a large FINITE penalty: a line-search step into a
+        # non-PD region must not throw nor return Inf (HagerZhang asserts finite).
+        Vfac = cholesky(Symmetric(V); check = false)
+        issuccess(Vfac) || return convert(T, 1e18)
+        r = y .- ημ
+        return 0.5 * (logdet(Vfac) + dot(r, Vfac \ r)) + const_2pi
+    end
+
+    βμ0 = Xμ \ y; res0 = y - Xμ * βμ0
+    s0 = std(res0)
+    θ0 = zeros(pμ + pσ + m)
+    θ0[1:pμ] .= βμ0
+    θ0[pμ+1] = log(s0 / sqrt(m + 1) + eps())          # balanced split: resid + m components
+    for (k, c) in enumerate(comps)
+        θ0[pμ+pσ+k] = log(s0 / sqrt(m + 1) / (sqrt(mean(abs2, c[1])) + eps()) + eps())
+    end
+    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    θ̂ = Optim.minimizer(res)
+    Vθ = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+
+    labels = [String(c[5]) for c in comps]
+    blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :resd => (pμ+pσ+1):(pμ+pσ+m)]
+    names = [:mu => nmμ, :sigma => nmσ, :resd => labels]
+    means = Dict(:mu => Xμ * θ̂[1:pμ])
+    obs = Dict(:mu => Vector{Float64}(y))
+    scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
+    # Conditional estimates (BLUPs) at θ̂: û_k = σ_k² K_k Z_kᵀ V⁻¹ r.
+    blup = let
+        βμ = θ̂[1:pμ]; βσ = θ̂[(pμ+1):(pμ+pσ)]
+        Vh = zeros(n, n)
+        for k in 1:m
+            Vh .+= exp(2 * θ̂[pμ+pσ+k]) .* ZKZt[k]
+        end
+        ση² = exp.(2 .* (Xσ * βσ))
+        @inbounds for i in 1:n
+            Vh[i, i] += ση²[i]
+        end
+        Vinvr = cholesky(Symmetric(Vh)) \ (y .- Xμ * βμ)
+        out = Dict{Symbol,Vector{Float64}}()
+        for k in 1:m
+            σk² = exp(2 * θ̂[pμ+pσ+k])
+            ZtVr = Zs[k]' * Vinvr
+            K = comps[k][4]
+            out[Symbol(labels[k])] = K === nothing ? σk² .* ZtVr : σk² .* (K * ZtVr)
+        end
+        out
+    end
+    fit = DrmFit(fam, blocks, names, θ̂, Vθ, -nll(θ̂), n, Optim.converged(res), means, obs, scales)
+    return _withranef(_withnll(fit, nll), blup)
+end
+
+# Router for one structured marker + ordinary bars on the Gaussian mean (see
+# `_fit_structured_ranef_gaussian`). Builds the component list in drmTMB's
+# order (ordinary bars in formula order, then the marker) and REFUSES, by name,
+# every variant this route does not fit, so none of them can fall through to a
+# fitter that drops a term. `:resd` labels: an ordinary `(1 | h)` is keyed by
+# the bare group name `h` and `(0 + x | h)` by `h:x` (the multi-component
+# `(1 | g)` convention); the marker is keyed by its bare group name (the
+# single-structured convention). When an ordinary intercept shares the marker's
+# grouping — `(1 | sp) + phylo(1 | sp)` — the ordinary one is keyed `sp_iid` so
+# every `:resd` name (and `re_sd`/`vc`/`ranef` key) stays unique.
+function _drm_gaussian_structured_plus_ranef(fam::Gaussian, structured, re, metav, y, Xμ, Xσ,
+        nmμ, nmσ, data; K, A, tree, algorithm::Symbol, penalty, g_tol)
+    kind, sgrp = structured
+    marker = "$(kind)(1 | $(sgrp))"
+    metav === nothing ||
+        throw(ArgumentError("drm: `$(marker)` with an ordinary random effect cannot also take " *
+            "`meta_V(...)` on this route."))
+    penalty === nothing ||
+        throw(ArgumentError("drm: `penalty` is not wired for `$(marker)` combined with an " *
+            "ordinary `(1 | g)` random effect; the penalized phylo fit is the marker-only route."))
+    algorithm in (:auto, :gls, :lbfgs) ||
+        throw(ArgumentError("drm: `algorithm = :$(algorithm)` is not implemented for " *
+            "`$(marker)` combined with an ordinary random effect; this route is the dense " *
+            "closed-form marginal only (use `algorithm = :auto`)."))
+    kind === :spatial &&
+        throw(ArgumentError("drm: `spatial(1 | $(sgrp))` (range estimated from `coords`) cannot " *
+            "be combined with an ordinary random effect yet. Pass the fixed spatial covariance as " *
+            "`relmat(1 | $(sgrp))` with `K = …` — the form drmTMB's bridge sends for native " *
+            "`spatial(1 | site, coords = …)` — which this route fits together with `(1 | g)`."))
+    n = length(y)
+    comps = Tuple{Vector{Float64},Vector{Int},Int,Union{Nothing,Matrix{Float64}},String}[]
+    for (rl, g) in re
+        re_kind, var = _re_kind(rl)
+        re_kind === :corr &&
+            throw(ArgumentError("drm: a correlated `(1 + $(var) | $(g))` block cannot be combined " *
+                "with `$(marker)` on this route; independent `(1 | $(g)) + (0 + $(var) | $(g))` " *
+                "terms can."))
+        w = re_kind === :intercept ? ones(n) : Float64.(getproperty(data, var))
+        gidx, G = _group_index(getproperty(data, g))
+        label = re_kind === :intercept ? (g === sgrp ? "$(g)_iid" : String(g)) : "$(g):$(var)"
+        any(c -> c[5] == label, comps) &&
+            throw(ArgumentError("drm: the random-effect term for `$(label)` appears twice in the " *
+                "mean formula."))
+        push!(comps, (w, gidx, G, nothing, label))
+    end
+    if kind === :phylo
+        tree === nothing && error("phylo(1 | $sgrp) needs `tree = …`")
+        phy = tree isa AbstractString ? augmented_phy(tree) : tree
+        # Rows → tree leaves BY NAME / tip index (#482), never first-seen order.
+        gidx = _phylo_mean_leaf_index(phy, getproperty(data, sgrp))
+        push!(comps, (ones(n), gidx, phy.n_leaves, _phylo_correlation(phy), String(sgrp)))
+    else  # :relmat / :animal — K over the levels in first-seen order
+        gidx, G = _group_index(getproperty(data, sgrp))
+        Kmat = _resolve_structured_matrix(kind, sgrp, G; K = K, A = A, tree = nothing, coords = nothing)
+        push!(comps, (ones(n), gidx, G, Kmat, String(sgrp)))
+    end
+    return _fit_structured_ranef_gaussian(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol)
+end
+
 # Coordinate-spatial structured intercept: K(ρ) = exp(-d/ρ) from site distances,
 # with the range ρ estimated jointly (θ gains log σ_s and log ρ). K depends on θ
 # so it is rebuilt each evaluation; otherwise the closed-form marginal is as in
