@@ -64,9 +64,14 @@ fit_ls = drm(bf(@formula(y ~ x + (1 | p | phylo(species))),
 exp(-2 * coef(fit, :sigma)[1])  # estimated size θ = 1/σ²
 
 # Experimental (#136 Rung 1): NB2 random-intercept variational (ELBO) marginal.
-# Requires `sigma ~ 1`. Default remains Laplace (`marginal = :LA`).
+# Requires `sigma ~ 1`. Default remains `marginal = :LA` (GHQ-32 on an ordinary `(1 | g)`).
 fit_va = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), NegBinomial2();
              data = dat, marginal = :VA)
+
+# TMB-convention Laplace on an ordinary `(1 | g)`, as native drmTMB fits it.
+# Requires `sigma ~ 1`; ML only.
+fit_lap = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), NegBinomial2();
+              data = dat, marginal = :Laplace)
 ```
 """
 struct NegBinomial2 end

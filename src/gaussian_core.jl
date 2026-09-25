@@ -177,7 +177,7 @@ struct DrmFit{F}
     estim_method::Symbol                   # :ML (default), :REML, or :MAP (penalized) — the estimator used
     reml_loglik::Float64                   # REML log-likelihood (NaN unless estim_method == :REML)
     ml_loglik::Float64                     # ML log-likelihood (always set; for cross-structure comparison)
-    marginal::Symbol                       # :LA (default Laplace) or :VA (ELBO; #136)
+    marginal::Symbol                       # :LA (default), :Laplace, :VA (ELBO; #136) or :AGHQ
     phylo_penalty::Float64                 # penalty at the optimum (NaN unless estim_method == :MAP)
     penalty::Any                           # the PhyloPenalty spec that produced it; nothing for ML/REML
     iterations::Int                        # optimiser iterations actually taken; -1 = not recorded
@@ -187,7 +187,8 @@ end
 # estim_method defaults to :ML and reml/ml loglik to NaN / the supplied loglik
 # (the fitters use this; drm() attaches the formula via _withformula, the
 # objective via _withnll, the BLUPs via _withranef, and REML metadata via _withreml).
-# `marginal` defaults to `:LA` (Laplace); `_withmarginal` tags a VA/ELBO fit.
+# `marginal` defaults to `:LA` (GHQ-32 on an ordinary `(1 | g)`, Laplace on most
+# other random-effect structures); `_withmarginal` tags a non-default fit.
 DrmFit(family, blocks, coefnames, theta, vcov, loglik, nobs, converged, means, obs, scales) =
     DrmFit(family, blocks, coefnames, theta, vcov, loglik, nobs, converged, means, obs, scales,
            nothing, nothing, nothing, nothing, :ML, NaN, loglik, :LA)
@@ -231,7 +232,7 @@ _withmap(fit::DrmFit, pen_value::Real, spec) = DrmFit(fit.family, fit.blocks, fi
     fit.vcov, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula, fit.nll, fit.nllgrad, fit.ranef,
     :MAP, fit.reml_loglik, fit.ml_loglik, fit.marginal, Float64(pen_value), spec, fit.iterations)
 
-# Tag the integral approximation (`:LA` Laplace default, `:VA` ELBO). Does not
+# Tag the integral approximation (`:LA` default, `:Laplace`, `:VA` ELBO, `:AGHQ`). Does not
 # change `loglik`; the caller is responsible for putting an ELBO in that slot.
 _withmarginal(fit::DrmFit, m::Symbol) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
     fit.vcov, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula, fit.nll, fit.nllgrad, fit.ranef,

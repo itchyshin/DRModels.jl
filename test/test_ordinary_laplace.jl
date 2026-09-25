@@ -200,7 +200,7 @@ const _OL_FAMS = (:poisson, :nb2, :binomial, :gamma, :beta)
     # evidence folder regenerates both CSVs and the native numbers).
     #  * NB2 simulated near-Poisson (family sigma 0.03): before the large-size-stable
     #    kernel the optimiser walked to size r ≈ e^115, where the structured NB2
-    #    kernel cancels to garbage, and reported logLik −0.0014 (truth −612.75).
+    #    kernel cancels to garbage, and reported logLik −0.0014 (native drmTMB −559.5469).
     #  * Gamma sigma 0.003: the inner-mode tolerance and the Newton polish keep
     #    θ̂ within 1e-5 (relative) of TMB's optimum, not merely within 1e-4 SE.
     @testset "$fam: small-sigma review cell matches native drmTMB" for (fam, file, ll_native, θ_native) in (

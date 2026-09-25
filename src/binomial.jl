@@ -36,6 +36,9 @@ fitted(fit)        # fitted success probabilities μ̂ = logistic(Xβ̂)
 
 # Experimental (#136 Rung 1): Binomial random-intercept variational (ELBO) marginal.
 fit_va = drm(bf(@formula(y ~ x + (1 | g))), Binomial(); data = dat, marginal = :VA)
+
+# TMB-convention Laplace on an ordinary `(1 | g)`, as native drmTMB fits it (ML only).
+fit_lap = drm(bf(@formula(y ~ x + (1 | g))), Binomial(); data = dat, marginal = :Laplace)
 ```
 """
 struct Binomial end

@@ -10,13 +10,11 @@ relative (bar: 1e-6 and 1e-5). The default `:LA` route (GHQ-32) differs from
 native by 0.057 to 1.34 log-likelihood units on the same data; that gap is the
 integrator, and `:LA` is unchanged. Those numbers hold only for this design
 (family σ = 0.3 to 0.5, group SD 0.6). At small family σ the default `:LA` is
-not slightly off but wrong: on a Gamma fixture with σ = 0.03 and a Beta fixture
-with σ = 0.01 (review check, exact marginal by a mode-centred 4001-point
-trapezoid), GHQ-32 at native θ̂ was −1513 and −930 against exact 304.6 and
-1054.3, and the default fit reported `converged = true` at log σ = −2.393 against
-−3.528 from native and `:Laplace` (σ off about 3×). `:Laplace` matched the exact
-marginal to ≤ 5.2e-4 there. The `:LA` defect is not fixed by this PR. The
-banked small-σ numbers, with scripts, are in "Small family σ" below.
+not slightly off but wrong: on the three banked Gamma and Beta fixtures with
+family σ between 0.003 and 0.012 ("Small family σ" below, with scripts), the
+default fit reported `converged = true` with a log-likelihood 295 to 501 units
+below native's and σ 3.2 to 20 times native's, while `:Laplace` matched native
+to ≤ 3.1e-8 in log-likelihood. The `:LA` defect is not fixed by this PR.
 
 ## Files
 
