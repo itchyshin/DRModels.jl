@@ -1,0 +1,1 @@
+| 2026-09-24 | **Arc 2: `marginal = :Laplace` on ordinary `(1 | g)`** (Poisson/NB2/Binomial/Gamma/Beta) | focused test file + neighbouring route files; native drmTMB receipt | same model as native on 10 fixtures (|ΔlogLik| ≤ 3.8e-10, rel Δest ≤ 6.1e-8); default `:LA` unchanged; `(1 + x | g)` not covered | Shannon |
