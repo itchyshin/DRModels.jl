@@ -84,8 +84,9 @@ observed values are 1.4e-10 and 4.0e-10.
 - A correlated `(1 + x | h)` alongside a marker.
 - Range-estimated Julia `spatial(1 | site)` with `coords` (the bridge sends
   `relmat` + `K`, which is covered).
-- `meta_V()`, `penalty`, and `algorithm = :em/:sparse/:sparse_lbfgs` with this
-  shape.
+- `penalty` and `algorithm = :em/:sparse/:sparse_lbfgs` with this shape.
+  (`meta_V()` with this shape is no longer refused: after #814 merged in, the
+  `meta_V` + random-intercept route fits it before this route is reached.)
 - Two structured markers plus a bar. This was already refused.
 - Random effects on `sigma`. These were already refused.
 - Missing responses. This was already refused.
@@ -97,3 +98,23 @@ observed values are 1.4e-10 and 4.0e-10.
 - Standard errors and intervals. They come from the ForwardDiff Hessian and
   were not compared with native here; only point estimates, df, and logLik
   were compared.
+
+## Merge-time check with #814 (rows mapped to tips by name)
+
+#814 made every Gaussian phylo fit map rows to tree tips by name. This route
+already does (`_phylo_mean_leaf_index`, G = all tips). A new fixture checks it
+where first-seen order would differ: species in reverse-alphabetic order, rows
+shuffled, and one of the 22 tips absent from the data. Scripts:
+`permuted-check/native.R` (drmTMB at `drmTMB-arc1-pr1304-fold`,
+`engine = "tmb"`) and `permuted-check/julia.jl`.
+
+| fixture | native df / logLik | DRModels df / logLik | abs diff |
+|---|---|---|---|
+| `phylo(1 \| sp) + (1 \| h)` | 5 / -120.2672389678 | 5 / -120.2672389676 | 2.1e-10 |
+| `relmat(1 \| id) + (1 \| h)` | 5 / -123.3764742755 | 5 / -123.3764742755 | 4.5e-11 |
+
+`drm_bridge` gives the same values. The SDs also agree (h 0.66584 and
+sp 0.88535 on both sides). No numerical change was needed. The fit now records
+`phylo_scale = :correlation`, and the bootstrap refuses this shape because its
+simulator draws only one field. Both points are tested in
+`test/test_structured_plus_ordinary_bar.jl`.

@@ -124,6 +124,21 @@ function _fit_structured_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, K, nmμ, 
     return _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll)
 end
 
+# Row → level index for one structured marker on the dense Gaussian routes (the
+# single-structured fallback and the two-structured route). A PHYLO marker maps
+# rows to tree tips BY NAME / tip index (#482, `_phylo_mean_leaf_index`) with
+# G = the number of tips, exactly as the sparse phylo-mean and meta_V routes do;
+# first-seen order put rows on the wrong tips whenever the data's species order
+# differed from the tree's (a different model from drmTMB's, and a different
+# logLik from `algorithm = :auto` on the same data). relmat/animal/spatial levels
+# are the user's matrix rows in first-seen order (`_group_index`), unchanged.
+function _structured_group_index(kind::Symbol, grp::Symbol, labels, tree)
+    kind === :phylo || return _group_index(labels)
+    tree === nothing && error("phylo(1 | $grp) needs `tree = …`")
+    phy = tree isa AbstractString ? augmented_phy(tree) : tree
+    return _phylo_mean_leaf_index(phy, labels), phy.n_leaves
+end
+
 # Resolve one structured marker to its fixed G×G correlation/relatedness matrix
 # from the keyword args. Used by the two-component path (relmat/animal/phylo;
 # spatial estimates a range jointly and is not yet supported alongside a second

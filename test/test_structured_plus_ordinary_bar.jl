@@ -81,6 +81,46 @@ end
     @test re_sd(fit2)[:species] ≈ sds[:species] rtol = 1e-6
 end
 
+@testset "phylo(1 | sp) + (1 | h): rows go to tips BY NAME (shuffled rows, absent tip)" begin
+    # A first-seen level order would put rows on the wrong tips whenever the
+    # data's species order differs from the tree's. Drop every row of one tip
+    # and shuffle the rest: the fit must be invariant to row order and equal the
+    # dense marginal with rows mapped to tips by name (G = all 16 tips).
+    phy, C, full = _sob_phylo_fixture(20260925)
+    keep = findall(!=(phy.leaf_names[3]), full.species)
+    sub = map(v -> v[keep], full)
+    perm = randperm(Random.MersenneTwister(7), length(keep))
+    shuf = map(v -> v[perm], sub)
+    @test unique(shuf.species) != filter(!=(phy.leaf_names[3]), phy.leaf_names)
+    f = bf(@formula(y ~ x + phylo(1 | species) + (1 | h)), @formula(sigma ~ 1))
+    fit_sub = drm(f, Gaussian(); data = sub, tree = phy)
+    fit_shuf = drm(f, Gaussian(); data = shuf, tree = phy)
+    @test is_converged(fit_shuf) && dof(fit_shuf) == 5
+    @test loglik(fit_shuf) ≈ loglik(fit_sub) atol = 1e-8
+    @test coef(fit_shuf) ≈ coef(fit_sub) rtol = 1e-5
+    @test length(ranef(fit_shuf)[:species]) == 16
+    θ = coef(fit_shuf); sds = re_sd(fit_shuf); n = length(shuf.y)
+    leaf = Dict(nm => i for (i, nm) in enumerate(phy.leaf_names))
+    gh, Gh = DRModels._group_index(shuf.h)
+    @test loglik(fit_shuf) ≈ _sob_dense_loglik(shuf.y, hcat(ones(n), shuf.x), θ[1:2], exp(θ[3]),
+        [(sds[:h], ones(n), gh, Matrix(1.0I, Gh, Gh)),
+         (sds[:species], ones(n), [leaf[s] for s in shuf.species], C)]) atol = 1e-8
+    # The phylo SD is on the tip-correlation scale, recorded for the bootstrap.
+    @test fit_shuf.phylo_scale === :correlation
+end
+
+@testset "bootstrap refuses marker + ordinary bar (the simulator draws one field)" begin
+    phy, _, data = _sob_phylo_fixture(20260926)
+    fit = drm(bf(@formula(y ~ x + phylo(1 | species) + (1 | h)), @formula(sigma ~ 1)),
+              Gaussian(); data = data, tree = phy)
+    @test_throws ArgumentError DRModels._marginal_simulator(fit, data; tree = phy)
+    @test_throws ArgumentError bootstrap_result(fit; data = data, tree = phy, B = 5)
+    Random.seed!(1); M = randn(6, 6); K = M * M' / 6 + I
+    rfit = drm(bf(@formula(y ~ x + relmat(1 | h) + (1 | species)), @formula(sigma ~ 1)),
+               Gaussian(); data = data, K = K)
+    @test_throws ArgumentError DRModels._marginal_simulator(rfit, data; K = K)
+end
+
 @testset "relmat(K = I) + (1 | h) is the two-bar (1 | id) + (1 | h) model" begin
     Random.seed!(924001)
     nid, nh = 20, 5
@@ -187,8 +227,12 @@ end
                                           @formula(sigma ~ 1)); method = :REML)
     @test_throws ArgumentError fit_err(bf(@formula(y ~ x + phylo(1 | species) + (1 | h)),
                                           @formula(sigma ~ 1)); algorithm = :sparse)
-    @test_throws ArgumentError fit_err(bf(@formula(y ~ x + phylo(1 | species) + (1 | h) + meta_V(v)),
-                                          @formula(sigma ~ 1)))
+    # With `meta_V(v)` the combination is FITTED, not refused: #814's
+    # `_fit_meta_gaussian_re` route is dispatched first and keeps both fields.
+    metafit = fit_err(bf(@formula(y ~ x + phylo(1 | species) + (1 | h) + meta_V(v)),
+                         @formula(sigma ~ 1)))
+    @test length(coef(metafit)) == 5
+    @test Dict(metafit.coefnames)[:resd] == ["h", "species"]
     @test_throws ArgumentError fit_err(bf(@formula(y ~ x + phylo(1 | species) + (1 | h)),
                                           @formula(sigma ~ 1)); penalty = drm_phylo_penalty())
     coords = randn(16, 2)

@@ -6,6 +6,38 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **`meta_V(v)` with a random effect on the mean fits drmTMB's model.** `meta_V(v) + (1 | study)`
+  used to return the `meta_V`-only fit (the random effect silently dropped: df 3 against drmTMB's 4),
+  and `meta_V(v) + phylo(1 | sp)` / `+ relmat(1 | id)` the structured fit with the known variances
+  silently dropped. A new route, `_fit_meta_gaussian_re` (`src/gaussian_meta.jl`), fits the marginal
+  `y ~ N(Xβ, diag(v + σ²) + Σ s_k² Z_k C_k Z_kᵀ)` that drmTMB's Laplace integrates exactly, for any
+  mix of `(1 | g)`, `phylo`, `relmat` and `animal` intercepts on distinct grouping columns, with
+  `sigma ~ x` allowed. Measured against drmTMB `engine = "tmb"` in seven fits on six fixtures: logLik within
+  3e-10, every estimate within 3e-9 relative (`docs/dev-log/evidence/arc2-metav-random-effect/`).
+  Random slopes, `spatial()`, REML, a `sigma` random effect and `sd(g) ~ …` still refuse; the marginal
+  bootstrap refuses a `meta_V` fit with more than one random field rather than drop one.
+  The same refusal now covers the two-structured Gaussian route (`phylo(1 | sp) + relmat(1 | id)`),
+  whose bootstrap used to draw the phylo field alone. Fits whose random fields are all ordinary
+  bars keep their existing bootstrap path.
+- **Bootstrap draws a phylo field on the right tree tips.** The marginal bootstrap simulator placed
+  `phylo(1 | sp)` rows on tips by the order species first appear in the data, not by name, so a data
+  set not sorted in tree-tip order drew the wrong phylogenetic covariance (sister tips: -0.005 drawn
+  against 0.294 in the model), and a tree with tips absent from the data fell back to the conditional
+  draw. It now places rows on tips by name, as every phylo fit does (next item). On the dense Gaussian
+  phylo routes it also draws on the tip correlation those fits use, not the raw covariance, which
+  over-dispersed the field by the tree height. Tip-ordered data give the same draws as before, except
+  on those dense routes with a tree whose height is not 1.
+- **The dense Gaussian phylo routes map rows to tree tips by name.** The single-field fallback taken
+  for `phylo(1 | sp)` with `sigma ~ x` or `algorithm = :gls` / `:lbfgs`, and the two-structured route
+  (`phylo(1 | sp) + relmat(1 | id)`), placed rows on tips in the order species first appear in the
+  data. When the data were not in tree-tip order they fitted a different model from drmTMB's and from
+  the default route: on one 12-tip fixture, `sigma ~ x` gave logLik -52.141 against drmTMB's -46.142,
+  and `algorithm = :lbfgs` gave -55.018 against -49.119 from the default route on the same data. Rows
+  now go to tips by name (or integer tip index), so row order no longer changes the fit, those logLiks
+  now equal drmTMB's and the default route's, and a tree with tips absent from the data fits instead
+  of failing the size check. The SD stays on the tip-correlation scale on these routes. Tip-ordered
+  data give identical fits.
+
 - **A structured marker plus an ordinary random effect no longer drops the ordinary
   term.** `drm(bf(y ~ x + phylo(1 | sp) + (1 | h), sigma ~ 1), Gaussian(); …)` (and
   the same shape with `relmat`/`animal`, or with `(0 + x | h)` or several bars) used
@@ -15,8 +47,9 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   first, the marker last; an ordinary intercept that shares the marker's grouping is
   keyed `<g>_iid`). Nine fixtures match drmTMB `engine = "tmb"` to |ΔlogLik| ≤ 1.4e-10
   (`docs/dev-log/evidence/arc2-structured-ordinary-bar/`). REML, `(1 + x | h)`,
-  range-estimated `spatial()`, `meta_V()`, `penalty` and sparse algorithms with this
-  shape now raise an `ArgumentError` instead of dropping a term.
+  range-estimated `spatial()`, `penalty` and sparse algorithms with this shape now
+  raise an `ArgumentError` instead of dropping a term; with `meta_V(v)` added, the
+  `meta_V` + random-intercept route above fits it.
 - **Package renamed to DRModels.jl.** The Julia package and module are now
   `DRModels`, while the modelling API remains `drm()`, `bf()`, and the existing
   fit/post-fit surface. `DRModels.DRM` is a soft-deprecated qualified alias for
