@@ -186,10 +186,13 @@ That route is not changed here (DRModels issue #818).
 
 Tests. The new "Arc 2 speed" testset runs the REML stage on H2 and G1 from the
 recorded Julia ML estimates, checks native's logLik (1e-6), fixed effects
-(1e-5), SDs (1e-4) and correlation, and fails if the stage takes over 120 s.
+(1e-5), SDs (1e-4) and correlation, and fails if H2's stage takes over 300 s
+(measured 24 s on the Julia 1.10 CI shard; G1's stage, 74 s there, has no bound).
 The end-to-end cells whose coupled ML seed is slow (F1 coupled REML, the G1/G2
 correlation-bound testset) run only with `DRM_SLOW_TESTS=1`. The file takes
-64 s locally by default (191 s before) and 209 s with `DRM_SLOW_TESTS=1`.
+64 s locally by default (191 s before) and 209 s with `DRM_SLOW_TESTS=1`. On
+the Julia 1.10 CI shard 4/4 it took about 3 min 11 s at fcf6ca268 (about
+31.5 min before), and the shard 18m16s (48m19s before).
 
 **Reproduce.**
 ```

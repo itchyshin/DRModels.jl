@@ -267,8 +267,10 @@ end
 # calls it, from the Julia coupled ML estimate (drm(..., method = :ML,
 # phylo_coupled = true, g_tol = 1e-8), recorded below in the route's internal order
 # [β; logL11, L21, logL22]), so the ML seed's own cost stays out of this check.
-# The elapsed-time bound is loose (CI runs several times slower than a laptop) but
-# far below the old cost: it fails if the slowdown returns.
+# H2's stage has an elapsed-time bound: 300 s, loose for CI (measured 24 s on the
+# Julia 1.10 shard, 2.7 s locally) but far below the old cost (about 1,770 s
+# locally), so it fails if the slowdown returns. G1's stage has no time bound
+# (16 s locally, 74 s on CI).
 const _ARC2_ML_START = Dict(
     "H2" => [1.2882697910798269, 0.6077084992687934, -1.2916003662446642, 0.4860840655836412,
              -1.0231783198724216, -0.22161799723466435, -1.8624001464918072],
@@ -313,7 +315,7 @@ end
             else
                 @test cor ≈ _arc2_num(nr["cor"]) atol = 1e-5  # H2: interior, cor = -0.784
             end
-            @test t < 120.0
+            fx == "H2" && @test t < 300.0
         end
     end
 end
