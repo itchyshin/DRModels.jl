@@ -1,4 +1,4 @@
-# After-task: Arc 2 — `marginal = :Laplace` on an ordinary `(1 | g)` (2026-09-24)
+# After-task: Arc 2, `marginal = :Laplace` on an ordinary `(1 | g)` (2026-09-24)
 
 ## Scope
 
@@ -42,7 +42,7 @@ leaving `:LA` untouched.
   `marginal = :AGHQ`, which `origin/main` refused; `:LA` vs `:Laplace`
   random-effect pairs and any VA fit are still refused.
 - Covered: Poisson, NB2, Binomial (Bernoulli and `cbind` trials), Gamma, Beta.
-  Not covered (refused, never rerouted): `(1 + x | g)` — the kernels map each
+  Not covered (refused, never rerouted): `(1 + x | g)`: the kernels map each
   observation to one scalar latent with one σ, so a correlated 2-D per-group
   effect needs a new kernel; `(0 + x | g)`; crossed/multiple terms;
   `sigma ~ covariates`; RE on `sigma`; coupled location–scale; `zi`/`hu`;

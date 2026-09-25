@@ -1,4 +1,4 @@
-# Arc 2 receipt — ordinary `(1 | g)` by the TMB Laplace approximation
+# Arc 2 receipt: ordinary `(1 | g)` by the TMB Laplace approximation
 
 **Question.** Does `drm(...; marginal = :Laplace)` fit the same model as native
 drmTMB (`engine = "tmb"`) on an ordinary random intercept on the mean, for

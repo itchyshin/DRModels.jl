@@ -210,7 +210,7 @@ be interpreted as reproducing drmTMB's marginal likelihood. The option is most
 relevant where a one-mode approximation is scientifically questionable, such as
 two-part shape or ZINB multimodality, although those VA models are not currently
 supported in DRModels.jl. On ordinary Gamma `(1 | g)`, the evaluated comparison
-does **not** show a VA accuracy edge; prefer LA over VA — the default `:LA` (GHQ-32
+does **not** show a VA accuracy edge; prefer LA over VA: the default `:LA` (GHQ-32
 on this cell), or `marginal = :Laplace` to fit drmTMB's Laplace approximation.
 
 ## See also
