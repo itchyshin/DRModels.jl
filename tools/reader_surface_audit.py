@@ -10,11 +10,13 @@ from __future__ import annotations
 import argparse
 import re
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DOCS_ROOT = REPO_ROOT / "docs" / "src"
 PATTERNS = {
+    "internal_handoff": re.compile(r"\bHANDOVER(?:\.|%2e)md\b", flags=re.IGNORECASE),
     "internal_tracking": re.compile(
         r"(?:\b(?:PR|issue)\s*#\d+|\bArc\s+\d+\b|"
         r"\b(?:implementation|development|work|active)\s+lane\b|\bworktree\b|\bdev-log/|"
@@ -26,6 +28,89 @@ PATTERNS = {
     ),
 }
 PUBLIC_SUFFIXES = {".md", ".qmd", ".rmd"}
+
+# Deliberately exact phrases, restricted to beginner routes. Words such as
+# "cell", "validation", or "gate" alone also have scientific meanings.
+BEGINNER_ROUTES = {
+    "index.md", "getting-started.md", "capabilities.md", "coming-from-r.md",
+    "model-guides/model-map.md", "model-guides/model-workflow.md",
+}
+BEGINNER_PROCESS = re.compile(
+    r"\b(?:validation|evidence|parity)\s+receipt\b|"
+    r"\badmitted\s+routes?\b|\bcertified\s+cells?\b|\bmerge\s+gate\b",
+    flags=re.IGNORECASE,
+)
+
+# These are explicit editorial anchors, not inferred measures of readability.
+# An intentional heading change should update its contract and tests together.
+# (question heading, section containing a next-step link)
+FLOW_CONTRACTS = {
+    "index.md": ("What is distributional regression?", "Choose your analysis"),
+    "model-guides/model-map.md": ("What can I fit today?", "Which page next"),
+    "getting-started.md": (None, "Where to go next"),
+}
+
+
+def reader_flow_findings(root: Path, files: list[Path]) -> list[str]:
+    """Check retained headings/order and next-page links on three entry routes.
+
+    Recognise ATX headings outside fenced code, and ordinary inline Markdown
+    links. This cannot judge the prose, execute examples, inspect generated
+    docstrings, or prove that readers understand a model.
+    """
+    problems: list[str] = []
+    published = {path.resolve() for path in files}
+    for path in files:
+        route = path.relative_to(root).as_posix()
+        if route not in FLOW_CONTRACTS:
+            continue
+        question, next_heading = FLOW_CONTRACTS[route]
+        lines = path.read_text(encoding="utf-8").splitlines()
+        visible = list(lines)
+        headings: list[tuple[int, int, str]] = []
+        fence = None
+        first_example = None
+        for number, line in enumerate(lines):
+            marker = re.match(r"^\s{0,3}(`{3,}|~{3,})(.*)$", line)
+            if fence is not None:
+                visible[number] = ""
+                if marker and marker[1][0] == fence[0] and len(marker[1]) >= len(fence) and not marker[2].strip():
+                    fence = None
+                continue
+            if marker:
+                fence = marker[1]
+                visible[number] = ""
+                if first_example is None and re.match(r"(?:julia|@example|@repl)\b", marker[2].strip()):
+                    first_example = number
+                continue
+            heading = re.match(r"^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$", line)
+            if heading:
+                headings.append((number, len(heading[1]), heading[2]))
+        by_title = {title: (number, level) for number, level, title in headings}
+        if question:
+            if question not in by_title:
+                problems.append(f"{route}:1: reader_flow: missing question heading '{question}'")
+            elif first_example is not None and by_title[question][0] > first_example:
+                problems.append(f"{route}:1: reader_flow: explain the question before the first runnable example")
+        if next_heading not in by_title:
+            problems.append(f"{route}:1: reader_flow: missing next-step heading '{next_heading}'")
+            continue
+        start, level = by_title[next_heading]
+        end = next((number for number, depth, _ in headings if number > start and depth <= level), len(lines))
+        section = "\n".join(visible[start + 1:end])
+        linked_page = False
+        for target in re.findall(r"\[[^\]]+\]\(([^\s)]+)(?:\s+[^)]*)?\)", section):
+            url = urlsplit(target.strip("<>"))
+            if url.scheme or url.netloc or not url.path or url.path.startswith("@"):
+                continue
+            relative = unquote(url.path)
+            destination = (root / relative.lstrip("/")) if relative.startswith("/") else (path.parent / relative)
+            if destination.resolve() != path.resolve() and destination.resolve() in published:
+                linked_page = True
+                break
+        if not linked_page:
+            problems.append(f"{route}:{start + 1}: reader_flow: next step must link to another published local page")
+    return problems
 
 
 def landing_contract_findings(root: Path) -> list[str]:
@@ -84,16 +169,22 @@ def public_files(root: Path, *, public_only: bool) -> list[Path]:
 
 def findings(root: Path, *, public_only: bool) -> list[str]:
     problems: list[str] = []
-    for path in public_files(root, public_only=public_only):
+    files = public_files(root, public_only=public_only)
+    for path in files:
         lines = path.read_text(encoding="utf-8").splitlines()
         # Keep newline boundaries for useful source locations while allowing a
         # wrapped phrase such as "capability\nledger" to be recognised.
         text = "\n".join(re.sub(r"[ \t]+", " ", line) for line in lines)
-        for kind, pattern in PATTERNS.items():
+        patterns = dict(PATTERNS)
+        if path.relative_to(root).as_posix() in BEGINNER_ROUTES:
+            patterns["beginner_process"] = BEGINNER_PROCESS
+        for kind, pattern in patterns.items():
             for match in pattern.finditer(text):
                 number = text.count("\n", 0, match.start()) + 1
                 excerpt = " ".join(lines[number - 1:number + 1]).strip()
                 problems.append(f"{path.relative_to(root)}:{number}: {kind}: {excerpt}")
+    if public_only:
+        problems.extend(reader_flow_findings(root, files))
     return problems
 
 
