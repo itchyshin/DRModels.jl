@@ -196,8 +196,9 @@ end
 # estim_method defaults to :ML and reml/ml loglik to NaN / the supplied loglik
 # (the fitters use this; drm() attaches the formula via _withformula, the
 # objective via _withnll, the BLUPs via _withranef, and REML metadata via _withreml).
-# `marginal` defaults to `:LA` (GHQ-32 on an ordinary `(1 | g)`, Laplace on most
-# other random-effect structures); `_withmarginal` tags a non-default fit.
+# `marginal` defaults to `:LA` (the route's default integrator: GHQ-32 on an
+# ordinary `(1 | g)` and on Gaussian `sigma ~ 1 + (1 | g)`, Laplace on most other
+# random-effect structures); `_withmarginal` tags a `:VA`, `:AGHQ` or `:Laplace` fit.
 DrmFit(family, blocks, coefnames, theta, vcov, loglik, nobs, converged, means, obs, scales) =
     DrmFit(family, blocks, coefnames, theta, vcov, loglik, nobs, converged, means, obs, scales,
            nothing, nothing, nothing, nothing, :ML, NaN, loglik, :LA)
@@ -454,6 +455,21 @@ implemented for:
 σ-RE, random slopes, and non-Gaussian REML stay rejected. REML likelihoods are
 not comparable across fixed-effect structures.
 
+## `marginal`: how a random effect on `sigma` is integrated
+
+`marginal = :LA` (the default) leaves every route unchanged; a random intercept
+on `sigma`, `sigma ~ 1 + (1 | g)`, is then integrated by 32-node Gauss–Hermite
+quadrature. `marginal = :Laplace` integrates it by the Laplace approximation
+instead, which is what drmTMB computes for this model; the fit is tagged
+`fit.marginal === :Laplace`. `:Laplace` requires a fixed-effect mean and
+maximum likelihood and is refused on every other Gaussian model.
+
+The two names are not synonyms. `:LA` means "the default integrator for this
+route", which is not always the Laplace approximation (here it is Gauss–Hermite
+quadrature; wherever the Gaussian marginal is closed-form it is exact).
+`:Laplace` always means the Laplace approximation drmTMB computes. Bootstrap
+refits of a `:Laplace` fit use `:Laplace` too.
+
 ## Missing response handling
 
 Incomplete responses (`missing` or `NaN` in `y`) are supported under the
@@ -462,7 +478,10 @@ For Location-Scale-Scale models (#559), the group index and scale design Z_g
 are parameterised over all G levels, while the likelihood is evaluated on
 observed rows.
 """
-function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree = nothing, coords = nothing, g_tol::Real = 1e-8, algorithm::Symbol = :auto, method::Symbol = :ML, profile_ci::Bool = false, phylo_coupled::Bool = false, penalty = nothing, sparse = nothing, impute = nothing, missing = nothing)
+function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree = nothing, coords = nothing, g_tol::Real = 1e-8, algorithm::Symbol = :auto, method::Symbol = :ML, profile_ci::Bool = false, phylo_coupled::Bool = false, penalty = nothing, sparse = nothing, impute = nothing, missing = nothing, marginal::Symbol = :LA)
+    laplace = _gaussian_marginal(marginal)
+    laplace && _gaussian_laplace_validate(f, fam, data, algorithm, method, penalty,
+                                          phylo_coupled, sparse, impute, missing)
     algorithm in (:auto, :gls, :lbfgs, :em, :sparse, :sparse_lbfgs) ||
         throw(ArgumentError("drm: `algorithm` must be one of :auto, :gls, :lbfgs, :em, :sparse, :sparse_lbfgs (got :$algorithm)"))
     method in (:ML, :REML) ||
@@ -823,7 +842,8 @@ function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree 
             error("`sigma` random effects support a single random intercept `(1 | g)`")
         sgrp = sigma_re[1][2]
         gidx, G = _group_index(getproperty(data, sgrp))
-        return _withformula(_fit_sigma_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, sgrp, g_tol), f)
+        return _withformula(_fit_sigma_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, sgrp, g_tol;
+                                                      laplace = laplace), f)
     end
     # Meta-analysis with random intercepts on the mean (Arc 2): `meta_V(v)` plus
     # any mix of `(1 | g)`, `phylo(1 | g)`, `relmat(1 | g)`, `animal(1 | g)`.

@@ -508,9 +508,27 @@ function _bridge_fit(bundle, fam, data; tree, K, A, coords, options)
         kwargs[:method] = Symbol(options[:method])
     end
     if haskey(options, :marginal)
-        # Arc 2: `"Laplace"` selects the TMB-convention Laplace route on an
-        # ordinary `(1 | g)` (ordinary_laplace.jl). Forwarded verbatim: a family
-        # without a `marginal` keyword, or a model outside the route, errors.
+        # The integrator selector, forwarded as `drm(...; marginal = ...)`.
+        # Only `"LA"` (the route's default integrator) and `"Laplace"` (the
+        # Laplace approximation native drmTMB computes) are forwarded: they are
+        # the integrators an R caller can compare with drmTMB. `"VA"`, `"AGHQ"`
+        # and any other value are refused here by name, before any fitting.
+        # `"Laplace"` selects the TMB-convention Laplace route where one is
+        # implemented: an ordinary `(1 | g)` on Poisson, Binomial, NegBinomial2,
+        # Gamma or Beta (ordinary_laplace.jl), and a Gaussian random intercept
+        # on `sigma`. The family's `drm` refuses it on every other model. A
+        # `drm` method with no `marginal` keyword at all is refused here by
+        # name, rather than with a bare MethodError.
+        string(options[:marginal]) in ("LA", "Laplace") ||
+            throw(ArgumentError("drm_bridge: option `marginal = \"$(options[:marginal])\"` " *
+                "is not supported; the bridge accepts only \"LA\" (the default integrator) " *
+                "and \"Laplace\" (the Laplace approximation drmTMB uses). Variational " *
+                "(\"VA\") and adaptive quadrature (\"AGHQ\") fits have no drmTMB " *
+                "counterpart through the bridge; call `drm(...; marginal = ...)` directly."))
+        hasmethod(drm, Tuple{typeof(bundle),typeof(fam)}, (:marginal,)) ||
+            throw(ArgumentError("drm_bridge: option `marginal` is not available for " *
+                "$(nameof(typeof(fam)))() with this formula type; omit it to use the " *
+                "default integrator."))
         kwargs[:marginal] = Symbol(options[:marginal])
     end
     if haskey(options, :se)

@@ -19,8 +19,15 @@ abstract type MarginalMethod end
 Laplace marginal: Gaussian approximation at the posterior mode. The default.
 On an ordinary `(1 | g)` (Poisson, Binomial, NegBinomial2, Gamma, Beta) the
 public `:LA` path is **non-adaptive GHQ-32**, not 1-point Laplace and not AGHQ.
-`marginal = :Laplace` requests the TMB-convention Laplace approximation on that
-cell instead (`ordinary_laplace.jl`; the fit is tagged `marginal = :Laplace`)."""
+
+Naming convention: `marginal = :LA` selects the *default integrator of the
+route*, which is Laplace on most random-effect routes but non-adaptive GHQ-32
+on the single random-intercept routes (an ordinary `(1 | g)`, Gaussian
+`sigma ~ 1 + (1 | g)`) and exact wherever the Gaussian marginal is closed-form.
+`marginal = :Laplace` *forces* the Laplace approximation that drmTMB (TMB)
+computes; it is implemented for an ordinary `(1 | g)` on Poisson, Binomial,
+NegBinomial2, Gamma and Beta (`ordinary_laplace.jl`) and for a Gaussian random
+intercept on `sigma`. The fit is tagged `marginal = :Laplace`."""
 struct Laplace <: MarginalMethod end
 
 """    Variational <: MarginalMethod
@@ -49,9 +56,15 @@ function _marginal_method(s::Symbol)
     t === :VA && return Variational()
     t === :AGHQ && return AGHQ()
     t === :LAPLACE && throw(ArgumentError(
-        "marginal = :Laplace is handled by the ordinary-Laplace front end " *
-        "(`_drm_ordinary_laplace`) and is not available on this route"))
-    throw(ArgumentError("unknown marginal method `:$s`; use :LA (default; GHQ-32 on an ordinary `(1 | g)`, Laplace on most other random-effect structures), :Laplace (TMB-convention Laplace, ordinary `(1 | g)` on Poisson/Binomial/NegBinomial2/Gamma/Beta), :VA (variational, #136), or :AGHQ (1-D Liu–Pierce, Poisson (1|g) only, #448)"))
+        "marginal = :$s is not available on this route. `:Laplace` forces the Laplace " *
+        "approximation that drmTMB uses and is implemented for an ordinary random intercept " *
+        "`(1 | g)` on Poisson/Binomial/NegBinomial2/Gamma/Beta (routed by `drm` to the " *
+        "ordinary-Laplace front end, `_drm_ordinary_laplace`) and for a Gaussian random " *
+        "intercept on `sigma`, `sigma ~ 1 + (1 | g)`. Here use :LA (the default integrator " *
+        "for the route; on a single random intercept `(1 | g)` that is 32-node Gauss–Hermite " *
+        "quadrature, not Laplace), :VA (variational, #136), or :AGHQ (1-D Liu–Pierce, " *
+        "Poisson (1|g) only, #448)."))
+    throw(ArgumentError("unknown marginal method `:$s`; use :LA (the default integrator for the route: GHQ-32 on an ordinary `(1 | g)` and on Gaussian `sigma ~ 1 + (1 | g)`, Laplace on most other random-effect structures), :Laplace (TMB-convention Laplace, ordinary `(1 | g)` on Poisson/Binomial/NegBinomial2/Gamma/Beta, or a Gaussian random intercept on `sigma`), :VA (variational, #136), or :AGHQ (1-D Liu–Pierce, Poisson (1|g) only, #448)"))
 end
 
 # Route-or-reject for the public `marginal = :AGHQ` front end (#448). The only
