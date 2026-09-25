@@ -23,11 +23,13 @@
 #       near-Poisson NB2 cell and a Gamma sigma = 0.003 cell;
 #   (4c') an NB2 cell whose first optimisation stops on the flat Poisson-limit
 #       plateau (log sigma -19, converged = true) is rescued by the plateau
-#       guard and matches native drmTMB;
+#       guard and matches native drmTMB; with se = true it prints no warning
+#       and its SEs match native's sdreport;
 #   (4d) the route's NB2 kernel equals the structured one where that is accurate
 #       and a 1024-bit reference at size r up to e^100, where it is not;
 #   (5) every out-of-scope model is refused with this route's message, never
 #       rerouted to :LA;
+#   (5b) bootstrap_result refits a :Laplace fit with :Laplace;
 #   (6) the bridge forwards `marginal` and reports the integrator it used;
 #   (7) lrtest accepts the fixed-effects model against a `:Laplace` random
 #       intercept (its log-likelihood is exact), and still refuses `:LA` vs
@@ -40,6 +42,7 @@ using DRModels
 using Test, Random, LinearAlgebra, SparseArrays
 import Distributions as Dist
 import ForwardDiff
+import Statistics
 
 const OL = DRModels
 
@@ -251,6 +254,13 @@ const _OL_FAMS = (:poisson, :nb2, :binomial, :gamma, :beta)
         @test θ1[4] < OL._ORDINARY_LAPLACE_PLATEAU_LOGSIGMA
         @test conv1                                     # the flag alone does not catch it
         @test nll1 > -loglik(fit) + 0.5
+        # se = true: only the kept fit gets a Hessian. The discarded plateau fit's
+        # Hessian is singular in log sigma and used to print two false warnings.
+        # The SEs equal native drmTMB's sdreport on this data (pdHess TRUE).
+        fit_se = @test_logs drm(f, NegBinomial2(); data = d, marginal = :Laplace, se = true)
+        @test fit_se.theta == fit.theta
+        @test sqrt.(diag(vcov(fit_se))) ≈ [0.144403554045, 0.044613618892, 0.076431597847,
+                                           0.452122310152, 0.149994439075] rtol = 1e-4
     end
 
     # The NB2 kernel on this route (`Val(:nb2_raw)`) is the structured NB2 kernel
@@ -428,6 +438,28 @@ const _OL_FAMS = (:poisson, :nb2, :binomial, :gamma, :beta)
         @test (@test_logs (:warn,) match_mode = :any anova(fit0, fitQ)) == tQ
         fitL = drm(_ol_formula(:poisson), Poisson(); data = d, marginal = :Laplace, se = false)
         @test_throws ArgumentError lrtest(fitQ, fitL)
+    end
+
+    # bootstrap_result refits every replicate with :Laplace, not the default
+    # :LA: replay each replicate's simulated data from its seed and refit both ways.
+    @testset "bootstrap_result refits a :Laplace fit with :Laplace" begin
+        d = _ol_sim(:poisson; seed = 20260924)
+        f = _ol_formula(:poisson)
+        fit = drm(f, Poisson(); data = d, marginal = :Laplace, se = false)
+        br = bootstrap_result(fit; data = d, B = 2, rng = Random.Xoshiro(1))
+        @test br.used == 2
+        sim = OL._marginal_simulator(fit, d)
+        reps = map(br.seeds) do seed
+            datab = OL._bootstrap_data(fit.formula, d, sim(Random.MersenneTwister(seed)))
+            (lap = drm(f, Poisson(); data = datab, marginal = :Laplace),
+             la = drm(f, Poisson(); data = datab))
+        end
+        @test all(r -> r.lap.marginal === :Laplace, reps)
+        rep_sd(k) = vec(Statistics.std(permutedims(reduce(hcat, [coef(getproperty(r, k)) for r in reps]));
+                                       dims = 1))
+        boot_sd = [row.std_error for row in br.summary]
+        @test boot_sd ≈ rep_sd(:lap) rtol = 1e-8
+        @test !isapprox(boot_sd, rep_sd(:la); rtol = 1e-4)
     end
 
     @testset "out-of-scope models are refused, never rerouted" begin

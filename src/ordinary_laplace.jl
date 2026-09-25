@@ -179,12 +179,19 @@ function _ordinary_laplace_optimize(fg, θ0, n::Int, q::Int, g_tol; se::Bool,
         nllhat = nll(θ̂)
         converged = _ordinary_laplace_newton_converged(grad!, θ̂, gfinal)
     end
+    V = _ordinary_laplace_vcov(nll, θ̂, n; se = se, context = context)
+    return θ̂, nllhat, converged, V, nll, grad!
+end
+
+# Wald covariance from the finite-difference Hessian of the outer objective, or
+# a NaN matrix when `se = false`.
+function _ordinary_laplace_vcov(nll, θ̂, n::Int; se::Bool, context::AbstractString)
     V = if se
         _vcov_from_hessian(_finite_hessian(nll, θ̂; h = _fd_hessian_step(n)); context = context)
     else
         fill(NaN, length(θ̂), length(θ̂))
     end
-    return θ̂, nllhat, converged, Matrix(V), nll, grad!
+    return Matrix(V)
 end
 
 # Hessian of the outer objective by central differences of its analytic gradient.
@@ -411,8 +418,11 @@ function _fit_scale_ordinary_laplace(fam, y, Xμ, gidx, G, nmμ, nmσ, grp, g_to
         newton_tol = _ORDINARY_LAPLACE_NEWTON_TOL)
     θ0 = vcat(θβ0, θσ0, log(0.4))
     ctx = "ordinary Laplace $(nameof(typeof(fam))) (1 | $grp)"
-    θ̂, nllhat, conv, V, nll, grad! = _ordinary_laplace_optimize(
-        fg, θ0, n, G, g_tol; se = se, context = ctx)
+    # Both stages run with se = false: the covariance is computed once, below,
+    # for the fit the guard keeps. A discarded plateau fit's Hessian is singular
+    # in log σ and would print false warnings on a well-conditioned result.
+    θ̂, nllhat, conv, _, nll, grad! = _ordinary_laplace_optimize(
+        fg, θ0, n, G, g_tol; se = false, context = ctx)
     # Plateau guard. With the scale unclamped, one large LBFGS step can carry
     # log σ from the start to −20 or below, where the objective is flat (NB2:
     # the Poisson limit, ∂nll/∂log σ ~ 1e-14). The optimiser never returns and
@@ -421,11 +431,12 @@ function _fit_scale_ordinary_laplace(fam, y, Xμ, gidx, G, nmμ, nmσ, grp, g_to
     # interior start and keep the lower objective; every other fit is untouched.
     if θ̂[pμ+1] < _ORDINARY_LAPLACE_PLATEAU_LOGSIGMA
         θ1 = copy(θ0); θ1[pμ+1] = -1.0
-        alt = _ordinary_laplace_optimize(fg, θ1, n, G, g_tol; se = se, context = ctx)
+        alt = _ordinary_laplace_optimize(fg, θ1, n, G, g_tol; se = false, context = ctx)
         if alt[2] < nllhat
-            θ̂, nllhat, conv, V, nll, grad! = alt
+            θ̂, nllhat, conv, _, nll, grad! = alt
         end
     end
+    V = _ordinary_laplace_vcov(nll, θ̂, n; se = se, context = ctx)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+1), :resd => (pμ+2):(pμ+2)]
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
     auxhat = aux_from(θ̂[pμ+1])

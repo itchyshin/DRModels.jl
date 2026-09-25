@@ -1766,6 +1766,9 @@ function bootstrap_result(
     K !== nothing && (extra[:K] = K)
     A !== nothing && (extra[:A] = A)
     coords !== nothing && (extra[:coords] = coords)
+    # A `marginal = :Laplace` fit is refitted with the same integrator; without
+    # this the replicates would silently use the default `:LA` (GHQ-32).
+    fit.marginal === :Laplace && (extra[:marginal] = :Laplace)
     refit = datab -> drm(formula, fit.family; data=datab, extra...)
     simulate_fn = _marginal_simulator(fit, data; K=K, A=A, tree=tree,
                                       coords=coords)   # #459 / #479
