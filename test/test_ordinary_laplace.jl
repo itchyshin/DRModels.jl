@@ -444,6 +444,9 @@ const _OL_FAMS = (:poisson, :nb2, :binomial, :gamma, :beta)
         end
         refuse(bf(@formula(y ~ x + (1 + x | g))), Poisson(), dp, r"only `\(1 \| g\)` is covered")
         refuse(bf(@formula(y ~ x + (0 + x | g))), Poisson(), dp, r"only `\(1 \| g\)` is covered")
+        # The refused term is echoed as the user wrote it, not as a Julia Expr.
+        refuse(bf(@formula(y ~ x + (1 + x | g))), Poisson(), dp, r"with `\(1 \+ x \| g\)` \(only")
+        refuse(bf(@formula(y ~ x + (0 + x | g))), Poisson(), dp, r"with `\(0 \+ x \| g\)` \(only")
         refuse(bf(@formula(y ~ x + (1 | g) + (1 | h))), Poisson(), dp, r"crossed/multiple random effects")
         refuse(bf(@formula(y ~ x)), Poisson(), dp, r"no random effect")
         refuse(bf(@formula(y ~ x + (1 | g)), @formula(zi ~ 1)), Poisson(), dp, r"a `zi` formula")

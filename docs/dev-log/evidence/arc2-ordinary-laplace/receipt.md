@@ -141,7 +141,7 @@ JULIA_NUM_THREADS=2 OPENBLAS_NUM_THREADS=1 julia --project=. \
 
 - Point estimates and log-likelihood only. Standard errors, profile intervals
   and coverage were not compared here.
-- Two seeds per family at one design (n = 300, 30 groups), plus the four
+- Two seeds per family at one design (n = 300, 30 groups), plus the five
   small-σ fixtures above. Near-Poisson NB2 is shown for one fixture whose fitted
   σ is 0.115; data whose NB2 optimum is at σ → 0 (exactly Poisson) were not
   compared with native. Boundary fits (σ_b near 0) were not compared.

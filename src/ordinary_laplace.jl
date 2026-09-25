@@ -91,8 +91,12 @@ function _drm_ordinary_laplace(f::DrmFormula, fam; data, tree = nothing,
     st === nothing || _ordinary_laplace_reject(fam, "a phylogenetic/structured random effect")
     length(re) == 1 || _ordinary_laplace_reject(fam,
         isempty(re) ? "no random effect (fixed-effects-only)" : "crossed/multiple random effects")
-    re[1][1] isa ConstantTerm && re[1][1].n == 1 ||
-        _ordinary_laplace_reject(fam, "`($(re[1][1]) | $(re[1][2]))` (only `(1 | g)` is covered)")
+    # Render the term as the user wrote it: a FunctionTerm such as `1 + x`
+    # prints as `:(1 + x)`, so show its original expression instead.
+    lhs = re[1][1]
+    lhs_text = hasproperty(lhs, :exorig) ? string(lhs.exorig) : string(lhs)
+    lhs isa ConstantTerm && lhs.n == 1 ||
+        _ordinary_laplace_reject(fam, "`($lhs_text | $(re[1][2]))` (only `(1 | g)` is covered)")
     grp = re[1][2]
     gidx, G = _group_index(getproperty(data, grp))
 
