@@ -1952,18 +1952,21 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing, tree
     rhs = Dict(fit.formula.forms)
     haskey(rhs, :mu) || return nothing
     _, re, metav_ms, structured, structured_slope = _split_ranef(rhs[:mu]; allow_phylo_slope = true)
-    # A Gaussian `meta_V(...)` fit with SEVERAL random fields (Arc 2,
-    # `_fit_meta_gaussian_re`, e.g. `phylo(1 | sp) + (1 | study)`): the simulator
-    # below draws ONE field, so it would silently bootstrap a model with the other
-    # field(s) missing. Refuse. A single field is drawn below: `scales[:sigma]` is
-    # √(v + σ²) there, a phylo `re_sd` is on the raw scale drawn below, and phylo
-    # rows go to tree leaves as the fit maps them (`phylo_leaf` below).
-    if metav_ms !== nothing && fit.family isa Gaussian
+    # A Gaussian fit with SEVERAL random fields on the mean where at least one is
+    # structured or the fit has `meta_V(...)` (Arc 2: `_fit_meta_gaussian_re`, e.g.
+    # `phylo(1 | sp) + (1 | study)`, and the two-structured route, e.g.
+    # `phylo(1 | sp) + relmat(1 | id)`): the simulator below draws ONE field, so it
+    # would silently bootstrap a model with the other field(s) missing. Refuse.
+    # Fits whose fields are all ordinary bars keep their existing path (the
+    # `length(re) == 1` check below). A single field is drawn below: `scales[:sigma]`
+    # is √(v + σ²) under meta_V, and phylo rows go to tree leaves as the fit maps
+    # them (`phylo_leaf` below).
+    if fit.family isa Gaussian && (metav_ms !== nothing || structured !== nothing)
         nfields = length(re) + length(_collect_structured(rhs[:mu]))
         nfields <= 1 ||
-            throw(ArgumentError("bootstrap: the marginal simulator for a `meta_V(...)` fit " *
-                "with $(nfields) random fields is not implemented; use `profile` intervals " *
-                "or the Wald `vcov`"))
+            throw(ArgumentError("bootstrap: the marginal simulator for a Gaussian fit " *
+                "with $(nfields) random fields on the mean is not implemented; use " *
+                "`profile` intervals or the Wald `vcov`"))
     end
     # A Gaussian `phylo(1 + x | g)` fit (#620) carries TWO phylogenetic fields;
     # the simulator below draws a single structured intercept, so building it

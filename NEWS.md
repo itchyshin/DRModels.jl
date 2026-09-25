@@ -16,6 +16,9 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   3e-10, every estimate within 3e-9 relative (`docs/dev-log/evidence/arc2-metav-random-effect/`).
   Random slopes, `spatial()`, REML, a `sigma` random effect and `sd(g) ~ …` still refuse; the marginal
   bootstrap refuses a `meta_V` fit with more than one random field rather than drop one.
+  The same refusal now covers the two-structured Gaussian route (`phylo(1 | sp) + relmat(1 | id)`),
+  whose bootstrap used to draw the phylo field alone. Fits whose random fields are all ordinary
+  bars keep their existing bootstrap path.
 - **Bootstrap draws a phylo field on the right tree tips.** The marginal bootstrap simulator placed
   `phylo(1 | sp)` rows on tips by the order species first appear in the data, not by name, so a data
   set not sorted in tree-tip order drew the wrong phylogenetic covariance (sister tips: -0.005 drawn

@@ -307,6 +307,9 @@ end
            for dd in (d, dp), kw in ((;), (; algorithm = :sparse))]
     @test all(t -> t.phylo_scale === :correlation, two)
     @test all(t -> isapprox(loglik(t), loglik(two[1]); atol = 1e-5), two)
+    # Its bootstrap would draw only the first field, so the simulator refuses
+    # (it used to bootstrap the phylo field alone, a different model).
+    @test_throws ArgumentError DRModels._marginal_simulator(two[1], d; tree = phy, K = K)
 end
 
 @testset "meta_V + random effect: same target as drmTMB (committed native-fit.R numbers)" begin
