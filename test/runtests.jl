@@ -355,6 +355,7 @@ _shard_include("test_bridge_biv_inference.jl")
 # ascends the true marginal (mstep_Lambda/fit_em_aug back the sparse_em_fit.jl
 # demos, off the public `drm()` path, and had no other coverage).
 _shard_include("test_step1_sparse.jl")
+_shard_include("test_takahashi_selinv_identity_pilot.jl")  # lane C: H² SIMD selinv identity, one banded cell
 _shard_include("test_sparse_aug.jl")
 _shard_include("test_lambda_direction.jl")
 
