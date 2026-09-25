@@ -60,8 +60,7 @@ fit.marginal   # :Laplace
 This covers one ordinary `(1 | g)` on the mean of Poisson, Binomial,
 NegBinomial2, Gamma and Beta (`sigma ~ 1` for the scale families), by maximum
 likelihood. Any other model with `marginal = :Laplace` is refused; nothing is
-silently fitted by GHQ-32 under that label. The receipt, with the R and Julia
-scripts, is `docs/dev-log/evidence/arc2-ordinary-laplace/`.
+silently fitted by GHQ-32 under that label.
 
 The trouble starts when the integrand is **not** close to Gaussian:
 
