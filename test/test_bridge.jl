@@ -273,13 +273,29 @@ using Test, Random, LinearAlgebra
     @test lsbridged["converged"] == true
     @test lsbridged["coefficients"] ≈ coef(lsnative)
     @test lsbridged["loglik"] ≈ loglik(lsnative)
-    @test_throws ErrorException drm_bridge(;
+    # Arc 2: the coupled block now fits REML (joint Laplace over the phylo effects
+    # and both fixed-effect axes, as native drmTMB); it used to throw here.
+    lsreml_native = drm(
+        bf(@formula(y ~ x + phylo(1 | species)),
+           @formula(sigma ~ phylo(1 | species))),
+        Gaussian();
+        data = lsdata,
+        tree = phyls,
+        phylo_coupled = true,
+        method = :REML,
+    )
+    lsreml = drm_bridge(;
         formula = lsformula,
         family = "gaussian",
         data = lsdata,
         tree = phyls,
         options = Dict(:phylo_coupled => true, :method => "REML"),
     )
+    @test estimation_method(lsreml_native) == :REML
+    @test any(startswith("recov_"), lsreml["coef_names"])
+    @test lsreml["estim_method"] == "REML"
+    @test lsreml["coefficients"] ≈ coef(lsreml_native)
+    @test lsreml["loglik"] ≈ loglik(lsreml_native)
 
     pprofile = drm_bridge_inference(;
         formula = Dict(:mu => "y ~ x + phylo(1 | species)", :sigma => "sigma ~ 1"),

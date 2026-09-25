@@ -6,6 +6,32 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **Gaussian σ-phylo REML now fits drmTMB's restricted likelihood.** For the
+  Gaussian location–scale model with `phylo(1 | g)` on `sigma` (the scale-only,
+  separate and coupled blocks), `method = :REML` now maximises TMB's
+  joint-Laplace restricted log-likelihood. This is one Laplace approximation over
+  the phylogenetic effects, `beta_mu` and `beta_sigma`, with flat priors on the
+  fixed effects, and it is the quantity drmTMB's `REML = TRUE` maximises. It
+  replaces the Patterson–Thompson composite from #337, so **REML estimates and
+  `reml_loglik` change on all three blocks**. The reported fixed effects are the
+  joint mode at the REML variance estimates. The scale-only and coupled blocks
+  reproduce native drmTMB's df, logLik (≤ 1e-6) and estimates (≤ 1e-5 relative)
+  on two fixtures, and the coupled block's df and logLik on two more whose
+  mean–scale correlation sits on drmTMB's bound. That bound, |cor| ≤ 0.999999,
+  now applies to the coupled REML fit too: when the data put both phylogenetic
+  effects on one axis, the fit lands on the bound and reports no Wald covariance,
+  where it used to stop at a worse local optimum. The receipt is in
+  `docs/dev-log/evidence/arc2-gaussian-sigma-phylo-reml/`. The separate block
+  has no native twin, because drmTMB always estimates the mean–scale
+  correlation. **The coupled block (`phylo_coupled = true`) now accepts REML**;
+  it used to throw. Under REML, `profile_ci = true` on the scale-only and
+  separate blocks now profiles this restricted likelihood; it used to profile
+  the ML likelihood from the REML estimate. When a phylogenetic SD is estimated
+  at zero, a REML fit now reports convergence and sits on the likelihood
+  plateau. Its Wald covariance is NaN, and on the scale-only and separate blocks
+  `profile_ci = true` gives a `[0, upper]` interval. The coupled block computes
+  no profile interval, under ML or REML; it ignores `profile_ci = true`.
+
 - **Package renamed to DRModels.jl.** The Julia package and module are now
   `DRModels`, while the modelling API remains `drm()`, `bf()`, and the existing
   fit/post-fit surface. `DRModels.DRM` is a soft-deprecated qualified alias for

@@ -147,14 +147,31 @@ package-test coverage.
     `phylo_coupled = true` opts into a free mean–scale phylogenetic correlation;
     the plain two-`phylo` syntax does not do this. Retrieve the two standard
     deviations with `gaussian_locscale_phylo_sds(fit)`; a coupled fit records the
-    correlation in `fit.scales[:lambda_cor]`, and `profile_ci = true` adds profile
-    intervals for the two standard deviations.
+    correlation in `fit.scales[:lambda_cor]`. On the scale-only and separate
+    blocks, `profile_ci = true` adds profile intervals for the standard
+    deviations; the coupled block computes none.
 
     This Gaussian route requires a common grouping factor and one phylogenetic
     structured component; it cannot be combined with additional random effects or
-    `meta_V`. `method = :REML` is available for the separate and scale-only
-    blocks, but is refused for the coupled block and for the iid
-    `sigma ~ (1|g)` route. A non-Gaussian scale-axis-only intercept is not part of
+    `meta_V`. `method = :REML` is available for the scale-only, separate and
+    coupled blocks, and is refused for the iid `sigma ~ (1|g)` route. On these
+    three blocks REML is one joint Laplace approximation over the phylogenetic
+    effects and **both** the `mu` and `sigma` fixed effects, the restricted
+    likelihood native drmTMB (`REML = TRUE`) maximises for this model, and the
+    scale-only and coupled blocks are tested against drmTMB's REML
+    log-likelihood, degrees of freedom and estimates. Under REML the reported
+    `mu`/`sigma` coefficients are the joint mode at the REML variance estimates.
+    As in drmTMB, the coupled block's mean–scale phylogenetic correlation is
+    bounded at |cor| ≤ 0.999999. When the data put the two phylogenetic effects
+    on one axis, the REML estimate sits on that bound and is reported without a
+    Wald covariance. Under REML, `profile_ci = true` on the scale-only and separate
+    blocks profiles this restricted likelihood. Earlier versions profiled the ML
+    likelihood from the REML estimate, which gave neither an ML nor a REML
+    interval. A REML fit whose phylogenetic standard deviation is estimated at
+    zero is reported as converged, with no Wald covariance. On the scale-only
+    and separate blocks, `profile_ci = true` gives its `[0, upper]` interval.
+    The coupled block computes no profile interval, under ML or REML, and
+    ignores `profile_ci = true` without a warning. A non-Gaussian scale-axis-only intercept is not part of
     the public formula grammar.
 
 ## Coevolution: q=4 phylogenetic bivariate location–scale model (PLSM)
@@ -231,17 +248,28 @@ above, and it does so by delegation rather than by a second engine.
     Gaussian location–scale model; a single Gaussian mean intercept `(1 | g)`;
     Location–Scale–Scale models (`sd(g) ~ z`,
     `sd(species, phylogenetic) ~ z`, and multi-component LSS); and the
-    bivariate q=4 location–scale engine.
-    σ-RE, random slopes, and non-Gaussian REML stay rejected. This is not AI-REML.
+    bivariate q=4 location–scale engine; and the Gaussian `phylo(1 | g)`-on-`sigma`
+    location–scale blocks (scale-only, separate, coupled), where both the `mu`
+    and `sigma` fixed effects are integrated out with the phylogenetic effects.
+    Ordinary σ-RE, random slopes, and non-Gaussian REML stay rejected. This is not AI-REML.
 
-    **Normalisation convention:** every REML route
-    in DRModels.jl now reports the **normalised** Patterson–Thompson restricted
-    log-likelihood, so `reml_loglik` is directly comparable to lme4's,
-    glmmTMB's, TMB's and drmTMB's `logLik()`. The bivariate q=2/q=4 Laplace
-    routes previously omitted the `(n_β/2)·log(2π)` constant while the
-    fixed-effect location–scale and mean `(1 | g)` routes included it. That
-    inconsistency has been corrected; all supported REML models now report the
-    same normalised quantity.
+    **Normalisation convention:** every REML route in DRModels.jl reports a
+    **normalised** restricted log-likelihood, including the `(n_β/2)·log(2π)`
+    constant, so `reml_loglik` is directly comparable to lme4's, glmmTMB's,
+    TMB's and drmTMB's `logLik()`. (The bivariate q=2/q=4 Laplace routes once
+    omitted that constant; this has been corrected.) Two quantities are in use.
+    Most routes report the Patterson–Thompson restricted log-likelihood. The
+    Gaussian `phylo(1 | g)`-on-`sigma` location–scale blocks instead report
+    TMB's **joint-Laplace** restricted log-likelihood: one Laplace
+    approximation over the phylogenetic effects and both sets of fixed effects,
+    with flat priors on the fixed effects. That is the quantity drmTMB's
+    `REML = TRUE` maximises for this model. It is not the Patterson–Thompson
+    quantity, because `beta_sigma` enters the likelihood non-linearly, so the
+    fixed effects cannot be integrated out exactly. On the scale-only and
+    separate blocks, `profile_ci = true` profiles the same restricted
+    likelihood. The other variance parameters are re-optimised, and the fixed
+    effects are integrated out rather than profiled. The coupled block
+    (`phylo_coupled = true`) computes no profile interval.
 
 ## Model comparison & accessors
 
