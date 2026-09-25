@@ -452,7 +452,7 @@ observed rows.
 function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree = nothing, coords = nothing, g_tol::Real = 1e-8, algorithm::Symbol = :auto, method::Symbol = :ML, profile_ci::Bool = false, phylo_coupled::Bool = false, penalty = nothing, sparse = nothing, impute = nothing, missing = nothing, marginal::Symbol = :LA)
     laplace = _gaussian_marginal(marginal)
     laplace && _gaussian_laplace_validate(f, fam, data, algorithm, method, penalty,
-                                          profile_ci, phylo_coupled, sparse, impute, missing)
+                                          phylo_coupled, sparse, impute, missing)
     algorithm in (:auto, :gls, :lbfgs, :em, :sparse, :sparse_lbfgs) ||
         throw(ArgumentError("drm: `algorithm` must be one of :auto, :gls, :lbfgs, :em, :sparse, :sparse_lbfgs (got :$algorithm)"))
     method in (:ML, :REML) ||

@@ -239,6 +239,28 @@ _srl_design(d, sigx) = (hcat(ones(length(d.y)), d.x),
                                          data = dp)["loglik"]
     end
 
+    @testset "drm_bridge_inference profiles a :Laplace fit" begin
+        # The bridge sets `profile_ci = true` for every univariate profile call.
+        # That flag only feeds the sigma-phylo route, so :Laplace accepts and
+        # ignores it, as the default route does.
+        @test loglik(drm(f, Gaussian(); data = d, marginal = :Laplace, profile_ci = true)) ==
+              loglik(fitL)
+        # Fixture p1 (G = 15, m = 10): both routes have finite profile endpoints.
+        dp1 = _srl_readfix(joinpath(_SRL_DIR, "p1_G15_m10_sdb040.csv"))
+        fitP = drm(f, Gaussian(); data = dp1, marginal = :Laplace)
+        dm = Dict("y" => dp1.y, "x" => dp1.x, "g" => dp1.g)
+        r = drm_bridge_inference(formula = "y ~ x; sigma ~ 1 + (1 | g)", family = "gaussian",
+                                 data = dm, method = "profile",
+                                 options = Dict{String,Any}("marginal" => "Laplace"))
+        row = _SRL._bridge_pick_sd_row(
+            profile_result(fitP; parm = [:resd_sigma, :resd, :resd_mu]).ci)
+        @test r["status"] == "profile"
+        @test (r["estimate"], r["lower"], r["upper"]) == (row.estimate, row.lower, row.upper)
+        rD = drm_bridge_inference(formula = "y ~ x; sigma ~ 1 + (1 | g)", family = "gaussian",
+                                  data = dm, method = "profile")
+        @test rD["estimate"] != r["estimate"]
+    end
+
     @testset "lrtest: fixed-effect sigma ~ 1 against :Laplace" begin
         # A fit with no random effect has an exact log-likelihood, so it may be
         # compared with a :Laplace fit (comparison.jl hunk shared with #813).

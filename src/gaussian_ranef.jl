@@ -871,7 +871,7 @@ end
 # refuse everything else before any route runs, so a request is never silently
 # served by another integrator.
 function _gaussian_laplace_validate(f::DrmFormula, fam::Gaussian, data, algorithm, method,
-                                    penalty, profile_ci, phylo_coupled, sparse, impute, missing)
+                                    penalty, phylo_coupled, sparse, impute, missing)
     _has_joint_mi(f) && _gaussian_laplace_reject("an `mi()` joint missing-data formula")
     (impute === nothing && missing === nothing) ||
         _gaussian_laplace_reject("`impute`/`missing` controls")
@@ -896,7 +896,9 @@ function _gaussian_laplace_validate(f::DrmFormula, fam::Gaussian, data, algorith
     method === :ML || _gaussian_laplace_reject("`method = :$method`")
     penalty === nothing || _gaussian_laplace_reject("`penalty`")
     algorithm === :auto || _gaussian_laplace_reject("`algorithm = :$algorithm`")
-    profile_ci && _gaussian_laplace_reject("`profile_ci = true`")
+    # `profile_ci` is not checked: it only precomputes the sigma-phylo location-scale
+    # CIs, so it is ignored on this route exactly as on the default (:LA) route, and
+    # `drm_bridge_inference(method = "profile")` sets it for every univariate fit.
     phylo_coupled && _gaussian_laplace_reject("`phylo_coupled = true`")
     (sparse === nothing || sparse === false) || _gaussian_laplace_reject("`sparse = $sparse`")
     return nothing
