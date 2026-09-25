@@ -187,8 +187,9 @@ end
 # estim_method defaults to :ML and reml/ml loglik to NaN / the supplied loglik
 # (the fitters use this; drm() attaches the formula via _withformula, the
 # objective via _withnll, the BLUPs via _withranef, and REML metadata via _withreml).
-# `marginal` defaults to `:LA` (the route's default integrator); `_withmarginal`
-# tags a `:VA`, `:AGHQ` or `:Laplace` fit.
+# `marginal` defaults to `:LA` (the route's default integrator: GHQ-32 on an
+# ordinary `(1 | g)` and on Gaussian `sigma ~ 1 + (1 | g)`, Laplace on most other
+# random-effect structures); `_withmarginal` tags a `:VA`, `:AGHQ` or `:Laplace` fit.
 DrmFit(family, blocks, coefnames, theta, vcov, loglik, nobs, converged, means, obs, scales) =
     DrmFit(family, blocks, coefnames, theta, vcov, loglik, nobs, converged, means, obs, scales,
            nothing, nothing, nothing, nothing, :ML, NaN, loglik, :LA)
@@ -290,7 +291,10 @@ than Poisson's spatial-range fit above. These share the sparse augmented-state
 Laplace engine (`src/sparse_*.jl`, `src/*_phylo.jl`) rather than a single
 top-level `Optim.optimize` call, so there is no one iteration count to report
 honestly; do not infer non-iteration (e.g. "closed form") from `-1` on these
-routes — check the family/route, not just the flag.
+routes — check the family/route, not just the flag. The ordinary `(1 | g)`
+`marginal = :Laplace` route (Poisson, Binomial, NegBinomial2, Gamma, Beta) is
+also `-1`: its `θ̂` comes from a chain of optimiser stages (LBFGS, a short
+polish, a boundary polish and, when needed, Newton steps), not one counted run.
 """
 niterations(fit::DrmFit) = fit.iterations
 

@@ -6,6 +6,37 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **`marginal = :Laplace` on an ordinary `(1 | g)` (Arc 2, drmTMB parity).**
+  Poisson, Binomial, NegBinomial2, Gamma and Beta with one ordinary random
+  intercept on the mean (`sigma ~ 1` for the scale families) can now be fitted
+  with the Laplace approximation exactly as drmTMB/TMB does, instead of the
+  default `:LA` route's 32-node Gauss–Hermite quadrature. It reuses the
+  structured routes' sparse-Laplace kernels with an identity precision and
+  unclamped scales (`raw_scales = true`); the fit is tagged
+  `marginal = :Laplace`, and `drm_bridge` now accepts a `marginal` option and
+  reports the integrator it used. On ten fixtures (five families × two seeds)
+  it matches native drmTMB to |ΔlogLik| ≤ 3.8e-10 and ≤ 6.1e-8 relative on
+  every estimate (`docs/dev-log/evidence/arc2-ordinary-laplace/`). The default
+  `:LA` answers are unchanged. Not covered and refused: `(1 + x | g)`,
+  `(0 + x | g)`, crossed terms, `sigma ~ covariates`, a random effect on
+  `sigma`, `zi`/`hu`, and REML. When the family `sigma` is small (about
+  0.01) the raw gradient stays large at the optimum because the curvature is
+  large; the route then judges convergence by the scale-free Newton
+  decrement, after up to three Newton steps on the outer gradient (with the
+  inner mode solved to 1e-13), so such a fit reports `converged = true` only
+  once it sits on drmTMB's optimum (Gamma `sigma` = 0.003: 5.6e-12 relative).
+  NegBinomial2 on this route uses its own NB2 kernel that stays accurate when
+  the size 1/σ² is huge (near-Poisson data); the structured NB2 kernel lost
+  all precision there and reported logLik −0.0014 against drmTMB's −559.55.
+  If a scale-family fit ends with log σ below −8, where the objective is
+  flat (for NB2, the Poisson limit), the route re-fits from log σ = −1 and
+  keeps the lower objective; on one NB2 review cell the first fit had
+  stopped on that plateau, reporting `converged = true`, 0.81 below
+  drmTMB's logLik. `lrtest`/`anova` now accept a random-effect-free fit
+  against any non-VA fit, including `marginal = :AGHQ` (refused before),
+  because a fixed-effects log-likelihood is exact; they still refuse `:LA`
+  vs `:Laplace` random-effect pairs and any VA fit.
+
 - **Package renamed to DRModels.jl.** The Julia package and module are now
   `DRModels`, while the modelling API remains `drm()`, `bf()`, and the existing
   fit/post-fit surface. `DRModels.DRM` is a soft-deprecated qualified alias for

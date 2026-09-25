@@ -845,7 +845,8 @@ end
 # `marginal` on the univariate Gaussian `drm`. `:LA` (the default, any case)
 # keeps every route exactly as it was: each route's own integrator, which is
 # exact wherever the Gaussian marginal is closed-form and GHQ-32 on `sigma ~ (1
-# | g)`. `:Laplace` is implemented only for that σ random-intercept route.
+# | g)`. On Gaussian, `:Laplace` is implemented only for that σ random-intercept
+# route (the non-Gaussian ordinary `(1 | g)` route lives in ordinary_laplace.jl).
 # Returns `true` when `:Laplace` was requested.
 function _gaussian_marginal(marginal::Symbol)
     t = Symbol(uppercase(String(marginal)))

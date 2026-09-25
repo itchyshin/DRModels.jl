@@ -189,9 +189,15 @@ _srl_design(d, sigx) = (hcat(ones(length(d.y)), d.x),
         # integrator (GHQ-32 here), `:Laplace` forces Laplace. No message may
         # send a user to `:LA` as "Laplace".
         @test_throws r"Gauss–Hermite quadrature, not Laplace" drm(f, Gaussian(); data = dm, marginal = :VA)
+        # The σ route does not claim the non-Gaussian families: a Poisson model
+        # outside the ordinary `(1 | g)` Laplace route is refused by that route.
         dp = (y = round.(Int, abs.(d.y)), x = d.x, g = d.g)
-        @test_throws r"implemented only for a Gaussian random intercept on `sigma`" drm(
-            bf(@formula(y ~ x + (1 | g))), Poisson(); data = dp, marginal = :Laplace)
+        @test_throws r"marginal = :Laplace is not available for Poisson\(\) with" drm(
+            bf(@formula(y ~ x + (1 + x | g))), Poisson(); data = dp, marginal = :Laplace)
+        # The shared refusal names both `:Laplace` routes.
+        errL = @test_throws ArgumentError _SRL._marginal_method(:Laplace)
+        @test occursin(r"ordinary random intercept `\(1 \| g\)` on Poisson", sprint(showerror, errL.value))
+        @test occursin(r"Gaussian random intercept on `sigma`", sprint(showerror, errL.value))
     end
 
     @testset "bootstrap refits with the seed fit's integrator" begin

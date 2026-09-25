@@ -299,6 +299,7 @@ _shard_include("test_variational_binomial.jl")
 _shard_include("test_variational_nb2.jl")
 _shard_include("test_variational_gamma.jl")
 _shard_include("test_aghq_1d.jl")                  # #448: 1-D Liu–Pierce AGHQ (lever 2)
+_shard_include("test_ordinary_laplace.jl")         # Arc 2: marginal = :Laplace on ordinary (1 | g)
 # Numerical-stability guards from the twin code-review pass (#303/#308/#311/#312/
 # #319/#321/#324.6/#324.7): SD-collapse, coincident coords, VA inner damping,
 # scale-aware FD Hessian, and PD-prior Cholesky barriers.
