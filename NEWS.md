@@ -22,7 +22,12 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   `sigma`, `zi`/`hu`, and REML. When the family `sigma` is small (about
   0.01) the raw gradient stays large at the optimum because the curvature is
   large; the route then judges convergence by the scale-free Newton
-  decrement, so such a fit (which matches drmTMB) reports `converged = true`.
+  decrement, after up to three Newton steps on the outer gradient (with the
+  inner mode solved to 1e-13), so such a fit reports `converged = true` only
+  once it sits on drmTMB's optimum (Gamma `sigma` = 0.003: 5.6e-12 relative).
+  NegBinomial2 on this route uses its own NB2 kernel that stays accurate when
+  the size 1/σ² is huge (near-Poisson data); the structured NB2 kernel lost
+  all precision there and reported logLik −0.0014 against drmTMB's −559.55.
 
 - **Package renamed to DRModels.jl.** The Julia package and module are now
   `DRModels`, while the modelling API remains `drm()`, `bf()`, and the existing

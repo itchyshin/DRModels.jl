@@ -48,8 +48,13 @@ to 1.34 log-likelihood units.
 
 ## Rose
 
-Claim is point estimates and log-likelihood on well-conditioned fixtures only;
-SEs, intervals, boundary fits and near-Poisson NB2 are not claimed. The R
+Claim is point estimates and log-likelihood on the ten fixtures plus four
+small-sigma fixtures (receipt, "Small family σ"); SEs, intervals, boundary fits
+and NB2 data whose optimum is exactly Poisson (σ → 0) are not claimed. Review
+round 3 fixed two route defects found at small sigma: the NB2 kernel lost all
+precision at size r > e^20 (now a separate large-size-stable kernel,
+`Val(:nb2_raw)`), and Gamma σ = 0.003 reported `converged = true` 7.2e-5 from
+native (now inner tolerance 1e-13 plus a Newton polish). The R
 bridge refusal stays until the conductor lifts it. `:LA` answers are guarded by
 tests, not merely asserted.
 

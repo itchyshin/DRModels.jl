@@ -19,7 +19,10 @@
 #       fail if the route is reverted to the clamped kernels;
 #   (4c) at family sigma ≈ 0.012 the fit matches native drmTMB on the same data
 #       (test/fixtures/ordinary_laplace/; the only cross-engine constants in this
-#       file) and reports converged = true through the scale-free rule;
+#       file) and reports converged = true through the scale-free rule; so do a
+#       near-Poisson NB2 cell and a Gamma sigma = 0.003 cell;
+#   (4d) the route's NB2 kernel equals the structured one where that is accurate
+#       and a 1024-bit reference at size r up to e^100, where it is not;
 #   (5) every out-of-scope model is refused with this route's message, never
 #       rerouted to :LA;
 #   (6) the bridge forwards `marginal` and reports the integrator it used;
@@ -182,14 +185,68 @@ const _OL_FAMS = (:poisson, :nb2, :binomial, :gamma, :beta)
         @test fit.converged
         @test exp(fit.theta[6]) < 0.02                  # the small-sigma regime
         @test loglik(fit) ≈ ll_native atol = 1e-6
-        @test fit.theta ≈ θ_native rtol = 1e-4
-        # the raw gradient is NOT small here: the flag is not the gradient rule
+        @test fit.theta ≈ θ_native rtol = 1e-5
+        # the Newton polish leaves θ̂ far inside the decrement tolerance (1e-8)
         g = zeros(length(fit.theta)); fit.nllgrad(g, fit.theta)
-        @test maximum(abs, g) / length(d.y) > 1e-6
+        H = OL._ordinary_laplace_grad_hessian(fit.nllgrad, fit.theta)
+        @test dot(g, H \ g) < 1e-12
         # and the scale-free rule is not vacuous: 0.01 away from θ̂ it says no
         θo = fit.theta .+ 0.01
         go = zeros(length(θo)); fit.nllgrad(go, θo)
         @test !OL._ordinary_laplace_newton_converged(fit.nllgrad, θo, go)
+    end
+
+    # Review cells (seed 99173, unbalanced groups; small_sigma_native.R in the
+    # evidence folder regenerates both CSVs and the native numbers).
+    #  * NB2 simulated near-Poisson (family sigma 0.03): before the large-size-stable
+    #    kernel the optimiser walked to size r ≈ e^115, where the structured NB2
+    #    kernel cancels to garbage, and reported logLik −0.0014 (truth −612.75).
+    #  * Gamma sigma 0.003: the inner-mode tolerance and the Newton polish keep
+    #    θ̂ within 1e-5 (relative) of TMB's optimum, not merely within 1e-4 SE.
+    @testset "$fam: small-sigma review cell matches native drmTMB" for (fam, file, ll_native, θ_native) in (
+            (:nb2, "nbinom2_sigma003.csv", -559.5469185207,
+             [1.521649876038, 0.270600351399, -2.162982757445, -1.075727168046]),
+            (:gamma, "gamma_sigma0003.csv", 710.1475483826,
+             [0.147430611103, 0.500075732293, -5.839815725332, -0.714569942507]))
+        lines = readlines(joinpath(@__DIR__, "fixtures", "ordinary_laplace", file))
+        rows = [replace.(split(l, ","), "\"" => "") for l in lines[2:end]]
+        d = (y = [parse(Float64, r[1]) for r in rows], x = [parse(Float64, r[2]) for r in rows],
+             g = [r[3] for r in rows])
+        fit = drm(_ol_formula(fam), _ol_family(fam); data = d, marginal = :Laplace, se = false)
+        @test fit.converged
+        @test abs(loglik(fit) - ll_native) <= 1e-6
+        @test fit.theta ≈ θ_native rtol = 1e-5
+    end
+
+    # The NB2 kernel on this route (`Val(:nb2_raw)`) is the structured NB2 kernel
+    # rewritten without cancellation: equal to it where that one is accurate, and
+    # equal to a 1024-bit reference where it is not (size r up to e^100).
+    @testset "NB2 raw kernel: stable at large size" begin
+        y = [0.0, 1.0, 3.0, 7.0, 25.0]
+        X = ones(length(y), 1)
+        rawf, _, _ = OL._ordinary_laplace_nb2_setup(y, X)
+        fixf, _, _ = OL._nb2_laplace_setup(y, X)
+        for ψ in (-0.7, -3.1), i in eachindex(y), η in (-1.0, 0.8, 2.5)
+            a = OL._laplace_v123_nuisance(Val(:nb2_raw), rawf(ψ), i, η)
+            b = OL._laplace_v123_nuisance(Val(:nb2_fixed), fixf(ψ), i, η)
+            @test all(isapprox.(a, b; rtol = 1e-9, atol = 1e-11))
+            @test OL._laplace_value(Val(:nb2_raw), rawf(ψ), i, η) == a[1]
+            @test all(OL._laplace_d12(Val(:nb2_raw), rawf(ψ), i, η) .≈ (a[2], a[3]))
+        end
+        ref(yy, η, ψ) = setprecision(BigFloat, 1024) do
+            r = exp(-2 * big(ψ)); μ = exp(big(η))
+            -(OL.loggamma(yy + r) - OL.loggamma(r) - OL.loggamma(yy + 1) + yy * log(μ) +
+              r * log(r) - (yy + r) * log(r + μ))
+        end
+        for ψ in (-20.0, -50.0), i in eachindex(y), η in (-1.0, 2.5)
+            v, _, _, _, nv, _, _ = OL._laplace_v123_nuisance(Val(:nb2_raw), rawf(ψ), i, η)
+            @test v ≈ Float64(ref(y[i], η, ψ)) atol = 1e-10
+            h = 1e-20
+            dref = setprecision(BigFloat, 1024) do
+                Float64((ref(y[i], η, big(ψ) + h) - ref(y[i], η, big(ψ) - h)) / (2h))
+            end
+            @test nv ≈ dref atol = 1e-10
+        end
     end
 
     @testset "$fam: objective at an RE log-SD below the legacy clamp (−9)" for fam in _OL_FAMS
@@ -259,25 +316,29 @@ const _OL_FAMS = (:poisson, :nb2, :binomial, :gamma, :beta)
 
     @testset "guard: structured kernels unchanged when raw_scales = false" begin
         # Inside the clamp box the flag is inert; outside it only raw_scales moves.
-        d = _ol_sim(:nb2; seed = 3)
+        d = _ol_sim(:gamma; seed = 3)
         y = d.y; X = hcat(ones(length(y)), d.x)
         gidx, G = OL._group_index(d.g)
         Q = spdiagm(0 => ones(G))
-        aux_c, _, _ = OL._nb2_laplace_setup(y, X)
-        aux_r, _, _ = OL._nb2_laplace_setup(y, X; raw_scales = true)
-        θin = [0.7, 0.4, -0.6, -0.4]
-        v0, _, _ = OL._phylo_mean_laplace_nuisance_fg(Val(:nb2_fixed), aux_c, length(y), X, gidx, Q, 0.0, θin)
-        v1, _, _ = OL._phylo_mean_laplace_nuisance_fg(Val(:nb2_fixed), aux_r, length(y), X, gidx, Q, 0.0, θin;
+        aux_c, _, _ = OL._gamma_laplace_setup(y, X)
+        aux_r, _, _ = OL._gamma_laplace_setup(y, X; raw_scales = true)
+        θin = [0.3, 0.5, -0.6, -0.4]
+        v0, _, _ = OL._phylo_mean_laplace_nuisance_fg(Val(:gamma_fixed), aux_c, length(y), X, gidx, Q, 0.0, θin)
+        v1, _, _ = OL._phylo_mean_laplace_nuisance_fg(Val(:gamma_fixed), aux_r, length(y), X, gidx, Q, 0.0, θin;
                                                      raw_scales = true)
         @test v0 == v1
-        θout = [0.7, 0.4, -0.6, -9.0]                 # RE log-SD below the legacy clamp at −8
-        w0, _, _ = OL._phylo_mean_laplace_nuisance_fg(Val(:nb2_fixed), aux_c, length(y), X, gidx, Q, 0.0, θout)
-        w0c, _, _ = OL._phylo_mean_laplace_nuisance_fg(Val(:nb2_fixed), aux_c, length(y), X, gidx, Q, 0.0,
-                                                      [0.7, 0.4, -0.6, -8.0])
+        θout = [0.3, 0.5, -0.6, -9.0]                 # RE log-SD below the legacy clamp at −8
+        w0, _, _ = OL._phylo_mean_laplace_nuisance_fg(Val(:gamma_fixed), aux_c, length(y), X, gidx, Q, 0.0, θout)
+        w0c, _, _ = OL._phylo_mean_laplace_nuisance_fg(Val(:gamma_fixed), aux_c, length(y), X, gidx, Q, 0.0,
+                                                      [0.3, 0.5, -0.6, -8.0])
         @test w0 == w0c                                # default: clamped, as before
-        w1, _, _ = OL._phylo_mean_laplace_nuisance_fg(Val(:nb2_fixed), aux_r, length(y), X, gidx, Q, 0.0, θout;
+        w1, _, _ = OL._phylo_mean_laplace_nuisance_fg(Val(:gamma_fixed), aux_r, length(y), X, gidx, Q, 0.0, θout;
                                                      raw_scales = true)
         @test w1 != w0
+        # the structured NB2 setup still clamps the size to [e^-8, e^8]
+        nb = _ol_sim(:nb2; seed = 3)
+        nbf, _, _ = OL._nb2_laplace_setup(nb.y, X)
+        @test nbf(-6.0).size == exp(8.0)
     end
 
     @testset "missing response rows are dropped, as on :LA" begin

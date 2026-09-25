@@ -1235,10 +1235,10 @@ end
 # method-of-moments dispersion start. Used so the tree and relmat fitters are
 # numerically identical given the same precision Q. (Constant-σ path only; the
 # covariate-dispersion #164 path builds its own per-observation aux in-place.)
-function _nb2_laplace_setup(y, Xμ; raw_scales::Bool = false)
+function _nb2_laplace_setup(y, Xμ)
     yint = round.(Int, y)
     function aux_from(logσ)
-        r = exp(raw_scales ? -2 * logσ : clamp(-2 * logσ, -8.0, 8.0))      # ψ = log σ; size r = 1/σ² = exp(−2ψ) (drmTMB)
+        r = exp(clamp(-2 * logσ, -8.0, 8.0))      # ψ = log σ; size r = 1/σ² = exp(−2ψ) (drmTMB)
         lconst = [loggamma(yint[i] + r) - loggamma(r) - _logfactorial(yint[i]) for i in eachindex(yint)]
         return (y = Float64.(yint), size = r, lconst = lconst)
     end

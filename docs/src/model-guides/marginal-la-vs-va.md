@@ -49,11 +49,13 @@ approximation, so on `(1 | g)` the default `:LA` route (GHQ-32) and drmTMB fit
 the same model with different integrators. On ten test datasets with a moderate
 family `sigma` (0.3 to 0.5) and a random-intercept SD of 0.6, their
 log-likelihoods differed by 0.06 to 1.3 units. The gap does not stay that small.
-When the family `sigma` is small (about 0.03 or less in our Gamma and Beta
-checks), each group's integrand is sharply peaked, the 32 fixed quadrature nodes
-miss it, and the default `:LA` can report convergence at the wrong optimum:
-its reported log-likelihood fell 170 to 300 units below the exact maximum, and
-`sigma` was off by about a factor of three. Use `marginal = :Laplace` for such data. To reproduce
+When the family `sigma` is small, each group's integrand is sharply peaked, the
+32 fixed quadrature nodes miss it, and the default `:LA` can report convergence
+at the wrong optimum. On three Gamma and Beta test datasets with family `sigma`
+between 0.003 and 0.012, the default fit reported `converged = true` with a
+log-likelihood 295 to 501 units below drmTMB's and a `sigma` 3.2 to 20 times
+drmTMB's; `marginal = :Laplace` matched drmTMB on all three. Use
+`marginal = :Laplace` for such data. To reproduce
 drmTMB's numbers, request the Laplace approximation explicitly:
 
 ```julia
