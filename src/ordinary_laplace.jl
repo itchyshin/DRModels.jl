@@ -118,7 +118,8 @@ end
 # kernels closed over its data; it returns `(val, g, b, ok)` when `grad` and
 # `(val, b, ok)` otherwise. The optimiser sequence is the structured routes'
 # (LBFGS/backtracking, short polish, #422 boundary polish, #491 convergence
-# flag, finite-difference Hessian for the Wald covariance).
+# flag, finite-difference Hessian for the Wald covariance), plus a scale-free
+# Newton-decrement fallback for the convergence flag (see below).
 function _ordinary_laplace_optimize(fg, θ0, n::Int, q::Int, g_tol; se::Bool,
                                     context::AbstractString,
                                     polish_iterations::Int = 15)
@@ -159,12 +160,51 @@ function _ordinary_laplace_optimize(fg, θ0, n::Int, q::Int, g_tol; se::Bool,
     gfinal = zeros(length(θ̂))
     grad!(gfinal, θ̂)
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
+    # A small family `sigma` (e.g. 0.01) makes the curvature in the mean
+    # coefficients ~1e6: LBFGS then stops ~1e-6 from the optimum, where the
+    # raw gradient is still ~1e-2 and the gradient rule above says "not
+    # converged" although the fit matches native drmTMB. Only in that case, ask
+    # the scale-free question instead. Fits that already pass are untouched.
+    if !converged && isfinite(nllhat) && nllhat < 1e17
+        converged = _ordinary_laplace_newton_converged(grad!, θ̂, gfinal)
+    end
     V = if se
         _vcov_from_hessian(_finite_hessian(nll, θ̂; h = _fd_hessian_step(n)); context = context)
     else
         fill(NaN, length(θ̂), length(θ̂))
     end
     return θ̂, nllhat, converged, Matrix(V), nll, grad!
+end
+
+# Hessian of the outer objective by central differences of its analytic gradient.
+function _ordinary_laplace_grad_hessian(grad!, θ; h::Real = 1e-5)
+    p = length(θ)
+    H = zeros(p, p)
+    gp = zeros(p); gm = zeros(p)
+    for i in 1:p
+        hi = h * (1 + abs(θ[i]))
+        e = zeros(p); e[i] = hi
+        grad!(gp, θ .+ e); grad!(gm, θ .- e)
+        H[:, i] .= (gp .- gm) ./ (2hi)
+    end
+    return Symmetric((H .+ H') ./ 2)
+end
+
+# Scale-free convergence: the Newton decrement λ² = g′H⁻¹g at θ̂. It does not
+# change when a parameter is rescaled; λ²/2 is the objective gap to the local
+# quadratic minimum, and every coordinate lies within λ standard errors of it.
+# λ² ≤ 1e-8 means each estimate is within 1e-4 SE of the optimum. It uses the
+# analytic gradient only: at σ ≈ 0.01 the objective VALUE is reproducible only
+# to ~1e-9 (inner-mode accuracy), below which a value-based check cannot see.
+# It needs a positive-definite Hessian, so a flat (collapsed-variance)
+# direction never passes here; such fits keep the gradient rule's verdict.
+const _ORDINARY_LAPLACE_DECREMENT_TOL = 1e-8
+
+function _ordinary_laplace_newton_converged(grad!, θ̂, gfinal)
+    all(isfinite, gfinal) || return false
+    C = cholesky(_ordinary_laplace_grad_hessian(grad!, θ̂); check = false)
+    issuccess(C) || return false
+    return dot(gfinal, C \ gfinal) <= _ORDINARY_LAPLACE_DECREMENT_TOL
 end
 
 _ordinary_laplace_Q(G::Int) = spdiagm(0 => ones(Float64, G))

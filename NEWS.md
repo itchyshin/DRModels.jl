@@ -19,7 +19,10 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   every estimate (`docs/dev-log/evidence/arc2-ordinary-laplace/`). The default
   `:LA` answers are unchanged. Not covered and refused: `(1 + x | g)`,
   `(0 + x | g)`, crossed terms, `sigma ~ covariates`, a random effect on
-  `sigma`, `zi`/`hu`, and REML.
+  `sigma`, `zi`/`hu`, and REML. When the family `sigma` is small (about
+  0.01) the raw gradient stays large at the optimum because the curvature is
+  large; the route then judges convergence by the scale-free Newton
+  decrement, so such a fit (which matches drmTMB) reports `converged = true`.
 
 - **Package renamed to DRModels.jl.** The Julia package and module are now
   `DRModels`, while the modelling API remains `drm()`, `bf()`, and the existing

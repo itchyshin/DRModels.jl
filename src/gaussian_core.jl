@@ -289,7 +289,10 @@ than Poisson's spatial-range fit above. These share the sparse augmented-state
 Laplace engine (`src/sparse_*.jl`, `src/*_phylo.jl`) rather than a single
 top-level `Optim.optimize` call, so there is no one iteration count to report
 honestly; do not infer non-iteration (e.g. "closed form") from `-1` on these
-routes — check the family/route, not just the flag.
+routes — check the family/route, not just the flag. The ordinary `(1 | g)`
+`marginal = :Laplace` route (Poisson, Binomial, NegBinomial2, Gamma, Beta) is
+also `-1`: its `θ̂` comes from a chain of optimiser stages (LBFGS, a short
+polish, a boundary polish and, when needed, Newton steps), not one counted run.
 """
 niterations(fit::DrmFit) = fit.iterations
 

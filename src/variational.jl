@@ -121,11 +121,13 @@ function _reject_method_as_marginal(fam, method; allow_reml::Bool = false)
         allow_reml && return :REML
         throw(ArgumentError(
             "drm ($famname): unknown `method = :$method`. $famname is ML-only; " *
-            "for Laplace vs variational vs AGHQ use `marginal = :LA`, `:VA` (#136), or `:AGHQ` (#448)."))
+            "for Laplace vs variational vs AGHQ use `marginal = :LA`, `:Laplace` " *
+            "(TMB-convention Laplace, ordinary `(1 | g)`), `:VA` (#136), or `:AGHQ` (#448)."))
     end
     throw(ArgumentError(
         "drm ($famname): unknown `method = :$method`. $famname is ML-only; " *
-        "for Laplace vs variational vs AGHQ use `marginal = :LA`, `:VA` (#136), or `:AGHQ` (#448)."))
+        "for Laplace vs variational vs AGHQ use `marginal = :LA`, `:Laplace` " *
+        "(TMB-convention Laplace, ordinary `(1 | g)`), `:VA` (#136), or `:AGHQ` (#448)."))
 end
 
 # `method = :REML` reached a route the restricted (Cox–Reid) objective is not certified

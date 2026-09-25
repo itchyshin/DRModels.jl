@@ -17,7 +17,11 @@
 #       objective values OUTSIDE the legacy clamp box (dispersion shape > e^8,
 #       RE log-SD < −8) still equal the independent Laplace objective. These
 #       fail if the route is reverted to the clamped kernels;
-#   (5) every out-of-scope model is refused, never rerouted to :LA;
+#   (4c) at family sigma ≈ 0.012 the fit matches native drmTMB on the same data
+#       (test/fixtures/ordinary_laplace/; the only cross-engine constants in this
+#       file) and reports converged = true through the scale-free rule;
+#   (5) every out-of-scope model is refused with this route's message, never
+#       rerouted to :LA;
 #   (6) the bridge forwards `marginal` and reports the integrator it used.
 # The same-target numbers against native drmTMB live in
 # docs/dev-log/evidence/arc2-ordinary-laplace/ (native_fit.R, julia_fit.jl).
@@ -149,6 +153,40 @@ const _OL_FAMS = (:poisson, :nb2, :binomial, :gamma, :beta)
         ref(θ) = _ol_reference_nll(fam, d, θ)
         step = ForwardDiff.hessian(ref, θ̂) \ ForwardDiff.gradient(ref, θ̂)
         @test maximum(abs, step) < 1e-5
+        # The reported flag uses the same scale-free question (Newton decrement)
+        # when the raw gradient is large only because the curvature is.
+        @test fit.converged
+    end
+
+    # Same model, same data as native drmTMB (engine = "tmb") at family
+    # sigma ≈ 0.012. The fixtures were simulated in R (seeds 31342 / 31343);
+    # the reference numbers below are native drmTMB's fit of these CSV files
+    # (opt$convergence == 0 for both). Before the scale-free convergence rule
+    # the route reported converged = false here although it matched native.
+    @testset "$fam: sigma ≈ 0.012 matches native drmTMB and reports converged" for (fam, file, ll_native, θ_native) in (
+            (:gamma, "gamma_sigma0012.csv", 756.7479683642,
+             [-0.273123496603, 0.350771345980, 0.398019933810, 0.099792314361,
+              -0.301739125168, -4.429717996930, -0.258783385387]),
+            (:beta, "beta_sigma0012.csv", 1047.6527834522,
+             [-0.229630708498, 0.497315528616, -0.399362363229, 0.103774523575,
+              -0.299637339714, -4.454239538407, -0.275948443061]))
+        lines = readlines(joinpath(@__DIR__, "fixtures", "ordinary_laplace", file))
+        rows = [replace.(split(l, ","), "\"" => "") for l in lines[2:end]]
+        d = (y = [parse(Float64, r[1]) for r in rows], x = [parse(Float64, r[2]) for r in rows],
+             z = [parse(Float64, r[3]) for r in rows], f = [r[4] for r in rows], g = [r[5] for r in rows])
+        fit = drm(bf(@formula(y ~ x + z + f + (1 | g)), @formula(sigma ~ 1)), _ol_family(fam);
+                  data = d, marginal = :Laplace, se = false)
+        @test fit.converged
+        @test exp(fit.theta[6]) < 0.02                  # the small-sigma regime
+        @test loglik(fit) ≈ ll_native atol = 1e-6
+        @test fit.theta ≈ θ_native rtol = 1e-4
+        # the raw gradient is NOT small here: the flag is not the gradient rule
+        g = zeros(length(fit.theta)); fit.nllgrad(g, fit.theta)
+        @test maximum(abs, g) / length(d.y) > 1e-6
+        # and the scale-free rule is not vacuous: 0.01 away from θ̂ it says no
+        θo = fit.theta .+ 0.01
+        go = zeros(length(θo)); fit.nllgrad(go, θo)
+        @test !OL._ordinary_laplace_newton_converged(fit.nllgrad, θo, go)
     end
 
     @testset "$fam: objective at an RE log-SD below the legacy clamp (−9)" for fam in _OL_FAMS
@@ -255,20 +293,38 @@ const _OL_FAMS = (:poisson, :nb2, :binomial, :gamma, :beta)
         dp = _ol_sim(:poisson; seed = 9)
         dp = merge(dp, (h = repeat(["a", "b", "c", "d"], length(dp.y) ÷ 4), z = randn(Random.Xoshiro(1), length(dp.y))))
         dn = merge(_ol_sim(:nb2; seed = 9), (z = randn(Random.Xoshiro(2), length(dp.y)),))
-        refuse(f, fam, d; kw...) = @test_throws ArgumentError drm(f, fam; data = d, marginal = :Laplace, kw...)
-        refuse(bf(@formula(y ~ x + (1 + x | g))), Poisson(), dp)
-        refuse(bf(@formula(y ~ x + (0 + x | g))), Poisson(), dp)
-        refuse(bf(@formula(y ~ x + (1 | g) + (1 | h))), Poisson(), dp)
-        refuse(bf(@formula(y ~ x)), Poisson(), dp)
-        refuse(bf(@formula(y ~ x + (1 | g)), @formula(zi ~ 1)), Poisson(), dp)
-        refuse(bf(@formula(y ~ x + (1 | g))), Poisson(), dp; method = :REML)
-        refuse(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ z)), NegBinomial2(), dn)
-        refuse(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1 + (1 | g))), NegBinomial2(), dn)
-        refuse(bf(@formula(y ~ x + (1 | p | g)), @formula(sigma ~ 1 + (1 | p | g))), NegBinomial2(), dn)
+        # Each refusal is an ArgumentError FROM THIS ROUTE (its message names the
+        # route and the offending piece), not some unrelated downstream error.
+        function refuse(f, fam, d, what::Regex; kw...)
+            err = @test_throws ArgumentError drm(f, fam; data = d, marginal = :Laplace, kw...)
+            msg = sprint(showerror, err.value)
+            @test occursin(r"marginal = :Laplace is not available for \w+\(\) with", msg)
+            @test occursin(what, msg)
+        end
+        refuse(bf(@formula(y ~ x + (1 + x | g))), Poisson(), dp, r"only `\(1 \| g\)` is covered")
+        refuse(bf(@formula(y ~ x + (0 + x | g))), Poisson(), dp, r"only `\(1 \| g\)` is covered")
+        refuse(bf(@formula(y ~ x + (1 | g) + (1 | h))), Poisson(), dp, r"crossed/multiple random effects")
+        refuse(bf(@formula(y ~ x)), Poisson(), dp, r"no random effect")
+        refuse(bf(@formula(y ~ x + (1 | g)), @formula(zi ~ 1)), Poisson(), dp, r"a `zi` formula")
+        refuse(bf(@formula(y ~ x + (1 | g))), Poisson(), dp, r"`method = :REML`"; method = :REML)
+        refuse(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ z)), NegBinomial2(), dn,
+               r"non-constant `sigma` formula")
+        refuse(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1 + (1 | g))), NegBinomial2(), dn,
+               r"random effect on `sigma`")
+        refuse(bf(@formula(y ~ x + (1 | p | g)), @formula(sigma ~ 1 + (1 | p | g))), NegBinomial2(), dn,
+               r"random effect on `sigma`")
         levs = unique(dp.g)
-        refuse(bf(@formula(y ~ x + relmat(1 | g))), Poisson(), dp; K = Matrix(1.0I, length(levs), length(levs)))
+        refuse(bf(@formula(y ~ x + relmat(1 | g))), Poisson(), dp, r"phylogenetic/structured random effect";
+               K = Matrix(1.0I, length(levs), length(levs)))
         # `method = :Laplace` points the caller at `marginal`
-        @test_throws ArgumentError drm(bf(@formula(y ~ x + (1 | g))), Poisson(); data = dp, method = :Laplace)
+        errm = @test_throws ArgumentError drm(bf(@formula(y ~ x + (1 | g))), Poisson(); data = dp,
+                                              method = :Laplace)
+        @test occursin(r"is not the Laplace/VA/AGHQ selector.*Use `marginal = :", sprint(showerror, errm.value))
+        # an ML-only family's REML refusal names :Laplace among the marginal options
+        for m in (:REML, :bogus)
+            errr = @test_throws ArgumentError OL._reject_method_as_marginal(OL.Beta(), m)
+            @test occursin(r"ML-only.*`:Laplace`", sprint(showerror, errr.value))
+        end
     end
 
     @testset "bridge forwards `marginal` and reports the integrator used" begin
