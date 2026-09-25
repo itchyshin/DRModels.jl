@@ -1,0 +1,1 @@
+| 2026-09-21 | **Reader PR triage** (#801) | `gh pr view` x10 + `git merge-tree` x7 + `git diff --check` x3 | ✅ green; classified 10 open PRs (7 handover-named + 3 found by a docs/src / docs/make.jl overlap scan) as OWED or PROTECTED, recorded a #800 merge-readiness verdict, merge withheld pending maintainer confirmation | Claude Sonnet 5 |
