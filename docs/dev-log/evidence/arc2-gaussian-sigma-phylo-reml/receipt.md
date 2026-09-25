@@ -60,8 +60,28 @@ boundary, which this change does not touch.
 The separate block (`phylo_coupled = false`) now uses the same joint-Laplace
 REML. It has no native twin, because native always estimates the correlation.
 
-Interval coverage is not claimed. `profile_ci = true` under REML still profiles
-the ML surface, which is pre-existing behaviour.
+Interval coverage is not claimed. There is no native comparison for
+`profile_ci = true` under REML. It now profiles the restricted likelihood: the
+other variance parameters are re-optimised, and beta is integrated out, not
+profiled. Before this change it profiled the ML surface from the REML estimate.
+`test_reml_sigma_phylo_joint.jl` checks that each finite endpoint sits at the
+chi-square threshold on `_glsp_joint_reml_nll`.
+
+**Variance boundary (review fix).** When a phylogenetic SD is estimated at
+zero, the restricted NLL flattens onto a plateau. Its gradient falls like SD²,
+below the rounding noise of the finite-difference gradient, so the outer Newton
+crept toward the plateau until it hit the iteration cap and reported
+non-convergence. On zero-signal sigma-only draws (20 tips x 4 rows, seeds
+1001-1015), 6/15 fits converged with true SD 0, 7/15 with SD 0.1 and 12/15 with
+SD 0.3; the base branch converged in 15/15. The fit is now declared converged
+when three conditions hold: a log-SD is below -8, the gradient is below the
+no-descent tolerance, and the last step gained at most 1e-10 relative. The
+boundary coordinates are then moved onto the plateau's supremum. Now 15/15
+converge at every SD. The reported logLik equals the SD -> 0 limit to within
+1e-8, on both the sigma-only block and the coupled block with both SDs at zero.
+The Wald covariance there is NaN, matching the ML routes' PD guard. None of the
+fixtures in this receipt is on the boundary, and after the fix every row of
+`julia.tsv` except the timings is byte-identical.
 
 **Reproduce.**
 ```

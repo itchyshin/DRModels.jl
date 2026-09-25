@@ -183,3 +183,107 @@ end
                 method = :REML, phylo_coupled = true)
     @test loglik(fit_c) >= loglik(fit) - 1e-8
 end
+
+# ---- variance boundary: a zero-signal REML fit converges on the plateau ------
+# With no scale-phylogeny signal the restricted NLL flattens as the log-SD runs to
+# −∞; its gradient falls like SD², below the FD gradient's rounding noise, so the
+# outer Newton used to creep until the iteration cap and report non-convergence
+# (9 of 15 zero-signal seeds). It must now report convergence AND sit on the
+# plateau's supremum, the restricted logLik at SD → 0.
+function _arc2_zero_signal(seed)
+    Random.seed!(seed)
+    ntip = 20; m = 4; n = ntip * m
+    phy = random_balanced_tree(ntip; branch_length = 0.25)
+    sp = repeat(1:ntip, inner = m)
+    x = randn(n); y = 0.5 .+ 0.3 .* x .+ randn(n)
+    return (y = y, x = x, sp = sp), phy
+end
+function _arc2_nllR(data, phy, Λ, Zη, Zψ)
+    n = length(data.y)
+    Q, gidx, G = _D._locscale_phylo_setup(phy, data.sp)
+    P = _D.prior_precision(Q, _D._ls_inv2x2(Λ))
+    r = _D._glsp_joint_reml_nll(Val(:gaussian_mean), data.y, hcat(ones(n), data.x),
+                                ones(n, 1), gidx, G, P, Zη, Zψ, zeros(3), zeros(2G))
+    @assert r[5]
+    return r[1]
+end
+
+@testset "Arc 2 boundary: zero-signal REML converges on the plateau supremum" begin
+    for seed in (1011, 1002)          # 1011 was non-converged before the fix
+        data, phy = _arc2_zero_signal(seed)
+        n = length(data.y)
+        fit = drm(_ARC2_FORMS["sigma_only"][1], Gaussian(); data = data, tree = phy,
+                  method = :REML)
+        @test is_converged(fit)
+        @test exp(coef(fit, :resd_sigma)[1]) < 1e-3
+        Zη, Zψ = _D._glsp_asym_loadings(n)
+        sup = -_arc2_nllR(data, phy, _D._glsp_asym_Λ(-20.0), Zη, Zψ)
+        @test loglik(fit) ≈ sup atol = 1e-6
+        @test loglik(fit) <= sup + 1e-8
+        @test all(isnan, vcov(fit)[end, :])  # no Wald curvature on the boundary
+    end
+    # Coupled block, no phylo signal on either axis (both SDs and L21 → 0).
+    data, phy = _arc2_zero_signal(3)
+    n = length(data.y)
+    fit = drm(_ARC2_FORMS["mu_sigma"][1], Gaussian(); data = data, tree = phy,
+              method = :REML, phylo_coupled = true)
+    @test is_converged(fit)
+    @test fit.scales[:lambda_sd_mu][1] < 1e-3 && fit.scales[:lambda_sd_sigma][1] < 1e-3
+    sup = -_arc2_nllR(data, phy, _D._glsp_coupled_Λ([-20.0, 0.0, -20.0]),
+                      _D._ls_canonical_Zeta(n), _D._ls_canonical_Zpsi(n))
+    @test loglik(fit) ≈ sup atol = 1e-6
+end
+
+# ---- profile_ci under REML profiles the RESTRICTED surface -------------------
+# Before, `profile_ci = true` under REML profiled the ML NLL from the REML point
+# (which is not the ML minimum): neither an ML nor a REML interval.
+@testset "Arc 2 profile_ci under REML: restricted-likelihood profile" begin
+    thr = 0.5 * 3.841458820694124     # χ²₁(0.95)/2
+    # Scale-only block: β is integrated out and the SD is the only variance
+    # parameter, so the profile IS nll_R; each finite endpoint sits at the threshold.
+    data, nwk = _arc2_fixture("F1")
+    n = length(data.y)
+    fit = drm(_ARC2_FORMS["sigma_only"][1], Gaussian(); data = data, tree = nwk,
+              method = :REML, profile_ci = true)
+    lo, hi = fit.scales[:profile_ci_sd_sigma]
+    sd = exp(coef(fit, :resd_sigma)[1])
+    @test 0 <= lo < sd < hi < Inf
+    phy = augmented_phy(nwk)
+    Zη, Zψ = _D._glsp_asym_loadings(n)
+    nllR(s) = _arc2_nllR(data, phy, _D._glsp_asym_Λ(log(s)), Zη, Zψ)
+    @test -nllR(sd) ≈ loglik(fit) atol = 1e-8
+    @test nllR(hi) - nllR(sd) ≈ thr atol = 1e-4
+    if lo > 0
+        @test nllR(lo) - nllR(sd) ≈ thr atol = 1e-4
+    else   # an honest [0, hi]: the restricted NLL never rises by thr as SD → 0
+        @test nllR(sd * exp(-8)) - nllR(sd) < thr
+    end
+    # Guard: the ML route's profile is unchanged — still the ML surface, from the ML fit.
+    fit_ml = drm(_ARC2_FORMS["sigma_only"][1], Gaussian(); data = data, tree = nwk,
+                 method = :ML, profile_ci = true)
+    @test fit_ml.scales[:profile_ci_sd_sigma] != fit.scales[:profile_ci_sd_sigma]
+    # Separate block (small, for speed): each SD's interval brackets it, and at an
+    # endpoint the restricted NLL with the OTHER SD held at its estimate is at least
+    # the threshold (the profile re-optimises that SD, so it can only be lower).
+    Random.seed!(21)
+    ntip = 10; m = 4; ns = ntip * m
+    phy_s = random_balanced_tree(ntip; branch_length = 0.25)
+    sp = repeat(1:ntip, inner = m); xs = randn(ns)
+    ys = 0.2 .+ 0.4 .* xs .+ 0.5 .* randn(ntip)[sp] .+ exp.(0.4 .* randn(ntip)[sp]) .* randn(ns)
+    ds = (y = ys, x = xs, sp = sp)
+    fs = drm(_ARC2_FORMS["mu_sigma"][1], Gaussian(); data = ds, tree = phy_s,
+             method = :REML, profile_ci = true)
+    v̂ = fs.theta[4:5]
+    Zc = (_D._ls_canonical_Zeta(ns), _D._ls_canonical_Zpsi(ns))
+    nllS(v) = _arc2_nllR(ds, phy_s, _D._glsp_sep_Λ(v), Zc...)
+    base = nllS(v̂)
+    for (key, j) in ((:profile_ci_sd_mu, 1), (:profile_ci_sd_sigma, 2))
+        l, u = fs.scales[key]
+        @test l < exp(v̂[j]) < u
+        for e in (l, u)
+            (0 < e < Inf) || continue
+            v = copy(v̂); v[j] = log(e)
+            @test nllS(v) - base >= thr - 1e-4
+        end
+    end
+end

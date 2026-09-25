@@ -618,8 +618,15 @@ end
 # estimates, the joint-mode β̂, the restricted and ML NLLs and a Wald covariance
 # of (β, v): V_vv = (∇²nll_R)⁻¹, and the β rows follow TMB's sdreport rule for a
 # random-vector coordinate, Var(β̂) = S⁻¹ + J V_vv Jᵀ with J = dβ̂/dv.
+#
+# `logsd_idx` names the log-SD coordinates of v (the ones that run to −∞ at the
+# variance boundary); `profile_idx` names the log-SD coordinates to profile. Each
+# profile interval is on the RESTRICTED surface: nll_R with β integrated out, the
+# other variance coordinates re-optimised, thresholded from the REML minimum. It is
+# returned in `ci` as (sd_lo, sd_hi), in the order of `profile_idx`.
 function _glsp_joint_reml_fit(kind, y, Xμ, Xψ, gidx, G, Q, Zη, Zψ, Λfun, starts,
-                              β_start; se::Bool = true, g_tol::Real = 1e-9)
+                              β_start; se::Bool = true, g_tol::Real = 1e-9,
+                              logsd_idx = (), shrink_idx = (), profile_idx = ())
     pμ = size(Xμ, 2); pψ = size(Xψ, 2); p = pμ + pψ
     # A rank-deficient fixed-effect design makes the flat-prior β integral improper:
     # S is singular in exact arithmetic, and a numerically-PD S would give a finite
@@ -632,7 +639,8 @@ function _glsp_joint_reml_fit(kind, y, Xμ, Xψ, gidx, G, Q, Zη, Zψ, Λfun, st
         ml0, _, ok0 = _ls_marginal_nll(kind, y, Xμ * β_start[1:pμ], Xψ * β_start[pμ+1:p],
                                        gidx, G, P0, Zη, Zψ)
         return (θ = vcat(β_start, v0), v = v0, β = copy(β_start), reml_nll = NaN,
-                ml_nll = ok0 ? ml0 : NaN, converged = false, V = fill(NaN, np, np))
+                ml_nll = ok0 ? ml0 : NaN, converged = false, V = fill(NaN, np, np),
+                ci = [(sd_lo = NaN, sd_hi = NaN) for _ in profile_idx])
     end
     warm_β = Ref(copy(β_start)); warm_a = Ref(zeros(2G))
     function eval_v(v; update::Bool = true)
@@ -680,13 +688,49 @@ function _glsp_joint_reml_fit(kind, y, Xμ, Xψ, gidx, G, Q, Zη, Zψ, Λfun, st
     # at most three coordinates, so each Hessian is ≤ 19 restricted-likelihood
     # evaluations, and Newton converges where an FD-gradient L-BFGS was measured to
     # stall well short of the optimum (F2 coupled fixture, gradient ‖·‖ ≈ 5).
+    #
+    # Variance boundary. When a log-SD runs to −∞ the restricted NLL flattens onto a
+    # plateau: its gradient falls like SD², so near SD ≈ 1e-4 it is ~1e-7 and the FD
+    # gradient's rounding noise (~3e-8) keeps it from reaching `g_tol`, while every
+    # Newton step still buys ~1e-9. Newton then creeps along the plateau until the
+    # iteration cap and reports non-convergence (measured: 9/15 zero-signal
+    # sigma-only fits). The fit is declared converged on the boundary once a log-SD
+    # coordinate is below `_GLSP_REML_BOUNDARY` (SD < 3.4e-4), the gradient is below
+    # the no-descent tolerance used below, and the last accepted step improved nll_R
+    # by at most 1e-10 relative, i.e. the objective has stopped moving. The boundary
+    # log-SDs are then pushed onto the plateau supremum (below).
     function newton_min(v0)
-        v = copy(v0); f = nllR(v)
+        v = copy(v0); f = nllR(v); gain = Inf
         (isfinite(f) && f < 1e17) || return v, Inf, false
         for _ in 1:100
             g = fdgrad(v)
             all(isfinite, g) || return v, f, false
             norm(g) <= g_tol * (1 + abs(f)) && return v, f, true
+            if any(j -> v[j] < _GLSP_REML_BOUNDARY, logsd_idx) &&
+               norm(g) <= 1e-5 * (1 + abs(f)) && gain <= 1e-10 * (1 + abs(f))
+                # Snap each boundary log-SD 6 units further out when that does not
+                # raise nll_R: the plateau's supremum is at SD → 0, and the creeping
+                # Newton iterate can still sit ~2e-6 below it (measured, coupled block
+                # with both SDs at zero).
+                # `shrink_idx` are raw-scale coordinates (the coupled block's L21) that
+                # also go to zero with a boundary SD; they are tried at e⁻⁶ × their value.
+                # The moves interact (a leftover L21 blocks the logL22 snap), so the pass
+                # repeats, at most three times, while any move is accepted.
+                for _ in 1:3
+                    snapped = false
+                    for j in shrink_idx
+                        vt = copy(v); vt[j] *= exp(-6.0); ft = nllR(vt)
+                        (isfinite(ft) && ft <= f) && ((v, f, snapped) = (vt, ft, true))
+                    end
+                    for j in logsd_idx
+                        v[j] < _GLSP_REML_BOUNDARY || continue
+                        vt = copy(v); vt[j] -= 6.0; ft = nllR(vt)
+                        (isfinite(ft) && ft <= f) && ((v, f, snapped) = (vt, ft, true))
+                    end
+                    snapped || break
+                end
+                return v, f, true
+            end
             H = Symmetric(fdhess(v))
             λ = 0.0; moved = false; scale = 1 + maximum(abs, H)
             while λ <= 1e2 * scale
@@ -698,6 +742,7 @@ function _glsp_joint_reml_fit(kind, y, Xμ, Xψ, gidx, G, Q, Zη, Zψ, Λfun, st
                     while α >= 1 / 64
                         vt = v .+ α .* d; ft = nllR(vt)
                         if isfinite(ft) && ft < f
+                            gain = f - ft
                             v, f = vt, ft; moved = true
                             break
                         end
@@ -729,7 +774,11 @@ function _glsp_joint_reml_fit(kind, y, Xμ, Xψ, gidx, G, Q, Zη, Zψ, Λfun, st
     ml_ok || (ml_nll = NaN)
     k = length(best_v); np = p + k
     V = fill(NaN, np, np)
-    if se
+    # On the variance boundary the curvature of nll_R in v is FD rounding noise, so
+    # no Wald covariance is reported (NaN) — the convention of the ML routes'
+    # PD-guard; `profile_ci = true` gives the boundary-aware interval instead.
+    on_boundary = any(j -> best_v[j] < _GLSP_REML_BOUNDARY, logsd_idx)
+    if se && !on_boundary
         try
             Hv = fdhess(best_v)
             chH = cholesky(Symmetric(Hv); check = false)
@@ -753,9 +802,23 @@ function _glsp_joint_reml_fit(kind, y, Xμ, Xψ, gidx, G, Q, Zη, Zψ, Λfun, st
             V = fill(NaN, np, np)
         end
     end
+    # Restricted-likelihood profile intervals. Every evaluation starts from the joint
+    # mode at the REML optimum (update = false), so the bisection's excursions to
+    # extreme log-SDs never leave a stale warm start behind; a failed joint mode is
+    # Inf, which `_glsp_profile_ci` reads as "not crossed" (the conservative side).
+    ci = map(collect(profile_idx)) do j
+        warm_β[] = copy(β̂); warm_a[] = copy(â)
+        nllP(v) = (r = eval_v(v; update = false); r[5] ? r[1] : Inf)
+        gradP(v) = [(vp = copy(v); vp[i] += h; vm = copy(v); vm[i] -= h;
+                     (nllP(vp) - nllP(vm)) / (2h)) for i in eachindex(v)]
+        _glsp_profile_ci(nllP, gradP, best_v, j)
+    end
     return (θ = vcat(β̂, best_v), v = best_v, β = β̂, reml_nll = nll_r, ml_nll = ml_nll,
-            converged = best_conv, V = V)
+            converged = best_conv, V = V, ci = ci)
 end
+
+# Log-SD below which a REML variance coordinate counts as on the boundary (SD < 3.4e-4).
+const _GLSP_REML_BOUNDARY = -8.0
 
 # B2 — boundary-aware PROFILE-LIKELIHOOD CI for one variance (log-SD) parameter.
 # `nll(θ)::Real` and `grad(θ)::Vector` are the route's own marginal NLL and analytic
@@ -771,6 +834,9 @@ function _glsp_profile_ci(nll, grad, θ̂, idx; level = 0.95)
     free = setdiff(1:length(θ̂), idx)
     function prof_dev(v)
         θfix = copy(θ̂); θfix[idx] = v
+        # Nothing left to re-optimise (the REML scale-only block: β is integrated
+        # out and the SD is the only variance parameter), so the profile is nll itself.
+        isempty(free) && return (nll(θfix) - nll_min) - thr
         obj(z) = (θw = copy(θfix); θw[free] .= z; nll(θw))
         grad!(g, z) = (θw = copy(θfix); θw[free] .= z; g .= grad(θw)[free]; g)
         val = try
@@ -959,7 +1025,7 @@ function _fit_gaussian_locscale_phylo(fam::Gaussian, y, Xμ, Xψ, gidx, G, Q,
         logL22_0 = log(0.3)
         θ0 = vcat(βμ0, βψ0, logL22_0)
         θ̂, conv = _glsp_optimise(pen_obj, pen_grad!, θ0; g_tol = g_tol)
-        ml_nll = asym_obj(θ̂); reml_nll = NaN; V_reml = nothing
+        ml_nll = asym_obj(θ̂); reml_nll = NaN; V_reml = nothing; ci_reml = nothing
         if reml
             # Native drmTMB's restricted likelihood: ONE joint Laplace over (a, β_μ, β_ψ)
             # with the variance parameter the only outer coordinate (Arc 2; see
@@ -967,9 +1033,10 @@ function _fit_gaussian_locscale_phylo(fam::Gaussian, y, Xμ, Xψ, gidx, G, Q,
             rf = _glsp_joint_reml_fit(kind, y, Xμ, Xψ, gidx, G, Q, Zη, Zψ,
                                       v -> _glsp_asym_Λ(v[1]),
                                       [[log(0.3)], _glsp_reml_start(θ̂[pμ+pψ+1:end], 1:1)],
-                                      θ̂[1:pμ+pψ]; se = se)
+                                      θ̂[1:pμ+pψ]; se = se, logsd_idx = (1,),
+                                      profile_idx = profile_ci ? (1,) : ())
             θ̂ = rf.θ; conv = rf.converged
-            ml_nll = rf.ml_nll; reml_nll = rf.reml_nll; V_reml = rf.V
+            ml_nll = rf.ml_nll; reml_nll = rf.reml_nll; V_reml = rf.V; ci_reml = rf.ci
         end
         nll_val = reml ? reml_nll : ml_nll
         βμ̂ = θ̂[1:pμ]; βψ̂ = θ̂[pμ+1:pμ+pψ]; logL22 = θ̂[pμ+pψ+1]
@@ -1022,8 +1089,9 @@ function _fit_gaussian_locscale_phylo(fam::Gaussian, y, Xμ, Xψ, gidx, G, Q,
         # signal is absent. Opt-in (profile_ci) — the root-find re-fits the route NLL.
         if profile_ci
             # Profile off the PENALIZED objective under a penalty, so the interval and
-            # the point estimate come from the same surface.
-            ci_s = _glsp_profile_ci(pen_obj, pen_gradf, θ̂, pμ + pψ + 1)
+            # the point estimate come from the same surface; under REML, off the
+            # restricted surface the point estimate maximises (`_glsp_joint_reml_fit`).
+            ci_s = reml ? ci_reml[1] : _glsp_profile_ci(pen_obj, pen_gradf, θ̂, pμ + pψ + 1)
             scales[:profile_ci_sd_sigma] = [ci_s.sd_lo, ci_s.sd_hi]
         end
         fit = DrmFit(fam, blocks, names, θ̂, V, -nll_val, n, conv, means, obs, scales)
@@ -1072,7 +1140,7 @@ function _fit_gaussian_locscale_phylo(fam::Gaussian, y, Xμ, Xψ, gidx, G, Q,
         βψ0 = zeros(pψ)
         θ0 = vcat(βμ0, βψ0, log(0.3), log(0.3))   # [βμ; βψ; logL11; logL22]
         θ̂, conv = _glsp_optimise(pen_obj, pen_grad!, θ0; g_tol = g_tol)
-        ml_nll = sep_obj(θ̂); reml_nll = NaN; V_reml = nothing
+        ml_nll = sep_obj(θ̂); reml_nll = NaN; V_reml = nothing; ci_reml = nothing
         if reml
             # The same joint-Laplace restricted likelihood as the asymmetric and coupled
             # blocks (Arc 2), with Λ = diag(L11², L22²). No native twin: native drmTMB
@@ -1081,9 +1149,10 @@ function _fit_gaussian_locscale_phylo(fam::Gaussian, y, Xμ, Xψ, gidx, G, Q,
             rf = _glsp_joint_reml_fit(kind, y, Xμ, Xψ, gidx, G, Q, Zη, Zψ,
                                       _glsp_sep_Λ,
                                       [[log(0.3), log(0.3)], _glsp_reml_start(θ̂[pμ+pψ+1:end], 1:2)],
-                                      θ̂[1:pμ+pψ]; se = se)
+                                      θ̂[1:pμ+pψ]; se = se, logsd_idx = (1, 2),
+                                      profile_idx = profile_ci ? (2, 1) : ())
             θ̂ = rf.θ; conv = rf.converged
-            ml_nll = rf.ml_nll; reml_nll = rf.reml_nll; V_reml = rf.V
+            ml_nll = rf.ml_nll; reml_nll = rf.reml_nll; V_reml = rf.V; ci_reml = rf.ci
         end
         nll_val = reml ? reml_nll : ml_nll
         βμ̂ = θ̂[1:pμ]; βψ̂ = θ̂[pμ+1:pμ+pψ]
@@ -1142,9 +1211,10 @@ function _fit_gaussian_locscale_phylo(fam::Gaussian, y, Xμ, Xψ, gidx, G, Q,
         # (profile_ci) — the root-find re-optimises the route's own NLL per endpoint.
         if profile_ci
             # Profile the PENALIZED surface under a penalty, so the interval and the
-            # point estimate come from the same objective.
-            ci_s = _glsp_profile_ci(pen_obj, pen_gradf, θ̂, pμ + pψ + 2)
-            ci_m = _glsp_profile_ci(pen_obj, pen_gradf, θ̂, pμ + pψ + 1)
+            # point estimate come from the same objective; under REML, the restricted
+            # surface (`_glsp_joint_reml_fit`, profile_idx = (σ, μ)).
+            ci_s = reml ? ci_reml[1] : _glsp_profile_ci(pen_obj, pen_gradf, θ̂, pμ + pψ + 2)
+            ci_m = reml ? ci_reml[2] : _glsp_profile_ci(pen_obj, pen_gradf, θ̂, pμ + pψ + 1)
             scales[:profile_ci_sd_sigma] = [ci_s.sd_lo, ci_s.sd_hi]
             scales[:profile_ci_sd_mu]    = [ci_m.sd_lo, ci_m.sd_hi]
         end
@@ -1204,7 +1274,8 @@ function _fit_gaussian_locscale_phylo(fam::Gaussian, y, Xμ, Xψ, gidx, G, Q,
                                       _glsp_coupled_Λ,
                                       [[log(0.3), 0.0, log(0.3)],
                                        _glsp_reml_start(θ̂[pμ+pψ+1:end], (1, 3))],
-                                      θ̂[1:pμ+pψ]; se = se)
+                                      θ̂[1:pμ+pψ]; se = se, logsd_idx = (1, 3),
+                                      shrink_idx = (2,))
             θ̂ = rf.θ; conv = rf.converged
             ml_nll = rf.ml_nll; reml_nll = rf.reml_nll; nll_val = reml_nll; V_reml = rf.V
         end

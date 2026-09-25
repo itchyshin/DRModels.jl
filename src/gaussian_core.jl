@@ -662,7 +662,7 @@ function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree 
         return _withformula(fit, f)
     end
     phylo_coupled &&
-        throw(ArgumentError("drm: `phylo_coupled` is an internal bridge option for Gaussian mu+sigma phylo ML fits"))
+        throw(ArgumentError("drm: `phylo_coupled` is an internal bridge option for Gaussian mu+sigma phylo fits (ML or REML)"))
     if method === :REML
         # REML (opt-in) is implemented for (a) the fixed-effect univariate
         # Gaussian location–scale cell and (b) a single mean random intercept
