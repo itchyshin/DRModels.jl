@@ -185,6 +185,26 @@ _srl_design(d, sigx) = (hcat(ones(length(d.y)), d.x),
                                                                                marginal = :VA)
         @test_throws r"`marginal = :AGHQ` is not available for Gaussian\(\)" drm(f, Gaussian(); data = dm,
                                                                                  marginal = :AGHQ)
+        # One naming rule in every message: `:LA` is the route's default
+        # integrator (GHQ-32 here), `:Laplace` forces Laplace. No message may
+        # send a user to `:LA` as "Laplace".
+        @test_throws r"Gauss–Hermite quadrature, not Laplace" drm(f, Gaussian(); data = dm, marginal = :VA)
+        dp = (y = round.(Int, abs.(d.y)), x = d.x, g = d.g)
+        @test_throws r"implemented only for a Gaussian random intercept on `sigma`" drm(
+            bf(@formula(y ~ x + (1 | g))), Poisson(); data = dp, marginal = :Laplace)
+    end
+
+    @testset "bootstrap refits with the seed fit's integrator" begin
+        # Rebuild replicate 1 exactly as `_bootstrap_result` does, then refit it
+        # both ways: the bootstrap draw must be the `:Laplace` refit, not GHQ-32.
+        r = bootstrap_result(fitL; data = d, B = 1, rng = MersenneTwister(3))
+        sim = _SRL._marginal_simulator(fitL, d)
+        rr = MersenneTwister(r.seeds[1])
+        ys = sim === nothing ? simulate(fitL; rng = rr) : sim(rr)
+        db = _SRL._bootstrap_data(fitL.formula, d, ys)
+        draw = [row.lower for row in r.summary]
+        @test draw == coef(drm(f, Gaussian(); data = db, marginal = :Laplace))
+        @test maximum(abs.(draw .- coef(drm(f, Gaussian(); data = db)))) > 1e-4
     end
 
     @testset "through drm_bridge" begin

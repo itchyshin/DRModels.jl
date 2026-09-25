@@ -853,8 +853,10 @@ function _gaussian_marginal(marginal::Symbol)
     t === :LAPLACE && return true
     throw(ArgumentError(
         "drm (Gaussian): `marginal = :$marginal` is not available for Gaussian(). " *
-        "Use the default `marginal = :LA`, or `marginal = :Laplace` for a single random " *
-        "intercept `(1 | g)` on `sigma` with a fixed-effect mean."))
+        "Use the default `marginal = :LA` (each route's default integrator; on `sigma ~ " *
+        "1 + (1 | g)` that is 32-node Gauss–Hermite quadrature, not Laplace), or " *
+        "`marginal = :Laplace` to force the Laplace approximation drmTMB uses, for a " *
+        "single random intercept `(1 | g)` on `sigma` with a fixed-effect mean."))
 end
 
 function _gaussian_laplace_reject(what)

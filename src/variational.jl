@@ -18,7 +18,14 @@ abstract type MarginalMethod end
 
 Laplace marginal: Gaussian approximation at the posterior mode. The default.
 On Poisson `(1 | g)` the public `:LA` path is **non-adaptive GHQ-32**, not
-1-point Laplace and not AGHQ."""
+1-point Laplace and not AGHQ.
+
+Naming convention: `marginal = :LA` selects the *default integrator of the
+route*, which is Laplace on most random-effect routes but non-adaptive GHQ-32
+on some single random-intercept routes (Poisson `(1 | g)`, Gaussian
+`sigma ~ 1 + (1 | g)`) and exact wherever the Gaussian marginal is closed-form.
+`marginal = :Laplace` *forces* the Laplace approximation that drmTMB (TMB)
+computes; it is implemented only for a Gaussian random intercept on `sigma`."""
 struct Laplace <: MarginalMethod end
 
 """    Variational <: MarginalMethod
@@ -46,7 +53,14 @@ function _marginal_method(s::Symbol)
     t === :LA && return Laplace()
     t === :VA && return Variational()
     t === :AGHQ && return AGHQ()
-    throw(ArgumentError("unknown marginal method `:$s`; use :LA (Laplace, default), :VA (variational, #136), or :AGHQ (1-D Liu–Pierce, Poisson (1|g) only, #448)"))
+    t === :LAPLACE && throw(ArgumentError(
+        "marginal = :$s is not available for this family. `:Laplace` forces the Laplace " *
+        "approximation that drmTMB uses and is implemented only for a Gaussian random " *
+        "intercept on `sigma`, `sigma ~ 1 + (1 | g)`. Here use :LA (the default integrator " *
+        "for the route; on a single random intercept `(1 | g)` that is 32-node Gauss–Hermite " *
+        "quadrature, not Laplace), :VA (variational, #136), or :AGHQ (1-D Liu–Pierce, " *
+        "Poisson (1|g) only, #448)."))
+    throw(ArgumentError("unknown marginal method `:$s`; use :LA (the default integrator for the route: Laplace on most random-effect routes, 32-node Gauss–Hermite quadrature on some single `(1 | g)` routes), :VA (variational, #136), or :AGHQ (1-D Liu–Pierce, Poisson (1|g) only, #448)"))
 end
 
 # Route-or-reject for the public `marginal = :AGHQ` front end (#448). The only
@@ -71,7 +85,7 @@ function _fit_va(args...; kwargs...)
           "NegBinomial2 (`_fit_nb2_ranef_va`), Gamma (`_fit_gamma_ranef_va`) and Beta " *
           "(`_fit_beta_ranef_va`) random-intercept cases so far; other families are not " *
           "yet wired — see https://github.com/itchyshin/DRModels.jl/issues/136. Use " *
-          "marginal = :LA (Laplace, the default).")
+          "marginal = :LA (the default integrator for the route).")
 end
 
 # Route-or-reject for the public `marginal = :VA` front end (#136). Public VA
@@ -88,7 +102,7 @@ function _va_reject(fam, what)
         "marginal = :VA (variational ELBO, #136) is not available for $(nameof(typeof(fam)))() with $what. " *
         "The public VA path is Experimental and covers Poisson, Binomial, NegBinomial2, Gamma, and Beta " *
         "with a single random intercept `(1 | g)` (`sigma ~ 1` where the family has a scale). " *
-        "Use marginal = :LA (Laplace, the default) for this model."))
+        "Use marginal = :LA (the default integrator for the route) for this model."))
 end
 
 # `method` is the ML/REML selector. LA/VA is `marginal` (Q1 / #136).

@@ -282,7 +282,7 @@ data into a form that Julia can fit, then converts the result back to R.
 
 | Capability | Status |
 |---|---|
-| `marginal=:LA` (Laplace) — the default | **Tested** |
+| `marginal=:LA` — the default integrator: GHQ-32 on an ordinary `(1\|g)`, Laplace on most other random-effect structures | **Tested** |
 | `marginal=:VA` Poisson `(1\|g)` public path | **Experimental**; it uses an ELBO approximation, labels the fit `:VA`, and refuses mixed LA/VA AIC or likelihood-ratio comparisons |
 | `marginal=:VA` Binomial / NB2 / Gamma / Beta `(1\|g)` | **Experimental**; scale families require `sigma ~ 1` |
 | `method=:VA` on non-Gaussian `drm()` | **Rejected** — choose `marginal=:VA`; `method` is ML/REML |

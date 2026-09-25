@@ -1661,6 +1661,11 @@ function bootstrap_result(
         method = estimation_method(fit)
         method in (:ML, :REML) || throw(ArgumentError("LSS bootstrap supports ML/REML seed fits only"))
         (; method)
+    elseif fit.marginal === :Laplace
+        # A `marginal = :Laplace` seed fit (σ random intercept) must be refitted
+        # with the same integrator; otherwise every replicate is a GHQ-32 fit and
+        # the interval describes a different estimator from the point estimate.
+        (; marginal = :Laplace)
     else
         (;)
     end

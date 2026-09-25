@@ -41,6 +41,12 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   `ArgumentError`: `:Laplace` on any other Gaussian model (mean random effects,
   structured terms, `sd()` submodels, random slopes on `sigma`, REML,
   non-default `algorithm`), and `marginal = :VA` / `:AGHQ` on Gaussian models.
+  `bootstrap_result`, `bootstrap_ci` and `bootstrap_summary` refit every
+  replicate of a `:Laplace` fit with `:Laplace`. The names follow one rule:
+  `:LA` is the route's default integrator (not always Laplace; here it is
+  Gauss–Hermite quadrature), and `:Laplace` always forces the Laplace
+  approximation drmTMB uses. The error for `:Laplace` on a family that does not
+  implement it now says so, instead of pointing to `:LA` as Laplace.
 
 ## v0.7.1 — 2026-09-05
 
