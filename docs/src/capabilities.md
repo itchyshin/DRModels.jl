@@ -284,9 +284,10 @@ data into a form that Julia can fit, then converts the result back to R.
 
 | Capability | Status |
 |---|---|
-| `marginal=:LA` (Laplace) — the default | **Tested** |
+| `marginal=:LA`, the default integrator: GHQ-32 on an ordinary `(1\|g)`, Laplace on most other random-effect structures | **Tested** |
 | `marginal=:VA` Poisson `(1\|g)` public path | **Experimental**; it uses an ELBO approximation, labels the fit `:VA`, and refuses mixed LA/VA AIC or likelihood-ratio comparisons |
 | `marginal=:VA` Binomial / NB2 / Gamma / Beta `(1\|g)` | **Experimental**; scale families require `sigma ~ 1` |
+| `marginal=:Laplace` Poisson / Binomial / NB2 / Gamma / Beta `(1\|g)` on the mean | **Tested**; the TMB-convention Laplace approximation (the default `:LA` is GHQ-32 on this cell). Same log-likelihood as native drmTMB to ≤ 4e-10 on ten test datasets. Scale families require `sigma ~ 1`; ML only. `(1 + x\|g)`, crossed terms, `sigma` covariates or random effects, `zi`/`hu` and REML are refused. `lrtest` against the fixed-effects model works; against a `:LA` random-effect fit it is refused. Prefer `:Laplace` when the family `sigma` is small (about 0.01 or less; failures shown at 0.003 to 0.012), where the default GHQ-32 can miss the optimum |
 | `method=:VA` on non-Gaussian `drm()` | **Rejected** — choose `marginal=:VA`; `method` is ML/REML |
 
 ## Absent / out-of-scope (explicit)

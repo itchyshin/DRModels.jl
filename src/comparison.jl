@@ -157,14 +157,46 @@ function _map_compare_guard(a::DrmFit, b::DrmFit, verb::AbstractString)
         "the penalized fits on their own terms."))
 end
 
-# Mixed-marginal guard (#136 Arc 0): a VA `loglik` is an ELBO, not a Laplace
-# marginal. Mixing `:LA` and `:VA` in lrtest / anova would be meaningless.
+# A fit whose formula has no random effect integrates nothing, so its `loglik` is
+# the exact log-likelihood whatever `marginal` tag it carries (a fixed-effects fit
+# is tagged `:LA` by default). Conservative: a bivariate formula, attached BLUPs, a
+# variance-component block, an `sd(g) ~ …` formula, or any random-effect /
+# structured / `meta_V` marker counts as "has a random effect".
+function _fit_is_re_free(fit::DrmFit)
+    f = fit.formula
+    (f isa DrmFormula && fit.ranef === nothing &&
+        isempty(_variance_component_blocks(fit))) || return false
+    for (name, rhs) in f.forms
+        startswith(String(name), "sd") && return false           # sd(g) ~ … / sd(g, phylogenetic) ~ …
+        for t in (rhs isa Tuple ? rhs : (rhs,))
+            t isa FunctionTerm && any(m -> t.f === m, (|, meta_V, relmat, animal, phylo, spatial)) &&
+                return false
+        end
+    end
+    return true
+end
+
+# Mixed-marginal guard (#136 Arc 0): fits whose random-effect integrals were
+# approximated differently are not comparable in lrtest / anova. A VA `loglik` is
+# an ELBO, not a log-likelihood; `:LA` (GHQ-32 on an ordinary `(1 | g)`) and
+# `:Laplace` (one-point Laplace) differ by integration error. The one safe mixed
+# pair is a random-effect-free fit (exact log-likelihood) against a non-VA fit,
+# e.g. the fixed-effects model against a `marginal = :Laplace` random intercept.
 function _marginal_compare_guard(a::DrmFit, b::DrmFit, verb::AbstractString)
     a.marginal === b.marginal && return nothing
+    no_va = a.marginal !== :VA && b.marginal !== :VA
+    no_va && (_fit_is_re_free(a) || _fit_is_re_free(b)) && return nothing
+    reason = if !no_va
+        "the VA objective is an ELBO, not a log-likelihood (#136)"
+    else
+        detail = Set((a.marginal, b.marginal)) == Set((:LA, :Laplace)) ?
+            " (`:LA` is GHQ-32 on an ordinary `(1 | g)`; `:Laplace` is the one-point Laplace approximation)" : ""
+        "the two approximate the random-effect integral differently$detail, so their " *
+        "log-likelihood difference would mix model fit with integration error"
+    end
     throw(ArgumentError(
         "$verb: cannot compare fits with different marginal approximations " *
-        "(`$(a.marginal)` vs `$(b.marginal)`) — the VA objective is an ELBO, not a " *
-        "Laplace log-likelihood (#136). Refit both with the same `marginal`."))
+        "(`:$(a.marginal)` vs `:$(b.marginal)`): $reason. Refit both with the same `marginal`."))
 end
 
 """

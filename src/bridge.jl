@@ -481,7 +481,7 @@ end
 # below) so that check is a simple, auditable diff against this list rather
 # than depending on which branches happened to fire for a given fit.
 const _BRIDGE_KNOWN_OPTION_KEYS = Set((
-    :g_tol, :algorithm, :method, :se, :profile_ci, :phylo_coupled, :sparse,
+    :g_tol, :algorithm, :method, :marginal, :se, :profile_ci, :phylo_coupled, :sparse,
     :q4_g_tol, :q4_iterations, :q4_n_newton, :q4_vcov, :coef_labels,
 ))
 
@@ -506,6 +506,12 @@ function _bridge_fit(bundle, fam, data; tree, K, A, coords, options)
     end
     if haskey(options, :method)
         kwargs[:method] = Symbol(options[:method])
+    end
+    if haskey(options, :marginal)
+        # Arc 2: `"Laplace"` selects the TMB-convention Laplace route on an
+        # ordinary `(1 | g)` (ordinary_laplace.jl). Forwarded verbatim: a family
+        # without a `marginal` keyword, or a model outside the route, errors.
+        kwargs[:marginal] = Symbol(options[:marginal])
     end
     if haskey(options, :se)
         kwargs[:se] = Bool(options[:se])
@@ -1512,6 +1518,10 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
         # NA everywhere and no bridge-side comparison of optimiser effort was
         # possible: a speed difference could be measured but never attributed.
         "iterations" => niterations(fit),
+        # The integrator the fit actually used (`:LA` default, `:Laplace`,
+        # `:VA`, `:AGHQ`), so the R side can refuse to claim same-target Laplace
+        # parity unless the engine reports it (Arc 2).
+        "marginal" => String(fit.marginal),
         # `fitted()`/`residuals()` AS drmTMB DEFINES THEM. Identical to DRModels.jl's
         # own for every fit except a zero-inflated count fit -- see
         # `_bridge_fitted_marginal`.

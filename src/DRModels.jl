@@ -128,6 +128,7 @@ include("coevo_accessors.jl")    # #188: q=4 coevolution among-axis correlation 
 include("profile_q4_phylo.jl")   # Ayumi #2: profile-likelihood CIs for the q=4 among-axis SDs (calibrated, no Hessian)
 include("bootstrap_q4_phylo.jl") # Ayumi #2: parametric bootstrap of the q=4 among-axis SDs (boundary-honest CIs)
 include("variational.jl")
+include("ordinary_laplace.jl")      # Arc 2: marginal = :Laplace on ordinary (1 | g) (TMB convention)
 include("summary.jl")
 include("r2.jl")             # R2 for the constant-sigma Gaussian case ONLY; refuses elsewhere
 include("visualization.jl")

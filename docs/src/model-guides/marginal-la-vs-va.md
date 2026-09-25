@@ -42,6 +42,41 @@ the residual variance is independent of that random effect; then the integrand
 is Gaussian. A mean random intercept in that Gaussian model needs no
 approximation.
 
+### Matching drmTMB: `marginal = :Laplace`
+
+drmTMB (TMB) integrates an ordinary random intercept by the one-point Laplace
+approximation, so on `(1 | g)` the default `:LA` route (GHQ-32) and drmTMB fit
+the same model with different integrators. On ten test datasets with a moderate
+family `sigma` (0.3 to 0.5) and a random-intercept SD of 0.6, their
+log-likelihoods differed by 0.06 to 1.3 units. The gap does not stay that small.
+When the family `sigma` is small, each group's integrand is sharply peaked, the
+32 fixed quadrature nodes miss it, and the default `:LA` can report convergence
+at the wrong optimum. On three Gamma and Beta test datasets with family `sigma`
+between 0.003 and 0.012, the default fit reported `converged = true` with a
+log-likelihood 295 to 501 units below drmTMB's and a `sigma` 3.2 to 20 times
+drmTMB's; `marginal = :Laplace` matched drmTMB on all three. Use
+`marginal = :Laplace` for such data. To reproduce
+drmTMB's numbers, request the Laplace approximation explicitly:
+
+```julia
+using DRModels
+fit = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), NegBinomial2();
+          data = dat, marginal = :Laplace)
+fit.marginal   # :Laplace
+```
+
+This covers one ordinary `(1 | g)` on the mean of Poisson, Binomial,
+NegBinomial2, Gamma and Beta (`sigma ~ 1` for the scale families), by maximum
+likelihood. Any other model with `marginal = :Laplace` is refused; nothing is
+silently fitted by GHQ-32 under that label.
+
+To test the random intercept, compare the `:Laplace` fit with the
+fixed-effects model fitted as usual (no `marginal`): `lrtest(fixed, fit)`. The
+fixed-effects log-likelihood is exact, so the pair is comparable. `lrtest`
+refuses a `:LA` random-effect fit against a `:Laplace` one, because their
+log-likelihoods differ by integration error as well as by model fit; refit both
+with the same `marginal`.
+
 The trouble starts when the integrand is **not** close to Gaussian:
 
 - **Skewed or heavy-tailed posteriors** — a single mode-plus-curvature match
@@ -175,7 +210,8 @@ be interpreted as reproducing drmTMB's marginal likelihood. The option is most
 relevant where a one-mode approximation is scientifically questionable, such as
 two-part shape or ZINB multimodality, although those VA models are not currently
 supported in DRModels.jl. On ordinary Gamma `(1 | g)`, the evaluated comparison
-does **not** show a VA accuracy edge; prefer the default Laplace route, as in R.
+does **not** show a VA accuracy edge; prefer LA over VA: the default `:LA` (GHQ-32
+on this cell), or `marginal = :Laplace` to fit drmTMB's Laplace approximation.
 
 ## See also
 
