@@ -161,6 +161,7 @@ _shard_include("test_visualization.jl")
 _shard_include("test_makie_ext_stub.jl")   # #336: DRModelsMakieExt method-less stub (Makie OUT of CI)
 _shard_include("test_postfit.jl")
 _shard_include("test_meta.jl")
+_shard_include("test_meta_random_effect.jl")  # Arc 2: meta_V + (1 | g) / phylo / relmat, same model as drmTMB
 _shard_include("test_simulate.jl")
 _shard_include("test_simulate_scale_conventions.jl") # NB2 size, Gamma slot conventions, owned auxiliary draws
 _shard_include("test_locscale_bootstrap_simulator.jl") # coupled marginal draws, precision and family contracts
@@ -174,6 +175,7 @@ _shard_include("test_phylo_slope_two_sd.jl")
 _shard_include("test_phylo_interaction.jl")
 _shard_include("test_two_structured_gaussian.jl")
 _shard_include("test_two_structured_gaussian_sparse.jl")
+_shard_include("test_structured_plus_ordinary_bar.jl")  # Arc 2: structured marker + ordinary (1 | h) bars (was a silent drop)
 _shard_include("test_heritability.jl")
 _shard_include("test_conjugate_em.jl")
 _shard_include("test_location_only_reml_mme.jl")

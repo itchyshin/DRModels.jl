@@ -1,0 +1,9 @@
+phylo_h_seed11	y ~ x + phylo(1 | sp) + (1 | h); sigma ~ 1
+phylo_h_seed22	y ~ x + phylo(1 | sp) + (1 | h); sigma ~ 1
+phylo_h_sigmax	y ~ x + phylo(1 | sp) + (1 | h); sigma ~ x
+phylo_sp_same_group	y ~ x + (1 | sp) + phylo(1 | sp); sigma ~ 1
+phylo_h_g	y ~ x + phylo(1 | sp) + (1 | h) + (1 | g); sigma ~ 1
+relmat_h	y ~ x + relmat(1 | id) + (1 | h); sigma ~ 1
+animal_h	y ~ x + animal(1 | id) + (1 | h); sigma ~ 1
+spatial_h	y ~ x + relmat(1 | site) + (1 | h); sigma ~ 1
+phylo_slope_h	y ~ x + phylo(1 | sp) + (0 + x | h); sigma ~ 1
