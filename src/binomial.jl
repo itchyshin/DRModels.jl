@@ -50,6 +50,9 @@ function drm(f::DrmFormula, fam::Binomial; data, tree = nothing, K = nothing,
              A = nothing, coords = nothing, g_tol::Real = 1e-8,
              se::Bool = true, marginal::Symbol = :LA, method = nothing)
     _reject_method_as_marginal(fam, method)
+    _scalar_laplace_requested(marginal) &&     # Arc 2: TMB-convention Laplace, ordinary (1 | g)
+        return _drm_ordinary_laplace(f, fam; data = data, tree = tree, K = K, A = A,
+                                     coords = coords, g_tol = g_tol, se = se, method = method)
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
         drm(f, fam; data = data_observed, tree = tree, K = K, A = A, coords = coords,
             g_tol = g_tol, se = se, marginal = marginal, method = method)
@@ -70,18 +73,7 @@ function drm(f::DrmFormula, fam::Binomial; data, tree = nothing, K = nothing,
         r === ConstantTerm(1) ||
             error("Binomial() is mean-only; no sigma/dispersion parameter")
     end
-    if f.response2 === nothing                            # plain 0/1 Bernoulli vector
-        s = Float64.(getproperty(data, f.response))
-        all(yi -> yi == 0 || yi == 1, s) ||
-            error("Binomial() with a single-column response requires a 0/1 (Bernoulli) vector; use cbind(successes, failures) for trial counts")
-        ntr = ones(length(s))
-    else                                                  # cbind(successes, failures): n = s + f
-        s = Float64.(getproperty(data, f.response))       # successes
-        fl = Float64.(getproperty(data, f.response2))     # failures
-        (all(si -> si ≥ 0 && isinteger(si), s) && all(fi -> fi ≥ 0 && isinteger(fi), fl)) ||
-            error("Binomial() requires non-negative integer successes and failures")
-        ntr = s .+ fl                                     # trials
-    end
+    s, ntr = _binomial_response(f, data)
     y, Xμ, nmμ = _design(f.response, fixed_mu, data)      # successes column is a dummy LHS
     if st !== nothing
         isva && _va_reject(fam, "a phylogenetic/structured random effect")
@@ -117,6 +109,24 @@ function drm(f::DrmFormula, fam::Binomial; data, tree = nothing, K = nothing,
     end
     isva && _va_reject(fam, "no random intercept (fixed-effects-only)")
     return _withformula(_fit_binomial(fam, s, ntr, Xμ, nmμ, g_tol), f)
+end
+
+# Successes and trials from a 0/1 Bernoulli response or `cbind(successes, failures)`.
+# Shared by the default route and the `marginal = :Laplace` route (ordinary_laplace.jl).
+function _binomial_response(f::DrmFormula, data)
+    if f.response2 === nothing                            # plain 0/1 Bernoulli vector
+        s = Float64.(getproperty(data, f.response))
+        all(yi -> yi == 0 || yi == 1, s) ||
+            error("Binomial() with a single-column response requires a 0/1 (Bernoulli) vector; use cbind(successes, failures) for trial counts")
+        ntr = ones(length(s))
+    else                                                  # cbind(successes, failures): n = s + f
+        s = Float64.(getproperty(data, f.response))       # successes
+        fl = Float64.(getproperty(data, f.response2))     # failures
+        (all(si -> si ≥ 0 && isinteger(si), s) && all(fi -> fi ≥ 0 && isinteger(fi), fl)) ||
+            error("Binomial() requires non-negative integer successes and failures")
+        ntr = s .+ fl                                     # trials
+    end
+    return s, ntr
 end
 
 function _fit_binomial(fam::Binomial, s, ntr, Xμ, nmμ, g_tol)

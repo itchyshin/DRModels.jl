@@ -17,8 +17,10 @@ abstract type MarginalMethod end
 """    Laplace <: MarginalMethod
 
 Laplace marginal: Gaussian approximation at the posterior mode. The default.
-On Poisson `(1 | g)` the public `:LA` path is **non-adaptive GHQ-32**, not
-1-point Laplace and not AGHQ."""
+On an ordinary `(1 | g)` (Poisson, Binomial, NegBinomial2, Gamma, Beta) the
+public `:LA` path is **non-adaptive GHQ-32**, not 1-point Laplace and not AGHQ.
+`marginal = :Laplace` requests the TMB-convention Laplace approximation on that
+cell instead (`ordinary_laplace.jl`; the fit is tagged `marginal = :Laplace`)."""
 struct Laplace <: MarginalMethod end
 
 """    Variational <: MarginalMethod
@@ -46,7 +48,10 @@ function _marginal_method(s::Symbol)
     t === :LA && return Laplace()
     t === :VA && return Variational()
     t === :AGHQ && return AGHQ()
-    throw(ArgumentError("unknown marginal method `:$s`; use :LA (Laplace, default), :VA (variational, #136), or :AGHQ (1-D Liu–Pierce, Poisson (1|g) only, #448)"))
+    t === :LAPLACE && throw(ArgumentError(
+        "marginal = :Laplace is handled by the ordinary-Laplace front end " *
+        "(`_drm_ordinary_laplace`) and is not available on this route"))
+    throw(ArgumentError("unknown marginal method `:$s`; use :LA (Laplace, default), :Laplace (TMB-convention Laplace, ordinary `(1 | g)` on Poisson/Binomial/NegBinomial2/Gamma/Beta), :VA (variational, #136), or :AGHQ (1-D Liu–Pierce, Poisson (1|g) only, #448)"))
 end
 
 # Route-or-reject for the public `marginal = :AGHQ` front end (#448). The only
@@ -103,10 +108,11 @@ function _reject_method_as_marginal(fam, method; allow_reml::Bool = false)
     method === nothing && return nothing
     ms = Symbol(uppercase(String(method)))
     famname = nameof(typeof(fam))
-    if ms === :VA || ms === :LA || ms === :AGHQ
+    if ms === :VA || ms === :LA || ms === :LAPLACE || ms === :AGHQ
         throw(ArgumentError(
             "drm ($famname): `method = :$ms` is not the Laplace/VA/AGHQ selector. " *
-            "Use `marginal = :$ms` (`:LA` default; `:VA` opt-in ELBO, #136; " *
+            "Use `marginal = :$ms` (`:LA` default; `:Laplace` TMB-convention Laplace on an ordinary `(1 | g)`; " *
+            "`:VA` opt-in ELBO, #136; " *
             "`:AGHQ` 1-D Liu–Pierce on Poisson (1|g) only, #448). " *
             "`method` is reserved for `:ML`/`:REML`."))
     end

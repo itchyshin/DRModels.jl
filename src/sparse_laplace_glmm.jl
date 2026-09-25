@@ -382,7 +382,8 @@ introduces. Returns `(val[, grad], b, ok)`; on a non-PD inner solve `ok = false`
 """
 function _poisson_phylo_laplace_fg(y, Xμ, leaf_node, Q, logdetQ, lf, θ;
                                    grad::Bool = false, b0 = nothing,
-                                   newton_tol::Real = 1e-10, newton_maxiter::Int = 60)
+                                   newton_tol::Real = 1e-10, newton_maxiter::Int = 60,
+                                   raw_scales::Bool = false)
     # newton_tol was 1e-8 until 2026-08-26. That is tight enough for coefficients
     # and logLik (parity ~1e-8) but NOT for the SECOND-derivative quantity: the
     # inner mode's residual error propagates into the Hessian, and therefore into
@@ -400,7 +401,10 @@ function _poisson_phylo_laplace_fg(y, Xμ, leaf_node, Q, logdetQ, lf, θ;
     pμ = length(θ) - 1
     q = size(Q, 1)
     βμ = θ[1:pμ]
-    logσ = clamp(θ[pμ+1], -8.0, 3.0)
+    # `raw_scales = true` (the ordinary `marginal = :Laplace` route) evaluates
+    # the objective at the raw log-SD, so value and analytic gradient describe
+    # the same function everywhere, as TMB's does. Default: unchanged clamp.
+    logσ = raw_scales ? θ[pμ+1] : clamp(θ[pμ+1], -8.0, 3.0)
     invσ2 = exp(-2 * logσ)
     η0 = Xμ * βμ
     b, ch, _, ok = _poisson_phylo_mode(y, η0, leaf_node, Q, logσ;
@@ -691,11 +695,14 @@ end
 function _phylo_mean_laplace_nuisance_fg(kind, aux_from, n::Int, Xμ, leaf_node,
                                          Q, logdetQ, θ; grad::Bool = false,
                                          b0 = nothing, newton_tol::Real = 1e-10,
-                                         newton_maxiter::Int = 60)
+                                         newton_maxiter::Int = 60,
+                                         raw_scales::Bool = false)
     pμ = length(θ) - 2
     βμ = θ[1:pμ]
-    θσ = clamp(θ[pμ+1], -8.0, 8.0)
-    logσ = clamp(θ[pμ+2], -8.0, 3.0)
+    # `raw_scales = true`: no clamp on the dispersion or the RE log-SD (see
+    # `_poisson_phylo_laplace_fg`); the caller's `aux_from` must be raw too.
+    θσ = raw_scales ? θ[pμ+1] : clamp(θ[pμ+1], -8.0, 8.0)
+    logσ = raw_scales ? θ[pμ+2] : clamp(θ[pμ+2], -8.0, 3.0)
     aux = aux_from(θσ)
     η0 = Xμ * βμ
     b, ch, _, ok = _phylo_mean_mode(kind, aux, η0, leaf_node, Q, logσ; b0 = b0,
@@ -1076,10 +1083,11 @@ end
 
 function _phylo_mean_laplace_fg(kind, aux, n::Int, Xμ, leaf_node, Q, logdetQ, θ;
                                 grad::Bool = false, b0 = nothing,
-                                newton_tol::Real = 1e-10, newton_maxiter::Int = 60)
+                                newton_tol::Real = 1e-10, newton_maxiter::Int = 60,
+                                raw_scales::Bool = false)
     pμ = length(θ) - 1
     βμ = θ[1:pμ]
-    logσ = clamp(θ[pμ+1], -8.0, 3.0)
+    logσ = raw_scales ? θ[pμ+1] : clamp(θ[pμ+1], -8.0, 3.0)   # see `_poisson_phylo_laplace_fg`
     η0 = Xμ * βμ
     b, ch, _, ok = _phylo_mean_mode(kind, aux, η0, leaf_node, Q, logσ; b0 = b0,
                                     tol = newton_tol, maxiter = newton_maxiter)
@@ -1227,10 +1235,10 @@ end
 # method-of-moments dispersion start. Used so the tree and relmat fitters are
 # numerically identical given the same precision Q. (Constant-σ path only; the
 # covariate-dispersion #164 path builds its own per-observation aux in-place.)
-function _nb2_laplace_setup(y, Xμ)
+function _nb2_laplace_setup(y, Xμ; raw_scales::Bool = false)
     yint = round.(Int, y)
     function aux_from(logσ)
-        r = exp(clamp(-2 * logσ, -8.0, 8.0))      # ψ = log σ; size r = 1/σ² = exp(−2ψ) (drmTMB)
+        r = exp(raw_scales ? -2 * logσ : clamp(-2 * logσ, -8.0, 8.0))      # ψ = log σ; size r = 1/σ² = exp(−2ψ) (drmTMB)
         lconst = [loggamma(yint[i] + r) - loggamma(r) - _logfactorial(yint[i]) for i in eachindex(yint)]
         return (y = Float64.(yint), size = r, lconst = lconst)
     end
@@ -1320,10 +1328,10 @@ end
 # log-σ start (σ = 1/√α). Keeps the tree and relmat fitters identical given Q.
 # (Constant-σ path only; the covariate-dispersion #164 path builds its own
 # per-observation aux in-place.)
-function _gamma_laplace_setup(y, Xμ)
+function _gamma_laplace_setup(y, Xμ; raw_scales::Bool = false)
     yv = Float64.(y)
     function aux_from(logsigma)
-        α = exp(clamp(-2 * logsigma, -8.0, 8.0))
+        α = exp(raw_scales ? -2 * logsigma : clamp(-2 * logsigma, -8.0, 8.0))
         lconst = [α * log(α) - loggamma(α) + (α - 1) * log(yv[i]) for i in eachindex(yv)]
         return (y = yv, shape = α, lconst = lconst)
     end
@@ -1399,11 +1407,11 @@ end
 # the fixed-effect start and the method-of-moments log-σ start. Keeps the tree and
 # relmat fitters numerically identical given the same precision Q. (Constant-σ path
 # only; the covariate-dispersion #164 path builds its own per-observation aux.)
-function _beta_laplace_setup(y, Xμ)
+function _beta_laplace_setup(y, Xμ; raw_scales::Bool = false)
     yv = Float64.(y)
     ylogit = log.(yv) .- log1p.(-yv)
     function aux_from(logsigma)
-        φ = exp(clamp(-2 * logsigma, -8.0, 8.0))
+        φ = exp(raw_scales ? -2 * logsigma : clamp(-2 * logsigma, -8.0, 8.0))
         return (y = yv, precision = φ, ylogit = ylogit,
                 lgammaφ = loggamma(φ), digammaφ = digamma(φ))
     end

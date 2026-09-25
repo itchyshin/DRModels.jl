@@ -42,6 +42,27 @@ the residual variance is independent of that random effect; then the integrand
 is Gaussian. A mean random intercept in that Gaussian model needs no
 approximation.
 
+### Matching drmTMB: `marginal = :Laplace`
+
+drmTMB (TMB) integrates an ordinary random intercept by the one-point Laplace
+approximation, so on `(1 | g)` the default `:LA` route (GHQ-32) and drmTMB fit
+the same model but report slightly different log-likelihoods and estimates
+(0.06 to 1.3 log-likelihood units on the ten receipt fixtures). To reproduce
+drmTMB's numbers, request the Laplace approximation explicitly:
+
+```julia
+using DRModels
+fit = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), NegBinomial2();
+          data = dat, marginal = :Laplace)
+fit.marginal   # :Laplace
+```
+
+This covers one ordinary `(1 | g)` on the mean of Poisson, Binomial,
+NegBinomial2, Gamma and Beta (`sigma ~ 1` for the scale families), by maximum
+likelihood. Any other model with `marginal = :Laplace` is refused; nothing is
+silently fitted by GHQ-32 under that label. The receipt, with the R and Julia
+scripts, is `docs/dev-log/evidence/arc2-ordinary-laplace/`.
+
 The trouble starts when the integrand is **not** close to Gaussian:
 
 - **Skewed or heavy-tailed posteriors** — a single mode-plus-curvature match

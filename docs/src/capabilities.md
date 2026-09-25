@@ -285,6 +285,7 @@ data into a form that Julia can fit, then converts the result back to R.
 | `marginal=:LA` (Laplace) — the default | **Tested** |
 | `marginal=:VA` Poisson `(1\|g)` public path | **Experimental**; it uses an ELBO approximation, labels the fit `:VA`, and refuses mixed LA/VA AIC or likelihood-ratio comparisons |
 | `marginal=:VA` Binomial / NB2 / Gamma / Beta `(1\|g)` | **Experimental**; scale families require `sigma ~ 1` |
+| `marginal=:Laplace` Poisson / Binomial / NB2 / Gamma / Beta `(1\|g)` on the mean | **Tested**; the TMB-convention Laplace approximation (the default `:LA` is GHQ-32 on this cell). Same log-likelihood as native drmTMB to ≤ 4e-10 on ten fixtures (`docs/dev-log/evidence/arc2-ordinary-laplace/`). Scale families require `sigma ~ 1`; ML only. `(1 + x\|g)`, crossed terms, `sigma` covariates or random effects, `zi`/`hu` and REML are refused |
 | `method=:VA` on non-Gaussian `drm()` | **Rejected** — choose `marginal=:VA`; `method` is ML/REML |
 
 ## Absent / out-of-scope (explicit)
