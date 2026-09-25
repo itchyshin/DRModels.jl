@@ -46,7 +46,11 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   structured terms, `sd()` submodels, random slopes on `sigma`, REML,
   non-default `algorithm`), and `marginal = :VA` / `:AGHQ` on Gaussian models.
   `bootstrap_result`, `bootstrap_ci` and `bootstrap_summary` refit every
-  replicate of a `:Laplace` fit with `:Laplace`. The names follow one rule:
+  replicate of a `:Laplace` fit with `:Laplace`. Parametric bootstrap intervals
+  for the sigma random-effect SD are not valid on this route yet, under either
+  integrator: the replicates are simulated without redrawing the random effect on
+  `sigma`, so the refitted SD collapses towards zero. Use profile or Wald intervals
+  for that SD. The names follow one rule:
   `:LA` is the route's default integrator (not always Laplace; here it is
   Gauss–Hermite quadrature), and `:Laplace` always forces the Laplace
   approximation drmTMB uses. `lrtest` and `anova` no longer refuse a fit with
