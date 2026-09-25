@@ -24,11 +24,13 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   `docs/dev-log/evidence/arc2-gaussian-sigma-phylo-reml/`. The separate block
   has no native twin, because drmTMB always estimates the mean–scale
   correlation. **The coupled block (`phylo_coupled = true`) now accepts REML**;
-  it used to throw. Under REML, `profile_ci = true` now profiles this restricted
-  likelihood; it used to profile the ML likelihood from the REML estimate. When
-  a phylogenetic SD is estimated at zero, a REML fit now reports convergence and
-  sits on the likelihood plateau. Its Wald covariance is NaN, and
-  `profile_ci = true` gives a `[0, upper]` interval.
+  it used to throw. Under REML, `profile_ci = true` on the scale-only and
+  separate blocks now profiles this restricted likelihood; it used to profile
+  the ML likelihood from the REML estimate. When a phylogenetic SD is estimated
+  at zero, a REML fit now reports convergence and sits on the likelihood
+  plateau. Its Wald covariance is NaN, and on the scale-only and separate blocks
+  `profile_ci = true` gives a `[0, upper]` interval. The coupled block computes
+  no profile interval, under ML or REML; it ignores `profile_ci = true`.
 
 - **Package renamed to DRModels.jl.** The Julia package and module are now
   `DRModels`, while the modelling API remains `drm()`, `bf()`, and the existing

@@ -147,8 +147,9 @@ package-test coverage.
     `phylo_coupled = true` opts into a free mean–scale phylogenetic correlation;
     the plain two-`phylo` syntax does not do this. Retrieve the two standard
     deviations with `gaussian_locscale_phylo_sds(fit)`; a coupled fit records the
-    correlation in `fit.scales[:lambda_cor]`, and `profile_ci = true` adds profile
-    intervals for the two standard deviations.
+    correlation in `fit.scales[:lambda_cor]`. On the scale-only and separate
+    blocks, `profile_ci = true` adds profile intervals for the standard
+    deviations; the coupled block computes none.
 
     This Gaussian route requires a common grouping factor and one phylogenetic
     structured component; it cannot be combined with additional random effects or
@@ -167,8 +168,10 @@ package-test coverage.
     blocks profiles this restricted likelihood. Earlier versions profiled the ML
     likelihood from the REML estimate, which gave neither an ML nor a REML
     interval. A REML fit whose phylogenetic standard deviation is estimated at
-    zero is reported as converged, with no Wald covariance. Use
-    `profile_ci = true` to get its `[0, upper]` interval. A non-Gaussian scale-axis-only intercept is not part of
+    zero is reported as converged, with no Wald covariance. On the scale-only
+    and separate blocks, `profile_ci = true` gives its `[0, upper]` interval.
+    The coupled block computes no profile interval, under ML or REML, and
+    ignores `profile_ci = true` without a warning. A non-Gaussian scale-axis-only intercept is not part of
     the public formula grammar.
 
 ## Coevolution: q=4 phylogenetic bivariate location–scale model (PLSM)
@@ -262,10 +265,11 @@ above, and it does so by delegation rather than by a second engine.
     with flat priors on the fixed effects. That is the quantity drmTMB's
     `REML = TRUE` maximises for this model. It is not the Patterson–Thompson
     quantity, because `beta_sigma` enters the likelihood non-linearly, so the
-    fixed effects cannot be integrated out exactly. On these blocks
-    `profile_ci = true` profiles the same restricted likelihood. The other
-    variance parameters are re-optimised, and the fixed effects are integrated
-    out rather than profiled.
+    fixed effects cannot be integrated out exactly. On the scale-only and
+    separate blocks, `profile_ci = true` profiles the same restricted
+    likelihood. The other variance parameters are re-optimised, and the fixed
+    effects are integrated out rather than profiled. The coupled block
+    (`phylo_coupled = true`) computes no profile interval.
 
 ## Model comparison & accessors
 
