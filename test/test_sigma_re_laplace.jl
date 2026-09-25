@@ -222,5 +222,39 @@ _srl_design(d, sigx) = (hcat(ones(length(d.y)), d.x),
         @test_throws r"option `marginal` is not available for Student\(\)" drm_bridge(
             formula = "y ~ x", family = "student", data = dm,
             options = Dict{String,Any}("marginal" => "Laplace"))
+        # Only "LA" and "Laplace" are forwarded. "VA" and "AGHQ" have no drmTMB
+        # counterpart: refused by name before any fit (previously "VA" ran the
+        # whole fit and then failed in AIC, and "AGHQ" returned a result).
+        dp = Dict("y" => round.(Int, abs.(d.y)), "x" => d.x, "g" => d.g)
+        for mg in ("VA", "AGHQ", "bogus")
+            @test_throws Regex("option `marginal = \"$mg\"` is not supported; the bridge " *
+                               "accepts only \"LA\"") drm_bridge(
+                formula = "y ~ x + (1 | g)", family = "poisson", data = dp,
+                options = Dict{String,Any}("marginal" => mg))
+        end
+        rP = drm_bridge(formula = "y ~ x + (1 | g)", family = "poisson", data = dp,
+                        options = Dict{String,Any}("marginal" => "LA"))
+        @test rP["marginal"] == "LA"
+        @test rP["loglik"] == drm_bridge(formula = "y ~ x + (1 | g)", family = "poisson",
+                                         data = dp)["loglik"]
+    end
+
+    @testset "lrtest: fixed-effect sigma ~ 1 against :Laplace" begin
+        # A fit with no random effect has an exact log-likelihood, so it may be
+        # compared with a :Laplace fit (comparison.jl hunk shared with #813).
+        fit0 = drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), Gaussian(); data = d)
+        @test fit0.marginal === :LA
+        @test _SRL._fit_is_re_free(fit0)
+        @test !_SRL._fit_is_re_free(fitL) && !_SRL._fit_is_re_free(fitD)
+        t = @test_logs (:warn, r"BOUNDARY") match_mode = :any lrtest(fit0, fitL)
+        @test t.statistic == 2 * (loglik(fitL) - loglik(fit0))
+        @test t.dof == 1
+        tA = @test_logs (:warn, r"BOUNDARY") match_mode = :any anova(fit0, fitL)
+        @test tA.statistic == t.statistic
+        # Two random-effect fits with different integrators stay refused, and
+        # the message no longer blames the VA ELBO.
+        err = @test_throws ArgumentError lrtest(fitD, fitL)
+        @test occursin("approximate the random-effect integral differently", sprint(showerror, err.value))
+        @test !occursin("ELBO", sprint(showerror, err.value))
     end
 end

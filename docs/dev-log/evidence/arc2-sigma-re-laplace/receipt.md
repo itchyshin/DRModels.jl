@@ -25,6 +25,7 @@ independent, so this is TMB's value.
 | `julia_fit.jl` | fits every fixture with `:Laplace` and the default, writes `julia.tsv` and `comparison.tsv` |
 | `exact_integral.jl` | exact marginal (adaptive quadrature per group) vs Laplace vs GHQ-32 at native estimates, writes `exact_integral.tsv` |
 | `d273_default_unchanged.jl` | default-route fit of every fixture; output `d273_default_unchanged.txt` |
+| `own_optimum.jl` | default and `:Laplace` fits of two further data sets, exact marginal at the default optimum, writes `own_optimum.tsv` |
 
 Cells p1 to p5 are the conductor's probe designs and seeds
 (`sigre-ghq-probe.R`); the native logLik column reproduces the probe's native
@@ -76,6 +77,30 @@ integrand and GHQ-32 is the one far from exact. `:Laplace` is the same-target
 answer for drmTMB parity; it is not claimed to be the more accurate integrator
 for small groups.
 
+## The default fit at its own optimum (`own_optimum.tsv`)
+
+The table above evaluates every integrator at native drmTMB's estimates, where
+GHQ-32 is low for large groups. That does not mean the default fit's reported
+logLik is always below drmTMB's. `own_optimum.jl` fits two further data sets
+with both integrators and evaluates the exact marginal at the default fit's
+own optimum. The data sets and their native drmTMB rows
+(`fixtures_own_optimum/`, `native_own_optimum.tsv`) come from a review check
+with the same drmTMB checkout and `engine = "tmb"`, simulated as
+`y = -0.4 + 0.8 x + e`, `sd(e) = exp(0.1 + bsx x + b_g)`, `b_g ~ N(0, 0.5^2)`,
+5 groups of 300 rows: L1 (`bsx = 0`, seed 9101) and X3 (`bsx = 0.2`, seed
+9107, fitted with `sigma ~ 1 + x + (1 | g)`). They sit in their own folder so
+the D-273 script, which reads every file in `fixtures/`, prints the same
+output.
+
+| cell | default minus exact (at default optimum) | default minus native | log SD default / native |
+|---|---|---|---|
+| L1 5 x 300 | +0.80 | -0.99 | -0.255 / -0.953 |
+| X3 5 x 300, sigma ~ x | +6.27 | +4.18 | -0.315 / -1.139 |
+
+`:Laplace` matches native on both (logLik and log SD to the printed digits).
+So the default's error against drmTMB goes in either direction, and its
+random-effect SD can be about twice drmTMB's.
+
 ## Default path unchanged (D-273)
 
 `d273_default_unchanged.jl` run under `git archive da8b3f871` (with this
@@ -95,5 +120,7 @@ the inner mode against central differences; the default equals an explicit
 `marginal = :LA` / `:la` fit bit for bit and equals an independent GHQ-32
 transcription at its optimum; Laplace against a dense 1-D integral for one
 group (error < 2e-3 at 400 rows, more than 5 times larger at 25 rows); the
-bracketed mode solver on extreme inputs; refusals; and the `drm_bridge`
-`marginal` option and `"marginal"` output.
+bracketed mode solver on extreme inputs; refusals; the `drm_bridge`
+`marginal` option and `"marginal"` output, with `"VA"`, `"AGHQ"` and other
+values refused by name; and `lrtest` / `anova` of the fixed-effect `sigma ~ 1`
+model against a `:Laplace` fit.

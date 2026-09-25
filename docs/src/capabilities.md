@@ -61,7 +61,7 @@ their own formulas.
 | Gaussian mean μ and scale σ formulas | **Tested**; both intercepts and slopes are recovered. |
 | Non-Gaussian `sigma` or dispersion formula | **Tested** for families with a dispersion model. |
 | Student-t `nu` (degrees of freedom) formula | **Tested**. |
-| Random effect on the Gaussian scale axis, `sigma ~ (1\|g)` | **Tested**. By default each group's effect is integrated by 32-node Gauss–Hermite quadrature. That is close to exact for small groups but loses accuracy as groups grow: in our checks it understated the log-likelihood by about 0.5 units with 150 rows per group and by about 5 units with 400. Pass `marginal = :Laplace` to use the Laplace approximation that drmTMB uses; it then gives the same log-likelihood, estimates and standard errors as drmTMB, and stays within 0.01 units of the exact value at those group sizes. Use it for large groups or when you compare results with drmTMB. `:Laplace` needs a fixed-effect mean and maximum likelihood; other models refuse it. A `:Laplace` fit cannot yet be compared by `lrtest` with a fit that uses the default integrator. |
+| Random effect on the Gaussian scale axis, `sigma ~ (1\|g)` | **Tested**. By default each group's effect is integrated by 32-node Gauss–Hermite quadrature. That is close to exact for small groups but loses accuracy as groups grow. In our checks with 150 to 400 rows per group, a default fit's log-likelihood differed from drmTMB's by up to about 4 units, sometimes above and sometimes below, and in two of those checks its random-effect SD estimate was about twice drmTMB's. Pass `marginal = :Laplace` to use the Laplace approximation that drmTMB uses; it then gives the same log-likelihood, estimates and standard errors as drmTMB, and stays within 0.01 units of the exact value at those group sizes. Use it for large groups or when you compare results with drmTMB. `:Laplace` needs a fixed-effect mean and maximum likelihood; other models refuse it. `lrtest` accepts a `:Laplace` fit against the fixed-effect model `sigma ~ 1`, but refuses to compare it with a default-integrator fit of a random-effect model. |
 | `sigma(fit)` and `corpairs(fit)` | **Tested** post-fit accessors. |
 
 ## Location–scale–scale models (LSS, `sd()`)
@@ -282,7 +282,7 @@ data into a form that Julia can fit, then converts the result back to R.
 
 | Capability | Status |
 |---|---|
-| `marginal=:LA` — the default integrator: GHQ-32 on an ordinary `(1\|g)`, Laplace on most other random-effect structures | **Tested** |
+| `marginal=:LA`, the default integrator: GHQ-32 on an ordinary `(1\|g)`, Laplace on most other random-effect structures | **Tested** |
 | `marginal=:VA` Poisson `(1\|g)` public path | **Experimental**; it uses an ELBO approximation, labels the fit `:VA`, and refuses mixed LA/VA AIC or likelihood-ratio comparisons |
 | `marginal=:VA` Binomial / NB2 / Gamma / Beta `(1\|g)` | **Experimental**; scale families require `sigma ~ 1` |
 | `method=:VA` on non-Gaussian `drm()` | **Rejected** — choose `marginal=:VA`; `method` is ML/REML |
