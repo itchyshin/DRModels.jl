@@ -796,6 +796,62 @@ function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree 
         gidx, G = _group_index(getproperty(data, sgrp))
         return _withformula(_fit_sigma_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, sgrp, g_tol), f)
     end
+    # Meta-analysis with random intercepts on the mean (Arc 2): `meta_V(v)` plus
+    # any mix of `(1 | g)`, `phylo(1 | g)`, `relmat(1 | g)`, `animal(1 | g)`.
+    # Dispatched BEFORE the structured and ordinary random-effect routes below:
+    # those have no known-variance term, and the `meta_V`-only route below has
+    # no random effect, so reaching either one silently fitted a different model
+    # (measured against drmTMB at da8b3f871; see `_fit_meta_gaussian_re`).
+    if metav !== nothing && (!isempty(re) || !isempty(all_structured))
+        _meta_re_term = "`meta_V(...)` with a random effect on the mean"
+        algorithm in (:auto, :gls, :lbfgs) ||
+            throw(ArgumentError("drm: `algorithm = :$(algorithm)` is not implemented for " *
+                "$(_meta_re_term); that route is the dense closed-form marginal (use `algorithm = :auto`)."))
+        sparse === true &&
+            throw(ArgumentError("drm: `sparse = true` is not implemented for $(_meta_re_term)."))
+        penalty === nothing ||
+            throw(ArgumentError("drm: `penalty` is not wired for $(_meta_re_term)."))
+        comps = Any[]
+        for (rl, grp) in re
+            _re_kind(rl)[1] === :intercept ||
+                throw(ArgumentError("drm: only random INTERCEPTS `(1 | g)` are implemented " *
+                    "alongside `meta_V(...)`; a random slope with known sampling variances " *
+                    "is not implemented on this engine yet."))
+            gidx, G = _group_index(getproperty(data, grp))
+            push!(comps, (gidx, G, nothing, String(grp)))
+        end
+        for (kind, grp) in all_structured
+            if kind === :phylo
+                tree === nothing && error("phylo(1 | $grp) needs `tree = …`")
+                phy = tree isa AbstractString ? augmented_phy(tree) : tree
+                _warn_if_tree_not_unit_height(phy)
+                # Rows → tree leaves BY NAME (#482), never by first-seen order.
+                gidx = _phylo_mean_leaf_index(phy, getproperty(data, grp))
+                G = phy.n_leaves
+                # RAW branch-length tip covariance, the scale the default
+                # phylo-mean route reports `sd_phylo` on (and the scale the R
+                # bridge converts from, × sqrt(mean root-to-tip depth)). On an
+                # ultrametric tree — the only kind drmTMB accepts — this is
+                # height × the tip correlation, so the model and logLik are
+                # drmTMB's exactly; only the SD's unit differs.
+                Cmat = sigma_phy_dense(phy; σ²_phy = 1.0)
+            elseif kind === :relmat || kind === :animal
+                gidx, G = _group_index(getproperty(data, grp))
+                Cmat = _resolve_structured_matrix(kind, grp, G; K = K, A = A, tree = tree, coords = coords)
+            else
+                throw(ArgumentError("drm: `$(kind)(1 | $grp)` is not implemented alongside " *
+                    "`meta_V(...)`; phylo, relmat and animal are."))
+            end
+            push!(comps, (gidx, G, Matrix(cholesky(Symmetric(Cmat)).L), String(grp)))
+        end
+        grps = [c[4] for c in comps]
+        allunique(grps) ||
+            throw(ArgumentError("drm: two random components alongside `meta_V(...)` share a " *
+                "grouping factor ($(join(grps, ", "))); give each component its own grouping " *
+                "column. (A phylo(1 | sp) + (1 | sp) pair is not implemented on this route.)"))
+        vv = Float64.(getproperty(data, metav))
+        return _withformula(_fit_meta_gaussian_re(fam, y, Xμ, Xσ, vv, comps, nmμ, nmσ, g_tol), f)
+    end
     # Two structured components in one fit (e.g. phylo(1|species) + relmat(1|id)):
     # a separate variance component each, latent field = their sum. Dense first cut.
     if length(all_structured) >= 2

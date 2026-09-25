@@ -6,6 +6,17 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **`meta_V(v)` with a random effect on the mean fits drmTMB's model.** `meta_V(v) + (1 | study)`
+  used to return the `meta_V`-only fit (the random effect silently dropped: df 3 against drmTMB's 4),
+  and `meta_V(v) + phylo(1 | sp)` / `+ relmat(1 | id)` the structured fit with the known variances
+  silently dropped. A new route, `_fit_meta_gaussian_re` (`src/gaussian_meta.jl`), fits the marginal
+  `y ~ N(Xβ, diag(v + σ²) + Σ s_k² Z_k C_k Z_kᵀ)` that drmTMB's Laplace integrates exactly, for any
+  mix of `(1 | g)`, `phylo`, `relmat` and `animal` intercepts on distinct grouping columns, with
+  `sigma ~ x` allowed. Measured against drmTMB `engine = "tmb"` in seven fits on six fixtures: logLik within
+  3e-10, every estimate within 3e-9 relative (`docs/dev-log/evidence/arc2-metav-random-effect/`).
+  Random slopes, `spatial()`, REML, a `sigma` random effect and `sd(g) ~ …` still refuse; the marginal
+  bootstrap refuses a `meta_V` fit with more than one random field rather than drop one.
+
 - **Package renamed to DRModels.jl.** The Julia package and module are now
   `DRModels`, while the modelling API remains `drm()`, `bf()`, and the existing
   fit/post-fit surface. `DRModels.DRM` is a soft-deprecated qualified alias for

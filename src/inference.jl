@@ -1928,7 +1928,19 @@ function _marginal_simulator(fit::DrmFit, data; K=nothing, A=nothing, tree=nothi
     (fit.family isa Gaussian && !haskey(fit.scales, :sigma)) && return nothing
     rhs = Dict(fit.formula.forms)
     haskey(rhs, :mu) || return nothing
-    _, re, _, structured, structured_slope = _split_ranef(rhs[:mu]; allow_phylo_slope = true)
+    _, re, metav_ms, structured, structured_slope = _split_ranef(rhs[:mu]; allow_phylo_slope = true)
+    # A Gaussian `meta_V(...)` fit with SEVERAL random fields (Arc 2,
+    # `_fit_meta_gaussian_re`, e.g. `phylo(1 | sp) + (1 | study)`): the simulator
+    # below draws ONE field, so it would silently bootstrap a model with the other
+    # field(s) missing. Refuse. A single field is drawn correctly: `scales[:sigma]`
+    # is √(v + σ²) there, and a phylo `re_sd` is on the raw scale drawn below.
+    if metav_ms !== nothing && fit.family isa Gaussian
+        nfields = length(re) + length(_collect_structured(rhs[:mu]))
+        nfields <= 1 ||
+            throw(ArgumentError("bootstrap: the marginal simulator for a `meta_V(...)` fit " *
+                "with $(nfields) random fields is not implemented; use `profile` intervals " *
+                "or the Wald `vcov`"))
+    end
     # A Gaussian `phylo(1 + x | g)` fit (#620) carries TWO phylogenetic fields;
     # the simulator below draws a single structured intercept, so building it
     # would silently bootstrap the wrong (intercept-only) model. Refuse.
