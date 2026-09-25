@@ -25,8 +25,8 @@
 #   to a tiny ε = _SIGMA_RE_EPS; only logL22 (= log τ_σ) is optimised.
 #   This is the "asymmetric univariate" route (no mean phylo RE).
 
-using SparseArrays: sparse
-using LinearAlgebra: I, Symmetric, cholesky, issuccess, diag
+using SparseArrays: sparse, nonzeros
+using LinearAlgebra: I, Symmetric, cholesky, issuccess, diag, logdet, norm, svdvals
 import Optim
 
 # ---------------------------------------------------------------------------
@@ -200,7 +200,9 @@ function _glsp_reml_refit(obj, grad_fn, θ̂_ml, pμ::Int; ml_converged::Bool = 
     return θ̂, converged, obj(θ̂), reml_nll
 end
 
-# Clean-gradient REML refit — the PRODUCTION REML for the σ-phylo location-scale routes.
+# Clean-gradient REML refit — the Patterson–Thompson composite REML used by the Poisson
+# and sparse-Laplace GLMM routes. (It WAS the σ-phylo location-scale REML until Arc 2;
+# those routes now use `_glsp_joint_reml_fit`, native drmTMB's joint-Laplace quantity.)
 # Jointly optimises the restricted objective `nll_ML + 0.5·logdet S` over ALL of θ (so it is
 # jointly stationary, unlike the block-coordinate Newton) with a CLEAN gradient (exact ML
 # gradient + a single FD of the accurate penalty), and is boundary-robust (finite penalty +
@@ -261,7 +263,7 @@ function _glsp_reml_refit_clean(obj, grad_fn, θ̂_ml, pμ::Int; ml_converged::B
     return θ̂, converged, obj(θ̂), reml_nll, n_steps
 end
 
-# PRODUCTION REML for the σ-phylo routes: a fast observed-information Newton WARM START, then a
+# (Unused since Arc 2; was the σ-phylo REML) a fast observed-information Newton WARM START, then a
 # clean-gradient LBFGS POLISH that guarantees joint stationarity — this corrects the Newton's
 # block-coordinate β-coupling (the polish matches FD-REML to <0.01% even at pμ=6/pψ=2, where the
 # bare Newton drifts ~0.7%). Falls back to the STABLE FD-REML if the polished fit fails to
@@ -448,6 +450,313 @@ function _glsp_reml_newton(obj, grad, θ̂_ml, pμ::Int, vidx::AbstractVector{In
     return θ, converged, ml_nll, reml_nll, n_newton
 end
 
+# ---------------------------------------------------------------------------
+# JOINT-LAPLACE REML — the restricted likelihood native drmTMB optimises (Arc 2).
+# ---------------------------------------------------------------------------
+# When `sigma` carries a phylogenetic variance component, native drmTMB's
+# `REML = TRUE` (`drm_apply_estimator_spec()`) puts `beta_mu` AND `beta_sigma`
+# into TMB's random vector next to the phylogenetic effects, so its outer
+# objective is ONE Laplace approximation over z = (a, β) jointly, with a flat
+# prior on β:
+#
+#   nll_R(v) = jn(â, β̂) + ½ logdet H_zz − ½ logdet P − (p/2) log 2π,
+#
+# where v are the variance parameters only (the Λ parameterisation), (â, β̂) is
+# the JOINT mode of jn(a, β) = Σᵢ nllᵢ(ηᵢ, ψᵢ) + ½ aᵀPa at fixed v, H_zz its full
+# Hessian, and p = pμ + pψ. The −(p/2) log 2π is TMB's Laplace constant for the p
+# flat-prior coordinates. Because logdet H_zz = logdet H_aa + logdet S, with
+# S = H_ββ − H_βa H_aa⁻¹ H_aβ the Schur complement (= the Hessian of the profile
+# h(β) = min_a jn(a, β)), the value is evaluated with the existing sparse inner
+# solve plus a p×p Schur complement.
+#
+# This is NOT the Patterson–Thompson composite `_glsp_reml_refit_clean`
+# minimises (nll_ML(β, v) + ½ logdet ∂²nll_ML/∂β², optimised over β AND v): that
+# differs in (i) where β sits (the mode of the Laplace MARGINAL, not the joint
+# mode), (ii) which Hessian S is (the marginal's, which carries the β_ψ
+# dependence of logdet H_aa, not the joint Schur complement) and (iii) the
+# constant. On the Arc 1 probe fixture the old objective reported −146.1213
+# against native's −143.3750; this one reproduces native (receipt:
+# docs/dev-log/evidence/arc2-gaussian-sigma-phylo-reml/). The fixed effects
+# reported under REML are the joint mode β̂(v̂) — what TMB returns for a
+# random-vector coordinate.
+
+# Data-part β gradient, β Hessian and the a–β cross Hessian at (a, β).
+function _glsp_joint_beta_blocks(kind, y, Xμ, Xψ, gidx, G, a, η0, ψ0, Zη, Zψ)
+    pμ = size(Xμ, 2); pψ = size(Xψ, 2); p = pμ + pψ
+    gβ = zeros(p); Hββ = zeros(p, p); Haβ = zeros(2G, p)
+    @inbounds for i in eachindex(y)
+        g = gidx[i]
+        a1 = a[2g-1]; a2 = a[2g]
+        ηi = η0[i] + Zη[i, 1] * a1 + Zη[i, 2] * a2
+        ψi = ψ0[i] + Zψ[i, 1] * a1 + Zψ[i, 2] * a2
+        gη, gψ = _ls_grad(kind, y[i], ηi, ψi)
+        hηη, hηψ, hψψ = _ls_hess(kind, y[i], ηi, ψi)
+        for j in 1:pμ
+            xj = Xμ[i, j]
+            gβ[j] += gη * xj
+            for k in 1:pμ;  Hββ[j, k]      += hηη * xj * Xμ[i, k]; end
+            for k in 1:pψ;  Hββ[j, pμ+k]   += hηψ * xj * Xψ[i, k]; end
+            Haβ[2g-1, j] += (hηη * Zη[i, 1] + hηψ * Zψ[i, 1]) * xj
+            Haβ[2g,   j] += (hηη * Zη[i, 2] + hηψ * Zψ[i, 2]) * xj
+        end
+        for j in 1:pψ
+            xj = Xψ[i, j]
+            gβ[pμ+j] += gψ * xj
+            for k in 1:pψ;  Hββ[pμ+j, pμ+k] += hψψ * xj * Xψ[i, k]; end
+            Haβ[2g-1, pμ+j] += (hηψ * Zη[i, 1] + hψψ * Zψ[i, 1]) * xj
+            Haβ[2g,   pμ+j] += (hηψ * Zη[i, 2] + hψψ * Zψ[i, 2]) * xj
+        end
+    end
+    for j in 1:pμ, k in 1:pψ
+        Hββ[pμ+k, j] = Hββ[j, pμ+k]
+    end
+    return gβ, Hββ, Haβ
+end
+
+# Joint mode (â, β̂) of jn at fixed P, by Newton on the profile h(β) = min_a jn(a, β)
+# (gradient ∂jn/∂β at â(β) by the envelope theorem, Hessian the Schur complement S),
+# with a backtracking line search on h and a warm-started inner solve per trial. The
+# nested loop only needs to reach the neighbourhood of the mode (its β-gradient
+# floor is set by the inner solve's own 1e-9 tolerance); two FULL joint Newton
+# steps on (a, β) through the bordered system then polish both coordinates
+# together, so the restricted NLL is smooth in P to rounding — the outer
+# optimiser differences it. Returns (nll_R, β̂, â, S, ok).
+function _glsp_joint_reml_nll(kind, y, Xμ, Xψ, gidx, G, P, Zη, Zψ, β0, a0;
+                              tol::Real = 1e-7, maxiter::Int = 100)
+    pμ = size(Xμ, 2); pψ = size(Xψ, 2); p = pμ + pψ
+    chP = cholesky(Symmetric(P); check = false)
+    issuccess(chP) || return Inf, β0, a0, nothing, false
+    β = copy(β0)
+    profile(βt, astart) = begin
+        η0 = Xμ * βt[1:pμ]; ψ0 = Xψ * βt[pμ+1:p]
+        at, ch, ok = _ls_inner_mode(kind, y, η0, ψ0, gidx, G, P, Zη, Zψ; a0 = astart)
+        # A warm start can land within rounding of the mode and then fail the inner
+        # stationarity certificate; a cold solve is the documented fallback.
+        ok || ((at, ch, ok) = _ls_inner_mode(kind, y, η0, ψ0, gidx, G, P, Zη, Zψ))
+        (ok ? _ls_joint(kind, y, η0, ψ0, gidx, at, P, Zη, Zψ) : Inf), at, ch, ok, η0, ψ0
+    end
+    hval, a, ch, ok, η0, ψ0 = profile(β, a0)
+    ok || return Inf, β, a, nothing, false
+    converged = false
+    for _ in 1:maxiter
+        gβ, Hββ, Haβ = _glsp_joint_beta_blocks(kind, y, Xμ, Xψ, gidx, G, a, η0, ψ0, Zη, Zψ)
+        if norm(gβ) <= tol * (1 + norm(β))
+            converged = true
+            break
+        end
+        S = Symmetric(Hββ .- Haβ' * (ch \ Haβ))
+        chS = cholesky(S; check = false)
+        step = issuccess(chS) ? (chS \ gβ) : gβ          # steepest descent if S is not PD
+        α = 1.0; moved = false
+        while α >= 1e-10
+            βt = β .- α .* step
+            ht, at, cht, okt, η0t, ψ0t = profile(βt, a)
+            if okt && isfinite(ht) && ht <= hval
+                β, a, ch, hval, η0, ψ0 = βt, at, cht, ht, η0t, ψ0t
+                moved = true
+                break
+            end
+            α *= 0.5
+        end
+        if !moved
+            converged = norm(gβ) <= 1e-5 * (1 + norm(β))
+            break
+        end
+    end
+    converged || return Inf, β, a, nothing, false
+    # Joint Newton polish on z = (a, β): [H_aa H_aβ; H_βa H_ββ] dz = ∇jn, solved by the
+    # Schur complement. Kept only while jn does not rise beyond rounding.
+    jn0 = hval
+    for _ in 1:2
+        ga = _ls_joint_grad(kind, y, η0, ψ0, gidx, a, P, Zη, Zψ)
+        gβ, Hββ, Haβ = _glsp_joint_beta_blocks(kind, y, Xμ, Xψ, gidx, G, a, η0, ψ0, Zη, Zψ)
+        chA = _ls_hess_chol(kind, y, η0, ψ0, gidx, G, a, P, Zη, Zψ)
+        issuccess(chA) || break
+        Ha_ga = chA \ ga; Ha_Haβ = chA \ Haβ
+        chS = cholesky(Symmetric(Hββ .- Haβ' * Ha_Haβ); check = false)
+        issuccess(chS) || break
+        dβ = chS \ (gβ .- Haβ' * Ha_ga)
+        da = Ha_ga .- Ha_Haβ * dβ
+        βt = β .- dβ; at = a .- da
+        η0t = Xμ * βt[1:pμ]; ψ0t = Xψ * βt[pμ+1:p]
+        jt = _ls_joint(kind, y, η0t, ψ0t, gidx, at, P, Zη, Zψ)
+        (isfinite(jt) && jt <= jn0 + 1e-9 * (1 + abs(jn0))) || break
+        β, a, η0, ψ0, jn0 = βt, at, η0t, ψ0t, jt
+    end
+    _, Hββ, Haβ = _glsp_joint_beta_blocks(kind, y, Xμ, Xψ, gidx, G, a, η0, ψ0, Zη, Zψ)
+    chA = _ls_hess_chol(kind, y, η0, ψ0, gidx, G, a, P, Zη, Zψ)
+    issuccess(chA) || return Inf, β, a, nothing, false
+    S = Matrix(Symmetric(Hββ .- Haβ' * (chA \ Haβ)))
+    chS = cholesky(Symmetric(S); check = false)
+    issuccess(chS) || return Inf, β, a, S, false
+    jn = _ls_joint(kind, y, η0, ψ0, gidx, a, P, Zη, Zψ)
+    nll = jn + 0.5 * logdet(chA) + 0.5 * logdet(chS) - 0.5 * logdet(chP) - 0.5 * p * log(2π)
+    return nll, β, a, S, true
+end
+
+# REML start from an ML variance estimate: pull each log-SD coordinate (`idx`) up to
+# at least log(0.05). An ML fit at the variance boundary (SD → 0, or |cor| → 1 in the
+# coupled block, where logL22 → −∞) is a poor REML start — the joint mode is
+# ill-conditioned there and Newton stalls (measured: F1 coupled ML start at
+# logL22 = −5.3 never moved) — and REML variance estimates sit above ML's anyway.
+_glsp_reml_start(v, idx) = (w = copy(v); for i in idx; w[i] = max(w[i], log(0.05)); end; w)
+
+# Numerical rank deficiency of a design: smallest/largest singular value of the
+# column-normalised matrix below 1e-10.
+function _glsp_rank_deficient(X)
+    size(X, 2) <= 1 && return size(X, 2) == 1 && all(iszero, X)
+    nrm = [norm(c) for c in eachcol(X)]
+    any(iszero, nrm) && return true
+    sv = svdvals(X ./ nrm')
+    return sv[end] / sv[1] < 1e-10
+end
+
+# Outer REML fit over the variance parameters v only. `Λfun(v)` is the route's Λ
+# parameterisation. Starts from each of `starts` and keeps the lowest restricted
+# NLL. The outer gradient and Hessian are central differences of nll_R (the joint
+# mode is re-solved to 1e-10, so the difference quotients are clean). Returns a NamedTuple with the REML
+# estimates, the joint-mode β̂, the restricted and ML NLLs and a Wald covariance
+# of (β, v): V_vv = (∇²nll_R)⁻¹, and the β rows follow TMB's sdreport rule for a
+# random-vector coordinate, Var(β̂) = S⁻¹ + J V_vv Jᵀ with J = dβ̂/dv.
+function _glsp_joint_reml_fit(kind, y, Xμ, Xψ, gidx, G, Q, Zη, Zψ, Λfun, starts,
+                              β_start; se::Bool = true, g_tol::Real = 1e-9)
+    pμ = size(Xμ, 2); pψ = size(Xψ, 2); p = pμ + pψ
+    # A rank-deficient fixed-effect design makes the flat-prior β integral improper:
+    # S is singular in exact arithmetic, and a numerically-PD S would give a finite
+    # but meaningless restricted logLik. Report it as degenerate (NaN logLik,
+    # not converged, NaN covariance) — the contract the σ-phylo REML routes already
+    # honour (test_reml_newton_sigma_phylo.jl, collinear-mean regression).
+    if _glsp_rank_deficient(Xμ) || _glsp_rank_deficient(Xψ)
+        v0 = last(starts); np = p + length(v0)          # the callers' ML-based start
+        P0 = prior_precision(Q, _ls_inv2x2(Λfun(v0)))
+        ml0, _, ok0 = _ls_marginal_nll(kind, y, Xμ * β_start[1:pμ], Xψ * β_start[pμ+1:p],
+                                       gidx, G, P0, Zη, Zψ)
+        return (θ = vcat(β_start, v0), v = v0, β = copy(β_start), reml_nll = NaN,
+                ml_nll = ok0 ? ml0 : NaN, converged = false, V = fill(NaN, np, np))
+    end
+    warm_β = Ref(copy(β_start)); warm_a = Ref(zeros(2G))
+    function eval_v(v; update::Bool = true)
+        Λ = Λfun(v)
+        all(isfinite, Λ) || return Inf, warm_β[], warm_a[], nothing, false
+        P = prior_precision(Q, _ls_inv2x2(Λ))
+        all(isfinite, nonzeros(P)) || return Inf, warm_β[], warm_a[], nothing, false
+        r = try
+            _glsp_joint_reml_nll(kind, y, Xμ, Xψ, gidx, G, P, Zη, Zψ, warm_β[], warm_a[])
+        catch err
+            err isa InterruptException && rethrow(err)
+            (Inf, warm_β[], warm_a[], nothing, false)
+        end
+        if update && r[5]
+            warm_β[] = copy(r[2]); warm_a[] = copy(r[3])
+        end
+        return r
+    end
+    nllR(v) = (r = eval_v(v); r[5] ? r[1] : 1e18)
+    h = 1e-5
+    function fdgrad(v)
+        g = similar(v, Float64)
+        for j in eachindex(v)
+            vp = copy(v); vp[j] += h; vm = copy(v); vm[j] -= h
+            g[j] = (nllR(vp) - nllR(vm)) / (2h)
+        end
+        g
+    end
+    function fdhess(v; hh = 1e-4)
+        k = length(v); H = zeros(k, k); fc = nllR(v)
+        for i in 1:k
+            vp = copy(v); vp[i] += hh; vm = copy(v); vm[i] -= hh
+            H[i, i] = (nllR(vp) - 2 * fc + nllR(vm)) / hh^2
+            for j in (i+1):k
+                vpp = copy(v); vpp[i] += hh; vpp[j] += hh
+                vpm = copy(v); vpm[i] += hh; vpm[j] -= hh
+                vmp = copy(v); vmp[i] -= hh; vmp[j] += hh
+                vmm = copy(v); vmm[i] -= hh; vmm[j] -= hh
+                H[i, j] = H[j, i] = (nllR(vpp) - nllR(vpm) - nllR(vmp) + nllR(vmm)) / (4hh^2)
+            end
+        end
+        H
+    end
+    # Levenberg-damped Newton on nll_R(v) with an FD gradient and FD Hessian: v has
+    # at most three coordinates, so each Hessian is ≤ 19 restricted-likelihood
+    # evaluations, and Newton converges where an FD-gradient L-BFGS was measured to
+    # stall well short of the optimum (F2 coupled fixture, gradient ‖·‖ ≈ 5).
+    function newton_min(v0)
+        v = copy(v0); f = nllR(v)
+        (isfinite(f) && f < 1e17) || return v, Inf, false
+        for _ in 1:100
+            g = fdgrad(v)
+            all(isfinite, g) || return v, f, false
+            norm(g) <= g_tol * (1 + abs(f)) && return v, f, true
+            H = Symmetric(fdhess(v))
+            λ = 0.0; moved = false; scale = 1 + maximum(abs, H)
+            while λ <= 1e2 * scale
+                ch = cholesky(Symmetric(Matrix(H) + λ * I); check = false)
+                if issuccess(ch)
+                    d = -(ch \ g)
+                    nd = norm(d); nd > 2.0 && (d .*= 2.0 / nd)   # cap a step in log-SD/Cholesky units
+                    α = 1.0
+                    while α >= 1 / 64
+                        vt = v .+ α .* d; ft = nllR(vt)
+                        if isfinite(ft) && ft < f
+                            v, f = vt, ft; moved = true
+                            break
+                        end
+                        α *= 0.5
+                    end
+                    moved && break
+                end
+                λ = λ == 0.0 ? 1e-4 * scale : 100λ
+            end
+            moved || return v, f, norm(g) <= 1e-5 * (1 + abs(f))
+        end
+        return v, f, false
+    end
+    best_v = nothing; best_f = Inf; best_conv = false
+    for v0 in starts
+        warm_β[] = copy(β_start); warm_a[] = zeros(2G)
+        v, f, conv = newton_min(v0)
+        if f < best_f
+            best_v, best_f, best_conv = copy(v), f, conv
+        end
+    end
+    best_v === nothing && error("REML (joint Laplace): no start produced a finite restricted likelihood")
+    warm_β[] = copy(β_start); warm_a[] = zeros(2G)
+    nll_r, β̂, â, S, ok = eval_v(best_v)
+    ok || error("REML (joint Laplace): the joint mode failed at the optimum")
+    Λ̂ = Λfun(best_v)
+    P̂ = prior_precision(Q, _ls_inv2x2(Λ̂))
+    ml_nll, _, ml_ok = _ls_marginal_nll(kind, y, Xμ * β̂[1:pμ], Xψ * β̂[pμ+1:p], gidx, G, P̂, Zη, Zψ)
+    ml_ok || (ml_nll = NaN)
+    k = length(best_v); np = p + k
+    V = fill(NaN, np, np)
+    if se
+        try
+            Hv = fdhess(best_v)
+            chH = cholesky(Symmetric(Hv); check = false)
+            if issuccess(chH)
+                Vvv = Matrix(inv(chH))
+                J = zeros(p, k); hj = 1e-5
+                for j in 1:k
+                    vp = copy(best_v); vp[j] += hj; vm = copy(best_v); vm[j] -= hj
+                    rp = eval_v(vp; update = false); rm = eval_v(vm; update = false)
+                    J[:, j] .= (rp[2] .- rm[2]) ./ (2hj)
+                end
+                Sinv = Matrix(inv(cholesky(Symmetric(S))))
+                V = zeros(np, np)
+                V[1:p, 1:p] .= Sinv .+ J * Vvv * J'
+                V[1:p, p+1:np] .= J * Vvv
+                V[p+1:np, 1:p] .= (J * Vvv)'
+                V[p+1:np, p+1:np] .= Vvv
+            end
+        catch err
+            err isa InterruptException && rethrow(err)
+            V = fill(NaN, np, np)
+        end
+    end
+    return (θ = vcat(β̂, best_v), v = best_v, β = β̂, reml_nll = nll_r, ml_nll = ml_nll,
+            converged = best_conv, V = V)
+end
+
 # B2 — boundary-aware PROFILE-LIKELIHOOD CI for one variance (log-SD) parameter.
 # `nll(θ)::Real` and `grad(θ)::Vector` are the route's own marginal NLL and analytic
 # gradient; `idx` is the profiled log-SD position. Profiles θ[idx]: re-optimises the
@@ -594,6 +903,11 @@ Modes controlled by kwargs:
 
 The kernel is `Val(:gaussian_mean)`: η = mean, ψ = log σ, integrating the
 Gaussian location-scale likelihood through the q=2 augmented-state Laplace spine.
+
+`reml = true` (all three modes) maximises the joint-Laplace restricted likelihood
+over (phylo effects, β_μ, β_σ) — native drmTMB's `REML = TRUE` quantity — via
+`_glsp_joint_reml_fit`; the reported β are the joint mode at the REML variance
+estimates.
 """
 function _fit_gaussian_locscale_phylo(fam::Gaussian, y, Xμ, Xψ, gidx, G, Q,
                                        nmμ, nmσ, grp::String;
@@ -645,20 +959,17 @@ function _fit_gaussian_locscale_phylo(fam::Gaussian, y, Xμ, Xψ, gidx, G, Q,
         logL22_0 = log(0.3)
         θ0 = vcat(βμ0, βψ0, logL22_0)
         θ̂, conv = _glsp_optimise(pen_obj, pen_grad!, θ0; g_tol = g_tol)
-        ml_nll = asym_obj(θ̂); reml_nll = NaN
+        ml_nll = asym_obj(θ̂); reml_nll = NaN; V_reml = nothing
         if reml
-            asym_grad_fn(θ) = _glsp_asym_grad(kind, y, Xμ, Xψ, gidx, G, Q, θ, Zη, Zψ)
-            # Jointly-correct, boundary-robust clean-gradient LBFGS REML. (The observed-info
-            # Newton `_glsp_reml_newton` is faster on benign data, but the adversarial
-            # verification found a β-coupling bias at larger pμ/pψ and boundary issues, so it is
-            # EXPERIMENTAL, not the production path — see its docstring.)
-            # Restrict BOTH the mean AND the scale fixed effects (pμ+pψ), not β_μ
-            # alone: the σ variance component's downward bias needs the β_ψ (log-σ
-            # coefficient) DoF integrated too -- the complete Cox-Reid restricted
-            # likelihood. Restricting β_μ alone leaves σ²_v ~ML-biased (native drmTMB
-            # REML, which marginalizes both via Laplace, debiases 30/30 vs ML 0/30;
-            # Noether math review 2026-07-06).
-            θ̂, conv, ml_nll, reml_nll, _ = _glsp_reml_refit_clean(asym_obj, asym_grad_fn, θ̂, pμ + pψ; ml_converged = conv)
+            # Native drmTMB's restricted likelihood: ONE joint Laplace over (a, β_μ, β_ψ)
+            # with the variance parameter the only outer coordinate (Arc 2; see
+            # `_glsp_joint_reml_fit`). Started from a default and from the (boundary-clamped) ML estimate.
+            rf = _glsp_joint_reml_fit(kind, y, Xμ, Xψ, gidx, G, Q, Zη, Zψ,
+                                      v -> _glsp_asym_Λ(v[1]),
+                                      [[log(0.3)], _glsp_reml_start(θ̂[pμ+pψ+1:end], 1:1)],
+                                      θ̂[1:pμ+pψ]; se = se)
+            θ̂ = rf.θ; conv = rf.converged
+            ml_nll = rf.ml_nll; reml_nll = rf.reml_nll; V_reml = rf.V
         end
         nll_val = reml ? reml_nll : ml_nll
         βμ̂ = θ̂[1:pμ]; βψ̂ = θ̂[pμ+1:pμ+pψ]; logL22 = θ̂[pμ+pψ+1]
@@ -668,7 +979,7 @@ function _fit_gaussian_locscale_phylo(fam::Gaussian, y, Xμ, Xψ, gidx, G, Q,
         V = if se
             try
                 if reml
-                    _glsp_reml_vcov(θ -> _glsp_asym_grad(kind, y, Xμ, Xψ, gidx, G, Q, θ, Zη, Zψ), θ̂, pμ)
+                    V_reml   # joint-Laplace REML covariance (β rows: S⁻¹ + J V_vv Jᵀ)
                 else
                     # FD of the PENALIZED gradient when a penalty is in force, so the
                     # reported curvature is the MAP curvature (drmTMB says the same:
@@ -761,17 +1072,18 @@ function _fit_gaussian_locscale_phylo(fam::Gaussian, y, Xμ, Xψ, gidx, G, Q,
         βψ0 = zeros(pψ)
         θ0 = vcat(βμ0, βψ0, log(0.3), log(0.3))   # [βμ; βψ; logL11; logL22]
         θ̂, conv = _glsp_optimise(pen_obj, pen_grad!, θ0; g_tol = g_tol)
-        ml_nll = sep_obj(θ̂); reml_nll = NaN
+        ml_nll = sep_obj(θ̂); reml_nll = NaN; V_reml = nothing
         if reml
-            sep_grad_fn(θ) = _glsp_sep_grad(kind, y, Xμ, Xψ, gidx, G, Q, θ, Zη, Zψ)
-            # Jointly-correct, boundary-robust clean-gradient LBFGS REML. (The observed-info
-            # Newton `_glsp_reml_newton` is faster on benign data, but the adversarial
-            # verification found a β-coupling bias at larger pμ/pψ and boundary issues, so it is
-            # EXPERIMENTAL, not the production path — see its docstring.)
-            # Restrict BOTH mean AND scale fixed effects (pμ+pψ), not β_μ alone --
-            # the complete Cox-Reid restricted likelihood the σ variance component
-            # needs (see the asymmetric branch above; Noether review 2026-07-06).
-            θ̂, conv, ml_nll, reml_nll, _ = _glsp_reml_refit_clean(sep_obj, sep_grad_fn, θ̂, pμ + pψ; ml_converged = conv)
+            # The same joint-Laplace restricted likelihood as the asymmetric and coupled
+            # blocks (Arc 2), with Λ = diag(L11², L22²). No native twin: native drmTMB
+            # always estimates the mean↔σ phylo correlation for this formula (the
+            # coupled block below is the native-matching route).
+            rf = _glsp_joint_reml_fit(kind, y, Xμ, Xψ, gidx, G, Q, Zη, Zψ,
+                                      _glsp_sep_Λ,
+                                      [[log(0.3), log(0.3)], _glsp_reml_start(θ̂[pμ+pψ+1:end], 1:2)],
+                                      θ̂[1:pμ+pψ]; se = se)
+            θ̂ = rf.θ; conv = rf.converged
+            ml_nll = rf.ml_nll; reml_nll = rf.reml_nll; V_reml = rf.V
         end
         nll_val = reml ? reml_nll : ml_nll
         βμ̂ = θ̂[1:pμ]; βψ̂ = θ̂[pμ+1:pμ+pψ]
@@ -784,7 +1096,7 @@ function _fit_gaussian_locscale_phylo(fam::Gaussian, y, Xμ, Xψ, gidx, G, Q,
         V = if se
             try
                 if reml
-                    _glsp_reml_vcov(θ -> _glsp_sep_grad(kind, y, Xμ, Xψ, gidx, G, Q, θ, Zη, Zψ), θ̂, pμ)
+                    V_reml   # joint-Laplace REML covariance (β rows: S⁻¹ + J V_vv Jᵀ)
                 else
                     h = 1e-4; np = length(θ̂)
                     H = zeros(np, np)
@@ -844,12 +1156,9 @@ function _fit_gaussian_locscale_phylo(fam::Gaussian, y, Xμ, Xψ, gidx, G, Q,
         return fit
 
     else
-        # COUPLED block: 3 free variance params [logL11, L21, logL22]
-        # REML is not wired for the coupled mean↔σ block — make the drop LOUD rather than
-        # silently returning an ML fit tagged :ML. (The public drm() frontend never dispatches
-        # coupled=true, so this guards internal/direct callers.)
-        reml && error("REML is not implemented for the coupled mean↔σ location-scale block; " *
-                      "use the separate block (the default) or method = :ML.")
+        # COUPLED block: 3 free variance params [logL11, L21, logL22]. This is the block
+        # native drmTMB fits for `mu ~ … + phylo(1 | g)`, `sigma ~ … + phylo(1 | g)`
+        # (it estimates the mean↔σ phylo correlation), under ML and — since Arc 2 — REML.
         # No shared warm (see the separate-block note) — cold inner solves.
         function coup_obj(θ)
             pμ_ = size(Xμ, 2); pψ_ = size(Xψ, 2)
@@ -887,13 +1196,26 @@ function _fit_gaussian_locscale_phylo(fam::Gaussian, y, Xμ, Xψ, gidx, G, Q,
         βψ0 = zeros(pψ)
         θ0 = vcat(βμ0, βψ0, log(0.3), 0.0, log(0.3))
         θ̂, conv = _glsp_optimise(pen_obj, pen_grad!, θ0; g_tol = g_tol)
-        nll_val = coup_obj(θ̂)
+        nll_val = coup_obj(θ̂); ml_nll = nll_val; reml_nll = NaN; V_reml = nothing
+        if reml
+            # Joint-Laplace REML over (a, β_μ, β_ψ) — native drmTMB's restricted likelihood
+            # for this shape (Arc 2; see `_glsp_joint_reml_fit`).
+            rf = _glsp_joint_reml_fit(kind, y, Xμ, Xψ, gidx, G, Q, Zη, Zψ,
+                                      _glsp_coupled_Λ,
+                                      [[log(0.3), 0.0, log(0.3)],
+                                       _glsp_reml_start(θ̂[pμ+pψ+1:end], (1, 3))],
+                                      θ̂[1:pμ+pψ]; se = se)
+            θ̂ = rf.θ; conv = rf.converged
+            ml_nll = rf.ml_nll; reml_nll = rf.reml_nll; nll_val = reml_nll; V_reml = rf.V
+        end
         βμ̂ = θ̂[1:pμ]; βψ̂ = θ̂[pμ+1:pμ+pψ]
         λ̂ = θ̂[pμ+pψ+1:pμ+pψ+3]
         Λ̂ = _glsp_coupled_Λ(λ̂)
         comp = _ls_components(Λ̂)
-        # Wald via FD of the general gradient
-        V = if se
+        # Wald via FD of the general gradient (ML); the joint-Laplace covariance under REML.
+        V = if reml
+            V_reml
+        elseif se
             try
                 h = 1e-4; np = length(θ̂)
                 H = zeros(np, np)
@@ -906,8 +1228,7 @@ function _fit_gaussian_locscale_phylo(fam::Gaussian, y, Xμ, Xψ, gidx, G, Q,
                 end
                 # PD-guard: at the variance boundary H is singular and `inv` returns GARBAGE
                 # (huge finite values), not an error — so report NaN SEs (use profile_ci there).
-                # This route is ML-only (REML errors above for the coupled block), so the ML
-                # observed information is the correct Wald curvature here.
+                # Under ML the ML observed information is the correct Wald curvature.
                 chH = cholesky(Symmetric(H); check = false)
                 issuccess(chH) ? Matrix(inv(chH)) : fill(NaN, size(H))
             catch
@@ -938,6 +1259,7 @@ function _fit_gaussian_locscale_phylo(fam::Gaussian, y, Xμ, Xψ, gidx, G, Q,
         scales[:lambda_sd_sigma] = [comp.sd_psi]
         scales[:lambda_cor]      = [comp.cor_mu_psi]
         fit = DrmFit(fam, blocks, names, theta_out, V_out, -nll_val, n, conv, means, obs, scales)
+        fit = reml ? _withreml(fit, -reml_nll, -ml_nll) : fit
         if penalty !== nothing
             fit = _withmap(fit, _phylo_pen_apply_coupled!(nothing, penalty, θ̂, _i0), penalty)
         end

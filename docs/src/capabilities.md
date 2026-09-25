@@ -152,9 +152,16 @@ package-test coverage.
 
     This Gaussian route requires a common grouping factor and one phylogenetic
     structured component; it cannot be combined with additional random effects or
-    `meta_V`. `method = :REML` is available for the separate and scale-only
-    blocks, but is refused for the coupled block and for the iid
-    `sigma ~ (1|g)` route. A non-Gaussian scale-axis-only intercept is not part of
+    `meta_V`. `method = :REML` is available for the scale-only, separate and
+    coupled blocks, and is refused for the iid `sigma ~ (1|g)` route. On these
+    three blocks REML is one joint Laplace approximation over the phylogenetic
+    effects and **both** the `mu` and `sigma` fixed effects, the restricted
+    likelihood native drmTMB (`REML = TRUE`) maximises for this model; the
+    scale-only and coupled blocks reproduce drmTMB's REML log-likelihood, df and
+    estimates on two fixtures
+    (`docs/dev-log/evidence/arc2-gaussian-sigma-phylo-reml/`). Under REML the
+    reported `mu`/`sigma` coefficients are the joint mode at the REML variance
+    estimates. A non-Gaussian scale-axis-only intercept is not part of
     the public formula grammar.
 
 ## Coevolution: q=4 phylogenetic bivariate location–scale model (PLSM)
@@ -231,8 +238,10 @@ above, and it does so by delegation rather than by a second engine.
     Gaussian location–scale model; a single Gaussian mean intercept `(1 | g)`;
     Location–Scale–Scale models (`sd(g) ~ z`,
     `sd(species, phylogenetic) ~ z`, and multi-component LSS); and the
-    bivariate q=4 location–scale engine.
-    σ-RE, random slopes, and non-Gaussian REML stay rejected. This is not AI-REML.
+    bivariate q=4 location–scale engine; and the Gaussian `phylo(1 | g)`-on-`sigma`
+    location–scale blocks (scale-only, separate, coupled), where both the `mu`
+    and `sigma` fixed effects are integrated out with the phylogenetic effects.
+    Ordinary σ-RE, random slopes, and non-Gaussian REML stay rejected. This is not AI-REML.
 
     **Normalisation convention:** every REML route
     in DRModels.jl now reports the **normalised** Patterson–Thompson restricted

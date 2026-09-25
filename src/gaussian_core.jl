@@ -420,9 +420,13 @@ implemented for:
 (b) a single Gaussian mean random intercept `(1 | g)` on the Woodbury spine (#439),
 (c) Location–Scale–Scale (LSS) models (`sd(g) ~ z`, `sd(species, phylogenetic) ~ z`,
     and multi-component LSS models; #558), and
-(d) the bivariate q=4 PLSM Laplace engine (`reml_q4`).
+(d) the bivariate q=4 PLSM Laplace engine (`reml_q4`), and
+(e) the Gaussian `phylo(1 | g)`-on-`sigma` location–scale routes (scale-only,
+    separate, and `phylo_coupled = true`), where one joint Laplace approximation
+    integrates the phylo effects and BOTH the mean and scale fixed effects — the
+    restricted likelihood native drmTMB maximises.
 
-σ-RE, random slopes, and non-Gaussian REML stay rejected. REML likelihoods are
+Ordinary σ-RE, random slopes, and non-Gaussian REML stay rejected. REML likelihoods are
 not comparable across fixed-effect structures.
 
 ## Missing response handling
@@ -610,8 +614,10 @@ function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree 
             gidx_sigma = gidx_sigma[response_observed]
         end
 
-        # method = :REML integrates β_μ out of the Laplace marginal (Patterson–Thompson
-        # restricted likelihood). This branch returns BEFORE the generic :REML validator
+        # method = :REML integrates β_μ AND β_σ out jointly with the phylo effects in one
+        # Laplace approximation — native drmTMB's restricted likelihood for a σ variance
+        # component (Arc 2, `_glsp_joint_reml_fit`), on the asymmetric, separate and
+        # coupled (`phylo_coupled = true`) blocks. This branch returns BEFORE the generic :REML validator
         # below, so capture it here and thread it to the engine. (REML across the phylo
         # RE structure is not comparable across mean structures — the aic/bic/lrtest guard
         # keys off estim_method; ML stays the default.)
@@ -625,8 +631,6 @@ function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree 
             mu_grp === sigma_grp ||
                 error("drm (Gaussian): σ-phylo and μ-phylo must share the same grouping factor " *
                       "(got :$(mu_grp) vs :$(sigma_grp)); cross-grouping σ-phylo is planned for a later slice")
-            reml && phylo_coupled &&
-                error("drm (Gaussian): phylo_coupled=true is ML-only; coupled mean-sigma phylo REML is not implemented")
             # `structured` only captures the FIRST structured mean marker; guard against a
             # SECOND being silently dropped (e.g. mu ~ phylo(1|g) + animal(1|g) with σ-phylo).
             length(all_structured) == 1 ||

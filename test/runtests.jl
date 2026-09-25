@@ -477,6 +477,10 @@ _shard_include("test_bootstrap_sigma_a.jl")
 _shard_include("test_reml_sigma_phylo.jl")
 _shard_include("test_reml_reml_phylo_mean.jl")
 _shard_include("test_reml_newton_sigma_phylo.jl")
+# Arc 2: σ-phylo REML is ONE joint Laplace over (phylo effects, β_μ, β_σ) — native
+# drmTMB's restricted likelihood — on the asymmetric, separate and coupled blocks
+# (dense-oracle relationship + same-target native receipt + neighbour guards).
+_shard_include("test_reml_sigma_phylo_joint.jl")
 # Bivariate q4 REML must correct ALL FOUR among-axis SDs (β_μ AND β_σ profiled), not
 # just the means — regression for the scale-axis REML gap (#18).
 _shard_include("test_reml_q4_allaxes.jl")
