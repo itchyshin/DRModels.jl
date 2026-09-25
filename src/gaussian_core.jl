@@ -915,10 +915,12 @@ function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree 
     # `(1 | h)` bars. Every fitter below takes the marker alone and would
     # silently DROP the bars (measured: phylo(1 | sp) + (1 | h) returned the
     # marker-only logLik), so route the combination to its own engine first.
+    # A phylo marker here maps rows to tips by name and is fitted against the tip
+    # CORRELATION (`_phylo_correlation`); record that scale (`DrmFit.phylo_scale`).
     if structured !== nothing && !isempty(re)
-        return _withformula(_drm_gaussian_structured_plus_ranef(fam, structured, re, metav,
-            y, Xμ, Xσ, nmμ, nmσ, data; K = K, A = A, tree = tree, algorithm = algorithm,
-            penalty = penalty, g_tol = g_tol), f)
+        return _withphyloscale(_withformula(_drm_gaussian_structured_plus_ranef(fam, structured,
+            re, metav, y, Xμ, Xσ, nmμ, nmσ, data; K = K, A = A, tree = tree,
+            algorithm = algorithm, penalty = penalty, g_tol = g_tol), f), :correlation)
     end
     if structured !== nothing
         kind, grp = structured

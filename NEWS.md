@@ -47,8 +47,9 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   first, the marker last; an ordinary intercept that shares the marker's grouping is
   keyed `<g>_iid`). Nine fixtures match drmTMB `engine = "tmb"` to |ΔlogLik| ≤ 1.4e-10
   (`docs/dev-log/evidence/arc2-structured-ordinary-bar/`). REML, `(1 + x | h)`,
-  range-estimated `spatial()`, `meta_V()`, `penalty` and sparse algorithms with this
-  shape now raise an `ArgumentError` instead of dropping a term.
+  range-estimated `spatial()`, `penalty` and sparse algorithms with this shape now
+  raise an `ArgumentError` instead of dropping a term; with `meta_V(v)` added, the
+  `meta_V` + random-intercept route above fits it.
 - **Package renamed to DRModels.jl.** The Julia package and module are now
   `DRModels`, while the modelling API remains `drm()`, `bf()`, and the existing
   fit/post-fit surface. `DRModels.DRM` is a soft-deprecated qualified alias for

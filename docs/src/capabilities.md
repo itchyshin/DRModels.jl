@@ -101,7 +101,7 @@ Gaussian and is fit in closed form (PGLS / matrix-determinant lemma).
 | `animal(1\|id)` | additive-relatedness `A` | **Tested** |
 | `phylo(1\|species)` on the **mean** | tree (`AugmentedPhy` or Newick) | **Tested** |
 | `spatial(1\|site)` | coordinates; `K(ρ)=exp(-d/ρ)`, with ρ estimated | **Tested** |
-| One `phylo`/`relmat`/`animal` marker **plus** ordinary `(1\|h)` or `(0 + x\|h)` bars on the mean | tree / `K` / `A` | **Tested**, ML only; matches drmTMB `engine = "tmb"` on nine test datasets. Independent blocks; the marker SD is on the correlation scale. REML, `(1 + x\|h)`, range-estimated `spatial()`, `meta_V()`, `penalty` and sparse algorithms are refused by name. |
+| One `phylo`/`relmat`/`animal` marker **plus** ordinary `(1\|h)` or `(0 + x\|h)` bars on the mean | tree / `K` / `A` | **Tested**, ML only; matches drmTMB `engine = "tmb"` on nine test datasets. Independent blocks; the marker SD is on the correlation scale. REML, `(1 + x\|h)`, range-estimated `spatial()`, `penalty` and sparse algorithms are refused by name. With `meta_V(v)` added, the `meta_V` row below fits it. |
 
 The Gaussian table above describes the simple intercept route. It does not rule
 out the supported non-Gaussian phylogenetic mean models or the more specific
