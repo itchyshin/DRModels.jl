@@ -727,6 +727,19 @@ function _structured_marker_kind(t)
     error("unsupported structured marker")
 end
 
+# Reorder the ML driver's retained coordinates instead of re-factorizing Λ:
+# rounding can make an extreme log-Cholesky covariance numerically non-PD.
+# Even a failed fit must remain packable so its nonconvergence can be reported.
+function _q2_structured_theta(fit_q2, k::Int, method::Symbol)
+    if method === :ML
+        θ = fit_q2.θ
+        return vcat(θ[1:(2k)], θ[(2k + 4):(2k + 6)], θ[(2k + 1):(2k + 3)])
+    end
+    return vcat(fit_q2.β[:, 1], fit_q2.β[:, 2],
+                log.(fit_q2.σ_res), atanh(fit_q2.rho12 / RHO_GUARD),
+                cov_to_lc(fit_q2.Λ))
+end
+
 function _fit_bivariate_q2_structured(f::BivariateDrmFormula, fam::Gaussian, data,
                                       fixed, marker, tree, K, A, coords;
                                       spatial_range = nothing,
@@ -830,14 +843,7 @@ function _fit_bivariate_q2_structured(f::BivariateDrmFormula, fam::Gaussian, dat
         :rho12 => nmr,
         :phylocov => _q2_phylocov_names(),
     ]
-    θ̂ = vcat(
-        fit_q2.β[:, 1],
-        fit_q2.β[:, 2],
-        log(fit_q2.σ_res[1]),
-        log(fit_q2.σ_res[2]),
-        atanh(fit_q2.rho12 / RHO_GUARD),
-        cov_to_lc(fit_q2.Λ),
-    )
+    θ̂ = _q2_structured_theta(fit_q2, k, method)
     nll = function (θ)
         β = hcat(θ[blocks[1].second], θ[blocks[2].second])
         Λ = lc_to_cov(θ[blocks[6].second], 2)
@@ -874,9 +880,15 @@ function _fit_bivariate_q2_structured(f::BivariateDrmFormula, fam::Gaussian, dat
     # is wrong. The route-naming `context` below reaches the user through the
     # singularity warning; correcting the helper's prefix needs a shared file that
     # is out of scope for this change.
-    V = _vcov_from_hessian(_finite_hessian(nll, θ̂; h = _fd_hessian_step(2 * length(y1)));
+    V = if isfinite(fit_q2.loglik)
+        _vcov_from_hessian(_finite_hessian(nll, θ̂; h = _fd_hessian_step(2 * length(y1)));
                            context = "bivariate Gaussian q=2 structured ($kind) " *
                                      "finite-difference Hessian")
+    else
+        # No curvature exists at a rejected final state. Preserve the failed
+        # fit and its convergence flag without attempting an Inf/NaN Hessian.
+        fill(NaN, length(θ̂), length(θ̂))
+    end
     means = Dict(:mu1 => X1 * fit_q2.β[:, 1], :mu2 => X2 * fit_q2.β[:, 2])
     obs = Dict(:mu1 => Vector{Float64}(y1), :mu2 => Vector{Float64}(y2))
     scales = Dict(
