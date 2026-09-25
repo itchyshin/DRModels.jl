@@ -67,7 +67,12 @@ native (now inner tolerance 1e-13 plus a Newton polish). Review round 4 found
 an NB2 cell (σ = 0.05, x and z, 28 unbalanced groups) whose first fit stopped
 on the Poisson-limit plateau (log σ −19.03, `converged = true`, logLik 0.81
 below native); the plateau guard now reaches native's optimum (|ΔlogLik|
-1.1e-11), and the cell is a test fixture. The R
+1.1e-11), and the cell is a test fixture. Review round 7: on that cell
+`se = true` printed two false Hessian warnings from the discarded plateau fit
+(the returned SEs were right); the covariance is now computed once, for the kept
+fit, and the SEs match native's sdreport. `bootstrap_result` on a `:Laplace`
+fit now refits every replicate with `:Laplace` instead of the default `:LA`.
+The R
 bridge refusal stays until the conductor lifts it. `:LA` answers are guarded by
 tests, not merely asserted.
 
@@ -84,5 +89,7 @@ tests, not merely asserted.
 - drmTMB bridge: admit the covered shape, send `marginal = "Laplace"`, supply
   `coef_labels` for dpar `resd`, check the returned `marginal`.
 - `(1 + x | g)` by Laplace needs a 2-D per-group kernel (not in this slice).
+- `bootstrap_result` on a `marginal = :VA` fit still refits with the default
+  `:LA` (pre-existing on `origin/main`; not changed here).
 - `sigma ~ covariates` could reuse the heteroscedastic kernel with a Q-generic
   front end and unclamped per-observation scales.
