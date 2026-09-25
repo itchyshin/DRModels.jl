@@ -13,6 +13,10 @@
 #       NOT the Laplace objective's (it is GHQ-32), explicit :LA equals the
 #       default bit for bit, and the structured Laplace kernels are unchanged
 #       when `raw_scales = false`;
+#   (4b) the route uses unclamped scales (`raw_scales = true`): fits and
+#       objective values OUTSIDE the legacy clamp box (dispersion shape > e^8,
+#       RE log-SD < −8) still equal the independent Laplace objective. These
+#       fail if the route is reverted to the clamped kernels;
 #   (5) every out-of-scope model is refused, never rerouted to :LA;
 #   (6) the bridge forwards `marginal` and reports the integrator it used.
 # The same-target numbers against native drmTMB live in
@@ -27,7 +31,7 @@ const OL = DRModels
 
 _ol_logistic(η) = 1 / (1 + exp(-η))
 
-function _ol_sim(fam::Symbol; seed, G = 25, m = 8, sd_g = 0.6)
+function _ol_sim(fam::Symbol; seed, G = 25, m = 8, sd_g = 0.6, sigma = nothing)
     rng = Random.Xoshiro(seed)
     n = G * m
     g = repeat(1:G, inner = m)
@@ -42,10 +46,10 @@ function _ol_sim(fam::Symbol; seed, G = 25, m = 8, sd_g = 0.6)
     elseif fam === :binomial
         [rand(rng, Dist.Bernoulli(_ol_logistic(e))) ? 1.0 : 0.0 for e in η(-0.2, 0.8)]
     elseif fam === :gamma
-        α = 1 / 0.4^2
+        α = 1 / something(sigma, 0.4)^2
         [rand(rng, Dist.Gamma(α, exp(e) / α)) for e in η(0.3, 0.5)]
     else
-        φ = 1 / 0.3^2
+        φ = 1 / something(sigma, 0.3)^2
         [clamp(rand(rng, Dist.Beta(_ol_logistic(e) * φ, (1 - _ol_logistic(e)) * φ)), 1e-6, 1 - 1e-6)
          for e in η(0.2, 0.6)]
     end
@@ -127,6 +131,33 @@ const _OL_FAMS = (:poisson, :nb2, :binomial, :gamma, :beta)
         fitK = drm(fr, _ol_family(fam); data = d, K = K, se = false)
         @test loglik(fit) ≈ loglik(fitK) atol = 1e-7
         @test fit.theta ≈ fitK.theta rtol = 1e-4
+    end
+
+    # The legacy structured kernels clamp −2 log σ to [−8, 8] and the RE log-SD
+    # to [−8, 3] while differentiating as if unclamped. The ordinary route must
+    # not: σ = 0.01 puts the shape/precision at 1e4 > e^8 ≈ 2981.
+    @testset "$fam: fit outside the legacy clamp box (sigma = 0.01)" for fam in (:gamma, :beta)
+        d = _ol_sim(fam; seed = 20260926, sigma = 0.01)
+        fit = drm(_ol_formula(fam), _ol_family(fam); data = d, marginal = :Laplace, se = false)
+        θ̂ = copy(fit.theta)
+        @test -2 * θ̂[3] > 8                          # the estimate lies beyond the old clamp
+        @test loglik(fit) ≈ -_ol_reference_nll(fam, d, θ̂) atol = 1e-6
+        # Optimality, scale-free: one Newton step on the independent objective
+        # moves θ̂ by < 1e-5. (At precision 1e4 the curvature in β is ~1e6, so the
+        # absolute-gradient `converged` flag is not a fair test here; it is not
+        # asserted. A clamped route stops far from this optimum and fails both checks.)
+        ref(θ) = _ol_reference_nll(fam, d, θ)
+        step = ForwardDiff.hessian(ref, θ̂) \ ForwardDiff.gradient(ref, θ̂)
+        @test maximum(abs, step) < 1e-5
+    end
+
+    @testset "$fam: objective at an RE log-SD below the legacy clamp (−9)" for fam in _OL_FAMS
+        d = _ol_sim(fam; seed = 20260924)
+        fit = drm(_ol_formula(fam), _ol_family(fam); data = d, marginal = :Laplace, se = false)
+        θo = copy(fit.theta); θo[end] = -9.0
+        @test fit.nll(θo) ≈ _ol_reference_nll(fam, d, θo) atol = 1e-6
+        go = zeros(length(θo)); fit.nllgrad(go, θo)
+        @test go[end] ≈ ForwardDiff.gradient(θ -> _ol_reference_nll(fam, d, θ), θo)[end] rtol = 1e-4 atol = 1e-8
     end
 
     @testset "Binomial with trials: cbind(successes, failures)" begin
