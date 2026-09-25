@@ -194,6 +194,38 @@ correlation-bound testset) run only with `DRM_SLOW_TESTS=1`. The file takes
 the Julia 1.10 CI shard 4/4 it took about 3 min 11 s at fcf6ca268 (about
 31.5 min before), and the shard 18m16s (48m19s before).
 
+**Separate block on H2 (fourth review fix).** With phylo() on both mu and
+sigma, the default REML route (`phylo_coupled = false`, the separate block)
+ended in an error on H2, "the joint mode failed at the optimum", at 4ff6cd6fa
+(53 s and 40 s) and at e10cd752e (908 s). The outer search reached its optimum;
+the error came from the final re-evaluation there, which re-solves the joint
+mode from the cold start (the ML fixed effects with zero phylo effects). At
+that optimum, v = [-0.97152563, -1.34433573], the cold inner mode fails at the
+first step (`_ls_inner_mode` from a = 0 at the ML fixed effects returns
+ok = false, also with 1,000 outer iterations), while every point 0.01 away
+succeeds with a restricted NLL of about 54.694. Starting from the mode solved
+at a neighbouring point succeeds at the optimum itself.
+
+The fix (`_glsp_joint_reml_fit`). The fit keeps the joint mode (fixed effects
+and phylo effects) that the winning search last solved. When the cold
+re-evaluation at the optimum fails, it retries from that mode and errors only
+if that also fails. Where the cold re-evaluation succeeds nothing changes, so
+every row of `julia.tsv` is byte-identical apart from timings. H2 separate
+REML now returns -54.6930595303, converged, in 53 s and 39 s end to end.
+
+Where the time goes (a Julia profile of the end-to-end H2 separate REML fit).
+About 90% of the samples are in the separate-block ML fit that seeds REML
+(37 s on its own after compilation); the REML stage itself takes about 4 s.
+Speeding up the separate-block REML end to end therefore needs a faster ML
+seed. The ML route is not changed here.
+
+Test. "Arc 2 separate block: H2 REML re-evaluates at its optimum" runs the
+REML stage from the recorded Julia separate-block ML estimate (about 4 s),
+checks convergence, the restricted NLL (54.6930595303, 1e-6) and a finite
+Wald covariance, and checks that the cold solve at the optimum still fails, so
+the retry is exercised. It fails without the fix. The end-to-end `drm()` cell
+runs with `DRM_SLOW_TESTS=1` (58 s).
+
 **Reproduce.**
 ```
 DRMTMB_PATH=~/local-scratch/lanes/drmTMB-arc1-pr1304-fold Rscript --no-init-file native-fit.R

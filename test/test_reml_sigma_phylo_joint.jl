@@ -343,6 +343,55 @@ end
     @test loglik(fit_c) >= loglik(fit) - 1e-8
 end
 
+# ---- separate block on H2: the final re-evaluation at the optimum -------------
+# `_glsp_joint_reml_fit` re-solves the joint mode at the optimum from the cold start
+# (the ML β with a = 0) to report it. On H2 with the separate block that solve fails
+# at the exact optimum while every point 0.01 away succeeds, so the default REML
+# route for phylo() on both mu and sigma ended in an error rather than a fit. It now
+# retries from the mode the outer search left behind. The stage is called as the
+# separate route calls it, from the Julia separate-block ML estimate (drm(...,
+# method = :ML, g_tol = 1e-8), internal order [β; logL11; logL22]); the end-to-end
+# drm() cell, whose ML seed takes about 40 s locally, needs DRM_SLOW_TESTS=1.
+# No native twin: native drmTMB always estimates the mean-sigma phylo correlation.
+const _ARC2_H2_SEP_ML = [1.2865159540328035, 0.6089994106115011, -1.3264076438590262,
+                         0.49126907482577825, -0.9986507773659096, -1.4379081254419843]
+const _ARC2_H2_SEP_FORM = bf(@formula(y ~ x + phylo(1 | sp)), @formula(sigma ~ z + phylo(1 | sp)))
+
+@testset "Arc 2 separate block: H2 REML re-evaluates at its optimum" begin
+    data, nwk = _arc2_boundary_fixture("H2")
+    n = length(data.y)
+    Xμ = hcat(ones(n), data.x); Xψ = hcat(ones(n), data.z)
+    Q, gidx, G = _D._locscale_phylo_setup(augmented_phy(nwk), data.sp)
+    Zη, Zψ = _D._ls_canonical_Zeta(n), _D._ls_canonical_Zpsi(n)
+    θml = _ARC2_H2_SEP_ML
+    rf = _D._glsp_joint_reml_fit(Val(:gaussian_mean), data.y, Xμ, Xψ, gidx, G, Q, Zη, Zψ,
+                                 _D._glsp_sep_Λ,
+                                 [[log(0.3), log(0.3)], _D._glsp_reml_start(θml[5:6], 1:2)],
+                                 θml[1:4]; se = true, logsd_idx = (1, 2))
+    @test rf.converged
+    @test isfinite(rf.reml_nll)
+    @test rf.reml_nll ≈ 54.6930595303 atol = 1e-6
+    @test all(isfinite, rf.V)
+    # The fixture still exercises the retry: the cold solve at this optimum fails.
+    # (If a better inner solver makes it succeed, drop this line, not the testset.)
+    P = _D.prior_precision(Q, _D._ls_inv2x2(_D._glsp_sep_Λ(rf.v)))
+    @test !_D._glsp_joint_reml_nll(Val(:gaussian_mean), data.y, Xμ, Xψ, gidx, G, P, Zη, Zψ,
+                                   θml[1:4], zeros(2G))[5]
+    # The reported value is the restricted NLL there, solved from a warm start.
+    r = _D._glsp_joint_reml_nll(Val(:gaussian_mean), data.y, Xμ, Xψ, gidx, G, P, Zη, Zψ,
+                                rf.β, zeros(2G))
+    @test r[5]
+    @test rf.reml_nll ≈ r[1] atol = 1e-8
+    @test rf.β ≈ r[2] atol = 1e-6
+    if _ARC2_SLOW
+        fit = drm(_ARC2_H2_SEP_FORM, Gaussian(); data = data, tree = nwk, method = :REML,
+                  phylo_coupled = false, g_tol = 1e-8)
+        @test is_converged(fit)
+        @test loglik(fit) ≈ -rf.reml_nll atol = 1e-8
+        @test vcat(coef(fit, :mu), coef(fit, :sigma)) ≈ rf.β atol = 1e-8
+    end
+end
+
 # ---- variance boundary: a zero-signal REML fit converges on the plateau ------
 # With no scale-phylogeny signal the restricted NLL flattens as the log-SD runs to
 # −∞; its gradient falls like SD², below the FD gradient's rounding noise, so the

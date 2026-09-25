@@ -862,7 +862,10 @@ function _glsp_joint_reml_fit(kind, y, Xμ, Xψ, gidx, G, Q, Zη, Zψ, Λfun, st
         end
         return v, f, false
     end
-    best_v = nothing; best_f = Inf; best_conv = false
+    # `best_warm` keeps the joint mode (β, a) that the winning search last solved,
+    # at the optimum or an FD neighbour of it: the fallback start for the final
+    # re-evaluation below.
+    best_v = nothing; best_f = Inf; best_conv = false; best_warm = nothing
     for v0 in starts
         warm_β[] = copy(β_start); warm_a[] = zeros(2G)
         v, f, conv = newton_min(v0)
@@ -871,6 +874,7 @@ function _glsp_joint_reml_fit(kind, y, Xμ, Xψ, gidx, G, Q, Zη, Zψ, Λfun, st
         cor_edge && abs(v[2]) / hypot(v[2], exp(v[3])) > _GLSP_COR_CAP && continue
         if f < best_f
             best_v, best_f, best_conv = copy(v), f, conv
+            best_warm = (copy(warm_β[]), copy(warm_a[]))
         end
     end
     (best_v === nothing && !cor_edge) &&
@@ -893,6 +897,7 @@ function _glsp_joint_reml_fit(kind, y, Xμ, Xψ, gidx, G, Q, Zη, Zψ, Λfun, st
             # interior meet, and rounding must not decide between them.
             if f < (isfinite(best_f) ? best_f - 1e-9 * (1 + abs(best_f)) : Inf)
                 edge_w, best_f, best_conv, best_sign = copy(w), f, conv, sgn
+                best_warm = (copy(warm_β[]), copy(warm_a[]))
             end
         end
         edge_mode[] = edge_w !== nothing
@@ -906,6 +911,14 @@ function _glsp_joint_reml_fit(kind, y, Xμ, Xψ, gidx, G, Q, Zη, Zψ, Λfun, st
     eval_at = edge_w === nothing ? best_v : edge_w
     warm_β[] = copy(β_start); warm_a[] = zeros(2G)
     nll_r, β̂, â, S, ok = eval_v(eval_at)
+    # The cold start (β_start, a = 0) can fail at the optimum where the search's own
+    # warm mode succeeds (measured: H2 fixture, separate block, where the ML β with
+    # a = 0 fails at the REML optimum while every point 0.01 away solves). Retry from
+    # the mode the search left behind before giving up.
+    if !ok && best_warm !== nothing
+        warm_β[] = copy(best_warm[1]); warm_a[] = copy(best_warm[2])
+        nll_r, β̂, â, S, ok = eval_v(eval_at)
+    end
     ok || error("REML (joint Laplace): the joint mode failed at the optimum")
     P̂, Zη̂, Zψ̂ = model_at(eval_at)
     ml_nll, _, ml_ok = _ls_marginal_nll(kind, y, Xμ * β̂[1:pμ], Xψ * β̂[pμ+1:p], gidx, G, P̂, Zη̂, Zψ̂)
