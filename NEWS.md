@@ -6,6 +6,17 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **A structured marker plus an ordinary random effect no longer drops the ordinary
+  term.** `drm(bf(y ~ x + phylo(1 | sp) + (1 | h), sigma ~ 1), Gaussian(); …)` (and
+  the same shape with `relmat`/`animal`, or with `(0 + x | h)` or several bars) used
+  to reach the single-structured fitter, which fitted the marker alone and silently
+  discarded every `(1 | h)` term. It now fits drmTMB's model: independent blocks,
+  `V = D + Σ_k σ_k² Z_k K_k Z_kᵀ`, ML, reported in one `:resd` block (ordinary bars
+  first, the marker last; an ordinary intercept that shares the marker's grouping is
+  keyed `<g>_iid`). Nine fixtures match drmTMB `engine = "tmb"` to |ΔlogLik| ≤ 1.4e-10
+  (`docs/dev-log/evidence/arc2-structured-ordinary-bar/`). REML, `(1 + x | h)`,
+  range-estimated `spatial()`, `meta_V()`, `penalty` and sparse algorithms with this
+  shape now raise an `ArgumentError` instead of dropping a term.
 - **Package renamed to DRModels.jl.** The Julia package and module are now
   `DRModels`, while the modelling API remains `drm()`, `bf()`, and the existing
   fit/post-fit surface. `DRModels.DRM` is a soft-deprecated qualified alias for

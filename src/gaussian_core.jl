@@ -828,6 +828,15 @@ function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree 
         return _withformula(_fit_two_structured_gaussian(fam, y, Xμ, gidx1, G1, C1,
             gidx2, G2, C2, nmμ, grp1, grp2, g_tol), f)
     end
+    # Arc 2 `structured_with_ordinary_bar`: one structured marker PLUS ordinary
+    # `(1 | h)` bars. Every fitter below takes the marker alone and would
+    # silently DROP the bars (measured: phylo(1 | sp) + (1 | h) returned the
+    # marker-only logLik), so route the combination to its own engine first.
+    if structured !== nothing && !isempty(re)
+        return _withformula(_drm_gaussian_structured_plus_ranef(fam, structured, re, metav,
+            y, Xμ, Xσ, nmμ, nmσ, data; K = K, A = A, tree = tree, algorithm = algorithm,
+            penalty = penalty, g_tol = g_tol), f)
+    end
     if structured !== nothing
         kind, grp = structured
         gidx, G = _group_index(getproperty(data, grp))
