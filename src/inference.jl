@@ -1919,6 +1919,29 @@ end
 
 function _marginal_simulator(fit::DrmFit, data; K=nothing, A=nothing, tree=nothing,
                              coords=nothing)
+    sim = _marginal_simulator_build(fit, data; K, A, tree, coords)
+    # `nothing` sends `bootstrap` to the CONDITIONAL `simulate`. On the Gaussian
+    # `meta_V(...)` + random-effect route (`_fit_meta_gaussian_re`) that fallback
+    # is a different model: `means[:mu]` is Xβ and `scales[:sigma]` is √(v + σ²),
+    # so the conditional draw has NO random field at all. Refuse instead.
+    if sim === nothing && _is_meta_gaussian_re(fit)
+        throw(ArgumentError("bootstrap: could not build the marginal simulator for this " *
+            "`meta_V(...)` + random-effect fit (pass the same `data` and `tree` / `K` / `A` " *
+            "used to fit it); the conditional fallback would drop the random effect"))
+    end
+    return sim
+end
+
+function _is_meta_gaussian_re(fit::DrmFit)
+    (fit.family isa Gaussian && fit.formula isa DrmFormula) || return false
+    rhs = Dict(fit.formula.forms)
+    haskey(rhs, :mu) || return false
+    _, re, metav, structured, _ = _split_ranef(rhs[:mu]; allow_phylo_slope = true)
+    return metav !== nothing && (!isempty(re) || structured !== nothing)
+end
+
+function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing, tree=nothing,
+                                   coords=nothing)
     fit.nll isa LocScaleObjective &&
         return _ls_marginal_simulator(fit, data; K, A, tree, coords)
     _is_gaussian_lss(fit) && return _lss_marginal_simulator(fit, data; tree)
@@ -1932,8 +1955,9 @@ function _marginal_simulator(fit::DrmFit, data; K=nothing, A=nothing, tree=nothi
     # A Gaussian `meta_V(...)` fit with SEVERAL random fields (Arc 2,
     # `_fit_meta_gaussian_re`, e.g. `phylo(1 | sp) + (1 | study)`): the simulator
     # below draws ONE field, so it would silently bootstrap a model with the other
-    # field(s) missing. Refuse. A single field is drawn correctly: `scales[:sigma]`
-    # is √(v + σ²) there, and a phylo `re_sd` is on the raw scale drawn below.
+    # field(s) missing. Refuse. A single field is drawn below: `scales[:sigma]` is
+    # √(v + σ²) there, a phylo `re_sd` is on the raw scale drawn below, and phylo
+    # rows go to tree leaves by name (`phylo_leaf` below), as the fit maps them.
     if metav_ms !== nothing && fit.family isa Gaussian
         nfields = length(re) + length(_collect_structured(rhs[:mu]))
         nfields <= 1 ||
@@ -1953,6 +1977,7 @@ function _marginal_simulator(fit::DrmFit, data; K=nothing, A=nothing, tree=nothi
     (isempty(re) && structured === nothing) && return nothing
 
     # Which grouping factor, and what covariance does its random effect have?
+    phylo_leaf = nothing   # row → tree-leaf index, set for a phylo field
     grp, Kg = if structured !== nothing
         g = structured[2]
         hasproperty(data, g) || return nothing
@@ -1968,6 +1993,14 @@ function _marginal_simulator(fit::DrmFit, data; K=nothing, A=nothing, tree=nothi
         if structured[1] === :phylo
             phy = tree isa AbstractString ? augmented_phy(tree) : tree
             phy === nothing && return nothing
+            # Rows → tree LEAVES by name / tip index (#482), exactly as every phylo
+            # mean fit maps them (`_phylo_mean_leaf_index`; the sparse, meta_V and
+            # non-Gaussian Laplace routes), NOT by first-seen order. First-seen
+            # order drew the field on the wrong tips whenever the data's species
+            # order differed from the tree's (measured: sister-tip covariance
+            # 0.294 in the model, -0.005 in 6000 draws), and a tree with tips absent
+            # from the data failed the size check and fell back to `simulate`.
+            phylo_leaf = (_phylo_mean_leaf_index(phy, getproperty(data, g)), phy.n_leaves)
             (g, sigma_phy_dense(phy; σ²_phy = 1.0))
         elseif structured[1] === :spatial && K === nothing && coords !== nothing
             cmat = Matrix{Float64}(coords)
@@ -1997,7 +2030,7 @@ function _marginal_simulator(fit::DrmFit, data; K=nothing, A=nothing, tree=nothi
         (g, Matrix{Float64}(LinearAlgebra.I, G0, G0))
     end
 
-    gidx, G = _group_index(getproperty(data, grp))
+    gidx, G = phylo_leaf === nothing ? _group_index(getproperty(data, grp)) : phylo_leaf
     size(Kg) == (G, G) || return nothing
     # Location-scale-scale fits (#544/#545): the RE SD is per group,
     # σ_g,k = exp(Z_k' α), so the draw scales each group's effect individually.

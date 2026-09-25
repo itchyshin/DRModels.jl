@@ -16,6 +16,11 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   3e-10, every estimate within 3e-9 relative (`docs/dev-log/evidence/arc2-metav-random-effect/`).
   Random slopes, `spatial()`, REML, a `sigma` random effect and `sd(g) ~ …` still refuse; the marginal
   bootstrap refuses a `meta_V` fit with more than one random field rather than drop one.
+- **Bootstrap draws a phylo field on the right tree tips.** The marginal bootstrap simulator placed
+  `phylo(1 | sp)` rows on tips by the order species first appear in the data, not by name, so a data
+  set not sorted in tree-tip order drew the wrong phylogenetic covariance (sister tips: -0.005 drawn
+  against 0.294 in the model), and a tree with tips absent from the data fell back to the conditional
+  draw. It now uses the fits' name-based mapping. Tip-ordered data give bit-identical draws.
 
 - **Package renamed to DRModels.jl.** The Julia package and module are now
   `DRModels`, while the modelling API remains `drm()`, `bf()`, and the existing

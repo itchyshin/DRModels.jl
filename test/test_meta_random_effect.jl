@@ -177,6 +177,79 @@ end
     @test_throws ArgumentError DRModels._marginal_simulator(two, d2; tree = phy)
 end
 
+# The phylo field in a bootstrap draw must sit on the tree leaves the FIT used:
+# rows map to leaves by name (`_phylo_mean_leaf_index`), not by the order species
+# first appear in the data. Before the fix the simulator used first-seen order,
+# so with species listed L1, L3, L5, … the sister tips L1/L2 drew covariance
+# -0.005 against 0.294 in the model, and a tree with tips absent from the data
+# returned `nothing` (conditional fallback: no phylo field at all on meta_V).
+function _mre_phylo_data(phy, sp; seed = 3, sd_phy = 0.8, v = 0.05)
+    rng = StableRNG(seed)
+    n = length(sp)
+    C = sigma_phy_dense(phy; σ²_phy = 1.0)
+    a = cholesky(Symmetric(C)).L * (sd_phy .* randn(rng, phy.n_leaves))
+    leaf = DRModels._phylo_mean_leaf_index(phy, sp)
+    x = randn(rng, n)
+    y = 0.2 .+ 0.3 .* x .+ a[leaf] .+ 0.2 .* randn(rng, n) .+ sqrt(v) .* randn(rng, n)
+    return (; y, x, v = fill(v, n), sp)
+end
+
+@testset "phylo bootstrap draws the field on the fitted tree leaves" begin
+    phy = random_balanced_tree(8; branch_length = 0.5)     # height 1.5
+    C = sigma_phy_dense(phy; σ²_phy = 1.0)
+    L = phy.leaf_names
+    first_row(sp, name) = findfirst(==(name), sp)
+    fmeta = bf(@formula(y ~ x + meta_V(v) + phylo(1 | sp)), @formula(sigma ~ 1))
+    fplain = bf(@formula(y ~ x + phylo(1 | sp)), @formula(sigma ~ 1))
+    # (a) every tip present, species first seen in a NON-tip order;
+    # (b) two tips absent from the data (the fit keeps them in the prior).
+    shapes = (permuted = repeat(L[[1, 3, 5, 7, 2, 4, 6, 8]], inner = 10),
+              subset = repeat(L[[3, 1, 6, 2, 5, 4]], inner = 10))
+    for (label, sp) in pairs(shapes), (route, f) in ((:meta, fmeta), (:plain, fplain))
+        d = _mre_phylo_data(phy, sp)
+        fit = drm(f, Gaussian(); data = d, tree = phy)
+        s2 = re_sd(fit)[:sp]^2
+        sim = DRModels._marginal_simulator(fit, d; tree = phy)
+        @test sim !== nothing
+        Y = reduce(hcat, [sim(StableRNG(k)) for k in 1:4000])
+        i, j, k = first_row(sp, L[1]), first_row(sp, L[2]), first_row(sp, L[3])
+        # Model covariances: sisters L1/L2 share 1.0 of the 1.5 height, L1/L3 0.5.
+        # MC SE ≈ 0.01 at 4000 draws; the first-seen-order bug missed by ≥ 0.15.
+        @test cov(Y[i, :], Y[j, :]) ≈ s2 * C[1, 2] atol = 0.05
+        @test cov(Y[i, :], Y[k, :]) ≈ s2 * C[1, 3] atol = 0.05
+        # Row variance: phylo field + residual (√(v + σ²) on meta_V, σ plain).
+        @test var(Y[i, :]) ≈ s2 * C[1, 1] + fit.scales[:sigma][i]^2 rtol = 0.1
+    end
+
+    # A meta_V + phylo fit whose simulator cannot be built REFUSES: returning
+    # `nothing` would send `bootstrap` to the conditional `simulate`, which on this
+    # route has no random field at all. The plain phylo route is unchanged
+    # (no tree → `nothing`, its pre-existing conditional fallback).
+    sp = shapes.permuted
+    d = _mre_phylo_data(phy, sp)
+    fm = drm(fmeta, Gaussian(); data = d, tree = phy)
+    @test_throws ArgumentError DRModels._marginal_simulator(fm, d)
+    fp = drm(fplain, Gaussian(); data = d, tree = phy)
+    @test DRModels._marginal_simulator(fp, d) === nothing
+
+    # Relabelling rows with integer tip indices (the second mapping tier) is
+    # the same model, so it must give the SAME draws, value for value.
+    leaf = DRModels._phylo_mean_leaf_index(phy, sp)
+    dint = merge(d, (; sp = leaf))
+    fmi = drm(fmeta, Gaussian(); data = dint, tree = phy)
+    @test loglik(fmi) ≈ loglik(fm) atol = 1e-8
+    @test DRModels._marginal_simulator(fmi, dint; tree = phy)(StableRNG(7)) ≈
+          DRModels._marginal_simulator(fm, d; tree = phy)(StableRNG(7)) atol = 1e-6
+
+    # End to end: a small bootstrap on the subset-tip tree runs on the marginal
+    # simulator and brackets the estimate.
+    ds = _mre_phylo_data(phy, shapes.subset)
+    fs = drm(fmeta, Gaussian(); data = ds, tree = phy)
+    res = bootstrap_result(fs; data = ds, tree = phy, B = 8, rng = StableRNG(11),
+                           failures = :skip, check_converged = false)
+    @test all(r -> isfinite(r.lower) && isfinite(r.upper), res.summary)
+end
+
 @testset "meta_V + random effect: same target as drmTMB (committed native-fit.R numbers)" begin
     function rd(name)
         lines = filter(!isempty, readlines(joinpath(_MRE_DIR, "fixtures", name * ".tsv")))

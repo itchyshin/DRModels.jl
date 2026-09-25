@@ -79,7 +79,10 @@ Refused by code read, not by a test here: `spatial()` with `meta_V`,
 missing-response guard). Not expressible: a dense (non-diagonal) V, since
 `meta_V(v)` takes a column of variances. The marginal bootstrap refuses a `meta_V` fit with more than
 one random field (it draws one field only); single-field bootstrap draws the
-full marginal (tested). No interval-coverage claim.
+full marginal (tested), with a phylo field placed on tree leaves by name, so a
+non-tip species order and a tree with tips absent from the data are both drawn
+correctly (tested); if the simulator cannot be built (no `tree`), bootstrap
+refuses rather than fall back to the conditional draw. No interval-coverage claim.
 
 ## Reproduce
 
