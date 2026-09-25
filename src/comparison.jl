@@ -196,7 +196,7 @@ function _marginal_compare_guard(a::DrmFit, b::DrmFit, verb::AbstractString)
     end
     throw(ArgumentError(
         "$verb: cannot compare fits with different marginal approximations " *
-        "(`:$(a.marginal)` vs `:$(b.marginal)`) — $reason. Refit both with the same `marginal`."))
+        "(`:$(a.marginal)` vs `:$(b.marginal)`): $reason. Refit both with the same `marginal`."))
 end
 
 """
