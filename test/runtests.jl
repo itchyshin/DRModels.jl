@@ -481,6 +481,8 @@ _shard_include("test_reml_newton_sigma_phylo.jl")
 # drmTMB's restricted likelihood — on the asymmetric, separate and coupled blocks
 # (dense-oracle relationship + same-target native receipt + neighbour guards).
 _shard_include("test_reml_sigma_phylo_joint.jl")
+# Coupled σ-phylo ML reaches native drmTMB's optimum on its correlation bound (#818).
+_shard_include("test_coupled_ml_bound.jl")
 # Bivariate q4 REML must correct ALL FOUR among-axis SDs (β_μ AND β_σ profiled), not
 # just the means — regression for the scale-axis REML gap (#18).
 _shard_include("test_reml_q4_allaxes.jl")
