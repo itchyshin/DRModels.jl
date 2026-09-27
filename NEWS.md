@@ -6,6 +6,20 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **Bivariate `Student()` (`biv_student()` twin): `confint(fit; method =
+  :bootstrap)`-equivalent entry points (`bootstrap_result`, `bootstrap_ci`) no
+  longer abort on the first replicate (#766).** `simulate(fit)`'s generic
+  fallback assumed univariate keys (`fit.means[:mu]`, `fit.scales[:sigma]`);
+  a bivariate Student-t fit stores `:mu1`/`:mu2` and `:sigma1`/`:sigma2`
+  instead (the same shape as bivariate `Gaussian()`), so every bootstrap
+  replicate threw `KeyError: key :mu not found` before any refit was
+  attempted — a ~0 s abort regardless of `parm`. A new `_simulate_once`
+  method dispatches on the bivariate shape and draws `Y = mu + diag(sigma) *
+  Z * sqrt(nu / chisq_nu)`, `Z ~ N(0, R)`, mirroring bivariate Gaussian's own
+  branch. `confint(fit; method = :profile)` was unaffected by this bug (it
+  does not call `simulate`) and was already fixed by the large-ν bivariate-t
+  density correction below.
+
 - **Bivariate `Student()` (`biv_student()` twin) no longer diverges at large ν
   (follow-up to #721).** The joint (p = 2) and marginal (p = 1) log-density
   terms computed `loggamma((ν+2)/2) - loggamma(ν/2)` and
