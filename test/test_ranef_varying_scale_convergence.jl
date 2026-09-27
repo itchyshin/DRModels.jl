@@ -85,10 +85,29 @@ _gradinf(fit) = maximum(abs, ForwardDiff.gradient(fit.nll, fit.theta))
 # q1 - q2 (both terms ~1/D_min, their rounding error far above the true value),
 # which let the computed nll go to -1e124 and LBFGS chase the rounding hole. With
 # the cancellation-free form (`_re_quad_stable`) the same panel measures 17 fits
-# gradient-converged (all ||g||_inf <= 4.2e-9), 0 stalled, 3 threw (a boundary
-# sd -> 0 local optimum whose Hessian overflows -- a separate, pre-existing
-# vcov-guard outcome); every converged logLik matches drmTMB 0.7.1 (TMB Laplace,
-# exact for this Gaussian model) to <= 1e-9 where both reach the same optimum.
+# gradient-converged (all ||g||_inf <= 4.2e-9), 0 stalled, 3 threw (with the
+# vcov guard bypassed to see where each of the 3 actually stops, measured
+# against drmTMB 0.7.1 on the same draw):
+#   seed 3:  boundary sd -> 0 local optimum, nll -132.1588362544, ||g||_inf
+#            1.4e-9 -- matches drmTMB's own boundary optimum -132.1588362548.
+#            The Hessian-overflow / vcov-guard throw is the right call here.
+#   seed 4:  DRModels also lands on a boundary local optimum (nll -179.80),
+#            but drmTMB finds an INTERIOR optimum (nll -56.9710494815, log sd
+#            -0.81, sigma slope 10.04) that is 123 nats better; DRModels' own
+#            `fit.nll` evaluated at drmTMB's parameters is 56.97105, so the
+#            better optimum exists on this objective and LBFGS simply missed
+#            it. Not a boundary-Hessian issue -- an optimiser miss, filed as a
+#            follow-up (see PR body).
+#   seed 10: DRModels does not converge at all (mu intercept 177.5, ||g||_inf
+#            10.8, nll -258.04) vs drmTMB's -163.4460683592, 95 nats worse.
+#            Not a boundary case -- a non-converged/diverged fit, filed as a
+#            follow-up (see PR body).
+# All 3 throws are safe (caught, not returned as silent garbage); only seed 3
+# is actually the boundary-Hessian-overflow case this comment used to claim
+# for all three. This behaviour (all 3 throwing) predates this PR -- origin/main
+# also threw on these same 3 seeds. Every converged logLik matches drmTMB 0.7.1
+# (TMB Laplace, exact for this Gaussian model) to <= 1e-9 where both reach the
+# same optimum.
 const RUNAWAY = (n = 40, G = 4, sigma_slope = 10.0, sd_b = 0.8)
 # The WELL-CONDITIONED region: the shape of #609's own 144-row fixture.
 const CLEAN = (n = 144, G = 12, sigma_slope = 0.15, sd_b = 0.8)

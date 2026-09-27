@@ -6,6 +6,19 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **Cancellation-free Woodbury quadratic for Gaussian `(1 | g)` + `sigma ~ x`
+  (#746, #747).** `_fit_ranef_gaussian` and the `sd(g) ~ z` route
+  `_fit_ranef_gaussian_lss` formed `r'V⁻¹r` as `q1 - q2` (both terms `~1/D_min`),
+  so once one residual sigma_i got small the rounding error swamped the true
+  value and LBFGS chased the resulting cancellation hole (logLik up to +1e133
+  on origin/main). `_re_quad_stable` now evaluates the same quantity as the
+  penalised RSS at the conditional mode instead. StableRNG sweep, 60 fits:
+  origin/main 12/60 absurd, fixed 0/60, logLik matches drmTMB 0.7.1 to <=
+  3.6e-13. Of the 3 seeds that still throw on the #609 runaway panel, only one
+  (seed 3) is the boundary-Hessian-overflow case; seeds 4 and 10 are optimiser
+  misses (LBFGS lands on a worse or non-converged point than drmTMB's), filed
+  as a follow-up rather than fixed here — see `test/test_ranef_varying_scale_convergence.jl`.
+
 - **`marginal = :Laplace` on an ordinary `(1 | g)` (Arc 2, drmTMB parity).**
   Poisson, Binomial, NegBinomial2, Gamma and Beta with one ordinary random
   intercept on the mean (`sigma ~ 1` for the scale families) can now be fitted
