@@ -7,8 +7,18 @@
 # reported logLik was 34 nat off and the RE correlation came out −0.56 (true MLE
 # +0.43). The reference here is an INDEPENDENT AGHQ-40 implementation (ForwardDiff
 # Newton to each group's mode, 40×40 nodes), not the package helper.
+#
+# Test stability fix (2026-09-27): the DGP originally drew data from Julia's global
+# RNG (`Random.seed!(n)` + unqualified `rand`/`randn`). That stream is NOT stable
+# across Julia releases -- confirmed by running this file on Julia 1.10 and 1.13:
+# same seed, different y/s realizations, so the golden logLik/ρ/coef thresholds
+# below (tuned to one specific draw) failed on 1.13 while passing on 1.10. Fixed by
+# threading an explicit `StableRNG` (already a test dep, used the same way in
+# test_mixed_family.jl / test_cox_reid_poisson_phylo.jl) through the whole DGP, and
+# re-deriving the golden numbers from the resulting (now version-stable) dataset;
+# verified bit-identical fit results on Julia 1.10 and 1.13.
 using DRModels
-using Test, Random, LinearAlgebra, ForwardDiff
+using Test, Random, LinearAlgebra, ForwardDiff, StableRNGs
 import Distributions
 const _Dd834 = Distributions
 const _Optim834 = DRModels.Optim
@@ -56,17 +66,22 @@ end
 _rho834(θre) = (L = [exp(θre[1]) 0; θre[3] exp(θre[2])]; S = L * L'; S[1, 2] / sqrt(S[1, 1] * S[2, 2]))
 
 # Shared DGP: G groups × m obs, Σ = [0.5², ρ·0.5·0.4; ·, 0.4²], ρ = 0.3.
+# Uses StableRNG (not the global RNG via Random.seed!) so the drawn data — and every
+# numeric threshold below that depends on it — is identical across Julia versions;
+# Julia's default global RNG stream for a given `Random.seed!(n)` is NOT guaranteed
+# stable across Julia releases (observed: Julia 1.10 vs 1.13 diverge). The returned
+# `rng` continues to drive the response draws (y / s) so the whole DGP is one stream.
 function _dgp834(seed; G = 150, m = 20)
-    Random.seed!(seed)
-    n = G * m; g = repeat(1:G, inner = m); x = randn(n)
+    rng = StableRNG(seed)
+    n = G * m; g = repeat(1:G, inner = m); x = randn(rng, n)
     Σ = [0.25 0.3*0.5*0.4; 0.3*0.5*0.4 0.16]
-    B = cholesky(Symmetric(Σ)).L * randn(2, G)
-    return n, g, x, B
+    B = cholesky(Symmetric(Σ)).L * randn(rng, 2, G)
+    return n, g, x, B, rng
 end
 
 @testset "adaptive GHQ helper (#834)" begin
-    Random.seed!(1)
-    m = 20; x = randn(m); y = Float64.(rand(0:6, m))
+    rng834 = StableRNG(1)   # version-stable: see _dgp834
+    m = 20; x = randn(rng834, m); y = Float64.(rand(rng834, 0:6, m))
     Zre = hcat(ones(m), x); idx = collect(1:m)
     θ = [0.3, 0.2, log(0.5), log(0.4), 0.1]
     function helper(θ, K)
@@ -106,18 +121,18 @@ end
 end
 
 @testset "Poisson (1 + x | g): AGHQ logLik, correlation, start-independence (#834)" begin
-    n, g, x, B = _dgp834(20260627)
-    y = Float64.([rand(_Dd834.Poisson(exp(1.0 + 0.5 * x[i] + B[1, g[i]] + B[2, g[i]] * x[i]))) for i in 1:n])
+    n, g, x, B, rng834 = _dgp834(20260627)
+    y = Float64.([rand(rng834, _Dd834.Poisson(exp(1.0 + 0.5 * x[i] + B[1, g[i]] + B[2, g[i]] * x[i]))) for i in 1:n])
     fit = drm(bf(@formula(y ~ x + (1 + x | g))), Poisson(); data = (; y, x, g))
     θ̂ = fit.theta
     lf = [_Dd834.logfactorial(Int(v)) for v in y]
     ref = _ref_loglik834((i, η) -> y[i] * η - exp(η) - lf[i], g, θ̂[1] .+ θ̂[2] .* x, x, θ̂[3:5])
     @test fit.converged
-    @test abs(loglik(fit) - ref) < 0.05                     # main: −33.9 nat
-    @test ref > -6061.0                                     # true-logLik maximum ≈ −6060.985 (main's optimum: −6141.9)
-    @test _rho834(θ̂[3:5]) > 0                              # main: −0.555 (sign flipped)
-    @test abs(_rho834(θ̂[3:5]) - 0.427) < 0.02              # AGHQ-15/40 MLE ρ = 0.427
-    @test coef(fit, :mu) ≈ [1.0432, 0.5472] atol = 2e-3     # AGHQ MLE (main: [1.095, 0.469])
+    @test abs(loglik(fit) - ref) < 0.05
+    @test ref > -6148.8                                     # true-logLik maximum ≈ −6148.750 (AGHQ-40)
+    @test _rho834(θ̂[3:5]) > 0                              # true ρ = 0.3, sign must be recovered
+    @test abs(_rho834(θ̂[3:5]) - 0.4012) < 0.02             # AGHQ-15/40 MLE ρ = 0.4012
+    @test coef(fit, :mu) ≈ [1.0761, 0.5062] atol = 2e-3     # AGHQ MLE
     # start-independence: the stored objective from two far-apart starts
     θA = [log(sum(y) / n), 0.0, log(0.4), log(0.4), 0.0]
     θB = [0.0, 0.3, log(1.0), log(0.2), 0.3]
@@ -128,20 +143,20 @@ end
 end
 
 @testset "Beta-binomial (1 + x | g): AGHQ logLik and correlation (#834)" begin
-    n, g, x, B = _dgp834(20260628)
+    n, g, x, B, rng834 = _dgp834(20260628)
     φ = 30.0
     μ = 1 ./ (1 .+ exp.(-(0.2 .+ 0.5 .* x .+ B[1, g] .+ B[2, g] .* x)))
-    s = Float64.([rand(_Dd834.BetaBinomial(20, μ[i] * φ, (1 - μ[i]) * φ)) for i in 1:n])
+    s = Float64.([rand(rng834, _Dd834.BetaBinomial(20, μ[i] * φ, (1 - μ[i]) * φ)) for i in 1:n])
     fail = 20 .- s
     fit = drm(bf(@formula(cbind(s, fail) ~ x + (1 + x | g)), @formula(sigma ~ 1)), BetaBinomial(); data = (; s, fail, x, g))
     θ̂ = fit.theta; φ̂ = exp(-2θ̂[3])
     llf = (i, η) -> (p = 1 / (1 + exp(-η)); _Dd834.logpdf(_Dd834.BetaBinomial(20, p * φ̂, (1 - p) * φ̂), Int(s[i])))
     ref = _ref_loglik834(llf, g, θ̂[1] .+ θ̂[2] .* x, x, θ̂[4:6])
     @test fit.converged
-    @test abs(loglik(fit) - ref) < 0.05                     # main: −4.0 nat
-    @test ref > -7431.2                                     # true-logLik maximum ≈ −7431.184 (main's optimum: −7431.65)
-    @test abs(_rho834(θ̂[4:6]) - 0.251) < 0.02              # AGHQ-15/40 MLE ρ = 0.251
-    @test coef(fit, :mu) ≈ [0.1957, 0.4743] atol = 2e-3     # AGHQ MLE (main: [0.197, 0.467])
+    @test abs(loglik(fit) - ref) < 0.05
+    @test ref > -7525.72                                    # true-logLik maximum ≈ −7525.668 (AGHQ-40)
+    @test abs(_rho834(θ̂[4:6]) - 0.3333) < 0.02             # AGHQ-15/40 MLE ρ = 0.3333
+    @test coef(fit, :mu) ≈ [0.1041, 0.5046] atol = 2e-3     # AGHQ MLE
 end
 
 # Uncentred slope covariate (x ≈ 27) with ρ = 0.95: intercept and slope effects are
@@ -150,13 +165,13 @@ end
 # log-determinant from Cholesky diagonals, so the fit must run cleanly and keep
 # AGHQ-40 accuracy.
 @testset "Poisson (1 + x | g), uncentred x and ρ = 0.95: stable (#834)" begin
-    Random.seed!(20260629)
+    rng834 = StableRNG(20260629)   # version-stable: see _dgp834
     G = 100; m = 20; n = G * m; g = repeat(1:G, inner = m)
-    x = 27 .+ 2 .* randn(n)
+    x = 27 .+ 2 .* randn(rng834, n)
     sd0 = 0.5; sd1 = 0.02; ρ = 0.95
     Σ = [sd0^2 ρ*sd0*sd1; ρ*sd0*sd1 sd1^2]
-    B = cholesky(Symmetric(Σ)).L * randn(2, G)
-    y = Float64.([rand(_Dd834.Poisson(exp(-0.5 + 0.05 * x[i] + B[1, g[i]] + B[2, g[i]] * x[i]))) for i in 1:n])
+    B = cholesky(Symmetric(Σ)).L * randn(rng834, 2, G)
+    y = Float64.([rand(rng834, _Dd834.Poisson(exp(-0.5 + 0.05 * x[i] + B[1, g[i]] + B[2, g[i]] * x[i]))) for i in 1:n])
     fit = drm(bf(@formula(y ~ x + (1 + x | g))), Poisson(); data = (; y, x, g))
     θ̂ = fit.theta
     @test all(isfinite, θ̂) && isfinite(loglik(fit))
