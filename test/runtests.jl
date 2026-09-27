@@ -590,3 +590,7 @@ _shard_include("test_609_varying_scale.jl")
 # DimensionMismatch because simulate drew fit.nobs values against full-design
 # means. Guards both, plus the iteration count the full-row rebuild dropped.
 _shard_include("test_bridge_response_mask_inference.jl")
+
+# Cancellation sweep: multi-RE (1|g)+(1|h), spatial(1|site) and the sparse
+# two-structured Gaussian marginals vs a BigFloat dense reassembly as σ_e → 0.
+_shard_include("test_cancellation_sweep.jl")

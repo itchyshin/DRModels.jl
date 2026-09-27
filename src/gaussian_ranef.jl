@@ -559,9 +559,28 @@ end
 # small q×q (q = Σ G_k) capacitance M = I + Z̃ᵀD⁻¹Z̃ (the logdet(G) term is
 # absorbed into logdet(M)). In exact arithmetic M is identity-plus-PSD hence PD,
 # but at extreme σ the I is lost to rounding (M's entries ≫ 1) and the raw
-# Z̃ᵀD⁻¹Z̃ is rank-deficient (crossed intercept columns), so we factor with
-# check=false and return a finite penalty on failure — the optimiser's line
-# search then retreats from those ill-scaled probes. Closed-form GLS; Z precomputed.
+# Z̃ᵀD⁻¹Z̃ is rank-deficient (crossed intercept columns). Forming M + I and
+# Cholesky-factoring it then fails — or, worse, SUCCEEDS with pivots that are
+# differences of O(1/σ_e²) numbers, so logdet(M + I) and the Woodbury quadratic
+# r′D⁻¹r − c′(M + I)⁻¹c lose every digit as σ_e → 0 with one record per level
+# (the #835/#837 cancellation class; measured: nll off by 0.63 at log σ_e = −16
+# and −0.44 in logdet alone at −18, test_cancellation_sweep.jl). We therefore
+# never form M: `_multi_re_qr` takes the QR factorisation of the stacked design
+# [D^{-1/2}Z̃; I] (RᵀR = I + Z̃ᵀD⁻¹Z̃ exactly, without squaring the condition
+# number), reads logdet(M + I) = 2Σ log|Rᵢᵢ|, and evaluates the quadratic as the
+# penalised RSS Σ (rᵢ − z̃ᵢᵀb̂)²/Dᵢ + ‖b̂‖² at the least-squares mode b̂ (every term
+# ≥ 0). Identical to the Woodbury expressions in exact arithmetic. Closed-form
+# GLS; Z precomputed.
+function _multi_re_qr(Z̃::AbstractMatrix, sdinv::AbstractVector, r::AbstractVector)
+    T = promote_type(eltype(Z̃), eltype(sdinv), eltype(r))
+    q = size(Z̃, 2)
+    F = qr([sdinv .* Z̃; Matrix{T}(I, q, q)])
+    bhat = F \ [sdinv .* r; zeros(T, q)]
+    R = F.R
+    logdetM = 2 * sum(log ∘ abs, diag(R))
+    return R, bhat, logdetM
+end
+
 function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol)
     n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     K = length(comps)
@@ -586,13 +605,13 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
         σk = [exp(clamp(θ[pμ+pσ+k], -30.0, 30.0)) for k in 1:K]
         σcol = [σk[colcomp[c]] for c in 1:q]
         Z̃ = Z .* σcol'                             # scale each column by its σ_k
-        ZtDir = Z̃' * (invD .* r)
-        M = Z̃' * (invD .* Z̃)
-        C = cholesky(Symmetric(M + I); check = false)  # check=false → never throws
-        issuccess(C) || return oftype(sum(θ), 1e18)    # retreat from ill-scaled probes
-        quad = sum(r .^ 2 .* invD) - dot(ZtDir, C \ ZtDir)
-        logdetV = sum(2 .* ησ) + logdet(C)
-        return 0.5 * (logdetV + quad) + 0.5 * n * log(2π)
+        _, bhat, logdetM = _multi_re_qr(Z̃, exp.(-ησ), r)
+        e = r .- Z̃ * bhat
+        quad = sum(invD .* e .^ 2) + sum(abs2, bhat)
+        logdetV = sum(2 .* ησ) + logdetM
+        val = 0.5 * (logdetV + quad) + 0.5 * n * log(2π)
+        isfinite(val) || return oftype(val, 1e18)  # HagerZhang asserts a finite objective
+        return val
     end
 
     function grad!(Gout, θ)
@@ -605,13 +624,10 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
         σk = [exp(clamp(θ[pμ+pσ+k], -30.0, 30.0)) for k in 1:K]
         σcol = [σk[colcomp[c]] for c in 1:q]
         Z̃ = Z .* σcol'
-        ZtDir = Z̃' * (invD .* r)
-        M = Z̃' * (invD .* Z̃)
-        C = cholesky(Symmetric(M + I); check = false)
-        issuccess(C) || return Gout
-
-        Hinv = C \ Matrix{Float64}(I, q, q)
-        bscaled = Hinv * ZtDir
+        R, bscaled, _ = _multi_re_qr(Z̃, exp.(-ησ), r)   # RᵀR = I + Z̃ᵀD⁻¹Z̃
+        all(isfinite, bscaled) || return Gout
+        Rinv = UpperTriangular(R) \ Matrix{Float64}(I, q, q)
+        Hinv = Rinv * Rinv'
         α = invD .* (r .- Z̃ * bscaled)             # V⁻¹r
 
         Gout[1:pμ] .= -(Xμ' * α)
