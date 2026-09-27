@@ -2249,7 +2249,7 @@ fixef(fit::DrmFit) =
     [p => (names = ns, estimate = coef(fit, p)) for ((p, _), (_, ns)) in zip(fit.blocks, fit.coefnames)]
 
 function Base.show(io::IO, fit::DrmFit)
-    print(io, "DrmFit (Gaussian location–scale, ", fit.nobs, " obs, ",
+    print(io, "DrmFit (", _family_name(fit.family), ", ", fit.nobs, " obs, ",
         fit.converged ? "converged" : "NOT converged",
         "; logLik = ", round(fit.loglik, digits = 2), ")")
     for (p, _) in fit.blocks

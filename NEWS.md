@@ -6,6 +6,11 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **`show(io, fit)` (2-arg) now names the fitted family (#758).** The compact
+  form — used by `println(fit)`, string interpolation and `repr` — printed
+  "Gaussian location–scale" for every family (Poisson, BetaBinomial, …) while
+  the `MIME"text/plain"` method already printed the correct one. Both now
+  agree.
 - **`marginal = :Laplace` on an ordinary `(1 | g)` (Arc 2, drmTMB parity).**
   Poisson, Binomial, NegBinomial2, Gamma and Beta with one ordinary random
   intercept on the mean (`sigma ~ 1` for the scale families) can now be fitted
