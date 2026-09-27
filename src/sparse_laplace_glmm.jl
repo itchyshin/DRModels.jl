@@ -3058,7 +3058,7 @@ function _fit_crossed_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, gi
     return _withnll(fit, nll, grad!)
 end
 
-function _fit_binomial_crossed_laplace(fam, s, ntr, Xμ, comps, nmμ, g_tol; se::Bool = false,
+function _fit_binomial_crossed_laplace(fam, s, ntr, Xμ, comps, nmμ, g_tol; se::Bool = true,
                                        polish_iterations::Int = 0)
     length(comps) == 2 || error("_fit_binomial_crossed_laplace requires two random-intercept components")
     all(==(1.0), comps[1][1]) && all(==(1.0), comps[2][1]) ||
