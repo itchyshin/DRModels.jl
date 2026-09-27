@@ -190,6 +190,52 @@ function _group_index(labels)
     return gidx, length(lvl)
 end
 
+# Cancellation-free Woodbury quadratic form r′V⁻¹r for V = D + Z Σ_b Z′ with one
+# scalar random effect per group (Z_ik = w_i·[g_i = k], Σ_b = diag(σ_b,k²)) —
+# #746 / #747.
+#
+# The textbook Woodbury form r′V⁻¹r = r′D⁻¹r − Σ_k C_k²/M_k (C_k = Σ w_i r_i/D_i,
+# M_k = 1/σ_b,k² + Σ w_i²/D_i) is a DIFFERENCE of two terms that both grow like
+# 1/D_min. When the optimiser pushes one residual σ_i towards 0 (σ ~ x with a
+# steep slope), both terms reach ~1e130 and their rounding error (~1e114) is far
+# larger than the true O(100) value: the difference can come out hugely NEGATIVE,
+# the nll → −1e133, and LBFGS "converges" into that rounding hole (logLik +1e44
+# … +1e133 in the Wave8 twin cells). The same quantity is the penalised
+# residual sum of squares at the conditional mode û_k = C_k/M_k:
+#
+#     r′V⁻¹r = Σ_i (r_i − w_i û_{g_i})²/D_i + Σ_k û_k²/σ_b,k²,
+#
+# a sum of NON-NEGATIVE terms, so it can never go below zero. One step of
+# iterative refinement on û keeps the tiny-D terms accurate (r_i − w_i û is then
+# formed from an û that is correct to rounding relative to r_i). In exact
+# arithmetic the result is identical to q1 − q2 (and the refinement step is
+# identically zero as a function of θ, so ForwardDiff derivatives are unchanged).
+function _re_quad_stable(r::AbstractVector, invD::AbstractVector, w, gidx::AbstractVector{<:Integer},
+                         invσb2::AbstractVector, S::AbstractVector, C::AbstractVector)
+    T = promote_type(eltype(r), eltype(invD), eltype(invσb2), eltype(S), eltype(C))
+    G = length(S)
+    M = Vector{T}(undef, G); u = Vector{T}(undef, G); gk = zeros(T, G)
+    @inbounds for k in 1:G
+        M[k] = invσb2[k] + S[k]
+        u[k] = C[k] / M[k]
+    end
+    @inbounds for i in eachindex(r)
+        k = gidx[i]; wi = w === nothing ? one(T) : w[i]
+        gk[k] += wi * (r[i] - wi * u[k]) * invD[i]
+    end
+    quad = zero(T)
+    @inbounds for k in 1:G
+        u[k] += (gk[k] - u[k] * invσb2[k]) / M[k]
+        quad += u[k]^2 * invσb2[k]
+    end
+    @inbounds for i in eachindex(r)
+        k = gidx[i]; wi = w === nothing ? one(T) : w[i]
+        e = r[i] - wi * u[k]
+        quad += e * e * invD[i]
+    end
+    return quad
+end
+
 # Gaussian location–scale with one random intercept (1 | g) on the mean.
 # θ = [β_μ; β_σ (log σ); log σ_b].
 # `reml=true` (#439) keeps β_μ in θ and adds the Patterson–Thompson term
@@ -212,32 +258,32 @@ function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ,
     const_2pi = 0.5 * n * log(2π)
     const_pμ = 0.5 * pμ * log(2π)
 
-    # Historical ML Woodbury nll — do not change this loop (byte-for-byte default).
+    # ML Woodbury nll. The quadratic form is the cancellation-free
+    # `_re_quad_stable` (#746/#747); in exact arithmetic it equals the historical
+    # q1 − q2 = r′D⁻¹r − Σ C_k²/M_k.
     function nll_ml(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]; lσb = θ[pμ+pσ+1]
         ημ = Xμ * βμ; ησ = Xσ * βσ                 # ησ = log σ_i
         σb² = exp(2lσb)
         T = eltype(θ)
         S = zeros(T, G); C = zeros(T, G)           # S_k = Σ 1/D_i,  C_k = Σ r_i/D_i
-        q1 = zero(T); logdetD = zero(T)
+        rv = Vector{T}(undef, n); invDv = Vector{T}(undef, n)
+        logdetD = zero(T)
         @inbounds for i in 1:n
             invD = exp(-2 * ησ[i])
             r = y[i] - ημ[i]
-            a = r * invD
+            rv[i] = r; invDv[i] = invD
             k = gidx[i]
             wi = w[i]
             S[k] += wi * wi * invD                 # (ZᵀD⁻¹Z)_kk = Σ w_i²/D_i
-            C[k] += wi * a                         # (ZᵀD⁻¹r)_k  = Σ w_i r_i/D_i
-            q1 += r * a                            # rᵀD⁻¹r
+            C[k] += wi * r * invD                  # (ZᵀD⁻¹r)_k  = Σ w_i r_i/D_i
             logdetD += 2 * ησ[i]                   # log D_i
         end
-        q2 = zero(T); logdetCap = zero(T)
+        logdetCap = zero(T)
         @inbounds for k in 1:G
-            Mk = 1 / σb² + S[k]                     # Woodbury capacitance (diagonal)
-            q2 += C[k]^2 / Mk
             logdetCap += log(1 + σb² * S[k])        # det-lemma term
         end
-        quad = q1 - q2
+        quad = _re_quad_stable(rv, invDv, w, gidx, fill(1 / σb², G), S, C)
         logdetV = logdetD + logdetCap
         return 0.5 * (logdetV + quad) + const_2pi
     end
@@ -250,20 +296,14 @@ function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ,
         ημ = Xμ * βμ; ησ = Xσ * βσ
         σb² = exp(2lσb)
         T = eltype(θ)
-        S = zeros(T, G); C = zeros(T, G)
+        S = zeros(T, G)
         ZtDinvX = zeros(T, G, pμ)
         XtDinvX = zeros(T, pμ, pμ)
-        q1 = zero(T); logdetD = zero(T)
         @inbounds for i in 1:n
             invD = exp(-2 * ησ[i])
-            r = y[i] - ημ[i]
-            a = r * invD
             k = gidx[i]
             wi = w[i]
             S[k] += wi * wi * invD
-            C[k] += wi * a
-            q1 += r * a
-            logdetD += 2 * ησ[i]
             @inbounds for j in 1:pμ
                 xj = Xμ[i, j]
                 ZtDinvX[k, j] += wi * invD * xj
@@ -272,13 +312,10 @@ function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ,
                 end
             end
         end
-        q2 = zero(T); logdetCap = zero(T)
         XtVinvX = copy(XtDinvX)
         @inbounds for k in 1:G
             Mk = 1 / σb² + S[k]
             invMk = 1 / Mk
-            q2 += C[k]^2 * invMk
-            logdetCap += log(1 + σb² * S[k])
             @inbounds for j in 1:pμ
                 zj = ZtDinvX[k, j]
                 @inbounds for l in 1:pμ
@@ -286,7 +323,8 @@ function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ,
                 end
             end
         end
-        nll_ml_θ = 0.5 * (logdetD + logdetCap + q1 - q2) + const_2pi
+        # ML part via the cancellation-free `nll_ml` (#746/#747).
+        nll_ml_θ = nll_ml(θ)
         # Xμ′V⁻¹Xμ is PSD by construction, but it is formed by Woodbury SUBTRACTION.
         # As σb² → ∞ the group means absorb the mean signal, Xμ′V⁻¹Xμ → 0, and rounding
         # noise can make its determinant NEGATIVE (measured at lσb ≈ 16, σb² ≈ 8e13).

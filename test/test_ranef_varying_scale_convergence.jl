@@ -76,10 +76,19 @@ _fit(dat) = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ x)), Gaussian(); 
 _gradinf(fit) = maximum(abs, ForwardDiff.gradient(fit.nll, fit.theta))
 
 # The RUNAWAY region: sigma slope 10 over n = 40 in G = 4 groups puts the
-# steepest rows many orders of magnitude apart, so LBFGS climbs the unbounded
-# sigma_i -> 0 ridge. Measured on macOS/aarch64 2026-09-06 over seeds 1:20 --
-# 3 fits gradient-converged, 14 stalled (worst ||g||_inf = 4.23e124 with a
-# POSITIVE Gaussian loglik of +1929.55), 3 threw.
+# steepest rows many orders of magnitude apart. Measured on macOS/aarch64
+# 2026-09-06 over seeds 1:20 -- 3 fits gradient-converged, 14 stalled (worst
+# ||g||_inf = 4.23e124 with a POSITIVE Gaussian loglik of +1929.55), 3 threw.
+#
+# #746/#747 (2026-09-27): that "unbounded sigma_i -> 0 ridge" was NOT a property
+# of the likelihood. It was catastrophic cancellation in the Woodbury quadratic
+# q1 - q2 (both terms ~1/D_min, their rounding error far above the true value),
+# which let the computed nll go to -1e124 and LBFGS chase the rounding hole. With
+# the cancellation-free form (`_re_quad_stable`) the same panel measures 17 fits
+# gradient-converged (all ||g||_inf <= 4.2e-9), 0 stalled, 3 threw (a boundary
+# sd -> 0 local optimum whose Hessian overflows -- a separate, pre-existing
+# vcov-guard outcome); every converged logLik matches drmTMB 0.7.1 (TMB Laplace,
+# exact for this Gaussian model) to <= 1e-9 where both reach the same optimum.
 const RUNAWAY = (n = 40, G = 4, sigma_slope = 10.0, sd_b = 0.8)
 # The WELL-CONDITIONED region: the shape of #609's own 144-row fixture.
 const CLEAN = (n = 144, G = 12, sigma_slope = 0.15, sd_b = 0.8)
@@ -121,15 +130,15 @@ const CLEAN = (n = 144, G = 12, sigma_slope = 0.15, sd_b = 0.8)
     println("  runaway panel: $nrun fits, $nconv converged, $nstall stalled ",
             "(worst ||g||_inf $(worst_stall)), $nviol violations, $nerr threw")
 
-    # THE CONTRACT. Red on origin/main.
+    # THE CONTRACT. Red on origin/main before #609 item 2.
     @test nviol == 0
-    # FIXTURE GUARD: the panel must actually reach the defect, or `nviol == 0`
-    # is vacuous. If this fails, the region stopped stalling on this platform --
-    # widen the seed range or steepen `sigma_slope`; do not relax the line above.
-    @test nstall >= 1
-    # THE OTHER SIDE, inside the same region: the fix must not report `false`
-    # wholesale.
-    @test nconv >= 1
+    # The former fixture guard `nstall >= 1` asserted that this region STALLS.
+    # After #746/#747 it no longer does -- the stall was the cancellation
+    # artifact described above -- so the panel now guards the opposite: the
+    # region must be fitted, not merely flagged. (The #609 flag contract itself
+    # stays exercised: `nviol == 0` above, and the boundary cases below.)
+    # 17 measured on macOS/aarch64; margin for platform-dependent boundary seeds.
+    @test nconv >= 15
 
     # --- the OTHER side of the boundary, at the boundary -------------------
     # A well-behaved draw that genuinely meets the gradient criterion and sits

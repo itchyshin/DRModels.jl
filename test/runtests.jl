@@ -584,6 +584,11 @@ _shard_include("test_joint_missing_finite_bridge.jl")
 _shard_include("test_577_ml_structural_zeros.jl")
 _shard_include("test_609_varying_scale.jl")
 
+# Issues #746/#747: Gaussian (1 | g) + sigma ~ x returned logLik ~ +1e44..+1e125
+# from catastrophic cancellation in the Woodbury quadratic q1 - q2. Pins the
+# cancellation-free `_re_quad_stable` and drmTMB-twinned fits on formerly failing seeds.
+_shard_include("test_twin_gap_747.jl")
+
 # Issue #646: on the missing-response Gaussian route `is_converged` read false on a
 # genuinely converged fit (the degeneracy bar took std() of a NaN-carrying response,
 # and every > against NaN is false), and every bootstrap replicate threw
