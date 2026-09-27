@@ -835,6 +835,41 @@ function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree 
                 "bridge, or `drm_listwise` natively) is the supported route there."))
         end
     end
+    # Simultaneous mean + sigma random intercepts (#745, twin drmTMB #1287):
+    # `y ~ x + (1 | g), sigma ~ (1 | g)`. drmTMB admits this by handing TMB the
+    # full random vector (u_mu, u_sigma) and letting its black-box nested
+    # Laplace integrate both jointly (`src/drmTMB.cpp` model_type 1, independent
+    # `dnorm(u_mu,0,1)` / `dnorm(u_sigma,0,1)` priors, no cross-dpar correlation
+    # unless a coupled `(1 | tag | group)` tag is used — not this formula).
+    # Dispatched BEFORE the sigma-RE-only branch below (which refuses this
+    # exact combination) so the twin gap does not silently fall through to it.
+    if !isempty(sigma_re) && !isempty(re)
+        (structured === nothing && metav === nothing) ||
+            error("drm (Gaussian): a random effect on `sigma` combined with a mean random " *
+                  "effect does not support a structured (phylo/relmat/animal/spatial) mean " *
+                  "marker or `meta_V(...)` yet (#745 covers the plain `(1 | g)` + `(1 | g)` cell)")
+        (length(re) == 1 && _re_kind(re[1][1])[1] === :intercept) ||
+            error("drm (Gaussian): simultaneous mean + `sigma` random effects support a " *
+                  "single mean random INTERCEPT `(1 | g)` (no slopes, no crossed/multiple " *
+                  "terms) — got $(length(re)) term(s) on the mean")
+        (length(sigma_re) == 1 && _re_kind(sigma_re[1][1])[1] === :intercept) ||
+            error("drm (Gaussian): simultaneous mean + `sigma` random effects support a " *
+                  "single `sigma` random INTERCEPT `(1 | g)` — got $(length(sigma_re)) term(s)")
+        mgrp = re[1][2]; sgrp = sigma_re[1][2]
+        mgrp === sgrp ||
+            error("drm (Gaussian): simultaneous mean + `sigma` random effects are implemented " *
+                  "only when both share the SAME grouping factor (got `(1 | $mgrp)` on the " *
+                  "mean and `(1 | $sgrp)` on sigma) — the per-group 2×2 Laplace block this " *
+                  "route uses requires one group per observation shared by both axes; " *
+                  "different/crossed groups are not implemented (#745)")
+        # `has_missing_response` and `method === :REML` are already refused above
+        # this point for ANY non-empty `re` — the generic missing-response guard
+        # and the `if method === :REML` validator both throw before a formula
+        # with a mean random effect can reach here, so this branch is ML/
+        # complete-response only by construction; no additional check needed.
+        gidx, G = _group_index(getproperty(data, mgrp))
+        return _withformula(_fit_musigma_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, mgrp, g_tol), f)
+    end
     if !isempty(sigma_re)                                      # random effect on log σ
         (isempty(re) && structured === nothing && metav === nothing) ||
             error("a random effect on `sigma` must be the only random structure (the mean must be fixed effects)")

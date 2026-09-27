@@ -6,6 +6,30 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **Simultaneous mean + `sigma` random intercepts on Gaussian (#745, twin
+  drmTMB #1287).** `bf(y ~ x + (1 | g), sigma ~ (1 | g))` used to refuse with
+  "a random effect on `sigma` must be the only random structure", even though
+  drmTMB admits it (TMB's nested Laplace integrates the full stacked
+  `(u_mu, u_sigma)` vector). A new route, `_fit_musigma_ranef_gaussian`
+  (`src/gaussian_ranef.jl`), is admitted for exactly this cell: BOTH random
+  effects a single intercept `(1 | g)`, sharing the SAME grouping factor. The
+  two REs' joint Hessian is then block-diagonal in 2×2 blocks (one per
+  group), so each group's `(b_mu, delta_sigma)` pair is found and
+  Laplace-integrated together, and summing those independent per-group 2-D
+  Laplace terms is the whole-model nested Laplace approximation — the mean
+  RE is NOT profiled out in closed form first (unlike `_fit_ranef_gaussian`'s
+  exact Woodbury marginal for `sigma ~ x` fixed effects), because the sigma
+  random effect makes each row's variance itself latent. `marginal` is
+  always `:Laplace` on this route (no closed-form or quadrature alternative
+  is implemented). On a G=60/n_g=10 simulated fixture it matches native
+  drmTMB 0.7.1 (TMB Laplace) to <1e-10 in logLik and every estimate — far
+  inside the twin ledger's ~1e-4 bar (`test/test_twin_gap_745.jl`,
+  `test/fixtures/musigma_ranef_745/`). Refused, not silently dropped: a
+  random SLOPE on either axis, more than one random-effect term per axis, the
+  two REs on DIFFERENT grouping factors, a structured (phylo/relmat/animal/
+  spatial) mean marker or `meta_V(...)` alongside this cell, and
+  `method = :REML`.
+
 - **`marginal = :Laplace` on an ordinary `(1 | g)` (Arc 2, drmTMB parity).**
   Poisson, Binomial, NegBinomial2, Gamma and Beta with one ordinary random
   intercept on the mean (`sigma ~ 1` for the scale families) can now be fitted
