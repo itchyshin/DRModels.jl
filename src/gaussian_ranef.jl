@@ -498,12 +498,25 @@ components — drmTMB's `ranef()`.
 - Correlated `(1 + x | g)`: an `n_levels × 2` matrix (`[intercept slope]`).
 - Multiple components `(1 | g) + (1 | h)`: one entry per factor.
 
-Currently populated for the Gaussian closed-form RE paths (exact GLS conditional
-means). Returns an empty `Dict` for models without random effects. Non-Gaussian
-GLMM posterior modes (GHQ/Laplace) are not yet available.
+Populated for the Gaussian closed-form RE paths (exact GLS conditional means)
+and the structured (phylo/relmat/animal) routes. Returns an empty `Dict` for a
+fit with **no** random-effect block at all. A non-Gaussian GLMM fitted by the
+Gauss–Hermite/Laplace marginal routes (e.g. `Binomial`/`Poisson` with `(1|g)`)
+never computes conditional modes — those routes integrate the random effect
+out of the marginal likelihood without ever forming a posterior mode — so
+calling `ranef` on such a fit throws an `ArgumentError` instead of silently
+returning an empty `Dict`.
 """
 function ranef(fit::DrmFit)
-    fit.ranef === nothing && return Dict{Symbol,Vector{Float64}}()
+    if fit.ranef === nothing
+        has_re_block = any(p -> first(p) in (:resd, :recov, :sd, :sd_phylo), fit.blocks)
+        has_re_block && throw(ArgumentError("ranef: this fit has a random-effect block " *
+            "but no stored conditional modes -- the non-Gaussian GLMM marginal route " *
+            "(Gauss-Hermite quadrature / Laplace) integrates the random effect out of " *
+            "the likelihood and never computes a posterior mode. Use `re_sd(fit)` / " *
+            "`vc(fit)` for the fitted variance components."))
+        return Dict{Symbol,Vector{Float64}}()
+    end
     if fit.ranef isa NamedTuple && haskey(fit.ranef, :effects)
         return fit.ranef.effects
     end

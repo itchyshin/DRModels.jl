@@ -6,6 +6,14 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **`ranef(fit)` no longer silently returns an empty `Dict` for a non-Gaussian
+  GLMM (#759).** A `Binomial`/`Poisson`/etc. fit with a random-effect block,
+  fitted by the Gauss–Hermite/Laplace marginal route (which integrates the
+  random effect out without ever computing a posterior mode), now throws an
+  informative `ArgumentError` from `ranef` instead of returning an empty
+  `Dict` that silently looked like "no random effects". A fit with genuinely
+  no random-effect block still returns an empty `Dict`. The docstring's
+  pointer to the closed #73 is removed.
 - **`marginal = :Laplace` on an ordinary `(1 | g)` (Arc 2, drmTMB parity).**
   Poisson, Binomial, NegBinomial2, Gamma and Beta with one ordinary random
   intercept on the mean (`sigma ~ 1` for the scale families) can now be fitted
