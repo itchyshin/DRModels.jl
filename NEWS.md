@@ -6,6 +6,23 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **Bivariate LogNormal structured markers (#471, LogNormal half): `animal`/
+  `spatial` test coverage added, alongside the existing `phylo`/`relmat`
+  identity tests.** `src/bivariate_lognormal.jl`'s `drm` method already
+  forwarded `tree`/`K`/`A`/`coords`/`spatial_range` unconditionally to the
+  bivariate Gaussian dispatcher on `log(y)` — there was no marker-specific
+  gate to lift, so `animal(1 | group)` and `spatial(1 | group)` already fit
+  and converge for `LogNormal()` exactly like `phylo`/`relmat` do. The gap was
+  test coverage only: `test/test_twin_gap_471_bivln.jl` adds q=2 and q=4
+  identity checks against `Gaussian()` on `log(y)` for `animal`/`spatial`, plus
+  a small known-DGP recovery check on a 40-tip simulated tree. No `src/`
+  change was needed. drmTMB's own `biv_lognormal()` (0.7.1) refuses all
+  random/structured effects, the same blanket refusal as `biv_student()`; no
+  R-parity fixture is claimed for this cell, but the Julia route rests on a
+  closed-form identity (log(Y) bivariate Gaussian) rather than a bespoke
+  unverified engine, matching owner decision D-180 that this is sound to ship
+  ahead of drmTMB.
+
 - **`simulate()`/the parametric bootstrap no longer throw for `biv_lognormal()`
   (same class as #766).** The generic `_simulate_once` fallback special-cases
   bivariate Gaussian fits (`fam isa Gaussian && haskey(fit.scales, :sigma1)`)
