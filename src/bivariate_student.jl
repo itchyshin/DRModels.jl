@@ -51,8 +51,6 @@
 # reference implementation on either side of the port to mirror. The residual
 # (fixed-effects-only) route below is unaffected and stays parity-verified.
 
-using SpecialFunctions: loggamma
-
 """
     drm(f::BivariateDrmFormula, ::Student; data, g_tol = 1e-8, method = :ML)
 
@@ -178,19 +176,32 @@ function _fit_bivariate_residual(f::BivariateDrmFormula, fam::Student, data, rhs
                 z1 = (y1[i] - η1[i]) * exp(-ls1[i])
                 z2 = (y2[i] - η2[i]) * exp(-ls2[i])
                 d2 = (z1 * z1 - 2ρ * z1 * z2 + z2 * z2) / om   # Mahalanobis on the scatter
-                # −log f₂(y) for the bivariate (p = 2) Student-t
-                s += -(loggamma((ν + 2) / 2) - loggamma(ν / 2)) + log(ν) + log(π) +
-                     ls1[i] + ls2[i] + 0.5 * log(om) +
+                # −log f₂(y) for the bivariate (p = 2) Student-t. The normalising
+                # constant loggamma((ν+2)/2) − loggamma(ν/2) is Γ(ν/2+1)/Γ(ν/2) in
+                # log space, an EXACT Gamma recursion identity (Γ(x+1) = xΓ(x)) for
+                # every ν > 0 — not an asymptotic approximation — so it collapses to
+                # log(ν/2) with no cancellation. Substituting that identity here
+                # (−log(ν/2) + log ν + log π = log(2π)) removes the catastrophic
+                # cancellation `loggamma((ν+2)/2) - loggamma(ν/2)` suffered for large
+                # ν (two ~ν·log ν-sized terms subtracted to leave an O(log ν) result,
+                # same failure mode as #721/#820): at ν = 1e16 the naive difference
+                # was off by ~36 nats, so the bivariate loglik silently diverged from
+                # the correct bivariate-Normal limit. Reproduced and fixed on branch
+                # claude/twin-gap-bivstudent (test/test_bivariate_student_large_nu.jl).
+                s += log(2π) + ls1[i] + ls2[i] + 0.5 * log(om) +
                      ((ν + 2) / 2) * log1p(d2 / ν)
             elseif obs1[i]
-                # A margin of a bivariate-t is a univariate t with the SAME ν.
+                # A margin of a bivariate-t is a univariate t with the SAME ν. This
+                # loggamma((ν+1)/2) − loggamma(ν/2) is NOT an exact-recursion case
+                # (arguments differ by 1/2, not 1) — it is exactly the univariate
+                # Student cancellation from #721/#820, so reuse the stable large-ν
+                # evaluator `_student_logpdf_std` from student.jl instead of
+                # re-deriving it by hand.
                 z1 = (y1[i] - η1[i]) * exp(-ls1[i])
-                s += -(loggamma((ν + 1) / 2) - loggamma(ν / 2)) + 0.5 * log(ν) +
-                     0.5 * log(π) + ls1[i] + ((ν + 1) / 2) * log1p(z1 * z1 / ν)
+                s += -_student_logpdf_std(z1, ην[i]) + ls1[i]
             elseif obs2[i]
                 z2 = (y2[i] - η2[i]) * exp(-ls2[i])
-                s += -(loggamma((ν + 1) / 2) - loggamma(ν / 2)) + 0.5 * log(ν) +
-                     0.5 * log(π) + ls2[i] + ((ν + 1) / 2) * log1p(z2 * z2 / ν)
+                s += -_student_logpdf_std(z2, ην[i]) + ls2[i]
             end
         end
         return s

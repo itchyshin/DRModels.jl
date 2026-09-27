@@ -6,6 +6,19 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **Bivariate `Student()` (`biv_student()` twin) no longer diverges at large ν
+  (follow-up to #721).** The joint (p = 2) and marginal (p = 1) log-density
+  terms computed `loggamma((ν+2)/2) - loggamma(ν/2)` and
+  `loggamma((ν+1)/2) - loggamma(ν/2)` by hand — the same catastrophic
+  loggamma-difference cancellation #721 found in the univariate `Student()`.
+  The joint term is now the exact Gamma-recursion identity
+  `loggamma((ν+2)/2) - loggamma(ν/2) = log(ν/2)` (valid for every ν > 0, not
+  an approximation), which collapses the whole normalising constant to
+  `log(2π)`; the marginal term now reuses `_student_logpdf_std` from
+  `student.jl`. Both are exact/stable to < 1e-9 against a 256-bit reference
+  across ν ∈ [2.5, 1e16]. Recovery of genuinely heavy-tailed data (ν ≈ 5) is
+  unaffected.
+
 - **`Student()` no longer reports a garbage log-likelihood near the Gaussian
   limit (#721; drmTMB twin #1265).** When the data are close to Normal the
   likelihood is flat in the ν predictor, and the optimiser can walk ν = 2 +
