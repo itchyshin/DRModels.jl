@@ -590,3 +590,9 @@ _shard_include("test_609_varying_scale.jl")
 # DimensionMismatch because simulate drew fit.nobs values against full-design
 # means. Guards both, plus the iteration count the full-row rebuild dropped.
 _shard_include("test_bridge_response_mask_inference.jl")
+
+# Issues #762/#707: Gaussian correlated (1 + x | g) threw DomainError (log of a
+# negative capacitance "determinant") with an uncentred covariate or rho -> +-1, and
+# AssertionError in the line search. Pins the stable whitened objective, the
+# centred/QR-preconditioned optimisation and drmTMB-twinned H0 refits.
+_shard_include("test_twin_gap_762.jl")
