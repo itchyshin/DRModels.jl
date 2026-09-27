@@ -37,6 +37,18 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   (drmTMB's own integrator); `nq = 3` is the smallest node count within 0.01
   nat of an independent AGHQ-40 reference on the same DGP (`nq = 2` misses at
   ≈0.03 nat) — see `test/test_binomial_aghq.jl`.
+- **`Student()` no longer reports a garbage log-likelihood near the Gaussian
+  limit (#721; drmTMB twin #1265).** When the data are close to Normal the
+  likelihood is flat in the ν predictor, and the optimiser can walk ν = 2 +
+  exp(η) to ~1e16. There `Distributions.TDist`'s log density loses all
+  precision (a cancelling difference of loggamma terms), so a fit on
+  `datasets::trees` returned loglik ≈ +1924 with a converged status; drmTMB
+  reports −87.82. The Student density is now evaluated by an exact
+  large-ν asymptotic form for ν > ~1100 (error < 1e-13 against a 256-bit
+  reference; it tends exactly to the Normal density as η → ∞), in the
+  fixed-effect, `(1 | g)` and `(1 + x | g)` fitters. The trees fit now reports
+  loglik −87.82; the ν coefficient itself is not identified on that ridge.
+  Fits with moderate ν are unchanged.
 
 - **`marginal = :Laplace` on an ordinary `(1 | g)` (Arc 2, drmTMB parity).**
   Poisson, Binomial, NegBinomial2, Gamma and Beta with one ordinary random
