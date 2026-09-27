@@ -6,6 +6,22 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **`lrtest`/`anova` refuse REML-vs-ML pairs; `_fixed_effect_structure` (was
+  `_mean_structure`) covers bivariate fits (#639).** `_reml_compare_guard`
+  previously refused a REML-vs-REML pair only when their `:mu` blocks
+  differed, and never checked whether the OTHER fit was ML at all — so
+  `lrtest(ml_fit, reml_fit)` silently compared two different likelihoods
+  whenever the (univariate-only) mean-structure check happened to match.
+  It now (1) refuses any pair with different `estim_method`s outright (REML
+  is never comparable to ML or MAP), and (2) for a REML-vs-REML pair, checks
+  fixed-effect structure in **every** mean/scale block, not just `:mu` — so a
+  bivariate fit's `:mu1`/`:mu2`/`:sigma1`/`:sigma2`/`:rho12` blocks are seen
+  correctly (the old `_mean_structure` matched only `:mu` and silently
+  returned `String[]` for every bivariate fit, passing any bivariate REML
+  pair regardless of structure). The variance-component boundary label
+  (`_boundary_vc_warn`, #304) already keyed off block symbols shared across
+  univariate and bivariate fits (`:phylocov`/`:recov`/…), so it was already
+  bivariate-safe; now pinned end-to-end by a bivariate q=4 phylogenetic test.
 - **`marginal = :Laplace` on an ordinary `(1 | g)` (Arc 2, drmTMB parity).**
   Poisson, Binomial, NegBinomial2, Gamma and Beta with one ordinary random
   intercept on the mean (`sigma ~ 1` for the scale families) can now be fitted

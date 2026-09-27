@@ -536,6 +536,10 @@ _shard_include("test_chibar.jl")
 # #304: lrtest/anova warn on a boundary variance-component drop (naive χ² invalid).
 _shard_include("test_lrtest_boundary_warn.jl")
 
+# #639: lrtest refuses REML-vs-ML / mismatched-fixed-effect REML pairs, and the
+# REML guard + boundary variance-component label work on bivariate fits.
+_shard_include("test_twin_gap_639.jl")
+
 # #320 / #323.2: coeftable/show suppress z/p for non-location blocks and Inf-SE rows.
 _shard_include("test_summary_zp_suppress.jl")
 _shard_include("test_r2_constant_sigma.jl")

@@ -81,7 +81,12 @@ end
 # covariance entries, group-level covariances). Dropping one of these between
 # `reduced` and `full` puts the tested null value (variance = 0) on the BOUNDARY of
 # the parameter space, where the LR statistic is NOT χ²(Δdof) — the correct
-# reference is a chi-bar-square mixture (see `lrt_boundary`/`chibar_pvalue`).
+# reference is a chi-bar-square mixture (see `lrt_boundary`/`chibar_pvalue`). These
+# names are shared across univariate AND bivariate fits (e.g. `:phylocov`/`:recov`
+# on a bivariate q=2/q=4 phylogenetic fit, same symbol as the univariate case), so
+# `_variance_component_blocks`/`_boundary_vc_warn` below already label a bivariate
+# fit's boundary variance components correctly (#639) — the per-parameter naming
+# gap only affected `_fixed_effect_structure` (:mu1/:mu2/… vs the univariate :mu).
 const _VARIANCE_COMPONENT_BLOCKS =
     (:resd, :resid, :recov, :phylocov, :resd_mu, :resd_sigma, :sd, :sd_phylo)
 
@@ -112,31 +117,55 @@ function _boundary_vc_warn(reduced::DrmFit, full::DrmFit, verb::AbstractString)
     return nothing
 end
 
-# Mean-structure fingerprint for the REML guard: the :mu block's coefficient
-# names (falls back to the :mu block width when names are absent).
-function _mean_structure(fit::DrmFit)
-    for (p, nms) in fit.coefnames
-        p === :mu && return nms
-    end
+# Fixed-effect ("mean/scale") structure fingerprint for the REML guard (#639):
+# every block that does NOT carry a variance component (i.e. not in
+# `_VARIANCE_COMPONENT_BLOCKS`), paired with its coefficient names (falling back
+# to the block width when names are absent). On a univariate fit this is the
+# `:mu` (and `:sigma`) block(s); on a bivariate fit it is `:mu1`/`:mu2`/`:sigma1`/
+# `:sigma2`/`:rho12` (and `:nu`/`:cutpoints` where present) — every distributional
+# parameter's fixed-effect design, not just `:mu`. Sorted by block symbol so two
+# fits with the same blocks in a different order still compare equal.
+function _fixed_effect_structure(fit::DrmFit)
+    cn = Dict(fit.coefnames)
+    fx = Pair{Symbol,Vector{String}}[]
     for (p, r) in fit.blocks
-        p === :mu && return string.(collect(r))
+        p in _VARIANCE_COMPONENT_BLOCKS && continue
+        nms = haskey(cn, p) ? cn[p] : string.(collect(r))
+        push!(fx, p => nms)
     end
-    return String[]
+    sort!(fx; by = first)
+    return fx
 end
 
-# REML model-selection guard (issue #11): the classic REML trap is comparing
-# likelihoods of REML fits with DIFFERENT fixed-effect (mean) structures — the
-# restricted likelihoods are built on different error-contrast bases and are not
-# comparable. Comparing REML fits that differ only in VARIANCE structure (same
-# mean) is valid. ML fits are always fine. We ERROR on the invalid case (the LR
-# test would be meaningless) and stay silent otherwise.
+# REML model-selection guard (issue #11, generalized #639): a REML log-likelihood
+# is not comparable to an ML (or MAP) log-likelihood AT ALL — they are different
+# likelihoods — so any pair with different `estim_method`s is refused outright,
+# even when their fixed-effect structures happen to match. Among two REML fits,
+# the classic REML trap is comparing DIFFERENT fixed-effect structures — in ANY
+# mean or scale block (`:mu`/`:mu1`/`:mu2`/`:sigma`/`:sigma1`/`:sigma2`/`:rho12`/…,
+# generalized to bivariate fits by `_fixed_effect_structure`) — the restricted
+# likelihoods are built on different error-contrast bases and are not comparable.
+# Comparing REML fits that differ only in VARIANCE-COMPONENT structure (same
+# fixed effects everywhere) is valid. ML-vs-ML is always fine. We ERROR on both
+# invalid cases (the LR test would be meaningless) and stay silent otherwise.
 function _reml_compare_guard(a::DrmFit, b::DrmFit, verb::AbstractString)
     (a.estim_method === :REML || b.estim_method === :REML) || return nothing
-    if _mean_structure(a) != _mean_structure(b)
+    if a.estim_method !== b.estim_method
         throw(ArgumentError(
-            "$verb: cannot compare REML fits with different fixed-effect (mean) structures — " *
-            "REML log-likelihoods are not comparable across mean structures (only across " *
-            "variance structures). Refit both with method = :ML for a cross-mean-structure test."))
+            "$verb: cannot compare fits estimated by different methods " *
+            "(estim_method = :$(a.estim_method) vs :$(b.estim_method)) — a REML " *
+            "log-likelihood is not comparable to an ML (or MAP) log-likelihood, " *
+            "even when their fixed-effect structures match: they are different " *
+            "likelihoods. Refit both with the same `method` (`:ML` to compare across " *
+            "fixed-effect structures, or `:REML` — with identical fixed-effect " *
+            "structure in every mean/scale block — to compare variance components)."))
+    end
+    if _fixed_effect_structure(a) != _fixed_effect_structure(b)
+        throw(ArgumentError(
+            "$verb: cannot compare REML fits with different fixed-effect structure in " *
+            "any mean or scale block — REML log-likelihoods are not comparable across " *
+            "fixed-effect structures (only across variance-component structure). Refit " *
+            "both with method = :ML for a cross-structure test."))
     end
     return nothing
 end
