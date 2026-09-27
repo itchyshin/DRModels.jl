@@ -6,6 +6,16 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **`Student()` fits crossed random intercepts on the mean (#725; drmTMB twin
+  #1266).** `y ~ x + (1 | g) + (1 | h)` was refused ("single random-effect
+  term"); drmTMB `student()` fits it. It now uses the Laplace approximation, as
+  drmTMB/TMB does, with the observed Hessian of the random effects, exact
+  ForwardDiff outer derivatives, and `sigma`/`nu` formulas allowed. On a
+  simulated fixture (n = 600, 30 × 25 levels) it matches drmTMB 0.7.1 to
+  |ΔlogLik| < 1e-9 and every estimate to < 1e-8, with and without `sigma ~ x`;
+  fixed-effect SEs agree to 1e-6. Random slopes with a second term are still
+  refused. The random-effect Hessian is dense, so very many levels are slow.
+
 - **`Student()` no longer reports a garbage log-likelihood near the Gaussian
   limit (#721; drmTMB twin #1265).** When the data are close to Normal the
   likelihood is flat in the ν predictor, and the optimiser can walk ν = 2 +
