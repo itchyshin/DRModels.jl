@@ -6,6 +6,21 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **`drm_bridge` exports route-aware convergence diagnostics (#569).** A new
+  `bridge_diagnostics(fit)` (`src/introspection.jl`), the Julia twin of
+  `check_drm`, reports which route fitted the model, its integrator
+  (`fit.marginal`), the optimiser (`"Optim.LBFGS"` where `niterations`
+  records an achieved count), `converged`, `iterations`, `max_abs_grad` +
+  `grad_source`, `vcov_complete`/`vcov_posdef`/`min_eigval`/`cond`,
+  `penalized_map`, and `boundary` (indices whose stored variance is
+  non-finite or negative). `drm_bridge`'s payload now carries this under a
+  `"diagnostics"` key, plus a top-level `"grad_source"` echo for
+  `R/julia-diagnostics.R`'s `drm_julia_gradient_source()` (drmTMB) to read.
+  Nothing is fabricated: a quantity a route does not record (e.g. the crossed
+  sparse-Laplace engine's iteration count, or `vcov_posdef`/`min_eigval`/`cond`
+  when the covariance is only partially finite) is `missing`, never a
+  placeholder zero.
+
 - **`marginal = :Laplace` on an ordinary `(1 | g)` (Arc 2, drmTMB parity).**
   Poisson, Binomial, NegBinomial2, Gamma and Beta with one ordinary random
   intercept on the mean (`sigma ~ 1` for the scale families) can now be fitted

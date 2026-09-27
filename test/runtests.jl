@@ -315,6 +315,7 @@ _shard_include("test_predict_parameters.jl")
 _shard_include("test_prediction_grid.jl")
 _shard_include("test_bridge.jl")
 _shard_include("test_bridge_option_passthrough.jl")  # #527-adjacent: control-option forwarding + gradient exposure
+_shard_include("test_twin_gap_569.jl")  # #569: route-aware bridge diagnostics (bridge_diagnostics, drm_bridge["diagnostics"])
 _shard_include("test_bridge_bootstrap_tree.jl") # same-tree non-Gaussian fixed-effect bootstrap
 _shard_include("test_bootstrap_provider_forwarding.jl") # K/A/tree/coords survive bootstrap refits
 _shard_include("test_bridge_profile_target.jl")

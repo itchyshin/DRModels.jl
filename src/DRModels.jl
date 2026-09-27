@@ -184,7 +184,7 @@ export @formula, bf, drm_formula, drm, Gaussian, Student, SkewNormal, Poisson, N
        associate_pairs, latent_normal, association, PairAssociation,
        integration_diagnostics,
        drm_phylo_penalty, drm_phylo_penalty_sweep, PhyloPenalty, PhyloCorPenaltyNeedsTwoSD,
-       profile_targets, structured_effects,
+       profile_targets, structured_effects, bridge_diagnostics,
        meta_vcov_bivariate, MetaVcovBivariate
 
 # Public API — post-fit accessors for the cross-family bivariate fit
