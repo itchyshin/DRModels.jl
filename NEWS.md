@@ -6,6 +6,18 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **`cov_to_lc` no longer throws a bare `PosDefException` on a boundary-fitted
+  q=2 covariance (#787).** CI intermittently hit `PosDefException` inside
+  `cov_to_lc` when packing a fitted `Λ` for the front-end theta vector: a
+  fitted variance-component covariance can land marginally non-PD in floating
+  point at a variance boundary, and LAPACK's cholesky detects that
+  indefiniteness on some architectures/BLAS builds and not others (the CI
+  x86 runner vs local aarch64), so the same seed could pass or fail depending
+  on the machine. `cov_to_lc` now regularises a boundary-scale miss (floors
+  the smallest eigenvalue back onto the PD cone) instead of throwing, and
+  still raises a diagnosable `ArgumentError` naming the offending eigenvalue
+  for a genuinely, substantively indefinite matrix.
+
 - **`marginal = :Laplace` on an ordinary `(1 | g)` (Arc 2, drmTMB parity).**
   Poisson, Binomial, NegBinomial2, Gamma and Beta with one ordinary random
   intercept on the mean (`sigma ~ 1` for the scale families) can now be fitted

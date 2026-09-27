@@ -71,7 +71,39 @@ from `size`). Column-major lower-triangle order.
 """
 function cov_to_lc(Λ::AbstractMatrix)
     q = LinearAlgebra.checksquare(Λ)
-    L = cholesky(Symmetric(Λ)).L
+    Λs = Symmetric(Λ)
+    ch = cholesky(Λs; check = false)
+    if !issuccess(ch)
+        # #787: `Λ` reaching here is a FITTED variance-component covariance, not
+        # arbitrary input. At the definiteness boundary an optimizer-accepted Λ
+        # can land marginally non-PD in floating point, and LAPACK detects that
+        # indefiniteness on some builds/architectures and not others -- the same
+        # boundary-dependent factorisation failure already guarded (differently)
+        # in `coevo_marginal_cov` above (see its #503 comment). There the caller
+        # can fall back to -Inf inside an objective; here Λ is the FINAL reported
+        # fit, so instead nudge it back onto the PD cone -- but ONLY for a
+        # floating-point-scale boundary miss. A substantively indefinite Λ (a
+        # real defect, not a boundary artefact) must still fail loudly rather
+        # than being silently floored into something admissible.
+        λmin = minimum(eigvals(Λs))
+        scale = max(maximum(abs, Λ), 1.0)
+        boundary_tol = 1e-6 * scale
+        if -λmin > boundary_tol
+            throw(ArgumentError(
+                "cov_to_lc: Λ is not positive definite (min eigenvalue $(λmin), " *
+                "boundary tolerance $(boundary_tol)); this is not a floating-point " *
+                "boundary artefact and will not be regularised",
+            ))
+        end
+        floor_eps = -λmin + 8 * eps(scale)
+        Λs = Symmetric(Matrix(Λ) + floor_eps * I)
+        ch = cholesky(Λs; check = false)
+        issuccess(ch) || throw(ArgumentError(
+            "cov_to_lc: Λ is not positive definite (min eigenvalue $(λmin)) " *
+            "even after boundary regularisation",
+        ))
+    end
+    L = ch.L
     v = Float64[]
     @inbounds for j in 1:q, i in j:q
         push!(v, i == j ? log(L[i, j]) : L[i, j])
