@@ -590,3 +590,6 @@ _shard_include("test_609_varying_scale.jl")
 # DimensionMismatch because simulate drew fit.nobs values against full-design
 # means. Guards both, plus the iteration count the full-row rebuild dropped.
 _shard_include("test_bridge_response_mask_inference.jl")
+
+# Issue #668: StatsBase.loglikelihood(::DrmFit) was missing (DRM.loglik worked).
+_shard_include("test_twin_display_668.jl")

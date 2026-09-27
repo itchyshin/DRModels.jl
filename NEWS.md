@@ -6,6 +6,11 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **`loglikelihood(fit)` (StatsAPI/StatsBase generic) added for `DrmFit`
+  (#668).** `DRM.loglik(fit)` already worked, but the StatsAPI-facing
+  `loglikelihood` was undefined, so anything dispatching on the generic
+  `StatsAPI.StatisticalModel` interface errored on a `DrmFit`. It is now
+  exported and delegates to `loglik(fit)` (same value, same REML caveat).
 - **`marginal = :Laplace` on an ordinary `(1 | g)` (Arc 2, drmTMB parity).**
   Poisson, Binomial, NegBinomial2, Gamma and Beta with one ordinary random
   intercept on the mean (`sigma ~ 1` for the scale families) can now be fitted
