@@ -6,6 +6,20 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **`simulate()`/the parametric bootstrap no longer throw for `biv_lognormal()`
+  (same class as #766).** The generic `_simulate_once` fallback special-cases
+  bivariate Gaussian fits (`fam isa Gaussian && haskey(fit.scales, :sigma1)`)
+  before falling through to `fit.means[:mu]` for every other family. A
+  bivariate lognormal fit has `fit.family isa LogNormal`, never `Gaussian`,
+  even though it is built entirely by delegating to the bivariate Gaussian
+  route on `log(y)` and so carries the SAME `:mu1`/`:mu2`/`:sigma1`/`:sigma2`/
+  `:rho12` keys — so `simulate(fit)` and every parametric-bootstrap replicate
+  (`bootstrap_result`/`bootstrap_ci`, which draw via `simulate` before any
+  refit) threw `KeyError: key :mu not found` immediately. `src/bivariate_lognormal.jl`
+  now adds a `_simulate_once(fit::DrmFit{LogNormal}, rng; ...)` method, dispatched
+  ahead of the generic one, that draws log(Y) exactly as bivariate Gaussian does
+  and exponentiates, leaving the univariate lognormal draw unchanged.
+
 - **`marginal = :Laplace` on an ordinary `(1 | g)` (Arc 2, drmTMB parity).**
   Poisson, Binomial, NegBinomial2, Gamma and Beta with one ordinary random
   intercept on the mean (`sigma ~ 1` for the scale families) can now be fitted
