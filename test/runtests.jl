@@ -167,6 +167,7 @@ _shard_include("test_simulate_scale_conventions.jl") # NB2 size, Gamma slot conv
 _shard_include("test_locscale_bootstrap_simulator.jl") # coupled marginal draws, precision and family contracts
 _shard_include("test_locscale_bootstrap_refit.jl") # same-seed public Gamma refits, serial/threaded
 _shard_include("test_gaussian_structured.jl")
+_shard_include("test_twin_gap_764.jl")  # #764: animal(1|id) one-record-per-individual cancellation
 _shard_include("test_gaussian_phylo_mean_missing_response.jl")  # #482: species-subset (drop) + include refusal
 # Silent-data-loss fix: `phylo(<not 1> | group)` refused on univariate routes
 # instead of silently fitting the intercept-only model.
