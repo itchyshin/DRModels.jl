@@ -8,6 +8,25 @@
 
 using Distributions: TDist, logpdf
 
+# Standardised Student-t log-density log f_t(z; ν) with ν = 2 + exp(ην), stable for
+# all ην (#721). `Distributions.TDist` evaluates loggamma((ν+1)/2) − loggamma(ν/2)
+# − ½log(νπ) as a difference of numbers of size ~ν·log ν, which cancels
+# catastrophically for large ν (at ν ≈ 1e16 it is off by ~31 nats), so an optimiser
+# on the flat near-Gaussian ν ridge could walk into a spurious region and report a
+# garbage loglik. For ν > ~1100 (ην > 7) we use the asymptotic expansion
+#   loggamma(x+½) − loggamma(x) = ½log x − 1/(8x) + 1/(192x³) + O(x⁻⁵),  x = ν/2,
+# written in r = 1/ν (computed without overflow), so the constant is
+# −½log(2π) − r/4 + r³/24 (truncation error < 1e-16 here), and the kernel
+# (ν+1)/2·log1p(z²/ν) = (1+r)/2 · z² · log1p(u)/u with u = z²r. As ην → ∞ this
+# tends exactly to the Normal logpdf. Below the switch, TDist is accurate (< 1e-12).
+function _student_logpdf_std(z, ην)
+    ην > 7 || return logpdf(TDist(2 + exp(ην)), z)
+    e = exp(-ην); r = e / (1 + 2e)                  # r = 1/ν, → 0 without overflow
+    u = z^2 * r
+    L = u < 1e-4 ? 1 - u / 2 + u^2 / 3 - u^3 / 4 : log1p(u) / u   # log1p(u)/u
+    return -0.5 * log(2π) - r / 4 + r^3 / 24 - (1 + r) / 2 * z^2 * L
+end
+
 """
     Student()
 
@@ -75,7 +94,7 @@ function _fit_student_ranef(fam::Student, y, Xμ, Xσ, Xν, gidx, G, nmμ, nmσ,
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]; βν = θ[pμ+pσ+1:pμ+pσ+pν]; σb = exp(θ[pμ+pσ+pν+1])
         η0 = Xμ * βμ; ησ = Xσ * βσ; ην = Xν * βν     # μ identity → no exp clamp on the mean
-        ll = (i, η) -> (ν = 2 + exp(ην[i]); zt = (y[i] - η) * exp(-ησ[i]); logpdf(TDist(ν), zt) - ησ[i])
+        ll = (i, η) -> (zt = (y[i] - η) * exp(-ησ[i]); _student_logpdf_std(zt, ην[i]) - ησ[i])
         L = reshape([σb], 1, 1)
         return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache)
     end
@@ -115,7 +134,7 @@ function _fit_student_corr_ranef(fam::Student, y, Xμ, Xσ, Xν, xs, gidx, G, nm
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]; βν = θ[pμ+pσ+1:pμ+pσ+pν]
         L = _corr_ranef_L(θ[pμ+pσ+pν+1], θ[pμ+pσ+pν+2], θ[pμ+pσ+pν+3])
         η0 = Xμ * βμ; ησ = Xσ * βσ; ην = Xν * βν
-        ll = (i, η) -> (ν = 2 + exp(ην[i]); zt = (y[i] - η) * exp(-ησ[i]); logpdf(TDist(ν), zt) - ησ[i])
+        ll = (i, η) -> (zt = (y[i] - η) * exp(-ησ[i]); _student_logpdf_std(zt, ην[i]) - ησ[i])
         return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache)
     end
     βμ0 = Xμ \ y
@@ -144,8 +163,8 @@ function _fit_student(fam::Student, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol)
         ημ = Xμ * βμ; ησ = Xσ * βσ; ην = Xν * βν
         s = zero(eltype(θ))
         @inbounds for i in 1:n
-            ν = 2 + exp(ην[i]); z = (y[i] - ημ[i]) * exp(-ησ[i])
-            s -= logpdf(TDist(ν), z) - ησ[i]       # − log σ Jacobian
+            z = (y[i] - ημ[i]) * exp(-ησ[i])
+            s -= _student_logpdf_std(z, ην[i]) - ησ[i]       # − log σ Jacobian
         end
         return s
     end
