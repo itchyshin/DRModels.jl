@@ -112,41 +112,24 @@ end
 
 # Student-t GLMM with a correlated random intercept+slope (1 + x | g) on the mean μ.
 # Per group (b0,b1) ~ N(0, Σ); because groups are disjoint the 2-D integral factorises,
-# so it is done by a 2-D Gauss–Hermite tensor grid (K² nodes). Σ is the log-Cholesky
-# parameterisation L = [exp(a) 0; cc exp(b)] (the `vc` convention), so vc(fit)
-# reconstructs Σ = L Lᵀ; (b0,b1) = √2 L z. The scale σ and df ν stay fixed effects.
-# θ = [βμ; βσ; βν; a, b, cc]. O(G·K²·group) per eval, fully differentiable.
-function _fit_student_corr_ranef(fam::Student, y, Xμ, Xσ, Xν, xs, gidx, G, nmμ, nmσ, nmν, grp, g_tol)
+# and each group is integrated by per-group ADAPTIVE Gauss–Hermite quadrature
+# (`_aghq_marginal_loglik`, #834: nodes b̂_g + √2 C z at each group's mode),
+# `nq` nodes per axis. Σ is the log-Cholesky parameterisation L = [exp(a) 0; cc exp(b)]
+# (the `vc` convention), so vc(fit) reconstructs Σ = L Lᵀ. The scale σ and df ν stay
+# fixed effects. θ = [βμ; βσ; βν; a, b, cc].
+function _fit_student_corr_ranef(fam::Student, y, Xμ, Xσ, Xν, xs, gidx, G, nmμ, nmσ, nmν, grp, g_tol; nq::Int = _CORR_RANEF_AGHQ_K)
     n = length(y); pμ, pσ, pν = size(Xμ, 2), size(Xσ, 2), size(Xν, 2)
     members = [Int[] for _ in 1:G]
     for i in 1:n
         push!(members[gidx[i]], i)
     end
-    z1, w1 = _gauss_hermite(12); lw = log.(w1); K = length(z1); rt2 = sqrt(2.0); lπ = log(π)
+    rule = _AGHQRule(2, nq); Zre = hcat(ones(n), Float64.(xs)); bcache = zeros(2, G)   # #834: per-group AGHQ
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]; βν = θ[pμ+pσ+1:pμ+pσ+pν]
-        a = θ[pμ+pσ+pν+1]; b = θ[pμ+pσ+pν+2]; cc = θ[pμ+pσ+pν+3]
-        l11 = exp(a); l22 = exp(b)
+        L = _corr_ranef_L(θ[pμ+pσ+pν+1], θ[pμ+pσ+pν+2], θ[pμ+pσ+pν+3])
         η0 = Xμ * βμ; ησ = Xσ * βσ; ην = Xν * βν
-        s = zero(eltype(θ))
-        for idx in members
-            isempty(idx) && continue
-            terms = Vector{eltype(θ)}(undef, K * K)
-            t = 0
-            for j in 1:K, k in 1:K
-                t += 1
-                b0 = rt2 * l11 * z1[j]; b1 = rt2 * (cc * z1[j] + l22 * z1[k])   # √2 L z
-                gll = lw[j] + lw[k]
-                for i in idx
-                    μ = η0[i] + b0 + b1 * xs[i]; ν = 2 + exp(ην[i]); zt = (y[i] - μ) * exp(-ησ[i])
-                    gll += logpdf(TDist(ν), zt) - ησ[i]
-                end
-                terms[t] = gll
-            end
-            mx = maximum(terms)
-            s -= (-lπ + mx + log(sum(exp.(terms .- mx))))      # 2-D: -0.5·2·logπ = -logπ
-        end
-        return s
+        ll = (i, η) -> (ν = 2 + exp(ην[i]); zt = (y[i] - η) * exp(-ησ[i]); logpdf(TDist(ν), zt) - ησ[i])
+        return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache)
     end
     βμ0 = Xμ \ y
     θ0 = zeros(pμ + pσ + pν + 3)

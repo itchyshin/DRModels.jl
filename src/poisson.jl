@@ -349,39 +349,22 @@ end
 
 # Poisson count GLMM with a correlated random intercept+slope (1 + x | g) on log λ.
 # Per group (b0,b1) ~ N(0, Σ); because groups are disjoint the 2-D integral
-# factorises, so it is done by a 2-D Gauss–Hermite tensor grid (K² nodes). Σ is the
-# log-Cholesky parameterisation L = [exp(a) 0; cc exp(b)] (the `vc` convention), so
-# vc(fit) reconstructs Σ = L Lᵀ. O(G·K²·group) per eval, fully differentiable.
-function _fit_poisson_corr_ranef(fam::Poisson, y, Xμ, xs, gidx, G, nmμ, grp, g_tol)
+# factorises; each group is integrated by per-group ADAPTIVE Gauss–Hermite quadrature
+# (`_aghq_marginal_loglik`, #834: nodes b̂_g + √2 C z at each group's mode),
+# `nq` nodes per axis (nq = 1 is Laplace). Σ is the log-Cholesky parameterisation
+# L = [exp(a) 0; cc exp(b)] (the `vc` convention), so vc(fit) reconstructs Σ = L Lᵀ.
+function _fit_poisson_corr_ranef(fam::Poisson, y, Xμ, xs, gidx, G, nmμ, grp, g_tol; nq::Int = _CORR_RANEF_AGHQ_K)
     n = length(y); pμ = size(Xμ, 2)
     members = [Int[] for _ in 1:G]
     for i in 1:n
         push!(members[gidx[i]], i)
     end
     lf = [_logfactorial(round(Int, yi)) for yi in y]
-    z1, w1 = _gauss_hermite(12); lw = log.(w1); K = length(z1); rt2 = sqrt(2.0); lπ = log(π)
+    rule = _AGHQRule(2, nq); Zre = hcat(ones(n), Float64.(xs)); bcache = zeros(2, G)   # #834: per-group AGHQ
     function nll(θ)
-        βμ = θ[1:pμ]; a = θ[pμ+1]; b = θ[pμ+2]; cc = θ[pμ+3]
-        l11 = exp(a); l22 = exp(b); η0 = Xμ * βμ
-        s = zero(eltype(θ))
-        for idx in members
-            isempty(idx) && continue
-            terms = Vector{eltype(θ)}(undef, K * K)
-            t = 0
-            for j in 1:K, k in 1:K
-                t += 1
-                b0 = rt2 * l11 * z1[j]; b1 = rt2 * (cc * z1[j] + l22 * z1[k])   # √2 L z
-                gll = lw[j] + lw[k]
-                for i in idx
-                    η = clamp(η0[i] + b0 + b1 * xs[i], -30.0, 30.0)
-                    gll += y[i] * η - exp(η) - lf[i]
-                end
-                terms[t] = gll
-            end
-            mx = maximum(terms)
-            s -= (-lπ + mx + log(sum(exp.(terms .- mx))))      # 2-D: -0.5·2·logπ = -logπ
-        end
-        return s
+        βμ = θ[1:pμ]; L = _corr_ranef_L(θ[pμ+1], θ[pμ+2], θ[pμ+3]); η0 = Xμ * βμ
+        ll = (i, η) -> (ηc = clamp(η, -30.0, 30.0); y[i] * ηc - exp(ηc) - lf[i])
+        return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache)
     end
     θ0 = zeros(pμ + 3)
     θ0[1] = log(sum(y) / n + eps())

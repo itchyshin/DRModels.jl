@@ -238,42 +238,26 @@ end
 # NB2 count GLMM with a CORRELATED random intercept+slope (1 + x | g) on log μ:
 # per group (b0,b1) ~ N(0, Σ_re), Σ_re a 2×2 covariance (log-Cholesky a, b, c).
 # Unlike the Gaussian case there is no closed-form marginal (b enters μ through
-# exp), so the 2-D prior integral is done by tensor-product Gauss–Hermite: with
-# (b0,b1) = √2 L (z_j, z_k) the prior turns into Σ_{j,k} w_j w_k·(likelihood at
-# that node). O(G·K²·m̄) per eval, fully differentiable. Mirrors the Poisson /
+# exp), so each group's 2-D integral is done by per-group ADAPTIVE Gauss–Hermite
+# quadrature (`_aghq_marginal_loglik`, #834: nodes b̂_g + √2 C z at each group's
+# mode), `nq` nodes per axis. Mirrors the Poisson /
 # NB2 random-intercept route extended to two dimensions; the `recov` block and
 # names follow the Gaussian correlated fit so `vc(fit)` reconstructs Σ.
-function _fit_negbin2_corr_ranef(fam::NegBinomial2, y, Xμ, Xσ, xs, gidx, G, nmμ, nmσ, grp, g_tol)
+function _fit_negbin2_corr_ranef(fam::NegBinomial2, y, Xμ, Xσ, xs, gidx, G, nmμ, nmσ, grp, g_tol; nq::Int = _CORR_RANEF_AGHQ_K)
     n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     members = [Int[] for _ in 1:G]
     for i in 1:n
         push!(members[gidx[i]], i)
     end
     yint = round.(Int, y)
-    z1, w1 = _gauss_hermite(12); lw = log.(w1); K = length(z1); rt2 = sqrt(2.0); lπ = log(π)
+    rule = _AGHQRule(2, nq); Zre = hcat(ones(n), Float64.(xs)); bcache = zeros(2, G)   # #834: per-group AGHQ
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
-        a = θ[pμ+pσ+1]; b = θ[pμ+pσ+2]; cc = θ[pμ+pσ+3]
-        l11 = exp(a); l22 = exp(b)                 # L = [l11 0; cc l22], Σ_re = L Lᵀ
+        L = _corr_ranef_L(θ[pμ+pσ+1], θ[pμ+pσ+2], θ[pμ+pσ+3])   # Σ_re = L Lᵀ
         η0 = Xμ * βμ; ησ = clamp.(Xσ * βσ, -20.0, 20.0)
-        s = zero(eltype(θ))
-        for idx in members
-            isempty(idx) && continue
-            terms = Vector{eltype(θ)}(undef, K * K); t = 0
-            for j in 1:K, k in 1:K
-                t += 1
-                b0 = rt2 * l11 * z1[j]; b1 = rt2 * (cc * z1[j] + l22 * z1[k])   # √2 L z
-                gll = lw[j] + lw[k]
-                for i in idx
-                    μ = exp(clamp(η0[i] + b0 + b1 * xs[i], -20.0, 20.0)); r = exp(-2 * ησ[i]); p = r / (r + μ)
-                    gll += logpdf(_nb2(r, p), yint[i])
-                end
-                terms[t] = gll
-            end
-            mx = maximum(terms)
-            s -= (-lπ + mx + log(sum(exp.(terms .- mx))))   # 2-D Gaussian factor: −log π
-        end
-        return s
+        ll = (i, η) -> (μ = exp(clamp(η, -20.0, 20.0)); r = exp(-2 * ησ[i]); p = r / (r + μ);
+                        logpdf(_nb2(r, p), yint[i]))
+        return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache)
     end
     m = sum(y) / n; v = sum(abs2, y .- m) / max(n - 1, 1)
     θ0 = zeros(pμ + pσ + 3)
