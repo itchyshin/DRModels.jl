@@ -11,10 +11,16 @@
 # src/tweedie.jl), plus an unlabelled, intercept-only `phylo(1 | species)`
 # structured `mu` effect (#563 S8 follow-on) via the sparse augmented-state
 # Laplace GLMM route (src/sparse_laplace_glmm.jl), matching drmTMB 0.7.0's own
-# `validate_ordinal_phylo_mu_structured_term()`. Correlated slopes
-# `(1 + x | g)`, crossed/multiple random effects, `relmat`/`animal`/`spatial`
-# structured markers, and random-effect scale formulas are refused, matching
-# drmTMB 0.7.0's own `validate_cumulative_logit_mu_random_terms()` /
+# `validate_ordinal_phylo_mu_structured_term()`. Crossed/multiple random
+# intercepts, `(1 | g) + (1 | h)` (#738), reuse the PLAIN (no-nuisance)
+# sparse-Laplace crossed engine (`_fit_crossed_mean_laplace`) that
+# Poisson/Binomial's crossed routes already share; the `nc = K - 1` ordered
+# cutpoints (which that engine's θ layout has no slot for) are profiled out
+# by an outer Nelder–Mead search, refitting the (β, σ_g, σ_h) crossed model
+# via the existing engine at each candidate cutpoint vector. Correlated
+# slopes `(1 + x | g)` and `relmat`/`animal`/`spatial` structured markers are
+# refused, matching drmTMB 0.7.0's own
+# `validate_cumulative_logit_mu_random_terms()` /
 # `validate_ordinal_phylo_mu_structured_term()` scope.
 
 """
@@ -39,15 +45,20 @@ variance equals the tree height `h`, not 1) — this differs from drmTMB's
 (`ape::vcv(tree, corr = TRUE)`, tip variance 1 regardless of `h`). Convert with
 `re_sd(fit)[:group] * sqrt(phylo_tree_height(augmented_phy(tree)))` to compare
 against drmTMB's number (the same convention used throughout the Gaussian
-phylo-mean route, e.g. `test_parity_gaussian_phylo_mean.jl`).
-Correlated slopes `(1 + x | g)`, crossed/multiple random effects, and
-`relmat`/`animal`/`spatial` structured markers are not implemented.
+phylo-mean route, e.g. `test_parity_gaussian_phylo_mean.jl`). Crossed/multiple
+random intercepts, `(1 | g) + (1 | h)`, are also supported, via the same
+sparse-Laplace engine Poisson/Binomial's crossed routes reuse; the cutpoints
+are found by an outer profile search since that engine has no cutpoint slot.
+Correlated slopes `(1 + x | g)` and `relmat`/`animal`/`spatial` structured
+markers are not implemented.
 
 ```julia
 fit = drm(bf(y ~ x), CumulativeLogit(); data = dat)          # y coded 1..K
 fit_re = drm(bf(y ~ x + (1 | g)), CumulativeLogit(); data = dat)
 fit_slope = drm(bf(y ~ x + (0 + x | g)), CumulativeLogit(); data = dat)
 fit_phylo = drm(bf(y ~ x + phylo(1 | species)), CumulativeLogit(); data = dat, tree = tr)
+fit_crossed = drm(bf(y ~ x + (1 | g) + (1 | h)), CumulativeLogit(); data = dat)
+re_sd(fit_crossed)                                            # Dict(:g => ..., :h => ...)
 ```
 """
 struct CumulativeLogit end
@@ -149,6 +160,16 @@ function drm(f::DrmFormula, fam::CumulativeLogit; data, tree = nothing, g_tol::R
             _fit_cumulative_phylo_laplace(fam, yi, Xμ, K, labels, tree, nmμ, grp, g_tol; se = se), f)
     end
     if !isempty(re)                    # random intercept/slope on mu → GHQ marginal (#563 S8)
+        if length(re) > 1               # crossed/multiple intercepts (#738)
+            all(_re_kind(r[1])[1] === :intercept for r in re) ||
+                error("CumulativeLogit() supports multiple random effects only as " *
+                      "crossed/nested intercepts, e.g. `(1 | g) + (1 | h)`")
+            comps = map(re) do r
+                grp = r[2]; gidx, G = _group_index(getproperty(data, grp))
+                (ones(length(yi)), gidx, G, String(grp))
+            end
+            return _withformula(_fit_cumulative_crossed_laplace(fam, yi, Xμ, K, comps, nmμ, g_tol), f)
+        end
         length(re) == 1 ||
             error("CumulativeLogit() supports only a single `(1 | g)` random intercept or " *
                   "`(0 + x | g)` random slope on `mu`; crossed/multiple random effects are " *
@@ -601,4 +622,93 @@ function _fit_cumulative_phylo_laplace(fam::CumulativeLogit, y::Vector{Int}, Xμ
     scales = Dict(:ordinal_eta => η̂, :ordinal_cuts => Float64.(cuts_hat))
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
     return _withnll(fit, nll, grad!)
+end
+
+# ---------------------------------------------------------------------------
+# Crossed/multiple random intercepts (1|g)+(1|h) on the latent linear
+# predictor η (#738), reusing the PLAIN (no-nuisance) sparse augmented-state
+# Laplace GLMM engine already shared by Poisson/Binomial's crossed routes
+# (`_fit_crossed_mean_laplace` in src/sparse_laplace_glmm.jl) — NOT a new
+# integrator for the random effects.
+#
+# That shared engine's outer θ layout is `[βμ; logσ_g; logσ_h]` — no slot for
+# the `nc = K - 1` ordered-cutpoint parameters, which (unlike a dispersion
+# nuisance) enter the likelihood as extra fixed structure, not a single
+# scalar. Rather than widen the shared engine's layout (a shared-file change
+# out of this family file's ownership), the cutpoints are PROFILED OUT: an
+# outer derivative-free (Nelder–Mead, since ForwardDiff cannot see through
+# the inner engine's own nested `Optim.optimize` calls) search over the
+# unconstrained increment parameterisation `_cumulative_cuts` refits the full
+# (β, σ_g, σ_h) crossed model at each candidate cutpoint vector via the
+# existing engine, and finds the cutpoints minimising that profile deviance
+# — exact profile-likelihood optimisation, not an approximation.
+#
+# Per-observation value/derivatives reuse `_cumulative_loglik` (already
+# exact and smooth in η for FIXED cutpoints and category) via nested
+# `ForwardDiff.derivative` on η, verified against central finite differences
+# (interactive check, not part of the test suite; the same nested-autodiff
+# pattern `src/tweedie.jl` documents and checks for `_logpdf_tweedie`).
+#
+# `_laplace_mean(kind, η)` (the shared engine's per-fit convenience "mean" for
+# `fitted()`/reporting) receives only `(kind, η)` — no `aux` — so it cannot
+# reconstruct the expected category score, which needs the cutpoints. It
+# returns `NaN` here rather than a plausible-looking wrong number; the
+# outer `_fit_cumulative_crossed_laplace` overwrites `means`/`scales` with the
+# correct expected-category-score convention (matching `_fit_cumulative`)
+# once the profiled cutpoints are known.
+_laplace_value(::Val{:cumlogit_fixed}, aux, i, η) =
+    -_cumulative_loglik(aux.y[i], η, aux.cuts, aux.K, aux.nc)
+
+_laplace_d1(::Val{:cumlogit_fixed}, aux, i, η) =
+    ForwardDiff.derivative(x -> _laplace_value(Val(:cumlogit_fixed), aux, i, x), η)
+
+_laplace_d2(::Val{:cumlogit_fixed}, aux, i, η) =
+    ForwardDiff.derivative(x -> _laplace_d1(Val(:cumlogit_fixed), aux, i, x), η)
+
+_laplace_d3(::Val{:cumlogit_fixed}, aux, i, η) =
+    ForwardDiff.derivative(x -> _laplace_d2(Val(:cumlogit_fixed), aux, i, x), η)
+
+_laplace_mean(::Val{:cumlogit_fixed}, η) = NaN
+_laplace_obs(::Val{:cumlogit_fixed}, aux, i) = Float64(aux.y[i])
+
+function _fit_cumulative_crossed_laplace(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, comps, nmμ, g_tol)
+    length(comps) == 2 || error("_fit_cumulative_crossed_laplace requires two random-intercept components")
+    n = length(y); pμ = size(Xμ, 2); nc = K - 1
+    θβ0 = zeros(pμ)
+
+    function inner_fit(δ::Vector{<:Real}; polish_iterations::Int = 0)
+        cuts = _cumulative_cuts(δ)
+        aux = (y = y, cuts = cuts, K = K, nc = nc)
+        return _fit_crossed_mean_laplace(
+            fam, Val(:cumlogit_fixed), aux, n, Xμ,
+            comps[1][2], comps[1][3], comps[2][2], comps[2][3], nmμ,
+            [comps[1][4], comps[2][4]], g_tol;
+            θβ0 = θβ0, se = false, polish_iterations = polish_iterations)
+    end
+
+    δ0 = _cumulative_cut_init(y, K, n)
+    obj(δ) = -inner_fit(δ).loglik
+    res = Optim.optimize(obj, δ0, Optim.NelderMead(),
+                         Optim.Options(iterations = 500, g_tol = g_tol))
+    δ̂ = Optim.minimizer(res)
+    fit = inner_fit(δ̂; polish_iterations = 25)
+
+    pμ2 = pμ    # (== pμ; named for readability against the block-index arithmetic below)
+    nblk = pμ2 + 2   # mu + 2 crossed RE sds, the engine's own blocks
+    blocks = vcat(fit.blocks, [:cutpoints => (nblk + 1):(nblk + nc)])
+    names = vcat(fit.coefnames, [:cutpoints => ["theta$k" for k in 1:nc]])
+    theta = vcat(fit.theta, δ̂)
+    V = fill(NaN, length(theta), length(theta))
+    V[1:nblk, 1:nblk] .= fit.vcov
+
+    β̂ = fit.theta[1:pμ2]
+    cuts_hat = _cumulative_cuts(δ̂)
+    η̂ = pμ2 == 0 ? zeros(n) : Xμ * β̂       # population (b=0) linear predictor
+    score = _cumulative_score(η̂, cuts_hat, K)
+    means = Dict(:mu => score)
+    obs = Dict(:mu => Float64.(y))
+    scales = Dict(:ordinal_eta => η̂, :ordinal_cuts => Float64.(cuts_hat))
+
+    return DrmFit(fam, blocks, names, theta, V, fit.loglik, fit.nobs, fit.converged,
+                 means, obs, scales)
 end
