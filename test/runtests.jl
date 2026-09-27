@@ -161,6 +161,7 @@ _shard_include("test_visualization.jl")
 _shard_include("test_makie_ext_stub.jl")   # #336: DRModelsMakieExt method-less stub (Makie OUT of CI)
 _shard_include("test_postfit.jl")
 _shard_include("test_meta.jl")
+_shard_include("test_meta_random_effect.jl")  # Arc 2: meta_V + (1 | g) / phylo / relmat, same model as drmTMB
 _shard_include("test_simulate.jl")
 _shard_include("test_simulate_scale_conventions.jl") # NB2 size, Gamma slot conventions, owned auxiliary draws
 _shard_include("test_locscale_bootstrap_simulator.jl") # coupled marginal draws, precision and family contracts
@@ -174,6 +175,7 @@ _shard_include("test_phylo_slope_two_sd.jl")
 _shard_include("test_phylo_interaction.jl")
 _shard_include("test_two_structured_gaussian.jl")
 _shard_include("test_two_structured_gaussian_sparse.jl")
+_shard_include("test_structured_plus_ordinary_bar.jl")  # Arc 2: structured marker + ordinary (1 | h) bars (was a silent drop)
 _shard_include("test_heritability.jl")
 _shard_include("test_conjugate_em.jl")
 _shard_include("test_location_only_reml_mme.jl")
@@ -187,6 +189,7 @@ _shard_include("test_ranef_varying_scale_convergence.jl")  # #609: `converged` o
 _shard_include("test_correlated_re.jl")
 _shard_include("test_multi_re.jl")
 _shard_include("test_sigma_re.jl")
+_shard_include("test_sigma_re_laplace.jl")   # marginal = :Laplace on sigma ~ (1 | g) (TMB convention)
 _shard_include("test_sigma.jl")
 _shard_include("test_student.jl")
 _shard_include("test_skewnormal.jl")
@@ -298,6 +301,7 @@ _shard_include("test_variational_binomial.jl")
 _shard_include("test_variational_nb2.jl")
 _shard_include("test_variational_gamma.jl")
 _shard_include("test_aghq_1d.jl")                  # #448: 1-D Liu–Pierce AGHQ (lever 2)
+_shard_include("test_ordinary_laplace.jl")         # Arc 2: marginal = :Laplace on ordinary (1 | g)
 # Numerical-stability guards from the twin code-review pass (#303/#308/#311/#312/
 # #319/#321/#324.6/#324.7): SD-collapse, coincident coords, VA inner damping,
 # scale-aware FD Hessian, and PD-prior Cholesky barriers.

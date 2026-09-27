@@ -64,9 +64,14 @@ fit_ls = drm(bf(@formula(y ~ x + (1 | p | phylo(species))),
 exp(-2 * coef(fit, :sigma)[1])  # estimated size θ = 1/σ²
 
 # Experimental (#136 Rung 1): NB2 random-intercept variational (ELBO) marginal.
-# Requires `sigma ~ 1`. Default remains Laplace (`marginal = :LA`).
+# Requires `sigma ~ 1`. Default remains `marginal = :LA` (GHQ-32 on an ordinary `(1 | g)`).
 fit_va = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), NegBinomial2();
              data = dat, marginal = :VA)
+
+# TMB-convention Laplace on an ordinary `(1 | g)`, as native drmTMB fits it.
+# Requires `sigma ~ 1`; ML only.
+fit_lap = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), NegBinomial2();
+              data = dat, marginal = :Laplace)
 ```
 """
 struct NegBinomial2 end
@@ -75,6 +80,9 @@ function drm(f::DrmFormula, fam::NegBinomial2; data, tree = nothing, K = nothing
              A = nothing, coords = nothing, g_tol::Real = 1e-8, se::Bool = true,
              marginal::Symbol = :LA, method = nothing)
     _reject_method_as_marginal(fam, method)
+    _scalar_laplace_requested(marginal) &&     # Arc 2: TMB-convention Laplace, ordinary (1 | g)
+        return _drm_ordinary_laplace(f, fam; data = data, tree = tree, K = K, A = A,
+                                     coords = coords, g_tol = g_tol, se = se, method = method)
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
         drm(f, fam; data = data_observed, tree = tree, K = K, A = A,
             coords = coords, g_tol = g_tol, se = se, marginal = marginal, method = method)

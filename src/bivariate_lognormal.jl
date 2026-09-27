@@ -145,7 +145,7 @@ function _lognormal_jacobian_shift(fam::LogNormal, gfit::DrmFit, y1, y2, obs1, o
                  Dict(:mu1 => Vector{Float64}(y1), :mu2 => Vector{Float64}(y2)),
                  gfit.scales, gfit.formula, lnll, gfit.nllgrad, gfit.ranef,
                  gfit.estim_method, reml_ll, gfit.ml_loglik - jac, gfit.marginal,
-                 gfit.phylo_penalty, gfit.penalty, gfit.iterations)
+                 gfit.phylo_penalty, gfit.penalty, gfit.iterations, gfit.phylo_scale)
 end
 
 # Strictly-positive check on the observed cells of a bivariate lognormal response.

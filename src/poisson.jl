@@ -22,8 +22,11 @@ fit_phy = drm(bf(@formula(y ~ x + phylo(1 | species))), Poisson();
               data = dat, tree = tr, se = false)
 
 # Experimental: Poisson random-intercept variational (ELBO) marginal.
-# Default remains Laplace (`marginal = :LA`). `loglik` on a VA fit is an ELBO.
+# Default remains `marginal = :LA` (GHQ-32 on an ordinary `(1 | g)`). `loglik` on a VA fit is an ELBO.
 fit_va = drm(bf(@formula(y ~ x + (1 | g))), Poisson(); data = dat, marginal = :VA)
+
+# TMB-convention Laplace on an ordinary `(1 | g)`, as native drmTMB fits it (ML only).
+fit_lap = drm(bf(@formula(y ~ x + (1 | g))), Poisson(); data = dat, marginal = :Laplace)
 
 # Opt-in Cox–Reid restricted estimation. ML is the default.
 fit_reml = drm(bf(@formula(y ~ x + (1 | g))), Poisson(); data = dat, method = :REML)
@@ -88,6 +91,9 @@ function drm(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
     # than ignoring the request.
     meth = _reject_method_as_marginal(fam, method; allow_reml = true)
     reml = meth === :REML
+    _scalar_laplace_requested(marginal) &&     # Arc 2: TMB-convention Laplace, ordinary (1 | g)
+        return _drm_ordinary_laplace(f, fam; data = data, tree = tree, K = K, A = A,
+                                     coords = coords, g_tol = g_tol, se = se, method = method)
 
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
         drm(f, fam; data = data_observed, tree = tree, K = K, A = A,

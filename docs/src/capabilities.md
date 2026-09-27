@@ -61,7 +61,7 @@ their own formulas.
 | Gaussian mean μ and scale σ formulas | **Tested**; both intercepts and slopes are recovered. |
 | Non-Gaussian `sigma` or dispersion formula | **Tested** for families with a dispersion model. |
 | Student-t `nu` (degrees of freedom) formula | **Tested**. |
-| Random effect on the Gaussian scale axis, `sigma ~ (1\|g)` | **Tested** with Gauss–Hermite integration. |
+| Random effect on the Gaussian scale axis, `sigma ~ (1\|g)` | **Tested**. By default each group's effect is integrated by 32-node Gauss–Hermite quadrature. That is close to exact for small groups but loses accuracy as groups grow. In our checks with 150 to 400 rows per group, a default fit's log-likelihood differed from drmTMB's by up to about 4 units, sometimes above and sometimes below, and in two of those checks its random-effect SD estimate was about twice drmTMB's. Pass `marginal = :Laplace` to use the Laplace approximation that drmTMB uses; it then gives the same log-likelihood, estimates and standard errors as drmTMB, and stays within 0.01 units of the exact value at those group sizes. Use it for large groups or when you compare results with drmTMB. `:Laplace` needs a fixed-effect mean and maximum likelihood; other models refuse it. `lrtest` accepts a `:Laplace` fit against the fixed-effect model `sigma ~ 1`, but refuses to compare it with a default-integrator fit of a random-effect model. Parametric bootstrap intervals for the random-effect SD are not valid on this route yet, under either integrator, because the replicates do not redraw the random effect on `sigma`; use profile or Wald intervals for that SD. |
 | `sigma(fit)` and `corpairs(fit)` | **Tested** post-fit accessors. |
 
 ## Location–scale–scale models (LSS, `sd()`)
@@ -101,6 +101,7 @@ Gaussian and is fit in closed form (PGLS / matrix-determinant lemma).
 | `animal(1\|id)` | additive-relatedness `A` | **Tested** |
 | `phylo(1\|species)` on the **mean** | tree (`AugmentedPhy` or Newick) | **Tested** |
 | `spatial(1\|site)` | coordinates; `K(ρ)=exp(-d/ρ)`, with ρ estimated | **Tested** |
+| One `phylo`/`relmat`/`animal` marker **plus** ordinary `(1\|h)` or `(0 + x\|h)` bars on the mean | tree / `K` / `A` | **Tested**, ML only; matches drmTMB `engine = "tmb"` on nine test datasets. Independent blocks; the marker SD is on the correlation scale. REML, `(1 + x\|h)`, range-estimated `spatial()`, `penalty` and sparse algorithms are refused by name. With `meta_V(v)` added, the `meta_V` row below fits it. |
 
 The Gaussian table above describes the simple intercept route. It does not rule
 out the supported non-Gaussian phylogenetic mean models or the more specific
@@ -226,6 +227,7 @@ above, and it does so by delegation rather than by a second engine.
 | Capability | Status |
 |---|---|
 | `gaussian()` + `meta_V(v)` with **known diagonal** sampling variances; τ on the σ intercept | **Tested** |
+| `meta_V(v)` plus random intercepts on the mean: `(1 \| study)`, `phylo(1 \| sp)`, `relmat(1 \| id)`, `animal(1 \| id)`, and sums of these with distinct grouping columns; `sigma ~ x` allowed | **Tested** (ML). Fits the same model as drmTMB `engine = "tmb"`: on seven comparison fits the log-likelihoods agree within 3e-10 and the estimates within 3e-9 (relative). A phylo SD is on the raw branch-length scale (× √height = drmTMB's). Not available: REML, random slopes, `spatial()`, a `sigma` random effect, `sd(g) ~ …`, two fields on one grouping column, missing responses; bootstrap with more than one field refuses. |
 | Bivariate known sampling covariance (`meta_vcov_bivariate`) | **Tested** |
 | Deprecated `meta_known_V` parity stub | — | **Not available**; use `meta_V` instead. |
 
@@ -310,9 +312,11 @@ data into a form that Julia can fit, then converts the result back to R.
 
 | Capability | Status |
 |---|---|
-| `marginal=:LA` (Laplace) — the default | **Tested** |
+| `marginal=:LA`, the default integrator: GHQ-32 on an ordinary `(1\|g)` and on Gaussian `sigma ~ (1\|g)`, Laplace on most other random-effect structures | **Tested** |
 | `marginal=:VA` Poisson `(1\|g)` public path | **Experimental**; it uses an ELBO approximation, labels the fit `:VA`, and refuses mixed LA/VA AIC or likelihood-ratio comparisons |
 | `marginal=:VA` Binomial / NB2 / Gamma / Beta `(1\|g)` | **Experimental**; scale families require `sigma ~ 1` |
+| `marginal=:Laplace` Poisson / Binomial / NB2 / Gamma / Beta `(1\|g)` on the mean | **Tested**; the TMB-convention Laplace approximation (the default `:LA` is GHQ-32 on this cell). Same log-likelihood as native drmTMB to ≤ 4e-10 on ten test datasets. Scale families require `sigma ~ 1`; ML only. `(1 + x\|g)`, crossed terms, `sigma` covariates or random effects, `zi`/`hu` and REML are refused. `lrtest` against the fixed-effects model works; against a `:LA` random-effect fit it is refused. Prefer `:Laplace` when the family `sigma` is small (about 0.01 or less; failures shown at 0.003 to 0.012), where the default GHQ-32 can miss the optimum |
+| `marginal=:Laplace` Gaussian `sigma ~ 1 + (1\|g)` (random intercept on the scale axis, fixed-effect mean) | **Tested**; the Laplace approximation native drmTMB uses (the default `:LA` is GHQ-32 on this cell). Same log-likelihood, estimates and standard errors as drmTMB on the test datasets; ML only. See the scale-axis row above for accuracy and for the bootstrap limitation on the random-effect SD |
 | `method=:VA` on non-Gaussian `drm()` | **Rejected** — choose `marginal=:VA`; `method` is ML/REML |
 
 ## Absent / out-of-scope (explicit)

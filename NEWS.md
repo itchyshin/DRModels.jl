@@ -32,6 +32,81 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   `profile_ci = true` gives a `[0, upper]` interval. The coupled block computes
   no profile interval, under ML or REML; it ignores `profile_ci = true`.
 
+- **`marginal = :Laplace` on an ordinary `(1 | g)` (Arc 2, drmTMB parity).**
+  Poisson, Binomial, NegBinomial2, Gamma and Beta with one ordinary random
+  intercept on the mean (`sigma ~ 1` for the scale families) can now be fitted
+  with the Laplace approximation exactly as drmTMB/TMB does, instead of the
+  default `:LA` route's 32-node Gauss–Hermite quadrature. It reuses the
+  structured routes' sparse-Laplace kernels with an identity precision and
+  unclamped scales (`raw_scales = true`); the fit is tagged
+  `marginal = :Laplace`, and `drm_bridge` now accepts a `marginal` option and
+  reports the integrator it used. On ten fixtures (five families × two seeds)
+  it matches native drmTMB to |ΔlogLik| ≤ 3.8e-10 and ≤ 6.1e-8 relative on
+  every estimate (`docs/dev-log/evidence/arc2-ordinary-laplace/`). The default
+  `:LA` answers are unchanged. Not covered and refused: `(1 + x | g)`,
+  `(0 + x | g)`, crossed terms, `sigma ~ covariates`, a random effect on
+  `sigma`, `zi`/`hu`, and REML. When the family `sigma` is small (about
+  0.01) the raw gradient stays large at the optimum because the curvature is
+  large; the route then judges convergence by the scale-free Newton
+  decrement, after up to three Newton steps on the outer gradient (with the
+  inner mode solved to 1e-13), so such a fit reports `converged = true` only
+  once it sits on drmTMB's optimum (Gamma `sigma` = 0.003: 5.6e-12 relative).
+  NegBinomial2 on this route uses its own NB2 kernel that stays accurate when
+  the size 1/σ² is huge (near-Poisson data); the structured NB2 kernel lost
+  all precision there and reported logLik −0.0014 against drmTMB's −559.55.
+  If a scale-family fit ends with log σ below −8, where the objective is
+  flat (for NB2, the Poisson limit), the route re-fits from log σ = −1 and
+  keeps the lower objective; on one NB2 review cell the first fit had
+  stopped on that plateau, reporting `converged = true`, 0.81 below
+  drmTMB's logLik. `lrtest`/`anova` now accept a random-effect-free fit
+  against any non-VA fit, including `marginal = :AGHQ` (refused before),
+  because a fixed-effects log-likelihood is exact; they still refuse `:LA`
+  vs `:Laplace` random-effect pairs and any VA fit.
+
+- **`meta_V(v)` with a random effect on the mean fits drmTMB's model.** `meta_V(v) + (1 | study)`
+  used to return the `meta_V`-only fit (the random effect silently dropped: df 3 against drmTMB's 4),
+  and `meta_V(v) + phylo(1 | sp)` / `+ relmat(1 | id)` the structured fit with the known variances
+  silently dropped. A new route, `_fit_meta_gaussian_re` (`src/gaussian_meta.jl`), fits the marginal
+  `y ~ N(Xβ, diag(v + σ²) + Σ s_k² Z_k C_k Z_kᵀ)` that drmTMB's Laplace integrates exactly, for any
+  mix of `(1 | g)`, `phylo`, `relmat` and `animal` intercepts on distinct grouping columns, with
+  `sigma ~ x` allowed. Measured against drmTMB `engine = "tmb"` in seven fits on six fixtures: logLik within
+  3e-10, every estimate within 3e-9 relative (`docs/dev-log/evidence/arc2-metav-random-effect/`).
+  Random slopes, `spatial()`, REML, a `sigma` random effect and `sd(g) ~ …` still refuse; the marginal
+  bootstrap refuses a `meta_V` fit with more than one random field rather than drop one.
+  The same refusal now covers the two-structured Gaussian route (`phylo(1 | sp) + relmat(1 | id)`),
+  whose bootstrap used to draw the phylo field alone. Fits whose random fields are all ordinary
+  bars keep their existing bootstrap path.
+- **Bootstrap draws a phylo field on the right tree tips.** The marginal bootstrap simulator placed
+  `phylo(1 | sp)` rows on tips by the order species first appear in the data, not by name, so a data
+  set not sorted in tree-tip order drew the wrong phylogenetic covariance (sister tips: -0.005 drawn
+  against 0.294 in the model), and a tree with tips absent from the data fell back to the conditional
+  draw. It now places rows on tips by name, as every phylo fit does (next item). On the dense Gaussian
+  phylo routes it also draws on the tip correlation those fits use, not the raw covariance, which
+  over-dispersed the field by the tree height. Tip-ordered data give the same draws as before, except
+  on those dense routes with a tree whose height is not 1.
+- **The dense Gaussian phylo routes map rows to tree tips by name.** The single-field fallback taken
+  for `phylo(1 | sp)` with `sigma ~ x` or `algorithm = :gls` / `:lbfgs`, and the two-structured route
+  (`phylo(1 | sp) + relmat(1 | id)`), placed rows on tips in the order species first appear in the
+  data. When the data were not in tree-tip order they fitted a different model from drmTMB's and from
+  the default route: on one 12-tip fixture, `sigma ~ x` gave logLik -52.141 against drmTMB's -46.142,
+  and `algorithm = :lbfgs` gave -55.018 against -49.119 from the default route on the same data. Rows
+  now go to tips by name (or integer tip index), so row order no longer changes the fit, those logLiks
+  now equal drmTMB's and the default route's, and a tree with tips absent from the data fits instead
+  of failing the size check. The SD stays on the tip-correlation scale on these routes. Tip-ordered
+  data give identical fits.
+
+- **A structured marker plus an ordinary random effect no longer drops the ordinary
+  term.** `drm(bf(y ~ x + phylo(1 | sp) + (1 | h), sigma ~ 1), Gaussian(); …)` (and
+  the same shape with `relmat`/`animal`, or with `(0 + x | h)` or several bars) used
+  to reach the single-structured fitter, which fitted the marker alone and silently
+  discarded every `(1 | h)` term. It now fits drmTMB's model: independent blocks,
+  `V = D + Σ_k σ_k² Z_k K_k Z_kᵀ`, ML, reported in one `:resd` block (ordinary bars
+  first, the marker last; an ordinary intercept that shares the marker's grouping is
+  keyed `<g>_iid`). Nine fixtures match drmTMB `engine = "tmb"` to |ΔlogLik| ≤ 1.4e-10
+  (`docs/dev-log/evidence/arc2-structured-ordinary-bar/`). REML, `(1 + x | h)`,
+  range-estimated `spatial()`, `penalty` and sparse algorithms with this shape now
+  raise an `ArgumentError` instead of dropping a term; with `meta_V(v)` added, the
+  `meta_V` + random-intercept route above fits it.
 - **Package renamed to DRModels.jl.** The Julia package and module are now
   `DRModels`, while the modelling API remains `drm()`, `bf()`, and the existing
   fit/post-fit surface. `DRModels.DRM` is a soft-deprecated qualified alias for
@@ -42,6 +117,49 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   The GitHub repository rename is complete; the stable Pages deployment awaits
   this unmerged PR landing. Historical
   `docs/dev-log/` records intentionally retain their original spelling.
+
+- **`marginal = :Laplace` for a Gaussian random intercept on `sigma`.**
+  `drm(bf(y ~ x, sigma ~ 1 + (1 | g)), Gaussian(); marginal = :Laplace)` fits
+  each group's log-scale effect by the Laplace approximation, which is what
+  native drmTMB (TMB) computes for this model. The default (`marginal = :LA`)
+  still uses non-adaptive 32-node Gauss–Hermite quadrature and its answers are
+  byte-identical to before. The inner mode is a bracketed 1-D Newton solve
+  (the per-group log-density is strictly concave in the effect), followed by
+  two Newton steps in the optimiser's number type, so ForwardDiff gradients and
+  Hessians carry the implicit derivative of the mode. On seven data sets
+  (five equal-size designs with 10 to 400 rows per group, one with `sigma ~ 1 +
+  x + (1 | g)`, one with 3 to 120 rows per group) the route matches native
+  drmTMB to |ΔlogLik| ≤ 3e-10, ≤ 3e-10 relative on every estimate and ≤ 2e-6
+  relative on every standard error, where the default route differed from
+  drmTMB by 0.002 to 3.3 log-likelihood units
+  (`docs/dev-log/evidence/arc2-sigma-re-laplace/`). The same receipt shows why:
+  against the exact marginal at drmTMB's estimates, GHQ-32 is exact for 10 rows
+  per group but 0.49 and 4.8 units low at 150 and 400 rows per group, where
+  Laplace is within 0.008. At the default fit's own optimum the error can go
+  the other way: the reported default log-likelihood can lie above drmTMB's
+  (by about 4 units on 5 groups of 300 rows), with a random-effect SD about
+  twice drmTMB's (`own_optimum.tsv` in the same folder). The random-effect SD is still reported as
+  `re_sd(fit)[:<g>_logsigma]`. `drm_bridge` now accepts a `marginal` option,
+  `"LA"` or `"Laplace"` only (`"VA"`, `"AGHQ"` and other values are refused by
+  name, as is any value for a `drm` method that has no `marginal` keyword), and
+  reports the integrator it used as `"marginal"`. Refused, with an
+  `ArgumentError`: `:Laplace` on any other Gaussian model (mean random effects,
+  structured terms, `sd()` submodels, random slopes on `sigma`, REML,
+  non-default `algorithm`), and `marginal = :VA` / `:AGHQ` on Gaussian models.
+  `bootstrap_result`, `bootstrap_ci` and `bootstrap_summary` refit every
+  replicate of a `:Laplace` fit with `:Laplace`. Parametric bootstrap intervals
+  for the sigma random-effect SD are not valid on this route yet, under either
+  integrator: the replicates are simulated without redrawing the random effect on
+  `sigma`, so the refitted SD collapses towards zero. Use profile or Wald intervals
+  for that SD. The names follow one rule:
+  `:LA` is the route's default integrator (not always Laplace; here it is
+  Gauss–Hermite quadrature), and `:Laplace` always forces the Laplace
+  approximation drmTMB uses. `lrtest` and `anova` no longer refuse a fit with
+  no random effect against a non-VA fit with a different `marginal` tag, so the
+  fixed-effect `sigma ~ 1` model can be tested against a `:Laplace` fit (the
+  `comparison.jl` change is shared verbatim with the ordinary `(1 | g)`
+  `:Laplace` work). The error for `:Laplace` on a family that does not
+  implement it now says so, instead of pointing to `:LA` as Laplace.
 
 ## v0.7.1 — 2026-09-05
 
