@@ -6,6 +6,17 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **LogNormal crossed random effects (#736, drmTMB twin parity).**
+  `LogNormal()` now fits crossed/multiple random intercepts on the log-mean,
+  `(1 | g) + (1 | h)`, matching drmTMB's `lognormal()`. `log(y)` is exactly
+  Gaussian, so the fit delegates WHOLESALE to
+  `drm(f, Gaussian(); data = data-with-logged-response)`
+  (`_fit_multi_ranef_gaussian`, the closed-form exact crossed marginal
+  likelihood — no Laplace approximation, so no new integrator), the same
+  identity already used for `phylo`/`relmat` structured markers on the mean,
+  with the reported log-likelihood shifted by the parameter-free Jacobian
+  `-sum(log y)`.
+
 - **`marginal = :Laplace` on an ordinary `(1 | g)` (Arc 2, drmTMB parity).**
   Poisson, Binomial, NegBinomial2, Gamma and Beta with one ordinary random
   intercept on the mean (`sigma ~ 1` for the scale families) can now be fitted
