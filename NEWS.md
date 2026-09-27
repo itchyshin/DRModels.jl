@@ -6,6 +6,20 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **`Binomial()` correlated random slope `(1 + x | g)` (#753).** Binomial now
+  fits a logistic GLMM with a correlated random intercept + slope on the mean,
+  via a 2-D Gauss–Hermite tensor grid — the same scheme `BetaBinomial()`
+  already uses, minus the precision parameter Binomial doesn't have. Brings
+  Binomial in line with the other seven families and with drmTMB's
+  `binomial()`. Guarded: a slope predictor that is constant within any group
+  leaves the slope SD and the group-level correlation unidentified and is
+  refused with an informative error (mirrors drmTMB's
+  `drm_validate_q2_slope_variation`, reimplemented rather than vendored — see
+  `test/test_binomial_slope_re.jl`). Still refused: an independent random
+  slope `(0 + x | g)` and `marginal = :VA` on the correlated slope. Unlike
+  drmTMB, DRModels.jl does not run a `detectseparation`-style separation
+  screen before fitting.
+
 - **`marginal = :Laplace` on an ordinary `(1 | g)` (Arc 2, drmTMB parity).**
   Poisson, Binomial, NegBinomial2, Gamma and Beta with one ordinary random
   intercept on the mean (`sigma ~ 1` for the scale families) can now be fitted

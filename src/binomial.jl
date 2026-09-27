@@ -20,7 +20,19 @@ vector. Likelihood `Binomial(n, μ)` with `μ = logistic(η)`. Mirrors `drmTMB`'
 `binomial` family. A random intercept `(1 | g)` on the mean fits a logistic
 GLMM; crossed intercepts such as `(1 | g) + (1 | h)` use the sparse-Laplace
 engine. A phylogenetic random intercept on the mean, `phylo(1 | species)`, also
-uses the sparse-Laplace engine.
+uses the sparse-Laplace engine. A correlated random intercept + slope
+`(1 + x | g)` is fit by a 2-D Gauss–Hermite tensor grid (the same scheme as
+[`BetaBinomial`](@ref)); it needs within-group variation in `x` — a slope
+predictor that is constant within any level of `g` leaves the slope SD and
+group-level correlation unidentified, and is refused with an informative
+error (mirrors drmTMB's `drm_validate_q2_slope_variation`). An independent
+random slope `(0 + x | g)` and `marginal = :VA` on `(1 + x | g)` remain out of
+scope.
+
+!!! note
+    Unlike drmTMB, DRModels.jl does not run a `detectseparation`-style
+    separation screen before fitting; a (quasi-)separated logistic fit may
+    converge to a diverging boundary estimate without warning.
 
 !!! note
     `DRModels.Binomial` shadows `Distributions.Binomial`; if you need the
@@ -105,9 +117,14 @@ function drm(f::DrmFormula, fam::Binomial; data, tree = nothing, K = nothing,
             isva && return _withformula(_withmarginal(
                 _fit_binomial_ranef_va(fam, s, ntr, Xμ, gidx, G, nmμ, grp, g_tol), :VA), f)
             return _withformula(_fit_binomial_ranef(fam, s, ntr, Xμ, gidx, G, nmμ, grp, g_tol), f)
-        else
+        elseif rk === :corr                                # (1 + x | g) → 2-D GHQ tensor (#753)
             isva && _va_reject(fam, "a correlated random slope `(1 + x | g)`")
-            error("Binomial() supports `(1 | g)` on the mean")
+            xs = Float64.(getproperty(data, var))
+            _binomial_check_slope_identifiable(xs, gidx, G, grp)
+            return _withformula(_fit_binomial_corr_ranef(fam, s, ntr, Xμ, xs, gidx, G, nmμ, grp, g_tol), f)
+        else
+            isva && _va_reject(fam, "an independent random slope `(0 + x | g)`")
+            error("Binomial() supports `(1 | g)` or `(1 + x | g)` on the mean")
         end
     end
     isva && _va_reject(fam, "no random intercept (fixed-effects-only)")
@@ -197,6 +214,77 @@ function _fit_binomial_ranef(fam::Binomial, s, ntr, Xμ, gidx, G, nmμ, grp, g_t
     blocks = [:mu => 1:pμ, :resd => (pμ+1):(pμ+1)]
     names = [:mu => nmμ, :resd => [String(grp)]]
     means = Dict(:mu => _logistic.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => s ./ ntr)   # population μ (b=0)
+    scales = Dict(:trials => Float64.(nint))
+    return _withiterations(
+        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
+        Optim.iterations(res))
+end
+
+# Identifiability guard for the correlated random slope (1 + x | g) (#753): the
+# slope RE variance and the group-level (intercept, slope) correlation are
+# unidentified when `xs` is constant within any level of `grp` — mirrors
+# drmTMB's `drm_validate_q2_slope_variation` (R/mspl-estimator.R), reimplemented
+# here (never vendored: drmTMB is GPL, DRModels.jl is MIT).
+function _binomial_check_slope_identifiable(xs, gidx, G, grp)
+    seen = [Set{Float64}() for _ in 1:G]
+    for i in eachindex(xs)
+        push!(seen[gidx[i]], xs[i])
+    end
+    all(length(s) ≥ 2 for s in seen) ||
+        error("Binomial() correlated random slope `(1 + x | g)` needs within-group variation in the " *
+              "slope predictor — it is constant within at least one level of `$grp`, so the slope SD " *
+              "and the group-level intercept–slope correlation are unidentified. " *
+              "Use a predictor that varies within `$grp`.")
+end
+
+# Binomial logistic GLMM with a correlated random intercept + slope (1 + x | g)
+# on the logit mean (#753). Per group (b0,b1) ~ N(0, Σ); logit μ_i =
+# Xμ_iᵀβ + b0_g + b1_g·x_i. Groups are disjoint so the per-group 2-D integral
+# factorises, done by a 2-D Gauss–Hermite tensor grid (K² nodes) — the same
+# scheme as `_fit_betabinomial_corr_ranef` (betabinomial.jl) minus the
+# precision φ (Binomial has no dispersion parameter). Σ is the log-Cholesky
+# parameterisation L = [exp(a) 0; cc exp(b)] (the `vc` convention), so vc(fit)
+# reconstructs Σ = L Lᵀ.
+function _fit_binomial_corr_ranef(fam::Binomial, s, ntr, Xμ, xs, gidx, G, nmμ, grp, g_tol)
+    n = length(s); pμ = size(Xμ, 2)
+    sint = round.(Int, s); nint = round.(Int, ntr)
+    members = [Int[] for _ in 1:G]
+    for i in 1:n
+        push!(members[gidx[i]], i)
+    end
+    z1, w1 = _gauss_hermite(12); lw = log.(w1); K = length(z1); rt2 = sqrt(2.0); lπ = log(π)
+    function nll(θ)
+        βμ = θ[1:pμ]; a = θ[pμ+1]; b = θ[pμ+2]; cc = θ[pμ+3]
+        l11 = exp(a); l22 = exp(b); η0 = Xμ * βμ
+        v = zero(eltype(θ))
+        for idx in members
+            isempty(idx) && continue
+            terms = Vector{eltype(θ)}(undef, K * K)
+            t = 0
+            for j in 1:K, k in 1:K
+                t += 1
+                b0 = rt2 * l11 * z1[j]; b1 = rt2 * (cc * z1[j] + l22 * z1[k])   # √2 L z
+                gll = lw[j] + lw[k]
+                for i in idx
+                    μ = _logistic(clamp(η0[i] + b0 + b1 * xs[i], -15.0, 15.0))
+                    gll += Distributions.logpdf(Distributions.Binomial(nint[i], μ), sint[i])
+                end
+                terms[t] = gll
+            end
+            mx = maximum(terms)
+            v -= (-lπ + mx + log(sum(exp.(terms .- mx))))      # 2-D: -0.5·2·logπ = -logπ
+        end
+        return v
+    end
+    p̄ = clamp(sum(s) / max(sum(ntr), 1), 1e-3, 1 - 1e-3)
+    θ0 = zeros(pμ + 3)
+    θ0[1] = log(p̄ / (1 - p̄))                                # logit p̄
+    θ0[pμ+1] = log(0.4); θ0[pμ+2] = log(0.4); θ0[pμ+3] = 0.0
+    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    blocks = [:mu => 1:pμ, :recov => (pμ+1):(pμ+3)]
+    names = [:mu => nmμ, :recov => ["$(grp):L11", "$(grp):L22", "$(grp):L21"]]
+    means = Dict(:mu => _logistic.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => s ./ ntr)
     scales = Dict(:trials => Float64.(nint))
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),

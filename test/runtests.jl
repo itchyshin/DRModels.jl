@@ -287,6 +287,7 @@ _shard_include("test_betabinomial_re.jl")
 _shard_include("test_betabinomial_slope_re.jl")
 _shard_include("test_binomial.jl")
 _shard_include("test_binomial_re.jl")
+_shard_include("test_binomial_slope_re.jl")
 _shard_include("test_summary.jl")
 _shard_include("test_bootstrap_nongaussian.jl")
 _shard_include("test_bootstrap_nongaussian_structured.jl")   # #479: K/A/tree threaded through refit
