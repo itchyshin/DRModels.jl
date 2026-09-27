@@ -467,7 +467,7 @@ function _glsp_profile_ci(nll, grad, θ̂, idx; level = 0.95)
         val = try
             res = Optim.optimize(obj, grad!, copy(θ̂[free]), Optim.LBFGS(),
                                  Optim.Options(g_tol = 1e-6, iterations = 150))
-            Optim.minimum(res)
+            _objective_at_minimizer(obj, res)
         catch
             Inf            # sub-fit failed (ill-conditioned at an extreme log-SD)
         end

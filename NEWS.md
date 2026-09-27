@@ -6,6 +6,20 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **Fixed: reported/compared logLik could read a rejected line-search trial's
+  value, not the value at the reported optimum.** After a failed line search
+  (`Status: failure (line search failed)`), Optim.jl v1.13.3 can leave
+  `Optim.minimum(res)` holding the objective from an earlier, REJECTED trial
+  point while `Optim.minimizer(res)` has already moved past it — confirmed by
+  a minimal reproduction (`test/test_optim_minimum_contract.jl`) that gets a
+  barrier-sentinel `Optim.minimum(res) == 1e18` alongside a finite
+  `f(Optim.minimizer(res))`. Every site in `src/` that REPORTED
+  `-Optim.minimum(res)` as a fit's logLik, or COMPARED `Optim.minimum` across
+  candidates/restarts, has been changed to re-evaluate the objective fresh at
+  `Optim.minimizer(res)` (`src/optim_minimum_guard.jl`,
+  `_objective_at_minimizer`/`_objective_at_minimizer_fg`). Converged fits are
+  numerically unaffected — the two values coincide there.
+
 - **`marginal = :Laplace` on an ordinary `(1 | g)` (Arc 2, drmTMB parity).**
   Poisson, Binomial, NegBinomial2, Gamma and Beta with one ordinary random
   intercept on the mean (`sigma ~ 1` for the scale families) can now be fitted

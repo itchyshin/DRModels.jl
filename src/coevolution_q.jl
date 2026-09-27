@@ -358,7 +358,7 @@ function fit_coevolution(prob::CoevoProblem, Q_cond::SparseMatrixCSC;
     θ̂ = Optim.minimizer(res)
     β̂, Λ̂, σ̂ = coevo_unpack(prob, θ̂)
     return (; β = β̂, Λ = Λ̂, σ_res = σ̂,
-            loglik = -Optim.minimum(res) * n,
+            loglik = -_objective_at_minimizer(negℓ, res) * n,
             converged = Optim.converged(res),
             iterations = Optim.iterations(res),
             θ = θ̂)
