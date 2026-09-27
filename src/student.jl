@@ -287,7 +287,9 @@ function _fit_student_crossed_laplace(fam::Student, y, Xμ, Xσ, Xν, comps, nm�
             J0, grad, H = joint_terms(b, η0, ησ, ην, invg, invh)
             ch = cholesky(Symmetric(H); check = false)
             if !issuccess(ch)                     # indefinite: expected-information direction
-                ch = cholesky(Symmetric(last(joint_terms(b, η0, ησ, ην, invg, invh; expected = true))))
+                ch = cholesky(Symmetric(last(joint_terms(b, η0, ησ, ην, invg, invh; expected = true)));
+                              check = false)
+                issuccess(ch) || return b, false  # fail closed: even the expected info is not PD here
             end
             step = ch \ grad
             norm(step) <= tol * (1 + norm(b)) && return b, true
@@ -299,7 +301,14 @@ function _fit_student_crossed_laplace(fam::Student, y, Xμ, Xσ, Xν, comps, nm�
                 end
                 α /= 2
             end
-            accepted || return b, norm(grad, Inf) <= 1e-8 * (1 + n)
+            # A near-zero crossed variance makes invg/invh (and so H's diagonal) large,
+            # which raises the floating-point floor the Newton gradient can reach before
+            # line-search steps underflow -- confirmed on #827's sdh0 data: the gradient
+            # plateaus at ~4e-6 (well converged in relative terms) but never crosses the
+            # old 1e-8*(1+n) floor, so the line-search failure reads as non-convergence
+            # and poisons the outer nll with a spurious 1e18. Loosened by 100x (still a
+            # tight absolute tolerance relative to a Hessian diagonal of order invh).
+            accepted || return b, norm(grad, Inf) <= 1e-6 * (1 + n)
         end
         return b, false
     end
@@ -308,9 +317,15 @@ function _fit_student_crossed_laplace(fam::Student, y, Xμ, Xσ, Xν, comps, nm�
         T = eltype(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]; βν = θ[pμ+pσ+1:pμ+pσ+pν]
         lsg = θ[pμ+pσ+pν+1]; lsh = θ[pμ+pσ+pν+2]
-        (abs(_student_fval(lsg)) > 12 || abs(_student_fval(lsh)) > 12) && return T(1e18)
+        # Wide guard, not a tight wall (#827 review): a crossed variance genuinely at
+        # its zero boundary reports as log σ ≈ −12 to −13 (drmTMB's sdh0 case puts it
+        # at −12.57), so a wall at 12 rejects a legitimate MLE outright. invg/invh stay
+        # finite (no Float64 overflow) out to |log σ| ≈ 350, so 30 is generous headroom
+        # while still catching a runaway line-search probe before invg/invh overflow.
+        (abs(_student_fval(lsg)) > 30 || abs(_student_fval(lsh)) > 30) && return T(1e18)
         η0 = Xμ * βμ; ησ = Xσ * βσ; ην = Xν * βν
         invg = exp(-2lsg); invh = exp(-2lsh)
+        (isfinite(_student_fval(invg)) && isfinite(_student_fval(invh))) || return T(1e18)
         f0 = (_student_fval.(η0), _student_fval.(ησ), _student_fval.(ην),
               _student_fval(invg), _student_fval(invh))
         b̂, ok = inner_mode(f0..., last_b)
@@ -338,6 +353,24 @@ function _fit_student_crossed_laplace(fam::Student, y, Xμ, Xσ, Xν, comps, nm�
     θ0[k+1] = θ0[pμ+1]; θ0[k+2] = θ0[pμ+1]                   # σ_g, σ_h init
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol, iterations = 1000);
                          autodiff = :forward)
+    # Repeated restart from θ̂ on non-convergence (#827 review; mirrors #837): a non-converged
+    # LBFGS run can stop early after its line search crosses the fail-closed 1e18 region even
+    # on ordinary, well-conditioned data (confirmed: restarting from θ̂ walks the reviewer's
+    # "gauss" data to drmTMB's optimum). Each restart's own line search can fail again a few
+    # steps later (still short of the outer g_tol), so this restarts a bounded number of times
+    # rather than once, keeping whichever minimizer is best each time. `Optim.minimum` is NOT
+    # trustworthy for that comparison: on a "line search failed" result it reports the value of
+    # the LAST (rejected) trial point, not of `Optim.minimizer` (confirmed: the restart's own
+    # minimizer was a genuine improvement, nll 296.22 vs 296.37, while its reported `minimum`
+    # read 1e18) -- so `nll` is re-evaluated at each minimizer directly instead.
+    for _ in 1:8
+        Optim.converged(res) && break
+        res2 = Optim.optimize(nll, Optim.minimizer(res), Optim.LBFGS(),
+                              Optim.Options(g_tol = g_tol, iterations = 1000); autodiff = :forward)
+        improved = nll(Optim.minimizer(res2)) < nll(Optim.minimizer(res))
+        improved || break
+        res = res2
+    end
     θ̂ = Optim.minimizer(res)
     nllhat = nll(θ̂)
     gfinal = ForwardDiff.gradient(nll, θ̂)
