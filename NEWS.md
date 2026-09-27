@@ -6,6 +6,12 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **`re_sd(fit)` now returns SDs for a correlated random-effect block
+  (`(1 + x | g)`) (#708, #763).** It previously returned an empty `Dict`,
+  leaving `vc(fit)` as the only route to the intercept/slope SDs. `re_sd`
+  now keys the two SDs `<group>_intercept` and `<group>_slope`, decoded from
+  the same Cholesky factor `vc(fit)` uses (`sqrt.(diag(vc(fit)[:g]))`); the
+  correlation itself is still only in `vc(fit)`.
 - **`marginal = :Laplace` on an ordinary `(1 | g)` (Arc 2, drmTMB parity).**
   Poisson, Binomial, NegBinomial2, Gamma and Beta with one ordinary random
   intercept on the mean (`sigma ~ 1` for the scale families) can now be fitted

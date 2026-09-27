@@ -590,3 +590,7 @@ _shard_include("test_609_varying_scale.jl")
 # DimensionMismatch because simulate drew fit.nobs values against full-design
 # means. Guards both, plus the iteration count the full-row rebuild dropped.
 _shard_include("test_bridge_response_mask_inference.jl")
+
+# Issue #708 / #763: re_sd(fit) returned an empty Dict for a correlated
+# random-effect block (1 + x | g); only vc(fit) exposed the SDs/correlation.
+_shard_include("test_twin_display_708.jl")

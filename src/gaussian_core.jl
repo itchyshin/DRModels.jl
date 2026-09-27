@@ -2215,12 +2215,16 @@ end
 """
     re_sd(fit) -> Dict{Symbol,Float64}
 
-Estimated random-effect (random-intercept) standard deviations, keyed by
-grouping factor. A mean-axis random intercept (`y ~ x + (1|g)`) is keyed by the
-bare group name and is on the response scale. A scale-axis random intercept
-(`sigma ~ 1 + (1|g)`) is keyed `<group>_logsigma` because that SD lives on the
-log-σ scale — the two are NOT directly comparable, and the suffix keeps them
-distinct so a side-by-side read is not silently mixing scales.
+Estimated random-effect standard deviations, keyed by grouping factor. A
+mean-axis random intercept (`y ~ x + (1|g)`) or independent slope
+(`y ~ x + (0+x|g)`) is keyed by the bare group name and is on the response
+scale. A scale-axis random intercept (`sigma ~ 1 + (1|g)`) is keyed
+`<group>_logsigma` because that SD lives on the log-σ scale — the two are NOT
+directly comparable, and the suffix keeps them distinct so a side-by-side read
+is not silently mixing scales. A correlated random intercept+slope block
+(`(1 + x | g)`) is keyed `<group>_intercept` and `<group>_slope`, consistent
+with `sqrt.(diag(vc(fit)[:g]))`; the correlation itself is not returned here —
+use [`vc`](@ref) for the full 2×2 covariance.
 """
 function re_sd(fit::DrmFit)
     # Location–scale–scale fits (#544) model the RE SD with covariates, so a
@@ -2231,10 +2235,20 @@ function re_sd(fit::DrmFit)
             "`coef(fit, :sd)` for the log-SD coefficients."))
     d = Dict{Symbol,Float64}()
     for (p, r) in fit.blocks
-        p === :resd || continue
-        nms = first(cn[2] for cn in fit.coefnames if cn[1] === :resd)
-        for (j, nm) in enumerate(nms)
-            d[Symbol(nm)] = exp(fit.theta[r[j]])
+        if p === :resd
+            nms = first(cn[2] for cn in fit.coefnames if cn[1] === :resd)
+            for (j, nm) in enumerate(nms)
+                d[Symbol(nm)] = exp(fit.theta[r[j]])
+            end
+        elseif p === :recov
+            # Same Cholesky decoding as vc(fit): l11 = intercept SD, and the
+            # slope SD is sqrt(cc^2 + l22^2) (the (2,2) entry of L*L').
+            a, b, cc = fit.theta[r]
+            l11 = exp(a); l22 = exp(b)
+            nm = first(cn[2] for cn in fit.coefnames if cn[1] === :recov)[1]   # "g:L11"
+            grp = split(nm, ":")[1]
+            d[Symbol(grp * "_intercept")] = l11
+            d[Symbol(grp * "_slope")] = sqrt(cc^2 + l22^2)
         end
     end
     return d
