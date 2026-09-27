@@ -225,8 +225,19 @@ function _re_quad_stable(r::AbstractVector, invD::AbstractVector, w, gidx::Abstr
     end
     quad = zero(T)
     @inbounds for k in 1:G
-        u[k] += (gk[k] - u[k] * invσb2[k]) / M[k]
-        quad += u[k]^2 * invσb2[k]
+        # invσb2[k] == Inf ⇒ σ_b,k → 0 exactly (an unconstrained line-search
+        # probe can reach this, e.g. a `sd(g) ~ x` submodel driving log σ_b,k
+        # to a large negative value). u[k] is already 0 from C[k]/M[k] with
+        # M[k] = Inf, the correct conditional mode at zero group variance, and
+        # the prior/shrinkage term contributes nothing to the quadratic form
+        # in that limit. Skip the refinement there: `u[k] * invσb2[k]` would
+        # otherwise be `0 * Inf = NaN`, which fails LineSearches' finiteness
+        # assertion (regression from #835 surfaced by the location-scale-scale
+        # REML docs example).
+        if isfinite(invσb2[k])
+            u[k] += (gk[k] - u[k] * invσb2[k]) / M[k]
+            quad += u[k]^2 * invσb2[k]
+        end
     end
     @inbounds for i in eachindex(r)
         k = gidx[i]; wi = w === nothing ? one(T) : w[i]
