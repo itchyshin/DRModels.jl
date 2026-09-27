@@ -2780,7 +2780,8 @@ end
 
 function _fit_crossed_mean_laplace(fam, kind, aux, n::Int, Xμ, gidx, G, hidx, Hh,
                                    nmμ, labels, g_tol; θβ0 = nothing,
-                                   se::Bool = false, polish_iterations::Int = 0)
+                                   se::Bool = false, polish_iterations::Int = 0,
+                                   nested_candidates = NamedTuple[])
     pμ = size(Xμ, 2)
     last_b = zeros(G + Hh)
 
@@ -2879,9 +2880,53 @@ function _fit_crossed_mean_laplace(fam, kind, aux, n::Int, Xμ, gidx, G, hidx, H
     grad!(gfinal, θ̂)
     nllhat = nll(θ̂)
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
+
+    # The crossed-mean Laplace objective's own (robustly-found) optimum can
+    # still sit below a boundary submodel's log-likelihood when that submodel
+    # was fitted by a MORE ACCURATE marginal-likelihood method (e.g. 32-node
+    # GHQ for a single random-intercept grouping) -- the nested model is the
+    # h-SD -> 0 boundary of this bigger model, so at a true maximum this
+    # ordering is impossible (issue #761 follow-up). Multi-start experiments
+    # (data-driven vs. naive cold starts) confirm this is NOT a local-optimum
+    # artifact of THIS optimizer -- both starts land on the same Laplace
+    # optimum -- so callers may pass already-fitted, more-accurate boundary
+    # submodels (embedded into this θ layout: [βμ; logσ_g; logσ_h]) as
+    # `nested_candidates`, and the better (higher-loglik) one is kept.
+    winning_cand = nothing
+    for cand in nested_candidates
+        if cand.loglik > -nllhat
+            θ̂ = cand.theta
+            nllhat = -cand.loglik
+            converged = cand.converged
+            winning_cand = cand
+        end
+    end
+
     V = if se
-        Hθ = _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
-        _vcov_from_hessian(Hθ; context = "sparse-Laplace GLMM (crossed-mean)")
+        if winning_cand !== nothing && haskey(winning_cand, :vcov) && haskey(winning_cand, :drop)
+            # The dropped grouping's variance was never actually estimated by
+            # the winning (more-accurate) candidate -- it was pinned at the
+            # boundary, not optimized -- so it must NOT be run through the
+            # generic FD Hessian (whose curvature at an exactly-clamped point
+            # can be spuriously finite). Embed the candidate's own, accurate
+            # vcov for the coordinates it DID estimate, and mark the dropped
+            # coordinate non-finite so `stderror` reports it as `Inf` via the
+            # package's existing boundary-SE convention (`_boundary_se`,
+            # src/inference.jl) -- never a silently finite-looking number.
+            @warn "sparse-Laplace vcov (crossed-mean): a boundary submodel (one grouping's " *
+                  "variance at the floor) was more accurate than this optimizer's own free " *
+                  "optimum and was kept instead; the dropped grouping's variance was never " *
+                  "estimated, so its Hessian is not positive definite / trustworthy -- its " *
+                  "standard error is reported as Inf, not a fabricated finite value."
+            p = length(θ̂)
+            Vfull = fill(NaN, p, p)
+            kept = setdiff(1:p, winning_cand.drop)
+            Vfull[kept, kept] .= winning_cand.vcov
+            Vfull
+        else
+            Hθ = _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+            _vcov_from_hessian(Hθ; context = "sparse-Laplace GLMM (crossed-mean)")
+        end
     else
         fill(NaN, length(θ̂), length(θ̂))
     end
@@ -3068,12 +3113,44 @@ function _fit_binomial_crossed_laplace(fam, s, ntr, Xμ, comps, nmμ, g_tol; se:
     logchoose = [_logfactorial(nint[i]) - _logfactorial(sint[i]) - _logfactorial(nint[i] - sint[i]) for i in eachindex(sint)]
     aux = (s = sint, ntr = nint, logchoose = logchoose)
     p̄ = clamp(sum(s) / max(sum(ntr), 1), 1e-4, 1 - 1e-4)
-    θβ0 = zeros(size(Xμ, 2))
+    pμ = size(Xμ, 2)
+    θβ0 = zeros(pμ)
     θβ0[1] = log(p̄ / (1 - p̄))
+
+    # Boundary submodels ("drop one grouping entirely"), fitted by the SAME
+    # 32-node GHQ route `drm()` uses for an ordinary `(1 | g)` Binomial GLMM
+    # -- strictly more accurate than this function's own Laplace
+    # approximation. Each is embedded into this function's θ layout
+    # ([βμ; logσ_g; logσ_h]), with the DROPPED grouping's log-SD clamped at
+    # the same floor `eval_laplace` already uses (-8.0), and offered to
+    # `_fit_crossed_mean_laplace` as a `nested_candidates` entry so the
+    # crossed fit can never be reported below a boundary submodel that is
+    # nested inside it (issue #761 follow-up: a converged crossed fit was
+    # observed below its own nested single-grouping fit's log-likelihood,
+    # which is impossible at a true maximum).
+    floor_logσ = -8.0
+    nested_candidates = NamedTuple[]
+    for (drop, keep) in ((2, 1), (1, 2))
+        gidx_k, G_k, grp_k = comps[keep][2], comps[keep][3], comps[keep][4]
+        # A single-level grouping is fully aliased with the fixed intercept
+        # (no within-grouping contrast identifies it) -- not a meaningful
+        # "keep this grouping alone" boundary submodel, so it is not offered
+        # as a candidate.
+        G_k > 1 || continue
+        nested = _fit_binomial_ranef(fam, s, ntr, Xμ, gidx_k, G_k, nmμ, Symbol(grp_k), g_tol)
+        θfull = Vector{Float64}(undef, pμ + 2)
+        θfull[1:pμ] .= nested.theta[1:pμ]
+        θfull[pμ + keep] = nested.theta[pμ + 1]
+        θfull[pμ + drop] = floor_logσ
+        push!(nested_candidates, (theta = θfull, loglik = nested.loglik, converged = nested.converged,
+                                   vcov = nested.vcov, drop = pμ + drop))
+    end
+
     return _fit_crossed_mean_laplace(
         fam, Val(:binomial), aux, length(s), Xμ, comps[1][2], comps[1][3],
         comps[2][2], comps[2][3], nmμ, [comps[1][4], comps[2][4]], g_tol;
-        θβ0 = θβ0, se = se, polish_iterations = polish_iterations
+        θβ0 = θβ0, se = se, polish_iterations = polish_iterations,
+        nested_candidates = nested_candidates
     )
 end
 

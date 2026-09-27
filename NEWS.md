@@ -6,6 +6,33 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **Fix: a crossed Binomial GLMM `(1 | g) + (1 | h)` could report
+  `converged = true` at a log-likelihood BELOW its own nested single-grouping
+  fit `(1 | g)` (#761 follow-up).** At a true maximum this is impossible --
+  the nested model is exactly the h-SD → 0 boundary of the bigger crossed
+  model. Root cause: `_fit_binomial_crossed_laplace` integrates out both
+  random intercepts with a first-order Laplace approximation, while the
+  single-grouping route (`_fit_binomial_ranef`) uses 32-node Gauss–Hermite
+  quadrature — a substantially more accurate approximation. Multi-start
+  experiments (naive cold start, a data-driven start embedding the nested
+  GHQ optimum, and 10× the iteration budget) all land on the SAME
+  crossed-Laplace optimum to 5+ significant figures, ruling out a
+  local-optimum / bad-start bug in the optimizer itself: the violation is a
+  genuine Laplace-vs-GHQ accuracy gap, most visible with sizeable variance
+  components and small per-group sample sizes. Fixed by having the shared
+  crossed-mean Laplace driver (`_fit_crossed_mean_laplace`, also used by the
+  NB2/Gamma/Beta *-fixed crossed routes) accept `nested_candidates` —
+  boundary submodels embedded into its θ layout — and keep whichever of {its
+  own free optimum, a candidate} has the higher log-likelihood.
+  `_fit_binomial_crossed_laplace` supplies the GHQ-32 fit of each grouping
+  alone as a candidate (skipping a fully-aliased single-level grouping); when
+  a candidate wins, the dropped grouping's standard error is reported as
+  `Inf` (it was never estimated), not a fabricated finite value, with a
+  named warning. The shared driver is reused as-is by NB2/Gamma/Beta
+  *-fixed crossed fits, but a family-specific GHQ-quality candidate (as
+  Binomial's) would need to be supplied per family to close the same gap
+  there; that is a follow-up.
+
 - **Fix: a Binomial fit with two crossed random-intercept groupings
   (`(1 | g) + (1 | h)`) silently reported `[Inf, Inf, Inf, Inf]` standard
   errors with no warning (#761).** `_fit_binomial_crossed_laplace`'s own
