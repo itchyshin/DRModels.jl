@@ -22,6 +22,17 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   "Hessian is numerically singular" / "not positive definite" warnings
   instead of a silent `Inf`.
 
+- **Fix: the same silent-`Inf`-SE class as #761, for Gamma, Beta and
+  BetaBinomial crossed random intercepts.** `_fit_gamma_crossed_laplace`,
+  `_fit_beta_crossed_laplace` and `_fit_betabinomial_crossed_laplace`
+  (`src/sparse_laplace_glmm.jl`) also defaulted `se = false`, and their family
+  dispatchers (`src/gamma.jl`, `src/beta.jl`, `src/betabinomial.jl`) never
+  forwarded the caller's `se` down to them — so a crossed `(1 | g) + (1 | h)`
+  fit for these three families always skipped the Hessian/vcov step
+  regardless of what was asked for. Fixed by flipping each fitter's default
+  to `se = true` (matching Poisson/NB2) and forwarding `se = se` at each
+  dispatcher's crossed-dispatch call site.
+
 - **`marginal = :Laplace` on an ordinary `(1 | g)` (Arc 2, drmTMB parity).**
   Poisson, Binomial, NegBinomial2, Gamma and Beta with one ordinary random
   intercept on the mean (`sigma ~ 1` for the scale families) can now be fitted

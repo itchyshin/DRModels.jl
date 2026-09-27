@@ -3103,7 +3103,7 @@ function _fit_nb2_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
 end
 
 function _fit_gamma_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
-                                    se::Bool = false, polish_iterations::Int = 5)
+                                    se::Bool = true, polish_iterations::Int = 5)
     length(comps) == 2 || error("_fit_gamma_crossed_laplace requires two random-intercept components")
     size(Xσ, 2) == 1 || error("_fit_gamma_crossed_laplace currently supports a constant sigma formula")
     yv = Float64.(y)
@@ -3126,7 +3126,7 @@ function _fit_gamma_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
 end
 
 function _fit_beta_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
-                                   se::Bool = false, polish_iterations::Int = 0)
+                                   se::Bool = true, polish_iterations::Int = 0)
     length(comps) == 2 || error("_fit_beta_crossed_laplace requires two random-intercept components")
     size(Xσ, 2) == 1 || error("_fit_beta_crossed_laplace currently supports a constant sigma formula")
     yv = Float64.(y)
@@ -3159,7 +3159,7 @@ the verified Beta-family crossed nuisance Laplace spine
 kernel.
 """
 function _fit_betabinomial_crossed_laplace(fam, s, ntr, Xμ, comps, nmμ, nmσ, g_tol;
-                                           se::Bool = false, polish_iterations::Int = 0)
+                                           se::Bool = true, polish_iterations::Int = 0)
     length(comps) == 2 || error("_fit_betabinomial_crossed_laplace requires two random-intercept components")
     all(==(1.0), comps[1][1]) && all(==(1.0), comps[2][1]) ||
         error("_fit_betabinomial_crossed_laplace supports scalar random intercepts only")
