@@ -70,6 +70,19 @@ end
 # 25 nodes per group — still ~6× fewer than the old non-adaptive 12×12 grid.
 const _CORR_RANEF_AGHQ_K = 5
 
+# Default nodes for the 1-D `(1 | g)` random-intercept routes (#719). Before this,
+# every non-Gaussian `_fit_*_ranef` route integrated b_g on a fixed 32-node
+# PRIOR-scale grid (b = √2 σ_b z), independent of where the group posterior actually
+# sits — on an informative Poisson group (HSAUR3::epilepsy, sd(subject) ≈ 0.52) the
+# reported logLik landed 1.59 nat off the true marginal at DRModels.jl's optimum and
+# the fit itself 5.2 nat below the true maximum. Swept on the same q=1 helper against
+# K=61 on the informative-group DGP of test/test_adaptive_ghq_1d.jl (G=100, 30
+# obs/group, RE SD 0.8): K=3 misses by 0.04–0.20 nat depending on family; K=5 is
+# within 0.01 nat everywhere (worst case Poisson at −0.0034 nat), matching
+# `_CORR_RANEF_AGHQ_K` above. LogNormal's `(1 | g)` marginal is linear-Gaussian in
+# b_g, so AGHQ is exact there for any K (K=1 included) — see `_fit_lognormal_ranef`.
+const _RANEF1D_AGHQ_K = 5
+
 _aghq_primal(x::ForwardDiff.Dual) = _aghq_primal(ForwardDiff.value(x))
 _aghq_primal(x::Real) = Float64(x)
 

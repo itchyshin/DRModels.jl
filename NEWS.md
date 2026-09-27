@@ -6,6 +6,26 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **Adaptive quadrature for 1-D random intercepts `(1 | g)` (#719).** Every
+  default-route (`:LA`) `_fit_*_ranef` fitter for Poisson, NegBinomial2, Gamma,
+  Beta, BetaBinomial, Student, and LogNormal now integrates the group random
+  intercept `b_g` by per-group adaptive Gauss–Hermite quadrature (the shared
+  `q`-dimensional helper from #834, here with `q = 1`, centred and scaled on
+  each group's own posterior mode), instead of a fixed 32-node grid on the
+  PRIOR scale (`b = √2 σ_b z`). On an informative group the prior-scale grid
+  misses where the posterior mode actually sits: on `HSAUR3::epilepsy`
+  (Poisson `(1 | subject)`, `sd(subject) ≈ 0.52`) the pre-#719 fit landed
+  5.2 nat below the true maximum, with a fixed effect 18% off and the random-
+  effect SD 25% off, while native drmTMB's Laplace approximation is exact to
+  ~1e-6 nat. `K = 5` nodes (matching `_CORR_RANEF_AGHQ_K` for the `(1 + x | g)`
+  routes) keeps every family within 0.01 nat of an AGHQ-40+ reference on an
+  informative-group DGP (worst case Poisson, −0.0034 nat); `K = 1` is exactly
+  drmTMB's Laplace approximation (verified on the epilepsy fit to 1e-6 nat).
+  LogNormal's `(1 | g)` marginal is linear-Gaussian in `b_g`, so `K = 1` is
+  exact there for any `K` and is used directly. Public API and defaults are
+  unchanged; TruncatedNegBinomial2 and ZeroOneBeta have no `(1 | g)` route yet
+  and Binomial is out of scope for this change (tracked separately).
+
 - **`marginal = :Laplace` on an ordinary `(1 | g)` (Arc 2, drmTMB parity).**
   Poisson, Binomial, NegBinomial2, Gamma and Beta with one ordinary random
   intercept on the mean (`sigma ~ 1` for the scale families) can now be fitted

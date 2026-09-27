@@ -190,34 +190,21 @@ end
 # integrated out per group by 32-node Gauss–Hermite quadrature; the scale `log σ`
 # (the `sigma` slot, size θ = 1/σ²) is a fixed effect. Same scheme as the Poisson
 # GLMM.
-function _fit_negbin2_ranef(fam::NegBinomial2, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol)
+function _fit_negbin2_ranef(fam::NegBinomial2, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol; K::Int = _RANEF1D_AGHQ_K)
     n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     members = [Int[] for _ in 1:G]
     for i in 1:n
         push!(members[gidx[i]], i)
     end
     yint = round.(Int, y)
-    z, w = _gauss_hermite(32); logw = log.(w); K = length(z); rt2 = sqrt(2.0); lπ = log(π)
+    rule = _AGHQRule(1, K); Zre = ones(n, 1); bcache = zeros(1, G)   # #719: per-group AGHQ
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]; σb = exp(θ[pμ+pσ+1])
         η0 = Xμ * βμ; ησ = clamp.(Xσ * βσ, -20.0, 20.0)
-        s = zero(eltype(θ))
-        for idx in members
-            isempty(idx) && continue
-            terms = Vector{eltype(θ)}(undef, K)
-            for k in 1:K
-                δ = rt2 * σb * z[k]
-                gll = logw[k]
-                for i in idx
-                    μ = exp(clamp(η0[i] + δ, -20.0, 20.0)); r = exp(-2 * ησ[i]); p = r / (r + μ)
-                    gll += logpdf(_nb2(r, p), yint[i])
-                end
-                terms[k] = gll
-            end
-            mx = maximum(terms)
-            s -= (-0.5 * lπ + mx + log(sum(exp.(terms .- mx))))
-        end
-        return s
+        ll = (i, η) -> (μ = exp(clamp(η, -20.0, 20.0)); r = exp(-2 * ησ[i]); p = r / (r + μ);
+                        logpdf(_nb2(r, p), yint[i]))
+        L = reshape([σb], 1, 1)
+        return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache)
     end
     m = sum(y) / n; v = sum(abs2, y .- m) / max(n - 1, 1)
     θ0 = zeros(pμ + pσ + 1)
