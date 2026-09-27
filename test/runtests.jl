@@ -591,3 +591,8 @@ _shard_include("test_609_varying_scale.jl")
 # DimensionMismatch because simulate drew fit.nobs values against full-design
 # means. Guards both, plus the iteration count the full-row rebuild dropped.
 _shard_include("test_bridge_response_mask_inference.jl")
+
+# Issue #739 (twin drmTMB #1281): ZeroOneBeta() had no `tree=`/`K=` phylo/relmat
+# method. Adds a `Val(:zeroonebeta_fixed)` sparse-Laplace kernel (additive to
+# sparse_laplace_glmm.jl) and the phylo/relmat fitters in zeroonebeta.jl.
+_shard_include("test_twin_gap_739.jl")

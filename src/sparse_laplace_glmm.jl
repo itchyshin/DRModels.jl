@@ -2316,6 +2316,60 @@ function _laplace_nuisance_d2(::Val{:beta_fixed}, aux, i, η)
     return -2φ * (dB * v^2 + dA * vp)
 end
 
+# ---- Zero-one-inflated beta (mean phylo/relmat spine; #739) ----------------
+# `ZeroOneBeta()`'s mixture is P(y=0)=zoi·(1-coi), P(y=1)=zoi·coi,
+# f(y∈(0,1))=(1-zoi)·Beta(y;μφ,(1-μ)φ) (zeroonebeta.jl). `zoi`/`coi` do not
+# depend on the mean linear predictor η at all — an atom row (`aux.isatom[i]`)
+# contributes a term that is CONSTANT in η, so its η-derivatives are exactly
+# zero and it never enters the phylo/relmat mode-finding Newton solve or the
+# β/σ gradient (only through the additive `value`, which is what the outer
+# marginal log-likelihood needs). An interior row is exactly the `:beta_fixed`
+# kernel (same `A,B,C,v,vp,vpp` closed forms) plus a `-log1p(-zoi)` offset that
+# is also constant in η. `zoi`/`coi` are themselves fixed (closed-form, since
+# intercept-only `zoi ~ 1`/`coi ~ 1` are Bernoulli MLEs completely separable
+# from the mean/dispersion/random-effect likelihood — see
+# `_zeroonebeta_laplace_setup` in zeroonebeta.jl) and travel in `aux`, not in
+# the optimized θ, so no change to the nuisance-Laplace spine itself is needed.
+function _laplace_value(::Val{:zeroonebeta_fixed}, aux, i, η)
+    if aux.isatom[i]
+        return aux.y[i] == 1 ? -(log(aux.zoi) + log(aux.coi)) : -(log(aux.zoi) + log1p(-aux.coi))
+    end
+    return _laplace_value(Val(:beta_fixed), aux, i, η) - log1p(-aux.zoi)
+end
+
+function _laplace_d1(::Val{:zeroonebeta_fixed}, aux, i, η)
+    aux.isatom[i] && return 0.0
+    return _laplace_d1(Val(:beta_fixed), aux, i, η)
+end
+
+function _laplace_d2(::Val{:zeroonebeta_fixed}, aux, i, η)
+    aux.isatom[i] && return 0.0
+    return _laplace_d2(Val(:beta_fixed), aux, i, η)
+end
+
+function _laplace_d3(::Val{:zeroonebeta_fixed}, aux, i, η)
+    aux.isatom[i] && return 0.0
+    return _laplace_d3(Val(:beta_fixed), aux, i, η)
+end
+
+_laplace_mean(::Val{:zeroonebeta_fixed}, η) = _laplace_logistic(clamp(η, -30.0, 30.0))
+_laplace_obs(::Val{:zeroonebeta_fixed}, aux, i) = aux.y[i]
+
+function _laplace_nuisance_value(::Val{:zeroonebeta_fixed}, aux, i, η)
+    aux.isatom[i] && return 0.0
+    return _laplace_nuisance_value(Val(:beta_fixed), aux, i, η)
+end
+
+function _laplace_nuisance_d1(::Val{:zeroonebeta_fixed}, aux, i, η)
+    aux.isatom[i] && return 0.0
+    return _laplace_nuisance_d1(Val(:beta_fixed), aux, i, η)
+end
+
+function _laplace_nuisance_d2(::Val{:zeroonebeta_fixed}, aux, i, η)
+    aux.isatom[i] && return 0.0
+    return _laplace_nuisance_d2(Val(:beta_fixed), aux, i, η)
+end
+
 # ---- Beta-binomial (successes out of known trials, constant σ; #166) --------
 # Generalizes the `:beta_fixed` kernel above from Beta's continuous data term
 # to beta-binomial's discrete known-trials term. log P(s) = logchoose(n,s) +

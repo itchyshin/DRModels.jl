@@ -6,6 +6,21 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **`ZeroOneBeta()` phylo/relmat structured random intercept on the mean (#739,
+  drmTMB twin gap #1281).** `ZeroOneBeta()` now admits a structured random
+  intercept on the mean — `phylo(1 | species)` (needs `tree = ...`), and
+  `relmat(1 | id)` / `animal(1 | id)` / `spatial(1 | id)` (need `K = ...` /
+  `A = ...` / `coords = ...`) — via the same verified `:beta_fixed`-derived
+  sparse-Laplace spine `Beta()` uses, restricted to a constant `sigma ~ 1` and
+  intercept-only `zoi ~ 1` / `coi ~ 1`. The atom/coi mixture (`P(y=0)`,
+  `P(y=1)`) is completely separable from the mean/dispersion/phylo likelihood,
+  so `zoi`/`coi` are estimated by their closed-form Bernoulli MLEs and travel
+  as fixed `aux` fields into a new additive `Val(:zeroonebeta_fixed)` Laplace
+  kernel (atom rows contribute zero η-derivatives; interior rows are exactly
+  `:beta_fixed`). Verified against drmTMB's `zero_one_beta()` phylo route on
+  matched data (identical tree, ML): logLik agrees to 5e-5, all four
+  parameter blocks (`mu`, `sigma`, `zoi`, `coi`) agree to ≤ 1e-7.
+
 - **`ZeroOneBeta()` random intercept `(1 | g)` on the mean (#723, drmTMB twin gap).**
   `ZeroOneBeta()` no longer hard-blocks every random effect: an ordinary
   random intercept on the mean, `y ~ x + (1 | g)`, is now admitted exactly as
@@ -14,7 +29,7 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   `coi` must stay fixed-effects-only (their formulas still refuse any random
   effect). Mirrors drmTMB's admitted `zero_one_beta()` + ordinary RI (e.g.
   `faraway::leafblotch`). Structured (`tree=`/`K=`) random intercepts on
-  `ZeroOneBeta()`'s mean remain unimplemented (#739).
+  `ZeroOneBeta()`'s mean are now implemented too — see #739 above.
 
 - **`marginal = :Laplace` on an ordinary `(1 | g)` (Arc 2, drmTMB parity).**
   Poisson, Binomial, NegBinomial2, Gamma and Beta with one ordinary random
