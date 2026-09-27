@@ -551,6 +551,7 @@ _shard_include("test_reml_vcov_curvature.jl")
 
 # Randomized quantile residuals (DHARMa/glmmTMB style) — feat-quantile-residuals.
 _shard_include("test_quantile_residuals.jl")
+_shard_include("test_twin_gap_760.jl")
 
 # S3: cross-family bivariate (shared-latent GHQ) + link-residual standardization.
 _shard_include("test_mixed_family.jl")

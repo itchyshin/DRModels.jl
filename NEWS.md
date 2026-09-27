@@ -6,6 +6,24 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **`residuals(fit; type = :quantile)` on a mixed fit now uses the marginal
+  reference distribution, not `fitted(fit)` at the random intercept fixed at
+  0 (#760).** A single ordinary random intercept `(1 | g)` on the mean used to
+  be judged against the fixed-effect-only mean, inflating the residuals' SD
+  even on a correctly specified GLMM (reported on a Binomial `(1|BroodNo)`
+  chick-survival fit: engine SD 1.0538 vs a hand-computed marginal SD 1.0144).
+  `ranef()` conditional modes are not yet available for a non-Gaussian GLMM,
+  so the fix integrates the random intercept out with its fitted σ_b by the
+  same 32-node Gauss–Hermite quadrature the `_fit_*_ranef` routes use to fit
+  it (`_ranef_marginal_mix`, `src/quantile_residuals.jl`) — covers Poisson,
+  NegBinomial2, TruncatedNegBinomial2, Gamma, Binomial, Beta, BetaBinomial,
+  Gaussian, Student, LogNormal, and `ZeroOneBeta()`'s new `(1 | g)` route
+  (#723). Crossed `(1|g)+(1|h)`, correlated `(1+x|g)`, and structured
+  (`phylo`/`relmat`) random intercepts whose per-tip variance is not σ_b²
+  keep the previous (fixed-effect-only) reference rather than risk a wrong
+  marginalisation. A future conditional-mode variant is tracked once #759
+  wires non-Gaussian `ranef()`.
+
 - **`marginal = :Laplace` on an ordinary `(1 | g)` (Arc 2, drmTMB parity).**
   Poisson, Binomial, NegBinomial2, Gamma and Beta with one ordinary random
   intercept on the mean (`sigma ~ 1` for the scale families) can now be fitted

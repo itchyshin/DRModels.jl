@@ -119,11 +119,99 @@ _pit_obs(::Binomial, i; obs, scales)     = round(Int, obs[:mu][i] * scales[:tria
 _pit_obs(::BetaBinomial, i; obs, scales) = round(Int, obs[:mu][i] * scales[:trials][i])
 _pit_obs(::Any, i; obs, scales)          = obs[:mu][i]
 
+# ---- marginalising an ordinary random intercept `(1 | g)` on the mean (#760) ----
+#
+# `residuals(fit; type = :quantile)` on a mixed fit used to judge each row
+# against `fitted(fit)` at the random intercept fixed at 0 (the population/
+# fixed-effect mean stored in `means[:mu]` — see the `_fit_*_ranef` routes in
+# beta.jl/binomial.jl/etc.), i.e. against the WRONG reference distribution.
+# On a correctly specified GLMM that inflates the PIT residuals' spread — the
+# fitted model is not misspecified, the reference distribution is. `ranef()`
+# (drmTMB-style conditional modes) is not yet available for a non-Gaussian GLMM
+# (`ranef()`'s docstring, gaussian_ranef.jl), so the reference this fixes on is
+# the MARGINAL distribution: b_g ~ N(0, σ_b²) integrated out of the conditional
+# response distribution by the same 32-node Gauss–Hermite quadrature the ranef
+# fitters themselves use to integrate the random intercept out of the
+# likelihood — the natural "what does the rest of the package already compute
+# with this σ_b" answer, and what drmTMB/DHARMa call the population-level PIT.
+# A future `type = :quantile, marginal = false` (or conditional-mode) variant is
+# tracked separately once #759 wires non-Gaussian `ranef()`.
+#
+# Only the SINGLE ordinary random intercept case is marginalised (a lone
+# `:resd` block with exactly one grouping name — the shape every `_fit_*_ranef`
+# GLMM produces, and also an ultrametric-tree phylo/relmat random intercept
+# whose per-tip marginal variance equals σ_b² when the tree height is 1, the
+# convention this package documents elsewhere). Crossed `(1|g)+(1|h)`,
+# correlated `(1+x|g)` (`:recov`), and families with no verified link mapping
+# below keep the previous fixed-effect-only reference rather than risk a wrong
+# marginalisation; `_ranef_link` returning `nothing` is exactly that guard.
+_ranef_link(::Poisson) = (μ -> log(max(μ, eps())), exp)
+_ranef_link(::NegBinomial2) = (μ -> log(max(μ, eps())), exp)
+_ranef_link(::TruncatedNegBinomial2) = (μ -> log(max(μ, eps())), exp)
+_ranef_link(::Gamma) = (μ -> log(max(μ, eps())), exp)
+_ranef_link(::LogNormal) = (μ -> log(max(μ, eps())), exp)
+_ranef_link(::Binomial) = (μ -> (m = clamp(μ, eps(), 1 - eps()); log(m / (1 - m))), _logistic)
+_ranef_link(::Beta) = (μ -> (m = clamp(μ, eps(), 1 - eps()); log(m / (1 - m))), _logistic)
+_ranef_link(::BetaBinomial) = (μ -> (m = clamp(μ, eps(), 1 - eps()); log(m / (1 - m))), _logistic)
+_ranef_link(::ZeroOneBeta) = (μ -> (m = clamp(μ, eps(), 1 - eps()); log(m / (1 - m))), _logistic)
+_ranef_link(::Gaussian) = (identity, identity)
+_ranef_link(::Student) = (identity, identity)
+_ranef_link(fam) = nothing
+
+# A single length-n Dict sliced down to a length-1 Dict at row `i`, so the
+# per-family `_conditional_dist(fam, 1; μ, scales, obs, …)` builder can be
+# reused unchanged to construct one quadrature node's conditional distribution.
+_at_index(d::Dict, i) = Dict(k => (v isa AbstractVector ? [v[i]] : v) for (k, v) in d)
+
+# The single ordinary `(1 | g)` block on the mean, or `nothing`. Deliberately
+# excludes crossed (two names) and correlated-slope (`:recov`) blocks.
+function _ordinary_resd_range(fit::DrmFit)
+    for (p, r) in fit.blocks
+        p === :resd && length(r) == 1 && return r
+    end
+    return nothing
+end
+
+# Precomputed marginalisation context for `_cdf_value`, or `nothing` when the
+# fit has no single ordinary random intercept on the mean, or the family has no
+# verified link mapping above.
+function _ranef_marginal_mix(fit::DrmFit, fam, μ)
+    r = _ordinary_resd_range(fit)
+    r === nothing && return nothing
+    linkpair = _ranef_link(fam)
+    linkpair === nothing && return nothing
+    link, invlink = linkpair
+    σb = exp(fit.theta[r[1]])
+    eta0 = [link(μ[i]) for i in eachindex(μ)]
+    z, w = _gauss_hermite(32)
+    return (invlink = invlink, eta0 = eta0, rt2σb = sqrt(2.0) * σb, z = z, wk = w ./ sqrt(π))
+end
+
+# CDF at `yval` for observation `i`: the plain per-family conditional
+# distribution (`mix === nothing`), or the σ_b-marginalised mixture over the
+# random intercept's 32 Gauss–Hermite nodes (#760).
+function _cdf_value(fam, i, yval; μ, scales, obs, gsis, mix)
+    if mix === nothing
+        d = _conditional_dist(fam, i; μ = μ, scales = scales, obs = obs, gamma_sigma_is_shape = gsis)
+        return Distributions.cdf(d, yval)
+    end
+    acc = 0.0
+    scales_i = _at_index(scales, i); obs_i = _at_index(obs, i)
+    @inbounds for k in eachindex(mix.z)
+        μk = mix.invlink(mix.eta0[i] + mix.rt2σb * mix.z[k])
+        d = _conditional_dist(fam, 1; μ = [μk], scales = scales_i, obs = obs_i, gamma_sigma_is_shape = gsis)
+        acc += mix.wk[k] * Distributions.cdf(d, yval)
+    end
+    return acc
+end
+
 # Randomized quantile residuals r_i = Φ⁻¹(u_i) (Dunn & Smyth; DHARMa / glmmTMB).
 # Continuous families use u = F(y); discrete families randomize within the jump
 # interval [F(y⁻), F(y)]; ZeroOneBeta / CumulativeLogit use the atomic / ordinal
 # drivers (point-mass mixtures). The per-family parameter map lives in
-# `_conditional_dist`.
+# `_conditional_dist`. A fit with a single ordinary random intercept `(1 | g)`
+# on the mean judges every row against the σ_b-MARGINAL distribution, not the
+# fixed-effect-only (b = 0) distribution (#760) — see `_ranef_marginal_mix`.
 function _quantile_residuals(fit::DrmFit, rng)
     haskey(fit.means, :mu) ||
         throw(ArgumentError("residuals(type=:quantile) is univariate-only"))
@@ -153,30 +241,32 @@ function _quantile_residuals(fit::DrmFit, rng)
     # The Gamma sigma slot is σ (plain/ranef) or the shape α (location–scale); the
     # flag routes `_conditional_dist(::Gamma)` accordingly (non-Gamma ignores it).
     gsis = _gamma_sigma_is_shape(fit)
+    # `mix` marginalises a single ordinary random intercept on the mean over its
+    # fitted σ_b (#760); `nothing` for a fixed-effects-only fit (unchanged
+    # behaviour) or a random-effect shape/family this fix does not cover.
+    mix = _ranef_marginal_mix(fit, fam, μ)
     u = Vector{Float64}(undef, n)
     if _is_continuous_family(fam)
         @inbounds for i in 1:n
-            d = _conditional_dist(fam, i; μ = μ, scales = fit.scales, obs = fit.obs,
-                                  gamma_sigma_is_shape = gsis)
-            u[i] = clamp(Distributions.cdf(d, y[i]), lo, hi)
+            F = _cdf_value(fam, i, y[i]; μ = μ, scales = fit.scales, obs = fit.obs,
+                           gsis = gsis, mix = mix)
+            u[i] = clamp(F, lo, hi)
         end
     elseif fam isa TruncatedNegBinomial2
         @inbounds for i in 1:n
-            d = _conditional_dist(fam, i; μ = μ, scales = fit.scales, obs = fit.obs)
             yi = round(Int, y[i])
-            F0 = Distributions.cdf(d, 0)            # NB.cdf(0) = P(0)
+            F0 = _cdf_value(fam, i, 0; μ = μ, scales = fit.scales, obs = fit.obs, gsis = gsis, mix = mix)
             denom = 1 - F0
             # zero-truncated CDF: F_t(k) = (NB.cdf(k) − F0)/(1 − F0), k ≥ 1
-            a = (Distributions.cdf(d, yi - 1) - F0) / denom
-            b = (Distributions.cdf(d, yi) - F0) / denom
+            a = (_cdf_value(fam, i, yi - 1; μ = μ, scales = fit.scales, obs = fit.obs, gsis = gsis, mix = mix) - F0) / denom
+            b = (_cdf_value(fam, i, yi; μ = μ, scales = fit.scales, obs = fit.obs, gsis = gsis, mix = mix) - F0) / denom
             u[i] = clamp(a + (b - a) * rand(rng), lo, hi)
         end
     else
         @inbounds for i in 1:n
-            d = _conditional_dist(fam, i; μ = μ, scales = fit.scales, obs = fit.obs)
             yi = _pit_obs(fam, i; obs = fit.obs, scales = fit.scales)
-            a = Distributions.cdf(d, yi - 1)
-            b = Distributions.cdf(d, yi)
+            a = _cdf_value(fam, i, yi - 1; μ = μ, scales = fit.scales, obs = fit.obs, gsis = gsis, mix = mix)
+            b = _cdf_value(fam, i, yi; μ = μ, scales = fit.scales, obs = fit.obs, gsis = gsis, mix = mix)
             u[i] = clamp(a + (b - a) * rand(rng), lo, hi)
         end
     end
@@ -190,10 +280,17 @@ end
 #   F(1⁻)=zoi(1−coi)+(1−zoi), F(1)=1.
 # A value AT an atom gets u ~ Uniform[F(atom⁻), F(atom)] (randomized across the mass);
 # interior values get the plain PIT. Generalizes the discrete driver.
+#
+# The zoi/coi atom masses never depend on the mean's random effect, so their
+# contribution is exactly the marginal one already; only the interior Beta
+# term needs σ_b-marginalising (#760, extended to `ZeroOneBeta()`'s own `(1|g)`
+# route added by #723) — same 32-node Gauss–Hermite mixture, logit link on
+# `beta_mu`, via `_ranef_marginal_mix`/`_cdf_value`.
 function _quantile_residuals_zeroonebeta(fit::DrmFit, rng, lo, hi)
     y = fit.obs[:mu]; n = length(y)
     μb = fit.scales[:beta_mu]; σ = fit.scales[:sigma]
     zoi = fit.scales[:zoi]; coi = fit.scales[:coi]
+    mix = _ranef_marginal_mix(fit, fit.family, μb)
     std_normal = Distributions.Normal()
     u = Vector{Float64}(undef, n)
     @inbounds for i in 1:n
@@ -204,8 +301,17 @@ function _quantile_residuals_zeroonebeta(fit::DrmFit, rng, lo, hi)
             a = p0 + (1 - zoi[i])               # F(1⁻)
             u[i] = clamp(a + (1.0 - a) * rand(rng), lo, hi)
         else
-            φ = 1 / (σ[i]^2); m = clamp(μb[i], eps(), 1 - eps())
-            Fc = Distributions.cdf(Distributions.Beta(m * φ, (1 - m) * φ), y[i])
+            φ = 1 / (σ[i]^2)
+            if mix === nothing
+                m = clamp(μb[i], eps(), 1 - eps())
+                Fc = Distributions.cdf(Distributions.Beta(m * φ, (1 - m) * φ), y[i])
+            else
+                Fc = 0.0
+                @inbounds for k in eachindex(mix.z)
+                    m = clamp(mix.invlink(mix.eta0[i] + mix.rt2σb * mix.z[k]), eps(), 1 - eps())
+                    Fc += mix.wk[k] * Distributions.cdf(Distributions.Beta(m * φ, (1 - m) * φ), y[i])
+                end
+            end
             u[i] = clamp(p0 + (1 - zoi[i]) * Fc, lo, hi)
         end
     end
