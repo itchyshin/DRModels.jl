@@ -6,6 +6,20 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **`offset(...)` on the Poisson mean (#727, drmTMB twin gap).** The formula
+  grammar had no `offset()` term at all. `drm(bf(y ~ x + offset(log_exposure)),
+  Poisson(); data)` now fits `log λ = Xβ + offset`, with the offset's own
+  coefficient fixed at 1 (never estimated) — matching drmTMB's
+  `offset()` contract, gated to the Poisson mean (log link). The offset term
+  accepts a plain column (`offset(log_exposure)`) or an inline numeric
+  transform (`offset(log(exposure))`) via the same schema/modelcols machinery
+  ordinary terms use, with no implicit intercept inserted. Currently supported
+  only on the fixed-effects-only Poisson mean (no random effect, structured
+  marker, `zi`, or `hu` yet); those combinations raise a clear error rather
+  than silently dropping the offset. Verified against drmTMB's `poisson()` +
+  `offset()` on matched simulated data: logLik and both fixed-effect
+  coefficients agree to ≤ 1e-6.
+
 - **`marginal = :Laplace` on an ordinary `(1 | g)` (Arc 2, drmTMB parity).**
   Poisson, Binomial, NegBinomial2, Gamma and Beta with one ordinary random
   intercept on the mean (`sigma ~ 1` for the scale families) can now be fitted

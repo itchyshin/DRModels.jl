@@ -18,6 +18,10 @@ act on `log λ`). No scale parameter. Mirrors `drmTMB`'s `poisson` family.
 fit = drm(bf(y ~ x), Poisson(); data = dat)
 fitted(fit)        # fitted counts λ = exp(Xβ̂), on the response scale
 
+# A known-exposure offset (#727, drmTMB twin gap): `offset(log_exposure)`'s
+# coefficient is fixed at 1, so λ = exposure · exp(Xβ̂). Fixed-effects-only mean.
+fit_off = drm(bf(y ~ x + offset(log_exposure)), Poisson(); data = dat)
+
 fit_phy = drm(bf(@formula(y ~ x + phylo(1 | species))), Poisson();
               data = dat, tree = tr, se = false)
 
@@ -80,6 +84,51 @@ struct Poisson end
 
 _logfactorial(k::Integer) = sum(log, 2:k; init = 0.0)   # log k!  (0 for k = 0, 1)
 
+# ---- offset() on the Poisson mean (#727, drmTMB twin gap) ------------------
+# `offset(x)` is a marker function, exactly like `phylo`/`relmat`/`meta_V`: the
+# `@formula` macro captures `offset(log_exposure)` as a `FunctionTerm` and
+# `_extract_offset` (below) intercepts it before the mean design matrix is
+# built, so it never becomes an ordinary estimated covariate. Its coefficient
+# is fixed at 1 (an offset, not a regressor): `η = Xμβ + offset`.
+offset(x) = x
+
+# Split an `offset(...)` marker off a (already `_split_ranef`-stripped) rhs,
+# returning `(rhs_without_offset, offset_term_or_nothing)`. At most one
+# `offset(...)` term is admitted, matching drmTMB (`y ~ x + offset(log_exposure)`).
+function _extract_offset(rhs)
+    terms = rhs isa Tuple ? collect(rhs) : Any[rhs]
+    fixed = Any[]
+    offset_term = nothing
+    for t in terms
+        if t isa FunctionTerm && t.f === offset
+            offset_term === nothing ||
+                error("Poisson(): only one `offset(...)` term is supported")
+            length(t.args) == 1 ||
+                error("Poisson(): `offset(...)` takes exactly one term, e.g. `offset(log_exposure)`")
+            offset_term = t.args[1]
+        else
+            push!(fixed, t)
+        end
+    end
+    fixed_rhs = isempty(fixed) ? ConstantTerm(1) :
+                length(fixed) == 1 ? fixed[1] : Tuple(fixed)
+    return fixed_rhs, offset_term
+end
+
+# Evaluate an `offset(...)` term (a plain column reference or an arbitrary
+# numeric transform, e.g. `offset(log(exposure))`) to a `Float64` vector, reusing
+# the same schema/modelcols machinery `_design` uses for ordinary terms — but with
+# NO `StatisticalModel` context, so no implicit intercept column is inserted.
+function _offset_vector(offset_term, data)
+    sch = schema(offset_term, data)
+    t = apply_schema(offset_term, sch)
+    v = modelcols(t, data)
+    v isa AbstractMatrix && size(v, 2) == 1 && (v = vec(v))
+    v isa AbstractVector ||
+        error("Poisson(): `offset(...)` must resolve to a single numeric column")
+    return Float64.(v)
+end
+
 function drm(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
              A = nothing, coords = nothing, g_tol::Real = 1e-8, se::Bool = true,
              marginal::Symbol = :LA, method = nothing, nAGQ::Int = 5)
@@ -110,9 +159,17 @@ function drm(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
     fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
     mv === nothing ||
         error("Poisson() does not support meta_V markers")
+    fixed_mu, offset_term = _extract_offset(fixed_mu)     # #727: offset(log_exposure), coefficient fixed at 1
     y, Xμ, nmμ = _design(f.response, fixed_mu, data)
+    off = offset_term === nothing ? zeros(length(y)) : _offset_vector(offset_term, data)
+    length(off) == length(y) ||
+        error("Poisson(): `offset(...)` must have one value per observation")
     all(yi -> yi ≥ 0 && isinteger(yi), y) ||
         error("Poisson() requires non-negative integer counts as the response")
+    if offset_term !== nothing && (st !== nothing || !isempty(re) || haskey(rhs, :zi) || haskey(rhs, :hu))
+        error("Poisson(): `offset(...)` is currently only supported on the fixed-effects-only " *
+              "mean (no random effect, structured marker, `zi`, or `hu`)")
+    end
     if st !== nothing
         isva && _va_reject(fam, "a phylogenetic/structured random effect")
         isaghq && _aghq_reject(fam, "a phylogenetic/structured random effect")
@@ -209,7 +266,7 @@ function drm(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
         _, Xhu, nmhu = _design(f.response, rhs[:hu], data)
         return _withformula(_fit_poisson_hu(fam, y, Xμ, Xhu, nmμ, nmhu, g_tol), f)
     end
-    return _withformula(_fit_poisson(fam, y, Xμ, nmμ, g_tol), f)
+    return _withformula(_fit_poisson(fam, y, Xμ, nmμ, g_tol; offset = off), f)
 end
 
 # Resolve a structured marker (relmat/animal/spatial) for a count family to its
@@ -476,22 +533,23 @@ function _fit_poisson_hu(fam::Poisson, y, Xμ, Xhu, nmμ, nmhu, g_tol)
         Optim.iterations(res))
 end
 
-function _fit_poisson(fam::Poisson, y, Xμ, nmμ, g_tol)
+function _fit_poisson(fam::Poisson, y, Xμ, nmμ, g_tol; offset::AbstractVector{<:Real} = zeros(length(y)))
     n = length(y); pμ = size(Xμ, 2)
-    lf = [_logfactorial(round(Int, yi)) for yi in y]    # constant log y! offset
+    lf = [_logfactorial(round(Int, yi)) for yi in y]    # constant log y! term
+    off = Float64.(offset)
     function nll(θ)
-        ημ = Xμ * θ                                     # log λ
+        ημ = Xμ * θ .+ off                              # log λ; offset() coefficient fixed at 1
         s = zero(eltype(θ))
         @inbounds for i in 1:n
             s -= y[i] * ημ[i] - exp(ημ[i]) - lf[i]
         end
         return s
     end
-    θ0 = zeros(pμ); θ0[1] = log(sum(y) / n + eps())
+    θ0 = zeros(pμ); θ0[1] = log(sum(y) / n + eps()) - (isempty(off) ? 0.0 : sum(off) / n)
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
     blocks = [:mu => 1:pμ]; names = [:mu => nmμ]
-    means = Dict(:mu => exp.(Xμ * θ̂)); obs = Dict(:mu => Vector{Float64}(y))   # response-scale λ
+    means = Dict(:mu => exp.(Xμ * θ̂ .+ off)); obs = Dict(:mu => Vector{Float64}(y))   # response-scale λ
     scales = Dict{Symbol,Vector{Float64}}()
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
