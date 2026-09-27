@@ -305,3 +305,200 @@ end
 # convention L = [exp(a) 0; cc exp(b)].
 _corr_ranef_L(a, b, cc) = (l11 = exp(a); l22 = exp(b); z = zero(promote_type(typeof(l11), typeof(cc)));
                            [l11 z; cc l22])
+
+# ---------------------------------------------------------------------------
+# Crossed random intercepts (1 | g) + (1 | h) with FEW h-levels (#761).
+#
+#     L = ∫ φ_H(u_h; σ_h) Π_g ∫ φ(u_g; σ_g) Π_{i∈g} p(y_i | η0_i + u_g + u_h[h_i]) du_g du_h.
+#
+# Given u_h the g-groups are independent, so the inner integrals are the q = 1
+# per-group AGHQ above (`_aghq_group_logint`, K_g nodes, each centred on its own
+# CONDITIONAL mode). The outer H-dim integral over u_h is a K_h^H tensor AGHQ.
+# The outer grid is centred at û_h of the JOINT mode (û_g, û_h) and scaled by the
+# Schur complement S = D − B A⁻¹ Bᵀ of the joint negative Hessian [A Bᵀ; B D]
+# (A diagonal over g, D diagonal over h, B the h×g coupling). S is the exact
+# curvature of the profiled joint log-density in u_h. With that choice
+# K_g = K_h = 1 reproduces the JOINT Laplace approximation exactly
+# (½ log|H_joint| = ½ Σ log A_g + ½ log|S|), i.e. the drmTMB/lme4 crossed Laplace;
+# K > 1 corrects it. Any centring/scaling gives a valid adaptive rule that converges
+# to L as K grows; this one makes the K = 1 limit the verified Laplace fit.
+#
+# Differentiability follows the q = 1 helper: the joint mode is found by a
+# safeguarded Newton ascent, then two exact Newton steps in the caller's number
+# type make ∂û/∂θ and ∂²û/∂θ² exact, so ForwardDiff gradients/Hessians of the
+# returned value are exact derivatives of this objective (not of a nearby one).
+#
+# `ll(i, η)`: log-density of observation i at linear predictor η — the ONLY
+# family-specific input. Written from the published method; no drmTMB source.
+# ---------------------------------------------------------------------------
+
+# Joint-mode derivatives: gradient (gg over g, gh over h) of the joint log-density
+# and the blocks A (diag, g), B (h×g), D (diag, h) of its NEGATIVE Hessian.
+function _crossed_aghq_derivs(ll, η0, gidx, hidx, ug, uh, ig, ih, clip::Bool)
+    G = length(ug); Hh = length(uh)
+    T = promote_type(eltype(ug), eltype(uh), typeof(ig))
+    gg = Vector{T}(undef, G); A = Vector{T}(undef, G)
+    gh = Vector{T}(undef, Hh); D = Vector{T}(undef, Hh)
+    for j in 1:G
+        gg[j] = -ig * ug[j]; A[j] = ig
+    end
+    for k in 1:Hh
+        gh[k] = -ih * uh[k]; D[k] = ih
+    end
+    B = zeros(T, Hh, G)
+    for i in eachindex(η0)
+        g = gidx[i]; h = hidx[i]
+        e = η0[i] + ug[g] + uh[h]
+        d1f = u -> ForwardDiff.derivative(v -> ll(i, v), u)
+        d1 = d1f(e)
+        d2 = ForwardDiff.derivative(d1f, e)
+        w = clip ? (_aghq_primal(d2) < 0 ? -d2 : zero(d2)) : -d2
+        gg[g] += d1; gh[h] += d1
+        A[g] += w; D[h] += w; B[h, g] += w
+    end
+    return gg, gh, A, B, D
+end
+
+# Schur complement S = diag(D) − B diag(A)⁻¹ Bᵀ (Hh × Hh).
+function _crossed_aghq_schur(A, B, D)
+    Hh = length(D)
+    T = promote_type(eltype(A), eltype(B), eltype(D))
+    S = zeros(T, Hh, Hh)
+    for k in 1:Hh
+        S[k, k] = D[k]
+    end
+    for j in eachindex(A)
+        ia = one(T) / A[j]
+        for r in 1:Hh
+            br = B[r, j]
+            iszero(_aghq_primal(br)) && continue
+            for c in 1:Hh
+                S[r, c] -= br * B[c, j] * ia
+            end
+        end
+    end
+    return S
+end
+
+# Newton direction for the arrow-structured joint system [A Bᵀ; B D] δ = [gg; gh].
+function _crossed_aghq_newton(gg, gh, A, B, D)
+    S = _crossed_aghq_schur(A, B, D)
+    Sc, ok = _aghq_chol(S)
+    ok || return nothing, nothing, Sc, false
+    rhs = gh .- B * (gg ./ A)
+    δh = _aghq_cholsolve(Sc, rhs)
+    δg = (gg .- transpose(B) * δh) ./ A
+    return δg, δh, Sc, true
+end
+
+"""
+    _crossed_aghq_loglik(ll, gmembers, gidx, hidx, Hh, η0, σg, σh, rule_g, rule_h, cache)
+
+Log marginal likelihood of crossed random intercepts `(1 | g) + (1 | h)` by nested
+adaptive Gauss–Hermite quadrature: per-g-group q = 1 AGHQ (`rule_g`) conditional on
+`u_h`, and a tensor AGHQ (`rule_h`, dimension `Hh`) over `u_h` centred at the joint
+mode and scaled by the Schur-complement curvature (see the section header).
+`rule_g.K = rule_h.K = 1` is exactly the joint Laplace approximation. `cache` is a
+NamedTuple `(ug, uh, Zre)` of Float64 warm starts (`ug` length G, `uh` length Hh)
+and `Zre = ones(n, 1)`; the warm starts change iteration counts only.
+"""
+function _crossed_aghq_loglik(ll, gmembers, gidx, hidx, Hh::Int, η0, σg, σh,
+                              rule_g::_AGHQRule, rule_h::_AGHQRule, cache;
+                              maxiter::Int = 200, tol::Real = 1e-10)
+    rule_g.q == 1 || throw(ArgumentError("crossed AGHQ inner rule must be 1-D"))
+    rule_h.q == Hh || throw(ArgumentError("crossed AGHQ outer rule must have dimension $Hh"))
+    G = length(gmembers)
+    T = promote_type(eltype(η0), typeof(σg), typeof(σh), typeof(ll(1, η0[1])))
+    ig = one(T) / σg^2
+    ih = one(T) / σh^2
+    fjoint(ug, uh) = begin
+        s = zero(promote_type(eltype(ug), T))
+        for i in eachindex(η0)
+            s += ll(i, η0[i] + ug[gidx[i]] + uh[hidx[i]])
+        end
+        s - ig * sum(abs2, ug) / 2 - ih * sum(abs2, uh) / 2
+    end
+    # 1. Safeguarded Newton ascent to the joint mode (clipped curvature).
+    ug = T.(cache.ug); uh = T.(cache.uh)
+    fb = _aghq_primal(fjoint(ug, uh))
+    z_g = zeros(T, G); z_h = zeros(T, Hh); f0 = _aghq_primal(fjoint(z_g, z_h))
+    if !(fb >= f0) && !isnan(f0)
+        ug = z_g; uh = z_h; fb = f0
+    end
+    for _ in 1:maxiter
+        isfinite(fb) || break
+        gg, gh, A, B, D = _crossed_aghq_derivs(ll, η0, gidx, hidx, ug, uh, ig, ih, true)
+        δg, δh, _, ok = _crossed_aghq_newton(gg, gh, A, B, D)
+        ok || break
+        (all(isfinite, _aghq_primal.(δg)) && all(isfinite, _aghq_primal.(δh))) || break
+        step = one(T)
+        ugn = ug .+ δg; uhn = uh .+ δh; fn = _aghq_primal(fjoint(ugn, uhn))
+        k = 0
+        while !(fn >= fb - 1e-12 * abs(fb)) && k < 40
+            step /= 2; ugn = ug .+ step .* δg; uhn = uh .+ step .* δh
+            fn = _aghq_primal(fjoint(ugn, uhn)); k += 1
+        end
+        fn >= fb - 1e-12 * abs(fb) || break
+        ug = ugn; uh = uhn; fb = fn
+        max(maximum(abs, _aghq_primal.(step .* δg); init = 0.0),
+            maximum(abs, _aghq_primal.(step .* δh); init = 0.0)) < tol && break
+    end
+    # 2. Two exact Newton steps (exact first/second θ-derivatives of the mode).
+    for _ in 1:2
+        gg, gh, A, B, D = _crossed_aghq_derivs(ll, η0, gidx, hidx, ug, uh, ig, ih, false)
+        δg, δh, _, ok = _crossed_aghq_newton(gg, gh, A, B, D)
+        ok || break
+        ugn = ug .+ δg; uhn = uh .+ δh
+        (all(isfinite, _aghq_primal.(ugn)) && all(isfinite, _aghq_primal.(uhn))) || break
+        ug = ugn; uh = uhn
+    end
+    # 3. Outer curvature: Schur complement at the joint mode.
+    _, _, A, B, D = _crossed_aghq_derivs(ll, η0, gidx, hidx, ug, uh, ig, ih, false)
+    Sc, ok = _aghq_chol(_crossed_aghq_schur(A, B, D))
+    if !ok
+        _, _, A, B, D = _crossed_aghq_derivs(ll, η0, gidx, hidx, ug, uh, ig, ih, true)
+        Sc, ok = _aghq_chol(_crossed_aghq_schur(A, B, D))
+    end
+    ok || return convert(T, -Inf)
+    ugp = _aghq_primal.(ug); uhp = _aghq_primal.(uh)
+    if all(isfinite, ugp) && all(isfinite, uhp)
+        cache.ug .= ugp; cache.uh .= uhp
+    end
+    bstart = reshape(copy(ugp), 1, G)
+    Lg = fill(σg + zero(T), 1, 1)
+    logdetC = -sum(log(Sc[d, d]) for d in 1:Hh)
+    N = size(rule_h.Z, 2)
+    terms = Vector{T}(undef, N)
+    rt2 = sqrt(2.0)
+    v = Vector{T}(undef, Hh)
+    uhj = Vector{T}(undef, Hh)
+    η0j = Vector{T}(undef, length(η0))
+    cst = -Hh * log(2π) / 2 - Hh * log(σh)
+    for j in 1:N
+        for r in Hh:-1:1                       # v = Sc⁻ᵀ z (upper-triangular Scᵀ)
+            s = rule_h.Z[r, j] + zero(T)
+            for k in (r+1):Hh
+                s -= Sc[k, r] * v[k]
+            end
+            v[r] = s / Sc[r, r]
+        end
+        for r in 1:Hh
+            uhj[r] = uh[r] + rt2 * v[r]
+        end
+        for i in eachindex(η0)
+            η0j[i] = η0[i] + uhj[hidx[i]]
+        end
+        Φ = cst - ih * sum(abs2, uhj) / 2
+        for (gi, idx) in enumerate(gmembers)
+            isempty(idx) && continue
+            lg, _ = _aghq_group_logint(ll, idx, η0j, cache.Zre, Lg, rule_g, @view(bstart[:, gi]))
+            Φ += lg
+        end
+        tj = Φ + rule_h.lw[j]
+        terms[j] = isnan(_aghq_primal(tj)) ? convert(T, -Inf) : tj
+    end
+    mx = maximum(terms)
+    isfinite(_aghq_primal(mx)) || return convert(T, -Inf)
+    lse = mx + log(sum(exp(t - mx) for t in terms))
+    return Hh * log(2.0) / 2 + logdetC + lse
+end
