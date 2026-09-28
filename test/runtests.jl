@@ -193,6 +193,7 @@ _shard_include("test_sigma_re_laplace.jl")   # marginal = :Laplace on sigma ~ (1
 _shard_include("test_sigma.jl")
 _shard_include("test_student.jl")
 _shard_include("test_student_721.jl")
+_shard_include("test_student_725.jl")
 _shard_include("test_skewnormal.jl")
 _shard_include("test_poisson.jl")
 # Issue #727 (twin drmTMB #1281): the formula grammar had no `offset()` term.
