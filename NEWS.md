@@ -6,6 +6,23 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **Adaptive quadrature for `CumulativeLogit()` `(1 | g)` / `(0 + x | g)`.**
+  Both ordinal random-effect routes now integrate `b_g` by per-group adaptive
+  Gauss–Hermite quadrature (the shared helper from #834/#719, `q = 1`) instead
+  of a fixed 32-node PRIOR-scale grid. With a large random-effect SD that grid
+  was badly under-resolved: on the seed-24 likelihood-fuzzer dataset
+  (`y ~ x + (1 | id)`, n = 48, G = 6) the old fit stopped at nll 21.30 with a
+  gradient of 5.6 (main), or, once the NaN fix below removed that stall,
+  reached a spurious 18.95 whose true marginal is 20.31. The fit now reaches
+  the exact maximum, nll 19.83614 (β = 7.997, cutpoints −4.152 / 12.306,
+  σ_b = 7.646), matching an exact per-group QuadGK integral and
+  `ordinal::clmm` with nAGQ ≥ 30. The ordinal group posterior is far from
+  Gaussian at large σ_b, so these routes use `K = 41` nodes (worst error
+  2.9e-9 nat against the exact integral on that dataset, versus 1.4e-2 at the
+  `K = 5` used by the other families). The two drmTMB-parity fixtures
+  (σ_b ≈ 0.69 and 0.34) move by −3.6e-8 and +1e-10 nat in logLik. Public API
+  unchanged; the `phylo(1 | species)` and fixed-effects-only routes are
+  untouched.
 - **Adaptive quadrature for 1-D random intercepts `(1 | g)` (#719).** Every
   default-route (`:LA`) `_fit_*_ranef` fitter for Poisson, NegBinomial2, Gamma,
   Beta, BetaBinomial, Student, and LogNormal now integrates the group random
@@ -25,6 +42,27 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   exact there for any `K` and is used directly. Public API and defaults are
   unchanged; TruncatedNegBinomial2 and ZeroOneBeta have no `(1 | g)` route yet
   and Binomial is out of scope for this change (tracked separately).
+- **`CumulativeLogit()` `(1 | g)` / `(0 + x | g)` no longer returns a NaN nll
+  at extreme θ (likelihood-sanity fuzzer finding, draft PR #866).** Two
+  compounding causes in `src/cumulative.jl`: (1) the interior-category
+  probability `logistic(cuts[k]-η) - logistic(cuts[k-1]-η)` was computed as a
+  raw difference of two independently-rounded probabilities, so near/at a
+  collapsed cutpoint gap or a saturating η it could go to exact 0 (fine,
+  `-Inf`) but sometimes rounded to a tiny NEGATIVE float instead, whose
+  `log()` is NaN; (2) the 32-node Gauss-Hermite quadrature accumulator's
+  `mx = maximum(terms); terms .- mx` produced `-Inf - (-Inf) == NaN` whenever
+  EVERY node's log-likelihood for a group was exactly `-Inf` (a deterministic,
+  node-independent "impossible category" that no finite random-effect draw
+  can undo, e.g. from an extreme fixed effect or cutpoint). The interior
+  probability is now computed directly in log-space from the two already-
+  stable `_log_logistic` values via a `log1mexp`-style identity (never
+  subtracts raw probabilities), and the quadrature accumulator short-circuits
+  to `-Inf` when its running max is `-Inf` instead of computing `Inf - Inf`.
+  The fixed-effects-only and `phylo(1 | g)` routes were already clean and are
+  unchanged. Evaluating the nll at an ordinary θ is unchanged to 1e-10; a
+  fresh fit on affected data now correctly continues past what had been a
+  spurious NaN "cliff" blocking LBFGS, converging further to a lower (more
+  correct) nll instead of stopping short. See `test/test_cumlogit_nan.jl`.
 - **`Binomial()` correlated random slope `(1 + x | g)` (#753), on the #834
   adaptive-quadrature engine.** Binomial now fits a logistic GLMM with a
   correlated random intercept + slope on the mean, via the shared per-group
