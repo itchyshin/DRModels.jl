@@ -591,3 +591,9 @@ _shard_include("test_609_varying_scale.jl")
 # DimensionMismatch because simulate drew fit.nobs values against full-design
 # means. Guards both, plus the iteration count the full-row rebuild dropped.
 _shard_include("test_bridge_response_mask_inference.jl")
+
+# Permanent property test for the "spuriously high logLik at extreme θ" bug
+# class: for a discrete response every probability mass is ≤ 1, so a marginal
+# logLik must be ≤ 0 too, and no route's objective may ever return NaN or
+# -Inf-as-nll. Sweeps every discrete route's fitted θ across an extreme grid.
+_shard_include("test_ll_sanity_fuzzer.jl")
