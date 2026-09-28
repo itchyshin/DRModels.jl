@@ -106,6 +106,7 @@ _shard_include("test_shard_selection.jl")
 _shard_include("test_runtests_include_list.jl")  # this file's own shape: no duplicate or plain includes (see MAINTENANCE NOTE)
 _shard_include("test_load_contract.jl")
 _shard_include("test_aqua.jl")
+_shard_include("test_fixture_provenance.jl")  # #473: every parity fixture must stamp its drmTMB comparator
 
 # Gaussian location–scale front end (drm/bf public API).
 _shard_include("test_gaussian_core.jl")
