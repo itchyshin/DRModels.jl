@@ -591,3 +591,9 @@ _shard_include("test_609_varying_scale.jl")
 # DimensionMismatch because simulate drew fit.nobs values against full-design
 # means. Guards both, plus the iteration count the full-row rebuild dropped.
 _shard_include("test_bridge_response_mask_inference.jl")
+
+# Issue #732 (twin drmTMB#1272): `re_sd(fit)` on a `phylo(1 | g)` grouping is on
+# the raw branch-length scale; drmTMB reports the tip-correlation scale. Guards
+# the new `re_sd(fit; scale = :drmtmb, tree = ...)` conversion option (default
+# unchanged) against the same two R-oracle fixtures already used elsewhere.
+_shard_include("test_twin_gap_732.jl")

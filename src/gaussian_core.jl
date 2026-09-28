@@ -2213,7 +2213,7 @@ function bic(fit::DrmFit)
 end
 
 """
-    re_sd(fit) -> Dict{Symbol,Float64}
+    re_sd(fit; scale = :native, tree = nothing) -> Dict{Symbol,Float64}
 
 Estimated random-effect (random-intercept) standard deviations, keyed by
 grouping factor. A mean-axis random intercept (`y ~ x + (1|g)`) is keyed by the
@@ -2221,14 +2221,43 @@ bare group name and is on the response scale. A scale-axis random intercept
 (`sigma ~ 1 + (1|g)`) is keyed `<group>_logsigma` because that SD lives on the
 log-σ scale — the two are NOT directly comparable, and the suffix keeps them
 distinct so a side-by-side read is not silently mixing scales.
+
+## `scale` (#732, twin drmTMB#1272)
+
+For a `phylo(1 | g)` grouping fitted on the default raw branch-length
+covariance (`fit.phylo_scale === :covariance`, the sparse Gaussian-mean and all
+non-Gaussian Laplace/GLMM phylo routes), `re_sd`'s default `scale = :native`
+returns σ on that raw branch-length scale (tip variance = the tree's height
+`h`). drmTMB instead reports the phylogenetic SD on the tip-correlation scale
+(`ape::vcv(tree, corr = TRUE)`, tip variance 1 regardless of `h`); the two
+quantities differ by the exact factor `sqrt(h)`
+(`sd_drmTMB == re_sd(fit)[:g] * sqrt(phylo_tree_height(augmented_phy(tree)))`,
+confirmed against `drmTMB` 0.7.1 to within optimiser tolerance on both a
+Gaussian and a non-Gaussian (`CumulativeLogit`) phylo fit — see
+`test/test_twin_gap_732.jl`).
+
+Pass `scale = :drmtmb` and the SAME `tree` (or `newick` string) given to
+`drm(...)` to get drmTMB's number directly instead of doing that conversion by
+hand:
+
+    re_sd(fit; scale = :drmtmb, tree = tree)
+
+For a fit whose phylo/relmat term was instead built on the tip-correlation
+matrix already (`fit.phylo_scale === :correlation`), `scale = :drmtmb` is a
+no-op (that route's raw `re_sd` already matches drmTMB) and `tree` is not
+required. `scale = :drmtmb` on a fit with no random effects returns the empty
+`Dict`. `scale = :native` (the default) is unchanged from before this option
+existed.
 """
-function re_sd(fit::DrmFit)
+function re_sd(fit::DrmFit; scale::Symbol = :native, tree = nothing)
     # Location–scale–scale fits (#544) model the RE SD with covariates, so a
     # single per-grouping SD is ill-defined — refuse rather than misreport.
     any(p -> first(p) in (:sd, :sd_phylo), fit.blocks) &&
         throw(ArgumentError("re_sd: this fit models the random-effect SD with covariates " *
             "(`sd(group) ~ …`), so a single SD per grouping is not defined. Use " *
             "`coef(fit, :sd)` for the log-SD coefficients."))
+    scale in (:native, :drmtmb) ||
+        throw(ArgumentError("re_sd: `scale` must be :native or :drmtmb, got $(repr(scale))."))
     d = Dict{Symbol,Float64}()
     for (p, r) in fit.blocks
         p === :resd || continue
@@ -2237,7 +2266,14 @@ function re_sd(fit::DrmFit)
             d[Symbol(nm)] = exp(fit.theta[r[j]])
         end
     end
-    return d
+    scale === :native && return d
+    (isempty(d) || fit.phylo_scale === :correlation) && return d
+    tree === nothing && throw(ArgumentError("re_sd: scale = :drmtmb needs `tree = ...` " *
+        "(the SAME tree/newick passed to `drm(...)`) to convert the raw branch-length SD " *
+        "to drmTMB's tip-correlation scale — see the `re_sd` docstring (#732)."))
+    phy = tree isa AugmentedPhy ? tree : augmented_phy(tree)
+    factor = sqrt(phylo_tree_height(phy))
+    return Dict(k => v * factor for (k, v) in d)
 end
 
 """

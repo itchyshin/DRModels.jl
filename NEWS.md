@@ -6,6 +6,18 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **`re_sd(fit; scale = :drmtmb, tree = ...)` reports a `phylo(1 | g)` SD on
+  drmTMB's scale (#732, twin drmTMB#1272).** `re_sd`'s default (unchanged) is
+  the raw branch-length scale (tip variance = the tree's height `h`) for every
+  route where `fit.phylo_scale === :covariance` (the sparse Gaussian-mean
+  phylo route and all non-Gaussian Laplace/GLMM phylo routes); drmTMB reports
+  the same random effect on the tip-CORRELATION scale (`ape::vcv(tree, corr =
+  TRUE)`, tip variance 1). FE and logLik already agreed between the two
+  engines — only the reported SD differed, by the exact factor `sqrt(h)`. The
+  new `scale = :drmtmb` option (needs the same `tree` passed to `drm(...)`)
+  returns drmTMB's number directly; it is a no-op (and needs no `tree`) on a
+  route whose `phylo_scale === :correlation` (e.g. `phylo(1|sp) + (1|h)`),
+  since that route's raw `re_sd` already matches drmTMB.
 - **`Student()` no longer reports a garbage log-likelihood near the Gaussian
   limit (#721; drmTMB twin #1265).** When the data are close to Normal the
   likelihood is flat in the ν predictor, and the optimiser can walk ν = 2 +
