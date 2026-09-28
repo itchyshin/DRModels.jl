@@ -6,6 +6,15 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **`ZeroOneBeta()` random intercept `(1 | g)` on the mean (#723, drmTMB twin gap).**
+  `ZeroOneBeta()` no longer hard-blocks every random effect: an ordinary
+  random intercept on the mean, `y ~ x + (1 | g)`, is now admitted exactly as
+  `Beta()` admits it — `b_g ~ N(0, σ_b²)` integrated out per group by 32-node
+  Gauss–Hermite quadrature (default `:LA`-style marginal). `sigma`, `zoi`, and
+  `coi` must stay fixed-effects-only (their formulas still refuse any random
+  effect). Mirrors drmTMB's admitted `zero_one_beta()` + ordinary RI (e.g.
+  `faraway::leafblotch`). Structured (`tree=`/`K=`) random intercepts on
+  `ZeroOneBeta()`'s mean remain unimplemented (#739).
 - **`Student()` fits crossed random intercepts on the mean (#725; drmTMB twin
   #1266).** `y ~ x + (1 | g) + (1 | h)` was refused ("single random-effect
   term"); drmTMB `student()` fits it. It now uses the Laplace approximation, as
