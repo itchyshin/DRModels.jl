@@ -209,12 +209,33 @@ function _reml_border_blocks(prob::AugProblem, u_hat::Vector{Float64}, beta_full
     return H_u_beta, H_beta_beta
 end
 
+# Border blocks in the latent coordinates of `P`: for a `WhitenedPrior` the
+# latent is v = (I ⊗ L⁻¹)u, so H_vβ = (I ⊗ Lᵀ) H_uβ (row blocks times Lᵀ) and
+# H_ββ is unchanged. Then S = H_ββ − H_vβᵀ H̃⁻¹ H_vβ is the SAME Schur
+# complement as in u coordinates, with Λ⁻¹ never formed.
+_reml_border_blocks(prob::AugProblem, ::SparseMatrixCSC, z::Vector{Float64}, beta_full) =
+    _reml_border_blocks(prob, z, beta_full)
+function _reml_border_blocks(prob::AugProblem, W::WhitenedPrior, v::Vector{Float64}, beta_full)
+    B, D = _reml_border_blocks(prob, whitened_to_u(W, v), beta_full)
+    L = W.L
+    @inbounds for base in 0:4:(size(B, 1) - 4), m in 1:size(B, 2)
+        b1 = B[base+1, m]; b2 = B[base+2, m]; b3 = B[base+3, m]; b4 = B[base+4, m]
+        B[base+1, m] = L[1,1]*b1 + L[2,1]*b2 + L[3,1]*b3 + L[4,1]*b4
+        B[base+2, m] = L[2,2]*b2 + L[3,2]*b3 + L[4,2]*b4
+        B[base+3, m] = L[3,3]*b3 + L[4,3]*b4
+        B[base+4, m] = L[4,4]*b4
+    end
+    return B, D
+end
+
 # ∇_z J at z = (u, beta): the u block is `joint_grad`; the beta block is the
 # same leaf gradient chained through each axis's design (R_i' again).
-function _reml_grad_z(prob::AugProblem, P::SparseMatrixCSC,
-                      u::Vector{Float64}, beta_full)
+function _reml_grad_z(prob::AugProblem, P::Union{SparseMatrixCSC,WhitenedPrior},
+                      z::Vector{Float64}, beta_full)
     Xax, wax, off, nbeta = _reml_axis_layout(prob)
-    g_u = joint_grad(prob, P, u, beta_full)
+    g_u = joint_grad(prob, P, z, beta_full)
+    # whitened latent z = v: the leaf data see u = (I ⊗ L) v
+    u = P isa WhitenedPrior ? whitened_to_u(P, z) : z
     e1, e2, es1, es2, er = leaf_etas(prob, beta_full)
     g_b = zeros(nbeta)
     @inbounds for i in eachindex(prob.leaf_node)
@@ -244,7 +265,7 @@ end
 # derivation is valid only at ∇_z J = 0. A few of these steps cost one extra
 # sparse solve each and take ‖∇_z J‖ to ~1e-11.
 # ---------------------------------------------------------------------------
-function _reml_joint_newton(prob::AugProblem, P::SparseMatrixCSC,
+function _reml_joint_newton(prob::AugProblem, P::Union{SparseMatrixCSC,WhitenedPrior},
                             u0::Vector{Float64}, beta_full;
                             max_iter::Int = 25, tol::Float64 = 1e-10)
     u  = copy(u0)
@@ -252,7 +273,7 @@ function _reml_joint_newton(prob::AugProblem, P::SparseMatrixCSC,
     rho = beta_full.rho
     b   = _reml_beta_nt(prob, bv, rho)
     Hobs = build_Huu(prob, P, u, b); ch_H, _ = sparse_pd_chol(Hobs)
-    B, D  = _reml_border_blocks(prob, u, b)
+    B, D  = _reml_border_blocks(prob, P, u, b)
     nbeta = size(B, 2)
     C  = Matrix{Float64}(undef, length(u), nbeta)
     for j in 1:nbeta; C[:, j] = ch_H \ B[:, j]; end
@@ -280,7 +301,7 @@ function _reml_joint_newton(prob::AugProblem, P::SparseMatrixCSC,
         end
         accepted || break
         Hobs = build_Huu(prob, P, u, b); ch_H, _ = sparse_pd_chol(Hobs)
-        B, D = _reml_border_blocks(prob, u, b)
+        B, D = _reml_border_blocks(prob, P, u, b)
         for j in 1:nbeta; C[:, j] = ch_H \ B[:, j]; end
         ch_S = cholesky(Symmetric((D - B'C + (D - B'C)') / 2); check = false)
         g_u, g_b = _reml_grad_z(prob, P, u, b)
@@ -305,8 +326,9 @@ function reml_ll_and_mode(prob::AugProblem, Q_cond::SparseMatrixCSC,
                           phi::Vector{Float64};
                           u0=nothing, beta0=nothing, n_newton::Int=40)
     rho_coef, lc = unpack_phi(prob, phi)
-    Lam  = lc_to_Λ(lc)
-    P    = prior_precision(Q_cond, inv(Lam))
+    # Whitened prior (#857 site q4): the latent below is v = (I ⊗ L⁻¹)u, Λ = LLᵀ,
+    # so Λ⁻¹ is never formed. `u0` and the returned `u_hat` stay in u coordinates.
+    P    = whitened_prior(Q_cond, lc_to_chol(lc, 4).L)
 
     # Initial (beta_mu, beta_sigma) guess: warm from beta0 (the cached ML/last state)
     # or cold (OLS mean intercepts, zero log-sigma).
@@ -320,7 +342,7 @@ function reml_ll_and_mode(prob::AugProblem, Q_cond::SparseMatrixCSC,
 
     # Alternate E-step and the conditional beta Newton until jointly converged.
     # The Schur complement S is only PD at the joint mode of jn(u, beta_profiled).
-    u_hat = u0 === nothing ? zeros(4*prob.n_total) : Vector{Float64}(u0)
+    v_hat = u0 === nothing ? zeros(4*prob.n_total) : u_to_whitened(P, Vector{Float64}(u0))
     ch_H  = nothing
     # #526: surface whether the alternation actually settled, rather than
     # letting a budget exhaustion pass silently into a flag that only reported
@@ -334,9 +356,9 @@ function reml_ll_and_mode(prob::AugProblem, Q_cond::SparseMatrixCSC,
     # margin and still fails a materially moving beta (delta_b ~ 1e-2).
     last_delta = Inf
     for alt_it in 1:15    # up to 15 alternations for cold starts
-        u_hat, ch_H, _ = estep_mode(prob, P, beta_full; u0=u_hat, n_newton=n_newton)
-        u_hat = Vector{Float64}(u_hat)
-        b_new = cond_newton_beta(prob, u_hat, beta_full; n_newton=20)
+        v_hat, ch_H, _ = estep_mode(prob, P, beta_full; u0=v_hat, n_newton=n_newton)
+        v_hat = Vector{Float64}(v_hat)
+        b_new = cond_newton_beta(prob, whitened_to_u(P, v_hat), beta_full; n_newton=20)
         delta_b = norm(b_new.mu1 .- beta_full.mu1) + norm(b_new.mu2 .- beta_full.mu2) +
                   norm(b_new.s1  .- beta_full.s1)  + norm(b_new.s2  .- beta_full.s2)
         beta_full = (mu1 = b_new.mu1, mu2 = b_new.mu2,
@@ -361,10 +383,11 @@ function reml_ll_and_mode(prob::AugProblem, Q_cond::SparseMatrixCSC,
                  norm(beta_full.s1) + norm(beta_full.s2)
     inner_converged = last_delta < 1e-4 * (1 + beta_scale)
     # Final E-step with converged beta
-    u_hat, ch_H, _ = estep_mode(prob, P, beta_full; u0=u_hat, n_newton=n_newton)
-    u_hat = Vector{Float64}(u_hat)
+    v_hat, ch_H, _ = estep_mode(prob, P, beta_full; u0=v_hat, n_newton=n_newton)
+    v_hat = Vector{Float64}(v_hat)
+    u_hat = whitened_to_u(P, v_hat)
 
-    ml_ll = laplace_ll(prob, P, beta_full, u_hat, ch_H)
+    ml_ll = laplace_ll(prob, P, beta_full, v_hat, ch_H)
 
     # REML correction: -0.5 * logdet(S), S the Schur complement of the profiled
     # fixed effects beta = (beta_mu1,beta_mu2,beta_s1,beta_s2) in the joint Hessian
@@ -376,9 +399,10 @@ function reml_ll_and_mode(prob::AugProblem, Q_cond::SparseMatrixCSC,
     # Hb[1,3] etc. that carry the SCALE REML correction.
     nu  = 4 * prob.n_total
     _, _, _, nbeta = _reml_axis_layout(prob)
-    H_u_beta, H_beta_beta = _reml_border_blocks(prob, u_hat, beta_full)
+    H_u_beta, H_beta_beta = _reml_border_blocks(prob, P, v_hat, beta_full)
 
-    # Schur complement: S = H_beta_beta - H_u_beta' * (H_uu^{-1} * H_u_beta)
+    # Schur complement: S = H_beta_beta - H_u_beta' * (H_uu^{-1} * H_u_beta),
+    # here in whitened form H_vβ' H̃⁻¹ H_vβ (the same matrix).
     C   = Matrix{Float64}(undef, nu, nbeta)
     for j in 1:nbeta
         C[:, j] = ch_H \ H_u_beta[:, j]
@@ -434,15 +458,16 @@ function _reml_exact_state(prob::AugProblem, Q_cond::SparseMatrixCSC,
     phiv = Vector{Float64}(phi)
     rho_coef, lc = unpack_phi(prob, phiv)
     Lam = lc_to_Λ(lc)
-    P   = prior_precision(Q_cond, inv(Lam))
+    P   = whitened_prior(Q_cond, lc_to_chol(lc, 4).L)   # latent v = (I ⊗ L⁻¹)u
     # Reuse the existing alternation to get into the right neighbourhood, then
     # certify with joint Newton (the alternation's relative beta exit is far too
     # loose to support an exact gradient — see the derivation note §2.4).
     _, u_a, _, b_a, _, _ = reml_ll_and_mode(prob, Q_cond, phiv;
                                             u0 = u0, beta0 = beta0, n_newton = n_newton)
-    u, b, ch_H, C, ch_S, gz = _reml_joint_newton(prob, P, Vector{Float64}(u_a), b_a;
+    v, b, ch_H, C, ch_S, gz = _reml_joint_newton(prob, P, u_to_whitened(P, Vector{Float64}(u_a)), b_a;
                                                  max_iter = joint_iter, tol = joint_tol)
-    return (rho = rho_coef, lc = lc, Lam = Lam, P = P, u = u, beta = b,
+    # ch_H factors H̃ = (I⊗Lᵀ)H_uu(I⊗L) and C = H̃⁻¹H_vβ (whitened); `u` is in u coordinates.
+    return (rho = rho_coef, lc = lc, Lam = Lam, P = P, v = v, u = whitened_to_u(P, v), beta = b,
             ch_H = ch_H, C = C, ch_S = ch_S, gz = gz)
 end
 
@@ -465,7 +490,7 @@ function reml_nll_exact(prob::AugProblem, Q_cond::SparseMatrixCSC,
                            n_newton = n_newton, joint_iter = joint_iter,
                            joint_tol = joint_tol)
     issuccess(st.ch_S) || return Inf
-    ll = laplace_ll(prob, st.P, st.beta, st.u, st.ch_H) - 0.5 * logdet(st.ch_S)
+    ll = laplace_ll(prob, st.P, st.beta, st.v, st.ch_H) - 0.5 * logdet(st.ch_S)
     return isfinite(ll) ? -ll : Inf
 end
 
@@ -490,57 +515,64 @@ function reml_nll_and_exact_grad(prob::AugProblem, Q_cond::SparseMatrixCSC,
     st = _reml_exact_state(prob, Q_cond, phiv; u0 = u0, beta0 = beta0,
                            n_newton = n_newton, joint_iter = joint_iter,
                            joint_tol = joint_tol)
-    P = st.P; u_hat = st.u; b = st.beta; ch_H = st.ch_H; C = st.C; ch_S = st.ch_S
+    W = st.P; L = W.L
+    v_hat = st.v; u_hat = st.u; b = st.beta; ch_H = st.ch_H; C = st.C; ch_S = st.ch_S
     if !issuccess(ch_S)
         return Inf, fill(NaN, nph), u_hat, b, ch_H, st.gz
     end
-    ll = laplace_ll(prob, P, b, u_hat, ch_H) - 0.5 * logdet(ch_S)
+    ll = laplace_ll(prob, W, b, v_hat, ch_H) - 0.5 * logdet(ch_S)
     if !isfinite(ll)
         return Inf, fill(NaN, nph), u_hat, b, ch_H, st.gz
     end
 
+    # Whitened form (#857 site q4). Latent v = (I ⊗ L⁻¹)u; the joint Hessian over
+    # z̃ = (v, β) is H̃_z = blockdiag(Q ⊗ I, 0) + Σ_i R̃_iᵀ D_i R̃_i with the lift
+    # R̃_i = [L E_t | F_i]. The prior block is θ-free, so the unwhitened form's
+    # −½ logdet P term and its kron(Q, ∂Λ⁻¹) trace cancel analytically; lc now
+    # enters only through L in the leaf rows. Per row, with Ṽ_t the H̃⁻¹ leaf
+    # block, C̃_t = C[leaf rows, :] (C = H̃⁻¹H_vβ) and G_i = L C̃_t − F_i:
+    #   Ω_i = R̃ H̃_z⁻¹ R̃ᵀ = L Ṽ_t Lᵀ + G_i S⁻¹ G_iᵀ       (u-space, as before)
+    #   M_i = (R̃ H̃_z⁻¹)[:, v_t] = L Ṽ_t + G_i S⁻¹ C̃_tᵀ
+    #   ½ ∂ logdet H̃_z/∂lc_k = ½ dv (2 (D M)[r,c] + s_i[r] v_t[c]),  s_i[c] = tr(Ω T_c)
+    # where dL_k has its single nonzero dv at (r, c).
     Xax, wax, off, nbeta = _reml_axis_layout(prob)
     nu   = 4 * prob.n_total
-    N    = prob.n_total
-    Λi   = inv(st.Lam)
     Sinv = Matrix(inv(ch_S))          # nbeta is the marginalised width (small)
-    CS   = C * Sinv                   # nu × nbeta
-    Vsel = takahashi_selinv(ch_H)     # A^{-1} at the L+L' pattern, O(p)
+    Vsel = takahashi_selinv(ch_H)     # H̃^{-1} at the L+L' pattern, O(p)
     e1, e2, es1, es2, er = leaf_etas(prob, b)
+    lc_rc = [(i, j) for j in 1:4 for i in j:4]
+    nrow = length(prob.leaf_node)
+    Dall = Array{Float64}(undef, 4, 4, nrow)
+    Gall = Array{Float64}(undef, 4, nrow)
 
     grad = zeros(nph)
 
-    # --- C1: ∇_phi J(ẑ; phi) with ẑ frozen (single-level AD, no CHOLMOD). ----
-    jn_of_phi = function (pv::AbstractVector)
-        rho_t = pv[1:kr]; lc_t = pv[kr+1:kr+10]
-        Pt = prior_precision(Q_cond, inv(lc_to_Λ(lc_t)))
-        βt = (mu1 = b.mu1, mu2 = b.mu2, s1 = b.s1, s2 = b.s2, rho = rho_t)
-        return joint_nll_T(prob, Pt, u_hat, βt)
-    end
-    grad .+= ForwardDiff.gradient(jn_of_phi, phiv)
-
-    # --- C2: −0.5 ∇ logdet P = +0.5·N·∇_lc logdet Λ (analytic). -------------
-    grad[o_lc+1:o_lc+10] .+=
-        0.5 * N .* ForwardDiff.gradient(v -> logdet(Symmetric(lc_to_Λ(v))), st.lc)
-
-    # --- C3a (beta_rho logdet-H trace) and I1 (v = 0.5 ∇_z logdet H) --------
-    # One pass over data rows; both need the same per-leaf Omega_i.
-    Gst = zeros(4, 4)                 # Q-pattern accumulator for the lc trace
-    v_u = zeros(nu); v_b = zeros(nbeta)
-    Gi  = zeros(4, nbeta)
-    @inbounds for i in eachindex(prob.leaf_node)
+    # --- one pass over rows: β_rho logdet trace, u-trace s_i, lc logdet trace,
+    #     and v = ½ ∇_z̃ logdet H̃_z --------------------------------------------
+    v_v = zeros(nu); v_b = zeros(nbeta)
+    Gi = zeros(4, nbeta); Ct = zeros(4, nbeta)
+    Vb = zeros(4, 4); LV = zeros(4, 4)
+    si = zeros(4)
+    @inbounds for i in 1:nrow
         t = prob.leaf_node[i]; bt = 4 * (t - 1)
         ublk = [u_hat[bt+1], u_hat[bt+2], u_hat[bt+3], u_hat[bt+4]]
-        # G_i = C[leaf block, :] − F_i, then Omega = Vsel_blk + G_i S^{-1} G_i'.
+        for m in 1:nbeta, d in 1:4; Ct[d, m] = C[bt+d, m]; end
+        mul!(Gi, L, Ct)                                   # L C̃_t
         for d in 1:4
-            for m in 1:nbeta; Gi[d, m] = C[bt+d, m]; end
             Xd = Xax[d]; od = off[d]
             for k in 1:wax[d]; Gi[d, od+k] -= Xd[i, k]; end
         end
-        Ω = Gi * Sinv * Gi'
-        for a in 1:4, bb in 1:4
-            Ω[a, bb] += Vsel[bt+a, bt+bb]
-        end
+        for bb in 1:4, a in 1:4; Vb[a, bb] = Vsel[bt+a, bt+bb]; end
+        mul!(LV, L, Vb)
+        GS = Gi * Sinv
+        Ω = LV * L' + GS * Gi'
+        M = LV + GS * Ct'
+
+        D = leaf_hess(ublk, prob.y1[i], prob.y2[i], e1[i], e2[i], es1[i], es2[i], er[i],
+                      prob.obs1[i], prob.obs2[i])
+        Dall[:, :, i] .= D
+        Gall[:, i] .= leaf_grad(ublk, prob.y1[i], prob.y2[i], e1[i], e2[i], es1[i], es2[i], er[i],
+                                prob.obs1[i], prob.obs2[i])
 
         if kr > 0
             dHr = ForwardDiff.derivative(
@@ -558,61 +590,69 @@ function reml_nll_and_exact_grad(prob::AugProblem, Q_cond::SparseMatrixCSC,
         for c in 1:4
             acc = 0.0
             for bb in 1:4, a in 1:4; acc += Ω[a, bb] * T[a, bb, c]; end
+            si[c] = acc
             vt = 0.5 * acc
-            v_u[bt+c] += vt
             Xc = Xax[c]; oc = off[c]
             for k in 1:wax[c]; v_b[oc+k] += vt * Xc[i, k]; end
         end
-    end
-
-    # --- C3b: lc logdet-H trace. Only the u-u block of H depends on lc, via
-    # P = kron(Q, Λ^{-1}); the needed inverse block is W_uu = A^{-1} + C S^{-1} C'.
-    rowsQ = rowvals(Q_cond); valsQ = nonzeros(Q_cond)
-    @inbounds for tcol in 1:N
-        for idx in nzrange(Q_cond, tcol)
-            s = rowsQ[idx]; q = valsQ[idx]
-            bs = 4 * (s - 1); btt = 4 * (tcol - 1)
-            for a in 1:4, bb in 1:4
-                corr = 0.0
-                for m in 1:nbeta; corr += CS[btt+a, m] * C[bs+bb, m]; end
-                Gst[bb, a] += q * (Vsel[btt+a, bs+bb] + corr)
-            end
+        for a in 1:4                                      # ½ Lᵀ s_i
+            acc = 0.0
+            for c in a:4; acc += L[c, a] * si[c]; end
+            v_v[bt+a] += 0.5 * acc
+        end
+        DM = D * M
+        for k in 1:10
+            r, c = lc_rc[k]
+            dv = r == c ? L[r, r] : 1.0
+            grad[o_lc + k] += 0.5 * dv * (2 * DM[r, c] + si[r] * v_hat[bt + c])
         end
     end
-    dΛ = ForwardDiff.jacobian(lc_to_Λ, st.lc)      # 16×10
-    for k in 1:10
-        dΛk = reshape(@view(dΛ[:, k]), 4, 4)
-        Mk  = -Λi * dΛk * Λi
-        acc = 0.0
-        for a in 1:4, bb in 1:4; acc += Gst[bb, a] * Mk[bb, a]; end
-        grad[o_lc + k] += 0.5 * acc
-    end
 
-    # --- I2: w = H^{-1} v via the same bordered block solve. ----------------
-    qv  = ch_S \ (C'v_u .- v_b)
-    w_u = (ch_H \ v_u) .+ C * qv
+    # --- I2: w = H̃_z^{-1} v via the bordered block solve. -------------------
+    qv  = ch_S \ (C'v_v .- v_b)
+    w_v = (ch_H \ v_v) .+ C * qv
     w_b = -qv
 
-    # --- I3: −∇_phi[ (∇_z J)' w ] at frozen (ẑ, w). ------------------------
-    scalar_of_phi = function (pv::AbstractVector)
-        rho_t = pv[1:kr]; lc_t = pv[kr+1:kr+10]
-        Pt = prior_precision(Q_cond, inv(lc_to_Λ(lc_t)))
-        βt = (mu1 = b.mu1, mu2 = b.mu2, s1 = b.s1, s2 = b.s2, rho = rho_t)
-        acc = dot(joint_grad_T(prob, Pt, u_hat, βt), w_u)
-        f1, f2, fs1, fs2, fr = leaf_etas(prob, βt)
-        @inbounds for i in eachindex(prob.leaf_node)
-            t = prob.leaf_node[i]; bt = 4 * (t - 1)
-            gb = leaf_grad([u_hat[bt+1], u_hat[bt+2], u_hat[bt+3], u_hat[bt+4]],
-                           prob.y1[i], prob.y2[i], f1[i], f2[i], fs1[i], fs2[i], fr[i],
-                           prob.obs1[i], prob.obs2[i])
-            for d in 1:4
-                Xd = Xax[d]; od = off[d]
-                for k in 1:wax[d]; acc += gb[d] * Xd[i, k] * w_b[od+k]; end
-            end
+    # --- C1 + I3: ∂_φ J̃(ẑ) − ∂_φ[(∇_z̃ J̃)ᵀ w], (ẑ, w) frozen. Only leaf rows
+    # depend on φ: Σ_i leaf_nll(u_i) − ζ_iᵀ leaf_grad(u_i), ζ_i = L w_t + F_i w_b.
+    # lc via L (closed form), β_rho via η_r (single-level AD). ---------------
+    Lw = whitened_to_u(W, w_v)
+    Z = zeros(4, nrow)
+    @inbounds for i in 1:nrow
+        t = prob.leaf_node[i]; bt = 4 * (t - 1)
+        for d in 1:4
+            acc = Lw[bt+d]
+            Xd = Xax[d]; od = off[d]
+            for k in 1:wax[d]; acc += Xd[i, k] * w_b[od+k]; end
+            Z[d, i] = acc
         end
-        return acc
+        for k in 1:10
+            r, c = lc_rc[k]
+            dv = r == c ? L[r, r] : 1.0
+            DZ_r = Dall[r, 1, i] * Z[1, i] + Dall[r, 2, i] * Z[2, i] +
+                   Dall[r, 3, i] * Z[3, i] + Dall[r, 4, i] * Z[4, i]
+            grad[o_lc + k] += dv * (Gall[r, i] * v_hat[bt + c] - w_v[bt + c] * Gall[r, i] -
+                                    DZ_r * v_hat[bt + c])
+        end
     end
-    grad .-= ForwardDiff.gradient(scalar_of_phi, phiv)
+    if kr > 0
+        rho_of = function (rho_t::AbstractVector)
+            βt = (mu1 = b.mu1, mu2 = b.mu2, s1 = b.s1, s2 = b.s2, rho = rho_t)
+            f1, f2, fs1, fs2, fr = leaf_etas(prob, βt)
+            acc = zero(eltype(rho_t))
+            @inbounds for i in 1:nrow
+                t = prob.leaf_node[i]; bt = 4 * (t - 1)
+                ublk = [u_hat[bt+1], u_hat[bt+2], u_hat[bt+3], u_hat[bt+4]]
+                acc += leaf_nll(ublk, prob.y1[i], prob.y2[i], f1[i], f2[i], fs1[i], fs2[i], fr[i],
+                                prob.obs1[i], prob.obs2[i])
+                gb = leaf_grad(ublk, prob.y1[i], prob.y2[i], f1[i], f2[i], fs1[i], fs2[i], fr[i],
+                               prob.obs1[i], prob.obs2[i])
+                acc -= Z[1, i] * gb[1] + Z[2, i] * gb[2] + Z[3, i] * gb[3] + Z[4, i] * gb[4]
+            end
+            return acc
+        end
+        grad[1:kr] .+= ForwardDiff.gradient(rho_of, phiv[1:kr])
+    end
 
     return -ll, grad, u_hat, b, ch_H, st.gz
 end
@@ -996,8 +1036,8 @@ function fit_q4_reml(prob::AugProblem, Q_cond::SparseMatrixCSC;
     end
     rhat     = isfinite(nll_hat) ? -nll_hat : -Inf
     inner_ok = isfinite(gz_hat) && gz_hat < 1e-6
-    P_hat    = prior_precision(Q_cond, inv(Lam_hat))
-    mlhat    = laplace_ll(prob, P_hat, bhat, uhat, ch_H)
+    W_hat    = whitened_prior(Q_cond, lc_to_chol(lc_hat, 4).L)
+    mlhat    = laplace_ll(prob, W_hat, bhat, u_to_whitened(W_hat, uhat), ch_H)
 
     g_resid_val = try; Optim.g_residual(res); catch; NaN; end
 

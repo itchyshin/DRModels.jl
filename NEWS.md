@@ -6,6 +6,22 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **q=4 REML engine: whitened prior, no Λ inverse (#857 site q4-REML).**
+  `reml_ll_and_mode`, `_reml_exact_state` and the exact-gradient helper
+  `reml_nll_and_exact_grad` built the REML prior precision
+  `P = kron(Q_cond, inv(Λ))` from a formed `Λ` at six sites, plus a bare
+  `logdet(Symmetric(Λ))` for its gradient term. Near a singular Λ (correlation
+  → ±1, log-Cholesky diagonal around −18 to −30) this poisoned the
+  Newton-certified joint mode badly enough that the Schur complement came back
+  non-PD and `reml_nll_exact` returned the `Inf` barrier outright — on a
+  well-identified p=6-leaf/n=24 fixture, l22 = −18/−20/−30 all failed this way
+  while a 256-bit reference gives a finite value (≤ 1e-8 relative once fixed).
+  Now built in whitened coordinates (`v = (I ⊗ L⁻¹)u`), matching the sister
+  fix to the ML engine (#857 site q4) and the coevolution/q2 prior (#857 site
+  K). Normal-regime values are unchanged: a frozen copy of the pre-fix
+  algorithm agrees with the live one to ≤ 1e-10 over 10 random well-conditioned
+  points.
+
 - **q=4 ML PLSM engine: whitened prior, no Λ inverse (#857 site q4).** The
   Newton mode-finder, `laplace_ll`, `marginal_nll`, the exact O(p) gradient and
   `q4_marginal_diagnostic` now work in `v = (I ⊗ L⁻¹)u` (`Λ = LLᵀ` built from θ
