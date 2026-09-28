@@ -559,6 +559,8 @@ _shard_include("test_quantile_residuals.jl")
 
 # S3: cross-family bivariate (shared-latent GHQ) + link-residual standardization.
 _shard_include("test_mixed_family.jl")
+# aghq = true: per-observation adaptive GHQ for the shared latent (#719/#834).
+_shard_include("test_mixed_family_aghq.jl")
 # Post-fit accessors (coef/aic/bic/fitted/summary) for the cross-family fit.
 _shard_include("test_mixed_family_postfit.jl")
 

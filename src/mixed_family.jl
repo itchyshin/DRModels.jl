@@ -176,7 +176,8 @@ function fit_mixed_family(; y1, X1, fam1, y2, X2, fam2,
         Xsigma1 = ones(length(y1), 1), Xsigma2 = ones(length(y2), 1),
         K::Int = 32, g_tol::Float64 = 1e-6,
         confint::Bool = true, level::Float64 = 0.95,
-        profile::Bool = false, B::Int = 0, rng = Random.default_rng())
+        profile::Bool = false, B::Int = 0, rng = Random.default_rng(),
+        aghq::Bool = false, aghq_K::Int = _RANEF1D_AGHQ_K)
     n = length(y1)
     n == length(y2) || throw(ArgumentError("y1 and y2 must have equal length"))
     p1 = size(X1, 2); p2 = size(X2, 2)
@@ -244,6 +245,52 @@ function fit_mixed_family(; y1, X1, fam1, y2, X2, fam2,
         return isfinite(ForwardDiff.value(total)) ? total : oftype(total, 1e10)
     end
 
+    # `aghq = true`: the same model, integrated by per-"group" ADAPTIVE
+    # Gauss-Hermite quadrature (`_aghq_marginal_loglik`, #834/#719) instead of
+    # the fixed prior-scale grid above. Each observation i is its own "group"
+    # of two virtual members — family 1's contribution at member 2i-1, family
+    # 2's at member 2i — sharing the one latent u_i ~ N(0, 1) (a FIXED prior,
+    # L = [1]; the loadings λ1/λ2, not a group SD, carry all θ-dependence, via
+    # the random-effect "design" Zre = [λ1; λ2] rebuilt each nll call). Opt-in
+    # and off by default: the prior-scale grid above is unchanged unless
+    # `aghq = true` is requested (signature-stable; #719's finding names this
+    # route but does not require flipping its default).
+    aghq_rule = aghq ? _AGHQRule(1, aghq_K) : nothing
+    aghq_bcache = aghq ? zeros(1, n) : zeros(0, 0)
+    aghq_members = aghq ? [[2i - 1, 2i] for i in 1:n] : Vector{Vector{Int}}()
+    function nll_aghq(θ)
+        bb1 = θ[1:p1]
+        bb2 = θ[p1+1:p1+p2]
+        ll1 = exp(θ[iλ1]); ll2 = θ[iλ2]
+        T = eltype(θ)
+        sd1v = s1 ? exp.(Xsigma1 * θ[is1]) : nothing
+        sd2v = s2 ? exp.(Xsigma2 * θ[is2]) : nothing
+        one_T = one(T)
+        η1f = X1 * bb1
+        η2f = X2 * bb2
+        η0 = Vector{T}(undef, 2n)
+        Zre = Matrix{T}(undef, 2n, 1)
+        @inbounds for i in 1:n
+            η0[2i-1] = η1f[i]; η0[2i] = η2f[i]
+            Zre[2i-1, 1] = ll1; Zre[2i, 1] = ll2
+        end
+        ll = function (m, η)
+            if isodd(m)
+                oi = (m + 1) ÷ 2
+                sd1 = s1 ? sd1v[oi] : one_T
+                return _mf_obs_ll(fam1, η, y1[oi], trials1[oi], sd1)
+            else
+                oi = m ÷ 2
+                sd2 = s2 ? sd2v[oi] : one_T
+                return _mf_obs_ll(fam2, η, y2[oi], trials2[oi], sd2)
+            end
+        end
+        L = reshape([1.0], 1, 1)   # u ~ N(0,1) fixed prior; loadings live in Zre
+        total = -_aghq_marginal_loglik(ll, aghq_members, η0, Zre, L, aghq_rule, aghq_bcache)
+        return isfinite(ForwardDiff.value(total)) ? total : oftype(total, 1e10)
+    end
+    objfn = aghq ? nll_aghq : nll
+
     θ0 = zeros(ntheta)
     θ0[1:p1] = _mf_init(fam1, X1, y1)
     θ0[p1+1:p1+p2] = _mf_init(fam2, X2, y2)
@@ -255,7 +302,7 @@ function fit_mixed_family(; y1, X1, fam1, y2, X2, fam2,
     s1 && (θ0[is1[1]] = _mf_disp_init(fam1, y1))
     s2 && (θ0[is2[1]] = _mf_disp_init(fam2, y2))
 
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(),
+    res = Optim.optimize(objfn, θ0, Optim.LBFGS(),
                          Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Float64.(Optim.minimizer(res))   # concrete Float64; the ForwardDiff calls below get copies
     β1 = θ̂[1:p1]; β2 = θ̂[p1+1:p1+p2]
@@ -297,7 +344,7 @@ function fit_mixed_family(; y1, X1, fam1, y2, X2, fam2,
     # vcov. NaN interval if the Hessian is not invertible / variance non-positive.
     rho_ci_wald = (NaN, NaN)
     if confint
-        H = ForwardDiff.hessian(nll, copy(θ̂))
+        H = ForwardDiff.hessian(objfn, copy(θ̂))
         V = try
             inv(H)
         catch
@@ -316,17 +363,18 @@ function fit_mixed_family(; y1, X1, fam1, y2, X2, fam2,
     # Profile-likelihood CI on ρ (the recommended interval): penalty-constrained
     # re-optimisation fixing ρ(θ)=ρ0 on the atanh scale, bisected to a χ²(1, level)
     # deviance drop. Better-calibrated than Wald near the boundary, cheaper than the
-    # bootstrap. (nll/rho_of are reused; nll's locals are renamed so no Dual leaks.)
+    # bootstrap. (objfn/rho_of are reused; nll's/nll_aghq's locals are renamed so
+    # no Dual leaks.)
     rho_ci_profile = (NaN, NaN)
     if profile
-        nllhat = nll(θ̂)
+        nllhat = objfn(θ̂)
         q = Distributions.quantile(Distributions.Chisq(1), level)
         prof_dev = function (ρ0)
             zr0 = atanh(clamp(ρ0, -0.999999, 0.999999))
-            obj(θ) = nll(θ) + 1.0e4 * (atanh(clamp(rho_of(θ), -0.999999, 0.999999)) - zr0)^2
-            r = Optim.optimize(obj, copy(θ̂), Optim.LBFGS(),
+            pobj(θ) = objfn(θ) + 1.0e4 * (atanh(clamp(rho_of(θ), -0.999999, 0.999999)) - zr0)^2
+            r = Optim.optimize(pobj, copy(θ̂), Optim.LBFGS(),
                                Optim.Options(g_tol = 1e-9); autodiff = :forward)
-            return 2 * (nll(Optim.minimizer(r)) - nllhat)
+            return 2 * (objfn(Optim.minimizer(r)) - nllhat)
         end
         endpoint = function (a, b)   # dev(a), dev(b) straddle q → bisect for dev = q
             fa = prof_dev(a) - q
@@ -366,7 +414,8 @@ function fit_mixed_family(; y1, X1, fam1, y2, X2, fam2,
                 fit_mixed_family(; y1 = y1b, X1 = X1, fam1 = fam1, y2 = y2b, X2 = X2,
                                  fam2 = fam2, trials1 = trials1, trials2 = trials2,
                                  Xsigma1 = Xsigma1, Xsigma2 = Xsigma2,
-                                 K = K, g_tol = g_tol, confint = false)
+                                 K = K, g_tol = g_tol, confint = false,
+                                 aghq = aghq, aghq_K = aghq_K)
             catch
                 nothing
             end
@@ -382,7 +431,7 @@ function fit_mixed_family(; y1, X1, fam1, y2, X2, fam2,
     return (; β1, β2, λ1, λ2, σ1, σ2, βσ1, βσ2, v1, v2, rho_latent = ρ,
             rho_ci_wald = rho_ci_wald, rho_ci_profile = rho_ci_profile,
             rho_ci_boot = rho_ci_boot,
-            loglik = -nll(θ̂), converged = Optim.converged(res),
+            loglik = -objfn(θ̂), converged = Optim.converged(res),
             iterations = res.iterations,
             fam1 = fam1, fam2 = fam2)   # carried for post-fit accessors (mf_fitted)
 end
