@@ -6,6 +6,21 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **`marginal = :AGHQ` for the Gaussian random intercept on `sigma`
+  (`sigma ~ 1 + (1 | g)`).** New opt-in integrator, alongside the existing
+  default (`:LA`, unchanged, D-273) and `:Laplace`: per-group adaptive
+  Gauss-Hermite quadrature at `K = 5` nodes (the shared `q = 1` helper from
+  #834/#719), reusing the same `_aghq_marginal_loglik` every other `(1 | g)`
+  family was moved onto. The default `:LA` route integrates on a fixed
+  32-node PRIOR-scale grid, independent of where the group posterior actually
+  sits; for a large group SD (`sigma_b` = 3-6) that grid misses the exact
+  per-group marginal (verified against an independent QuadGK integral) by
+  tens of nats, while `:AGHQ` at `K = 5` is within 0.01 nat and the
+  underlying method is exact to 1e-6 nat at higher `K`. On the small-`sigma_b`
+  fixture already covered by `test/test_sigma_re.jl` (where the default grid
+  is already accurate), `:AGHQ` moves every working-scale coefficient by
+  less than 0.02 and the total logLik by less than 0.05 nat. `marginal = :LA`
+  stays the default; nothing changes unless `marginal = :AGHQ` is requested.
 - **Adaptive quadrature for 1-D random intercepts `(1 | g)` (#719).** Every
   default-route (`:LA`) `_fit_*_ranef` fitter for Poisson, NegBinomial2, Gamma,
   Beta, BetaBinomial, Student, and LogNormal now integrates the group random

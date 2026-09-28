@@ -703,27 +703,32 @@ end
 # Random intercept on the SCALE: sigma ~ <fixed> + (1 | g), with
 # log σᵢ = Xσᵢᵀβσ + b_{g(i)}, b_g ~ N(0, σ_b²); the mean is fixed effects. There
 # is no closed-form marginal (b enters σ nonlinearly), so each group's random
-# effect is integrated out by K-node Gauss–Hermite quadrature: substituting
-# b = √2 σ_b z turns the prior integral into Σₖ wₖ·(group likelihood at node k).
-# Within a group every observation gets the same node shift δₖ = √2 σ_b zₖ, so a
-# group reduces to Aₘ = Σ η0ᵢ and Bₘ = Σ rᵢ² e^{-2η0ᵢ}. O(n + G·K) per eval and
-# fully differentiable (nodes are constants). drmTMB does this with Laplace; for
-# a 1-D effect AGHQ is the standard, more accurate sibling.
-#
-# `laplace = true` (reached via `drm(...; marginal = :Laplace)`) swaps the GHQ-32
-# objective for the Laplace approximation that native drmTMB (TMB) computes for
-# this model; see `_sigre_laplace_nll` below. Everything else (start values,
-# optimiser, blocks, names, reported σ) is shared, and the default `laplace =
-# false` path is the GHQ-32 fit exactly as before.
+# effect is integrated out numerically. The DEFAULT (`marginal = :LA`, D-273)
+# is unchanged: a fixed 32-node PRIOR-scale grid (b = √2 σ_b z), independent of
+# where the group posterior actually sits — accurate for small groups, but
+# tens of nats off for a large group SD (see D-273's receipt,
+# docs/dev-log/evidence/arc2-sigma-re-laplace/receipt.md, and the AGHQ PR's own
+# demo numbers). `marginal = :Laplace` (already implemented) swaps in the
+# closed-form Laplace approximation that native drmTMB (TMB) computes for this
+# model. `marginal = :AGHQ` (new) swaps in the per-group ADAPTIVE
+# Gauss-Hermite helper (`_aghq_marginal_loglik`, #834/#719) at K =
+# `_RANEF1D_AGHQ_K` nodes: the per-observation log-density at a shifted log σ
+# is `ll(i, η) = -½log2π - η - ½ rᵢ² e^{-2η}`, η0 = Xσβσ, the random-effect
+# design is a constant 1 (Zre = ones(n,1)), and the prior scale is L = [σ_b].
+# `:Laplace` is exactly the K=1 case of this same adaptive grid (hand-derived
+# there for speed); `:AGHQ` is the more accurate sibling for informative groups
+# without committing to the Laplace/TMB-parity numbers. Everything else (start
+# values, optimiser, blocks, names, reported σ) is shared across all three.
 function _fit_sigma_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol;
-                                   laplace::Bool = false)
+                                   laplace::Bool = false, aghq::Bool = false,
+                                   K::Int = _RANEF1D_AGHQ_K)
     n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     members = [Int[] for _ in 1:G]
     for i in 1:n
         push!(members[gidx[i]], i)
     end
     z, w = _gauss_hermite(32)
-    logw = log.(w); K = length(z); rt2 = sqrt(2.0); lπ = log(π); l2π = log(2π)
+    logw = log.(w); Kghq = length(z); rt2 = sqrt(2.0); lπ = log(π); l2π = log(2π)
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]; σb = exp(θ[pμ+pσ+1])
         η0 = Xσ * βσ                            # fixed-effect log σ
@@ -735,8 +740,8 @@ function _fit_sigma_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, nmμ, nm
             mg = length(idx)
             mg == 0 && continue
             Ag = sum(@view η0[idx]); Bg = sum(@view re[idx])
-            terms = Vector{T}(undef, K)
-            for k in 1:K
+            terms = Vector{T}(undef, Kghq)
+            for k in 1:Kghq
                 δ = rt2 * σb * z[k]
                 terms[k] = logw[k] - mg * δ - 0.5 * exp(-2δ) * Bg
             end
@@ -746,7 +751,16 @@ function _fit_sigma_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, nmμ, nm
         end
         return s
     end
-    obj = laplace ? _sigre_laplace_nll(y, Xμ, Xσ, members, pμ, pσ) : nll
+    rule = _AGHQRule(1, K); Zre = ones(n, 1); bcache = zeros(1, G)   # #719: per-group AGHQ
+    function nll_aghq(θ)
+        βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]; σb = exp(θ[pμ+pσ+1])
+        η0 = Xσ * βσ                            # fixed-effect log σ
+        r = y .- Xμ * βμ
+        ll = (i, η) -> -0.5 * l2π - η - 0.5 * r[i]^2 * exp(-2η)
+        L = reshape([σb], 1, 1)
+        return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache)
+    end
+    obj = laplace ? _sigre_laplace_nll(y, Xμ, Xσ, members, pμ, pσ) : (aghq ? nll_aghq : nll)
     βμ0 = Xμ \ y; res0 = y - Xμ * βμ0
     θ0 = zeros(pμ + pσ + 1)
     θ0[1:pμ] .= βμ0
@@ -763,7 +777,9 @@ function _fit_sigma_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, nmμ, nm
     means = Dict(:mu => Xμ * θ̂[1:pμ]); obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))   # population (b=0) σ
     fit = _withnll(DrmFit(fam, blocks, names, θ̂, V, -obj(θ̂), n, Optim.converged(res), means, obs, scales), obj)
-    return laplace ? _withmarginal(fit, :Laplace) : fit
+    laplace && return _withmarginal(fit, :Laplace)
+    aghq && return _withmarginal(fit, :AGHQ)
+    return fit
 end
 
 # ── marginal = :Laplace for the σ random intercept ───────────────────────────
@@ -845,62 +861,69 @@ end
 # `marginal` on the univariate Gaussian `drm`. `:LA` (the default, any case)
 # keeps every route exactly as it was: each route's own integrator, which is
 # exact wherever the Gaussian marginal is closed-form and GHQ-32 on `sigma ~ (1
-# | g)`. On Gaussian, `:Laplace` is implemented only for that σ random-intercept
-# route (the non-Gaussian ordinary `(1 | g)` route lives in ordinary_laplace.jl).
-# Returns `true` when `:Laplace` was requested.
+# | g)`. On Gaussian, `:Laplace` and `:AGHQ` are implemented only for that σ
+# random-intercept route (the non-Gaussian ordinary `(1 | g)` route lives in
+# ordinary_laplace.jl). Returns the requested marginal as a Symbol (`:LA`,
+# `:Laplace` or `:AGHQ`); the caller dispatches on it.
 function _gaussian_marginal(marginal::Symbol)
     t = Symbol(uppercase(String(marginal)))
-    t === :LA && return false
-    t === :LAPLACE && return true
+    t === :LA && return :LA
+    t === :LAPLACE && return :Laplace
+    t === :AGHQ && return :AGHQ
     throw(ArgumentError(
         "drm (Gaussian): `marginal = :$marginal` is not available for Gaussian(). " *
         "Use the default `marginal = :LA` (each route's default integrator; on `sigma ~ " *
-        "1 + (1 | g)` that is 32-node Gauss–Hermite quadrature, not Laplace), or " *
-        "`marginal = :Laplace` to force the Laplace approximation drmTMB uses, for a " *
+        "1 + (1 | g)` that is 32-node Gauss–Hermite quadrature, not Laplace), " *
+        "`marginal = :Laplace` to force the Laplace approximation drmTMB uses, or " *
+        "`marginal = :AGHQ` for per-group adaptive Gauss–Hermite quadrature, for a " *
         "single random intercept `(1 | g)` on `sigma` with a fixed-effect mean."))
 end
 
-function _gaussian_laplace_reject(what)
+function _gaussian_laplace_reject(what; requested = "Laplace")
     throw(ArgumentError(
-        "marginal = :Laplace is not available for Gaussian() with $what. On the Gaussian " *
+        "marginal = :$requested is not available for Gaussian() with $what. On the Gaussian " *
         "family this route covers exactly one random intercept `(1 | g)` on `sigma` " *
         "(fixed-effect mean, fixed-effect `sigma` predictors alongside it), fitted by " *
         "maximum likelihood. Omit `marginal` (the default `:LA`) for other models."))
 end
 
-# Admit `marginal = :Laplace` only for the exact σ random-intercept shape, and
-# refuse everything else before any route runs, so a request is never silently
-# served by another integrator.
+# Admit `marginal = :Laplace`/`:AGHQ` only for the exact σ random-intercept
+# shape, and refuse everything else before any route runs, so a request is
+# never silently served by another integrator. Both non-default integrators
+# share the same admissible shape (only the group integral differs), so one
+# validator serves both; `requested` names the one in the error message.
 function _gaussian_laplace_validate(f::DrmFormula, fam::Gaussian, data, algorithm, method,
-                                    penalty, phylo_coupled, sparse, impute, missing)
-    _has_joint_mi(f) && _gaussian_laplace_reject("an `mi()` joint missing-data formula")
+                                    penalty, phylo_coupled, sparse, impute, missing;
+                                    requested = "Laplace")
+    rej(what) = _gaussian_laplace_reject(what; requested = requested)
+    _has_joint_mi(f) && rej("an `mi()` joint missing-data formula")
     (impute === nothing && missing === nothing) ||
-        _gaussian_laplace_reject("`impute`/`missing` controls")
+        rej("`impute`/`missing` controls")
     rhs = Dict(f.forms)
     extra = setdiff(keys(rhs), (:mu, :sigma))
-    isempty(extra) || _gaussian_laplace_reject(
+    isempty(extra) || rej(
         "additional formula parts ($(join(sort(String.(collect(extra))), ", "))), such as `sd(g) ~ …`")
     _, re, metav, structured, _ = _split_ranef(rhs[:mu]; allow_phylo_slope = true)
-    isempty(re) || _gaussian_laplace_reject("a random effect on the mean")
-    metav === nothing || _gaussian_laplace_reject("`meta_V(...)`")
+    isempty(re) || rej("a random effect on the mean")
+    metav === nothing || rej("`meta_V(...)`")
     (structured === nothing && isempty(_collect_structured(rhs[:mu]))) ||
-        _gaussian_laplace_reject("a structured (phylo/relmat/animal/spatial) term on the mean")
+        rej("a structured (phylo/relmat/animal/spatial) term on the mean")
     _, sigma_re, sigma_metav, structured_sigma = _split_ranef(rhs[:sigma])
     (structured_sigma === nothing && isempty(_collect_structured(rhs[:sigma]))) ||
-        _gaussian_laplace_reject("a structured (phylo/relmat/animal/spatial) term on `sigma`")
-    sigma_metav === nothing || _gaussian_laplace_reject("`meta_V(...)` on `sigma`")
-    isempty(sigma_re) && _gaussian_laplace_reject(
+        rej("a structured (phylo/relmat/animal/spatial) term on `sigma`")
+    sigma_metav === nothing || rej("`meta_V(...)` on `sigma`")
+    isempty(sigma_re) && rej(
         "no random effect on `sigma` (a fixed-effect Gaussian model has an exact likelihood)")
-    length(sigma_re) == 1 || _gaussian_laplace_reject("more than one random-effect term on `sigma`")
+    length(sigma_re) == 1 || rej("more than one random-effect term on `sigma`")
     _re_kind(sigma_re[1][1])[1] === :intercept ||
-        _gaussian_laplace_reject("a random slope on `sigma` (only `(1 | g)` is implemented)")
-    method === :ML || _gaussian_laplace_reject("`method = :$method`")
-    penalty === nothing || _gaussian_laplace_reject("`penalty`")
-    algorithm === :auto || _gaussian_laplace_reject("`algorithm = :$algorithm`")
+        rej("a random slope on `sigma` (only `(1 | g)` is implemented)")
+    method === :ML || rej("`method = :$method`")
+    penalty === nothing || rej("`penalty`")
+    algorithm === :auto || rej("`algorithm = :$algorithm`")
     # `profile_ci` is not checked: it only precomputes the sigma-phylo location-scale
     # CIs, so it is ignored on this route exactly as on the default (:LA) route, and
     # `drm_bridge_inference(method = "profile")` sets it for every univariate fit.
-    phylo_coupled && _gaussian_laplace_reject("`phylo_coupled = true`")
-    (sparse === nothing || sparse === false) || _gaussian_laplace_reject("`sparse = $sparse`")
+    phylo_coupled && rej("`phylo_coupled = true`")
+    (sparse === nothing || sparse === false) || rej("`sparse = $sparse`")
     return nothing
 end

@@ -479,9 +479,12 @@ are parameterised over all G levels, while the likelihood is evaluated on
 observed rows.
 """
 function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree = nothing, coords = nothing, g_tol::Real = 1e-8, algorithm::Symbol = :auto, method::Symbol = :ML, profile_ci::Bool = false, phylo_coupled::Bool = false, penalty = nothing, sparse = nothing, impute = nothing, missing = nothing, marginal::Symbol = :LA)
-    laplace = _gaussian_marginal(marginal)
-    laplace && _gaussian_laplace_validate(f, fam, data, algorithm, method, penalty,
-                                          phylo_coupled, sparse, impute, missing)
+    mkind = _gaussian_marginal(marginal)
+    laplace = mkind === :Laplace
+    aghq = mkind === :AGHQ
+    (laplace || aghq) && _gaussian_laplace_validate(f, fam, data, algorithm, method, penalty,
+                                          phylo_coupled, sparse, impute, missing;
+                                          requested = laplace ? "Laplace" : "AGHQ")
     algorithm in (:auto, :gls, :lbfgs, :em, :sparse, :sparse_lbfgs) ||
         throw(ArgumentError("drm: `algorithm` must be one of :auto, :gls, :lbfgs, :em, :sparse, :sparse_lbfgs (got :$algorithm)"))
     method in (:ML, :REML) ||
@@ -843,7 +846,7 @@ function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree 
         sgrp = sigma_re[1][2]
         gidx, G = _group_index(getproperty(data, sgrp))
         return _withformula(_fit_sigma_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, sgrp, g_tol;
-                                                      laplace = laplace), f)
+                                                      laplace = laplace, aghq = aghq), f)
     end
     # Meta-analysis with random intercepts on the mean (Arc 2): `meta_V(v)` plus
     # any mix of `(1 | g)`, `phylo(1 | g)`, `relmat(1 | g)`, `animal(1 | g)`.
