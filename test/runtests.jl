@@ -591,3 +591,7 @@ _shard_include("test_609_varying_scale.jl")
 # DimensionMismatch because simulate drew fit.nobs values against full-design
 # means. Guards both, plus the iteration count the full-row rebuild dropped.
 _shard_include("test_bridge_response_mask_inference.jl")
+
+# #857 site K: coevolution prior in whitened coordinates (no Λ⁻¹ near singular Λ);
+# also pins the q=4 engine's same-construction defect as @test_broken.
+_shard_include("test_q4_prior_whitening.jl")
