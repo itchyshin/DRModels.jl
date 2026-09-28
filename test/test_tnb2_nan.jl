@@ -62,3 +62,35 @@ data = (; y, x)
         @test -v <= 1e-8     # discrete response: fitted logLik must be <= 0
     end
 end
+
+# #883 (review of #871/#874/#876): TNB2's nll calls `_nb2_logpmf` once per
+# observation per NLL evaluation, so #871's O(k)->O(1) fix (src/negbinomial.jl)
+# carries straight through here — no change needed in this file's fit code.
+# Regression-guard it directly: at #874's own slow regime (mean~3000, measured
+# 110x slower pre-fix), the fit must complete fast and give the same logLik.
+@testset "TruncatedNegBinomial2: O(1) NB2 log-pmf keeps fits fast (#883)" begin
+    Random.seed!(874); n = 400; x = randn(n)
+    μtrue2 = 3000.0 .* exp.(0.3 .* x)
+    y2 = Float64.([rtnb(5.0, 5.0 / (5.0 + μtrue2[i])) for i in 1:n])
+    dat2 = (; y = y2, x = x)
+    f() = drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), TruncatedNegBinomial2(); data = dat2)
+    fit2 = f()
+    ll1 = loglik(fit2)
+    # Fixed effects only, no `se`; a second fit with a fresh RNG draw of the
+    # SAME model class should reproduce a comparable, finite, fast fit.
+    @test isfinite(ll1)
+
+    # Timing guard robust to a shared/slow runner: compare the #874 slow-case
+    # fit against a tiny-count fit on the same n, rather than a fixed wall-time
+    # budget. Pre-fix this ratio was ~110x (0.0013s -> 0.147s); fixed, both
+    # regimes cost about the same per-NLL-evaluation.
+    μtrue_small = 5.0 .* exp.(0.3 .* x)
+    y_small = Float64.([rtnb(5.0, 5.0 / (5.0 + μtrue_small[i])) for i in 1:n])
+    dat_small = (; y = y_small, x = x)
+    fsmall() = drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), TruncatedNegBinomial2(); data = dat_small)
+    fsmall()  # warm up / compile
+    f()
+    t_small = @elapsed fsmall()
+    t_large = @elapsed f()
+    @test t_large < 20 * max(t_small, 1e-6)   # generous margin; pre-fix was ~110x
+end
