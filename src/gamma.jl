@@ -137,32 +137,20 @@ end
 # Gamma GLMM with a random intercept (1|g) on the log mean. b_g ~ N(0,σ_b²)
 # integrated out per group by 32-node Gauss–Hermite quadrature; shape α = 1/σ²
 # is a fixed effect. Same scheme as the count GLMMs.
-function _fit_gamma_ranef(fam::Gamma, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol)
+function _fit_gamma_ranef(fam::Gamma, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol; K::Int = _RANEF1D_AGHQ_K)
     n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     members = [Int[] for _ in 1:G]
     for i in 1:n
         push!(members[gidx[i]], i)
     end
-    z, w = _gauss_hermite(32); logw = log.(w); K = length(z); rt2 = sqrt(2.0); lπ = log(π)
+    rule = _AGHQRule(1, K); Zre = ones(n, 1); bcache = zeros(1, G)   # #719: per-group AGHQ
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]; σb = exp(θ[pμ+pσ+1])
         η0 = Xμ * βμ; ησ = clamp.(Xσ * βσ, -15.0, 15.0)
-        s = zero(eltype(θ))
-        for idx in members
-            isempty(idx) && continue
-            terms = Vector{eltype(θ)}(undef, K)
-            for k in 1:K
-                δ = rt2 * σb * z[k]; gll = logw[k]
-                for i in idx
-                    μ = exp(clamp(η0[i] + δ, -30.0, 30.0)); α = exp(-2 * ησ[i])
-                    gll += Distributions.logpdf(Distributions.Gamma(α, μ / α), y[i])
-                end
-                terms[k] = gll
-            end
-            mx = maximum(terms)
-            s -= (-0.5 * lπ + mx + log(sum(exp.(terms .- mx))))
-        end
-        return s
+        ll = (i, η) -> (μ = exp(clamp(η, -30.0, 30.0)); α = exp(-2 * ησ[i]);
+                        Distributions.logpdf(Distributions.Gamma(α, μ / α), y[i]))
+        L = reshape([σb], 1, 1)
+        return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache)
     end
     ȳ = sum(y) / n; v = sum(abs2, y .- ȳ) / max(n - 1, 1)
     α0 = max(ȳ^2 / max(v, eps()), 0.5)
@@ -182,38 +170,23 @@ end
 # Gamma GLMM with a CORRELATED random intercept+slope (1 + x | g) on the log mean.
 # Per group (b0,b1) ~ N(0, Σ_re), Σ_re = L Lᵀ with L = [l11 0; cc l22] (log-Cholesky
 # parameters a, b, cc; l11=exp(a), l22=exp(b)). The Gamma marginal has no closed form,
-# so the 2-D group integral is taken by K×K Gauss–Hermite quadrature: substituting
-# (b0,b1) = √2 L z turns the prior integral into Σⱼₖ wⱼwₖ·(group likelihood at node j,k).
-# Shape α = 1/σ² is a fixed effect. θ = [β_μ; β_σ; a, b, cc]. O(n_g·K²) per group.
-function _fit_gamma_corr_ranef(fam::Gamma, y, Xμ, Xσ, xs, gidx, G, nmμ, nmσ, grp, g_tol)
+# so the 2-D group integral is taken by per-group ADAPTIVE Gauss–Hermite quadrature
+# (`_aghq_marginal_loglik`, #834: nodes b̂_g + √2 C z at each group's mode),
+# `nq` nodes per axis. Shape α = 1/σ² is a fixed effect. θ = [β_μ; β_σ; a, b, cc].
+function _fit_gamma_corr_ranef(fam::Gamma, y, Xμ, Xσ, xs, gidx, G, nmμ, nmσ, grp, g_tol; nq::Int = _CORR_RANEF_AGHQ_K)
     n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     members = [Int[] for _ in 1:G]
     for i in 1:n
         push!(members[gidx[i]], i)
     end
-    z1, w1 = _gauss_hermite(12); lw = log.(w1); K = length(z1); rt2 = sqrt(2.0); lπ = log(π)
+    rule = _AGHQRule(2, nq); Zre = hcat(ones(n), Float64.(xs)); bcache = zeros(2, G)   # #834: per-group AGHQ
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
-        l11 = exp(θ[pμ+pσ+1]); l22 = exp(θ[pμ+pσ+2]); cc = θ[pμ+pσ+3]
+        L = _corr_ranef_L(θ[pμ+pσ+1], θ[pμ+pσ+2], θ[pμ+pσ+3])
         η0 = Xμ * βμ; ησ = clamp.(Xσ * βσ, -15.0, 15.0)
-        s = zero(eltype(θ))
-        for idx in members
-            isempty(idx) && continue
-            terms = Vector{eltype(θ)}(undef, K * K); t = 0
-            for j in 1:K, k in 1:K
-                t += 1
-                b0 = rt2 * l11 * z1[j]; b1 = rt2 * (cc * z1[j] + l22 * z1[k])
-                gll = lw[j] + lw[k]
-                for i in idx
-                    μ = exp(clamp(η0[i] + b0 + b1 * xs[i], -30.0, 30.0)); α = exp(-2 * ησ[i])
-                    gll += Distributions.logpdf(Distributions.Gamma(α, μ / α), y[i])
-                end
-                terms[t] = gll
-            end
-            mx = maximum(terms)
-            s -= (-lπ + mx + log(sum(exp.(terms .- mx))))
-        end
-        return s
+        ll = (i, η) -> (μ = exp(clamp(η, -30.0, 30.0)); α = exp(-2 * ησ[i]);
+                        Distributions.logpdf(Distributions.Gamma(α, μ / α), y[i]))
+        return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache)
     end
     ȳ = sum(y) / n; v = sum(abs2, y .- ȳ) / max(n - 1, 1)
     α0 = max(ȳ^2 / max(v, eps()), 0.5)
