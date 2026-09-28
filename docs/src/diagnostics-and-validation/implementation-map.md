@@ -31,8 +31,8 @@ sparse CHOLMOD factorisation those routes rely on. The rows below differ in
 ## Non-Gaussian families
 
 The shared scheme: an explicit, AD-safe log-likelihood; random intercepts by
-Gauss–Hermite quadrature (`b = √2 σ_b z`); correlated `(1+x|g)` by a 2-D GHQ
-tensor grid; crossed intercepts by the sparse-Laplace spine
+Gauss–Hermite quadrature (`b = √2 σ_b z`); correlated `(1+x|g)` by per-group
+adaptive 2-D GHQ (`src/adaptive_ghq.jl`, #834); crossed intercepts by the sparse-Laplace spine
 (`sparse_laplace_glmm.jl`).
 
 | Family | Fixed | `(1\|g)` | `(1+x\|g)` | crossed | other |
