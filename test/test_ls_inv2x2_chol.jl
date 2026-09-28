@@ -14,7 +14,8 @@
 # (present on origin/main both before and after this fix — `_ls_inv2x2` and
 # `_ls_lc_to_Λ` are untouched; only call sites were rerouted).
 using DRModels
-using Test, Random, LinearAlgebra
+using Test, Random, LinearAlgebra, SparseArrays
+import Distributions
 
 # Independent BigFloat reference: builds L and Λ = LLᵀ entirely in 256-bit
 # arithmetic from the raw log-Cholesky components, then inverts/logdets that.
@@ -77,4 +78,48 @@ end
             @test rel_old > 1e-10
         end
     end
+end
+
+# Fit-level regression: the unit tests above exercise `_ls_lc_inv2x2` in
+# isolation, but no test previously ran a FIT through the four rerouted call
+# sites (`locscale_fit.jl`, `locscale_grad.jl`, `locscale_profile.jl`,
+# `gaussian_locscale_phylo.jl`). A coupled NB2 location-scale fit at a
+# moderately high mean-scale correlation (ρ = 0.95, well short of the
+# separate near-singular-Hessian crash at ρ = 0.999 fixed in #883) exercises
+# `prior_precision(Q, _ls_lc_inv2x2(...))` on every Newton/gradient step.
+# Reference nll/θ/Λ were measured on the parent commit (6fb5172a0, before
+# #870 rerouted these callers to `_ls_lc_inv2x2`) with the identical seed and
+# data — the two paths are mathematically equivalent in this well-conditioned
+# regime (already shown to agree to 1e-12 above), so a fit through the
+# rerouted callers must reproduce the pre-#870 optimum to high precision.
+@testset "coupled NB2 location-scale fit through the rerouted _ls_lc_inv2x2 callers (ρ=0.95)" begin
+    _nbdraw(η, ψ) = (μ = exp(η); r = exp(-2ψ);
+                     Float64(rand(Distributions.NegativeBinomial(r, r / (r + μ)))))
+    Random.seed!(4242)
+    Λt = [0.25 0.19; 0.19 0.16]                      # cor = 0.19 / (0.5*0.4) = 0.95
+    G = 20; m = 20; n = G * m
+    sp = repeat(1:G, inner = m); x = randn(n)
+    LΛ = cholesky(Symmetric(Λt + 1e-12I)).L
+    A = [LΛ * randn(2) for _ in 1:G]
+    y = [_nbdraw(0.5 + 0.4x[i] + A[sp[i]][1], 0.3 + 0.2x[i] + A[sp[i]][2]) for i in 1:n]
+    Xμ = hcat(ones(n), x)
+    gidx, Gd = DRModels._group_index(sp)
+    Q = sparse(1.0 * I, Gd, Gd)
+
+    fit = DRModels._fit_locscale(Val(:nb2), y, Xμ, Xμ, gidx, Gd, Q; g_tol = 1e-8, se = false)
+
+    # Pre-#870 reference, measured on parent commit 6fb5172a0 with this exact
+    # seed/data (script: `_fit_locscale(Val(:nb2), y, Xμ, Xμ, gidx, Gd, Q;
+    # g_tol=1e-8, se=false)`).
+    nll_pre870 = 625.5385855683999
+    theta_pre870 = [0.4784938788075241, 0.4122900997490708, 0.41155200257791813,
+                    0.3132473687459513, -0.8049941668703925, 0.42955211622351375,
+                    -1.292571271971299]
+    Lambda_pre870 = [0.19988994602946675 0.19204868523315913;
+                      0.19204868523315913 0.2599003536647257]
+
+    @test all(isfinite, fit.θ)
+    @test isapprox(fit.nll, nll_pre870; atol = 1e-8)
+    @test isapprox(fit.θ, theta_pre870; atol = 1e-8)
+    @test isapprox(fit.Lambda, Lambda_pre870; atol = 1e-8)
 end
