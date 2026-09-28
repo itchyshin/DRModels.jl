@@ -8,6 +8,7 @@
 # `nbinom2`.
 
 using Distributions: NegativeBinomial, logpdf
+using SpecialFunctions: loggamma
 
 # Distributions' `zero(p) < p <= one(p)` rejects ForwardDiff Duals whose *value*
 # is 1.0 but whose partials are nonzero — `one(p)` has zero partials, so Dual
@@ -343,16 +344,55 @@ end
 # analogous cancellation on the `(1|g)` AGHQ path). Working entirely in log1p
 # space avoids ever forming r + μ: log p = -log1p(μ/r) and log(1-p) =
 # log μ - log r - log1p(μ/r), both finite as μ/r → 0 (the r → ∞ limit is
-# Poisson, Var → μ). loggamma(k+r) - loggamma(r) is computed as
-# Σ_{j=0}^{k-1} log(r+j) — exact for integer k, with no cancelling difference
-# of two huge loggamma values.
-function _nb2_logpmf(r, μ, k::Integer)
-    l1p = log1p(μ / r)
-    s = -r * l1p - _logfactorial(k)
-    for j in 0:(k-1)
-        s += log(r + j)
+# Poisson, Var → μ).
+#
+# loggamma(k+r) - loggamma(r) — O(1) per call (#883, review of #871/#874/#876):
+# the original Σ_{j=0}^{k-1} log(r+j) is exact but O(k), which made every
+# hurdle/TNB2 fit and quantile residual on ordinary large-count data (k in the
+# thousands) 55×-2500× slower (measured). Three regimes, chosen so every one
+# stays within 1e-10 relative error of a 512-bit BigFloat reference over
+# k ∈ {0,…,1e6}, r ∈ {1e-3,…,1e40}:
+#   - k ≤ 32: keep the exact O(k) sum (bounded cost, and safest at small k).
+#   - r ≫ k (r > 1e6·(k+1)): direct loggamma(k+r) - loggamma(r) cancels
+#     catastrophically (both are ~r·log(r), and their O(k·log r) difference is
+#     swamped by float64's ~eps·r·log(r) rounding floor once r/k is large).
+#     Use the asymptotic expansion in x = j/r instead: log(r+j) = log(r) +
+#     log1p(j/r), so Σ log(r+j) = k·log(r) + Σ log1p(j/r), and for j ≤ k-1 ≪ r
+#     the Taylor series of log1p(j/r) in powers of 1/r can be summed in closed
+#     form via the power sums Σj, Σj², Σj³, Σj⁴ (O(1), no loop over j).
+#   - otherwise: direct loggamma(k+r) - loggamma(r) (SpecialFunctions.loggamma
+#     is itself accurate to ~eps at any argument; the difference is only
+#     cancellation-prone once r ≫ k, handled above).
+function _nb2_loggammadiff(r, k::Integer)
+    k == 0 && return 0.0
+    if k <= 32
+        s = 0.0
+        for j in 0:(k-1)
+            s += log(r + j)
+        end
+        return s
+    elseif r > 1e6 * (k + 1)
+        n = k - 1                      # j runs 0:n
+        S1 = n * (n + 1) / 2
+        S2 = n * (n + 1) * (2n + 1) / 6
+        S3 = (n * (n + 1) / 2)^2
+        S4 = n * (n + 1) * (2n + 1) * (3.0n^2 + 3.0n - 1) / 30
+        return k * log(r) + S1 / r - S2 / (2r^2) + S3 / (3r^3) - S4 / (4r^4)
+    else
+        return loggamma(k + r) - loggamma(r)
     end
-    s += k * (log(μ) - log(r) - l1p)
+end
+
+function _nb2_logpmf(r, μ, k::Integer)
+    l1p = log1p(μ / r)                          # log(1+μ/r), for -r·log(1+μ/r)
+    s = -r * l1p - loggamma(k + 1) + _nb2_loggammadiff(r, k)
+    if k != 0
+        # k·(log μ - log r - l1p) = -k·log1p(r/μ): computing log(μ)-log(r)-l1p
+        # directly cancels catastrophically once μ ≫ r (l1p ≈ log(μ/r) to many
+        # digits there), so route through log1p(r/μ) instead — stable for any
+        # r, μ > 0 (needed to hold the 1e-10 accuracy bar at k ~ 1e5-1e6).
+        s -= k * log1p(r / μ)
+    end
     return s
 end
 

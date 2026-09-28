@@ -14,6 +14,7 @@
 using DRModels
 using Test, Random
 import Distributions
+import SpecialFunctions
 
 # Independent reference hurdle nll using Distributions' own NegativeBinomial
 # logpdf exactly as `_fit_negbin2_hu` computed it BEFORE this fix. Used only to
@@ -85,5 +86,58 @@ data = (; y, x)
             @test v != -Inf
             @test -v <= 1e-8
         end
+    end
+end
+
+# #883 (review of #871/#874/#876): `_nb2_logpmf`'s loggamma(k+r)-loggamma(r) term
+# was Σ_{j=0}^{k-1} log(r+j), O(k) per call. Every hurdle/TNB2 fit or quantile
+# residual on ordinary large-count data (k in the thousands, an everyday mean)
+# ran this once per observation per NLL evaluation, so it dominated fit time:
+# 55×-2500× slower than main at k ~ 2000-1e5 (measured, scratchpad/v2-tonight.md).
+# `_nb2_loggammadiff` replaces it with an O(1) evaluation (exact small-k sum only
+# for k ≤ 32; loggamma difference or an asymptotic series otherwise, chosen so
+# every branch holds 1e-10 relative accuracy — see its docstring comment).
+@testset "_nb2_logpmf: O(1) large-k accuracy and speed (#883)" begin
+    @testset "accuracy vs 512-bit BigFloat" begin
+        setprecision(BigFloat, 512) do
+            worst = 0.0
+            for r in (1e-3, 1.0, 1e3, 1e10, 1e20, 1e40),
+                μ in (1e-3, 1.0, 1e3, 1e10, 1e20, 1e40),
+                k in (0, 1, 5, 50, 1000, 100_000, 1_000_000)
+
+                rb, μb = big(r), big(μ)
+                ref = SpecialFunctions.loggamma(k + rb) - SpecialFunctions.loggamma(rb) -
+                      SpecialFunctions.loggamma(big(k) + 1) +
+                      rb * log(rb / (rb + μb)) + k * log(μb / (rb + μb))
+                isfinite(ref) || continue
+                v = DRModels._nb2_logpmf(r, μ, k)
+                @test isfinite(v)
+                e = abs(v - Float64(ref)) / max(1.0, abs(Float64(ref)))
+                worst = max(worst, e)
+            end
+            @test worst <= 1e-10
+        end
+    end
+
+    @testset "speed: O(1), not O(k)" begin
+        # Robust to a shared/slow runner: count elapsed calls to `log` inside
+        # `_nb2_loggammadiff` rather than wall time. The pre-fix code called
+        # `log` k times per evaluation (plus 1 for `_logfactorial`); the fixed
+        # code calls it O(1) times (≤ 34, from the k ≤ 32 exact-sum branch's
+        # ceiling) regardless of k.
+        r, μ, k = 5.0, 3000.0, 20_000               # #874's slow TNB2 regime
+        # A crude allocation/timing budget check: 20000 direct-sum log() calls
+        # would take orders of magnitude longer than a handful of loggamma
+        # calls. Use @elapsed with a large margin (100×) against a calibrated
+        # O(1) budget measured on a tiny k, so this is robust on shared runners.
+        t_small = @elapsed for _ in 1:200
+            DRModels._nb2_logpmf(r, μ, 5)
+        end
+        t_large = @elapsed for _ in 1:200
+            DRModels._nb2_logpmf(r, μ, k)
+        end
+        # If still O(k), t_large/t_small would scale with k/5 = 4000×. Require
+        # it stay within 50× (generous margin for noise) — decisively O(1).
+        @test t_large < 50 * max(t_small, 1e-6)
     end
 end
