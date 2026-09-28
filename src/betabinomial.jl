@@ -106,33 +106,21 @@ end
 # Beta-binomial GLMM with a random intercept (1|g) on the logit mean. b_g ~ N(0,σ_b²)
 # integrated out per group by 32-node Gauss–Hermite quadrature (b = √2 σ_b z); the
 # precision φ = 1/σ² stays a fixed effect. Same scheme as the Gamma/count GLMMs.
-function _fit_betabinomial_ranef(fam::BetaBinomial, s, ntr, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol)
+function _fit_betabinomial_ranef(fam::BetaBinomial, s, ntr, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol; K::Int = _RANEF1D_AGHQ_K)
     n = length(s); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     sint = round.(Int, s); nint = round.(Int, ntr)
     members = [Int[] for _ in 1:G]
     for i in 1:n
         push!(members[gidx[i]], i)
     end
-    z, w = _gauss_hermite(32); logw = log.(w); K = length(z); rt2 = sqrt(2.0); lπ = log(π)
+    rule = _AGHQRule(1, K); Zre = ones(n, 1); bcache = zeros(1, G)   # #719: per-group AGHQ
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]; σb = exp(θ[pμ+pσ+1])
         η0 = Xμ * βμ; ησ = clamp.(Xσ * βσ, -15.0, 15.0)
-        v = zero(eltype(θ))
-        for idx in members
-            isempty(idx) && continue
-            terms = Vector{eltype(θ)}(undef, K)
-            for k in 1:K
-                δ = rt2 * σb * z[k]; gll = logw[k]
-                for i in idx
-                    μ = _logistic(clamp(η0[i] + δ, -15.0, 15.0)); φ = exp(-2 * ησ[i])
-                    gll += Distributions.logpdf(Distributions.BetaBinomial(nint[i], μ * φ, (1 - μ) * φ), sint[i])
-                end
-                terms[k] = gll
-            end
-            mx = maximum(terms)
-            v -= (-0.5 * lπ + mx + log(sum(exp.(terms .- mx))))
-        end
-        return v
+        ll = (i, η) -> (μ = _logistic(clamp(η, -15.0, 15.0)); φ = exp(-2 * ησ[i]);
+                        Distributions.logpdf(Distributions.BetaBinomial(nint[i], μ * φ, (1 - μ) * φ), sint[i]))
+        L = reshape([σb], 1, 1)
+        return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache)
     end
     p̄ = clamp(sum(s) / max(sum(ntr), 1), 1e-3, 1 - 1e-3)
     θ0 = zeros(pμ + pσ + 1)

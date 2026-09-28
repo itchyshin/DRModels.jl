@@ -110,26 +110,16 @@ function _fit_lognormal_ranef(fam::LogNormal, y, Xμ, Xσ, gidx, G, nmμ, nmσ, 
     for i in 1:n
         push!(members[gidx[i]], i)
     end
-    z, w = _gauss_hermite(32); logw = log.(w); K = length(z); rt2 = sqrt(2.0); lπ = log(π)
+    # The `(1|g)` marginal is linear-Gaussian in b_g (μ enters ly's mean by identity
+    # link, no transform), so K = 1 (the mode-centred Laplace/AGHQ node) is exact for
+    # this family — no larger rule can improve on it (#719).
+    rule = _AGHQRule(1, 1); Zre = ones(n, 1); bcache = zeros(1, G)
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]; σb = exp(θ[pμ+pσ+1])
         η0 = Xμ * βμ; ησ = clamp.(Xσ * βσ, -15.0, 15.0)
-        s = zero(eltype(θ))
-        for idx in members
-            isempty(idx) && continue
-            terms = Vector{eltype(θ)}(undef, K)
-            for k in 1:K
-                δ = rt2 * σb * z[k]; gll = logw[k]
-                for i in idx
-                    μ = clamp(η0[i] + δ, -30.0, 30.0); σ = exp(ησ[i])
-                    gll += Distributions.logpdf(Distributions.Normal(μ, σ), ly[i])
-                end
-                terms[k] = gll
-            end
-            mx = maximum(terms)
-            s -= (-0.5 * lπ + mx + log(sum(exp.(terms .- mx))))
-        end
-        return s + sumlogy                            # + Σ log y so loglik carries the Jacobian
+        ll = (i, η) -> Distributions.logpdf(Distributions.Normal(clamp(η, -30.0, 30.0), exp(ησ[i])), ly[i])
+        L = reshape([σb], 1, 1)
+        return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache) + sumlogy   # + Σ log y so loglik carries the Jacobian
     end
     βμ0 = Xμ \ ly
     θ0 = zeros(pμ + pσ + 1)

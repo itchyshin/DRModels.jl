@@ -131,32 +131,20 @@ end
 # Beta GLMM with a random intercept (1|g) on the logit mean. b_g ~ N(0,σ_b²)
 # integrated out per group by 32-node Gauss–Hermite quadrature; precision
 # φ = 1/σ² is a fixed effect. Same scheme as the count GLMMs.
-function _fit_beta_ranef(fam::Beta, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol)
+function _fit_beta_ranef(fam::Beta, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol; K::Int = _RANEF1D_AGHQ_K)
     n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     members = [Int[] for _ in 1:G]
     for i in 1:n
         push!(members[gidx[i]], i)
     end
-    z, w = _gauss_hermite(32); logw = log.(w); K = length(z); rt2 = sqrt(2.0); lπ = log(π)
+    rule = _AGHQRule(1, K); Zre = ones(n, 1); bcache = zeros(1, G)   # #719: per-group AGHQ
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]; σb = exp(θ[pμ+pσ+1])
         η0 = Xμ * βμ; ησ = clamp.(Xσ * βσ, -15.0, 15.0)
-        s = zero(eltype(θ))
-        for idx in members
-            isempty(idx) && continue
-            terms = Vector{eltype(θ)}(undef, K)
-            for k in 1:K
-                δ = rt2 * σb * z[k]; gll = logw[k]
-                for i in idx
-                    μ = _logistic(clamp(η0[i] + δ, -30.0, 30.0)); φ = exp(-2 * ησ[i])
-                    gll += Distributions.logpdf(Distributions.Beta(μ * φ, (1 - μ) * φ), y[i])
-                end
-                terms[k] = gll
-            end
-            mx = maximum(terms)
-            s -= (-0.5 * lπ + mx + log(sum(exp.(terms .- mx))))
-        end
-        return s
+        ll = (i, η) -> (μ = _logistic(clamp(η, -30.0, 30.0)); φ = exp(-2 * ησ[i]);
+                        Distributions.logpdf(Distributions.Beta(μ * φ, (1 - μ) * φ), y[i]))
+        L = reshape([σb], 1, 1)
+        return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache)
     end
     ȳ = sum(y) / n; v = sum(abs2, y .- ȳ) / max(n - 1, 1)
     φ0 = max(ȳ * (1 - ȳ) / max(v, eps()) - 1, 0.5)

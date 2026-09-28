@@ -84,32 +84,19 @@ end
 # (substitution b = √2 σ_b z, logsumexp over K nodes, normaliser −½ logπ); the
 # scale σ and degrees of freedom ν stay fixed effects. Same scheme as the NB2/Gamma
 # random-intercept GLMMs. θ = [βμ; βσ; βν; log σ_b]. O(n·K) per eval, differentiable.
-function _fit_student_ranef(fam::Student, y, Xμ, Xσ, Xν, gidx, G, nmμ, nmσ, nmν, grp, g_tol)
+function _fit_student_ranef(fam::Student, y, Xμ, Xσ, Xν, gidx, G, nmμ, nmσ, nmν, grp, g_tol; K::Int = _RANEF1D_AGHQ_K)
     n = length(y); pμ, pσ, pν = size(Xμ, 2), size(Xσ, 2), size(Xν, 2)
     members = [Int[] for _ in 1:G]
     for i in 1:n
         push!(members[gidx[i]], i)
     end
-    z, w = _gauss_hermite(32); logw = log.(w); K = length(z); rt2 = sqrt(2.0); lπ = log(π)
+    rule = _AGHQRule(1, K); Zre = ones(n, 1); bcache = zeros(1, G)   # #719: per-group AGHQ
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]; βν = θ[pμ+pσ+1:pμ+pσ+pν]; σb = exp(θ[pμ+pσ+pν+1])
         η0 = Xμ * βμ; ησ = Xσ * βσ; ην = Xν * βν     # μ identity → no exp clamp on the mean
-        s = zero(eltype(θ))
-        for idx in members
-            isempty(idx) && continue
-            terms = Vector{eltype(θ)}(undef, K)
-            for k in 1:K
-                δ = rt2 * σb * z[k]; gll = logw[k]
-                for i in idx
-                    μ = η0[i] + δ; zt = (y[i] - μ) * exp(-ησ[i])
-                    gll += _student_logpdf_std(zt, ην[i]) - ησ[i]   # location-scale t, − log σ Jacobian
-                end
-                terms[k] = gll
-            end
-            mx = maximum(terms)
-            s -= (-0.5 * lπ + mx + log(sum(exp.(terms .- mx))))
-        end
-        return s
+        ll = (i, η) -> (zt = (y[i] - η) * exp(-ησ[i]); _student_logpdf_std(zt, ην[i]) - ησ[i])
+        L = reshape([σb], 1, 1)
+        return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache)
     end
     βμ0 = Xμ \ y
     θ0 = zeros(pμ + pσ + pν + 1)
