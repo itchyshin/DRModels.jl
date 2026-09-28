@@ -6,6 +6,21 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **Gaussian `(1 | g)` REML no longer throws or returns -Inf on an extreme
+  line-search probe.** The REML term's `Xμ'V⁻¹Xμ` in `_fit_ranef_gaussian` and
+  the `sd(g) ~ z` route `_fit_ranef_gaussian_lss` was built by Woodbury
+  subtraction. At an LBFGS probe with log sigma_i ≈ -105 that gave an exactly
+  singular 8e110 matrix where the true value is about 1e-7. The ForwardDiff
+  Cholesky accepted the zero pivot, so the objective became -Inf, and fitting
+  the #835 tutorial-style model (`sd(id) ~ sex`) threw
+  `AssertionError: isfinite(phi_c) && isfinite(dphi_c)` on Julia 1.10.
+  `_re_xtvinvx_stable` now forms the matrix as a penalised sum of squares, so
+  it is positive semi-definite by construction. A non-finite logdet now also
+  triggers the REML barrier. The Julia 1.10 vs 1.13 "different optima" reported
+  on #835's test (ll -412.301 vs -408.179) were not false convergence: each
+  version drew different data from `MersenneTwister(20260715)`. Each answer is
+  a verified stationary point of its own data, and the two versions agree to
+  1e-11 on the same literal data (`test/test_lss_reml_falseconv.jl`).
 - **Cancellation-free Woodbury quadratic for Gaussian `(1 | g)` + `sigma ~ x`
   (#746, #747).** `_fit_ranef_gaussian` and the `sd(g) ~ z` route
   `_fit_ranef_gaussian_lss` formed `r'V⁻¹r` as `q1 - q2` (both terms `~1/D_min`),

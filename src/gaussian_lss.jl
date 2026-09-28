@@ -184,39 +184,28 @@ function _fit_ranef_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, nmμ, 
         ησb = Zg * α
         T = eltype(θ)
         S = zeros(T, G)
-        ZtDinvX = zeros(T, G, pμ)
-        XtDinvX = zeros(T, pμ, pμ)
+        invDv = Vector{T}(undef, n)
         @inbounds for i in 1:n
             invD = exp(-2 * ησ[i])
-            k = gidx[i]
-            S[k] += invD
-            @inbounds for j in 1:pμ
-                xj = Xμ[i, j]
-                ZtDinvX[k, j] += invD * xj
-                @inbounds for l in 1:pμ
-                    XtDinvX[j, l] += invD * xj * Xμ[i, l]
-                end
-            end
+            invDv[i] = invD
+            S[gidx[i]] += invD
         end
-        XtVinvX = copy(XtDinvX)
-        @inbounds for k in 1:G
-            σb² = exp(2 * ησb[k])
-            Mk = 1 / σb² + S[k]
-            invMk = 1 / Mk
-            @inbounds for j in 1:pμ
-                zj = ZtDinvX[k, j]
-                @inbounds for l in 1:pμ
-                    XtVinvX[j, l] -= zj * invMk * ZtDinvX[k, l]
-                end
-            end
-        end
+        # PSD penalised-SS form of Xμ′V⁻¹Xμ. The Woodbury subtraction it replaces
+        # returned exactly-singular garbage (8e110 vs a true 1e-7) at an LBFGS
+        # probe with log σ_i ≈ -105; see `_re_xtvinvx_stable` and
+        # test/test_lss_reml_falseconv.jl.
+        XtVinvX = _re_xtvinvx_stable(Xμ, invDv, nothing, gidx, exp.(-2 .* ησb), S)
         # ML part via the cancellation-free `nll_ml` (#746/#747).
         nll_ml_θ = nll_ml(θ)
         # Same Woodbury-subtraction PSD hazard as `_fit_ranef_gaussian.nll_reml`
         # (#499): reject a non-PD Xμ′V⁻¹Xμ with a large FINITE barrier.
+        # The generic (ForwardDiff Dual) Cholesky ACCEPTS a zero pivot, so also
+        # reject a non-finite logdet: -Inf there is what broke HagerZhang.
         cholXtVinvX = cholesky(Symmetric(XtVinvX); check=false)
         issuccess(cholXtVinvX) || return nll_ml_θ + T(REML_NONPD_PENALTY)
-        return nll_ml_θ + 0.5 * logdet(cholXtVinvX) - const_pμ
+        ldX = logdet(cholXtVinvX)
+        isfinite(ldX) || return nll_ml_θ + T(REML_NONPD_PENALTY)
+        return nll_ml_θ + 0.5 * ldX - const_pμ
     end
 
     nll = reml ? nll_reml : nll_ml

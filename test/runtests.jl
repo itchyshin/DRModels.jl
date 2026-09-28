@@ -596,6 +596,12 @@ _shard_include("test_twin_gap_747.jl")
 # assertion on the location-scale-scale REML tutorial. Pins the fix against main.
 _shard_include("test_twin_gap_747_lss_reml.jl")
 
+# The same lss REML model on literal data: Julia 1.10 vs 1.13 "different optima"
+# were different MersenneTwister draws; the real defect was a -Inf REML objective
+# from Woodbury-subtraction garbage in Xmu'V^-1Xmu at a line-search probe (Dual
+# Cholesky accepted a zero pivot). Pins the PSD `_re_xtvinvx_stable` form and #835's guard.
+_shard_include("test_lss_reml_falseconv.jl")
+
 # Issue #646: on the missing-response Gaussian route `is_converged` read false on a
 # genuinely converged fit (the degeneracy bar took std() of a NaN-carrying response,
 # and every > against NaN is false), and every bootstrap replicate threw

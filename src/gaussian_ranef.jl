@@ -247,6 +247,69 @@ function _re_quad_stable(r::AbstractVector, invD::AbstractVector, w, gidx::Abstr
     return quad
 end
 
+# Cancellation-free X′V⁻¹X for the REML term, same V = D + Z Σ_b Z′ as
+# `_re_quad_stable` (the matrix analogue of that function).
+#
+# The Woodbury form X′V⁻¹X = X′D⁻¹X − Σ_k z_k z_k′/M_k (z_k = Σ w_i x_i/D_i) is a
+# difference of two terms that both grow like 1/D_min. On an LBFGS line-search
+# probe with log σ_i ≈ −105 it returned 8.08e110·[1 1; 1 1] (exactly singular)
+# against a true ≈ 1.34e−7·[1 1; 1 1]; under ForwardDiff Duals the generic
+# Cholesky accepted the zero pivot, logdet = −Inf, and HagerZhang's finiteness
+# assertion threw (test/test_lss_reml_falseconv.jl). The same matrix is the
+# penalised sum of squares at the conditional mode U_k = z_k/M_k:
+#
+#     X′V⁻¹X = Σ_i (x_i − w_i U_{g_i})(x_i − w_i U_{g_i})′/D_i + Σ_k U_k U_k′/σ_b,k²,
+#
+# a sum of PSD rank-one terms. As in `_re_quad_stable`, one refinement step on U
+# (identically zero in exact arithmetic, so AD derivatives are unchanged), and a
+# group with invσb2[k] = Inf (σ_b,k = 0) keeps U_k = 0 and adds no prior term.
+function _re_xtvinvx_stable(X::AbstractMatrix, invD::AbstractVector, w, gidx::AbstractVector{<:Integer},
+                            invσb2::AbstractVector, S::AbstractVector)
+    T = promote_type(eltype(X), eltype(invD), eltype(invσb2), eltype(S))
+    G = length(S); p = size(X, 2)
+    M = Vector{T}(undef, G)
+    U = zeros(T, G, p); gk = zeros(T, G, p)
+    @inbounds for i in axes(X, 1)
+        k = gidx[i]; wi = w === nothing ? one(T) : w[i]
+        for j in 1:p
+            U[k, j] += wi * X[i, j] * invD[i]
+        end
+    end
+    @inbounds for k in 1:G
+        M[k] = invσb2[k] + S[k]
+        for j in 1:p
+            U[k, j] /= M[k]
+        end
+    end
+    @inbounds for i in axes(X, 1)
+        k = gidx[i]; wi = w === nothing ? one(T) : w[i]
+        for j in 1:p
+            gk[k, j] += wi * (X[i, j] - wi * U[k, j]) * invD[i]
+        end
+    end
+    A = zeros(T, p, p)
+    @inbounds for k in 1:G
+        isfinite(invσb2[k]) || continue
+        for j in 1:p
+            U[k, j] += (gk[k, j] - U[k, j] * invσb2[k]) / M[k]
+        end
+        for j in 1:p, l in 1:p
+            A[j, l] += U[k, j] * invσb2[k] * U[k, l]
+        end
+    end
+    e = Vector{T}(undef, p)
+    @inbounds for i in axes(X, 1)
+        k = gidx[i]; wi = w === nothing ? one(T) : w[i]
+        for j in 1:p
+            e[j] = X[i, j] - wi * U[k, j]
+        end
+        for j in 1:p, l in 1:p
+            A[j, l] += e[j] * invD[i] * e[l]
+        end
+    end
+    return A
+end
+
 # Gaussian location–scale with one random intercept (1 | g) on the mean.
 # θ = [β_μ; β_σ (log σ); log σ_b].
 # `reml=true` (#439) keeps β_μ in θ and adds the Patterson–Thompson term
@@ -301,39 +364,24 @@ function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ,
 
     # Restricted nll: ML Woodbury + ½ logdet(Xμ′ V⁻¹ Xμ) − ½ pμ log(2π).
     # Xμ′ V⁻¹ Xμ = Xμ′ D⁻¹ Xμ − (Z′ D⁻¹ Xμ)′ diag(1/M) (Z′ D⁻¹ Xμ) with the
-    # same capacitance M_k = 1/σb² + S_k as the ML nll.
+    # same capacitance M_k = 1/σb² + S_k as the ML nll, evaluated in the
+    # cancellation-free form `_re_xtvinvx_stable`.
     function nll_reml(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]; lσb = θ[pμ+pσ+1]
         ημ = Xμ * βμ; ησ = Xσ * βσ
         σb² = exp(2lσb)
         T = eltype(θ)
         S = zeros(T, G)
-        ZtDinvX = zeros(T, G, pμ)
-        XtDinvX = zeros(T, pμ, pμ)
+        invDv = Vector{T}(undef, n)
         @inbounds for i in 1:n
             invD = exp(-2 * ησ[i])
-            k = gidx[i]
+            invDv[i] = invD
             wi = w[i]
-            S[k] += wi * wi * invD
-            @inbounds for j in 1:pμ
-                xj = Xμ[i, j]
-                ZtDinvX[k, j] += wi * invD * xj
-                @inbounds for l in 1:pμ
-                    XtDinvX[j, l] += invD * xj * Xμ[i, l]
-                end
-            end
+            S[gidx[i]] += wi * wi * invD
         end
-        XtVinvX = copy(XtDinvX)
-        @inbounds for k in 1:G
-            Mk = 1 / σb² + S[k]
-            invMk = 1 / Mk
-            @inbounds for j in 1:pμ
-                zj = ZtDinvX[k, j]
-                @inbounds for l in 1:pμ
-                    XtVinvX[j, l] -= zj * invMk * ZtDinvX[k, l]
-                end
-            end
-        end
+        # PSD penalised-SS form of Xμ′V⁻¹Xμ (Woodbury subtraction lost every digit
+        # at σ_i → 0 line-search probes; see `_re_xtvinvx_stable`).
+        XtVinvX = _re_xtvinvx_stable(Xμ, invDv, w, gidx, fill(1 / σb², G), S)
         # ML part via the cancellation-free `nll_ml` (#746/#747).
         nll_ml_θ = nll_ml(θ)
         # Xμ′V⁻¹Xμ is PSD by construction, but it is formed by Woodbury SUBTRACTION.
@@ -344,9 +392,13 @@ function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ,
         # step instead. NOTE: it must be a LARGE FINITE barrier, not +Inf — LBFGS's
         # default HagerZhang line search asserts `isfinite(phi_c)` and would trade
         # the DomainError for an AssertionError.
+        # A zero pivot is ACCEPTED by the generic (ForwardDiff Dual) Cholesky, so
+        # also reject a non-finite logdet (-Inf there broke HagerZhang, #835 lss).
         cholXtVinvX = cholesky(Symmetric(XtVinvX); check=false)
         issuccess(cholXtVinvX) || return nll_ml_θ + T(REML_NONPD_PENALTY)
-        return nll_ml_θ + 0.5 * logdet(cholXtVinvX) - const_pμ
+        ldX = logdet(cholXtVinvX)
+        isfinite(ldX) || return nll_ml_θ + T(REML_NONPD_PENALTY)
+        return nll_ml_θ + 0.5 * ldX - const_pμ
     end
 
     nll = reml ? nll_reml : nll_ml
