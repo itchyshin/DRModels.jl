@@ -63,6 +63,72 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   fresh fit on affected data now correctly continues past what had been a
   spurious NaN "cliff" blocking LBFGS, converging further to a lower (more
   correct) nll instead of stopping short. See `test/test_cumlogit_nan.jl`.
+- **`Binomial()` correlated random slope `(1 + x | g)` (#753), on the #834
+  adaptive-quadrature engine.** Binomial now fits a logistic GLMM with a
+  correlated random intercept + slope on the mean, via the shared per-group
+  ADAPTIVE Gauss–Hermite quadrature helper (`_aghq_marginal_loglik`, #834) —
+  the same scheme `BetaBinomial()` already uses, minus the precision
+  parameter Binomial doesn't have. Brings Binomial in line with the other
+  seven families and with drmTMB's `binomial()`. Its logLik matches an
+  independent AGHQ-40 reference within 0.05 nat and, at `nq = 1`, matches
+  drmTMB's own Laplace integrator to ~1e-9 on the same simulated data
+  (`test/test_binomial_slope_re.jl`). A non-adaptive 12×12 prior-scale grid
+  was used briefly in review (draft #831) but was never released — it was
+  ~15 nat off on this file's own DGP; see #834. Guarded: a slope predictor
+  that is constant within any group leaves the slope SD and the group-level
+  correlation unidentified and is refused with an informative error (mirrors
+  drmTMB's `drm_validate_q2_slope_variation`, reimplemented rather than
+  vendored). Still refused: an independent random slope `(0 + x | g)` and
+  `marginal = :VA` on the correlated slope. Unlike drmTMB, DRModels.jl does
+  not run a `detectseparation`-style separation screen before fitting.
+
+- **`Binomial()` random intercept `(1 | g)`: adaptive quadrature for grouped
+  trials (#712, #713).** The 1-D route also now goes through the #834
+  adaptive-quadrature helper (`nq = 3` by default), replacing a fixed 32-node
+  PRIOR-SCALE grid. For grouped trials (`cbind(successes, failures)` with
+  more than one trial per row) and an informative group SD, the old grid's
+  posterior coverage was too coarse: measured error up to −9.73 nat on a
+  DGP with `G = 100` groups, 30 obs/group, 20 trials/row, RE SD 0.5–0.8 (a
+  4.6–20 nat error across that SD range when evaluated at an AGHQ-accurate
+  θ̂). Bernoulli 0/1 responses were unaffected. `nq = 1` is exactly Laplace
+  (drmTMB's own integrator); `nq = 3` is the smallest node count within 0.01
+  nat of an independent AGHQ-40 reference on the same DGP (`nq = 2` misses at
+  ≈0.03 nat) — see `test/test_binomial_aghq.jl`.
+- **`ZeroOneBeta()` random intercept `(1 | g)` on the mean (#723, drmTMB twin gap).**
+  `ZeroOneBeta()` no longer hard-blocks every random effect: an ordinary
+  random intercept on the mean, `y ~ x + (1 | g)`, is now admitted exactly as
+  `Beta()` admits it — `b_g ~ N(0, σ_b²)` integrated out per group by 32-node
+  Gauss–Hermite quadrature (default `:LA`-style marginal). `sigma`, `zoi`, and
+  `coi` must stay fixed-effects-only (their formulas still refuse any random
+  effect). Mirrors drmTMB's admitted `zero_one_beta()` + ordinary RI (e.g.
+  `faraway::leafblotch`). Structured (`tree=`/`K=`) random intercepts on
+  `ZeroOneBeta()`'s mean remain unimplemented (#739).
+- **`Student()` fits crossed random intercepts on the mean (#725; drmTMB twin
+  #1266).** `y ~ x + (1 | g) + (1 | h)` was refused ("single random-effect
+  term"); drmTMB `student()` fits it. It now uses the Laplace approximation, as
+  drmTMB/TMB does, with the observed Hessian of the random effects, exact
+  ForwardDiff outer derivatives, and `sigma`/`nu` formulas allowed. On a
+  simulated fixture (n = 600, 30 × 25 levels) it matches drmTMB 0.7.1 to
+  |ΔlogLik| < 1e-9 and every estimate to < 1e-8, with and without `sigma ~ x`;
+  fixed-effect SEs agree to 1e-6. Random slopes with a second term are still
+  refused. The random-effect Hessian is dense, so very many levels are slow.
+
+- **`Student()` crossed intercepts: three robustness fixes from adversarial
+  review (#827).** (1) An extreme σ/ν line-search probe could produce a
+  non-finite expected-information fallback matrix; the fallback Cholesky now
+  fails closed (`check = false`) instead of throwing `PosDefException` out of
+  `drm`. (2) The `|log σ| > 12` guard on a crossed variance rejected genuine
+  boundary MLEs (drmTMB puts a zero crossed variance at log σ ≈ −12.57); the
+  guard is now a `|log σ| > 30` overflow check, and the inner Newton's
+  convergence floor is loosened 100× so it stops registering a converged
+  boundary fit as a failure. (3) A non-converged outer LBFGS run is now
+  restarted from its own minimizer (bounded to 8 attempts, comparing freshly
+  re-evaluated objective values rather than `Optim.minimum`, which can read a
+  rejected line-search trial instead of the true minimizer) — on a fresh
+  simulated dataset this now reaches drmTMB's optimum to 1e-10 where the
+  first run previously stopped short. New regression tests
+  (`test/test_student_725.jl`) reproduce all three failures on the reviewer's
+  simulated fixtures and pin drmTMB reference log-likelihoods.
 
 - **`Student()` no longer reports a garbage log-likelihood near the Gaussian
   limit (#721; drmTMB twin #1265).** When the data are close to Normal the
