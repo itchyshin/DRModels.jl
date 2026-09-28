@@ -175,6 +175,7 @@ _shard_include("test_phylo_slope_two_sd.jl")
 _shard_include("test_phylo_interaction.jl")
 _shard_include("test_two_structured_gaussian.jl")
 _shard_include("test_two_structured_gaussian_sparse.jl")
+_shard_include("test_dense_comp_chol.jl")  # _dense_comp: Cholesky precision/logdet + clear error on non-PD C
 _shard_include("test_structured_plus_ordinary_bar.jl")  # Arc 2: structured marker + ordinary (1 | h) bars (was a silent drop)
 _shard_include("test_heritability.jl")
 _shard_include("test_conjugate_em.jl")

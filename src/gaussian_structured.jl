@@ -626,8 +626,15 @@ end
 # the original #231 behaviour). Latent rows ARE the levels, so leaf_pos = 1:G,
 # unit weights / BLUP scales.
 function _dense_comp(gidx, G, C, grp::Symbol)
-    Q = dropzeros!(sparse(Symmetric(inv(Symmetric(Matrix(C))))))
-    logdetC = logdet(Symmetric(Matrix(C)))
+    Cm = Matrix{Float64}(C)
+    ch = cholesky(Symmetric(Cm); check = false)
+    issuccess(ch) ||
+        throw(ArgumentError("relmat/animal matrix for `$grp` is not positive " *
+            "definite (Cholesky factorization failed); check for " *
+            "duplicate/collinear individuals or a singular pedigree/relatedness " *
+            "matrix"))
+    Q = dropzeros!(sparse(Symmetric(inv(ch))))
+    logdetC = 2 * sum(log, diag(ch.U))
     rows = collect(Int, gidx)
     return _StructComp(Q, rows, ones(length(rows)), G, logdetC,
                        collect(1:G), ones(G), grp)

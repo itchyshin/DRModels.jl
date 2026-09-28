@@ -6,6 +6,23 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **`relmat(1 | g)` / `animal(1 | g)` (dense Gaussian path) now refuses a
+  non-PD relatedness/correlation matrix with a clear error, instead of
+  silently propagating garbage.** `_dense_comp` used to call
+  `inv(Symmetric(Matrix(C)))` / `logdet(Symmetric(Matrix(C)))` directly, with
+  no positive-definiteness check. On a semidefinite `C` (e.g. a GRM with
+  duplicate individuals, or a singular pedigree A-matrix) this silently
+  returned a finite but WRONG `logdet` about half the time in a random sweep —
+  no error at all — and a confusing low-level `DomainError` from `log` of a
+  negative number the other half, never naming the offending matrix. It now
+  factors via `cholesky(Symmetric(C); check = false)` and throws an
+  `ArgumentError` naming the grouping factor when the factorization fails.
+  On well-conditioned and ill-conditioned (cond up to 1e12) PD input the
+  Cholesky-based precision/logdet match the old inv/logdet path and a 256-bit
+  BigFloat reference to the tolerances measured (accuracy was already
+  comparable between the two paths on PD input — the fix is about the
+  non-PD case, not accuracy on well-posed input).
+
 - **`Student()` no longer reports a garbage log-likelihood near the Gaussian
   limit (#721; drmTMB twin #1265).** When the data are close to Normal the
   likelihood is flat in the ν predictor, and the optimiser can walk ν = 2 +
