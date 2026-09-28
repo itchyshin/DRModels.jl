@@ -372,11 +372,25 @@ const _ARC2_H2_SEP_FORM = bf(@formula(y ~ x + phylo(1 | sp)), @formula(sigma ~ z
     @test isfinite(rf.reml_nll)
     @test rf.reml_nll ≈ 54.6930595303 atol = 1e-6
     @test all(isfinite, rf.V)
-    # The fixture still exercises the retry: the cold solve at this optimum fails.
-    # (If a better inner solver makes it succeed, drop this line, not the testset.)
+    # The fixture was built so a COLD Newton solve at this exact optimum fails
+    # to converge (from the ML β, `θml[1:4]`), which is what exercises the
+    # retry in `_glsp_joint_reml_fit`. Whether the cold solve converges is
+    # Julia/BLAS-version-dependent (it now succeeds on 1.10 but still fails on
+    # 1.13, measured 2026-09-27) — the version is NOT what this testset is
+    # guarding. What must hold on every version: a cold-solve failure is
+    # REPORTED (`cold[5]`), never silently swallowed, and whenever the cold
+    # solve does converge, it must land on the SAME optimum the warm-started
+    # retry reports below — i.e. re-evaluation at the optimum is correct
+    # regardless of which start got there.
     P = _D.prior_precision(Q, _D._ls_inv2x2(_D._glsp_sep_Λ(rf.v)))
-    @test !_D._glsp_joint_reml_nll(Val(:gaussian_mean), data.y, Xμ, Xψ, gidx, G, P, Zη, Zψ,
-                                   θml[1:4], zeros(2G))[5]
+    cold = _D._glsp_joint_reml_nll(Val(:gaussian_mean), data.y, Xμ, Xψ, gidx, G, P, Zη, Zψ,
+                                    θml[1:4], zeros(2G))
+    if cold[5]
+        @test cold[1] ≈ rf.reml_nll atol = 1e-6
+        @test cold[2] ≈ rf.β atol = 1e-5
+    else
+        @info "cold Newton solve did not converge at the H2 separate-block optimum (retry path exercised)"
+    end
     # The reported value is the restricted NLL there, solved from a warm start.
     r = _D._glsp_joint_reml_nll(Val(:gaussian_mean), data.y, Xμ, Xψ, gidx, G, P, Zη, Zψ,
                                 rf.β, zeros(2G))
