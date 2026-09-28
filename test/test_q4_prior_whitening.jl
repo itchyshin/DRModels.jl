@@ -11,8 +11,9 @@
 # identical in exact arithmetic, including the historical 1e-10 prior ridge.
 #
 # The q=4 PLSM engine (`marginal_nll`, sparse_aug_plsm.jl / fit_q4_sparse_tmb.jl)
-# builds its prior the same way and IS affected (measured, see the @test_broken
-# below: l22 = −17 gives +0.34 nats, −20 gives +4226 nats). It is NOT changed here:
+# builds its prior the same way and IS affected (measured on the
+# test_q4_objective_diagnostic fixture with L21 = 0.35: l22 = −17 gives +0.34
+# nats, −20 gives +4226 nats; pinned by the @test_broken below). It is NOT changed here:
 # the fix touches the verified engine's Newton mode-finder and exact gradient and
 # is a separate, measured PR (D-298). The @test_broken flips to an error the day
 # that lands, which is the signal to promote it to @test.
