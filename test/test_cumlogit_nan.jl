@@ -40,9 +40,12 @@ catch
     NaN
 end
 
-# Recorded once from `fit.nll(fit.theta)` on origin/main before the fix (see
-# the PR body for the reproduction script/output): 21.304898931486296.
-const _CUMLOGIT_NAN_BASELINE_NLL = 21.304898931486296
+# The TRUE marginal nll at the origin/main θ̂ below: an exact per-group QuadGK
+# integral (rtol 1e-12), 21.300119400926. This file originally pinned the old
+# 32-node prior-scale GHQ value there, 21.304898931486296 (4.8e-3 nat off the
+# exact integral); the routes now use per-group adaptive GHQ
+# (test/test_cumlogit_aghq.jl), which reproduces the exact value to ~1e-11.
+const _CUMLOGIT_NAN_BASELINE_NLL = 21.300119400926
 
 @testset "CumulativeLogit (1|id) — no NaN nll at extreme θ (#866 fuzzer finding)" begin
     Random.seed!(24); G = 6; m = 8; n = G * m
@@ -70,11 +73,10 @@ const _CUMLOGIT_NAN_BASELINE_NLL = 21.304898931486296
         v0 = fit.nll(const_θ_baseline)
         @test isfinite(v0)
         @test -v0 <= 1e-8                       # discrete data: logLik ≤ 0
-        # Baseline recorded on origin/main before the fix (2026-09-27):
-        # 21.304898931486296. The fix only touches extreme-θ cancellation
-        # paths, so evaluating the SAME nll function at this SAME ordinary θ
-        # must not move.
-        @test isapprox(v0, _CUMLOGIT_NAN_BASELINE_NLL; atol = 1e-10)
+        # The NaN fix only touches extreme-θ cancellation paths, so at this
+        # ordinary θ the nll must equal the exact marginal (integration
+        # tolerance 1e-6; see `_CUMLOGIT_NAN_BASELINE_NLL`).
+        @test isapprox(v0, _CUMLOGIT_NAN_BASELINE_NLL; atol = 1e-6)
     end
 
     @testset "previously-NaN cells are now finite-or-+Inf, discrete logLik ≤ 0" begin

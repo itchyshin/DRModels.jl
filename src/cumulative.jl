@@ -6,9 +6,8 @@
 # ordered by the increment parameterisation θ_1 = δ_1, θ_k = θ_{k-1} + exp(δ_k).
 # Mirrors drmTMB's `cumulative_logit`. Fixed effects, ML, plus an ordinary
 # random intercept `(1 | g)` or independent random slope `(0 + x | g)` on `mu`
-# (#563 S8) via 32-node Gauss–Hermite quadrature — the same scheme as the
-# Poisson/Gamma/Tweedie `(1 | g)` routes (src/poisson.jl, src/gamma.jl,
-# src/tweedie.jl), plus an unlabelled, intercept-only `phylo(1 | species)`
+# (#563 S8) via per-group adaptive Gauss–Hermite quadrature (src/adaptive_ghq.jl),
+# plus an unlabelled, intercept-only `phylo(1 | species)`
 # structured `mu` effect (#563 S8 follow-on) via the sparse augmented-state
 # Laplace GLMM route (src/sparse_laplace_glmm.jl), matching drmTMB 0.7.0's own
 # `validate_ordinal_phylo_mu_structured_term()`. Correlated slopes
@@ -29,7 +28,8 @@ increment parameters (`θ_1 = δ_1`, `θ_k = θ_{k-1} + exp(δ_k)`). `fitted` re
 the expected ordered-category score `Σ_k k·Pr(y=k)`. Mirrors `drmTMB`'s
 `cumulative_logit`. An ordinary random intercept `(1 | g)` or an independent
 random slope `(0 + x | g)` on `mu` integrates the group-level term out by
-32-node Gauss–Hermite quadrature; `coef(fit, :resd)` is the log random-effect
+per-group adaptive Gauss–Hermite quadrature (41 nodes centred on each group's
+conditional mode); `coef(fit, :resd)` is the log random-effect
 SD. An unlabelled, intercept-only phylogenetic random intercept
 `phylo(1 | species)` on `mu` is fit via the sparse-Laplace GLMM route instead
 (needs `tree = …`); it cannot be combined with an ordinary random effect. For
@@ -89,20 +89,6 @@ end
         # correct -Inf when `la`/`lb` coincide).
         return la + _log1mexp(min(lb - la, zero(lb - la)))
     end
-end
-
-# Safe log-sum-exp for the `(1|g)`/`(0+x|g)` Gauss-Hermite quadrature below:
-# guards the case where EVERY node's log-likelihood for a group is exactly
-# -Inf (a deterministic, node-independent "impossible category" — e.g. an
-# extreme fixed effect or collapsed cutpoint gap that no finite random-effect
-# draw can undo). Plain `mx + log(sum(exp.(terms .- mx)))` computes
-# `-Inf - (-Inf) == NaN` in that case; this returns the mathematically correct
-# -Inf instead (contributing +Inf to the nll, which is an allowed value —
-# never NaN, never a bogus -Inf nll).
-@inline function _safe_quadrature_logsumexp(terms, logw_lπ_offset)
-    mx = maximum(terms)
-    isfinite(mx) || return oftype(mx, -Inf)
-    return logw_lπ_offset + mx + log(sum(exp.(terms .- mx)))
 end
 
 # Expected ordered-category score Σ_k k·P(y=k|η,cuts), the `fitted()` value.
@@ -233,37 +219,39 @@ function _fit_cumulative(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, nmμ, g_t
         Optim.iterations(res))
 end
 
+# Default AGHQ nodes for the CumulativeLogit `(1 | g)` / `(0 + x | g)` routes. The
+# ordinal group posterior is far from Gaussian when σ_b is large (a group with all
+# observations in an end category has a flat, logistic-tailed posterior), so these
+# routes need more nodes than the `_RANEF1D_AGHQ_K = 5` used by the other families.
+# Swept against an exact per-group QuadGK integral on the seed-24 fuzzer dataset
+# (test/test_cumlogit_aghq.jl; n = 48, G = 6, σ_b up to 13.8), worst |error| over
+# three θ: K=5 1.4e-2, K=9 4.7e-4, K=15 2.0e-5, K=21 2.6e-6, K=31 4.7e-7,
+# K=41 2.9e-9 nat. K = 41 is the first with a >100× margin on a 1e-6 check; the
+# per-group cost stays close to the old 32-node prior-scale grid it replaces.
+const _CUMLOGIT_AGHQ_K = 41
+
 # Cumulative-logit ordinal GLMM with a random intercept (1|g) on the latent
-# linear predictor η. b_g ~ N(0,σ_b²) integrated out per group by 32-node
-# Gauss–Hermite quadrature (b = √2 σ_b z) — the same scheme as the
-# Poisson/Gamma/Tweedie `(1 | g)` routes (src/poisson.jl `_fit_poisson_ranef`,
-# src/gamma.jl `_fit_gamma_ranef`, src/tweedie.jl `_fit_tweedie_ranef`).
-# Cutpoints stay ordinary fixed effects (shared across groups). #563 S8.
-function _fit_cumulative_ranef(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, gidx, G, nmμ, grp, g_tol)
+# linear predictor η. b_g ~ N(0,σ_b²) integrated out per group by ADAPTIVE
+# Gauss–Hermite quadrature (`_aghq_marginal_loglik`, src/adaptive_ghq.jl: nodes
+# b̂_g + √2 C z at each group's conditional mode), `nq` nodes (`nq = 1` is
+# Laplace). The old fixed 32-node prior-scale grid (b = √2 σ_b z) was badly
+# under-resolved for large σ_b: on the seed-24 fuzzer dataset it sat 1.36 nat
+# below the true marginal at its own optimum. Cutpoints stay ordinary fixed
+# effects (shared across groups). #563 S8.
+function _fit_cumulative_ranef(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, gidx, G, nmμ, grp, g_tol;
+                               nq::Int = _CUMLOGIT_AGHQ_K)
     n = length(y); pμ = size(Xμ, 2); nc = K - 1
     members = [Int[] for _ in 1:G]
     for i in 1:n
         push!(members[gidx[i]], i)
     end
-    z, w = _gauss_hermite(32); logw = log.(w); Kq = length(z); rt2 = sqrt(2.0); lπ = log(π)
+    rule = _AGHQRule(1, nq); Zre = ones(n, 1); bcache = zeros(1, G)
     function nll(θ)
         β = θ[1:pμ]; δ = θ[pμ+1:pμ+nc]; σb = exp(θ[pμ+nc+1])
         cuts = _cumulative_cuts(δ)
         η0 = pμ == 0 ? zeros(eltype(θ), n) : Xμ * β
-        s = zero(eltype(θ))
-        for idx in members
-            isempty(idx) && continue
-            terms = Vector{eltype(θ)}(undef, Kq)
-            for k in 1:Kq
-                b = rt2 * σb * z[k]; gll = logw[k]
-                for i in idx
-                    gll += _cumulative_loglik(y[i], η0[i] + b, cuts, K, nc)
-                end
-                terms[k] = gll
-            end
-            s -= _safe_quadrature_logsumexp(terms, -0.5 * lπ)
-        end
-        return s
+        ll = (i, η) -> _cumulative_loglik(y[i], η, cuts, K, nc)
+        return -_aghq_marginal_loglik(ll, members, η0, Zre, reshape([σb], 1, 1), rule, bcache)
     end
     θ0 = zeros(pμ + nc + 1)
     θ0[(pμ+1):(pμ+nc)] = _cumulative_cut_init(y, K, n)
@@ -284,33 +272,22 @@ end
 
 # Cumulative-logit ordinal GLMM with an INDEPENDENT random slope (0+x|g) on
 # the latent linear predictor η. b_g ~ N(0,σ_b²) integrated out per group by
-# 32-node Gauss–Hermite quadrature; the group term enters as b_g·x_i rather
-# than b_g. Same scheme as src/tweedie.jl `_fit_tweedie_slope_ranef`. #563 S8.
-function _fit_cumulative_slope_ranef(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, xs, gidx, G, nmμ, grp, g_tol)
+# ADAPTIVE Gauss–Hermite quadrature (as `_fit_cumulative_ranef` above); the group
+# term enters as b_g·x_i rather than b_g (random-effect design column `xs`). #563 S8.
+function _fit_cumulative_slope_ranef(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, xs, gidx, G, nmμ, grp, g_tol;
+                                     nq::Int = _CUMLOGIT_AGHQ_K)
     n = length(y); pμ = size(Xμ, 2); nc = K - 1
     members = [Int[] for _ in 1:G]
     for i in 1:n
         push!(members[gidx[i]], i)
     end
-    z, w = _gauss_hermite(32); logw = log.(w); Kq = length(z); rt2 = sqrt(2.0); lπ = log(π)
+    rule = _AGHQRule(1, nq); Zre = reshape(Float64.(xs), n, 1); bcache = zeros(1, G)
     function nll(θ)
         β = θ[1:pμ]; δ = θ[pμ+1:pμ+nc]; σb = exp(θ[pμ+nc+1])
         cuts = _cumulative_cuts(δ)
         η0 = pμ == 0 ? zeros(eltype(θ), n) : Xμ * β
-        s = zero(eltype(θ))
-        for idx in members
-            isempty(idx) && continue
-            terms = Vector{eltype(θ)}(undef, Kq)
-            for k in 1:Kq
-                b = rt2 * σb * z[k]; gll = logw[k]
-                for i in idx
-                    gll += _cumulative_loglik(y[i], η0[i] + b * xs[i], cuts, K, nc)
-                end
-                terms[k] = gll
-            end
-            s -= _safe_quadrature_logsumexp(terms, -0.5 * lπ)
-        end
-        return s
+        ll = (i, η) -> _cumulative_loglik(y[i], η, cuts, K, nc)
+        return -_aghq_marginal_loglik(ll, members, η0, Zre, reshape([σb], 1, 1), rule, bcache)
     end
     θ0 = zeros(pμ + nc + 1)
     θ0[(pμ+1):(pμ+nc)] = _cumulative_cut_init(y, K, n)

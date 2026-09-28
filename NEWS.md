@@ -6,6 +6,23 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **Adaptive quadrature for `CumulativeLogit()` `(1 | g)` / `(0 + x | g)`.**
+  Both ordinal random-effect routes now integrate `b_g` by per-group adaptive
+  Gauss–Hermite quadrature (the shared helper from #834/#719, `q = 1`) instead
+  of a fixed 32-node PRIOR-scale grid. With a large random-effect SD that grid
+  was badly under-resolved: on the seed-24 likelihood-fuzzer dataset
+  (`y ~ x + (1 | id)`, n = 48, G = 6) the old fit stopped at nll 21.30 with a
+  gradient of 5.6 (main), or, once the NaN fix below removed that stall,
+  reached a spurious 18.95 whose true marginal is 20.31. The fit now reaches
+  the exact maximum, nll 19.83614 (β = 7.997, cutpoints −4.152 / 12.306,
+  σ_b = 7.646), matching an exact per-group QuadGK integral and
+  `ordinal::clmm` with nAGQ ≥ 30. The ordinal group posterior is far from
+  Gaussian at large σ_b, so these routes use `K = 41` nodes (worst error
+  2.9e-9 nat against the exact integral on that dataset, versus 1.4e-2 at the
+  `K = 5` used by the other families). The two drmTMB-parity fixtures
+  (σ_b ≈ 0.69 and 0.34) move by −3.6e-8 and +1e-10 nat in logLik. Public API
+  unchanged; the `phylo(1 | species)` and fixed-effects-only routes are
+  untouched.
 - **Adaptive quadrature for 1-D random intercepts `(1 | g)` (#719).** Every
   default-route (`:LA`) `_fit_*_ranef` fitter for Poisson, NegBinomial2, Gamma,
   Beta, BetaBinomial, Student, and LogNormal now integrates the group random
