@@ -200,4 +200,51 @@ end
     @test_broken abs(-first(marginal_nll(prob, Q_cond, θ)) - _q4_bigref(prob, Q_cond, θ)) ≤ 1e-8
 end
 
+# ---------------------------------------------------------------------------
+# Follow-up to #862 (this PR): the bivariate Gaussian ML route
+# (`gaussian_bivariate.jl:843`, inside `_fit_bivariate_q2_structured`'s `nll`
+# closure) and the q=2 structured REML route (`reml_q2.jl`, `_q2_reml_ll` and
+# `fit_coevolution_q2_reml`'s final `ml_ll`) both called `coevo_marginal_cov`
+# with a Λ ALREADY FORMED as a matrix (`lc_to_cov`), which #862's
+# `coevo_marginal_cov(::AbstractMatrix)` method then re-factors with
+# `cholesky(Symmetric(Matrix(Λ)))`. That is accurate only to l22 ≈ −18 (one
+# `L L'` round trip in Float64 before the whitened path ever sees it) instead
+# of #862's ≤ 1e-10 to l22 = −30. Both call sites now pass
+# `lc_to_chol(lc, 2)` (the factor built straight from `lc`) instead. This
+# reproduces the "before" (matrix Λ) vs "after" (chΛ) behaviour of those two
+# call sites directly through `coevo_marginal_cov`'s two methods -- the same
+# function object each call site invokes -- without needing to reach into the
+# fitting closures themselves.
+# ---------------------------------------------------------------------------
+@testset "lc_to_chol callers (#862 follow-up): extreme-regime accuracy" begin
+    prob, Q = _knownK_fixture()
+    β = [0.1 -0.2; 0.3 0.05]
+    D = [0.4 0.1; 0.1 0.3]
+    for l22 in (-12.0, -18.0, -20.0, -30.0)
+        lc = [log(0.8), 0.7, l22]
+        ref = _q2_bigref(prob, Q, β, lc, D)
+        before = first(coevo_marginal_cov(prob, Q, β, lc_to_cov(lc, 2), D))  # base-branch call sites
+        after  = first(coevo_marginal_cov(prob, Q, β, DRModels.lc_to_chol(lc, 2), D))  # fixed call sites
+        err_before = isfinite(before) ? abs(before - ref) / abs(ref) : Inf
+        err_after  = abs(after - ref) / abs(ref)
+        @info "lc_to_chol callers: l22=$l22 rel. error before=$err_before after=$err_after"
+        @test err_after ≤ 1e-10
+    end
+end
+
+@testset "lc_to_chol callers (#862 follow-up): normal-regime identity" begin
+    rng = MersenneTwister(4177)
+    prob, Q = _knownK_fixture()
+    for _ in 1:10
+        lc = [log(0.3 + rand(rng)), 0.5 * randn(rng), log(0.2 + rand(rng))]
+        β = 0.3 .* randn(rng, 2, 2)
+        s = 0.3 .+ rand(rng, 2)
+        ρ = 0.9 * (2rand(rng) - 1)
+        D = [s[1]^2 ρ * s[1] * s[2]; ρ * s[1] * s[2] s[2]^2]
+        before = first(coevo_marginal_cov(prob, Q, β, lc_to_cov(lc, 2), D))
+        after  = first(coevo_marginal_cov(prob, Q, β, DRModels.lc_to_chol(lc, 2), D))
+        @test abs(after - before) ≤ 1e-12
+    end
+end
+
 end # module
