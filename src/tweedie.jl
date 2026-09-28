@@ -152,6 +152,21 @@ function _fit_tweedie(fam::Tweedie, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol)
         Optim.iterations(res))
 end
 
+# Default nodes for Tweedie's two 1-D `(1|g)`/`(0+x|g)` mu-ranef routes.
+# Adversarial review of the AGHQ switch (following #877's precedent of a
+# family-specific K constant, `_BINOMIAL_RANEF_AGHQ_K`) found the generic
+# `_RANEF1D_AGHQ_K = 5` default still 0.19 nat off on a zero-heavy,
+# informative-group regime: swept K ∈ {5, 9, 15, 21} on the review's
+# zero-heavy DGP (G=60, m=5, σ_b≈3.2, β0=−1.5, 203/300 zeros) and on an
+# ordinary DGP (G=40, m=15, σ_b=3), logLik error at θ̂ vs an independent
+# QuadGK reference: K=5 −0.187/−1.9e-4 nat, K=9 0.039/−2.5e-4, K=15
+# −0.0037/1.1e-5, K=21 6.7e-4/1.3e-7. K=21 is the smallest of the four that
+# lands within 1e-3 nat on BOTH; cost is 2.64× the pre-AGHQ 32-node grid on
+# the ordinary DGP and 1.99× on the zero-heavy one (vs 2.2×/1.7× at K=5) —
+# a reasonable increment for a route where fits already run in ~1-5 s. See
+# test/test_tweedie_aghq_k.jl for the sweep.
+const _TWEEDIE_RANEF_AGHQ_K = 21
+
 # Tweedie compound Poisson–Gamma GLMM with a random intercept (1|g) on the log
 # mean. b_g ~ N(0,σ_b²) integrated out per group by per-group adaptive
 # Gauss–Hermite quadrature (`src/adaptive_ghq.jl`, #719/#834) — the same scheme
@@ -159,7 +174,7 @@ end
 # src/gamma.jl `_fit_gamma_ranef`). `sigma`/`nu` stay ordinary fixed-effect
 # sub-models (dispersion φ and power p are not group-varying); only `mu`'s
 # intercept carries the random term. #563.
-function _fit_tweedie_ranef(fam::Tweedie, y, Xμ, Xσ, Xν, gidx, G, nmμ, nmσ, nmν, grp, g_tol; K::Int = _RANEF1D_AGHQ_K)
+function _fit_tweedie_ranef(fam::Tweedie, y, Xμ, Xσ, Xν, gidx, G, nmμ, nmσ, nmν, grp, g_tol; K::Int = _TWEEDIE_RANEF_AGHQ_K)
     n = length(y); pμ, pσ, pν = size(Xμ, 2), size(Xσ, 2), size(Xν, 2)
     i1 = pμ + pσ; i2 = i1 + pν
     members = [Int[] for _ in 1:G]
@@ -203,7 +218,7 @@ end
 # x_i (Zre) instead of the flat 1 used by the intercept route. Matches
 # drmTMB's independent-slope route for tweedie() mu (`(0 + x | id)`, distinct
 # from the still-unimplemented correlated `(1 + x | id)`). #563 S8.
-function _fit_tweedie_slope_ranef(fam::Tweedie, y, Xμ, Xσ, Xν, xs, gidx, G, nmμ, nmσ, nmν, grp, g_tol; K::Int = _RANEF1D_AGHQ_K)
+function _fit_tweedie_slope_ranef(fam::Tweedie, y, Xμ, Xσ, Xν, xs, gidx, G, nmμ, nmσ, nmν, grp, g_tol; K::Int = _TWEEDIE_RANEF_AGHQ_K)
     n = length(y); pμ, pσ, pν = size(Xμ, 2), size(Xσ, 2), size(Xν, 2)
     i1 = pμ + pσ; i2 = i1 + pν
     members = [Int[] for _ in 1:G]

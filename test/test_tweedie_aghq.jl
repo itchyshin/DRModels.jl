@@ -15,14 +15,25 @@
 # (K = `_RANEF1D_AGHQ_K` = 5) are within 3e-8 and 6e-8 nat of the same
 # reference (well inside the 1e-6 nat bar below).
 #
-# The K keyword this PR adds to `_fit_tweedie_ranef`/`_fit_tweedie_slope_ranef`
-# does not exist on the pre-fix branch, and the pre-fix routes have no adaptive
-# machinery to call at all — every `@testset` below either errors immediately
-# (the `K = ...` calls) or fails on the numeric bar (the single-group and
-# recovery comparisons) if run against `origin/claude/twin-gap-834` before this
-# PR's `src/tweedie.jl` changes; verified by hand (`git stash` the src change,
-# rerun this file: the `K` calls MethodError and the single-group comparisons
-# fail the `abs(pkg5 - exact) < 1e-6` test at ~12.87 nat / 23.40 nat instead).
+# CORRECTED after review: an earlier version of this header and testset (a)
+# claimed the single-group `pk5 ≈ exact` checks fail against
+# `origin/claude/twin-gap-834` (the pre-fix base). That is false. `pk5`/`pk5s`
+# call `_pkg_group_logmarg`, which goes through the GENERIC `_aghq_group_logint`
+# helper (already present on the base branch from #719/#834) — it never touches
+# `src/tweedie.jl` at all, so it passes identically before and after this PR.
+# Likewise the `K = ...` calls in the recovery testset only `MethodError` on
+# the pre-fix branch (the keyword doesn't exist there); that is a signature
+# error, not a numerical one.
+#
+# The genuine numeric red is the LAST testset below: it calls the PRODUCTION
+# `_fit_tweedie_ranef`/`_fit_tweedie_slope_ranef` with NO `K` argument (so it
+# compiles and runs unchanged on both branches — old fixed 32-node prior-scale
+# grid, or new default-K AGHQ) on a multi-group, large-|b| DGP, then compares
+# `loglik(fit)` to an independent QuadGK total evaluated AT THE FIT'S OWN θ̂.
+# Verified by hand (`git show origin/claude/twin-gap-834:src/tweedie.jl` in
+# place of the PR's `src/tweedie.jl`, rerun this file): that testset's two
+# `@test ... atol = 1e-2` checks fail at 1.89 nat (intercept) and 0.53 nat
+# (slope) on the pre-fix source, and pass at 1.4e-4 / 2.0e-4 nat on the PR.
 #
 # Reference: `_exact_group_logmarg[_slope]` is an INDEPENDENT computation
 # (ForwardDiff Newton to the group mode, then QuadGK over b with the mode as an
@@ -298,6 +309,59 @@ end
     @test coef(fit2, :nu)[1] ≈ old_nu2 atol = 1e-5
     @test exp(coef(fit2, :resd)[1]) ≈ old_sd2 atol = 1e-5
     @test loglik(fit2) ≈ old_loglik2 atol = 1e-4
+end
+
+@testset "Tweedie (1|g)/(0+x|g): production route (no K arg) vs exact QuadGK at theta_hat — genuine numeric red" begin
+    # Calls the PUBLIC `_fit_tweedie_ranef`/`_fit_tweedie_slope_ranef` with NO
+    # `K` keyword — the same call signature exists on both the pre-fix branch
+    # (ignored; the routine is hard-wired to the old fixed 32-node prior-scale
+    # grid) and this PR (uses the default K = `_RANEF1D_AGHQ_K` = 5). Multiple
+    # groups with well-separated |b| (an "informative group, large-ish σ_b"
+    # regime, the failure mode this PR targets) so σ_b is identified without
+    # relying on the DGP's true value, and `loglik(fit)` is compared to an
+    # INDEPENDENT QuadGK total evaluated at the fit's own θ̂ (not the true θ) —
+    # this isolates the quadrature scheme's error from ordinary fitting noise.
+
+    # --- intercept route -----------------------------------------------------
+    rng = StableRNG(20260927)
+    G = 6; m = 20; n = G * m
+    eta0base = 0.5; phi_dgp = 1.3; p_dgp = 1.5
+    bs = [-3.0, -1.8, -0.6, 0.6, 1.8, 3.0]
+    g = repeat(1:G, inner = m)
+    mu_true = exp.(eta0base .+ bs[g])
+    y = [rand(rng) < 0.3 ? 0.0 : rand(rng, _Dtw.Gamma(2.0, mu_true[i] / 2.0)) for i in 1:n]
+    gidx, G_ = DRModels._group_index(string.(g))
+    Xmu = ones(n, 1); Xsig = ones(n, 1); Xnu = ones(n, 1)
+
+    fit = DRModels._fit_tweedie_ranef(Tweedie(), y, Xmu, Xsig, Xnu, gidx, G_,
+                                       ["(Intercept)"], ["(Intercept)"], ["(Intercept)"], :id, 1e-8)
+    betahat = coef(fit, :mu); sdhat = exp(coef(fit, :resd)[1])
+    phihat = exp(2 * coef(fit, :sigma)[1]); phat = 1 + 1 / (1 + exp(-coef(fit, :nu)[1]))
+    eta0hat = fill(betahat[1], n)
+    exact_total = sum(_exact_group_logmarg(y[findall(==(j), g)], eta0hat[findall(==(j), g)], phihat, phat, sdhat)
+                       for j in 1:G_)
+    @test loglik(fit) ≈ exact_total atol = 1e-2   # 1.4e-4 nat on the PR; 1.89 nat on the pre-fix source
+
+    # --- slope route -----------------------------------------------------------
+    rng2 = StableRNG(20260927)
+    G2 = 4; m2 = 20; n2 = G2 * m2
+    bs2 = [-1.5, -0.5, 0.5, 1.5]
+    g2 = repeat(1:G2, inner = m2)
+    xs2 = [((-1)^i) * (1.0 + 0.05 * i) for i in 1:n2]
+    mu_true2 = exp.(clamp.(eta0base .+ bs2[g2] .* xs2, -15.0, 15.0))
+    y2 = [rand(rng2) < 0.3 ? 0.0 : rand(rng2, _Dtw.Gamma(2.0, mu_true2[i] / 2.0)) for i in 1:n2]
+    gidx2, G2_ = DRModels._group_index(string.(g2))
+    Xmu2 = ones(n2, 1); Xsig2 = ones(n2, 1); Xnu2 = ones(n2, 1)
+
+    fit2 = DRModels._fit_tweedie_slope_ranef(Tweedie(), y2, Xmu2, Xsig2, Xnu2, xs2, gidx2, G2_,
+                                              ["(Intercept)"], ["(Intercept)"], ["(Intercept)"], :id, 1e-8)
+    betahat2 = coef(fit2, :mu); sdhat2 = exp(coef(fit2, :resd)[1])
+    phihat2 = exp(2 * coef(fit2, :sigma)[1]); phat2 = 1 + 1 / (1 + exp(-coef(fit2, :nu)[1]))
+    eta0hat2 = fill(betahat2[1], n2)
+    exact_total2 = sum(_exact_group_logmarg_slope(y2[findall(==(j), g2)], eta0hat2[findall(==(j), g2)],
+                                                   xs2[findall(==(j), g2)], phihat2, phat2, sdhat2)
+                        for j in 1:G2_)
+    @test loglik(fit2) ≈ exact_total2 atol = 1e-2  # 2.0e-4 nat on the PR; 0.53 nat on the pre-fix source
 end
 
 end # module
