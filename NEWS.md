@@ -6,6 +6,24 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **Location–scale group covariance Λ⁻¹ no longer loses ~14 digits near a
+  singular log-Cholesky factor.** `_ls_inv2x2` (`locscale_inner.jl`) inverted
+  Λ = L Lᵀ via the naive `a*d - b*c` determinant on the already-formed matrix;
+  forming Λ from its log-Cholesky factor computes `d = L21² + L22²` as a
+  Float64 sum, which silently discards L22 whenever `|L21| ≫ L22`, so neither
+  that determinant nor a fresh `cholesky` re-factorisation of the formed Λ can
+  recover it (relative error vs a 256-bit reference: exact at l22-diagonal
+  −12, then ~1e-1 to total failure by −18/−25). The coupled (L21 ≠ 0) call
+  sites in `locscale_grad.jl`, `locscale_fit.jl`, `locscale_profile.jl` and
+  `gaussian_locscale_phylo.jl` now invert directly from the log-Cholesky
+  vector (`_ls_lc_inv2x2`/`_ls_lc_logdetΛ`), never forming Λ as an
+  intermediate matrix; accurate to ≤1e-10 relative at l22-diagonal −12, −18,
+  −25 against a BigFloat reference, and agrees with the old matrix-formed
+  path to ≤1e-12 in the well-conditioned regime. The diagonal-only callers
+  (`locscale_sigma.jl`, `locscale_corr.jl`, the separate/asymmetric σ-phylo
+  blocks) are unaffected — their off-diagonal is exactly zero, so the naive
+  determinant never cancels.
+
 - **`Student()` no longer reports a garbage log-likelihood near the Gaussian
   limit (#721; drmTMB twin #1265).** When the data are close to Normal the
   likelihood is flat in the ν predictor, and the optimiser can walk ν = 2 +

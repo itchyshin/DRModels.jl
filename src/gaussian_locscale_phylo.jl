@@ -855,8 +855,7 @@ function _fit_gaussian_locscale_phylo(fam::Gaussian, y, Xμ, Xψ, gidx, G, Q,
             pμ_ = size(Xμ, 2); pψ_ = size(Xψ, 2)
             βμ = @view θ[1:pμ_]; βψ = @view θ[pμ_+1:pμ_+pψ_]
             λv = θ[pμ_+pψ_+1:pμ_+pψ_+3]
-            Λ  = _glsp_coupled_Λ(λv)
-            Λinv = _ls_inv2x2(Λ)
+            Λinv = _ls_lc_inv2x2(λv)   # stable: never forms Λ (see locscale_inner.jl)
             P = prior_precision(Q, Λinv)
             val, a, ok = _ls_marginal_nll(kind, y, Xμ * βμ, Xψ * βψ, gidx, G, P, Zη, Zψ)
             ok ? val : 1e18
