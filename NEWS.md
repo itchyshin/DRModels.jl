@@ -6,6 +6,23 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **The `relmat`/`animal` PD guard now covers every dense Gaussian entry
+  point, not just `_dense_comp`.** Two more user-matrix sites lacked it:
+  `_fit_structured_gaussian` (the single, non-crossed relmat/animal route)
+  called `cholesky(Symmetric(K))` with the default `check = true` — a bare
+  `PosDefException` on a non-PD `K`, and `Symmetric(K)` silently reading only
+  one triangle of a non-symmetric `K` with no error at all; and
+  `_fit_two_structured_gaussian` checked only the assembled marginal `V`
+  inside the optimiser (with a large finite penalty on failure, so it never
+  threw), never `C1`/`C2` themselves at setup. All three sites now share one
+  `_checked_relmat_chol(C, grp)` helper: symmetry at a sqrt(eps) relative
+  tolerance, then a `check = false` Cholesky, raising `ArgumentError` naming
+  the grouping factor on either failure. PD input is unaffected (fits agree
+  with the pre-guard path to 1e-10). This does **not** add a condition-number
+  threshold — a floating-point "semidefinite" matrix with a tiny positive
+  pivot still factors successfully, as it does in R; whether to refuse
+  ill-conditioned input is an open owner decision.
+
 - **`relmat(1 | g)` / `animal(1 | g)` (dense Gaussian path) now refuses a
   non-PD relatedness/correlation matrix with a clear error, instead of
   silently propagating garbage.** `_dense_comp` used to call
