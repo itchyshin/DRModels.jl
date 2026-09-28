@@ -6,6 +6,16 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **q=4 ML PLSM engine: whitened prior, no Λ inverse (#857 site q4).** The
+  Newton mode-finder, `laplace_ll`, `marginal_nll`, the exact O(p) gradient and
+  `q4_marginal_diagnostic` now work in `v = (I ⊗ L⁻¹)u` (`Λ = LLᵀ` built from θ
+  by `lc_to_chol`), so `H̃ = Q⊗I + blockdiag(LᵀD L)` and the `Σ log Lᵢᵢ` terms
+  cancel analytically; the 1e-10 prior ridge is kept exactly. On the
+  `test_q4_objective_diagnostic` fixture the marginal was 6.5e-7 relatively wrong
+  at l22 = −12 and 2.4 nats off at l22 ≤ −20; it is now ≤ 4e-11 of a 256-bit
+  reference from −2 to −30. `marginal_nll`'s 4th return value is now the
+  `WhitenedPrior` and its `ch_H` the factor of `H̃`. The q=4 REML is separate.
+
 - **Coevolution / q=2 structured marginal stays accurate near a singular Λ
   (#857 site K).** `coevo_marginal_cov` formed `Λ = L L'` in Float64 and
   inverted it, so as the among-trait correlation approached ±1 (log-Cholesky
