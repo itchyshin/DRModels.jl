@@ -330,6 +330,32 @@ function _fit_negbin2_zi(fam::NegBinomial2, y, Xμ, Xσ, Xzi, nmμ, nmσ, nmzi, 
         Optim.iterations(res))
 end
 
+# Numerically stable NB2 log-pmf log f(k; r, μ) — used in place of
+# `logpdf(NegativeBinomial(r, r/(r+μ)), k)` wherever a zero-truncation term
+# divides out P(0). Distributions' NegativeBinomial(r, p) forms p = r/(r+μ) and
+# r + μ directly: once the dispersion (`sigma`) linear predictor is extreme
+# enough that size r = exp(-2·ησ) ≫ μ (near-Poisson dispersion, r ~ 1e17-1e43 at
+# log σ ≈ -20..-50, #866), μ is smaller than r's ULP and r + μ rounds to EXACTLY
+# r: p rounds to EXACTLY 1.0, so log(1 - p) = log(0) = -Inf for every k > 0 while
+# logpdf(·, 0) still comes out finite (it needs no log(1 - p) term). The
+# hurdle's `_log1mexp(logpdf(d, 0))` — dividing out P(0) for the zero-truncated
+# positive part — then computes -Inf - (-Inf) = NaN (#866; #846 fixed the
+# analogous cancellation on the `(1|g)` AGHQ path). Working entirely in log1p
+# space avoids ever forming r + μ: log p = -log1p(μ/r) and log(1-p) =
+# log μ - log r - log1p(μ/r), both finite as μ/r → 0 (the r → ∞ limit is
+# Poisson, Var → μ). loggamma(k+r) - loggamma(r) is computed as
+# Σ_{j=0}^{k-1} log(r+j) — exact for integer k, with no cancelling difference
+# of two huge loggamma values.
+function _nb2_logpmf(r, μ, k::Integer)
+    l1p = log1p(μ / r)
+    s = -r * l1p - _logfactorial(k)
+    for j in 0:(k-1)
+        s += log(r + j)
+    end
+    s += k * (log(μ) - log(r) - l1p)
+    return s
+end
+
 # Hurdle NB2: P(0) = π, P(k>0) = (1-π)·NB(k)/(1-NB(0)) [zero-truncated], with
 # π = logistic(Xhuᵀβ) the hurdle (zero) probability. Uses `_log1mexp` (poisson.jl).
 function _fit_negbin2_hu(fam::NegBinomial2, y, Xμ, Xσ, Xhu, nmμ, nmσ, nmhu, g_tol)
@@ -345,9 +371,8 @@ function _fit_negbin2_hu(fam::NegBinomial2, y, Xμ, Xσ, Xhu, nmμ, nmσ, nmhu, 
             if iszero_y[i]
                 s -= lπ
             else
-                μ = exp(ημ[i]); r = exp(-2 * ησ[i]); p = r / (r + μ)
-                d = _nb2(r, p)
-                s -= l1mπ + logpdf(d, yint[i]) - _log1mexp(logpdf(d, 0))
+                μ = exp(ημ[i]); r = exp(-2 * ησ[i])
+                s -= l1mπ + _nb2_logpmf(r, μ, yint[i]) - _log1mexp(_nb2_logpmf(r, μ, 0))
             end
         end
         return s

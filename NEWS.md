@@ -6,6 +6,20 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **Hurdle NB2 (`NegBinomial2() + hu ~ ...`, and `TruncatedNegBinomial2() + hu
+  ~ ...`, which delegates to it) no longer returns NaN at extreme dispersion
+  (#866).** At `log σ ≈ -20..-50` the NB2 size `r = exp(-2·ησ) ~ 1e17-1e43` is
+  so much larger than `μ` that `r + μ` rounds to exactly `r` in Float64 and
+  `p = r/(r+μ)` rounds to exactly `1.0`. Distributions' `NegativeBinomial(r,
+  p).logpdf` then returns a finite value at `k = 0` but `-Inf` at any `k > 0`
+  (it needs a `log(1 - p) = log(0)` term there), so the hurdle's zero-truncation
+  divisor, `log(1 - P(0))`, computed as `-Inf - (-Inf)`, was `NaN`. Found by
+  the likelihood sanity fuzzer (#866). Fixed by a log1p-space NB2 log-pmf
+  (`_nb2_logpmf`, `src/negbinomial.jl`) that never forms `r + μ` — the same
+  cancellation class #846 fixed on the `(1 | g)` AGHQ path. Ordinary parameter
+  values are bit-for-bit unaffected (matches the old `Distributions.logpdf`
+  path to 1e-10).
+
 - **`Student()` no longer reports a garbage log-likelihood near the Gaussian
   limit (#721; drmTMB twin #1265).** When the data are close to Normal the
   likelihood is flat in the ν predictor, and the optimiser can walk ν = 2 +
