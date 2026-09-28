@@ -215,6 +215,7 @@ _shard_include("test_betabinomial.jl")
 _shard_include("test_zeroonebeta.jl")
 _shard_include("test_tweedie.jl")
 _shard_include("test_tweedie_ranef.jl")
+_shard_include("test_tweedie_aghq.jl")             # #719/#834 applied to Tweedie's two RE routes
 _shard_include("test_cumulative.jl")
 _shard_include("test_cumlogit_ranef.jl")
 _shard_include("test_cumlogit_phylo.jl")

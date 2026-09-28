@@ -47,7 +47,7 @@ is `log σ`); `nu` is the power `p` on a logit-`(1,2)` link
 (`p = 1 + logistic(coef(fit, :nu))`). `Var(y) = φ·μ^p`. Density via the Dunn–Smyth
 series. Mirrors `drmTMB`'s `tweedie`. An ordinary `(1 | g)` random intercept
 and an independent `(0 + x | g)` random slope on `mu` are both supported
-(32-node Gauss–Hermite marginal, #563); `sigma ~ 1` and `nu ~ 1` remain
+(per-group adaptive Gauss–Hermite marginal, #563/#719); `sigma ~ 1` and `nu ~ 1` remain
 fixed-effect sub-models on either route. The CORRELATED random slope
 `(1 + x | g)`, random effects on `sigma`/`nu`, and structured
 (phylo/relmat/animal/spatial) markers on `mu` are not implemented — matches
@@ -153,40 +153,29 @@ function _fit_tweedie(fam::Tweedie, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol)
 end
 
 # Tweedie compound Poisson–Gamma GLMM with a random intercept (1|g) on the log
-# mean. b_g ~ N(0,σ_b²) integrated out per group by 32-node Gauss–Hermite
-# quadrature (b = √2 σ_b z) — the same scheme as the Poisson/Gamma `(1 | g)`
-# routes (src/poisson.jl `_fit_poisson_ranef`, src/gamma.jl `_fit_gamma_ranef`).
-# `sigma`/`nu` stay ordinary fixed-effect sub-models (dispersion φ and power p
-# are not group-varying); only `mu`'s intercept carries the random term. #563.
-function _fit_tweedie_ranef(fam::Tweedie, y, Xμ, Xσ, Xν, gidx, G, nmμ, nmσ, nmν, grp, g_tol)
+# mean. b_g ~ N(0,σ_b²) integrated out per group by per-group adaptive
+# Gauss–Hermite quadrature (`src/adaptive_ghq.jl`, #719/#834) — the same scheme
+# as the Poisson/Gamma `(1 | g)` routes (src/poisson.jl `_fit_poisson_ranef`,
+# src/gamma.jl `_fit_gamma_ranef`). `sigma`/`nu` stay ordinary fixed-effect
+# sub-models (dispersion φ and power p are not group-varying); only `mu`'s
+# intercept carries the random term. #563.
+function _fit_tweedie_ranef(fam::Tweedie, y, Xμ, Xσ, Xν, gidx, G, nmμ, nmσ, nmν, grp, g_tol; K::Int = _RANEF1D_AGHQ_K)
     n = length(y); pμ, pσ, pν = size(Xμ, 2), size(Xσ, 2), size(Xν, 2)
     i1 = pμ + pσ; i2 = i1 + pν
     members = [Int[] for _ in 1:G]
     for i in 1:n
         push!(members[gidx[i]], i)
     end
-    z, w = _gauss_hermite(32); logw = log.(w); K = length(z); rt2 = sqrt(2.0); lπ = log(π)
+    rule = _AGHQRule(1, K); Zre = ones(n, 1); bcache = zeros(1, G)   # #719: per-group AGHQ
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:i1]; βν = θ[i1+1:i2]; σb = exp(θ[i2+1])
         η0 = clamp.(Xμ * βμ, -30.0, 30.0)
         ησ = clamp.(Xσ * βσ, -15.0, 15.0)
         ην = clamp.(Xν * βν, -12.0, 12.0)
-        s = zero(eltype(θ))
-        for idx in members
-            isempty(idx) && continue
-            terms = Vector{eltype(θ)}(undef, K)
-            for k in 1:K
-                δ = rt2 * σb * z[k]; gll = logw[k]
-                for i in idx
-                    μ = exp(clamp(η0[i] + δ, -30.0, 30.0)); φ = exp(2 * ησ[i]); p = _logit12(ην[i])
-                    gll += _logpdf_tweedie(y[i], μ, φ, p)
-                end
-                terms[k] = gll
-            end
-            mx = maximum(terms)
-            s -= (-0.5 * lπ + mx + log(sum(exp.(terms .- mx))))
-        end
-        return s
+        ll = (i, η) -> (μ = exp(clamp(η, -30.0, 30.0)); φ = exp(2 * ησ[i]); p = _logit12(ην[i]);
+                        _logpdf_tweedie(y[i], μ, φ, p))
+        L = reshape([σb], 1, 1)
+        return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache)
     end
     ȳ = sum(y) / n
     θ0 = zeros(i2 + 1)
@@ -208,41 +197,29 @@ end
 
 # Tweedie compound Poisson–Gamma GLMM with an INDEPENDENT random slope
 # (0 + x | g) on the log mean: η_i = Xμβ_μ + b_g·x_i, b_g ~ N(0, σ_b²),
-# integrated out per group by 32-node Gauss–Hermite quadrature
-# (b = √2 σ_b z). Same scheme as `_fit_tweedie_ranef` (the ordinary random
-# intercept), with the group perturbation weighted by x_i per observation
-# instead of added flat. Matches drmTMB's independent-slope route for
-# tweedie() mu (`(0 + x | id)`, distinct from the still-unimplemented
-# correlated `(1 + x | id)`). #563 S8.
-function _fit_tweedie_slope_ranef(fam::Tweedie, y, Xμ, Xσ, Xν, xs, gidx, G, nmμ, nmσ, nmν, grp, g_tol)
+# integrated out per group by per-group adaptive Gauss–Hermite quadrature
+# (`src/adaptive_ghq.jl`, #719/#834). Same scheme as `_fit_tweedie_ranef` (the
+# ordinary random intercept), with the random-effect design column set to
+# x_i (Zre) instead of the flat 1 used by the intercept route. Matches
+# drmTMB's independent-slope route for tweedie() mu (`(0 + x | id)`, distinct
+# from the still-unimplemented correlated `(1 + x | id)`). #563 S8.
+function _fit_tweedie_slope_ranef(fam::Tweedie, y, Xμ, Xσ, Xν, xs, gidx, G, nmμ, nmσ, nmν, grp, g_tol; K::Int = _RANEF1D_AGHQ_K)
     n = length(y); pμ, pσ, pν = size(Xμ, 2), size(Xσ, 2), size(Xν, 2)
     i1 = pμ + pσ; i2 = i1 + pν
     members = [Int[] for _ in 1:G]
     for i in 1:n
         push!(members[gidx[i]], i)
     end
-    z, w = _gauss_hermite(32); logw = log.(w); K = length(z); rt2 = sqrt(2.0); lπ = log(π)
+    rule = _AGHQRule(1, K); Zre = reshape(xs, n, 1); bcache = zeros(1, G)   # #719: per-group AGHQ
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:i1]; βν = θ[i1+1:i2]; σb = exp(θ[i2+1])
         η0 = clamp.(Xμ * βμ, -30.0, 30.0)
         ησ = clamp.(Xσ * βσ, -15.0, 15.0)
         ην = clamp.(Xν * βν, -12.0, 12.0)
-        s = zero(eltype(θ))
-        for idx in members
-            isempty(idx) && continue
-            terms = Vector{eltype(θ)}(undef, K)
-            for k in 1:K
-                δ = rt2 * σb * z[k]; gll = logw[k]
-                for i in idx
-                    μ = exp(clamp(η0[i] + δ * xs[i], -30.0, 30.0)); φ = exp(2 * ησ[i]); p = _logit12(ην[i])
-                    gll += _logpdf_tweedie(y[i], μ, φ, p)
-                end
-                terms[k] = gll
-            end
-            mx = maximum(terms)
-            s -= (-0.5 * lπ + mx + log(sum(exp.(terms .- mx))))
-        end
-        return s
+        ll = (i, η) -> (μ = exp(clamp(η, -30.0, 30.0)); φ = exp(2 * ησ[i]); p = _logit12(ην[i]);
+                        _logpdf_tweedie(y[i], μ, φ, p))
+        L = reshape([σb], 1, 1)
+        return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache)
     end
     ȳ = sum(y) / n
     θ0 = zeros(i2 + 1)
