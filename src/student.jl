@@ -8,6 +8,25 @@
 
 using Distributions: TDist, logpdf
 
+# Standardised Student-t log-density log f_t(z; ν) with ν = 2 + exp(ην), stable for
+# all ην (#721). `Distributions.TDist` evaluates loggamma((ν+1)/2) − loggamma(ν/2)
+# − ½log(νπ) as a difference of numbers of size ~ν·log ν, which cancels
+# catastrophically for large ν (at ν ≈ 1e16 it is off by ~31 nats), so an optimiser
+# on the flat near-Gaussian ν ridge could walk into a spurious region and report a
+# garbage loglik. For ν > ~1100 (ην > 7) we use the asymptotic expansion
+#   loggamma(x+½) − loggamma(x) = ½log x − 1/(8x) + 1/(192x³) + O(x⁻⁵),  x = ν/2,
+# written in r = 1/ν (computed without overflow), so the constant is
+# −½log(2π) − r/4 + r³/24 (truncation error < 1e-16 here), and the kernel
+# (ν+1)/2·log1p(z²/ν) = (1+r)/2 · z² · log1p(u)/u with u = z²r. As ην → ∞ this
+# tends exactly to the Normal logpdf. Below the switch, TDist is accurate (< 1e-12).
+function _student_logpdf_std(z, ην)
+    ην > 7 || return logpdf(TDist(2 + exp(ην)), z)
+    e = exp(-ην); r = e / (1 + 2e)                  # r = 1/ν, → 0 without overflow
+    u = z^2 * r
+    L = u < 1e-4 ? 1 - u / 2 + u^2 / 3 - u^3 / 4 : log1p(u) / u   # log1p(u)/u
+    return -0.5 * log(2π) - r / 4 + r^3 / 24 - (1 + r) / 2 * z^2 * L
+end
+
 """
     Student()
 
@@ -82,8 +101,8 @@ function _fit_student_ranef(fam::Student, y, Xμ, Xσ, Xν, gidx, G, nmμ, nmσ,
             for k in 1:K
                 δ = rt2 * σb * z[k]; gll = logw[k]
                 for i in idx
-                    μ = η0[i] + δ; ν = 2 + exp(ην[i]); zt = (y[i] - μ) * exp(-ησ[i])
-                    gll += logpdf(TDist(ν), zt) - ησ[i]   # location-scale t, − log σ Jacobian
+                    μ = η0[i] + δ; zt = (y[i] - μ) * exp(-ησ[i])
+                    gll += _student_logpdf_std(zt, ην[i]) - ησ[i]   # location-scale t, − log σ Jacobian
                 end
                 terms[k] = gll
             end
@@ -138,8 +157,8 @@ function _fit_student_corr_ranef(fam::Student, y, Xμ, Xσ, Xν, xs, gidx, G, nm
                 b0 = rt2 * l11 * z1[j]; b1 = rt2 * (cc * z1[j] + l22 * z1[k])   # √2 L z
                 gll = lw[j] + lw[k]
                 for i in idx
-                    μ = η0[i] + b0 + b1 * xs[i]; ν = 2 + exp(ην[i]); zt = (y[i] - μ) * exp(-ησ[i])
-                    gll += logpdf(TDist(ν), zt) - ησ[i]
+                    μ = η0[i] + b0 + b1 * xs[i]; zt = (y[i] - μ) * exp(-ησ[i])
+                    gll += _student_logpdf_std(zt, ην[i]) - ησ[i]
                 end
                 terms[t] = gll
             end
@@ -174,8 +193,8 @@ function _fit_student(fam::Student, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol)
         ημ = Xμ * βμ; ησ = Xσ * βσ; ην = Xν * βν
         s = zero(eltype(θ))
         @inbounds for i in 1:n
-            ν = 2 + exp(ην[i]); z = (y[i] - ημ[i]) * exp(-ησ[i])
-            s -= logpdf(TDist(ν), z) - ησ[i]       # − log σ Jacobian
+            z = (y[i] - ημ[i]) * exp(-ησ[i])
+            s -= _student_logpdf_std(z, ην[i]) - ησ[i]       # − log σ Jacobian
         end
         return s
     end
