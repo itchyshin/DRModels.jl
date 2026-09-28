@@ -117,19 +117,28 @@ function _boundary_vc_warn(reduced::DrmFit, full::DrmFit, verb::AbstractString)
     return nothing
 end
 
-# Fixed-effect ("mean/scale") structure fingerprint for the REML guard (#639):
-# every block that does NOT carry a variance component (i.e. not in
-# `_VARIANCE_COMPONENT_BLOCKS`), paired with its coefficient names (falling back
-# to the block width when names are absent). On a univariate fit this is the
-# `:mu` (and `:sigma`) block(s); on a bivariate fit it is `:mu1`/`:mu2`/`:sigma1`/
-# `:sigma2`/`:rho12` (and `:nu`/`:cutpoints` where present) — every distributional
-# parameter's fixed-effect design, not just `:mu`. Sorted by block symbol so two
-# fits with the same blocks in a different order still compare equal.
+# Blocks that REML actually RESTRICTS (marginalises/projects out): the response
+# MEAN's fixed effects. Univariate `:mu`; bivariate `:mu1`/`:mu2` (see
+# gaussian_bivariate.jl's Patterson–Thompson restriction, which "marginalises
+# beta_mu1/beta_mu2 only"). A dispersion submodel (`:sigma`/`:sigma1`/`:sigma2`)
+# or a correlation submodel (`:rho12`) is estimated INSIDE the restricted
+# likelihood as an ordinary (nuisance) parameter, exactly like a variance
+# component — comparing REML fits that share the mean design but differ in
+# THOSE blocks is the valid, everyday use of REML (e.g. testing a heteroscedastic
+# vs homoscedastic error model), not the REML trap.
+const _REML_RESTRICTED_MEAN_BLOCKS = (:mu, :mu1, :mu2)
+
+# Fixed-effect (MEAN) structure fingerprint for the REML guard (#639): the
+# mean block(s) actually restricted by REML, paired with their coefficient
+# names (falling back to the block width when names are absent). On a
+# univariate fit this is `:mu`; on a bivariate fit, `:mu1`/`:mu2`. Sorted by
+# block symbol so two fits with the same blocks in a different order still
+# compare equal.
 function _fixed_effect_structure(fit::DrmFit)
     cn = Dict(fit.coefnames)
     fx = Pair{Symbol,Vector{String}}[]
     for (p, r) in fit.blocks
-        p in _VARIANCE_COMPONENT_BLOCKS && continue
+        p in _REML_RESTRICTED_MEAN_BLOCKS || continue
         nms = haskey(cn, p) ? cn[p] : string.(collect(r))
         push!(fx, p => nms)
     end
@@ -141,13 +150,15 @@ end
 # is not comparable to an ML (or MAP) log-likelihood AT ALL — they are different
 # likelihoods — so any pair with different `estim_method`s is refused outright,
 # even when their fixed-effect structures happen to match. Among two REML fits,
-# the classic REML trap is comparing DIFFERENT fixed-effect structures — in ANY
-# mean or scale block (`:mu`/`:mu1`/`:mu2`/`:sigma`/`:sigma1`/`:sigma2`/`:rho12`/…,
-# generalized to bivariate fits by `_fixed_effect_structure`) — the restricted
-# likelihoods are built on different error-contrast bases and are not comparable.
-# Comparing REML fits that differ only in VARIANCE-COMPONENT structure (same
-# fixed effects everywhere) is valid. ML-vs-ML is always fine. We ERROR on both
-# invalid cases (the LR test would be meaningless) and stay silent otherwise.
+# the classic REML trap is comparing DIFFERENT MEAN structures — `:mu`/`:mu1`/
+# `:mu2` (generalized to bivariate fits by `_fixed_effect_structure`) — the
+# restricted likelihoods are built on different error-contrast bases and are not
+# comparable. Comparing REML fits that differ only in a dispersion/correlation
+# submodel (`:sigma`/`:sigma1`/`:sigma2`/`:rho12`) or a variance-component
+# structure, with the SAME mean design, is valid — that submodel is a nuisance
+# parameter inside the restricted likelihood, not something REML restricts away.
+# ML-vs-ML is always fine. We ERROR on both invalid cases (the LR test would be
+# meaningless) and stay silent otherwise.
 function _reml_compare_guard(a::DrmFit, b::DrmFit, verb::AbstractString)
     (a.estim_method === :REML || b.estim_method === :REML) || return nothing
     if a.estim_method !== b.estim_method

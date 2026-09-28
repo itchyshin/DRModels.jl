@@ -10,13 +10,26 @@
 #      is never comparable to an ML log-likelihood, full stop (different
 #      likelihoods). Now any pair with different `estim_method` is refused
 #      outright, and a REML-vs-REML pair must additionally match fixed-effect
-#      structure in EVERY mean/scale block (not just `:mu`).
+#      (MEAN) structure — not just `:mu`, but `:mu1`/`:mu2` too on a bivariate
+#      fit.
 #   2. `_mean_structure` (now `_fixed_effect_structure`) matched only the
 #      univariate `:mu` block, so it silently returned `String[]` for every
 #      bivariate fit (`:mu1`/`:mu2`, never `:mu`) — the REML guard then passed
 #      ANY bivariate REML pair, mean-structure mismatch or not. It now covers
-#      every non-variance-component block, so bivariate `:mu1`/`:mu2`/`:sigma1`/
-#      `:sigma2`/`:rho12` structure is detected.
+#      every MEAN block that REML actually restricts/marginalises
+#      (`:mu`/`:mu1`/`:mu2`), so bivariate mean structure is detected.
+#      (An earlier version of this fix widened the fingerprint to EVERY
+#      non-variance-component block, i.e. also `:sigma1`/`:sigma2`/`:rho12` —
+#      that over-refused: a dispersion (`:sigma`/`:sigma1`/`:sigma2`) or
+#      correlation (`:rho12`) submodel is a nuisance parameter estimated
+#      INSIDE the restricted likelihood, not something REML restricts away
+#      (gaussian_bivariate.jl: REML "marginalises beta_mu1/beta_mu2 only"), so
+#      comparing REML fits with the SAME mean design but a DIFFERENT sigma/
+#      rho12 submodel is a valid, everyday REML comparison (e.g. testing
+#      heteroscedasticity) — exactly what test_reml.jl's "model-selection
+#      guard" testset requires `lrtest(full_reml, var_only_reml)` (same mu,
+#      differing only in sigma) to accept. Reverted the fingerprint to
+#      mean-only blocks; see src/comparison.jl's `_fixed_effect_structure`.)
 #   3. The variance-component boundary label (`_boundary_vc_warn`, issue #304)
 #      already keys off block symbols (`:phylocov`/`:recov`/…) that are shared
 #      between univariate and bivariate fits, so it was already bivariate-safe;
@@ -100,10 +113,14 @@ using Test, Random, LinearAlgebra, Statistics
         blocks_seen = first.(fx)
         @test :mu1 in blocks_seen
         @test :mu2 in blocks_seen
-        @test :sigma1 in blocks_seen
-        @test :sigma2 in blocks_seen
-        @test :rho12 in blocks_seen
-        # No block is silently empty (the pre-fix `_mean_structure` returned
+        # `:sigma1`/`:sigma2`/`:rho12` are dispersion/correlation submodels, not
+        # something REML restricts away, so they are deliberately NOT part of
+        # this fingerprint (see the file header note above) — a same-mean,
+        # different-sigma REML pair must remain a valid comparison.
+        @test :sigma1 ∉ blocks_seen
+        @test :sigma2 ∉ blocks_seen
+        @test :rho12 ∉ blocks_seen
+        # No mean block is silently empty (the pre-fix `_mean_structure` returned
         # `String[]` for every one of these on a bivariate fit).
         @test all(!isempty(nms) for (_, nms) in fx)
 
