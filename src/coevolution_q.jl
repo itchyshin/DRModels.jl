@@ -291,15 +291,24 @@ function coevo_marginal_cov(prob::CoevoProblem, Q_cond::SparseMatrixCSC,
     issuccess(chH) || return (-Inf, zeros(size(H, 1)), chH, P)
     rhs = coevo_rhs(prob, β, Dinv)
     Lt = L'
-    @inbounds for t in 1:prob.N                   # rhs̃ = (I ⊗ L') rhs
-        blk = (q * (t - 1) + 1):(q * t)
-        rhs[blk] = Lt * rhs[blk]
+    rhsw = similar(rhs)
+    @inbounds for t in 1:prob.N, a in 1:q         # rhs̃ = (I ⊗ L') rhs  (L' upper)
+        base = q * (t - 1)
+        s = 0.0
+        for b in a:q
+            s += L[b, a] * rhs[base + b]
+        end
+        rhsw[base + a] = s
     end
-    v̂ = chH \ rhs                                 # whitened conjugate mode
+    v̂ = chH \ rhsw                                # whitened conjugate mode
     û = similar(v̂)
-    @inbounds for t in 1:prob.N                   # û = (I ⊗ L) v̂
-        blk = (q * (t - 1) + 1):(q * t)
-        û[blk] = L * v̂[blk]
+    @inbounds for t in 1:prob.N, a in 1:q         # û = (I ⊗ L) v̂  (L lower)
+        base = q * (t - 1)
+        s = 0.0
+        for b in 1:a
+            s += L[a, b] * v̂[base + b]
+        end
+        û[base + a] = s
     end
 
     # joint nll at û
@@ -321,7 +330,18 @@ function coevo_marginal_cov(prob::CoevoProblem, Q_cond::SparseMatrixCSC,
 
     logdetH = logdet(chH)                         # logdet H̃ (Σ log Lᵢᵢ cancels)
     # (I⊗L')(P + εI)(I⊗L) = Q ⊗ I + ε I ⊗ L'L: the historical ridge, whitened.
-    Pr = Pw + kron(sparse(1.0I, prob.N, prob.N), sparse(1e-10 * (Lt * L)))
+    # Pw stores every q×q diagonal block in full (prior_precision), so add the
+    # ridge straight into its nonzeros: the block's q rows are contiguous.
+    Pr = copy(Pw)
+    ridge = 1e-10 * (Lt * L)
+    rv = rowvals(Pr); nz = nonzeros(Pr)
+    @inbounds for t in 1:prob.N, b in 1:q
+        r = nzrange(Pr, q * (t - 1) + b)
+        k = first(r) - 1 + searchsortedfirst(view(rv, r), q * (t - 1) + 1)
+        for a in 1:q
+            nz[k + a - 1] += ridge[a, b]
+        end
+    end
     chP = cholesky(Symmetric(Pr); check = false)
     # A failed factorisation leaves an incomplete factor whose `logdet` returns a
     # finite-but-wrong value; that poisons ℓ and `fit_coevolution`'s isfinite
