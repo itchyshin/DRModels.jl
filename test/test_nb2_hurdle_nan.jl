@@ -119,6 +119,20 @@ end
         end
     end
 
+    @testset "no overflow when r ≫ μ (μ near underflow, extreme dispersion)" begin
+        # r/μ itself can overflow Float64 (> ~1.8e308) here, e.g. r = exp(40),
+        # μ = 1e-300: r/μ ≈ 2.35e317. A stable-looking rewrite of the k·(log μ -
+        # log r - log1p(μ/r)) term as -k·log1p(r/μ) breaks in exactly this
+        # corner (log1p(Inf) = Inf, contaminating an otherwise well-conditioned
+        # calculation) — caught via test_qres_trunc_nan.jl's residual driver,
+        # which hit this cell with real σ, μ values. Guard it directly here.
+        for logsigma in (-20.0, -50.0), μ in (1e-300, 1e-320), k in (1, 2, 5)
+            r = 1 / exp(logsigma)^2
+            v = DRModels._nb2_logpmf(r, μ, k)
+            @test isfinite(v)
+        end
+    end
+
     @testset "speed: O(1), not O(k)" begin
         # Robust to a shared/slow runner: count elapsed calls to `log` inside
         # `_nb2_loggammadiff` rather than wall time. The pre-fix code called
