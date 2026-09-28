@@ -20,8 +20,11 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   each it reproduces the crossed Laplace fit exactly. `fit.loglik` and `fit.nll`
   are the same objective, and the fit is tagged `marginal = :AGHQ`, so `lrtest` /
   `anova` refuse to compare it with a Laplace or GHQ fit. Wired for Binomial and
-  Poisson; other families with a mean-only crossed kernel can opt in with one
-  line. Default fits are unchanged.
+  Poisson (mean-only); also wired for NegBinomial2, Gamma, Beta and BetaBinomial,
+  whose nuisance parameter (NB2 size, Gamma shape, Beta/BetaBinomial precision)
+  is estimated jointly with β and the two variance components
+  (`_fit_crossed_mean_aghq_nuisance`, the nuisance-aware twin of the mean-only
+  route). Default fits are unchanged.
 
 - **`marginal = :Laplace` on an ordinary `(1 | g)` (Arc 2, drmTMB parity).**
   Poisson, Binomial, NegBinomial2, Gamma and Beta with one ordinary random

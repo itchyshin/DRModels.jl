@@ -40,17 +40,22 @@ fit_phy = drm(bf(@formula(cbind(successes, failures) ~ x + phylo(1 | species)), 
 struct BetaBinomial end
 
 function drm(f::DrmFormula, fam::BetaBinomial; data, tree = nothing, g_tol::Real = 1e-8,
-             se::Bool = true)
+             se::Bool = true, marginal::Symbol = :LA)
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
-        drm(f, fam; data = data_observed, tree = tree, g_tol = g_tol, se = se)
+        drm(f, fam; data = data_observed, tree = tree, g_tol = g_tol, se = se, marginal = marginal)
     end
     missing_fit !== nothing && return missing_fit
 
     f.response2 === nothing &&
         error("BetaBinomial() needs a two-column response: bf(cbind(successes, failures) ~ …)")
+    marg = _marginal_method(marginal)                     # :LA (default) or :AGHQ (#761)
+    isaghq = marg isa AGHQ
     _lss_only_gaussian_guard(f, fam)   # #544: refuse, never silently drop, sd() parts
     rhs = Dict(f.forms)
     fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
+    isaghq && !(length(re) > 1 && st === nothing) &&
+        _aghq_reject(fam, "this model (BetaBinomial `marginal = :AGHQ` covers crossed random " *
+                          "intercepts `(1 | g) + (1 | h)` only, #761)")
     mv === nothing ||
         error("BetaBinomial() does not support meta_V markers")
     for (pname, r) in f.forms          # only the mean may carry a random effect
@@ -88,6 +93,7 @@ function drm(f::DrmFormula, fam::BetaBinomial; data, tree = nothing, g_tol::Real
                 grp = r[2]; gidx, G = _group_index(getproperty(data, grp))
                 (ones(length(s)), gidx, G, String(grp))
             end
+            isaghq && return _withformula(_fit_betabinomial_crossed_aghq(fam, s, ntr, Xμ, comps, nmμ, nmσ, g_tol; se = se), f)   # #761
             return _withformula(_fit_betabinomial_crossed_laplace(fam, s, ntr, Xμ, comps, nmμ, nmσ, g_tol), f)
         end
         (rk, var) = _re_kind(re[1][1]); grp = re[1][2]; gidx, G = _group_index(getproperty(data, grp))

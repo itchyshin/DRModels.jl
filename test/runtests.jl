@@ -303,6 +303,7 @@ _shard_include("test_variational_gamma.jl")
 _shard_include("test_aghq_1d.jl")                  # #448: 1-D Liu–Pierce AGHQ (lever 2)
 _shard_include("test_adaptive_ghq.jl")             # #834: per-group AGHQ for (1 + x | g) routes
 _shard_include("test_crossed_aghq.jl")             # #761: marginal = :AGHQ for crossed (1 | g) + (1 | h)
+_shard_include("test_crossed_aghq_families.jl")    # #761: crossed AGHQ, NB2/Gamma/Beta/BetaBinomial nuisance
 _shard_include("test_ordinary_laplace.jl")         # Arc 2: marginal = :Laplace on ordinary (1 | g)
 # Numerical-stability guards from the twin code-review pass (#303/#308/#311/#312/
 # #319/#321/#324.6/#324.7): SD-collapse, coincident coords, VA inner damping,

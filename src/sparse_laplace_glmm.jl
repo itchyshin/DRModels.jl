@@ -3181,6 +3181,87 @@ function _crossed_aghq_start(lap, pμ)
     return θ0
 end
 
+# Laplace-nuisance optimum as the AGHQ-nuisance start; θ = [β; nuisance; log σ₁;
+# log σ₂] (see `_fit_crossed_mean_aghq_nuisance` below), so only the LAST two
+# entries (the variance components) are floored — the nuisance entry (pμ+1) is
+# kept as the Laplace fit found it.
+function _crossed_aghq_nuisance_start(lap, pμ)
+    θ0 = copy(lap.theta)
+    θ0[pμ+2:pμ+3] .= max.(θ0[pμ+2:pμ+3], log(0.05))
+    return θ0
+end
+
+"""
+    _fit_crossed_mean_aghq_nuisance(fam, kind, aux_from, n, Xμ, comps, nmμ, nmσ, g_tol;
+                                    θ0, sigma_scale, K_g, K_h, se, extra_scales)
+
+Crossed random intercepts `(1 | g) + (1 | h)` under `marginal = :AGHQ`
+(`_crossed_aghq_loglik`, adaptive_ghq.jl) for a family whose nuisance parameter
+(NB2 size, Gamma shape, Beta/BetaBinomial precision) is ESTIMATED JOINTLY with β
+and the two variance components — the AGHQ twin of
+[`_fit_crossed_mean_laplace_nuisance`](@ref). θ = [β; nuisance log-scale; log σ₁;
+log σ₂], the same order that function uses. `aux_from(nuisance_value)` rebuilds
+the family aux at the current nuisance value; unlike `_fit_crossed_mean_aghq`
+(fixed-nuisance families, `ll` built once), `ll` is rebuilt on every objective
+evaluation here because `aux` — and hence the per-observation log-density —
+depends on θ. `K_g = K_h = 1` reproduces the crossed-Laplace-nuisance objective
+exactly, by the same argument as `_fit_crossed_mean_aghq`'s docstring.
+"""
+function _fit_crossed_mean_aghq_nuisance(fam, kind, aux_from, n::Int, Xμ, comps, nmμ, nmσ, g_tol;
+                                         θ0, sigma_scale,
+                                         K_g::Int = _CROSSED_AGHQ_KG,
+                                         K_h::Union{Nothing,Int} = nothing, se::Bool = true,
+                                         extra_scales = Dict{Symbol,Vector{Float64}}())
+    length(comps) == 2 && all(==(1.0), comps[1][1]) && all(==(1.0), comps[2][1]) ||
+        throw(ArgumentError("marginal = :AGHQ on crossed random effects supports exactly two " *
+                            "random intercepts `(1 | g) + (1 | h)`"))
+    labels = [comps[1][4], comps[2][4]]
+    outer = comps[1][3] <= comps[2][3] ? 1 : 2
+    inner = 3 - outer
+    Hh = comps[outer][3]
+    Hh <= _CROSSED_AGHQ_HMAX || throw(ArgumentError(
+        "marginal = :AGHQ on crossed random intercepts needs one grouping with at most " *
+        "$(_CROSSED_AGHQ_HMAX) levels (its random effects are integrated by a tensor grid of " *
+        "K_h^H points); here the smaller grouping `$(labels[outer])` has $Hh levels. Use the " *
+        "default marginal (crossed Laplace, as drmTMB/lme4) (#761)."))
+    gidx = comps[inner][2]; G = comps[inner][3]; hidx = comps[outer][2]
+    gmembers = [Int[] for _ in 1:G]
+    for i in 1:n
+        push!(gmembers[gidx[i]], i)
+    end
+    rule_g = _AGHQRule(1, K_g)
+    rule_h = _AGHQRule(Hh, K_h === nothing ? _crossed_aghq_default_kh(Hh) : K_h)
+    cache = (ug = zeros(G), uh = zeros(Hh), Zre = ones(n, 1))
+    pμ = size(Xμ, 2)
+    function nll(θ)
+        logσnu = clamp(θ[pμ+1], -8.0, 8.0)
+        logσ = clamp.(θ[pμ+2:pμ+3], -8.0, 3.0)
+        aux = aux_from(logσnu)
+        ll = (i, η) -> -_laplace_value(kind, aux, i, η)
+        η0 = Xμ * θ[1:pμ]
+        v = -_crossed_aghq_loglik(ll, gmembers, gidx, hidx, Hh, η0, exp(logσ[inner]),
+                                  exp(logσ[outer]), rule_g, rule_h, cache)
+        return isfinite(_aghq_primal(v)) ? v : convert(typeof(v), 1e18)
+    end
+    grad!(Gout, θ) = ForwardDiff.gradient!(Gout, nll, θ)
+    res = Optim.optimize(nll, grad!, Float64.(θ0), Optim.LBFGS(),
+                         Optim.Options(g_tol = g_tol, iterations = 250))
+    θ̂ = Optim.minimizer(res)
+    nllhat = nll(θ̂)
+    gfinal = ForwardDiff.gradient(nll, θ̂)
+    converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
+    V = se ? _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); context = "crossed AGHQ (nuisance)") :
+             fill(NaN, length(θ̂), length(θ̂))
+    blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+1), :resd => (pμ+2):(pμ+3)]
+    names = [:mu => nmμ, :sigma => nmσ, :resd => labels]
+    auxhat = aux_from(clamp(θ̂[pμ+1], -8.0, 8.0))
+    means = Dict(:mu => [_laplace_mean(kind, dot(@view(Xμ[i, :]), θ̂[1:pμ])) for i in 1:n])
+    obs = Dict(:mu => [_laplace_obs(kind, auxhat, i) for i in 1:n])
+    scales = merge(Dict(:sigma => fill(sigma_scale(θ̂[pμ+1]), n)), extra_scales)
+    fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
+    return _withiterations(_withmarginal(_withnll(fit, nll, grad!), :AGHQ), Optim.iterations(res))
+end
+
 """
     _fit_binomial_crossed_aghq(fam, s, ntr, Xμ, comps, nmμ, g_tol; K_g, K_h, se)
 
@@ -3244,6 +3325,32 @@ function _fit_nb2_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
     )
 end
 
+"""
+    _fit_nb2_crossed_aghq(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol; K_g, K_h, se)
+
+NB2 crossed random intercepts `(1 | g) + (1 | h)` under `marginal = :AGHQ`
+(`_fit_crossed_mean_aghq_nuisance`); the dispersion size `r = exp(-2·logσ)` is
+ESTIMATED JOINTLY with β and the two variance components, using the same
+`aux_from` as `_fit_nb2_crossed_laplace`. Started from that function's Laplace
+optimum (`_crossed_aghq_nuisance_start`).
+"""
+function _fit_nb2_crossed_aghq(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol; se::Bool = true,
+                               K_g::Int = _CROSSED_AGHQ_KG, K_h::Union{Nothing,Int} = nothing)
+    length(comps) == 2 || error("_fit_nb2_crossed_aghq requires two random-intercept components")
+    size(Xσ, 2) == 1 || error("_fit_nb2_crossed_aghq currently supports a constant sigma formula")
+    yint = round.(Int, y)
+    function aux_from(logσ)
+        r = exp(clamp(-2 * logσ, -8.0, 8.0))
+        lconst = [loggamma(yint[i] + r) - loggamma(r) - _logfactorial(yint[i]) for i in eachindex(yint)]
+        return (y = Float64.(yint), size = r, lconst = lconst)
+    end
+    lap = _fit_nb2_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol; se = false)
+    return _fit_crossed_mean_aghq_nuisance(fam, Val(:nb2_fixed), aux_from, length(y), Xμ, comps,
+                                           nmμ, nmσ, g_tol;
+                                           θ0 = _crossed_aghq_nuisance_start(lap, size(Xμ, 2)),
+                                           sigma_scale = exp, K_g = K_g, K_h = K_h, se = se)
+end
+
 function _fit_gamma_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
                                     se::Bool = false, polish_iterations::Int = 5)
     length(comps) == 2 || error("_fit_gamma_crossed_laplace requires two random-intercept components")
@@ -3265,6 +3372,32 @@ function _fit_gamma_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
         θβ0 = θβ0, θσ0 = -0.5 * log(α0), sigma_scale = exp,
         se = se, polish_iterations = polish_iterations
     )
+end
+
+"""
+    _fit_gamma_crossed_aghq(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol; K_g, K_h, se)
+
+Gamma crossed random intercepts `(1 | g) + (1 | h)` under `marginal = :AGHQ`
+(`_fit_crossed_mean_aghq_nuisance`); the shape `α = exp(-2·logσ)` is ESTIMATED
+JOINTLY with β and the two variance components, using the same `aux_from` as
+`_fit_gamma_crossed_laplace`. Started from that function's Laplace optimum
+(`_crossed_aghq_nuisance_start`).
+"""
+function _fit_gamma_crossed_aghq(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol; se::Bool = true,
+                                 K_g::Int = _CROSSED_AGHQ_KG, K_h::Union{Nothing,Int} = nothing)
+    length(comps) == 2 || error("_fit_gamma_crossed_aghq requires two random-intercept components")
+    size(Xσ, 2) == 1 || error("_fit_gamma_crossed_aghq currently supports a constant sigma formula")
+    yv = Float64.(y)
+    function aux_from(logsigma)
+        α = exp(clamp(-2 * logsigma, -8.0, 8.0))
+        lconst = [α * log(α) - loggamma(α) + (α - 1) * log(yv[i]) for i in eachindex(yv)]
+        return (y = yv, shape = α, lconst = lconst)
+    end
+    lap = _fit_gamma_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol; se = false)
+    return _fit_crossed_mean_aghq_nuisance(fam, Val(:gamma_fixed), aux_from, length(yv), Xμ, comps,
+                                           nmμ, nmσ, g_tol;
+                                           θ0 = _crossed_aghq_nuisance_start(lap, size(Xμ, 2)),
+                                           sigma_scale = exp, K_g = K_g, K_h = K_h, se = se)
 end
 
 function _fit_beta_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
@@ -3292,6 +3425,33 @@ function _fit_beta_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
 end
 
 """
+    _fit_beta_crossed_aghq(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol; K_g, K_h, se)
+
+Beta crossed random intercepts `(1 | g) + (1 | h)` under `marginal = :AGHQ`
+(`_fit_crossed_mean_aghq_nuisance`); the precision `φ = exp(-2·logσ)` is
+ESTIMATED JOINTLY with β and the two variance components, using the same
+`aux_from` as `_fit_beta_crossed_laplace`. Started from that function's Laplace
+optimum (`_crossed_aghq_nuisance_start`).
+"""
+function _fit_beta_crossed_aghq(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol; se::Bool = true,
+                                K_g::Int = _CROSSED_AGHQ_KG, K_h::Union{Nothing,Int} = nothing)
+    length(comps) == 2 || error("_fit_beta_crossed_aghq requires two random-intercept components")
+    size(Xσ, 2) == 1 || error("_fit_beta_crossed_aghq currently supports a constant sigma formula")
+    yv = Float64.(y)
+    ylogit = log.(yv) .- log1p.(-yv)
+    function aux_from(logsigma)
+        φ = exp(clamp(-2 * logsigma, -8.0, 8.0))
+        return (y = yv, precision = φ, ylogit = ylogit,
+                lgammaφ = loggamma(φ), digammaφ = digamma(φ))
+    end
+    lap = _fit_beta_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol; se = false)
+    return _fit_crossed_mean_aghq_nuisance(fam, Val(:beta_fixed), aux_from, length(yv), Xμ, comps,
+                                           nmμ, nmσ, g_tol;
+                                           θ0 = _crossed_aghq_nuisance_start(lap, size(Xμ, 2)),
+                                           sigma_scale = exp, K_g = K_g, K_h = K_h, se = se)
+end
+
+"""
     _fit_betabinomial_crossed_laplace(fam, s, ntr, Xμ, comps, nmμ, nmσ, g_tol; se)
 
 Beta-binomial sparse-Laplace fit with two crossed random intercepts on the
@@ -3314,6 +3474,31 @@ function _fit_betabinomial_crossed_laplace(fam, s, ntr, Xμ, comps, nmμ, nmσ, 
         se = se, polish_iterations = polish_iterations,
         extra_scales = Dict(:trials => Float64.(nint))
     )
+end
+
+"""
+    _fit_betabinomial_crossed_aghq(fam, s, ntr, Xμ, comps, nmμ, nmσ, g_tol; K_g, K_h, se)
+
+Beta-binomial crossed random intercepts `(1 | g) + (1 | h)` under
+`marginal = :AGHQ` (`_fit_crossed_mean_aghq_nuisance`); the precision
+`φ = exp(-2·logσ)` is ESTIMATED JOINTLY with β and the two variance components,
+using the same `aux_from` (`_betabinomial_laplace_setup`) as
+`_fit_betabinomial_crossed_laplace`. Started from that function's Laplace
+optimum (`_crossed_aghq_nuisance_start`).
+"""
+function _fit_betabinomial_crossed_aghq(fam, s, ntr, Xμ, comps, nmμ, nmσ, g_tol; se::Bool = true,
+                                        K_g::Int = _CROSSED_AGHQ_KG, K_h::Union{Nothing,Int} = nothing)
+    length(comps) == 2 || error("_fit_betabinomial_crossed_aghq requires two random-intercept components")
+    all(==(1.0), comps[1][1]) && all(==(1.0), comps[2][1]) ||
+        error("_fit_betabinomial_crossed_aghq supports scalar random intercepts only")
+    aux_from, _, _ = _betabinomial_laplace_setup(s, ntr, Xμ)
+    nint = round.(Int, ntr)
+    lap = _fit_betabinomial_crossed_laplace(fam, s, ntr, Xμ, comps, nmμ, nmσ, g_tol; se = false)
+    return _fit_crossed_mean_aghq_nuisance(fam, Val(:betabinomial_fixed), aux_from, length(s), Xμ, comps,
+                                           nmμ, nmσ, g_tol;
+                                           θ0 = _crossed_aghq_nuisance_start(lap, size(Xμ, 2)),
+                                           sigma_scale = exp, K_g = K_g, K_h = K_h, se = se,
+                                           extra_scales = Dict(:trials => Float64.(nint)))
 end
 
 function _fit_nb2_fixed_crossed_laplace(fam, y, size::Real, Xμ, comps, nmμ, g_tol;
