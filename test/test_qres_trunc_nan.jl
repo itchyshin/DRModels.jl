@@ -18,6 +18,7 @@
 using DRModels
 using Test, Random, Statistics
 import Distributions
+import SpecialFunctions
 using StableRNGs
 
 # A bare-bones univariate DrmFit exposing only what `_quantile_residuals`
@@ -144,5 +145,70 @@ end
             r = DRModels._quantile_residuals(fit, StableRNG(1))
             @test all(isfinite, r)
         end
+    end
+end
+
+# #883 (review of #871/#874/#876): the TNB2 quantile-residual driver's running
+# `_logaddexp` loop calls `_nb2_logpmf(r, μ, j)` for j = 1:(y-1). Before #871's
+# fix that call was O(j), so this loop was O(y²) — 15.9s at mean~3000 (measured,
+# ~80,000× slower than main). #871 made `_nb2_logpmf` O(1), so this file needed
+# NO code change: the same loop is now O(y) automatically, inherited through the
+# #874 -> #876 merge. Lock that down directly.
+@testset "TruncatedNegBinomial2 quantile residuals: O(y) speed, large-y accuracy (#883)" begin
+    @testset "accuracy of the truncated tail CDF vs 512-bit BigFloat" begin
+        setprecision(BigFloat, 512) do
+            for (r, μ, yi) in ((5.0, 3000.0, 11_000), (2.0, 300.0, 1_200), (1e17, 5.0, 10), (0.05, 1e5, 5000))
+                rb, μb = big(r), big(μ)
+                function bigpmf(j)
+                    SpecialFunctions.loggamma(j + rb) - SpecialFunctions.loggamma(rb) -
+                    SpecialFunctions.loggamma(big(j) + 1) +
+                    rb * log(rb / (rb + μb)) + j * log(μb / (rb + μb))
+                end
+                logF0 = bigpmf(0)
+                log1mF0 = log1p(-exp(logF0))
+                loga_ref = j -> begin
+                    acc = big(-Inf)
+                    for jj in 1:(j-1)
+                        lp = bigpmf(jj)
+                        acc = max(acc, lp) + log1p(exp(-abs(acc - lp)))
+                    end
+                    acc
+                end
+                a_ref = Float64(exp(loga_ref(yi) - log1mF0))
+                b_ref = Float64(exp(loga_ref(yi + 1) - log1mF0))
+                # `_quantile_residuals` returns the STANDARD-NORMAL quantile of
+                # the PIT (Dunn & Smyth quantile residuals), not the raw
+                # uniform PIT itself — map the reference bounds the same way.
+                lo, hi = eps(), 1 - eps()
+                q_lo = Distributions.quantile(Distributions.Normal(), clamp(a_ref, lo, hi))
+                q_hi = Distributions.quantile(Distributions.Normal(), clamp(b_ref, lo, hi))
+
+                fit = _fake_fit(TruncatedNegBinomial2(), [μ], [Float64(yi)],
+                                 Dict(:sigma => [1 / sqrt(r)]))
+                # Draw many times with different RNG states; every draw must land
+                # inside [q_lo, q_hi] up to a small float64 tolerance.
+                for seed in 1:5
+                    u = only(DRModels._quantile_residuals(fit, StableRNG(seed)))
+                    @test isfinite(u)
+                    @test q_lo - 1e-6 <= u <= q_hi + 1e-6
+                end
+            end
+        end
+    end
+
+    @testset "speed: O(y), not O(y²)" begin
+        function _fake_tnb2(μ, yi; r = 5.0)
+            _fake_fit(TruncatedNegBinomial2(), [μ], [Float64(yi)], Dict(:sigma => [1 / sqrt(r)]))
+        end
+        fit_small = _fake_tnb2(3000.0, 5)
+        fit_large = _fake_tnb2(3000.0, 20_000)     # #876's slow regime (mean~3000)
+        DRModels._quantile_residuals(fit_small, StableRNG(1))   # warm up
+        DRModels._quantile_residuals(fit_large, StableRNG(1))
+        t_small = @elapsed DRModels._quantile_residuals(fit_small, StableRNG(1))
+        t_large = @elapsed DRModels._quantile_residuals(fit_large, StableRNG(1))
+        # y ratio is 4000x; if still O(y²) this ratio would be ~1.6e7. Require
+        # well under that — generous margin for a shared runner, decisive
+        # against O(y²).
+        @test t_large < 5000 * max(t_small, 1e-6)
     end
 end
