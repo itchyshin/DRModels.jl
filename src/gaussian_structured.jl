@@ -77,17 +77,26 @@ spatial(x) = x
 # in both Julia and R); whether to add a condition-number threshold is an
 # owner decision, tracked separately.
 function _checked_relmat_chol(C, grp::Symbol)
-    Cm = Matrix{Float64}(C)
-    isapprox(Cm, Cm'; rtol = sqrt(eps(Float64))) ||
-        throw(ArgumentError("relmat/animal matrix for `$grp` is not symmetric " *
-            "(outside a sqrt(eps) relative tolerance); check the matrix was " *
-            "built correctly"))
+    Cm = _checked_relmat_symmetric(C, grp)
     ch = cholesky(Symmetric(Cm); check = false)
     issuccess(ch) ||
         throw(ArgumentError("relmat/animal matrix for `$grp` is not positive " *
             "definite (Cholesky factorization failed); check the matrix scale, " *
             "level ordering, and for duplicated levels"))
     return ch
+end
+
+# Symmetry-only guard, for routes that only need C to be PSD (they form and
+# factor the marginal V, never C⁻¹ itself) — see `_fit_two_structured_gaussian`
+# below. A singular-but-PSD C (e.g. clonal/duplicated relmat rows, or a phylo
+# correlation with a zero-length terminal branch) is a valid input there.
+function _checked_relmat_symmetric(C, grp::Symbol)
+    Cm = Matrix{Float64}(C)
+    isapprox(Cm, Cm'; rtol = sqrt(eps(Float64))) ||
+        throw(ArgumentError("relmat/animal matrix for `$grp` is not symmetric " *
+            "(outside a sqrt(eps) relative tolerance); check the matrix was " *
+            "built correctly"))
+    return Cm
 end
 
 function _fit_structured_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, K, nmμ, nmσ, grp, g_tol)
@@ -210,8 +219,12 @@ function _fit_two_structured_gaussian(fam::Gaussian, y, Xμ, gidx1, G1, C1, gidx
                                       nmμ, grp1, grp2, g_tol)
     n = length(y)
     pμ = size(Xμ, 2)
-    _checked_relmat_chol(C1, grp1)   # PD/symmetry guard; only the assembled V
-    _checked_relmat_chol(C2, grp2)   # was checked before, not C1/C2 directly
+    # Symmetry only: this route forms and factors the marginal V = σ²I +
+    # σ₁²Z₁C₁Z₁' + σ₂²Z₂C₂Z₂' and never C⁻¹ itself, so a singular-but-PSD C
+    # (clonal relmat rows, a zero-length phylo tip) is a valid input — V-level
+    # `Vfac` below (`check = false`) is what actually enforces PD-ness.
+    _checked_relmat_symmetric(C1, grp1)
+    _checked_relmat_symmetric(C2, grp2)
     Z1 = _structured_Z(gidx1, G1)
     Z2 = _structured_Z(gidx2, G2)
     ZC1Zt = Z1 * C1 * Z1'        # constant building blocks (C₁, C₂ fixed)
