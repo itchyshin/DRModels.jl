@@ -34,6 +34,21 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   returned `-Inf`; normal-regime objective values are identical to the old
   path to ≤ 1e-12.
 
+- **Last `inv(Λ)` site in the q=2 REML route removed (#857 site K, #862/#865
+  follow-up).** `_q2_profile_and_schur` (`reml_q2.jl`) was the one caller left
+  forming `Λ` densely and calling `inv(Λ)` to build the bordered (u, β)
+  Hessian used for the profile/Schur step. Measured against a 256-bit dense
+  GLS reference (S = X'V⁻¹X, β̂ the GLS estimator) at log-Cholesky diagonal
+  l22 = −18/−20/−30: before, l22 = −18 returned a finite but silently wrong
+  S/β̂, and l22 = −20/−30 rejected the step outright (`ok = false`); after, all
+  three match the reference to relative error ≤ 6e-16 (β̂: ≤ 2e-15). It now
+  takes `chΛ::Cholesky` (via `lc_to_chol`) and whitens `u` (`v = (I ⊗ L)⁻¹u`,
+  same construction as `coevo_marginal_cov`); the Schur complement of the
+  profiled β block is basis-invariant under this substitution, so normal-
+  regime `S`/`β̂` are unchanged (checked against the pre-fix formula over 10
+  random draws: agree to ≤ 2e-16 relative). A convenience method still accepts
+  a formed `Λ::AbstractMatrix` for existing callers/tests, factoring it once.
+
 - **`Student()` no longer reports a garbage log-likelihood near the Gaussian
   limit (#721; drmTMB twin #1265).** When the data are close to Normal the
   likelihood is flat in the ν predictor, and the optimiser can walk ν = 2 +
