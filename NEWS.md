@@ -6,6 +6,21 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **`cond_newton_beta` (q=4 REML) and `mstep_beta` no longer evaluate the
+  objective at a wild trial point on an ill-conditioned fixed-effect design.**
+  Both take a Newton step on the profiled fixed effects from an exact
+  ForwardDiff Hessian (ridge ladder for indefiniteness, up to 25 halvings
+  accepted only on decrease), but the raw step had no cap on its size. On a
+  near-collinear mean design (x2 = x1 + 1e-8·noise, cond(H) up to 5.6e16) the
+  raw step reached ‖step‖∞ ≈ 3.25e5, a step of about 1.4e5 was accepted, and β
+  for the collinear pair diverged to ±602. The whole raw step is now scaled so
+  ‖step‖∞ ≤ 5.0 (matching `_estep_robust`'s existing trust radius) BEFORE
+  backtracking, in both functions. A no-op on well-conditioned designs (the
+  fitted β and REML logLik are unchanged to 1e-8 on the existing q4 REML
+  fixtures); the collinear pair itself stays unidentified regardless of the
+  cap — the cap only prevents evaluating wild points, matching the pattern
+  drmTMB adopted for the same failure mode (draft PR #1441).
+
 - **`Student()` no longer reports a garbage log-likelihood near the Gaussian
   limit (#721; drmTMB twin #1265).** When the data are close to Normal the
   likelihood is flat in the ν predictor, and the optimiser can walk ν = 2 +

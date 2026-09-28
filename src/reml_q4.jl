@@ -138,6 +138,7 @@ function cond_newton_beta(prob::AugProblem, u_hat::Vector{Float64},
             ch = cholesky(Symmetric(H + lam*I); check=false)
             if issuccess(ch); step = ch \ g; break; end
         end
+        step = cap_newton_step(step)   # trust radius BEFORE backtracking (#872-adjacent audit)
         f0 = f_beta(bv); alpha = 1.0; bvn = bv .- alpha .* step
         for _ in 1:25
             (f_beta(bvn) <= f0 || alpha < 1e-8) && break
