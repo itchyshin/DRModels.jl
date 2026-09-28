@@ -20,6 +20,21 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   values are bit-for-bit unaffected (matches the old `Distributions.logpdf`
   path to 1e-10).
 
+- **Plain zero-truncated NB2 (`TruncatedNegBinomial2()`, no `hu` part) no
+  longer returns NaN at extreme dispersion.** `_fit_truncated_negbin2`
+  (`src/negbinomial.jl`) had the identical `logpdf(d, y) - log(1 - P(0))`
+  cancellation as the hurdle NB2 fix above (#866): at `log σ ≈ -20..-50`
+  the zero-truncation divisor was `-Inf - (-Inf) = NaN`. A repo-wide sweep of
+  every other NB2/truncated-NB2 log-likelihood site (zero-inflated, `(1|g)`
+  and `(1+x|g)` random-effect, phylo, relmat/animal/spatial, crossed, and
+  variational NB2 paths) found no other affected site — each of those either
+  has no zero-truncation divisor or hard-clamps the dispersion linear
+  predictor well inside the safe range. Fixed the same way, with `_nb2_logpmf`.
+  (A related NaN in `_conditional_dist`'s cdf-based zero-truncation divisor
+  for quantile residuals, `src/quantile_residuals.jl`, was also found but is
+  out of scope here — it is a diagnostic/residual path, not a fitting
+  log-likelihood.)
+
 - **`Student()` no longer reports a garbage log-likelihood near the Gaussian
   limit (#721; drmTMB twin #1265).** When the data are close to Normal the
   likelihood is flat in the ν predictor, and the optimiser can walk ν = 2 +
