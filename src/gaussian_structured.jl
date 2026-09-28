@@ -118,7 +118,12 @@ function _fit_structured_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, K, nmμ, 
         # accumulated directly from (rᵢ − r̄_{g(i)}), and the leftover
         # `r̄ᵀ P (M⁻¹C)` term stays O(1) as σ_e → 0 by construction (`M⁻¹C` is a
         # well-conditioned Cholesky solve regardless of how large `S` gets).
-        rbar = C ./ S
+        # A structured level `k` with no observations (e.g. a phylo tip absent
+        # from the data, or an internal/ancestor node in the dense route) has
+        # S[k] == 0 and C[k] == 0, so `C ./ S` divides 0/0 = NaN and poisons
+        # `dot(rbar, ...)` below even though such a level contributes nothing
+        # to q1 (no i falls in it). Map that 0/0 to 0, its only consistent value.
+        rbar = [s > 0 ? c / s : zero(T) for (c, s) in zip(C, S)]
         SSW = zero(T)
         @inbounds for i in 1:n
             invD = exp(-2 * ησ[i]); k = gidx[i]
