@@ -72,9 +72,37 @@ end
     elseif k == K
         return _log_logistic(η - cuts[nc])                   # P(y=K) = 1−F(θ_{K-1}−η)
     else
-        P = _logistic(cuts[k] - η) - _logistic(cuts[k-1] - η)
-        return log(P)
+        # P(y=k) = F(a) - F(b), a = cuts[k]-η > b = cuts[k-1]-η. Write
+        # F(a)-F(b) = F(a)·(1 - F(b)/F(a)) = F(a)·(1 - exp(logF(b)-logF(a))),
+        # so log P(y=k) = logF(a) + log1mexp(logF(b)-logF(a)) — only ever
+        # combines two already-stable log-probabilities (`_log_logistic`),
+        # never subtracts raw probabilities, and its `log1mexp` argument is
+        # ≤ 0 by construction (logF is monotone, b < a), so it never throws
+        # or NaNs, only saturating to the mathematically-correct -Inf when
+        # a and b coincide (or round to bit-identical floats).
+        la = _log_logistic(cuts[k] - η)
+        lb = _log_logistic(cuts[k-1] - η)
+        # `lb - la` is ≤ 0 analytically (monotone `_log_logistic`, `cuts[k-1] <
+        # cuts[k]`), but two independently-rounded evaluations at very close
+        # arguments can round to a tiny POSITIVE float; clamp before
+        # `_log1mexp` so that never throws/NaNs (only ever saturates to the
+        # correct -Inf when `la`/`lb` coincide).
+        return la + _log1mexp(min(lb - la, zero(lb - la)))
     end
+end
+
+# Safe log-sum-exp for the `(1|g)`/`(0+x|g)` Gauss-Hermite quadrature below:
+# guards the case where EVERY node's log-likelihood for a group is exactly
+# -Inf (a deterministic, node-independent "impossible category" — e.g. an
+# extreme fixed effect or collapsed cutpoint gap that no finite random-effect
+# draw can undo). Plain `mx + log(sum(exp.(terms .- mx)))` computes
+# `-Inf - (-Inf) == NaN` in that case; this returns the mathematically correct
+# -Inf instead (contributing +Inf to the nll, which is an allowed value —
+# never NaN, never a bogus -Inf nll).
+@inline function _safe_quadrature_logsumexp(terms, logw_lπ_offset)
+    mx = maximum(terms)
+    isfinite(mx) || return oftype(mx, -Inf)
+    return logw_lπ_offset + mx + log(sum(exp.(terms .- mx)))
 end
 
 # Expected ordered-category score Σ_k k·P(y=k|η,cuts), the `fitted()` value.
@@ -233,8 +261,7 @@ function _fit_cumulative_ranef(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, gid
                 end
                 terms[k] = gll
             end
-            mx = maximum(terms)
-            s -= (-0.5 * lπ + mx + log(sum(exp.(terms .- mx))))
+            s -= _safe_quadrature_logsumexp(terms, -0.5 * lπ)
         end
         return s
     end
@@ -281,8 +308,7 @@ function _fit_cumulative_slope_ranef(fam::CumulativeLogit, y::Vector{Int}, Xμ, 
                 end
                 terms[k] = gll
             end
-            mx = maximum(terms)
-            s -= (-0.5 * lπ + mx + log(sum(exp.(terms .- mx))))
+            s -= _safe_quadrature_logsumexp(terms, -0.5 * lπ)
         end
         return s
     end

@@ -25,6 +25,28 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   exact there for any `K` and is used directly. Public API and defaults are
   unchanged; TruncatedNegBinomial2 and ZeroOneBeta have no `(1 | g)` route yet
   and Binomial is out of scope for this change (tracked separately).
+- **`CumulativeLogit()` `(1 | g)` / `(0 + x | g)` no longer returns a NaN nll
+  at extreme θ (likelihood-sanity fuzzer finding, draft PR #866).** Two
+  compounding causes in `src/cumulative.jl`: (1) the interior-category
+  probability `logistic(cuts[k]-η) - logistic(cuts[k-1]-η)` was computed as a
+  raw difference of two independently-rounded probabilities, so near/at a
+  collapsed cutpoint gap or a saturating η it could go to exact 0 (fine,
+  `-Inf`) but sometimes rounded to a tiny NEGATIVE float instead, whose
+  `log()` is NaN; (2) the 32-node Gauss-Hermite quadrature accumulator's
+  `mx = maximum(terms); terms .- mx` produced `-Inf - (-Inf) == NaN` whenever
+  EVERY node's log-likelihood for a group was exactly `-Inf` (a deterministic,
+  node-independent "impossible category" that no finite random-effect draw
+  can undo, e.g. from an extreme fixed effect or cutpoint). The interior
+  probability is now computed directly in log-space from the two already-
+  stable `_log_logistic` values via a `log1mexp`-style identity (never
+  subtracts raw probabilities), and the quadrature accumulator short-circuits
+  to `-Inf` when its running max is `-Inf` instead of computing `Inf - Inf`.
+  The fixed-effects-only and `phylo(1 | g)` routes were already clean and are
+  unchanged. Evaluating the nll at an ordinary θ is unchanged to 1e-10; a
+  fresh fit on affected data now correctly continues past what had been a
+  spurious NaN "cliff" blocking LBFGS, converging further to a lower (more
+  correct) nll instead of stopping short. See `test/test_cumlogit_nan.jl`.
+
 - **`Student()` no longer reports a garbage log-likelihood near the Gaussian
   limit (#721; drmTMB twin #1265).** When the data are close to Normal the
   likelihood is flat in the ν predictor, and the optimiser can walk ν = 2 +
