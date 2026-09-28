@@ -387,11 +387,16 @@ function _nb2_logpmf(r, μ, k::Integer)
     l1p = log1p(μ / r)                          # log(1+μ/r), for -r·log(1+μ/r)
     s = -r * l1p - loggamma(k + 1) + _nb2_loggammadiff(r, k)
     if k != 0
-        # k·(log μ - log r - l1p) = -k·log1p(r/μ): computing log(μ)-log(r)-l1p
-        # directly cancels catastrophically once μ ≫ r (l1p ≈ log(μ/r) to many
-        # digits there), so route through log1p(r/μ) instead — stable for any
-        # r, μ > 0 (needed to hold the 1e-10 accuracy bar at k ~ 1e5-1e6).
-        s -= k * log1p(r / μ)
+        # k·(log μ - log r - l1p): computing this directly cancels
+        # catastrophically once μ ≫ r (l1p ≈ log(μ/r) to many digits there,
+        # #883's 1e-10 accuracy bar at k ~ 1e5-1e6 needs the stable form). The
+        # stable rewrite is -k·log1p(r/μ) — but only take it when μ ≥ r, so
+        # r/μ ≤ 1 and can never overflow; on the other side (r ≫ μ, e.g. μ
+        # underflowing towards 0 at extreme dispersion) r/μ can itself
+        # overflow to Inf while the direct subtraction is perfectly
+        # well-conditioned there (no cancellation: the true value is large in
+        # magnitude, matching the operands), so keep the direct form.
+        s += μ >= r ? -k * log1p(r / μ) : k * (log(μ) - log(r) - l1p)
     end
     return s
 end
