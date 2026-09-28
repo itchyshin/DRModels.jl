@@ -595,3 +595,8 @@ _shard_include("test_bridge_response_mask_inference.jl")
 # #857 site K: coevolution prior in whitened coordinates (no Λ⁻¹ near singular Λ);
 # also pins the q=4 engine's same-construction defect as @test_broken.
 _shard_include("test_q4_prior_whitening.jl")
+
+# reml_q4.jl's six naive-inv(Λ) sites (lines 309/437/505-506/516/599/999):
+# extreme-regime REML objective vs a 256-bit reference, plus a normal-regime
+# identity check against a frozen pre-whitening copy of the same code path.
+_shard_include("test_reml_q4_chol.jl")
