@@ -6,6 +6,28 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **`residuals(fit; type = :quantile)` on a `TruncatedNegBinomial2` fit no
+  longer returns NaN at extreme dispersion or extreme small μ.** The
+  zero-truncated randomized-quantile-residual driver (`_quantile_residuals`,
+  `src/quantile_residuals.jl`) built the truncated CDF as `F_t(k) =
+  (Distributions.cdf(NB, k) − F0) / (1 − F0)`. At `log σ ≲ -20` the NB2 size
+  `r = 1/σ²` grows so large that `r + μ` rounds to exactly `r` in Float64 —
+  `p = r/(r+μ)` rounds to exactly `1.0`, so `Distributions.cdf` returns exactly
+  `1.0` for every `k`, and both the numerator and the denominator evaluate to
+  `0.0`: `0/0 = NaN`. The same underflow occurs at extreme small μ (μ/r
+  rounds to exactly `0.0`) at ordinary dispersion. This is the same
+  cancellation #866/#874 fixed in the truncated/hurdle NB2 *likelihood*; this
+  fix carries the `_nb2_logpmf` / `_log1mexp` log-space technique into the
+  quantile-residual driver: `log(1 − F0)` via `_log1mexp(_nb2_logpmf(r, μ,
+  0))`, and `log P(1 ≤ Y ≤ k)` via a running `_logaddexp` sum of
+  `_nb2_logpmf(r, μ, j)` terms, neither of which ever forms the degenerate `p`.
+  A swept-and-confirmed-clean regression guard covers the other discrete
+  quantile-residual drivers (plain `NegBinomial2`, `NegBinomial2`/`Poisson`
+  hurdle-tagged fits, `BetaBinomial`) at the same extreme parameters — none of
+  them divide by a near-zero quantity, so they saturate to a large-but-finite
+  residual rather than NaN. Ordinary parameter values are bit-for-bit
+  unaffected (matches the old `Distributions.cdf`-ratio path to 1e-10).
+
 - **Hurdle NB2 (`NegBinomial2() + hu ~ ...`, and `TruncatedNegBinomial2() + hu
   ~ ...`, which delegates to it) no longer returns NaN at extreme dispersion
   (#866).** At `log σ ≈ -20..-50` the NB2 size `r = exp(-2·ησ) ~ 1e17-1e43` is

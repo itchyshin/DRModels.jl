@@ -161,14 +161,40 @@ function _quantile_residuals(fit::DrmFit, rng)
             u[i] = clamp(Distributions.cdf(d, y[i]), lo, hi)
         end
     elseif fam isa TruncatedNegBinomial2
+        # Zero-truncated CDF F_t(k) = (NB.cdf(k) − NB.cdf(0)) / (1 − NB.cdf(0)),
+        # k ≥ 1 — but built from `_nb2_logpmf` / `_log1mexp` (negbinomial.jl,
+        # poisson.jl) rather than `Distributions.cdf`. At extreme dispersion
+        # (r = 1/σ² ≫ μ, log σ ≲ -20) or extreme small μ (μ/r underflows to
+        # exactly 0), `Distributions.NegativeBinomial(r, r/(r+μ)).cdf` rounds to
+        # EXACTLY 1.0 for every k (r+μ rounds to r in float64, so p rounds to 1):
+        # both the numerator (NB.cdf(k) − F0) and the denominator (1 − F0)
+        # evaluate to 0.0, giving 0/0 = NaN (same cancellation #866/#874 fixed in
+        # the likelihood). Working entirely in log space avoids ever forming that
+        # degenerate p: log(1 − F0) via `_log1mexp(_nb2_logpmf(r, μ, 0))`, and
+        # log(NB.cdf(k) − F0) = log P(1 ≤ Y ≤ k) via a running `_logaddexp` sum of
+        # `_nb2_logpmf(r, μ, j)` terms, both finite for any r as long as μ > 0.
         @inbounds for i in 1:n
-            d = _conditional_dist(fam, i; μ = μ, scales = fit.scales, obs = fit.obs)
+            r = 1 / (fit.scales[:sigma][i]^2)       # NB2 size; scales[:sigma] = σ
+            μi = μ[i]
             yi = round(Int, y[i])
-            F0 = Distributions.cdf(d, 0)            # NB.cdf(0) = P(0)
-            denom = 1 - F0
-            # zero-truncated CDF: F_t(k) = (NB.cdf(k) − F0)/(1 − F0), k ≥ 1
-            a = (Distributions.cdf(d, yi - 1) - F0) / denom
-            b = (Distributions.cdf(d, yi) - F0) / denom
+            log1mF0 = _log1mexp(_nb2_logpmf(r, μi, 0))
+            if isinf(log1mF0)
+                # μ underflowed to ~0 in float64: the untruncated model puts
+                # (numerically) all its mass at 0, so the zero-truncated tail
+                # probability for any observed y ≥ 1 is ~1 — saturate rather
+                # than divide 0/0. `lo`/`hi` below still clamp this to a finite
+                # (large) residual, matching every other branch in this file.
+                a = 1.0
+                b = 1.0
+            else
+                loga = -Inf
+                for j in 1:(yi - 1)
+                    loga = _logaddexp(loga, _nb2_logpmf(r, μi, j))
+                end
+                logb = yi >= 1 ? _logaddexp(loga, _nb2_logpmf(r, μi, yi)) : loga
+                a = exp(loga - log1mF0)
+                b = exp(logb - log1mF0)
+            end
             u[i] = clamp(a + (b - a) * rand(rng), lo, hi)
         end
     else
