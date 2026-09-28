@@ -19,6 +19,45 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   optimisation, not an approximation. Correlated slopes `(1 + x | g)` and
   `relmat`/`animal`/`spatial` structured markers combined with crossed
   intercepts remain refused.
+- **`Student()` fits crossed random intercepts on the mean (#725; drmTMB twin
+  #1266).** `y ~ x + (1 | g) + (1 | h)` was refused ("single random-effect
+  term"); drmTMB `student()` fits it. It now uses the Laplace approximation, as
+  drmTMB/TMB does, with the observed Hessian of the random effects, exact
+  ForwardDiff outer derivatives, and `sigma`/`nu` formulas allowed. On a
+  simulated fixture (n = 600, 30 × 25 levels) it matches drmTMB 0.7.1 to
+  |ΔlogLik| < 1e-9 and every estimate to < 1e-8, with and without `sigma ~ x`;
+  fixed-effect SEs agree to 1e-6. Random slopes with a second term are still
+  refused. The random-effect Hessian is dense, so very many levels are slow.
+
+- **`Student()` crossed intercepts: three robustness fixes from adversarial
+  review (#827).** (1) An extreme σ/ν line-search probe could produce a
+  non-finite expected-information fallback matrix; the fallback Cholesky now
+  fails closed (`check = false`) instead of throwing `PosDefException` out of
+  `drm`. (2) The `|log σ| > 12` guard on a crossed variance rejected genuine
+  boundary MLEs (drmTMB puts a zero crossed variance at log σ ≈ −12.57); the
+  guard is now a `|log σ| > 30` overflow check, and the inner Newton's
+  convergence floor is loosened 100× so it stops registering a converged
+  boundary fit as a failure. (3) A non-converged outer LBFGS run is now
+  restarted from its own minimizer (bounded to 8 attempts, comparing freshly
+  re-evaluated objective values rather than `Optim.minimum`, which can read a
+  rejected line-search trial instead of the true minimizer) — on a fresh
+  simulated dataset this now reaches drmTMB's optimum to 1e-10 where the
+  first run previously stopped short. New regression tests
+  (`test/test_student_725.jl`) reproduce all three failures on the reviewer's
+  simulated fixtures and pin drmTMB reference log-likelihoods.
+
+- **`Student()` no longer reports a garbage log-likelihood near the Gaussian
+  limit (#721; drmTMB twin #1265).** When the data are close to Normal the
+  likelihood is flat in the ν predictor, and the optimiser can walk ν = 2 +
+  exp(η) to ~1e16. There `Distributions.TDist`'s log density loses all
+  precision (a cancelling difference of loggamma terms), so a fit on
+  `datasets::trees` returned loglik ≈ +1924 with a converged status; drmTMB
+  reports −87.82. The Student density is now evaluated by an exact
+  large-ν asymptotic form for ν > ~1100 (error < 1e-13 against a 256-bit
+  reference; it tends exactly to the Normal density as η → ∞), in the
+  fixed-effect, `(1 | g)` and `(1 + x | g)` fitters. The trees fit now reports
+  loglik −87.82; the ν coefficient itself is not identified on that ridge.
+  Fits with moderate ν are unchanged.
 
 - **`marginal = :Laplace` on an ordinary `(1 | g)` (Arc 2, drmTMB parity).**
   Poisson, Binomial, NegBinomial2, Gamma and Beta with one ordinary random
