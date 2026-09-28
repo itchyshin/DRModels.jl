@@ -848,7 +848,7 @@ end
 # a trailing `phylo(1|g)` term inside a `FunctionTerm{Colon}` the engine can't
 # read (Ayumi LS#2: `MethodError: |(::Int64, ::String)`). Julia's `&` has
 # interaction-matching precedence (tighter than `+`), so rewrite `:` → `&` at the
-# STRING level, before `Meta.parse`. A model-formula string never contains `::`.
+# STRING level, before `Meta.parse`.
 #
 # R's `%in%` (nesting, "b within a") is undefined in Julia — `Meta.parse("b
 # %in% a")` silently parses it as nested modulo, `(b % in) % a`, which later
@@ -860,8 +860,32 @@ end
 # including compound left operands distributing exactly as `:` does). So
 # rewrite it to `&` at the same STRING level as `:`, before `Meta.parse` ever
 # sees the `%` tokens.
+#
+# R's package-qualified call `pkg::fn(...)` (e.g. `splines::ns(x, 3)`,
+# `stats::poly(x, 2)`) was previously left untouched here on the assumption
+# that a model-formula string never contains `::` — false: `Meta.parse`
+# happily accepts `pkg::fn(...)` as Julia's TYPE-ASSERTION syntax `pkg ::
+# fn(...)`, an entirely different expression (head `:(::)`, not `:call`),
+# which then fails deep inside formula assembly with a confusing "non-call
+# expression encountered" error that never names the actual construct
+# (found in the #467 sweep). Refuse it sharply and by name instead: no
+# qualified call is evaluated here (no R package is available on this side
+# of the bridge to run it faithfully against).
+#
+# R's `.` ("every other column") formula shorthand is likewise undefined on
+# this side of the bridge (there is no fixed column list to expand it
+# against beyond the response), and a bare `.` reaching `Meta.parse` is a
+# syntax error with no formula-specific explanation. Refuse it sharply by
+# name: list the covariates explicitly instead.
 function _bridge_translate_r_ops(part::AbstractString)
-    occursin("::", part) && return part        # defensive: leave qualified names alone
+    if occursin("::", part)
+        throw(ArgumentError("drmTMB(engine=\"julia\"): package-qualified calls like `pkg::fn(...)` " *
+            "(e.g. `splines::ns(x, 3)`) are unsupported via engine=\"julia\"; precompute the columns " *
+            "in R and pass them as covariates."))
+    end
+    occursin(r"(?<![\w.])\.(?![\w.])", part) &&
+        throw(ArgumentError("drmTMB(engine=\"julia\"): the `.` (\"every other column\") formula " *
+            "shorthand is unsupported via engine=\"julia\"; list the covariates explicitly."))
     # R accepts whitespace between `I` and its call parenthesis; Julia parses
     # that spelling as implicit multiplication. Normalize only that admitted
     # materializer before `Meta.parse`, retaining the original text for labels.
@@ -886,6 +910,19 @@ end
 # now lives at the call site, where it can name the specific unsupported form.
 const _BRIDGE_REJECT_CALLS = Dict{Symbol,String}(
     :^ => "R crossing `(...)^k` is unsupported via engine=\"julia\" for this shape (need a literal positive integer power over a `+`-only expression, with no `*` inside); expand it explicitly (e.g. `a + b + a&b`).",
+    # These four have no Julia definition in scope, so left unhandled they
+    # reach `@formula`/the model frame and fail with a bare `UndefVarError`
+    # (or, for `C`, a confusing failure from the generic scalar-label
+    # renderer choking on a contrast argument like `contr.sum`) that never
+    # names the actual construct (#467 sweep). None can be faked faithfully
+    # here: `cut()`/`interaction()` need R's own binning/level-crossing
+    # algorithm, `offset()` needs a fixed (non-estimated) coefficient the
+    # engine does not expose through formula translation, and `C()` sets a
+    # non-default contrast scheme. Refuse all four by name instead.
+    :cut => "R's `cut(...)` binning is unsupported via engine=\"julia\"; precompute the factor column in R and pass it as a covariate.",
+    :interaction => "R's `interaction(...)` is unsupported via engine=\"julia\"; precompute the combined factor column in R and pass it as a covariate.",
+    :offset => "R's `offset(...)` is unsupported via engine=\"julia\"; it needs a fixed (non-estimated) coefficient that formula translation cannot express here.",
+    :C => "R's `C(..., contrast)` contrast override is unsupported via engine=\"julia\" (only R's default `contr.treatment` coding is reproduced); precompute the coded design columns in R and pass them as covariates.",
 )
 
 # Mutable per-formula-bridge context: materialises `I(...)`, `scale(...)`, and
@@ -1160,7 +1197,16 @@ function _bridge_register_source_labels!(ctx::_BridgeXlateCtx, part::AbstractStr
                 f = Symbol(name)
                 # Formula operators and bridge DSL markers retain their own
                 # grammar; only genuine scalar calls get source provenance.
-                if !(f in _BRIDGE_DSL_CALLS || f in _BRIDGE_TERM_OPS || f in (:scale, :factor, :poly)) &&
+                # A call in `_BRIDGE_REJECT_CALLS` (e.g. `C(g, contr.sum)`)
+                # is also skipped here: its argument grammar (a contrast
+                # object, a binning count, …) is not the restricted
+                # arithmetic/identifier grammar `_bridge_r_scalar_source_label`
+                # renders, and attempting the render crashes with a confusing
+                # message (e.g. "cannot render numeric literal `.`" from the
+                # `.` in `contr.sum`) instead of naming the actual construct.
+                # Let the `_bridge_xlate` rejection below fire cleanly instead.
+                if !(f in _BRIDGE_DSL_CALLS || f in _BRIDGE_TERM_OPS || f in (:scale, :factor, :poly) ||
+                     haskey(_BRIDGE_REJECT_CALLS, f)) &&
                    !_bridge_contains_poly(parsed)
                     # The established xlate guard gives `poly()` under a
                     # scalar call its precise model-shape error. Do not let

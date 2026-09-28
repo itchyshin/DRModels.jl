@@ -6,6 +6,26 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **`drm_bridge` sweep: six more formula constructs that reached a confusing
+  low-level error instead of a clear refusal now refuse sharply and by name
+  (#467 follow-up).** Following the `%in%`/nested-`/` fix below, a sweep of
+  twenty formula constructs against base R's own `stats::model.matrix()`
+  found no additional SILENTLY-WRONG case, but six LATE-ERROR cases where the
+  bridge reached a `ParseError`, an `UndefVarError`, or a scalar-label
+  renderer crash deep inside translation, none of which named the actual
+  unsupported construct: `y ~ .` ("every other column"), package-qualified
+  calls like `y ~ splines::ns(x, 3)` (Julia parses `pkg::fn(...)` as a type
+  assertion, not a call — a `pkg::fn(...)` from any package is unsupported),
+  `y ~ cut(x, 3)`, `y ~ interaction(f, g)`, `y ~ offset(o) + x`, and
+  `y ~ C(g, contr.sum)`. All six now raise an `ArgumentError` naming the
+  construct. Eight other constructs from the same sweep (`x - 1`, `0 + x`,
+  `x + z - z`, `log(x)`, `x^2` on a bare symbol, `(x + z)^2 - x:z`, bare
+  `x:f`, `f - 1`) were already FAITHFUL and are now locked in by a regression
+  fixture comparing both column names and fitted values against
+  `model.matrix()` (`test/test_bridge_silent_sweep.jl`); three more
+  (`x * z - x:z`, `poly(x, 2, raw = TRUE)`, `as.numeric(f)`) already refused
+  sharply and needed no change.
+
 - **`drm_bridge` translates R's `%in%` and nested `/` formula operators, or
   refuses them sharply (#467).** Neither was handled before: `%in%` is not
   valid Julia infix syntax the way R means it, so `Meta.parse` silently read
