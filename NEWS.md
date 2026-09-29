@@ -421,6 +421,21 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   fixed-effect, `(1 | g)` and `(1 + x | g)` fitters. The trees fit now reports
   loglik −87.82; the ν coefficient itself is not identified on that ridge.
   Fits with moderate ν are unchanged.
+- **Fix: a Binomial fit with two crossed random-intercept groupings
+  (`(1 | g) + (1 | h)`) silently reported `[Inf, Inf, Inf, Inf]` standard
+  errors with no warning (#761).** `_fit_binomial_crossed_laplace`'s own
+  keyword default was `se = false` (unlike its Poisson/NB2 siblings, which
+  default `se = true`), and `drm()`'s Binomial dispatcher never forwards the
+  user's `se` argument down to it — so the Hessian/vcov step was skipped
+  entirely regardless of what the caller asked for, `V` came back all-`NaN`,
+  and `stderror` reported all-`Inf` per its existing non-finite-variance
+  convention, with the guard that would have warned (`_vcov_from_hessian`,
+  `src/vcov_guard.jl`) never invoked. Fixed by flipping the default to
+  `se = true`; a genuinely non-identifiable random-intercept grouping (e.g.
+  a grouping fully aliased with another, as when no cluster of one grouping
+  spans more than one level of the other) now surfaces the existing
+  "Hessian is numerically singular" / "not positive definite" warnings
+  instead of a silent `Inf`.
 
 - **`marginal = :Laplace` on an ordinary `(1 | g)` (Arc 2, drmTMB parity).**
   Poisson, Binomial, NegBinomial2, Gamma and Beta with one ordinary random
