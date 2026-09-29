@@ -103,6 +103,24 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   is already accurate), `:AGHQ` moves every working-scale coefficient by
   less than 0.02 and the total logLik by less than 0.05 nat. `marginal = :LA`
   stays the default; nothing changes unless `marginal = :AGHQ` is requested.
+- **`fit_mixed_family(...; aghq = true)`: adaptive quadrature for the
+  cross-family shared-latent route (#719).** The bivariate joint-random-effect
+  fitter (`src/mixed_family.jl`, two families sharing one per-observation
+  latent `u_i ~ N(0,1)`) integrated `u_i` by a fixed K=32 prior-scale
+  Gauss-Hermite grid, the one remaining `(1 | g)`-shaped route #846 left on
+  the non-adaptive integrator. New opt-in `aghq = true` (default `false`,
+  signature-stable) reuses the #834/#719 `_aghq_marginal_loglik` helper,
+  treating each observation as its own AGHQ "group" of two virtual members
+  (one per family) sharing the fixed prior; the loadings `λ1`/`λ2` (not a
+  group SD) carry the scale. At large loadings (`λ ~ 3-6`, the role a group SD
+  plays elsewhere) the prior-scale grid misses the exact per-observation
+  marginal (verified against an independent QuadGK integral) by up to ~28 nat;
+  `aghq = true` at `K = 5` (matching `_RANEF1D_AGHQ_K`) is within 5e-5 nat at
+  the same inputs, and the underlying method is exact to 1e-6 nat at higher
+  `K`. On a full recovery fit (`λ1_true = 2.5`, `λ2_true = 2.0`, `n = 600`)
+  `aghq = true` recovers both loadings within 0.4 and lands ~392 nat higher in
+  logLik than the unchanged default. `aghq = false` (the default) is
+  byte-for-byte unchanged.
 - **Adaptive quadrature for 1-D random intercepts `(1 | g)` (#719).** Every
   default-route (`:LA`) `_fit_*_ranef` fitter for Poisson, NegBinomial2, Gamma,
   Beta, BetaBinomial, Student, and LogNormal now integrates the group random
