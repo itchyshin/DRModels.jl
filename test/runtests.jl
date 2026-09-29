@@ -408,6 +408,7 @@ _shard_include("test_575_exact_reml_gradient.jl")        # #575: exact REML grad
 _shard_include("test_575_q4_optimum.jl")                 # #575: the q4 REML cold-start route reaches its own optimum
 _shard_include("test_reml_q4_missing_response.jl")       # #578: _reml_border_blocks mask consistency, missing responses
 _shard_include("test_q4_reml_vcov.jl")                   # #563 S11: pin q4 REML vcov() native/bridge behaviour
+_shard_include("test_beta_newton_cap.jl")                # trust-radius cap on cond_newton_beta / mstep_beta's raw Newton step
 _shard_include("test_reml_prior_precision_collapse.jl")  # #563: _reml_prior_precision collapsed into prior_precision after #577
 _shard_include("test_reml_surface_contract.jl")          # #624: bridge estim_method/loglik honesty + refusal message surface
 _shard_include("test_reml_reml_biv_residual.jl")        # #624: REML on the residual-only bivariate Gaussian route
