@@ -157,25 +157,25 @@ function _fit_ranef_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, nmμ, 
         ησb = Zg * α                                # per-group log σ_b,k
         T = eltype(θ)
         S = zeros(T, G); C = zeros(T, G)
-        q1 = zero(T); logdetD = zero(T)
+        rv = Vector{T}(undef, n); invDv = Vector{T}(undef, n)
+        logdetD = zero(T)
         @inbounds for i in 1:n
             invD = exp(-2 * ησ[i])
             r = y[i] - ημ[i]
-            a = r * invD
+            rv[i] = r; invDv[i] = invD
             k = gidx[i]
             S[k] += invD
-            C[k] += a
-            q1 += r * a
+            C[k] += r * invD
             logdetD += 2 * ησ[i]
         end
-        q2 = zero(T); logdetCap = zero(T)
+        logdetCap = zero(T)
         @inbounds for k in 1:G
             σb² = exp(2 * ησb[k])
-            Mk = 1 / σb² + S[k]
-            q2 += C[k]^2 / Mk
             logdetCap += log(1 + σb² * S[k])
         end
-        return 0.5 * (logdetD + logdetCap + q1 - q2) + const_2pi
+        # Cancellation-free r′V⁻¹r (#746/#747; see `_re_quad_stable`).
+        quad = _re_quad_stable(rv, invDv, nothing, gidx, exp.(-2 .* ησb), S, C)
+        return 0.5 * (logdetD + logdetCap + quad) + const_2pi
     end
 
     function nll_reml(θ)
@@ -183,48 +183,29 @@ function _fit_ranef_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, nmμ, 
         ημ = Xμ * βμ; ησ = Xσ * βσ
         ησb = Zg * α
         T = eltype(θ)
-        S = zeros(T, G); C = zeros(T, G)
-        ZtDinvX = zeros(T, G, pμ)
-        XtDinvX = zeros(T, pμ, pμ)
-        q1 = zero(T); logdetD = zero(T)
+        S = zeros(T, G)
+        invDv = Vector{T}(undef, n)
         @inbounds for i in 1:n
             invD = exp(-2 * ησ[i])
-            r = y[i] - ημ[i]
-            a = r * invD
-            k = gidx[i]
-            S[k] += invD
-            C[k] += a
-            q1 += r * a
-            logdetD += 2 * ησ[i]
-            @inbounds for j in 1:pμ
-                xj = Xμ[i, j]
-                ZtDinvX[k, j] += invD * xj
-                @inbounds for l in 1:pμ
-                    XtDinvX[j, l] += invD * xj * Xμ[i, l]
-                end
-            end
+            invDv[i] = invD
+            S[gidx[i]] += invD
         end
-        q2 = zero(T); logdetCap = zero(T)
-        XtVinvX = copy(XtDinvX)
-        @inbounds for k in 1:G
-            σb² = exp(2 * ησb[k])
-            Mk = 1 / σb² + S[k]
-            invMk = 1 / Mk
-            q2 += C[k]^2 * invMk
-            logdetCap += log(1 + σb² * S[k])
-            @inbounds for j in 1:pμ
-                zj = ZtDinvX[k, j]
-                @inbounds for l in 1:pμ
-                    XtVinvX[j, l] -= zj * invMk * ZtDinvX[k, l]
-                end
-            end
-        end
-        nll_ml_θ = 0.5 * (logdetD + logdetCap + q1 - q2) + const_2pi
+        # PSD penalised-SS form of Xμ′V⁻¹Xμ. The Woodbury subtraction it replaces
+        # returned exactly-singular garbage (8e110 vs a true 1e-7) at an LBFGS
+        # probe with log σ_i ≈ -105; see `_re_xtvinvx_stable` and
+        # test/test_lss_reml_falseconv.jl.
+        XtVinvX = _re_xtvinvx_stable(Xμ, invDv, nothing, gidx, exp.(-2 .* ησb), S)
+        # ML part via the cancellation-free `nll_ml` (#746/#747).
+        nll_ml_θ = nll_ml(θ)
         # Same Woodbury-subtraction PSD hazard as `_fit_ranef_gaussian.nll_reml`
         # (#499): reject a non-PD Xμ′V⁻¹Xμ with a large FINITE barrier.
+        # The generic (ForwardDiff Dual) Cholesky ACCEPTS a zero pivot, so also
+        # reject a non-finite logdet: -Inf there is what broke HagerZhang.
         cholXtVinvX = cholesky(Symmetric(XtVinvX); check=false)
         issuccess(cholXtVinvX) || return nll_ml_θ + T(REML_NONPD_PENALTY)
-        return nll_ml_θ + 0.5 * logdet(cholXtVinvX) - const_pμ
+        ldX = logdet(cholXtVinvX)
+        isfinite(ldX) || return nll_ml_θ + T(REML_NONPD_PENALTY)
+        return nll_ml_θ + 0.5 * ldX - const_pμ
     end
 
     nll = reml ? nll_reml : nll_ml

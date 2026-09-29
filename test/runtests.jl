@@ -214,12 +214,15 @@ _shard_include("test_hurdle.jl")
 _shard_include("test_truncated_nb.jl")
 _shard_include("test_betabinomial.jl")
 _shard_include("test_zeroonebeta.jl")
+_shard_include("test_twin_gap_723.jl")
 _shard_include("test_tweedie.jl")
 _shard_include("test_tweedie_ranef.jl")
 _shard_include("test_crossed_tweedie.jl")
 _shard_include("test_cumulative.jl")
+_shard_include("test_cumlogit_nan.jl")
 _shard_include("test_cumlogit_ranef.jl")
 _shard_include("test_cumlogit_phylo.jl")
+_shard_include("test_cumlogit_aghq.jl")            # per-group AGHQ for CumulativeLogit (1 | g) / (0 + x | g)
 _shard_include("test_poisson_re.jl")
 _shard_include("test_poisson_slope_re.jl")
 _shard_include("test_poisson_crossed_laplace.jl")
@@ -290,6 +293,8 @@ _shard_include("test_betabinomial_re.jl")
 _shard_include("test_betabinomial_slope_re.jl")
 _shard_include("test_binomial.jl")
 _shard_include("test_binomial_re.jl")
+_shard_include("test_binomial_slope_re.jl")
+_shard_include("test_binomial_aghq.jl")            # #712/#713: 1-D grouped-trial AGHQ K sweep
 _shard_include("test_summary.jl")
 _shard_include("test_bootstrap_nongaussian.jl")
 _shard_include("test_bootstrap_nongaussian_structured.jl")   # #479: K/A/tree threaded through refit
@@ -304,6 +309,8 @@ _shard_include("test_variational_binomial.jl")
 _shard_include("test_variational_nb2.jl")
 _shard_include("test_variational_gamma.jl")
 _shard_include("test_aghq_1d.jl")                  # #448: 1-D Liu–Pierce AGHQ (lever 2)
+_shard_include("test_adaptive_ghq.jl")             # #834: per-group AGHQ for (1 + x | g) routes
+_shard_include("test_adaptive_ghq_1d.jl")          # #719: per-group AGHQ for 1-D (1 | g) routes
 _shard_include("test_ordinary_laplace.jl")         # Arc 2: marginal = :Laplace on ordinary (1 | g)
 # Numerical-stability guards from the twin code-review pass (#303/#308/#311/#312/
 # #319/#321/#324.6/#324.7): SD-collapse, coincident coords, VA inner damping,
@@ -586,6 +593,23 @@ _shard_include("test_joint_missing_finite_bridge.jl")
 # fix (structurally full axis block) and the ML exact gradient it silently broke.
 _shard_include("test_577_ml_structural_zeros.jl")
 _shard_include("test_609_varying_scale.jl")
+
+# Issues #746/#747: Gaussian (1 | g) + sigma ~ x returned logLik ~ +1e44..+1e125
+# from catastrophic cancellation in the Woodbury quadratic q1 - q2. Pins the
+# cancellation-free `_re_quad_stable` and drmTMB-twinned fits on formerly failing seeds.
+_shard_include("test_twin_gap_747.jl")
+
+# #835 docs regression: `_re_quad_stable` (shared by `_fit_ranef_gaussian` and
+# `_fit_ranef_gaussian_lss`) hit `0.0 * Inf == NaN` when a line-search probe drove
+# a `sd(g) ~ z` group's sigma_b,k -> 0 exactly, failing LineSearches' finiteness
+# assertion on the location-scale-scale REML tutorial. Pins the fix against main.
+_shard_include("test_twin_gap_747_lss_reml.jl")
+
+# The same lss REML model on literal data: Julia 1.10 vs 1.13 "different optima"
+# were different MersenneTwister draws; the real defect was a -Inf REML objective
+# from Woodbury-subtraction garbage in Xmu'V^-1Xmu at a line-search probe (Dual
+# Cholesky accepted a zero pivot). Pins the PSD `_re_xtvinvx_stable` form and #835's guard.
+_shard_include("test_lss_reml_falseconv.jl")
 
 # Issue #646: on the missing-response Gaussian route `is_converged` read false on a
 # genuinely converged fit (the degeneracy bar took std() of a NaN-carrying response,

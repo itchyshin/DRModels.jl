@@ -20,6 +20,141 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   Per-observation value/derivatives for the Dunn–Smyth compound Poisson–Gamma
   density (which has no convenient closed-form derivative) are obtained by
   nested `ForwardDiff.derivative` rather than hand-derived analytically.
+- **Gaussian `(1 | g)` REML no longer throws or returns -Inf on an extreme
+  line-search probe.** The REML term's `Xμ'V⁻¹Xμ` in `_fit_ranef_gaussian` and
+  the `sd(g) ~ z` route `_fit_ranef_gaussian_lss` was built by Woodbury
+  subtraction. At an LBFGS probe with log sigma_i ≈ -105 that gave an exactly
+  singular 8e110 matrix where the true value is about 1e-7. The ForwardDiff
+  Cholesky accepted the zero pivot, so the objective became -Inf, and fitting
+  the #835 tutorial-style model (`sd(id) ~ sex`) threw
+  `AssertionError: isfinite(phi_c) && isfinite(dphi_c)` on Julia 1.10.
+  `_re_xtvinvx_stable` now forms the matrix as a penalised sum of squares, so
+  it is positive semi-definite by construction. A non-finite logdet now also
+  triggers the REML barrier. The Julia 1.10 vs 1.13 "different optima" reported
+  on #835's test (ll -412.301 vs -408.179) were not false convergence: each
+  version drew different data from `MersenneTwister(20260715)`. Each answer is
+  a verified stationary point of its own data, and the two versions agree to
+  1e-11 on the same literal data (`test/test_lss_reml_falseconv.jl`).
+- **Cancellation-free Woodbury quadratic for Gaussian `(1 | g)` + `sigma ~ x`
+  (#746, #747).** `_fit_ranef_gaussian` and the `sd(g) ~ z` route
+  `_fit_ranef_gaussian_lss` formed `r'V⁻¹r` as `q1 - q2` (both terms `~1/D_min`),
+  so once one residual sigma_i got small the rounding error swamped the true
+  value and LBFGS chased the resulting cancellation hole (logLik up to +1e133
+  on origin/main). `_re_quad_stable` now evaluates the same quantity as the
+  penalised RSS at the conditional mode instead. StableRNG sweep, 60 fits:
+  origin/main 12/60 absurd, fixed 0/60, logLik matches drmTMB 0.7.1 to <=
+  3.6e-13. Of the 3 seeds that still throw on the #609 runaway panel, only one
+  (seed 3) is the boundary-Hessian-overflow case; seeds 4 and 10 are optimiser
+  misses (LBFGS lands on a worse or non-converged point than drmTMB's), filed
+  as a follow-up rather than fixed here — see `test/test_ranef_varying_scale_convergence.jl`.
+- **`cov_to_lc` no longer throws a bare `PosDefException` on a boundary-fitted
+  q=2 covariance (#787).** CI intermittently hit `PosDefException` inside
+  `cov_to_lc` when packing a fitted `Λ` for the front-end theta vector: a
+  fitted variance-component covariance can land marginally non-PD in floating
+  point at a variance boundary, and LAPACK's cholesky detects that
+  indefiniteness on some architectures/BLAS builds and not others (the CI
+  x86 runner vs local aarch64), so the same seed could pass or fail depending
+  on the machine. `cov_to_lc` now regularises a boundary-scale miss (floors
+  the smallest eigenvalue back onto the PD cone) instead of throwing, and
+  still raises a diagnosable `ArgumentError` naming the offending eigenvalue
+  for a genuinely, substantively indefinite matrix.
+- **Adaptive quadrature for `CumulativeLogit()` `(1 | g)` / `(0 + x | g)`.**
+  Both ordinal random-effect routes now integrate `b_g` by per-group adaptive
+  Gauss–Hermite quadrature (the shared helper from #834/#719, `q = 1`) instead
+  of a fixed 32-node PRIOR-scale grid. With a large random-effect SD that grid
+  was badly under-resolved: on the seed-24 likelihood-fuzzer dataset
+  (`y ~ x + (1 | id)`, n = 48, G = 6) the old fit stopped at nll 21.30 with a
+  gradient of 5.6 (main), or, once the NaN fix below removed that stall,
+  reached a spurious 18.95 whose true marginal is 20.31. The fit now reaches
+  the exact maximum, nll 19.83614 (β = 7.997, cutpoints −4.152 / 12.306,
+  σ_b = 7.646), matching an exact per-group QuadGK integral and
+  `ordinal::clmm` with nAGQ ≥ 30. The ordinal group posterior is far from
+  Gaussian at large σ_b, so these routes use `K = 41` nodes (worst error
+  2.9e-9 nat against the exact integral on that dataset, versus 1.4e-2 at the
+  `K = 5` used by the other families). The two drmTMB-parity fixtures
+  (σ_b ≈ 0.69 and 0.34) move by −3.6e-8 and +1e-10 nat in logLik. Public API
+  unchanged; the `phylo(1 | species)` and fixed-effects-only routes are
+  untouched.
+- **Adaptive quadrature for 1-D random intercepts `(1 | g)` (#719).** Every
+  default-route (`:LA`) `_fit_*_ranef` fitter for Poisson, NegBinomial2, Gamma,
+  Beta, BetaBinomial, Student, and LogNormal now integrates the group random
+  intercept `b_g` by per-group adaptive Gauss–Hermite quadrature (the shared
+  `q`-dimensional helper from #834, here with `q = 1`, centred and scaled on
+  each group's own posterior mode), instead of a fixed 32-node grid on the
+  PRIOR scale (`b = √2 σ_b z`). On an informative group the prior-scale grid
+  misses where the posterior mode actually sits: on `HSAUR3::epilepsy`
+  (Poisson `(1 | subject)`, `sd(subject) ≈ 0.52`) the pre-#719 fit landed
+  5.2 nat below the true maximum, with a fixed effect 18% off and the random-
+  effect SD 25% off, while native drmTMB's Laplace approximation is exact to
+  ~1e-6 nat. `K = 5` nodes (matching `_CORR_RANEF_AGHQ_K` for the `(1 + x | g)`
+  routes) keeps every family within 0.01 nat of an AGHQ-40+ reference on an
+  informative-group DGP (worst case Poisson, −0.0034 nat); `K = 1` is exactly
+  drmTMB's Laplace approximation (verified on the epilepsy fit to 1e-6 nat).
+  LogNormal's `(1 | g)` marginal is linear-Gaussian in `b_g`, so `K = 1` is
+  exact there for any `K` and is used directly. Public API and defaults are
+  unchanged; TruncatedNegBinomial2 and ZeroOneBeta have no `(1 | g)` route yet
+  and Binomial is out of scope for this change (tracked separately).
+- **`CumulativeLogit()` `(1 | g)` / `(0 + x | g)` no longer returns a NaN nll
+  at extreme θ (likelihood-sanity fuzzer finding, draft PR #866).** Two
+  compounding causes in `src/cumulative.jl`: (1) the interior-category
+  probability `logistic(cuts[k]-η) - logistic(cuts[k-1]-η)` was computed as a
+  raw difference of two independently-rounded probabilities, so near/at a
+  collapsed cutpoint gap or a saturating η it could go to exact 0 (fine,
+  `-Inf`) but sometimes rounded to a tiny NEGATIVE float instead, whose
+  `log()` is NaN; (2) the 32-node Gauss-Hermite quadrature accumulator's
+  `mx = maximum(terms); terms .- mx` produced `-Inf - (-Inf) == NaN` whenever
+  EVERY node's log-likelihood for a group was exactly `-Inf` (a deterministic,
+  node-independent "impossible category" that no finite random-effect draw
+  can undo, e.g. from an extreme fixed effect or cutpoint). The interior
+  probability is now computed directly in log-space from the two already-
+  stable `_log_logistic` values via a `log1mexp`-style identity (never
+  subtracts raw probabilities), and the quadrature accumulator short-circuits
+  to `-Inf` when its running max is `-Inf` instead of computing `Inf - Inf`.
+  The fixed-effects-only and `phylo(1 | g)` routes were already clean and are
+  unchanged. Evaluating the nll at an ordinary θ is unchanged to 1e-10; a
+  fresh fit on affected data now correctly continues past what had been a
+  spurious NaN "cliff" blocking LBFGS, converging further to a lower (more
+  correct) nll instead of stopping short. See `test/test_cumlogit_nan.jl`.
+- **`Binomial()` correlated random slope `(1 + x | g)` (#753), on the #834
+  adaptive-quadrature engine.** Binomial now fits a logistic GLMM with a
+  correlated random intercept + slope on the mean, via the shared per-group
+  ADAPTIVE Gauss–Hermite quadrature helper (`_aghq_marginal_loglik`, #834) —
+  the same scheme `BetaBinomial()` already uses, minus the precision
+  parameter Binomial doesn't have. Brings Binomial in line with the other
+  seven families and with drmTMB's `binomial()`. Its logLik matches an
+  independent AGHQ-40 reference within 0.05 nat and, at `nq = 1`, matches
+  drmTMB's own Laplace integrator to ~1e-9 on the same simulated data
+  (`test/test_binomial_slope_re.jl`). A non-adaptive 12×12 prior-scale grid
+  was used briefly in review (draft #831) but was never released — it was
+  ~15 nat off on this file's own DGP; see #834. Guarded: a slope predictor
+  that is constant within any group leaves the slope SD and the group-level
+  correlation unidentified and is refused with an informative error (mirrors
+  drmTMB's `drm_validate_q2_slope_variation`, reimplemented rather than
+  vendored). Still refused: an independent random slope `(0 + x | g)` and
+  `marginal = :VA` on the correlated slope. Unlike drmTMB, DRModels.jl does
+  not run a `detectseparation`-style separation screen before fitting.
+
+- **`Binomial()` random intercept `(1 | g)`: adaptive quadrature for grouped
+  trials (#712, #713).** The 1-D route also now goes through the #834
+  adaptive-quadrature helper (`nq = 3` by default), replacing a fixed 32-node
+  PRIOR-SCALE grid. For grouped trials (`cbind(successes, failures)` with
+  more than one trial per row) and an informative group SD, the old grid's
+  posterior coverage was too coarse: measured error up to −9.73 nat on a
+  DGP with `G = 100` groups, 30 obs/group, 20 trials/row, RE SD 0.5–0.8 (a
+  4.6–20 nat error across that SD range when evaluated at an AGHQ-accurate
+  θ̂). Bernoulli 0/1 responses were unaffected. `nq = 1` is exactly Laplace
+  (drmTMB's own integrator); `nq = 3` is the smallest node count within 0.01
+  nat of an independent AGHQ-40 reference on the same DGP (`nq = 2` misses at
+  ≈0.03 nat) — see `test/test_binomial_aghq.jl`.
+- **`ZeroOneBeta()` random intercept `(1 | g)` on the mean (#723, drmTMB twin gap).**
+  `ZeroOneBeta()` no longer hard-blocks every random effect: an ordinary
+  random intercept on the mean, `y ~ x + (1 | g)`, is now admitted exactly as
+  `Beta()` admits it — `b_g ~ N(0, σ_b²)` integrated out per group by 32-node
+  Gauss–Hermite quadrature (default `:LA`-style marginal). `sigma`, `zoi`, and
+  `coi` must stay fixed-effects-only (their formulas still refuse any random
+  effect). Mirrors drmTMB's admitted `zero_one_beta()` + ordinary RI (e.g.
+  `faraway::leafblotch`). Structured (`tree=`/`K=`) random intercepts on
+  `ZeroOneBeta()`'s mean remain unimplemented (#739).
 - **`Student()` fits crossed random intercepts on the mean (#725; drmTMB twin
   #1266).** `y ~ x + (1 | g) + (1 | h)` was refused ("single random-effect
   term"); drmTMB `student()` fits it. It now uses the Laplace approximation, as
