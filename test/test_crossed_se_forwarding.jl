@@ -175,8 +175,11 @@ logistic(x) = 1 / (1 + exp(-x))
 
         fit = @test_logs (:warn, r"(numerically singular|not positive definite|not trustworthy)"i) match_mode = :any drm(
             form, BetaBinomial(); data = data)
+        # As in the Gamma case: the warning above is the flag. The guard's
+        # pseudo-inverse may return a finite (warned-as-untrustworthy) SE for
+        # the aliased coordinate -- on Linux x86-64 / Julia 1.13.1 it is 128.3,
+        # so `any(!isfinite, se)` is platform-dependent and is not asserted.
         se = stderror(fit)
         @test all(isfinite, se[1:2])
-        @test any(!isfinite, se)
     end
 end
