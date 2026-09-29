@@ -3,74 +3,33 @@
 # WHY THIS FILE EXISTS
 # --------------------
 # `src/sparse_phy_grad.jl`'s analytic gradient and `src/em_phylo.jl`'s E-step
-# both need entries of `Q⁻¹` for a SPARSE precision `Q`. Computed via dense
-# linear algebra these cost O(p²) or O(p³); the Takahashi (1973) /
+# both need entries of `Q⁻¹` for a SPARSE precision `Q`. The Takahashi (1973) /
 # Erisman–Tinney (1975) recursion gives the entries of `Q⁻¹` at the sparsity
-# pattern of `L + Lᵀ` (the Cholesky factor's symmetric union) in `O(nnz(L))`
-# operations. For a tree-structured precision the elimination tree has
-# constant-bounded below-diagonal degree, so `nnz(L) = O(p)` and the selected
-# inverse is genuinely linear.
+# pattern of `L + Lᵀ` without forming the dense inverse.
 #
-# IMPORTANT CAVEAT (read before using)
-# ------------------------------------
-# The selected inverse is EXACT only at entries in the `L + Lᵀ` sparsity
-# pattern. Entries of `Q⁻¹` outside that pattern are NOT zero in general and
-# are NOT computed. In particular, on a tree precision `Q_cond`, the pattern
-# of `L + Lᵀ` is the elimination tree (parent–child edges only) — leaf-to-leaf
-# entries of `Q_cond⁻¹` (the dense covariance among leaves) are NOT in pattern.
-# The phylo gradient's `Cleaf` and `Σ_phy_leaf` are dense p×p objects; those
-# REMAIN O(p²) and the Takahashi swap cannot make them linear.
+# PERFORMANCE KERNEL (ported from HSquared.jl, 2026-09-24 lane C pilot)
+# --------------------------------------------------------------------
+# The hot recursion lives in `_selinv_zvals`. Cost is `Θ(Σⱼ|L[:,j]|²)`, not
+# `O(nnz(L))`. HSquared.jl #361 replaced per-pair binary searches with a
+# cap-free clique scatter (bit-identical). HSquared.jl #363 added an aligned-tail
+# `@simd` path gated at a stated rtol (1.3e-15 relative at fill 471). Default
+# here matches H²: scatter + SIMD. Use `_selinv_zvals(ch; strict_order=true)`
+# for the bit-identical merge, or `per_pair=true` for the original recursion.
+# Provenance: MIT code from itchyshin/HSquared.jl `src/takahashi_selinv.jl` on
+# `origin/main` after #363; itself adapted earlier from this DRM file.
 #
-# Where Takahashi helps in this package:
-# * `tr_Msad_DtDinvD` accumulator (`sparse_phy_grad.jl`): only same-leaf
-#   axis-pair entries, all in the K_aug × K_aug dense leaf coupling, hence in
-#   the `L + Lᵀ` pattern. O(K_aug²·p) entries → Takahashi delivers them in
-#   `O(K_aug·p)`.
-# * `diag(V_φ)` in the EM E-step (`em_phylo.jl`): exactly the diagonal of the
-#   selected inverse — `O(p)` instead of `O(p³)`.
-# * Identifying the leaf marginal variances anywhere else.
-#
-# Where Takahashi does NOT help:
-# * Dense leaf-leaf blocks (`leaf_block_inv`, `_Cinv_leaf_block`, etc.). Those
-#   cover entries outside the `L + Lᵀ` pattern and stay on the batched solve.
+# IMPORTANT CAVEAT
+# ----------------
+# Exact only at entries in the `L + Lᵀ` pattern. The diagonal is always in
+# pattern. Leaf-to-leaf covariances outside the elimination tree are not.
 #
 # THE MATH (column-oriented recursion)
 # ------------------------------------
-# Let `P Q Pᵀ = L Lᵀ` (Julia CHOLMOD convention: `Q[ch.p, ch.p] == L * Lᵀ`).
-# We compute `Z = (P Q Pᵀ)⁻¹` at the symmetric `L + Lᵀ` pattern; `Q⁻¹` itself
-# is then recovered by `Z[invperm(ch.p), invperm(ch.p)]` (or equivalently
-# `Pᵀ Z P`). The recursion comes from `Lᵀ Z = L⁻¹`. With `(L⁻¹)[r, c] = 0`
-# for `r < c` and `= 1 / L[c, c]` for `r = c`, the row-`j` equation at column
-# `r > j` gives
-#
-#   Σ_k L[k, j] · Z[k, r] = 0
-#   ⟹ Z[j, r] = -1/L[j, j] · Σ_{k > j, L[k, j] ≠ 0} L[k, j] · Z[k, r]
-#   (and by symmetry Z[r, j] = Z[j, r])
-#
-# and the diagonal
-#
-#   Z[j, j] = 1/L[j, j]² - 1/L[j, j] · Σ_{k > j, L[k, j] ≠ 0} L[k, j] · Z[k, j].
-#
-# IMPLEMENTATION
-# --------------
-# We process columns from `j = n` down to `j = 1`. Within column `j`, we
-# walk its `L`-pattern rows from highest down to `r = j`. For each
-# off-diagonal `(r, j)` we need `Z[k, r]` for every `k > j` in column `j` of
-# `L`. By the Cholesky closure of the sparsity pattern, every such `k` lies
-# in the `L`-pattern of either column `r` (if `k > r`) or column `k` (if
-# `r > k`), AND `r` lies in the pattern in the symmetric direction — so the
-# requested `Z[max(k,r), min(k,r)]` was computed in an earlier (larger-`j`)
-# iteration. Lookup is by linear scan of the small destination column.
-#
-# Output: a `SparseMatrixCSC` storing `Q⁻¹` (in the ORIGINAL ordering, not
-# permuted) at the union sparsity of `Pᵀ (L + Lᵀ) P`.
+# Let `P Q Pᵀ = L Lᵀ`. Compute `Z = (P Q Pᵀ)⁻¹` at the symmetric `L + Lᵀ`
+# pattern; recover `Q⁻¹` by `Z[invperm(ch.p), invperm(ch.p)]`.
 
-using SparseArrays
-using LinearAlgebra
-
-# Binary search for row `i` in column `j` of a CSC sparse matrix; returns
-# the nzval index if found, -1 otherwise. The CSC invariant guarantees row
-# indices in `rowval[colptr[j]:colptr[j+1]-1]` are SORTED INCREASING.
+# Binary search for row `i` in column `j` of a CSC sparse matrix; returns the
+# nzval index if found, -1 otherwise. CSC row indices are sorted increasing.
 @inline function _csc_rowidx(colptr::Vector{Int}, rowval::Vector{Int},
                               j::Int, i::Int)
     lo = colptr[j]; hi = colptr[j + 1] - 1
@@ -88,129 +47,138 @@ using LinearAlgebra
     return -1
 end
 
-"""
-    takahashi_selinv(ch::SparseArrays.CHOLMOD.Factor) -> SparseMatrixCSC
-
-Compute the Takahashi selected inverse of the matrix `Q` whose sparse
-Cholesky factor is `ch` (`P · Q · Pᵀ = L · Lᵀ` with `P = I[ch.p, :]`).
-Returns a `SparseMatrixCSC` holding `Q⁻¹` (in the ORIGINAL un-permuted
-ordering) at the union sparsity of `Pᵀ (L + Lᵀ) P`. Entries outside that
-pattern are NOT computed (and are NOT zero in general).
-
-Cost: `O(nnz(L))` arithmetic + O(nnz(L)·log(max_col_nnz)) for the symmetric
-lookups (with constant `max_col_nnz` on a tree this is `O(nnz(L))` overall).
-"""
-function takahashi_selinv(ch::SparseArrays.CHOLMOD.Factor{Float64})
-    L = sparse(ch.L)                         # n × n lower triangular
-    perm = ch.p                              # Q[perm, perm] == L * Lᵀ
-    n = size(L, 1)
-    colptr = L.colptr
-    rowval = L.rowval
-    Lvals  = L.nzval
-
-    # Z is stored in the SAME CSC pattern as L (lower triangle of the
-    # symmetric selected inverse, in the PERMUTED basis). We mirror to the
-    # un-permuted full symmetric output at the end.
-    Zvals = zeros(Float64, length(Lvals))
-
-    @inbounds for j in n:-1:1
-        cs = colptr[j]; ce = colptr[j + 1] - 1
-        # rowval[cs] = j (diagonal); rowval[cs+1..ce] are i > j (sorted asc)
-        Ljj = Lvals[cs]
-        invLjj = 1.0 / Ljj
-
-        # OFF-DIAGONAL entries Z[r, j] for r in rowval[cs+1..ce], processed
-        # from HIGHEST r down to lowest. For each, the recursion sums over
-        # k = rowval[cs+1..ce] (every below-diag row of column j of L).
-        # Z[r, j] = -1/L[j,j] · Σ_k L[k, j] · Z_sym[k, r].
-        for off_r in ce:-1:(cs + 1)
-            r = rowval[off_r]
-            s = 0.0
-            for off_k in (cs + 1):ce
-                k = rowval[off_k]
-                Lkj = Lvals[off_k]
-                # Z_sym[k, r] = Z[max(k, r), min(k, r)] in lower-triangle CSC.
-                # We need to look up in column min(k, r) for row max(k, r).
-                if k == r
-                    # Z[r, r] = diagonal — computed in column r's earlier
-                    # iteration; stored at L.colptr[r].
-                    z_kr = Zvals[colptr[r]]
-                elseif k < r
-                    # Z[r, k] : column k, row r. Computed in column k's
-                    # earlier iteration (k > j, processed before column j).
-                    idx = _csc_rowidx(colptr, rowval, k, r)
-                    z_kr = idx == -1 ? 0.0 : Zvals[idx]
-                else  # k > r
-                    # Z[k, r] : column r, row k. Computed in column r's
-                    # earlier iteration (r > j, processed before column j).
-                    idx = _csc_rowidx(colptr, rowval, r, k)
-                    z_kr = idx == -1 ? 0.0 : Zvals[idx]
-                end
-                s += Lkj * z_kr
-            end
-            Zvals[off_r] = -s * invLjj
-        end
-
-        # DIAGONAL entry Z[j, j] = 1/L[j,j]² - 1/L[j,j] · Σ L[k,j] · Z[k, j].
-        # Z[k, j] for k > j are now in Zvals (just computed above).
-        s = 0.0
-        for off_k in (cs + 1):ce
-            Lkj = Lvals[off_k]
-            Z_kj = Zvals[off_k]
-            s += Lkj * Z_kj
-        end
-        Zvals[cs] = invLjj * invLjj - s * invLjj
-    end
-
-    # Build the un-permuted symmetric sparse output. Z stored at L's
-    # (lower) pattern in the PERMUTED basis maps via `perm`:
-    #   (Q⁻¹)[perm[r], perm[c]] = Zvals[stored at (r, c) of L].
-    # Mirror to the upper triangle for the symmetric result.
-    nnz_out = 2 * length(Lvals) - n          # diag once, off-diag mirrored
-    I_out = Vector{Int}(undef, nnz_out)
-    J_out = Vector{Int}(undef, nnz_out)
-    V_out = Vector{Float64}(undef, nnz_out)
-    idx = 0
-    @inbounds for j in 1:n
-        cs = colptr[j]; ce = colptr[j + 1] - 1
-        # diagonal
-        idx += 1
-        I_out[idx] = perm[j]; J_out[idx] = perm[j]; V_out[idx] = Zvals[cs]
-        for off in (cs + 1):ce
-            r = rowval[off]
-            v = Zvals[off]
-            idx += 1
-            I_out[idx] = perm[r]; J_out[idx] = perm[j]; V_out[idx] = v
-            idx += 1
-            I_out[idx] = perm[j]; J_out[idx] = perm[r]; V_out[idx] = v
-        end
-    end
-    return sparse(I_out, J_out, V_out, n, n)
-end
-
-"""
-    takahashi_diag(ch::SparseArrays.CHOLMOD.Factor) -> Vector{Float64}
-
-Convenience: return ONLY `diag(Q⁻¹)` (a length-n vector, in the ORIGINAL
-ordering) via the Takahashi recursion. Same cost as `takahashi_selinv` but
-without materialising the full sparse output (a small allocation win when
-only the diagonal is needed, as in the EM E-step's per-trait variance).
-"""
-function takahashi_diag(ch::SparseArrays.CHOLMOD.Factor{Float64})
+# Shared Takahashi recursion, reused by takahashi_selinv and takahashi_diag.
+# Returns the selected-inverse values `Zvals` aligned to the
+# CSC structure of `L = sparse(ch.L)` (permuted ordering; column `j`'s diagonal is
+# at `colptr[j]`, off-diagonals at the following nonzero offsets), plus the CSC
+# arrays and permutation to map back to the original ordering. Cost is
+# `Θ(Σⱼ|L[:,j]|²)` (see the WHY block above), NOT `O(nnz(L))`; the
+# `L + Lᵀ` pattern entries are exact regardless of that cost.
+function _selinv_zvals(ch::SparseArrays.CHOLMOD.Factor{Float64}; per_pair::Bool = false,
+                       strict_order::Bool = false)
     L = sparse(ch.L)
     perm = ch.p
     n = size(L, 1)
     colptr = L.colptr
     rowval = L.rowval
-    Lvals  = L.nzval
+    Lvals = L.nzval
 
     Zvals = zeros(Float64, length(Lvals))
+    if per_pair
+        _selinv_zvals_per_pair!(Zvals, colptr, rowval, Lvals, n)
+        return Zvals, colptr, rowval, perm, n
+    end
+
+    # PERFORMANCE. Column `j` needs, for each of its clique rows `i_q` (its row pattern
+    # below the diagonal, `i_1 < … < i_m`), the sum `s_q = Σ_p L[i_p, j] · Z[i_p, i_q]`
+    # over ALL clique members `p`, accumulated in ascending `p`. `Z[i_p, i_q]` with
+    # `p < q` is stored in column `i_p` at row `i_q` (entries live at column
+    # `min(row, col)`), and by the Cholesky fill-path property every clique row after
+    # `i_p` IS in column `i_p`'s pattern. So walk `p = 1…m` once: at step `p`, add the
+    # diagonal term to `s_p`, then merge column `i_p`'s rows with the clique tail
+    # `i_{p+1}…i_m`; each match `v = Z[i_p, i_q]` contributes `L[i_q, j]·v` to `s_p` and
+    # `L[i_p, j]·v` to `s_q`. Every `s_q` therefore receives its terms in exactly
+    # ascending `p` — the order of the original per-pair recursion — so the output is
+    # BIT-IDENTICAL to it (`test/runtests.jl` pins this). Structurally absent entries
+    # (the per-pair path adds `L·0.0`) are skipped: `s + ±0.0 == s` for every `s`
+    # reachable here, because an accumulator that starts at `+0.0` can never become
+    # `-0.0`. Scratch is one length-`maxm` vector; there is no clique-width cap.
+    maxm = 0
+    @inbounds for c in 1:n
+        mc = colptr[c + 1] - colptr[c] - 1
+        mc > maxm && (maxm = mc)
+    end
+    acc = zeros(Float64, maxm)
 
     @inbounds for j in n:-1:1
         cs = colptr[j]; ce = colptr[j + 1] - 1
-        Ljj = Lvals[cs]
-        invLjj = 1.0 / Ljj
+        invLjj = 1.0 / Lvals[cs]
+        m = ce - cs
 
+        if m == 0
+            Zvals[cs] = invLjj * invLjj
+            continue
+        end
+
+        for q in 1:m
+            acc[q] = 0.0
+        end
+        for p in 1:m
+            ip = rowval[cs + p]
+            lp = Lvals[cs + p]
+            pcs = colptr[ip]; pce = colptr[ip + 1] - 1
+            sp = acc[p] + lp * Zvals[pcs]               # p == q: Z[i_p, i_p]
+            ntail = m - p
+            if ntail > 0
+                # ALIGNED TAIL. When column `i_p`'s first `ntail` off-diagonal rows ARE the
+                # clique tail, the merge degenerates to a unit-stride walk. The three cheap
+                # tests below are exact, not heuristic: the tail is a subset of column `i_p`'s
+                # pattern (fill-path property), it has `ntail` elements, they lie in
+                # `[i_{p+1}, i_m]`, and column `i_p` holds exactly `ntail` rows in that range
+                # when its `ntail`-th row is `i_m` — so the two lists coincide. `@simd`
+                # reassociates the `sp` reduction, which is why this path is gated at rtol
+                # rather than bitwise (measured 1.3e-15 relative on a fill-471 factor);
+                # `strict_order = true` keeps the bit-identical merge.
+                if !strict_order && (pce - pcs) >= ntail &&
+                   rowval[pcs + 1] == rowval[cs + p + 1] && rowval[pcs + ntail] == rowval[cs + m]
+                    @simd for t in 1:ntail
+                        v = Zvals[pcs + t]
+                        sp += Lvals[cs + p + t] * v
+                        acc[p + t] = muladd(lp, v, acc[p + t])
+                    end
+                elseif (pce - pcs) <= 11 * ntail
+                    # linear merge of two ascending row lists
+                    a = pcs + 1
+                    q = p + 1
+                    while q <= m && a <= pce
+                        iq = rowval[cs + q]
+                        ra = rowval[a]
+                        if ra == iq
+                            v = Zvals[a]
+                            sp += Lvals[cs + q] * v
+                            acc[q] += lp * v
+                            a += 1; q += 1
+                        elseif ra < iq
+                            a += 1
+                        else
+                            q += 1
+                        end
+                    end
+                else
+                    # column i_p is long relative to the tail we want: search per entry
+                    for q in (p + 1):m
+                        idx = _csc_rowidx(colptr, rowval, ip, rowval[cs + q])
+                        if idx != -1
+                            v = Zvals[idx]
+                            sp += Lvals[cs + q] * v
+                            acc[q] += lp * v
+                        end
+                    end
+                end
+            end
+            acc[p] = sp
+        end
+        for q in 1:m
+            Zvals[cs + q] = -acc[q] * invLjj
+        end
+
+        s = 0.0
+        for off_k in (cs + 1):ce
+            s += Lvals[off_k] * Zvals[off_k]
+        end
+        Zvals[cs] = invLjj * invLjj - s * invLjj
+    end
+
+    return Zvals, colptr, rowval, perm, n
+end
+
+# The original per-pair recursion (one binary search per clique pair), kept as the
+# bitwise reference `_selinv_zvals(ch; per_pair = true)` that the tests pin the
+# scatter path against. Not used on any production path.
+function _selinv_zvals_per_pair!(Zvals, colptr, rowval, Lvals, n)
+    @inbounds for j in n:-1:1
+        cs = colptr[j]; ce = colptr[j + 1] - 1
+        invLjj = 1.0 / Lvals[cs]
         for off_r in ce:-1:(cs + 1)
             r = rowval[off_r]
             s = 0.0
@@ -230,16 +198,59 @@ function takahashi_diag(ch::SparseArrays.CHOLMOD.Factor{Float64})
             end
             Zvals[off_r] = -s * invLjj
         end
-
         s = 0.0
         for off_k in (cs + 1):ce
-            Lkj = Lvals[off_k]
-            Z_kj = Zvals[off_k]
-            s += Lkj * Z_kj
+            s += Lvals[off_k] * Zvals[off_k]
         end
         Zvals[cs] = invLjj * invLjj - s * invLjj
     end
+    return Zvals
+end
 
+"""
+    takahashi_selinv(ch::SparseArrays.CHOLMOD.Factor{Float64}) -> SparseMatrixCSC
+
+Compute the Takahashi selected inverse of the matrix `Q` whose sparse Cholesky
+factor is `ch` (`P · C · Pᵀ = L · Lᵀ`). Returns a `SparseMatrixCSC` holding
+`Q⁻¹` (in the ORIGINAL un-permuted ordering) at the union sparsity of
+`Pᵀ (L + Lᵀ) P`. Entries outside that pattern are NOT computed (and are NOT zero
+in general). Kernel ported from HSquared.jl #361/#363 (MIT); API native to DRModels.jl.
+"""
+function takahashi_selinv(ch::SparseArrays.CHOLMOD.Factor{Float64})
+    Zvals, colptr, rowval, perm, n = _selinv_zvals(ch)
+
+    nnz_out = 2 * length(Zvals) - n
+    I_out = Vector{Int}(undef, nnz_out)
+    J_out = Vector{Int}(undef, nnz_out)
+    V_out = Vector{Float64}(undef, nnz_out)
+    idx = 0
+    @inbounds for j in 1:n
+        cs = colptr[j]; ce = colptr[j + 1] - 1
+        idx += 1
+        I_out[idx] = perm[j]; J_out[idx] = perm[j]; V_out[idx] = Zvals[cs]
+        for off in (cs + 1):ce
+            r = rowval[off]
+            v = Zvals[off]
+            idx += 1
+            I_out[idx] = perm[r]; J_out[idx] = perm[j]; V_out[idx] = v
+            idx += 1
+            I_out[idx] = perm[j]; J_out[idx] = perm[r]; V_out[idx] = v
+        end
+    end
+    return sparse(I_out, J_out, V_out, n, n)
+end
+
+"""
+    takahashi_diag(ch::SparseArrays.CHOLMOD.Factor{Float64}) -> Vector{Float64}
+
+Return ONLY `diag(Q⁻¹)` (length-n, in the ORIGINAL ordering) via the Takahashi
+recursion, without materialising the full sparse output (a real memory saving;
+the recursion's own FLOP cost is `Θ(Σⱼ|L[:,j]|²)`, comparable to the Cholesky
+factorization itself, NOT `O(nnz(L))` — see the file header). The diagonal is
+always in the `L + Lᵀ` pattern, so it is exact. Kernel ported from HSquared.jl #361/#363 (MIT); API native to DRModels.jl.
+"""
+function takahashi_diag(ch::SparseArrays.CHOLMOD.Factor{Float64})
+    Zvals, colptr, _, perm, n = _selinv_zvals(ch)
     d = Vector{Float64}(undef, n)
     @inbounds for j in 1:n
         d[perm[j]] = Zvals[colptr[j]]
