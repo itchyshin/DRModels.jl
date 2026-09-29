@@ -64,6 +64,7 @@ t.pvalue       # < 0.05 when x is truly predictive
 """
 function lrtest(reduced::DrmFit, full::DrmFit)
     _reml_compare_guard(reduced, full, "lrtest")
+    _sentinel_compare_guard(reduced, full, "lrtest")
     _marginal_compare_guard(reduced, full, "lrtest")
     _map_compare_guard(reduced, full, "lrtest")
     Δdof = dof(full) - dof(reduced)
@@ -75,6 +76,28 @@ function lrtest(reduced::DrmFit, full::DrmFit)
     statistic = 2 * (loglik(full) - loglik(reduced))
     pvalue = ccdf(Chisq(Δdof), max(statistic, 0))
     return (; statistic, dof = Δdof, pvalue)
+end
+
+# A fit stranded on the failed-objective sentinel plateau (loglik <= -1e15, see
+# `_sentinel_loglik`) has a meaningless likelihood: an LR statistic built from it is
+# ~1e18 and its p-value 0 or 1, an AIC ~2e18. Comparison verbs refuse it, like the
+# REML/VA refusals; information criteria return NaN with a warning.
+function _sentinel_compare_guard(reduced::DrmFit, full::DrmFit, verb::AbstractString)
+    for (nm, f) in (("reduced", reduced), ("full", full))
+        _sentinel_loglik(f) && throw(ArgumentError(
+            "$verb: the `$nm` fit is degenerate (loglik = $(loglik(f)), the failed-" *
+            "objective sentinel or non-finite): the optimiser never reached a valid " *
+            "likelihood, so a likelihood-ratio comparison is meaningless. Refit " *
+            "(different start values / optimiser) before comparing."))
+    end
+    return nothing
+end
+
+function _sentinel_infocrit_nan(fit::DrmFit, which::AbstractString)
+    _sentinel_loglik(fit) || return false
+    @warn "$which: fit is degenerate (loglik = $(fit.loglik), the failed-objective " *
+          "sentinel or non-finite); returning NaN. Refit before using information criteria."
+    return true
 end
 
 # Block symbols that carry a VARIANCE COMPONENT (random-effect SDs, Cholesky
@@ -280,6 +303,7 @@ isfinite(aicc(fit))         # finite whenever n - k - 1 > 0
 """
 function aicc(fit::DrmFit)
     _va_infocrit_guard(fit, "aicc")
+    _sentinel_infocrit_nan(fit, "aicc") && return NaN
     k = dof(fit)
     n = nobs(fit)
     n - k - 1 > 0 || return Inf
