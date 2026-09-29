@@ -1581,6 +1581,33 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
         out["gradient"] = g
         out["gradient_names"] = cnames
     end
+    # Route-aware convergence diagnostics (#569): the Julia twin of `check_drm`,
+    # reshaped for the R bridge. Kept as a nested "diagnostics" dict (rather
+    # than flattened top-level keys) so a route's honestly-`missing` fields
+    # (see `bridge_diagnostics`'s docstring) stay self-contained and cannot be
+    # confused with the top-level `"converged"`/`"iterations"` keys above,
+    # which predate this and stay unchanged for backward compatibility.
+    # `grad_source` is ALSO echoed at the top level: it is the one field
+    # `R/julia-diagnostics.R`'s `drm_julia_gradient_source()` already reads off
+    # `object$bridge[["grad_source"]]` (the raw, un-nested payload) to attribute
+    # the "gradient"/"gradient_names" pair above to a producer.
+    bdiag = bridge_diagnostics(fit)
+    out["grad_source"] = String(bdiag.grad_source)
+    out["diagnostics"] = Dict{String,Any}(
+        "route" => bdiag.route,
+        "integrator" => String(bdiag.integrator),
+        "optimizer" => bdiag.optimizer,
+        "converged" => bdiag.converged,
+        "iterations" => bdiag.iterations,
+        "max_abs_grad" => bdiag.max_abs_grad,
+        "grad_source" => String(bdiag.grad_source),
+        "vcov_complete" => bdiag.vcov_complete,
+        "vcov_posdef" => bdiag.vcov_posdef,
+        "min_eigval" => bdiag.min_eigval,
+        "cond" => bdiag.cond,
+        "penalized_map" => bdiag.penalized_map,
+        "boundary" => bdiag.boundary,
+    )
     if labels !== nothing || coef_labels !== nothing
         # `coef_names`/`vcov_names` are the public R spelling.  Retain the exact
         # Julia coordinate names and a bijection for the bridge inference route;

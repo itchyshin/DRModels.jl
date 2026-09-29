@@ -67,6 +67,38 @@ Gaussian marginal (K is rebuilt each evaluation since it depends on `ρ`).
 """
 spatial(x) = x
 
+# Shared PD/symmetry guard for a user-supplied relatedness matrix `C` (relmat /
+# animal / a dense phylo correlation) attached to grouping factor `grp`.
+# Symmetry is checked at a sqrt(eps) relative tolerance, then a Cholesky is
+# attempted with `check = false` so a failure is a controlled `ArgumentError`
+# naming the grouping factor rather than a bare `PosDefException`. This does
+# NOT reject an ill-conditioned-but-technically-PD matrix (e.g. a floating-
+# point "semidefinite" matrix with a tiny positive pivot factors successfully
+# in both Julia and R); whether to add a condition-number threshold is an
+# owner decision, tracked separately.
+function _checked_relmat_chol(C, grp::Symbol)
+    Cm = _checked_relmat_symmetric(C, grp)
+    ch = cholesky(Symmetric(Cm); check = false)
+    issuccess(ch) ||
+        throw(ArgumentError("relmat/animal matrix for `$grp` is not positive " *
+            "definite (Cholesky factorization failed); check the matrix scale, " *
+            "level ordering, and for duplicated levels"))
+    return ch
+end
+
+# Symmetry-only guard, for routes that only need C to be PSD (they form and
+# factor the marginal V, never C⁻¹ itself) — see `_fit_two_structured_gaussian`
+# below. A singular-but-PSD C (e.g. clonal/duplicated relmat rows, or a phylo
+# correlation with a zero-length terminal branch) is a valid input there.
+function _checked_relmat_symmetric(C, grp::Symbol)
+    Cm = Matrix{Float64}(C)
+    isapprox(Cm, Cm'; rtol = sqrt(eps(Float64))) ||
+        throw(ArgumentError("relmat/animal matrix for `$grp` is not symmetric " *
+            "(outside a sqrt(eps) relative tolerance); check the matrix was " *
+            "built correctly"))
+    return Cm
+end
+
 function _fit_structured_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, K, nmμ, nmσ, grp, g_tol)
     n = length(y)
     pμ, pσ = size(Xμ, 2), size(Xσ, 2)
@@ -81,7 +113,7 @@ function _fit_structured_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, K, nmμ, 
                                             nmμ, nmσ, [String(grp)], grp, g_tol;
                                             block = :resd)
     end
-    Kfac = cholesky(Symmetric(K))
+    Kfac = _checked_relmat_chol(K, grp)
     Kinv = inv(Kfac)            # constant (K fixed)
     logdetK = logdet(Kfac)
 
@@ -90,19 +122,48 @@ function _fit_structured_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, K, nmμ, 
         ημ = Xμ * βμ; ησ = Xσ * βσ
         σs² = exp(2 * lσs)
         T = eltype(θ)
-        S = zeros(T, G); C = zeros(T, G)
-        q1 = zero(T); logdetD = zero(T)
+        S = zeros(T, G); C = zeros(T, G); rv = zeros(T, n)
+        logdetD = zero(T)
         @inbounds for i in 1:n
-            invD = exp(-2 * ησ[i]); r = y[i] - ημ[i]; a = r * invD; k = gidx[i]
-            S[k] += invD; C[k] += a; q1 += r * a; logdetD += 2 * ησ[i]
+            invD = exp(-2 * ησ[i]); r = y[i] - ημ[i]; k = gidx[i]
+            rv[i] = r
+            S[k] += invD; C[k] += r * invD; logdetD += 2 * ησ[i]
         end
-        M = Kinv ./ σs² + Diagonal(S)              # (1/σ_s²)K⁻¹ + ZᵀD⁻¹Z
+        P = Kinv ./ σs²
+        M = P + Diagonal(S)                         # (1/σ_s²)K⁻¹ + ZᵀD⁻¹Z
         # `check = false` + a large FINITE penalty: a line-search step into a
         # non-PD region must not throw (PosDefException) nor return Inf — Julia
         # 1.12's HagerZhang line search asserts the objective is finite.
         Mfac = cholesky(Symmetric(M); check = false)
         issuccess(Mfac) || return convert(eltype(θ), 1e18)
-        quad = q1 - dot(C, Mfac \ C)
+        # #764: the naive quadratic form `q1 - dot(C, Mfac \ C)` (q1 = Σrᵢ²/Dᵢᵢ)
+        # is a difference of two terms that are BOTH O(1/σ_e²) and cancel to an
+        # O(1) residual as σ_e → 0 — with one record per structured level
+        # (an animal-model `id`), that residual is the *entire* quadratic form,
+        # so it is lost to rounding at float64 precision (measured: logLik
+        # +4.4e253 at a point where a dense/naive reassembly gives −468.76, the
+        # SAME plateau a 1-D profile finds — the true likelihood is BOUNDED as
+        # σ_e → 0 here, not unbounded; this is cancellation, not identifiability).
+        # Fixed via the standard within/between-group SS decomposition, computed
+        # Welford-style (deviations from the group mean, never Σrᵢ²/Dᵢᵢ minus a
+        # near-equal term): weighted group mean r̄ = D_S⁻¹C, within-group SS
+        # accumulated directly from (rᵢ − r̄_{g(i)}), and the leftover
+        # `r̄ᵀ P (M⁻¹C)` term stays O(1) as σ_e → 0 by construction (`M⁻¹C` is a
+        # well-conditioned Cholesky solve regardless of how large `S` gets).
+        # A structured level `k` with no observations (e.g. a phylo tip absent
+        # from the data, or an internal/ancestor node in the dense route) has
+        # S[k] == 0 and C[k] == 0, so `C ./ S` divides 0/0 = NaN and poisons
+        # `dot(rbar, ...)` below even though such a level contributes nothing
+        # to q1 (no i falls in it). Map that 0/0 to 0, its only consistent value.
+        rbar = [s > 0 ? c / s : zero(T) for (c, s) in zip(C, S)]
+        SSW = zero(T)
+        @inbounds for i in 1:n
+            invD = exp(-2 * ησ[i]); k = gidx[i]
+            dev = rv[i] - rbar[k]
+            SSW += invD * dev^2
+        end
+        MinvC = Mfac \ C
+        quad = SSW + dot(rbar, P * MinvC)
         logdetV = logdetD + G * log(σs²) + logdetK + logdet(Mfac)
         return 0.5 * (logdetV + quad) + 0.5 * n * log(2π)
     end
@@ -187,6 +248,12 @@ function _fit_two_structured_gaussian(fam::Gaussian, y, Xμ, gidx1, G1, C1, gidx
                                       nmμ, grp1, grp2, g_tol)
     n = length(y)
     pμ = size(Xμ, 2)
+    # Symmetry only: this route forms and factors the marginal V = σ²I +
+    # σ₁²Z₁C₁Z₁' + σ₂²Z₂C₂Z₂' and never C⁻¹ itself, so a singular-but-PSD C
+    # (clonal relmat rows, a zero-length phylo tip) is a valid input — V-level
+    # `Vfac` below (`check = false`) is what actually enforces PD-ness.
+    _checked_relmat_symmetric(C1, grp1)
+    _checked_relmat_symmetric(C2, grp2)
     Z1 = _structured_Z(gidx1, G1)
     Z2 = _structured_Z(gidx2, G2)
     ZC1Zt = Z1 * C1 * Z1'        # constant building blocks (C₁, C₂ fixed)
@@ -626,8 +693,9 @@ end
 # the original #231 behaviour). Latent rows ARE the levels, so leaf_pos = 1:G,
 # unit weights / BLUP scales.
 function _dense_comp(gidx, G, C, grp::Symbol)
-    Q = dropzeros!(sparse(Symmetric(inv(Symmetric(Matrix(C))))))
-    logdetC = logdet(Symmetric(Matrix(C)))
+    ch = _checked_relmat_chol(C, grp)
+    Q = dropzeros!(sparse(Symmetric(inv(ch))))
+    logdetC = 2 * sum(log, diag(ch.U))
     rows = collect(Int, gidx)
     return _StructComp(Q, rows, ones(length(rows)), G, logdetC,
                        collect(1:G), ones(G), grp)

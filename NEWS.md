@@ -146,6 +146,21 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   (drmTMB's own integrator); `nq = 3` is the smallest node count within 0.01
   nat of an independent AGHQ-40 reference on the same DGP (`nq = 2` misses at
   ≈0.03 nat) — see `test/test_binomial_aghq.jl`.
+- **`ZeroOneBeta()` phylo/relmat structured random intercept on the mean (#739,
+  drmTMB twin gap #1281).** `ZeroOneBeta()` now admits a structured random
+  intercept on the mean — `phylo(1 | species)` (needs `tree = ...`), and
+  `relmat(1 | id)` / `animal(1 | id)` / `spatial(1 | id)` (need `K = ...` /
+  `A = ...` / `coords = ...`) — via the same verified `:beta_fixed`-derived
+  sparse-Laplace spine `Beta()` uses, restricted to a constant `sigma ~ 1` and
+  intercept-only `zoi ~ 1` / `coi ~ 1`. The atom/coi mixture (`P(y=0)`,
+  `P(y=1)`) is completely separable from the mean/dispersion/phylo likelihood,
+  so `zoi`/`coi` are estimated by their closed-form Bernoulli MLEs and travel
+  as fixed `aux` fields into a new additive `Val(:zeroonebeta_fixed)` Laplace
+  kernel (atom rows contribute zero η-derivatives; interior rows are exactly
+  `:beta_fixed`). Verified against drmTMB's `zero_one_beta()` phylo route on
+  matched data (identical tree, ML): logLik agrees to 5e-5, all four
+  parameter blocks (`mu`, `sigma`, `zoi`, `coi`) agree to ≤ 1e-7.
+
 - **`ZeroOneBeta()` random intercept `(1 | g)` on the mean (#723, drmTMB twin gap).**
   `ZeroOneBeta()` no longer hard-blocks every random effect: an ordinary
   random intercept on the mean, `y ~ x + (1 | g)`, is now admitted exactly as
@@ -154,7 +169,93 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   `coi` must stay fixed-effects-only (their formulas still refuse any random
   effect). Mirrors drmTMB's admitted `zero_one_beta()` + ordinary RI (e.g.
   `faraway::leafblotch`). Structured (`tree=`/`K=`) random intercepts on
+  `ZeroOneBeta()`'s mean are now implemented too — see #739 above.
   `ZeroOneBeta()`'s mean remain unimplemented (#739).
+- **Fix: `animal(1|id)` / `relmat(1|id)` Gaussian could diverge with one record
+  per structured level (#764).** `_fit_structured_gaussian`'s homoscedastic
+  (`sigma ~ 1`) Woodbury quadratic `q1 - dot(C, Mfac \ C)` is a difference of
+  two O(1/σ_e²) terms that cancel to an O(1) residual as σ_e → 0; with one
+  observation per animal-model level that residual IS the whole quadratic
+  form, so it was lost to rounding — measured, `logLik = +4.4e253` with
+  `converged = true` on a fit whose true value (confirmed by an independent
+  dense reassembly and by the same likelihood's 1-D profile) is a bounded,
+  interior optimum. This is the #548/#835/#837/#838 cancellation class, not
+  genuine unboundedness. Fixed by computing the quadratic form via a
+  within/between-group sum-of-squares decomposition (Welford-style deviations
+  from the group mean) instead of subtracting two near-equal large terms; the
+  fit is now bounded down to σ_e as small as machine precision allows. See
+  `test/test_twin_gap_764.jl`.
+- **`show(io, fit)` (2-arg) now names the fitted family (#758).** The compact
+  form — used by `println(fit)`, string interpolation and `repr` — printed
+  "Gaussian location–scale" for every family (Poisson, BetaBinomial, …) while
+  the `MIME"text/plain"` method already printed the correct one. Both now
+  agree.
+- **`offset(...)` on the Poisson mean (#727, drmTMB twin gap).** The formula
+  grammar had no `offset()` term at all. `drm(bf(y ~ x + offset(log_exposure)),
+  Poisson(); data)` now fits `log λ = Xβ + offset`, with the offset's own
+  coefficient fixed at 1 (never estimated) — matching drmTMB's
+  `offset()` contract, gated to the Poisson mean (log link). The offset term
+  accepts a plain column (`offset(log_exposure)`) or an inline numeric
+  transform (`offset(log(exposure))`) via the same schema/modelcols machinery
+  ordinary terms use, with no implicit intercept inserted. Currently supported
+  only on the fixed-effects-only Poisson mean (no random effect, structured
+  marker, `zi`, or `hu` yet); those combinations raise a clear error rather
+  than silently dropping the offset. Verified against drmTMB's `poisson()` +
+  `offset()` on matched simulated data: logLik and both fixed-effect
+  coefficients agree to ≤ 1e-6.
+- **`loglikelihood(fit)` (StatsAPI/StatsBase generic) added for `DrmFit`
+  (#668).** `DRM.loglik(fit)` already worked, but the StatsAPI-facing
+  `loglikelihood` was undefined, so anything dispatching on the generic
+  `StatsAPI.StatisticalModel` interface errored on a `DrmFit`. It is now
+  exported and delegates to `loglik(fit)` (same value, same REML caveat).
+- **CumulativeLogit crossed random effects (#738, drmTMB twin parity).**
+  `CumulativeLogit()` now fits crossed/multiple random intercepts on the
+  latent linear predictor, `(1 | g) + (1 | h)`, matching drmTMB's
+  `cumulative_logit()`. Integrator: the PLAIN (no-nuisance) sparse
+  augmented-state Laplace GLMM engine already shared by Poisson/Binomial's
+  crossed routes (`_fit_crossed_mean_laplace`) — no new integrator for the
+  random effects. The `K - 1` ordered cutpoints (a second block of structure
+  that shared engine's `[βμ; logσ_g; logσ_h]` layout has no room for) are
+  found by an outer Nelder–Mead profile search, refitting the full crossed
+  model at each candidate cutpoint vector — exact profile-likelihood
+  optimisation, not an approximation. Correlated slopes `(1 + x | g)` and
+  `relmat`/`animal`/`spatial` structured markers combined with crossed
+  intercepts remain refused.
+- **LogNormal crossed random effects (#736, drmTMB twin parity).**
+  `LogNormal()` now fits crossed/multiple random intercepts on the log-mean,
+  `(1 | g) + (1 | h)`, matching drmTMB's `lognormal()`. `log(y)` is exactly
+  Gaussian, so the fit delegates WHOLESALE to
+  `drm(f, Gaussian(); data = data-with-logged-response)`
+  (`_fit_multi_ranef_gaussian`, the closed-form exact crossed marginal
+  likelihood — no Laplace approximation, so no new integrator), the same
+  identity already used for `phylo`/`relmat` structured markers on the mean,
+  with the reported log-likelihood shifted by the parameter-free Jacobian
+  `-sum(log y)`.
+- **`ranef(fit)` no longer silently returns an empty `Dict` for a non-Gaussian
+  GLMM (#759).** A `Binomial`/`Poisson`/etc. fit with a random-effect block,
+  fitted by the Gauss–Hermite/Laplace marginal route (which integrates the
+  random effect out without ever computing a posterior mode), now throws an
+  informative `ArgumentError` from `ranef` instead of returning an empty
+  `Dict` that silently looked like "no random effects". A fit with genuinely
+  no random-effect block still returns an empty `Dict`. The docstring's
+  pointer to the closed #73 is removed.
+- **`residuals(fit; type = :quantile)` on a mixed fit now uses the marginal
+  reference distribution, not `fitted(fit)` at the random intercept fixed at
+  0 (#760).** A single ordinary random intercept `(1 | g)` on the mean used to
+  be judged against the fixed-effect-only mean, inflating the residuals' SD
+  even on a correctly specified GLMM (reported on a Binomial `(1|BroodNo)`
+  chick-survival fit: engine SD 1.0538 vs a hand-computed marginal SD 1.0144).
+  `ranef()` conditional modes are not yet available for a non-Gaussian GLMM,
+  so the fix integrates the random intercept out with its fitted σ_b by the
+  same 32-node Gauss–Hermite quadrature the `_fit_*_ranef` routes use to fit
+  it (`_ranef_marginal_mix`, `src/quantile_residuals.jl`) — covers Poisson,
+  NegBinomial2, TruncatedNegBinomial2, Gamma, Binomial, Beta, BetaBinomial,
+  Gaussian, Student, LogNormal, and `ZeroOneBeta()`'s new `(1 | g)` route
+  (#723). Crossed `(1|g)+(1|h)`, correlated `(1+x|g)`, and structured
+  (`phylo`/`relmat`) random intercepts whose per-tip variance is not σ_b²
+  keep the previous (fixed-effect-only) reference rather than risk a wrong
+  marginalisation. A future conditional-mode variant is tracked once #759
+  wires non-Gaussian `ranef()`.
 - **`Student()` fits crossed random intercepts on the mean (#725; drmTMB twin
   #1266).** `y ~ x + (1 | g) + (1 | h)` was refused ("single random-effect
   term"); drmTMB `student()` fits it. It now uses the Laplace approximation, as
@@ -181,6 +282,196 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   first run previously stopped short. New regression tests
   (`test/test_student_725.jl`) reproduce all three failures on the reviewer's
   simulated fixtures and pin drmTMB reference log-likelihoods.
+- **`residuals(fit; type = :quantile)` on a `TruncatedNegBinomial2` fit no
+  longer returns NaN at extreme dispersion or extreme small μ.** The
+  zero-truncated randomized-quantile-residual driver (`_quantile_residuals`,
+  `src/quantile_residuals.jl`) built the truncated CDF as `F_t(k) =
+  (Distributions.cdf(NB, k) − F0) / (1 − F0)`. At `log σ ≲ -20` the NB2 size
+  `r = 1/σ²` grows so large that `r + μ` rounds to exactly `r` in Float64 —
+  `p = r/(r+μ)` rounds to exactly `1.0`, so `Distributions.cdf` returns exactly
+  `1.0` for every `k`, and both the numerator and the denominator evaluate to
+  `0.0`: `0/0 = NaN`. The same underflow occurs at extreme small μ (μ/r
+  rounds to exactly `0.0`) at ordinary dispersion. This is the same
+  cancellation #866/#874 fixed in the truncated/hurdle NB2 *likelihood*; this
+  fix carries the `_nb2_logpmf` / `_log1mexp` log-space technique into the
+  quantile-residual driver: `log(1 − F0)` via `_log1mexp(_nb2_logpmf(r, μ,
+  0))`, and `log P(1 ≤ Y ≤ k)` via a running `_logaddexp` sum of
+  `_nb2_logpmf(r, μ, j)` terms, neither of which ever forms the degenerate `p`.
+  A swept-and-confirmed-clean regression guard covers the other discrete
+  quantile-residual drivers (plain `NegBinomial2`, `NegBinomial2`/`Poisson`
+  hurdle-tagged fits, `BetaBinomial`) at the same extreme parameters — none of
+  them divide by a near-zero quantity, so they saturate to a large-but-finite
+  residual rather than NaN. Ordinary parameter values are bit-for-bit
+  unaffected (matches the old `Distributions.cdf`-ratio path to 1e-10).
+
+- **Hurdle NB2 (`NegBinomial2() + hu ~ ...`, and `TruncatedNegBinomial2() + hu
+  ~ ...`, which delegates to it) no longer returns NaN at extreme dispersion
+  (#866).** At `log σ ≈ -20..-50` the NB2 size `r = exp(-2·ησ) ~ 1e17-1e43` is
+  so much larger than `μ` that `r + μ` rounds to exactly `r` in Float64 and
+  `p = r/(r+μ)` rounds to exactly `1.0`. Distributions' `NegativeBinomial(r,
+  p).logpdf` then returns a finite value at `k = 0` but `-Inf` at any `k > 0`
+  (it needs a `log(1 - p) = log(0)` term there), so the hurdle's zero-truncation
+  divisor, `log(1 - P(0))`, computed as `-Inf - (-Inf)`, was `NaN`. Found by
+  the likelihood sanity fuzzer (#866). Fixed by a log1p-space NB2 log-pmf
+  (`_nb2_logpmf`, `src/negbinomial.jl`) that never forms `r + μ` — the same
+  cancellation class #846 fixed on the `(1 | g)` AGHQ path. Ordinary parameter
+  values are bit-for-bit unaffected (matches the old `Distributions.logpdf`
+  path to 1e-10).
+
+- **Plain zero-truncated NB2 (`TruncatedNegBinomial2()`, no `hu` part) no
+  longer returns NaN at extreme dispersion.** `_fit_truncated_negbin2`
+  (`src/negbinomial.jl`) had the identical `logpdf(d, y) - log(1 - P(0))`
+  cancellation as the hurdle NB2 fix above (#866): at `log σ ≈ -20..-50`
+  the zero-truncation divisor was `-Inf - (-Inf) = NaN`. A repo-wide sweep of
+  every other NB2/truncated-NB2 log-likelihood site (zero-inflated, `(1|g)`
+  and `(1+x|g)` random-effect, phylo, relmat/animal/spatial, crossed, and
+  variational NB2 paths) found no other affected site — each of those either
+  has no zero-truncation divisor or hard-clamps the dispersion linear
+  predictor well inside the safe range. Fixed the same way, with `_nb2_logpmf`.
+  (A related NaN in `_conditional_dist`'s cdf-based zero-truncation divisor
+  for quantile residuals, `src/quantile_residuals.jl`, was also found but is
+  out of scope here — it is a diagnostic/residual path, not a fitting
+  log-likelihood.)
+- **The `relmat`/`animal` PD guard now covers every dense Gaussian entry
+  point, not just `_dense_comp`.** Two more user-matrix sites lacked it:
+  `_fit_structured_gaussian` (the single, non-crossed relmat/animal route)
+  called `cholesky(Symmetric(K))` with the default `check = true` — a bare
+  `PosDefException` on a non-PD `K`, and `Symmetric(K)` silently reading only
+  one triangle of a non-symmetric `K` with no error at all; and
+  `_fit_two_structured_gaussian` checked only the assembled marginal `V`
+  inside the optimiser (with a large finite penalty on failure, so it never
+  threw), never `C1`/`C2` themselves at setup. All three sites now share one
+  `_checked_relmat_chol(C, grp)` helper: symmetry at a sqrt(eps) relative
+  tolerance, then a `check = false` Cholesky, raising `ArgumentError` naming
+  the grouping factor on either failure. PD input is unaffected (fits agree
+  with the pre-guard path to 1e-10). This does **not** add a condition-number
+  threshold — a floating-point "semidefinite" matrix with a tiny positive
+  pivot still factors successfully, as it does in R; whether to refuse
+  ill-conditioned input is an open owner decision.
+
+- **`relmat(1 | g)` / `animal(1 | g)` (dense Gaussian path) now refuses a
+  non-PD relatedness/correlation matrix with a clear error, instead of
+  silently propagating garbage.** `_dense_comp` used to call
+  `inv(Symmetric(Matrix(C)))` / `logdet(Symmetric(Matrix(C)))` directly, with
+  no positive-definiteness check. On a semidefinite `C` (e.g. a GRM with
+  duplicate individuals, or a singular pedigree A-matrix) this silently
+  returned a finite but WRONG `logdet` about half the time in a random sweep —
+  no error at all — and a confusing low-level `DomainError` from `log` of a
+  negative number the other half, never naming the offending matrix. It now
+  factors via `cholesky(Symmetric(C); check = false)` and throws an
+  `ArgumentError` naming the grouping factor when the factorization fails.
+  On well-conditioned and ill-conditioned (cond up to 1e12) PD input the
+  Cholesky-based precision/logdet match the old inv/logdet path and a 256-bit
+  BigFloat reference to the tolerances measured (accuracy was already
+  comparable between the two paths on PD input — the fix is about the
+  non-PD case, not accuracy on well-posed input).
+- **Location–scale group covariance Λ⁻¹ no longer loses ~14 digits near a
+  singular log-Cholesky factor.** `_ls_inv2x2` (`locscale_inner.jl`) inverted
+  Λ = L Lᵀ via the naive `a*d - b*c` determinant on the already-formed matrix;
+  forming Λ from its log-Cholesky factor computes `d = L21² + L22²` as a
+  Float64 sum, which silently discards L22 whenever `|L21| ≫ L22`, so neither
+  that determinant nor a fresh `cholesky` re-factorisation of the formed Λ can
+  recover it (relative error vs a 256-bit reference: exact at l22-diagonal
+  −12, then ~1e-1 to total failure by −18/−25). The coupled (L21 ≠ 0) call
+  sites in `locscale_grad.jl`, `locscale_fit.jl`, `locscale_profile.jl` and
+  `gaussian_locscale_phylo.jl` now invert directly from the log-Cholesky
+  vector (`_ls_lc_inv2x2`/`_ls_lc_logdetΛ`), never forming Λ as an
+  intermediate matrix; accurate to ≤1e-10 relative at l22-diagonal −12, −18,
+  −25 against a BigFloat reference, and agrees with the old matrix-formed
+  path to ≤1e-12 in the well-conditioned regime. The diagonal-only callers
+  (`locscale_sigma.jl`, `locscale_corr.jl`, the separate/asymmetric σ-phylo
+  blocks) are unaffected — their off-diagonal is exactly zero, so the naive
+  determinant never cancels.
+- **`cond_newton_beta` (q=4 REML) and `mstep_beta` no longer evaluate the
+  objective at a wild trial point on an ill-conditioned fixed-effect design.**
+  Both take a Newton step on the profiled fixed effects from an exact
+  ForwardDiff Hessian (ridge ladder for indefiniteness, up to 25 halvings
+  accepted only on decrease), but the raw step had no cap on its size. On a
+  near-collinear mean design (x2 = x1 + 1e-8·noise, cond(H) up to 5.6e16) the
+  raw step reached ‖step‖∞ ≈ 3.25e5, a step of about 1.4e5 was accepted, and β
+  for the collinear pair diverged to ±602. The whole raw step is now scaled so
+  ‖step‖∞ ≤ 5.0 (matching `_estep_robust`'s existing trust radius) BEFORE
+  backtracking, in both functions. A no-op on well-conditioned designs (the
+  fitted β and REML logLik are unchanged to 1e-8 on the existing q4 REML
+  fixtures); the collinear pair itself stays unidentified regardless of the
+  cap — the cap only prevents evaluating wild points, matching the pattern
+  drmTMB adopted for the same failure mode (draft PR #1441).
+
+- **`lrtest`/`anova` refuse REML-vs-ML pairs; `_fixed_effect_structure` (was
+  `_mean_structure`) covers bivariate fits (#639).** `_reml_compare_guard`
+  previously refused a REML-vs-REML pair only when their `:mu` blocks
+  differed, and never checked whether the OTHER fit was ML at all — so
+  `lrtest(ml_fit, reml_fit)` silently compared two different likelihoods
+  whenever the (univariate-only) mean-structure check happened to match.
+  It now (1) refuses any pair with different `estim_method`s outright (REML
+  is never comparable to ML or MAP), and (2) for a REML-vs-REML pair, checks
+  fixed-effect structure in **every** mean/scale block, not just `:mu` — so a
+  bivariate fit's `:mu1`/`:mu2`/`:sigma1`/`:sigma2`/`:rho12` blocks are seen
+  correctly (the old `_mean_structure` matched only `:mu` and silently
+  returned `String[]` for every bivariate fit, passing any bivariate REML
+  pair regardless of structure). The variance-component boundary label
+  (`_boundary_vc_warn`, #304) already keyed off block symbols shared across
+  univariate and bivariate fits (`:phylocov`/`:recov`/…), so it was already
+  bivariate-safe; now pinned end-to-end by a bivariate q=4 phylogenetic test.
+- **`drm_bridge` exports route-aware convergence diagnostics (#569).** A new
+  `bridge_diagnostics(fit)` (`src/introspection.jl`), the Julia twin of
+  `check_drm`, reports which route fitted the model, its integrator
+  (`fit.marginal`), the optimiser (`"Optim.LBFGS"` where `niterations`
+  records an achieved count), `converged`, `iterations`, `max_abs_grad` +
+  `grad_source`, `vcov_complete`/`vcov_posdef`/`min_eigval`/`cond`,
+  `penalized_map`, and `boundary` (indices whose stored variance is
+  non-finite or negative). `drm_bridge`'s payload now carries this under a
+  `"diagnostics"` key, plus a top-level `"grad_source"` echo for
+  `R/julia-diagnostics.R`'s `drm_julia_gradient_source()` (drmTMB) to read.
+  Nothing is fabricated: a quantity a route does not record (e.g. the crossed
+  sparse-Laplace engine's iteration count, or `vcov_posdef`/`min_eigval`/`cond`
+  when the covariance is only partially finite) is `missing`, never a
+  placeholder zero.
+- **Gaussian σ-phylo REML now fits drmTMB's restricted likelihood.** For the
+  Gaussian location–scale model with `phylo(1 | g)` on `sigma` (the scale-only,
+  separate and coupled blocks), `method = :REML` now maximises TMB's
+  joint-Laplace restricted log-likelihood. This is one Laplace approximation over
+  the phylogenetic effects, `beta_mu` and `beta_sigma`, with flat priors on the
+  fixed effects, and it is the quantity drmTMB's `REML = TRUE` maximises. It
+  replaces the Patterson–Thompson composite from #337, so **REML estimates and
+  `reml_loglik` change on all three blocks**. The reported fixed effects are the
+  joint mode at the REML variance estimates. The scale-only and coupled blocks
+  reproduce native drmTMB's df, logLik (≤ 1e-6) and estimates (≤ 1e-5 relative)
+  on two fixtures, and the coupled block's df and logLik on two more whose
+  mean–scale correlation sits on drmTMB's bound. That bound, |cor| ≤ 0.999999,
+  now applies to the coupled REML fit too: when the data put both phylogenetic
+  effects on one axis, the fit lands on the bound and reports no Wald covariance,
+  where it used to stop at a worse local optimum. The receipt is in
+  `docs/dev-log/evidence/arc2-gaussian-sigma-phylo-reml/`. The separate block
+  has no native twin, because drmTMB always estimates the mean–scale
+  correlation. **The coupled block (`phylo_coupled = true`) now accepts REML**;
+  it used to throw. Under REML, `profile_ci = true` on the scale-only and
+  separate blocks now profiles this restricted likelihood; it used to profile
+  the ML likelihood from the REML estimate. When a phylogenetic SD is estimated
+  at zero, a REML fit now reports convergence and sits on the likelihood
+  plateau. Its Wald covariance is NaN, and on the scale-only and separate blocks
+  `profile_ci = true` gives a `[0, upper]` interval. The coupled block computes
+  no profile interval, under ML or REML; it ignores `profile_ci = true`.
+- **`re_sd(fit)` now returns SDs for a correlated random-effect block
+  (`(1 + x | g)`) (#708, #763).** It previously returned an empty `Dict`,
+  leaving `vc(fit)` as the only route to the intercept/slope SDs. `re_sd`
+  now keys the two SDs `<group>_intercept` and `<group>_slope`, decoded from
+  the same Cholesky factor `vc(fit)` uses (`sqrt.(diag(vc(fit)[:g]))`); the
+  correlation itself is still only in `vc(fit)`.
+- **Every parity fixture and TSV summary table now stamps its drmTMB
+  comparator (#473).** "drmTMB 0.7.0" identifies at least 16 different
+  builds, so a version string alone cannot say which one measured a given
+  number. `tools/drmtmb_provenance.R` already computed a real
+  `drmtmb_code_hash` fingerprint, and #512 wired it into four harnesses, but
+  18 `test/parity/fixtures/*/expected.meta.toml` files and 5
+  `docs/dev-log/evidence/parity-*.tsv` tables still carried no stamp. Those
+  18 fixtures and 5 tables now record `drmtmb_code_hash` — three
+  `parity-fixtures.tsv` rows recovered a real hash already noted in their own
+  `note` text, and the rest, whose generating build cannot be recovered
+  honestly, are stamped `"unknown (pre-#473)"` rather than guessed.
+  `test/test_fixture_provenance.jl` fails on any future `expected.meta.toml`
+  that omits the stamp. `xfam-external-gllvm` is excluded (its comparator is
+  gllvm, not drmTMB). No fixture's numeric values changed — only metadata.
 
 - **`Student()` no longer reports a garbage log-likelihood near the Gaussian
   limit (#721; drmTMB twin #1265).** When the data are close to Normal the
@@ -194,6 +485,46 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   fixed-effect, `(1 | g)` and `(1 + x | g)` fitters. The trees fit now reports
   loglik −87.82; the ν coefficient itself is not identified on that ridge.
   Fits with moderate ν are unchanged.
+- **Fix: a Binomial fit with two crossed random-intercept groupings
+  (`(1 | g) + (1 | h)`) silently reported `[Inf, Inf, Inf, Inf]` standard
+  errors with no warning (#761).** `_fit_binomial_crossed_laplace`'s own
+  keyword default was `se = false` (unlike its Poisson/NB2 siblings, which
+  default `se = true`), and `drm()`'s Binomial dispatcher never forwards the
+  user's `se` argument down to it — so the Hessian/vcov step was skipped
+  entirely regardless of what the caller asked for, `V` came back all-`NaN`,
+  and `stderror` reported all-`Inf` per its existing non-finite-variance
+  convention, with the guard that would have warned (`_vcov_from_hessian`,
+  `src/vcov_guard.jl`) never invoked. Fixed by flipping the default to
+  `se = true`; a genuinely non-identifiable random-intercept grouping (e.g.
+  a grouping fully aliased with another, as when no cluster of one grouping
+  spans more than one level of the other) now surfaces the existing
+  "Hessian is numerically singular" / "not positive definite" warnings
+  instead of a silent `Inf`.
+- **`simulate()`/the parametric bootstrap no longer throw for `biv_lognormal()`
+  (same class as #766).** The generic `_simulate_once` fallback special-cases
+  bivariate Gaussian fits (`fam isa Gaussian && haskey(fit.scales, :sigma1)`)
+  before falling through to `fit.means[:mu]` for every other family. A
+  bivariate lognormal fit has `fit.family isa LogNormal`, never `Gaussian`,
+  even though it is built entirely by delegating to the bivariate Gaussian
+  route on `log(y)` and so carries the SAME `:mu1`/`:mu2`/`:sigma1`/`:sigma2`/
+  `:rho12` keys — so `simulate(fit)` and every parametric-bootstrap replicate
+  (`bootstrap_result`/`bootstrap_ci`, which draw via `simulate` before any
+  refit) threw `KeyError: key :mu not found` immediately. `src/bivariate_lognormal.jl`
+  now adds a `_simulate_once(fit::DrmFit{LogNormal}, rng; ...)` method, dispatched
+  ahead of the generic one, that draws log(Y) exactly as bivariate Gaussian does
+  and exponentiates, leaving the univariate lognormal draw unchanged.
+- **`predict`/`predict_parameters` on `newdata` with a factor predictor now use
+  the TRAINING levels and contrasts (issue #609 item 1).** Previously the
+  design matrix for `newdata` was built from a schema derived from `newdata`
+  itself, so a `newdata` that omitted a training factor level crashed with an
+  opaque `DimensionMismatch`, and one with an unseen level either errored
+  obscurely or (with only that level present) refused with a misleading
+  "need at least two levels" message. `DrmFormula` now caches the schema
+  built from the training data at fit time; `predict`/`predict_parameters`
+  reuse it, so `newdata` may present a subset of levels, the levels in a
+  different row order, or all of them — and an unseen level now raises a
+  clear `ArgumentError` naming the parameter. Numeric-only predictors are
+  unaffected. See `test/test_twin_gap_609.jl`.
 
 - **`marginal = :Laplace` on an ordinary `(1 | g)` (Arc 2, drmTMB parity).**
   Poisson, Binomial, NegBinomial2, Gamma and Beta with one ordinary random

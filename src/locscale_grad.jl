@@ -65,7 +65,7 @@ function _ls_marginal_grad(kind, y, Xμ, Xψ, gidx, G, Q, θ,
     βμ = @view θ[1:pμ]
     βψ = @view θ[pμ+1:pμ+pψ]
     λ  = θ[pμ+pψ+1:pμ+pψ+3]
-    Λ = _ls_lc_to_Λ(λ); Λinv = _ls_inv2x2(Λ)
+    Λinv = _ls_lc_inv2x2(λ)   # stable: never forms Λ (see locscale_inner.jl)
     P = prior_precision(Q, Λinv)
     η0 = Xμ * βμ; ψ0 = Xψ * βψ
 

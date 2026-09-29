@@ -106,6 +106,7 @@ _shard_include("test_shard_selection.jl")
 _shard_include("test_runtests_include_list.jl")  # this file's own shape: no duplicate or plain includes (see MAINTENANCE NOTE)
 _shard_include("test_load_contract.jl")
 _shard_include("test_aqua.jl")
+_shard_include("test_fixture_provenance.jl")  # #473: every parity fixture must stamp its drmTMB comparator
 
 # Gaussian location–scale front end (drm/bf public API).
 _shard_include("test_gaussian_core.jl")
@@ -118,6 +119,7 @@ _shard_include("test_niterations.jl")  # #466: fit.niterations wired into every 
 _shard_include("test_bf_grammar.jl")
 _shard_include("test_gaussian_bivariate.jl")
 _shard_include("test_bivariate_lognormal.jl")
+_shard_include("test_biv_lognormal_simulate.jl")  # #840-class: simulate()/bootstrap KeyError on biv_lognormal()
 _shard_include("test_bivariate_student.jl")
 _shard_include("test_associate_pairs.jl")
 _shard_include("test_gaussian_bivariate_phylo.jl")
@@ -167,6 +169,7 @@ _shard_include("test_simulate_scale_conventions.jl") # NB2 size, Gamma slot conv
 _shard_include("test_locscale_bootstrap_simulator.jl") # coupled marginal draws, precision and family contracts
 _shard_include("test_locscale_bootstrap_refit.jl") # same-seed public Gamma refits, serial/threaded
 _shard_include("test_gaussian_structured.jl")
+_shard_include("test_twin_gap_764.jl")  # #764: animal(1|id) one-record-per-individual cancellation
 _shard_include("test_gaussian_phylo_mean_missing_response.jl")  # #482: species-subset (drop) + include refusal
 # Silent-data-loss fix: `phylo(<not 1> | group)` refused on univariate routes
 # instead of silently fitting the intercept-only model.
@@ -175,6 +178,8 @@ _shard_include("test_phylo_slope_two_sd.jl")
 _shard_include("test_phylo_interaction.jl")
 _shard_include("test_two_structured_gaussian.jl")
 _shard_include("test_two_structured_gaussian_sparse.jl")
+_shard_include("test_dense_comp_chol.jl")  # _dense_comp: Cholesky precision/logdet + clear error on non-PD C
+_shard_include("test_pd_guard_structured.jl")  # shared PD/symmetry guard also on _fit_structured_gaussian and _fit_two_structured_gaussian's C1/C2
 _shard_include("test_structured_plus_ordinary_bar.jl")  # Arc 2: structured marker + ordinary (1 | h) bars (was a silent drop)
 _shard_include("test_heritability.jl")
 _shard_include("test_conjugate_em.jl")
@@ -184,6 +189,7 @@ _shard_include("test_bootstrap_marginal.jl")   # #459: bootstrap must redraw ran
 _shard_include("test_gaussian_spatial.jl")
 _shard_include("test_predict.jl")
 _shard_include("test_predict_response.jl")
+_shard_include("test_twin_gap_609.jl")   # #609 item 1: predict/newdata factor-level contrasts
 _shard_include("test_ranef.jl")
 _shard_include("test_ranef_varying_scale_convergence.jl")  # #609: `converged` on the varying-scale ranef route is the GRADIENT criterion
 _shard_include("test_correlated_re.jl")
@@ -196,6 +202,10 @@ _shard_include("test_student_721.jl")
 _shard_include("test_student_725.jl")
 _shard_include("test_skewnormal.jl")
 _shard_include("test_poisson.jl")
+# Issue #727 (twin drmTMB #1281): the formula grammar had no `offset()` term.
+# Adds a `offset(...)` marker (poisson.jl-local, gated to the fixed-effects-only
+# Poisson mean); its coefficient is fixed at 1, never estimated.
+_shard_include("test_twin_gap_727.jl")
 _shard_include("test_nbinom2.jl")
 _shard_include("test_nb2_dispersion_seed.jl")
 _shard_include("test_beta.jl")
@@ -211,6 +221,8 @@ _shard_include("test_zi.jl")
 _shard_include("test_bridge_zi.jl")
 _shard_include("test_lognormal.jl")
 _shard_include("test_hurdle.jl")
+_shard_include("test_nb2_hurdle_nan.jl")
+_shard_include("test_tnb2_nan.jl")
 _shard_include("test_truncated_nb.jl")
 _shard_include("test_betabinomial.jl")
 _shard_include("test_zeroonebeta.jl")
@@ -223,6 +235,7 @@ _shard_include("test_cumlogit_nan.jl")
 _shard_include("test_cumlogit_ranef.jl")
 _shard_include("test_cumlogit_phylo.jl")
 _shard_include("test_cumlogit_aghq.jl")            # per-group AGHQ for CumulativeLogit (1 | g) / (0 + x | g)
+_shard_include("test_crossed_cumulative.jl")
 _shard_include("test_poisson_re.jl")
 _shard_include("test_poisson_slope_re.jl")
 _shard_include("test_poisson_crossed_laplace.jl")
@@ -236,11 +249,13 @@ _shard_include("test_gamma_beta_phylo_laplace.jl")
 _shard_include("test_binomial_phylo_laplace.jl")
 _shard_include("test_betabinomial_phylo_laplace.jl")
 _shard_include("test_crossed_laplace_generic.jl")
+_shard_include("test_twin_gap_761.jl")
 _shard_include("test_betabinomial_crossed_laplace.jl")
 _shard_include("test_crossed_selected_inverse.jl")
 _shard_include("test_locscale_kernels.jl")
 _shard_include("test_locscale_inner.jl")
 _shard_include("test_locscale_inner_status.jl")
+_shard_include("test_ls_inv2x2_chol.jl")
 _shard_include("test_locscale_marginal.jl")
 _shard_include("test_locscale_fit.jl")
 _shard_include("test_locscale_grad.jl")
@@ -289,6 +304,7 @@ _shard_include("test_student_slope_re.jl")
 _shard_include("test_lognormal_re.jl")
 _shard_include("test_lognormal_slope_re.jl")
 _shard_include("test_lognormal_structured_mean.jl")
+_shard_include("test_crossed_lognormal.jl")
 _shard_include("test_betabinomial_re.jl")
 _shard_include("test_betabinomial_slope_re.jl")
 _shard_include("test_binomial.jl")
@@ -325,6 +341,7 @@ _shard_include("test_predict_parameters.jl")
 _shard_include("test_prediction_grid.jl")
 _shard_include("test_bridge.jl")
 _shard_include("test_bridge_option_passthrough.jl")  # #527-adjacent: control-option forwarding + gradient exposure
+_shard_include("test_twin_gap_569.jl")  # #569: route-aware bridge diagnostics (bridge_diagnostics, drm_bridge["diagnostics"])
 _shard_include("test_bridge_bootstrap_tree.jl") # same-tree non-Gaussian fixed-effect bootstrap
 _shard_include("test_bootstrap_provider_forwarding.jl") # K/A/tree/coords survive bootstrap refits
 _shard_include("test_bridge_profile_target.jl")
@@ -402,6 +419,7 @@ _shard_include("test_575_exact_reml_gradient.jl")        # #575: exact REML grad
 _shard_include("test_575_q4_optimum.jl")                 # #575: the q4 REML cold-start route reaches its own optimum
 _shard_include("test_reml_q4_missing_response.jl")       # #578: _reml_border_blocks mask consistency, missing responses
 _shard_include("test_q4_reml_vcov.jl")                   # #563 S11: pin q4 REML vcov() native/bridge behaviour
+_shard_include("test_beta_newton_cap.jl")                # trust-radius cap on cond_newton_beta / mstep_beta's raw Newton step
 _shard_include("test_reml_prior_precision_collapse.jl")  # #563: _reml_prior_precision collapsed into prior_precision after #577
 _shard_include("test_reml_surface_contract.jl")          # #624: bridge estim_method/loglik honesty + refusal message surface
 _shard_include("test_reml_reml_biv_residual.jl")        # #624: REML on the residual-only bivariate Gaussian route
@@ -491,6 +509,10 @@ _shard_include("test_bootstrap_sigma_a.jl")
 _shard_include("test_reml_sigma_phylo.jl")
 _shard_include("test_reml_reml_phylo_mean.jl")
 _shard_include("test_reml_newton_sigma_phylo.jl")
+# Arc 2: σ-phylo REML is ONE joint Laplace over (phylo effects, β_μ, β_σ) — native
+# drmTMB's restricted likelihood — on the asymmetric, separate and coupled blocks
+# (dense-oracle relationship + same-target native receipt + neighbour guards).
+_shard_include("test_reml_sigma_phylo_joint.jl")
 # Bivariate q4 REML must correct ALL FOUR among-axis SDs (β_μ AND β_σ profiled), not
 # just the means — regression for the scale-axis REML gap (#18).
 _shard_include("test_reml_q4_allaxes.jl")
@@ -546,6 +568,10 @@ _shard_include("test_chibar.jl")
 # #304: lrtest/anova warn on a boundary variance-component drop (naive χ² invalid).
 _shard_include("test_lrtest_boundary_warn.jl")
 
+# #639: lrtest refuses REML-vs-ML / mismatched-fixed-effect REML pairs, and the
+# REML guard + boundary variance-component label work on bivariate fits.
+_shard_include("test_twin_gap_639.jl")
+
 # #320 / #323.2: coeftable/show suppress z/p for non-location blocks and Inf-SE rows.
 _shard_include("test_summary_zp_suppress.jl")
 _shard_include("test_r2_constant_sigma.jl")
@@ -561,6 +587,10 @@ _shard_include("test_reml_vcov_curvature.jl")
 
 # Randomized quantile residuals (DHARMa/glmmTMB style) — feat-quantile-residuals.
 _shard_include("test_quantile_residuals.jl")
+_shard_include("test_twin_gap_760.jl")
+
+# TruncatedNegBinomial2 quantile residuals: no NaN at extreme dispersion / μ.
+_shard_include("test_qres_trunc_nan.jl")
 
 # S3: cross-family bivariate (shared-latent GHQ) + link-residual standardization.
 _shard_include("test_mixed_family.jl")
@@ -617,3 +647,25 @@ _shard_include("test_lss_reml_falseconv.jl")
 # DimensionMismatch because simulate drew fit.nobs values against full-design
 # means. Guards both, plus the iteration count the full-row rebuild dropped.
 _shard_include("test_bridge_response_mask_inference.jl")
+
+# Issue #758: the compact 2-arg `show(io, fit)` hardcoded every family as
+# "Gaussian location–scale"; only the MIME"text/plain" method named the real
+# family. Guards that the compact form now matches.
+_shard_include("test_twin_display_758.jl")
+# Issue #668: StatsBase.loglikelihood(::DrmFit) was missing (DRM.loglik worked).
+_shard_include("test_twin_display_668.jl")
+# Issue #708 / #763: re_sd(fit) returned an empty Dict for a correlated
+# random-effect block (1 + x | g); only vc(fit) exposed the SDs/correlation.
+_shard_include("test_twin_display_708.jl")
+# Issue #759: ranef(fit) silently returned an empty Dict for a non-Gaussian
+# GLMM random-intercept fit; the docstring's #73 pointer was also stale.
+_shard_include("test_twin_display_759.jl")
+# Issues #762/#707: Gaussian correlated (1 + x | g) threw DomainError (log of a
+# negative capacitance "determinant") with an uncentred covariate or rho -> +-1, and
+# AssertionError in the line search. Pins the stable whitened objective, the
+# centred/QR-preconditioned optimisation and drmTMB-twinned H0 refits.
+_shard_include("test_twin_gap_762.jl")
+# Issue #739 (twin drmTMB #1281): ZeroOneBeta() had no `tree=`/`K=` phylo/relmat
+# method. Adds a `Val(:zeroonebeta_fixed)` sparse-Laplace kernel (additive to
+# sparse_laplace_glmm.jl) and the phylo/relmat fitters in zeroonebeta.jl.
+_shard_include("test_twin_gap_739.jl")

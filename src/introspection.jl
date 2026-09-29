@@ -121,3 +121,90 @@ function _structured_effects_forms(f)
     fs isa AbstractVector || return nothing
     return fs
 end
+
+"""
+    bridge_diagnostics(fit::DrmFit) -> NamedTuple
+
+Route-aware convergence diagnostics for the `engine = "julia"` R bridge (#569)
+— the Julia twin of [`check_drm`](@ref), reshaped for `drm_bridge`'s payload
+plus the two quantities `check_drm` does not itself report: which internal
+route produced this fit and which integrator/optimiser it used.
+
+Every field is read straight off `fit`, or computed by the SAME logic
+[`check_drm`](@ref) uses (`_check_max_abs_grad`, the covariance
+finiteness/positive-definiteness check) — deliberately NOT by calling
+`check_drm(fit)` itself, which additionally `@info`/`@warn`-logs a report on
+every call. `drm_bridge` calls this for every bridged fit, and a bridge
+boundary that writes to stderr on every ordinary fit is a regression in its
+own right (an R caller doing `@test_nowarn drm_bridge(...)`-equivalent
+checking, or just tailing its own logs, would see one `check_drm` report per
+`engine = "julia"` fit that nobody asked to be told about). Nothing here is
+fabricated. A quantity a route does not record is `missing`, never a
+fabricated zero or `NaN` standing in for it:
+
+- `route` — the fitted objective's Julia type name (`fit.nll === nothing`
+  reports `"none"`); the honest, ungeneralised answer to "which internal
+  objective fitted this model".
+- `integrator` — `fit.marginal` (`:LA`, `:Laplace`, `:VA`, `:AGHQ`).
+- `optimizer` — `"Optim.LBFGS"` when [`niterations`](@ref) recorded an achieved
+  iteration count (see its docstring for exactly which routes that covers);
+  `missing` on a route with no single outer optimiser call to attribute one to.
+- `converged` — `fit.converged`.
+- `iterations` — `niterations(fit)`; `missing` when unrecorded (`niterations`
+  returns `-1`).
+- `max_abs_grad`, `grad_source` — the same `(magnitude, source)` pair
+  `check_drm` reports as `max_abs_grad`/`grad_source` (`_check_max_abs_grad`);
+  `max_abs_grad` is `missing` (not `NaN`) when `grad_source` is `:none` or
+  `:unavailable`, i.e. no gradient was actually produced.
+- `vcov_complete` — whether `fit.vcov` is finite throughout (`check_drm`'s
+  `vcov_complete`).
+- `vcov_posdef`, `min_eigval`, `cond` — `check_drm`'s positive-definiteness /
+  eigenvalue / condition-number trio, but `missing` (not `check_drm`'s
+  documented `false`/`NaN`/`Inf` placeholders) whenever `vcov_complete` is
+  `false`, since those three cannot actually be computed then.
+- `penalized_map` — `fit.estim_method === :MAP` (`check_drm`'s
+  `penalized_map`).
+- `boundary` — 1-based indices into `fit.theta`/`diag(fit.vcov)` whose stored
+  variance is non-finite or negative — the same condition [`stderror`](@ref)
+  already reports as an infinite standard error. Empty (not `missing`) when
+  none are.
+
+# Example
+```julia
+d = bridge_diagnostics(fit)
+d.route        # e.g. "LocScaleObjective"
+d.grad_source  # e.g. :stored
+```
+"""
+function bridge_diagnostics(fit::DrmFit)
+    grad = _check_max_abs_grad(fit)
+    iters = niterations(fit)
+    V = fit.vcov
+    vcov_complete = all(isfinite, V)
+    vcov_posdef, min_eigval, cond_num = if vcov_complete
+        S = Symmetric(V)
+        ev = eigvals(S)
+        mineig = minimum(ev)
+        (isposdef(S), mineig, mineig > 0 ? maximum(ev) / mineig : Inf)
+    else
+        (false, NaN, Inf)
+    end
+    d = diag(V)
+    boundary = findall(i -> !isfinite(d[i]) || d[i] < 0, eachindex(d))
+    no_gradient = grad.source in (:none, :unavailable)
+    return (
+        route = fit.nll === nothing ? "none" : String(nameof(typeof(fit.nll))),
+        integrator = fit.marginal,
+        optimizer = iters >= 0 ? "Optim.LBFGS" : missing,
+        converged = fit.converged,
+        iterations = iters >= 0 ? iters : missing,
+        max_abs_grad = no_gradient ? missing : grad.magnitude,
+        grad_source = grad.source,
+        vcov_complete = vcov_complete,
+        vcov_posdef = vcov_complete ? vcov_posdef : missing,
+        min_eigval = vcov_complete ? min_eigval : missing,
+        cond = vcov_complete ? cond_num : missing,
+        penalized_map = fit.estim_method === :MAP,
+        boundary = boundary,
+    )
+end
