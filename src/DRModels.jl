@@ -46,6 +46,11 @@ include("fit_q4_sparse_tmb.jl")
 # unguarded `inv` whose outcome depends on the LAPACK build.
 include("vcov_guard.jl")
 
+# Shared "evaluate at the minimizer, not Optim.minimum" helper (#optim-minimum-audit):
+# after a failed line search, Optim.jl's cached `Optim.minimum(res)` can hold a
+# rejected trial's value while `Optim.minimizer(res)` has already moved on.
+include("optim_minimum_guard.jl")
+
 # Fisher / observed-information metric on log-Cholesky params (#13 S1b infra).
 # Extracted after the natgrad solver failed the MLE-parity gate — not a public
 # solver path. Feeds AI-REML / exact REML gradient follow-ups (#11 / #165).
