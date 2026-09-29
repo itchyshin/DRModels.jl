@@ -3131,6 +3131,148 @@ function _fit_binomial_crossed_laplace(fam, s, ntr, Xμ, comps, nmμ, g_tol; se:
     )
 end
 
+# ---------------------------------------------------------------------------
+# `marginal = :AGHQ` for crossed random intercepts (1 | g) + (1 | h) (#761).
+#
+# The default crossed route above is the first-order Laplace approximation over the
+# stacked (u_g, u_h) — the drmTMB / lme4 integrator, matched to 4 decimals. Laplace
+# is BIASED LOW for Bernoulli / small-count data with a large random-intercept SD and
+# few observations per group: on a G = 300, H = 4, n = 1600 Bernoulli design with
+# σ_g = 2.5 (≈5 obs per g-group) it sits ≈9.5 nat below the true log-likelihood and
+# shrinks σ_g. The opt-in `marginal = :AGHQ` route integrates the SAME model
+# accurately when one grouping has few levels (H ≤ `_CROSSED_AGHQ_HMAX`): per-g
+# q = 1 AGHQ conditional on u_h, and a tensor AGHQ over the H-dim u_h
+# (`_crossed_aghq_loglik`, adaptive_ghq.jl). `fit.nll` IS the objective whose
+# optimum is reported: `fit.loglik == -fit.nll(fit.theta)`.
+#
+# Family opt-in is one line: pass the per-observation log-density closure
+# `ll(i, η)`. Every `Val(kind)` of the crossed-mean table above opts in with
+# `(i, η) -> -_laplace_value(kind, aux, i, η)`; families whose nuisance parameter is
+# ESTIMATED (the `_nuisance` routes) would need that parameter in θ and are not
+# wired here.
+# ---------------------------------------------------------------------------
+
+# Node counts. Sweep on the #850 Bernoulli design (G = 300, H = 4, n = 1600,
+# σ_g = 2.5, σ_h = 0.3), logLik at the crossed-Laplace optimum against K_g = 40:
+#   inner (K_h = 1): K_g = 5 +0.78, 9 +0.0064, 15 −0.0004, 25 +0.0000 nat;
+#   outer (K_g = 15): K_h = 1 −0.236, 2 −0.0128, 3 −0.0008, 4 (reference) nat.
+# K_g = 15 is the first inner rule inside 0.001 nat. K_h = 3 puts the outer error at
+# ~0.001 nat (3⁴ = 81 inner passes). The outer grid has K_h^H nodes, each a full
+# inner pass, so for 5 ≤ H ≤ 8 the default drops to K_h = 2 (≤ 256 nodes; ~0.01 nat
+# at H = 4) and above H = 8 the route refuses rather than run for hours.
+const _CROSSED_AGHQ_KG = 15
+const _CROSSED_AGHQ_HMAX = 8
+_crossed_aghq_default_kh(H::Integer) = H <= 4 ? 3 : 2
+
+"""
+    _fit_crossed_mean_aghq(fam, ll, n, Xμ, comps, nmμ, g_tol; θ0, meanfun, obsvec,
+                           K_g = _CROSSED_AGHQ_KG, K_h = nothing, se = true)
+
+Fit crossed random intercepts `(1 | g) + (1 | h)` on the mean by nested adaptive
+Gauss–Hermite quadrature (`marginal = :AGHQ`). `ll(i, η)` is the log-density of
+observation `i` at linear predictor `η`; `comps` is the two-component list used by
+the Laplace routes. The grouping with FEWER levels is integrated by the outer tensor
+rule (`K_h` nodes per axis, default `_crossed_aghq_default_kh(H)`, at most
+`_CROSSED_AGHQ_HMAX` levels); the other by per-group 1-D AGHQ (`K_g` nodes).
+θ = [β; log σ₁; log σ₂] in `comps` order, as in the Laplace route.
+`K_g = K_h = 1` is the crossed Laplace objective exactly.
+"""
+function _fit_crossed_mean_aghq(fam, ll, n::Int, Xμ, comps, nmμ, g_tol; θ0,
+                                meanfun, obsvec, K_g::Int = _CROSSED_AGHQ_KG,
+                                K_h::Union{Nothing,Int} = nothing, se::Bool = true)
+    length(comps) == 2 && all(==(1.0), comps[1][1]) && all(==(1.0), comps[2][1]) ||
+        throw(ArgumentError("marginal = :AGHQ on crossed random effects supports exactly two " *
+                            "random intercepts `(1 | g) + (1 | h)`"))
+    labels = [comps[1][4], comps[2][4]]
+    outer = comps[1][3] <= comps[2][3] ? 1 : 2
+    inner = 3 - outer
+    Hh = comps[outer][3]
+    Hh <= _CROSSED_AGHQ_HMAX || throw(ArgumentError(
+        "marginal = :AGHQ on crossed random intercepts needs one grouping with at most " *
+        "$(_CROSSED_AGHQ_HMAX) levels (its random effects are integrated by a tensor grid of " *
+        "K_h^H points); here the smaller grouping `$(labels[outer])` has $Hh levels. Use the " *
+        "default marginal (crossed Laplace, as drmTMB/lme4) (#761)."))
+    gidx = comps[inner][2]; G = comps[inner][3]; hidx = comps[outer][2]
+    gmembers = [Int[] for _ in 1:G]
+    for i in 1:n
+        push!(gmembers[gidx[i]], i)
+    end
+    rule_g = _AGHQRule(1, K_g)
+    rule_h = _AGHQRule(Hh, K_h === nothing ? _crossed_aghq_default_kh(Hh) : K_h)
+    cache = (ug = zeros(G), uh = zeros(Hh), Zre = ones(n, 1))
+    pμ = size(Xμ, 2)
+    function nll(θ)
+        logσ = clamp.(θ[pμ+1:pμ+2], -8.0, 3.0)      # same box as the crossed Laplace route
+        η0 = Xμ * θ[1:pμ]
+        v = -_crossed_aghq_loglik(ll, gmembers, gidx, hidx, Hh, η0, exp(logσ[inner]),
+                                  exp(logσ[outer]), rule_g, rule_h, cache)
+        return isfinite(_aghq_primal(v)) ? v : convert(typeof(v), 1e18)
+    end
+    grad!(Gout, θ) = ForwardDiff.gradient!(Gout, nll, θ)
+    res = Optim.optimize(nll, grad!, Float64.(θ0), Optim.LBFGS(),
+                         Optim.Options(g_tol = g_tol, iterations = 250))
+    θ̂ = Optim.minimizer(res)
+    nllhat = nll(θ̂)
+    gfinal = ForwardDiff.gradient(nll, θ̂)
+    converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
+    V = se ? _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); context = "crossed AGHQ") :
+             fill(NaN, length(θ̂), length(θ̂))
+    blocks = [:mu => 1:pμ, :resd => (pμ+1):(pμ+2)]
+    names = [:mu => nmμ, :resd => labels]
+    means = Dict(:mu => [meanfun(dot(@view(Xμ[i, :]), θ̂[1:pμ])) for i in 1:n])
+    obs = Dict(:mu => Vector{Float64}(obsvec))
+    scales = Dict{Symbol,Vector{Float64}}()
+    fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
+    return _withiterations(_withmarginal(_withnll(fit, nll, grad!), :AGHQ), Optim.iterations(res))
+end
+
+# Laplace optimum as the AGHQ start (cheap, and usually close). log σ starts are
+# floored so a Laplace fit that collapsed a variance to the box edge (where the
+# clamp makes the gradient zero) cannot pin the AGHQ fit there.
+function _crossed_aghq_start(lap, pμ)
+    θ0 = copy(lap.theta)
+    θ0[pμ+1:pμ+2] .= max.(θ0[pμ+1:pμ+2], log(0.05))
+    return θ0
+end
+
+"""
+    _fit_binomial_crossed_aghq(fam, s, ntr, Xμ, comps, nmμ, g_tol; K_g, K_h, se)
+
+Binomial / Bernoulli crossed random intercepts under `marginal = :AGHQ`
+(`_fit_crossed_mean_aghq`). This is the case Laplace gets wrong: Bernoulli data with
+a large σ and few observations per group.
+"""
+function _fit_binomial_crossed_aghq(fam, s, ntr, Xμ, comps, nmμ, g_tol; se::Bool = true,
+                                    K_g::Int = _CROSSED_AGHQ_KG, K_h::Union{Nothing,Int} = nothing)
+    sint = round.(Int, s)
+    nint = round.(Int, ntr)
+    logchoose = [_logfactorial(nint[i]) - _logfactorial(sint[i]) - _logfactorial(nint[i] - sint[i]) for i in eachindex(sint)]
+    aux = (s = sint, ntr = nint, logchoose = logchoose)
+    lap = _fit_binomial_crossed_laplace(fam, s, ntr, Xμ, comps, nmμ, g_tol)
+    ll = (i, η) -> -_laplace_value(Val(:binomial), aux, i, η)
+    return _fit_crossed_mean_aghq(fam, ll, length(s), Xμ, comps, nmμ, g_tol;
+                                  θ0 = _crossed_aghq_start(lap, size(Xμ, 2)),
+                                  meanfun = η -> _laplace_mean(Val(:binomial), η),
+                                  obsvec = [_laplace_obs(Val(:binomial), aux, i) for i in eachindex(sint)],
+                                  K_g = K_g, K_h = K_h, se = se)
+end
+
+"""
+    _fit_poisson_crossed_aghq(fam, y, Xμ, comps, nmμ, g_tol; K_g, K_h, se)
+
+Poisson crossed random intercepts under `marginal = :AGHQ` (`_fit_crossed_mean_aghq`).
+"""
+function _fit_poisson_crossed_aghq(fam, y, Xμ, comps, nmμ, g_tol; se::Bool = true,
+                                   K_g::Int = _CROSSED_AGHQ_KG, K_h::Union{Nothing,Int} = nothing)
+    lf = [_logfactorial(round(Int, yi)) for yi in y]
+    lap = _fit_poisson_crossed_laplace(fam, y, Xμ, comps, nmμ, g_tol; se = false)
+    ll = (i, η) -> (ηc = clamp(η, -30.0, 30.0); y[i] * ηc - exp(ηc) - lf[i])
+    return _fit_crossed_mean_aghq(fam, ll, length(y), Xμ, comps, nmμ, g_tol;
+                                  θ0 = _crossed_aghq_start(lap, size(Xμ, 2)),
+                                  meanfun = η -> exp(clamp(η, -30.0, 30.0)), obsvec = y,
+                                  K_g = K_g, K_h = K_h, se = se)
+end
+
 function _fit_nb2_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
                                   se::Bool = false, polish_iterations::Int = 0)
     length(comps) == 2 || error("_fit_nb2_crossed_laplace requires two random-intercept components")

@@ -571,6 +571,22 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   different row order, or all of them — and an unseen level now raises a
   clear `ArgumentError` naming the parameter. Numeric-only predictors are
   unaffected. See `test/test_twin_gap_609.jl`.
+- **`marginal = :AGHQ` for crossed random intercepts `(1 | g) + (1 | h)` (#761;
+  supersedes the rejected #850).** The default crossed route is the Laplace
+  approximation that drmTMB and lme4 use, and it still matches them. **Laplace is
+  biased low for Bernoulli / Binomial data with a large random-intercept SD and few
+  observations per group**: on a G = 300, H = 4, n = 1600 Bernoulli design with
+  σ_g = 2.5 (about 5 observations per g-level) its log-likelihood sits about 9.4 nat
+  below the true value, and it shrinks σ_g. The new opt-in `marginal = :AGHQ`
+  integrates the same model accurately when one grouping has few levels (at most
+  8): each g-level's intercept by 15-node adaptive Gauss–Hermite quadrature
+  conditional on the h-effects, and the h-effects by a tensor adaptive rule
+  (3 nodes per level for H ≤ 4, 2 for 5–8) centred at the joint mode. At one node
+  each it reproduces the crossed Laplace fit exactly. `fit.loglik` and `fit.nll`
+  are the same objective, and the fit is tagged `marginal = :AGHQ`, so `lrtest` /
+  `anova` refuse to compare it with a Laplace or GHQ fit. Wired for Binomial and
+  Poisson; other families with a mean-only crossed kernel can opt in with one
+  line. Default fits are unchanged.
 
 - **`marginal = :Laplace` on an ordinary `(1 | g)` (Arc 2, drmTMB parity).**
   Poisson, Binomial, NegBinomial2, Gamma and Beta with one ordinary random

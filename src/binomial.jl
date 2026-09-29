@@ -36,6 +36,15 @@ scope.
     separation screen before fitting; a (quasi-)separated logistic fit may
     converge to a diverging boundary estimate without warning.
 
+!!! warning "Crossed intercepts: Laplace is biased low for Bernoulli data"
+    The default crossed fit is the Laplace approximation drmTMB and lme4 use. For
+    Bernoulli / small-`n` Binomial data with a large random-intercept SD and few
+    observations per group it underestimates the log-likelihood (≈9.4 nat on a
+    300 × 4 Bernoulli design with σ_g = 2.5) and shrinks σ. When one grouping has
+    at most 8 levels, `marginal = :AGHQ` integrates the same model by nested
+    adaptive Gauss–Hermite quadrature and corrects this (#761). Its `loglik` is
+    not comparable with a Laplace fit's, so `lrtest` refuses mixed `marginal`s.
+
 !!! note
     `DRModels.Binomial` shadows `Distributions.Binomial`; if you need the
     distribution too (e.g. to simulate), qualify it as `Distributions.Binomial`.
@@ -44,6 +53,8 @@ scope.
 fit = drm(bf(cbind(successes, failures) ~ x), Binomial(); data = dat)   # logistic regression
 fit = drm(bf(y ~ x + (1 | g)), Binomial(); data = dat)                  # 0/1 logistic GLMM
 fit = drm(bf(cbind(successes, failures) ~ x + (1 | g) + (1 | h)), Binomial(); data = dat)
+fit_q = drm(bf(cbind(successes, failures) ~ x + (1 | g) + (1 | h)), Binomial();
+            data = dat, marginal = :AGHQ)                   # accurate crossed integral, h ≤ 8 levels
 fit_phy = drm(bf(@formula(cbind(successes, failures) ~ x + phylo(1 | species))),
               Binomial(); data = dat, tree = tr, se = false)
 fitted(fit)        # fitted success probabilities μ̂ = logistic(Xβ̂)
@@ -77,11 +88,13 @@ function drm(f::DrmFormula, fam::Binomial; data, tree = nothing, K = nothing,
     missing_fit !== nothing && return missing_fit
 
     marg = _marginal_method(marginal)                     # :LA (default) or :VA (#136)
-    marg isa AGHQ && _aghq_reject(fam, "this family")
+    isaghq = marg isa AGHQ                                # :AGHQ: crossed intercepts only (#761)
     isva = marg isa Variational
     _lss_only_gaussian_guard(f, fam)   # #544: refuse, never silently drop, sd() parts
     rhs = Dict(f.forms)
     fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
+    isaghq && !(length(re) > 1 && st === nothing) &&
+        _aghq_reject(fam, "this model (Binomial `marginal = :AGHQ` covers crossed random intercepts `(1 | g) + (1 | h)` only, #761)")
     mv === nothing ||
         error("Binomial() does not support meta_V markers")
     for (pname, r) in f.forms          # Binomial is mean-only — reject any other parameter formula
@@ -112,6 +125,7 @@ function drm(f::DrmFormula, fam::Binomial; data, tree = nothing, K = nothing,
                 grp = r[2]; gidx, G = _group_index(getproperty(data, grp))
                 (ones(length(s)), gidx, G, String(grp))
             end
+            isaghq && return _withformula(_fit_binomial_crossed_aghq(fam, s, ntr, Xμ, comps, nmμ, g_tol; se = se), f)   # #761
             return _withformula(_fit_binomial_crossed_laplace(fam, s, ntr, Xμ, comps, nmμ, g_tol), f)
         end
         (rk, var) = _re_kind(re[1][1]); grp = re[1][2]; gidx, G = _group_index(getproperty(data, grp))
