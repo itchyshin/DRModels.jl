@@ -90,19 +90,48 @@ function _fit_structured_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, K, nmμ, 
         ημ = Xμ * βμ; ησ = Xσ * βσ
         σs² = exp(2 * lσs)
         T = eltype(θ)
-        S = zeros(T, G); C = zeros(T, G)
-        q1 = zero(T); logdetD = zero(T)
+        S = zeros(T, G); C = zeros(T, G); rv = zeros(T, n)
+        logdetD = zero(T)
         @inbounds for i in 1:n
-            invD = exp(-2 * ησ[i]); r = y[i] - ημ[i]; a = r * invD; k = gidx[i]
-            S[k] += invD; C[k] += a; q1 += r * a; logdetD += 2 * ησ[i]
+            invD = exp(-2 * ησ[i]); r = y[i] - ημ[i]; k = gidx[i]
+            rv[i] = r
+            S[k] += invD; C[k] += r * invD; logdetD += 2 * ησ[i]
         end
-        M = Kinv ./ σs² + Diagonal(S)              # (1/σ_s²)K⁻¹ + ZᵀD⁻¹Z
+        P = Kinv ./ σs²
+        M = P + Diagonal(S)                         # (1/σ_s²)K⁻¹ + ZᵀD⁻¹Z
         # `check = false` + a large FINITE penalty: a line-search step into a
         # non-PD region must not throw (PosDefException) nor return Inf — Julia
         # 1.12's HagerZhang line search asserts the objective is finite.
         Mfac = cholesky(Symmetric(M); check = false)
         issuccess(Mfac) || return convert(eltype(θ), 1e18)
-        quad = q1 - dot(C, Mfac \ C)
+        # #764: the naive quadratic form `q1 - dot(C, Mfac \ C)` (q1 = Σrᵢ²/Dᵢᵢ)
+        # is a difference of two terms that are BOTH O(1/σ_e²) and cancel to an
+        # O(1) residual as σ_e → 0 — with one record per structured level
+        # (an animal-model `id`), that residual is the *entire* quadratic form,
+        # so it is lost to rounding at float64 precision (measured: logLik
+        # +4.4e253 at a point where a dense/naive reassembly gives −468.76, the
+        # SAME plateau a 1-D profile finds — the true likelihood is BOUNDED as
+        # σ_e → 0 here, not unbounded; this is cancellation, not identifiability).
+        # Fixed via the standard within/between-group SS decomposition, computed
+        # Welford-style (deviations from the group mean, never Σrᵢ²/Dᵢᵢ minus a
+        # near-equal term): weighted group mean r̄ = D_S⁻¹C, within-group SS
+        # accumulated directly from (rᵢ − r̄_{g(i)}), and the leftover
+        # `r̄ᵀ P (M⁻¹C)` term stays O(1) as σ_e → 0 by construction (`M⁻¹C` is a
+        # well-conditioned Cholesky solve regardless of how large `S` gets).
+        # A structured level `k` with no observations (e.g. a phylo tip absent
+        # from the data, or an internal/ancestor node in the dense route) has
+        # S[k] == 0 and C[k] == 0, so `C ./ S` divides 0/0 = NaN and poisons
+        # `dot(rbar, ...)` below even though such a level contributes nothing
+        # to q1 (no i falls in it). Map that 0/0 to 0, its only consistent value.
+        rbar = [s > 0 ? c / s : zero(T) for (c, s) in zip(C, S)]
+        SSW = zero(T)
+        @inbounds for i in 1:n
+            invD = exp(-2 * ησ[i]); k = gidx[i]
+            dev = rv[i] - rbar[k]
+            SSW += invD * dev^2
+        end
+        MinvC = Mfac \ C
+        quad = SSW + dot(rbar, P * MinvC)
         logdetV = logdetD + G * log(σs²) + logdetK + logdet(Mfac)
         return 0.5 * (logdetV + quad) + 0.5 * n * log(2π)
     end

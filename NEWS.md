@@ -155,6 +155,20 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   effect). Mirrors drmTMB's admitted `zero_one_beta()` + ordinary RI (e.g.
   `faraway::leafblotch`). Structured (`tree=`/`K=`) random intercepts on
   `ZeroOneBeta()`'s mean remain unimplemented (#739).
+- **Fix: `animal(1|id)` / `relmat(1|id)` Gaussian could diverge with one record
+  per structured level (#764).** `_fit_structured_gaussian`'s homoscedastic
+  (`sigma ~ 1`) Woodbury quadratic `q1 - dot(C, Mfac \ C)` is a difference of
+  two O(1/σ_e²) terms that cancel to an O(1) residual as σ_e → 0; with one
+  observation per animal-model level that residual IS the whole quadratic
+  form, so it was lost to rounding — measured, `logLik = +4.4e253` with
+  `converged = true` on a fit whose true value (confirmed by an independent
+  dense reassembly and by the same likelihood's 1-D profile) is a bounded,
+  interior optimum. This is the #548/#835/#837/#838 cancellation class, not
+  genuine unboundedness. Fixed by computing the quadratic form via a
+  within/between-group sum-of-squares decomposition (Welford-style deviations
+  from the group mean) instead of subtracting two near-equal large terms; the
+  fit is now bounded down to σ_e as small as machine precision allows. See
+  `test/test_twin_gap_764.jl`.
 - **`Student()` fits crossed random intercepts on the mean (#725; drmTMB twin
   #1266).** `y ~ x + (1 | g) + (1 | h)` was refused ("single random-effect
   term"); drmTMB `student()` fits it. It now uses the Laplace approximation, as
