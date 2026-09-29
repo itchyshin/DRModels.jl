@@ -192,6 +192,19 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   `loglikelihood` was undefined, so anything dispatching on the generic
   `StatsAPI.StatisticalModel` interface errored on a `DrmFit`. It is now
   exported and delegates to `loglik(fit)` (same value, same REML caveat).
+- **CumulativeLogit crossed random effects (#738, drmTMB twin parity).**
+  `CumulativeLogit()` now fits crossed/multiple random intercepts on the
+  latent linear predictor, `(1 | g) + (1 | h)`, matching drmTMB's
+  `cumulative_logit()`. Integrator: the PLAIN (no-nuisance) sparse
+  augmented-state Laplace GLMM engine already shared by Poisson/Binomial's
+  crossed routes (`_fit_crossed_mean_laplace`) — no new integrator for the
+  random effects. The `K - 1` ordered cutpoints (a second block of structure
+  that shared engine's `[βμ; logσ_g; logσ_h]` layout has no room for) are
+  found by an outer Nelder–Mead profile search, refitting the full crossed
+  model at each candidate cutpoint vector — exact profile-likelihood
+  optimisation, not an approximation. Correlated slopes `(1 + x | g)` and
+  `relmat`/`animal`/`spatial` structured markers combined with crossed
+  intercepts remain refused.
 - **`Student()` fits crossed random intercepts on the mean (#725; drmTMB twin
   #1266).** `y ~ x + (1 | g) + (1 | h)` was refused ("single random-effect
   term"); drmTMB `student()` fits it. It now uses the Laplace approximation, as
