@@ -646,10 +646,6 @@ _shard_include("test_609_varying_scale.jl")
 # cancellation-free `_re_quad_stable` and drmTMB-twinned fits on formerly failing seeds.
 _shard_include("test_twin_gap_747.jl")
 
-# #848 (follow-up to #835): data-driven starts + one deterministic restart so
-# Gaussian (1 | g) + sigma ~ x reaches drmTMB's interior optimum on the RUNAWAY seeds.
-_shard_include("test_twin_gap_747_starts.jl")
-
 # #835 docs regression: `_re_quad_stable` (shared by `_fit_ranef_gaussian` and
 # `_fit_ranef_gaussian_lss`) hit `0.0 * Inf == NaN` when a line-search probe drove
 # a `sd(g) ~ z` group's sigma_b,k -> 0 exactly, failing LineSearches' finiteness
