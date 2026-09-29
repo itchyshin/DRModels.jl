@@ -316,6 +316,40 @@ end
 # in one change, which is what makes this q=2 testset real coverage rather than a pin on
 # inherited behaviour: a 1-D transect written as a plain Vector is read as a G-by-1 column,
 # and the Matrix path is unchanged.
+@testset "cov_to_lc: boundary-PD Λ is regularised, not a bare PosDefException (#787)" begin
+    # CI observed an intermittent `PosDefException` from `cov_to_lc(fit_q2.Λ)`
+    # (gaussian_bivariate.jl:833): a fitted Λ can land marginally non-PD in
+    # floating point at a variance boundary, and LAPACK's cholesky detects that
+    # indefiniteness on some architectures/BLAS builds and not others (x86 CI
+    # runners vs local aarch64 macOS) -- deterministic-seed reruns on CI show
+    # the SAME test failing with a DIFFERENT rng seed each time, confirming it
+    # is a platform artefact, not a data-dependent regression. This pins the
+    # deterministic, platform-independent piece of that mechanism: a
+    # synthetic Λ with a tiny negative eigenvalue (the floating-point boundary
+    # shape) must round-trip through `cov_to_lc`/`lc_to_cov` instead of
+    # throwing, while a genuinely, substantively indefinite Λ must still fail
+    # loudly with a diagnosable error naming the eigenvalue.
+    Λ_ok = Matrix(Symmetric([0.20 0.05; 0.05 0.17]))
+    @test DRModels.lc_to_cov(DRModels.cov_to_lc(Λ_ok), 2) ≈ Λ_ok
+
+    Λ_boundary = Matrix(Symmetric([1.0 1.0; 1.0 1.0 - 1e-14]))
+    @test !isposdef(Λ_boundary)
+    v = DRModels.cov_to_lc(Λ_boundary)   # must not throw
+    recon = DRModels.lc_to_cov(v, 2)
+    @test isposdef(Symmetric(recon))
+    @test recon ≈ Λ_boundary atol = 1e-6
+
+    Λ_genuinely_bad = Matrix(Symmetric([1.0 2.0; 2.0 1.0]))   # eigenvalues 3, -1
+    err = try
+        DRModels.cov_to_lc(Λ_genuinely_bad)
+        nothing
+    catch e
+        e
+    end
+    @test err isa ArgumentError
+    @test occursin("not positive definite", err.msg)
+end
+
 @testset "q2 spatial (inherited helper): coords may be a length-G vector" begin
     G = 3
     v = [0.0, 2.0, 5.0]
