@@ -123,6 +123,7 @@ _shard_include("test_biv_lognormal_simulate.jl")  # #840-class: simulate()/boots
 _shard_include("test_twin_gap_471_bivln.jl")  # #471 LogNormal half: animal/spatial coverage + recovery
 _shard_include("test_bivariate_student.jl")
 _shard_include("test_bivariate_student_large_nu.jl")
+_shard_include("test_twin_gap_766.jl")  # #766: biv_student profile/bootstrap CI endpoints
 _shard_include("test_associate_pairs.jl")
 _shard_include("test_gaussian_bivariate_phylo.jl")
 _shard_include("test_gaussian_bivariate_q4_structured.jl")

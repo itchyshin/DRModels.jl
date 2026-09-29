@@ -240,3 +240,50 @@ function _fit_bivariate_residual(f::BivariateDrmFormula, fam::Student, data, rhs
                             Optim.converged(res), means, obs, scales), nll), f),
         Optim.iterations(res))
 end
+
+# --- Parametric-bootstrap replicate draw (#766) ------------------------------
+#
+# `gaussian_core.jl`'s generic `_simulate_once` special-cases bivariate
+# GAUSSIAN fits (`fam isa Gaussian && haskey(fit.scales, :sigma1)`) before
+# falling through to `μ = fit.means[:mu]` for every other family. A bivariate
+# Student-t fit (`biv_student()`) stores `:mu1`/`:mu2` and `:sigma1`/`:sigma2`
+# instead — the same shape as bivariate Gaussian, never `:mu`/`:sigma` — so
+# that fallthrough throws `KeyError: key :mu not found` on the very first
+# `simulate(fit)` call. Because the parametric bootstrap (`bootstrap_result` /
+# `bootstrap_ci`) draws its replicate response via `simulate(fit0; rng)` before
+# any refit is attempted, this failure recurs immediately on EVERY replicate —
+# exactly the "0 s abort, no fit work attempted" symptom in #766. (Profile
+# intervals do not go through `simulate` at all, and were already fixed by
+# claude/twin-gap-bivstudent's large-ν density correction; this is the
+# separate bootstrap-side gap #766 also names.)
+#
+# This method is dispatched by `fit::DrmFit{Student}`, more specific than the
+# generic `fit::DrmFit` method in gaussian_core.jl, so it does not disturb the
+# univariate `Student` branch there for any other fit — it reimplements that
+# one case (identical formula) alongside the new bivariate one, exactly as
+# gaussian_core.jl itself distinguishes bivariate vs. univariate Gaussian by
+# the presence of `:sigma1`.
+#
+# Bivariate draw follows this file's own docstring: Y = mu + diag(sigma) * Z *
+# sqrt(nu / chisq_nu), Z ~ N(0, R). `nu` is a single scalar mixing variable
+# shared across both margins PER ROW (see "NU IS STRUCTURALLY SHARED" above),
+# so one `Chisq(nu[i])` draw scales both components of row i.
+function _simulate_once(fit::DrmFit{Student}, rng; mu = nothing, sigma = nothing)
+    if haskey(fit.scales, :sigma1)   # bivariate biv_student() fit
+        μ1, μ2 = fit.means[:mu1], fit.means[:mu2]
+        σ1, σ2 = fit.scales[:sigma1], fit.scales[:sigma2]
+        ρ, ν = fit.scales[:rho12], fit.scales[:nu]
+        n = length(μ1)
+        z1 = randn(rng, n)
+        z2 = randn(rng, n)
+        sh = [sqrt(ν[i] / rand(rng, Distributions.Chisq(ν[i]))) for i in 1:n]
+        return Dict(:mu1 => μ1 .+ σ1 .* z1 .* sh,
+                    :mu2 => μ2 .+ σ2 .* (ρ .* z1 .+ sqrt.(1 .- ρ .^ 2) .* z2) .* sh)
+    end
+    # Univariate Student-t: identical to gaussian_core.jl's generic branch.
+    μ = mu === nothing ? fit.means[:mu] : mu
+    σ = sigma === nothing ? _scale_vector(fit, :sigma) : sigma
+    ν = _scale_vector(fit, :nu)
+    n = length(μ)
+    return Float64[μ[i] + σ[i] * rand(rng, Distributions.TDist(ν[i])) for i in 1:n]
+end
