@@ -8,7 +8,8 @@
 # grid misses the posterior mode; this file demonstrates the size of that miss
 # with an independent QuadGK reference and confirms `:AGHQ` closes it.
 using DRModels
-using Test, Random, QuadGK, Distributions
+using Test, Random, QuadGK
+using Distributions: Normal, logpdf   # NOT a bare `using Distributions`: that makes `Poisson`, `Gamma`, ... ambiguous with DRModels in every later suite file
 
 # Independent reference: the exact per-group log marginal
 #   log int N(b; 0, s^2) * prod_i N(y_i; mu_i, exp(eta0_i + b)) db,

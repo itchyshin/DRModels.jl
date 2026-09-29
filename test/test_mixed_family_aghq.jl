@@ -7,7 +7,9 @@
 # scale. `aghq = false` (the default) is untouched -- this file also checks
 # that.
 using DRModels
-using Test, Random, QuadGK, Distributions
+using Test, Random, QuadGK
+import Distributions
+using Distributions: Normal, logpdf   # NOT a bare `using Distributions`: that makes `Poisson`, `Gamma`, ... ambiguous with DRModels in every later suite file
 
 _pois_ll(η, y) = y * η - exp(η) - DRModels.loggamma(y + 1)
 _gauss_ll(η, y, sd) = -0.5 * ((y - η) / sd)^2 - log(sd) - 0.9189385332046727
