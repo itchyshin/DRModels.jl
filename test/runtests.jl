@@ -367,6 +367,7 @@ _shard_include("test_bridge_formula_translation.jl")
 _shard_include("test_bridge_materialization_collision.jl")
 _shard_include("test_bridge_formula_labels.jl")
 _shard_include("test_bridge_base_r_names.jl")  # #563/#467: the ten design-258 constructs render base-R names
+_shard_include("test_bridge_in_nest.jl")  # #467: R's `%in%`/nested `/` translate faithfully or refuse sharply
 _shard_include("test_bridge_coef_labels_echo.jl")  # #563: options["coef_labels"] echo (design 258 §7.1-7.3)
 _shard_include("test_bridge_formula_constructs.jl")  # #467/#609 A6: R-contrast fidelity of the coef_labels echo
 _shard_include("test_bridge_zi_marginal_mean.jl")  # bridge fitted/residuals = drmTMB's unconditional mean for zi count fits

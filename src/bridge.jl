@@ -849,12 +849,24 @@ end
 # read (Ayumi LS#2: `MethodError: |(::Int64, ::String)`). Julia's `&` has
 # interaction-matching precedence (tighter than `+`), so rewrite `:` → `&` at the
 # STRING level, before `Meta.parse`. A model-formula string never contains `::`.
+#
+# R's `%in%` (nesting, "b within a") is undefined in Julia — `Meta.parse("b
+# %in% a")` silently parses it as nested modulo, `(b % in) % a`, which later
+# fails deep inside `@formula`/StatsModels with a confusing "no variable
+# called 'in'" error rather than naming the actual construct (#467). R
+# documents `b %in% a` as identical, term-for-term, to `b:a` (confirmed here
+# against `stats::terms()`/`model.matrix()`: both the bare and the
+# main-effect-qualified cases produce byte-identical column names/values,
+# including compound left operands distributing exactly as `:` does). So
+# rewrite it to `&` at the same STRING level as `:`, before `Meta.parse` ever
+# sees the `%` tokens.
 function _bridge_translate_r_ops(part::AbstractString)
     occursin("::", part) && return part        # defensive: leave qualified names alone
     # R accepts whitespace between `I` and its call parenthesis; Julia parses
     # that spelling as implicit multiplication. Normalize only that admitted
     # materializer before `Meta.parse`, retaining the original text for labels.
     translated = replace(String(part), r"\bI\s+\(" => "I(")
+    translated = replace(translated, "%in%" => '&')
     return replace(translated, ':' => '&')
 end
 
@@ -1364,6 +1376,36 @@ function _bridge_xlate(e::Expr, ctx::_BridgeXlateCtx;
             return _bridge_terms_to_sum(_bridge_remove_terms(lhs, rhs))
         end
         throw(ArgumentError("drmTMB(engine=\"julia\"): R term removal with `-` is unsupported; list the terms you want explicitly."))
+    elseif f === :/
+        if scalar_context
+            return Expr(:call, f, (_bridge_xlate(a, ctx;
+                scalar_context = true, atom_scope = atom_scope) for a in e.args[2:end])...)
+        elseif length(e.args) == 3
+            lhs = _bridge_xlate(e.args[2], ctx; atom_scope = atom_scope)
+            rhs = _bridge_xlate(e.args[3], ctx; atom_scope = atom_scope)
+            (_bridge_contains_star(lhs) || _bridge_contains_star(rhs)) &&
+                throw(ArgumentError("drmTMB(engine=\"julia\"): R nesting `/` combined with unexpanded `*` crossing is unsupported; expand the crossing explicitly (e.g. `a + b + a&b`) before nesting."))
+            # R's `a/b` means "b nested within a" and expands, in `terms()`, to
+            # `a + a:b` — confirmed here against `stats::terms()`/
+            # `model.matrix()` for both factor and numeric operands, matching
+            # `a + a&b` byte-for-byte (names and values). That equivalence only
+            # holds when `a` is a SINGLE term: a compound left side, e.g.
+            # `(a1+a2)/b`, nests against the *combined* `a1:a2` factor as one
+            # unit (R gives `a1 + a2 + a1:a2:b`, not `a1:b + a2:b`), and a
+            # chained `a/b/c` nests each level inside the FULL preceding group
+            # (`a + a:b + a:b:c`, with repeated atoms collapsed) — both are
+            # genuine R contrast-computation subtleties this string/AST rewrite
+            # does not replicate, so they are refused rather than guessed.
+            lhs_terms = _bridge_formula_terms(lhs)
+            length(lhs_terms) == 1 || throw(ArgumentError(
+                "drmTMB(engine=\"julia\"): R nesting `/` with a compound or chained left-hand side " *
+                "(e.g. `(a+c)/b` or `a/b/c`) is unsupported via engine=\"julia\"; write the expansion " *
+                "explicitly instead (e.g. `a + c + a&c&b` for `(a+c)/b`, or `a + a&b + a&b&c` for `a/b/c`)."))
+            rhs_terms = _bridge_formula_terms(rhs)
+            new_terms = [Expr(:call, :&, lhs_terms[1], r) for r in rhs_terms]
+            return _bridge_terms_to_sum(vcat(lhs_terms, new_terms))
+        end
+        throw(ArgumentError("drmTMB(engine=\"julia\"): R nesting `/` is unsupported in this form; write the expansion explicitly (e.g. `a + a&b`)."))
     elseif f === :^
         if scalar_context
             return Expr(:call, f, (_bridge_xlate(a, ctx;

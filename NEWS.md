@@ -560,6 +560,22 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   regime `S`/`β̂` are unchanged (checked against the pre-fix formula over 10
   random draws: agree to ≤ 2e-16 relative). A convenience method still accepts
   a formed `Λ::AbstractMatrix` for existing callers/tests, factoring it once.
+- **`drm_bridge` translates R's `%in%` and nested `/` formula operators, or
+  refuses them sharply (#467).** Neither was handled before: `%in%` is not
+  valid Julia infix syntax the way R means it, so `Meta.parse` silently read
+  `b %in% a` as nested modulo, `(b % in) % a`, surfacing only later as a
+  confusing "no variable called 'in'" error from deep inside `@formula`; `/`
+  parsed as plain Julia division, so `y ~ x / z` on two numeric columns did
+  not error at all — it silently fit a single materialised `x / z`
+  arithmetic-division covariate instead of R's nesting expansion `x + x:z`
+  (SILENTLY WRONG, not merely a late error). Both are now rewritten to the
+  bridge's existing `&` (R's `:`) interaction primitive — `b %in% a` → `b&a`;
+  `a/b` → `a + a&b` — confirmed against base R's own
+  `stats::terms()`/`model.matrix()` to reproduce identical column names and
+  values. A compound or chained nesting left-hand side (`(a+c)/b`, `a/b/c`)
+  is refused with an `ArgumentError` naming the construct and its explicit
+  expansion, rather than guessed, since R's contrast algebra there is not a
+  simple AST rewrite.
 
 - **`Student()` no longer reports a garbage log-likelihood near the Gaussian
   limit (#721; drmTMB twin #1265).** When the data are close to Normal the
