@@ -582,18 +582,13 @@ function _loconly_reml_local_profile_diagnostic(prob::LocOnlyProblem, lσ::Real,
     )
 end
 
+# Guarded: a failed probe (non-finite, or the `_LOCONLY_PENALTY` sentinel) returns an
+# all-NaN 2x2 matrix -- the convention every caller already uses for a failed
+# diagnostic (`finite = false`) -- instead of differencing the sentinel into a
+# finite garbage Hessian.
 function _loconly_fd_hessian2(f, θ::AbstractVector{<:Real}; h::Real = 1e-4)
-    H = zeros(2, 2)
-    x = Float64.(θ)
-    for i in 1:2, j in 1:2
-        ei = zeros(2); ej = zeros(2)
-        si = h * max(abs(x[i]), 1.0)
-        sj = h * max(abs(x[j]), 1.0)
-        ei[i] = si; ej[j] = sj
-        H[i, j] = (f(x .+ ei .+ ej) - f(x .+ ei .- ej) -
-                   f(x .- ei .+ ej) + f(x .- ei .- ej)) / (4 * si * sj)
-    end
-    return 0.5 .* (H .+ H')
+    H, ok = _fd_hessian_from_values(f, Float64.(θ); hstep = h, sentinel = _LOCONLY_PENALTY)
+    return ok ? 0.5 .* (H .+ H') : fill(NaN, 2, 2)
 end
 
 function _loconly_fd_gradient2(f, θ::AbstractVector{<:Real}; h::Real = 1e-5)
