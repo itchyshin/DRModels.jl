@@ -702,3 +702,6 @@ _shard_include("test_twin_gap_732.jl")
 # logLik must be ≤ 0 too, and no route's objective may ever return NaN or
 # -Inf-as-nll. Sweeps every discrete route's fitted θ across an extreme grid.
 _shard_include("test_ll_sanity_fuzzer.jl")
+# Issue #706 (test part): classic lme4 twins - cbpp (binomial herd RE, integrator-matched
+# to glmer nAGQ = 1 / 3 / 25) and sleepstudy (Gaussian random slope, ML vs lmer; REML pinned broken).
+_shard_include("test_lme4_twins.jl")
