@@ -280,6 +280,7 @@ _shard_include("test_locscale_profile_threads.jl") # Finite canonical intervals 
 # (#325.4).
 _shard_include("test_optimizer_robustness.jl")
 _shard_include("test_optim_minimum_contract.jl")  # optim-minimum-audit: Optim.minimum(res) vs f(minimizer(res)) after a failed line search
+_shard_include("test_optim_minimum_sweep.jl")     # optim-minimum sweep #2: gaussian_ranef restart comparison via _better_restart
 _shard_include("test_locscale_gamma_e2e.jl")
 _shard_include("test_locscale_phylo_e2e.jl")
 _shard_include("test_locscale_frontend.jl")

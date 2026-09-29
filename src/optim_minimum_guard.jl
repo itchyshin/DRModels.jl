@@ -46,3 +46,13 @@ signature `fg!(F, G, x)`. Calls `fg!(true, nothing, x̂)` at
 `x̂ = Optim.minimizer(res)` to get the objective value without touching `G`.
 """
 _objective_at_minimizer_fg(fg!, res) = fg!(true, nothing, Optim.minimizer(res))
+
+"""
+    _better_restart(f, res, res2)
+
+Return whichever of the incumbent `res` and the restart `res2` has the lower
+objective, comparing `f` evaluated FRESH at each `Optim.minimizer` (never the
+possibly-stale `Optim.minimum`). A tie keeps the incumbent `res`.
+"""
+_better_restart(f, res, res2) =
+    _objective_at_minimizer(f, res2) < _objective_at_minimizer(f, res) ? res2 : res
