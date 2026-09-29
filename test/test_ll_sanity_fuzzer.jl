@@ -21,28 +21,21 @@
 # products of several extremes at once); three fully-extreme constant vectors
 # per route are added on top for cheap interaction coverage.
 #
-# Violations found on origin/main (2026-09-27) are NOT fixed here. Each is
-# re-asserted as `@test_broken` (naming the route/θ/value) instead of being
-# silently skipped, so CI flips it green the instant the fix lands — and so a
-# NEW violation the sweep discovers is a hard `@test` failure, not silence.
-# Each was checked against the open PRs #835/#837/#839/#842/#846/#855/#857/#862
-# by inspecting each PR's changed files and, where a file overlapped, by
-# `git checkout origin/<branch>` and re-running that exact (route, θ) cell:
+# Violations found on origin/main (2026-09-27) were first re-asserted here as
+# `@test_broken` (naming the route/θ/value). All 22 such cells are now FIXED and
+# are plain `@test` cells again (batch-2 landing, 2026-09-29; the whole sweep
+# re-run on the batch-2 branch reported zero violations):
 #
-#   - NegBinomial2 (1|g): the `sigma` (dispersion) nuisance parameter at
-#     log σ ≈ -20..-50 makes the per-observation NB2 dispersion r = exp(-2σ)
-#     ~1e17-1e43, and `logpdf(NegativeBinomial(r, p), y)` returns NaN — FIXED
-#     by #846 (verified: `git checkout origin/claude/twin-gap-719`, re-run ⇒
-#     Inf, no longer NaN). #839 touches negbinomial.jl too but only the
-#     correlated-slope AGHQ path; verified it does NOT fix this cell (still
-#     NaN on that branch).
-#   - NegBinomial2 + hu~1 and TruncatedNegBinomial2 + hu~1 hit the exact same
-#     `sigma` NaN on the FIXED-EFFECTS (no random-effect) code path, which
-#     neither #846 nor #839 touch (verified on both branches: still NaN) —
-#     OPEN.
-#   - CumulativeLogit (1|id): extreme fixed effects / cutpoint deltas / RE
-#     log-SD give NaN. No open PR in the list touches `src/cumulative.jl` —
-#     OPEN.
+#   - NegBinomial2 (1|g), `sigma` at log σ ≈ -20..-50 (NB2 dispersion
+#     r = exp(-2σ) ~1e17-1e43 gave a NaN logpdf): fixed by #846.
+#   - NegBinomial2 + hu~1 and TruncatedNegBinomial2 + hu~1, the same `sigma`
+#     NaN on the fixed-effects path: fixed by #871/#874.
+#   - CumulativeLogit (1|id), extreme fixed effects / cutpoint deltas / RE
+#     log-SD gave NaN: fixed by #873/#877.
+#
+# The `_OPEN_BROKEN` / `_FIXED_BY` mechanism is kept (empty) so a future
+# known-but-unfixed violation can be recorded the same way, while any NEW
+# violation stays a hard `@test` failure.
 using DRModels
 using Test, Random, LinearAlgebra
 import Distributions
@@ -55,28 +48,12 @@ const _logis(η) = 1 / (1 + exp(-η))
 # -open violations on origin/main. `idx == 0` marks one of the `_ALLEXTREME`
 # constant-vector checks (keyed by its grid value). Kept out of the plain
 # `@test` sweep below and re-asserted individually as `@test_broken`.
-const _OPEN_BROKEN = Set{Tuple{String,Int,Float64}}([
-    ("NegBinomial2 + hu~1", 3, -50.0), ("NegBinomial2 + hu~1", 3, -30.0),
-    ("NegBinomial2 + hu~1", 3, -20.0), ("NegBinomial2 + hu~1", 0, -30.0),
-    ("TruncatedNegBinomial2 + hu~1", 3, -50.0), ("TruncatedNegBinomial2 + hu~1", 3, -30.0),
-    ("TruncatedNegBinomial2 + hu~1", 3, -20.0), ("TruncatedNegBinomial2 + hu~1", 0, -30.0),
-    ("CumulativeLogit (1|id)", 1, -50.0),
-    ("CumulativeLogit (1|id)", 3, -50.0), ("CumulativeLogit (1|id)", 3, 8.0),
-    ("CumulativeLogit (1|id)", 3, 20.0), ("CumulativeLogit (1|id)", 3, 50.0),
-    ("CumulativeLogit (1|id)", 4, 8.0), ("CumulativeLogit (1|id)", 4, 20.0),
-    ("CumulativeLogit (1|id)", 4, 50.0),
-    ("CumulativeLogit (1|id)", 0, -30.0), ("CumulativeLogit (1|id)", 0, 8.0),
-])
+const _OPEN_BROKEN = Set{Tuple{String,Int,Float64}}()
 
 # Same shape, for a cell an OPEN pr already fixes on its branch (verified by
 # checkout + re-run, see file header). Kept `@test_broken` here (not flipped to
 # `@test`) until that PR actually merges into main.
-const _FIXED_BY = Dict{Tuple{String,Int,Float64},String}(
-    ("NegBinomial2 (1|g)", 3, -50.0) => "#846",
-    ("NegBinomial2 (1|g)", 3, -30.0) => "#846",
-    ("NegBinomial2 (1|g)", 3, -20.0) => "#846",
-    ("NegBinomial2 (1|g)", 0, -30.0) => "#846",
-)
+const _FIXED_BY = Dict{Tuple{String,Int,Float64},String}()
 
 # A throw at an extreme θ (DomainError/AssertionError instead of a finite-or-
 # +Inf nll) is itself an instance of this bug class, so it is folded into the
