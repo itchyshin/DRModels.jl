@@ -129,3 +129,35 @@ function _fd_hessian_from_grad(grad_at, θ̂::AbstractVector; hstep::Real = 1e-6
     H .= 0.5 .* (H .+ H')
     return (H, true)
 end
+
+"""
+    _fd_hessian_from_values(f, θ̂; hstep = 1e-5, sentinel = 1e16) -> (H, ok)
+
+Central finite-difference Hessian of an objective VALUE `f(θ)` (4-point mixed
+differences, upper triangle mirrored). Value-based sibling of
+[`_fd_hessian_from_grad`](@ref). Several objectives signal a failed evaluation
+(non-PD factor, non-finite nll) with a finite `1e18` penalty rather than `NaN`;
+differencing that sentinel yields a huge but finite garbage Hessian that then
+passes the eigenvalue guard. Any probe that is non-finite or `≥ sentinel`
+returns `ok = false` at once, and the caller reports the NaN-vcov convention.
+"""
+function _fd_hessian_from_values(f, θ̂::AbstractVector; hstep::Real = 1e-5,
+                                 sentinel::Real = 1e16)
+    np = length(θ̂)
+    H = zeros(np, np)
+    usable(v) = isfinite(v) && v < sentinel
+    for k in 1:np, j in k:np
+        sk = hstep * max(abs(θ̂[k]), 1.0)
+        sj = hstep * max(abs(θ̂[j]), 1.0)
+        θpp = collect(Float64, θ̂); θpm = copy(θpp); θmp = copy(θpp); θmm = copy(θpp)
+        θpp[k] += sk; θpp[j] += sj
+        θpm[k] += sk; θpm[j] -= sj
+        θmp[k] -= sk; θmp[j] += sj
+        θmm[k] -= sk; θmm[j] -= sj
+        vpp, vpm, vmp, vmm = f(θpp), f(θpm), f(θmp), f(θmm)
+        (usable(vpp) && usable(vpm) && usable(vmp) && usable(vmm)) || return (H, false)
+        H[k, j] = (vpp - vpm - vmp + vmm) / (4 * sk * sj)
+        H[j, k] = H[k, j]
+    end
+    return (H, true)
+end
