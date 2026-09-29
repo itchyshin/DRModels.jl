@@ -184,9 +184,17 @@ function _ratio_profile(fit::DrmFit, focal::Int, denom::Vector{Int}; level::Real
             Optim.optimize(obj, copy(z0), Optim.NelderMead(),
                            Optim.Options(iterations = 2000, g_tol = 1e-8))
         catch
-            return Inf
+            return NaN                             # failed inner solve (NOT Inf)
         end
-        return Optim.minimum(res)
+        # Evaluate at the minimizer, not the possibly stale Optim.minimum, and flag
+        # a sentinel / non-finite value or a non-converged solve as FAILED (NaN).
+        val = try
+            _objective_at_minimizer(obj, res)
+        catch
+            return NaN
+        end
+        (Optim.converged(res) && !_profile_eval_failed(val)) || return NaN
+        return val
     end
 
     half = quantile(Chisq(1), level) / 2          # LRT half-width on the NLL scale
@@ -199,35 +207,54 @@ function _ratio_profile(fit::DrmFit, focal::Int, denom::Vector{Int}; level::Real
             level = float(level))
 end
 
+# A profile evaluation FAILED if it is NaN, -Inf, or a barrier sentinel (>= 1e16).
+# `+Inf` is deliberate (the ratio-1 edge) and is NOT a failure.
+_profile_eval_failed(f) = isnan(f) || f == -Inf || (isfinite(f) && f >= 1e16)
+
 # Search one direction (dir = ±1) for the ratio v where the profile NLL crosses
-# `target`. Returns the boundary (clamped to [0,1] at the caller).
+# `target`. Returns the boundary (clamped to [0,1] at the caller), or `NaN` when the
+# arm is UNRESOLVED: a failed evaluation (NaN / sentinel / non-converged inner
+# solve) is never read as "above target", so a failed region cannot masquerade as
+# the crossing. On a failure the search shrinks toward the last good point; if the
+# failed region is reached without a genuine crossing, the arm is flagged NaN.
 function _profile_side(fobj, v0, target, dir)
     lo = v0
     step = 0.05
     hi = clamp(v0 + dir * step, 0.0, 1.0)
     f_hi = fobj(hi)
-    # Expand until we bracket the threshold or hit the [0,1] edge.
+    hi_failed = _profile_eval_failed(f_hi)
+    # Expand until we bracket the threshold, fail, or hit the [0,1] edge.
     it = 0
-    while f_hi < target && hi > 0.0 && hi < 1.0 && it < 60
+    while !hi_failed && f_hi < target && hi > 0.0 && hi < 1.0 && it < 60
         step *= 1.6
         hi = clamp(v0 + dir * step, 0.0, 1.0)
         f_hi = fobj(hi)
+        hi_failed = _profile_eval_failed(f_hi)
         it += 1
     end
     # If we never cross before the edge, the bound is the edge (one-sided / open).
-    if f_hi < target
+    if !hi_failed && f_hi < target
         return hi
     end
-    # Bisect between lo (below target) and hi (at/above target).
+    # Bisect between lo (good, below target) and hi (at/above target, or failed).
+    # A failed midpoint shrinks toward lo (it is not evidence of a crossing).
     for _ in 1:80
         mid = 0.5 * (lo + hi)
         fmid = fobj(mid)
-        if fmid < target
+        if _profile_eval_failed(fmid)
+            hi = mid; hi_failed = true
+        elseif fmid < target
             lo = mid
         else
-            hi = mid
+            hi = mid; hi_failed = false
         end
         abs(hi - lo) < 1e-6 && break
+    end
+    if hi_failed
+        @warn "heritability profile CI arm unresolved: the profile evaluation failed " *
+              "(sentinel / non-finite / non-converged) before the LRT threshold was " *
+              "crossed; returning NaN for this bound." dir
+        return NaN
     end
     return 0.5 * (lo + hi)
 end
