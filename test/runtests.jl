@@ -676,3 +676,6 @@ _shard_include("test_twin_gap_762.jl")
 # method. Adds a `Val(:zeroonebeta_fixed)` sparse-Laplace kernel (additive to
 # sparse_laplace_glmm.jl) and the phylo/relmat fitters in zeroonebeta.jl.
 _shard_include("test_twin_gap_739.jl")
+# #857 site K: coevolution prior in whitened coordinates (no Λ⁻¹ near singular Λ);
+# also pins the q=4 engine's same-construction defect as @test_broken.
+_shard_include("test_q4_prior_whitening.jl")

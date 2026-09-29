@@ -518,6 +518,21 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   `test/test_fixture_provenance.jl` fails on any future `expected.meta.toml`
   that omits the stamp. `xfam-external-gllvm` is excluded (its comparator is
   gllvm, not drmTMB). No fixture's numeric values changed — only metadata.
+- **Coevolution / q=2 structured marginal stays accurate near a singular Λ
+  (#857 site K).** `coevo_marginal_cov` formed `Λ = L L'` in Float64 and
+  inverted it, so as the among-trait correlation approached ±1 (log-Cholesky
+  diagonal l22 → −14 … −18) the marginal lost every digit: on a known-K q2
+  fixture the error was 7.6e-7 (relative) at l22 = −14, a spurious +0.03 nats at
+  −17, and a −Inf wall from −18. It now works in whitened coordinates
+  (`v = (I ⊗ L⁻¹)u`; `Λ⁻¹` is never formed) and accepts `Λ` factored as a
+  `Cholesky` (new `DRModels.lc_to_chol`), which `fit_coevolution` and
+  `fit_coevolution_q2_residual` now pass. Error vs a 256-bit reference is
+  ≤ 1e-12 from l22 = −2 to −30. Identical in exact arithmetic, including the
+  historical 1e-10 prior ridge: normal-regime objective values match the old
+  form to 4.3e-13; fitted estimates move only within the optimiser's own
+  tolerance floor. The third return value is now the factor of the whitened
+  Hessian. The q=4 PLSM engine builds its prior the same way and is also
+  affected (measured, pinned as `@test_broken`); it is not changed here.
 
 - **`Student()` no longer reports a garbage log-likelihood near the Gaussian
   limit (#721; drmTMB twin #1265).** When the data are close to Normal the
