@@ -707,6 +707,19 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   returns drmTMB's number directly; it is a no-op (and needs no `tree`) on a
   route whose `phylo_scale === :correlation` (e.g. `phylo(1|sp) + (1|h)`),
   since that route's raw `re_sd` already matches drmTMB.
+- **New permanent test: likelihood sanity fuzzer across all discrete routes
+  (`test/test_ll_sanity_fuzzer.jl`).** For a discrete response every
+  probability mass is ≤ 1, so a random-effects model's marginal logLik must be
+  ≤ 0 too; the objective must also never return NaN or -Inf-as-nll at any θ.
+  Sweeps every discrete-family route (fixed effects, `(1|g)`, `(1+x|g)`,
+  crossed, `phylo`/`relmat`, `zi`/`hu`, ordinal) across extreme fixed effects,
+  variance-component log-SDs, and nuisance log-parameters. Encodes today's
+  known-open violations as `@test_broken` (NegBinomial2/TruncatedNegBinomial2
+  `+ hu` and `CumulativeLogit (1|id)` at extreme dispersion/cutpoint/fixed-
+  effect values) so CI flips them green the moment each is fixed; the
+  NegBinomial2 `(1|g)` cell is already fixed on #846 and is marked
+  accordingly pending merge.
+
 - **`Student()` no longer reports a garbage log-likelihood near the Gaussian
   limit (#721; drmTMB twin #1265).** When the data are close to Normal the
   likelihood is flat in the ν predictor, and the optimiser can walk ν = 2 +
