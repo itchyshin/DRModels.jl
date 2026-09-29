@@ -98,6 +98,19 @@ end
 # non-Gaussian family can never receive `(:phylo, g)` for a slope formula and
 # silently fit the intercept-only model. Existing 4-way destructurings
 # (`a, b, c, d = _split_ranef(rhs)`) are unaffected: Julia drops the extra slot.
+# lme4 / glmmTMB / drmTMB semantics: `(x | g)` is `(1 + x | g)` — the intercept is
+# implicit unless removed with an explicit `0 +` / `-1`. Rewrite a bar lhs made only of
+# variable terms (`x`, `x + z`) to `1 + …`; anything carrying a constant, a `-`, or a
+# nested bar is returned untouched, so every existing refusal keeps its message.
+_implicit_re_intercept(lhs) = lhs
+_implicit_re_intercept(lhs::Term) = FunctionTerm{typeof(+),Vector{StatsModels.AbstractTerm}}(
+    +, StatsModels.AbstractTerm[ConstantTerm(1), lhs], :(1 + $(lhs.sym)))
+function _implicit_re_intercept(lhs::FunctionTerm)
+    (lhs.f === (+) && all(a -> a isa Term, lhs.args)) || return lhs
+    return FunctionTerm{typeof(+),Vector{StatsModels.AbstractTerm}}(
+        +, StatsModels.AbstractTerm[ConstantTerm(1), lhs.args...], :(1 + $(lhs.exorig.args[2:end]...)))
+end
+
 function _split_ranef(rhs; allow_phylo_slope::Bool = false)
     terms = rhs isa Tuple ? collect(rhs) : Any[rhs]
     fixed = Any[]
@@ -107,7 +120,7 @@ function _split_ranef(rhs; allow_phylo_slope::Bool = false)
     structured_slope = nothing                        # `x` of phylo(1 + x | g), Gaussian mean only
     for t in terms
         if t isa FunctionTerm && t.f === (|)
-            push!(re, (t.args[1], t.args[2].sym))     # (re-lhs, grouping symbol)
+            push!(re, (_implicit_re_intercept(t.args[1]), t.args[2].sym))     # (re-lhs, grouping symbol)
         elseif t isa FunctionTerm && t.f === meta_V
             metav = t.args[1].sym
         elseif t isa FunctionTerm && t.f === relmat
