@@ -68,10 +68,10 @@ function _q2_reml_unpack_phi(phi::AbstractVector{T}) where {T}
     σ1 = exp(logσ1); σ2 = exp(logσ2)
     ρ  = RHO_GUARD * tanh(ηρ)
     D  = Matrix(Symmetric([σ1^2 ρ*σ1*σ2; ρ*σ1*σ2 σ2^2]))
-    # `Λ` (formed once, in Float64) still feeds `_q2_profile_and_schur`'s own
-    # `inv(Λ)` construction of H_uu -- out of scope here (#857 site K
-    # follow-up, draft #862, is about `coevo_marginal_cov`'s Λ argument only).
-    # `chΛ` is the factor built straight from `lc`, for that call.
+    # `Λ` (formed once, in Float64) is kept only for `_q2_lambda_admissible`'s
+    # scalar det/cond gate. `chΛ` is the factor built straight from `lc`, and
+    # is what both `_q2_profile_and_schur` and `coevo_marginal_cov` use to
+    # build H_uu -- neither ever forms or inverts `Λ` (#857 site K, #862/#865).
     return lc_to_cov(lc, 2), D, lc_to_chol(lc, 2)
 end
 
@@ -88,16 +88,53 @@ end
 # joint Newton step (from u0 = 0, beta0) to the joint mode, and hand back the
 # Schur complement S needed for the REML correction alongside it (S is a
 # byproduct of the same blocks the Newton step uses — no repeated work).
+#
+# Numerics (#857 site K, #862/#865 follow-up). This was the one caller left
+# forming `Λ` densely and calling `inv(Λ)` to build H_uu — the exact failure
+# mode #862's header measured for `coevo_marginal_cov` (silent wrong answers
+# in the 833/2352 sweep, not just the throws). It is whitened the same way:
+# with `L L' = Λ` (never forming `Λ⁻¹`) and `v = (I ⊗ L)⁻¹u`, the u-block
+# becomes `H̃_uu = Q ⊗ I + Σₜ cₜ eₜeₜ' ⊗ L'D⁻¹L` (`coevo_Huu` with a whitened
+# residual block, exactly `coevo_marginal_cov`'s construction) and the cross
+# block becomes `H̃_ub = (I ⊗ L)'H_ub`. The Schur complement of the profiled
+# beta block is invariant under this change of basis for the ELIMINATED u
+# (S = H_bb − H_ub'H_uu⁻¹H_ub = H_bb − H̃_ub'H̃_uu⁻¹H̃_ub whenever `L` is
+# invertible — the (I⊗L) factors cancel exactly), so `S` and `β̂` are
+# unchanged in exact arithmetic; only `û` needs the final un-whitening
+# `u = (I ⊗ L)v`, done in-place at the end exactly as
+# `coevo_marginal_cov` un-whitens its own mode.
 # ---------------------------------------------------------------------------
 function _q2_profile_and_schur(prob::CoevoProblem, Q_cond::SparseMatrixCSC,
                                Λ::AbstractMatrix, D::AbstractMatrix,
                                β0::AbstractMatrix)
+    nbeta = prob.k * prob.q
+    chΛ = cholesky(Symmetric(Matrix{Float64}(Λ)); check = false)
+    if !issuccess(chΛ)
+        Sz = Symmetric(zeros(nbeta, nbeta))
+        return (β̂ = β0, û = zeros(prob.q * prob.N), S = Sz,
+                ch_S = cholesky(Sz; check = false), ok = false)
+    end
+    return _q2_profile_and_schur(prob, Q_cond, chΛ, D, β0)
+end
+
+function _q2_profile_and_schur(prob::CoevoProblem, Q_cond::SparseMatrixCSC,
+                               chΛ::Cholesky, D::AbstractMatrix,
+                               β0::AbstractMatrix)
     prob.q == 2 || error("q2 REML requires q = 2")
     q = 2; k = prob.k
     Dinv = inv(Symmetric(D))
-    P    = prior_precision(Q_cond, inv(Λ))
-    H_uu = coevo_Huu(prob, P, Dinv)
+    L = Matrix{Float64}(chΛ.L)
+    size(L) == (q, q) || error("Λ factor has size $(size(L)); expected ($q, $q)")
     nu = q * prob.N; nbeta = k * q
+    if !all(isfinite, L)
+        Sz = Symmetric(zeros(nbeta, nbeta))
+        return (β̂ = β0, û = zeros(nu), S = Sz,
+                ch_S = cholesky(Sz; check = false), ok = false)
+    end
+
+    Iq = Matrix{Float64}(I, q, q)
+    Pw   = prior_precision(Q_cond, Iq)             # Q ⊗ I (never Λ⁻¹)
+    H_uu = coevo_Huu(prob, Pw, L' * Dinv * L)      # whitened H̃_uu, cf. `coevo_marginal_cov`
     # Defence in depth (#503), matching the `ch_S` pattern below. The real guard
     # is `_q2_lambda_admissible`; this catches anything that reaches here anyway.
     chH  = cholesky(Symmetric(H_uu); check = false)
@@ -107,16 +144,18 @@ function _q2_profile_and_schur(prob::CoevoProblem, Q_cond::SparseMatrixCSC,
                 ch_S = cholesky(Sz; check = false), ok = false)
     end
 
-    H_ub = zeros(nu, nbeta)
-    H_bb = zeros(nbeta, nbeta)
+    LtDinv = L' * Dinv
+    H_ub = zeros(nu, nbeta)     # whitened cross block H̃_ub = (I⊗L)'H_ub
+    H_bb = zeros(nbeta, nbeta)  # unaffected by whitening u (no u dependence)
     @inbounds for i in eachindex(prob.leaf_node)
         t = prob.leaf_node[i]; base = q * (t - 1)
         Xi = @view prob.X[i, :]
         for a in 1:q, ap in 1:q
-            d = Dinv[a, ap]
+            dv = LtDinv[a, ap]
+            d  = Dinv[a, ap]
             offap = (ap - 1) * k
             for c in 1:k
-                H_ub[base + a, offap + c] += d * Xi[c]
+                H_ub[base + a, offap + c] += dv * Xi[c]
             end
             offa = (a - 1) * k
             for r in 1:k, c in 1:k
@@ -134,9 +173,21 @@ function _q2_profile_and_schur(prob::CoevoProblem, Q_cond::SparseMatrixCSC,
 
     # Exact joint Newton step from (u0 = 0, beta0 = β0): jn(u, beta_mu) is
     # exactly quadratic at fixed (Λ, D), so this lands exactly on the joint
-    # mode regardless of β0 — see the file header.
-    rhs0   = coevo_rhs(prob, β0, Dinv)          # H_uu*0 - rhs0 = -rhs0
+    # mode regardless of β0 — see the file header. Carried out in the
+    # whitened v-space throughout (g_u whitened to g̃_u = (I⊗L)'g_u, exactly
+    # `coevo_marginal_cov`'s rhs-whitening loop), then û is un-whitened once
+    # at the end.
+    rhs0   = coevo_rhs(prob, β0, Dinv)          # g_u = -rhs0, ORIGINAL u-space
     g_u    = -rhs0
+    g_uw   = similar(g_u)                        # g̃_u = (I ⊗ L)' g_u  (L' upper)
+    @inbounds for t in 1:prob.N, a in 1:q
+        base = q * (t - 1)
+        s = 0.0
+        for b in a:q
+            s += L[b, a] * g_u[base + b]
+        end
+        g_uw[base + a] = s
+    end
     resid0 = prob.Y .- prob.X * β0
     Wt     = resid0 * Dinv                       # n x q, Wt[i,:] = Dinv*resid0[i,:]
     g_β    = -(prob.X' * Wt)                     # k x q
@@ -145,10 +196,19 @@ function _q2_profile_and_schur(prob::CoevoProblem, Q_cond::SparseMatrixCSC,
     issuccess(ch_S) ||
         return (β̂ = β0, û = zeros(nu), S = S, ch_S = ch_S, ok = false)
 
-    rhs_β = vec(g_β) .- H_ub' * (chH \ g_u)
+    rhs_β = vec(g_β) .- H_ub' * (chH \ g_uw)
     Δβ    = -(ch_S \ rhs_β)
     β̂     = β0 .+ reshape(Δβ, k, q)
-    û     = -(chH \ (g_u .+ H_ub * Δβ))
+    v̂     = -(chH \ (g_uw .+ H_ub * Δβ))          # whitened mode
+    û     = similar(v̂)                            # un-whiten: u = (I ⊗ L) v
+    @inbounds for t in 1:prob.N, a in 1:q
+        base = q * (t - 1)
+        s = 0.0
+        for b in 1:a
+            s += L[a, b] * v̂[base + b]
+        end
+        û[base + a] = s
+    end
 
     return (β̂ = β̂, û = û, S = S, ch_S = ch_S, ok = true)
 end
@@ -190,7 +250,7 @@ function _q2_reml_ll(prob::CoevoProblem, Q_cond::SparseMatrixCSC,
     _q2_lambda_admissible(Λ) || return -Inf, β0, zeros(prob.q * prob.N)
     local prof
     try
-        prof = _q2_profile_and_schur(prob, Q_cond, Λ, D, β0)
+        prof = _q2_profile_and_schur(prob, Q_cond, chΛ, D, β0)
     catch e
         (e isa DomainError || e isa LinearAlgebra.PosDefException ||
          e isa LinearAlgebra.SingularException) || rethrow(e)
