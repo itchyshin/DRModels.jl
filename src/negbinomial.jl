@@ -519,9 +519,14 @@ function _fit_truncated_negbin2(fam::TruncatedNegBinomial2, y, Xμ, Xσ, nmμ, n
         ημ = clamp.(Xμ * βμ, -20.0, 20.0); ησ = clamp.(Xσ * βσ, -20.0, 20.0)
         s = zero(eltype(θ))
         @inbounds for i in 1:n
-            μ = exp(ημ[i]); r = exp(-2 * ησ[i]); p = r / (r + μ)
-            d = _nb2(r, p)
-            s -= logpdf(d, yint[i]) - _log1mexp(logpdf(d, 0))   # divide out P(0): zero-truncated
+            μ = exp(ημ[i]); r = exp(-2 * ησ[i])
+            # `_nb2_logpmf` (not `logpdf(_nb2(r,p), ·)`): at extreme dispersion
+            # (log σ ≈ -20..-50, r ~ 1e17-1e43, #866) r + μ rounds to EXACTLY r
+            # and p rounds to EXACTLY 1.0, so `logpdf(·, 0)` is finite while
+            # `logpdf(·, k>0)` is -Inf; the zero-truncation divisor
+            # `_log1mexp(logpdf(d, 0))` then computed -Inf - (-Inf) = NaN. Same
+            # cancellation `_fit_negbin2_hu` fixed (#866; #871).
+            s -= _nb2_logpmf(r, μ, yint[i]) - _log1mexp(_nb2_logpmf(r, μ, 0))   # divide out P(0): zero-truncated
         end
         return s
     end
