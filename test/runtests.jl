@@ -587,6 +587,7 @@ _shard_include("test_reml_vcov_curvature.jl")
 
 # Randomized quantile residuals (DHARMa/glmmTMB style) — feat-quantile-residuals.
 _shard_include("test_quantile_residuals.jl")
+_shard_include("test_twin_gap_760.jl")
 
 # TruncatedNegBinomial2 quantile residuals: no NaN at extreme dispersion / μ.
 _shard_include("test_qres_trunc_nan.jl")
