@@ -57,12 +57,15 @@ function drm(f::DrmFormula, fam::Beta; data, tree = nothing, K = nothing,
     end
     missing_fit !== nothing && return missing_fit
 
-    marg = _marginal_method(marginal)                     # :LA (default) or :VA (#136)
-    marg isa AGHQ && _aghq_reject(fam, "this family")
+    marg = _marginal_method(marginal)                     # :LA (default), :VA (#136), or :AGHQ (#761)
+    isaghq = marg isa AGHQ
     isva = marg isa Variational
     _lss_only_gaussian_guard(f, fam)   # #544: refuse, never silently drop, sd() parts
     rhs = Dict(f.forms)
     fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
+    isaghq && !(length(re) > 1 && st === nothing) &&
+        _aghq_reject(fam, "this model (Beta `marginal = :AGHQ` covers crossed random " *
+                          "intercepts `(1 | g) + (1 | h)` only, #761)")
     mv === nothing ||
         error("Beta() does not support meta_V markers")
     for (pname, r) in f.forms          # only the mean may carry a random effect
@@ -106,6 +109,7 @@ function drm(f::DrmFormula, fam::Beta; data, tree = nothing, K = nothing,
                 grp = r[2]; gidx, G = _group_index(getproperty(data, grp))
                 (ones(length(y)), gidx, G, String(grp))
             end
+            isaghq && return _withformula(_fit_beta_crossed_aghq(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol; se = se), f)   # #761
             return _withformula(_fit_beta_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol), f)
         end
         (rk, var) = _re_kind(re[1][1]); grp = re[1][2]
