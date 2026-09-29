@@ -158,6 +158,7 @@ _shard_include("test_lss_missing_response.jl") # #559 location-scale-scale missi
 _shard_include("test_inference.jl")
 _shard_include("test_inference_blas_pinning.jl") # Nested and overlapping global-BLAS restoration
 _shard_include("test_profile_ci.jl")
+_shard_include("test_sentinel_generic_profile.jl") # sentinel objective is not a profile crossing
 _shard_include("test_profile_nuisance_status.jl")
 _shard_include("test_profile_acceptance_oracles.jl")
 _shard_include("test_bridge_profile_status.jl")
