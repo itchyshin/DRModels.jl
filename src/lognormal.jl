@@ -21,7 +21,13 @@ the **SD of `log y`**. The response-scale median is `exp(μ)`. Mirrors `drmTMB`'
 
 A random intercept `(1 | g)` or a correlated random intercept+slope `(1 + x | g)`
 may be placed on the log-mean `μ`; the group effect is integrated out by
-Gauss–Hermite quadrature (`re_sd(fit)[:g]` / `vc(fit)[:g]`).
+Gauss–Hermite quadrature (`re_sd(fit)[:g]` / `vc(fit)[:g]`). Crossed/multiple
+random intercepts, `(1 | g) + (1 | h)` (#736), delegate the same way as the
+structured markers below: `log(y)` is exactly Gaussian, so the fit runs
+WHOLESALE through `drm(f, Gaussian(); data = data-with-logged-response)`
+(`_fit_multi_ranef_gaussian`, the closed-form exact crossed marginal, not a
+Laplace approximation), with the reported log-likelihood shifted by
+`-sum(log y)`.
 
 ## Structured markers (`phylo`/`relmat`)
 
@@ -80,6 +86,12 @@ function drm(f::DrmFormula, fam::LogNormal; data, tree = nothing, K = nothing, g
     _, Xσ, nmσ = _design(f.response, get(rhs, :sigma, ConstantTerm(1)), data)
     all(yi -> yi > 0, y) || error("LogNormal() requires strictly positive responses")
     if !isempty(re)                    # random effect on the log-mean μ → GHQ
+        if length(re) > 1              # crossed/multiple intercepts (#736)
+            all(_re_kind(r[1])[1] === :intercept for r in re) ||
+                error("LogNormal() supports multiple random effects only as crossed/nested " *
+                      "intercepts, e.g. `(1 | g) + (1 | h)`")
+            return _withformula(_fit_lognormal_crossed(fam, f, data, g_tol), f)
+        end
         length(re) == 1 ||
             error("LogNormal() supports a single random-effect term on the mean")
         (rk, var) = _re_kind(re[1][1]); grp = re[1][2]
@@ -200,6 +212,23 @@ function _fit_lognormal(fam::LogNormal, y, Xμ, Xσ, nmμ, nmσ, g_tol)
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
         Optim.iterations(res))
+end
+
+# Crossed/multiple random intercepts `(1 | g) + (1 | h) + …` on the log-mean μ
+# (#736). `log(y)` is exactly Gaussian, so — exactly like the phylo/relmat
+# structured-marker delegation just below — this delegates the WHOLE fit to
+# the public Gaussian dispatcher on a logged copy of the response
+# (`_fit_multi_ranef_gaussian`, the closed-form exact crossed marginal
+# likelihood; no Laplace approximation, so no new integrator), and shifts the
+# reported log-likelihood by the parameter-free Jacobian `-sum(log y)`.
+# Requires strictly positive responses (checked before logging).
+function _fit_lognormal_crossed(fam::LogNormal, f::DrmFormula, data, g_tol)
+    cols = NamedTuple(pairs(data))
+    y = Vector{Float64}(getproperty(cols, f.response))
+    all(yi -> yi > 0, y) || error("LogNormal() requires strictly positive responses")
+    logdata = merge(cols, NamedTuple{(f.response,)}((log.(y),)))
+    gfit = drm(f, Gaussian(); data = logdata, g_tol = g_tol)
+    return _lognormal_jacobian_shift(fam, gfit, y)
 end
 
 # A `phylo(1 | group)` or `relmat(1 | group)` marker on the log-mean μ (#563

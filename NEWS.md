@@ -205,6 +205,16 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   optimisation, not an approximation. Correlated slopes `(1 + x | g)` and
   `relmat`/`animal`/`spatial` structured markers combined with crossed
   intercepts remain refused.
+- **LogNormal crossed random effects (#736, drmTMB twin parity).**
+  `LogNormal()` now fits crossed/multiple random intercepts on the log-mean,
+  `(1 | g) + (1 | h)`, matching drmTMB's `lognormal()`. `log(y)` is exactly
+  Gaussian, so the fit delegates WHOLESALE to
+  `drm(f, Gaussian(); data = data-with-logged-response)`
+  (`_fit_multi_ranef_gaussian`, the closed-form exact crossed marginal
+  likelihood — no Laplace approximation, so no new integrator), the same
+  identity already used for `phylo`/`relmat` structured markers on the mean,
+  with the reported log-likelihood shifted by the parameter-free Jacobian
+  `-sum(log y)`.
 - **`Student()` fits crossed random intercepts on the mean (#725; drmTMB twin
   #1266).** `y ~ x + (1 | g) + (1 | h)` was refused ("single random-effect
   term"); drmTMB `student()` fits it. It now uses the Laplace approximation, as
