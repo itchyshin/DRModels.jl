@@ -62,6 +62,7 @@ const API_EXPERIMENTAL = [
     "r2_constant_sigma",
     # R bridge (ledger r_bridge_status: experimental)
     "drm_bridge", "drm_bridge_inference", "drm_bridge_objective_at", "drm_listwise",
+    "bridge_diagnostics",
     # cross-family surface (permanent claim_boundary, D-179 #3)
     "mf_coef", "mf_aic", "mf_bic", "mf_fitted", "mf_summary",
     "associate_pairs", "latent_normal", "association", "PairAssociation",

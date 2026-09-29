@@ -344,6 +344,20 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   (`_boundary_vc_warn`, #304) already keyed off block symbols shared across
   univariate and bivariate fits (`:phylocov`/`:recov`/…), so it was already
   bivariate-safe; now pinned end-to-end by a bivariate q=4 phylogenetic test.
+- **`drm_bridge` exports route-aware convergence diagnostics (#569).** A new
+  `bridge_diagnostics(fit)` (`src/introspection.jl`), the Julia twin of
+  `check_drm`, reports which route fitted the model, its integrator
+  (`fit.marginal`), the optimiser (`"Optim.LBFGS"` where `niterations`
+  records an achieved count), `converged`, `iterations`, `max_abs_grad` +
+  `grad_source`, `vcov_complete`/`vcov_posdef`/`min_eigval`/`cond`,
+  `penalized_map`, and `boundary` (indices whose stored variance is
+  non-finite or negative). `drm_bridge`'s payload now carries this under a
+  `"diagnostics"` key, plus a top-level `"grad_source"` echo for
+  `R/julia-diagnostics.R`'s `drm_julia_gradient_source()` (drmTMB) to read.
+  Nothing is fabricated: a quantity a route does not record (e.g. the crossed
+  sparse-Laplace engine's iteration count, or `vcov_posdef`/`min_eigval`/`cond`
+  when the covariance is only partially finite) is `missing`, never a
+  placeholder zero.
 - **`Student()` no longer reports a garbage log-likelihood near the Gaussian
   limit (#721; drmTMB twin #1265).** When the data are close to Normal the
   likelihood is flat in the ν predictor, and the optimiser can walk ν = 2 +
