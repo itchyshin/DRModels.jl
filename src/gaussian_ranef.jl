@@ -310,6 +310,106 @@ function _re_xtvinvx_stable(X::AbstractMatrix, invD::AbstractVector, w, gidx::Ab
     return A
 end
 
+# --- start values for `_fit_ranef_gaussian` / `_fit_ranef_gaussian_lss` (#747 follow-up) ---
+#
+# The historical start (`log(std(res0))` for the sigma intercept, all other sigma
+# coefficients and the log-SD of the random intercept at fixed constants) ignores
+# the mean OLS residuals' own information about the scale submodel entirely: a
+# `sigma ~ x` slope always starts at 0 and the RE SD always starts at a fixed
+# fraction of the *marginal* residual SD, which is inflated by the random-intercept
+# variance it is trying to estimate separately. On the RUNAWAY panel
+# (test/test_ranef_varying_scale_convergence.jl, sigma slope 10, n=40, G=4) that
+# blind start left LBFGS on a boundary sd_g -> 0 local optimum 123 nats short of
+# drmTMB's interior optimum (seed 4) and non-converged 95 nats short (seed 10) --
+# in both cases DRModels.jl's own objective at drmTMB's parameters was BETTER than
+# what LBFGS returned, so the fix is a better start, not the objective.
+#
+# `_ranef_sigma_ols_start`: OLS of log(guarded residual^2) on Xσ -- the standard
+# heteroscedastic-regression start (mirrors drmTMB's own guarded log-scale
+# regression start for `sigma ~ …`, #572/#570), giving a real slope instead of 0.
+# Guarded at a small floor so a near-exact-zero residual cannot send log(r^2) to
+# -Inf.
+function _ranef_sigma_ols_start(Xσ::AbstractMatrix, res0::AbstractVector)
+    floor2 = max(1e-8, 1e-6 * mean(abs2, res0))
+    return Xσ \ log.(max.(abs2.(res0), floor2))  ./ 2   # log|r| ~ 0.5*log(r^2)
+end
+
+# `_ranef_sdg_mom_start`: one-way random-effects ANOVA method-of-moments
+# estimator of the random-intercept variance from the OLS mean residuals,
+# grouped by `gidx` (Searle, Casella & McCulloch 1992, ch. 3). Returns the
+# log-SD on the same scale `_fit_ranef_gaussian` optimises. Floors at a small
+# positive variance instead of the boundary itself, so the optimiser starts
+# strictly interior even when the moment estimator itself is <= 0 (negative
+# "between" variance relative to "within", the classic small-G/unbalanced
+# symptom).
+function _ranef_sdg_mom_start(res0::AbstractVector, gidx::AbstractVector{<:Integer}, G::Int)
+    n = length(res0)
+    nk = zeros(Int, G); sumk = zeros(G)
+    @inbounds for i in 1:n
+        k = gidx[i]; nk[k] += 1; sumk[k] += res0[i]
+    end
+    rbar = mean(res0)
+    ssb = 0.0; ssw = 0.0
+    @inbounds for i in 1:n
+        k = gidx[i]
+        ssw += (res0[i] - sumk[k] / nk[k])^2
+    end
+    @inbounds for k in 1:G
+        ssb += nk[k] * (sumk[k] / nk[k] - rbar)^2
+    end
+    dfw = max(n - G, 1)
+    msw = ssw / dfw
+    n0 = (n - sum(abs2, nk) / n) / max(G - 1, 1)
+    σb2_mom = (ssb / max(G - 1, 1) - msw) / n0
+    σb2_floor = 1e-4 * (msw + eps())
+    return 0.5 * log(max(σb2_mom, σb2_floor))
+end
+
+# One restart, deterministic, keep the best objective (mirrors the boundary-
+# restart pattern in `_fit_correlated_ranef_gaussian`, #762/#837). `θ0` is the
+# data-driven start; `θ0_restart` is always-interior (the historical default).
+# Restart triggers on either symptom measured on the RUNAWAY panel
+# (test/test_ranef_varying_scale_convergence.jl): the gradient criterion not
+# met, or the random-intercept log-SD landing at a boundary sd_g -> 0 local
+# optimum relative to `scale_ref` (the OLS mean-residual SD) -- seed 4's
+# failure mode, `nll` −179.80 vs drmTMB's interior −56.97. A restart that is
+# not triggered costs nothing beyond the first solve; one that is costs one
+# extra LBFGS run, still O(1) versus the data.
+#
+# TIE-BREAK ON A GENUINE BOUNDARY (measured on seed 1 of the same panel). When
+# sd_g -> 0 the objective is flat in lσb far below the boundary (the log-SD is
+# only weakly identified there), so the primary and restart starts can reach
+# the SAME nll at two very different lσb (seed 1: −177.4 vs −118.2, nll equal
+# to 1e-10). Both are the same MLE, but the more extreme one can push
+# `ForwardDiff.hessian` in the caller's `_vcov_from_hessian` step to a
+# non-finite entry where the less extreme one does not (this is the vcov
+# guard's job to flag as a boundary fit either way -- see its docstring -- not
+# a reason to crash on one representative of the tie and not the other). On a
+# near-tie, prefer whichever result sits closer to the interior.
+function _re_lbfgs_with_restart(nll, θ0::AbstractVector, θ0_restart::AbstractVector,
+                                g_tol::Real, lσb_idx::Int, scale_ref::Real)
+    opts = Optim.Options(g_tol = g_tol)
+    res = Optim.optimize(nll, θ0, Optim.LBFGS(), opts; autodiff = :forward)
+    θ̂ = Optim.minimizer(res)
+    g_inf = maximum(abs, ForwardDiff.gradient(nll, θ̂))
+    at_boundary = exp(θ̂[lσb_idx]) < 1e-3 * max(scale_ref, eps())
+    if g_inf > g_tol || at_boundary
+        res_restart = Optim.optimize(nll, θ0_restart, Optim.LBFGS(), opts; autodiff = :forward)
+        θ̂_restart = Optim.minimizer(res_restart)
+        # Compare the objective AT each minimizer, not `Optim.minimum` (#849,
+        # optim_minimum_guard.jl): these runs may have failed a line search.
+        f_primary = _objective_at_minimizer(nll, res)
+        Δ = _objective_at_minimizer(nll, res_restart) - f_primary
+        near_tie = abs(Δ) <= 1e-6 * max(1, abs(f_primary))
+        if Δ < 0 && !near_tie
+            return res_restart
+        elseif near_tie && abs(θ̂_restart[lσb_idx]) < abs(θ̂[lσb_idx])
+            return res_restart
+        end
+    end
+    return res
+end
+
 # Gaussian location–scale with one random intercept (1 | g) on the mean.
 # θ = [β_μ; β_σ (log σ); log σ_b].
 # `reml=true` (#439) keeps β_μ in θ and adds the Patterson–Thompson term
@@ -405,10 +505,22 @@ function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ,
 
     βμ0 = Xμ \ y
     res0 = y - Xμ * βμ0
+
+    # Data-driven start (#747 follow-up: seeds 4 and 10 of the RUNAWAY panel in
+    # test/test_ranef_varying_scale_convergence.jl). See the header note above
+    # `_ranef_sigma_ols_start`.
     θ0 = zeros(pμ + pσ + 1)
     θ0[1:pμ] .= βμ0
-    θ0[pμ+1] = log(std(res0) + eps())
-    θ0[pμ+pσ+1] = log(std(res0) / 2 + eps())
+    θ0[pμ+1:pμ+pσ] .= _ranef_sigma_ols_start(Xσ, res0)
+    θ0[pμ+pσ+1] = _ranef_sdg_mom_start(res0, gidx, G)
+
+    # Restart start: the historical blind default (always interior). Used only
+    # when the data-driven start above does not gradient-converge or lands at
+    # a boundary sd_g -> 0 local optimum; see `_re_lbfgs_with_restart`.
+    θ0_restart = zeros(pμ + pσ + 1)
+    θ0_restart[1:pμ] .= βμ0
+    θ0_restart[pμ+1] = log(std(res0) + eps())
+    θ0_restart[pμ+pσ+1] = log(std(res0) / 2 + eps())
 
     # WHY THIS ROUTE NEEDS NO n-SCALED CONVERGENCE FALLBACK (measured 2026-08-26).
     #
@@ -451,7 +563,7 @@ function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ,
     # near n ~ 4e7. Far outside any dataset this route is built for, but if that
     # ever changes, normalise the objective by n the way fit_q4_sparse_tmb.jl and
     # reml_q4.jl do -- do NOT add a #491-style fallback, which only papers over it.
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    res = _re_lbfgs_with_restart(nll, θ0, θ0_restart, g_tol, pμ + pσ + 1, std(res0))
     θ̂ = Optim.minimizer(res)
     V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
 
