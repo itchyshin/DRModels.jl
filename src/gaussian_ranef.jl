@@ -513,76 +513,170 @@ end
 # Σ_re a 2×2 covariance (log-Cholesky parameters a, b, c). Groups are disjoint, so
 # the Woodbury capacitance is block-diagonal in 2×2 blocks → O(G), explicit 2×2
 # inverse/solve/det (ForwardDiff-friendly). θ = [β_μ; β_σ; a, b, c].
+#
+# NUMERICALLY STABLE FORM (#762, #707). The historical objective formed
+# M_k = Σ_re⁻¹ + Z_kᵀD⁻¹Z_k and took log(m11·m22 − m21²) plus the quadratic
+# r′D⁻¹r − c_kᵀM_k⁻¹c_k. Both are differences of large, nearly equal numbers:
+# with an uncentred covariate b22 ≈ x̄²·b11 so m11·m22 ≈ m21², and as ρ → ±1
+# Σ_re⁻¹ blows up; the "determinant" then came out NEGATIVE (−3.5e41 on #707's
+# cell 10) and `log` threw a DomainError (#762), or an Inf/NaN reached LBFGS's
+# line search (AssertionError, #707). Both are evaluated here in the WHITENED
+# coordinates v = L⁻¹b (Σ_re = L Lᵀ), with z̃_i = Lᵀ(1, x_i) and
+# A_k = I + P_k, P_k = Σ_i z̃_i z̃_iᵀ/D_i:
+#   G·logdetΣ_re + Σ_k logdet M_k = Σ_k logdet A_k,
+#   det A_k = 1 + tr P_k + det P_k,  det P_k = (l11·l22)²·b11_k·Σ_i (x_i − x̄_k)²/D_i
+# (every term ≥ 0; x̄_k is the D⁻¹-weighted group mean), and the quadratic is the
+# penalised RSS Σ_i (r_i − z̃_iᵀv̂_k)²/D_i + Σ_k ‖v̂_k‖² at the conditional mode
+# (non-negative; one refinement step, as in `_re_quad_stable`). Identical to the
+# historical expressions in exact arithmetic.
+function _corr_re_stable(r::AbstractVector, invD::AbstractVector, xs::AbstractVector,
+                         gidx::AbstractVector{<:Integer}, G::Int, l11, l22, cc)
+    T = promote_type(eltype(r), eltype(invD), typeof(l11), typeof(l22), typeof(cc))
+    b11 = zeros(T, G); b21 = zeros(T, G)
+    @inbounds for i in eachindex(r)
+        k = gidx[i]; b11[k] += invD[i]; b21[k] += invD[i] * xs[i]
+    end
+    ssx = zeros(T, G); p11 = zeros(T, G); p21 = zeros(T, G); p22 = zeros(T, G)
+    c1 = zeros(T, G); c2 = zeros(T, G)
+    @inbounds for i in eachindex(r)
+        k = gidx[i]; w = invD[i]; x = xs[i]
+        dx = x - b21[k] / b11[k]
+        ssx[k] += w * dx * dx
+        z1 = l11 + cc * x; z2 = l22 * x               # z̃_i = Lᵀ(1, x_i)
+        p11[k] += w * z1 * z1; p21[k] += w * z1 * z2; p22[k] += w * z2 * z2
+        c1[k] += w * r[i] * z1; c2[k] += w * r[i] * z2
+    end
+    dL2 = (l11 * l22)^2
+    detA = Vector{T}(undef, G); v1 = Vector{T}(undef, G); v2 = Vector{T}(undef, G)
+    logdetA = zero(T)
+    @inbounds for k in 1:G
+        detA[k] = 1 + p11[k] + p22[k] + dL2 * b11[k] * ssx[k]
+        logdetA += log(detA[k])
+        v1[k] = ((1 + p22[k]) * c1[k] - p21[k] * c2[k]) / detA[k]
+        v2[k] = (-p21[k] * c1[k] + (1 + p11[k]) * c2[k]) / detA[k]
+    end
+    # One refinement step on v̂ (residual of A v = c̃ re-formed from observations).
+    g1 = zeros(T, G); g2 = zeros(T, G)
+    @inbounds for i in eachindex(r)
+        k = gidx[i]; w = invD[i]; x = xs[i]
+        z1 = l11 + cc * x; z2 = l22 * x
+        e = r[i] - z1 * v1[k] - z2 * v2[k]
+        g1[k] += w * e * z1; g2[k] += w * e * z2
+    end
+    quad = zero(T)
+    @inbounds for k in 1:G
+        h1 = g1[k] - v1[k]; h2 = g2[k] - v2[k]
+        v1[k] += ((1 + p22[k]) * h1 - p21[k] * h2) / detA[k]
+        v2[k] += (-p21[k] * h1 + (1 + p11[k]) * h2) / detA[k]
+        quad += v1[k]^2 + v2[k]^2
+    end
+    @inbounds for i in eachindex(r)
+        k = gidx[i]; x = xs[i]
+        e = r[i] - (l11 + cc * x) * v1[k] - l22 * x * v2[k]
+        quad += invD[i] * e * e
+    end
+    return logdetA, quad, v1, v2
+end
+
 function _fit_correlated_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, xs, nmμ, nmσ, grp, g_tol)
     n = length(y)
     pμ, pσ = size(Xμ, 2), size(Xσ, 2)
-    function nll(θ)
+    # `xv` is the random-slope covariate: `xs` itself (the reported parametrisation)
+    # or `xs .- x̄` (the optimisation parametrisation, below).
+    function nll_x(θ, xv, Xm)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
         a = θ[pμ+pσ+1]; b = θ[pμ+pσ+2]; cc = θ[pμ+pσ+3]
-        ημ = Xμ * βμ; ησ = Xσ * βσ
-        T = eltype(θ)
+        ημ = Xm * βμ; ησ = Xσ * βσ
         l11 = exp(a); l22 = exp(b)                 # L = [l11 0; cc l22], Σ_re = L Lᵀ
-        Σ11 = l11^2; Σ21 = cc * l11; Σ22 = cc^2 + l22^2
-        detΣ = Σ11 * l22^2                         # det(L Lᵀ), stable even when cc is large
-        Si11 = Σ22 / detΣ; Si22 = Σ11 / detΣ; Si21 = -Σ21 / detΣ
-        logdetΣre = 2a + 2b
-        b11 = zeros(T, G); b21 = zeros(T, G); b22 = zeros(T, G)
-        c1 = zeros(T, G); c2 = zeros(T, G)
-        q1 = zero(T); logdetD = zero(T)
-        @inbounds for i in 1:n
-            invD = exp(-2 * ησ[i]); r = y[i] - ημ[i]; w = xs[i]; k = gidx[i]
-            b11[k] += invD; b21[k] += w * invD; b22[k] += w * w * invD
-            ri = r * invD; c1[k] += ri; c2[k] += w * ri
-            q1 += r * ri; logdetD += 2 * ησ[i]
-        end
-        quad = q1; logdetM = zero(T)
-        @inbounds for k in 1:G
-            m11 = Si11 + b11[k]; m21 = Si21 + b21[k]; m22 = Si22 + b22[k]
-            dM = m11 * m22 - m21^2
-            u1 = (m22 * c1[k] - m21 * c2[k]) / dM      # M_k⁻¹ c_k
-            u2 = (-m21 * c1[k] + m11 * c2[k]) / dM
-            quad -= c1[k] * u1 + c2[k] * u2
-            logdetM += log(dM)
-        end
-        logdetV = logdetD + G * logdetΣre + logdetM
-        return 0.5 * (logdetV + quad) + 0.5 * n * log(2π)
+        r = y .- ημ
+        invD = exp.(-2 .* ησ)
+        logdetA, quad, _, _ = _corr_re_stable(r, invD, xv, gidx, G, l11, l22, cc)
+        val = 0.5 * (sum(2 .* ησ) + logdetA + quad) + 0.5 * n * log(2π)
+        # A line-search probe far outside the data scale can still overflow
+        # (e.g. exp(a) → Inf). Return a large FINITE barrier: LBFGS's HagerZhang
+        # line search asserts a finite objective (#707), and a thrown error is not
+        # an answer either (#762).
+        isfinite(val) || return oftype(val, 1e18)
+        return val
     end
+    nll(θ) = nll_x(θ, xs, Xμ)
+
+    # OPTIMISE IN CENTRED COORDINATES (#762). b0 + b1·x = (b0 + b1·x̄) + b1·(x − x̄),
+    # so the model is invariant to shifting the slope covariate; only the Cholesky
+    # parametrisation of Σ_re changes. With an uncentred covariate (x̄ ≈ 27 while
+    # sd(x) ≈ 2) the intercept variance at x = 0 and the intercept–slope
+    # correlation (→ ∓1) make the log-Cholesky surface badly scaled, and LBFGS
+    # stopped up to 1.6 logLik units short of drmTMB while reporting convergence.
+    # Fit Σ_c = L_c L_cᵀ for (1, x − x̄), then map back EXACTLY:
+    #   Σ = S Σ_c Sᵀ, S = [1 −x̄; 0 1];  L11 = √Σ11, L21 = Σ21/L11,
+    #   L22 = det(L_c)/L11 = l_c11·l_c22/L11 (no subtraction, so no cancellation
+    #   when Σ is near-singular).
+    #
+    # The mean design is preconditioned the same way: optimise γ = Rμ·βμ against
+    # the orthonormal Qμ (Xμ = Qμ·Rμ, thin QR), which makes the problem for data
+    # with x and for data with x − x̄ identical and removes the intercept–slope
+    # coupling of an uncentred mean covariate. Reported βμ = Rμ⁻¹γ. A rank-
+    # deficient Xμ keeps the identity (the pre-existing behaviour).
+    x̄ = sum(xs) / length(xs)
+    xc = xs .- x̄
+    Qμ, Rμ = let F = qr(Xμ)
+        R = Matrix(F.R); dR = abs.(diag(R))
+        if length(dR) == pμ && minimum(dR) > 1e-10 * maximum(dR)
+            Matrix(F.Q)[:, 1:pμ], R
+        else
+            Xμ, Matrix{Float64}(I, pμ, pμ)
+        end
+    end
+    nllc(φ) = nll_x(φ, xc, Qμ)
     βμ0 = Xμ \ y; res0 = y - Xμ * βμ0
-    θ0 = zeros(pμ + pσ + 3)
-    θ0[1:pμ] .= βμ0
-    θ0[pμ+1] = log(std(res0) + eps())
+    φ0 = zeros(pμ + pσ + 3)
+    φ0[1:pμ] .= Rμ * βμ0
+    φ0[pμ+1] = log(std(res0) + eps())
     sd0 = log(std(res0) / 2 + eps())
-    θ0[pμ+pσ+1] = sd0; θ0[pμ+pσ+2] = sd0; θ0[pμ+pσ+3] = 0.0
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    φ0[pμ+pσ+1] = sd0; φ0[pμ+pσ+2] = sd0; φ0[pμ+pσ+3] = 0.0
+    res = Optim.optimize(nllc, φ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    # BOUNDARY RESTART. Σ_re depends on l22 only through l22², so ρ = ±1 (l22 → 0,
+    # log l22 → −∞) is ALWAYS a stationary limit of this parametrisation: the
+    # gradient in log l22 vanishes there whether or not an interior optimum is
+    # better. LBFGS can drift into it (measured: 3/60 H0 refits stopped 0.003–0.005
+    # logLik short of drmTMB with ||g|| ≈ 1e-9). When the fit lands on that edge,
+    # restart once from an interior point (l22 = l11/2, ρ reset to 0) and keep
+    # the better objective; a genuine boundary optimum returns to the edge.
+    let φ̂1 = Optim.minimizer(res), ia = pμ + pσ + 1
+        if φ̂1[ia+1] - φ̂1[ia] < log(1e-3)
+            φr = copy(φ̂1); φr[ia+1] = φ̂1[ia] + log(0.5); φr[ia+2] = 0.0
+            res2 = Optim.optimize(nllc, φr, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+            Optim.minimum(res2) < Optim.minimum(res) && (res = res2)
+        end
+    end
+    φ̂ = Optim.minimizer(res)
+    θ̂ = let
+        ac, bc, lcc = φ̂[pμ+pσ+1], φ̂[pμ+pσ+2], φ̂[pμ+pσ+3]
+        lc11 = exp(ac); lc22 = exp(bc)
+        m11 = lc11 - x̄ * lcc; m12 = -x̄ * lc22        # first row of S·L_c
+        Σ11 = m11^2 + m12^2
+        Σ21 = m11 * lcc + m12 * lc22
+        L11 = sqrt(Σ11)
+        θ = copy(φ̂)
+        θ[1:pμ] .= Rμ \ φ̂[1:pμ]
+        θ[pμ+pσ+1] = log(L11)
+        θ[pμ+pσ+2] = ac + bc - log(L11)
+        θ[pμ+pσ+3] = Σ21 / L11
+        θ
+    end
+    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :recov => (pμ+pσ+1):(pμ+pσ+3)]
     names = [:mu => nmμ, :sigma => nmσ, :recov => ["$(grp):L11", "$(grp):L22", "$(grp):L21"]]
     means = Dict(:mu => Xμ * θ̂[1:pμ]); obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
-    # Conditional RE estimates (BLUPs): per group b̂_k = M_k⁻¹ c_k (intercept, slope),
-    # the same posterior-mean solve the marginal nll forms internally, evaluated at θ̂.
+    # Conditional RE estimates (BLUPs): per group b̂_k = M_k⁻¹ c_k = L v̂_k
+    # (intercept, slope), from the same stable whitened solve the nll uses.
     blup = let
         βμ = θ̂[1:pμ]; βσ = θ̂[pμ+1:pμ+pσ]
-        a = θ̂[pμ+pσ+1]; b = θ̂[pμ+pσ+2]; cc = θ̂[pμ+pσ+3]
-        ημ = Xμ * βμ; ησ = Xσ * βσ
-        l11 = exp(a); l22 = exp(b)
-        Σ11 = l11^2; Σ21 = cc * l11; Σ22 = cc^2 + l22^2
-        detΣ = Σ11 * l22^2
-        Si11 = Σ22 / detΣ; Si22 = Σ11 / detΣ; Si21 = -Σ21 / detΣ
-        b11 = zeros(G); b21 = zeros(G); b22 = zeros(G); c1 = zeros(G); c2 = zeros(G)
-        @inbounds for i in 1:n
-            invD = exp(-2 * ησ[i]); r = y[i] - ημ[i]; ww = xs[i]; k = gidx[i]
-            b11[k] += invD; b21[k] += ww * invD; b22[k] += ww * ww * invD
-            ri = r * invD; c1[k] += ri; c2[k] += ww * ri
-        end
-        B = Matrix{Float64}(undef, G, 2)
-        @inbounds for k in 1:G
-            m11 = Si11 + b11[k]; m21 = Si21 + b21[k]; m22 = Si22 + b22[k]
-            dM = m11 * m22 - m21^2
-            B[k, 1] = (m22 * c1[k] - m21 * c2[k]) / dM    # intercept BLUP
-            B[k, 2] = (-m21 * c1[k] + m11 * c2[k]) / dM   # slope BLUP
-        end
-        B
+        l11 = exp(θ̂[pμ+pσ+1]); l22 = exp(θ̂[pμ+pσ+2]); cc = θ̂[pμ+pσ+3]
+        r = y .- Xμ * βμ; invD = exp.(-2 .* (Xσ * βσ))
+        _, _, v1, v2 = _corr_re_stable(r, invD, xs, gidx, G, l11, l22, cc)
+        hcat(l11 .* v1, cc .* v1 .+ l22 .* v2)
     end
     re = Dict(Symbol(grp) => blup)
     return _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll), re)

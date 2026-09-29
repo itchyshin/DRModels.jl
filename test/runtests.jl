@@ -660,3 +660,8 @@ _shard_include("test_twin_display_708.jl")
 # Issue #759: ranef(fit) silently returned an empty Dict for a non-Gaussian
 # GLMM random-intercept fit; the docstring's #73 pointer was also stale.
 _shard_include("test_twin_display_759.jl")
+# Issues #762/#707: Gaussian correlated (1 + x | g) threw DomainError (log of a
+# negative capacitance "determinant") with an uncentred covariate or rho -> +-1, and
+# AssertionError in the line search. Pins the stable whitened objective, the
+# centred/QR-preconditioned optimisation and drmTMB-twinned H0 refits.
+_shard_include("test_twin_gap_762.jl")
