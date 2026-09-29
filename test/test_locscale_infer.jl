@@ -106,9 +106,19 @@ end
     @test isfinite(fit.nll)
     @test all(isfinite, fit.θ)
     @test all(isfinite, fit.Lambda)
-    # The Hessian is (near-)singular in this regime -- the fit must flag it
-    # (nothing vcov / se, per the existing `_ls_vcov`/`_ls_whitened_vcov`
-    # convention) rather than report garbage or crash.
-    @test fit.vcov === nothing
-    @test fit.se === nothing
+    # The Hessian is (near-)singular in this regime -- the fit must either flag
+    # it (nothing vcov / se, per the existing `_ls_vcov`/`_ls_whitened_vcov`
+    # convention) or report a FINITE vcov with finite, positive SEs; never
+    # garbage (NaN/Inf) and never a crash. With the other fixes landed in
+    # batch 2 (most likely the whitened Λ⁻¹ callers #862/#865/#868; not
+    # bisected) the finite-difference Hessian on this exact seed is finite,
+    # so the fit now takes the second branch (measured on the batch-2
+    # branch: all SEs finite, the log L22 SE ≈ 108, i.e. weakly identified
+    # near ρ = 0.999, as expected); before them it took the first.
+    if fit.vcov === nothing
+        @test fit.se === nothing
+    else
+        @test all(isfinite, fit.vcov)
+        @test fit.se !== nothing && all(isfinite, fit.se) && all(>(0), fit.se)
+    end
 end
