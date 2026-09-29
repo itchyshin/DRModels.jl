@@ -685,3 +685,8 @@ _shard_include("test_q4_prior_whitening.jl")
 # Cancellation sweep: multi-RE (1|g)+(1|h), spatial(1|site) and the sparse
 # two-structured Gaussian marginals vs a BigFloat dense reassembly as σ_e → 0.
 _shard_include("test_cancellation_sweep.jl")
+# Issue #732 (twin drmTMB#1272): `re_sd(fit)` on a `phylo(1 | g)` grouping is on
+# the raw branch-length scale; drmTMB reports the tip-correlation scale. Guards
+# the new `re_sd(fit; scale = :drmtmb, tree = ...)` conversion option (default
+# unchanged) against the same two R-oracle fixtures already used elsewhere.
+_shard_include("test_twin_gap_732.jl")
