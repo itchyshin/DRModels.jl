@@ -1082,6 +1082,214 @@ function _sigre_laplace_nll(y, Xμ, Xσ, members, pμ, pσ)
     end
 end
 
+# ── simultaneous mean + sigma random intercepts (#745, twin drmTMB #1287) ────
+#
+# `y ~ x + (1 | g), sigma ~ (1 | g)`, the SAME grouping factor `g` on both
+# axes. Unlike `_fit_ranef_gaussian` (mean RE, `sigma` fixed effects — exact
+# Woodbury marginal) this has no closed form: the sigma random effect enters
+# the mean's per-observation VARIANCE, so it cannot be profiled out of the
+# Gaussian integral the way `sigma ~ x` fixed effects can. drmTMB's own route
+# (`src/drmTMB.cpp` model_type 1) does not exploit any closed form either — it
+# hands TMB the full stacked (u_mu, u_sigma) vector and lets its black-box
+# nested Laplace integrate everything at once, with independent
+# `dnorm(u, 0, 1)` priors (no cross-dpar correlation for the plain `(1 | g)` +
+# `(1 | g)` cell; that needs an explicit coupled `(1 | tag | group)` tag).
+#
+# Because both random effects here share ONE grouping factor, drmTMB's joint
+# Hessian over the whole (u_mu, u_sigma) vector is exactly BLOCK-DIAGONAL, one
+# 2×2 block per group: group k's likelihood contribution depends only on its
+# own (b_mu,k, delta_sigma,k) pair, never on another group's. Summing an
+# independent per-group 2-D Laplace approximation over those 2×2 blocks IS the
+# whole-model nested Laplace approximation — nothing is lost relative to
+# TMB's joint version by doing it group-by-group instead of as one big sparse
+# solve; it is simply a more transparent implementation of the identical
+# block-diagonal structure. (If a future formula let the two REs use
+# DIFFERENT grouping factors, the blocks would no longer be 2×2 and this
+# derivation would not apply — routed as a clear refusal at the call site.)
+#
+# For one group with m members, random intercept b (mean) and delta (sigma,
+# both un-standardized — same convention as `_sigre_mode` above, b ~ N(0,σb²)
+# directly rather than TMB's b = σb·u — Laplace is invariant to that affine
+# reparameterisation), fixed-effect residual r_i = y_i − Xμ_i′β_μ and
+# fixed-effect log σ η0_i = Xσ_i′β_σ:
+#
+#     h(b, δ) = Σ_i (η0_i + δ) + ½ D(b, δ) + ½ b²/σb,μ² + ½ δ²/σb,σ²
+#     D(b, δ) = Σ_i (r_i − b)² exp(−2(η0_i + δ))
+#
+# (plus the −½m log 2π − ½log 2π − ½log 2π normalising constants for the
+# response density and the two priors, added back in `nll_group` below). The
+# 2×2 Hessian of h in closed form (used both for the Newton mode-finder and
+# for the Laplace determinant):
+#
+#     H_bb = Σ_i e_i + 1/σb,μ²             (e_i = exp(−2(η0_i+δ)))
+#     H_bδ = −∂D/∂b = 2 Σ_i (r_i−b) e_i
+#     H_δδ = 2 D + 1/σb,σ²
+#
+# and Laplace's 2-D formula log∫∫e^{−h} db dδ ≈ −h(b̂,δ̂) + log(2π) −
+# ½log det H(b̂,δ̂).
+
+_musig_primal(x::ForwardDiff.Dual) = _musig_primal(ForwardDiff.value(x))
+_musig_primal(x::Real) = x
+
+# Damped-Newton 2-D mode-finder on stripped Float64 primals. Groups here are
+# tiny (drmTMB twin cells run G ≈ 8..60, n_g ≈ 6..12), so this converges in a
+# handful of iterations; step-halving on the gradient norm guards against the
+# occasional overshoot from the δ-nonlinearity (e = exp(−2δ)) far from (0,0).
+function _musig_mode_primal(r_idx::Vector{Float64}, eta0_idx::Vector{Float64},
+                            sb_mu2::Float64, sb_sigma2::Float64)
+    m = length(r_idx)
+    b = 0.0; δ = 0.0
+    for _ in 1:100
+        e = exp.(-2 .* (eta0_idx .+ δ))
+        resid = r_idx .- b
+        D = sum(resid .^ 2 .* e)
+        dDdb = -2 * sum(resid .* e)
+        gb = 0.5 * dDdb + b / sb_mu2
+        gδ = m - D + δ / sb_sigma2
+        (gb^2 + gδ^2) < 1e-24 && break
+        Hbb = sum(e) + 1 / sb_mu2
+        Hbδ = -dDdb
+        Hδδ = 2 * D + 1 / sb_sigma2
+        detH = Hbb * Hδδ - Hbδ^2
+        if !isfinite(detH) || detH <= 0
+            Δb = -gb / max(Hbb, 1e-8)
+            Δδ = -gδ / max(Hδδ, 1e-8)
+        else
+            Δb = -(Hδδ * gb - Hbδ * gδ) / detH
+            Δδ = -(-Hbδ * gb + Hbb * gδ) / detH
+        end
+        step = 1.0
+        g0 = gb^2 + gδ^2
+        while step > 1e-8
+            bn = b + step * Δb; δn = δ + step * Δδ
+            en = exp.(-2 .* (eta0_idx .+ δn))
+            residn = r_idx .- bn
+            Dn = sum(residn .^ 2 .* en)
+            gbn = 0.5 * (-2 * sum(residn .* en)) + bn / sb_mu2
+            gδn = m - Dn + δn / sb_sigma2
+            if gbn^2 + gδn^2 <= g0 || step < 1e-3
+                b, δ = bn, δn
+                break
+            end
+            step *= 0.5
+        end
+    end
+    return b, δ
+end
+
+# Mode + final Hessian pieces in the CALLER's number type (mirrors
+# `_sigre_laplace_group`'s pattern): find (b̂, δ̂) robustly on stripped Float64
+# primals, then take two exact Newton steps in the full (possibly Dual) type
+# so the implicit function theorem gives ForwardDiff the correct derivative of
+# (b̂, δ̂) w.r.t. θ. Returns (b, δ, D, Hbb, Hbδ, Hδδ) at the refined point.
+function _musig_refine(r_idx, eta0_idx, sb_mu2, sb_sigma2, m::Int)
+    r0 = _musig_primal.(r_idx); eta00 = _musig_primal.(eta0_idx)
+    sb_mu2_0 = _musig_primal(sb_mu2); sb_sigma2_0 = _musig_primal(sb_sigma2)
+    b0, δ0 = _musig_mode_primal(r0, eta00, sb_mu2_0, sb_sigma2_0)
+    T = promote_type(eltype(r_idx), eltype(eta0_idx), typeof(sb_mu2), typeof(sb_sigma2))
+    b = oftype(one(T), b0); δ = oftype(one(T), δ0)
+    for _ in 1:2
+        e = exp.(-2 .* (eta0_idx .+ δ))
+        resid = r_idx .- b
+        D = sum(resid .^ 2 .* e)
+        dDdb = -2 * sum(resid .* e)
+        gb = 0.5 * dDdb + b / sb_mu2
+        gδ = m - D + δ / sb_sigma2
+        Hbb = sum(e) + 1 / sb_mu2
+        Hbδ = -dDdb
+        Hδδ = 2 * D + 1 / sb_sigma2
+        detH = Hbb * Hδδ - Hbδ^2
+        Δb = -(Hδδ * gb - Hbδ * gδ) / detH
+        Δδ = -(-Hbδ * gb + Hbb * gδ) / detH
+        b += Δb; δ += Δδ
+    end
+    e = exp.(-2 .* (eta0_idx .+ δ))
+    resid = r_idx .- b
+    D = sum(resid .^ 2 .* e)
+    dDdb = -2 * sum(resid .* e)
+    Hbb = sum(e) + 1 / sb_mu2
+    Hbδ = -dDdb
+    Hδδ = 2 * D + 1 / sb_sigma2
+    return b, δ, D, Hbb, Hbδ, Hδδ
+end
+
+"""
+    _fit_musigma_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol) -> DrmFit
+
+Gaussian model with SIMULTANEOUS random intercepts on the mean `(1 | g)` and
+on `sigma` `(1 | g)`, sharing one grouping factor (#745, twin drmTMB #1287).
+Each group's joint (b_mu, delta_sigma) pair is integrated by a 2-D Laplace
+approximation (see the derivation above this function); marginal `:Laplace`
+always — there is no closed-form or quadrature alternative implemented for
+this cell. θ = [β_μ; β_σ (fixed-effect log σ); log σ_b,μ; log σ_b,σ].
+"""
+function _fit_musigma_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol)
+    n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
+    members = [Int[] for _ in 1:G]
+    for i in 1:n
+        push!(members[gidx[i]], i)
+    end
+    l2π = log(2π)
+
+    function nll(θ)
+        βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
+        sb_mu2 = exp(2 * θ[pμ+pσ+1]); sb_sigma2 = exp(2 * θ[pμ+pσ+2])
+        r_all = y .- Xμ * βμ
+        η0_all = Xσ * βσ
+        T = eltype(θ)
+        s = zero(T)
+        for idx in members
+            m = length(idx)
+            m == 0 && continue
+            r_idx = r_all[idx]; eta0_idx = η0_all[idx]
+            b, δ, D, Hbb, Hbδ, Hδδ = _musig_refine(r_idx, eta0_idx, sb_mu2, sb_sigma2, m)
+            detH = Hbb * Hδδ - Hbδ^2
+            Ak = sum(eta0_idx)
+            nll_group = 0.5 * m * l2π + Ak + m * δ + 0.5 * D +
+                        0.5 * l2π + θ[pμ+pσ+1] + 0.5 * b^2 / sb_mu2 +
+                        0.5 * l2π + θ[pμ+pσ+2] + 0.5 * δ^2 / sb_sigma2
+            s += nll_group - l2π + 0.5 * log(detH)
+        end
+        return s
+    end
+
+    βμ0 = Xμ \ y; res0 = y - Xμ * βμ0
+    θ0 = zeros(pμ + pσ + 2)
+    θ0[1:pμ] .= βμ0
+    θ0[pμ+1] = log(std(res0) + eps())
+    θ0[pμ+pσ+1] = log(0.5 * std(res0) + eps())
+    θ0[pμ+pσ+2] = log(0.3)
+    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    θ̂ = Optim.minimizer(res)
+    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+
+    blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :resd => (pμ+pσ+1):(pμ+pσ+2)]
+    # Same `_logsigma`-suffix convention as `_fit_sigma_ranef_gaussian` (#322):
+    # the mean-axis RE-SD keeps the bare group name, the sigma-axis one is
+    # tagged so `vc`/`re_sd` never conflate the two different scales.
+    names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp), "$(grp)_logsigma"]]
+    means = Dict(:mu => Xμ * θ̂[1:pμ])
+    obs = Dict(:mu => Vector{Float64}(y))
+    scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))   # population (b=δ=0) σ
+
+    # Conditional modes (BLUPs) at θ̂, one 2-D Laplace mode per group.
+    blup_mu = zeros(G); blup_sigma = zeros(G)
+    let
+        βμ = θ̂[1:pμ]; βσ = θ̂[pμ+1:pμ+pσ]
+        sb_mu2 = exp(2 * θ̂[pμ+pσ+1]); sb_sigma2 = exp(2 * θ̂[pμ+pσ+2])
+        r_all = y .- Xμ * βμ; η0_all = Xσ * βσ
+        for (k, idx) in enumerate(members)
+            length(idx) == 0 && continue
+            b, δ = _musig_refine(r_all[idx], η0_all[idx], sb_mu2, sb_sigma2, length(idx))
+            blup_mu[k] = b; blup_sigma[k] = δ
+        end
+    end
+    re = Dict(Symbol(grp) => blup_mu, Symbol("$(grp)_logsigma") => blup_sigma)
+
+    fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll), re)
+    return _withmarginal(fit, :Laplace)
+end
+
 # `marginal` on the univariate Gaussian `drm`. `:LA` (the default, any case)
 # keeps every route exactly as it was: each route's own integrator, which is
 # exact wherever the Gaussian marginal is closed-form and GHQ-32 on `sigma ~ (1

@@ -197,6 +197,7 @@ _shard_include("test_multi_re.jl")
 _shard_include("test_sigma_re.jl")
 _shard_include("test_sigma_re_laplace.jl")   # marginal = :Laplace on sigma ~ (1 | g) (TMB convention)
 _shard_include("test_sigma_re_aghq.jl")      # marginal = :AGHQ on sigma ~ (1 | g) (#719 adaptive helper)
+_shard_include("test_twin_gap_745.jl")   # simultaneous mean (1|g) + sigma (1|g), twin drmTMB #1287
 _shard_include("test_sigma.jl")
 _shard_include("test_student.jl")
 _shard_include("test_student_721.jl")
