@@ -6,6 +6,20 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **Tweedie crossed random effects (#737, drmTMB twin parity).**
+  `Tweedie()` now fits crossed/multiple random intercepts on the log-mean,
+  `(1 | g) + (1 | h)`, matching drmTMB's `tweedie()`. `sigma ~ 1` and
+  `nu ~ 1` are now REQUIRED on this route. Integrator: the sparse
+  augmented-state Laplace GLMM engine already shared by Gamma/NB2/Beta's
+  crossed routes (`_fit_crossed_mean_laplace_nuisance`) — no new integrator
+  for the random effects. That shared engine's single scalar "nuisance" slot
+  takes the dispersion; the power `p` (a second nuisance parameter the shared
+  engine has no room for) is found by an outer 1-D Brent profile search over
+  `p`, refitting the full (β, dispersion, σ_g, σ_h) inner model at each
+  candidate `p` — exact profile-likelihood optimisation, not an approximation.
+  Per-observation value/derivatives for the Dunn–Smyth compound Poisson–Gamma
+  density (which has no convenient closed-form derivative) are obtained by
+  nested `ForwardDiff.derivative` rather than hand-derived analytically.
 - **Gaussian `(1 | g)` REML no longer throws or returns -Inf on an extreme
   line-search probe.** The REML term's `Xμ'V⁻¹Xμ` in `_fit_ranef_gaussian` and
   the `sd(g) ~ z` route `_fit_ranef_gaussian_lss` was built by Woodbury
