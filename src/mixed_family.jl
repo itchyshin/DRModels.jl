@@ -146,6 +146,73 @@ function _mf_rand(::Gamma, η, trials, d, rng)
     return rand(rng, Distributions.Gamma(α, μ / α))
 end
 
+# Profile-likelihood CI on ρ (extracted from `fit_mixed_family` so it can be
+# tested against a synthetic objective). `objfn` is the negative log-likelihood,
+# `rho_of` maps θ to ρ, `θ̂` the optimum and `ρ` its ρ.
+function _mf_profile_ci(objfn, rho_of, θ̂, ρ, level)
+    nllhat = objfn(θ̂)
+    q = Distributions.quantile(Distributions.Chisq(1), level)
+    prof_dev = function (ρ0)
+        zr0 = atanh(clamp(ρ0, -0.999999, 0.999999))
+        pobj(θ) = objfn(θ) + 1.0e4 * (atanh(clamp(rho_of(θ), -0.999999, 0.999999)) - zr0)^2
+        r = Optim.optimize(pobj, copy(θ̂), Optim.LBFGS(),
+                           Optim.Options(g_tol = 1e-9); autodiff = :forward)
+        # A non-converged, non-finite or sentinel (>= 1e9) inner solve is
+        # UNRESOLVED (NaN), never "crossed": the 1e10 plateau would read as a huge
+        # deviance and pin the endpoint to the cliff edge.
+        # A solve that stopped short of ρ0 (penalty constraint unmet, e.g. at a
+        # cliff edge) while showing a deviance below q is also unresolved: it cannot
+        # certify "not crossed". A large deviance is still a valid "crossed".
+        θm = Optim.minimizer(r)
+        fmin = objfn(θm)
+        (Optim.converged(r) && isfinite(fmin) && fmin < 1e9) || return NaN
+        dev = 2 * (fmin - nllhat)
+        met = abs(atanh(clamp(rho_of(θm), -0.999999, 0.999999)) - zr0) < 0.05
+        (met || dev >= q) || return NaN
+        return dev
+    end
+    endpoint = function (a, b)   # dev(a), dev(b) straddle q → bisect for dev = q
+        fa = prof_dev(a) - q
+        isnan(fa) && return NaN
+        for _ in 1:40
+            mid = (a + b) / 2
+            fm = prof_dev(mid) - q
+            isnan(fm) && return NaN
+            if fa * fm <= 0
+                b = mid
+            else
+                a = mid; fa = fm
+            end
+            abs(b - a) < 1e-3 && break
+        end
+        (a + b) / 2
+    end
+    # An unresolved arm is reported NaN (the same "no interval" convention as
+    # the Wald / bootstrap CIs); the other arm is unaffected.
+    dlo = prof_dev(-0.999)
+    dhi = prof_dev(0.999)
+    lobnd = isnan(dlo) ? NaN : dlo >= q ? endpoint(-0.999, ρ) : -0.999
+    hibnd = isnan(dhi) ? NaN : dhi >= q ? endpoint(ρ, 0.999) : 0.999
+    return (lobnd, hibnd)
+end
+
+# Percentile bootstrap CI from a vector of refits (`nothing` = threw). Refits that
+# did not converge or sit on the 1e10 sentinel (loglik <= -1e9) are skipped.
+# Returns `(ci, n_kept)`.
+function _mf_boot_ci(fits, B, level)
+    ρs = Float64[]
+    for fb in fits
+        (fb === nothing || !fb.converged || !(fb.loglik > -1e9)) && continue
+        push!(ρs, fb.rho_latent)
+    end
+    filter!(isfinite, ρs)
+    if length(ρs) >= max(10, B ÷ 2)
+        α = (1 - level) / 2
+        return (Statistics.quantile(ρs, α), Statistics.quantile(ρs, 1 - α)), length(ρs)
+    end
+    return (NaN, NaN), length(ρs)
+end
+
 """
     fit_mixed_family(; y1, X1, fam1, y2, X2, fam2,
                        trials1=ones(n), trials2=ones(n),
@@ -365,47 +432,20 @@ function fit_mixed_family(; y1, X1, fam1, y2, X2, fam2,
     # deviance drop. Better-calibrated than Wald near the boundary, cheaper than the
     # bootstrap. (objfn/rho_of are reused; nll's/nll_aghq's locals are renamed so
     # no Dual leaks.)
-    rho_ci_profile = (NaN, NaN)
-    if profile
-        nllhat = objfn(θ̂)
-        q = Distributions.quantile(Distributions.Chisq(1), level)
-        prof_dev = function (ρ0)
-            zr0 = atanh(clamp(ρ0, -0.999999, 0.999999))
-            pobj(θ) = objfn(θ) + 1.0e4 * (atanh(clamp(rho_of(θ), -0.999999, 0.999999)) - zr0)^2
-            r = Optim.optimize(pobj, copy(θ̂), Optim.LBFGS(),
-                               Optim.Options(g_tol = 1e-9); autodiff = :forward)
-            return 2 * (objfn(Optim.minimizer(r)) - nllhat)
-        end
-        endpoint = function (a, b)   # dev(a), dev(b) straddle q → bisect for dev = q
-            fa = prof_dev(a) - q
-            for _ in 1:40
-                mid = (a + b) / 2
-                fm = prof_dev(mid) - q
-                if fa * fm <= 0
-                    b = mid
-                else
-                    a = mid; fa = fm
-                end
-                abs(b - a) < 1e-3 && break
-            end
-            (a + b) / 2
-        end
-        lobnd = prof_dev(-0.999) >= q ? endpoint(-0.999, ρ) : -0.999
-        hibnd = prof_dev(0.999) >= q ? endpoint(ρ, 0.999) : 0.999
-        rho_ci_profile = (lobnd, hibnd)
-    end
+    rho_ci_profile = profile ? _mf_profile_ci(objfn, rho_of, θ̂, ρ, level) : (NaN, NaN)
 
     # Parametric bootstrap CI: resample the shared latent + per-family draws at θ̂,
     # refit, take percentile interval. (β1/λ1/σ1 are concrete Float64 — see the nll
     # local-naming note — so the resampled data is clean and the refits converge.)
     rho_ci_boot = (NaN, NaN)
+    n_boot_kept = 0
     if B > 0
         η1f = X1 * β1; η2f = X2 * β2
         # Per-observation natural dispersion at θ̂ (constant = σ1/σ2 under the default
         # ones-column Xσ, so the sampler reduces to the old scalar bootstrap).
         sd1b = s1 ? exp.(Xsigma1 * βσ1) : fill(σ1, n)
         sd2b = s2 ? exp.(Xsigma2 * βσ2) : fill(σ2, n)
-        ρs = Float64[]
+        fits = Any[]
         for _ in 1:B
             ub = randn(rng, n)
             y1b = [_mf_rand(fam1, η1f[i] + λ1 * ub[i], trials1[i], sd1b[i], rng) for i in 1:n]
@@ -419,18 +459,14 @@ function fit_mixed_family(; y1, X1, fam1, y2, X2, fam2,
             catch
                 nothing
             end
-            fb === nothing || push!(ρs, fb.rho_latent)
+            push!(fits, fb)
         end
-        filter!(isfinite, ρs)
-        if length(ρs) >= max(10, B ÷ 2)
-            α = (1 - level) / 2
-            rho_ci_boot = (Statistics.quantile(ρs, α), Statistics.quantile(ρs, 1 - α))
-        end
+        rho_ci_boot, n_boot_kept = _mf_boot_ci(fits, B, level)
     end
 
     return (; β1, β2, λ1, λ2, σ1, σ2, βσ1, βσ2, v1, v2, rho_latent = ρ,
             rho_ci_wald = rho_ci_wald, rho_ci_profile = rho_ci_profile,
-            rho_ci_boot = rho_ci_boot,
+            rho_ci_boot = rho_ci_boot, n_boot_kept = n_boot_kept,
             loglik = -objfn(θ̂), converged = Optim.converged(res),
             iterations = res.iterations,
             fam1 = fam1, fam2 = fam2)   # carried for post-fit accessors (mf_fitted)
