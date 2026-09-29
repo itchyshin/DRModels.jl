@@ -646,7 +646,7 @@ function _fit_correlated_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, xs,
         if φ̂1[ia+1] - φ̂1[ia] < log(1e-3)
             φr = copy(φ̂1); φr[ia+1] = φ̂1[ia] + log(0.5); φr[ia+2] = 0.0
             res2 = Optim.optimize(nllc, φr, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-            Optim.minimum(res2) < Optim.minimum(res) && (res = res2)
+            res = _better_restart(nllc, res, res2)   # NOT Optim.minimum: see optim_minimum_guard.jl
         end
     end
     φ̂ = Optim.minimizer(res)
