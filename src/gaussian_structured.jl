@@ -907,18 +907,27 @@ function _fit_two_structured_gaussian_sparse_spec(fam::Gaussian, y, Xμ, Xσ,
     grad_at(θ) = eval_all(unpack(θ)...; want_grad = true)[2]
     Hmat = zeros(np, np)
     hstep = 1e-6
+    hess_ok = true
     for k in 1:np
         θp = copy(θ̂); θm = copy(θ̂)
         step = hstep * max(abs(θ̂[k]), 1.0)
         θp[k] += step; θm[k] -= step
-        Hmat[:, k] .= (grad_at(θp) .- grad_at(θm)) ./ (2 * step)
+        gp = grad_at(θp); gm = grad_at(θm)
+        # `eval_all` returns an EMPTY gradient when the nll or gradient is not
+        # finite (its boundary fallback); a FD probe off a boundary optimum can
+        # land there. Report no vcov (the NaN convention below), don't crash.
+        if isempty(gp) || isempty(gm)
+            hess_ok = false
+            break
+        end
+        Hmat[:, k] .= (gp .- gm) ./ (2 * step)
     end
     Hmat .= 0.5 .* (Hmat .+ Hmat')
-    V = try
+    V = hess_ok ? (try
         Matrix(inv(Symmetric(Hmat)))
     catch
         fill(NaN, np, np)
-    end
+    end) : fill(NaN, np, np)
 
     grp1 = comp1.grp; grp2 = comp2.grp
     blocks = [:mu => iβμ, :sigma => iβσ, :resd => (il1):(il2)]
