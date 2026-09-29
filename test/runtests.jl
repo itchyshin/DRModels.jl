@@ -199,6 +199,10 @@ _shard_include("test_student_721.jl")
 _shard_include("test_student_725.jl")
 _shard_include("test_skewnormal.jl")
 _shard_include("test_poisson.jl")
+# Issue #727 (twin drmTMB #1281): the formula grammar had no `offset()` term.
+# Adds a `offset(...)` marker (poisson.jl-local, gated to the fixed-effects-only
+# Poisson mean); its coefficient is fixed at 1, never estimated.
+_shard_include("test_twin_gap_727.jl")
 _shard_include("test_nbinom2.jl")
 _shard_include("test_nb2_dispersion_seed.jl")
 _shard_include("test_beta.jl")

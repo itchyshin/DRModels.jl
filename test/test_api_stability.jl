@@ -25,7 +25,7 @@ using Test
 const API_STABLE = [
     # grammar + front end
     "@formula", "bf", "drm_formula", "drm", "cbind",
-    "meta_V", "relmat", "animal", "phylo", "spatial",
+    "meta_V", "relmat", "animal", "phylo", "spatial", "offset",
     "DrmFormula", "BivariateDrmFormula", "DrmFit",
     # families
     "Gaussian", "Student", "SkewNormal", "Poisson", "NegBinomial2",

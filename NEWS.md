@@ -174,6 +174,19 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   "Gaussian location–scale" for every family (Poisson, BetaBinomial, …) while
   the `MIME"text/plain"` method already printed the correct one. Both now
   agree.
+- **`offset(...)` on the Poisson mean (#727, drmTMB twin gap).** The formula
+  grammar had no `offset()` term at all. `drm(bf(y ~ x + offset(log_exposure)),
+  Poisson(); data)` now fits `log λ = Xβ + offset`, with the offset's own
+  coefficient fixed at 1 (never estimated) — matching drmTMB's
+  `offset()` contract, gated to the Poisson mean (log link). The offset term
+  accepts a plain column (`offset(log_exposure)`) or an inline numeric
+  transform (`offset(log(exposure))`) via the same schema/modelcols machinery
+  ordinary terms use, with no implicit intercept inserted. Currently supported
+  only on the fixed-effects-only Poisson mean (no random effect, structured
+  marker, `zi`, or `hu` yet); those combinations raise a clear error rather
+  than silently dropping the offset. Verified against drmTMB's `poisson()` +
+  `offset()` on matched simulated data: logLik and both fixed-effect
+  coefficients agree to ≤ 1e-6.
 - **`Student()` fits crossed random intercepts on the mean (#725; drmTMB twin
   #1266).** `y ~ x + (1 | g) + (1 | h)` was refused ("single random-effect
   term"); drmTMB `student()` fits it. It now uses the Laplace approximation, as
