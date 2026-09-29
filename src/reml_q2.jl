@@ -68,7 +68,11 @@ function _q2_reml_unpack_phi(phi::AbstractVector{T}) where {T}
     σ1 = exp(logσ1); σ2 = exp(logσ2)
     ρ  = RHO_GUARD * tanh(ηρ)
     D  = Matrix(Symmetric([σ1^2 ρ*σ1*σ2; ρ*σ1*σ2 σ2^2]))
-    return lc_to_cov(lc, 2), D
+    # `Λ` (formed once, in Float64) still feeds `_q2_profile_and_schur`'s own
+    # `inv(Λ)` construction of H_uu -- out of scope here (#857 site K
+    # follow-up, draft #862, is about `coevo_marginal_cov`'s Λ argument only).
+    # `chΛ` is the factor built straight from `lc`, for that call.
+    return lc_to_cov(lc, 2), D, lc_to_chol(lc, 2)
 end
 
 function _q2_reml_pack_phi(Λ::AbstractMatrix, σ_res::AbstractVector, rho12::Real)
@@ -182,7 +186,7 @@ function _q2_lambda_admissible(Λ::AbstractMatrix; maxcond::Float64 = 1e12)
 end
 
 function _q2_reml_ll(prob::CoevoProblem, Q_cond::SparseMatrixCSC,
-                     Λ::AbstractMatrix, D::AbstractMatrix, β0::AbstractMatrix)
+                     Λ::AbstractMatrix, D::AbstractMatrix, chΛ::Cholesky, β0::AbstractMatrix)
     _q2_lambda_admissible(Λ) || return -Inf, β0, zeros(prob.q * prob.N)
     local prof
     try
@@ -201,9 +205,15 @@ function _q2_reml_ll(prob::CoevoProblem, Q_cond::SparseMatrixCSC,
     # fit -- observed on CI's Julia 1.12.7 in test_reml_q2_structured.jl even
     # with the Λ-admissibility guard in place. A Λ can pass `cond < 1e12` and
     # still drive THIS Hessian to the definiteness boundary. Reject the step.
+    #
+    # `chΛ` (built straight from `lc` by `lc_to_chol`, not `Λ = L L'`) is passed
+    # here in place of `Λ`: #857 site K follow-up (draft #862) -- `Λ` was
+    # already formed once in Float64 by `_q2_reml_unpack_phi`, so handing it to
+    # `coevo_marginal_cov` made that method re-factor an already-lossy matrix,
+    # accurate only to l22 ≈ −18.
     local ml_ll, û
     try
-        ml_ll, û, _, _ = coevo_marginal_cov(prob, Q_cond, prof.β̂, Λ, D)
+        ml_ll, û, _, _ = coevo_marginal_cov(prob, Q_cond, prof.β̂, chΛ, D)
     catch e
         (e isa DomainError || e isa LinearAlgebra.PosDefException ||
          e isa LinearAlgebra.SingularException) || rethrow(e)
@@ -268,8 +278,8 @@ function fit_coevolution_q2_reml(prob::CoevoProblem, Q_cond::SparseMatrixCSC;
     β_cache = Ref(β0)
 
     function negreml(phi)
-        Λ, D = _q2_reml_unpack_phi(phi)
-        rv, β̂, _ = _q2_reml_ll(prob, Q_cond, Λ, D, β_cache[])
+        Λ, D, chΛ = _q2_reml_unpack_phi(phi)
+        rv, β̂, _ = _q2_reml_ll(prob, Q_cond, Λ, D, chΛ, β_cache[])
         isfinite(rv) || return Inf
         β_cache[] = β̂
         return -rv / n
@@ -290,14 +300,17 @@ function fit_coevolution_q2_reml(prob::CoevoProblem, Q_cond::SparseMatrixCSC;
                          Optim.Options(g_tol = g_tol, iterations = iterations,
                                        f_reltol = 1e-10, successive_f_tol = 2))
     phî = Optim.minimizer(res)
-    Λ̂, D̂ = _q2_reml_unpack_phi(phî)
-    reml_ll, β̂, û = _q2_reml_ll(prob, Q_cond, Λ̂, D̂, β_cache[])
+    Λ̂, D̂, chΛ̂ = _q2_reml_unpack_phi(phî)
+    reml_ll, β̂, û = _q2_reml_ll(prob, Q_cond, Λ̂, D̂, chΛ̂, β_cache[])
     # #503 (follow-up): same unguarded factorisation, at the FINAL point. Here a
     # failure must not abort a REML fit that otherwise succeeded -- ml_loglik is
     # a secondary quantity reported for cross-structure comparison, so NaN is the
     # honest value rather than a thrown fit.
+    #
+    # `chΛ̂` (from `lc_to_chol`) is passed here in place of `Λ̂` for the same
+    # #857 site K reason as inside `_q2_reml_ll` above.
     ml_ll = try
-        first(coevo_marginal_cov(prob, Q_cond, β̂, Λ̂, D̂))
+        first(coevo_marginal_cov(prob, Q_cond, β̂, chΛ̂, D̂))
     catch e
         (e isa DomainError || e isa LinearAlgebra.PosDefException ||
          e isa LinearAlgebra.SingularException) || rethrow(e)

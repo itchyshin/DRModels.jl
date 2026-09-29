@@ -534,6 +534,18 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   Hessian. The q=4 PLSM engine builds its prior the same way and is also
   affected (measured, pinned as `@test_broken`); it is not changed here.
 
+- **Follow-up to the above: two more `coevo_marginal_cov` callers now build Λ's
+  factor straight from θ (#857 site K, draft #862).** The bivariate Gaussian
+  ML route (`gaussian_bivariate.jl`, `_fit_bivariate_q2_structured`'s `nll`)
+  and the q=2 structured REML route (`reml_q2.jl`, `_q2_reml_ll` and
+  `fit_coevolution_q2_reml`'s final `ml_ll`) still passed a Λ ALREADY FORMED
+  as a matrix (`lc_to_cov`), so `coevo_marginal_cov`'s `cholesky(Symmetric(Λ))`
+  re-factored an already-lossy matrix — accurate to l22 ≈ −18, then `-Inf`
+  from l22 = −20. Both now pass `lc_to_chol(lc, 2)` directly, matching a
+  256-bit reference to machine precision through l22 = −30 where the old path
+  returned `-Inf`; normal-regime objective values are identical to the old
+  path to ≤ 1e-12.
+
 - **`Student()` no longer reports a garbage log-likelihood near the Gaussian
   limit (#721; drmTMB twin #1265).** When the data are close to Normal the
   likelihood is flat in the ν predictor, and the optimiser can walk ν = 2 +
