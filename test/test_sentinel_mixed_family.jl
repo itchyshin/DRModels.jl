@@ -1,5 +1,6 @@
 using DRModels
 using Test, Random
+using StableRNGs   # cross-Julia-version reproducible streams (MersenneTwister differs on 1.13)
 
 # Sentinel handling in the cross-family route. `fit_mixed_family` maps a
 # non-finite objective to a 1e10 plateau; the profile CI, the bootstrap and
@@ -47,7 +48,7 @@ end
     end
 
     @testset "(c) mf_aic / mf_bic: NaN + warning on a sentinel or non-converged fit" begin
-        rng = MersenneTwister(11)
+        rng = StableRNG(11)
         n = 120
         x = randn(rng, n); X = hcat(ones(n), x); u = randn(rng, n)
         y1 = X * [0.5, 0.8] .+ 0.7 .* u .+ 0.5 .* randn(rng, n)
@@ -71,20 +72,20 @@ end
     end
 
     @testset "ordinary fit unchanged (profile + bootstrap), to 1e-8" begin
-        rng = MersenneTwister(20260929)
+        rng = StableRNG(20260929)
         n = 200; x = randn(rng, n); X = hcat(ones(n), x); u = randn(rng, n)
         y1 = X * [0.5, 0.8] .+ 0.7 .* u .+ 0.5 .* randn(rng, n)
         η2 = X * [0.3, -0.5] .+ 0.6 .* u
         y2 = Float64[_rp_sent(rng, exp(clamp(η2[i], -20.0, 20.0))) for i in 1:n]
         f = DRModels.fit_mixed_family(y1 = y1, X1 = X, fam1 = Gaussian(), y2 = y2, X2 = X,
                                       fam2 = DRModels.Poisson(), profile = true, B = 12,
-                                      rng = MersenneTwister(1))
-        # Values recorded from the pre-change code.
-        @test f.rho_latent ≈ 0.4300696590694035 atol = 1e-8
-        @test all(isapprox.(f.rho_ci_wald, (0.2995053081963854, 0.5448223545819151); atol = 1e-8))
-        @test all(isapprox.(f.rho_ci_profile, (0.2971410604108481, 0.5453558365528983); atol = 1e-8))
-        @test all(isapprox.(f.rho_ci_boot, (0.32439058468042886, 0.5234357563505847); atol = 1e-8))
-        @test f.loglik ≈ -576.1851796490859 atol = 1e-8
+                                      rng = StableRNG(1))
+        # Values recorded from the pre-change code (base src, StableRNG data), identical on Julia 1.10 and 1.13.
+        @test f.rho_latent ≈ 0.4652924608401332 atol = 1e-8
+        @test all(isapprox.(f.rho_ci_wald, (0.3367448322273234, 0.5768132074484522); atol = 1e-8))
+        @test all(isapprox.(f.rho_ci_profile, (0.33480741489124444, 0.5770895967286014); atol = 1e-8))
+        @test all(isapprox.(f.rho_ci_boot, (0.33588692279269083, 0.5249108628415716); atol = 1e-8))
+        @test f.loglik ≈ -581.4048758300801 atol = 1e-8
         @test f.n_boot_kept == 12
     end
 end
