@@ -124,6 +124,7 @@ _shard_include("test_twin_gap_471_bivln.jl")  # #471 LogNormal half: animal/spat
 _shard_include("test_bivariate_student.jl")
 _shard_include("test_bivariate_student_large_nu.jl")
 _shard_include("test_twin_gap_766.jl")  # #766: biv_student profile/bootstrap CI endpoints
+_shard_include("test_implicit_re_intercept.jl")  # (x | g) == (1 + x | g)
 _shard_include("test_associate_pairs.jl")
 _shard_include("test_gaussian_bivariate_phylo.jl")
 _shard_include("test_gaussian_bivariate_q4_structured.jl")
