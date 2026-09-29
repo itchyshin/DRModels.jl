@@ -110,7 +110,7 @@ function drm(f::DrmFormula, fam::Beta; data, tree = nothing, K = nothing,
                 (ones(length(y)), gidx, G, String(grp))
             end
             isaghq && return _withformula(_fit_beta_crossed_aghq(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol; se = se), f)   # #761
-            return _withformula(_fit_beta_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol), f)
+            return _withformula(_fit_beta_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol; se = se), f)
         end
         (rk, var) = _re_kind(re[1][1]); grp = re[1][2]
         gidx, G = _group_index(getproperty(data, grp))
