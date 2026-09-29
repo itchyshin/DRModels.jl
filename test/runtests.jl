@@ -619,6 +619,8 @@ _shard_include("test_mixed_family.jl")
 _shard_include("test_mixed_family_aghq.jl")
 # Post-fit accessors (coef/aic/bic/fitted/summary) for the cross-family fit.
 _shard_include("test_mixed_family_postfit.jl")
+# Sentinel (1e10) guards: profile CI, bootstrap, AIC/BIC.
+_shard_include("test_sentinel_mixed_family.jl")
 
 # Independent validation of the cross-family latent correlation against EXTERNAL
 # references: gllvm (Gaussian × Gaussian, identical estimand; guarded — skips if

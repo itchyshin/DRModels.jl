@@ -12,6 +12,14 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   solve as failed; `_profile_side` treats a failed evaluation as unresolved instead of
   "above target" and returns `NaN` (with a warning) for that arm. Ordinary CIs are
   unchanged to 1e-8.
+- **Cross-family (`fit_mixed_family`) no longer reads the 1e10 objective sentinel
+  as data.** The profile CI on rho treats a non-converged, non-finite or sentinel
+  inner solve (or one stopped short of rho0 with deviance below the cutoff) as
+  unresolved and reports that arm as `NaN`, instead of "crossed" (which pinned the
+  endpoint to the cliff edge). The parametric bootstrap skips refits that are
+  non-converged or on the sentinel (`loglik <= -1e9`) and reports the number kept
+  in `n_boot_kept`. `mf_aic` / `mf_bic` return `NaN` with a warning for such fits
+  instead of an AIC near 2e10. Ordinary fits and CIs are unchanged.
 
 - **Tweedie crossed random effects (#737, drmTMB twin parity).**
   `Tweedie()` now fits crossed/multiple random intercepts on the log-mean,
