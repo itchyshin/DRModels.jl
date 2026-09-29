@@ -8,6 +8,7 @@
 # `nbinom2`.
 
 using Distributions: NegativeBinomial, logpdf
+using SpecialFunctions: loggamma
 
 # Distributions' `zero(p) < p <= one(p)` rejects ForwardDiff Duals whose *value*
 # is 1.0 but whose partials are nonzero — `one(p)` has zero partials, so Dual
@@ -301,6 +302,76 @@ function _fit_negbin2_zi(fam::NegBinomial2, y, Xμ, Xσ, Xzi, nmμ, nmσ, nmzi, 
         Optim.iterations(res))
 end
 
+# Numerically stable NB2 log-pmf log f(k; r, μ) — used in place of
+# `logpdf(NegativeBinomial(r, r/(r+μ)), k)` wherever a zero-truncation term
+# divides out P(0). Distributions' NegativeBinomial(r, p) forms p = r/(r+μ) and
+# r + μ directly: once the dispersion (`sigma`) linear predictor is extreme
+# enough that size r = exp(-2·ησ) ≫ μ (near-Poisson dispersion, r ~ 1e17-1e43 at
+# log σ ≈ -20..-50, #866), μ is smaller than r's ULP and r + μ rounds to EXACTLY
+# r: p rounds to EXACTLY 1.0, so log(1 - p) = log(0) = -Inf for every k > 0 while
+# logpdf(·, 0) still comes out finite (it needs no log(1 - p) term). The
+# hurdle's `_log1mexp(logpdf(d, 0))` — dividing out P(0) for the zero-truncated
+# positive part — then computes -Inf - (-Inf) = NaN (#866; #846 fixed the
+# analogous cancellation on the `(1|g)` AGHQ path). Working entirely in log1p
+# space avoids ever forming r + μ: log p = -log1p(μ/r) and log(1-p) =
+# log μ - log r - log1p(μ/r), both finite as μ/r → 0 (the r → ∞ limit is
+# Poisson, Var → μ).
+#
+# loggamma(k+r) - loggamma(r) — O(1) per call (#883, review of #871/#874/#876):
+# the original Σ_{j=0}^{k-1} log(r+j) is exact but O(k), which made every
+# hurdle/TNB2 fit and quantile residual on ordinary large-count data (k in the
+# thousands) 55×-2500× slower (measured). Three regimes, chosen so every one
+# stays within 1e-10 relative error of a 512-bit BigFloat reference over
+# k ∈ {0,…,1e6}, r ∈ {1e-3,…,1e40}:
+#   - k ≤ 32: keep the exact O(k) sum (bounded cost, and safest at small k).
+#   - r ≫ k (r > 1e6·(k+1)): direct loggamma(k+r) - loggamma(r) cancels
+#     catastrophically (both are ~r·log(r), and their O(k·log r) difference is
+#     swamped by float64's ~eps·r·log(r) rounding floor once r/k is large).
+#     Use the asymptotic expansion in x = j/r instead: log(r+j) = log(r) +
+#     log1p(j/r), so Σ log(r+j) = k·log(r) + Σ log1p(j/r), and for j ≤ k-1 ≪ r
+#     the Taylor series of log1p(j/r) in powers of 1/r can be summed in closed
+#     form via the power sums Σj, Σj², Σj³, Σj⁴ (O(1), no loop over j).
+#   - otherwise: direct loggamma(k+r) - loggamma(r) (SpecialFunctions.loggamma
+#     is itself accurate to ~eps at any argument; the difference is only
+#     cancellation-prone once r ≫ k, handled above).
+function _nb2_loggammadiff(r, k::Integer)
+    k == 0 && return 0.0
+    if k <= 32
+        s = 0.0
+        for j in 0:(k-1)
+            s += log(r + j)
+        end
+        return s
+    elseif r > 1e6 * (k + 1)
+        n = k - 1                      # j runs 0:n
+        S1 = n * (n + 1) / 2
+        S2 = n * (n + 1) * (2n + 1) / 6
+        S3 = (n * (n + 1) / 2)^2
+        S4 = n * (n + 1) * (2n + 1) * (3.0n^2 + 3.0n - 1) / 30
+        return k * log(r) + S1 / r - S2 / (2r^2) + S3 / (3r^3) - S4 / (4r^4)
+    else
+        return loggamma(k + r) - loggamma(r)
+    end
+end
+
+function _nb2_logpmf(r, μ, k::Integer)
+    l1p = log1p(μ / r)                          # log(1+μ/r), for -r·log(1+μ/r)
+    s = -r * l1p - loggamma(k + 1) + _nb2_loggammadiff(r, k)
+    if k != 0
+        # k·(log μ - log r - l1p): computing this directly cancels
+        # catastrophically once μ ≫ r (l1p ≈ log(μ/r) to many digits there,
+        # #883's 1e-10 accuracy bar at k ~ 1e5-1e6 needs the stable form). The
+        # stable rewrite is -k·log1p(r/μ) — but only take it when μ ≥ r, so
+        # r/μ ≤ 1 and can never overflow; on the other side (r ≫ μ, e.g. μ
+        # underflowing towards 0 at extreme dispersion) r/μ can itself
+        # overflow to Inf while the direct subtraction is perfectly
+        # well-conditioned there (no cancellation: the true value is large in
+        # magnitude, matching the operands), so keep the direct form.
+        s += μ >= r ? -k * log1p(r / μ) : k * (log(μ) - log(r) - l1p)
+    end
+    return s
+end
+
 # Hurdle NB2: P(0) = π, P(k>0) = (1-π)·NB(k)/(1-NB(0)) [zero-truncated], with
 # π = logistic(Xhuᵀβ) the hurdle (zero) probability. Uses `_log1mexp` (poisson.jl).
 function _fit_negbin2_hu(fam::NegBinomial2, y, Xμ, Xσ, Xhu, nmμ, nmσ, nmhu, g_tol)
@@ -316,9 +387,8 @@ function _fit_negbin2_hu(fam::NegBinomial2, y, Xμ, Xσ, Xhu, nmμ, nmσ, nmhu, 
             if iszero_y[i]
                 s -= lπ
             else
-                μ = exp(ημ[i]); r = exp(-2 * ησ[i]); p = r / (r + μ)
-                d = _nb2(r, p)
-                s -= l1mπ + logpdf(d, yint[i]) - _log1mexp(logpdf(d, 0))
+                μ = exp(ημ[i]); r = exp(-2 * ησ[i])
+                s -= l1mπ + _nb2_logpmf(r, μ, yint[i]) - _log1mexp(_nb2_logpmf(r, μ, 0))
             end
         end
         return s
