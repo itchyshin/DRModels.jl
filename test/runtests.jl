@@ -120,6 +120,7 @@ _shard_include("test_bf_grammar.jl")
 _shard_include("test_gaussian_bivariate.jl")
 _shard_include("test_bivariate_lognormal.jl")
 _shard_include("test_biv_lognormal_simulate.jl")  # #840-class: simulate()/bootstrap KeyError on biv_lognormal()
+_shard_include("test_twin_gap_471_bivln.jl")  # #471 LogNormal half: animal/spatial coverage + recovery
 _shard_include("test_bivariate_student.jl")
 _shard_include("test_associate_pairs.jl")
 _shard_include("test_gaussian_bivariate_phylo.jl")
