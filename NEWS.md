@@ -58,6 +58,26 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   two REs on DIFFERENT grouping factors, a structured (phylo/relmat/animal/
   spatial) mean marker or `meta_V(...)` alongside this cell, and
   `method = :REML`.
+- **Data-driven starts/restart for Gaussian `(1 | g)` + `sigma ~ x`, follow-up
+  to #746/#747.** The two optimiser misses left open by #746/#747 (seed 4:
+  LBFGS stopped at a boundary sd_g -> 0 local optimum 123 nats short of
+  drmTMB's interior optimum; seed 10: non-converged, 95 nats short) were a
+  bad start, not the objective. `_fit_ranef_gaussian` now starts the `sigma ~
+  …` coefficients from an OLS regression of log(guarded residual²) on the
+  scale design (a real slope instead of always 0), and the random-intercept
+  log-SD from a one-way ANOVA method-of-moments estimate, then restarts once
+  from the historical always-interior start if the result does not
+  gradient-converge or lands at a boundary — keeping whichever objective is
+  lower (deterministic, no random multi-start; mirrors the boundary-restart
+  already used by the correlated `(1 + x | g)` route). Seed 4 now matches
+  drmTMB to 1.5e-11, seed 10 to 2e-8 (both well inside 1e-6). Zero regressions
+  on the RUNAWAY panel: the other 17 seeds are unaffected (one, seed 1, now
+  reaches its unchanged boundary optimum through a tie-break instead of
+  throwing at a more extreme representative of the same tie — see
+  `_re_lbfgs_with_restart`'s docstring). See
+  `test/test_twin_gap_747_starts.jl`. Not touched: the objective itself, the
+  correlated `(1 + x | g)` route, or the simultaneous mean+sigma RE route.
+
 - **Cancellation-free Woodbury quadratic for Gaussian `(1 | g)` + `sigma ~ x`
   (#746, #747).** `_fit_ranef_gaussian` and the `sd(g) ~ z` route
   `_fit_ranef_gaussian_lss` formed `r'V⁻¹r` as `q1 - q2` (both terms `~1/D_min`),
