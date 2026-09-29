@@ -498,6 +498,8 @@ _shard_include("test_public_phylo_locscale.jl")
 # σ-phylo location-scale (Ayumi #2): separate/coupled/asymmetric blocks + boundary CIs.
 _shard_include("test_gaussian_locscale_phylo.jl")
 _shard_include("test_gaussian_locscale_phylo_boundary.jl")
+# `_glsp_profile_ci`: a failed solve (1e18 sentinel / Inf / throw) is never an endpoint.
+_shard_include("test_sentinel_glsp_profile.jl")
 # A4c: penalized-MAP phylo variance components (drmTMB's drm_phylo_penalty + sweep).
 _shard_include("test_phylo_penalty.jl")
 # #422: boundary polish when a variance component collapses onto the flat shelf.
