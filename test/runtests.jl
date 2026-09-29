@@ -665,3 +665,7 @@ _shard_include("test_twin_display_759.jl")
 # AssertionError in the line search. Pins the stable whitened objective, the
 # centred/QR-preconditioned optimisation and drmTMB-twinned H0 refits.
 _shard_include("test_twin_gap_762.jl")
+# Issue #739 (twin drmTMB #1281): ZeroOneBeta() had no `tree=`/`K=` phylo/relmat
+# method. Adds a `Val(:zeroonebeta_fixed)` sparse-Laplace kernel (additive to
+# sparse_laplace_glmm.jl) and the phylo/relmat fitters in zeroonebeta.jl.
+_shard_include("test_twin_gap_739.jl")
