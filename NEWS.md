@@ -542,6 +542,22 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   sparse-Laplace engine's iteration count, or `vcov_posdef`/`min_eigval`/`cond`
   when the covariance is only partially finite) is `missing`, never a
   placeholder zero.
+- **Coupled σ-phylo ML reaches drmTMB's optimum on its correlation bound
+  (#818).** With `phylo(1 | g)` on `mu` and `sigma` and `phylo_coupled = true`,
+  `method = :ML` used to stop at a worse optimum than native drmTMB whenever
+  native's optimum sits on its bound |cor| ≤ 0.999999, and it still reported
+  convergence: logLik 1.016 lower on fixture G1 and 0.685 lower on G2, with the
+  mean-axis SD collapsed to about zero. Near the bound the latent precision
+  reaches about 1e10, the inner mode's fixed 1e-9 stationarity test fell below
+  the gradient's rounding noise, and the marginal likelihood could not be
+  evaluated there at all. The inner test now sits at the noise floor, and the
+  bound is fitted as its own candidate in whitened coordinates, as the coupled
+  REML fit already did. G1, G2 and F1 now match or beat native's ML logLik
+  (within 1e-6), the fits take about 20 s instead of 30-90 s, and a fit on the
+  bound reports no Wald covariance, as native does. Coupled REML, which starts
+  from this fit, keeps its logLik; on F1 its estimates move by at most 1.5e-7,
+  towards native's.
+
 - **Gaussian σ-phylo REML now fits drmTMB's restricted likelihood.** For the
   Gaussian location–scale model with `phylo(1 | g)` on `sigma` (the scale-only,
   separate and coupled blocks), `method = :REML` now maximises TMB's
