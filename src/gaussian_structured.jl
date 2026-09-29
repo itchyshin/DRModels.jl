@@ -67,6 +67,38 @@ Gaussian marginal (K is rebuilt each evaluation since it depends on `ρ`).
 """
 spatial(x) = x
 
+# Shared PD/symmetry guard for a user-supplied relatedness matrix `C` (relmat /
+# animal / a dense phylo correlation) attached to grouping factor `grp`.
+# Symmetry is checked at a sqrt(eps) relative tolerance, then a Cholesky is
+# attempted with `check = false` so a failure is a controlled `ArgumentError`
+# naming the grouping factor rather than a bare `PosDefException`. This does
+# NOT reject an ill-conditioned-but-technically-PD matrix (e.g. a floating-
+# point "semidefinite" matrix with a tiny positive pivot factors successfully
+# in both Julia and R); whether to add a condition-number threshold is an
+# owner decision, tracked separately.
+function _checked_relmat_chol(C, grp::Symbol)
+    Cm = _checked_relmat_symmetric(C, grp)
+    ch = cholesky(Symmetric(Cm); check = false)
+    issuccess(ch) ||
+        throw(ArgumentError("relmat/animal matrix for `$grp` is not positive " *
+            "definite (Cholesky factorization failed); check the matrix scale, " *
+            "level ordering, and for duplicated levels"))
+    return ch
+end
+
+# Symmetry-only guard, for routes that only need C to be PSD (they form and
+# factor the marginal V, never C⁻¹ itself) — see `_fit_two_structured_gaussian`
+# below. A singular-but-PSD C (e.g. clonal/duplicated relmat rows, or a phylo
+# correlation with a zero-length terminal branch) is a valid input there.
+function _checked_relmat_symmetric(C, grp::Symbol)
+    Cm = Matrix{Float64}(C)
+    isapprox(Cm, Cm'; rtol = sqrt(eps(Float64))) ||
+        throw(ArgumentError("relmat/animal matrix for `$grp` is not symmetric " *
+            "(outside a sqrt(eps) relative tolerance); check the matrix was " *
+            "built correctly"))
+    return Cm
+end
+
 function _fit_structured_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, K, nmμ, nmσ, grp, g_tol)
     n = length(y)
     pμ, pσ = size(Xμ, 2), size(Xσ, 2)
@@ -81,7 +113,7 @@ function _fit_structured_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, K, nmμ, 
                                             nmμ, nmσ, [String(grp)], grp, g_tol;
                                             block = :resd)
     end
-    Kfac = cholesky(Symmetric(K))
+    Kfac = _checked_relmat_chol(K, grp)
     Kinv = inv(Kfac)            # constant (K fixed)
     logdetK = logdet(Kfac)
 
@@ -216,6 +248,12 @@ function _fit_two_structured_gaussian(fam::Gaussian, y, Xμ, gidx1, G1, C1, gidx
                                       nmμ, grp1, grp2, g_tol)
     n = length(y)
     pμ = size(Xμ, 2)
+    # Symmetry only: this route forms and factors the marginal V = σ²I +
+    # σ₁²Z₁C₁Z₁' + σ₂²Z₂C₂Z₂' and never C⁻¹ itself, so a singular-but-PSD C
+    # (clonal relmat rows, a zero-length phylo tip) is a valid input — V-level
+    # `Vfac` below (`check = false`) is what actually enforces PD-ness.
+    _checked_relmat_symmetric(C1, grp1)
+    _checked_relmat_symmetric(C2, grp2)
     Z1 = _structured_Z(gidx1, G1)
     Z2 = _structured_Z(gidx2, G2)
     ZC1Zt = Z1 * C1 * Z1'        # constant building blocks (C₁, C₂ fixed)
@@ -655,13 +693,7 @@ end
 # the original #231 behaviour). Latent rows ARE the levels, so leaf_pos = 1:G,
 # unit weights / BLUP scales.
 function _dense_comp(gidx, G, C, grp::Symbol)
-    Cm = Matrix{Float64}(C)
-    ch = cholesky(Symmetric(Cm); check = false)
-    issuccess(ch) ||
-        throw(ArgumentError("relmat/animal matrix for `$grp` is not positive " *
-            "definite (Cholesky factorization failed); check for " *
-            "duplicate/collinear individuals or a singular pedigree/relatedness " *
-            "matrix"))
+    ch = _checked_relmat_chol(C, grp)
     Q = dropzeros!(sparse(Symmetric(inv(ch))))
     logdetC = 2 * sum(log, diag(ch.U))
     rows = collect(Int, gidx)
