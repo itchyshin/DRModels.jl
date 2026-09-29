@@ -144,6 +144,7 @@ _shard_include("test_lss_tip_identity.jl") # Named tree-tip mapping under shuffl
 _shard_include("test_lss_bootstrap_contract.jl") # Marginal components, masks and REML refits
 _shard_include("test_bootstrap_thread_flags.jl") # Independent storage for parallel status flags
 _shard_include("test_lss_sparse.jl")  # #551 O(p) sparse exact marginal LSS engine
+_shard_include("test_fd_hessian_fallback.jl")  # FD-Hessian empty-gradient fallback -> NaN vcov
 _shard_include("test_lss_sparse_gradient_scaling.jl")  # #627 O(p) gradient + profile endpoint invariance
 _shard_include("test_lss_sparse_multi.jl")  # #563 S7b.1 sparse multi-component block assembly + objective
 _shard_include("test_lss_sparse_multi_gradient.jl")  # #563 S7b.2/S7b.2b sparse multi-component exact gradient

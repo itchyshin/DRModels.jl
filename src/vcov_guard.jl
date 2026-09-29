@@ -97,3 +97,35 @@ function _vcov_from_hessian(H::AbstractMatrix; context::AbstractString = "")
 
     return Matrix(Symmetric((V0 + V0') / 2))
 end
+
+"""
+    _fd_hessian_from_grad(grad_at, θ̂; hstep = 1e-6, retry_step = 1e-4) -> (H, ok)
+
+Central finite-difference Hessian of an analytic gradient `grad_at(θ)`.
+The sparse LSS `eval_core` / `_lss_sparse_multi_objective_and_grad` return an
+EMPTY gradient when the nll or gradient is not finite at a probe point. Each
+column is retried once with `retry_step`; if the retry also fails (empty,
+wrong length, or non-finite), `ok = false` is returned instead of throwing a
+`DimensionMismatch`. Callers report the NaN-vcov convention when `!ok`.
+"""
+function _fd_hessian_from_grad(grad_at, θ̂::AbstractVector; hstep::Real = 1e-6,
+                               retry_step::Real = 1e-4)
+    np = length(θ̂)
+    H = zeros(np, np)
+    usable(g) = length(g) == np && all(isfinite, g)
+    for k in 1:np
+        gp = gm = Float64[]
+        step = hstep * max(abs(θ̂[k]), 1.0)
+        for (attempt, s) in enumerate((step, Float64(retry_step)))
+            step = s
+            θp = collect(Float64, θ̂); θm = collect(Float64, θ̂)
+            θp[k] += step; θm[k] -= step
+            gp = grad_at(θp); gm = grad_at(θm)
+            usable(gp) && usable(gm) && break
+        end
+        (usable(gp) && usable(gm)) || return (H, false)
+        H[:, k] .= (gp .- gm) ./ (2 * step)
+    end
+    H .= 0.5 .* (H .+ H')
+    return (H, true)
+end
