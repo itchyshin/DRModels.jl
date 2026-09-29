@@ -28,8 +28,7 @@ function _ls_fit_nll(kind, y, Xμ, Xψ, gidx, G, Q, θ,
     βμ = @view θ[1:pμ]
     βψ = @view θ[pμ+1:pμ+pψ]
     λv = @view θ[pμ+pψ+1:pμ+pψ+3]
-    Λ = _ls_lc_to_Λ(λv)
-    P = prior_precision(Q, _ls_inv2x2(Λ))
+    P = prior_precision(Q, _ls_lc_inv2x2(λv))   # stable: never forms Λ
     val, _, ok = _ls_marginal_nll(kind, y, Xμ * βμ, Xψ * βψ, gidx, G, P, Zη, Zψ)
     return ok ? val : 1e18
 end
@@ -127,8 +126,7 @@ function _fit_locscale(kind, y, Xμ, Xψ, gidx, G, Q;
             return result.status.ok ? result.value : 1e18
         end
         βμ = @view θ[1:pμ]; βψ = @view θ[pμ+1:pμ+pψ]
-        Λ = _ls_lc_to_Λ(θ[pμ+pψ+1:pμ+pψ+3])
-        P = prior_precision(Q, _ls_inv2x2(Λ))
+        P = prior_precision(Q, _ls_lc_inv2x2(θ[pμ+pψ+1:pμ+pψ+3]))   # stable: never forms Λ
         val, a, ok = _ls_marginal_nll(kind, y, Xμ * βμ, Xψ * βψ, gidx, G, P, Zη, Zψ; a0 = warm[])
         ok && (warm[] = copy(a))
         return ok ? val : 1e18

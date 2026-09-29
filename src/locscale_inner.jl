@@ -43,11 +43,42 @@ end
 # so an optimiser that transiently pushes λ to an extreme (Λ ≈ singular) sees a
 # non-finite marginal and backtracks instead of crashing. Equals `inv(Λ)` for
 # any non-singular 2×2.
+#
+# CAUTION (near-singular Λ built from a log-Cholesky factor): the naive
+# `a*d - b*c` determinant loses ~14 digits by log-Cholesky diagonal ≈ -18 when
+# Λ = L Lᵀ has off-diagonal L21 ≫ L22, because forming `d = L21² + L22²` as a
+# Float64 SUM already discards L22 before this function ever sees `M` — no
+# formula operating on the formed matrix (this one, or re-factoring it with a
+# fresh `cholesky`) can recover it. Callers that hold the log-Cholesky vector
+# directly should use `_ls_lc_inv2x2`/`_ls_lc_logdetΛ` below instead of
+# `_ls_inv2x2(_ls_lc_to_Λ(v))`. This function stays exact (no cancellation
+# possible) when `M` is diagonal, e.g. the fixed-ε / separate-axis callers.
 function _ls_inv2x2(M)
     a = M[1, 1]; b = M[1, 2]; c = M[2, 1]; d = M[2, 2]
     det = a * d - b * c
     return [d -b; -c a] ./ det
 end
+
+# Stable Λ⁻¹ and log det Λ computed directly from the log-Cholesky vector
+# v = [log L11, L21, log L22] (the `_ls_lc_to_Λ` parameterisation), WITHOUT
+# ever forming Λ = L Lᵀ as an intermediate matrix. See the caution above:
+# forming Λ first is where the precision is actually lost, so this is the
+# stable replacement for `_ls_inv2x2(_ls_lc_to_Λ(v))` at any call site that
+# already holds `v`. Derivation: for lower-triangular L = [l11 0; l21 l22],
+#   L⁻¹ = [1/l11 0; -l21/(l11 l22) 1/l22],   Λ⁻¹ = L⁻ᵀ L⁻¹,
+#   log det Λ = 2 log(det L) = 2(log l11 + log l22).
+function _ls_lc_inv2x2(v)
+    l11 = exp(v[1]); l21 = v[2]; l22 = exp(v[3])
+    inv11 = 1 / l11
+    inv22 = 1 / l22
+    t = l21 * inv11 * inv22            # = L21 / (L11 L22)
+    a11 = inv11 * inv11 + t * t
+    off = -t * inv22
+    a22 = inv22 * inv22
+    return [a11 off; off a22]
+end
+
+_ls_lc_logdetΛ(v) = 2 * (v[1] + v[3])  # v[1] = log L11, v[3] = log L22 already
 
 # ---------------------------------------------------------------------------
 # Latent loadings (Z_lat generalisation, cluster 1 / #202).

@@ -101,8 +101,7 @@ function _ls_profile_nll_result(kind, y, Xμ, Xψ, gidx, G, Q, θ̂, idx::Int, v
             return result.status.ok ? result.value : _LS_PROFILE_INFEASIBLE
         end
         βμ = @view θ[1:pμ]; βψ = @view θ[pμ+1:pμ+pψ]
-        Λ = _ls_lc_to_Λ(θ[pμ+pψ+1:pμ+pψ+3])
-        P = prior_precision(Q, _ls_inv2x2(Λ))
+        P = prior_precision(Q, _ls_lc_inv2x2(θ[pμ+pψ+1:pμ+pψ+3]))   # stable: never forms Λ
         v, a, ok = _ls_marginal_nll(kind, y, Xμ * βμ, Xψ * βψ, gidx, G, P, Zη, Zψ; a0 = mwarm[])
         ok && (mwarm[] = copy(a))
         return ok ? v : _LS_PROFILE_INFEASIBLE
