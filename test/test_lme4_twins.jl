@@ -84,8 +84,7 @@ end
         ss = _read_csv_lme4("sleepstudy.csv")
         sleep = (; Reaction = parse.(Float64, ss[:Reaction]), Days = parse.(Float64, ss[:Days]),
                    Subject = ss[:Subject])
-        # DRModels needs the explicit intercept: `(Days | Subject)` is rejected, and
-        # `(1 + Days | Subject)` is the same model as lme4's `(Days | Subject)`.
+        # Explicit-intercept spelling; the lme4 spelling `(Days | Subject)` is checked below.
         f = @formula(Reaction ~ Days + (1 + Days | Subject))
 
         # lmer REML = FALSE (ML, exact profiled Cholesky) and drmTMB 0.7.1 (Laplace of a
@@ -107,6 +106,12 @@ end
         Σ = vc(fit)[:Subject]
         @test Σ[1, 2] / sqrt(Σ[1, 1] * Σ[2, 2]) ≈ lm_ml.rho atol = 1e-3
         @test exp(coef(fit, :sigma)[1]) ≈ lm_ml.sigma atol = 1e-3   # measured 9e-5
+
+        # With the implicit intercept (#890), lme4's own spelling `(Days | Subject)` is the
+        # same model as `(1 + Days | Subject)`.
+        fit_imp = drm(bf(@formula(Reaction ~ Days + (Days | Subject))), Gaussian(); data = sleep)
+        @test loglik(fit_imp) ≈ loglik(fit) atol = 1e-6
+        @test coef(fit_imp, :mu) ≈ coef(fit, :mu) atol = 1e-6
 
         # REML: lmer REML = TRUE / drmTMB REML = TRUE references, kept as literals for when
         # DRModels gains REML on the random-slope Gaussian route. Today the request errors
