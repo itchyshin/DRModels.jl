@@ -220,25 +220,10 @@ function _fit_phylo_gaussian_lss_sparse(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G,
         res = Optim.optimize(nll_reml_only, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :finite)
         θ̂ = Optim.minimizer(res)
 
-        # Finite difference Hessian for REML
-        Hmat = zeros(np, np)
-        hstep = 1e-5
-        for k in 1:np
-            for j in 1:np
-                if j >= k
-                    θpp = copy(θ̂); θpm = copy(θ̂); θmp = copy(θ̂); θmm = copy(θ̂)
-                    sk = hstep * max(abs(θ̂[k]), 1.0)
-                    sj = hstep * max(abs(θ̂[j]), 1.0)
-                    θpp[k] += sk; θpp[j] += sj
-                    θpm[k] += sk; θpm[j] -= sj
-                    θmp[k] -= sk; θmp[j] += sj
-                    θmm[k] -= sk; θmm[j] -= sj
-                    Hmat[k, j] = (nll_reml_only(θpp) - nll_reml_only(θpm) - nll_reml_only(θmp) + nll_reml_only(θmm)) / (4 * sk * sj)
-                    Hmat[j, k] = Hmat[k, j]
-                end
-            end
-        end
-        Vcov = _vcov_from_hessian(Hmat; context = "sparse LSS phylo REML")
+        # Finite difference Hessian for REML (value-based). A probe that is non-finite or hits
+        # the 1e18 failure sentinel reports the NaN vcov, not a garbage finite Hessian.
+        Hmat, hess_ok = _fd_hessian_from_values(nll_reml_only, θ̂)
+        Vcov = hess_ok ? _vcov_from_hessian(Hmat; context = "sparse LSS phylo REML") : fill(NaN, np, np)
     end
 
     # Random effects (BLUPs)
