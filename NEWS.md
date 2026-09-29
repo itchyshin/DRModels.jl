@@ -6,6 +6,13 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **Heritability/ICC `:profile` CI no longer returns a failed-fit cliff as a bound.**
+  `nll_at_ratio` now evaluates the objective at the minimizer (not the stale
+  `Optim.minimum`) and flags a sentinel (>= 1e16), non-finite, or non-converged inner
+  solve as failed; `_profile_side` treats a failed evaluation as unresolved instead of
+  "above target" and returns `NaN` (with a warning) for that arm. Ordinary CIs are
+  unchanged to 1e-8.
+
 - **Tweedie crossed random effects (#737, drmTMB twin parity).**
   `Tweedie()` now fits crossed/multiple random intercepts on the log-mean,
   `(1 | g) + (1 | h)`, matching drmTMB's `tweedie()`. `sigma ~ 1` and

@@ -601,6 +601,7 @@ _shard_include("test_bootstrap_block_index.jl")
 
 # #313: heritability :profile is a TRUE profile (re-optimises nuisance), not ELR.
 _shard_include("test_heritability_true_profile.jl")
+_shard_include("test_sentinel_heritability.jl")
 
 # #310: REML-reported Wald vcov includes the restricted-penalty curvature.
 _shard_include("test_reml_vcov_curvature.jl")
