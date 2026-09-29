@@ -2296,6 +2296,7 @@ a one-time warning is emitted. Use ML for cross-mean-structure selection.
 function aic(fit::DrmFit)
     _va_infocrit_guard(fit, "aic")
     _reml_infocrit_warn(fit, "aic")
+    _sentinel_infocrit_nan(fit, "aic") && return NaN
     return -2 * fit.loglik + 2 * length(fit.theta)
 end
 
@@ -2310,6 +2311,7 @@ On a **REML** fit this carries the same variance-only-comparison caveat as
 function bic(fit::DrmFit)
     _va_infocrit_guard(fit, "bic")
     _reml_infocrit_warn(fit, "bic")
+    _sentinel_infocrit_nan(fit, "bic") && return NaN
     return -2 * fit.loglik + length(fit.theta) * log(fit.nobs)
 end
 

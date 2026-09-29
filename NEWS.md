@@ -6,6 +6,15 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **Sentinel-loglik fits are refused at the fit level.** A fit stranded on the
+  1e18 failed-objective sentinel (loglik = -1e18: finite, and possibly
+  "converged" on a zero-gradient plateau) used to pass `_nondegenerate_fit` and
+  feed `lrtest`/`anova`, `lrt_boundary`, `aic`/`bic`/`aicc` (LR statistic ~2e18,
+  AIC ~2e18). `is_converged` now rejects loglik <= -1e15 (the loglik-scale
+  counterpart of the Laplace `nll < 1e17` bar); `lrtest`, `anova` and
+  `lrt_boundary` throw `ArgumentError` naming the degenerate fit; `aic`, `bic`
+  and `aicc` return `NaN` with a warning. Healthy fits are unchanged.
+
 - **Tweedie crossed random effects (#737, drmTMB twin parity).**
   `Tweedie()` now fits crossed/multiple random intercepts on the log-mean,
   `(1 | g) + (1 | h)`, matching drmTMB's `tweedie()`. `sigma ~ 1` and

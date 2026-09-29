@@ -582,6 +582,9 @@ end
 # Model comparison + accessor parity (lrtest / anova / aicc / weights / update).
 _shard_include("test_comparison.jl")
 
+# Sentinel-loglik fit-level guards (_nondegenerate_fit, lrtest, aic/bic/aicc, lrt_boundary).
+_shard_include("test_sentinel_fit_level.jl")
+
 # Chi-bar-square boundary-corrected p-values for variance-component LR tests.
 _shard_include("test_chibar.jl")
 

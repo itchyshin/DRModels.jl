@@ -149,8 +149,17 @@ is_converged(fit::DrmFit) = fit.converged && _nondegenerate_fit(fit)
 # The degeneracy test behind `is_converged`. GAUSSIAN ONLY: for NB2/Beta/Gamma the
 # `:sigma` slot holds a dispersion or shape, where a genuinely small value is
 # legitimate, so applying a residual-scale test there would reject good fits.
+#
+# Sentinel bar. A failed objective evaluation is reported as a 1e18 sentinel nll,
+# so a fit stuck on that plateau has loglik = -1e18: FINITE, and (a zero-gradient
+# plateau) even "converged" per Optim. `_laplace_outer_converged` rejects
+# nll >= 1e17 on the nll scale; loglik <= -1e15 is the same bar taken a couple of
+# decades more conservatively on the loglik scale, so no genuine fit is caught
+# (a real loglik of -1e15 would need ~1e14 observations at O(10) nats each).
+_sentinel_loglik(fit::DrmFit) = !isfinite(fit.loglik) || fit.loglik <= -1e15
+
 function _nondegenerate_fit(fit::DrmFit)
-    isfinite(fit.loglik) || return false
+    _sentinel_loglik(fit) && return false
     fit.family isa Gaussian || return true
     haskey(fit.scales, :sigma) || return true
     s = fit.scales[:sigma]
