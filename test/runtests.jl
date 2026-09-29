@@ -647,3 +647,6 @@ _shard_include("test_bridge_response_mask_inference.jl")
 _shard_include("test_twin_display_758.jl")
 # Issue #668: StatsBase.loglikelihood(::DrmFit) was missing (DRM.loglik worked).
 _shard_include("test_twin_display_668.jl")
+# Issue #708 / #763: re_sd(fit) returned an empty Dict for a correlated
+# random-effect block (1 + x | g); only vc(fit) exposed the SDs/correlation.
+_shard_include("test_twin_display_708.jl")

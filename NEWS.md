@@ -388,6 +388,12 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   plateau. Its Wald covariance is NaN, and on the scale-only and separate blocks
   `profile_ci = true` gives a `[0, upper]` interval. The coupled block computes
   no profile interval, under ML or REML; it ignores `profile_ci = true`.
+- **`re_sd(fit)` now returns SDs for a correlated random-effect block
+  (`(1 + x | g)`) (#708, #763).** It previously returned an empty `Dict`,
+  leaving `vc(fit)` as the only route to the intercept/slope SDs. `re_sd`
+  now keys the two SDs `<group>_intercept` and `<group>_slope`, decoded from
+  the same Cholesky factor `vc(fit)` uses (`sqrt.(diag(vc(fit)[:g]))`); the
+  correlation itself is still only in `vc(fit)`.
 - **`Student()` no longer reports a garbage log-likelihood near the Gaussian
   limit (#721; drmTMB twin #1265).** When the data are close to Normal the
   likelihood is flat in the ν predictor, and the optimiser can walk ν = 2 +
