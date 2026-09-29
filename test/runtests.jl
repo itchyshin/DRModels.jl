@@ -645,3 +645,5 @@ _shard_include("test_bridge_response_mask_inference.jl")
 # "Gaussian location–scale"; only the MIME"text/plain" method named the real
 # family. Guards that the compact form now matches.
 _shard_include("test_twin_display_758.jl")
+# Issue #668: StatsBase.loglikelihood(::DrmFit) was missing (DRM.loglik worked).
+_shard_include("test_twin_display_668.jl")

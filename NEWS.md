@@ -187,6 +187,11 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   than silently dropping the offset. Verified against drmTMB's `poisson()` +
   `offset()` on matched simulated data: logLik and both fixed-effect
   coefficients agree to ≤ 1e-6.
+- **`loglikelihood(fit)` (StatsAPI/StatsBase generic) added for `DrmFit`
+  (#668).** `DRM.loglik(fit)` already worked, but the StatsAPI-facing
+  `loglikelihood` was undefined, so anything dispatching on the generic
+  `StatsAPI.StatisticalModel` interface errored on a `DrmFit`. It is now
+  exported and delegates to `loglik(fit)` (same value, same REML caveat).
 - **`Student()` fits crossed random intercepts on the mean (#725; drmTMB twin
   #1266).** `y ~ x + (1 | g) + (1 | h)` was refused ("single random-effect
   term"); drmTMB `student()` fits it. It now uses the Laplace approximation, as

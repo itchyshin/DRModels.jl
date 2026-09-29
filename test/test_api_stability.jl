@@ -32,7 +32,7 @@ const API_STABLE = [
     "TruncatedNegBinomial2", "Beta", "BetaBinomial", "Binomial", "Gamma",
     "LogNormal", "ZeroOneBeta", "Tweedie", "CumulativeLogit",
     # StatsAPI-style accessors
-    "coef", "vcov", "loglik", "nobs", "dof", "aic", "bic", "aicc",
+    "coef", "vcov", "loglik", "loglikelihood", "nobs", "dof", "aic", "bic", "aicc",
     "deviance", "dof_residual", "weights", "update",
     "fixef", "re_sd", "vc", "ranef", "sigma", "corpairs", "rho12",
     "stderror", "confint", "coeftable", "fitted", "residuals",

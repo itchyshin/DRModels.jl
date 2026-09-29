@@ -11,7 +11,7 @@ using StatsModels: @formula, FormulaTerm, Term, ConstantTerm, FunctionTerm,
     schema, apply_schema, modelcols, coefnames
 using Statistics: std, mean
 using Random: default_rng
-import StatsAPI: coef, vcov, nobs, fitted, residuals, predict, aic, bic, dof, deviance, dof_residual, StatisticalModel
+import StatsAPI: coef, vcov, nobs, fitted, residuals, predict, aic, bic, dof, deviance, dof_residual, StatisticalModel, loglikelihood
 import Tables
 
 """
@@ -2097,6 +2097,16 @@ differs — so do not use them for model selection across mean structures; the
 log-likelihood at the REML estimate) when an ML-comparable value is needed.
 """
 loglik(fit::DrmFit) = fit.loglik
+
+"""
+    loglikelihood(fit) -> Float64
+
+The StatsAPI/StatsBase-facing alias for [`loglik`](@ref) — anything that
+dispatches on the generic `loglikelihood` (from the `StatsAPI.StatisticalModel`
+interface) can call it on a `DrmFit`. Returns exactly the same value as
+`loglik(fit)`, with the same REML caveat.
+"""
+loglikelihood(fit::DrmFit) = loglik(fit)
 
 """
     estimation_method(fit) -> Symbol
