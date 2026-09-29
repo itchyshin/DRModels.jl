@@ -681,3 +681,6 @@ _shard_include("test_twin_gap_739.jl")
 # #857 site K: coevolution prior in whitened coordinates (no Λ⁻¹ near singular Λ);
 # also pins the q=4 engine's same-construction defect as @test_broken.
 _shard_include("test_q4_prior_whitening.jl")
+# Cancellation sweep: multi-RE (1|g)+(1|h), spatial(1|site) and the sparse
+# two-structured Gaussian marginals vs a BigFloat dense reassembly as σ_e → 0.
+_shard_include("test_cancellation_sweep.jl")
