@@ -394,6 +394,21 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   now keys the two SDs `<group>_intercept` and `<group>_slope`, decoded from
   the same Cholesky factor `vc(fit)` uses (`sqrt.(diag(vc(fit)[:g]))`); the
   correlation itself is still only in `vc(fit)`.
+- **Every parity fixture and TSV summary table now stamps its drmTMB
+  comparator (#473).** "drmTMB 0.7.0" identifies at least 16 different
+  builds, so a version string alone cannot say which one measured a given
+  number. `tools/drmtmb_provenance.R` already computed a real
+  `drmtmb_code_hash` fingerprint, and #512 wired it into four harnesses, but
+  18 `test/parity/fixtures/*/expected.meta.toml` files and 5
+  `docs/dev-log/evidence/parity-*.tsv` tables still carried no stamp. Those
+  18 fixtures and 5 tables now record `drmtmb_code_hash` — three
+  `parity-fixtures.tsv` rows recovered a real hash already noted in their own
+  `note` text, and the rest, whose generating build cannot be recovered
+  honestly, are stamped `"unknown (pre-#473)"` rather than guessed.
+  `test/test_fixture_provenance.jl` fails on any future `expected.meta.toml`
+  that omits the stamp. `xfam-external-gllvm` is excluded (its comparator is
+  gllvm, not drmTMB). No fixture's numeric values changed — only metadata.
+
 - **`Student()` no longer reports a garbage log-likelihood near the Gaussian
   limit (#721; drmTMB twin #1265).** When the data are close to Normal the
   likelihood is flat in the ν predictor, and the optimiser can walk ν = 2 +
