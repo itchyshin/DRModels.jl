@@ -14,7 +14,7 @@ Start with the question closest to yours:
 | Proportions, success rates, or binomial data | [Proportions and success rates](../tutorials/proportion-beta-binomial.md) |
 | Whether predictors change both the average and the spread | [When variance carries signal](../tutorials/location-scale.md) |
 | Two responses that may be associated | [Changing residual coupling](../tutorials/bivariate-coscale.md) |
-| Observations linked by a phylogeny, space, pedigree, or relatedness matrix | [Biological examples](../tutorials/phylogenetic-models.md) |
+| Observations linked by a phylogeny, space, pedigree, or relatedness matrix | [Choose a structured effect](../tutorials/structural-dependence.md) |
 
 The first examples are motivated by ecology, evolution, and environmental
 science, but the models are also useful wherever a response can vary in more
