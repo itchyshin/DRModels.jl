@@ -75,6 +75,19 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   (σ_b ≈ 0.69 and 0.34) move by −3.6e-8 and +1e-10 nat in logLik. Public API
   unchanged; the `phylo(1 | species)` and fixed-effects-only routes are
   untouched.
+- **Adaptive quadrature for `Tweedie()`'s two `mu` random-effect routes,
+  `(1 | g)` and `(0 + x | g)`.** `_fit_tweedie_ranef` and
+  `_fit_tweedie_slope_ranef` were the last two `_fit_*_ranef` routes still on
+  the pre-#719 fixed 32-node PRIOR-scale grid (`b = √2 σ_b z`); both now use
+  the shared per-group adaptive Gauss–Hermite helper (`src/adaptive_ghq.jl`,
+  #719/#834), `q = 1`, with the same `K = _RANEF1D_AGHQ_K = 5` default as the
+  other 1-D `(1 | g)` families. On a single informative group (`σ_b = 6`,
+  20 obs/group, `η0 = 0.5`, `φ = 1.3`, `p = 1.5`) the old grid missed the
+  QuadGK-exact per-group marginal by 12.87 nat (intercept route) / 23.40 nat
+  (slope route); the new default AGHQ is within 3e-8 / 6e-8 nat of the same
+  reference. Public API and defaults are unchanged; both routes gain an
+  internal `K` keyword (default `_RANEF1D_AGHQ_K`), matching the `(1 | g)`
+  pattern on the other families. `test/test_tweedie_aghq.jl`.
 - **Adaptive quadrature for 1-D random intercepts `(1 | g)` (#719).** Every
   default-route (`:LA`) `_fit_*_ranef` fitter for Poisson, NegBinomial2, Gamma,
   Beta, BetaBinomial, Student, and LogNormal now integrates the group random
