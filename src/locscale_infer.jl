@@ -50,7 +50,16 @@ function _ls_vcov(kind, y, Xμ, Xψ, gidx, G, Q, θ,
         return nothing
     end
     return try
-        inv(Hm)
+        V = inv(Hm)
+        # A finite but indefinite information (a negative variance on the diagonal) is a
+        # saddle / non-converged point, not a covariance: report no vcov rather than garbage.
+        if any(d -> !(d > 0), diag(V))
+            @warn "location-scale Wald vcov: observed information is not positive " *
+                  "definite at the optimum -- returning no vcov/SEs for this fit."
+            nothing
+        else
+            V
+        end
     catch err
         if err isa SingularException
             @warn "location-scale Wald vcov: observed information is singular " *
