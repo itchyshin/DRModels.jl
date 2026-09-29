@@ -169,6 +169,11 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   from the group mean) instead of subtracting two near-equal large terms; the
   fit is now bounded down to σ_e as small as machine precision allows. See
   `test/test_twin_gap_764.jl`.
+- **`show(io, fit)` (2-arg) now names the fitted family (#758).** The compact
+  form — used by `println(fit)`, string interpolation and `repr` — printed
+  "Gaussian location–scale" for every family (Poisson, BetaBinomial, …) while
+  the `MIME"text/plain"` method already printed the correct one. Both now
+  agree.
 - **`Student()` fits crossed random intercepts on the mean (#725; drmTMB twin
   #1266).** `y ~ x + (1 | g) + (1 | h)` was refused ("single random-effect
   term"); drmTMB `student()` fits it. It now uses the Laplace approximation, as

@@ -618,3 +618,8 @@ _shard_include("test_lss_reml_falseconv.jl")
 # DimensionMismatch because simulate drew fit.nobs values against full-design
 # means. Guards both, plus the iteration count the full-row rebuild dropped.
 _shard_include("test_bridge_response_mask_inference.jl")
+
+# Issue #758: the compact 2-arg `show(io, fit)` hardcoded every family as
+# "Gaussian location–scale"; only the MIME"text/plain" method named the real
+# family. Guards that the compact form now matches.
+_shard_include("test_twin_display_758.jl")
