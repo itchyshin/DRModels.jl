@@ -37,6 +37,12 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   good point and, if the crossing cannot be bracketed, that arm of
   `profile_ci_sd_sigma` / `profile_ci_sd_mu` is `NaN` (unresolved). Genuine
   boundaries (`[0, Inf]`) and ordinary CIs are unchanged (fixtures agree to 1e-8).
+- **Generic profile CI no longer reads a 1e18 sentinel as a crossing.** A
+  profiled objective at or above 1e16 while the reference NLL is ordinary is
+  now a failed arm with `nuisance_reason = :sentinel_objective` (previously the
+  bisection collapsed onto the sentinel cliff), and `profile_curve` /
+  `parameter_surface` deviance is `NaN` there instead of about 2e18.
+
 - **Tweedie crossed random effects (#737, drmTMB twin parity).**
   `Tweedie()` now fits crossed/multiple random intercepts on the log-mean,
   `(1 | g) + (1 | h)`, matching drmTMB's `tweedie()`. `sigma ~ 1` and
