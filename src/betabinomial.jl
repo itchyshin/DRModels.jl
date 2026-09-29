@@ -106,33 +106,21 @@ end
 # Beta-binomial GLMM with a random intercept (1|g) on the logit mean. b_g ~ N(0,σ_b²)
 # integrated out per group by 32-node Gauss–Hermite quadrature (b = √2 σ_b z); the
 # precision φ = 1/σ² stays a fixed effect. Same scheme as the Gamma/count GLMMs.
-function _fit_betabinomial_ranef(fam::BetaBinomial, s, ntr, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol)
+function _fit_betabinomial_ranef(fam::BetaBinomial, s, ntr, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol; K::Int = _RANEF1D_AGHQ_K)
     n = length(s); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     sint = round.(Int, s); nint = round.(Int, ntr)
     members = [Int[] for _ in 1:G]
     for i in 1:n
         push!(members[gidx[i]], i)
     end
-    z, w = _gauss_hermite(32); logw = log.(w); K = length(z); rt2 = sqrt(2.0); lπ = log(π)
+    rule = _AGHQRule(1, K); Zre = ones(n, 1); bcache = zeros(1, G)   # #719: per-group AGHQ
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]; σb = exp(θ[pμ+pσ+1])
         η0 = Xμ * βμ; ησ = clamp.(Xσ * βσ, -15.0, 15.0)
-        v = zero(eltype(θ))
-        for idx in members
-            isempty(idx) && continue
-            terms = Vector{eltype(θ)}(undef, K)
-            for k in 1:K
-                δ = rt2 * σb * z[k]; gll = logw[k]
-                for i in idx
-                    μ = _logistic(clamp(η0[i] + δ, -15.0, 15.0)); φ = exp(-2 * ησ[i])
-                    gll += Distributions.logpdf(Distributions.BetaBinomial(nint[i], μ * φ, (1 - μ) * φ), sint[i])
-                end
-                terms[k] = gll
-            end
-            mx = maximum(terms)
-            v -= (-0.5 * lπ + mx + log(sum(exp.(terms .- mx))))
-        end
-        return v
+        ll = (i, η) -> (μ = _logistic(clamp(η, -15.0, 15.0)); φ = exp(-2 * ησ[i]);
+                        Distributions.logpdf(Distributions.BetaBinomial(nint[i], μ * φ, (1 - μ) * φ), sint[i]))
+        L = reshape([σb], 1, 1)
+        return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache)
     end
     p̄ = clamp(sum(s) / max(sum(ntr), 1), 1e-3, 1 - 1e-3)
     θ0 = zeros(pμ + pσ + 1)
@@ -152,40 +140,26 @@ end
 
 # Beta-binomial GLMM with a correlated random intercept+slope (1 + x | g) on the
 # logit mean. Per group (b0,b1) ~ N(0, Σ); logit μ_i = Xμ_iᵀβ + b0_g + b1_g·x_i.
-# Because groups are disjoint the per-group 2-D integral factorises, so it is done
-# by a 2-D Gauss–Hermite tensor grid (K² nodes). Σ is the log-Cholesky
+# Because groups are disjoint the per-group 2-D integral factorises; it is done by
+# per-group ADAPTIVE Gauss–Hermite quadrature
+# (`_aghq_marginal_loglik`, #834: nodes b̂_g + √2 C z at each group's mode), `nq` nodes per axis. Σ is the log-Cholesky
 # parameterisation L = [exp(a) 0; cc exp(b)] (the `vc` convention), so vc(fit)
 # reconstructs Σ = L Lᵀ. The precision φ = 1/σ² stays a fixed effect.
-function _fit_betabinomial_corr_ranef(fam::BetaBinomial, s, ntr, Xμ, Xσ, xs, gidx, G, nmμ, nmσ, grp, g_tol)
+function _fit_betabinomial_corr_ranef(fam::BetaBinomial, s, ntr, Xμ, Xσ, xs, gidx, G, nmμ, nmσ, grp, g_tol; nq::Int = _CORR_RANEF_AGHQ_K)
     n = length(s); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     sint = round.(Int, s); nint = round.(Int, ntr)
     members = [Int[] for _ in 1:G]
     for i in 1:n
         push!(members[gidx[i]], i)
     end
-    z1, w1 = _gauss_hermite(12); lw = log.(w1); K = length(z1); rt2 = sqrt(2.0); lπ = log(π)
+    rule = _AGHQRule(2, nq); Zre = hcat(ones(n), Float64.(xs)); bcache = zeros(2, G)   # #834: per-group AGHQ
     function nll(θ)
-        βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]; a = θ[pμ+pσ+1]; b = θ[pμ+pσ+2]; cc = θ[pμ+pσ+3]
-        l11 = exp(a); l22 = exp(b); η0 = Xμ * βμ; ησ = clamp.(Xσ * βσ, -15.0, 15.0)
-        v = zero(eltype(θ))
-        for idx in members
-            isempty(idx) && continue
-            terms = Vector{eltype(θ)}(undef, K * K)
-            t = 0
-            for j in 1:K, k in 1:K
-                t += 1
-                b0 = rt2 * l11 * z1[j]; b1 = rt2 * (cc * z1[j] + l22 * z1[k])   # √2 L z
-                gll = lw[j] + lw[k]
-                for i in idx
-                    μ = _logistic(clamp(η0[i] + b0 + b1 * xs[i], -15.0, 15.0)); φ = exp(-2 * ησ[i])
-                    gll += Distributions.logpdf(Distributions.BetaBinomial(nint[i], μ * φ, (1 - μ) * φ), sint[i])
-                end
-                terms[t] = gll
-            end
-            mx = maximum(terms)
-            v -= (-lπ + mx + log(sum(exp.(terms .- mx))))      # 2-D: -0.5·2·logπ = -logπ
-        end
-        return v
+        βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
+        L = _corr_ranef_L(θ[pμ+pσ+1], θ[pμ+pσ+2], θ[pμ+pσ+3])
+        η0 = Xμ * βμ; ησ = clamp.(Xσ * βσ, -15.0, 15.0)
+        ll = (i, η) -> (μ = _logistic(clamp(η, -15.0, 15.0)); φ = exp(-2 * ησ[i]);
+                        Distributions.logpdf(Distributions.BetaBinomial(nint[i], μ * φ, (1 - μ) * φ), sint[i]))
+        return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache)
     end
     p̄ = clamp(sum(s) / max(sum(ntr), 1), 1e-3, 1 - 1e-3)
     θ0 = zeros(pμ + pσ + 3)

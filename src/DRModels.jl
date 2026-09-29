@@ -76,6 +76,7 @@ include("gaussian_bivariate.jl")
 include("gaussian_ranef.jl")
 include("gaussian_lss.jl")   # #544: location-scale-scale sd(g) ~ x on the (1|g) SD
 include("aghq_1d.jl")            # #448: 1-D Liu–Pierce AGHQ around `_gauss_hermite`
+include("adaptive_ghq.jl")       # #834: per-group q-dim AGHQ for the (1 + x | g) routes
 include("gaussian_meta.jl")
 include("gaussian_structured.jl")
 include("gaussian_sparse_lss.jl")

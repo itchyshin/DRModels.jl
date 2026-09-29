@@ -106,7 +106,10 @@ method:
 
 - **`(1 | g)`** — integrate the random intercept out by **Gauss–Hermite
   quadrature** (`_gauss_hermite`), `b = √2 σ_b z`.
-- **`(1 + x | g)`** — a 2-D Gauss–Hermite tensor grid over the log-Cholesky Σ.
+- **`(1 + x | g)`** — per-group adaptive Gauss–Hermite quadrature through the shared
+  helper `_aghq_marginal_loglik` (`src/adaptive_ghq.jl`, #834): the family supplies
+  only the per-observation log-density `ll(i, η)`; the grid is centred on each
+  group's mode and scaled by its curvature (5 nodes per axis; 1 node = Laplace).
 - **`(1 | g) + (1 | h)`** crossed — the shared sparse-Laplace spine
   (`sparse_laplace_glmm.jl`).
 - **`zi` / `hu`** — a second linear predictor for the zero-inflation / hurdle
