@@ -49,7 +49,7 @@ module TestTwinGap747Starts
 using DRModels
 using Test
 using LinearAlgebra
-using Optim
+using DRModels: Optim   # Optim is a DRModels dependency, NOT in test/Project.toml
 using ForwardDiff
 using StableRNGs
 using Statistics

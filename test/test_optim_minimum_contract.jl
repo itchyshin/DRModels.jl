@@ -14,7 +14,7 @@ module TestOptimMinimumContract
 
 using DRModels
 using Test
-import Optim
+using DRModels: Optim   # Optim is a DRModels dependency, NOT in test/Project.toml
 
 @testset "Optim.jl: minimum(res) can disagree with f(minimizer(res)) after a failed line search" begin
     # A barrier objective: SENTINEL outside a safe region, with a genuinely
