@@ -656,3 +656,6 @@ _shard_include("test_twin_display_668.jl")
 # Issue #708 / #763: re_sd(fit) returned an empty Dict for a correlated
 # random-effect block (1 + x | g); only vc(fit) exposed the SDs/correlation.
 _shard_include("test_twin_display_708.jl")
+# Issue #759: ranef(fit) silently returned an empty Dict for a non-Gaussian
+# GLMM random-intercept fit; the docstring's #73 pointer was also stale.
+_shard_include("test_twin_display_759.jl")

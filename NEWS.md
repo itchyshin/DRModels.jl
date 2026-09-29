@@ -215,6 +215,14 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   identity already used for `phylo`/`relmat` structured markers on the mean,
   with the reported log-likelihood shifted by the parameter-free Jacobian
   `-sum(log y)`.
+- **`ranef(fit)` no longer silently returns an empty `Dict` for a non-Gaussian
+  GLMM (#759).** A `Binomial`/`Poisson`/etc. fit with a random-effect block,
+  fitted by the Gauss–Hermite/Laplace marginal route (which integrates the
+  random effect out without ever computing a posterior mode), now throws an
+  informative `ArgumentError` from `ranef` instead of returning an empty
+  `Dict` that silently looked like "no random effects". A fit with genuinely
+  no random-effect block still returns an empty `Dict`. The docstring's
+  pointer to the closed #73 is removed.
 - **`Student()` fits crossed random intercepts on the mean (#725; drmTMB twin
   #1266).** `y ~ x + (1 | g) + (1 | h)` was refused ("single random-effect
   term"); drmTMB `student()` fits it. It now uses the Laplace approximation, as
