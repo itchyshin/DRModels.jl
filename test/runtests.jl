@@ -330,6 +330,7 @@ _shard_include("test_bootstrap_formula_structured.jl")   # #480: same fix on the
 _shard_include("test_aic_bic.jl")
 _shard_include("test_vcov_guard.jl")
 _shard_include("test_sparse_lss_reml_hessian_guard.jl")  # value-based FD Hessian sentinel guard
+_shard_include("test_fdhess_sweep2.jl")               # FD Hessian guard sweep 2: loconly value-based + q4 gradient-based
 _shard_include("test_variational.jl")
 _shard_include("test_va_poisson_elbo.jl")
 _shard_include("test_va_frontend_poisson.jl")
