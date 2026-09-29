@@ -29,6 +29,14 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   `lrt_boundary` throw `ArgumentError` naming the degenerate fit; `aic`, `bic`
   and `aicc` return `NaN` with a warning. Healthy fits are unchanged.
 
+- **σ-phylo profile CIs no longer fabricate an endpoint from a failed solve.**
+  `_glsp_profile_ci` read the ML route's 1e18 failure sentinel as a threshold
+  crossing (the endpoint landed on the edge of the failed region) and the REML
+  route's Inf / a throwing sub-fit as "not crossed" (a false boundary, SD 0 or
+  Inf). A failed evaluation is now a third outcome: it backs off toward the last
+  good point and, if the crossing cannot be bracketed, that arm of
+  `profile_ci_sd_sigma` / `profile_ci_sd_mu` is `NaN` (unresolved). Genuine
+  boundaries (`[0, Inf]`) and ordinary CIs are unchanged (fixtures agree to 1e-8).
 - **Tweedie crossed random effects (#737, drmTMB twin parity).**
   `Tweedie()` now fits crossed/multiple random intercepts on the log-mean,
   `(1 | g) + (1 | h)`, matching drmTMB's `tweedie()`. `sigma ~ 1` and
