@@ -189,6 +189,7 @@ _shard_include("test_bootstrap_marginal.jl")   # #459: bootstrap must redraw ran
 _shard_include("test_gaussian_spatial.jl")
 _shard_include("test_predict.jl")
 _shard_include("test_predict_response.jl")
+_shard_include("test_twin_gap_609.jl")   # #609 item 1: predict/newdata factor-level contrasts
 _shard_include("test_ranef.jl")
 _shard_include("test_ranef_varying_scale_convergence.jl")  # #609: `converged` on the varying-scale ranef route is the GRADIENT criterion
 _shard_include("test_correlated_re.jl")

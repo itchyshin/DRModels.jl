@@ -33,7 +33,17 @@ struct DrmFormula
     response::Symbol
     forms::Vector{Pair{Symbol,Any}}
     response2::Any   # second response column (failures), for `cbind(s, f)` beta-binomial; else nothing
+    # Populated at fit time (`drm(f::DrmFormula, ...)`, gaussian_core.jl) with the
+    # `StatsModels.schema(...)` object built from the TRAINING data, one entry per
+    # distributional parameter (`:mu`, `:sigma`, …). `predict` / `predict_parameters`
+    # reuse it so a factor predictor's contrasts/level order/reference level come
+    # from the fitted data, not from whatever rows `newdata` happens to contain
+    # (issue #609 item 1: subset, reordered, or unseen levels in `newdata`).
+    schema_cache::Base.RefValue{Dict{Symbol,Any}}
 end
+
+DrmFormula(response::Symbol, forms::Vector{Pair{Symbol,Any}}, response2) =
+    DrmFormula(response, forms, response2, Ref(Dict{Symbol,Any}()))
 
 # 2-arg convenience: single-column response (the common case).
 DrmFormula(response::Symbol, forms::Vector{Pair{Symbol,Any}}) = DrmFormula(response, forms, nothing)
@@ -374,7 +384,7 @@ end
 # predictor matrix. If the real response contains `missing` / `NaN`, the formula
 # builder gets a numeric placeholder column while the returned `y` keeps `NaN`
 # at unobserved response positions.
-function _design(response::Symbol, rhs, data)
+function _design(response::Symbol, rhs, data; schema_cache = nothing, schema_key = nothing)
     raw_response = _table_column(data, response)
     y_response, observed = _coerce_response_column(raw_response)
     design_data = all(observed) ? data :
@@ -382,9 +392,33 @@ function _design(response::Symbol, rhs, data)
     ft = FormulaTerm(Term(response), rhs)
     # The 3-arg apply_schema with a StatisticalModel context adds R's implicit
     # intercept (so `y ~ x` means `y ~ 1 + x`, matching drmTMB); explicit
-    # `1 + x` / `0 + x` are respected.
-    ft = apply_schema(ft, schema(ft, design_data), StatisticalModel)
-    _, X = modelcols(ft, design_data)
+    # `1 + x` / `0 + x` are respected. `schema_cache`/`schema_key`, when given
+    # (issue #609 item 1), make this call read-through a cache keyed by
+    # distributional parameter: the FIRST call (at fit time, `data` = training
+    # data) computes the schema and stores it; a later call with the same key
+    # (`predict`/`predict_parameters` on `newdata`) reuses that TRAINING schema
+    # instead of rebuilding factor contrasts/levels from whatever rows `newdata`
+    # happens to contain — `apply_schema` then raises a clear error if `newdata`
+    # carries a factor level the training schema never saw.
+    reused_training_schema = schema_cache !== nothing && haskey(schema_cache[], schema_key)
+    sch = if reused_training_schema
+        schema_cache[][schema_key]
+    else
+        s = schema(ft, design_data)
+        schema_cache !== nothing && (schema_cache[][schema_key] = s)
+        s
+    end
+    ft = apply_schema(ft, sch, StatisticalModel)
+    _, X = try
+        modelcols(ft, design_data)
+    catch e
+        if reused_training_schema
+            throw(ArgumentError("predict: `newdata` contains a factor level not seen when " *
+                "the model was fitted (parameter `$(schema_key)`); refit including that level, " *
+                "or drop the offending rows from `newdata`. Original error: " * sprint(showerror, e)))
+        end
+        rethrow(e)
+    end
     Xm = X isa AbstractMatrix ? Matrix{Float64}(X) : reshape(Float64.(collect(X)), :, 1)
     return y_response, Xm, String.(vec(coefnames(ft.rhs)))
 end
@@ -522,8 +556,12 @@ function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree 
                                 "fit is a maximum-a-posteriori (MAP) estimator and REML is a " *
                                 "restricted-likelihood estimator. Use `method = :ML` (the default)."))
     end
-    y, Xμ, nmμ = _design(f.response, fixed_mu, data)
-    _, Xσ, nmσ = _design(f.response, fixed_sigma, data)
+    # `schema_cache`/`schema_key`: caches the TRAINING schema (factor
+    # contrasts/levels) per parameter so `predict`/`predict_parameters` on
+    # `newdata` reuse it (issue #609 item 1) instead of rebuilding contrasts
+    # from whatever rows `newdata` happens to contain.
+    y, Xμ, nmμ = _design(f.response, fixed_mu, data; schema_cache = f.schema_cache, schema_key = :mu)
+    _, Xσ, nmσ = _design(f.response, fixed_sigma, data; schema_cache = f.schema_cache, schema_key = :sigma)
     response_observed = _observed_response_mask(y)
     has_missing_response = !all(response_observed)
     all_structured = _collect_structured(rhs[:mu])
@@ -1536,7 +1574,8 @@ function predict(fit::DrmFit, newdata; type::Symbol = :response, se::Bool = fals
         # must still yield its fixed design here; the flag only relaxes parsing.
         fixed_mu, _, _, _ = _split_ranef(Dict(f.forms)[:mu]; allow_phylo_slope = true)
         ndr = merge(nd, NamedTuple{(f.response,)}((zeros(nrows),)))
-        _, Xnew, _ = _design(f.response, fixed_mu, ndr)
+        _, Xnew, _ = _design(f.response, fixed_mu, ndr;
+                              schema_cache = f.schema_cache, schema_key = :mu)
         η = Xnew * coef(fit, :mu)
         pred = type === :link ? η : _mean_response(fit.family, η)
         se || return pred
@@ -1734,7 +1773,11 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
         haskey(forms, p) || continue          # skip RE-SD / cutpoint blocks (:resd, :recov, :cutpoints, …)
         resp = bivar ? (p === :mu2 ? f.response2 : f.response1) : f.response
         fixed_p, _, _, _ = _split_ranef(forms[p]; allow_phylo_slope = true)   # #620 fits keep predicting
-        _, Xp, _ = _design(resp, fixed_p, ndr)
+        _, Xp, _ = if bivar
+            _design(resp, fixed_p, ndr)
+        else
+            _design(resp, fixed_p, ndr; schema_cache = f.schema_cache, schema_key = p)
+        end
         ηp = Xp * coef(fit, p)
         val = type === :link ? ηp : _param_response(fit.family, p, ηp)
         if se

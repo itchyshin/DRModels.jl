@@ -449,6 +449,18 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   now adds a `_simulate_once(fit::DrmFit{LogNormal}, rng; ...)` method, dispatched
   ahead of the generic one, that draws log(Y) exactly as bivariate Gaussian does
   and exponentiates, leaving the univariate lognormal draw unchanged.
+- **`predict`/`predict_parameters` on `newdata` with a factor predictor now use
+  the TRAINING levels and contrasts (issue #609 item 1).** Previously the
+  design matrix for `newdata` was built from a schema derived from `newdata`
+  itself, so a `newdata` that omitted a training factor level crashed with an
+  opaque `DimensionMismatch`, and one with an unseen level either errored
+  obscurely or (with only that level present) refused with a misleading
+  "need at least two levels" message. `DrmFormula` now caches the schema
+  built from the training data at fit time; `predict`/`predict_parameters`
+  reuse it, so `newdata` may present a subset of levels, the levels in a
+  different row order, or all of them — and an unseen level now raises a
+  clear `ArgumentError` naming the parameter. Numeric-only predictors are
+  unaffected. See `test/test_twin_gap_609.jl`.
 
 - **`marginal = :Laplace` on an ordinary `(1 | g)` (Arc 2, drmTMB parity).**
   Poisson, Binomial, NegBinomial2, Gamma and Beta with one ordinary random
