@@ -36,6 +36,8 @@ Usage:
   python3 tools/check_doc_test_citations.py [docs/src/capabilities.md ...]
 """
 import os, re, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from runtests_files import wired_test_files  # noqa: E402
 
 RUNNER = "test/runtests.jl"
 
@@ -43,7 +45,9 @@ def included_basenames(runner):
     src = open(runner, encoding="utf-8").read()
     # strip comments so a commented-out include() is not counted as wired
     code = "\n".join(l.split("#", 1)[0] for l in src.splitlines())
-    return {os.path.basename(m) for m in re.findall(r'include\(\s*"([^"]+)"\s*\)', code)}
+    literal = {os.path.basename(m) for m in re.findall(r'include\(\s*"([^"]+)"\s*\)', code)}
+    # runtests.jl auto-discovers test_*.jl (see runtests_files.py)
+    return literal | wired_test_files(os.path.dirname(runner) or ".")
 
 def main(argv):
     docs = argv[1:] or ["docs/src/capabilities.md"]
