@@ -57,12 +57,15 @@ function drm(f::DrmFormula, fam::Beta; data, tree = nothing, K = nothing,
     end
     missing_fit !== nothing && return missing_fit
 
-    marg = _marginal_method(marginal)                     # :LA (default) or :VA (#136)
-    marg isa AGHQ && _aghq_reject(fam, "this family")
+    marg = _marginal_method(marginal)                     # :LA (default), :VA (#136), or :AGHQ (#761)
+    isaghq = marg isa AGHQ
     isva = marg isa Variational
     _lss_only_gaussian_guard(f, fam)   # #544: refuse, never silently drop, sd() parts
     rhs = Dict(f.forms)
     fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
+    isaghq && !(length(re) > 1 && st === nothing) &&
+        _aghq_reject(fam, "this model (Beta `marginal = :AGHQ` covers crossed random " *
+                          "intercepts `(1 | g) + (1 | h)` only, #761)")
     mv === nothing ||
         error("Beta() does not support meta_V markers")
     for (pname, r) in f.forms          # only the mean may carry a random effect
@@ -106,7 +109,8 @@ function drm(f::DrmFormula, fam::Beta; data, tree = nothing, K = nothing,
                 grp = r[2]; gidx, G = _group_index(getproperty(data, grp))
                 (ones(length(y)), gidx, G, String(grp))
             end
-            return _withformula(_fit_beta_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol), f)
+            isaghq && return _withformula(_fit_beta_crossed_aghq(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol; se = se), f)   # #761
+            return _withformula(_fit_beta_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol; se = se), f)
         end
         (rk, var) = _re_kind(re[1][1]); grp = re[1][2]
         gidx, G = _group_index(getproperty(data, grp))
@@ -131,32 +135,20 @@ end
 # Beta GLMM with a random intercept (1|g) on the logit mean. b_g ~ N(0,σ_b²)
 # integrated out per group by 32-node Gauss–Hermite quadrature; precision
 # φ = 1/σ² is a fixed effect. Same scheme as the count GLMMs.
-function _fit_beta_ranef(fam::Beta, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol)
+function _fit_beta_ranef(fam::Beta, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol; K::Int = _RANEF1D_AGHQ_K)
     n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     members = [Int[] for _ in 1:G]
     for i in 1:n
         push!(members[gidx[i]], i)
     end
-    z, w = _gauss_hermite(32); logw = log.(w); K = length(z); rt2 = sqrt(2.0); lπ = log(π)
+    rule = _AGHQRule(1, K); Zre = ones(n, 1); bcache = zeros(1, G)   # #719: per-group AGHQ
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]; σb = exp(θ[pμ+pσ+1])
         η0 = Xμ * βμ; ησ = clamp.(Xσ * βσ, -15.0, 15.0)
-        s = zero(eltype(θ))
-        for idx in members
-            isempty(idx) && continue
-            terms = Vector{eltype(θ)}(undef, K)
-            for k in 1:K
-                δ = rt2 * σb * z[k]; gll = logw[k]
-                for i in idx
-                    μ = _logistic(clamp(η0[i] + δ, -30.0, 30.0)); φ = exp(-2 * ησ[i])
-                    gll += Distributions.logpdf(Distributions.Beta(μ * φ, (1 - μ) * φ), y[i])
-                end
-                terms[k] = gll
-            end
-            mx = maximum(terms)
-            s -= (-0.5 * lπ + mx + log(sum(exp.(terms .- mx))))
-        end
-        return s
+        ll = (i, η) -> (μ = _logistic(clamp(η, -30.0, 30.0)); φ = exp(-2 * ησ[i]);
+                        Distributions.logpdf(Distributions.Beta(μ * φ, (1 - μ) * φ), y[i]))
+        L = reshape([σb], 1, 1)
+        return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache)
     end
     ȳ = sum(y) / n; v = sum(abs2, y .- ȳ) / max(n - 1, 1)
     φ0 = max(ȳ * (1 - ȳ) / max(v, eps()) - 1, 0.5)
@@ -175,38 +167,25 @@ end
 
 # Beta GLMM with a correlated random intercept+slope (1 + x | g) on the logit
 # mean: per group (b0,b1) ~ N(0, Σ), Σ = L Lᵀ with L = [l11 0; cc l22] (log-
-# Cholesky a=log l11, b=log l22, cc). The 2-D group integral is taken by a K×K
-# Gauss–Hermite product rule (b = √2 L z), the same scheme as the count GLMMs;
-# precision φ = 1/σ² is a fixed effect. θ = [β_μ; β_σ; a, b, cc]. O(G·K²).
-function _fit_beta_corr_ranef(fam::Beta, y, Xμ, Xσ, xs, gidx, G, nmμ, nmσ, grp, g_tol)
+# Cholesky a=log l11, b=log l22, cc). The 2-D group integral is taken by
+# per-group ADAPTIVE Gauss–Hermite quadrature
+# (`_aghq_marginal_loglik`, #834: nodes b̂_g + √2 C z at each group's mode),
+# `nq` nodes per axis, the same scheme as the count GLMMs; precision φ = 1/σ² is a
+# fixed effect. θ = [β_μ; β_σ; a, b, cc].
+function _fit_beta_corr_ranef(fam::Beta, y, Xμ, Xσ, xs, gidx, G, nmμ, nmσ, grp, g_tol; nq::Int = _CORR_RANEF_AGHQ_K)
     n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     members = [Int[] for _ in 1:G]
     for i in 1:n
         push!(members[gidx[i]], i)
     end
-    z1, w1 = _gauss_hermite(12); lw = log.(w1); K = length(z1); rt2 = sqrt(2.0); lπ = log(π)
+    rule = _AGHQRule(2, nq); Zre = hcat(ones(n), Float64.(xs)); bcache = zeros(2, G)   # #834: per-group AGHQ
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
-        l11 = exp(θ[pμ+pσ+1]); l22 = exp(θ[pμ+pσ+2]); cc = θ[pμ+pσ+3]
+        L = _corr_ranef_L(θ[pμ+pσ+1], θ[pμ+pσ+2], θ[pμ+pσ+3])
         η0 = Xμ * βμ; ησ = clamp.(Xσ * βσ, -15.0, 15.0)
-        s = zero(eltype(θ))
-        for idx in members
-            isempty(idx) && continue
-            terms = Vector{eltype(θ)}(undef, K * K); t = 0
-            for j in 1:K, k in 1:K
-                t += 1
-                b0 = rt2 * l11 * z1[j]; b1 = rt2 * (cc * z1[j] + l22 * z1[k])
-                gll = lw[j] + lw[k]
-                for i in idx
-                    μ = _logistic(clamp(η0[i] + b0 + b1 * xs[i], -30.0, 30.0)); φ = exp(-2 * ησ[i])
-                    gll += Distributions.logpdf(Distributions.Beta(μ * φ, (1 - μ) * φ), y[i])
-                end
-                terms[t] = gll
-            end
-            mx = maximum(terms)
-            s -= (-lπ + mx + log(sum(exp.(terms .- mx))))   # 2-D: -log π
-        end
-        return s
+        ll = (i, η) -> (μ = _logistic(clamp(η, -30.0, 30.0)); φ = exp(-2 * ησ[i]);
+                        Distributions.logpdf(Distributions.Beta(μ * φ, (1 - μ) * φ), y[i]))
+        return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache)
     end
     ȳ = sum(y) / n; v = sum(abs2, y .- ȳ) / max(n - 1, 1)
     φ0 = max(ȳ * (1 - ȳ) / max(v, eps()) - 1, 0.5)

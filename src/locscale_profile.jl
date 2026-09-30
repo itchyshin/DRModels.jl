@@ -101,8 +101,7 @@ function _ls_profile_nll_result(kind, y, Xμ, Xψ, gidx, G, Q, θ̂, idx::Int, v
             return result.status.ok ? result.value : _LS_PROFILE_INFEASIBLE
         end
         βμ = @view θ[1:pμ]; βψ = @view θ[pμ+1:pμ+pψ]
-        Λ = _ls_lc_to_Λ(θ[pμ+pψ+1:pμ+pψ+3])
-        P = prior_precision(Q, _ls_inv2x2(Λ))
+        P = prior_precision(Q, _ls_lc_inv2x2(θ[pμ+pψ+1:pμ+pψ+3]))   # stable: never forms Λ
         v, a, ok = _ls_marginal_nll(kind, y, Xμ * βμ, Xψ * βψ, gidx, G, P, Zη, Zψ; a0 = mwarm[])
         ok && (mwarm[] = copy(a))
         return ok ? v : _LS_PROFILE_INFEASIBLE
@@ -139,8 +138,17 @@ function _ls_profile_nll_result(kind, y, Xμ, Xψ, gidx, G, Q, θ̂, idx::Int, v
             return _ls_profile_nuisance_result(Inf, start, false, :exception;
                                                fallback=fallback)
         end
-        reported = Optim.minimum(res)
         xmin = Optim.minimizer(res)
+        # NOT Optim.minimum(res): after a failed line search it can hold a
+        # rejected trial's value while xmin has already moved on (see
+        # optim_minimum_guard.jl). Fall back to it only if a fresh `f(xmin)`
+        # itself errors.
+        reported = try
+            f(xmin)
+        catch err
+            err isa InterruptException && rethrow()
+            Optim.minimum(res)
+        end
         # Re-evaluate the objective and gradient even after `Optim.converged`: its
         # status can be driven by a non-gradient stopping condition.
         candidate = _ls_profile_candidate_status(

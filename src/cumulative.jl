@@ -6,15 +6,20 @@
 # ordered by the increment parameterisation θ_1 = δ_1, θ_k = θ_{k-1} + exp(δ_k).
 # Mirrors drmTMB's `cumulative_logit`. Fixed effects, ML, plus an ordinary
 # random intercept `(1 | g)` or independent random slope `(0 + x | g)` on `mu`
-# (#563 S8) via 32-node Gauss–Hermite quadrature — the same scheme as the
-# Poisson/Gamma/Tweedie `(1 | g)` routes (src/poisson.jl, src/gamma.jl,
-# src/tweedie.jl), plus an unlabelled, intercept-only `phylo(1 | species)`
+# (#563 S8) via per-group adaptive Gauss–Hermite quadrature (src/adaptive_ghq.jl),
+# plus an unlabelled, intercept-only `phylo(1 | species)`
 # structured `mu` effect (#563 S8 follow-on) via the sparse augmented-state
 # Laplace GLMM route (src/sparse_laplace_glmm.jl), matching drmTMB 0.7.0's own
-# `validate_ordinal_phylo_mu_structured_term()`. Correlated slopes
-# `(1 + x | g)`, crossed/multiple random effects, `relmat`/`animal`/`spatial`
-# structured markers, and random-effect scale formulas are refused, matching
-# drmTMB 0.7.0's own `validate_cumulative_logit_mu_random_terms()` /
+# `validate_ordinal_phylo_mu_structured_term()`. Crossed/multiple random
+# intercepts, `(1 | g) + (1 | h)` (#738), reuse the PLAIN (no-nuisance)
+# sparse-Laplace crossed engine (`_fit_crossed_mean_laplace`) that
+# Poisson/Binomial's crossed routes already share; the `nc = K - 1` ordered
+# cutpoints (which that engine's θ layout has no slot for) are profiled out
+# by an outer Nelder–Mead search, refitting the (β, σ_g, σ_h) crossed model
+# via the existing engine at each candidate cutpoint vector. Correlated
+# slopes `(1 + x | g)` and `relmat`/`animal`/`spatial` structured markers are
+# refused, matching drmTMB 0.7.0's own
+# `validate_cumulative_logit_mu_random_terms()` /
 # `validate_ordinal_phylo_mu_structured_term()` scope.
 
 """
@@ -29,7 +34,8 @@ increment parameters (`θ_1 = δ_1`, `θ_k = θ_{k-1} + exp(δ_k)`). `fitted` re
 the expected ordered-category score `Σ_k k·Pr(y=k)`. Mirrors `drmTMB`'s
 `cumulative_logit`. An ordinary random intercept `(1 | g)` or an independent
 random slope `(0 + x | g)` on `mu` integrates the group-level term out by
-32-node Gauss–Hermite quadrature; `coef(fit, :resd)` is the log random-effect
+per-group adaptive Gauss–Hermite quadrature (41 nodes centred on each group's
+conditional mode); `coef(fit, :resd)` is the log random-effect
 SD. An unlabelled, intercept-only phylogenetic random intercept
 `phylo(1 | species)` on `mu` is fit via the sparse-Laplace GLMM route instead
 (needs `tree = …`); it cannot be combined with an ordinary random effect. For
@@ -39,15 +45,20 @@ variance equals the tree height `h`, not 1) — this differs from drmTMB's
 (`ape::vcv(tree, corr = TRUE)`, tip variance 1 regardless of `h`). Convert with
 `re_sd(fit)[:group] * sqrt(phylo_tree_height(augmented_phy(tree)))` to compare
 against drmTMB's number (the same convention used throughout the Gaussian
-phylo-mean route, e.g. `test_parity_gaussian_phylo_mean.jl`).
-Correlated slopes `(1 + x | g)`, crossed/multiple random effects, and
-`relmat`/`animal`/`spatial` structured markers are not implemented.
+phylo-mean route, e.g. `test_parity_gaussian_phylo_mean.jl`). Crossed/multiple
+random intercepts, `(1 | g) + (1 | h)`, are also supported, via the same
+sparse-Laplace engine Poisson/Binomial's crossed routes reuse; the cutpoints
+are found by an outer profile search since that engine has no cutpoint slot.
+Correlated slopes `(1 + x | g)` and `relmat`/`animal`/`spatial` structured
+markers are not implemented.
 
 ```julia
 fit = drm(bf(y ~ x), CumulativeLogit(); data = dat)          # y coded 1..K
 fit_re = drm(bf(y ~ x + (1 | g)), CumulativeLogit(); data = dat)
 fit_slope = drm(bf(y ~ x + (0 + x | g)), CumulativeLogit(); data = dat)
 fit_phylo = drm(bf(y ~ x + phylo(1 | species)), CumulativeLogit(); data = dat, tree = tr)
+fit_crossed = drm(bf(y ~ x + (1 | g) + (1 | h)), CumulativeLogit(); data = dat)
+re_sd(fit_crossed)                                            # Dict(:g => ..., :h => ...)
 ```
 """
 struct CumulativeLogit end
@@ -72,8 +83,22 @@ end
     elseif k == K
         return _log_logistic(η - cuts[nc])                   # P(y=K) = 1−F(θ_{K-1}−η)
     else
-        P = _logistic(cuts[k] - η) - _logistic(cuts[k-1] - η)
-        return log(P)
+        # P(y=k) = F(a) - F(b), a = cuts[k]-η > b = cuts[k-1]-η. Write
+        # F(a)-F(b) = F(a)·(1 - F(b)/F(a)) = F(a)·(1 - exp(logF(b)-logF(a))),
+        # so log P(y=k) = logF(a) + log1mexp(logF(b)-logF(a)) — only ever
+        # combines two already-stable log-probabilities (`_log_logistic`),
+        # never subtracts raw probabilities, and its `log1mexp` argument is
+        # ≤ 0 by construction (logF is monotone, b < a), so it never throws
+        # or NaNs, only saturating to the mathematically-correct -Inf when
+        # a and b coincide (or round to bit-identical floats).
+        la = _log_logistic(cuts[k] - η)
+        lb = _log_logistic(cuts[k-1] - η)
+        # `lb - la` is ≤ 0 analytically (monotone `_log_logistic`, `cuts[k-1] <
+        # cuts[k]`), but two independently-rounded evaluations at very close
+        # arguments can round to a tiny POSITIVE float; clamp before
+        # `_log1mexp` so that never throws/NaNs (only ever saturates to the
+        # correct -Inf when `la`/`lb` coincide).
+        return la + _log1mexp(min(lb - la, zero(lb - la)))
     end
 end
 
@@ -149,6 +174,16 @@ function drm(f::DrmFormula, fam::CumulativeLogit; data, tree = nothing, g_tol::R
             _fit_cumulative_phylo_laplace(fam, yi, Xμ, K, labels, tree, nmμ, grp, g_tol; se = se), f)
     end
     if !isempty(re)                    # random intercept/slope on mu → GHQ marginal (#563 S8)
+        if length(re) > 1               # crossed/multiple intercepts (#738)
+            all(_re_kind(r[1])[1] === :intercept for r in re) ||
+                error("CumulativeLogit() supports multiple random effects only as " *
+                      "crossed/nested intercepts, e.g. `(1 | g) + (1 | h)`")
+            comps = map(re) do r
+                grp = r[2]; gidx, G = _group_index(getproperty(data, grp))
+                (ones(length(yi)), gidx, G, String(grp))
+            end
+            return _withformula(_fit_cumulative_crossed_laplace(fam, yi, Xμ, K, comps, nmμ, g_tol), f)
+        end
         length(re) == 1 ||
             error("CumulativeLogit() supports only a single `(1 | g)` random intercept or " *
                   "`(0 + x | g)` random slope on `mu`; crossed/multiple random effects are " *
@@ -205,38 +240,39 @@ function _fit_cumulative(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, nmμ, g_t
         Optim.iterations(res))
 end
 
+# Default AGHQ nodes for the CumulativeLogit `(1 | g)` / `(0 + x | g)` routes. The
+# ordinal group posterior is far from Gaussian when σ_b is large (a group with all
+# observations in an end category has a flat, logistic-tailed posterior), so these
+# routes need more nodes than the `_RANEF1D_AGHQ_K = 5` used by the other families.
+# Swept against an exact per-group QuadGK integral on the seed-24 fuzzer dataset
+# (test/test_cumlogit_aghq.jl; n = 48, G = 6, σ_b up to 13.8), worst |error| over
+# three θ: K=5 1.4e-2, K=9 4.7e-4, K=15 2.0e-5, K=21 2.6e-6, K=31 4.7e-7,
+# K=41 2.9e-9 nat. K = 41 is the first with a >100× margin on a 1e-6 check; the
+# per-group cost stays close to the old 32-node prior-scale grid it replaces.
+const _CUMLOGIT_AGHQ_K = 41
+
 # Cumulative-logit ordinal GLMM with a random intercept (1|g) on the latent
-# linear predictor η. b_g ~ N(0,σ_b²) integrated out per group by 32-node
-# Gauss–Hermite quadrature (b = √2 σ_b z) — the same scheme as the
-# Poisson/Gamma/Tweedie `(1 | g)` routes (src/poisson.jl `_fit_poisson_ranef`,
-# src/gamma.jl `_fit_gamma_ranef`, src/tweedie.jl `_fit_tweedie_ranef`).
-# Cutpoints stay ordinary fixed effects (shared across groups). #563 S8.
-function _fit_cumulative_ranef(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, gidx, G, nmμ, grp, g_tol)
+# linear predictor η. b_g ~ N(0,σ_b²) integrated out per group by ADAPTIVE
+# Gauss–Hermite quadrature (`_aghq_marginal_loglik`, src/adaptive_ghq.jl: nodes
+# b̂_g + √2 C z at each group's conditional mode), `nq` nodes (`nq = 1` is
+# Laplace). The old fixed 32-node prior-scale grid (b = √2 σ_b z) was badly
+# under-resolved for large σ_b: on the seed-24 fuzzer dataset it sat 1.36 nat
+# below the true marginal at its own optimum. Cutpoints stay ordinary fixed
+# effects (shared across groups). #563 S8.
+function _fit_cumulative_ranef(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, gidx, G, nmμ, grp, g_tol;
+                               nq::Int = _CUMLOGIT_AGHQ_K)
     n = length(y); pμ = size(Xμ, 2); nc = K - 1
     members = [Int[] for _ in 1:G]
     for i in 1:n
         push!(members[gidx[i]], i)
     end
-    z, w = _gauss_hermite(32); logw = log.(w); Kq = length(z); rt2 = sqrt(2.0); lπ = log(π)
+    rule = _AGHQRule(1, nq); Zre = ones(n, 1); bcache = zeros(1, G)
     function nll(θ)
         β = θ[1:pμ]; δ = θ[pμ+1:pμ+nc]; σb = exp(θ[pμ+nc+1])
         cuts = _cumulative_cuts(δ)
         η0 = pμ == 0 ? zeros(eltype(θ), n) : Xμ * β
-        s = zero(eltype(θ))
-        for idx in members
-            isempty(idx) && continue
-            terms = Vector{eltype(θ)}(undef, Kq)
-            for k in 1:Kq
-                b = rt2 * σb * z[k]; gll = logw[k]
-                for i in idx
-                    gll += _cumulative_loglik(y[i], η0[i] + b, cuts, K, nc)
-                end
-                terms[k] = gll
-            end
-            mx = maximum(terms)
-            s -= (-0.5 * lπ + mx + log(sum(exp.(terms .- mx))))
-        end
-        return s
+        ll = (i, η) -> _cumulative_loglik(y[i], η, cuts, K, nc)
+        return -_aghq_marginal_loglik(ll, members, η0, Zre, reshape([σb], 1, 1), rule, bcache)
     end
     θ0 = zeros(pμ + nc + 1)
     θ0[(pμ+1):(pμ+nc)] = _cumulative_cut_init(y, K, n)
@@ -257,34 +293,22 @@ end
 
 # Cumulative-logit ordinal GLMM with an INDEPENDENT random slope (0+x|g) on
 # the latent linear predictor η. b_g ~ N(0,σ_b²) integrated out per group by
-# 32-node Gauss–Hermite quadrature; the group term enters as b_g·x_i rather
-# than b_g. Same scheme as src/tweedie.jl `_fit_tweedie_slope_ranef`. #563 S8.
-function _fit_cumulative_slope_ranef(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, xs, gidx, G, nmμ, grp, g_tol)
+# ADAPTIVE Gauss–Hermite quadrature (as `_fit_cumulative_ranef` above); the group
+# term enters as b_g·x_i rather than b_g (random-effect design column `xs`). #563 S8.
+function _fit_cumulative_slope_ranef(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, xs, gidx, G, nmμ, grp, g_tol;
+                                     nq::Int = _CUMLOGIT_AGHQ_K)
     n = length(y); pμ = size(Xμ, 2); nc = K - 1
     members = [Int[] for _ in 1:G]
     for i in 1:n
         push!(members[gidx[i]], i)
     end
-    z, w = _gauss_hermite(32); logw = log.(w); Kq = length(z); rt2 = sqrt(2.0); lπ = log(π)
+    rule = _AGHQRule(1, nq); Zre = reshape(Float64.(xs), n, 1); bcache = zeros(1, G)
     function nll(θ)
         β = θ[1:pμ]; δ = θ[pμ+1:pμ+nc]; σb = exp(θ[pμ+nc+1])
         cuts = _cumulative_cuts(δ)
         η0 = pμ == 0 ? zeros(eltype(θ), n) : Xμ * β
-        s = zero(eltype(θ))
-        for idx in members
-            isempty(idx) && continue
-            terms = Vector{eltype(θ)}(undef, Kq)
-            for k in 1:Kq
-                b = rt2 * σb * z[k]; gll = logw[k]
-                for i in idx
-                    gll += _cumulative_loglik(y[i], η0[i] + b * xs[i], cuts, K, nc)
-                end
-                terms[k] = gll
-            end
-            mx = maximum(terms)
-            s -= (-0.5 * lπ + mx + log(sum(exp.(terms .- mx))))
-        end
-        return s
+        ll = (i, η) -> _cumulative_loglik(y[i], η, cuts, K, nc)
+        return -_aghq_marginal_loglik(ll, members, η0, Zre, reshape([σb], 1, 1), rule, bcache)
     end
     θ0 = zeros(pμ + nc + 1)
     θ0[(pμ+1):(pμ+nc)] = _cumulative_cut_init(y, K, n)
@@ -601,4 +625,93 @@ function _fit_cumulative_phylo_laplace(fam::CumulativeLogit, y::Vector{Int}, Xμ
     scales = Dict(:ordinal_eta => η̂, :ordinal_cuts => Float64.(cuts_hat))
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
     return _withnll(fit, nll, grad!)
+end
+
+# ---------------------------------------------------------------------------
+# Crossed/multiple random intercepts (1|g)+(1|h) on the latent linear
+# predictor η (#738), reusing the PLAIN (no-nuisance) sparse augmented-state
+# Laplace GLMM engine already shared by Poisson/Binomial's crossed routes
+# (`_fit_crossed_mean_laplace` in src/sparse_laplace_glmm.jl) — NOT a new
+# integrator for the random effects.
+#
+# That shared engine's outer θ layout is `[βμ; logσ_g; logσ_h]` — no slot for
+# the `nc = K - 1` ordered-cutpoint parameters, which (unlike a dispersion
+# nuisance) enter the likelihood as extra fixed structure, not a single
+# scalar. Rather than widen the shared engine's layout (a shared-file change
+# out of this family file's ownership), the cutpoints are PROFILED OUT: an
+# outer derivative-free (Nelder–Mead, since ForwardDiff cannot see through
+# the inner engine's own nested `Optim.optimize` calls) search over the
+# unconstrained increment parameterisation `_cumulative_cuts` refits the full
+# (β, σ_g, σ_h) crossed model at each candidate cutpoint vector via the
+# existing engine, and finds the cutpoints minimising that profile deviance
+# — exact profile-likelihood optimisation, not an approximation.
+#
+# Per-observation value/derivatives reuse `_cumulative_loglik` (already
+# exact and smooth in η for FIXED cutpoints and category) via nested
+# `ForwardDiff.derivative` on η, verified against central finite differences
+# (interactive check, not part of the test suite; the same nested-autodiff
+# pattern `src/tweedie.jl` documents and checks for `_logpdf_tweedie`).
+#
+# `_laplace_mean(kind, η)` (the shared engine's per-fit convenience "mean" for
+# `fitted()`/reporting) receives only `(kind, η)` — no `aux` — so it cannot
+# reconstruct the expected category score, which needs the cutpoints. It
+# returns `NaN` here rather than a plausible-looking wrong number; the
+# outer `_fit_cumulative_crossed_laplace` overwrites `means`/`scales` with the
+# correct expected-category-score convention (matching `_fit_cumulative`)
+# once the profiled cutpoints are known.
+_laplace_value(::Val{:cumlogit_fixed}, aux, i, η) =
+    -_cumulative_loglik(aux.y[i], η, aux.cuts, aux.K, aux.nc)
+
+_laplace_d1(::Val{:cumlogit_fixed}, aux, i, η) =
+    ForwardDiff.derivative(x -> _laplace_value(Val(:cumlogit_fixed), aux, i, x), η)
+
+_laplace_d2(::Val{:cumlogit_fixed}, aux, i, η) =
+    ForwardDiff.derivative(x -> _laplace_d1(Val(:cumlogit_fixed), aux, i, x), η)
+
+_laplace_d3(::Val{:cumlogit_fixed}, aux, i, η) =
+    ForwardDiff.derivative(x -> _laplace_d2(Val(:cumlogit_fixed), aux, i, x), η)
+
+_laplace_mean(::Val{:cumlogit_fixed}, η) = NaN
+_laplace_obs(::Val{:cumlogit_fixed}, aux, i) = Float64(aux.y[i])
+
+function _fit_cumulative_crossed_laplace(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, comps, nmμ, g_tol)
+    length(comps) == 2 || error("_fit_cumulative_crossed_laplace requires two random-intercept components")
+    n = length(y); pμ = size(Xμ, 2); nc = K - 1
+    θβ0 = zeros(pμ)
+
+    function inner_fit(δ::Vector{<:Real}; polish_iterations::Int = 0)
+        cuts = _cumulative_cuts(δ)
+        aux = (y = y, cuts = cuts, K = K, nc = nc)
+        return _fit_crossed_mean_laplace(
+            fam, Val(:cumlogit_fixed), aux, n, Xμ,
+            comps[1][2], comps[1][3], comps[2][2], comps[2][3], nmμ,
+            [comps[1][4], comps[2][4]], g_tol;
+            θβ0 = θβ0, se = false, polish_iterations = polish_iterations)
+    end
+
+    δ0 = _cumulative_cut_init(y, K, n)
+    obj(δ) = -inner_fit(δ).loglik
+    res = Optim.optimize(obj, δ0, Optim.NelderMead(),
+                         Optim.Options(iterations = 500, g_tol = g_tol))
+    δ̂ = Optim.minimizer(res)
+    fit = inner_fit(δ̂; polish_iterations = 25)
+
+    pμ2 = pμ    # (== pμ; named for readability against the block-index arithmetic below)
+    nblk = pμ2 + 2   # mu + 2 crossed RE sds, the engine's own blocks
+    blocks = vcat(fit.blocks, [:cutpoints => (nblk + 1):(nblk + nc)])
+    names = vcat(fit.coefnames, [:cutpoints => ["theta$k" for k in 1:nc]])
+    theta = vcat(fit.theta, δ̂)
+    V = fill(NaN, length(theta), length(theta))
+    V[1:nblk, 1:nblk] .= fit.vcov
+
+    β̂ = fit.theta[1:pμ2]
+    cuts_hat = _cumulative_cuts(δ̂)
+    η̂ = pμ2 == 0 ? zeros(n) : Xμ * β̂       # population (b=0) linear predictor
+    score = _cumulative_score(η̂, cuts_hat, K)
+    means = Dict(:mu => score)
+    obs = Dict(:mu => Float64.(y))
+    scales = Dict(:ordinal_eta => η̂, :ordinal_cuts => Float64.(cuts_hat))
+
+    return DrmFit(fam, blocks, names, theta, V, fit.loglik, fit.nobs, fit.converged,
+                 means, obs, scales)
 end

@@ -25,14 +25,14 @@ using Test
 const API_STABLE = [
     # grammar + front end
     "@formula", "bf", "drm_formula", "drm", "cbind",
-    "meta_V", "relmat", "animal", "phylo", "spatial",
+    "meta_V", "relmat", "animal", "phylo", "spatial", "offset",
     "DrmFormula", "BivariateDrmFormula", "DrmFit",
     # families
     "Gaussian", "Student", "SkewNormal", "Poisson", "NegBinomial2",
     "TruncatedNegBinomial2", "Beta", "BetaBinomial", "Binomial", "Gamma",
     "LogNormal", "ZeroOneBeta", "Tweedie", "CumulativeLogit",
     # StatsAPI-style accessors
-    "coef", "vcov", "loglik", "nobs", "dof", "aic", "bic", "aicc",
+    "coef", "vcov", "loglik", "loglikelihood", "nobs", "dof", "aic", "bic", "aicc",
     "deviance", "dof_residual", "weights", "update",
     "fixef", "re_sd", "vc", "ranef", "sigma", "corpairs", "rho12",
     "stderror", "confint", "coeftable", "fitted", "residuals",
@@ -62,6 +62,7 @@ const API_EXPERIMENTAL = [
     "r2_constant_sigma",
     # R bridge (ledger r_bridge_status: experimental)
     "drm_bridge", "drm_bridge_inference", "drm_bridge_objective_at", "drm_listwise",
+    "bridge_diagnostics",
     # cross-family surface (permanent claim_boundary, D-179 #3)
     "mf_coef", "mf_aic", "mf_bic", "mf_fitted", "mf_summary",
     "associate_pairs", "latent_normal", "association", "PairAssociation",

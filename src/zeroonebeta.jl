@@ -27,16 +27,30 @@ admits it: `b_g ~ N(0, σ_b²)` on the logit mean is integrated out per group by
 32-node Gauss–Hermite quadrature (mirrors drmTMB's ordinary RI on `zero_one_beta()`'s
 `mu`, #723); `sigma`, `zoi`, `coi` stay fixed-effects-only.
 
+A phylogenetic/relatedness random intercept on the mean, `phylo(1 | species)` /
+`relmat(1 | id)` (with `K = C`) / `animal(1 | id)` (`A = C`) / `spatial(1 | id)`
+(`K = C`), uses the sparse-Laplace mean-phylo engine (#739): `sigma`, `zoi ~ 1`,
+`coi ~ 1` (intercept-only) stay fixed effects; `zoi`/`coi` are estimated by
+their closed-form Bernoulli MLEs (the atom/coi mixture is completely separable
+from the mean/dispersion/phylo likelihood — see `_zeroonebeta_laplace_setup`),
+and the Beta interior likelihood on the mean uses the same verified
+`:beta_fixed`-derived phylo/relmat spine as `Beta()`.
+
 ```julia
 fit = drm(bf(y ~ x, sigma ~ 1, zoi ~ 1, coi ~ 1), ZeroOneBeta(); data = dat)
 fit = drm(bf(y ~ x + (1 | g), sigma ~ 1, zoi ~ 1, coi ~ 1), ZeroOneBeta(); data = dat)
+fit_phy = drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ 1),
+                 @formula(zoi ~ 1), @formula(coi ~ 1)),
+              ZeroOneBeta(); data = dat, tree = tr, se = false)
 ```
 """
 struct ZeroOneBeta end
 
-function drm(f::DrmFormula, fam::ZeroOneBeta; data, g_tol::Real = 1e-8)
+function drm(f::DrmFormula, fam::ZeroOneBeta; data, tree = nothing, K = nothing,
+             A = nothing, coords = nothing, g_tol::Real = 1e-8, se::Bool = true)
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
-        drm(f, fam; data = data_observed, g_tol = g_tol)
+        drm(f, fam; data = data_observed, tree = tree, K = K, A = A,
+            coords = coords, g_tol = g_tol, se = se)
     end
     missing_fit !== nothing && return missing_fit
 
@@ -45,8 +59,6 @@ function drm(f::DrmFormula, fam::ZeroOneBeta; data, g_tol::Real = 1e-8)
     fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
     mv === nothing ||
         error("ZeroOneBeta() does not support meta_V markers")
-    st === nothing ||
-        error("ZeroOneBeta() does not support phylo/relmat structured random effects yet")
     for (pname, r) in f.forms          # only the mean may carry a random effect
         pname === :mu && continue
         _, re2, mv2, st2 = _split_ranef(r)
@@ -59,6 +71,29 @@ function drm(f::DrmFormula, fam::ZeroOneBeta; data, g_tol::Real = 1e-8)
     _, Xc, nmc = _design(f.response, get(rhs, :coi, ConstantTerm(1)), data)
     all(yi -> 0 <= yi <= 1, y) ||
         error("ZeroOneBeta() requires responses in the closed interval [0, 1]")
+    if st !== nothing
+        isempty(re) ||
+            error("ZeroOneBeta() phylo structured effects cannot be combined with ordinary random effects yet")
+        size(Xσ, 2) == 1 && all(x -> x == 1.0, @view Xσ[:, 1]) ||
+            error("ZeroOneBeta() phylo/relmat route currently supports a constant `sigma ~ 1` formula")
+        size(Xz, 2) == 1 && all(x -> x == 1.0, @view Xz[:, 1]) ||
+            error("ZeroOneBeta() phylo/relmat route currently supports a constant `zoi ~ 1` formula")
+        size(Xc, 2) == 1 && all(x -> x == 1.0, @view Xc[:, 1]) ||
+            error("ZeroOneBeta() phylo/relmat route currently supports a constant `coi ~ 1` formula")
+        kind, grp = st
+        labels = getproperty(data, grp)
+        if kind === :phylo
+            tree === nothing && error("phylo(1 | $grp) needs `tree = ...`")
+            return _withformula(
+                _fit_zeroonebeta_phylo_laplace(fam, y, Xμ, nmμ, nmσ, nmz, nmc, labels, tree, grp, g_tol; se = se), f)
+        elseif kind === :relmat || kind === :animal || kind === :spatial
+            C = _poisson_structured_cov(kind, grp, K, A, coords)
+            return _withformula(
+                _fit_zeroonebeta_relmat_laplace(fam, y, Xμ, nmμ, nmσ, nmz, nmc, C, labels, grp, g_tol; se = se), f)
+        else
+            error("ZeroOneBeta() supports phylo/relmat/animal/spatial(1 | group) among structured markers")
+        end
+    end
     if !isempty(re)                    # random effect on the logit mean → GHQ (#723)
         length(re) == 1 ||
             error("ZeroOneBeta() supports a single random intercept `(1 | g)` on the mean")
@@ -193,4 +228,107 @@ function _fit_zeroonebeta_ranef(fam::ZeroOneBeta, y, Xμ, Xσ, Xz, Xc, gidx, G, 
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
         Optim.iterations(res))
+end
+
+# ---- Phylo/relmat structured random intercept on the mean (#739) -----------
+# `zoi`/`coi` (intercept-only, `zoi ~ 1` / `coi ~ 1`) are completely separable
+# from the mean/dispersion/phylo likelihood: their log-likelihood contribution
+# (`log zoi`/`log(1-zoi)` for the atom/interior split, `log coi`/`log(1-coi)`
+# for the 1-vs-0 split among atoms) does not depend on η, φ, or the phylo
+# random effect at all, so their joint MLE is exactly the closed-form Bernoulli
+# MLE computed here — no separate optimization axis is needed in the
+# nuisance-Laplace spine (`Val(:zeroonebeta_fixed)`, sparse_laplace_glmm.jl,
+# treats them as fixed `aux` fields). This mirrors `_beta_laplace_setup` for
+# the mean/dispersion piece, restricted to the interior (non-atom) rows.
+function _zeroonebeta_laplace_setup(y, Xμ)
+    yv = Float64.(y)
+    isatom = (yv .== 0) .| (yv .== 1)
+    n = length(yv)
+    nb = sum(isatom)
+    zoi = clamp(nb / n, 1e-6, 1 - 1e-6)
+    coi = nb == 0 ? 0.5 : clamp(sum(yv .== 1) / nb, 1e-6, 1 - 1e-6)
+    ylogit = [isatom[i] ? 0.0 : (log(yv[i]) - log1p(-yv[i])) for i in 1:n]
+    function aux_from(logsigma)
+        φ = exp(clamp(-2 * logsigma, -8.0, 8.0))
+        return (y = yv, precision = φ, ylogit = ylogit,
+                lgammaφ = loggamma(φ), digammaφ = digamma(φ),
+                zoi = zoi, coi = coi, isatom = isatom)
+    end
+    cont = yv[.!isatom]
+    ȳ = isempty(cont) ? 0.5 : clamp(sum(cont) / length(cont), 1e-4, 1 - 1e-4)
+    v = length(cont) > 1 ? sum(abs2, cont .- ȳ) / (length(cont) - 1) : 0.1
+    φ0 = max(ȳ * (1 - ȳ) / max(v, eps()) - 1, 0.5)
+    θβ0 = zeros(size(Xμ, 2))
+    θβ0[1] = log(ȳ / (1 - ȳ))
+    return aux_from, θβ0, -0.5 * log(φ0), zoi, coi
+end
+
+# Append the closed-form zoi/coi block (Bernoulli MLEs, asymptotic variance
+# 1/(n·p·(1-p)) on the logit scale, independent of the phylo/dispersion block
+# by the separability above) onto a `_fit_phylo_mean_laplace_nuisance` /
+# `_fit_general_mean_laplace_nuisance` fit (`:mu`/`:sigma`/`:resd` blocks).
+function _augment_zeroonebeta_fit(fit::DrmFit, zoi, coi, nmz, nmc, y, n, nb)
+    p0 = length(fit.theta)
+    θ̂ = vcat(fit.theta, log(zoi / (1 - zoi)), log(coi / (1 - coi)))
+    V = zeros(p0 + 2, p0 + 2)
+    V[1:p0, 1:p0] .= fit.vcov
+    V[p0+1, p0+1] = 1 / (n * zoi * (1 - zoi))
+    V[p0+2, p0+2] = nb == 0 ? NaN : 1 / (nb * coi * (1 - coi))
+    blocks = vcat(fit.blocks, [:zoi => (p0+1):(p0+1), :coi => (p0+2):(p0+2)])
+    names = vcat(fit.coefnames, [:zoi => nmz, :coi => nmc])
+    μ̂ = fit.means[:mu]                              # `:beta_fixed`-kind fixed-effect (b=0) conditional mean
+    means = merge(fit.means, Dict(:mu => (1 - zoi) .* μ̂ .+ zoi * coi))   # unconditional mean (drmTMB fitted)
+    obs = merge(fit.obs, Dict(:mu => Vector{Float64}(y)))
+    scales = merge(fit.scales, Dict(:beta_mu => μ̂, :zoi => fill(zoi, n), :coi => fill(coi, n)))
+    return DrmFit(fit.family, blocks, names, θ̂, V, fit.loglik, fit.nobs, fit.converged,
+                  means, obs, scales, fit.formula, fit.nll, fit.nllgrad, fit.ranef,
+                  fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal,
+                  fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale)
+end
+
+"""
+    _fit_zeroonebeta_phylo_laplace(fam, y, Xμ, nmμ, nmσ, nmz, nmc, labels, tree, grp, g_tol; se)
+
+`ZeroOneBeta()` sparse-Laplace fit with a phylogenetic random intercept
+`phylo(1 | grp)` on the logit mean (#739). `zoi ~ 1` / `coi ~ 1` are fixed by
+their closed-form Bernoulli MLEs (`_zeroonebeta_laplace_setup`); the interior
+Beta likelihood on the mean reuses the verified `:beta_fixed`-derived
+`_fit_phylo_mean_laplace_nuisance` spine via the additive `:zeroonebeta_fixed`
+kernel (atom rows contribute zero η-derivatives; sparse_laplace_glmm.jl).
+"""
+function _fit_zeroonebeta_phylo_laplace(fam, y, Xμ, nmμ, nmσ, nmz, nmc, labels,
+                                        tree, grp, g_tol; se::Bool = true,
+                                        polish_iterations::Int = 0)
+    n = length(y)
+    nb = sum((Float64.(y) .== 0) .| (Float64.(y) .== 1))
+    aux_from, θβ0, θσ0, zoi, coi = _zeroonebeta_laplace_setup(y, Xμ)
+    fit = _fit_phylo_mean_laplace_nuisance(
+        fam, Val(:zeroonebeta_fixed), aux_from, n, Xμ, labels, tree, nmμ, nmσ,
+        grp, g_tol; θβ0 = θβ0, θσ0 = θσ0, sigma_scale = exp,
+        se = se, polish_iterations = polish_iterations
+    )
+    return _augment_zeroonebeta_fit(fit, zoi, coi, nmz, nmc, y, n, nb)
+end
+
+"""
+    _fit_zeroonebeta_relmat_laplace(fam, y, Xμ, nmμ, nmσ, nmz, nmc, C, labels, grp, g_tol; se)
+
+`ZeroOneBeta()` sparse-Laplace fit with a general user-supplied PD covariance
+`C` on the logit-mean random intercept (`relmat`/`animal`/`spatial(1 | grp)`;
+#739). Reuses the phylo nuisance spine via `_general_cov_setup`, exactly as
+`_fit_beta_relmat_laplace` does for `Beta()`.
+"""
+function _fit_zeroonebeta_relmat_laplace(fam, y, Xμ, nmμ, nmσ, nmz, nmc, C,
+                                         labels, grp, g_tol; se::Bool = true,
+                                         polish_iterations::Int = 0)
+    n = length(y)
+    nb = sum((Float64.(y) .== 0) .| (Float64.(y) .== 1))
+    Q, leaf_node = _general_cov_setup(C, labels)
+    aux_from, θβ0, θσ0, zoi, coi = _zeroonebeta_laplace_setup(y, Xμ)
+    fit = _fit_general_mean_laplace_nuisance(
+        fam, Val(:zeroonebeta_fixed), aux_from, n, Xμ, Q, leaf_node, nmμ, nmσ,
+        grp, g_tol; θβ0 = θβ0, θσ0 = θσ0, sigma_scale = exp,
+        se = se, polish_iterations = polish_iterations
+    )
+    return _augment_zeroonebeta_fit(fit, zoi, coi, nmz, nmc, y, n, nb)
 end

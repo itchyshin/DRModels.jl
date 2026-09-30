@@ -8,6 +8,7 @@
 # `nbinom2`.
 
 using Distributions: NegativeBinomial, logpdf
+using SpecialFunctions: loggamma
 
 # Distributions' `zero(p) < p <= one(p)` rejects ForwardDiff Duals whose *value*
 # is 1.0 but whose partials are nonzero — `one(p)` has zero partials, so Dual
@@ -89,8 +90,8 @@ function drm(f::DrmFormula, fam::NegBinomial2; data, tree = nothing, K = nothing
     end
     missing_fit !== nothing && return missing_fit
 
-    marg = _marginal_method(marginal)                     # :LA (default) or :VA (#136)
-    marg isa AGHQ && _aghq_reject(fam, "this family")
+    marg = _marginal_method(marginal)                     # :LA (default), :VA (#136), or :AGHQ (#761)
+    isaghq = marg isa AGHQ
     isva = marg isa Variational
     _lss_only_gaussian_guard(f, fam)   # #544: refuse, never silently drop, sd() parts
     rhs = Dict(f.forms)
@@ -99,12 +100,16 @@ function drm(f::DrmFormula, fam::NegBinomial2; data, tree = nothing, K = nothing
     lc = _ls_coupled_re(rhs[:mu], get(rhs, :sigma, ConstantTerm(1)))
     if lc !== nothing
         isva && _va_reject(fam, "a coupled location–scale random effect")
+        isaghq && _aghq_reject(fam, "a coupled location–scale random effect")
         return _withformula(_fit_locscale_frontend(Val(:nb2), fam, f, rhs, lc, data;
                                                     g_tol = g_tol, se = se,
                                                     tree = tree, K = K, A = A,
                                                     coords = coords), f)
     end
     fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
+    isaghq && !(length(re) > 1 && st === nothing) &&
+        _aghq_reject(fam, "this model (NegBinomial2 `marginal = :AGHQ` covers crossed random " *
+                          "intercepts `(1 | g) + (1 | h)` only, #761)")
     mv === nothing ||
         error("NegBinomial2() does not support meta_V markers")
     for (pname, r) in f.forms          # only the mean may carry a random effect
@@ -154,6 +159,7 @@ function drm(f::DrmFormula, fam::NegBinomial2; data, tree = nothing, K = nothing
                 grp = r[2]; gidx, G = _group_index(getproperty(data, grp))
                 (ones(length(y)), gidx, G, String(grp))
             end
+            isaghq && return _withformula(_fit_nb2_crossed_aghq(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol; se = se), f)   # #761
             return _withformula(_fit_nb2_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol; se = se), f)
         end
         (rk, var) = _re_kind(re[1][1]); grp = re[1][2]
@@ -190,34 +196,21 @@ end
 # integrated out per group by 32-node Gauss–Hermite quadrature; the scale `log σ`
 # (the `sigma` slot, size θ = 1/σ²) is a fixed effect. Same scheme as the Poisson
 # GLMM.
-function _fit_negbin2_ranef(fam::NegBinomial2, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol)
+function _fit_negbin2_ranef(fam::NegBinomial2, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol; K::Int = _RANEF1D_AGHQ_K)
     n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     members = [Int[] for _ in 1:G]
     for i in 1:n
         push!(members[gidx[i]], i)
     end
     yint = round.(Int, y)
-    z, w = _gauss_hermite(32); logw = log.(w); K = length(z); rt2 = sqrt(2.0); lπ = log(π)
+    rule = _AGHQRule(1, K); Zre = ones(n, 1); bcache = zeros(1, G)   # #719: per-group AGHQ
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]; σb = exp(θ[pμ+pσ+1])
         η0 = Xμ * βμ; ησ = clamp.(Xσ * βσ, -20.0, 20.0)
-        s = zero(eltype(θ))
-        for idx in members
-            isempty(idx) && continue
-            terms = Vector{eltype(θ)}(undef, K)
-            for k in 1:K
-                δ = rt2 * σb * z[k]
-                gll = logw[k]
-                for i in idx
-                    μ = exp(clamp(η0[i] + δ, -20.0, 20.0)); r = exp(-2 * ησ[i]); p = r / (r + μ)
-                    gll += logpdf(_nb2(r, p), yint[i])
-                end
-                terms[k] = gll
-            end
-            mx = maximum(terms)
-            s -= (-0.5 * lπ + mx + log(sum(exp.(terms .- mx))))
-        end
-        return s
+        ll = (i, η) -> (μ = exp(clamp(η, -20.0, 20.0)); r = exp(-2 * ησ[i]); p = r / (r + μ);
+                        logpdf(_nb2(r, p), yint[i]))
+        L = reshape([σb], 1, 1)
+        return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache)
     end
     m = sum(y) / n; v = sum(abs2, y .- m) / max(n - 1, 1)
     θ0 = zeros(pμ + pσ + 1)
@@ -238,42 +231,26 @@ end
 # NB2 count GLMM with a CORRELATED random intercept+slope (1 + x | g) on log μ:
 # per group (b0,b1) ~ N(0, Σ_re), Σ_re a 2×2 covariance (log-Cholesky a, b, c).
 # Unlike the Gaussian case there is no closed-form marginal (b enters μ through
-# exp), so the 2-D prior integral is done by tensor-product Gauss–Hermite: with
-# (b0,b1) = √2 L (z_j, z_k) the prior turns into Σ_{j,k} w_j w_k·(likelihood at
-# that node). O(G·K²·m̄) per eval, fully differentiable. Mirrors the Poisson /
+# exp), so each group's 2-D integral is done by per-group ADAPTIVE Gauss–Hermite
+# quadrature (`_aghq_marginal_loglik`, #834: nodes b̂_g + √2 C z at each group's
+# mode), `nq` nodes per axis. Mirrors the Poisson /
 # NB2 random-intercept route extended to two dimensions; the `recov` block and
 # names follow the Gaussian correlated fit so `vc(fit)` reconstructs Σ.
-function _fit_negbin2_corr_ranef(fam::NegBinomial2, y, Xμ, Xσ, xs, gidx, G, nmμ, nmσ, grp, g_tol)
+function _fit_negbin2_corr_ranef(fam::NegBinomial2, y, Xμ, Xσ, xs, gidx, G, nmμ, nmσ, grp, g_tol; nq::Int = _CORR_RANEF_AGHQ_K)
     n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     members = [Int[] for _ in 1:G]
     for i in 1:n
         push!(members[gidx[i]], i)
     end
     yint = round.(Int, y)
-    z1, w1 = _gauss_hermite(12); lw = log.(w1); K = length(z1); rt2 = sqrt(2.0); lπ = log(π)
+    rule = _AGHQRule(2, nq); Zre = hcat(ones(n), Float64.(xs)); bcache = zeros(2, G)   # #834: per-group AGHQ
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
-        a = θ[pμ+pσ+1]; b = θ[pμ+pσ+2]; cc = θ[pμ+pσ+3]
-        l11 = exp(a); l22 = exp(b)                 # L = [l11 0; cc l22], Σ_re = L Lᵀ
+        L = _corr_ranef_L(θ[pμ+pσ+1], θ[pμ+pσ+2], θ[pμ+pσ+3])   # Σ_re = L Lᵀ
         η0 = Xμ * βμ; ησ = clamp.(Xσ * βσ, -20.0, 20.0)
-        s = zero(eltype(θ))
-        for idx in members
-            isempty(idx) && continue
-            terms = Vector{eltype(θ)}(undef, K * K); t = 0
-            for j in 1:K, k in 1:K
-                t += 1
-                b0 = rt2 * l11 * z1[j]; b1 = rt2 * (cc * z1[j] + l22 * z1[k])   # √2 L z
-                gll = lw[j] + lw[k]
-                for i in idx
-                    μ = exp(clamp(η0[i] + b0 + b1 * xs[i], -20.0, 20.0)); r = exp(-2 * ησ[i]); p = r / (r + μ)
-                    gll += logpdf(_nb2(r, p), yint[i])
-                end
-                terms[t] = gll
-            end
-            mx = maximum(terms)
-            s -= (-lπ + mx + log(sum(exp.(terms .- mx))))   # 2-D Gaussian factor: −log π
-        end
-        return s
+        ll = (i, η) -> (μ = exp(clamp(η, -20.0, 20.0)); r = exp(-2 * ησ[i]); p = r / (r + μ);
+                        logpdf(_nb2(r, p), yint[i]))
+        return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache)
     end
     m = sum(y) / n; v = sum(abs2, y .- m) / max(n - 1, 1)
     θ0 = zeros(pμ + pσ + 3)
@@ -330,6 +307,76 @@ function _fit_negbin2_zi(fam::NegBinomial2, y, Xμ, Xσ, Xzi, nmμ, nmσ, nmzi, 
         Optim.iterations(res))
 end
 
+# Numerically stable NB2 log-pmf log f(k; r, μ) — used in place of
+# `logpdf(NegativeBinomial(r, r/(r+μ)), k)` wherever a zero-truncation term
+# divides out P(0). Distributions' NegativeBinomial(r, p) forms p = r/(r+μ) and
+# r + μ directly: once the dispersion (`sigma`) linear predictor is extreme
+# enough that size r = exp(-2·ησ) ≫ μ (near-Poisson dispersion, r ~ 1e17-1e43 at
+# log σ ≈ -20..-50, #866), μ is smaller than r's ULP and r + μ rounds to EXACTLY
+# r: p rounds to EXACTLY 1.0, so log(1 - p) = log(0) = -Inf for every k > 0 while
+# logpdf(·, 0) still comes out finite (it needs no log(1 - p) term). The
+# hurdle's `_log1mexp(logpdf(d, 0))` — dividing out P(0) for the zero-truncated
+# positive part — then computes -Inf - (-Inf) = NaN (#866; #846 fixed the
+# analogous cancellation on the `(1|g)` AGHQ path). Working entirely in log1p
+# space avoids ever forming r + μ: log p = -log1p(μ/r) and log(1-p) =
+# log μ - log r - log1p(μ/r), both finite as μ/r → 0 (the r → ∞ limit is
+# Poisson, Var → μ).
+#
+# loggamma(k+r) - loggamma(r) — O(1) per call (#883, review of #871/#874/#876):
+# the original Σ_{j=0}^{k-1} log(r+j) is exact but O(k), which made every
+# hurdle/TNB2 fit and quantile residual on ordinary large-count data (k in the
+# thousands) 55×-2500× slower (measured). Three regimes, chosen so every one
+# stays within 1e-10 relative error of a 512-bit BigFloat reference over
+# k ∈ {0,…,1e6}, r ∈ {1e-3,…,1e40}:
+#   - k ≤ 32: keep the exact O(k) sum (bounded cost, and safest at small k).
+#   - r ≫ k (r > 1e6·(k+1)): direct loggamma(k+r) - loggamma(r) cancels
+#     catastrophically (both are ~r·log(r), and their O(k·log r) difference is
+#     swamped by float64's ~eps·r·log(r) rounding floor once r/k is large).
+#     Use the asymptotic expansion in x = j/r instead: log(r+j) = log(r) +
+#     log1p(j/r), so Σ log(r+j) = k·log(r) + Σ log1p(j/r), and for j ≤ k-1 ≪ r
+#     the Taylor series of log1p(j/r) in powers of 1/r can be summed in closed
+#     form via the power sums Σj, Σj², Σj³, Σj⁴ (O(1), no loop over j).
+#   - otherwise: direct loggamma(k+r) - loggamma(r) (SpecialFunctions.loggamma
+#     is itself accurate to ~eps at any argument; the difference is only
+#     cancellation-prone once r ≫ k, handled above).
+function _nb2_loggammadiff(r, k::Integer)
+    k == 0 && return 0.0
+    if k <= 32
+        s = 0.0
+        for j in 0:(k-1)
+            s += log(r + j)
+        end
+        return s
+    elseif r > 1e6 * (k + 1)
+        n = k - 1                      # j runs 0:n
+        S1 = n * (n + 1) / 2
+        S2 = n * (n + 1) * (2n + 1) / 6
+        S3 = (n * (n + 1) / 2)^2
+        S4 = n * (n + 1) * (2n + 1) * (3.0n^2 + 3.0n - 1) / 30
+        return k * log(r) + S1 / r - S2 / (2r^2) + S3 / (3r^3) - S4 / (4r^4)
+    else
+        return loggamma(k + r) - loggamma(r)
+    end
+end
+
+function _nb2_logpmf(r, μ, k::Integer)
+    l1p = log1p(μ / r)                          # log(1+μ/r), for -r·log(1+μ/r)
+    s = -r * l1p - loggamma(k + 1) + _nb2_loggammadiff(r, k)
+    if k != 0
+        # k·(log μ - log r - l1p): computing this directly cancels
+        # catastrophically once μ ≫ r (l1p ≈ log(μ/r) to many digits there,
+        # #883's 1e-10 accuracy bar at k ~ 1e5-1e6 needs the stable form). The
+        # stable rewrite is -k·log1p(r/μ) — but only take it when μ ≥ r, so
+        # r/μ ≤ 1 and can never overflow; on the other side (r ≫ μ, e.g. μ
+        # underflowing towards 0 at extreme dispersion) r/μ can itself
+        # overflow to Inf while the direct subtraction is perfectly
+        # well-conditioned there (no cancellation: the true value is large in
+        # magnitude, matching the operands), so keep the direct form.
+        s += μ >= r ? -k * log1p(r / μ) : k * (log(μ) - log(r) - l1p)
+    end
+    return s
+end
+
 # Hurdle NB2: P(0) = π, P(k>0) = (1-π)·NB(k)/(1-NB(0)) [zero-truncated], with
 # π = logistic(Xhuᵀβ) the hurdle (zero) probability. Uses `_log1mexp` (poisson.jl).
 function _fit_negbin2_hu(fam::NegBinomial2, y, Xμ, Xσ, Xhu, nmμ, nmσ, nmhu, g_tol)
@@ -345,9 +392,8 @@ function _fit_negbin2_hu(fam::NegBinomial2, y, Xμ, Xσ, Xhu, nmμ, nmσ, nmhu, 
             if iszero_y[i]
                 s -= lπ
             else
-                μ = exp(ημ[i]); r = exp(-2 * ησ[i]); p = r / (r + μ)
-                d = _nb2(r, p)
-                s -= l1mπ + logpdf(d, yint[i]) - _log1mexp(logpdf(d, 0))
+                μ = exp(ημ[i]); r = exp(-2 * ησ[i])
+                s -= l1mπ + _nb2_logpmf(r, μ, yint[i]) - _log1mexp(_nb2_logpmf(r, μ, 0))
             end
         end
         return s
@@ -478,9 +524,14 @@ function _fit_truncated_negbin2(fam::TruncatedNegBinomial2, y, Xμ, Xσ, nmμ, n
         ημ = clamp.(Xμ * βμ, -20.0, 20.0); ησ = clamp.(Xσ * βσ, -20.0, 20.0)
         s = zero(eltype(θ))
         @inbounds for i in 1:n
-            μ = exp(ημ[i]); r = exp(-2 * ησ[i]); p = r / (r + μ)
-            d = _nb2(r, p)
-            s -= logpdf(d, yint[i]) - _log1mexp(logpdf(d, 0))   # divide out P(0): zero-truncated
+            μ = exp(ημ[i]); r = exp(-2 * ησ[i])
+            # `_nb2_logpmf` (not `logpdf(_nb2(r,p), ·)`): at extreme dispersion
+            # (log σ ≈ -20..-50, r ~ 1e17-1e43, #866) r + μ rounds to EXACTLY r
+            # and p rounds to EXACTLY 1.0, so `logpdf(·, 0)` is finite while
+            # `logpdf(·, k>0)` is -Inf; the zero-truncation divisor
+            # `_log1mexp(logpdf(d, 0))` then computed -Inf - (-Inf) = NaN. Same
+            # cancellation `_fit_negbin2_hu` fixed (#866; #871).
+            s -= _nb2_logpmf(r, μ, yint[i]) - _log1mexp(_nb2_logpmf(r, μ, 0))   # divide out P(0): zero-truncated
         end
         return s
     end

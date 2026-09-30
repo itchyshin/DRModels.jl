@@ -103,7 +103,7 @@ function _q4_full_refit(prob, Q_cond, ψ0::Vector{Float64}, nn::Int, g_tol::Floa
     res = Optim.optimize(Optim.only_fg!(fg!), copy(ψ0),
         Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking()),
         Optim.Options(g_tol = g_tol, iterations = 250, time_limit = 30.0))
-    return Optim.minimizer(res), Optim.minimum(res)
+    return Optim.minimizer(res), _objective_at_minimizer_fg(fg!, res)
 end
 
 # Shared marginal NLL + FULL ψ-gradient with the Inf robustness barrier. Returns
@@ -153,7 +153,7 @@ function _q4_profile_axis(prob, Q_cond, ψ̂::Vector{Float64}, nβ::Int, a::Int,
             res = Optim.optimize(Optim.only_fg!(fg!), copy(start),
                 Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking()),
                 Optim.Options(g_tol = g_tol, iterations = 150, time_limit = 15.0))
-            m = Optim.minimum(res)
+            m = _objective_at_minimizer_fg(fg!, res)
             if isfinite(m) && m < best
                 best = m; bestψ = Optim.minimizer(res); u_cache[] = uc[]
             end

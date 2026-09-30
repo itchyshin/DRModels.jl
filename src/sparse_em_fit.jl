@@ -159,6 +159,7 @@ function mstep_beta(prob::AugProblem, u::Vector{Float64}, β; n_newton=25, tol=1
             ch = cholesky(Symmetric(Matrix(H)) + λ*I; check=false)
             if issuccess(ch); step = ch \ g; break; end
         end
+        step = cap_newton_step(step)   # trust radius BEFORE backtracking (same guard as cond_newton_beta)
         f0=f(θ); α=1.0; θn=θ.-α.*step
         for _bt in 1:25
             (f(θn)<=f0 || α<1e-8) && break

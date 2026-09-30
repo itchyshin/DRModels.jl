@@ -11,7 +11,7 @@ using StatsModels: @formula, FormulaTerm, Term, ConstantTerm, FunctionTerm,
     schema, apply_schema, modelcols, coefnames
 using Statistics: std, mean
 using Random: default_rng
-import StatsAPI: coef, vcov, nobs, fitted, residuals, predict, aic, bic, dof, deviance, dof_residual, StatisticalModel
+import StatsAPI: coef, vcov, nobs, fitted, residuals, predict, aic, bic, dof, deviance, dof_residual, StatisticalModel, loglikelihood
 import Tables
 
 """
@@ -33,7 +33,17 @@ struct DrmFormula
     response::Symbol
     forms::Vector{Pair{Symbol,Any}}
     response2::Any   # second response column (failures), for `cbind(s, f)` beta-binomial; else nothing
+    # Populated at fit time (`drm(f::DrmFormula, ...)`, gaussian_core.jl) with the
+    # `StatsModels.schema(...)` object built from the TRAINING data, one entry per
+    # distributional parameter (`:mu`, `:sigma`, …). `predict` / `predict_parameters`
+    # reuse it so a factor predictor's contrasts/level order/reference level come
+    # from the fitted data, not from whatever rows `newdata` happens to contain
+    # (issue #609 item 1: subset, reordered, or unseen levels in `newdata`).
+    schema_cache::Base.RefValue{Dict{Symbol,Any}}
 end
+
+DrmFormula(response::Symbol, forms::Vector{Pair{Symbol,Any}}, response2) =
+    DrmFormula(response, forms, response2, Ref(Dict{Symbol,Any}()))
 
 # 2-arg convenience: single-column response (the common case).
 DrmFormula(response::Symbol, forms::Vector{Pair{Symbol,Any}}) = DrmFormula(response, forms, nothing)
@@ -374,7 +384,7 @@ end
 # predictor matrix. If the real response contains `missing` / `NaN`, the formula
 # builder gets a numeric placeholder column while the returned `y` keeps `NaN`
 # at unobserved response positions.
-function _design(response::Symbol, rhs, data)
+function _design(response::Symbol, rhs, data; schema_cache = nothing, schema_key = nothing)
     raw_response = _table_column(data, response)
     y_response, observed = _coerce_response_column(raw_response)
     design_data = all(observed) ? data :
@@ -382,9 +392,33 @@ function _design(response::Symbol, rhs, data)
     ft = FormulaTerm(Term(response), rhs)
     # The 3-arg apply_schema with a StatisticalModel context adds R's implicit
     # intercept (so `y ~ x` means `y ~ 1 + x`, matching drmTMB); explicit
-    # `1 + x` / `0 + x` are respected.
-    ft = apply_schema(ft, schema(ft, design_data), StatisticalModel)
-    _, X = modelcols(ft, design_data)
+    # `1 + x` / `0 + x` are respected. `schema_cache`/`schema_key`, when given
+    # (issue #609 item 1), make this call read-through a cache keyed by
+    # distributional parameter: the FIRST call (at fit time, `data` = training
+    # data) computes the schema and stores it; a later call with the same key
+    # (`predict`/`predict_parameters` on `newdata`) reuses that TRAINING schema
+    # instead of rebuilding factor contrasts/levels from whatever rows `newdata`
+    # happens to contain — `apply_schema` then raises a clear error if `newdata`
+    # carries a factor level the training schema never saw.
+    reused_training_schema = schema_cache !== nothing && haskey(schema_cache[], schema_key)
+    sch = if reused_training_schema
+        schema_cache[][schema_key]
+    else
+        s = schema(ft, design_data)
+        schema_cache !== nothing && (schema_cache[][schema_key] = s)
+        s
+    end
+    ft = apply_schema(ft, sch, StatisticalModel)
+    _, X = try
+        modelcols(ft, design_data)
+    catch e
+        if reused_training_schema
+            throw(ArgumentError("predict: `newdata` contains a factor level not seen when " *
+                "the model was fitted (parameter `$(schema_key)`); refit including that level, " *
+                "or drop the offending rows from `newdata`. Original error: " * sprint(showerror, e)))
+        end
+        rethrow(e)
+    end
     Xm = X isa AbstractMatrix ? Matrix{Float64}(X) : reshape(Float64.(collect(X)), :, 1)
     return y_response, Xm, String.(vec(coefnames(ft.rhs)))
 end
@@ -450,9 +484,13 @@ implemented for:
 (b) a single Gaussian mean random intercept `(1 | g)` on the Woodbury spine (#439),
 (c) Location–Scale–Scale (LSS) models (`sd(g) ~ z`, `sd(species, phylogenetic) ~ z`,
     and multi-component LSS models; #558), and
-(d) the bivariate q=4 PLSM Laplace engine (`reml_q4`).
+(d) the bivariate q=4 PLSM Laplace engine (`reml_q4`), and
+(e) the Gaussian `phylo(1 | g)`-on-`sigma` location–scale routes (scale-only,
+    separate, and `phylo_coupled = true`), where one joint Laplace approximation
+    integrates the phylo effects and BOTH the mean and scale fixed effects — the
+    restricted likelihood native drmTMB maximises.
 
-σ-RE, random slopes, and non-Gaussian REML stay rejected. REML likelihoods are
+Ordinary σ-RE, random slopes, and non-Gaussian REML stay rejected. REML likelihoods are
 not comparable across fixed-effect structures.
 
 ## `marginal`: how a random effect on `sigma` is integrated
@@ -479,9 +517,12 @@ are parameterised over all G levels, while the likelihood is evaluated on
 observed rows.
 """
 function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree = nothing, coords = nothing, g_tol::Real = 1e-8, algorithm::Symbol = :auto, method::Symbol = :ML, profile_ci::Bool = false, phylo_coupled::Bool = false, penalty = nothing, sparse = nothing, impute = nothing, missing = nothing, marginal::Symbol = :LA)
-    laplace = _gaussian_marginal(marginal)
-    laplace && _gaussian_laplace_validate(f, fam, data, algorithm, method, penalty,
-                                          phylo_coupled, sparse, impute, missing)
+    mkind = _gaussian_marginal(marginal)
+    laplace = mkind === :Laplace
+    aghq = mkind === :AGHQ
+    (laplace || aghq) && _gaussian_laplace_validate(f, fam, data, algorithm, method, penalty,
+                                          phylo_coupled, sparse, impute, missing;
+                                          requested = laplace ? "Laplace" : "AGHQ")
     algorithm in (:auto, :gls, :lbfgs, :em, :sparse, :sparse_lbfgs) ||
         throw(ArgumentError("drm: `algorithm` must be one of :auto, :gls, :lbfgs, :em, :sparse, :sparse_lbfgs (got :$algorithm)"))
     method in (:ML, :REML) ||
@@ -518,8 +559,12 @@ function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree 
                                 "fit is a maximum-a-posteriori (MAP) estimator and REML is a " *
                                 "restricted-likelihood estimator. Use `method = :ML` (the default)."))
     end
-    y, Xμ, nmμ = _design(f.response, fixed_mu, data)
-    _, Xσ, nmσ = _design(f.response, fixed_sigma, data)
+    # `schema_cache`/`schema_key`: caches the TRAINING schema (factor
+    # contrasts/levels) per parameter so `predict`/`predict_parameters` on
+    # `newdata` reuse it (issue #609 item 1) instead of rebuilding contrasts
+    # from whatever rows `newdata` happens to contain.
+    y, Xμ, nmμ = _design(f.response, fixed_mu, data; schema_cache = f.schema_cache, schema_key = :mu)
+    _, Xσ, nmσ = _design(f.response, fixed_sigma, data; schema_cache = f.schema_cache, schema_key = :sigma)
     response_observed = _observed_response_mask(y)
     has_missing_response = !all(response_observed)
     all_structured = _collect_structured(rhs[:mu])
@@ -658,8 +703,10 @@ function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree 
             gidx_sigma = gidx_sigma[response_observed]
         end
 
-        # method = :REML integrates β_μ out of the Laplace marginal (Patterson–Thompson
-        # restricted likelihood). This branch returns BEFORE the generic :REML validator
+        # method = :REML integrates β_μ AND β_σ out jointly with the phylo effects in one
+        # Laplace approximation — native drmTMB's restricted likelihood for a σ variance
+        # component (Arc 2, `_glsp_joint_reml_fit`), on the asymmetric, separate and
+        # coupled (`phylo_coupled = true`) blocks. This branch returns BEFORE the generic :REML validator
         # below, so capture it here and thread it to the engine. (REML across the phylo
         # RE structure is not comparable across mean structures — the aic/bic/lrtest guard
         # keys off estim_method; ML stays the default.)
@@ -673,8 +720,6 @@ function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree 
             mu_grp === sigma_grp ||
                 error("drm (Gaussian): σ-phylo and μ-phylo must share the same grouping factor " *
                       "(got :$(mu_grp) vs :$(sigma_grp)); cross-grouping σ-phylo is planned for a later slice")
-            reml && phylo_coupled &&
-                error("drm (Gaussian): phylo_coupled=true is ML-only; coupled mean-sigma phylo REML is not implemented")
             # `structured` only captures the FIRST structured mean marker; guard against a
             # SECOND being silently dropped (e.g. mu ~ phylo(1|g) + animal(1|g) with σ-phylo).
             length(all_structured) == 1 ||
@@ -706,7 +751,7 @@ function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree 
         return _withformula(fit, f)
     end
     phylo_coupled &&
-        throw(ArgumentError("drm: `phylo_coupled` is an internal bridge option for Gaussian mu+sigma phylo ML fits"))
+        throw(ArgumentError("drm: `phylo_coupled` is an internal bridge option for Gaussian mu+sigma phylo fits (ML or REML)"))
     if method === :REML
         # REML (opt-in) is implemented for (a) the fixed-effect univariate
         # Gaussian location–scale cell and (b) a single mean random intercept
@@ -737,7 +782,12 @@ function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree 
             isempty(re) && isempty(sigma_re) && metav === nothing &&
             size(Xσ, 2) == 1 && !has_missing_response &&
             algorithm in (:auto, :sparse_lbfgs)
-        (ordinary_mean_intercept || phylo_mean_only ||
+        # (d) a single correlated Gaussian mean random slope `(1 + x | g)` with no sigma RE
+        # (`_fit_correlated_ranef_gaussian(; reml = true)`, ML path unchanged).
+        corr_mean_slope = length(re) == 1 && _re_kind(re[1][1])[1] === :corr &&
+            isempty(sigma_re) && structured === nothing && metav === nothing &&
+            length(_collect_structured(rhs[:mu])) == 0
+        (ordinary_mean_intercept || corr_mean_slope || phylo_mean_only ||
          (isempty(re) && isempty(sigma_re) && structured === nothing &&
           metav === nothing && length(_collect_structured(rhs[:mu])) == 0)) ||
             throw(ArgumentError("drm: method = :REML is not implemented for this model on the " *
@@ -745,7 +795,7 @@ function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree 
                 "a structured mean marker — phylo/relmat/animal/spatial — without a matching " *
                 "sd() submodel, and meta_V() all land here). REML IS available for: the " *
                 "fixed-effect Gaussian location–scale model; a single Gaussian mean random " *
-                "intercept `(1 | g)`; every sd() LSS route (`sd(g)`, `sd_phylo` dense and " *
+                "intercept `(1 | g)` or correlated slope `(1 + x | g)`; every sd() LSS route (`sd(g)`, `sd_phylo` dense and " *
                 "sparse, and the multi-component sd() router); the bivariate structured " *
                 "routes (q=2 and q=4, both native and via drm_bridge); and Poisson `(1 | g)` " *
                 "and Poisson `phylo(1 | species)`. Use method = :ML (the default) for this " *
@@ -835,6 +885,41 @@ function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree 
                 "bridge, or `drm_listwise` natively) is the supported route there."))
         end
     end
+    # Simultaneous mean + sigma random intercepts (#745, twin drmTMB #1287):
+    # `y ~ x + (1 | g), sigma ~ (1 | g)`. drmTMB admits this by handing TMB the
+    # full random vector (u_mu, u_sigma) and letting its black-box nested
+    # Laplace integrate both jointly (`src/drmTMB.cpp` model_type 1, independent
+    # `dnorm(u_mu,0,1)` / `dnorm(u_sigma,0,1)` priors, no cross-dpar correlation
+    # unless a coupled `(1 | tag | group)` tag is used — not this formula).
+    # Dispatched BEFORE the sigma-RE-only branch below (which refuses this
+    # exact combination) so the twin gap does not silently fall through to it.
+    if !isempty(sigma_re) && !isempty(re)
+        (structured === nothing && metav === nothing) ||
+            error("drm (Gaussian): a random effect on `sigma` combined with a mean random " *
+                  "effect does not support a structured (phylo/relmat/animal/spatial) mean " *
+                  "marker or `meta_V(...)` yet (#745 covers the plain `(1 | g)` + `(1 | g)` cell)")
+        (length(re) == 1 && _re_kind(re[1][1])[1] === :intercept) ||
+            error("drm (Gaussian): simultaneous mean + `sigma` random effects support a " *
+                  "single mean random INTERCEPT `(1 | g)` (no slopes, no crossed/multiple " *
+                  "terms) — got $(length(re)) term(s) on the mean")
+        (length(sigma_re) == 1 && _re_kind(sigma_re[1][1])[1] === :intercept) ||
+            error("drm (Gaussian): simultaneous mean + `sigma` random effects support a " *
+                  "single `sigma` random INTERCEPT `(1 | g)` — got $(length(sigma_re)) term(s)")
+        mgrp = re[1][2]; sgrp = sigma_re[1][2]
+        mgrp === sgrp ||
+            error("drm (Gaussian): simultaneous mean + `sigma` random effects are implemented " *
+                  "only when both share the SAME grouping factor (got `(1 | $mgrp)` on the " *
+                  "mean and `(1 | $sgrp)` on sigma) — the per-group 2×2 Laplace block this " *
+                  "route uses requires one group per observation shared by both axes; " *
+                  "different/crossed groups are not implemented (#745)")
+        # `has_missing_response` and `method === :REML` are already refused above
+        # this point for ANY non-empty `re` — the generic missing-response guard
+        # and the `if method === :REML` validator both throw before a formula
+        # with a mean random effect can reach here, so this branch is ML/
+        # complete-response only by construction; no additional check needed.
+        gidx, G = _group_index(getproperty(data, mgrp))
+        return _withformula(_fit_musigma_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, mgrp, g_tol), f)
+    end
     if !isempty(sigma_re)                                      # random effect on log σ
         (isempty(re) && structured === nothing && metav === nothing) ||
             error("a random effect on `sigma` must be the only random structure (the mean must be fixed effects)")
@@ -843,7 +928,7 @@ function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree 
         sgrp = sigma_re[1][2]
         gidx, G = _group_index(getproperty(data, sgrp))
         return _withformula(_fit_sigma_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, sgrp, g_tol;
-                                                      laplace = laplace), f)
+                                                      laplace = laplace, aghq = aghq), f)
     end
     # Meta-analysis with random intercepts on the mean (Arc 2): `meta_V(v)` plus
     # any mix of `(1 | g)`, `phylo(1 | g)`, `relmat(1 | g)`, `animal(1 | g)`.
@@ -1027,7 +1112,8 @@ function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree 
         (_, grp) = re[1]; (_, var) = re_kinds[1]
         gidx, G = _group_index(getproperty(data, grp))
         xs = Float64.(getproperty(data, var))
-        return _withformula(_fit_correlated_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, xs, nmμ, nmσ, grp, g_tol), f)
+        return _withformula(_fit_correlated_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, xs, nmμ, nmσ, grp, g_tol;
+                                                          reml = method === :REML), f)
     end
     any(k -> k[1] === :corr, re_kinds) &&
         error("a correlated `(1 + x | g)` block must be the only random-effect term")
@@ -1532,7 +1618,8 @@ function predict(fit::DrmFit, newdata; type::Symbol = :response, se::Bool = fals
         # must still yield its fixed design here; the flag only relaxes parsing.
         fixed_mu, _, _, _ = _split_ranef(Dict(f.forms)[:mu]; allow_phylo_slope = true)
         ndr = merge(nd, NamedTuple{(f.response,)}((zeros(nrows),)))
-        _, Xnew, _ = _design(f.response, fixed_mu, ndr)
+        _, Xnew, _ = _design(f.response, fixed_mu, ndr;
+                              schema_cache = f.schema_cache, schema_key = :mu)
         η = Xnew * coef(fit, :mu)
         pred = type === :link ? η : _mean_response(fit.family, η)
         se || return pred
@@ -1730,7 +1817,11 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
         haskey(forms, p) || continue          # skip RE-SD / cutpoint blocks (:resd, :recov, :cutpoints, …)
         resp = bivar ? (p === :mu2 ? f.response2 : f.response1) : f.response
         fixed_p, _, _, _ = _split_ranef(forms[p]; allow_phylo_slope = true)   # #620 fits keep predicting
-        _, Xp, _ = _design(resp, fixed_p, ndr)
+        _, Xp, _ = if bivar
+            _design(resp, fixed_p, ndr)
+        else
+            _design(resp, fixed_p, ndr; schema_cache = f.schema_cache, schema_key = p)
+        end
         ηp = Xp * coef(fit, p)
         val = type === :link ? ηp : _param_response(fit.family, p, ηp)
         if se
@@ -2095,6 +2186,16 @@ log-likelihood at the REML estimate) when an ML-comparable value is needed.
 loglik(fit::DrmFit) = fit.loglik
 
 """
+    loglikelihood(fit) -> Float64
+
+The StatsAPI/StatsBase-facing alias for [`loglik`](@ref) — anything that
+dispatches on the generic `loglikelihood` (from the `StatsAPI.StatisticalModel`
+interface) can call it on a `DrmFit`. Returns exactly the same value as
+`loglik(fit)`, with the same REML caveat.
+"""
+loglikelihood(fit::DrmFit) = loglik(fit)
+
+"""
     estimation_method(fit) -> Symbol
 
 The estimator used to fit the model: `:ML` (default) or `:REML`
@@ -2195,6 +2296,7 @@ a one-time warning is emitted. Use ML for cross-mean-structure selection.
 function aic(fit::DrmFit)
     _va_infocrit_guard(fit, "aic")
     _reml_infocrit_warn(fit, "aic")
+    _sentinel_infocrit_nan(fit, "aic") && return NaN
     return -2 * fit.loglik + 2 * length(fit.theta)
 end
 
@@ -2209,35 +2311,86 @@ On a **REML** fit this carries the same variance-only-comparison caveat as
 function bic(fit::DrmFit)
     _va_infocrit_guard(fit, "bic")
     _reml_infocrit_warn(fit, "bic")
+    _sentinel_infocrit_nan(fit, "bic") && return NaN
     return -2 * fit.loglik + length(fit.theta) * log(fit.nobs)
 end
 
 """
-    re_sd(fit) -> Dict{Symbol,Float64}
+    re_sd(fit; scale = :native, tree = nothing) -> Dict{Symbol,Float64}
 
-Estimated random-effect (random-intercept) standard deviations, keyed by
-grouping factor. A mean-axis random intercept (`y ~ x + (1|g)`) is keyed by the
-bare group name and is on the response scale. A scale-axis random intercept
-(`sigma ~ 1 + (1|g)`) is keyed `<group>_logsigma` because that SD lives on the
-log-σ scale — the two are NOT directly comparable, and the suffix keeps them
-distinct so a side-by-side read is not silently mixing scales.
+Estimated random-effect standard deviations, keyed by grouping factor. A
+mean-axis random intercept (`y ~ x + (1|g)`) or independent slope
+(`y ~ x + (0+x|g)`) is keyed by the bare group name and is on the response
+scale. A scale-axis random intercept (`sigma ~ 1 + (1|g)`) is keyed
+`<group>_logsigma` because that SD lives on the log-σ scale — the two are NOT
+directly comparable, and the suffix keeps them distinct so a side-by-side read
+is not silently mixing scales. A correlated random intercept+slope block
+(`(1 + x | g)`) is keyed `<group>_intercept` and `<group>_slope`, consistent
+with `sqrt.(diag(vc(fit)[:g]))`; the correlation itself is not returned here —
+use [`vc`](@ref) for the full 2×2 covariance.
+
+## `scale` (#732, twin drmTMB#1272)
+
+For a `phylo(1 | g)` grouping fitted on the default raw branch-length
+covariance (`fit.phylo_scale === :covariance`, the sparse Gaussian-mean and all
+non-Gaussian Laplace/GLMM phylo routes), `re_sd`'s default `scale = :native`
+returns σ on that raw branch-length scale (tip variance = the tree's height
+`h`). drmTMB instead reports the phylogenetic SD on the tip-correlation scale
+(`ape::vcv(tree, corr = TRUE)`, tip variance 1 regardless of `h`); the two
+quantities differ by the exact factor `sqrt(h)`
+(`sd_drmTMB == re_sd(fit)[:g] * sqrt(phylo_tree_height(augmented_phy(tree)))`,
+confirmed against `drmTMB` 0.7.1 to within optimiser tolerance on both a
+Gaussian and a non-Gaussian (`CumulativeLogit`) phylo fit — see
+`test/test_twin_gap_732.jl`).
+
+Pass `scale = :drmtmb` and the SAME `tree` (or `newick` string) given to
+`drm(...)` to get drmTMB's number directly instead of doing that conversion by
+hand:
+
+    re_sd(fit; scale = :drmtmb, tree = tree)
+
+For a fit whose phylo/relmat term was instead built on the tip-correlation
+matrix already (`fit.phylo_scale === :correlation`), `scale = :drmtmb` is a
+no-op (that route's raw `re_sd` already matches drmTMB) and `tree` is not
+required. `scale = :drmtmb` on a fit with no random effects returns the empty
+`Dict`. `scale = :native` (the default) is unchanged from before this option
+existed.
 """
-function re_sd(fit::DrmFit)
+function re_sd(fit::DrmFit; scale::Symbol = :native, tree = nothing)
     # Location–scale–scale fits (#544) model the RE SD with covariates, so a
     # single per-grouping SD is ill-defined — refuse rather than misreport.
     any(p -> first(p) in (:sd, :sd_phylo), fit.blocks) &&
         throw(ArgumentError("re_sd: this fit models the random-effect SD with covariates " *
             "(`sd(group) ~ …`), so a single SD per grouping is not defined. Use " *
             "`coef(fit, :sd)` for the log-SD coefficients."))
+    scale in (:native, :drmtmb) ||
+        throw(ArgumentError("re_sd: `scale` must be :native or :drmtmb, got $(repr(scale))."))
     d = Dict{Symbol,Float64}()
     for (p, r) in fit.blocks
-        p === :resd || continue
-        nms = first(cn[2] for cn in fit.coefnames if cn[1] === :resd)
-        for (j, nm) in enumerate(nms)
-            d[Symbol(nm)] = exp(fit.theta[r[j]])
+        if p === :resd
+            nms = first(cn[2] for cn in fit.coefnames if cn[1] === :resd)
+            for (j, nm) in enumerate(nms)
+                d[Symbol(nm)] = exp(fit.theta[r[j]])
+            end
+        elseif p === :recov
+            # Same Cholesky decoding as vc(fit): l11 = intercept SD, and the
+            # slope SD is sqrt(cc^2 + l22^2) (the (2,2) entry of L*L').
+            a, b, cc = fit.theta[r]
+            l11 = exp(a); l22 = exp(b)
+            nm = first(cn[2] for cn in fit.coefnames if cn[1] === :recov)[1]   # "g:L11"
+            grp = split(nm, ":")[1]
+            d[Symbol(grp * "_intercept")] = l11
+            d[Symbol(grp * "_slope")] = sqrt(cc^2 + l22^2)
         end
     end
-    return d
+    scale === :native && return d
+    (isempty(d) || fit.phylo_scale === :correlation) && return d
+    tree === nothing && throw(ArgumentError("re_sd: scale = :drmtmb needs `tree = ...` " *
+        "(the SAME tree/newick passed to `drm(...)`) to convert the raw branch-length SD " *
+        "to drmTMB's tip-correlation scale — see the `re_sd` docstring (#732)."))
+    phy = tree isa AugmentedPhy ? tree : augmented_phy(tree)
+    factor = sqrt(phylo_tree_height(phy))
+    return Dict(k => v * factor for (k, v) in d)
 end
 
 """
@@ -2249,7 +2402,7 @@ fixef(fit::DrmFit) =
     [p => (names = ns, estimate = coef(fit, p)) for ((p, _), (_, ns)) in zip(fit.blocks, fit.coefnames)]
 
 function Base.show(io::IO, fit::DrmFit)
-    print(io, "DrmFit (Gaussian location–scale, ", fit.nobs, " obs, ",
+    print(io, "DrmFit (", _family_name(fit.family), ", ", fit.nobs, " obs, ",
         fit.converged ? "converged" : "NOT converged",
         "; logLik = ", round(fit.loglik, digits = 2), ")")
     for (p, _) in fit.blocks

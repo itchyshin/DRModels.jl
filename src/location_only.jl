@@ -582,18 +582,13 @@ function _loconly_reml_local_profile_diagnostic(prob::LocOnlyProblem, lσ::Real,
     )
 end
 
+# Guarded: a failed probe (non-finite, or the `_LOCONLY_PENALTY` sentinel) returns an
+# all-NaN 2x2 matrix -- the convention every caller already uses for a failed
+# diagnostic (`finite = false`) -- instead of differencing the sentinel into a
+# finite garbage Hessian.
 function _loconly_fd_hessian2(f, θ::AbstractVector{<:Real}; h::Real = 1e-4)
-    H = zeros(2, 2)
-    x = Float64.(θ)
-    for i in 1:2, j in 1:2
-        ei = zeros(2); ej = zeros(2)
-        si = h * max(abs(x[i]), 1.0)
-        sj = h * max(abs(x[j]), 1.0)
-        ei[i] = si; ej[j] = sj
-        H[i, j] = (f(x .+ ei .+ ej) - f(x .+ ei .- ej) -
-                   f(x .- ei .+ ej) + f(x .- ei .- ej)) / (4 * si * sj)
-    end
-    return 0.5 .* (H .+ H')
+    H, ok = _fd_hessian_from_values(f, Float64.(θ); hstep = h, sentinel = _LOCONLY_PENALTY)
+    return ok ? 0.5 .* (H .+ H') : fill(NaN, 2, 2)
 end
 
 function _loconly_fd_gradient2(f, θ::AbstractVector{<:Real}; h::Real = 1e-5)
@@ -758,7 +753,7 @@ function _loconly_reml_optimizer_diagnostic(prob::LocOnlyProblem; starts = nothi
         try
             res = Optim.optimize(od, copy(start), ls, opts)
             v = Float64.(Optim.minimizer(res))
-            nll = Optim.minimum(res)
+            nll = obj(v)   # NOT Optim.minimum(res): see optim_minimum_guard.jl
             grad = _loconly_fd_gradient2(obj, v)
             record = (
                 start_index = i,
@@ -890,7 +885,7 @@ function _loconly_reml_dense_score_optimizer_diagnostic(prob::LocOnlyProblem; st
         try
             res = Optim.optimize(od, copy(start), ls, opts)
             v = Float64.(Optim.minimizer(res))
-            nll = Optim.minimum(res)
+            nll = obj(v)   # NOT Optim.minimum(res): see optim_minimum_guard.jl
             score = _loconly_reml_dense_score_diagnostic(prob, v[1], v[2]).score
             record = (
                 start_index = i,
@@ -986,7 +981,7 @@ function _loconly_reml_sparse_score_optimizer_diagnostic(prob::LocOnlyProblem; s
         try
             res = Optim.optimize(od, copy(start), ls, opts)
             v = Float64.(Optim.minimizer(res))
-            nll = Optim.minimum(res)
+            nll = obj(v)   # NOT Optim.minimum(res): see optim_minimum_guard.jl
             sparse_score = _loconly_reml_sparse_score_diagnostic(prob, v[1], v[2])
             record = (
                 start_index = i,
@@ -3465,7 +3460,7 @@ function _fit_structured_gaussian_sparse_lbfgs(
     best_val = Inf
     for start in starts
         res = Optim.optimize(od, start, ls, opts)
-        val = Optim.minimum(res)
+        val = _objective_at_minimizer_fg(fg!, res)   # NOT Optim.minimum(res): see optim_minimum_guard.jl
         if isfinite(val) && val < best_val
             best_res = res
             best_val = val

@@ -183,8 +183,11 @@ _srl_design(d, sigx) = (hcat(ones(length(d.y)), d.x),
                                                 algorithm = :sparse)
         @test_throws r"`marginal = :VA` is not available for Gaussian\(\)" drm(f, Gaussian(); data = dm,
                                                                                marginal = :VA)
-        @test_throws r"`marginal = :AGHQ` is not available for Gaussian\(\)" drm(f, Gaussian(); data = dm,
-                                                                                 marginal = :AGHQ)
+        # `marginal = :AGHQ` (test_sigma_re_aghq.jl) is now implemented for this
+        # exact shape; it shares the `:Laplace` route's shape validator, so a
+        # request outside that shape is refused BY NAME as `:AGHQ`, not `:Laplace`.
+        @test_throws r"marginal = :AGHQ is not available for Gaussian\(\) with" drm(
+            bf(@formula(y ~ x), @formula(sigma ~ 1 + x)), Gaussian(); data = dm, marginal = :AGHQ)
         # One naming rule in every message: `:LA` is the route's default
         # integrator (GHQ-32 here), `:Laplace` forces Laplace. No message may
         # send a user to `:LA` as "Laplace".

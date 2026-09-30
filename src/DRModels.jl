@@ -46,6 +46,11 @@ include("fit_q4_sparse_tmb.jl")
 # unguarded `inv` whose outcome depends on the LAPACK build.
 include("vcov_guard.jl")
 
+# Shared "evaluate at the minimizer, not Optim.minimum" helper (#optim-minimum-audit):
+# after a failed line search, Optim.jl's cached `Optim.minimum(res)` can hold a
+# rejected trial's value while `Optim.minimizer(res)` has already moved on.
+include("optim_minimum_guard.jl")
+
 # Fisher / observed-information metric on log-Cholesky params (#13 S1b infra).
 # Extracted after the natgrad solver failed the MLE-parity gate — not a public
 # solver path. Feeds AI-REML / exact REML gradient follow-ups (#11 / #165).
@@ -76,6 +81,7 @@ include("gaussian_bivariate.jl")
 include("gaussian_ranef.jl")
 include("gaussian_lss.jl")   # #544: location-scale-scale sd(g) ~ x on the (1|g) SD
 include("aghq_1d.jl")            # #448: 1-D Liu–Pierce AGHQ around `_gauss_hermite`
+include("adaptive_ghq.jl")       # #834: per-group q-dim AGHQ for the (1 + x | g) routes
 include("gaussian_meta.jl")
 include("gaussian_structured.jl")
 include("gaussian_sparse_lss.jl")
@@ -166,8 +172,8 @@ export AugProblem, make_problem,
        lc_to_cov, cov_to_lc, lc_len
 
 # Public API — the Gaussian distributional-regression front end.
-export @formula, bf, drm_formula, drm, Gaussian, Student, SkewNormal, Poisson, NegBinomial2, TruncatedNegBinomial2, Beta, BetaBinomial, Binomial, Gamma, LogNormal, ZeroOneBeta, Tweedie, CumulativeLogit, cbind, meta_V, relmat, animal, phylo, spatial, sd, sd_phylo, DrmFormula, BivariateDrmFormula, DrmFit,
-       coef, vcov, loglik, nobs, dof, aic, bic, fixef, re_sd, vc, ranef, sigma, corpairs, rho12, stderror, confint, coeftable, fitted, residuals, predict, predict_parameters, marginal_parameters, prediction_grid, simulate, bootstrap_ci, bootstrap_summary, bootstrap_result, bootstrap_sigma_a, check_drm, family,
+export @formula, bf, drm_formula, drm, Gaussian, Student, SkewNormal, Poisson, NegBinomial2, TruncatedNegBinomial2, Beta, BetaBinomial, Binomial, Gamma, LogNormal, ZeroOneBeta, Tweedie, CumulativeLogit, cbind, meta_V, relmat, animal, phylo, spatial, offset, sd, sd_phylo, DrmFormula, BivariateDrmFormula, DrmFit,
+       coef, vcov, loglik, loglikelihood, nobs, dof, aic, bic, fixef, re_sd, vc, ranef, sigma, corpairs, rho12, stderror, confint, coeftable, fitted, residuals, predict, predict_parameters, marginal_parameters, prediction_grid, simulate, bootstrap_ci, bootstrap_summary, bootstrap_result, bootstrap_sigma_a, check_drm, family,
        profile_result, profile_curve, parameter_surface, corpairs_data,
        drm_figure, plot_profile, plot_parameter_surface, plot_corpairs,
        gaussian_locscale_phylo_sds,
@@ -184,7 +190,7 @@ export @formula, bf, drm_formula, drm, Gaussian, Student, SkewNormal, Poisson, N
        associate_pairs, latent_normal, association, PairAssociation,
        integration_diagnostics,
        drm_phylo_penalty, drm_phylo_penalty_sweep, PhyloPenalty, PhyloCorPenaltyNeedsTwoSD,
-       profile_targets, structured_effects,
+       profile_targets, structured_effects, bridge_diagnostics,
        meta_vcov_bivariate, MetaVcovBivariate
 
 # Public API — post-fit accessors for the cross-family bivariate fit

@@ -840,12 +840,16 @@ function _fit_bivariate_q2_structured(f::BivariateDrmFormula, fam::Gaussian, dat
     )
     nll = function (θ)
         β = hcat(θ[blocks[1].second], θ[blocks[2].second])
-        Λ = lc_to_cov(θ[blocks[6].second], 2)
+        # Build the Λ factor straight from θ (never `L L'`): #857 site K
+        # follow-up (draft #862) -- `lc_to_cov` here would form Λ in Float64
+        # before `coevo_marginal_cov` re-factors it, which is accurate only to
+        # l22 ≈ −18.
+        chΛ = lc_to_chol(θ[blocks[6].second], 2)
         σ1 = exp(θ[blocks[3].second][1])
         σ2 = exp(θ[blocks[4].second][1])
         ρ = RHO_GUARD * tanh(θ[blocks[5].second][1])
         D = Matrix(Symmetric([σ1^2 ρ * σ1 * σ2; ρ * σ1 * σ2 σ2^2]))
-        ℓ, = coevo_marginal_cov(prob, Q_cond, β, Λ, D)
+        ℓ, = coevo_marginal_cov(prob, Q_cond, β, chΛ, D)
         return -ℓ
     end
     # Observed-information vcov by finite differences of the marginal ML NLL.
@@ -1364,17 +1368,24 @@ _q2_phylocov_names() = ["Sigma_a:L11", "Sigma_a:L21", "Sigma_a:L22"]
 
 function _q4_fd_vcov(prob::AugProblem, Q_cond::SparseMatrixCSC, θ::Vector{Float64};
                      h::Real = 1e-4, n_newton::Int = 40, u0 = nothing)
-    nθ = length(θ)
-    H = zeros(nθ, nθ)
-    for k in 1:nθ
-        θp = copy(θ); θp[k] += h
-        θm = copy(θ); θm[k] -= h
-        # S5 change (c): warm u0 into every perturbed evaluation's inner Newton
-        # (u0 = nothing, the pre-S5 default, is unaffected -- still goes
-        # straight to the cold robust path).
-        _, gp, _, _ = marginal_and_exact_grad(prob, Q_cond, θp; u0 = u0, n_newton = n_newton)
-        _, gm, _, _ = marginal_and_exact_grad(prob, Q_cond, θm; u0 = u0, n_newton = n_newton)
-        H[:, k] .= (gp .- gm) ./ (2h)
+    # S5 change (c): warm u0 into every perturbed evaluation's inner Newton
+    # (u0 = nothing, the pre-S5 default, is unaffected -- still goes
+    # straight to the cold robust path).
+    grad_at = function (t)
+        try
+            return marginal_and_exact_grad(prob, Q_cond, t; u0 = u0, n_newton = n_newton)[2]
+        catch err
+            err isa InterruptException && rethrow(err)
+            return Float64[]      # a failed probe: reported as `ok = false` below
+        end
     end
+    return _q4_fd_vcov_from_grad(grad_at, θ; h = h)
+end
+
+# Guarded FD Hessian -> vcov. A failed / empty / non-finite gradient probe gives the
+# NaN-vcov convention the q=4 fitters already use for `q4_vcov = false`.
+function _q4_fd_vcov_from_grad(grad_at, θ::Vector{Float64}; h::Real = 1e-4)
+    H, ok = _fd_hessian_from_grad(grad_at, θ; hstep = h, retry_step = h, scaled = false)
+    ok || return fill(NaN, length(θ), length(θ))
     return _vcov_from_hessian(H; context = "q=4 finite-difference Hessian")
 end

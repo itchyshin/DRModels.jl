@@ -56,20 +56,22 @@ Exact gradient of `_ls_fit_nll` at the packed θ = [βμ; βψ; λ(3)]. Returns 
 all-`NaN` vector if the inner Laplace mode fails to converge (rare; this is the
 infeasibility signal that pairs with the `_ls_fit_nll` value sentinel — a
 gradient-based optimiser rejects a NaN step rather than mistaking a zero gradient
-for stationarity, see #314). O(p) in the number of groups.
+for stationarity, see #314). O(p) in the number of groups. `a0` and `tol` are the
+inner mode's start and stationarity bound (`_ls_inner_mode`).
 """
 function _ls_marginal_grad(kind, y, Xμ, Xψ, gidx, G, Q, θ,
                            Zη = _ls_canonical_Zeta(length(y)),
-                           Zψ = _ls_canonical_Zpsi(length(y)); a0 = nothing)
+                           Zψ = _ls_canonical_Zpsi(length(y)); a0 = nothing,
+                           tol::Real = 1e-9)
     pμ = size(Xμ, 2); pψ = size(Xψ, 2)
     βμ = @view θ[1:pμ]
     βψ = @view θ[pμ+1:pμ+pψ]
     λ  = θ[pμ+pψ+1:pμ+pψ+3]
-    Λ = _ls_lc_to_Λ(λ); Λinv = _ls_inv2x2(Λ)
+    Λinv = _ls_lc_inv2x2(λ)   # stable: never forms Λ (see locscale_inner.jl)
     P = prior_precision(Q, Λinv)
     η0 = Xμ * βμ; ψ0 = Xψ * βψ
 
-    a, ch, ok = _ls_inner_mode(kind, y, η0, ψ0, gidx, G, P, Zη, Zψ; a0 = a0)
+    a, ch, ok = _ls_inner_mode(kind, y, η0, ψ0, gidx, G, P, Zη, Zψ; a0 = a0, tol = tol)
     # Inner-mode failure ⇒ infeasible θ. Return NaN (not zeros) so a gradient-based
     # optimiser treats the step as rejected instead of reading a zero gradient as
     # convergence at an infeasible point (#314). The paired value sentinel in

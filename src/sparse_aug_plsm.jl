@@ -56,6 +56,31 @@ end
 leaf_grad(u, a...) = ForwardDiff.gradient(z -> leaf_nll(z, a...), u)
 leaf_hess(u, a...) = ForwardDiff.hessian(z -> leaf_nll(z, a...), u)
 
+# --- shared trust-radius cap for the conditional beta Newton steps ----------
+# `cond_newton_beta` (reml_q4.jl) and `mstep_beta` (sparse_em_fit.jl) both take
+# a Newton step on the profiled fixed effects from an exact ForwardDiff
+# Hessian, with a ridge ladder for indefiniteness and backtracking for
+# descent — but neither capped the RAW step's size, so on a near-collinear
+# design (e.g. x2 = x1 + 1e-8·noise, cond(H) up to 5.6e16) the first trial
+# point could land at ‖step‖∞ ~ 1e5, evaluating the objective somewhere wild
+# before backtracking ever ran. `_estep_robust` (this file) already guards
+# its own Newton step this way with `trust = 5.0`; reuse that value here so
+# all three Newton loops share one evidenced radius.
+const BETA_NEWTON_TRUST = 5.0
+
+"""
+    cap_newton_step(step, trust = BETA_NEWTON_TRUST) -> scaled_step
+
+Scale the whole `step` vector so `‖step‖∞ ≤ trust`, preserving its direction.
+Applied BEFORE backtracking so the very first trial point is never wild,
+regardless of how ill-conditioned the Hessian is. A well-conditioned step
+that is already inside the trust radius is returned unchanged (bit-for-bit).
+"""
+function cap_newton_step(step::AbstractVector, trust::Real = BETA_NEWTON_TRUST)
+    m = maximum(abs, step)
+    return (m > trust) ? step .* (trust / m) : step
+end
+
 # --- problem container -------------------------------------------------------
 struct AugProblem
     phy::AugmentedPhy{Float64}

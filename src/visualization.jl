@@ -6,6 +6,7 @@
 
 function _profile_plot_deviance(value, reference, caller::AbstractString, location)
     comparison = _profile_reference_difference(value, reference)
+    comparison.status === :sentinel_objective && return NaN
     comparison.status === :accepted || throw(ArgumentError(
         "$caller: profiled objective at $location is $(comparison.status)",
     ))
