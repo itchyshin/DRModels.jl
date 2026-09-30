@@ -4,7 +4,7 @@
 # the callers reported near-zero, fabricated SEs; and it never treated the 1e18
 # failed-fit objective sentinel as a failure (differencing it gives a huge finite
 # garbage Hessian). New behaviour (owner decision 14, 2026-09-30): an all-NaN Hessian
-# of the same shape plus a warning, which `_vcov_from_hessian` passes through as an
+# of the same shape plus a warning, which `_vcov_from_fd_hessian` passes through as an
 # all-NaN vcov (the NaN-vcov convention of the other vcov_guard helpers).
 # Healthy fits are unchanged: the stencil is identical.
 
@@ -93,10 +93,16 @@ end
         H = @test_logs (:warn, r"reporting a NaN vcov") DRModels._finite_hessian(bad, x0)
         @test size(H) == (2, 2)
         @test all(isnan, H)
-        V = DRModels._vcov_from_hessian(H; context = "test")
+        V = DRModels._vcov_from_fd_hessian(H; context = "test")
         @test size(V) == (2, 2)
         @test all(isnan, V)
     end
+end
+
+@testset "_vcov_from_hessian itself still throws on a NaN Hessian (NaN-predictor fits)" begin
+    # Only the `_finite_hessian` callers pass a NaN through (`_vcov_from_fd_hessian`);
+    # the ForwardDiff routes rely on this throw (test_missing_listwise.jl, predictor NaN).
+    @test_throws Exception DRModels._vcov_from_hessian(fill(NaN, 2, 2))
 end
 
 @testset "_finite_hessian NaN: ordinary-Laplace caller does not throw" begin
@@ -124,7 +130,7 @@ end
     bad = θ -> θ[end] > θ̂[end] + 1e-9 ? 1e18 : fit.nll(θ)
     H = @test_logs (:warn, r"reporting a NaN vcov") DRModels._finite_hessian(bad, θ̂; h = h)
     @test all(isnan, H)
-    V = DRModels._vcov_from_hessian(H; context = "sparse-Laplace Poisson (crossed)")
+    V = DRModels._vcov_from_fd_hessian(H; context = "sparse-Laplace Poisson (crossed)")
     @test size(V) == (length(θ̂), length(θ̂)) && all(isnan, V)
 end
 
@@ -139,6 +145,6 @@ end
     bad = θ -> θ[1] < θ̂[1] - 1e-9 ? NaN : fit.nll(θ)   # old path: ridge -> SE ~ 0
     H = @test_logs (:warn, r"reporting a NaN vcov") DRModels._finite_hessian(bad, θ̂; h = h)
     @test all(isnan, H)
-    V = DRModels._vcov_from_hessian(H; context = "bivariate Gaussian q=2 structured")
+    V = DRModels._vcov_from_fd_hessian(H; context = "bivariate Gaussian q=2 structured")
     @test all(isnan, V)
 end

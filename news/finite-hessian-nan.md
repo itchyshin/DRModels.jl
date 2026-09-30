@@ -7,7 +7,7 @@
   `1e18` failed-fit objective sentinel as a failure. It now returns an all-NaN
   matrix of the same shape, with a warning, when the objective at the fitted point --
   or any stencil probe -- is non-finite or a `>= 1e16` sentinel, and
-  `_vcov_from_hessian` passes a non-finite Hessian through as an all-NaN vcov (the
+  the callers' new `_vcov_from_fd_hessian` passes it through as an all-NaN vcov (the
   NaN-vcov convention of the other guarded Hessian helpers; `stderror` reports `Inf`
   for it, as for `se = false`). The `1e12` ridge is removed. Healthy fits are
   bit-identical (vcov compared to main on Julia 1.10). Only degenerate fits change.

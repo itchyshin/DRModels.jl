@@ -74,10 +74,6 @@ the bootstrap entry points for those targets (see `src/inference.jl`), or the
 """
 function _vcov_from_hessian(H::AbstractMatrix; context::AbstractString = "")
     Hs = Matrix(H)
-    # A non-finite Hessian is the upstream failure signal (see `_finite_hessian`,
-    # `_fd_hessian_from_*`): report the NaN-vcov convention rather than crash in
-    # `eigvals` (the failure was already warned about upstream).
-    all(isfinite, Hs) || return fill(NaN, size(Hs)...)
     Hs = Matrix(Symmetric((Hs + Hs') / 2))
     isempty(Hs) && return Hs
 
@@ -165,4 +161,19 @@ function _fd_hessian_from_values(f, θ̂::AbstractVector; hstep::Real = 1e-5,
         H[j, k] = H[k, j]
     end
     return (H, true)
+end
+
+"""
+    _vcov_from_fd_hessian(H; context = "")
+
+[`_vcov_from_hessian`](@ref) for a Hessian from `_finite_hessian`, which signals a
+failed stencil (non-finite probe or the failed-fit sentinel) with an all-NaN
+matrix and a warning. That failure is reported as the same-shape all-NaN vcov (the
+NaN-vcov convention of the other guarded Hessian helpers) rather than crashing in
+`eigvals`. Deliberately NOT folded into `_vcov_from_hessian`: elsewhere a NaN
+Hessian (e.g. NaN in a predictor) must keep throwing.
+"""
+function _vcov_from_fd_hessian(H::AbstractMatrix; context::AbstractString = "")
+    all(isfinite, H) || return fill(NaN, size(H)...)
+    return _vcov_from_hessian(H; context = context)
 end
