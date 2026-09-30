@@ -3513,7 +3513,7 @@ function _fit_structured_gaussian_sparse_lbfgs(
         end
         Hv = _finite_hessian(fv, vhat; h = _fd_hessian_step(n))
         V[(pμ + 1):(pμ + 2), (pμ + 1):(pμ + 2)] .=
-            _vcov_from_hessian(Hv; context = "sparse phylo-mean variance block")
+            _vcov_from_fd_hessian(Hv; context = "sparse phylo-mean variance block")
     end
     e = prob.y .- prob.X * β̂
     u_post = chM \ (prob.S' * e / σ²)

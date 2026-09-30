@@ -187,7 +187,7 @@ end
 # a NaN matrix when `se = false`.
 function _ordinary_laplace_vcov(nll, θ̂, n::Int; se::Bool, context::AbstractString)
     V = if se
-        _vcov_from_hessian(_finite_hessian(nll, θ̂; h = _fd_hessian_step(n)); context = context)
+        _vcov_from_fd_hessian(_finite_hessian(nll, θ̂; h = _fd_hessian_step(n)); context = context)
     else
         fill(NaN, length(θ̂), length(θ̂))
     end

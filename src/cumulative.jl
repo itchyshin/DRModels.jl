@@ -612,7 +612,7 @@ function _fit_cumulative_phylo_laplace(fam::CumulativeLogit, y::Vector{Int}, Xμ
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
     V = if se
         Hθ = _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
-        _vcov_from_hessian(Hθ; context = "sparse-Laplace CumulativeLogit (phylo-mean)")
+        _vcov_from_fd_hessian(Hθ; context = "sparse-Laplace CumulativeLogit (phylo-mean)")
     else
         fill(NaN, length(θ̂), length(θ̂))
     end
