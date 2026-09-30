@@ -196,7 +196,16 @@ import Distributions
 
         # The trigger: lc_to_Λ overflows and marginal_and_exact_grad throws.
         @test !all(isfinite, DRModels.lc_to_Λ(fill(400.0, 10)))
-        @test_throws ArgumentError DRModels.marginal_and_exact_grad(prob, Q, θbad; n_newton = 30)
+        # Pre-whitening this threw ArgumentError from `inv(Λ)`. The whitened engine
+        # (#857) never inverts Λ, so it returns a non-finite objective/gradient
+        # instead; `fit_q4_sparse_tmb`'s fg! maps that to Inf (`any(!isfinite, g)`).
+        # Either way the step is undefined and must not be reported as finite.
+        r_bad = try
+            DRModels.marginal_and_exact_grad(prob, Q, θbad; n_newton = 30)
+        catch e
+            e
+        end
+        @test r_bad isa ArgumentError || !all(isfinite, r_bad[2])
 
         # The barrier: a normal fit from a FINITE start must COMPLETE (no uncaught
         # ArgumentError), even though the line search may probe extreme θ where the
