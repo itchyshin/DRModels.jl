@@ -6,6 +6,8 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **Fix 8-15x slowdown in Gaussian location-scale phylo REML.** The outer β Newton in `_glsp_joint_reml_nll` now exits when the predicted decrease is at rounding level and the gradient test passes, instead of letting the accept-on-equal line search halve ~26 times to a near-null step and repeat near the optimum (H2 fixture 59 s -> ~7 s or better); answers unchanged (reml_nll to ~1e-12).
+
 - **Tweedie crossed random effects (#737, drmTMB twin parity).**
   `Tweedie()` now fits crossed/multiple random intercepts on the log-mean,
   `(1 | g) + (1 | h)`, matching drmTMB's `tweedie()`. `sigma ~ 1` and
