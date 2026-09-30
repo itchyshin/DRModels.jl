@@ -27,6 +27,29 @@ import Distributions
 # A constrained optimum whose value is at/above this is treated as INFEASIBLE.
 const _LS_PROFILE_INFEASIBLE = 1e18
 
+# Boundary-identified log-Cholesky diagonals (owner decision 15 (a), 2026-09-30).
+# The packed vector ends with `(log L11, L21, log L22)`. When a log-diagonal has
+# slid below this value the marginal NLL is flat along it (the variance is
+# numerically zero; gradient decays only like exp(2 * coordinate)), so the strict
+# 1e-7 stationarity test cannot be met by L-BFGS there. That coordinate alone is
+# exempted from the free-gradient check; every other coordinate keeps the strict
+# gate, and the exemption is reported as reason `:accepted_boundary_exempt`.
+# The off-diagonal L21 of the SAME row is exempted too when log L22 is below the
+# cutoff: with L22 ~ 0 the second variance is L21^2 + L22^2 ~ L21^2, so L21 is the
+# same flat boundary direction (measured on the location-scale test fixture: the
+# only coordinate above 1e-7 at a trial point was L21, 1.9e-7, all others < 5e-9).
+const _LS_PROFILE_BOUNDARY_LOGCHOL = -8.0
+
+# Representable range of a log-Cholesky diagonal. The profile root finder expands its
+# trial step geometrically (x1.6) along an arm; on a variance that has no finite
+# crossing it therefore walks to |log L| ~ 700-1000, where exp(∓log L) overflows
+# Float64, the constrained solve returns the 1e18 sentinel (Optim: not_converged,
+# NaN gradient) and a perfectly flat, unbounded profile (measured: nll constant to
+# 1e-13 from log L22 = -21 to -640) was reported as a FAILED endpoint. The search is
+# therefore capped at |log L| <= 300: reaching the cap with the profile still below
+# the threshold is the documented `:no_crossing` (unbounded) outcome.
+const _LS_PROFILE_LOGCHOL_LIMIT = 300.0
+
 const _LSProfileNuisanceResult = NamedTuple{
     (:value, :minimizer, :accepted, :method, :fallback, :reason, :converged, :gradient_maxabs),
     Tuple{Float64,Vector{Float64},Bool,Symbol,Bool,Symbol,Bool,Float64},
@@ -38,7 +61,10 @@ _ls_profile_nuisance_result(value, minimizer, accepted, reason;
      method=:lbfgs, fallback=fallback, reason=reason, converged=converged,
      gradient_maxabs=Float64(gradient_maxabs))::_LSProfileNuisanceResult
 
-function _ls_profile_candidate_status(f, g!, xmin, converged::Bool; fallback=false)
+function _ls_profile_candidate_status(f, g!, xmin, converged::Bool; fallback=false,
+                                      logchol_diag::AbstractVector{<:Integer} = Int[],
+                                      l21_pos::Int = 0, l22_pos::Int = 0,
+                                      l22_fixed::Float64 = NaN)
     all(isfinite, xmin) ||
         return _ls_profile_nuisance_result(Inf, xmin, false, :nonfinite_minimizer;
                                            converged=converged, fallback=fallback)
@@ -66,6 +92,17 @@ function _ls_profile_candidate_status(f, g!, xmin, converged::Bool; fallback=fal
         return _ls_profile_nuisance_result(value, xmin, false, :nonfinite_gradient;
                                            converged=true, fallback=fallback)
     gradient_maxabs = isempty(gradient) ? 0.0 : maximum(abs, gradient)
+    exempt = [k for k in logchol_diag if xmin[k] < _LS_PROFILE_BOUNDARY_LOGCHOL]
+    l22 = l22_pos > 0 ? xmin[l22_pos] : l22_fixed
+    l21_pos > 0 && l22 < _LS_PROFILE_BOUNDARY_LOGCHOL && push!(exempt, l21_pos)
+    if !isempty(exempt) && gradient_maxabs > 1e-7
+        kept = [abs(gradient[k]) for k in eachindex(gradient) if !(k in exempt)]
+        kept_maxabs = isempty(kept) ? 0.0 : maximum(kept)
+        kept_maxabs <= 1e-7 &&
+            return _ls_profile_nuisance_result(value, xmin, true, :accepted_boundary_exempt;
+                                               converged=true, gradient_maxabs=kept_maxabs,
+                                               fallback=fallback)
+    end
     gradient_maxabs <= 1e-7 ||
         return _ls_profile_nuisance_result(value, xmin, false, :not_stationary;
                                            converged=true, gradient_maxabs=gradient_maxabs,
@@ -91,6 +128,11 @@ function _ls_profile_nll_result(kind, y, Xμ, Xψ, gidx, G, Q, θ̂, idx::Int, v
                                 iterations::Int = 200)
     p = length(θ̂); pμ = size(Xμ, 2); pψ = size(Xψ, 2)
     free = [k for k in 1:p if k != idx]
+    # Free-vector positions of the log-Cholesky diagonals (log L11, log L22).
+    logchol_diag = [k - (k > idx) for k in (p - 2, p) if k != idx]
+    l21_pos = idx == p - 1 ? 0 : (p - 1) - (p - 1 > idx)
+    l22_pos = idx == p ? 0 : p - (p > idx)
+    l22_fixed = idx == p ? Float64(val) : NaN
     build(θf) = (θ = collect(float.(θ̂)); θ[free] .= θf; θ[idx] = val; θ)
     function f(θf)
         θ = build(θf)
@@ -102,15 +144,26 @@ function _ls_profile_nll_result(kind, y, Xμ, Xψ, gidx, G, Q, θ̂, idx::Int, v
         end
         βμ = @view θ[1:pμ]; βψ = @view θ[pμ+1:pμ+pψ]
         P = prior_precision(Q, _ls_lc_inv2x2(θ[pμ+pψ+1:pμ+pψ+3]))   # stable: never forms Λ
-        v, a, ok = _ls_marginal_nll(kind, y, Xμ * βμ, Xψ * βψ, gidx, G, P, Zη, Zψ; a0 = mwarm[])
+        v, a, ok = _ls_marginal_nll(kind, y, Xμ * βμ, Xψ * βψ, gidx, G, P, Zη, Zψ; a0 = mwarm[],
+                                   relaxed = true)
         ok && (mwarm[] = copy(a))
         return ok ? v : _LS_PROFILE_INFEASIBLE
     end
     function g!(gf, θf)
         gfull = whitened ?
             _ls_whitened_eval(kind, y, Xμ, Xψ, gidx, G, Q, build(θf), Zη, Zψ; seed=mwarm[]).gradient :
-            _ls_marginal_grad(kind, y, Xμ, Xψ, gidx, G, Q, build(θf), Zη, Zψ; a0=mwarm[])
+            _ls_marginal_grad(kind, y, Xμ, Xψ, gidx, G, Q, build(θf), Zη, Zψ; a0=mwarm[],
+                                relaxed=true)
         gf .= gfull[free]
+        return gf
+    end
+    # Gradient for line searches that (unlike Backtracking) evaluate the gradient at
+    # trial points: an infeasible trial (inner mode failed => NaN gradient, paired with
+    # the 1e18 objective sentinel) gets a zero gradient so the search only sees the
+    # huge objective and backs off instead of asserting on a non-finite slope.
+    function g_finite!(gf, θf)
+        g!(gf, θf)
+        all(isfinite, gf) || fill!(gf, 0.0)
         return gf
     end
     init = x0 === nothing ? float.(θ̂[free]) : float.(x0)
@@ -153,10 +206,48 @@ function _ls_profile_nll_result(kind, y, Xμ, Xψ, gidx, G, Q, θ̂, idx::Int, v
         # status can be driven by a non-gradient stopping condition.
         candidate = _ls_profile_candidate_status(
             f, g!, xmin, Optim.converged(res); fallback=fallback,
+            logchol_diag=logchol_diag, l21_pos=l21_pos, l22_pos=l22_pos,
+            l22_fixed=l22_fixed,
         )
         if !candidate.accepted && candidate.reason === :not_converged
-            return _ls_profile_nuisance_result(reported, xmin, false, :not_converged;
-                                               fallback=fallback)
+            candidate = _ls_profile_nuisance_result(reported, xmin, false, :not_converged;
+                                                    fallback=fallback)
+        end
+        candidate.accepted && return candidate
+        # Objective-resolution stall. Backtracking L-BFGS is Armijo-only: near the
+        # solution the sufficient-decrease test compares objective values that differ
+        # by less than the Float64 / inner-mode noise floor (~1e-12 at nll ~ 600), so
+        # every trial is rejected, the step collapses to zero and Optim stops with
+        # `converged=false` (or `converged=true` from x/f equality) while the exact
+        # gradient is still ~1e-5 > g_tol. Measured on the NB2 seed-11 fixture: the
+        # gradient is exact (matches central differences to 5 digits) and the point
+        # is 1e-5 from stationarity. Retry ONCE from that point with the Hager-Zhang
+        # line search, whose approximate-Wolfe test uses the gradient and is designed
+        # for exactly this regime. The retry must earn the same strict postcheck;
+        # if it does not, the original candidate is returned unchanged.
+        # Only tried when the stall is CLOSE to stationary (gradient <= 1e-3): a trial
+        # that is far from stationary is a genuinely failed solve, not a stalled one.
+        near_stationary(x) = (gtmp = zeros(length(x)); g_finite!(gtmp, x);
+                              all(isfinite, gtmp) && maximum(abs, gtmp; init=0.0) <= 1e-3)
+        if candidate.reason in (:not_converged, :not_stationary) && all(isfinite, xmin) &&
+           near_stationary(xmin)
+            retry = try
+                Optim.optimize(f, g_finite!, xmin,
+                               Optim.LBFGS(linesearch = Optim.LineSearches.HagerZhang()),
+                               opts)
+            catch err
+                err isa InterruptException && rethrow()
+                nothing
+            end
+            if retry !== nothing
+                x2 = Optim.minimizer(retry)
+                second = _ls_profile_candidate_status(
+                    f, g!, x2, Optim.converged(retry); fallback=true,
+                    logchol_diag=logchol_diag, l21_pos=l21_pos, l22_pos=l22_pos,
+                    l22_fixed=l22_fixed,
+                )
+                second.accepted && return second
+            end
         end
         return candidate
     end
@@ -215,7 +306,7 @@ end
 function _ls_profile_root_result(evalh, x0; dir::Float64, init::Float64,
                                  cancellation::Float64 = 0.0,
                                  maxexpand::Int = 40, maxnewton::Int = 30,
-                                 maxcontract::Int = 8,
+                                 maxcontract::Int = 8, tmax::Float64 = Inf,
                                  ftol::Float64 = 1e-7, xtol::Float64 = 1e-8)
     evaluations = Ref(0)
     gradient_evaluations = Ref(0)
@@ -281,7 +372,7 @@ function _ls_profile_root_result(evalh, x0; dir::Float64, init::Float64,
         return make_result(dir > 0 ? Inf : -Inf, false, false, true,
                            :nonfinite_cancellation, 0, 0, NaN, NaN, cancellation)
     tlo = 0.0                                   # h(tlo) < 0 (feasible by construction)
-    thi = init
+    thi = min(init, tmax)
     maxexpand > 0 ||
         return make_result(dir > 0 ? Inf : -Inf, false, false, true, :invalid_search_budget,
                            0, 0, NaN, NaN, cancellation)
@@ -312,14 +403,17 @@ function _ls_profile_root_result(evalh, x0; dir::Float64, init::Float64,
             return make_result(dir > 0 ? Inf : -Inf, false, false, true,
                                :insufficient_precision, expansions, 0,
                                x0 + dir * thi, current.gap, current.cancellation)
+        # Representable-range cap (`tmax`): still below the threshold at the cap means
+        # no crossing exists in the representable range -> the no-crossing outcome below.
+        thi >= tmax && break
         tlo = thi
-        thi *= 1.6
+        thi = min(thi * 1.6, tmax)
         expansions += 1
     end
     if !(current.gap > current.cancellation)
         contractions[] == 0 &&
             return make_result(dir > 0 ? Inf : -Inf, false, true, false, :no_crossing,
-                               expansions, 0, x0 + dir * (thi / 1.6), current.gap,
+                               expansions, 0, x0 + dir * (thi >= tmax ? thi : thi / 1.6), current.gap,
                                current.cancellation)
         # The expansion budget ran out inside a region whose trials could not be
         # evaluated. Absence of a crossing was never established there, so this
@@ -435,7 +529,8 @@ function _ls_profile_ci_result(kind, y, Xμ, Xψ, gidx, G, Q, θ̂; idx::Int, le
         slope = try
             g = whitened ?
                 _ls_whitened_eval(kind, y, Xμ, Xψ, gidx, G, Q, θ, Zη, Zψ; seed=mwarm[]).gradient :
-                _ls_marginal_grad(kind, y, Xμ, Xψ, gidx, G, Q, θ, Zη, Zψ; a0=mwarm[])
+                _ls_marginal_grad(kind, y, Xμ, Xψ, gidx, G, Q, θ, Zη, Zψ; a0=mwarm[],
+                                relaxed=true)
             (length(g) == p && isfinite(g[idx])) ? g[idx] : NaN
         catch err
             err isa InterruptException && rethrow()
@@ -454,10 +549,14 @@ function _ls_profile_ci_result(kind, y, Xμ, Xψ, gidx, G, Q, θ̂; idx::Int, le
         return (gap=gap, slope=slope, ok=true, cancellation=reference.cancellation,
                 nuisance=nuisance)
     end
-    lower = _ls_profile_root_result(evalh, θ̂[idx]; dir=-1.0, init=step0)
+    # Cap log-Cholesky-diagonal arms at the representable range (see the constant).
+    is_logdiag = idx == p - 2 || idx == p
+    tmax_lo = is_logdiag ? max(θ̂[idx] + _LS_PROFILE_LOGCHOL_LIMIT, 0.0) : Inf
+    tmax_hi = is_logdiag ? max(_LS_PROFILE_LOGCHOL_LIMIT - θ̂[idx], 0.0) : Inf
+    lower = _ls_profile_root_result(evalh, θ̂[idx]; dir=-1.0, init=step0, tmax=tmax_lo)
     lastsol[] = nothing                         # reset warm-start before the other side
     mwarm[] = nothing
-    upper = _ls_profile_root_result(evalh, θ̂[idx]; dir=+1.0, init=step0)
+    upper = _ls_profile_root_result(evalh, θ̂[idx]; dir=+1.0, init=step0, tmax=tmax_hi)
     return (lower=lower.value, upper=upper.value, lower_status=lower, upper_status=upper)
 end
 
