@@ -10,13 +10,12 @@
 # The whitened form never builds Λ⁻¹ (v = (I ⊗ L⁻¹)u, H̃ = Q⊗I + I⊗L'D⁻¹L) and is
 # identical in exact arithmetic, including the historical 1e-10 prior ridge.
 #
-# The q=4 PLSM engine (`marginal_nll`, sparse_aug_plsm.jl / fit_q4_sparse_tmb.jl)
-# builds its prior the same way and IS affected (measured on the
-# test_q4_objective_diagnostic fixture with L21 = 0.35: l22 = −17 gives +0.34
-# nats, −20 gives +4226 nats; pinned by the @test_broken below). It is NOT changed here:
-# the fix touches the verified engine's Newton mode-finder and exact gradient and
-# is a separate, measured PR (D-298). The @test_broken flips to an error the day
-# that lands, which is the signal to promote it to @test.
+# The q=4 ML PLSM engine (`marginal_nll`, sparse_aug_plsm.jl / fit_q4_sparse_tmb.jl)
+# built its prior the same way and was affected (measured on origin/main with the
+# test_q4_objective_diagnostic fixture and L21 = 0.35: rel. error 6.5e-7 at
+# l22 = −12, 5.9e-3 at −17 (+0.16 nats), 9.2e-2 at ≤ −20 (+2.4 nats)). It is now
+# whitened too (Newton mode-finder, `laplace_ll`, exact gradient); the q4
+# testsets below pin it; the q=4 REML (reml_q4.jl) has its own file, test_reml_q4_chol.jl.
 
 module TestQ4PriorWhitening
 
@@ -136,9 +135,8 @@ end
 
 # q=4 engine: SAME construction, NOT fixed in this PR (see header). Pins the
 # measured defect so a future whitened-engine PR has a ready regression.
-function _q4_bigref(prob, Q_cond, θ)
+function _q4_ref(prob, Q_cond, θ, ::Type{T}) where {T}
     setprecision(BigFloat, 256) do
-        T = BigFloat
         β, lc = DRModels.unpack_theta(prob, θ)
         L = zeros(T, 4, 4); k = 0
         for j in 1:4, i in j:4
@@ -165,7 +163,7 @@ function _q4_bigref(prob, Q_cond, θ)
         u = zeros(T, size(P, 1))
         for _ in 1:80
             g, H = gH(u)
-            norm(g) < T(10)^-50 && break
+            norm(g) < (T === BigFloat ? T(10)^-50 : T(1e-11)) && break
             du = H \ g; s = one(T); j0 = jn(u)
             while jn(u - s * du) > j0 && s > 1e-12
                 s /= 2
@@ -173,15 +171,24 @@ function _q4_bigref(prob, Q_cond, θ)
             u -= s * du
         end
         _, H = gH(u)
+        # + the engine's retained prior ridge ½[logdet(P + εI) − logdet P]
         Float64(-jn(u) - logdet(cholesky(Symmetric(H))) / 2 +
-                logdet(cholesky(Symmetric(P))) / 2)
+                logdet(cholesky(Symmetric(P + T(_EPS_RIDGE) * I))) / 2)
     end
 end
 
-@testset "q4 engine prior near singular Λ (known defect, not fixed here)" begin
+_q4_bigref(prob, Q_cond, θ) = _q4_ref(prob, Q_cond, θ, BigFloat)
+
+# Owner bar (i), 2026-09-30: identity with main at a POLISHED inner mode. This is
+# main's construction verbatim -- P = Q ⊗ inv(Λ), plain-Newton mode driven to
+# ‖∇J‖ < 1e-11 (Float64), Laplace with the ridged logdet P -- so it does not
+# depend on which mode-finder the engine uses. In the well-conditioned regime the
+# whitened engine must agree with it (measured 5.6e-10 earlier, at p = 100).
+_q4_polished_main(prob, Q_cond, θ) = _q4_ref(prob, Q_cond, θ, Float64)
+
+function _q4_fixture()
     rng = MersenneTwister(293)
     phy = random_balanced_tree(8; branch_length = 0.2)
-    keep = setdiff(1:phy.n_total, [phy.root_index])
     species = repeat(1:8, inner = 2)
     n = length(species)
     x = randn(rng, n)
@@ -194,10 +201,53 @@ end
     θ = pack_theta(β, Matrix(Diagonal([0.2, 0.18, 0.08, 0.07])))
     o = length(θ) - 10
     θ[o + 2] = 0.35                                # L21: strong μ1–μ2 dependence
-    θ[o + 5] = -2.0                                # regular regime: fine
-    @test abs(-first(marginal_nll(prob, Q_cond, θ)) - _q4_bigref(prob, Q_cond, θ)) ≤ 1e-8
-    θ[o + 5] = -17.0                               # |cor| → 1: defect
-    @test_broken abs(-first(marginal_nll(prob, Q_cond, θ)) - _q4_bigref(prob, Q_cond, θ)) ≤ 1e-8
+    return prob, Q_cond, θ, o
+end
+
+_cfd(f, x, k; h = 1e-5) = (x1 = copy(x); x1[k] += h; x2 = copy(x); x2[k] -= h;
+                           (f(x1) - f(x2)) / (2h))
+
+@testset "q4 engine prior near singular Λ matches 256-bit reference (whitened)" begin
+    prob, Q_cond, θ, o = _q4_fixture()
+    for l22 in (-2.0, -12.0, -14.0, -15.5, -17.0, -18.0, -20.0, -30.0)
+        θ[o + 5] = l22                             # l22 → −∞: |cor(μ1, μ2)| → 1
+        ll = -first(marginal_nll(prob, Q_cond, θ))
+        ref = _q4_bigref(prob, Q_cond, θ)
+        @test isfinite(ll)
+        @test abs(ll - ref) / max(1, abs(ref)) ≤ 1e-10
+        # the diagnostic runs the same whitened pieces
+        d = DRModels.q4_marginal_diagnostic(prob, Q_cond, θ)
+        @test d.ok && abs(d.loglik - ll) ≤ 1e-10
+    end
+end
+
+@testset "q4 engine: identity with main's construction at a polished inner mode (owner bar i)" begin
+    prob, Q_cond, θ, o = _q4_fixture()
+    rng = MersenneTwister(2026)
+    for trial in 1:8
+        t = copy(θ)
+        t[o + 1:o + 10] .+= trial == 1 ? 0.0 : 0.15 .* randn(rng, 10)
+        t[o + 5] = trial == 1 ? -2.0 : t[o + 5]
+        ll = -first(marginal_nll(prob, Q_cond, t))
+        ref = _q4_polished_main(prob, Q_cond, t)
+        @test isfinite(ll) && isfinite(ref)
+        @test abs(ll - ref) / max(1, abs(ref)) ≤ 1e-9
+    end
+end
+
+@testset "q4 whitened exact gradients match central differences near singular Λ" begin
+    prob, Q_cond, θ, o = _q4_fixture()
+    for l22 in (-2.0, -17.0)
+        θ[o + 5] = l22
+        _, g, _, _ = marginal_and_exact_grad(prob, Q_cond, copy(θ))
+        f = t -> first(marginal_nll(prob, Q_cond, t))
+        # h = 1e-4, tol 5e-6: the objective carries ~1e-9 absolute value noise on
+        # Julia 1.13 (measured: FD error 7.7e-6 / 7.8e-5 / 7.8e-4 at h = 1e-4 / 1e-5
+        # / 1e-6, i.e. noise/h; on 1.10 it is 1.6e-7 at h = 1e-4, truncation only).
+        # A wrong analytic gradient is O(1e-2) or larger, far above this.
+        gfd = [_cfd(f, θ, k; h = 1e-4) for k in eachindex(θ)]
+        @test maximum(abs, g .- gfd) ≤ 5e-6 * max(1, maximum(abs, gfd))
+    end
 end
 
 # ---------------------------------------------------------------------------

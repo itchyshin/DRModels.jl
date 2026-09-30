@@ -195,6 +195,114 @@ function joint_nll(prob::AugProblem, P::SparseMatrixCSC, u::Vector{Float64}, β)
     return val
 end
 
+# --- WHITENED prior (#857 site q4; the q=4 half of #862) ----------------------
+# Near-singular Λ (latent-axis correlation → ±1) makes P = kron(Q, Λ⁻¹) huge in
+# one direction, and every quantity built from it (H_uu, logdet H − logdet P)
+# loses its digits to cancellation: MEASURED on the test_q4_objective_diagnostic
+# fixture, the marginal is 1.2e-6 relatively wrong at l22 = −12 and returns
+# +4194 for a true −31.8 at l22 = −20. The whitened coordinates v = (I ⊗ L⁻¹)u,
+# Λ = LLᵀ, remove Λ⁻¹ entirely:
+#   ½ uᵀPu      = ½ vᵀ(Q ⊗ I)v                    (θ-free prior quadratic)
+#   H̃           = (I ⊗ Lᵀ) H_uu (I ⊗ L) = Q ⊗ I + blockdiag(Lᵀ D_t L)
+#   logdet H_uu = logdet H̃ − 2N Σ log Lᵢᵢ,   logdet P = 4 logdet Q − 2N Σ log Lᵢᵢ
+# so the Σ log Lᵢᵢ terms cancel in the Laplace marginal. Newton is affine
+# invariant, so the mode (û = (I ⊗ L)v̂) is the same point; only rounding moves.
+# `Pw = prior_precision(Q, I)` keeps the structurally full axis block (#577), so
+# H̃ has EXACTLY H_uu's sparsity pattern (the CholPatternCache reuse holds).
+struct WhitenedPrior
+    Pw::SparseMatrixCSC{Float64,Int}   # Q ⊗ I, full axis blocks (θ-free)
+    L::Matrix{Float64}                 # lower Cholesky factor of Λ (4×4)
+    Q::SparseMatrixCSC{Float64,Int}    # Q_cond (for the retained logdet-P ridge)
+end
+
+"""
+    whitened_prior(Q_cond, L) -> WhitenedPrior
+
+The q=4 prior in whitened coordinates, from `Q_cond` and the lower Cholesky
+factor `L` of Λ (e.g. `lc_to_chol(lc, 4).L`). Λ⁻¹ is never formed.
+"""
+whitened_prior(Q::SparseMatrixCSC, L::AbstractMatrix) =
+    WhitenedPrior(prior_precision(Q, Matrix{Float64}(I, 4, 4)), Matrix{Float64}(L),
+                  SparseMatrixCSC{Float64,Int}(Q))
+
+# u-block of node `base` from the whitened v: u_t = L v_t (L lower triangular).
+@inline function _wu(L::AbstractMatrix, v::AbstractVector, base::Int)
+    v1 = v[base+1]; v2 = v[base+2]; v3 = v[base+3]; v4 = v[base+4]
+    return (L[1,1]*v1,
+            L[2,1]*v1 + L[2,2]*v2,
+            L[3,1]*v1 + L[3,2]*v2 + L[3,3]*v3,
+            L[4,1]*v1 + L[4,2]*v2 + L[4,3]*v3 + L[4,4]*v4)
+end
+
+"Map whitened `v` to `u = (I ⊗ L) v` (node-major, 4 axes)."
+function whitened_to_u(W::WhitenedPrior, v::AbstractVector)
+    u = similar(v, Float64)
+    @inbounds for base in 0:4:(length(v) - 4)
+        ub = _wu(W.L, v, base)
+        u[base+1] = ub[1]; u[base+2] = ub[2]; u[base+3] = ub[3]; u[base+4] = ub[4]
+    end
+    return u
+end
+
+"Map `u` to whitened `v = (I ⊗ L⁻¹) u` by 4×4 forward substitution per node."
+function u_to_whitened(W::WhitenedPrior, u::AbstractVector)
+    L = W.L; v = similar(u, Float64)
+    @inbounds for base in 0:4:(length(u) - 4)
+        v1 = u[base+1] / L[1,1]
+        v2 = (u[base+2] - L[2,1]*v1) / L[2,2]
+        v3 = (u[base+3] - L[3,1]*v1 - L[3,2]*v2) / L[3,3]
+        v4 = (u[base+4] - L[4,1]*v1 - L[4,2]*v2 - L[4,3]*v3) / L[4,4]
+        v[base+1] = v1; v[base+2] = v2; v[base+3] = v3; v[base+4] = v4
+    end
+    return v
+end
+
+# H̃ = Pw + blockdiag(Lᵀ Hb L) at a given v.
+function build_Huu(prob::AugProblem, W::WhitenedPrior, v::Vector{Float64}, β)
+    η1, η2, ηs1, ηs2, ηr = leaf_etas(prob, β)
+    H = copy(W.Pw); L = W.L
+    @inbounds for i in eachindex(prob.leaf_node)
+        t = prob.leaf_node[i]; base = 4(t - 1)
+        Hb = leaf_hess(collect(_wu(L, v, base)), prob.y1[i], prob.y2[i],
+                       η1[i], η2[i], ηs1[i], ηs2[i], ηr[i], prob.obs1[i], prob.obs2[i])
+        Bb = L' * Hb * L
+        for a in 1:4, b in 1:4
+            H[base+a, base+b] += Bb[a, b]
+        end
+    end
+    return H
+end
+
+# ∇_v J̃ = Pw v + Σ Lᵀ leaf_grad(L v_t).
+function joint_grad(prob::AugProblem, W::WhitenedPrior, v::Vector{Float64}, β)
+    η1, η2, ηs1, ηs2, ηr = leaf_etas(prob, β)
+    g = similar(v); L = W.L
+    aug_prior_grad!(g, W.Pw, v)
+    @inbounds for i in eachindex(prob.leaf_node)
+        t = prob.leaf_node[i]; base = 4(t - 1)
+        gb = leaf_grad(collect(_wu(L, v, base)), prob.y1[i], prob.y2[i],
+                       η1[i], η2[i], ηs1[i], ηs2[i], ηr[i], prob.obs1[i], prob.obs2[i])
+        for a in 1:4
+            acc = 0.0
+            for c in a:4; acc += L[c, a] * gb[c]; end
+            g[base+a] += acc
+        end
+    end
+    return g
+end
+
+# J̃(v) = ½ vᵀ(Q ⊗ I)v + Σ leaf_nll(L v_t).
+function joint_nll(prob::AugProblem, W::WhitenedPrior, v::Vector{Float64}, β)
+    η1, η2, ηs1, ηs2, ηr = leaf_etas(prob, β)
+    val = 0.5 * dot(v, W.Pw * v)
+    @inbounds for i in eachindex(prob.leaf_node)
+        t = prob.leaf_node[i]; base = 4(t - 1)
+        val += leaf_nll(_wu(W.L, v, base), prob.y1[i], prob.y2[i],
+                        η1[i], η2[i], ηs1[i], ηs2[i], ηr[i], prob.obs1[i], prob.obs2[i])
+    end
+    return val
+end
+
 # --- S5 change (b): opt-in cholesky! symbolic reuse ---------------------------
 # Observational-only counters (never affect a result) read by the leaf-S5 G5.4
 # gate (bench/profile_q4_sections.jl --gate fallback) and by
@@ -451,6 +559,19 @@ function build_Huu_expected(prob::AugProblem, P::SparseMatrixCSC, u::Vector{Floa
     return H
 end
 
+# Whitened expected-information Hessian: Pw + blockdiag(Lᵀ F_t L).
+function build_Huu_expected(prob::AugProblem, W::WhitenedPrior, v::Vector{Float64}, β)
+    η1, η2, ηs1, ηs2, ηr = leaf_etas(prob, β)
+    H = copy(W.Pw); L = W.L
+    @inbounds for i in eachindex(prob.leaf_node)
+        t = prob.leaf_node[i]; base = 4(t - 1)
+        Hb = leaf_fisher(_wu(L, v, base), η1[i], η2[i], ηs1[i], ηs2[i], ηr[i])
+        Bb = L' * Hb * L
+        for a in 1:4, b in 1:4; H[base+a, base+b] += Bb[a, b]; end
+    end
+    return H
+end
+
 # --- FAST PATH: cheap damped OBSERVED-Newton from a WARM start ----------------
 # The old (pre-robust) mode-finder. For a warm u0 already near the mode this
 # converges in 1–2 steps with NO Fisher overhead (observed build_Huu only) —
@@ -469,7 +590,7 @@ end
 # We FALL BACK (to the robust LM, which handles the indefinite log-σ curvature)
 # on any of: non-finite f, a non-finite step, a |u| blow-up, or a stall while
 # ‖∇J‖≥stall_tol — the hard surface the robust LM exists for.
-function _estep_fast(prob::AugProblem, P::SparseMatrixCSC, β, u0::Vector{Float64};
+function _estep_fast(prob::AugProblem, P::Union{SparseMatrixCSC,WhitenedPrior}, β, u0::Vector{Float64};
                      n_newton=40, ftol=1e-6, stall_tol=1e-6, ucap=1e3,
                      chol_ref::Union{Nothing,CholPatternCache} = nothing)
     u = copy(u0)
@@ -505,7 +626,7 @@ end
 # quadratic convergence. Trust region caps step ‖·‖∞ (anti σ→0 cascade);
 # convergence on ‖∇J‖ ONLY (the old norm(α·step)<tol test masked the drift).
 # `u0` warm-starts (converges in 1-2 steps); cold starts get ≥200 iters.
-function _estep_robust(prob::AugProblem, P::SparseMatrixCSC, β;
+function _estep_robust(prob::AugProblem, P::Union{SparseMatrixCSC,WhitenedPrior}, β;
                        u0=nothing, n_newton=40, tol=1e-8, trust=5.0, gswitch=1.0,
                        chol_ref::Union{Nothing,CholPatternCache} = nothing)
     nu = 4 * prob.n_total
@@ -547,6 +668,21 @@ function _estep_robust(prob::AugProblem, P::SparseMatrixCSC, β;
             λ *= 4.0; λ > λmax && break
         end
     end
+    # Float-floor polish. Near the mode a J decrease smaller than ~eps·|J| cannot
+    # pass the monotone test `fnew < f`, so the LM loop can exit through the λ
+    # break with ‖∇J‖ well above `tol` (measured up to 3e-7 on the whitened q4
+    # prior, #857). The Laplace NLL is first-order in that residual, which a
+    # value-based FD Hessian divides by h². Finish with plain Newton steps on the
+    # observed Hessian, accepted only while ‖∇J‖ strictly decreases.
+    for _ in 1:5
+        (ng < tol || ng >= gswitch) && break
+        ch_n, extra = sparse_pd_chol(build_Huu(prob, P, u, β); chol_ref = chol_ref)
+        extra == 0 || break
+        unew = u .- (ch_n \ g)
+        gnew = joint_grad(prob, P, unew, β); ngnew = norm(gnew)
+        (isfinite(ngnew) && ngnew < ng) || break
+        u, g, ng = unew, gnew, ngnew
+    end
     Hobs = build_Huu(prob, P, u, β)
     ch, _ = sparse_pd_chol(Hobs; chol_ref = chol_ref)
     return u, ch, Hobs
@@ -561,7 +697,7 @@ end
 # existing caller (fit_ml_q4.jl, reml_q4.jl, sparse_em_fit.jl, src/experimental/*
 # all call estep_mode without it). Only fit_q4_sparse_tmb's ML fg! loop passes a
 # CholPatternCache, created once per fit (S5 change (b)).
-function estep_mode(prob::AugProblem, P::SparseMatrixCSC, β;
+function estep_mode(prob::AugProblem, P::Union{SparseMatrixCSC,WhitenedPrior}, β;
                     u0=nothing, n_newton=40, tol=1e-8, trust=5.0, gswitch=1.0,
                     chol_ref::Union{Nothing,CholPatternCache} = nothing)
     if u0 !== nothing
@@ -602,4 +738,27 @@ function laplace_ll(prob::AugProblem, P::SparseMatrixCSC, β, u, ch_H)
     # Laplace: ll = -jn - 0.5 logdetH + 0.5 logdetP + 0.5*nu*log(2π) - 0.5*nu*log(2π)
     #            = -jn - 0.5 logdetH + 0.5 logdetP
     return -jn - 0.5 * logdetH + 0.5 * logdetP
+end
+
+# Whitened Laplace marginal at the whitened mode v̂ with ch_H = factor of H̃:
+#   ll = −J̃(v̂) − ½ logdet H̃ + ½ logdet(Q ⊗ I + ε I ⊗ LᵀL)
+# which equals the unwhitened −jn − ½ logdet H_uu + ½ logdet(P + εI) exactly
+# (P + εI = (I⊗L⁻ᵀ)(Q⊗I + ε I⊗LᵀL)(I⊗L⁻¹)), the historical ε = 1e-10 ridge
+# included. With LᵀL = U diag(σ) Uᵀ the ridge logdet splits into four N×N
+# factorisations: logdet(Q⊗I + ε I⊗LᵀL) = Σₐ logdet(Q + ε σₐ I).
+function laplace_ll(prob::AugProblem, W::WhitenedPrior, β, v, ch_H)
+    jn = joint_nll(prob, W, v, β)
+    (isfinite(jn) && all(isfinite, W.L)) || return -Inf
+    logdetH = logdet(ch_H)
+    return -jn - 0.5 * logdetH + 0.5 * _whitened_ridge_logdet(W)
+end
+
+function _whitened_ridge_logdet(W::WhitenedPrior)
+    σ = svdvals(W.L) .^ 2                    # eigenvalues of Λ = LLᵀ (and of LᵀL)
+    Qs = Symmetric(W.Q)
+    acc = 0.0
+    for σa in σ
+        acc += logdet(cholesky(Qs + (1e-10 * σa) * I; check = false))
+    end
+    return acc
 end

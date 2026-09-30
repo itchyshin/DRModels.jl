@@ -168,12 +168,38 @@ _id_seed(p::Integer) = 37600 + p   # matches head_to_head_q4_scaling.jl's own se
 # nothing` (the default path, provably byte-identical to pre-S5 by
 # construction -- see sparse_aug_plsm.jl's `_chol_factorize` `Nothing`
 # method) and `chol_ref` = a fresh `CholPatternCache` (the reuse path), IN
-# THE SAME PROCESS, on whatever platform is running, and require bitwise
-# equality between the two. This also folds in what used to be the separate
+# THE SAME PROCESS, on whatever platform is running, and require
+# agreement to `NLL_CACHE_RTOL` (below) between the two. This also folds in what used to be the separate
 # `gate_nll_cached` (G5e.1) check -- that the reuse actually engages
 # (fallbacks == 0, factorisations >= 2, i.e. more than just the seeding
 # call) -- so a silently-never-reused cache cannot pass by accident.
 # -----------------------------------------------------------------------------
+
+# Bound on rel(nll_cached, nll_direct). WAS 1e-12 (bitwise-motivated); widened
+# 2026-09-30 to 1e-9 after CI shard 1 (PR #902, Julia 1.13.1 Linux x86) gave
+# rel = 1.743e-12 (1.8e-9 absolute at NLL = 1024.95) with fb = 0, fac = 47.
+# Diagnosis (Totoro, Julia 1.10.12 and 1.13.1, origin/main vs 37b064c2a, this
+# exact case, n_newton = 40): the cached nll (1024.9476838091393) equals the
+# fully converged reference (inner tol 1e-13, |grad| ~ 2e-14) to the last digit,
+# while the CI direct value sits 1.8e-9 off it: the direct path stopped one
+# Newton step earlier. The inner mode solve stops at |grad J| < 1e-8 (or the
+# float-floor polish), and the Laplace NLL is FIRST order in that residual, so
+# two paths whose CHOLMOD factors differ at the ulp level (the direct path
+# ridges with `H + lambda*I`, which drops H's stored zeros and so analyses a
+# different pattern from the cached `_add_diag`; see `_chol_factorize`) can
+# stop at different iterations. Measured stopping noise, rel to the converged
+# NLL, from the SAME direct path only (no cache involved): 1-ulp and 1e-10..1e-6
+# start perturbations -> up to 4.5e-11 (p=100, 1.10.12) and 5.8e-12 (p=100,
+# 1.13.1); inner tol 1e-7 on 1.13.1 -> 3.6e-11; p=1000 <= 1.3e-12. Repeated
+# direct evaluations are bitwise identical on one machine (spread 0), so the
+# gap is platform rounding, not randomness. Totoro itself gave rel = 0 for both
+# Julia versions, both origin/main and this branch. 1e-9 is ~20x the largest
+# measured stopping noise. A genuinely wrong reuse is many orders larger
+# (injected into `_chol_factorize` on Totoro, p=100: cholesky! on the bare
+# two-triangle matrix, the S5 bug -> rel 0.92 (1.10) / 0.75 (1.13); a stale
+# factor never refreshed -> rel 4.0e-2 / 1.2e-2), and structural failures are
+# still caught exactly by `fb == 0` and `fac >= 2`.
+const NLL_CACHE_RTOL = 1e-9
 
 function gate_nll(; verbose::Bool = true)
     ok = true
@@ -186,7 +212,7 @@ function gate_nll(; verbose::Bool = true)
         nll_cached, = marginal_nll(case.prob, case.Q, θ0; n_newton = 40, chol_ref = cache)
         fac = DRModels.CHOL_FACTORIZATIONS[]; fb = DRModels.CHOL_REUSE_FALLBACKS[]
         rel = abs(nll_cached - nll_direct) / abs(nll_direct)
-        this_ok = rel <= 1e-12 && fb == 0 && fac >= 2
+        this_ok = rel <= NLL_CACHE_RTOL && fb == 0 && fac >= 2
         if verbose || !this_ok
             @printf "  p=%d nll_direct=%.17g nll_cached=%.17g rel=%.3e factorisations=%d fallbacks=%d %s\n" p nll_direct nll_cached rel fac fb (this_ok ? "OK" : "FAIL")
         end
@@ -522,6 +548,8 @@ end
 # fixes.
 # -----------------------------------------------------------------------------
 
+const DV_FLOOR = 1e-5   # see gate_vcov_scaling (whitened-engine polish)
+
 function gate_vcov_scaling(; verbose::Bool = true, n_newton::Int = 40,
                             hs = (1e-4, 2e-4, 1e-3))
     case = id_make_case(100; seed = _id_seed(100))
@@ -538,7 +566,16 @@ function gate_vcov_scaling(; verbose::Bool = true, n_newton::Int = 40,
     dV = [fd_vcov_diff(h) for h in hs]
     ratios = [dV[i] / dV[i + 1] for i in 1:(length(dV) - 1)]
     decay_ok = any(dV[i] > 2.0 * dV[i + 1] for i in 1:(length(dV) - 1))
-    ok = decay_ok
+    # Whitened engine (#857): the inner-mode Newton polish makes the warm and cold
+    # modes agree so closely that the whole ladder sits on the h-independent
+    # numerical floor (measured max(dV) = 1.4e-6 on Julia 1.10, flat in h), with
+    # nothing left to decay. That is the OPPOSITE of the failure this gate exists
+    # for (a wrong warm mode: an h-independent floor 2-3 orders LARGER, 1e-4..1e-3
+    # at h = 1e-4 on every platform above). So a ladder that is uniformly below
+    # `DV_FLOOR` also passes; 1e-5 is ~7x above the measured worst here and 10-100x
+    # below the h = 1e-4 values a wrong warm mode gives in the table above.
+    floor_ok = maximum(dV) <= DV_FLOOR
+    ok = decay_ok || floor_ok
     if verbose || !ok
         for (h, d) in zip(hs, dV)
             @printf "  h=%.1e |V_warm-V_cold|_F=%.6e\n" h d
@@ -547,7 +584,7 @@ function gate_vcov_scaling(; verbose::Bool = true, n_newton::Int = 40,
             @printf "  ratio dV[%d]/dV[%d]=%.3g (h=%.1e -> h=%.1e)\n" i (i + 1) ratios[i] hs[i] hs[i + 1]
         end
         @printf "  min(dV)=%.6e (diagnostic only, not gated)\n" minimum(dV)
-        @printf "  decay_ok (>=1 adjacent pair decays by >=2x)=%s\n" decay_ok
+        @printf "  decay_ok (>=1 adjacent pair decays by >=2x)=%s  floor_ok (max(dV) <= %.0e)=%s\n" decay_ok DV_FLOOR floor_ok
     end
     return ok
 end
@@ -627,8 +664,10 @@ function gate_pattern(; verbose::Bool = true)
     # falls back to when Lambda0 is not supplied. Before the S5e fix, this
     # route showed 256 factorisations / 255 fallbacks -- prior_precision
     # stores Lambda0's off-diagonal zeros structurally, and the old
-    # `Hr + hzero` carrier dropped them on every reuse. `>=100` factorisations
-    # at p=1000 (a fit takes hundreds of E-step Newton iterations) is direct
+    # `Hr + hzero` carrier dropped them on every reuse. `>=90` factorisations
+    # at p=1000 (a fit takes hundreds of E-step Newton iterations; the floor was
+    # 100 before the whitened engine, which converges in fewer iterations --
+    # owner-approved 2026-09-30) is direct
     # evidence the reuse is actually engaging, not just that fallbacks == 0
     # by having never been attempted.
     DRModels.reset_chol_diagnostics!()
@@ -636,9 +675,9 @@ function gate_pattern(; verbose::Bool = true)
     fit1000d = fit_q4_sparse_tmb(case1000d.prob, case1000d.Q; β0 = case1000d.β0,
                                   g_tol = 1e-3, iterations = 300, n_newton = 40)
     fac_d = DRModels.CHOL_FACTORIZATIONS[]; fb_d = DRModels.CHOL_REUSE_FALLBACKS[]
-    default_ok = fb_d == 0 && fac_d >= 100 && fit1000d.converged
+    default_ok = fb_d == 0 && fac_d >= 90 && fit1000d.converged
     if verbose || !default_ok
-        @printf "  p=1000 default Lambda0=0.3I fit: factorisations=%d fallbacks=%d (expect 0, >=100) converged=%s %s\n" fac_d fb_d fit1000d.converged (default_ok ? "OK" : "FAIL")
+        @printf "  p=1000 default Lambda0=0.3I fit: factorisations=%d fallbacks=%d (expect 0, >=90) converged=%s %s\n" fac_d fb_d fit1000d.converged (default_ok ? "OK" : "FAIL")
     end
     ok &= default_ok
 
@@ -652,9 +691,9 @@ function gate_pattern(; verbose::Bool = true)
                                   lc_zero = [3, 4, 6, 7],
                                   g_tol = 1e-3, iterations = 300, n_newton = 40)
     fac_z = DRModels.CHOL_FACTORIZATIONS[]; fb_z = DRModels.CHOL_REUSE_FALLBACKS[]
-    zero_ok = fb_z == 0 && fac_z >= 100 && fit1000z.converged
+    zero_ok = fb_z == 0 && fac_z >= 90 && fit1000z.converged
     if verbose || !zero_ok
-        @printf "  p=1000 lc_zero=[3,4,6,7] fit: factorisations=%d fallbacks=%d (expect 0, >=100) converged=%s %s\n" fac_z fb_z fit1000z.converged (zero_ok ? "OK" : "FAIL")
+        @printf "  p=1000 lc_zero=[3,4,6,7] fit: factorisations=%d fallbacks=%d (expect 0, >=90) converged=%s %s\n" fac_z fb_z fit1000z.converged (zero_ok ? "OK" : "FAIL")
     end
     ok &= zero_ok
 

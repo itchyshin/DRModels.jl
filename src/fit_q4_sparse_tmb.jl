@@ -131,7 +131,7 @@ function q4_marginal_diagnostic(prob::AugProblem, Q_cond::SparseMatrixCSC,
                 nll = Inf, loglik = -Inf)
     end
 
-    local beta, lc, Lambda, Lambda_inv, P, u_hat, chH
+    local beta, lc, Lambda, W, u_hat, v_hat, chH
     try
         beta, lc = unpack_theta(prob, theta_vec)
     catch err
@@ -147,10 +147,14 @@ function q4_marginal_diagnostic(prob::AugProblem, Q_cond::SparseMatrixCSC,
             return (ok = false, first_nonfinite = first_bad[], stages = Tuple(rows),
                     nll = Inf, loglik = -Inf)
         end
-        ch = cholesky(Symmetric(Matrix(Lambda)); check = false)
+        # PD by construction when the log-Cholesky factor is finite with a
+        # positive diagonal; checked on L itself (a Float64 cholesky of the
+        # rounded Λ = LLᵀ fails spuriously as |cor| → 1, #857).
+        Lc = lc_to_chol(lc, 4).L
+        pd = all(isfinite, Lc) && all(>(0), diag(Lc))
         _q4_diag_record!(rows, first_bad, :among_axis_cholesky;
-                         finite = issuccess(ch),
-                         message = issuccess(ch) ? "" : "among-axis covariance is not positive definite")
+                         finite = pd,
+                         message = pd ? "" : "among-axis covariance is not positive definite")
         if first_bad[] !== nothing
             return (ok = false, first_nonfinite = first_bad[], stages = Tuple(rows),
                     nll = Inf, loglik = -Inf)
@@ -162,10 +166,10 @@ function q4_marginal_diagnostic(prob::AugProblem, Q_cond::SparseMatrixCSC,
     end
 
     try
-        Lambda_inv = inv(Lambda)
-        _q4_diag_record!(rows, first_bad, :among_axis_inverse; value = Lambda_inv)
-        P = prior_precision(Q_cond, Lambda_inv)
-        _q4_diag_record!(rows, first_bad, :prior_precision; value = P)
+        # Whitened prior (Λ⁻¹ is never formed): record the factor L and Q ⊗ I.
+        W = whitened_prior(Q_cond, lc_to_chol(lc, 4).L)
+        _q4_diag_record!(rows, first_bad, :among_axis_factor; value = W.L)
+        _q4_diag_record!(rows, first_bad, :prior_precision; value = W.Pw)
         if first_bad[] !== nothing
             return (ok = false, first_nonfinite = first_bad[], stages = Tuple(rows),
                     nll = Inf, loglik = -Inf)
@@ -177,8 +181,11 @@ function q4_marginal_diagnostic(prob::AugProblem, Q_cond::SparseMatrixCSC,
     end
 
     try
-        u_hat, chH, _ = estep_mode(prob, P, beta; u0 = u0, n_newton = n_newton)
-        u_hat = Vector{Float64}(u_hat)
+        v_hat, chH, _ = estep_mode(prob, W, beta;
+                                   u0 = u0 === nothing ? nothing : u_to_whitened(W, u0),
+                                   n_newton = n_newton)
+        v_hat = Vector{Float64}(v_hat)
+        u_hat = whitened_to_u(W, v_hat)
         _q4_diag_record!(rows, first_bad, :inner_mode; value = u_hat)
         logdetH = logdet(chH)
         _q4_diag_record!(rows, first_bad, :logdet_H; value = logdetH)
@@ -194,10 +201,11 @@ function q4_marginal_diagnostic(prob::AugProblem, Q_cond::SparseMatrixCSC,
 
     local jn, logdetP, ll, nll
     try
-        jn = joint_nll(prob, P, u_hat, beta)
+        jn = joint_nll(prob, W, v_hat, beta)
         _q4_diag_record!(rows, first_bad, :joint_nll_mode; value = jn)
-        chP = cholesky(Symmetric(P) + 1e-10I; check = false)
-        logdetP = logdet(chP)
+        # whitened: logdet(Q⊗I + εI⊗LᵀL) — the Σ log Lᵢᵢ terms of logdet P and
+        # logdet H_uu cancel analytically (see `laplace_ll(::WhitenedPrior)`).
+        logdetP = _whitened_ridge_logdet(W)
         _q4_diag_record!(rows, first_bad, :logdet_P; value = logdetP)
         ll = -jn - 0.5 * logdet(chH) + 0.5 * logdetP
         _q4_diag_record!(rows, first_bad, :laplace_loglik; value = ll)
@@ -240,21 +248,29 @@ end
 # -----------------------------------------------------------------------------
 
 """
-    marginal_nll(prob, Q_cond, θ; u0, n_newton) -> (nll, û, ch_H, P)
+    marginal_nll(prob, Q_cond, θ; u0, n_newton) -> (nll, û, ch_H, W)
 
 Fresh inner Newton mode + the TRUE sparse Laplace NLL `L(θ)`. `u0` warm-starts
-the Newton (the optimiser reuses the previous mode). Returns the CHOLMOD factor
-`ch_H` and the sparse prior `P` so callers can reuse them for the gradient.
+the Newton (the optimiser reuses the previous mode). Computed in whitened
+coordinates `v = (I ⊗ L⁻¹)u` (Λ = LLᵀ; Λ⁻¹ is never formed), so it stays
+accurate as Λ approaches singularity. `û` is returned in the ORIGINAL u
+coordinates; `ch_H` is the CHOLMOD factor of the WHITENED `H̃ = (I⊗Lᵀ)H_uu(I⊗L)`
+(`logdet H_uu = logdet H̃ − 2N Σ log Lᵢᵢ`) and `W` the `WhitenedPrior`.
 """
 function marginal_nll(prob::AugProblem, Q_cond::SparseMatrixCSC, θ::Vector{Float64};
                       u0 = nothing, n_newton::Int = 40,
                       chol_ref::Union{Nothing,CholPatternCache} = nothing)
     β, lc = unpack_theta(prob, θ)
-    Λ = lc_to_Λ(lc)
-    P = prior_precision(Q_cond, inv(Λ))
-    u, ch, _ = estep_mode(prob, P, β; u0 = u0, n_newton = n_newton, chol_ref = chol_ref)
-    nll = -laplace_ll(prob, P, β, u, ch)
-    return nll, u, ch, P
+    W = whitened_prior(Q_cond, lc_to_chol(lc, 4).L)
+    v0 = u0 === nothing ? nothing : u_to_whitened(W, u0)
+    v, ch, _ = estep_mode(prob, W, β; u0 = v0, n_newton = n_newton, chol_ref = chol_ref)
+    nll = -laplace_ll(prob, W, β, v, ch)
+    # A non-finite Laplace value (e.g. an overflowing Λ) must never read as a gain:
+    # -Inf would be "the best possible" to a value-only caller (profiler, line
+    # search, AIC). +Inf is the failed-evaluation convention `fit_q4_sparse_tmb`'s
+    # fg! already uses.
+    isfinite(nll) || (nll = Inf)
+    return nll, whitened_to_u(W, v), ch, W
 end
 
 # -----------------------------------------------------------------------------
@@ -294,143 +310,146 @@ function marginal_and_exact_grad(prob::AugProblem, Q_cond::SparseMatrixCSC,
     o1 = 0; o2 = k1; o3 = o2 + k2; o4 = o3 + ks1; o5 = o4 + ks2; o6 = o5 + kr
 
     β, lc = unpack_theta(prob, θ)
-    Λ  = lc_to_Λ(lc)
-    Λi = inv(Λ)
+    W = whitened_prior(Q_cond, lc_to_chol(lc, 4).L)
+    L = W.L
 
-    # ---- Step 1: inner Newton mode û (FROZEN) ------------------------------
-    P = prior_precision(Q_cond, Λi)
-    u_hat, chH, H = estep_mode(prob, P, β; u0 = u0, n_newton = n_newton, chol_ref = chol_ref)
-    u_hat = Vector{Float64}(u_hat)
-    nll = -laplace_ll(prob, P, β, u_hat, chH)
+    # ---- Step 1: inner Newton mode v̂ (FROZEN), whitened coordinates -------
+    # nll(θ) = J̃(v̂,θ) + ½ logdet H̃(v̂,θ) − ½ logdet(Q⊗I + εI⊗LᵀL); the ε ridge
+    # is ignored in the gradient exactly as the unwhitened form ignored it.
+    v0 = u0 === nothing ? nothing : u_to_whitened(W, u0)
+    v_hat, chH, _ = estep_mode(prob, W, β; u0 = v0, n_newton = n_newton, chol_ref = chol_ref)
+    v_hat = Vector{Float64}(v_hat)
+    nll = -laplace_ll(prob, W, β, v_hat, chH)
+    u_hat = whitened_to_u(W, v_hat)
+    # Same rule as `marginal_nll`: non-finite means failed evaluation, +Inf, with a
+    # NaN gradient (callers reject on `any(!isfinite, g)`).
+    if !isfinite(nll)
+        return Inf, fill(NaN, nθ), u_hat, chH
+    end
 
     grad = zeros(nθ)
 
-    # ---- Selected inverse of H (Takahashi, O(p)) ----------------------------
-    # Provides H⁻¹ at H's (and Q_cond's) sparsity pattern: diagonal 4×4 leaf
-    # blocks (for β & u logdet traces) and Q-pattern node-pair blocks (for the
-    # Λ logdet trace). Same object mstep_Lambda uses.
+    # Selected inverse of H̃ (Takahashi, O(p)): only the diagonal 4×4 leaf-node
+    # blocks Ṽ_t are needed — the prior block Q⊗I is θ-free. W_t = L Ṽ_t Lᵀ is
+    # the matching block of H_uu⁻¹, so every β / u trace keeps its u-space form.
     Vsel = takahashi_selinv(chH)
 
     η1, η2, ηs1, ηs2, ηr = leaf_etas(prob, β)
+    nrow = length(prob.leaf_node)
+    Dall = Array{Float64}(undef, 4, 4, nrow)     # leaf Hessian D_i at û
+    Gall = Array{Float64}(undef, 4, nrow)        # leaf gradient g_i at û
+    s_v  = zeros(4 * prob.n_total)               # ½ ∇_v logdet H̃
+
+    # lc index k ↦ (r, c) of L; ∂L[r,c]/∂lc_k = L[r,r] on the diagonal, else 1.
+    lc_rc = [(i, j) for j in 1:4 for i in j:4]
 
     # =======================================================================
-    # CHEAP gradient: ∇_θ[ jn + 0.5 logdetH − 0.5 logdetP ]|_{û frozen}.
+    # CHEAP ½ ∇_θ logdet H̃ (β and lc) and the u-trace s_i, one pass over rows.
+    # H̃ leaf block B_t = Σ_i Lᵀ D_i L, D_i = leaf_hess(L v_t, η_i(β)).
+    #   ∂B/∂η      : tr(Ṽ Lᵀ ∂D L) = tr(W_t ∂D)
+    #   ∂B/∂lc_k   : 2 tr(Ṽ Lᵀ D dL_k) + Σ_c s_i[c] (dL_k v_t)[c]
+    #   s_i[c]     = tr(W_t T_i[:,:,c]),  T = ∂D/∂u;  ∂B/∂v_t ⇒ Lᵀ s_i
+    # (The unwhitened form's −½ N ∇logdet Λ and kron(Q, ∂Λ⁻¹) traces cancel
+    # analytically: the prior block of H̃ does not depend on θ.)
     # =======================================================================
-
-    # --- (2a) ∇_θ jn(û,θ): single-level AD over θ (no CHOLMOD). ------------
-    jn_of_θ = function (t::AbstractVector)
-        βt, lct = unpack_theta(prob, t)
-        Λt = lc_to_Λ(lct)
-        Pt = prior_precision(Q_cond, inv(Λt))
-        return joint_nll_T(prob, Pt, u_hat, βt)
-    end
-    grad .+= ForwardDiff.gradient(jn_of_θ, θ)
-
-    # --- (2b) −0.5 ∇_θ logdetP: analytic. logdetP = const − N·logdet Λ, so
-    #          −0.5 logdetP = const + 0.5 N logdet Λ(lc). AD over the dense 4×4
-    #          logdet (CHOLMOD-free). Only the 10 lc entries are nonzero. ----
-    N = prob.n_total
-    glogdetΛ = ForwardDiff.gradient(v -> logdet(Symmetric(lc_to_Λ(v))), lc)
-    grad[o6+1:o6+10] .+= 0.5 * N .* glogdetΛ
-
-    # --- (2c) 0.5 ∇_θ logdetH via tr(H⁻¹ ∂H/∂θ_k), Takahashi. --------------
-    # β-block: ∂H/∂β_k = blockdiag_leaves( ∂(leaf_hess_i)/∂β_k ). Trace picks
-    # only the diagonal 4×4 H⁻¹ block at each leaf node.
-    #   tr(H⁻¹ ∂H/∂β_k) = Σ_i Σ_{a,b} Vsel[bt+a, bt+b] · dHb_i[a,b]/dβ_k.
-    # We get the per-leaf ∂vec(Hb)/∂(its β inputs) once via ForwardDiff over the
-    # 5 η-scalars, then chain to β through the design rows.
-    @inbounds for i in eachindex(prob.leaf_node)   # over DATA ROWS (≥1 per leaf)
+    Wt = zeros(4, 4); LV = zeros(4, 4); Vblk = zeros(4, 4)
+    @inbounds for i in 1:nrow
         t = prob.leaf_node[i]; bt = 4(t - 1)
-        # Vsel diagonal 4×4 block at this leaf node.
-        Vblk = @view Vsel[bt+1:bt+4, bt+1:bt+4]
-        # ∂vec(leaf_hess)/∂(η1,η2,ηs1,ηs2,ηr) at this leaf (16×5).
+        for b in 1:4, a in 1:4; Vblk[a, b] = Vsel[bt+a, bt+b]; end
+        mul!(LV, L, Vblk)                 # L Ṽ
+        mul!(Wt, LV, L')                  # W_t = L Ṽ Lᵀ
+        ublk = [u_hat[bt+1], u_hat[bt+2], u_hat[bt+3], u_hat[bt+4]]
+        D = leaf_hess(ublk, prob.y1[i], prob.y2[i], η1[i], η2[i], ηs1[i], ηs2[i], ηr[i],
+                      prob.obs1[i], prob.obs2[i])
+        Dall[:, :, i] .= D
+        Gall[:, i] .= leaf_grad(ublk, prob.y1[i], prob.y2[i], η1[i], η2[i], ηs1[i], ηs2[i], ηr[i],
+                                prob.obs1[i], prob.obs2[i])
+        # β-block trace, exactly as the u-space form with Vblk → W_t.
         Jη = ForwardDiff.jacobian(
-            e -> vec(leaf_hess([u_hat[bt+1], u_hat[bt+2], u_hat[bt+3], u_hat[bt+4]],
-                               prob.y1[i], prob.y2[i], e[1], e[2], e[3], e[4], e[5],
+            e -> vec(leaf_hess(ublk, prob.y1[i], prob.y2[i], e[1], e[2], e[3], e[4], e[5],
                                prob.obs1[i], prob.obs2[i])),
             [η1[i], η2[i], ηs1[i], ηs2[i], ηr[i]])
-        # contraction tr(Vblk · dHb/dη_m) for each η_m (m=1..5):
-        #   s_m = Σ_{a,b} Vblk[a,b] · dHb[a,b]/dη_m  (Hb symmetric ⇒ Vblk too).
         sη = zeros(5)
         for m in 1:5
             acc = 0.0
-            col = @view Jη[:, m]                 # ∂vec(Hb)/∂η_m, length 16
+            col = @view Jη[:, m]
             for b in 1:4, a in 1:4
-                acc += Vblk[a, b] * col[(b-1)*4 + a]
+                acc += Wt[a, b] * col[(b-1)*4 + a]
             end
             sη[m] = acc
         end
-        # chain η_m = x_row · β_block to β via the design rows. 0.5 factor here.
         for c in 1:k1;  grad[o1+c] += 0.5 * sη[1] * prob.X1[i, c];  end
         for c in 1:k2;  grad[o2+c] += 0.5 * sη[2] * prob.X2[i, c];  end
         for c in 1:ks1; grad[o3+c] += 0.5 * sη[3] * prob.Xs1[i, c]; end
         for c in 1:ks2; grad[o4+c] += 0.5 * sη[4] * prob.Xs2[i, c]; end
         for c in 1:kr;  grad[o5+c] += 0.5 * sη[5] * prob.Xr[i, c];  end
-    end
 
-    # lc-block: ∂H/∂lc_k = kron(Q_cond, ∂Λ⁻¹/∂lc_k). With node-major kron,
-    #   tr(H⁻¹ ∂H/∂lc_k) = Σ_{(s,t)∈Q} Q[s,t] Σ_{a,b} Vsel[bt+a, bs+b]·Mk[b,a],
-    # Mk = ∂Λ⁻¹/∂lc_k (4×4). Build the per-(s,t) accumulator G_st[b,a] =
-    # Σ_{(s,t)} Q[s,t]·Vsel[bt+a, bs+b] ONCE, then contract with each Mk → the
-    # whole lc logdet trace costs one O(nnz Q) pass + 10 cheap 4×4 contractions.
-    Gst = zeros(4, 4)   # Gst[b,a] = Σ_{s,t} Q[s,t]·Vsel[4(t-1)+a, 4(s-1)+b]
-    rows = rowvals(Q_cond); vals = nonzeros(Q_cond)
-    @inbounds for tcol in 1:N
-        for idx in nzrange(Q_cond, tcol)
-            s = rows[idx]; q = vals[idx]
-            bs = 4(s - 1); bt = 4(tcol - 1)
-            for a in 1:4, b in 1:4
-                Gst[b, a] += q * Vsel[bt + a, bs + b]
-            end
-        end
-    end
-    # ∂Λ⁻¹/∂lc_k = −Λ⁻¹ (∂Λ/∂lc_k) Λ⁻¹. Get ∂Λ/∂lc_k (4×4) per k via AD, then
-    # Mk = −Λi*dΛk*Λi; trace contribution 0.5·Σ_{a,b} Gst[b,a]·Mk[b,a].
-    dΛ = ForwardDiff.jacobian(lc_to_Λ, lc)        # 16×10, column k = vec(∂Λ/∂lc_k)
-    for k in 1:10
-        dΛk = reshape(@view(dΛ[:, k]), 4, 4)
-        Mk = -Λi * dΛk * Λi
-        acc = 0.0
-        for a in 1:4, b in 1:4
-            acc += Gst[b, a] * Mk[b, a]
-        end
-        grad[o6 + k] += 0.5 * acc
-    end
-
-    # =======================================================================
-    # IMPLICIT correction: −∇_θ[ (∇_u jn)' w ],  v = 0.5 ∇_u logdetH, w = H⁻¹ v.
-    # =======================================================================
-
-    # --- Step 3: v_k = 0.5·tr(H⁻¹ ∂H/∂u_k). Only leaf blocks depend on u. ---
-    nu = 4 * prob.n_total
-    v = zeros(nu)
-    @inbounds for i in eachindex(prob.leaf_node)   # over DATA ROWS (≥1 per leaf)
-        t = prob.leaf_node[i]; bt = 4(t - 1)
-        Vblk = @view Vsel[bt+1:bt+4, bt+1:bt+4]
-        T = leaf_hess_du([u_hat[bt+1], u_hat[bt+2], u_hat[bt+3], u_hat[bt+4]],
-                         prob.y1[i], prob.y2[i], η1[i], η2[i], ηs1[i], ηs2[i], ηr[i],
+        # u-trace s_i[c] = tr(W_t T_i[:,:,c]).
+        T = leaf_hess_du(ublk, prob.y1[i], prob.y2[i], η1[i], η2[i], ηs1[i], ηs2[i], ηr[i],
                          prob.obs1[i], prob.obs2[i])
+        si = zeros(4)
         for c in 1:4
             acc = 0.0
             for b in 1:4, a in 1:4
-                acc += Vblk[a, b] * T[a, b, c]   # tr(Vblk · T[:,:,c])
+                acc += Wt[a, b] * T[a, b, c]
             end
-            v[bt + c] += 0.5 * acc      # += : sum over a node's replicate obs
+            si[c] = acc
+        end
+        # ½ ∇_v logdet H̃ at this node: ½ Lᵀ s_i (+= over a node's replicate rows).
+        for a in 1:4
+            acc = 0.0
+            for c in a:4; acc += L[c, a] * si[c]; end
+            s_v[bt + a] += 0.5 * acc
+        end
+        # lc-block trace. dL_k has one nonzero, (r, c) with value dv.
+        DLV = D * LV                      # D L Ṽ
+        for k in 1:10
+            r, c = lc_rc[k]
+            dv = r == c ? L[r, r] : 1.0
+            grad[o6 + k] += 0.5 * dv * (2 * DLV[r, c] + si[r] * v_hat[bt + c])
         end
     end
 
-    # --- Step 4: w = H⁻¹ v (one sparse Cholesky solve). --------------------
-    w = chH \ v
+    # --- w = H̃⁻¹ s_v (one sparse Cholesky solve). ---------------------------
+    w = chH \ s_v
 
-    # --- Step 5: correction = −∇_θ[ dot(∇_u jn(û,θ), w) ]|_{û,w frozen}. ----
-    scalar_of_θ = function (t::AbstractVector)
-        βt, lct = unpack_theta(prob, t)
-        Λt = lc_to_Λ(lct)
-        Pt = prior_precision(Q_cond, inv(Λt))
-        gu = joint_grad_T(prob, Pt, u_hat, βt)   # ∇_u jn at frozen û, θ-dependent
-        return dot(gu, w)
+    # =======================================================================
+    # ∂_θ J̃(v̂,θ) − ∂_θ[ ∇_v J̃(v̂,θ)ᵀ w ]  (v̂, w frozen). The prior Q⊗I is
+    # θ-free, so only leaf rows contribute, with u_i = L v̂_t and L w_t:
+    #   Σ_i leaf_nll(u_i, η_i) − (L w_t)ᵀ leaf_grad(u_i, η_i).
+    # lc enters through L only (closed-form chain rule below); β through η
+    # (single-level AD over the β block, û frozen Float64).
+    # =======================================================================
+    Lw = whitened_to_u(W, w)
+    @inbounds for i in 1:nrow
+        t = prob.leaf_node[i]; bt = 4(t - 1)
+        # ∂/∂L[r,c] of gᵀ(L v) − (L w)ᵀ g(L v)  =  g_r v_c − w_c g_r − (D L w)_r v_c
+        for k in 1:10
+            r, c = lc_rc[k]
+            dv = r == c ? L[r, r] : 1.0
+            DLw_r = Dall[r, 1, i] * Lw[bt+1] + Dall[r, 2, i] * Lw[bt+2] +
+                    Dall[r, 3, i] * Lw[bt+3] + Dall[r, 4, i] * Lw[bt+4]
+            grad[o6 + k] += dv * (Gall[r, i] * v_hat[bt + c] - w[bt + c] * Gall[r, i] -
+                                  DLw_r * v_hat[bt + c])
+        end
     end
-    grad .-= ForwardDiff.gradient(scalar_of_θ, θ)
+    nβ = nθ - 10
+    beta_of = function (bθ::AbstractVector)
+        βt, _ = unpack_theta(prob, vcat(bθ, lc))
+        f1, f2, fs1, fs2, fr = leaf_etas(prob, βt)
+        acc = zero(eltype(bθ))
+        @inbounds for i in 1:nrow
+            t = prob.leaf_node[i]; bt = 4(t - 1)
+            ublk = [u_hat[bt+1], u_hat[bt+2], u_hat[bt+3], u_hat[bt+4]]
+            acc += leaf_nll(ublk, prob.y1[i], prob.y2[i], f1[i], f2[i], fs1[i], fs2[i], fr[i],
+                            prob.obs1[i], prob.obs2[i])
+            gb = leaf_grad(ublk, prob.y1[i], prob.y2[i], f1[i], f2[i], fs1[i], fs2[i], fr[i],
+                           prob.obs1[i], prob.obs2[i])
+            acc -= Lw[bt+1] * gb[1] + Lw[bt+2] * gb[2] + Lw[bt+3] * gb[3] + Lw[bt+4] * gb[4]
+        end
+        return acc
+    end
+    grad[1:nβ] .+= ForwardDiff.gradient(beta_of, θ[1:nβ])
 
     return nll, grad, u_hat, chH
 end

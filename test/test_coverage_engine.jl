@@ -88,14 +88,20 @@ end
         θ = pack_theta(β, Λ)
         nu = 4 * prob.n_total
 
-        # marginal_nll -> (nll, û, ch_H, P)
-        nll, û, chH, P = marginal_nll(prob, Q_cond, θ; n_newton = 120)
+        # marginal_nll -> (nll, û, ch_H, W); W is the WhitenedPrior (#857: the
+        # engine no longer forms P = Q ⊗ Λ⁻¹). Λ = W.L W.L', W.Pw = Q ⊗ I.
+        nll, û, chH, W = marginal_nll(prob, Q_cond, θ; n_newton = 120)
         @test isfinite(nll)
         @test length(û) == nu
         @test all(isfinite, û)
-        @test issparse(P)
-        @test size(P) == (nu, nu)
-        @test isposdef(Symmetric(Matrix(P)))            # prior precision is SPD
+        @test W isa DRModels.WhitenedPrior
+        @test issparse(W.Pw)
+        @test size(W.Pw) == (nu, nu)
+        @test isposdef(Symmetric(Matrix(W.Pw)))         # whitened prior is SPD
+        @test W.L * W.L' ≈ Λ rtol = 1e-12
+        # the unwhitened prior precision is still recoverable and SPD
+        P = DRModels.prior_precision(Q_cond, inv(Symmetric(Λ)))
+        @test isposdef(Symmetric(Matrix(P)))
 
         # marginal_and_exact_grad -> (nll, grad, û, ch_H); θ has 7 β + 10 lc = 17
         nllg, g, ûg, _ = marginal_and_exact_grad(prob, Q_cond, θ; n_newton = 120)
