@@ -161,15 +161,19 @@ function _mf_profile_ci(objfn, rho_of, θ̂, ρ, level)
         # bisection point, dev >> q) the default backtracking line search can
         # stall within ~1e-9 of stationarity because trial objectives differ by
         # less than the ~1e-12 noise floor at nll ~ 600, and whether it stalls is
-        # decided by last-ulp differences (start point, CPU, BLAS kernel). A
+        # decided by last-ulp differences (start point, CPU, BLAS kernel). Such a
         # stalled solve was reported NaN, which dropped a whole CI arm. Retry once
-        # from the stall point with a Hager-Zhang line search; solves that already
-        # converged are untouched (bit-identical).
-        if !Optim.converged(r) && isfinite(Optim.minimum(r)) && Optim.minimum(r) < 1e9
+        # from the stall point with a Hager-Zhang line search, then accept a solve
+        # that is stationary to 1e-6 (an objective change of ~1e-12 at the
+        # curvature here) as converged. Solves that already converged are
+        # untouched (bit-identical).
+        stalled(r) = !Optim.converged(r) && isfinite(Optim.minimum(r)) && Optim.minimum(r) < 1e9
+        if stalled(r)
             r = Optim.optimize(pobj, copy(Optim.minimizer(r)),
                                Optim.LBFGS(linesearch = Optim.LineSearches.HagerZhang()),
                                Optim.Options(g_tol = 1e-9); autodiff = :forward)
         end
+        inner_ok = Optim.converged(r) || (stalled(r) && Optim.g_residual(r) <= 1e-6)
         # A non-converged, non-finite or sentinel (>= 1e9) inner solve is
         # UNRESOLVED (NaN), never "crossed": the 1e10 plateau would read as a huge
         # deviance and pin the endpoint to the cliff edge.
@@ -178,7 +182,7 @@ function _mf_profile_ci(objfn, rho_of, θ̂, ρ, level)
         # certify "not crossed". A large deviance is still a valid "crossed".
         θm = Optim.minimizer(r)
         fmin = objfn(θm)
-        (Optim.converged(r) && isfinite(fmin) && fmin < 1e9) || return NaN
+        (inner_ok && isfinite(fmin) && fmin < 1e9) || return NaN
         dev = 2 * (fmin - nllhat)
         met = abs(atanh(clamp(rho_of(θm), -0.999999, 0.999999)) - zr0) < 0.05
         (met || dev >= q) || return NaN
