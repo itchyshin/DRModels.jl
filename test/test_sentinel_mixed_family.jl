@@ -80,6 +80,10 @@ end
         f = DRModels.fit_mixed_family(y1 = y1, X1 = X, fam1 = Gaussian(), y2 = y2, X2 = X,
                                       fam2 = DRModels.Poisson(), profile = true, B = 12,
                                       rng = StableRNG(1))
+        # The profile endpoints come from a bisection that stops at width < 1e-3, so they
+        # are quantised: every decision had a deviance margin >= 4e-3 (measured), and the
+        # 1e-8 pin is met to ~1e-15 across OPENBLAS_CORETYPE variants. A 1e-8 miss
+        # therefore means a changed bisection path (e.g. an arm lost to NaN), not noise.
         # Values recorded from the pre-change code (base src, StableRNG data), identical on Julia 1.10 and 1.13.
         @test f.rho_latent ≈ 0.4652924608401332 atol = 1e-8
         @test all(isapprox.(f.rho_ci_wald, (0.3367448322273234, 0.5768132074484522); atol = 1e-8))
