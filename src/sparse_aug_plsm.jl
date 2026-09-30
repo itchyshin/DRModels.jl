@@ -668,6 +668,21 @@ function _estep_robust(prob::AugProblem, P::Union{SparseMatrixCSC,WhitenedPrior}
             λ *= 4.0; λ > λmax && break
         end
     end
+    # Float-floor polish. Near the mode a J decrease smaller than ~eps·|J| cannot
+    # pass the monotone test `fnew < f`, so the LM loop can exit through the λ
+    # break with ‖∇J‖ well above `tol` (measured up to 3e-7 on the whitened q4
+    # prior, #857). The Laplace NLL is first-order in that residual, which a
+    # value-based FD Hessian divides by h². Finish with plain Newton steps on the
+    # observed Hessian, accepted only while ‖∇J‖ strictly decreases.
+    for _ in 1:5
+        (ng < tol || ng >= gswitch) && break
+        ch_n, extra = sparse_pd_chol(build_Huu(prob, P, u, β); chol_ref = chol_ref)
+        extra == 0 || break
+        unew = u .- (ch_n \ g)
+        gnew = joint_grad(prob, P, unew, β); ngnew = norm(gnew)
+        (isfinite(ngnew) && ngnew < ng) || break
+        u, g, ng = unew, gnew, ngnew
+    end
     Hobs = build_Huu(prob, P, u, β)
     ch, _ = sparse_pd_chol(Hobs; chol_ref = chol_ref)
     return u, ch, Hobs
