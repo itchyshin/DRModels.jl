@@ -62,7 +62,7 @@ inner mode's start and stationarity bound (`_ls_inner_mode`).
 function _ls_marginal_grad(kind, y, Xμ, Xψ, gidx, G, Q, θ,
                            Zη = _ls_canonical_Zeta(length(y)),
                            Zψ = _ls_canonical_Zpsi(length(y)); a0 = nothing,
-                           tol::Real = 1e-9)
+                           tol::Real = 1e-9, relaxed::Bool = false)
     pμ = size(Xμ, 2); pψ = size(Xψ, 2)
     βμ = @view θ[1:pμ]
     βψ = @view θ[pμ+1:pμ+pψ]
@@ -71,7 +71,8 @@ function _ls_marginal_grad(kind, y, Xμ, Xψ, gidx, G, Q, θ,
     P = prior_precision(Q, Λinv)
     η0 = Xμ * βμ; ψ0 = Xψ * βψ
 
-    a, ch, ok = _ls_inner_mode(kind, y, η0, ψ0, gidx, G, P, Zη, Zψ; a0 = a0, tol = tol)
+    a, ch, ok = _ls_inner_mode(kind, y, η0, ψ0, gidx, G, P, Zη, Zψ; a0 = a0, tol = tol,
+                               relaxed = relaxed)
     # Inner-mode failure ⇒ infeasible θ. Return NaN (not zeros) so a gradient-based
     # optimiser treats the step as rejected instead of reading a zero gradient as
     # convergence at an infeasible point (#314). The paired value sentinel in
