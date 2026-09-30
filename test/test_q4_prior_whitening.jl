@@ -241,8 +241,12 @@ end
         θ[o + 5] = l22
         _, g, _, _ = marginal_and_exact_grad(prob, Q_cond, copy(θ))
         f = t -> first(marginal_nll(prob, Q_cond, t))
-        gfd = [_cfd(f, θ, k) for k in eachindex(θ)]
-        @test maximum(abs, g .- gfd) ≤ 1e-6 * max(1, maximum(abs, gfd))
+        # h = 1e-4, tol 5e-6: the objective carries ~1e-9 absolute value noise on
+        # Julia 1.13 (measured: FD error 7.7e-6 / 7.8e-5 / 7.8e-4 at h = 1e-4 / 1e-5
+        # / 1e-6, i.e. noise/h; on 1.10 it is 1.6e-7 at h = 1e-4, truncation only).
+        # A wrong analytic gradient is O(1e-2) or larger, far above this.
+        gfd = [_cfd(f, θ, k; h = 1e-4) for k in eachindex(θ)]
+        @test maximum(abs, g .- gfd) ≤ 5e-6 * max(1, maximum(abs, gfd))
     end
 end
 
