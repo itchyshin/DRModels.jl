@@ -253,7 +253,7 @@ end
 @testset "reml_q4 Λ-inversion: extreme regime vs 256-bit reference" begin
     prob, Q_cond = _fixture()
     lc0 = zeros(10); lc0[2] = 0.35   # L21: strong mu1-mu2 coupling
-    for l22 in (-18.0, -20.0, -30.0)
+    for l22 in (-2.0, -12.0, -18.0, -20.0, -30.0)
         lc = copy(lc0); lc[5] = l22  # (2,2) log-Cholesky diagonal -> near-singular Λ
         ref = _reml_bigref_ll(prob, Q_cond, lc)
         val = -DRModels.reml_nll_exact(prob, Q_cond, lc)

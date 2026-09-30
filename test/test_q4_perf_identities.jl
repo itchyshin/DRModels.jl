@@ -627,8 +627,10 @@ function gate_pattern(; verbose::Bool = true)
     # falls back to when Lambda0 is not supplied. Before the S5e fix, this
     # route showed 256 factorisations / 255 fallbacks -- prior_precision
     # stores Lambda0's off-diagonal zeros structurally, and the old
-    # `Hr + hzero` carrier dropped them on every reuse. `>=100` factorisations
-    # at p=1000 (a fit takes hundreds of E-step Newton iterations) is direct
+    # `Hr + hzero` carrier dropped them on every reuse. `>=90` factorisations
+    # at p=1000 (a fit takes hundreds of E-step Newton iterations; the floor was
+    # 100 before the whitened engine, which converges in fewer iterations --
+    # owner-approved 2026-09-30) is direct
     # evidence the reuse is actually engaging, not just that fallbacks == 0
     # by having never been attempted.
     DRModels.reset_chol_diagnostics!()
@@ -636,9 +638,9 @@ function gate_pattern(; verbose::Bool = true)
     fit1000d = fit_q4_sparse_tmb(case1000d.prob, case1000d.Q; β0 = case1000d.β0,
                                   g_tol = 1e-3, iterations = 300, n_newton = 40)
     fac_d = DRModels.CHOL_FACTORIZATIONS[]; fb_d = DRModels.CHOL_REUSE_FALLBACKS[]
-    default_ok = fb_d == 0 && fac_d >= 100 && fit1000d.converged
+    default_ok = fb_d == 0 && fac_d >= 90 && fit1000d.converged
     if verbose || !default_ok
-        @printf "  p=1000 default Lambda0=0.3I fit: factorisations=%d fallbacks=%d (expect 0, >=100) converged=%s %s\n" fac_d fb_d fit1000d.converged (default_ok ? "OK" : "FAIL")
+        @printf "  p=1000 default Lambda0=0.3I fit: factorisations=%d fallbacks=%d (expect 0, >=90) converged=%s %s\n" fac_d fb_d fit1000d.converged (default_ok ? "OK" : "FAIL")
     end
     ok &= default_ok
 
@@ -652,9 +654,9 @@ function gate_pattern(; verbose::Bool = true)
                                   lc_zero = [3, 4, 6, 7],
                                   g_tol = 1e-3, iterations = 300, n_newton = 40)
     fac_z = DRModels.CHOL_FACTORIZATIONS[]; fb_z = DRModels.CHOL_REUSE_FALLBACKS[]
-    zero_ok = fb_z == 0 && fac_z >= 100 && fit1000z.converged
+    zero_ok = fb_z == 0 && fac_z >= 90 && fit1000z.converged
     if verbose || !zero_ok
-        @printf "  p=1000 lc_zero=[3,4,6,7] fit: factorisations=%d fallbacks=%d (expect 0, >=100) converged=%s %s\n" fac_z fb_z fit1000z.converged (zero_ok ? "OK" : "FAIL")
+        @printf "  p=1000 lc_zero=[3,4,6,7] fit: factorisations=%d fallbacks=%d (expect 0, >=90) converged=%s %s\n" fac_z fb_z fit1000z.converged (zero_ok ? "OK" : "FAIL")
     end
     ok &= zero_ok
 

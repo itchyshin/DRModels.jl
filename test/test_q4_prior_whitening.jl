@@ -15,7 +15,7 @@
 # test_q4_objective_diagnostic fixture and L21 = 0.35: rel. error 6.5e-7 at
 # l22 = −12, 5.9e-3 at −17 (+0.16 nats), 9.2e-2 at ≤ −20 (+2.4 nats)). It is now
 # whitened too (Newton mode-finder, `laplace_ll`, exact gradient); the q4
-# testsets below pin it. The q=4 REML (reml_q4.jl) is a separate change.
+# testsets below pin it; the q=4 REML (reml_q4.jl) has its own file, test_reml_q4_chol.jl.
 
 module TestQ4PriorWhitening
 
@@ -135,9 +135,8 @@ end
 
 # q=4 engine: SAME construction, NOT fixed in this PR (see header). Pins the
 # measured defect so a future whitened-engine PR has a ready regression.
-function _q4_bigref(prob, Q_cond, θ)
+function _q4_ref(prob, Q_cond, θ, ::Type{T}) where {T}
     setprecision(BigFloat, 256) do
-        T = BigFloat
         β, lc = DRModels.unpack_theta(prob, θ)
         L = zeros(T, 4, 4); k = 0
         for j in 1:4, i in j:4
@@ -164,7 +163,7 @@ function _q4_bigref(prob, Q_cond, θ)
         u = zeros(T, size(P, 1))
         for _ in 1:80
             g, H = gH(u)
-            norm(g) < T(10)^-50 && break
+            norm(g) < (T === BigFloat ? T(10)^-50 : T(1e-11)) && break
             du = H \ g; s = one(T); j0 = jn(u)
             while jn(u - s * du) > j0 && s > 1e-12
                 s /= 2
@@ -177,6 +176,15 @@ function _q4_bigref(prob, Q_cond, θ)
                 logdet(cholesky(Symmetric(P + T(_EPS_RIDGE) * I))) / 2)
     end
 end
+
+_q4_bigref(prob, Q_cond, θ) = _q4_ref(prob, Q_cond, θ, BigFloat)
+
+# Owner bar (i), 2026-09-30: identity with main at a POLISHED inner mode. This is
+# main's construction verbatim -- P = Q ⊗ inv(Λ), plain-Newton mode driven to
+# ‖∇J‖ < 1e-11 (Float64), Laplace with the ridged logdet P -- so it does not
+# depend on which mode-finder the engine uses. In the well-conditioned regime the
+# whitened engine must agree with it (measured 5.6e-10 earlier, at p = 100).
+_q4_polished_main(prob, Q_cond, θ) = _q4_ref(prob, Q_cond, θ, Float64)
 
 function _q4_fixture()
     rng = MersenneTwister(293)
@@ -210,6 +218,20 @@ _cfd(f, x, k; h = 1e-5) = (x1 = copy(x); x1[k] += h; x2 = copy(x); x2[k] -= h;
         # the diagnostic runs the same whitened pieces
         d = DRModels.q4_marginal_diagnostic(prob, Q_cond, θ)
         @test d.ok && abs(d.loglik - ll) ≤ 1e-10
+    end
+end
+
+@testset "q4 engine: identity with main's construction at a polished inner mode (owner bar i)" begin
+    prob, Q_cond, θ, o = _q4_fixture()
+    rng = MersenneTwister(2026)
+    for trial in 1:8
+        t = copy(θ)
+        t[o + 1:o + 10] .+= trial == 1 ? 0.0 : 0.15 .* randn(rng, 10)
+        t[o + 5] = trial == 1 ? -2.0 : t[o + 5]
+        ll = -first(marginal_nll(prob, Q_cond, t))
+        ref = _q4_polished_main(prob, Q_cond, t)
+        @test isfinite(ll) && isfinite(ref)
+        @test abs(ll - ref) / max(1, abs(ref)) ≤ 1e-9
     end
 end
 
