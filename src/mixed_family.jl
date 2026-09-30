@@ -167,7 +167,7 @@ function _mf_profile_ci(objfn, rho_of, θ̂, ρ, level)
         # converged are untouched (bit-identical).
         if !Optim.converged(r) && isfinite(Optim.minimum(r)) && Optim.minimum(r) < 1e9
             r = Optim.optimize(pobj, copy(Optim.minimizer(r)),
-                               Optim.LBFGS(linesearch = LineSearches.HagerZhang()),
+                               Optim.LBFGS(linesearch = Optim.LineSearches.HagerZhang()),
                                Optim.Options(g_tol = 1e-9); autodiff = :forward)
         end
         # A non-converged, non-finite or sentinel (>= 1e9) inner solve is
