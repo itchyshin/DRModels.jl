@@ -723,3 +723,8 @@ _shard_include("test_ll_sanity_fuzzer.jl")
 # Issue #706 (test part): classic lme4 twins - cbpp (binomial herd RE, integrator-matched
 # to glmer nAGQ = 1 / 3 / 25) and sleepstudy (Gaussian random slope, ML vs lmer; REML pinned broken).
 _shard_include("test_lme4_twins.jl")
+
+# reml_q4.jl's six naive-inv(Λ) sites (lines 309/437/505-506/516/599/999):
+# extreme-regime REML objective vs a 256-bit reference, plus a normal-regime
+# identity check against a frozen pre-whitening copy of the same code path.
+_shard_include("test_reml_q4_chol.jl")
