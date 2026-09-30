@@ -272,7 +272,20 @@ _ls_hess_chol(kind, y, η0, ψ0, gidx, G, a, P) =
 _ls_allfinite(H::SparseMatrixCSC) = all(isfinite, nonzeros(H))
 _ls_allfinite(H) = all(isfinite, H)
 
-function _ls_inner_certificate(kind, y, η0, ψ0, gidx, G, P, Zη, Zψ, a, tol)
+# Representability floor of the stationarity test. The gradient contains P*a; when
+# P has an enormous entry (Λ⁻¹ ~ exp(-2 log L22) as log L22 → -12, ~1e10) one ulp of
+# `a` moves the gradient by ~eps*|P||a|, which can exceed `tol*(1+‖a‖)`. The strict
+# certificate is then UNREACHABLE in Float64 (measured: a Newton iteration cycling at
+# gnorm 3e-9 vs bound 2.6e-9, one ulp of a[2] = 2e-9 of gradient), the inner mode
+# reports failure, and the profile objective/gradient become the 1e18/NaN sentinel.
+# The relaxed test adds 4 eps ‖|P||a|‖. It is OPT-IN (`relaxed=true`, used by the
+# profile solves that deliberately drive log L22 toward -12) and is only consulted after
+# the strict test has stalled, so every strictly certified solve is unchanged and the
+# ordinary fit / Wald information path is untouched.
+_ls_inner_repr_floor(P, a) = 4 * eps(Float64) * norm(abs.(P) * abs.(a))
+
+function _ls_inner_certificate(kind, y, η0, ψ0, gidx, G, P, Zη, Zψ, a, tol;
+                               relaxed::Bool = false)
     all(isfinite, a) || return nothing, false
     H = _ls_joint_hess(kind, y, η0, ψ0, gidx, G, a, P, Zη, Zψ)
     _ls_allfinite(H) || return nothing, false
@@ -282,6 +295,7 @@ function _ls_inner_certificate(kind, y, η0, ψ0, gidx, G, P, Zη, Zψ, a, tol)
     anorm = norm(a)
     gnorm = norm(grad)
     bound = tol * (1 + anorm)
+    relaxed && (bound += _ls_inner_repr_floor(P, a))
     (isfinite(anorm) && isfinite(gnorm) && isfinite(bound)) || return ch, false
     stationary = gnorm <= bound
     return ch, stationary && issuccess(ch)
@@ -632,8 +646,9 @@ end
 function _ls_inner_mode(kind, y, η0, ψ0, gidx, G, P,
                         Zη = _ls_canonical_Zeta(length(y)),
                         Zψ = _ls_canonical_Zpsi(length(y)); a0 = nothing,
-                        maxiter::Int = 200, tol::Real = 1e-9)
+                        maxiter::Int = 200, tol::Real = 1e-9, relaxed::Bool = false)
     a = a0 === nothing ? zeros(2G) : copy(a0)
+    in_band = 0            # iterations spent between the strict and relaxed bounds
     for _ in 1:maxiter
         grad = _ls_joint_grad(kind, y, η0, ψ0, gidx, a, P, Zη, Zψ)
         anorm = norm(a)
@@ -644,6 +659,20 @@ function _ls_inner_mode(kind, y, η0, ψ0, gidx, G, P,
             ch, certified = _ls_inner_certificate(kind, y, η0, ψ0, gidx, G, P,
                                                     Zη, Zψ, a, tol)
             return a, ch, certified
+        end
+        # Stalled at the Float64 representability floor of a stiff prior direction
+        # (see `_ls_inner_repr_floor`): after 3 iterations inside the relaxed band
+        # without reaching the strict bound, accept under the relaxed test.
+        if relaxed && all(isfinite, grad) && isfinite(gnorm) &&
+           gnorm <= bound + _ls_inner_repr_floor(P, a)
+            in_band += 1
+            if in_band >= 3
+                ch, certified = _ls_inner_certificate(kind, y, η0, ψ0, gidx, G, P,
+                                                        Zη, Zψ, a, tol; relaxed = true)
+                certified && return a, ch, true
+            end
+        else
+            in_band = 0
         end
         H = _ls_joint_hess(kind, y, η0, ψ0, gidx, G, a, P, Zη, Zψ)
         _ls_allfinite(H) || return a, nothing, false

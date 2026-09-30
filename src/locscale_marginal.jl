@@ -24,13 +24,15 @@ using LinearAlgebra: logdet, cholesky, Symmetric, issuccess
 Laplace-approximate marginal negative log-likelihood for the q=2 location–scale
 model. Returns `(nll, â, ok)`: the marginal NLL, the inner mode, and a success
 flag (the inner Newton solve can fail at extreme parameters). `tol` is the inner
-mode's stationarity bound (`_ls_inner_mode`).
+mode's stationarity bound (`_ls_inner_mode`); `relaxed` opts in to its
+representability-floor certificate (stiff-prior profile solves).
 """
 function _ls_marginal_nll(kind, y, η0, ψ0, gidx, G, P,
                           Zη = _ls_canonical_Zeta(length(y)),
                           Zψ = _ls_canonical_Zpsi(length(y)); a0 = nothing,
-                          tol::Real = 1e-9)
-    a, ch, ok = _ls_inner_mode(kind, y, η0, ψ0, gidx, G, P, Zη, Zψ; a0 = a0, tol = tol)
+                          tol::Real = 1e-9, relaxed::Bool = false)
+    a, ch, ok = _ls_inner_mode(kind, y, η0, ψ0, gidx, G, P, Zη, Zψ; a0 = a0, tol = tol,
+                               relaxed = relaxed)
     ok || return Inf, a, false
     jn = _ls_joint(kind, y, η0, ψ0, gidx, a, P, Zη, Zψ)
     logdetH = logdet(ch)
