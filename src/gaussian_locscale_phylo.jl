@@ -603,6 +603,16 @@ function _glsp_joint_reml_nll(kind, y, Xμ, Xψ, gidx, G, P, Zη, Zψ, β0, a0;
         S = Symmetric(Hββ .- Haβ' * (ch \ Haβ))
         chS = cholesky(S; check = false)
         step = issuccess(chS) ? (chS \ gβ) : gβ          # steepest descent if S is not PD
+        # Predicted decrease at or below rounding and the loose gradient test met: the
+        # profile is flat to one ULP here, so the accept-on-equal line search below would
+        # only halve ~26 times to a near-null step, accept it with zero decrease, and
+        # repeat (8-15x slowdown). Exit as the `!moved` branch would; when the loose test
+        # fails fall through, so far-from-optimum behaviour is unchanged.
+        if 0.5 * dot(gβ, step) <= 1e-13 * (1 + abs(hval)) &&
+           norm(gβ) <= 1e-5 * (1 + norm(β))
+            converged = true
+            break
+        end
         α = 1.0; moved = false
         while α >= 1e-10
             βt = β .- α .* step
