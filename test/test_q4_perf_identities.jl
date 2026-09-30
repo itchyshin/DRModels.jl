@@ -168,12 +168,38 @@ _id_seed(p::Integer) = 37600 + p   # matches head_to_head_q4_scaling.jl's own se
 # nothing` (the default path, provably byte-identical to pre-S5 by
 # construction -- see sparse_aug_plsm.jl's `_chol_factorize` `Nothing`
 # method) and `chol_ref` = a fresh `CholPatternCache` (the reuse path), IN
-# THE SAME PROCESS, on whatever platform is running, and require bitwise
-# equality between the two. This also folds in what used to be the separate
+# THE SAME PROCESS, on whatever platform is running, and require
+# agreement to `NLL_CACHE_RTOL` (below) between the two. This also folds in what used to be the separate
 # `gate_nll_cached` (G5e.1) check -- that the reuse actually engages
 # (fallbacks == 0, factorisations >= 2, i.e. more than just the seeding
 # call) -- so a silently-never-reused cache cannot pass by accident.
 # -----------------------------------------------------------------------------
+
+# Bound on rel(nll_cached, nll_direct). WAS 1e-12 (bitwise-motivated); widened
+# 2026-09-30 to 1e-9 after CI shard 1 (PR #902, Julia 1.13.1 Linux x86) gave
+# rel = 1.743e-12 (1.8e-9 absolute at NLL = 1024.95) with fb = 0, fac = 47.
+# Diagnosis (Totoro, Julia 1.10.12 and 1.13.1, origin/main vs 37b064c2a, this
+# exact case, n_newton = 40): the cached nll (1024.9476838091393) equals the
+# fully converged reference (inner tol 1e-13, |grad| ~ 2e-14) to the last digit,
+# while the CI direct value sits 1.8e-9 off it: the direct path stopped one
+# Newton step earlier. The inner mode solve stops at |grad J| < 1e-8 (or the
+# float-floor polish), and the Laplace NLL is FIRST order in that residual, so
+# two paths whose CHOLMOD factors differ at the ulp level (the direct path
+# ridges with `H + lambda*I`, which drops H's stored zeros and so analyses a
+# different pattern from the cached `_add_diag`; see `_chol_factorize`) can
+# stop at different iterations. Measured stopping noise, rel to the converged
+# NLL, from the SAME direct path only (no cache involved): 1-ulp and 1e-10..1e-6
+# start perturbations -> up to 4.5e-11 (p=100, 1.10.12) and 5.8e-12 (p=100,
+# 1.13.1); inner tol 1e-7 on 1.13.1 -> 3.6e-11; p=1000 <= 1.3e-12. Repeated
+# direct evaluations are bitwise identical on one machine (spread 0), so the
+# gap is platform rounding, not randomness. Totoro itself gave rel = 0 for both
+# Julia versions, both origin/main and this branch. 1e-9 is ~20x the largest
+# measured stopping noise. A genuinely wrong reuse is many orders larger
+# (injected into `_chol_factorize` on Totoro, p=100: cholesky! on the bare
+# two-triangle matrix, the S5 bug -> rel 0.92 (1.10) / 0.75 (1.13); a stale
+# factor never refreshed -> rel 4.0e-2 / 1.2e-2), and structural failures are
+# still caught exactly by `fb == 0` and `fac >= 2`.
+const NLL_CACHE_RTOL = 1e-9
 
 function gate_nll(; verbose::Bool = true)
     ok = true
@@ -186,7 +212,7 @@ function gate_nll(; verbose::Bool = true)
         nll_cached, = marginal_nll(case.prob, case.Q, θ0; n_newton = 40, chol_ref = cache)
         fac = DRModels.CHOL_FACTORIZATIONS[]; fb = DRModels.CHOL_REUSE_FALLBACKS[]
         rel = abs(nll_cached - nll_direct) / abs(nll_direct)
-        this_ok = rel <= 1e-12 && fb == 0 && fac >= 2
+        this_ok = rel <= NLL_CACHE_RTOL && fb == 0 && fac >= 2
         if verbose || !this_ok
             @printf "  p=%d nll_direct=%.17g nll_cached=%.17g rel=%.3e factorisations=%d fallbacks=%d %s\n" p nll_direct nll_cached rel fac fb (this_ok ? "OK" : "FAIL")
         end
