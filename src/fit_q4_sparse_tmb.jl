@@ -265,6 +265,11 @@ function marginal_nll(prob::AugProblem, Q_cond::SparseMatrixCSC, θ::Vector{Floa
     v0 = u0 === nothing ? nothing : u_to_whitened(W, u0)
     v, ch, _ = estep_mode(prob, W, β; u0 = v0, n_newton = n_newton, chol_ref = chol_ref)
     nll = -laplace_ll(prob, W, β, v, ch)
+    # A non-finite Laplace value (e.g. an overflowing Λ) must never read as a gain:
+    # -Inf would be "the best possible" to a value-only caller (profiler, line
+    # search, AIC). +Inf is the failed-evaluation convention `fit_q4_sparse_tmb`'s
+    # fg! already uses.
+    isfinite(nll) || (nll = Inf)
     return nll, whitened_to_u(W, v), ch, W
 end
 
@@ -316,6 +321,11 @@ function marginal_and_exact_grad(prob::AugProblem, Q_cond::SparseMatrixCSC,
     v_hat = Vector{Float64}(v_hat)
     nll = -laplace_ll(prob, W, β, v_hat, chH)
     u_hat = whitened_to_u(W, v_hat)
+    # Same rule as `marginal_nll`: non-finite means failed evaluation, +Inf, with a
+    # NaN gradient (callers reject on `any(!isfinite, g)`).
+    if !isfinite(nll)
+        return Inf, fill(NaN, nθ), u_hat, chH
+    end
 
     grad = zeros(nθ)
 
