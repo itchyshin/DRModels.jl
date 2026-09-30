@@ -27,6 +27,19 @@ import Distributions
 # A constrained optimum whose value is at/above this is treated as INFEASIBLE.
 const _LS_PROFILE_INFEASIBLE = 1e18
 
+# Boundary-identified log-Cholesky diagonals (owner decision 15 (a), 2026-09-30).
+# The packed vector ends with `(log L11, L21, log L22)`. When a log-diagonal has
+# slid below this value the marginal NLL is flat along it (the variance is
+# numerically zero; gradient decays only like exp(2 * coordinate)), so the strict
+# 1e-7 stationarity test cannot be met by L-BFGS there. That coordinate alone is
+# exempted from the free-gradient check; every other coordinate keeps the strict
+# gate, and the exemption is reported as reason `:accepted_boundary_exempt`.
+# The off-diagonal L21 of the SAME row is exempted too when log L22 is below the
+# cutoff: with L22 ~ 0 the second variance is L21^2 + L22^2 ~ L21^2, so L21 is the
+# same flat boundary direction (measured on the location-scale test fixture: the
+# only coordinate above 1e-7 at a trial point was L21, 1.9e-7, all others < 5e-9).
+const _LS_PROFILE_BOUNDARY_LOGCHOL = -8.0
+
 const _LSProfileNuisanceResult = NamedTuple{
     (:value, :minimizer, :accepted, :method, :fallback, :reason, :converged, :gradient_maxabs),
     Tuple{Float64,Vector{Float64},Bool,Symbol,Bool,Symbol,Bool,Float64},
@@ -38,7 +51,10 @@ _ls_profile_nuisance_result(value, minimizer, accepted, reason;
      method=:lbfgs, fallback=fallback, reason=reason, converged=converged,
      gradient_maxabs=Float64(gradient_maxabs))::_LSProfileNuisanceResult
 
-function _ls_profile_candidate_status(f, g!, xmin, converged::Bool; fallback=false)
+function _ls_profile_candidate_status(f, g!, xmin, converged::Bool; fallback=false,
+                                      logchol_diag::AbstractVector{<:Integer} = Int[],
+                                      l21_pos::Int = 0, l22_pos::Int = 0,
+                                      l22_fixed::Float64 = NaN)
     all(isfinite, xmin) ||
         return _ls_profile_nuisance_result(Inf, xmin, false, :nonfinite_minimizer;
                                            converged=converged, fallback=fallback)
@@ -66,6 +82,17 @@ function _ls_profile_candidate_status(f, g!, xmin, converged::Bool; fallback=fal
         return _ls_profile_nuisance_result(value, xmin, false, :nonfinite_gradient;
                                            converged=true, fallback=fallback)
     gradient_maxabs = isempty(gradient) ? 0.0 : maximum(abs, gradient)
+    exempt = [k for k in logchol_diag if xmin[k] < _LS_PROFILE_BOUNDARY_LOGCHOL]
+    l22 = l22_pos > 0 ? xmin[l22_pos] : l22_fixed
+    l21_pos > 0 && l22 < _LS_PROFILE_BOUNDARY_LOGCHOL && push!(exempt, l21_pos)
+    if !isempty(exempt) && gradient_maxabs > 1e-7
+        kept = [abs(gradient[k]) for k in eachindex(gradient) if !(k in exempt)]
+        kept_maxabs = isempty(kept) ? 0.0 : maximum(kept)
+        kept_maxabs <= 1e-7 &&
+            return _ls_profile_nuisance_result(value, xmin, true, :accepted_boundary_exempt;
+                                               converged=true, gradient_maxabs=kept_maxabs,
+                                               fallback=fallback)
+    end
     gradient_maxabs <= 1e-7 ||
         return _ls_profile_nuisance_result(value, xmin, false, :not_stationary;
                                            converged=true, gradient_maxabs=gradient_maxabs,
@@ -91,6 +118,11 @@ function _ls_profile_nll_result(kind, y, Xμ, Xψ, gidx, G, Q, θ̂, idx::Int, v
                                 iterations::Int = 200)
     p = length(θ̂); pμ = size(Xμ, 2); pψ = size(Xψ, 2)
     free = [k for k in 1:p if k != idx]
+    # Free-vector positions of the log-Cholesky diagonals (log L11, log L22).
+    logchol_diag = [k - (k > idx) for k in (p - 2, p) if k != idx]
+    l21_pos = idx == p - 1 ? 0 : (p - 1) - (p - 1 > idx)
+    l22_pos = idx == p ? 0 : p - (p > idx)
+    l22_fixed = idx == p ? Float64(val) : NaN
     build(θf) = (θ = collect(float.(θ̂)); θ[free] .= θf; θ[idx] = val; θ)
     function f(θf)
         θ = build(θf)
@@ -153,6 +185,8 @@ function _ls_profile_nll_result(kind, y, Xμ, Xψ, gidx, G, Q, θ̂, idx::Int, v
         # status can be driven by a non-gradient stopping condition.
         candidate = _ls_profile_candidate_status(
             f, g!, xmin, Optim.converged(res); fallback=fallback,
+            logchol_diag=logchol_diag, l21_pos=l21_pos, l22_pos=l22_pos,
+            l22_fixed=l22_fixed,
         )
         if !candidate.accepted && candidate.reason === :not_converged
             return _ls_profile_nuisance_result(reported, xmin, false, :not_converged;
