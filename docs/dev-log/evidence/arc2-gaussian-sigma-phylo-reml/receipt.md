@@ -226,6 +226,36 @@ Wald covariance, and checks that the cold solve at the optimum still fails, so
 the retry is exercised. It fails without the fix. The end-to-end `drm()` cell
 runs with `DRM_SLOW_TESTS=1` (58 s).
 
+**Coupled ML on the correlation bound (#818).** The coupled ML route
+(`method = :ML`, `phylo_coupled = true`) used to stop at a worse optimum than
+native whenever native's optimum sits on its bound, and it still reported
+convergence. At native's own G1 and G2 ML optimum, the old marginal NLL was
+`Inf`. The latent precision reaches about 1e10 there (G1 1.0e10, G2 8.3e10), and
+the inner mode's fixed 1e-9 stationarity bound sits below the gradient's rounding
+noise. With the noise-floor bound the direct form is finite but still noisy,
+because of the ill-conditioned prior quadratic: at native's point it differs from
+the whitened form by 5.7e-7 on G1 and 2.3e-6 on G2. The whitened value
+reproduces native's G1 logLik to 2e-8. The fix sets the inner bound at the noise
+floor and fits the bound as its own candidate in whitened coordinates, as the
+coupled REML fit already did (`_glsp_ml_nll`, `_glsp_coupled_ml_edge`).
+
+| fixture | native ML logLik | julia before | julia after | df |
+|---|---|---|---|---|
+| G1 | -330.92465192 | -331.94079176 | -330.92465190 | 6 = 6 |
+| G2 | -811.37983142 | -812.06446708 | -811.37983223 | 7 = 7 |
+| F1 | -139.86690772 (not converged) | -139.86701928 | -139.86690771 | 6 = 6 |
+
+G2's -8.1e-7 is within native's own noise at the bound. `fit$obj$fn` in drmTMB
+0.7.1 is non-monotone in eta there, varying by about 4e-7. That version's refit
+gives -811.37983085, and native's objective at Julia's G2 point gives
+-811.37983053, higher than native's own optimum. In `julia.tsv` the F1
+`mu_sigma` ML row moves to the bound. The F1 `mu_sigma` REML row keeps its logLik;
+its estimates move by at most 1.5e-7, towards native, because the ML seed
+changed. Every other row is byte-identical, timings aside. Coupled REML on G1 and
+G2, run end to end from the new ML seed, still gives -333.85076908 and
+-812.27444299. Test: `test/test_coupled_ml_bound.jl`; on the base branch its G1
+cell fails 7 of 10 checks.
+
 **Reproduce.**
 ```
 DRMTMB_PATH=~/local-scratch/lanes/drmTMB-arc1-pr1304-fold Rscript --no-init-file native-fit.R

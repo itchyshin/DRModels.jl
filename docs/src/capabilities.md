@@ -164,7 +164,7 @@ package-test coverage.
     `mu`/`sigma` coefficients are the joint mode at the REML variance estimates.
     As in drmTMB, the coupled block's mean–scale phylogenetic correlation is
     bounded at |cor| ≤ 0.999999. When the data put the two phylogenetic effects
-    on one axis, the REML estimate sits on that bound and is reported without a
+    on one axis, the ML and REML estimates sit on that bound and are reported without a
     Wald covariance. Under REML, `profile_ci = true` on the scale-only and separate
     blocks profiles this restricted likelihood. Earlier versions profiled the ML
     likelihood from the REML estimate, which gave neither an ML nor a REML

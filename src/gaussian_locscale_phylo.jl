@@ -513,6 +513,43 @@ function _glsp_joint_beta_blocks(kind, y, Xμ, Xψ, gidx, G, a, η0, ψ0, Zη, Z
     return gβ, Hββ, Haβ
 end
 
+# Certified Newton for the inner mode from a start `astart` near it. The outer loops
+# re-solve the inner mode from a neighbouring one thousands of times. From there one
+# Newton step takes the gradient to ~1e-7 and the next to ~1e-12, but that last step
+# can raise jn by a few ULPs of rounding, so `_ls_inner_mode`'s monotone line search
+# rejects it, damps to its cap and fails after 1-2 s; the cold fallback then usually
+# succeeds in ~10 ms (measured on the H2 coupled fixture: 17% of warm REML solves
+# failed this way and took 87% of the REML time, and inside the β line search a run
+# of such failures held one evaluation for minutes). So plain Newton steps come
+# first, and their end point is accepted on the solver's own certificate (stationary
+# to `tol_in`, PD Hessian), provided the gradient contracted at every step and jn
+# ends no higher than at the start beyond rounding. Returns (a, chol(H), jn(a)), or
+# `nothing` when the certificate is not met; the caller then falls back to the
+# safeguarded `_ls_inner_mode`.
+function _glsp_certified_newton(kind, y, η0, ψ0, gidx, G, P, Zη, Zψ, astart, tol_in)
+    a = copy(astart); gprev = Inf
+    f0 = _ls_joint(kind, y, η0, ψ0, gidx, a, P, Zη, Zψ)
+    isfinite(f0) || return nothing
+    for _ in 1:8
+        g = _ls_joint_grad(kind, y, η0, ψ0, gidx, a, P, Zη, Zψ)
+        all(isfinite, g) || return nothing
+        gn = norm(g)
+        if gn <= tol_in * (1 + norm(a))
+            ft = _ls_joint(kind, y, η0, ψ0, gidx, a, P, Zη, Zψ)
+            (isfinite(ft) && ft <= f0 + 1e-10 * (1 + abs(f0))) || return nothing
+            chc, okc = _ls_inner_certificate(kind, y, η0, ψ0, gidx, G, P, Zη, Zψ, a, tol_in)
+            return okc ? (a, chc, ft) : nothing
+        end
+        gn < gprev || return nothing
+        gprev = gn
+        chn = _ls_hess_chol(kind, y, η0, ψ0, gidx, G, a, P, Zη, Zψ)
+        issuccess(chn) || return nothing
+        a = a .- (chn \ g)
+        all(isfinite, a) || return nothing
+    end
+    return nothing
+end
+
 # Joint mode (â, β̂) of jn at fixed P, by Newton on the profile h(β) = min_a jn(a, β)
 # (gradient ∂jn/∂β at â(β) by the envelope theorem, Hessian the Schur complement S),
 # with a backtracking line search on h and a warm-started inner solve per trial. The
@@ -540,41 +577,10 @@ function _glsp_joint_reml_nll(kind, y, Xμ, Xψ, gidx, G, P, Zη, Zψ, β0, a0;
     # axis at a tiny variance, so its ‖P‖ is huge by construction while its solves
     # are clean.
     tol_in = noise_floor ? max(1e-9, eps(Float64) * maximum(abs, nonzeros(P))) : 1e-9
-    # Certified Newton from a warm start. The outer loops re-solve the inner mode
-    # from a neighbouring one thousands of times. From there one Newton step takes
-    # the gradient to ~1e-7 and the next to ~1e-12, but that last step can raise
-    # jn by a few ULPs of rounding, so `_ls_inner_mode`'s monotone line search
-    # rejects it, damps to its cap and fails after 1-2 s; the cold fallback then
-    # usually succeeds in ~10 ms (measured on the H2 coupled fixture: 17% of warm
-    # solves failed this way and took 87% of the REML time, and inside the β line
-    # search a run of such failures held one evaluation for minutes). So plain
-    # Newton steps come first, and their end point is accepted on the solver's own
-    # certificate (stationary to `tol_in`, PD Hessian), provided the gradient
-    # contracted at every step and jn ends no higher than at the start beyond
-    # rounding. Anything else falls through to the safeguarded solve below.
-    function newton_warm(η0, ψ0, astart)
-        a = copy(astart); gprev = Inf
-        f0 = _ls_joint(kind, y, η0, ψ0, gidx, a, P, Zη, Zψ)
-        isfinite(f0) || return nothing
-        for _ in 1:8
-            g = _ls_joint_grad(kind, y, η0, ψ0, gidx, a, P, Zη, Zψ)
-            all(isfinite, g) || return nothing
-            gn = norm(g)
-            if gn <= tol_in * (1 + norm(a))
-                ft = _ls_joint(kind, y, η0, ψ0, gidx, a, P, Zη, Zψ)
-                (isfinite(ft) && ft <= f0 + 1e-10 * (1 + abs(f0))) || return nothing
-                chc, okc = _ls_inner_certificate(kind, y, η0, ψ0, gidx, G, P, Zη, Zψ, a, tol_in)
-                return okc ? (a, chc, ft) : nothing
-            end
-            gn < gprev || return nothing
-            gprev = gn
-            chn = _ls_hess_chol(kind, y, η0, ψ0, gidx, G, a, P, Zη, Zψ)
-            issuccess(chn) || return nothing
-            a = a .- (chn \ g)
-            all(isfinite, a) || return nothing
-        end
-        return nothing
-    end
+    # Certified Newton from a warm start (`_glsp_certified_newton`, below): the outer
+    # loops re-solve the inner mode from a neighbouring one thousands of times.
+    newton_warm(η0, ψ0, astart) =
+        _glsp_certified_newton(kind, y, η0, ψ0, gidx, G, P, Zη, Zψ, astart, tol_in)
     profile(βt, astart) = begin
         η0 = Xμ * βt[1:pμ]; ψ0 = Xψ * βt[pμ+1:p]
         fast = newton_warm(η0, ψ0, astart)
@@ -597,6 +603,16 @@ function _glsp_joint_reml_nll(kind, y, Xμ, Xψ, gidx, G, P, Zη, Zψ, β0, a0;
         S = Symmetric(Hββ .- Haβ' * (ch \ Haβ))
         chS = cholesky(S; check = false)
         step = issuccess(chS) ? (chS \ gβ) : gβ          # steepest descent if S is not PD
+        # Predicted decrease at or below rounding and the loose gradient test met: the
+        # profile is flat to one ULP here, so the accept-on-equal line search below would
+        # only halve ~26 times to a near-null step, accept it with zero decrease, and
+        # repeat (8-15x slowdown). Exit as the `!moved` branch would; when the loose test
+        # fails fall through, so far-from-optimum behaviour is unchanged.
+        if 0.5 * dot(gβ, step) <= 1e-13 * (1 + abs(hval)) &&
+           norm(gβ) <= 1e-5 * (1 + norm(β))
+            converged = true
+            break
+        end
         α = 1.0; moved = false
         while α >= 1e-10
             βt = β .- α .* step
@@ -977,6 +993,156 @@ const _GLSP_REML_BOUNDARY = -6.0
 # Native drmTMB's bound on a phylo correlation: rho = 0.999999·tanh(eta) (drmTMB.cpp).
 const _GLSP_COR_CAP = 0.999999
 
+# ---------------------------------------------------------------------------
+# Coupled-block ML (issue #818). The coupled ML search had the two faults the
+# coupled REML search had before Arc 2's fixes, and the same remedies apply.
+#
+# (1) The inner mode. Near the |cor| → 1 boundary P = Q ⊗ Λ⁻¹ reaches 1e8 and
+# beyond, the joint gradient's rounding noise (~eps·‖P‖·‖a‖) exceeds the inner
+# solver's absolute 1e-9 stationarity bound, and every solve spins to its cap and
+# fails (measured, G1: 376 of 594 LBFGS evaluations failed, 58 s of 59 s; each one
+# succeeds at the noise floor, in ~2 ms). And away from it a cold solve can stall
+# one step short of the mode: the last Newton step raises jn by a few ULPs, the
+# monotone line search rejects it and creeps for the remaining iterations
+# (measured, H2 at cor = -0.35: gradient 7e-7 from iteration 9 to 200, 0.18 s,
+# failed). A failed evaluation is the NaN gradient that made LBFGS's line search
+# throw, after which the old route ran Nelder–Mead from the start: 700-1,500 more
+# evaluations, most of the 11-90 s these fits took, and on G1 and G2 it ended on
+# the sd_μ → 0 plateau. `_glsp_ml_mode` therefore bounds the stationarity test at
+# the noise floor (`_glsp_noise_tol`, as `_glsp_joint_reml_nll` does) and runs the
+# safeguarded solver for 25 iterations, then tries certified Newton steps
+# (`_glsp_certified_newton`) from where it stopped, and only then runs the
+# remaining 175 iterations. The solver keeps no state between iterations, so a
+# solve that converges within 25 iterations is unchanged, and so is one that
+# needs all 200 when the Newton steps fail their certificate.
+#
+# (2) The correlation bound. Native drmTMB bounds the phylo correlation at
+# `_GLSP_COR_CAP`, and when the data put the μ and σ phylo effects on one axis
+# its ML optimum sits there (G1: native cor 0.99999900). As for REML
+# (`_glsp_joint_reml_fit`, `cor_edge`), the bound is fitted as its own candidate
+# in whitened coordinates, where the precision is well conditioned:
+# `_glsp_coupled_ml_edge`.
+
+# Inner stationarity bound at the rounding-noise floor of the joint gradient.
+function _glsp_noise_tol(P)
+    m = maximum(abs, nonzeros(P))
+    return isfinite(m) ? max(1e-9, eps(Float64) * m) : 1e-9
+end
+
+# Inner mode for the coupled ML route (see the note above). From a warm start
+# `a0`, certified Newton steps come first; a warm start that fails every stage is
+# retried cold. Returns (a, ok).
+function _glsp_ml_mode(kind, y, η0, ψ0, gidx, G, P, Zη, Zψ; a0 = nothing, tol::Real = 1e-9)
+    if a0 !== nothing
+        r = _glsp_certified_newton(kind, y, η0, ψ0, gidx, G, P, Zη, Zψ, a0, tol)
+        r === nothing || return r[1], true
+    end
+    a, _, ok = _ls_inner_mode(kind, y, η0, ψ0, gidx, G, P, Zη, Zψ; a0 = a0, maxiter = 25, tol = tol)
+    ok && return a, true
+    if all(isfinite, a)
+        r = _glsp_certified_newton(kind, y, η0, ψ0, gidx, G, P, Zη, Zψ, a, tol)
+        r === nothing || return r[1], true
+        a, _, ok = _ls_inner_mode(kind, y, η0, ψ0, gidx, G, P, Zη, Zψ; a0 = a, maxiter = 175, tol = tol)
+        ok && return a, true
+    end
+    a0 === nothing && return a, false
+    return _glsp_ml_mode(kind, y, η0, ψ0, gidx, G, P, Zη, Zψ; tol = tol)
+end
+
+# Laplace marginal NLL from `_glsp_ml_mode`'s inner mode: (nll, â, ok).
+function _glsp_ml_nll(kind, y, η0, ψ0, gidx, G, P, Zη, Zψ; a0 = nothing)
+    tol = _glsp_noise_tol(P)
+    a, ok = _glsp_ml_mode(kind, y, η0, ψ0, gidx, G, P, Zη, Zψ; a0 = a0, tol = tol)
+    ok || return Inf, a, false
+    return _ls_marginal_nll(kind, y, η0, ψ0, gidx, G, P, Zη, Zψ; a0 = a, tol = tol)
+end
+
+# Damped Newton on a smooth function of a few coordinates, with a central-difference
+# gradient and Hessian, as `_glsp_joint_reml_fit`'s `newton_min` (without its
+# variance-boundary rules). `f(x)` returns Inf where it cannot be evaluated;
+# `accept!(x)` is called on every accepted iterate. Stops when the gradient is below
+# `g_tol` relative, when no damped step descends (converged if the gradient is below
+# 1e-5 relative), or when a step gains at most 1e-10 relative with the gradient below
+# 1e-5 relative (the objective has stopped moving). Returns (x, f(x), converged).
+function _glsp_fd_newton(f, accept!, x0; h = 1e-5, hh = 1e-4, g_tol = 1e-9, maxit = 100)
+    x = copy(x0); fx = f(x)
+    isfinite(fx) || return x, Inf, false
+    accept!(x)
+    k = length(x)
+    for _ in 1:maxit
+        g = zeros(k)
+        for j in 1:k
+            xp = copy(x); xp[j] += h; xm = copy(x); xm[j] -= h
+            g[j] = (f(xp) - f(xm)) / (2h)
+        end
+        all(isfinite, g) || return x, fx, false
+        norm(g) <= g_tol * (1 + abs(fx)) && return x, fx, true
+        H = zeros(k, k)
+        for i in 1:k
+            xp = copy(x); xp[i] += hh; xm = copy(x); xm[i] -= hh
+            H[i, i] = (f(xp) - 2 * fx + f(xm)) / hh^2
+            for j in (i+1):k
+                xpp = copy(x); xpp[i] += hh; xpp[j] += hh
+                xpm = copy(x); xpm[i] += hh; xpm[j] -= hh
+                xmp = copy(x); xmp[i] -= hh; xmp[j] += hh
+                xmm = copy(x); xmm[i] -= hh; xmm[j] -= hh
+                H[i, j] = H[j, i] = (f(xpp) - f(xpm) - f(xmp) + f(xmm)) / (4hh^2)
+            end
+        end
+        all(isfinite, H) || return x, fx, false
+        λ = 0.0; moved = false; gain = 0.0; scale = 1 + maximum(abs, H)
+        while λ <= 1e2 * scale
+            ch = cholesky(Symmetric(H + λ * I); check = false)
+            if issuccess(ch)
+                d = -(ch \ g)
+                nd = norm(d); nd > 2.0 && (d .*= 2.0 / nd)   # cap a step in log-SD/β units
+                α = 1.0
+                while α >= 1 / 64
+                    xt = x .+ α .* d; ft = f(xt)
+                    if isfinite(ft) && ft < fx
+                        gain = fx - ft; x, fx = xt, ft; moved = true
+                        accept!(x)
+                        break
+                    end
+                    α *= 0.5
+                end
+                moved && break
+            end
+            λ = λ == 0.0 ? 1e-4 * scale : 100λ
+        end
+        moved || return x, fx, norm(g) <= 1e-5 * (1 + abs(fx))
+        gain <= 1e-10 * (1 + abs(fx)) && norm(g) <= 1e-5 * (1 + abs(fx)) && return x, fx, true
+    end
+    return x, fx, false
+end
+
+# The coupled ML fit ON native's correlation bound, cor = sgn·`_GLSP_COR_CAP`, from
+# x0 = [β; logL11; log sd_σ]. The model is evaluated in whitened coordinates, as
+# `_glsp_joint_reml_fit` does on the bound: a = L·u with u ~ N(0, Q⁻¹ ⊗ I) and
+# loadings (Zη·L, Zψ·L). The Laplace approximation is invariant to that linear
+# change of the latent variables, so this is the same marginal NLL, without the
+# ill-conditioned precision. Returns (x, nll, converged, θ) with θ the point in the
+# route's own coordinates [β; logL11, L21, logL22].
+function _glsp_coupled_ml_edge(kind, y, Xμ, Xψ, gidx, G, Q, Zη, Zψ, sgn, x0)
+    pμ = size(Xμ, 2); p = pμ + size(Xψ, 2)
+    c = sgn * _GLSP_COR_CAP
+    P = prior_precision(Q, Matrix(1.0I, 2, 2))
+    λ_of(x) = (sdσ = exp(x[p+2]); [x[p+1], c * sdσ, x[p+2] + 0.5 * log1p(-c^2)])
+    warm = Ref{Union{Nothing,Vector{Float64}}}(nothing)
+    function eval_x(x)
+        λ = λ_of(x)
+        L = [exp(λ[1]) 0.0; λ[2] exp(λ[3])]            # Λ = L Lᵀ, as `_glsp_coupled_Λ`
+        all(isfinite, L) || return Inf, nothing
+        val, a, ok = _glsp_ml_nll(kind, y, Xμ * x[1:pμ], Xψ * x[pμ+1:p], gidx, G, P,
+                                  Zη * L, Zψ * L; a0 = warm[])
+        return ok ? (val, a) : (Inf, nothing)
+    end
+    f(x) = eval_x(x)[1]
+    accept!(x) = (r = eval_x(x); r[2] === nothing || (warm[] = copy(r[2])); nothing)
+    x, fx, conv = _glsp_fd_newton(f, accept!, x0)
+    return x, fx, conv, vcat(x[1:p], λ_of(x))
+end
+
 # B2 — boundary-aware PROFILE-LIKELIHOOD CI for one variance (log-SD) parameter.
 # `nll(θ)::Real` and `grad(θ)::Vector` are the route's own marginal NLL and analytic
 # gradient; `idx` is the profiled log-SD position. Profiles θ[idx]: re-optimises the
@@ -999,7 +1165,7 @@ function _glsp_profile_ci(nll, grad, θ̂, idx; level = 0.95)
         val = try
             res = Optim.optimize(obj, grad!, copy(θ̂[free]), Optim.LBFGS(),
                                  Optim.Options(g_tol = 1e-6, iterations = 150))
-            Optim.minimum(res)
+            _objective_at_minimizer(obj, res)
         catch
             Inf            # sub-fit failed (ill-conditioned at an extreme log-SD)
         end
@@ -1386,19 +1552,21 @@ function _fit_gaussian_locscale_phylo(fam::Gaussian, y, Xμ, Xψ, gidx, G, Q,
         # COUPLED block: 3 free variance params [logL11, L21, logL22]. This is the block
         # native drmTMB fits for `mu ~ … + phylo(1 | g)`, `sigma ~ … + phylo(1 | g)`
         # (it estimates the mean↔σ phylo correlation), under ML and — since Arc 2 — REML.
-        # No shared warm (see the separate-block note) — cold inner solves.
+        # No shared warm (see the separate-block note) — cold inner solves, through
+        # `_glsp_ml_mode` (issue #818: noise-floor stationarity bound, certified
+        # Newton rescue of a stalled solve).
+        coup_P(θ) = prior_precision(Q, _ls_lc_inv2x2(θ[pμ+pψ+1:pμ+pψ+3]))   # stable: never forms Λ (#862/#865)
         function coup_obj(θ)
-            pμ_ = size(Xμ, 2); pψ_ = size(Xψ, 2)
-            βμ = @view θ[1:pμ_]; βψ = @view θ[pμ_+1:pμ_+pψ_]
-            λv = θ[pμ_+pψ_+1:pμ_+pψ_+3]
-            Λinv = _ls_lc_inv2x2(λv)   # stable: never forms Λ (see locscale_inner.jl)
-            P = prior_precision(Q, Λinv)
-            val, a, ok = _ls_marginal_nll(kind, y, Xμ * βμ, Xψ * βψ, gidx, G, P, Zη, Zψ)
+            val, _, ok = _glsp_ml_nll(kind, y, Xμ * θ[1:pμ], Xψ * θ[pμ+1:pμ+pψ], gidx, G,
+                                      coup_P(θ), Zη, Zψ)
             ok ? val : 1e18
         end
-        function coup_grad!(g, θ)
-            g .= _ls_marginal_grad(kind, y, Xμ, Xψ, gidx, G, Q, θ, Zη, Zψ)
-            g
+        function _coup_grad_raw(θ)
+            P = coup_P(θ); tol = _glsp_noise_tol(P)
+            a, ok = _glsp_ml_mode(kind, y, Xμ * θ[1:pμ], Xψ * θ[pμ+1:pμ+pψ], gidx, G, P, Zη, Zψ;
+                                  tol = tol)
+            ok || return fill(NaN, length(θ))
+            return _ls_marginal_grad(kind, y, Xμ, Xψ, gidx, G, Q, θ, Zη, Zψ; a0 = a, tol = tol)
         end
         # A4c penalized-MAP: the ONLY block with a live phylo correlation. λ =
         # [logL11, L21, logL22] is a Cholesky factor, so the SD penalty applies to
@@ -1407,7 +1575,6 @@ function _fit_gaussian_locscale_phylo(fam::Gaussian, y, Xμ, Xψ, gidx, G, Q,
         # L21 itself would be a different prior. `coup_obj` stays unpenalized so
         # `nll_val` below remains the data log-likelihood.
         _i0 = pμ + pψ + 1
-        _coup_grad_raw(θ) = _ls_marginal_grad(kind, y, Xμ, Xψ, gidx, G, Q, θ, Zη, Zψ)
         pen_obj, pen_gradf = if penalty === nothing
             coup_obj, _coup_grad_raw
         else
@@ -1422,7 +1589,34 @@ function _fit_gaussian_locscale_phylo(fam::Gaussian, y, Xμ, Xψ, gidx, G, Q,
         βψ0 = zeros(pψ)
         θ0 = vcat(βμ0, βψ0, log(0.3), 0.0, log(0.3))
         θ̂, conv = _glsp_optimise(pen_obj, pen_grad!, θ0; g_tol = g_tol)
-        nll_val = coup_obj(θ̂); ml_nll = nll_val; reml_nll = NaN; V_reml = nothing
+        nll_val = coup_obj(θ̂)
+        # Native's correlation bound as its own candidate (issue #818; see the note
+        # above `_glsp_noise_tol`), for both signs, from the interior fit's β and SDs.
+        # An interior fit parked on the sd_μ → 0 plateau (measured: G1, sd_μ = 9e-5,
+        # cor = −0.92, logLik 1.02 below native) therefore cannot hide a bound optimum.
+        # The lowest NLL wins, and the bound must win by more than 1e-9 relative; an
+        # interior fit past the bound (|cor| > cap, outside native's parameter space)
+        # does not count. Not under a penalty: the penalised MAP fit is a different
+        # objective, and the bound is fitted for the unpenalised likelihood only.
+        on_edge = false
+        if penalty === nothing
+            Λi = _glsp_coupled_Λ(θ̂[pμ+pψ+1:pμ+pψ+3])
+            cor_i = Λi[1, 2] / sqrt(Λi[1, 1] * Λi[2, 2])
+            f_int = (isfinite(nll_val) && nll_val < 1e17 && abs(cor_i) <= _GLSP_COR_CAP) ?
+                    nll_val : Inf
+            best_f = f_int
+            x0 = vcat(θ̂[1:pμ+pψ], max(θ̂[pμ+pψ+1], log(0.05)),
+                      max(0.5 * log(Λi[2, 2]), log(0.05)))
+            all(isfinite, x0) || (x0 = vcat(θ0[1:pμ+pψ], log(0.3), log(0.3)))
+            for sgn in (1.0, -1.0)
+                _, fe, conv_e, θe = _glsp_coupled_ml_edge(kind, y, Xμ, Xψ, gidx, G, Q, Zη, Zψ, sgn, x0)
+                if fe < (isfinite(best_f) ? best_f - 1e-9 * (1 + abs(best_f)) : Inf)
+                    θ̂, nll_val, conv, best_f, on_edge = θe, fe, conv_e, fe, true
+                end
+            end
+            (on_edge || isfinite(f_int)) || (conv = false)
+        end
+        ml_nll = nll_val; reml_nll = NaN; V_reml = nothing
         if reml
             # Joint-Laplace REML over (a, β_μ, β_ψ) — native drmTMB's restricted likelihood
             # for this shape (Arc 2; see `_glsp_joint_reml_fit`), including its correlation bound.
@@ -1440,9 +1634,10 @@ function _fit_gaussian_locscale_phylo(fam::Gaussian, y, Xμ, Xψ, gidx, G, Q,
         Λ̂ = _glsp_coupled_Λ(λ̂)
         comp = _ls_components(Λ̂)
         # Wald via FD of the general gradient (ML); the joint-Laplace covariance under REML.
+        # None on the correlation bound (native's standard errors there are NaN too).
         V = if reml
             V_reml
-        elseif se
+        elseif se && !on_edge
             try
                 h = 1e-4; np = length(θ̂)
                 H = zeros(np, np)

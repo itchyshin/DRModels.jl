@@ -67,15 +67,20 @@ function _marginal_method(s::Symbol)
     throw(ArgumentError("unknown marginal method `:$s`; use :LA (the default integrator for the route: GHQ-32 on an ordinary `(1 | g)` and on Gaussian `sigma ~ 1 + (1 | g)`, Laplace on most other random-effect structures), :Laplace (TMB-convention Laplace, ordinary `(1 | g)` on Poisson/Binomial/NegBinomial2/Gamma/Beta, or a Gaussian random intercept on `sigma`), :VA (variational, #136), or :AGHQ (1-D Liu–Pierce, Poisson (1|g) only, #448)"))
 end
 
-# Route-or-reject for the public `marginal = :AGHQ` front end (#448). The only
-# certified cell this slice is Poisson `(1 | g)`. Every other family or
-# structure must error rather than silently falling back to GHQ-32 / Laplace
-# (that would mislabel `loglik` as AGHQ).
+# Route-or-reject for the public `marginal = :AGHQ` front end (#448, #761). The
+# certified cells are Poisson `(1 | g)` (1-D Liu–Pierce, #448) and crossed random
+# intercepts `(1 | g) + (1 | h)` on Binomial/Poisson/NegBinomial2/Gamma/Beta/
+# BetaBinomial when one grouping has at most `_CROSSED_AGHQ_HMAX` levels (nested
+# AGHQ, #761). Every other family or structure must error rather than silently
+# falling back to GHQ-32 / Laplace (that would mislabel `loglik` as AGHQ).
 function _aghq_reject(fam, what)
     throw(ArgumentError(
-        "marginal = :AGHQ (1-D Liu–Pierce, #448) is not available for $(nameof(typeof(fam)))() with $what. " *
-        "The public AGHQ path covers Poisson with a single random intercept `(1 | g)` only. " *
-        "Phylo, crossed, relmat, `(1 + x | g)`, associate_pairs QuadGK, and other families stay on " *
+        "marginal = :AGHQ is not available for $(nameof(typeof(fam)))() with $what. " *
+        "The public AGHQ path covers two cells: Poisson with a single random intercept " *
+        "`(1 | g)` (1-D Liu–Pierce, #448), and crossed random intercepts `(1 | g) + (1 | h)` " *
+        "on Binomial/Poisson/NegBinomial2/Gamma/Beta/BetaBinomial when one grouping has at " *
+        "most $(_CROSSED_AGHQ_HMAX) levels (nested adaptive Gauss–Hermite, #761). Phylo, " *
+        "relmat, `(1 + x | g)`, associate_pairs QuadGK, and other structures stay on " *
         "marginal = :LA (the default; on `(1 | g)` that is GHQ-32, not AGHQ)."))
 end
 

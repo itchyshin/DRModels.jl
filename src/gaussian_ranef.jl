@@ -98,6 +98,19 @@ end
 # non-Gaussian family can never receive `(:phylo, g)` for a slope formula and
 # silently fit the intercept-only model. Existing 4-way destructurings
 # (`a, b, c, d = _split_ranef(rhs)`) are unaffected: Julia drops the extra slot.
+# lme4 / glmmTMB / drmTMB semantics: `(x | g)` is `(1 + x | g)` — the intercept is
+# implicit unless removed with an explicit `0 +` / `-1`. Rewrite a bar lhs made only of
+# variable terms (`x`, `x + z`) to `1 + …`; anything carrying a constant, a `-`, or a
+# nested bar is returned untouched, so every existing refusal keeps its message.
+_implicit_re_intercept(lhs) = lhs
+_implicit_re_intercept(lhs::Term) = FunctionTerm{typeof(+),Vector{StatsModels.AbstractTerm}}(
+    +, StatsModels.AbstractTerm[ConstantTerm(1), lhs], :(1 + $(lhs.sym)))
+function _implicit_re_intercept(lhs::FunctionTerm)
+    (lhs.f === (+) && all(a -> a isa Term, lhs.args)) || return lhs
+    return FunctionTerm{typeof(+),Vector{StatsModels.AbstractTerm}}(
+        +, StatsModels.AbstractTerm[ConstantTerm(1), lhs.args...], :(1 + $(lhs.exorig.args[2:end]...)))
+end
+
 function _split_ranef(rhs; allow_phylo_slope::Bool = false)
     terms = rhs isa Tuple ? collect(rhs) : Any[rhs]
     fixed = Any[]
@@ -107,7 +120,7 @@ function _split_ranef(rhs; allow_phylo_slope::Bool = false)
     structured_slope = nothing                        # `x` of phylo(1 + x | g), Gaussian mean only
     for t in terms
         if t isa FunctionTerm && t.f === (|)
-            push!(re, (t.args[1], t.args[2].sym))     # (re-lhs, grouping symbol)
+            push!(re, (_implicit_re_intercept(t.args[1]), t.args[2].sym))     # (re-lhs, grouping symbol)
         elseif t isa FunctionTerm && t.f === meta_V
             metav = t.args[1].sym
         elseif t isa FunctionTerm && t.f === relmat
@@ -310,6 +323,122 @@ function _re_xtvinvx_stable(X::AbstractMatrix, invD::AbstractVector, w, gidx::Ab
     return A
 end
 
+# --- start values for `_fit_ranef_gaussian` / `_fit_ranef_gaussian_lss` (#747 follow-up) ---
+#
+# The historical start (`log(std(res0))` for the sigma intercept, all other sigma
+# coefficients and the log-SD of the random intercept at fixed constants) ignores
+# the mean OLS residuals' own information about the scale submodel entirely: a
+# `sigma ~ x` slope always starts at 0 and the RE SD always starts at a fixed
+# fraction of the *marginal* residual SD, which is inflated by the random-intercept
+# variance it is trying to estimate separately. On the RUNAWAY panel
+# (test/test_ranef_varying_scale_convergence.jl, sigma slope 10, n=40, G=4) that
+# blind start left LBFGS on a boundary sd_g -> 0 local optimum 123 nats short of
+# drmTMB's interior optimum (seed 4) and non-converged 95 nats short (seed 10) --
+# in both cases DRModels.jl's own objective at drmTMB's parameters was BETTER than
+# what LBFGS returned, so the fix is a better start, not the objective.
+#
+# `_ranef_sigma_ols_start`: OLS of log(guarded residual^2) on Xσ -- the standard
+# heteroscedastic-regression start (mirrors drmTMB's own guarded log-scale
+# regression start for `sigma ~ …`, #572/#570), giving a real slope instead of 0.
+# Guarded at a small floor so a near-exact-zero residual cannot send log(r^2) to
+# -Inf.
+function _ranef_sigma_ols_start(Xσ::AbstractMatrix, res0::AbstractVector)
+    floor2 = max(1e-8, 1e-6 * mean(abs2, res0))
+    return Xσ \ log.(max.(abs2.(res0), floor2))  ./ 2   # log|r| ~ 0.5*log(r^2)
+end
+
+# `_ranef_sdg_mom_start`: one-way random-effects ANOVA method-of-moments
+# estimator of the random-intercept variance from the OLS mean residuals,
+# grouped by `gidx` (Searle, Casella & McCulloch 1992, ch. 3). Returns the
+# log-SD on the same scale `_fit_ranef_gaussian` optimises. Floors at a small
+# positive variance instead of the boundary itself, so the optimiser starts
+# strictly interior even when the moment estimator itself is <= 0 (negative
+# "between" variance relative to "within", the classic small-G/unbalanced
+# symptom).
+function _ranef_sdg_mom_start(res0::AbstractVector, gidx::AbstractVector{<:Integer}, G::Int)
+    n = length(res0)
+    nk = zeros(Int, G); sumk = zeros(G)
+    @inbounds for i in 1:n
+        k = gidx[i]; nk[k] += 1; sumk[k] += res0[i]
+    end
+    rbar = mean(res0)
+    ssb = 0.0; ssw = 0.0
+    @inbounds for i in 1:n
+        k = gidx[i]
+        ssw += (res0[i] - sumk[k] / nk[k])^2
+    end
+    @inbounds for k in 1:G
+        ssb += nk[k] * (sumk[k] / nk[k] - rbar)^2
+    end
+    dfw = max(n - G, 1)
+    msw = ssw / dfw
+    n0 = (n - sum(abs2, nk) / n) / max(G - 1, 1)
+    σb2_mom = (ssb / max(G - 1, 1) - msw) / n0
+    σb2_floor = 1e-4 * (msw + eps())
+    return 0.5 * log(max(σb2_mom, σb2_floor))
+end
+
+# One restart, deterministic, keep the best objective (mirrors the boundary-
+# restart pattern in `_fit_correlated_ranef_gaussian`, #762/#837). `θ0` is the
+# data-driven start; `θ0_restart` is always-interior (the historical default).
+# Restart triggers on either symptom measured on the RUNAWAY panel
+# (test/test_ranef_varying_scale_convergence.jl): the gradient criterion not
+# met, or the random-intercept log-SD landing at a boundary sd_g -> 0 local
+# optimum relative to `scale_ref` (the OLS mean-residual SD) -- seed 4's
+# failure mode, `nll` −179.80 vs drmTMB's interior −56.97. A restart that is
+# not triggered costs nothing beyond the first solve; one that is costs one
+# extra LBFGS run, still O(1) versus the data.
+#
+# TIE-BREAK ON A GENUINE BOUNDARY (measured on seed 1 of the same panel). When
+# sd_g -> 0 the objective is flat in lσb far below the boundary (the log-SD is
+# only weakly identified there), so the primary and restart starts can reach
+# the SAME nll at two very different lσb (seed 1: −177.4 vs −118.2, nll equal
+# to 1e-10). Both are the same MLE, but the more extreme one can push
+# `ForwardDiff.hessian` in the caller's `_vcov_from_hessian` step to a
+# non-finite entry where the less extreme one does not (this is the vcov
+# guard's job to flag as a boundary fit either way -- see its docstring -- not
+# a reason to crash on one representative of the tie and not the other). On a
+# near-tie, prefer whichever result sits closer to the interior.
+function _re_lbfgs_with_restart(nll, θ0::AbstractVector, θ0_restart::AbstractVector,
+                                g_tol::Real, lσb_idx::Int, scale_ref::Real)
+    opts = Optim.Options(g_tol = g_tol)
+    res = Optim.optimize(nll, θ0, Optim.LBFGS(), opts; autodiff = :forward)
+    θ̂ = Optim.minimizer(res)
+    # NON-FINITE RESULT (Linux/Julia 1.10.12, seed 20 of the RUNAWAY panel, #848).
+    # From the data-driven start LBFGS can report `converged` with a NaN
+    # MINIMIZER (a line-search probe overflowed exp(-2ησ)); `nll(θ̂)` is NaN
+    # even though `Optim.minimum(res)` is a finite stale value. Every NaN
+    # comparison below is `false`, so without this check neither restart
+    # trigger fired, the NaN θ̂ went on to `ForwardDiff.hessian`, and
+    # `_vcov_from_hessian`'s `eigvals` threw "matrix contains Infs or NaNs".
+    # A non-finite primary result is therefore itself a restart trigger.
+    f_primary = _objective_at_minimizer(nll, res)
+    primary_ok = isfinite(f_primary) && all(isfinite, θ̂)
+    g_inf = primary_ok ? maximum(abs, ForwardDiff.gradient(nll, θ̂)) : Inf
+    at_boundary = primary_ok && exp(θ̂[lσb_idx]) < 1e-3 * max(scale_ref, eps())
+    if !primary_ok || !(g_inf <= g_tol) || at_boundary
+        res_restart = Optim.optimize(nll, θ0_restart, Optim.LBFGS(), opts; autodiff = :forward)
+        θ̂_restart = Optim.minimizer(res_restart)
+        # Compare the objective AT each minimizer, not `Optim.minimum` (#849,
+        # optim_minimum_guard.jl): these runs may have failed a line search.
+        f_restart = _objective_at_minimizer(nll, res_restart)
+        restart_ok = isfinite(f_restart) && all(isfinite, θ̂_restart)
+        if !primary_ok
+            return restart_ok ? res_restart : res
+        elseif !restart_ok
+            return res
+        end
+        Δ = f_restart - f_primary
+        near_tie = abs(Δ) <= 1e-6 * max(1, abs(f_primary))
+        if Δ < 0 && !near_tie
+            return res_restart
+        elseif near_tie && abs(θ̂_restart[lσb_idx]) < abs(θ̂[lσb_idx])
+            return res_restart
+        end
+    end
+    return res
+end
+
 # Gaussian location–scale with one random intercept (1 | g) on the mean.
 # θ = [β_μ; β_σ (log σ); log σ_b].
 # `reml=true` (#439) keeps β_μ in θ and adds the Patterson–Thompson term
@@ -405,10 +534,22 @@ function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ,
 
     βμ0 = Xμ \ y
     res0 = y - Xμ * βμ0
+
+    # Data-driven start (#747 follow-up: seeds 4 and 10 of the RUNAWAY panel in
+    # test/test_ranef_varying_scale_convergence.jl). See the header note above
+    # `_ranef_sigma_ols_start`.
     θ0 = zeros(pμ + pσ + 1)
     θ0[1:pμ] .= βμ0
-    θ0[pμ+1] = log(std(res0) + eps())
-    θ0[pμ+pσ+1] = log(std(res0) / 2 + eps())
+    θ0[pμ+1:pμ+pσ] .= _ranef_sigma_ols_start(Xσ, res0)
+    θ0[pμ+pσ+1] = _ranef_sdg_mom_start(res0, gidx, G)
+
+    # Restart start: the historical blind default (always interior). Used only
+    # when the data-driven start above does not gradient-converge or lands at
+    # a boundary sd_g -> 0 local optimum; see `_re_lbfgs_with_restart`.
+    θ0_restart = zeros(pμ + pσ + 1)
+    θ0_restart[1:pμ] .= βμ0
+    θ0_restart[pμ+1] = log(std(res0) + eps())
+    θ0_restart[pμ+pσ+1] = log(std(res0) / 2 + eps())
 
     # WHY THIS ROUTE NEEDS NO n-SCALED CONVERGENCE FALLBACK (measured 2026-08-26).
     #
@@ -451,7 +592,7 @@ function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ,
     # near n ~ 4e7. Far outside any dataset this route is built for, but if that
     # ever changes, normalise the objective by n the way fit_q4_sparse_tmb.jl and
     # reml_q4.jl do -- do NOT add a #491-style fallback, which only papers over it.
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    res = _re_lbfgs_with_restart(nll, θ0, θ0_restart, g_tol, pμ + pσ + 1, std(res0))
     θ̂ = Optim.minimizer(res)
     V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
 
@@ -646,7 +787,7 @@ function _fit_correlated_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, xs,
         if φ̂1[ia+1] - φ̂1[ia] < log(1e-3)
             φr = copy(φ̂1); φr[ia+1] = φ̂1[ia] + log(0.5); φr[ia+2] = 0.0
             res2 = Optim.optimize(nllc, φr, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-            Optim.minimum(res2) < Optim.minimum(res) && (res = res2)
+            res = _better_restart(nllc, res, res2)   # NOT Optim.minimum: see optim_minimum_guard.jl
         end
     end
     φ̂ = Optim.minimizer(res)
@@ -767,9 +908,28 @@ end
 # small q×q (q = Σ G_k) capacitance M = I + Z̃ᵀD⁻¹Z̃ (the logdet(G) term is
 # absorbed into logdet(M)). In exact arithmetic M is identity-plus-PSD hence PD,
 # but at extreme σ the I is lost to rounding (M's entries ≫ 1) and the raw
-# Z̃ᵀD⁻¹Z̃ is rank-deficient (crossed intercept columns), so we factor with
-# check=false and return a finite penalty on failure — the optimiser's line
-# search then retreats from those ill-scaled probes. Closed-form GLS; Z precomputed.
+# Z̃ᵀD⁻¹Z̃ is rank-deficient (crossed intercept columns). Forming M + I and
+# Cholesky-factoring it then fails — or, worse, SUCCEEDS with pivots that are
+# differences of O(1/σ_e²) numbers, so logdet(M + I) and the Woodbury quadratic
+# r′D⁻¹r − c′(M + I)⁻¹c lose every digit as σ_e → 0 with one record per level
+# (the #835/#837 cancellation class; measured: nll off by 0.63 at log σ_e = −16
+# and −0.44 in logdet alone at −18, test_cancellation_sweep.jl). We therefore
+# never form M: `_multi_re_qr` takes the QR factorisation of the stacked design
+# [D^{-1/2}Z̃; I] (RᵀR = I + Z̃ᵀD⁻¹Z̃ exactly, without squaring the condition
+# number), reads logdet(M + I) = 2Σ log|Rᵢᵢ|, and evaluates the quadratic as the
+# penalised RSS Σ (rᵢ − z̃ᵢᵀb̂)²/Dᵢ + ‖b̂‖² at the least-squares mode b̂ (every term
+# ≥ 0). Identical to the Woodbury expressions in exact arithmetic. Closed-form
+# GLS; Z precomputed.
+function _multi_re_qr(Z̃::AbstractMatrix, sdinv::AbstractVector, r::AbstractVector)
+    T = promote_type(eltype(Z̃), eltype(sdinv), eltype(r))
+    q = size(Z̃, 2)
+    F = qr([sdinv .* Z̃; Matrix{T}(I, q, q)])
+    bhat = F \ [sdinv .* r; zeros(T, q)]
+    R = F.R
+    logdetM = 2 * sum(log ∘ abs, diag(R))
+    return R, bhat, logdetM
+end
+
 function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol)
     n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     K = length(comps)
@@ -794,13 +954,13 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
         σk = [exp(clamp(θ[pμ+pσ+k], -30.0, 30.0)) for k in 1:K]
         σcol = [σk[colcomp[c]] for c in 1:q]
         Z̃ = Z .* σcol'                             # scale each column by its σ_k
-        ZtDir = Z̃' * (invD .* r)
-        M = Z̃' * (invD .* Z̃)
-        C = cholesky(Symmetric(M + I); check = false)  # check=false → never throws
-        issuccess(C) || return oftype(sum(θ), 1e18)    # retreat from ill-scaled probes
-        quad = sum(r .^ 2 .* invD) - dot(ZtDir, C \ ZtDir)
-        logdetV = sum(2 .* ησ) + logdet(C)
-        return 0.5 * (logdetV + quad) + 0.5 * n * log(2π)
+        _, bhat, logdetM = _multi_re_qr(Z̃, exp.(-ησ), r)
+        e = r .- Z̃ * bhat
+        quad = sum(invD .* e .^ 2) + sum(abs2, bhat)
+        logdetV = sum(2 .* ησ) + logdetM
+        val = 0.5 * (logdetV + quad) + 0.5 * n * log(2π)
+        isfinite(val) || return oftype(val, 1e18)  # HagerZhang asserts a finite objective
+        return val
     end
 
     function grad!(Gout, θ)
@@ -813,13 +973,10 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
         σk = [exp(clamp(θ[pμ+pσ+k], -30.0, 30.0)) for k in 1:K]
         σcol = [σk[colcomp[c]] for c in 1:q]
         Z̃ = Z .* σcol'
-        ZtDir = Z̃' * (invD .* r)
-        M = Z̃' * (invD .* Z̃)
-        C = cholesky(Symmetric(M + I); check = false)
-        issuccess(C) || return Gout
-
-        Hinv = C \ Matrix{Float64}(I, q, q)
-        bscaled = Hinv * ZtDir
+        R, bscaled, _ = _multi_re_qr(Z̃, exp.(-ησ), r)   # RᵀR = I + Z̃ᵀD⁻¹Z̃
+        all(isfinite, bscaled) || return Gout
+        Rinv = UpperTriangular(R) \ Matrix{Float64}(I, q, q)
+        Hinv = Rinv * Rinv'
         α = invD .* (r .- Z̃ * bscaled)             # V⁻¹r
 
         Gout[1:pμ] .= -(Xμ' * α)
@@ -911,27 +1068,32 @@ end
 # Random intercept on the SCALE: sigma ~ <fixed> + (1 | g), with
 # log σᵢ = Xσᵢᵀβσ + b_{g(i)}, b_g ~ N(0, σ_b²); the mean is fixed effects. There
 # is no closed-form marginal (b enters σ nonlinearly), so each group's random
-# effect is integrated out by K-node Gauss–Hermite quadrature: substituting
-# b = √2 σ_b z turns the prior integral into Σₖ wₖ·(group likelihood at node k).
-# Within a group every observation gets the same node shift δₖ = √2 σ_b zₖ, so a
-# group reduces to Aₘ = Σ η0ᵢ and Bₘ = Σ rᵢ² e^{-2η0ᵢ}. O(n + G·K) per eval and
-# fully differentiable (nodes are constants). drmTMB does this with Laplace; for
-# a 1-D effect AGHQ is the standard, more accurate sibling.
-#
-# `laplace = true` (reached via `drm(...; marginal = :Laplace)`) swaps the GHQ-32
-# objective for the Laplace approximation that native drmTMB (TMB) computes for
-# this model; see `_sigre_laplace_nll` below. Everything else (start values,
-# optimiser, blocks, names, reported σ) is shared, and the default `laplace =
-# false` path is the GHQ-32 fit exactly as before.
+# effect is integrated out numerically. The DEFAULT (`marginal = :LA`, D-273)
+# is unchanged: a fixed 32-node PRIOR-scale grid (b = √2 σ_b z), independent of
+# where the group posterior actually sits — accurate for small groups, but
+# tens of nats off for a large group SD (see D-273's receipt,
+# docs/dev-log/evidence/arc2-sigma-re-laplace/receipt.md, and the AGHQ PR's own
+# demo numbers). `marginal = :Laplace` (already implemented) swaps in the
+# closed-form Laplace approximation that native drmTMB (TMB) computes for this
+# model. `marginal = :AGHQ` (new) swaps in the per-group ADAPTIVE
+# Gauss-Hermite helper (`_aghq_marginal_loglik`, #834/#719) at K =
+# `_RANEF1D_AGHQ_K` nodes: the per-observation log-density at a shifted log σ
+# is `ll(i, η) = -½log2π - η - ½ rᵢ² e^{-2η}`, η0 = Xσβσ, the random-effect
+# design is a constant 1 (Zre = ones(n,1)), and the prior scale is L = [σ_b].
+# `:Laplace` is exactly the K=1 case of this same adaptive grid (hand-derived
+# there for speed); `:AGHQ` is the more accurate sibling for informative groups
+# without committing to the Laplace/TMB-parity numbers. Everything else (start
+# values, optimiser, blocks, names, reported σ) is shared across all three.
 function _fit_sigma_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol;
-                                   laplace::Bool = false)
+                                   laplace::Bool = false, aghq::Bool = false,
+                                   K::Int = _RANEF1D_AGHQ_K)
     n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     members = [Int[] for _ in 1:G]
     for i in 1:n
         push!(members[gidx[i]], i)
     end
     z, w = _gauss_hermite(32)
-    logw = log.(w); K = length(z); rt2 = sqrt(2.0); lπ = log(π); l2π = log(2π)
+    logw = log.(w); Kghq = length(z); rt2 = sqrt(2.0); lπ = log(π); l2π = log(2π)
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]; σb = exp(θ[pμ+pσ+1])
         η0 = Xσ * βσ                            # fixed-effect log σ
@@ -943,8 +1105,8 @@ function _fit_sigma_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, nmμ, nm
             mg = length(idx)
             mg == 0 && continue
             Ag = sum(@view η0[idx]); Bg = sum(@view re[idx])
-            terms = Vector{T}(undef, K)
-            for k in 1:K
+            terms = Vector{T}(undef, Kghq)
+            for k in 1:Kghq
                 δ = rt2 * σb * z[k]
                 terms[k] = logw[k] - mg * δ - 0.5 * exp(-2δ) * Bg
             end
@@ -954,7 +1116,16 @@ function _fit_sigma_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, nmμ, nm
         end
         return s
     end
-    obj = laplace ? _sigre_laplace_nll(y, Xμ, Xσ, members, pμ, pσ) : nll
+    rule = _AGHQRule(1, K); Zre = ones(n, 1); bcache = zeros(1, G)   # #719: per-group AGHQ
+    function nll_aghq(θ)
+        βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]; σb = exp(θ[pμ+pσ+1])
+        η0 = Xσ * βσ                            # fixed-effect log σ
+        r = y .- Xμ * βμ
+        ll = (i, η) -> -0.5 * l2π - η - 0.5 * r[i]^2 * exp(-2η)
+        L = reshape([σb], 1, 1)
+        return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache)
+    end
+    obj = laplace ? _sigre_laplace_nll(y, Xμ, Xσ, members, pμ, pσ) : (aghq ? nll_aghq : nll)
     βμ0 = Xμ \ y; res0 = y - Xμ * βμ0
     θ0 = zeros(pμ + pσ + 1)
     θ0[1:pμ] .= βμ0
@@ -971,7 +1142,9 @@ function _fit_sigma_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, nmμ, nm
     means = Dict(:mu => Xμ * θ̂[1:pμ]); obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))   # population (b=0) σ
     fit = _withnll(DrmFit(fam, blocks, names, θ̂, V, -obj(θ̂), n, Optim.converged(res), means, obs, scales), obj)
-    return laplace ? _withmarginal(fit, :Laplace) : fit
+    laplace && return _withmarginal(fit, :Laplace)
+    aghq && return _withmarginal(fit, :AGHQ)
+    return fit
 end
 
 # ── marginal = :Laplace for the σ random intercept ───────────────────────────
@@ -1050,65 +1223,280 @@ function _sigre_laplace_nll(y, Xμ, Xσ, members, pμ, pσ)
     end
 end
 
+# ── simultaneous mean + sigma random intercepts (#745, twin drmTMB #1287) ────
+#
+# `y ~ x + (1 | g), sigma ~ (1 | g)`, the SAME grouping factor `g` on both
+# axes. Unlike `_fit_ranef_gaussian` (mean RE, `sigma` fixed effects — exact
+# Woodbury marginal) this has no closed form: the sigma random effect enters
+# the mean's per-observation VARIANCE, so it cannot be profiled out of the
+# Gaussian integral the way `sigma ~ x` fixed effects can. drmTMB's own route
+# (`src/drmTMB.cpp` model_type 1) does not exploit any closed form either — it
+# hands TMB the full stacked (u_mu, u_sigma) vector and lets its black-box
+# nested Laplace integrate everything at once, with independent
+# `dnorm(u, 0, 1)` priors (no cross-dpar correlation for the plain `(1 | g)` +
+# `(1 | g)` cell; that needs an explicit coupled `(1 | tag | group)` tag).
+#
+# Because both random effects here share ONE grouping factor, drmTMB's joint
+# Hessian over the whole (u_mu, u_sigma) vector is exactly BLOCK-DIAGONAL, one
+# 2×2 block per group: group k's likelihood contribution depends only on its
+# own (b_mu,k, delta_sigma,k) pair, never on another group's. Summing an
+# independent per-group 2-D Laplace approximation over those 2×2 blocks IS the
+# whole-model nested Laplace approximation — nothing is lost relative to
+# TMB's joint version by doing it group-by-group instead of as one big sparse
+# solve; it is simply a more transparent implementation of the identical
+# block-diagonal structure. (If a future formula let the two REs use
+# DIFFERENT grouping factors, the blocks would no longer be 2×2 and this
+# derivation would not apply — routed as a clear refusal at the call site.)
+#
+# For one group with m members, random intercept b (mean) and delta (sigma,
+# both un-standardized — same convention as `_sigre_mode` above, b ~ N(0,σb²)
+# directly rather than TMB's b = σb·u — Laplace is invariant to that affine
+# reparameterisation), fixed-effect residual r_i = y_i − Xμ_i′β_μ and
+# fixed-effect log σ η0_i = Xσ_i′β_σ:
+#
+#     h(b, δ) = Σ_i (η0_i + δ) + ½ D(b, δ) + ½ b²/σb,μ² + ½ δ²/σb,σ²
+#     D(b, δ) = Σ_i (r_i − b)² exp(−2(η0_i + δ))
+#
+# (plus the −½m log 2π − ½log 2π − ½log 2π normalising constants for the
+# response density and the two priors, added back in `nll_group` below). The
+# 2×2 Hessian of h in closed form (used both for the Newton mode-finder and
+# for the Laplace determinant):
+#
+#     H_bb = Σ_i e_i + 1/σb,μ²             (e_i = exp(−2(η0_i+δ)))
+#     H_bδ = −∂D/∂b = 2 Σ_i (r_i−b) e_i
+#     H_δδ = 2 D + 1/σb,σ²
+#
+# and Laplace's 2-D formula log∫∫e^{−h} db dδ ≈ −h(b̂,δ̂) + log(2π) −
+# ½log det H(b̂,δ̂).
+
+_musig_primal(x::ForwardDiff.Dual) = _musig_primal(ForwardDiff.value(x))
+_musig_primal(x::Real) = x
+
+# Damped-Newton 2-D mode-finder on stripped Float64 primals. Groups here are
+# tiny (drmTMB twin cells run G ≈ 8..60, n_g ≈ 6..12), so this converges in a
+# handful of iterations; step-halving on the gradient norm guards against the
+# occasional overshoot from the δ-nonlinearity (e = exp(−2δ)) far from (0,0).
+function _musig_mode_primal(r_idx::Vector{Float64}, eta0_idx::Vector{Float64},
+                            sb_mu2::Float64, sb_sigma2::Float64)
+    m = length(r_idx)
+    b = 0.0; δ = 0.0
+    for _ in 1:100
+        e = exp.(-2 .* (eta0_idx .+ δ))
+        resid = r_idx .- b
+        D = sum(resid .^ 2 .* e)
+        dDdb = -2 * sum(resid .* e)
+        gb = 0.5 * dDdb + b / sb_mu2
+        gδ = m - D + δ / sb_sigma2
+        (gb^2 + gδ^2) < 1e-24 && break
+        Hbb = sum(e) + 1 / sb_mu2
+        Hbδ = -dDdb
+        Hδδ = 2 * D + 1 / sb_sigma2
+        detH = Hbb * Hδδ - Hbδ^2
+        if !isfinite(detH) || detH <= 0
+            Δb = -gb / max(Hbb, 1e-8)
+            Δδ = -gδ / max(Hδδ, 1e-8)
+        else
+            Δb = -(Hδδ * gb - Hbδ * gδ) / detH
+            Δδ = -(-Hbδ * gb + Hbb * gδ) / detH
+        end
+        step = 1.0
+        g0 = gb^2 + gδ^2
+        while step > 1e-8
+            bn = b + step * Δb; δn = δ + step * Δδ
+            en = exp.(-2 .* (eta0_idx .+ δn))
+            residn = r_idx .- bn
+            Dn = sum(residn .^ 2 .* en)
+            gbn = 0.5 * (-2 * sum(residn .* en)) + bn / sb_mu2
+            gδn = m - Dn + δn / sb_sigma2
+            if gbn^2 + gδn^2 <= g0 || step < 1e-3
+                b, δ = bn, δn
+                break
+            end
+            step *= 0.5
+        end
+    end
+    return b, δ
+end
+
+# Mode + final Hessian pieces in the CALLER's number type (mirrors
+# `_sigre_laplace_group`'s pattern): find (b̂, δ̂) robustly on stripped Float64
+# primals, then take two exact Newton steps in the full (possibly Dual) type
+# so the implicit function theorem gives ForwardDiff the correct derivative of
+# (b̂, δ̂) w.r.t. θ. Returns (b, δ, D, Hbb, Hbδ, Hδδ) at the refined point.
+function _musig_refine(r_idx, eta0_idx, sb_mu2, sb_sigma2, m::Int)
+    r0 = _musig_primal.(r_idx); eta00 = _musig_primal.(eta0_idx)
+    sb_mu2_0 = _musig_primal(sb_mu2); sb_sigma2_0 = _musig_primal(sb_sigma2)
+    b0, δ0 = _musig_mode_primal(r0, eta00, sb_mu2_0, sb_sigma2_0)
+    T = promote_type(eltype(r_idx), eltype(eta0_idx), typeof(sb_mu2), typeof(sb_sigma2))
+    b = oftype(one(T), b0); δ = oftype(one(T), δ0)
+    for _ in 1:2
+        e = exp.(-2 .* (eta0_idx .+ δ))
+        resid = r_idx .- b
+        D = sum(resid .^ 2 .* e)
+        dDdb = -2 * sum(resid .* e)
+        gb = 0.5 * dDdb + b / sb_mu2
+        gδ = m - D + δ / sb_sigma2
+        Hbb = sum(e) + 1 / sb_mu2
+        Hbδ = -dDdb
+        Hδδ = 2 * D + 1 / sb_sigma2
+        detH = Hbb * Hδδ - Hbδ^2
+        Δb = -(Hδδ * gb - Hbδ * gδ) / detH
+        Δδ = -(-Hbδ * gb + Hbb * gδ) / detH
+        b += Δb; δ += Δδ
+    end
+    e = exp.(-2 .* (eta0_idx .+ δ))
+    resid = r_idx .- b
+    D = sum(resid .^ 2 .* e)
+    dDdb = -2 * sum(resid .* e)
+    Hbb = sum(e) + 1 / sb_mu2
+    Hbδ = -dDdb
+    Hδδ = 2 * D + 1 / sb_sigma2
+    return b, δ, D, Hbb, Hbδ, Hδδ
+end
+
+"""
+    _fit_musigma_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol) -> DrmFit
+
+Gaussian model with SIMULTANEOUS random intercepts on the mean `(1 | g)` and
+on `sigma` `(1 | g)`, sharing one grouping factor (#745, twin drmTMB #1287).
+Each group's joint (b_mu, delta_sigma) pair is integrated by a 2-D Laplace
+approximation (see the derivation above this function); marginal `:Laplace`
+always — there is no closed-form or quadrature alternative implemented for
+this cell. θ = [β_μ; β_σ (fixed-effect log σ); log σ_b,μ; log σ_b,σ].
+"""
+function _fit_musigma_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol)
+    n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
+    members = [Int[] for _ in 1:G]
+    for i in 1:n
+        push!(members[gidx[i]], i)
+    end
+    l2π = log(2π)
+
+    function nll(θ)
+        βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
+        sb_mu2 = exp(2 * θ[pμ+pσ+1]); sb_sigma2 = exp(2 * θ[pμ+pσ+2])
+        r_all = y .- Xμ * βμ
+        η0_all = Xσ * βσ
+        T = eltype(θ)
+        s = zero(T)
+        for idx in members
+            m = length(idx)
+            m == 0 && continue
+            r_idx = r_all[idx]; eta0_idx = η0_all[idx]
+            b, δ, D, Hbb, Hbδ, Hδδ = _musig_refine(r_idx, eta0_idx, sb_mu2, sb_sigma2, m)
+            detH = Hbb * Hδδ - Hbδ^2
+            Ak = sum(eta0_idx)
+            nll_group = 0.5 * m * l2π + Ak + m * δ + 0.5 * D +
+                        0.5 * l2π + θ[pμ+pσ+1] + 0.5 * b^2 / sb_mu2 +
+                        0.5 * l2π + θ[pμ+pσ+2] + 0.5 * δ^2 / sb_sigma2
+            s += nll_group - l2π + 0.5 * log(detH)
+        end
+        return s
+    end
+
+    βμ0 = Xμ \ y; res0 = y - Xμ * βμ0
+    θ0 = zeros(pμ + pσ + 2)
+    θ0[1:pμ] .= βμ0
+    θ0[pμ+1] = log(std(res0) + eps())
+    θ0[pμ+pσ+1] = log(0.5 * std(res0) + eps())
+    θ0[pμ+pσ+2] = log(0.3)
+    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    θ̂ = Optim.minimizer(res)
+    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+
+    blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :resd => (pμ+pσ+1):(pμ+pσ+2)]
+    # Same `_logsigma`-suffix convention as `_fit_sigma_ranef_gaussian` (#322):
+    # the mean-axis RE-SD keeps the bare group name, the sigma-axis one is
+    # tagged so `vc`/`re_sd` never conflate the two different scales.
+    names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp), "$(grp)_logsigma"]]
+    means = Dict(:mu => Xμ * θ̂[1:pμ])
+    obs = Dict(:mu => Vector{Float64}(y))
+    scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))   # population (b=δ=0) σ
+
+    # Conditional modes (BLUPs) at θ̂, one 2-D Laplace mode per group.
+    blup_mu = zeros(G); blup_sigma = zeros(G)
+    let
+        βμ = θ̂[1:pμ]; βσ = θ̂[pμ+1:pμ+pσ]
+        sb_mu2 = exp(2 * θ̂[pμ+pσ+1]); sb_sigma2 = exp(2 * θ̂[pμ+pσ+2])
+        r_all = y .- Xμ * βμ; η0_all = Xσ * βσ
+        for (k, idx) in enumerate(members)
+            length(idx) == 0 && continue
+            b, δ = _musig_refine(r_all[idx], η0_all[idx], sb_mu2, sb_sigma2, length(idx))
+            blup_mu[k] = b; blup_sigma[k] = δ
+        end
+    end
+    re = Dict(Symbol(grp) => blup_mu, Symbol("$(grp)_logsigma") => blup_sigma)
+
+    fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll), re)
+    return _withmarginal(fit, :Laplace)
+end
+
 # `marginal` on the univariate Gaussian `drm`. `:LA` (the default, any case)
 # keeps every route exactly as it was: each route's own integrator, which is
 # exact wherever the Gaussian marginal is closed-form and GHQ-32 on `sigma ~ (1
-# | g)`. On Gaussian, `:Laplace` is implemented only for that σ random-intercept
-# route (the non-Gaussian ordinary `(1 | g)` route lives in ordinary_laplace.jl).
-# Returns `true` when `:Laplace` was requested.
+# | g)`. On Gaussian, `:Laplace` and `:AGHQ` are implemented only for that σ
+# random-intercept route (the non-Gaussian ordinary `(1 | g)` route lives in
+# ordinary_laplace.jl). Returns the requested marginal as a Symbol (`:LA`,
+# `:Laplace` or `:AGHQ`); the caller dispatches on it.
 function _gaussian_marginal(marginal::Symbol)
     t = Symbol(uppercase(String(marginal)))
-    t === :LA && return false
-    t === :LAPLACE && return true
+    t === :LA && return :LA
+    t === :LAPLACE && return :Laplace
+    t === :AGHQ && return :AGHQ
     throw(ArgumentError(
         "drm (Gaussian): `marginal = :$marginal` is not available for Gaussian(). " *
         "Use the default `marginal = :LA` (each route's default integrator; on `sigma ~ " *
-        "1 + (1 | g)` that is 32-node Gauss–Hermite quadrature, not Laplace), or " *
-        "`marginal = :Laplace` to force the Laplace approximation drmTMB uses, for a " *
+        "1 + (1 | g)` that is 32-node Gauss–Hermite quadrature, not Laplace), " *
+        "`marginal = :Laplace` to force the Laplace approximation drmTMB uses, or " *
+        "`marginal = :AGHQ` for per-group adaptive Gauss–Hermite quadrature, for a " *
         "single random intercept `(1 | g)` on `sigma` with a fixed-effect mean."))
 end
 
-function _gaussian_laplace_reject(what)
+function _gaussian_laplace_reject(what; requested = "Laplace")
     throw(ArgumentError(
-        "marginal = :Laplace is not available for Gaussian() with $what. On the Gaussian " *
+        "marginal = :$requested is not available for Gaussian() with $what. On the Gaussian " *
         "family this route covers exactly one random intercept `(1 | g)` on `sigma` " *
         "(fixed-effect mean, fixed-effect `sigma` predictors alongside it), fitted by " *
         "maximum likelihood. Omit `marginal` (the default `:LA`) for other models."))
 end
 
-# Admit `marginal = :Laplace` only for the exact σ random-intercept shape, and
-# refuse everything else before any route runs, so a request is never silently
-# served by another integrator.
+# Admit `marginal = :Laplace`/`:AGHQ` only for the exact σ random-intercept
+# shape, and refuse everything else before any route runs, so a request is
+# never silently served by another integrator. Both non-default integrators
+# share the same admissible shape (only the group integral differs), so one
+# validator serves both; `requested` names the one in the error message.
 function _gaussian_laplace_validate(f::DrmFormula, fam::Gaussian, data, algorithm, method,
-                                    penalty, phylo_coupled, sparse, impute, missing)
-    _has_joint_mi(f) && _gaussian_laplace_reject("an `mi()` joint missing-data formula")
+                                    penalty, phylo_coupled, sparse, impute, missing;
+                                    requested = "Laplace")
+    rej(what) = _gaussian_laplace_reject(what; requested = requested)
+    _has_joint_mi(f) && rej("an `mi()` joint missing-data formula")
     (impute === nothing && missing === nothing) ||
-        _gaussian_laplace_reject("`impute`/`missing` controls")
+        rej("`impute`/`missing` controls")
     rhs = Dict(f.forms)
     extra = setdiff(keys(rhs), (:mu, :sigma))
-    isempty(extra) || _gaussian_laplace_reject(
+    isempty(extra) || rej(
         "additional formula parts ($(join(sort(String.(collect(extra))), ", "))), such as `sd(g) ~ …`")
     _, re, metav, structured, _ = _split_ranef(rhs[:mu]; allow_phylo_slope = true)
-    isempty(re) || _gaussian_laplace_reject("a random effect on the mean")
-    metav === nothing || _gaussian_laplace_reject("`meta_V(...)`")
+    isempty(re) || rej("a random effect on the mean")
+    metav === nothing || rej("`meta_V(...)`")
     (structured === nothing && isempty(_collect_structured(rhs[:mu]))) ||
-        _gaussian_laplace_reject("a structured (phylo/relmat/animal/spatial) term on the mean")
+        rej("a structured (phylo/relmat/animal/spatial) term on the mean")
     _, sigma_re, sigma_metav, structured_sigma = _split_ranef(rhs[:sigma])
     (structured_sigma === nothing && isempty(_collect_structured(rhs[:sigma]))) ||
-        _gaussian_laplace_reject("a structured (phylo/relmat/animal/spatial) term on `sigma`")
-    sigma_metav === nothing || _gaussian_laplace_reject("`meta_V(...)` on `sigma`")
-    isempty(sigma_re) && _gaussian_laplace_reject(
+        rej("a structured (phylo/relmat/animal/spatial) term on `sigma`")
+    sigma_metav === nothing || rej("`meta_V(...)` on `sigma`")
+    isempty(sigma_re) && rej(
         "no random effect on `sigma` (a fixed-effect Gaussian model has an exact likelihood)")
-    length(sigma_re) == 1 || _gaussian_laplace_reject("more than one random-effect term on `sigma`")
+    length(sigma_re) == 1 || rej("more than one random-effect term on `sigma`")
     _re_kind(sigma_re[1][1])[1] === :intercept ||
-        _gaussian_laplace_reject("a random slope on `sigma` (only `(1 | g)` is implemented)")
-    method === :ML || _gaussian_laplace_reject("`method = :$method`")
-    penalty === nothing || _gaussian_laplace_reject("`penalty`")
-    algorithm === :auto || _gaussian_laplace_reject("`algorithm = :$algorithm`")
+        rej("a random slope on `sigma` (only `(1 | g)` is implemented)")
+    method === :ML || rej("`method = :$method`")
+    penalty === nothing || rej("`penalty`")
+    algorithm === :auto || rej("`algorithm = :$algorithm`")
     # `profile_ci` is not checked: it only precomputes the sigma-phylo location-scale
     # CIs, so it is ignored on this route exactly as on the default (:LA) route, and
     # `drm_bridge_inference(method = "profile")` sets it for every univariate fit.
-    phylo_coupled && _gaussian_laplace_reject("`phylo_coupled = true`")
-    (sparse === nothing || sparse === false) || _gaussian_laplace_reject("`sparse = $sparse`")
+    phylo_coupled && rej("`phylo_coupled = true`")
+    (sparse === nothing || sparse === false) || rej("`sparse = $sparse`")
     return nothing
 end

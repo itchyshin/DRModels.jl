@@ -214,7 +214,6 @@ function drm(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
             error("Poisson() random effects cannot be combined with `zi`/`hu` yet")
         if length(re) > 1                                 # (1|g)+(1|h)+… crossed/multiple intercepts → sparse Laplace
             isva && _va_reject(fam, "crossed/multiple random intercepts")
-            isaghq && _aghq_reject(fam, "crossed/multiple random intercepts")
             reml && _reject_reml_route(fam, "crossed/multiple random intercepts")
             all(_re_kind(r[1])[1] === :intercept for r in re) ||
                 error("Poisson() supports multiple random effects only as crossed/nested intercepts, e.g. `(1 | g) + (1 | h)`")
@@ -222,6 +221,7 @@ function drm(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
                 grp = r[2]; gidx, G = _group_index(getproperty(data, grp))
                 (ones(length(y)), gidx, G, String(grp))
             end
+            isaghq && return _withformula(_fit_poisson_crossed_aghq(fam, y, Xμ, comps, nmμ, g_tol; se = se), f)   # #761
             return _withformula(_fit_poisson_crossed_laplace(fam, y, Xμ, comps, nmμ, g_tol; se = se), f)
         end
         (rk, var) = _re_kind(re[1][1]); grp = re[1][2]; gidx, G = _group_index(getproperty(data, grp))

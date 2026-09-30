@@ -517,9 +517,12 @@ are parameterised over all G levels, while the likelihood is evaluated on
 observed rows.
 """
 function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree = nothing, coords = nothing, g_tol::Real = 1e-8, algorithm::Symbol = :auto, method::Symbol = :ML, profile_ci::Bool = false, phylo_coupled::Bool = false, penalty = nothing, sparse = nothing, impute = nothing, missing = nothing, marginal::Symbol = :LA)
-    laplace = _gaussian_marginal(marginal)
-    laplace && _gaussian_laplace_validate(f, fam, data, algorithm, method, penalty,
-                                          phylo_coupled, sparse, impute, missing)
+    mkind = _gaussian_marginal(marginal)
+    laplace = mkind === :Laplace
+    aghq = mkind === :AGHQ
+    (laplace || aghq) && _gaussian_laplace_validate(f, fam, data, algorithm, method, penalty,
+                                          phylo_coupled, sparse, impute, missing;
+                                          requested = laplace ? "Laplace" : "AGHQ")
     algorithm in (:auto, :gls, :lbfgs, :em, :sparse, :sparse_lbfgs) ||
         throw(ArgumentError("drm: `algorithm` must be one of :auto, :gls, :lbfgs, :em, :sparse, :sparse_lbfgs (got :$algorithm)"))
     method in (:ML, :REML) ||
@@ -877,6 +880,41 @@ function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree 
                 "bridge, or `drm_listwise` natively) is the supported route there."))
         end
     end
+    # Simultaneous mean + sigma random intercepts (#745, twin drmTMB #1287):
+    # `y ~ x + (1 | g), sigma ~ (1 | g)`. drmTMB admits this by handing TMB the
+    # full random vector (u_mu, u_sigma) and letting its black-box nested
+    # Laplace integrate both jointly (`src/drmTMB.cpp` model_type 1, independent
+    # `dnorm(u_mu,0,1)` / `dnorm(u_sigma,0,1)` priors, no cross-dpar correlation
+    # unless a coupled `(1 | tag | group)` tag is used — not this formula).
+    # Dispatched BEFORE the sigma-RE-only branch below (which refuses this
+    # exact combination) so the twin gap does not silently fall through to it.
+    if !isempty(sigma_re) && !isempty(re)
+        (structured === nothing && metav === nothing) ||
+            error("drm (Gaussian): a random effect on `sigma` combined with a mean random " *
+                  "effect does not support a structured (phylo/relmat/animal/spatial) mean " *
+                  "marker or `meta_V(...)` yet (#745 covers the plain `(1 | g)` + `(1 | g)` cell)")
+        (length(re) == 1 && _re_kind(re[1][1])[1] === :intercept) ||
+            error("drm (Gaussian): simultaneous mean + `sigma` random effects support a " *
+                  "single mean random INTERCEPT `(1 | g)` (no slopes, no crossed/multiple " *
+                  "terms) — got $(length(re)) term(s) on the mean")
+        (length(sigma_re) == 1 && _re_kind(sigma_re[1][1])[1] === :intercept) ||
+            error("drm (Gaussian): simultaneous mean + `sigma` random effects support a " *
+                  "single `sigma` random INTERCEPT `(1 | g)` — got $(length(sigma_re)) term(s)")
+        mgrp = re[1][2]; sgrp = sigma_re[1][2]
+        mgrp === sgrp ||
+            error("drm (Gaussian): simultaneous mean + `sigma` random effects are implemented " *
+                  "only when both share the SAME grouping factor (got `(1 | $mgrp)` on the " *
+                  "mean and `(1 | $sgrp)` on sigma) — the per-group 2×2 Laplace block this " *
+                  "route uses requires one group per observation shared by both axes; " *
+                  "different/crossed groups are not implemented (#745)")
+        # `has_missing_response` and `method === :REML` are already refused above
+        # this point for ANY non-empty `re` — the generic missing-response guard
+        # and the `if method === :REML` validator both throw before a formula
+        # with a mean random effect can reach here, so this branch is ML/
+        # complete-response only by construction; no additional check needed.
+        gidx, G = _group_index(getproperty(data, mgrp))
+        return _withformula(_fit_musigma_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, mgrp, g_tol), f)
+    end
     if !isempty(sigma_re)                                      # random effect on log σ
         (isempty(re) && structured === nothing && metav === nothing) ||
             error("a random effect on `sigma` must be the only random structure (the mean must be fixed effects)")
@@ -885,7 +923,7 @@ function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree 
         sgrp = sigma_re[1][2]
         gidx, G = _group_index(getproperty(data, sgrp))
         return _withformula(_fit_sigma_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, sgrp, g_tol;
-                                                      laplace = laplace), f)
+                                                      laplace = laplace, aghq = aghq), f)
     end
     # Meta-analysis with random intercepts on the mean (Arc 2): `meta_V(v)` plus
     # any mix of `(1 | g)`, `phylo(1 | g)`, `relmat(1 | g)`, `animal(1 | g)`.
@@ -2270,7 +2308,7 @@ function bic(fit::DrmFit)
 end
 
 """
-    re_sd(fit) -> Dict{Symbol,Float64}
+    re_sd(fit; scale = :native, tree = nothing) -> Dict{Symbol,Float64}
 
 Estimated random-effect standard deviations, keyed by grouping factor. A
 mean-axis random intercept (`y ~ x + (1|g)`) or independent slope
@@ -2282,14 +2320,43 @@ is not silently mixing scales. A correlated random intercept+slope block
 (`(1 + x | g)`) is keyed `<group>_intercept` and `<group>_slope`, consistent
 with `sqrt.(diag(vc(fit)[:g]))`; the correlation itself is not returned here —
 use [`vc`](@ref) for the full 2×2 covariance.
+
+## `scale` (#732, twin drmTMB#1272)
+
+For a `phylo(1 | g)` grouping fitted on the default raw branch-length
+covariance (`fit.phylo_scale === :covariance`, the sparse Gaussian-mean and all
+non-Gaussian Laplace/GLMM phylo routes), `re_sd`'s default `scale = :native`
+returns σ on that raw branch-length scale (tip variance = the tree's height
+`h`). drmTMB instead reports the phylogenetic SD on the tip-correlation scale
+(`ape::vcv(tree, corr = TRUE)`, tip variance 1 regardless of `h`); the two
+quantities differ by the exact factor `sqrt(h)`
+(`sd_drmTMB == re_sd(fit)[:g] * sqrt(phylo_tree_height(augmented_phy(tree)))`,
+confirmed against `drmTMB` 0.7.1 to within optimiser tolerance on both a
+Gaussian and a non-Gaussian (`CumulativeLogit`) phylo fit — see
+`test/test_twin_gap_732.jl`).
+
+Pass `scale = :drmtmb` and the SAME `tree` (or `newick` string) given to
+`drm(...)` to get drmTMB's number directly instead of doing that conversion by
+hand:
+
+    re_sd(fit; scale = :drmtmb, tree = tree)
+
+For a fit whose phylo/relmat term was instead built on the tip-correlation
+matrix already (`fit.phylo_scale === :correlation`), `scale = :drmtmb` is a
+no-op (that route's raw `re_sd` already matches drmTMB) and `tree` is not
+required. `scale = :drmtmb` on a fit with no random effects returns the empty
+`Dict`. `scale = :native` (the default) is unchanged from before this option
+existed.
 """
-function re_sd(fit::DrmFit)
+function re_sd(fit::DrmFit; scale::Symbol = :native, tree = nothing)
     # Location–scale–scale fits (#544) model the RE SD with covariates, so a
     # single per-grouping SD is ill-defined — refuse rather than misreport.
     any(p -> first(p) in (:sd, :sd_phylo), fit.blocks) &&
         throw(ArgumentError("re_sd: this fit models the random-effect SD with covariates " *
             "(`sd(group) ~ …`), so a single SD per grouping is not defined. Use " *
             "`coef(fit, :sd)` for the log-SD coefficients."))
+    scale in (:native, :drmtmb) ||
+        throw(ArgumentError("re_sd: `scale` must be :native or :drmtmb, got $(repr(scale))."))
     d = Dict{Symbol,Float64}()
     for (p, r) in fit.blocks
         if p === :resd
@@ -2308,7 +2375,14 @@ function re_sd(fit::DrmFit)
             d[Symbol(grp * "_slope")] = sqrt(cc^2 + l22^2)
         end
     end
-    return d
+    scale === :native && return d
+    (isempty(d) || fit.phylo_scale === :correlation) && return d
+    tree === nothing && throw(ArgumentError("re_sd: scale = :drmtmb needs `tree = ...` " *
+        "(the SAME tree/newick passed to `drm(...)`) to convert the raw branch-length SD " *
+        "to drmTMB's tip-correlation scale — see the `re_sd` docstring (#732)."))
+    phy = tree isa AugmentedPhy ? tree : augmented_phy(tree)
+    factor = sqrt(phylo_tree_height(phy))
+    return Dict(k => v * factor for (k, v) in d)
 end
 
 """

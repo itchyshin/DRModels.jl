@@ -6,6 +6,8 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **Fix 8-15x slowdown in Gaussian location-scale phylo REML.** The outer β Newton in `_glsp_joint_reml_nll` now exits when the predicted decrease is at rounding level and the gradient test passes, instead of letting the accept-on-equal line search halve ~26 times to a near-null step and repeat near the optimum (H2 fixture 59 s -> ~7 s or better); answers unchanged (reml_nll to ~1e-12).
+
 - **Tweedie crossed random effects (#737, drmTMB twin parity).**
   `Tweedie()` now fits crossed/multiple random intercepts on the log-mean,
   `(1 | g) + (1 | h)`, matching drmTMB's `tweedie()`. `sigma ~ 1` and
@@ -35,6 +37,49 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   version drew different data from `MersenneTwister(20260715)`. Each answer is
   a verified stationary point of its own data, and the two versions agree to
   1e-11 on the same literal data (`test/test_lss_reml_falseconv.jl`).
+- **Simultaneous mean + `sigma` random intercepts on Gaussian (#745, twin
+  drmTMB #1287).** `bf(y ~ x + (1 | g), sigma ~ (1 | g))` used to refuse with
+  "a random effect on `sigma` must be the only random structure", even though
+  drmTMB admits it (TMB's nested Laplace integrates the full stacked
+  `(u_mu, u_sigma)` vector). A new route, `_fit_musigma_ranef_gaussian`
+  (`src/gaussian_ranef.jl`), is admitted for exactly this cell: BOTH random
+  effects a single intercept `(1 | g)`, sharing the SAME grouping factor. The
+  two REs' joint Hessian is then block-diagonal in 2×2 blocks (one per
+  group), so each group's `(b_mu, delta_sigma)` pair is found and
+  Laplace-integrated together, and summing those independent per-group 2-D
+  Laplace terms is the whole-model nested Laplace approximation — the mean
+  RE is NOT profiled out in closed form first (unlike `_fit_ranef_gaussian`'s
+  exact Woodbury marginal for `sigma ~ x` fixed effects), because the sigma
+  random effect makes each row's variance itself latent. `marginal` is
+  always `:Laplace` on this route (no closed-form or quadrature alternative
+  is implemented). On a G=60/n_g=10 simulated fixture it matches native
+  drmTMB 0.7.1 (TMB Laplace) to <1e-10 in logLik and every estimate — far
+  inside the twin ledger's ~1e-4 bar (`test/test_twin_gap_745.jl`,
+  `test/fixtures/musigma_ranef_745/`). Refused, not silently dropped: a
+  random SLOPE on either axis, more than one random-effect term per axis, the
+  two REs on DIFFERENT grouping factors, a structured (phylo/relmat/animal/
+  spatial) mean marker or `meta_V(...)` alongside this cell, and
+  `method = :REML`.
+- **Data-driven starts/restart for Gaussian `(1 | g)` + `sigma ~ x`, follow-up
+  to #746/#747.** The two optimiser misses left open by #746/#747 (seed 4:
+  LBFGS stopped at a boundary sd_g -> 0 local optimum 123 nats short of
+  drmTMB's interior optimum; seed 10: non-converged, 95 nats short) were a
+  bad start, not the objective. `_fit_ranef_gaussian` now starts the `sigma ~
+  …` coefficients from an OLS regression of log(guarded residual²) on the
+  scale design (a real slope instead of always 0), and the random-intercept
+  log-SD from a one-way ANOVA method-of-moments estimate, then restarts once
+  from the historical always-interior start if the result does not
+  gradient-converge or lands at a boundary — keeping whichever objective is
+  lower (deterministic, no random multi-start; mirrors the boundary-restart
+  already used by the correlated `(1 + x | g)` route). Seed 4 now matches
+  drmTMB to 1.5e-11, seed 10 to 2e-8 (both well inside 1e-6). Zero regressions
+  on the RUNAWAY panel: the other 17 seeds are unaffected (one, seed 1, now
+  reaches its unchanged boundary optimum through a tie-break instead of
+  throwing at a more extreme representative of the same tie — see
+  `_re_lbfgs_with_restart`'s docstring). See
+  `test/test_twin_gap_747_starts.jl`. Not touched: the objective itself, the
+  correlated `(1 + x | g)` route, or the simultaneous mean+sigma RE route.
+
 - **Cancellation-free Woodbury quadratic for Gaussian `(1 | g)` + `sigma ~ x`
   (#746, #747).** `_fit_ranef_gaussian` and the `sd(g) ~ z` route
   `_fit_ranef_gaussian_lss` formed `r'V⁻¹r` as `q1 - q2` (both terms `~1/D_min`),
@@ -75,6 +120,52 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   (σ_b ≈ 0.69 and 0.34) move by −3.6e-8 and +1e-10 nat in logLik. Public API
   unchanged; the `phylo(1 | species)` and fixed-effects-only routes are
   untouched.
+- **Adaptive quadrature for `Tweedie()`'s two `mu` random-effect routes,
+  `(1 | g)` and `(0 + x | g)`.** `_fit_tweedie_ranef` and
+  `_fit_tweedie_slope_ranef` were the last two `_fit_*_ranef` routes still on
+  the pre-#719 fixed 32-node PRIOR-scale grid (`b = √2 σ_b z`); both now use
+  the shared per-group adaptive Gauss–Hermite helper (`src/adaptive_ghq.jl`,
+  #719/#834), `q = 1`, with the same `K = _RANEF1D_AGHQ_K = 5` default as the
+  other 1-D `(1 | g)` families. On a single informative group (`σ_b = 6`,
+  20 obs/group, `η0 = 0.5`, `φ = 1.3`, `p = 1.5`) the old grid missed the
+  QuadGK-exact per-group marginal by 12.87 nat (intercept route) / 23.40 nat
+  (slope route); the new default AGHQ is within 3e-8 / 6e-8 nat of the same
+  reference. Public API and defaults are unchanged; both routes gain an
+  internal `K` keyword (default `_RANEF1D_AGHQ_K`), matching the `(1 | g)`
+  pattern on the other families. `test/test_tweedie_aghq.jl`.
+- **`marginal = :AGHQ` for the Gaussian random intercept on `sigma`
+  (`sigma ~ 1 + (1 | g)`).** New opt-in integrator, alongside the existing
+  default (`:LA`, unchanged, D-273) and `:Laplace`: per-group adaptive
+  Gauss-Hermite quadrature at `K = 5` nodes (the shared `q = 1` helper from
+  #834/#719), reusing the same `_aghq_marginal_loglik` every other `(1 | g)`
+  family was moved onto. The default `:LA` route integrates on a fixed
+  32-node PRIOR-scale grid, independent of where the group posterior actually
+  sits; for a large group SD (`sigma_b` = 3-6) that grid misses the exact
+  per-group marginal (verified against an independent QuadGK integral) by
+  tens of nats, while `:AGHQ` at `K = 5` is within 0.01 nat and the
+  underlying method is exact to 1e-6 nat at higher `K`. On the small-`sigma_b`
+  fixture already covered by `test/test_sigma_re.jl` (where the default grid
+  is already accurate), `:AGHQ` moves every working-scale coefficient by
+  less than 0.02 and the total logLik by less than 0.05 nat. `marginal = :LA`
+  stays the default; nothing changes unless `marginal = :AGHQ` is requested.
+- **`fit_mixed_family(...; aghq = true)`: adaptive quadrature for the
+  cross-family shared-latent route (#719).** The bivariate joint-random-effect
+  fitter (`src/mixed_family.jl`, two families sharing one per-observation
+  latent `u_i ~ N(0,1)`) integrated `u_i` by a fixed K=32 prior-scale
+  Gauss-Hermite grid, the one remaining `(1 | g)`-shaped route #846 left on
+  the non-adaptive integrator. New opt-in `aghq = true` (default `false`,
+  signature-stable) reuses the #834/#719 `_aghq_marginal_loglik` helper,
+  treating each observation as its own AGHQ "group" of two virtual members
+  (one per family) sharing the fixed prior; the loadings `λ1`/`λ2` (not a
+  group SD) carry the scale. At large loadings (`λ ~ 3-6`, the role a group SD
+  plays elsewhere) the prior-scale grid misses the exact per-observation
+  marginal (verified against an independent QuadGK integral) by up to ~28 nat;
+  `aghq = true` at `K = 5` (matching `_RANEF1D_AGHQ_K`) is within 5e-5 nat at
+  the same inputs, and the underlying method is exact to 1e-6 nat at higher
+  `K`. On a full recovery fit (`λ1_true = 2.5`, `λ2_true = 2.0`, `n = 600`)
+  `aghq = true` recovers both loadings within 0.4 and lands ~392 nat higher in
+  logLik than the unchanged default. `aghq = false` (the default) is
+  byte-for-byte unchanged.
 - **Adaptive quadrature for 1-D random intercepts `(1 | g)` (#719).** Every
   default-route (`:LA`) `_fit_*_ranef` fitter for Poisson, NegBinomial2, Gamma,
   Beta, BetaBinomial, Student, and LogNormal now integrates the group random
@@ -256,6 +347,32 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   keep the previous (fixed-effect-only) reference rather than risk a wrong
   marginalisation. A future conditional-mode variant is tracked once #759
   wires non-Gaussian `ranef()`.
+- **Bivariate `Student()` (`biv_student()` twin): `confint(fit; method =
+  :bootstrap)`-equivalent entry points (`bootstrap_result`, `bootstrap_ci`) no
+  longer abort on the first replicate (#766).** `simulate(fit)`'s generic
+  fallback assumed univariate keys (`fit.means[:mu]`, `fit.scales[:sigma]`);
+  a bivariate Student-t fit stores `:mu1`/`:mu2` and `:sigma1`/`:sigma2`
+  instead (the same shape as bivariate `Gaussian()`), so every bootstrap
+  replicate threw `KeyError: key :mu not found` before any refit was
+  attempted — a ~0 s abort regardless of `parm`. A new `_simulate_once`
+  method dispatches on the bivariate shape and draws `Y = mu + diag(sigma) *
+  Z * sqrt(nu / chisq_nu)`, `Z ~ N(0, R)`, mirroring bivariate Gaussian's own
+  branch. `confint(fit; method = :profile)` was unaffected by this bug (it
+  does not call `simulate`) and was already fixed by the large-ν bivariate-t
+  density correction below.
+
+- **Bivariate `Student()` (`biv_student()` twin) no longer diverges at large ν
+  (follow-up to #721).** The joint (p = 2) and marginal (p = 1) log-density
+  terms computed `loggamma((ν+2)/2) - loggamma(ν/2)` and
+  `loggamma((ν+1)/2) - loggamma(ν/2)` by hand — the same catastrophic
+  loggamma-difference cancellation #721 found in the univariate `Student()`.
+  The joint term is now the exact Gamma-recursion identity
+  `loggamma((ν+2)/2) - loggamma(ν/2) = log(ν/2)` (valid for every ν > 0, not
+  an approximation), which collapses the whole normalising constant to
+  `log(2π)`; the marginal term now reuses `_student_logpdf_std` from
+  `student.jl`. Both are exact/stable to < 1e-9 against a 256-bit reference
+  across ν ∈ [2.5, 1e16]. Recovery of genuinely heavy-tailed data (ν ≈ 5) is
+  unaffected.
 - **`Student()` fits crossed random intercepts on the mean (#725; drmTMB twin
   #1266).** `y ~ x + (1 | g) + (1 | h)` was refused ("single random-effect
   term"); drmTMB `student()` fits it. It now uses the Laplace approximation, as
@@ -427,6 +544,22 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   sparse-Laplace engine's iteration count, or `vcov_posdef`/`min_eigval`/`cond`
   when the covariance is only partially finite) is `missing`, never a
   placeholder zero.
+- **Coupled σ-phylo ML reaches drmTMB's optimum on its correlation bound
+  (#818).** With `phylo(1 | g)` on `mu` and `sigma` and `phylo_coupled = true`,
+  `method = :ML` used to stop at a worse optimum than native drmTMB whenever
+  native's optimum sits on its bound |cor| ≤ 0.999999, and it still reported
+  convergence: logLik 1.016 lower on fixture G1 and 0.685 lower on G2, with the
+  mean-axis SD collapsed to about zero. Near the bound the latent precision
+  reaches about 1e10, the inner mode's fixed 1e-9 stationarity test fell below
+  the gradient's rounding noise, and the marginal likelihood could not be
+  evaluated there at all. The inner test now sits at the noise floor, and the
+  bound is fitted as its own candidate in whitened coordinates, as the coupled
+  REML fit already did. G1, G2 and F1 now match or beat native's ML logLik
+  (within 1e-6), the fits take about 20 s instead of 30-90 s, and a fit on the
+  bound reports no Wald covariance, as native does. Coupled REML, which starts
+  from this fit, keeps its logLik; on F1 its estimates move by at most 1.5e-7,
+  towards native's.
+
 - **Gaussian σ-phylo REML now fits drmTMB's restricted likelihood.** For the
   Gaussian location–scale model with `phylo(1 | g)` on `sigma` (the scale-only,
   separate and coupled blocks), `method = :REML` now maximises TMB's
@@ -472,6 +605,122 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   `test/test_fixture_provenance.jl` fails on any future `expected.meta.toml`
   that omits the stamp. `xfam-external-gllvm` is excluded (its comparator is
   gllvm, not drmTMB). No fixture's numeric values changed — only metadata.
+- **Coevolution / q=2 structured marginal stays accurate near a singular Λ
+  (#857 site K).** `coevo_marginal_cov` formed `Λ = L L'` in Float64 and
+  inverted it, so as the among-trait correlation approached ±1 (log-Cholesky
+  diagonal l22 → −14 … −18) the marginal lost every digit: on a known-K q2
+  fixture the error was 7.6e-7 (relative) at l22 = −14, a spurious +0.03 nats at
+  −17, and a −Inf wall from −18. It now works in whitened coordinates
+  (`v = (I ⊗ L⁻¹)u`; `Λ⁻¹` is never formed) and accepts `Λ` factored as a
+  `Cholesky` (new `DRModels.lc_to_chol`), which `fit_coevolution` and
+  `fit_coevolution_q2_residual` now pass. Error vs a 256-bit reference is
+  ≤ 1e-12 from l22 = −2 to −30. Identical in exact arithmetic, including the
+  historical 1e-10 prior ridge: normal-regime objective values match the old
+  form to 4.3e-13; fitted estimates move only within the optimiser's own
+  tolerance floor. The third return value is now the factor of the whitened
+  Hessian. The q=4 PLSM engine builds its prior the same way and is also
+  affected (measured, pinned as `@test_broken`); it is not changed here.
+
+- **Follow-up to the above: two more `coevo_marginal_cov` callers now build Λ's
+  factor straight from θ (#857 site K, draft #862).** The bivariate Gaussian
+  ML route (`gaussian_bivariate.jl`, `_fit_bivariate_q2_structured`'s `nll`)
+  and the q=2 structured REML route (`reml_q2.jl`, `_q2_reml_ll` and
+  `fit_coevolution_q2_reml`'s final `ml_ll`) still passed a Λ ALREADY FORMED
+  as a matrix (`lc_to_cov`), so `coevo_marginal_cov`'s `cholesky(Symmetric(Λ))`
+  re-factored an already-lossy matrix — accurate to l22 ≈ −18, then `-Inf`
+  from l22 = −20. Both now pass `lc_to_chol(lc, 2)` directly, matching a
+  256-bit reference to machine precision through l22 = −30 where the old path
+  returned `-Inf`; normal-regime objective values are identical to the old
+  path to ≤ 1e-12.
+
+- **Last `inv(Λ)` site in the q=2 REML route removed (#857 site K, #862/#865
+  follow-up).** `_q2_profile_and_schur` (`reml_q2.jl`) was the one caller left
+  forming `Λ` densely and calling `inv(Λ)` to build the bordered (u, β)
+  Hessian used for the profile/Schur step. Measured against a 256-bit dense
+  GLS reference (S = X'V⁻¹X, β̂ the GLS estimator) at log-Cholesky diagonal
+  l22 = −18/−20/−30: before, l22 = −18 returned a finite but silently wrong
+  S/β̂, and l22 = −20/−30 rejected the step outright (`ok = false`); after, all
+  three match the reference to relative error ≤ 6e-16 (β̂: ≤ 2e-15). It now
+  takes `chΛ::Cholesky` (via `lc_to_chol`) and whitens `u` (`v = (I ⊗ L)⁻¹u`,
+  same construction as `coevo_marginal_cov`); the Schur complement of the
+  profiled β block is basis-invariant under this substitution, so normal-
+  regime `S`/`β̂` are unchanged (checked against the pre-fix formula over 10
+  random draws: agree to ≤ 2e-16 relative). A convenience method still accepts
+  a formed `Λ::AbstractMatrix` for existing callers/tests, factoring it once.
+- **`drm_bridge` sweep: six more formula constructs that reached a confusing
+  low-level error instead of a clear refusal now refuse sharply and by name
+  (#467 follow-up).** Following the `%in%`/nested-`/` fix below, a sweep of
+  twenty formula constructs against base R's own `stats::model.matrix()`
+  found no additional SILENTLY-WRONG case, but six LATE-ERROR cases where the
+  bridge reached a `ParseError`, an `UndefVarError`, or a scalar-label
+  renderer crash deep inside translation, none of which named the actual
+  unsupported construct: `y ~ .` ("every other column"), package-qualified
+  calls like `y ~ splines::ns(x, 3)` (Julia parses `pkg::fn(...)` as a type
+  assertion, not a call — a `pkg::fn(...)` from any package is unsupported),
+  `y ~ cut(x, 3)`, `y ~ interaction(f, g)`, `y ~ offset(o) + x`, and
+  `y ~ C(g, contr.sum)`. All six now raise an `ArgumentError` naming the
+  construct. Eight other constructs from the same sweep (`x - 1`, `0 + x`,
+  `x + z - z`, `log(x)`, `x^2` on a bare symbol, `(x + z)^2 - x:z`, bare
+  `x:f`, `f - 1`) were already FAITHFUL and are now locked in by a regression
+  fixture comparing both column names and fitted values against
+  `model.matrix()` (`test/test_bridge_silent_sweep.jl`); three more
+  (`x * z - x:z`, `poly(x, 2, raw = TRUE)`, `as.numeric(f)`) already refused
+  sharply and needed no change.
+
+- **`drm_bridge` translates R's `%in%` and nested `/` formula operators, or
+  refuses them sharply (#467).** Neither was handled before: `%in%` is not
+  valid Julia infix syntax the way R means it, so `Meta.parse` silently read
+  `b %in% a` as nested modulo, `(b % in) % a`, surfacing only later as a
+  confusing "no variable called 'in'" error from deep inside `@formula`; `/`
+  parsed as plain Julia division, so `y ~ x / z` on two numeric columns did
+  not error at all — it silently fit a single materialised `x / z`
+  arithmetic-division covariate instead of R's nesting expansion `x + x:z`
+  (SILENTLY WRONG, not merely a late error). Both are now rewritten to the
+  bridge's existing `&` (R's `:`) interaction primitive — `b %in% a` → `b&a`;
+  `a/b` → `a + a&b` — confirmed against base R's own
+  `stats::terms()`/`model.matrix()` to reproduce identical column names and
+  values. A compound or chained nesting left-hand side (`(a+c)/b`, `a/b/c`)
+  is refused with an `ArgumentError` naming the construct and its explicit
+  expansion, rather than guessed, since R's contrast algebra there is not a
+  simple AST rewrite.
+
+- **Fixed: reported/compared logLik could read a rejected line-search trial's
+  value, not the value at the reported optimum.** After a failed line search
+  (`Status: failure (line search failed)`), Optim.jl v1.13.3 can leave
+  `Optim.minimum(res)` holding the objective from an earlier, REJECTED trial
+  point while `Optim.minimizer(res)` has already moved past it — confirmed by
+  a minimal reproduction (`test/test_optim_minimum_contract.jl`) that gets a
+  barrier-sentinel `Optim.minimum(res) == 1e18` alongside a finite
+  `f(Optim.minimizer(res))`. Every site in `src/` that REPORTED
+  `-Optim.minimum(res)` as a fit's logLik, or COMPARED `Optim.minimum` across
+  candidates/restarts, has been changed to re-evaluate the objective fresh at
+  `Optim.minimizer(res)` (`src/optim_minimum_guard.jl`,
+  `_objective_at_minimizer`/`_objective_at_minimizer_fg`). Converged fits are
+  numerically unaffected — the two values coincide there.
+- **`re_sd(fit; scale = :drmtmb, tree = ...)` reports a `phylo(1 | g)` SD on
+  drmTMB's scale (#732, twin drmTMB#1272).** `re_sd`'s default (unchanged) is
+  the raw branch-length scale (tip variance = the tree's height `h`) for every
+  route where `fit.phylo_scale === :covariance` (the sparse Gaussian-mean
+  phylo route and all non-Gaussian Laplace/GLMM phylo routes); drmTMB reports
+  the same random effect on the tip-CORRELATION scale (`ape::vcv(tree, corr =
+  TRUE)`, tip variance 1). FE and logLik already agreed between the two
+  engines — only the reported SD differed, by the exact factor `sqrt(h)`. The
+  new `scale = :drmtmb` option (needs the same `tree` passed to `drm(...)`)
+  returns drmTMB's number directly; it is a no-op (and needs no `tree`) on a
+  route whose `phylo_scale === :correlation` (e.g. `phylo(1|sp) + (1|h)`),
+  since that route's raw `re_sd` already matches drmTMB.
+- **New permanent test: likelihood sanity fuzzer across all discrete routes
+  (`test/test_ll_sanity_fuzzer.jl`).** For a discrete response every
+  probability mass is ≤ 1, so a random-effects model's marginal logLik must be
+  ≤ 0 too; the objective must also never return NaN or -Inf-as-nll at any θ.
+  Sweeps every discrete-family route (fixed effects, `(1|g)`, `(1+x|g)`,
+  crossed, `phylo`/`relmat`, `zi`/`hu`, ordinal) across extreme fixed effects,
+  variance-component log-SDs, and nuisance log-parameters. Encodes today's
+  known-open violations as `@test_broken` (NegBinomial2/TruncatedNegBinomial2
+  `+ hu` and `CumulativeLogit (1|id)` at extreme dispersion/cutpoint/fixed-
+  effect values) so CI flips them green the moment each is fixed; the
+  NegBinomial2 `(1|g)` cell is already fixed on #846 and is marked
+  accordingly pending merge.
 
 - **`Student()` no longer reports a garbage log-likelihood near the Gaussian
   limit (#721; drmTMB twin #1265).** When the data are close to Normal the
@@ -500,6 +749,23 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   spans more than one level of the other) now surfaces the existing
   "Hessian is numerically singular" / "not positive definite" warnings
   instead of a silent `Inf`.
+- **Bivariate LogNormal structured markers (#471, LogNormal half): `animal`/
+  `spatial` test coverage added, alongside the existing `phylo`/`relmat`
+  identity tests.** `src/bivariate_lognormal.jl`'s `drm` method already
+  forwarded `tree`/`K`/`A`/`coords`/`spatial_range` unconditionally to the
+  bivariate Gaussian dispatcher on `log(y)` — there was no marker-specific
+  gate to lift, so `animal(1 | group)` and `spatial(1 | group)` already fit
+  and converge for `LogNormal()` exactly like `phylo`/`relmat` do. The gap was
+  test coverage only: `test/test_twin_gap_471_bivln.jl` adds q=2 and q=4
+  identity checks against `Gaussian()` on `log(y)` for `animal`/`spatial`, plus
+  a small known-DGP recovery check on a 40-tip simulated tree. No `src/`
+  change was needed. drmTMB's own `biv_lognormal()` (0.7.1) refuses all
+  random/structured effects, the same blanket refusal as `biv_student()`; no
+  R-parity fixture is claimed for this cell, but the Julia route rests on a
+  closed-form identity (log(Y) bivariate Gaussian) rather than a bespoke
+  unverified engine, matching owner decision D-180 that this is sound to ship
+  ahead of drmTMB.
+
 - **`simulate()`/the parametric bootstrap no longer throw for `biv_lognormal()`
   (same class as #766).** The generic `_simulate_once` fallback special-cases
   bivariate Gaussian fits (`fam isa Gaussian && haskey(fit.scales, :sigma1)`)
@@ -525,6 +791,36 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
   different row order, or all of them — and an unseen level now raises a
   clear `ArgumentError` naming the parameter. Numeric-only predictors are
   unaffected. See `test/test_twin_gap_609.jl`.
+- **`marginal = :AGHQ` for crossed random intercepts `(1 | g) + (1 | h)` (#761;
+  supersedes the rejected #850).** The default crossed route is the Laplace
+  approximation that drmTMB and lme4 use, and it still matches them. **Laplace is
+  biased low for Bernoulli / Binomial data with a large random-intercept SD and few
+  observations per group**: on a G = 300, H = 4, n = 1600 Bernoulli design with
+  σ_g = 2.5 (about 5 observations per g-level) its log-likelihood sits about 9.4 nat
+  below the true value, and it shrinks σ_g. The new opt-in `marginal = :AGHQ`
+  integrates the same model accurately when one grouping has few levels (at most
+  8): each g-level's intercept by 15-node adaptive Gauss–Hermite quadrature
+  conditional on the h-effects, and the h-effects by a tensor adaptive rule
+  (3 nodes per level for H ≤ 4, 2 for 5–8) centred at the joint mode. At one node
+  each it reproduces the crossed Laplace fit exactly. `fit.loglik` and `fit.nll`
+  are the same objective, and the fit is tagged `marginal = :AGHQ`, so `lrtest` /
+  `anova` refuse to compare it with a Laplace or GHQ fit. Wired for Binomial and
+  Poisson (mean-only); also wired for NegBinomial2, Gamma, Beta and BetaBinomial,
+  whose nuisance parameter (NB2 size, Gamma shape, Beta/BetaBinomial precision)
+  is estimated jointly with β and the two variance components
+  (`_fit_crossed_mean_aghq_nuisance`, the nuisance-aware twin of the mean-only
+  route). Default fits are unchanged.
+
+- **Fix: the same silent-`Inf`-SE class as #761, for Gamma, Beta and
+  BetaBinomial crossed random intercepts.** `_fit_gamma_crossed_laplace`,
+  `_fit_beta_crossed_laplace` and `_fit_betabinomial_crossed_laplace`
+  (`src/sparse_laplace_glmm.jl`) also defaulted `se = false`, and their family
+  dispatchers (`src/gamma.jl`, `src/beta.jl`, `src/betabinomial.jl`) never
+  forwarded the caller's `se` down to them — so a crossed `(1 | g) + (1 | h)`
+  fit for these three families always skipped the Hessian/vcov step
+  regardless of what was asked for. Fixed by flipping each fitter's default
+  to `se = true` (matching Poisson/NB2) and forwarding `se = se` at each
+  dispatcher's crossed-dispatch call site.
 
 - **`marginal = :Laplace` on an ordinary `(1 | g)` (Arc 2, drmTMB parity).**
   Poisson, Binomial, NegBinomial2, Gamma and Beta with one ordinary random

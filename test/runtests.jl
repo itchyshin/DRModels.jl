@@ -120,7 +120,11 @@ _shard_include("test_bf_grammar.jl")
 _shard_include("test_gaussian_bivariate.jl")
 _shard_include("test_bivariate_lognormal.jl")
 _shard_include("test_biv_lognormal_simulate.jl")  # #840-class: simulate()/bootstrap KeyError on biv_lognormal()
+_shard_include("test_twin_gap_471_bivln.jl")  # #471 LogNormal half: animal/spatial coverage + recovery
 _shard_include("test_bivariate_student.jl")
+_shard_include("test_bivariate_student_large_nu.jl")
+_shard_include("test_twin_gap_766.jl")  # #766: biv_student profile/bootstrap CI endpoints
+_shard_include("test_implicit_re_intercept.jl")  # (x | g) == (1 + x | g)
 _shard_include("test_associate_pairs.jl")
 _shard_include("test_gaussian_bivariate_phylo.jl")
 _shard_include("test_gaussian_bivariate_q4_structured.jl")
@@ -141,6 +145,7 @@ _shard_include("test_lss_tip_identity.jl") # Named tree-tip mapping under shuffl
 _shard_include("test_lss_bootstrap_contract.jl") # Marginal components, masks and REML refits
 _shard_include("test_bootstrap_thread_flags.jl") # Independent storage for parallel status flags
 _shard_include("test_lss_sparse.jl")  # #551 O(p) sparse exact marginal LSS engine
+_shard_include("test_fd_hessian_fallback.jl")  # FD-Hessian empty-gradient fallback -> NaN vcov
 _shard_include("test_lss_sparse_gradient_scaling.jl")  # #627 O(p) gradient + profile endpoint invariance
 _shard_include("test_lss_sparse_multi.jl")  # #563 S7b.1 sparse multi-component block assembly + objective
 _shard_include("test_lss_sparse_multi_gradient.jl")  # #563 S7b.2/S7b.2b sparse multi-component exact gradient
@@ -196,6 +201,8 @@ _shard_include("test_correlated_re.jl")
 _shard_include("test_multi_re.jl")
 _shard_include("test_sigma_re.jl")
 _shard_include("test_sigma_re_laplace.jl")   # marginal = :Laplace on sigma ~ (1 | g) (TMB convention)
+_shard_include("test_sigma_re_aghq.jl")      # marginal = :AGHQ on sigma ~ (1 | g) (#719 adaptive helper)
+_shard_include("test_twin_gap_745.jl")   # simultaneous mean (1|g) + sigma (1|g), twin drmTMB #1287
 _shard_include("test_sigma.jl")
 _shard_include("test_student.jl")
 _shard_include("test_student_721.jl")
@@ -230,6 +237,8 @@ _shard_include("test_twin_gap_723.jl")
 _shard_include("test_tweedie.jl")
 _shard_include("test_tweedie_ranef.jl")
 _shard_include("test_crossed_tweedie.jl")
+_shard_include("test_tweedie_aghq.jl")             # #719/#834 applied to Tweedie's two RE routes
+_shard_include("test_tweedie_aghq_k.jl")           # #881: K sweep, default K = _TWEEDIE_RANEF_AGHQ_K
 _shard_include("test_cumulative.jl")
 _shard_include("test_cumlogit_nan.jl")
 _shard_include("test_cumlogit_ranef.jl")
@@ -250,6 +259,7 @@ _shard_include("test_binomial_phylo_laplace.jl")
 _shard_include("test_betabinomial_phylo_laplace.jl")
 _shard_include("test_crossed_laplace_generic.jl")
 _shard_include("test_twin_gap_761.jl")
+_shard_include("test_crossed_se_forwarding.jl")
 _shard_include("test_betabinomial_crossed_laplace.jl")
 _shard_include("test_crossed_selected_inverse.jl")
 _shard_include("test_locscale_kernels.jl")
@@ -271,6 +281,8 @@ _shard_include("test_locscale_profile_threads.jl") # Finite canonical intervals 
 # fast E-step acceptance gate (#317), and Zη/Zψ threading through the profiler
 # (#325.4).
 _shard_include("test_optimizer_robustness.jl")
+_shard_include("test_optim_minimum_contract.jl")  # optim-minimum-audit: Optim.minimum(res) vs f(minimizer(res)) after a failed line search
+_shard_include("test_optim_minimum_sweep.jl")     # optim-minimum sweep #2: gaussian_ranef restart comparison via _better_restart
 _shard_include("test_locscale_gamma_e2e.jl")
 _shard_include("test_locscale_phylo_e2e.jl")
 _shard_include("test_locscale_frontend.jl")
@@ -327,6 +339,8 @@ _shard_include("test_variational_gamma.jl")
 _shard_include("test_aghq_1d.jl")                  # #448: 1-D Liu–Pierce AGHQ (lever 2)
 _shard_include("test_adaptive_ghq.jl")             # #834: per-group AGHQ for (1 + x | g) routes
 _shard_include("test_adaptive_ghq_1d.jl")          # #719: per-group AGHQ for 1-D (1 | g) routes
+_shard_include("test_crossed_aghq.jl")             # #761: marginal = :AGHQ for crossed (1 | g) + (1 | h)
+_shard_include("test_crossed_aghq_families.jl")    # #761: crossed AGHQ, NB2/Gamma/Beta/BetaBinomial nuisance
 _shard_include("test_ordinary_laplace.jl")         # Arc 2: marginal = :Laplace on ordinary (1 | g)
 # Numerical-stability guards from the twin code-review pass (#303/#308/#311/#312/
 # #319/#321/#324.6/#324.7): SD-collapse, coincident coords, VA inner damping,
@@ -362,6 +376,8 @@ _shard_include("test_bridge_formula_translation.jl")
 _shard_include("test_bridge_materialization_collision.jl")
 _shard_include("test_bridge_formula_labels.jl")
 _shard_include("test_bridge_base_r_names.jl")  # #563/#467: the ten design-258 constructs render base-R names
+_shard_include("test_bridge_in_nest.jl")  # #467: R's `%in%`/nested `/` translate faithfully or refuse sharply
+_shard_include("test_bridge_silent_sweep.jl")  # #467 follow-up: sweep of remaining formula constructs for silent wrongness
 _shard_include("test_bridge_coef_labels_echo.jl")  # #563: options["coef_labels"] echo (design 258 §7.1-7.3)
 _shard_include("test_bridge_formula_constructs.jl")  # #467/#609 A6: R-contrast fidelity of the coef_labels echo
 _shard_include("test_bridge_zi_marginal_mean.jl")  # bridge fitted/residuals = drmTMB's unconditional mean for zi count fits
@@ -513,6 +529,8 @@ _shard_include("test_reml_newton_sigma_phylo.jl")
 # drmTMB's restricted likelihood — on the asymmetric, separate and coupled blocks
 # (dense-oracle relationship + same-target native receipt + neighbour guards).
 _shard_include("test_reml_sigma_phylo_joint.jl")
+# Coupled σ-phylo ML reaches native drmTMB's optimum on its correlation bound (#818).
+_shard_include("test_coupled_ml_bound.jl")
 # Bivariate q4 REML must correct ALL FOUR among-axis SDs (β_μ AND β_σ profiled), not
 # just the means — regression for the scale-axis REML gap (#18).
 _shard_include("test_reml_q4_allaxes.jl")
@@ -594,6 +612,8 @@ _shard_include("test_qres_trunc_nan.jl")
 
 # S3: cross-family bivariate (shared-latent GHQ) + link-residual standardization.
 _shard_include("test_mixed_family.jl")
+# aghq = true: per-observation adaptive GHQ for the shared latent (#719/#834).
+_shard_include("test_mixed_family_aghq.jl")
 # Post-fit accessors (coef/aic/bic/fitted/summary) for the cross-family fit.
 _shard_include("test_mixed_family_postfit.jl")
 
@@ -628,6 +648,10 @@ _shard_include("test_609_varying_scale.jl")
 # from catastrophic cancellation in the Woodbury quadratic q1 - q2. Pins the
 # cancellation-free `_re_quad_stable` and drmTMB-twinned fits on formerly failing seeds.
 _shard_include("test_twin_gap_747.jl")
+
+# #848 (follow-up to #835): data-driven starts + one deterministic restart so
+# Gaussian (1 | g) + sigma ~ x reaches drmTMB's interior optimum on the RUNAWAY seeds.
+_shard_include("test_twin_gap_747_starts.jl")
 
 # #835 docs regression: `_re_quad_stable` (shared by `_fit_ranef_gaussian` and
 # `_fit_ranef_gaussian_lss`) hit `0.0 * Inf == NaN` when a line-search probe drove
@@ -669,3 +693,22 @@ _shard_include("test_twin_gap_762.jl")
 # method. Adds a `Val(:zeroonebeta_fixed)` sparse-Laplace kernel (additive to
 # sparse_laplace_glmm.jl) and the phylo/relmat fitters in zeroonebeta.jl.
 _shard_include("test_twin_gap_739.jl")
+# #857 site K: coevolution prior in whitened coordinates (no Λ⁻¹ near singular Λ);
+# also pins the q=4 engine's same-construction defect as @test_broken.
+_shard_include("test_q4_prior_whitening.jl")
+# Cancellation sweep: multi-RE (1|g)+(1|h), spatial(1|site) and the sparse
+# two-structured Gaussian marginals vs a BigFloat dense reassembly as σ_e → 0.
+_shard_include("test_cancellation_sweep.jl")
+# Issue #732 (twin drmTMB#1272): `re_sd(fit)` on a `phylo(1 | g)` grouping is on
+# the raw branch-length scale; drmTMB reports the tip-correlation scale. Guards
+# the new `re_sd(fit; scale = :drmtmb, tree = ...)` conversion option (default
+# unchanged) against the same two R-oracle fixtures already used elsewhere.
+_shard_include("test_twin_gap_732.jl")
+# Permanent property test for the "spuriously high logLik at extreme θ" bug
+# class: for a discrete response every probability mass is ≤ 1, so a marginal
+# logLik must be ≤ 0 too, and no route's objective may ever return NaN or
+# -Inf-as-nll. Sweeps every discrete route's fitted θ across an extreme grid.
+_shard_include("test_ll_sanity_fuzzer.jl")
+# Issue #706 (test part): classic lme4 twins - cbpp (binomial herd RE, integrator-matched
+# to glmer nAGQ = 1 / 3 / 25) and sleepstudy (Gaussian random slope, ML vs lmer; REML pinned broken).
+_shard_include("test_lme4_twins.jl")

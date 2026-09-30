@@ -840,12 +840,16 @@ function _fit_bivariate_q2_structured(f::BivariateDrmFormula, fam::Gaussian, dat
     )
     nll = function (θ)
         β = hcat(θ[blocks[1].second], θ[blocks[2].second])
-        Λ = lc_to_cov(θ[blocks[6].second], 2)
+        # Build the Λ factor straight from θ (never `L L'`): #857 site K
+        # follow-up (draft #862) -- `lc_to_cov` here would form Λ in Float64
+        # before `coevo_marginal_cov` re-factors it, which is accurate only to
+        # l22 ≈ −18.
+        chΛ = lc_to_chol(θ[blocks[6].second], 2)
         σ1 = exp(θ[blocks[3].second][1])
         σ2 = exp(θ[blocks[4].second][1])
         ρ = RHO_GUARD * tanh(θ[blocks[5].second][1])
         D = Matrix(Symmetric([σ1^2 ρ * σ1 * σ2; ρ * σ1 * σ2 σ2^2]))
-        ℓ, = coevo_marginal_cov(prob, Q_cond, β, Λ, D)
+        ℓ, = coevo_marginal_cov(prob, Q_cond, β, chΛ, D)
         return -ℓ
     end
     # Observed-information vcov by finite differences of the marginal ML NLL.

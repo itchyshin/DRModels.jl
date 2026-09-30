@@ -213,23 +213,9 @@ function _fit_phylo_gaussian_lss_sparse(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G,
 
         # Finite differences on exact analytic gradient for variance-covariance matrix
         grad_at(θ) = eval_core(unpack(θ)...; want_grad = true, use_ref = false)[2]
-        Hmat = zeros(np, np)
-        hstep = 1e-6
-        for k in 1:np
-            θp = copy(θ̂); θm = copy(θ̂)
-            step = hstep * max(abs(θ̂[k]), 1.0)
-            θp[k] += step; θm[k] -= step
-            gp = grad_at(θp); gm = grad_at(θm)
-            if isempty(gp) || isempty(gm)
-                step = 1e-4
-                θp = copy(θ̂); θm = copy(θ̂)
-                θp[k] += step; θm[k] -= step
-                gp = grad_at(θp); gm = grad_at(θm)
-            end
-            Hmat[:, k] .= (gp .- gm) ./ (2 * step)
-        end
-        Hmat .= 0.5 .* (Hmat .+ Hmat')
-        Vcov = _vcov_from_hessian(Hmat; context = "sparse LSS phylo")
+        Hmat, hess_ok = _fd_hessian_from_grad(grad_at, θ̂)
+        # A failed probe (empty gradient even after the retry) reports the NaN vcov, not a crash.
+        Vcov = hess_ok ? _vcov_from_hessian(Hmat; context = "sparse LSS phylo") : fill(NaN, np, np)
     else
         res = Optim.optimize(nll_reml_only, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :finite)
         θ̂ = Optim.minimizer(res)
@@ -952,23 +938,10 @@ function _fit_gaussian_lss_sparse_multi(fam::Gaussian, y, Xμ, Xσ, comps::Vecto
     # Finite differences on the exact analytic gradient (ML or REML, per
     # `reml`) for the variance-covariance matrix — see the docstring for why
     # this differs from #551's REML branch.
-    Hmat = zeros(np, np)
-    hstep = 1e-6
-    for k in 1:np
-        θp = copy(θ̂); θm = copy(θ̂)
-        step = hstep * max(abs(θ̂[k]), 1.0)
-        θp[k] += step; θm[k] -= step
-        gp = grad_at(θp); gm = grad_at(θm)
-        if isempty(gp) || isempty(gm)
-            step = 1e-4
-            θp = copy(θ̂); θm = copy(θ̂)
-            θp[k] += step; θm[k] -= step
-            gp = grad_at(θp); gm = grad_at(θm)
-        end
-        Hmat[:, k] .= (gp .- gm) ./ (2 * step)
-    end
-    Hmat .= 0.5 .* (Hmat .+ Hmat')
-    Vcov = _vcov_from_hessian(Hmat; context = reml ? "sparse LSS multi REML" : "sparse LSS multi")
+    Hmat, hess_ok = _fd_hessian_from_grad(grad_at, θ̂)
+    Vcov = hess_ok ?
+        _vcov_from_hessian(Hmat; context = reml ? "sparse LSS multi REML" : "sparse LSS multi") :
+        fill(NaN, np, np)
 
     # Random effects (BLUPs): joint â at θ̂, then each component's own
     # contribution at its own block offset — generalising :244-248's

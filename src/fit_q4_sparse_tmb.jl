@@ -566,12 +566,13 @@ function fit_q4_sparse_tmb(prob::AugProblem, Q_cond::SparseMatrixCSC;
 
     θ_hat = Optim.minimizer(res)
     β_hat, lc_hat = unpack_theta(prob, θ_hat)
+    nll_mean = _objective_at_minimizer_fg(fg!, res)   # NOT Optim.minimum(res): see optim_minimum_guard.jl
     return (
         θ = θ_hat,
         β = β_hat,
         Λ = lc_to_Λ(lc_hat),
-        nll = Optim.minimum(res) * length(prob.leaf_node),   # un-normalise (mean obj)
-        loglik = -Optim.minimum(res) * length(prob.leaf_node),
+        nll = nll_mean * length(prob.leaf_node),   # un-normalise (mean obj)
+        loglik = -nll_mean * length(prob.leaf_node),
         converged = Optim.converged(res),
         iterations = Optim.iterations(res),
         g_residual = Optim.g_residual(res),

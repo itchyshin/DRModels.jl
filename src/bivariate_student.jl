@@ -51,8 +51,6 @@
 # reference implementation on either side of the port to mirror. The residual
 # (fixed-effects-only) route below is unaffected and stays parity-verified.
 
-using SpecialFunctions: loggamma
-
 """
     drm(f::BivariateDrmFormula, ::Student; data, g_tol = 1e-8, method = :ML)
 
@@ -178,19 +176,32 @@ function _fit_bivariate_residual(f::BivariateDrmFormula, fam::Student, data, rhs
                 z1 = (y1[i] - η1[i]) * exp(-ls1[i])
                 z2 = (y2[i] - η2[i]) * exp(-ls2[i])
                 d2 = (z1 * z1 - 2ρ * z1 * z2 + z2 * z2) / om   # Mahalanobis on the scatter
-                # −log f₂(y) for the bivariate (p = 2) Student-t
-                s += -(loggamma((ν + 2) / 2) - loggamma(ν / 2)) + log(ν) + log(π) +
-                     ls1[i] + ls2[i] + 0.5 * log(om) +
+                # −log f₂(y) for the bivariate (p = 2) Student-t. The normalising
+                # constant loggamma((ν+2)/2) − loggamma(ν/2) is Γ(ν/2+1)/Γ(ν/2) in
+                # log space, an EXACT Gamma recursion identity (Γ(x+1) = xΓ(x)) for
+                # every ν > 0 — not an asymptotic approximation — so it collapses to
+                # log(ν/2) with no cancellation. Substituting that identity here
+                # (−log(ν/2) + log ν + log π = log(2π)) removes the catastrophic
+                # cancellation `loggamma((ν+2)/2) - loggamma(ν/2)` suffered for large
+                # ν (two ~ν·log ν-sized terms subtracted to leave an O(log ν) result,
+                # same failure mode as #721/#820): at ν = 1e16 the naive difference
+                # was off by ~36 nats, so the bivariate loglik silently diverged from
+                # the correct bivariate-Normal limit. Reproduced and fixed on branch
+                # claude/twin-gap-bivstudent (test/test_bivariate_student_large_nu.jl).
+                s += log(2π) + ls1[i] + ls2[i] + 0.5 * log(om) +
                      ((ν + 2) / 2) * log1p(d2 / ν)
             elseif obs1[i]
-                # A margin of a bivariate-t is a univariate t with the SAME ν.
+                # A margin of a bivariate-t is a univariate t with the SAME ν. This
+                # loggamma((ν+1)/2) − loggamma(ν/2) is NOT an exact-recursion case
+                # (arguments differ by 1/2, not 1) — it is exactly the univariate
+                # Student cancellation from #721/#820, so reuse the stable large-ν
+                # evaluator `_student_logpdf_std` from student.jl instead of
+                # re-deriving it by hand.
                 z1 = (y1[i] - η1[i]) * exp(-ls1[i])
-                s += -(loggamma((ν + 1) / 2) - loggamma(ν / 2)) + 0.5 * log(ν) +
-                     0.5 * log(π) + ls1[i] + ((ν + 1) / 2) * log1p(z1 * z1 / ν)
+                s += -_student_logpdf_std(z1, ην[i]) + ls1[i]
             elseif obs2[i]
                 z2 = (y2[i] - η2[i]) * exp(-ls2[i])
-                s += -(loggamma((ν + 1) / 2) - loggamma(ν / 2)) + 0.5 * log(ν) +
-                     0.5 * log(π) + ls2[i] + ((ν + 1) / 2) * log1p(z2 * z2 / ν)
+                s += -_student_logpdf_std(z2, ην[i]) + ls2[i]
             end
         end
         return s
@@ -228,4 +239,51 @@ function _fit_bivariate_residual(f::BivariateDrmFormula, fam::Student, data, rhs
             _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n_like,
                             Optim.converged(res), means, obs, scales), nll), f),
         Optim.iterations(res))
+end
+
+# --- Parametric-bootstrap replicate draw (#766) ------------------------------
+#
+# `gaussian_core.jl`'s generic `_simulate_once` special-cases bivariate
+# GAUSSIAN fits (`fam isa Gaussian && haskey(fit.scales, :sigma1)`) before
+# falling through to `μ = fit.means[:mu]` for every other family. A bivariate
+# Student-t fit (`biv_student()`) stores `:mu1`/`:mu2` and `:sigma1`/`:sigma2`
+# instead — the same shape as bivariate Gaussian, never `:mu`/`:sigma` — so
+# that fallthrough throws `KeyError: key :mu not found` on the very first
+# `simulate(fit)` call. Because the parametric bootstrap (`bootstrap_result` /
+# `bootstrap_ci`) draws its replicate response via `simulate(fit0; rng)` before
+# any refit is attempted, this failure recurs immediately on EVERY replicate —
+# exactly the "0 s abort, no fit work attempted" symptom in #766. (Profile
+# intervals do not go through `simulate` at all, and were already fixed by
+# claude/twin-gap-bivstudent's large-ν density correction; this is the
+# separate bootstrap-side gap #766 also names.)
+#
+# This method is dispatched by `fit::DrmFit{Student}`, more specific than the
+# generic `fit::DrmFit` method in gaussian_core.jl, so it does not disturb the
+# univariate `Student` branch there for any other fit — it reimplements that
+# one case (identical formula) alongside the new bivariate one, exactly as
+# gaussian_core.jl itself distinguishes bivariate vs. univariate Gaussian by
+# the presence of `:sigma1`.
+#
+# Bivariate draw follows this file's own docstring: Y = mu + diag(sigma) * Z *
+# sqrt(nu / chisq_nu), Z ~ N(0, R). `nu` is a single scalar mixing variable
+# shared across both margins PER ROW (see "NU IS STRUCTURALLY SHARED" above),
+# so one `Chisq(nu[i])` draw scales both components of row i.
+function _simulate_once(fit::DrmFit{Student}, rng; mu = nothing, sigma = nothing)
+    if haskey(fit.scales, :sigma1)   # bivariate biv_student() fit
+        μ1, μ2 = fit.means[:mu1], fit.means[:mu2]
+        σ1, σ2 = fit.scales[:sigma1], fit.scales[:sigma2]
+        ρ, ν = fit.scales[:rho12], fit.scales[:nu]
+        n = length(μ1)
+        z1 = randn(rng, n)
+        z2 = randn(rng, n)
+        sh = [sqrt(ν[i] / rand(rng, Distributions.Chisq(ν[i]))) for i in 1:n]
+        return Dict(:mu1 => μ1 .+ σ1 .* z1 .* sh,
+                    :mu2 => μ2 .+ σ2 .* (ρ .* z1 .+ sqrt.(1 .- ρ .^ 2) .* z2) .* sh)
+    end
+    # Univariate Student-t: identical to gaussian_core.jl's generic branch.
+    μ = mu === nothing ? fit.means[:mu] : mu
+    σ = sigma === nothing ? _scale_vector(fit, :sigma) : sigma
+    ν = _scale_vector(fit, :nu)
+    n = length(μ)
+    return Float64[μ[i] + σ[i] * rand(rng, Distributions.TDist(ν[i])) for i in 1:n]
 end
