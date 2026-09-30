@@ -74,6 +74,10 @@ the bootstrap entry points for those targets (see `src/inference.jl`), or the
 """
 function _vcov_from_hessian(H::AbstractMatrix; context::AbstractString = "")
     Hs = Matrix(H)
+    # A non-finite Hessian is the upstream failure signal (see `_finite_hessian`,
+    # `_fd_hessian_from_*`): report the NaN-vcov convention rather than crash in
+    # `eigvals` (the failure was already warned about upstream).
+    all(isfinite, Hs) || return fill(NaN, size(Hs)...)
     Hs = Matrix(Symmetric((Hs + Hs') / 2))
     isempty(Hs) && return Hs
 

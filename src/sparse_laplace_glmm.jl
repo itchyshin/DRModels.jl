@@ -104,10 +104,26 @@ end
 # on every stencil.
 _fd_hessian_step(n::Integer) = clamp(2.5e-7 * n, 1e-4, 1e-2)
 
+# A failed-fit objective value: non-finite, or at/above the 1e18 failed-evaluation
+# sentinel the Laplace/location-only routes return (threshold matches
+# `_fd_hessian_from_values`). Differencing a sentinel gives a huge but finite
+# garbage Hessian that would pass the eigenvalue guard.
+_hessian_probe_failed(v) = !isfinite(v) || v >= 1e16
+
+# Returns the finite-difference Hessian, or an all-NaN matrix of the same shape
+# (with a warning) when the objective at `x` or any stencil probe is non-finite or
+# the failed-fit sentinel. `_vcov_from_hessian` passes a non-finite H through as an
+# all-NaN vcov, i.e. the NaN-vcov convention of the other vcov_guard helpers; no
+# ridge is added, so no fabricated SE is ever reported.
 function _finite_hessian(f, x; h::Real = 1e-4)
     n = length(x)
     H = zeros(n, n)
+    fail() = (@warn("sparse-Laplace vcov: finite-difference Hessian is non-finite " *
+                    "or the objective hit the failed-fit sentinel (a step likely " *
+                    "straddled a clamp); reporting a NaN vcov (standard errors " *
+                    "unavailable)."); fill(NaN, n, n))
     fx = f(x)
+    _hessian_probe_failed(fx) && return fail()
     # A single absolute step is scale-blind: θ mixes link-scale β with
     # log-dispersion / RE-logσ, so a step fine for one axis is coarse for another
     # and can straddle a clamp boundary. Scale the step to each coordinate's
@@ -115,33 +131,24 @@ function _finite_hessian(f, x; h::Real = 1e-4)
     hs = [max(h, h * (1 + abs(x[i]))) for i in 1:n]
     for i in 1:n
         ei = zeros(n); ei[i] = hs[i]
-        H[i, i] = (f(x .+ ei) - 2fx + f(x .- ei)) / hs[i]^2
+        fp, fm = f(x .+ ei), f(x .- ei)
+        (_hessian_probe_failed(fp) || _hessian_probe_failed(fm)) && return fail()
+        H[i, i] = (fp - 2fx + fm) / hs[i]^2
         for j in (i+1):n
             ej = zeros(n); ej[j] = hs[j]
-            H[i, j] = (f(x .+ ei .+ ej) - f(x .+ ei .- ej) -
-                       f(x .- ei .+ ej) + f(x .- ei .- ej)) / (4 * hs[i] * hs[j])
+            fpp, fpm = f(x .+ ei .+ ej), f(x .+ ei .- ej)
+            fmp, fmm = f(x .- ei .+ ej), f(x .- ei .- ej)
+            (_hessian_probe_failed(fpp) || _hessian_probe_failed(fpm) ||
+             _hessian_probe_failed(fmp) || _hessian_probe_failed(fmm)) && return fail()
+            H[i, j] = (fpp - fpm - fmp + fmm) / (4 * hs[i] * hs[j])
             H[j, i] = H[i, j]
         end
     end
-    # Flag a non-usable Hessian so a fabricated covariance does not pass silently.
-    # The callers pass this H to `_vcov_from_hessian` (src/vcov_guard.jl, #488),
-    # which decides invert-vs-pseudo-invert from the eigenvalues and warns on a
-    # boundary — so it needs a finite H to do that eigenvalue analysis at all.
-    # Replace non-finite entries with a large finite curvature (SE→0, visibly
-    # degenerate rather than exactly 1.0) and warn; also warn when H is finite
-    # but not positive definite so the user knows the reported SEs are not
-    # trustworthy — this warning is about the FD Hessian's own quality and is
-    # independent of (and can fire alongside) the guard's singularity warning.
+    # A finite H that is not positive definite is still returned (the caller's
+    # `_vcov_from_hessian` handles singular/indefinite curvature); warn so the
+    # user knows the reported SEs are not trustworthy.
     if !all(isfinite, H)
-        @warn "sparse-Laplace vcov: finite-difference Hessian is non-finite " *
-              "(a step likely straddled a clamp); reported SEs are unreliable."
-        @inbounds for k in eachindex(H)
-            isfinite(H[k]) || (H[k] = 0.0)
-        end
-        # Add a large diagonal so inv gives near-zero (degenerate) SEs, not 1.0.
-        @inbounds for i in 1:n
-            H[i, i] += 1e12
-        end
+        return fail()
     elseif !isposdef(Symmetric(H))
         @warn "sparse-Laplace vcov: finite-difference Hessian is not positive " *
               "definite at the optimum; reported SEs are not trustworthy."
