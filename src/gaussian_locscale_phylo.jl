@@ -973,7 +973,8 @@ function _glsp_joint_reml_fit(kind, y, Xμ, Xψ, gidx, G, Q, Zη, Zψ, Λfun, st
     # Restricted-likelihood profile intervals. Every evaluation starts from the joint
     # mode at the REML optimum (update = false), so the bisection's excursions to
     # extreme log-SDs never leave a stale warm start behind; a failed joint mode is
-    # Inf, which `_glsp_profile_ci` reads as "not crossed" (the conservative side).
+    # Inf, which `_glsp_profile_ci` reads as a FAILED solve (the arm backs off, then is
+    # reported unresolved as NaN) — never as a boundary.
     ci = map(collect(profile_idx)) do j
         # No restricted profile on the correlation bound (the coupled route profiles none).
         edge_w === nothing || return (sd_lo = NaN, sd_hi = NaN)
@@ -1155,41 +1156,73 @@ function _glsp_profile_ci(nll, grad, θ̂, idx; level = 0.95)
     nll_min = nll(θ̂)
     thr  = 0.5 * Distributions.quantile(Distributions.Chisq(1), level)   # χ²₁/2
     free = setdiff(1:length(θ̂), idx)
+    # An objective value ≥ this is the routes' failure sentinel (1e18), not a likelihood.
+    sentinel = 1e16
+    # prof_dev is the profile deviance minus the threshold, or NaN when the evaluation
+    # FAILED (sentinel, non-finite, or a throw). NaN is neither "crossed" nor "not crossed":
+    # reading a sentinel as a crossing (ML) or Inf/a throw as a boundary (REML) fabricated
+    # endpoints.
     function prof_dev(v)
         θfix = copy(θ̂); θfix[idx] = v
-        # Nothing left to re-optimise (the REML scale-only block: β is integrated
-        # out and the SD is the only variance parameter), so the profile is nll itself.
-        isempty(free) && return (nll(θfix) - nll_min) - thr
-        obj(z) = (θw = copy(θfix); θw[free] .= z; nll(θw))
-        grad!(g, z) = (θw = copy(θfix); θw[free] .= z; g .= grad(θw)[free]; g)
         val = try
-            res = Optim.optimize(obj, grad!, copy(θ̂[free]), Optim.LBFGS(),
-                                 Optim.Options(g_tol = 1e-6, iterations = 150))
-            _objective_at_minimizer(obj, res)
-        catch
-            Inf            # sub-fit failed (ill-conditioned at an extreme log-SD)
+            if isempty(free)
+                # Nothing left to re-optimise (the REML scale-only block: β is integrated
+                # out and the SD is the only variance parameter), so the profile is nll itself.
+                nll(θfix)
+            else
+                obj(z) = (θw = copy(θfix); θw[free] .= z; nll(θw))
+                grad!(g, z) = (θw = copy(θfix); θw[free] .= z; g .= grad(θw)[free]; g)
+                res = Optim.optimize(obj, grad!, copy(θ̂[free]), Optim.LBFGS(),
+                                     Optim.Options(g_tol = 1e-6, iterations = 150))
+                _objective_at_minimizer(obj, res)
+            end
+        catch err
+            err isa InterruptException && rethrow(err)
+            NaN            # sub-fit failed (ill-conditioned at an extreme log-SD)
         end
+        (isfinite(val) && val < sentinel) || return NaN
         return (val - nll_min) - thr
     end
-    crossed(d) = isfinite(d) && d > 0
     v̂ = θ̂[idx]
     # Bounded bracket: cap the log-SD excursion at ±8 (an SD ratio e^8 ≈ 3000×).
     # Beyond that the component is effectively unidentified, so report the boundary
     # (SD 0 below / Inf above) rather than chasing the threshold into the region
     # where the inner solve is ill-conditioned. prof_dev(v̂) = -thr < 0 and, when the
     # profile crosses, prof_dev(cap) > 0 — a clean sign change for the bisection.
+    # Returns `nothing` (never crossed: boundary), a log-SD, or `NaN` (UNRESOLVED: the
+    # solve failed where the crossing had to be located, so no honest endpoint exists).
     function endpoint(dir)
+        # Evaluate at `x`; if the solve failed, back off toward the last good point `x0`
+        # (up to 3 halvings). Returns (point, deviance) or `nothing` when nothing converged.
+        function probe(x, x0)
+            for _ in 0:3
+                d = prof_dev(x)
+                isnan(d) || return (x, d)
+                x = 0.5 * (x + x0)
+            end
+            return nothing
+        end
         cap = v̂ + dir * 8.0
-        crossed(prof_dev(cap)) || return nothing      # never crossed in range → boundary
-        a, b = v̂, cap
+        pc = probe(cap, v̂)
+        pc === nothing && return NaN                   # cannot evaluate anywhere → unresolved
+        x, d = pc
+        if d ≤ 0
+            # Not crossed. Only a boundary if the CAP itself was evaluated; a failed cap
+            # backed off to a non-crossing point leaves the crossing in the failed region.
+            return x == cap ? nothing : NaN
+        end
+        a, b = v̂, x
         for _ in 1:24                                  # 16/2²⁴ ≈ 1e-6 precision in log-SD
             m = 0.5 * (a + b)
-            crossed(prof_dev(m)) ? (b = m) : (a = m)
+            pm = probe(m, a)
+            pm === nothing && return NaN               # failed inside the bracket → unresolved
+            xm, dm = pm
+            dm > 0 ? (b = xm) : (a = xm)
         end
         return 0.5 * (a + b)
     end
     lo = endpoint(-1.0); hi = endpoint(+1.0)
-    return (sd_lo = lo === nothing ? 0.0 : exp(lo),
+    return (sd_lo = lo === nothing ? 0.0 : exp(lo),     # NaN → exp(NaN) = NaN (unresolved)
             sd_hi = hi === nothing ? Inf : exp(hi))
 end
 

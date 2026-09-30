@@ -6,6 +6,42 @@ human-readable changelog and mirrors `docs/src/changelog.md`.
 
 ## Development
 
+- **Heritability/ICC `:profile` CI no longer returns a failed-fit cliff as a bound.**
+  `nll_at_ratio` now evaluates the objective at the minimizer (not the stale
+  `Optim.minimum`) and flags a sentinel (>= 1e16), non-finite, or non-converged inner
+  solve as failed; `_profile_side` treats a failed evaluation as unresolved instead of
+  "above target" and returns `NaN` (with a warning) for that arm. Ordinary CIs are
+  unchanged to 1e-8.
+- **Cross-family (`fit_mixed_family`) no longer reads the 1e10 objective sentinel
+  as data.** The profile CI on rho treats a non-converged, non-finite or sentinel
+  inner solve (or one stopped short of rho0 with deviance below the cutoff) as
+  unresolved and reports that arm as `NaN`, instead of "crossed" (which pinned the
+  endpoint to the cliff edge). The parametric bootstrap skips refits that are
+  non-converged or on the sentinel (`loglik <= -1e9`) and reports the number kept
+  in `n_boot_kept`. `mf_aic` / `mf_bic` return `NaN` with a warning for such fits
+  instead of an AIC near 2e10. Ordinary fits and CIs are unchanged.
+- **Sentinel-loglik fits are refused at the fit level.** A fit stranded on the
+  1e18 failed-objective sentinel (loglik = -1e18: finite, and possibly
+  "converged" on a zero-gradient plateau) used to pass `_nondegenerate_fit` and
+  feed `lrtest`/`anova`, `lrt_boundary`, `aic`/`bic`/`aicc` (LR statistic ~2e18,
+  AIC ~2e18). `is_converged` now rejects loglik <= -1e15 (the loglik-scale
+  counterpart of the Laplace `nll < 1e17` bar); `lrtest`, `anova` and
+  `lrt_boundary` throw `ArgumentError` naming the degenerate fit; `aic`, `bic`
+  and `aicc` return `NaN` with a warning. Healthy fits are unchanged.
+
+- **σ-phylo profile CIs no longer fabricate an endpoint from a failed solve.**
+  `_glsp_profile_ci` read the ML route's 1e18 failure sentinel as a threshold
+  crossing (the endpoint landed on the edge of the failed region) and the REML
+  route's Inf / a throwing sub-fit as "not crossed" (a false boundary, SD 0 or
+  Inf). A failed evaluation is now a third outcome: it backs off toward the last
+  good point and, if the crossing cannot be bracketed, that arm of
+  `profile_ci_sd_sigma` / `profile_ci_sd_mu` is `NaN` (unresolved). Genuine
+  boundaries (`[0, Inf]`) and ordinary CIs are unchanged (fixtures agree to 1e-8).
+- **Generic profile CI no longer reads a 1e18 sentinel as a crossing.** A
+  profiled objective at or above 1e16 while the reference NLL is ordinary is
+  now a failed arm with `nuisance_reason = :sentinel_objective` (previously the
+  bisection collapsed onto the sentinel cliff), and `profile_curve` /
+  `parameter_surface` deviance is `NaN` there instead of about 2e18.
 - **Fix 8-15x slowdown in Gaussian location-scale phylo REML.** The outer β Newton in `_glsp_joint_reml_nll` now exits when the predicted decrease is at rounding level and the gradient test passes, instead of letting the accept-on-equal line search halve ~26 times to a near-null step and repeat near the optimum (H2 fixture 59 s -> ~7 s or better); answers unchanged (reml_nll to ~1e-12).
 
 - **Tweedie crossed random effects (#737, drmTMB twin parity).**

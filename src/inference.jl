@@ -827,7 +827,17 @@ end
 # Compare profile and reference NLLs at their represented scale.  We retain an
 # eight-ULP cancellation allowance, but no relative-to-NLL tolerance: adding a
 # huge constant to an objective must not make a real one-unit discrepancy pass.
+# A profiled value at or beyond this while the reference NLL is ordinary is an
+# optimiser-wall sentinel (e.g. 1e18), never a real objective; it must not be
+# read as a profile crossing.  A uniformly shifted objective (reference also
+# huge) is a precision problem, handled below, not a sentinel.
+const _PROFILE_SENTINEL = 1e16
+
 function _profile_reference_difference(value::Real, reference::Real)
+    (isfinite(value) && isfinite(reference) && abs(value) >= _PROFILE_SENTINEL &&
+     abs(reference) < _PROFILE_SENTINEL) && return (
+        status=:sentinel_objective, difference=NaN, cancellation=NaN,
+    )
     (isfinite(value) && isfinite(reference)) || return (
         status=:nonfinite_objective, difference=NaN, cancellation=NaN,
     )

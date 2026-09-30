@@ -158,6 +158,7 @@ _shard_include("test_lss_missing_response.jl") # #559 location-scale-scale missi
 _shard_include("test_inference.jl")
 _shard_include("test_inference_blas_pinning.jl") # Nested and overlapping global-BLAS restoration
 _shard_include("test_profile_ci.jl")
+_shard_include("test_sentinel_generic_profile.jl") # sentinel objective is not a profile crossing
 _shard_include("test_profile_nuisance_status.jl")
 _shard_include("test_profile_acceptance_oracles.jl")
 _shard_include("test_bridge_profile_status.jl")
@@ -498,6 +499,8 @@ _shard_include("test_public_phylo_locscale.jl")
 # σ-phylo location-scale (Ayumi #2): separate/coupled/asymmetric blocks + boundary CIs.
 _shard_include("test_gaussian_locscale_phylo.jl")
 _shard_include("test_gaussian_locscale_phylo_boundary.jl")
+# `_glsp_profile_ci`: a failed solve (1e18 sentinel / Inf / throw) is never an endpoint.
+_shard_include("test_sentinel_glsp_profile.jl")
 # A4c: penalized-MAP phylo variance components (drmTMB's drm_phylo_penalty + sweep).
 _shard_include("test_phylo_penalty.jl")
 # #422: boundary polish when a variance component collapses onto the flat shelf.
@@ -582,6 +585,9 @@ end
 # Model comparison + accessor parity (lrtest / anova / aicc / weights / update).
 _shard_include("test_comparison.jl")
 
+# Sentinel-loglik fit-level guards (_nondegenerate_fit, lrtest, aic/bic/aicc, lrt_boundary).
+_shard_include("test_sentinel_fit_level.jl")
+
 # Chi-bar-square boundary-corrected p-values for variance-component LR tests.
 _shard_include("test_chibar.jl")
 
@@ -601,6 +607,7 @@ _shard_include("test_bootstrap_block_index.jl")
 
 # #313: heritability :profile is a TRUE profile (re-optimises nuisance), not ELR.
 _shard_include("test_heritability_true_profile.jl")
+_shard_include("test_sentinel_heritability.jl")
 
 # #310: REML-reported Wald vcov includes the restricted-penalty curvature.
 _shard_include("test_reml_vcov_curvature.jl")
@@ -618,6 +625,8 @@ _shard_include("test_mixed_family.jl")
 _shard_include("test_mixed_family_aghq.jl")
 # Post-fit accessors (coef/aic/bic/fitted/summary) for the cross-family fit.
 _shard_include("test_mixed_family_postfit.jl")
+# Sentinel (1e10) guards: profile CI, bootstrap, AIC/BIC.
+_shard_include("test_sentinel_mixed_family.jl")
 
 # Independent validation of the cross-family latent correlation against EXTERNAL
 # references: gllvm (Gaussian × Gaussian, identical estimand; guarded — skips if
