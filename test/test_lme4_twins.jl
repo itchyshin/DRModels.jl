@@ -113,11 +113,28 @@ end
         @test loglik(fit_imp) ≈ loglik(fit) atol = 1e-6
         @test coef(fit_imp, :mu) ≈ coef(fit, :mu) atol = 1e-6
 
-        # REML: lmer REML = TRUE / drmTMB REML = TRUE references, kept as literals for when
-        # DRModels gains REML on the random-slope Gaussian route. Today the request errors
-        # (see the message in gaussian_core.jl), so this is pinned as broken, not skipped.
+        # REML (correlated random-slope Gaussian route). References are literals:
         # lmer REML: logLik -871.814136, SD 24.74065800 / 5.92213765, rho 0.06555124, sigma 25.59179572;
         # drmTMB REML: logLik -871.814136, SD 24.740451464 / 5.922133104, rho 0.06555132, sigma 25.59181563.
-        @test_broken (try; drm(bf(f), Gaussian(); data = sleep, method = :REML); true; catch; false; end)
+        lm_reml = (ll = -871.8141, b = [251.40510485, 10.46728596], sd_int = 24.74065800,
+                   sd_slope = 5.92213765, rho = 0.06555124, sigma = 25.59179572)
+        fr = drm(bf(f), Gaussian(); data = sleep, method = :REML)
+        @test loglik(fr) ≈ lm_reml.ll atol = 1e-4
+        @test coef(fr, :mu) ≈ lm_reml.b atol = 1e-4
+        sdr = re_sd(fr)
+        @test sdr[:Subject_intercept] ≈ lm_reml.sd_int atol = 1e-3
+        @test sdr[:Subject_slope] ≈ lm_reml.sd_slope atol = 1e-3
+        Σr = vc(fr)[:Subject]
+        @test Σr[1, 2] / sqrt(Σr[1, 1] * Σr[2, 2]) ≈ lm_reml.rho atol = 1e-3
+        @test exp(coef(fr, :sigma)[1]) ≈ lm_reml.sigma atol = 1e-3
+        # The ML path is untouched by the REML term.
+        @test loglik(drm(bf(f), Gaussian(); data = sleep)) ≈ lm_ml.ll atol = 1e-4
+
+        # Gaussian random-INTERCEPT REML must be unchanged (pre-change literals, 1e-10).
+        fri = drm(bf(@formula(Reaction ~ Days + (1 | Subject))), Gaussian(); data = sleep, method = :REML)
+        @test loglik(fri) ≈ -893.2325426974637 atol = 1e-10
+        @test coef(fri, :mu) ≈ [251.40510484848465, 10.467285959595994] atol = 1e-10
+        @test coef(fri, :sigma)[1] ≈ 3.4337043872235142 atol = 1e-10
+        @test re_sd(fri)[:Subject] ≈ 37.12382669423763 atol = 1e-10
     end
 end

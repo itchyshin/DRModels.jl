@@ -719,12 +719,44 @@ function _corr_re_stable(r::AbstractVector, invD::AbstractVector, xs::AbstractVe
     return logdetA, quad, v1, v2
 end
 
-function _fit_correlated_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, xs, nmμ, nmσ, grp, g_tol)
+# Cancellation-free X′V⁻¹X for the REML term on the correlated (1 + x | g) route,
+# V = D + Z Σ_re Z′. Column by column, X[:, j] is treated as a response in
+# `_corr_re_stable`, whose whitened conditional mode v̂_j gives the penalised-SS form
+#     (X′V⁻¹X)_jl = Σ_i (X_ij − z̃_i′v̂_{g_i,j})(X_il − z̃_i′v̂_{g_i,l})/D_i + Σ_k v̂_kj′v̂_kl,
+# a sum of PSD terms (no Woodbury subtraction; same construction as `_re_xtvinvx_stable`).
+function _corr_re_xtvinvx_stable(X::AbstractMatrix, invD::AbstractVector, xs::AbstractVector,
+                                 gidx::AbstractVector{<:Integer}, G::Int, l11, l22, cc)
+    p = size(X, 2)
+    T = promote_type(eltype(X), eltype(invD), typeof(l11), typeof(l22), typeof(cc))
+    V1 = Vector{Vector{T}}(undef, p); V2 = Vector{Vector{T}}(undef, p)
+    for j in 1:p
+        _, _, V1[j], V2[j] = _corr_re_stable(X[:, j], invD, xs, gidx, G, l11, l22, cc)
+    end
+    A = zeros(T, p, p)
+    @inbounds for j in 1:p, l in j:p
+        acc = zero(T)
+        for k in 1:G
+            acc += V1[j][k] * V1[l][k] + V2[j][k] * V2[l][k]
+        end
+        for i in axes(X, 1)
+            k = gidx[i]; x = xs[i]
+            z1 = l11 + cc * x; z2 = l22 * x
+            ej = X[i, j] - z1 * V1[j][k] - z2 * V2[j][k]
+            el = X[i, l] - z1 * V1[l][k] - z2 * V2[l][k]
+            acc += invD[i] * ej * el
+        end
+        A[j, l] = acc; A[l, j] = acc
+    end
+    return A
+end
+
+function _fit_correlated_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, xs, nmμ, nmσ, grp, g_tol;
+                                      reml::Bool = false)
     n = length(y)
     pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     # `xv` is the random-slope covariate: `xs` itself (the reported parametrisation)
     # or `xs .- x̄` (the optimisation parametrisation, below).
-    function nll_x(θ, xv, Xm)
+    function nll_x(θ, xv, Xm; reml::Bool = false, ldshift = 0.0)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
         a = θ[pμ+pσ+1]; b = θ[pμ+pσ+2]; cc = θ[pμ+pσ+3]
         ημ = Xm * βμ; ησ = Xσ * βσ
@@ -733,6 +765,18 @@ function _fit_correlated_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, xs,
         invD = exp.(-2 .* ησ)
         logdetA, quad, _, _ = _corr_re_stable(r, invD, xv, gidx, G, l11, l22, cc)
         val = 0.5 * (sum(2 .* ησ) + logdetA + quad) + 0.5 * n * log(2π)
+        if reml
+            # Patterson–Thompson: + ½ logdet(Xμ′V⁻¹Xμ) − ½ pμ log(2π). `ldshift` = log|det R|
+            # maps the QR-preconditioned design back to Xμ (Xμ = Q R, so
+            # logdet(Xμ′V⁻¹Xμ) = logdet(Q′V⁻¹Q) + 2 log|det R|). A non-PD restriction
+            # matrix gets the same large finite barrier as the intercept route.
+            XtVinvX = _corr_re_xtvinvx_stable(Xm, invD, xv, gidx, G, l11, l22, cc)
+            cholX = cholesky(Symmetric(XtVinvX); check = false)
+            issuccess(cholX) || return oftype(val, val + REML_NONPD_PENALTY)
+            ldX = logdet(cholX)
+            isfinite(ldX) || return oftype(val, val + REML_NONPD_PENALTY)
+            val = val + 0.5 * ldX + ldshift - 0.5 * size(Xm, 2) * log(2π)
+        end
         # A line-search probe far outside the data scale can still overflow
         # (e.g. exp(a) → Inf). Return a large FINITE barrier: LBFGS's HagerZhang
         # line search asserts a finite objective (#707), and a thrown error is not
@@ -740,7 +784,8 @@ function _fit_correlated_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, xs,
         isfinite(val) || return oftype(val, 1e18)
         return val
     end
-    nll(θ) = nll_x(θ, xs, Xμ)
+    nll_ml(θ) = nll_x(θ, xs, Xμ)
+    nll(θ) = reml ? nll_x(θ, xs, Xμ; reml = true) : nll_ml(θ)
 
     # OPTIMISE IN CENTRED COORDINATES (#762). b0 + b1·x = (b0 + b1·x̄) + b1·(x − x̄),
     # so the model is invariant to shifting the slope covariate; only the Cholesky
@@ -768,7 +813,8 @@ function _fit_correlated_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, xs,
             Xμ, Matrix{Float64}(I, pμ, pμ)
         end
     end
-    nllc(φ) = nll_x(φ, xc, Qμ)
+    ldR = sum(log ∘ abs, diag(Rμ))
+    nllc(φ) = reml ? nll_x(φ, xc, Qμ; reml = true, ldshift = ldR) : nll_x(φ, xc, Qμ)
     βμ0 = Xμ \ y; res0 = y - Xμ * βμ0
     φ0 = zeros(pμ + pσ + 3)
     φ0[1:pμ] .= Rμ * βμ0
@@ -820,7 +866,9 @@ function _fit_correlated_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, xs,
         hcat(l11 .* v1, cc .* v1 .+ l22 .* v2)
     end
     re = Dict(Symbol(grp) => blup)
-    return _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll), re)
+    fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll_ml), re)
+    reml && return _withreml(fit, -nll(θ̂), -nll_ml(θ̂))
+    return fit
 end
 
 """

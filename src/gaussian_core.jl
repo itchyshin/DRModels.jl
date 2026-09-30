@@ -782,7 +782,12 @@ function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree 
             isempty(re) && isempty(sigma_re) && metav === nothing &&
             size(Xσ, 2) == 1 && !has_missing_response &&
             algorithm in (:auto, :sparse_lbfgs)
-        (ordinary_mean_intercept || phylo_mean_only ||
+        # (d) a single correlated Gaussian mean random slope `(1 + x | g)` with no sigma RE
+        # (`_fit_correlated_ranef_gaussian(; reml = true)`, ML path unchanged).
+        corr_mean_slope = length(re) == 1 && _re_kind(re[1][1])[1] === :corr &&
+            isempty(sigma_re) && structured === nothing && metav === nothing &&
+            length(_collect_structured(rhs[:mu])) == 0
+        (ordinary_mean_intercept || corr_mean_slope || phylo_mean_only ||
          (isempty(re) && isempty(sigma_re) && structured === nothing &&
           metav === nothing && length(_collect_structured(rhs[:mu])) == 0)) ||
             throw(ArgumentError("drm: method = :REML is not implemented for this model on the " *
@@ -790,7 +795,7 @@ function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree 
                 "a structured mean marker — phylo/relmat/animal/spatial — without a matching " *
                 "sd() submodel, and meta_V() all land here). REML IS available for: the " *
                 "fixed-effect Gaussian location–scale model; a single Gaussian mean random " *
-                "intercept `(1 | g)`; every sd() LSS route (`sd(g)`, `sd_phylo` dense and " *
+                "intercept `(1 | g)` or correlated slope `(1 + x | g)`; every sd() LSS route (`sd(g)`, `sd_phylo` dense and " *
                 "sparse, and the multi-component sd() router); the bivariate structured " *
                 "routes (q=2 and q=4, both native and via drm_bridge); and Poisson `(1 | g)` " *
                 "and Poisson `phylo(1 | species)`. Use method = :ML (the default) for this " *
@@ -1107,7 +1112,8 @@ function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree 
         (_, grp) = re[1]; (_, var) = re_kinds[1]
         gidx, G = _group_index(getproperty(data, grp))
         xs = Float64.(getproperty(data, var))
-        return _withformula(_fit_correlated_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, xs, nmμ, nmσ, grp, g_tol), f)
+        return _withformula(_fit_correlated_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, xs, nmμ, nmσ, grp, g_tol;
+                                                          reml = method === :REML), f)
     end
     any(k -> k[1] === :corr, re_kinds) &&
         error("a correlated `(1 + x | g)` block must be the only random-effect term")
