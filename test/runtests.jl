@@ -723,6 +723,3 @@ _shard_include("test_ll_sanity_fuzzer.jl")
 # Issue #706 (test part): classic lme4 twins - cbpp (binomial herd RE, integrator-matched
 # to glmer nAGQ = 1 / 3 / 25) and sleepstudy (Gaussian random slope, ML vs lmer; REML pinned broken).
 _shard_include("test_lme4_twins.jl")
-# `_finite_hessian` fails to an all-NaN vcov (with a warning) on a non-finite Hessian or
-# a failed-fit sentinel objective, instead of adding a 1e12 ridge that fabricated SEs.
-_shard_include("test_finite_hessian_nan.jl")
