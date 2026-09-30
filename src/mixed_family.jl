@@ -157,6 +157,19 @@ function _mf_profile_ci(objfn, rho_of, θ̂, ρ, level)
         pobj(θ) = objfn(θ) + 1.0e4 * (atanh(clamp(rho_of(θ), -0.999999, 0.999999)) - zr0)^2
         r = Optim.optimize(pobj, copy(θ̂), Optim.LBFGS(),
                            Optim.Options(g_tol = 1e-9); autodiff = :forward)
+        # The 1e4 penalty makes this solve stiff. From a far start (the first
+        # bisection point, dev >> q) the default backtracking line search can
+        # stall within ~1e-9 of stationarity because trial objectives differ by
+        # less than the ~1e-12 noise floor at nll ~ 600, and whether it stalls is
+        # decided by last-ulp differences (start point, CPU, BLAS kernel). A
+        # stalled solve was reported NaN, which dropped a whole CI arm. Retry once
+        # from the stall point with a Hager-Zhang line search; solves that already
+        # converged are untouched (bit-identical).
+        if !Optim.converged(r) && isfinite(Optim.minimum(r)) && Optim.minimum(r) < 1e9
+            r = Optim.optimize(pobj, copy(Optim.minimizer(r)),
+                               Optim.LBFGS(linesearch = LineSearches.HagerZhang()),
+                               Optim.Options(g_tol = 1e-9); autodiff = :forward)
+        end
         # A non-converged, non-finite or sentinel (>= 1e9) inner solve is
         # UNRESOLVED (NaN), never "crossed": the 1e10 plateau would read as a huge
         # deviance and pin the endpoint to the cliff edge.
