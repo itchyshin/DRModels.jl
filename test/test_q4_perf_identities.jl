@@ -522,6 +522,8 @@ end
 # fixes.
 # -----------------------------------------------------------------------------
 
+const DV_FLOOR = 1e-5   # see gate_vcov_scaling (whitened-engine polish)
+
 function gate_vcov_scaling(; verbose::Bool = true, n_newton::Int = 40,
                             hs = (1e-4, 2e-4, 1e-3))
     case = id_make_case(100; seed = _id_seed(100))
@@ -538,7 +540,16 @@ function gate_vcov_scaling(; verbose::Bool = true, n_newton::Int = 40,
     dV = [fd_vcov_diff(h) for h in hs]
     ratios = [dV[i] / dV[i + 1] for i in 1:(length(dV) - 1)]
     decay_ok = any(dV[i] > 2.0 * dV[i + 1] for i in 1:(length(dV) - 1))
-    ok = decay_ok
+    # Whitened engine (#857): the inner-mode Newton polish makes the warm and cold
+    # modes agree so closely that the whole ladder sits on the h-independent
+    # numerical floor (measured max(dV) = 1.4e-6 on Julia 1.10, flat in h), with
+    # nothing left to decay. That is the OPPOSITE of the failure this gate exists
+    # for (a wrong warm mode: an h-independent floor 2-3 orders LARGER, 1e-4..1e-3
+    # at h = 1e-4 on every platform above). So a ladder that is uniformly below
+    # `DV_FLOOR` also passes; 1e-5 is ~7x above the measured worst here and 10-100x
+    # below the h = 1e-4 values a wrong warm mode gives in the table above.
+    floor_ok = maximum(dV) <= DV_FLOOR
+    ok = decay_ok || floor_ok
     if verbose || !ok
         for (h, d) in zip(hs, dV)
             @printf "  h=%.1e |V_warm-V_cold|_F=%.6e\n" h d
@@ -547,7 +558,7 @@ function gate_vcov_scaling(; verbose::Bool = true, n_newton::Int = 40,
             @printf "  ratio dV[%d]/dV[%d]=%.3g (h=%.1e -> h=%.1e)\n" i (i + 1) ratios[i] hs[i] hs[i + 1]
         end
         @printf "  min(dV)=%.6e (diagnostic only, not gated)\n" minimum(dV)
-        @printf "  decay_ok (>=1 adjacent pair decays by >=2x)=%s\n" decay_ok
+        @printf "  decay_ok (>=1 adjacent pair decays by >=2x)=%s  floor_ok (max(dV) <= %.0e)=%s\n" decay_ok DV_FLOOR floor_ok
     end
     return ok
 end
