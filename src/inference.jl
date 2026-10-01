@@ -2186,7 +2186,7 @@ function _bootstrap_result(
             # `simulate` is conditional and collapses a variance-component CI.
             ysim = simulate_fn === nothing ? simulate(fit0; rng=rr) : simulate_fn(rr)
             datab = _bootstrap_data(formula, data, ysim)
-            fitb = refit(datab)
+            fitb = _without_boundary_warnings(() -> refit(datab))
             # `is_converged`, not the raw `.converged` field: the accessor also
             # rejects a degenerate optimum (sigma collapsed, likelihood runaway),
             # which the optimiser's own flag happily calls converged (#461).
@@ -2522,6 +2522,14 @@ Returns a `NamedTuple` and logs a short report:
   (`penalty = drm_phylo_penalty(...)`). Such a fit reports standard errors from
   the *penalized* curvature, which are credible-interval-shaped rather than
   frequentist, and `loglik` is the *unpenalized* data log-likelihood.
+- `variance_boundary` — `nothing` unless the fit is Gaussian with a grouped / structured
+  random effect and a homoscedastic residual (`sigma ~ 1`); then the NamedTuple of
+  `_variance_boundary(fit)` (`residual_at_boundary`, `residual_ratio`,
+  `structured_at_boundary`, `structured_ratios`, `one_obs_per_group`). Flags a variance
+  component at its lower boundary (the residual σ̂ of a phylogenetic fit whose structured
+  term absorbs all the variance is an optimiser-stopping artefact, not an estimate — #724)
+  and says when σ_a and σ_e are separated only by the covariance structure (one
+  observation per group — #697). Does not affect `ok`.
 - `ok` — `true` when converged, the gradient is small, and the covariance is PD.
   On a penalized fit the gradient criterion is **dropped**: the stored objective
   is unpenalized, so its gradient is non-zero at the MAP optimum by construction
@@ -2561,6 +2569,7 @@ function check_drm(fit::DrmFit; grad_tol::Real=1e-3)
     # report a correct fit as broken, so the gradient criterion is dropped for MAP
     # fits and `max_abs_grad` is reported for information only.
     penalized = fit.estim_method === :MAP
+    vb = try _variance_boundary(fit) catch; nothing end
     ok = fit.converged && (penalized || isnan(mag) || mag <= grad_tol) && pd
     report = (
         converged=fit.converged,
@@ -2571,6 +2580,7 @@ function check_drm(fit::DrmFit; grad_tol::Real=1e-3)
         min_eigval=mineig,
         cond=cnd,
         penalized_map=penalized,
+        variance_boundary=vb,
         ok=ok,
     )
     @info "check_drm" converged = report.converged max_abs_grad = report.max_abs_grad grad_source =
@@ -2596,6 +2606,8 @@ function check_drm(fit::DrmFit; grad_tol::Real=1e-3)
         "scored against the gradient criterion: `ok = true` here means converged and " *
         "positive-definite covariance ONLY, with stationarity untested. `grad_source` is " *
         "`:unavailable`, which is NOT `:none` (a fit that stores no objective at all)."
+    vbmsg = vb === nothing ? nothing : _variance_boundary_message(vb)
+    vbmsg === nothing || @warn "check_drm: " * vbmsg
     # drmTMB emits the equivalent advisory from `check_penalized_fit()`.
     penalized && @warn "check_drm: penalized (MAP) fit — standard errors come from the penalized " *
         "curvature and are credible-interval-shaped, not frequentist. `loglik` is the UNPENALIZED " *

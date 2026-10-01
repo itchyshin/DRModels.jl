@@ -44,7 +44,10 @@ function _variance_component_indices(fit::DrmFit)
     # component ill-defined, exactly like the heteroscedastic-residual rejection below.
     any(p -> first(p) in (:sd, :sd_phylo), fit.blocks) &&
         error("heritability/repeatability: this fit models the random-effect SD with " *
-            "covariates (`sd(group) ~ ...`), so a single variance component is not defined")
+            "covariates (`sd(group) ~ ...`), so a single variance component is not defined. " *
+            "The estimand is covariate-CONDITIONAL, R(z) = σ_b(z)² / (σ_b(z)² + σ_e(z)²) " *
+            "(h²(z) = σ_a(z)² / (σ_a(z)² + σ_e(z)²) for `sd(g, phylogenetic)`): pass the " *
+            "covariate values you want, e.g. `repeatability(fit, (; sex = [0.0, 1.0]))`.")
     comps = Pair{Symbol,Int}[]
     resid_idx = nothing
     have = Dict(p => r for (p, r) in fit.blocks)
@@ -312,6 +315,14 @@ fit = drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ 1)),
 h = heritability(fit)             # single component ⇒ no `component` needed
 h.estimate, h.ci
 ```
+
+# Location–scale–scale fits
+
+With `sd(g) ~ z` / `sd(g, phylogenetic) ~ z` and `sigma ~ z` the ratio depends on the
+covariates, so this form refuses. Use `heritability(fit, newdata; level = 0.95)`
+(phylogenetic `sd`) or [`repeatability`](@ref)`(fit, newdata)` (iid `sd`), which return
+the covariate-conditional `R(z) = σ_b(z)² / (σ_b(z)² + σ_e(z)²)` per row of `newdata`
+with a Wald-on-logit interval; see [`repeatability`](@ref) for the definition.
 """
 function heritability(fit::DrmFit; component::Union{Symbol,Nothing} = nothing,
                       level::Real = 0.95, method::Symbol = :delta)
@@ -332,6 +343,10 @@ one structured component this is the **focal-vs-residual** repeatability for the
 chosen `component`; use [`heritability`](@ref) for the full-variance share that
 also nets out the other components. Same return shape and `method` options as
 [`heritability`](@ref); the CI is clamped to `[0, 1]`.
+
+For location–scale–scale fits (`sd(g) ~ z`) this form refuses; use
+`icc(fit, newdata)` — the covariate-conditional repeatability documented under
+[`repeatability`](@ref).
 """
 function icc(fit::DrmFit; component::Union{Symbol,Nothing} = nothing,
              level::Real = 0.95, method::Symbol = :delta)
@@ -343,14 +358,113 @@ end
 
 """
     repeatability(fit; component = nothing, level = 0.95, method = :delta) -> NamedTuple
+    repeatability(fit, newdata; level = 0.95) -> NamedTuple
 
 Alias for [`icc`](@ref): the adjusted repeatability `R = σ²_g / (σ²_g + σ²_resid)`
 for the chosen grouping factor. With a single structured component and no other
 components, repeatability and [`heritability`](@ref) coincide.
+
+# Location–scale–scale fits: the estimand is conditional on covariates
+
+When the between-individual SD and the residual SD both depend on covariates
+(`sd(id) ~ z`, `sigma ~ z`),
+
+    y_ij ~ N(μ_ij, σ_e(z_i)²),   b_i ~ N(0, σ_b(z_i)²),
+    log σ_b(z) = α'z,            log σ_e(z) = γ'z,
+
+repeatability is a FUNCTION of the covariates, not a number:
+
+    R(z) = σ_b(z)² / (σ_b(z)² + σ_e(z)²) = logistic( 2 (α'z − γ'z) ),
+
+the correlation between two observations of an individual whose covariates are `z`.
+No single scalar is the repeatability of such a model — any one number is a choice of
+covariate distribution (and the ratio of average variances is NOT the average of the
+ratios) — so `repeatability(fit)` / `icc(fit)` / `heritability(fit)` **refuse** these
+fits rather than pick one silently. Use the two-argument form: `newdata` is a
+column table holding every predictor of the `sd(g)` and `sigma` formulas
+(categorical predictors must contain all levels, in the training coding, so the
+design matches). It returns, per row of `newdata`,
+
+- `estimate` — `R(z)`;
+- `se_logit` — the Wald SE of `logit R(z) = 2(α'z − γ'z)`, which is LINEAR in the
+  coefficients, so it is exact up to the usual Wald approximation (uses the joint
+  `vcov` of the `sd` and `sigma` blocks, so the covariance between them counts);
+- `lower`, `upper` — the Wald interval on the logit scale mapped back to `(0, 1)`;
+- `level`, `method = :wald_logit`.
+
+```julia
+fit = drm(bf(@formula(y ~ sex + (1 | id)), @formula(sigma ~ sex),
+             @formula(sd(id) ~ sex)), Gaussian(); data)
+repeatability(fit, (; sex = [0.0, 1.0]))   # R for females, R for males
+```
+
+`sd(g, phylogenetic) ~ z` fits are handled by the same call to
+[`heritability`](@ref): `heritability(fit, newdata)` returns
+`h²(z) = σ_a(z)² / (σ_a(z)² + σ_e(z)²)`, the tip-level share of variance that is
+phylogenetic.
 """
 repeatability(fit::DrmFit; component::Union{Symbol,Nothing} = nothing,
               level::Real = 0.95, method::Symbol = :delta) =
     icc(fit; component = component, level = level, method = method)
+
+# Covariate-conditional ratio for location-scale-scale fits (#694). `kind` = :iid
+# (`sd(g) ~ z`, block :sd, ratio = repeatability) or :phylo (`sd(g, phylogenetic) ~ z`,
+# block :sd_phylo, ratio = phylogenetic h²(z)). logit R(z) = 2(η_sd − η_σ) is linear in
+# the coefficients, so the Wald SE on that scale is c'Vc with c = (2 x_sd, −2 x_σ).
+function _conditional_ratio(fit::DrmFit, newdata; kind::Symbol, level::Real, what::String)
+    0 < level < 1 || throw(ArgumentError("$what: `level` must be in (0, 1), got $level"))
+    f = fit.formula
+    f isa DrmFormula || error("$what: this fit did not retain its formula")
+    numblk = kind === :iid ? :sd : :sd_phylo
+    have = Dict(fit.blocks)
+    (haskey(have, numblk) && haskey(have, :sigma)) ||
+        error("$what(fit, newdata): this fit has no `" *
+              (kind === :iid ? "sd(group) ~ …" : "sd(group, phylogenetic) ~ …") *
+              "` submodel, so repeatability is a single number — call `$what(fit)` instead")
+    pre = kind === :iid ? "sd_" : "sdphy_"
+    parts = [k => r for (k, r) in f.forms if startswith(String(k), pre)]
+    length(parts) == 1 ||
+        error("$what(fit, newdata): found $(length(parts)) `sd()` submodels of this kind; " *
+              "the conditional ratio is implemented for exactly one")
+    any(p -> first(p) in (:sd, :sd_phylo) && first(p) !== numblk, fit.blocks) &&
+        error("$what(fit, newdata): multi-component location–scale–scale fits have no single " *
+              "two-component ratio")
+    nd = NamedTuple(pairs(newdata))
+    nrows = length(first(values(nd)))
+    ndr = merge(nd, NamedTuple{(f.response,)}((zeros(nrows),)))
+    _, Xsd, _ = _design(f.response, last(parts[1]), ndr)
+    fixed_sigma, _, _, _ = _split_ranef(Dict(f.forms)[:sigma])
+    _, Xσ, _ = _design(f.response, fixed_sigma, ndr; schema_cache = f.schema_cache, schema_key = :sigma)
+    isd, isg = have[numblk], have[:sigma]
+    (size(Xsd, 2) == length(isd) && size(Xσ, 2) == length(isg)) ||
+        throw(DimensionMismatch("$what(fit, newdata): `newdata` builds a design with " *
+            "$(size(Xsd, 2)) `sd` and $(size(Xσ, 2)) `sigma` columns but the fit has " *
+            "$(length(isd)) and $(length(isg)); a categorical predictor in `newdata` must " *
+            "contain all its training levels"))
+    α = fit.theta[isd]; γ = fit.theta[isg]
+    V = fit.vcov
+    d = 2 .* (Xsd * α .- Xσ * γ)
+    est = 1 ./ (1 .+ exp.(-d))
+    se = similar(d)
+    for i in 1:nrows
+        c = zeros(length(fit.theta))
+        c[isd] .= 2 .* Xsd[i, :]
+        c[isg] .= -2 .* Xσ[i, :]
+        se[i] = sqrt(max(dot(c, V * c), 0.0))
+    end
+    z = quantile(Normal(), 1 - (1 - level) / 2)
+    lo = 1 ./ (1 .+ exp.(-(d .- z .* se)))
+    hi = 1 ./ (1 .+ exp.(-(d .+ z .* se)))
+    return (estimate = est, se_logit = se, lower = lo, upper = hi, level = level,
+            method = :wald_logit)
+end
+
+repeatability(fit::DrmFit, newdata; level::Real = 0.95) =
+    _conditional_ratio(fit, newdata; kind = :iid, level = level, what = "repeatability")
+icc(fit::DrmFit, newdata; level::Real = 0.95) =
+    _conditional_ratio(fit, newdata; kind = :iid, level = level, what = "icc")
+heritability(fit::DrmFit, newdata; level::Real = 0.95) =
+    _conditional_ratio(fit, newdata; kind = :phylo, level = level, what = "heritability")
 
 # Shared body for the full-variance "signal" ratio (heritability / phylogenetic
 # signal): numerator one component, denominator ALL components + residual.
