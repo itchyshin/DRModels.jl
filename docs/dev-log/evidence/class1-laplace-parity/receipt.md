@@ -51,8 +51,8 @@ Reading it:
   at or below 1e-10; |ΔlogLik| below 5e-11. Both ≪ the 1e-5 twin rule. This demonstrates parity for
   every family.
 * **Which engine is closer to the truth.** The default (adaptive GHQ) is within 5e-4 nat of the
-  61-node reference on every cell except bacteria; drmTMB's Laplace is 0.01 to 0.24 nat off it, and
-  its sd_mu is 0.1% to 4.7% low. So the twin gap is the Laplace error in drmTMB, not a defect in the DRModels default.
+  61-node reference on every cell except bacteria; drmTMB's Laplace is 0.01 to 0.28 nat off it, and
+  its sd_mu is 0.1% to 5.2% low. So the twin gap is the Laplace error in drmTMB, not a defect in the DRModels default.
 * **Exception: bacteria (`MASS::bacteria`, sparse binary).** The default Binomial route (K = 3)
   is 0.22 nat and 5% (sd_mu 1.2866 vs 1.3562) off the reference, no closer than Laplace. This is a
   separate accuracy limit of the 3-node default on sparse binary data, not part of the twin gap.
