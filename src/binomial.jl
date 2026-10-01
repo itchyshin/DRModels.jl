@@ -31,10 +31,18 @@ error (mirrors drmTMB's `drm_validate_q2_slope_variation`). An independent
 random slope `(0 + x | g)` and `marginal = :VA` on `(1 + x | g)` remain out of
 scope.
 
-!!! note
-    Unlike drmTMB, DRModels.jl does not run a `detectseparation`-style
-    separation screen before fitting; a (quasi-)separated logistic fit may
-    converge to a diverging boundary estimate without warning.
+!!! note "Separation: detect and warn (fixed-effects-only fits)"
+    A fixed-effects-only Bernoulli/Binomial fit is screened for (quasi-)complete
+    separation by a linear-programming check (Konis 2007, the idea behind R's
+    `detectseparation`), at fit time. When some direction `d` makes the signed
+    design `X̃ d ≥ 0` on every row, the maximum-likelihood estimate does not
+    exist: the fit is still returned, a warning names the affected coefficients,
+    and their standard errors are reported as `Inf`. Near separation (a fitted
+    probability within 1e-8 of 0 or 1 together with a Wald SE above 1e4) is
+    flagged the same way. No refusal and no penalised estimator by default. drmTMB
+    runs the same check with the same constants, so the two packages flag the same
+    coefficients (the coefficient values themselves are arbitrary stopping points
+    and are not expected to agree). Random-intercept routes are not screened.
 
 !!! warning "Crossed intercepts: Laplace is biased low for Bernoulli data"
     The default crossed fit is the Laplace approximation drmTMB and lme4 use. For
@@ -183,6 +191,7 @@ function _fit_binomial(fam::Binomial, s, ntr, Xμ, nmμ, g_tol)
     θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
     blocks = [:mu => 1:pμ]; names = [:mu => nmμ]
     means = Dict(:mu => _logistic.(Xμ * θ̂))                # fitted success probability
+    V = _separation_guard(Xμ, s, ntr, θ̂, V, means[:mu], nmμ)   # #731: detect + warn, SE → Inf
     obs = Dict(:mu => s ./ ntr)                            # observed proportion (for residuals)
     scales = Dict(:trials => Float64.(nint))
     return _withiterations(
