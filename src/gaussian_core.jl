@@ -1659,7 +1659,7 @@ end
 # scale (matching `fitted`). Identity for Gaussian/Student; exp for log-link
 # families; logistic for logit-link families; linear predictor otherwise.
 function _mean_response(fam, η)
-    if fam isa Poisson || fam isa NegBinomial2 || fam isa TruncatedNegBinomial2 ||
+    if fam isa Poisson || fam isa NegBinomial2 || fam isa TruncatedNegBinomial2 || fam isa TruncatedPoisson ||
        fam isa Gamma || fam isa LogNormal || fam isa Tweedie
         return exp.(clamp.(η, -30.0, 30.0))
     elseif fam isa Beta || fam isa Binomial || fam isa BetaBinomial
@@ -1709,7 +1709,7 @@ end
 #   Tweedie ν via `_logit12` (1 + sigmoid → range (1,2)) → sig·(1−sig) with sig=σ(η).
 function _link_deriv(fam, p::Symbol, η)
     if p === :mu || p === :mu1 || p === :mu2
-        if fam isa Poisson || fam isa NegBinomial2 || fam isa TruncatedNegBinomial2 ||
+        if fam isa Poisson || fam isa NegBinomial2 || fam isa TruncatedNegBinomial2 || fam isa TruncatedPoisson ||
            fam isa Gamma || fam isa LogNormal || fam isa Tweedie
             return exp.(clamp.(η, -30.0, 30.0))               # log link
         elseif fam isa Beta || fam isa Binomial || fam isa BetaBinomial
@@ -2058,6 +2058,8 @@ function _simulate_once(fit::DrmFit, rng; mu = nothing, sigma = nothing)
             return Float64[rand(rng) < hu[i] ? 0 : _rand_positive_negbin(rng, θ[i], θ[i] / (θ[i] + μ[i])) for i in 1:n]
         end
         return Float64[rand(rng, Distributions.NegativeBinomial(θ[i], θ[i] / (θ[i] + μ[i]))) for i in 1:n]
+    elseif fam isa TruncatedPoisson
+        return Float64[_rand_positive_poisson(rng, μ[i]) for i in 1:n]
     elseif fam isa TruncatedNegBinomial2
         σ = sigma === nothing ? _scale_vector(fit, :sigma) : sigma
         θ = @. 1 / (σ * σ)
