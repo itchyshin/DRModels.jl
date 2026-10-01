@@ -129,6 +129,7 @@ include("gaussian_locscale_phylo.jl")  # B1: Gaussian sigma~phylo(1|g) univariat
 include("phylo_penalty.jl")      # A4c: penalized-MAP phylo variance components — drmTMB's drm_phylo_penalty()
 include("inference.jl")
 include("bias_correct.jl")       # TMB-style epsilon-method bias correction (#227 B11)
+include("boundary_diagnostics.jl") # #724/#697: residual / structured variance-at-boundary advisory
 include("heritability.jl")       # comparative-biology derived ratios (h²/ICC) + CIs
 include("coevo_accessors.jl")    # #188: q=4 coevolution among-axis correlation + variance accessors
 include("profile_q4_phylo.jl")   # Ayumi #2: profile-likelihood CIs for the q=4 among-axis SDs (calibrated, no Hessian)

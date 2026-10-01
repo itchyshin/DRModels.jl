@@ -516,7 +516,13 @@ For Location-Scale-Scale models (#559), the group index and scale design Z_g
 are parameterised over all G levels, while the likelihood is evaluated on
 observed rows.
 """
-function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree = nothing, coords = nothing, g_tol::Real = 1e-8, algorithm::Symbol = :auto, method::Symbol = :ML, profile_ci::Bool = false, phylo_coupled::Bool = false, penalty = nothing, sparse = nothing, impute = nothing, missing = nothing, marginal::Symbol = :LA)
+function drm(f::DrmFormula, fam::Gaussian; kwargs...)
+    # The residual-variance / structured-variance BOUNDARY advisory (#724, #697) is
+    # attached here, once, rather than in each of the fitter's return paths.
+    return _warn_variance_boundary(_drm_gaussian_fit(f, fam; kwargs...))
+end
+
+function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree = nothing, coords = nothing, g_tol::Real = 1e-8, algorithm::Symbol = :auto, method::Symbol = :ML, profile_ci::Bool = false, phylo_coupled::Bool = false, penalty = nothing, sparse = nothing, impute = nothing, missing = nothing, marginal::Symbol = :LA)
     mkind = _gaussian_marginal(marginal)
     laplace = mkind === :Laplace
     aghq = mkind === :AGHQ
