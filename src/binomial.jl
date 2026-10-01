@@ -30,6 +30,22 @@ import Distributions
 end
 _safe_objective(f) = θ -> _finite_or_sentinel(f(θ))
 
+# L-BFGS with the default HagerZhang line search asserts (`B > A`, `isfinite(phi_c)`)
+# on pathological brackets near a runaway optimum and throws, losing the fit. Retry
+# from the start with BackTracking (no such assertions) and report whatever it
+# reaches; `converged` stays honest (false if the gradient tolerance is not met).
+function _optimize_with_fallback(nll, θ0, g_tol)
+    f = _safe_objective(nll)
+    opts = Optim.Options(g_tol = g_tol)
+    try
+        return Optim.optimize(f, θ0, Optim.LBFGS(), opts; autodiff = :forward)
+    catch e
+        e isa AssertionError || rethrow()
+        return Optim.optimize(f, θ0, Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking()),
+                              opts; autodiff = :forward)
+    end
+end
+
 # Covariance for the quadrature routes at a runaway optimum (e.g. separated data):
 # the AD Hessian can be non-finite, and `_vcov_from_hessian` (deliberately) throws on
 # that. Report the repo's NaN-covariance convention (standard errors Inf) with a
@@ -257,7 +273,7 @@ function _fit_binomial_ranef(fam::Binomial, s, ntr, Xμ, gidx, G, nmμ, grp, g_t
     p̄ = clamp(sum(s) / max(sum(ntr), 1), 1e-3, 1 - 1e-3)
     θ0 = zeros(pμ + 1)
     θ0[1] = log(p̄ / (1 - p̄)); θ0[pμ+1] = log(0.5)
-    res = Optim.optimize(_safe_objective(nll), θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    res = _optimize_with_fallback(nll, θ0, g_tol)
     θ̂ = Optim.minimizer(res); V = _vcov_or_nan(ForwardDiff.hessian(nll, θ̂))
     blocks = [:mu => 1:pμ, :resd => (pμ+1):(pμ+1)]
     names = [:mu => nmμ, :resd => [String(grp)]]
@@ -315,7 +331,7 @@ function _fit_binomial_corr_ranef(fam::Binomial, s, ntr, Xμ, xs, gidx, G, nmμ,
     θ0 = zeros(pμ + 3)
     θ0[1] = log(p̄ / (1 - p̄))                                # logit p̄
     θ0[pμ+1] = log(0.4); θ0[pμ+2] = log(0.4); θ0[pμ+3] = 0.0
-    res = Optim.optimize(_safe_objective(nll), θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    res = _optimize_with_fallback(nll, θ0, g_tol)
     θ̂ = Optim.minimizer(res); V = _vcov_or_nan(ForwardDiff.hessian(nll, θ̂))
     blocks = [:mu => 1:pμ, :recov => (pμ+1):(pμ+3)]
     names = [:mu => nmμ, :recov => ["$(grp):L11", "$(grp):L22", "$(grp):L21"]]

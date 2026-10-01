@@ -126,3 +126,17 @@ end
     @test loglik(fit) > -1e-3                      # likelihood sup is 0
     @test coef(fit, :mu)[2] > 5                    # slope diverges toward +∞
 end
+
+# HagerZhang asserted (`B > A`) on this draw once the clamp was gone and the fit threw;
+# main returned a non-converged fit. It must return a fit (converged or honestly not).
+@testset "BetaBinomial (1 | g): line-search assertion falls back, never throws" begin
+    x = [-4.87, 0.64, -10.52, -4.51, 5.23, 6.68, 5.81, 1.56, -5.13, 9.52, -9.16, 18.52, -3.42, -10.57, 7.85,
+         4.47, 12.18, -11.08, 1.53, -0.21, -5.96]
+    k = [1, 6, 1, 0, 9, 10, 10, 6, 1, 10, 0, 10, 1, 1, 9, 10, 10, 0, 8, 4, 1]
+    g = [1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 5]
+    fit = drm(bf(@formula(cbind(s, fl) ~ x + (1 | g)), @formula(sigma ~ 1)), BetaBinomial();
+              data = (; s = Float64.(k), fl = Float64.(10 .- k), x, g))
+    @test fit isa DRModels.DrmFit
+    @test isfinite(loglik(fit))
+    @test loglik(fit) > -25                        # main: -21.66 (non-converged)
+end
