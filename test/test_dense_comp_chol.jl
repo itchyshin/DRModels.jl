@@ -76,21 +76,27 @@ end
 end
 
 @testset "_dense_comp: non-PD / semidefinite C raises a clear ArgumentError" begin
-    Random.seed!(2026)
+    # Fixtures are EXACTLY singular in floating point on every platform: small
+    # integer entries whose Cholesky pivots are exact (no rounding), so a pivot
+    # is exactly 0. (A random B*B' of rank n-1 is only singular in exact
+    # arithmetic; on some BLAS/CPU paths rounding made it positive definite.)
     n = 10
-    B = randn(n, n - 1)                 # rank n-1 ⇒ singular PSD
-    Csemi = Matrix(Symmetric(B * B'))
     gidx = collect(1:n)
-
-    @test !isposdef(Symmetric(Csemi))
-    err = try
-        DRModels._dense_comp(gidx, n, Csemi, :myid)
-        nothing
-    catch e
-        e
+    Csemis = Dict(
+        :allones => ones(n, n),                     # rank 1; Schur complement exactly 0
+        :zerorow => Matrix(Diagonal([ones(n - 1); 0.0])),  # zero variance individual
+    )
+    for (name, Csemi) in Csemis
+        @test !isposdef(Symmetric(Csemi))
+        err = try
+            DRModels._dense_comp(gidx, n, Csemi, :myid)
+            nothing
+        catch e
+            e
+        end
+        @test err isa ArgumentError
+        @test occursin("myid", sprint(showerror, err))
     end
-    @test err isa ArgumentError
-    @test occursin("myid", sprint(showerror, err))
 end
 
 @testset "_dense_comp: indefinite C also raises (not a silent NaN/Inf)" begin
