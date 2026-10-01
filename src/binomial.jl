@@ -9,6 +9,55 @@
 
 import Distributions
 
+# Numerically stable, UNCLAMPED Binomial(n, logistic(η)) log-likelihood. A clamp of
+# η inside the objective makes it exactly flat (zero gradient under AD) wherever any
+# |η_i| exceeds the clamp, so an L-BFGS step that overshoots there parks on the
+# plateau and reports success with a garbage answer. `k·η − n·log1pexp(η)` is exact
+# for any finite η (no `logistic` saturation to 0/1, no log(0)) and AD-safe.
+@inline _log1pexp(x) = x > 0 ? x + log1p(exp(-x)) : log1p(exp(x))
+@inline _logchoose(n, k) = loggamma(n + 1) - loggamma(k + 1) - loggamma(n - k + 1)
+@inline _binomial_logit_ll(n, k, η, lc) = k * η - n * _log1pexp(η) + lc
+
+# Without the clamp a wild line-search probe can reach a point where the AGHQ
+# marginal (or its AD gradient) is NaN/Inf; Optim's line search asserts finiteness
+# and throws. Map such probes to the repo's 1e18 failed-fit sentinel (zero
+# gradient, hugely worse than any real fit) so the line search backtracks instead.
+# Used only inside the optimiser call, never for the reported value / Hessian.
+@inline _finite_or_sentinel(v::Real) = isfinite(v) ? v : oftype(v, 1e18)
+@inline function _finite_or_sentinel(v::ForwardDiff.Dual)
+    ok = isfinite(ForwardDiff.value(v)) && all(isfinite, ForwardDiff.partials(v))
+    return ok ? v : oftype(v, 1e18)
+end
+_safe_objective(f) = θ -> _finite_or_sentinel(f(θ))
+
+# L-BFGS with the default HagerZhang line search asserts (`B > A`, `isfinite(phi_c)`)
+# on pathological brackets near a runaway optimum and throws, losing the fit. Retry
+# from the start with BackTracking (no such assertions) and report whatever it
+# reaches; `converged` stays honest (false if the gradient tolerance is not met).
+function _optimize_with_fallback(nll, θ0, g_tol)
+    f = _safe_objective(nll)
+    opts = Optim.Options(g_tol = g_tol)
+    try
+        return Optim.optimize(f, θ0, Optim.LBFGS(), opts; autodiff = :forward)
+    catch e
+        e isa AssertionError || rethrow()
+        return Optim.optimize(f, θ0, Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking()),
+                              opts; autodiff = :forward)
+    end
+end
+
+# Covariance for the quadrature routes at a runaway optimum (e.g. separated data):
+# the AD Hessian can be non-finite, and `_vcov_from_hessian` (deliberately) throws on
+# that. Report the repo's NaN-covariance convention (standard errors Inf) with a
+# warning so the fit itself is not lost.
+function _vcov_or_nan(H::AbstractMatrix)
+    if !all(isfinite, H)
+        @warn "Hessian at the optimum is not finite (runaway or separated fit): covariance is NaN, standard errors Inf."
+        return fill(NaN, size(H))
+    end
+    return _vcov_from_hessian(H)
+end
+
 """
     Binomial()
 
@@ -176,12 +225,12 @@ end
 function _fit_binomial(fam::Binomial, s, ntr, Xμ, nmμ, g_tol)
     n = length(s); pμ = size(Xμ, 2)
     sint = round.(Int, s); nint = round.(Int, ntr)
+    lc = [_logchoose(nint[i], sint[i]) for i in 1:n]
     function nll(θ)
-        ημ = clamp.(Xμ * θ, -15.0, 15.0)                  # μ = logistic(η) ∈ (0,1)
+        ημ = Xμ * θ                                       # unclamped: see `_binomial_logit_ll`
         v = zero(eltype(θ))
         @inbounds for i in 1:n
-            μ = _logistic(ημ[i])
-            v -= Distributions.logpdf(Distributions.Binomial(nint[i], μ), sint[i])
+            v -= _binomial_logit_ll(nint[i], sint[i], ημ[i], lc[i])
         end
         return v
     end
@@ -221,19 +270,20 @@ function _fit_binomial_ranef(fam::Binomial, s, ntr, Xμ, gidx, G, nmμ, grp, g_t
     for i in 1:n
         push!(members[gidx[i]], i)
     end
+    lc = [_logchoose(nint[i], sint[i]) for i in 1:n]
     rule = _AGHQRule(1, nq); Zre = ones(n, 1); bcache = zeros(1, G)   # #834/#712/#713: per-group AGHQ
     function nll(θ)
         βμ = θ[1:pμ]; σb = exp(θ[pμ+1])
         L = reshape([σb], 1, 1)
         η0 = Xμ * βμ
-        ll = (i, η) -> (μ = _logistic(clamp(η, -15.0, 15.0)); Distributions.logpdf(Distributions.Binomial(nint[i], μ), sint[i]))
+        ll = (i, η) -> _binomial_logit_ll(nint[i], sint[i], η, lc[i])
         return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache)
     end
     p̄ = clamp(sum(s) / max(sum(ntr), 1), 1e-3, 1 - 1e-3)
     θ0 = zeros(pμ + 1)
     θ0[1] = log(p̄ / (1 - p̄)); θ0[pμ+1] = log(0.5)
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    res = _optimize_with_fallback(nll, θ0, g_tol)
+    θ̂ = Optim.minimizer(res); V = _vcov_or_nan(ForwardDiff.hessian(nll, θ̂))
     blocks = [:mu => 1:pμ, :resd => (pμ+1):(pμ+1)]
     names = [:mu => nmμ, :resd => [String(grp)]]
     means = Dict(:mu => _logistic.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => s ./ ntr)   # population μ (b=0)
@@ -277,20 +327,21 @@ function _fit_binomial_corr_ranef(fam::Binomial, s, ntr, Xμ, xs, gidx, G, nmμ,
     for i in 1:n
         push!(members[gidx[i]], i)
     end
+    lc = [_logchoose(nint[i], sint[i]) for i in 1:n]
     rule = _AGHQRule(2, nq); Zre = hcat(ones(n), Float64.(xs)); bcache = zeros(2, G)   # #834: per-group AGHQ
     function nll(θ)
         βμ = θ[1:pμ]
         L = _corr_ranef_L(θ[pμ+1], θ[pμ+2], θ[pμ+3])
         η0 = Xμ * βμ
-        ll = (i, η) -> (μ = _logistic(clamp(η, -15.0, 15.0)); Distributions.logpdf(Distributions.Binomial(nint[i], μ), sint[i]))
+        ll = (i, η) -> _binomial_logit_ll(nint[i], sint[i], η, lc[i])
         return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache)
     end
     p̄ = clamp(sum(s) / max(sum(ntr), 1), 1e-3, 1 - 1e-3)
     θ0 = zeros(pμ + 3)
     θ0[1] = log(p̄ / (1 - p̄))                                # logit p̄
     θ0[pμ+1] = log(0.4); θ0[pμ+2] = log(0.4); θ0[pμ+3] = 0.0
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    res = _optimize_with_fallback(nll, θ0, g_tol)
+    θ̂ = Optim.minimizer(res); V = _vcov_or_nan(ForwardDiff.hessian(nll, θ̂))
     blocks = [:mu => 1:pμ, :recov => (pμ+1):(pμ+3)]
     names = [:mu => nmμ, :recov => ["$(grp):L11", "$(grp):L22", "$(grp):L21"]]
     means = Dict(:mu => _logistic.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => s ./ ntr)
