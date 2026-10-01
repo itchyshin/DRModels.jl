@@ -65,6 +65,9 @@ end
 function _conditional_dist(fam::Poisson, i; μ, scales, obs, kwargs...)
     return Distributions.Poisson(max(μ[i], 0.0))
 end
+function _conditional_dist(fam::TruncatedPoisson, i; μ, scales, obs, kwargs...)
+    return Distributions.Poisson(max(μ[i], 0.0))
+end
 function _conditional_dist(fam::NegBinomial2, i; μ, scales, obs, kwargs...)
     φ = 1 / (scales[:sigma][i]^2)               # scales[:sigma] = σ now; NB2 size = 1/σ²
     return Distributions.NegativeBinomial(φ, φ / (φ + μ[i]))
@@ -110,6 +113,7 @@ _is_continuous_family(::Beta)       = true
 _is_continuous_family(::Poisson)    = false
 _is_continuous_family(::NegBinomial2) = false
 _is_continuous_family(::TruncatedNegBinomial2) = false
+_is_continuous_family(::TruncatedPoisson) = false
 _is_continuous_family(::Binomial)   = false
 _is_continuous_family(::BetaBinomial) = false
 
@@ -251,6 +255,23 @@ function _quantile_residuals(fit::DrmFit, rng)
             F = _cdf_value(fam, i, y[i]; μ = μ, scales = fit.scales, obs = fit.obs,
                            gsis = gsis, mix = mix)
             u[i] = clamp(F, lo, hi)
+        end
+    elseif fam isa TruncatedPoisson
+        # Zero-truncated Poisson CDF F_t(k) = P(1 ≤ Y ≤ k) / (1 − P(0)), k ≥ 1,
+        # in log space (running `_logaddexp` of the pmf terms; `_log1mexp(-λ)` for
+        # the divisor) so a tiny λ cannot make it 0/0.
+        @inbounds for i in 1:n
+            λ = max(μ[i], eps())
+            yi = round(Int, y[i])
+            log1mF0 = _log1mexp(-λ)
+            lpmf(j) = j * log(λ) - λ - _logfactorial(j)
+            loga = -Inf
+            for j in 1:(yi - 1)
+                loga = _logaddexp(loga, lpmf(j))
+            end
+            logb = _logaddexp(loga, lpmf(yi))
+            a = exp(loga - log1mF0); b = exp(logb - log1mF0)
+            u[i] = clamp(a + (b - a) * rand(rng), lo, hi)
         end
     elseif fam isa TruncatedNegBinomial2
         # Zero-truncated CDF F_t(k) = (NB.cdf(k) − NB.cdf(0)) / (1 − NB.cdf(0)),

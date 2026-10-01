@@ -29,7 +29,7 @@ const API_STABLE = [
     "DrmFormula", "BivariateDrmFormula", "DrmFit",
     # families
     "Gaussian", "Student", "SkewNormal", "Poisson", "NegBinomial2",
-    "TruncatedNegBinomial2", "Beta", "BetaBinomial", "Binomial", "Gamma",
+    "TruncatedNegBinomial2", "TruncatedPoisson", "Beta", "BetaBinomial", "Binomial", "Gamma",
     "LogNormal", "ZeroOneBeta", "Tweedie", "CumulativeLogit",
     # StatsAPI-style accessors
     "coef", "vcov", "loglik", "loglikelihood", "nobs", "dof", "aic", "bic", "aicc",
