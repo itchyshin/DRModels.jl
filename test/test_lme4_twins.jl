@@ -5,12 +5,13 @@
 # Reference values below are literals from lme4 2.0.1 (glmer / lmer) and drmTMB 0.7.1
 # (`devtools`-free: installed package), each named with its integrator. Regenerate with
 #   lme4::glmer(cbind(incidence, size - incidence) ~ period + (1 | herd), lme4::cbpp,
-#               family = binomial, nAGQ = k)      # k = 1, 3, 25
+#               family = binomial, nAGQ = k)      # k = 1, 3, 5, 25
 #   lme4::lmer(Reaction ~ Days + (Days | Subject), lme4::sleepstudy, REML = FALSE / TRUE)
 #
 # Integrator matching (cbpp):
-#   DRModels default Binomial `(1 | g)` route = per-group adaptive GHQ with K = 3
-#     (`_BINOMIAL_RANEF_AGHQ_K`)  <->  glmer nAGQ = 3
+#   DRModels default Binomial `(1 | g)` route = per-group adaptive GHQ with K = 5
+#     (`_BINOMIAL_RANEF_AGHQ_K`, raised from 3 in #908)  <->  glmer nAGQ = 5
+#   DRModels internal K = 3 (`_fit_binomial_ranef(...; nq = 3)`, the pre-#908 default)  <->  glmer nAGQ = 3
 #   DRModels `marginal = :Laplace` / internal K = 1        <->  glmer nAGQ = 1, drmTMB (Laplace)
 #   DRModels internal K = 25 (`_fit_binomial_ranef(...; nq = 25)`)  <->  glmer nAGQ = 25
 # lme4's logLik for nAGQ > 1 drops the saturated-binomial term
@@ -47,6 +48,8 @@ end
         drmtmb1 = (ll = -92.02628186, b = [-1.3985321423, -0.9923327349, -1.1286720840, -1.5803138852], sd = 0.6422614484)
         # glmer nAGQ = 3 (AGHQ): logLik as reported is offset by `sat`
         ref3 = (ll = -50.03931072 + sat, b = [-1.3980373189, -0.9923740818, -1.1287976432, -1.5806352863], sd = 0.6439702368)
+        # glmer nAGQ = 5 (AGHQ; lme4 2.0.1, same `sat` offset added back: logLik + sat = -91.98403769)
+        ref5 = (ll = -91.98403769, b = [-1.399201882, -0.991438021, -1.127859471, -1.579506387], sd = 0.6473692007)
         # glmer nAGQ = 25 (AGHQ)
         ref25 = (ll = -50.00501527 + sat, b = [-1.399223728, -0.991408884, -1.127809594, -1.579480951], sd = 0.6475199134)
 
@@ -61,11 +64,18 @@ end
         @test coef(fl, :mu) ≈ ref1.b atol = 1e-3         # measured max 6e-4
         @test re_sd(fl)[:herd] ≈ ref1.sd atol = 1e-3     # measured 2e-4
 
-        # ---- K = 3: DRModels default route vs glmer nAGQ = 3. Both are adaptive GHQ with
-        # 3 nodes but glmer optimises fixed effects inside PIRLS, so the fixed effects
+        # ---- K = 5: DRModels default route (#908) vs glmer nAGQ = 5. Both are adaptive GHQ with
+        # 5 nodes but glmer optimises fixed effects inside PIRLS, so the fixed effects
         # agree to ~1e-5 rather than exactly.
-        f3 = drm(bf(f0), Binomial(); data = cbpp)
-        @test DRModels._BINOMIAL_RANEF_AGHQ_K == 3
+        f5 = drm(bf(f0), Binomial(); data = cbpp)
+        @test DRModels._BINOMIAL_RANEF_AGHQ_K == 5
+        @test loglik(f5) ≈ ref5.ll atol = 1e-4
+        @test coef(f5, :mu) ≈ ref5.b atol = 1e-4
+        @test re_sd(f5)[:herd] ≈ ref5.sd atol = 1e-3
+
+        # ---- K = 3: the pre-#908 default, still reachable through the internal fitter.
+        f3 = DRModels._fit_binomial_ranef(DRModels.Binomial(), incidence, size_, X, g, 15,
+                                          ["(Intercept)", "period2", "period3", "period4"], :herd, 1e-8; nq = 3)
         @test loglik(f3) ≈ ref3.ll atol = 1e-4
         @test coef(f3, :mu) ≈ ref3.b atol = 1e-4
         @test re_sd(f3)[:herd] ≈ ref3.sd atol = 1e-3
@@ -76,8 +86,10 @@ end
         @test loglik(f25) ≈ ref25.ll atol = 1e-4
         @test f25.theta[1:4] ≈ ref25.b atol = 1e-4        # measured max 7e-6
         @test exp(f25.theta[5]) ≈ ref25.sd atol = 1e-3    # measured 1.5e-6
-        # the K = 3 default sits within 0.04 nat of the K = 25 (near-exact) logLik
-        @test abs(loglik(f3) - loglik(f25)) < 0.04
+        # the K = 5 default sits within 0.002 nat of the K = 25 (near-exact) logLik (measured 7e-4;
+        # the old K = 3 default was ~0.03 nat off)
+        @test abs(loglik(f5) - loglik(f25)) < 0.002
+        @test abs(loglik(f5) - loglik(f25)) < abs(loglik(f3) - loglik(f25))
     end
 
     @testset "sleepstudy: Gaussian (1 + Days | Subject) vs lmer" begin
