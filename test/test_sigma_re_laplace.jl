@@ -228,8 +228,9 @@ _srl_design(d, sigx) = (hcat(ones(length(d.y)), d.x),
         @test_throws r"marginal = :Laplace is not available" drm_bridge(
             formula = "y ~ x + (1 | g); sigma ~ 1", family = "gaussian", data = dm,
             options = Dict{String,Any}("marginal" => "Laplace"))
-        @test_throws r"option `marginal` is not available for Student\(\)" drm_bridge(
-            formula = "y ~ x", family = "student", data = dm,
+        # A family whose `drm` method has no `marginal` keyword (Student gained one in #714).
+        @test_throws r"option `marginal` is not available for SkewNormal\(\)" drm_bridge(
+            formula = "y ~ x", family = "skewnormal", data = dm,
             options = Dict{String,Any}("marginal" => "Laplace"))
         # Only "LA" and "Laplace" are forwarded. "VA" and "AGHQ" have no drmTMB
         # counterpart: refused by name before any fit (previously "VA" ran the

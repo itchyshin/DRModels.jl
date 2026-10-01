@@ -24,6 +24,9 @@
 # stays accurate at a huge size 1/σ² (`Val(:nb2_raw)`, below); and the inner
 # mode is solved to 1e-13 (`_ORDINARY_LAPLACE_NEWTON_TOL`).
 #
+# Student() takes the same opt-in through its own `drm` method (see the end of this
+# file, `_fit_student_ordinary_laplace`; #714).
+#
 # Scope (everything else is refused, never silently rerouted to `:LA`):
 #   * exactly one ordinary `(1 | g)` on `mu`; no `(1 + x | g)`, `(0 + x | g)`,
 #     crossed/multiple terms, structured markers, `meta_V`, `zi`/`hu`;
@@ -445,4 +448,141 @@ function _fit_scale_ordinary_laplace(fam, y, Xμ, gidx, G, nmμ, nmσ, grp, g_to
     scales = Dict(:sigma => fill(exp(θ̂[pμ+1]), n))
     fit = DrmFit(fam, blocks, names, θ̂, V, -nllhat, n, conv, means, obs, scales)
     return _withnll(fit, nll, grad!)
+end
+
+# ---- Student-t: ordinary `(1 | g)` on the mean by the TMB Laplace ----------------
+# `drm(bf(y ~ x + (1 | g), sigma ~ ..., nu ~ ...), Student(); marginal = :Laplace)`
+# (#714). The Student route has no sparse-Laplace kernel, so this fits the same
+# TMB objective as the structured routes with its own per-group scalar inner
+# problem. For group g with b = b_g,
+#
+#   J_g(b) = Σ_{i ∈ g} −log f(yᵢ | η0ᵢ + b) + ½ b²/σ_b²,
+#   −log L(θ) ≈ Σ_g [ J_g(b̂_g) + log σ_b + ½ log J_g″(b̂_g) ],
+#
+# the (2π) constants cancelling. The Student data term is not log-concave, so the
+# inner Newton falls back to the always-positive expected information for its
+# direction when J″ ≤ 0, with a step-halving line search; the Laplace term uses
+# the OBSERVED J″ and the evaluation fails closed (1e18) if it is not positive at
+# the mode. Derivatives are ForwardDiff: the Float64 mode is lifted into dual
+# arithmetic by two Newton steps (implicit-function theorem), which also makes
+# the Hessian behind the Wald covariance exact. θ = [βμ; βσ; βν; log σ_b].
+# d/dμ of −log f at t = (y − μ)/σ, r = 1/ν (overflow-free, as `_student_logpdf_std`):
+#   −(1 + r) t / (σ (1 + r t²)),   (1 + r)(1 − r t²) / (σ² (1 + r t²)²).
+function _student_obs_terms(yi, μ, lσ, ην)
+    σ = exp(lσ); t = (yi - μ) / σ
+    r = ην > 0 ? exp(-ην) / (1 + 2 * exp(-ην)) : 1 / (2 + exp(ην))
+    d = 1 + r * t^2
+    val = lσ - _student_logpdf_std(t, ην)
+    g1 = -(1 + r) * t / (σ * d)
+    w = (1 + r) * (1 - r * t^2) / (σ^2 * d^2)
+    wE = (1 + r) / ((1 + 3r) * σ^2)
+    return val, g1, w, wE
+end
+
+function _fit_student_ordinary_laplace(fam::Student, y, Xμ, Xσ, Xν, gidx, G, nmμ, nmσ, nmν,
+                                       grp, g_tol; se::Bool = true)
+    n = length(y); pμ, pσ, pν = size(Xμ, 2), size(Xσ, 2), size(Xν, 2)
+    k = pμ + pσ + pν
+    yv = Float64.(y)
+    members = [Int[] for _ in 1:G]
+    for i in 1:n
+        push!(members[gidx[i]], i)
+    end
+    # (J, J′, J″) of one group at b; `expected` swaps the observed curvature for
+    # the expected information (mode search only, never the Laplace term).
+    function group_terms(b, mem, η0, ησ, ην, invg; expected::Bool = false)
+        T = promote_type(typeof(b), eltype(η0), eltype(ησ), eltype(ην), typeof(invg))
+        J = zero(T); gr = zero(T); H = zero(T)
+        @inbounds for i in mem
+            v, g1, w, wE = _student_obs_terms(yv[i], η0[i] + b, ησ[i], ην[i])
+            J += v; gr += g1; H += expected ? wE : w
+        end
+        return J + invg * b^2 / 2, gr + invg * b, H + invg
+    end
+    function group_mode(mem, η0, ησ, ην, invg, b0; maxiter::Int = 100, tol::Real = 1e-13)
+        b = b0
+        for _ in 1:maxiter
+            J0, gr, H = group_terms(b, mem, η0, ησ, ην, invg)
+            H > 0 || (H = last(group_terms(b, mem, η0, ησ, ην, invg; expected = true)))
+            step = gr / H
+            # Converged on a tiny Newton step or a gradient at the roundoff floor of
+            # a sum of O(1) terms (the objective itself can no longer resolve it).
+            (abs(step) <= tol * (1 + abs(b)) || abs(gr) <= 1e-12 * (1 + length(mem))) &&
+                return b, true
+            α = 1.0; accepted = false
+            while α >= 1e-10
+                trial = b - α * step
+                # A decrease smaller than the roundoff of J (~1e-15 relative) is accepted.
+                if first(group_terms(trial, mem, η0, ησ, ην, invg)) <= J0 + 1e-13 * (1 + abs(J0))
+                    b = trial; accepted = true; break
+                end
+                α /= 2
+            end
+            accepted || return b, abs(gr) <= 1e-8 * (1 + length(mem))
+        end
+        return b, false
+    end
+    last_b = zeros(G)
+    function nll(θ)
+        T = eltype(θ)
+        βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]; βν = θ[pμ+pσ+1:k]; lsg = θ[k+1]
+        abs(_student_fval(lsg)) > 30 && return T(1e18)
+        η0 = Xμ * βμ; ησ = Xσ * βσ; ην = Xν * βν
+        invg = exp(-2lsg)
+        isfinite(_student_fval(invg)) || return T(1e18)
+        η0f = _student_fval.(η0); ησf = _student_fval.(ησ); ηνf = _student_fval.(ην)
+        invgf = _student_fval(invg)
+        total = zero(T)
+        @inbounds for g in 1:G
+            mem = members[g]
+            b̂, ok = group_mode(mem, η0f, ησf, ηνf, invgf, last_b[g])
+            ok || ((b̂, ok) = group_mode(mem, η0f, ησf, ηνf, invgf, 0.0))
+            ok || return T(1e18)
+            T === Float64 && (last_b[g] = b̂)
+            b = convert(T, b̂)
+            for _ in 1:2                          # lift b̂ to b̂(θ) in dual arithmetic
+                _, gr, H = group_terms(b, mem, η0, ησ, ην, invg)
+                _student_fval(H) > 0 || return T(1e18)
+                b = b - gr / H
+            end
+            J, _, H = group_terms(b, mem, η0, ησ, ην, invg)
+            _student_fval(H) > 0 || return T(1e18)   # observed curvature must be positive at the mode
+            total += J + lsg + log(H) / 2
+        end
+        return total
+    end
+    βμ0 = Xμ \ yv
+    θ0 = zeros(k + 1)
+    θ0[1:pμ] .= βμ0
+    θ0[pμ+1] = log(std(yv - Xμ * βμ0) + eps())
+    θ0[pμ+pσ+1] = log(10.0)
+    θ0[k+1] = log(0.5)
+    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol, iterations = 1000);
+                         autodiff = :forward)
+    # Restart from θ̂ while a run stops early (the fail-closed 1e18 region can end a
+    # line search); same discipline as the crossed Student route. `nll` is
+    # re-evaluated at each minimizer because Optim's `minimum` can report a rejected probe.
+    for _ in 1:8
+        Optim.converged(res) && break
+        res2 = Optim.optimize(nll, Optim.minimizer(res), Optim.LBFGS(),
+                              Optim.Options(g_tol = g_tol, iterations = 1000); autodiff = :forward)
+        nll(Optim.minimizer(res2)) < nll(Optim.minimizer(res)) || break
+        res = res2
+    end
+    θ̂ = Optim.minimizer(res)
+    nllhat = nll(θ̂)
+    gfinal = ForwardDiff.gradient(nll, θ̂)
+    converged = nllhat < 1e17 && all(isfinite, gfinal) &&
+                (Optim.converged(res) || _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol))
+    V = se ? _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂);
+                                context = "ordinary Laplace Student (1 | $grp)") :
+             fill(NaN, k + 1, k + 1)
+    blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :nu => (pμ+pσ+1):k, :resd => (k+1):(k+1)]
+    names = [:mu => nmμ, :sigma => nmσ, :nu => nmν, :resd => [String(grp)]]
+    means = Dict(:mu => Xμ * θ̂[1:pμ]); obs = Dict(:mu => yv)       # population μ (b = 0)
+    scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]),
+                  :nu => 2 .+ exp.(Xν * θ̂[(pμ+pσ+1):k]))
+    return _withiterations(
+        _withnll(DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales), nll),
+        Optim.iterations(res))
 end
