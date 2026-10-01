@@ -17,6 +17,25 @@ Only inspected structurally on a formula left-hand side.
 """
 cbind(a, b) = hcat(a, b)
 
+# `_LOGIT_GUARD` is an overflow guard, not a model bound: at |η| = 700 a parameter
+# is e^-700 ≈ 1e-304 and the likelihood of any observation on the wrong side is
+# ≈ -700 nats, so no sane start is ever beaten by the (flat) region beyond it; it only
+# keeps `loggamma(0)` / NaN gradients out of the line search.
+const _LOGIT_GUARD = 700.0
+
+# BetaBinomial(n, μφ, (1-μ)φ) log-pmf with μ = logistic(η), parameterised directly
+# on the logit η and UNCLAMPED: α = φ·σ(η), β = φ·σ(−η) never saturate to 0 until
+# |η| ≈ 745, so no clamp is needed to keep the pmf proper. A clamp of η inside the
+# objective makes it flat beyond the clamp and lets L-BFGS park on the plateau
+# (see `_binomial_logit_ll`). Equal to `Distributions.logpdf(BetaBinomial(...))`
+# off the plateau up to rounding.
+@inline function _betabinomial_logit_ll(n, k, η, φ)
+    η = clamp(η, -_LOGIT_GUARD, _LOGIT_GUARD)
+    α = φ * _logistic(η); β = φ * _logistic(-η)
+    return _logchoose(n, k) + (loggamma(k + α) + loggamma(n - k + β) - loggamma(n + α + β)) -
+           (loggamma(α) + loggamma(β) - loggamma(α + β))
+end
+
 """
     BetaBinomial()
 
@@ -123,8 +142,7 @@ function _fit_betabinomial_ranef(fam::BetaBinomial, s, ntr, Xμ, Xσ, gidx, G, n
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]; σb = exp(θ[pμ+pσ+1])
         η0 = Xμ * βμ; ησ = clamp.(Xσ * βσ, -15.0, 15.0)
-        ll = (i, η) -> (μ = _logistic(clamp(η, -15.0, 15.0)); φ = exp(-2 * ησ[i]);
-                        Distributions.logpdf(Distributions.BetaBinomial(nint[i], μ * φ, (1 - μ) * φ), sint[i]))
+        ll = (i, η) -> _betabinomial_logit_ll(nint[i], sint[i], η, exp(-2 * ησ[i]))
         L = reshape([σb], 1, 1)
         return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache)
     end
@@ -133,7 +151,7 @@ function _fit_betabinomial_ranef(fam::BetaBinomial, s, ntr, Xμ, Xσ, gidx, G, n
     θ0[1] = log(p̄ / (1 - p̄))                                # logit p̄
     θ0[pμ+1] = -0.5 * log(10.0)                             # moderate precision init (φ ≈ 10)
     θ0[pμ+pσ+1] = log(0.5)
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    res = Optim.optimize(_safe_objective(nll), θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :resd => (pμ+pσ+1):(pμ+pσ+1)]
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
@@ -163,8 +181,7 @@ function _fit_betabinomial_corr_ranef(fam::BetaBinomial, s, ntr, Xμ, Xσ, xs, g
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
         L = _corr_ranef_L(θ[pμ+pσ+1], θ[pμ+pσ+2], θ[pμ+pσ+3])
         η0 = Xμ * βμ; ησ = clamp.(Xσ * βσ, -15.0, 15.0)
-        ll = (i, η) -> (μ = _logistic(clamp(η, -15.0, 15.0)); φ = exp(-2 * ησ[i]);
-                        Distributions.logpdf(Distributions.BetaBinomial(nint[i], μ * φ, (1 - μ) * φ), sint[i]))
+        ll = (i, η) -> _betabinomial_logit_ll(nint[i], sint[i], η, exp(-2 * ησ[i]))
         return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache)
     end
     p̄ = clamp(sum(s) / max(sum(ntr), 1), 1e-3, 1 - 1e-3)
@@ -172,7 +189,7 @@ function _fit_betabinomial_corr_ranef(fam::BetaBinomial, s, ntr, Xμ, Xσ, xs, g
     θ0[1] = log(p̄ / (1 - p̄))                                # logit p̄
     θ0[pμ+1] = -0.5 * log(10.0)                             # moderate precision init (φ ≈ 10)
     θ0[pμ+pσ+1] = log(0.4); θ0[pμ+pσ+2] = log(0.4); θ0[pμ+pσ+3] = 0.0
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    res = Optim.optimize(_safe_objective(nll), θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :recov => (pμ+pσ+1):(pμ+pσ+3)]
     names = [:mu => nmμ, :sigma => nmσ, :recov => ["$(grp):L11", "$(grp):L22", "$(grp):L21"]]
@@ -188,12 +205,11 @@ function _fit_betabinomial(fam::BetaBinomial, s, ntr, Xμ, Xσ, nmμ, nmσ, g_to
     sint = round.(Int, s); nint = round.(Int, ntr)
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
-        ημ = clamp.(Xμ * βμ, -30.0, 30.0)        # μ ∈ (0,1) strictly
+        ημ = Xμ * βμ                             # unclamped: see `_betabinomial_logit_ll`
         ησ = clamp.(Xσ * βσ, -15.0, 15.0)        # φ = exp(-2ησ) > 0 finite
         v = zero(eltype(θ))
         @inbounds for i in 1:n
-            μ = _logistic(ημ[i]); φ = exp(-2 * ησ[i])
-            v -= Distributions.logpdf(Distributions.BetaBinomial(nint[i], μ * φ, (1 - μ) * φ), sint[i])
+            v -= _betabinomial_logit_ll(nint[i], sint[i], ημ[i], exp(-2 * ησ[i]))
         end
         return v
     end
