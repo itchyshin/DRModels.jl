@@ -163,7 +163,16 @@ end
         f3 = Logging.with_logger(lg) do
             _vb_fit(y, nwk, ["t$i" for i in 1:n])
         end
-        @test any(r -> occursin("numerically singular", string(r.message)), lg.logs)
+        # The Hessian is singular in exact arithmetic, but its smallest eigenvalue is
+        # rounding noise: rcond measured 1.1e-8 (default / SkylakeX BLAS kernels) and 5.5e-8
+        # (OPENBLAS_CORETYPE=Haswell) against the 3e-8 guard threshold, so whether the
+        # "numerically singular" warning fires is platform-dependent (CI x86 shard 1 failed).
+        # Assert the user-visible outcome that holds everywhere: either the guard speaks, or
+        # the two log-SD standard errors are absurd (measured >= 300; a well-identified one is ~0.4).
+        warned = any(r -> occursin("numerically singular", string(r.message)), lg.logs)
+        se = sqrt.(diag(Matrix(vcov(f3))))
+        @test warned || all(se[2:3] .> 50)
+        @test all(se[2:3] .> 50)                       # the two components are not separately identified
         # the total variance IS identified: sigma_a^2 + sigma_e^2 = MLE of the iid variance
         tot = exp(2 * f3.theta[3]) * 1.0 + exp(2 * f3.theta[2])   # star tree: A = I, height 1
         @test tot ≈ sum(abs2, y .- sum(y) / n) / n atol = 1e-3
