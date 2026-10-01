@@ -107,14 +107,14 @@ using Logging
     end
 
     @testset "phylogenetic LSS: h2(z) = sigma_a(z)^2 / (sigma_a(z)^2 + sigma_e(z)^2)" begin
-        # the tutorial's 64-tip balanced tree (docs/src/tutorials/location-scale-scale.md)
+        # a 16-tip balanced tree built like the tutorial's 64-tip one (kept small for speed)
         function _baln(d)
             node(p, k) = k == 0 ? "$(p):$(1/d)" :
                 (k == d ? "($(node(p*"a",k-1)),$(node(p*"b",k-1)));" :
                           "($(node(p*"a",k-1)),$(node(p*"b",k-1))):$(1/d)")
             node("t", d)
         end
-        phy = DRModels.augmented_phy(_baln(6))
+        phy = DRModels.augmented_phy(_baln(4))
         G = phy.n_leaves
         K0 = DRModels.sigma_phy_dense(phy; σ²_phy = 1.0)
         dK = sqrt.(diag(K0)); K = K0 ./ (dK * dK')
