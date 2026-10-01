@@ -40,13 +40,24 @@ outliers, and `ν → ∞` tends to Gaussian. Mirrors `drmTMB`'s `student` famil
 ```julia
 fit = drm(bf(y ~ x, sigma ~ 1, nu ~ 1), Student(); data = dat)
 2 + exp(coef(fit, :nu)[1])  # estimated degrees of freedom (ν = 2 + exp(η))
+
+# Opt-in TMB-convention Laplace for one ordinary `(1 | g)` on the mean (what drmTMB fits):
+fit_lap = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), Student(); data = dat,
+              marginal = :Laplace)
 ```
 """
 struct Student end
 
-function drm(f::DrmFormula, fam::Student; data, g_tol::Real = 1e-8)
+function drm(f::DrmFormula, fam::Student; data, g_tol::Real = 1e-8,
+             se::Bool = true, marginal::Symbol = :LA)
+    # `marginal = :Laplace` (opt-in, ordinary `(1 | g)` on the mean): the TMB-convention
+    # Laplace integrator drmTMB uses; the default `:LA` is unchanged (adaptive GHQ).
+    laplace = _scalar_laplace_requested(marginal)
+    laplace || marginal === :LA || throw(ArgumentError(
+        "drm (Student): marginal = :$marginal is not available; use `:LA` (default) " *
+        "or `:Laplace` (ordinary `(1 | g)` on the mean)."))
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
-        drm(f, fam; data = data_observed, g_tol = g_tol)
+        drm(f, fam; data = data_observed, g_tol = g_tol, se = se, marginal = marginal)
     end
     missing_fit !== nothing && return missing_fit
 
@@ -64,6 +75,14 @@ function drm(f::DrmFormula, fam::Student; data, g_tol::Real = 1e-8)
     y, Xμ, nmμ = _design(f.response, fixed_mu, data)
     _, Xσ, nmσ = _design(f.response, get(rhs, :sigma, ConstantTerm(1)), data)
     _, Xν, nmν = _design(f.response, get(rhs, :nu, ConstantTerm(1)), data)
+    if laplace && !(length(re) == 1 && _re_kind(re[1][1])[1] === :intercept)
+        throw(ArgumentError("marginal = :Laplace is not available for Student() with " *
+            (isempty(re) ? "no random effect (fixed-effects-only)" :
+             length(re) > 1 ? "crossed/multiple random effects (already fitted by Laplace by default)" :
+             "a random slope `(1 + x | g)`") *
+            ". This route covers exactly one ordinary random intercept `(1 | g)` on the mean; " *
+            "omit `marginal` (the default `:LA`) for other models."))
+    end
     if length(re) > 1                                     # crossed intercepts → Laplace (#725)
         (length(re) == 2 && all(_re_kind(r[1])[1] === :intercept for r in re)) ||
             error("Student() supports multiple random effects on the mean only as two crossed/nested intercepts, e.g. `(1 | g) + (1 | h)`")
@@ -76,7 +95,9 @@ function drm(f::DrmFormula, fam::Student; data, g_tol::Real = 1e-8)
     if !isempty(re)                                       # random effect on the mean → GHQ
         length(re) == 1 || error("Student() supports a single random-effect term on the mean")
         (rk, var) = _re_kind(re[1][1]); grp = re[1][2]; gidx, G = _group_index(getproperty(data, grp))
-        if rk === :intercept                              # (1 | g) → 1-D GHQ
+        if rk === :intercept                              # (1 | g) → 1-D GHQ (or opt-in Laplace)
+            laplace && return _withformula(_withmarginal(_fit_student_ordinary_laplace(
+                fam, y, Xμ, Xσ, Xν, gidx, G, nmμ, nmσ, nmν, grp, g_tol; se = se), :Laplace), f)
             return _withformula(_fit_student_ranef(fam, y, Xμ, Xσ, Xν, gidx, G, nmμ, nmσ, nmν, grp, g_tol), f)
         elseif rk === :corr                               # (1 + x | g) → 2-D GHQ
             xs = Float64.(getproperty(data, var))

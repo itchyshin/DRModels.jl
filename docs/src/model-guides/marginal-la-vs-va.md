@@ -67,7 +67,8 @@ fit.marginal   # :Laplace
 
 On these five families (Poisson, Binomial, NegBinomial2, Gamma and Beta),
 `:Laplace` covers one ordinary `(1 | g)` on the mean (`sigma ~ 1` for the scale
-families), by maximum likelihood. The only other model that accepts it is a
+families), by maximum likelihood. `Student()` accepts it too for one ordinary
+`(1 | g)` on the mean (`sigma` and `nu` may carry fixed-effect formulas). The only other model that accepts it is a
 Gaussian random intercept on `sigma`, `sigma ~ 1 + (1 | g)`, with a fixed-effect
 mean. Any other model with `marginal = :Laplace` is refused; nothing is
 silently fitted by GHQ-32 under that label.

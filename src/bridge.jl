@@ -515,7 +515,7 @@ function _bridge_fit(bundle, fam, data; tree, K, A, coords, options)
         # and any other value are refused here by name, before any fitting.
         # `"Laplace"` selects the TMB-convention Laplace route where one is
         # implemented: an ordinary `(1 | g)` on Poisson, Binomial, NegBinomial2,
-        # Gamma or Beta (ordinary_laplace.jl), and a Gaussian random intercept
+        # Gamma, Beta or Student (ordinary_laplace.jl), and a Gaussian random intercept
         # on `sigma`. The family's `drm` refuses it on every other model. A
         # `drm` method with no `marginal` keyword at all is refused here by
         # name, rather than with a bare MethodError.
