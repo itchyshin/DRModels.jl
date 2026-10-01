@@ -35,6 +35,7 @@ run separately.
 | Poisson | intercepts, slopes, crossed, and phylogenetic effects | **Tested** |
 | NegBinomial2 | intercepts, slopes, crossed, and phylogenetic effects | **Tested** |
 | TruncatedNegBinomial2 | — | **Tested** fixed effects |
+| TruncatedPoisson | — | **Tested** fixed effects |
 | Beta | intercepts, slopes, crossed, and phylogenetic effects | **Tested**; crossed random effects have numerical tests but no complete worked analysis |
 | BetaBinomial | intercepts, slopes, crossed, and phylogenetic effects | **Tested**; constant `sigma` only |
 | Binomial | intercepts, crossed, and phylogenetic effects | **Tested**; slope random effects are refused |

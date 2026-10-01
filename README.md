@@ -86,7 +86,7 @@ sigma: x            0.39537  0.0335957   11.768    <1e-31   0.329524   0.461217
 ─────────────────────────────────────────────────────────────────────────
 ```
 
-The same `bf(...)` grammar carries the full audited surface — 14 families, random
+The same `bf(...)` grammar carries the full audited surface — 15 families, random
 effects on the mean **and** scale, structured (`relmat` / `animal` / `phylo` /
 `spatial`) effects, `meta_V` meta-analysis, the bivariate `rho12` model, and the
 q=4 phylogenetic location–scale (PLSM) route — see
@@ -137,8 +137,8 @@ continues; it is **not** Julia General registration.
   `phylo` / `spatial`), `meta_V`, and the bivariate q=4 phylogenetic
   location-scale route with `Σ_a` stored on the fit; Wald + profile + bootstrap
   intervals; `predict` / `simulate`.
-- **14 families** — Gaussian, Student-t, SkewNormal, Poisson, NegBinomial2,
-  TruncatedNegBinomial2, Beta, BetaBinomial, Binomial, Gamma, LogNormal,
+- **15 families** — Gaussian, Student-t, SkewNormal, Poisson, NegBinomial2,
+  TruncatedNegBinomial2, TruncatedPoisson, Beta, BetaBinomial, Binomial, Gamma, LogNormal,
   ZeroOneBeta, Tweedie, and CumulativeLogit — plus `zi` / `hu` count modifiers
   and beta boundary modifiers `zoi` / `coi`.
 - **Docs** — a DocumenterVitepress site (the docs.makie.org look) with CairoMakie

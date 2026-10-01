@@ -23,6 +23,7 @@ parameters (`nu`, `zoi`, `coi`, ordinal cutpoints).
 | Counts (variance ≈ mean) | `Poisson()` | log | — |
 | Counts, overdispersed | `NegBinomial2()` | log | dispersion `θ` (log) |
 | Positive counts (zero-truncated) | `TruncatedNegBinomial2()` | log | dispersion `θ` (log) |
+| Positive counts, no overdispersion | `TruncatedPoisson()` | log | — |
 | Proportions in `(0,1)` | `Beta()` | logit | precision via `φ = 1/σ²` |
 | Successes out of trials | `Binomial()` | logit | — (`cbind(s,f)` or `0/1`) |
 | Successes, overdispersed | `BetaBinomial()` | logit | precision via `φ = 1/σ²` |
@@ -160,6 +161,9 @@ The `sigma` coefficient is on the log-`σ` scale, and the NB2 dispersion is
 
 `TruncatedNegBinomial2()` is the same family conditioned on `y ≥ 1`, for counts
 that are positive by construction (litter sizes, group sizes given presence).
+`TruncatedPoisson()` is the Poisson conditioned on `y ≥ 1`; adding an `hu ~ ...`
+part to either truncated family (or to `Poisson()` / `NegBinomial2()`) fits the
+hurdle model.
 
 ## Proportions and binary data
 

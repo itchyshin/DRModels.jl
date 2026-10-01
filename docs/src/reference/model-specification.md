@@ -19,6 +19,7 @@ Student
 Poisson
 NegBinomial2
 TruncatedNegBinomial2
+TruncatedPoisson
 Beta
 BetaBinomial
 Binomial
