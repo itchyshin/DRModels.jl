@@ -77,14 +77,6 @@ function _vcov_from_hessian(H::AbstractMatrix; context::AbstractString = "")
     Hs = Matrix(Symmetric((Hs + Hs') / 2))
     isempty(Hs) && return Hs
 
-    # A non-finite Hessian (an AD/inner-mode failure at a runaway optimum) used to
-    # throw from `eigvals` (LAPACK "matrix contains Infs or NaNs"), losing the fit.
-    # Report the repo's NaN-vcov convention instead, with a warning.
-    if !all(isfinite, Hs)
-        @warn "Hessian at the optimum is not finite — the covariance is reported as NaN (standard errors Inf). The fit is likely at a runaway/boundary point (e.g. separated data)." context
-        return fill(NaN, size(Hs))
-    end
-
     ev = eigvals(Symmetric(Hs))
     scale = maximum(abs, ev)
 
