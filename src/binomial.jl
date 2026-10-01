@@ -249,13 +249,16 @@ function _fit_binomial(fam::Binomial, s, ntr, Xμ, nmμ, g_tol)
 end
 
 # Default nodes for the Binomial 1-D `(1 | g)` route (#712/#713 grouped-trial
-# gap). Was a fixed 32-node grid on the PRIOR scale; with grouped trials (n
-# trials/row > 1) and an informative group SD the posterior is a narrow spike
-# and the grid missed it by up to 9.73 nat. Swept vs an independent AGHQ-40 on
-# the grouped-trial DGP (G=100, 30 obs/group, 20 trials/row, RE SD 0.5–0.8):
-# K=1 (Laplace) is the pre-existing multi-nat error, K=3 lands inside 0.01 nat
-# with margin. See test/test_binomial_aghq.jl for the sweep.
-const _BINOMIAL_RANEF_AGHQ_K = 3
+# gap; raised 3 -> 5 by owner decision 17, #908). Was a fixed 32-node grid on the
+# PRIOR scale; with grouped trials (n trials/row > 1) and an informative group SD
+# the posterior is a narrow spike and the grid missed it by up to 9.73 nat. Swept
+# vs an independent AGHQ-40 on the grouped-trial DGP (G=100, 30 obs/group, 20
+# trials/row, RE SD 0.5-0.8): K=1 (Laplace) is the pre-existing multi-nat error,
+# K=3 lands inside 0.01 nat. K=3 was too coarse on sparse binary data
+# (`MASS::bacteria`: sd_mu 5% low, 0.22 nat off a 61-node reference, #908); K=5
+# matches the other families' default. See test/test_binomial_aghq.jl and
+# test/test_binomial_default_nodes.jl.
+const _BINOMIAL_RANEF_AGHQ_K = 5
 
 # Binomial logistic GLMM with a random intercept (1|g) on the logit mean.
 # b_g ~ N(0,σ_b²) is integrated out per group by adaptive Gauss–Hermite
