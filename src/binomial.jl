@@ -81,17 +81,31 @@ random slope `(0 + x | g)` and `marginal = :VA` on `(1 + x | g)` remain out of
 scope.
 
 !!! note "Separation: detect and warn (fixed-effects-only fits)"
-    A fixed-effects-only Bernoulli/Binomial fit is screened for (quasi-)complete
-    separation by a linear-programming check (Konis 2007, the idea behind R's
-    `detectseparation`), at fit time. When some direction `d` makes the signed
-    design `X̃ d ≥ 0` on every row, the maximum-likelihood estimate does not
-    exist: the fit is still returned, a warning names the affected coefficients,
-    and their standard errors are reported as `Inf`. Near separation (a fitted
-    probability within 1e-8 of 0 or 1 together with a Wald SE above 1e4) is
-    flagged the same way. No refusal and no penalised estimator by default. drmTMB
-    runs the same check with the same constants, so the two packages flag the same
-    coefficients (the coefficient values themselves are arbitrary stopping points
-    and are not expected to agree). Random-intercept routes are not screened.
+    A fixed-effects-only Bernoulli/Binomial fit is screened at fit time for
+    (quasi-)complete separation: the maximum-likelihood estimate does not exist
+    when some direction `d` makes the signed design `X̃ d ≥ 0` on every row and
+    `> 0` on at least one (Albert & Anderson 1984; Konis 2007), decided here by a
+    non-negative least-squares (Farkas) solve. The fit is still returned, a
+    warning names the affected coefficients, their standard errors are `Inf`
+    (their `vcov` rows/columns are NaN with an `Inf` diagonal) and their Wald
+    `confint` / `coeftable` intervals are `(-Inf, Inf)`. A coefficient is flagged
+    when ANY separating direction moves it (which can list more coefficients
+    than R's `detectseparation`, which reports one direction); an aliased column
+    that is a multiple of a flagged one is named too. The check is invariant to
+    column units and robust to a single far outlier. When it proves there is no
+    separation the fit is left alone, even if a Wald `|z|` is tiny. Only when it
+    cannot decide (iteration budget exhausted) is a scale-free near-separation
+    rule consulted: a fitted probability within 1e-8
+    of 0/1, a coefficient whose own contribution `|βⱼ|·range(xⱼ)` spans that
+    whole probability range (> 36.84 on the logit scale), and Wald `|z| < 0.05`;
+    a failed (non-finite) SE is never read as near separation. If that rule
+    does not fire, it warns that the check was inconclusive rather than
+    reporting no separation. Bootstrap replicate refits do not repeat the
+    warning. No refusal and no penalised estimator by default. drmTMB runs the
+    same check with the same constants, so the two packages flag the same
+    coefficients (the coefficient values themselves are arbitrary stopping
+    points and are not expected to agree). Random-intercept routes are not
+    screened.
 
 !!! warning "Crossed intercepts: Laplace is biased low for Bernoulli data"
     The default crossed fit is the Laplace approximation drmTMB and lme4 use. For
