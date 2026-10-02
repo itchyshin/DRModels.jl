@@ -59,6 +59,11 @@ using Distributions: MvNormal, Normal, logpdf
                 θ = copy(fit.theta); θ[end] = ψ
                 @test abs(fit.nll(θ) - dense_nll(θ, d.y, X, d.id, d.occ; ordinary)) < 1e-10
             end
+            # persistence → 1 (φ = tanh 9 ≈ 1 − 3e-8): the regime where a precision-matrix
+            # evaluation loses its pivots; the filter must still match the dense oracle
+            # (σ is reset to 0.3 so the dense oracle's own V is well conditioned)
+            θ = copy(fit.theta); θ[end] = 9.0; θ[3] = log(0.3)
+            @test fit.nll(θ) ≈ dense_nll(θ, d.y, X, d.id, d.occ; ordinary) rtol = 1e-8
             @test loglik(fit) ≈ -dense_nll(fit.theta, d.y, X, d.id, d.occ; ordinary) atol = 1e-10
         end
     end
@@ -178,6 +183,8 @@ using Distributions: MvNormal, Normal, logpdf
         miss = merge(d, (y = Union{Missing,Float64}[i == 1 ? missing : v for (i, v) in enumerate(d.y)],))
         @test_throws ae drm(fAR, Gaussian(); data = miss)                               # missing response
         @test_throws ae drm(fAR, Gaussian(); data = merge(d, (occ = string.(d.occ),)))  # non-numeric time
+        # the bootstrap's marginal simulator draws no temporal field: refused, not wrong
+        @test_throws ae bootstrap_ci(drm(fAR, Gaussian(); data = d); data = d, B = 2)
         @test_throws ae temporal_parameters(drm(bf(@formula(y ~ x), @formula(sigma ~ 1)),
                                                 Gaussian(); data = d))
     end
@@ -202,7 +209,7 @@ using Distributions: MvNormal, Normal, logpdf
         raw, hdr = readdlm(joinpath(@__DIR__, "fixtures", "temporal", "ar1_gapped.csv"), ','; header = true)
         col(nm) = raw[:, findfirst(==(nm), vec(hdr))]
         d = (y = Float64.(col("y")), x = Float64.(col("x")), id = String.(col("id")), occ = Int.(col("occ")))
-        @test length(d.y) > 100 && length(unique(d.id)) == 24
+        @test length(d.y) > 200 && length(unique(d.id)) == 40
         fit = drm(fAR, Gaussian(); data = d)
         @test fit.converged
         X = hcat(ones(length(d.y)), d.x)

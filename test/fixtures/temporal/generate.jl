@@ -31,15 +31,15 @@ function write_fixture(path, header, cols)
     end
 end
 
-# AR1: 24 series, 4-8 integer occasions drawn from 0:11 (real gaps kept),
+# AR1: 40 series, 5-9 integer occasions drawn from 0:14 (real gaps kept),
 # rows written in shuffled order. Truth: beta = (1.0, 0.5), phi = 0.6,
 # sd_temporal = 0.8, sigma = 0.5.
 function make_ar1(dir)
     rng = StableRNG(20261001)
     id = String[]; occ = Int[]; x = Float64[]; y = Float64[]
-    for s in 1:24
-        k = rand(rng, 4:8)
-        t = sort(collect(0:11)[sortperm(rand(rng, 12))[1:k]])
+    for s in 1:40
+        k = rand(rng, 5:9)
+        t = sort(collect(0:14)[sortperm(rand(rng, 15))[1:k]])
         xs = randn(rng, k)
         a = _chain(rng, t, d -> 0.6^d, 0.8)
         append!(id, fill(@sprintf("s%02d", s), k)); append!(occ, t); append!(x, xs)

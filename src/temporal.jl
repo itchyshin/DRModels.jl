@@ -19,25 +19,36 @@
 # and series are independent. Every ingredient is Gaussian, so the marginal
 # likelihood is exact.
 #
-# ENGINE (per series, O(n_s)). The chain precision Q = R⁻¹ is TRIDIAGONAL:
-#     w_i = 1 / (1 − a_i²)   (i ≥ 2)
-#     Q_11 = 1 + a_2² w_2,  Q_ii = w_i + a_{i+1}² w_{i+1},  Q_nn = w_n,
-#     Q_{i,i−1} = −a_i w_i,  logdet Q = Σ_{i≥2} log w_i.
-# The temporal-plus-residual covariance V_t = σ² I + σ_t² Q⁻¹ = Q⁻¹ B with the
-# tridiagonal, SPD B = σ² Q + σ_t² I. Hence (Q and B commute)
-#     logdet V_t = logdet B − logdet Q,     V_t⁻¹ v = B⁻¹ (Q v),
-# both from ONE tridiagonal Cholesky of B. Unlike the Woodbury form
-# rᵀr/σ² − bᵀH⁻¹b this involves no difference of O(1/σ²) terms, so it stays
-# accurate as σ → 0 or σ_t → 0 (the #764 cancellation class cannot arise).
-# The optional same-id intercept is a rank-one update V = V_t + σ_b² 11ᵀ:
-#     u = V_t⁻¹ 1,  c = 1ᵀu,  d = uᵀr,
+# ENGINE (per series, O(n_s)): the exact Gaussian marginal by the
+# prediction-error decomposition of the scalar state-space model
+#     s_i = a_i s_{i−1} + η_i,  Var η_i = σ_t² (1 − a_i²),  s_1 ~ N(0, σ_t²),
+#     r_i = s_i + ε_i,          Var ε_i = σ²,              r = y − Xβ,
+# i.e. a Kalman filter over the series' rows in time order. With predicted
+# variance P⁻_i, innovation v_i = r_i − m⁻_i and F_i = P⁻_i + σ², the
+# temporal-plus-residual covariance factors as V_t = L diag(F) Lᵀ (L unit
+# lower triangular), so
+#     logdet V_t = Σ log F_i,     rᵀ V_t⁻¹ r = Σ v_i² / F_i.
+# Every update is a sum of positive terms (P⁻ = a² P + σ_t²(1 − a²),
+# P = P⁻ σ² / F) and 1 − a² is formed without cancellation (`-expm1` for OU,
+# the factorisation (1 − φ²) Σ φ^{2k} with 1 − φ² = sech² θ for AR1), so the
+# evaluation stays accurate as σ → 0, σ_t → 0 and as the persistence → 1 /
+# decay → 0. (The equivalent tridiagonal-precision form, Q = R⁻¹, was tried
+# first and rejected: Q has entries 1/(1 − a²), and an optimiser line search
+# into λ → 0 lost every digit of its pivots — a negative "1ᵀ V⁻¹ 1" was
+# measured on the OU recovery fixture.)
+# The optional same-id intercept is a rank-one update V = V_t + σ_b² 11ᵀ. The
+# filter is linear in the observation vector, so running it on 1 alongside r
+# with the same gains gives u-weighted sums with no extra factorisation:
+#     c = 1ᵀ V_t⁻¹ 1 = Σ v_i(1)²/F_i,   d = 1ᵀ V_t⁻¹ r = Σ v_i(1) v_i(r)/F_i,
 #     logdet V = logdet V_t + log(1 + σ_b² c),
 #     rᵀV⁻¹r   = rᵀV_t⁻¹r − d² / (1/σ_b² + c).
 # Conditional modes at θ̂ (k = d / (1/σ_b² + c), k = 0 without the intercept):
-#     temporal effect σ_t E[x | y] = σ_t² Q⁻¹ V⁻¹ r = σ_t² B⁻¹ (r − k 1),
-#     intercept       E[b | y]     = σ_b² (d − c k).
-# A dense oracle (−logpdf(MvNormal(Xβ, σ_t² R + σ_b² J + σ² I))) checks this to
-# 1e-10 in test/test_temporal_ar1.jl and test/test_temporal_ou.jl.
+# the temporal effect σ_t E[x | y] = σ_t² R V⁻¹ r = σ_t² R V_t⁻¹ (r − k 1) is
+# the Rauch–Tung–Striebel smoothed state for the data r − k 1, and the
+# intercept mode is E[b | y] = σ_b² (d − c k).
+# A dense oracle (−logpdf(MvNormal(Xβ, σ_t² R + σ_b² J + σ² I))) checks the
+# objective and the modes to 1e-10 / 1e-8 in test/test_temporal_ar1.jl and
+# test/test_temporal_ou.jl.
 #
 # CLAIM BOUNDARY (wave 1, owner decision D-310): Gaussian family, the mean
 # formula only, one unlabelled intercept `temporal(1 | id, …)`, `sigma ~ 1`,
@@ -213,108 +224,98 @@ end
 
 using Statistics: var, median
 
-# --- tridiagonal kernels (AD-friendly; d = diagonal, e = sub-diagonal) -------
-# Cholesky B = L Lᵀ, L lower bidiagonal with diagonal `l` and sub-diagonal `m`.
-# Returns `nothing` when a pivot is not positive.
-function _tridiag_chol(d::AbstractVector{T}, e::AbstractVector{T}) where {T}
-    n = length(d)
-    l = Vector{T}(undef, n); m = Vector{T}(undef, max(n - 1, 0))
-    p = d[1]
-    p > 0 || return nothing
-    l[1] = sqrt(p)
-    @inbounds for i in 2:n
-        m[i-1] = e[i-1] / l[i-1]
-        p = d[i] - m[i-1]^2
-        p > 0 || return nothing
-        l[i] = sqrt(p)
-    end
-    return l, m
-end
-
-# Solve (L Lᵀ) x = v.
-function _tridiag_solve(l, m, v::AbstractVector)
-    n = length(l)
-    T = promote_type(eltype(l), eltype(v))
-    z = Vector{T}(undef, n)
-    z[1] = v[1] / l[1]
-    @inbounds for i in 2:n
-        z[i] = (v[i] - m[i-1] * z[i-1]) / l[i]
-    end
-    z[n] /= l[n]                              # back substitution Lᵀ x = z
-    @inbounds for i in (n-1):-1:1
-        z[i] = (z[i] - m[i] * z[i+1]) / l[i]
-    end
-    return z
-end
-
-# y = Q v for tridiagonal Q.
-function _tridiag_mul(d, e, v)
-    n = length(d)
-    T = promote_type(eltype(d), eltype(v))
-    out = Vector{T}(undef, n)
-    @inbounds for i in 1:n
-        s = d[i] * v[i]
-        i > 1 && (s += e[i-1] * v[i-1])
-        i < n && (s += e[i] * v[i+1])
-        out[i] = s
-    end
-    return out
-end
-
-# Transition a and innovation variance 1 − a² for one gap.
+# Transition a and innovation fraction 1 − a² for one gap, both without
+# cancellation. AR1: ψ = θ (φ = tanh θ), gap a positive integer g,
+# 1 − φ^{2g} = sech²θ · Σ_{k<g} φ^{2k}. OU: ψ = λ.
 @inline function _temporal_transition(structure::Symbol, ψ, gap)
     if structure === :ar1
-        a = ψ^Int(gap)                       # ψ = φ
+        φ = tanh(ψ)
+        g = Int(gap)
+        a = φ^g
+        if g <= 64
+            φ2 = φ * φ
+            acc = one(φ); term = one(φ)
+            for _ in 2:g
+                term *= φ2
+                acc += term
+            end
+            return a, acc / cosh(ψ)^2
+        end
         return a, one(a) - a * a
     else
-        x = ψ * gap                          # ψ = λ
+        x = ψ * gap
         return exp(-x), -expm1(-2 * x)
     end
 end
 
-# Chain precision (d, e, logdet Q) for one series with gaps `g` (g[1] unused).
-function _temporal_chain_precision(structure::Symbol, ψ, g::AbstractVector)
-    n = length(g)
-    T = typeof(ψ)
-    d = zeros(T, n); e = zeros(T, max(n - 1, 0))
-    d[1] = one(T)
-    ldQ = zero(T)
-    for i in 2:n
-        a, v = _temporal_transition(structure, ψ, g[i])
-        v > 0 || return nothing
-        w = inv(v)
-        d[i] += w
-        d[i-1] += a * a * w
-        e[i-1] = -a * w
-        ldQ += log(w)
+# Kalman filter over one series. `z` is the residual vector r in time order;
+# `with_one` also filters the vector of ones (for the ordinary intercept).
+# Returns (Σ log F, Σ v²/F, c, d) and, with `keep`, the filter history for
+# the smoother.
+function _temporal_filter(structure, ψ, σ2, st2, g, z; with_one::Bool = false, keep::Bool = false)
+    n = length(z)
+    T = promote_type(typeof(ψ), typeof(σ2), typeof(st2), eltype(z))
+    ldF = zero(T); q = zero(T); c = zero(T); d = zero(T)
+    m = zero(T); m1 = zero(T); P = zero(T)
+    hist = keep ? (mf = zeros(T, n), Pf = zeros(T, n), mp = zeros(T, n), Pp = zeros(T, n),
+                   a = zeros(T, n)) : nothing
+    for i in 1:n
+        if i == 1
+            mp = zero(T); mp1 = zero(T); Pp = st2
+        else
+            a, v = _temporal_transition(structure, ψ, g[i])
+            v > 0 || return nothing
+            mp = a * m; mp1 = a * m1; Pp = a * a * P + st2 * v
+            keep && (hist.a[i] = a)
+        end
+        F = Pp + σ2
+        F > 0 || return nothing
+        e = z[i] - mp
+        ldF += log(F); q += e * e / F
+        K = Pp / F
+        m = mp + K * e
+        if with_one
+            e1 = one(T) - mp1
+            c += e1 * e1 / F; d += e1 * e / F
+            m1 = mp1 + K * e1
+        end
+        P = Pp * σ2 / F
+        if keep
+            hist.mf[i] = m; hist.Pf[i] = P; hist.mp[i] = mp; hist.Pp[i] = Pp
+        end
     end
-    return d, e, ldQ
+    return ldF, q, c, d, hist
 end
 
-# Per-series quantities at (σ², σ_t², σ_b² or nothing, ψ): logdet V_s, rᵀV_s⁻¹r
-# and (when `modes`) the conditional temporal effects and intercept mode.
+# Rauch–Tung–Striebel smoother of the filter history: E[s | z] in time order.
+function _temporal_smooth(hist)
+    n = length(hist.mf)
+    ms = copy(hist.mf)
+    for i in (n-1):-1:1
+        Pp = hist.Pp[i+1]
+        J = Pp > 0 ? hist.Pf[i] * hist.a[i+1] / Pp : zero(Pp)
+        ms[i] = hist.mf[i] + J * (ms[i+1] - hist.mp[i+1])
+    end
+    return ms
+end
+
+# Per-series logdet V_s and rᵀV_s⁻¹r at (σ², σ_t², σ_b² or nothing, ψ), and
+# with `modes` the conditional temporal effects and intercept mode.
 function _temporal_series(structure, ψ, σ2, st2, sb2, g, r; modes::Bool = false)
-    pr = _temporal_chain_precision(structure, ψ, g)
-    pr === nothing && return nothing
-    d, e, ldQ = pr
-    ch = _tridiag_chol(σ2 .* d .+ st2, σ2 .* e)
-    ch === nothing && return nothing
-    l, m = ch
-    ldV = 2 * sum(log, l) - ldQ
-    Vr = _tridiag_solve(l, m, _tridiag_mul(d, e, r))        # V_t⁻¹ r
-    quad = dot(r, Vr)
-    k = zero(quad); c = zero(quad); dd = zero(quad)
+    out = _temporal_filter(structure, ψ, σ2, st2, g, r; with_one = sb2 !== nothing)
+    out === nothing && return nothing
+    ldV, quad, c, d, _ = out
+    k = zero(quad)
     if sb2 !== nothing
-        u = _tridiag_solve(l, m, _tridiag_mul(d, e, ones(eltype(d), length(r))))  # V_t⁻¹ 1
-        c = sum(u); dd = dot(u, r)
         den = inv(sb2) + c
         ldV += log1p(sb2 * c)
-        quad -= dd^2 / den
-        k = dd / den
+        quad -= d^2 / den
+        k = d / den
     end
     modes || return ldV, quad
-    teff = st2 .* _tridiag_solve(l, m, r .- k)
-    bmode = sb2 === nothing ? zero(quad) : sb2 * (dd - c * k)
+    sm = _temporal_filter(structure, ψ, σ2, st2, g, r .- k; keep = true)
+    teff = _temporal_smooth(sm[5])
+    bmode = sb2 === nothing ? zero(quad) : sb2 * (d - c * k)
     return ldV, quad, teff, bmode
 end
 
@@ -332,7 +333,9 @@ function _fit_temporal_gaussian(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, tt, lay,
     it = pμ + (has_ordinary ? 3 : 2)
     iψ = it + 1
     np = iψ
-    ψof(θ) = structure === :ar1 ? tanh(θ[iψ]) : exp(θ[iψ])
+    # ψ handed to the kernels: θ itself for AR1 (φ = tanh θ is formed there so
+    # that 1 − φ² = sech²θ is exact), λ = exp θ for OU.
+    ψof(θ) = structure === :ar1 ? θ[iψ] : exp(θ[iψ])
 
     function nll(θ)
         T = eltype(θ)

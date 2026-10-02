@@ -12,6 +12,18 @@ animal
 relmat
 ```
 
+## Temporal random effects (AR1 / OU)
+
+Wave 1 (Gaussian mean, `sigma ~ 1`, ML). The Julia spelling is positional
+because `@formula` cannot carry keyword arguments: drmTMB's
+`temporal(1 | id, time = occ, structure = "ar1")` is
+`temporal(1 | id, occ, ar1)` here (the R bridge accepts drmTMB's spelling).
+
+```@docs
+temporal
+temporal_parameters
+```
+
 ## Known sampling variance (meta-analysis)
 
 ```@docs
