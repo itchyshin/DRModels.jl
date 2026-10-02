@@ -11,6 +11,19 @@
 ##
 ## The input data are the committed CSVs in test/fixtures/temporal/ (see the
 ## README there for where each one comes from).
+##
+## WHEN TO RERUN. The committed numbers come from drmTMB dc81bb368, the head
+## of the then-unmerged drmTMB PR #1447 (stacked on #1446). That commit lives
+## only on an unmerged branch, so once #1446 / #1447 merge, reinstall drmTMB
+## at the MERGED main SHA, rerun this script with that SHA, and confirm the
+## Julia tests still pass (test/test_parity_temporal.jl and, with
+## DRM_PARITY_TESTS=1, test/parity/runparity_temporal.jl). Rerun also after
+## any drmTMB change to the temporal likelihood or its optimiser defaults.
+##
+## For the two article cells (vignette-ar1-ri, vignette-ou-ri) the script also
+## records drmTMB's conditional fitted values, the AR1 Wald intervals of the
+## mean coefficients and the profile interval for mu:treatment, which
+## docs/src/tutorials/temporal-random-effects.md compares against.
 
 suppressPackageStartupMessages(library(drmTMB))
 
@@ -114,6 +127,30 @@ for (cell in cells) {
     "atol_loglik = 1e-8",
     "rtol_par = 1e-6"
   )
+  if (cell$name %in% c("vignette-ar1-ri", "vignette-ou-ri")) {
+    ci_rows <- function(ci) unlist(lapply(seq_len(nrow(ci)), function(i) c(
+      paste0("[[", if (ci$method[i] == "wald") "wald" else "profile", "]]"),
+      paste0("parm = ", toml_string(ci$parm[i])),
+      paste0("lower = ", toml_num(ci$lower[i])),
+      paste0("upper = ", toml_num(ci$upper[i])),
+      paste0("conf_status = ", toml_string(ci$conf.status[i])), "")))
+    lines <- c(lines, "",
+      "# drmTMB fitted() is CONDITIONAL (adds the site and temporal modes);",
+      "# data-row order.",
+      "[conditional]",
+      paste0("fitted = [", paste(vapply(as.numeric(fitted(fit)), toml_num, ""),
+                                 collapse = ", "), "]"), "")
+    if (structure == "ar1") lines <- c(lines, ci_rows(confint(fit, method = "wald")))
+    lines <- c(lines, ci_rows(confint(fit, parm = "mu:treatment", method = "profile")))
+    ## drmTMB's own gate for reporting a temporal mean profile interval: no
+    ## `temporal_mean_profile` WARNING from check_drm() (a "note" is fine).
+    cd <- as.data.frame(check_drm(fit))
+    tmp <- cd[cd$check == "temporal_mean_profile", ]
+    stopifnot(nrow(tmp) == 1L)
+    lines <- c(lines, "[check_drm]",
+      paste0("temporal_mean_profile_status = ", toml_string(tmp$status)),
+      paste0("temporal_mean_profile_value = ", toml_string(tmp$value)), "")
+  }
   meta <- c(
     paste0("drmtmb_version = ", toml_string(as.character(packageVersion("drmTMB")))),
     paste0("drmtmb_sha = ", toml_string(sha)),
