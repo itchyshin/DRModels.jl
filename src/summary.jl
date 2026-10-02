@@ -58,6 +58,8 @@ function _block_title(p::Symbol)
     p === :coi     && return "Conditional-one inflation (logit)"
     p === :cutpoints && return "Cutpoints"
     p === :range   && return "Spatial range (log)"
+    p === :temporal_phi   && return "Temporal AR1 persistence (atanh φ)"
+    p === :temporal_decay && return "Temporal OU decay (log λ)"
     p === :resd    && return "Random-effect SD (log σ_b)"
     p === :sd      && return "RE SD model sd(group) (log σ_b)"
     p === :sd_phylo && return "Phylo SD model sd_phylo(group) (log σ_a)"
@@ -84,6 +86,8 @@ function _block_null_note(p::Symbol)
     p in (:resd, :resid)            && return ("H0: coefficient = 0 on log σ_b",
                                                 "NOT the σ_b = 0 boundary")
     p in (:recov, :phylocov)        && return ("H0: Cholesky entry = 0 (no single interpretable null)",)
+    p === :temporal_phi             && return ("H0: φ = 0 (atanh scale)",)
+    p === :temporal_decay           && return ("H0: log λ = 0 ⇔ λ = 1 (depends on the time unit)",)
     return ()
 end
 

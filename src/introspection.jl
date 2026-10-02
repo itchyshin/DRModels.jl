@@ -21,7 +21,8 @@ Runs no optimisation: it walks the fitted object. One row per coefficient with
 - `param` — its block (`:mu`, `:sigma`, `:resd`, …);
 - `index` — its position in `fit.theta`;
 - `estimate` — the fitted value **on the estimation scale**;
-- `scale` — `:log` for a variance-component / scale coefficient, `:identity` otherwise;
+- `scale` — `:log` for a variance-component / scale coefficient (and the
+  temporal OU decay), `:atanh` for the temporal AR1 persistence, `:identity` otherwise;
 - `profile_ready` — whether a profile interval can actually be computed here;
 - `profile_note` — why, when it cannot.
 
@@ -75,7 +76,8 @@ end
 # Which coefficients live on a log scale in `theta`. The variance-component and
 # residual-scale blocks are stored as logs; mean coefficients are not.
 _profile_target_scale(param::Symbol) =
-    param in (:sigma, :resd, :resd_mu, :resd_sigma, :recov, :sd, :sd_phylo) ? :log : :identity
+    param in (:sigma, :resd, :resd_mu, :resd_sigma, :recov, :sd, :sd_phylo, :temporal_decay) ? :log :
+    param === :temporal_phi ? :atanh : :identity
 
 """
     structured_effects(fit::DrmFit) -> Vector{NamedTuple}
@@ -83,7 +85,7 @@ _profile_target_scale(param::Symbol) =
 One row per **structured marker** in the fitted formula — drmTMB's
 `structured_effects()`. Fields `dpar`, `kind`, `grouping`.
 
-`kind` is the marker (`:phylo`, `:relmat`, `:animal`, `:spatial`), `grouping` the
+`kind` is the marker (`:phylo`, `:relmat`, `:animal`, `:spatial`, `:temporal`), `grouping` the
 factor it wraps, and `dpar` the distributional parameter whose formula carried
 it. Exists so downstream code never has to grep or re-parse formula text.
 
@@ -107,6 +109,9 @@ function structured_effects(fit::DrmFit)
     for (dpar, rhs) in forms
         for (kind, grp) in _collect_structured(rhs)
             push!(rows, (dpar = dpar, kind = kind, grouping = grp))
+        end
+        for tt in _collect_temporal(rhs)
+            push!(rows, (dpar = dpar, kind = :temporal, grouping = tt.group))
         end
     end
     return rows
