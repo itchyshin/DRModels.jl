@@ -200,6 +200,35 @@ using Test, Random, LinearAlgebra, StableRNGs, Statistics, Logging
         @test sprint(show, MIME("text/plain"), fit) isa String
         pr = confint(fit; method = :profile, parm = :mu => "x")
         @test only(pr).lower < coef(fit, :mu)[2] < only(pr).upper
+        # drmTMB #1449 scope: mean-coefficient PROFILES only. Wald covariance and
+        # intervals, and profiles of σ or the lag correlations, are refused.
+        ae = ArgumentError
+        werr = try vcov(fit); "" catch e; e.msg end
+        @test occursin("Wald coefficient covariance is unavailable", werr)
+        @test_throws ae stderror(fit)
+        @test_throws ae confint(fit)                               # Wald
+        @test_throws ae confint(fit; parm = :mu)
+        @test_throws ae predict(fit, d; se = true)
+        perr = try confint(fit; method = :profile, parm = :sigma); "" catch e; e.msg end
+        @test occursin("mean regression coefficients only", perr)
+        @test_throws ae confint(fit; method = :profile, parm = :temporal_pac)
+        @test_throws ae profile_result(fit; parm = :temporal_pac)
+        allmu = confint(fit; method = :profile)                    # default: the mean block
+        @test length(allmu) == 2 && all(r -> r.param === :mu, allmu)
+        tg = profile_targets(fit)
+        @test all(r -> r.profile_ready == (r.param === :mu), tg)
+        @test all(r -> r.profile_note == "temporal_homtoep_nonmean_intervals_deferred",
+                  filter(r -> r.param !== :mu, tg))
+        ct = coeftable(fit)
+        @test all(isnan, ct.cols[2])                               # SEs withheld
+        @test occursin("Wald SEs withheld", sprint(show, MIME("text/plain"), fit))
+        # whitened residuals = L⁻¹ r per series, L = chol(σ²R) (drmTMB's Pearson)
+        ρ = [1.0; tp.cor]; Lc = cholesky(Symmetric(tp.sigma^2 .* toep(ρ))).L
+        rq = residuals(fit; type = :quantile); rr = residuals(fit)
+        for s in unique(d.id)
+            rows = findall(==(s), d.id); rows = rows[sortperm(d.occ[rows])]
+            @test rq[rows] ≈ Lc \ rr[rows] atol = 1e-10
+        end
         # temporal_parameters of a wave-1 fit carries `cor = pac = nothing`
         fa = drm(bf(@formula(y ~ x + temporal(1 | id, occ, ar1)), @formula(sigma ~ 1)), Gaussian(); data = d)
         @test temporal_parameters(fa).cor === nothing && temporal_parameters(fa).pac === nothing
@@ -245,8 +274,8 @@ using Test, Random, LinearAlgebra, StableRNGs, Statistics, Logging
         @test occursin("at least as many series as occasions", msg(fT, few))
         @test drm(fT, Gaussian(); data = sim_data(StableRNG(52); S = 6)) isa DrmFit   # S = K is allowed
         @test occursin("must be finite integers", msg(fT, merge(d, (occ = d.occ .+ 0.5,))))
-        @test occursin("does not allow an ordinary", msg(bf(@formula(y ~ x + (1 | id) +
-            temporal(1 | id, occ, homtoep)), @formula(sigma ~ 1)), d))
+        oerr = msg(bf(@formula(y ~ x + (1 | id) + temporal(1 | id, occ, homtoep)), @formula(sigma ~ 1)), d)
+        @test occursin("does not allow an ordinary", oerr) && !occursin("(1 | id)", oerr)
         dup = map(c -> [c; c[1]], d)
         @test occursin("must be unique", msg(fT, dup))
         @test_throws ArgumentError drm(fT, Gaussian(); data = d, method = :REML)
@@ -260,6 +289,40 @@ using Test, Random, LinearAlgebra, StableRNGs, Statistics, Logging
                                           @formula(sigma ~ 1)), Gaussian(); data = d)
     end
 
+    # drmTMB: id / time are validated on all rows, the missing-response rows are
+    # dropped, and the panel rules then apply to the retained rows (checked
+    # against drmTMB #1449 head 90c740791 on Totoro, 2026-10-02).
+    @testset "missing responses (drmTMB's response omission)" begin
+        raw = readlines(joinpath(@__DIR__, "fixtures", "temporal", "homtoep_panel6.csv"))
+        h = split(raw[1], ','); r = split.(raw[2:end], ',')
+        col(n) = getindex.(r, findfirst(==(n), h))
+        d = (y = Union{Missing,Float64}[parse(Float64, v) for v in col("y")],
+             x = parse.(Float64, col("x")), id = String.(col("id")), occ = parse.(Int, col("occ")))
+        msg(data) = try
+            with_logger(NullLogger()) do; drm(fT, Gaussian(); data = data); end; ""
+        catch e
+            e isa ArgumentError ? e.msg : rethrow()
+        end
+        one = merge(d, (y = [i == 1 ? missing : v for (i, v) in enumerate(d.y)],))
+        @test occursin("complete retained schedule", msg(one))
+        @test occursin(d.id[1], msg(one))
+        # occasion 5 missing for every site: fits on occasions 0–4 (K = 5);
+        # drmTMB logLik −213.499788672539
+        last = merge(d, (y = [o == 5 ? missing : v for (o, v) in zip(d.occ, d.y)],))
+        fit = @test_logs (:warn, r"missing response") match_mode = :any drm(fT, Gaussian(); data = last)
+        @test nobs(fit) == 200 && length(temporal_parameters(fit).cor) == 4
+        @test loglik(fit) ≈ -213.499788672539 atol = 1e-8
+        keep = d.occ .!= 5
+        sub = (y = Float64.(d.y[keep]), x = d.x[keep], id = d.id[keep], occ = d.occ[keep])
+        @test loglik(fit) ≈ loglik(drm(fT, Gaussian(); data = sub)) atol = 1e-10
+        # occasion 2 missing for every site: 0, 1, 3, 4, 5 is not equally spaced
+        mid = merge(d, (y = [o == 2 ? missing : v for (o, v) in zip(d.occ, d.y)],))
+        @test occursin("equally spaced", msg(mid))
+        # duplicate keys are refused even when the duplicate's response is missing
+        dup = (y = [d.y; missing], x = [d.x; 0.0], id = [d.id; d.id[1]], occ = [d.occ; d.occ[1]])
+        @test occursin("must be unique", msg(dup))
+    end
+
     @testset "R bridge spelling (drmTMB keyword form)" begin
         bt = DRModels._bridge_temporal_expr
         @test bt(Meta.parse("temporal(1 | id, time = occ, structure = \"homtoep\")")) ==
@@ -269,5 +332,6 @@ using Test, Random, LinearAlgebra, StableRNGs, Statistics, Logging
         out = drm_bridge(; formula = "y ~ x + temporal(1 | id, time = occ, structure = \"homtoep\"); sigma ~ 1",
                          family = "gaussian", data = d)
         @test out["loglik"] ≈ loglik(drm(fT, Gaussian(); data = d)) atol = 1e-8
+        @test all(isnan, out["vcov"])                  # Wald covariance withheld, as drmTMB
     end
 end

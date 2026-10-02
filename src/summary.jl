@@ -210,12 +210,14 @@ Extends `StatsAPI.dof_residual`.
 dof_residual(fit::DrmFit) = nobs(fit) - dof(fit)
 
 function Base.show(io::IO, ::MIME"text/plain", fit::DrmFit)
-    se = stderror(fit)
+    se = _display_se(fit)
     fam = _family_name(fit.family)
     println(io, "Distributional regression fit (", fam, ")")
     println(io, "  nobs = ", fit.nobs,
                 "   logLik = ", @sprintf("%.4f", fit.loglik),
                 "   converged = ", fit.converged)
+    _wald_withheld(fit) && println(io, "  Wald SEs withheld (homogeneous Toeplitz, as drmTMB): `sigma` is the " *
+        "TOTAL within-series SD; use profile intervals for mean coefficients.")
 
     # Residual SD on the RESPONSE scale + residual dof (issue #752). An R user
     # looks for these first: lm() prints both and drmTMB prints sigma. The value
@@ -312,7 +314,7 @@ those blocks are still reported. A boundary / singular direction (Inf SE) also
 reports `NaN` z / p rather than a spurious `z = 0, p = 1`.
 """
 function coeftable(fit::DrmFit; level::Real = 0.95)
-    se = stderror(fit)
+    se = _display_se(fit)
     z = quantile(Normal(), 1 - (1 - level) / 2)
     est = Float64[]; ses = Float64[]; zs = Float64[]; ps = Float64[]
     lo = Float64[]; hi = Float64[]; rownms = String[]

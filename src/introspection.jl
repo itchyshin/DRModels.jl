@@ -65,6 +65,11 @@ function profile_targets(fit::DrmFit; ready_only::Bool = false)
         else
             (true, note)
         end
+        # homtoep (drmTMB #1449): mean-coefficient profiles only; σ and the
+        # lag-correlation (PAC) intervals are deferred, as in drmTMB.
+        if _wald_withheld(fit) && j.param !== :mu
+            ready, why = (false, "temporal_homtoep_nonmean_intervals_deferred")
+        end
         ready_only && !ready && continue
         push!(rows, (parm = j.coef, param = j.param, index = j.k,
                      estimate = fit.theta[j.k],

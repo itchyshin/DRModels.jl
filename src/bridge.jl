@@ -1628,7 +1628,9 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
         labels::Union{Nothing,_BridgeFormulaLabels} = nothing, coef_labels = nothing)
     cnames, cvals, raw_cnames, public_to_raw =
         _bridge_coef_vector(fit; labels = labels, coef_labels = coef_labels)
-    V = Matrix{Float64}(vcov(fit))
+    # homtoep withholds Wald covariance (as drmTMB); the bridge ships NaN.
+    V = _wald_withheld(fit) ? fill(NaN, length(fit.theta), length(fit.theta)) :
+        Matrix{Float64}(vcov(fit))
     _bridge_validate_coordinate_axes(fit.blocks, fit.coefnames, length(cvals), V)
     fitted_vals, residual_vals = _bridge_fitted_marginal(fit)
     out = Dict{String,Any}(

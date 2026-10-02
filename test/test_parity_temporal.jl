@@ -17,6 +17,7 @@ module TestParityTemporal
 using DRModels
 using Test
 using TOML
+using Logging
 
 include(joinpath(@__DIR__, "parity", "temporal_parity.jl"))
 
@@ -64,6 +65,22 @@ include(joinpath(@__DIR__, "parity", "temporal_parity.jl"))
                 ref = Float64.(ex["conditional"]["fitted"])
                 @test length(ref) == length(cond)
                 @test maximum(abs.(cond .- ref)) <= 1e-6
+            end
+            # homtoep cells: drmTMB's Pearson residuals are the Levinson-whitened
+            # L⁻¹ r; DRModels' `residuals(fit; type = :quantile)` is the same.
+            if haskey(ex, "residuals")
+                ref = Float64.(ex["residuals"]["pearson"])
+                @test maximum(abs.(residuals(fit; type = :quantile) .- ref)) <= 1e-6
+            end
+            # drmTMB's mean-coefficient profile intervals (article cells and the
+            # homtoep cells). Each package locates the endpoints with its own
+            # root search; measured agreement is ~1e-6, enforced at 5e-6.
+            for pr in get(ex, "profile", Any[])
+                cname = replace(pr["parm"], "fixef:mu:" => "")
+                ci = only(with_logger(NullLogger()) do
+                    confint(fit; method = :profile, parm = :mu => cname)
+                end)
+                @test max(abs(ci.lower - pr["lower"]), abs(ci.upper - pr["upper"])) <= 5e-6
             end
         end
     end

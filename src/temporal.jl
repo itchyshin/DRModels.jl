@@ -214,7 +214,8 @@ end
 # Series layout and drmTMB's data checks. Returns the row indices of each series
 # (sorted by time, ties broken by row), the per-row gap to the previous occasion
 # of the same series (0 for a series' first row), and the series levels.
-function _temporal_layout(tt, data; has_ordinary::Bool, paired::Bool = false)
+function _temporal_layout(tt, data; has_ordinary::Bool, paired::Bool = false,
+                          validate_only::Bool = false)
     sname = uppercase(String(tt.structure))
     discrete = tt.structure in (:ar1, :homtoep)       # integer occasions
     col(nm) = try
@@ -268,6 +269,10 @@ function _temporal_layout(tt, data; has_ordinary::Bool, paired::Bool = false)
         throw(ArgumentError("drm: Temporal $sname series-time keys must be unique: $ndup " *
             "duplicated `($(tt.group), $(tt.time))` key(s) found. Use one response per series " *
             "and occasion, or aggregate the data before fitting."))
+    # drmTMB validates id / time completeness, type and key uniqueness on ALL
+    # rows "before response omission"; the structural rules below then see only
+    # the retained rows (the homtoep missing-response path calls this twice).
+    validate_only && return nothing
     # Homogeneous Toeplitz (wave 2): drmTMB's panel rules — 3 to 12 common,
     # equally spaced occasions, every series observing all of them.
     occasions = nothing
@@ -895,13 +900,27 @@ function _drm_gaussian_temporal(f, fam::Gaussian, tt, re, metav, structured, sig
     penalty === nothing || nope("`penalty`")
     phylo_coupled && nope("`phylo_coupled = true`")
     (sparse === nothing || sparse === false) || nope("`sparse = $sparse`")
+    # Missing responses: the homtoep route mirrors drmTMB (validate id / time on
+    # all rows, drop the missing-response rows, then apply the panel rules to the
+    # retained rows). The other temporal routes still refuse them.
+    if has_missing_response && tt.structure === :homtoep
+        _temporal_layout(tt, data; has_ordinary = false, validate_only = true)
+        keep = _observed_response_mask(y)
+        @warn "drm: $(count(!, keep)) of $(length(keep)) rows have a missing response and were " *
+              "dropped before the homogeneous Toeplitz panel rules were applied (drmTMB's response " *
+              "omission); a series that loses an occasion is then incomplete and is refused."
+        y = Float64.(y[keep]); Xμ = Xμ[keep, :]; Xσ = Xσ[keep, :]
+        data = NamedTuple{(tt.group, tt.time)}((_table_column(data, tt.group)[keep],
+                                                _table_column(data, tt.time)[keep]))
+        has_missing_response = false
+    end
     has_missing_response && nope("missing responses (drop the missing-response rows before " *
         "calling `drm`, e.g. with `drm_listwise`)")
     has_ordinary = false
     tt.structure === :homtoep && !isempty(re) &&
         throw(ArgumentError("drm: Temporal HOMTOEP currently does not allow an ordinary random " *
-            "intercept: with every lag correlation free, `(1 | $(tt.group))` is not identified " *
-            "separately from the Toeplitz covariance. Fit the direct temporal process alone."))
+            "intercept. Fit the direct temporal process alone while the first Toeplitz provider " *
+            "is validated."))
     if !isempty(re)
         length(re) == 1 || nope("more than one ordinary random effect")
         rl, g = re[1]
@@ -1133,4 +1152,54 @@ function _homtoep_simulate(fit::DrmFit, info, rng)
         y[rows] .+= x
     end
     return y
+end
+
+# --- homtoep inference scope (drmTMB #1449: validate_temporal_wald_parm,
+# vcov.drmTMB, validate_temporal_profile_parm) --------------------------------
+# drmTMB qualifies mean-coefficient likelihood PROFILES for homtoep in its
+# retained primary panel cells and withholds everything else: Wald covariance
+# and intervals, and profiles of σ or the lag correlations. DRModels.jl keeps
+# the Hessian internally (profile step sizes, `check_drm`) but refuses the same
+# public surfaces and prints `NaN` standard errors in `coeftable` / `show`.
+_wald_withheld(fit) = _is_temporal_fit(fit) && fit.ranef.temporal.structure === :homtoep
+
+const _HOMTOEP_WALD_MSG = "Homogeneous Toeplitz Wald coefficient covariance is unavailable: " *
+    "mean-coefficient likelihood profiles are qualified in drmTMB's retained primary panel " *
+    "cells; Wald covariance and intervals remain deferred. Use " *
+    "`confint(fit; method = :profile, parm = :mu => \"x\")`."
+
+_homtoep_refuse_wald(what) = throw(ArgumentError("$what: " * _HOMTOEP_WALD_MSG))
+
+# Profile targets on a homtoep fit: the mean coefficients only. `parm = nothing`
+# selects them all (drmTMB's default); any other requested block is refused.
+function _homtoep_profile_parm(fit, parm)
+    parm === nothing && return :mu
+    bad = unique([j.param for j in _profile_jobs(fit, parm) if j.param !== :mu])
+    isempty(bad) ||
+        throw(ArgumentError("confint/profile: Temporal HOMTOEP profile intervals currently support " *
+            "mean regression coefficients only; unsupported target block(s) " *
+            "$(join(string.(':', bad), ", ")). Use `parm = :mu` or `parm = :mu => \"x\"`. Scale " *
+            "and lag-correlation intervals remain deferred (as in drmTMB)."))
+    return parm
+end
+
+# Whitened residuals of a homtoep fit: per series, e_t / (σ √v_{t−1}) from the
+# Durbin–Levinson predictor — L⁻¹ r with L the Cholesky factor of σ²R, which
+# drmTMB returns as its Pearson residuals (`temporal_homtoep_marginal_whiten`).
+function _homtoep_whiten(fit::DrmFit)
+    info = fit.ranef.temporal
+    Φ, logv = _homtoep_levinson(coef(fit, :temporal_pac))
+    σ = exp(only(coef(fit, :sigma)))
+    r = fit.obs[:mu] .- fit.means[:mu]
+    out = similar(r)
+    for rows in info.rows
+        for (t, i) in enumerate(rows)
+            e = r[i]
+            for j in 1:(t-1)
+                e -= Φ[t-1, j] * r[rows[t-j]]
+            end
+            out[i] = e / (σ * exp(logv[t] / 2))
+        end
+    end
+    return out
 end

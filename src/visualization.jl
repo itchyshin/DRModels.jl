@@ -46,7 +46,7 @@ function profile_curve(
     nllhat = nll(θ̂)
     isfinite(nllhat) || throw(ArgumentError("profile_curve: fitted objective is non-finite"))
     autodiff = _profile_autodiff_mode(nll, nllgrad, θ̂)
-    se = stderror(fit)
+    se = _stderror(fit)
     s = (isfinite(se[k]) && se[k] > 0) ? se[k] : max(abs(θ̂[k]), 1.0)
     offsets = collect(range(-span, span; length=npoints))
     offsets[argmin(abs.(offsets))] = 0.0
@@ -122,7 +122,7 @@ function parameter_surface(fit::DrmFit, k1::Int, k2::Int; npoints::Int=25, span:
     nllhat = nll(θ̂)
     isfinite(nllhat) || throw(ArgumentError("parameter_surface: fitted objective is non-finite"))
     autodiff = _profile_autodiff_mode(nll, nllgrad, θ̂)
-    se = stderror(fit)
+    se = _stderror(fit)
     s1 = (isfinite(se[k1]) && se[k1] > 0) ? se[k1] : max(abs(θ̂[k1]), 1.0)
     s2 = (isfinite(se[k2]) && se[k2] > 0) ? se[k2] : max(abs(θ̂[k2]), 1.0)
     x = range(θ̂[k1] - span * s1, θ̂[k1] + span * s1; length=npoints)
