@@ -64,6 +64,10 @@
 # ordinary `(1 | species)`, ≥ 3 species, each with ≥ 2 times, ≥ 3 distinct
 # positive lags, tree tips exactly the observed species.
 #
+# WAVE 2 also adds `homtoep` (drmTMB branch `codex/temporal-homtoep-v1-20260910`,
+# semantics only): a free Toeplitz covariance on a complete equally spaced
+# panel; see "homogeneous Toeplitz" below.
+#
 # CLAIM BOUNDARY (wave 1, owner decision D-310): Gaussian family, the mean
 # formula only, one unlabelled intercept `temporal(1 | id, …)`, `sigma ~ 1`,
 # ML, at most one ordinary `(1 | id)` on the SAME id (as drmTMB). Everything
@@ -77,7 +81,8 @@
 
 Temporal random-intercept marker on the Gaussian **mean**: a stationary AR1
 (`ar1`) or Ornstein–Uhlenbeck (`ou`) process within each series `id`, indexed
-by the column `time`.
+by the column `time`, or a homogeneous Toeplitz (`homtoep`) within-series
+covariance on a complete, equally spaced panel.
 
 ```julia
 drm(bf(@formula(y ~ x + temporal(1 | id, occ, ar1)), @formula(sigma ~ 1)),
@@ -144,12 +149,24 @@ rows). As in drmTMB the pairing needs `ou`, an unlabelled intercept-only
 species with at least two times each, at least three distinct positive lags,
 and tree tips that are exactly the observed species. `simulate` draws a fresh
 phylogenetic vector, fresh OU paths and fresh noise.
+
+**Homogeneous Toeplitz (wave 2).** `temporal(1 | id, occ, homtoep)` (drmTMB
+`structure = "homtoep"`) needs every `id` observed at the same 3–12 equally
+spaced integer occasions. Each series' responses then have covariance `σ² R`,
+`R` a free positive-definite Toeplitz correlation matrix (one correlation per
+lag, `temporal_parameters(fit).cor`, drmTMB `cor_lag1…`), estimated through its
+partial autocorrelations (`coef(fit, :temporal_pac)`, atanh scale). `sigma` is
+the TOTAL within-series SD: as in drmTMB there is no separate process SD,
+residual SD or `(1 | id)` (not identified when every lag is free), and no
+latent states (`ranef(fit)` is empty). Incomplete or unequally spaced panels,
+fewer than 3 or more than 12 occasions, fractional occasions and an ordinary
+`(1 | id)` are refused with drmTMB's messages.
 """
 temporal(x...) = x   # marker; intercepted during formula parsing
 
-const _TEMPORAL_SPELLING = "Use `temporal(1 | id, occ, ar1)` or `temporal(1 | id, elapsed, ou)` " *
-    "(drmTMB: `temporal(1 | id, time = occ, structure = \"ar1\")`; StatsModels' `@formula` " *
-    "cannot carry keyword arguments, so the Julia spelling is positional)."
+const _TEMPORAL_SPELLING = "Use `temporal(1 | id, occ, ar1)`, `temporal(1 | id, elapsed, ou)` or " *
+    "`temporal(1 | id, occ, homtoep)` (drmTMB: `temporal(1 | id, time = occ, structure = \"ar1\")`; " *
+    "StatsModels' `@formula` cannot carry keyword arguments, so the Julia spelling is positional)."
 
 const _TEMPORAL_SCOPE = "temporal() is implemented only for the univariate Gaussian MEAN formula " *
     "(`y ~ … + temporal(1 | id, time, ar1|ou)` with `sigma ~ 1`, ML) in this release"
@@ -179,8 +196,8 @@ function _parse_temporal_term(t)
     tm isa Term ||
         throw(ArgumentError("drm: the time argument of `temporal()` must name an occasion " *
             "column. " * _TEMPORAL_SPELLING))
-    (st isa Term && st.sym in (:ar1, :ou)) ||
-        throw(ArgumentError("drm: the structure of `temporal()` must be `ar1` or `ou`. " *
+    (st isa Term && st.sym in (:ar1, :ou, :homtoep)) ||
+        throw(ArgumentError("drm: the structure of `temporal()` must be `ar1`, `ou` or `homtoep`. " *
             _TEMPORAL_SPELLING))
     return (group = grp.sym, time = tm.sym, structure = st.sym)
 end
@@ -198,7 +215,8 @@ end
 # (sorted by time, ties broken by row), the per-row gap to the previous occasion
 # of the same series (0 for a series' first row), and the series levels.
 function _temporal_layout(tt, data; has_ordinary::Bool, paired::Bool = false)
-    sname = tt.structure === :ar1 ? "AR1" : "OU"
+    sname = uppercase(String(tt.structure))
+    discrete = tt.structure in (:ar1, :homtoep)       # integer occasions
     col(nm) = try
         _table_column(data, nm)
     catch
@@ -219,13 +237,17 @@ function _temporal_layout(tt, data; has_ordinary::Bool, paired::Bool = false)
     all(isfinite, tv) ||
         throw(ArgumentError("drm: Temporal inputs must be finite numeric values; `$(tt.time)` " *
             "contains a non-finite value."))
-    tt.structure === :ar1 && any(v -> abs(v) >= 2.0^53, tv) &&
-        throw(ArgumentError("drm: Temporal AR1 occasions must be integers of magnitude below " *
+    discrete && any(v -> abs(v) >= 2.0^53, tv) &&
+        throw(ArgumentError("drm: Temporal $sname occasions must be integers of magnitude below " *
             "2^53 (exactly representable); recode `$(tt.time)` relative to an origin."))
     tt.structure === :ar1 && any(v -> v != round(v), tv) &&
         throw(ArgumentError("drm: Temporal AR1 occasions must be finite integers; `$(tt.time)` " *
             "cannot be fractional for `ar1`. Use the original integer sampling occasion (its " *
             "gaps are part of the AR1 model), or `ou` for elapsed time."))
+    tt.structure === :homtoep && any(v -> v != round(v), tv) &&
+        throw(ArgumentError("drm: Temporal HOMTOEP occasions must be finite integers; " *
+            "`$(tt.time)` cannot be fractional for `homtoep`. Use an integer occasion; " *
+            "homogeneous Toeplitz is defined by discrete lag."))
     gidx, S = _group_index(ids)
     rows = [Int[] for _ in 1:S]
     for i in 1:n
@@ -246,6 +268,31 @@ function _temporal_layout(tt, data; has_ordinary::Bool, paired::Bool = false)
         throw(ArgumentError("drm: Temporal $sname series-time keys must be unique: $ndup " *
             "duplicated `($(tt.group), $(tt.time))` key(s) found. Use one response per series " *
             "and occasion, or aggregate the data before fitting."))
+    # Homogeneous Toeplitz (wave 2): drmTMB's panel rules — 3 to 12 common,
+    # equally spaced occasions, every series observing all of them.
+    occasions = nothing
+    if tt.structure === :homtoep
+        occasions = sort(unique(tv))
+        K = length(occasions)
+        K <= 12 ||
+            throw(ArgumentError("drm: Temporal HOMTOEP supports at most 12 common occasions; found " *
+                "$K distinct retained occasions. Use AR1 or OU for a longer time series, or " *
+                "predeclare a coarser common schedule."))
+        K >= 3 ||
+            throw(ArgumentError("drm: Temporal HOMTOEP needs at least three common occasions; found " *
+                "$K retained occasions. Use AR1 or OU when the design has fewer than three " *
+                "repeated occasions."))
+        length(unique(diff(occasions))) == 1 ||
+            throw(ArgumentError("drm: Temporal HOMTOEP occasions must be equally spaced; retained " *
+                "occasions are $(occasions). Use OU for irregular elapsed time."))
+        incomplete = [s for s in 1:S if tv[rows[s]] != occasions]
+        isempty(incomplete) ||
+            throw(ArgumentError("drm: Temporal HOMTOEP requires every ID to retain the complete " *
+                "retained schedule; incomplete series: " *
+                "$(join(string.(unique(ids)[incomplete[1:min(end, 10)]]), ", "))" *
+                (length(incomplete) > 10 ? ", … ($(length(incomplete)) in all)" : "") *
+                ". Use OU or AR1 for incomplete repeated records, or retain a common complete panel."))
+    end
     # Paired phylo() + OU (wave 2): drmTMB's support checks for the stable
     # between-species field — at least three species, each with at least two
     # distinct times (keys are unique, so two rows) — before the lag check.
@@ -297,7 +344,8 @@ function _temporal_layout(tt, data; has_ordinary::Bool, paired::Bool = false)
         throw(ArgumentError("drm: a temporal $sname model with an ordinary random intercept " *
             "requires multiple series; fit the temporal process without `(1 | $(tt.group))` " *
             "for one series, or provide observations from at least two ids."))
-    return (rows = rows, gap = gap, nseries = S, gidx = gidx, levels = unique(ids))
+    return (rows = rows, gap = gap, nseries = S, gidx = gidx, levels = unique(ids),
+            occasions = occasions)
 end
 
 using Statistics: var, median
@@ -508,6 +556,137 @@ function _temporal_phylo_draw(plan, σa, rng)
     return σa .* x[plan.leaf] ./ sqrt.(plan.h)
 end
 
+# --- homogeneous Toeplitz (wave 2) -----------------------------------------
+#
+# `temporal(1 | id, occ, homtoep)`: every series observes the same K (3–12)
+# equally spaced occasions, and its K responses have covariance σ² R with R a
+# free positive-definite Toeplitz CORRELATION matrix, R_{ij} = ρ_{|i−j|}. σ is
+# the TOTAL within-series SD (`sigma`): with one response per series–occasion,
+# a separate process SD, residual SD or `(1 | id)` would not be identified
+# when every lag correlation is free (drmTMB's decision, mirrored), so there
+# are none. R is parameterised by its partial autocorrelations
+# π_m = tanh κ_m ∈ (−1, 1), m = 1…K−1, which map one-to-one onto the
+# positive-definite Toeplitz correlation matrices (Durbin–Levinson).
+#
+# Engine: the Durbin–Levinson recursion gives the order-m one-step predictor
+# coefficients φ_{m,j} (φ_{m,m} = π_m, φ_{m,j} = φ_{m−1,j} − π_m φ_{m−1,m−j})
+# and innovation variances v_m = Π_{j≤m} (1 − π_j²), so with
+# e_t = r_t − Σ_{j<t} φ_{t−1,j} r_{t−j}
+#     logdet(σ²R) = Σ_t [log σ² + log v_{t−1}],  rᵀ(σ²R)⁻¹r = Σ_t e_t² / (σ² v_{t−1}).
+# That is the exact Cholesky (innovations) factorisation of R⁻¹, O(K²) per
+# series; log v is a sum of −2 log cosh κ_j, formed without the 1 − tanh²
+# cancellation, so it stays accurate as |π| → 1. Lag correlations follow from
+# ρ_m = Σ_{j<m} φ_{m−1,j} ρ_{m−j} + π_m v_{m−1}.
+
+# −2 log cosh κ = log(1 − tanh² κ), cancellation-free for any κ.
+@inline _log1m_tanh2(κ) = (a = abs(κ); -2 * (a + log1p(exp(-2a)) - log(one(a) + one(a))))
+
+# Predictor coefficients (K−1 rows, row m holds φ_{m,1..m}) and log v_0…v_{K−1}.
+function _homtoep_levinson(κ)
+    T = eltype(κ)
+    K = length(κ) + 1
+    Φ = zeros(T, K - 1, K - 1)
+    logv = zeros(T, K)
+    for m in 1:(K-1)
+        pac = tanh(κ[m])
+        Φ[m, m] = pac
+        for j in 1:(m-1)
+            Φ[m, j] = Φ[m-1, j] - pac * Φ[m-1, m-j]
+        end
+        logv[m+1] = logv[m] + _log1m_tanh2(κ[m])
+    end
+    return Φ, logv
+end
+
+# Lag correlations ρ_1…ρ_{K−1} of the Toeplitz matrix with PACs tanh κ.
+function _homtoep_correlations(κ)
+    Φ, logv = _homtoep_levinson(κ)
+    K = length(κ) + 1
+    ρ = zeros(eltype(Φ), K)
+    ρ[1] = 1
+    for m in 1:(K-1)
+        acc = Φ[m, m] * exp(logv[m])
+        for j in 1:(m-1)
+            acc += Φ[m-1, j] * ρ[m-j+1]
+        end
+        ρ[m+1] = acc
+    end
+    return ρ[2:end]
+end
+
+# −2 log-likelihood contribution of one complete series r (occasion order),
+# without the 2π constant.
+function _homtoep_series(Φ, logv, logσ2, r)
+    K = length(r)
+    T = promote_type(eltype(Φ), typeof(logσ2), eltype(r))
+    tot = zero(T)
+    for t in 1:K
+        e = r[t]
+        for j in 1:(t-1)
+            e -= Φ[t-1, j] * r[t-j]
+        end
+        lv = logσ2 + logv[t]
+        tot += lv + e^2 * exp(-lv)
+    end
+    return tot
+end
+
+# θ = [βμ; log σ; κ_1 … κ_{K−1}]
+function _fit_temporal_homtoep(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, tt, lay, g_tol)
+    n = length(y)
+    pμ = size(Xμ, 2)
+    size(Xσ, 2) == 1 || error("drm: internal — temporal route needs `sigma ~ 1`")
+    K = length(lay.occasions)
+    S = lay.nseries
+    grows = lay.rows                                   # each in occasion order
+    iσ = pμ + 1
+    iκ = (pμ + 2):(pμ + K)
+    np = pμ + K
+
+    function nll(θ)
+        T = eltype(θ)
+        r = y .- Xμ * θ[1:pμ]
+        Φ, logv = _homtoep_levinson(θ[iκ])
+        logσ2 = 2 * θ[iσ]
+        total = zero(T)
+        for s in 1:S
+            total += _homtoep_series(Φ, logv, logσ2, view(r, grows[s]))
+        end
+        isfinite(total) || return convert(T, 1e18)
+        return 0.5 * total + 0.5 * n * log(2π)
+    end
+
+    # Starts: OLS β, the residual SD as the total SD, and PACs atanh(0.3) (as
+    # drmTMB) or 0 (independence), keeping the lower objective.
+    βμ0 = Xμ \ y
+    v0 = var(y .- Xμ * βμ0)
+    (isfinite(v0) && v0 > 0) || (v0 = 1.0)
+    best = nothing
+    for κ0 in (atanh(0.3), 0.0)
+        θ0 = zeros(np)
+        θ0[1:pμ] .= βμ0
+        θ0[iσ] = log(sqrt(v0))
+        θ0[iκ] .= κ0
+        res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+        (best === nothing || Optim.minimum(res) < Optim.minimum(best)) && (best = res)
+    end
+    θ̂ = Optim.minimizer(best)
+    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+
+    blocks = [:mu => 1:pμ, :sigma => iσ:iσ, :temporal_pac => iκ]
+    names = [:mu => nmμ, :sigma => nmσ, :temporal_pac => ["pac_lag$(m)" for m in 1:(K-1)]]
+    means = Dict(:mu => Xμ * θ̂[1:pμ])
+    obs = Dict(:mu => Vector{Float64}(y))
+    scales = Dict(:sigma => fill(exp(θ̂[iσ]), n))
+    info = (label = _temporal_label(tt), structure = :homtoep, group = tt.group,
+            time = tt.time, nseries = S, rows = grows, gaps = [lay.gap[r] for r in grows],
+            has_ordinary = false, phylo = nothing, levels = lay.levels,
+            occasions = lay.occasions)
+    fit = DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(best), means, obs, scales)
+    # No latent temporal states: the Toeplitz block IS the marginal covariance.
+    return _withranef(_withnll(fit, nll), (effects = Dict{Symbol,Vector{Float64}}(), temporal = info))
+end
+
 # θ = [βμ; log σ; (log σ_b | log σ_a); log σ_t; θ_temporal]. `phylo` is the
 # tree plan of a paired phylo() + OU fit (wave 2), else `nothing`; its stable
 # SD σ_a takes the slot of the ordinary intercept SD σ_b (the two are never
@@ -643,7 +822,7 @@ function _fit_temporal_gaussian(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, tt, lay,
     has_stable && (effects[Symbol(stable_name)] = bmodes)
     info = (label = _temporal_label(tt), structure = structure, group = tt.group,
             time = tt.time, nseries = S, rows = grows, gaps = ggap,
-            has_ordinary = has_ordinary, phylo = phylo, levels = lay.levels)
+            has_ordinary = has_ordinary, phylo = phylo, levels = lay.levels, occasions = nothing)
     fit = DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(best), means, obs, scales)
     return _withranef(_withnll(fit, nll), (effects = effects, temporal = info))
 end
@@ -711,6 +890,10 @@ function _drm_gaussian_temporal(f, fam::Gaussian, tt, re, metav, structured, sig
     has_missing_response && nope("missing responses (drop the missing-response rows before " *
         "calling `drm`, e.g. with `drm_listwise`)")
     has_ordinary = false
+    tt.structure === :homtoep && !isempty(re) &&
+        throw(ArgumentError("drm: Temporal HOMTOEP currently does not allow an ordinary random " *
+            "intercept: with every lag correlation free, `(1 | $(tt.group))` is not identified " *
+            "separately from the Toeplitz covariance. Fit the direct temporal process alone."))
     if !isempty(re)
         length(re) == 1 || nope("more than one ordinary random effect")
         rl, g = re[1]
@@ -728,6 +911,8 @@ function _drm_gaussian_temporal(f, fam::Gaussian, tt, re, metav, structured, sig
         has_ordinary = true
     end
     lay = _temporal_layout(tt, data; has_ordinary = has_ordinary, paired = paired)
+    tt.structure === :homtoep &&
+        return _fit_temporal_homtoep(fam, y, Xμ, Xσ, nmμ, nmσ, tt, lay, g_tol)
     paired || return _fit_temporal_gaussian(fam, y, Xμ, Xσ, nmμ, nmσ, tt, lay, has_ordinary, g_tol)
     # drmTMB: the tree tips must be exactly the observed species (by name).
     phy = tree isa AbstractString ? augmented_phy(tree) : tree
@@ -756,13 +941,24 @@ rate λ in the units of `time`; drmTMB `decaypars\$temporal`) — the other is
 (the stable phylogenetic SD of a paired `phylo(1 | species) + temporal(…, ou)`
 fit, on the tip-correlation scale; drmTMB `sdpars\$mu["sd_phylo_stable"]`, or
 `nothing`) and `sigma` (residual SD). For the paired fit drmTMB names the
-process SD `sd_temporal` and the rate `decay_temporal`. Errors on a fit
-without a temporal term.
+process SD `sd_temporal` and the rate `decay_temporal`. For a homogeneous
+Toeplitz fit (`homtoep`) `sigma` is the TOTAL within-series SD, `sd`, `phi`,
+`decay`, `sd_iid` and `sd_phylo` are `nothing`, `cor` holds the lag
+correlations ρ_1…ρ_{K−1} (drmTMB `corpars\$temporal`, `cor_lag1…`) and `pac`
+the partial autocorrelations; both are `nothing` for the other structures.
+Errors on a fit without a temporal term.
 """
 function temporal_parameters(fit::DrmFit)
     info = fit.ranef isa NamedTuple && haskey(fit.ranef, :temporal) ? fit.ranef.temporal : nothing
     info === nothing &&
         throw(ArgumentError("temporal_parameters: this fit has no `temporal(...)` term."))
+    σ = exp(only(coef(fit, :sigma)))
+    if info.structure === :homtoep
+        κ = coef(fit, :temporal_pac)
+        return (label = info.label, structure = :homtoep, sd = nothing, phi = nothing,
+                decay = nothing, sd_iid = nothing, sd_phylo = nothing, sigma = σ,
+                cor = _homtoep_correlations(κ), pac = tanh.(κ))
+    end
     sds = re_sd(fit)
     g = info.group
     iid = Symbol("$(g)_iid")
@@ -772,7 +968,7 @@ function temporal_parameters(fit::DrmFit)
             decay = info.structure === :ou ? exp(ψ) : nothing,
             sd_iid = get(sds, iid, nothing),
             sd_phylo = get(sds, Symbol("$(g)_phylo"), nothing),
-            sigma = exp(only(coef(fit, :sigma))))
+            sigma = σ, cor = nothing, pac = nothing)
 end
 
 # --- post-fit helpers ------------------------------------------------------
@@ -801,6 +997,7 @@ end
 # (`drm_fresh_temporal_mu_values`).
 function _temporal_simulate(fit::DrmFit, rng)
     info = fit.ranef.temporal
+    info.structure === :homtoep && return _homtoep_simulate(fit, info, rng)
     ψ = only(coef(fit, info.structure === :ar1 ? :temporal_phi : :temporal_decay))
     ψk = info.structure === :ar1 ? ψ : exp(ψ)
     sds = re_sd(fit)
@@ -823,5 +1020,27 @@ function _temporal_simulate(fit::DrmFit, rng)
         end
     end
     y .+= σ .* randn(rng, length(y))
+    return y
+end
+
+# One draw from a homogeneous Toeplitz fit: per series, the innovations form of
+# σ²R (Durbin–Levinson), x_t = Σ_j φ_{t−1,j} x_{t−j} + σ √v_{t−1} z_t — the
+# same distribution as drmTMB's `t(chol(σ²R)) %*% z`.
+function _homtoep_simulate(fit::DrmFit, info, rng)
+    Φ, logv = _homtoep_levinson(coef(fit, :temporal_pac))
+    σ = exp(only(coef(fit, :sigma)))
+    y = copy(fit.means[:mu])
+    K = length(info.occasions)
+    x = zeros(K)
+    for rows in info.rows
+        for t in 1:K
+            m = 0.0
+            for j in 1:(t-1)
+                m += Φ[t-1, j] * x[t-j]
+            end
+            x[t] = m + σ * exp(logv[t] / 2) * randn(rng)
+        end
+        y[rows] .+= x
+    end
     return y
 end

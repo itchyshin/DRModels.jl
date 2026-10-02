@@ -1331,8 +1331,9 @@ const _BRIDGE_DSL_CALLS = Set((:phylo, :relmat, :animal, :spatial, :temporal, :s
 # does: exactly the named `time` (a bare column) and `structure` ("ar1"/"ou")
 # arguments, in either order; the bar itself is checked by the fit router.
 function _bridge_temporal_expr(e::Expr)
-    spelling = "use `temporal(1 | id, time = occasion, structure = \"ar1\")` or " *
-        "`temporal(1 | id, time = elapsed, structure = \"ou\")`"
+    spelling = "use `temporal(1 | id, time = occasion, structure = \"ar1\")`, " *
+        "`temporal(1 | id, time = elapsed, structure = \"ou\")` or " *
+        "`temporal(1 | id, time = occasion, structure = \"homtoep\")`"
     args = e.args[2:end]
     bars = Any[a for a in args if !(a isa Expr && a.head === :kw)]
     kws = Dict{Symbol,Any}()
@@ -1351,8 +1352,8 @@ function _bridge_temporal_expr(e::Expr)
     kws[:time] isa Symbol || throw(ArgumentError(
         "drmTMB(engine=\"julia\"): `time` in `temporal()` must name an occasion variable; " * spelling))
     st = kws[:structure]
-    (st isa String && st in ("ar1", "ou")) || throw(ArgumentError(
-        "drmTMB(engine=\"julia\"): `structure` in `temporal()` must be \"ar1\" or \"ou\"; " * spelling))
+    (st isa String && st in ("ar1", "ou", "homtoep")) || throw(ArgumentError(
+        "drmTMB(engine=\"julia\"): `structure` in `temporal()` must be \"ar1\", \"ou\" or \"homtoep\"; " * spelling))
     return Expr(:call, :temporal, bars[1], kws[:time], Symbol(st))
 end
 

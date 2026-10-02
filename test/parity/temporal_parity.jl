@@ -20,8 +20,8 @@ temporal_parity_cells() =
     [joinpath(TEMPORAL_PARITY_ROOT, d) for d in sort(readdir(TEMPORAL_PARITY_ROOT))
      if isfile(joinpath(TEMPORAL_PARITY_ROOT, d, "expected.toml"))]
 
-# Read a fixture CSV into a NamedTuple: the grouping column as String, the AR1
-# time column as Int (AR1 needs integer occasions), every other column Float64.
+# Read a fixture CSV into a NamedTuple: the grouping column as String, the AR1 /
+# homtoep time column as Int (integer occasions), every other column Float64.
 function temporal_parity_data(file::AbstractString; group::AbstractString,
                               time::AbstractString, structure::AbstractString)
     raw, hdr = readdlm(joinpath(TEMPORAL_FIXTURE_ROOT, file), ','; header = true)
@@ -29,7 +29,7 @@ function temporal_parity_data(file::AbstractString; group::AbstractString,
     cols = map(enumerate(names)) do (j, nm)
         v = raw[:, j]
         val = nm == group ? String.(string.(v)) :
-              (nm == time && structure == "ar1") ? Int.(Float64.(v)) :
+              (nm == time && structure in ("ar1", "homtoep")) ? Int.(Float64.(v)) :
               Float64.(v)
         Symbol(nm) => val
     end
@@ -92,6 +92,15 @@ function temporal_parity_check(dir::AbstractString)
     t = ex["temporal"]
     jl = Dict("sd" => tp.sd, "phi" => tp.phi, "decay" => tp.decay,
               "sd_iid" => tp.sd_iid, "sd_phylo" => tp.sd_phylo, "sigma" => tp.sigma)
+    # Homogeneous Toeplitz: the lag correlations, elementwise, on the ABSOLUTE
+    # scale (they lie in (−1, 1) and some sit near 0, where a relative
+    # difference is meaningless).
+    if haskey(t, "cor")
+        tp.cor === nothing && error("$(basename(dir)): DRModels.jl reports no lag correlations")
+        for (m, r) in enumerate(Float64.(t["cor"]))
+            push_row!("cor_lag$m", tp.cor[m], r, abs(tp.cor[m] - r) <= rtol)
+        end
+    end
     # `[tol].boundary`: SDs drmTMB estimated at their zero boundary, where the
     # likelihood is flat and only "both engines put it below 1e-3" is testable.
     boundary = get(ex["tol"], "boundary", String[])
