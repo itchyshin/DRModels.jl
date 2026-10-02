@@ -157,6 +157,7 @@ function bf(mu::FormulaTerm, dpars::FormulaTerm...)
         push!(forms, name => f.rhs)
     end
     any(p -> first(p) === :sigma, forms) || push!(forms, :sigma => ConstantTerm(1))
+    _temporal_check_forms(forms, (:mu,))
     return DrmFormula(response, forms, response2)
 end
 const drm_formula = bf
@@ -546,8 +547,8 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     # `allow_phylo_slope = true`: the Gaussian mean is the one route that fits
     # `phylo(1 + x | g)` (#620, two independent phylogenetic fields); the slope
     # variable comes back in the fifth slot and is routed below.
-    fixed_mu, re, metav, structured, structured_slope =
-        _split_ranef(rhs[:mu]; allow_phylo_slope = true)   # (1|g), meta_V(v), relmat/animal/phylo/spatial(1|g)
+    fixed_mu, re, metav, structured, structured_slope, temporal_term =
+        _split_ranef(rhs[:mu]; allow_phylo_slope = true, allow_temporal = true)   # (1|g), meta_V(v), relmat/animal/phylo/spatial(1|g), temporal(...)
     fixed_sigma, sigma_re, _, structured_sigma = _split_ranef(rhs[:sigma])  # (1|g)→GHQ; structured_sigma = phylo(1|g) on σ
     # Penalized MAP (A4c). Validated here, once, so that a `penalty` handed to a
     # route that cannot honour it ERRORS instead of being silently dropped —
@@ -574,6 +575,15 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     response_observed = _observed_response_mask(y)
     has_missing_response = !all(response_observed)
     all_structured = _collect_structured(rhs[:mu])
+    # D-310 temporal(1 | id, time, ar1|ou): dispatched FIRST, before every route
+    # that could otherwise claim (and silently mis-fit) the formula. The router
+    # refuses everything outside the wave-1 scope by name (src/temporal.jl).
+    if temporal_term !== nothing
+        return _withformula(_drm_gaussian_temporal(f, fam, temporal_term, re, metav, structured,
+            sigma_re, structured_sigma, y, Xμ, Xσ, nmμ, nmσ, data; method = method,
+            algorithm = algorithm, penalty = penalty, phylo_coupled = phylo_coupled,
+            sparse = sparse, has_missing_response = has_missing_response, g_tol = g_tol), f)
+    end
     # #620 two-SD phylogenetic random slope `phylo(1 + x | g)` on the Gaussian
     # mean: validate HERE, above every route that can return, so no other
     # engine ever receives this formula and quietly fits the intercept-only
@@ -1622,7 +1632,8 @@ function predict(fit::DrmFit, newdata; type::Symbol = :response, se::Bool = fals
     if f isa DrmFormula
         # allow_phylo_slope: a fitted Gaussian `phylo(1 + x | g)` formula (#620)
         # must still yield its fixed design here; the flag only relaxes parsing.
-        fixed_mu, _, _, _ = _split_ranef(Dict(f.forms)[:mu]; allow_phylo_slope = true)
+        fixed_mu, _, _, _ = _split_ranef(Dict(f.forms)[:mu]; allow_phylo_slope = true,
+                                         allow_temporal = true)
         ndr = merge(nd, NamedTuple{(f.response,)}((zeros(nrows),)))
         _, Xnew, _ = _design(f.response, fixed_mu, ndr;
                               schema_cache = f.schema_cache, schema_key = :mu)
@@ -1822,7 +1833,8 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
     for (p, r) in fit.blocks
         haskey(forms, p) || continue          # skip RE-SD / cutpoint blocks (:resd, :recov, :cutpoints, …)
         resp = bivar ? (p === :mu2 ? f.response2 : f.response1) : f.response
-        fixed_p, _, _, _ = _split_ranef(forms[p]; allow_phylo_slope = true)   # #620 fits keep predicting
+        fixed_p, _, _, _ = _split_ranef(forms[p]; allow_phylo_slope = true,
+                                       allow_temporal = true)   # #620 / temporal fits keep predicting
         _, Xp, _ = if bivar
             _design(resp, fixed_p, ndr)
         else
@@ -2023,6 +2035,8 @@ function _simulate_once(fit::DrmFit, rng; mu = nothing, sigma = nothing)
         z1 = randn(rng, n); z2 = randn(rng, n)
         return Dict(:mu1 => μ1 .+ σ1 .* z1,
                     :mu2 => μ2 .+ σ2 .* (ρ .* z1 .+ sqrt.(1 .- ρ .^ 2) .* z2))
+    elseif fam isa Gaussian && _is_temporal_fit(fit)       # temporal(): fresh chain per series
+        return _temporal_simulate(fit, rng)
     elseif fam isa Gaussian && haskey(fit.scales, :sigma) # univariate / RE / meta
         return fit.means[:mu] .+ fit.scales[:sigma] .* randn(rng, length(fit.means[:mu]))
     end

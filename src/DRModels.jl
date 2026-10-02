@@ -84,6 +84,7 @@ include("aghq_1d.jl")            # #448: 1-D Liu–Pierce AGHQ around `_gauss_he
 include("adaptive_ghq.jl")       # #834: per-group q-dim AGHQ for the (1 + x | g) routes
 include("gaussian_meta.jl")
 include("gaussian_structured.jl")
+include("temporal.jl")          # D-310: temporal(1 | id, time, ar1|ou) on the Gaussian mean (twin of drmTMB)
 include("gaussian_sparse_lss.jl")
 include("phylo_interaction.jl")  # bipartite two-tree interaction RE: V = σ²(C_A⊗C_B) + σ_e²I
 include("location_only.jl")      # #12: opt-in conjugate-EM for the Gaussian phylo-mean cell
@@ -175,7 +176,7 @@ export AugProblem, make_problem,
        lc_to_cov, cov_to_lc, lc_len
 
 # Public API — the Gaussian distributional-regression front end.
-export @formula, bf, drm_formula, drm, Gaussian, Student, SkewNormal, Poisson, NegBinomial2, TruncatedNegBinomial2, TruncatedPoisson, Beta, BetaBinomial, Binomial, Gamma, LogNormal, ZeroOneBeta, Tweedie, CumulativeLogit, cbind, meta_V, relmat, animal, phylo, spatial, offset, sd, sd_phylo, DrmFormula, BivariateDrmFormula, DrmFit,
+export @formula, bf, drm_formula, drm, Gaussian, Student, SkewNormal, Poisson, NegBinomial2, TruncatedNegBinomial2, TruncatedPoisson, Beta, BetaBinomial, Binomial, Gamma, LogNormal, ZeroOneBeta, Tweedie, CumulativeLogit, cbind, meta_V, relmat, animal, phylo, spatial, temporal, offset, sd, sd_phylo, DrmFormula, BivariateDrmFormula, DrmFit,
        coef, vcov, loglik, loglikelihood, nobs, dof, aic, bic, fixef, re_sd, vc, ranef, sigma, corpairs, rho12, stderror, confint, coeftable, fitted, residuals, predict, predict_parameters, marginal_parameters, prediction_grid, simulate, bootstrap_ci, bootstrap_summary, bootstrap_result, bootstrap_sigma_a, check_drm, family,
        profile_result, profile_curve, parameter_surface, corpairs_data,
        drm_figure, plot_profile, plot_parameter_surface, plot_corpairs,
@@ -193,7 +194,7 @@ export @formula, bf, drm_formula, drm, Gaussian, Student, SkewNormal, Poisson, N
        associate_pairs, latent_normal, association, PairAssociation,
        integration_diagnostics,
        drm_phylo_penalty, drm_phylo_penalty_sweep, PhyloPenalty, PhyloCorPenaltyNeedsTwoSD,
-       profile_targets, structured_effects, bridge_diagnostics,
+       profile_targets, structured_effects, bridge_diagnostics, temporal_parameters,
        meta_vcov_bivariate, MetaVcovBivariate
 
 # Public API — post-fit accessors for the cross-family bivariate fit

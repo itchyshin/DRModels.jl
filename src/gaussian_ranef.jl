@@ -111,15 +111,30 @@ function _implicit_re_intercept(lhs::FunctionTerm)
         +, StatsModels.AbstractTerm[ConstantTerm(1), lhs.args...], :(1 + $(lhs.exorig.args[2:end]...)))
 end
 
-function _split_ranef(rhs; allow_phylo_slope::Bool = false)
+#
+# `temporal(1 | id, time, ar1|ou)` (wave 1) is returned in a SIXTH slot as
+# `(group, time, structure)` — only when the caller opts in with
+# `allow_temporal = true` (the univariate Gaussian mean route and the read-only
+# consumers of an already-fitted Gaussian formula). Every other caller gets a
+# refusal naming the scope, so no route can treat the marker as a fixed-effect
+# term or silently drop it.
+function _split_ranef(rhs; allow_phylo_slope::Bool = false, allow_temporal::Bool = false)
     terms = rhs isa Tuple ? collect(rhs) : Any[rhs]
     fixed = Any[]
     re = Tuple{Any,Symbol}[]
     metav = nothing                                   # meta_V(v) known-variance column
     structured = nothing                              # (:relmat, grouping) — known K
     structured_slope = nothing                        # `x` of phylo(1 + x | g), Gaussian mean only
+    temporal_term = nothing                           # (group, time, structure), Gaussian mean only
     for t in terms
-        if t isa FunctionTerm && t.f === (|)
+        if t isa FunctionTerm && t.f === temporal
+            allow_temporal || _temporal_refuse_here()
+            tt = _parse_temporal_term(t)
+            temporal_term === nothing ||
+                throw(ArgumentError("drm: only one temporal effect is implemented in `mu`. " *
+                    _TEMPORAL_SPELLING))
+            temporal_term = tt
+        elseif t isa FunctionTerm && t.f === (|)
             push!(re, (_implicit_re_intercept(t.args[1]), t.args[2].sym))     # (re-lhs, grouping symbol)
         elseif t isa FunctionTerm && t.f === meta_V
             metav = t.args[1].sym
@@ -149,7 +164,7 @@ function _split_ranef(rhs; allow_phylo_slope::Bool = false)
     end
     fixed_rhs = isempty(fixed) ? ConstantTerm(1) :
                 length(fixed) == 1 ? fixed[1] : Tuple(fixed)
-    return fixed_rhs, re, metav, structured, structured_slope
+    return fixed_rhs, re, metav, structured, structured_slope, temporal_term
 end
 
 # Collect EVERY structured marker on a right-hand side, in source order, as a

@@ -1322,8 +1322,39 @@ end
 # `-` and `(...)^k` are absent because they have their own branches above and
 # flatten `+` themselves before doing term algebra.
 const _BRIDGE_TERM_OPS = (:+, :&, :*, :~)
-const _BRIDGE_DSL_CALLS = Set((:phylo, :relmat, :animal, :spatial, :sd,
+const _BRIDGE_DSL_CALLS = Set((:phylo, :relmat, :animal, :spatial, :temporal, :sd,
     :sd_phylo, :meta_V, :cbind, :corpair, :|))
+
+# drmTMB's `temporal(1 | id, time = occ, structure = "ar1")` -> the positional
+# Julia spelling `temporal(1 | id, occ, ar1)` that `@formula` can parse (it
+# rejects keyword arguments and string literals). Validated as drmTMB's parser
+# does: exactly the named `time` (a bare column) and `structure` ("ar1"/"ou")
+# arguments, in either order; the bar itself is checked by the fit router.
+function _bridge_temporal_expr(e::Expr)
+    spelling = "use `temporal(1 | id, time = occasion, structure = \"ar1\")` or " *
+        "`temporal(1 | id, time = elapsed, structure = \"ou\")`"
+    args = e.args[2:end]
+    bars = Any[a for a in args if !(a isa Expr && a.head === :kw)]
+    kws = Dict{Symbol,Any}()
+    for a in args
+        a isa Expr && a.head === :kw || continue
+        k = a.args[1]
+        (k in (:term, :time, :structure) && !haskey(kws, k)) || throw(ArgumentError(
+            "drmTMB(engine=\"julia\"): `temporal()` takes `term`, `time` and `structure` as its only named arguments, each once; " * spelling))
+        kws[k] = a.args[2]
+    end
+    # drmTMB also accepts the bar as a named `term = 1 | id` argument.
+    haskey(kws, :term) && push!(bars, pop!(kws, :term))
+    (length(bars) == 1 && length(kws) == 2) || throw(ArgumentError(
+        "drmTMB(engine=\"julia\"): `temporal()` requires one random-effect term and named `time` and " *
+        "`structure` arguments; " * spelling))
+    kws[:time] isa Symbol || throw(ArgumentError(
+        "drmTMB(engine=\"julia\"): `time` in `temporal()` must name an occasion variable; " * spelling))
+    st = kws[:structure]
+    (st isa String && st in ("ar1", "ou")) || throw(ArgumentError(
+        "drmTMB(engine=\"julia\"): `structure` in `temporal()` must be \"ar1\" or \"ou\"; " * spelling))
+    return Expr(:call, :temporal, bars[1], kws[:time], Symbol(st))
+end
 
 _bridge_contains_star(e) = false
 function _bridge_contains_star(e::Expr)
@@ -1535,6 +1566,8 @@ function _bridge_xlate(e::Expr, ctx::_BridgeXlateCtx;
         return _bridge_materialize!(ctx, "factor", (arg, atom_scope),
             () -> Any[v for v in _bridge_lookup_column(ctx, arg)],
             "factor($(_bridge_r_label(arg)))")
+    elseif f === :temporal
+        return _bridge_temporal_expr(e)
     elseif !(f isa Symbol)
         throw(ArgumentError("drmTMB(engine=\"julia\"): unsupported formula function `$(f)`; precompute it as a covariate column."))
     elseif haskey(_BRIDGE_REJECT_CALLS, f)
@@ -2120,7 +2153,7 @@ function _bridge_render_formula_block(form, param::Symbol, rhs,
     # Random/structured pieces never become ordinary coefficient columns.  The
     # fixed part is what `_design` used for their associated fixed-effect block.
     fixed_rhs = try
-        first(_split_ranef(rhs; allow_phylo_slope = true))   # #620: a Gaussian slope formula still labels
+        first(_split_ranef(rhs; allow_phylo_slope = true, allow_temporal = true))   # #620: a Gaussian slope formula still labels
     catch
         rhs
     end

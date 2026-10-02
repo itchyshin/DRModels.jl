@@ -74,6 +74,9 @@ const API_EXPERIMENTAL = [
     "meta_vcov_bivariate", "MetaVcovBivariate",
     # location-scale-scale (#544/#545)
     "sd", "sd_phylo",
+    # temporal AR1/OU on the Gaussian mean, wave 1 (D-310): the Julia spelling
+    # is positional because `@formula` cannot carry drmTMB's keyword arguments
+    "temporal", "temporal_parameters",
     # prepared joint missing-predictor surface (post-v0.7 experimental)
     "PreparedJointModel", "PreparedJointFit",
     "PreparedFiniteJointModel", "PreparedFiniteJointFit",

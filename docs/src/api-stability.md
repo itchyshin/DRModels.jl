@@ -37,7 +37,10 @@ include:
 - penalised phylogenetic fits, bivariate meta-analysis, and the variational
   approximation selected by `marginal = :VA`; and
 - joint models for missing predictors, including `mi()` and the prepared-model
-  helpers.
+  helpers; and
+- temporal AR1 and OU random effects on the Gaussian mean (`temporal()` and
+  `temporal_parameters()`), whose first release covers one intercept-only term
+  with `sigma ~ 1` and maximum likelihood.
 
 If you use one of these in an analysis that must be reproducible for several
 years, record the DRModels.jl version and read its release notes before updating.

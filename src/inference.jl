@@ -1960,6 +1960,9 @@ end
 
 function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing, tree=nothing,
                                    coords=nothing)
+    # temporal(): `simulate` already draws the full marginal model (a fresh chain
+    # per series and a fresh `(1 | id)` intercept), so it IS the marginal simulator.
+    _is_temporal_fit(fit) && return rng -> _temporal_simulate(fit, rng)
     fit.nll isa LocScaleObjective &&
         return _ls_marginal_simulator(fit, data; K, A, tree, coords)
     _is_gaussian_lss(fit) && return _lss_marginal_simulator(fit, data; tree)
