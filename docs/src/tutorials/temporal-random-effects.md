@@ -5,9 +5,10 @@
     (`vignettes/temporal-random-effects.Rmd`). **In DRModels.jl today:** one
     intercept-only `temporal(1 | id, time, ar1)` or `temporal(1 | id, time, ou)`
     term on the Gaussian **mean**, with `sigma ~ 1`, fitted by ML, optionally
-    alongside an ordinary `(1 | id)` on the same `id`. Other families, temporal
-    terms on `sigma`, slopes, REML and other structured terms are refused with
-    an error. This page fits drmTMB's own two datasets and reproduces its
+    alongside an ordinary `(1 | id)` on the same `id`, or (OU only) alongside a
+    phylogenetic stable intercept `phylo(1 | species)` on the same grouping.
+    Other families, temporal terms on `sigma`, slopes, REML and other
+    structured terms are refused with an error. This page fits drmTMB's own two datasets and reproduces its
     numbers (table below).
 
 !!! info "Attribution"
@@ -308,6 +309,124 @@ and this page does not extend it: DRModels.jl reproduces the same likelihood,
 but no separate calibration study has been run on its intervals. OU decay and
 variance-component intervals are not available.
 
+## Phylogenetic stable effects with OU deviations
+
+!!! info "Attribution"
+    This section adapts the drmTMB article *Phylogenetic stable effects and
+    temporal OU deviations* (`vignettes/phylogenetic-temporal-effects.Rmd`,
+    drmTMB development branch) by its copyright holder, Shinichi Nakagawa,
+    under the MIT licence.
+
+A comparative time-series data set can contain three different kinds of
+variation. Closely related species can have similar *stable* baselines because
+of shared evolutionary history. Each species can also make a short-lived
+departure from its baseline that persists across nearby observation times.
+Finally, observations have independent residual noise. The paired
+phylogenetic–temporal model keeps these quantities separate. For observation
+time ``t`` in species ``i``,
+
+```math
+y_{it} = x_{it}^{\top}\beta + b_i + a_{it} + \epsilon_{it},\qquad
+\mathbf b \sim \mathcal N(\mathbf 0, s_b^2 A),\qquad
+\operatorname{Cov}(a_{it}, a_{js}) = \mathbb 1_{i=j}\, s_a^2 e^{-\lambda |t-s|},
+```
+
+with ``\epsilon_{it} \sim \mathcal N(0, \sigma^2)``. Here ``A`` is the tip
+correlation matrix of the tree. The stable SD ``s_b`` describes
+between-species variation that follows the tree, ``s_a`` the stationary SD of
+an OU departure *within the same species*, ``\lambda`` its decay rate in the
+units of the elapsed-time column, and ``\sigma`` the observation noise.
+
+The model is additive. It does **not** say that a temporal departure is shared
+between related species: for two different species the covariance is
+``s_b^2 A_{ij}``, even when their observations are close together in time. A
+separable phylogeny-by-time field is a different model with a different
+scientific question, and neither package fits it yet.
+
+The data are those simulated by drmTMB's article (`set.seed(20260909)`): 8
+species on a random coalescent tree, each observed at elapsed times 0, 0.5,
+2.5 and 5 with an alternating treatment. As above, we read the exact data and
+tree it produced.
+
+```@example temporal
+col = read_fixture("vignette_phylo_ou_species.csv")
+dat_phylo = (y            = parse.(Float64, col("y")),
+             treatment    = parse.(Float64, col("treatment")),
+             species      = String.(col("species")),
+             elapsed_days = parse.(Float64, col("elapsed_days")))
+tree = read(pkgdir(DRModels, "test", "fixtures", "temporal",
+                   "vignette_phylo_ou_species.newick"), String)
+
+phylo_fit = drm(bf(@formula(y ~ treatment + phylo(1 | species) +
+                                temporal(1 | species, elapsed_days, ou)),
+                   @formula(sigma ~ 1)),
+                Gaussian(); data = dat_phylo, tree = tree)
+phylo_tp = temporal_parameters(phylo_fit)
+```
+
+The two random terms must use the same `species` column, and the tree is
+passed to `drm` (drmTMB writes it inside the term, `phylo(1 | species, tree =
+tree)`). The three variance components are reported separately:
+`sd_phylo` is drmTMB's `sd_phylo_stable`, `sd` its `sd_temporal`, and `decay`
+its `decay_temporal`. Like drmTMB, DRModels.jl uses the tree's tip
+**correlation** matrix, so rescaling every branch length leaves the fit
+unchanged.
+
+```@example temporal
+phylo_ref = parity_cell("vignette-phylo-ou")
+pt = phylo_ref["temporal"]
+phylo_names = Dict(phylo_fit.coefnames)[:mu]
+[(quantity = q, drmTMB = round(r; digits = 4), DRModels = round(j; digits = 4),
+  abs_diff = abs(j - r))
+ for (q, r, j) in [("logLik", phylo_ref["fit"]["loglik"], loglik(phylo_fit)),
+                   [(k, v, coef(phylo_fit, :mu)[findfirst(==(replace(k, "mu_" => "")), phylo_names)])
+                    for (k, v) in phylo_ref["coef"]]...,
+                   ("sd_phylo_stable", pt["sd_phylo"], phylo_tp.sd_phylo),
+                   ("sd_temporal", pt["sd"], phylo_tp.sd),
+                   ("decay_temporal", pt["decay"], phylo_tp.decay),
+                   ("sigma", pt["sigma"], phylo_tp.sigma)]]
+```
+
+With only 32 observations the residual SD is estimated at its zero boundary by
+**both** packages (drmTMB `≈ 5e-5`, DRModels.jl smaller still): on these data
+the OU departures absorb the observation noise. At that boundary the
+likelihood is flat in ``\sigma``, so the two values agree only in being
+essentially zero, and drmTMB reports no positive-definite Hessian. Everything
+else agrees closely. A larger data set
+(`test/parity/temporal/phylo-ou-species/`: 24 species, 106 observations, all
+components interior) agrees with drmTMB to ``10^{-11}`` in every estimate.
+
+drmTMB's `fitted()` adds both conditional components. In DRModels.jl they are
+in `ranef`: `ranef(phylo_fit)[:species_phylo]` holds the stable effect of each
+species (first-seen order) and `ranef(phylo_fit)[:species]` the OU departure
+of each row.
+
+```@example temporal
+re = ranef(phylo_fit)
+phylo_conditional = fitted(phylo_fit) .+ re[:species] .+
+    re[:species_phylo][indexin(dat_phylo.species, unique(dat_phylo.species))]
+(max_abs_diff = maximum(abs.(phylo_conditional .- Float64.(phylo_ref["conditional"]["fitted"]))),)
+```
+
+`simulate(phylo_fit)` draws a new phylogenetic stable vector, a new
+independent OU path for each species and new noise.
+
+The pairing is intentionally narrow, and both packages refuse the same
+departures from it: it needs `ou` (not `ar1`), an unlabelled
+`phylo(1 | species)` intercept on the same grouping as `temporal()`, no
+ordinary `(1 | species)` (the stable between-species component is already the
+phylogenetic term), at least three species with at least two distinct times
+each, at least three distinct positive lags across the data, and tree tips
+that are exactly the observed species.
+
+**What can be reported now.** drmTMB's article marks this model as a
+development workflow: its fixed-mean likelihood profile has been checked
+independently, but its point-recovery gate has not met the predeclared
+threshold, so it asks readers not to report confidence intervals from the
+paired model yet. DRModels.jl reproduces the same likelihood and makes no
+stronger claim; use it to inspect the variance components, not for interval
+inference.
+
 ## The drmTMB spelling through the bridge
 
 An R user calling DRModels.jl through `drm_bridge` (see [Coming from R?](../coming-from-r.md)) can
@@ -334,6 +453,18 @@ log-likelihood and ``10^{-6}`` relative for the parameters, to leave room for
 other platforms. The likelihood itself is also checked against
 a dense multivariate-normal oracle (`test/test_temporal_ar1.jl`,
 `test/test_temporal_ou.jl`).
+
+Two more cells cover the paired phylogenetic + OU model: drmTMB's article data
+above (residual SD at its boundary; logLik within ``5 \times 10^{-8}``, the
+other estimates within ``3 \times 10^{-8}`` relative) and a 24-species
+simulated fixture with every component interior (logLik within
+``2 \times 10^{-12}``, every estimate within ``2 \times 10^{-11}`` relative,
+conditional fitted values within ``2 \times 10^{-12}``; Julia 1.10.12 on
+Linux, Totoro). Their numbers come from drmTMB's development branch for this
+model (the commit is recorded in each cell's `expected.meta.toml`). The paired
+likelihood is checked against a dense oracle, on ultrametric and
+non-ultrametric trees and at the decay and stable-SD extremes, in
+`test/test_temporal_phylo_ou.jl`.
 
 ## See also
 

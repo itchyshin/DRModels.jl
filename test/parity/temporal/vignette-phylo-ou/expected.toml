@@ -1,0 +1,43 @@
+[fit]
+family = "gaussian"
+formula = "y ~ treatment + phylo(1 | species, tree = tree) + temporal(1 | species, time = elapsed_days, structure = \"ou\"); sigma ~ 1"
+julia_formula = "y ~ treatment + phylo(1 | species) + temporal(1 | species, elapsed_days, ou)"
+data_file = "vignette_phylo_ou_species.csv"
+tree_file = "vignette_phylo_ou_species.newick"
+group = "species"
+structure = "ou"
+ordinary_intercept = false
+method = "ML"
+loglik = -3.0355518751047377e+01
+n = 32
+
+[coef]
+"mu_(Intercept)" = 9.9355044897346745e-01
+"mu_treatment" = 4.5088562961453998e-01
+
+[temporal]
+sd = 6.2856481409502618e-01
+decay = 9.1040954150903675e-01
+sd_phylo = 4.1598125905363748e-01
+sigma = 5.340310250675294e-05
+
+[status]
+converged = true
+pdHess = false
+
+[tol]
+atol_loglik = 1e-6
+rtol_par = 1e-6
+boundary = ["sigma"]
+
+# drmTMB fitted() is CONDITIONAL (adds the phylogenetic stable and the
+# temporal modes); data-row order.
+[conditional]
+fitted = [1.2288607421553284e+00, 1.1589648039713567e+00, 3.7562950369690262e-01, 2.2902950294665945e+00, 1.0903958516560455e+00, 1.284102434410044e+00, 1.0667417118287685e+00, 1.4303139031599836e+00, 1.2525922565236103e-02, 8.5342100211234551e-01, 3.7194835186247899e-01, 1.4508983073331891e+00, 1.7928369698750346e+00, 2.6293340963939644e+00, 1.32916036386027e+00, 2.2203023892678115e+00, 1.2209481212134397e+00, 4.00597197408181e-01, 1.3018234221883251e+00, 1.9426973037422732e+00, -1.7466497946565007e-01, 4.1917522211287461e-01, 9.7601979497311608e-01, 1.0979659427033663e+00, 5.2223665545512621e-01, 9.2295085548680589e-01, -5.9998713127699821e-01, 7.0422967844283446e-01, -9.05453246086934e-01, -2.2682304820190469e-01, 7.4313435955268092e-01, 6.732677102524105e-01]
+
+[[profile]]
+parm = "fixef:mu:treatment"
+lower = 1.332127765812158e-01
+upper = 8.1030545136317733e-01
+conf_status = "profile"
+

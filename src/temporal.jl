@@ -50,6 +50,20 @@
 # objective and the modes to 1e-10 / 1e-8 in test/test_temporal_ar1.jl and
 # test/test_temporal_ou.jl.
 #
+# WAVE 2 (owner decision D-311): the paired phylogenetic-temporal provider of
+# drmTMB (branch `codex/phylo-temporal-ou-exec-v1-20260909`, semantics only),
+#     y = Xβ + a_species + b_species(t) + ε,  a ~ N(0, σ_a² C),
+# C the tip CORRELATION matrix of the tree, b an independent OU path per
+# species (the series ARE the species: `phylo(1 | species)` and
+# `temporal(1 | species, elapsed, ou)` must share the grouping). The two
+# components are additive: related species share a stable baseline, not their
+# temporal departures. Engine: the per-series filter above reduces each species
+# to a Gaussian factor in a_s, and the tree is integrated by an exact pruning
+# pass (see "paired phylo() stable field" below). drmTMB's refusals are
+# mirrored: OU only, an unlabelled intercept-only phylo term on the same id, no
+# ordinary `(1 | species)`, ≥ 3 species, each with ≥ 2 times, ≥ 3 distinct
+# positive lags, tree tips exactly the observed species.
+#
 # CLAIM BOUNDARY (wave 1, owner decision D-310): Gaussian family, the mean
 # formula only, one unlabelled intercept `temporal(1 | id, …)`, `sigma ~ 1`,
 # ML, at most one ordinary `(1 | id)` on the SAME id (as drmTMB). Everything
@@ -104,8 +118,32 @@ Post-fit conventions (some differ from drmTMB):
   calibration is claimed here either.
 
 Wave-1 scope: Gaussian family, `sigma ~ 1`, ML only, intercept-only and
-unlabelled, at most one ordinary `(1 | id)` on the same `id`, no other
-structured term. Every other use is refused with an error.
+unlabelled, at most one ordinary `(1 | id)` on the same `id`. Every other use
+is refused with an error.
+
+**Phylogenetic stable intercept + OU (wave 2).** drmTMB's paired provider
+`phylo(1 | species, tree = tree) + temporal(1 | species, time = elapsed,
+structure = "ou")` is spelled
+
+```julia
+drm(bf(@formula(y ~ x + phylo(1 | species) + temporal(1 | species, elapsed, ou)),
+       @formula(sigma ~ 1)), Gaussian(); data, tree = newick)
+```
+
+and fits `y = Xβ + a_species + b_species(t) + ε` with `a ~ N(0, σ_a² C)` (`C`
+the tree's tip **correlation** matrix, the scale drmTMB uses) and an
+independent OU path `b` per species. Related species share a stable
+baseline; their temporal departures are independent. The stable SD is
+`re_sd(fit)[:species_phylo]` (`temporal_parameters(fit).sd_phylo`; drmTMB
+`sd_phylo_stable`), the process SD `re_sd(fit)[:species]` (drmTMB
+`sd_temporal`) and the rate `temporal_parameters(fit).decay` (drmTMB
+`decay_temporal`). `ranef(fit)[:species_phylo]` holds the per-species stable
+modes (first-seen order) and `ranef(fit)[:species]` the temporal modes (data
+rows). As in drmTMB the pairing needs `ou`, an unlabelled intercept-only
+`phylo()` on the same grouping, no ordinary `(1 | species)`, at least three
+species with at least two times each, at least three distinct positive lags,
+and tree tips that are exactly the observed species. `simulate` draws a fresh
+phylogenetic vector, fresh OU paths and fresh noise.
 """
 temporal(x...) = x   # marker; intercepted during formula parsing
 
@@ -159,7 +197,7 @@ end
 # Series layout and drmTMB's data checks. Returns the row indices of each series
 # (sorted by time, ties broken by row), the per-row gap to the previous occasion
 # of the same series (0 for a series' first row), and the series levels.
-function _temporal_layout(tt, data; has_ordinary::Bool)
+function _temporal_layout(tt, data; has_ordinary::Bool, paired::Bool = false)
     sname = tt.structure === :ar1 ? "AR1" : "OU"
     col(nm) = try
         _table_column(data, nm)
@@ -208,12 +246,26 @@ function _temporal_layout(tt, data; has_ordinary::Bool)
         throw(ArgumentError("drm: Temporal $sname series-time keys must be unique: $ndup " *
             "duplicated `($(tt.group), $(tt.time))` key(s) found. Use one response per series " *
             "and occasion, or aggregate the data before fitting."))
+    # Paired phylo() + OU (wave 2): drmTMB's support checks for the stable
+    # between-species field — at least three species, each with at least two
+    # distinct times (keys are unique, so two rows) — before the lag check.
+    if paired
+        S >= 3 ||
+            throw(ArgumentError("drm: The paired phylogenetic-temporal OU model requires at least " *
+                "three observed species; supply repeated observations from at least three tree tips."))
+        short = [s for s in 1:S if length(rows[s]) < 2]
+        isempty(short) ||
+            throw(ArgumentError("drm: Each species in the paired phylogenetic-temporal OU model " *
+                "needs at least two distinct times; insufficient time variation for " *
+                "$(join(string.(unique(ids)[short]), ", "))."))
+    end
     # drmTMB's identifiability check on the distinct positive within-series
     # lags (all pairs, not only consecutive gaps): at least 2 (3 with an
-    # ordinary intercept), and for AR1 at least one odd lag (the sign of φ).
+    # ordinary intercept or a paired phylo() field), and for AR1 at least one
+    # odd lag (the sign of φ).
     # The pair scan stops as soon as the requirement is met, so a long series
     # does not cost O(n²).
-    required = has_ordinary ? 3 : 2
+    required = (has_ordinary || paired) ? 3 : 2
     needodd = tt.structure === :ar1
     distinct = Set{Float64}()
     hasodd = false
@@ -234,6 +286,9 @@ function _temporal_layout(tt, data; has_ordinary::Bool)
     end
     ok = done
     distinct = sort(collect(distinct))
+    ok || !paired || throw(ArgumentError("drm: The paired phylogenetic-temporal OU model requires " *
+        "at least three distinct positive lags; found $(distinct). Keep genuine elapsed-time gaps " *
+        "and collect more distinct within-species intervals."))
     ok || throw(ArgumentError("drm: Temporal $sname occasions do not provide the required lag " *
         "variation: found distinct positive lags $(distinct); this model needs at least " *
         "$required" * (tt.structure === :ar1 ? ", including an odd lag" : "") * ". Keep genuine " *
@@ -242,7 +297,7 @@ function _temporal_layout(tt, data; has_ordinary::Bool)
         throw(ArgumentError("drm: a temporal $sname model with an ordinary random intercept " *
             "requires multiple series; fit the temporal process without `(1 | $(tt.group))` " *
             "for one series, or provide observations from at least two ids."))
-    return (rows = rows, gap = gap, nseries = S, gidx = gidx)
+    return (rows = rows, gap = gap, nseries = S, gidx = gidx, levels = unique(ids))
 end
 
 using Statistics: var, median
@@ -351,23 +406,133 @@ function _temporal_series(structure, ψ, σ2, st2, sb2, g, r; modes::Bool = fals
     return ldV, quad, teff, bmode
 end
 
-# θ = [βμ; log σ; (log σ_b); log σ_t; θ_temporal]
-function _fit_temporal_gaussian(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, tt, lay, has_ordinary, g_tol)
+# --- paired phylo() stable field (wave 2) ----------------------------------
+#
+# The stable between-species field is a_s = σ_a ũ_s / √h_s, ũ a unit-rate
+# Brownian motion on the tree (root fixed at 0, so ũ ~ N(0, Q⁻¹) with Q the
+# AugmentedPhy precision without the root) and h_s the root-to-tip depth of
+# species s. Cov(a) = σ_a² D^{-1/2} Σ D^{-1/2}: the tip CORRELATION matrix, the
+# scale drmTMB (`ape::vcv(tree, corr = TRUE)`) and DRModels' closed-form
+# `phylo(1 | g)` mean route (`_phylo_correlation`) both use.
+#
+# Given the per-series temporal-plus-residual blocks W_s (wave 1's filter), a
+# species' rows depend on a only through a_s 1, so the series reduces to a
+# Gaussian factor in a_s with precision c_s = 1ᵀW_s⁻¹1 and linear term
+# d_s = 1ᵀW_s⁻¹r_s — exactly the `with_one` sums the filter already returns
+# for the ordinary intercept. Integrating ũ out over the tree is then an
+# upward (pruning) pass: a node carries a message exp(−½αx² + βx); a leaf
+# starts at α = σ_a² c_s / h_s, β = σ_a d_s / √h_s, crossing a branch of
+# length ℓ maps (α, β) → (α, β)/(1 + ℓα), siblings add, and the root sits at
+# 0. Then, exactly,
+#     logdet V = Σ_s logdet W_s + Σ_branches log1p(ℓα),
+#     rᵀV⁻¹r  = Σ_s rᵀW_s⁻¹r − Σ_branches ℓβ²/(1 + ℓα).
+# This is the sparse Cholesky of the joint (tree + series) precision in its
+# zero-fill elimination order (each series' OU states, then leaves → root),
+# written as scalar recursions: O(n) per evaluation, generic in the number
+# type (ForwardDiff runs through it) and made of positive terms only, so it
+# stays accurate as σ_a → 0 (log1p, α, β → 0) and as σ_a → ∞.
+
+# Upward/downward plan for the tree: `post` lists every non-root node with its
+# children before it, `parent`/`blen` its parent and branch length, `leaf` the
+# tree node of series s and `h` that leaf's root-to-tip depth.
+function _temporal_phylo_plan(phy::AugmentedPhy, levels)
+    Q = phy.Q_topology
+    N = phy.n_total
+    parent = zeros(Int, N); blen = zeros(N); depth = zeros(N)
+    seen = falses(N)
+    order = [phy.root_index]; seen[phy.root_index] = true
+    cursor = 1
+    while cursor <= length(order)
+        i = order[cursor]; cursor += 1
+        for k in nzrange(Q, i)
+            j = rowvals(Q)[k]
+            (j == i || seen[j]) && continue
+            qij = nonzeros(Q)[k]
+            qij < 0 || continue
+            seen[j] = true
+            parent[j] = i
+            blen[j] = -1.0 / qij           # off-diagonal of Q is −1/branch length
+            depth[j] = depth[i] + blen[j]
+            push!(order, j)
+        end
+    end
+    length(order) == N || error("drm: internal — the phylogeny is not connected")
+    by_name = Dict(phy.leaf_names[t] => phy.leaf_indices[t] for t in 1:phy.n_leaves)
+    leaf = [by_name[string(l)] for l in levels]
+    h = depth[leaf]
+    all(>(0), h) || throw(ArgumentError("drm: every tree tip needs a positive root-to-tip " *
+        "depth for the phylogenetic correlation scale."))
+    return (post = reverse(order[2:end]), parent = parent, blen = blen, leaf = leaf, h = h,
+            root = phy.root_index, n = N)
+end
+
+# Upward pass. `α0`, `β0` are the per-series leaf messages. Returns
+# (Σ log1p(ℓα), Σ ℓβ²/(1+ℓα)) and, with `keep`, the subtree messages α, β.
+function _temporal_phylo_prune(plan, α0, β0; keep::Bool = false)
+    T = promote_type(eltype(α0), eltype(β0))
+    α = zeros(T, plan.n); β = zeros(T, plan.n)
+    for s in eachindex(plan.leaf)
+        α[plan.leaf[s]] += α0[s]; β[plan.leaf[s]] += β0[s]
+    end
+    ld = zero(T); qc = zero(T)
+    for v in plan.post
+        ℓ = plan.blen[v]
+        den = 1 + ℓ * α[v]
+        ld += log1p(ℓ * α[v])
+        qc += ℓ * β[v]^2 / den
+        p = plan.parent[v]
+        α[p] += α[v] / den
+        β[p] += β[v] / den
+    end
+    return keep ? (ld, qc, α, β) : (ld, qc)
+end
+
+# Downward pass: E[ũ | y] at every node from the upward messages,
+# E[ũ_v | ũ_parent, y] = (ũ_parent + ℓβ_v) / (1 + ℓα_v), linear in ũ_parent.
+function _temporal_phylo_down(plan, α, β)
+    x = zeros(eltype(α), plan.n)
+    for v in Iterators.reverse(plan.post)
+        ℓ = plan.blen[v]
+        x[v] = (x[plan.parent[v]] + ℓ * β[v]) / (1 + ℓ * α[v])
+    end
+    return x
+end
+
+# One fresh draw of the stable field a (per series): Brownian motion down the
+# tree, then the tip-wise correlation scaling.
+function _temporal_phylo_draw(plan, σa, rng)
+    x = zeros(plan.n)
+    for v in Iterators.reverse(plan.post)
+        x[v] = x[plan.parent[v]] + sqrt(plan.blen[v]) * randn(rng)
+    end
+    return σa .* x[plan.leaf] ./ sqrt.(plan.h)
+end
+
+# θ = [βμ; log σ; (log σ_b | log σ_a); log σ_t; θ_temporal]. `phylo` is the
+# tree plan of a paired phylo() + OU fit (wave 2), else `nothing`; its stable
+# SD σ_a takes the slot of the ordinary intercept SD σ_b (the two are never
+# combined — drmTMB refuses `(1 | species)` alongside the paired field).
+function _fit_temporal_gaussian(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, tt, lay, has_ordinary, g_tol;
+                                phylo = nothing)
     n = length(y)
     pμ = size(Xμ, 2)
     size(Xσ, 2) == 1 || error("drm: internal — temporal route needs `sigma ~ 1`")
+    paired = phylo !== nothing
+    (paired && has_ordinary) && error("drm: internal — paired phylo() fit with an ordinary intercept")
+    has_stable = has_ordinary || paired
     structure = tt.structure
     S = lay.nseries
     grows = lay.rows
     ggap = [lay.gap[r] for r in grows]
     iσ = pμ + 1
-    ib = has_ordinary ? pμ + 2 : 0
-    it = pμ + (has_ordinary ? 3 : 2)
+    ib = has_stable ? pμ + 2 : 0
+    it = pμ + (has_stable ? 3 : 2)
     iψ = it + 1
     np = iψ
     # ψ handed to the kernels: θ itself for AR1 (φ = tanh θ is formed there so
     # that 1 − φ² = sech²θ is exact), λ = exp θ for OU.
     ψof(θ) = structure === :ar1 ? θ[iψ] : exp(θ[iψ])
+    invsqrth = paired ? 1 ./ sqrt.(phylo.h) : nothing
 
     function nll(θ)
         T = eltype(θ)
@@ -376,27 +541,42 @@ function _fit_temporal_gaussian(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, tt, lay,
         sb2 = has_ordinary ? exp(2 * θ[ib]) : nothing
         ψ = ψof(θ)
         total = zero(T)
-        for s in 1:S
-            out = _temporal_series(structure, ψ, σ2, st2, sb2, ggap[s], r[grows[s]])
-            out === nothing && return convert(T, 1e18)
-            total += out[1] + out[2]
+        if paired
+            σa = exp(θ[ib])
+            α0 = zeros(T, S); β0 = zeros(T, S)
+            for s in 1:S
+                out = _temporal_filter(structure, ψ, σ2, st2, ggap[s], r[grows[s]]; with_one = true)
+                out === nothing && return convert(T, 1e18)
+                ldF, q, c, d, _ = out
+                total += ldF + q
+                α0[s] = σa^2 * c * invsqrth[s]^2
+                β0[s] = σa * d * invsqrth[s]
+            end
+            ld, qc = _temporal_phylo_prune(phylo, α0, β0)
+            total += ld - qc
+        else
+            for s in 1:S
+                out = _temporal_series(structure, ψ, σ2, st2, sb2, ggap[s], r[grows[s]])
+                out === nothing && return convert(T, 1e18)
+                total += out[1] + out[2]
+            end
         end
         isfinite(total) || return convert(T, 1e18)
         return 0.5 * total + 0.5 * n * log(2π)
     end
 
     # Starts (as drmTMB): OLS β, the residual variance split evenly over the
-    # residual + temporal (+ intercept) components, and two persistence starts
-    # (AR1: φ = ±0.3; OU: correlation 0.3 / 0.7 over the median positive gap),
-    # keeping the lower objective.
+    # residual + temporal (+ intercept / phylo) components, and two persistence
+    # starts (AR1: φ = ±0.3; OU: correlation 0.3 / 0.7 over the median positive
+    # gap), keeping the lower objective.
     βμ0 = Xμ \ y
     v0 = var(y .- Xμ * βμ0)
     (isfinite(v0) && v0 > 0) || (v0 = 1.0)
-    ncomp = has_ordinary ? 3 : 2
+    ncomp = has_stable ? 3 : 2
     base = zeros(np)
     base[1:pμ] .= βμ0
     base[iσ] = log(sqrt(v0 / ncomp))
-    has_ordinary && (base[ib] = log(sqrt(v0 / ncomp)))
+    has_stable && (base[ib] = log(sqrt(v0 / ncomp)))
     base[it] = log(sqrt(v0 / ncomp))
     ψstarts = if structure === :ar1
         [atanh(0.3), -atanh(0.3)]
@@ -420,43 +600,102 @@ function _fit_temporal_gaussian(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, tt, lay,
     sb2 = has_ordinary ? exp(2 * θ̂[ib]) : nothing
     ψ̂ = ψof(θ̂)
     teff = zeros(n); bmodes = zeros(S)
-    for s in 1:S
-        _, _, te, bm = _temporal_series(structure, ψ̂, σ2, st2, sb2, ggap[s], r̂[grows[s]]; modes = true)
-        teff[grows[s]] .= te
-        bmodes[s] = bm
+    if paired
+        # Stable field: upward messages, then the downward pass for E[ũ | y];
+        # a_s = σ_a E[ũ_leaf] / √h_s. Given a, the series are independent, so
+        # the temporal mode is the smoothed state of r_s − a_s 1.
+        σa = exp(θ̂[ib])
+        α0 = zeros(S); β0 = zeros(S)
+        for s in 1:S
+            _, _, c, d, _ = _temporal_filter(structure, ψ̂, σ2, st2, ggap[s], r̂[grows[s]]; with_one = true)
+            α0[s] = σa^2 * c * invsqrth[s]^2
+            β0[s] = σa * d * invsqrth[s]
+        end
+        _, _, αm, βm = _temporal_phylo_prune(phylo, α0, β0; keep = true)
+        x = _temporal_phylo_down(phylo, αm, βm)
+        bmodes .= σa .* x[phylo.leaf] .* invsqrth
+        for s in 1:S
+            sm = _temporal_filter(structure, ψ̂, σ2, st2, ggap[s], r̂[grows[s]] .- bmodes[s]; keep = true)
+            teff[grows[s]] .= _temporal_smooth(sm[5])
+        end
+    else
+        for s in 1:S
+            _, _, te, bm = _temporal_series(structure, ψ̂, σ2, st2, sb2, ggap[s], r̂[grows[s]]; modes = true)
+            teff[grows[s]] .= te
+            bmodes[s] = bm
+        end
     end
 
     grp = String(tt.group)
-    resd_names = has_ordinary ? ["$(grp)_iid", grp] : [grp]
+    stable_name = paired ? "$(grp)_phylo" : "$(grp)_iid"
+    resd_names = has_stable ? [stable_name, grp] : [grp]
     pblock = structure === :ar1 ? :temporal_phi : :temporal_decay
     blocks = [:mu => 1:pμ, :sigma => iσ:iσ,
-              :resd => (has_ordinary ? (ib:it) : (it:it)), pblock => iψ:iψ]
-    names = [:mu => nmμ, :sigma => nmσ, :resd => resd_names, pblock => [_temporal_label(tt)]]
+              :resd => (has_stable ? (ib:it) : (it:it)), pblock => iψ:iψ]
+    # drmTMB names the paired fit's rate `decay_temporal` (its scientific
+    # meaning) and keeps the formula label for the independent-series fits.
+    names = [:mu => nmμ, :sigma => nmσ, :resd => resd_names,
+             pblock => [paired ? "decay_temporal" : _temporal_label(tt)]]
     means = Dict(:mu => Xμ * θ̂[1:pμ])
     obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => fill(exp(θ̂[iσ]), n))
     effects = Dict{Symbol,Vector{Float64}}(tt.group => teff)
-    has_ordinary && (effects[Symbol("$(grp)_iid")] = bmodes)
+    has_stable && (effects[Symbol(stable_name)] = bmodes)
     info = (label = _temporal_label(tt), structure = structure, group = tt.group,
             time = tt.time, nseries = S, rows = grows, gaps = ggap,
-            has_ordinary = has_ordinary)
+            has_ordinary = has_ordinary, phylo = phylo, levels = lay.levels)
     fit = DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(best), means, obs, scales)
     return _withranef(_withnll(fit, nll), (effects = effects, temporal = info))
 end
 
-# Router: validate the wave-1 scope, then fit. Called from `_drm_gaussian_fit`
-# before any other route can claim the formula.
+const _PHYLO_TEMPORAL_SPELLING = "Use `phylo(1 | species) + temporal(1 | species, elapsed, ou)` " *
+    "with `drm(...; tree = tree)` (drmTMB: `phylo(1 | species, tree = tree) + " *
+    "temporal(1 | species, time = elapsed, structure = \"ou\")`)."
+
+# Router: validate the wave-1 / wave-2 scope, then fit. Called from
+# `_drm_gaussian_fit` before any other route can claim the formula. The one
+# structured partner admitted is drmTMB's paired provider: an unlabelled
+# `phylo(1 | species)` stable intercept on the SAME grouping as an OU
+# `temporal()` term (wave 2, src/temporal.jl header).
 function _drm_gaussian_temporal(f, fam::Gaussian, tt, re, metav, structured, sigma_re,
         structured_sigma, y, Xμ, Xσ, nmμ, nmσ, data; method, algorithm, penalty,
-        phylo_coupled, sparse, has_missing_response, g_tol)
+        phylo_coupled, sparse, has_missing_response, g_tol, structured_slope = nothing,
+        tree = nothing)
     lbl = _temporal_label(tt)
     nope(what) = throw(ArgumentError("drm: `$lbl` cannot be combined with $what; " *
         _TEMPORAL_SCOPE * "."))
     length(_collect_temporal(Dict(f.forms)[:mu])) == 1 ||
         throw(ArgumentError("drm: only one temporal effect is implemented in `mu`. " * _TEMPORAL_SPELLING))
     method === :ML || nope("`method = :$method` (temporal fits are ML only; REML is not implemented)")
-    (structured === nothing && isempty(_collect_structured(Dict(f.forms)[:mu]))) ||
-        nope("another structured effect (phylo/relmat/animal/spatial) in this first slice")
+    all_structured = _collect_structured(Dict(f.forms)[:mu])
+    paired = !isempty(all_structured)
+    if paired
+        (length(all_structured) == 1 && all_structured[1][1] === :phylo) ||
+            nope("$(length(all_structured) == 1 ? "a `$(all_structured[1][1])(…)` structured effect" :
+                 "more than one structured effect"); the only structured partner implemented is " *
+                 "the paired `phylo(1 | species)` stable intercept with an OU temporal term")
+        tt.structure === :ou ||
+            throw(ArgumentError("drm: The paired `phylo()` plus `temporal()` provider requires " *
+                "structure `ou`. Use independent AR1 without `phylo()`, or " *
+                "`phylo(1 | species) + temporal(1 | species, elapsed, ou)` for this combined slice. " *
+                _PHYLO_TEMPORAL_SPELLING))
+        structured_slope === nothing ||
+            throw(ArgumentError("drm: The paired phylogenetic-temporal provider requires an " *
+                "unlabelled `phylo(1 | species)` intercept; phylogenetic slopes and covariance-block " *
+                "labels are deferred for this combined slice."))
+        pgrp = all_structured[1][2]
+        pgrp === tt.group ||
+            throw(ArgumentError("drm: Paired `phylo()` and `temporal()` terms must use the same " *
+                "grouping ID; the phylogenetic group is `$(pgrp)` but the temporal group is " *
+                "`$(tt.group)`. " * _PHYLO_TEMPORAL_SPELLING))
+        isempty(re) ||
+            throw(ArgumentError("drm: The paired phylogenetic-temporal OU model does not allow an " *
+                "ordinary random intercept; the stable between-species component is already " *
+                "`phylo(1 | $(tt.group))`."))
+        tree === nothing &&
+            throw(ArgumentError("drm: `phylo(1 | $(tt.group))` with `temporal()` needs the tree: " *
+                "pass `drm(...; tree = tree)` (a Newick string or an `AugmentedPhy`)."))
+    end
     metav === nothing || nope("`meta_V(...)`")
     (isempty(sigma_re) && structured_sigma === nothing) ||
         nope("a random or structured effect on `sigma` (temporal models require `sigma ~ 1`)")
@@ -488,8 +727,21 @@ function _drm_gaussian_temporal(f, fam::Gaussian, tt, re, metav, structured, sig
                 "or `(1 | $(tt.group))`."))
         has_ordinary = true
     end
-    lay = _temporal_layout(tt, data; has_ordinary = has_ordinary)
-    return _fit_temporal_gaussian(fam, y, Xμ, Xσ, nmμ, nmσ, tt, lay, has_ordinary, g_tol)
+    lay = _temporal_layout(tt, data; has_ordinary = has_ordinary, paired = paired)
+    paired || return _fit_temporal_gaussian(fam, y, Xμ, Xσ, nmμ, nmσ, tt, lay, has_ordinary, g_tol)
+    # drmTMB: the tree tips must be exactly the observed species (by name).
+    phy = tree isa AbstractString ? augmented_phy(tree) : tree
+    phy isa AugmentedPhy ||
+        throw(ArgumentError("drm: `tree` must be a Newick string or an `AugmentedPhy`."))
+    obs = string.(lay.levels)
+    (Set(obs) == Set(phy.leaf_names) && length(phy.leaf_names) == length(obs)) ||
+        throw(ArgumentError("drm: The paired phylogenetic-temporal OU model requires tree tips to " *
+            "match the observed species ($(length(phy.leaf_names)) tips, $(length(obs)) observed " *
+            "species, $(length(setdiff(Set(obs), Set(phy.leaf_names)))) observed species not in the " *
+            "tree). Prune the tree or supply data for the matching set of tips before fitting."))
+    plan = _temporal_phylo_plan(phy, obs)
+    return _withphyloscale(_fit_temporal_gaussian(fam, y, Xμ, Xσ, nmμ, nmσ, tt, lay, false, g_tol;
+                                                  phylo = plan), :correlation)
 end
 
 """
@@ -500,8 +752,12 @@ scales: `label` (drmTMB's term label), `structure` (`:ar1` / `:ou`), `sd`
 (process SD σ_t; drmTMB `sdpars\$mu["temporal_sd: <label>"]`), `phi` (AR1
 persistence, one occasion apart; drmTMB `corpars\$temporal`) or `decay` (OU
 rate λ in the units of `time`; drmTMB `decaypars\$temporal`) — the other is
-`nothing` — `sd_iid` (the ordinary `(1 | id)` SD, or `nothing`) and `sigma`
-(residual SD). Errors on a fit without a temporal term.
+`nothing` — `sd_iid` (the ordinary `(1 | id)` SD, or `nothing`), `sd_phylo`
+(the stable phylogenetic SD of a paired `phylo(1 | species) + temporal(…, ou)`
+fit, on the tip-correlation scale; drmTMB `sdpars\$mu["sd_phylo_stable"]`, or
+`nothing`) and `sigma` (residual SD). For the paired fit drmTMB names the
+process SD `sd_temporal` and the rate `decay_temporal`. Errors on a fit
+without a temporal term.
 """
 function temporal_parameters(fit::DrmFit)
     info = fit.ranef isa NamedTuple && haskey(fit.ranef, :temporal) ? fit.ranef.temporal : nothing
@@ -515,6 +771,7 @@ function temporal_parameters(fit::DrmFit)
             phi = info.structure === :ar1 ? tanh(ψ) : nothing,
             decay = info.structure === :ou ? exp(ψ) : nothing,
             sd_iid = get(sds, iid, nothing),
+            sd_phylo = get(sds, Symbol("$(g)_phylo"), nothing),
             sigma = exp(only(coef(fit, :sigma))))
 end
 
@@ -536,7 +793,8 @@ function _temporal_check_forms(forms, allowed)
     return nothing
 end
 
-# One draw from the fitted MARGINAL model, in data-row order: Xβ̂ + a fresh
+# One draw from the fitted MARGINAL model, in data-row order: Xβ̂ + (for a
+# paired fit) a fresh phylogenetic stable vector + a fresh
 # stationary chain per series (s_1 ~ N(0, σ_t²), s_k = a_k s_{k−1} +
 # σ_t √(1 − a_k²) z_k, with a_k = φ^gap or e^{−λΔt}) + a fresh `(1 | id)`
 # intercept when present + N(0, σ²) noise — drmTMB's default `simulate()`
@@ -550,8 +808,12 @@ function _temporal_simulate(fit::DrmFit, rng)
     sb = info.has_ordinary ? sds[Symbol("$(info.group)_iid")] : 0.0
     σ = exp(only(coef(fit, :sigma)))
     y = copy(fit.means[:mu])
-    for (rows, g) in zip(info.rows, info.gaps)
-        b = info.has_ordinary ? sb * randn(rng) : 0.0
+    # Paired phylo() fit: one fresh stable phylogenetic vector per draw (drmTMB
+    # `drm_structured_mu_random_effect_draws`), drawn before the chains.
+    stable = info.phylo === nothing ? nothing :
+        _temporal_phylo_draw(info.phylo, sds[Symbol("$(info.group)_phylo")], rng)
+    for (si, (rows, g)) in enumerate(zip(info.rows, info.gaps))
+        b = stable !== nothing ? stable[si] : info.has_ordinary ? sb * randn(rng) : 0.0
         s = st * randn(rng)
         y[rows[1]] += s + b
         for k in 2:length(rows)
