@@ -1,0 +1,29 @@
+[fit]
+family = "gaussian"
+formula = "y ~ x + (1 | id) + temporal(1 | id, time = occ, structure = \"ar1\"); sigma ~ 1"
+julia_formula = "y ~ x + (1 | id) + temporal(1 | id, occ, ar1)"
+data_file = "ar1_gapped.csv"
+group = "id"
+structure = "ar1"
+ordinary_intercept = true
+method = "ML"
+loglik = -3.4898923827243289e+02
+n = 265
+
+[coef]
+"mu_(Intercept)" = 9.9903539811333131e-01
+"mu_x" = 5.5569349061431894e-01
+
+[temporal]
+sd = 6.1337596154070284e-01
+phi = 7.3193130137497697e-01
+sd_iid = 2.0061250631818861e-01
+sigma = 6.8939752778797447e-01
+
+[status]
+converged = true
+pdHess = true
+
+[tol]
+atol_loglik = 1e-8
+rtol_par = 1e-6

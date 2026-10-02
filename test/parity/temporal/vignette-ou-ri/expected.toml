@@ -1,0 +1,29 @@
+[fit]
+family = "gaussian"
+formula = "y ~ treatment + (1 | site) + temporal(1 | site, time = elapsed_days, structure = \"ou\"); sigma ~ 1"
+julia_formula = "y ~ treatment + (1 | site) + temporal(1 | site, elapsed_days, ou)"
+data_file = "vignette_ou_sites.csv"
+group = "site"
+structure = "ou"
+ordinary_intercept = true
+method = "ML"
+loglik = -1.0258057815043882e+02
+n = 96
+
+[coef]
+"mu_(Intercept)" = 8.49409471653783e-01
+"mu_treatment" = 3.7134308754180773e-01
+
+[temporal]
+sd = 6.7845554172768419e-01
+decay = 4.927937426702142e-01
+sd_iid = 5.9768102547432966e-01
+sigma = 1.9011181501037316e-01
+
+[status]
+converged = true
+pdHess = true
+
+[tol]
+atol_loglik = 1e-8
+rtol_par = 1e-6

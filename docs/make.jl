@@ -64,6 +64,7 @@ makedocs(
             "tutorials/spatial-models.md",
             "tutorials/relmat-known-matrices.md",
             "tutorials/phylogenetic-spatial.md",
+            "tutorials/temporal-random-effects.md",
         ],
         "Check your model" => [
             "diagnostics-and-validation/figure-gallery.md",

@@ -1,0 +1,30 @@
+[fit]
+family = "gaussian"
+formula = "y ~ treatment + occasion + (1 | site) + temporal(1 | site, time = occasion, structure = \"ar1\"); sigma ~ 1"
+julia_formula = "y ~ treatment + occasion + (1 | site) + temporal(1 | site, occasion, ar1)"
+data_file = "vignette_ar1_sites.csv"
+group = "site"
+structure = "ar1"
+ordinary_intercept = true
+method = "ML"
+loglik = -3.4534482899469231e+02
+n = 288
+
+[coef]
+"mu_(Intercept)" = 1.0837697434675801e+00
+"mu_treatment" = 4.9554761766962618e-01
+"mu_occasion" = 6.3853165014370952e-02
+
+[temporal]
+sd = 5.8154558894996577e-01
+phi = 6.7287364953874829e-01
+sd_iid = 5.6241063630758481e-01
+sigma = 5.1841259520806404e-01
+
+[status]
+converged = true
+pdHess = true
+
+[tol]
+atol_loglik = 1e-8
+rtol_par = 1e-6
