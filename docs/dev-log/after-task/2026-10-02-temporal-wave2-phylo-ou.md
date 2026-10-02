@@ -51,7 +51,8 @@ O(m³). The tip-correlation scale (drmTMB, and DRModels' closed-form
   branch lengths: worst |Δnll| 7.5e-12 over random θ on ultrametric and
   non-ultrametric trees, and at decay e^6 / e^-8 / e^-20, σ_a e^-15 / e^3 and
   σ_t e^-15. The modes match the dense formulas to 1e-8.
-- Parity with drmTMB #1448 (head 66ce5750d), on Julia 1.10.12 and 1.13:
+- Parity with drmTMB #1448 (final head 012258e9f; numbers unchanged from
+  66ce5750d), on Julia 1.10.12 and 1.13:
   - `phylo-ou-species`: logLik 1.1e-12, estimates ≤ 1.6e-11 relative,
     conditional fitted values 1.7e-12.
   - `vignette-phylo-ou` (60 species): logLik 5.4e-12, estimates ≤ 2.5e-12,
@@ -78,3 +79,21 @@ O(m³). The tip-correlation scale (drmTMB, and DRModels' closed-form
 - A separable phylogeny × time field is a different model and is not
   implemented.
 - The parity cells must be regenerated when #1448 changes or merges.
+
+## Follow-up after drmTMB review (#1447 07d1612ea, #1448 012258e9f)
+
+- Temporal boundary diagnostic (`_temporal_boundary`, `check_drm(fit).temporal_boundary`,
+  fit-time warning through `_warn_variance_boundary`): drmTMB's four rules,
+  for wave-1 AR1/OU and the paired fit. Test file `test/test_temporal_boundary.jl`
+  covers each threshold on both sides and drmTMB's own boundary panel. On
+  that panel DRModels.jl reaches decay 1.4e-18 with drmTMB's β, σ and SD (to
+  1e-9). At drmTMB's θ̂ the exact (256-bit dense) logLik is −45.5124249517,
+  while drmTMB prints −45.5124224656: a 2.5e-6 loss in drmTMB's objective as
+  decay → 0. This is reported to the drmTMB lane.
+- I tried and dropped an OU "boundary polish" restart. On simulated
+  random-intercept panels the decay MLE is interior (≈ 0.006, profile checked),
+  and on drmTMB's panel the plain optimiser already reaches the boundary.
+- Profile `confint` on the paired fit warns that the intervals are
+  uncalibrated (drmTMB #1448). The unobserved-tips refusal now names the tips.
+- Parity cells regenerated from 012258e9f: the numbers are unchanged and
+  only the provenance is new.

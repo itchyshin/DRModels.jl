@@ -300,7 +300,8 @@ function _temporal_layout(tt, data; has_ordinary::Bool, paired::Bool = false)
     return (rows = rows, gap = gap, nseries = S, gidx = gidx, levels = unique(ids))
 end
 
-using Statistics: var, median
+using Statistics: var, median, std
+using Printf: @sprintf
 
 # Transition a and innovation fraction 1 − a² for one gap, both without
 # cancellation. AR1: ψ = θ (φ = tanh θ), gap a positive integer g,
@@ -734,11 +735,17 @@ function _drm_gaussian_temporal(f, fam::Gaussian, tt, re, metav, structured, sig
     phy isa AugmentedPhy ||
         throw(ArgumentError("drm: `tree` must be a Newick string or an `AugmentedPhy`."))
     obs = string.(lay.levels)
-    (Set(obs) == Set(phy.leaf_names) && length(phy.leaf_names) == length(obs)) ||
+    extra = setdiff(phy.leaf_names, obs)          # tips with no observations
+    absent = setdiff(obs, phy.leaf_names)         # observed species not in the tree
+    (isempty(extra) && isempty(absent)) ||
         throw(ArgumentError("drm: The paired phylogenetic-temporal OU model requires tree tips to " *
-            "match the observed species ($(length(phy.leaf_names)) tips, $(length(obs)) observed " *
-            "species, $(length(setdiff(Set(obs), Set(phy.leaf_names)))) observed species not in the " *
-            "tree). Prune the tree or supply data for the matching set of tips before fitting."))
+            "match the observed species. " *
+            (isempty(extra) ? "" : "The tree has $(length(extra)) tip(s) with no observations, for " *
+                "example $(join(first(extra, 3), ", ")); prune it to the observed species first " *
+                "(R: `ape::keep.tip(tree, unique(species))`). ") *
+            (isempty(absent) ? "" : "$(length(absent)) observed species are not tree tips, for " *
+                "example $(join(first(absent, 3), ", ")). ") *
+            "Supply data and a tree for the same set of species before fitting."))
     plan = _temporal_phylo_plan(phy, obs)
     return _withphyloscale(_fit_temporal_gaussian(fam, y, Xμ, Xσ, nmμ, nmσ, tt, lay, false, g_tol;
                                                   phylo = plan), :correlation)
@@ -824,4 +831,80 @@ function _temporal_simulate(fit::DrmFit, rng)
     end
     y .+= σ .* randn(rng, length(y))
     return y
+end
+
+# --- temporal boundary diagnostic (drmTMB `check_temporal_boundary`) --------
+#
+# A temporal parameter can reach an interpretability boundary while the
+# optimiser, Hessian and standard errors all look regular: the residual SD can
+# collapse into the temporal process, an OU decay can run to 0 (a per-series
+# constant) or to ∞ relative to the sampling gaps (white noise), and AR1
+# persistence can run to ±1. drmTMB's thresholds (relative to the data):
+# σ̂ / sd(y) < 1e-3; OU decay × longest within-series span < 1e-4 (correlation
+# > 0.9999 at every observed lag) or decay × shortest positive gap > 30
+# (correlation < 1e-13 at every observed lag); |φ̂| > 0.999. drmTMB then reports
+# `convergence_status() == "boundary"` (still `is_converged`); DRModels.jl
+# warns at fit time and reports the findings in `check_drm(fit).temporal_boundary`.
+const _TEMPORAL_BOUNDARY = (sigma_ratio = 1e-3, decay_span = 1e-4, decay_gap = 30.0,
+                            ar1_phi = 0.999)
+
+_is_paired_phylo_temporal(fit) = _is_temporal_fit(fit) && fit.ranef.temporal.phylo !== nothing
+
+"""
+    _temporal_boundary(fit) -> Union{Nothing,Vector{String}}
+
+`nothing` for a fit without a `temporal()` term; otherwise the list of
+boundary findings (empty when every temporal parameter is interior), each
+`"name=value"` as drmTMB's `temporal_boundary` row prints them.
+"""
+function _temporal_boundary(fit::DrmFit)
+    _is_temporal_fit(fit) || return nothing
+    info = fit.ranef.temporal
+    y = fit.obs[:mu]
+    ψ = info.structure === :ou ? exp(only(coef(fit, :temporal_decay))) :
+        info.structure === :ar1 ? tanh(only(coef(fit, :temporal_phi))) : nothing
+    return _temporal_boundary_rules(info.structure, exp(only(coef(fit, :sigma))),
+                                    length(y) > 1 ? std(y) : NaN, ψ, info.gaps)
+end
+
+# The rules themselves, on plain numbers: `ψ` is the OU decay λ or the AR1 φ;
+# `gaps` the per-series gap vectors (first entry 0).
+function _temporal_boundary_rules(structure, σ, sdy, ψ, gaps)
+    lim = _TEMPORAL_BOUNDARY
+    found = String[]
+    (isfinite(σ) && isfinite(sdy) && sdy > 0 && σ / sdy < lim.sigma_ratio) &&
+        push!(found, "sigma_ratio=" * @sprintf("%.3g", σ / sdy))
+    if structure === :ou
+        spans = [sum(g) for g in gaps]                      # last − first time per series
+        pos = [x for g in gaps for x in g if x > 0]
+        (isfinite(ψ) && !isempty(spans) && ψ * maximum(spans) < lim.decay_span) &&
+            push!(found, "decay_x_max_span=" * @sprintf("%.3g", ψ * maximum(spans)))
+        (isfinite(ψ) && !isempty(pos) && ψ * minimum(pos) > lim.decay_gap) &&
+            push!(found, "decay_x_min_gap=" * @sprintf("%.3g", ψ * minimum(pos)))
+    elseif structure === :ar1
+        (isfinite(ψ) && abs(ψ) > lim.ar1_phi) && push!(found, "phi=" * @sprintf("%.6g", ψ))
+    end
+    return found
+end
+
+function _temporal_boundary_message(found)
+    return "A temporal parameter is at an interpretability boundary (" * join(found, "; ") *
+        "): sigma_ratio means the residual SD collapsed into the temporal process; " *
+        "decay_x_max_span means OU correlation is ~1 at every observed lag (a per-series " *
+        "constant); decay_x_min_gap means OU correlation is ~0 at every observed lag (white " *
+        "noise); phi means AR1 persistence is at ±1. The optimiser converged, but do not read " *
+        "the variance components separately; collect more series or occasions, or fit a " *
+        "simpler temporal model. (drmTMB reports `convergence_status() == \"boundary\"` here.)"
+end
+
+# Fit-time advisory, silent inside bootstrap / profile refits.
+function _warn_temporal_boundary(fit)
+    get(task_local_storage(), :drm_quiet_boundary, false) === true && return fit
+    found = try
+        _temporal_boundary(fit)
+    catch
+        nothing                      # a diagnostic must never break a fit
+    end
+    (found === nothing || isempty(found)) || @warn "drm: " * _temporal_boundary_message(found)
+    return fit
 end

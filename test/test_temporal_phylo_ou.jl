@@ -183,7 +183,9 @@ using Distributions: MvNormal, logpdf
         @test check_drm(fit) !== nothing
         @test sprint(show, MIME("text/plain"), fit) isa String
         @test residuals(fit) ≈ d.y .- fitted(fit)
-        pr = confint(fit; method = :profile, parm = :mu => "x")
+        # drmTMB #1448: profile intervals on the paired fit warn that they are uncalibrated
+        pr = @test_logs (:warn, r"not calibrated") match_mode = :any confint(fit; method = :profile,
+                                                                              parm = :mu => "x")
         @test only(pr).lower < coef(fit, :mu)[2] < only(pr).upper
         # temporal_parameters on a wave-1 fit reports no phylo SD
         f1 = drm(bf(@formula(y ~ x + temporal(1 | species, elapsed, ou)), @formula(sigma ~ 1)),
@@ -248,6 +250,8 @@ using Distributions: MvNormal, logpdf
         # tree tips must match the observed species
         sub = map(c -> c[d.species .!= lev[end]], d)
         @test occursin("tips to match", msg(fP; data = sub))
+        @test occursin("tip(s) with no observations", msg(fP; data = sub))     # named up front
+        @test occursin(lev[end], msg(fP; data = sub))
         @test occursin("tips to match", msg(fP; tree = replace(nwk, lev[1] * ":" => "nobody:")))
         # still refused: other structured partners, AR1-free scope rules, REML
         @test_throws ae g(bf(@formula(y ~ x + relmat(1 | species) + temporal(1 | species, elapsed, ou)),
