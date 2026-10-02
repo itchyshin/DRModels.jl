@@ -147,8 +147,14 @@ end
 # of the same series (0 for a series' first row), and the series levels.
 function _temporal_layout(tt, data; has_ordinary::Bool)
     sname = tt.structure === :ar1 ? "AR1" : "OU"
-    ids = _table_column(data, tt.group)
-    times = _table_column(data, tt.time)
+    col(nm) = try
+        _table_column(data, nm)
+    catch
+        throw(ArgumentError("drm: Temporal $sname inputs must be columns in `data`; missing " *
+            "temporal column `$(nm)`."))
+    end
+    ids = col(tt.group)
+    times = col(tt.time)
     n = length(ids)
     length(times) == n || error("drm: internal — temporal id/time length mismatch")
     (any(ismissing, ids) || any(ismissing, times)) &&

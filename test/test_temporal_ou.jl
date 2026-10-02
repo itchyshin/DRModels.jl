@@ -164,6 +164,8 @@ using Distributions: MvNormal, Normal, logpdf
                       elapsed = [0.0, 0.5, 2.0, 3.5, 7.0, 8.0])
         @test_throws ae drm(fOUi, Gaussian(); data = one_series)
         @test_throws ae drm(fOU, Gaussian(); data = merge(d, (elapsed = [i == 1 ? Inf : v for (i, v) in enumerate(d.elapsed)],)))
+        @test_throws ae drm(bf(@formula(y ~ x + temporal(1 | id, days, ou)), @formula(sigma ~ 1)),
+                            Gaussian(); data = d)                    # time column absent
         @test_throws ae drm(fOU, Gaussian(); data = d, method = :REML)
         @test_throws ae drm(bf(@formula(y ~ x + temporal(1 | id, elapsed, ou)), @formula(sigma ~ x)),
                             Gaussian(); data = d)
