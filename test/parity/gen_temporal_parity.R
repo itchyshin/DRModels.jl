@@ -36,6 +36,8 @@ repo_root <- function() {
   normalizePath(getwd())
 }
 
+source(file.path(repo_root(), "tools", "drmtmb_provenance_lib.R"))
+
 toml_string <- function(x) paste0('"', gsub('"', '\\"', as.character(x), fixed = TRUE), '"')
 toml_num <- function(x) {
   if (!is.finite(x)) stop("cannot write non-finite TOML number: ", x)
@@ -151,8 +153,13 @@ for (cell in cells) {
       paste0("temporal_mean_profile_status = ", toml_string(tmp$status)),
       paste0("temporal_mean_profile_value = ", toml_string(tmp$value)), "")
   }
+  # #473 provenance: stamp the installed build's code hash (tools/drmtmb_provenance_lib.R),
+  # required by test/test_fixture_provenance.jl.
+  prov <- drmtmb_provenance()
   meta <- c(
     paste0("drmtmb_version = ", toml_string(as.character(packageVersion("drmTMB")))),
+    paste0("drmtmb_code_hash = ", toml_string(prov$code_hash)),
+    paste0("drmtmb_built = ", toml_string(prov$built)),
     paste0("drmtmb_sha = ", toml_string(sha)),
     paste0("r_version = ", toml_string(R.version.string)),
     paste0("generated_on = ", toml_string(format(Sys.Date()))),
