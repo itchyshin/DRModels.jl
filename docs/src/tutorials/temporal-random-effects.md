@@ -1,21 +1,25 @@
-# Temporal AR1 and OU random effects
+# Temporal AR1, OU and Toeplitz effects
 
 !!! note "Status — Tested (Gaussian mean, ML)"
-    Mirrors drmTMB's *Temporal AR1 and OU random effects* article
+    Mirrors drmTMB's *Temporal AR1, OU, and Toeplitz effects* article
     (`vignettes/temporal-random-effects.Rmd`). **In DRModels.jl today:** one
     intercept-only `temporal(1 | id, time, ar1)` or `temporal(1 | id, time, ou)`
     term on the Gaussian **mean**, with `sigma ~ 1`, fitted by ML, optionally
     alongside an ordinary `(1 | id)` on the same `id`, or (OU only) alongside a
-    phylogenetic stable intercept `phylo(1 | species)` on the same grouping.
+    phylogenetic stable intercept `phylo(1 | species)` on the same grouping;
+    or a homogeneous Toeplitz `temporal(1 | id, time, homtoep)` covariance on a
+    complete, equally spaced panel.
     Other families, temporal terms on `sigma`, slopes, REML and other
     structured terms are refused with an error. This page fits drmTMB's own two datasets and reproduces its
     numbers (table below).
 
 !!! info "Attribution"
     The explanatory prose on this page is adapted from the drmTMB article
-    *Temporal AR1 and OU random effects* (`vignettes/temporal-random-effects.Rmd`)
-    by its copyright holder, Shinichi Nakagawa, and is reused here under the MIT
-    licence. The code, the Julia-specific text and the comparisons are new.
+    *Temporal AR1 and OU random effects* (`vignettes/temporal-random-effects.Rmd`;
+    its Toeplitz section from the development-branch version of that article,
+    *Temporal AR1, OU, and Toeplitz effects*) by its copyright holder, Shinichi
+    Nakagawa, and is reused here under the MIT licence. The code, the
+    Julia-specific text and the comparisons are new.
 
 Repeated measurements can vary for three different reasons. Individuals or
 sites may have stable baseline differences, their deviations may persist
@@ -242,6 +246,88 @@ every site–occasion pair is unique; if a site was measured more than once at
 an occasion, aggregate those records before fitting. Rows may be in any order.
 An AR1-only fit omits `(1 | site)` but keeps the same `temporal()` term.
 
+## Free correlation by discrete lag with homogeneous Toeplitz
+
+Use homogeneous Toeplitz covariance when every site is measured at the same
+complete, equally spaced set of discrete occasions and the scientific question
+is whether correlation departs from AR1's exponential pattern. It estimates a
+separate correlation for each lag: visits one occasion apart share
+`cor_lag1`, visits two occasions apart share `cor_lag2`, and so on. This is
+more flexible than AR1, so it needs a common panel rather than the irregular
+or incomplete schedules accepted by AR1 and OU. In Julia the structure name is
+`homtoep`:
+
+| drmTMB (R)                                                     | DRModels.jl (Julia)                        |
+|:---------------------------------------------------------------|:-------------------------------------------|
+| `temporal(1 \| site, time = occasion, structure = "homtoep")`  | `temporal(1 \| site, occasion, homtoep)`    |
+
+drmTMB's article shows this model without data. Here we use a simulated
+complete panel that ships with the test fixtures: 40 sites, each observed at
+occasions 0 to 5, with a lag pattern that is not exponential (partial
+autocorrelations 0.6, −0.3, 0.35, 0 and 0.15) and a total SD of 0.9.
+
+```@example temporal
+col = read_fixture("homtoep_panel6.csv")
+panel = (y = parse.(Float64, col("y")), x = parse.(Float64, col("x")),
+         site = String.(col("id")), occasion = parse.(Int, col("occ")))
+
+toeplitz_fit = drm(bf(@formula(y ~ x + temporal(1 | site, occasion, homtoep)),
+                      @formula(sigma ~ 1)),
+                   Gaussian(); data = panel)
+toeplitz_tp = temporal_parameters(toeplitz_fit)
+(sigma = toeplitz_tp.sigma, cor_lag = round.(toeplitz_tp.cor; digits = 3))
+```
+
+Here `sigma` is the total within-site SD of the Toeplitz covariance. The model
+does not separately estimate a temporal-process SD, an independent residual SD
+or an ordinary `(1 | site)` intercept, because those components are not
+separately identifiable when the correlation at every lag is free; both
+packages refuse `(1 | site)` beside `homtoep`. The lag correlations are
+estimated through their partial autocorrelations (`coef(toeplitz_fit,
+:temporal_pac)`, on the atanh scale), which keeps every fitted correlation
+matrix positive definite. There are no latent temporal states: `fitted` is
+``X\hat\beta`` in both packages, and `simulate` draws each site's six values
+jointly from the fitted ``\sigma^2 R``.
+
+The same model fitted by drmTMB to the same data (parity cell
+`test/parity/temporal/homtoep-panel6/`):
+
+```@example temporal
+toep_ref = parity_cell("homtoep-panel6")
+toep_names = Dict(toeplitz_fit.coefnames)[:mu]
+[(quantity = q, drmTMB = round(r; digits = 4), DRModels = round(j; digits = 4),
+  abs_diff = abs(j - r))
+ for (q, r, j) in [("logLik", toep_ref["fit"]["loglik"], loglik(toeplitz_fit)),
+                   [(k, v, coef(toeplitz_fit, :mu)[findfirst(==(replace(k, "mu_" => "")), toep_names)])
+                    for (k, v) in toep_ref["coef"]]...,
+                   ("sigma", toep_ref["temporal"]["sigma"], toeplitz_tp.sigma),
+                   [("cor_lag$m", r, toeplitz_tp.cor[m])
+                    for (m, r) in enumerate(toep_ref["temporal"]["cor"])]...]]
+```
+
+drmTMB qualifies only likelihood-profile intervals for mean regression effects
+of this model:
+
+```@example temporal
+compare_ci(confint(toeplitz_fit; method = :profile, parm = :mu => "x"), toep_ref["profile"])
+```
+
+A retained 4,000-fit drmTMB campaign qualified these mean-effect profiles in
+three predeclared 80-site, six-occasion panels: AR1-shaped, non-exponential,
+and negative first-lag correlation patterns. The 20-site stress panel had
+lower intercept coverage, so this is evidence for those primary panel
+designs, not a coverage claim for every Toeplitz analysis, and it was obtained
+with drmTMB: DRModels.jl reproduces the same likelihood, but no separate
+calibration study has been run on its intervals. Wald, total-scale and
+lag-correlation intervals are unavailable in drmTMB. DRModels.jl's `coeftable`
+prints Wald standard errors for every coordinate, as on all its routes; do not
+use them as intervals. If elapsed gaps are genuinely irregular, use OU
+instead.
+
+The panel rules are drmTMB's: integer occasions, at least 3 and at most 12
+common occasions, equally spaced, and every site observing all of them; a
+site with a missing occasion is refused by name rather than silently dropped.
+
 ## Irregular elapsed time with OU
 
 Use an OU process when elapsed intervals carry meaning, such as visits at 0,
@@ -457,6 +543,15 @@ log-likelihood and ``10^{-6}`` relative for the parameters, to leave room for
 other platforms. The likelihood itself is also checked against
 a dense multivariate-normal oracle (`test/test_temporal_ar1.jl`,
 `test/test_temporal_ou.jl`).
+
+Two cells cover homogeneous Toeplitz (the panel above, and a 30-site,
+four-occasion panel with a negative first-lag correlation): logLik within
+``10^{-12}``, β and σ within ``2 \times 10^{-11}`` relative and every lag
+correlation within ``5 \times 10^{-10}`` (Julia 1.10.12 and 1.13, Linux,
+Totoro). The Toeplitz likelihood is checked against a BigFloat dense oracle
+to ``2 \times 10^{-15}`` relative, including partial autocorrelations near
+±1, and its partial-autocorrelation parameterisation against dense Schur
+complements (`test/test_temporal_homtoep.jl`).
 
 Two more cells cover the paired phylogenetic + OU model: drmTMB's article data
 above and a 24-species simulated fixture. Both agree with drmTMB to within

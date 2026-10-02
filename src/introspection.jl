@@ -22,7 +22,8 @@ Runs no optimisation: it walks the fitted object. One row per coefficient with
 - `index` — its position in `fit.theta`;
 - `estimate` — the fitted value **on the estimation scale**;
 - `scale` — `:log` for a variance-component / scale coefficient (and the
-  temporal OU decay), `:atanh` for the temporal AR1 persistence, `:identity` otherwise;
+  temporal OU decay), `:atanh` for the temporal AR1 persistence and the Toeplitz partial
+  autocorrelations, `:identity` otherwise;
 - `profile_ready` — whether a profile interval can actually be computed here;
 - `profile_note` — why, when it cannot.
 
@@ -77,7 +78,7 @@ end
 # residual-scale blocks are stored as logs; mean coefficients are not.
 _profile_target_scale(param::Symbol) =
     param in (:sigma, :resd, :resd_mu, :resd_sigma, :recov, :sd, :sd_phylo, :temporal_decay) ? :log :
-    param === :temporal_phi ? :atanh : :identity
+    param in (:temporal_phi, :temporal_pac) ? :atanh : :identity
 
 """
     structured_effects(fit::DrmFit) -> Vector{NamedTuple}

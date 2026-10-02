@@ -9,7 +9,8 @@
 # few hundred rows, so the whole set runs in seconds.
 #
 # Claim fence: point estimates at the ML optimum only (logLik, β, process SD,
-# φ or decay, `(1 | id)` SD or phylogenetic stable SD, σ). No interval, coverage or calibration claim.
+# φ or decay, `(1 | id)` SD or phylogenetic stable SD, homtoep lag
+# correlations, σ). No interval, coverage or calibration claim.
 
 module TestParityTemporal
 
@@ -21,10 +22,11 @@ include(joinpath(@__DIR__, "parity", "temporal_parity.jl"))
 
 @testset "temporal parity cells reproduce drmTMB (always on)" begin
     cells = temporal_parity_cells()
-    @test length(cells) == 10
+    @test length(cells) == 12
     @test Set(basename.(cells)) == Set(["ar1-gapped", "ar1-gapped-ri", "ou-irregular",
         "ou-irregular-ri", "vignette-ar1", "vignette-ar1-ri", "vignette-ou", "vignette-ou-ri",
-        "phylo-ou-species", "vignette-phylo-ou"])            # last two: wave 2 (D-311)
+        "phylo-ou-species", "vignette-phylo-ou",              # wave 2 (D-311): phylo + OU
+        "homtoep-panel6", "homtoep-neg4"])                    # wave 2: homogeneous Toeplitz
     for dir in cells
         @testset "$(basename(dir))" begin
             meta = TOML.parsefile(joinpath(dir, "expected.meta.toml"))

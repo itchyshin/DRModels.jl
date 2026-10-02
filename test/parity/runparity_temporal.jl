@@ -13,7 +13,9 @@
 # Wave 2 (D-311) adds the paired `phylo(1 | species) + temporal(…, ou)` cells
 # (`[fit].tree_file`, a phylogenetic stable SD). A cell whose drmTMB fit put an
 # SD at zero lists it in `[tol].boundary`: that SD is checked as "both engines
-# below 1e-3" and the logLik tolerance is the cell's own (1e-6 there).
+# below 1e-3" and the logLik tolerance is the cell's own (1e-6 there). The
+# homogeneous Toeplitz cells compare the lag correlations (`cor`), on the
+# absolute scale.
 #
 # The always-on twin, test/test_parity_temporal.jl, repeats check (1) so CI
 # catches a drift without the gate.
@@ -25,7 +27,7 @@ using Printf
 
 isdefined(@__MODULE__, :temporal_parity_check) || include("temporal_parity.jl")
 
-@testset "temporal AR1/OU (+ wave-2 phylo + OU) parity vs drmTMB (D-310, D-311)" begin
+@testset "temporal AR1/OU (+ wave-2 phylo + OU, homtoep) parity vs drmTMB (D-310, D-311)" begin
     cells = temporal_parity_cells()
     @test length(cells) >= 4
     worst = Dict{String,Float64}()
