@@ -22,11 +22,11 @@ include(joinpath(@__DIR__, "parity", "temporal_parity.jl"))
 
 @testset "temporal parity cells reproduce drmTMB (always on)" begin
     cells = temporal_parity_cells()
-    @test length(cells) == 12
+    @test length(cells) == 13
     @test Set(basename.(cells)) == Set(["ar1-gapped", "ar1-gapped-ri", "ou-irregular",
         "ou-irregular-ri", "vignette-ar1", "vignette-ar1-ri", "vignette-ou", "vignette-ou-ri",
         "phylo-ou-species", "vignette-phylo-ou",              # wave 2 (D-311): phylo + OU
-        "homtoep-panel6", "homtoep-neg4"])                    # wave 2: homogeneous Toeplitz
+        "homtoep-panel6", "homtoep-neg4", "vignette-homtoep"]) # wave 2: homogeneous Toeplitz
     for dir in cells
         @testset "$(basename(dir))" begin
             meta = TOML.parsefile(joinpath(dir, "expected.meta.toml"))
