@@ -16,7 +16,7 @@
 !!! info "Attribution"
     The explanatory prose on this page is adapted from the drmTMB article
     *Temporal AR1 and OU random effects* (`vignettes/temporal-random-effects.Rmd`;
-    its Toeplitz section from that article's version in drmTMB draft PR #1449,
+    its Toeplitz section from the development version of that article,
     *Temporal AR1, OU, and Toeplitz effects*) by its copyright holder, Shinichi
     Nakagawa, and is reused here under the MIT licence. The code, the
     Julia-specific text and the comparisons are new.
@@ -580,7 +580,7 @@ a dense multivariate-normal oracle (`test/test_temporal_ar1.jl`,
 Three cells cover homogeneous Toeplitz (drmTMB's article data above, a
 40-site six-occasion panel with a non-exponential lag pattern, and a 30-site
 four-occasion panel with a negative first-lag correlation), generated from
-drmTMB draft PR #1449: logLik within ``10^{-11}``, β and σ within
+the drmTMB development version: logLik within ``10^{-11}``, β and σ within
 ``2 \times 10^{-11}`` relative and every lag correlation within
 ``5 \times 10^{-10}`` (Julia 1.10.12 and 1.13, Linux, Totoro). The Toeplitz likelihood is checked against a BigFloat dense oracle
 to ``2 \times 10^{-15}`` relative, including partial autocorrelations near
