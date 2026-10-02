@@ -126,6 +126,7 @@ end
 function _warn_variance_boundary(fit)
     fit isa DrmFit || return fit
     get(task_local_storage(), :drm_quiet_boundary, false) === true && return fit
+    _is_temporal_fit(fit) && return _warn_temporal_boundary(fit)   # temporal(): its own rules
     vb = try
         _variance_boundary(fit)
     catch

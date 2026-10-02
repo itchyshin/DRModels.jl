@@ -10,6 +10,9 @@
 # `[fit].formula` string) reaches the same logLik. A table of the measured
 # differences is printed so the achieved precision is on record.
 #
+# Wave 2 (D-311) adds the paired `phylo(1 | species) + temporal(…, ou)` cells
+# (`[fit].tree_file`, a phylogenetic stable SD).
+#
 # The always-on twin, test/test_parity_temporal.jl, repeats check (1) so CI
 # catches a drift without the gate.
 
@@ -20,7 +23,7 @@ using Printf
 
 isdefined(@__MODULE__, :temporal_parity_check) || include("temporal_parity.jl")
 
-@testset "temporal AR1/OU parity vs drmTMB (D-310)" begin
+@testset "temporal AR1/OU (+ wave-2 phylo + OU) parity vs drmTMB (D-310, D-311)" begin
     cells = temporal_parity_cells()
     @test length(cells) >= 4
     worst = Dict{String,Float64}()
@@ -28,6 +31,7 @@ isdefined(@__MODULE__, :temporal_parity_check) || include("temporal_parity.jl")
         cell = basename(dir)
         @testset "$cell" begin
             fit, rows = temporal_parity_check(dir)
+            tol = TOML.parsefile(joinpath(dir, "expected.toml"))["tol"]
             @test is_converged(fit)
             for r in rows
                 @test r.pass
@@ -46,8 +50,12 @@ isdefined(@__MODULE__, :temporal_parity_check) || include("temporal_parity.jl")
             data = temporal_parity_data(ex["data_file"]; group = ex["group"],
                                         time = _temporal_time_column(ex["julia_formula"]),
                                         structure = ex["structure"])
-            out = drm_bridge(; formula = ex["formula"], family = "gaussian", data = data)
-            @test abs(out["loglik"] - Float64(ex["loglik"])) <= 1e-8
+            # drmTMB's R side strips `tree = tree` from `phylo()` and ships the
+            # Newick separately (wave-2 paired cells); do the same here.
+            form = replace(ex["formula"], r"phylo\(1 \| (\w+), tree = \w+\)" => s"phylo(1 | \1)")
+            out = drm_bridge(; formula = form, family = "gaussian", data = data,
+                             tree = _temporal_tree(ex))
+            @test abs(out["loglik"] - Float64(ex["loglik"])) <= Float64(tol["atol_loglik"])
         end
     end
     println("  worst over cells: ",

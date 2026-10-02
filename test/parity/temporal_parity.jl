@@ -4,7 +4,7 @@
 #
 # Each cell lives in test/parity/temporal/<cell>/: `expected.toml` holds
 # drmTMB's GENERATED numbers (logLik, β, process SD, φ or decay, the optional
-# `(1 | id)` SD, σ) and `expected.meta.toml` their provenance (drmTMB SHA, R
+# `(1 | id)` SD or wave-2 phylogenetic stable SD, σ) and `expected.meta.toml` their provenance (drmTMB SHA, R
 # version, the R call). The input data are the CSVs in test/fixtures/temporal/,
 # named by `[fit].data_file`. No drmTMB source is involved (GPL → MIT boundary);
 # the generator is test/parity/gen_temporal_parity.R.
@@ -39,6 +39,11 @@ end
 _temporal_time_column(julia_formula) =
     String(match(r"temporal\(1 \| \w+, (\w+), (?:ar1|ou)\)", julia_formula).captures[1])
 
+# The tree of a paired phylo() + OU cell (wave 2): `[fit].tree_file` names a
+# Newick file in test/fixtures/temporal/; `nothing` for the other cells.
+_temporal_tree(f) = haskey(f, "tree_file") ?
+    read(joinpath(TEMPORAL_FIXTURE_ROOT, f["tree_file"]), String) : nothing
+
 function _temporal_formula(text::AbstractString)
     ex = Meta.parse(text)
     return Core.eval(@__MODULE__, Expr(:macrocall, Symbol("@formula"), LineNumberNode(0), ex))
@@ -62,7 +67,8 @@ function temporal_parity_check(dir::AbstractString)
     jlform = f["julia_formula"]
     data = temporal_parity_data(f["data_file"]; group = f["group"],
                                 time = _temporal_time_column(jlform), structure = structure)
-    fit = drm(bf(_temporal_formula(jlform), @formula(sigma ~ 1)), Gaussian(); data = data)
+    fit = drm(bf(_temporal_formula(jlform), @formula(sigma ~ 1)), Gaussian(); data = data,
+              tree = _temporal_tree(f))
     tp = temporal_parameters(fit)
 
     atol_ll = Float64(ex["tol"]["atol_loglik"])
@@ -85,8 +91,8 @@ function temporal_parity_check(dir::AbstractString)
 
     t = ex["temporal"]
     jl = Dict("sd" => tp.sd, "phi" => tp.phi, "decay" => tp.decay,
-              "sd_iid" => tp.sd_iid, "sigma" => tp.sigma)
-    for k in ("sd", "phi", "decay", "sd_iid", "sigma")
+              "sd_iid" => tp.sd_iid, "sd_phylo" => tp.sd_phylo, "sigma" => tp.sigma)
+    for k in ("sd", "phi", "decay", "sd_iid", "sd_phylo", "sigma")
         haskey(t, k) || continue
         jv = jl[k]
         jv === nothing && error("$(basename(dir)): DRModels.jl reports no `$k`")

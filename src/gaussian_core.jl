@@ -577,12 +577,14 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     all_structured = _collect_structured(rhs[:mu])
     # D-310 temporal(1 | id, time, ar1|ou): dispatched FIRST, before every route
     # that could otherwise claim (and silently mis-fit) the formula. The router
-    # refuses everything outside the wave-1 scope by name (src/temporal.jl).
+    # refuses everything outside the wave-1 / wave-2 scope by name (src/temporal.jl);
+    # wave 2 admits the paired `phylo(1 | species)` stable intercept (needs `tree`).
     if temporal_term !== nothing
         return _withformula(_drm_gaussian_temporal(f, fam, temporal_term, re, metav, structured,
             sigma_re, structured_sigma, y, Xμ, Xσ, nmμ, nmσ, data; method = method,
             algorithm = algorithm, penalty = penalty, phylo_coupled = phylo_coupled,
-            sparse = sparse, has_missing_response = has_missing_response, g_tol = g_tol), f)
+            sparse = sparse, has_missing_response = has_missing_response, g_tol = g_tol,
+            structured_slope = structured_slope, tree = tree), f)
     end
     # #620 two-SD phylogenetic random slope `phylo(1 + x | g)` on the Gaussian
     # mean: validate HERE, above every route that can return, so no other

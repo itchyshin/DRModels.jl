@@ -187,6 +187,12 @@ function confint(
 )
     method === :wald && return _wald_ci(fit, level, parm)
     if method === :profile
+        # drmTMB (#1448): the paired phylo() + OU route has point-recovery
+        # evidence only; its profile intervals are not calibrated.
+        _is_paired_phylo_temporal(fit) && @warn "confint: profile intervals from the paired " *
+            "`phylo()` plus OU `temporal()` model are not calibrated. This development route has " *
+            "point-recovery evidence only; no interval-calibration study has been run. Do not " *
+            "report these intervals as confidence intervals."
         result = profile_result(fit; level, threads, parm)
         result.failed > 0 && _throw_profile_endpoint_failure(result)
         return result.ci
@@ -2533,6 +2539,11 @@ Returns a `NamedTuple` and logs a short report:
   term absorbs all the variance is an optimiser-stopping artefact, not an estimate — #724)
   and says when σ_a and σ_e are separated only by the covariance structure (one
   observation per group — #697). Does not affect `ok`.
+- `temporal_boundary` — `nothing` unless the fit has a `temporal()` term; then
+  `(at_boundary, findings)`, drmTMB's `temporal_boundary` rules: residual σ̂ below
+  1e-3 · sd(y), OU decay × longest series span below 1e-4 or × shortest gap above 30,
+  AR1 |φ̂| above 0.999. drmTMB reports such a fit as `convergence_status() == "boundary"`
+  (still converged). Does not affect `ok`.
 - `ok` — `true` when converged, the gradient is small, and the covariance is PD.
   On a penalized fit the gradient criterion is **dropped**: the stored objective
   is unpenalized, so its gradient is non-zero at the MAP optimum by construction
@@ -2573,6 +2584,7 @@ function check_drm(fit::DrmFit; grad_tol::Real=1e-3)
     # fits and `max_abs_grad` is reported for information only.
     penalized = fit.estim_method === :MAP
     vb = try _variance_boundary(fit) catch; nothing end
+    tb = try _temporal_boundary(fit) catch; nothing end
     ok = fit.converged && (penalized || isnan(mag) || mag <= grad_tol) && pd
     report = (
         converged=fit.converged,
@@ -2584,6 +2596,7 @@ function check_drm(fit::DrmFit; grad_tol::Real=1e-3)
         cond=cnd,
         penalized_map=penalized,
         variance_boundary=vb,
+        temporal_boundary=tb === nothing ? nothing : (at_boundary = !isempty(tb), findings = tb),
         ok=ok,
     )
     @info "check_drm" converged = report.converged max_abs_grad = report.max_abs_grad grad_source =
@@ -2611,6 +2624,7 @@ function check_drm(fit::DrmFit; grad_tol::Real=1e-3)
         "`:unavailable`, which is NOT `:none` (a fit that stores no objective at all)."
     vbmsg = vb === nothing ? nothing : _variance_boundary_message(vb)
     vbmsg === nothing || @warn "check_drm: " * vbmsg
+    (tb === nothing || isempty(tb)) || @warn "check_drm: " * _temporal_boundary_message(tb)
     # drmTMB emits the equivalent advisory from `check_penalized_fit()`.
     penalized && @warn "check_drm: penalized (MAP) fit — standard errors come from the penalized " *
         "curvature and are credible-interval-shaped, not frequentist. `loglik` is the UNPENALIZED " *
