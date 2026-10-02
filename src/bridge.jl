@@ -1334,15 +1334,17 @@ function _bridge_temporal_expr(e::Expr)
     spelling = "use `temporal(1 | id, time = occasion, structure = \"ar1\")` or " *
         "`temporal(1 | id, time = elapsed, structure = \"ou\")`"
     args = e.args[2:end]
-    bars = [a for a in args if !(a isa Expr && a.head === :kw)]
+    bars = Any[a for a in args if !(a isa Expr && a.head === :kw)]
     kws = Dict{Symbol,Any}()
     for a in args
         a isa Expr && a.head === :kw || continue
         k = a.args[1]
-        (k in (:time, :structure) && !haskey(kws, k)) || throw(ArgumentError(
-            "drmTMB(engine=\"julia\"): `temporal()` requires named `time` and `structure` arguments; " * spelling))
+        (k in (:term, :time, :structure) && !haskey(kws, k)) || throw(ArgumentError(
+            "drmTMB(engine=\"julia\"): `temporal()` takes `term`, `time` and `structure` as its only named arguments, each once; " * spelling))
         kws[k] = a.args[2]
     end
+    # drmTMB also accepts the bar as a named `term = 1 | id` argument.
+    haskey(kws, :term) && push!(bars, pop!(kws, :term))
     (length(bars) == 1 && length(kws) == 2) || throw(ArgumentError(
         "drmTMB(engine=\"julia\"): `temporal()` requires one random-effect term and named `time` and " *
         "`structure` arguments; " * spelling))

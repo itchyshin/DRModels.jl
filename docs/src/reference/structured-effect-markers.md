@@ -19,6 +19,13 @@ because `@formula` cannot carry keyword arguments: drmTMB's
 `temporal(1 | id, time = occ, structure = "ar1")` is
 `temporal(1 | id, occ, ar1)` here (the R bridge accepts drmTMB's spelling).
 
+`fitted` and `predict` are population-level (`Xβ̂`; drmTMB's `fitted()` is
+conditional, the conditional temporal effects are `ranef(fit)[:id]`).
+`simulate` and `bootstrap_ci` draw a fresh temporal chain per series (and a
+fresh `(1 | id)` intercept), as drmTMB's default `simulate()`. Wald standard
+errors are reported for every coordinate; drmTMB exposes only AR1
+mean-coefficient Wald intervals, and no interval calibration is claimed.
+
 ```@docs
 temporal
 temporal_parameters

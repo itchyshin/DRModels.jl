@@ -91,6 +91,7 @@ function bf(; mu1::FormulaTerm, mu2::FormulaTerm, sigma1 = nothing, sigma2 = not
     # `_bivariate_q4_marker`) are byte-identical to before.
     nu === nothing || push!(forms, :nu => _rhs_or_intercept(nu))
     push!(forms, :rho12 => _rhs_or_intercept(rho12))
+    _temporal_check_forms(forms, ())
     return BivariateDrmFormula(_bivariate_response_sym(mu1, :mu1),
                                _bivariate_response_sym(mu2, :mu2), forms)
 end

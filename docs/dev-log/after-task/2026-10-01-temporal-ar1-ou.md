@@ -74,15 +74,36 @@ GPL; no drmTMB source or output is in this PR.
   mean-coefficient Wald intervals and no variance/persistence intervals because
   their calibration is not established; no calibration claim is made here
   either.
-- `fitted()` / `simulate()` are population-level (temporal effect zero), the
-  DRModels convention for structured markers; drmTMB's `fitted()` is
-  conditional. `ranef(fit)[:id]` holds the conditional temporal effects in
-  data-row order.
+- `fitted()` is population-level (`Xβ̂`), the DRModels convention for
+  structured markers; drmTMB's `fitted()` is conditional. `ranef(fit)[:id]`
+  holds the conditional temporal effects in data-row order.
 - Julia spelling is positional (`temporal(1 | id, occ, ar1)`) because
   StatsModels' `@formula` rejects keyword arguments and string literals.
 - Forecasting/newdata for the temporal effect, other families, `sigma`-side
   terms, slopes, REML, weights, missing responses, and combinations with other
   structured terms are refused.
+
+## Review follow-up (adversarial review of #915)
+
+- M1: `simulate(fit)` drew only `N(Xβ̂, σ²)` (measured by the reviewer:
+  simulated residual variance 0.077 vs model 0.907, lag-1 correlation ≈ 0).
+  It now forward-simulates the fitted chain per series (stationary start,
+  `a = φ^gap` / `e^{−λΔt}`, innovation variance `1 − a²`) plus a fresh
+  `(1 | id)` intercept, in data-row order — drmTMB's default `simulate()`.
+  Tested on 400 draws: marginal variance within 3%, lag-1 and lag-2
+  covariances (AR1) and the pairwise OU + intercept covariance match the model.
+  The same draw is the bootstrap's marginal simulator, so `bootstrap_ci` is
+  no longer refused (no calibration claimed).
+- M2: `predict_parameters` now opts in to the temporal marker.
+- L1: AR1 gaps > 64 at |θ| ≳ 19 (tanh rounds to ±1) gave a flat 1e18
+  objective; φ^g and 1 − φ^{2g} now come from `log tanh|θ|`. Checked at
+  θ = 20 and −30 with gaps of 100 against the dense oracle.
+- L2: named refusals for a bivariate `bf(mu1 = … temporal(…) …)` (at `bf`) and
+  for a labelled / correlated ordinary bar beside `temporal()`.
+- L3: the bridge accepts drmTMB's `temporal(term = 1 | id, time = …, structure = …)`.
+- L4: AR1 occasions of magnitude ≥ 2^53 are refused with an ArgumentError.
+- Follow-up, not done: the shared `_vcov_from_hessian` reports SE 0.0 for a
+  variance at its boundary (all closed-form routes, not temporal-specific).
 
 ## Neighbours
 

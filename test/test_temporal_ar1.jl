@@ -146,6 +146,53 @@ using Distributions: MvNormal, Normal, logpdf
         ct = coeftable(fit)
         @test length(ct.rownms) == 5
         @test isfinite(aic(fit)) && dof(fit) == 5
+        pp = predict_parameters(fit, d)
+        @test pp[:mu] ≈ fitted(fit) && all(≈(temporal_parameters(fit).sigma), pp[:sigma])
+    end
+
+    @testset "persistence near ±1 with long gaps (tanh rounds to ±1)" begin
+        rng = StableRNG(17)
+        id = String[]; t = Int[]
+        for s in 1:6
+            ts = [0, 1, 101, 201, 202]
+            append!(id, fill("s$s", 5)); append!(t, ts)
+        end
+        n = length(id); x = randn(rng, n)
+        d = (y = 1.0 .+ 0.5 .* x .+ randn(rng, n), x = x, id = id, occ = t)
+        fit = with_logger(NullLogger()) do; drm(fAR, Gaussian(); data = d); end
+        X = hcat(ones(n), x)
+        for ψ in (20.0, -30.0)
+            θ = [1.0, 0.5, log(0.3), log(0.8), ψ]
+            v = fit.nll(θ)
+            @test v < 1e17                                   # no flat 1e18 cliff
+            @test v ≈ dense_nll(θ, d.y, X, d.id, d.occ) rtol = 1e-8
+        end
+    end
+
+    @testset "simulate draws the marginal model (fresh chain per series)" begin
+        d = sim_data(StableRNG(61); S = 300)
+        fit = drm(fAR, Gaussian(); data = d)
+        tp = temporal_parameters(fit)
+        Y = simulate(fit; nsim = 400, rng = StableRNG(62))
+        E = Y .- fitted(fit)
+        v_model = tp.sd^2 + tp.sigma^2
+        @test mean(var(E; dims = 1)) ≈ v_model rtol = 0.03
+        # lag-1 pairs: same series, occasions one apart
+        pairs = [(i, j) for i in eachindex(d.id), j in eachindex(d.id)
+                 if d.id[i] == d.id[j] && d.occ[j] - d.occ[i] == 1]
+        c = mean(E[i, s] * E[j, s] for (i, j) in pairs, s in 1:size(E, 2))
+        @test c / v_model ≈ tp.sd^2 * tp.phi / v_model atol = 0.03
+        # lag-2 pairs follow φ²
+        pairs2 = [(i, j) for i in eachindex(d.id), j in eachindex(d.id)
+                  if d.id[i] == d.id[j] && d.occ[j] - d.occ[i] == 2]
+        c2 = mean(E[i, s] * E[j, s] for (i, j) in pairs2, s in 1:size(E, 2))
+        @test c2 / v_model ≈ tp.sd^2 * tp.phi^2 / v_model atol = 0.03
+        # the parametric bootstrap uses the same marginal draws
+        bc = with_logger(NullLogger()) do
+            bootstrap_ci(fit; data = d, B = 8, rng = StableRNG(63))
+        end
+        @test length(bc) == 5 && all(r -> isfinite(r.lower) && isfinite(r.upper), bc)
+        @test all(r -> r.lower <= r.estimate <= r.upper, filter(r -> r.param === :mu, bc))
     end
 
     @testset "refusals" begin
@@ -183,8 +230,14 @@ using Distributions: MvNormal, Normal, logpdf
         miss = merge(d, (y = Union{Missing,Float64}[i == 1 ? missing : v for (i, v) in enumerate(d.y)],))
         @test_throws ae drm(fAR, Gaussian(); data = miss)                               # missing response
         @test_throws ae drm(fAR, Gaussian(); data = merge(d, (occ = string.(d.occ),)))  # non-numeric time
-        # the bootstrap's marginal simulator draws no temporal field: refused, not wrong
-        @test_throws ae bootstrap_ci(drm(fAR, Gaussian(); data = d); data = d, B = 2)
+        # labelled / correlated ordinary bars beside temporal(): named refusal
+        @test_throws ae drm(bf(@formula(y ~ x + (1 | p | id) + temporal(1 | id, occ, ar1)),
+                               @formula(sigma ~ 1)), Gaussian(); data = d)
+        # bivariate: refused at `bf` by name
+        @test_throws ae bf(mu1 = @formula(y ~ x + temporal(1 | id, occ, ar1)), mu2 = @formula(x ~ 1))
+        # occasions beyond 2^53 cannot be exact integers
+        @test_throws ae drm(fAR, Gaussian(); data = merge(d, (occ = [i == 1 ? 2.0^63 : Float64(v)
+                                                                   for (i, v) in enumerate(d.occ)],)))
         @test_throws ae temporal_parameters(drm(bf(@formula(y ~ x), @formula(sigma ~ 1)),
                                                 Gaussian(); data = d))
     end
@@ -199,6 +252,9 @@ using Distributions: MvNormal, Normal, logpdf
         @test_throws ArgumentError bt(Meta.parse("temporal(1 | id, time = occ, structure = \"ar2\")"))
         @test_throws ArgumentError bt(Meta.parse("temporal(1 | id, time = occ, structure = ar1)"))
         @test_throws ArgumentError bt(Meta.parse("temporal(1 | id, occ, structure = \"ar1\")"))
+        @test bt(Meta.parse("temporal(term = 1 | id, time = occ, structure = \"ar1\")")) ==
+              :(temporal(1 | id, occ, ar1))
+        @test_throws ArgumentError bt(Meta.parse("temporal(1 | id, term = 1 | g, time = occ, structure = \"ar1\")"))
         d = sim_data(StableRNG(41); S = 12)
         out = drm_bridge(; formula = "y ~ x + temporal(1 | id, time = occ, structure = \"ar1\"); sigma ~ 1",
                          family = "gaussian", data = d)

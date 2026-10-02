@@ -89,6 +89,20 @@ process SD (`re_sd(fit)[:id]`), the persistence `φ` or decay `λ`
 ([`temporal_parameters`](@ref)), the residual SD `σ`, and, when the formula
 also has `(1 | id)`, the stable intercept SD (`re_sd(fit)[:id_iid]`).
 
+Post-fit conventions (some differ from drmTMB):
+
+- `fitted(fit)` and `predict(fit, newdata)` are POPULATION-level, `Xβ̂` (the
+  DRModels convention for every structured term); drmTMB's `fitted()` adds the
+  conditional temporal effects. Those are in `ranef(fit)[:id]`, data-row order
+  (and `ranef(fit)[:id_iid]` per series for the ordinary intercept).
+- `simulate(fit)` draws from the fitted marginal model: a fresh stationary
+  chain per series (and a fresh `(1 | id)` intercept) plus residual noise, as
+  drmTMB's default `simulate()`. `bootstrap_ci` uses the same draws.
+- `vcov`/`stderror`/Wald `confint` cover every coordinate (observed Hessian),
+  as on DRModels' other routes; drmTMB exposes only AR1 mean-coefficient Wald
+  intervals because the calibration of the others is not established. No
+  calibration is claimed here either.
+
 Wave-1 scope: Gaussian family, `sigma ~ 1`, ML only, intercept-only and
 unlabelled, at most one ordinary `(1 | id)` on the same `id`, no other
 structured term. Every other use is refused with an error.
@@ -167,6 +181,9 @@ function _temporal_layout(tt, data; has_ordinary::Bool)
     all(isfinite, tv) ||
         throw(ArgumentError("drm: Temporal inputs must be finite numeric values; `$(tt.time)` " *
             "contains a non-finite value."))
+    tt.structure === :ar1 && any(v -> abs(v) >= 2.0^53, tv) &&
+        throw(ArgumentError("drm: Temporal AR1 occasions must be integers of magnitude below " *
+            "2^53 (exactly representable); recode `$(tt.time)` relative to an origin."))
     tt.structure === :ar1 && any(v -> v != round(v), tv) &&
         throw(ArgumentError("drm: Temporal AR1 occasions must be finite integers; `$(tt.time)` " *
             "cannot be fractional for `ar1`. Use the original integer sampling occasion (its " *
@@ -247,7 +264,16 @@ using Statistics: var, median
             end
             return a, acc / cosh(ψ)^2
         end
-        return a, one(a) - a * a
+        # Large gap: φ^g and 1 − φ^{2g} from log tanh|θ| = log1p(−e^{−2|θ|}) −
+        # log1p(e^{−2|θ|}), which stays accurate where tanh θ itself rounds to ±1
+        # (|θ| ≳ 19); the direct form there gave 1 − a² = 0 and a flat 1e18
+        # objective. Near θ = 0 the direct form is exact and keeps the AD
+        # derivative finite.
+        abs(ψ) < 1 && return a, one(a) - a * a
+        x = abs(ψ)
+        lt = log1p(-exp(-2x)) - log1p(exp(-2x))          # log tanh|θ| < 0
+        a = (ψ < 0 && isodd(g) ? -one(x) : one(x)) * exp(g * lt)
+        return a, -expm1(2g * lt)
     else
         x = ψ * gap
         return exp(-x), -expm1(-2 * x)
@@ -412,7 +438,8 @@ function _fit_temporal_gaussian(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, tt, lay,
     effects = Dict{Symbol,Vector{Float64}}(tt.group => teff)
     has_ordinary && (effects[Symbol("$(grp)_iid")] = bmodes)
     info = (label = _temporal_label(tt), structure = structure, group = tt.group,
-            time = tt.time, nseries = S)
+            time = tt.time, nseries = S, rows = grows, gaps = ggap,
+            has_ordinary = has_ordinary)
     fit = DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(best), means, obs, scales)
     return _withranef(_withnll(fit, nll), (effects = effects, temporal = info))
 end
@@ -448,7 +475,13 @@ function _drm_gaussian_temporal(f, fam::Gaussian, tt, re, metav, structured, sig
     if !isempty(re)
         length(re) == 1 || nope("more than one ordinary random effect")
         rl, g = re[1]
-        kind, _ = _re_kind(rl)
+        kind = try
+            first(_re_kind(rl))
+        catch
+            throw(ArgumentError("drm: the ordinary random effect paired with `$lbl` must be " *
+                "`(1 | $(tt.group))`; `($(rl) | $(g))` (a labelled, correlated or otherwise " *
+                "non-intercept bar) is not implemented with temporal()."))
+        end
         (kind === :intercept && g === tt.group) ||
             throw(ArgumentError("drm: the ordinary random effect paired with `$lbl` must be " *
                 "`(1 | $(tt.group))` using the same id; use either no ordinary random effect " *
@@ -483,4 +516,50 @@ function temporal_parameters(fit::DrmFit)
             decay = info.structure === :ou ? exp(ψ) : nothing,
             sd_iid = get(sds, iid, nothing),
             sigma = exp(only(coef(fit, :sigma))))
+end
+
+# --- post-fit helpers ------------------------------------------------------
+
+_is_temporal_fit(fit) = fit.ranef isa NamedTuple && haskey(fit.ranef, :temporal)
+
+# `bf` guard: a temporal() term is only implemented on the univariate `mu`
+# formula; refuse it by name anywhere else (bivariate `mu1`/`mu2`, `sigma`,
+# `nu`, `rho12`, `sd(...)` …) before any design is built.
+function _temporal_check_forms(forms, allowed)
+    for (k, rhs) in forms
+        terms = rhs isa Tuple ? collect(rhs) : Any[rhs]
+        any(t -> t isa FunctionTerm && t.f === temporal, terms) || continue
+        k in allowed && continue
+        throw(ArgumentError("bf: `temporal()` in the `$(k)` formula is not implemented; " *
+            _TEMPORAL_SCOPE * " (bivariate models and non-mean parameters are refused)."))
+    end
+    return nothing
+end
+
+# One draw from the fitted MARGINAL model, in data-row order: Xβ̂ + a fresh
+# stationary chain per series (s_1 ~ N(0, σ_t²), s_k = a_k s_{k−1} +
+# σ_t √(1 − a_k²) z_k, with a_k = φ^gap or e^{−λΔt}) + a fresh `(1 | id)`
+# intercept when present + N(0, σ²) noise — drmTMB's default `simulate()`
+# (`drm_fresh_temporal_mu_values`).
+function _temporal_simulate(fit::DrmFit, rng)
+    info = fit.ranef.temporal
+    ψ = only(coef(fit, info.structure === :ar1 ? :temporal_phi : :temporal_decay))
+    ψk = info.structure === :ar1 ? ψ : exp(ψ)
+    sds = re_sd(fit)
+    st = sds[info.group]
+    sb = info.has_ordinary ? sds[Symbol("$(info.group)_iid")] : 0.0
+    σ = exp(only(coef(fit, :sigma)))
+    y = copy(fit.means[:mu])
+    for (rows, g) in zip(info.rows, info.gaps)
+        b = info.has_ordinary ? sb * randn(rng) : 0.0
+        s = st * randn(rng)
+        y[rows[1]] += s + b
+        for k in 2:length(rows)
+            a, v = _temporal_transition(info.structure, ψk, g[k])
+            s = a * s + st * sqrt(max(v, 0.0)) * randn(rng)
+            y[rows[k]] += s + b
+        end
+    end
+    y .+= σ .* randn(rng, length(y))
+    return y
 end

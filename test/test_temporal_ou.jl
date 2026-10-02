@@ -144,6 +144,21 @@ using Distributions: MvNormal, Normal, logpdf
         @test length(coeftable(fit).rownms) == 6
     end
 
+    @testset "simulate: fresh OU chain + fresh (1 | id) intercept" begin
+        d = sim_data(StableRNG(71); S = 300, sb = 0.4)
+        fit = drm(fOUi, Gaussian(); data = d)
+        tp = temporal_parameters(fit)
+        E = simulate(fit; nsim = 400, rng = StableRNG(72)) .- fitted(fit)
+        v_model = tp.sd^2 + tp.sd_iid^2 + tp.sigma^2
+        @test mean(var(E; dims = 1)) ≈ v_model rtol = 0.03
+        # covariance of two rows of one series = σ_t² e^{−λ|Δt|} + σ_b²
+        ii = [(i, j) for i in eachindex(d.id), j in eachindex(d.id) if i < j && d.id[i] == d.id[j]]
+        emp = [mean(E[i, :] .* E[j, :]) for (i, j) in ii]
+        mod = [tp.sd^2 * exp(-tp.decay * abs(d.elapsed[i] - d.elapsed[j])) + tp.sd_iid^2 for (i, j) in ii]
+        @test mean(emp) ≈ mean(mod) atol = 0.02
+        @test cor(emp, mod) > 0.3
+    end
+
     @testset "refusals" begin
         d = sim_data(StableRNG(4); S = 10)
         ae = ArgumentError

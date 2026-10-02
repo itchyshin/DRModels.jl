@@ -157,6 +157,7 @@ function bf(mu::FormulaTerm, dpars::FormulaTerm...)
         push!(forms, name => f.rhs)
     end
     any(p -> first(p) === :sigma, forms) || push!(forms, :sigma => ConstantTerm(1))
+    _temporal_check_forms(forms, (:mu,))
     return DrmFormula(response, forms, response2)
 end
 const drm_formula = bf
@@ -1832,7 +1833,8 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
     for (p, r) in fit.blocks
         haskey(forms, p) || continue          # skip RE-SD / cutpoint blocks (:resd, :recov, :cutpoints, …)
         resp = bivar ? (p === :mu2 ? f.response2 : f.response1) : f.response
-        fixed_p, _, _, _ = _split_ranef(forms[p]; allow_phylo_slope = true)   # #620 fits keep predicting
+        fixed_p, _, _, _ = _split_ranef(forms[p]; allow_phylo_slope = true,
+                                       allow_temporal = true)   # #620 / temporal fits keep predicting
         _, Xp, _ = if bivar
             _design(resp, fixed_p, ndr)
         else
@@ -2033,6 +2035,8 @@ function _simulate_once(fit::DrmFit, rng; mu = nothing, sigma = nothing)
         z1 = randn(rng, n); z2 = randn(rng, n)
         return Dict(:mu1 => μ1 .+ σ1 .* z1,
                     :mu2 => μ2 .+ σ2 .* (ρ .* z1 .+ sqrt.(1 .- ρ .^ 2) .* z2))
+    elseif fam isa Gaussian && _is_temporal_fit(fit)       # temporal(): fresh chain per series
+        return _temporal_simulate(fit, rng)
     elseif fam isa Gaussian && haskey(fit.scales, :sigma) # univariate / RE / meta
         return fit.means[:mu] .+ fit.scales[:sigma] .* randn(rng, length(fit.means[:mu]))
     end
