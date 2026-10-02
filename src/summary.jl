@@ -60,6 +60,7 @@ function _block_title(p::Symbol)
     p === :range   && return "Spatial range (log)"
     p === :temporal_phi   && return "Temporal AR1 persistence (atanh φ)"
     p === :temporal_decay && return "Temporal OU decay (log λ)"
+    p === :temporal_pac   && return "Temporal Toeplitz partial autocorrelations (atanh)"
     p === :resd    && return "Random-effect SD (log σ_b)"
     p === :sd      && return "RE SD model sd(group) (log σ_b)"
     p === :sd_phylo && return "Phylo SD model sd_phylo(group) (log σ_a)"
@@ -88,6 +89,7 @@ function _block_null_note(p::Symbol)
     p in (:recov, :phylocov)        && return ("H0: Cholesky entry = 0 (no single interpretable null)",)
     p === :temporal_phi             && return ("H0: φ = 0 (atanh scale)",)
     p === :temporal_decay           && return ("H0: log λ = 0 ⇔ λ = 1 (depends on the time unit)",)
+    p === :temporal_pac             && return ("H0: partial autocorrelation = 0 (atanh scale)",)
     return ()
 end
 
@@ -208,12 +210,14 @@ Extends `StatsAPI.dof_residual`.
 dof_residual(fit::DrmFit) = nobs(fit) - dof(fit)
 
 function Base.show(io::IO, ::MIME"text/plain", fit::DrmFit)
-    se = stderror(fit)
+    se = _display_se(fit)
     fam = _family_name(fit.family)
     println(io, "Distributional regression fit (", fam, ")")
     println(io, "  nobs = ", fit.nobs,
                 "   logLik = ", @sprintf("%.4f", fit.loglik),
                 "   converged = ", fit.converged)
+    _wald_withheld(fit) && println(io, "  Wald SEs withheld (homogeneous Toeplitz, as drmTMB): `sigma` is the " *
+        "TOTAL within-series SD; use profile intervals for mean coefficients.")
 
     # Residual SD on the RESPONSE scale + residual dof (issue #752). An R user
     # looks for these first: lm() prints both and drmTMB prints sigma. The value
@@ -310,7 +314,7 @@ those blocks are still reported. A boundary / singular direction (Inf SE) also
 reports `NaN` z / p rather than a spurious `z = 0, p = 1`.
 """
 function coeftable(fit::DrmFit; level::Real = 0.95)
-    se = stderror(fit)
+    se = _display_se(fit)
     z = quantile(Normal(), 1 - (1 - level) / 2)
     est = Float64[]; ses = Float64[]; zs = Float64[]; ps = Float64[]
     lo = Float64[]; hi = Float64[]; rownms = String[]

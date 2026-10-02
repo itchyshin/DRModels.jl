@@ -1513,7 +1513,7 @@ end
 
 Variance–covariance matrix of the estimated coefficients. Extends `StatsAPI.vcov`.
 """
-vcov(fit::DrmFit) = fit.vcov
+vcov(fit::DrmFit) = _wald_withheld(fit) ? _homtoep_refuse_wald("vcov") : fit.vcov
 """
     nobs(fit::DrmFit)
 
@@ -1560,6 +1560,10 @@ function residuals(fit::DrmFit; type::Symbol = :response, rng = Random.default_r
         haskey(fit.means, :mu) && return fit.obs[:mu] .- fit.means[:mu]
         return Dict(k => fit.obs[k] .- fit.means[k] for k in keys(fit.means))
     elseif type === :quantile
+        # homtoep: the observations of a series are jointly σ²R, so the
+        # standardised residuals are the whitened L⁻¹ r (drmTMB's Pearson
+        # residuals), not (y − μ̂)/σ.
+        _wald_withheld(fit) && return _homtoep_whiten(fit)
         return _quantile_residuals(fit, rng)
     else
         throw(ArgumentError("residuals: `type` must be :response or :quantile (got :$type)"))

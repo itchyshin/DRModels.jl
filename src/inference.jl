@@ -26,7 +26,12 @@ standard error — which propagates to an unbounded `(-Inf, Inf)` Wald interval.
 [`check_drm`](@ref) flags the same situation via `vcov_posdef`; drmTMB returns
 all-`NaN` from `sdreport` in this case.
 """
-stderror(fit::DrmFit) = _boundary_se.(diag(fit.vcov))
+stderror(fit::DrmFit) = _wald_withheld(fit) ? _homtoep_refuse_wald("stderror") : _stderror(fit)
+
+# Internal: the Hessian-based SEs regardless of the public Wald scope (profile
+# step sizes, plots); `_display_se` is what `coeftable` / `show` print.
+_stderror(fit::DrmFit) = _boundary_se.(diag(fit.vcov))
+_display_se(fit::DrmFit) = _wald_withheld(fit) ? fill(NaN, length(fit.theta)) : _stderror(fit)
 
 # √v where the variance is identified (finite, positive); Inf otherwise. Keeps a
 # non-PD boundary direction from poisoning the whole SE vector with NaN.
@@ -185,6 +190,10 @@ Mirrors drmTMB's `confint(fit, method = "wald" | "profile")`.
 function confint(
     fit::DrmFit; level::Real=0.95, method::Symbol=:wald, threads::Bool=false, parm=nothing
 )
+    method === :wald && _wald_withheld(fit) && throw(ArgumentError("confint: Homogeneous Toeplitz " *
+        "mean-coefficient Wald intervals are not yet qualified; mean-coefficient likelihood " *
+        "profiles are qualified in drmTMB's retained primary panel cells, Wald covariance and " *
+        "intervals remain deferred. Use `method = :profile`."))
     method === :wald && return _wald_ci(fit, level, parm)
     if method === :profile
         # drmTMB (#1448): the paired phylo() + OU route has point-recovery
@@ -280,6 +289,7 @@ coefficient-level policy: each job owns its nuisance state, while its lower and
 upper endpoint chains remain serial.
 """
 function profile_result(fit::DrmFit; level::Real=0.95, threads::Bool=false, parm=nothing)
+    _wald_withheld(fit) && (parm = _homtoep_profile_parm(fit, parm))
     fit.nll isa LocScaleObjective && return _ls_profile_result(
         fit; level=level, threads=threads, parm=parm
     )
@@ -313,7 +323,7 @@ function profile_result(fit::DrmFit; level::Real=0.95, threads::Bool=false, parm
     isfinite(nllhat) || throw(ArgumentError("profile intervals require a finite fitted objective"))
     autodiff = _profile_autodiff_mode(nll, nllgrad, θ̂)
     half = quantile(Chisq(1), level) / 2
-    se = stderror(fit)
+    se = _stderror(fit)
     jobs = _profile_jobs(fit, parm)
     rows = Vector{_CIRow}(undef, length(jobs))
     stats = Vector{_ProfileStatsRow}(undef, length(jobs))
@@ -500,7 +510,7 @@ function _ls_profile_result(fit::DrmFit; level::Real=0.95, threads::Bool=false, 
     base = size(obj.Xμ, 2) + size(obj.Xψ, 2)
     perm = vcat(collect(1:base), [base + 1, base + 3, base + 2])  # involution
     θengine = fit.theta[perm]
-    se = stderror(fit)                                    # DrmFit (recov) order
+    se = _stderror(fit)                                   # DrmFit (recov) order
     jobs = _profile_jobs(fit, parm)
     rows = Vector{_CIRow}(undef, length(jobs))
     stats = Vector{_ProfileStatsRow}(undef, length(jobs))

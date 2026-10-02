@@ -138,8 +138,51 @@ function make_phylo_ou(dir; seed = 20261003)
                   (y[p], x[p], sp[p], el[p]))
 end
 
+# Homogeneous Toeplitz (wave 2, D-311): complete equally spaced panels, the
+# within-site covariance sigma^2 R with R Toeplitz, built from partial
+# autocorrelations by the Durbin-Levinson recursion (written out here, not
+# taken from the package). Writes
+#   `homtoep_panel6.csv`: 40 sites x occasions 0:5, PACs (0.6, -0.3, 0.35, 0,
+#     0.15) (non-exponential lags), sigma = 0.9, beta = (0.2, 0.4);
+#   `homtoep_neg4.csv`: 30 sites x occasions 2, 4, 6, 8, PACs (-0.45, 0.2,
+#     0.1) (negative first lag), sigma = 1.2, beta = (-0.3, 0.5).
+# Columns `y, x, id, occ`; rows shuffled.
+function _toeplitz_from_pacf(pac)
+    K = length(pac) + 1
+    rho = zeros(K); rho[1] = 1.0
+    phi = Float64[]; v = 1.0
+    for m in 1:(K-1)
+        pred = m == 1 ? 0.0 : sum(phi[j] * rho[m-j+1] for j in 1:(m-1))
+        rho[m+1] = pred + pac[m] * v
+        phi = [[phi[j] - pac[m] * phi[m-j] for j in 1:(m-1)]; pac[m]]
+        v *= 1 - pac[m]^2
+    end
+    return [rho[abs(i - j) + 1] for i in 1:K, j in 1:K]
+end
+
+function _homtoep_panel(rng, path, nsite, occ, pac, sigma, beta)
+    L = cholesky(Symmetric(_toeplitz_from_pacf(pac))).L
+    K = length(occ)
+    id = String[]; t = Int[]; x = Float64[]; y = Float64[]
+    for s in 1:nsite
+        xs = randn(rng, K)
+        append!(id, fill(@sprintf("site%02d", s), K)); append!(t, occ); append!(x, xs)
+        append!(y, beta[1] .+ beta[2] .* xs .+ sigma .* (L * randn(rng, K)))
+    end
+    p = sortperm(rand(rng, length(y)))
+    write_fixture(path, ["y", "x", "id", "occ"], (y[p], x[p], id[p], t[p]))
+end
+
+function make_homtoep(dir)
+    _homtoep_panel(StableRNG(20261004), joinpath(dir, "homtoep_panel6.csv"), 40, collect(0:5),
+                   [0.6, -0.3, 0.35, 0.0, 0.15], 0.9, (0.2, 0.4))
+    _homtoep_panel(StableRNG(20261005), joinpath(dir, "homtoep_neg4.csv"), 30, [2, 4, 6, 8],
+                   [-0.45, 0.2, 0.1], 1.2, (-0.3, 0.5))
+end
+
 if abspath(PROGRAM_FILE) == @__FILE__
     make_ar1(@__DIR__)
     make_ou(@__DIR__)
     make_phylo_ou(@__DIR__)
+    make_homtoep(@__DIR__)
 end

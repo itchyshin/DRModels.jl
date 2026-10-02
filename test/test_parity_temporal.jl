@@ -9,22 +9,25 @@
 # few hundred rows, so the whole set runs in seconds.
 #
 # Claim fence: point estimates at the ML optimum only (logLik, β, process SD,
-# φ or decay, `(1 | id)` SD or phylogenetic stable SD, σ). No interval, coverage or calibration claim.
+# φ or decay, `(1 | id)` SD or phylogenetic stable SD, homtoep lag
+# correlations, σ). No interval, coverage or calibration claim.
 
 module TestParityTemporal
 
 using DRModels
 using Test
 using TOML
+using Logging
 
 include(joinpath(@__DIR__, "parity", "temporal_parity.jl"))
 
 @testset "temporal parity cells reproduce drmTMB (always on)" begin
     cells = temporal_parity_cells()
-    @test length(cells) == 10
+    @test length(cells) == 13
     @test Set(basename.(cells)) == Set(["ar1-gapped", "ar1-gapped-ri", "ou-irregular",
         "ou-irregular-ri", "vignette-ar1", "vignette-ar1-ri", "vignette-ou", "vignette-ou-ri",
-        "phylo-ou-species", "vignette-phylo-ou"])            # last two: wave 2 (D-311)
+        "phylo-ou-species", "vignette-phylo-ou",              # wave 2 (D-311): phylo + OU
+        "homtoep-panel6", "homtoep-neg4", "vignette-homtoep"]) # wave 2: homogeneous Toeplitz
     for dir in cells
         @testset "$(basename(dir))" begin
             meta = TOML.parsefile(joinpath(dir, "expected.meta.toml"))
@@ -53,6 +56,26 @@ include(joinpath(@__DIR__, "parity", "temporal_parity.jl"))
                 ref = Float64.(ex["conditional"]["fitted"])
                 @test length(ref) == length(cond)
                 @test maximum(abs.(cond .- ref)) <= 1e-6
+            end
+            # homtoep cells: drmTMB's Pearson residuals are the Levinson-whitened
+            # L⁻¹ r; DRModels' `residuals(fit; type = :quantile)` is the same.
+            if haskey(ex, "residuals")
+                ref = Float64.(ex["residuals"]["pearson"])
+                @test maximum(abs.(residuals(fit; type = :quantile) .- ref)) <= 1e-6
+            end
+            # drmTMB's mean-coefficient profile intervals (article cells and the
+            # homtoep cells). Each package locates the endpoints with its own
+            # root search. Measured on Julia 1.10.12: 1.3e-6 on vignette-homtoep,
+            # at most 6.6e-6 over all cells (homtoep-neg4, vignette-ou-ri);
+            # enforced at 1e-5.
+            for pr in get(ex, "profile", Any[])
+                cname = replace(pr["parm"], "fixef:mu:" => "")
+                ci = only(with_logger(NullLogger()) do
+                    confint(fit; method = :profile, parm = :mu => cname)
+                end)
+                gap = max(abs(ci.lower - pr["lower"]), abs(ci.upper - pr["upper"]))
+                println("  profile endpoint gap ", basename(dir), " ", cname, ": ", gap)
+                @test gap <= 1e-5
             end
         end
     end

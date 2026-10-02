@@ -11,7 +11,8 @@
 # differences is printed so the achieved precision is on record.
 #
 # Wave 2 (D-311) adds the paired `phylo(1 | species) + temporal(…, ou)` cells
-# (`[fit].tree_file`, a phylogenetic stable SD).
+# (`[fit].tree_file`, a phylogenetic stable SD). The homogeneous Toeplitz cells
+# compare the lag correlations (`cor`), on the absolute scale.
 #
 # The always-on twin, test/test_parity_temporal.jl, repeats check (1) so CI
 # catches a drift without the gate.
@@ -23,7 +24,7 @@ using Printf
 
 isdefined(@__MODULE__, :temporal_parity_check) || include("temporal_parity.jl")
 
-@testset "temporal AR1/OU (+ wave-2 phylo + OU) parity vs drmTMB (D-310, D-311)" begin
+@testset "temporal AR1/OU (+ wave-2 phylo + OU, homtoep) parity vs drmTMB (D-310, D-311)" begin
     cells = temporal_parity_cells()
     @test length(cells) >= 4
     worst = Dict{String,Float64}()

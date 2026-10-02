@@ -18,6 +18,8 @@ using Test, Random, LinearAlgebra, StableRNGs, Logging, Statistics
         @test isempty(rules(:ou, 0.4, 1.0, 30 / 0.5 * 0.99, gaps))
         @test only(rules(:ar1, 0.4, 1.0, -0.9995, gaps)) |> s -> startswith(s, "phi=")
         @test isempty(rules(:ar1, 0.4, 1.0, 0.99, gaps))
+        @test isempty(rules(:homtoep, 0.4, 1.0, nothing, gaps))
+        @test only(rules(:homtoep, 1e-4, 1.0, nothing, gaps)) |> s -> startswith(s, "sigma_ratio=")
         # drmTMB's random-effect SD rule (sd_boundary = 1e-4), smallest SD named
         sds = Dict(:species => 0.6, :species_phylo => 0.9e-4)
         @test only(rules(:ou, 0.4, 1.0, 0.4, gaps; sds = sds)) == "sd_min=9e-05 (term=species_phylo)"

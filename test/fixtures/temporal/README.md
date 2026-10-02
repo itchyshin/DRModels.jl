@@ -80,3 +80,33 @@ with the SHA, rerun `test/test_parity_temporal.jl`).
   code; 17 significant digits). On it drmTMB #1448 fits OU decay 5e-11 and
   reports `convergence_status() == "boundary"`. Used by
   `test/test_temporal_boundary.jl`.
+
+## Wave 2 (D-311): homogeneous Toeplitz
+
+- `homtoep_panel6.csv` — 40 sites × occasions 0:5 (240 rows, shuffled),
+  within-site covariance σ²R with R Toeplitz built from partial
+  autocorrelations (0.6, −0.3, 0.35, 0, 0.15) (a non-exponential lag pattern),
+  σ = 0.9, β = (0.2, 0.4). Columns `y, x, id, occ`.
+- `homtoep_neg4.csv` — 30 sites × occasions 2, 4, 6, 8 (120 rows, shuffled),
+  partial autocorrelations (−0.45, 0.2, 0.1) (negative first lag), σ = 1.2,
+  β = (−0.3, 0.5).
+
+Simulated by `make_homtoep` in `generate.jl` (StableRNGs 20261004 / 20261005;
+the Durbin–Levinson step is written out there, not taken from the package; no
+drmTMB involvement).
+
+- `vignette_homtoep_sites.csv` — the Toeplitz data of drmTMB's *Temporal AR1,
+  OU, and Toeplitz effects* article (`vignettes/temporal-random-effects.Rmd`,
+  drmTMB draft PR #1449 (exported at `4f7007ba4`, identical at final head
+  `90c740791991e5dfe17d16346a301fd12f5af384`),
+  `set.seed(20261002)`): 80 sites × occasions 0:5 (480 rows), lag
+  correlations 0.60, 0.45, 0.40, 0.30, 0.20, total SD 0.80, alternating
+  treatment. Columns `site, occasion, treatment, y`. Exported by
+  `test/parity/gen_temporal_wave2_parity.R` (the article's chunks run
+  unchanged up to its Toeplitz fit; `complete_regular_panel` written with 17
+  significant digits, checked to read back `identical()`); data only.
+
+Parity numbers: `test/parity/gen_temporal_wave2_parity.R ... homtoep` →
+`test/parity/temporal/{homtoep-panel6,homtoep-neg4,vignette-homtoep}/`, from
+drmTMB draft PR #1449 (final head `90c740791`); regenerate when that PR changes the
+likelihood or the article, and again when it merges.
