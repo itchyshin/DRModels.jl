@@ -292,6 +292,13 @@ function _temporal_layout(tt, data; has_ordinary::Bool, paired::Bool = false)
                 "$(join(string.(unique(ids)[incomplete[1:min(end, 10)]]), ", "))" *
                 (length(incomplete) > 10 ? ", … ($(length(incomplete)) in all)" : "") *
                 ". Use OU or AR1 for incomplete repeated records, or retain a common complete panel."))
+        # drmTMB #1449: the K − 1 free lag correlations need at least K series
+        # (the lag-(K−1) correlation rests on one pair per series). A floor,
+        # not a design recommendation.
+        S >= K ||
+            throw(ArgumentError("drm: Temporal HOMTOEP needs at least as many series as occasions; " *
+                "found $S series for $K occasions. Collect more series, use fewer common occasions, " *
+                "or fit AR1 or OU, which estimate one persistence or decay parameter."))
     end
     # Paired phylo() + OU (wave 2): drmTMB's support checks for the stable
     # between-species field — at least three species, each with at least two
@@ -1104,6 +1111,7 @@ function _warn_temporal_boundary(fit)
     end
     (found === nothing || isempty(found)) || @warn "drm: " * _temporal_boundary_message(found)
     return fit
+end
 
 # One draw from a homogeneous Toeplitz fit: per series, the innovations form of
 # σ²R (Durbin–Levinson), x_t = Σ_j φ_{t−1,j} x_{t−j} + σ √v_{t−1} z_t — the

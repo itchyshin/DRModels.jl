@@ -97,7 +97,8 @@ drmTMB involvement).
 
 - `vignette_homtoep_sites.csv` — the Toeplitz data of drmTMB's *Temporal AR1,
   OU, and Toeplitz effects* article (`vignettes/temporal-random-effects.Rmd`,
-  drmTMB draft PR #1449 head `4f7007ba428ffa3f9e0e86e716f3d54b166b371b`,
+  drmTMB draft PR #1449 (exported at `4f7007ba4`, identical at final head
+  `90c740791991e5dfe17d16346a301fd12f5af384`),
   `set.seed(20261002)`): 80 sites × occasions 0:5 (480 rows), lag
   correlations 0.60, 0.45, 0.40, 0.30, 0.20, total SD 0.80, alternating
   treatment. Columns `site, occasion, treatment, y`. Exported by
@@ -107,5 +108,5 @@ drmTMB involvement).
 
 Parity numbers: `test/parity/gen_temporal_wave2_parity.R ... homtoep` →
 `test/parity/temporal/{homtoep-panel6,homtoep-neg4,vignette-homtoep}/`, from
-drmTMB draft PR #1449 (`4f7007b`); regenerate when that PR changes the
+drmTMB draft PR #1449 (final head `90c740791`); regenerate when that PR changes the
 likelihood or the article, and again when it merges.

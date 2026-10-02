@@ -7,16 +7,16 @@ group = "id"
 structure = "homtoep"
 ordinary_intercept = false
 method = "ML"
-loglik = -1.6643769710217674e+02
+loglik = -1.6643769710217606e+02
 n = 120
 
 [coef]
-"mu_(Intercept)" = -2.8156844526367697e-01
-"mu_x" = 6.3533887250463417e-01
+"mu_(Intercept)" = -2.815684452636778e-01
+"mu_x" = 6.3533887250463006e-01
 
 [temporal]
-sigma = 1.1012257617037904e+00
-cor = [-5.1049026886498616e-01, 4.3996911961536672e-01, -2.9339498771052896e-01]
+sigma = 1.1012257617037924e+00
+cor = [-5.1049026886498605e-01, 4.399691196153675e-01, -2.9339498771053951e-01]
 
 [status]
 converged = true
@@ -28,7 +28,7 @@ rtol_par = 1e-6
 
 [[profile]]
 parm = "fixef:mu:x"
-lower = 4.7433983566189397e-01
-upper = 7.9491202680173001e-01
+lower = 4.7433983566656462e-01
+upper = 7.9491202680172235e-01
 conf_status = "profile"
 

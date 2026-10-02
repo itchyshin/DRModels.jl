@@ -83,7 +83,7 @@ using Test, Random, LinearAlgebra, StableRNGs, Statistics, Logging
         worst = 0.0
         for occ in ([0, 1, 2], [3, 5, 7, 9, 11, 13], collect(0:11))
             K = length(occ)
-            d = sim_data(rng; S = 8, occ = occ, ρ = rho_of(0.6 .* randn(rng, K - 1)))
+            d = sim_data(rng; S = max(8, K), occ = occ, ρ = rho_of(0.6 .* randn(rng, K - 1)))
             fit = quiet(() -> drm(fT, Gaussian(); data = d))
             X = hcat(ones(length(d.y)), d.x)
             @test length(fit.theta) == 3 + K - 1
@@ -100,6 +100,57 @@ using Test, Random, LinearAlgebra, StableRNGs, Statistics, Logging
             @test fit.nll(θ) ≈ dense_nll(θ, d.y, X, d.id, d.occ) rtol = 1e-10
         end
         println("homtoep dense oracle: worst |Δnll| / max(1, |nll|) = ", worst)
+    end
+
+    # drmTMB #1449's stability points: partial autocorrelations at and beyond
+    # the Float64 limit of tanh (|κ| ≥ 19 rounds tanh to ±1). The reference is
+    # an independent prediction-error evaluation in 2048-bit arithmetic (|κ| = 40
+    # makes R singular to ~1e-170): the
+    # Yule–Walker system R φ = r is solved at every order by dense LU for the
+    # predictor and the innovation variance, using ρ computed in BigFloat.
+    @testset "extreme partial autocorrelations vs a BigFloat prediction-error reference" begin
+        function pe_reference(θ, y, X, id, occ)
+            setprecision(BigFloat, 2048) do
+                p = size(X, 2)
+                θb = big.(θ)
+                ρ = rho_of(θb[p+2:end]); K = length(ρ)
+                @assert maximum(abs.(dense_pacf(toep(ρ)) .- tanh.(θb[p+2:end]))) < big(1e-300)
+                σ2 = exp(2θb[p+1])
+                r = big.(y) .- big.(X) * θb[1:p]
+                tot = big(0)
+                for s in unique(id)
+                    rows = findall(==(s), id); rows = rows[sortperm(occ[rows])]
+                    rs = r[rows]
+                    for t in 1:K
+                        if t == 1
+                            e, v = rs[1], big(1)
+                        else
+                            Rm = toep(ρ[1:t-1]); rv = ρ[2:t]
+                            φ = Rm \ rv                      # Yule–Walker, order t − 1
+                            e = rs[t] - sum(φ[j] * rs[t-j] for j in 1:t-1)
+                            v = 1 - dot(φ, rv)
+                        end
+                        tot += log(σ2 * v) + e^2 / (σ2 * v)
+                    end
+                end
+                Float64((tot + length(y) * log(2 * big(pi))) / 2)
+            end
+        end
+        d = sim_data(StableRNG(53); S = 10)
+        fit = quiet(() -> drm(fT, Gaussian(); data = d))
+        X = hcat(ones(length(d.y)), d.x)
+        for κ in ([8, -8, 5, 0, 3], [15, 15, -15, 12, 0.1], [18.5, 0, 0, 0, 0],
+                  fill(40.0, 5), fill(-40.0, 5), [40.0, -40, 40, -40, 40])
+            θ = [0.2; 0.4; log(0.9); Float64.(κ)]
+            v = fit.nll(θ)
+            ref = pe_reference(θ, d.y, X, d.id, d.occ)
+            # the true objective is huge here (innovation variances down to
+            # ~1e-170); it must be finite and equal the exact reference, not the
+            # route's 1e18 failure sentinel
+            println("homtoep extreme κ = ", κ, ": nll = ", v, ", rel. error = ", abs(v - ref) / abs(ref))
+            @test isfinite(v)
+            @test v ≈ ref rtol = 1e-10
+        end
     end
 
     @testset "recovery (S = 400 sites × 6 occasions, non-exponential ρ)" begin
@@ -190,6 +241,9 @@ using Test, Random, LinearAlgebra, StableRNGs, Statistics, Logging
         @test occursin("at least three common occasions", msg(fT, two))
         big = sim_data(StableRNG(49); S = 3, occ = collect(0:12), ρ = [1.0; zeros(12)])
         @test occursin("at most 12", msg(fT, big))
+        few = sim_data(StableRNG(51); S = 5)                    # 5 series, 6 occasions
+        @test occursin("at least as many series as occasions", msg(fT, few))
+        @test drm(fT, Gaussian(); data = sim_data(StableRNG(52); S = 6)) isa DrmFit   # S = K is allowed
         @test occursin("must be finite integers", msg(fT, merge(d, (occ = d.occ .+ 0.5,))))
         @test occursin("does not allow an ordinary", msg(bf(@formula(y ~ x + (1 | id) +
             temporal(1 | id, occ, homtoep)), @formula(sigma ~ 1)), d))

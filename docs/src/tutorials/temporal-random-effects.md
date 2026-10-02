@@ -331,8 +331,11 @@ use them as intervals. If elapsed gaps are genuinely irregular, use OU
 instead.
 
 The panel rules are drmTMB's: integer occasions, at least 3 and at most 12
-common occasions, equally spaced, and every site observing all of them; a
-site with a missing occasion is refused by name rather than silently dropped.
+common occasions, equally spaced, every site observing all of them, and at
+least as many sites as occasions (the K − 1 free lag correlations need that
+many independent series to be estimable at all; this is a floor, not a design
+recommendation). A site with a missing occasion is refused by name rather
+than silently dropped.
 
 ## Irregular elapsed time with OU
 
@@ -553,7 +556,7 @@ a dense multivariate-normal oracle (`test/test_temporal_ar1.jl`,
 Three cells cover homogeneous Toeplitz (drmTMB's article data above, a
 40-site six-occasion panel with a non-exponential lag pattern, and a 30-site
 four-occasion panel with a negative first-lag correlation), generated from
-drmTMB draft PR #1449: logLik within ``10^{-12}``, β and σ within
+drmTMB draft PR #1449: logLik within ``10^{-11}``, β and σ within
 ``2 \times 10^{-11}`` relative and every lag correlation within
 ``5 \times 10^{-10}`` (Julia 1.10.12 and 1.13, Linux, Totoro). The Toeplitz likelihood is checked against a BigFloat dense oracle
 to ``2 \times 10^{-15}`` relative, including partial autocorrelations near

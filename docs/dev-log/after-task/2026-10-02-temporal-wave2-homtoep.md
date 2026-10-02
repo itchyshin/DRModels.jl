@@ -55,7 +55,7 @@ directly.
 - Likelihood: against a BigFloat dense oracle, worst error 1.4e-15 relative
   (K = 3, 6, 12; PACs alternating at ±0.995). A Float64 dense oracle loses
   about 1e-7 there; that is the oracle's own conditioning, so it was replaced.
-- Parity with drmTMB #1449 (head 4f7007ba4): logLik ≤ 1.8e-12 on all three
+- Parity with drmTMB #1449 (final head 90c740791): logLik ≤ 9.6e-12 on all three
   cells, lag correlations ≤ 4.9e-10. drmTMB's printed article values are
   reproduced, including the tmbprofile interval for mu:treatment
   [0.2886, 0.4354] (endpoints within 1.3e-6).
@@ -75,3 +75,20 @@ directly.
 - Heterogeneous Toeplitz, unstructured covariance, and homtoep combined with
   `phylo()` are not implemented (drmTMB pairs only OU).
 - The parity cells must be regenerated when #1449 changes or merges.
+
+## Follow-up after drmTMB review (#1449 final head 90c740791)
+
+- New refusal, drmTMB's estimability floor: at least as many series as
+  occasions. It is checked after the complete-panel rule, as in drmTMB, and
+  tested at S = K − 1 (refused) and S = K (fits).
+- drmTMB's stability points: atanh PACs (8, −8, 5, 0, 3),
+  (15, 15, −15, 12, 0.1), (18.5, 0, …) and ±40. The objective is finite and
+  matches an independent 2048-bit Yule–Walker prediction-error reference to
+  ≤ 2.8e-14 relative, even where `tanh` rounds to ±1. The reference solves
+  `R φ = r` by dense LU at every order. The true objective there reaches
+  1e173, because the innovation variances fall to about 1e-170.
+- Parity cells regenerated from 90c740791. drmTMB's likelihood rewrite moved
+  its own numbers by up to 1e-13. DRModels.jl matches logLik to ≤ 9.6e-12 and
+  the lag correlations to ≤ 4.9e-10 (abs). The article data are identical.
+- The temporal boundary diagnostic from #917 also covers `homtoep`, through
+  the total-σ rule only.
