@@ -84,7 +84,7 @@ include("aghq_1d.jl")            # #448: 1-D Liu–Pierce AGHQ around `_gauss_he
 include("adaptive_ghq.jl")       # #834: per-group q-dim AGHQ for the (1 + x | g) routes
 include("gaussian_meta.jl")
 include("gaussian_structured.jl")
-include("temporal.jl")          # D-310: temporal(1 | id, time, ar1|ou) on the Gaussian mean (twin of drmTMB)
+include("temporal.jl")          # D-310/D-311: temporal(1 | id, time, ar1|ou|homtoep) (+ paired phylo) on the Gaussian mean (twin of drmTMB)
 include("gaussian_sparse_lss.jl")
 include("phylo_interaction.jl")  # bipartite two-tree interaction RE: V = σ²(C_A⊗C_B) + σ_e²I
 include("location_only.jl")      # #12: opt-in conjugate-EM for the Gaussian phylo-mean cell

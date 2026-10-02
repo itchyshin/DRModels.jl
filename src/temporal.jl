@@ -169,7 +169,7 @@ const _TEMPORAL_SPELLING = "Use `temporal(1 | id, occ, ar1)`, `temporal(1 | id, 
     "StatsModels' `@formula` cannot carry keyword arguments, so the Julia spelling is positional)."
 
 const _TEMPORAL_SCOPE = "temporal() is implemented only for the univariate Gaussian MEAN formula " *
-    "(`y ~ … + temporal(1 | id, time, ar1|ou)` with `sigma ~ 1`, ML) in this release"
+    "(`y ~ … + temporal(1 | id, time, ar1|ou|homtoep)` with `sigma ~ 1`, ML) in this release"
 
 # Refusal used by `_split_ranef` for every caller that has not opted in to the
 # temporal marker (every non-Gaussian family, the `sigma` formula, the bivariate
