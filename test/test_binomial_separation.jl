@@ -197,6 +197,47 @@ end
         @test V2 === V
     end
 
+    # #914 second review: a single far x outlier with fitted p at 0 made a null
+    # slope look near-separated under the ungated near rule (z = 0.003, span
+    # 3209). First input is the reviewer's; the other two came from a 400-design
+    # high-leverage scan (7/388 flagged before, 0 after). The drmTMB twin tests
+    # the same three. The exact check proves "not separated", so the near rule
+    # is not consulted.
+    @testset "far x outlier with a null slope is not near-separated" begin
+        cases = [
+            ([-0.096, -0.034, -0.872, -1.225, -1.425, 0.954, -0.471, -1e6],
+             [1, 1, 0, 1, 0, 0, 0, 0]),
+            ([1.358, 0.809, -0.605, 0.121, 2.017, 0.44, 1.099, -0.235, 0.892,
+              0.291, 2.65, -0.707, -0.48, -1e5],
+             [1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, 0, 0]),
+            ([1.896, 0.339, -0.784, 1.051, 0.373, 0.325, -0.248, -0.534, -1e5],
+             [1, 0, 1, 0, 1, 1, 1, 0, 0]),
+        ]
+        for (x, y) in cases
+            d = DRModels._detect_separation([ones(length(x)) x], Float64.(y), ones(length(x)))
+            @test !d.separated && d.conclusive
+            fit, recs, _ = _sep_fit(y, x)
+            @test isempty(recs)
+            @test all(isfinite, stderror(fit))
+        end
+    end
+
+    @testset "tiny column scales are screened (no absolute floor)" begin
+        y = [0.0, 0, 0, 1, 1, 1]
+        for sc in (1.0, 1e-200, 1e200)
+            d = DRModels._detect_separation([ones(6) collect(1.0:6) .* sc], y, ones(6))
+            @test d.separated && d.flagged == [1, 2]
+        end
+    end
+
+    @testset "an aliased column riding on a flagged one is named" begin
+        xq = [-2.0, -1, 0, 0, 1, 2]; y = [0.0, 0, 0, 1, 1, 1]
+        d = DRModels._detect_separation([ones(6) xq 2xq], y, ones(6))
+        @test d.separated && d.flagged == [2, 3]
+        d2 = DRModels._detect_separation([ones(6) xq fill(3.0, 6)], y, ones(6))
+        @test d2.flagged == [2]                     # alias of the unflagged intercept
+    end
+
     @testset "inconclusive check warns, never reads as no separation" begin
         # overlapping toy: proving "no separation" needs NNLS steps, so a zero
         # budget leaves the check inconclusive (a complete-separation design is

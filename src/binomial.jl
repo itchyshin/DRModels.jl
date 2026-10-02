@@ -90,12 +90,16 @@ scope.
     (their `vcov` rows/columns are NaN with an `Inf` diagonal) and their Wald
     `confint` / `coeftable` intervals are `(-Inf, Inf)`. A coefficient is flagged
     when ANY separating direction moves it (which can list more coefficients
-    than R's `detectseparation`, which reports one direction). Near separation is
-    flagged the same way on a scale-free rule: a fitted probability within 1e-8
+    than R's `detectseparation`, which reports one direction); an aliased column
+    that is a multiple of a flagged one is named too. The check is invariant to
+    column units and robust to a single far outlier. When it proves there is no
+    separation the fit is left alone, even if a Wald `|z|` is tiny. Only when it
+    cannot decide (iteration budget exhausted) is a scale-free near-separation
+    rule consulted: a fitted probability within 1e-8
     of 0/1, a coefficient whose own contribution `|βⱼ|·range(xⱼ)` spans that
     whole probability range (> 36.84 on the logit scale), and Wald `|z| < 0.05`;
-    a failed (non-finite) SE is never read as near separation. If the check runs
-    out of its iteration budget it warns that it was inconclusive rather than
+    a failed (non-finite) SE is never read as near separation. If that rule
+    does not fire, it warns that the check was inconclusive rather than
     reporting no separation. Bootstrap replicate refits do not repeat the
     warning. No refusal and no penalised estimator by default. drmTMB runs the
     same check with the same constants, so the two packages flag the same
