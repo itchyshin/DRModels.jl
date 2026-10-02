@@ -314,7 +314,7 @@ variance-component intervals are not available.
 !!! info "Attribution"
     This section adapts the drmTMB article *Phylogenetic stable effects and
     temporal OU deviations* (`vignettes/phylogenetic-temporal-effects.Rmd`,
-    drmTMB draft PR #1448) by its copyright holder, Shinichi Nakagawa, under
+    drmTMB development version) by its copyright holder, Shinichi Nakagawa, under
     the MIT licence.
 
 A comparative time-series data set can contain three different kinds of
@@ -477,7 +477,7 @@ above and a 24-species simulated fixture. On Julia 1.10.12 (Linux, Totoro)
 they agree with drmTMB to ``5.5 \times 10^{-12}`` in logLik, to
 ``2.1 \times 10^{-11}`` (relative) in every estimate and to
 ``2.3 \times 10^{-12}`` in the conditional fitted values. Their numbers come
-from drmTMB draft PR #1448 (the commit is recorded in each cell's
+from the drmTMB development version (the commit is recorded in each cell's
 `expected.meta.toml`). The paired likelihood is checked against a dense oracle
 (``9.2 \times 10^{-13}``, including the decay and stable-SD extremes and a
 tree with zero-length branches), and the pruning pass alone on
