@@ -34,10 +34,13 @@ import ForwardDiff
         # absent, and the last of those silently satisfies `ok`.
         @test keys(r) == (:converged, :max_abs_grad, :grad_source, :vcov_complete,
                           :vcov_posdef, :min_eigval, :cond, :penalized_map,
-                          :variance_boundary, :ok)
+                          :variance_boundary, :temporal_boundary, :ok)
         # `variance_boundary` (#724/#697): `nothing` unless a Gaussian fit has a grouped /
         # structured random effect and a homoscedastic residual
         @test r.variance_boundary === nothing
+        # `temporal_boundary` (drmTMB's temporal_boundary rules): `nothing` without a
+        # temporal() term; see test/test_temporal_boundary.jl
+        @test r.temporal_boundary === nothing
         @test r.vcov_complete isa Bool
         @test r.vcov_complete            # an ordinary fixed-effect fit has a full vcov
         @test r.converged isa Bool
