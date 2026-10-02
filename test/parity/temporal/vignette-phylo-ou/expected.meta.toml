@@ -1,11 +1,11 @@
 drmtmb_version = "0.7.1"
-drmtmb_code_hash = "291d30e31efe70166e5ed92830c4490af40925ecba75957fb63e8f08f605c34c"
-drmtmb_built = "R 4.6.1; x86_64-pc-linux-gnu; 2026-10-02 12:07:42 UTC; unix"
-drmtmb_sha = "ceff79d533e4098511645bf3df3050b1a9c73557"
+drmtmb_code_hash = "e1221083e43a680c845c5dee2312a6dee73d8f113985544248846aa047e755ca"
+drmtmb_built = "R 4.6.1; x86_64-pc-linux-gnu; 2026-10-02 13:03:58 UTC; unix"
+drmtmb_sha = "66ce5750d816e20d84913a7cd71e5bb19aeddf09"
 r_version = "R version 4.6.1 (2026-06-24)"
 ape_version = "5.8.1"
 generated_on = "2026-10-02"
 r_call = "tree <- ape::read.tree(\"vignette_phylo_ou_species.newick\"); drmTMB(bf(y ~ treatment + phylo(1 | species, tree = tree) + temporal(1 | species, time = elapsed_days, structure = \"ou\"), sigma ~ 1), data = read.csv(\"vignette_phylo_ou_species.csv\"), family = gaussian(), REML = FALSE)"
 opt_convergence = 0
-max_abs_gradient = 2.9166519602794685e-07
+max_abs_gradient = 7.7154038553843268e-12
 note = "Generated outputs only; no drmTMB source vendored. Point estimates at the ML optimum; no interval or calibration claim."

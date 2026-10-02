@@ -4,9 +4,10 @@
 ## structure = "ou")`).
 ##
 ## Maintainer-only (never run by the Julia tests). Needs R, ape, and a drmTMB
-## build that has the paired provider (drmTMB branch
-## `codex/phylo-temporal-ou-exec-v1-20260909`, being rescued into a drmTMB
-## draft PR). Install that build into a PRIVATE library, never the shared one:
+## build that has the paired provider: drmTMB draft PR #1448
+## (`claude/temporal-phylo-ou-land`, rescued from
+## `codex/phylo-temporal-ou-exec-v1-20260909`). Install that build into a
+## PRIVATE library, never the shared one:
 ##
 ##   R_LIBS=~/scratch/drmtmb-wave2-lib OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 \
 ##     Rscript test/parity/gen_temporal_wave2_parity.R <drmTMB_sha> [drmTMB_source_dir]

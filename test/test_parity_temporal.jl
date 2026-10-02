@@ -34,8 +34,9 @@ include(joinpath(@__DIR__, "parity", "temporal_parity.jl"))
             @test ex["fit"]["method"] == "ML"
             @test ex["status"]["converged"]
             # drmTMB's Hessian is singular exactly when an SD sits at its zero
-            # boundary (`[tol].boundary`, e.g. σ̂ → 0 in drmTMB's 32-row
-            # phylo + OU article data); otherwise it must be positive definite.
+            # boundary (`[tol].boundary`, written by the wave-2 generator, e.g.
+            # σ̂ → 0 on a small phylo + OU panel); otherwise it must be
+            # positive definite.
             @test ex["status"]["pdHess"] || !isempty(get(ex["tol"], "boundary", String[]))
             fit, rows = temporal_parity_check(dir)
             # A boundary SD leaves a singular Hessian, which `is_converged` flags;

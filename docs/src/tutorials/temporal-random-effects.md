@@ -314,8 +314,8 @@ variance-component intervals are not available.
 !!! info "Attribution"
     This section adapts the drmTMB article *Phylogenetic stable effects and
     temporal OU deviations* (`vignettes/phylogenetic-temporal-effects.Rmd`,
-    drmTMB development branch) by its copyright holder, Shinichi Nakagawa,
-    under the MIT licence.
+    drmTMB draft PR #1448) by its copyright holder, Shinichi Nakagawa, under
+    the MIT licence.
 
 A comparative time-series data set can contain three different kinds of
 variation. Closely related species can have similar *stable* baselines because
@@ -343,10 +343,12 @@ between related species: for two different species the covariance is
 separable phylogeny-by-time field is a different model with a different
 scientific question, and neither package fits it yet.
 
-The data are those simulated by drmTMB's article (`set.seed(20260909)`): 8
-species on a random coalescent tree, each observed at elapsed times 0, 0.5,
-2.5 and 5 with an alternating treatment. As above, we read the exact data and
-tree it produced.
+The data are those simulated by drmTMB's article (`set.seed(20260909)`): 60
+species on a random coalescent tree, each observed at the genuinely irregular
+elapsed times 0, 0.5, 2.5 and 5 with an alternating treatment, simulated with
+`sd_phylo_stable = 0.45`, `sd_temporal = 0.55`, `decay_temporal = 0.45`,
+`sigma = 0.35`, intercept 1 and treatment effect 0.4. As above, we read the
+exact data and tree it produced.
 
 ```@example temporal
 col = read_fixture("vignette_phylo_ou_species.csv")
@@ -387,14 +389,10 @@ phylo_names = Dict(phylo_fit.coefnames)[:mu]
                    ("sigma", pt["sigma"], phylo_tp.sigma)]]
 ```
 
-With only 32 observations the residual SD is estimated at its zero boundary by
-**both** packages (drmTMB `≈ 5e-5`, DRModels.jl smaller still): on these data
-the OU departures absorb the observation noise. At that boundary the
-likelihood is flat in ``\sigma``, so the two values agree only in being
-essentially zero, and drmTMB reports no positive-definite Hessian. Everything
-else agrees closely. A larger data set
-(`test/parity/temporal/phylo-ou-species/`: 24 species, 106 observations, all
-components interior) agrees with drmTMB to ``10^{-11}`` in every estimate.
+The two packages reach the same maximum-likelihood optimum. With a smaller
+panel (drmTMB's article mentions 8 or 16 species at these four times), the
+residual SD can run to zero while the OU term absorbs it; a fit at that
+boundary should not be read component by component.
 
 drmTMB's `fitted()` adds both conditional components. In DRModels.jl they are
 in `ranef`: `ranef(phylo_fit)[:species_phylo]` holds the stable effect of each
@@ -420,12 +418,18 @@ each, at least three distinct positive lags across the data, and tree tips
 that are exactly the observed species.
 
 **What can be reported now.** drmTMB's article marks this model as a
-development workflow: its fixed-mean likelihood profile has been checked
-independently, but its point-recovery gate has not met the predeclared
-threshold, so it asks readers not to report confidence intervals from the
-paired model yet. DRModels.jl reproduces the same likelihood and makes no
-stronger claim; use it to inspect the variance components, not for interval
-inference.
+development workflow: its parser, dense-likelihood, method and fixed-mean
+profile checks pass, and a replacement point-recovery study met its
+predeclared point criteria, but no interval-calibration study has been run,
+so it asks readers not to report confidence intervals from the paired model
+yet. DRModels.jl reproduces the same likelihood and makes no stronger claim:
+use the fit to inspect the variance components, not for interval inference.
+For the record only, the fixed-mean profile for `treatment` agrees between the
+two packages:
+
+```@example temporal
+compare_ci(confint(phylo_fit; method = :profile, parm = :mu => "treatment"), phylo_ref["profile"])
+```
 
 ## The drmTMB spelling through the bridge
 
@@ -455,13 +459,11 @@ a dense multivariate-normal oracle (`test/test_temporal_ar1.jl`,
 `test/test_temporal_ou.jl`).
 
 Two more cells cover the paired phylogenetic + OU model: drmTMB's article data
-above (residual SD at its boundary; logLik within ``5 \times 10^{-8}``, the
-other estimates within ``3 \times 10^{-8}`` relative) and a 24-species
-simulated fixture with every component interior (logLik within
-``2 \times 10^{-12}``, every estimate within ``2 \times 10^{-11}`` relative,
-conditional fitted values within ``2 \times 10^{-12}``; Julia 1.10.12 on
-Linux, Totoro). Their numbers come from drmTMB's development branch for this
-model (the commit is recorded in each cell's `expected.meta.toml`). The paired
+above and a 24-species simulated fixture. Both agree with drmTMB to within
+``10^{-11}`` in logLik and every estimate (relative), and in the conditional
+fitted values to within ``2 \times 10^{-12}`` (Julia 1.10.12 on Linux,
+Totoro). Their numbers come from drmTMB draft PR #1448 (the commit is
+recorded in each cell's `expected.meta.toml`). The paired
 likelihood is checked against a dense oracle, on ultrametric and
 non-ultrametric trees and at the decay and stable-SD extremes, in
 `test/test_temporal_phylo_ou.jl`.
