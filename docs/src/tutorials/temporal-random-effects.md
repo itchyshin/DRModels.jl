@@ -324,18 +324,28 @@ and negative first-lag correlation patterns. The 20-site stress panel had
 lower intercept coverage, so this is evidence for those primary panel
 designs, not a coverage claim for every Toeplitz analysis, and it was obtained
 with drmTMB: DRModels.jl reproduces the same likelihood, but no separate
-calibration study has been run on its intervals. Wald, total-scale and
-lag-correlation intervals are unavailable in drmTMB. DRModels.jl's `coeftable`
-prints Wald standard errors for every coordinate, as on all its routes; do not
-use them as intervals. If elapsed gaps are genuinely irregular, use OU
-instead.
+calibration study has been run on its intervals. Both packages refuse
+everything else: Wald covariance and intervals (`vcov`, `stderror`,
+`confint(fit)`, `predict(...; se = true)`), and profile intervals for `sigma`
+or the lag correlations. `confint(fit; method = :profile)` without `parm`
+profiles the mean coefficients only, and `coeftable` prints the standard-error
+columns as `NaN`. If elapsed gaps are genuinely irregular, use OU instead.
+
+Standardised residuals account for the correlation within a site:
+`residuals(toeplitz_fit; type = :quantile)` returns the whitened
+``L^{-1}(y - X\hat\beta)``, with ``L`` the Cholesky factor of each site's
+``\hat\sigma^2 R``. These are drmTMB's Pearson residuals for this model.
 
 The panel rules are drmTMB's: integer occasions, at least 3 and at most 12
 common occasions, equally spaced, every site observing all of them, and at
 least as many sites as occasions (the K − 1 free lag correlations need that
 many independent series to be estimable at all; this is a floor, not a design
-recommendation). A site with a missing occasion is refused by name rather
-than silently dropped.
+recommendation). Missing responses are handled as drmTMB handles them. The
+rows with a missing response are dropped first, and then the panel rules
+apply to the rows that remain. A site that loses one occasion is therefore
+refused by name as incomplete, and is never silently dropped. An occasion
+that is missing for every site leaves a smaller common panel, which still
+fits if it stays equally spaced.
 
 ## Irregular elapsed time with OU
 
