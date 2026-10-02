@@ -1,0 +1,28 @@
+[fit]
+family = "gaussian"
+formula = "y ~ x + temporal(1 | id, time = elapsed, structure = \"ou\"); sigma ~ 1"
+julia_formula = "y ~ x + temporal(1 | id, elapsed, ou)"
+data_file = "ou_irregular.csv"
+group = "id"
+structure = "ou"
+ordinary_intercept = false
+method = "ML"
+loglik = -1.3965508181447106e+02
+n = 135
+
+[coef]
+"mu_(Intercept)" = 6.6392881761487588e-01
+"mu_x" = 2.9034975573830252e-01
+
+[temporal]
+sd = 6.5831352355175943e-01
+decay = 3.2451598770891582e-01
+sigma = 4.1383919949809067e-01
+
+[status]
+converged = true
+pdHess = true
+
+[tol]
+atol_loglik = 1e-8
+rtol_par = 1e-6

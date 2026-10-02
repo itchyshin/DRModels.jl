@@ -1,0 +1,10 @@
+drmtmb_version = "0.7.1"
+drmtmb_code_hash = "679e3f4714819c3fe8347bd8bff1a209affdcee4729e4a4ab4df8a4dac92c10c"
+drmtmb_built = "R 4.6.1; x86_64-pc-linux-gnu; 2026-10-02 01:55:04 UTC; unix"
+drmtmb_sha = "dc81bb36833098ec84feac77c8ffecf5d0ce3c87"
+r_version = "R version 4.6.1 (2026-06-24)"
+generated_on = "2026-10-01"
+r_call = "drmTMB(bf(y ~ x + (1 | id) + temporal(1 | id, time = occ, structure = \"ar1\"), sigma ~ 1), data = read.csv(\"ar1_gapped.csv\"), family = gaussian(), REML = FALSE)"
+opt_convergence = 0
+max_abs_gradient = 5.8924456303869741e-09
+note = "Generated outputs only; no drmTMB source vendored. Point estimates at the ML optimum; no interval or calibration claim."

@@ -176,11 +176,11 @@ end
 
 # Gated real-parity suite vs committed drmTMB fixtures (off by default).
 # Native `drm()` path (#17) plus `drm_bridge` marshalling path (#370).
-# Deliberately not part of the discovery loop above: these three live under
+# Deliberately not part of the discovery loop above: these four live under
 # test/parity/ (not top-level test/), so readdir(@__DIR__) never finds them,
 # and they are guarded behind DRM_PARITY_TESTS rather than sharded.
 if _LIST_ONLY
-    println("  [unsharded, gated on DRM_PARITY_TESTS] parity/runparity.jl, parity/runparity_bridge.jl, parity/runparity_bridge_formula.jl")
+    println("  [unsharded, gated on DRM_PARITY_TESTS] parity/runparity.jl, parity/runparity_bridge.jl, parity/runparity_bridge_formula.jl, parity/runparity_temporal.jl")
 elseif get(ENV, "DRM_PARITY_TESTS", "0") == "1"
     @testset "R-parity vs drmTMB 0.6.0" begin
         include("parity/runparity.jl")
@@ -190,6 +190,9 @@ elseif get(ENV, "DRM_PARITY_TESTS", "0") == "1"
     end
     @testset "R-parity via drm_bridge R-formula constructs vs drmTMB 0.7.0 (#467)" begin
         include("parity/runparity_bridge_formula.jl")
+    end
+    @testset "R-parity temporal AR1/OU vs drmTMB 0.7.1 (D-310)" begin
+        include("parity/runparity_temporal.jl")
     end
 else
     @info "R-parity suite skipped (set DRM_PARITY_TESTS=1 to run)"
