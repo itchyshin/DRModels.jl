@@ -37,7 +37,7 @@ function temporal_parity_data(file::AbstractString; group::AbstractString,
 end
 
 _temporal_time_column(julia_formula) =
-    String(match(r"temporal\(1 \| \w+, (\w+), (?:ar1|ou|homtoep)\)", julia_formula).captures[1])
+    String(match(r"temporal\(1 \| \w+, (\w+), (?:ar1|ou)\)", julia_formula).captures[1])
 
 # The tree of a paired phylo() + OU cell (wave 2): `[fit].tree_file` names a
 # Newick file in test/fixtures/temporal/; `nothing` for the other cells.
@@ -92,16 +92,11 @@ function temporal_parity_check(dir::AbstractString)
     t = ex["temporal"]
     jl = Dict("sd" => tp.sd, "phi" => tp.phi, "decay" => tp.decay,
               "sd_iid" => tp.sd_iid, "sd_phylo" => tp.sd_phylo, "sigma" => tp.sigma)
-    # `[tol].boundary`: SDs drmTMB estimated at their zero boundary, where the
-    # likelihood is flat and only "both engines put it below 1e-3" is testable.
-    boundary = get(ex["tol"], "boundary", String[])
     for k in ("sd", "phi", "decay", "sd_iid", "sd_phylo", "sigma")
         haskey(t, k) || continue
         jv = jl[k]
         jv === nothing && error("$(basename(dir)): DRModels.jl reports no `$k`")
-        ok = k in boundary ? max(Float64(jv), Float64(t[k])) < 1e-3 :
-                             _reldiff(Float64(jv), Float64(t[k])) <= rtol
-        push_row!(k, Float64(jv), Float64(t[k]), ok)
+        push_row!(k, Float64(jv), Float64(t[k]), _reldiff(Float64(jv), Float64(t[k])) <= rtol)
     end
     return fit, rows
 end

@@ -74,11 +74,11 @@ using Distributions: MvNormal, logpdf
             @formula(sigma ~ 1))
     quiet(f) = with_logger(f, NullLogger())
 
-    @testset "dense oracle (ultrametric and non-ultrametric trees, random θ, extremes)" begin
+    @testset "dense oracle (ultrametric trees, random θ, extremes)" begin
         rng = StableRNG(311)
         worst = 0.0
-        for rep in 1:3, ultra in (true, false)
-            d, nwk, Cc, lev = sim_data(rng; m = 6 + 3rep, ultrametric = ultra)
+        for rep in 1:5
+            d, nwk, Cc, lev = sim_data(rng; m = 6 + 2rep, ultrametric = true)
             fit = quiet(() -> drm(fP, Gaussian(); data = d, tree = nwk))
             X = hcat(ones(length(d.y)), d.x)
             @test length(fit.theta) == 6
@@ -105,8 +105,77 @@ using Distributions: MvNormal, logpdf
         println("paired phylo + OU dense oracle: worst |Δnll| = ", worst)
     end
 
+    # The user route needs an ultrametric tree (drmTMB's rule), but the pruning
+    # pass is exact on ANY tree: check it directly against the dense identities
+    #   Σ log1p(ℓα) = logdet(I + D^{1/2} S D^{1/2}),
+    #   Σ ℓβ²/(1+ℓα) = dᵀ (I + S D)⁻¹ S d,     S = σ_a² C, D = diag(c),
+    # on non-ultrametric trees (C the tip CORRELATION matrix).
+    @testset "pruning pass on non-ultrametric trees (internal, dense identities)" begin
+        rng = StableRNG(321)
+        for m in (5, 9, 17), _ in 1:3
+            lev = ["t$i" for i in 1:m]
+            nwk, C = rand_tree(rng, lev; ultrametric = false)
+            Cc = corrmat(C)
+            plan = DRModels._temporal_phylo_plan(DRModels._temporal_phylo_tree(nwk), lev;
+                                                 require_ultrametric = false)
+            c = 0.1 .+ 3 .* rand(rng, m); dd = randn(rng, m); σa = exp(randn(rng))
+            ld, qc = DRModels._temporal_phylo_prune(plan, σa^2 .* c ./ plan.h, σa .* dd ./ sqrt.(plan.h))
+            S = σa^2 .* Cc; Dh = Diagonal(sqrt.(c))
+            @test ld ≈ logdet(Symmetric(I + Dh * S * Dh)) atol = 1e-10
+            @test qc ≈ dot(dd, (I + S * Diagonal(c)) \ (S * dd)) rtol = 1e-10
+        end
+        # ... and the user route refuses the same tree, as drmTMB does
+        d, nwk, _, _ = sim_data(StableRNG(322); m = 8, ultrametric = false)
+        err = try drm(fP, Gaussian(); data = d, tree = nwk); "" catch e; e.msg end
+        @test occursin("must be ultrametric", err)
+    end
+
+    # Zero-length branches (internal and tip) are admitted, as in drmTMB: the
+    # shared Newick reader is used without the sparse-precision assembly, and in
+    # the pruning pass ℓ = 0 is log1p(0) = 0. Tips sp1 and sp2 hang on zero
+    # branches from one node, so their stable effects coincide (C singular).
+    @testset "zero-length branches (dense oracle)" begin
+        nwk = "(((sp1:0,sp2:0):1,(sp3:0.5,sp4:0.5):0.5):0,((sp5:1,sp6:1):0,(sp7:0.25,sp8:0.25):0.75):0);"
+        @test_throws ArgumentError augmented_phy(nwk)          # the shared parser still refuses 0
+        lev = ["sp$i" for i in 1:8]
+        C = zeros(8, 8)
+        for (grp, v) in ((1:2, 1.0), (3:4, 0.5), (5:6, 0.0), (7:8, 0.75))
+            C[grp, grp] .= v
+        end
+        for i in 1:8; C[i, i] = 1.0; end                       # every tip at depth 1
+        rng = StableRNG(323)
+        sp = String[]; t = Float64[]
+        for l in lev
+            ts = sort(10 .* rand(rng, 4)); append!(sp, fill(l, 4)); append!(t, ts)
+        end
+        n = length(sp); x = randn(rng, n)
+        d = (y = 0.3 .+ 0.5 .* x .+ randn(rng, n), x = x, species = sp, elapsed = t)
+        fit = quiet(() -> drm(fP, Gaussian(); data = d, tree = nwk))
+        X = hcat(ones(n), x)
+        for _ in 1:5
+            θ = [randn(rng); randn(rng); 0.5randn(rng); 0.7randn(rng); 0.5randn(rng); randn(rng)]
+            @test abs(fit.nll(θ) - dense_nll(θ, d.y, X, d.species, d.elapsed, C, lev)) < 1e-10
+        end
+        @test loglik(fit) ≈ -dense_nll(fit.theta, d.y, X, d.species, d.elapsed, C, lev) atol = 1e-10
+        neg = replace(nwk, "sp3:0.5" => "sp3:-0.5")
+        err = try drm(fP, Gaussian(); data = d, tree = neg); "" catch e; e.msg end
+        @test occursin("non-negative", err)
+    end
+
+    # A true stable SD of zero (12 species × 5 times): the fitted phylogenetic
+    # SD lands below drmTMB's random-effect SD boundary (1e-4) and the temporal
+    # boundary diagnostic says so.
+    @testset "stable SD at zero is flagged at the boundary" begin
+        d, nwk, _, _ = sim_data(StableRNG(324); m = 12, σa = 0.0, kmin = 5, kmax = 5)
+        fit = quiet(() -> drm(fP, Gaussian(); data = d, tree = nwk))
+        println("σ_a = 0 panel: sd_phylo = ", temporal_parameters(fit).sd_phylo)
+        tb = quiet(() -> check_drm(fit)).temporal_boundary
+        @test tb.at_boundary && any(startswith("sd_min="), tb.findings)
+        @test any(occursin("term=species_phylo", f) for f in tb.findings)
+    end
+
     @testset "conditional modes against the dense model" begin
-        d, nwk, Cc, lev = sim_data(StableRNG(312); m = 15, ultrametric = false)
+        d, nwk, Cc, lev = sim_data(StableRNG(312); m = 15, ultrametric = true)
         fit = quiet(() -> drm(fP, Gaussian(); data = d, tree = nwk))
         n = length(d.y); X = hcat(ones(n), d.x)
         θ = fit.theta
@@ -137,7 +206,7 @@ using Distributions: MvNormal, logpdf
     end
 
     @testset "invariances" begin
-        d, nwk, _, _ = sim_data(StableRNG(313); m = 14, ultrametric = false)
+        d, nwk, _, _ = sim_data(StableRNG(313); m = 14, ultrametric = true)
         fit = quiet(() -> drm(fP, Gaussian(); data = d, tree = nwk))
         # row order
         p = reverse(eachindex(d.y))
