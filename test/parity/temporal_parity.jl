@@ -101,16 +101,11 @@ function temporal_parity_check(dir::AbstractString)
             push_row!("cor_lag$m", tp.cor[m], r, abs(tp.cor[m] - r) <= rtol)
         end
     end
-    # `[tol].boundary`: SDs drmTMB estimated at their zero boundary, where the
-    # likelihood is flat and only "both engines put it below 1e-3" is testable.
-    boundary = get(ex["tol"], "boundary", String[])
     for k in ("sd", "phi", "decay", "sd_iid", "sd_phylo", "sigma")
         haskey(t, k) || continue
         jv = jl[k]
         jv === nothing && error("$(basename(dir)): DRModels.jl reports no `$k`")
-        ok = k in boundary ? max(Float64(jv), Float64(t[k])) < 1e-3 :
-                             _reldiff(Float64(jv), Float64(t[k])) <= rtol
-        push_row!(k, Float64(jv), Float64(t[k]), ok)
+        push_row!(k, Float64(jv), Float64(t[k]), _reldiff(Float64(jv), Float64(t[k])) <= rtol)
     end
     return fit, rows
 end

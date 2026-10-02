@@ -116,17 +116,6 @@ for (cell in if (do_phylo) cells else list()) {
   beta <- fit$coefficients$mu
   conv <- fit$opt$convergence
   pd <- isTRUE(fit$sdr$pdHess)
-  ## An SD estimated at its zero boundary is not identified to relative
-  ## precision (the likelihood is flat there): record it as `boundary` (both
-  ## engines must put it below 1e-3) and widen the logLik tolerance to 1e-6.
-  sds <- c(sd = sd_mu[["sd_temporal"]], sd_phylo = sd_mu[["sd_phylo_stable"]],
-           sigma = exp(fit$coefficients$sigma[[1]]))
-  boundary <- names(sds)[sds < 1e-3]
-  tol_lines <- if (length(boundary)) c(
-    "atol_loglik = 1e-6",
-    "rtol_par = 1e-6",
-    paste0("boundary = [", paste(toml_string(boundary), collapse = ", "), "]")
-  ) else c("atol_loglik = 1e-8", "rtol_par = 1e-6")
   lines <- c(
     "[fit]",
     'family = "gaussian"',
@@ -155,7 +144,8 @@ for (cell in if (do_phylo) cells else list()) {
     paste0("pdHess = ", toml_bool(pd)),
     "",
     "[tol]",
-    tol_lines,
+    "atol_loglik = 1e-8",
+    "rtol_par = 1e-6",
     "",
     "# drmTMB fitted() is CONDITIONAL (adds the phylogenetic stable and the",
     "# temporal modes); data-row order.",

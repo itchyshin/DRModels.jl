@@ -45,30 +45,33 @@ Dual numbers. A dense K×K species-level solve was rejected because it is
 O(m³). The tip-correlation scale (drmTMB, and DRModels' closed-form
 `phylo(1|g)`) is exact through the leaf scaling `1/√h_s`, ultrametric or not.
 
-## Evidence
+## Evidence (re-measured at the final head; Julia version named per figure)
 
-- Dense oracle, with the tree covariance built independently from shared
-  branch lengths: worst |Δnll| 7.5e-12 over random θ on ultrametric and
-  non-ultrametric trees, and at decay e^6 / e^-8 / e^-20, σ_a e^-15 / e^3 and
-  σ_t e^-15. The modes match the dense formulas to 1e-8.
-- Parity with drmTMB #1448 (final head 012258e9f; numbers unchanged from
-  66ce5750d), on Julia 1.10.12 and 1.13:
-  - `phylo-ou-species`: logLik 1.1e-12, estimates ≤ 1.6e-11 relative,
-    conditional fitted values 1.7e-12.
-  - `vignette-phylo-ou` (60 species): logLik 5.4e-12, estimates ≤ 2.5e-12,
+- Dense oracle (tree covariance built independently from shared branch
+  lengths), Julia 1.10.12: worst |Δnll| 9.2e-13 over random θ on ultrametric
+  trees and at decay e^6 / e^-8 / e^-20, σ_a e^-15 / e^3 and σ_t e^-15.
+  Zero-length internal and tip branches: dense oracle to 1e-10. The pruning
+  pass alone on non-ultrametric trees matches the dense identities to 1e-10.
+  The modes match the dense formulas to 1e-8.
+- Parity with drmTMB #1448 final head 012258e9f, Julia 1.10.12. I regenerated
+  the cells there and diffed `expected.toml`: identical to 66ce5750d.
+  - `phylo-ou-species`: logLik 1.1e-12, estimates ≤ 2.1e-11 relative,
+    conditional fitted values 2.3e-12.
+  - `vignette-phylo-ou` (60 species): logLik 5.5e-12, estimates ≤ 2.6e-12,
     fitted values 1.7e-12.
-- Recovery smoke (m = 150): σ_a 0.68 (truth 0.6), σ_t 0.81 (0.75), λ 0.54
-  (0.45), σ 0.33 (0.4), slope 0.502 (0.45).
-- Full suite: 4/4 shards pass on 1.10.12 and on 1.13. The Documenter build is
-  EXIT=0.
+  - The profile endpoints in the article differ by 1.2e-6 (root-search
+    tolerance).
+- Recovery smoke (m = 150, Julia 1.10.12): σ_a 0.48 (truth 0.6), σ_t 0.84
+  (0.75), λ 0.46 (0.45), σ 0.35 (0.4), slope 0.488 (0.45).
+- Full suite: see the PR comments for the final-head shard runs.
 
 ## Fixed during the work
 
 - The first simulated fixture put σ_a at zero (seed luck). It now uses 24
   species with a larger stable SD, and drmTMB's fit is interior.
-- drmTMB's earlier 8-species article data put σ at zero in both engines. The
-  helpers grew a `[tol].boundary` rule. Draft #1448 then moved the article to
-  60 species, so no current cell uses that rule; it remains for future data.
+- A `[tol].boundary` loosening for boundary cells was added for drmTMB's
+  earlier 8-species article data. Once the article moved to 60 species no
+  cell used it, so it was removed.
 
 ## What this does NOT cover
 
@@ -79,6 +82,13 @@ O(m³). The tip-correlation scale (drmTMB, and DRModels' closed-form
 - A separable phylogeny × time field is a different model and is not
   implemented.
 - The parity cells must be regenerated when #1448 changes or merges.
+- The σ boundary rule compares σ̂ with the marginal sd(y), as drmTMB does, so
+  it can fire falsely when a covariate dominates the response (for example
+  y = 2000x + OU). This is kept for parity and raised upstream.
+- A branch length missing from the Newick reads as 0 (drmTMB, via ape,
+  would refuse a tree with no branch lengths).
+- `profile_curve` on the paired fit does not warn (only `confint(:profile)`
+  does, as drmTMB).
 
 ## Follow-up after drmTMB review (#1447 07d1612ea, #1448 012258e9f)
 
@@ -97,3 +107,18 @@ O(m³). The tip-correlation scale (drmTMB, and DRModels' closed-form
   uncalibrated (drmTMB #1448). The unobserved-tips refusal now names the tips.
 - Parity cells regenerated from 012258e9f: the numbers are unchanged and
   only the provenance is new.
+
+## Follow-up after the #917 review (2026-10-02)
+
+- Non-ultrametric trees are refused on the user route with drmTMB's relative
+  tolerance and wording. The likelihood is still checked on such trees
+  internally (`require_ultrametric = false`).
+- Zero-length branches are accepted. `_temporal_phylo_tree` reads the Newick
+  with the shared `_parse_node!` reader, but not with `augmented_phy`'s
+  sparse-precision assembly, which stays unchanged and still refuses 0.
+- The boundary diagnostic gains drmTMB's random-effect SD rule (smallest SD
+  below 1e-4). A true σ_a = 0 panel (12 species × 5 times) gives sd_phylo
+  3.9e-10 and is flagged.
+- The `[tol].boundary` mechanism is removed. `:homtoep` references moved to
+  #918. Licence comments mark the refusal and boundary wording as mirroring
+  drmTMB.

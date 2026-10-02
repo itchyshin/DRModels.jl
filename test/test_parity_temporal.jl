@@ -35,18 +35,9 @@ include(joinpath(@__DIR__, "parity", "temporal_parity.jl"))
             @test haskey(meta, "r_version") && haskey(meta, "r_call")
             ex = TOML.parsefile(joinpath(dir, "expected.toml"))
             @test ex["fit"]["method"] == "ML"
-            @test ex["status"]["converged"]
-            # drmTMB's Hessian is singular exactly when an SD sits at its zero
-            # boundary (`[tol].boundary`, written by the wave-2 generator, e.g.
-            # σ̂ → 0 on a small phylo + OU panel); otherwise it must be
-            # positive definite.
-            @test ex["status"]["pdHess"] || !isempty(get(ex["tol"], "boundary", String[]))
+            @test ex["status"]["converged"] && ex["status"]["pdHess"]
             fit, rows = temporal_parity_check(dir)
-            # A boundary SD leaves a singular Hessian, which `is_converged` flags;
-            # the optimiser itself must still have converged.
-            @test fit.converged
-            @test is_converged(fit) ||
-                  !isempty(get(TOML.parsefile(joinpath(dir, "expected.toml"))["tol"], "boundary", String[]))
+            @test is_converged(fit)
             for r in rows
                 @test r.pass
             end

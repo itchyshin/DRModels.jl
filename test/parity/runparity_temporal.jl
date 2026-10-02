@@ -11,11 +11,8 @@
 # differences is printed so the achieved precision is on record.
 #
 # Wave 2 (D-311) adds the paired `phylo(1 | species) + temporal(…, ou)` cells
-# (`[fit].tree_file`, a phylogenetic stable SD). A cell whose drmTMB fit put an
-# SD at zero lists it in `[tol].boundary`: that SD is checked as "both engines
-# below 1e-3" and the logLik tolerance is the cell's own (1e-6 there). The
-# homogeneous Toeplitz cells compare the lag correlations (`cor`), on the
-# absolute scale.
+# (`[fit].tree_file`, a phylogenetic stable SD). The homogeneous Toeplitz cells
+# compare the lag correlations (`cor`), on the absolute scale.
 #
 # The always-on twin, test/test_parity_temporal.jl, repeats check (1) so CI
 # catches a drift without the gate.
@@ -36,15 +33,10 @@ isdefined(@__MODULE__, :temporal_parity_check) || include("temporal_parity.jl")
         @testset "$cell" begin
             fit, rows = temporal_parity_check(dir)
             tol = TOML.parsefile(joinpath(dir, "expected.toml"))["tol"]
-            boundary = get(tol, "boundary", String[])
-            # A boundary SD leaves a singular Hessian, which `is_converged` flags;
-            # the optimiser itself must still have converged.
-            @test fit.converged
-            @test is_converged(fit) || !isempty(boundary)
+            @test is_converged(fit)
             for r in rows
                 @test r.pass
                 r.pass || @error "temporal parity FAILED" cell r.quantity r.julia r.drmtmb r.absdiff r.reldiff
-                r.quantity in boundary && continue          # checked as "both < 1e-3", not relative
                 key = r.quantity == "logLik" ? "logLik (abs)" :
                       startswith(r.quantity, "mu_") ? "beta (rel)" : "$(r.quantity) (rel)"
                 worst[key] = max(get(worst, key, 0.0),

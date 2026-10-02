@@ -493,38 +493,103 @@ end
 # type (ForwardDiff runs through it) and made of positive terms only, so it
 # stays accurate as σ_a → 0 (log1p, α, β → 0) and as σ_a → ∞.
 
+# The tree as parent / branch-length arrays. A Newick string is read with the
+# shared Newick reader (`_parse_node!`) but WITHOUT the sparse-precision
+# assembly, so zero-length branches are admitted here, as in drmTMB (which
+# requires finite, non-negative lengths): a zero branch has no precision 1/ℓ,
+# but in the pruning pass it is just ℓ = 0 (log1p(0) = 0, the message passes
+# through unchanged). An `AugmentedPhy` (lengths > 0 by construction) is read
+# back from its precision. A branch length absent from the Newick reads as 0.
+function _temporal_phylo_tree(tree)
+    if tree isa AugmentedPhy
+        Q = tree.Q_topology; N = tree.n_total
+        parent = zeros(Int, N); blen = zeros(N); seen = falses(N)
+        order = [tree.root_index]; seen[tree.root_index] = true; cursor = 1
+        while cursor <= length(order)
+            i = order[cursor]; cursor += 1
+            for k in nzrange(Q, i)
+                j = rowvals(Q)[k]
+                (j == i || seen[j]) && continue
+                qij = nonzeros(Q)[k]
+                qij < 0 || continue
+                seen[j] = true; parent[j] = i
+                blen[j] = -1.0 / qij              # off-diagonal of Q is −1/branch length
+                push!(order, j)
+            end
+        end
+        length(order) == N || error("drm: internal — the phylogeny is not connected")
+        return (parent = parent, blen = blen, root = tree.root_index, n = N,
+                leaf_names = tree.leaf_names, leaf_nodes = tree.leaf_indices)
+    end
+    tree isa AbstractString ||
+        throw(ArgumentError("drm: `tree` must be a Newick string or an `AugmentedPhy`."))
+    str = String(tree)
+    occursin('\0', str) && throw(ArgumentError("Newick strings cannot contain literal NUL bytes"))
+    c = _NewickCursor(str, firstindex(str))
+    _skip_newick_whitespace!(c)
+    parent = Int[]; is_leaf = Bool[]; name = String[]; len = Float64[]
+    leaf_nodes = Int[]; leaf_names = String[]
+    root = _parse_node!(c, parent, is_leaf, name, len, leaf_nodes, leaf_names)
+    _skip_newick_whitespace!(c)
+    _peek(c) == ';' || throw(ArgumentError("Newick string must end with ';' at position $(c.i)"))
+    _advance(c); _skip_newick_whitespace!(c)
+    _peek(c) == '\0' || throw(ArgumentError("extra characters after end of tree at position $(c.i)"))
+    leaf_names = _phy_validate_leaf_names(leaf_names, length(leaf_nodes))
+    _phy_validate_topology(parent, is_leaf)
+    for v in eachindex(parent)
+        v == root && continue
+        (isfinite(len[v]) && len[v] >= 0) ||
+            throw(ArgumentError("drm: `tree` branch lengths must be finite and non-negative " *
+                "(got $(len[v]) above node $(v == 0 ? "?" : name[v] == "" ? "#$v" : name[v]))."))
+    end
+    blen = copy(len); blen[root] = 0.0                   # the root's own length is ignored
+    return (parent = parent, blen = blen, root = root, n = length(parent),
+            leaf_names = leaf_names, leaf_nodes = leaf_nodes)
+end
+
 # Upward/downward plan for the tree: `post` lists every non-root node with its
 # children before it, `parent`/`blen` its parent and branch length, `leaf` the
-# tree node of series s and `h` that leaf's root-to-tip depth.
-function _temporal_phylo_plan(phy::AugmentedPhy, levels)
-    Q = phy.Q_topology
-    N = phy.n_total
-    parent = zeros(Int, N); blen = zeros(N); depth = zeros(N)
-    seen = falses(N)
-    order = [phy.root_index]; seen[phy.root_index] = true
-    cursor = 1
+# tree node of series s and `h` that leaf's root-to-tip depth. The user route
+# requires an ultrametric tree, as drmTMB does (its tolerance: tip depths within
+# sqrt(eps) × max(1, |height|, |depths|)); the likelihood itself is exact on
+# any tree, and the tests exercise it there with `require_ultrametric = false`.
+function _temporal_phylo_plan(tr, levels; require_ultrametric::Bool = true)
+    N = tr.n
+    children = [Int[] for _ in 1:N]
+    for v in 1:N
+        v == tr.root && continue
+        push!(children[tr.parent[v]], v)
+    end
+    order = [tr.root]; cursor = 1
+    depth = zeros(N)
     while cursor <= length(order)
         i = order[cursor]; cursor += 1
-        for k in nzrange(Q, i)
-            j = rowvals(Q)[k]
-            (j == i || seen[j]) && continue
-            qij = nonzeros(Q)[k]
-            qij < 0 || continue
-            seen[j] = true
-            parent[j] = i
-            blen[j] = -1.0 / qij           # off-diagonal of Q is −1/branch length
-            depth[j] = depth[i] + blen[j]
+        for j in children[i]
+            depth[j] = depth[i] + tr.blen[j]
             push!(order, j)
         end
     end
     length(order) == N || error("drm: internal — the phylogeny is not connected")
-    by_name = Dict(phy.leaf_names[t] => phy.leaf_indices[t] for t in 1:phy.n_leaves)
+    by_name = Dict(tr.leaf_names[t] => tr.leaf_nodes[t] for t in eachindex(tr.leaf_names))
     leaf = [by_name[string(l)] for l in levels]
+    tipdepth = depth[tr.leaf_nodes]
+    if require_ultrametric
+        # Message wording mirrors drmTMB's user-facing text for twin parity
+        # (drmTMB is copyright Shinichi Nakagawa; used with the owner's permission).
+        hgt = tipdepth[1]
+        tol = sqrt(eps(Float64)) * max(1.0, abs(hgt), maximum(abs, tipdepth))
+        spread = maximum(abs.(tipdepth .- hgt))
+        spread <= tol ||
+            throw(ArgumentError("drm: `tree` must be ultrametric: root-to-tip distances differ " *
+                "by $(spread), above the tolerance of $(tol) for this tree (sqrt(eps) scaled by " *
+                "the tree height, so relative, not absolute). If the difference is negligible for " *
+                "your tree, equalise the tip depths (for example `phytools::force.ultrametric()` " *
+                "in R) and refit; a large difference is a real problem with the tree."))
+    end
     h = depth[leaf]
-    all(>(0), h) || throw(ArgumentError("drm: every tree tip needs a positive root-to-tip " *
-        "depth for the phylogenetic correlation scale."))
-    return (post = reverse(order[2:end]), parent = parent, blen = blen, leaf = leaf, h = h,
-            root = phy.root_index, n = N)
+    all(>(0), h) || throw(ArgumentError("drm: `tree` must have positive root-to-tip height."))
+    return (post = reverse(order[2:end]), parent = tr.parent, blen = tr.blen, leaf = leaf, h = h,
+            root = tr.root, n = N)
 end
 
 # Upward pass. `α0`, `β0` are the per-series leaf messages. Returns
@@ -840,6 +905,9 @@ function _fit_temporal_gaussian(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, tt, lay,
     return _withranef(_withnll(fit, nll), (effects = effects, temporal = info))
 end
 
+# The refusal messages of the temporal routes intentionally mirror drmTMB's
+# user-facing wording for twin parity (drmTMB is copyright Shinichi Nakagawa;
+# used with the owner's permission). No drmTMB R logic is copied.
 const _PHYLO_TEMPORAL_SPELLING = "Use `phylo(1 | species) + temporal(1 | species, elapsed, ou)` " *
     "with `drm(...; tree = tree)` (drmTMB: `phylo(1 | species, tree = tree) + " *
     "temporal(1 | species, time = elapsed, structure = \"ou\")`)."
@@ -942,12 +1010,10 @@ function _drm_gaussian_temporal(f, fam::Gaussian, tt, re, metav, structured, sig
         return _fit_temporal_homtoep(fam, y, Xμ, Xσ, nmμ, nmσ, tt, lay, g_tol)
     paired || return _fit_temporal_gaussian(fam, y, Xμ, Xσ, nmμ, nmσ, tt, lay, has_ordinary, g_tol)
     # drmTMB: the tree tips must be exactly the observed species (by name).
-    phy = tree isa AbstractString ? augmented_phy(tree) : tree
-    phy isa AugmentedPhy ||
-        throw(ArgumentError("drm: `tree` must be a Newick string or an `AugmentedPhy`."))
+    tr = _temporal_phylo_tree(tree)
     obs = string.(lay.levels)
-    extra = setdiff(phy.leaf_names, obs)          # tips with no observations
-    absent = setdiff(obs, phy.leaf_names)         # observed species not in the tree
+    extra = setdiff(tr.leaf_names, obs)           # tips with no observations
+    absent = setdiff(obs, tr.leaf_names)          # observed species not in the tree
     (isempty(extra) && isempty(absent)) ||
         throw(ArgumentError("drm: The paired phylogenetic-temporal OU model requires tree tips to " *
             "match the observed species. " *
@@ -957,7 +1023,7 @@ function _drm_gaussian_temporal(f, fam::Gaussian, tt, re, metav, structured, sig
             (isempty(absent) ? "" : "$(length(absent)) observed species are not tree tips, for " *
                 "example $(join(first(absent, 3), ", ")). ") *
             "Supply data and a tree for the same set of species before fitting."))
-    plan = _temporal_phylo_plan(phy, obs)
+    plan = _temporal_phylo_plan(tr, obs)
     return _withphyloscale(_fit_temporal_gaussian(fam, y, Xμ, Xσ, nmμ, nmσ, tt, lay, false, g_tol;
                                                   phylo = plan), :correlation)
 end
@@ -1068,8 +1134,12 @@ end
 # (correlation < 1e-13 at every observed lag); |φ̂| > 0.999. drmTMB then reports
 # `convergence_status() == "boundary"` (still `is_converged`); DRModels.jl
 # warns at fit time and reports the findings in `check_drm(fit).temporal_boundary`.
+# drmTMB's `drm_inference_at_boundary` also counts its random-effect SD rule
+# (`check_random_effect_sd_boundary`, sd_boundary = 1e-4: the smallest fitted
+# SD — here the process SD, the phylogenetic stable SD or the `(1 | id)` SD —
+# below 1e-4), so it is part of the same finding list.
 const _TEMPORAL_BOUNDARY = (sigma_ratio = 1e-3, decay_span = 1e-4, decay_gap = 30.0,
-                            ar1_phi = 0.999)
+                            ar1_phi = 0.999, sd = 1e-4)
 
 _is_paired_phylo_temporal(fit) = _is_temporal_fit(fit) && fit.ranef.temporal.phylo !== nothing
 
@@ -1086,15 +1156,21 @@ function _temporal_boundary(fit::DrmFit)
     y = fit.obs[:mu]
     ψ = info.structure === :ou ? exp(only(coef(fit, :temporal_decay))) :
         info.structure === :ar1 ? tanh(only(coef(fit, :temporal_phi))) : nothing
+    sds = any(p -> first(p) === :resd, fit.blocks) ? re_sd(fit) : Dict{Symbol,Float64}()
     return _temporal_boundary_rules(info.structure, exp(only(coef(fit, :sigma))),
-                                    length(y) > 1 ? std(y) : NaN, ψ, info.gaps)
+                                    length(y) > 1 ? std(y) : NaN, ψ, info.gaps; sds = sds)
 end
 
 # The rules themselves, on plain numbers: `ψ` is the OU decay λ or the AR1 φ;
 # `gaps` the per-series gap vectors (first entry 0).
-function _temporal_boundary_rules(structure, σ, sdy, ψ, gaps)
+function _temporal_boundary_rules(structure, σ, sdy, ψ, gaps; sds = Dict{Symbol,Float64}())
     lim = _TEMPORAL_BOUNDARY
     found = String[]
+    if !isempty(sds)
+        nm, v = argmin(last, collect(sds))
+        (isfinite(v) && v < lim.sd) &&
+            push!(found, "sd_min=" * @sprintf("%.3g", v) * " (term=$(nm))")
+    end
     (isfinite(σ) && isfinite(sdy) && sdy > 0 && σ / sdy < lim.sigma_ratio) &&
         push!(found, "sigma_ratio=" * @sprintf("%.3g", σ / sdy))
     if structure === :ou
@@ -1110,9 +1186,12 @@ function _temporal_boundary_rules(structure, σ, sdy, ψ, gaps)
     return found
 end
 
+# Wording mirrors drmTMB's user-facing text for twin parity (drmTMB is copyright
+# Shinichi Nakagawa; used with the owner's permission).
 function _temporal_boundary_message(found)
     return "A temporal parameter is at an interpretability boundary (" * join(found, "; ") *
-        "): sigma_ratio means the residual SD collapsed into the temporal process; " *
+        "): sd_min means a random-effect SD (temporal, phylogenetic or `(1 | id)`) is near " *
+        "zero (below 1e-4); sigma_ratio means the residual SD collapsed into the temporal process; " *
         "decay_x_max_span means OU correlation is ~1 at every observed lag (a per-series " *
         "constant); decay_x_min_gap means OU correlation is ~0 at every observed lag (white " *
         "noise); phi means AR1 persistence is at ±1. The optimiser converged, but do not read " *

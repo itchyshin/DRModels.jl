@@ -509,8 +509,19 @@ departures from it: it needs `ou` (not `ar1`), an unlabelled
 `phylo(1 | species)` intercept on the same grouping as `temporal()`, no
 ordinary `(1 | species)` (the stable between-species component is already the
 phylogenetic term), at least three species with at least two distinct times
-each, at least three distinct positive lags across the data, and tree tips
-that are exactly the observed species.
+each, at least three distinct positive lags across the data, tree tips that
+are exactly the observed species, and an **ultrametric** tree (all tips at the
+same depth, to drmTMB's relative `sqrt(eps)` tolerance). Zero-length branches
+are fine.
+
+Every temporal fit is also checked against drmTMB's boundary rules: a
+random-effect SD (here `sd_phylo` or `sd`) below 1e-4, a residual SD below
+1e-3 of the response SD, an OU decay that leaves correlation at about 1 or 0
+at every observed lag, or AR1 persistence beyond ±0.999. Such a fit warns when
+it is fitted and reports `check_drm(fit).temporal_boundary.at_boundary = true`;
+do not read its variance components separately. As in drmTMB, the residual-SD
+rule compares with the marginal SD of the response, so it can also fire when a
+covariate explains most of that SD.
 
 **What can be reported now.** drmTMB's article marks this model as a
 development workflow: its parser, dense-likelihood, method and fixed-mean
@@ -520,7 +531,10 @@ so it asks readers not to report confidence intervals from the paired model
 yet. DRModels.jl reproduces the same likelihood and makes no stronger claim:
 use the fit to inspect the variance components, not for interval inference.
 For the record only, the fixed-mean profile for `treatment` agrees between the
-two packages:
+two packages. Profile `confint` on the paired fit warns that the interval is
+not calibrated, as drmTMB's does; Wald (`confint(fit)`) and bootstrap
+intervals do not warn, also as in drmTMB, so the same caution applies to them
+without a reminder:
 
 ```@example temporal
 compare_ci(confint(phylo_fit; method = :profile, parm = :mu => "treatment"), phylo_ref["profile"])
@@ -564,14 +578,15 @@ to ``2 \times 10^{-15}`` relative, including partial autocorrelations near
 complements (`test/test_temporal_homtoep.jl`).
 
 Two more cells cover the paired phylogenetic + OU model: drmTMB's article data
-above and a 24-species simulated fixture. Both agree with drmTMB to within
-``10^{-11}`` in logLik and every estimate (relative), and in the conditional
-fitted values to within ``2 \times 10^{-12}`` (Julia 1.10.12 on Linux,
-Totoro). Their numbers come from drmTMB draft PR #1448 (the commit is
-recorded in each cell's `expected.meta.toml`). The paired
-likelihood is checked against a dense oracle, on ultrametric and
-non-ultrametric trees and at the decay and stable-SD extremes, in
-`test/test_temporal_phylo_ou.jl`.
+above and a 24-species simulated fixture. On Julia 1.10.12 (Linux, Totoro)
+they agree with drmTMB to ``5.5 \times 10^{-12}`` in logLik, to
+``2.1 \times 10^{-11}`` (relative) in every estimate and to
+``2.3 \times 10^{-12}`` in the conditional fitted values. Their numbers come
+from drmTMB draft PR #1448 (the commit is recorded in each cell's
+`expected.meta.toml`). The paired likelihood is checked against a dense oracle
+(``9.2 \times 10^{-13}``, including the decay and stable-SD extremes and a
+tree with zero-length branches), and the pruning pass alone on
+non-ultrametric trees, in `test/test_temporal_phylo_ou.jl`.
 
 ## See also
 
