@@ -16,7 +16,7 @@
 !!! info "Attribution"
     The explanatory prose on this page is adapted from the drmTMB article
     *Temporal AR1 and OU random effects* (`vignettes/temporal-random-effects.Rmd`;
-    its Toeplitz section from the development-branch version of that article,
+    its Toeplitz section from that article's version in drmTMB draft PR #1449,
     *Temporal AR1, OU, and Toeplitz effects*) by its copyright holder, Shinichi
     Nakagawa, and is reused here under the MIT licence. The code, the
     Julia-specific text and the comparisons are new.
@@ -261,17 +261,21 @@ or incomplete schedules accepted by AR1 and OU. In Julia the structure name is
 |:---------------------------------------------------------------|:-------------------------------------------|
 | `temporal(1 \| site, time = occasion, structure = "homtoep")`  | `temporal(1 \| site, occasion, homtoep)`    |
 
-drmTMB's article shows this model without data. Here we use a simulated
-complete panel that ships with the test fixtures: 40 sites, each observed at
-occasions 0 to 5, with a lag pattern that is not exponential (partial
-autocorrelations 0.6, −0.3, 0.35, 0 and 0.15) and a total SD of 0.9.
+drmTMB's article simulates 80 sites, each visited at the same six equally
+spaced occasions (`set.seed(20261002)`), with a treatment that alternates
+between visits. Its lag correlations (0.60, 0.45, 0.40, 0.30, 0.20) decay
+more slowly than an AR1 pattern with the same first-lag value would (0.60,
+0.36, 0.22, 0.13, 0.08), and the total SD is 0.80. We read the exact data it
+produced.
 
 ```@example temporal
-col = read_fixture("homtoep_panel6.csv")
-panel = (y = parse.(Float64, col("y")), x = parse.(Float64, col("x")),
-         site = String.(col("id")), occasion = parse.(Int, col("occ")))
+col = read_fixture("vignette_homtoep_sites.csv")
+panel = (y         = parse.(Float64, col("y")),
+         treatment = parse.(Float64, col("treatment")),
+         site      = String.(col("site")),
+         occasion  = parse.(Int, col("occasion")))   # integer occasions
 
-toeplitz_fit = drm(bf(@formula(y ~ x + temporal(1 | site, occasion, homtoep)),
+toeplitz_fit = drm(bf(@formula(y ~ treatment + temporal(1 | site, occasion, homtoep)),
                       @formula(sigma ~ 1)),
                    Gaussian(); data = panel)
 toeplitz_tp = temporal_parameters(toeplitz_fit)
@@ -290,10 +294,11 @@ matrix positive definite. There are no latent temporal states: `fitted` is
 jointly from the fitted ``\sigma^2 R``.
 
 The same model fitted by drmTMB to the same data (parity cell
-`test/parity/temporal/homtoep-panel6/`):
+`test/parity/temporal/vignette-homtoep/`; drmTMB's article prints these
+estimates rounded to four decimals):
 
 ```@example temporal
-toep_ref = parity_cell("homtoep-panel6")
+toep_ref = parity_cell("vignette-homtoep")
 toep_names = Dict(toeplitz_fit.coefnames)[:mu]
 [(quantity = q, drmTMB = round(r; digits = 4), DRModels = round(j; digits = 4),
   abs_diff = abs(j - r))
@@ -306,10 +311,11 @@ toep_names = Dict(toeplitz_fit.coefnames)[:mu]
 ```
 
 drmTMB qualifies only likelihood-profile intervals for mean regression effects
-of this model:
+of this model (its article computes this one with `profile_engine =
+"tmbprofile"`):
 
 ```@example temporal
-compare_ci(confint(toeplitz_fit; method = :profile, parm = :mu => "x"), toep_ref["profile"])
+compare_ci(confint(toeplitz_fit; method = :profile, parm = :mu => "treatment"), toep_ref["profile"])
 ```
 
 A retained 4,000-fit drmTMB campaign qualified these mean-effect profiles in
@@ -544,11 +550,12 @@ other platforms. The likelihood itself is also checked against
 a dense multivariate-normal oracle (`test/test_temporal_ar1.jl`,
 `test/test_temporal_ou.jl`).
 
-Two cells cover homogeneous Toeplitz (the panel above, and a 30-site,
-four-occasion panel with a negative first-lag correlation): logLik within
-``10^{-12}``, β and σ within ``2 \times 10^{-11}`` relative and every lag
-correlation within ``5 \times 10^{-10}`` (Julia 1.10.12 and 1.13, Linux,
-Totoro). The Toeplitz likelihood is checked against a BigFloat dense oracle
+Three cells cover homogeneous Toeplitz (drmTMB's article data above, a
+40-site six-occasion panel with a non-exponential lag pattern, and a 30-site
+four-occasion panel with a negative first-lag correlation), generated from
+drmTMB draft PR #1449: logLik within ``10^{-12}``, β and σ within
+``2 \times 10^{-11}`` relative and every lag correlation within
+``5 \times 10^{-10}`` (Julia 1.10.12 and 1.13, Linux, Totoro). The Toeplitz likelihood is checked against a BigFloat dense oracle
 to ``2 \times 10^{-15}`` relative, including partial autocorrelations near
 ±1, and its partial-autocorrelation parameterisation against dense Schur
 complements (`test/test_temporal_homtoep.jl`).

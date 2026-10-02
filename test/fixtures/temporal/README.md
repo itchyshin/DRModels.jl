@@ -93,6 +93,19 @@ with the SHA, rerun `test/test_parity_temporal.jl`).
 
 Simulated by `make_homtoep` in `generate.jl` (StableRNGs 20261004 / 20261005;
 the Durbin–Levinson step is written out there, not taken from the package; no
-drmTMB involvement). Parity numbers: `test/parity/gen_temporal_wave2_parity.R`
-→ `test/parity/temporal/homtoep-{panel6,neg4}/`; regenerate as for the
-phylo + OU cells above.
+drmTMB involvement).
+
+- `vignette_homtoep_sites.csv` — the Toeplitz data of drmTMB's *Temporal AR1,
+  OU, and Toeplitz effects* article (`vignettes/temporal-random-effects.Rmd`,
+  drmTMB draft PR #1449 head `4f7007ba428ffa3f9e0e86e716f3d54b166b371b`,
+  `set.seed(20261002)`): 80 sites × occasions 0:5 (480 rows), lag
+  correlations 0.60, 0.45, 0.40, 0.30, 0.20, total SD 0.80, alternating
+  treatment. Columns `site, occasion, treatment, y`. Exported by
+  `test/parity/gen_temporal_wave2_parity.R` (the article's chunks run
+  unchanged up to its Toeplitz fit; `complete_regular_panel` written with 17
+  significant digits, checked to read back `identical()`); data only.
+
+Parity numbers: `test/parity/gen_temporal_wave2_parity.R ... homtoep` →
+`test/parity/temporal/{homtoep-panel6,homtoep-neg4,vignette-homtoep}/`, from
+drmTMB draft PR #1449 (`4f7007b`); regenerate when that PR changes the
+likelihood or the article, and again when it merges.
