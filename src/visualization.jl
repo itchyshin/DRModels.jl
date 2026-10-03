@@ -28,6 +28,9 @@ Returns `(x, deviance, estimate, cutoff, k, param, coef, level)`:
 - `cutoff` — the `χ²₁(level)` reference line used by profile intervals.
 
 Requires the fitted objective (`fit.nll`); the model must be fit through `drm`.
+On a homogeneous Toeplitz `temporal()` fit, `k` must be a mean coefficient: the
+`sigma` and partial-autocorrelation coordinates are refused, as in drmTMB's
+`profile()`.
 """
 function profile_curve(
     fit::DrmFit, k::Int; npoints::Int=41, span::Real=3.0, level::Real=0.95
@@ -94,10 +97,11 @@ end
     parameter_surface(fit, k1, k2; npoints = 25, span = 3.0) -> NamedTuple
 
 2-D profile-likelihood surface over two coefficients (global indices `k1`, `k2`
-into `coef(fit)`), the data behind drmTMB's `plot_parameter_surface`. At each
-grid node the remaining parameters are profiled out (re-optimised), so the
-surface is the genuine profile deviance `2(ℓ̂ − ℓ_profile(θ_{k1}, θ_{k2}))`, not
-a quadratic approximation.
+into `coef(fit)`), drawn by [`plot_parameter_surface`](@ref). drmTMB has no
+2-D likelihood surface (its `plot_parameter_surface` plots predicted
+distributional parameters). At each grid node the remaining parameters are
+profiled out (re-optimised), so the surface is the genuine profile deviance
+`2(ℓ̂ − ℓ_profile(θ_{k1}, θ_{k2}))`, not a quadratic approximation.
 
 Returns `(x, y, z, k1, k2)`:
 - `x`, `y` — the grid coordinate vectors for `θ[k1]`, `θ[k2]` (length `npoints`),
@@ -106,6 +110,8 @@ Returns `(x, y, z, k1, k2)`:
   `0` at the MLE, rising away from it. `χ²₂` contours give joint confidence regions.
 
 Requires the fitted objective (`fit.nll`); the model must be fit through `drm`.
+On a homogeneous Toeplitz `temporal()` fit, both indices must be mean
+coefficients, the scope of its profile intervals.
 """
 function parameter_surface(fit::DrmFit, k1::Int, k2::Int; npoints::Int=25, span::Real=3.0)
     fit.nll === nothing && throw(
