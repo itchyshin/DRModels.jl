@@ -178,8 +178,31 @@ drmtmb_fitted = Float64.(ar1_ref["conditional"]["fitted"])   # drmTMB's fitted(f
 
 All 288 conditional values agree with drmTMB's `fitted(fit)` to the
 `max_abs_diff` shown. That agreement is looser than the agreement of the
-estimates, because the two packages compute the conditional modes by different
-numerical routes.
+estimates because of drmTMB's side: for this fit, the modes drmTMB stores are
+not exactly the modes at its own reported optimum, while DRModels.jl's modes
+are exact. The residuals below inherit the same small difference.
+
+Standardised residuals use the same conditional convention as drmTMB's
+Pearson and quantile residuals. `residuals(fit; type = :quantile)` is
+``(y - \hat\mu^{\mathrm{cond}})/\hat\sigma``, where
+``\hat\mu^{\mathrm{cond}}`` is the conditional mean above. This is the
+estimated residual noise left after the fitted site and temporal deviations.
+It is not whitened against the correlation within a site, and the deviations
+are fitted to the same data, so its spread is below 1 even when the model is
+correct. Use it to look for outliers and for patterns against covariates or
+time; do not read its spread as a calibration check. Check
+`check_drm(fit).temporal_boundary` first: at the residual-SD boundary
+(`sigma_ratio`, described below) the temporal path absorbs the data, so as
+``\hat\sigma`` goes to 0 these residuals collapse toward 0 and cannot reveal
+outliers. (`residuals(fit)` stays ``y - X\hat\beta``, matching `fitted`.)
+
+```@example temporal
+z = residuals(fit; type = :quantile)
+drmtmb_pearson = Float64.(ar1_ref["residuals"]["pearson"])   # drmTMB's residuals(fit, type = "pearson")
+(rms = sqrt(sum(abs2, z) / length(z)), first_rows = first(z, 3),
+ drmTMB_first_rows = first(drmtmb_pearson, 3),
+ max_abs_diff = maximum(abs.(z .- drmtmb_pearson)))
+```
 
 `simulate(fit)` draws a new realization from the fitted model: fresh stable
 and temporal effects plus residual noise, as drmTMB's default `simulate()`.
@@ -533,6 +556,10 @@ phylo_conditional = fitted(phylo_fit) .+ re[:species] .+
 (max_abs_diff = maximum(abs.(phylo_conditional .- Float64.(phylo_ref["conditional"]["fitted"]))),)
 ```
 
+`residuals(phylo_fit; type = :quantile)` subtracts both conditional components
+and divides by ``\hat\sigma``, as drmTMB's Pearson residuals do, so the
+caveats for the AR1 residuals above apply here too.
+
 `simulate(phylo_fit)` draws a new phylogenetic stable vector, a new
 independent OU path for each species and new noise.
 
@@ -611,11 +638,13 @@ to ``2 \times 10^{-15}`` relative, including partial autocorrelations near
 complements (`test/test_temporal_homtoep.jl`).
 
 Two more cells cover the paired phylogenetic + OU model: drmTMB's article data
-above and a 24-species simulated fixture. On Julia 1.10.12 (Linux, Totoro)
-they agree with drmTMB to ``5.5 \times 10^{-12}`` in logLik, to
-``2.1 \times 10^{-11}`` (relative) in every estimate and to
-``2.3 \times 10^{-12}`` in the conditional fitted values. Their numbers come
-from the drmTMB development version (the commit is recorded in each cell's
+above and a 24-species simulated fixture. On Julia 1.10.12 and 1.13 (Linux, Totoro)
+they agree with drmTMB to about ``10^{-11}`` in logLik and to
+``2 \times 10^{-9}`` (relative) or better in every estimate; the conditional
+fitted values and the conditional residuals (`residuals(fit; type = :quantile)`
+against drmTMB's Pearson residuals) agree to ``10^{-10}`` or better. The exact
+figures vary a little with the Julia version and with bounds checking. Their numbers come from drmTMB
+development commit `012258e9f` (recorded in each cell's
 `expected.meta.toml`). The paired likelihood is checked against a dense oracle
 (``9.2 \times 10^{-13}``, including the decay and stable-SD extremes and a
 tree with zero-length branches), and the pruning pass alone on

@@ -1665,9 +1665,12 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
         # `:VA`, `:AGHQ`), so the R side can refuse to claim same-target Laplace
         # parity unless the engine reports it (Arc 2).
         "marginal" => String(fit.marginal),
-        # `fitted()`/`residuals()` AS drmTMB DEFINES THEM. Identical to DRModels.jl's
-        # own for every fit except a zero-inflated count fit -- see
-        # `_bridge_fitted_marginal`.
+        # `fitted()`/`residuals()`: DRModels.jl's own population-level values,
+        # except a zero-inflated count fit, which ships drmTMB's unconditional
+        # mean -- see `_bridge_fitted_marginal`. They are not drmTMB's values in
+        # general. In particular, for ordinary random-effect, phylogenetic,
+        # covariance-block and AR1 / OU `temporal()` fits drmTMB's `fitted()`
+        # adds the fitted modes and this payload does not.
         "fitted" => _bridge_plain(fitted_vals),
         "residuals" => _bridge_plain(residual_vals),
         "sigma" => _bridge_plain(sigma(fit)),
@@ -2526,9 +2529,18 @@ end
 """
     _bridge_fitted_marginal(fit) -> (fitted, residuals)
 
-`fitted()` and `residuals()` **as drmTMB defines them**, for the bridge payload
-only. Returns DRModels.jl's own values unchanged for every fit except a
-zero-inflated count fit.
+`fitted()` and `residuals()` for the bridge payload. Returns DRModels.jl's own
+values unchanged for every fit except a zero-inflated count fit, whose mean is
+replaced by drmTMB's unconditional one (below).
+
+**Not drmTMB's values for every fit.** DRModels.jl's `fitted` is population
+level (`Xβ̂` on the response scale) for every model. drmTMB's `fitted()`, and
+so its response residuals, adds the fitted modes whenever the mean has a
+random or structured effect: ordinary random effects, phylogenetic and
+covariance-block effects, and AR1 / OU `temporal()` paths (drmTMB 07d1612ea,
+`predict.drmTMB`, `R/methods.R:2955-2986`). For those fits the payload ships
+`Xβ̂` and `y − Xβ̂`, not drmTMB's conditional values. Making it conditional
+would change what R callers receive, so it is not done here.
 
 DRModels.jl's `fitted(fit)` is `means[:mu]`, and for a zero-inflated Poisson or NB2
 fit that slot deliberately holds the COUNT-COMPONENT mean `exp(Xmu*betahat)`,
