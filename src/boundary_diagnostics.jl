@@ -58,7 +58,9 @@ end
 
 Boundary diagnostic for a Gaussian fit with at least one grouped / structured
 random effect (`phylo`, `relmat`, `animal`, `spatial`, `(1 | g)`) and a
-HOMOSCEDASTIC residual (`sigma ~ 1`). Returns `nothing` when the fit has no such
+HOMOSCEDASTIC residual (`sigma ~ 1`). Random intercepts on the scale
+(`sigma ~ (1 | g)`, reported as `<group>_logsigma`) are not structured components;
+when present, the residual reference is the marginal `sqrt(E[σ²])`. Returns `nothing` when the fit has no such
 structure (covariate-dependent `sigma`, `sd(group) ~ …`, no random effect, no stored
 BLUPs): the diagnostic is then not defined, not "clean".
 
@@ -91,13 +93,20 @@ function _variance_boundary(fit::DrmFit; ratio::Real = _VARIANCE_BOUNDARY_RATIO)
     ci = findfirst(cn -> cn[1] === :resd, fit.coefnames)
     ci === nothing && return nothing
     nms = fit.coefnames[ci][2]
-    σe = exp(fit.theta[first(rblock)])
+    # A `sigma ~ (1 | g)` random intercept is stored under `<group>_logsigma`: its
+    # modes are on the log-σ scale, not in response units, so it is never a
+    # structured component here. It does make the residual SD vary by group; the
+    # residual reference is then the marginal sqrt(E[σ²]) = exp(b₀ + Σ_k ω_k²), as
+    # in `repeatability`.
+    logω = [fit.theta[have[:resd][j]] for (j, nm) in enumerate(nms) if endswith(String(nm), "_logsigma")]
+    σe = exp(fit.theta[first(rblock)] + sum(exp(2w) for w in logω; init = 0.0))
     isfinite(σe) || return nothing
 
     comps = Symbol[]
     rms = Float64[]
     ngroups = Int[]
     for nm in nms
+        endswith(String(nm), "_logsigma") && continue
         b = get(fit.ranef, Symbol(nm), nothing)
         r = b === nothing ? nothing : _blup_rms(b)
         r === nothing && continue
