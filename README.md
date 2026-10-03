@@ -115,7 +115,7 @@ src/experimental/   leftover prototypes NOT wired into the public API
 bench/              runnable benchmarks + the q4_p100 fixtures + R fixture gen
 test/               runtests.jl + migrated correctness checks
 report/             53 design/provenance/benchmark reports (the full poc record)
-docs/               Documenter site (mirrors drmTMB navbar); CONTRACT.md
+docs/               Documenter site (reader-first menus; many pages link a drmTMB twin article); CONTRACT.md
 AGENTS.md ROADMAP.md   the 12-persona team + the phase plan
 .claude/workflows/  10 scripted workflows (W0/Q/A/B/D/F/G/H/S/R)
 ```
