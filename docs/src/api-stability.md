@@ -9,7 +9,7 @@ From `v0.7.0`, the **Stable** interface keeps its names, meanings, and
 conventions across the `0.7.x` line and beyond. This includes:
 
 - the `bf()` formula grammar and the `drm()` fitting function;
-- the fourteen response-family constructors;
+- the fifteen response-family constructors;
 - structured-effect markers such as `phylo()`, `spatial()`, `animal()`, and
   `relmat()`; and
 - the documented coefficient, inference, prediction, and plotting functions.

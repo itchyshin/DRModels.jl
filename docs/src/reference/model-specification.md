@@ -1,7 +1,7 @@
 # Model specification
 
 !!! note "Status — Reference"
-    Mirrors drmTMB's [Model specification](https://itchyshin.github.io/drmTMB/reference/index.html) (13 items in drmTMB). A model is one [`bf`](@ref) formula bundle (one linear predictor per distributional parameter) plus a response family. All 13 drmTMB families are available.
+    Mirrors drmTMB's [Model specification](https://itchyshin.github.io/drmTMB/reference/index.html). A model is one [`bf`](@ref) formula bundle (one linear predictor per distributional parameter) plus a response family. DRModels.jl has fifteen response-family constructors: the fourteen under Response families and `SkewNormal` under Advanced family type.
 
 ## Formula bundle
 
