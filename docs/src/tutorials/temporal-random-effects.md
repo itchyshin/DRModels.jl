@@ -260,9 +260,18 @@ differences on this page are measured, not asserted.
 No coverage is claimed for AR1 intervals of either kind. drmTMB's first AR1
 calibration pilot found a residual-SD boundary in a primary short-series case,
 so its AR1 profile and Wald intervals carry no coverage claim, and DRModels.jl
-makes none either. Variance-component, persistence or decay intervals,
-forecasting and `newdata` prediction of the temporal process are not
-available.
+makes none either.
+
+drmTMB refuses every interval for `sigma`, the variance components and the
+persistence or decay: Wald, profile and bootstrap. DRModels.jl returns them as
+an extension, without a calibration claim, and does not warn that they are
+uncalibrated. Wald `confint(fit)` and `bootstrap_ci` cover every coordinate,
+and `confint(fit; method = :profile, parm = :sigma)` (or `:resd`,
+`:temporal_phi`, `:temporal_decay`) profiles one block and errors when it
+cannot locate an endpoint. Near a variance boundary a profile limit can be
+infinite and bootstrap refits warn that the Hessian is singular, so treat
+these intervals as diagnostics. Forecasting and `newdata` prediction of the
+temporal process are not available.
 
 Supply a finite integer time column for AR1, keep its real gaps, and make sure
 every site–occasion pair is unique; if a site was measured more than once at
@@ -347,17 +356,27 @@ and negative first-lag correlation patterns. The 20-site stress panel had
 lower intercept coverage, so this is evidence for those primary panel
 designs, not a coverage claim for every Toeplitz analysis, and it was obtained
 with drmTMB: DRModels.jl reproduces the same likelihood, but no separate
-calibration study has been run on its intervals. Both packages refuse
-everything else: Wald covariance and intervals (`vcov`, `stderror`,
-`confint(fit)`, `predict(...; se = true)`), and profile intervals for `sigma`
-or the lag correlations. `confint(fit; method = :profile)` without `parm`
-profiles the mean coefficients only, and `coeftable` prints the standard-error
-columns as `NaN`. If elapsed gaps are genuinely irregular, use OU instead.
+calibration study has been run on its intervals. Both packages refuse Wald
+covariance and intervals (`vcov`, `stderror`, `confint(fit)`,
+`predict(...; se = true)`) and profile intervals for `sigma` or the lag
+correlations. `confint(fit; method = :profile)` without `parm` profiles the
+mean coefficients only, and `coeftable` prints the standard-error columns as
+`NaN`. `profile_curve` refuses the `sigma` and partial-autocorrelation
+coordinates, as drmTMB's `profile()` does, and so does `parameter_surface`,
+which has no drmTMB counterpart. drmTMB also refuses the bootstrap for
+temporal models. As an extension, DRModels.jl's `bootstrap_ci`,
+`bootstrap_summary` and `bootstrap_result` return percentile intervals for the
+mean coefficients only. They carry no calibration claim and do not warn that
+they are uncalibrated, so the caution above applies to them too. If elapsed
+gaps are genuinely irregular, use OU instead.
 
 Standardised residuals account for the correlation within a site:
 `residuals(toeplitz_fit; type = :quantile)` returns the whitened
 ``L^{-1}(y - X\hat\beta)``, with ``L`` the Cholesky factor of each site's
 ``\hat\sigma^2 R``. These are drmTMB's Pearson residuals for this model.
+drmTMB's `type = "quantile"` residuals for this model are not whitened: they
+are ``(y - \hat\mu)/\hat\sigma``, so compare DRModels.jl's `:quantile`
+residuals with drmTMB's `type = "pearson"`, not its `type = "quantile"`.
 
 The panel rules are drmTMB's: integer occasions, at least 3 and at most 12
 common occasions, equally spaced, every site observing all of them, and at
@@ -434,8 +453,11 @@ campaign across three predeclared scenarios (80 sites measured at 6 or 12
 irregular occasions, with and without stable site intercepts). That result
 does not establish general temporal coverage, it was obtained with drmTMB,
 and this page does not extend it: DRModels.jl reproduces the same likelihood,
-but no separate calibration study has been run on its intervals. OU decay and
-variance-component intervals are not available.
+but no separate calibration study has been run on its intervals. drmTMB
+refuses all OU Wald intervals, and every interval for `sigma`, the decay and
+the variance components. DRModels.jl returns them as described for AR1 above:
+as an extension, without a calibration claim, and without a warning that they
+are uncalibrated.
 
 ## Phylogenetic stable effects with OU deviations
 
@@ -569,9 +591,10 @@ yet. DRModels.jl reproduces the same likelihood and makes no stronger claim:
 use the fit to inspect the variance components, not for interval inference.
 For the record only, the fixed-mean profile for `treatment` agrees between the
 two packages. Profile `confint` on the paired fit warns that the interval is
-not calibrated, as drmTMB's does; Wald (`confint(fit)`) and bootstrap
-intervals do not warn, also as in drmTMB, so the same caution applies to them
-without a reminder:
+not calibrated, as drmTMB's does. drmTMB refuses Wald and bootstrap intervals
+for this fit. DRModels.jl returns them (`confint(fit)` and `bootstrap_ci`) as
+an extension, without a calibration claim, and does not warn that they are
+uncalibrated, so the same caution applies to them without a reminder:
 
 ```@example temporal
 compare_ci(confint(phylo_fit; method = :profile, parm = :mu => "treatment"), phylo_ref["profile"])

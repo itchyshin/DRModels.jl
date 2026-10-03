@@ -73,8 +73,9 @@
 # ML, at most one ordinary `(1 | id)` on the SAME id (as drmTMB). Everything
 # else is refused by name: other families, a temporal term on `sigma`, slopes,
 # labelled bars, REML, a second temporal or any structured term, `meta_V`,
-# `sd()` submodels, random effects on `sigma`, missing responses, non-default
-# `algorithm`/`marginal`/`penalty`/`sparse`, and the bootstrap.
+# `sd()` submodels, random effects on `sigma`, missing responses (except
+# `homtoep`, which drops them first, as drmTMB does), and non-default
+# `algorithm`/`marginal`/`penalty`/`sparse`.
 
 """
     temporal(1 | id, time, structure)
@@ -116,7 +117,9 @@ Post-fit conventions (some differ from drmTMB):
   (and `ranef(fit)[:id_iid]` per series for the ordinary intercept).
 - `simulate(fit)` draws from the fitted marginal model: a fresh stationary
   chain per series (and a fresh `(1 | id)` intercept) plus residual noise, as
-  drmTMB's default `simulate()`. `bootstrap_ci` uses the same draws.
+  drmTMB's default `simulate()`. `bootstrap_ci` uses the same draws; drmTMB
+  refuses the temporal bootstrap, so these percentile intervals are a
+  DRModels.jl extension with no calibration claim.
 - `vcov`/`stderror`/Wald `confint` cover every coordinate (observed Hessian),
   as on DRModels' other routes; drmTMB exposes only AR1 mean-coefficient Wald
   intervals because the calibration of the others is not established. No
@@ -158,7 +161,15 @@ lag, `temporal_parameters(fit).cor`, drmTMB `cor_lag1…`), estimated through it
 partial autocorrelations (`coef(fit, :temporal_pac)`, atanh scale). `sigma` is
 the TOTAL within-series SD: as in drmTMB there is no separate process SD,
 residual SD or `(1 | id)` (not identified when every lag is free), and no
-latent states (`ranef(fit)` is empty). Incomplete or unequally spaced panels,
+latent states (`ranef(fit)` is empty). As in drmTMB, Wald covariance is
+withheld, and profile intervals and curves (`confint`, `profile_curve`) are
+refused for `sigma` and the PACs; `parameter_surface`, which has no drmTMB
+counterpart, keeps the same mean-only scope. drmTMB refuses the temporal
+bootstrap; as an extension, `bootstrap_ci` / `bootstrap_summary` /
+`bootstrap_result` report percentile intervals for the mean coefficients only,
+with no calibration claim. Rows with a missing response are dropped before the
+panel rules apply (as drmTMB); `simulate` then returns one value per data row,
+`NaN` at the dropped rows. Incomplete or unequally spaced panels,
 fewer than 3 or more than 12 occasions, fractional occasions and an ordinary
 `(1 | id)` are refused with drmTMB's messages.
 """
@@ -173,10 +184,10 @@ const _TEMPORAL_SCOPE = "temporal() is implemented only for the univariate Gauss
 
 # Refusal used by `_split_ranef` for every caller that has not opted in to the
 # temporal marker (every non-Gaussian family, the `sigma` formula, the bivariate
-# and mixed-family routes, the Laplace/AGHQ Gaussian route, the bootstrap …).
+# and mixed-family routes, the Laplace/AGHQ Gaussian route …).
 _temporal_refuse_here() = throw(ArgumentError("drm: " * _TEMPORAL_SCOPE *
     "; this model / route does not support it. Other families, a temporal term on `sigma`, " *
-    "bivariate and mixed-family models, REML, and the bootstrap are not implemented for temporal()."))
+    "bivariate and mixed-family models, and REML are not implemented for temporal()."))
 
 # Parse one `temporal(...)` FunctionTerm into (group, time, structure).
 function _parse_temporal_term(t)
@@ -709,8 +720,10 @@ function _homtoep_series(Φ, logv, logσ2, r)
     return tot
 end
 
-# θ = [βμ; log σ; κ_1 … κ_{K−1}]
-function _fit_temporal_homtoep(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, tt, lay, g_tol)
+# θ = [βμ; log σ; κ_1 … κ_{K−1}]. `keep` is the data-row mask of the rows that
+# entered the fit when missing-response rows were dropped, else `nothing`.
+function _fit_temporal_homtoep(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, tt, lay, g_tol;
+                               keep = nothing)
     n = length(y)
     pμ = size(Xμ, 2)
     size(Xσ, 2) == 1 || error("drm: internal — temporal route needs `sigma ~ 1`")
@@ -759,7 +772,7 @@ function _fit_temporal_homtoep(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, tt, lay, 
     info = (label = _temporal_label(tt), structure = :homtoep, group = tt.group,
             time = tt.time, nseries = S, rows = grows, gaps = [lay.gap[r] for r in grows],
             has_ordinary = false, phylo = nothing, levels = lay.levels,
-            occasions = lay.occasions)
+            occasions = lay.occasions, keep = keep)
     fit = DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(best), means, obs, scales)
     # No latent temporal states: the Toeplitz block IS the marginal covariance.
     return _withranef(_withnll(fit, nll), (effects = Dict{Symbol,Vector{Float64}}(), temporal = info))
@@ -970,13 +983,18 @@ function _drm_gaussian_temporal(f, fam::Gaussian, tt, re, metav, structured, sig
     (sparse === nothing || sparse === false) || nope("`sparse = $sparse`")
     # Missing responses: the homtoep route mirrors drmTMB (validate id / time on
     # all rows, drop the missing-response rows, then apply the panel rules to the
-    # retained rows). The other temporal routes still refuse them.
+    # retained rows). The other temporal routes still refuse them. `keep` (the
+    # data-row mask of the fitted rows) lets `simulate` return one value per
+    # data row. The advisory stays quiet inside bootstrap refits, which drop the
+    # same rows on every replicate.
+    keep = nothing
     if has_missing_response && tt.structure === :homtoep
         _temporal_layout(tt, data; has_ordinary = false, validate_only = true)
         keep = _observed_response_mask(y)
-        @warn "drm: $(count(!, keep)) of $(length(keep)) rows have a missing response and were " *
-              "dropped before the homogeneous Toeplitz panel rules were applied (drmTMB's response " *
-              "omission); a series that loses an occasion is then incomplete and is refused."
+        get(task_local_storage(), :drm_quiet_boundary, false) === true ||
+            @warn "drm: $(count(!, keep)) of $(length(keep)) rows have a missing response and were " *
+                  "dropped before the homogeneous Toeplitz panel rules were applied (drmTMB's response " *
+                  "omission); a series that loses an occasion is then incomplete and is refused."
         y = Float64.(y[keep]); Xμ = Xμ[keep, :]; Xσ = Xσ[keep, :]
         data = NamedTuple{(tt.group, tt.time)}((_table_column(data, tt.group)[keep],
                                                 _table_column(data, tt.time)[keep]))
@@ -1007,7 +1025,7 @@ function _drm_gaussian_temporal(f, fam::Gaussian, tt, re, metav, structured, sig
     end
     lay = _temporal_layout(tt, data; has_ordinary = has_ordinary, paired = paired)
     tt.structure === :homtoep &&
-        return _fit_temporal_homtoep(fam, y, Xμ, Xσ, nmμ, nmσ, tt, lay, g_tol)
+        return _fit_temporal_homtoep(fam, y, Xμ, Xσ, nmμ, nmσ, tt, lay, g_tol; keep = keep)
     paired || return _fit_temporal_gaussian(fam, y, Xμ, Xσ, nmμ, nmσ, tt, lay, has_ordinary, g_tol)
     # drmTMB: the tree tips must be exactly the observed species (by name).
     tr = _temporal_phylo_tree(tree)
@@ -1096,7 +1114,7 @@ end
 # (`drm_fresh_temporal_mu_values`).
 function _temporal_simulate(fit::DrmFit, rng)
     info = fit.ranef.temporal
-    info.structure === :homtoep && return _homtoep_simulate(fit, info, rng)
+    info.structure === :homtoep && return _temporal_data_rows(info, _homtoep_simulate(fit, info, rng))
     ψ = only(coef(fit, info.structure === :ar1 ? :temporal_phi : :temporal_decay))
     ψk = info.structure === :ar1 ? ψ : exp(ψ)
     sds = re_sd(fit)
@@ -1119,7 +1137,19 @@ function _temporal_simulate(fit::DrmFit, rng)
         end
     end
     y .+= σ .* randn(rng, length(y))
-    return y
+    return y               # AR1 / OU / paired fits refuse missing responses: every data row
+end
+
+# One value per DATA row, as `_bootstrap_data` merges the draw back into the
+# original table: a homtoep fit that dropped missing-response rows draws only
+# the retained rows (`info.rows` index those), so the draw is scattered back
+# and the dropped rows get `NaN`, the missing-response convention
+# `_restore_response_mask!` uses.
+function _temporal_data_rows(info, y)
+    info.keep === nothing && return y
+    out = fill(NaN, length(info.keep))
+    out[info.keep] = y
+    return out
 end
 
 # --- temporal boundary diagnostic (drmTMB `check_temporal_boundary`) --------
@@ -1278,6 +1308,37 @@ function _temporal_conditional_residuals(fit::DrmFit)
         end
     end
     return r ./ exp(only(coef(fit, :sigma)))
+end
+
+# Bootstrap summaries of a homtoep fit: the mean coefficients only, the
+# bootstrap counterpart of the default `parm = nothing` profile above. drmTMB
+# refuses `method = "bootstrap"` for every temporal fit (R/profile.R) and
+# defers its scale and lag-correlation intervals, so DRModels.jl reports no
+# bootstrap interval for σ or the partial autocorrelations; the mean-coefficient
+# percentile intervals it does report are an extension with no calibration claim.
+function _homtoep_bootstrap_rows(fit, rows)
+    _wald_withheld(fit) || return rows
+    @info "bootstrap: Temporal HOMTOEP bootstrap intervals are reported for mean regression " *
+        "coefficients only; scale and lag-correlation intervals remain deferred (drmTMB refuses " *
+        "the temporal bootstrap and defers these intervals)." maxlog = 1
+    return filter(r -> r.param === :mu, rows)
+end
+
+# `profile_curve` / `parameter_surface` on a homtoep fit: mean coordinates only,
+# the scope of the `confint` / `profile_result` refusal. drmTMB's `profile()`
+# refuses the same targets; it has no 2-D likelihood surface, so the
+# `parameter_surface` refusal has no drmTMB counterpart.
+function _homtoep_refuse_nonmean_index(fit, caller, ks...)
+    _wald_withheld(fit) || return nothing
+    for k in ks
+        param, cname = _coef_metadata(fit, k)
+        param === :mu && continue
+        throw(ArgumentError("$caller: Temporal HOMTOEP profiles currently support mean " *
+            "regression coefficients only; index $k is `$cname` (block :$param). Scale and " *
+            "lag-correlation profiles remain deferred" *
+            (caller == "profile_curve" ? " (as in drmTMB's `profile()`)." : ".")))
+    end
+    return nothing
 end
 
 # Whitened residuals of a homtoep fit: per series, e_t / (σ √v_{t−1}) from the

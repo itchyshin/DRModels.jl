@@ -2045,8 +2045,9 @@ Tweedie, and CumulativeLogit.
 # Example
 ```julia
 fit = drm(bf(@formula(y ~ x), @formula(sigma ~ x)), Gaussian(); data)
-y1  = simulate(fit)               # Vector, length nobs
-Y   = simulate(fit; nsim = 100)   # nobs × 100 Matrix
+y1  = simulate(fit)               # Vector, length nobs (a homtoep fit that dropped
+                                  # missing responses: one per data row, NaN there)
+Y   = simulate(fit; nsim = 100)   # 100 columns, one per draw
 ```
 """
 function simulate(fit::DrmFit; nsim::Integer = 1, rng = default_rng())

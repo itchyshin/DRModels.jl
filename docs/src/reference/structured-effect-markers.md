@@ -22,7 +22,8 @@ because `@formula` cannot carry keyword arguments: drmTMB's
 `fitted` and `predict` are population-level (`Xβ̂`; drmTMB's `fitted()` is
 conditional, the conditional temporal effects are `ranef(fit)[:id]`).
 `simulate` and `bootstrap_ci` draw a fresh temporal chain per series (and a
-fresh `(1 | id)` intercept), as drmTMB's default `simulate()`. Wald standard
+fresh `(1 | id)` intercept), as drmTMB's default `simulate()`; drmTMB refuses
+the temporal bootstrap, so `bootstrap_ci` is an extension. Wald standard
 errors are reported for every coordinate; drmTMB exposes only AR1
 mean-coefficient Wald intervals, and no interval calibration is claimed.
 

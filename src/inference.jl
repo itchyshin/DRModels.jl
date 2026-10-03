@@ -1351,7 +1351,9 @@ and, for Gaussian fits, the solver controls (`algorithm` / `g_tol`) exactly as
 to [`drm`](@ref). Use `bootstrap_result` when you need attempted/used/failed
 counts and per-replicate failure messages. If you already have
 `fit = drm(...)`, pass the fit directly to avoid refitting the base model before
-the bootstrap replicates.
+the bootstrap replicates. A homogeneous Toeplitz `temporal()` fit returns the
+mean-coefficient rows only (drmTMB refuses the temporal bootstrap and defers
+σ and lag-correlation intervals).
 """
 function bootstrap_ci(
     formula::DrmFormula,
@@ -1483,7 +1485,8 @@ second bootstrap run when both SEs and intervals are needed. Row fields are
 `(param, coef, estimate, std_error, lower, upper)`. By default, any failed
 replicate errors after all failures are recorded. Set `failures = :skip` to
 compute summaries from successful replicates; call `bootstrap_result` to
-inspect the skipped failures.
+inspect the skipped failures. A homogeneous Toeplitz `temporal()` fit returns
+the mean-coefficient rows only, as [`bootstrap_ci`](@ref).
 """
 function bootstrap_summary(
     formula::DrmFormula,
@@ -1624,7 +1627,8 @@ reuses that point estimate as the bootstrap seed fit and starts directly with
 the `B` simulated refits. Gaussian bootstrap refits pass `algorithm` and
 `g_tol` through to `drm(...)`; this is useful for large structured models where
 `:auto` selects a sparse route and the tolerance is part of the benchmarked
-workflow.
+workflow. For a homogeneous Toeplitz `temporal()` fit, `summary` holds the
+mean-coefficient rows only, as [`bootstrap_ci`](@ref).
 """
 function bootstrap_result(
     formula::DrmFormula,
@@ -2250,7 +2254,7 @@ function _bootstrap_result(
     end
     used = count(ok)
     used > 0 || throw(ErrorException("all $B bootstrap replicates failed"))
-    summary = _bootstrap_summary_rows(fit0, draws[ok, :], est, level)
+    summary = _homtoep_bootstrap_rows(fit0, _bootstrap_summary_rows(fit0, draws[ok, :], est, level))
     return (
         summary=summary,
         failures=failure_rows,
@@ -2335,8 +2339,14 @@ end
 # `_is_response_missing` treats both `missing` and NaN as absent, exactly as
 # `_coerce_response_column` does when the fit reads the response, so the mask
 # restored here is the mask the fit itself used.
+#
+# A draw whose length differs from the data is an error, not a no-op: merged
+# back as-is, a short draw sits beside full-length covariates and every
+# replicate refit fails (or misaligns rows).
 function _restore_response_mask!(ysim::AbstractVector{Float64}, raw)
-    length(raw) == length(ysim) || return ysim
+    length(raw) == length(ysim) || throw(ArgumentError(
+        "bootstrap draw has length $(length(ysim)), expected $(length(raw)) (one value " *
+        "per row of `data`); pass the same `data` the model was fitted to"))
     @inbounds for i in eachindex(ysim)
         if _is_response_missing(raw[i])
             ysim[i] = NaN
