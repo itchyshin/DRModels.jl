@@ -13,7 +13,7 @@ parameters a formula with `bf`.
 | Response looks like… | Family | Mean link | Second parameter (`sigma` slot) |
 |---|---|---|---|
 | Real-valued, symmetric | `Gaussian()` | identity | residual SD `σ` (log) |
-| Real-valued, heavy tails / outliers | `Student()` | identity | scale `σ` (log) + d.o.f. `nu` |
+| Real-valued, heavy tails / outliers | `Student()` | identity | scale `σ` (log) + d.o.f. `nu` (`ν = 2 + exp(η)`) |
 | Strictly positive, continuous | `Gamma()` | log | shape `α = 1/σ²` |
 | Positive **with exact zeros** | `Tweedie()` | log | √dispersion `σ` + power `nu` ∈ (1,2) |
 | Strictly positive, right-skewed (multiplicative) | `LogNormal()` | identity on `log y` | SD of `log y`, `σ` (log) |

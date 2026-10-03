@@ -16,7 +16,7 @@ parameters (`nu`, `zoi`, `coi`, ordinal cutpoints).
 | Response looks like… | Family | Mean link | `sigma` slot |
 |---|---|---|---|
 | Real-valued, symmetric | `Gaussian()` | identity | residual SD `σ` (log) |
-| Real-valued, heavy tails | `Student()` | identity | scale `σ` (log) + d.o.f. `ν` (log) |
+| Real-valued, heavy tails | `Student()` | identity | scale `σ` (log) + d.o.f. `ν = 2 + exp(η)` (not log `ν`) |
 | Strictly positive, multiplicative | `LogNormal()` | identity on `log y` | SD of `log y` (log) |
 | Strictly positive, right-skewed | `Gamma()` | log | shape via `α = 1/σ²` |
 | Positive **with exact zeros** | `Tweedie()` | log | √dispersion `σ` + power `ν ∈ (1,2)` |
@@ -57,8 +57,9 @@ fit = drm(bf(@formula(y ~ x), @formula(sigma ~ x)), Gaussian(); data = (; y, x))
 ### Student-t — `Student()`
 
 The robust sibling of Gaussian: identity μ, log `σ`, plus degrees of freedom `ν`
-(log link) that govern the tail weight. Small `ν` downweights outliers; `ν → ∞`
-returns to Gaussian.
+that govern the tail weight, on the link `ν = 2 + exp(η)` (so `ν > 2`). Small `ν`
+downweights outliers; `ν → ∞` returns to Gaussian. Recover `ν` with
+`2 + exp(coef(fit, :nu))`, never `exp(...)` alone.
 
 ```@example fam
 Random.seed!(2)
