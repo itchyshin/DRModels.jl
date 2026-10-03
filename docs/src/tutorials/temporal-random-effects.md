@@ -181,6 +181,25 @@ All 288 conditional values agree with drmTMB's `fitted(fit)` to the
 estimates, because the two packages compute the conditional modes by different
 numerical routes.
 
+Standardised residuals use the same conditional convention as drmTMB's
+Pearson and quantile residuals. `residuals(fit; type = :quantile)` is
+``(y - \hat\mu^{\mathrm{cond}})/\hat\sigma``, where
+``\hat\mu^{\mathrm{cond}}`` is the conditional mean above. This is the
+estimated residual noise left after the fitted site and temporal deviations.
+It is not whitened against the correlation within a site, and the deviations
+are fitted to the same data, so its spread is below 1 even when the model is
+correct. Use it to look for outliers and for patterns against covariates or
+time; do not read its spread as a calibration check. (`residuals(fit)` stays
+``y - X\hat\beta``, matching `fitted`.)
+
+```@example temporal
+z = residuals(fit; type = :quantile)
+drmtmb_pearson = Float64.(ar1_ref["residuals"]["pearson"])   # drmTMB's residuals(fit, type = "pearson")
+(rms = sqrt(sum(abs2, z) / length(z)), first_rows = first(z, 3),
+ drmTMB_first_rows = first(drmtmb_pearson, 3),
+ max_abs_diff = maximum(abs.(z .- drmtmb_pearson)))
+```
+
 `simulate(fit)` draws a new realization from the fitted model: fresh stable
 and temporal effects plus residual noise, as drmTMB's default `simulate()`.
 

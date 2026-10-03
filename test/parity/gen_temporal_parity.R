@@ -12,13 +12,18 @@
 ## The input data are the committed CSVs in test/fixtures/temporal/ (see the
 ## README there for where each one comes from).
 ##
-## WHEN TO RERUN. The committed numbers come from drmTMB dc81bb368, the head
-## of the then-unmerged drmTMB PR #1447 (stacked on #1446). That commit lives
-## only on an unmerged branch, so once #1446 / #1447 merge, reinstall drmTMB
-## at the MERGED main SHA, rerun this script with that SHA, and confirm the
-## Julia tests still pass (test/test_parity_temporal.jl and, with
-## DRM_PARITY_TESTS=1, test/parity/runparity_temporal.jl). Rerun also after
-## any drmTMB change to the temporal likelihood or its optimiser defaults.
+## WHEN TO RERUN. The committed numbers come from drmTMB 07d1612ea, the final
+## head of drmTMB PR #1447 (stacked on #1446); they were first generated at
+## dc81bb368, an earlier head of the same PR. Once #1446 / #1447 merge,
+## reinstall drmTMB at the MERGED main SHA, rerun this script with that SHA,
+## and confirm the Julia tests still pass (test/test_parity_temporal.jl and,
+## with DRM_PARITY_TESTS=1, test/parity/runparity_temporal.jl). Rerun also
+## after any drmTMB change to the temporal likelihood, its optimiser defaults
+## or its residuals.
+##
+## Every cell also records drmTMB's Pearson residuals (`[residuals].pearson`),
+## which for these routes are conditional on the fitted modes; the script
+## checks that drmTMB's quantile residuals equal them (Gaussian family).
 ##
 ## For the two article cells (vignette-ar1-ri, vignette-ou-ri) the script also
 ## records drmTMB's conditional fitted values, the AR1 Wald intervals of the
@@ -129,6 +134,17 @@ for (cell in cells) {
     "atol_loglik = 1e-8",
     "rtol_par = 1e-6"
   )
+  ## drmTMB's Pearson residuals for AR1 / OU are conditional on the modes:
+  ## (y - fitted(fit)) / sigma, fitted() adding the temporal and (1 | id) modes.
+  ## Its quantile residuals are the same numbers for the Gaussian family.
+  pearson <- as.numeric(residuals(fit, type = "pearson"))
+  stopifnot(max(abs(as.numeric(residuals(fit, type = "quantile")) - pearson)) < 1e-8)
+  lines <- c(lines, "",
+    "# drmTMB's Pearson residuals: conditional on the fitted modes,",
+    "# (y - fitted(fit)) / sigma, with fitted() adding the temporal and",
+    "# (1 | id) modes; data-row order. Its quantile residuals are identical.",
+    "[residuals]",
+    paste0("pearson = [", paste(vapply(pearson, toml_num, ""), collapse = ", "), "]"))
   if (cell$name %in% c("vignette-ar1-ri", "vignette-ou-ri")) {
     ci_rows <- function(ci) unlist(lapply(seq_len(nrow(ci)), function(i) c(
       paste0("[[", if (ci$method[i] == "wald") "wald" else "profile", "]]"),

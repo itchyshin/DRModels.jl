@@ -57,8 +57,12 @@ include(joinpath(@__DIR__, "parity", "temporal_parity.jl"))
                 @test length(ref) == length(cond)
                 @test maximum(abs.(cond .- ref)) <= 1e-6
             end
-            # homtoep cells: drmTMB's Pearson residuals are the Levinson-whitened
-            # L⁻¹ r; DRModels' `residuals(fit; type = :quantile)` is the same.
+            # drmTMB's Pearson residuals. AR1 / OU cells: conditional on the
+            # fitted modes, (y − Xβ̂ − modes)/σ̂. homtoep cells: the
+            # Levinson-whitened L⁻¹ r. DRModels' `residuals(fit; type = :quantile)`
+            # is the same in both. Measured on Julia 1.10.12 and 1.13: at most
+            # 6.9e-7 (vignette-ou; the modes are computed by different numerical
+            # routes), ≤ 2.1e-9 on every other cell.
             if haskey(ex, "residuals")
                 ref = Float64.(ex["residuals"]["pearson"])
                 @test maximum(abs.(residuals(fit; type = :quantile) .- ref)) <= 1e-6

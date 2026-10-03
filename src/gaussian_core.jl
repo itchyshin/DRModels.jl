@@ -1554,6 +1554,22 @@ Tweedie (no closed-form CDF in `Distributions.jl`):
 
 The per-family parameter → distribution map lives in `_conditional_dist`
 (reused by future `simulate`/PIT checks). Tweedie throws an `ArgumentError`.
+
+`temporal()` fits (as drmTMB's Pearson and quantile residuals):
+
+- AR1 and OU, with or without `(1 | id)` or a paired `phylo()` term, are
+  **conditional on the fitted modes**:
+  `(y_i − x_iᵀβ̂ − b̂_id − ŝ_i) / σ̂`, where `ŝ_i` is the temporal mode
+  (`ranef(fit)[id]`) and `b̂_id` the `(1 | id)` or phylogenetic mode. This is
+  the estimated residual noise `E[ε_i | y] / σ̂`, after the fitted temporal
+  path: it is not whitened against the marginal covariance, and its variance
+  is below 1 even when the model is true.
+- Homogeneous Toeplitz is the whitened `L⁻¹(y − Xβ̂)`, with `L` the Cholesky
+  factor of each series' `σ̂²R̂`: there are no modes to condition on.
+
+`type = :response` stays `y − Xβ̂` (population level, matching
+[`fitted`](@ref)) for these fits; drmTMB's `residuals(fit, type = "response")`
+subtracts its conditional `fitted()` instead.
 """
 function residuals(fit::DrmFit; type::Symbol = :response, rng = Random.default_rng())
     if type === :response
@@ -1564,6 +1580,9 @@ function residuals(fit::DrmFit; type::Symbol = :response, rng = Random.default_r
         # standardised residuals are the whitened L⁻¹ r (drmTMB's Pearson
         # residuals), not (y − μ̂)/σ.
         _wald_withheld(fit) && return _homtoep_whiten(fit)
+        # AR1 / OU (and the paired phylo() + OU fit): drmTMB's residual is
+        # conditional on the fitted modes, (y − Xβ̂ − modes)/σ̂.
+        _is_temporal_fit(fit) && return _temporal_conditional_residuals(fit)
         return _quantile_residuals(fit, rng)
     else
         throw(ArgumentError("residuals: `type` must be :response or :quantile (got :$type)"))

@@ -1262,6 +1262,24 @@ function _homtoep_profile_parm(fit, parm)
     return parm
 end
 
+# Conditional residuals of an AR1 / OU fit (and of the paired phylo() + OU
+# fit): (y − Xβ̂ − ŝ − b̂)/σ̂ with ŝ the temporal mode (data-row order) and b̂
+# the per-series `(1 | id)` or phylogenetic stable mode. drmTMB's Pearson and
+# quantile residuals for these routes use its `predict(dpar = "mu")`, which
+# adds every fitted mode, divided by the residual SD.
+function _temporal_conditional_residuals(fit::DrmFit)
+    info = fit.ranef.temporal
+    eff = fit.ranef.effects
+    r = fit.obs[:mu] .- fit.means[:mu] .- eff[info.group]
+    for k in (Symbol("$(info.group)_iid"), Symbol("$(info.group)_phylo"))
+        haskey(eff, k) || continue
+        for (s, rows) in enumerate(info.rows)
+            r[rows] .-= eff[k][s]
+        end
+    end
+    return r ./ exp(only(coef(fit, :sigma)))
+end
+
 # Whitened residuals of a homtoep fit: per series, e_t / (σ √v_{t−1}) from the
 # Durbin–Levinson predictor — L⁻¹ r with L the Cholesky factor of σ²R, which
 # drmTMB returns as its Pearson residuals (`temporal_homtoep_marginal_whiten`).
