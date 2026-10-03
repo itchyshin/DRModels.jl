@@ -213,6 +213,16 @@ using Test, Random, LinearAlgebra, StableRNGs, Statistics, Logging
         @test occursin("mean regression coefficients only", perr)
         @test_throws ae confint(fit; method = :profile, parm = :temporal_pac)
         @test_throws ae profile_result(fit; parm = :temporal_pac)
+        # profile_curve / parameter_surface: the same scope, by coefficient index
+        ksig = only(Dict(fit.blocks)[:sigma]); kpac = first(Dict(fit.blocks)[:temporal_pac])
+        cerr = try profile_curve(fit, ksig); "" catch e; e.msg end
+        @test occursin("profile_curve: Temporal HOMTOEP profiles currently support mean", cerr)
+        @test_throws ae profile_curve(fit, kpac)
+        @test_throws ae parameter_surface(fit, 2, kpac; npoints = 3)
+        @test_throws ae parameter_surface(fit, ksig, 1; npoints = 3)
+        pc = profile_curve(fit, 2; npoints = 5, span = 1.0)
+        @test pc.param === :mu && minimum(pc.deviance) == 0.0
+        @test size(parameter_surface(fit, 1, 2; npoints = 3, span = 1.0).z) == (3, 3)
         allmu = confint(fit; method = :profile)                    # default: the mean block
         @test length(allmu) == 2 && all(r -> r.param === :mu, allmu)
         tg = profile_targets(fit)
@@ -250,8 +260,17 @@ using Test, Random, LinearAlgebra, StableRNGs, Statistics, Logging
         # different series are independent
         other = [(i, j) for i in 1:20, j in 1:20 if d.id[i] != d.id[j]]
         @test abs(mean(E[i, s] * E[j, s] for (i, j) in other, s in 1:size(E, 2))) < 0.02
+        # drmTMB has no temporal bootstrap and defers σ / lag-correlation
+        # intervals: the bootstrap reports the mean coefficients only.
         bc = quiet(() -> bootstrap_ci(fit; data = d, B = 6, rng = StableRNG(47)))
-        @test length(bc) == 8 && all(r -> isfinite(r.lower) && isfinite(r.upper), bc)
+        @test length(bc) == 2 && all(r -> r.param === :mu, bc)
+        @test all(r -> isfinite(r.lower) && isfinite(r.upper), bc)
+        @test [r.estimate for r in bc] ≈ coef(fit, :mu)
+        br = quiet(() -> bootstrap_result(fit; data = d, B = 4, rng = StableRNG(48)))
+        @test br.used == 4 && [r.param for r in br.summary] == [:mu, :mu]
+        @test_logs (:info, r"mean regression coefficients only") match_mode = :any begin
+            bootstrap_summary(fit; data = d, B = 2, rng = StableRNG(49))
+        end
     end
 
     @testset "refusals (drmTMB's panel rules)" begin
@@ -315,6 +334,25 @@ using Test, Random, LinearAlgebra, StableRNGs, Statistics, Logging
         keep = d.occ .!= 5
         sub = (y = Float64.(d.y[keep]), x = d.x[keep], id = d.id[keep], occ = d.occ[keep])
         @test loglik(fit) ≈ loglik(drm(fT, Gaussian(); data = sub)) atol = 1e-10
+        # The bootstrap after response omission: occasion 5 missing for every
+        # site (`missing`) and one site entirely missing (NaN). `simulate` keeps
+        # one value per data row, NaN at the dropped rows, so each replicate
+        # refit drops the same rows (it used to fail on every replicate).
+        s1 = d.id[1]
+        gone = merge(d, (y = Union{Missing,Float64}[o == 5 ? missing : i == s1 ? NaN : v
+                                                    for (o, i, v) in zip(d.occ, d.id, d.y)],))
+        fitg = quiet(() -> drm(fT, Gaussian(); data = gone))
+        kept = (d.occ .!= 5) .& (d.id .!= s1)
+        @test nobs(fitg) == count(kept) == 195 && length(temporal_parameters(fitg).cor) == 4
+        ys = simulate(fitg; rng = StableRNG(51))
+        @test length(ys) == length(d.y) && all(isnan, ys[.!kept]) && all(isfinite, ys[kept])
+        logs, bc = Test.collect_test_logs(() -> bootstrap_ci(fitg; data = gone, B = 5, rng = StableRNG(52)))
+        @test length(bc) == 2 && all(r -> r.param === :mu, bc)
+        @test all(r -> isfinite(r.lower) && isfinite(r.upper), bc)
+        @test [r.estimate for r in bc] ≈ coef(fitg, :mu)
+        @test !any(l -> occursin("missing response", string(l.message)), logs)   # refits stay quiet
+        # a draw that does not span the data is refused, not merged beside it
+        @test_throws ArgumentError DRModels._bootstrap_data(fitg.formula, gone, ys[1:end-1])
         # occasion 2 missing for every site: 0, 1, 3, 4, 5 is not equally spaced
         mid = merge(d, (y = [o == 2 ? missing : v for (o, v) in zip(d.occ, d.y)],))
         @test occursin("equally spaced", msg(mid))
