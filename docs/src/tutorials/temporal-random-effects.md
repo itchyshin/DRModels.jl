@@ -620,7 +620,7 @@ they agree with drmTMB to ``5.5 \times 10^{-12}`` in logLik, to
 ``2.1 \times 10^{-11}`` (relative) in every estimate and to
 ``2.3 \times 10^{-12}`` in the conditional fitted values; the conditional
 residuals (`residuals(fit; type = :quantile)` against drmTMB's Pearson
-residuals) agree to ``6.0 \times 10^{-11}``. Their numbers come from drmTMB
+residuals) agree to ``8.3 \times 10^{-12}``. Their numbers come from drmTMB
 development commit `012258e9f` (recorded in each cell's
 `expected.meta.toml`). The paired likelihood is checked against a dense oracle
 (``9.2 \times 10^{-13}``, including the decay and stable-SD extremes and a
