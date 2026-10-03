@@ -44,6 +44,8 @@ include:
 
 If you use one of these in an analysis that must be reproducible for several
 years, record the DRModels.jl version and read its release notes before updating.
+Release notes for each version are in
+[`NEWS.md`](https://github.com/itchyshin/DRModels.jl/blob/main/NEWS.md) on GitHub.
 
 ## Engine functions
 

@@ -30,3 +30,15 @@ For the current supported model types, use
 [What is tested](capabilities.md). For models involving spatial, temporal, or
 other specialised R workflows, stay with the documented native R route unless a
 Julia example explicitly says otherwise.
+
+## drmTMB articles without a DRModels.jl page
+
+These drmTMB "Start here" articles have no DRModels.jl counterpart yet. Read
+them on the drmTMB site, and check any Julia-specific route against
+[What is tested](capabilities.md):
+
+- [Capability and limits](https://itchyshin.github.io/drmTMB/articles/capability-and-limits.html)
+- [First-week intervals](https://itchyshin.github.io/drmTMB/articles/first-week-intervals.html)
+- [Function map cheatsheet](https://itchyshin.github.io/drmTMB/articles/function-map-cheatsheet.html)
+- [Missing data](https://itchyshin.github.io/drmTMB/articles/missing-data.html)
+- [Comparing with other packages](https://itchyshin.github.io/drmTMB/articles/comparing-with-other-packages.html)
