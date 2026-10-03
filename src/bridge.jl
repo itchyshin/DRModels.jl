@@ -1667,10 +1667,10 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
         "marginal" => String(fit.marginal),
         # `fitted()`/`residuals()`: DRModels.jl's own population-level values,
         # except a zero-inflated count fit, which ships drmTMB's unconditional
-        # mean -- see `_bridge_fitted_marginal`. These equal drmTMB's only when
-        # the mean has no random or structured effect: for ordinary random-
-        # effect, phylogenetic, covariance-block and AR1 / OU `temporal()` fits
-        # drmTMB's `fitted()` adds the fitted modes and this payload does not.
+        # mean -- see `_bridge_fitted_marginal`. They are not drmTMB's values in
+        # general. In particular, for ordinary random-effect, phylogenetic,
+        # covariance-block and AR1 / OU `temporal()` fits drmTMB's `fitted()`
+        # adds the fitted modes and this payload does not.
         "fitted" => _bridge_plain(fitted_vals),
         "residuals" => _bridge_plain(residual_vals),
         "sigma" => _bridge_plain(sigma(fit)),

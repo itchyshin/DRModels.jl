@@ -112,7 +112,9 @@ rq = residuals(fit; type = :quantile)
     Quantile residuals fold each observation through its own fitted CDF, so a
     well-specified model without random effects yields ≈ N(0, 1), on the same
     scale for every family. They are implemented for every family except
-    Tweedie and SkewNormal. Random-effect and `temporal()` fits judge each
+    Tweedie and SkewNormal. Zero-inflated and hurdle count fits are an
+    exception at present: their residuals use the count component only and are
+    not ≈ N(0, 1) even when the model is right. Random-effect and `temporal()` fits judge each
     observation against a different reference (a random intercept integrated
     out, or the fitted temporal path), so what "≈ N(0, 1)" means changes;
     [`residuals`](@ref) lists what each kind of fit returns.
