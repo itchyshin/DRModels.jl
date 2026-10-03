@@ -1536,11 +1536,34 @@ Model residuals. `type` selects the kind:
 
 - `:response` (default) — raw response residuals (observed − fitted mean),
   matching [`fitted`](@ref)'s shape. `residuals(fit)` is unchanged.
-- `:quantile` — randomized quantile residuals (Dunn & Smyth; DHARMa /
-  glmmTMB style). For observation `i` with fitted distribution `F_i`,
-  `r_i = Φ⁻¹(u_i)` where `u_i` is the (randomized, for discrete families)
-  probability-integral transform of `y_i`. Under a correct model the `r_i`
-  are i.i.d. standard normal. Univariate only.
+- `:quantile` — standardised residuals. Outside `temporal()` fits these are
+  randomized quantile residuals (Dunn & Smyth; DHARMa / glmmTMB style): for
+  observation `i` with reference distribution `F_i`, `r_i = Φ⁻¹(u_i)`, where
+  `u_i` is the (randomized, for discrete families) probability-integral
+  transform of `y_i`. Univariate only.
+
+What a correct model implies depends on the route:
+
+- **no random effect**: `F_i` is the fitted distribution, and the `r_i` are
+  approximately i.i.d. standard normal. Zero-inflated and hurdle count fits
+  are an exception at present: their PIT uses the count component only, so
+  their residuals are not standard normal even under a correct model;
+- **one ordinary random intercept `(1 | g)` on the mean**: `F_i` integrates
+  the intercept out over its fitted SD `σ̂_b` (32-node Gauss–Hermite), so each
+  `r_i` is `σ_b`-marginal and approximately standard normal, but residuals of
+  one group stay correlated. Other random-effect shapes (crossed, correlated
+  slopes) and CumulativeLogit fits are judged with the random effects set
+  to 0;
+- **`temporal()` AR1 / OU, and the paired `phylo()` + OU fit**: residuals
+  conditional on the fitted modes (below). They are not PIT residuals, and
+  their variance is below 1 even when the model is true;
+- **`temporal()` homogeneous Toeplitz**: whitened residuals (below),
+  approximately i.i.d. standard normal.
+
+The far tail differs too. The PIT routes (every fit without `temporal()`,
+Gaussian included) clamp `u_i` to `[eps, 1 − eps]`, so `|r_i| ≤ 8.126`
+however extreme `y_i` is: a Gaussian residual of 13.6 σ̂ is reported as
+8.126. The `temporal()` routes do not clamp.
 
 With one random intercept, `F_i` integrates it out over its fitted SD
 (32-node Gauss–Hermite), so each `r_i` is approximately standard normal but
@@ -1560,17 +1583,42 @@ modes. Other random-effect shapes (crossed, correlated slopes, a mean and a
 CumulativeLogit fits are judged with the random effects set to 0.
 
 Quantile residuals are implemented for every DRModels.jl response family except
-Tweedie (no closed-form CDF in `Distributions.jl`):
+Tweedie (no closed-form CDF in `Distributions.jl`) and SkewNormal:
 
 - **continuous** (PIT `u_i = F(y_i)`, no RNG): Gaussian, Student-t, LogNormal,
   Gamma, Beta;
 - **discrete, randomized** (`u_i = F(y_i−1) + (F(y_i) − F(y_i−1))·U`,
-  `U ~ Uniform(0,1)` drawn from `rng`): Poisson, NegBinomial2,
-  TruncatedNegBinomial2, Binomial, BetaBinomial, CumulativeLogit (ordinal);
+  `U ~ Uniform(0,1)` drawn from `rng`): Poisson, TruncatedPoisson,
+  NegBinomial2, TruncatedNegBinomial2, Binomial, BetaBinomial,
+  CumulativeLogit (ordinal);
 - **atomic** (point-mass mixture; the mass is randomized across): ZeroOneBeta.
 
 The per-family parameter → distribution map lives in `_conditional_dist`
-(reused by future `simulate`/PIT checks). Tweedie throws an `ArgumentError`.
+(reused by future `simulate`/PIT checks). Tweedie and SkewNormal throw an
+`ArgumentError`.
+
+`temporal()` fits (as drmTMB's Pearson residuals; for AR1 and OU, drmTMB's
+quantile residuals are the same numbers):
+
+- AR1 and OU, with or without `(1 | id)` or a paired `phylo()` term, are
+  **conditional on the fitted modes**:
+  `(y_i − x_iᵀβ̂ − b̂_id − ŝ_i) / σ̂`, where `ŝ_i` is the temporal mode
+  (`ranef(fit)[id]`) and `b̂_id` the `(1 | id)` or phylogenetic mode. This is
+  the estimated residual noise `E[ε_i | y] / σ̂`, after the fitted temporal
+  path: it is not whitened against the marginal covariance, and its variance
+  is below 1 even when the model is true. At a residual-SD boundary
+  (`sigma_ratio` among `check_drm(fit).temporal_boundary.findings`) the
+  temporal path absorbs the data: σ̂ → 0 drives these residuals toward 0, so
+  they cannot reveal outliers there. Check `check_drm(fit).temporal_boundary`
+  before reading them.
+- Homogeneous Toeplitz is the whitened `L⁻¹(y − Xβ̂)`, with `L` the Cholesky
+  factor of each series' `σ̂²R̂`: there are no modes to condition on.
+  drmTMB's `type = "quantile"` residuals for this structure are not whitened
+  (`(y − Xβ̂)/σ̂`), so compare with its `type = "pearson"`.
+
+`type = :response` stays `y − Xβ̂` (population level, matching
+[`fitted`](@ref)) for these fits; drmTMB's `residuals(fit, type = "response")`
+subtracts its conditional `fitted()` instead.
 """
 function residuals(fit::DrmFit; type::Symbol = :response, rng = Random.default_rng())
     if type === :response
@@ -1581,6 +1629,9 @@ function residuals(fit::DrmFit; type::Symbol = :response, rng = Random.default_r
         # standardised residuals are the whitened L⁻¹ r (drmTMB's Pearson
         # residuals), not (y − μ̂)/σ.
         _wald_withheld(fit) && return _homtoep_whiten(fit)
+        # AR1 / OU (and the paired phylo() + OU fit): drmTMB's residual is
+        # conditional on the fitted modes, (y − Xβ̂ − modes)/σ̂.
+        _is_temporal_fit(fit) && return _temporal_conditional_residuals(fit)
         return _quantile_residuals(fit, rng)
     else
         throw(ArgumentError("residuals: `type` must be :response or :quantile (got :$type)"))

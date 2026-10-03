@@ -16,6 +16,12 @@
 ##   R_LIBS=~/scratch/drmtmb-wave2-lib OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 \
 ##     Rscript test/parity/gen_temporal_wave2_parity.R <drmTMB_sha> [drmTMB_source_dir] [phylo|homtoep|all]
 ##
+## Every cell records drmTMB's Pearson residuals (`[residuals].pearson`): for
+## the phylo + OU cells they are conditional on the fitted modes (the script
+## checks that drmTMB's quantile residuals equal them), for the homtoep cells
+## the whitened L^-1 (y - X beta). The committed phylo + OU numbers come from
+## drmTMB 012258e9f, the head of open draft PR #1448 as of 2026-10-02.
+##
 ## Writes GENERATED NUMBERS ONLY into test/parity/temporal/<cell>/expected.toml
 ## (+ expected.meta.toml, stamped with tools/drmtmb_provenance_lib.R's
 ## code hash, which test/test_fixture_provenance.jl requires). No drmTMB source
@@ -154,6 +160,19 @@ for (cell in if (do_phylo) cells else list()) {
                                collapse = ", "), "]"),
     ""
   )
+  ## drmTMB's Pearson residuals for the paired route are conditional on the
+  ## modes: (y - fitted(fit)) / sigma, fitted() adding the phylogenetic stable
+  ## and the temporal modes. Its quantile residuals are the same numbers for
+  ## the Gaussian family.
+  pearson <- as.numeric(residuals(fit, type = "pearson"))
+  stopifnot(max(abs(as.numeric(residuals(fit, type = "quantile")) - pearson)) < 1e-8)
+  lines <- c(lines,
+    "# drmTMB's Pearson residuals: conditional on the fitted modes,",
+    "# (y - fitted(fit)) / sigma; data-row order. Its quantile residuals are",
+    "# identical.",
+    "[residuals]",
+    paste0("pearson = [", paste(vapply(pearson, toml_num, ""), collapse = ", "), "]"),
+    "")
   if (isTRUE(cell$article)) {
     ## drmTMB's paired provider exposes fixed-mean profiles only; record the
     ## treatment profile for the article comparison (no calibration claim --
