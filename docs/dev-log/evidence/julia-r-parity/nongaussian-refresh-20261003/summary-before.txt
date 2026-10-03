@@ -1,0 +1,49 @@
+TREE=/home/snakagaw/claude-606b/DRM.jl OUT=/home/snakagaw/claude-606b/before JULIA=julia version 1.10.12 HEAD=959d71fb7 2026-10-03T17:59:12Z
+GATE jn_G1 exit=0 :: JOINT_REFERENCE_EXECUTED cases=2 rows=320 
+GATE jn_G2 exit=0 :: JOINT_RECEIPT_PASS cases=2 rows=320 likelihoods=2 conditional_moments=640 
+GATE jn_G3 exit=0 :: JOINT_RECEIPT_NEGATIVES_PASS=11 
+GATE jn_G4 exit=0 :: JOINT_RECEIPT_NEGATIVES_PASS=11 
+GATE jf_G1 exit=0 :: bernoulli optimizer=converged gradient=2.3506085966573664e-11 JOINT_FITS_EXECUTED cases=2 
+GATE jf_G2 exit=0 :: JOINT_FIT_RECEIPT_PASS cases=2 rows=320 native_parity=false 
+GATE jf_G3 exit=0 :: JOINT_FIT_RECEIPT_NEGATIVES_PASS=13 
+GATE jf_G4 exit=0 :: JOINT_FIT_RECEIPT_NEGATIVES_PASS=13 
+GATE jfp_G1 exit=1 ::                ^^^^^^^^^^^^^^^^^^^^^ ValueError: bernoulli: native theta differs 
+GATE jpf_G1 exit=0 :: public=bernoulli converged=true gradient=2.3506085966573664e-11 native_theta_max_abs=1.0015094105086941e-5 JOINT_FRONTEND_FITS_EXECUTED cases=2 rows=320 
+GATE jpf_G2 exit=0 :: JOINT_FRONTEND_RECEIPT_PASS cases=2 rows=320 native_theta_checked=false deltas={'gaussian': 2.7546376548670537e-06, 'bernoulli': 1.0015094105086941e-05} 
+GATE jpf_G3 exit=0 :: JOINT_FRONTEND_RECEIPT_NEGATIVES_PASS=17 
+GATE jpf_G4 exit=0 :: JOINT_FRONTEND_RECEIPT_NEGATIVES_PASS=17 
+GATE jpf_G5 exit=1 ::     raise ValueError(message) ValueError: bernoulli: native theta optional gate 
+GATE nu_G1 exit=1 :: Error: identical(unname(tools::md5sum(loaded)), unname(unlist(ref$loaded_files))) is not TRUE Execution halted 
+GATE nu_G2 exit=1 :: Error: identical(unname(tools::md5sum(loaded)), unname(unlist(ref$loaded_files))) is not TRUE Execution halted 
+GATE jp_run exit=139 :: Loading setup script for JuliaCall... ./run_checks.sh: line 16: 2411366 Segmentation fault      (core dumped) JULIA_HOME=/home/snakagaw/.julia/juliaup/julia-1.10.12+0.x64.linux.gnu/bin DRMTMB_PRIVLIB=/home/snakagaw/claude-mr/1442/Rlib-main Rscript /home/snakagaw/claude-606b/privlib_shim.R tools/run-julia-joint-public.R /home/snakagaw/claude-606b/DRM.jl /home/snakagaw/claude-606b/DRM.jl/docs/dev-lo
+GATE jp_oracle exit=1 ::            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ FileNotFoundError: [Errno 2] No such file or directory: '/home/snakagaw/claude-606b/before/joint-public.json' 
+GATE jp_neg exit=1 ::            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ FileNotFoundError: [Errno 2] No such file or directory: '/home/snakagaw/claude-606b/before/joint-public.json' 
+GATE rjn_G1 exit=1 ::            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ FileNotFoundError: [Errno 2] No such file or directory: '/home/snakagaw/claude-606b/before/joint-public.json' 
+GATE fse_G1 exit=0 :: FINITE_NATIVE_NEGATIVE_CONTROLS_PASS 18 FINITE_NATIVE_NEGATIVE_CONTROLS_PASS 18 
+GATE fk_run exit=0 :: finite-state frozen native reference |   48     48  14.1s FINITE_JOINT_NATIVE_PASS 
+GATE ff_run exit=0 :: categorical parity=false errors=Dict("theta" => 1.7405252097923984e-5, "imputation" => 0.0, "loglik" => 6.232028226804687e-9, "prediction" => 9.5763353781253e-6) FINITE_JOINT_FIT_MEASURED 
+GATE fse_G2 exit=1 ::               ^^^^^^^^^^^^^^^^^^^^^^^^^ ValueError: runtime 
+GATE fse_G4 exit=1 ::               ^^^^^^^^^^^^^^^^^^^^^^^^^ ValueError: runtime 
+GATE fp_run exit=139 :: Loading setup script for JuliaCall... ./run_checks.sh: line 16: 2412008 Segmentation fault      (core dumped) JULIA_HOME=/home/snakagaw/.julia/juliaup/julia-1.10.12+0.x64.linux.gnu/bin DRMTMB_PRIVLIB=/home/snakagaw/claude-mr/1442/Rlib-main Rscript /home/snakagaw/claude-606b/privlib_shim.R tools/run-julia-joint-finite-public.R /home/snakagaw/claude-606b/DRM.jl /home/snakagaw/claude-606b/DRM.jl/docs
+GATE fp_G2 exit=1 ::            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ FileNotFoundError: [Errno 2] No such file or directory: '/home/snakagaw/claude-606b/before/finite-public.json' 
+GATE fp_G3 exit=1 ::   File "<string>", line 1, in <module> FileNotFoundError: [Errno 2] No such file or directory: '/home/snakagaw/claude-606b/before/finite-public.json' 
+GATE fstop exit=0 :: FINITE_STOPPING_DIAGNOSTIC_PASS {'ordinal': {'native_max_gradient': 0.001573169705340634, 'julia_independent_max_gradient': 1.1368683772161601e-08, 'displacement_residual_max': 6.356001848094714e-11}, 'categorical': {'native_max_gradient': 0.0009399121840727998, 'julia_independent_max_gradient': 8.526512829121202e-09, 'displacement_residual_max': 1.9967956024348845e-10}} FINITE_STOPPING_DAMAGES_RE
+DONE 2026-10-03T18:01:07Z
+ONLY=^(jp_|rjn_|fp_) TREE=/home/snakagaw/claude-606b/DRM.jl OUT=/home/snakagaw/claude-606b/before JULIA=julia version 1.10.12 HEAD=959d71fb7 2026-10-03T18:04:57Z
+GATE jp_run exit=1 :: Julia exit.   Activating project at `~/claude-606b/DRM.jl` 
+GATE jp_oracle exit=1 ::            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ FileNotFoundError: [Errno 2] No such file or directory: '/home/snakagaw/claude-606b/before/joint-public.json' 
+GATE jp_neg exit=1 ::            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ FileNotFoundError: [Errno 2] No such file or directory: '/home/snakagaw/claude-606b/before/joint-public.json' 
+GATE rjn_G1 exit=1 ::            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ FileNotFoundError: [Errno 2] No such file or directory: '/home/snakagaw/claude-606b/before/joint-public.json' 
+GATE fp_run exit=1 :: Julia exit.   Activating project at `~/claude-606b/DRM.jl` 
+GATE fp_G2 exit=1 ::               ^^^^^^^^^^^^^^^^^^^^^^^^^ ValueError: runtime threads 
+GATE fp_G3 exit=1 :: {'ordinal': 'UNMEASURED', 'categorical': 'UNMEASURED'} FINITE_NATIVE_PARITY_FAIL 
+DONE 2026-10-03T18:06:09Z
+ONLY=^(jp_|rjn_|fp_) TREE=/home/snakagaw/claude-606b/DRM.jl OUT=/home/snakagaw/claude-606b/before JULIA=julia version 1.10.12 HEAD=959d71fb7 2026-10-03T18:06:38Z
+GATE jp_run exit=0 :: Julia exit.   Activating project at `~/claude-606b/DRM.jl` 
+GATE jp_oracle exit=0 :: JOINT_PUBLIC_ORACLE_PASS cases=2 rows=320 native_checked=false 
+GATE jp_neg exit=0 :: JOINT_PUBLIC_NEGATIVE_CONTROLS_PASS mutations=21 JOINT_PUBLIC_NEGATIVE_CONTROLS_PASS mutations=21 
+GATE rjn_G1 exit=0 :: JOINT_PUBLIC_ORACLE_PASS cases=2 rows=320 native_checked=true 
+GATE fp_run exit=0 :: Julia exit.   Activating project at `~/claude-606b/DRM.jl` 
+GATE fp_G2 exit=0 :: FINITE_PUBLIC_ORACLE_PASS {'ordinal': 'FAIL', 'categorical': 'FAIL'} FINITE_PUBLIC_DAMAGES_REJECTED 17 
+GATE fp_G3 exit=1 :: {'ordinal': 'FAIL', 'categorical': 'FAIL'} FINITE_NATIVE_PARITY_FAIL 
+DONE 2026-10-03T18:07:54Z
