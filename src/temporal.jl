@@ -180,7 +180,7 @@ const _TEMPORAL_SCOPE = "temporal() is implemented only for the univariate Gauss
 # and mixed-family routes, the Laplace/AGHQ Gaussian route, the bootstrap …).
 _temporal_refuse_here() = throw(ArgumentError("drm: " * _TEMPORAL_SCOPE *
     "; this model / route does not support it. Other families, a temporal term on `sigma`, " *
-    "bivariate and mixed-family models, REML, and the bootstrap are not implemented for temporal()."))
+    "bivariate and mixed-family models, and REML are not implemented for temporal()."))
 
 # Parse one `temporal(...)` FunctionTerm into (group, time, structure).
 function _parse_temporal_term(t)
