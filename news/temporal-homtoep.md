@@ -5,7 +5,7 @@
     - BigFloat dense oracle: ≤ 4e-15 relative, with partial autocorrelations up to ±0.995.
     - drmTMB's stability points (atanh PACs up to ±40): a 2048-bit Yule–Walker prediction-error reference to ≤ 3e-14.
     - The parameterisation is checked against dense Schur complements.
-  - **Inference scope, as drmTMB.** Only mean-coefficient profile intervals are given. `vcov`, `stderror`, Wald `confint`, `predict(se = true)` and profiles of σ or the lag correlations are refused, and `coeftable` prints `NaN` standard errors.
+  - **Inference scope.** As in drmTMB, mean-coefficient profile intervals are given, and `vcov`, `stderror`, Wald `confint`, `predict(se = true)` and profiles of σ or the lag correlations are refused; `coeftable` prints `NaN` standard errors. As an extension (drmTMB refuses the temporal bootstrap), the parametric bootstrap gives mean-coefficient percentile intervals, without a calibration claim.
   - **Residuals.** `residuals(fit; type = :quantile)` returns the whitened L⁻¹(y − Xβ̂), which is drmTMB's Pearson residual. `simulate` and `bootstrap_ci` draw each series from σ²R.
   - **Missing responses, as drmTMB.** The rows are dropped first and the panel rules then apply to the retained rows. drmTMB's panel rules are refused by name.
   - **Parity.** Three drmTMB cells (draft #1449 final head `90c740791`, including drmTMB's 80-site article data), on Julia 1.10.12: logLik ≤ 9.6e-12, lag correlations ≤ 4.9e-10, Pearson residuals ≤ 1e-6, profile endpoints ≤ 6.6e-6. The tutorial (now *Temporal AR1, OU and Toeplitz effects*) gains a Toeplitz section.
