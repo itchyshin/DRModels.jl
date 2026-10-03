@@ -57,15 +57,32 @@ include(joinpath(@__DIR__, "parity", "temporal_parity.jl"))
                 @test length(ref) == length(cond)
                 @test maximum(abs.(cond .- ref)) <= 1e-6
             end
-            # drmTMB's Pearson residuals. AR1 / OU cells: conditional on the
-            # fitted modes, (y − Xβ̂ − modes)/σ̂. homtoep cells: the
-            # Levinson-whitened L⁻¹ r. DRModels' `residuals(fit; type = :quantile)`
-            # is the same in both. Measured on Julia 1.10.12 and 1.13: at most
-            # 6.9e-7 (vignette-ou; the modes are computed by different numerical
-            # routes), ≤ 2.1e-9 on every other cell.
+            # drmTMB's Pearson residuals; every cell carries them. AR1 / OU and
+            # paired phylo() + OU cells: conditional on the fitted modes,
+            # (y − Xβ̂ − modes)/σ̂. homtoep cells: the Levinson-whitened L⁻¹ r.
+            # DRModels' `residuals(fit; type = :quantile)` is the same in all.
+            # Measured on Julia 1.10.12 and 1.13: 6.9e-7 (vignette-ou), 2.9e-7
+            # (vignette-ar1-ri), ≤ 2.1e-9 on every other cell. The two larger
+            # gaps are drmTMB's, not DRModels': drmTMB takes its modes from the
+            # random entries of TMB's `last.par.best` (drmTMB 07d1612ea
+            # R/drmTMB.R:787), which on those two cells are not the modes at its
+            # reported optimum, so its residual misses its own exact
+            # σ̂V⁻¹(y − Xβ̂) by those amounts; rebuilt from `last.par` (the modes
+            # re-solved at `opt$par`) it is exact to ≤ 3.1e-15. DRModels'
+            # residual is exact, so the 1e-6 here only absorbs drmTMB's mode
+            # noise. The tight check below does not depend on it.
+            @test haskey(ex, "residuals")
             if haskey(ex, "residuals")
+                z = residuals(fit; type = :quantile)
                 ref = Float64.(ex["residuals"]["pearson"])
-                @test maximum(abs.(residuals(fit; type = :quantile) .- ref)) <= 1e-6
+                @test maximum(abs.(z .- ref)) <= 1e-6
+                # Tight, and immune to drmTMB's mode noise: the exact
+                # conditional residual at drmTMB's stored estimates (AR1 / OU
+                # cells without a tree). Measured ≤ 2.1e-9 (ar1-gapped-ri), the
+                # agreement of the two packages' estimates.
+                if ex["fit"]["structure"] in ("ar1", "ou") && !haskey(ex["fit"], "tree_file")
+                    @test maximum(abs.(z .- temporal_dense_conditional_residuals(ex))) <= 1e-8
+                end
             end
             # drmTMB's mean-coefficient profile intervals (article cells and the
             # homtoep cells). Each package locates the endpoints with its own

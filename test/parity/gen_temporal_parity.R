@@ -12,9 +12,9 @@
 ## The input data are the committed CSVs in test/fixtures/temporal/ (see the
 ## README there for where each one comes from).
 ##
-## WHEN TO RERUN. The committed numbers come from drmTMB 07d1612ea, the final
-## head of drmTMB PR #1447 (stacked on #1446); they were first generated at
-## dc81bb368, an earlier head of the same PR. Once #1446 / #1447 merge,
+## WHEN TO RERUN. The committed numbers come from drmTMB 07d1612ea, the head of
+## open drmTMB PR #1447 as of 2026-10-02 (stacked on #1446); they were first
+## generated at dc81bb368, an earlier head of the same PR. Once #1446 / #1447 merge,
 ## reinstall drmTMB at the MERGED main SHA, rerun this script with that SHA,
 ## and confirm the Julia tests still pass (test/test_parity_temporal.jl and,
 ## with DRM_PARITY_TESTS=1, test/parity/runparity_temporal.jl). Rerun also
