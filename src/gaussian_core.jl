@@ -1552,6 +1552,13 @@ Tweedie (no closed-form CDF in `Distributions.jl`):
   TruncatedNegBinomial2, Binomial, BetaBinomial, CumulativeLogit (ordinal);
 - **atomic** (point-mass mixture; the mass is randomized across): ZeroOneBeta.
 
+Zero-inflated and hurdle Poisson / NegBinomial2 fits (`zi ~ …`, `hu ~ …`) are
+randomized within the jumps of the whole mixture CDF, zero part included:
+`F(y) = π + (1 − π)·F_c(y)` with zero-inflation probability `π`, and
+`F(0) = p₀`, `F(y) = p₀ + (1 − p₀)·F_t(y)` for `y ≥ 1` with hurdle probability
+`p₀`, where `F_c` is the count CDF at the fitted count mean and `F_t` its
+zero-truncated CDF.
+
 The per-family parameter → distribution map lives in `_conditional_dist`
 (reused by future `simulate`/PIT checks). Tweedie throws an `ArgumentError`.
 """
