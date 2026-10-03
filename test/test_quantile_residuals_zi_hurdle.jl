@@ -140,5 +140,21 @@ end
                 @test abnb[2] ≈ abpo[2] atol = 1e-10
             end
         end
+
+        # A count mean that underflowed to exactly 0: the zero-truncated part
+        # puts all its mass at y = 1, so the hurdle PIT interval at y = 1 is
+        # [p0, 1] for NB2 exactly as for Poisson (not the saturated [1, 1]).
+        μ = zeros(m)
+        for logσ in (-1.0, -30.0)
+            fnb = fake(NegBinomial2(), μ, Dict(:sigma => fill(exp(logσ), m), :hu => fill(0.3, m)))
+            fpo = fake(DRModels.Poisson(), μ, Dict(:hu => fill(0.3, m)))
+            abnb = DRModels._zi_hurdle_pit_interval(fnb, fnb.family, 2, 1; μ = μ, gsis = false, mix = nothing)
+            abpo = DRModels._zi_hurdle_pit_interval(fpo, fpo.family, 2, 1; μ = μ, gsis = false, mix = nothing)
+            @test abnb[1] ≈ 0.3 atol = 1e-12
+            @test abnb[2] ≈ 1.0 atol = 1e-12
+            @test abnb[1] ≈ abpo[1] atol = 1e-12
+            @test abnb[2] ≈ abpo[2] atol = 1e-12
+            @test all(isfinite, DRModels._quantile_residuals(fnb, StableRNG(4)))
+        end
     end
 end

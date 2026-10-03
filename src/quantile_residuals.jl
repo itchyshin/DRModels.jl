@@ -32,8 +32,7 @@
 #                  Gamma method and `_gamma_sigma_is_shape`.
 #   • Beta         Beta(μφ, (1−μ)φ),              φ = σ⁻²  (precision)
 #   • Poisson      Poisson(μ)
-#   • NegBinomial2 NegativeBinomial(φ, φ/(φ+μ)),  φ = scales[:sigma] **directly**
-#                  (the NB2 kernel stores size θ = exp(η_σ) in the sigma slot, NOT σ⁻²)
+#   • NegBinomial2 NegativeBinomial(φ, φ/(φ+μ)),  φ = σ⁻²  (size; scales[:sigma] = σ)
 #   • TruncNB2     truncated(NegativeBinomial(φ, p); lower = 0)   (support ≥ 1)
 #   • Binomial     Binomial(n, p),  p = μ (success prob), n = scales[:trials]
 #   • BetaBinomial BetaBinomial(n, μφ, (1−μ)φ),  φ = σ⁻², n = scales[:trials]
@@ -280,9 +279,13 @@ function _zi_hurdle_pit_interval(fit::DrmFit, fam, i, yi; μ, gsis, mix)
         "with a random effect has no σ_b-marginal PIT yet"))
     p0 = fit.scales[:hu][i]
     yi <= 0 && return 0.0, p0
+    # Floor μ at eps() for BOTH count families, so a count mean that underflowed
+    # to 0 gives the same zero-truncated limit (all mass at y = 1) for NB2 as for
+    # Poisson, instead of the NB2 helper's saturated (1, 1).
+    μi = max(μ[i], eps())
     at, bt = fam isa NegBinomial2 ?
-        _ztnb2_pit_interval(1 / (fit.scales[:sigma][i]^2), μ[i], yi) :
-        _ztpois_pit_interval(max(μ[i], eps()), yi)
+        _ztnb2_pit_interval(1 / (fit.scales[:sigma][i]^2), μi, yi) :
+        _ztpois_pit_interval(μi, yi)
     return p0 + (1 - p0) * at, p0 + (1 - p0) * bt
 end
 
