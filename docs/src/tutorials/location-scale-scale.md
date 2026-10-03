@@ -339,8 +339,13 @@ fit <- drmTMB(
 )
 confint(fit, parm = "fixef:sd_phylo:temp", method = "profile")
 confint(fit, parm = "fixef:sd_phylo:temp", method = "bootstrap", R = 199,
-        threads = TRUE)          # threaded refits
+        threads = TRUE)          # parallel only if JULIA_NUM_THREADS > 1
 ```
+
+`threads = TRUE` does not start threads by itself. Set `JULIA_NUM_THREADS`
+(for example to 4) before the first Julia call in the R session; otherwise the
+refits run serially and the result reports `julia.threaded` as `FALSE`. See
+drmTMB's [Using the Julia engine](https://itchyshin.github.io/drmTMB/articles/julia-engine.html).
 
 For the ecogeographical-rules formulas assessed here, the Julia and TMB fits
 gave identical log likelihoods.

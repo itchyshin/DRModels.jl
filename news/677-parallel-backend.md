@@ -1,0 +1,1 @@
+- **Docs: the large-data guide now names the parallel backend (#677).** `threads = true` uses Julia threads in one process; there is no Distributed.jl (`addprocs` / `@everywhere` / `pmap`) interface. The guide says how to avoid BLAS oversubscription and how to spread a simulation grid over independent Julia processes.
