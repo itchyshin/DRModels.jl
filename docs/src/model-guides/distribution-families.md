@@ -18,7 +18,7 @@ parameters a formula with `bf`.
 | Positive **with exact zeros** | `Tweedie()` | log | √dispersion `σ` + power `nu` ∈ (1,2) |
 | Strictly positive, right-skewed (multiplicative) | `LogNormal()` | identity on `log y` | SD of `log y`, `σ` (log) |
 | Counts (variance ≈ mean) | `Poisson()` | log | — |
-| Counts, overdispersed | `NegBinomial2()` | log | dispersion `θ` (log) |
+| Counts, overdispersed | `NegBinomial2()` | log | overdispersion scale `σ` (log); size `θ = 1/σ²` |
 | Counts with extra zeros | + `zi ~ …` modifier | logit on `π` | (on `Poisson` / `NegBinomial2`) |
 | Proportions in (0,1) | `Beta()` | logit | precision `φ = 1/σ²` |
 | Successes out of trials | `BetaBinomial()` | logit | overdispersion `φ = 1/σ²` (`cbind(s,f)`) |

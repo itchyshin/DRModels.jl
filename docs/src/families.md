@@ -21,8 +21,8 @@ parameters (`nu`, `zoi`, `coi`, ordinal cutpoints).
 | Strictly positive, right-skewed | `Gamma()` | log | shape via `α = 1/σ²` |
 | Positive **with exact zeros** | `Tweedie()` | log | √dispersion `σ` + power `ν ∈ (1,2)` |
 | Counts (variance ≈ mean) | `Poisson()` | log | — |
-| Counts, overdispersed | `NegBinomial2()` | log | dispersion `θ` (log) |
-| Positive counts (zero-truncated) | `TruncatedNegBinomial2()` | log | dispersion `θ` (log) |
+| Counts, overdispersed | `NegBinomial2()` | log | overdispersion scale `σ` (log); size `θ = 1/σ²` |
+| Positive counts (zero-truncated) | `TruncatedNegBinomial2()` | log | overdispersion scale `σ` (log); size `θ = 1/σ²` |
 | Positive counts, no overdispersion | `TruncatedPoisson()` | log | — |
 | Proportions in `(0,1)` | `Beta()` | logit | precision via `φ = 1/σ²` |
 | Successes out of trials | `Binomial()` | logit | — (`cbind(s,f)` or `0/1`) |
@@ -145,8 +145,9 @@ fitp = drm(bf(@formula(y ~ x)), Poisson(); data = (; y = yp, x))
 
 ### Negative-binomial — `NegBinomial2()`
 
-Overdispersed counts. Log link on the mean and a dispersion `θ` in the `sigma`
-slot (log link); variance `= μ + μ²/θ`, so `θ → ∞` recovers Poisson.
+Overdispersed counts. Log link on the mean; the `sigma` slot carries log `σ`
+(not log `θ`), with size `θ = 1/σ²`; variance `= μ + μ²/θ`, so `θ → ∞` recovers
+Poisson.
 
 ```@example fam
 Random.seed!(7)
