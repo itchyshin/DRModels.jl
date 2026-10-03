@@ -49,6 +49,42 @@ function _temporal_formula(text::AbstractString)
     return Core.eval(@__MODULE__, Expr(:macrocall, Symbol("@formula"), LineNumberNode(0), ex))
 end
 
+"""
+    temporal_dense_conditional_residuals(ex) -> Vector{Float64}
+
+The exact conditional residual `σ̂ V⁻¹(y − Xβ̂)` of an AR1 / OU cell without a
+tree, built densely from drmTMB's STORED estimates (`ex` is the parsed
+`expected.toml`): `V = σ̂²I` plus, per series, `sd²R + sd_iid²`, with
+`R = φ^|Δt|` (AR1) or `exp(−decay·|Δt|)` (OU). It uses none of drmTMB's
+modes, so it separates DRModels' residual from any inexactness in the modes
+drmTMB stores.
+"""
+function temporal_dense_conditional_residuals(ex)
+    f = ex["fit"]; t = ex["temporal"]
+    tcol = _temporal_time_column(f["julia_formula"])
+    data = temporal_parity_data(f["data_file"]; group = f["group"], time = tcol,
+                                structure = f["structure"])
+    g = data[Symbol(f["group"])]; tt = Float64.(data[Symbol(tcol)]); y = data[:y]
+    n = length(y)
+    Xβ = zeros(n)
+    for (k, v) in ex["coef"]
+        nm = replace(k, r"^mu_" => "")
+        Xβ .+= Float64(v) .* (nm == "(Intercept)" ? ones(n) : Float64.(data[Symbol(nm)]))
+    end
+    σ = Float64(t["sigma"]); sd = Float64(t["sd"]); sdi = Float64(get(t, "sd_iid", 0.0))
+    V = zeros(n, n)
+    for gv in unique(g)
+        idx = findall(==(gv), g)
+        D = abs.(tt[idx] .- tt[idx]')
+        R = f["structure"] == "ar1" ? Float64(t["phi"]) .^ D : exp.(-Float64(t["decay"]) .* D)
+        V[idx, idx] .= sd^2 .* R .+ sdi^2
+    end
+    for i in 1:n
+        V[i, i] += σ^2
+    end
+    return σ .* (V \ (y .- Xβ))
+end
+
 _reldiff(a, b) = abs(a - b) / max(abs(a), abs(b))
 
 """
