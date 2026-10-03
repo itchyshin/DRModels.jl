@@ -1,0 +1,1 @@
+- **Docs: one family count across the reference pages (#679, #683).** The model-specification page said "All 13 drmTMB families" and the API-stability page said "fourteen"; both now say fifteen response-family constructors, matching the README, the capability page and the stable-API test list (the fourteen under Response families plus `SkewNormal`).

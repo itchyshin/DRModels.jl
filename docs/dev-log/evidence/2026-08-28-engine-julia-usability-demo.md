@@ -265,4 +265,5 @@ Julia exit.
 - The engine="julia" fit is a first-class R object: print/summary/coef/fixef/vcov/logLik/nobs/sigma/residuals/predict(newdata) all exercised above.
 - Known wrinkle, stated: the sigma-block Wald SE is NA on this phylo route (summary says 'uncertainty: partial'); that block's uncertainty comes via method="profile".
 - Bootstrap R=199, same model+data: TMB 13.7 s · Julia single 5.1 s (2.7x) · Julia threads=TRUE 1.4 s (10x); 199/199 refits both engines; intervals agree to bootstrap MC variation.
+- Correction (2026-10-03, #689): this session ran Julia with one thread (`julia.threads` = 1 above), so the `threads = TRUE` call ran its refits serially. The 10x is warm serial Julia against TMB, not a threading gain; `threads = TRUE` parallelises only when `JULIA_NUM_THREADS` > 1 is set before Julia starts.
 - The Julia bootstrap is per-target by design (#460): parm = "fixef:mu:x".

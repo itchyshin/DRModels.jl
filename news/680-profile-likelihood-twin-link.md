@@ -1,0 +1,1 @@
+- **Docs: the profile-likelihood page links a drmTMB article that exists (#680).** Its status note pointed at a drmTMB `profile-likelihood` article that returns 404. It now links the drmTMB "First-week intervals: fit, profile, and boundary" article and the `profile.drmTMB` reference page.
