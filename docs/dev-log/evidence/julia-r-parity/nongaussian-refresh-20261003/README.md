@@ -20,15 +20,20 @@ below 1.1e-10.
 |---|---|
 | drmTMB checkout | `main` 0eb0467851cc2902556764bdca5441b7bc053be6 (Totoro `~/claude-mr/1442/main`) |
 | drmTMB build | private library `~/claude-mr/1442/Rlib-main`; see `drmtmb-provenance.toml` |
+| drmTMB build git SHA | `0eb0467851cc2902556764bdca5441b7bc053be6`, `GitDirty: FALSE` (the build's own `build-provenance.dcf`) |
 | drmTMB `code_hash` | `4c37c67c63ecba08ea16459250f80915ee0ee972c1030ac4df8855bbf95277b3` (`tools/drmtmb_provenance.R`) |
 | Native DLL sha256 (finite export) | `2028c2cf8afdc88e038707972755eda7ebb7739e9cf381cf5973c0b8faef7f2f` |
 | R / TMB | R 4.6.1 / TMB 1.9.25, Totoro, one BLAS/OMP thread |
 | Julia | 1.10.12 (fixtures and committed receipts); 1.13.1 rerun of every check |
 | DRModels.jl source | `origin/main` 959d71fb7; `src/` byte-identical in every run |
 
-drmTMB was always loaded from the private library, never from `~/R/lib`. Its
-dependencies (TMB, jsonlite, digest, JuliaCall, pkgload) come from the host
-library, as before.
+Only drmTMB came from the private library `~/claude-mr/1442/Rlib-main`; it was
+never loaded from `~/R/lib`. Every other R package loaded from Totoro's `~/R/lib`:
+TMB 1.9.25, JuliaCall 0.17.6, jsonlite 2.0.0, digest 0.6.39 and pkgload 1.5.1. The
+harness exports `R_LIBS_USER=/nonexistent`, but Totoro's `~/.Renviron` sets
+`R_LIBS_USER=~/R/lib`, which wins, so `.libPaths()` is `~/R/lib`,
+`/usr/local/lib/R/site-library`, `/usr/lib/R/site-library`, `/usr/lib/R/library`.
+Nothing was installed into `~/R/lib`.
 
 ## Generators (the repository's own, unmodified)
 
@@ -42,7 +47,7 @@ library, as before.
 | `finite-state/finite-native-003.json` | drmTMB `tools/export-finite-joint-reference.R` (runner sha256 `50976bdd…`, unchanged) |
 | `finite-state/finite-reference-003.toml` | `tools/finite_reference_to_toml.py` |
 | `finite-state/finite-fit-002.toml`, `finite-julia-003.toml` | `tools/check_finite_joint_fit.jl`, `tools/check_finite_joint_reference.jl` |
-| `finite-frontends/finite-public-005.json` | drmTMB `tools/run-julia-joint-finite-public.R` |
+| `finite-frontends/finite-public-007.json` (new receipt; 005 is historical) | drmTMB `tools/run-julia-joint-finite-public.R` |
 | `joint-bridge/joint-public-003.json` | drmTMB `tools/run-julia-joint-public.R` |
 | `joint-prototype/joint-{fit,native}-003.toml`, `joint-frontend/joint-frontend-fit-002.toml` (= `joint-bridge/joint-direct-bridge-002.toml`) | `tools/check_joint_predictor_fit.jl`, `check_joint_predictor_reference.jl`, `check_joint_frontend_fit.jl` |
 
@@ -122,8 +127,68 @@ receipt fails its `runtime` field by design. Its parity numbers match 1.10.12
 - Three negative controls had assumed a failing native verdict. They now
   invert the honest verdict or offset the reported error:
   `check_finite_public_receipt.py` (`native_status`) and
-  `test_finite_fit_receipt.py` (`false_pass`, `reported_error`). The battery
-  counts (17 and 17) are unchanged.
+  `test_finite_fit_receipt.py` (`false_pass`, `reported_error`). On their own
+  these only test the harmless direction (a false FAIL); see the review fixes
+  below, which add the forged-PASS direction.
+
+## Review fixes (PR #934 review, 2026-10-03)
+
+- **Forged-PASS and threshold controls (B1).** With the honest verdict now PASS,
+  a validator that always says PASS, or that loosens 4e-6 to 1e-3, passed both
+  batteries. Each battery now builds a temporary copy of the native anchor whose
+  theta is moved, updates the receipt's reported theta error to the honest value
+  against that copy, and keeps the verdict at PASS. Two such receipts must be
+  rejected on the verdict check itself: anchor theta + 1e-5, and a theta error of
+  4.004e-6 (just above the bar). A third at 3.996e-6 must be accepted, which shows
+  the other two fail only on the verdict. Battery sizes: `test_finite_fit_receipt.py`
+  17 → 20 (`FINITE_FIT_NEGATIVE_CONTROLS_PASS 20`), `check_finite_public_receipt.py
+  --damage` 17 → 20 (`FINITE_PUBLIC_DAMAGES_REJECTED 20`). The same gap existed in
+  the joint public bridge battery, so it gets the same three controls (native
+  theta moved in the receipt, native log-likelihood recomputed):
+  `test_joint_bridge_public_receipt.py` 21 → 24
+  (`JOINT_PUBLIC_NEGATIVE_CONTROLS_PASS mutations=24`). Ledger EXPECT strings that
+  pin 17, 17 or 21 must move to 20, 20 and 24. Mutation results are in
+  `mutation-before.txt` and `mutation-after.txt`.
+- **Receipt numbering (M1).** The refreshed public receipt is the new file
+  `finite-frontends/finite-public-007.json`. `finite-public-005.json` is restored
+  byte-for-byte from `main`; it and 006 are historical FAIL receipts against the
+  pre-polish anchor. The progress ledger, `final_checks.sh` and the
+  `finite-frontends/` README point at 007.
+- **Path portability (M2).** See "Path portability" below.
+- **Newton cross-check (m1).** Pre-polish anchor + one independent Newton step
+  equals the polished anchor to 4.5e-11 (ordinal) and 9.9e-11 (categorical)
+  (`newton_xcheck.py`, `newton-xcheck-out.txt`; also in `../finite-stopping/`).
+- **Provenance (m2, m3).** The drmTMB build's git SHA and dirty flag are in
+  `drmtmb-provenance.toml`; the host-library packages are named above.
+
+The validators and batteries were rerun from a different checkout path
+(`~/claude-606c/tree`) on Julia 1.10.12 and 1.13.1: `summary-review-110.txt`,
+`summary-review-113.txt`.
+
+## Path portability
+
+The runner receipts record absolute paths from the machine that wrote them
+(`/home/snakagaw/claude-606b/after/...` for Julia, `/home/snakagaw/claude-mr/1442/main/...`
+for drmTMB). The receipt bytes are evidence and were not rewritten. Instead, the
+three validators that compared those paths now compare source manifests keyed by
+root and repository-relative path, with the same per-file sha256
+(`tools/receipt_paths.py`). The recorded Julia root is the directory of the loaded
+`src/DRModels.jl`, and the recorded drmTMB root is the directory of the recorded
+`NAMESPACE`; every recorded path must sit under one of them.
+
+| Receipt | Absolute paths recorded | Validator | Portable now |
+|---|---|---|---|
+| `finite-state/finite-fit-002.toml` | `runtime.loaded_source` | `check_finite_fit_receipt.py` | yes (was: exact path) |
+| `finite-frontends/finite-public-007.json` | `runtime.source`, `source_before/after` keys | `check_finite_public_receipt.py` | yes (was: exact paths) |
+| `joint-bridge/joint-public-003.json` | `runtime.source`, `source_before/after` keys | `check_joint_bridge_public_receipt.py` | yes (was: exact paths) |
+| `joint-prototype/joint-{fit,native}-003.toml`, `joint-frontend/joint-frontend-fit-002.toml` (= `joint-bridge/joint-direct-bridge-002.toml`) | `loaded_source` only | `check_joint_predictor_{fit_,}receipt.py`, `check_joint_frontend_fit_receipt.py` (relative-path manifests) | yes (path never checked) |
+| `finite-state/finite-julia-003.toml` | `loaded_source` only | none in Python; `tools/check_finite_joint_reference.jl` asserts while writing it | not applicable |
+| `missing-predictor-oracle/native-mi-oracle-003.json`, `joint-frontend/joint-native-uncertainty-current-002.json` | private drmTMB library paths | the R probes compare md5 of the loaded files | yes on any host with that build; the library is an argument |
+
+What this does not cover: the drmTMB checkout is still a validator argument, and
+its `R/`, `NAMESPACE`, `src/` and runner bytes must match the recorded hashes, so
+the public checks need a drmTMB checkout at 0eb0467851. The finite-fit validator
+still pins `julia_version == "1.10.12"`.
 
 ## Not covered
 
@@ -136,8 +201,7 @@ receipt fails its `runtime` field by design. Its parity numbers match 1.10.12
 - The evidence-set `manifest.json` files in `joint-bridge/`, `joint-prototype/`,
   `joint-frontend/` and `missing-predictor-oracle/` are dated snapshots and were
   not rewritten. `sha256.txt` here lists the current hashes.
-- `joint-public-003.json` and `finite-public-005.json` pin absolute source paths
-  under `/home/snakagaw/claude-606b/after`, as earlier receipts pinned
-  `/private/tmp/...`. They validate only against that tree.
+- Receipt bytes still record absolute Totoro paths; the validators no longer
+  depend on them (see "Path portability").
 - The full `Pkg.test()` suite was not run. Only the 12 affected
   `test_joint_missing_*` files were run.

@@ -23,4 +23,8 @@ python3 tools/check_joint_bridge_public_receipt.py docs/dev-log/evidence/julia-r
 ```
 Add --native to exercise the REQUIRED native gate (passing since 2026-10-03). It is not optional
 programme scope. Run test_joint_bridge_public_receipt.py with the same arguments
-normally and with python3 -O to exercise the deliberately damaged receipts (21).
+normally and with python3 -O to exercise the deliberately damaged receipts (24: 21
+plus a forged native PASS at +1e-5, a forged PASS just above 4e-6, and a
+just-below positive control, added in the PR #934 review). DRMTMB_ROOT and
+DRMODELS_JL_ROOT can be any checkouts with the recorded source bytes; the checker
+compares repository-relative paths and sha256, not the recorded absolute paths.

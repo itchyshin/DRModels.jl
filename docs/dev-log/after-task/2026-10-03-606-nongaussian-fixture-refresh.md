@@ -21,8 +21,9 @@ change.
     `native_uncertainty.toml` was exported.
   - finite: `finite-native-003.json`, then `finite-reference-003.toml`.
 - Receipts were regenerated against the new fixtures:
-  - in place: `finite-fit-002.toml`, `finite-public-005.json`,
-    `joint-public-003.json`;
+  - in place: `finite-fit-002.toml`, `joint-public-003.json`;
+  - the public receipt as the new `finite-public-007.json` (after review; 005
+    restored from `main`);
   - new files: `finite-julia-003.toml`, `joint-fit-003.toml`,
     `joint-native-003.toml`, and `joint-frontend-fit-002.toml` (the same file
     as `joint-direct-bridge-002.toml`).
@@ -134,3 +135,23 @@ off before blaming the engine.
   - warm performance;
   - S10 leaves;
   - any programme gate G0–G8.
+
+## Addendum: PR #934 review fixes (2026-10-03)
+
+- **B1.** Both finite batteries, and the joint public bridge battery (same gap),
+  gain a forged-PASS control (native theta +1e-5), a threshold control (theta
+  error 4.004e-6) and a just-below positive control (3.996e-6). Counts: 17 → 20,
+  17 → 20, 21 → 24. Mutation test: mutants A, D, F, G survived before and are
+  killed after; B, C, E stay killed; the joint verdict mutants H, I survived the
+  joint battery before this fix and are killed after. Evidence:
+  `nongaussian-refresh-20261003/mutation-{before,after}.txt`.
+- **M1.** The refreshed public receipt is `finite-public-007.json`; 005 is restored
+  byte-for-byte from `main`.
+- **M2.** `tools/receipt_paths.py`: the finite-fit, finite-public and joint-bridge
+  validators compare source by repository-relative path and sha256. Receipt bytes
+  are unchanged.
+- **m1–m3.** Stopping README points at the pre-polish copy and records the Newton
+  cross-check (4.5e-11, 9.9e-11); drmTMB git SHA added to the provenance file;
+  host-library packages named.
+- Checks rerun from `~/claude-606c/tree` on Julia 1.10.12 and 1.13.1
+  (`summary-review-{110,113}.txt`).

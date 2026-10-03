@@ -4,17 +4,18 @@ import copy,json,sys
 from pathlib import Path
 from check_finite_native_reference import ROOT,REF,REFERENCE_SHA256,sha,require,near,vec,matrix,row,nll,permutation
 from check_finite_fit_receipt import inverse_hessian_check
+import receipt_paths
 
 def check(r,rroot):
     require(r.get('fixture_sha256')==REFERENCE_SHA256==sha(REF),'native fixture hash')
     require(r.get('runner_sha256')==sha(rroot/'tools/run-julia-joint-finite-public.R'),'runner hash')
-    files=list((rroot/'R').glob('*.R'))+[rroot/'NAMESPACE']+list((ROOT/'src').rglob('*.jl'))
-    source={str(p.resolve()):sha(p) for p in files}
-    require(r.get('source_before')==source==r.get('source_after') and r.get('source_unchanged') is True,'current source')
+    # Path-portable: recorded absolute paths are re-keyed by root and repo-relative
+    # path; the per-file sha256 values must equal this checkout's (receipt_paths.py).
+    runtime=r.get('runtime',{});jroot=receipt_paths.loaded_root(runtime.get('source'))
+    source=receipt_paths.local(list((rroot/'R').glob('*.R'))+[rroot/'NAMESPACE'],rroot,list((ROOT/'src').rglob('*.jl')),ROOT,sha)
+    require(r.get('source_before')==r.get('source_after') and receipt_paths.recorded(r.get('source_before'),jroot)==source and r.get('source_unchanged') is True,'current source')
     require(r.get('native_tolerance')==4e-6 and r.get('adapter_tolerance')==1e-10,'fixed tolerances')
-    runtime=r.get('runtime',{})
     require(runtime.get('threads')==1 and runtime.get('blas')==1,'runtime threads')
-    require(Path(runtime.get('source','')).resolve()==ROOT/'src/DRModels.jl','loaded source')
     require(r.get('status')=='PASS' and set(r.get('cases',{}))=={'ordinal','categorical'},'case denominator')
     reference=json.loads(REF.read_text());verdict={}
     for kind,c in reference['cases'].items():
@@ -121,7 +122,43 @@ def damages(r,rroot):
         try:check(damaged,rroot)
         except (ValueError,KeyError,TypeError,IndexError):continue
         raise ValueError('damaged receipt accepted')
-    return len(mutations)
+    return len(mutations)+verdict_controls(r,rroot)
+
+def against_moved_anchor(r,rroot,move):
+    # Check r against a temporary copy of the native anchor whose theta is moved;
+    # the reported theta error is updated to the honest value, the verdict is not.
+    global REF,REFERENCE_SHA256
+    import tempfile
+    anchor=json.loads(REF.read_text());forged=copy.deepcopy(r)
+    for kind,c in anchor['cases'].items():
+        v=forged['cases'][kind];raw=v['raw_theta']
+        require(v['native_status']=='PASS','verdict controls need an honest PASS receipt')
+        c['theta']=[move(a,t) for a,t in zip(c['theta'],raw)]
+        v['native_errors']['theta']=max(abs(a-b) for a,b in zip(raw,c['theta']))
+    saved=REF,REFERENCE_SHA256
+    with tempfile.TemporaryDirectory() as tmp:
+        moved=Path(tmp)/REF.name;moved.write_text(json.dumps(anchor))
+        REF,REFERENCE_SHA256=moved,sha(moved);forged['fixture_sha256']=REFERENCE_SHA256
+        try:return check(forged,rroot)
+        finally:REF,REFERENCE_SHA256=saved
+
+def verdict_controls(r,rroot):
+    # PR #934 review B1: once the honest verdict is PASS, flipping native_status
+    # only tests a false FAIL. A validator that always says PASS, or that loosens
+    # 4e-6, accepts these forged-PASS receipts.
+    controls=[lambda a,t:a+1e-5,              # genuine 1e-5 native break
+              lambda a,t:t+4e-6*(1+1e-3)]     # just above the bar: 4.004e-6
+    for move in controls:
+        try:against_moved_anchor(r,rroot,move)
+        except ValueError as e:
+            if str(e)!='honest native verdict':raise ValueError('forged PASS rejected for the wrong reason: '+str(e))
+            continue
+        raise ValueError('forged PASS accepted')
+    # Positive control: just below the bar (3.996e-6) the same forgery is honest
+    # and must be accepted, so the controls above fail only on the verdict.
+    if against_moved_anchor(r,rroot,lambda a,t:t+4e-6*(1-1e-3))!={'ordinal':'PASS','categorical':'PASS'}:
+        raise ValueError('below-threshold control not accepted as PASS')
+    return len(controls)+1
 
 if __name__=='__main__':
     receipt=json.loads(Path(sys.argv[1]).read_text());rroot=Path(sys.argv[2]).resolve()

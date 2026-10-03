@@ -21,8 +21,10 @@ prepared cases do not close entire capability axes.
   imputed SDs and availability/status masks, predictions, native errors and losses.
   Both fits converged with observed-information covariance; numerical independent
   Hessian inversion checks pass (absolute max|HV-I|<=1e-4, predeclared).
-- Native oracle18damage controls and fit oracle17damage controls pass normally and
-  with Python assertions disabled. The fit oracle rejects arbitrary1000I covariance,
+- Native oracle18damage controls and fit oracle 20 damage controls pass normally and
+  with Python assertions disabled (17 until the PR #934 review added a forged-PASS
+  control at 1e-5, a just-above-4e-6 threshold control and a just-below positive
+  control). The validators compare source by repository-relative path and sha256. The fit oracle rejects arbitrary1000I covariance,
   changed SDs/masks and dishonest success flags. All raw failures are retained.
 - The updated developer page executes its3examples (`finite-kernel-002` build).
   This is source-build evidence only, not rendered/full-site/deployment evidence.
