@@ -116,4 +116,29 @@ end
             @test err < 1e-12
         end
     end
+
+    # Hurdle NB2 at extreme dispersion (size r = 1/σ² ≈ 1e17–1e43, where
+    # Distributions' NB2 CDF rounds to 1): the positive part reuses the log-space
+    # zero-truncated NB2 CDF, so the PIT stays finite and matches the r → ∞
+    # limit, the hurdle Poisson.
+    @testset "hurdle NB2 at extreme dispersion" begin
+        y = [0.0, 1.0, 2.0, 5.0, 10.0]; m = length(y)
+        fake(fam, μ, scales) = DRModels.DrmFit(fam, Pair{Symbol,UnitRange{Int}}[:mu => 1:1],
+            Pair{Symbol,Vector{String}}[:mu => ["(Intercept)"]], [0.0], fill(NaN, 1, 1), NaN, m, true,
+            Dict(:mu => μ), Dict(:mu => y), scales)
+        for logσ in (-20.0, -30.0, -50.0), μ0 in (0.5, 5.0, 50.0)
+            μ = fill(μ0, m)
+            fnb = fake(NegBinomial2(), μ, Dict(:sigma => fill(exp(logσ), m), :hu => fill(0.3, m)))
+            fpo = fake(DRModels.Poisson(), μ, Dict(:hu => fill(0.3, m)))
+            @test all(isfinite, DRModels._quantile_residuals(fnb, StableRNG(3)))
+            for i in 1:m
+                yi = round(Int, y[i])
+                abnb = DRModels._zi_hurdle_pit_interval(fnb, fnb.family, i, yi; μ = μ, gsis = false, mix = nothing)
+                abpo = DRModels._zi_hurdle_pit_interval(fpo, fpo.family, i, yi; μ = μ, gsis = false, mix = nothing)
+                @test all(isfinite, abnb)
+                @test abnb[1] ≈ abpo[1] atol = 1e-10
+                @test abnb[2] ≈ abpo[2] atol = 1e-10
+            end
+        end
+    end
 end
