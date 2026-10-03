@@ -1542,6 +1542,22 @@ Model residuals. `type` selects the kind:
   probability-integral transform of `y_i`. Under a correct model the `r_i`
   are i.i.d. standard normal. Univariate only.
 
+With one random intercept, `F_i` integrates it out over its fitted SD
+(32-node Gauss–Hermite), so each `r_i` is approximately standard normal but
+residuals of one group stay correlated:
+
+- **on the mean**: any lone mean random intercept, including a `phylo()` or
+  `relmat()` term. The fitted SD `σ̂_b` is used as every observation's
+  random-effect SD, which is exact when the relatedness matrix has a unit
+  diagonal (for example an ultrametric tree of height 1);
+- **on the scale**, Gaussian `sigma ~ 1 + (1 | g)`: the log-σ intercept, so
+  `F_i` mixes `N(μ_i, (σ_i e^b)²)` over `b ~ N(0, τ̂²)`.
+
+drmTMB's quantile residuals for these fits instead condition on the fitted
+modes. Other random-effect shapes (crossed, correlated slopes, a mean and a
+`sigma` intercept together) and CumulativeLogit fits are judged with the
+random effects set to 0.
+
 Quantile residuals are implemented for every DRModels.jl response family except
 Tweedie (no closed-form CDF in `Distributions.jl`):
 

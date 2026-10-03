@@ -141,14 +141,23 @@ _pit_obs(::Any, i; obs, scales)          = obs[:mu][i]
 # A future `type = :quantile, marginal = false` (or conditional-mode) variant is
 # tracked separately once #759 wires non-Gaussian `ranef()`.
 #
-# Only the SINGLE ordinary random intercept case is marginalised (a lone
+# Only the SINGLE ordinary random intercept ON THE MEAN is marginalised (a lone
 # `:resd` block with exactly one grouping name — the shape every `_fit_*_ranef`
 # GLMM produces, and also an ultrametric-tree phylo/relmat random intercept
 # whose per-tip marginal variance equals σ_b² when the tree height is 1, the
 # convention this package documents elsewhere). Crossed `(1|g)+(1|h)`,
-# correlated `(1+x|g)` (`:recov`), and families with no verified link mapping
-# below keep the previous fixed-effect-only reference rather than risk a wrong
-# marginalisation; `_ranef_link` returning `nothing` is exactly that guard.
+# correlated `(1+x|g)` (`:recov`), mean + sigma `(1|g)` pairs (two names), and
+# families with no verified link mapping below keep the previous
+# fixed-effect-only reference rather than risk a wrong marginalisation;
+# `_ranef_link` returning `nothing` is exactly that guard.
+#
+# A lone random intercept on log σ (`sigma ~ 1 + (1 | g)`) also stores one
+# `:resd` block, named `<g>_logsigma` (#322). It is NOT a mean intercept
+# (#923). For a Gaussian fit it is integrated out of the SCALE instead,
+# σ_i e^b with b ~ N(0, τ²), on the same 32 nodes. drmTMB's quantile residual
+# for this model conditions on the fitted log-σ modes instead (its
+# `predict(dpar = "sigma")` adds them); DRModels.jl keeps the population-level
+# reference it uses for the mean intercept.
 _ranef_link(::Poisson) = (μ -> log(max(μ, eps())), exp)
 _ranef_link(::NegBinomial2) = (μ -> log(max(μ, eps())), exp)
 _ranef_link(::TruncatedNegBinomial2) = (μ -> log(max(μ, eps())), exp)
@@ -167,33 +176,44 @@ _ranef_link(fam) = nothing
 # reused unchanged to construct one quadrature node's conditional distribution.
 _at_index(d::Dict, i) = Dict(k => (v isa AbstractVector ? [v[i]] : v) for (k, v) in d)
 
-# The single ordinary `(1 | g)` block on the mean, or `nothing`. Deliberately
-# excludes crossed (two names) and correlated-slope (`:recov`) blocks.
-function _ordinary_resd_range(fit::DrmFit)
+# The single ordinary `(1 | g)` block and the axis its intercept is on (`:mu`,
+# or `:sigma` for a `<g>_logsigma` block), or `nothing`. Deliberately excludes
+# crossed and mean + sigma pairs (two names) and correlated-slope (`:recov`)
+# blocks.
+function _ordinary_resd_block(fit::DrmFit)
     for (p, r) in fit.blocks
-        p === :resd && length(r) == 1 && return r
+        (p === :resd && length(r) == 1) || continue
+        nm = last(first(cn for cn in fit.coefnames if first(cn) === :resd))[1]
+        return (range = r, axis = endswith(nm, "_logsigma") ? :sigma : :mu)
     end
     return nothing
 end
 
 # Precomputed marginalisation context for `_cdf_value`, or `nothing` when the
-# fit has no single ordinary random intercept on the mean, or the family has no
-# verified link mapping above.
+# fit has no single ordinary random intercept, or the family has no verified
+# mapping for its axis: the links above for the mean, Gaussian only for log σ
+# (the one family whose `drm` route fits `sigma ~ 1 + (1 | g)`; the
+# non-Gaussian σ-axis route `_fit_sigma_axis_re` keeps b = 0).
 function _ranef_marginal_mix(fit::DrmFit, fam, μ)
-    r = _ordinary_resd_range(fit)
-    r === nothing && return nothing
+    blk = _ordinary_resd_block(fit)
+    blk === nothing && return nothing
+    σb = exp(fit.theta[blk.range[1]])
+    z, w = _gauss_hermite(32)
+    if blk.axis === :sigma
+        fam isa Gaussian || return nothing
+        return (axis = :sigma, rt2σb = sqrt(2.0) * σb, z = z, wk = w ./ sqrt(π))
+    end
     linkpair = _ranef_link(fam)
     linkpair === nothing && return nothing
     link, invlink = linkpair
-    σb = exp(fit.theta[r[1]])
     eta0 = [link(μ[i]) for i in eachindex(μ)]
-    z, w = _gauss_hermite(32)
-    return (invlink = invlink, eta0 = eta0, rt2σb = sqrt(2.0) * σb, z = z, wk = w ./ sqrt(π))
+    return (axis = :mu, invlink = invlink, eta0 = eta0, rt2σb = sqrt(2.0) * σb,
+            z = z, wk = w ./ sqrt(π))
 end
 
 # CDF at `yval` for observation `i`: the plain per-family conditional
-# distribution (`mix === nothing`), or the σ_b-marginalised mixture over the
-# random intercept's 32 Gauss–Hermite nodes (#760).
+# distribution (`mix === nothing`), or the mixture over the random intercept's
+# 32 Gauss–Hermite nodes, on the mean (#760) or on log σ (#923).
 function _cdf_value(fam, i, yval; μ, scales, obs, gsis, mix)
     if mix === nothing
         d = _conditional_dist(fam, i; μ = μ, scales = scales, obs = obs, gamma_sigma_is_shape = gsis)
@@ -201,6 +221,15 @@ function _cdf_value(fam, i, yval; μ, scales, obs, gsis, mix)
     end
     acc = 0.0
     scales_i = _at_index(scales, i); obs_i = _at_index(obs, i)
+    if mix.axis === :sigma
+        σ0 = scales_i[:sigma][1]
+        @inbounds for k in eachindex(mix.z)
+            scales_i[:sigma][1] = σ0 * exp(mix.rt2σb * mix.z[k])
+            d = _conditional_dist(fam, 1; μ = [μ[i]], scales = scales_i, obs = obs_i, gamma_sigma_is_shape = gsis)
+            acc += mix.wk[k] * Distributions.cdf(d, yval)
+        end
+        return acc
+    end
     @inbounds for k in eachindex(mix.z)
         μk = mix.invlink(mix.eta0[i] + mix.rt2σb * mix.z[k])
         d = _conditional_dist(fam, 1; μ = [μk], scales = scales_i, obs = obs_i, gamma_sigma_is_shape = gsis)
