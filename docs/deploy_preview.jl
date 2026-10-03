@@ -1,5 +1,9 @@
 # deploy_preview.jl — publish an ALREADY-BUILT docs/build to previews/PR<N>.
 #
+# Since #757 the main/tag `docs-deploy` job uses it too: Documenter's deploy_folder
+# reads the run's event and ref, so the same call publishes dev/ on a push to main,
+# vX.Y.Z/ (+ stable/) on a version tag, and previews/PR<N>/ on a pull request.
+#
 # WHY A SECOND ENTRY POINT rather than re-running make.jl. #750 took the required
 # `docs` check out of the repo-wide gh-pages serialisation group by making a
 # pull_request run build-only. That fixed the eviction that blocked PR #748 thirty

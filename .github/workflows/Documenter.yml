@@ -1,9 +1,11 @@
 name: Documenter
-# Single cheap Linux job. Deploys dev docs on push to main (keeps the site
-# current) and release docs on version tags. On a PR it BUILDS ONLY -- no
-# gh-pages write, so the required check cannot be evicted from the deploy
-# queue (see the concurrency block below). The
-# DocumenterVitepress (npm) build uses Node from NodeJS_20_jll — no setup-node.
+# Build once, deploy separately (#757). The REQUIRED `docs` job only BUILDS --
+# on every event -- and never touches gh-pages, so it never joins the repo-wide
+# gh-pages serialisation group and can never be evicted while pending. Two
+# non-required jobs publish the artefact `docs` uploaded, WITHOUT rebuilding:
+#   docs-deploy  -- push to main (dev docs) and version tags (vX.Y.Z + stable)
+#   docs-preview -- same-repo pull requests (previews/PR<N>)
+# The DocumenterVitepress (npm) build uses Node from NodeJS_20_jll — no setup-node.
 on:
   push:
     branches: [main]
@@ -13,44 +15,45 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: docs-${{ github.ref }}
-  # Cancel superseded runs on PR refs only. On `main` every push must run to
-  # completion: on 2026-09-02 five merges inside two minutes cancelled each
-  # other's docs run, and a :missing_docs failure that entered at the first of
-  # them stayed invisible until the last push happened to finish (#589/#590).
+  # PR runs share a per-ref group and cancel superseded runs: only the newest
+  # commit of a PR matters.
+  #
+  # Every other run gets a group unique to itself (#757). On `main` every push
+  # must BUILD to completion: on 2026-09-02 five merges inside two minutes
+  # cancelled each other's docs run, and a :missing_docs failure that entered at
+  # the first of them stayed invisible until the last push happened to finish
+  # (#589/#590). A shared per-ref group cannot guarantee that even with
+  # cancel-in-progress false, because a group holds one running + one PENDING run
+  # and a third arrival evicts the pending one. That matters more now that a main
+  # run stays in progress while its docs-deploy job waits for the gh-pages group:
+  # a shared `docs-refs/heads/main` group would evict the NEXT push's whole run --
+  # build included -- which is exactly the hole #757 closes. gh-pages writes are
+  # serialised by the job-level `docs-gh-pages-deploy` group instead.
+  group: ${{ github.event_name == 'pull_request' && format('docs-{0}', github.ref) || format('docs-run-{0}', github.run_id) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   docs:
     runs-on: ubuntu-latest
-    # Only a run that DEPLOYS joins the repo-wide serialisation group.
+    # The REQUIRED gate. It BUILDS on every event and never deploys, so it never
+    # joins the repo-wide gh-pages group and gets a group unique to its own run.
     #
-    # Why the group exists (#654): the workflow-level group above is keyed on
-    # `github.ref`, so two different refs run at once -- and both push to the
-    # single shared `gh-pages` ref. That raced on 2026-09-05 (#650):
-    #   ! [remote rejected] HEAD -> gh-pages
-    #     (cannot lock ref 'refs/heads/gh-pages': is at 2aa387ee8 but expected a2fa18165)
+    # Why that group matters (#654/#750/#757): the `docs-gh-pages-deploy` group
+    # serialises gh-pages writes (two runs both pushing gh-pages raced on
+    # 2026-09-05, #650: `cannot lock ref 'refs/heads/gh-pages'`). But a group
+    # holds at most one running + one PENDING job, and per GitHub's concurrency
+    # reference "any existing pending job or workflow in the same concurrency
+    # group will be canceled" -- `cancel-in-progress: false` protects the RUNNING
+    # job only. A required check inside that group is evicted under load: PR #748
+    # was cancelled 30+ times (#750), and main run 36381800413 waited an hour and
+    # was then cancelled by the next push, so a :missing_docs break at that commit
+    # was never reported (#757).
     #
-    # Why #654 was only half a fix: `cancel-in-progress: false` protects the
-    # RUNNING job, but says nothing about a PENDING one. Per GitHub's concurrency
-    # reference, "any existing pending job or workflow in the same concurrency
-    # group will be canceled and the new queued job or workflow will take its
-    # place" -- a default that `cancel-in-progress` does not switch off. A group
-    # holds at most one running + one pending job, so under load a third arrival
-    # evicts whoever was waiting. `docs` is REQUIRED and a cancelled check never
-    # reports success, so PR #748 was evicted 30+ times in a row and could not
-    # merge, through no fault of its own.
-    #
-    # The fix is to keep the REQUIRED gate out of the group entirely. A
-    # pull_request run is build-only (DRM_DOCS_DEPLOY=false below), never touches
-    # gh-pages, and therefore needs no serialisation -- it gets a group unique to
-    # its own run and can never be evicted. Pushes to main, version tags and
-    # workflow_dispatch still deploy, and they still serialise exactly as before.
-    #
-    # `cancel-in-progress: false` stays load-bearing for those deploying runs: a
-    # cancelled run reports as cancelled, the same shape as #589/#590 above.
+    # #750 took PR runs out of the group; #757 does the same for main and tags.
+    # Deployment moved to `docs-deploy` / `docs-preview` below, which carry the
+    # group and are NOT required. An eviction there loses a deploy, never a check.
     concurrency:
-      group: ${{ github.event_name == 'pull_request' && format('docs-build-{0}', github.run_id) || 'docs-gh-pages-deploy' }}
+      group: docs-build-${{ github.run_id }}
       cancel-in-progress: false
     permissions:
       contents: write
@@ -75,12 +78,17 @@ jobs:
             using Pkg
             Pkg.develop(PackageSpec(path = pwd()))
             Pkg.instantiate()'
-      - name: Build (and deploy on push to main / tag / dispatch)
+      - name: Build (never deploys; see docs-deploy / docs-preview)
         env:
+          # The tokens stay: makedocs asks Documenter's deploy_folder for the
+          # deploy decision at BUILD time, and that decision writes bases.txt
+          # (dev / previews/PR<N> / vX.Y.Z + stable). Without credentials the
+          # decision is "do not deploy" and the artefact would carry the wrong
+          # bases. Nothing in this step pushes to gh-pages.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
-          # Build-only on pull_request: see the concurrency comment above.
-          DRM_DOCS_DEPLOY: ${{ github.event_name != 'pull_request' }}
+          # Build-only on EVERY event: see the concurrency comment above.
+          DRM_DOCS_DEPLOY: 'false'
         run: julia --project=docs docs/make.jl
 
       - name: Audit rendered public documentation
@@ -98,9 +106,9 @@ jobs:
             --deployment-root-target /DRModels.jl/versions.js \
             --report docs/build/rendered-docs-audit.json
 
-      # Hand the BUILT site to the preview job (pull_request only). deploydocs
-      # publishes what is in `target` without rebuilding, so the preview is
-      # byte-for-byte what this required check measured.
+      # Hand the BUILT site to docs-deploy (main / tags) or docs-preview (PRs).
+      # deploydocs publishes what is in `target` without rebuilding, so what is
+      # published is byte-for-byte what this required check measured.
       #
       # `docs/build` must be restored to the SAME RELATIVE PATH on the other side:
       # deploydocs reads joinpath(root, target, "bases.txt") and deploys target/1,
@@ -108,8 +116,7 @@ jobs:
       # path: docs/build there. include-hidden-files keeps dotfiles the VitePress
       # output relies on. retention-days: 1 -- this artefact is a handoff between
       # two jobs of one run, not something to keep.
-      - name: Upload built docs for the preview job
-        if: github.event_name == 'pull_request'
+      - name: Upload built docs for the deploy / preview job
         uses: actions/upload-artifact@v6
         with:
           name: docs-build-${{ github.run_id }}
@@ -180,6 +187,73 @@ jobs:
             Pkg.develop(PackageSpec(path = pwd()))
             Pkg.instantiate()'
       - name: Deploy the preview (no rebuild)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
+        run: julia --project=docs docs/deploy_preview.jl
+
+  # ---------------------------------------------------------------------------
+  # MAIN + TAG DEPLOYS (#757) -- the push-side twin of docs-preview above, and
+  # likewise NOT required.
+  #
+  # It publishes the artefact the required `docs` job built and audited, without
+  # rebuilding, via the same docs/deploy_preview.jl entry point. Documenter's
+  # deploy_folder reads the event and ref of THIS run, so the same call deploys:
+  #   push to main -> dev/
+  #   push of tag vX.Y.Z -> vX.Y.Z/ and, when no higher release tag exists,
+  #                         stable/ (bases.txt was written by the build job)
+  #
+  # It carries the gh-pages serialisation group, so two quick pushes to main
+  # queue here: the first deploy runs, the second waits, and a third arrival
+  # evicts the waiting one. That eviction is harmless for main (the newer deploy
+  # supersedes it) and is no longer silent about the CHECK, because `docs` has
+  # already reported for every commit. It is the one case to watch on a release:
+  # if a tag's deploy is evicted, /stable is not updated -- re-run this job from
+  # the tag's run (the artefact is kept for a day) or dispatch the workflow on
+  # the tag ref.
+  #
+  # workflow_dispatch on main or on a tag deploys too, as it did before #757;
+  # that is the recovery path. Dispatch on any other ref only builds.
+  docs-deploy:
+    needs: docs
+    if: >-
+      github.event_name != 'pull_request' &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-latest
+    concurrency:
+      group: docs-gh-pages-deploy
+      # A cancelled deploy MID-WRITE can leave gh-pages half-pushed. Keep false.
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      statuses: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: '1'
+      - uses: julia-actions/cache@v2
+      - name: Download the built docs
+        uses: actions/download-artifact@v7
+        with:
+          name: docs-build-${{ github.run_id }}
+          path: docs/build
+      - name: Assert the artefact restored what deploydocs needs
+        run: |
+          test -f docs/build/bases.txt || {
+            echo "::error::docs/build/bases.txt missing after download-artifact."
+            echo "deploydocs reads bases.txt from target/ and deploys target/1, target/2, ..."
+            ls -la docs/build || true
+            exit 1
+          }
+          echo "bases.txt present:"; cat docs/build/bases.txt
+      - name: Instantiate docs environment
+        run: |
+          julia --project=docs -e '
+            using Pkg
+            Pkg.develop(PackageSpec(path = pwd()))
+            Pkg.instantiate()'
+      - name: Deploy (no rebuild)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
