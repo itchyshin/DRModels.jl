@@ -73,7 +73,8 @@
 # ML, at most one ordinary `(1 | id)` on the SAME id (as drmTMB). Everything
 # else is refused by name: other families, a temporal term on `sigma`, slopes,
 # labelled bars, REML, a second temporal or any structured term, `meta_V`,
-# `sd()` submodels, random effects on `sigma`, missing responses, and non-default
+# `sd()` submodels, random effects on `sigma`, missing responses (except
+# `homtoep`, which drops them first, as drmTMB does), and non-default
 # `algorithm`/`marginal`/`penalty`/`sparse`.
 
 """

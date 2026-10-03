@@ -7,7 +7,7 @@
     - Zero-length internal and tip branches: dense oracle to 1e-10.
   - **Accessors.** `temporal_parameters(fit).sd_phylo` is drmTMB's `sd_phylo_stable`. `ranef(fit)[:species_phylo]` holds the stable modes and `ranef(fit)[:species]` the OU modes. `simulate` and `bootstrap_ci` draw a fresh phylogenetic vector, fresh OU paths and fresh noise.
   - **Refusals.** drmTMB's pairing rules are refused by name: OU only; an unlabelled intercept on the same grouping; no ordinary `(1 | species)`; ≥ 3 species, each with ≥ 2 times; ≥ 3 distinct lags; tree tips exactly the observed species, with unobserved tips named.
-  - **Parity.** Two drmTMB cells (draft #1448, final head `012258e9f`): a 24-species fixture and drmTMB's 60-species article data. On Julia 1.10.12: logLik ≤ 5.5e-12, every estimate ≤ 2.1e-11 relative, conditional fitted values ≤ 2.3e-12.
+  - **Parity.** Two drmTMB cells (drmTMB `012258e9f`): a 24-species fixture and drmTMB's 60-species article data. On Julia 1.10.12: logLik ≤ 5.5e-12, every estimate ≤ 2.1e-11 relative, conditional fitted values ≤ 2.3e-12.
   - **No interval claim.** Only profile `confint` warns that the paired fit's intervals are uncalibrated, as in drmTMB. drmTMB refuses Wald and bootstrap intervals for this fit; DRModels.jl returns them as an extension, without a calibration claim, and does not warn that they are uncalibrated.
 - **Temporal boundary diagnostic (twin of drmTMB's `temporal_boundary` and random-effect-SD checks, drmTMB #1447 / #1448).** Every `temporal()` fit (AR1, OU, paired phylo + OU) is checked against drmTMB's rules:
   - residual σ̂ below 1e-3 · sd(y);
