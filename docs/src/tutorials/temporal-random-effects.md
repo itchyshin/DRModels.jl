@@ -547,9 +547,10 @@ yet. DRModels.jl reproduces the same likelihood and makes no stronger claim:
 use the fit to inspect the variance components, not for interval inference.
 For the record only, the fixed-mean profile for `treatment` agrees between the
 two packages. Profile `confint` on the paired fit warns that the interval is
-not calibrated, as drmTMB's does; Wald (`confint(fit)`) and bootstrap
-intervals do not warn, also as in drmTMB, so the same caution applies to them
-without a reminder:
+not calibrated, as drmTMB's does. Wald intervals (`confint(fit)`) do not
+warn, also as in drmTMB. drmTMB refuses the bootstrap for temporal models;
+DRModels.jl's bootstrap runs without a warning. The same caution applies to
+both without a reminder:
 
 ```@example temporal
 compare_ci(confint(phylo_fit; method = :profile, parm = :mu => "treatment"), phylo_ref["profile"])
