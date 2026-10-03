@@ -213,6 +213,16 @@ using Test, Random, LinearAlgebra, StableRNGs, Statistics, Logging
         @test occursin("mean regression coefficients only", perr)
         @test_throws ae confint(fit; method = :profile, parm = :temporal_pac)
         @test_throws ae profile_result(fit; parm = :temporal_pac)
+        # profile_curve / parameter_surface: the same scope, by coefficient index
+        ksig = only(Dict(fit.blocks)[:sigma]); kpac = first(Dict(fit.blocks)[:temporal_pac])
+        cerr = try profile_curve(fit, ksig); "" catch e; e.msg end
+        @test occursin("profile_curve: Temporal HOMTOEP profiles currently support mean", cerr)
+        @test_throws ae profile_curve(fit, kpac)
+        @test_throws ae parameter_surface(fit, 2, kpac; npoints = 3)
+        @test_throws ae parameter_surface(fit, ksig, 1; npoints = 3)
+        pc = profile_curve(fit, 2; npoints = 5, span = 1.0)
+        @test pc.param === :mu && minimum(pc.deviance) == 0.0
+        @test size(parameter_surface(fit, 1, 2; npoints = 3, span = 1.0).z) == (3, 3)
         allmu = confint(fit; method = :profile)                    # default: the mean block
         @test length(allmu) == 2 && all(r -> r.param === :mu, allmu)
         tg = profile_targets(fit)
@@ -250,8 +260,17 @@ using Test, Random, LinearAlgebra, StableRNGs, Statistics, Logging
         # different series are independent
         other = [(i, j) for i in 1:20, j in 1:20 if d.id[i] != d.id[j]]
         @test abs(mean(E[i, s] * E[j, s] for (i, j) in other, s in 1:size(E, 2))) < 0.02
+        # drmTMB has no temporal bootstrap and defers σ / lag-correlation
+        # intervals: the bootstrap reports the mean coefficients only.
         bc = quiet(() -> bootstrap_ci(fit; data = d, B = 6, rng = StableRNG(47)))
-        @test length(bc) == 8 && all(r -> isfinite(r.lower) && isfinite(r.upper), bc)
+        @test length(bc) == 2 && all(r -> r.param === :mu, bc)
+        @test all(r -> isfinite(r.lower) && isfinite(r.upper), bc)
+        @test [r.estimate for r in bc] ≈ coef(fit, :mu)
+        br = quiet(() -> bootstrap_result(fit; data = d, B = 4, rng = StableRNG(48)))
+        @test br.used == 4 && [r.param for r in br.summary] == [:mu, :mu]
+        @test_logs (:info, r"mean regression coefficients only") match_mode = :any begin
+            bootstrap_summary(fit; data = d, B = 2, rng = StableRNG(49))
+        end
     end
 
     @testset "refusals (drmTMB's panel rules)" begin

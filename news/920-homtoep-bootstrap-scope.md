@@ -1,0 +1,4 @@
+- **Homogeneous Toeplitz `temporal()` fits: the bootstrap and the profile plots now keep the mean-coefficient scope.** drmTMB defers interval inference for σ and the lag correlations of `structure = "homtoep"`, and it has no bootstrap for temporal models (`confint(..., method = "bootstrap")` is refused for every temporal structure).
+  - `bootstrap_ci`, `bootstrap_summary` and `bootstrap_result` now return rows for the mean coefficients only, with a one-time `@info`, instead of percentile intervals for σ and the partial autocorrelations. This matches the default of `confint(fit; method = :profile)`.
+  - `profile_curve` and `parameter_surface` refuse a σ or partial-autocorrelation coordinate with the same message as `confint` and `profile_result`.
+  - AR1, OU and the paired `phylo()` + OU fits are unchanged.

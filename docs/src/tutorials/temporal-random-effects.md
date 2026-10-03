@@ -329,7 +329,12 @@ everything else: Wald covariance and intervals (`vcov`, `stderror`,
 `confint(fit)`, `predict(...; se = true)`), and profile intervals for `sigma`
 or the lag correlations. `confint(fit; method = :profile)` without `parm`
 profiles the mean coefficients only, and `coeftable` prints the standard-error
-columns as `NaN`. If elapsed gaps are genuinely irregular, use OU instead.
+columns as `NaN`. `profile_curve` and `parameter_surface` refuse the `sigma`
+and partial-autocorrelation coordinates. drmTMB has no bootstrap for temporal
+models; DRModels.jl's `bootstrap_ci`, `bootstrap_summary` and
+`bootstrap_result` return rows for the mean coefficients only, which are
+percentile intervals without a calibration study, so the caution above applies
+to them too. If elapsed gaps are genuinely irregular, use OU instead.
 
 Standardised residuals account for the correlation within a site:
 `residuals(toeplitz_fit; type = :quantile)` returns the whitened

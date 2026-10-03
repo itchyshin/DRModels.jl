@@ -158,7 +158,11 @@ lag, `temporal_parameters(fit).cor`, drmTMB `cor_lag1…`), estimated through it
 partial autocorrelations (`coef(fit, :temporal_pac)`, atanh scale). `sigma` is
 the TOTAL within-series SD: as in drmTMB there is no separate process SD,
 residual SD or `(1 | id)` (not identified when every lag is free), and no
-latent states (`ranef(fit)` is empty). Incomplete or unequally spaced panels,
+latent states (`ranef(fit)` is empty). As in drmTMB, intervals are restricted
+to the mean coefficients: Wald covariance is withheld, and profiles (`confint`,
+`profile_curve`, `parameter_surface`) are refused for `sigma` and the PACs.
+drmTMB has no temporal bootstrap; here `bootstrap_ci` / `bootstrap_summary` /
+`bootstrap_result` report the mean coefficients only. Incomplete or unequally spaced panels,
 fewer than 3 or more than 12 occasions, fractional occasions and an ordinary
 `(1 | id)` are refused with drmTMB's messages.
 """
@@ -1260,6 +1264,32 @@ function _homtoep_profile_parm(fit, parm)
             "$(join(string.(':', bad), ", ")). Use `parm = :mu` or `parm = :mu => \"x\"`. Scale " *
             "and lag-correlation intervals remain deferred (as in drmTMB)."))
     return parm
+end
+
+# Bootstrap summaries of a homtoep fit: the mean coefficients only, the
+# bootstrap counterpart of the default `parm = nothing` profile above. drmTMB
+# refuses `method = "bootstrap"` for every temporal fit; its scale and
+# lag-correlation intervals are deferred, so DRModels.jl reports no bootstrap
+# interval for σ or the partial autocorrelations either.
+function _homtoep_bootstrap_rows(fit, rows)
+    _wald_withheld(fit) || return rows
+    @info "bootstrap: Temporal HOMTOEP bootstrap intervals are reported for mean regression " *
+        "coefficients only; scale and lag-correlation intervals remain deferred (as in drmTMB)." maxlog = 1
+    return filter(r -> r.param === :mu, rows)
+end
+
+# `profile_curve` / `parameter_surface` on a homtoep fit: mean coordinates only,
+# with the same wording as the `confint` / `profile_result` refusal.
+function _homtoep_refuse_nonmean_index(fit, caller, ks...)
+    _wald_withheld(fit) || return nothing
+    for k in ks
+        param, cname = _coef_metadata(fit, k)
+        param === :mu && continue
+        throw(ArgumentError("$caller: Temporal HOMTOEP profiles currently support mean " *
+            "regression coefficients only; index $k is `$cname` (block :$param). Scale and " *
+            "lag-correlation profiles remain deferred (as in drmTMB)."))
+    end
+    return nothing
 end
 
 # Whitened residuals of a homtoep fit: per series, e_t / (σ √v_{t−1}) from the

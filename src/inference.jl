@@ -2250,7 +2250,7 @@ function _bootstrap_result(
     end
     used = count(ok)
     used > 0 || throw(ErrorException("all $B bootstrap replicates failed"))
-    summary = _bootstrap_summary_rows(fit0, draws[ok, :], est, level)
+    summary = _homtoep_bootstrap_rows(fit0, _bootstrap_summary_rows(fit0, draws[ok, :], est, level))
     return (
         summary=summary,
         failures=failure_rows,
