@@ -177,14 +177,15 @@ _ranef_link(fam) = nothing
 _at_index(d::Dict, i) = Dict(k => (v isa AbstractVector ? [v[i]] : v) for (k, v) in d)
 
 # The single ordinary `(1 | g)` block and the axis its intercept is on (`:mu`,
-# or `:sigma` for a `<g>_logsigma` block), or `nothing`. Deliberately excludes
-# crossed and mean + sigma pairs (two names) and correlated-slope (`:recov`)
-# blocks.
+# or `:sigma` for a `<g>_logsigma` block that the sigma formula actually puts
+# on `g`, per `_is_logsigma_re`; a MEAN grouping column that happens to be
+# named `*_logsigma` stays `:mu`), or `nothing`. Deliberately excludes crossed
+# and mean + sigma pairs (two names) and correlated-slope (`:recov`) blocks.
 function _ordinary_resd_block(fit::DrmFit)
     for (p, r) in fit.blocks
         (p === :resd && length(r) == 1) || continue
         nm = last(first(cn for cn in fit.coefnames if first(cn) === :resd))[1]
-        return (range = r, axis = endswith(nm, "_logsigma") ? :sigma : :mu)
+        return (range = r, axis = _is_logsigma_re(fit, nm) ? :sigma : :mu)
     end
     return nothing
 end

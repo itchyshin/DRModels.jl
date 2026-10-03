@@ -112,6 +112,22 @@ _qra_mean_marginal(fit, sb) =
         @test maximum(abs.(q .- _qra_mean_marginal(fit, re_sd(fit)[:id]))) < 1e-6
     end
 
+    @testset "a MEAN (1 | g_logsigma) column keeps the mean route" begin
+        # The `<g>_logsigma` name alone does not make a scale random effect: it
+        # counts only when the sigma formula has a random term on that group
+        # (`_is_logsigma_re`, #925). Here the grouping column itself is named
+        # `g_logsigma` and the intercept is on the mean.
+        y = 0.5 .- 0.3 .* x .+ (0.5 .* randn(G))[g] .+ 0.5 .* randn(n)
+        fit = drm(bf(@formula(y ~ x + (1 | g_logsigma)), @formula(sigma ~ 1)), Gaussian();
+                  data = (; y, x, g_logsigma = g))
+        @test only(last(only(filter(p -> first(p) === :resd, fit.coefnames)))) == "g_logsigma"
+        mix = DRModels._ranef_marginal_mix(fit, fit.family, fit.means[:mu])
+        @test mix !== nothing
+        @test mix.axis === :mu
+        q = residuals(fit; type = :quantile)
+        @test maximum(abs.(q .- _qra_mean_marginal(fit, re_sd(fit)[:g_logsigma]))) < 1e-6
+    end
+
     @testset "a non-Gaussian log-σ intercept is not marginalised" begin
         # Defensive only: `drm()` refuses every non-Gaussian sigma random
         # effect, and `_fit_sigma_axis_re` (which would tag its block
@@ -124,6 +140,10 @@ _qra_mean_marginal(fit, sb) =
                               [log(2.0), log(1.5), log(0.5)], zeros(3, 3), 0.0, k, true,
                               Dict(:mu => fill(2.0, k)), Dict(:mu => fill(2.0, k)),
                               Dict(:sigma => fill(1.5, k)))
+        # A hand-built fit carries no DrmFormula, so `_is_logsigma_re` falls
+        # back to the `_logsigma` suffix and the block is still read as log σ.
+        @test !(fit.formula isa DRModels.DrmFormula)
+        @test DRModels._ordinary_resd_block(fit).axis === :sigma
         @test DRModels._ranef_marginal_mix(fit, fit.family, fit.means[:mu]) === nothing
     end
 end
