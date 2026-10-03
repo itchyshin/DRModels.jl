@@ -1,0 +1,5 @@
+[1] "drm_julia_setup"
+SHIM drmTMB from /home/snakagaw/claude-mr/1442/Rlib-main/drmTMB version 0.7.1 
+ordinal native convergence 0 raw: beta_mu,beta_mu,beta_mu,beta_mu,beta_sigma,theta_ord,theta_ord,beta_mi 
+categorical native convergence 0 raw: beta_mu,beta_mu,beta_mu,beta_mu,beta_sigma,beta_mi,beta_mi,beta_mi,beta_mi 
+FINITE_NATIVE_EXPORT_PASS seconds= 0.166 

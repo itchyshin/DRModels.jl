@@ -101,7 +101,7 @@ def check(r,rroot):
 
 def damages(r,rroot):
     mutations=[lambda v:v.update(fixture_sha256='bad'),lambda v:v.update(native_tolerance=1),
-      lambda v:v['cases'].pop('categorical'),lambda v:v['cases']['ordinal'].update(native_status='PASS'),
+      lambda v:v['cases'].pop('categorical'),lambda v:v['cases']['ordinal'].update(native_status={'PASS':'FAIL'}.get(v['cases']['ordinal']['native_status'],'PASS')),
       lambda v:v['cases']['ordinal']['raw_covariance'][0].__setitem__(0,1000),
       lambda v:v['cases']['ordinal']['public_covariance'][0].__setitem__(0,1000),
       lambda v:v['cases']['ordinal']['imputation'][6].__setitem__('std_error',99),
