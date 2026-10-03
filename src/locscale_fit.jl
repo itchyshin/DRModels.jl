@@ -87,6 +87,40 @@ function _ls_default_betastart(kind, y, Xμ)
     end
 end
 
+# Stall stop for one certified-refinement run. Those runs disable Optim's
+# x/f tolerances so that only the gradient criterion can mark them converged,
+# which also removed every way to stop a run that has stopped making progress.
+# On a variance component sliding to its zero boundary the objective reaches its
+# Float64 floor and then stays bit-identical while the gradient creeps above
+# `g_tol`: measured 2026-10-03 on the Gamma phylo bootstrap fixture, one BFGS run
+# spent iterations 50-2000 (22k objective calls) at an unchanged value before the
+# next start converged in 38 iterations. The callback ends a run after
+# `_LS_REFINE_FLAT_LIMIT` consecutive iterations that neither lower the value by
+# more than 8 ULPs (the certificate's own allowance) nor halve the gradient norm.
+# A stopped run reports `converged == false`, so it is rejected exactly as a run
+# that exhausted its budget would be; the certificate itself is unchanged.
+const _LS_REFINE_FLAT_LIMIT = 50
+
+function _ls_refine_stall_callback(limit::Int = _LS_REFINE_FLAT_LIMIT)
+    best = Ref(Inf)
+    gref = Ref(Inf)
+    flat = Ref(0)
+    return function (state)
+        value, gnorm = state.value, state.g_norm
+        progressed = false
+        if isfinite(value) && value < best[] - 8 * eps(max(abs(best[]), 1.0))
+            progressed = true
+        end
+        if isfinite(gnorm) && gnorm < gref[] / 2
+            gref[] = gnorm
+            progressed = true
+        end
+        isfinite(value) && (best[] = min(best[], value))
+        flat[] = progressed ? 0 : flat[] + 1
+        return flat[] >= limit
+    end
+end
+
 """
     _fit_locscale(kind, y, Xμ, Xψ, gidx, G, Q; ...)
 
@@ -182,12 +216,13 @@ function _fit_locscale(kind, y, Xμ, Xψ, gidx, G, Q;
             baseline = _ls_whitened_eval(kind, y, Xμ, Xψ, gidx, G, Q, θ̂, Zη, Zψ;
                                          gradient=false)
             if baseline.status.ok && isfinite(baseline.value)
-                refine_opts = Optim.Options(g_tol=g_tol, iterations=iterations,
-                    x_abstol=NaN, x_reltol=NaN, f_abstol=NaN, f_reltol=NaN)
+                refine_opts() = Optim.Options(g_tol=g_tol, iterations=iterations,
+                    x_abstol=NaN, x_reltol=NaN, f_abstol=NaN, f_reltol=NaN,
+                    callback=_ls_refine_stall_callback())
                 function certified_refinement(start, method)
                     warm[] = nothing
                     try
-                        candidate = Optim.optimize(nll, g!, copy(start), method, refine_opts)
+                        candidate = Optim.optimize(nll, g!, copy(start), method, refine_opts())
                         θc = Optim.minimizer(candidate)
                         if Optim.converged(candidate) && all(isfinite, θc)
                             checked = _ls_whitened_eval(kind, y, Xμ, Xψ, gidx, G, Q,

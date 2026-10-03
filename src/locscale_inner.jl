@@ -643,17 +643,35 @@ function _ls_inner_estimated_change(kind, y, η0, ψ0, gidx, G, P, Zη, Zψ, a, 
             prior_error_bound = B)
 end
 
+# Consecutive objective-flat Newton steps (accepted with `ft == f0`) that fail
+# to halve the best gradient norm before the inner solve stops early. At the
+# Float64 floor of a near-singular prior (a variance component heading to its
+# zero boundary) every trial ties the objective, so `ft <= f0` keeps accepting
+# tiny damped steps (~340 line-search evaluations each) that move the gradient
+# by ~1e-18 per iteration. Measured 2026-10-03 on the Gamma phylo LSS bootstrap
+# fixture: 2 x 200 such iterations and ~1.5e5 objective evaluations per outer
+# evaluation, still uncertified at the end. Stopping early hands the state to
+# the same final certificate that exhausting `maxiter` would; the gradient has
+# not halved in the meantime, so a strict-bound pass was not in reach.
+const _LS_INNER_FLAT_LIMIT = 10
+
 function _ls_inner_mode(kind, y, η0, ψ0, gidx, G, P,
                         Zη = _ls_canonical_Zeta(length(y)),
                         Zψ = _ls_canonical_Zpsi(length(y)); a0 = nothing,
                         maxiter::Int = 200, tol::Real = 1e-9, relaxed::Bool = false)
     a = a0 === nothing ? zeros(2G) : copy(a0)
     in_band = 0            # iterations spent between the strict and relaxed bounds
+    flat = 0               # consecutive flat steps without gradient progress
+    gref = Inf             # gradient norm at the last progress reset
     for _ in 1:maxiter
         grad = _ls_joint_grad(kind, y, η0, ψ0, gidx, a, P, Zη, Zψ)
         anorm = norm(a)
         gnorm = norm(grad)
         bound = tol * (1 + anorm)
+        if isfinite(gnorm) && gnorm < gref / 2
+            gref = gnorm
+            flat = 0
+        end
         if all(isfinite, a) && all(isfinite, grad) && isfinite(anorm) &&
            isfinite(gnorm) && isfinite(bound) && gnorm <= bound
             ch, certified = _ls_inner_certificate(kind, y, η0, ψ0, gidx, G, P,
@@ -679,6 +697,7 @@ function _ls_inner_mode(kind, y, η0, ψ0, gidx, G, P,
         f0 = _ls_joint(kind, y, η0, ψ0, gidx, a, P, Zη, Zψ)
         λ = 0.0
         stepped = false
+        flat_step = false
         while true
             stagnated = false
             F = cholesky(Symmetric(H + λ * I); check = false)
@@ -694,6 +713,7 @@ function _ls_inner_mode(kind, y, η0, ψ0, gidx, G, P,
                     end
                     if all(isfinite, trial) && isfinite(ft) && ft <= f0 &&
                        any(trial .!= a)
+                        flat_step = ft == f0
                         a = trial; stepped = true; break
                     end
                     if λ == 0.0 && α == 1.0
@@ -711,6 +731,8 @@ function _ls_inner_mode(kind, y, η0, ψ0, gidx, G, P,
             λ > 1e12 && break
         end
         stepped || return a, _ls_hess_chol(kind, y, η0, ψ0, gidx, G, a, P, Zη, Zψ), false
+        flat = flat_step ? flat + 1 : 0
+        flat >= _LS_INNER_FLAT_LIMIT && break
     end
     ch, ok = _ls_inner_certificate(kind, y, η0, ψ0, gidx, G, P, Zη, Zψ, a, tol)
     return a, ch, ok

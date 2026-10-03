@@ -248,6 +248,28 @@ DRModels._ls_joint_grad(::Val{:inner_status_damping_direction}, y, η0, ψ0, gid
 DRModels._ls_joint_hess(::Val{:inner_status_damping_direction}, y, η0, ψ0, gidx, G, a, P, Zη, Zψ) =
     copy(_INNER_DAMPING_H)
 
+# Objective-flat floor (the Gamma phylo bootstrap stall): every trial ties the objective,
+# so `ft <= f0` accepts each step, but the gradient never shrinks. Before the
+# flat-step guard this ran all `maxiter` iterations; the counter makes the
+# iteration budget a deterministic assertion rather than a wall-clock one.
+const _INNER_FLAT_GRAD_CALLS = Ref(0)
+DRModels._ls_joint(::Val{:inner_status_flat_floor}, y, η0, ψ0, gidx, a, P, Zη, Zψ) = 1.0
+function DRModels._ls_joint_grad(::Val{:inner_status_flat_floor}, y, η0, ψ0, gidx, a, P, Zη, Zψ)
+    _INNER_FLAT_GRAD_CALLS[] += 1
+    return [1e-6, 0.0]
+end
+DRModels._ls_joint_hess(::Val{:inner_status_flat_floor}, y, η0, ψ0, gidx, G, a, P, Zη, Zψ) =
+    Matrix{Float64}(I, 2, 2)
+# Control: the objective still ties, but each flat step halves the gradient, so
+# the solve is making real progress and must be allowed to reach the bound.
+DRModels._ls_joint(::Val{:inner_status_flat_progress}, y, η0, ψ0, gidx, a, P, Zη, Zψ) = 1.0
+function DRModels._ls_joint_grad(::Val{:inner_status_flat_progress}, y, η0, ψ0, gidx, a, P, Zη, Zψ)
+    _INNER_FLAT_GRAD_CALLS[] += 1
+    return 0.5 .* (a .- [1.0, 0.0])
+end
+DRModels._ls_joint_hess(::Val{:inner_status_flat_progress}, y, η0, ψ0, gidx, G, a, P, Zη, Zψ) =
+    Matrix{Float64}(I, 2, 2)
+
 _inner_status_args(kind) = (
     kind, Float64[], Float64[], Float64[], Int[], 1,
     Matrix{Float64}(I, 2, 2), zeros(0, 2), zeros(0, 2),
@@ -384,6 +406,27 @@ _inner_rounding_args(kind) = _inner_status_args(kind)
         @test issuccess(ch)
         @test a[2] != _INNER_DAMPING_A0[2]
         @test f1 < f0
+    end
+
+    @testset "objective-flat steps without gradient progress stop early" begin
+        limit = DRModels._LS_INNER_FLAT_LIMIT
+        _INNER_FLAT_GRAD_CALLS[] = 0
+        a, ch, ok = DRModels._ls_inner_mode(
+            _inner_status_args(Val(:inner_status_flat_floor))...; a0=zeros(2),
+        )
+        # `limit` loop gradients plus the final certificate's one, not 200 + 1.
+        @test _INNER_FLAT_GRAD_CALLS[] == limit + 1
+        @test !ok
+        @test issuccess(ch)
+        @test a ≈ [-limit * 1e-6, 0.0]
+
+        _INNER_FLAT_GRAD_CALLS[] = 0
+        a, ch, ok = DRModels._ls_inner_mode(
+            _inner_status_args(Val(:inner_status_flat_progress))...; a0=zeros(2),
+        )
+        @test ok
+        @test _INNER_FLAT_GRAD_CALLS[] > limit + 1
+        @test norm(a .- [1.0, 0.0]) <= 1e-8
     end
 
     @testset "actual Gamma kernel reports only a certified mode" begin

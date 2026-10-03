@@ -94,3 +94,28 @@ end
     @test sqrt(fit.Lambda[1, 1]) ≈ 0.5 rtol = 0.3   # mean-axis RE SD
     @test sqrt(fit.Lambda[2, 2]) ≈ 0.2 rtol = 0.45  # scale-axis RE SD (harder); 0.5 * 0.4
 end
+
+# Certified-refinement stall stop. The refinement runs disable Optim's x/f
+# tolerances, so before this callback a run parked at a bit-identical objective
+# used its whole iteration budget (measured: 1,950 flat BFGS iterations on the
+# Gamma phylo bootstrap fixture). Counting callback calls keeps this a
+# deterministic iteration assertion, not a wall-clock one.
+@testset "location–scale refinement stall callback" begin
+    limit = DRModels._LS_REFINE_FLAT_LIMIT
+    stop = DRModels._ls_refine_stall_callback()
+    flat_floor = (value = 43.5, g_norm = 3e-8)
+    calls = findfirst(_ -> stop(flat_floor), 1:2_000)
+    # The first state sets the gradient reference; `limit` flat states follow.
+    @test calls == limit + 1
+
+    # Real progress keeps the run alive: the value falls by far more than the
+    # 8-ULP allowance, or the gradient norm halves, on every iteration.
+    descending = DRModels._ls_refine_stall_callback()
+    @test !any(k -> descending((value = 50.0 - 1e-6k, g_norm = 1e-3)), 1:2_000)
+    halving = DRModels._ls_refine_stall_callback()
+    @test !any(k -> halving((value = 43.5, g_norm = 0.4^k)), 1:200)
+    # A single ULP-scale wobble is not progress.
+    wobble = DRModels._ls_refine_stall_callback()
+    @test findfirst(k -> wobble((value = 43.5 - eps(43.5) * isodd(k), g_norm = 3e-8)),
+                    1:2_000) == limit + 1
+end
