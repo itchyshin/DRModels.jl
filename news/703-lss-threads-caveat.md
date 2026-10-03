@@ -1,0 +1,1 @@
+- **Docs: the location–scale–scale R snippet now says that `threads = TRUE` needs `JULIA_NUM_THREADS` > 1 (#703).** Without it the bootstrap refits run serially and `julia.threaded` reports `FALSE`; set the variable before the first Julia call in the R session.

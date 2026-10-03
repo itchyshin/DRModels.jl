@@ -62,6 +62,15 @@ extrapolated “N× faster” claim is retired.
   `JULIA_NUM_THREADS` to engage it. Within a single coefficient the lower and
   upper endpoint chains stay serial, so the gain scales with the number of
   coefficients profiled, not with threads per coefficient.
+- **Parallel backend: threads in one Julia process.** `threads = true` uses
+  Julia threads inside a single process; start Julia with `--threads=N` or set
+  `JULIA_NUM_THREADS`. Concurrent multi-threaded BLAS calls can be slower than a
+  serial run, so set BLAS to one thread before threading
+  (`using LinearAlgebra; BLAS.set_num_threads(1)`); the threaded bootstrap does
+  this for you. DRModels.jl has no Distributed.jl (`addprocs` / `@everywhere` /
+  `pmap`) interface. To spread a simulation grid over many cores or machines,
+  run independent Julia processes (for example one cluster job per cell or
+  seed) and combine their saved results.
 - **Check the fit cheaply.** [`check_drm`](@ref) reports convergence and
   covariance conditioning without re-fitting — useful before committing to an
   expensive bootstrap.

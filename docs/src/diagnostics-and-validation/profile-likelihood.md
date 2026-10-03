@@ -1,7 +1,7 @@
 # Profile-likelihood intervals
 
 !!! note "Status — Stable"
-    Mirrors drmTMB's [Profile-likelihood intervals](https://itchyshin.github.io/drmTMB/articles/profile-likelihood.html).
+    Related drmTMB article: [First-week intervals: fit, profile, and boundary](https://itchyshin.github.io/drmTMB/articles/first-week-intervals.html); see also [`profile.drmTMB`](https://itchyshin.github.io/drmTMB/reference/profile.drmTMB.html).
     **In DRModels.jl today:** profile-likelihood confidence intervals via
     `confint(fit; method = :profile)`, the auditable [`profile_result`](@ref)
     object behind them, and the [`profile_curve`](@ref) data for a

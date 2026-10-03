@@ -43,14 +43,17 @@ Same model, same real `q4_p100` data, same Laplace ML marginal as drmTMB
 
 Full grid and honest caveats: [report/comparison-grid.md](report/comparison-grid.md).
 
-## Install (development)
+## Install
 
 ```julia
 using Pkg
-Pkg.develop(path = "/path/to/DRModels.jl")
-Pkg.instantiate()              # resolve deps the first time
+Pkg.add(url = "https://github.com/itchyshin/DRModels.jl")
 using DRModels
 ```
+
+If you are developing DRModels.jl from a local clone
+(`git clone https://github.com/itchyshin/DRModels.jl`), use
+`Pkg.develop(path = "/absolute/path/to/DRModels.jl")` instead.
 
 ## Worked example — a Gaussian location–scale regression
 
@@ -112,7 +115,7 @@ src/experimental/   leftover prototypes NOT wired into the public API
 bench/              runnable benchmarks + the q4_p100 fixtures + R fixture gen
 test/               runtests.jl + migrated correctness checks
 report/             53 design/provenance/benchmark reports (the full poc record)
-docs/               Documenter site (mirrors drmTMB navbar); CONTRACT.md
+docs/               Documenter site (reader-first menus; many pages link a drmTMB twin article); CONTRACT.md
 AGENTS.md ROADMAP.md   the 12-persona team + the phase plan
 .claude/workflows/  10 scripted workflows (W0/Q/A/B/D/F/G/H/S/R)
 ```
@@ -123,7 +126,7 @@ This rename branch retains version **`0.7.1`**. The existing **`v0.7.1`** tag
 predates the package rename and names `DRM`; it is historical rather than a
 DRModels release tag. **Julia General stays out** until readiness
 (catch up with drmTMB + both working well; drmTMB likely R/CRAN first).
-MIT via GitHub / `Pkg.develop` until then. Do not treat
+MIT via GitHub (`Pkg.add(url = ...)`) until then. Do not treat
 `v0.7.1` as General registration; do not chase Registrator.
 
 **Current transition:** R–Julia support remains experimental. Deeper parity work
