@@ -155,3 +155,6 @@ off before blaming the engine.
   host-library packages named.
 - Checks rerun from `~/claude-606c/tree` on Julia 1.10.12 and 1.13.1
   (`summary-review-{110,113}.txt`).
+- Harness artefact: one 1.10.12 gate run failed on a stale `.pyc` left by a
+  same-size mutant; after invalidating the cache it passes. The mutation tables
+  were rerun with bytecode caching off. Recorded in the evidence README.

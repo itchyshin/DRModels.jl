@@ -147,8 +147,39 @@ receipt fails its `runtime` field by design. Its parity numbers match 1.10.12
   theta moved in the receipt, native log-likelihood recomputed):
   `test_joint_bridge_public_receipt.py` 21 → 24
   (`JOINT_PUBLIC_NEGATIVE_CONTROLS_PASS mutations=24`). Ledger EXPECT strings that
-  pin 17, 17 or 21 must move to 20, 20 and 24. Mutation results are in
-  `mutation-before.txt` and `mutation-after.txt`.
+  pin 17, 17 or 21 must move to 20, 20 and 24.
+
+  Mutation test (the review's `mut.py`, extended: `review_mut.py`, `review_mut5.py`,
+  `review_mutJ.py`; outputs `mutation-before.txt`, `mutation-after.txt`). "Before"
+  ran on the PR head 89aa0fc57 bytes in `~/claude-606b/after`, the only tree whose
+  path matched the receipts before the M2 fix; "after" ran on the review-fix head in
+  `~/claude-606c/tree`. Both ran with Python bytecode caching off.
+
+  | Mutant | Battery | Before | After |
+  |---|---|---|---|
+  | A fit verdict always PASS | `test_finite_fit_receipt.py` | SURVIVED | KILLED (forged PASS 1e-5) |
+  | B fit verdict check removed | same | KILLED | KILLED |
+  | C fit reported-error check removed | same | KILLED | KILLED |
+  | D public verdict always PASS | `check_finite_public_receipt.py --damage` | SURVIVED | KILLED (forged PASS) |
+  | E public verdict check removed | same | KILLED | KILLED |
+  | F fit tolerance 4e-6 → 1e-3 | fit battery | SURVIVED | KILLED (forged PASS 1e-5) |
+  | G public tolerance 4e-6 → 1e-3 | public battery | SURVIVED | KILLED (forged PASS) |
+  | H joint verdict always PASS | `test_joint_bridge_public_receipt.py` | SURVIVED | KILLED (forged PASS 1e-5) |
+  | I joint tolerance 4e-6 → 1e-3 | joint battery | SURVIVED | KILLED (forged PASS 1e-5) |
+  | J / K / L tolerance 4e-6 → 5e-6 (fit / public / joint) | as above | not run | KILLED (J, L by the 4.004e-6 control; K by the 1e-5 control) |
+
+  H and I first show as KILLED in `mutation-before.txt` only because the pre-M2
+  path check rejected a relative Julia root; rerun with an absolute root (last
+  lines of that file) they survive. The review's `forged_pass.py` now prints
+  `FORGED_PASS_REJECTED: parity verdict`.
+
+  One harness artefact, recorded rather than hidden: the first 1.10.12 run of
+  `S9-r-joint-public-negatives` failed (`summary-review-110.txt`, first line for
+  that gate). An earlier mutation run had restored a same-size mutant
+  (`4e-6` → `5e-6`) within the same second as Python compiled it, so the stale
+  `.pyc` still held the loosened tolerance. After the sources were touched to
+  invalidate the cache, the gate passes (the rerun line below it), as it did on
+  1.13.1. The mutation tables above were then rerun with bytecode caching off.
 - **Receipt numbering (M1).** The refreshed public receipt is the new file
   `finite-frontends/finite-public-007.json`. `finite-public-005.json` is restored
   byte-for-byte from `main`; it and 006 are historical FAIL receipts against the

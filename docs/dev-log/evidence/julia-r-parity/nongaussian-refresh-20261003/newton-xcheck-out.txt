@@ -1,0 +1,2 @@
+ordinal max|old+step-new|=4.53e-11 max|old-new|=2.16e-06
+categorical max|old+step-new|=9.89e-11 max|old-new|=1.74e-05
