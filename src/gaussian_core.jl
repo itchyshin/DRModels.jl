@@ -1556,11 +1556,18 @@ What a correct model implies depends on the route:
   is exact when the relatedness matrix has a unit diagonal (for example an
   ultrametric tree of height 1). **On the scale**, for a Gaussian
   `sigma ~ 1 + (1 | g)`, `F_i` mixes `N(μ_i, (σ_i e^b)²)` over
-  `b ~ N(0, τ̂²)`, with `σ_i` the fixed-effect scale. drmTMB's quantile
+  `b ~ N(0, τ̂²)`, with `σ_i` the fixed-effect scale. When `τ̂` is moderate
+  or large these residuals can be under-dispersed (SD below 1) even under a
+  correct model, because the default `marginal = :LA` fit integrates the
+  log-σ intercept on a fixed prior-scale grid that loses accuracy as the SD
+  grows; refitting with `marginal = :AGHQ` is the check. drmTMB's quantile
   residuals for these fits condition on the fitted modes instead;
 - **other random-effect shapes** (crossed, correlated slopes, a mean and a
-  `sigma` intercept together, a non-Gaussian `sigma` intercept) and
-  CumulativeLogit fits: judged with the random effects set to 0;
+  `sigma` intercept together) and CumulativeLogit fits: judged with the
+  random effects set to 0. The group-level variation then stays in the
+  residuals, so under a correct model they are over-dispersed (SD above 1)
+  and a QQ plot that bends away from the line is not by itself evidence of
+  misfit;
 - **`temporal()` AR1 / OU, and the paired `phylo()` + OU fit**: residuals
   conditional on the fitted modes (below). They are not PIT residuals, and
   their variance is below 1 even when the model is true;

@@ -113,10 +113,11 @@ _qra_mean_marginal(fit, sb) =
     end
 
     @testset "a non-Gaussian log-σ intercept is not marginalised" begin
-        # `_fit_sigma_axis_re` (the non-Gaussian σ-axis route) tags its block
-        # `<g>_logsigma` too. No σ-marginal mapping is verified for those
-        # families, so the guard keeps the random effect at 0 rather than
-        # routing it to the mean.
+        # Defensive only: `drm()` refuses every non-Gaussian sigma random
+        # effect, and `_fit_sigma_axis_re` (which would tag its block
+        # `<g>_logsigma`) has no caller. Should such a fit ever exist, no
+        # σ-marginal mapping is verified for it, so the guard keeps the random
+        # effect at 0 rather than routing it to the mean.
         k = 5
         fit = DRModels.DrmFit(DRModels.Gamma(), [:mu => 1:1, :sigma => 2:2, :resd => 3:3],
                               [:mu => ["(Intercept)"], :sigma => ["(Intercept)"], :resd => ["g_logsigma"]],

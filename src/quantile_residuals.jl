@@ -192,8 +192,9 @@ end
 # Precomputed marginalisation context for `_cdf_value`, or `nothing` when the
 # fit has no single ordinary random intercept, or the family has no verified
 # mapping for its axis: the links above for the mean, Gaussian only for log σ
-# (the one family whose `drm` route fits `sigma ~ 1 + (1 | g)`; the
-# non-Gaussian σ-axis route `_fit_sigma_axis_re` keeps b = 0).
+# (`drm()` fits `sigma ~ 1 + (1 | g)` for Gaussian only and refuses every
+# non-Gaussian sigma random effect; `_fit_sigma_axis_re` has no caller, so the
+# non-Gaussian σ-axis case below is a defensive guard, not a reachable shape).
 function _ranef_marginal_mix(fit::DrmFit, fam, μ)
     blk = _ordinary_resd_block(fit)
     blk === nothing && return nothing
