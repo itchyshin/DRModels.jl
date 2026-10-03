@@ -66,7 +66,7 @@ function _variance_component_indices(fit::DrmFit)
         r = have[:resd]
         nms = first(cn[2] for cn in fit.coefnames if cn[1] === :resd)
         for (j, nm) in enumerate(nms)
-            if endswith(String(nm), "_logsigma")
+            if _is_logsigma_re(fit, nm)
                 push!(omega, r[j])
             else
                 push!(comps, Symbol(nm) => r[j])
@@ -102,6 +102,22 @@ function _variance_component_indices(fit::DrmFit)
     resid_idx === nothing && error("heritability/repeatability: no residual scale " *
         "found in this fit")
     return comps, resid_idx, omega
+end
+
+# Is the `:resd` entry `nm` a random intercept on log σ? The routes name it
+# `<group>_logsigma` (#322), but a mean grouping column could carry that suffix
+# too, so the name only counts when the `sigma` formula really has a random term
+# on `<group>`. A fit without a retained formula falls back to the suffix.
+function _is_logsigma_re(fit::DrmFit, nm)
+    s = String(nm)
+    endswith(s, "_logsigma") || return false
+    f = fit.formula
+    f isa DrmFormula || return true
+    i = findfirst(p -> first(p) === :sigma, f.forms)
+    i === nothing && return false
+    grp = s[1:end-length("_logsigma")]
+    rhs = replace(string(last(f.forms[i])), r"\s+" => " ")
+    return occursin("| $grp)", rhs)
 end
 
 # Variance contributed by θ index `idx` to a ratio. A component's variance is
@@ -358,6 +374,9 @@ covariates, so this form refuses. Use `heritability(fit, newdata; level = 0.95)`
 (phylogenetic `sd`) or [`repeatability`](@ref)`(fit, newdata)` (iid `sd`), which return
 the covariate-conditional `R(z) = σ_b(z)² / (σ_b(z)² + σ_e(z)²)` per row of `newdata`
 with a Wald-on-logit interval; see [`repeatability`](@ref) for the definition.
+
+A random intercept on `sigma` is not a component: it turns `σ²_resid` into the
+marginal residual variance `E[σ²]`; see [`repeatability`](@ref).
 """
 function heritability(fit::DrmFit; component::Union{Symbol,Nothing} = nothing,
                       level::Real = 0.95, method::Symbol = :delta)
@@ -382,6 +401,9 @@ also nets out the other components. Same return shape and `method` options as
 For location–scale–scale fits (`sd(g) ~ z`) this form refuses; use
 `icc(fit, newdata)` — the covariate-conditional repeatability documented under
 [`repeatability`](@ref).
+
+A random intercept on `sigma` is not a component: it turns `σ²_resid` into the
+marginal residual variance `E[σ²]`; see [`repeatability`](@ref).
 """
 function icc(fit::DrmFit; component::Union{Symbol,Nothing} = nothing,
              level::Real = 0.95, method::Symbol = :delta)

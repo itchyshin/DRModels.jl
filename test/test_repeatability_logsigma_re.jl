@@ -57,8 +57,8 @@ end
 
         # Twin: drmTMB's repeatability() on the same fixture (marginal E[σ²] residual).
         nat = _rls_native("native_repeatability.tsv")
-        @test abs(r.estimate - nat["estimate"]) <= 1e-3
-        @test abs(r.se - nat["se"]) <= 5e-3
+        @test abs(r.estimate - nat["estimate"]) <= 1e-6
+        @test abs(r.se - nat["se"]) <= 1e-6
 
         # The profile CI uses the same marginal residual term.
         p = repeatability(fit; method = :profile)
@@ -74,6 +74,13 @@ end
         sb_rms = sqrt(sum(abs2, ranef(fit)[:g]) / length(ranef(fit)[:g]))
         σe = exp(coef(fit, :sigma)[1] + re_sd(fit)[:g_logsigma]^2)  # sqrt(E[σ²])
         @test vb.residual_ratio ≈ σe / sb_rms rtol = 1e-10
+    end
+
+    @testset "a mean grouping column named *_logsigma stays a mean component" begin
+        d2 = (; y = d.y, x = d.x, g_logsigma = d.g)
+        fit = drm(bf(@formula(y ~ x + (1 | g_logsigma)), @formula(sigma ~ 1)), Gaussian(); data = d2)
+        sb = re_sd(fit)[:g_logsigma]; se = exp(coef(fit, :sigma)[1])
+        @test repeatability(fit).estimate ≈ sb^2 / (sb^2 + se^2) atol = 1e-10
     end
 
     @testset "sigma-only random intercept: refused, not misread as a variance" begin

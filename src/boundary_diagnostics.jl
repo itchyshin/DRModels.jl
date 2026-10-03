@@ -98,7 +98,7 @@ function _variance_boundary(fit::DrmFit; ratio::Real = _VARIANCE_BOUNDARY_RATIO)
     # structured component here. It does make the residual SD vary by group; the
     # residual reference is then the marginal sqrt(E[σ²]) = exp(b₀ + Σ_k ω_k²), as
     # in `repeatability`.
-    logω = [fit.theta[have[:resd][j]] for (j, nm) in enumerate(nms) if endswith(String(nm), "_logsigma")]
+    logω = [fit.theta[have[:resd][j]] for (j, nm) in enumerate(nms) if _is_logsigma_re(fit, nm)]
     σe = exp(fit.theta[first(rblock)] + sum(exp(2w) for w in logω; init = 0.0))
     isfinite(σe) || return nothing
 
@@ -106,7 +106,7 @@ function _variance_boundary(fit::DrmFit; ratio::Real = _VARIANCE_BOUNDARY_RATIO)
     rms = Float64[]
     ngroups = Int[]
     for nm in nms
-        endswith(String(nm), "_logsigma") && continue
+        _is_logsigma_re(fit, nm) && continue
         b = get(fit.ranef, Symbol(nm), nothing)
         r = b === nothing ? nothing : _blup_rms(b)
         r === nothing && continue
