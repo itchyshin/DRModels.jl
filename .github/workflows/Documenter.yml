@@ -3,7 +3,7 @@ name: Documenter
 # on every event -- and never touches gh-pages, so it never joins the repo-wide
 # gh-pages serialisation group and can never be evicted while pending. Two
 # non-required jobs publish the artefact `docs` uploaded, WITHOUT rebuilding:
-#   docs-deploy  -- push to main (dev docs) and version tags (vX.Y.Z + stable)
+#   docs-deploy  -- push to main (dev docs) and version tags (vX.Y minor folder + stable)
 #   docs-preview -- same-repo pull requests (previews/PR<N>)
 # The DocumenterVitepress (npm) build uses Node from NodeJS_20_jll — no setup-node.
 on:
@@ -82,7 +82,8 @@ jobs:
         env:
           # The tokens stay: makedocs asks Documenter's deploy_folder for the
           # deploy decision at BUILD time, and that decision writes bases.txt
-          # (dev / previews/PR<N> / vX.Y.Z + stable). Without credentials the
+          # (dev / previews/PR<N> / vX.Y + stable; DocumenterVitepress keeps one folder
+          # per minor version for 0.x, keep = :breaking). Without credentials the
           # decision is "do not deploy" and the artefact would carry the wrong
           # bases. Nothing in this step pushes to gh-pages.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -200,13 +201,17 @@ jobs:
   # rebuilding, via the same docs/deploy_preview.jl entry point. Documenter's
   # deploy_folder reads the event and ref of THIS run, so the same call deploys:
   #   push to main -> dev/
-  #   push of tag vX.Y.Z -> vX.Y.Z/ and, when no higher release tag exists,
-  #                         stable/ (bases.txt was written by the build job)
+  #   push of tag vX.Y.Z -> vX.Y/ (one folder per minor version for 0.x;
+  #                         DocumenterVitepress keep = :breaking) and, when no
+  #                         higher release tag exists, stable/ (bases.txt was
+  #                         written by the build job)
   #
   # It carries the gh-pages serialisation group, so two quick pushes to main
   # queue here: the first deploy runs, the second waits, and a third arrival
-  # evicts the waiting one. That eviction is harmless for main (the newer deploy
-  # supersedes it) and is no longer silent about the CHECK, because `docs` has
+  # evicts the waiting one. A PR `docs-preview` shares this group, so the evicting
+  # job may be a preview rather than a newer main deploy; dev/ then stays at the
+  # previous build until the next merge to main. The eviction is no longer
+  # silent about the CHECK, because `docs` has
   # already reported for every commit. It is the one case to watch on a release:
   # if a tag's deploy is evicted, /stable is not updated -- re-run this job from
   # the tag's run (the artefact is kept for a day) or dispatch the workflow on
