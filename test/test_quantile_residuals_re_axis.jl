@@ -50,13 +50,14 @@ _qra_mean_marginal(fit, sb) =
         # worst row (the log-σ mixture is less smooth in b than the mean one).
         @test maximum(abs.(q .- q_ref)) < 1e-5
 
-        # Not the mean-axis marginal the old routing used (it moved residuals
-        # by more than 0.4 on these data), and not the b = 0 reference either.
+        # Not the mean-axis marginal the old routing used (up to 1.22 away on
+        # these data), and not the b = 0 reference either.
         @test maximum(abs.(q .- _qra_mean_marginal(fit, τ̂))) > 0.1
         @test maximum(abs.(q .- (y .- μ) ./ σ0)) > 0.1
 
-        # Correct model: the σ-marginal residuals are close to N(0, 1). The
-        # mean-axis route gave sd ≈ 0.75 here, the b = 0 reference sd ≈ 1.25.
+        # Correct model: the σ-marginal residuals are close to N(0, 1) (sd ≈
+        # 1.01 here). The mean-axis route gave sd ≈ 0.85, the b = 0 reference
+        # sd ≈ 1.29.
         @test abs(std(q) - 1) < 0.1
     end
 

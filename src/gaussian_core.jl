@@ -1551,12 +1551,13 @@ residuals of one group stay correlated:
   random-effect SD, which is exact when the relatedness matrix has a unit
   diagonal (for example an ultrametric tree of height 1);
 - **on the scale**, Gaussian `sigma ~ 1 + (1 | g)`: the log-σ intercept, so
-  `F_i` mixes `N(μ_i, (σ_i e^b)²)` over `b ~ N(0, τ̂²)`.
+  `F_i` mixes `N(μ_i, (σ_i e^b)²)` over `b ~ N(0, τ̂²)`, with `σ_i` the
+  fixed-effect scale.
 
 drmTMB's quantile residuals for these fits instead condition on the fitted
 modes. Other random-effect shapes (crossed, correlated slopes, a mean and a
-`sigma` intercept together) and CumulativeLogit fits are judged with the
-random effects set to 0.
+`sigma` intercept together, a non-Gaussian `sigma` intercept) and
+CumulativeLogit fits are judged with the random effects set to 0.
 
 Quantile residuals are implemented for every DRModels.jl response family except
 Tweedie (no closed-form CDF in `Distributions.jl`):

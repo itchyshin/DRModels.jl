@@ -243,8 +243,9 @@ end
 # interval [F(y⁻), F(y)]; ZeroOneBeta / CumulativeLogit use the atomic / ordinal
 # drivers (point-mass mixtures). The per-family parameter map lives in
 # `_conditional_dist`. A fit with a single ordinary random intercept `(1 | g)`
-# on the mean judges every row against the σ_b-MARGINAL distribution, not the
-# fixed-effect-only (b = 0) distribution (#760) — see `_ranef_marginal_mix`.
+# on the mean (#760), or a Gaussian one on log σ (#923), judges every row
+# against the σ_b-MARGINAL distribution, not the fixed-effect-only (b = 0)
+# distribution — see `_ranef_marginal_mix`.
 function _quantile_residuals(fit::DrmFit, rng)
     haskey(fit.means, :mu) ||
         throw(ArgumentError("residuals(type=:quantile) is univariate-only"))
@@ -274,9 +275,10 @@ function _quantile_residuals(fit::DrmFit, rng)
     # The Gamma sigma slot is σ (plain/ranef) or the shape α (location–scale); the
     # flag routes `_conditional_dist(::Gamma)` accordingly (non-Gamma ignores it).
     gsis = _gamma_sigma_is_shape(fit)
-    # `mix` marginalises a single ordinary random intercept on the mean over its
-    # fitted σ_b (#760); `nothing` for a fixed-effects-only fit (unchanged
-    # behaviour) or a random-effect shape/family this fix does not cover.
+    # `mix` marginalises a single ordinary random intercept on the mean (#760)
+    # or, Gaussian only, on log σ (#923) over its fitted SD; `nothing` for a
+    # fixed-effects-only fit (unchanged behaviour) or a random-effect
+    # shape/family this does not cover.
     mix = _ranef_marginal_mix(fit, fam, μ)
     u = Vector{Float64}(undef, n)
     if _is_continuous_family(fam)
