@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="drm-fav-title drm-fav-desc">
+  <title id="drm-fav-title">DRModels.jl</title>
+  <desc id="drm-fav-desc">Narrow and wide density curves sharing one mean, on a hexagonal badge.</desc>
+  <path d="M68 5L113 33Q118 36 118 42L118 86Q118 92 113 95L69 123Q64 126 59 123L15 95Q10 92 10 86L10 42Q10 36 15 33L59 5Q64 2 68 5Z" fill="#0B1F3A"/>
+  <path d="M68 10L109 36Q113 38 113 43L113 85Q113 90 109 92L68 118Q64 120 60 118L19 92Q15 90 15 85L15 43Q15 38 19 36L60 10Q64 8 68 10Z" fill="none" stroke="#5C7CF0" stroke-width="3"/>
+  <path d="M64 31V96" stroke="#D7E0F0" stroke-dasharray="4 5" stroke-linecap="round" stroke-width="3" opacity=".8"/>
+  <path d="M29 91C42 91 47 82 53 57C57 43 60 35 64 35C68 35 71 43 75 57C81 82 86 91 99 91" fill="none" stroke="#12A3A3" stroke-linecap="round" stroke-width="6"/>
+  <path d="M26 91C39 91 48 88 55 79C60 73 61 70 64 70C67 70 68 73 73 79C80 88 89 91 102 91" fill="none" stroke="#5C7CF0" stroke-linecap="round" stroke-width="6"/>
+</svg>
