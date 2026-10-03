@@ -1548,12 +1548,19 @@ What a correct model implies depends on the route:
   approximately i.i.d. standard normal. Zero-inflated and hurdle count fits
   are an exception at present: their PIT uses the count component only, so
   their residuals are not standard normal even under a correct model;
-- **one ordinary random intercept `(1 | g)` on the mean**: `F_i` integrates
-  the intercept out over its fitted SD `σ̂_b` (32-node Gauss–Hermite), so each
-  `r_i` is `σ_b`-marginal and approximately standard normal, but residuals of
-  one group stay correlated. Other random-effect shapes (crossed, correlated
-  slopes) and CumulativeLogit fits are judged with the random effects set
-  to 0;
+- **one random intercept**: `F_i` integrates it out over its fitted SD
+  (32-node Gauss–Hermite), so each `r_i` is approximately standard normal,
+  but residuals of one group stay correlated. **On the mean**, this covers
+  any lone mean random intercept, including a `phylo()` or `relmat()` term;
+  the fitted SD `σ̂_b` is used as every observation's random-effect SD, which
+  is exact when the relatedness matrix has a unit diagonal (for example an
+  ultrametric tree of height 1). **On the scale**, for a Gaussian
+  `sigma ~ 1 + (1 | g)`, `F_i` mixes `N(μ_i, (σ_i e^b)²)` over
+  `b ~ N(0, τ̂²)`, with `σ_i` the fixed-effect scale. drmTMB's quantile
+  residuals for these fits condition on the fitted modes instead;
+- **other random-effect shapes** (crossed, correlated slopes, a mean and a
+  `sigma` intercept together, a non-Gaussian `sigma` intercept) and
+  CumulativeLogit fits: judged with the random effects set to 0;
 - **`temporal()` AR1 / OU, and the paired `phylo()` + OU fit**: residuals
   conditional on the fitted modes (below). They are not PIT residuals, and
   their variance is below 1 even when the model is true;
@@ -1564,23 +1571,6 @@ The far tail differs too. The PIT routes (every fit without `temporal()`,
 Gaussian included) clamp `u_i` to `[eps, 1 − eps]`, so `|r_i| ≤ 8.126`
 however extreme `y_i` is: a Gaussian residual of 13.6 σ̂ is reported as
 8.126. The `temporal()` routes do not clamp.
-
-With one random intercept, `F_i` integrates it out over its fitted SD
-(32-node Gauss–Hermite), so each `r_i` is approximately standard normal but
-residuals of one group stay correlated:
-
-- **on the mean**: any lone mean random intercept, including a `phylo()` or
-  `relmat()` term. The fitted SD `σ̂_b` is used as every observation's
-  random-effect SD, which is exact when the relatedness matrix has a unit
-  diagonal (for example an ultrametric tree of height 1);
-- **on the scale**, Gaussian `sigma ~ 1 + (1 | g)`: the log-σ intercept, so
-  `F_i` mixes `N(μ_i, (σ_i e^b)²)` over `b ~ N(0, τ̂²)`, with `σ_i` the
-  fixed-effect scale.
-
-drmTMB's quantile residuals for these fits instead condition on the fitted
-modes. Other random-effect shapes (crossed, correlated slopes, a mean and a
-`sigma` intercept together, a non-Gaussian `sigma` intercept) and
-CumulativeLogit fits are judged with the random effects set to 0.
 
 Quantile residuals are implemented for every DRModels.jl response family except
 Tweedie (no closed-form CDF in `Distributions.jl`) and SkewNormal:
