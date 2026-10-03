@@ -1545,9 +1545,8 @@ Model residuals. `type` selects the kind:
 What a correct model implies depends on the route:
 
 - **no random effect**: `F_i` is the fitted distribution, and the `r_i` are
-  approximately i.i.d. standard normal. Zero-inflated and hurdle count fits
-  are an exception at present: their PIT uses the count component only, so
-  their residuals are not standard normal even under a correct model;
+  approximately i.i.d. standard normal (zero-inflated and hurdle count fits
+  included: their PIT uses the whole mixture CDF, below);
 - **one ordinary random intercept `(1 | g)` on the mean**: `F_i` integrates
   the intercept out over its fitted SD `σ̂_b` (32-node Gauss–Hermite), so each
   `r_i` is `σ_b`-marginal and approximately standard normal, but residuals of
