@@ -182,7 +182,7 @@ function _fit_structured_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, K, nmμ, 
     means = Dict(:mu => Xμ * θ̂[1:pμ])
     obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
-    return _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll)
+    return _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll)
 end
 
 # Row → level index for one structured marker on the dense Gaussian routes (the
@@ -302,7 +302,7 @@ function _fit_two_structured_gaussian(fam::Gaussian, y, Xμ, gidx1, G1, C1, gidx
         Dict(Symbol(grp1) => a1, Symbol(grp2) => a2)
     end
     return _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n,
-        Optim.converged(res), means, obs, scales), nll), blup)
+        drm_optim_converged(res), means, obs, scales), nll), blup)
 end
 
 # Gaussian phylogenetic random INTERCEPT + SLOPE with two SDs (#620) — the
@@ -381,7 +381,7 @@ function _fit_phylo_slope_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, C, xs, n
         b = σb² .* (C * (Zx' * Vinvr))
         Dict(Symbol(grp) => a, Symbol("$(grp):$(var)") => b)
     end
-    fit = DrmFit(fam, blocks, names, θ̂, Vθ, -nll(θ̂), n, Optim.converged(res), means, obs, scales)
+    fit = DrmFit(fam, blocks, names, θ̂, Vθ, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales)
     return _withranef(_withnll(fit, nll), blup)
 end
 
@@ -479,7 +479,7 @@ function _fit_structured_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ,
         end
         out
     end
-    fit = DrmFit(fam, blocks, names, θ̂, Vθ, -nll(θ̂), n, Optim.converged(res), means, obs, scales)
+    fit = DrmFit(fam, blocks, names, θ̂, Vθ, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales)
     return _withranef(_withnll(fit, nll), blup)
 end
 
@@ -616,7 +616,7 @@ function _fit_spatial_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, coords, nmμ
     means = Dict(:mu => Xμ * θ̂[1:pμ])
     obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
-    return _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll)
+    return _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll)
 end
 
 # ===========================================================================
@@ -944,7 +944,7 @@ function _fit_two_structured_gaussian_sparse_spec(fam::Gaussian, y, Xμ, Xσ,
         Dict(grp1 => a1, grp2 => a2)
     end
     return _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll_only(θ̂), n,
-        Optim.converged(res), means, obs, scales), nll_only), blup)
+        drm_optim_converged(res), means, obs, scales), nll_only), blup)
 end
 
 # Sparse square-root factor B of a sparse SPD precision Q (BᵀB = Q): with the

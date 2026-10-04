@@ -329,7 +329,7 @@ function _fit_poisson_ranef(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol; rem
     θ0[1] = log(sum(y) / n + eps())
     θ0[pμ+1] = log(0.5)
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); conv = Optim.converged(res)
+    θ̂ = Optim.minimizer(res); conv = drm_optim_converged(res)
     blocks = [:mu => 1:pμ, :resd => (pμ+1):(pμ+1)]
     names = [:mu => nmμ, :resd => [String(grp)]]
     scales = Dict{Symbol,Vector{Float64}}()
@@ -379,7 +379,7 @@ function _fit_poisson_ranef_aghq(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol
     θ0[1] = log(sum(y) / n + eps())
     θ0[pμ+1] = log(0.5)
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); conv = Optim.converged(res)
+    θ̂ = Optim.minimizer(res); conv = drm_optim_converged(res)
     blocks = [:mu => 1:pμ, :resd => (pμ+1):(pμ+1)]
     names = [:mu => nmμ, :resd => [String(grp)]]
     scales = Dict{Symbol,Vector{Float64}}()
@@ -419,7 +419,7 @@ function _fit_poisson_corr_ranef(fam::Poisson, y, Xμ, xs, gidx, G, nmμ, grp, g
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict{Symbol,Vector{Float64}}()
     return _withiterations(
-        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
+        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
 end
 
@@ -461,7 +461,7 @@ function _fit_poisson_zi(fam::Poisson, y, Xμ, Xzi, nmμ, nmzi, g_tol)
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:zi => _logistic.(Xzi * θ̂[(pμ+1):(pμ+pz)]))
     return _withiterations(
-        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
+        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
 end
 
@@ -498,7 +498,7 @@ function _fit_poisson_hu(fam::Poisson, y, Xμ, Xhu, nmμ, nmhu, g_tol)
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:hu => _logistic.(Xhu * θ̂[(pμ+1):(pμ+ph)]))
     return _withiterations(
-        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
+        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
 end
 
@@ -521,7 +521,7 @@ function _fit_poisson(fam::Poisson, y, Xμ, nmμ, g_tol; offset::AbstractVector{
     means = Dict(:mu => exp.(Xμ * θ̂ .+ off)); obs = Dict(:mu => Vector{Float64}(y))   # response-scale λ
     scales = Dict{Symbol,Vector{Float64}}()
     return _withiterations(
-        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
+        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
 end
 
@@ -694,6 +694,6 @@ function _fit_poisson_spatial_coord(fam::Poisson, y, Xμ, labels, coords, nmμ, 
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ]))                 # population λ (b = 0)
     obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict{Symbol,Vector{Float64}}()
-    fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nll(θ̂), n, Optim.converged(res), means, obs, scales)
+    fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nll(θ̂), n, drm_optim_converged(res), means, obs, scales)
     return _withiterations(_withnll(fit, nll), Optim.iterations(res))
 end

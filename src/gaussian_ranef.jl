@@ -656,7 +656,7 @@ function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ,
     # objective WORSE in 143, and produced NaN. So only the reported flag changes
     # here -- θ̂, the ML/REML objective and logLik are byte-identical.
     # Guard: test/test_ranef_varying_scale_convergence.jl.
-    converged = Optim.converged(res) && Optim.g_converged(res)
+    converged = drm_optim_converged(res)
     # Profile intervals reuse the ML Woodbury nll (same convention as FE REML).
     fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, converged, means, obs, scales), nll_ml), re)
     if reml
@@ -881,7 +881,7 @@ function _fit_correlated_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, xs,
         hcat(l11 .* v1, cc .* v1 .+ l22 .* v2)
     end
     re = Dict(Symbol(grp) => blup)
-    fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll_ml), re)
+    fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll_ml), re)
     reml && return _withreml(fit, -nll(θ̂), -nll_ml(θ̂))
     return fit
 end
@@ -1118,7 +1118,7 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
         end
         d
     end
-    return _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll, grad!), blup)
+    return _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll, grad!), blup)
 end
 
 # Gauss–Hermite nodes/weights (Golub–Welsch) for ∫ h(x) e^{-x²} dx ≈ Σ wₖ h(xₖ).
@@ -1204,7 +1204,7 @@ function _fit_sigma_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, nmμ, nm
     names = [:mu => nmμ, :sigma => nmσ, :resd => ["$(grp)_logsigma"]]
     means = Dict(:mu => Xμ * θ̂[1:pμ]); obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))   # population (b=0) σ
-    fit = _withnll(DrmFit(fam, blocks, names, θ̂, V, -obj(θ̂), n, Optim.converged(res), means, obs, scales), obj)
+    fit = _withnll(DrmFit(fam, blocks, names, θ̂, V, -obj(θ̂), n, drm_optim_converged(res), means, obs, scales), obj)
     laplace && return _withmarginal(fit, :Laplace)
     aghq && return _withmarginal(fit, :AGHQ)
     return fit
@@ -1490,7 +1490,7 @@ function _fit_musigma_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, nmμ, 
     end
     re = Dict(Symbol(grp) => blup_mu, Symbol("$(grp)_logsigma") => blup_sigma)
 
-    fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll), re)
+    fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll), re)
     return _withmarginal(fit, :Laplace)
 end
 

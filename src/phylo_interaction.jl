@@ -117,5 +117,5 @@ function fit_phylo_interaction(y::AbstractVector, X::AbstractMatrix,
     obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => fill(exp(θ̂[pμ+1]), n))
     return _withnll(DrmFit(Gaussian(), blocks, names, θ̂, V, -nll(θ̂), n,
-                           Optim.converged(res), means, obs, scales), nll)
+                           drm_optim_converged(res), means, obs, scales), nll)
 end

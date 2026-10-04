@@ -773,7 +773,7 @@ function _fit_temporal_homtoep(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, tt, lay, 
             time = tt.time, nseries = S, rows = grows, gaps = [lay.gap[r] for r in grows],
             has_ordinary = false, phylo = nothing, levels = lay.levels,
             occasions = lay.occasions, keep = keep)
-    fit = DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(best), means, obs, scales)
+    fit = DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(best), means, obs, scales)
     # No latent temporal states: the Toeplitz block IS the marginal covariance.
     return _withranef(_withnll(fit, nll), (effects = Dict{Symbol,Vector{Float64}}(), temporal = info))
 end
@@ -914,7 +914,7 @@ function _fit_temporal_gaussian(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, tt, lay,
     info = (label = _temporal_label(tt), structure = structure, group = tt.group,
             time = tt.time, nseries = S, rows = grows, gaps = ggap,
             has_ordinary = has_ordinary, phylo = phylo, levels = lay.levels, occasions = nothing)
-    fit = DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(best), means, obs, scales)
+    fit = DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(best), means, obs, scales)
     return _withranef(_withnll(fit, nll), (effects = effects, temporal = info))
 end
 
