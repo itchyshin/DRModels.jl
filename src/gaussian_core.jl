@@ -1547,12 +1547,26 @@ What a correct model implies depends on the route:
 - **no random effect**: `F_i` is the fitted distribution, and the `r_i` are
   approximately i.i.d. standard normal (zero-inflated and hurdle count fits
   included: their PIT uses the whole mixture CDF, below);
-- **one ordinary random intercept `(1 | g)` on the mean**: `F_i` integrates
-  the intercept out over its fitted SD `σ̂_b` (32-node Gauss–Hermite), so each
-  `r_i` is `σ_b`-marginal and approximately standard normal, but residuals of
-  one group stay correlated. Other random-effect shapes (crossed, correlated
-  slopes) and CumulativeLogit fits are judged with the random effects set
-  to 0;
+- **one random intercept**: `F_i` integrates it out over its fitted SD
+  (32-node Gauss–Hermite), so each `r_i` is approximately standard normal,
+  but residuals of one group stay correlated. **On the mean**, this covers
+  any lone mean random intercept, including a `phylo()` or `relmat()` term;
+  the fitted SD `σ̂_b` is used as every observation's random-effect SD, which
+  is exact when the relatedness matrix has a unit diagonal (for example an
+  ultrametric tree of height 1). **On the scale**, for a Gaussian
+  `sigma ~ 1 + (1 | g)`, `F_i` mixes `N(μ_i, (σ_i e^b)²)` over
+  `b ~ N(0, τ̂²)`, with `σ_i` the fixed-effect scale. When `τ̂` is moderate
+  or large these residuals can be under-dispersed (SD below 1) even under a
+  correct model, because the default `marginal = :LA` fit integrates the
+  log-σ intercept on a fixed prior-scale grid that loses accuracy as the SD
+  grows; refitting with `marginal = :AGHQ` is the check. drmTMB's quantile
+  residuals for these fits condition on the fitted modes instead;
+- **other random-effect shapes** (crossed, correlated slopes, a mean and a
+  `sigma` intercept together) and CumulativeLogit fits: judged with the
+  random effects set to 0. The group-level variation then stays in the
+  residuals, so under a correct model they are over-dispersed (SD above 1)
+  and a QQ plot that bends away from the line is not by itself evidence of
+  misfit;
 - **`temporal()` AR1 / OU, and the paired `phylo()` + OU fit**: residuals
   conditional on the fitted modes (below). They are not PIT residuals, and
   their variance is below 1 even when the model is true;
