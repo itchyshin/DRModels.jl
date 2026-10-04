@@ -84,6 +84,6 @@ function _fit_truncated_poisson(fam::TruncatedPoisson, y, Xμ, nmμ, g_tol)
     names = [:mu => nmμ]
     means = Dict(:mu => exp.(Xμ * θ̂)); obs = Dict(:mu => Vector{Float64}(y))   # untruncated Poisson mean λ̂
     return _withiterations(
-        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, Dict{Symbol,Vector{Float64}}()), nll),
+        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, Dict{Symbol,Vector{Float64}}()), nll),
         Optim.iterations(res))
 end

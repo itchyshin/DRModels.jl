@@ -56,3 +56,16 @@ possibly-stale `Optim.minimum`). A tie keeps the incumbent `res`.
 """
 _better_restart(f, res, res2) =
     _objective_at_minimizer(f, res2) < _objective_at_minimizer(f, res) ? res2 : res
+
+"""
+    drm_optim_converged(res) -> Bool
+
+True only when Optim reports convergence and the gradient criterion fired.
+
+`Optim.converged` is the OR of the x, f, and g criteria. `Optim.Options(g_tol = g_tol)`
+leaves the f and x tolerances at 0, so a numerical plateau (two identical successive
+values) sets `f_converged` or `x_converged` while the gradient is still large.
+That is the defect in DRModels.jl#944. Routes that deliberately stop on `f_reltol`
+near a variance boundary are not switched to this predicate.
+"""
+drm_optim_converged(res) = Optim.converged(res) && Optim.g_converged(res)

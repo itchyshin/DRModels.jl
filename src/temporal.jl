@@ -773,7 +773,7 @@ function _fit_temporal_homtoep(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, tt, lay, 
             time = tt.time, nseries = S, rows = grows, gaps = [lay.gap[r] for r in grows],
             has_ordinary = false, phylo = nothing, levels = lay.levels,
             occasions = lay.occasions, keep = keep)
-    fit = DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(best), means, obs, scales)
+    fit = DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(best), means, obs, scales)
     # No latent temporal states: the Toeplitz block IS the marginal covariance.
     return _withranef(_withnll(fit, nll), (effects = Dict{Symbol,Vector{Float64}}(), temporal = info))
 end
@@ -858,7 +858,15 @@ function _fit_temporal_gaussian(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, tt, lay,
     best = nothing
     for ψ0 in ψstarts
         θ0 = copy(base); θ0[iψ] = ψ0
-        res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+        # NaN turns off the f- and x-stops. An OU decay at the boundary can
+        # make two successive objectives bitwise identical while |g|∞ is still
+        # above g_tol; L-BFGS then meets the gradient criterion without moving
+        # the decay or the log-likelihood.
+        res = Optim.optimize(nll, θ0, Optim.LBFGS(),
+                             Optim.Options(g_tol = g_tol,
+                                           x_abstol = NaN, x_reltol = NaN,
+                                           f_abstol = NaN, f_reltol = NaN);
+                             autodiff = :forward)
         (best === nothing || Optim.minimum(res) < Optim.minimum(best)) && (best = res)
     end
     θ̂ = Optim.minimizer(best)
@@ -914,7 +922,7 @@ function _fit_temporal_gaussian(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, tt, lay,
     info = (label = _temporal_label(tt), structure = structure, group = tt.group,
             time = tt.time, nseries = S, rows = grows, gaps = ggap,
             has_ordinary = has_ordinary, phylo = phylo, levels = lay.levels, occasions = nothing)
-    fit = DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(best), means, obs, scales)
+    fit = DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(best), means, obs, scales)
     return _withranef(_withnll(fit, nll), (effects = effects, temporal = info))
 end
 

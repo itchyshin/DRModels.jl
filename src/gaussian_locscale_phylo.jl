@@ -1301,7 +1301,7 @@ function _glsp_optimise(obj, grad!, θ0; g_tol = 1e-6, iterations = 1000)
         res = nm()
         θ̂ = Optim.minimizer(res)
     end
-    return θ̂, Optim.converged(res)
+    return θ̂, drm_optim_converged(res)
 end
 
 # ---------------------------------------------------------------------------

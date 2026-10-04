@@ -236,7 +236,7 @@ function _fit_cumulative(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, nmμ, g_t
     means = Dict(:mu => score); obs = Dict(:mu => Float64.(y))
     scales = Dict(:ordinal_eta => η̂, :ordinal_cuts => Float64.(cuts_hat))
     return _withiterations(
-        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
+        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
 end
 
@@ -287,7 +287,7 @@ function _fit_cumulative_ranef(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, gid
     means = Dict(:mu => score); obs = Dict(:mu => Float64.(y))
     scales = Dict(:ordinal_eta => η̂, :ordinal_cuts => Float64.(cuts_hat))
     return _withiterations(
-        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
+        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
 end
 
@@ -323,7 +323,7 @@ function _fit_cumulative_slope_ranef(fam::CumulativeLogit, y::Vector{Int}, Xμ, 
     means = Dict(:mu => score); obs = Dict(:mu => Float64.(y))
     scales = Dict(:ordinal_eta => η̂, :ordinal_cuts => Float64.(cuts_hat))
     return _withiterations(
-        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
+        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
 end
 

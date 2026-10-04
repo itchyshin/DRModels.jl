@@ -252,7 +252,7 @@ function _fit_phylo_gaussian_lss_sparse(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G,
     scales = Dict(:sigma => exp.(Xσ * θ̂[iβσ]))
 
     fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, Vcov, -nll_ml_only(θ̂), n,
-                                     Optim.converged(res), means, obs, scales), nll_ml_only,
+                                     drm_optim_converged(res), means, obs, scales), nll_ml_only,
                                 reml ? nothing : nllgrad!), re_dict)
     if reml
         return _withreml(fit, -nll_reml_only(θ̂), -nll_ml_only(θ̂))
@@ -972,7 +972,7 @@ function _fit_gaussian_lss_sparse_multi(fam::Gaussian, y, Xμ, Xσ, comps::Vecto
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
 
     fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, Vcov, -nll_ml_only(θ̂), n,
-                                     Optim.converged(res), means, obs, scales), nll_ml_only,
+                                     drm_optim_converged(res), means, obs, scales), nll_ml_only,
                                 reml ? nothing : nllgrad!), re_dict)
     if reml
         return _withreml(fit, -nll_reml_only(θ̂), -nll_ml_only(θ̂))

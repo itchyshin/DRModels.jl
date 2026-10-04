@@ -50,7 +50,7 @@ function _fit_meta_gaussian(fam::Gaussian, y, Xμ, Xσ, vv, nmμ, nmσ, g_tol)
     means = Dict(:mu => Xμ * θ̂[1:pμ])
     obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => sqrt.(vv .+ exp.(2 .* (Xσ * θ̂[(pμ+1):(pμ+pσ)]))))  # √(v + σ²)
-    return _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll)
+    return _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll)
 end
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -182,7 +182,7 @@ function _fit_meta_gaussian_re(fam::Gaussian, y, Xμ, Xσ, vv, comps, nmμ, nmσ
     end
     # `converged` is the GRADIENT criterion (the #609 lesson: Optim's OR of the
     # x/f/g criteria can report a flat-but-unfinished run as converged).
-    converged = Optim.converged(res) && Optim.g_converged(res)
+    converged = drm_optim_converged(res)
     return _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, converged,
         means, obs, scales), nll), blup)
 end

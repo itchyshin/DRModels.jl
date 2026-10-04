@@ -242,7 +242,7 @@ function _fit_ranef_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, nmμ, 
     end
     re = Dict(Symbol(grp) => blup)
     fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n,
-                                     Optim.converged(res), means, obs, scales), nll_ml), re)
+                                     drm_optim_converged(res), means, obs, scales), nll_ml), re)
     if reml
         return _withreml(fit, -nll_reml(θ̂), -nll_ml(θ̂))
     end
@@ -512,7 +512,7 @@ function _fit_structured_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, K
     end
     re = Dict(Symbol(grp) => blup)
     fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n,
-                                     Optim.converged(res), means, obs, scales), nll_ml), re)
+                                     drm_optim_converged(res), means, obs, scales), nll_ml), re)
     if reml
         return _withreml(fit, -nll_reml(θ̂), -nll_ml(θ̂))
     end
@@ -667,7 +667,7 @@ function _fit_gaussian_lss_multi(fam::Gaussian, y, Xμ, Xσ, comps::Vector{_LssC
     obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
     fit = _withnll(DrmFit(fam, blocks, names, θ̂, Vcov, -nll(θ̂), n,
-                          Optim.converged(res), means, obs, scales), nll_ml)
+                          drm_optim_converged(res), means, obs, scales), nll_ml)
     if reml
         return _withreml(fit, -nll_reml(θ̂), -nll_ml(θ̂))
     end

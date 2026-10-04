@@ -237,7 +237,7 @@ function _fit_bivariate_residual(f::BivariateDrmFormula, fam::Student, data, rhs
     return _withiterations(
         _withformula(
             _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n_like,
-                            Optim.converged(res), means, obs, scales), nll), f),
+                            drm_optim_converged(res), means, obs, scales), nll), f),
         Optim.iterations(res))
 end
 

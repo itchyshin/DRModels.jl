@@ -484,7 +484,7 @@ function fit_mixed_family(; y1, X1, fam1, y2, X2, fam2,
     return (; β1, β2, λ1, λ2, σ1, σ2, βσ1, βσ2, v1, v2, rho_latent = ρ,
             rho_ci_wald = rho_ci_wald, rho_ci_profile = rho_ci_profile,
             rho_ci_boot = rho_ci_boot, n_boot_kept = n_boot_kept,
-            loglik = -objfn(θ̂), converged = Optim.converged(res),
+            loglik = -objfn(θ̂), converged = drm_optim_converged(res),
             iterations = res.iterations,
             fam1 = fam1, fam2 = fam2)   # carried for post-fit accessors (mf_fitted)
 end
