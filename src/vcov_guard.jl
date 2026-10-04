@@ -90,7 +90,7 @@ function _vcov_from_hessian(H::AbstractMatrix; context::AbstractString = "")
         @warn """
               Hessian is not positive definite at the optimum. Wald standard errors are withheld.
               A negative eigenvalue means this point is not a minimum, so inv(H) is not a covariance.
-              """ context negative_coordinates = neg
+              """ context negative_eigenvalue_indices = neg
         return fill(NaN, size(Hs))
     end
 
