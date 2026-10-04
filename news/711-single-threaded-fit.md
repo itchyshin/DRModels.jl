@@ -1,1 +1,0 @@
-- **Large-data guide states that a single fit is single-threaded by design (#711).** As in drmTMB, `drm()` has no `threads` option; the parallel speed-ups are `bootstrap_ci(...; threads = true)` and `confint(...; method = :profile, threads = true)` with `JULIA_NUM_THREADS` set.
