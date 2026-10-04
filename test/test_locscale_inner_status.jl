@@ -248,10 +248,11 @@ DRModels._ls_joint_grad(::Val{:inner_status_damping_direction}, y, η0, ψ0, gid
 DRModels._ls_joint_hess(::Val{:inner_status_damping_direction}, y, η0, ψ0, gidx, G, a, P, Zη, Zψ) =
     copy(_INNER_DAMPING_H)
 
-# Objective-flat floor (the Gamma phylo bootstrap stall): every trial ties the objective,
-# so `ft <= f0` accepts each step, but the gradient never shrinks. Before the
-# flat-step guard this ran all `maxiter` iterations; the counter makes the
-# iteration budget a deterministic assertion rather than a wall-clock one.
+# Objective-flat floor (the Gamma phylo bootstrap stall): every trial ties the
+# objective exactly, so `ft <= f0` accepts each step, but the gradient never
+# shrinks. Before the stall stop this ran all `maxiter` iterations; counting
+# gradient calls makes the iteration budget a deterministic assertion rather
+# than a wall-clock one.
 const _INNER_FLAT_GRAD_CALLS = Ref(0)
 DRModels._ls_joint(::Val{:inner_status_flat_floor}, y, η0, ψ0, gidx, a, P, Zη, Zψ) = 1.0
 function DRModels._ls_joint_grad(::Val{:inner_status_flat_floor}, y, η0, ψ0, gidx, a, P, Zη, Zψ)
@@ -260,8 +261,9 @@ function DRModels._ls_joint_grad(::Val{:inner_status_flat_floor}, y, η0, ψ0, g
 end
 DRModels._ls_joint_hess(::Val{:inner_status_flat_floor}, y, η0, ψ0, gidx, G, a, P, Zη, Zψ) =
     Matrix{Float64}(I, 2, 2)
-# Control: the objective still ties, but each flat step halves the gradient, so
-# the solve is making real progress and must be allowed to reach the bound.
+# Controls that must still certify: the objective ties exactly on every step,
+# but the gradient falls by half (`progress`) or by only 2.5% (`slow`, Hessian
+# 40 I) per step. The slow case reaches the bound within `maxiter` from 50x it.
 DRModels._ls_joint(::Val{:inner_status_flat_progress}, y, η0, ψ0, gidx, a, P, Zη, Zψ) = 1.0
 function DRModels._ls_joint_grad(::Val{:inner_status_flat_progress}, y, η0, ψ0, gidx, a, P, Zη, Zψ)
     _INNER_FLAT_GRAD_CALLS[] += 1
@@ -269,6 +271,11 @@ function DRModels._ls_joint_grad(::Val{:inner_status_flat_progress}, y, η0, ψ0
 end
 DRModels._ls_joint_hess(::Val{:inner_status_flat_progress}, y, η0, ψ0, gidx, G, a, P, Zη, Zψ) =
     Matrix{Float64}(I, 2, 2)
+DRModels._ls_joint(::Val{:inner_status_flat_slow}, y, η0, ψ0, gidx, a, P, Zη, Zψ) = 1.0
+DRModels._ls_joint_grad(::Val{:inner_status_flat_slow}, y, η0, ψ0, gidx, a, P, Zη, Zψ) =
+    a .- [1.0, 0.0]
+DRModels._ls_joint_hess(::Val{:inner_status_flat_slow}, y, η0, ψ0, gidx, G, a, P, Zη, Zψ) =
+    40.0 * Matrix{Float64}(I, 2, 2)
 
 _inner_status_args(kind) = (
     kind, Float64[], Float64[], Float64[], Int[], 1,
@@ -409,24 +416,34 @@ _inner_rounding_args(kind) = _inner_status_args(kind)
     end
 
     @testset "objective-flat steps without gradient progress stop early" begin
-        limit = DRModels._LS_INNER_FLAT_LIMIT
+        window = DRModels._LS_INNER_FLAT_WINDOW
         _INNER_FLAT_GRAD_CALLS[] = 0
         a, ch, ok = DRModels._ls_inner_mode(
             _inner_status_args(Val(:inner_status_flat_floor))...; a0=zeros(2),
         )
-        # `limit` loop gradients plus the final certificate's one, not 200 + 1.
-        @test _INNER_FLAT_GRAD_CALLS[] == limit + 1
+        # `window` loop gradients plus the final certificate's one, not 200 + 1.
+        @test _INNER_FLAT_GRAD_CALLS[] == window + 1
         @test !ok
         @test issuccess(ch)
-        @test a ≈ [-limit * 1e-6, 0.0]
+        @test a ≈ [-window * 1e-6, 0.0]
 
         _INNER_FLAT_GRAD_CALLS[] = 0
         a, ch, ok = DRModels._ls_inner_mode(
             _inner_status_args(Val(:inner_status_flat_progress))...; a0=zeros(2),
         )
         @test ok
-        @test _INNER_FLAT_GRAD_CALLS[] > limit + 1
+        @test _INNER_FLAT_GRAD_CALLS[] > 11
         @test norm(a .- [1.0, 0.0]) <= 1e-8
+
+        # Slow genuine progress through exact ties still certifies, whether it
+        # starts just above the bound or far enough above it to count as flat.
+        for mult in (1.2, 1.9, 3.0, 50.0)
+            a0 = [1.0 - mult * 2e-9, 0.0]
+            a, ch, ok = DRModels._ls_inner_mode(
+                _inner_status_args(Val(:inner_status_flat_slow))...; a0=a0,
+            )
+            @test ok
+        end
     end
 
     @testset "actual Gamma kernel reports only a certified mode" begin
