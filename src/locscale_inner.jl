@@ -643,13 +643,45 @@ function _ls_inner_estimated_change(kind, y, η0, ψ0, gidx, G, P, Zη, Zψ, a, 
             prior_error_bound = B)
 end
 
+# Stall stop for the inner Newton solve. At the Float64 floor of a near-singular
+# prior (a variance component heading to its zero boundary) every trial can tie
+# the objective exactly, so `ft <= f0` keeps accepting tiny damped steps (~340
+# line-search evaluations each) that move the gradient by ~1e-10 of itself per
+# iteration. Measured 2026-10-03 on the Gamma phylo LSS bootstrap fixture: 2 x 200
+# such iterations and ~1.5e5 objective evaluations per outer evaluation.
+#
+# Runs of exact ties are NOT hopeless by themselves: on the same fixture, main
+# certified calls through 10-54 consecutive tied steps (often at 1e5-1e6 times
+# the bound) before `_ls_inner_rounding_polish` accepted a full Newton step. So
+# the stop is deliberately late and narrow:
+#   * a step counts as flat only when its objective ties `f0` exactly and the
+#     gradient norm is more than `_LS_INNER_FLAT_MARGIN` times the bound;
+#   * after `_LS_INNER_FLAT_WINDOW` consecutive flat steps, the gradient's
+#     geometric rate over that window is extrapolated, and the solve stops only
+#     if reaching the bound at that rate needs more than 10x the iterations left.
+# Calibration (main, instrumented, 3 BLAS/bounds configurations, seed fit plus
+# the bootstrap test): a 10- or 20-step window would have stopped calls that
+# later certified; the 40-step window fired on none of them, and on all but one
+# of ~3,400 calls that ran to `maxiter` uncertified. Stopping hands the state to
+# the same final certificate as exhausting `maxiter` would.
+const _LS_INNER_FLAT_WINDOW = 40
+const _LS_INNER_FLAT_MARGIN = 10.0
+
+function _ls_inner_bound_unreachable(g_first, g_last, steps, bound, remaining)
+    g_last < g_first || return true          # no gradient decrease at all
+    rate = log(g_last / g_first) / steps     # < 0: log-decrease per step
+    needed = log(bound / g_last) / rate      # steps to reach the bound
+    return !(isfinite(needed) && needed <= 10 * max(remaining, 0))
+end
+
 function _ls_inner_mode(kind, y, η0, ψ0, gidx, G, P,
                         Zη = _ls_canonical_Zeta(length(y)),
                         Zψ = _ls_canonical_Zpsi(length(y)); a0 = nothing,
                         maxiter::Int = 200, tol::Real = 1e-9, relaxed::Bool = false)
     a = a0 === nothing ? zeros(2G) : copy(a0)
     in_band = 0            # iterations spent between the strict and relaxed bounds
-    for _ in 1:maxiter
+    flat_g = Float64[]     # gradient norms over consecutive flat steps
+    for it in 1:maxiter
         grad = _ls_joint_grad(kind, y, η0, ψ0, gidx, a, P, Zη, Zψ)
         anorm = norm(a)
         gnorm = norm(grad)
@@ -679,6 +711,7 @@ function _ls_inner_mode(kind, y, η0, ψ0, gidx, G, P,
         f0 = _ls_joint(kind, y, η0, ψ0, gidx, a, P, Zη, Zψ)
         λ = 0.0
         stepped = false
+        flat_step = false
         while true
             stagnated = false
             F = cholesky(Symmetric(H + λ * I); check = false)
@@ -694,6 +727,7 @@ function _ls_inner_mode(kind, y, η0, ψ0, gidx, G, P,
                     end
                     if all(isfinite, trial) && isfinite(ft) && ft <= f0 &&
                        any(trial .!= a)
+                        flat_step = ft == f0
                         a = trial; stepped = true; break
                     end
                     if λ == 0.0 && α == 1.0
@@ -711,6 +745,17 @@ function _ls_inner_mode(kind, y, η0, ψ0, gidx, G, P,
             λ > 1e12 && break
         end
         stepped || return a, _ls_hess_chol(kind, y, η0, ψ0, gidx, G, a, P, Zη, Zψ), false
+        if flat_step && isfinite(gnorm) && isfinite(bound) &&
+           gnorm > _LS_INNER_FLAT_MARGIN * bound
+            push!(flat_g, gnorm)
+        else
+            empty!(flat_g)
+        end
+        if length(flat_g) >= _LS_INNER_FLAT_WINDOW &&
+           _ls_inner_bound_unreachable(flat_g[end - _LS_INNER_FLAT_WINDOW + 1], flat_g[end],
+                                       _LS_INNER_FLAT_WINDOW - 1, bound, maxiter - it)
+            break
+        end
     end
     ch, ok = _ls_inner_certificate(kind, y, η0, ψ0, gidx, G, P, Zη, Zψ, a, tol)
     return a, ch, ok
