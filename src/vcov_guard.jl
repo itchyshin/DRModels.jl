@@ -60,11 +60,14 @@ const _VCOV_RTOL = 3e-8
 Covariance matrix from an observed-information (Hessian) matrix, guarded against
 boundary degeneracy.
 
-Symmetrises `H`, then inverts it — unless it is numerically singular, in which
-case it falls back to the Moore–Penrose pseudo-inverse **and warns**, naming the
-parameter coordinates that are flat. The decision is made from the eigenvalues
-rather than from whether `inv` happens to throw, so the result does not depend
-on the LAPACK build or CPU.
+Symmetrises `H`, then inverts it, unless it is numerically singular or not
+positive definite. A clearly negative eigenvalue means the point is not a
+minimum: the function warns and returns a `NaN` covariance rather than
+`inv(H)` or a pseudo-inverse. A numerically zero eigenvalue (a variance
+boundary) still falls back to the Moore–Penrose pseudo-inverse and warns,
+naming the flat coordinates. The decision is made from the eigenvalues rather
+than from whether `inv` happens to throw, so the result does not depend on the
+LAPACK build or CPU.
 
 The pseudo-inverse keeps a fit usable, but standard errors for the flagged
 coordinates are not trustworthy: at a variance boundary the sampling
@@ -79,6 +82,17 @@ function _vcov_from_hessian(H::AbstractMatrix; context::AbstractString = "")
 
     ev = eigvals(Symmetric(Hs))
     scale = maximum(abs, ev)
+    # A negative eigenvalue is a saddle or a ridge, not a variance boundary.
+    # `minimum(abs, ev)` cannot see it, and `inv` of that matrix has a negative
+    # diagonal (DRModels.jl#972). Do not pseudo-invert it either.
+    if scale != 0 && minimum(ev) < -_VCOV_RTOL * scale
+        neg = findall(<( -_VCOV_RTOL * scale), ev)
+        @warn """
+              Hessian is not positive definite at the optimum. Wald standard errors are withheld.
+              A negative eigenvalue means this point is not a minimum, so inv(H) is not a covariance.
+              """ context negative_coordinates = neg
+        return fill(NaN, size(Hs))
+    end
 
     if scale == 0 || minimum(abs, ev) <= _VCOV_RTOL * scale
         d = abs.(diag(Hs))

@@ -104,7 +104,8 @@ function fit_phylo_interaction(y::AbstractVector, X::AbstractMatrix,
                          autodiff = :forward)
     θ̂ = Optim.minimizer(res)
     V = try
-        Matrix(inv(Symmetric(ForwardDiff.hessian(nll, θ̂))))
+        _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂);
+                           context = "phylo interaction")
     catch
         fill(NaN, pμ + 2, pμ + 2)
     end
