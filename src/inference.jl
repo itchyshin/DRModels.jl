@@ -1686,7 +1686,7 @@ function bootstrap_result(
     _check_bootstrap_failure_mode(failures)
     formula = _bootstrap_fit_formula(fit)
     # LSS refits must preserve the seed fit's estimator. Other Gaussian routes
-    # retain their existing dispatch here; MAP needs its separate penalty contract.
+    # forward REML and a non-default marginal. MAP is still not forwarded.
     # On the univariate refit, a non-default marginal (:Laplace, :VA, :AGHQ)
     # and a REML seed are forwarded too. Otherwise the replicate is the default
     # :LA / ML fit and the interval describes a different estimator
