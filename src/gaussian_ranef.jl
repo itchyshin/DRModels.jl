@@ -836,7 +836,16 @@ function _fit_correlated_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, xs,
     φ0[pμ+1] = log(std(res0) + eps())
     sd0 = log(std(res0) / 2 + eps())
     φ0[pμ+pσ+1] = sd0; φ0[pμ+pσ+2] = sd0; φ0[pμ+pσ+3] = 0.0
-    res = Optim.optimize(nllc, φ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    # NaN turns off the f- and x-stops. At ρ = ±1, log l22 runs toward -Inf and
+    # two successive objectives can be bitwise identical while |g|∞ is still
+    # above g_tol. The #707 centred and shifted twins share that boundary
+    # likelihood, and one of them already meets the gradient criterion there, so
+    # L-BFGS can finish the short path without leaving the edge. This call uses
+    # the default f tolerance of 0; it does not set f_reltol on purpose.
+    opts = Optim.Options(g_tol = g_tol,
+                         x_abstol = NaN, x_reltol = NaN,
+                         f_abstol = NaN, f_reltol = NaN)
+    res = Optim.optimize(nllc, φ0, Optim.LBFGS(), opts; autodiff = :forward)
     # BOUNDARY RESTART. Σ_re depends on l22 only through l22², so ρ = ±1 (l22 → 0,
     # log l22 → −∞) is ALWAYS a stationary limit of this parametrisation: the
     # gradient in log l22 vanishes there whether or not an interior optimum is
@@ -847,7 +856,7 @@ function _fit_correlated_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, xs,
     let φ̂1 = Optim.minimizer(res), ia = pμ + pσ + 1
         if φ̂1[ia+1] - φ̂1[ia] < log(1e-3)
             φr = copy(φ̂1); φr[ia+1] = φ̂1[ia] + log(0.5); φr[ia+2] = 0.0
-            res2 = Optim.optimize(nllc, φr, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+            res2 = Optim.optimize(nllc, φr, Optim.LBFGS(), opts; autodiff = :forward)
             res = _better_restart(nllc, res, res2)   # NOT Optim.minimum: see optim_minimum_guard.jl
         end
     end
