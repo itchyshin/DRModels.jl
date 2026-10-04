@@ -32,8 +32,7 @@
 #                  Gamma method and `_gamma_sigma_is_shape`.
 #   • Beta         Beta(μφ, (1−μ)φ),              φ = σ⁻²  (precision)
 #   • Poisson      Poisson(μ)
-#   • NegBinomial2 NegativeBinomial(φ, φ/(φ+μ)),  φ = scales[:sigma] **directly**
-#                  (the NB2 kernel stores size θ = exp(η_σ) in the sigma slot, NOT σ⁻²)
+#   • NegBinomial2 NegativeBinomial(φ, φ/(φ+μ)),  φ = σ⁻²  (size; scales[:sigma] = σ)
 #   • TruncNB2     truncated(NegativeBinomial(φ, p); lower = 0)   (support ≥ 1)
 #   • Binomial     Binomial(n, p),  p = μ (success prob), n = scales[:trials]
 #   • BetaBinomial BetaBinomial(n, μφ, (1−μ)φ),  φ = σ⁻², n = scales[:trials]
@@ -240,14 +239,96 @@ function _cdf_value(fam, i, yval; μ, scales, obs, gsis, mix)
     return acc
 end
 
+# Zero-truncated Poisson PIT interval [F_t(y−1), F_t(y)], y ≥ 1, with
+# F_t(k) = P(1 ≤ Y ≤ k) / (1 − P(0)), in log space (running `_logaddexp` of the
+# pmf terms; `_log1mexp(-λ)` for the divisor) so a tiny λ cannot make it 0/0.
+# Shared by `TruncatedPoisson()` and the positive part of a hurdle Poisson fit.
+function _ztpois_pit_interval(λ, yi)
+    log1mF0 = _log1mexp(-λ)
+    lpmf(j) = j * log(λ) - λ - _logfactorial(j)
+    loga = -Inf
+    for j in 1:(yi - 1)
+        loga = _logaddexp(loga, lpmf(j))
+    end
+    logb = _logaddexp(loga, lpmf(yi))
+    return exp(loga - log1mF0), exp(logb - log1mF0)
+end
+
+# Zero-truncated NB2 PIT interval [F_t(y−1), F_t(y)], y ≥ 1, size r, mean μ.
+# F_t(k) = (NB.cdf(k) − NB.cdf(0)) / (1 − NB.cdf(0)), k ≥ 1 — but built from
+# `_nb2_logpmf` / `_log1mexp` (negbinomial.jl, poisson.jl) rather than
+# `Distributions.cdf`. At extreme dispersion (r = 1/σ² ≫ μ, log σ ≲ -20) or
+# extreme small μ (μ/r underflows to exactly 0),
+# `Distributions.NegativeBinomial(r, r/(r+μ)).cdf` rounds to EXACTLY 1.0 for every
+# k (r+μ rounds to r in float64, so p rounds to 1): both the numerator
+# (NB.cdf(k) − F0) and the denominator (1 − F0) evaluate to 0.0, giving
+# 0/0 = NaN (same cancellation #866/#874 fixed in the likelihood). Working
+# entirely in log space avoids ever forming that degenerate p: log(1 − F0) via
+# `_log1mexp(_nb2_logpmf(r, μ, 0))`, and log(NB.cdf(k) − F0) = log P(1 ≤ Y ≤ k)
+# via a running `_logaddexp` sum of `_nb2_logpmf(r, μ, j)` terms, both finite for
+# any r as long as μ > 0. Shared by `TruncatedNegBinomial2()` and the positive
+# part of a hurdle NB2 fit.
+function _ztnb2_pit_interval(r, μi, yi)
+    log1mF0 = _log1mexp(_nb2_logpmf(r, μi, 0))
+    if isinf(log1mF0)
+        # μ underflowed to ~0 in float64: the untruncated model puts
+        # (numerically) all its mass at 0, so the zero-truncated tail
+        # probability for any observed y ≥ 1 is ~1 — saturate rather than
+        # divide 0/0. The caller's `lo`/`hi` clamp still maps this to a finite
+        # (large) residual, matching every other branch in this file.
+        return 1.0, 1.0
+    end
+    loga = -Inf
+    for j in 1:(yi - 1)
+        loga = _logaddexp(loga, _nb2_logpmf(r, μi, j))
+    end
+    logb = yi >= 1 ? _logaddexp(loga, _nb2_logpmf(r, μi, yi)) : loga
+    return exp(loga - log1mF0), exp(logb - log1mF0)
+end
+
+# PIT interval [F(y−1), F(y)] of a zero-inflated (`scales[:zi]`) or hurdle
+# (`scales[:hu]`) Poisson / NB2 fit, from the FULL mixture CDF (#922). Both
+# probabilities are stored on the probability scale (logit link) by
+# `_fit_poisson_zi` / `_fit_negbin2_zi` / `_fit_poisson_hu` / `_fit_negbin2_hu`,
+# and `μ` is the COUNT-component mean (`means[:mu]`):
+#   zero-inflated: F(y) = π + (1 − π)·F_c(y),               y ≥ 0;
+#   hurdle:        F(0) = p0, F(y) = p0 + (1 − p0)·F_t(y),   y ≥ 1,
+# with F(−1) = 0, F_c the count CDF and F_t its zero-truncated CDF (the
+# log-space helpers above, so a hurdle NB2 at extreme dispersion cannot go 0/0).
+# `drm()` refuses `zi`/`hu` combined with any random or structured effect, so
+# `mix` is always `nothing` here; the zero-inflated branch would marginalise a
+# future `(1 | g)` through `_cdf_value`, and the hurdle branch refuses one rather
+# than silently judging it at b = 0.
+function _zi_hurdle_pit_interval(fit::DrmFit, fam, i, yi; μ, gsis, mix)
+    if haskey(fit.scales, :zi)
+        πi = fit.scales[:zi][i]
+        Fc(k) = _cdf_value(fam, i, k; μ = μ, scales = fit.scales, obs = fit.obs, gsis = gsis, mix = mix)
+        a = yi <= 0 ? 0.0 : πi + (1 - πi) * Fc(yi - 1)
+        return a, πi + (1 - πi) * Fc(yi)
+    end
+    mix === nothing || throw(ArgumentError("residuals(type=:quantile): a hurdle fit " *
+        "with a random effect has no σ_b-marginal PIT yet"))
+    p0 = fit.scales[:hu][i]
+    yi <= 0 && return 0.0, p0
+    # Floor μ at eps() for BOTH count families, so a count mean that underflowed
+    # to 0 gives the same zero-truncated limit (all mass at y = 1) for NB2 as for
+    # Poisson, instead of the NB2 helper's saturated (1, 1).
+    μi = max(μ[i], eps())
+    at, bt = fam isa NegBinomial2 ?
+        _ztnb2_pit_interval(1 / (fit.scales[:sigma][i]^2), μi, yi) :
+        _ztpois_pit_interval(μi, yi)
+    return p0 + (1 - p0) * at, p0 + (1 - p0) * bt
+end
+
 # Randomized quantile residuals r_i = Φ⁻¹(u_i) (Dunn & Smyth; DHARMa / glmmTMB).
 # Continuous families use u = F(y); discrete families randomize within the jump
 # interval [F(y⁻), F(y)]; ZeroOneBeta / CumulativeLogit use the atomic / ordinal
-# drivers (point-mass mixtures). The per-family parameter map lives in
-# `_conditional_dist`. A fit with a single ordinary random intercept `(1 | g)`
-# on the mean (#760), or a Gaussian one on log σ (#923), judges every row
-# against the σ_b-MARGINAL distribution, not the fixed-effect-only (b = 0)
-# distribution — see `_ranef_marginal_mix`.
+# drivers (point-mass mixtures); zero-inflated / hurdle count fits randomize
+# within the full mixture CDF (`_zi_hurdle_pit_interval`, #922). The per-family
+# parameter map lives in `_conditional_dist`. A fit with a single ordinary
+# random intercept `(1 | g)` on the mean (#760), or a Gaussian one on log σ
+# (#923), judges every row against the σ_b-MARGINAL distribution, not the
+# fixed-effect-only (b = 0) distribution — see `_ranef_marginal_mix`.
 function _quantile_residuals(fit::DrmFit, rng)
     haskey(fit.means, :mu) ||
         throw(ArgumentError("residuals(type=:quantile) is univariate-only"))
@@ -290,60 +371,17 @@ function _quantile_residuals(fit::DrmFit, rng)
             u[i] = clamp(F, lo, hi)
         end
     elseif fam isa TruncatedPoisson
-        # Zero-truncated Poisson CDF F_t(k) = P(1 ≤ Y ≤ k) / (1 − P(0)), k ≥ 1,
-        # in log space (running `_logaddexp` of the pmf terms; `_log1mexp(-λ)` for
-        # the divisor) so a tiny λ cannot make it 0/0.
         @inbounds for i in 1:n
-            λ = max(μ[i], eps())
-            yi = round(Int, y[i])
-            log1mF0 = _log1mexp(-λ)
-            lpmf(j) = j * log(λ) - λ - _logfactorial(j)
-            loga = -Inf
-            for j in 1:(yi - 1)
-                loga = _logaddexp(loga, lpmf(j))
-            end
-            logb = _logaddexp(loga, lpmf(yi))
-            a = exp(loga - log1mF0); b = exp(logb - log1mF0)
+            a, b = _ztpois_pit_interval(max(μ[i], eps()), round(Int, y[i]))
             u[i] = clamp(a + (b - a) * rand(rng), lo, hi)
         end
     elseif fam isa TruncatedNegBinomial2
-        # Zero-truncated CDF F_t(k) = (NB.cdf(k) − NB.cdf(0)) / (1 − NB.cdf(0)),
-        # k ≥ 1 — but built from `_nb2_logpmf` / `_log1mexp` (negbinomial.jl,
-        # poisson.jl) rather than `Distributions.cdf`. At extreme dispersion
-        # (r = 1/σ² ≫ μ, log σ ≲ -20) or extreme small μ (μ/r underflows to
-        # exactly 0), `Distributions.NegativeBinomial(r, r/(r+μ)).cdf` rounds to
-        # EXACTLY 1.0 for every k (r+μ rounds to r in float64, so p rounds to 1):
-        # both the numerator (NB.cdf(k) − F0) and the denominator (1 − F0)
-        # evaluate to 0.0, giving 0/0 = NaN (same cancellation #866/#874 fixed in
-        # the likelihood). Working entirely in log space avoids ever forming that
-        # degenerate p: log(1 − F0) via `_log1mexp(_nb2_logpmf(r, μ, 0))`, and
-        # log(NB.cdf(k) − F0) = log P(1 ≤ Y ≤ k) via a running `_logaddexp` sum of
-        # `_nb2_logpmf(r, μ, j)` terms, both finite for any r as long as μ > 0.
         @inbounds for i in 1:n
             if mix === nothing
                 # Fixed-effect reference: the log-space zero-truncated NB2
-                # CDF above (#876), finite at extreme dispersion.
+                # CDF (#876), finite at extreme dispersion.
                 r = 1 / (fit.scales[:sigma][i]^2)       # NB2 size; scales[:sigma] = σ
-                μi = μ[i]
-                yi = round(Int, y[i])
-                log1mF0 = _log1mexp(_nb2_logpmf(r, μi, 0))
-                if isinf(log1mF0)
-                    # μ underflowed to ~0 in float64: the untruncated model puts
-                    # (numerically) all its mass at 0, so the zero-truncated tail
-                    # probability for any observed y ≥ 1 is ~1 — saturate rather
-                    # than divide 0/0. `lo`/`hi` below still clamp this to a finite
-                    # (large) residual, matching every other branch in this file.
-                    a = 1.0
-                    b = 1.0
-                else
-                    loga = -Inf
-                    for j in 1:(yi - 1)
-                        loga = _logaddexp(loga, _nb2_logpmf(r, μi, j))
-                    end
-                    logb = yi >= 1 ? _logaddexp(loga, _nb2_logpmf(r, μi, yi)) : loga
-                    a = exp(loga - log1mF0)
-                    b = exp(logb - log1mF0)
-                end
+                a, b = _ztnb2_pit_interval(r, μ[i], round(Int, y[i]))
             else
                 # σ_b-marginal reference (#760): truncate the Gauss–Hermite
                 # mixture of untruncated NB2 CDFs.
@@ -354,6 +392,12 @@ function _quantile_residuals(fit::DrmFit, rng)
                 a = (_cdf_value(fam, i, yi - 1; μ = μ, scales = fit.scales, obs = fit.obs, gsis = gsis, mix = mix) - F0) / denom
                 b = (_cdf_value(fam, i, yi; μ = μ, scales = fit.scales, obs = fit.obs, gsis = gsis, mix = mix) - F0) / denom
             end
+            u[i] = clamp(a + (b - a) * rand(rng), lo, hi)
+        end
+    elseif haskey(fit.scales, :zi) || haskey(fit.scales, :hu)
+        # Zero-inflated / hurdle Poisson or NB2: the full mixture CDF (#922).
+        @inbounds for i in 1:n
+            a, b = _zi_hurdle_pit_interval(fit, fam, i, round(Int, y[i]); μ = μ, gsis = gsis, mix = mix)
             u[i] = clamp(a + (b - a) * rand(rng), lo, hi)
         end
     else

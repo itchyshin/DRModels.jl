@@ -1,0 +1,21 @@
+# mutation test AFTER: review-fix head f0f501183, run in ~/claude-606c/tree, finite-public-007.json; PYTHONDONTWRITEBYTECODE=1 with an empty PYTHONPYCACHEPREFIX 2026-10-03T19:25:48Z
+A_fit_always_pass rc= 1 KILLED :: RuntimeError: accepted forged PASS forged_pass_1e-5
+B_fit_no_verdict_check rc= 1 KILLED :: RuntimeError: accepted damaged false_pass
+C_fit_no_reported_error_check rc= 1 KILLED :: RuntimeError: accepted damaged reported_error
+D_pub_always_pass rc= 1 KILLED :: ValueError: forged PASS accepted
+E_pub_no_verdict_check rc= 1 KILLED :: ValueError: damaged receipt accepted
+F_fit_tol_1e3 rc= 1 KILLED :: RuntimeError: accepted forged PASS forged_pass_1e-5
+G_pub_tol_1e3 rc= 1 KILLED :: ValueError: forged PASS accepted
+H_joint_always_pass rc= 1 KILLED :: RuntimeError: damaged fixture passed: forged PASS, native theta +1e-5
+I_joint_tol_1e3 rc= 1 KILLED :: RuntimeError: damaged fixture passed: forged PASS, native theta +1e-5
+# finer tolerance mutants (4e-6 -> 5e-6), to exercise the 4.004e-6 threshold control
+J_fit_tol_5e-6 rc= 1 KILLED :: RuntimeError: accepted forged PASS threshold_above_4e-6
+K_pub_tol_5e-6 rc= 1 KILLED :: ValueError: forged PASS accepted
+L_joint_tol_5e-6 rc= 1 KILLED :: RuntimeError: damaged fixture passed: forged PASS, theta error 4.004e-6 just above the bar
+# reviewer forged_pass.py (~/claude-rv934) on this tree
+ordinal honest theta error now 1.0000024365186544e-05 receipt still claims parity_pass = True
+categorical honest theta error now 1.0000100780060972e-05 receipt still claims parity_pass = True
+FORGED_PASS_REJECTED: parity verdict
+# joint mutants H, I rerun with an absolute JULIA_ROOT (os.getcwd())
+H_joint_always_pass rc= 1 KILLED :: RuntimeError: damaged fixture passed: forged PASS, native theta +1e-5
+I_joint_tol_1e3 rc= 1 KILLED :: RuntimeError: damaged fixture passed: forged PASS, native theta +1e-5

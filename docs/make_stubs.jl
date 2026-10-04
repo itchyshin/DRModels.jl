@@ -13,9 +13,6 @@ const ROADMAP = "https://github.com/itchyshin/DRModels.jl/blob/main/ROADMAP.md"
 
 # (relpath under docs/src/, title, status, drmTMB url suffix ("" = DRModels.jl-only), what DRModels.jl has today)
 pages = [
-    ("get-started.md", "Get started", "First slice", "articles/drmTMB.html",
-        "install + the verified q=4 fit; the `bf()` first-fit example lands in Phase 1.1."),
-
     # Model Guides
     ("model-guides/model-map.md", "What can I fit today?", "First slice", "articles/model-map.html",
         "the verified q=4 PLSM path; the full capability matrix fills as the API lands."),
@@ -115,22 +112,6 @@ for (rel, title, status, url, today) in pages
         global skipped += 1
     else
         write(path, stub(title, status, url, today))
-        global created += 1
-    end
-end
-
-# changelog mirrors NEWS.md
-let path = joinpath(SRC, "changelog.md")
-    if isfile(path)
-        global skipped += 1
-    else
-        write(path, """
-        # Changelog
-
-        The changelog mirrors [`NEWS.md`](https://github.com/itchyshin/DRModels.jl/blob/main/NEWS.md)
-        in the repository root. See there for the per-version history; the live work
-        ledger is [GitHub Issues](https://github.com/itchyshin/DRModels.jl/issues).
-        """)
         global created += 1
     end
 end

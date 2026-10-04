@@ -23,8 +23,8 @@
     "native_reference": "finite-state/finite-native-003.json",
     "fixed_point_receipt": "finite-state/finite-julia-002.toml",
     "default_fit_receipt": "finite-state/finite-fit-002.toml",
-    "default_fit_parity": "both fail unchanged4e-6; no wholecell closed",
-    "public_receipt": "finite-frontends/finite-public-005.json",
+    "default_fit_parity": "both pass unchanged 4e-6 after the 2026-10-03 refresh against drmTMB 0eb0467851 (Newton polish default; #606, nongaussian-refresh-20261003/); no whole cell closed",
+    "public_receipt": "finite-frontends/finite-public-007.json",
     "required_gaps": [
       "strict native default-fit numerical parity",
       "full public accessor/argument matrix",

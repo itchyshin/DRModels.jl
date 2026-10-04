@@ -1,0 +1,40 @@
+ONLY=all TREE=/home/snakagaw/claude-606b/after13 OUT=/home/snakagaw/claude-606b/after13-out JULIA=julia version 1.13.1 HEAD= 2026-10-03T18:21:23Z
+GATE jn_G1 exit=0 :: JOINT_REFERENCE_EXECUTED cases=2 rows=320 
+GATE jn_G2 exit=0 :: JOINT_RECEIPT_PASS cases=2 rows=320 likelihoods=2 conditional_moments=640 
+GATE jn_G3 exit=0 :: JOINT_RECEIPT_NEGATIVES_PASS=11 
+GATE jn_G4 exit=0 :: JOINT_RECEIPT_NEGATIVES_PASS=11 
+GATE jf_G1 exit=0 :: bernoulli optimizer=converged gradient=2.3506085966573664e-11 JOINT_FITS_EXECUTED cases=2 
+GATE jf_G2 exit=0 :: JOINT_FIT_RECEIPT_PASS cases=2 rows=320 native_parity=false 
+GATE jf_G3 exit=0 :: JOINT_FIT_RECEIPT_NEGATIVES_PASS=13 
+GATE jf_G4 exit=0 :: JOINT_FIT_RECEIPT_NEGATIVES_PASS=13 
+GATE jfp_G1 exit=0 :: JOINT_FIT_RECEIPT_PASS cases=2 rows=320 native_parity=true 
+GATE jpf_G1 exit=0 :: public=bernoulli converged=true gradient=2.3506085966573664e-11 native_theta_max_abs=1.0875744749228033e-11 JOINT_FRONTEND_FITS_EXECUTED cases=2 rows=320 
+GATE jpf_G2 exit=0 :: JOINT_FRONTEND_RECEIPT_PASS cases=2 rows=320 native_theta_checked=false deltas={'gaussian': 3.8127279111677126e-12, 'bernoulli': 1.0875744749228033e-11} 
+GATE jpf_G3 exit=0 :: JOINT_FRONTEND_RECEIPT_NEGATIVES_PASS=17 
+GATE jpf_G4 exit=0 :: JOINT_FRONTEND_RECEIPT_NEGATIVES_PASS=17 
+GATE jpf_G5 exit=0 :: JOINT_FRONTEND_RECEIPT_PASS cases=2 rows=320 native_theta_checked=true deltas={'gaussian': 3.8127279111677126e-12, 'bernoulli': 1.0875744749228033e-11} 
+GATE nu_G1 exit=0 :: JOINT_NATIVE_PREFLIGHT_PASS cases=2 rows=320 
+GATE nu_G2 exit=0 :: bernoulli PASS  JOINT_NATIVE_UNCERTAINTY_PASS 
+GATE jp_run exit=1 :: Julia exit. LoadError("/home/snakagaw/R/lib/JuliaCall/julia/setup.jl", 16, ArgumentError("Package Suppressor not found in current path.\n- Run `import Pkg; Pkg.add(\"Suppressor\")` to install the Suppressor package."))LoadError("/home/snakagaw/R/lib/JuliaCall/julia/setup.jl", 16, ArgumentError("Package Suppressor not found in current path.\n- Run `import Pkg; Pkg.add(\"Suppressor\")` to install th
+GATE jp_oracle exit=1 ::            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ FileNotFoundError: [Errno 2] No such file or directory: '/home/snakagaw/claude-606b/after13-out/joint-public.json' 
+GATE jp_neg exit=1 ::            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ FileNotFoundError: [Errno 2] No such file or directory: '/home/snakagaw/claude-606b/after13-out/joint-public.json' 
+GATE rjn_G1 exit=1 ::            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ FileNotFoundError: [Errno 2] No such file or directory: '/home/snakagaw/claude-606b/after13-out/joint-public.json' 
+GATE fse_G1 exit=0 :: FINITE_NATIVE_NEGATIVE_CONTROLS_PASS 18 FINITE_NATIVE_NEGATIVE_CONTROLS_PASS 18 
+GATE fk_run exit=0 :: finite-state frozen native reference |   48     48  11.8s FINITE_JOINT_NATIVE_PASS 
+GATE ff_run exit=0 :: categorical parity=true errors=Dict("theta" => 1.0078010648228997e-10, "prediction" => 7.708622629110096e-11, "imputation" => 0.0, "loglik" => 2.0463630789890885e-12) FINITE_JOINT_FIT_MEASURED 
+GATE fse_G2 exit=1 ::               ^^^^^^^^^^^^^^^^^^^^^^^^^ ValueError: runtime 
+GATE fse_G4 exit=1 ::               ^^^^^^^^^^^^^^^^^^^^^^^^^ ValueError: runtime 
+GATE fp_run exit=1 :: 4: In system2(file.path(.julia$bin_dir, "julia"), shQuote(command),  :   running command ''/home/snakagaw/.julia/juliaup/julia-1.13.1+0.x64.linux.gnu/bin/julia' '--startup-file=no' '/home/snakagaw/R/lib/JuliaCall/julia/install_dependency.jl' '/usr/lib/R' 2>&1' had status 1 
+GATE fp_G2 exit=1 ::               ^^^^^^^^^^^^^^^^^^^^^^^^^ ValueError: runtime threads 
+GATE fp_G3 exit=1 :: {'ordinal': 'UNMEASURED', 'categorical': 'UNMEASURED'} FINITE_NATIVE_PARITY_FAIL 
+GATE fstop exit=0 :: FINITE_STOPPING_DIAGNOSTIC_PASS {'ordinal': {'native_max_gradient': 0.001573169705340634, 'julia_independent_max_gradient': 1.1368683772161601e-08, 'displacement_residual_max': 6.356001848094714e-11}, 'categorical': {'native_max_gradient': 0.0009399121840727998, 'julia_independent_max_gradient': 8.526512829121202e-09, 'displacement_residual_max': 1.9967956024348845e-10}} FINITE_STOPPING_DAMAGES_RE
+DONE 2026-10-03T18:23:16Z
+ONLY=^(jp_|rjn_|fp_) TREE=/home/snakagaw/claude-606b/after13 OUT=/home/snakagaw/claude-606b/after13-out JULIA=julia version 1.13.1 HEAD= 2026-10-03T18:30:41Z
+GATE jp_run exit=0 :: Julia exit.   Activating project at `~/claude-606b/after13` 
+GATE jp_oracle exit=0 :: JOINT_PUBLIC_ORACLE_PASS cases=2 rows=320 native_checked=false 
+GATE jp_neg exit=0 :: JOINT_PUBLIC_NEGATIVE_CONTROLS_PASS mutations=21 JOINT_PUBLIC_NEGATIVE_CONTROLS_PASS mutations=21 
+GATE rjn_G1 exit=0 :: JOINT_PUBLIC_ORACLE_PASS cases=2 rows=320 native_checked=true 
+GATE fp_run exit=0 :: Julia exit.   Activating project at `~/claude-606b/after13` 
+GATE fp_G2 exit=0 :: FINITE_PUBLIC_ORACLE_PASS {'ordinal': 'PASS', 'categorical': 'PASS'} FINITE_PUBLIC_DAMAGES_REJECTED 17 
+GATE fp_G3 exit=0 :: {'ordinal': 'PASS', 'categorical': 'PASS'} FINITE_NATIVE_PARITY_PASS 
+DONE 2026-10-03T18:31:58Z
