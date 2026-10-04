@@ -1,1 +1,0 @@
-- **Docs: the README install section now shows `Pkg.add(url = "https://github.com/itchyshin/DRModels.jl")`**, matching the getting-started page. The local-clone `Pkg.develop` route is kept as a one-line alternative for contributors.
