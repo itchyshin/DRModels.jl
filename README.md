@@ -57,37 +57,50 @@ If you are developing DRModels.jl from a local clone
 
 ## Worked example — a Gaussian location–scale regression
 
-The smallest real **distributional** regression: both the mean **and** the
-(log) scale depend on a covariate. This runs as-is (verified).
+The first example tells the same ecology story as drmTMB's
+[first-model article](https://itchyshin.github.io/drmTMB/articles/drmTMB.html):
+growth of 120 individuals sampled in forest and grassland, where habitat and
+temperature shift mean growth and habitat also changes residual variation.
+The true values and `n` match the R article. The printed estimates will not
+match it, because Julia and R generate different random numbers even from the
+same seed. This runs as-is (verified).
 
 ```julia
 using DRModels, Random
 Random.seed!(1)
 
-n = 400
-x = randn(n)
-# data-generating process: μ = 0.5 − 0.8·x,  log σ = −0.3 + 0.4·x
-y = (0.5 .- 0.8 .* x) .+ exp.(-0.3 .+ 0.4 .* x) .* randn(n)
+n = 120
+habitat = repeat(["forest", "grassland"]; inner = n ÷ 2)
+temperature = randn(n)
+grass = habitat .== "grassland"
+# true values: μ = 1 + 0.6·grassland + 0.4·temperature,  log σ = −0.5 + 0.45·grassland
+growth = (1 .+ 0.6 .* grass .+ 0.4 .* temperature) .+
+         exp.(-0.5 .+ 0.45 .* grass) .* randn(n)
 
-fit = drm(bf(@formula(y ~ 1 + x),        # mean μ
-             @formula(sigma ~ 1 + x)),     # log scale σ
-          Gaussian(); data = (; y, x))
+fit = drm(bf(@formula(growth ~ 1 + habitat + temperature),   # mean μ
+             @formula(sigma ~ 1 + habitat)),                 # log scale σ
+          Gaussian(); data = (; growth, habitat, temperature))
 
-coef(fit, :mu)      # ≈ [ 0.50, -0.80]
-coef(fit, :sigma)   # ≈ [-0.32,  0.40]
+coef(fit, :mu)      # true values: [1.00, 0.60, 0.40]
+coef(fit, :sigma)   # true values: [-0.50, 0.45]
 coeftable(fit)      # Wald SEs, z, p, 95% CIs for every coefficient
 ```
 
 ```
-─────────────────────────────────────────────────────────────────────────
-                    Estimate  Std.Error        z  Pr(>|z|)  Lower 95%  Upper 95%
-─────────────────────────────────────────────────────────────────────────
-mu: (Intercept)     0.50299  0.0398921   12.609    <1e-35   0.424799   0.581173
-mu: x              -0.79985  0.0292344  -27.360    <1e-99  -0.857148  -0.742551
-sigma: (Intercept) -0.32217  0.0353752   -9.107    <1e-19  -0.391506  -0.252838
-sigma: x            0.39537  0.0335957   11.768    <1e-31   0.329524   0.461217
-─────────────────────────────────────────────────────────────────────────
+──────────────────────────────────────────────────────────────────────────────────────
+                            Estimate  Std.Error      z  Pr(>|z|)  Lower 95%  Upper 95%
+──────────────────────────────────────────────────────────────────────────────────────
+mu: (Intercept)             1.03555   0.0771317  13.43    <1e-40   0.884375   1.18673
+mu: habitat: grassland      0.70105   0.150148    4.67    <1e-05   0.406766   0.995334
+mu: temperature             0.327938  0.0673747   4.87    <1e-05   0.195886   0.45999
+sigma: (Intercept)         -0.525039  0.091334   -5.75    <1e-08  -0.704051  -0.346028
+sigma: habitat: grassland   0.503322  0.129232    3.89    <1e-04   0.250032   0.756612
+──────────────────────────────────────────────────────────────────────────────────────
 ```
+
+Every 95% interval covers its true value. The `sigma` habitat coefficient is a
+log residual-SD contrast: `exp(0.503) ≈ 1.65`, so residual SD in grassland is
+about 1.65 times that in forest (true ratio `exp(0.45) ≈ 1.57`).
 
 The same `bf(...)` grammar carries the full audited surface — 15 families, random
 effects on the mean **and** scale, structured (`relmat` / `animal` / `phylo` /

@@ -35,9 +35,16 @@ using Optim: Optim
 # ---------------------------------------------------------------------------
 # Variance-component bookkeeping: map each grouping factor to the WORKING-scale
 # θ index that carries its log σ, plus the residual log σ index. Returns
-#   (comps::Vector{Pair{Symbol,Int}}, resid_idx::Union{Int,Nothing})
+#   (comps::Vector{Pair{Symbol,Int}}, resid_idx::Int, omega::Vector{Int})
 # Works for both two-structured paths (:resid + :resd) and the single-structured
 # closed-form path (:sigma intercept + :resd), guarding the heteroscedastic case.
+#
+# A random intercept on the SCALE (`sigma ~ (1 | g)`) also lands in :resd, under
+# `<group>_logsigma`, but its SD ω lives on the log-σ axis: it is NOT a variance
+# component of the response and never enters `comps`. Its θ indices are returned
+# in `omega`; the residual entry of every denominator then becomes the marginal
+# residual variance E[σ²] = exp(2 b₀ + 2 Σ_k ω_k²) (see `_vc_var`), as drmTMB's
+# R/heritability.R does.
 # ---------------------------------------------------------------------------
 function _variance_component_indices(fit::DrmFit)
     # Location-scale-scale fits (#544): group-varying RE SD makes "the" variance
@@ -49,15 +56,21 @@ function _variance_component_indices(fit::DrmFit)
             "(h²(z) = σ_a(z)² / (σ_a(z)² + σ_e(z)²) for `sd(g, phylogenetic)`): pass the " *
             "covariate values you want, e.g. `repeatability(fit, (; sex = [0.0, 1.0]))`.")
     comps = Pair{Symbol,Int}[]
+    omega = Int[]
     resid_idx = nothing
     have = Dict(p => r for (p, r) in fit.blocks)
 
     # Structured component SDs live in the :resd block, named per grouping factor.
+    # `<group>_logsigma` entries are scale-axis random intercepts (log ω), kept apart.
     if haskey(have, :resd)
         r = have[:resd]
         nms = first(cn[2] for cn in fit.coefnames if cn[1] === :resd)
         for (j, nm) in enumerate(nms)
-            push!(comps, Symbol(nm) => r[j])
+            if _is_logsigma_re(fit, nm)
+                push!(omega, r[j])
+            else
+                push!(comps, Symbol(nm) => r[j])
+            end
         end
     end
 
@@ -78,12 +91,47 @@ function _variance_component_indices(fit::DrmFit)
         resid_idx = first(rs)
     end
 
+    isempty(comps) && !isempty(omega) && error("heritability/repeatability: this fit " *
+        "has a random intercept only on the scale (`sigma ~ (1 | g)`). Its SD lives on " *
+        "the log σ scale and is not a variance component of the response, so there is " *
+        "no mean random-effect variance to put in the ratio. Add a mean random " *
+        "intercept (e.g. `y ~ x + (1 | g)`), as drmTMB requires too.")
     isempty(comps) && error("heritability/repeatability: no structured variance " *
         "components found in this fit (need phylo/relmat/animal/spatial random " *
         "intercepts; have blocks $(first.(fit.blocks)))")
     resid_idx === nothing && error("heritability/repeatability: no residual scale " *
         "found in this fit")
-    return comps, resid_idx
+    return comps, resid_idx, omega
+end
+
+# Is the `:resd` entry `nm` a random intercept on log σ? The routes name it
+# `<group>_logsigma` (#322), but a mean grouping column could carry that suffix
+# too, so the name only counts when the `sigma` formula really has a random term
+# on `<group>`. A fit without a retained formula falls back to the suffix.
+function _is_logsigma_re(fit::DrmFit, nm)
+    s = String(nm)
+    endswith(s, "_logsigma") || return false
+    f = fit.formula
+    f isa DrmFormula || return true
+    i = findfirst(p -> first(p) === :sigma, f.forms)
+    i === nothing && return false
+    grp = s[1:end-length("_logsigma")]
+    rhs = replace(string(last(f.forms[i])), r"\s+" => " ")
+    return occursin("| $grp)", rhs)
+end
+
+# Variance contributed by θ index `idx` to a ratio. A component's variance is
+# exp(2 θ_idx). The residual entry (`idx == resid`) is exp(2 b₀) for a constant
+# scale and, when the scale carries random intercepts with log SDs θ[omega], the
+# marginal residual variance E[σ²] = exp(2 b₀ + 2 Σ_k exp(2 θ_ωk)) (log σ ~
+# N(b₀, Σ ω²) ⇒ E[exp(2 log σ)] = exp(2 b₀ + 2 Σ ω²)).
+@inline function _vc_var(θ, idx::Int, resid::Int, omega::Vector{Int})
+    (idx == resid && !isempty(omega)) || return _var_from_log(θ, idx)
+    s = 2 * θ[idx]
+    @inbounds for w in omega
+        s += 2 * exp(2 * θ[w])
+    end
+    return exp(s)
 end
 
 # σ²_k(θ) = exp(2 θ_k) on the working scale. Kept as a one-liner so ForwardDiff
@@ -95,12 +143,13 @@ end
 # denominator (the focal index plus the others that share variance). A tiny floor
 # keeps the denominator strictly positive so the map is smooth at the σ→0 boundary
 # (the ratio still tends to its correct limit).
-function _ratio_closure(focal::Int, denom::Vector{Int})
+function _ratio_closure(focal::Int, denom::Vector{Int}; resid::Int = 0,
+                        omega::Vector{Int} = Int[])
     return θ -> begin
         num = _var_from_log(θ, focal)
         den = zero(num)
         @inbounds for idx in denom
-            den += _var_from_log(θ, idx)
+            den += _vc_var(θ, idx, resid, omega)
         end
         num / den
     end
@@ -115,8 +164,9 @@ end
 # ---------------------------------------------------------------------------
 # Delta / epsilon-method ratio with CI, via the merged bias_correct infra.
 # ---------------------------------------------------------------------------
-function _ratio_delta(fit::DrmFit, focal::Int, denom::Vector{Int}; level::Real)
-    g = _ratio_closure(focal, denom)
+function _ratio_delta(fit::DrmFit, focal::Int, denom::Vector{Int}; level::Real,
+                      resid::Int = 0, omega::Vector{Int} = Int[])
+    g = _ratio_closure(focal, denom; resid = resid, omega = omega)
     bc = bias_correct(fit, g; level = level)
     return (estimate = bc.estimate, corrected = bc.corrected, bias = bc.bias,
             se = bc.se, ci = _clamp01_ci(bc.ci), level = bc.level)
@@ -143,13 +193,14 @@ end
 # mean parameters). Falls back to the substitution profile only if the stored NLL
 # is missing (handled by the caller error) — otherwise the true profile is used.
 # ---------------------------------------------------------------------------
-function _ratio_profile(fit::DrmFit, focal::Int, denom::Vector{Int}; level::Real)
+function _ratio_profile(fit::DrmFit, focal::Int, denom::Vector{Int}; level::Real,
+                        resid::Int = 0, omega::Vector{Int} = Int[])
     nll = fit.nll
     nll === nothing && error("profile ratio CI needs the stored NLL closure " *
         "(fit.nll); this fit does not carry one")
     θ̂ = copy(coef(fit))
     others = [idx for idx in denom if idx != focal]
-    g = _ratio_closure(focal, denom)
+    g = _ratio_closure(focal, denom; resid = resid, omega = omega)
     r̂ = g(θ̂)
     nllhat = nll(θ̂)
 
@@ -169,7 +220,7 @@ function _ratio_profile(fit::DrmFit, focal::Int, denom::Vector{Int}; level::Real
         elseif v >= 1
             θ[focal] = 50.0                        # σ²_focal → ∞ (all-variance limit)
         else
-            S_others = sum(_var_from_log(θ, idx) for idx in others; init = 0.0)
+            S_others = sum(_vc_var(θ, idx, resid, omega) for idx in others; init = 0.0)
             σ²focal = v / (1 - v) * (S_others <= 0 ? eps() : S_others)
             θ[focal] = σ²focal <= 0 ? -50.0 : 0.5 * log(σ²focal)
         end
@@ -323,6 +374,9 @@ covariates, so this form refuses. Use `heritability(fit, newdata; level = 0.95)`
 (phylogenetic `sd`) or [`repeatability`](@ref)`(fit, newdata)` (iid `sd`), which return
 the covariate-conditional `R(z) = σ_b(z)² / (σ_b(z)² + σ_e(z)²)` per row of `newdata`
 with a Wald-on-logit interval; see [`repeatability`](@ref) for the definition.
+
+A random intercept on `sigma` is not a component: it turns `σ²_resid` into the
+marginal residual variance `E[σ²]`; see [`repeatability`](@ref).
 """
 function heritability(fit::DrmFit; component::Union{Symbol,Nothing} = nothing,
                       level::Real = 0.95, method::Symbol = :delta)
@@ -347,13 +401,17 @@ also nets out the other components. Same return shape and `method` options as
 For location–scale–scale fits (`sd(g) ~ z`) this form refuses; use
 `icc(fit, newdata)` — the covariate-conditional repeatability documented under
 [`repeatability`](@ref).
+
+A random intercept on `sigma` is not a component: it turns `σ²_resid` into the
+marginal residual variance `E[σ²]`; see [`repeatability`](@ref).
 """
 function icc(fit::DrmFit; component::Union{Symbol,Nothing} = nothing,
              level::Real = 0.95, method::Symbol = :delta)
-    comps, resid_idx = _variance_component_indices(fit)
+    comps, resid_idx, omega = _variance_component_indices(fit)
     focal = _resolve_component(comps, component, "icc")
     denom = [focal, resid_idx]
-    return _emit_ratio(fit, focal, denom; level = level, method = method)
+    return _emit_ratio(fit, focal, denom; level = level, method = method,
+                       resid = resid_idx, omega = omega)
 end
 
 """
@@ -363,6 +421,21 @@ end
 Alias for [`icc`](@ref): the adjusted repeatability `R = σ²_g / (σ²_g + σ²_resid)`
 for the chosen grouping factor. With a single structured component and no other
 components, repeatability and [`heritability`](@ref) coincide.
+
+# A random intercept on the scale
+
+A random intercept on `sigma` (`sigma ~ (1 | g)`, SD reported as
+`re_sd(fit)[:g_logsigma]`) lives on the log σ scale. It is not a variance
+component of the response, so it is never a `component` and never enters the
+numerator. It makes the residual variance vary by group, so the residual entry of
+the denominator becomes the marginal residual variance
+
+    E[σ²] = exp(2 b₀ + 2 Σ_k ω_k²),
+
+where `b₀` is the `sigma` intercept and `ω_k` the log-σ random-intercept SDs (not
+the squared median `exp(2 b₀)`); the delta-method gradient runs through `ω_k` too.
+This is drmTMB's definition. A fit whose only random effect is on `sigma` has no
+mean component and is refused.
 
 # Location–scale–scale fits: the estimand is conditional on covariates
 
@@ -469,10 +542,11 @@ heritability(fit::DrmFit, newdata; level::Real = 0.95) =
 # Shared body for the full-variance "signal" ratio (heritability / phylogenetic
 # signal): numerator one component, denominator ALL components + residual.
 function _signal_ratio(fit::DrmFit; component, level, method, what)
-    comps, resid_idx = _variance_component_indices(fit)
+    comps, resid_idx, omega = _variance_component_indices(fit)
     focal = _resolve_component(comps, component, what)
     denom = vcat([idx for (_, idx) in comps], resid_idx)
-    return _emit_ratio(fit, focal, denom; level = level, method = method)
+    return _emit_ratio(fit, focal, denom; level = level, method = method,
+                       resid = resid_idx, omega = omega)
 end
 
 # Resolve the focal grouping factor to its θ index; default to the sole component.
@@ -492,13 +566,14 @@ function _resolve_component(comps::Vector{Pair{Symbol,Int}},
 end
 
 # Dispatch to the requested CI method and assemble the public NamedTuple.
-function _emit_ratio(fit::DrmFit, focal::Int, denom::Vector{Int}; level, method)
+function _emit_ratio(fit::DrmFit, focal::Int, denom::Vector{Int}; level, method,
+                     resid::Int = 0, omega::Vector{Int} = Int[])
     if method === :delta
-        r = _ratio_delta(fit, focal, denom; level = level)
+        r = _ratio_delta(fit, focal, denom; level = level, resid = resid, omega = omega)
         return (estimate = r.estimate, corrected = r.corrected, bias = r.bias,
                 se = r.se, ci = r.ci, level = r.level, method = :delta)
     elseif method === :profile
-        r = _ratio_profile(fit, focal, denom; level = level)
+        r = _ratio_profile(fit, focal, denom; level = level, resid = resid, omega = omega)
         return (estimate = r.estimate, corrected = r.estimate, bias = 0.0,
                 se = NaN, ci = r.ci, level = r.level, method = :profile)
     else

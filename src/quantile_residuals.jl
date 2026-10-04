@@ -32,8 +32,7 @@
 #                  Gamma method and `_gamma_sigma_is_shape`.
 #   • Beta         Beta(μφ, (1−μ)φ),              φ = σ⁻²  (precision)
 #   • Poisson      Poisson(μ)
-#   • NegBinomial2 NegativeBinomial(φ, φ/(φ+μ)),  φ = scales[:sigma] **directly**
-#                  (the NB2 kernel stores size θ = exp(η_σ) in the sigma slot, NOT σ⁻²)
+#   • NegBinomial2 NegativeBinomial(φ, φ/(φ+μ)),  φ = σ⁻²  (size; scales[:sigma] = σ)
 #   • TruncNB2     truncated(NegativeBinomial(φ, p); lower = 0)   (support ≥ 1)
 #   • Binomial     Binomial(n, p),  p = μ (success prob), n = scales[:trials]
 #   • BetaBinomial BetaBinomial(n, μφ, (1−μ)φ),  φ = σ⁻², n = scales[:trials]
@@ -141,14 +140,23 @@ _pit_obs(::Any, i; obs, scales)          = obs[:mu][i]
 # A future `type = :quantile, marginal = false` (or conditional-mode) variant is
 # tracked separately once #759 wires non-Gaussian `ranef()`.
 #
-# Only the SINGLE ordinary random intercept case is marginalised (a lone
+# Only the SINGLE ordinary random intercept ON THE MEAN is marginalised (a lone
 # `:resd` block with exactly one grouping name — the shape every `_fit_*_ranef`
 # GLMM produces, and also an ultrametric-tree phylo/relmat random intercept
 # whose per-tip marginal variance equals σ_b² when the tree height is 1, the
 # convention this package documents elsewhere). Crossed `(1|g)+(1|h)`,
-# correlated `(1+x|g)` (`:recov`), and families with no verified link mapping
-# below keep the previous fixed-effect-only reference rather than risk a wrong
-# marginalisation; `_ranef_link` returning `nothing` is exactly that guard.
+# correlated `(1+x|g)` (`:recov`), mean + sigma `(1|g)` pairs (two names), and
+# families with no verified link mapping below keep the previous
+# fixed-effect-only reference rather than risk a wrong marginalisation;
+# `_ranef_link` returning `nothing` is exactly that guard.
+#
+# A lone random intercept on log σ (`sigma ~ 1 + (1 | g)`) also stores one
+# `:resd` block, named `<g>_logsigma` (#322). It is NOT a mean intercept
+# (#923). For a Gaussian fit it is integrated out of the SCALE instead,
+# σ_i e^b with b ~ N(0, τ²), on the same 32 nodes. drmTMB's quantile residual
+# for this model conditions on the fitted log-σ modes instead (its
+# `predict(dpar = "sigma")` adds them); DRModels.jl keeps the population-level
+# reference it uses for the mean intercept.
 _ranef_link(::Poisson) = (μ -> log(max(μ, eps())), exp)
 _ranef_link(::NegBinomial2) = (μ -> log(max(μ, eps())), exp)
 _ranef_link(::TruncatedNegBinomial2) = (μ -> log(max(μ, eps())), exp)
@@ -167,33 +175,46 @@ _ranef_link(fam) = nothing
 # reused unchanged to construct one quadrature node's conditional distribution.
 _at_index(d::Dict, i) = Dict(k => (v isa AbstractVector ? [v[i]] : v) for (k, v) in d)
 
-# The single ordinary `(1 | g)` block on the mean, or `nothing`. Deliberately
-# excludes crossed (two names) and correlated-slope (`:recov`) blocks.
-function _ordinary_resd_range(fit::DrmFit)
+# The single ordinary `(1 | g)` block and the axis its intercept is on (`:mu`,
+# or `:sigma` for a `<g>_logsigma` block that the sigma formula actually puts
+# on `g`, per `_is_logsigma_re`; a MEAN grouping column that happens to be
+# named `*_logsigma` stays `:mu`), or `nothing`. Deliberately excludes crossed
+# and mean + sigma pairs (two names) and correlated-slope (`:recov`) blocks.
+function _ordinary_resd_block(fit::DrmFit)
     for (p, r) in fit.blocks
-        p === :resd && length(r) == 1 && return r
+        (p === :resd && length(r) == 1) || continue
+        nm = last(first(cn for cn in fit.coefnames if first(cn) === :resd))[1]
+        return (range = r, axis = _is_logsigma_re(fit, nm) ? :sigma : :mu)
     end
     return nothing
 end
 
 # Precomputed marginalisation context for `_cdf_value`, or `nothing` when the
-# fit has no single ordinary random intercept on the mean, or the family has no
-# verified link mapping above.
+# fit has no single ordinary random intercept, or the family has no verified
+# mapping for its axis: the links above for the mean, Gaussian only for log σ
+# (`drm()` fits `sigma ~ 1 + (1 | g)` for Gaussian only and refuses every
+# non-Gaussian sigma random effect; `_fit_sigma_axis_re` has no caller, so the
+# non-Gaussian σ-axis case below is a defensive guard, not a reachable shape).
 function _ranef_marginal_mix(fit::DrmFit, fam, μ)
-    r = _ordinary_resd_range(fit)
-    r === nothing && return nothing
+    blk = _ordinary_resd_block(fit)
+    blk === nothing && return nothing
+    σb = exp(fit.theta[blk.range[1]])
+    z, w = _gauss_hermite(32)
+    if blk.axis === :sigma
+        fam isa Gaussian || return nothing
+        return (axis = :sigma, rt2σb = sqrt(2.0) * σb, z = z, wk = w ./ sqrt(π))
+    end
     linkpair = _ranef_link(fam)
     linkpair === nothing && return nothing
     link, invlink = linkpair
-    σb = exp(fit.theta[r[1]])
     eta0 = [link(μ[i]) for i in eachindex(μ)]
-    z, w = _gauss_hermite(32)
-    return (invlink = invlink, eta0 = eta0, rt2σb = sqrt(2.0) * σb, z = z, wk = w ./ sqrt(π))
+    return (axis = :mu, invlink = invlink, eta0 = eta0, rt2σb = sqrt(2.0) * σb,
+            z = z, wk = w ./ sqrt(π))
 end
 
 # CDF at `yval` for observation `i`: the plain per-family conditional
-# distribution (`mix === nothing`), or the σ_b-marginalised mixture over the
-# random intercept's 32 Gauss–Hermite nodes (#760).
+# distribution (`mix === nothing`), or the mixture over the random intercept's
+# 32 Gauss–Hermite nodes, on the mean (#760) or on log σ (#923).
 function _cdf_value(fam, i, yval; μ, scales, obs, gsis, mix)
     if mix === nothing
         d = _conditional_dist(fam, i; μ = μ, scales = scales, obs = obs, gamma_sigma_is_shape = gsis)
@@ -201,6 +222,15 @@ function _cdf_value(fam, i, yval; μ, scales, obs, gsis, mix)
     end
     acc = 0.0
     scales_i = _at_index(scales, i); obs_i = _at_index(obs, i)
+    if mix.axis === :sigma
+        σ0 = scales_i[:sigma][1]
+        @inbounds for k in eachindex(mix.z)
+            scales_i[:sigma][1] = σ0 * exp(mix.rt2σb * mix.z[k])
+            d = _conditional_dist(fam, 1; μ = [μ[i]], scales = scales_i, obs = obs_i, gamma_sigma_is_shape = gsis)
+            acc += mix.wk[k] * Distributions.cdf(d, yval)
+        end
+        return acc
+    end
     @inbounds for k in eachindex(mix.z)
         μk = mix.invlink(mix.eta0[i] + mix.rt2σb * mix.z[k])
         d = _conditional_dist(fam, 1; μ = [μk], scales = scales_i, obs = obs_i, gamma_sigma_is_shape = gsis)
@@ -209,13 +239,96 @@ function _cdf_value(fam, i, yval; μ, scales, obs, gsis, mix)
     return acc
 end
 
+# Zero-truncated Poisson PIT interval [F_t(y−1), F_t(y)], y ≥ 1, with
+# F_t(k) = P(1 ≤ Y ≤ k) / (1 − P(0)), in log space (running `_logaddexp` of the
+# pmf terms; `_log1mexp(-λ)` for the divisor) so a tiny λ cannot make it 0/0.
+# Shared by `TruncatedPoisson()` and the positive part of a hurdle Poisson fit.
+function _ztpois_pit_interval(λ, yi)
+    log1mF0 = _log1mexp(-λ)
+    lpmf(j) = j * log(λ) - λ - _logfactorial(j)
+    loga = -Inf
+    for j in 1:(yi - 1)
+        loga = _logaddexp(loga, lpmf(j))
+    end
+    logb = _logaddexp(loga, lpmf(yi))
+    return exp(loga - log1mF0), exp(logb - log1mF0)
+end
+
+# Zero-truncated NB2 PIT interval [F_t(y−1), F_t(y)], y ≥ 1, size r, mean μ.
+# F_t(k) = (NB.cdf(k) − NB.cdf(0)) / (1 − NB.cdf(0)), k ≥ 1 — but built from
+# `_nb2_logpmf` / `_log1mexp` (negbinomial.jl, poisson.jl) rather than
+# `Distributions.cdf`. At extreme dispersion (r = 1/σ² ≫ μ, log σ ≲ -20) or
+# extreme small μ (μ/r underflows to exactly 0),
+# `Distributions.NegativeBinomial(r, r/(r+μ)).cdf` rounds to EXACTLY 1.0 for every
+# k (r+μ rounds to r in float64, so p rounds to 1): both the numerator
+# (NB.cdf(k) − F0) and the denominator (1 − F0) evaluate to 0.0, giving
+# 0/0 = NaN (same cancellation #866/#874 fixed in the likelihood). Working
+# entirely in log space avoids ever forming that degenerate p: log(1 − F0) via
+# `_log1mexp(_nb2_logpmf(r, μ, 0))`, and log(NB.cdf(k) − F0) = log P(1 ≤ Y ≤ k)
+# via a running `_logaddexp` sum of `_nb2_logpmf(r, μ, j)` terms, both finite for
+# any r as long as μ > 0. Shared by `TruncatedNegBinomial2()` and the positive
+# part of a hurdle NB2 fit.
+function _ztnb2_pit_interval(r, μi, yi)
+    log1mF0 = _log1mexp(_nb2_logpmf(r, μi, 0))
+    if isinf(log1mF0)
+        # μ underflowed to ~0 in float64: the untruncated model puts
+        # (numerically) all its mass at 0, so the zero-truncated tail
+        # probability for any observed y ≥ 1 is ~1 — saturate rather than
+        # divide 0/0. The caller's `lo`/`hi` clamp still maps this to a finite
+        # (large) residual, matching every other branch in this file.
+        return 1.0, 1.0
+    end
+    loga = -Inf
+    for j in 1:(yi - 1)
+        loga = _logaddexp(loga, _nb2_logpmf(r, μi, j))
+    end
+    logb = yi >= 1 ? _logaddexp(loga, _nb2_logpmf(r, μi, yi)) : loga
+    return exp(loga - log1mF0), exp(logb - log1mF0)
+end
+
+# PIT interval [F(y−1), F(y)] of a zero-inflated (`scales[:zi]`) or hurdle
+# (`scales[:hu]`) Poisson / NB2 fit, from the FULL mixture CDF (#922). Both
+# probabilities are stored on the probability scale (logit link) by
+# `_fit_poisson_zi` / `_fit_negbin2_zi` / `_fit_poisson_hu` / `_fit_negbin2_hu`,
+# and `μ` is the COUNT-component mean (`means[:mu]`):
+#   zero-inflated: F(y) = π + (1 − π)·F_c(y),               y ≥ 0;
+#   hurdle:        F(0) = p0, F(y) = p0 + (1 − p0)·F_t(y),   y ≥ 1,
+# with F(−1) = 0, F_c the count CDF and F_t its zero-truncated CDF (the
+# log-space helpers above, so a hurdle NB2 at extreme dispersion cannot go 0/0).
+# `drm()` refuses `zi`/`hu` combined with any random or structured effect, so
+# `mix` is always `nothing` here; the zero-inflated branch would marginalise a
+# future `(1 | g)` through `_cdf_value`, and the hurdle branch refuses one rather
+# than silently judging it at b = 0.
+function _zi_hurdle_pit_interval(fit::DrmFit, fam, i, yi; μ, gsis, mix)
+    if haskey(fit.scales, :zi)
+        πi = fit.scales[:zi][i]
+        Fc(k) = _cdf_value(fam, i, k; μ = μ, scales = fit.scales, obs = fit.obs, gsis = gsis, mix = mix)
+        a = yi <= 0 ? 0.0 : πi + (1 - πi) * Fc(yi - 1)
+        return a, πi + (1 - πi) * Fc(yi)
+    end
+    mix === nothing || throw(ArgumentError("residuals(type=:quantile): a hurdle fit " *
+        "with a random effect has no σ_b-marginal PIT yet"))
+    p0 = fit.scales[:hu][i]
+    yi <= 0 && return 0.0, p0
+    # Floor μ at eps() for BOTH count families, so a count mean that underflowed
+    # to 0 gives the same zero-truncated limit (all mass at y = 1) for NB2 as for
+    # Poisson, instead of the NB2 helper's saturated (1, 1).
+    μi = max(μ[i], eps())
+    at, bt = fam isa NegBinomial2 ?
+        _ztnb2_pit_interval(1 / (fit.scales[:sigma][i]^2), μi, yi) :
+        _ztpois_pit_interval(μi, yi)
+    return p0 + (1 - p0) * at, p0 + (1 - p0) * bt
+end
+
 # Randomized quantile residuals r_i = Φ⁻¹(u_i) (Dunn & Smyth; DHARMa / glmmTMB).
 # Continuous families use u = F(y); discrete families randomize within the jump
 # interval [F(y⁻), F(y)]; ZeroOneBeta / CumulativeLogit use the atomic / ordinal
-# drivers (point-mass mixtures). The per-family parameter map lives in
-# `_conditional_dist`. A fit with a single ordinary random intercept `(1 | g)`
-# on the mean judges every row against the σ_b-MARGINAL distribution, not the
-# fixed-effect-only (b = 0) distribution (#760) — see `_ranef_marginal_mix`.
+# drivers (point-mass mixtures); zero-inflated / hurdle count fits randomize
+# within the full mixture CDF (`_zi_hurdle_pit_interval`, #922). The per-family
+# parameter map lives in `_conditional_dist`. A fit with a single ordinary
+# random intercept `(1 | g)` on the mean (#760), or a Gaussian one on log σ
+# (#923), judges every row against the σ_b-MARGINAL distribution, not the
+# fixed-effect-only (b = 0) distribution — see `_ranef_marginal_mix`.
 function _quantile_residuals(fit::DrmFit, rng)
     haskey(fit.means, :mu) ||
         throw(ArgumentError("residuals(type=:quantile) is univariate-only"))
@@ -245,9 +358,10 @@ function _quantile_residuals(fit::DrmFit, rng)
     # The Gamma sigma slot is σ (plain/ranef) or the shape α (location–scale); the
     # flag routes `_conditional_dist(::Gamma)` accordingly (non-Gamma ignores it).
     gsis = _gamma_sigma_is_shape(fit)
-    # `mix` marginalises a single ordinary random intercept on the mean over its
-    # fitted σ_b (#760); `nothing` for a fixed-effects-only fit (unchanged
-    # behaviour) or a random-effect shape/family this fix does not cover.
+    # `mix` marginalises a single ordinary random intercept on the mean (#760)
+    # or, Gaussian only, on log σ (#923) over its fitted SD; `nothing` for a
+    # fixed-effects-only fit (unchanged behaviour) or a random-effect
+    # shape/family this does not cover.
     mix = _ranef_marginal_mix(fit, fam, μ)
     u = Vector{Float64}(undef, n)
     if _is_continuous_family(fam)
@@ -257,60 +371,17 @@ function _quantile_residuals(fit::DrmFit, rng)
             u[i] = clamp(F, lo, hi)
         end
     elseif fam isa TruncatedPoisson
-        # Zero-truncated Poisson CDF F_t(k) = P(1 ≤ Y ≤ k) / (1 − P(0)), k ≥ 1,
-        # in log space (running `_logaddexp` of the pmf terms; `_log1mexp(-λ)` for
-        # the divisor) so a tiny λ cannot make it 0/0.
         @inbounds for i in 1:n
-            λ = max(μ[i], eps())
-            yi = round(Int, y[i])
-            log1mF0 = _log1mexp(-λ)
-            lpmf(j) = j * log(λ) - λ - _logfactorial(j)
-            loga = -Inf
-            for j in 1:(yi - 1)
-                loga = _logaddexp(loga, lpmf(j))
-            end
-            logb = _logaddexp(loga, lpmf(yi))
-            a = exp(loga - log1mF0); b = exp(logb - log1mF0)
+            a, b = _ztpois_pit_interval(max(μ[i], eps()), round(Int, y[i]))
             u[i] = clamp(a + (b - a) * rand(rng), lo, hi)
         end
     elseif fam isa TruncatedNegBinomial2
-        # Zero-truncated CDF F_t(k) = (NB.cdf(k) − NB.cdf(0)) / (1 − NB.cdf(0)),
-        # k ≥ 1 — but built from `_nb2_logpmf` / `_log1mexp` (negbinomial.jl,
-        # poisson.jl) rather than `Distributions.cdf`. At extreme dispersion
-        # (r = 1/σ² ≫ μ, log σ ≲ -20) or extreme small μ (μ/r underflows to
-        # exactly 0), `Distributions.NegativeBinomial(r, r/(r+μ)).cdf` rounds to
-        # EXACTLY 1.0 for every k (r+μ rounds to r in float64, so p rounds to 1):
-        # both the numerator (NB.cdf(k) − F0) and the denominator (1 − F0)
-        # evaluate to 0.0, giving 0/0 = NaN (same cancellation #866/#874 fixed in
-        # the likelihood). Working entirely in log space avoids ever forming that
-        # degenerate p: log(1 − F0) via `_log1mexp(_nb2_logpmf(r, μ, 0))`, and
-        # log(NB.cdf(k) − F0) = log P(1 ≤ Y ≤ k) via a running `_logaddexp` sum of
-        # `_nb2_logpmf(r, μ, j)` terms, both finite for any r as long as μ > 0.
         @inbounds for i in 1:n
             if mix === nothing
                 # Fixed-effect reference: the log-space zero-truncated NB2
-                # CDF above (#876), finite at extreme dispersion.
+                # CDF (#876), finite at extreme dispersion.
                 r = 1 / (fit.scales[:sigma][i]^2)       # NB2 size; scales[:sigma] = σ
-                μi = μ[i]
-                yi = round(Int, y[i])
-                log1mF0 = _log1mexp(_nb2_logpmf(r, μi, 0))
-                if isinf(log1mF0)
-                    # μ underflowed to ~0 in float64: the untruncated model puts
-                    # (numerically) all its mass at 0, so the zero-truncated tail
-                    # probability for any observed y ≥ 1 is ~1 — saturate rather
-                    # than divide 0/0. `lo`/`hi` below still clamp this to a finite
-                    # (large) residual, matching every other branch in this file.
-                    a = 1.0
-                    b = 1.0
-                else
-                    loga = -Inf
-                    for j in 1:(yi - 1)
-                        loga = _logaddexp(loga, _nb2_logpmf(r, μi, j))
-                    end
-                    logb = yi >= 1 ? _logaddexp(loga, _nb2_logpmf(r, μi, yi)) : loga
-                    a = exp(loga - log1mF0)
-                    b = exp(logb - log1mF0)
-                end
+                a, b = _ztnb2_pit_interval(r, μ[i], round(Int, y[i]))
             else
                 # σ_b-marginal reference (#760): truncate the Gauss–Hermite
                 # mixture of untruncated NB2 CDFs.
@@ -321,6 +392,12 @@ function _quantile_residuals(fit::DrmFit, rng)
                 a = (_cdf_value(fam, i, yi - 1; μ = μ, scales = fit.scales, obs = fit.obs, gsis = gsis, mix = mix) - F0) / denom
                 b = (_cdf_value(fam, i, yi; μ = μ, scales = fit.scales, obs = fit.obs, gsis = gsis, mix = mix) - F0) / denom
             end
+            u[i] = clamp(a + (b - a) * rand(rng), lo, hi)
+        end
+    elseif haskey(fit.scales, :zi) || haskey(fit.scales, :hu)
+        # Zero-inflated / hurdle Poisson or NB2: the full mixture CDF (#922).
+        @inbounds for i in 1:n
+            a, b = _zi_hurdle_pit_interval(fit, fam, i, round(Int, y[i]); μ = μ, gsis = gsis, mix = mix)
             u[i] = clamp(a + (b - a) * rand(rng), lo, hi)
         end
     else
