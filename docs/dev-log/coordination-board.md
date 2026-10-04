@@ -4,7 +4,13 @@ Check this before editing shared files (`src/DRM.jl`, `AGENTS.md`, `CLAUDE.md`,
 `ROADMAP.md`, `test/runtests.jl`, `docs/`). Record active branches + which files
 they touch so two agents don't collide.
 
-## Active-Lane-Split (2026-08-28 — v0.7.0 TAGGED; the lss arc is MERGED; lane handed to Cursor)
+## Active-Lane-Split (2026-10-04 — Claude lane HANDED to Cursor; v0.7.2 release in flight)
+
+_**START HERE (Cursor):** [`docs/dev-log/handover/2026-10-04-cursor-handover.md`](handover/2026-10-04-cursor-handover.md)._
+
+_| Open Claude PRs being landed by the merge gate: #967 (location-scale stall stops) and #1037 (release v0.7.2). The `v0.7.2` tag currently points at the wrong commit and must be re-tagged by the owner after both merge. **Other live lanes, unchanged and not owned by this handover:** Codex docs PRs #770, #777, #779, #789, #793, #795–#800, #576; Cursor #809; Claude reader PRs #801/#802. drmTMB drafts #1442/#1443/#1445/#1446–#1449 are owner-merge only._
+
+## Historical — Active-Lane-Split (2026-08-28 — v0.7.0 TAGGED; the lss arc is MERGED; lane handed to Cursor)
 
 _**START HERE:** [`docs/dev-log/handover/2026-08-28-cursor-handover.md`](handover/2026-08-28-cursor-handover.md)._
 
