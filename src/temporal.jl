@@ -858,7 +858,15 @@ function _fit_temporal_gaussian(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, tt, lay,
     best = nothing
     for ψ0 in ψstarts
         θ0 = copy(base); θ0[iψ] = ψ0
-        res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+        # NaN turns off the f- and x-stops. An OU decay at the boundary can
+        # make two successive objectives bitwise identical while |g|∞ is still
+        # above g_tol; L-BFGS then meets the gradient criterion without moving
+        # the decay or the log-likelihood.
+        res = Optim.optimize(nll, θ0, Optim.LBFGS(),
+                             Optim.Options(g_tol = g_tol,
+                                           x_abstol = NaN, x_reltol = NaN,
+                                           f_abstol = NaN, f_reltol = NaN);
+                             autodiff = :forward)
         (best === nothing || Optim.minimum(res) < Optim.minimum(best)) && (best = res)
     end
     θ̂ = Optim.minimizer(best)

@@ -1,1 +1,0 @@
-- **Docs: the README no longer says the documentation site mirrors drmTMB's navbar (#699).** The menus are organised for readers, and many pages link their drmTMB twin article; the README now says that instead.

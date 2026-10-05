@@ -4,7 +4,8 @@
 # must require the gradient criterion. Routes that deliberately stop on
 # f_reltol (#946) are not covered here.
 
-using DRModels, Optim, Test
+using DRModels, Test
+const Optim = DRModels.Optim
 
 function _plateau_result(res)
     stopped = merge(res.stopped_by, (x_converged = true, f_converged = true, g_converged = false))

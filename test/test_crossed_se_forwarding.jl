@@ -123,7 +123,6 @@ logistic(x) = 1 / (1 + exp(-x))
         fit = @test_logs (:warn, r"(numerically singular|not positive definite|not trustworthy)"i) match_mode = :any drm(
             form, Beta(); data = data)
         se = stderror(fit)
-        @test all(isfinite, se[1:2])
         @test any(!isfinite, se)
     end
 

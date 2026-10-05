@@ -10,7 +10,7 @@ using DRModels, Test, LinearAlgebra
     H = [4.0 0.0; 0.0 -2.0]
     V = @test_logs (:warn, r"not positive definite") DRModels._vcov_from_hessian(H)
     @test all(isnan, V)
-    @test !any(<(0), diag(V))
+    @test !any(d -> isfinite(d) && d < 0, diag(V))
 
     healthy = [4.0 1.0; 1.0 4.0]
     got = @test_nowarn DRModels._vcov_from_hessian(healthy)
