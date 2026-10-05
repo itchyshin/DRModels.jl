@@ -480,7 +480,15 @@ function _fit_structured_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, K
     θ0[1:pμ] .= βμ0
     θ0[pμ+1] = log(std(res0) / sqrt(2) + eps())
     θ0[pμ+pσ+1:end] .= Zg \ fill(log(std(res0) / sqrt(2) + eps()), G)
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    # NaN turns off the f- and x-stops, same as the temporal REML-style call.
+    # A masked phylogenetic leaf can make two successive REML objectives
+    # bitwise identical while |g|∞ is still above g_tol. The fit must finish
+    # on the gradient.
+    res = Optim.optimize(nll, θ0, Optim.LBFGS(),
+                         Optim.Options(g_tol = g_tol,
+                                       x_abstol = NaN, x_reltol = NaN,
+                                       f_abstol = NaN, f_reltol = NaN);
+                         autodiff = :forward)
     θ̂ = Optim.minimizer(res)
     V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
 

@@ -42,9 +42,10 @@ end
         H = _legacy_value_hessian(sentinel_f, θ̂)
         @test all(isfinite, H)
         @test maximum(abs, H) > 1e6          # not the true curvature (~2)
-        # ... which the eigenvalue guard then happily inverts to a garbage vcov
-        V = DSH._vcov_from_hessian(H)
-        @test all(isfinite, V)
+        # The 1e18 sentinel is a saddle (eigenvalues about ±2.5e27). Withhold
+        # the Wald variance. Do not pseudo-invert it.
+        V = @test_logs (:warn, r"not positive definite") DSH._vcov_from_hessian(H)
+        @test all(isnan, V)
         # NaN probe: legacy path produces a non-finite Hessian
         Hn = _legacy_value_hessian(nan_f, θ̂)
         @test !all(isfinite, Hn)
