@@ -681,7 +681,8 @@ function _fit_poisson_spatial_coord(fam::Poisson, y, Xμ, labels, coords, nmμ, 
     θ̂ = Optim.minimizer(res)
     V = if se
         try
-            inv(Symmetric(ForwardDiff.hessian(nll, θ̂)))
+            _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂);
+                               context = "poisson spatial coordinates")
         catch
             fill(NaN, length(θ̂), length(θ̂))
         end

@@ -2839,6 +2839,32 @@ function _crossed_mean_mode(kind, aux, η0, gidx, G, hidx, Hh, logσ; b0 = nothi
     return b, ch, iters, ch !== nothing
 end
 
+# A log-SD coordinate whose finite-difference stencil lies entirely outside the
+# clamp [-8, 3] does not enter the crossed-mean objective. The true curvature
+# of that column is 0. Roundoff can leave a tiny negative diagonal, which
+# `_vcov_from_hessian` would read as "not a minimum" and replace the whole
+# covariance with NaN. Zero that column so the existing singular path applies.
+# A column that is large relative to the Hessian scale is left unchanged: that
+# is a saddle, and it must not be pseudo-inverted (`_VCOV_RTOL` is not the
+# cutoff here). 1e-3 is the gap between the measured clamp noise (about 1e-7
+# of the scale on the H = 1 binomial fit) and a genuine indefinite eigenvalue.
+function _zero_flat_clamped_logsd_columns!(H, θ, ks, h; lo::Float64 = -8.0, hi::Float64 = 3.0)
+    all(isfinite, H) || return H
+    scale = maximum(abs, H)
+    rel = 1e-3
+    for k in ks
+        hs = max(h, h * (1 + abs(θ[k])))
+        flat = (θ[k] + hs < lo) || (θ[k] - hs > hi)
+        flat || continue
+        colmax = maximum(abs, @view H[:, k])
+        tiny = scale == 0 || colmax <= rel * scale
+        tiny || continue
+        H[:, k] .= 0
+        H[k, :] .= 0
+    end
+    return H
+end
+
 function _fit_crossed_mean_laplace(fam, kind, aux, n::Int, Xμ, gidx, G, hidx, Hh,
                                    nmμ, labels, g_tol; θβ0 = nothing,
                                    se::Bool = false, polish_iterations::Int = 0)
@@ -2941,7 +2967,17 @@ function _fit_crossed_mean_laplace(fam, kind, aux, n::Int, Xμ, gidx, G, hidx, H
     nllhat = nll(θ̂)
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
     V = if se
-        Hθ = _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        hstep = _fd_hessian_step(n)
+        Hθ = _finite_hessian(nll, θ̂; h = hstep)
+        # log σ is clamped to [-8, 3]. Past that box the objective does not
+        # depend on the coordinate, so a settled stencil is exact 0 and the
+        # singular path keeps the intercept and slope. Finite-difference
+        # noise can leave a tiny negative diagonal (about -5e-4 against a
+        # scale of about 4e3 on the H = 1 binomial fit) which the eigenvalue
+        # guard would otherwise call "not a minimum" and blank every SE.
+        # Zero only a column that is tiny relative to the Hessian scale. A
+        # large negative column stays for that guard and is not pseudo-inverted.
+        _zero_flat_clamped_logsd_columns!(Hθ, θ̂, (pμ + 1):(pμ + 2), hstep)
         _vcov_from_fd_hessian(Hθ; context = "sparse-Laplace GLMM (crossed-mean)")
     else
         fill(NaN, length(θ̂), length(θ̂))
