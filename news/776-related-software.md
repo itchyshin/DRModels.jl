@@ -1,1 +1,0 @@
-- **Large-data guide cites Latte.jl and GaussianMarkovRandomFields.jl (#776).** A short "Related software" section names them as the comparison and independent cross-check for the engine, with the one measured agreement (four location-scale estimates within 0.024 standard errors on a 50-group test model) and its limits.

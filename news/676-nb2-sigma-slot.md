@@ -1,1 +1,0 @@
-- **Docs: the NegBinomial2 `sigma` slot is now described as log `σ` with size `θ = 1/σ²` (#676).** The family tables and the NB2 prose said "dispersion `θ` (log)", which contradicted the code and the worked example: `coef(fit, :sigma)` is log `σ`, and `θ = exp(-2·coef(:sigma))`. The same wording is fixed for `TruncatedNegBinomial2()`.

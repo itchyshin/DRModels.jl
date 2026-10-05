@@ -1,1 +1,0 @@
-- **Correction: Julia General registration did not happen at v0.7.1 (#704).** The v0.7.0 entry said registration was planned at v0.7.1. DRModels.jl stays out of Julia General until it and drmTMB are both ready (see the README Status section); until then, install it from GitHub with `Pkg.add(url = "https://github.com/itchyshin/DRModels.jl")`.

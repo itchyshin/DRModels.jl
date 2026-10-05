@@ -1,1 +1,0 @@
-- **Coming from R lists the drmTMB articles with no DRModels.jl page (#702).** A short section links the five drmTMB "Start here" articles that have no Julia counterpart: capability-and-limits, first-week-intervals, function-map-cheatsheet, missing-data and comparing-with-other-packages.

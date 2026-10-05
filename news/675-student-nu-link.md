@@ -1,1 +1,0 @@
-- **Docs: the Student-t `nu` link is now stated as `ν = 2 + exp(η)` (#675).** The family table and Student-t prose called it a log link, which invites reading `exp(coef(fit, :nu))` as `ν`; it is `ν − 2`. Recover `ν` with `2 + exp(coef(fit, :nu))`.
