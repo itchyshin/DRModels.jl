@@ -1686,26 +1686,23 @@ function bootstrap_result(
     _check_bootstrap_failure_mode(failures)
     formula = _bootstrap_fit_formula(fit)
     # LSS refits must preserve the seed fit's estimator. Other Gaussian routes
-    # retain their existing dispatch here; MAP needs its separate penalty contract.
-    refit_options = if _is_gaussian_lss(fit)
-        method = estimation_method(fit)
-        method in (:ML, :REML) || throw(ArgumentError("LSS bootstrap supports ML/REML seed fits only"))
-        (; method)
-    elseif fit.marginal === :Laplace
-        # A `marginal = :Laplace` seed fit (σ random intercept) must be refitted
-        # with the same integrator; otherwise every replicate is a GHQ-32 fit and
-        # the interval describes a different estimator from the point estimate.
-        (; marginal = :Laplace)
-    else
-        (;)
-    end
-    # `drm(::BivariateDrmFormula, ::Gaussian; ...)` declares no `algorithm`
-    # keyword (src/gaussian_bivariate.jl), so forwarding it would throw a
-    # `MethodError` on the first replicate. `refit_options` is empty on this
-    # branch by construction — `_is_gaussian_lss` requires `fit.formula isa
-    # DrmFormula` — so dropping it changes nothing here either.
+    # forward REML and a non-default marginal. MAP is still not forwarded.
+    # On the univariate refit, a non-default marginal (:Laplace, :VA, :AGHQ)
+    # and a REML seed are forwarded too. Otherwise the replicate is the default
+    # :LA / ML fit and the interval describes a different estimator
+    # (DRModels.jl#1038, #1025).
+    refit_options = _bootstrap_refit_kwargs(fit)
+    # `drm(::BivariateDrmFormula, ::Gaussian; ...)` accepts `method` in
+    # (:ML, :REML) and does not accept `algorithm` or `marginal`
+    # (src/gaussian_bivariate.jl). Either of those keywords throws a
+    # MethodError on the first replicate. A bivariate formula is not a
+    # univariate LSS `DrmFormula`, so `_is_gaussian_lss` is false, but a
+    # REML seed still stores `method => :REML` in `refit_options`. Pass
+    # `method` only when that keyword is present, and leave `marginal` off
+    # this call.
     refit = if formula isa BivariateDrmFormula
-        datab -> drm(formula, fit.family; data=datab, K, A, tree, coords, g_tol)
+        biv_kw = _bootstrap_bivariate_refit_kwargs(refit_options)
+        datab -> drm(formula, fit.family; data=datab, K, A, tree, coords, g_tol, biv_kw...)
     else
         datab -> drm(formula, fit.family; data=datab, K, A, tree, coords, algorithm, g_tol, refit_options...)
     end
@@ -1801,9 +1798,11 @@ function bootstrap_result(
     K !== nothing && (extra[:K] = K)
     A !== nothing && (extra[:A] = A)
     coords !== nothing && (extra[:coords] = coords)
-    # A `marginal = :Laplace` fit is refitted with the same integrator; without
-    # this the replicates would silently use the default `:LA` (GHQ-32).
-    fit.marginal === :Laplace && (extra[:marginal] = :Laplace)
+    # Repeat the seed fit's integrator and REML setting. :LA / ML are the
+    # defaults, so only a different choice is forwarded (DRModels.jl#1038, #1025).
+    for (k, v) in pairs(_bootstrap_refit_kwargs(fit))
+        extra[k] = v
+    end
     refit = datab -> drm(formula, fit.family; data=datab, extra...)
     simulate_fn = _marginal_simulator(fit, data; K=K, A=A, tree=tree,
                                       coords=coords)   # #459 / #479
@@ -1861,6 +1860,31 @@ end
 # (there conditional and marginal simulation coincide and `simulate` is correct).
 # Gaussian LSS bootstrap uses the full marginal model, not fitted random effects.
 # Prepared arrays are read-only; each call allocates its own draws and response.
+# Keywords a bootstrap replicate must repeat so it is the same estimator as
+# the seed fit. `:LA` and `:ML` are the `drm` defaults and are omitted.
+# Gaussian location-scale-scale passes the seed method explicitly, `:ML` or
+# `:REML`. That route rejects any other method.
+function _bootstrap_refit_kwargs(fit::DrmFit)
+    kw = Pair{Symbol,Any}[]
+    if _is_gaussian_lss(fit)
+        method = estimation_method(fit)
+        method in (:ML, :REML) ||
+            throw(ArgumentError("LSS bootstrap supports ML/REML seed fits only"))
+        push!(kw, :method => method)
+    elseif estimation_method(fit) === :REML
+        push!(kw, :method => :REML)
+    end
+    fit.marginal === :LA || push!(kw, :marginal => fit.marginal)
+    return NamedTuple(kw)
+end
+
+# Keywords the bivariate Gaussian bootstrap refit may pass to `drm`.
+# `method` is included only when the seed kwargs contain it. `marginal` is
+# left off, because that method does not accept it.
+function _bootstrap_bivariate_refit_kwargs(refit_options)
+    haskey(refit_options, :method) ? (; method = refit_options.method) : NamedTuple()
+end
+
 _is_gaussian_lss(fit::DrmFit) = fit.family isa Gaussian &&
     fit.formula isa DrmFormula &&
     (!isempty(_sd_parts(fit.formula)) || !isempty(_sdphylo_parts(fit.formula)))
