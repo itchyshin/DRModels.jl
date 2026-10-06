@@ -22,7 +22,7 @@ include(joinpath(@__DIR__, "..", "parity_docs_navigation.jl"))
     @test "getting-started.md" in paths
     @test length(real) == 5
     @test !("reference/engine-internals.md" in paths)
-    @test count(p -> p isa Pair && p.first == "Tutorials" && p.second isa Vector, real) == 1
+    @test count(p -> p isa Pair && p.first == "Biological examples" && p.second isa Vector, real) == 1
     @test count(p -> p isa Pair && p.first == "Development" && p.second isa Vector, real) == 0
     @test all(isfile(joinpath(@__DIR__, "..", "..", "docs", "src", p)) for p in paths)
 end
