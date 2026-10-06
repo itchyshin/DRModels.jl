@@ -46,6 +46,11 @@ include("fit_q4_sparse_tmb.jl")
 # unguarded `inv` whose outcome depends on the LAPACK build.
 include("vcov_guard.jl")
 
+# Shared "evaluate at the minimizer, not Optim.minimum" helper (#optim-minimum-audit):
+# after a failed line search, Optim.jl's cached `Optim.minimum(res)` can hold a
+# rejected trial's value while `Optim.minimizer(res)` has already moved on.
+include("optim_minimum_guard.jl")
+
 # Fisher / observed-information metric on log-Cholesky params (#13 S1b infra).
 # Extracted after the natgrad solver failed the MLE-parity gate — not a public
 # solver path. Feeds AI-REML / exact REML gradient follow-ups (#11 / #165).
@@ -76,8 +81,10 @@ include("gaussian_bivariate.jl")
 include("gaussian_ranef.jl")
 include("gaussian_lss.jl")   # #544: location-scale-scale sd(g) ~ x on the (1|g) SD
 include("aghq_1d.jl")            # #448: 1-D Liu–Pierce AGHQ around `_gauss_hermite`
+include("adaptive_ghq.jl")       # #834: per-group q-dim AGHQ for the (1 + x | g) routes
 include("gaussian_meta.jl")
 include("gaussian_structured.jl")
+include("temporal.jl")          # D-310/D-311: temporal(1 | id, time, ar1|ou|homtoep) (+ paired phylo) on the Gaussian mean (twin of drmTMB)
 include("gaussian_sparse_lss.jl")
 include("phylo_interaction.jl")  # bipartite two-tree interaction RE: V = σ²(C_A⊗C_B) + σ_e²I
 include("location_only.jl")      # #12: opt-in conjugate-EM for the Gaussian phylo-mean cell
@@ -86,8 +93,10 @@ include("skewnormal.jl")
 include("poisson.jl")
 include("sparse_laplace_glmm.jl")
 include("negbinomial.jl")
+include("truncated_poisson.jl")   # zero-truncated Poisson + shared hurdle-Poisson spelling
 include("beta.jl")
 include("betabinomial.jl")
+include("separation.jl")
 include("binomial.jl")
 include("gamma.jl")
 include("lognormal.jl")
@@ -123,11 +132,13 @@ include("gaussian_locscale_phylo.jl")  # B1: Gaussian sigma~phylo(1|g) univariat
 include("phylo_penalty.jl")      # A4c: penalized-MAP phylo variance components — drmTMB's drm_phylo_penalty()
 include("inference.jl")
 include("bias_correct.jl")       # TMB-style epsilon-method bias correction (#227 B11)
+include("boundary_diagnostics.jl") # #724/#697: residual / structured variance-at-boundary advisory
 include("heritability.jl")       # comparative-biology derived ratios (h²/ICC) + CIs
 include("coevo_accessors.jl")    # #188: q=4 coevolution among-axis correlation + variance accessors
 include("profile_q4_phylo.jl")   # Ayumi #2: profile-likelihood CIs for the q=4 among-axis SDs (calibrated, no Hessian)
 include("bootstrap_q4_phylo.jl") # Ayumi #2: parametric bootstrap of the q=4 among-axis SDs (boundary-honest CIs)
 include("variational.jl")
+include("ordinary_laplace.jl")      # Arc 2: marginal = :Laplace on ordinary (1 | g) (TMB convention)
 include("summary.jl")
 include("r2.jl")             # R2 for the constant-sigma Gaussian case ONLY; refuses elsewhere
 include("visualization.jl")
@@ -165,8 +176,8 @@ export AugProblem, make_problem,
        lc_to_cov, cov_to_lc, lc_len
 
 # Public API — the Gaussian distributional-regression front end.
-export @formula, bf, drm_formula, drm, Gaussian, Student, SkewNormal, Poisson, NegBinomial2, TruncatedNegBinomial2, Beta, BetaBinomial, Binomial, Gamma, LogNormal, ZeroOneBeta, Tweedie, CumulativeLogit, cbind, meta_V, relmat, animal, phylo, spatial, sd, sd_phylo, DrmFormula, BivariateDrmFormula, DrmFit,
-       coef, vcov, loglik, nobs, dof, aic, bic, fixef, re_sd, vc, ranef, sigma, corpairs, rho12, stderror, confint, coeftable, fitted, residuals, predict, predict_parameters, marginal_parameters, prediction_grid, simulate, bootstrap_ci, bootstrap_summary, bootstrap_result, bootstrap_sigma_a, check_drm, family,
+export @formula, bf, drm_formula, drm, Gaussian, Student, SkewNormal, Poisson, NegBinomial2, TruncatedNegBinomial2, TruncatedPoisson, Beta, BetaBinomial, Binomial, Gamma, LogNormal, ZeroOneBeta, Tweedie, CumulativeLogit, cbind, meta_V, relmat, animal, phylo, spatial, temporal, offset, sd, sd_phylo, DrmFormula, BivariateDrmFormula, DrmFit,
+       coef, vcov, loglik, loglikelihood, nobs, dof, aic, bic, fixef, re_sd, vc, ranef, sigma, corpairs, rho12, stderror, confint, coeftable, fitted, residuals, predict, predict_parameters, marginal_parameters, prediction_grid, simulate, bootstrap_ci, bootstrap_summary, bootstrap_result, bootstrap_sigma_a, check_drm, family,
        profile_result, profile_curve, parameter_surface, corpairs_data,
        drm_figure, plot_profile, plot_parameter_surface, plot_corpairs,
        gaussian_locscale_phylo_sds,
@@ -183,7 +194,7 @@ export @formula, bf, drm_formula, drm, Gaussian, Student, SkewNormal, Poisson, N
        associate_pairs, latent_normal, association, PairAssociation,
        integration_diagnostics,
        drm_phylo_penalty, drm_phylo_penalty_sweep, PhyloPenalty, PhyloCorPenaltyNeedsTwoSD,
-       profile_targets, structured_effects,
+       profile_targets, structured_effects, bridge_diagnostics, temporal_parameters,
        meta_vcov_bivariate, MetaVcovBivariate
 
 # Public API — post-fit accessors for the cross-family bivariate fit

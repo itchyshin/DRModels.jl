@@ -29,19 +29,28 @@ using Test, Random, LinearAlgebra, Statistics
         logy = β[1] .+ β[2] .* x .+ u[species] .+ σ .* randn(n)
         y = exp.(logy)
 
+        # Reference fit on the SAME logged copy the delegation builds, `log.(y)`,
+        # not on the pre-`exp` truth `logy`: log∘exp is not the identity in
+        # floating point (about 40% of entries come back one ulp off), so a
+        # Gaussian fit on `logy` solves a 1-ulp-perturbed problem and LBFGS may
+        # stop at a different iterate inside `g_tol = 1e-8`. That gap is not
+        # reproducible across machines: 1.8e-15 on aarch64, 5.6e-9 on the CI x86
+        # runner (PR #781, run 35526175941, Julia 1.10, ubuntu), so a 1e-10 pin
+        # against `logy` flaked. Against the same `log.(y)` the delegation is a
+        # plain carry-over of theta/vcov/ranef, so the identity is exact (`==`).
         fit_g = drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ 1)),
-                    Gaussian(); data = (; y = logy, x, species), tree = phy)
+                    Gaussian(); data = (; y = log.(y), x, species), tree = phy)
         fit_ln = drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ 1)),
                      LogNormal(); data = (; y, x, species), tree = phy)
 
         sumlogy = sum(log, y)
 
         @test fit_ln.converged
-        @test fit_ln.theta ≈ fit_g.theta atol = 1e-10
-        @test coef(fit_ln, :mu) ≈ coef(fit_g, :mu) atol = 1e-10
+        @test fit_ln.theta == fit_g.theta
+        @test coef(fit_ln, :mu) == coef(fit_g, :mu)
         @test loglik(fit_ln) ≈ loglik(fit_g) - sumlogy atol = 1e-8
         @test vcov(fit_ln) ≈ vcov(fit_g) atol = 1e-6
-        @test re_sd(fit_ln)[:species] ≈ re_sd(fit_g)[:species] atol = 1e-10
+        @test re_sd(fit_ln)[:species] == re_sd(fit_g)[:species]
         @test aic(fit_ln) ≈ aic(fit_g) + 2 * sumlogy atol = 1e-6
     end
 
@@ -58,19 +67,20 @@ using Test, Random, LinearAlgebra, Statistics
         logy = β[1] .+ β[2] .* x .+ u[id] .+ σ .* randn(n)
         y = exp.(logy)
 
+        # Same reference rule as the phylo testset above: log.(y), never logy.
         fit_g = drm(bf(@formula(y ~ x + relmat(1 | id)), @formula(sigma ~ 1)),
-                    Gaussian(); data = (; y = logy, x, id), K = K)
+                    Gaussian(); data = (; y = log.(y), x, id), K = K)
         fit_ln = drm(bf(@formula(y ~ x + relmat(1 | id)), @formula(sigma ~ 1)),
                      LogNormal(); data = (; y, x, id), K = K)
 
         sumlogy = sum(log, y)
 
         @test fit_ln.converged
-        @test fit_ln.theta ≈ fit_g.theta atol = 1e-10
-        @test coef(fit_ln, :mu) ≈ coef(fit_g, :mu) atol = 1e-10
+        @test fit_ln.theta == fit_g.theta
+        @test coef(fit_ln, :mu) == coef(fit_g, :mu)
         @test loglik(fit_ln) ≈ loglik(fit_g) - sumlogy atol = 1e-8
         @test vcov(fit_ln) ≈ vcov(fit_g) atol = 1e-6
-        @test re_sd(fit_ln)[:id] ≈ re_sd(fit_g)[:id] atol = 1e-10
+        @test re_sd(fit_ln)[:id] == re_sd(fit_g)[:id]
         @test aic(fit_ln) ≈ aic(fit_g) + 2 * sumlogy atol = 1e-6
     end
 

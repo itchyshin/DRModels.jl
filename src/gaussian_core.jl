@@ -11,7 +11,7 @@ using StatsModels: @formula, FormulaTerm, Term, ConstantTerm, FunctionTerm,
     schema, apply_schema, modelcols, coefnames
 using Statistics: std, mean
 using Random: default_rng
-import StatsAPI: coef, vcov, nobs, fitted, residuals, predict, aic, bic, dof, deviance, dof_residual, StatisticalModel
+import StatsAPI: coef, vcov, nobs, fitted, residuals, predict, aic, bic, dof, deviance, dof_residual, StatisticalModel, loglikelihood
 import Tables
 
 """
@@ -33,7 +33,17 @@ struct DrmFormula
     response::Symbol
     forms::Vector{Pair{Symbol,Any}}
     response2::Any   # second response column (failures), for `cbind(s, f)` beta-binomial; else nothing
+    # Populated at fit time (`drm(f::DrmFormula, ...)`, gaussian_core.jl) with the
+    # `StatsModels.schema(...)` object built from the TRAINING data, one entry per
+    # distributional parameter (`:mu`, `:sigma`, …). `predict` / `predict_parameters`
+    # reuse it so a factor predictor's contrasts/level order/reference level come
+    # from the fitted data, not from whatever rows `newdata` happens to contain
+    # (issue #609 item 1: subset, reordered, or unseen levels in `newdata`).
+    schema_cache::Base.RefValue{Dict{Symbol,Any}}
 end
+
+DrmFormula(response::Symbol, forms::Vector{Pair{Symbol,Any}}, response2) =
+    DrmFormula(response, forms, response2, Ref(Dict{Symbol,Any}()))
 
 # 2-arg convenience: single-column response (the common case).
 DrmFormula(response::Symbol, forms::Vector{Pair{Symbol,Any}}) = DrmFormula(response, forms, nothing)
@@ -147,6 +157,7 @@ function bf(mu::FormulaTerm, dpars::FormulaTerm...)
         push!(forms, name => f.rhs)
     end
     any(p -> first(p) === :sigma, forms) || push!(forms, :sigma => ConstantTerm(1))
+    _temporal_check_forms(forms, (:mu,))
     return DrmFormula(response, forms, response2)
 end
 const drm_formula = bf
@@ -177,17 +188,28 @@ struct DrmFit{F}
     estim_method::Symbol                   # :ML (default), :REML, or :MAP (penalized) — the estimator used
     reml_loglik::Float64                   # REML log-likelihood (NaN unless estim_method == :REML)
     ml_loglik::Float64                     # ML log-likelihood (always set; for cross-structure comparison)
-    marginal::Symbol                       # :LA (default Laplace) or :VA (ELBO; #136)
+    marginal::Symbol                       # :LA (default), :Laplace, :VA (ELBO; #136) or :AGHQ
     phylo_penalty::Float64                 # penalty at the optimum (NaN unless estim_method == :MAP)
     penalty::Any                           # the PhyloPenalty spec that produced it; nothing for ML/REML
     iterations::Int                        # optimiser iterations actually taken; -1 = not recorded
+    # The tip matrix a `phylo(1 | g)` field's SD is defined against. Every phylo
+    # mean fit maps rows to tips by name (`_phylo_mean_leaf_index`, #482); the
+    # routes differ only in scale. `:covariance` (the default): the raw
+    # branch-length covariance `sigma_phy_dense` (the sparse phylo-mean, meta_V
+    # and non-Gaussian Laplace routes). `:correlation`: `_phylo_correlation`, the
+    # tip correlation (the dense Gaussian structured fallback and the
+    # two-structured route). The bootstrap simulator reads it so its draws come
+    # from the model that was fitted.
+    phylo_scale::Symbol
 end
 
 # 11-arg outer constructor: formula + nll + nllgrad + ranef default to nothing;
 # estim_method defaults to :ML and reml/ml loglik to NaN / the supplied loglik
 # (the fitters use this; drm() attaches the formula via _withformula, the
 # objective via _withnll, the BLUPs via _withranef, and REML metadata via _withreml).
-# `marginal` defaults to `:LA` (Laplace); `_withmarginal` tags a VA/ELBO fit.
+# `marginal` defaults to `:LA` (the route's default integrator: GHQ-32 on an
+# ordinary `(1 | g)` and on Gaussian `sigma ~ 1 + (1 | g)`, Laplace on most other
+# random-effect structures); `_withmarginal` tags a `:VA`, `:AGHQ` or `:Laplace` fit.
 DrmFit(family, blocks, coefnames, theta, vcov, loglik, nobs, converged, means, obs, scales) =
     DrmFit(family, blocks, coefnames, theta, vcov, loglik, nobs, converged, means, obs, scales,
            nothing, nothing, nothing, nothing, :ML, NaN, loglik, :LA)
@@ -199,43 +221,54 @@ DrmFit(family, blocks, coefnames, theta, vcov, loglik, nobs, converged, means, o
 DrmFit(family, blocks, coefnames, theta, vcov, loglik, nobs, converged, means, obs, scales,
        formula, nll, nllgrad, ranef, estim_method, reml_loglik, ml_loglik, marginal) =
     DrmFit(family, blocks, coefnames, theta, vcov, loglik, nobs, converged, means, obs, scales,
-           formula, nll, nllgrad, ranef, estim_method, reml_loglik, ml_loglik, marginal, NaN, nothing, -1)
+           formula, nll, nllgrad, ranef, estim_method, reml_loglik, ml_loglik, marginal, NaN, nothing, -1,
+           :covariance)
+
+# 22-arg compatibility constructor: `phylo_scale` defaults to `:covariance`; only
+# the routes that fit a phylo field against the tip correlation set it
+# (`_withphyloscale`).
+DrmFit(family, blocks, coefnames, theta, vcov, loglik, nobs, converged, means, obs, scales,
+       formula, nll, nllgrad, ranef, estim_method, reml_loglik, ml_loglik, marginal,
+       phylo_penalty, penalty, iterations) =
+    DrmFit(family, blocks, coefnames, theta, vcov, loglik, nobs, converged, means, obs, scales,
+           formula, nll, nllgrad, ranef, estim_method, reml_loglik, ml_loglik, marginal,
+           phylo_penalty, penalty, iterations, :covariance)
 
 _withformula(fit::DrmFit, f) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
     fit.vcov, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, f, fit.nll, fit.nllgrad, fit.ranef,
-    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations)
+    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale)
 
 # Attach the (negative) log-likelihood closure so profile intervals can re-optimise
 # the nuisance parameters at each fixed value. nll(θ) must accept the full θ vector.
 _withnll(fit::DrmFit, nll, nllgrad = nothing) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
     fit.vcov, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula, nll, nllgrad, fit.ranef,
-    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations)
+    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale)
 
 # Attach per-group conditional random-effect estimates (BLUPs). `re` is a
 # Dict{Symbol,...} keyed by grouping factor; see ranef(fit) for the public accessor.
 _withranef(fit::DrmFit, re) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
     fit.vcov, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula, fit.nll, fit.nllgrad, re,
-    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations)
+    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale)
 
 # Mark the fit as REML-estimated, recording both the REML and ML log-likelihoods.
 # The public `loglik` slot is set to the REML value (with the documented
 # cross-structure caveat); `ml_loglik` stays available for ML-style comparison.
 _withreml(fit::DrmFit, reml_ll::Real, ml_ll::Real) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
     fit.vcov, Float64(reml_ll), fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula, fit.nll, fit.nllgrad, fit.ranef,
-    :REML, Float64(reml_ll), Float64(ml_ll), fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations)
+    :REML, Float64(reml_ll), Float64(ml_ll), fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale)
 
 # Mark the fit as penalized-MAP. `loglik` is left as the UNPENALIZED data
 # log-likelihood (drmTMB keeps `fit$logLik` unpenalized too) and the penalty at
 # the optimum is recorded separately, so `-objective == loglik - phylo_penalty`.
 _withmap(fit::DrmFit, pen_value::Real, spec) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
     fit.vcov, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula, fit.nll, fit.nllgrad, fit.ranef,
-    :MAP, fit.reml_loglik, fit.ml_loglik, fit.marginal, Float64(pen_value), spec, fit.iterations)
+    :MAP, fit.reml_loglik, fit.ml_loglik, fit.marginal, Float64(pen_value), spec, fit.iterations, fit.phylo_scale)
 
-# Tag the integral approximation (`:LA` Laplace default, `:VA` ELBO). Does not
+# Tag the integral approximation (`:LA` default, `:Laplace`, `:VA` ELBO, `:AGHQ`). Does not
 # change `loglik`; the caller is responsible for putting an ELBO in that slot.
 _withmarginal(fit::DrmFit, m::Symbol) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
     fit.vcov, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula, fit.nll, fit.nllgrad, fit.ranef,
-    fit.estim_method, fit.reml_loglik, fit.ml_loglik, m, fit.phylo_penalty, fit.penalty, fit.iterations)
+    fit.estim_method, fit.reml_loglik, fit.ml_loglik, m, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale)
 
 # Record how many iterations the optimiser actually took. Separate from the
 # `iterations` OPTION (a cap on the maximum); this is the achieved count, and it
@@ -244,7 +277,12 @@ _withmarginal(fit::DrmFit, m::Symbol) = DrmFit(fit.family, fit.blocks, fit.coefn
 # rather than reporting 0, which would read as "converged instantly".
 _withiterations(fit::DrmFit, n::Integer) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
     fit.vcov, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula, fit.nll, fit.nllgrad, fit.ranef,
-    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, Int(n))
+    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, Int(n), fit.phylo_scale)
+
+# Record the tip matrix a phylo field's SD is defined against (see `DrmFit.phylo_scale`).
+_withphyloscale(fit::DrmFit, m::Symbol) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
+    fit.vcov, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula, fit.nll, fit.nllgrad, fit.ranef,
+    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, m)
 
 """
     niterations(fit) -> Int
@@ -289,7 +327,10 @@ than Poisson's spatial-range fit above. These share the sparse augmented-state
 Laplace engine (`src/sparse_*.jl`, `src/*_phylo.jl`) rather than a single
 top-level `Optim.optimize` call, so there is no one iteration count to report
 honestly; do not infer non-iteration (e.g. "closed form") from `-1` on these
-routes — check the family/route, not just the flag.
+routes — check the family/route, not just the flag. The ordinary `(1 | g)`
+`marginal = :Laplace` route (Poisson, Binomial, NegBinomial2, Gamma, Beta) is
+also `-1`: its `θ̂` comes from a chain of optimiser stages (LBFGS, a short
+polish, a boundary polish and, when needed, Newton steps), not one counted run.
 """
 niterations(fit::DrmFit) = fit.iterations
 
@@ -344,7 +385,7 @@ end
 # predictor matrix. If the real response contains `missing` / `NaN`, the formula
 # builder gets a numeric placeholder column while the returned `y` keeps `NaN`
 # at unobserved response positions.
-function _design(response::Symbol, rhs, data)
+function _design(response::Symbol, rhs, data; schema_cache = nothing, schema_key = nothing)
     raw_response = _table_column(data, response)
     y_response, observed = _coerce_response_column(raw_response)
     design_data = all(observed) ? data :
@@ -352,9 +393,33 @@ function _design(response::Symbol, rhs, data)
     ft = FormulaTerm(Term(response), rhs)
     # The 3-arg apply_schema with a StatisticalModel context adds R's implicit
     # intercept (so `y ~ x` means `y ~ 1 + x`, matching drmTMB); explicit
-    # `1 + x` / `0 + x` are respected.
-    ft = apply_schema(ft, schema(ft, design_data), StatisticalModel)
-    _, X = modelcols(ft, design_data)
+    # `1 + x` / `0 + x` are respected. `schema_cache`/`schema_key`, when given
+    # (issue #609 item 1), make this call read-through a cache keyed by
+    # distributional parameter: the FIRST call (at fit time, `data` = training
+    # data) computes the schema and stores it; a later call with the same key
+    # (`predict`/`predict_parameters` on `newdata`) reuses that TRAINING schema
+    # instead of rebuilding factor contrasts/levels from whatever rows `newdata`
+    # happens to contain — `apply_schema` then raises a clear error if `newdata`
+    # carries a factor level the training schema never saw.
+    reused_training_schema = schema_cache !== nothing && haskey(schema_cache[], schema_key)
+    sch = if reused_training_schema
+        schema_cache[][schema_key]
+    else
+        s = schema(ft, design_data)
+        schema_cache !== nothing && (schema_cache[][schema_key] = s)
+        s
+    end
+    ft = apply_schema(ft, sch, StatisticalModel)
+    _, X = try
+        modelcols(ft, design_data)
+    catch e
+        if reused_training_schema
+            throw(ArgumentError("predict: `newdata` contains a factor level not seen when " *
+                "the model was fitted (parameter `$(schema_key)`); refit including that level, " *
+                "or drop the offending rows from `newdata`. Original error: " * sprint(showerror, e)))
+        end
+        rethrow(e)
+    end
     Xm = X isa AbstractMatrix ? Matrix{Float64}(X) : reshape(Float64.(collect(X)), :, 1)
     return y_response, Xm, String.(vec(coefnames(ft.rhs)))
 end
@@ -420,10 +485,29 @@ implemented for:
 (b) a single Gaussian mean random intercept `(1 | g)` on the Woodbury spine (#439),
 (c) Location–Scale–Scale (LSS) models (`sd(g) ~ z`, `sd(species, phylogenetic) ~ z`,
     and multi-component LSS models; #558), and
-(d) the bivariate q=4 PLSM Laplace engine (`reml_q4`).
+(d) the bivariate q=4 PLSM Laplace engine (`reml_q4`), and
+(e) the Gaussian `phylo(1 | g)`-on-`sigma` location–scale routes (scale-only,
+    separate, and `phylo_coupled = true`), where one joint Laplace approximation
+    integrates the phylo effects and BOTH the mean and scale fixed effects — the
+    restricted likelihood native drmTMB maximises.
 
-σ-RE, random slopes, and non-Gaussian REML stay rejected. REML likelihoods are
+Ordinary σ-RE, random slopes, and non-Gaussian REML stay rejected. REML likelihoods are
 not comparable across fixed-effect structures.
+
+## `marginal`: how a random effect on `sigma` is integrated
+
+`marginal = :LA` (the default) leaves every route unchanged; a random intercept
+on `sigma`, `sigma ~ 1 + (1 | g)`, is then integrated by 32-node Gauss–Hermite
+quadrature. `marginal = :Laplace` integrates it by the Laplace approximation
+instead, which is what drmTMB computes for this model; the fit is tagged
+`fit.marginal === :Laplace`. `:Laplace` requires a fixed-effect mean and
+maximum likelihood and is refused on every other Gaussian model.
+
+The two names are not synonyms. `:LA` means "the default integrator for this
+route", which is not always the Laplace approximation (here it is Gauss–Hermite
+quadrature; wherever the Gaussian marginal is closed-form it is exact).
+`:Laplace` always means the Laplace approximation drmTMB computes. Bootstrap
+refits of a `:Laplace` fit use `:Laplace` too.
 
 ## Missing response handling
 
@@ -433,7 +517,19 @@ For Location-Scale-Scale models (#559), the group index and scale design Z_g
 are parameterised over all G levels, while the likelihood is evaluated on
 observed rows.
 """
-function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree = nothing, coords = nothing, g_tol::Real = 1e-8, algorithm::Symbol = :auto, method::Symbol = :ML, profile_ci::Bool = false, phylo_coupled::Bool = false, penalty = nothing, sparse = nothing, impute = nothing, missing = nothing)
+function drm(f::DrmFormula, fam::Gaussian; kwargs...)
+    # The residual-variance / structured-variance BOUNDARY advisory (#724, #697) is
+    # attached here, once, rather than in each of the fitter's return paths.
+    return _warn_variance_boundary(_drm_gaussian_fit(f, fam; kwargs...))
+end
+
+function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree = nothing, coords = nothing, g_tol::Real = 1e-8, algorithm::Symbol = :auto, method::Symbol = :ML, profile_ci::Bool = false, phylo_coupled::Bool = false, penalty = nothing, sparse = nothing, impute = nothing, missing = nothing, marginal::Symbol = :LA)
+    mkind = _gaussian_marginal(marginal)
+    laplace = mkind === :Laplace
+    aghq = mkind === :AGHQ
+    (laplace || aghq) && _gaussian_laplace_validate(f, fam, data, algorithm, method, penalty,
+                                          phylo_coupled, sparse, impute, missing;
+                                          requested = laplace ? "Laplace" : "AGHQ")
     algorithm in (:auto, :gls, :lbfgs, :em, :sparse, :sparse_lbfgs) ||
         throw(ArgumentError("drm: `algorithm` must be one of :auto, :gls, :lbfgs, :em, :sparse, :sparse_lbfgs (got :$algorithm)"))
     method in (:ML, :REML) ||
@@ -451,8 +547,8 @@ function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree 
     # `allow_phylo_slope = true`: the Gaussian mean is the one route that fits
     # `phylo(1 + x | g)` (#620, two independent phylogenetic fields); the slope
     # variable comes back in the fifth slot and is routed below.
-    fixed_mu, re, metav, structured, structured_slope =
-        _split_ranef(rhs[:mu]; allow_phylo_slope = true)   # (1|g), meta_V(v), relmat/animal/phylo/spatial(1|g)
+    fixed_mu, re, metav, structured, structured_slope, temporal_term =
+        _split_ranef(rhs[:mu]; allow_phylo_slope = true, allow_temporal = true)   # (1|g), meta_V(v), relmat/animal/phylo/spatial(1|g), temporal(...)
     fixed_sigma, sigma_re, _, structured_sigma = _split_ranef(rhs[:sigma])  # (1|g)→GHQ; structured_sigma = phylo(1|g) on σ
     # Penalized MAP (A4c). Validated here, once, so that a `penalty` handed to a
     # route that cannot honour it ERRORS instead of being silently dropped —
@@ -470,11 +566,26 @@ function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree 
                                 "fit is a maximum-a-posteriori (MAP) estimator and REML is a " *
                                 "restricted-likelihood estimator. Use `method = :ML` (the default)."))
     end
-    y, Xμ, nmμ = _design(f.response, fixed_mu, data)
-    _, Xσ, nmσ = _design(f.response, fixed_sigma, data)
+    # `schema_cache`/`schema_key`: caches the TRAINING schema (factor
+    # contrasts/levels) per parameter so `predict`/`predict_parameters` on
+    # `newdata` reuse it (issue #609 item 1) instead of rebuilding contrasts
+    # from whatever rows `newdata` happens to contain.
+    y, Xμ, nmμ = _design(f.response, fixed_mu, data; schema_cache = f.schema_cache, schema_key = :mu)
+    _, Xσ, nmσ = _design(f.response, fixed_sigma, data; schema_cache = f.schema_cache, schema_key = :sigma)
     response_observed = _observed_response_mask(y)
     has_missing_response = !all(response_observed)
     all_structured = _collect_structured(rhs[:mu])
+    # D-310 temporal(1 | id, time, ar1|ou): dispatched FIRST, before every route
+    # that could otherwise claim (and silently mis-fit) the formula. The router
+    # refuses everything outside the wave-1 / wave-2 scope by name (src/temporal.jl);
+    # wave 2 admits the paired `phylo(1 | species)` stable intercept (needs `tree`).
+    if temporal_term !== nothing
+        return _withformula(_drm_gaussian_temporal(f, fam, temporal_term, re, metav, structured,
+            sigma_re, structured_sigma, y, Xμ, Xσ, nmμ, nmσ, data; method = method,
+            algorithm = algorithm, penalty = penalty, phylo_coupled = phylo_coupled,
+            sparse = sparse, has_missing_response = has_missing_response, g_tol = g_tol,
+            structured_slope = structured_slope, tree = tree), f)
+    end
     # #620 two-SD phylogenetic random slope `phylo(1 + x | g)` on the Gaussian
     # mean: validate HERE, above every route that can return, so no other
     # engine ever receives this formula and quietly fits the intercept-only
@@ -610,8 +721,10 @@ function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree 
             gidx_sigma = gidx_sigma[response_observed]
         end
 
-        # method = :REML integrates β_μ out of the Laplace marginal (Patterson–Thompson
-        # restricted likelihood). This branch returns BEFORE the generic :REML validator
+        # method = :REML integrates β_μ AND β_σ out jointly with the phylo effects in one
+        # Laplace approximation — native drmTMB's restricted likelihood for a σ variance
+        # component (Arc 2, `_glsp_joint_reml_fit`), on the asymmetric, separate and
+        # coupled (`phylo_coupled = true`) blocks. This branch returns BEFORE the generic :REML validator
         # below, so capture it here and thread it to the engine. (REML across the phylo
         # RE structure is not comparable across mean structures — the aic/bic/lrtest guard
         # keys off estim_method; ML stays the default.)
@@ -625,8 +738,6 @@ function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree 
             mu_grp === sigma_grp ||
                 error("drm (Gaussian): σ-phylo and μ-phylo must share the same grouping factor " *
                       "(got :$(mu_grp) vs :$(sigma_grp)); cross-grouping σ-phylo is planned for a later slice")
-            reml && phylo_coupled &&
-                error("drm (Gaussian): phylo_coupled=true is ML-only; coupled mean-sigma phylo REML is not implemented")
             # `structured` only captures the FIRST structured mean marker; guard against a
             # SECOND being silently dropped (e.g. mu ~ phylo(1|g) + animal(1|g) with σ-phylo).
             length(all_structured) == 1 ||
@@ -658,7 +769,7 @@ function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree 
         return _withformula(fit, f)
     end
     phylo_coupled &&
-        throw(ArgumentError("drm: `phylo_coupled` is an internal bridge option for Gaussian mu+sigma phylo ML fits"))
+        throw(ArgumentError("drm: `phylo_coupled` is an internal bridge option for Gaussian mu+sigma phylo fits (ML or REML)"))
     if method === :REML
         # REML (opt-in) is implemented for (a) the fixed-effect univariate
         # Gaussian location–scale cell and (b) a single mean random intercept
@@ -689,7 +800,12 @@ function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree 
             isempty(re) && isempty(sigma_re) && metav === nothing &&
             size(Xσ, 2) == 1 && !has_missing_response &&
             algorithm in (:auto, :sparse_lbfgs)
-        (ordinary_mean_intercept || phylo_mean_only ||
+        # (d) a single correlated Gaussian mean random slope `(1 + x | g)` with no sigma RE
+        # (`_fit_correlated_ranef_gaussian(; reml = true)`, ML path unchanged).
+        corr_mean_slope = length(re) == 1 && _re_kind(re[1][1])[1] === :corr &&
+            isempty(sigma_re) && structured === nothing && metav === nothing &&
+            length(_collect_structured(rhs[:mu])) == 0
+        (ordinary_mean_intercept || corr_mean_slope || phylo_mean_only ||
          (isempty(re) && isempty(sigma_re) && structured === nothing &&
           metav === nothing && length(_collect_structured(rhs[:mu])) == 0)) ||
             throw(ArgumentError("drm: method = :REML is not implemented for this model on the " *
@@ -697,7 +813,7 @@ function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree 
                 "a structured mean marker — phylo/relmat/animal/spatial — without a matching " *
                 "sd() submodel, and meta_V() all land here). REML IS available for: the " *
                 "fixed-effect Gaussian location–scale model; a single Gaussian mean random " *
-                "intercept `(1 | g)`; every sd() LSS route (`sd(g)`, `sd_phylo` dense and " *
+                "intercept `(1 | g)` or correlated slope `(1 + x | g)`; every sd() LSS route (`sd(g)`, `sd_phylo` dense and " *
                 "sparse, and the multi-component sd() router); the bivariate structured " *
                 "routes (q=2 and q=4, both native and via drm_bridge); and Poisson `(1 | g)` " *
                 "and Poisson `phylo(1 | species)`. Use method = :ML (the default) for this " *
@@ -787,6 +903,41 @@ function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree 
                 "bridge, or `drm_listwise` natively) is the supported route there."))
         end
     end
+    # Simultaneous mean + sigma random intercepts (#745, twin drmTMB #1287):
+    # `y ~ x + (1 | g), sigma ~ (1 | g)`. drmTMB admits this by handing TMB the
+    # full random vector (u_mu, u_sigma) and letting its black-box nested
+    # Laplace integrate both jointly (`src/drmTMB.cpp` model_type 1, independent
+    # `dnorm(u_mu,0,1)` / `dnorm(u_sigma,0,1)` priors, no cross-dpar correlation
+    # unless a coupled `(1 | tag | group)` tag is used — not this formula).
+    # Dispatched BEFORE the sigma-RE-only branch below (which refuses this
+    # exact combination) so the twin gap does not silently fall through to it.
+    if !isempty(sigma_re) && !isempty(re)
+        (structured === nothing && metav === nothing) ||
+            error("drm (Gaussian): a random effect on `sigma` combined with a mean random " *
+                  "effect does not support a structured (phylo/relmat/animal/spatial) mean " *
+                  "marker or `meta_V(...)` yet (#745 covers the plain `(1 | g)` + `(1 | g)` cell)")
+        (length(re) == 1 && _re_kind(re[1][1])[1] === :intercept) ||
+            error("drm (Gaussian): simultaneous mean + `sigma` random effects support a " *
+                  "single mean random INTERCEPT `(1 | g)` (no slopes, no crossed/multiple " *
+                  "terms) — got $(length(re)) term(s) on the mean")
+        (length(sigma_re) == 1 && _re_kind(sigma_re[1][1])[1] === :intercept) ||
+            error("drm (Gaussian): simultaneous mean + `sigma` random effects support a " *
+                  "single `sigma` random INTERCEPT `(1 | g)` — got $(length(sigma_re)) term(s)")
+        mgrp = re[1][2]; sgrp = sigma_re[1][2]
+        mgrp === sgrp ||
+            error("drm (Gaussian): simultaneous mean + `sigma` random effects are implemented " *
+                  "only when both share the SAME grouping factor (got `(1 | $mgrp)` on the " *
+                  "mean and `(1 | $sgrp)` on sigma) — the per-group 2×2 Laplace block this " *
+                  "route uses requires one group per observation shared by both axes; " *
+                  "different/crossed groups are not implemented (#745)")
+        # `has_missing_response` and `method === :REML` are already refused above
+        # this point for ANY non-empty `re` — the generic missing-response guard
+        # and the `if method === :REML` validator both throw before a formula
+        # with a mean random effect can reach here, so this branch is ML/
+        # complete-response only by construction; no additional check needed.
+        gidx, G = _group_index(getproperty(data, mgrp))
+        return _withformula(_fit_musigma_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, mgrp, g_tol), f)
+    end
     if !isempty(sigma_re)                                      # random effect on log σ
         (isempty(re) && structured === nothing && metav === nothing) ||
             error("a random effect on `sigma` must be the only random structure (the mean must be fixed effects)")
@@ -794,7 +945,64 @@ function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree 
             error("`sigma` random effects support a single random intercept `(1 | g)`")
         sgrp = sigma_re[1][2]
         gidx, G = _group_index(getproperty(data, sgrp))
-        return _withformula(_fit_sigma_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, sgrp, g_tol), f)
+        return _withformula(_fit_sigma_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, sgrp, g_tol;
+                                                      laplace = laplace, aghq = aghq), f)
+    end
+    # Meta-analysis with random intercepts on the mean (Arc 2): `meta_V(v)` plus
+    # any mix of `(1 | g)`, `phylo(1 | g)`, `relmat(1 | g)`, `animal(1 | g)`.
+    # Dispatched BEFORE the structured and ordinary random-effect routes below:
+    # those have no known-variance term, and the `meta_V`-only route below has
+    # no random effect, so reaching either one silently fitted a different model
+    # (measured against drmTMB at da8b3f871; see `_fit_meta_gaussian_re`).
+    if metav !== nothing && (!isempty(re) || !isempty(all_structured))
+        _meta_re_term = "`meta_V(...)` with a random effect on the mean"
+        algorithm in (:auto, :gls, :lbfgs) ||
+            throw(ArgumentError("drm: `algorithm = :$(algorithm)` is not implemented for " *
+                "$(_meta_re_term); that route is the dense closed-form marginal (use `algorithm = :auto`)."))
+        sparse === true &&
+            throw(ArgumentError("drm: `sparse = true` is not implemented for $(_meta_re_term)."))
+        penalty === nothing ||
+            throw(ArgumentError("drm: `penalty` is not wired for $(_meta_re_term)."))
+        comps = Any[]
+        for (rl, grp) in re
+            _re_kind(rl)[1] === :intercept ||
+                throw(ArgumentError("drm: only random INTERCEPTS `(1 | g)` are implemented " *
+                    "alongside `meta_V(...)`; a random slope with known sampling variances " *
+                    "is not implemented on this engine yet."))
+            gidx, G = _group_index(getproperty(data, grp))
+            push!(comps, (gidx, G, nothing, String(grp)))
+        end
+        for (kind, grp) in all_structured
+            if kind === :phylo
+                tree === nothing && error("phylo(1 | $grp) needs `tree = …`")
+                phy = tree isa AbstractString ? augmented_phy(tree) : tree
+                _warn_if_tree_not_unit_height(phy)
+                # Rows → tree leaves BY NAME (#482), never by first-seen order.
+                gidx = _phylo_mean_leaf_index(phy, getproperty(data, grp))
+                G = phy.n_leaves
+                # RAW branch-length tip covariance, the scale the default
+                # phylo-mean route reports `sd_phylo` on (and the scale the R
+                # bridge converts from, × sqrt(mean root-to-tip depth)). On an
+                # ultrametric tree — the only kind drmTMB accepts — this is
+                # height × the tip correlation, so the model and logLik are
+                # drmTMB's exactly; only the SD's unit differs.
+                Cmat = sigma_phy_dense(phy; σ²_phy = 1.0)
+            elseif kind === :relmat || kind === :animal
+                gidx, G = _group_index(getproperty(data, grp))
+                Cmat = _resolve_structured_matrix(kind, grp, G; K = K, A = A, tree = tree, coords = coords)
+            else
+                throw(ArgumentError("drm: `$(kind)(1 | $grp)` is not implemented alongside " *
+                    "`meta_V(...)`; phylo, relmat and animal are."))
+            end
+            push!(comps, (gidx, G, Matrix(cholesky(Symmetric(Cmat)).L), String(grp)))
+        end
+        grps = [c[4] for c in comps]
+        allunique(grps) ||
+            throw(ArgumentError("drm: two random components alongside `meta_V(...)` share a " *
+                "grouping factor ($(join(grps, ", "))); give each component its own grouping " *
+                "column. (A phylo(1 | sp) + (1 | sp) pair is not implemented on this route.)"))
+        vv = Float64.(getproperty(data, metav))
+        return _withformula(_fit_meta_gaussian_re(fam, y, Xμ, Xσ, vv, comps, nmμ, nmσ, g_tol), f)
     end
     # Two structured components in one fit (e.g. phylo(1|species) + relmat(1|id)):
     # a separate variance component each, latent field = their sum. Dense first cut.
@@ -807,8 +1015,8 @@ function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree 
                   "with a fixed-effect `sigma`")
         (kind1, grp1), (kind2, grp2) = all_structured
         grp1 === grp2 && error("the two structured components must use different grouping factors")
-        gidx1, G1 = _group_index(getproperty(data, grp1))
-        gidx2, G2 = _group_index(getproperty(data, grp2))
+        gidx1, G1 = _structured_group_index(kind1, grp1, getproperty(data, grp1), tree)
+        gidx2, G2 = _structured_group_index(kind2, grp2, getproperty(data, grp2), tree)
         # Opt-in sparse O(p) path (#225/#232): augmented-latent + sparse Cholesky +
         # Takahashi-selected-inverse gradient. Same model, same MLE; default
         # (:auto) stays on the verified dense path.
@@ -820,13 +1028,26 @@ function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree 
             # residual scale honours `sigma ~ x` (D → diag).
             comp1 = _sparse_struct_comp(kind1, grp1, G1, gidx1; K = K, A = A, tree = tree)
             comp2 = _sparse_struct_comp(kind2, grp2, G2, gidx2; K = K, A = A, tree = tree)
-            return _withformula(_fit_two_structured_gaussian_sparse_spec(fam, y, Xμ, Xσ,
-                comp1, comp2, nmμ, nmσ, g_tol), f)
+            # A phylo component here is on the tip CORRELATION scale (unit leaf
+            # variance, `_phylo_aug_comp`); record it for the bootstrap simulator.
+            return _withphyloscale(_withformula(_fit_two_structured_gaussian_sparse_spec(fam, y, Xμ, Xσ,
+                comp1, comp2, nmμ, nmσ, g_tol), f), :correlation)
         end
         C1 = _resolve_structured_matrix(kind1, grp1, G1; K = K, A = A, tree = tree, coords = coords)
         C2 = _resolve_structured_matrix(kind2, grp2, G2; K = K, A = A, tree = tree, coords = coords)
-        return _withformula(_fit_two_structured_gaussian(fam, y, Xμ, gidx1, G1, C1,
-            gidx2, G2, C2, nmμ, grp1, grp2, g_tol), f)
+        return _withphyloscale(_withformula(_fit_two_structured_gaussian(fam, y, Xμ, gidx1, G1, C1,
+            gidx2, G2, C2, nmμ, grp1, grp2, g_tol), f), :correlation)
+    end
+    # Arc 2 `structured_with_ordinary_bar`: one structured marker PLUS ordinary
+    # `(1 | h)` bars. Every fitter below takes the marker alone and would
+    # silently DROP the bars (measured: phylo(1 | sp) + (1 | h) returned the
+    # marker-only logLik), so route the combination to its own engine first.
+    # A phylo marker here maps rows to tips by name and is fitted against the tip
+    # CORRELATION (`_phylo_correlation`); record that scale (`DrmFit.phylo_scale`).
+    if structured !== nothing && !isempty(re)
+        return _withphyloscale(_withformula(_drm_gaussian_structured_plus_ranef(fam, structured,
+            re, metav, y, Xμ, Xσ, nmμ, nmσ, data; K = K, A = A, tree = tree,
+            algorithm = algorithm, penalty = penalty, g_tol = g_tol), f), :correlation)
     end
     if structured !== nothing
         kind, grp = structured
@@ -881,8 +1102,14 @@ function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree 
                                     "`meta_V`, or a non-constant `sigma` design alongside `phylo(1 | $grp)`)."))
             _phylo_correlation(tree)
         end
+        # Dense phylo fallback: rows → tree tips BY NAME (#482), as on the sparse
+        # route above, not by the first-seen `gidx` used for relmat/animal. The SD
+        # is on the tip CORRELATION scale (`Kmat`); record that for the bootstrap.
+        kind === :phylo &&
+            ((gidx, G) = _structured_group_index(kind, grp, getproperty(data, grp), tree))
         size(Kmat) == (G, G) || error("structured matrix must be $(G)×$(G) (the number of `$grp` levels)")
-        return _withformula(_fit_structured_gaussian(fam, y, Xμ, Xσ, gidx, G, Kmat, nmμ, nmσ, grp, g_tol), f)
+        return _withphyloscale(_withformula(
+            _fit_structured_gaussian(fam, y, Xμ, Xσ, gidx, G, Kmat, nmμ, nmσ, grp, g_tol), f), :correlation)
     end
     if metav !== nothing
         vv = Float64.(getproperty(data, metav))    # known sampling variances
@@ -903,7 +1130,8 @@ function drm(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree 
         (_, grp) = re[1]; (_, var) = re_kinds[1]
         gidx, G = _group_index(getproperty(data, grp))
         xs = Float64.(getproperty(data, var))
-        return _withformula(_fit_correlated_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, xs, nmμ, nmσ, grp, g_tol), f)
+        return _withformula(_fit_correlated_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, xs, nmμ, nmσ, grp, g_tol;
+                                                          reml = method === :REML), f)
     end
     any(k -> k[1] === :corr, re_kinds) &&
         error("a correlated `(1 + x | g)` block must be the only random-effect term")
@@ -950,7 +1178,7 @@ function _fit_fixed_gaussian(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, g_tol)
     obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
     return _withiterations(
-        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
+        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
 end
 
@@ -973,7 +1201,7 @@ function _with_full_fixed_gaussian_rows(fit::DrmFit, y_full, Xμ_full, Xσ_full)
         fit.loglik, fit.nobs, fit.converged, means, obs, scales,
         fit.formula, fit.nll, fit.nllgrad, fit.ranef,
         fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal,
-        fit.phylo_penalty, fit.penalty, fit.iterations,
+        fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale,
     )
 end
 
@@ -1143,7 +1371,7 @@ function _with_full_response_rows(fit::DrmFit, f::DrmFormula, data)
         fit.loglik, fit.nobs, fit.converged, means, obs, scales,
         fit.formula, fit.nll, fit.nllgrad, fit.ranef,
         fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal,
-        fit.phylo_penalty, fit.penalty, fit.iterations,
+        fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale,
     )
 end
 
@@ -1262,7 +1490,7 @@ function _fit_fixed_gaussian_reml(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, g_tol)
         end
         return s + const_2pi
     end
-    fit = DrmFit(fam, blocks, names, θ̂, V, reml_ll, n, Optim.converged(res), means, obs, scales)
+    fit = DrmFit(fam, blocks, names, θ̂, V, reml_ll, n, drm_optim_converged(res), means, obs, scales)
     return _withiterations(_withreml(_withnll(fit, nll_full), reml_ll, ml_ll), Optim.iterations(res))
 end
 
@@ -1285,7 +1513,7 @@ end
 
 Variance–covariance matrix of the estimated coefficients. Extends `StatsAPI.vcov`.
 """
-vcov(fit::DrmFit) = fit.vcov
+vcov(fit::DrmFit) = _wald_withheld(fit) ? _homtoep_refuse_wald("vcov") : fit.vcov
 """
     nobs(fit::DrmFit)
 
@@ -1308,30 +1536,105 @@ Model residuals. `type` selects the kind:
 
 - `:response` (default) — raw response residuals (observed − fitted mean),
   matching [`fitted`](@ref)'s shape. `residuals(fit)` is unchanged.
-- `:quantile` — randomized quantile residuals (Dunn & Smyth; DHARMa /
-  glmmTMB style). For observation `i` with fitted distribution `F_i`,
-  `r_i = Φ⁻¹(u_i)` where `u_i` is the (randomized, for discrete families)
-  probability-integral transform of `y_i`. Under a correct model the `r_i`
-  are i.i.d. standard normal. Univariate only.
+- `:quantile` — standardised residuals. Outside `temporal()` fits these are
+  randomized quantile residuals (Dunn & Smyth; DHARMa / glmmTMB style): for
+  observation `i` with reference distribution `F_i`, `r_i = Φ⁻¹(u_i)`, where
+  `u_i` is the (randomized, for discrete families) probability-integral
+  transform of `y_i`. Univariate only.
+
+What a correct model implies depends on the route:
+
+- **no random effect**: `F_i` is the fitted distribution, and the `r_i` are
+  approximately i.i.d. standard normal (zero-inflated and hurdle count fits
+  included: their PIT uses the whole mixture CDF, below);
+- **one random intercept**: `F_i` integrates it out over its fitted SD
+  (32-node Gauss–Hermite), so each `r_i` is approximately standard normal,
+  but residuals of one group stay correlated. **On the mean**, this covers
+  any lone mean random intercept, including a `phylo()` or `relmat()` term;
+  the fitted SD `σ̂_b` is used as every observation's random-effect SD, which
+  is exact when the relatedness matrix has a unit diagonal (for example an
+  ultrametric tree of height 1). **On the scale**, for a Gaussian
+  `sigma ~ 1 + (1 | g)`, `F_i` mixes `N(μ_i, (σ_i e^b)²)` over
+  `b ~ N(0, τ̂²)`, with `σ_i` the fixed-effect scale. When `τ̂` is moderate
+  or large these residuals can be under-dispersed (SD below 1) even under a
+  correct model, because the default `marginal = :LA` fit integrates the
+  log-σ intercept on a fixed prior-scale grid that loses accuracy as the SD
+  grows; refitting with `marginal = :AGHQ` is the check. drmTMB's quantile
+  residuals for these fits condition on the fitted modes instead;
+- **other random-effect shapes** (crossed, correlated slopes, a mean and a
+  `sigma` intercept together) and CumulativeLogit fits: judged with the
+  random effects set to 0. The group-level variation then stays in the
+  residuals, so under a correct model they are over-dispersed (SD above 1)
+  and a QQ plot that bends away from the line is not by itself evidence of
+  misfit;
+- **`temporal()` AR1 / OU, and the paired `phylo()` + OU fit**: residuals
+  conditional on the fitted modes (below). They are not PIT residuals, and
+  their variance is below 1 even when the model is true;
+- **`temporal()` homogeneous Toeplitz**: whitened residuals (below),
+  approximately i.i.d. standard normal.
+
+The far tail differs too. The PIT routes (every fit without `temporal()`,
+Gaussian included) clamp `u_i` to `[eps, 1 − eps]`, so `|r_i| ≤ 8.126`
+however extreme `y_i` is: a Gaussian residual of 13.6 σ̂ is reported as
+8.126. The `temporal()` routes do not clamp.
 
 Quantile residuals are implemented for every DRModels.jl response family except
-Tweedie (no closed-form CDF in `Distributions.jl`):
+Tweedie (no closed-form CDF in `Distributions.jl`) and SkewNormal:
 
 - **continuous** (PIT `u_i = F(y_i)`, no RNG): Gaussian, Student-t, LogNormal,
   Gamma, Beta;
 - **discrete, randomized** (`u_i = F(y_i−1) + (F(y_i) − F(y_i−1))·U`,
-  `U ~ Uniform(0,1)` drawn from `rng`): Poisson, NegBinomial2,
-  TruncatedNegBinomial2, Binomial, BetaBinomial, CumulativeLogit (ordinal);
+  `U ~ Uniform(0,1)` drawn from `rng`): Poisson, TruncatedPoisson,
+  NegBinomial2, TruncatedNegBinomial2, Binomial, BetaBinomial,
+  CumulativeLogit (ordinal);
 - **atomic** (point-mass mixture; the mass is randomized across): ZeroOneBeta.
 
+Zero-inflated and hurdle Poisson / NegBinomial2 fits (`zi ~ …`, `hu ~ …`) are
+randomized within the jumps of the whole mixture CDF, zero part included:
+`F(y) = π + (1 − π)·F_c(y)` with zero-inflation probability `π`, and
+`F(0) = p₀`, `F(y) = p₀ + (1 − p₀)·F_t(y)` for `y ≥ 1` with hurdle probability
+`p₀`, where `F_c` is the count CDF at the fitted count mean and `F_t` its
+zero-truncated CDF.
+
 The per-family parameter → distribution map lives in `_conditional_dist`
-(reused by future `simulate`/PIT checks). Tweedie throws an `ArgumentError`.
+(reused by future `simulate`/PIT checks). Tweedie and SkewNormal throw an
+`ArgumentError`.
+
+`temporal()` fits (as drmTMB's Pearson residuals; for AR1 and OU, drmTMB's
+quantile residuals are the same numbers):
+
+- AR1 and OU, with or without `(1 | id)` or a paired `phylo()` term, are
+  **conditional on the fitted modes**:
+  `(y_i − x_iᵀβ̂ − b̂_id − ŝ_i) / σ̂`, where `ŝ_i` is the temporal mode
+  (`ranef(fit)[id]`) and `b̂_id` the `(1 | id)` or phylogenetic mode. This is
+  the estimated residual noise `E[ε_i | y] / σ̂`, after the fitted temporal
+  path: it is not whitened against the marginal covariance, and its variance
+  is below 1 even when the model is true. At a residual-SD boundary
+  (`sigma_ratio` among `check_drm(fit).temporal_boundary.findings`) the
+  temporal path absorbs the data: σ̂ → 0 drives these residuals toward 0, so
+  they cannot reveal outliers there. Check `check_drm(fit).temporal_boundary`
+  before reading them.
+- Homogeneous Toeplitz is the whitened `L⁻¹(y − Xβ̂)`, with `L` the Cholesky
+  factor of each series' `σ̂²R̂`: there are no modes to condition on.
+  drmTMB's `type = "quantile"` residuals for this structure are not whitened
+  (`(y − Xβ̂)/σ̂`), so compare with its `type = "pearson"`.
+
+`type = :response` stays `y − Xβ̂` (population level, matching
+[`fitted`](@ref)) for these fits; drmTMB's `residuals(fit, type = "response")`
+subtracts its conditional `fitted()` instead.
 """
 function residuals(fit::DrmFit; type::Symbol = :response, rng = Random.default_rng())
     if type === :response
         haskey(fit.means, :mu) && return fit.obs[:mu] .- fit.means[:mu]
         return Dict(k => fit.obs[k] .- fit.means[k] for k in keys(fit.means))
     elseif type === :quantile
+        # homtoep: the observations of a series are jointly σ²R, so the
+        # standardised residuals are the whitened L⁻¹ r (drmTMB's Pearson
+        # residuals), not (y − μ̂)/σ.
+        _wald_withheld(fit) && return _homtoep_whiten(fit)
+        # AR1 / OU (and the paired phylo() + OU fit): drmTMB's residual is
+        # conditional on the fitted modes, (y − Xβ̂ − modes)/σ̂.
+        _is_temporal_fit(fit) && return _temporal_conditional_residuals(fit)
         return _quantile_residuals(fit, rng)
     else
         throw(ArgumentError("residuals: `type` must be :response or :quantile (got :$type)"))
@@ -1406,9 +1709,11 @@ function predict(fit::DrmFit, newdata; type::Symbol = :response, se::Bool = fals
     if f isa DrmFormula
         # allow_phylo_slope: a fitted Gaussian `phylo(1 + x | g)` formula (#620)
         # must still yield its fixed design here; the flag only relaxes parsing.
-        fixed_mu, _, _, _ = _split_ranef(Dict(f.forms)[:mu]; allow_phylo_slope = true)
+        fixed_mu, _, _, _ = _split_ranef(Dict(f.forms)[:mu]; allow_phylo_slope = true,
+                                         allow_temporal = true)
         ndr = merge(nd, NamedTuple{(f.response,)}((zeros(nrows),)))
-        _, Xnew, _ = _design(f.response, fixed_mu, ndr)
+        _, Xnew, _ = _design(f.response, fixed_mu, ndr;
+                              schema_cache = f.schema_cache, schema_key = :mu)
         η = Xnew * coef(fit, :mu)
         pred = type === :link ? η : _mean_response(fit.family, η)
         se || return pred
@@ -1442,7 +1747,7 @@ end
 # scale (matching `fitted`). Identity for Gaussian/Student; exp for log-link
 # families; logistic for logit-link families; linear predictor otherwise.
 function _mean_response(fam, η)
-    if fam isa Poisson || fam isa NegBinomial2 || fam isa TruncatedNegBinomial2 ||
+    if fam isa Poisson || fam isa NegBinomial2 || fam isa TruncatedNegBinomial2 || fam isa TruncatedPoisson ||
        fam isa Gamma || fam isa LogNormal || fam isa Tweedie
         return exp.(clamp.(η, -30.0, 30.0))
     elseif fam isa Beta || fam isa Binomial || fam isa BetaBinomial
@@ -1492,7 +1797,7 @@ end
 #   Tweedie ν via `_logit12` (1 + sigmoid → range (1,2)) → sig·(1−sig) with sig=σ(η).
 function _link_deriv(fam, p::Symbol, η)
     if p === :mu || p === :mu1 || p === :mu2
-        if fam isa Poisson || fam isa NegBinomial2 || fam isa TruncatedNegBinomial2 ||
+        if fam isa Poisson || fam isa NegBinomial2 || fam isa TruncatedNegBinomial2 || fam isa TruncatedPoisson ||
            fam isa Gamma || fam isa LogNormal || fam isa Tweedie
             return exp.(clamp.(η, -30.0, 30.0))               # log link
         elseif fam isa Beta || fam isa Binomial || fam isa BetaBinomial
@@ -1605,8 +1910,13 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
     for (p, r) in fit.blocks
         haskey(forms, p) || continue          # skip RE-SD / cutpoint blocks (:resd, :recov, :cutpoints, …)
         resp = bivar ? (p === :mu2 ? f.response2 : f.response1) : f.response
-        fixed_p, _, _, _ = _split_ranef(forms[p]; allow_phylo_slope = true)   # #620 fits keep predicting
-        _, Xp, _ = _design(resp, fixed_p, ndr)
+        fixed_p, _, _, _ = _split_ranef(forms[p]; allow_phylo_slope = true,
+                                       allow_temporal = true)   # #620 / temporal fits keep predicting
+        _, Xp, _ = if bivar
+            _design(resp, fixed_p, ndr)
+        else
+            _design(resp, fixed_p, ndr; schema_cache = f.schema_cache, schema_key = p)
+        end
         ηp = Xp * coef(fit, p)
         val = type === :link ? ηp : _param_response(fit.family, p, ηp)
         if se
@@ -1755,8 +2065,9 @@ Tweedie, and CumulativeLogit.
 # Example
 ```julia
 fit = drm(bf(@formula(y ~ x), @formula(sigma ~ x)), Gaussian(); data)
-y1  = simulate(fit)               # Vector, length nobs
-Y   = simulate(fit; nsim = 100)   # nobs × 100 Matrix
+y1  = simulate(fit)               # Vector, length nobs (a homtoep fit that dropped
+                                  # missing responses: one per data row, NaN there)
+Y   = simulate(fit; nsim = 100)   # 100 columns, one per draw
 ```
 """
 function simulate(fit::DrmFit; nsim::Integer = 1, rng = default_rng())
@@ -1802,6 +2113,8 @@ function _simulate_once(fit::DrmFit, rng; mu = nothing, sigma = nothing)
         z1 = randn(rng, n); z2 = randn(rng, n)
         return Dict(:mu1 => μ1 .+ σ1 .* z1,
                     :mu2 => μ2 .+ σ2 .* (ρ .* z1 .+ sqrt.(1 .- ρ .^ 2) .* z2))
+    elseif fam isa Gaussian && _is_temporal_fit(fit)       # temporal(): fresh chain per series
+        return _temporal_simulate(fit, rng)
     elseif fam isa Gaussian && haskey(fit.scales, :sigma) # univariate / RE / meta
         return fit.means[:mu] .+ fit.scales[:sigma] .* randn(rng, length(fit.means[:mu]))
     end
@@ -1837,6 +2150,8 @@ function _simulate_once(fit::DrmFit, rng; mu = nothing, sigma = nothing)
             return Float64[rand(rng) < hu[i] ? 0 : _rand_positive_negbin(rng, θ[i], θ[i] / (θ[i] + μ[i])) for i in 1:n]
         end
         return Float64[rand(rng, Distributions.NegativeBinomial(θ[i], θ[i] / (θ[i] + μ[i]))) for i in 1:n]
+    elseif fam isa TruncatedPoisson
+        return Float64[_rand_positive_poisson(rng, μ[i]) for i in 1:n]
     elseif fam isa TruncatedNegBinomial2
         σ = sigma === nothing ? _scale_vector(fit, :sigma) : sigma
         θ = @. 1 / (σ * σ)
@@ -1971,6 +2286,16 @@ log-likelihood at the REML estimate) when an ML-comparable value is needed.
 loglik(fit::DrmFit) = fit.loglik
 
 """
+    loglikelihood(fit) -> Float64
+
+The StatsAPI/StatsBase-facing alias for [`loglik`](@ref) — anything that
+dispatches on the generic `loglikelihood` (from the `StatsAPI.StatisticalModel`
+interface) can call it on a `DrmFit`. Returns exactly the same value as
+`loglik(fit)`, with the same REML caveat.
+"""
+loglikelihood(fit::DrmFit) = loglik(fit)
+
+"""
     estimation_method(fit) -> Symbol
 
 The estimator used to fit the model: `:ML` (default) or `:REML`
@@ -2071,6 +2396,7 @@ a one-time warning is emitted. Use ML for cross-mean-structure selection.
 function aic(fit::DrmFit)
     _va_infocrit_guard(fit, "aic")
     _reml_infocrit_warn(fit, "aic")
+    _sentinel_infocrit_nan(fit, "aic") && return NaN
     return -2 * fit.loglik + 2 * length(fit.theta)
 end
 
@@ -2085,35 +2411,86 @@ On a **REML** fit this carries the same variance-only-comparison caveat as
 function bic(fit::DrmFit)
     _va_infocrit_guard(fit, "bic")
     _reml_infocrit_warn(fit, "bic")
+    _sentinel_infocrit_nan(fit, "bic") && return NaN
     return -2 * fit.loglik + length(fit.theta) * log(fit.nobs)
 end
 
 """
-    re_sd(fit) -> Dict{Symbol,Float64}
+    re_sd(fit; scale = :native, tree = nothing) -> Dict{Symbol,Float64}
 
-Estimated random-effect (random-intercept) standard deviations, keyed by
-grouping factor. A mean-axis random intercept (`y ~ x + (1|g)`) is keyed by the
-bare group name and is on the response scale. A scale-axis random intercept
-(`sigma ~ 1 + (1|g)`) is keyed `<group>_logsigma` because that SD lives on the
-log-σ scale — the two are NOT directly comparable, and the suffix keeps them
-distinct so a side-by-side read is not silently mixing scales.
+Estimated random-effect standard deviations, keyed by grouping factor. A
+mean-axis random intercept (`y ~ x + (1|g)`) or independent slope
+(`y ~ x + (0+x|g)`) is keyed by the bare group name and is on the response
+scale. A scale-axis random intercept (`sigma ~ 1 + (1|g)`) is keyed
+`<group>_logsigma` because that SD lives on the log-σ scale — the two are NOT
+directly comparable, and the suffix keeps them distinct so a side-by-side read
+is not silently mixing scales. A correlated random intercept+slope block
+(`(1 + x | g)`) is keyed `<group>_intercept` and `<group>_slope`, consistent
+with `sqrt.(diag(vc(fit)[:g]))`; the correlation itself is not returned here —
+use [`vc`](@ref) for the full 2×2 covariance.
+
+## `scale` (#732, twin drmTMB#1272)
+
+For a `phylo(1 | g)` grouping fitted on the default raw branch-length
+covariance (`fit.phylo_scale === :covariance`, the sparse Gaussian-mean and all
+non-Gaussian Laplace/GLMM phylo routes), `re_sd`'s default `scale = :native`
+returns σ on that raw branch-length scale (tip variance = the tree's height
+`h`). drmTMB instead reports the phylogenetic SD on the tip-correlation scale
+(`ape::vcv(tree, corr = TRUE)`, tip variance 1 regardless of `h`); the two
+quantities differ by the exact factor `sqrt(h)`
+(`sd_drmTMB == re_sd(fit)[:g] * sqrt(phylo_tree_height(augmented_phy(tree)))`,
+confirmed against `drmTMB` 0.7.1 to within optimiser tolerance on both a
+Gaussian and a non-Gaussian (`CumulativeLogit`) phylo fit — see
+`test/test_twin_gap_732.jl`).
+
+Pass `scale = :drmtmb` and the SAME `tree` (or `newick` string) given to
+`drm(...)` to get drmTMB's number directly instead of doing that conversion by
+hand:
+
+    re_sd(fit; scale = :drmtmb, tree = tree)
+
+For a fit whose phylo/relmat term was instead built on the tip-correlation
+matrix already (`fit.phylo_scale === :correlation`), `scale = :drmtmb` is a
+no-op (that route's raw `re_sd` already matches drmTMB) and `tree` is not
+required. `scale = :drmtmb` on a fit with no random effects returns the empty
+`Dict`. `scale = :native` (the default) is unchanged from before this option
+existed.
 """
-function re_sd(fit::DrmFit)
+function re_sd(fit::DrmFit; scale::Symbol = :native, tree = nothing)
     # Location–scale–scale fits (#544) model the RE SD with covariates, so a
     # single per-grouping SD is ill-defined — refuse rather than misreport.
     any(p -> first(p) in (:sd, :sd_phylo), fit.blocks) &&
         throw(ArgumentError("re_sd: this fit models the random-effect SD with covariates " *
             "(`sd(group) ~ …`), so a single SD per grouping is not defined. Use " *
             "`coef(fit, :sd)` for the log-SD coefficients."))
+    scale in (:native, :drmtmb) ||
+        throw(ArgumentError("re_sd: `scale` must be :native or :drmtmb, got $(repr(scale))."))
     d = Dict{Symbol,Float64}()
     for (p, r) in fit.blocks
-        p === :resd || continue
-        nms = first(cn[2] for cn in fit.coefnames if cn[1] === :resd)
-        for (j, nm) in enumerate(nms)
-            d[Symbol(nm)] = exp(fit.theta[r[j]])
+        if p === :resd
+            nms = first(cn[2] for cn in fit.coefnames if cn[1] === :resd)
+            for (j, nm) in enumerate(nms)
+                d[Symbol(nm)] = exp(fit.theta[r[j]])
+            end
+        elseif p === :recov
+            # Same Cholesky decoding as vc(fit): l11 = intercept SD, and the
+            # slope SD is sqrt(cc^2 + l22^2) (the (2,2) entry of L*L').
+            a, b, cc = fit.theta[r]
+            l11 = exp(a); l22 = exp(b)
+            nm = first(cn[2] for cn in fit.coefnames if cn[1] === :recov)[1]   # "g:L11"
+            grp = split(nm, ":")[1]
+            d[Symbol(grp * "_intercept")] = l11
+            d[Symbol(grp * "_slope")] = sqrt(cc^2 + l22^2)
         end
     end
-    return d
+    scale === :native && return d
+    (isempty(d) || fit.phylo_scale === :correlation) && return d
+    tree === nothing && throw(ArgumentError("re_sd: scale = :drmtmb needs `tree = ...` " *
+        "(the SAME tree/newick passed to `drm(...)`) to convert the raw branch-length SD " *
+        "to drmTMB's tip-correlation scale — see the `re_sd` docstring (#732)."))
+    phy = tree isa AugmentedPhy ? tree : augmented_phy(tree)
+    factor = sqrt(phylo_tree_height(phy))
+    return Dict(k => v * factor for (k, v) in d)
 end
 
 """
@@ -2125,7 +2502,7 @@ fixef(fit::DrmFit) =
     [p => (names = ns, estimate = coef(fit, p)) for ((p, _), (_, ns)) in zip(fit.blocks, fit.coefnames)]
 
 function Base.show(io::IO, fit::DrmFit)
-    print(io, "DrmFit (Gaussian location–scale, ", fit.nobs, " obs, ",
+    print(io, "DrmFit (", _family_name(fit.family), ", ", fit.nobs, " obs, ",
         fit.converged ? "converged" : "NOT converged",
         "; logLik = ", round(fit.loglik, digits = 2), ")")
     for (p, _) in fit.blocks

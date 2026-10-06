@@ -77,8 +77,9 @@ using Test, Random, LinearAlgebra
 
         err = nothing
         try
-            # Random slope trips the generic gate (census row 3).
-            drm(bf(@formula(y ~ 1 + x + (1 + x | g)), @formula(sigma ~ 1)), Gaussian();
+            # A random effect on sigma trips the generic gate (census row 3). The mean
+            # correlated slope (1 + x | g) is now supported (test_lme4_twins.jl).
+            drm(bf(@formula(y ~ 1 + x), @formula(sigma ~ 1 + (1 | g))), Gaussian();
                 data = data_ri, method = :REML)
         catch e
             err = e

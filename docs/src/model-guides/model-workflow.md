@@ -35,9 +35,10 @@ exponentiate the `σ` bounds.
 
 For a **profile-likelihood** interval (drmTMB's `method = "profile"`), pass
 `method = :profile`. It inverts the likelihood-ratio statistic — re-optimising
-the nuisance parameters at each fixed value — so it is asymmetric and exact under
-the LR statistic where Wald is only a quadratic approximation. Use Wald for
-speed; profile when a parameter's likelihood is skewed (a scale or variance term):
+the nuisance parameters at each fixed value — so it can reflect an asymmetric
+likelihood shape where Wald uses a quadratic approximation. Its likelihood-ratio
+calibration is still asymptotic. Use Wald for speed; consider a profile when a
+parameter's likelihood is skewed (for example, a scale or variance term):
 
 ```@example wf
 confint(fit; method = :profile)
@@ -88,8 +89,9 @@ bootstrap_ci(bf(@formula(y ~ x), @formula(sigma ~ x)), Gaussian();
 ```
 
 Returns the same `(param, coef, estimate, lower, upper)` rows as `confint`. Use
-Wald (`confint`) for speed; bootstrap when you want fewer distributional
-assumptions.
+Wald (`confint`) for speed; use a bootstrap to see how interval estimates vary
+when data are repeatedly simulated and refitted under the fitted model. A
+parametric bootstrap therefore still depends on that model's assumptions.
 
 For longer jobs, use `bootstrap_result` to keep the audit trail:
 
@@ -102,6 +104,6 @@ bres = bootstrap_result(bf(@formula(y ~ x), @formula(sigma ~ x)), Gaussian();
 
 ## See also
 
-- [Get started](../get-started.md) · [When variance carries signal](../tutorials/location-scale.md)
+- [Get started](../getting-started.md) · [When variance carries signal](../tutorials/location-scale.md)
 - Profile and bootstrap intervals, `predict`, and `simulate` are all shown
   above; for their evidence status see [Evidence & limits](../capabilities.md).

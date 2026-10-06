@@ -80,10 +80,12 @@ drmTMB(bf(mu1 = y1 ~ x, mu2 = y2 ~ x, sigma1 = ~ x, sigma2 = ~ 1, rho12 = ~ 1),
 ```
 
 ```julia
-# Julia — DRModels.jl  (keyword form; ρ12 is the residual correlation, on atanh ρ12)
-bf(mu1 = @formula(y1 ~ x), mu2 = @formula(y2 ~ x),
-   sigma1 = @formula(sigma1 ~ x), sigma2 = @formula(sigma2 ~ 1),
-   rho12 = @formula(rho12 ~ 1))
+# Julia — DRModels.jl  (ρ12 is the residual correlation, on atanh ρ12)
+fit = drm(
+    bf(mu1 = @formula(y1 ~ x), mu2 = @formula(y2 ~ x),
+       sigma1 = @formula(sigma1 ~ x), sigma2 = @formula(sigma2 ~ 1),
+       rho12 = @formula(rho12 ~ 1)),
+    Gaussian(); data = dat)
 ```
 
 ### Structured effects & meta-analysis
@@ -114,7 +116,7 @@ bf(mu1 = @formula(y1 ~ x), mu2 = @formula(y2 ~ x),
 | `ranef(fit)` | `ranef(fit)` |
 | random-effect SDs | `re_sd(fit)` / `vc(fit)` |
 | `sigma(fit)` | `sigma(fit)` |
-| `rho12(fit)` | planned (parity gap) |
+| `rho12(fit)` | `rho12(fit)` |
 | `corpairs(fit)` | `corpairs(fit)` / `corpairs_data(fit)` |
 | `fitted(fit)` / `residuals(fit)` | `fitted(fit)` / `residuals(fit)` |
 | `predict(fit, newdata)` (response mean) | `predict(fit, newdata; type = :response)` |
@@ -122,7 +124,7 @@ bf(mu1 = @formula(y1 ~ x), mu2 = @formula(y2 ~ x),
 | in-sample fitted per-observation parameters | `marginal_parameters(fit)` |
 | build a covariate grid for prediction | `prediction_grid(reference; predictor = values, …)` |
 | `simulate(fit)` | `simulate(fit)` |
-| `summary(fit)` | `show(fit)` / `coeftable(fit)` (no `summary` method) |
+| `summary(fit)` | `summary(fit)` (prints the Wald coefficient table) |
 | `weights(fit)` | planned (parity gap) |
 | `family(fit)` | `family(fit)` |
 | `is_converged(fit)` / convergence diagnostics | `is_converged(fit)` / `check_drm(fit)` |
@@ -175,6 +177,6 @@ point.
 - **ML is the default.** REML is an option (the likelihoods are not comparable
   across different fixed-effect structures, so ML is used for model selection).
 
-For the experimental, optional R-to-Julia route, see the
-[R ↔ Julia bridge](r-julia-bridge.md). It is limited to the documented
-admitted models; ordinary `drmTMB` use continues to use the default R engine.
+For the optional R-to-Julia route, see [Coming from R](coming-from-r.md).
+It is limited to the documented admitted models; ordinary `drmTMB` use
+continues to use the default R engine.

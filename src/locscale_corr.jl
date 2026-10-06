@@ -226,7 +226,7 @@ function _fit_slope_axis_re(kind, y, Xμ, Xψ, xs, gidx, G, Q;
             vcov = Vfull,
             se = _ls_se(Vfull),
             nll = nll_val,
-            converged = Optim.converged(res))
+            converged = drm_optim_converged(res))
 end
 
 # Parse a formula rhs for a structured correlated slope:

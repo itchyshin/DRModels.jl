@@ -58,6 +58,9 @@ function _block_title(p::Symbol)
     p === :coi     && return "Conditional-one inflation (logit)"
     p === :cutpoints && return "Cutpoints"
     p === :range   && return "Spatial range (log)"
+    p === :temporal_phi   && return "Temporal AR1 persistence (atanh φ)"
+    p === :temporal_decay && return "Temporal OU decay (log λ)"
+    p === :temporal_pac   && return "Temporal Toeplitz partial autocorrelations (atanh)"
     p === :resd    && return "Random-effect SD (log σ_b)"
     p === :sd      && return "RE SD model sd(group) (log σ_b)"
     p === :sd_phylo && return "Phylo SD model sd_phylo(group) (log σ_a)"
@@ -84,6 +87,9 @@ function _block_null_note(p::Symbol)
     p in (:resd, :resid)            && return ("H0: coefficient = 0 on log σ_b",
                                                 "NOT the σ_b = 0 boundary")
     p in (:recov, :phylocov)        && return ("H0: Cholesky entry = 0 (no single interpretable null)",)
+    p === :temporal_phi             && return ("H0: φ = 0 (atanh scale)",)
+    p === :temporal_decay           && return ("H0: log λ = 0 ⇔ λ = 1 (depends on the time unit)",)
+    p === :temporal_pac             && return ("H0: partial autocorrelation = 0 (atanh scale)",)
     return ()
 end
 
@@ -149,8 +155,17 @@ is_converged(fit::DrmFit) = fit.converged && _nondegenerate_fit(fit)
 # The degeneracy test behind `is_converged`. GAUSSIAN ONLY: for NB2/Beta/Gamma the
 # `:sigma` slot holds a dispersion or shape, where a genuinely small value is
 # legitimate, so applying a residual-scale test there would reject good fits.
+#
+# Sentinel bar. A failed objective evaluation is reported as a 1e18 sentinel nll,
+# so a fit stuck on that plateau has loglik = -1e18: FINITE, and (a zero-gradient
+# plateau) even "converged" per Optim. `_laplace_outer_converged` rejects
+# nll >= 1e17 on the nll scale; loglik <= -1e15 is the same bar taken a couple of
+# decades more conservatively on the loglik scale, so no genuine fit is caught
+# (a real loglik of -1e15 would need ~1e14 observations at O(10) nats each).
+_sentinel_loglik(fit::DrmFit) = !isfinite(fit.loglik) || fit.loglik <= -1e15
+
 function _nondegenerate_fit(fit::DrmFit)
-    isfinite(fit.loglik) || return false
+    _sentinel_loglik(fit) && return false
     fit.family isa Gaussian || return true
     haskey(fit.scales, :sigma) || return true
     s = fit.scales[:sigma]
@@ -195,12 +210,14 @@ Extends `StatsAPI.dof_residual`.
 dof_residual(fit::DrmFit) = nobs(fit) - dof(fit)
 
 function Base.show(io::IO, ::MIME"text/plain", fit::DrmFit)
-    se = stderror(fit)
+    se = _display_se(fit)
     fam = _family_name(fit.family)
     println(io, "Distributional regression fit (", fam, ")")
     println(io, "  nobs = ", fit.nobs,
                 "   logLik = ", @sprintf("%.4f", fit.loglik),
                 "   converged = ", fit.converged)
+    _wald_withheld(fit) && println(io, "  Wald SEs withheld (homogeneous Toeplitz, as drmTMB): `sigma` is the " *
+        "TOTAL within-series SD; use profile intervals for mean coefficients.")
 
     # Residual SD on the RESPONSE scale + residual dof (issue #752). An R user
     # looks for these first: lm() prints both and drmTMB prints sigma. The value
@@ -291,13 +308,13 @@ correlation). For `:sigma`/`:sigma1`/`:sigma2`/`:resd`/`:resid`/`:recov`/
 `:phylocov` the zero-on-working-scale null is not the scientific one — e.g.
 `log σ = 0` means `σ = 1`, not the `σ = 0` variance boundary — so those rows show
 `z` and `Pr(>|z|)` as `NaN` rather than a misleading test of an arbitrary scale
-reference (issue #320). To test a variance component against 0 use a
+reference. To test a variance component against 0 use a
 boundary-corrected likelihood-ratio test (`lrt_boundary`); the estimate and SE for
 those blocks are still reported. A boundary / singular direction (Inf SE) also
-reports `NaN` z / p rather than a spurious `z = 0, p = 1` (issue #323.2).
+reports `NaN` z / p rather than a spurious `z = 0, p = 1`.
 """
 function coeftable(fit::DrmFit; level::Real = 0.95)
-    se = stderror(fit)
+    se = _display_se(fit)
     z = quantile(Normal(), 1 - (1 - level) / 2)
     est = Float64[]; ses = Float64[]; zs = Float64[]; ps = Float64[]
     lo = Float64[]; hi = Float64[]; rownms = String[]

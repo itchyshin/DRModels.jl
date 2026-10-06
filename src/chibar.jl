@@ -133,6 +133,7 @@ t.pvalue_naive     # χ²(1): P(χ²₁ > stat)     — conservative (≈ 2× to
 """
 function lrt_boundary(fit_full::DrmFit, fit_reduced::DrmFit; q::Integer = 1)
     _reml_compare_guard(fit_reduced, fit_full, "lrt_boundary")
+    _sentinel_compare_guard(fit_reduced, fit_full, "lrt_boundary")
     statistic = 2 * (loglik(fit_full) - loglik(fit_reduced))
     pvalue = chibar_pvalue(statistic, q)
     pvalue_naive = ccdf(Chisq(q), max(statistic, 0.0))

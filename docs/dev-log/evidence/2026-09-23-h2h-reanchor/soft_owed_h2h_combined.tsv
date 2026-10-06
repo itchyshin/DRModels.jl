@@ -1,0 +1,5 @@
+cell_id	engine	wall_median_s	all_times_s	loglik	sha	host	threads	note
+gauss_locscale_n1000	tmb	0.024	0.028000;0.024000;0.024000	-1071.61345447653	drmTMB-0.7.1	totoro	NA	R/TMB arm; same fixture bytes as Julia
+gaussian_relmat_G25	tmb	8.847	8.845000;8.847000;8.990000	-84.356621927465	drmTMB-0.7.1	totoro	NA	R/TMB arm; same fixture bytes as Julia
+gauss_locscale_n1000	julia	0.0005528926849365234	0.000772;0.000553;0.000487	-1071.6134544765198	1b8e81c	totoro	4	DRModels tip; same CSV fixtures; loglik agree with TMB
+gaussian_relmat_G25	julia	0.0009059906005859375	0.047188;0.000906;0.000724	-84.35662192746463	1b8e81c	totoro	4	DRModels tip; same CSV fixtures; loglik agree with TMB

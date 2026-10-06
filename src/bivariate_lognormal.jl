@@ -145,7 +145,7 @@ function _lognormal_jacobian_shift(fam::LogNormal, gfit::DrmFit, y1, y2, obs1, o
                  Dict(:mu1 => Vector{Float64}(y1), :mu2 => Vector{Float64}(y2)),
                  gfit.scales, gfit.formula, lnll, gfit.nllgrad, gfit.ranef,
                  gfit.estim_method, reml_ll, gfit.ml_loglik - jac, gfit.marginal,
-                 gfit.phylo_penalty, gfit.penalty, gfit.iterations)
+                 gfit.phylo_penalty, gfit.penalty, gfit.iterations, gfit.phylo_scale)
 end
 
 # Strictly-positive check on the observed cells of a bivariate lognormal response.
@@ -169,4 +169,47 @@ function _with_logged_responses(data, r1::Symbol, r2::Symbol, y1, y2, obs1, obs2
     l1 = [obs1[i] ? log(y1[i]) : y1[i] for i in eachindex(y1)]
     l2 = [obs2[i] ? log(y2[i]) : y2[i] for i in eachindex(y2)]
     return merge(nt, NamedTuple{(r1, r2)}((l1, l2)))
+end
+
+# --- Parametric-bootstrap replicate draw (same class as #766/#840) ----------
+#
+# `gaussian_core.jl`'s generic `_simulate_once` special-cases bivariate
+# GAUSSIAN fits (`fam isa Gaussian && haskey(fit.scales, :sigma1)`) before
+# falling through to `μ = fit.means[:mu]` for every other family. A bivariate
+# lognormal fit (`biv_lognormal()`, this file) has `fit.family isa LogNormal`
+# — never `Gaussian` — even though it is built entirely by delegating to the
+# bivariate Gaussian route on `log(y)` (`_lognormal_jacobian_shift` above), so
+# its `fit.means`/`fit.scales` carry the SAME `:mu1`/`:mu2`/`:sigma1`/`:sigma2`/
+# `:rho12` keys as bivariate Gaussian, never `:mu`/`:sigma`. That falls through
+# to `μ = fit.means[:mu]`, which throws `KeyError: key :mu not found` on the
+# very first `simulate(fit)` call, and therefore on every parametric-bootstrap
+# replicate too (`bootstrap_result`/`bootstrap_ci` draw via `simulate(fit0;
+# rng)` before any refit).
+#
+# This method is dispatched by `fit::DrmFit{LogNormal}`, more specific than the
+# generic `fit::DrmFit` method in gaussian_core.jl, so it does not disturb any
+# other family; it reimplements the univariate case identically alongside the
+# new bivariate one, mirroring how gaussian_core.jl itself distinguishes
+# bivariate vs. univariate Gaussian by the presence of `:sigma1`.
+#
+# Bivariate draw: draw log(Y) exactly as bivariate Gaussian does (`Y = mu +
+# diag(sigma) * Z`, `Z ~ N(0, R)`, using the SAME log-scale `mu1`/`mu2` this
+# family's docstring documents), then exponentiate — the inverse of
+# `_with_logged_responses`.
+function _simulate_once(fit::DrmFit{LogNormal}, rng; mu = nothing, sigma = nothing)
+    if haskey(fit.scales, :sigma1)   # bivariate biv_lognormal() fit
+        μ1, μ2 = fit.means[:mu1], fit.means[:mu2]   # log-scale means
+        σ1, σ2, ρ = fit.scales[:sigma1], fit.scales[:sigma2], fit.scales[:rho12]
+        n = length(μ1)
+        z1 = randn(rng, n)
+        z2 = randn(rng, n)
+        l1 = μ1 .+ σ1 .* z1
+        l2 = μ2 .+ σ2 .* (ρ .* z1 .+ sqrt.(1 .- ρ .^ 2) .* z2)
+        return Dict(:mu1 => exp.(l1), :mu2 => exp.(l2))
+    end
+    # Univariate lognormal: identical to gaussian_core.jl's generic branch.
+    μ = mu === nothing ? fit.means[:mu] : mu
+    σ = sigma === nothing ? _scale_vector(fit, :sigma) : sigma
+    n = length(μ)
+    return Float64[exp(log(max(μ[i], eps())) + σ[i] * randn(rng)) for i in 1:n]
 end

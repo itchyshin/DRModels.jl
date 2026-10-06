@@ -79,7 +79,8 @@ likelihood-ratio test:
 lrtest(fit_sigma_constant, fit_sigma_x)   # (; statistic, dof, pvalue)
 ```
 
-A small p-value says the moving scale is real signal. Interpret the selected
+A small p-value supports the moving-scale term within these nested, checked
+candidate models; it is not proof of a biological mechanism. Interpret the selected
 σ-coefficient on the **ratio** scale — a one-unit increase in `x` multiplies the
 residual SD by `exp(slope)`:
 

@@ -1,10 +1,14 @@
 # Mean effects and residual heterogeneity
 
-!!! note "Status — Stable (diagonal known variances)"
+!!! note "Status — Stable (univariate and row-paired bivariate)"
     Mirrors drmTMB's [Mean effects and residual heterogeneity](https://itchyshin.github.io/drmTMB/articles/meta-analysis.html).
-    **In DRModels.jl today:** Gaussian meta-analysis with **known** per-study sampling
-    variances via `meta_V(v)`, plus estimated between-study heterogeneity τ
-    (the `σ` parameter). Dense / bivariate sampling covariance is planned.
+    **This tutorial uses the univariate route:** Gaussian meta-analysis with
+    **known** per-study sampling variances via `meta_V(v)`, plus estimated
+    between-study heterogeneity τ (the `σ` parameter). For two outcomes,
+    DRModels.jl also accepts one known 2×2 sampling-covariance block per study
+    through `meta_vcov_bivariate(...)` and the `V =` fit keyword. Arbitrary
+    cross-study covariance, REML with `V`, and `V` combined with structured
+    effects are not supported; see the [bivariate guide](../model-guides/meta-analysis.md).
 
 In meta-analysis each study reports an effect `y_i` with a **known** sampling
 variance `v_i`. The model separates that known measurement uncertainty from the
