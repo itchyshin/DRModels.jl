@@ -1,0 +1,13 @@
+# mutation test BEFORE: PR head 89aa0fc57 bytes, run in ~/claude-606b/after (the only tree whose path matches the receipts before M2), finite-public-005.json; PYTHONDONTWRITEBYTECODE=1 with an empty PYTHONPYCACHEPREFIX 2026-10-03T19:25:28Z
+A_fit_always_pass rc= 0 SURVIVED :: FINITE_FIT_NEGATIVE_CONTROLS_PASS 17
+B_fit_no_verdict_check rc= 1 KILLED :: RuntimeError: accepted damaged false_pass
+C_fit_no_reported_error_check rc= 1 KILLED :: RuntimeError: accepted damaged reported_error
+D_pub_always_pass rc= 0 SURVIVED :: FINITE_PUBLIC_DAMAGES_REJECTED 17
+E_pub_no_verdict_check rc= 1 KILLED :: ValueError: damaged receipt accepted
+F_fit_tol_1e3 rc= 0 SURVIVED :: FINITE_FIT_NEGATIVE_CONTROLS_PASS 17
+G_pub_tol_1e3 rc= 0 SURVIVED :: FINITE_PUBLIC_DAMAGES_REJECTED 17
+H_joint_always_pass rc= 1 KILLED :: ValueError: loaded Julia source
+I_joint_tol_1e3 rc= 1 KILLED :: ValueError: loaded Julia source
+# joint mutants H, I rerun with an absolute JULIA_ROOT (os.getcwd()), so the pre-M2 path check does not mask them
+H_joint_always_pass rc= 0 SURVIVED :: JOINT_PUBLIC_NEGATIVE_CONTROLS_PASS mutations=21
+I_joint_tol_1e3 rc= 0 SURVIVED :: JOINT_PUBLIC_NEGATIVE_CONTROLS_PASS mutations=21

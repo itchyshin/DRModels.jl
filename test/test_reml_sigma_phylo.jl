@@ -1,5 +1,8 @@
 # REML for the Gaussian σ-phylo location-scale route (Ayumi #2, her 2nd ask).
-# Production path (PR #337): `_glsp_reml_refit_clean(..., pμ + pψ)` restricts BOTH
+# (Since Arc 2 the production path is `_glsp_joint_reml_fit`, native drmTMB's joint
+# Laplace over (phylo, β_μ, β_ψ) — see test_reml_sigma_phylo_joint.jl. The history below
+# is kept for the penalty anchor, which still exercises `_glsp_reml_penalty`.)
+# Former production path (PR #337): `_glsp_reml_refit_clean(..., pμ + pψ)` restricts BOTH
 # mean and scale fixed effects (β_μ and β_ψ) — the complete Cox–Reid / Patterson–
 # Thompson correction for a scale-side variance component. Restricting β_μ alone
 # left σ²_v ~ML-biased.

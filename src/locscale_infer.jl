@@ -29,15 +29,45 @@ function _ls_obs_information(kind, y, Xμ, Xψ, gidx, G, Q, θ,
 end
 
 # Wald covariance V = (observed information)⁻¹. Returns `nothing` if the
-# information is singular (e.g. a variance pinned at the boundary).
+# information is singular (e.g. a variance pinned at the boundary) or
+# non-finite (e.g. the finite-difference gradient blows up as Λ approaches a
+# singular mean-scale correlation, #870 review). `inv` on a matrix with
+# NaN/Inf entries throws `ArgumentError`, not `SingularException`, so that
+# case is guarded explicitly before `inv` is ever called -- matching
+# `_ls_whitened_vcov`'s convention (locscale_whitened.jl) of returning
+# `nothing` at the same near-singular-Λ boundary. Downstream callers already
+# normalise a `nothing` vcov to NaN SEs (`locscale_frontend.jl`,
+# `locscale_corr.jl`).
 function _ls_vcov(kind, y, Xμ, Xψ, gidx, G, Q, θ,
                   Zη = _ls_canonical_Zeta(length(y)),
                   Zψ = _ls_canonical_Zpsi(length(y)); h = 1e-5, a0 = nothing)
     H = _ls_obs_information(kind, y, Xμ, Xψ, gidx, G, Q, θ, Zη, Zψ; h = h, a0 = a0)
+    Hm = Matrix(H)
+    if !all(isfinite, Hm)
+        @warn "location-scale Wald vcov: observed information is not finite " *
+              "(likely a near-singular Λ / boundary mean-scale correlation) -- " *
+              "returning no vcov/SEs for this fit."
+        return nothing
+    end
     return try
-        inv(Matrix(H))
+        V = inv(Hm)
+        # A finite but indefinite information (a negative variance on the diagonal) is a
+        # saddle / non-converged point, not a covariance: report no vcov rather than garbage.
+        if any(d -> !(d > 0), diag(V))
+            @warn "location-scale Wald vcov: observed information is not positive " *
+                  "definite at the optimum -- returning no vcov/SEs for this fit."
+            nothing
+        else
+            V
+        end
     catch err
-        err isa SingularException ? nothing : rethrow(err)
+        if err isa SingularException
+            @warn "location-scale Wald vcov: observed information is singular " *
+                  "at the optimum (boundary Λ) -- returning no vcov/SEs for this fit."
+            nothing
+        else
+            rethrow(err)
+        end
     end
 end
 

@@ -71,7 +71,39 @@ from `size`). Column-major lower-triangle order.
 """
 function cov_to_lc(Λ::AbstractMatrix)
     q = LinearAlgebra.checksquare(Λ)
-    L = cholesky(Symmetric(Λ)).L
+    Λs = Symmetric(Λ)
+    ch = cholesky(Λs; check = false)
+    if !issuccess(ch)
+        # #787: `Λ` reaching here is a FITTED variance-component covariance, not
+        # arbitrary input. At the definiteness boundary an optimizer-accepted Λ
+        # can land marginally non-PD in floating point, and LAPACK detects that
+        # indefiniteness on some builds/architectures and not others -- the same
+        # boundary-dependent factorisation failure already guarded (differently)
+        # in `coevo_marginal_cov` above (see its #503 comment). There the caller
+        # can fall back to -Inf inside an objective; here Λ is the FINAL reported
+        # fit, so instead nudge it back onto the PD cone -- but ONLY for a
+        # floating-point-scale boundary miss. A substantively indefinite Λ (a
+        # real defect, not a boundary artefact) must still fail loudly rather
+        # than being silently floored into something admissible.
+        λmin = minimum(eigvals(Λs))
+        scale = max(maximum(abs, Λ), 1.0)
+        boundary_tol = 1e-6 * scale
+        if -λmin > boundary_tol
+            throw(ArgumentError(
+                "cov_to_lc: Λ is not positive definite (min eigenvalue $(λmin), " *
+                "boundary tolerance $(boundary_tol)); this is not a floating-point " *
+                "boundary artefact and will not be regularised",
+            ))
+        end
+        floor_eps = -λmin + 8 * eps(scale)
+        Λs = Symmetric(Matrix(Λ) + floor_eps * I)
+        ch = cholesky(Λs; check = false)
+        issuccess(ch) || throw(ArgumentError(
+            "cov_to_lc: Λ is not positive definite (min eigenvalue $(λmin)) " *
+            "even after boundary regularisation",
+        ))
+    end
+    L = ch.L
     v = Float64[]
     @inbounds for j in 1:q, i in j:q
         push!(v, i == j ? log(L[i, j]) : L[i, j])
@@ -214,22 +246,67 @@ function coevo_rhs(prob::CoevoProblem, β::AbstractMatrix, Dinv::AbstractMatrix)
 end
 
 """
+    lc_to_chol(v, q) -> Cholesky
+
+The log-Cholesky vector `v` as the FACTORED covariance `Cholesky(L)`, `Λ = L L'`,
+without ever forming `Λ` (same ordering as [`lc_to_cov`](@ref)). Pass it to
+[`coevo_marginal_cov`](@ref) in place of `Λ` to keep the precision that forming
+`L L'` in Float64 throws away when `Λ` is near singular (#857 site K).
+"""
+function lc_to_chol(v::AbstractVector{T}, q::Integer) where {T}
+    length(v) == lc_len(q) || error("lc length $(length(v)) ≠ q(q+1)/2 = $(lc_len(q)) for q=$q")
+    L = zeros(T, q, q)
+    k = 0
+    @inbounds for j in 1:q, i in j:q
+        k += 1
+        L[i, j] = i == j ? exp(v[k]) : v[k]
+    end
+    return Cholesky(LowerTriangular(L))
+end
+
+"""
     coevo_marginal(prob, Q_cond, β, Λ, σ_res) -> (ℓ, û, ch_H, P)
 
 EXACT Laplace (= Gaussian) marginal log-likelihood at the given parameters,
-plus the inner mode `û`, the CHOLMOD factor of `H_uu`, and the sparse prior `P`.
-`β` is `k × q` (trait-major columns), `Λ` is q×q SPD, `σ_res` a length-q vector
-of residual SDs.
+plus the inner mode `û`, the CHOLMOD factor of the WHITENED `H̃ = (I⊗L') H_uu (I⊗L)`
+(`logdet H_uu = logdet H̃ − 2N Σ log Lᵢᵢ`), and the sparse prior `P`.
+`β` is `k × q` (trait-major columns), `Λ` is q×q SPD — either as a matrix or,
+preferably, factored as a `Cholesky` (see [`lc_to_chol`](@ref)) — and `σ_res` a
+length-q vector of residual SDs.
+
+Numerics (#857 site K). `Λ⁻¹` is never formed. With `L L' = Λ` and whitened
+effects `v = (I ⊗ L⁻¹) u`, the prior is `v'(Q ⊗ I)v`, the Hessian is
+`H̃ = Q ⊗ I + Σₜ cₜ eₜeₜ' ⊗ L'D⁻¹L`, and the `Σ log Lᵢᵢ` terms of `logdet H_uu`
+and `logdet P` cancel analytically, so
+`ℓ = −jn − ½ logdet H̃ + ½ logdet(Q ⊗ I + ε I ⊗ L'L)`. The last term is exactly
+the historical `½ logdet(P + εI)` (ε = 1e-10 ridge, kept for identity), up to
+the cancelled `Σ log Lᵢᵢ`. Identical in exact arithmetic to the former
+`P = Q ⊗ Λ⁻¹` form; it stays accurate as `Λ` approaches singularity, where the
+former form lost every digit (l22 = −17: +0.03 nats; ≤ −18: `-Inf`).
 """
 function coevo_marginal_cov(prob::CoevoProblem, Q_cond::SparseMatrixCSC,
                             β::AbstractMatrix, Λ::AbstractMatrix, D::AbstractMatrix)
+    q = prob.q
+    chΛ = cholesky(Symmetric(Matrix{Float64}(Λ)); check = false)
+    issuccess(chΛ) || return (-Inf, zeros(q * prob.N), nothing, nothing)
+    return coevo_marginal_cov(prob, Q_cond, β, chΛ, D)
+end
+
+function coevo_marginal_cov(prob::CoevoProblem, Q_cond::SparseMatrixCSC,
+                            β::AbstractMatrix, chΛ::Cholesky, D::AbstractMatrix)
     q = prob.q
     n = length(prob.leaf_node)
     size(D) == (q, q) || error("residual covariance has size $(size(D)); expected ($q, $q)")
     isposdef(Symmetric(D)) || error("residual covariance must be positive definite")
     Dinv = inv(Symmetric(D))
-    P = prior_precision(Q_cond, inv(Λ))
-    H = coevo_Huu(prob, P, Dinv)
+    L = Matrix{Float64}(chΛ.L)
+    size(L) == (q, q) || error("Λ factor has size $(size(L)); expected ($q, $q)")
+    all(isfinite, L) || return (-Inf, zeros(q * prob.N), nothing, nothing)
+    Iq = Matrix{Float64}(I, q, q)
+    Pw = prior_precision(Q_cond, Iq)              # Q ⊗ I (full axis blocks)
+    Li = inv(LowerTriangular(L))
+    P = prior_precision(Q_cond, Matrix(Li' * Li)) # Q ⊗ Λ⁻¹, returned only (API)
+    H = coevo_Huu(prob, Pw, L' * Dinv * L)        # whitened H̃
     # #503 (follow-up): this was `cholesky(Symmetric(H))`, unguarded, behind the
     # comment "PD: P + PSD data term, root-conditioned". PD by construction in
     # exact arithmetic -- but H inherits inv(Λ), and at extreme Λ it lands on the
@@ -245,7 +322,26 @@ function coevo_marginal_cov(prob::CoevoProblem, Q_cond::SparseMatrixCSC,
     chH = cholesky(Symmetric(H); check = false)
     issuccess(chH) || return (-Inf, zeros(size(H, 1)), chH, P)
     rhs = coevo_rhs(prob, β, Dinv)
-    û = chH \ rhs                                 # conjugate mode (one solve)
+    Lt = L'
+    rhsw = similar(rhs)
+    @inbounds for t in 1:prob.N, a in 1:q         # rhs̃ = (I ⊗ L') rhs  (L' upper)
+        base = q * (t - 1)
+        s = 0.0
+        for b in a:q
+            s += L[b, a] * rhs[base + b]
+        end
+        rhsw[base + a] = s
+    end
+    v̂ = chH \ rhsw                                # whitened conjugate mode
+    û = similar(v̂)
+    @inbounds for t in 1:prob.N, a in 1:q         # û = (I ⊗ L) v̂  (L lower)
+        base = q * (t - 1)
+        s = 0.0
+        for b in 1:a
+            s += L[a, b] * v̂[base + b]
+        end
+        û[base + a] = s
+    end
 
     # joint nll at û
     resid = prob.Y .- prob.X * β
@@ -260,12 +356,25 @@ function coevo_marginal_cov(prob::CoevoProblem, Q_cond::SparseMatrixCSC,
             end
         end
     end
-    quad_prior = 0.5 * dot(û, P * û)
+    quad_prior = 0.5 * dot(v̂, Pw * v̂)            # = ½ û'(Q ⊗ Λ⁻¹)û, no Λ⁻¹
     logdetD = logdet(Symmetric(D))
     jn = quad_prior + quad_data + 0.5 * n * (q * log(2π) + logdetD)
 
-    logdetH = logdet(chH)
-    chP = cholesky(Symmetric(P) + 1e-10I; check = false)
+    logdetH = logdet(chH)                         # logdet H̃ (Σ log Lᵢᵢ cancels)
+    # (I⊗L')(P + εI)(I⊗L) = Q ⊗ I + ε I ⊗ L'L: the historical ridge, whitened.
+    # Pw stores every q×q diagonal block in full (prior_precision), so add the
+    # ridge straight into its nonzeros: the block's q rows are contiguous.
+    Pr = copy(Pw)
+    ridge = 1e-10 * (Lt * L)
+    rv = rowvals(Pr); nz = nonzeros(Pr)
+    @inbounds for t in 1:prob.N, b in 1:q
+        r = nzrange(Pr, q * (t - 1) + b)
+        k = first(r) - 1 + searchsortedfirst(view(rv, r), q * (t - 1) + 1)
+        for a in 1:q
+            nz[k + a - 1] += ridge[a, b]
+        end
+    end
+    chP = cholesky(Symmetric(Pr); check = false)
     # A failed factorisation leaves an incomplete factor whose `logdet` returns a
     # finite-but-wrong value; that poisons ℓ and `fit_coevolution`'s isfinite
     # guard lets it through. Treat non-PD as an explicit barrier instead.
@@ -276,7 +385,8 @@ function coevo_marginal_cov(prob::CoevoProblem, Q_cond::SparseMatrixCSC,
 end
 
 function coevo_marginal(prob::CoevoProblem, Q_cond::SparseMatrixCSC,
-                        β::AbstractMatrix, Λ::AbstractMatrix, σ_res::AbstractVector)
+                        β::AbstractMatrix, Λ::Union{AbstractMatrix,Cholesky},
+                        σ_res::AbstractVector)
     D = Diagonal(σ_res .^ 2)
     return coevo_marginal_cov(prob, Q_cond, β, Λ, D)
 end
@@ -336,7 +446,9 @@ function fit_coevolution(prob::CoevoProblem, Q_cond::SparseMatrixCSC;
         catch
             return Inf
         end
-        ℓ, = coevo_marginal(prob, Q_cond, β, Λ, σ)
+        # Factored Λ straight from θ (never `L L'`): #857 site K.
+        ℓ, = coevo_marginal(prob, Q_cond, β,
+                            lc_to_chol(θ[(prob.k * q + 1):(prob.k * q + lc_len(q))], q), σ)
         return isfinite(ℓ) ? -ℓ / n : Inf         # mean objective (scale-invariant in p)
     end
 
@@ -358,7 +470,7 @@ function fit_coevolution(prob::CoevoProblem, Q_cond::SparseMatrixCSC;
     θ̂ = Optim.minimizer(res)
     β̂, Λ̂, σ̂ = coevo_unpack(prob, θ̂)
     return (; β = β̂, Λ = Λ̂, σ_res = σ̂,
-            loglik = -Optim.minimum(res) * n,
+            loglik = -_objective_at_minimizer(negℓ, res) * n,
             converged = Optim.converged(res),
             iterations = Optim.iterations(res),
             θ = θ̂)
@@ -426,7 +538,9 @@ function fit_coevolution_q2_residual(prob::CoevoProblem, Q_cond::SparseMatrixCSC
         local β, Λ, D, ℓ
         try
             β, Λ, D, _, _ = coevo_q2_residual_unpack(prob, Vector{Float64}(θ))
-            ℓ, = coevo_marginal_cov(prob, Q_cond, β, Λ, D)
+            # Factored Λ straight from θ (never `L L'`): #857 site K.
+            ℓ, = coevo_marginal_cov(prob, Q_cond, β,
+                                    lc_to_chol(θ[(2prob.k + 1):(2prob.k + lc_len(2))], 2), D)
         catch
             return Inf
         end

@@ -3,13 +3,15 @@ using DRModels
 using LinearAlgebra
 using ForwardDiff
 
-# BLAS is pinned to one thread for reproducible linear algebra in this file.
-# The Julia thread count is deliberately NOT constrained: nothing here is
-# thread-sensitive (no @threads/@spawn in the tests or in src/joint_missing*.jl),
-# and the old `|| error(...)` aborted every later file in the shard under a
-# multi-threaded `Pkg.test`. How evidence was gathered belongs in the receipt,
-# not as a precondition on the tests.
-BLAS.set_num_threads(1)
+# BLAS=1 is the suite's numerical invariant; runtests.jl pins it once at start
+# and guards it per file, so this file no longer sets it. The check is a real
+# precondition (standalone runs need OPENBLAS_NUM_THREADS=1) and is reported,
+# not raised, so it cannot abort the files after this one. The Julia thread
+# count is deliberately not asserted: this file exercises serial code, and the
+# local budget is JULIA_NUM_THREADS=4 (CI runs at 1).
+@testset "thread budget" begin
+    @test BLAS.get_num_threads() == 1
+end
 
 _normal_logpdf(y, mean, covariance) = begin
     length(y) == 0 && return 0.0

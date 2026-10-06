@@ -3,7 +3,6 @@ using DRModels
 using LinearAlgebra
 
 @testset "joint missing-predictor formula frontend" begin
-    BLAS.set_num_threads(1)
     @test BLAS.get_num_threads() == 1
     @test isdefined(DRModels, :mi)
     @test isdefined(DRModels, :miss_control)

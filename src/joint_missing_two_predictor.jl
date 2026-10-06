@@ -301,7 +301,7 @@ function fit_prepared_joint(model::PreparedTwoJointGaussianModel;
     result = Optim.optimize(nll, theta0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     theta = Float64.(Optim.minimizer(result))
     nll_value = nll(theta)
-    converged = Optim.converged(result) && isfinite(nll_value) && all(isfinite, theta)
+    converged = drm_optim_converged(result) && isfinite(nll_value) && all(isfinite, theta)
     optimizer_status = converged ? :converged : :not_converged
     covariance, covariance_status = _joint_hessian_covariance(nll, theta)
     moments = prepared_joint_conditional_moments(frozen, theta)
