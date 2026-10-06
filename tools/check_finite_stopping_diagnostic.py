@@ -4,6 +4,12 @@ import copy,json,math,sys
 from pathlib import Path
 from check_finite_native_reference import ROOT,REF,REFERENCE_SHA256,sha,require,near,nll,permutation,row
 
+# This diagnostic explains the PRE-POLISH native stopping point. The live native
+# anchor (check_finite_native_reference.REF) was regenerated from drmTMB 0eb0467851
+# with Newton polish (#606), so pin the historical native fixture it explains.
+REF=ROOT/"docs/dev-log/evidence/julia-r-parity/finite-stopping/finite-native-003-prepolish.json"
+REFERENCE_SHA256="d8f75d1d4652d5580cee935b3eeb22d003b7ccb33d7b58f149cef190a712e7cb"
+
 PUBLIC=ROOT/'docs/dev-log/evidence/julia-r-parity/finite-frontends/finite-public-003.json'
 PUBLIC_SHA='0147b2657c81b223e5c4e5742e0d66b90ca570b576da5ce04887e7dcf3ef2ee2'
 

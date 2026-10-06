@@ -94,3 +94,47 @@ end
     @test sqrt(fit.Lambda[1, 1]) ≈ 0.5 rtol = 0.3   # mean-axis RE SD
     @test sqrt(fit.Lambda[2, 2]) ≈ 0.2 rtol = 0.45  # scale-axis RE SD (harder); 0.5 * 0.4
 end
+
+# Certified-refinement stall stop. The refinement runs disable Optim's x/f
+# tolerances, so before this callback a run that had stopped moving used its
+# whole iteration budget (measured: ~1,950 BFGS iterations at a bit-identical
+# objective on the Gamma phylo bootstrap fixture). Iteration counts, not wall
+# clock, are asserted.
+@testset "location–scale refinement stall callback" begin
+    window = DRModels._LS_REFINE_STUCK_WINDOW
+    st(v, g, x) = (value = v, g_norm = g, metadata = Dict{String,Any}("x" => x))
+    # Bit-identical x, value and gradient norm: stop after `window` repeats.
+    stop = DRModels._ls_refine_stall_callback()
+    @test findfirst(_ -> stop(st(43.5, 3e-8, [1.0, 2.0])), 1:2_000) == window + 1
+    # Any movement resets the count, even when value and gradient are frozen
+    # (an ill-conditioned problem at a large offset), and so does a value change.
+    moving = DRModels._ls_refine_stall_callback()
+    @test !any(k -> moving(st(1e10, 1.0, [1.0 + k * eps(1.0), 2.0])), 1:2_000)
+    descending = DRModels._ls_refine_stall_callback()
+    @test !any(k -> descending(st(50.0 - 1e-15k, 1e-3, [1.0, 2.0])), 1:2_000)
+    # Without `x` in the state the callback never stops a run.
+    blind = DRModels._ls_refine_stall_callback()
+    @test !any(_ -> blind((value = 1.0, g_norm = 1.0, metadata = Dict{String,Any}())), 1:2_000)
+
+    # The options actually used by `_fit_locscale` carry `x` and the callback.
+    Optim = DRModels.Optim
+    A = Diagonal(exp.(range(log(10.0), log(1e6); length = 40)))
+    fq(x) = 1e10 + 0.5 * dot(x, A * x)
+    gq!(G, x) = (G .= A * x; G)
+    x0 = fill(1e-3, 40)
+    plain = Optim.Options(g_tol = 1e-6, iterations = 1_000, x_abstol = NaN, x_reltol = NaN,
+                          f_abstol = NaN, f_reltol = NaN)
+    for method in (Optim.LBFGS(), Optim.BFGS(linesearch = Optim.LineSearches.BackTracking()))
+        r0 = Optim.optimize(fq, gq!, copy(x0), method, plain)
+        r1 = Optim.optimize(fq, gq!, copy(x0), method, DRModels._ls_refine_options(1e-6, 1_000))
+        @test Optim.iterations(r1) == Optim.iterations(r0)
+        @test Optim.converged(r1) == Optim.converged(r0)
+    end
+    # A run whose steps are below one ULP of x never moves: stopped after the
+    # window instead of spending all 2,000 iterations.
+    frozen = Optim.BFGS(alphaguess = Optim.LineSearches.InitialStatic(alpha = 1e-300),
+                        linesearch = Optim.LineSearches.Static())
+    r = Optim.optimize(fq, gq!, copy(x0), frozen, DRModels._ls_refine_options(1e-8, 2_000))
+    @test !Optim.converged(r)
+    @test Optim.iterations(r) <= window + 2
+end

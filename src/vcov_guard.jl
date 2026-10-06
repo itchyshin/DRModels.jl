@@ -60,11 +60,14 @@ const _VCOV_RTOL = 3e-8
 Covariance matrix from an observed-information (Hessian) matrix, guarded against
 boundary degeneracy.
 
-Symmetrises `H`, then inverts it — unless it is numerically singular, in which
-case it falls back to the Moore–Penrose pseudo-inverse **and warns**, naming the
-parameter coordinates that are flat. The decision is made from the eigenvalues
-rather than from whether `inv` happens to throw, so the result does not depend
-on the LAPACK build or CPU.
+Symmetrises `H`, then inverts it, unless it is numerically singular or not
+positive definite. A clearly negative eigenvalue means the point is not a
+minimum: the function warns and returns a `NaN` covariance rather than
+`inv(H)` or a pseudo-inverse. A numerically zero eigenvalue (a variance
+boundary) still falls back to the Moore–Penrose pseudo-inverse and warns,
+naming the flat coordinates. The decision is made from the eigenvalues rather
+than from whether `inv` happens to throw, so the result does not depend on the
+LAPACK build or CPU.
 
 The pseudo-inverse keeps a fit usable, but standard errors for the flagged
 coordinates are not trustworthy: at a variance boundary the sampling
@@ -79,6 +82,17 @@ function _vcov_from_hessian(H::AbstractMatrix; context::AbstractString = "")
 
     ev = eigvals(Symmetric(Hs))
     scale = maximum(abs, ev)
+    # A negative eigenvalue is a saddle or a ridge, not a variance boundary.
+    # `minimum(abs, ev)` cannot see it, and `inv` of that matrix has a negative
+    # diagonal (DRModels.jl#972). Do not pseudo-invert it either.
+    if scale != 0 && minimum(ev) < -_VCOV_RTOL * scale
+        neg = findall(<( -_VCOV_RTOL * scale), ev)
+        @warn """
+              Hessian is not positive definite at the optimum. Wald standard errors are withheld.
+              A negative eigenvalue means this point is not a minimum, so inv(H) is not a covariance.
+              """ context negative_eigenvalue_indices = neg
+        return fill(NaN, size(Hs))
+    end
 
     if scale == 0 || minimum(abs, ev) <= _VCOV_RTOL * scale
         d = abs.(diag(Hs))
@@ -96,4 +110,84 @@ function _vcov_from_hessian(H::AbstractMatrix; context::AbstractString = "")
     end
 
     return Matrix(Symmetric((V0 + V0') / 2))
+end
+
+"""
+    _fd_hessian_from_grad(grad_at, θ̂; hstep = 1e-6, retry_step = 1e-4) -> (H, ok)
+
+Central finite-difference Hessian of an analytic gradient `grad_at(θ)`.
+The sparse LSS `eval_core` / `_lss_sparse_multi_objective_and_grad` return an
+EMPTY gradient when the nll or gradient is not finite at a probe point. Each
+column is retried once with `retry_step`; if the retry also fails (empty,
+wrong length, or non-finite), `ok = false` is returned instead of throwing a
+`DimensionMismatch`. `scaled = false` uses `hstep` as an absolute step (no
+`max(|θ̂ₖ|, 1)` scaling). Callers report the NaN-vcov convention when `!ok`.
+"""
+function _fd_hessian_from_grad(grad_at, θ̂::AbstractVector; hstep::Real = 1e-6,
+                               retry_step::Real = 1e-4, scaled::Bool = true)
+    np = length(θ̂)
+    H = zeros(np, np)
+    usable(g) = length(g) == np && all(isfinite, g)
+    for k in 1:np
+        gp = gm = Float64[]
+        step = scaled ? hstep * max(abs(θ̂[k]), 1.0) : Float64(hstep)
+        for (attempt, s) in enumerate((step, Float64(retry_step)))
+            step = s
+            θp = collect(Float64, θ̂); θm = collect(Float64, θ̂)
+            θp[k] += step; θm[k] -= step
+            gp = grad_at(θp); gm = grad_at(θm)
+            usable(gp) && usable(gm) && break
+        end
+        (usable(gp) && usable(gm)) || return (H, false)
+        H[:, k] .= (gp .- gm) ./ (2 * step)
+    end
+    H .= 0.5 .* (H .+ H')
+    return (H, true)
+end
+
+"""
+    _fd_hessian_from_values(f, θ̂; hstep = 1e-5, sentinel = 1e16) -> (H, ok)
+
+Central finite-difference Hessian of an objective VALUE `f(θ)` (4-point mixed
+differences, upper triangle mirrored). Value-based sibling of
+[`_fd_hessian_from_grad`](@ref). Several objectives signal a failed evaluation
+(non-PD factor, non-finite nll) with a finite `1e18` penalty rather than `NaN`;
+differencing that sentinel yields a huge but finite garbage Hessian that then
+passes the eigenvalue guard. Any probe that is non-finite or `≥ sentinel`
+returns `ok = false` at once, and the caller reports the NaN-vcov convention.
+"""
+function _fd_hessian_from_values(f, θ̂::AbstractVector; hstep::Real = 1e-5,
+                                 sentinel::Real = 1e16)
+    np = length(θ̂)
+    H = zeros(np, np)
+    usable(v) = isfinite(v) && v < sentinel
+    for k in 1:np, j in k:np
+        sk = hstep * max(abs(θ̂[k]), 1.0)
+        sj = hstep * max(abs(θ̂[j]), 1.0)
+        θpp = collect(Float64, θ̂); θpm = copy(θpp); θmp = copy(θpp); θmm = copy(θpp)
+        θpp[k] += sk; θpp[j] += sj
+        θpm[k] += sk; θpm[j] -= sj
+        θmp[k] -= sk; θmp[j] += sj
+        θmm[k] -= sk; θmm[j] -= sj
+        vpp, vpm, vmp, vmm = f(θpp), f(θpm), f(θmp), f(θmm)
+        (usable(vpp) && usable(vpm) && usable(vmp) && usable(vmm)) || return (H, false)
+        H[k, j] = (vpp - vpm - vmp + vmm) / (4 * sk * sj)
+        H[j, k] = H[k, j]
+    end
+    return (H, true)
+end
+
+"""
+    _vcov_from_fd_hessian(H; context = "")
+
+[`_vcov_from_hessian`](@ref) for a Hessian from `_finite_hessian`, which signals a
+failed stencil (non-finite probe or the failed-fit sentinel) with an all-NaN
+matrix and a warning. That failure is reported as the same-shape all-NaN vcov (the
+NaN-vcov convention of the other guarded Hessian helpers) rather than crashing in
+`eigvals`. Deliberately NOT folded into `_vcov_from_hessian`: elsewhere a NaN
+Hessian (e.g. NaN in a predictor) must keep throwing.
+"""
+function _vcov_from_fd_hessian(H::AbstractMatrix; context::AbstractString = "")
+    all(isfinite, H) || return fill(NaN, size(H)...)
+    return _vcov_from_hessian(H; context = context)
 end

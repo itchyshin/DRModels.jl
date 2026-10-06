@@ -1,0 +1,6 @@
+START=2026-09-23T13:05:05Z SHA=12ee8a8 HOST=totoro THREADS=4 BLAS=1 LOAD=144.27 144.15 142.93 144/6566 2889478
+sysctl: cannot stat /proc/sys/machdep/cpu/brand_string: No such file or directory
+  Activating project at `~/lanes/DRModels.jl-q4-p5000-20260923`
+p=5000 fit_wall=82.446s f_calls=26 chol_factorizations=289 (11.12/eval) chol_fallbacks=0 fd_vcov_proj=204.005s (reps=3)
+wrote /home/snakagaw/lanes/DRModels.jl-q4-p5000-20260923/bench/results/q4_sections_12ee8a8.tsv
+GATE G5e.3 PASS

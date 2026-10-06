@@ -43,11 +43,42 @@ end
 # so an optimiser that transiently pushes λ to an extreme (Λ ≈ singular) sees a
 # non-finite marginal and backtracks instead of crashing. Equals `inv(Λ)` for
 # any non-singular 2×2.
+#
+# CAUTION (near-singular Λ built from a log-Cholesky factor): the naive
+# `a*d - b*c` determinant loses ~14 digits by log-Cholesky diagonal ≈ -18 when
+# Λ = L Lᵀ has off-diagonal L21 ≫ L22, because forming `d = L21² + L22²` as a
+# Float64 SUM already discards L22 before this function ever sees `M` — no
+# formula operating on the formed matrix (this one, or re-factoring it with a
+# fresh `cholesky`) can recover it. Callers that hold the log-Cholesky vector
+# directly should use `_ls_lc_inv2x2`/`_ls_lc_logdetΛ` below instead of
+# `_ls_inv2x2(_ls_lc_to_Λ(v))`. This function stays exact (no cancellation
+# possible) when `M` is diagonal, e.g. the fixed-ε / separate-axis callers.
 function _ls_inv2x2(M)
     a = M[1, 1]; b = M[1, 2]; c = M[2, 1]; d = M[2, 2]
     det = a * d - b * c
     return [d -b; -c a] ./ det
 end
+
+# Stable Λ⁻¹ and log det Λ computed directly from the log-Cholesky vector
+# v = [log L11, L21, log L22] (the `_ls_lc_to_Λ` parameterisation), WITHOUT
+# ever forming Λ = L Lᵀ as an intermediate matrix. See the caution above:
+# forming Λ first is where the precision is actually lost, so this is the
+# stable replacement for `_ls_inv2x2(_ls_lc_to_Λ(v))` at any call site that
+# already holds `v`. Derivation: for lower-triangular L = [l11 0; l21 l22],
+#   L⁻¹ = [1/l11 0; -l21/(l11 l22) 1/l22],   Λ⁻¹ = L⁻ᵀ L⁻¹,
+#   log det Λ = 2 log(det L) = 2(log l11 + log l22).
+function _ls_lc_inv2x2(v)
+    l11 = exp(v[1]); l21 = v[2]; l22 = exp(v[3])
+    inv11 = 1 / l11
+    inv22 = 1 / l22
+    t = l21 * inv11 * inv22            # = L21 / (L11 L22)
+    a11 = inv11 * inv11 + t * t
+    off = -t * inv22
+    a22 = inv22 * inv22
+    return [a11 off; off a22]
+end
+
+_ls_lc_logdetΛ(v) = 2 * (v[1] + v[3])  # v[1] = log L11, v[3] = log L22 already
 
 # ---------------------------------------------------------------------------
 # Latent loadings (Z_lat generalisation, cluster 1 / #202).
@@ -241,7 +272,20 @@ _ls_hess_chol(kind, y, η0, ψ0, gidx, G, a, P) =
 _ls_allfinite(H::SparseMatrixCSC) = all(isfinite, nonzeros(H))
 _ls_allfinite(H) = all(isfinite, H)
 
-function _ls_inner_certificate(kind, y, η0, ψ0, gidx, G, P, Zη, Zψ, a, tol)
+# Representability floor of the stationarity test. The gradient contains P*a; when
+# P has an enormous entry (Λ⁻¹ ~ exp(-2 log L22) as log L22 → -12, ~1e10) one ulp of
+# `a` moves the gradient by ~eps*|P||a|, which can exceed `tol*(1+‖a‖)`. The strict
+# certificate is then UNREACHABLE in Float64 (measured: a Newton iteration cycling at
+# gnorm 3e-9 vs bound 2.6e-9, one ulp of a[2] = 2e-9 of gradient), the inner mode
+# reports failure, and the profile objective/gradient become the 1e18/NaN sentinel.
+# The relaxed test adds 4 eps ‖|P||a|‖. It is OPT-IN (`relaxed=true`, used by the
+# profile solves that deliberately drive log L22 toward -12) and is only consulted after
+# the strict test has stalled, so every strictly certified solve is unchanged and the
+# ordinary fit / Wald information path is untouched.
+_ls_inner_repr_floor(P, a) = 4 * eps(Float64) * norm(abs.(P) * abs.(a))
+
+function _ls_inner_certificate(kind, y, η0, ψ0, gidx, G, P, Zη, Zψ, a, tol;
+                               relaxed::Bool = false)
     all(isfinite, a) || return nothing, false
     H = _ls_joint_hess(kind, y, η0, ψ0, gidx, G, a, P, Zη, Zψ)
     _ls_allfinite(H) || return nothing, false
@@ -251,6 +295,7 @@ function _ls_inner_certificate(kind, y, η0, ψ0, gidx, G, P, Zη, Zψ, a, tol)
     anorm = norm(a)
     gnorm = norm(grad)
     bound = tol * (1 + anorm)
+    relaxed && (bound += _ls_inner_repr_floor(P, a))
     (isfinite(anorm) && isfinite(gnorm) && isfinite(bound)) || return ch, false
     stationary = gnorm <= bound
     return ch, stationary && issuccess(ch)
@@ -598,12 +643,45 @@ function _ls_inner_estimated_change(kind, y, η0, ψ0, gidx, G, P, Zη, Zψ, a, 
             prior_error_bound = B)
 end
 
+# Stall stop for the inner Newton solve. At the Float64 floor of a near-singular
+# prior (a variance component heading to its zero boundary) every trial can tie
+# the objective exactly, so `ft <= f0` keeps accepting tiny damped steps (~340
+# line-search evaluations each) that move the gradient by ~1e-10 of itself per
+# iteration. Measured 2026-10-03 on the Gamma phylo LSS bootstrap fixture: 2 x 200
+# such iterations and ~1.5e5 objective evaluations per outer evaluation.
+#
+# Runs of exact ties are NOT hopeless by themselves: on the same fixture, main
+# certified calls through 10-54 consecutive tied steps (often at 1e5-1e6 times
+# the bound) before `_ls_inner_rounding_polish` accepted a full Newton step. So
+# the stop is deliberately late and narrow:
+#   * a step counts as flat only when its objective ties `f0` exactly and the
+#     gradient norm is more than `_LS_INNER_FLAT_MARGIN` times the bound;
+#   * after `_LS_INNER_FLAT_WINDOW` consecutive flat steps, the gradient's
+#     geometric rate over that window is extrapolated, and the solve stops only
+#     if reaching the bound at that rate needs more than 10x the iterations left.
+# Calibration (main, instrumented, 3 BLAS/bounds configurations, seed fit plus
+# the bootstrap test): a 10- or 20-step window would have stopped calls that
+# later certified; the 40-step window fired on none of them, and on all but one
+# of ~3,400 calls that ran to `maxiter` uncertified. Stopping hands the state to
+# the same final certificate as exhausting `maxiter` would.
+const _LS_INNER_FLAT_WINDOW = 40
+const _LS_INNER_FLAT_MARGIN = 10.0
+
+function _ls_inner_bound_unreachable(g_first, g_last, steps, bound, remaining)
+    g_last < g_first || return true          # no gradient decrease at all
+    rate = log(g_last / g_first) / steps     # < 0: log-decrease per step
+    needed = log(bound / g_last) / rate      # steps to reach the bound
+    return !(isfinite(needed) && needed <= 10 * max(remaining, 0))
+end
+
 function _ls_inner_mode(kind, y, η0, ψ0, gidx, G, P,
                         Zη = _ls_canonical_Zeta(length(y)),
                         Zψ = _ls_canonical_Zpsi(length(y)); a0 = nothing,
-                        maxiter::Int = 200, tol::Real = 1e-9)
+                        maxiter::Int = 200, tol::Real = 1e-9, relaxed::Bool = false)
     a = a0 === nothing ? zeros(2G) : copy(a0)
-    for _ in 1:maxiter
+    in_band = 0            # iterations spent between the strict and relaxed bounds
+    flat_g = Float64[]     # gradient norms over consecutive flat steps
+    for it in 1:maxiter
         grad = _ls_joint_grad(kind, y, η0, ψ0, gidx, a, P, Zη, Zψ)
         anorm = norm(a)
         gnorm = norm(grad)
@@ -614,11 +692,26 @@ function _ls_inner_mode(kind, y, η0, ψ0, gidx, G, P,
                                                     Zη, Zψ, a, tol)
             return a, ch, certified
         end
+        # Stalled at the Float64 representability floor of a stiff prior direction
+        # (see `_ls_inner_repr_floor`): after 3 iterations inside the relaxed band
+        # without reaching the strict bound, accept under the relaxed test.
+        if relaxed && all(isfinite, grad) && isfinite(gnorm) &&
+           gnorm <= bound + _ls_inner_repr_floor(P, a)
+            in_band += 1
+            if in_band >= 3
+                ch, certified = _ls_inner_certificate(kind, y, η0, ψ0, gidx, G, P,
+                                                        Zη, Zψ, a, tol; relaxed = true)
+                certified && return a, ch, true
+            end
+        else
+            in_band = 0
+        end
         H = _ls_joint_hess(kind, y, η0, ψ0, gidx, G, a, P, Zη, Zψ)
         _ls_allfinite(H) || return a, nothing, false
         f0 = _ls_joint(kind, y, η0, ψ0, gidx, a, P, Zη, Zψ)
         λ = 0.0
         stepped = false
+        flat_step = false
         while true
             stagnated = false
             F = cholesky(Symmetric(H + λ * I); check = false)
@@ -634,6 +727,7 @@ function _ls_inner_mode(kind, y, η0, ψ0, gidx, G, P,
                     end
                     if all(isfinite, trial) && isfinite(ft) && ft <= f0 &&
                        any(trial .!= a)
+                        flat_step = ft == f0
                         a = trial; stepped = true; break
                     end
                     if λ == 0.0 && α == 1.0
@@ -651,6 +745,17 @@ function _ls_inner_mode(kind, y, η0, ψ0, gidx, G, P,
             λ > 1e12 && break
         end
         stepped || return a, _ls_hess_chol(kind, y, η0, ψ0, gidx, G, a, P, Zη, Zψ), false
+        if flat_step && isfinite(gnorm) && isfinite(bound) &&
+           gnorm > _LS_INNER_FLAT_MARGIN * bound
+            push!(flat_g, gnorm)
+        else
+            empty!(flat_g)
+        end
+        if length(flat_g) >= _LS_INNER_FLAT_WINDOW &&
+           _ls_inner_bound_unreachable(flat_g[end - _LS_INNER_FLAT_WINDOW + 1], flat_g[end],
+                                       _LS_INNER_FLAT_WINDOW - 1, bound, maxiter - it)
+            break
+        end
     end
     ch, ok = _ls_inner_certificate(kind, y, η0, ψ0, gidx, G, P, Zη, Zψ, a, tol)
     return a, ch, ok

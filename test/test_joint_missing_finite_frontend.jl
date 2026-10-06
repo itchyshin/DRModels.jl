@@ -34,7 +34,6 @@ function _finite_frontend_state_design(reference)
 end
 
 @testset "finite-state direct formula frontend API and ordinal payload design" begin
-    BLAS.set_num_threads(1)
     @test BLAS.get_num_threads() == 1
     @test isdefined(DRModels, :JointFiniteDrmFit)
     @test isdefined(DRModels, :CategoricalLogit)
