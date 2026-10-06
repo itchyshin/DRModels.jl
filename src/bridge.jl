@@ -34,9 +34,9 @@ crossing, `- 1`/general `- term` removal, `(...)^k` crossing, and
 `poly(x, k)` is R's ORTHOGONAL basis (`raw = FALSE`, the default) and expands to
 `k` columns; only `poly(x, k)` itself is accepted — `raw = TRUE` is spelled
 `I(x^k)`, and an explicit `coefs =` or the multivariate `poly(x, y, degree)`
-are rejected rather than approximated (#492). These materialised columns are NOT
+are rejected rather than approximated. These materialised columns are NOT
 (yet) reconstructed for `newdata` — a formula using them combined with `newdata`
-fails loudly (missing column) rather than silently mismodelling; see #467.
+fails with a missing-column error.
 
 The return value is a `Dict{String,Any}` made of primitive R-reconstructable
 pieces: named coefficients, covariance matrix, likelihood summaries, fitted
@@ -66,13 +66,10 @@ end
     drm_bridge_objective_at(formula, family, data, tree, options = Dict();
                             beta, Lambda, rho12)
 
-The bivariate q=4 phylogenetic REML counterpart to [`reml_objective_at`](@ref)
-(#575) reached through the SAME marshalling-friendly boundary [`drm_bridge`](@ref)
-uses — one SUPPORTED entry point for the drmTMB R shim
-(`drm_julia_reml_objective_at()`, `R/julia-bridge.R`), replacing its previous
-dependency on five private DRModels.jl names (`_bridge_data`, `_bridge_formula`,
-`_bivariate_q4_marker`, `_design`, `_phylo_species_index`) reached by qualified
-name. `formula`, `family`, `data`, `tree`, `options` are exactly the payload
+The bivariate q=4 phylogenetic REML counterpart to [`reml_objective_at`](@ref),
+using the same R-compatible data interface as [`drm_bridge`](@ref).
+The drmTMB R wrapper is `drm_julia_reml_objective_at()`.
+`formula`, `family`, `data`, `tree`, `options` are exactly the payload
 `drm_bridge` takes for a bivariate q=4 phylogenetic model (a formula with
 `phylo(...)` markers shared by `mu1`, `mu2`, `sigma1`, `sigma2`); `options` is
 accepted for positional parity with that payload but is not otherwise used —
@@ -98,9 +95,10 @@ conditional-Newton alternation's own convergence flag — a barrier hit
 surfaces as `-Inf`/`false` rather than an error), and `"contract" =>
 "bridge_objective_at_v1"` so R callers can assert the return shape.
 
-This is a DIAGNOSTIC: it selects nothing, fits nothing, and promotes no
-capability-ledger row. See #575 for the cross-engine mode-finder-vs-
-objective-translation question it exists to answer.
+This diagnostic evaluates a supplied point; it does not fit or select a model.
+It helps distinguish differences in objective values from differences in
+the optima found by separate engines. Agreement at one point does not establish
+general cross-engine equivalence.
 """
 function drm_bridge_objective_at(formula, family::AbstractString, data, tree,
         options = Dict{String,Any}(); beta, Lambda, rho12)
@@ -286,11 +284,9 @@ or `"sd:resd"` / `"sd:resd_mu"` / `"sd:resd_sigma"` when an R bridge caller
 must preserve the fitted parameter block exactly.
 
 Pass `parm = "fixef:<dpar>:<coef>"` (e.g. `"fixef:mu:x"`) to instead profile
-or bootstrap a single ordinary fixed-effect coefficient, on its link scale —
-the same primitive `DRModels.profile_result` / `DRModels.bootstrap_result` calls the R
-bridge previously had to reach by calling DRModels.jl's underscore-prefixed
-marshalling internals directly (see #475); this kwarg is the supported route
-that replaces that qualified-internal call. Returns the same payload shape
+or bootstrap a single ordinary fixed-effect coefficient, on its link scale,
+using `DRModels.profile_result` or `DRModels.bootstrap_result`.
+Returns the same payload shape
 either way. For an explicit structured fixed-effect target, the supplied
 covariance provider (`tree`, `K`, `A`, or `coords`) is reused for the initial
 fit, marginal simulation, and every bootstrap refit.

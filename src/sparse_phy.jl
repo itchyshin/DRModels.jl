@@ -596,7 +596,7 @@ internal node, and so on — a chain of `p-1` internal nodes of depth `p-1`.
 
 The shape is the worst case for sparse-Cholesky fill-in: O(p) on a *balanced*
 tree (log-depth) does not by itself prove O(p) on a deep caterpillar, so this
-generator feeds the multi-shape scaling sweep (#16). All branch lengths equal
+generator is useful for testing scaling across tree shapes. All branch lengths equal
 `branch_length`.
 """
 function random_caterpillar_tree(p::Integer; branch_length::Real = 0.1)

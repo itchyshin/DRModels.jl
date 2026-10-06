@@ -47,17 +47,17 @@ is `log σ`); `nu` is the power `p` on a logit-`(1,2)` link
 (`p = 1 + logistic(coef(fit, :nu))`). `Var(y) = φ·μ^p`. Density via the Dunn–Smyth
 series. Mirrors `drmTMB`'s `tweedie`. An ordinary `(1 | g)` random intercept
 and an independent `(0 + x | g)` random slope on `mu` are both supported
-(per-group adaptive Gauss–Hermite marginal, #563/#719); `sigma ~ 1` and `nu ~ 1` remain
+(per-group adaptive Gauss–Hermite marginal); `sigma ~ 1` and `nu ~ 1` remain
 fixed-effect sub-models on either route. Crossed/multiple random intercepts,
-`(1 | g) + (1 | h)` (#737), are also supported, via the sparse
+`(1 | g) + (1 | h)`, are also supported, via the sparse
 augmented-state Laplace GLMM engine shared with Gamma/NB2/Beta's crossed
 routes; `sigma ~ 1` and `nu ~ 1` are REQUIRED (not just default) on the
 crossed route, and `p` is found by an outer 1-D profile search over the one
 dispersion-like nuisance slot the shared engine does not also give to `p`.
 The CORRELATED random slope `(1 + x | g)`, random effects on `sigma`/`nu`, and
 structured (phylo/relmat/animal/spatial) markers on `mu` are not implemented
-— matches `drmTMB` 0.7.0, which rejects the same forms ("Only independent
-tweedie() mu random intercepts and slopes are implemented in this slice").
+— matches `drmTMB` 0.7.0, which also restricts Tweedie mean random effects to
+independent intercepts and slopes.
 
 ```julia
 fit = drm(bf(y ~ x, sigma ~ 1, nu ~ 1), Tweedie(); data = dat)
