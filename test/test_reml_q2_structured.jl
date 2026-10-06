@@ -316,6 +316,40 @@ end
 # in one change, which is what makes this q=2 testset real coverage rather than a pin on
 # inherited behaviour: a 1-D transect written as a plain Vector is read as a G-by-1 column,
 # and the Matrix path is unchanged.
+@testset "cov_to_lc: boundary-PD Λ is regularised, not a bare PosDefException (#787)" begin
+    # CI observed an intermittent `PosDefException` from `cov_to_lc(fit_q2.Λ)`
+    # (gaussian_bivariate.jl:833): a fitted Λ can land marginally non-PD in
+    # floating point at a variance boundary, and LAPACK's cholesky detects that
+    # indefiniteness on some architectures/BLAS builds and not others (x86 CI
+    # runners vs local aarch64 macOS) -- deterministic-seed reruns on CI show
+    # the SAME test failing with a DIFFERENT rng seed each time, confirming it
+    # is a platform artefact, not a data-dependent regression. This pins the
+    # deterministic, platform-independent piece of that mechanism: a
+    # synthetic Λ with a tiny negative eigenvalue (the floating-point boundary
+    # shape) must round-trip through `cov_to_lc`/`lc_to_cov` instead of
+    # throwing, while a genuinely, substantively indefinite Λ must still fail
+    # loudly with a diagnosable error naming the eigenvalue.
+    Λ_ok = Matrix(Symmetric([0.20 0.05; 0.05 0.17]))
+    @test DRModels.lc_to_cov(DRModels.cov_to_lc(Λ_ok), 2) ≈ Λ_ok
+
+    Λ_boundary = Matrix(Symmetric([1.0 1.0; 1.0 1.0 - 1e-14]))
+    @test !isposdef(Λ_boundary)
+    v = DRModels.cov_to_lc(Λ_boundary)   # must not throw
+    recon = DRModels.lc_to_cov(v, 2)
+    @test isposdef(Symmetric(recon))
+    @test recon ≈ Λ_boundary atol = 1e-6
+
+    Λ_genuinely_bad = Matrix(Symmetric([1.0 2.0; 2.0 1.0]))   # eigenvalues 3, -1
+    err = try
+        DRModels.cov_to_lc(Λ_genuinely_bad)
+        nothing
+    catch e
+        e
+    end
+    @test err isa ArgumentError
+    @test occursin("not positive definite", err.msg)
+end
+
 @testset "q2 spatial (inherited helper): coords may be a length-G vector" begin
     G = 3
     v = [0.0, 2.0, 5.0]
@@ -327,4 +361,149 @@ end
     @test size(Qv) == (G, G)
     @test isposdef(Symmetric(Qv))
     @test Qv == Qm
+end
+
+# ---------------------------------------------------------------------------
+# Follow-up to #862/#865 (this PR, #857 site K): `_q2_profile_and_schur`
+# (src/reml_q2.jl) was the one caller left forming `Λ` as a dense matrix and
+# inverting it (`P = prior_precision(Q_cond, inv(Λ))`) to build H_uu. Near
+# singular Λ (log-Cholesky diagonal l22 in the -18..-30 range, |cor| -> 1)
+# `inv(Λ)` loses precision the same way #862's header documents for
+# `coevo_marginal_cov`. The fix whitens u exactly as `coevo_marginal_cov`
+# does (v = (I⊗L)⁻¹u, H̃ = Q⊗I + I⊗L'D⁻¹L) and takes `chΛ::Cholesky` in place
+# of a formed `Λ`.
+#
+# Independent oracle: the Schur complement S IS `X'V⁻¹X` and β̂ IS the GLS
+# estimator under V = Z(Q_cond⁻¹⊗Λ)Z' + Iₙ⊗D (see the existing oracle
+# reasoning in test_q2_structured_vcov.jl), computed here directly and
+# densely in 256-bit BigFloat -- a completely different route from the
+# sparse bordered-Hessian Newton step under test.
+# ---------------------------------------------------------------------------
+
+function _q2_schur_fixture(; G = 10, seed = 93113)
+    rng = MersenneTwister(seed)
+    idx = collect(1:G)
+    K = [0.5^abs(i - j) for i in idx, j in idx] + 1e-6I
+    Q = sparse(Matrix(inv(cholesky(Symmetric(K)))))
+    n = 3G
+    group = repeat(1:G, inner = 3)
+    x = randn(rng, n)
+    X = hcat(ones(n), x)
+    Y = randn(rng, n, 2)
+    prob, Qc = DRModels.make_coevo_problem_from_precision(Matrix(Q), Y, X; group = group)
+    return prob, Qc
+end
+
+# Dense 256-bit GLS reference for (S, β̂) at a given log-Cholesky `lc` and
+# residual covariance `D`. Independent of β0 (β̂ is the exact GLS optimum).
+function _q2_schur_bigref(prob, Q, lc, D)
+    setprecision(BigFloat, 256) do
+        T = BigFloat
+        q = 2; k = prob.k; n = size(prob.Y, 1)
+        L = T[exp(T(lc[1])) 0; T(lc[2]) exp(T(lc[3]))]
+        Λ = L * L'
+        Qb = T.(Matrix(Q))
+        Kb = inv(Qb)
+        V = zeros(T, n * q, n * q)
+        for i in 1:n, j in 1:n, a in 1:q, b in 1:q
+            V[(i - 1) * q + a, (j - 1) * q + b] =
+                Kb[prob.leaf_node[i], prob.leaf_node[j]] * Λ[a, b] +
+                (i == j ? T(D[a, b]) : zero(T))
+        end
+        nbeta = k * q
+        Xd = zeros(T, n * q, nbeta)
+        y = zeros(T, n * q)
+        for i in 1:n, a in 1:q
+            y[(i - 1) * q + a] = T(prob.Y[i, a])
+            for c in 1:k
+                Xd[(i - 1) * q + a, (a - 1) * k + c] = T(prob.X[i, c])
+            end
+        end
+        Cv = cholesky(Symmetric(V))
+        S = Xd' * (Cv \ Xd)
+        βhat = S \ (Xd' * (Cv \ y))
+        return Float64.(S), reshape(Float64.(βhat), k, q)
+    end
+end
+
+# Base-branch (pre-fix) implementation, kept verbatim in spirit as the
+# normal-regime identity oracle: forms Λ densely and calls `inv(Λ)`.
+function _q2_old_profile_and_schur(prob, Q_cond, Λ, D, β0)
+    q = 2; k = prob.k
+    Dinv = inv(Symmetric(D))
+    P = DRModels.prior_precision(Q_cond, inv(Λ))
+    H_uu = DRModels.coevo_Huu(prob, P, Dinv)
+    nu = q * prob.N; nbeta = k * q
+    chH = cholesky(Symmetric(H_uu))
+    H_ub = zeros(nu, nbeta)
+    H_bb = zeros(nbeta, nbeta)
+    @inbounds for i in eachindex(prob.leaf_node)
+        t = prob.leaf_node[i]; base = q * (t - 1)
+        Xi = @view prob.X[i, :]
+        for a in 1:q, ap in 1:q
+            d = Dinv[a, ap]
+            offap = (ap - 1) * k
+            for c in 1:k
+                H_ub[base + a, offap + c] += d * Xi[c]
+            end
+            offa = (a - 1) * k
+            for r in 1:k, c in 1:k
+                H_bb[offa + r, offap + c] += d * Xi[r] * Xi[c]
+            end
+        end
+    end
+    C = Matrix{Float64}(undef, nu, nbeta)
+    for j in 1:nbeta
+        C[:, j] = chH \ H_ub[:, j]
+    end
+    S_raw = H_bb - H_ub' * C
+    S = Symmetric((S_raw + S_raw') / 2)
+    rhs0 = DRModels.coevo_rhs(prob, β0, Dinv)
+    g_u = -rhs0
+    resid0 = prob.Y .- prob.X * β0
+    Wt = resid0 * Dinv
+    g_β = -(prob.X' * Wt)
+    ch_S = cholesky(S)
+    rhs_β = vec(g_β) .- H_ub' * (chH \ g_u)
+    Δβ = -(ch_S \ rhs_β)
+    β̂ = β0 .+ reshape(Δβ, k, q)
+    return (β̂ = β̂, S = S)
+end
+
+@testset "q2 profile/Schur (#862/#865 follow-up): matches a 256-bit GLS reference near singular Λ" begin
+    prob, Qc = _q2_schur_fixture()
+    D = [0.4 0.05; 0.05 0.3]
+    β0 = zeros(prob.k, 2)
+    for l22 in (-18.0, -20.0, -30.0)
+        lc = [log(0.8), 0.3, l22]
+        chΛ = DRModels.lc_to_chol(lc, 2)
+        prof = DRModels._q2_profile_and_schur(prob, Qc, chΛ, D, β0)
+        @test prof.ok
+        Sref, βref = _q2_schur_bigref(prob, Qc, lc, D)
+        relS = maximum(abs, Matrix(prof.S) .- Sref) / maximum(abs, Sref)
+        relβ = maximum(abs, prof.β̂ .- βref) / maximum(abs, βref)
+        @info "q2 profile/Schur near singular Λ: l22=$l22 relS=$relS relβ=$relβ"
+        @test relS ≤ 1e-8
+        @test relβ ≤ 1e-8
+    end
+end
+
+@testset "q2 profile/Schur (#862/#865 follow-up): normal-regime identity, old vs whitened" begin
+    rng = MersenneTwister(51717)
+    prob, Qc = _q2_schur_fixture()
+    for _ in 1:10
+        lc = [log(0.3 + rand(rng)), 0.5 * randn(rng), log(0.2 + rand(rng))]
+        Λ = lc_to_cov(lc, 2)
+        chΛ = DRModels.lc_to_chol(lc, 2)
+        s1 = 0.3 + rand(rng); s2 = 0.3 + rand(rng); ρ = 0.8 * (2rand(rng) - 1)
+        D = [s1^2 ρ*s1*s2; ρ*s1*s2 s2^2]
+        β0 = 0.2 .* randn(rng, prob.k, 2)
+        old = _q2_old_profile_and_schur(prob, Qc, Λ, D, β0)
+        new = DRModels._q2_profile_and_schur(prob, Qc, chΛ, D, β0)
+        @test new.ok
+        relS = maximum(abs, Matrix(old.S) .- Matrix(new.S)) / maximum(abs, Matrix(old.S))
+        relβ = maximum(abs, old.β̂ .- new.β̂) / max(1e-12, maximum(abs, old.β̂))
+        @test relS ≤ 1e-10
+        @test relβ ≤ 1e-10
+    end
 end

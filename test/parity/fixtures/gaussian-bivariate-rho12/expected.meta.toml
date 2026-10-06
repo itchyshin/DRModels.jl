@@ -1,4 +1,5 @@
 drmtmb_version = "0.7.0"
+drmtmb_code_hash = "unknown (pre-#473)"
 generated_on = "2026-08-24"
 r_call = "drmTMB(bf(mu1 = y1 ~ x, mu2 = y2 ~ x, sigma1 = sigma1 ~ 1, sigma2 = sigma2 ~ 1, rho12 = rho12 ~ 1), family = biv_gaussian(), data = dat)"
 seed = 20260605

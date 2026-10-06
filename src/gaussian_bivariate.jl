@@ -91,6 +91,7 @@ function bf(; mu1::FormulaTerm, mu2::FormulaTerm, sigma1 = nothing, sigma2 = not
     # `_bivariate_q4_marker`) are byte-identical to before.
     nu === nothing || push!(forms, :nu => _rhs_or_intercept(nu))
     push!(forms, :rho12 => _rhs_or_intercept(rho12))
+    _temporal_check_forms(forms, ())
     return BivariateDrmFormula(_bivariate_response_sym(mu1, :mu1),
                                _bivariate_response_sym(mu2, :mu2), forms)
 end
@@ -840,12 +841,16 @@ function _fit_bivariate_q2_structured(f::BivariateDrmFormula, fam::Gaussian, dat
     )
     nll = function (θ)
         β = hcat(θ[blocks[1].second], θ[blocks[2].second])
-        Λ = lc_to_cov(θ[blocks[6].second], 2)
+        # Build the Λ factor straight from θ (never `L L'`): #857 site K
+        # follow-up (draft #862) -- `lc_to_cov` here would form Λ in Float64
+        # before `coevo_marginal_cov` re-factors it, which is accurate only to
+        # l22 ≈ −18.
+        chΛ = lc_to_chol(θ[blocks[6].second], 2)
         σ1 = exp(θ[blocks[3].second][1])
         σ2 = exp(θ[blocks[4].second][1])
         ρ = RHO_GUARD * tanh(θ[blocks[5].second][1])
         D = Matrix(Symmetric([σ1^2 ρ * σ1 * σ2; ρ * σ1 * σ2 σ2^2]))
-        ℓ, = coevo_marginal_cov(prob, Q_cond, β, Λ, D)
+        ℓ, = coevo_marginal_cov(prob, Q_cond, β, chΛ, D)
         return -ℓ
     end
     # Observed-information vcov by finite differences of the marginal ML NLL.
@@ -874,7 +879,7 @@ function _fit_bivariate_q2_structured(f::BivariateDrmFormula, fam::Gaussian, dat
     # is wrong. The route-naming `context` below reaches the user through the
     # singularity warning; correcting the helper's prefix needs a shared file that
     # is out of scope for this change.
-    V = _vcov_from_hessian(_finite_hessian(nll, θ̂; h = _fd_hessian_step(2 * length(y1)));
+    V = _vcov_from_fd_hessian(_finite_hessian(nll, θ̂; h = _fd_hessian_step(2 * length(y1)));
                            context = "bivariate Gaussian q=2 structured ($kind) " *
                                      "finite-difference Hessian")
     means = Dict(:mu1 => X1 * fit_q2.β[:, 1], :mu2 => X2 * fit_q2.β[:, 2])
@@ -1271,11 +1276,29 @@ function _fit_bivariate_q4_phylo(f::BivariateDrmFormula, fam::Gaussian, data, fi
         copyto!(g, gg)
         return g
     end
+    # S5 change (c): compute û at θ̂ ONCE, before the vcov call, and reuse it as
+    # a warm u0 for every _q4_fd_vcov perturbed evaluation (moved up from
+    # below, where it ran AFTER the vcov call and so could not help it). Each
+    # of the 2*n_theta perturbed evaluations previously started its inner
+    # Newton cold (u0 = nothing, >= 200 iterations); a perturbation of θ̂ by
+    # h = 1e-4 lands very close to θ̂ itself, so û(θ̂) is an excellent warm
+    # start for û(θ̂ ± h e_k) too.
+    #
+    # The warm and cold inner Newton do NOT share a stopping criterion: a
+    # warm u0 routes `estep_mode` to `_estep_fast`, which exits at
+    # ‖∇J‖ < ftol = 1e-6 (sparse_aug_plsm.jl); the cold path (u0 = nothing,
+    # every OTHER caller of estep_mode, and every perturbed evaluation before
+    # this S5 change) goes to `_estep_robust`, which exits at tol = 1e-8. So
+    # û(θ̂ ± h e_k) computed here is converged one order of magnitude looser
+    # than the pre-S5 cold reference (Noether audit, Q3) -- exactly the
+    # mechanism test/test_q4_perf_identities.jl's G5d.1/G5d.2 characterise
+    # (u_hat gap ≤ ftol, amplified by the FD Hessian's 1/2h).
+    _, u_hat, _, _ = marginal_nll(prob, Q_cond, θ̂; n_newton = q4_n_newton)
     # V is the ML observed-information vcov (FD of the marginal ML NLL) evaluated
     # at θ̂. Under method = :REML this is θ̂_reml, so V is the ML curvature at the
     # REML point; the restricted-penalty curvature (−0.5·∂²logdet S/∂θ²) is
     # omitted, mirroring the q=2 σ-phylo REML route (gaussian_locscale_phylo.jl).
-    V = q4_vcov ? _q4_fd_vcov(prob, Q_cond, θ̂; n_newton = q4_n_newton) :
+    V = q4_vcov ? _q4_fd_vcov(prob, Q_cond, θ̂; n_newton = q4_n_newton, u0 = u_hat) :
         fill(NaN, length(θ̂), length(θ̂))
 
     β̂ = r.β
@@ -1286,7 +1309,6 @@ function _fit_bivariate_q4_phylo(f::BivariateDrmFormula, fam::Gaussian, data, fi
         :sigma2 => exp.(Xs2 * β̂.s2),
         :rho12 => RHO_GUARD .* tanh.(Xr * β̂.rho),   # report the model's guarded ρ (engine uses RHO_GUARD)
     )
-    _, u_hat, _, _ = marginal_nll(prob, Q_cond, θ̂; n_newton = q4_n_newton)
     all_blups = reshape(Vector{Float64}(u_hat), 4, prob.n_total)
     keep = setdiff(1:phy.n_total, [phy.root_index])
     node_pos = Dict(node => i for (i, node) in enumerate(keep))
@@ -1346,15 +1368,25 @@ end
 _q2_phylocov_names() = ["Sigma_a:L11", "Sigma_a:L21", "Sigma_a:L22"]
 
 function _q4_fd_vcov(prob::AugProblem, Q_cond::SparseMatrixCSC, θ::Vector{Float64};
-                     h::Real = 1e-4, n_newton::Int = 40)
-    nθ = length(θ)
-    H = zeros(nθ, nθ)
-    for k in 1:nθ
-        θp = copy(θ); θp[k] += h
-        θm = copy(θ); θm[k] -= h
-        _, gp, _, _ = marginal_and_exact_grad(prob, Q_cond, θp; n_newton = n_newton)
-        _, gm, _, _ = marginal_and_exact_grad(prob, Q_cond, θm; n_newton = n_newton)
-        H[:, k] .= (gp .- gm) ./ (2h)
+                     h::Real = 1e-4, n_newton::Int = 40, u0 = nothing)
+    # S5 change (c): warm u0 into every perturbed evaluation's inner Newton
+    # (u0 = nothing, the pre-S5 default, is unaffected -- still goes
+    # straight to the cold robust path).
+    grad_at = function (t)
+        try
+            return marginal_and_exact_grad(prob, Q_cond, t; u0 = u0, n_newton = n_newton)[2]
+        catch err
+            err isa InterruptException && rethrow(err)
+            return Float64[]      # a failed probe: reported as `ok = false` below
+        end
     end
+    return _q4_fd_vcov_from_grad(grad_at, θ; h = h)
+end
+
+# Guarded FD Hessian -> vcov. A failed / empty / non-finite gradient probe gives the
+# NaN-vcov convention the q=4 fitters already use for `q4_vcov = false`.
+function _q4_fd_vcov_from_grad(grad_at, θ::Vector{Float64}; h::Real = 1e-4)
+    H, ok = _fd_hessian_from_grad(grad_at, θ; hstep = h, retry_step = h, scaled = false)
+    ok || return fill(NaN, length(θ), length(θ))
     return _vcov_from_hessian(H; context = "q=4 finite-difference Hessian")
 end

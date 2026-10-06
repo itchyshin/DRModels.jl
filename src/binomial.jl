@@ -9,6 +9,55 @@
 
 import Distributions
 
+# Numerically stable, UNCLAMPED Binomial(n, logistic(η)) log-likelihood. A clamp of
+# η inside the objective makes it exactly flat (zero gradient under AD) wherever any
+# |η_i| exceeds the clamp, so an L-BFGS step that overshoots there parks on the
+# plateau and reports success with a garbage answer. `k·η − n·log1pexp(η)` is exact
+# for any finite η (no `logistic` saturation to 0/1, no log(0)) and AD-safe.
+@inline _log1pexp(x) = x > 0 ? x + log1p(exp(-x)) : log1p(exp(x))
+@inline _logchoose(n, k) = loggamma(n + 1) - loggamma(k + 1) - loggamma(n - k + 1)
+@inline _binomial_logit_ll(n, k, η, lc) = k * η - n * _log1pexp(η) + lc
+
+# Without the clamp a wild line-search probe can reach a point where the AGHQ
+# marginal (or its AD gradient) is NaN/Inf; Optim's line search asserts finiteness
+# and throws. Map such probes to the repo's 1e18 failed-fit sentinel (zero
+# gradient, hugely worse than any real fit) so the line search backtracks instead.
+# Used only inside the optimiser call, never for the reported value / Hessian.
+@inline _finite_or_sentinel(v::Real) = isfinite(v) ? v : oftype(v, 1e18)
+@inline function _finite_or_sentinel(v::ForwardDiff.Dual)
+    ok = isfinite(ForwardDiff.value(v)) && all(isfinite, ForwardDiff.partials(v))
+    return ok ? v : oftype(v, 1e18)
+end
+_safe_objective(f) = θ -> _finite_or_sentinel(f(θ))
+
+# L-BFGS with the default HagerZhang line search asserts (`B > A`, `isfinite(phi_c)`)
+# on pathological brackets near a runaway optimum and throws, losing the fit. Retry
+# from the start with BackTracking (no such assertions) and report whatever it
+# reaches; `converged` stays honest (false if the gradient tolerance is not met).
+function _optimize_with_fallback(nll, θ0, g_tol)
+    f = _safe_objective(nll)
+    opts = Optim.Options(g_tol = g_tol)
+    try
+        return Optim.optimize(f, θ0, Optim.LBFGS(), opts; autodiff = :forward)
+    catch e
+        e isa AssertionError || rethrow()
+        return Optim.optimize(f, θ0, Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking()),
+                              opts; autodiff = :forward)
+    end
+end
+
+# Covariance for the quadrature routes at a runaway optimum (e.g. separated data):
+# the AD Hessian can be non-finite, and `_vcov_from_hessian` (deliberately) throws on
+# that. Report the repo's NaN-covariance convention (standard errors Inf) with a
+# warning so the fit itself is not lost.
+function _vcov_or_nan(H::AbstractMatrix)
+    if !all(isfinite, H)
+        @warn "Hessian at the optimum is not finite (runaway or separated fit): covariance is NaN, standard errors Inf."
+        return fill(NaN, size(H))
+    end
+    return _vcov_from_hessian(H)
+end
+
 """
     Binomial()
 
@@ -18,9 +67,54 @@ Logit link on the mean success probability `μ`; no scale/dispersion parameter
 [`cbind`](@ref) (`trials = successes + failures`) or a plain `0/1` Bernoulli
 vector. Likelihood `Binomial(n, μ)` with `μ = logistic(η)`. Mirrors `drmTMB`'s
 `binomial` family. A random intercept `(1 | g)` on the mean fits a logistic
-GLMM; crossed intercepts such as `(1 | g) + (1 | h)` use the sparse-Laplace
-engine. A phylogenetic random intercept on the mean, `phylo(1 | species)`, also
-uses the sparse-Laplace engine.
+GLMM by per-group ADAPTIVE Gauss–Hermite quadrature (`nq` nodes on the mode-
+centred scale, #712/#713); crossed intercepts such as `(1 | g) + (1 | h)` use
+the sparse-Laplace engine. A phylogenetic random intercept on the mean,
+`phylo(1 | species)`, also uses the sparse-Laplace engine. A correlated random
+intercept + slope `(1 + x | g)` is fit by the same per-group adaptive
+quadrature helper, `nq` nodes per axis (the same scheme as
+[`BetaBinomial`](@ref)); it needs within-group variation in `x` — a slope
+predictor that is constant within any level of `g` leaves the slope SD and
+group-level correlation unidentified, and is refused with an informative
+error (mirrors drmTMB's `drm_validate_q2_slope_variation`). An independent
+random slope `(0 + x | g)` and `marginal = :VA` on `(1 + x | g)` remain out of
+scope.
+
+!!! note "Separation: detect and warn (fixed-effects-only fits)"
+    A fixed-effects-only Bernoulli/Binomial fit is screened at fit time for
+    (quasi-)complete separation: the maximum-likelihood estimate does not exist
+    when some direction `d` makes the signed design `X̃ d ≥ 0` on every row and
+    `> 0` on at least one (Albert & Anderson 1984; Konis 2007), decided here by a
+    non-negative least-squares (Farkas) solve. The fit is still returned, a
+    warning names the affected coefficients, their standard errors are `Inf`
+    (their `vcov` rows/columns are NaN with an `Inf` diagonal) and their Wald
+    `confint` / `coeftable` intervals are `(-Inf, Inf)`. A coefficient is flagged
+    when ANY separating direction moves it (which can list more coefficients
+    than R's `detectseparation`, which reports one direction); an aliased column
+    that is a multiple of a flagged one is named too. The check is invariant to
+    column units and robust to a single far outlier. When it proves there is no
+    separation the fit is left alone, even if a Wald `|z|` is tiny. Only when it
+    cannot decide (iteration budget exhausted) is a scale-free near-separation
+    rule consulted: a fitted probability within 1e-8
+    of 0/1, a coefficient whose own contribution `|βⱼ|·range(xⱼ)` spans that
+    whole probability range (> 36.84 on the logit scale), and Wald `|z| < 0.05`;
+    a failed (non-finite) SE is never read as near separation. If that rule
+    does not fire, it warns that the check was inconclusive rather than
+    reporting no separation. Bootstrap replicate refits do not repeat the
+    warning. No refusal and no penalised estimator by default. drmTMB runs the
+    same check with the same constants, so the two packages flag the same
+    coefficients (the coefficient values themselves are arbitrary stopping
+    points and are not expected to agree). Random-intercept routes are not
+    screened.
+
+!!! warning "Crossed intercepts: Laplace is biased low for Bernoulli data"
+    The default crossed fit is the Laplace approximation drmTMB and lme4 use. For
+    Bernoulli / small-`n` Binomial data with a large random-intercept SD and few
+    observations per group it underestimates the log-likelihood (≈9.4 nat on a
+    300 × 4 Bernoulli design with σ_g = 2.5) and shrinks σ. When one grouping has
+    at most 8 levels, `marginal = :AGHQ` integrates the same model by nested
+    adaptive Gauss–Hermite quadrature and corrects this (#761). Its `loglik` is
+    not comparable with a Laplace fit's, so `lrtest` refuses mixed `marginal`s.
 
 !!! note
     `DRModels.Binomial` shadows `Distributions.Binomial`; if you need the
@@ -30,12 +124,17 @@ uses the sparse-Laplace engine.
 fit = drm(bf(cbind(successes, failures) ~ x), Binomial(); data = dat)   # logistic regression
 fit = drm(bf(y ~ x + (1 | g)), Binomial(); data = dat)                  # 0/1 logistic GLMM
 fit = drm(bf(cbind(successes, failures) ~ x + (1 | g) + (1 | h)), Binomial(); data = dat)
+fit_q = drm(bf(cbind(successes, failures) ~ x + (1 | g) + (1 | h)), Binomial();
+            data = dat, marginal = :AGHQ)                   # accurate crossed integral, h ≤ 8 levels
 fit_phy = drm(bf(@formula(cbind(successes, failures) ~ x + phylo(1 | species))),
               Binomial(); data = dat, tree = tr, se = false)
 fitted(fit)        # fitted success probabilities μ̂ = logistic(Xβ̂)
 
 # Experimental: Binomial random-intercept variational (ELBO) marginal.
 fit_va = drm(bf(@formula(y ~ x + (1 | g))), Binomial(); data = dat, marginal = :VA)
+
+# TMB-convention Laplace on an ordinary `(1 | g)`, as native drmTMB fits it (ML only).
+fit_lap = drm(bf(@formula(y ~ x + (1 | g))), Binomial(); data = dat, marginal = :Laplace)
 ```
 """
 struct Binomial end
@@ -50,6 +149,9 @@ function drm(f::DrmFormula, fam::Binomial; data, tree = nothing, K = nothing,
              A = nothing, coords = nothing, g_tol::Real = 1e-8,
              se::Bool = true, marginal::Symbol = :LA, method = nothing)
     _reject_method_as_marginal(fam, method)
+    _scalar_laplace_requested(marginal) &&     # Arc 2: TMB-convention Laplace, ordinary (1 | g)
+        return _drm_ordinary_laplace(f, fam; data = data, tree = tree, K = K, A = A,
+                                     coords = coords, g_tol = g_tol, se = se, method = method)
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
         drm(f, fam; data = data_observed, tree = tree, K = K, A = A, coords = coords,
             g_tol = g_tol, se = se, marginal = marginal, method = method)
@@ -57,11 +159,13 @@ function drm(f::DrmFormula, fam::Binomial; data, tree = nothing, K = nothing,
     missing_fit !== nothing && return missing_fit
 
     marg = _marginal_method(marginal)                     # :LA (default) or :VA (#136)
-    marg isa AGHQ && _aghq_reject(fam, "this family")
+    isaghq = marg isa AGHQ                                # :AGHQ: crossed intercepts only (#761)
     isva = marg isa Variational
     _lss_only_gaussian_guard(f, fam)   # #544: refuse, never silently drop, sd() parts
     rhs = Dict(f.forms)
     fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
+    isaghq && !(length(re) > 1 && st === nothing) &&
+        _aghq_reject(fam, "this model (Binomial `marginal = :AGHQ` covers crossed random intercepts `(1 | g) + (1 | h)` only, #761)")
     mv === nothing ||
         error("Binomial() does not support meta_V markers")
     for (pname, r) in f.forms          # Binomial is mean-only — reject any other parameter formula
@@ -70,18 +174,7 @@ function drm(f::DrmFormula, fam::Binomial; data, tree = nothing, K = nothing,
         r === ConstantTerm(1) ||
             error("Binomial() is mean-only; no sigma/dispersion parameter")
     end
-    if f.response2 === nothing                            # plain 0/1 Bernoulli vector
-        s = Float64.(getproperty(data, f.response))
-        all(yi -> yi == 0 || yi == 1, s) ||
-            error("Binomial() with a single-column response requires a 0/1 (Bernoulli) vector; use cbind(successes, failures) for trial counts")
-        ntr = ones(length(s))
-    else                                                  # cbind(successes, failures): n = s + f
-        s = Float64.(getproperty(data, f.response))       # successes
-        fl = Float64.(getproperty(data, f.response2))     # failures
-        (all(si -> si ≥ 0 && isinteger(si), s) && all(fi -> fi ≥ 0 && isinteger(fi), fl)) ||
-            error("Binomial() requires non-negative integer successes and failures")
-        ntr = s .+ fl                                     # trials
-    end
+    s, ntr = _binomial_response(f, data)
     y, Xμ, nmμ = _design(f.response, fixed_mu, data)      # successes column is a dummy LHS
     if st !== nothing
         isva && _va_reject(fam, "a phylogenetic/structured random effect")
@@ -103,6 +196,7 @@ function drm(f::DrmFormula, fam::Binomial; data, tree = nothing, K = nothing,
                 grp = r[2]; gidx, G = _group_index(getproperty(data, grp))
                 (ones(length(s)), gidx, G, String(grp))
             end
+            isaghq && return _withformula(_fit_binomial_crossed_aghq(fam, s, ntr, Xμ, comps, nmμ, g_tol; se = se), f)   # #761
             return _withformula(_fit_binomial_crossed_laplace(fam, s, ntr, Xμ, comps, nmμ, g_tol), f)
         end
         (rk, var) = _re_kind(re[1][1]); grp = re[1][2]; gidx, G = _group_index(getproperty(data, grp))
@@ -110,24 +204,47 @@ function drm(f::DrmFormula, fam::Binomial; data, tree = nothing, K = nothing,
             isva && return _withformula(_withmarginal(
                 _fit_binomial_ranef_va(fam, s, ntr, Xμ, gidx, G, nmμ, grp, g_tol), :VA), f)
             return _withformula(_fit_binomial_ranef(fam, s, ntr, Xμ, gidx, G, nmμ, grp, g_tol), f)
-        else
+        elseif rk === :corr                                # (1 + x | g) → 2-D GHQ tensor (#753)
             isva && _va_reject(fam, "a correlated random slope `(1 + x | g)`")
-            error("Binomial() supports `(1 | g)` on the mean")
+            xs = Float64.(getproperty(data, var))
+            _binomial_check_slope_identifiable(xs, gidx, G, grp)
+            return _withformula(_fit_binomial_corr_ranef(fam, s, ntr, Xμ, xs, gidx, G, nmμ, grp, g_tol), f)
+        else
+            isva && _va_reject(fam, "an independent random slope `(0 + x | g)`")
+            error("Binomial() supports `(1 | g)` or `(1 + x | g)` on the mean")
         end
     end
     isva && _va_reject(fam, "no random intercept (fixed-effects-only)")
     return _withformula(_fit_binomial(fam, s, ntr, Xμ, nmμ, g_tol), f)
 end
 
+# Successes and trials from a 0/1 Bernoulli response or `cbind(successes, failures)`.
+# Shared by the default route and the `marginal = :Laplace` route (ordinary_laplace.jl).
+function _binomial_response(f::DrmFormula, data)
+    if f.response2 === nothing                            # plain 0/1 Bernoulli vector
+        s = Float64.(getproperty(data, f.response))
+        all(yi -> yi == 0 || yi == 1, s) ||
+            error("Binomial() with a single-column response requires a 0/1 (Bernoulli) vector; use cbind(successes, failures) for trial counts")
+        ntr = ones(length(s))
+    else                                                  # cbind(successes, failures): n = s + f
+        s = Float64.(getproperty(data, f.response))       # successes
+        fl = Float64.(getproperty(data, f.response2))     # failures
+        (all(si -> si ≥ 0 && isinteger(si), s) && all(fi -> fi ≥ 0 && isinteger(fi), fl)) ||
+            error("Binomial() requires non-negative integer successes and failures")
+        ntr = s .+ fl                                     # trials
+    end
+    return s, ntr
+end
+
 function _fit_binomial(fam::Binomial, s, ntr, Xμ, nmμ, g_tol)
     n = length(s); pμ = size(Xμ, 2)
     sint = round.(Int, s); nint = round.(Int, ntr)
+    lc = [_logchoose(nint[i], sint[i]) for i in 1:n]
     function nll(θ)
-        ημ = clamp.(Xμ * θ, -15.0, 15.0)                  # μ = logistic(η) ∈ (0,1)
+        ημ = Xμ * θ                                       # unclamped: see `_binomial_logit_ll`
         v = zero(eltype(θ))
         @inbounds for i in 1:n
-            μ = _logistic(ημ[i])
-            v -= Distributions.logpdf(Distributions.Binomial(nint[i], μ), sint[i])
+            v -= _binomial_logit_ll(nint[i], sint[i], ημ[i], lc[i])
         end
         return v
     end
@@ -137,55 +254,116 @@ function _fit_binomial(fam::Binomial, s, ntr, Xμ, nmμ, g_tol)
     θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
     blocks = [:mu => 1:pμ]; names = [:mu => nmμ]
     means = Dict(:mu => _logistic.(Xμ * θ̂))                # fitted success probability
+    V = _separation_guard(Xμ, s, ntr, θ̂, V, means[:mu], nmμ)   # #731: detect + warn, SE → Inf
     obs = Dict(:mu => s ./ ntr)                            # observed proportion (for residuals)
     scales = Dict(:trials => Float64.(nint))
     return _withiterations(
-        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
+        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
 end
 
+# Default nodes for the Binomial 1-D `(1 | g)` route (#712/#713 grouped-trial
+# gap; raised 3 -> 5 by owner decision 17, #908). Was a fixed 32-node grid on the
+# PRIOR scale; with grouped trials (n trials/row > 1) and an informative group SD
+# the posterior is a narrow spike and the grid missed it by up to 9.73 nat. Swept
+# vs an independent AGHQ-40 on the grouped-trial DGP (G=100, 30 obs/group, 20
+# trials/row, RE SD 0.5-0.8): K=1 (Laplace) is the pre-existing multi-nat error,
+# K=3 lands inside 0.01 nat. K=3 was too coarse on sparse binary data
+# (`MASS::bacteria`: sd_mu 5% low, 0.22 nat off a 61-node reference, #908); K=5
+# matches the other families' default. See test/test_binomial_aghq.jl and
+# test/test_binomial_default_nodes.jl.
+const _BINOMIAL_RANEF_AGHQ_K = 5
+
 # Binomial logistic GLMM with a random intercept (1|g) on the logit mean.
-# b_g ~ N(0,σ_b²) is integrated out per group by 32-node Gauss–Hermite
-# quadrature (b = √2 σ_b z), the same scheme as the Poisson/Beta GLMMs.
-# O(n·K) per evaluation, fully differentiable. θ = [β_μ; log σ_b].
-function _fit_binomial_ranef(fam::Binomial, s, ntr, Xμ, gidx, G, nmμ, grp, g_tol)
+# b_g ~ N(0,σ_b²) is integrated out per group by adaptive Gauss–Hermite
+# quadrature (`_aghq_marginal_loglik`, #834/#712/#713: nodes b̂_g + √2 c z at
+# each group's mode), q = 1, `nq` nodes — replaces the old fixed 32-node
+# prior-scale grid, which under-covered grouped trials (n trials/row > 1) with
+# an informative group SD. θ = [β_μ; log σ_b].
+function _fit_binomial_ranef(fam::Binomial, s, ntr, Xμ, gidx, G, nmμ, grp, g_tol; nq::Int = _BINOMIAL_RANEF_AGHQ_K)
     n = length(s); pμ = size(Xμ, 2)
     sint = round.(Int, s); nint = round.(Int, ntr)
     members = [Int[] for _ in 1:G]
     for i in 1:n
         push!(members[gidx[i]], i)
     end
-    z, w = _gauss_hermite(32); logw = log.(w); K = length(z); rt2 = sqrt(2.0); lπ = log(π)
+    lc = [_logchoose(nint[i], sint[i]) for i in 1:n]
+    rule = _AGHQRule(1, nq); Zre = ones(n, 1); bcache = zeros(1, G)   # #834/#712/#713: per-group AGHQ
     function nll(θ)
         βμ = θ[1:pμ]; σb = exp(θ[pμ+1])
+        L = reshape([σb], 1, 1)
         η0 = Xμ * βμ
-        s_ = zero(eltype(θ))
-        for idx in members
-            isempty(idx) && continue
-            terms = Vector{eltype(θ)}(undef, K)
-            for k in 1:K
-                δ = rt2 * σb * z[k]; gll = logw[k]
-                for i in idx
-                    μ = _logistic(clamp(η0[i] + δ, -15.0, 15.0))
-                    gll += Distributions.logpdf(Distributions.Binomial(nint[i], μ), sint[i])
-                end
-                terms[k] = gll
-            end
-            mx = maximum(terms)
-            s_ -= (-0.5 * lπ + mx + log(sum(exp.(terms .- mx))))
-        end
-        return s_
+        ll = (i, η) -> _binomial_logit_ll(nint[i], sint[i], η, lc[i])
+        return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache)
     end
     p̄ = clamp(sum(s) / max(sum(ntr), 1), 1e-3, 1 - 1e-3)
     θ0 = zeros(pμ + 1)
     θ0[1] = log(p̄ / (1 - p̄)); θ0[pμ+1] = log(0.5)
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    res = _optimize_with_fallback(nll, θ0, g_tol)
+    θ̂ = Optim.minimizer(res); V = _vcov_or_nan(ForwardDiff.hessian(nll, θ̂))
     blocks = [:mu => 1:pμ, :resd => (pμ+1):(pμ+1)]
     names = [:mu => nmμ, :resd => [String(grp)]]
     means = Dict(:mu => _logistic.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => s ./ ntr)   # population μ (b=0)
     scales = Dict(:trials => Float64.(nint))
     return _withiterations(
-        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
+        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
+        Optim.iterations(res))
+end
+
+# Identifiability guard for the correlated random slope (1 + x | g) (#753): the
+# slope RE variance and the group-level (intercept, slope) correlation are
+# unidentified when `xs` is constant within any level of `grp` — mirrors
+# drmTMB's `drm_validate_q2_slope_variation` (R/mspl-estimator.R), reimplemented
+# here (never vendored: drmTMB is GPL, DRModels.jl is MIT).
+function _binomial_check_slope_identifiable(xs, gidx, G, grp)
+    seen = [Set{Float64}() for _ in 1:G]
+    for i in eachindex(xs)
+        push!(seen[gidx[i]], xs[i])
+    end
+    all(length(s) ≥ 2 for s in seen) ||
+        error("Binomial() correlated random slope `(1 + x | g)` needs within-group variation in the " *
+              "slope predictor — it is constant within at least one level of `$grp`, so the slope SD " *
+              "and the group-level intercept–slope correlation are unidentified. " *
+              "Use a predictor that varies within `$grp`.")
+end
+
+# Binomial logistic GLMM with a correlated random intercept + slope (1 + x | g)
+# on the logit mean (#753). Per group (b0,b1) ~ N(0, Σ); logit μ_i =
+# Xμ_iᵀβ + b0_g + b1_g·x_i. Because groups are disjoint the per-group 2-D
+# integral factorises; it is done by per-group ADAPTIVE Gauss–Hermite
+# quadrature (`_aghq_marginal_loglik`, #834: nodes b̂_g + √2 C z at each
+# group's mode), `nq` nodes per axis — the same scheme as
+# `_fit_betabinomial_corr_ranef` (betabinomial.jl) minus the precision φ
+# (Binomial has no dispersion parameter). Σ is the log-Cholesky
+# parameterisation L = [exp(a) 0; cc exp(b)] (the `vc` convention), so vc(fit)
+# reconstructs Σ = L Lᵀ.
+function _fit_binomial_corr_ranef(fam::Binomial, s, ntr, Xμ, xs, gidx, G, nmμ, grp, g_tol; nq::Int = _CORR_RANEF_AGHQ_K)
+    n = length(s); pμ = size(Xμ, 2)
+    sint = round.(Int, s); nint = round.(Int, ntr)
+    members = [Int[] for _ in 1:G]
+    for i in 1:n
+        push!(members[gidx[i]], i)
+    end
+    lc = [_logchoose(nint[i], sint[i]) for i in 1:n]
+    rule = _AGHQRule(2, nq); Zre = hcat(ones(n), Float64.(xs)); bcache = zeros(2, G)   # #834: per-group AGHQ
+    function nll(θ)
+        βμ = θ[1:pμ]
+        L = _corr_ranef_L(θ[pμ+1], θ[pμ+2], θ[pμ+3])
+        η0 = Xμ * βμ
+        ll = (i, η) -> _binomial_logit_ll(nint[i], sint[i], η, lc[i])
+        return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache)
+    end
+    p̄ = clamp(sum(s) / max(sum(ntr), 1), 1e-3, 1 - 1e-3)
+    θ0 = zeros(pμ + 3)
+    θ0[1] = log(p̄ / (1 - p̄))                                # logit p̄
+    θ0[pμ+1] = log(0.4); θ0[pμ+2] = log(0.4); θ0[pμ+3] = 0.0
+    res = _optimize_with_fallback(nll, θ0, g_tol)
+    θ̂ = Optim.minimizer(res); V = _vcov_or_nan(ForwardDiff.hessian(nll, θ̂))
+    blocks = [:mu => 1:pμ, :recov => (pμ+1):(pμ+3)]
+    names = [:mu => nmμ, :recov => ["$(grp):L11", "$(grp):L22", "$(grp):L21"]]
+    means = Dict(:mu => _logistic.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => s ./ ntr)
+    scales = Dict(:trials => Float64.(nint))
+    return _withiterations(
+        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
 end

@@ -157,25 +157,25 @@ function _fit_ranef_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, nmμ, 
         ησb = Zg * α                                # per-group log σ_b,k
         T = eltype(θ)
         S = zeros(T, G); C = zeros(T, G)
-        q1 = zero(T); logdetD = zero(T)
+        rv = Vector{T}(undef, n); invDv = Vector{T}(undef, n)
+        logdetD = zero(T)
         @inbounds for i in 1:n
             invD = exp(-2 * ησ[i])
             r = y[i] - ημ[i]
-            a = r * invD
+            rv[i] = r; invDv[i] = invD
             k = gidx[i]
             S[k] += invD
-            C[k] += a
-            q1 += r * a
+            C[k] += r * invD
             logdetD += 2 * ησ[i]
         end
-        q2 = zero(T); logdetCap = zero(T)
+        logdetCap = zero(T)
         @inbounds for k in 1:G
             σb² = exp(2 * ησb[k])
-            Mk = 1 / σb² + S[k]
-            q2 += C[k]^2 / Mk
             logdetCap += log(1 + σb² * S[k])
         end
-        return 0.5 * (logdetD + logdetCap + q1 - q2) + const_2pi
+        # Cancellation-free r′V⁻¹r (#746/#747; see `_re_quad_stable`).
+        quad = _re_quad_stable(rv, invDv, nothing, gidx, exp.(-2 .* ησb), S, C)
+        return 0.5 * (logdetD + logdetCap + quad) + const_2pi
     end
 
     function nll_reml(θ)
@@ -183,48 +183,29 @@ function _fit_ranef_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, nmμ, 
         ημ = Xμ * βμ; ησ = Xσ * βσ
         ησb = Zg * α
         T = eltype(θ)
-        S = zeros(T, G); C = zeros(T, G)
-        ZtDinvX = zeros(T, G, pμ)
-        XtDinvX = zeros(T, pμ, pμ)
-        q1 = zero(T); logdetD = zero(T)
+        S = zeros(T, G)
+        invDv = Vector{T}(undef, n)
         @inbounds for i in 1:n
             invD = exp(-2 * ησ[i])
-            r = y[i] - ημ[i]
-            a = r * invD
-            k = gidx[i]
-            S[k] += invD
-            C[k] += a
-            q1 += r * a
-            logdetD += 2 * ησ[i]
-            @inbounds for j in 1:pμ
-                xj = Xμ[i, j]
-                ZtDinvX[k, j] += invD * xj
-                @inbounds for l in 1:pμ
-                    XtDinvX[j, l] += invD * xj * Xμ[i, l]
-                end
-            end
+            invDv[i] = invD
+            S[gidx[i]] += invD
         end
-        q2 = zero(T); logdetCap = zero(T)
-        XtVinvX = copy(XtDinvX)
-        @inbounds for k in 1:G
-            σb² = exp(2 * ησb[k])
-            Mk = 1 / σb² + S[k]
-            invMk = 1 / Mk
-            q2 += C[k]^2 * invMk
-            logdetCap += log(1 + σb² * S[k])
-            @inbounds for j in 1:pμ
-                zj = ZtDinvX[k, j]
-                @inbounds for l in 1:pμ
-                    XtVinvX[j, l] -= zj * invMk * ZtDinvX[k, l]
-                end
-            end
-        end
-        nll_ml_θ = 0.5 * (logdetD + logdetCap + q1 - q2) + const_2pi
+        # PSD penalised-SS form of Xμ′V⁻¹Xμ. The Woodbury subtraction it replaces
+        # returned exactly-singular garbage (8e110 vs a true 1e-7) at an LBFGS
+        # probe with log σ_i ≈ -105; see `_re_xtvinvx_stable` and
+        # test/test_lss_reml_falseconv.jl.
+        XtVinvX = _re_xtvinvx_stable(Xμ, invDv, nothing, gidx, exp.(-2 .* ησb), S)
+        # ML part via the cancellation-free `nll_ml` (#746/#747).
+        nll_ml_θ = nll_ml(θ)
         # Same Woodbury-subtraction PSD hazard as `_fit_ranef_gaussian.nll_reml`
         # (#499): reject a non-PD Xμ′V⁻¹Xμ with a large FINITE barrier.
+        # The generic (ForwardDiff Dual) Cholesky ACCEPTS a zero pivot, so also
+        # reject a non-finite logdet: -Inf there is what broke HagerZhang.
         cholXtVinvX = cholesky(Symmetric(XtVinvX); check=false)
         issuccess(cholXtVinvX) || return nll_ml_θ + T(REML_NONPD_PENALTY)
-        return nll_ml_θ + 0.5 * logdet(cholXtVinvX) - const_pμ
+        ldX = logdet(cholXtVinvX)
+        isfinite(ldX) || return nll_ml_θ + T(REML_NONPD_PENALTY)
+        return nll_ml_θ + 0.5 * ldX - const_pμ
     end
 
     nll = reml ? nll_reml : nll_ml
@@ -261,7 +242,7 @@ function _fit_ranef_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, nmμ, 
     end
     re = Dict(Symbol(grp) => blup)
     fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n,
-                                     Optim.converged(res), means, obs, scales), nll_ml), re)
+                                     drm_optim_converged(res), means, obs, scales), nll_ml), re)
     if reml
         return _withreml(fit, -nll_reml(θ̂), -nll_ml(θ̂))
     end
@@ -499,7 +480,15 @@ function _fit_structured_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, K
     θ0[1:pμ] .= βμ0
     θ0[pμ+1] = log(std(res0) / sqrt(2) + eps())
     θ0[pμ+pσ+1:end] .= Zg \ fill(log(std(res0) / sqrt(2) + eps()), G)
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    # NaN turns off the f- and x-stops, same as the temporal REML-style call.
+    # A masked phylogenetic leaf can make two successive REML objectives
+    # bitwise identical while |g|∞ is still above g_tol. The fit must finish
+    # on the gradient.
+    res = Optim.optimize(nll, θ0, Optim.LBFGS(),
+                         Optim.Options(g_tol = g_tol,
+                                       x_abstol = NaN, x_reltol = NaN,
+                                       f_abstol = NaN, f_reltol = NaN);
+                         autodiff = :forward)
     θ̂ = Optim.minimizer(res)
     V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
 
@@ -531,7 +520,7 @@ function _fit_structured_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, K
     end
     re = Dict(Symbol(grp) => blup)
     fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n,
-                                     Optim.converged(res), means, obs, scales), nll_ml), re)
+                                     drm_optim_converged(res), means, obs, scales), nll_ml), re)
     if reml
         return _withreml(fit, -nll_reml(θ̂), -nll_ml(θ̂))
     end
@@ -686,7 +675,7 @@ function _fit_gaussian_lss_multi(fam::Gaussian, y, Xμ, Xσ, comps::Vector{_LssC
     obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
     fit = _withnll(DrmFit(fam, blocks, names, θ̂, Vcov, -nll(θ̂), n,
-                          Optim.converged(res), means, obs, scales), nll_ml)
+                          drm_optim_converged(res), means, obs, scales), nll_ml)
     if reml
         return _withreml(fit, -nll_reml(θ̂), -nll_ml(θ̂))
     end

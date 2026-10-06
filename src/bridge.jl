@@ -477,7 +477,7 @@ end
 # below) so that check is a simple, auditable diff against this list rather
 # than depending on which branches happened to fire for a given fit.
 const _BRIDGE_KNOWN_OPTION_KEYS = Set((
-    :g_tol, :algorithm, :method, :se, :profile_ci, :phylo_coupled, :sparse,
+    :g_tol, :algorithm, :method, :marginal, :se, :profile_ci, :phylo_coupled, :sparse,
     :q4_g_tol, :q4_iterations, :q4_n_newton, :q4_vcov, :coef_labels,
 ))
 
@@ -502,6 +502,30 @@ function _bridge_fit(bundle, fam, data; tree, K, A, coords, options)
     end
     if haskey(options, :method)
         kwargs[:method] = Symbol(options[:method])
+    end
+    if haskey(options, :marginal)
+        # The integrator selector, forwarded as `drm(...; marginal = ...)`.
+        # Only `"LA"` (the route's default integrator) and `"Laplace"` (the
+        # Laplace approximation native drmTMB computes) are forwarded: they are
+        # the integrators an R caller can compare with drmTMB. `"VA"`, `"AGHQ"`
+        # and any other value are refused here by name, before any fitting.
+        # `"Laplace"` selects the TMB-convention Laplace route where one is
+        # implemented: an ordinary `(1 | g)` on Poisson, Binomial, NegBinomial2,
+        # Gamma, Beta or Student (ordinary_laplace.jl), and a Gaussian random intercept
+        # on `sigma`. The family's `drm` refuses it on every other model. A
+        # `drm` method with no `marginal` keyword at all is refused here by
+        # name, rather than with a bare MethodError.
+        string(options[:marginal]) in ("LA", "Laplace") ||
+            throw(ArgumentError("drm_bridge: option `marginal = \"$(options[:marginal])\"` " *
+                "is not supported; the bridge accepts only \"LA\" (the default integrator) " *
+                "and \"Laplace\" (the Laplace approximation drmTMB uses). Variational " *
+                "(\"VA\") and adaptive quadrature (\"AGHQ\") fits have no drmTMB " *
+                "counterpart through the bridge; call `drm(...; marginal = ...)` directly."))
+        hasmethod(drm, Tuple{typeof(bundle),typeof(fam)}, (:marginal,)) ||
+            throw(ArgumentError("drm_bridge: option `marginal` is not available for " *
+                "$(nameof(typeof(fam)))() with this formula type; omit it to use the " *
+                "default integrator."))
+        kwargs[:marginal] = Symbol(options[:marginal])
     end
     if haskey(options, :se)
         kwargs[:se] = Bool(options[:se])
@@ -624,6 +648,7 @@ function _bridge_family(family::AbstractString)
     fam == "poisson" && return Poisson()
     fam in ("nbinom2", "negbinomial2", "negative_binomial_2") && return NegBinomial2()
     fam in ("truncated_nbinom2", "truncated_negbinomial2") && return TruncatedNegBinomial2()
+    fam in ("truncated_poisson", "truncatedpoisson") && return TruncatedPoisson()
     fam == "beta" && return Beta()
     fam in ("beta_binomial", "betabinomial") && return BetaBinomial()
     fam == "binomial" && return Binomial()
@@ -820,13 +845,49 @@ end
 # a trailing `phylo(1|g)` term inside a `FunctionTerm{Colon}` the engine can't
 # read (Ayumi LS#2: `MethodError: |(::Int64, ::String)`). Julia's `&` has
 # interaction-matching precedence (tighter than `+`), so rewrite `:` → `&` at the
-# STRING level, before `Meta.parse`. A model-formula string never contains `::`.
+# STRING level, before `Meta.parse`.
+#
+# R's `%in%` (nesting, "b within a") is undefined in Julia — `Meta.parse("b
+# %in% a")` silently parses it as nested modulo, `(b % in) % a`, which later
+# fails deep inside `@formula`/StatsModels with a confusing "no variable
+# called 'in'" error rather than naming the actual construct (#467). R
+# documents `b %in% a` as identical, term-for-term, to `b:a` (confirmed here
+# against `stats::terms()`/`model.matrix()`: both the bare and the
+# main-effect-qualified cases produce byte-identical column names/values,
+# including compound left operands distributing exactly as `:` does). So
+# rewrite it to `&` at the same STRING level as `:`, before `Meta.parse` ever
+# sees the `%` tokens.
+#
+# R's package-qualified call `pkg::fn(...)` (e.g. `splines::ns(x, 3)`,
+# `stats::poly(x, 2)`) was previously left untouched here on the assumption
+# that a model-formula string never contains `::` — false: `Meta.parse`
+# happily accepts `pkg::fn(...)` as Julia's TYPE-ASSERTION syntax `pkg ::
+# fn(...)`, an entirely different expression (head `:(::)`, not `:call`),
+# which then fails deep inside formula assembly with a confusing "non-call
+# expression encountered" error that never names the actual construct
+# (found in the #467 sweep). Refuse it sharply and by name instead: no
+# qualified call is evaluated here (no R package is available on this side
+# of the bridge to run it faithfully against).
+#
+# R's `.` ("every other column") formula shorthand is likewise undefined on
+# this side of the bridge (there is no fixed column list to expand it
+# against beyond the response), and a bare `.` reaching `Meta.parse` is a
+# syntax error with no formula-specific explanation. Refuse it sharply by
+# name: list the covariates explicitly instead.
 function _bridge_translate_r_ops(part::AbstractString)
-    occursin("::", part) && return part        # defensive: leave qualified names alone
+    if occursin("::", part)
+        throw(ArgumentError("drmTMB(engine=\"julia\"): package-qualified calls like `pkg::fn(...)` " *
+            "(e.g. `splines::ns(x, 3)`) are unsupported via engine=\"julia\"; precompute the columns " *
+            "in R and pass them as covariates."))
+    end
+    occursin(r"(?<![\w.])\.(?![\w.])", part) &&
+        throw(ArgumentError("drmTMB(engine=\"julia\"): the `.` (\"every other column\") formula " *
+            "shorthand is unsupported via engine=\"julia\"; list the covariates explicitly."))
     # R accepts whitespace between `I` and its call parenthesis; Julia parses
     # that spelling as implicit multiplication. Normalize only that admitted
     # materializer before `Meta.parse`, retaining the original text for labels.
     translated = replace(String(part), r"\bI\s+\(" => "I(")
+    translated = replace(translated, "%in%" => '&')
     return replace(translated, ':' => '&')
 end
 
@@ -846,6 +907,19 @@ end
 # now lives at the call site, where it can name the specific unsupported form.
 const _BRIDGE_REJECT_CALLS = Dict{Symbol,String}(
     :^ => "R crossing `(...)^k` is unsupported via engine=\"julia\" for this shape (need a literal positive integer power over a `+`-only expression, with no `*` inside); expand it explicitly (e.g. `a + b + a&b`).",
+    # These four have no Julia definition in scope, so left unhandled they
+    # reach `@formula`/the model frame and fail with a bare `UndefVarError`
+    # (or, for `C`, a confusing failure from the generic scalar-label
+    # renderer choking on a contrast argument like `contr.sum`) that never
+    # names the actual construct (#467 sweep). None can be faked faithfully
+    # here: `cut()`/`interaction()` need R's own binning/level-crossing
+    # algorithm, `offset()` needs a fixed (non-estimated) coefficient the
+    # engine does not expose through formula translation, and `C()` sets a
+    # non-default contrast scheme. Refuse all four by name instead.
+    :cut => "R's `cut(...)` binning is unsupported via engine=\"julia\"; precompute the factor column in R and pass it as a covariate.",
+    :interaction => "R's `interaction(...)` is unsupported via engine=\"julia\"; precompute the combined factor column in R and pass it as a covariate.",
+    :offset => "R's `offset(...)` is unsupported via engine=\"julia\"; it needs a fixed (non-estimated) coefficient that formula translation cannot express here.",
+    :C => "R's `C(..., contrast)` contrast override is unsupported via engine=\"julia\" (only R's default `contr.treatment` coding is reproduced); precompute the coded design columns in R and pass them as covariates.",
 )
 
 # Mutable per-formula-bridge context: materialises `I(...)`, `scale(...)`, and
@@ -1120,7 +1194,16 @@ function _bridge_register_source_labels!(ctx::_BridgeXlateCtx, part::AbstractStr
                 f = Symbol(name)
                 # Formula operators and bridge DSL markers retain their own
                 # grammar; only genuine scalar calls get source provenance.
-                if !(f in _BRIDGE_DSL_CALLS || f in _BRIDGE_TERM_OPS || f in (:scale, :factor, :poly)) &&
+                # A call in `_BRIDGE_REJECT_CALLS` (e.g. `C(g, contr.sum)`)
+                # is also skipped here: its argument grammar (a contrast
+                # object, a binning count, …) is not the restricted
+                # arithmetic/identifier grammar `_bridge_r_scalar_source_label`
+                # renders, and attempting the render crashes with a confusing
+                # message (e.g. "cannot render numeric literal `.`" from the
+                # `.` in `contr.sum`) instead of naming the actual construct.
+                # Let the `_bridge_xlate` rejection below fire cleanly instead.
+                if !(f in _BRIDGE_DSL_CALLS || f in _BRIDGE_TERM_OPS || f in (:scale, :factor, :poly) ||
+                     haskey(_BRIDGE_REJECT_CALLS, f)) &&
                    !_bridge_contains_poly(parsed)
                     # The established xlate guard gives `poly()` under a
                     # scalar call its precise model-shape error. Do not let
@@ -1235,8 +1318,40 @@ end
 # `-` and `(...)^k` are absent because they have their own branches above and
 # flatten `+` themselves before doing term algebra.
 const _BRIDGE_TERM_OPS = (:+, :&, :*, :~)
-const _BRIDGE_DSL_CALLS = Set((:phylo, :relmat, :animal, :spatial, :sd,
+const _BRIDGE_DSL_CALLS = Set((:phylo, :relmat, :animal, :spatial, :temporal, :sd,
     :sd_phylo, :meta_V, :cbind, :corpair, :|))
+
+# drmTMB's `temporal(1 | id, time = occ, structure = "ar1")` -> the positional
+# Julia spelling `temporal(1 | id, occ, ar1)` that `@formula` can parse (it
+# rejects keyword arguments and string literals). Validated as drmTMB's parser
+# does: exactly the named `time` (a bare column) and `structure` ("ar1"/"ou")
+# arguments, in either order; the bar itself is checked by the fit router.
+function _bridge_temporal_expr(e::Expr)
+    spelling = "use `temporal(1 | id, time = occasion, structure = \"ar1\")`, " *
+        "`temporal(1 | id, time = elapsed, structure = \"ou\")` or " *
+        "`temporal(1 | id, time = occasion, structure = \"homtoep\")`"
+    args = e.args[2:end]
+    bars = Any[a for a in args if !(a isa Expr && a.head === :kw)]
+    kws = Dict{Symbol,Any}()
+    for a in args
+        a isa Expr && a.head === :kw || continue
+        k = a.args[1]
+        (k in (:term, :time, :structure) && !haskey(kws, k)) || throw(ArgumentError(
+            "drmTMB(engine=\"julia\"): `temporal()` takes `term`, `time` and `structure` as its only named arguments, each once; " * spelling))
+        kws[k] = a.args[2]
+    end
+    # drmTMB also accepts the bar as a named `term = 1 | id` argument.
+    haskey(kws, :term) && push!(bars, pop!(kws, :term))
+    (length(bars) == 1 && length(kws) == 2) || throw(ArgumentError(
+        "drmTMB(engine=\"julia\"): `temporal()` requires one random-effect term and named `time` and " *
+        "`structure` arguments; " * spelling))
+    kws[:time] isa Symbol || throw(ArgumentError(
+        "drmTMB(engine=\"julia\"): `time` in `temporal()` must name an occasion variable; " * spelling))
+    st = kws[:structure]
+    (st isa String && st in ("ar1", "ou", "homtoep")) || throw(ArgumentError(
+        "drmTMB(engine=\"julia\"): `structure` in `temporal()` must be \"ar1\", \"ou\" or \"homtoep\"; " * spelling))
+    return Expr(:call, :temporal, bars[1], kws[:time], Symbol(st))
+end
 
 _bridge_contains_star(e) = false
 function _bridge_contains_star(e::Expr)
@@ -1336,6 +1451,36 @@ function _bridge_xlate(e::Expr, ctx::_BridgeXlateCtx;
             return _bridge_terms_to_sum(_bridge_remove_terms(lhs, rhs))
         end
         throw(ArgumentError("drmTMB(engine=\"julia\"): R term removal with `-` is unsupported; list the terms you want explicitly."))
+    elseif f === :/
+        if scalar_context
+            return Expr(:call, f, (_bridge_xlate(a, ctx;
+                scalar_context = true, atom_scope = atom_scope) for a in e.args[2:end])...)
+        elseif length(e.args) == 3
+            lhs = _bridge_xlate(e.args[2], ctx; atom_scope = atom_scope)
+            rhs = _bridge_xlate(e.args[3], ctx; atom_scope = atom_scope)
+            (_bridge_contains_star(lhs) || _bridge_contains_star(rhs)) &&
+                throw(ArgumentError("drmTMB(engine=\"julia\"): R nesting `/` combined with unexpanded `*` crossing is unsupported; expand the crossing explicitly (e.g. `a + b + a&b`) before nesting."))
+            # R's `a/b` means "b nested within a" and expands, in `terms()`, to
+            # `a + a:b` — confirmed here against `stats::terms()`/
+            # `model.matrix()` for both factor and numeric operands, matching
+            # `a + a&b` byte-for-byte (names and values). That equivalence only
+            # holds when `a` is a SINGLE term: a compound left side, e.g.
+            # `(a1+a2)/b`, nests against the *combined* `a1:a2` factor as one
+            # unit (R gives `a1 + a2 + a1:a2:b`, not `a1:b + a2:b`), and a
+            # chained `a/b/c` nests each level inside the FULL preceding group
+            # (`a + a:b + a:b:c`, with repeated atoms collapsed) — both are
+            # genuine R contrast-computation subtleties this string/AST rewrite
+            # does not replicate, so they are refused rather than guessed.
+            lhs_terms = _bridge_formula_terms(lhs)
+            length(lhs_terms) == 1 || throw(ArgumentError(
+                "drmTMB(engine=\"julia\"): R nesting `/` with a compound or chained left-hand side " *
+                "(e.g. `(a+c)/b` or `a/b/c`) is unsupported via engine=\"julia\"; write the expansion " *
+                "explicitly instead (e.g. `a + c + a&c&b` for `(a+c)/b`, or `a + a&b + a&b&c` for `a/b/c`)."))
+            rhs_terms = _bridge_formula_terms(rhs)
+            new_terms = [Expr(:call, :&, lhs_terms[1], r) for r in rhs_terms]
+            return _bridge_terms_to_sum(vcat(lhs_terms, new_terms))
+        end
+        throw(ArgumentError("drmTMB(engine=\"julia\"): R nesting `/` is unsupported in this form; write the expansion explicitly (e.g. `a + a&b`)."))
     elseif f === :^
         if scalar_context
             return Expr(:call, f, (_bridge_xlate(a, ctx;
@@ -1418,6 +1563,8 @@ function _bridge_xlate(e::Expr, ctx::_BridgeXlateCtx;
         return _bridge_materialize!(ctx, "factor", (arg, atom_scope),
             () -> Any[v for v in _bridge_lookup_column(ctx, arg)],
             "factor($(_bridge_r_label(arg)))")
+    elseif f === :temporal
+        return _bridge_temporal_expr(e)
     elseif !(f isa Symbol)
         throw(ArgumentError("drmTMB(engine=\"julia\"): unsupported formula function `$(f)`; precompute it as a covariate column."))
     elseif haskey(_BRIDGE_REJECT_CALLS, f)
@@ -1477,7 +1624,9 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
         labels::Union{Nothing,_BridgeFormulaLabels} = nothing, coef_labels = nothing)
     cnames, cvals, raw_cnames, public_to_raw =
         _bridge_coef_vector(fit; labels = labels, coef_labels = coef_labels)
-    V = Matrix{Float64}(vcov(fit))
+    # homtoep withholds Wald covariance (as drmTMB); the bridge ships NaN.
+    V = _wald_withheld(fit) ? fill(NaN, length(fit.theta), length(fit.theta)) :
+        Matrix{Float64}(vcov(fit))
     _bridge_validate_coordinate_axes(fit.blocks, fit.coefnames, length(cvals), V)
     fitted_vals, residual_vals = _bridge_fitted_marginal(fit)
     out = Dict{String,Any}(
@@ -1508,9 +1657,16 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
         # NA everywhere and no bridge-side comparison of optimiser effort was
         # possible: a speed difference could be measured but never attributed.
         "iterations" => niterations(fit),
-        # `fitted()`/`residuals()` AS drmTMB DEFINES THEM. Identical to DRModels.jl's
-        # own for every fit except a zero-inflated count fit -- see
-        # `_bridge_fitted_marginal`.
+        # The integrator the fit actually used (`:LA` default, `:Laplace`,
+        # `:VA`, `:AGHQ`), so the R side can refuse to claim same-target Laplace
+        # parity unless the engine reports it (Arc 2).
+        "marginal" => String(fit.marginal),
+        # `fitted()`/`residuals()`: DRModels.jl's own population-level values,
+        # except a zero-inflated count fit, which ships drmTMB's unconditional
+        # mean -- see `_bridge_fitted_marginal`. They are not drmTMB's values in
+        # general. In particular, for ordinary random-effect, phylogenetic,
+        # covariance-block and AR1 / OU `temporal()` fits drmTMB's `fitted()`
+        # adds the fitted modes and this payload does not.
         "fitted" => _bridge_plain(fitted_vals),
         "residuals" => _bridge_plain(residual_vals),
         "sigma" => _bridge_plain(sigma(fit)),
@@ -1549,6 +1705,33 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
         out["gradient"] = g
         out["gradient_names"] = cnames
     end
+    # Route-aware convergence diagnostics (#569): the Julia twin of `check_drm`,
+    # reshaped for the R bridge. Kept as a nested "diagnostics" dict (rather
+    # than flattened top-level keys) so a route's honestly-`missing` fields
+    # (see `bridge_diagnostics`'s docstring) stay self-contained and cannot be
+    # confused with the top-level `"converged"`/`"iterations"` keys above,
+    # which predate this and stay unchanged for backward compatibility.
+    # `grad_source` is ALSO echoed at the top level: it is the one field
+    # `R/julia-diagnostics.R`'s `drm_julia_gradient_source()` already reads off
+    # `object$bridge[["grad_source"]]` (the raw, un-nested payload) to attribute
+    # the "gradient"/"gradient_names" pair above to a producer.
+    bdiag = bridge_diagnostics(fit)
+    out["grad_source"] = String(bdiag.grad_source)
+    out["diagnostics"] = Dict{String,Any}(
+        "route" => bdiag.route,
+        "integrator" => String(bdiag.integrator),
+        "optimizer" => bdiag.optimizer,
+        "converged" => bdiag.converged,
+        "iterations" => bdiag.iterations,
+        "max_abs_grad" => bdiag.max_abs_grad,
+        "grad_source" => String(bdiag.grad_source),
+        "vcov_complete" => bdiag.vcov_complete,
+        "vcov_posdef" => bdiag.vcov_posdef,
+        "min_eigval" => bdiag.min_eigval,
+        "cond" => bdiag.cond,
+        "penalized_map" => bdiag.penalized_map,
+        "boundary" => bdiag.boundary,
+    )
     if labels !== nothing || coef_labels !== nothing
         # `coef_names`/`vcov_names` are the public R spelling.  Retain the exact
         # Julia coordinate names and a bijection for the bridge inference route;
@@ -1972,7 +2155,7 @@ function _bridge_render_formula_block(form, param::Symbol, rhs,
     # Random/structured pieces never become ordinary coefficient columns.  The
     # fixed part is what `_design` used for their associated fixed-effect block.
     fixed_rhs = try
-        first(_split_ranef(rhs; allow_phylo_slope = true))   # #620: a Gaussian slope formula still labels
+        first(_split_ranef(rhs; allow_phylo_slope = true, allow_temporal = true))   # #620: a Gaussian slope formula still labels
     catch
         rhs
     end
@@ -2342,9 +2525,18 @@ end
 """
     _bridge_fitted_marginal(fit) -> (fitted, residuals)
 
-`fitted()` and `residuals()` **as drmTMB defines them**, for the bridge payload
-only. Returns DRModels.jl's own values unchanged for every fit except a
-zero-inflated count fit.
+`fitted()` and `residuals()` for the bridge payload. Returns DRModels.jl's own
+values unchanged for every fit except a zero-inflated count fit, whose mean is
+replaced by drmTMB's unconditional one (below).
+
+**Not drmTMB's values for every fit.** DRModels.jl's `fitted` is population
+level (`Xβ̂` on the response scale) for every model. drmTMB's `fitted()`, and
+so its response residuals, adds the fitted modes whenever the mean has a
+random or structured effect: ordinary random effects, phylogenetic and
+covariance-block effects, and AR1 / OU `temporal()` paths (drmTMB 07d1612ea,
+`predict.drmTMB`, `R/methods.R:2955-2986`). For those fits the payload ships
+`Xβ̂` and `y − Xβ̂`, not drmTMB's conditional values. Making it conditional
+would change what R callers receive, so it is not done here.
 
 DRModels.jl's `fitted(fit)` is `means[:mu]`, and for a zero-inflated Poisson or NB2
 fit that slot deliberately holds the COUNT-COMPONENT mean `exp(Xmu*betahat)`,

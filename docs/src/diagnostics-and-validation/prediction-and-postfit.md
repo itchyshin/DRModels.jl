@@ -97,9 +97,9 @@ first(mp[:mu], 3), first(mp[:sigma], 3)
 
 [`residuals`](@ref) defaults to response residuals (`y − μ̂`). For a *distribution-aware*
 diagnostic — the DHARMa/glmmTMB **randomized quantile residual** — pass
-`type = :quantile`. Under a correctly specified model these are standard normal,
-which makes a QQ-plot or a simple moment check interpretable even for
-non-Gaussian families:
+`type = :quantile`. For a correctly specified model without random effects,
+like this one, they are approximately standard normal, which makes a QQ-plot or
+a simple moment check interpretable even for non-Gaussian families:
 
 ```@example postfit
 rq = residuals(fit; type = :quantile)
@@ -110,9 +110,13 @@ rq = residuals(fit; type = :quantile)
     Raw `y − μ̂` residuals are misleading when the variance changes with the
     mean (exactly the location–scale case here) or for discrete responses.
     Quantile residuals fold each observation through its own fitted CDF, so a
-    well-specified model always yields ≈ N(0, 1) — the scale is the same across
-    families. It is implemented for Gaussian and Poisson today; support for
-    other families is planned.
+    well-specified model without random effects yields ≈ N(0, 1), on the same
+    scale for every family. They are implemented for every family except
+    Tweedie and SkewNormal; for zero-inflated and hurdle count fits the CDF is
+    that of the whole mixture, zero part included. Random-effect and `temporal()` fits judge each
+    observation against a different reference (a random intercept integrated
+    out, or the fitted temporal path), so what "≈ N(0, 1)" means changes;
+    [`residuals`](@ref) lists what each kind of fit returns.
 
 ## Does the extra structure earn its keep?
 

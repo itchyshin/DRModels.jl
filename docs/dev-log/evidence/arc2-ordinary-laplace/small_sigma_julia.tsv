@@ -1,0 +1,11 @@
+cell	route	df	logLik	converged	log_sigma	abs_dlogLik_vs_native	max_rel_dest_vs_native
+gamma_sigma0012	Laplace	7	756.7479683610	true	-4.4297	3.16e-09	5.88e-09
+gamma_sigma0012	LA	7	289.8336876054	true	-2.3658	4.67e+02	8.29e-01
+beta_sigma0012	Laplace	7	1047.6527834218	true	-4.4542	3.04e-08	2.52e-07
+beta_sigma0012	LA	7	752.9310228276	true	-3.3026	2.95e+02	1.36e+00
+gamma_sigma0003	Laplace	4	710.1475484131	true	-5.8398	3.05e-08	5.59e-12
+gamma_sigma0003	LA	4	209.0563586180	true	-2.8398	5.01e+02	5.14e-01
+nbinom2_sigma003	Laplace	4	-559.5469185207	true	-2.1630	8.87e-12	4.40e-08
+nbinom2_sigma003	LA	4	-559.5158610133	true	-2.1640	3.11e-02	1.13e-02
+nbinom2_sigma005_plateau	Laplace	5	-472.7624243227	true	-1.6415	1.11e-11	3.61e-07
+nbinom2_sigma005_plateau	LA	5	-472.3946539557	true	-1.6622	3.68e-01	5.05e-02

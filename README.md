@@ -43,50 +43,66 @@ Same model, same real `q4_p100` data, same Laplace ML marginal as drmTMB
 
 Full grid and honest caveats: [report/comparison-grid.md](report/comparison-grid.md).
 
-## Install (development)
+## Install
 
 ```julia
 using Pkg
-Pkg.develop(path = "/path/to/DRModels.jl")
-Pkg.instantiate()              # resolve deps the first time
+Pkg.add(url = "https://github.com/itchyshin/DRModels.jl")
 using DRModels
 ```
 
+If you are developing DRModels.jl from a local clone
+(`git clone https://github.com/itchyshin/DRModels.jl`), use
+`Pkg.develop(path = "/absolute/path/to/DRModels.jl")` instead.
+
 ## Worked example — a Gaussian location–scale regression
 
-The smallest real **distributional** regression: both the mean **and** the
-(log) scale depend on a covariate. This runs as-is (verified).
+The first example tells the same ecology story as drmTMB's
+[first-model article](https://itchyshin.github.io/drmTMB/articles/drmTMB.html):
+growth of 120 individuals sampled in forest and grassland, where habitat and
+temperature shift mean growth and habitat also changes residual variation.
+The true values and `n` match the R article. The printed estimates will not
+match it, because Julia and R generate different random numbers even from the
+same seed. This runs as-is (verified).
 
 ```julia
 using DRModels, Random
 Random.seed!(1)
 
-n = 400
-x = randn(n)
-# data-generating process: μ = 0.5 − 0.8·x,  log σ = −0.3 + 0.4·x
-y = (0.5 .- 0.8 .* x) .+ exp.(-0.3 .+ 0.4 .* x) .* randn(n)
+n = 120
+habitat = repeat(["forest", "grassland"]; inner = n ÷ 2)
+temperature = randn(n)
+grass = habitat .== "grassland"
+# true values: μ = 1 + 0.6·grassland + 0.4·temperature,  log σ = −0.5 + 0.45·grassland
+growth = (1 .+ 0.6 .* grass .+ 0.4 .* temperature) .+
+         exp.(-0.5 .+ 0.45 .* grass) .* randn(n)
 
-fit = drm(bf(@formula(y ~ 1 + x),        # mean μ
-             @formula(sigma ~ 1 + x)),     # log scale σ
-          Gaussian(); data = (; y, x))
+fit = drm(bf(@formula(growth ~ 1 + habitat + temperature),   # mean μ
+             @formula(sigma ~ 1 + habitat)),                 # log scale σ
+          Gaussian(); data = (; growth, habitat, temperature))
 
-coef(fit, :mu)      # ≈ [ 0.50, -0.80]
-coef(fit, :sigma)   # ≈ [-0.32,  0.40]
+coef(fit, :mu)      # true values: [1.00, 0.60, 0.40]
+coef(fit, :sigma)   # true values: [-0.50, 0.45]
 coeftable(fit)      # Wald SEs, z, p, 95% CIs for every coefficient
 ```
 
 ```
-─────────────────────────────────────────────────────────────────────────
-                    Estimate  Std.Error        z  Pr(>|z|)  Lower 95%  Upper 95%
-─────────────────────────────────────────────────────────────────────────
-mu: (Intercept)     0.50299  0.0398921   12.609    <1e-35   0.424799   0.581173
-mu: x              -0.79985  0.0292344  -27.360    <1e-99  -0.857148  -0.742551
-sigma: (Intercept) -0.32217  0.0353752   -9.107    <1e-19  -0.391506  -0.252838
-sigma: x            0.39537  0.0335957   11.768    <1e-31   0.329524   0.461217
-─────────────────────────────────────────────────────────────────────────
+──────────────────────────────────────────────────────────────────────────────────────
+                            Estimate  Std.Error      z  Pr(>|z|)  Lower 95%  Upper 95%
+──────────────────────────────────────────────────────────────────────────────────────
+mu: (Intercept)             1.03555   0.0771317  13.43    <1e-40   0.884375   1.18673
+mu: habitat: grassland      0.70105   0.150148    4.67    <1e-05   0.406766   0.995334
+mu: temperature             0.327938  0.0673747   4.87    <1e-05   0.195886   0.45999
+sigma: (Intercept)         -0.525039  0.091334   -5.75    <1e-08  -0.704051  -0.346028
+sigma: habitat: grassland   0.503322  0.129232    3.89    <1e-04   0.250032   0.756612
+──────────────────────────────────────────────────────────────────────────────────────
 ```
 
-The same `bf(...)` grammar carries the full audited surface — 14 families, random
+Every 95% interval covers its true value. The `sigma` habitat coefficient is a
+log residual-SD contrast: `exp(0.503) ≈ 1.65`, so residual SD in grassland is
+about 1.65 times that in forest (true ratio `exp(0.45) ≈ 1.57`).
+
+The same `bf(...)` grammar carries the full audited surface — 15 families, random
 effects on the mean **and** scale, structured (`relmat` / `animal` / `phylo` /
 `spatial`) effects, `meta_V` meta-analysis, the bivariate `rho12` model, and the
 q=4 phylogenetic location–scale (PLSM) route — see
@@ -112,7 +128,7 @@ src/experimental/   leftover prototypes NOT wired into the public API
 bench/              runnable benchmarks + the q4_p100 fixtures + R fixture gen
 test/               runtests.jl + migrated correctness checks
 report/             53 design/provenance/benchmark reports (the full poc record)
-docs/               Documenter site (mirrors drmTMB navbar); CONTRACT.md
+docs/               Documenter site (reader-first menus; many pages link a drmTMB twin article); CONTRACT.md
 AGENTS.md ROADMAP.md   the 12-persona team + the phase plan
 .claude/workflows/  10 scripted workflows (W0/Q/A/B/D/F/G/H/S/R)
 ```
@@ -123,7 +139,7 @@ This rename branch retains version **`0.7.1`**. The existing **`v0.7.1`** tag
 predates the package rename and names `DRM`; it is historical rather than a
 DRModels release tag. **Julia General stays out** until readiness
 (catch up with drmTMB + both working well; drmTMB likely R/CRAN first).
-MIT via GitHub / `Pkg.develop` until then. Do not treat
+MIT via GitHub (`Pkg.add(url = ...)`) until then. Do not treat
 `v0.7.1` as General registration; do not chase Registrator.
 
 **Current transition:** R–Julia support remains experimental. Deeper parity work
@@ -137,8 +153,8 @@ continues; it is **not** Julia General registration.
   `phylo` / `spatial`), `meta_V`, and the bivariate q=4 phylogenetic
   location-scale route with `Σ_a` stored on the fit; Wald + profile + bootstrap
   intervals; `predict` / `simulate`.
-- **14 families** — Gaussian, Student-t, SkewNormal, Poisson, NegBinomial2,
-  TruncatedNegBinomial2, Beta, BetaBinomial, Binomial, Gamma, LogNormal,
+- **15 families** — Gaussian, Student-t, SkewNormal, Poisson, NegBinomial2,
+  TruncatedNegBinomial2, TruncatedPoisson, Beta, BetaBinomial, Binomial, Gamma, LogNormal,
   ZeroOneBeta, Tweedie, and CumulativeLogit — plus `zi` / `hu` count modifiers
   and beta boundary modifiers `zoi` / `coi`.
 - **Docs** — a DocumenterVitepress site (the docs.makie.org look) with CairoMakie

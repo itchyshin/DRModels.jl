@@ -1,0 +1,66 @@
+fixture	param	value
+phylo_h_seed11	df	5.0
+phylo_h_seed11	logLik	-136.6486012269
+phylo_h_seed11	mu:(Intercept)	0.8782041354
+phylo_h_seed11	mu:x	0.5608141542
+phylo_h_seed11	sigma:(Intercept)	-0.4424987337
+phylo_h_seed11	sd:(1 | h)	1.0008441239
+phylo_h_seed11	sd:phylo(1 | sp)	0.5947422591
+phylo_h_seed22	df	5.0
+phylo_h_seed22	logLik	-102.7517002054
+phylo_h_seed22	mu:(Intercept)	0.8660969484
+phylo_h_seed22	mu:x	0.634506602
+phylo_h_seed22	sigma:(Intercept)	-0.690161672
+phylo_h_seed22	sd:(1 | h)	0.3675668893
+phylo_h_seed22	sd:phylo(1 | sp)	0.4748769382
+phylo_h_sigmax	df	6.0
+phylo_h_sigmax	logLik	-143.4417813811
+phylo_h_sigmax	mu:(Intercept)	0.585946827
+phylo_h_sigmax	mu:x	0.4594804439
+phylo_h_sigmax	sigma:(Intercept)	-0.4213398943
+phylo_h_sigmax	sigma:x	0.3123707479
+phylo_h_sigmax	sd:(1 | h)	0.7057984765
+phylo_h_sigmax	sd:phylo(1 | sp)	0.8859350675
+phylo_sp_same_group	df	5.0
+phylo_sp_same_group	logLik	-159.9437095357
+phylo_sp_same_group	mu:(Intercept)	0.659018439
+phylo_sp_same_group	mu:x	0.5255847409
+phylo_sp_same_group	sigma:(Intercept)	-0.7239631087
+phylo_sp_same_group	sd:(1 | sp)	0.5333690167
+phylo_sp_same_group	sd:phylo(1 | sp)	0.4314974458
+phylo_h_g	df	6.0
+phylo_h_g	logLik	-132.0247349878
+phylo_h_g	mu:(Intercept)	0.7437955176
+phylo_h_g	mu:x	0.448959332
+phylo_h_g	sigma:(Intercept)	-0.4979945584
+phylo_h_g	sd:(1 | h)	0.455125425
+phylo_h_g	sd:(1 | g)	0.355946262
+phylo_h_g	sd:phylo(1 | sp)	0.6156657255
+relmat_h	df	5.0
+relmat_h	logLik	-154.4255293185
+relmat_h	mu:(Intercept)	1.0236666868
+relmat_h	mu:x	0.4203673321
+relmat_h	sigma:(Intercept)	-0.4008213236
+relmat_h	sd:(1 | h)	0.4254995415
+relmat_h	sd:relmat(1 | id)	0.7964123076
+animal_h	df	5.0
+animal_h	logLik	-140.8348471281
+animal_h	mu:(Intercept)	0.8898167633
+animal_h	mu:x	0.4982933991
+animal_h	sigma:(Intercept)	-0.5249055552
+animal_h	sd:(1 | h)	0.8077329813
+animal_h	sd:animal(1 | id)	0.63158528
+spatial_h	df	5.0
+spatial_h	logLik	-125.636939364
+spatial_h	mu:(Intercept)	0.711380212
+spatial_h	mu:x	0.5050664925
+spatial_h	sigma:(Intercept)	-0.5064772979
+spatial_h	sd:(1 | h)	0.4184617411
+spatial_h	sd:spatial(1 | site)	0.4593614268
+phylo_slope_h	df	5.0
+phylo_slope_h	logLik	-128.7684146939
+phylo_slope_h	mu:(Intercept)	1.287461941
+phylo_slope_h	mu:x	0.6373145096
+phylo_slope_h	sigma:(Intercept)	-0.5203142907
+phylo_slope_h	sd:(0 + x | h)	0.5908718166
+phylo_slope_h	sd:phylo(1 | sp)	0.7906147113

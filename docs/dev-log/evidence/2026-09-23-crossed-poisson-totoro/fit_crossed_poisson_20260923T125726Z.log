@@ -1,0 +1,30 @@
+BEGIN 2026-09-23T12:57:26+00:00
+SHA=12ee8a8c2e4fa655b8c4356b1fffe9bd04556250
+HOST=totoro
+threads=1 OPENBLAS=1
+wrote single_control n=1500 G=50 H=0
+wrote crossed_small n=1000 G=20 H=20
+wrote crossed_medium n=5000 G=50 H=50
+wrote crossed_large n=20000 G=100 H=100
+wrote fixedq_n1000 n=1000 G=50 H=50
+wrote fixedq_n20000 n=20000 G=50 H=50
+GEN_WALL_SEC 1.85
+total 16
+drwxrwxr-x 2 snakagaw snakagaw      9 Sep 23 06:57 .
+drwxrwxr-x 3 snakagaw snakagaw      7 Sep 23 06:57 ..
+-rw-rw-r-- 1 snakagaw snakagaw 599998 Sep 23 06:57 crossed_large.csv
+-rw-rw-r-- 1 snakagaw snakagaw 149068 Sep 23 06:57 crossed_medium.csv
+-rw-rw-r-- 1 snakagaw snakagaw  29270 Sep 23 06:57 crossed_small.csv
+-rw-rw-r-- 1 snakagaw snakagaw  29791 Sep 23 06:57 fixedq_n1000.csv
+-rw-rw-r-- 1 snakagaw snakagaw 596340 Sep 23 06:57 fixedq_n20000.csv
+-rw-rw-r-- 1 snakagaw snakagaw  43469 Sep 23 06:57 single_control.csv
+-rw-rw-r-- 1 snakagaw snakagaw    577 Sep 23 06:57 truth.json
+  Activating project at `~/lanes/DRModels.jl-crossed-poisson-20260923`
+[Julia single_control] n=1500 med=0.0145s logLik=-2266.335 beta=(0.294, 0.445) sd_g=0.477 sd_h=NaN
+[Julia crossed_small] n=1000 med=0.0034s logLik=-1382.969 beta=(0.042, 0.438) sd_g=0.494 sd_h=0.314
+[Julia crossed_medium] n=5000 med=0.0308s logLik=-7349.512 beta=(0.207, 0.444) sd_g=0.485 sd_h=0.419
+[Julia crossed_large] n=20000 med=0.1884s logLik=-29249.372 beta=(0.230, 0.442) sd_g=0.428 sd_h=0.369
+[Julia fixedq_n1000] n=1000 med=0.0126s logLik=-1623.844 beta=(0.377, 0.417) sd_g=0.444 sd_h=0.325
+[Julia fixedq_n20000] n=20000 med=0.1742s logLik=-28860.054 beta=(0.208, 0.447) sd_g=0.484 sd_h=0.338
+FIT_WALL_SEC 25.19
+END 2026-09-23T12:57:53+00:00

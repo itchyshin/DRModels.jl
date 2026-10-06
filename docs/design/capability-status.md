@@ -350,7 +350,7 @@ undercount above. `Missing-predictor imputation (mi())` was `missing` before
 tested: `mi`, `JointDrmFit`, `JointTwoDrmFit`, `JointFiniteDrmFit`, `imputed`,
 `miss_control`, `impute_model` are exported from `src/DRModels.jl:193-197`, backed
 by six files at `src/DRModels.jl:137-143` (#563), and covered by
-`test/test_joint_missing_*.jl` (`test/runtests.jl:435-446`). It is marked
+`test/test_joint_missing_*.jl` (auto-discovered by `test/runtests.jl`). It is marked
 `experimental`, not `implemented`, because D-181 (2026-08-28, reaffirmed by
 D-209 §3, 2026-09-02) explicitly fences the mi() axis out of the v1.0 twin
 claim, and because the scope itself is narrow: a Gaussian response with one

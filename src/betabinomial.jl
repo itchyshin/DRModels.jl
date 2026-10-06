@@ -17,6 +17,25 @@ Only inspected structurally on a formula left-hand side.
 """
 cbind(a, b) = hcat(a, b)
 
+# `_LOGIT_GUARD` is an overflow guard, not a model bound: at |η| = 700 a parameter
+# is e^-700 ≈ 1e-304 and the likelihood of any observation on the wrong side is
+# ≈ -700 nats, so no sane start is ever beaten by the (flat) region beyond it; it only
+# keeps `loggamma(0)` / NaN gradients out of the line search.
+const _LOGIT_GUARD = 700.0
+
+# BetaBinomial(n, μφ, (1-μ)φ) log-pmf with μ = logistic(η), parameterised directly
+# on the logit η and UNCLAMPED: α = φ·σ(η), β = φ·σ(−η) never saturate to 0 until
+# |η| ≈ 745, so no clamp is needed to keep the pmf proper. A clamp of η inside the
+# objective makes it flat beyond the clamp and lets L-BFGS park on the plateau
+# (see `_binomial_logit_ll`). Equal to `Distributions.logpdf(BetaBinomial(...))`
+# off the plateau up to rounding.
+@inline function _betabinomial_logit_ll(n, k, η, φ)
+    η = clamp(η, -_LOGIT_GUARD, _LOGIT_GUARD)
+    α = φ * _logistic(η); β = φ * _logistic(-η)
+    return _logchoose(n, k) + (loggamma(k + α) + loggamma(n - k + β) - loggamma(n + α + β)) -
+           (loggamma(α) + loggamma(β) - loggamma(α + β))
+end
+
 """
     BetaBinomial()
 
@@ -40,17 +59,22 @@ fit_phy = drm(bf(@formula(cbind(successes, failures) ~ x + phylo(1 | species)), 
 struct BetaBinomial end
 
 function drm(f::DrmFormula, fam::BetaBinomial; data, tree = nothing, g_tol::Real = 1e-8,
-             se::Bool = true)
+             se::Bool = true, marginal::Symbol = :LA)
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
-        drm(f, fam; data = data_observed, tree = tree, g_tol = g_tol, se = se)
+        drm(f, fam; data = data_observed, tree = tree, g_tol = g_tol, se = se, marginal = marginal)
     end
     missing_fit !== nothing && return missing_fit
 
     f.response2 === nothing &&
         error("BetaBinomial() needs a two-column response: bf(cbind(successes, failures) ~ …)")
+    marg = _marginal_method(marginal)                     # :LA (default) or :AGHQ (#761)
+    isaghq = marg isa AGHQ
     _lss_only_gaussian_guard(f, fam)   # #544: refuse, never silently drop, sd() parts
     rhs = Dict(f.forms)
     fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
+    isaghq && !(length(re) > 1 && st === nothing) &&
+        _aghq_reject(fam, "this model (BetaBinomial `marginal = :AGHQ` covers crossed random " *
+                          "intercepts `(1 | g) + (1 | h)` only, #761)")
     mv === nothing ||
         error("BetaBinomial() does not support meta_V markers")
     for (pname, r) in f.forms          # only the mean may carry a random effect
@@ -88,7 +112,8 @@ function drm(f::DrmFormula, fam::BetaBinomial; data, tree = nothing, g_tol::Real
                 grp = r[2]; gidx, G = _group_index(getproperty(data, grp))
                 (ones(length(s)), gidx, G, String(grp))
             end
-            return _withformula(_fit_betabinomial_crossed_laplace(fam, s, ntr, Xμ, comps, nmμ, nmσ, g_tol), f)
+            isaghq && return _withformula(_fit_betabinomial_crossed_aghq(fam, s, ntr, Xμ, comps, nmμ, nmσ, g_tol; se = se), f)   # #761
+            return _withformula(_fit_betabinomial_crossed_laplace(fam, s, ntr, Xμ, comps, nmμ, nmσ, g_tol; se = se), f)
         end
         (rk, var) = _re_kind(re[1][1]); grp = re[1][2]; gidx, G = _group_index(getproperty(data, grp))
         if rk === :intercept                              # (1 | g) → 1-D GHQ
@@ -106,100 +131,72 @@ end
 # Beta-binomial GLMM with a random intercept (1|g) on the logit mean. b_g ~ N(0,σ_b²)
 # integrated out per group by 32-node Gauss–Hermite quadrature (b = √2 σ_b z); the
 # precision φ = 1/σ² stays a fixed effect. Same scheme as the Gamma/count GLMMs.
-function _fit_betabinomial_ranef(fam::BetaBinomial, s, ntr, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol)
+function _fit_betabinomial_ranef(fam::BetaBinomial, s, ntr, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol; K::Int = _RANEF1D_AGHQ_K)
     n = length(s); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     sint = round.(Int, s); nint = round.(Int, ntr)
     members = [Int[] for _ in 1:G]
     for i in 1:n
         push!(members[gidx[i]], i)
     end
-    z, w = _gauss_hermite(32); logw = log.(w); K = length(z); rt2 = sqrt(2.0); lπ = log(π)
+    rule = _AGHQRule(1, K); Zre = ones(n, 1); bcache = zeros(1, G)   # #719: per-group AGHQ
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]; σb = exp(θ[pμ+pσ+1])
         η0 = Xμ * βμ; ησ = clamp.(Xσ * βσ, -15.0, 15.0)
-        v = zero(eltype(θ))
-        for idx in members
-            isempty(idx) && continue
-            terms = Vector{eltype(θ)}(undef, K)
-            for k in 1:K
-                δ = rt2 * σb * z[k]; gll = logw[k]
-                for i in idx
-                    μ = _logistic(clamp(η0[i] + δ, -15.0, 15.0)); φ = exp(-2 * ησ[i])
-                    gll += Distributions.logpdf(Distributions.BetaBinomial(nint[i], μ * φ, (1 - μ) * φ), sint[i])
-                end
-                terms[k] = gll
-            end
-            mx = maximum(terms)
-            v -= (-0.5 * lπ + mx + log(sum(exp.(terms .- mx))))
-        end
-        return v
+        ll = (i, η) -> _betabinomial_logit_ll(nint[i], sint[i], η, exp(-2 * ησ[i]))
+        L = reshape([σb], 1, 1)
+        return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache)
     end
     p̄ = clamp(sum(s) / max(sum(ntr), 1), 1e-3, 1 - 1e-3)
     θ0 = zeros(pμ + pσ + 1)
     θ0[1] = log(p̄ / (1 - p̄))                                # logit p̄
     θ0[pμ+1] = -0.5 * log(10.0)                             # moderate precision init (φ ≈ 10)
     θ0[pμ+pσ+1] = log(0.5)
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    res = _optimize_with_fallback(nll, θ0, g_tol)
+    θ̂ = Optim.minimizer(res); V = _vcov_or_nan(ForwardDiff.hessian(nll, θ̂))
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :resd => (pμ+pσ+1):(pμ+pσ+1)]
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
     means = Dict(:mu => _logistic.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => s ./ ntr)   # population μ (b=0)
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]), :trials => Float64.(nint))
     return _withiterations(
-        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
+        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
 end
 
 # Beta-binomial GLMM with a correlated random intercept+slope (1 + x | g) on the
 # logit mean. Per group (b0,b1) ~ N(0, Σ); logit μ_i = Xμ_iᵀβ + b0_g + b1_g·x_i.
-# Because groups are disjoint the per-group 2-D integral factorises, so it is done
-# by a 2-D Gauss–Hermite tensor grid (K² nodes). Σ is the log-Cholesky
+# Because groups are disjoint the per-group 2-D integral factorises; it is done by
+# per-group ADAPTIVE Gauss–Hermite quadrature
+# (`_aghq_marginal_loglik`, #834: nodes b̂_g + √2 C z at each group's mode), `nq` nodes per axis. Σ is the log-Cholesky
 # parameterisation L = [exp(a) 0; cc exp(b)] (the `vc` convention), so vc(fit)
 # reconstructs Σ = L Lᵀ. The precision φ = 1/σ² stays a fixed effect.
-function _fit_betabinomial_corr_ranef(fam::BetaBinomial, s, ntr, Xμ, Xσ, xs, gidx, G, nmμ, nmσ, grp, g_tol)
+function _fit_betabinomial_corr_ranef(fam::BetaBinomial, s, ntr, Xμ, Xσ, xs, gidx, G, nmμ, nmσ, grp, g_tol; nq::Int = _CORR_RANEF_AGHQ_K)
     n = length(s); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     sint = round.(Int, s); nint = round.(Int, ntr)
     members = [Int[] for _ in 1:G]
     for i in 1:n
         push!(members[gidx[i]], i)
     end
-    z1, w1 = _gauss_hermite(12); lw = log.(w1); K = length(z1); rt2 = sqrt(2.0); lπ = log(π)
+    rule = _AGHQRule(2, nq); Zre = hcat(ones(n), Float64.(xs)); bcache = zeros(2, G)   # #834: per-group AGHQ
     function nll(θ)
-        βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]; a = θ[pμ+pσ+1]; b = θ[pμ+pσ+2]; cc = θ[pμ+pσ+3]
-        l11 = exp(a); l22 = exp(b); η0 = Xμ * βμ; ησ = clamp.(Xσ * βσ, -15.0, 15.0)
-        v = zero(eltype(θ))
-        for idx in members
-            isempty(idx) && continue
-            terms = Vector{eltype(θ)}(undef, K * K)
-            t = 0
-            for j in 1:K, k in 1:K
-                t += 1
-                b0 = rt2 * l11 * z1[j]; b1 = rt2 * (cc * z1[j] + l22 * z1[k])   # √2 L z
-                gll = lw[j] + lw[k]
-                for i in idx
-                    μ = _logistic(clamp(η0[i] + b0 + b1 * xs[i], -15.0, 15.0)); φ = exp(-2 * ησ[i])
-                    gll += Distributions.logpdf(Distributions.BetaBinomial(nint[i], μ * φ, (1 - μ) * φ), sint[i])
-                end
-                terms[t] = gll
-            end
-            mx = maximum(terms)
-            v -= (-lπ + mx + log(sum(exp.(terms .- mx))))      # 2-D: -0.5·2·logπ = -logπ
-        end
-        return v
+        βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
+        L = _corr_ranef_L(θ[pμ+pσ+1], θ[pμ+pσ+2], θ[pμ+pσ+3])
+        η0 = Xμ * βμ; ησ = clamp.(Xσ * βσ, -15.0, 15.0)
+        ll = (i, η) -> _betabinomial_logit_ll(nint[i], sint[i], η, exp(-2 * ησ[i]))
+        return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache)
     end
     p̄ = clamp(sum(s) / max(sum(ntr), 1), 1e-3, 1 - 1e-3)
     θ0 = zeros(pμ + pσ + 3)
     θ0[1] = log(p̄ / (1 - p̄))                                # logit p̄
     θ0[pμ+1] = -0.5 * log(10.0)                             # moderate precision init (φ ≈ 10)
     θ0[pμ+pσ+1] = log(0.4); θ0[pμ+pσ+2] = log(0.4); θ0[pμ+pσ+3] = 0.0
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    res = _optimize_with_fallback(nll, θ0, g_tol)
+    θ̂ = Optim.minimizer(res); V = _vcov_or_nan(ForwardDiff.hessian(nll, θ̂))
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :recov => (pμ+pσ+1):(pμ+pσ+3)]
     names = [:mu => nmμ, :sigma => nmσ, :recov => ["$(grp):L11", "$(grp):L22", "$(grp):L21"]]
     means = Dict(:mu => _logistic.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => s ./ ntr)
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]), :trials => Float64.(nint))
     return _withiterations(
-        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
+        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
 end
 
@@ -208,12 +205,11 @@ function _fit_betabinomial(fam::BetaBinomial, s, ntr, Xμ, Xσ, nmμ, nmσ, g_to
     sint = round.(Int, s); nint = round.(Int, ntr)
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
-        ημ = clamp.(Xμ * βμ, -30.0, 30.0)        # μ ∈ (0,1) strictly
+        ημ = Xμ * βμ                             # unclamped: see `_betabinomial_logit_ll`
         ησ = clamp.(Xσ * βσ, -15.0, 15.0)        # φ = exp(-2ησ) > 0 finite
         v = zero(eltype(θ))
         @inbounds for i in 1:n
-            μ = _logistic(ημ[i]); φ = exp(-2 * ησ[i])
-            v -= Distributions.logpdf(Distributions.BetaBinomial(nint[i], μ * φ, (1 - μ) * φ), sint[i])
+            v -= _betabinomial_logit_ll(nint[i], sint[i], ημ[i], exp(-2 * ησ[i]))
         end
         return v
     end
@@ -229,6 +225,6 @@ function _fit_betabinomial(fam::BetaBinomial, s, ntr, Xμ, Xσ, nmμ, nmσ, g_to
     obs = Dict(:mu => s ./ ntr)                             # observed proportion (for residuals)
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]), :trials => Float64.(nint))
     return _withiterations(
-        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
+        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
 end

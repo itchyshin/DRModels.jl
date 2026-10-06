@@ -1,58 +1,98 @@
-# Exact-Gaussian Diagnostics
+# Checking Gaussian mixed models
 
-!!! note "Status - developer evidence"
-    This page documents exact-Gaussian diagnostic work that is useful for
-    source-code review and future parity work. It is not a public optimizer
-    promotion, not an R bridge promotion, and not interval-coverage evidence.
+Use this page after fitting a Gaussian model with one or more random effects.
+It shows the routine checks to make before interpreting coefficients, variance
+components, or confidence intervals.
 
-## Reference diagnostic route
+For Gaussian responses, DRModels.jl can integrate many mean-axis random effects
+exactly. Here, **exact** describes the likelihood calculation: it does not by
+itself guarantee convergence, good identification, or reliable inference for a
+particular dataset.
 
-The location-only phylogenetic mean route supplies the reference diagnostic
-guide, with retained validation evidence.
+## Fit a small model
 
-| Route | Estimator status | Diagnostic rows | Boundary |
-| --- | --- | --- | --- |
-| `gaussian_loconly_phylo_reml` | Exact-Gaussian location-only REML diagnostics | comparator plan, external package/version probe, derivative finite-difference status, guarded line-search status, boundary grid, profile-axis sanity, variance-component point status | Internal developer evidence only: no q4 claim, no non-Gaussian claim, no R bridge promotion, no interval coverage claim, and no claim of production readiness. |
+The example below gives each group its own intercept while allowing the response
+mean to change with `x`.
 
-## Second Sparse Candidate
+```@example gaussian_diagnostics
+using DRModels, Random
+Random.seed!(20260920)
 
-The two-structured Gaussian sparse route fits Gaussian mean models with two
-structured random-effect terms by integrating the augmented latent vector with
-sparse linear algebra. Its current diagnostic evidence covers dense/sparse
-agreement, gradient sanity, recovery smoke, and public sparse routing.
+ngroups = 12
+n_per_group = 8
+group = repeat(1:ngroups; inner = n_per_group)
+x = randn(length(group))
+group_intercept = 0.6 .* randn(ngroups)
+y = 1.0 .+ 0.5 .* x .+ group_intercept[group] .+ 0.4 .* randn(length(group))
+dat = (; y, x, group)
 
-```text
-y = X beta + Z1 a1 + Z2 a2 + epsilon
-a1 ~ N(0, sigma1^2 C1)
-a2 ~ N(0, sigma2^2 C2)
-epsilon ~ N(0, sigma^2 I)
+fit = drm(
+    bf(@formula(y ~ x + (1 | group)), @formula(sigma ~ 1)),
+    Gaussian();
+    data = dat,
+)
 ```
 
-The sparse path uses one sparse Cholesky of
+The fixed-effect slope estimates how the average response changes with `x`.
+The group standard deviation describes variation among group intercepts, and
+`sigma(fit)` describes the remaining within-group spread.
 
-```text
-H = blockdiag(sigma1^-2 C1^-1, sigma2^-2 C2^-1) + Z'Z / sigma^2
+```@example gaussian_diagnostics
+(fixed_effects = coef(fit, :mu),
+ group_sd = re_sd(fit),
+ residual_sd = first(sigma(fit)))
 ```
 
-and reads variance-component gradient terms from Takahashi selected-inverse
-entries. This makes it a plausible candidate for later row-shaped diagnostics.
-At this stage it remains a source-map candidate for the Gaussian ML route, not a
-REML or AI-REML claim.
+## Run the fit check
 
-## Evidence Gates
+[`check_drm`](@ref) gathers the main numerical checks in one report.
 
-| Artifact | What It Supports | What It Does Not Support |
-| --- | --- | --- |
-| Design analysis | Source map from the current REML diagnostic donor to the two-structured Gaussian sparse candidate. | Any new estimator, bridge, coverage, q4, or non-Gaussian claim. |
-| Sparse-route validation | Dense/sparse agreement, gradient sanity, recovery smoke, and public `algorithm = :sparse` routing for the two-structured Gaussian ML route. | REML/AI-REML status or interval calibration. |
-| Location-only validation | Exact-Gaussian location-only REML diagnostic row contracts. | q4 Patterson-Thompson REML, non-Gaussian Laplace routes, or R bridge parity. |
+```@example gaussian_diagnostics
+diagnostics = check_drm(fit)
+(converged = diagnostics.converged,
+ max_abs_grad = diagnostics.max_abs_grad,
+ covariance_complete = diagnostics.vcov_complete,
+ covariance_positive_definite = diagnostics.vcov_posdef,
+ ok = diagnostics.ok)
+```
 
-## Claim Boundaries
+Read the fields together:
 
-- REML and AI-REML wording here is exact-Gaussian only.
-- q4 Patterson-Thompson REML is not HSquared AI-REML.
-- Non-Gaussian Laplace routes keep their own method names.
-- R bridge support needs row-specific native R, direct DRModels.jl, and R-via-Julia
-  evidence before promotion.
-- Profile-axis diagnostics are not interval coverage.
-- No Ayumi-facing reply or draft is changed by these diagnostics.
+- `converged` says whether the optimiser reported success.
+- `max_abs_grad` measures how close the fit is to a stationary point. Values
+  close to zero are reassuring; also inspect `grad_source` because some model
+  types cannot provide this check.
+- `vcov_complete` says whether a complete coefficient covariance matrix is
+  available. Some sparse phylogenetic fits provide only the fixed-effect block.
+- `vcov_posdef` says whether the available covariance matrix is
+  positive-definite. A failure often means that one direction is weakly
+  identified or lies on a variance boundary.
+- `ok` summarises the checks that are available for this fit. It is a numerical
+  summary, not a test of biological plausibility or model adequacy.
+
+## If a check fails
+
+A failed check is a reason to investigate, not automatically a reason to discard
+the model.
+
+- A large gradient with `converged = false` suggests that optimisation stopped
+  too early. Standardise continuous predictors and refit before changing the
+  scientific model.
+- A non-positive-definite covariance matrix can occur when a random-effect
+  variance is estimated near zero or when predictors are strongly confounded.
+  Inspect the fitted variance components and the design matrix.
+- A missing covariance block means that Wald intervals are not available for
+  every parameter. Do not turn absent uncertainty into a precise claim.
+
+The [convergence guide](../model-guides/convergence.md) gives a fuller decision
+path. For phylogenetic models, also read the
+[phylogenetic-effects tutorial](../tutorials/phylogenetic-models.md), whose
+example shows the required tree input.
+
+## What these checks establish
+
+These checks assess the numerical result returned for this dataset. They do not
+establish frequentist interval coverage, prove that the model is scientifically
+appropriate, or extend Gaussian results to non-Gaussian models. Simulation or
+bootstrap checks may still be needed for the quantity and sample size that
+matter in your study.

@@ -1,0 +1,14 @@
+study-a      tmb   df=4 logLik=-157.304457490  mu.(Intercept)=0.5429958 mu.x=0.4305590 sigma.(Intercept)=-1.2690471 mu.(1 | study)=0.5567485
+study-a      julia df=4 logLik=-157.304457490  mu.(Intercept)=0.5429958 mu.x=0.4305590 sigma.(Intercept)=-1.2690471 mu.study=0.5567485
+study-b sx   tmb   df=5 logLik=-150.006233057  mu.(Intercept)=0.1960744 mu.x=0.4309715 sigma.(Intercept)=-0.8400968 sigma.x=0.2410704 mu.(1 | study)=0.3788021
+study-b sx   julia df=5 logLik=-150.006233057  mu.(Intercept)=0.1960744 mu.x=0.4309715 sigma.(Intercept)=-0.8400968 sigma.x=0.2410704 mu.study=0.3788021
+phylo-a      tmb   df=4 logLik=-115.686078396  mu.(Intercept)=0.5544732 mu.x=0.4875258 sigma.(Intercept)=-1.4984086 mu.phylo(1 | sp)=0.6758138
+phylo-a      julia df=4 logLik=-115.686078396  mu.(Intercept)=0.5544732 mu.x=0.4875258 sigma.(Intercept)=-1.4984086 mu.phylo(1 | sp)=0.6758138
+relmat-a     tmb   df=4 logLik=-125.084525197  mu.(Intercept)=0.4159854 mu.x=0.4774728 sigma.(Intercept)=-1.1455312 mu.relmat(1 | id)=0.6065213
+relmat-a     julia df=4 logLik=-125.084525197  mu.(Intercept)=0.4159854 mu.x=0.4774728 sigma.(Intercept)=-1.1455312 mu.relmat(1 | id)=0.6065213
+phylo-study  tmb   df=5 logLik=-137.113642803  mu.(Intercept)=0.5304630 mu.x=0.4887392 sigma.(Intercept)=-1.4704275 mu.(1 | study)=0.3732002 mu.phylo(1 | sp)=0.7687283
+phylo-study  julia df=5 logLik=-137.113642803  mu.(Intercept)=0.5304630 mu.x=0.4887392 sigma.(Intercept)=-1.4704275 mu.study=0.3732002 mu.sp=0.6080248
+meta-only    tmb   df=3 logLik=-198.446483674  mu.(Intercept)=0.5307568 mu.x=0.3835156 sigma.(Intercept)=-0.4766143
+meta-only    julia df=3 logLik=-198.446483674  mu.(Intercept)=0.5307568 mu.x=0.3835156 sigma.(Intercept)=-0.4766143
+meta-sx      tmb   df=4 logLik=-158.927616610  mu.(Intercept)=0.1921773 mu.x=0.4129186 sigma.(Intercept)=-0.5511357 sigma.x=0.1734507
+meta-sx      julia df=4 logLik=-158.927616610  mu.(Intercept)=0.1921773 mu.x=0.4129186 sigma.(Intercept)=-0.5511357 sigma.x=0.1734507
