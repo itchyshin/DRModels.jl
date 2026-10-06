@@ -67,9 +67,9 @@ mirroring the fixed-effect `sigma1`/`sigma2` convention above. `ranef(fit)` and
 `vc(fit)` inherit this without change because they are the untouched Gaussian
 output on `log(y)`.
 
-Matching drmTMB's first slice, `method = :REML` is not implemented for this
+Matching drmTMB, `method = :REML` is not implemented for this
 family: the residual-only cell has no random effects to integrate out, and
-extending REML to the structured cells is a later slice; use `method = :ML`
+REML is also unavailable for the structured models; use `method = :ML`
 (the default).
 
 ```julia
