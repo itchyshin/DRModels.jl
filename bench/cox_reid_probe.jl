@@ -3,7 +3,7 @@
 # SCOPE: a scoping probe, NOT the estimator. It answers three questions with numbers
 # measured on THIS engine (no imported drmTMB figures):
 #
-#   Q1  Does DRM.jl's non-Gaussian scalar-RE path show the ML finite-cluster
+#   Q1  Does DRModels.jl's non-Gaussian scalar-RE path show the ML finite-cluster
 #       variance-component bias the vault predicts, and how big is it here?
 #   Q2  Does a generic Cox–Reid adjusted profile likelihood — nll_ML + ½·logdet(I_ββ),
 #       the same shape as the wired Gaussian `_glsp_reml_penalty` — remove it?
@@ -16,7 +16,7 @@
 #
 # Run:  julia --project=. bench/cox_reid_probe.jl
 
-using DRM
+using DRModels
 using LinearAlgebra
 using Random
 using Optim
@@ -24,7 +24,7 @@ using ForwardDiff
 using Printf
 using Distributions
 
-const D = DRM
+const D = DRModels
 
 # ---------------------------------------------------------------------------
 # The generic Cox–Reid penalty.
@@ -78,7 +78,7 @@ end
 # ---------------------------------------------------------------------------
 # Cell A — Poisson (1|g): the CLEAN isolation of the ML variance-component bias.
 #
-# Why this cell is the right probe target. DRM.jl fits a plain Poisson `(1|g)`
+# Why this cell is the right probe target. DRModels.jl fits a plain Poisson `(1|g)`
 # with 32-node Gauss–Hermite quadrature (`_fit_poisson_ranef`, src/poisson.jl),
 # NOT a 1-point Laplace. The vault's AGHQ sweep converges by nq≈5 and then
 # plateaus, so at 32 nodes the INTEGRAL error is already negligible on this
@@ -264,7 +264,7 @@ end
 
 function main()
     println("=" ^ 78)
-    println("Cox–Reid scoping probe (#441) — DRM.jl")
+    println("Cox–Reid scoping probe (#441) — DRModels.jl")
     println("=" ^ 78)
 
     println("\n--- Cell B: Gaussian reduction anchor (generic CR penalty vs #440 exact REML) ---")

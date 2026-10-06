@@ -1,8 +1,8 @@
 # parity_phylo_penalty.R — penalized-MAP phylo parity: drmTMB's
-# `drm_phylo_penalty()` against DRM.jl's, on identical data and an identical tree.
+# `drm_phylo_penalty()` against DRModels.jl's, on identical data and an identical tree.
 #
 # `penalty` is not a bridge argument, so this cannot ride the per-cell
-# `parity_fixture.R` harness; like `parity_associate.R` it drives DRM.jl directly
+# `parity_fixture.R` harness; like `parity_associate.R` it drives DRModels.jl directly
 # through JuliaCall and compares one cell at a time.
 #
 # WHAT IS COMPARED, and why all three:
@@ -19,13 +19,13 @@
 # differed between the two sides, the baseline is what catches it — a penalized
 # cell failing tells you nothing about WHICH of the two things broke.
 #
-# SPECIES ORDER IS LOad-BEARING. drmTMB matches species to tips BY NAME; DRM.jl's
+# SPECIES ORDER IS LOad-BEARING. drmTMB matches species to tips BY NAME; DRModels.jl's
 # univariate sparse phylo route matches them POSITIONALLY (group levels are
 # numbered by first appearance in the data, tree leaves by Newick left-to-right
 # order). The fixture therefore emits rows in Newick tip order so that the two
 # conventions coincide. Do not reorder the rows.
 #
-#   DRM_JL_PATH=/path/to/DRM.jl Rscript tools/parity_phylo_penalty.R
+#   DRM_JL_PATH=/path/to/DRModels.jl Rscript tools/parity_phylo_penalty.R
 
 suppressMessages(library(drmTMB))
 
@@ -39,7 +39,7 @@ make_fixture <- function(seed = 244L, n_tip = 10L, n_each = 6L, sd_phy = 0.7) {
   tree$tip.label <- paste0("sp_", seq_len(n_tip))
   # THE TREE IS RESCALED TO UNIT HEIGHT, and that is load-bearing twice over.
   # drmTMB builds its phylogenetic covariance from `ape::vcv(tree, corr = TRUE)`,
-  # i.e. tips normalised to variance 1. DRM.jl builds its sparse precision from
+  # i.e. tips normalised to variance 1. DRModels.jl builds its sparse precision from
   # the Newick branch lengths AS GIVEN, so its tip variance is the tree height h.
   # Consequences, both measured on the first run of this fixture:
   #   (a) reporting — sd_drmTMB = sd_DRM * sqrt(h) exactly (observed ratio
@@ -52,7 +52,7 @@ make_fixture <- function(seed = 244L, n_tip = 10L, n_each = 6L, sd_phy = 0.7) {
   h <- max(diag(ape::vcv(tree)))
   tree$edge.length <- tree$edge.length / h
   nwk <- ape::write.tree(tree)
-  # Tip labels in NEWICK left-to-right order — the order DRM.jl's parser assigns
+  # Tip labels in NEWICK left-to-right order — the order DRModels.jl's parser assigns
   # leaf indices in. Taken from the string itself rather than from `tree$tip.label`
   # so the alignment cannot drift with ape's internal ordering.
   tip_order <- regmatches(nwk, gregexpr("[A-Za-z0-9_.-]+(?=:)", nwk, perl = TRUE))[[1]]
@@ -90,7 +90,7 @@ JuliaCall::julia_assign("pp_x", as.numeric(fx$data$x))
 JuliaCall::julia_assign("pp_sp", as.integer(fx$species_code))
 JuliaCall::julia_assign("pp_newick", fx$newick)
 JuliaCall::julia_command("pp_d = (; y = Float64.(pp_y), x = Float64.(pp_x), species = Int.(pp_sp))")
-JuliaCall::julia_command("pp_tree = DRM.augmented_phy(pp_newick)")
+JuliaCall::julia_command("pp_tree = DRModels.augmented_phy(pp_newick)")
 
 # UPSTREAM BUG, MEASURED HERE — read this before "fixing" the Julia side.
 #
@@ -105,10 +105,10 @@ JuliaCall::julia_command("pp_tree = DRM.augmented_phy(pp_newick)")
 #   drmTMB fit$phylo_penalty          2.81823157781175   <- reported, off-optimum
 #   obj$report(last.par.best)         2.82150351154948   <- at the optimum
 #   lam*sd - log(sd) - log(lam)       2.82150351154948   <- drmTMB's own formula
-#   DRM.jl fit.phylo_penalty          2.82150351154948   <- agrees to 15 digits
+#   DRModels.jl fit.phylo_penalty          2.82150351154948   <- agrees to 15 digits
 #
 # Filed upstream as drmTMB#1036 (2026-08-15).
-# DRM.jl matches drmTMB's DOCUMENTED FORMULA and its own internal parameter; the
+# DRModels.jl matches drmTMB's DOCUMENTED FORMULA and its own internal parameter; the
 # R value is the outlier. Comparing against the reported number would therefore
 # force the port to reproduce an upstream defect, so this fixture evaluates the
 # penalty at `last.par.best` and reconstructs logLik from it. The raw reported
@@ -134,13 +134,13 @@ r_fit <- function(cell) {
 
 j_fit <- function(cell) {
   pen_txt <- if (is.na(cell$sd_u)) "nothing" else
-    sprintf("DRM.drm_phylo_penalty(sd_u = %.17g, sd_alpha = %.17g)", cell$sd_u, cell$sd_alpha)
+    sprintf("DRModels.drm_phylo_penalty(sd_u = %.17g, sd_alpha = %.17g)", cell$sd_u, cell$sd_alpha)
   as.numeric(JuliaCall::julia_eval(sprintf(
     'let d = pp_d, tr = pp_tree
-       f = DRM.drm(DRM.bf(DRM.@formula(y ~ x + phylo(1 | species)), DRM.@formula(sigma ~ 1)),
-                   DRM.Gaussian(); data = d, tree = tr, penalty = %s)
+       f = DRModels.drm(DRModels.bf(DRModels.@formula(y ~ x + phylo(1 | species)), DRModels.@formula(sigma ~ 1)),
+                   DRModels.Gaussian(); data = d, tree = tr, penalty = %s)
        p = isnan(f.phylo_penalty) ? 0.0 : f.phylo_penalty
-       [DRM.re_sd(f)[:species], DRM.loglik(f), p]
+       [DRModels.re_sd(f)[:species], DRModels.loglik(f), p]
      end', pen_txt)))
 }
 

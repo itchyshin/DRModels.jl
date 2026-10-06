@@ -2,7 +2,7 @@
 # relmat(1 | id) with `K` supplied. A structured random intercept u ~ N(0, σ_s² K)
 # keeps the marginal exactly Gaussian — y ~ N(Xβ, D + σ_s² Z K Zᵀ) — fit in
 # closed form (PGLS-style). This is the engine that animal()/phylo() reuse.
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 
 @testset "Gaussian structured RE: relmat(1|id, K) — recovery" begin

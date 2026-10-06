@@ -2,9 +2,9 @@
 # parameter prediction surface (univariate slice). The correctness anchor is
 # in-sample reproduction: predicting at the training data must reproduce the
 # stored fitted parameters (fit.means[:mu], fit.scales[...]), with no R needed.
-using DRM
+using DRModels
 using Test, Random
-import Distributions          # qualified — DRM exports its own `Poisson` family
+import Distributions          # qualified — DRModels exports its own `Poisson` family
 
 @testset "predict_parameters / marginal_parameters (univariate)" begin
 
@@ -121,6 +121,6 @@ import Distributions          # qualified — DRM exports its own `Poisson` fami
         # exp / tanh of the working scale recovers the response-scale fits.
         @test exp.(ppl[:sigma1]) ≈ fit.scales[:sigma1] rtol = 1e-8
         @test exp.(ppl[:sigma2]) ≈ fit.scales[:sigma2] rtol = 1e-8
-        @test DRM.RHO_GUARD .* tanh.(ppl[:rho12]) ≈ fit.scales[:rho12]  rtol = 1e-8
+        @test DRModels.RHO_GUARD .* tanh.(ppl[:rho12]) ≈ fit.scales[:rho12]  rtol = 1e-8
     end
 end

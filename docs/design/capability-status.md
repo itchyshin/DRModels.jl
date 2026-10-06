@@ -1,4 +1,4 @@
-# DRM.jl capability status (R <-> Julia parity view)
+# DRModels.jl capability status (R <-> Julia parity view)
 
 This file is the Julia-side input to the mission-control R <-> Julia parity
 board. It uses the **same model-level capability names** as drmTMB's
@@ -8,7 +8,7 @@ rows by name across the two twins.
 Status words:
 
 - `implemented` -- found real code AND a test file exercising it (an export in
-  `src/DRM.jl`'s export list plus a matching `test/test_*.jl`, and for the
+  `src/DRModels.jl`'s export list plus a matching `test/test_*.jl`, and for the
   default-suite claims, included in `test/runtests.jl`).
 - `rejected` -- found real code that deliberately refuses the capability (an
   explicit `throw(ArgumentError(...))` or equivalent guard), verified by
@@ -30,7 +30,7 @@ this file corrects).
 
 ## Response families
 
-`src/DRM.jl`'s export line lists all 13 named families plus the `zi`/`hu`
+`src/DRModels.jl`'s export line lists all 13 named families plus the `zi`/`hu`
 count modifiers and `zoi`/`coi` beta boundary modifiers; the bivariate
 Gaussian route and the q4 phylogenetic bivariate location-scale (PLSM) model
 are separate exports. Every row below has a source file under `src/` and a
@@ -58,7 +58,7 @@ are separate exports. Every row below has a source file under `src/` and a
 | Binomial (logistic) | implemented |
 
 `Skew-normal location-scale` is marked `implemented` from direct source
-evidence (`src/skewnormal.jl`, exported `SkewNormal` in `src/DRM.jl`,
+evidence (`src/skewnormal.jl`, exported `SkewNormal` in `src/DRModels.jl`,
 `test/test_skewnormal.jl`) even though `docs/src/capabilities.md`'s family
 table omits it -- that audit page is stale here.
 
@@ -90,7 +90,7 @@ independent phylogenetic fields (intercept `a ~ N(0, σₐ² C)`, slope
 `b ~ N(0, σ_b² C)`, no correlation). In `src/drmTMB.cpp` that is
 `model_type == 1` + `has_phylo_mu` with `q_phylo == 2` and both fields on `mu`,
 so `has_cross_dpar_phylo` is false and the per-field
-`exp(-2·log_sd_phylo(k))·uₖᵀQuₖ` branch runs with no cross term. DRM.jl fits it
+`exp(-2·log_sd_phylo(k))·uₖᵀQuₖ` branch runs with no cross term. DRModels.jl fits it
 as the closed-form dense marginal `V = D + σₐ² Z C Zᵀ + σ_b² Zₓ C Zₓᵀ`
 (`src/gaussian_structured.jl` `_fit_phylo_slope_gaussian`), the same five free
 parameters drmTMB optimizes. Measured same target as drmTMB 67703f541 on the
@@ -107,7 +107,7 @@ drmTMB main (`engine = "tmb"`, 30-tip `ape::rcoal`, Poisson): the untagged
 site)` = 0.824. The estimated intercept–slope correlation
 (`has_phylo_mu_q2_covariance`) therefore belongs to the *tagged* formula, which
 is a different construct from the one refused here; drmTMB refuses this formula
-outright on Gamma ("intercept-only in this q=1 route"). DRM.jl still refuses
+outright on Gamma ("intercept-only in this q=1 route"). DRModels.jl still refuses
 every non-Gaussian family on this route, for the accurate reason: it is the
 EXACT closed-form Gaussian marginal, which does not extend to a non-Gaussian
 likelihood — the count families need a two-field Laplace route that does not
@@ -207,25 +207,25 @@ multi-ranef, and structured / phylo / meta stay `ArgumentError`), and
 default. This is not AI-REML, not a TSV flip, and not “parity complete.”
 
 `REML bivariate phylogenetic location-scale (q4, all axes)` is `implemented`:
-`src/reml_q4.jl` is included in the module (`src/DRM.jl:55`) and
+`src/reml_q4.jl` is included in the module (`src/DRModels.jl:55`) and
 `test/test_reml_q4_allaxes.jl` is in the default suite
 (`test/runtests.jl`), asserting the restricted correction reaches all four
 axes (mu1, mu2, sigma1, sigma2; issue #18 regression). **This corrects
 `docs/src/capabilities.md`**, which still describes `reml_q4` as
-"present in `src/experimental/` only; not in the `DRM.jl` include list" --
+"present in `src/experimental/` only; not in the `DRModels.jl` include list" --
 that was true when the audit page was written but is no longer true; `git log`
-shows `src/DRM.jl`'s include list was touched after the audit page's last
+shows `src/DRModels.jl`'s include list was touched after the audit page's last
 commit.
 
 `Model comparison suite (LRT/anova/AICc/weights/update)` is `implemented`, but the
 `weights` member needs reading carefully, because two things in this ledger point
 different ways and a scanning reader will take the wrong one.
 
-- It is **not** Akaike / model weights. Neither DRM.jl nor drmTMB computes those,
+- It is **not** Akaike / model weights. Neither DRModels.jl nor drmTMB computes those,
   despite `weights` sitting in a list next to `AICc` — which is precisely the
   reading the row name invites. There is no `akaike_weights` in either package.
 - It is `StatsAPI.weights`: **prior, per-observation** weights. `src/comparison.jl`
-  returns `ones(nobs(fit))` unconditionally, because DRM.jl fits do not store prior
+  returns `ones(nobs(fit))` unconditionally, because DRModels.jl fits do not store prior
   weights at all. Its docstring says so plainly.
 - drmTMB's `weights.drmTMB` returns a real stored vector (`object$model$weights`,
   `R/methods.R`), which it genuinely uses — its bootstrap reads it
@@ -233,7 +233,7 @@ different ways and a scanning reader will take the wrong one.
 
 So the accessor is at parity in *name* and not in *substance*, and the gap is
 already recorded elsewhere in this ledger: the `base_weights` gate is closed as an
-`intentional_error` on the grounds that "DRM.jl bridge payload has no weights
+`intentional_error` on the grounds that "DRModels.jl bridge payload has no weights
 slot". Passing `weights = ...` through `engine = "julia"` is refused.
 
 Kept `implemented` because every named member exists and is exported, which is this
@@ -241,15 +241,15 @@ file's stated bar. Flagged because a row can meet the bar and still leave a read
 believing something false — and the fix for that is prose, not a status change.
 
 `Chi-bar-square boundary LRT p-value` is `implemented`: `src/chibar.jl` is
-included (`src/DRM.jl:129`), exports `chibar_pvalue`/`lrt_boundary`
-(`src/DRM.jl:160`), and `test/test_chibar.jl` is in the default suite
+included (`src/DRModels.jl:129`), exports `chibar_pvalue`/`lrt_boundary`
+(`src/DRModels.jl:160`), and `test/test_chibar.jl` is in the default suite
 (`test/runtests.jl`). **This also corrects `docs/src/capabilities.md`**,
 which lists chi-bar-square boundary inference as "Absent -- no
 implementation."
 
 `AGHQ adaptive-quadrature marginal estimator` is `implemented` (2026-08-24
 audit, PR #449 / commit `93c3db6b`, merged 2026-08-18): `src/aghq_1d.jl` is
-included at `src/DRM.jl:75` and wires a public front end on `drm()`
+included at `src/DRModels.jl:75` and wires a public front end on `drm()`
 (`marginal = :AGHQ`, Poisson `(1 | g)` only — `src/poisson.jl:35-37,176-177`).
 `test/test_aghq_1d.jl` is in the default suite (`test/runtests.jl`) and
 exercises the quadrature kernel, the public fit path, and the fail-loud
@@ -302,8 +302,8 @@ level-indexed `relmat` / `animal` / fixed-range `spatial` via
 `Cross-family bivariate` stays `missing` here, but the citation needs
 correcting: `docs/src/capabilities.md`'s "single `gaussian_bivariate.jl`
 bivariate source file" claim is stale. `src/mixed_family.jl` (shared-latent
-GHQ across two different families) is included at `src/DRM.jl:101`, and
-`src/mixed_family_postfit.jl` at `src/DRM.jl:102`; a formula front end
+GHQ across two different families) is included at `src/DRModels.jl:101`, and
+`src/mixed_family_postfit.jl` at `src/DRModels.jl:102`; a formula front end
 (`drm(f::BivariateDrmFormula, fams::Tuple; data, …)`, commit `0095fefd`) now
 reaches it instead of hand-built design matrices. Tests are real and
 registered in the default suite: `test/test_mixed_family.jl` (Gaussian x
@@ -321,7 +321,7 @@ owner rather than flipping it unilaterally (detail in the evidence file).
 
 `Missing-response handling (native, per fitted route)` stays `missing`, with
 two citation corrections. First, `src/missing_data.jl` is included at
-`src/DRM.jl:131`, not `:101` (`:101` is `mixed_family.jl`, above). Second,
+`src/DRModels.jl:131`, not `:101` (`:101` is `mixed_family.jl`, above). Second,
 "explicit listwise (complete-case) deletion only" undersells what exists:
 `_fit_observed_response_rows` (`src/gaussian_core.jl:740`) is a shared helper
 used by twelve family files (`beta.jl`, `betabinomial.jl`, `binomial.jl`,
@@ -331,7 +331,7 @@ used by twelve family files (`beta.jl`, `betabinomial.jl`, `binomial.jl`,
 itself, with a warning, for every one of those families -- no separate
 `drm_listwise` call needed. Separately, `leaf_nll` in `src/sparse_aug_plsm.jl:37`
 (the flagship q4 bivariate phylo engine, wired via `src/fit_q4_sparse_tmb.jl`
-at `src/DRM.jl:40`) takes per-cell `o1`/`o2` observed flags and evaluates the
+at `src/DRModels.jl:40`) takes per-cell `o1`/`o2` observed flags and evaluates the
 correct univariate marginal when only one axis is observed -- a genuine
 masked partial likelihood, not row deletion. Registered tests:
 `test/test_missing_response.jl`, `test/test_missing_response_nongaussian.jl`
@@ -348,9 +348,9 @@ this row, but corrects the stale citations and the "listwise deletion only"
 undercount above. `Missing-predictor imputation (mi())` was `missing` before
 2026-08-30 (#563); that is now stale. Real code exists AND is exported AND is
 tested: `mi`, `JointDrmFit`, `JointTwoDrmFit`, `JointFiniteDrmFit`, `imputed`,
-`miss_control`, `impute_model` are exported from `src/DRM.jl:193-197`, backed
-by six files at `src/DRM.jl:137-143` (#563), and covered by
-`test/test_joint_missing_*.jl` (`test/runtests.jl:435-446`). It is marked
+`miss_control`, `impute_model` are exported from `src/DRModels.jl:193-197`, backed
+by six files at `src/DRModels.jl:137-143` (#563), and covered by
+`test/test_joint_missing_*.jl` (auto-discovered by `test/runtests.jl`). It is marked
 `experimental`, not `implemented`, because D-181 (2026-08-28, reaffirmed by
 D-209 §3, 2026-09-02) explicitly fences the mi() axis out of the v1.0 twin
 claim, and because the scope itself is narrow: a Gaussian response with one
@@ -362,7 +362,7 @@ profile/bootstrap intervals (`docs/src/reference/model-specification.md`,
 route.
 
 `R to Julia bridge (engine=julia)` is `implemented`: `src/bridge.jl` exports
-`drm_bridge`/`drm_bridge_inference` (`src/DRM.jl` export list), and
+`drm_bridge`/`drm_bridge_inference` (`src/DRModels.jl` export list), and
 `test/test_bridge.jl` asserts the bridge output equals native `drm` output.
 
 ## Snapshot
@@ -372,7 +372,7 @@ route.
   (`:natgrad`), 1 `planned`, 1 `experimental` (`Missing-predictor imputation
   (mi())`), 2 `missing`. (2026-08-24 chip audit flips `AGHQ
   adaptive-quadrature marginal estimator` `missing` -> `implemented`: PR #449
-  / commit `93c3db6b` landed source wired into `src/DRM.jl` plus a test
+  / commit `93c3db6b` landed source wired into `src/DRModels.jl` plus a test
   registered in `test/runtests.jl`, meeting this file's own ladder. The same
   audit re-examined `Cross-family bivariate`, `Missing-response handling
   (native, per fitted route)`, and `Variational (VA/ELBO) marginal
@@ -383,10 +383,10 @@ route.
   flipped the ordinary-RE REML chip and left `:natgrad` as the only
   `rejected` row. 2026-09-02 (S9, #563): `Missing-predictor imputation
   (mi())` flips `missing` -> `experimental` -- the joint missing-predictor
-  routes exported at `src/DRM.jl:190-197` are now real code, exported, and
+  routes exported at `src/DRModels.jl:190-197` are now real code, exported, and
   tested, but D-181/D-209 §3 fence them out of the v1.0 twin claim, so they
   are labelled `experimental` rather than `implemented`.)
-- Sources read: `src/DRM.jl` (include list + export list), `README.md`,
+- Sources read: `src/DRModels.jl` (include list + export list), `README.md`,
   `docs/src/capabilities.md`, `docs/src/families.md`, `test/runtests.jl`
   (default-suite include list), and targeted `grep`/`git log` against
   `src/gaussian_core.jl`, `src/gaussian_ranef.jl`,

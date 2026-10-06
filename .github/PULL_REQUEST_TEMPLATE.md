@@ -1,4 +1,4 @@
-<!-- DRM.jl pull request. Keep slices narrow: one issue → one branch → one PR. -->
+<!-- DRModels.jl pull request. Keep slices narrow: one issue → one branch → one PR. -->
 
 Closes #
 
@@ -9,7 +9,10 @@ Closes #
 ## Definition of Done
 
 - [ ] Implementation wired into the module
-- [ ] Tests (failing-first where applicable) in `test/runtests.jl`
+- [ ] Tests (failing-first where applicable) as `test/test_*.jl` — auto-discovered by
+      `test/runtests.jl`, no edit to that file needed (see its CONFLICT-FREE
+      REGISTRATION note)
+- [ ] NEWS entry as a fragment in `news/<slug>.md`, not a `NEWS.md` edit (see `news/README.md`)
 - [ ] Docstrings + a worked example
 - [ ] Per-slice entry added to `docs/dev-log/check-log.d/` (not the frozen `check-log.md` table)
 - [ ] After-task report in `docs/dev-log/after-task/`

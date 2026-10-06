@@ -1,4 +1,4 @@
-# DRM.jl tests
+# DRModels.jl tests
 
 ## CI RNG policy (#388)
 

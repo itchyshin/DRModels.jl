@@ -1,9 +1,16 @@
-using Test, DRM, LinearAlgebra, TOML, ForwardDiff
-BLAS.set_num_threads(1)
-Threads.nthreads()==1 && BLAS.get_num_threads()==1 || error("wrong thread budget")
+using Test, DRModels, LinearAlgebra, TOML, ForwardDiff
+# BLAS=1 is the suite's numerical invariant; runtests.jl pins it once at start
+# and guards it per file, so this file no longer sets it. The check is a real
+# precondition (standalone runs need OPENBLAS_NUM_THREADS=1) and is reported,
+# not raised, so it cannot abort the files after this one. The Julia thread
+# count is deliberately not asserted: this file exercises serial code, and the
+# local budget is JULIA_NUM_THREADS=4 (CI runs at 1).
+@testset "thread budget" begin
+    @test BLAS.get_num_threads() == 1
+end
 @testset "prepared joint bridge API" begin
-    @test isdefined(DRM,:drm_bridge_joint)
-    @test isdefined(DRM,:_prepare_joint_bridge)
+    @test isdefined(DRModels,:drm_bridge_joint)
+    @test isdefined(DRModels,:_prepare_joint_bridge)
 end
 
 ref=TOML.parsefile(joinpath(@__DIR__,"fixtures/joint_missing_predictor/native_reference.toml"))
@@ -16,7 +23,7 @@ function joint_payload(kind)
         "predictor_names"=>["(Intercept)","z"],"original_row"=>copy(d["original_row"]),"options"=>Dict("g_tol"=>1e-8))
 end
 @testset "prepared joint bridge validation and masks" begin
-    payload=joint_payload("gaussian");prepared=DRM._prepare_joint_bridge(payload)
+    payload=joint_payload("gaussian");prepared=DRModels._prepare_joint_bridge(payload)
     @test prepared.model.observed_y==ref["gaussian"]["y_observed"]
     @test prepared.model.observed_x==ref["gaussian"]["x_observed"]
     @test prepared.permutation==[1,3,2,4,5,6,7]
@@ -25,27 +32,27 @@ end
     @test all(ismissing,prepared.model.x[ids])
     changed=deepcopy(payload);
     changed["x"][ids]=fill(999.0,length(ids));changed["X_mu"][ids,2].=999
-    @test isequal(DRM._prepare_joint_bridge(changed).model.x,prepared.model.x)
+    @test isequal(DRModels._prepare_joint_bridge(changed).model.x,prepared.model.x)
     for (key,value) in (("schema","wrong"),("mu_col",0),("mu_col",1.5),("observed_x",fill(2,160)),
                         ("original_row",fill(1,160)),("options",Dict("method"=>"REML")))
         bad=deepcopy(payload);bad[key]=value
-        @test_throws ArgumentError DRM._prepare_joint_bridge(bad)
+        @test_throws ArgumentError DRModels._prepare_joint_bridge(bad)
     end
     bad=deepcopy(payload);bad["unhandled"]=true
-    @test_throws ArgumentError DRM._prepare_joint_bridge(bad)
+    @test_throws ArgumentError DRModels._prepare_joint_bridge(bad)
     bad=deepcopy(payload);bad["X_mu"][1,2]+=1
-    @test_throws ArgumentError DRM._prepare_joint_bridge(bad)
+    @test_throws ArgumentError DRModels._prepare_joint_bridge(bad)
 end
 @testset "two joint bridge fits retain native ordering and summaries" begin
     for kind in ("gaussian","bernoulli")
-        payload=joint_payload(kind);out=DRM.drm_bridge_joint(payload)
+        payload=joint_payload(kind);out=DRModels.drm_bridge_joint(payload)
         @test out["schema"]=="joint_missing_result_v1"
         @test out["converged"]
         @test out["coefficient_terms"][1:3]==payload["mu_names"]
         @test out["coefficient_blocks"][5:6]==fill("mi_body_mass",2)
         # This checks transport ordering at the Julia optimum, not native
         # optimizer parity. Its required native4e-6 gate is kept separate.
-        prepared=DRM._prepare_joint_bridge(payload)
+        prepared=DRModels._prepare_joint_bridge(payload)
         back=invperm(prepared.permutation)
         theta=out["coefficients"][back]
         H=ForwardDiff.hessian(t->prepared_joint_nll(prepared.model,t),theta)

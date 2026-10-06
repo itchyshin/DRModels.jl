@@ -13,12 +13,12 @@
 # the Poisson public path. Rung 2 adds one Rung-1 family (NB2) so the guard is
 # not Poisson-only. Issue #136 stays OPEN (phylo/crossed/ZI public VA + 136e later).
 
-using DRM
+using DRModels
 using Test
 using Random
 import Distributions
 
-const DV = DRM
+const DV = DRModels
 
 function _va_err(expr)
     try

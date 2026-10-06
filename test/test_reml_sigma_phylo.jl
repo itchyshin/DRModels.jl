@@ -1,5 +1,8 @@
 # REML for the Gaussian σ-phylo location-scale route (Ayumi #2, her 2nd ask).
-# Production path (PR #337): `_glsp_reml_refit_clean(..., pμ + pψ)` restricts BOTH
+# (Since Arc 2 the production path is `_glsp_joint_reml_fit`, native drmTMB's joint
+# Laplace over (phylo, β_μ, β_ψ) — see test_reml_sigma_phylo_joint.jl. The history below
+# is kept for the penalty anchor, which still exercises `_glsp_reml_penalty`.)
+# Former production path (PR #337): `_glsp_reml_refit_clean(..., pμ + pψ)` restricts BOTH
 # mean and scale fixed effects (β_μ and β_ψ) — the complete Cox–Reid / Patterson–
 # Thompson correction for a scale-side variance component. Restricting β_μ alone
 # left σ²_v ~ML-biased.
@@ -7,7 +10,7 @@
 # The unit-test ANCHOR below still probes the β_μ Schur complement at σ-phylo SD→0
 # (calls `_glsp_reml_penalty(..., pμ)` directly): as the latent vanishes,
 # S → Xμᵀ W Xμ with W = diag(exp(−2ψ)), matching fixed-effect REML's 0.5·logdet(Xμ'WXμ).
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra, SparseArrays
 
 @testset "REML σ-phylo: penalty → fixed-effect REML as σ-phylo SD → 0" begin
@@ -21,13 +24,13 @@ using Test, Random, LinearAlgebra, SparseArrays
     y = randn(n)                              # values irrelevant for the penalty-at-fixed-θ identity
     pμ = size(Xμ, 2)
 
-    Q, gidx, G = DRM._locscale_phylo_setup(phy, species)
-    Zη, Zψ = DRM._glsp_asym_loadings(n)
-    asym_grad_fn(θ) = DRM._glsp_asym_grad(Val(:gaussian_mean), y, Xμ, Xψ, gidx, G, Q, θ, Zη, Zψ)
+    Q, gidx, G = DRModels._locscale_phylo_setup(phy, species)
+    Zη, Zψ = DRModels._glsp_asym_loadings(n)
+    asym_grad_fn(θ) = DRModels._glsp_asym_grad(Val(:gaussian_mean), y, Xμ, Xψ, gidx, G, Q, θ, Zη, Zψ)
 
     # logL22 = −10 ⇒ σ-phylo variance exp(−20) ≈ 0; the mean axis is pinned to ε.
     θ = vcat(βμ, βψ, -10.0)
-    penalty = DRM._glsp_reml_penalty(asym_grad_fn, θ, pμ)
+    penalty = DRModels._glsp_reml_penalty(asym_grad_fn, θ, pμ)
 
     W = exp.(-2 .* (Xψ * βψ))
     ref = 0.5 * logdet(Symmetric(Xμ' * (W .* Xμ)))

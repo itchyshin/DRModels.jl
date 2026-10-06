@@ -22,14 +22,14 @@ Pkg.activate(DOCS_ROOT)
 Pkg.offline(true)
 Pkg.develop(path = REPO_ROOT)
 
-using DRM
+using DRModels
 using Documenter
 using DocumenterVitepress
 
 function assert_isolated_drm()
-    loaded = realpath(pathof(DRM))
-    source = realpath(joinpath(REPO_ROOT, "src", "DRM.jl"))
-    loaded == source || error("loaded DRM is not the isolated worktree: $loaded")
+    loaded = realpath(pathof(DRModels))
+    source = realpath(joinpath(REPO_ROOT, "src", "DRModels.jl"))
+    loaded == source || error("loaded DRModels is not the isolated worktree: $loaded")
     return loaded
 end
 
@@ -63,14 +63,14 @@ function main(args::Vector{String} = ARGS)
         source = "src",
         build = relpath(build_dir, DOCS_ROOT),
         clean = true,
-        sitename = "DRM.jl two-page documentation pilot",
+        sitename = "DRModels.jl two-page documentation pilot",
         pagesonly = true,
         # Out-of-scope local cross-references are recorded as warnings; failed
         # @example blocks stay fatal and cannot yield a pass token.
         warnonly = [:cross_references, :linkcheck, :footnote],
         pages = pages,
         format = DocumenterVitepress.MarkdownVitepress(
-            repo = "github.com/itchyshin/DRM.jl",
+            repo = "github.com/itchyshin/DRModels.jl",
             devbranch = "main",
             devurl = "dev",
             build_vitepress = false,

@@ -7,14 +7,14 @@
 # be the same on every platform: a warning plus a pseudo-inverse, never a crash
 # and never a silent finite-but-meaningless inverse.
 
-using DRM
+using DRModels
 using Test
 using Random
 using LinearAlgebra
 using Logging
 import Distributions
 
-const DVG = DRM
+const DVG = DRModels
 
 @testset "vcov guard (boundary-singular Hessian)" begin
 
@@ -63,7 +63,7 @@ const DVG = DRM
         y = Float64.([rand(rng, Distributions.Poisson(exp((Xμ * β)[i] + bg[gidx[i]])))
                       for i in 1:n])
 
-        fit_nb = DRM._fit_nb2_ranef_va(DRM.NegBinomial2(), y, Xμ, Xσ, gidx, ng,
+        fit_nb = DRModels._fit_nb2_ranef_va(DRModels.NegBinomial2(), y, Xμ, Xσ, gidx, ng,
                                        ["(Intercept)", "x"], ["(Intercept)"], :g, 1e-8)
         @test all(isfinite, fit_nb.theta)
         @test all(isfinite, fit_nb.vcov)

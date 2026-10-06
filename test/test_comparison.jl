@@ -1,7 +1,7 @@
 # Model comparison + accessor parity: fit a Gaussian location–scale model where
 # x is genuinely predictive (in both μ and log σ), then check the nested
 # likelihood-ratio test, the AICc correction, prior weights, and `update`.
-using DRM
+using DRModels
 using Test, Random
 
 @testset "comparison: lrtest / anova / aicc / weights / update" begin

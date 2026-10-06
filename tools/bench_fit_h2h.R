@@ -4,7 +4,7 @@
 # families (bivariate lognormal, bivariate Student-t) are never routed by
 # `engine = "julia"` at all (drmTMB's own gate: "Gaussian one-/two-response
 # ... or large-p phylogenetic Poisson, NB2, Gamma, Beta, or Binomial models"),
-# so those are timed as engine="tmb" (drmTMB()) vs a direct DRM.jl bridge call
+# so those are timed as engine="tmb" (drmTMB()) vs a direct DRModels.jl bridge call
 # (JuliaCall::julia_call), mirroring the `biv_cells` convention already used
 # in tools/parity_fixture.R.
 #
@@ -15,11 +15,11 @@
 # It also checks whether a "speed win" cell even HAS a same-target TMB
 # comparator: some non-Gaussian phylo families (Gamma, Beta, Binomial) are
 # native-TMB-REJECTED ("structured-effect syntax is planned, not implemented"
-# on the TMB side) -- for those, DRM.jl is not "faster", it is the only route,
+# on the TMB side) -- for those, DRModels.jl is not "faster", it is the only route,
 # a different claim entirely. This script records that distinction per cell
 # rather than silently forcing a ratio.
 #
-#   DRM_JL_PATH=/path/to/DRM.jl Rscript tools/bench_fit_h2h.R
+#   DRM_JL_PATH=/path/to/DRModels.jl Rscript tools/bench_fit_h2h.R
 #
 # Env vars:
 #   BENCH_PILOT=1   -- pilot mode: n_reps=1, small cell subset, label
@@ -78,7 +78,7 @@ fit_info <- function(fit, engine) {
       converged = tryCatch(drmTMB::is_converged(fit), error = function(e) NA),
       loglik = tryCatch(as.numeric(stats::logLik(fit)), error = function(e) NA_real_),
       iterations = scalar_int(iters),
-      optimizer = "DRM.jl sparse Laplace, exact O(p) gradient, LBFGS (Optim.jl)"
+      optimizer = "DRModels.jl sparse Laplace, exact O(p) gradient, LBFGS (Optim.jl)"
     )
   }
 }
@@ -168,7 +168,7 @@ biv_student_fixture <- function(n, seed) {
 # ---- cell registry -----------------------------------------------------------
 # type "bridge": drmTMB(..., engine = "tmb") vs drmTMB(..., engine = "julia"),
 #   SAME call shape both sides -- this is the real user-facing comparison.
-# type "direct": drmTMB(..., engine = "tmb") vs a raw DRM.jl bridge call
+# type "direct": drmTMB(..., engine = "tmb") vs a raw DRModels.jl bridge call
 #   (JuliaCall) -- used only where drmTMB's own gate never admits
 #   engine = "julia" for this family at all (biv_lognormal, biv_student).
 
@@ -358,7 +358,7 @@ for (cell in bridge_cells) {
   }
 }
 
-cat("\n=== direct cells (drmTMB engine='tmb' vs raw DRM.jl bridge call) ===\n")
+cat("\n=== direct cells (drmTMB engine='tmb' vs raw DRModels.jl bridge call) ===\n")
 drmTMB:::drm_julia_setup()
 for (cell in direct_cells) {
   d <- cell$fixture()
@@ -381,10 +381,10 @@ for (cell in direct_cells) {
   info_jl <- if (res_jl$ok) list(
     converged = NA, loglik = tryCatch(res_jl$val$loglik, error = function(e) NA_real_),
     iterations = tryCatch(res_jl$val$iterations, error = function(e) NA_integer_),
-    optimizer = "DRM.jl direct bridge call (JuliaCall), engine='julia' does not route this family"
+    optimizer = "DRModels.jl direct bridge call (JuliaCall), engine='julia' does not route this family"
   ) else NULL
   add_row(cell$id, cell$family, cell$n, NA, "julia_direct", res_jl, info_jl,
-          "direct DRM.jl bridge call -- engine='julia' never routes this family (drmTMB gate)")
+          "direct DRModels.jl bridge call -- engine='julia' never routes this family (drmTMB gate)")
   cat(sprintf("   julia (direct bridge): %s\n", if (res_jl$ok)
     sprintf("median=%.4fs loglik=%.4f", res_jl$median_s, info_jl$loglik)
     else paste("FAILED:", substr(res_jl$err, 1, 140))))

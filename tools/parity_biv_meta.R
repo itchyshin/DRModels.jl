@@ -1,5 +1,5 @@
 # parity_biv_meta.R — bivariate meta-analysis with known sampling covariance:
-# native drmTMB `meta_V(V = meta_vcov_bivariate(...))` vs DRM.jl's
+# native drmTMB `meta_V(V = meta_vcov_bivariate(...))` vs DRModels.jl's
 # `drm(...; V = meta_vcov_bivariate(...))`, on identical data.
 #
 # This is the comparator for the A8 slice (the engine path that unblocked the
@@ -11,7 +11,7 @@
 # Data cross the R/Julia boundary BY FILE so both engines fit byte-identical
 # inputs (JuliaCall in-process precompile clashes with the lane's environment).
 #
-#   DRM_JL_PATH=/path/to/DRM.jl Rscript tools/parity_biv_meta.R
+#   DRM_JL_PATH=/path/to/DRModels.jl Rscript tools/parity_biv_meta.R
 
 suppressMessages(library(drmTMB))
 
@@ -68,13 +68,13 @@ for (cell in cells) {
       as.numeric(fit$logLik), s1, s2, rr)
   }, error = function(e) { res$note <<- paste("native:", conditionMessage(e)); NULL })
 
-  # hand the identical data to DRM.jl by file
+  # hand the identical data to DRModels.jl by file
   write.csv(d, file.path(tmp, paste0(cell$id, ".csv")), row.names = FALSE)
   writeLines(sprintf("%.17g", cl$sampling_cor), file.path(tmp, paste0(cell$id, "_scor.txt")))
 
   jv <- tryCatch({
     script <- sprintf('
-using DRM, DelimitedFiles
+using DRModels, DelimitedFiles
 raw, hdr = readdlm("%s", \',\', header=true)
 x = Float64.(raw[:,1]); y1 = Float64.(raw[:,2]); y2 = Float64.(raw[:,3])
 v1 = Float64.(raw[:,4]); v2 = Float64.(raw[:,5])

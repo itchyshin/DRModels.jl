@@ -10,7 +10,7 @@
 import Pkg
 Pkg.activate(dirname(@__DIR__))
 
-using DRM
+using DRModels
 using LinearAlgebra, Printf, Random, Statistics
 using Distributions: Chisq, quantile
 import Distributions
@@ -429,7 +429,7 @@ open(OUT, "w") do io
     println(io)
     println(io, "Interpretation guardrails:")
     println(
-        io, "- This measures DRM.jl local costs only; it is not an R-vs-Julia comparison."
+        io, "- This measures DRModels.jl local costs only; it is not an R-vs-Julia comparison."
     )
     println(
         io,

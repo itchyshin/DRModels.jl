@@ -1,4 +1,4 @@
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra, Statistics
 
 @testset "Location-only Gaussian phylo: supplied-variance REML and traces" begin
@@ -14,21 +14,21 @@ using Test, Random, LinearAlgebra, Statistics
     σ_phy = 0.7
     u = σ_phy .* (cholesky(Symmetric(C)).L * randn(G))
     y = X * [0.25, -0.4] .+ u[species] .+ σ .* randn(n)
-    prob = DRM.make_loc_problem(phy, y, X; species = species)
+    prob = DRModels.make_loc_problem(phy, y, X; species = species)
     lσ = log(σ)
     lσ_phy = log(σ_phy)
 
-    comp = DRM._loconly_reml_components(prob, lσ, lσ_phy)
+    comp = DRModels._loconly_reml_components(prob, lσ, lσ_phy)
     @test comp.converged
     @test isfinite(comp.nll)
     @test isfinite(comp.ml_nll)
     @test isfinite(comp.penalty)
     @test length(comp.beta) == size(X, 2)
-    dense_comp = DRM._loconly_dense_reml_components(prob, lσ, lσ_phy)
-    cmp_diag = DRM._loconly_dense_comparator_diagnostic(prob, lσ, lσ_phy)
-    score_diag = DRM._loconly_reml_dense_score_diagnostic(prob, lσ, lσ_phy)
-    sparse_score_diag = DRM._loconly_reml_sparse_score_diagnostic(prob, lσ, lσ_phy)
-    boundary = DRM._loconly_reml_boundary_status(prob, lσ, lσ_phy)
+    dense_comp = DRModels._loconly_dense_reml_components(prob, lσ, lσ_phy)
+    cmp_diag = DRModels._loconly_dense_comparator_diagnostic(prob, lσ, lσ_phy)
+    score_diag = DRModels._loconly_reml_dense_score_diagnostic(prob, lσ, lσ_phy)
+    sparse_score_diag = DRModels._loconly_reml_sparse_score_diagnostic(prob, lσ, lσ_phy)
+    boundary = DRModels._loconly_reml_boundary_status(prob, lσ, lσ_phy)
 
     V = σ^2 .* I(n) + σ_phy^2 .* C[species, species]
     chV = cholesky(Symmetric(Matrix(V)))
@@ -48,7 +48,7 @@ using Test, Random, LinearAlgebra, Statistics
     @test comp.penalty ≈ restricted_penalty_dense rtol = 1e-8 atol = 1e-8
     @test comp.info ≈ info_dense rtol = 1e-8 atol = 1e-8
     @test comp.nll ≈ reml_nll_dense rtol = 1e-8 atol = 1e-8
-    @test DRM._loconly_reml_nll(prob, lσ, lσ_phy) ≈ reml_nll_dense rtol = 1e-8 atol = 1e-8
+    @test DRModels._loconly_reml_nll(prob, lσ, lσ_phy) ≈ reml_nll_dense rtol = 1e-8 atol = 1e-8
     @test dense_comp.converged
     @test dense_comp.matrix_mode === :dense_developer
     @test dense_comp.beta ≈ beta_dense rtol = 1e-8 atol = 1e-8
@@ -80,13 +80,13 @@ using Test, Random, LinearAlgebra, Statistics
     @test boundary.finite
     @test boundary.converged
 
-    _, M, chM, _ = DRM.build_M(prob, σ_phy^2, σ^2)
-    tr_QM, tr_SMS = DRM.exact_traces(prob, chM)
+    _, M, chM, _ = DRModels.build_M(prob, σ_phy^2, σ^2)
+    tr_QM, tr_SMS = DRModels.exact_traces(prob, chM)
     Minv = inv(Matrix(M))
     tr_QM_dense = tr(Matrix(prob.Q_cond) * Minv)
     tr_SMS_dense = sum(prob.STS_diag .* LinearAlgebra.diag(Minv))
-    diag = DRM._loconly_takahashi_trace_diagnostic(prob, lσ, lσ_phy)
-    pev = DRM._loconly_takahashi_pev_diagnostic(prob, lσ, lσ_phy)
+    diag = DRModels._loconly_takahashi_trace_diagnostic(prob, lσ, lσ_phy)
+    pev = DRModels._loconly_takahashi_pev_diagnostic(prob, lσ, lσ_phy)
 
     @test diag.trace_mode === :takahashi_selinv
     @test diag.finite
@@ -106,8 +106,8 @@ using Test, Random, LinearAlgebra, Statistics
     @test pev.leaf_posterior_variance_mean ≈ mean(pev.leaf_posterior_variance) rtol = 1e-12 atol = 1e-12
     @test pev.weighted_leaf_posterior_trace ≈ tr_SMS_dense rtol = 1e-8 atol = 1e-8
 
-    info_diag = DRM._loconly_ai_information_diagnostic(prob, lσ, lσ_phy)
-    sparse_info_diag = DRM._loconly_reml_sparse_ai_information_diagnostic(prob, lσ, lσ_phy)
+    info_diag = DRModels._loconly_ai_information_diagnostic(prob, lσ, lσ_phy)
+    sparse_info_diag = DRModels._loconly_reml_sparse_ai_information_diagnostic(prob, lσ, lσ_phy)
     @test info_diag.target === :gaussian_loconly_reml
     @test info_diag.parameterization === :log_sd
     @test info_diag.matrix_mode === :dense_developer
@@ -126,7 +126,7 @@ using Test, Random, LinearAlgebra, Statistics
     @test sparse_info_diag.max_absdiff_dense < 1e-8
     @test sparse_info_diag.relative_error_observed < 0.1
 
-    opt_diag = DRM._loconly_reml_optimizer_diagnostic(
+    opt_diag = DRModels._loconly_reml_optimizer_diagnostic(
         prob; starts = [[lσ, lσ_phy], [log(σ * 1.2), log(σ_phy * 0.8)]],
         iterations = 80,
     )
@@ -140,7 +140,7 @@ using Test, Random, LinearAlgebra, Statistics
     @test opt_diag.finite
     @test length(opt_diag.records) == 2
     @test opt_diag.best_nll <= reml_nll_dense + 1e-5
-    @test DRM._loconly_reml_nll(prob, opt_diag.best_minimizer[1], opt_diag.best_minimizer[2]) ≈ opt_diag.best_nll rtol = 1e-8 atol = 1e-8
+    @test DRModels._loconly_reml_nll(prob, opt_diag.best_minimizer[1], opt_diag.best_minimizer[2]) ≈ opt_diag.best_nll rtol = 1e-8 atol = 1e-8
     @test opt_diag.dense_comparator.finite
     @test opt_diag.dense_comparator.nll_absdiff < 1e-7
     @test opt_diag.observed_hessian ≈ opt_diag.observed_hessian' atol = 1e-8
@@ -159,7 +159,7 @@ using Test, Random, LinearAlgebra, Statistics
     @test opt_diag.n_accepted_records >= 1
     @test opt_diag.best_improvement >= -1e-8
 
-    score_opt = DRM._loconly_reml_dense_score_optimizer_diagnostic(
+    score_opt = DRModels._loconly_reml_dense_score_optimizer_diagnostic(
         prob; starts = [[lσ, lσ_phy], [log(σ * 1.2), log(σ_phy * 0.8)]],
         iterations = 80,
     )
@@ -178,7 +178,7 @@ using Test, Random, LinearAlgebra, Statistics
     @test score_opt.best_score_norm < 1e-3
     @test score_opt.best_nll ≈ opt_diag.best_nll rtol = 1e-6 atol = 1e-6
 
-    sparse_score_opt = DRM._loconly_reml_sparse_score_optimizer_diagnostic(
+    sparse_score_opt = DRModels._loconly_reml_sparse_score_optimizer_diagnostic(
         prob; starts = [[lσ, lσ_phy], [log(σ * 1.2), log(σ_phy * 0.8)]],
         iterations = 80,
     )
@@ -199,7 +199,7 @@ using Test, Random, LinearAlgebra, Statistics
     @test sparse_score_opt.best_score_norm < 1e-3
     @test sparse_score_opt.best_nll ≈ score_opt.best_nll rtol = 1e-6 atol = 1e-6
 
-    ai_update_opt = DRM._loconly_reml_ai_update_optimizer_diagnostic(
+    ai_update_opt = DRModels._loconly_reml_ai_update_optimizer_diagnostic(
         prob; starts = [[lσ, lσ_phy], [log(σ * 1.2), log(σ_phy * 0.8)]],
         iterations = 30,
     )
@@ -225,7 +225,7 @@ using Test, Random, LinearAlgebra, Statistics
     @test any(r -> any(t -> t.status === :accepted_step, r.trace), ai_update_opt.records)
     @test all(r -> all(t -> t.halvings >= 0, r.trace), ai_update_opt.records)
 
-    payload = DRM._loconly_reml_diagnostic_payload(prob, lσ, lσ_phy)
+    payload = DRModels._loconly_reml_diagnostic_payload(prob, lσ, lσ_phy)
     @test payload.target === :gaussian_loconly_phylo_reml
     @test payload.estimator === :supplied_variance_reml
     @test payload.boundary.boundary_status === :interior
@@ -244,7 +244,7 @@ using Test, Random, LinearAlgebra, Statistics
     @test payload.bridge_schema.r_bridge_status == "planned"
     @test payload.claim_status === :internal_diagnostic
 
-    recovery = DRM._loconly_reml_recovery_grid_diagnostic(
+    recovery = DRModels._loconly_reml_recovery_grid_diagnostic(
         ; reps = 3, G = 10, n_per_species = 3, sigma = σ, sigma_phy = σ_phy,
         seed = 20260624, iterations = 30,
     )
@@ -275,7 +275,7 @@ using Test, Random, LinearAlgebra, Statistics
     @test abs(recovery.bias_sigma) < 0.08
     @test abs(recovery.bias_sigma_phy) < 0.30
 
-    condition_grid = DRM._loconly_reml_recovery_condition_grid_diagnostic(
+    condition_grid = DRModels._loconly_reml_recovery_condition_grid_diagnostic(
         ; reps = 2, iterations = 30,
     )
     @test condition_grid.target === :gaussian_loconly_phylo_reml
@@ -306,11 +306,11 @@ end
 
     phy_weak = random_balanced_tree(G; branch_length = 0.25)
     y_weak = X * [0.2, 0.1] .+ 0.4 .* randn(n)
-    prob_weak = DRM.make_loc_problem(phy_weak, y_weak, X; species = species)
-    comp_zero = DRM._loconly_reml_components(prob_weak, log(0.4), log(1e-8))
-    trace_zero = DRM._loconly_takahashi_trace_diagnostic(prob_weak, log(0.4), log(1e-8))
-    score_zero = DRM._loconly_reml_sparse_score_diagnostic(prob_weak, log(0.4), log(1e-8))
-    boundary_zero = DRM._loconly_reml_boundary_status(prob_weak, log(0.4), log(1e-8))
+    prob_weak = DRModels.make_loc_problem(phy_weak, y_weak, X; species = species)
+    comp_zero = DRModels._loconly_reml_components(prob_weak, log(0.4), log(1e-8))
+    trace_zero = DRModels._loconly_takahashi_trace_diagnostic(prob_weak, log(0.4), log(1e-8))
+    score_zero = DRModels._loconly_reml_sparse_score_diagnostic(prob_weak, log(0.4), log(1e-8))
+    boundary_zero = DRModels._loconly_reml_boundary_status(prob_weak, log(0.4), log(1e-8))
     @test comp_zero.converged
     @test isfinite(comp_zero.nll)
     @test trace_zero.finite
@@ -324,26 +324,26 @@ end
     C_near = sigma_phy_dense(phy_near; σ²_phy = 1.0)
     u_near = 0.1 .* (cholesky(Symmetric(C_near)).L * randn(G))
     y_near = X * [0.2, 0.1] .+ u_near[species] .+ 0.4 .* randn(n)
-    prob_near = DRM.make_loc_problem(phy_near, y_near, X; species = species)
-    comp_near = DRM._loconly_reml_components(prob_near, log(0.4), log(0.1))
-    trace_near = DRM._loconly_takahashi_trace_diagnostic(prob_near, log(0.4), log(0.1))
+    prob_near = DRModels.make_loc_problem(phy_near, y_near, X; species = species)
+    comp_near = DRModels._loconly_reml_components(prob_near, log(0.4), log(0.1))
+    trace_near = DRModels._loconly_takahashi_trace_diagnostic(prob_near, log(0.4), log(0.1))
     @test comp_near.converged
     @test isfinite(comp_near.nll)
     @test trace_near.finite
 
     X_bad = hcat(ones(n), ones(n))
-    prob_bad = DRM.make_loc_problem(phy_weak, y_weak, X_bad; species = species)
-    comp_bad = DRM._loconly_reml_components(prob_bad, log(0.4), log(0.2))
-    info_bad = DRM._loconly_ai_information_diagnostic(prob_bad, log(0.4), log(0.2))
-    sparse_info_bad = DRM._loconly_reml_sparse_ai_information_diagnostic(prob_bad, log(0.4), log(0.2))
-    score_bad = DRM._loconly_reml_sparse_score_diagnostic(prob_bad, log(0.4), log(0.2))
-    ai_update_bad = DRM._loconly_reml_ai_update_optimizer_diagnostic(
+    prob_bad = DRModels.make_loc_problem(phy_weak, y_weak, X_bad; species = species)
+    comp_bad = DRModels._loconly_reml_components(prob_bad, log(0.4), log(0.2))
+    info_bad = DRModels._loconly_ai_information_diagnostic(prob_bad, log(0.4), log(0.2))
+    sparse_info_bad = DRModels._loconly_reml_sparse_ai_information_diagnostic(prob_bad, log(0.4), log(0.2))
+    score_bad = DRModels._loconly_reml_sparse_score_diagnostic(prob_bad, log(0.4), log(0.2))
+    ai_update_bad = DRModels._loconly_reml_ai_update_optimizer_diagnostic(
         prob_bad; starts = [[log(0.4), log(0.2)]], iterations = 5,
     )
-    boundary_bad = DRM._loconly_reml_boundary_status(prob_bad, log(0.4), log(0.2))
-    boundary_invalid = DRM._loconly_reml_boundary_status(prob_bad, Inf, log(0.2))
+    boundary_bad = DRModels._loconly_reml_boundary_status(prob_bad, log(0.4), log(0.2))
+    boundary_invalid = DRModels._loconly_reml_boundary_status(prob_bad, Inf, log(0.2))
     @test !comp_bad.converged
-    @test comp_bad.nll == DRM._LOCONLY_PENALTY
+    @test comp_bad.nll == DRModels._LOCONLY_PENALTY
     @test !info_bad.finite
     @test !sparse_info_bad.finite
     @test !score_bad.finite
@@ -353,7 +353,7 @@ end
     @test boundary_bad.boundary_status === :singular_fixed_effect_information
     @test boundary_invalid.boundary_status === :nonfinite_objective
 
-    weak_probe = DRM._loconly_reml_weak_signal_recovery_probe(
+    weak_probe = DRModels._loconly_reml_weak_signal_recovery_probe(
         ; reps = 2, seed = 20260630, iterations = 25,
     )
     @test weak_probe.target === :gaussian_loconly_phylo_reml
@@ -370,7 +370,7 @@ end
     @test weak_probe.boundary_rate == weak_probe.boundary_reps / weak_probe.diagnostic.n_reps
     @test weak_probe.convergence_rate <= 1.0
 
-    sim_status = DRM._loconly_reml_simulation_status()
+    sim_status = DRModels._loconly_reml_simulation_status()
     @test sim_status.target === :gaussian_loconly_phylo_reml
     @test sim_status.estimator === :guarded_ai_update_reml_optimizer_experiment
     @test sim_status.claim_status === :simulation_diagnostic
@@ -384,7 +384,7 @@ end
         :weak_signal_boundary_probe,
         :larger_interior_stress,
     )
-    schema = DRM._loconly_reml_simulation_status_schema()
+    schema = DRModels._loconly_reml_simulation_status_schema()
     expected_schema = (
         :row_id, :target, :estimator, :design, :claim_status, :coverage_status,
         :expected_behavior, :n_reps, :n_accepted, :convergence_rate,
@@ -433,7 +433,7 @@ end
     @test stress_row.n_reps == 2
     @test stress_row.n_accepted == 2
 
-    validation = DRM._loconly_reml_validate_simulation_status(sim_status)
+    validation = DRModels._loconly_reml_validate_simulation_status(sim_status)
     @test validation.ok
     @test isempty(validation.errors)
     @test validation.required_fields == schema
@@ -443,13 +443,13 @@ end
 
     bad_row = merge(first(sim_status.rows), (coverage_status = :covered,))
     bad_status = merge(sim_status, (rows = (bad_row,), n_rows = 1))
-    bad_validation = DRM._loconly_reml_validate_simulation_status(bad_status)
+    bad_validation = DRModels._loconly_reml_validate_simulation_status(bad_status)
     @test !bad_validation.ok
     @test any(err -> occursin("evaluated coverage", err), bad_validation.errors)
 
     mktempdir() do dir
         path = joinpath(dir, "loconly-status.tsv")
-        write_result = DRM._loconly_reml_write_simulation_status_tsv(path; status = sim_status)
+        write_result = DRModels._loconly_reml_write_simulation_status_tsv(path; status = sim_status)
         @test write_result.path == path
         @test write_result.n_rows == sim_status.n_rows
         @test write_result.schema == schema
@@ -460,13 +460,13 @@ end
         @test first(split(lines[2], '\t')) == "stable_recovery"
 
         bad_path = joinpath(dir, "bad-status.tsv")
-        @test_throws ErrorException DRM._loconly_reml_write_simulation_status_tsv(
+        @test_throws ErrorException DRModels._loconly_reml_write_simulation_status_tsv(
             bad_path; status = bad_status,
         )
         @test !isfile(bad_path)
     end
 
-    medium_status = DRM._loconly_reml_simulation_status(
+    medium_status = DRModels._loconly_reml_simulation_status(
         ; include_medium_stress = true,
         medium_stress_reps = 1,
     )
@@ -478,9 +478,9 @@ end
     @test medium_row.expected_behavior === :stress_smoke
     @test medium_row.n_reps == 1
     @test medium_row.runtime_budget_seconds == 15.0
-    @test DRM._loconly_reml_validate_simulation_status(medium_status).ok
+    @test DRModels._loconly_reml_validate_simulation_status(medium_status).ok
 
-    large_status = DRM._loconly_reml_simulation_status(; include_large_stress = true)
+    large_status = DRModels._loconly_reml_simulation_status(; include_large_stress = true)
     @test large_status.n_rows == 5
     large_row = only(filter(r -> r.row_id === :large_interior_stress_skipped,
                             large_status.rows))
@@ -490,9 +490,9 @@ end
     @test large_row.runtime_seconds == 0.0
     @test large_row.runtime_budget_seconds == 0.0
     @test large_row.next_gate === :runtime_budget_review
-    @test DRM._loconly_reml_validate_simulation_status(large_status).ok
+    @test DRModels._loconly_reml_validate_simulation_status(large_status).ok
 
-    provenance = DRM._loconly_reml_simulation_status_provenance(sim_status)
+    provenance = DRModels._loconly_reml_simulation_status_provenance(sim_status)
     @test provenance.target === sim_status.target
     @test provenance.estimator === sim_status.estimator
     @test provenance.n_rows == sim_status.n_rows
@@ -505,7 +505,7 @@ end
     @test all(r -> occursin("ai_reml_ready=false", r.claim_boundary),
               provenance.rows)
 
-    broader = DRM._loconly_reml_broader_recovery_grid_diagnostic(
+    broader = DRModels._loconly_reml_broader_recovery_grid_diagnostic(
         ; reps = 1,
         iterations = 25,
     )
@@ -523,7 +523,7 @@ end
     ))
     @test all(r -> r.n_reps == 1, broader.rows)
 
-    weak_grid = DRM._loconly_reml_weak_signal_condition_grid_diagnostic(
+    weak_grid = DRModels._loconly_reml_weak_signal_condition_grid_diagnostic(
         ; reps = 1,
         iterations = 20,
     )
@@ -538,10 +538,10 @@ end
         Set((:low_phylo_signal, :near_zero_phylo_signal))
     @test all(r -> r.diagnostic.coverage_status === :not_evaluated, weak_grid.rows)
 
-    boundary_grid = DRM._loconly_reml_boundary_grid_status(
+    boundary_grid = DRModels._loconly_reml_boundary_grid_status(
         ; reps = 1, iterations = 20,
     )
-    boundary_grid_schema = DRM._loconly_reml_boundary_grid_status_schema()
+    boundary_grid_schema = DRModels._loconly_reml_boundary_grid_status_schema()
     @test boundary_grid_schema == (
         :row_id, :target, :design, :condition, :n_reps, :n_accepted,
         :convergence_rate, :boundary_rate, :near_zero_variance,
@@ -557,7 +557,7 @@ end
     @test boundary_grid.coverage_status === :not_evaluated
     @test !boundary_grid.ai_reml_ready
     boundary_grid_validation =
-        DRM._loconly_reml_validate_boundary_grid_status(boundary_grid)
+        DRModels._loconly_reml_validate_boundary_grid_status(boundary_grid)
     @test boundary_grid_validation.ok
     @test boundary_grid_validation.required_fields == boundary_grid_schema
     @test Set(r.row_id for r in boundary_grid.rows) ==
@@ -575,14 +575,14 @@ end
     bad_boundary_status =
         merge(boundary_grid, (rows = (bad_boundary_row,), n_rows = 1))
     bad_boundary_validation =
-        DRM._loconly_reml_validate_boundary_grid_status(bad_boundary_status)
+        DRModels._loconly_reml_validate_boundary_grid_status(bad_boundary_status)
     @test !bad_boundary_validation.ok
     @test any(err -> occursin("invalid boundary_rate", err),
               bad_boundary_validation.errors)
 end
 
 @testset "Location-only Gaussian phylo: status schema and scaling smoke" begin
-    status = DRM._loconly_reml_validation_status()
+    status = DRModels._loconly_reml_validation_status()
     @test status.target === :gaussian_loconly_phylo_reml
     @test status.estimator === :supplied_variance_reml
     @test status.source_status === :partial
@@ -594,7 +594,7 @@ end
     @test status.claim_status === :internal_diagnostic
     @test status.q4_status === :excluded
 
-    schema = DRM._loconly_reml_bridge_payload_schema()
+    schema = DRModels._loconly_reml_bridge_payload_schema()
     @test schema.target == "gaussian_loconly_phylo_reml"
     @test schema.estimator == "supplied_variance_reml"
     @test schema.effective_REML === true
@@ -605,8 +605,8 @@ end
     @test schema.r_bridge_status == "planned"
     @test "near_zero_variance" in schema.boundary_status_levels
 
-    comparator_status = DRM._loconly_reml_external_comparator_status()
-    comparator_schema = DRM._loconly_reml_external_comparator_schema()
+    comparator_status = DRModels._loconly_reml_external_comparator_status()
+    comparator_schema = DRModels._loconly_reml_external_comparator_schema()
     @test comparator_schema == (
         :comparator_id, :target, :comparator, :same_estimand_status,
         :dependency_status, :artifact_status, :decision, :reason, :next_gate,
@@ -654,19 +654,19 @@ end
     @test version_probe.next_gate === :optional_developer_comparator_script
     bad_version_probe = merge(version_probe, (dependency_status = :added,))
     bad_version_probe_validation =
-        DRM._loconly_reml_validate_external_comparator_version_probe(
+        DRModels._loconly_reml_validate_external_comparator_version_probe(
             (bad_version_probe,), comparator_status.fixture)
     @test !bad_version_probe_validation.ok
     @test any(err -> occursin("must not add a dependency", err),
               bad_version_probe_validation.errors)
-    probe_status = DRM._loconly_reml_external_comparator_probe_status(
+    probe_status = DRModels._loconly_reml_external_comparator_probe_status(
         ; candidate_package = "phylolm",
         candidate_version = "unavailable",
         package_available = false,
         rscript_status = :package_not_installed,
         evidence = "test/test_location_only_reml_mme.jl",
     )
-    probe_schema = DRM._loconly_reml_external_comparator_probe_result_schema()
+    probe_schema = DRModels._loconly_reml_external_comparator_probe_result_schema()
     @test probe_schema == (
         :probe_id, :target, :fixture_id, :fixture_version, :comparator_id,
         :candidate_package, :candidate_version, :package_available,
@@ -682,7 +682,7 @@ end
     @test probe_status.coverage_status === :not_evaluated
     @test !probe_status.ai_reml_ready
     probe_validation =
-        DRM._loconly_reml_validate_external_comparator_probe_status(probe_status)
+        DRModels._loconly_reml_validate_external_comparator_probe_status(probe_status)
     @test probe_validation.ok
     @test probe_validation.required_fields == probe_schema
     @test probe_validation.coverage_status === :not_evaluated
@@ -700,14 +700,14 @@ end
     bad_probe_row = merge(probe_row, (fit_status = :fit_run,))
     bad_probe_status = merge(probe_status, (rows = (bad_probe_row,),))
     bad_probe_validation =
-        DRM._loconly_reml_validate_external_comparator_probe_status(
+        DRModels._loconly_reml_validate_external_comparator_probe_status(
             bad_probe_status)
     @test !bad_probe_validation.ok
     @test any(err -> occursin("must not mark a fit as run", err),
               bad_probe_validation.errors)
     mktempdir() do dir
         path = joinpath(dir, "external-comparator-probe.tsv")
-        write_result = DRM._loconly_reml_write_external_comparator_probe_tsv(
+        write_result = DRModels._loconly_reml_write_external_comparator_probe_tsv(
             path;
             candidate_package = "phylolm",
             candidate_version = "unavailable",
@@ -725,12 +725,12 @@ end
         @test first(split(lines[2], '\t')) == "phylolm_style_version_probe"
     end
     fit_feasibility =
-        DRM._loconly_reml_external_comparator_fit_feasibility_status(
+        DRModels._loconly_reml_external_comparator_fit_feasibility_status(
             ; candidate_package = "phylolm",
             candidate_version = "2.6.5",
         )
     fit_feasibility_schema =
-        DRM._loconly_reml_external_comparator_fit_feasibility_schema()
+        DRModels._loconly_reml_external_comparator_fit_feasibility_schema()
     @test fit_feasibility_schema == (
         :check_id, :target, :fixture_id, :fixture_version, :comparator_id,
         :candidate_package, :candidate_version, :n_obs, :n_species,
@@ -744,7 +744,7 @@ end
     @test fit_feasibility.coverage_status === :not_evaluated
     @test !fit_feasibility.ai_reml_ready
     fit_feasibility_validation =
-        DRM._loconly_reml_validate_external_comparator_fit_feasibility(
+        DRModels._loconly_reml_validate_external_comparator_fit_feasibility(
             fit_feasibility)
     @test fit_feasibility_validation.ok
     @test fit_feasibility_validation.required_fields == fit_feasibility_schema
@@ -771,13 +771,13 @@ end
     bad_feasibility_status =
         merge(fit_feasibility, (rows = (bad_feasibility_row,),))
     bad_feasibility_validation =
-        DRM._loconly_reml_validate_external_comparator_fit_feasibility(
+        DRModels._loconly_reml_validate_external_comparator_fit_feasibility(
             bad_feasibility_status)
     @test !bad_feasibility_validation.ok
     @test any(err -> occursin("must not mark a fit as run", err),
               bad_feasibility_validation.errors)
-    derivative_fd = DRM._loconly_reml_derivative_fd_status()
-    derivative_schema = DRM._loconly_reml_derivative_fd_status_schema()
+    derivative_fd = DRModels._loconly_reml_derivative_fd_status()
+    derivative_schema = DRModels._loconly_reml_derivative_fd_status_schema()
     @test derivative_schema == (
         :check_id, :target, :fixture_id, :fixture_version,
         :parameterization, :matrix_mode, :h, :score_max_absdiff_fd,
@@ -792,7 +792,7 @@ end
     @test derivative_fd.coverage_status === :not_evaluated
     @test !derivative_fd.ai_reml_ready
     derivative_validation =
-        DRM._loconly_reml_validate_derivative_fd_status(derivative_fd)
+        DRModels._loconly_reml_validate_derivative_fd_status(derivative_fd)
     @test derivative_validation.ok
     @test derivative_validation.required_fields == derivative_schema
     @test derivative_validation.coverage_status === :not_evaluated
@@ -815,13 +815,13 @@ end
     bad_derivative_status =
         merge(derivative_fd, (rows = (bad_derivative_row,), n_rows = 1))
     bad_derivative_validation =
-        DRM._loconly_reml_validate_derivative_fd_status(
+        DRModels._loconly_reml_validate_derivative_fd_status(
             bad_derivative_status)
     @test !bad_derivative_validation.ok
     @test any(err -> occursin("exceeds FD tolerance", err),
               bad_derivative_validation.errors)
-    line_search = DRM._loconly_reml_line_search_status()
-    line_search_schema = DRM._loconly_reml_line_search_status_schema()
+    line_search = DRModels._loconly_reml_line_search_status()
+    line_search_schema = DRModels._loconly_reml_line_search_status_schema()
     @test line_search_schema == (
         :check_id, :target, :fixture_id, :fixture_version, :estimator,
         :optimizer, :n_starts, :n_records, :n_accepted_records,
@@ -837,7 +837,7 @@ end
     @test line_search.coverage_status === :not_evaluated
     @test !line_search.ai_reml_ready
     line_search_validation =
-        DRM._loconly_reml_validate_line_search_status(line_search)
+        DRModels._loconly_reml_validate_line_search_status(line_search)
     @test line_search_validation.ok
     @test line_search_validation.required_fields == line_search_schema
     line_search_row = only(line_search.rows)
@@ -863,13 +863,13 @@ end
     bad_line_search_status =
         merge(line_search, (rows = (bad_line_search_row,),))
     bad_line_search_validation =
-        DRM._loconly_reml_validate_line_search_status(
+        DRModels._loconly_reml_validate_line_search_status(
             bad_line_search_status)
     @test !bad_line_search_validation.ok
     @test any(err -> occursin("must not mark ai_reml_ready", err),
               bad_line_search_validation.errors)
-    profile_status = DRM._loconly_reml_profile_status()
-    profile_schema = DRM._loconly_reml_profile_status_schema()
+    profile_status = DRModels._loconly_reml_profile_status()
+    profile_schema = DRModels._loconly_reml_profile_status_schema()
     @test profile_schema == (
         :row_id, :target, :fixture_id, :fixture_version, :parameterization,
         :axis, :step, :finite, :center_is_axis_min, :center_nll, :left_nll,
@@ -884,7 +884,7 @@ end
     @test profile_status.coverage_status === :not_evaluated
     @test !profile_status.ai_reml_ready
     profile_validation =
-        DRM._loconly_reml_validate_profile_status(profile_status)
+        DRModels._loconly_reml_validate_profile_status(profile_status)
     @test profile_validation.ok
     @test profile_validation.required_fields == profile_schema
     @test Tuple(r.row_id for r in profile_status.rows) ==
@@ -908,12 +908,12 @@ end
     bad_profile_status =
         merge(profile_status, (rows = (bad_profile_row,), n_rows = 1))
     bad_profile_validation =
-        DRM._loconly_reml_validate_profile_status(bad_profile_status)
+        DRModels._loconly_reml_validate_profile_status(bad_profile_status)
     @test !bad_profile_validation.ok
     @test any(err -> occursin("center is not axis minimum", err),
               bad_profile_validation.errors)
-    variance_status = DRM._loconly_reml_variance_component_status()
-    variance_schema = DRM._loconly_reml_variance_component_status_schema()
+    variance_status = DRModels._loconly_reml_variance_component_status()
+    variance_schema = DRModels._loconly_reml_variance_component_status_schema()
     @test variance_schema == (
         :row_id, :target, :fixture_id, :fixture_version, :estimator,
         :optimizer, :component, :logsd_parameter, :logsd_estimate,
@@ -931,7 +931,7 @@ end
     @test variance_status.coverage_status === :not_evaluated
     @test !variance_status.ai_reml_ready
     variance_validation =
-        DRM._loconly_reml_validate_variance_component_status(variance_status)
+        DRModels._loconly_reml_validate_variance_component_status(variance_status)
     @test variance_validation.ok
     @test variance_validation.required_fields == variance_schema
     @test Tuple(r.row_id for r in variance_status.rows) ==
@@ -964,7 +964,7 @@ end
     bad_variance_status =
         merge(variance_status, (rows = (bad_variance_row,), n_rows = 1))
     bad_variance_validation =
-        DRM._loconly_reml_validate_variance_component_status(
+        DRModels._loconly_reml_validate_variance_component_status(
             bad_variance_status)
     @test !bad_variance_validation.ok
     @test any(err -> occursin("evaluated intervals", err),
@@ -982,7 +982,7 @@ end
               comparator_status.rows)
     bad_comparator = merge(first(comparator_status.rows), (target = :q4_phylo,))
     bad_comparator_validation =
-        DRM._loconly_reml_validate_external_comparator_rows((bad_comparator,))
+        DRModels._loconly_reml_validate_external_comparator_rows((bad_comparator,))
     @test !bad_comparator_validation.ok
     @test any(err -> occursin("wrong target", err),
               bad_comparator_validation.errors)
@@ -1024,7 +1024,7 @@ end
     @test fixture.reference.boundary_status === :interior
     bad_fixture = merge(fixture, (target = :q4_phylo,))
     bad_fixture_validation =
-        DRM._loconly_reml_validate_external_comparator_fixture(bad_fixture)
+        DRModels._loconly_reml_validate_external_comparator_fixture(bad_fixture)
     @test !bad_fixture_validation.ok
     @test any(err -> occursin("wrong target", err),
               bad_fixture_validation.errors)
@@ -1036,11 +1036,11 @@ end
         species = collect(1:G)
         X = hcat(ones(G), range(-0.5, 0.5; length = G))
         y = X * [0.1, 0.3] .+ 0.35 .* randn(G)
-        prob = DRM.make_loc_problem(phy, y, X; species = species)
+        prob = DRModels.make_loc_problem(phy, y, X; species = species)
         push!(elapsed, @elapsed begin
-            comp = DRM._loconly_reml_components(prob, log(0.35), log(0.2))
-            trace_diag = DRM._loconly_takahashi_trace_diagnostic(prob, log(0.35), log(0.2))
-            pev_diag = DRM._loconly_takahashi_pev_diagnostic(prob, log(0.35), log(0.2))
+            comp = DRModels._loconly_reml_components(prob, log(0.35), log(0.2))
+            trace_diag = DRModels._loconly_takahashi_trace_diagnostic(prob, log(0.35), log(0.2))
+            pev_diag = DRModels._loconly_takahashi_pev_diagnostic(prob, log(0.35), log(0.2))
             @test comp.converged
             @test isfinite(comp.nll)
             @test trace_diag.finite
@@ -1054,13 +1054,13 @@ end
     phy = random_balanced_tree(10; branch_length = 0.25)
     X1 = hcat(ones(10), range(-0.5, 0.5; length = 10))
     y1 = X1 * [0.1, 0.2]
-    prob_single = DRM.make_loc_problem(phy, y1, X1; species = collect(1:10))
+    prob_single = DRModels.make_loc_problem(phy, y1, X1; species = collect(1:10))
     species_double = repeat(1:10, inner = 2)
     X2 = X1[species_double, :]
     y2 = y1[species_double]
-    prob_double = DRM.make_loc_problem(phy, y2, X2; species = species_double)
-    pev_single = DRM._loconly_takahashi_pev_diagnostic(prob_single, log(0.4), log(0.3))
-    pev_double = DRM._loconly_takahashi_pev_diagnostic(prob_double, log(0.4), log(0.3))
+    prob_double = DRModels.make_loc_problem(phy, y2, X2; species = species_double)
+    pev_single = DRModels._loconly_takahashi_pev_diagnostic(prob_single, log(0.4), log(0.3))
+    pev_double = DRModels._loconly_takahashi_pev_diagnostic(prob_double, log(0.4), log(0.3))
     @test pev_single.finite
     @test pev_double.finite
     @test all(pev_double.leaf_posterior_variance .<= pev_single.leaf_posterior_variance .+ 1e-12)

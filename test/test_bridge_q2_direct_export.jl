@@ -1,10 +1,10 @@
-using DRM
+using DRModels
 using Test, LinearAlgebra, Random, SparseArrays
 
 function _q2_known_cov_fixture(K, β, Λ, residual_cov; nrep, rng)
     G = size(K, 1)
     Q = sparse(Matrix(inv(cholesky(Symmetric(K)))))
-    P = DRM.prior_precision(Q, inv(Λ))
+    P = DRModels.prior_precision(Q, inv(Λ))
     F = cholesky(Symmetric(P))
     u = F.UP \ randn(rng, size(P, 1))
     group = repeat(1:G, inner = nrep)
@@ -23,8 +23,8 @@ function _q2_known_cov_fixture(K, β, Λ, residual_cov; nrep, rng)
 end
 
 @testset "q2 direct export status contract" begin
-    rows = DRM._bridge_q2_direct_export_status()
-    schema = DRM._bridge_q2_direct_export_schema()
+    rows = DRModels._bridge_q2_direct_export_status()
+    schema = DRModels._bridge_q2_direct_export_schema()
 
     @test length(rows) == 4
     @test all(row -> propertynames(row) == schema, rows)
@@ -62,7 +62,7 @@ end
     ), ";")
     @test all(row -> row.coefficient_order == expected_order, rows)
 
-    validation = DRM._bridge_q2_validate_direct_export_status(rows)
+    validation = DRModels._bridge_q2_validate_direct_export_status(rows)
     @test validation.ok
     @test isempty(validation.errors)
     @test validation.n_rows == 4
@@ -70,14 +70,14 @@ end
 
     bad_rows = collect(rows)
     bad_rows[1] = merge(bad_rows[1], (coefficient_order = "bad",))
-    bad_validation = DRM._bridge_q2_validate_direct_export_status(Tuple(bad_rows))
+    bad_validation = DRModels._bridge_q2_validate_direct_export_status(Tuple(bad_rows))
     @test !bad_validation.ok
     @test any(err -> occursin("coefficient order", err), bad_validation.errors)
 end
 
 @testset "q2 known-precision provider status contract" begin
-    rows = DRM._bridge_q2_known_precision_status()
-    schema = DRM._bridge_q2_known_precision_schema()
+    rows = DRModels._bridge_q2_known_precision_status()
+    schema = DRModels._bridge_q2_known_precision_schema()
 
     @test length(rows) == 2
     @test all(row -> propertynames(row) == schema, rows)
@@ -105,7 +105,7 @@ end
     )
     @test all(row -> occursin("broad q2 bridge support", row.claim_boundary), rows)
 
-    validation = DRM._bridge_q2_validate_known_precision_status(rows)
+    validation = DRModels._bridge_q2_validate_known_precision_status(rows)
     @test validation.ok
     @test isempty(validation.errors)
     @test validation.n_rows == 2
@@ -113,7 +113,7 @@ end
 
     bad_rows = collect(rows)
     bad_rows[1] = merge(bad_rows[1], (precision_source = "Q",))
-    bad_validation = DRM._bridge_q2_validate_known_precision_status(Tuple(bad_rows))
+    bad_validation = DRModels._bridge_q2_validate_known_precision_status(Tuple(bad_rows))
     @test !bad_validation.ok
     @test any(err -> occursin("precision_source", err), bad_validation.errors)
 end
@@ -137,8 +137,8 @@ end
         "spatial" => spatial_K,
     )
         sim = _q2_known_cov_fixture(K, β, Λ, residual_cov; nrep = 3, rng = rng)
-        prob, Q = DRM.make_coevo_problem_from_covariance(K, sim.Y, sim.X; group = sim.group)
-        fit = DRM.fit_coevolution_q2_residual(
+        prob, Q = DRModels.make_coevo_problem_from_covariance(K, sim.Y, sim.X; group = sim.group)
+        fit = DRModels.fit_coevolution_q2_residual(
             prob,
             Q;
             β0 = β,
@@ -148,7 +148,7 @@ end
             iterations = 160,
             g_tol = 2e-4,
         )
-        point_export = DRM._bridge_q2_point_export(
+        point_export = DRModels._bridge_q2_point_export(
             fit;
             family = "biv_gaussian",
             structured_type = structured_type,
@@ -170,13 +170,13 @@ end
         @test occursin("no broad q2 bridge support", point_export["claim_boundary"])
     end
 
-    @test_throws ErrorException DRM.make_coevo_problem_from_covariance(
+    @test_throws ErrorException DRModels.make_coevo_problem_from_covariance(
         [1.0 2.0; 2.0 1.0],
         zeros(2, 2),
         ones(2, 1);
         group = [1, 2],
     )
-    @test_throws ErrorException DRM.make_coevo_problem_from_covariance(
+    @test_throws ErrorException DRModels.make_coevo_problem_from_covariance(
         relmat_K,
         zeros(2, 2),
         ones(2, 1);
@@ -209,7 +209,7 @@ end
         rho12 = @formula(rho12 ~ 1),
     )
     relmat_fit = drm(relmat_form, Gaussian(); data = dat, K = K, g_tol = 2e-4)
-    relmat_export = DRM._bridge_q2_point_export(relmat_fit; family = "biv_gaussian")
+    relmat_export = DRModels._bridge_q2_point_export(relmat_fit; family = "biv_gaussian")
     relmat_bridged = drm_bridge(;
         formula = Dict(
             :mu1 => "y1 ~ x + relmat(1 | group_id)",
@@ -241,7 +241,7 @@ end
         rho12 = @formula(rho12 ~ 1),
     )
     animal_fit = drm(animal_form, Gaussian(); data = dat, A = K, g_tol = 2e-4)
-    animal_export = DRM._bridge_q2_point_export(animal_fit; family = "biv_gaussian")
+    animal_export = DRModels._bridge_q2_point_export(animal_fit; family = "biv_gaussian")
     animal_bridged = drm_bridge(;
         formula = Dict(
             :mu1 => "y1 ~ x + animal(1 | group_id)",
@@ -281,7 +281,7 @@ end
         coords = hcat(collect(1:G), collect(1:G)),
         g_tol = 2e-4,
     )
-    spatial_export = DRM._bridge_q2_point_export(spatial_fit; family = "biv_gaussian")
+    spatial_export = DRModels._bridge_q2_point_export(spatial_fit; family = "biv_gaussian")
     @test spatial_fit.ranef.structured_type == :spatial
     @test spatial_export["target"] == "gaussian_q2_mu1_mu2_spatial_residual_correlation"
     @test spatial_export["structured_type"] == "spatial"
@@ -289,12 +289,12 @@ end
 
 @testset "q2 residual-correlation phylo route carries the same target as bivariate rho12" begin
     rng = MersenneTwister(20260625)
-    phy = DRM.random_balanced_tree(14; branch_length = 0.2)
+    phy = DRModels.random_balanced_tree(14; branch_length = 0.2)
     β = [0.20 -0.15; 0.25 0.10]
     Λ = Matrix(Symmetric([0.22 0.07; 0.07 0.18]))
     residual_cov = Matrix(Symmetric([0.12 0.04; 0.04 0.16]))
-    Q_cond, leaf_pos, _ = DRM.augmented_tree_precision(phy)
-    P = DRM.prior_precision(Q_cond, inv(Λ))
+    Q_cond, leaf_pos, _ = DRModels.augmented_tree_precision(phy)
+    P = DRModels.prior_precision(Q_cond, inv(Λ))
     F = cholesky(Symmetric(P))
     u = F.UP \ randn(rng, size(P, 1))
     species = repeat(1:phy.n_leaves, inner = 3)
@@ -311,14 +311,14 @@ end
         Y[i, :] .+= L * randn(rng, 2)
     end
 
-    prob, Q = DRM.make_coevo_problem(phy, Y, X; species = species)
-    fit = DRM.fit_coevolution_q2_residual(
+    prob, Q = DRModels.make_coevo_problem(phy, Y, X; species = species)
+    fit = DRModels.fit_coevolution_q2_residual(
         prob,
         Q;
         iterations = 180,
         g_tol = 1e-4,
     )
-    point_export = DRM._bridge_q2_point_export(fit; family = "biv_gaussian")
+    point_export = DRModels._bridge_q2_point_export(fit; family = "biv_gaussian")
 
     @test fit.converged
     @test point_export["target"] == "gaussian_q2_mu1_mu2_phylo_residual_correlation"
@@ -344,7 +344,7 @@ end
         species_name = [phy.leaf_names[k] for k in species],
     )
     front = drm(form, Gaussian(); data = dat, tree = phy, g_tol = 1e-4)
-    front_export = DRM._bridge_q2_point_export(front; family = "biv_gaussian")
+    front_export = DRModels._bridge_q2_point_export(front; family = "biv_gaussian")
     @test isfinite(loglik(front))
     @test front.ranef.axes == (:mu1, :mu2)
     @test size(front.ranef.Sigma_a) == (2, 2)
@@ -383,20 +383,20 @@ end
 
 @testset "restricted q2 phylo point export carries coevolution covariance" begin
     rng = MersenneTwister(20260623)
-    phy = DRM.random_balanced_tree(24; branch_length = 0.2)
+    phy = DRModels.random_balanced_tree(24; branch_length = 0.2)
     β = [0.25 -0.20; 0.15 0.10]
     Λ = Matrix(Symmetric([0.25 0.08; 0.08 0.16]))
     σ_res = [0.35, 0.40]
-    sim = DRM.simulate_coevolution(phy, β, Λ, σ_res; nrep = 3, rng = rng)
-    prob, Q_cond = DRM.make_coevo_problem(phy, sim.Y, sim.X; species = sim.species)
-    fit = DRM.fit_coevolution(
+    sim = DRModels.simulate_coevolution(phy, β, Λ, σ_res; nrep = 3, rng = rng)
+    prob, Q_cond = DRModels.make_coevo_problem(phy, sim.Y, sim.X; species = sim.species)
+    fit = DRModels.fit_coevolution(
         prob,
         Q_cond;
         iterations = 180,
         g_tol = 1e-4,
     )
 
-    point_export = DRM._bridge_q2_point_export(fit; family = "biv_gaussian")
+    point_export = DRModels._bridge_q2_point_export(fit; family = "biv_gaussian")
 
     @test point_export["target"] == "gaussian_q2_mu1_mu2_phylo_restricted_diagonal_residual"
     @test point_export["dimension"] == "q2"
@@ -418,7 +418,7 @@ end
     @test occursin("interval coverage", point_export["claim_boundary"])
 
     non_q2 = (Λ = Matrix(I, 3, 3),)
-    @test isempty(DRM._bridge_q2_point_export(non_q2))
+    @test isempty(DRModels._bridge_q2_point_export(non_q2))
 end
 
 @testset "private q2 known-precision bridge consumes provider precision directly" begin
@@ -432,26 +432,26 @@ end
     residual_cov = Matrix(Symmetric([0.09 0.020; 0.020 0.12]))
     sim = _q2_known_cov_fixture(K, β, Λ, residual_cov; nrep = 2, rng = rng)
 
-    prob, Q_cond = DRM.make_coevo_problem_from_precision(
+    prob, Q_cond = DRModels.make_coevo_problem_from_precision(
         Q,
         sim.Y,
         sim.X;
         group = sim.group,
     )
-    direct = DRM.fit_coevolution_q2_residual(
+    direct = DRModels.fit_coevolution_q2_residual(
         prob,
         Q_cond;
         iterations = 120,
         g_tol = 2e-4,
     )
-    relmat_out = DRM.drm_bridge_q2_known_precision(;
+    relmat_out = DRModels.drm_bridge_q2_known_precision(;
         Y = sim.Y,
         X = sim.X,
         group = sim.group,
         Q = Q,
         options = Dict("iterations" => 120, "g_tol" => 2e-4),
     )
-    animal_out = DRM.drm_bridge_q2_known_precision(;
+    animal_out = DRModels.drm_bridge_q2_known_precision(;
         Y = sim.Y,
         X = sim.X,
         group = sim.group,
@@ -485,26 +485,26 @@ end
         @test occursin("structured slope support", out["claim_boundary"])
     end
 
-    @test_throws ArgumentError DRM.drm_bridge_q2_known_precision(;
+    @test_throws ArgumentError DRModels.drm_bridge_q2_known_precision(;
         Y = sim.Y[:, 1:1],
         X = sim.X,
         group = sim.group,
         Q = Q,
     )
-    @test_throws ErrorException DRM.drm_bridge_q2_known_precision(;
+    @test_throws ErrorException DRModels.drm_bridge_q2_known_precision(;
         Y = sim.Y,
         X = sim.X,
         group = sim.group,
         Q = [1.0 2.0; 2.0 1.0],
     )
-    @test_throws ArgumentError DRM.drm_bridge_q2_known_precision(;
+    @test_throws ArgumentError DRModels.drm_bridge_q2_known_precision(;
         Y = sim.Y,
         X = sim.X,
         group = sim.group,
         Q = Q,
         structured_type = "spatial",
     )
-    @test_throws ArgumentError DRM.drm_bridge_q2_known_precision(;
+    @test_throws ArgumentError DRModels.drm_bridge_q2_known_precision(;
         Y = sim.Y,
         X = sim.X,
         group = sim.group,
@@ -516,13 +516,13 @@ end
 
 @testset "private q2 phylo bridge primitive returns restricted point export" begin
     rng = MersenneTwister(20260624)
-    phy = DRM.random_balanced_tree(16; branch_length = 0.2)
+    phy = DRModels.random_balanced_tree(16; branch_length = 0.2)
     β = [0.15 -0.10; 0.20 0.05]
     Λ = Matrix(Symmetric([0.20 0.05; 0.05 0.18]))
     σ_res = [0.30, 0.35]
-    sim = DRM.simulate_coevolution(phy, β, Λ, σ_res; nrep = 2, rng = rng)
+    sim = DRModels.simulate_coevolution(phy, β, Λ, σ_res; nrep = 2, rng = rng)
 
-    out = DRM.drm_bridge_q2_phylo(;
+    out = DRModels.drm_bridge_q2_phylo(;
         Y = sim.Y,
         X = sim.X,
         species = sim.species,
@@ -542,7 +542,7 @@ end
     @test occursin("Direct q2 phylo restricted point export only", out["claim_boundary"])
     @test occursin("no R-via-Julia q2 bridge support", out["claim_boundary"])
 
-    @test_throws ArgumentError DRM.drm_bridge_q2_phylo(;
+    @test_throws ArgumentError DRModels.drm_bridge_q2_phylo(;
         Y = sim.Y[:, 1:1],
         X = sim.X,
         species = sim.species,

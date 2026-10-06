@@ -14,7 +14,7 @@
 # NB2 ψ convention (locscale_kernels.jl): ψ = log σ, size r = exp(−2ψ).
 # Draws MUST use that mapping — `r = exp(ψ)` is the pre-unification convention
 # and collapses scale-axis recovery on public+private paths alike.
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra, SparseArrays
 import Distributions
 
@@ -65,7 +65,7 @@ _public_phylo_gamma_draw(ημ, ηψ) = (α = exp(ηψ); μ = exp(ημ);
         @test sd_psi > 0.18
         @test isfinite(cor_mu_psi) && -1.0 ≤ cor_mu_psi ≤ 1.0
         # Named group-level summary path (never residual rho12).
-        @test fit.nll isa DRM.LocScaleObjective
+        @test fit.nll isa DRModels.LocScaleObjective
     end
 
     @testset "Gamma grammar B: public route reaches phylo locscale" begin
@@ -83,13 +83,13 @@ _public_phylo_gamma_draw(ημ, ηψ) = (α = exp(ηψ); μ = exp(ημ);
 
         fit = drm(bf(@formula(y ~ x + (1 | p | phylo(species))),
                      @formula(sigma ~ 1 + (1 | p | phylo(species)))),
-                  DRM.Gamma(); data = data, tree = phy, se = false, g_tol = 1e-5)
+                  DRModels.Gamma(); data = data, tree = phy, se = false, g_tol = 1e-5)
 
         Λ = vc(fit)[:species]
         @test size(Λ) == (2, 2)
         @test isfinite(loglik(fit))
         @test sqrt(Λ[2, 2]) > 0.05
-        @test fit.nll isa DRM.LocScaleObjective
+        @test fit.nll isa DRModels.LocScaleObjective
     end
 
     @testset "grammar A dual phylo(1|sp) still rejected on NB2" begin

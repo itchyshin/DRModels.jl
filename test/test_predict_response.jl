@@ -1,7 +1,7 @@
 # predict() should return response-scale means for non-Gaussian families (apply
 # the inverse link); type = :link gives the linear predictor. In-sample predict
 # must equal fitted().
-using DRM, Test, Random
+using DRModels, Test, Random
 import Distributions
 
 @testset "predict response scale (non-Gaussian inverse link)" begin

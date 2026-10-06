@@ -1,6 +1,6 @@
 # Post-fit `rho12(fit)` accessor: drmTMB-parity residual-correlation getter.
 # Bivariate fit ⇒ per-observation ρ12 ∈ (-1, 1); univariate fit ⇒ ArgumentError.
-using DRM
+using DRModels
 using Test, Random
 
 @testset "rho12(fit) bivariate residual-correlation accessor" begin

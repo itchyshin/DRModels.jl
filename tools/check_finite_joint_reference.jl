@@ -1,12 +1,12 @@
 # Fixed-parameter native-R and independent finite-mixture reference; not fit parity.
-using DRM, ForwardDiff, LinearAlgebra, SHA, TOML, Test
+using DRModels, ForwardDiff, LinearAlgebra, SHA, TOML, Test
 root = dirname(@__DIR__)
 reference_path = joinpath(root, "docs/dev-log/evidence/julia-r-parity/finite-state/finite-reference-003.toml")
 output_path = isempty(ARGS) ? joinpath(root, "docs/dev-log/evidence/julia-r-parity/finite-state/finite-julia-001.toml") : abspath(ARGS[1])
 isfile(output_path) && error("refusing stale receipt")
 BLAS.set_num_threads(1)
 Threads.nthreads() == 1 && BLAS.get_num_threads() == 1 || error("wrong resource budget")
-realpath(dirname(pathof(DRM))) == realpath(joinpath(root, "src")) || error("wrong loaded source")
+realpath(dirname(pathof(DRModels))) == realpath(joinpath(root, "src")) || error("wrong loaded source")
 manifest() = Dict(relpath(joinpath(dir, name), root) => bytes2hex(sha256(read(joinpath(dir, name))))
     for (dir, _, files) in walkdir(joinpath(root, "src")) for name in files)
 before = manifest()
@@ -17,7 +17,7 @@ receipt = Dict{String,Any}("scope" => "fixed-parameter likelihood, AD derivative
     "source_before" => before, "reference_sha256" => bytes2hex(sha256(read(reference_path))),
     "runner_sha256" => bytes2hex(sha256(read(@__FILE__))),
     "runtime" => Dict("julia_version" => string(VERSION), "julia_threads" => Threads.nthreads(),
-                      "blas_threads" => BLAS.get_num_threads(), "loaded_source" => pathof(DRM)),
+                      "blas_threads" => BLAS.get_num_threads(), "loaded_source" => pathof(DRModels)),
     "cases" => Dict{String,Any}())
 started = time()
 @testset "finite-state frozen native reference" begin
@@ -37,7 +37,7 @@ started = time()
             theta = Float64.(point["theta"]); fn = t -> prepared_joint_nll(model, t)
             value = fn(theta); grad = ForwardDiff.gradient(fn, theta); hess = ForwardDiff.hessian(fn, theta)
             ll = prepared_joint_rowloglik(model, theta); moments = prepared_joint_conditional_moments(model, theta)
-            means = DRM._finite_joint_state_means(model, theta[1:p])
+            means = DRModels._finite_joint_state_means(model, theta[1:p])
             prediction = vec(sum(moments.probabilities .* means; dims=2))
             nll_error = abs(value-point["nll"]); gradient_error = maximum(abs.(grad-point["gradient"]))
             @test nll_error <= 1e-8

@@ -2,7 +2,7 @@
 # GLMM, y ~ x + (1|g) with sigma ~ 1. log μ_i = Xμ_iᵀβ + b_{g(i)}, b_g ~ N(0,σ_b²),
 # dispersion θ. The group effect is integrated out per group by Gauss–Hermite
 # quadrature. Recovery: β slope, dispersion θ, σ_b.
-using DRM
+using DRModels
 using Test, Random
 import Distributions
 

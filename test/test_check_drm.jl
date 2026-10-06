@@ -1,6 +1,6 @@
 # check_drm(fit): post-fit convergence / identifiability diagnostics,
 # mirroring drmTMB's check_drm().
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra, SparseArrays
 import ForwardDiff
 
@@ -33,7 +33,14 @@ import ForwardDiff
         # whether the number is an exact gradient, a finite-difference stand-in, or
         # absent, and the last of those silently satisfies `ok`.
         @test keys(r) == (:converged, :max_abs_grad, :grad_source, :vcov_complete,
-                          :vcov_posdef, :min_eigval, :cond, :penalized_map, :ok)
+                          :vcov_posdef, :min_eigval, :cond, :penalized_map,
+                          :variance_boundary, :temporal_boundary, :ok)
+        # `variance_boundary` (#724/#697): `nothing` unless a Gaussian fit has a grouped /
+        # structured random effect and a homoscedastic residual
+        @test r.variance_boundary === nothing
+        # `temporal_boundary` (drmTMB's temporal_boundary rules): `nothing` without a
+        # temporal() term; see test/test_temporal_boundary.jl
+        @test r.temporal_boundary === nothing
         @test r.vcov_complete isa Bool
         @test r.vcov_complete            # an ordinary fixed-effect fit has a full vcov
         @test r.converged isa Bool
@@ -57,9 +64,9 @@ import ForwardDiff
         empty = Dict{Symbol,Vector{Float64}}()
         nll(_) = error("check_drm should use the stored gradient")
         nllgrad!(g, _) = (fill!(g, 0.0); g)
-        base = DRM.DrmFit(Gaussian(), blocks, coefnames, theta, V, -1.0, 2, true,
+        base = DRModels.DrmFit(Gaussian(), blocks, coefnames, theta, V, -1.0, 2, true,
                           empty, empty, empty)
-        fit = DRM._withnll(base, nll, nllgrad!)
+        fit = DRModels._withnll(base, nll, nllgrad!)
 
         r = check_drm(fit)
         @test r.max_abs_grad == 0.0
@@ -95,7 +102,7 @@ import ForwardDiff
         Vnan = copy(fit0.vcov)
         Vnan[end-1:end, :] .= NaN
         Vnan[:, end-1:end] .= NaN
-        fit = DRM.DrmFit(fit0.family, fit0.blocks, fit0.coefnames, fit0.theta,
+        fit = DRModels.DrmFit(fit0.family, fit0.blocks, fit0.coefnames, fit0.theta,
                          Vnan, fit0.loglik, fit0.nobs, fit0.converged,
                          fit0.means, fit0.obs, fit0.scales)
         @test any(isnan, fit.vcov)
@@ -154,7 +161,7 @@ import ForwardDiff
         Lam = Matrix(Symmetric([0.20 0.05; 0.05 0.17]))
         residual_cov = Matrix(Symmetric([0.10 0.025; 0.025 0.14]))
         Q = sparse(Matrix(inv(cholesky(Symmetric(K)))))
-        P = DRM.prior_precision(Q, inv(Lam))
+        P = DRModels.prior_precision(Q, inv(Lam))
         u = cholesky(Symmetric(P)).UP \ randn(rng, size(P, 1))
         group = repeat(1:G, inner = nrep); n = length(group)
         x = randn(rng, n); X = hcat(ones(n), x)
@@ -177,7 +184,7 @@ import ForwardDiff
         # This route reaches the ForwardDiff line: a bare objective, no callback.
         @test fit.nll !== nothing
         @test fit.nllgrad === nothing
-        @test !(fit.nll isa DRM.LocScaleObjective)
+        @test !(fit.nll isa DRModels.LocScaleObjective)
         # ...and ForwardDiff genuinely cannot be run through it (the RED condition
         # this regression covers), while the Float64 objective is perfectly fine.
         @test_throws Exception ForwardDiff.gradient(fit.nll, fit.theta)
@@ -212,9 +219,9 @@ import ForwardDiff
         a1 = 0.8 .* (cholesky(Symmetric(C1)).L * randn(G))
         a2 = 0.5 .* (cholesky(Symmetric(C2)).L * randn(G))
         y = 0.3 .+ 0.5 .* x .+ a1[species] .+ a2[id] .+ 0.4 .* randn(n)
-        gidx1, G1 = DRM._group_index(species)
-        gidx2, G2 = DRM._group_index(id)
-        fit = DRM._fit_two_structured_gaussian_sparse(Gaussian(), y, hcat(ones(n), x),
+        gidx1, G1 = DRModels._group_index(species)
+        gidx2, G2 = DRModels._group_index(id)
+        fit = DRModels._fit_two_structured_gaussian_sparse(Gaussian(), y, hcat(ones(n), x),
             gidx1, G1, C1, gidx2, G2, C2, ["(Intercept)", "x"], :species, :id, 1e-7)
 
         @test fit.nllgrad === nothing
@@ -231,7 +238,7 @@ import ForwardDiff
         Random.seed!(55801)
         p = 16; m = 4; n = p * m
         phy = random_balanced_tree(p; branch_length = 0.25)
-        K = DRM._phylo_correlation(phy)
+        K = DRModels._phylo_correlation(phy)
         LK = cholesky(Symmetric(K)).L
         species = repeat(1:p, inner = m)
         x = randn(n); zg = randn(p); z = zg[species]
@@ -259,7 +266,7 @@ import ForwardDiff
         Random.seed!(913)
         p = 10; m = 5; n = p * m
         phy = random_balanced_tree(p; branch_length = 0.25)
-        K = DRM._phylo_correlation(phy)
+        K = DRModels._phylo_correlation(phy)
         LK = cholesky(Symmetric(K)).L
         species = repeat(1:p, inner = m); g = repeat(1:p, inner = m)
         x = randn(n); zg = randn(p); z = zg[species]
@@ -288,7 +295,7 @@ import ForwardDiff
         theta = [0.0, 0.0]
         V = Matrix{Float64}(I, 2, 2)
         empty = Dict{Symbol,Vector{Float64}}()
-        base = DRM.DrmFit(Gaussian(), blocks, coefnames, theta, V, -1.0, 2, true,
+        base = DRModels.DrmFit(Gaussian(), blocks, coefnames, theta, V, -1.0, 2, true,
                           empty, empty, empty)
 
         # (a) No objective at all: nothing to differentiate. This is the ORIGINAL
@@ -302,7 +309,7 @@ import ForwardDiff
         # (b) An objective that is stored but cannot be evaluated at all, so even
         # the finite-difference fallback has nothing to work with.
         hostile(_) = error("objective is not evaluable on Float64 either")
-        dead = DRM._withnll(base, hostile)
+        dead = DRModels._withnll(base, hostile)
         r = check_drm(dead)                  # must not throw
         @test isnan(r.max_abs_grad)
         @test r.grad_source === :unavailable # NOT :none -- that is the whole point
@@ -323,11 +330,11 @@ import ForwardDiff
         theta = [2.0]
         V = Matrix{Float64}(I, 1, 1)
         empty = Dict{Symbol,Vector{Float64}}()
-        base = DRM.DrmFit(Gaussian(), blocks, coefnames, theta, V, -1.0, 2, true,
+        base = DRModels.DrmFit(Gaussian(), blocks, coefnames, theta, V, -1.0, 2, true,
                           empty, empty, empty)
         quad(t) = 0.5 * (t[1] - 1.0)^2                  # d/dt = t - 1 = 1.0 at t = 2
         broken!(g, _) = (fill!(g, NaN); g)
-        fit = DRM._withnll(base, quad, broken!)
+        fit = DRModels._withnll(base, quad, broken!)
 
         r = check_drm(fit)
         @test r.grad_source === :finite

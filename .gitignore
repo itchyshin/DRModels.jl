@@ -37,3 +37,6 @@ deps/deps.jl
 # unlazy acceptance ledger (run state, not a deliverable)
 .unlazy/
 .unlazy-hook-state.json
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/

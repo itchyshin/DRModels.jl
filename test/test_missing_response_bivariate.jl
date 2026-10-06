@@ -22,11 +22,11 @@
 #     recovers the mean fixed effects to a loose tolerance and converges — the
 #     end-to-end sanity check that the masked engine fits, not just differentiates.
 
-using DRM
+using DRModels
 using Test, LinearAlgebra, Random, Statistics
 
 # Reach the un-exported leaf kernel + masked make_problem internals.
-const _leaf_nll = DRM.leaf_nll
+const _leaf_nll = DRModels.leaf_nll
 
 @testset "#19 bivariate missing-response" begin
 

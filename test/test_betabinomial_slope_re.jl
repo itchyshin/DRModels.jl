@@ -3,7 +3,7 @@
 # Xμ_iᵀβ + b0_g + b1_g·x_i, with precision φ = 1/σ². Because groups are disjoint
 # the per-group 2-D integral factorises, so it is done by a 2-D Gauss–Hermite
 # tensor grid. Recovery: β slope, φ, and the RE covariance Σ.
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 import Distributions
 

@@ -21,7 +21,7 @@
 #   the UNCONSTRAINED correlation.
 #
 # THE PARAMETERISATION TRAP. drmTMB penalises `eta_cor_phylo`, its unconstrained
-# correlation. DRM.jl's coupled route optimises `L21`, a Cholesky off-diagonal.
+# correlation. DRModels.jl's coupled route optimises `L21`, a Cholesky off-diagonal.
 # Penalising `L21` directly would be a DIFFERENT PRIOR, not a port. So the
 # correlation is recovered first --- cor = L21 / sqrt(L21^2 + L22^2) --- and
 # atanh(cor) is penalised. That stays closed-form differentiable, so the affected
@@ -86,7 +86,7 @@ penalized fits with `aic` / `lrtest` (both refuse).
 
 !!! warning "`sd_u` is measured on YOUR tree's scale"
     `sd_u` is a threshold on the phylogenetic SD, and that SD is only meaningful
-    relative to the tree's scale. DRM.jl builds its phylogenetic covariance from
+    relative to the tree's scale. DRModels.jl builds its phylogenetic covariance from
     the **branch lengths as supplied**, so a tree of height `h` has tip variance
     `h` and the fitted SD carries a factor `sqrt(h)`. drmTMB instead standardises
     via `ape::vcv(tree, corr = TRUE)`, whose tips always have variance 1.

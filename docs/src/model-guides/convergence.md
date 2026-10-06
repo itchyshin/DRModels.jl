@@ -1,7 +1,7 @@
 # Improving convergence
 
 !!! note "Status — Stable"
-    Mirrors drmTMB's [Improving convergence](https://itchyshin.github.io/drmTMB/articles/convergence.html). A practical guide to checking and improving a fit in **DRM.jl**, built around the [`check_drm`](@ref) diagnostic.
+    Mirrors drmTMB's [Improving convergence](https://itchyshin.github.io/drmTMB/articles/convergence.html). A practical guide to checking and improving a fit in **DRModels.jl**, built around the [`check_drm`](@ref) diagnostic.
 
 A distributional regression fits by maximum likelihood: `drm` runs an LBFGS
 optimiser (with a robust mode-finder for the phylogenetic engine) and stores
@@ -15,7 +15,7 @@ Every fit carries a convergence flag and an observed-information covariance.
 [`check_drm`](@ref) bundles the useful diagnostics into one report:
 
 ```julia
-using DRM
+using DRModels
 fit = drm(bf(@formula(y ~ x), @formula(sigma ~ x)), Gaussian(); data = dat)
 check_drm(fit)
 ```

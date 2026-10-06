@@ -5,7 +5,7 @@
 #     ε~N(0,σ²)
 # fit by ML (dense first cut). This is a NEW capability (no drmTMB parity claim);
 # the dense→sparse speed follow-up is tracked separately.
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 
 # Correlation from a covariance (unit-diagonal), used for the animal matrix.

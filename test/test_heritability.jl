@@ -2,7 +2,7 @@
 # structured-Gaussian fits: phylogenetic heritability / signal h² and the
 # repeatability / ICC R, each as (estimate, corrected, se, ci) via the merged
 # epsilon-method (bias_correct) infra and, optionally, a profile CI on the ratio.
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 
 _corr(M) = (d = sqrt.(diag(M)); M ./ (d * d'))

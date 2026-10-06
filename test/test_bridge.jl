@@ -1,4 +1,4 @@
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 
 @testset "drm_bridge primitive R boundary" begin
@@ -193,11 +193,11 @@ using Test, Random, LinearAlgebra
     @test bbridged["corpairs"] ≈ corpairs(bnative)
 
     newick = "((sp_1:0.3,sp_2:0.3):0.3,(sp_3:0.3,sp_4:0.3):0.3);"
-    empty!(DRM._BRIDGE_TREE_CACHE)
-    cached_phy1 = DRM._bridge_tree(newick)
-    cached_phy2 = DRM._bridge_tree(newick)
+    empty!(DRModels._BRIDGE_TREE_CACHE)
+    cached_phy1 = DRModels._bridge_tree(newick)
+    cached_phy2 = DRModels._bridge_tree(newick)
     @test cached_phy1 === cached_phy2
-    @test length(DRM._BRIDGE_TREE_CACHE) == 1
+    @test length(DRModels._BRIDGE_TREE_CACHE) == 1
 
     G = 16
     m = 4
@@ -273,13 +273,29 @@ using Test, Random, LinearAlgebra
     @test lsbridged["converged"] == true
     @test lsbridged["coefficients"] ≈ coef(lsnative)
     @test lsbridged["loglik"] ≈ loglik(lsnative)
-    @test_throws ErrorException drm_bridge(;
+    # Arc 2: the coupled block now fits REML (joint Laplace over the phylo effects
+    # and both fixed-effect axes, as native drmTMB); it used to throw here.
+    lsreml_native = drm(
+        bf(@formula(y ~ x + phylo(1 | species)),
+           @formula(sigma ~ phylo(1 | species))),
+        Gaussian();
+        data = lsdata,
+        tree = phyls,
+        phylo_coupled = true,
+        method = :REML,
+    )
+    lsreml = drm_bridge(;
         formula = lsformula,
         family = "gaussian",
         data = lsdata,
         tree = phyls,
         options = Dict(:phylo_coupled => true, :method => "REML"),
     )
+    @test estimation_method(lsreml_native) == :REML
+    @test any(startswith("recov_"), lsreml["coef_names"])
+    @test lsreml["estim_method"] == "REML"
+    @test lsreml["coefficients"] ≈ coef(lsreml_native)
+    @test lsreml["loglik"] ≈ loglik(lsreml_native)
 
     pprofile = drm_bridge_inference(;
         formula = Dict(:mu => "y ~ x + phylo(1 | species)", :sigma => "sigma ~ 1"),
@@ -318,8 +334,8 @@ using Test, Random, LinearAlgebra
     # ---------------------------------------------------------------------
     # #475: `parm` kwarg on the public `drm_bridge_inference` surface. Before
     # this, drmTMB PR #1080 could only reach an ordinary `fixef:<dpar>:<coef>`
-    # target by calling DRM.jl's underscore-prefixed marshalling internals by
-    # qualified name (`DRM._bridge_data`, `_bridge_formula`, `_bridge_family`,
+    # target by calling DRModels.jl's underscore-prefixed marshalling internals by
+    # qualified name (`DRModels._bridge_data`, `_bridge_formula`, `_bridge_family`,
     # `_bridge_fit`, `_bridge_inference_flatten`, ...) -- a rename here would
     # silently break the R bridge. `parm = "fixef:mu:x"` closes that gap.
     # ---------------------------------------------------------------------
@@ -363,16 +379,16 @@ using Test, Random, LinearAlgebra
     # must produce IDENTICAL numbers to the new public `parm` route. No
     # underscore-prefixed function is called on the `fx_profile`/`fx_boot`
     # side above; this block is only the OLD-route reference computation.
-    dat_i = DRM._bridge_data(data)
-    bundle_i, dat_i = DRM._bridge_formula("y ~ x; sigma ~ x", "gaussian", dat_i)
-    fam_i = DRM._bridge_family("gaussian")
-    opts_i = DRM._bridge_options(Dict{String,Any}())
-    fit_i = DRM._bridge_fit(bundle_i, fam_i, dat_i; tree = nothing, K = nothing,
+    dat_i = DRModels._bridge_data(data)
+    bundle_i, dat_i = DRModels._bridge_formula("y ~ x; sigma ~ x", "gaussian", dat_i)
+    fam_i = DRModels._bridge_family("gaussian")
+    opts_i = DRModels._bridge_options(Dict{String,Any}())
+    fit_i = DRModels._bridge_fit(bundle_i, fam_i, dat_i; tree = nothing, K = nothing,
                             A = nothing, coords = nothing, options = opts_i)
 
-    result_i = DRM.profile_result(fit_i; level = 0.90, threads = false, parm = :mu)
+    result_i = DRModels.profile_result(fit_i; level = 0.90, threads = false, parm = :mu)
     row_i = only(filter(r -> r.param === :mu && r.coef == "x", result_i.ci))
-    internal_profile = DRM._bridge_inference_flatten(
+    internal_profile = DRModels._bridge_inference_flatten(
         row_i; method = "profile", status = "profile",
         attempted = result_i.attempted, used = result_i.used, failed = result_i.failed,
         elapsed = result_i.elapsed, threaded = result_i.threaded,
@@ -383,11 +399,11 @@ using Test, Random, LinearAlgebra
     @test fx_profile["upper"] == internal_profile["upper"]
 
     rng_i = Random.MersenneTwister(20260609)
-    result_ib = DRM.bootstrap_result(fit_i; data = dat_i, B = 25, level = 0.90, rng = rng_i,
+    result_ib = DRModels.bootstrap_result(fit_i; data = dat_i, B = 25, level = 0.90, rng = rng_i,
                                      tree = nothing, threads = false, failures = :skip,
                                      check_converged = true, algorithm = :auto, g_tol = 1e-8)
     row_ib = only(filter(r -> r.param === :mu && r.coef == "x", result_ib.summary))
-    internal_boot = DRM._bridge_inference_flatten(
+    internal_boot = DRModels._bridge_inference_flatten(
         row_ib; method = "bootstrap",
         status = result_ib.used >= 2 ? "bootstrap" : "bootstrap_unavailable",
         attempted = result_ib.attempted, used = result_ib.used, failed = result_ib.failed,
@@ -404,21 +420,21 @@ using Test, Random, LinearAlgebra
     # bootstrap result independently through the primitives `drm_bridge_
     # inference` itself calls, and compare to the public no-`parm` call above
     # (`pprofile` / `pbootstrap`, on the same `pdata`/`phy` fixture).
-    dat_sd = DRM._bridge_data(pdata)
-    bundle_sd, dat_sd = DRM._bridge_formula(
+    dat_sd = DRModels._bridge_data(pdata)
+    bundle_sd, dat_sd = DRModels._bridge_formula(
         Dict(:mu => "y ~ x + phylo(1 | species)", :sigma => "sigma ~ 1"),
         "gaussian", dat_sd)
-    fam_sd = DRM._bridge_family("gaussian")
-    opts_sd = DRM._bridge_options(Dict{String,Any}())
+    fam_sd = DRModels._bridge_family("gaussian")
+    opts_sd = DRModels._bridge_options(Dict{String,Any}())
     opts_sd[:profile_ci] = true   # `drm_bridge_inference` sets this for the SD path
-    tree_sd = DRM._bridge_tree(phy)
-    fit_sd = DRM._bridge_fit(bundle_sd, fam_sd, dat_sd; tree = tree_sd, K = nothing,
+    tree_sd = DRModels._bridge_tree(phy)
+    fit_sd = DRModels._bridge_fit(bundle_sd, fam_sd, dat_sd; tree = tree_sd, K = nothing,
                              A = nothing, coords = nothing, options = opts_sd)
 
-    result_sd = DRM.profile_result(fit_sd; level = 0.80, threads = false,
+    result_sd = DRModels.profile_result(fit_sd; level = 0.80, threads = false,
                                    parm = [:resd_sigma, :resd, :resd_mu])
     row_sd = only(filter(r -> r.param in (:resd_sigma, :resd, :resd_mu), result_sd.ci))
-    internal_sd_profile = DRM._bridge_inference_flatten(
+    internal_sd_profile = DRModels._bridge_inference_flatten(
         row_sd; method = "profile", status = "profile",
         attempted = result_sd.attempted, used = result_sd.used, failed = result_sd.failed,
         elapsed = result_sd.elapsed, threaded = result_sd.threaded,
@@ -430,12 +446,12 @@ using Test, Random, LinearAlgebra
     @test pprofile["param"] == internal_sd_profile["param"]
 
     rng_sd = Random.MersenneTwister(20260609)
-    result_sdb = DRM.bootstrap_result(fit_sd; data = dat_sd, B = 3, level = 0.80,
+    result_sdb = DRModels.bootstrap_result(fit_sd; data = dat_sd, B = 3, level = 0.80,
                                       rng = rng_sd, tree = tree_sd, threads = false,
                                       failures = :skip, check_converged = true,
                                       algorithm = :auto, g_tol = 1e-8)
     row_sdb = only(filter(r -> r.param in (:resd_sigma, :resd, :resd_mu), result_sdb.summary))
-    internal_sd_boot = DRM._bridge_inference_flatten(
+    internal_sd_boot = DRModels._bridge_inference_flatten(
         row_sdb; method = "bootstrap",
         status = result_sdb.used >= 2 ? "bootstrap" : "bootstrap_unavailable",
         attempted = result_sdb.attempted, used = result_sdb.used, failed = result_sdb.failed,
@@ -462,7 +478,7 @@ end
     y = 0.4 .+ 0.7 .* x .+ 0.5 .* randn(n)
     d = (; y, x)
 
-    r = DRM.drm_bridge(; formula = "mu = y ~ x; sigma = sigma ~ 1; nu = nu ~ 1",
+    r = DRModels.drm_bridge(; formula = "mu = y ~ x; sigma = sigma ~ 1; nu = nu ~ 1",
                        family = "student", data = d)
     @test r["family"] == "student"
     @test isfinite(Float64(r["loglik"]))
@@ -473,7 +489,7 @@ end
     # Bivariate Student still routes bivariate (mu1/mu2 discriminate, nu rides).
     y2 = 0.1 .+ 0.4 .* x .+ 0.6 .* randn(n)
     d2 = (; y1 = y, y2 = y2, x)
-    r2 = DRM.drm_bridge(; formula = "mu1 = y1 ~ x; mu2 = y2 ~ x; sigma1 = sigma1 ~ 1; sigma2 = sigma2 ~ 1; nu = nu ~ 1; rho12 = rho12 ~ 1",
+    r2 = DRModels.drm_bridge(; formula = "mu1 = y1 ~ x; mu2 = y2 ~ x; sigma1 = sigma1 ~ 1; sigma2 = sigma2 ~ 1; nu = nu ~ 1; rho12 = rho12 ~ 1",
                         family = "biv_student", data = d2)
     @test isfinite(Float64(r2["loglik"]))
 end
@@ -483,8 +499,8 @@ end
     # `drm_bridge: unsupported family \`skew_normal\`` even though
     # `SkewNormal()` is a native family (src/skewnormal.jl) — the R engine gate
     # could not admit the family because the Julia side had no tag for it.
-    @test DRM._bridge_family("skew_normal") isa SkewNormal
-    @test DRM._bridge_family("skewnormal") isa SkewNormal
+    @test DRModels._bridge_family("skew_normal") isa SkewNormal
+    @test DRModels._bridge_family("skewnormal") isa SkewNormal
 
     # Same DGP shape as drmTMB's test-skew-normal-location-scale.R (moment
     # parameterisation: mu = mean, sigma = SD, nu = slant alpha), so the
@@ -502,7 +518,7 @@ end
     y = xi .+ omega .* (delta .* abs.(randn(n)) .+ sqrt(1 - delta^2) .* randn(n))
     d = (; y, x, z)
 
-    r = DRM.drm_bridge(; formula = "mu = y ~ x; sigma = sigma ~ z; nu = nu ~ 1",
+    r = DRModels.drm_bridge(; formula = "mu = y ~ x; sigma = sigma ~ z; nu = nu ~ 1",
                        family = "skew_normal", data = d)
     @test r["family"] == "skew_normal"
     @test r["estim_method"] == "ML"
@@ -515,7 +531,7 @@ end
 
     # coef_labels echo (design 258 §7.1): R's labels for all three dpars are
     # echoed verbatim, so the drmTMB side can validate the round trip.
-    labelled = DRM.drm_bridge(; formula = "mu = y ~ x; sigma = sigma ~ z; nu = nu ~ 1",
+    labelled = DRModels.drm_bridge(; formula = "mu = y ~ x; sigma = sigma ~ z; nu = nu ~ 1",
                               family = "skew_normal", data = d,
                               options = Dict{String,Any}("coef_labels" => Dict(
                                   "mu" => ["(Intercept)", "x"],

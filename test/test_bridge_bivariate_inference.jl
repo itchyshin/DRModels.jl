@@ -2,7 +2,7 @@
 # with method="bootstrap" returns the four among-axis SD CIs as a multi-row payload
 # (param/estimate/lower/upper as equal-length vectors → an R data.frame); profile is
 # directed to bootstrap (the q4 boundary Hessian is singular).
-using DRM, Test, Random, LinearAlgebra
+using DRModels, Test, Random, LinearAlgebra
 
 @testset "drm_bridge_inference — bivariate q4 among-axis SD CIs" begin
     Random.seed!(20260613)
@@ -32,14 +32,14 @@ using DRM, Test, Random, LinearAlgebra
         :rho12 => "rho12 ~ 1",
     )
 
-    fit_reml = DRM.drm_bridge(; formula = fml, family = "biv_gaussian",
+    fit_reml = DRModels.drm_bridge(; formula = fml, family = "biv_gaussian",
         data = dat, tree = phy, options = Dict("method" => "REML"))
     @test fit_reml["family"] == "biv_gaussian"
     @test isfinite(fit_reml["loglik"])
     @test all(isfinite, fit_reml["coefficients"])
     @test all(isnan, vec(fit_reml["vcov"]))
 
-    res = DRM.drm_bridge_inference(; formula = fml, family = "biv_gaussian",
+    res = DRModels.drm_bridge_inference(; formula = fml, family = "biv_gaussian",
         data = dat, tree = phy, method = "bootstrap", level = 0.90, B = 12,
         seed = 20260613)
     @test res["method"] == "bootstrap"
@@ -54,7 +54,7 @@ using DRM, Test, Random, LinearAlgebra
 
     # PROFILE-likelihood CIs ARE available for the q4 among-axis SDs (hessian-free,
     # boundary-correct) — the headline strength, NOT a bootstrap fallback.
-    res_p = DRM.drm_bridge_inference(; formula = fml, family = "biv_gaussian",
+    res_p = DRModels.drm_bridge_inference(; formula = fml, family = "biv_gaussian",
         data = dat, tree = phy, method = "profile", level = 0.90)
     @test res_p["method"] == "profile"          # real profile, not redirected
     @test res_p["multi"] === true
@@ -66,6 +66,6 @@ using DRM, Test, Random, LinearAlgebra
     @test all(isnan, res_p["std_error"])        # LR interval has no Wald SE
 
     # Wald is correctly unavailable for these boundary variance components.
-    @test_throws ArgumentError DRM.drm_bridge_inference(; formula = fml,
+    @test_throws ArgumentError DRModels.drm_bridge_inference(; formula = fml,
         family = "biv_gaussian", data = dat, tree = phy, method = "wald")
 end

@@ -2,7 +2,7 @@
 # marginal stays exactly Gaussian: y ~ N(Xβ, D + σ_b² ZZ′), fit in closed form
 # (no Laplace). Recovery test (Curie/Fisher): recover the fixed effects, the
 # residual σ, and the random-intercept SD σ_b.
-using DRM
+using DRModels
 using Test, Random
 
 @testset "Gaussian random intercept (1|g) — recovery" begin

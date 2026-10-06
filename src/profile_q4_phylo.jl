@@ -52,7 +52,7 @@ function profile_sigma_a(fit::DrmFit; level::Real = 0.95, axes = :all, chibar::B
     re = fit.ranef
     (re isa NamedTuple && haskey(re, :prob) && haskey(re, :Sigma_a) && haskey(re, :Q_cond)) ||
         throw(ArgumentError("profile_sigma_a requires a bivariate q=4 phylogenetic fit whose " *
-            "ranef carries `prob` (re-fit on this DRM version)"))
+            "ranef carries `prob` (re-fit on this DRModels version)"))
     0 < level < 1 || throw(ArgumentError("level must be in (0, 1)"))
     is_converged(fit) ||
         @warn "profile_sigma_a: the supplied fit did not converge; profile CIs may be unreliable"
@@ -103,7 +103,7 @@ function _q4_full_refit(prob, Q_cond, ψ0::Vector{Float64}, nn::Int, g_tol::Floa
     res = Optim.optimize(Optim.only_fg!(fg!), copy(ψ0),
         Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking()),
         Optim.Options(g_tol = g_tol, iterations = 250, time_limit = 30.0))
-    return Optim.minimizer(res), Optim.minimum(res)
+    return Optim.minimizer(res), _objective_at_minimizer_fg(fg!, res)
 end
 
 # Shared marginal NLL + FULL ψ-gradient with the Inf robustness barrier. Returns
@@ -153,7 +153,7 @@ function _q4_profile_axis(prob, Q_cond, ψ̂::Vector{Float64}, nβ::Int, a::Int,
             res = Optim.optimize(Optim.only_fg!(fg!), copy(start),
                 Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking()),
                 Optim.Options(g_tol = g_tol, iterations = 150, time_limit = 15.0))
-            m = Optim.minimum(res)
+            m = _objective_at_minimizer_fg(fg!, res)
             if isfinite(m) && m < best
                 best = m; bestψ = Optim.minimizer(res); u_cache[] = uc[]
             end

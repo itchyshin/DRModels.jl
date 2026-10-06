@@ -14,7 +14,7 @@
 # spread (correlations have SE ∝ 1/√p, so weak/zero entries recover only loosely
 # at this p — the same honest pattern the q=4 recovery gate settled on).
 
-using DRM
+using DRModels
 using Test, LinearAlgebra, Random, Statistics, SparseArrays
 using Distributions: MvNormal, logpdf
 
@@ -54,8 +54,8 @@ end
     B = randn(rng, 4, 4)
     S4 = Matrix(Symmetric(B * B' + 0.3I))
     v4 = cov_to_lc(S4)
-    @test v4 ≈ DRM.Λ_to_lc(S4)
-    @test lc_to_cov(v4, 4) ≈ DRM.lc_to_Λ(v4)
+    @test v4 ≈ DRModels.Λ_to_lc(S4)
+    @test lc_to_cov(v4, 4) ≈ DRModels.lc_to_Λ(v4)
 end
 
 @testset "general-q coevolution marginal is exact (Gaussian)" begin

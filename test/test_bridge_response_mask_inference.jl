@@ -37,8 +37,8 @@
 using Test
 using Random
 using Statistics
-using DRM
-using DRM: is_converged, _nondegenerate_fit, niterations
+using DRModels
+using DRModels: is_converged, _nondegenerate_fit, niterations
 
 @testset "#646 response-mask inference (convergence flag + bootstrap)" begin
     # The drmTMB fixture, generated once and inlined so the test does not
@@ -52,7 +52,7 @@ using DRM: is_converged, _nondegenerate_fit, niterations
     n_observed = count(!isnan, y_masked)
     @test n_observed == 54
 
-    f = bf(DRM.@formula(y ~ x), DRM.@formula(sigma ~ x))
+    f = bf(DRModels.@formula(y ~ x), DRModels.@formula(sigma ~ x))
     fit = drm(f, Gaussian(); data = (y = y_masked, x = x))
 
     # The fit really is on the observed rows only.
@@ -83,26 +83,26 @@ using DRM: is_converged, _nondegenerate_fit, niterations
     # DEFECT 2: simulate draws over the full design, and a bootstrap on a
     # masked response completes instead of losing every replicate.
     #
-    # `all(isfinite, ysim)` PINS today's cross-engine convention -- a
-    # replicate response spans the FULL design and the original NA mask is
-    # NOT re-imposed before the refit -- and NOT the statistically preferred
-    # semantics. MEASURED (Fisher must-fix round, 2026-09-05): because
-    # replicates always refit on all 60 rows regardless of how many rows the
-    # seed fit actually observed, the parametric bootstrap is
-    # anti-conservative and the narrowing GROWS with the missing fraction
-    # (roughly -7% / -27% / -40% relative to the seed fit's Wald SE at 10% /
-    # 30% / 50% missingness, an implied nominal-95 coverage of roughly 93% /
-    # 85% / 76%). A mask-preserving bootstrap (draw, then re-apply the
-    # original NA mask before refitting) tracks the seed fit's Wald SE far
-    # more closely and does not show that growing bias. See drmTMB issue
-    # #1188 and `docs/dev-log/evidence/julia-r-parity/p2-g3/
-    # a8c-root-cause-receipt.md` in the drmTMB repo. Whoever implements
-    # mask-preserving replicates must change this assertion (and the two
-    # lines above it) to re-check `isnan` at the originally-masked positions
-    # instead of asserting every entry finite.
-    ysim = DRM.simulate(fit; rng = MersenneTwister(1))
+    # The DRAW still spans the full design and is finite everywhere -- it must,
+    # because `means`/`scales` are length 60. The mask is re-imposed one step
+    # later, when `_bootstrap_data` builds the replicate table, so every
+    # replicate refits on the same rows the seed fit observed (drmTMB #1188).
+    ysim = DRModels.simulate(fit; rng = MersenneTwister(1))
     @test length(ysim) == n
     @test all(isfinite, ysim)
+
+    # drmTMB #1188: mask-preserving replicates. Before this fix the replicate
+    # table carried no missing values at all and each refit used all 60 rows,
+    # so the bootstrap spread ignored the missing fraction entirely. MEASURED
+    # on the R side of the same defect (S = 200 datasets, B = 99 replicates,
+    # nominal 95% percentile interval on `fixef:mu:x`, truth 0.5): coverage
+    # 0.895 / 0.820 / 0.720 before the fix at 10% / 30% / 50% masked, and
+    # 0.910 / 0.895 / 0.910 after, against a Wald reference of
+    # 0.920 / 0.925 / 0.915.
+    datab = DRModels._bootstrap_data(fit.formula, (y = y_masked, x = x), copy(ysim))
+    @test findall(isnan, datab.y) == findall(isnan, y_masked)
+    @test datab.y[obs] == ysim[obs]
+    @test nobs(drm(f, Gaussian(); data = datab)) == n_observed
 
     boot = bootstrap_result(
         fit;
@@ -119,7 +119,7 @@ using DRM: is_converged, _nondegenerate_fit, niterations
 
     # A degenerate fit must still be rejected: the NaN-tolerant scale bar
     # widens `_nondegenerate_fit`'s input, it must not disable the check.
-    degenerate = DRM.DrmFit(
+    degenerate = DRModels.DrmFit(
         fit.family, fit.blocks, fit.coefnames, fit.theta, fit.vcov,
         fit.loglik, fit.nobs, true, fit.means, fit.obs,
         Dict(:sigma => fill(1e-12, n)),

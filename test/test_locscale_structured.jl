@@ -47,7 +47,7 @@
 #     asserted tightly. The historical raw Beta fit uses exact-gradient
 #     stationarity because its optimizer flag can stop on a variance plateau;
 #     the certified Beta-Binomial fit must report convergence as well.
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra, SparseArrays
 import Distributions
 
@@ -109,9 +109,9 @@ _ls_grad_ok(ga, gfd; tol = 1e-6) =
             push!(y, clamp(rand(Distributions.Beta(μ * φ, (1 - μ) * φ)), 1e-7, 1 - 1e-7))
         end
 
-        Q, gidx, Gd = DRM._locscale_relmat_setup(C, id)
+        Q, gidx, Gd = DRModels._locscale_relmat_setup(C, id)
         @test issparse(Q) && size(Q) == (G, G)    # structured precision wired in
-        fit = DRM._fit_locscale(Val(:beta), y, Xμ, Xψ, gidx, Gd, Q; se = false)
+        fit = DRModels._fit_locscale(Val(:beta), y, Xμ, Xψ, gidx, Gd, Q; se = false)
         comp = fit.components
 
         @test isfinite(fit.nll)
@@ -127,7 +127,7 @@ _ls_grad_ok(ga, gfd; tol = 1e-6) =
         @test comp.sd_psi ≈ sqrt(fit.Lambda[2, 2])
         # Stationarity of the EXACT outer gradient at the fit (converged through
         # C⁻¹ + Takahashi, not a flat LBFGS stop).
-        gmax = maximum(abs, DRM._ls_marginal_grad(Val(:beta), y, Xμ, Xψ, gidx, Gd, Q, fit.θ))
+        gmax = maximum(abs, DRModels._ls_marginal_grad(Val(:beta), y, Xμ, Xψ, gidx, Gd, Q, fit.θ))
         @test gmax < 1e-3
     end
 
@@ -159,8 +159,8 @@ _ls_grad_ok(ga, gfd; tol = 1e-6) =
             push!(y, (Float64(s), Float64(ntr)))   # engine response = (successes, trials)
         end
 
-        Q, gidx, Gd = DRM._locscale_relmat_setup(C, id)
-        fit = DRM._fit_locscale(Val(:betabinomial), y, Xμ, Xψ, gidx, Gd, Q;
+        Q, gidx, Gd = DRModels._locscale_relmat_setup(C, id)
+        fit = DRModels._fit_locscale(Val(:betabinomial), y, Xμ, Xψ, gidx, Gd, Q;
                                 se = false, whitened = true)
         comp = fit.components
 
@@ -173,9 +173,9 @@ _ls_grad_ok(ga, gfd; tol = 1e-6) =
         @test comp.sd_psi ≈ sd_psi_true atol = 0.22
         @test comp.sd_psi > 0.20
         @test isfinite(comp.cor_mu_psi) && -1.0 ≤ comp.cor_mu_psi ≤ 1.0
-        certified = DRM._ls_whitened_eval(
+        certified = DRModels._ls_whitened_eval(
             Val(:betabinomial), y, Xμ, Xψ, gidx, Gd, Q, fit.θ,
-            DRM._ls_canonical_Zeta(length(y)), DRM._ls_canonical_Zpsi(length(y)),
+            DRModels._ls_canonical_Zeta(length(y)), DRModels._ls_canonical_Zpsi(length(y)),
         )
         @test certified.status.ok
         @test maximum(abs, certified.gradient) < 1e-3
@@ -193,7 +193,7 @@ _ls_grad_ok(ga, gfd; tol = 1e-6) =
         id = repeat(1:G, inner = m)
         C = _ls_random_corr(MersenneTwister(53), G)
         LC = cholesky(C).L
-        Λt = DRM._ls_lc_to_Λ([log(0.45), 0.04, log(0.40)]); LΛ = cholesky(Symmetric(Λt)).L
+        Λt = DRModels._ls_lc_to_Λ([log(0.45), 0.04, log(0.40)]); LΛ = cholesky(Symmetric(Λt)).L
         A = LC * randn(G, 2) * LΛ'
         x = randn(n); z = randn(n)
         Xμ = hcat(ones(n), x); Xψ = hcat(ones(n), z)
@@ -202,7 +202,7 @@ _ls_grad_ok(ga, gfd; tol = 1e-6) =
         # block) are exercised — a frozen-mode gradient fails this gate.
         θ = [0.05, 0.45, 0.35, 0.05, log(0.42), 0.03, log(0.38)]
 
-        Qb, gidxb, Gb = DRM._locscale_relmat_setup(C, id)
+        Qb, gidxb, Gb = DRModels._locscale_relmat_setup(C, id)
 
         # ---- Beta (analytic kernels), 5-point stencil, relative gate. ----
         yβ = Float64[]
@@ -211,10 +211,10 @@ _ls_grad_ok(ga, gfd; tol = 1e-6) =
             φ = exp(-2 * (0.30 + 0.40 * z[i] + A[id[i], 2]))
             push!(yβ, clamp(rand(Distributions.Beta(μ * φ, (1 - μ) * φ)), 1e-6, 1 - 1e-6))
         end
-        g_an_β = DRM._ls_marginal_grad(Val(:beta), yβ, Xμ, Xψ, gidxb, Gb, Qb, θ)
+        g_an_β = DRModels._ls_marginal_grad(Val(:beta), yβ, Xμ, Xψ, gidxb, Gb, Qb, θ)
         @test all(g_an_β .!= 0)                    # inner mode converged
         @test all(isfinite, g_an_β)
-        fβ = t -> DRM._ls_fit_nll(Val(:beta), yβ, Xμ, Xψ, gidxb, Gb, Qb, t)
+        fβ = t -> DRModels._ls_fit_nll(Val(:beta), yβ, Xμ, Xψ, gidxb, Gb, Qb, t)
         g_fd_β = _ls_fd5(fβ, θ)
         diff_β = maximum(abs, g_an_β .- g_fd_β)
         @info "cluster ④ Beta relmat gradient gate" abs_diff = diff_β rel_bound = 1e-6 * (1 + maximum(abs, g_fd_β))
@@ -228,10 +228,10 @@ _ls_grad_ok(ga, gfd; tol = 1e-6) =
             s = rand(Distributions.BetaBinomial(ntr, μ * φ, (1 - μ) * φ))
             push!(ybb, (Float64(s), Float64(ntr)))
         end
-        g_an_bb = DRM._ls_marginal_grad(Val(:betabinomial), ybb, Xμ, Xψ, gidxb, Gb, Qb, θ)
+        g_an_bb = DRModels._ls_marginal_grad(Val(:betabinomial), ybb, Xμ, Xψ, gidxb, Gb, Qb, θ)
         @test all(g_an_bb .!= 0)
         @test all(isfinite, g_an_bb)
-        fbb = t -> DRM._ls_fit_nll(Val(:betabinomial), ybb, Xμ, Xψ, gidxb, Gb, Qb, t)
+        fbb = t -> DRModels._ls_fit_nll(Val(:betabinomial), ybb, Xμ, Xψ, gidxb, Gb, Qb, t)
         g_fd_bb = _ls_fd5(fbb, θ)
         diff_bb = maximum(abs, g_an_bb .- g_fd_bb)
         @info "cluster ④ BetaBinomial relmat gradient gate (5-point)" abs_diff = diff_bb rel_bound = 1e-6 * (1 + maximum(abs, g_fd_bb))

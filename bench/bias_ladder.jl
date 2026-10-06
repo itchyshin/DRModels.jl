@@ -1,4 +1,4 @@
-# DRM.jl#496: does the scale-axis phylo-variance bias shrink with N, or persist?
+# DRModels.jl#496: does the scale-axis phylo-variance bias shrink with N, or persist?
 #
 # DESIGN NOTE (the trap this avoids). Cell B's committed shape uses ntip=16 with
 # branch_length=0.25, giving a balanced tree of height EXACTLY 1.0 — which is why
@@ -8,7 +8,7 @@
 # is set to 1/log2(ntip) at every rung, holding height at 1.0 and isolating N.
 #
 # Fits only: the question is about the POINT ESTIMATE, so no intervals are computed.
-using DRM, Random, LinearAlgebra, Printf, DelimitedFiles
+using DRModels, Random, LinearAlgebra, Printf, DelimitedFiles
 
 const LAM = Symmetric([0.25 0.10 0.05 0.00
                        0.10 0.25 0.00 0.04
@@ -20,8 +20,8 @@ const LS1 = -0.6; const LS2 = -0.6; const PER = 8
 function sim_fit(ntip::Int, seed::Int)
     bl = 1 / log2(ntip)                       # height == 1.0 at every rung
     rng = MersenneTwister(seed)
-    phy = DRM.random_balanced_tree(ntip; branch_length = bl)
-    Kraw = DRM.sigma_phy_dense(phy)
+    phy = DRModels.random_balanced_tree(ntip; branch_length = bl)
+    Kraw = DRModels.sigma_phy_dense(phy)
     @assert isapprox(Kraw[1,1], 1.0; atol=1e-10) "height != 1 at ntip=$ntip"
     U = cholesky(Symmetric(Kraw)).L * randn(rng, ntip, 4) * transpose(cholesky(LAM).L)
     tip = repeat(1:ntip, inner=PER); n = ntip*PER
@@ -40,7 +40,7 @@ function main()
     s0    = parse(Int, ARGS[findfirst(==("--seed-start"), ARGS)+1])
     cnt   = parse(Int, ARGS[findfirst(==("--seed-count"), ARGS)+1])
     out   = ARGS[findfirst(==("--out"), ARGS)+1]
-    truth = DRM.cov_to_lc(Matrix(LAM))
+    truth = DRModels.cov_to_lc(Matrix(LAM))
     open(out, "w") do io
         println(io, "seed\tntip\tconv\tentry\testimate\ttruth")
         for s in s0:(s0+cnt-1)

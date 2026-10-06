@@ -1,4 +1,4 @@
-# inference.jl — Wald + profile-likelihood inference for fitted DRM models.
+# inference.jl — Wald + profile-likelihood inference for fitted DRModels models.
 # Wald: estimate ± z·se from the observed information stored on the fit, on each
 # parameter's working scale (log σ, atanh ρ12, log σ_b). Profile: invert the
 # likelihood-ratio statistic — the endpoints where 2(ℓ̂ − ℓ_profile) = χ²₁(level),
@@ -26,7 +26,12 @@ standard error — which propagates to an unbounded `(-Inf, Inf)` Wald interval.
 [`check_drm`](@ref) flags the same situation via `vcov_posdef`; drmTMB returns
 all-`NaN` from `sdreport` in this case.
 """
-stderror(fit::DrmFit) = _boundary_se.(diag(fit.vcov))
+stderror(fit::DrmFit) = _wald_withheld(fit) ? _homtoep_refuse_wald("stderror") : _stderror(fit)
+
+# Internal: the Hessian-based SEs regardless of the public Wald scope (profile
+# step sizes, plots); `_display_se` is what `coeftable` / `show` print.
+_stderror(fit::DrmFit) = _boundary_se.(diag(fit.vcov))
+_display_se(fit::DrmFit) = _wald_withheld(fit) ? fill(NaN, length(fit.theta)) : _stderror(fit)
 
 # √v where the variance is identified (finite, positive); Inf otherwise. Keeps a
 # non-PD boundary direction from poisoning the whole SE vector with NaN.
@@ -56,7 +61,7 @@ const _ProfileStatsRow = NamedTuple{
         :lower_unbounded,
         :upper_unbounded,
         :nonmonotone,
-        # DRM.jl#493: the refinement loop's `thi - tlo < 1e-8` bracket-collapse
+        # DRModels.jl#493: the refinement loop's `thi - tlo < 1e-8` bracket-collapse
         # exit was being treated identically to genuine convergence
         # (`abs(ht) < 1e-9`), which let a trapped, non-monotone profiled-nll
         # surface report a fabricated near-zero step as if it were a real
@@ -170,7 +175,7 @@ Confidence intervals for every coefficient, as a vector of
   An endpoint arm that the search cannot certify is REFUSED, not returned: this
   method throws an `ArgumentError` naming the coefficient, the arm, and the
   nuisance-solve reason rather than reporting the failed side as a signed `Inf`
-  (DRM.jl#631). Use [`profile_result`](@ref) when you want the same rows plus
+  (DRModels.jl#631). Use [`profile_result`](@ref) when you want the same rows plus
   the per-endpoint diagnostics instead of an exception.
   Pass `threads = true` to profile coefficients in parallel when the fitted
   objective is thread-safe; if only one coefficient is profiled, its lower and
@@ -185,8 +190,18 @@ Mirrors drmTMB's `confint(fit, method = "wald" | "profile")`.
 function confint(
     fit::DrmFit; level::Real=0.95, method::Symbol=:wald, threads::Bool=false, parm=nothing
 )
+    method === :wald && _wald_withheld(fit) && throw(ArgumentError("confint: Homogeneous Toeplitz " *
+        "mean-coefficient Wald intervals are not yet qualified; mean-coefficient likelihood " *
+        "profiles are qualified in drmTMB's retained primary panel cells, Wald covariance and " *
+        "intervals remain deferred. Use `method = :profile`."))
     method === :wald && return _wald_ci(fit, level, parm)
     if method === :profile
+        # drmTMB (#1448): the paired phylo() + OU route has point-recovery
+        # evidence only; its profile intervals are not calibrated.
+        _is_paired_phylo_temporal(fit) && @warn "confint: profile intervals from the paired " *
+            "`phylo()` plus OU `temporal()` model are not calibrated. This development route has " *
+            "point-recovery evidence only; no interval-calibration study has been run. Do not " *
+            "report these intervals as confidence intervals."
         result = profile_result(fit; level, threads, parm)
         result.failed > 0 && _throw_profile_endpoint_failure(result)
         return result.ci
@@ -194,7 +209,7 @@ function confint(
     throw(ArgumentError("confint: method must be :wald or :profile (got :$method)"))
 end
 
-# DRM.jl#631: a failed endpoint arm must NEVER leave the user-facing interval
+# DRModels.jl#631: a failed endpoint arm must NEVER leave the user-facing interval
 # routine as a bound. `profile_result` is the AUDITABLE surface -- it keeps the
 # ±Inf convention alongside `lower_endpoint_failed` / `upper_endpoint_failed` so
 # a caller that asked for diagnostics can read them. `confint` is the surface a
@@ -256,7 +271,7 @@ Auditable profile-likelihood confidence intervals. Returns a `NamedTuple` with:
 - `ci` — the same rows `confint(fit; method = :profile)` returns, except that a
   FAILED endpoint arm is kept here as a signed `Inf` alongside its
   `lower_endpoint_failed` / `upper_endpoint_failed` flag. This is the auditable
-  surface; `confint` refuses such a row rather than returning it (DRM.jl#631);
+  surface; `confint` refuses such a row rather than returning it (DRModels.jl#631);
 - `stats` — per-coefficient endpoint work counts;
 - `endpoint_diagnostics` — canonical location–scale endpoint reason, last
   evaluated candidate, and residual for each arm; other profile backends omit
@@ -274,6 +289,7 @@ coefficient-level policy: each job owns its nuisance state, while its lower and
 upper endpoint chains remain serial.
 """
 function profile_result(fit::DrmFit; level::Real=0.95, threads::Bool=false, parm=nothing)
+    _wald_withheld(fit) && (parm = _homtoep_profile_parm(fit, parm))
     fit.nll isa LocScaleObjective && return _ls_profile_result(
         fit; level=level, threads=threads, parm=parm
     )
@@ -307,7 +323,7 @@ function profile_result(fit::DrmFit; level::Real=0.95, threads::Bool=false, parm
     isfinite(nllhat) || throw(ArgumentError("profile intervals require a finite fitted objective"))
     autodiff = _profile_autodiff_mode(nll, nllgrad, θ̂)
     half = quantile(Chisq(1), level) / 2
-    se = stderror(fit)
+    se = _stderror(fit)
     jobs = _profile_jobs(fit, parm)
     rows = Vector{_CIRow}(undef, length(jobs))
     stats = Vector{_ProfileStatsRow}(undef, length(jobs))
@@ -341,7 +357,7 @@ function profile_result(fit::DrmFit; level::Real=0.95, threads::Bool=false, parm
             end
         end
     end
-    # DRM.jl#493: a coefficient counts as `failed` when either arm's endpoint
+    # DRModels.jl#493: a coefficient counts as `failed` when either arm's endpoint
     # search hit the bracket-collapse exit without genuine convergence (the row
     # is still returned, with ±Inf on the failed side — see `_profile_endpoint_result`).
     failed = count(s -> s.lower_endpoint_failed || s.upper_endpoint_failed, stats)
@@ -494,7 +510,7 @@ function _ls_profile_result(fit::DrmFit; level::Real=0.95, threads::Bool=false, 
     base = size(obj.Xμ, 2) + size(obj.Xψ, 2)
     perm = vcat(collect(1:base), [base + 1, base + 3, base + 2])  # involution
     θengine = fit.theta[perm]
-    se = stderror(fit)                                    # DrmFit (recov) order
+    se = _stderror(fit)                                   # DrmFit (recov) order
     jobs = _profile_jobs(fit, parm)
     rows = Vector{_CIRow}(undef, length(jobs))
     stats = Vector{_ProfileStatsRow}(undef, length(jobs))
@@ -688,7 +704,7 @@ function _loconly_profile_row_result(
         lower_unbounded=lstats.unbounded,
         upper_unbounded=rstats.unbounded,
         nonmonotone=lstats.nonmonotone || rstats.nonmonotone,
-        # `_loconly_profile_endpoint_result` was not in scope for DRM.jl#493 (the
+        # `_loconly_profile_endpoint_result` was not in scope for DRModels.jl#493 (the
         # reported degenerate fit routes through the generic path, not here) and
         # is not instrumented for the same bracket-collapse failure; default false
         # rather than claim a check that was not made.
@@ -827,7 +843,17 @@ end
 # Compare profile and reference NLLs at their represented scale.  We retain an
 # eight-ULP cancellation allowance, but no relative-to-NLL tolerance: adding a
 # huge constant to an objective must not make a real one-unit discrepancy pass.
+# A profiled value at or beyond this while the reference NLL is ordinary is an
+# optimiser-wall sentinel (e.g. 1e18), never a real objective; it must not be
+# read as a profile crossing.  A uniformly shifted objective (reference also
+# huge) is a precision problem, handled below, not a sentinel.
+const _PROFILE_SENTINEL = 1e16
+
 function _profile_reference_difference(value::Real, reference::Real)
+    (isfinite(value) && isfinite(reference) && abs(value) >= _PROFILE_SENTINEL &&
+     abs(reference) < _PROFILE_SENTINEL) && return (
+        status=:sentinel_objective, difference=NaN, cancellation=NaN,
+    )
     (isfinite(value) && isfinite(reference)) || return (
         status=:nonfinite_objective, difference=NaN, cancellation=NaN,
     )
@@ -1168,7 +1194,7 @@ function _profile_endpoint_result(nll, nllgrad, θ̂, k, nllhat, half, s, dir, u
     t = (tlo + thi) / 2
     root_iterations = 0
     # `converged` is set ONLY by the genuine convergence test `abs(ht) < 1e-9`
-    # (DRM.jl#493). The loop's OTHER exit, `thi - tlo < 1e-8`, is a bracket-
+    # (DRModels.jl#493). The loop's OTHER exit, `thi - tlo < 1e-8`, is a bracket-
     # collapse safety valve, not a root: on a trapped, non-monotone profiled-nll
     # surface (the warm-started inner nuisance solve landing in a spurious local
     # optimum ~28 NLL units above the true profile, for every t on the affected
@@ -1225,7 +1251,7 @@ function _profile_endpoint_result(nll, nllgrad, θ̂, k, nllhat, half, s, dir, u
         if thi - tlo < 1e-8
             # Bracket collapsed. That is a genuine root iff the residual is small
             # relative to the target; otherwise the surface never crossed and the
-            # step is fabricated (DRM.jl#493).
+            # step is fabricated (DRModels.jl#493).
             converged = isfinite(ht) && abs(ht) + final_cancellation <= endpoint_tolerance
             converged && (t = t_eval)
             break
@@ -1325,7 +1351,9 @@ and, for Gaussian fits, the solver controls (`algorithm` / `g_tol`) exactly as
 to [`drm`](@ref). Use `bootstrap_result` when you need attempted/used/failed
 counts and per-replicate failure messages. If you already have
 `fit = drm(...)`, pass the fit directly to avoid refitting the base model before
-the bootstrap replicates.
+the bootstrap replicates. A homogeneous Toeplitz `temporal()` fit returns the
+mean-coefficient rows only (drmTMB refuses the temporal bootstrap and defers
+σ and lag-correlation intervals).
 """
 function bootstrap_ci(
     formula::DrmFormula,
@@ -1457,7 +1485,8 @@ second bootstrap run when both SEs and intervals are needed. Row fields are
 `(param, coef, estimate, std_error, lower, upper)`. By default, any failed
 replicate errors after all failures are recorded. Set `failures = :skip` to
 compute summaries from successful replicates; call `bootstrap_result` to
-inspect the skipped failures.
+inspect the skipped failures. A homogeneous Toeplitz `temporal()` fit returns
+the mean-coefficient rows only, as [`bootstrap_ci`](@ref).
 """
 function bootstrap_summary(
     formula::DrmFormula,
@@ -1598,7 +1627,8 @@ reuses that point estimate as the bootstrap seed fit and starts directly with
 the `B` simulated refits. Gaussian bootstrap refits pass `algorithm` and
 `g_tol` through to `drm(...)`; this is useful for large structured models where
 `:auto` selects a sparse route and the tolerance is part of the benchmarked
-workflow.
+workflow. For a homogeneous Toeplitz `temporal()` fit, `summary` holds the
+mean-coefficient rows only, as [`bootstrap_ci`](@ref).
 """
 function bootstrap_result(
     formula::DrmFormula,
@@ -1656,16 +1686,30 @@ function bootstrap_result(
     _check_bootstrap_failure_mode(failures)
     formula = _bootstrap_fit_formula(fit)
     # LSS refits must preserve the seed fit's estimator. Other Gaussian routes
-    # retain their existing dispatch here; MAP needs its separate penalty contract.
-    refit_options = if _is_gaussian_lss(fit)
-        method = estimation_method(fit)
-        method in (:ML, :REML) || throw(ArgumentError("LSS bootstrap supports ML/REML seed fits only"))
-        (; method)
+    # forward REML and a non-default marginal. MAP is still not forwarded.
+    # On the univariate refit, a non-default marginal (:Laplace, :VA, :AGHQ)
+    # and a REML seed are forwarded too. Otherwise the replicate is the default
+    # :LA / ML fit and the interval describes a different estimator
+    # (DRModels.jl#1038, #1025).
+    refit_options = _bootstrap_refit_kwargs(fit)
+    # `drm(::BivariateDrmFormula, ::Gaussian; ...)` accepts `method` in
+    # (:ML, :REML) and does not accept `algorithm` or `marginal`
+    # (src/gaussian_bivariate.jl). Either of those keywords throws a
+    # MethodError on the first replicate. A bivariate formula is not a
+    # univariate LSS `DrmFormula`, so `_is_gaussian_lss` is false, but a
+    # REML seed still stores `method => :REML` in `refit_options`. Pass
+    # `method` only when that keyword is present, and leave `marginal` off
+    # this call.
+    refit = if formula isa BivariateDrmFormula
+        biv_kw = _bootstrap_bivariate_refit_kwargs(refit_options)
+        datab -> drm(formula, fit.family; data=datab, K, A, tree, coords, g_tol, biv_kw...)
     else
-        (;)
+        datab -> drm(formula, fit.family; data=datab, K, A, tree, coords, algorithm, g_tol, refit_options...)
     end
-    refit = datab -> drm(formula, fit.family; data=datab, K, A, tree, coords, algorithm, g_tol, refit_options...)
     # #459: redraw the random effects rather than conditioning on the fitted BLUPs.
+    # For the residual-only bivariate fit this returns `nothing` (no random
+    # effects to marginalise), so the conditional `simulate` is used — correct,
+    # because that fit's only stochastic part IS the residual pair.
     simulate_fn = _marginal_simulator(fit, data; K=K, A=A, tree=tree, coords=coords)
     return _bootstrap_result(
         fit, formula, data, B, level, rng, threads, refit;
@@ -1754,6 +1798,11 @@ function bootstrap_result(
     K !== nothing && (extra[:K] = K)
     A !== nothing && (extra[:A] = A)
     coords !== nothing && (extra[:coords] = coords)
+    # Repeat the seed fit's integrator and REML setting. :LA / ML are the
+    # defaults, so only a different choice is forwarded (DRModels.jl#1038, #1025).
+    for (k, v) in pairs(_bootstrap_refit_kwargs(fit))
+        extra[k] = v
+    end
     refit = datab -> drm(formula, fit.family; data=datab, extra...)
     simulate_fn = _marginal_simulator(fit, data; K=K, A=A, tree=tree,
                                       coords=coords)   # #459 / #479
@@ -1763,8 +1812,20 @@ function bootstrap_result(
     )
 end
 
+# The fit-based bootstrap refits from the fit's own stored formula. A univariate
+# `DrmFormula` has always been accepted; the RESIDUAL-ONLY bivariate Gaussian fit
+# (`bf(mu1 = ..., mu2 = ..., sigma1 = ..., sigma2 = ..., rho12 = ...)` with no
+# structured term) is accepted too — it stores a `BivariateDrmFormula`, has no
+# random effects (`fit.ranef === nothing`), and so is a plain refit-and-recoef
+# problem exactly like the univariate case. A STRUCTURED bivariate fit is NOT
+# admitted here: every `bootstrap_result` method tests
+# `fit.ranef isa NamedTuple && haskey(fit.ranef, :Sigma_a)` first and routes the
+# q=4 phylogenetic fit to `bootstrap_sigma_a`, so it never reaches this function.
+# A `DrmFit` with no `.formula` at all (an internal, formula-less fit) is still
+# refused: there is nothing to refit from.
 function _bootstrap_fit_formula(fit::DrmFit)
-    fit.formula isa DrmFormula && return fit.formula
+    (fit.formula isa DrmFormula || fit.formula isa BivariateDrmFormula) &&
+        return fit.formula
     throw(
         ArgumentError(
             "fit-based bootstrap requires a univariate `DrmFit` created by `drm`; " *
@@ -1799,6 +1860,31 @@ end
 # (there conditional and marginal simulation coincide and `simulate` is correct).
 # Gaussian LSS bootstrap uses the full marginal model, not fitted random effects.
 # Prepared arrays are read-only; each call allocates its own draws and response.
+# Keywords a bootstrap replicate must repeat so it is the same estimator as
+# the seed fit. `:LA` and `:ML` are the `drm` defaults and are omitted.
+# Gaussian location-scale-scale passes the seed method explicitly, `:ML` or
+# `:REML`. That route rejects any other method.
+function _bootstrap_refit_kwargs(fit::DrmFit)
+    kw = Pair{Symbol,Any}[]
+    if _is_gaussian_lss(fit)
+        method = estimation_method(fit)
+        method in (:ML, :REML) ||
+            throw(ArgumentError("LSS bootstrap supports ML/REML seed fits only"))
+        push!(kw, :method => method)
+    elseif estimation_method(fit) === :REML
+        push!(kw, :method => :REML)
+    end
+    fit.marginal === :LA || push!(kw, :marginal => fit.marginal)
+    return NamedTuple(kw)
+end
+
+# Keywords the bivariate Gaussian bootstrap refit may pass to `drm`.
+# `method` is included only when the seed kwargs contain it. `marginal` is
+# left off, because that method does not accept it.
+function _bootstrap_bivariate_refit_kwargs(refit_options)
+    haskey(refit_options, :method) ? (; method = refit_options.method) : NamedTuple()
+end
+
 _is_gaussian_lss(fit::DrmFit) = fit.family isa Gaussian &&
     fit.formula isa DrmFormula &&
     (!isempty(_sd_parts(fit.formula)) || !isempty(_sdphylo_parts(fit.formula)))
@@ -1895,6 +1981,32 @@ end
 
 function _marginal_simulator(fit::DrmFit, data; K=nothing, A=nothing, tree=nothing,
                              coords=nothing)
+    sim = _marginal_simulator_build(fit, data; K, A, tree, coords)
+    # `nothing` sends `bootstrap` to the CONDITIONAL `simulate`. On the Gaussian
+    # `meta_V(...)` + random-effect route (`_fit_meta_gaussian_re`) that fallback
+    # is a different model: `means[:mu]` is Xβ and `scales[:sigma]` is √(v + σ²),
+    # so the conditional draw has NO random field at all. Refuse instead.
+    if sim === nothing && _is_meta_gaussian_re(fit)
+        throw(ArgumentError("bootstrap: could not build the marginal simulator for this " *
+            "`meta_V(...)` + random-effect fit (pass the same `data` and `tree` / `K` / `A` " *
+            "used to fit it); the conditional fallback would drop the random effect"))
+    end
+    return sim
+end
+
+function _is_meta_gaussian_re(fit::DrmFit)
+    (fit.family isa Gaussian && fit.formula isa DrmFormula) || return false
+    rhs = Dict(fit.formula.forms)
+    haskey(rhs, :mu) || return false
+    _, re, metav, structured, _ = _split_ranef(rhs[:mu]; allow_phylo_slope = true)
+    return metav !== nothing && (!isempty(re) || structured !== nothing)
+end
+
+function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing, tree=nothing,
+                                   coords=nothing)
+    # temporal(): `simulate` already draws the full marginal model (a fresh chain
+    # per series and a fresh `(1 | id)` intercept), so it IS the marginal simulator.
+    _is_temporal_fit(fit) && return rng -> _temporal_simulate(fit, rng)
     fit.nll isa LocScaleObjective &&
         return _ls_marginal_simulator(fit, data; K, A, tree, coords)
     _is_gaussian_lss(fit) && return _lss_marginal_simulator(fit, data; tree)
@@ -1904,7 +2016,23 @@ function _marginal_simulator(fit::DrmFit, data; K=nothing, A=nothing, tree=nothi
     (fit.family isa Gaussian && !haskey(fit.scales, :sigma)) && return nothing
     rhs = Dict(fit.formula.forms)
     haskey(rhs, :mu) || return nothing
-    _, re, _, structured, structured_slope = _split_ranef(rhs[:mu]; allow_phylo_slope = true)
+    _, re, metav_ms, structured, structured_slope = _split_ranef(rhs[:mu]; allow_phylo_slope = true)
+    # A Gaussian fit with SEVERAL random fields on the mean where at least one is
+    # structured or the fit has `meta_V(...)` (Arc 2: `_fit_meta_gaussian_re`, e.g.
+    # `phylo(1 | sp) + (1 | study)`, and the two-structured route, e.g.
+    # `phylo(1 | sp) + relmat(1 | id)`): the simulator below draws ONE field, so it
+    # would silently bootstrap a model with the other field(s) missing. Refuse.
+    # Fits whose fields are all ordinary bars keep their existing path (the
+    # `length(re) == 1` check below). A single field is drawn below: `scales[:sigma]`
+    # is √(v + σ²) under meta_V, and phylo rows go to tree leaves as the fit maps
+    # them (`phylo_leaf` below).
+    if fit.family isa Gaussian && (metav_ms !== nothing || structured !== nothing)
+        nfields = length(re) + length(_collect_structured(rhs[:mu]))
+        nfields <= 1 ||
+            throw(ArgumentError("bootstrap: the marginal simulator for a Gaussian fit " *
+                "with $(nfields) random fields on the mean is not implemented; use " *
+                "`profile` intervals or the Wald `vcov`"))
+    end
     # A Gaussian `phylo(1 + x | g)` fit (#620) carries TWO phylogenetic fields;
     # the simulator below draws a single structured intercept, so building it
     # would silently bootstrap the wrong (intercept-only) model. Refuse.
@@ -1917,6 +2045,7 @@ function _marginal_simulator(fit::DrmFit, data; K=nothing, A=nothing, tree=nothi
     (isempty(re) && structured === nothing) && return nothing
 
     # Which grouping factor, and what covariance does its random effect have?
+    phylo_leaf = nothing   # row → tree-leaf index, set for a phylo field
     grp, Kg = if structured !== nothing
         g = structured[2]
         hasproperty(data, g) || return nothing
@@ -1932,7 +2061,22 @@ function _marginal_simulator(fit::DrmFit, data; K=nothing, A=nothing, tree=nothi
         if structured[1] === :phylo
             phy = tree isa AbstractString ? augmented_phy(tree) : tree
             phy === nothing && return nothing
-            (g, sigma_phy_dense(phy; σ²_phy = 1.0))
+            # Rows → tree LEAVES by name / tip index (#482, `_phylo_mean_leaf_index`),
+            # exactly as every Gaussian and non-Gaussian phylo mean fit maps them,
+            # NOT by first-seen order. First-seen order drew the field on the wrong
+            # tips whenever the data's species order differed from the tree's
+            # (measured: sister-tip covariance 0.294 in the model, -0.005 in 6000
+            # draws), and a tree with tips absent from the data failed the size
+            # check and fell back to `simulate`. The tip matrix follows the fit's
+            # SD scale (`fit.phylo_scale`): the raw covariance on the sparse,
+            # meta_V and Laplace routes; the tip CORRELATION on the dense Gaussian
+            # fallback (`sigma ~ x`, `algorithm = :gls`/`:lbfgs`) and the
+            # two-structured route, where a raw-covariance draw over-disperses the
+            # field by the tree height (measured, height 1.5: drawn cov 0.284 vs
+            # 0.186 in the model; also wrong on main).
+            phylo_leaf = (_phylo_mean_leaf_index(phy, getproperty(data, g)), phy.n_leaves)
+            (g, fit.phylo_scale === :correlation ? _phylo_correlation(phy) :
+                                                   sigma_phy_dense(phy; σ²_phy = 1.0))
         elseif structured[1] === :spatial && K === nothing && coords !== nothing
             cmat = Matrix{Float64}(coords)
             size(cmat, 1) == G0 ||
@@ -1961,7 +2105,7 @@ function _marginal_simulator(fit::DrmFit, data; K=nothing, A=nothing, tree=nothi
         (g, Matrix{Float64}(LinearAlgebra.I, G0, G0))
     end
 
-    gidx, G = _group_index(getproperty(data, grp))
+    gidx, G = phylo_leaf === nothing ? _group_index(getproperty(data, grp)) : phylo_leaf
     size(Kg) == (G, G) || return nothing
     # Location-scale-scale fits (#544/#545): the RE SD is per group,
     # σ_g,k = exp(Z_k' α), so the draw scales each group's effect individually.
@@ -2060,7 +2204,7 @@ end
 
 function _bootstrap_result(
     fit0,
-    formula::DrmFormula,
+    formula::Union{DrmFormula,BivariateDrmFormula},
     data,
     B::Int,
     level::Real,
@@ -2089,7 +2233,7 @@ function _bootstrap_result(
             # `simulate` is conditional and collapses a variance-component CI.
             ysim = simulate_fn === nothing ? simulate(fit0; rng=rr) : simulate_fn(rr)
             datab = _bootstrap_data(formula, data, ysim)
-            fitb = refit(datab)
+            fitb = _without_boundary_warnings(() -> refit(datab))
             # `is_converged`, not the raw `.converged` field: the accessor also
             # rejects a degenerate optimum (sigma collapsed, likelihood runaway),
             # which the optimiser's own flag happily calls converged (#461).
@@ -2134,7 +2278,7 @@ function _bootstrap_result(
     end
     used = count(ok)
     used > 0 || throw(ErrorException("all $B bootstrap replicates failed"))
-    summary = _bootstrap_summary_rows(fit0, draws[ok, :], est, level)
+    summary = _homtoep_bootstrap_rows(fit0, _bootstrap_summary_rows(fit0, draws[ok, :], est, level))
     return (
         summary=summary,
         failures=failure_rows,
@@ -2158,15 +2302,98 @@ function _check_bootstrap_failure_mode(failures::Symbol)
     throw(ArgumentError("bootstrap failures must be :error or :skip (got :$failures)"))
 end
 
-function _bootstrap_data(formula::DrmFormula, data, ysim)
-    if formula.response2 === nothing
-        return merge(data, NamedTuple{(formula.response,)}((ysim,)))
+# Bivariate Gaussian replicate. `_simulate_once` returns a
+# `Dict(:mu1 => y1*, :mu2 => y2*)` for a bivariate fit, so both response columns
+# are replaced at once. The OBSERVATION PATTERN is part of the design, not part
+# of the model: a cell that was unobserved in the data stays unobserved in the
+# replicate, so every refit sees the same likelihood structure the seed fit did.
+# (`_simulate_once` draws at every row, including rows the seed fit's
+# `_observed_response_mask` excluded, so without this the replicates would fit a
+# COMPLETE-DATA model and silently disagree with the seed fit.)
+function _bootstrap_data(formula::BivariateDrmFormula, data, ysim)
+    ysim isa AbstractDict || throw(ArgumentError(
+        "bivariate bootstrap expects a `Dict(:mu1 => ..., :mu2 => ...)` draw " *
+        "(got $(typeof(ysim)))"))
+    y1 = _bootstrap_keep_unobserved(getproperty(data, formula.response1), ysim[:mu1])
+    y2 = _bootstrap_keep_unobserved(getproperty(data, formula.response2), ysim[:mu2])
+    return merge(data, NamedTuple{(formula.response1, formula.response2)}((y1, y2)))
+end
+
+# Copy `sim` where the original response was observed, keep the original cell
+# (`missing` or `NaN`) where it was not. The output keeps the column's own
+# eltype widened to hold a Float64 draw, so a `Vector{Union{Missing,Float64}}`
+# stays one while an integer-typed response column (which the fit accepts) does
+# not make every replicate fail with an `InexactError`. This is the
+# bivariate sibling of `_restore_response_mask!` below: both decide "absent"
+# with `_is_response_missing`, the predicate the fit itself uses, so the mask
+# restored here is the mask the seed fit used. They differ only in shape:
+# this one is non-mutating, keeps the column's own representation, and refuses
+# a wrong-length draw; the univariate one normalises to Float64/NaN in place
+# because the `cbind` route needs NaN arithmetic to carry the mask into the
+# failure column.
+function _bootstrap_keep_unobserved(orig::AbstractVector, sim::AbstractVector)
+    length(orig) == length(sim) || throw(ArgumentError(
+        "bivariate bootstrap draw has length $(length(sim)), expected $(length(orig))"))
+    out = similar(orig, promote_type(eltype(orig), Float64))
+    @inbounds for i in eachindex(out)
+        o = orig[i]
+        out[i] = _is_response_missing(o) ? o : sim[i]
     end
-    ntr =
-        Float64.(getproperty(data, formula.response)) .+
-        Float64.(getproperty(data, formula.response2))
-    fail = ntr .- ysim
-    return merge(data, NamedTuple{(formula.response, formula.response2)}((ysim, fail)))
+    return out
+end
+
+# Re-apply the seed fit's response mask to a simulated replicate draw
+# (drmTMB #1188). `simulate` draws over the FULL design -- it must, because
+# `means`/`scales` are rebuilt over the full design on the missing-response
+# routes (#646) -- so merging the draw back wholesale hands every replicate
+# MORE rows than the seed fit actually observed. A bootstrap whose replicates
+# are richer than the original necessarily understates uncertainty, and the
+# narrowing deepens with the missing fraction.
+#
+# MEASURED on the R side of the same defect (drmTMB `bootstrap_response_data`,
+# same fixture family: `y = 0.3 + 0.5x + N(0,1) exp(0.1x)`, n = 60,
+# `bf(y ~ x, sigma ~ x)`, Gaussian, `fixef:mu:x`, truth 0.5; S = 200 datasets,
+# B = 99 replicates each, nominal 95% percentile interval):
+#
+#   masked   before   after    Wald reference
+#   10%      0.895    0.910    0.920
+#   30%      0.820    0.895    0.925
+#   50%      0.720    0.910    0.915
+#
+# `_is_response_missing` treats both `missing` and NaN as absent, exactly as
+# `_coerce_response_column` does when the fit reads the response, so the mask
+# restored here is the mask the fit itself used.
+#
+# A draw whose length differs from the data is an error, not a no-op: merged
+# back as-is, a short draw sits beside full-length covariates and every
+# replicate refit fails (or misaligns rows).
+function _restore_response_mask!(ysim::AbstractVector{Float64}, raw)
+    length(raw) == length(ysim) || throw(ArgumentError(
+        "bootstrap draw has length $(length(ysim)), expected $(length(raw)) (one value " *
+        "per row of `data`); pass the same `data` the model was fitted to"))
+    @inbounds for i in eachindex(ysim)
+        if _is_response_missing(raw[i])
+            ysim[i] = NaN
+        end
+    end
+    return ysim
+end
+
+function _bootstrap_data(formula::DrmFormula, data, ysim)
+    raw1 = getproperty(data, formula.response)
+    if formula.response2 === nothing
+        y = _restore_response_mask!(collect(Float64, ysim), raw1)
+        return merge(data, NamedTuple{(formula.response,)}((y,)))
+    end
+    # A `cbind(successes, failures)` response is absent when EITHER cell is
+    # absent, so coerce both columns through the same NaN convention and let
+    # NaN arithmetic carry the mask into the failure column.
+    y1, _ = _coerce_response_column(raw1)
+    y2, _ = _coerce_response_column(getproperty(data, formula.response2))
+    ntr = y1 .+ y2
+    succ = _restore_response_mask!(collect(Float64, ysim), ntr)
+    fail = ntr .- succ
+    return merge(data, NamedTuple{(formula.response, formula.response2)}((succ, fail)))
 end
 
 function _bootstrap_ci_rows(rows)
@@ -2211,7 +2438,7 @@ end
 # Float64-only gradient callback; use it before trying ForwardDiff through the
 # objective. `nothing` means no objective -> (NaN, :none).
 #
-# WHY THE FALLBACK AND WHY THE SOURCE (measured 2026-09-05, DRM.jl origin/main
+# WHY THE FALLBACK AND WHY THE SOURCE (measured 2026-09-05, DRModels.jl origin/main
 # 109b6421c). FOUR shipping routes store a bare objective (no gradient callback)
 # that is exact on Float64 but NOT dual-number safe, so the unguarded
 # `ForwardDiff.gradient` on the last line THREW and the health check crashed on
@@ -2348,6 +2575,19 @@ Returns a `NamedTuple` and logs a short report:
   (`penalty = drm_phylo_penalty(...)`). Such a fit reports standard errors from
   the *penalized* curvature, which are credible-interval-shaped rather than
   frequentist, and `loglik` is the *unpenalized* data log-likelihood.
+- `variance_boundary` — `nothing` unless the fit is Gaussian with a grouped / structured
+  random effect and a homoscedastic residual (`sigma ~ 1`); then the NamedTuple of
+  `_variance_boundary(fit)` (`residual_at_boundary`, `residual_ratio`,
+  `structured_at_boundary`, `structured_ratios`, `one_obs_per_group`). Flags a variance
+  component at its lower boundary (the residual σ̂ of a phylogenetic fit whose structured
+  term absorbs all the variance is an optimiser-stopping artefact, not an estimate — #724)
+  and says when σ_a and σ_e are separated only by the covariance structure (one
+  observation per group — #697). Does not affect `ok`.
+- `temporal_boundary` — `nothing` unless the fit has a `temporal()` term; then
+  `(at_boundary, findings)`, drmTMB's `temporal_boundary` rules: residual σ̂ below
+  1e-3 · sd(y), OU decay × longest series span below 1e-4 or × shortest gap above 30,
+  AR1 |φ̂| above 0.999. drmTMB reports such a fit as `convergence_status() == "boundary"`
+  (still converged). Does not affect `ok`.
 - `ok` — `true` when converged, the gradient is small, and the covariance is PD.
   On a penalized fit the gradient criterion is **dropped**: the stored objective
   is unpenalized, so its gradient is non-zero at the MAP optimum by construction
@@ -2387,6 +2627,8 @@ function check_drm(fit::DrmFit; grad_tol::Real=1e-3)
     # report a correct fit as broken, so the gradient criterion is dropped for MAP
     # fits and `max_abs_grad` is reported for information only.
     penalized = fit.estim_method === :MAP
+    vb = try _variance_boundary(fit) catch; nothing end
+    tb = try _temporal_boundary(fit) catch; nothing end
     ok = fit.converged && (penalized || isnan(mag) || mag <= grad_tol) && pd
     report = (
         converged=fit.converged,
@@ -2397,6 +2639,8 @@ function check_drm(fit::DrmFit; grad_tol::Real=1e-3)
         min_eigval=mineig,
         cond=cnd,
         penalized_map=penalized,
+        variance_boundary=vb,
+        temporal_boundary=tb === nothing ? nothing : (at_boundary = !isempty(tb), findings = tb),
         ok=ok,
     )
     @info "check_drm" converged = report.converged max_abs_grad = report.max_abs_grad grad_source =
@@ -2422,6 +2666,9 @@ function check_drm(fit::DrmFit; grad_tol::Real=1e-3)
         "scored against the gradient criterion: `ok = true` here means converged and " *
         "positive-definite covariance ONLY, with stationarity untested. `grad_source` is " *
         "`:unavailable`, which is NOT `:none` (a fit that stores no objective at all)."
+    vbmsg = vb === nothing ? nothing : _variance_boundary_message(vb)
+    vbmsg === nothing || @warn "check_drm: " * vbmsg
+    (tb === nothing || isempty(tb)) || @warn "check_drm: " * _temporal_boundary_message(tb)
     # drmTMB emits the equivalent advisory from `check_penalized_fit()`.
     penalized && @warn "check_drm: penalized (MAP) fit — standard errors come from the penalized " *
         "curvature and are credible-interval-shaped, not frequentist. `loglik` is the UNPENALIZED " *

@@ -1,14 +1,14 @@
-# RED-first measurement: does DRM.jl's bridge_formula_labels_v1 `coef_names`
+# RED-first measurement: does DRModels.jl's bridge_formula_labels_v1 `coef_names`
 # already match base-R `stats::model.matrix()` spelling for the ten formula
 # constructs in drmTMB design 258 §2?  This is a MEASUREMENT test, not a
 # fix — every construct is exercised even when the bridge is known/expected
 # to reject or mis-render it, so a failure records exactly what happened
 # (rejection message or wrong spelling/order) rather than skipping the case.
 #
-# Rows 1-6 are DRM.jl's #467 cohort (already partially covered by
+# Rows 1-6 are DRModels.jl's #467 cohort (already partially covered by
 # test_bridge_formula_labels.jl); rows 7-10 were added later from drmTMB's
 # non-shipping `public-004.json` oracle and are NOT covered by any existing
-# DRM.jl fixture. Row 7 in particular exercises R's term-ORDER algorithm for
+# DRModels.jl fixture. Row 7 in particular exercises R's term-ORDER algorithm for
 # a two-factor crossed design and is flagged in the brief as the
 # highest-risk untested case.
 #
@@ -19,7 +19,7 @@
 # nothing in src/bridge.jl reads `opts[:coef_labels]`, so this measures the
 # field's current inertness per the coordinator's 2026-09-02 update citing
 # drmTMB claude/rev-parity-c2-label-producer @ af1790492.
-using DRM
+using DRModels
 using Test
 
 # ---------------------------------------------------------------------------

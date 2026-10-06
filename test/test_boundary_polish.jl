@@ -8,11 +8,11 @@
 # ~7e-05 of nll. A parity harness saw that as a near-tolerance failure against
 # native drmTMB; it was not a likelihood difference, it was under-convergence.
 #
-# THE TEST THAT MATTERS is self-contained: DRM.jl's own objective must not be
+# THE TEST THAT MATTERS is self-contained: DRModels.jl's own objective must not be
 # lower anywhere near the reported optimum. That cannot pass by agreeing with a
 # second buggy implementation, and it fails on the pre-fix engine.
 
-using DRM
+using DRModels
 using Test
 using Random
 using LinearAlgebra
@@ -40,7 +40,7 @@ end
         for seed in (411, 412, 413)
             fx = _collapse_fixture(seed)
             fit = drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ 1)),
-                      DRM.Gamma(); data = fx.data, tree = fx.tree)
+                      DRModels.Gamma(); data = fx.data, tree = fx.tree)
             @test fit.nll !== nothing
             base = fit.nll(fit.theta)
             # Perturb the NON-variance coordinates: if the fit under-converged
@@ -65,7 +65,7 @@ end
         for seed in (411, 412, 413)
             fx = _collapse_fixture(seed)
             fit = drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ 1)),
-                      DRM.Gamma(); data = fx.data, tree = fx.tree)
+                      DRModels.Gamma(); data = fx.data, tree = fx.tree)
             sd = re_sd(fit)[:species]
             @test sd > 0
             @test sd < 1e-2         # collapsed, as this DGP (no phylo signal) intends
@@ -88,7 +88,7 @@ end
         eta = 0.3 .+ 0.4 .* x .+ u[species]
         y = [exp(eta[i]) * (0.8 + 0.4 * rand(rng)) for i in 1:n]
         fit = drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ 1)),
-                  DRM.Gamma(); data = (; y, x, species), tree = phy)
+                  DRModels.Gamma(); data = (; y, x, species), tree = phy)
         sd = re_sd(fit)[:species]
         @test sd > 1e-3             # genuinely interior: the floor never engaged
         @test is_converged(fit)
@@ -106,7 +106,7 @@ end
     y = Float64.(rand(rng, n) .< 0.5)
 
     err = try
-        drm(bf(@formula(y ~ x + relmat(1 | g))), DRM.Binomial(); data = (; y, x, g), K = K)
+        drm(bf(@formula(y ~ x + relmat(1 | g))), DRModels.Binomial(); data = (; y, x, g), K = K)
         nothing
     catch e
         e
@@ -117,6 +117,6 @@ end
 
     # the supported provider still fits
     phy = random_balanced_tree(G; branch_length = 0.25)
-    fit = drm(bf(@formula(y ~ x + phylo(1 | g))), DRM.Binomial(); data = (; y, x, g), tree = phy)
+    fit = drm(bf(@formula(y ~ x + phylo(1 | g))), DRModels.Binomial(); data = (; y, x, g), tree = phy)
     @test is_converged(fit)
 end

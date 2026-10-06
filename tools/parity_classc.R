@@ -9,17 +9,17 @@
 # independently of the fit itself; a failure there does not retract the
 # coefficient/logLik comparison already made for that cell).
 # `engine = "julia"` routes a `phylo(1 | group, tree = tree)` mean term and a
-# `relmat(1 | group, K = K)` mean term through the DRM.jl bridge automatically
+# `relmat(1 | group, K = K)` mean term through the DRModels.jl bridge automatically
 # (drmTMB_julia_bridge / drmTMB_julia_structured_bridge); no manual JuliaCall
 # marshalling is needed here (unlike the bivariate cells in parity_fixture.R).
 #
-# KNOWN TRAP (docs/dev-log/evidence/2026-08-24-sd-floor-asymmetry.md): DRM.jl
+# KNOWN TRAP (docs/dev-log/evidence/2026-08-24-sd-floor-asymmetry.md): DRModels.jl
 # clamps variance components at `_LAPLACE_LOG_SD_FLOOR = log(1e-6)`; drmTMB has
 # no equivalent bound. Generating SDs here are kept well away from that floor
 # (0.5), and the fitted phylo/relmat SD on each side is recorded so a
 # near-floor draw reads as `BOUNDARY_NOT_COMPARABLE`, not PARITY_FAIL.
 #
-#   DRM_JL_PATH=/path/to/DRM.jl NOT_CRAN=true Rscript tools/parity_classc.R
+#   DRM_JL_PATH=/path/to/DRModels.jl NOT_CRAN=true Rscript tools/parity_classc.R
 
 suppressMessages(library(drmTMB))
 stopifnot(requireNamespace("ape", quietly = TRUE))
@@ -172,9 +172,9 @@ rows[[length(rows) + 1L]] <- run_cell(
                family = stats::poisson(link = "log"), data = dat, engine = "julia"))
 )
 
-# Scale up. p=300 is "large-ish" relative to the DRM.jl unit tests (p=32) and
+# Scale up. p=300 is "large-ish" relative to the DRModels.jl unit tests (p=32) and
 # cheap: dense p x p phylo covariance factorisation is O(p^3) ~ 2.7e7, trivial
-# for both TMB and the DRM.jl sparse route.
+# for both TMB and the DRModels.jl sparse route.
 big <- make_phylo_count_fixture(seed = 20260824L, p = 300L, m = 4L)
 tree <- big$tree
 
@@ -202,7 +202,7 @@ rows[[length(rows) + 1L]] <- run_cell(
 ## (b) general_covariance_structured — relmat(1 | group, K = K), sigma ~ 1
 ## families both sides admit per docs/dev-log/evidence/
 ## 2026-08-16-a9-general-covariance-audit.md: Gaussian, Poisson, NB2, Gamma.
-## Beta is DRM.jl-only (audit finding 1) and Binomial is refused by both; ergo
+## Beta is DRModels.jl-only (audit finding 1) and Binomial is refused by both; ergo
 ## neither belongs in a same-target native-vs-Julia comparison. `engine =
 ## "julia"` itself gates relmat/animal/spatial structured terms to exactly
 ## these four univariate families (R/julia-bridge.R
@@ -276,7 +276,7 @@ rows[[length(rows) + 1L]] <- run_cell(
                family = stats::Gamma(link = "log"), data = dat, engine = "julia"))
 )
 
-# Beta + relmat: DRM.jl fits it (A9 audit), drmTMB natively refuses it
+# Beta + relmat: DRModels.jl fits it (A9 audit), drmTMB natively refuses it
 # ("Structured non-Gaussian paths ... remain deferred"). Recorded as
 # NO_NATIVE_COMPARATOR, not a failure — that refusal is the honest finding.
 # Build a small (0,1) response directly from the same K/id structure.
@@ -296,7 +296,7 @@ rows[[length(rows) + 1L]] <- run_cell(
 }
 rows[[length(rows) + 1L]] <- run_cell(
   "general_covariance_structured", "beta_relmat",
-  "Beta, relmat(1 | id, K = K) mean intercept, sigma ~ 1 (DRM.jl admits; drmTMB refuses)",
+  "Beta, relmat(1 | id, K = K) mean intercept, sigma ~ 1 (DRModels.jl admits; drmTMB refuses)",
   quote(drmTMB(bf(y ~ x + relmat(1 | id, K = K), sigma ~ 1),
                family = drmTMB::beta(), data = dat, engine = "tmb")),
   quote(drmTMB(bf(y ~ x + relmat(1 | id, K = K), sigma ~ 1),
@@ -309,7 +309,7 @@ tab <- do.call(rbind, rows)
 # --- provenance stamp (#473) -------------------------------------------------
 # Record WHICH drmTMB build produced these numbers, not just its version string.
 # "drmTMB 0.7.0" identifies at least 16 different builds, so a version alone
-# cannot tell a later reader whether a disagreement is DRM.jl regressing or the
+# cannot tell a later reader whether a disagreement is DRModels.jl regressing or the
 # COMPARATOR having moved underneath the fixture. Stamped at write time from the
 # single definition in drmtmb_provenance_lib.R.
 .tools_dir <- tryCatch({

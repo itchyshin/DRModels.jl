@@ -1,7 +1,7 @@
-# Claude Code instructions for DRM.jl
+# Claude Code instructions for DRModels.jl
 
-`DRM.jl` is the Julia twin of the R package **drmTMB** (univariate &
-bivariate distributional regression). Sister to GLLVM.jl. **Read `HANDOVER.md`
+`DRModels.jl` is the Julia twin of the R package **drmTMB** (univariate &
+bivariate distributional regression). Sister to GLLVModels.jl. **Read `HANDOVER.md`
 first** — it is the source of truth for scope, the verified state, and the
 engine. Then [`AGENTS.md`](AGENTS.md) (the team, lanes, Definition of Done, and
 the parity / bridge / license contracts) and [`ROADMAP.md`](ROADMAP.md)
@@ -43,7 +43,7 @@ the parity / bridge / license contracts) and [`ROADMAP.md`](ROADMAP.md)
 - **Evidence-first rehydration.** On resume, reconstruct state from `git status`
   / recent commits / `docs/dev-log/` (check-log, after-task, recovery-
   checkpoints) — not chat memory. Helper: `tools/drm-checkpoint.jl`.
-- **License boundary.** drmTMB is GPL(≥3); DRM.jl is MIT. **Never vendor drmTMB
+- **License boundary.** drmTMB is GPL(≥3); DRModels.jl is MIT. **Never vendor drmTMB
   GPL source.** R-parity uses generated outputs only. Rose audits this per tag.
 - **Definition of Done** (per `AGENTS.md`): impl + tests + docstrings + worked
   example + check-log + after-task + Rose audit.

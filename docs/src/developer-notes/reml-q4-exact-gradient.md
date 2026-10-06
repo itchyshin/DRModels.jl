@@ -3,7 +3,7 @@
 Developer note for `src/reml_q4.jl`. Written **before** the implementation
 (symbolic-alignment discipline): the maths is fixed here first, and every term
 is then mapped, term-by-term, onto a named quantity the code already computes
-or a named quantity to build. Issue #575.
+or a named quantity to build.
 
 Motivating defect: `fit_q4_reml` certified convergence on a **central
 finite-difference** gradient with step `h_inner = max(h_fd, 5e-4)`
@@ -134,7 +134,7 @@ gradient (★) never re-solves: it evaluates one stationary point and applies th
 implicit-function theorem, so its accuracy is set by `‖∇_z J(ẑ)‖`, not by a
 difference of two noisy solves.
 
-### 2.4 Consequence for certification (G3)
+### 2.4 Consequence for certification
 
 (★) is exact **only at a joint stationary point of `J` over `z = (u, β)`**. The
 existing alternation exits on a relative β criterion (`:216`) that leaves
@@ -172,19 +172,19 @@ numerically identical; only the pattern changed.
 
 **`marginal_and_exact_grad` (`fit_q4_sparse_tmb.jl:374–384`) builds its `Gst`
 from the same construction and therefore shares this degeneracy on the ML
-path.** Not changed here (out of scope for #575), but it should be checked: the
+path.** This was outside the scope of the original REML repair, but it should be checked: the
 ML fit also starts at `Λ0 = 0.3I`, so its very first exact gradient is taken at
 the degenerate point.
 
-**Update (#577, #563):** #577 fixed the root cause — `prior_precision` itself
-(`src/sparse_aug_plsm.jl`) now stores the full q×q axis block unconditionally,
-so it no longer drops the cross-axis entries at a diagonal `Λ`. That made the
-local `_reml_prior_precision` guard redundant: #563 proved the two builders
-produced bit-identical sparse output on this fixture (same pattern, same
-nzval, `nnz` = 1376 at both a diagonal and a non-diagonal `Λ`) and deleted
-`_reml_prior_precision`, repointing its call sites — including
+**Update:** `prior_precision` itself (`src/sparse_aug_plsm.jl`) now stores the
+full q×q axis block unconditionally, so it no longer drops the cross-axis
+entries at a diagonal `Λ`. That made the local `_reml_prior_precision` guard
+redundant: the two builders produced bit-identical sparse output on this
+fixture (same pattern, same `nzval`, `nnz` = 1376 at both a diagonal and a
+non-diagonal `Λ`), and the redundant helper was removed while its call sites — including
 `reml_ll_and_mode` (`src/reml_q4.jl:309`), whose call was previously the only
-one left on the unguarded `prior_precision` — at `prior_precision` directly.
+one left on the unguarded `prior_precision` — were repointed to
+`prior_precision` directly.
 Every call site in `src/reml_q4.jl` now uses the same, now-correct,
 `prior_precision`.
 
@@ -197,7 +197,7 @@ by `fit_q4_reml`'s `fg!`). Both take the augmented problem, the root-conditioned
 tree precision `Q_cond`, and the outer parameter vector `φ = (β_ρ, lc)`.
 
 ```@docs
-DRM.reml_nll_exact
-DRM.reml_nll_and_exact_grad
+DRModels.reml_nll_exact
+DRModels.reml_nll_and_exact_grad
 reml_objective_at
 ```

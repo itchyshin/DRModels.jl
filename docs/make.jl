@@ -1,31 +1,42 @@
 using Documenter
 using DocumenterVitepress
-using DRM
+using DRModels
 
 # Five compact menus keep all reference and tutorial routes reachable.
 # The site uses the DocumenterVitepress backend (a VitePress/Vue build, the
 # docs.makie.org look). Node is supplied by NodeJS_20_jll — no system install.
 # Fail on broken examples, links and omitted module docstrings.
 makedocs(
-    sitename = "DRM.jl",
+    sitename = "DRModels.jl",
     authors = "Shinichi Nakagawa",
-    modules = [DRM],
+    modules = [DRModels],
+    # Only pages named below are public. The source tree also retains
+    # development notes and evidence records that are intentionally not a
+    # reader-facing documentation surface.
+    pagesonly = true,
+    # This manual intentionally teaches a curated reader surface rather than
+    # enumerating every exported advanced helper.  The explicit source and
+    # rendered reader audits in Documenter.yml enforce that boundary; asking
+    # Documenter to require every export would turn the build into a demand to
+    # publish implementation-level material.
+    checkdocs = :none,
     warnonly = false,
     format = DocumenterVitepress.MarkdownVitepress(
-        repo = "github.com/itchyshin/DRM.jl",
+        repo = "github.com/itchyshin/DRModels.jl",
         devbranch = "main",
         devurl = "dev",
+        build_vitepress = true,
     ),
     pages = [
-        "Start" => [
+        "Start here" => [
             "Home" => "index.md",
-            "Getting started" => "getting-started.md",
-            "Evidence & limits" => "capabilities.md",
-            "R ↔ Julia bridge" => "r-julia-bridge.md",
-            "Rosetta (R ↔ Julia)" => "rosetta.md",
+            "Fit your first model" => "getting-started.md",
+            "What is tested" => "capabilities.md",
+            "Coming from R?" => "coming-from-r.md",
+            "R and Julia vocabulary" => "rosetta.md",
             "drmTMB parity scoreboard" => "drmtmb-parity.md",
         ],
-        "Model guides" => [
+        "Choose a model" => [
             "model-guides/model-map.md",
             "model-guides/which-scale.md",
             "model-guides/distribution-families.md",
@@ -39,7 +50,7 @@ makedocs(
             "model-guides/large-data.md",
             "Cross-family bivariate" => "cross-family.md",
         ],
-        "Tutorials" => [
+        "Biological examples" => [
             "tutorials/location-scale.md",
             "tutorials/location-scale-scale.md",
             "tutorials/robust-student.md",
@@ -54,35 +65,23 @@ makedocs(
             "tutorials/spatial-models.md",
             "tutorials/relmat-known-matrices.md",
             "tutorials/phylogenetic-spatial.md",
+            "tutorials/temporal-random-effects.md",
         ],
-        "Diagnostics" => [
+        "Check your model" => [
             "diagnostics-and-validation/figure-gallery.md",
             "diagnostics-and-validation/prediction-and-postfit.md",
             "diagnostics-and-validation/profile-likelihood.md",
-            "diagnostics-and-validation/implementation-map.md",
             "diagnostics-and-validation/exact-gaussian-diagnostics.md",
-            "diagnostics-and-validation/testing-likelihoods.md",
             "diagnostics-and-validation/simulation-plot-grammar.md",
             "diagnostics-and-validation/small-sample-behaviour.md",
         ],
-        "Reference" => [
+        "Function reference" => [
             "reference/package.md",
             "reference/model-specification.md",
             "reference/structured-effect-markers.md",
-            "reference/deprecated-marker-internals.md",
             "reference/model-fitting-and-postfit.md",
             "reference/visualization.md",
-            "reference/engine-internals.md",
-
-            "Development" => [
-                "developer-notes/formula-grammar.md",
-                "developer-notes/adding-families.md",
-                "developer-notes/source-map.md",
-                "developer-notes/reml-q4-exact-gradient.md",
-                "developer-notes/lss-sparse-multi-component.md",
-                "API stability" => "api-stability.md",
-                "Changelog" => "changelog.md",
-            ],
+            "API stability" => "api-stability.md",
         ],
     ],
 )
@@ -92,7 +91,7 @@ makedocs(
 # `base`. Plain Documenter.deploydocs deploys build/ verbatim → the site lands as
 # build/1/ and every asset/nav link 404s (the bug this site hit). Mirrors GLLVM.jl.
 # push_preview = true (mirrors GLLVM.jl): PR docs land at
-# https://itchyshin.github.io/DRM.jl/previews/PR<N>/ so phone/GitHub review
+# https://itchyshin.github.io/DRModels.jl/previews/PR<N>/ so phone/GitHub review
 # links work. With false, Documenter still posts documenter/deploy SUCCESS
 # pointing at that URL while Deploying: ✘ → 404.
 # DRM_DOCS_DEPLOY=false makes this a BUILD-ONLY run (no gh-pages contact).
@@ -105,7 +104,7 @@ makedocs(
 # example fails the check exactly as before.
 if get(ENV, "DRM_DOCS_DEPLOY", "true") == "true"
     DocumenterVitepress.deploydocs(;
-        repo = "github.com/itchyshin/DRM.jl.git",
+        repo = "github.com/itchyshin/DRModels.jl.git",
         target = joinpath(@__DIR__, "build"),
         devbranch = "main",
         branch = "gh-pages",

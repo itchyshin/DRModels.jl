@@ -230,7 +230,7 @@ function _assoc_logdiffexp(a::Real, b::Real)
 end
 
 # Latent interval endpoints (z scale) for an NB2 count margin.
-# drmTMB's convention, shared with DRM.jl: size = 1/sigma^2.
+# drmTMB's convention, shared with DRModels.jl: size = 1/sigma^2.
 function _assoc_nb2_endpoints(y::AbstractVector, mu::AbstractVector,
                               sigma::AbstractVector)
     n = length(y)
@@ -388,7 +388,7 @@ end
 # to the boundary) narrows those intervals and biases the association with no
 # visible failure anywhere downstream. Refuse rather than freeze it.
 #
-# Found by the A3c-3 parity harness: DRM.jl's NB2 fitter failed to converge on a
+# Found by the A3c-3 parity harness: DRModels.jl's NB2 fitter failed to converge on a
 # legitimately overdispersed sample (sigma-hat 5.6e-7, logLik -3200.8 vs drmTMB's
 # -2909.5), and the association came back attenuated -- 0.42 against drmTMB's
 # 0.58 -- with nothing in the result to indicate why.

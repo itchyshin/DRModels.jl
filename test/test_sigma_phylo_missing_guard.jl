@@ -6,7 +6,7 @@
 # over-parameterised result (positive logLik, negative residual dof). The guard
 # must count the total estimated parameters (pμ + pσ + phylo-variance
 # components), not just the mean coefficient count pμ.
-using DRM
+using DRModels
 using Test
 
 @testset "Gaussian missing-response over-parameterisation guard" begin

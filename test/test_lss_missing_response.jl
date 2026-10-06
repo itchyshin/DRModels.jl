@@ -14,7 +14,7 @@
 #   - include vs hand-dropped data are byte-identical on logLik and theta when
 #     every level has at least one observation.
 
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra, Statistics, StableRNGs
 
 @testset "#559 Location-scale-scale missing response" begin
@@ -76,7 +76,7 @@ using Test, Random, LinearAlgebra, Statistics, StableRNGs
         n = length(species)
         x = randn(rng, n)
         z = repeat(randn(rng, p), inner = m)  # species-level predictor
-        Kmat = DRM._phylo_correlation(phy)
+        Kmat = DRModels._phylo_correlation(phy)
         α_true = [0.2, 0.5]
         Zg_full = [ones(p) z[1:m:end]]
         σa = exp.(Zg_full * α_true)

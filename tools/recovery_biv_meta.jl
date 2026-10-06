@@ -2,7 +2,7 @@
 # The claim under test is the one the model exists to make: are the HETEROGENEITY
 # components recovered, and does rho12 stay separated from the KNOWN sampling
 # correlation baked into V?
-using DRM, Random, LinearAlgebra, Statistics, Printf
+using DRModels, Random, LinearAlgebra, Statistics, Printf
 
 const BF = bf(mu1=@formula(y1 ~ x), mu2=@formula(y2 ~ x),
               sigma1=@formula(sigma1 ~ 1), sigma2=@formula(sigma2 ~ 1),

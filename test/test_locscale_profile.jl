@@ -10,7 +10,7 @@
 #     on the well-identified mean slope (same root, fewer constrained solves);
 # (3) a VARIANCE parameter (log L11) — where Wald is least trustworthy — yields a
 #     finite, bracketed CI containing the estimate.
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra, SparseArrays
 import Distributions
 
@@ -26,7 +26,7 @@ function _ls_profile_endpoint_bisect(kind, y, Xμ, Xψ, gidx, G, Q, θ̂; idx, d
     thr = nll_min + Distributions.quantile(Distributions.Chisq(1), level) / 2
     z = Distributions.quantile(Distributions.Normal(), 1 - (1 - level) / 2)
     step = max(z * se, 1e-3)
-    evalg(val) = (DRM._ls_profile_nll(kind, y, Xμ, Xψ, gidx, G, Q, θ̂, idx, val)[1]) - thr
+    evalg(val) = (DRModels._ls_profile_nll(kind, y, Xμ, Xψ, gidx, G, Q, θ̂, idx, val)[1]) - thr
     a = θ̂[idx]; b = a; gb = -1.0
     for _ in 1:maxexpand
         b = θ̂[idx] + dir * step
@@ -61,16 +61,16 @@ if get(ENV, "DRM_SLOW_TESTS", "0") == "1"
     y = [_nb2_draw_pr(0.5 + 0.4x[i] + A[species[i]][1], 0.3 + A[species[i]][2]) for i in 1:n]
     Q = sparse(1.0 * I, G, G)
 
-    fit = DRM._fit_locscale(Val(:nb2), y, Xμ, Xψ, species, G, Q; se = true)
+    fit = DRModels._fit_locscale(Val(:nb2), y, Xμ, Xψ, species, G, Q; se = true)
     nllmin = fit.nll
 
     # (1) Mean slope (idx = 2): profile CI ≈ Wald CI, and endpoint on the threshold.
-    ci = DRM._ls_profile_ci(Val(:nb2), y, Xμ, Xψ, species, G, Q, fit.θ; idx = 2, nll_min = nllmin)
+    ci = DRModels._ls_profile_ci(Val(:nb2), y, Xμ, Xψ, species, G, Q, fit.θ; idx = 2, nll_min = nllmin)
     @test ci.lower < fit.θ[2] < ci.upper
     @test ci.lower ≈ fit.θ[2] - 1.96 * fit.se[2] rtol = 0.2
     @test ci.upper ≈ fit.θ[2] + 1.96 * fit.se[2] rtol = 0.2
     chi = Distributions.quantile(Distributions.Chisq(1), 0.95)
-    dev_hi, _, ok_hi = DRM._ls_profile_nll(Val(:nb2), y, Xμ, Xψ, species, G, Q, fit.θ, 2, ci.upper)
+    dev_hi, _, ok_hi = DRModels._ls_profile_nll(Val(:nb2), y, Xμ, Xψ, species, G, Q, fit.θ, 2, ci.upper)
     @test ok_hi
     @test 2 * (dev_hi - nllmin) ≈ chi rtol = 1e-2
 
@@ -89,7 +89,7 @@ if get(ENV, "DRM_SLOW_TESTS", "0") == "1"
     @test ci.upper ≈ hi_ref rtol = 1e-2
 
     # (3) Variance parameter (idx = 4 = log L11): finite bracketed CI.
-    civ = DRM._ls_profile_ci(Val(:nb2), y, Xμ, Xψ, species, G, Q, fit.θ; idx = 4, nll_min = nllmin)
+    civ = DRModels._ls_profile_ci(Val(:nb2), y, Xμ, Xψ, species, G, Q, fit.θ; idx = 4, nll_min = nllmin)
     @test isfinite(civ.lower) && isfinite(civ.upper)
     @test civ.lower < fit.θ[4] < civ.upper
 end

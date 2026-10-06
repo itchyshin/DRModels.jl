@@ -3,7 +3,7 @@
 # b0_{g(i)} + b1_{g(i)}·x_i, precision φ = 1/σ². The 2-D group effect is
 # integrated out per group by a K×K Gauss–Hermite product rule. Recovery: the
 # logit-mean slope and the intercept/slope RE SDs (sqrt diag of vc(fit)[:g]).
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 import Distributions
 

@@ -1,4 +1,4 @@
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 import Distributions
 

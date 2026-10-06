@@ -6,13 +6,13 @@
 # against drmTMB at the extrapolated newdata point x = 0.8 by 1.086e-5 against a
 # 4e-6 bar (receipt conditional-components-regression-001.json, 2026-09-02).
 # The overnight handover attributed this to an LBFGS `g_tol` gap in
-# `_fit_ranef_gaussian_lss`. Measured 2026-09-05 at DRM.jl 430ef64cc, that
+# `_fit_ranef_gaussian_lss`. Measured 2026-09-05 at DRModels.jl 430ef64cc, that
 # attribution is wrong on both counts:
 #
 #   * the cell has no `sd(g) ~` formula, so it routes through
 #     `_fit_ranef_gaussian` (src/gaussian_ranef.jl), not the LSS fitter; the two
 #     fitters agree on this fixture to 1.6e-15 in θ anyway;
-#   * DRM.jl's optimum does not move: max|∇nll|∞ at the default `g_tol = 1e-8`
+#   * DRModels.jl's optimum does not move: max|∇nll|∞ at the default `g_tol = 1e-8`
 #     optimum is 4.2e-9, and refitting at `g_tol = 1e-12` moves θ by 5.2e-11.
 #
 # The loose side was drmTMB's `nlminb` relative-tolerance stop (drmTMB #1130,
@@ -33,7 +33,7 @@
 
 module Test609VaryingScale
 
-using DRM
+using DRModels
 using Test
 using LinearAlgebra
 using ForwardDiff

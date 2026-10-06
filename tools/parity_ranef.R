@@ -219,7 +219,7 @@ rows[[length(rows) + 1L]] <- run_cell(
                data = dat, engine = "julia")))
 
 # The one cell that does NOT pass, and the reason it must not be promoted:
-# drmTMB integrates the sigma-side random intercept by Laplace, DRM.jl by
+# drmTMB integrates the sigma-side random intercept by Laplace, DRModels.jl by
 # 32-node Gauss-Hermite quadrature (src/gaussian_ranef.jl). Both converge; the
 # gap is the approximation, not a wrong answer. It doubles as this table's
 # negative control -- proof the harness can report a failure.
@@ -235,8 +235,8 @@ rows[[length(rows) + 1L]] <- run_cell(
 
 ## ---------------------------------------------------------------------
 ## (b) Gaussian phylogenetic mean intercept. Seed 404 and a generating SD of
-##     0.7 keep the phylogenetic SD well clear of DRM.jl's
-##     `_LAPLACE_LOG_SD_FLOOR` and of the unidentifiable draw DRM.jl#483
+##     0.7 keep the phylogenetic SD well clear of DRModels.jl's
+##     `_LAPLACE_LOG_SD_FLOOR` and of the unidentifiable draw DRModels.jl#483
 ##     found on the earlier seed.
 ## ---------------------------------------------------------------------
 set.seed(404)

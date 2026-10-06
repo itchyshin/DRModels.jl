@@ -1,5 +1,5 @@
 # corpairs(fit): fitted between-response residual correlation, drmTMB's corpairs().
-using DRM
+using DRModels
 using Test, Random
 
 @testset "corpairs() — between-response residual correlation" begin

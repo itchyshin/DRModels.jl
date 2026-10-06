@@ -19,7 +19,7 @@
 # driver call, so we can call the fixed functions directly on a tiny problem.
 
 using Test, LinearAlgebra, Random, Statistics
-using DRM   # provides `DRM.Optim` (the Optim module DRM already depends on)
+using DRModels   # provides `DRModels.Optim` (the Optim module DRModels already depends on)
 
 const _EXP_DIR = joinpath(@__DIR__, "..", "src", "experimental")
 
@@ -44,10 +44,10 @@ end
 # Load a standalone experimental source into a fresh module.
 #   * `usepkgs` are brought in with `using` so their EXPORTED names (e.g.
 #     `SparseMatrixCSC`) are in scope — these must all be in the test project.
-#   * `Optim` is a dependency of DRM but NOT of the test project, so a bare
+#   * `Optim` is a dependency of DRModels but NOT of the test project, so a bare
 #     `using Optim` inside a test-created module throws "Package Optim not found in
 #     current path" on a clean CI checkout. We instead alias it (and the only
-#     unqualified Optim name the scripts use, `LBFGS`) from the loaded `DRM`.
+#     unqualified Optim name the scripts use, `LBFGS`) from the loaded `DRModels`.
 #   * dependency + main sources are `include_string`-ed with all `using`/`import`/
 #     `include`/driver lines stripped, so nothing depends on the load path or CWD.
 function _load_experimental(mod::Module, relpath::String;
@@ -56,8 +56,8 @@ function _load_experimental(mod::Module, relpath::String;
                             need_optim::Bool = false)
     isempty(usepkgs) || Core.eval(mod, Expr(:using, (Expr(:., p) for p in usepkgs)...))
     if need_optim
-        Core.eval(mod, :(const Optim = $(DRM.Optim)))
-        Core.eval(mod, :(const LBFGS = $(DRM.Optim.LBFGS)))   # used unqualified in location_only.jl
+        Core.eval(mod, :(const Optim = $(DRModels.Optim)))
+        Core.eval(mod, :(const LBFGS = $(DRModels.Optim.LBFGS)))   # used unqualified in location_only.jl
     end
     for d in deps
         Base.include_string(mod, _strip_source(joinpath(@__DIR__, "..", "src", d)), d)

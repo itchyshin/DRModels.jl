@@ -2,7 +2,7 @@
 # A deliberate σ2-axis collapse (no scale-phylo signal on trait 2) checks that the
 # percentile interval is boundary-honest: the collapsed axis's whole CI sits below
 # an identified axis's CI, and the SD point estimates match vc(fit).
-using DRM, Test, Random, LinearAlgebra
+using DRModels, Test, Random, LinearAlgebra
 import Statistics
 
 @testset "bootstrap_sigma_a — q4 among-axis SD CIs (boundary-honest)" begin

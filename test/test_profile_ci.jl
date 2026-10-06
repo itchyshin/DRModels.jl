@@ -4,7 +4,7 @@
 # the nuisance parameters re-optimised at each fixed value. For a Gaussian mean
 # coefficient the log-likelihood is near-quadratic, so the profile interval
 # closely matches the Wald interval — that is the cross-check here.
-using DRM
+using DRModels
 using Test, Random
 import Distributions
 

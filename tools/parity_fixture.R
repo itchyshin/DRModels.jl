@@ -3,10 +3,10 @@
 # The promotion gate. A drmTMB capability row may only move toward `supported`
 # on evidence that `engine = "julia"` and `engine = "tmb"` fit the SAME target
 # and agree — matching coefficients and logLik within a declared tolerance.
-# Direct DRM.jl evidence is not R-via-Julia bridge support, so this must run
+# Direct DRModels.jl evidence is not R-via-Julia bridge support, so this must run
 # through drmTMB itself.
 #
-#   DRM_JL_PATH=/path/to/DRM.jl Rscript tools/parity_fixture.R
+#   DRM_JL_PATH=/path/to/DRModels.jl Rscript tools/parity_fixture.R
 #
 # Writes a TSV of results next to this script's --out argument (default below).
 
@@ -68,7 +68,7 @@ cells <- list(
 # Fixed-effect non-Gaussian cells. The R gate REFUSES these through
 # `engine = "julia"` ("routes <family> models only with a phylo() random
 # intercept"), and the gate registry's stated reason is the absence of a
-# coefficient-scale parity test. So compare native TMB against the DRM.jl bridge
+# coefficient-scale parity test. So compare native TMB against the DRModels.jl bridge
 # payload directly — the payload the bridge WOULD return if the gate opened.
 # This is the evidence the gate's own `review_due` asks for.
 fe_cells <- list(
@@ -119,7 +119,7 @@ fe_cells <- list(
                     x = x, z = z) })
 )
 
-# Bivariate lognormal (drmTMB biv_lognormal). Compared native-TMB vs the DRM.jl
+# Bivariate lognormal (drmTMB biv_lognormal). Compared native-TMB vs the DRModels.jl
 # bridge payload: `engine = "julia"` does not route this family at the anchor, so
 # this is capability parity for the Julia implementation, NOT bridge admission.
 biv_cells <- list(
@@ -244,7 +244,7 @@ for (cell in biv_cells) {
     capability_id = cell$id, label = cell$label,
     status = NA_character_, max_abs_coef_diff = NA_real_,
     loglik_tmb = NA_real_, loglik_julia = NA_real_, loglik_diff = NA_real_,
-    tolerance = tol, note = "capability parity vs DRM.jl bridge payload; not bridge admission"
+    tolerance = tol, note = "capability parity vs DRModels.jl bridge payload; not bridge admission"
   )
   ft <- try(drmTMB(cell$formula(), family = cell$family(), data = d, engine = "tmb"),
             silent = TRUE)

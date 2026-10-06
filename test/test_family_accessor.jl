@@ -1,6 +1,6 @@
 # Post-fit `family(fit)` accessor: fit a tiny Gaussian location–scale model and
 # assert the accessor returns the family object that was passed to `drm`.
-using DRM
+using DRModels
 using Test, Random
 
 @testset "family(fit) post-fit accessor" begin

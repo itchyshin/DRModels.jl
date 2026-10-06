@@ -1,10 +1,10 @@
-using DRM
+using DRModels
 using Test
 using LinearAlgebra
 
 function _phylo_label_error(newick)
     err = try
-        DRM.augmented_phy(newick)
+        DRModels.augmented_phy(newick)
         nothing
     catch caught
         caught
@@ -16,13 +16,13 @@ end
 @testset "quoted Newick tip labels" begin
     @testset "quoted labels preserve names, order, and covariance" begin
         labels = ["Homo sapiens", "A,B: C(D)[E];", "O'Brien", "Δ_日本"]
-        phy = DRM.augmented_phy(
+        phy = DRModels.augmented_phy(
             "(('Homo sapiens':1.0,'A,B: C(D)[E];':2.0)'inner label':3.0," *
             "'O''Brien':4.0,'Δ_日本':5.0);"
         )
         @test phy.leaf_names == labels
         @test phy.leaf_indices == [1, 2, 3, 4]
-        @test DRM.sigma_phy_dense(phy) ≈
+        @test DRModels.sigma_phy_dense(phy) ≈
               [4.0 3.0 0.0 0.0;
                3.0 5.0 0.0 0.0;
                0.0 0.0 4.0 0.0;
@@ -30,27 +30,27 @@ end
     end
 
     @testset "quoted whitespace is literal while token whitespace is ignored" begin
-        phy = DRM.augmented_phy(
+        phy = DRModels.augmented_phy(
             " \n ( 'two words' : 1.0 , 'tab\tname' : 2.0 , " *
             "'line\nbreak' : 3.0 ) ; \n"
         )
         @test phy.leaf_names == ["two words", "tab\tname", "line\nbreak"]
-        @test DRM.sigma_phy_dense(phy) ≈ Diagonal([1.0, 2.0, 3.0]) atol = 1e-12 rtol = 0
+        @test DRModels.sigma_phy_dense(phy) ≈ Diagonal([1.0, 2.0, 3.0]) atol = 1e-12 rtol = 0
     end
 
     @testset "unquoted token whitespace remains admissible" begin
-        phy = DRM.augmented_phy(" ( A : 1.0 , B : 2.0 , C : 3.0 ) ; ")
+        phy = DRModels.augmented_phy(" ( A : 1.0 , B : 2.0 , C : 3.0 ) ; ")
         @test phy.leaf_names == ["A", "B", "C"]
-        @test DRM.sigma_phy_dense(phy) ≈ Diagonal([1.0, 2.0, 3.0]) atol = 1e-12 rtol = 0
+        @test DRModels.sigma_phy_dense(phy) ≈ Diagonal([1.0, 2.0, 3.0]) atol = 1e-12 rtol = 0
     end
 
     @testset "simple labels retain their existing spelling" begin
-        phy = DRM.augmented_phy("(simple:1.0,under_score:2.0,dot.name-3:3.0);")
+        phy = DRModels.augmented_phy("(simple:1.0,under_score:2.0,dot.name-3:3.0);")
         @test phy.leaf_names == ["simple", "under_score", "dot.name-3"]
     end
 
     @testset "quoted spaces do not collide with simple labels" begin
-        phy = DRM.augmented_phy(
+        phy = DRModels.augmented_phy(
             "('A B':1.0,AB:2.0,A_B:3.0,' leading':4.0,'trailing ':5.0);"
         )
         @test phy.leaf_names == ["A B", "AB", "A_B", " leading", "trailing "]

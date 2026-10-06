@@ -7,20 +7,20 @@ using SparseArrays
 using Random
 using ForwardDiff
 using Printf
-using DRM
+using DRModels
 
 function _make_phylo_lss_fixture(; G = 16, n_per_group = 2, seed = 42)
     rng = MersenneTwister(seed)
-    phy = DRM.random_balanced_tree(G; branch_length = 0.2)
-    Q, leaf_pos, q = DRM.augmented_tree_precision(phy)
+    phy = DRModels.random_balanced_tree(G; branch_length = 0.2)
+    Q, leaf_pos, q = DRModels.augmented_tree_precision(phy)
     Qs = dropzeros!(sparse(Symmetric(Matrix(Q))))
     chQ = cholesky(Symmetric(Qs); check = false)
-    Qinv = DRM.takahashi_selinv(chQ)
+    Qinv = DRModels.takahashi_selinv(chQ)
     leaf_var = [Qinv[leaf_pos[t], leaf_pos[t]] for t in 1:G]
     inv_sd = [1.0 / sqrt(leaf_var[t]) for t in 1:G]
     logdetCprior = -logdet(chQ)
 
-    K = DRM._phylo_correlation(phy)
+    K = DRModels._phylo_correlation(phy)
     n = G * n_per_group
     gidx = repeat(1:G, inner = n_per_group)
 
@@ -142,7 +142,7 @@ function _eval_sparse_lss(θ, fix; scale_se = 1.0, want_grad = false)
     end
 
     # Analytic Takahashi gradients
-    Hinv = DRM.takahashi_selinv(chH)
+    Hinv = DRModels.takahashi_selinv(chH)
     u = w .* res_lat
 
     g_βμ = - (fix.Xμ' * u)

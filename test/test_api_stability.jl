@@ -2,7 +2,7 @@
 # docs/dev-log/plans/2026-08-28-v1.0-roadmap.md; decisions D-180).
 #
 # Every exported name is classified into exactly one of three tiers, and the
-# union must EQUAL `names(DRM)` — so a new export cannot appear without being
+# union must EQUAL `names(DRModels)` — so a new export cannot appear without being
 # classified, a stable name cannot vanish or be renamed without failing this
 # test loudly, and a tier change is a reviewed edit here, never drift.
 #
@@ -19,20 +19,20 @@
 #                   utilities). Exempt like Base internals: stable in practice,
 #                   not promised.
 
-using DRM
+using DRModels
 using Test
 
 const API_STABLE = [
     # grammar + front end
     "@formula", "bf", "drm_formula", "drm", "cbind",
-    "meta_V", "relmat", "animal", "phylo", "spatial",
+    "meta_V", "relmat", "animal", "phylo", "spatial", "offset",
     "DrmFormula", "BivariateDrmFormula", "DrmFit",
     # families
     "Gaussian", "Student", "SkewNormal", "Poisson", "NegBinomial2",
-    "TruncatedNegBinomial2", "Beta", "BetaBinomial", "Binomial", "Gamma",
+    "TruncatedNegBinomial2", "TruncatedPoisson", "Beta", "BetaBinomial", "Binomial", "Gamma",
     "LogNormal", "ZeroOneBeta", "Tweedie", "CumulativeLogit",
     # StatsAPI-style accessors
-    "coef", "vcov", "loglik", "nobs", "dof", "aic", "bic", "aicc",
+    "coef", "vcov", "loglik", "loglikelihood", "nobs", "dof", "aic", "bic", "aicc",
     "deviance", "dof_residual", "weights", "update",
     "fixef", "re_sd", "vc", "ranef", "sigma", "corpairs", "rho12",
     "stderror", "confint", "coeftable", "fitted", "residuals",
@@ -53,8 +53,16 @@ const API_STABLE = [
 ]
 
 const API_EXPERIMENTAL = [
+    # r2_constant_sigma (2026-09-06): EXPERIMENTAL on purpose. The value it
+    # returns is settled -- it is the ordinary lm() R2 -- but its REFUSAL
+    # BOUNDARIES are what a caller actually programs against, and those may widen:
+    # a marginal/conditional R2 for random-effect fits would reshape this surface,
+    # and that decision has not been made. Promising the boundaries under SemVer
+    # before deciding them would be the wrong claim.
+    "r2_constant_sigma",
     # R bridge (ledger r_bridge_status: experimental)
     "drm_bridge", "drm_bridge_inference", "drm_bridge_objective_at", "drm_listwise",
+    "bridge_diagnostics",
     # cross-family surface (permanent claim_boundary, D-179 #3)
     "mf_coef", "mf_aic", "mf_bic", "mf_fitted", "mf_summary",
     "associate_pairs", "latent_normal", "association", "PairAssociation",
@@ -66,6 +74,9 @@ const API_EXPERIMENTAL = [
     "meta_vcov_bivariate", "MetaVcovBivariate",
     # location-scale-scale (#544/#545)
     "sd", "sd_phylo",
+    # temporal AR1/OU on the Gaussian mean, wave 1 (D-310): the Julia spelling
+    # is positional because `@formula` cannot carry drmTMB's keyword arguments
+    "temporal", "temporal_parameters",
     # prepared joint missing-predictor surface (post-v0.7 experimental)
     "PreparedJointModel", "PreparedJointFit",
     "PreparedFiniteJointModel", "PreparedFiniteJointFit",
@@ -99,8 +110,8 @@ const API_ENGINE = [
 ]
 
 @testset "API freeze gate (v0.7 line)" begin
-    exported = Set(string.(names(DRM)))
-    classified = vcat(API_STABLE, API_EXPERIMENTAL, API_ENGINE, ["DRM"])
+    exported = Set(string.(names(DRModels)))
+    classified = vcat(API_STABLE, API_EXPERIMENTAL, API_ENGINE, ["DRModels"])
 
     @testset "no name is classified twice" begin
         @test length(classified) == length(Set(classified))
@@ -123,8 +134,8 @@ const API_ENGINE = [
     @testset "every STABLE name is exported and defined" begin
         for nm in API_STABLE
             sym = Symbol(nm)
-            @test sym in names(DRM)
-            @test isdefined(DRM, sym)
+            @test sym in names(DRModels)
+            @test isdefined(DRModels, sym)
         end
     end
 
@@ -135,6 +146,6 @@ const API_ENGINE = [
         @test "sigma" in API_STABLE
         @test "rho12" in API_STABLE
         @test "meta_V" in API_STABLE
-        @test !any(n -> occursin("meta_known", n), string.(names(DRM)))
+        @test !any(n -> occursin("meta_known", n), string.(names(DRModels)))
     end
 end

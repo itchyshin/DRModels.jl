@@ -2,7 +2,7 @@
 
 !!! note "Status — Stable (Gaussian mean, supplied A)"
     Mirrors drmTMB's [Animal models and additive relatedness](https://itchyshin.github.io/drmTMB/articles/animal-models.html).
-    **In DRM.jl today:** `animal(1 | id)` on the Gaussian **mean** with a supplied
+    **In DRModels.jl today:** `animal(1 | id)` on the Gaussian **mean** with a supplied
     additive-relatedness matrix `A` — a structured random intercept fit in closed
     form (same engine as [`relmat`](relmat-known-matrices.md) and
     [`phylo`](phylogenetic-models.md)).
@@ -21,11 +21,11 @@ a \sim N(0,\ \sigma_A^2\,A),\qquad
 
 `σ_A²` is the *additive-genetic variance* and `σ²` the residual variance. Because
 the breeding effect enters the **mean** linearly and is Gaussian, the marginal of
-`y` stays Gaussian — `y ~ N(Xβ, σ² I + σ_A² Z A Zᵀ)` — so DRM.jl fits it in
+`y` stays Gaussian — `y ~ N(Xβ, σ² I + σ_A² Z A Zᵀ)` — so DRModels.jl fits it in
 closed form (PGLS-style), the same engine that powers
 [`phylo`](phylogenetic-models.md) and [`relmat`](relmat-known-matrices.md).
 
-## The DRM.jl formula
+## The DRModels.jl formula
 
 Write the breeding effect as `animal(1 | id)` in the mean formula and supply the
 relatedness matrix with the `A =` keyword. `A` is a symmetric positive matrix
@@ -47,7 +47,7 @@ Simulate a balanced design — `G` individuals, `m` records each — with a know
 additive-relatedness matrix `A`, then recover the variance components:
 
 ```@example animal
-using DRM, Random, LinearAlgebra
+using DRModels, Random, LinearAlgebra
 Random.seed!(3)
 
 G = 60
@@ -104,10 +104,10 @@ the two SDs:
 Today's animal-model path covers the **Gaussian mean** with a supplied `A`.
 Building `A` from a pedigree and a sparse large-pedigree path are planned.
 Non-Gaussian animal models (Poisson / NB2 / Gamma / Beta / Binomial breeding
-effects routed through the sparse-Laplace GLMM engine) are tracked in
-[issue #167](https://github.com/itchyshin/DRM.jl/issues/167) — the phylogenetic
-non-Gaussian route already exists and the `relmat`/`animal` route will reuse it,
-so don't assume non-Gaussian families work here yet.
+effects routed through the sparse-Laplace GLMM engine) are planned future work.
+The phylogenetic non-Gaussian route already exists and the `relmat`/`animal`
+route is intended to reuse it, so don't assume non-Gaussian families work here
+yet.
 
 ## See also
 

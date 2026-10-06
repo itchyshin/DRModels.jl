@@ -20,7 +20,7 @@
 # `runtests.jl`'s fixed include order).
 
 using Test
-using DRM
+using DRModels
 using StableRNGs
 using LinearAlgebra
 using SparseArrays
@@ -42,7 +42,7 @@ end
 # species), n = 2 rows/site (n = 384).
 function _s7b1_nested_lsss_fixture(; depth = 6, sites_per_species = 3, n_per_site = 2,
                                    seed = 20260902)
-    phy = DRM.augmented_phy(_make_balanced_newick(depth))
+    phy = DRModels.augmented_phy(_make_balanced_newick(depth))
     Gsp = phy.n_leaves
     sp_names = String.(phy.leaf_names)
     Gsite = Gsp * sites_per_species
@@ -61,7 +61,7 @@ function _s7b1_nested_lsss_fixture(; depth = 6, sites_per_species = 3, n_per_sit
     α_phy = [-0.6, 0.25]
     α_iid = [-0.9]
 
-    K0 = DRM.sigma_phy_dense(phy; σ²_phy = 1.0)
+    K0 = DRModels.sigma_phy_dense(phy; σ²_phy = 1.0)
     dK = sqrt.(diag(K0)); K = K0 ./ (dK * dK')
     chK = cholesky(Symmetric(K))
     u_phy = chK.L * randn(rng, Gsp)
@@ -100,8 +100,8 @@ end
 
         @test fit_dense.converged
         @test fit_sparse.converged
-        @test DRM._lss_multi_route(fit_dense) === :dense_multi
-        @test DRM._lss_multi_route(fit_sparse) === :sparse_multi
+        @test DRModels._lss_multi_route(fit_dense) === :dense_multi
+        @test DRModels._lss_multi_route(fit_sparse) === :sparse_multi
 
         @test isapprox(loglik(fit_sparse), loglik(fit_dense); atol = 1e-5)
         @test isapprox(coef(fit_sparse, :mu), coef(fit_dense, :mu); rtol = 2e-4, atol = 2e-5)
@@ -121,8 +121,8 @@ end
         @test fit_sparse.converged
         @test estimation_method(fit_dense) === :REML
         @test estimation_method(fit_sparse) === :REML
-        @test DRM._lss_multi_route(fit_dense) === :dense_multi
-        @test DRM._lss_multi_route(fit_sparse) === :sparse_multi
+        @test DRModels._lss_multi_route(fit_dense) === :dense_multi
+        @test DRModels._lss_multi_route(fit_sparse) === :sparse_multi
 
         @test isapprox(reml_loglik(fit_sparse), reml_loglik(fit_dense); atol = 1e-5)
         @test isapprox(ml_loglik(fit_sparse), ml_loglik(fit_dense); atol = 1e-5)
@@ -163,15 +163,15 @@ end
         fit = drm(f, Gaussian(); data = dat, algorithm = :sparse)
     end
     @test fit.converged
-    @test DRM._lss_multi_route(fit) === :dense_multi   # NEVER silently run sparse (D-206)
+    @test DRModels._lss_multi_route(fit) === :dense_multi   # NEVER silently run sparse (D-206)
 
     # The router's own eligibility check must give the reason "no
     # phylogenetic sd() component" for this fixture (two iid, no phylo term).
-    g1idx, G1 = DRM._group_index(dat.g1)
-    g2idx, G2 = DRM._group_index(dat.g2)
-    comps = [DRM._LssComp(g1idx, G1, ones(G1, 1), ["(Intercept)"], nothing, "g1"),
-             DRM._LssComp(g2idx, G2, ones(G2, 1), ["(Intercept)"], nothing, "g2")]
-    eligible, reason = DRM._lss_multi_sparse_eligible(comps)
+    g1idx, G1 = DRModels._group_index(dat.g1)
+    g2idx, G2 = DRModels._group_index(dat.g2)
+    comps = [DRModels._LssComp(g1idx, G1, ones(G1, 1), ["(Intercept)"], nothing, "g1"),
+             DRModels._LssComp(g2idx, G2, ones(G2, 1), ["(Intercept)"], nothing, "g2")]
+    eligible, reason = DRModels._lss_multi_sparse_eligible(comps)
     @test !eligible
     @test occursin("no phylogenetic", reason)
 
@@ -179,11 +179,11 @@ end
         n = length(dat.y)
         Xmu = hcat(ones(n), dat.x)
         Xsigma = ones(n, 1)
-        comp1 = DRM._sparse_lss_iid_comp(g1idx, G1, ones(G1, 1))
-        comp2 = DRM._sparse_lss_iid_comp(g2idx, G2, ones(G2, 1))
+        comp1 = DRModels._sparse_lss_iid_comp(g1idx, G1, ones(G1, 1))
+        comp2 = DRModels._sparse_lss_iid_comp(g2idx, G2, ones(G2, 1))
         sp_comps = [comp1, comp2]
         θ = zeros(2 + 1 + 1 + 1)   # βμ (2) + βσ (1) + α1 (1) + α2 (1)
-        asm = DRM._lss_sparse_multi_assemble(θ, dat.y, Xmu, Xsigma, sp_comps)
+        asm = DRModels._lss_sparse_multi_assemble(θ, dat.y, Xmu, Xsigma, sp_comps)
         H = asm.H
         ch = cholesky(Symmetric(H); check = false)
         @test issuccess(ch)
@@ -248,7 +248,7 @@ end
     @test elapsed < 120   # the sub-slice's own ≲2 min budget for this case
 
     @test fit_auto.converged
-    @test DRM._lss_multi_route(fit_auto) === :sparse_multi
+    @test DRModels._lss_multi_route(fit_auto) === :sparse_multi
 
     # A dense cross-check at this scale (n = 600, np = 5) is affordable
     # (dense multi is O(n^3) per evaluation but n is small and there are
@@ -263,7 +263,7 @@ end
     end
     if dense_elapsed < 90
         @test fit_dense.converged
-        @test DRM._lss_multi_route(fit_dense) === :dense_multi
+        @test DRModels._lss_multi_route(fit_dense) === :dense_multi
         @test isapprox(loglik(fit_auto), loglik(fit_dense); atol = 1e-4)
         @test isapprox(coef(fit_auto, :mu), coef(fit_dense, :mu); rtol = 2e-3, atol = 2e-4)
     else
@@ -389,7 +389,7 @@ end
         # Warm JIT once at p = 200 (untimed).
         fx_warm = _s7b6_scaling_fixture(200)
         fit_warm = _s7b6_fit_ml(fx_warm)
-        @test DRM._lss_multi_route(fit_warm) === :sparse_multi
+        @test DRModels._lss_multi_route(fit_warm) === :sparse_multi
 
         # Minimum of three timings per size: a single timing on a contended
         # CI runner inflated the ratio to 10.7 (#622) although the fixed
@@ -402,8 +402,8 @@ end
         local fit2000
         t2000 = minimum(@elapsed(fit2000 = _s7b6_fit_ml(fx2000)) for _ in 1:3)
 
-        @test DRM._lss_multi_route(fit500) === :sparse_multi
-        @test DRM._lss_multi_route(fit2000) === :sparse_multi
+        @test DRModels._lss_multi_route(fit500) === :sparse_multi
+        @test DRModels._lss_multi_route(fit2000) === :sparse_multi
 
         ratio = t2000 / t500
         # p^1.5 headroom for a genuinely near-linear sparse route (p 4x

@@ -8,7 +8,7 @@
 # ALREADY written in `drm_bridge`'s own flat naming (including the synthetic
 # `__bridge_<kind>_<n>` columns), so `compare_bridge` needs no renaming here.
 
-using DRM
+using DRModels
 using Test
 using TOML
 

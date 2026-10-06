@@ -16,12 +16,12 @@
 #
 #  1. THE TREE IS NORMALISED TO UNIT HEIGHT. drmTMB builds its phylogenetic
 #     covariance from `ape::vcv(tree, corr = TRUE)` — tips at variance 1 — while
-#     DRM.jl builds its sparse precision from the Newick branch lengths AS GIVEN,
+#     DRModels.jl builds its sparse precision from the Newick branch lengths AS GIVEN,
 #     so its tip variance is the tree height h. Without normalising, the fitted
 #     phylo SDs differ by exactly sqrt(h) while the log-likelihoods agree, and the
 #     failure reads as an engine bug instead of a units mismatch.
 #
-#  2. SPECIES ARE PASSED AS TIP-LABEL STRINGS. DRM.jl's non-Gaussian phylo route
+#  2. SPECIES ARE PASSED AS TIP-LABEL STRINGS. DRModels.jl's non-Gaussian phylo route
 #     (`sparse_laplace_glmm.jl`) matches labels to leaves BY NAME, as drmTMB does.
 #     (Its univariate Gaussian sparse route matches POSITIONALLY instead — a real
 #     asymmetry, and the reason the penalty fixture had to emit rows in Newick
@@ -31,7 +31,7 @@
 #     engines can land on the same estimate while disagreeing about what they
 #     report; the penalty fixture caught exactly that twice.
 #
-#   DRM_JL_PATH=/path/to/DRM.jl Rscript tools/parity_phylo_nongaussian.R
+#   DRM_JL_PATH=/path/to/DRModels.jl Rscript tools/parity_phylo_nongaussian.R
 
 suppressMessages(library(drmTMB))
 
@@ -71,16 +71,16 @@ make_fixture <- function(seed = 411L, n_tip = 12L, n_each = 6L, sd_phy = 0.5) {
 
 cells <- list(
   list(id = "phylo_gamma",    resp = "y_gamma", rfam = "Gamma(link = \"log\")",
-       jfam = "DRM.Gamma()",    label = "Gamma() with phylo(1 | species)"),
+       jfam = "DRModels.Gamma()",    label = "Gamma() with phylo(1 | species)"),
   # drmTMB REFUSES `sigma ~ 1` for binomial ("Binomial models currently support
   # only the `mu` event-probability formula"), so this cell is mu-only on BOTH
   # sides -- the comparison has to use each engine's admitted syntax, not a
   # uniform template.
   list(id = "phylo_binomial", resp = "y_binom", rfam = "stats::binomial()",
-       jfam = "DRM.Binomial()", mu_only = TRUE,
+       jfam = "DRModels.Binomial()", mu_only = TRUE,
        label = "binomial() with phylo(1 | species)"),
   list(id = "phylo_beta",     resp = "y_beta",  rfam = "drmTMB::beta()",
-       jfam = "DRM.Beta()",     label = "beta() with phylo(1 | species)")
+       jfam = "DRModels.Beta()",     label = "beta() with phylo(1 | species)")
 )
 
 fx <- make_fixture()
@@ -93,7 +93,7 @@ JuliaCall::julia_assign("pn_newick", fx$newick)
 for (cell in cells) {
   JuliaCall::julia_assign(paste0("pn_", cell$id), as.numeric(fx$data[[cell$resp]]))
 }
-JuliaCall::julia_command("pn_tree = DRM.augmented_phy(pn_newick)")
+JuliaCall::julia_command("pn_tree = DRModels.augmented_phy(pn_newick)")
 
 r_fit <- function(cell) {
   call_txt <- sprintf(
@@ -125,16 +125,16 @@ j_fit <- function(cell) {
   JuliaCall::julia_command(sprintf(
     "pn_d = (; y = Float64.(pn_%s), x = Float64.(pn_x), species = String.(pn_sp))", cell$id))
   jbf <- if (isTRUE(cell$mu_only)) {
-    "DRM.bf(DRM.@formula(y ~ x + phylo(1 | species)))"
+    "DRModels.bf(DRModels.@formula(y ~ x + phylo(1 | species)))"
   } else {
-    "DRM.bf(DRM.@formula(y ~ x + phylo(1 | species)), DRM.@formula(sigma ~ 1))"
+    "DRModels.bf(DRModels.@formula(y ~ x + phylo(1 | species)), DRModels.@formula(sigma ~ 1))"
   }
   as.numeric(JuliaCall::julia_eval(sprintf(
     'let d = pn_d, tr = pn_tree
-       f = DRM.drm(%s, %s; data = d, tree = tr)
-       se = DRM.stderror(f)
+       f = DRModels.drm(%s, %s; data = d, tree = tr)
+       se = DRModels.stderror(f)
        se_mu = first(se[r] for (p, r) in f.blocks if p === :mu)
-       vcat(DRM.coef(f, :mu), DRM.loglik(f), se_mu)
+       vcat(DRModels.coef(f, :mu), DRModels.loglik(f), se_mu)
      end', jbf, cell$jfam)))
 }
 
@@ -202,7 +202,7 @@ tab <- do.call(rbind, rows)
 # --- provenance stamp (#473) -------------------------------------------------
 # Record WHICH drmTMB build produced these numbers, not just its version string.
 # "drmTMB 0.7.0" identifies at least 16 different builds, so a version alone
-# cannot tell a later reader whether a disagreement is DRM.jl regressing or the
+# cannot tell a later reader whether a disagreement is DRModels.jl regressing or the
 # COMPARATOR having moved underneath the fixture. Stamped at write time from the
 # single definition in drmtmb_provenance_lib.R.
 .tools_dir <- tryCatch({

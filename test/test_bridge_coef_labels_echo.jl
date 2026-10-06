@@ -9,7 +9,7 @@
 # `coef_labels` is absent, behaviour must be identical to today's
 # self-rendered base-R names (design 258 §7.1-7.3, confirmed by the drmTMB
 # lane 2026-09-02).
-using DRM
+using DRModels
 using Test
 
 const _ECHO_N = 40
@@ -39,7 +39,7 @@ end
 
         # Base-R names, exactly as drmTMB's `model.matrix()` spells them: the
         # echo pastes them verbatim, and (since 2026-09-04) refuses any
-        # spelling DRM.jl's own rendering of the same design disagrees with —
+        # spelling DRModels.jl's own rendering of the same design disagrees with —
         # see test_bridge_formula_constructs.jl for the refusal cases.
         options = Dict{String,Any}("coef_labels" => Dict(
             "mu" => ["(Intercept)", "x", "I(x^2)"],

@@ -1,5 +1,5 @@
 #!/usr/bin/env julia
-# build_check_log.jl — render the combined DRM.jl gate log to stdout.
+# build_check_log.jl — render the combined DRModels.jl gate log to stdout.
 #
 # The log is split to avoid merge collisions (see docs/dev-log/check-log.d/README.md):
 #   • docs/dev-log/check-log.md  — frozen historical table (one big table).

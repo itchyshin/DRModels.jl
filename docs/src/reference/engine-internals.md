@@ -11,133 +11,146 @@
 ## Marginal-method and association internals
 
 ```@docs
-DRM.AGHQ
-DRM.Laplace
-DRM.Variational
-DRM.MarginalMethod
-DRM.LatentNormal
-DRM._aghq_1d_logint
-DRM._aghq_require_1d
-DRM._assoc_logdiffexp
-DRM._poisson_group_aghq_logint
+DRModels.AGHQ
+DRModels.Laplace
+DRModels.Variational
+DRModels.MarginalMethod
+DRModels.LatentNormal
+DRModels._aghq_1d_logint
+DRModels._aghq_require_1d
+DRModels._assoc_logdiffexp
+DRModels._poisson_group_aghq_logint
 ```
 
 ### Profile nuisance-status internals (no stability guarantee)
 
 ```@docs
-DRM._ProfileNuisanceResult
+DRModels._ProfileNuisanceResult
 ```
 
 ## Augmented phylogeny and sparse linear algebra
 
 ```@docs
-DRM.AugmentedPhy
-DRM.Vinv_mul
-DRM.build_M
-DRM.exact_traces
-DRM.logdetV_val
-DRM.make_phy
-DRM.make_problem_from_Q
-DRM.q4_marginal_diagnostic
-DRM.takahashi_diag
-DRM.takahashi_selinv
-DRM.theta_len
-DRM.unpack_theta
-DRM.pack_theta
+DRModels.AugmentedPhy
+DRModels.Vinv_mul
+DRModels.build_M
+DRModels.exact_traces
+DRModels.logdetV_val
+DRModels.make_phy
+DRModels.make_problem_from_Q
+DRModels.q4_marginal_diagnostic
+DRModels.takahashi_diag
+DRModels.takahashi_selinv
+DRModels.theta_len
+DRModels.unpack_theta
+DRModels.pack_theta
+```
+
+### Cholesky pattern-reuse internals (no stability guarantee)
+
+Opt-in `cholesky!` symbolic reuse on the q=4 phylo ML route (`chol_ref`
+kwarg; the default `nothing` keeps a fresh factorisation per call).
+
+```@docs
+DRModels.CholPatternCache
+DRModels.CholPatternMismatch
+DRModels._assert_chol_pattern_matches
+DRModels._add_diag
 ```
 
 ### Newick and topology parser internals (no stability guarantee)
 
 ```@docs
-DRM._phy_validate_topology
-DRM._parse_label!
+DRModels._phy_validate_topology
+DRModels._parse_label!
 ```
 
 ## q=4 and D·R·D separation evaluators
 
 The `fz_` prefix and `fit_q4_sparse_fisherz` are historical names: the
 correlation map is spherical/LKJ, not Fisher-z. The warning on
-`DRM.fit_q4_sparse_fisherz` below gives the correct back-transform.
+`DRModels.fit_q4_sparse_fisherz` below gives the correct back-transform.
 
 ```@docs
-DRM.beta_widths
-DRM.fit_q4_reml
-DRM.fit_q4_sparse_fisherz
-DRM.fz_DRD
-DRM.fz_R
-DRM.fz_R_chol
-DRM.fz_init_from_Sigma
-DRM.fz_marginal_and_grad
-DRM.fz_marginal_nll
-DRM.fz_psi_len
-DRM.fz_psi_to_theta
-DRM.fz_unpack_psi
-DRM.marginal_and_exact_grad
+DRModels.beta_widths
+DRModels.fit_q4_reml
+DRModels.fit_q4_sparse_fisherz
+DRModels.fz_DRD
+DRModels.fz_R
+DRModels.fz_R_chol
+DRModels.fz_init_from_Sigma
+DRModels.fz_marginal_and_grad
+DRModels.fz_marginal_nll
+DRModels.fz_psi_len
+DRModels.fz_psi_to_theta
+DRModels.fz_unpack_psi
+DRModels.marginal_and_exact_grad
 ```
 
 ## Coevolution and phylogenetic interaction kernels
 
 ```@docs
-DRM.coevo_marginal_cov
-DRM.coevo_pack
-DRM.coevo_unpack
-DRM.cov_to_lc
-DRM.fit_coevolution
-DRM.fit_coevolution_q2_reml
-DRM.fit_coevolution_q2_residual
-DRM.fit_phylo_interaction
-DRM.lc_len
-DRM.lc_metric
-DRM.make_coevo_problem
-DRM.make_coevo_problem_from_covariance
-DRM.make_coevo_problem_from_precision
-DRM.phylo_interaction_nll
-DRM.simulate_coevolution
+DRModels.coevo_marginal_cov
+DRModels.coevo_pack
+DRModels.coevo_unpack
+DRModels.cov_to_lc
+DRModels.fit_coevolution
+DRModels.fit_coevolution_q2_reml
+DRModels.fit_coevolution_q2_residual
+DRModels.fit_phylo_interaction
+DRModels.lc_len
+DRModels.lc_metric
+DRModels.make_coevo_problem
+DRModels.make_coevo_problem_from_covariance
+DRModels.make_coevo_problem_from_precision
+DRModels.phylo_interaction_nll
+DRModels.simulate_coevolution
 ```
 
 ## Bridge and mixed-family payload helpers
 
 ```@docs
-DRM._bridge_dpars
-DRM._bridge_dpars_newdata
-DRM._bridge_meta_parts
-DRM._bridge_trials
-DRM._bridge_mixture_family_hint
-DRM.drm_bridge_q2_known_precision
-DRM.drm_bridge_q2_phylo
-DRM.fit_mixed_family
-DRM._mf_nparams
+DRModels._bridge_dpars
+DRModels._bridge_dpars_newdata
+DRModels._bridge_meta_parts
+DRModels._bridge_trials
+DRModels._bridge_mixture_family_hint
+DRModels._bridge_fitted_marginal
+DRModels.drm_bridge_q2_known_precision
+DRModels.drm_bridge_q2_phylo
+DRModels.fit_mixed_family
+DRModels._mf_nparams
 ```
 
 ### Bridge label metadata internals (no stability guarantee)
 
 ```@docs
-DRM._BridgeFormulaLabels
+DRModels._BridgeFormulaLabels
 ```
 
 ## Location-scale and structured-fit kernels
 
 ```@docs
-DRM._fit_bivariate_q4_structured
-DRM._fit_cumulative_phylo_laplace
-DRM._fit_corr_locscale
-DRM._fit_fixed_gaussian_reml
-DRM._fit_gaussian_locscale_phylo
-DRM._fit_locscale
-DRM._fit_ranef_gaussian
-DRM._fit_sigma_axis_re
-DRM._general_cov_setup
-DRM._ls_components
-DRM._ls_marginal_grad
-DRM._ls_marginal_nll
-DRM._ls_obs_information
-DRM._ls_profile_ci
-DRM._ls_profile_ci_result
-DRM._phylo_mean_laplace_hetero_fg
-DRM._phylo_mean_leaf_index
-DRM._reml_normalise
-DRM._vcov_from_hessian
-DRM.q2_reml_phi_len
+DRModels._fit_bivariate_q4_structured
+DRModels._fit_cumulative_phylo_laplace
+DRModels._fit_corr_locscale
+DRModels._fit_fixed_gaussian_reml
+DRModels._fit_gaussian_locscale_phylo
+DRModels._fit_locscale
+DRModels._fit_ranef_gaussian
+DRModels._fit_sigma_axis_re
+DRModels._general_cov_setup
+DRModels._ls_components
+DRModels._ls_marginal_grad
+DRModels._ls_marginal_nll
+DRModels._ls_obs_information
+DRModels._ls_profile_ci
+DRModels._ls_profile_ci_result
+DRModels._phylo_mean_laplace_hetero_fg
+DRModels._phylo_mean_leaf_index
+DRModels._reml_normalise
+DRModels._vcov_from_hessian
+DRModels.q2_reml_phi_len
 ```
 
 ### Paired whitening internals (no stability guarantee)
@@ -148,11 +161,11 @@ bootstrap simulation. They are documented here so their contracts remain
 visible to Documenter's completeness check; they are not public API.
 
 ```@docs
-DRM._LSWhitenedSeed
-DRM._ls_whitened_eval
-DRM._ls_whitened_information
-DRM._ls_whitened_vcov
-DRM._ls_bootstrap_effect
+DRModels._LSWhitenedSeed
+DRModels._ls_whitened_eval
+DRModels._ls_whitened_information
+DRModels._ls_whitened_vcov
+DRModels._ls_bootstrap_effect
 ```
 
 ### Location-scale inner-mode acceptance
@@ -188,29 +201,29 @@ not count as progress.
 This helper is internal and has no stability guarantee.
 
 ```@docs
-DRM._ls_inner_estimated_change
+DRModels._ls_inner_estimated_change
 ```
 
 ### Phylogenetic group-index internals (no stability guarantee)
 
 ```@docs
-DRM._lss_phylo_group_index
+DRModels._lss_phylo_group_index
 ```
 
 ## Non-Gaussian sparse-Laplace kernels
 
 ```@docs
-DRM._fit_beta_relmat_laplace
-DRM._fit_betabinomial_crossed_laplace
-DRM._fit_betabinomial_phylo_laplace
-DRM._fit_gamma_relmat_laplace
-DRM._fit_nb2_relmat_laplace
-DRM._fit_poisson_crossed_laplace
-DRM._fit_poisson_phylo_laplace
-DRM._fit_poisson_relmat_laplace
-DRM._fit_poisson_spatial_coord
-DRM._poisson_crossed_laplace_fg
-DRM._poisson_phylo_laplace_fg
+DRModels._fit_beta_relmat_laplace
+DRModels._fit_betabinomial_crossed_laplace
+DRModels._fit_betabinomial_phylo_laplace
+DRModels._fit_gamma_relmat_laplace
+DRModels._fit_nb2_relmat_laplace
+DRModels._fit_poisson_crossed_laplace
+DRModels._fit_poisson_phylo_laplace
+DRModels._fit_poisson_relmat_laplace
+DRModels._fit_poisson_spatial_coord
+DRModels._poisson_crossed_laplace_fg
+DRModels._poisson_phylo_laplace_fg
 ```
 
 ## Helpers referenced by source docstrings
@@ -237,8 +250,8 @@ nuisance-parameter specification, using the prepared group indices.
 ## Prepared missing-predictor development route
 
 !!! warning "Experimental"
-    Exported for evaluation; fenced for v1.0 (D-181). API and numerics may
-    change; not covered by the R-parity scoreboard.
+    Exported for evaluation, not yet stable. API and numerics may
+    change. This route is not available through the R bridge.
 
 !!! warning "Limited developer interface"
     This prepared-array interface covers a Gaussian response with one Gaussian
@@ -265,7 +278,7 @@ log-SD coefficients, predictor coefficients, and (Gaussian only) predictor
 log-SD. This last coordinate is a log-SD, not R's natural-scale `sigma_mi_x`.
 
 ```@example prepared_joint
-using DRM
+using DRModels
 x = Union{Missing,Float64}[0.8, missing, 1.0, missing]
 y = Union{Missing,Float64}[1.7, -0.2, missing, missing]
 z = [-0.6, 0.3, 0.8, -0.1]
@@ -301,7 +314,7 @@ when both predictors are missing, the observed response informs their joint
 values. The returned covariance retains this dependence.
 
 ```@example prepared_joint_two
-using DRM
+using DRModels
 x = Union{Missing,Float64}[0.8 missing; missing missing; 1.0 0.3; missing missing]
 y = Union{Missing,Float64}[1.7, -0.2, missing, missing]
 z = [-0.6, 0.3, 0.8, -0.1]
@@ -326,9 +339,9 @@ parameter uncertainty using the full fitted covariance; it does not establish
 interval coverage or provide multiple-imputation draws.
 
 ```@docs
-DRM.PreparedTwoJointGaussianModel
-DRM.PreparedTwoJointGaussianFit
-DRM.JointTwoMissingMetadata
+DRModels.PreparedTwoJointGaussianModel
+DRModels.PreparedTwoJointGaussianFit
+DRModels.JointTwoMissingMetadata
 ```
 
 ### Ordinal and categorical predictor models
@@ -342,7 +355,7 @@ bridge construct this state design for their bounded finite-state routes; they
 do not establish full native-R prediction or accessor parity.
 
 ```@example prepared_joint_finite
-using DRM
+using DRModels
 levels = ["low", "middle", "high"]
 x = Union{Missing,String}["middle", missing, "high", missing]
 y = Union{Missing,Float64}[0.4, -0.3, missing, missing]
@@ -383,7 +396,7 @@ The direct formula frontend uses this same kernel. Supply declared levels for
 textual ordered data; declaring nominal levels fixes the baseline explicitly:
 
 ```@example finite_formula
-using DRM, Random
+using DRModels, Random
 rng = MersenneTwister(563)
 labels = ["low", "medium", "high"]
 codes = repeat(1:3, 30)
@@ -442,33 +455,33 @@ interval, profile interval, or bootstrap. General missing-state new-data
 integration and complete R accessor parity remain separate requirements.
 
 ```@docs
-DRM.PreparedFiniteJointModel
-DRM.PreparedFiniteJointFit
-DRM.JointFiniteMissingMetadata
-DRM._finite_joint_ordinal_logprobabilities
+DRModels.PreparedFiniteJointModel
+DRModels.PreparedFiniteJointFit
+DRModels.JointFiniteMissingMetadata
+DRModels._finite_joint_ordinal_logprobabilities
 ```
 
 ### Finite-state retained-prediction internals (no stability guarantee)
 
 ```@docs
-DRM._joint_finite_state_prediction_plan
+DRModels._joint_finite_state_prediction_plan
 ```
 
 ```@docs
-DRM.PreparedJointModel
-DRM.PreparedJointFit
-DRM.prepared_joint_model
-DRM.prepared_joint_rowloglik
-DRM.prepared_joint_conditional_moments
-DRM.fit_prepared_joint
-DRM.joint_missing_summary
-DRM.JointMissingMetadata
-DRM.PreparedJointGaussian
-DRM.PreparedJointBernoulli
-DRM.prepared_joint_initial
-DRM._has_joint_mi
-DRM._fit_joint_formula
-DRM.drm_bridge_joint
+DRModels.PreparedJointModel
+DRModels.PreparedJointFit
+DRModels.prepared_joint_model
+DRModels.prepared_joint_rowloglik
+DRModels.prepared_joint_conditional_moments
+DRModels.fit_prepared_joint
+DRModels.joint_missing_summary
+DRModels.JointMissingMetadata
+DRModels.PreparedJointGaussian
+DRModels.PreparedJointBernoulli
+DRModels.prepared_joint_initial
+DRModels._has_joint_mi
+DRModels._fit_joint_formula
+DRModels.drm_bridge_joint
 ```
 
 ### [prepared_joint_nll](@id prepared_joint_nll)

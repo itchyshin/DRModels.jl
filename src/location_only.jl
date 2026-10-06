@@ -30,7 +30,7 @@
 # leaf diagonal from S'S — but leaves ARE in Q_cond's pattern), so they are exact.
 #
 # Depends on `AugmentedPhy` / `sparse_phy.jl` and `takahashi_selinv` (already
-# loaded by the verified core engine include chain in DRM.jl — do NOT re-include).
+# loaded by the verified core engine include chain in DRModels.jl — do NOT re-include).
 
 using LinearAlgebra, SparseArrays, Statistics, Random
 
@@ -582,18 +582,13 @@ function _loconly_reml_local_profile_diagnostic(prob::LocOnlyProblem, lσ::Real,
     )
 end
 
+# Guarded: a failed probe (non-finite, or the `_LOCONLY_PENALTY` sentinel) returns an
+# all-NaN 2x2 matrix -- the convention every caller already uses for a failed
+# diagnostic (`finite = false`) -- instead of differencing the sentinel into a
+# finite garbage Hessian.
 function _loconly_fd_hessian2(f, θ::AbstractVector{<:Real}; h::Real = 1e-4)
-    H = zeros(2, 2)
-    x = Float64.(θ)
-    for i in 1:2, j in 1:2
-        ei = zeros(2); ej = zeros(2)
-        si = h * max(abs(x[i]), 1.0)
-        sj = h * max(abs(x[j]), 1.0)
-        ei[i] = si; ej[j] = sj
-        H[i, j] = (f(x .+ ei .+ ej) - f(x .+ ei .- ej) -
-                   f(x .- ei .+ ej) + f(x .- ei .- ej)) / (4 * si * sj)
-    end
-    return 0.5 .* (H .+ H')
+    H, ok = _fd_hessian_from_values(f, Float64.(θ); hstep = h, sentinel = _LOCONLY_PENALTY)
+    return ok ? 0.5 .* (H .+ H') : fill(NaN, 2, 2)
 end
 
 function _loconly_fd_gradient2(f, θ::AbstractVector{<:Real}; h::Real = 1e-5)
@@ -758,7 +753,7 @@ function _loconly_reml_optimizer_diagnostic(prob::LocOnlyProblem; starts = nothi
         try
             res = Optim.optimize(od, copy(start), ls, opts)
             v = Float64.(Optim.minimizer(res))
-            nll = Optim.minimum(res)
+            nll = obj(v)   # NOT Optim.minimum(res): see optim_minimum_guard.jl
             grad = _loconly_fd_gradient2(obj, v)
             record = (
                 start_index = i,
@@ -890,7 +885,7 @@ function _loconly_reml_dense_score_optimizer_diagnostic(prob::LocOnlyProblem; st
         try
             res = Optim.optimize(od, copy(start), ls, opts)
             v = Float64.(Optim.minimizer(res))
-            nll = Optim.minimum(res)
+            nll = obj(v)   # NOT Optim.minimum(res): see optim_minimum_guard.jl
             score = _loconly_reml_dense_score_diagnostic(prob, v[1], v[2]).score
             record = (
                 start_index = i,
@@ -986,7 +981,7 @@ function _loconly_reml_sparse_score_optimizer_diagnostic(prob::LocOnlyProblem; s
         try
             res = Optim.optimize(od, copy(start), ls, opts)
             v = Float64.(Optim.minimizer(res))
-            nll = Optim.minimum(res)
+            nll = obj(v)   # NOT Optim.minimum(res): see optim_minimum_guard.jl
             sparse_score = _loconly_reml_sparse_score_diagnostic(prob, v[1], v[2])
             record = (
                 start_index = i,
@@ -3012,7 +3007,7 @@ function _loconly_reml_external_comparator_candidates()
         (
             comparator_id = :internal_dense_gls_oracle,
             target = :gaussian_loconly_phylo_reml,
-            comparator = "DRM.jl dense GLS oracle",
+            comparator = "DRModels.jl dense GLS oracle",
             same_estimand_status = :same_estimand_internal,
             dependency_status = :internal,
             artifact_status = :covered_by_focused_test,
@@ -3399,9 +3394,20 @@ end
 
 function _fit_structured_gaussian_sparse_lbfgs(
     fam::Gaussian, y, Xμ, Xσ, gidx, G, phy::AugmentedPhy, nmμ, nmσ, grp, g_tol;
-    penalty = nothing
+    penalty = nothing, reml::Bool = false
 )
     pμ, pσ = size(Xμ, 2), size(Xσ, 2)
+    # #624 item (c). `reml = true` swaps the PROFILE-ML objective over
+    # v = [log σ_e, log σ_phylo] for the Patterson–Thompson RESTRICTED one,
+    #     nll_REML(v) = nll_ML(v, β̂(v)) + 0.5·logdet(Xμ′V⁻¹Xμ) − 0.5·pμ·log(2π),
+    # built by `_loconly_reml_components` on this same sparse spine. β_μ is
+    # profiled out EXACTLY by GLS at every v, so the restriction is exact — the
+    # same integrated-out set (β_μ AND the phylo field u) and the same additive
+    # constant `+0.5·pμ·log(2π)` that native drmTMB gets from TMB's Laplace fold
+    # of `beta_mu` into `random=`. Nothing else about the route changes: ML stays
+    # byte-for-byte the path it was.
+    (!reml || penalty === nothing) || throw(ArgumentError(
+        "drm: `penalty` and `method = :REML` cannot be combined on the sparse phylo-mean route"))
     pσ == 1 || error(
         "algorithm = :sparse_lbfgs supports a CONSTANT residual scale only " *
         "(`sigma ~ 1`); got a $(pσ)-column `sigma` design",
@@ -3427,7 +3433,17 @@ function _fit_structured_gaussian_sparse_lbfgs(
     # depend on beta, so the profiled beta-hat at fixed (v1, v2) is unchanged.
     # On a failed inner solve `_loconly_profile_fg` returns a sentinel with a zero
     # gradient — leave that alone rather than penalising a non-solution.
+    # REML has no analytic score on this spine (the log-determinant term differentiates
+    # through the sparse Cholesky), so it uses the central finite-difference gradient
+    # `_loconly_fd_gradient2` — the same objective/gradient pair the validated
+    # `_loconly_reml_optimizer_diagnostic` uses, over the same 2-parameter space.
+    reml_obj(v) = _loconly_reml_nll(prob, v[1], v[2])
     function fg!(F, G, v)
+        if reml
+            val = reml_obj(v)
+            G !== nothing && copyto!(G, _loconly_fd_gradient2(reml_obj, v))
+            return F === nothing ? nothing : val
+        end
         val, grad, β, _ = _loconly_profile_fg(prob, v[1], v[2])
         if penalty !== nothing && β !== nothing
             grad = copy(grad)
@@ -3444,7 +3460,7 @@ function _fit_structured_gaussian_sparse_lbfgs(
     best_val = Inf
     for start in starts
         res = Optim.optimize(od, start, ls, opts)
-        val = Optim.minimum(res)
+        val = _objective_at_minimizer_fg(fg!, res)   # NOT Optim.minimum(res): see optim_minimum_guard.jl
         if isfinite(val) && val < best_val
             best_res = res
             best_val = val
@@ -3457,6 +3473,14 @@ function _fit_structured_gaussian_sparse_lbfgs(
     β̂, nllhat, chM = _loconly_profile_beta(prob, v̂[1], v̂[2])
     β̂ === nothing && error("algorithm = :sparse_lbfgs optimum could not be evaluated")
     θ̂ = vcat(β̂, v̂[1], v̂[2])
+    # REML log-likelihood at the REML optimum, and the plain ML value AT THAT SAME
+    # point (`ml_loglik`, for AIC/BIC-style comparison — never a second optimum).
+    reml_comp = reml ? _loconly_reml_components(prob, v̂[1], v̂[2]) : nothing
+    if reml
+        (reml_comp.converged && isfinite(reml_comp.nll)) ||
+            error("drm (Gaussian phylo mean, method = :REML): the restricted objective is not " *
+                  "finite at the optimum (Xμ′V⁻¹Xμ was not positive definite)")
+    end
 
     loc_obj = LocOnlyObjective(prob, pμ)
     nllgrad! = (g, θ) -> _loconly_objective_grad!(g, loc_obj, θ)
@@ -3476,7 +3500,11 @@ function _fit_structured_gaussian_sparse_lbfgs(
     # at v̂ is the correct observed information for (log σ_e, log σ_phylo), and
     # Gaussian mean/covariance orthogonality zeroes the cross block (left 0).
     let vhat = [θ̂[pμ + 1], θ̂[pμ + 2]]
+        # Under REML the variance-component curvature must come from the RESTRICTED
+        # objective (that is the whole point of REML SEs); the mean block above is
+        # (Xμ′V̂⁻¹Xμ)⁻¹ either way, which is what TMB reports for `beta_mu` too.
         fv = function (v)
+            reml && return reml_obj(v)
             val, _, βv, _ = _loconly_profile_fg(prob, v[1], v[2])
             if penalty !== nothing && βv !== nothing
                 val += _phylo_pen_apply_single!(zeros(2), penalty, v, 2)
@@ -3485,7 +3513,7 @@ function _fit_structured_gaussian_sparse_lbfgs(
         end
         Hv = _finite_hessian(fv, vhat; h = _fd_hessian_step(n))
         V[(pμ + 1):(pμ + 2), (pμ + 1):(pμ + 2)] .=
-            _vcov_from_hessian(Hv; context = "sparse phylo-mean variance block")
+            _vcov_from_fd_hessian(Hv; context = "sparse phylo-mean variance block")
     end
     e = prob.y .- prob.X * β̂
     u_post = chM \ (prob.S' * e / σ²)
@@ -3503,11 +3531,34 @@ function _fit_structured_gaussian_sparse_lbfgs(
     fit = DrmFit(
         fam, blocks, names, θ̂, V, -nllhat, n, Optim.converged(best_res), means, obs, scales
     )
+    # OBJECTIVE HONESTY. `loc_obj` / `nllgrad!` are the ML marginal and its analytic
+    # score. Attaching them to a REML fit would hand every downstream consumer
+    # (`fit.nll`, and the R bridge's `gradient` field) the WRONG objective: measured
+    # on the drmTMB fixture, the ML score at the REML optimum is (1.01, 0.99) on the
+    # two variance parameters, which reads as "not converged" for a fit that is
+    # converged — the same class of silent mislabel as returning ML wearing a REML
+    # label. So a REML fit carries the RESTRICTED objective as a function of the full
+    # θ = [β; log σ_e; log σ_phylo] (the restriction term does not depend on β, so
+    # this agrees with the profiled value at β̂), and NO gradient: there is no
+    # analytic score for the log-determinant term on this sparse spine, and reporting
+    # a finite-difference one as if it were exact would be its own small lie.
+    reml_full_nll = function (θ)
+        ml = _loconly_marginal_nll(prob, @view(θ[1:pμ]), θ[pμ + 1], θ[pμ + 2])
+        isfinite(ml) || return _LOCONLY_PENALTY
+        comp = _loconly_reml_components(prob, θ[pμ + 1], θ[pμ + 2])
+        (comp.converged && isfinite(comp.penalty)) || return _LOCONLY_PENALTY
+        val = ml + comp.penalty - _loconly_reml_constant_offset(prob)
+        return isfinite(val) ? val : _LOCONLY_PENALTY
+    end
     fit = _withranef(
-        _withnll(fit, loc_obj, nllgrad!), Dict(Symbol(grp) => u_post[prob.leaf_pos])
+        reml ? _withnll(fit, reml_full_nll) : _withnll(fit, loc_obj, nllgrad!),
+        Dict(Symbol(grp) => u_post[prob.leaf_pos])
     )
     if penalty !== nothing
         fit = _withmap(fit, _phylo_pen_apply_single!(nothing, penalty, v̂, 2), penalty)
+    end
+    if reml
+        fit = _withreml(fit, -reml_comp.nll, -reml_comp.ml_nll)
     end
     return fit
 end

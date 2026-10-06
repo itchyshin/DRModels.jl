@@ -1,4 +1,4 @@
-using DRM
+using DRModels
 using LinearAlgebra, Random, SparseArrays, Test
 
 @testset "Crossed sparse-Laplace selected inverse entries" begin
@@ -10,11 +10,11 @@ using LinearAlgebra, Random, SparseArrays, Test
     hidx = rand(rng, 1:H, n)
     weights = 0.1 .+ rand(rng, n)
     diagH = fill(20.0, G + H) .+ rand(rng, G + H)
-    Hsp = DRM._crossed_sparse_hessian(diagH, weights, gidx, G, hidx, H)
+    Hsp = DRModels._crossed_sparse_hessian(diagH, weights, gidx, G, hidx, H)
     ch = cholesky(Symmetric(Hsp); check = false)
     @test issuccess(ch)
 
-    @test !issparse(DRM._crossed_hessian(diagH, weights, gidx, G, hidx, H))
+    @test !issparse(DRModels._crossed_hessian(diagH, weights, gidx, G, hidx, H))
 
     Gbig = 260
     Hbig = 260
@@ -23,9 +23,9 @@ using LinearAlgebra, Random, SparseArrays, Test
     hbig = rand(rng, 1:Hbig, nbig)
     diagbig = fill(2.0, Gbig + Hbig)
     weightsbig = 0.1 .+ rand(rng, nbig)
-    @test issparse(DRM._crossed_hessian(diagbig, weightsbig, gbig, Gbig, hbig, Hbig))
+    @test issparse(DRModels._crossed_hessian(diagbig, weightsbig, gbig, Gbig, hbig, Hbig))
 
-    hd, cross = DRM._crossed_selected_inverse_entries(ch, gidx, G, hidx, H)
+    hd, cross = DRModels._crossed_selected_inverse_entries(ch, gidx, G, hidx, H)
     Hinv = inv(Symmetric(Matrix(Hsp)))
 
     @test maximum(abs.(hd .- diag(Hinv))) < 1e-10

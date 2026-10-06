@@ -13,7 +13,7 @@
 #  (iii) a positive control: three cheap cells the census marked FITS must
 #        still fit by REML with a restricted log-likelihood different from
 #        the ML one.
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 
 @testset "REML capability-surface contract (#624)" begin
@@ -21,7 +21,7 @@ using Test, Random, LinearAlgebra
         Random.seed!(20260614)
         p11 = 16; m11 = 5
         phy11 = random_balanced_tree(p11; branch_length = 0.3)
-        K11 = DRM._phylo_correlation(phy11)
+        K11 = DRModels._phylo_correlation(phy11)
         LC11 = cholesky(Symmetric(K11)).L
         Lam_among = [0.25 0.10 0.05 0.00; 0.10 0.25 0.00 0.04;
                      0.05 0.00 0.16 0.02; 0.00 0.04 0.02 0.16]
@@ -77,8 +77,9 @@ using Test, Random, LinearAlgebra
 
         err = nothing
         try
-            # Random slope trips the generic gate (census row 3).
-            drm(bf(@formula(y ~ 1 + x + (1 + x | g)), @formula(sigma ~ 1)), Gaussian();
+            # A random effect on sigma trips the generic gate (census row 3). The mean
+            # correlated slope (1 + x | g) is now supported (test_lme4_twins.jl).
+            drm(bf(@formula(y ~ 1 + x), @formula(sigma ~ 1 + (1 | g))), Gaussian();
                 data = data_ri, method = :REML)
         catch e
             err = e

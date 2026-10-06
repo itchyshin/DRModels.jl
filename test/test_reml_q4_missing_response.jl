@@ -48,11 +48,11 @@
 #       genuinely differ (a mask bug that silently zeroed the REML correction
 #       on the affected rows would show up as an accidental near-equality).
 #
-#   julia --project=. -e 'using DRM, Test; include("test/test_reml_q4_missing_response.jl")'
+#   julia --project=. -e 'using DRModels, Test; include("test/test_reml_q4_missing_response.jl")'
 
 module TestRemlQ4MissingResponse
 
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra, Statistics
 
 @testset "#578 q4 REML: _reml_border_blocks mask consistency with missing responses" begin
@@ -111,9 +111,9 @@ using Test, Random, LinearAlgebra, Statistics
         u_hat, _, _ = estep_mode(prob, P0, β0; n_newton = 60)
         u_hat = Vector{Float64}(u_hat)
 
-        H_u_beta, H_beta_beta = DRM._reml_border_blocks(prob, u_hat, β0)
+        H_u_beta, H_beta_beta = DRModels._reml_border_blocks(prob, u_hat, β0)
 
-        e1, e2, es1, es2, er = DRM.leaf_etas(prob, β0)
+        e1, e2, es1, es2, er = DRModels.leaf_etas(prob, β0)
         Xax = (X1, X2, Xs1, Xs2)
         wax = (2, 2, 1, 1)
         off = (0, 2, 4, 5)
@@ -127,9 +127,9 @@ using Test, Random, LinearAlgebra, Statistics
                 t = prob.leaf_node[i]; base = 4 * (t - 1)
                 ublk = [u_hat[base+1], u_hat[base+2], u_hat[base+3], u_hat[base+4]]
                 Hb = masked ?
-                    DRM.leaf_hess(ublk, prob.y1[i], prob.y2[i], e1[i], e2[i], es1[i], es2[i], er[i],
+                    DRModels.leaf_hess(ublk, prob.y1[i], prob.y2[i], e1[i], e2[i], es1[i], es2[i], er[i],
                                   prob.obs1[i], prob.obs2[i]) :
-                    DRM.leaf_hess(ublk, prob.y1[i], prob.y2[i], e1[i], e2[i], es1[i], es2[i], er[i])
+                    DRModels.leaf_hess(ublk, prob.y1[i], prob.y2[i], e1[i], e2[i], es1[i], es2[i], er[i])
                 for d in 1:4, dp in 1:4
                     Hdd = Hb[d, dp]
                     Hdd == 0.0 && continue
@@ -159,12 +159,12 @@ using Test, Random, LinearAlgebra, Statistics
     end
 
     @testset "(2) FD-vs-exact REML gradient at the fitted optimum, with missing responses" begin
-        rr = DRM.fit_q4_reml(prob, Q_cond; beta0 = β0, Lambda0 = Λ0,
+        rr = DRModels.fit_q4_reml(prob, Q_cond; beta0 = β0, Lambda0 = Λ0,
                              g_tol = 1e-3, iterations = 300, n_newton = 40)
         @test rr.converged
         phi_opt = Vector{Float64}(rr.phi)
 
-        val, g_exact, _, _, _, zres = DRM.reml_nll_and_exact_grad(
+        val, g_exact, _, _, _, zres = DRModels.reml_nll_and_exact_grad(
             prob, Q_cond, phi_opt; beta0 = β0, n_newton = 60)
         @test isfinite(val)
         @test all(isfinite, g_exact)
@@ -178,8 +178,8 @@ using Test, Random, LinearAlgebra, Statistics
         for k in 1:nph
             pp = copy(phi_opt); pp[k] += h
             pm = copy(phi_opt); pm[k] -= h
-            fp = DRM.reml_nll_exact(prob, Q_cond, pp; beta0 = β0)
-            fm = DRM.reml_nll_exact(prob, Q_cond, pm; beta0 = β0)
+            fp = DRModels.reml_nll_exact(prob, Q_cond, pp; beta0 = β0)
+            fm = DRModels.reml_nll_exact(prob, Q_cond, pm; beta0 = β0)
             g_fd[k] = (fp - fm) / (2h)
         end
         err = maximum(abs.(g_exact .- g_fd))

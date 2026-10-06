@@ -1,6 +1,6 @@
 # test_phylo_tree_height.jl — the tree-scale convention, made visible.
 #
-# WHY THIS EXISTS. DRM.jl builds its phylogenetic covariance from the branch
+# WHY THIS EXISTS. DRModels.jl builds its phylogenetic covariance from the branch
 # lengths AS SUPPLIED, so a tree of height h implies tip variance h and the
 # reported `sd_phylo` carries a factor sqrt(h). R's drmTMB standardises via
 # `ape::vcv(tree, corr = TRUE)`, whose tips always have variance 1. The two agree
@@ -13,7 +13,7 @@
 # times the arithmetic was right and the SCALE was the bug. Hence a cheap,
 # user-callable height and a warning that names the factor.
 
-using DRM
+using DRModels
 using Test
 using LinearAlgebra
 
@@ -44,21 +44,21 @@ using LinearAlgebra
         off  = random_balanced_tree(16; branch_length = 0.5)    # h == 2
 
         # A unit-height tree is the agreeing case: silence.
-        @test_logs DRM._warn_if_tree_not_unit_height(unit)
+        @test_logs DRModels._warn_if_tree_not_unit_height(unit)
 
         # Off-unit warns, and the message must name the FACTOR, not merely
         # complain -- a warning a user cannot act on is noise.
-        empty!(DRM._PHYLO_HEIGHT_WARNED)
-        @test_logs (:warn, r"sqrt") DRM._warn_if_tree_not_unit_height(off)
+        empty!(DRModels._PHYLO_HEIGHT_WARNED)
+        @test_logs (:warn, r"sqrt") DRModels._warn_if_tree_not_unit_height(off)
 
         # ...and not again for the same tree. The scale is a reporting
         # convention, not an error; warning on every fit in a loop would train
         # users to ignore it.
-        @test_logs DRM._warn_if_tree_not_unit_height(off)
+        @test_logs DRModels._warn_if_tree_not_unit_height(off)
     end
 
     @testset "a diagnostic never breaks a fit" begin
         # Whatever it is handed, the guard returns rather than throwing.
-        @test DRM._warn_if_tree_not_unit_height(random_balanced_tree(8; branch_length = 0.1)) === nothing
+        @test DRModels._warn_if_tree_not_unit_height(random_balanced_tree(8; branch_length = 0.1)) === nothing
     end
 end

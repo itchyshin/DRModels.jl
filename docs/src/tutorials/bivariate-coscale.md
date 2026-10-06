@@ -2,12 +2,12 @@
 
 !!! note "Status — Stable"
     Mirrors drmTMB's [Changing residual coupling with rho12](https://itchyshin.github.io/drmTMB/articles/bivariate-coscale.html).
-    **In DRM.jl today:** bivariate Gaussian location–scale with a
+    **In DRModels.jl today:** bivariate Gaussian location–scale with a
     predictor-dependent residual correlation `ρ12` (fixed effects, ML).
 
 With two responses, the interesting structure is often the **residual
 correlation** ρ12 — how `y1` and `y2` co-vary *after* accounting for their means.
-DRM.jl lets ρ12 depend on predictors, with its own formula, exactly as drmTMB.
+DRModels.jl lets ρ12 depend on predictors, with its own formula, exactly as drmTMB.
 
 ## A correlation that changes with a covariate
 
@@ -16,7 +16,7 @@ then recover that structure. ρ12 is modelled on the `atanh` scale (so it always
 stays in `(-1, 1)`):
 
 ```@example bc
-using DRM, Random
+using DRModels, Random
 Random.seed!(11)
 
 n = 3000
@@ -57,7 +57,7 @@ For the q=4 phylogenetic location-scale model, put the same
 `mu2`, `sigma1`, and `sigma2`. The residual `rho12` formula stays separate.
 
 ```julia
-using DRM, Random
+using DRModels, Random
 Random.seed!(42)
 
 phy = random_balanced_tree(6; branch_length = 0.2)
@@ -65,7 +65,7 @@ species = repeat(phy.leaf_names, inner = 3)
 n = length(species)
 x = randn(n)
 
-# Tiny runnable smoke fixture. Use larger seeded simulations for recovery checks.
+# Deliberately small runnable example for learning the formula and result shape.
 u = Dict(name => 0.15 .* randn(4) for name in phy.leaf_names)
 y1 = [1 + 0.4*x[i] + u[species[i]][1] +
       exp(-0.4 + u[species[i]][3]) * randn() for i in 1:n]
@@ -89,22 +89,29 @@ fit_phy.ranef.Sigma_a      # 4x4 group-level covariance, axes below
 fit_phy.ranef.axes         # (:mu1, :mu2, :sigma1, :sigma2)
 ```
 
-The internal `:phylocov` coefficient block is not a distributional predictor, so
+This six-species fit demonstrates the call and the returned covariance object;
+it is too small to support biological recovery or interval claims. It also sets
+`q4_vcov = false`, so it does not compute the coefficient covariance matrix. For
+an inferential analysis, use a design with enough species and replication, and
+retain the default `q4_vcov = true` when you need Wald uncertainty.
+
+The `:phylocov` coefficient block describes group-level covariance rather than
+a distributional predictor, so
 [`predict_parameters`](@ref) returns `:mu1`, `:mu2`, `:sigma1`, `:sigma2`, and
 `:rho12`, but not `:phylocov`. Use [`coevolution_cor`](@ref) for the among-axis
 correlation matrix of `Σ_a`.
 
-## Relmat / animal / spatial q=4 coevolution (#189)
+## Relmat / animal / spatial q=4 coevolution
 
-The same verified q=4 engine accepts level-indexed structured providers. Put
+The same q=4 model accepts level-indexed structured providers. Put
 `relmat(1 | id)`, `animal(1 | id)`, or `spatial(1 | site)` on **all four** axes
 and pass `K=…`, `A=…`, or `coords=…` respectively. Spatial uses a **fixed**
-range (`spatial_range`; default = mean pairwise site distance) in this slice —
-joint range estimation is deferred. Non-tree `bootstrap_sigma_a` is not yet
-supported (clear `ArgumentError`).
+range (`spatial_range`; default = mean pairwise site distance), rather than
+estimating range jointly. `bootstrap_sigma_a` is available only for tree-based
+phylogenetic fits; calling it for the other structures raises an `ArgumentError`.
 
 ```julia
-using DRM, LinearAlgebra, Random
+using DRModels, LinearAlgebra, Random
 Random.seed!(189)
 
 G = 8; nrep = 3
@@ -130,5 +137,5 @@ coevolution_cor(fit_k)
 
 - [When variance carries signal](location-scale.md) — the single-response
   location–scale model.
-- The verified **q=4 phylogenetic** bivariate location–scale engine (the speed
-  headline) — see [`HANDOVER.md`](https://github.com/itchyshin/DRM.jl/blob/main/HANDOVER.md).
+- [Phylogenetic structured effects](phylogenetic-models.md) — tree input,
+  interpretation, and limitations for phylogenetic models.

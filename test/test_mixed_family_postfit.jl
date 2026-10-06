@@ -1,4 +1,4 @@
-using DRM
+using DRModels
 using Test, Random, Statistics, LinearAlgebra
 
 # Knuth Poisson sampler (no Distributions dependency in the test).
@@ -23,20 +23,20 @@ end
     η2 = X2 * β2 .+ λ2 .* u
     y2 = Float64[_rpois_pf(rng, exp(clamp(η2[i], -20.0, 20.0))) for i in 1:n]
 
-    fit = DRM.fit_mixed_family(y1 = y1, X1 = X1, fam1 = Gaussian(),
-                               y2 = y2, X2 = X2, fam2 = DRM.Poisson(),
+    fit = DRModels.fit_mixed_family(y1 = y1, X1 = X1, fam1 = Gaussian(),
+                               y2 = y2, X2 = X2, fam2 = DRModels.Poisson(),
                                confint = false)
     @test fit.converged
 
     # parameter count: β1(2) + β2(2) + 2 loadings + βσ1(1, Gaussian) + βσ2(0, Poisson)
-    @test DRM._mf_nparams(fit) == 7
+    @test DRModels._mf_nparams(fit) == 7
 
     @testset "mf_coef" begin
         tbl = mf_coef(fit)
         # three equal-length parallel vectors
         @test length(tbl.axis) == length(tbl.term) == length(tbl.estimate)
         # rows = nparams (β1,β2,βσ1,βσ2,λ1,λ2) + 1 for rho
-        @test length(tbl.term) == DRM._mf_nparams(fit) + 1
+        @test length(tbl.term) == DRModels._mf_nparams(fit) + 1
         @test "rho" in tbl.term
         @test "lambda1" in tbl.term && "lambda2" in tbl.term
         @test "bsig1[1]" in tbl.term            # Gaussian dispersion coefficient present
@@ -55,7 +55,7 @@ end
         # -2logL + 2k vs -2logL + k·log n: bic > aic whenever log(n) > 2, i.e. n ≥ 8.
         @test b > a
         # explicit formula agreement
-        k = DRM._mf_nparams(fit)
+        k = DRModels._mf_nparams(fit)
         @test a ≈ -2 * fit.loglik + 2 * k
         @test b ≈ -2 * fit.loglik + k * log(n)
         @test_throws ArgumentError mf_bic(fit; nobs = 0)

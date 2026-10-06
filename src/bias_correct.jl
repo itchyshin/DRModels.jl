@@ -1,5 +1,5 @@
 # bias_correct.jl — generalized-delta / epsilon-method bias correction for
-# smooth nonlinear DERIVED quantities of a fitted DRM model, in the spirit of
+# smooth nonlinear DERIVED quantities of a fitted DRModels model, in the spirit of
 # TMB's `sdreport(..., bias.correct = TRUE)` (Thorson & Kristensen 2016,
 # Fisheries Research 175:66–74).
 #

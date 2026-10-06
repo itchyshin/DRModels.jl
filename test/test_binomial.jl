@@ -3,7 +3,7 @@
 # Poisson). Two response forms: cbind(successes, failures) ~ x (trials =
 # successes + failures, exactly as drmTMB) and a plain 0/1 Bernoulli vector.
 # Fixed effects, ML. Recovery: the logit-scale coefficients β.
-using DRM
+using DRModels
 using Test, Random
 import Distributions
 

@@ -6,11 +6,11 @@
 #
 # Derivation: docs/src/developer-notes/reml-q4-exact-gradient.md
 #
-#   julia --project=. -e 'using DRM, Test; include("test/test_575_exact_reml_gradient.jl")'
+#   julia --project=. -e 'using DRModels, Test; include("test/test_575_exact_reml_gradient.jl")'
 
 module Test575ExactRemlGradient
 
-using DRM
+using DRModels
 using Test
 using LinearAlgebra
 using DelimitedFiles: readdlm
@@ -44,28 +44,28 @@ const FORM = bf(mu1    = @formula(y1 ~ x + phylo(1 | species)),
 # no src edit) — mirrors test_q4_reml_warm_restart.jl.
 function _engine_inputs()
     rhs = Dict(FORM.forms)
-    fixed, marker = DRM._bivariate_q4_marker(rhs)
+    fixed, marker = DRModels._bivariate_q4_marker(rhs)
     grp = marker[2]
     lc_zero = length(marker) >= 3 ? marker[3] : Int[]
-    phy = DRM._as_augmented_phy(TREE)
+    phy = DRModels._as_augmented_phy(TREE)
 
-    y1, X1, _ = DRM._design(FORM.response1, fixed[:mu1], DAT)
-    y2, X2, _ = DRM._design(FORM.response2, fixed[:mu2], DAT)
-    _, Xs1, _ = DRM._design(FORM.response1, fixed[:sigma1], DAT)
-    _, Xs2, _ = DRM._design(FORM.response1, fixed[:sigma2], DAT)
-    _, Xr, _  = DRM._design(FORM.response1, fixed[:rho12], DAT)
+    y1, X1, _ = DRModels._design(FORM.response1, fixed[:mu1], DAT)
+    y2, X2, _ = DRModels._design(FORM.response2, fixed[:mu2], DAT)
+    _, Xs1, _ = DRModels._design(FORM.response1, fixed[:sigma1], DAT)
+    _, Xs2, _ = DRModels._design(FORM.response1, fixed[:sigma2], DAT)
+    _, Xr, _  = DRModels._design(FORM.response1, fixed[:rho12], DAT)
 
-    obs1 = DRM._observed_response_mask(y1)
-    obs2 = DRM._observed_response_mask(y2)
-    species = DRM._phylo_species_index(phy, getproperty(DAT, grp))
-    prob, Q_cond = DRM.make_problem(phy, y1, y2, X1, X2, Xs1, Xs2, Xr; species = species)
+    obs1 = DRModels._observed_response_mask(y1)
+    obs2 = DRModels._observed_response_mask(y2)
+    species = DRModels._phylo_species_index(phy, getproperty(DAT, grp))
+    prob, Q_cond = DRModels.make_problem(phy, y1, y2, X1, X2, Xs1, Xs2, Xr; species = species)
 
     β1 = X1[obs1, :] \ y1[obs1]
     β2 = X2[obs2, :] \ y2[obs2]
     res1 = y1[obs1] .- X1[obs1, :] * β1
     res2 = y2[obs2] .- X2[obs2, :] * β2
     β0 = (mu1 = β1, mu2 = β2,
-          s1 = DRM._initial_scale_beta(Xs1, res1), s2 = DRM._initial_scale_beta(Xs2, res2),
+          s1 = DRModels._initial_scale_beta(Xs1, res1), s2 = DRModels._initial_scale_beta(Xs2, res2),
           rho = zeros(size(Xr, 2)))
     return prob, Q_cond, β0, lc_zero
 end
@@ -83,22 +83,22 @@ const RHO12_TMB = 0.065606409
     prob, Q_cond, β0, lc_zero = _engine_inputs()
 
     Λ_start = Matrix(0.3I(4))
-    phi_start = DRM.pack_phi(prob, [0.0], Λ_start)
-    phi_tmb   = DRM.pack_phi(prob, [RHO12_TMB], Matrix(LAMBDA_TMB))
+    phi_start = DRModels.pack_phi(prob, [0.0], Λ_start)
+    phi_tmb   = DRModels.pack_phi(prob, [RHO12_TMB], Matrix(LAMBDA_TMB))
 
-    # A third point: DRM.jl's own converged optimum through the engine route.
-    rr = DRM.fit_q4_reml(prob, Q_cond; beta0 = β0, Lambda0 = Λ_start,
+    # A third point: DRModels.jl's own converged optimum through the engine route.
+    rr = DRModels.fit_q4_reml(prob, Q_cond; beta0 = β0, Lambda0 = Λ_start,
                          g_tol = 1e-3, iterations = 300, n_newton = 40,
                          lc_zero = lc_zero)
     phi_opt = Vector{Float64}(rr.phi)
 
     points = ("ML-scale start" => phi_start,
-              "DRM.jl optimum" => phi_opt,
+              "DRModels.jl optimum" => phi_opt,
               "TMB fitted point" => phi_tmb)
 
     for (label, phi) in points
         # Exact gradient of the NEGATIVE REML log-likelihood (unnormalised).
-        val, g_exact, _, _, _, zres = DRM.reml_nll_and_exact_grad(
+        val, g_exact, _, _, _, zres = DRModels.reml_nll_and_exact_grad(
             prob, Q_cond, phi; beta0 = β0)
         @test isfinite(val)
         @test all(isfinite, g_exact)
@@ -115,8 +115,8 @@ const RHO12_TMB = 0.065606409
             for h in (1e-3, 3e-4, 1e-4, 3e-5, 1e-5)
                 pp = copy(phi); pp[k] += h
                 pm = copy(phi); pm[k] -= h
-                fp = DRM.reml_nll_exact(prob, Q_cond, pp; beta0 = β0)
-                fm = DRM.reml_nll_exact(prob, Q_cond, pm; beta0 = β0)
+                fp = DRModels.reml_nll_exact(prob, Q_cond, pp; beta0 = β0)
+                fm = DRModels.reml_nll_exact(prob, Q_cond, pm; beta0 = β0)
                 d  = (fp - fm) / (2h)
                 if isfinite(prev) && abs(d - prev) < best_gap
                     best_gap = abs(d - prev); best = d

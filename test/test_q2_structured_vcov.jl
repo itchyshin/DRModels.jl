@@ -13,7 +13,7 @@
 # test_reml_q2_structured.jl: that file is REML-scoped by name and header, and
 # these cover ML too.
 
-using DRM
+using DRModels
 using Test, LinearAlgebra, Random, Statistics, SparseArrays
 
 # ---------------------------------------------------------------------------
@@ -25,7 +25,7 @@ using Test, LinearAlgebra, Random, Statistics, SparseArrays
 function _q2v_sim(K, beta, Lambda, residual_cov; nrep, rng)
     G = size(K, 1)
     Q = sparse(Matrix(inv(cholesky(Symmetric(K)))))
-    P = DRM.prior_precision(Q, inv(Lambda))
+    P = DRModels.prior_precision(Q, inv(Lambda))
     F = cholesky(Symmetric(P))
     u = F.UP \ randn(rng, size(P, 1))
     group = repeat(1:G, inner = nrep)
@@ -70,12 +70,12 @@ end
 
 function _q2v_phylo_fit(method::Symbol)
     rng = MersenneTwister(20260625)
-    phy = DRM.random_balanced_tree(14; branch_length = 0.2)
+    phy = DRModels.random_balanced_tree(14; branch_length = 0.2)
     beta = [0.20 -0.15; 0.25 0.10]
     Lambda = Matrix(Symmetric([0.22 0.07; 0.07 0.18]))
     residual_cov = Matrix(Symmetric([0.12 0.04; 0.04 0.16]))
-    Q_cond, leaf_pos, _ = DRM.augmented_tree_precision(phy)
-    P = DRM.prior_precision(Q_cond, inv(Lambda))
+    Q_cond, leaf_pos, _ = DRModels.augmented_tree_precision(phy)
+    P = DRModels.prior_precision(Q_cond, inv(Lambda))
     F = cholesky(Symmetric(P))
     u = F.UP \ randn(rng, size(P, 1))
     species = repeat(1:phy.n_leaves, inner = 3)
@@ -110,9 +110,9 @@ function _q2v_pieces(fit)
     beta = hcat(th[b[:mu1]], th[b[:mu2]])
     s1 = exp(th[b[:sigma1]][1])
     s2 = exp(th[b[:sigma2]][1])
-    rho = DRM.RHO_GUARD * tanh(th[b[:rho12]][1])
+    rho = DRModels.RHO_GUARD * tanh(th[b[:rho12]][1])
     D = Matrix(Symmetric([s1^2 rho*s1*s2; rho*s1*s2 s2^2]))
-    Lam = DRM.lc_to_cov(th[b[:phylocov]], 2)
+    Lam = DRModels.lc_to_cov(th[b[:phylocov]], 2)
     return (; beta, D, Lam)
 end
 
@@ -176,14 +176,14 @@ end
     # warning at a boundary. The step argument is 2n, not n, because two scalar
     # responses enter the objective per row; see the call site's comment.
     fit, n = _q2v_levelled_fit(:relmat, :ML)
-    H = DRM._finite_hessian(fit.nll, fit.theta; h = DRM._fd_hessian_step(2n))
-    expected = DRM._vcov_from_hessian(H)
+    H = DRModels._finite_hessian(fit.nll, fit.theta; h = DRModels._fd_hessian_step(2n))
+    expected = DRModels._vcov_from_hessian(H)
     @test vcov(fit) == expected
     # A step of `n` would clamp to the same 1e-4 at this size, so the assertion
     # above cannot by itself distinguish them. Show the two agree HERE, so the
     # test is pinning the wiring rather than silently accepting either step.
-    @test DRM._fd_hessian_step(2n) == DRM._fd_hessian_step(n) == 1e-4
-    @test DRM._fd_hessian_step(2 * 600) > DRM._fd_hessian_step(600)
+    @test DRModels._fd_hessian_step(2n) == DRModels._fd_hessian_step(n) == 1e-4
+    @test DRModels._fd_hessian_step(2 * 600) > DRModels._fd_hessian_step(600)
 end
 
 # Second-differencing is only "observed information" if the objective really is
@@ -232,13 +232,13 @@ end
     for meth in (:ML, :REML)
         fit, n = _q2v_levelled_fit(:relmat, meth)
         p = _q2v_pieces(fit)
-        sch = DRM._q2_profile_and_schur(fit.ranef.prob, fit.ranef.Q_cond,
+        sch = DRModels._q2_profile_and_schur(fit.ranef.prob, fit.ranef.Q_cond,
                                         p.Lam, p.D, p.beta)
         @test sch.ok
         S = Matrix(sch.S)
         nb = size(S, 1)
         @test nb == 4
-        H = DRM._finite_hessian(fit.nll, fit.theta; h = DRM._fd_hessian_step(2n))
+        H = DRModels._finite_hessian(fit.nll, fit.theta; h = DRModels._fd_hessian_step(2n))
         rel = maximum(abs, H[1:nb, 1:nb] .- S) / maximum(abs, S)
         # Measured 2026-09-05: 3.96e-9 (ML), 9.75e-9 (REML) -- ~3 orders of headroom.
         @test rel < 1e-6
@@ -347,11 +347,11 @@ end
     # in silence. Deterministic, unlike waiting for a fit to land there.
     Hsing = [2.0 0.0; 0.0 0.0]
     ctx = "bivariate Gaussian q=2 structured (relmat) finite-difference Hessian"
-    Vs = @test_logs (:warn,) match_mode = :any DRM._vcov_from_hessian(Hsing; context = ctx)
+    Vs = @test_logs (:warn,) match_mode = :any DRModels._vcov_from_hessian(Hsing; context = ctx)
     @test all(isfinite, Vs)
     @test Vs[1, 1] == 0.5
     @test Vs[2, 2] == 0.0        # pseudo-inverse: the flat direction gets zero, not junk
     # ... and `stderror`'s boundary map turns a non-positive variance into Inf,
     # which is what the user sees on that coordinate (src/inference.jl).
-    @test DRM._boundary_se(Vs[2, 2]) == Inf
+    @test DRModels._boundary_se(Vs[2, 2]) == Inf
 end

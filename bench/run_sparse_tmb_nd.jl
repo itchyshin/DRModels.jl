@@ -4,7 +4,7 @@
 # converges and beats drmTMB (LL -256.52, 2.48 s).
 import Pkg
 Pkg.activate(dirname(@__DIR__))
-using DRM
+using DRModels
 using LinearAlgebra, Statistics, Printf, DelimitedFiles
 
 const FIX = joinpath(@__DIR__, "fixtures")

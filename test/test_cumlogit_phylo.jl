@@ -29,14 +29,14 @@
 #   tree_height              = 2.00224
 #   opt$convergence = 0
 #
-# THE SCALE TRAP (same as test_parity_gaussian_phylo_mean.jl): DRM.jl's
+# THE SCALE TRAP (same as test_parity_gaussian_phylo_mean.jl): DRModels.jl's
 # `re_sd(fit)[:species]` is on the RAW branch-length scale (tip variance =
 # tree height h); drmTMB's `sd_phylo` is on the CORRELATION scale
 # (`ape::vcv(tree, corr = TRUE)`, tip variance 1 regardless of h). Compare via
 # `re_sd(fit)[:species] * sqrt(tree_height)`.
 #
 # TOLERANCE: both engines run a Laplace approximation of the SAME marginal
-# integral here (TMB's analytic-Hessian Laplace vs. DRM.jl's sparse augmented
+# integral here (TMB's analytic-Hessian Laplace vs. DRModels.jl's sparse augmented
 # -state Laplace with the exact O(p) IFT gradient) — unlike the iid slice's
 # GHQ-vs-TMB-Laplace mismatch, so tighter agreement is expected than
 # test_cumlogit_ranef.jl's atol=1e-2/rtol=0.05/atol=1.0. MEASURED (2026-09-02,
@@ -50,7 +50,7 @@
 
 module TestCumlogitPhylo
 
-using DRM
+using DRModels
 using Test
 using DelimitedFiles: readdlm
 using Random, LinearAlgebra
@@ -173,7 +173,7 @@ _within(a, b, rtol, atol) = abs(a - b) <= max(atol, rtol * max(abs(a), abs(b)))
         cuts = [-0.5, 0.6]
         η = cuts[2] + 35.0
         v, d1, d2, d3, has_lo, has_hi, nval_lo, nval_hi, nr_lo, nr_hi, nw_lo, nw_hi =
-            DRM._cumulative_phylo_kernel(3, η, cuts, 3, 2)
+            DRModels._cumulative_phylo_kernel(3, η, cuts, 3, 2)
         @test !has_hi
         @test has_lo
         @test all(isfinite, (v, d1, d2, d3, nval_lo, nr_lo, nw_lo))

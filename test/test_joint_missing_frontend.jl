@@ -1,21 +1,19 @@
 using Test
-using DRM
+using DRModels
 using LinearAlgebra
 
 @testset "joint missing-predictor formula frontend" begin
-    BLAS.set_num_threads(1)
     @test BLAS.get_num_threads() == 1
-    @test Threads.nthreads() == 1
-    @test isdefined(DRM, :mi)
-    @test isdefined(DRM, :miss_control)
-    @test isdefined(DRM, :impute_model)
-    @test isdefined(DRM, :JointDrmFit)
+    @test isdefined(DRModels, :mi)
+    @test isdefined(DRModels, :miss_control)
+    @test isdefined(DRModels, :impute_model)
+    @test isdefined(DRModels, :JointDrmFit)
 
-    ctl = DRM.miss_control(response = "include", predictor = "model")
+    ctl = DRModels.miss_control(response = "include", predictor = "model")
     @test ctl.response === :include
     @test ctl.predictor === :model
-    @test_throws ArgumentError DRM.miss_control(response = "drop")
-    @test_throws ArgumentError DRM.miss_control(predictor = "impute")
+    @test_throws ArgumentError DRModels.miss_control(response = "drop")
+    @test_throws ArgumentError DRModels.miss_control(predictor = "impute")
     @test_throws ArgumentError mi(1)
 
     n = 32
@@ -26,57 +24,57 @@ using LinearAlgebra
              x = Union{Missing,Float64}[i in (8, 18, 24) ? missing : xfull[i] for i in 1:n],
              z,
              grp = repeat(["a", "b", "c", "d"], 8))
-    form = DRM.bf(@formula(y ~ z + mi(x)), @formula(sigma ~ 1))
+    form = DRModels.bf(@formula(y ~ z + mi(x)), @formula(sigma ~ 1))
     imp = (x = @formula(x ~ z),)
 
-    @test DRM._has_joint_mi(form)
-    @test !DRM._has_joint_mi(DRM.bf(@formula(y ~ z), @formula(sigma ~ 1)))
+    @test DRModels._has_joint_mi(form)
+    @test !DRModels._has_joint_mi(DRModels.bf(@formula(y ~ z), @formula(sigma ~ 1)))
 
     # Estimated local run: well under two minutes, with one BLAS thread.
     fit = drm(form, Gaussian(); data = dat, impute = imp, missing = ctl, g_tol = 1e-8)
-    @test fit isa DRM.JointDrmFit
+    @test fit isa DRModels.JointDrmFit
     @test fit.variable === :x
-    @test length(DRM.coef(fit)) == 7
-    @test length(DRM.coef(fit, :mu)) == 3
-    @test length(DRM.coef(fit, :mi_x)) == 2
-    @test length(DRM.coef(fit, :sigma_mi_x)) == 1
-    @test DRM.coef(fit, :sigma_mi_x)[1] > 0
-    @test size(DRM.vcov(fit)) == (7, 7)
-    @test isposdef(Symmetric(DRM.vcov(fit)))
-    @test DRM.nobs(fit) == 30
-    @test isfinite(DRM.loglik(fit))
-    @test DRM.family(fit) isa DRM.Gaussian
-    @test DRM.is_converged(fit)
-    @test DRM.niterations(fit) >= 0
+    @test length(DRModels.coef(fit)) == 7
+    @test length(DRModels.coef(fit, :mu)) == 3
+    @test length(DRModels.coef(fit, :mi_x)) == 2
+    @test length(DRModels.coef(fit, :sigma_mi_x)) == 1
+    @test DRModels.coef(fit, :sigma_mi_x)[1] > 0
+    @test size(DRModels.vcov(fit)) == (7, 7)
+    @test isposdef(Symmetric(DRModels.vcov(fit)))
+    @test DRModels.nobs(fit) == 30
+    @test isfinite(DRModels.loglik(fit))
+    @test DRModels.family(fit) isa DRModels.Gaussian
+    @test DRModels.is_converged(fit)
+    @test DRModels.niterations(fit) >= 0
 
-    @test_throws ArgumentError DRM._fit_joint_formula(
-        DRM.bf(@formula(y ~ z * mi(x)), @formula(sigma ~ 1)), dat;
+    @test_throws ArgumentError DRModels._fit_joint_formula(
+        DRModels.bf(@formula(y ~ z * mi(x)), @formula(sigma ~ 1)), dat;
         impute = imp, missing = ctl)
-    @test_throws ArgumentError DRM._fit_joint_formula(
-        DRM.bf(@formula(y ~ mi(x)), @formula(sigma ~ mi(x))), dat;
+    @test_throws ArgumentError DRModels._fit_joint_formula(
+        DRModels.bf(@formula(y ~ mi(x)), @formula(sigma ~ mi(x))), dat;
         impute = imp, missing = ctl)
-    @test_throws ArgumentError DRM._fit_joint_formula(
-        DRM.bf(@formula(y ~ z + mi(x) + mi(w)), @formula(sigma ~ 1)), merge(dat, (; w = dat.x));
+    @test_throws ArgumentError DRModels._fit_joint_formula(
+        DRModels.bf(@formula(y ~ z + mi(x) + mi(w)), @formula(sigma ~ 1)), merge(dat, (; w = dat.x));
         impute = imp, missing = ctl)
-    @test_throws ArgumentError DRM._fit_joint_formula(
-        DRM.bf(@formula(y ~ z + mi(x) + (1 | grp)), @formula(sigma ~ 1)), dat;
+    @test_throws ArgumentError DRModels._fit_joint_formula(
+        DRModels.bf(@formula(y ~ z + mi(x) + (1 | grp)), @formula(sigma ~ 1)), dat;
         impute = imp, missing = ctl)
     @test_throws ArgumentError drm(form, Gaussian(); data = dat,
-        impute = (x = DRM.impute_model(@formula(x ~ z); family = DRM.Binomial()),),
+        impute = (x = DRModels.impute_model(@formula(x ~ z); family = DRModels.Binomial()),),
         missing = ctl, method = :REML)
     @test_throws ArgumentError drm(form, Gaussian(); data = dat,
-        impute = imp, missing = DRM.miss_control(response = "include", predictor = "fail"))
+        impute = imp, missing = DRModels.miss_control(response = "include", predictor = "fail"))
     @test_throws ArgumentError drm(form, Gaussian(); data = dat,
         impute = imp, missing = ctl, algorithm = :em)
-    @test_throws ArgumentError DRM._fit_joint_formula(
-        DRM.bf(@formula(y ~ 0 + mi(x)), @formula(sigma ~ 1)), dat;
+    @test_throws ArgumentError DRModels._fit_joint_formula(
+        DRModels.bf(@formula(y ~ 0 + mi(x)), @formula(sigma ~ 1)), dat;
         impute = imp, missing = ctl)
     @test_throws ArgumentError drm(form, Gaussian(); data = dat,
         impute = (x = @formula(z ~ z),), missing = ctl)
     @test_throws ArgumentError drm(form, Gaussian(); data = dat,
         impute = (x = @formula(x ~ z), extra = @formula(x ~ z)), missing = ctl)
     incomplete = merge(dat, (; z = Union{Missing,Float64}[i == 3 ? missing : z[i] for i in 1:n]))
-    @test_throws ArgumentError DRM._fit_joint_formula(form, incomplete; impute = imp, missing = ctl)
+    @test_throws ArgumentError DRModels._fit_joint_formula(form, incomplete; impute = imp, missing = ctl)
 
     # A Bernoulli predictor is a separate exact likelihood route, not a
     # Gaussian predictor coerced to 0/1.
@@ -84,25 +82,25 @@ using LinearAlgebra
     ybfull = -0.1 .+ 0.25 .* z .+ 0.85 .* xbfull .+ 0.15 .* cos.(1:n)
     bdat = (; y = Union{Missing,Float64}[ybfull[i] for i in 1:n],
               xb = Union{Missing,Float64}[i in (7, 15, 24) ? missing : xbfull[i] for i in 1:n], z)
-    bform = DRM.bf(@formula(y ~ z + mi(xb)), @formula(sigma ~ 1))
+    bform = DRModels.bf(@formula(y ~ z + mi(xb)), @formula(sigma ~ 1))
     bfit = drm(bform, Gaussian(); data = bdat,
-        impute = (xb = DRM.impute_model(@formula(xb ~ z); family = DRM.Binomial()),),
-        missing = DRM.miss_control(predictor = "model"), g_tol = 1e-8)
-    @test DRM.is_converged(bfit)
-    @test isposdef(Symmetric(DRM.vcov(bfit)))
-    @test DRM.coef(bfit, :mi_xb) == DRM.coef(bfit.prepared.fit, :mi_x)
-    @test_throws ArgumentError DRM.coef(bfit, :sigma_mi_xb)
+        impute = (xb = DRModels.impute_model(@formula(xb ~ z); family = DRModels.Binomial()),),
+        missing = DRModels.miss_control(predictor = "model"), g_tol = 1e-8)
+    @test DRModels.is_converged(bfit)
+    @test isposdef(Symmetric(DRModels.vcov(bfit)))
+    @test DRModels.coef(bfit, :mi_xb) == DRModels.coef(bfit.prepared.fit, :mi_x)
+    @test_throws ArgumentError DRModels.coef(bfit, :sigma_mi_xb)
 
     factordat = merge(dat, (; f = repeat(["low", "mid", "high", "mid"], 8)))
-    factorform = DRM.bf(@formula(y ~ f + mi(x)), @formula(sigma ~ 1))
-    _, factor_rhs = DRM._joint_mean_parts(Dict(factorform.forms)[:mu])
-    _, Xfactor, factor_names = DRM._design(:y, factor_rhs, factordat)
+    factorform = DRModels.bf(@formula(y ~ f + mi(x)), @formula(sigma ~ 1))
+    _, factor_rhs = DRModels._joint_mean_parts(Dict(factorform.forms)[:mu])
+    _, Xfactor, factor_names = DRModels._design(:y, factor_rhs, factordat)
     @test size(Xfactor, 2) == 3
     @test length(factor_names) == 3
 
-    richform = DRM.bf(@formula(y ~ log(z + 2) + z & f + mi(x)), @formula(sigma ~ 1))
-    _, rich_rhs = DRM._joint_mean_parts(Dict(richform.forms)[:mu])
-    _, Xrich, _ = DRM._design(:y, rich_rhs, factordat)
+    richform = DRModels.bf(@formula(y ~ log(z + 2) + z & f + mi(x)), @formula(sigma ~ 1))
+    _, rich_rhs = DRModels._joint_mean_parts(Dict(richform.forms)[:mu])
+    _, Xrich, _ = DRModels._design(:y, rich_rhs, factordat)
     @test size(Xrich, 2) > 3
 end
 

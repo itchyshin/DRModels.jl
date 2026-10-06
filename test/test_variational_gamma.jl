@@ -17,17 +17,17 @@
 #       checked against a high-order ADAPTIVE (mode-centered) GH reference at the
 #       VA fit.
 #
-# These need no external truth and no drmTMB call. The GHQ fit IS DRM.jl's verified
+# These need no external truth and no drmTMB call. The GHQ fit IS DRModels.jl's verified
 # RE marginal for each family; the VA fit is the new code under test.
 
-using DRM
+using DRModels
 using Test
 using Random
 using Statistics
 import Distributions
 import ForwardDiff               # adaptive-GH reference for the Beta lower-bound check
 
-const DGB = DRM   # internal kernels live under DRM.*
+const DGB = DRModels   # internal kernels live under DRModels.*
 
 @testset "Gamma random-intercept VA (ELBO) marginal (#136)" begin
 

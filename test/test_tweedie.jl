@@ -3,7 +3,7 @@
 # insurance loss). Log link on the mean μ; `sigma` is √dispersion (φ = σ²); `nu`
 # is the power p, estimated on a logit-(1,2) link. Density via the Dunn–Smyth
 # series. Mirrors drmTMB's `tweedie`. Fixed effects, ML.
-using DRM
+using DRModels
 using Test, Random
 import Distributions
 

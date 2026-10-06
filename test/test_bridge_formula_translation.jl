@@ -18,7 +18,7 @@
 # R's `raw = FALSE` orthogonal basis is deterministic and transcribes to 9.99e-16,
 # so the old blanket rejection was replaced by a narrow one. What stays rejected is
 # what genuinely cannot be reproduced by this rewrite — see the `poly()` testsets.
-using DRM
+using DRModels
 using Test
 
 @testset "bridge: R formula operator translation" begin

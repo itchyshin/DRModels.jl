@@ -6,7 +6,7 @@
 # These tests check (1) the q=1 closed form, (2) the q=2 mixture, and (3) that on
 # a true-null simulation the boundary p-values are better-calibrated than the
 # naive χ²(1) p-values (which are conservative on the boundary).
-using DRM
+using DRModels
 using Test, Random, Statistics
 using Distributions: Chisq, ccdf
 

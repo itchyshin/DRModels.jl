@@ -2,17 +2,17 @@
 
 !!! note "Status — Experimental"
     Mirrors drmTMB's [location-scale-scale](https://itchyshin.github.io/drmTMB/articles/location-scale-scale.html)
-    vignette. **In DRM.jl today:** `sd(group) ~ z` on the iid `(1 | g)` random
+    vignette. **In DRModels.jl today:** `sd(group) ~ z` on the iid `(1 | g)` random
     effect (ML + REML), `sd(group, phylogenetic) ~ z` on the per-species
     phylogenetic SD (ML + REML, with dense and $O(p)$ sparse solvers), and
     multi-component LSS models. Both are Experimental-tier
-    ([API stability](../api-stability.md)); every number below is
-    cross-verified against drmTMB on identical data.
+    ([API stability](../api-stability.md)). The examples below use identical
+    data in DRModels.jl and drmTMB when comparing numerical results.
 
 A [location–scale model](location-scale.md) asks whether predictors change the
 expected response `μ` and the residual SD `σ`. A **location–scale–scale** model
 adds a third submodel: predictors can also change the standard deviation of a
-**latent random effect**. DRM.jl writes that third submodel as `sd(group) ~ z`,
+**latent random effect**. DRModels.jl writes that third submodel as `sd(group) ~ z`,
 exactly as drmTMB.
 
 ## Personality, predictability, repeatability
@@ -39,7 +39,7 @@ b_i &\sim \mathrm{N}(0,\, \sigma_{b,i}^2), &
 The matching formula bundle — one formula per submodel:
 
 ```@example lss
-using DRM, Random
+using DRModels, Random
 
 rng = Random.MersenneTwister(20260715)
 n_id, n_each = 80, 6
@@ -70,14 +70,49 @@ through `exp`. On this simulation (truth: between-SD 0.65 vs 0.40, within-SD
 
 !!! warning "sd() predictors must be constant within each group"
     Sex is used to model `sd(id)`, so it must not vary within an individual.
-    DRM.jl checks this and errors, naming the offending predictor — exactly as
+    DRModels.jl checks this and errors, naming the offending predictor — exactly as
     drmTMB does. Do not average a genuinely within-group predictor to silence
     the error; that changes the scientific question.
 
-Because the RE SD now varies by group, single-number summaries are ill-defined
-and refuse rather than misreport: `re_sd`, `vc`, and `heritability` all throw
-with a pointer to `coef(fit, :sd)`. Wald and profile intervals target the block
-as usual:
+### What "repeatability" means here
+
+The section title promises a repeatability, so the estimand has to be written down.
+Repeatability is the share of the variance of a single observation that is
+between-individual, i.e. the correlation between two observations of the same
+individual. Here both variance components depend on `sex`, so it is a **function of the
+covariates**, not a number:
+
+```math
+R(z_i) \;=\; \frac{\sigma_{b,i}^2}{\sigma_{b,i}^2 + \sigma_{e,i}^2}
+\;=\; \operatorname{logistic}\!\big(2(\alpha^\top z_i - \gamma^\top z_i)\big),
+```
+
+where `z_i` is the covariate vector of individual `i` (the `sd(id)` and `sigma`
+formulas may use different predictors; the formula above uses the same `z` for both).
+No single scalar is "the" repeatability of such a model: any one number is a choice
+of covariate distribution, and the ratio of the average variances is not the average
+of the ratios. With `sd(id) ~ sex` and `sigma ~ sex`, report `R` **by sex**, never one
+pooled value. This is why `repeatability(fit)`, `icc(fit)`, `heritability(fit)`,
+`re_sd` and `vc` all **refuse** these fits (and the refusal message states the
+formula above) instead of silently choosing a covariate value.
+
+Ask for the conditional repeatability at the covariate values you care about:
+
+```@example lss
+r = repeatability(fit, (; sex = [0.0, 1.0]))     # R for females, R for males
+(sex = ["female", "male"], R = round.(r.estimate; digits = 3),
+ lower = round.(r.lower; digits = 3), upper = round.(r.upper; digits = 3))
+```
+
+On this simulation the truth is `R = 0.65² / (0.65² + 0.35²) = 0.775` for females
+and `0.40² / (0.40² + 0.60²) = 0.308` for males. `logit R(z) = 2(α'z − γ'z)` is
+linear in the coefficients, so the interval is an exact-linear Wald interval on the
+logit scale (it uses the joint `vcov` of the `sd` and `sigma` blocks) mapped back to
+`(0, 1)`. `newdata` must contain every predictor of the `sd(id)` and `sigma`
+formulas; a categorical predictor must contain all of its training levels.
+
+Wald and profile intervals for the coefficients themselves target the block as
+usual:
 
 ```@example lss
 confint(fit; parm = :sd)
@@ -113,9 +148,9 @@ function _baln(d)
                   "($(node(p*"a",k-1)),$(node(p*"b",k-1))):$(1/d)")
     node("t", d)
 end
-phy = DRM.augmented_phy(_baln(6))
+phy = DRModels.augmented_phy(_baln(6))
 G = phy.n_leaves
-K0 = DRM.sigma_phy_dense(phy; σ²_phy = 1.0)
+K0 = DRModels.sigma_phy_dense(phy; σ²_phy = 1.0)
 dK = sqrt.(diag(K0)); K = K0 ./ (dK * dK')
 
 rng2 = Random.MersenneTwister(11)
@@ -135,10 +170,58 @@ fitq = drm(bf(@formula(y ~ x + phylo(1 | species)),
 ```
 
 The estimates track the simulated truth (mean 1.0 and 0.5; the σ and σ_a
-slopes in the right directions). On this route's committed test fixture,
-drmTMB's native engine returns the same log-likelihood (−69.1373) and the same
-coefficients to seven significant figures — that cross-engine agreement is
-pinned in `test/test_lss_phylo.jl`.
+slopes in the right directions). For these same data, drmTMB returns the same
+log-likelihood (−69.1373) and the same coefficients to seven significant
+figures.
+
+### When are σ_a and σ_e separately identified?
+
+With **one trait value per species** there are no replicates, so the two variance
+surfaces are *not* separated by repeated measures (the personality example above has
+six observations per individual). They are separated only by the **off-diagonal
+structure of `A`**: the residual `σ_e` is tip-private, whereas `σ_a` induces covariance
+between related tips. For intercept-only scales `V = σ_a² A + σ_e² I`, and the Fisher
+information for `(σ_a², σ_e²)` is
+
+```math
+\mathcal I = \tfrac12\begin{pmatrix}
+\operatorname{tr}\big((V^{-1}A)^2\big) & \operatorname{tr}\big(V^{-1}A\,V^{-1}\big)\\
+\cdot & \operatorname{tr}\big(V^{-2}\big)\end{pmatrix},
+```
+
+which is singular exactly when `A ∝ I` (a star tree): then only `σ_a² h + σ_e²` is
+identified and any split is as good as any other. Measured on random coalescent trees
+(median over 20 trees per cell, true residual share 0.3, asymptotic Fisher standard
+errors): the correlation between the two variance estimates is −0.35 at 16 tips and
+−0.26 at 64 tips, and the SE of the residual share is 0.24 and 0.15. Adding a second
+observation per species lowers these to 0.17 and 0.11. As the tree approaches a star
+(mean off-diagonal tip correlation 0.1) the correlation reaches −0.96 and the SE of the
+share is 1.2 at 16 tips (0.65 at 64): the split is not identified. In simulation with 16 tips and a true
+50 : 50 split, `σ_a` was estimated at **zero in 51 % of data sets** (64 tips: 17 %);
+with a true share of 0.9 residual, 73 % (64 tips: 58 %).
+
+What the software does about it:
+
+- Both scales may depend on covariates (the three-submodel route is not removed), but
+  separating them leans entirely on `A`; expect wide intervals and use
+  `confint(fit; method = :profile)` or the bootstrap rather than Wald standard errors.
+- When a fit with one observation per group lands on a boundary, `drm` warns and
+  names the cause (the *residual* variance share ≈ 1, or the *structured* SD
+  collapsed to 0, with the one-observation-per-group note), and
+  `check_drm(fit).variance_boundary` carries the same flags. An exactly or nearly
+  singular information matrix (a star tree) is reported by the existing "Hessian is
+  numerically singular" warning.
+- The flag is intentionally silent on healthy interior fits. A warning on every
+  one-observation-per-species fit would fire on every ordinary comparative model;
+  the data-driven boundary check fires only when the split has actually collapsed.
+
+Conditional on the covariates, the phylogenetic share of a tip's variance is
+`h²(z) = σ_a(z)² / (σ_a(z)² + σ_e(z)²)`; as for repeatability above it is a function
+of `z`, and `heritability(fit, newdata)` returns it with a Wald-on-logit interval:
+
+```@example lss
+heritability(fitq, (; x = [-1.0, 0.0, 1.0]))
+```
 
 Species rows need not follow tree-tip order when fitting an LSS model. String
 labels match `phy.leaf_names` exactly; integer labels are positions in `1:G`,
@@ -185,7 +268,7 @@ coef(fitq_shuffled, :sd_phylo)
 
 ## Missing response handling
 
-Like other Gaussian routes in DRM.jl, Location–Scale–Scale models support
+Like other Gaussian routes in DRModels.jl, Location–Scale–Scale models support
 incomplete responses (`missing` or `NaN` in `y`), matching `response = "include"`
 in drmTMB:
 
@@ -223,7 +306,8 @@ Both iid and phylogenetic LSS models support REML estimation. Standard errors
 can be unreliable when a variance approaches zero; a successful fit alone does
 not establish reliable uncertainty estimates.
 
-For an auditable bootstrap, start from the fitted model and retain the result:
+To assess the bootstrap rather than only its interval endpoints, retain the
+full result:
 
 ```@example lss
 boot = bootstrap_result(fit_reml; data = dat, B = 4,
@@ -255,12 +339,16 @@ fit <- drmTMB(
 )
 confint(fit, parm = "fixef:sd_phylo:temp", method = "profile")
 confint(fit, parm = "fixef:sd_phylo:temp", method = "bootstrap", R = 199,
-        threads = TRUE)          # threaded refits; BLAS is pinned internally
+        threads = TRUE)          # parallel only if JULIA_NUM_THREADS > 1
 ```
 
-The full M2–M6q model ladder of the ecogeographical-rules protocol gives
-logLik identical to `engine = "tmb"` in every cell — see
-[the cross-engine evidence](https://github.com/itchyshin/DRM.jl/blob/main/docs/dev-log/evidence/2026-08-28-lss-mladder-cross-engine.md).
+`threads = TRUE` does not start threads by itself. Set `JULIA_NUM_THREADS`
+(for example to 4) before the first Julia call in the R session; otherwise the
+refits run serially and the result reports `julia.threaded` as `FALSE`. See
+drmTMB's [Using the Julia engine](https://itchyshin.github.io/drmTMB/articles/julia-engine.html).
+
+For the ecogeographical-rules formulas assessed here, the Julia and TMB fits
+gave identical log likelihoods.
 
 ## See also
 

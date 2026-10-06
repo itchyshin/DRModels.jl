@@ -1,12 +1,12 @@
 # Structural dependence details
 
 !!! note "Status — Theory + roadmap"
-    Mirrors drmTMB's [Structural dependence details](https://itchyshin.github.io/drmTMB/articles/phylogenetic-spatial.html). The theory of combining structured dependences. **In DRM.jl today:** each structured effect — `phylo`, `spatial`, `animal`, `relmat` — is fitted on its own; a *simultaneous* phylogenetic × spatial fit is planned.
+    Mirrors drmTMB's [Structural dependence details](https://itchyshin.github.io/drmTMB/articles/phylogenetic-spatial.html). The theory of combining structured dependences. **In DRModels.jl today:** each structured effect — `phylo`, `spatial`, `animal`, `relmat` — is fitted on its own; a *simultaneous* phylogenetic × spatial fit is planned.
 
 Ecological and evolutionary data often carry **more than one** source of
 non-independence at once: closely related species share trait values
 (phylogeny), and nearby sites share environments (space). This page explains how
-those dependences are represented, what DRM.jl fits today, and what a combined
+those dependences are represented, what DRModels.jl fits today, and what a combined
 model will add.
 
 ## One structured effect at a time
@@ -27,7 +27,7 @@ closed form (GLS). The group SD comes back from [`re_sd`](@ref). These are all
 [spatial](spatial-models.md) tutorials.
 
 ```julia
-using DRM
+using DRModels
 # phylogenetic random intercept from a tree
 fitp = drm(bf(@formula(y ~ x + phylo(1 | species))), Gaussian(); data = dat, tree = tr)
 
@@ -53,7 +53,7 @@ species must not be perfectly co-located); when they are well separated, the dat
 distinguish "evolutionary" from "spatial" signal.
 
 !!! note "Not fitted yet"
-    DRM.jl currently resolves a **single** structured marker per formula, so a
+    DRModels.jl currently resolves a **single** structured marker per formula, so a
     `phylo(...) + spatial(...)` mean is on the roadmap rather than fitted today.
     The building blocks already exist — the closed-form GLS for each structure,
     and the multi-component Woodbury path used for crossed ordinary random

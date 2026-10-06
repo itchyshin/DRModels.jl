@@ -3,7 +3,7 @@
 # intercept `(1 | g) + (1 | h)` sparse-Laplace route (#166), constant-σ
 # (overdispersion) only. Mirrors test_crossed_laplace_generic.jl's shape.
 
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 import Distributions
 using SpecialFunctions: loggamma, digamma
@@ -76,8 +76,8 @@ end
 
     ntr = fill(8, n)
     sint = [rand(rng, Distributions.BetaBinomial(ntr[i], μ[i] * 20.0, (1 - μ[i]) * 20.0)) for i in 1:n]
-    logchoose = [DRM._logfactorial(ntr[i]) - DRM._logfactorial(sint[i]) -
-                 DRM._logfactorial(ntr[i] - sint[i]) for i in 1:n]
+    logchoose = [DRModels._logfactorial(ntr[i]) - DRModels._logfactorial(sint[i]) -
+                 DRModels._logfactorial(ntr[i] - sint[i]) for i in 1:n]
     function aux_from(logsigma)
         φ = exp(clamp(-2 * logsigma, -8.0, 8.0))
         lgamma_nphi = [loggamma(ntr[i] + φ) for i in 1:n]
@@ -86,7 +86,7 @@ end
     end
 
     θ = [0.12, 0.32, -0.5 * log(22.0), log(0.32), log(0.24)]
-    val, grad, _, ok = DRM._crossed_mean_laplace_nuisance_fg(
+    val, grad, _, ok = DRModels._crossed_mean_laplace_nuisance_fg(
         Val(:betabinomial_fixed), aux_from, n, X, gidx, G, hidx, H, θ; grad = true
     )
     @test ok
@@ -102,7 +102,7 @@ end
         end
         return g
     end
-    fd = central_gradient(θp -> DRM._crossed_mean_laplace_nuisance_fg(
+    fd = central_gradient(θp -> DRModels._crossed_mean_laplace_nuisance_fg(
         Val(:betabinomial_fixed), aux_from, n, X, gidx, G, hidx, H, θp; grad = false
     )[1], θ)
     max_abs_diff = maximum(abs.(grad .- fd))

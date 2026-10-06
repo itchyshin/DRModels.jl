@@ -26,7 +26,7 @@
 # the reciprocal condition number (min|eig| / max|eig|) of the 2x2 vcov(fit)
 # matrix each engine actually returns for `y ~ x + phylo(1 | species)` — the
 # same matrix se_of() takes sqrt(diag()) of, on both the native TMB side and
-# the DRM.jl side.
+# the DRModels.jl side.
 #
 # Each engine's fit is timed separately (D-139); native TMB is wrapped in a
 # wall-clock ceiling so a divergent/hanging dense factorisation is a finding,
@@ -125,7 +125,7 @@ for (p in ps) {
   })
   cat(sprintf("  wall clock (tmb): %.2f sec\n", t_tmb[["elapsed"]]))
 
-  cat("Fitting engine = 'julia' (DRM.jl sparse route)...\n")
+  cat("Fitting engine = 'julia' (DRModels.jl sparse route)...\n")
   fj <- NULL
   t_jl <- system.time({
     fj <- tryCatch(
@@ -212,7 +212,7 @@ print(do.call(rbind, rcond_log))
 # --- provenance stamp (#473) -------------------------------------------------
 # Record WHICH drmTMB build produced these numbers, not just its version string.
 # "drmTMB 0.7.0" identifies at least 16 different builds, so a version alone
-# cannot tell a later reader whether a disagreement is DRM.jl regressing or the
+# cannot tell a later reader whether a disagreement is DRModels.jl regressing or the
 # COMPARATOR having moved underneath the fixture. Stamped at write time from the
 # single definition in drmtmb_provenance_lib.R.
 .tools_dir <- tryCatch({

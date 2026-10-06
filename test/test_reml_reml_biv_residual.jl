@@ -14,7 +14,7 @@
 #   plus  the normalisation convention (sign of the log-determinant AND the
 #         +(p_beta/2)*log(2*pi) constant), the REML degrees of freedom visible in
 #         the scale standard error, and that the ML route is untouched.
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra, Statistics
 
 @testset "REML on the residual-only bivariate Gaussian route (#624)" begin
@@ -34,24 +34,24 @@ using Test, Random, LinearAlgebra, Statistics
     # (i) it fits.
     @test fre.converged
     @test all(isfinite, fre.theta)
-    @test isfinite(DRM.loglik(fre))
+    @test isfinite(DRModels.loglik(fre))
 
     # (iv) and it says so.
     @test estimation_method(fre) === :REML
     @test estimation_method(fml) === :ML
-    @test DRM.loglik(fre) == reml_loglik(fre)      # public loglik IS the restricted one
+    @test DRModels.loglik(fre) == reml_loglik(fre)      # public loglik IS the restricted one
     @test isnan(reml_loglik(fml))
-    @test ml_loglik(fml) == DRM.loglik(fml)
+    @test ml_loglik(fml) == DRModels.loglik(fml)
 
     # (ii) the two objectives are genuinely different numbers, not one value
     # wearing two labels. The restricted log-likelihood is BELOW the ML maximum
     # (it pays the -0.5*logdet(X' V^-1 X) restriction).
-    @test DRM.loglik(fre) != DRM.loglik(fml)
-    @test DRM.loglik(fre) < DRM.loglik(fml)
+    @test DRModels.loglik(fre) != DRModels.loglik(fml)
+    @test DRModels.loglik(fre) < DRModels.loglik(fml)
     @test ml_loglik(fre) != reml_loglik(fre)
     # ml_loglik(fre) is the PLAIN likelihood at the REML estimate, so it cannot
     # beat the ML maximum.
-    @test ml_loglik(fre) <= DRM.loglik(fml) + 1e-8
+    @test ml_loglik(fre) <= DRModels.loglik(fml) + 1e-8
 
     # ---- (iii) how the estimates differ, and why ------------------------------
     # mu1 and mu2 share ONE design matrix here, so the seemingly-unrelated
@@ -85,7 +85,7 @@ using Test, Random, LinearAlgebra, Statistics
     # convention TMB/lme4/glmmTMB also report, so `loglik(fit)` is directly
     # comparable to drmTMB's `logLik()` with no leftover constant.
     s1 = exp(fre.theta[5]); s2 = exp(fre.theta[6])
-    rho = DRM.RHO_GUARD * tanh(fre.theta[7])
+    rho = DRModels.RHO_GUARD * tanh(fre.theta[7])
     S = [s1^2 rho*s1*s2; rho*s1*s2 s2^2]
     X = hcat(ones(n), x)
     H = kron(inv(S), transpose(X) * X)
@@ -110,7 +110,7 @@ using Test, Random, LinearAlgebra, Statistics
     # re-run through the SAME extracted design helper).
     fml2 = drm(fform, Gaussian(); data = dat, method = :ML)
     @test fml2.theta == fml.theta
-    @test DRM.loglik(fml2) == DRM.loglik(fml)
+    @test DRModels.loglik(fml2) == DRModels.loglik(fml)
 
     @testset "different mu1/mu2 designs: the profile does move with phi" begin
         # With mu2 dropped to an intercept the regressors differ, so the GLS

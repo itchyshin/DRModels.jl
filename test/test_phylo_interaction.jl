@@ -5,7 +5,7 @@
 # Tests: (1) parameter recovery from a known σ²(C_A⊗C_B)+σ_e²I, and (2) a
 # finite-difference gradient gate (≤ 1e-6) on the marginal logLik vs ForwardDiff
 # AND vs central differences.
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 using ForwardDiff: gradient as fd_gradient
 

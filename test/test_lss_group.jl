@@ -3,7 +3,7 @@
 # evidence (2026-08-28, identical CSV): logLik -417.7794 both engines, every
 # coefficient block agreeing ≤ 1e-5 vs drmTMB's native TMB fit.
 using Test
-using DRM
+using DRModels
 using StableRNGs
 using Statistics
 
@@ -88,7 +88,7 @@ end
     # single-SD summaries are ill-defined and must refuse, not misreport
     @test_throws ArgumentError re_sd(fit)
     @test_throws ArgumentError vc(fit)
-    @test_throws ErrorException DRM.heritability(fit)
+    @test_throws ErrorException DRModels.heritability(fit)
 
     # BLUPs exist per group and are centered-ish
     @test haskey(fit.ranef, :id) && length(fit.ranef[:id]) == 80

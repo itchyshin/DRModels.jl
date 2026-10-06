@@ -1,11 +1,11 @@
 # Same-point and independently fitted evidence; native stopping losses are retained.
-using DRM, ForwardDiff, LinearAlgebra, SHA, TOML
+using DRModels, ForwardDiff, LinearAlgebra, SHA, TOML
 length(ARGS)==2 || error("usage: check_two_gaussian_fit.jl REFERENCE_TOML NEW_TOML")
 refpath,outpath=abspath.(ARGS)
 isfile(outpath) && error("refusing stale output")
 BLAS.set_num_threads(1)
 Threads.nthreads()==1 && BLAS.get_num_threads()==1 || error("resource budget")
-root=dirname(pathof(DRM))
+root=dirname(pathof(DRModels))
 manifest()=Dict(relpath(joinpath(d,f),root)=>bytes2hex(sha256(read(joinpath(d,f)))) for (d,_,fs) in walkdir(root) for f in fs)
 before=manifest();ref=TOML.parsefile(refpath);n=length(ref["original_row"])
 decode(k) = Union{Missing,Float64}[ref[k*"_observed"][i] ? ref[k][i] : missing for i in 1:n]
@@ -31,18 +31,18 @@ end
 receipt=Dict{String,Any}("schema"=>"two_gaussian_fit_v1",
  "scope"=>"Prepared shared two-Gaussian kernel only; direct formula and R bridge admission remain required",
  "reference_sha256"=>bytes2hex(sha256(read(refpath))),"runner_sha256"=>bytes2hex(sha256(read(@__FILE__))),
- "source_before"=>before,"runtime"=>Dict("julia"=>string(VERSION),"threads"=>Threads.nthreads(),"blas"=>BLAS.get_num_threads(),"source"=>pathof(DRM)),
+ "source_before"=>before,"runtime"=>Dict("julia"=>string(VERSION),"threads"=>Threads.nthreads(),"blas"=>BLAS.get_num_threads(),"source"=>pathof(DRModels)),
  "original_row"=>model.original_row,"observed_y"=>collect(model.observed_y),
  "observed_x1"=>collect(model.observed_x[1]),"observed_x2"=>collect(model.observed_x[2]))
 tick=time()
 receipt["points"]=[point(model,Float64.(p["theta"])) for p in ref["points"]]
-receipt["initial"]=DRM.prepared_joint_initial(model)
+receipt["initial"]=DRModels.prepared_joint_initial(model)
 f=fit_prepared_joint(model)
 theta=f.fit.theta;H=ForwardDiff.hessian(t->prepared_joint_nll(f.prepared,t),theta)
 fitted=point(f.prepared,theta)
-merge!(fitted,Dict("loglik"=>DRM.loglik(f.fit),"covariance"=>rows(f.fit.vcov),"hessian"=>rows(H),
- "converged"=>DRM.is_converged(f.fit),"optimizer_status"=>String(f.metadata.optimizer_status),
- "covariance_status"=>String(f.metadata.covariance_status),"nobs"=>DRM.nobs(f.fit),
+merge!(fitted,Dict("loglik"=>DRModels.loglik(f.fit),"covariance"=>rows(f.fit.vcov),"hessian"=>rows(H),
+ "converged"=>DRModels.is_converged(f.fit),"optimizer_status"=>String(f.metadata.optimizer_status),
+ "covariance_status"=>String(f.metadata.covariance_status),"nobs"=>DRModels.nobs(f.fit),
  "imputed1"=>table(imputed(f;variable=:x1,rows=:all)),"imputed2"=>table(imputed(f;variable=:x2,rows=:all)),
  "imputed1_no_se"=>table(imputed(f;variable=:x1,rows=:all,se=false)),
  "imputed2_no_se"=>table(imputed(f;variable=:x2,rows=:all,se=false))))
@@ -51,7 +51,7 @@ receipt["fitted"]=fitted
 Vnative=reduce(vcat,permutedims.(Float64.(r) for r in ref["covariance"]))
 fixed=Dict{String,Any}("scope"=>"fixed-parameter uncertainty, not a fit")
 for j in 1:2
- u=DRM._two_joint_imputation_uncertainty(f.prepared,Float64.(ref["theta"]),Vnative;predictor_index=j)
+ u=DRModels._two_joint_imputation_uncertainty(f.prepared,Float64.(ref["theta"]),Vnative;predictor_index=j)
  fixed["imputed"*string(j)]=Dict("estimate"=>u.estimate,"std_error"=>[isfinite(v) ? v : 0.0 for v in u.std_error],
   "se_available"=>isfinite.(u.std_error),"conditional_variance"=>u.conditional_variance,
   "parameter_variance"=>u.parameter_variance,"uncertainty_status"=>u.uncertainty_status)

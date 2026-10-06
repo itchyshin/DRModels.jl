@@ -1,7 +1,7 @@
 # Sparse-Laplace proving slice for crossed non-Gaussian random effects:
 # Poisson y ~ x + (1|g) + (1|h). This is an engine-lane test and deliberately
 # calls the internal fitter directly; the public formula routing is Claude-owned.
-using DRM
+using DRModels
 using Test, Random
 import Distributions
 
@@ -14,11 +14,11 @@ import Distributions
     λ = exp.(β[1] .+ β[2] .* x .+ bg[g] .+ bh[h])
     y = Float64.([rand(Distributions.Poisson(λi)) for λi in λ])
     X = hcat(ones(n), x)
-    gidx, Gfit = DRM._group_index(g)
-    hidx, Hfit = DRM._group_index(h)
+    gidx, Gfit = DRModels._group_index(g)
+    hidx, Hfit = DRModels._group_index(h)
     comps = [(ones(n), gidx, Gfit, "g"), (ones(n), hidx, Hfit, "h")]
 
-    fit = DRM._fit_poisson_crossed_laplace(DRM.Poisson(), y, X, comps, ["(Intercept)", "x"], 1e-7)
+    fit = DRModels._fit_poisson_crossed_laplace(DRModels.Poisson(), y, X, comps, ["(Intercept)", "x"], 1e-7)
 
     @test coef(fit, :mu)[2] ≈ β[2] atol = 0.12
     rs = re_sd(fit)
@@ -37,11 +37,11 @@ end
     λ = exp.(β[1] .+ β[2] .* x .+ bg[g])
     y = Float64.([rand(Distributions.Poisson(λi)) for λi in λ])
     X = hcat(ones(n), x)
-    gidx, Gfit = DRM._group_index(g)
+    gidx, Gfit = DRModels._group_index(g)
     comps = [(ones(n), gidx, Gfit, "g")]
 
-    fit_laplace_gate = DRM._fit_poisson_crossed_laplace(DRM.Poisson(), y, X, comps, ["(Intercept)", "x"], 1e-8)
-    fit_ghq = DRM._fit_poisson_ranef(DRM.Poisson(), y, X, gidx, Gfit, ["(Intercept)", "x"], :g, 1e-8)
+    fit_laplace_gate = DRModels._fit_poisson_crossed_laplace(DRModels.Poisson(), y, X, comps, ["(Intercept)", "x"], 1e-8)
+    fit_ghq = DRModels._fit_poisson_ranef(DRModels.Poisson(), y, X, gidx, Gfit, ["(Intercept)", "x"], :g, 1e-8)
 
     @test coef(fit_laplace_gate) ≈ coef(fit_ghq) atol = 1e-10
     @test loglik(fit_laplace_gate) ≈ loglik(fit_ghq) atol = 1e-10
@@ -59,14 +59,14 @@ end
     λ = exp.(β[1] .+ β[2] .* x .+ bg[g] .+ bh[h] .+ bl[l])
     y = Float64.([rand(Distributions.Poisson(λi)) for λi in λ])
     X = hcat(ones(n), x)
-    gidx, Gfit = DRM._group_index(g)
-    hidx, Hfit = DRM._group_index(h)
-    lidx, Lfit = DRM._group_index(l)
+    gidx, Gfit = DRModels._group_index(g)
+    hidx, Hfit = DRModels._group_index(h)
+    lidx, Lfit = DRModels._group_index(l)
     comps = [(ones(n), gidx, Gfit, "g"),
              (ones(n), hidx, Hfit, "h"),
              (ones(n), lidx, Lfit, "l")]
 
-    fit = DRM._fit_poisson_crossed_laplace(DRM.Poisson(), y, X, comps,
+    fit = DRModels._fit_poisson_crossed_laplace(DRModels.Poisson(), y, X, comps,
                                            ["(Intercept)", "x"], 1e-7)
 
     # Recovery (loose — three small grouping factors).
@@ -97,7 +97,7 @@ end
     # called `_laplace_outer_converged` at all. The honest default fit reports
     # converged; a deliberately sloppy g_tol must not.
     @test fit.converged
-    fit_sloppy = DRM._fit_poisson_crossed_laplace(DRM.Poisson(), y, X, comps,
+    fit_sloppy = DRModels._fit_poisson_crossed_laplace(DRModels.Poisson(), y, X, comps,
                                                   ["(Intercept)", "x"], 10.0)
     @test !fit_sloppy.converged
 end

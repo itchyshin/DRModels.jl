@@ -2,7 +2,7 @@
 
 !!! note "Status — Stable (Poisson + NB2 + zi + hu)"
     Mirrors drmTMB's [Count abundance and extra zeros](https://itchyshin.github.io/drmTMB/articles/count-nbinom2.html).
-    **In DRM.jl today:** the **Poisson** family `Poisson()`, the
+    **In DRModels.jl today:** the **Poisson** family `Poisson()`, the
     **negative-binomial** family `NegBinomial2()` (overdispersed counts), and both
     the **`zi` zero-inflation** and **`hu` hurdle** modifiers on either count
     family (ZIP / ZINB and hurdle-Poisson / hurdle-NB).
@@ -14,8 +14,8 @@ expected count.
 ## A Poisson abundance model
 
 ```@example count
-using DRM, Random
-import Distributions          # `Poisson` below is DRM's family; qualify the distribution
+using DRModels, Random
+import Distributions          # `Poisson` below is DRModels's family; qualify the distribution
 Random.seed!(20260615)
 
 n = 3000

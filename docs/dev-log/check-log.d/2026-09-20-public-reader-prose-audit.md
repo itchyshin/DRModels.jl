@@ -1,0 +1,1 @@
+| 2026-09-20 | **Public reader prose audit** | `reader_surface_audit.py` (43 routes) + 10 unit tests + strict Documenter/VitePress build | ✅ green; replaced an internal exact-Gaussian evidence memo with a runnable model-checking guide and translated public stability/capability boundaries into reader language | Rose / Pat |

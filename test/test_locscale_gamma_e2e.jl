@@ -3,7 +3,7 @@
 # confirm the WHOLE pipeline — gradient-driven fit + Wald inference + components —
 # works for Gamma, not just NB2. Assertions are seed-robust (stationarity of the
 # exact gradient, PD vcov), with only a loose mean-slope recovery check.
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra, SparseArrays
 import Distributions
 
@@ -24,9 +24,9 @@ _gamma_draw(η, ψ) = (α = exp(ψ); μ = exp(η); rand(Distributions.Gamma(α, 
                      βψ[1] + A[species[i]][2]) for i in 1:n]
     Q = sparse(1.0 * I, G, G)
 
-    fit = DRM._fit_locscale(Val(:gamma), y, Xμ, Xψ, species, G, Q; se = true)
+    fit = DRModels._fit_locscale(Val(:gamma), y, Xμ, Xψ, species, G, Q; se = true)
 
-    gmax = maximum(abs.(DRM._ls_marginal_grad(Val(:gamma), y, Xμ, Xψ, species, G, Q, fit.θ)))
+    gmax = maximum(abs.(DRModels._ls_marginal_grad(Val(:gamma), y, Xμ, Xψ, species, G, Q, fit.θ)))
     @test gmax < 1e-3                          # stationarity of the exact gradient
     @test isposdef(Symmetric(fit.Lambda))
     @test isposdef(Symmetric(fit.vcov))        # valid Wald covariance

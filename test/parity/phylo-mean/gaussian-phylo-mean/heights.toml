@@ -2,7 +2,7 @@
 # absolute heights, refit natively in drmTMB each time. drmTMB's
 # sd_phylo is on the CORRELATION scale (ape::vcv(tree, corr = TRUE)),
 # so it should be height-invariant here -- that invariance IS the
-# scale-convention evidence. DRM.jl's re_sd(fit)[:species] is on the
+# scale-convention evidence. DRModels.jl's re_sd(fit)[:species] is on the
 # RAW branch-length scale; test_parity_gaussian_phylo_mean.jl compares
 # raw * sqrt(measured_height) against sd_phylo_corr at each row below.
 [[height]]

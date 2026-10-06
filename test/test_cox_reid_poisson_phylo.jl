@@ -14,7 +14,7 @@
 #
 # Worked example:
 #
-#   using DRM, StableRNGs, Distributions
+#   using DRModels, StableRNGs, Distributions
 #   rng = StableRNG(450)
 #   ntip, per = 12, 4
 #   tree = random_balanced_tree(ntip; branch_length = 0.25)
@@ -30,12 +30,12 @@
 #                  method = :REML)
 #   estimation_method(fit_reml) === :REML
 
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 using StableRNGs
 import Distributions
 
-const D = DRM
+const D = DRModels
 
 function _cr_phylo_draw(seed::Int; ntip::Int = 12, per::Int = 4, σphy::Float64 = 0.45)
     rng = StableRNG(seed)
@@ -100,7 +100,7 @@ _sigma(fit) = exp(D.coef(fit)[end])
         # optimum sits at a LARGER σ̂ than ML. Per-seed, not averaged. Cell D is
         # not a recovery target and is not asserted here.
         #
-        # GUARDED for DRM.jl#498. The direction claim above only has content when
+        # GUARDED for DRModels.jl#498. The direction claim above only has content when
         # the optimum is INTERIOR. On Julia 1.12 (but not 1.10) this route drives
         # the variance component to the boundary on 2 of these 3 seeds — measured
         # sigma_hat 3.09e-04 and 2.40e-04 against a true sigma_phy of 0.45, i.e.
@@ -122,7 +122,7 @@ _sigma(fit) = exp(D.coef(fit)[end])
             fit_reml = D.drm(form_phy, D.Poisson(); data = draw.data, tree = draw.tree,
                              se = false, method = :REML)
             if _sigma(fit_ml) < 0.01                      # boundary: truth is 0.45
-                @info "seed skipped — variance component collapsed to the boundary (DRM.jl#498)" seed sigma_ml=_sigma(fit_ml) sigma_reml=_sigma(fit_reml) julia=VERSION
+                @info "seed skipped — variance component collapsed to the boundary (DRModels.jl#498)" seed sigma_ml=_sigma(fit_ml) sigma_reml=_sigma(fit_reml) julia=VERSION
                 continue
             end
             interior += 1

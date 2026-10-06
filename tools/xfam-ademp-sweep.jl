@@ -1,13 +1,13 @@
 #!/usr/bin/env julia
 #
-# xfam-ademp-sweep.jl — ADEMP recovery + profile-CI coverage sweep for DRM.jl's
-# CROSS-FAMILY bivariate model (`DRM.fit_mixed_family`, shared-latent GHQ).
+# xfam-ademp-sweep.jl — ADEMP recovery + profile-CI coverage sweep for DRModels.jl's
+# CROSS-FAMILY bivariate model (`DRModels.fit_mixed_family`, shared-latent GHQ).
 #
 # ADEMP (Morris, White & Crowther 2019):
 #   Aims       Quantify, per cross-family pair, whether `fit_mixed_family`
 #              recovers the latent-scale correlation ρ (low bias, calibrated CI).
 #   Data-gen.  Shared per-observation latent  u_i ~ N(0,1);  η_k = X_k β_k + λ_k u,
-#              y_k ~ fam_k(η_k) via DRM's OWN per-family sampler `_mf_rand` (the
+#              y_k ~ fam_k(η_k) via DRModels's OWN per-family sampler `_mf_rand` (the
 #              exact code path the parametric bootstrap uses). n ≈ 500, p = 1
 #              covariate + intercept on each axis. Everything seeded.
 #   Estimand   The engine-consistent latent-scale correlation
@@ -39,10 +39,10 @@
 #   Optional env overrides (defaults keep the total to a few minutes):
 #       XFAM_NPOINT=100   XFAM_COVCAP=60   XFAM_N=500   XFAM_SEED=20260610
 
-using DRM
+using DRModels
 using Random, Statistics, Printf
 using SpecialFunctions: trigamma
-import DRM: _mf_rand, _mf_mean, link_residual
+import DRModels: _mf_rand, _mf_mean, link_residual
 
 # ----------------------------------------------------------------------------
 # Config (seeded; env-overridable so the cost can be tuned without code edits).
@@ -153,7 +153,7 @@ end
 
 # Point fit (no CI) — cheap; used for convergence + bias + RMSE.
 function fit_point(fam1, fam2, d)
-    DRM.fit_mixed_family(; y1 = d.y1, X1 = d.X1, fam1 = fam1,
+    DRModels.fit_mixed_family(; y1 = d.y1, X1 = d.X1, fam1 = fam1,
                            y2 = d.y2, X2 = d.X2, fam2 = fam2,
                            trials1 = d.tr, trials2 = d.tr,
                            K = K_GHQ, confint = false)
@@ -161,7 +161,7 @@ end
 
 # Profile fit (CI only on ρ) — expensive; used for coverage.
 function fit_profile(fam1, fam2, d)
-    DRM.fit_mixed_family(; y1 = d.y1, X1 = d.X1, fam1 = fam1,
+    DRModels.fit_mixed_family(; y1 = d.y1, X1 = d.X1, fam1 = fam1,
                            y2 = d.y2, X2 = d.X2, fam2 = fam2,
                            trials1 = d.tr, trials2 = d.tr,
                            K = K_GHQ, confint = false, profile = true)
@@ -259,7 +259,7 @@ function run_coverage(fam1, fam2, λ, ρtrue, cap_s::Float64)
 end
 
 function main()
-    println("# DRM.jl cross-family ADEMP recovery + profile-coverage sweep")
+    println("# DRModels.jl cross-family ADEMP recovery + profile-coverage sweep")
     println("# n=$N  point-reps=$N_POINT  cov-cap=$(COV_CAP)s/pair  cov-max=$COV_MAX  seed=$BASESEED  level=$LEVEL")
     println("# Julia $(VERSION)")
     # The profile budget is split: the two known-slow pairs (Gamma×P ~375 s/rep,

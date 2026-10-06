@@ -1,6 +1,6 @@
 # Prediction on new data: population-level Xβ̂ (random/structured effects
 # integrated out). Deterministic checks.
-using DRM
+using DRModels
 using Test, Random
 
 @testset "predict on new data" begin

@@ -651,7 +651,7 @@ O(p): a breadth-first walk over the sparse topology, where an edge's length is
 recovered as `-1/Q_topology[i, j]`. `sigma_phy_dense` would give the same number
 but inverts a dense matrix, so it is unusable as a routine check.
 
-**Why this matters.** DRM.jl builds its phylogenetic covariance from the branch
+**Why this matters.** DRModels.jl builds its phylogenetic covariance from the branch
 lengths **as supplied**. On an ultrametric tree of height `h`, the fitted
 `sd_phylo` carries a factor `sqrt(h)` relative to unit-tip-variance correlation
 scale. R's drmTMB instead standardises via `ape::vcv(tree, corr = TRUE)`, whose

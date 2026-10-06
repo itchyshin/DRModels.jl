@@ -1,6 +1,6 @@
-# threaded_bootstrap_demo.jl — the structural DRM.jl win: a parametric
+# threaded_bootstrap_demo.jl — the structural DRModels.jl win: a parametric
 # bootstrap of the q=4 PLSM run SERIAL vs THREADED. drmTMB's bootstrap is
-# serial R; DRM.jl threads the refits across cores. At per-fit parity the
+# serial R; DRModels.jl threads the refits across cores. At per-fit parity the
 # threading multiplier is the pipeline-level speedup over drmTMB.
 #
 # Run (threads matter):
@@ -66,6 +66,6 @@ thr = zeros(B); t_thr = @elapsed Threads.@threads for b in 1:B; thr[b] = boot_re
 @printf "\n--- extrapolate to standard B=199 ---\n"
 per = t_ser/B
 @printf "drmTMB (serial R, ~%.2fs/refit): ~%.0f s\n" DRMTMB_T (199*DRMTMB_T)
-@printf "DRM.jl serial:   ~%.0f s\n" (199*per)
-@printf "DRM.jl threaded: ~%.0f s  ->  vs drmTMB = %.1fx FASTER\n" (199*t_thr/B) (199*DRMTMB_T/(199*t_thr/B))
+@printf "DRModels.jl serial:   ~%.0f s\n" (199*per)
+@printf "DRModels.jl threaded: ~%.0f s  ->  vs drmTMB = %.1fx FASTER\n" (199*t_thr/B) (199*DRMTMB_T/(199*t_thr/B))
 println("=== done ===")

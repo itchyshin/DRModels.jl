@@ -5,7 +5,7 @@
 # `sd()` NESTED within the phylo grouping), per
 # docs/src/developer-notes/lss-sparse-multi-component.md.
 #
-# Oracle 1 (design note §5): DRM._lss_sparse_multi_objective(θ, …) must equal
+# Oracle 1 (design note §5): DRModels._lss_sparse_multi_objective(θ, …) must equal
 # an INDEPENDENT dense reconstruction of the marginal Gaussian NLL (not the
 # dense route's own internal `nll_ml` closure, to avoid a shared-bug false
 # positive — the same independence _s5a_dense_lss_nll gives the
@@ -15,10 +15,10 @@
 #
 # Assembly + objective only (S7b.1) — no gradients, no REML, no router
 # change: this test never calls `drm(...; algorithm = :sparse)` on the
-# multi-component model, only DRM._lss_sparse_multi_objective directly.
+# multi-component model, only DRModels._lss_sparse_multi_objective directly.
 
 using Test
-using DRM
+using DRModels
 using StableRNGs
 using LinearAlgebra
 using SparseArrays
@@ -40,7 +40,7 @@ end
 # dense `drm(...)` route, and every raw array the sparse-comp builders need.
 function _s7b1_nested_lsss_fixture(; depth = 6, sites_per_species = 3, n_per_site = 2,
                                    seed = 20260902)
-    phy = DRM.augmented_phy(_make_balanced_newick(depth))
+    phy = DRModels.augmented_phy(_make_balanced_newick(depth))
     Gsp = phy.n_leaves
     sp_names = String.(phy.leaf_names)
     Gsite = Gsp * sites_per_species
@@ -59,7 +59,7 @@ function _s7b1_nested_lsss_fixture(; depth = 6, sites_per_species = 3, n_per_sit
     α_phy = [-0.6, 0.25]     # sd(species, phylogenetic) ~ 1 + z
     α_iid = [-0.9]           # sd(site) ~ 1
 
-    K0 = DRM.sigma_phy_dense(phy; σ²_phy = 1.0)
+    K0 = DRModels.sigma_phy_dense(phy; σ²_phy = 1.0)
     dK = sqrt.(diag(K0)); K = K0 ./ (dK * dK')
     chK = cholesky(Symmetric(K))
     u_phy = chK.L * randn(rng, Gsp)
@@ -142,8 +142,8 @@ end
     Zg_phy = hcat(ones(fx.Gsp), fx.z_sp)
     Zg_iid = ones(fx.Gsite, 1)
 
-    phy_comp = DRM._sparse_lss_phylo_comp(fx.species_idx, fx.Gsp, Zg_phy, phy)
-    iid_comp = DRM._sparse_lss_iid_comp(fx.site_idx, fx.Gsite, Zg_iid)
+    phy_comp = DRModels._sparse_lss_phylo_comp(fx.species_idx, fx.Gsp, Zg_phy, phy)
+    iid_comp = DRModels._sparse_lss_iid_comp(fx.site_idx, fx.Gsite, Zg_iid)
     comps = [phy_comp, iid_comp]
 
     θ_opt = vcat(coef(fit_dense, :mu), coef(fit_dense, :sigma),
@@ -157,7 +157,7 @@ end
 
     dense_oracle(θ) = _s7b1_dense_multi_lss_nll(θ, phy, dat.y, Xmu, Xsigma, Zg_phy,
                                                 fx.species_idx, Zg_iid, fx.site_idx)
-    sparse_objective(θ) = DRM._lss_sparse_multi_objective(θ, dat.y, Xmu, Xsigma, comps)
+    sparse_objective(θ) = DRModels._lss_sparse_multi_objective(θ, dat.y, Xmu, Xsigma, comps)
 
     @testset "objective identity vs. independent dense oracle" begin
         for (label, θ) in (("dense optimum", θ_opt), ("perturbed", θ_perturbed),
@@ -167,7 +167,7 @@ end
     end
 
     @testset "assembled H: sparsity pattern and PD-ness (design note §2.1)" begin
-        asm = DRM._lss_sparse_multi_assemble(θ_opt, dat.y, Xmu, Xsigma, comps)
+        asm = DRModels._lss_sparse_multi_assemble(θ_opt, dat.y, Xmu, Xsigma, comps)
         H = asm.H
         p = size(H, 1)
         @test H ≈ H'                       # exactly symmetric by construction

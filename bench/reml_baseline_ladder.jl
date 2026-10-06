@@ -1,4 +1,4 @@
-using DRM
+using DRModels
 using LinearAlgebra
 using Random
 
@@ -93,7 +93,7 @@ function _reml_baseline_ladder_fixture(; p::Int, nrep::Int, seed::Int)
     x = randn(rng, n)
     y1 = Vector{Float64}(undef, n)
     y2 = Vector{Float64}(undef, n)
-    rho = DRM.RHO_GUARD * tanh(0.3)
+    rho = DRModels.RHO_GUARD * tanh(0.3)
 
     for i in eachindex(y1)
         u = @view u_aug[(4 * (leaf_pos[species_index[i]] - 1) + 1):(4 * leaf_pos[species_index[i]])]

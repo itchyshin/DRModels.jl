@@ -109,7 +109,7 @@ extract_log_sd_phylo_se <- function(fit) {
 }
 
 ## Maximum root-to-tip path length -- the tip variance the tree implies when
-## DRM.jl's `re_sd()` (RAW branch-length scale) is compared to drmTMB's
+## DRModels.jl's `re_sd()` (RAW branch-length scale) is compared to drmTMB's
 ## CORRELATION-scale `sd_phylo`: species_corr_scale == raw * sqrt(tree_height).
 tree_height <- function(tree) {
   max(ape::node.depth.edgelength(tree)[seq_along(tree$tip.label)])
@@ -219,7 +219,7 @@ write_fixture <- function(cell, fit, out_dir) {
 
   ## Multi-height round trip (#483 requirement: kept, now on an identifiable
   ## cell). Same data, tree rescaled to three absolute heights, refit
-  ## natively each time. drmTMB's value must be height-invariant; DRM.jl's
+  ## natively each time. drmTMB's value must be height-invariant; DRModels.jl's
   ## raw re_sd must equal it after x sqrt(height).
   heights <- c(0.5, 1.0, 3.0)
   height_rows <- lapply(heights, function(hh) {
@@ -246,7 +246,7 @@ write_fixture <- function(cell, fit, out_dir) {
     "# absolute heights, refit natively in drmTMB each time. drmTMB's",
     "# sd_phylo is on the CORRELATION scale (ape::vcv(tree, corr = TRUE)),",
     "# so it should be height-invariant here -- that invariance IS the",
-    "# scale-convention evidence. DRM.jl's re_sd(fit)[:species] is on the",
+    "# scale-convention evidence. DRModels.jl's re_sd(fit)[:species] is on the",
     "# RAW branch-length scale; test_parity_gaussian_phylo_mean.jl compares",
     "# raw * sqrt(measured_height) against sd_phylo_corr at each row below."
   ), con)
@@ -283,7 +283,7 @@ write_fixture <- function(cell, fit, out_dir) {
   ## 1% of the Wald SE on the log scale, propagated to the SD scale by the
   ## delta method (d(sd)/d(log_sd) = sd):
   ##   atol_re_sd = 0.01 * log_sd_phylo_se * sd_phylo_corr
-  ## This is set BEFORE looking at DRM.jl's answer, from drmTMB's own fit
+  ## This is set BEFORE looking at DRModels.jl's answer, from drmTMB's own fit
   ## alone -- so a subsequent disagreement is not being tolerance-shopped.
   atol_re_sd <- 0.01 * log_sd$se * sd_phylo_corr
 
@@ -308,7 +308,7 @@ write_fixture <- function(cell, fit, out_dir) {
     "# The row's DEFINING quantity: the fitted phylogenetic SD, on drmTMB's",
     "# CORRELATION-SCALE convention (ape::vcv(tree, corr = TRUE) standardises the",
     "# tip variance to 1, independent of the tree's raw branch-length height).",
-    "# DRM.jl's re_sd(fit)[:species] is on the RAW branch-length scale instead",
+    "# DRModels.jl's re_sd(fit)[:species] is on the RAW branch-length scale instead",
     "# (tip variance = tree_height); the two are related by",
     "#   species_corr_scale == re_sd(fit)[:species] * sqrt(tree_height)",
     "# tree_height is recorded in expected.meta.toml. This cell's estimate is",

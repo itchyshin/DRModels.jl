@@ -15,7 +15,7 @@
 # tolerance, warm-start every perturbed solve from the base-θ mode, and evaluate
 # the gradient at a θ OFF the optimum so the implicit db̂/dθ terms are exercised.
 
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 import Distributions
 
@@ -39,14 +39,14 @@ import Distributions
     y = Float64.([rand(Distributions.Poisson(λi)) for λi in λ])
 
     Xμ = hcat(ones(n), x)
-    lf = [DRM._logfactorial(round(Int, yi)) for yi in y]
+    lf = [DRModels._logfactorial(round(Int, yi)) for yi in y]
 
     # θ = [βμ(2); logσg; logσh], deliberately OFF the optimum.
     θ = [0.10, 0.45, log(0.55), log(0.25)]
 
     ntol = 1e-10                            # tight but above the warm-started roundoff floor
     nmax = 400
-    val0, g_an, b_base, ok = DRM._poisson_crossed_laplace_fg(
+    val0, g_an, b_base, ok = DRModels._poisson_crossed_laplace_fg(
         y, Xμ, gidx, G, hidx, Hh, lf, θ;
         grad = true, b0 = zeros(G + Hh), newton_tol = ntol, newton_maxiter = nmax,
     )
@@ -55,7 +55,7 @@ import Distributions
     @test val0 < 1e17                       # genuine marginal, never the sentinel
 
     function mnll(t)
-        v = DRM._poisson_crossed_laplace_fg(
+        v = DRModels._poisson_crossed_laplace_fg(
             y, Xμ, gidx, G, hidx, Hh, lf, Vector{Float64}(t);
             grad = false, b0 = copy(b_base), newton_tol = ntol, newton_maxiter = nmax,
         )[1]

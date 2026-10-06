@@ -1,4 +1,4 @@
-using DRM
+using DRModels
 using Test, TOML, LinearAlgebra, SparseArrays
 using SpecialFunctions: digamma
 
@@ -53,7 +53,7 @@ theta = [0.65326963194467, 0.5036808351782416, 1.3480366418696152, -1.7683043472
 """
 
 # Exercise the module's production include, never a test-only fallback.
-@assert isdefined(DRM, :_ls_whitened_eval)
+@assert isdefined(DRModels, :_ls_whitened_eval)
 
 function _white_moderate(kind; general = true, unobserved = false, c = 0.06)
     G = unobserved ? 4 : 3
@@ -76,12 +76,12 @@ function _white_moderate(kind; general = true, unobserved = false, c = 0.06)
 end
 
 function _white_call(d, theta = d.theta; seed = nothing, gradient = true)
-    DRM._ls_whitened_eval(d.kind, d.y, d.Xmu, d.Xpsi, d.gidx, d.G, d.Q,
+    DRModels._ls_whitened_eval(d.kind, d.y, d.Xmu, d.Xpsi, d.gidx, d.G, d.Q,
                           theta, d.Zeta, d.Zpsi; seed, gradient)
 end
 
 function _white_information(d, theta = d.theta; seed = nothing, h = 1e-5)
-    DRM._ls_whitened_information(d.kind, d.y, d.Xmu, d.Xpsi, d.gidx, d.G, d.Q,
+    DRModels._ls_whitened_information(d.kind, d.y, d.Xmu, d.Xpsi, d.gidx, d.G, d.Q,
                                  theta, d.Zeta, d.Zpsi; seed, h)
 end
 
@@ -139,7 +139,7 @@ function _selected_blocks_match_dense(d, result)
     eta0 = d.Xmu * d.theta[1:pμ]
     psi0 = d.Xpsi * d.theta[pμ+1:pμ+pψ]
     Pz = kron(d.Q, sparse([1, 2], [1, 2], [1.0, 1.0], 2, 2))
-    H = Matrix(DRM._ls_joint_hess(d.kind, d.y, eta0, psi0, d.gidx, d.G, z, Pz,
+    H = Matrix(DRModels._ls_joint_hess(d.kind, d.y, eta0, psi0, d.gidx, d.G, z, Pz,
                                   d.Zeta * L, d.Zpsi * L))  # dense oracle only in this small test
     dense = inv(Symmetric(H))
     for g in 1:(size(H, 1) ÷ 2)
@@ -161,9 +161,9 @@ end
             @test result.status.inside_clamp
             @test result.status.original_residual <= result.status.original_bound
             @test length(result.gradient) == length(d.theta)
-            legacy_value = DRM._ls_fit_nll(d.kind, d.y, d.Xmu, d.Xpsi, d.gidx, d.G,
+            legacy_value = DRModels._ls_fit_nll(d.kind, d.y, d.Xmu, d.Xpsi, d.gidx, d.G,
                                             d.Q, d.theta, d.Zeta, d.Zpsi)
-            legacy_gradient = DRM._ls_marginal_grad(d.kind, d.y, d.Xmu, d.Xpsi, d.gidx,
+            legacy_gradient = DRModels._ls_marginal_grad(d.kind, d.y, d.Xmu, d.Xpsi, d.gidx,
                                                       d.G, d.Q, d.theta, d.Zeta, d.Zpsi)
             @test isapprox(result.value, legacy_value; rtol = 0, atol = 1e-8)
             @test maximum(abs, result.gradient .- legacy_gradient) <= 2e-6
@@ -218,7 +218,7 @@ end
         @test isapprox(transported.status.initial_z, expected; rtol = 0, atol = 2e-14)
         # A finite typed seed can still overflow only when transported to Lnew.
         extreme = copy(d.theta); extreme[end] = -700.0
-        overflowing = DRM._LSWhitenedSeed(fill(1e10, 2d.G), cold.seed.L, cold.seed.theta)
+        overflowing = DRModels._LSWhitenedSeed(fill(1e10, 2d.G), cold.seed.L, cold.seed.theta)
         rejected_transport = _white_call(d, extreme; seed = overflowing)
         @test !rejected_transport.status.ok
         @test rejected_transport.status.reason === :invalid_seed
@@ -239,14 +239,14 @@ end
             @test cold.status.ok
             z_before, L_before, theta_before = copy(cold.seed.z), copy(cold.seed.L), copy(cold.seed.theta)
             Hpaired = _white_information(d; seed = cold.seed)
-            Hraw = DRM._ls_obs_information(d.kind, d.y, d.Xmu, d.Xpsi, d.gidx, d.G,
+            Hraw = DRModels._ls_obs_information(d.kind, d.y, d.Xmu, d.Xpsi, d.gidx, d.G,
                                             d.Q, d.theta, d.Zeta, d.Zpsi)
             @test all(isfinite, Matrix(Hpaired))
             @test isapprox(Matrix(Hpaired), Matrix(Hraw); rtol = 2e-4, atol = 2e-5)
             @test cold.seed.z == z_before
             @test cold.seed.L == L_before
             @test cold.seed.theta == theta_before
-            @test DRM._ls_whitened_vcov(d.kind, d.y, d.Xmu, d.Xpsi, d.gidx, d.G,
+            @test DRModels._ls_whitened_vcov(d.kind, d.y, d.Xmu, d.Xpsi, d.gidx, d.G,
                                          d.Q, d.theta, d.Zeta, d.Zpsi; seed = cold.seed) !== nothing
         end
 
@@ -254,7 +254,7 @@ end
         bad = copy(d.theta); bad[1] = Inf
         Hbad = _white_information(d, bad)
         @test all(isnan, Matrix(Hbad))
-        @test DRM._ls_whitened_vcov(d.kind, d.y, d.Xmu, d.Xpsi, d.gidx, d.G,
+        @test DRModels._ls_whitened_vcov(d.kind, d.y, d.Xmu, d.Xpsi, d.gidx, d.G,
                                      d.Q, bad, d.Zeta, d.Zpsi) === nothing
     end
 
@@ -265,20 +265,20 @@ end
         y = Float64.(fixture["y"])
         Q = sparse(_toml_matrix(fixture["Q"]))
         gidx, G = Int.(fixture["gidx"]), fixture["G"]
-        Zeta = DRM._ls_canonical_Zeta(length(y))
-        Zpsi = DRM._ls_canonical_Zpsi(length(y))
+        Zeta = DRModels._ls_canonical_Zeta(length(y))
+        Zpsi = DRModels._ls_canonical_Zpsi(length(y))
         for case in fixture["cases"]
             theta = Float64.(case["theta"])
-            result = DRM._ls_whitened_eval(Val(:gamma), y, Xmu, Xpsi, gidx, G, Q,
+            result = DRModels._ls_whitened_eval(Val(:gamma), y, Xmu, Xpsi, gidx, G, Q,
                                             theta, Zeta, Zpsi)
             @testset "$(case["idx"])-$(case["side"])" begin
-                raw_objective = DRM.LocScaleObjective(Val(:gamma), y, Xmu, Xpsi, gidx, G, Q)
-                paired_objective = DRM.LocScaleObjective(Val(:gamma), y, Xmu, Xpsi, gidx, G, Q;
+                raw_objective = DRModels.LocScaleObjective(Val(:gamma), y, Xmu, Xpsi, gidx, G, Q)
+                paired_objective = DRModels.LocScaleObjective(Val(:gamma), y, Xmu, Xpsi, gidx, G, Q;
                                                         whitened=true)
                 @test !raw_objective.whitened
                 @test paired_objective.whitened
                 @test isapprox(paired_objective(theta), case["nll"]; rtol=0, atol=1e-8)
-                @test maximum(abs, DRM._ls_objective_gradient(paired_objective, theta) .-
+                @test maximum(abs, DRModels._ls_objective_gradient(paired_objective, theta) .-
                               Float64.(case["gradient"])) <= 1e-7
                 @test result.status.ok
                 @test result.status.original_residual <= result.status.original_bound

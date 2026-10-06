@@ -1,6 +1,6 @@
 # Post-fit drmTMB-parity accessors: fit a tiny Gaussian location–scale model and
 # assert `is_converged` / `deviance` / `dof_residual` match their definitions.
-using DRM
+using DRModels
 using Test, Random
 
 @testset "parity accessors: is_converged / deviance / dof_residual" begin

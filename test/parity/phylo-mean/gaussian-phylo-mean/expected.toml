@@ -14,7 +14,7 @@ n = 72
 # The row's DEFINING quantity: the fitted phylogenetic SD, on drmTMB's
 # CORRELATION-SCALE convention (ape::vcv(tree, corr = TRUE) standardises the
 # tip variance to 1, independent of the tree's raw branch-length height).
-# DRM.jl's re_sd(fit)[:species] is on the RAW branch-length scale instead
+# DRModels.jl's re_sd(fit)[:species] is on the RAW branch-length scale instead
 # (tip variance = tree_height); the two are related by
 #   species_corr_scale == re_sd(fit)[:species] * sqrt(tree_height)
 # tree_height is recorded in expected.meta.toml. This cell's estimate is

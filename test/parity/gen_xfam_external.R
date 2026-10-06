@@ -1,7 +1,7 @@
-# gen_xfam_external.R — generate the EXTERNAL reference for DRM.jl's cross-family
+# gen_xfam_external.R — generate the EXTERNAL reference for DRModels.jl's cross-family
 # latent correlation, against the `gllvm` package (an independent codebase).
 #
-# Why gllvm: DRM's `fit_mixed_family` reports a shared-latent correlation
+# Why gllvm: DRModels's `fit_mixed_family` reports a shared-latent correlation
 #     rho = lambda1 lambda2 / sqrt((lambda1^2 + v1) (lambda2^2 + v2)),
 # which is the SAME estimand as the trait-trait residual correlation of a
 # 2-response, 1-factor GLLVM (`gllvm(..., num.lv = 1)`), reported by
@@ -19,7 +19,7 @@
 #
 # Output (generated NUMERIC outputs only — gllvm is GPL, its fitted numbers are
 # data, not source; mirrors the drmTMB parity-fixture contract, AGENTS.md s.3):
-#   fixtures/xfam-external-gllvm/data.csv            simulated y1,y2,x (DRM refits this)
+#   fixtures/xfam-external-gllvm/data.csv            simulated y1,y2,x (DRModels refits this)
 #   fixtures/xfam-external-gllvm/expected.toml       gllvm rho + loadings + phi + logLik
 #   fixtures/xfam-external-gllvm/expected.meta.toml  provenance (gllvm version, seed)
 #
@@ -68,12 +68,12 @@ phi      <- as.numeric(m$params$phi)          # gaussian residual SDs per trait
 ll_gllvm <- as.numeric(logLik(m))
 
 # Sanity: reconstruct getResidualCor from the loadings + phi via the SAME formula
-# DRM uses, to confirm we are reading gllvm's estimand correctly (not a coincidence).
+# DRModels uses, to confirm we are reading gllvm's estimand correctly (not a coincidence).
 rho_manual <- (eff_load[1] * eff_load[2]) /
   sqrt((eff_load[1]^2 + phi[1]^2) * (eff_load[2]^2 + phi[2]^2))
 stopifnot(abs(rho_manual - rho_gllvm) < 1e-4)
 
-# ---- Write data.csv (DRM refits the IDENTICAL data) -------------------------
+# ---- Write data.csv (DRModels refits the IDENTICAL data) -------------------------
 write.csv(data.frame(y1 = y1, y2 = y2, x = x),
           file = file.path(outdir, "data.csv"), row.names = FALSE)
 
@@ -95,9 +95,9 @@ exp_lines <- c(
   sprintf("phi2 = %s", fmtg(phi[2])),
   "",
   "[tol]",
-  "# cross-package: DRM (GHQ) vs gllvm (VA) fit the SAME data; the estimators",
+  "# cross-package: DRModels (GHQ) vs gllvm (VA) fit the SAME data; the estimators",
   "# agree far tighter than sampling error. 0.02 is a conservative engine-vs-",
-  "# engine band (on this data the achieved |DRM-gllvm| was 1.2e-4).",
+  "# engine band (on this data the achieved |DRModels-gllvm| was 1.2e-4).",
   "atol_rho_xpackage = 2e-2"
 )
 writeLines(exp_lines, file.path(outdir, "expected.toml"))
@@ -109,7 +109,7 @@ meta_lines <- c(
   'r_call = "gllvm(y = cbind(y1,y2), X = data.frame(x), formula = ~x, family = \\"gaussian\\", num.lv = 1)"',
   "seed = 20260610",
   'estimand = "getResidualCor[1,2] == lambda1 lambda2 / sqrt((lambda1^2+v1)(lambda2^2+v2))"',
-  'note = "External reference for DRM cross-family rho. gllvm is GPL; only its fitted NUMBERS are stored (data, not source). gllvm fits ONE family per matrix, so this validates the SAME-family (Gaussian x Gaussian) identical-estimand case; the genuinely mixed Gaussian x Poisson rho is validated against a large-N Monte-Carlo in Julia."'
+  'note = "External reference for DRModels cross-family rho. gllvm is GPL; only its fitted NUMBERS are stored (data, not source). gllvm fits ONE family per matrix, so this validates the SAME-family (Gaussian x Gaussian) identical-estimand case; the genuinely mixed Gaussian x Poisson rho is validated against a large-N Monte-Carlo in Julia."'
 )
 writeLines(meta_lines, file.path(outdir, "expected.meta.toml"))
 

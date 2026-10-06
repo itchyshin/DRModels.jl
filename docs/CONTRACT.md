@@ -1,4 +1,4 @@
-# DRM Julia POC bench — file contract
+# DRModels Julia POC bench — file contract
 
 Both the R harness and the Julia harness must agree on these formats.
 
@@ -259,7 +259,7 @@ effects on all four of `mu1`, `mu2`, `sigma1`, `sigma2` sharing one
 effect non-linearly, the marginal is no longer closed-form — it
 requires a Laplace approximation with AD through the inner
 mode-finding step. That is the "TMB-like machinery" deferred to
-DRM.jl v0.3+ in the parent plan.
+DRModels.jl v0.3+ in the parent plan.
 
 The R side will be timed for reference (drmTMB can fit it via TMB),
 but the Julia side will be marked "not implemented in POC" in the

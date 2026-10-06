@@ -2,7 +2,7 @@
 # y ~ x + (1 + x | g). log μ_i = Xμ_iᵀβ + b0_{g(i)} + b1_{g(i)}·x_i, with
 # (b0,b1) ~ N(0, Σ) per group, shape α = 1/σ². The 2-D group effect is integrated
 # out by K×K Gauss–Hermite quadrature. Recovery: log-mean slope and the RE SDs.
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 import Distributions
 

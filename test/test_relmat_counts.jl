@@ -1,7 +1,7 @@
 # test_relmat_counts.jl — general user-supplied PD-covariance random effect
 # (relatedness / animal model / precomputed spatial) for a COUNT family (#167).
 #
-# DRM.jl's phylogenetic sparse-Laplace engine is fully general in the prior
+# DRModels.jl's phylogenetic sparse-Laplace engine is fully general in the prior
 # precision Q: nothing in the inner mode-finder, the Takahashi selected-inversion
 # log-det derivatives, or the exact O(p) outer gradient requires Q to come from a
 # tree. This test exercises the Poisson route with an ARBITRARY PD covariance C
@@ -10,7 +10,7 @@
 # effects and the variance component, and (b) that the exact analytic gradient
 # matches central finite differences at the fitted θ (the FD gate the gradient
 # path must pass, mirroring test_poisson_phylo_laplace.jl).
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 import Distributions
 

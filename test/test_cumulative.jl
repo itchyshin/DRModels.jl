@@ -2,7 +2,7 @@
 # Pr(y ≤ k) = logistic(θ_k − η), with ordered cutpoints θ_1 < … < θ_{K-1} and a
 # single linear predictor η (the location intercept is dropped — cutpoints absorb
 # it). One parameter `mu`, no `sigma`. Mirrors drmTMB's `cumulative_logit`.
-using DRM
+using DRModels
 using Test, Random
 
 @testset "Cumulative logit (ordinal) — recovery" begin

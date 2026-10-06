@@ -1,7 +1,7 @@
 # Truncated negative-binomial (NB2) family: strictly-positive counts (≥ 1) — no
 # zeros possible (litter sizes, group sizes given presence). The likelihood is the
 # zero-truncated NB2, P(k) = NB(k)/(1-NB(0)). Mirrors drmTMB's `truncated_nbinom2`.
-using DRM
+using DRModels
 using Test, Random
 import Distributions
 

@@ -3,7 +3,7 @@
 # them to equal the simulated truth exactly; instead they must (a) have the right
 # shape, (b) correlate strongly with the true per-group effects, and (c) be
 # centred near zero. Covers single (1|g), correlated (1+x|g), and multi (1|g)+(1|h).
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra, Statistics
 
 @testset "ranef() — Gaussian BLUPs" begin

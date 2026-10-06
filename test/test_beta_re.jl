@@ -1,7 +1,7 @@
 # Random intercept on the beta mean: a proportion GLMM, y ~ x + (1|g). logit μ_i
 # = Xμ_iᵀβ + b_{g(i)}, b_g ~ N(0,σ_b²), precision φ = 1/σ². The group effect is
 # integrated out per group by Gauss–Hermite quadrature. Recovery: β slope, φ, σ_b.
-using DRM
+using DRModels
 using Test, Random
 import Distributions
 

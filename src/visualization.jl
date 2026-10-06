@@ -1,11 +1,12 @@
 # visualization.jl — plotting *data* providers, mirroring drmTMB's visualization
-# helpers (plot_parameter_surface, plot_corpairs). DRM.jl keeps the base package
+# helpers (plot_parameter_surface, plot_corpairs). DRModels.jl keeps the base package
 # plotting-dependency-free: these return the numbers a plot needs (grids, levels,
 # correlations) so any backend (Makie/Plots/…) can render them with a few lines.
 # The drmTMB-named plot_* wrappers are documented to call these.
 
 function _profile_plot_deviance(value, reference, caller::AbstractString, location)
     comparison = _profile_reference_difference(value, reference)
+    comparison.status === :sentinel_objective && return NaN
     comparison.status === :accepted || throw(ArgumentError(
         "$caller: profiled objective at $location is $(comparison.status)",
     ))
@@ -27,6 +28,9 @@ Returns `(x, deviance, estimate, cutoff, k, param, coef, level)`:
 - `cutoff` — the `χ²₁(level)` reference line used by profile intervals.
 
 Requires the fitted objective (`fit.nll`); the model must be fit through `drm`.
+On a homogeneous Toeplitz `temporal()` fit, `k` must be a mean coefficient: the
+`sigma` and partial-autocorrelation coordinates are refused, as in drmTMB's
+`profile()`.
 """
 function profile_curve(
     fit::DrmFit, k::Int; npoints::Int=41, span::Real=3.0, level::Real=0.95
@@ -38,6 +42,7 @@ function profile_curve(
     )
     p = length(fit.theta)
     1 <= k <= p || throw(ArgumentError("k must be an index in 1:$p"))
+    _homtoep_refuse_nonmean_index(fit, "profile_curve", k)
     npoints >= 3 || throw(ArgumentError("npoints must be at least 3"))
     θ̂ = copy(fit.theta)
     nll = fit.nll
@@ -45,7 +50,7 @@ function profile_curve(
     nllhat = nll(θ̂)
     isfinite(nllhat) || throw(ArgumentError("profile_curve: fitted objective is non-finite"))
     autodiff = _profile_autodiff_mode(nll, nllgrad, θ̂)
-    se = stderror(fit)
+    se = _stderror(fit)
     s = (isfinite(se[k]) && se[k] > 0) ? se[k] : max(abs(θ̂[k]), 1.0)
     offsets = collect(range(-span, span; length=npoints))
     offsets[argmin(abs.(offsets))] = 0.0
@@ -92,10 +97,11 @@ end
     parameter_surface(fit, k1, k2; npoints = 25, span = 3.0) -> NamedTuple
 
 2-D profile-likelihood surface over two coefficients (global indices `k1`, `k2`
-into `coef(fit)`), the data behind drmTMB's `plot_parameter_surface`. At each
-grid node the remaining parameters are profiled out (re-optimised), so the
-surface is the genuine profile deviance `2(ℓ̂ − ℓ_profile(θ_{k1}, θ_{k2}))`, not
-a quadratic approximation.
+into `coef(fit)`), drawn by [`plot_parameter_surface`](@ref). drmTMB has no
+2-D likelihood surface (its `plot_parameter_surface` plots predicted
+distributional parameters). At each grid node the remaining parameters are
+profiled out (re-optimised), so the surface is the genuine profile deviance
+`2(ℓ̂ − ℓ_profile(θ_{k1}, θ_{k2}))`, not a quadratic approximation.
 
 Returns `(x, y, z, k1, k2)`:
 - `x`, `y` — the grid coordinate vectors for `θ[k1]`, `θ[k2]` (length `npoints`),
@@ -104,6 +110,8 @@ Returns `(x, y, z, k1, k2)`:
   `0` at the MLE, rising away from it. `χ²₂` contours give joint confidence regions.
 
 Requires the fitted objective (`fit.nll`); the model must be fit through `drm`.
+On a homogeneous Toeplitz `temporal()` fit, both indices must be mean
+coefficients, the scope of its profile intervals.
 """
 function parameter_surface(fit::DrmFit, k1::Int, k2::Int; npoints::Int=25, span::Real=3.0)
     fit.nll === nothing && throw(
@@ -114,6 +122,7 @@ function parameter_surface(fit::DrmFit, k1::Int, k2::Int; npoints::Int=25, span:
     p = length(fit.theta)
     (1 <= k1 <= p && 1 <= k2 <= p && k1 != k2) ||
         throw(ArgumentError("k1, k2 must be distinct indices in 1:$p"))
+    _homtoep_refuse_nonmean_index(fit, "parameter_surface", k1, k2)
     npoints >= 2 || throw(ArgumentError("npoints must be at least 2"))
     nll = fit.nll
     nllgrad = fit.nllgrad
@@ -121,7 +130,7 @@ function parameter_surface(fit::DrmFit, k1::Int, k2::Int; npoints::Int=25, span:
     nllhat = nll(θ̂)
     isfinite(nllhat) || throw(ArgumentError("parameter_surface: fitted objective is non-finite"))
     autodiff = _profile_autodiff_mode(nll, nllgrad, θ̂)
-    se = stderror(fit)
+    se = _stderror(fit)
     s1 = (isfinite(se[k1]) && se[k1] > 0) ? se[k1] : max(abs(θ̂[k1]), 1.0)
     s2 = (isfinite(se[k2]) && se[k2] > 0) ? se[k2] : max(abs(θ̂[k2]), 1.0)
     x = range(θ̂[k1] - span * s1, θ̂[k1] + span * s1; length=npoints)

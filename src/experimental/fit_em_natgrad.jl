@@ -18,7 +18,7 @@
 # This file remains an unwired experimental prototype.
 using LinearAlgebra, SparseArrays, ForwardDiff, Random, Statistics, Printf
 # Standalone script path (broken relative include historically): prefer
-# `using DRM` + `DRM.lc_metric` / `fit_q4_sparse_tmb` from the public module.
+# `using DRModels` + `DRModels.lc_metric` / `fit_q4_sparse_tmb` from the public module.
 include(joinpath(@__DIR__, "..", "fit_q4_sparse_tmb.jl"))  # marginal_and_exact_grad, …
 include(joinpath(@__DIR__, "..", "lc_metric.jl"))          # extracted Fisher metric (#13 S1b)
 

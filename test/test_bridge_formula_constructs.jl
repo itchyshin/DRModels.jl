@@ -1,10 +1,10 @@
 # Formula constructs through the bridge with R-contrast fidelity (A6 of the
-# drmTMB <-> DRM.jl parity programme; DRM.jl #467 + the #609 factors case;
+# drmTMB <-> DRModels.jl parity programme; DRModels.jl #467 + the #609 factors case;
 # design 258 in drmTMB).
 #
 # drmTMB sends `options["coef_labels"]` -- base-R `model.matrix()` column
 # names per dpar -- and `_bridge_echo_coef_labels` pastes them onto the
-# fitted columns POSITIONALLY. Measured through drmTMB against DRM.jl
+# fitted columns POSITIONALLY. Measured through drmTMB against DRModels.jl
 # 430ef64cc on 2026-09-05: `factor()`, `I(x^2)`, `poly(x, 2)`, `(x + z)^2`
 # and `- term` already agree with `engine = "tmb"` name-for-name to <= 3e-11,
 # but a design the two engines build DIFFERENTLY with the SAME column count
@@ -12,22 +12,22 @@
 # codepoint order (max|coef diff| 0.462), an ordered factor R codes with
 # contr.poly (1.180), a contr.sum factor (1.757), or a factor whose level
 # order was reversed on the Julia side only -- passed the echo and reported
-# DRM.jl's coefficients under R's names with NO error.
+# DRModels.jl's coefficients under R's names with NO error.
 #
 # `_bridge_check_coef_labels_fidelity` closes that: every regression block
-# DRM.jl can render itself must render to exactly the supplied base-R names,
+# DRModels.jl can render itself must render to exactly the supplied base-R names,
 # in order, else the fit is refused naming the dpar and BOTH spellings.
-# Blocks DRM.jl cannot render (the `raw, raw` fallback), and blocks with no
+# Blocks DRModels.jl cannot render (the `raw, raw` fallback), and blocks with no
 # formula counterpart, are still echoed verbatim -- the count check in
 # test_bridge_coef_labels_echo.jl is unchanged.
-using DRM
+using DRModels
 using Test
 
 const _FC_N = 60
 const _FC_X = collect(range(-2.0, 2.0; length = _FC_N))
 const _FC_Z = [sin(0.3 * i) + 0.05 * i for i in 1:_FC_N]
 # Three levels whose Julia `sort(unique(...))` order is hi < lo < mid, so
-# DRM.jl's baseline is "hi" and its dummy columns are lo, mid. An R user
+# DRModels.jl's baseline is "hi" and its dummy columns are lo, mid. An R user
 # with `factor(grp, levels = c("lo", "mid", "hi"))` gets baseline "lo" and
 # columns mid, hi -- same count, different design.
 const _FC_GRP = [["hi", "lo", "mid"][mod1(i, 3)] for i in 1:_FC_N]
@@ -85,8 +85,8 @@ const _FC_CONSTRUCTS = [
      expected = Dict("mu" => ["(Intercept)", "x", "factor(flag)TRUE"], "sigma" => ["(Intercept)"])),
 ]
 
-# One disagreement per row: the SAME column count as DRM.jl's design, a
-# spelling R would produce for a design DRM.jl did not build. `mentions`
+# One disagreement per row: the SAME column count as DRModels.jl's design, a
+# spelling R would produce for a design DRModels.jl did not build. `mentions`
 # must all appear in the refusal so the user sees both spellings.
 const _FC_DISAGREEMENTS = [
     (label = "level order (R levels lo, mid, hi -> baseline lo)",
@@ -154,7 +154,7 @@ const _FC_DISAGREEMENTS = [
         end
     end
 
-    @testset "(c) a design DRM.jl did not build is refused BY NAME, naming both spellings" begin
+    @testset "(c) a design DRModels.jl did not build is refused BY NAME, naming both spellings" begin
         for d in _FC_DISAGREEMENTS
             @testset "$(d.label)" begin
                 # Same column count: the count check alone passes this.
@@ -163,7 +163,7 @@ const _FC_DISAGREEMENTS = [
                 status, msg = _fc_try(d.formula; options = _fc_options(d.labels))
                 @test status === :error
                 status === :error || (println("NOT REFUSED: ", msg["coef_names"]); return)
-                @test occursin("does not match the design DRM.jl built", msg)
+                @test occursin("does not match the design DRModels.jl built", msg)
                 for m in d.mentions
                     @test occursin(m, msg)
                 end
@@ -193,15 +193,15 @@ const _FC_DISAGREEMENTS = [
     # `_bridge_lss_public_to_raw!`, which `_bridge_rendered_regression_blocks`
     # skips by construction, so before `_bridge_check_lss_coef_labels_fidelity`
     # it was echoed positionally with no design comparison at all. Measured
-    # through drmTMB origin/main 2fcbb0fbf against DRM.jl aee371cc9 on
+    # through drmTMB origin/main 2fcbb0fbf against DRModels.jl aee371cc9 on
     # 2026-09-05: `sd(study) ~ <character column>` converged on both engines to
     # an identical logLik (-69.917488, diff 2.98e-13) under identical names,
     # with `mu` and `sigma` faithful to 2.1e-11 and the `sd` block off by
     # 1.3853 -- the baseline had moved. Same column COUNT, so (e) never fired.
-    @testset "(f) an LSS sd(group) block DRM.jl did not build is refused BY NAME" begin
+    @testset "(f) an LSS sd(group) block DRModels.jl did not build is refused BY NAME" begin
         n = 96
         group = [string("s", mod1(i, 12)) for i in 1:n]
-        # Codepoint order is "Beta" < "alpha" < "gamma", so DRM.jl's baseline
+        # Codepoint order is "Beta" < "alpha" < "gamma", so DRModels.jl's baseline
         # is "Beta" and its columns are alpha, gamma. An R user whose locale
         # collates alpha < Beta < gamma sends baseline "alpha", columns
         # Beta, gamma -- same count, different design.
@@ -250,7 +250,7 @@ const _FC_DISAGREEMENTS = [
         end
         @test bad === :error
         if bad === :error
-            @test occursin("does not match the design DRM.jl built", msg)
+            @test occursin("does not match the design DRModels.jl built", msg)
             @test occursin("sd_g", msg)
             @test occursin("labBeta", msg)
             @test occursin("labalpha", msg)
@@ -274,10 +274,10 @@ const _FC_DISAGREEMENTS = [
 
     @testset "(f) too MANY names on a coded block names the unused-level cause" begin
         # The shape drmTMB produces for a factor with a level no row uses:
-        # R's `model.matrix()` sends one name per DECLARED level, DRM.jl
+        # R's `model.matrix()` sends one name per DECLARED level, DRModels.jl
         # builds one per OBSERVED level. Measured through drmTMB on
         # 2026-09-05, the bare count message named neither the column nor the
-        # fix (DRM.jl #467/#609).
+        # fix (DRModels.jl #467/#609).
         status, msg = _fc_try("y ~ x + grp";
             options = _fc_options(Dict(
                 "mu" => ["(Intercept)", "x", "grplo", "grpmid", "grpunused"],
@@ -286,7 +286,7 @@ const _FC_DISAGREEMENTS = [
         status === :error && @test occursin("supplies 5 names", msg)
         status === :error && @test occursin("droplevels", msg)
         status === :error && @test occursin("factor level with no rows", msg)
-        # It names the coded columns DRM.jl actually built.
+        # It names the coded columns DRModels.jl actually built.
         status === :error && @test occursin("mu_grp: lo", msg)
 
         # A block with no coded column gets the bare count message: the hint

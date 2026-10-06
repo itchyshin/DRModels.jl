@@ -2,7 +2,7 @@
 
 !!! note "Status — Stable (Gaussian mean, coordinate-direct)"
     Mirrors drmTMB's [Coordinate-spatial structured effects](https://itchyshin.github.io/drmTMB/articles/spatial-models.html).
-    **In DRM.jl today:** `spatial(1 | site)` on the Gaussian **mean** with site
+    **In DRModels.jl today:** `spatial(1 | site)` on the Gaussian **mean** with site
     coordinates — an exponential spatial correlation `K(ρ) = exp(-d / ρ)` whose
     range `ρ` is estimated jointly. Closed-form GLS (coordinate-direct;
     mesh/SPDE is planned).
@@ -13,7 +13,7 @@ with a distance-based correlation built from the site coordinates,
 spatial SD. Pass the coordinates via `coords =` (one row per `site` level):
 
 ```@example sp
-using DRM, Random, LinearAlgebra
+using DRModels, Random, LinearAlgebra
 Random.seed!(8)
 
 G = 50
@@ -46,13 +46,18 @@ the robust outputs. `spatial`, `phylo`, `animal`, and `relmat` all share one
 closed-form structured-GLS engine — only the source of the correlation differs
 (coordinates / tree / pedigree / supplied matrix).
 
+Check the fitted model before interpreting the spatial SD or range. Start with
+[`check_drm`](@ref) and read its convergence, gradient, and Hessian messages;
+then use [Improving convergence](../model-guides/convergence.md) if any of those
+checks warn. The [Detailed capabilities & limits](../capabilities.md) page states
+what this Gaussian spatial route does and does not establish about uncertainty.
+
 !!! note "Gaussian only (for now)"
     A coordinate spatial effect is currently supported on the **Gaussian** mean.
     Routing `spatial(1 | site)` through the sparse-Laplace engine for the
     non-Gaussian families (Poisson, NB2, Gamma, Beta, Binomial) — alongside
-    `relmat` / `animal` — is tracked as future work in
-    [issue #167](https://github.com/itchyshin/DRM.jl/issues/167)
-    (`phylo` already has its non-Gaussian route).
+    `relmat` / `animal` — is planned future work (`phylo` already has its
+    non-Gaussian route).
 
 ## See also
 

@@ -1,6 +1,6 @@
 # coverage_campaign.jl — interval-coverage campaign runner (issue #468).
 #
-# Measures empirical coverage of DRM.jl's public confint() Wald / profile
+# Measures empirical coverage of DRModels.jl's public confint() Wald / profile
 # intervals against known truth, on the two cell shapes the standing fences
 # gate: test/test_parity_gaussian_phylo_mean.jl:77 and
 # test/test_parity_biv_q4_phylo_reml.jl:72 both assert
@@ -57,7 +57,7 @@
 # phylocov truths are the log-Cholesky (`cov_to_lc`) entries of the SAME 4x4
 # among-axis covariance used to simulate the correlated phylo effects.
 
-using DRM
+using DRModels
 using LinearAlgebra
 using Random
 using Printf
@@ -144,12 +144,12 @@ const TRUTH_B_LOGSIGMA2 = -0.6
 # Lam[1,4]=0.00 vs empirical -5e-5..ok, but Lam[2,4]=0.04 vs empirical
 # 0.0339 -- the whole matrix is off, not just noise). It does not matter for
 # the fixture's own point-estimate parity check (which only compares
-# DRM.jl's refit of the data drmTMB itself refit -- no ground truth is
+# DRModels.jl's refit of the data drmTMB itself refit -- no ground truth is
 # invoked), but it matters here: coverage needs an honest truth. This runner
 # instead draws U = Ltree * Z * Llam' with Llam = cholesky(Lam).L, which is
 # the textbook matrix-normal identity Cov(vec(U)) = Lam ⊗ Kraw (re-verified
 # the same way: empirical cov within Monte Carlo noise of Lam). Truth is
-# `Lam` itself on DRM.jl's raw covariance scale; at ntip=16 (this cell's
+# `Lam` itself on DRModels.jl's raw covariance scale; at ntip=16 (this cell's
 # fixed size) the balanced tree's height is exactly 1.0, so raw and
 # correlation scale coincide and no rescale is needed either way.
 const LAM_B = Symmetric([
@@ -160,7 +160,7 @@ const LAM_B = Symmetric([
 ])
 
 # Column-major lower-triangle order, identical to `cov_to_lc`'s own
-# convention (and to `DRM`'s internal `_q4_phylocov_names()`, not called here
+# convention (and to `DRModels`'s internal `_q4_phylocov_names()`, not called here
 # since it is private -- these are just row labels).
 const PHYLOCOV_NAMES_B = [
     "Sigma_a:L11", "Sigma_a:L21", "Sigma_a:L31", "Sigma_a:L41",
@@ -330,7 +330,7 @@ function run_rep(cell::Symbol, seed::Integer, ntip::Integer, per::Integer, jit::
                                    tr, covered, t_fit, reported_ntip, cell, jit))
             else
                 # Same guard the Wald branch above already carries, and it became
-                # load-bearing here after DRM.jl#493: a failed profile endpoint now
+                # load-bearing here after DRModels.jl#493: a failed profile endpoint now
                 # returns +/-Inf (rather than the old fabricated near-zero step), so
                 # an unguarded `r.lower <= tr <= r.upper` would be TRIVIALLY TRUE and
                 # would report ~100% coverage on exactly the reps whose endpoint

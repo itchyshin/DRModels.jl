@@ -3,7 +3,7 @@
 # b0_{g(i)} + b1_{g(i)}·x_i is the mean of log y, with (b0,b1) ~ N(0, Σ) per group,
 # σ = SD of log y. The 2-D group effect is integrated out by K×K Gauss–Hermite
 # quadrature. Recovery: log-mean slope and the RE covariance Σ.
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 import Distributions
 

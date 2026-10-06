@@ -3,7 +3,7 @@
 #
 # Wired into test/runtests.jl by Option A (#445) after #423+#428 landed.
 #
-#   julia --project=. -e 'using DRM, Test; include("test/test_parity_gaussian_phylo_mean.jl")'
+#   julia --project=. -e 'using DRModels, Test; include("test/test_parity_gaussian_phylo_mean.jl")'
 #
 # Claim fence: this PR adds a same-target fixture for gaussian_phylo_mean
 # within the row's declared tolerance. claim_status stays partial. Not
@@ -30,7 +30,7 @@
 # expected.meta.toml [identifiability]) — real curvature, not a flat
 # plateau.
 #
-# THE SCALE TRAP (kept from the retired cell, unchanged): DRM.jl's
+# THE SCALE TRAP (kept from the retired cell, unchanged): DRModels.jl's
 # `re_sd(fit)[:species]` is on the RAW branch-length scale (tip variance =
 # tree height h); drmTMB's is on the CORRELATION scale (`ape::vcv(tree, corr
 # = TRUE)`, tip variance 1 regardless of h). The two agree only when h == 1.
@@ -44,7 +44,7 @@
 # rescaled to three absolute heights; heights.toml records drmTMB's native
 # refit at each. drmTMB's sd_phylo_corr is height-invariant there (the
 # correlation-scale objective is bit-identical regardless of raw height); the
-# test below checks that DRM.jl's raw re_sd, after x sqrt(measured height),
+# test below checks that DRModels.jl's raw re_sd, after x sqrt(measured height),
 # lands on that same invariant value at all three heights.
 
 # #476: wrapped in a module so this file's FIXTURE/_load_data/_coef_named/
@@ -52,7 +52,7 @@
 # included later by runtests.jl (they used to live bare in Main).
 module TestParityGaussianPhyloMean
 
-using DRM
+using DRModels
 using Test
 using TOML
 using DelimitedFiles: readdlm
@@ -94,7 +94,7 @@ end
 
 _within(a, b, rtol, atol) = abs(a - b) <= max(atol, rtol * max(abs(a), abs(b)))
 
-## drmTMB's sd_phylo (correlation scale) from a fitted DRM.jl model + its own
+## drmTMB's sd_phylo (correlation scale) from a fitted DRModels.jl model + its own
 ## tree-height reading: species_corr_scale == re_sd(fit)[:species] * sqrt(h).
 function _sd_phylo_corr_scale(fit, tree_newick::AbstractString)
     phy = augmented_phy(tree_newick)
@@ -157,7 +157,7 @@ end
 
     # The row's DEFINING quantity: the fitted phylogenetic SD (see the SCALE
     # TRAP note above the testset). Compare on drmTMB's CORRELATION scale by
-    # multiplying DRM.jl's RAW-scale re_sd by sqrt(tree_height).
+    # multiplying DRModels.jl's RAW-scale re_sd by sqrt(tree_height).
     @test haskey(expected, "re_sd")
     @test haskey(expected["re_sd"], "species_corr_scale")
     @test haskey(meta, "tree_height")

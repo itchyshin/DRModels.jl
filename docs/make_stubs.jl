@@ -9,13 +9,10 @@
 
 const SRC     = joinpath(@__DIR__, "src")
 const BASE    = "https://itchyshin.github.io/drmTMB/"
-const ROADMAP = "https://github.com/itchyshin/DRM.jl/blob/main/ROADMAP.md"
+const ROADMAP = "https://github.com/itchyshin/DRModels.jl/blob/main/ROADMAP.md"
 
-# (relpath under docs/src/, title, status, drmTMB url suffix ("" = DRM.jl-only), what DRM.jl has today)
+# (relpath under docs/src/, title, status, drmTMB url suffix ("" = DRModels.jl-only), what DRModels.jl has today)
 pages = [
-    ("get-started.md", "Get started", "First slice", "articles/drmTMB.html",
-        "install + the verified q=4 fit; the `bf()` first-fit example lands in Phase 1.1."),
-
     # Model Guides
     ("model-guides/model-map.md", "What can I fit today?", "First slice", "articles/model-map.html",
         "the verified q=4 PLSM path; the full capability matrix fills as the API lands."),
@@ -40,7 +37,7 @@ pages = [
     ("tutorials/proportion-beta-binomial.md", "Proportions and success rates", "Planned or reserved", "articles/proportion-beta-binomial.html",
         "beta / beta-binomial arrive in Phase 2."),
     ("tutorials/bivariate-coscale.md", "Changing residual coupling with rho12", "First slice", "articles/bivariate-coscale.html",
-        "the verified bivariate q=4 PLSM — the DRM.jl headline."),
+        "the verified bivariate q=4 PLSM — the DRModels.jl headline."),
     ("tutorials/meta-analysis.md", "Mean effects and residual heterogeneity", "Planned or reserved", "articles/meta-analysis.html",
         "`gaussian()` + `meta_V()` — planned."),
     ("tutorials/structural-dependence.md", "Structural dependence overview", "First slice", "articles/structural-dependence.html",
@@ -76,7 +73,7 @@ pages = [
 
     # Reference (6 workflow-ordered categories, mirroring drmTMB)
     ("reference/package.md", "Package", "Reference", "reference/index.html",
-        "the `DRM` module overview (1 item in drmTMB)."),
+        "the `DRModels` module overview (1 item in drmTMB)."),
     ("reference/model-specification.md", "Model specification", "Reference", "reference/index.html",
         "`bf()` / `drm_formula()` + family constructors (13 items in drmTMB)."),
     ("reference/structured-effect-markers.md", "Structured-effect markers", "Reference", "reference/index.html",
@@ -88,11 +85,11 @@ pages = [
     ("reference/visualization.md", "Visualization", "Reference", "reference/index.html",
         "`plot_corpairs`, `plot_parameter_surface` (3 in drmTMB)."),
 
-    # DRM.jl-specific pages
+    # DRModels.jl-specific pages
     ("r-julia-bridge.md", "R ↔ Julia bridge", "Planned or reserved", "",
         "Hopper + Lovelace: `drmTMB(..., engine = \"julia\")` via JuliaCall (Phase 1.5). The bridge glue lives in the drmTMB R repo."),
     ("rosetta.md", "Rosetta — R ↔ Julia", "Planned or reserved", "",
-        "the same model side by side in drmTMB (R) and DRM.jl (Julia) — fills as the `bf()` front end lands."),
+        "the same model side by side in drmTMB (R) and DRModels.jl (Julia) — fills as the `bf()` front end lands."),
 ]
 
 function stub(title, status, url, today)
@@ -101,7 +98,7 @@ function stub(title, status, url, today)
     # $title
 
     !!! note "Status — $status"
-        $(mirror)**In DRM.jl today:** $today
+        $(mirror)**In DRModels.jl today:** $today
 
     *Phase 0 stub — filled via Workflow D (`mirror-article`). See the [roadmap]($ROADMAP).*
     """
@@ -115,22 +112,6 @@ for (rel, title, status, url, today) in pages
         global skipped += 1
     else
         write(path, stub(title, status, url, today))
-        global created += 1
-    end
-end
-
-# changelog mirrors NEWS.md
-let path = joinpath(SRC, "changelog.md")
-    if isfile(path)
-        global skipped += 1
-    else
-        write(path, """
-        # Changelog
-
-        The changelog mirrors [`NEWS.md`](https://github.com/itchyshin/DRM.jl/blob/main/NEWS.md)
-        in the repository root. See there for the per-version history; the live work
-        ledger is [GitHub Issues](https://github.com/itchyshin/DRM.jl/issues).
-        """)
         global created += 1
     end
 end

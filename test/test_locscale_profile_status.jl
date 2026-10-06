@@ -1,7 +1,7 @@
 # Failure disclosure for canonical location-scale profile roots. These controls
 # are deliberately pure: the root finder must not turn an iteration limit or a
 # failed trial into a plausible finite confidence-limit coordinate.
-using DRM
+using DRModels
 using Test, SparseArrays, LinearAlgebra, Random
 import Distributions
 
@@ -26,9 +26,9 @@ end
 
 @testset "location-scale profile endpoint status" begin
     @testset "legacy and structured CI helpers retain doc bindings" begin
-        docs = Base.Docs.meta(DRM)
-        @test haskey(docs, Base.Docs.Binding(DRM, :_ls_profile_ci))
-        @test haskey(docs, Base.Docs.Binding(DRM, :_ls_profile_ci_result))
+        docs = Base.Docs.meta(DRModels)
+        @test haskey(docs, Base.Docs.Binding(DRModels, :_ls_profile_ci))
+        @test haskey(docs, Base.Docs.Binding(DRModels, :_ls_profile_ci_result))
     end
 
     quadratic(t) = (t^2 - 1.0, 2.0 * t, true)
@@ -36,7 +36,7 @@ end
     @testset "iteration limits are not certified endpoints" begin
         # Thirty Newton updates from 1e20 still leave t around 9e10. The old
         # scalar helper returned that unevaluated/non-root value as an endpoint.
-        exhausted = DRM._ls_profile_root_result(quadratic, 0.0; dir=1.0, init=1e20)
+        exhausted = DRModels._ls_profile_root_result(quadratic, 0.0; dir=1.0, init=1e20)
         @test !exhausted.accepted
         @test exhausted.endpoint_failed
         @test !exhausted.unbounded
@@ -49,7 +49,7 @@ end
         # bracket candidate and its residual for diagnostics rather than calling
         # it a root.
         stuck(t) = (3.0, NaN, true)
-        forced = DRM._ls_profile_root_result(
+        forced = DRModels._ls_profile_root_result(
             stuck, 0.0; dir=1.0, init=2.0, maxnewton=0,
         )
         @test !forced.accepted
@@ -62,18 +62,18 @@ end
     end
 
     @testset "valid roots and no-crossing remain distinct" begin
-        accepted = DRM._ls_profile_root_result(quadratic, 0.0; dir=1.0, init=2.0)
+        accepted = DRModels._ls_profile_root_result(quadratic, 0.0; dir=1.0, init=2.0)
         @test accepted.accepted
         @test !accepted.endpoint_failed
         @test !accepted.unbounded
         @test accepted.reason == :accepted
         @test abs(accepted.residual) < 1e-7
-        @test DRM._ls_profile_root(quadratic, 0.0; dir=1.0, init=2.0) == accepted.value
+        @test DRModels._ls_profile_root(quadratic, 0.0; dir=1.0, init=2.0) == accepted.value
 
         # Diagnostics expose the evaluated parameter coordinate, rather than the
         # internal positive displacement from the fitted value.
         centered(x) = ((x - 3.0)^2 - 1.0, 2.0 * (x - 3.0), true)
-        shifted = DRM._ls_profile_root_result(centered, 3.0; dir=-1.0, init=2.0)
+        shifted = DRModels._ls_profile_root_result(centered, 3.0; dir=-1.0, init=2.0)
         @test shifted.accepted
         @test isapprox(shifted.value, 2.0; atol=1e-7, rtol=0)
         @test shifted.candidate == shifted.value
@@ -82,26 +82,26 @@ end
         # A callback may provide no usable slope; guarded bisection remains a
         # valid route to a certified evaluated root.
         no_slope(t) = (t^2 - 1.0, NaN, true)
-        bisection = DRM._ls_profile_root_result(no_slope, 0.0; dir=1.0, init=2.0)
+        bisection = DRModels._ls_profile_root_result(no_slope, 0.0; dir=1.0, init=2.0)
         @test bisection.accepted
         @test !bisection.endpoint_failed
 
         flat(t) = (-1.0, 0.0, true)
-        nocross = DRM._ls_profile_root_result(flat, 0.0; dir=1.0, init=1.0)
+        nocross = DRModels._ls_profile_root_result(flat, 0.0; dir=1.0, init=1.0)
         @test !nocross.accepted
         @test !nocross.endpoint_failed
         @test nocross.unbounded
         @test nocross.reason == :no_crossing
         @test nocross.value == Inf
 
-        invalid_budget = DRM._ls_profile_root_result(flat, 0.0; dir=1.0, init=1.0,
+        invalid_budget = DRModels._ls_profile_root_result(flat, 0.0; dir=1.0, init=1.0,
                                                       maxexpand=0)
         @test invalid_budget.endpoint_failed
         @test !invalid_budget.unbounded
         @test invalid_budget.reason == :invalid_search_budget
 
         failed_trial(t) = (NaN, NaN, false)
-        failed = DRM._ls_profile_root_result(failed_trial, 0.0; dir=1.0, init=1.0)
+        failed = DRModels._ls_profile_root_result(failed_trial, 0.0; dir=1.0, init=1.0)
         @test !failed.accepted
         @test failed.endpoint_failed
         @test !failed.unbounded
@@ -113,7 +113,7 @@ end
         # because an isolated bad trial is now contracted away (#651) and would
         # no longer leave the arm unresolved.
         refinement_failure(t) = (0.0 < t < 2.0) ? (NaN, NaN, false) : (t^2 - 1.0, NaN, true)
-        refined = DRM._ls_profile_root_result(refinement_failure, 0.0; dir=1.0, init=2.0)
+        refined = DRModels._ls_profile_root_result(refinement_failure, 0.0; dir=1.0, init=2.0)
         @test refined.endpoint_failed
         @test !refined.unbounded
         @test refined.reason == :evaluation_failed
@@ -125,27 +125,27 @@ end
         @test refined.evaluations == 2 + refined.contractions
 
         interrupted(t) = throw(InterruptException())
-        @test_throws InterruptException DRM._ls_profile_root_result(
+        @test_throws InterruptException DRModels._ls_profile_root_result(
             interrupted, 0.0; dir=1.0, init=1.0,
         )
 
         callback_error(t) = throw(DomainError(t, "test evaluation failure"))
-        ordinary_error = DRM._ls_profile_root_result(callback_error, 0.0; dir=1.0, init=1.0)
+        ordinary_error = DRModels._ls_profile_root_result(callback_error, 0.0; dir=1.0, init=1.0)
         @test ordinary_error.endpoint_failed
         @test !ordinary_error.unbounded
         @test ordinary_error.reason == :exception
 
         zero_gap(t) = (0.0, 0.0, true)
-        nonfinite_init = DRM._ls_profile_root_result(zero_gap, 0.0; dir=1.0, init=Inf)
+        nonfinite_init = DRModels._ls_profile_root_result(zero_gap, 0.0; dir=1.0, init=Inf)
         @test nonfinite_init.endpoint_failed
         @test !nonfinite_init.accepted
         @test !nonfinite_init.unbounded
         @test nonfinite_init.reason == :nonfinite_initialization
-        nonfinite_origin = DRM._ls_profile_root_result(zero_gap, Inf; dir=1.0, init=1.0)
+        nonfinite_origin = DRModels._ls_profile_root_result(zero_gap, Inf; dir=1.0, init=1.0)
         @test nonfinite_origin.endpoint_failed
         @test !nonfinite_origin.accepted
         @test nonfinite_origin.reason == :nonfinite_initialization
-        overflow = DRM._ls_profile_root_result(zero_gap, floatmax(Float64);
+        overflow = DRModels._ls_profile_root_result(zero_gap, floatmax(Float64);
                                                 dir=1.0, init=floatmax(Float64))
         @test overflow.endpoint_failed
         @test !overflow.accepted
@@ -156,14 +156,14 @@ end
         shift = 1e16
         half = 1.920729410347062
         rounded(t) = begin
-            reference = DRM._profile_reference_difference(shift + t^2, shift)
+            reference = DRModels._profile_reference_difference(shift + t^2, shift)
             (gap=reference.difference - half, slope=2.0 * t,
              ok=reference.status === :accepted, cancellation=reference.cancellation)
         end
-        reference = DRM._profile_reference_difference(shift + 1.6^2, shift)
+        reference = DRModels._profile_reference_difference(shift + 1.6^2, shift)
         @test reference.status == :accepted
         @test reference.cancellation > 0
-        cancellation = DRM._ls_profile_root_result(
+        cancellation = DRModels._ls_profile_root_result(
             rounded, 0.0; dir=1.0, init=1.6, cancellation=reference.cancellation,
         )
         @test cancellation.endpoint_failed
@@ -174,14 +174,47 @@ end
         # The CI path must compare the two represented NLL values before
         # subtracting the LR half-threshold, rather than subtracting huge NLLs
         # inside the callback.
-        difference = DRM._profile_reference_difference(shift + 1.6^2, shift)
+        difference = DRModels._profile_reference_difference(shift + 1.6^2, shift)
         @test difference.difference - half != 0.0
+    end
+
+    @testset "boundary log-Cholesky diagonal is exempt from the gradient check" begin
+        # owner decision 15 (a): a log-diagonal below _LS_PROFILE_BOUNDARY_LOGCHOL
+        # is flat, so only that coordinate is dropped from the 1e-7 stationarity
+        # test; the exemption is reported, and other coordinates stay strict.
+        f = u -> sum(abs2, u)
+        gb!(g, u) = (g .= [0.0, 5e-7]; g)             # gradient only on coordinate 2
+        args = (f, gb!, [0.0, -9.0], true)
+        strict = DRModels._ls_profile_candidate_status(args...)
+        @test !strict.accepted && strict.reason == :not_stationary
+        ex = DRModels._ls_profile_candidate_status(args...; logchol_diag = [2])
+        @test ex.accepted && ex.reason == :accepted_boundary_exempt
+        @test ex.gradient_maxabs <= 1e-7
+        # Not on the boundary (value above the cutoff): no exemption.
+        off = DRModels._ls_profile_candidate_status(f, gb!, [0.0, -3.0], true; logchol_diag = [2])
+        @test !off.accepted && off.reason == :not_stationary
+        # A non-exempt coordinate above tolerance still rejects.
+        gc!(g, u) = (g .= [5e-7, 5e-7]; g)
+        other = DRModels._ls_profile_candidate_status(f, gc!, [0.0, -9.0], true; logchol_diag = [2])
+        @test !other.accepted && other.reason == :not_stationary
+        # L21 of the same row is exempt only when log L22 is on the boundary.
+        gl21!(g, u) = (g .= [0.0, 5e-7, 0.0]; g)      # coords: (b, L21, log L22)
+        l21 = DRModels._ls_profile_candidate_status(f, gl21!, [0.0, 0.0, -9.0], true;
+                                                    logchol_diag = [3], l21_pos = 2, l22_pos = 3)
+        @test l21.accepted && l21.reason == :accepted_boundary_exempt
+        l21off = DRModels._ls_profile_candidate_status(f, gl21!, [0.0, 0.0, -3.0], true;
+                                                       logchol_diag = [3], l21_pos = 2, l22_pos = 3)
+        @test !l21off.accepted
+        # Already stationary: reported as plain :accepted, not as an exemption.
+        g0!(g, u) = (g .= 0.0; g)
+        plain = DRModels._ls_profile_candidate_status(f, g0!, [0.0, -9.0], true; logchol_diag = [2])
+        @test plain.accepted && plain.reason == :accepted
     end
 
     @testset "finite exhausted nuisance solution is rejected" begin
         # Optim's termination flag alone is insufficient: the profiler checks the
         # same 1e-7 free-gradient target on a fresh candidate evaluation.
-        stationary_check = DRM._ls_profile_candidate_status(
+        stationary_check = DRModels._ls_profile_candidate_status(
             u -> sum(abs2, u),
             (g, u) -> (g .= 1.0; g),
             [0.0],
@@ -200,14 +233,14 @@ end
         Q = sparse(1.0I, 2, 2)
         # [beta_mu(2), beta_sigma(1), log L11, L21, log L22]
         theta = [0.0, 0.1, 0.0, 0.0, 0.0, 0.0]
-        result = DRM._ls_profile_nll_result(
+        result = DRModels._ls_profile_nll_result(
             kind, y, Xmu, Xsigma, gidx, 2, Q, theta, 1, 0.1;
             iterations=0,
         )
         @test isfinite(result.value)
         @test !result.accepted
         @test result.reason == :not_converged
-        _, _, accepted = DRM._ls_profile_nll(
+        _, _, accepted = DRModels._ls_profile_nll(
             kind, y, Xmu, Xsigma, gidx, 2, Q, theta, 1, 0.1;
             iterations=0,
         )
@@ -216,7 +249,7 @@ end
 
     @testset "whitened canonical retry is reported and raw route is untouched" begin
         fit = _ls_profile_status_smoke_fit()
-        obj = fit.nll::DRM.LocScaleObjective
+        obj = fit.nll::DRModels.LocScaleObjective
         base = size(obj.Xμ, 2) + size(obj.Xψ, 2)
         perm = vcat(collect(1:base), [base + 1, base + 3, base + 2])
         theta = fit.theta[perm]
@@ -224,7 +257,7 @@ end
         value = theta[idx] + 0.1
         damaged_warm_start = fill(10.0, length(theta) - 1)
 
-        recovered = DRM._ls_profile_nll_result(
+        recovered = DRModels._ls_profile_nll_result(
             obj.kind, obj.y, obj.Xμ, obj.Xψ, obj.gidx, obj.G, obj.Q,
             theta, idx, value;
             x0=damaged_warm_start,
@@ -242,7 +275,7 @@ end
         # relaxing the 1e-7 exact-gradient gate (the GitHub 1.10 regression).
         z = Distributions.quantile(Distributions.Normal(), 0.975)
         endpoint_value = theta[idx] - max(z * stderror(fit)[2], 1e-3)
-        endpoint_recovered = DRM._ls_profile_nll_result(
+        endpoint_recovered = DRModels._ls_profile_nll_result(
             obj.kind, obj.y, obj.Xμ, obj.Xψ, obj.gidx, obj.G, obj.Q,
             theta, idx, endpoint_value;
             whitened=true,
@@ -254,7 +287,7 @@ end
         @test endpoint_recovered.converged
         @test endpoint_recovered.gradient_maxabs <= 1e-7
 
-        raw = DRM._ls_profile_nll_result(
+        raw = DRModels._ls_profile_nll_result(
             obj.kind, obj.y, obj.Xμ, obj.Xψ, obj.gidx, obj.G, obj.Q,
             theta, idx, value;
             x0=damaged_warm_start,

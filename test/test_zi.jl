@@ -2,7 +2,7 @@
 # structural-zero component (logit link): P(0) = π + (1-π)·P_count(0),
 # P(k>0) = (1-π)·P_count(k). Applies to Poisson (ZIP) and NB2 (ZINB). Mirrors
 # drmTMB's `zi` modifier.
-using DRM
+using DRModels
 using Test, Random
 import Distributions
 

@@ -13,7 +13,7 @@ phi1 = 5.1214395104921151e-01
 phi2 = 6.0216678066066587e-01
 
 [tol]
-# cross-package: DRM (GHQ) vs gllvm (VA) fit the SAME data; the estimators
+# cross-package: DRModels (GHQ) vs gllvm (VA) fit the SAME data; the estimators
 # agree far tighter than sampling error. 0.02 is a conservative engine-vs-
-# engine band (on this data the achieved |DRM-gllvm| was 1.2e-4).
+# engine band (on this data the achieved |DRModels-gllvm| was 1.2e-4).
 atol_rho_xpackage = 2e-2

@@ -1,12 +1,12 @@
 #!/usr/bin/env julia
 #
-# bootstrap-issues.jl — seed the DRM.jl GitHub work ledger (labels, milestones,
+# bootstrap-issues.jl — seed the DRModels.jl GitHub work ledger (labels, milestones,
 # the ~18 near-term issues). Idempotent for labels (--force) and tolerant for
 # milestones (dup titles are skipped). Run once from the repo root:
 #
 #     julia tools/bootstrap-issues.jl
 #
-# Requires `gh` authenticated for itchyshin/DRM.jl. Article (26) and family (8)
+# Requires `gh` authenticated for itchyshin/DRModels.jl. Article (26) and family (8)
 # slices are NOT opened here — they live as checklists in the roadmap issues and
 # are promoted to real issues when their phase opens (Workflow D / H).
 
@@ -21,7 +21,7 @@ labels = [
     ("r-bridge","5319e7","Hopper / Lovelace — parity, engine=julia, RCall"),
     ("workflow","fbca04","Changes to .claude/workflows/*.js"),
     ("engine-quality","0052cc","Workflow Q gate work"),
-    ("formula-parity","c2e0c6","drmTMB <-> DRM.jl formula contract (Boole)"),
+    ("formula-parity","c2e0c6","drmTMB <-> DRModels.jl formula contract (Boole)"),
     ("idea","d4c5f9","Pólya scouting signal / creative combination"),
     ("autoresearch","bfdadc","Workflow R estimator-optimisation experiment"),
     ("phase-0","ededed","Phase 0 — Team & workflows"),
@@ -110,7 +110,7 @@ issues = [
    "Wire Workflow G (DRM_PARITY_TESTS=1) against vendored drmTMB v0.1.3 reference outputs in test/parity/fixtures/. Generated outputs only — never GPL source. Owner: Hopper.",
    "engine-quality,r-bridge,phase-1","Phase 1.1 — bf() front end + R parity"),
   ("Design: public verb — drm() vs fit() vs drmTMB()",
-   "Decide DRM.jl's entry-point verb (the twin's public surface). Paste-and-run feel for R users vs Julia idiom. Resolve before Workflow B. Owner: Boole/Emmy. Record in docs/dev-log/decisions/.",
+   "Decide DRModels.jl's entry-point verb (the twin's public surface). Paste-and-run feel for R users vs Julia idiom. Resolve before Workflow B. Owner: Boole/Emmy. Record in docs/dev-log/decisions/.",
    "idea,formula-parity,phase-1","Phase 1.1 — bf() front end + R parity"),
   ("Design: phylo-tree + R-object marshalling",
    "Decide Newick/phylo reading (Phylo.jl vs minimal parser) and how pedigree / Ainv / K cross the R<->Julia bridge. Needed for real trees + the bridge. Owner: Hopper/Noether.",

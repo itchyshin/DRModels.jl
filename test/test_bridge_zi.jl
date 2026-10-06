@@ -16,7 +16,7 @@
 # The second half pins the REFUSAL: `family = "zi_poisson"` must throw, and the
 # message must name the spelling that works. It is deliberately NOT an alias --
 # see `_bridge_mixture_family_hint` in src/bridge.jl.
-using DRM
+using DRModels
 using Test, Random
 import Distributions
 
@@ -53,7 +53,7 @@ end
         π = 1 ./ (1 .+ exp.(-ηπ))
         y = Float64.([rand() < π[i] ? 0 : rand(Distributions.Poisson(λ[i])) for i in 1:n])
 
-        res = DRM.drm_bridge(; formula = Dict("mu" => "y ~ x", "zi" => "zi ~ x"),
+        res = DRModels.drm_bridge(; formula = Dict("mu" => "y ~ x", "zi" => "zi ~ x"),
                                family = "poisson", data = Dict("y" => y, "x" => x))
         fit = drm(bf(@formula(y ~ x), @formula(zi ~ x)), Poisson(); data = (; y, x))
 
@@ -73,7 +73,7 @@ end
         # A plain Poisson on the same data is a DIFFERENT, worse fit -- so the
         # `zi` entry demonstrably changed the likelihood rather than being
         # silently dropped somewhere in the marshalling.
-        plain = DRM.drm_bridge(; formula = Dict("mu" => "y ~ x"),
+        plain = DRModels.drm_bridge(; formula = Dict("mu" => "y ~ x"),
                                  family = "poisson", data = Dict("y" => y, "x" => x))
         @test length(plain["coef"]) == 2
         @test res["loglik"] > plain["loglik"] + 1.0
@@ -91,7 +91,7 @@ end
         πz = 0.30
         y = Float64.([rand() < πz ? 0 : rand(Distributions.NegativeBinomial(θ, θ / (θ + μ[i]))) for i in 1:n])
 
-        res = DRM.drm_bridge(; formula = Dict("mu" => "y ~ x", "sigma" => "sigma ~ 1",
+        res = DRModels.drm_bridge(; formula = Dict("mu" => "y ~ x", "sigma" => "sigma ~ 1",
                                               "zi" => "zi ~ 1"),
                                family = "nbinom2", data = Dict("y" => y, "x" => x))
         fit = drm(bf(@formula(y ~ x), @formula(sigma ~ 1), @formula(zi ~ 1)),
@@ -107,10 +107,10 @@ end
     @testset "`zi_poisson` is REFUSED, with the working spelling named" begin
         # Not an alias, on purpose: `zi_poisson -> Poisson()` would fit a PLAIN
         # Poisson without error whenever the caller omitted the `zi ~` part.
-        @test_throws ArgumentError DRM._bridge_family("zi_poisson")
+        @test_throws ArgumentError DRModels._bridge_family("zi_poisson")
 
         msg = try
-            DRM._bridge_family("zi_poisson")
+            DRModels._bridge_family("zi_poisson")
             ""
         catch e
             sprint(showerror, e)
@@ -125,7 +125,7 @@ end
         n = 60
         x = randn(n)
         y = Float64.(rand(Distributions.Poisson(2.0), n))
-        @test_throws ArgumentError DRM.drm_bridge(;
+        @test_throws ArgumentError DRModels.drm_bridge(;
             formula = Dict("mu" => "y ~ x", "zi" => "zi ~ 1"),
             family = "zi_poisson", data = Dict("y" => y, "x" => x))
     end
@@ -134,7 +134,7 @@ end
         for (tag, want) in (("zi_nbinom2", "nbinom2"), ("zero_inflated_poisson", "poisson"),
                             ("hurdle_nbinom2", "nbinom2"))
             msg = try
-                DRM._bridge_family(tag)
+                DRModels._bridge_family(tag)
                 ""
             catch e
                 sprint(showerror, e)
@@ -144,15 +144,15 @@ end
         end
         # `hu` is named for a hurdle tag, `zi` for a zero-inflated one.
         @test occursin("`hu` entry", sprint(showerror,
-            try DRM._bridge_family("hurdle_nbinom2") catch e; e end))
+            try DRModels._bridge_family("hurdle_nbinom2") catch e; e end))
         @test occursin("`zi` entry", sprint(showerror,
-            try DRM._bridge_family("zi_poisson") catch e; e end))
+            try DRModels._bridge_family("zi_poisson") catch e; e end))
 
         # NO hint leakage: a genuinely unknown family, and a mixture prefix on a
         # NON-count family, still get the plain message with no suggestion.
         for tag in ("weibull", "zi_gaussian", "hurdle_beta")
             msg = try
-                DRM._bridge_family(tag)
+                DRModels._bridge_family(tag)
                 ""
             catch e
                 sprint(showerror, e)

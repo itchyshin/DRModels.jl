@@ -1,7 +1,7 @@
 # Canonical location-scale profile jobs are independent across coefficients, but
 # each coefficient retains its serial lower/upper warm-start chain.  This small
 # public fit keeps the test below the slow full-vector profile fixture.
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 import Distributions
 
@@ -31,7 +31,7 @@ function _locscale_profile_threads_fixture()
         Gamma();
         data=(; y, x, species),
     )
-    @test fit.nll isa DRM.LocScaleObjective
+    @test fit.nll isa DRModels.LocScaleObjective
     return fit
 end
 
@@ -133,7 +133,7 @@ end
     # the band, so this exercises both contraction sites.
     banded(t) = (1.1 <= t <= 1.6) ? (NaN, NaN, false) : (t^2 - 1.0, 2.0 * t, true)
 
-    contracted = DRM._ls_profile_root_result(banded, 0.0; dir=1.0, init=2.0)
+    contracted = DRModels._ls_profile_root_result(banded, 0.0; dir=1.0, init=2.0)
     @test contracted.accepted
     @test !contracted.endpoint_failed
     @test !contracted.unbounded
@@ -146,7 +146,7 @@ end
 
     # Counterfactual: with the contraction budget removed the identical callback
     # abandons the arm and reports the signed infinity this leaf exists to stop.
-    abandoned = DRM._ls_profile_root_result(banded, 0.0; dir=1.0, init=2.0,
+    abandoned = DRModels._ls_profile_root_result(banded, 0.0; dir=1.0, init=2.0,
                                             maxcontract=0)
     @test !abandoned.accepted
     @test abandoned.endpoint_failed
@@ -160,7 +160,7 @@ end
     # the displacement, so refusing every coordinate away from the fitted value
     # covers both directions.
     unreachable(v) = v == 0.0 ? (-1.0, 0.0, true) : (NaN, NaN, false)
-    hopeless = DRM._ls_profile_root_result(unreachable, 0.0; dir=1.0, init=1.0)
+    hopeless = DRModels._ls_profile_root_result(unreachable, 0.0; dir=1.0, init=1.0)
     @test !hopeless.accepted
     @test hopeless.endpoint_failed
     @test !hopeless.unbounded
@@ -168,7 +168,7 @@ end
     @test hopeless.contractions > 0
 
     # A negative direction is guarded the same way, and reports -Inf.
-    lower_side = DRM._ls_profile_root_result(unreachable, 0.0; dir=-1.0, init=1.0)
+    lower_side = DRModels._ls_profile_root_result(unreachable, 0.0; dir=-1.0, init=1.0)
     @test lower_side.endpoint_failed
     @test lower_side.value == -Inf
 
@@ -177,7 +177,7 @@ end
     # was not established.  That is reported as a failed endpoint, not as an
     # unbounded interval, so `confint` refuses it instead of returning Inf.
     never_crosses(t) = (1.0 <= t <= 1.05) ? (NaN, NaN, false) : (-1.0, 0.0, true)
-    incomplete = DRM._ls_profile_root_result(never_crosses, 0.0; dir=1.0, init=1.0)
+    incomplete = DRModels._ls_profile_root_result(never_crosses, 0.0; dir=1.0, init=1.0)
     @test !incomplete.unbounded
     @test incomplete.endpoint_failed
     @test incomplete.reason == :infeasible_region
@@ -186,7 +186,7 @@ end
     # A search that never had to contract keeps the documented `:no_crossing`
     # verdict, so the fail-closed branch above cannot mask a genuine one.
     flat(t) = (-1.0, 0.0, true)
-    nocross = DRM._ls_profile_root_result(flat, 0.0; dir=1.0, init=1.0)
+    nocross = DRModels._ls_profile_root_result(flat, 0.0; dir=1.0, init=1.0)
     @test nocross.unbounded
     @test !nocross.endpoint_failed
     @test nocross.reason == :no_crossing

@@ -3,7 +3,7 @@
 # SD ≥ 0 boundary. On a deliberate σ2-axis collapse the profile lower bound is
 # exactly 0 (the honest "no detectable scale-phylo signal" interval) — which a
 # percentile bootstrap cannot produce — while identified axes get two-sided CIs.
-using DRM, Test, Random, LinearAlgebra
+using DRModels, Test, Random, LinearAlgebra
 
 @testset "profile_sigma_a — q4 among-axis SD profile CIs (boundary lower = 0)" begin
     Random.seed!(20260613)

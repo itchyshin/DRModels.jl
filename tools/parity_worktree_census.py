@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Collect and verify a metadata-only census of DRM parity worktrees."""
+"""Collect and verify a metadata-only census of DRModels parity worktrees."""
 import argparse, copy, json, os, re, subprocess, sys, tempfile
 from datetime import datetime, timezone
 from pathlib import Path

@@ -1,6 +1,6 @@
 # Generating R-parity fixtures (maintainer recipe)
 
-The parity suite (`runparity.jl`, gated by `DRM_PARITY_TESTS=1`) compares DRM.jl
+The parity suite (`runparity.jl`, gated by `DRM_PARITY_TESTS=1`) compares DRModels.jl
 against **committed drmTMB reference numbers** (currently recorded as
 **0.6.0** in each fixture’s `expected.meta.toml` after #392) — it never calls R
 at run time. Those reference numbers are produced **out-of-band** by a
@@ -8,7 +8,7 @@ maintainer with local R + drmTMB using `gen_fixtures.R`. This file is the recipe
 
 ## License boundary (read first)
 
-- drmTMB is **GPL (≥3)**; DRM.jl is **MIT**.
+- drmTMB is **GPL (≥3)**; DRModels.jl is **MIT**.
 - Commit **generated numeric outputs only** — coefficients, vcov, logLik, AIC,
   and the input data. Numbers are facts, not GPL code, so this stays MIT-clean.
 - **Never vendor drmTMB source** (no `.R` / `.cpp` / `.hpp` copied or adapted)
@@ -20,7 +20,7 @@ maintainer with local R + drmTMB using `gen_fixtures.R`. This file is the recipe
 
 ```
 test/parity/fixtures/<slug>/
-├── data.csv            # input data DRM.jl re-fits (header row, comma-separated)
+├── data.csv            # input data DRModels.jl re-fits (header row, comma-separated)
 ├── expected.toml       # drmTMB reference numbers (format below)
 └── expected.meta.toml  # provenance only — NO drmTMB code
 ```
@@ -82,11 +82,11 @@ write.csv(dat, "data.csv", row.names = FALSE)
 # ... emit expected.toml from coef(fit), vcov(fit), logLik(fit), AIC(fit) ...
 ```
 
-For `meta-analysis-V`, local drmTMB uses `meta_V(V = v)` in the R call; DRM.jl's
+For `meta-analysis-V`, local drmTMB uses `meta_V(V = v)` in the R call; DRModels.jl's
 runner uses the current Julia marker spelling `meta_V(v)`.
 
 For NB2 and Student, generated coefficients are written on the **shared**
-drmTMB / DRM.jl working scale (no Jacobian transform):
+drmTMB / DRModels.jl working scale (no Jacobian transform):
 
 - NB2: `log(σ)` with size = `exp(-2·σ)` in both packages.
 - Student: `log(ν − 2)` with `ν = 2 + exp(η)` in both packages.
@@ -116,7 +116,7 @@ data  = [[ ... ], [ ... ], [ ... ], [ ... ]]
 # atol_loglik = 1e-3
 ```
 
-The runner reads `[fit].formula` to rebuild the DRM.jl `bf(@formula(y ~ x),
+The runner reads `[fit].formula` to rebuild the DRModels.jl `bf(@formula(y ~ x),
 @formula(sigma ~ x))` bundle, re-fits by ML, and applies the tolerance table in
 `../README.md`. The `coef` names must match `drm_coef_named(fit)` exactly.
 
@@ -124,13 +124,13 @@ The runner reads `[fit].formula` to rebuild the DRM.jl `bf(@formula(y ~ x),
 
 For a coupled `(1 | p | group)` location–scale model (a correlated species effect
 on BOTH the mean and the dispersion), add an optional `[ranef]` block giving the
-group-level covariance **in DRM.jl's convention**:
+group-level covariance **in DRModels.jl's convention**:
 
 ```toml
 [ranef]
 group    = "species"
 sd_mu    = 0.50      # mean-axis SD
-sd_sigma = 0.40      # dispersion-axis SD (DRM.jl ψ = log θ scale)
+sd_sigma = 0.40      # dispersion-axis SD (DRModels.jl ψ = log θ scale)
 cor      = 0.25      # mean ↔ dispersion correlation
 ```
 
@@ -138,7 +138,7 @@ The runner compares these against `vc(fit)[Symbol(group)]` (within `[tol]`
 `rtol_ranef` / `atol_ranef`). **Two NB2 reparameterisations** must be applied by
 the generator (both encoded in `gen_fixtures.R::generate_nbinom2_locscale`):
 
-- fixed `sigma` coefficients: `DRM log(θ) = −2 · drmTMB sigma` (handled in
+- fixed `sigma` coefficients: `DRModels log(θ) = −2 · drmTMB sigma` (handled in
   `transform_expected` for `count-nbinom2` / `nbinom2-locscale`);
 - the **dispersion-axis** group effect satisfies `a^ψ_DRM = −2 · a^σ_drmTMB`, so
   `sd_sigma_DRM = 2 · sd_sigma_drmTMB` and the mean↔dispersion **correlation flips
@@ -153,7 +153,7 @@ drmTMB's actual layout before trusting the numbers.
 > are implemented … labelled covariance blocks remain planned for a later
 > non-Gaussian random-effect gate." So `generate_nbinom2_locscale()` is **guarded**
 > (skips cleanly) and the `nbinom2-locscale` fixture cannot be generated until
-> drmTMB adds that feature — **DRM.jl is ahead here**. Until then this model is
+> drmTMB adds that feature — **DRModels.jl is ahead here**. Until then this model is
 > validated internally (marginal vs Gauss–Hermite, exact gradient vs finite
 > differences, recovery, stationarity), not against drmTMB. The
 > `nbinom2-dispersion` case (`sigma ~ x`, fixed effects) IS supported by drmTMB

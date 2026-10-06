@@ -1,7 +1,7 @@
 # `summary(fit)` parity method: fit a tiny Gaussian location–scale model and
 # assert `summary(fit)` returns the same coefficient table as `coeftable(fit)`,
 # plus sanity-check the `coef`/`vcov`/`nobs` accessor shapes.
-using DRM
+using DRModels
 using Test, Random
 
 @testset "summary(fit) method + coef/vcov/nobs shapes" begin

@@ -3,7 +3,7 @@
 # range ρ is estimated jointly. Closed-form structured-GLS marginal (K depends on
 # θ, so it is rebuilt each evaluation). Range is weakly identified from one
 # realization, so the test asserts the robustly-recoverable parts.
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 
 @testset "Gaussian spatial(1|site, coords) — fit + recovery" begin

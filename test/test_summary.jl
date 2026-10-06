@@ -1,8 +1,8 @@
 # test_summary.jl — readable DrmFit printout (Base.show MIME"text/plain") and the
-# StatsModels-backed `coeftable`. Runs standalone: `using DRM, Test, Random`.
+# StatsModels-backed `coeftable`. Runs standalone: `using DRModels, Test, Random`.
 
-using DRM, Test, Random
-import Distributions          # qualified — DRM exports its own `Poisson` family
+using DRModels, Test, Random
+import Distributions          # qualified — DRModels exports its own `Poisson` family
 
 @testset "DrmFit summary (show + coeftable)" begin
     @testset "Gaussian location–scale (sigma ~ x)" begin

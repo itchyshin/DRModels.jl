@@ -1,5 +1,5 @@
 # Cluster-2: standalone non-Gaussian σ-axis random intercept `sigma ~ 1 + (1|g)`
-# via DRM._fit_sigma_axis_re (the scale-axis RE on the q=2 location–scale core).
+# via DRModels._fit_sigma_axis_re (the scale-axis RE on the q=2 location–scale core).
 #
 # Primary purpose: regression guard for the grad! keyword bug — the inner
 # `grad!` called `_sigma_re_grad(...; a0 = warm[])`, but `_sigma_re_grad` only
@@ -9,9 +9,9 @@
 # gradient. This test exercises the gradient path directly AND end-to-end.
 #
 # The route is not yet wired into any drm() frontend, so it is reached as
-# DRM._fit_sigma_axis_re. Gamma is used because the σ (scale) axis is only
+# DRModels._fit_sigma_axis_re. Gamma is used because the σ (scale) axis is only
 # meaningful for dispersion-bearing families (Poisson has no scale parameter).
-using DRM, Test, Random, LinearAlgebra, SparseArrays
+using DRModels, Test, Random, LinearAlgebra, SparseArrays
 import Distributions
 
 # Gamma draw matching the locscale leaf parameterisation (cf. test_locscale_gamma_e2e):
@@ -29,17 +29,17 @@ _sigma_axis_gamma_draw(η, ψ) = (α = exp(ψ); μ = exp(η);
     y = [_sigma_axis_gamma_draw(β0μ, β0ψ + u[gidx[i]]) for i in 1:n]
     Xμ = ones(n, 1); Xψ = ones(n, 1)
     Q = sparse(1.0 * I, G, G)
-    Zη, Zψ = DRM._sigma_re_loadings(n)
+    Zη, Zψ = DRModels._sigma_re_loadings(n)
     θ = vcat(β0μ, β0ψ, log(τ))               # [βμ; βψ; logL11]
 
     # The FIXED grad! passes the Ref `warm`; _sigma_re_grad dereferences it.
     warmref = Base.RefValue{Union{Nothing,Vector{Float64}}}(nothing)
-    g = DRM._sigma_re_grad(Val(:gamma), y, Xμ, Xψ, gidx, G, Q, θ, Zη, Zψ; warm = warmref)
+    g = DRModels._sigma_re_grad(Val(:gamma), y, Xμ, Xψ, gidx, G, Q, θ, Zη, Zψ; warm = warmref)
     @test length(g) == 3
     @test all(isfinite, g)
     # The buggy keyword (`a0`) must be rejected — this is the exact contract the
     # inner grad! relied on, and the bug was passing `a0` instead of `warm`.
-    @test_throws MethodError DRM._sigma_re_grad(Val(:gamma), y, Xμ, Xψ, gidx, G, Q,
+    @test_throws MethodError DRModels._sigma_re_grad(Val(:gamma), y, Xμ, Xψ, gidx, G, Q,
                                                 θ, Zη, Zψ; a0 = nothing)
 end
 
@@ -53,7 +53,7 @@ end
     y = [_sigma_axis_gamma_draw(β0μ, β0ψ + u[gidx[i]]) for i in 1:n]
     Xμ = ones(n, 1); Xψ = ones(n, 1)
 
-    fit = DRM._fit_sigma_axis_re(DRM.Gamma(), Val(:gamma), y, Xμ, Xψ, gidx, G,
+    fit = DRModels._fit_sigma_axis_re(DRModels.Gamma(), Val(:gamma), y, Xμ, Xψ, gidx, G,
                                  ["(Intercept)"], ["(Intercept)"], "g";
                                  link = :log, se = false)
     @test is_converged(fit)

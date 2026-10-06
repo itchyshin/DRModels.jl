@@ -2,7 +2,7 @@
 
 !!! note "Status — Stable"
     Mirrors drmTMB's [Choosing response families](https://itchyshin.github.io/drmTMB/articles/distribution-families.html).
-    **In DRM.jl today:** Gaussian, Student-t, LogNormal, Gamma, Poisson,
+    **In DRModels.jl today:** Gaussian, Student-t, LogNormal, Gamma, Poisson,
     negative-binomial (NB2) + truncated, beta, beta-binomial,
     zero-one-inflated beta, Tweedie, and cumulative-logit (ordinal) — plus the
     `zi` / `hu` count modifiers. **This is drmTMB's complete family set.**
@@ -13,12 +13,12 @@ parameters a formula with `bf`.
 | Response looks like… | Family | Mean link | Second parameter (`sigma` slot) |
 |---|---|---|---|
 | Real-valued, symmetric | `Gaussian()` | identity | residual SD `σ` (log) |
-| Real-valued, heavy tails / outliers | `Student()` | identity | scale `σ` (log) + d.o.f. `nu` |
+| Real-valued, heavy tails / outliers | `Student()` | identity | scale `σ` (log) + d.o.f. `nu` (`ν = 2 + exp(η)`) |
 | Strictly positive, continuous | `Gamma()` | log | shape `α = 1/σ²` |
 | Positive **with exact zeros** | `Tweedie()` | log | √dispersion `σ` + power `nu` ∈ (1,2) |
 | Strictly positive, right-skewed (multiplicative) | `LogNormal()` | identity on `log y` | SD of `log y`, `σ` (log) |
 | Counts (variance ≈ mean) | `Poisson()` | log | — |
-| Counts, overdispersed | `NegBinomial2()` | log | dispersion `θ` (log) |
+| Counts, overdispersed | `NegBinomial2()` | log | overdispersion scale `σ` (log); size `θ = 1/σ²` |
 | Counts with extra zeros | + `zi ~ …` modifier | logit on `π` | (on `Poisson` / `NegBinomial2`) |
 | Proportions in (0,1) | `Beta()` | logit | precision `φ = 1/σ²` |
 | Successes out of trials | `BetaBinomial()` | logit | overdispersion `φ = 1/σ²` (`cbind(s,f)`) |
@@ -35,8 +35,8 @@ right-skewed. The mean uses a log link; the `sigma` slot is the **coefficient of
 variation**, mapped to the shape `α = 1/σ²`:
 
 ```@example fam
-using DRM, Random
-import Distributions          # `Gamma` below is DRM's family; qualify the distribution
+using DRModels, Random
+import Distributions          # `Gamma` below is DRModels's family; qualify the distribution
 Random.seed!(20260618)
 
 n = 3000

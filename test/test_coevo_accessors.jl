@@ -1,4 +1,4 @@
-using DRM
+using DRModels
 using Test, LinearAlgebra, Random
 
 # Reuse the existing coevolution-test DGP (test_gaussian_bivariate_phylo.jl): a
@@ -44,7 +44,7 @@ function _coevo_data(; p::Int = 10, nrep::Int = 3, seed::Int = 188)
         m2 = _COEVO_BETA.mu2[1] + _COEVO_BETA.mu2[2] * x[i] + u[2]
         s1 = exp(_COEVO_BETA.s1[1] + u[3])
         s2 = exp(_COEVO_BETA.s2[1] + u[4])
-        ρ = DRM.RHO_GUARD * tanh(_COEVO_BETA.rho[1])
+        ρ = DRModels.RHO_GUARD * tanh(_COEVO_BETA.rho[1])
         e = cholesky(Symmetric([s1^2 ρ*s1*s2; ρ*s1*s2 s2^2])).L * randn(rng, 2)
         y1[i] = m1 + e[1]
         y2[i] = m2 + e[2]

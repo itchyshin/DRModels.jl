@@ -15,7 +15,7 @@ def check(r):
     paths=sorted((RROOT/'R').glob('*.R'))+[RROOT/'NAMESPACE']+sorted((ROOT/'src').rglob('*.jl'))
     sources={str(p):sha(p) for p in paths}
     require(r.get('source_unchanged') is True and r.get('source_before')==sources==r.get('source_after'),'source provenance')
-    rt=r.get('runtime',{});require(rt.get('threads')==1 and rt.get('blas')==1 and rt.get('source')==str(ROOT/'src/DRM.jl'),'runtime')
+    rt=r.get('runtime',{});require(rt.get('threads')==1 and rt.get('blas')==1 and rt.get('source')==str(ROOT/'src/DRModels.jl'),'runtime')
     require(r.get('status')=='PASS' and r.get('native_tolerance')==4e-6,'receipt status/tolerance')
     q=r.get('result',{});require(q.get('status')=='PASS' and q.get('native_status')=='PASS','result status')
     flag_names={'converged','nobs','rows1','rows2','masks1','masks2','residuals','summary','wald','no_se'}

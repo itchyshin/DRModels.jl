@@ -2,7 +2,7 @@
 # All fixtures are no-fit public-shaped DrmFits.  They isolate sampler mechanics
 # from optimisation and keep the dense inverse below as a small independent
 # test oracle only, never a production construction.
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra, SparseArrays
 import Distributions
 
@@ -65,8 +65,8 @@ function _locscale_bootstrap_public_fixture(kind::Symbol; structured::Bool)
     else
         nothing
     end
-    Q, gidx, Gfound = structured ? DRM._locscale_relmat_setup(K, g) :
-                                     (sparse(1.0I, G, G), DRM._group_index(g)...)
+    Q, gidx, Gfound = structured ? DRModels._locscale_relmat_setup(K, g) :
+                                     (sparse(1.0I, G, G), DRModels._group_index(g)...)
     @assert Gfound == G
 
     # Engine: [beta_mu; beta_psi; logL11, L21, logL22].
@@ -74,12 +74,12 @@ function _locscale_bootstrap_public_fixture(kind::Symbol; structured::Bool)
     fitres = (; θ = theta, beta_mu = theta[1:2], beta_psi = theta[3:4],
               vcov = Matrix{Float64}(I, length(theta), length(theta)),
               nll = 0.0, converged = true)
-    base = DRM._build_locscale_drmfit(Val(kind), family, fitres, y, Xmu, Xpsi,
+    base = DRModels._build_locscale_drmfit(Val(kind), family, fitres, y, Xmu, Xpsi,
         ["(Intercept)", "x"], ["(Intercept)", "x"], "g";
         obs_prop, trials)
-    objective = DRM.LocScaleObjective(Val(kind), y, Xmu, Xpsi, gidx, G, Q;
+    objective = DRModels.LocScaleObjective(Val(kind), y, Xmu, Xpsi, gidx, G, Q;
                                       whitened = true)
-    fit = DRM._withformula(DRM._withnll(base, objective), formula)
+    fit = DRModels._withformula(DRModels._withnll(base, objective), formula)
     return (; kind, fit, data, Q, K, structured, trials)
 end
 
@@ -107,7 +107,7 @@ function _bootstrap_reference_response(fx, state, rng)
     eta = state.Xmu * state.beta_mu .+ effects[state.gidx, 1]
     psi = state.Xpsi * state.beta_psi .+ effects[state.gidx, 2]
     mu = fx.kind in (:gamma, :nb2) ? exp.(clamp.(eta, -30.0, 30.0)) :
-                                      DRM._logistic.(clamp.(eta, -30.0, 30.0))
+                                      DRModels._logistic.(clamp.(eta, -30.0, 30.0))
     sigma = exp.(clamp.(psi, fx.kind === :gamma ? -30.0 : -15.0,
                               fx.kind === :gamma ? 30.0 : 15.0))
     if fx.kind === :gamma
@@ -136,22 +136,22 @@ end
     # callable before the bootstrap fallback can reach conditional simulate().
     for structured in (false, true)
         fx = _locscale_bootstrap_public_fixture(:gamma; structured)
-        sim = structured ? DRM._marginal_simulator(fx.fit, fx.data; K = fx.K) :
-                           DRM._marginal_simulator(fx.fit, fx.data)
+        sim = structured ? DRModels._marginal_simulator(fx.fit, fx.data; K = fx.K) :
+                           DRModels._marginal_simulator(fx.fit, fx.data)
         @test sim isa Function
     end
 
     # Force a nonidentity permutation independently of CHOLMOD's AMD choice on
     # the small public relmat covariance.  The dense target is test-only.
     fxp = _locscale_bootstrap_public_fixture(:gamma; structured = true)
-    statep = DRM._ls_bootstrap_prepared_state(fxp.fit, fxp.data; K = fxp.K)
+    statep = DRModels._ls_bootstrap_prepared_state(fxp.fit, fxp.data; K = fxp.K)
     p = [4, 3, 2, 1]
     @test p != collect(1:4)
     U = sparse(cholesky(Symmetric(Matrix(fxp.Q)[p, p])).U)
-    forced = DRM._LSMarginalBootstrapState(statep.kind, statep.Xmu, statep.Xpsi,
+    forced = DRModels._LSMarginalBootstrapState(statep.kind, statep.Xmu, statep.Xpsi,
         statep.gidx, U, p, statep.L, statep.beta_mu, statep.beta_psi)
     E = randn(MersenneTwister(20260914), 4, 2)
-    @test DRM._ls_bootstrap_effect(forced, MersenneTwister(20260914)) ==
+    @test DRModels._ls_bootstrap_effect(forced, MersenneTwister(20260914)) ==
           _bootstrap_reference_effect(U, p, statep.L, E)
     target = kron(inv(Matrix(fxp.Q)), statep.L * transpose(statep.L))
     good = _bootstrap_effect_map(U, p, statep.L)
@@ -165,8 +165,8 @@ end
         @testset "$kind relmat draw" begin
             fx = _locscale_bootstrap_public_fixture(kind; structured = true)
             @test coef(fx.fit, :recov) == [log(0.55), log(0.42), 0.31]
-            state = DRM._ls_bootstrap_prepared_state(fx.fit, fx.data; K = fx.K)
-            sim = DRM._marginal_simulator(fx.fit, fx.data; K = fx.K)
+            state = DRModels._ls_bootstrap_prepared_state(fx.fit, fx.data; K = fx.K)
+            sim = DRModels._marginal_simulator(fx.fit, fx.data; K = fx.K)
             seed = 20_260_900 + offset
             expected = _bootstrap_reference_response(fx, state, MersenneTwister(seed))
             actual = sim(MersenneTwister(seed))
@@ -174,7 +174,7 @@ end
 
             # Fresh closures and callers' RNGs own their own state.  Mutating a
             # returned response cannot alter a subsequent replicated draw.
-            @test DRM._marginal_simulator(fx.fit, fx.data; K = fx.K)(MersenneTwister(seed)) == expected
+            @test DRModels._marginal_simulator(fx.fit, fx.data; K = fx.K)(MersenneTwister(seed)) == expected
             actual[1] = -999.0
             @test sim(MersenneTwister(seed)) == expected
 
@@ -192,7 +192,7 @@ end
             @test state.Xmu !== fx.fit.nll.Xμ
             @test state.Xpsi !== fx.fit.nll.Xψ
 
-            effects = DRM._ls_bootstrap_effect(state, MersenneTwister(seed))
+            effects = DRModels._ls_bootstrap_effect(state, MersenneTwister(seed))
             eta = state.Xmu * state.beta_mu .+ effects[state.gidx, 1]
             psi = state.Xpsi * state.beta_psi .+ effects[state.gidx, 2]
             eta_zero = state.Xmu * state.beta_mu
@@ -203,7 +203,7 @@ end
             if kind in (:gamma, :nb2)
                 @test maximum(abs, exp.(eta) .- exp.(eta_zero)) > 0
             else
-                @test maximum(abs, DRM._logistic.(eta) .- DRM._logistic.(eta_zero)) > 0
+                @test maximum(abs, DRModels._logistic.(eta) .- DRModels._logistic.(eta_zero)) > 0
             end
             @test maximum(abs, exp.(psi) .- exp.(psi_zero)) > 0
 
@@ -220,10 +220,10 @@ end
                 @test all(0 .<= expected .<= 1)
                 boundary_draw = copy(expected)
                 boundary_draw[1] = 0.0
-                datab = DRM._bootstrap_data(fx.fit.formula, fx.data, boundary_draw)
+                datab = DRModels._bootstrap_data(fx.fit.formula, fx.data, boundary_draw)
                 rhs = Dict(fx.fit.formula.forms)
-                lc = DRM._ls_coupled_re(rhs[:mu], rhs[:sigma])
-                @test_throws ErrorException DRM._ls_frontend_design(Val(:beta), fx.fit.formula, lc, datab)
+                lc = DRModels._ls_coupled_re(rhs[:mu], rhs[:sigma])
+                @test_throws ErrorException DRModels._ls_frontend_design(Val(:beta), fx.fit.formula, lc, datab)
                 # Isolate failure bookkeeping from optimisation: first supply
                 # the explicit boundary draw, then an interior control response.
                 # The refit seam uses the real response validator, not a mock
@@ -235,10 +235,10 @@ end
                     draw_index[] == 1 ? copy(boundary_draw) : copy(fx.data.y)
                 end
                 refit_control = dat -> begin
-                    DRM._ls_frontend_design(Val(:beta), fx.fit.formula, lc, dat)
+                    DRModels._ls_frontend_design(Val(:beta), fx.fit.formula, lc, dat)
                     fx.fit
                 end
-                result = DRM._bootstrap_result(fx.fit, fx.fit.formula, fx.data,
+                result = DRModels._bootstrap_result(fx.fit, fx.fit.formula, fx.data,
                     2, 0.95, MersenneTwister(191), false, refit_control;
                     failures = :skip, check_converged = true, simulate_fn = sim_control)
                 @test (result.attempted, result.used, result.failed) == (2, 1, 1)
@@ -247,24 +247,24 @@ end
                 @test occursin("open interval", only(result.failures).message)
             else
                 @test all(0 .<= expected .<= fx.trials) && all(isinteger, expected)
-                datab = DRM._bootstrap_data(fx.fit.formula, fx.data, expected)
+                datab = DRModels._bootstrap_data(fx.fit.formula, fx.data, expected)
                 @test datab.successes == expected
                 @test datab.successes + datab.failures == fx.trials
                 @test datab.x == fx.data.x && datab.g == fx.data.g
             end
 
             short = NamedTuple{keys(fx.data)}(map(v -> v[1:end-1], values(fx.data)))
-            @test_throws ArgumentError DRM._ls_marginal_simulator(fx.fit, short; K = fx.K)
+            @test_throws ArgumentError DRModels._ls_marginal_simulator(fx.fit, short; K = fx.K)
             reordered = NamedTuple{keys(fx.data)}(map(reverse, values(fx.data)))
-            @test_throws ArgumentError DRM._ls_marginal_simulator(fx.fit, reordered; K = fx.K)
+            @test_throws ArgumentError DRModels._ls_marginal_simulator(fx.fit, reordered; K = fx.K)
             changed_x = merge(fx.data, (; x = fx.data.x .+ 0.1))
-            @test_throws ArgumentError DRM._ls_marginal_simulator(fx.fit, changed_x; K = fx.K)
+            @test_throws ArgumentError DRModels._ls_marginal_simulator(fx.fit, changed_x; K = fx.K)
             changed_g = merge(fx.data, (; g = circshift(fx.data.g, 1)))
-            @test_throws ArgumentError DRM._ls_marginal_simulator(fx.fit, changed_g; K = fx.K)
-            @test_throws ArgumentError DRM._ls_marginal_simulator(fx.fit, fx.data; K = Matrix{Float64}(I, 4, 4))
+            @test_throws ArgumentError DRModels._ls_marginal_simulator(fx.fit, changed_g; K = fx.K)
+            @test_throws ArgumentError DRModels._ls_marginal_simulator(fx.fit, fx.data; K = Matrix{Float64}(I, 4, 4))
             if kind === :betabinomial
                 changed = merge(fx.data, (; failures = fx.data.failures .+ 1.0))
-                @test_throws ArgumentError DRM._ls_marginal_simulator(fx.fit, changed; K = fx.K)
+                @test_throws ArgumentError DRModels._ls_marginal_simulator(fx.fit, changed; K = fx.K)
             end
         end
     end
@@ -274,8 +274,8 @@ end
     for kind in (:gamma, :nb2, :beta, :betabinomial), intercept in (-45.0, 45.0)
         fx = _locscale_bootstrap_public_fixture(kind; structured = false)
         fx.fit.theta[1] = intercept
-        state = DRM._ls_bootstrap_prepared_state(fx.fit, fx.data)
-        sim = DRM._marginal_simulator(fx.fit, fx.data)
+        state = DRModels._ls_bootstrap_prepared_state(fx.fit, fx.data)
+        sim = DRModels._marginal_simulator(fx.fit, fx.data)
         @test sim(MersenneTwister(813)) ==
               _bootstrap_reference_response(fx, state, MersenneTwister(813))
     end

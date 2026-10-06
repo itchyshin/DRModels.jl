@@ -1,4 +1,4 @@
-using DRM
+using DRModels
 using Test
 using LinearAlgebra
 using TOML
@@ -66,44 +66,43 @@ end
 
 function _finite_factor_forms()
     return Dict(
-        "intercept" => DRM.bf(@formula(y ~ a + mi(x)), @formula(sigma ~ 1)),
-        "factor_first" => DRM.bf(@formula(y ~ 0 + a + b + mi(x)), @formula(sigma ~ 1)),
-        "marker_first" => DRM.bf(@formula(y ~ 0 + mi(x) + a + b), @formula(sigma ~ 1)),
-        "numeric_before" => DRM.bf(@formula(y ~ 0 + z + mi(x) + a), @formula(sigma ~ 1)),
-        "interaction" => DRM.bf(@formula(y ~ 0 + a * b + mi(x)), @formula(sigma ~ 1)),
-        "interaction_marker_first" => DRM.bf(@formula(y ~ 0 + mi(x) + a * b), @formula(sigma ~ 1)),
-        "interaction_only_before" => DRM.bf(@formula(y ~ 0 + a & b + mi(x)), @formula(sigma ~ 1)),
-        "bool_first" => DRM.bf(@formula(y ~ 0 + flag + mi(x)), @formula(sigma ~ 1)),
-        "bool_marker_first" => DRM.bf(@formula(y ~ 0 + mi(x) + flag), @formula(sigma ~ 1)),
-        "bool_interaction" => DRM.bf(@formula(y ~ 0 + flag * a + mi(x)), @formula(sigma ~ 1)),
+        "intercept" => DRModels.bf(@formula(y ~ a + mi(x)), @formula(sigma ~ 1)),
+        "factor_first" => DRModels.bf(@formula(y ~ 0 + a + b + mi(x)), @formula(sigma ~ 1)),
+        "marker_first" => DRModels.bf(@formula(y ~ 0 + mi(x) + a + b), @formula(sigma ~ 1)),
+        "numeric_before" => DRModels.bf(@formula(y ~ 0 + z + mi(x) + a), @formula(sigma ~ 1)),
+        "interaction" => DRModels.bf(@formula(y ~ 0 + a * b + mi(x)), @formula(sigma ~ 1)),
+        "interaction_marker_first" => DRModels.bf(@formula(y ~ 0 + mi(x) + a * b), @formula(sigma ~ 1)),
+        "interaction_only_before" => DRModels.bf(@formula(y ~ 0 + a & b + mi(x)), @formula(sigma ~ 1)),
+        "bool_first" => DRModels.bf(@formula(y ~ 0 + flag + mi(x)), @formula(sigma ~ 1)),
+        "bool_marker_first" => DRModels.bf(@formula(y ~ 0 + mi(x) + flag), @formula(sigma ~ 1)),
+        "bool_interaction" => DRModels.bf(@formula(y ~ 0 + flag * a + mi(x)), @formula(sigma ~ 1)),
     )
 end
 
 @testset "finite-state native factor coding contract" begin
-    BLAS.set_num_threads(1)
     @test BLAS.get_num_threads() == 1
-    @test isdefined(DRM, :_joint_finite_native_state_design)
+    @test isdefined(DRModels, :_joint_finite_native_state_design)
 
     data, levels = _finite_factor_data()
     @test String.(levels) == String.(_finite_factor_reference["levels"])
     @test String.(levels) == String.(_finite_bool_factor_reference["levels"])
-    ordinal = DRM.impute_model(@formula(x ~ 1);
-        family = DRM.CumulativeLogit(), levels = levels)
-    categorical = DRM.impute_model(@formula(x ~ 1);
-        family = DRM.CategoricalLogit(), levels = levels)
-    ctl = DRM.miss_control(response = "include", predictor = "model")
+    ordinal = DRModels.impute_model(@formula(x ~ 1);
+        family = DRModels.CumulativeLogit(), levels = levels)
+    categorical = DRModels.impute_model(@formula(x ~ 1);
+        family = DRModels.CategoricalLogit(), levels = levels)
+    ctl = DRModels.miss_control(response = "include", predictor = "model")
 
     # Intercept: both ordinary factor and marker use treatment contrasts.
-    intercept = DRM.bf(@formula(y ~ a + mi(x)), @formula(sigma ~ 1))
-    Xi, ni = DRM._joint_finite_native_state_design(intercept, data, :x, levels, :categorical)
+    intercept = DRModels.bf(@formula(y ~ a + mi(x)), @formula(sigma ~ 1))
+    Xi, ni = DRModels._joint_finite_native_state_design(intercept, data, :x, levels, :categorical)
     mi_i = _finite_mi_columns(ni)
     @test size(Xi) == (36, 3, 5) # intercept + a(B,C) + mi(medium,high)
     @test length(mi_i) == 2
     @test Xi[1, :, mi_i] == [0.0 0.0; 1.0 0.0; 0.0 1.0]
 
     # No intercept and factor before marker: a is full rank, mi(x) treatment.
-    factor_first = DRM.bf(@formula(y ~ 0 + a + b + mi(x)), @formula(sigma ~ 1))
-    Xf, nf = DRM._joint_finite_native_state_design(factor_first, data, :x, levels, :categorical)
+    factor_first = DRModels.bf(@formula(y ~ 0 + a + b + mi(x)), @formula(sigma ~ 1))
+    Xf, nf = DRModels._joint_finite_native_state_design(factor_first, data, :x, levels, :categorical)
     mi_f = _finite_mi_columns(nf)
     fixed_f = _finite_nonmarker_columns(nf)
     @test size(Xf) == (36, 3, 6) # a(3) + b(1) + mi(2)
@@ -113,8 +112,8 @@ end
     @test Xf[:, 2, fixed_f] == Xf[:, 3, fixed_f]
 
     # No intercept and marker first: mi(x) is the full-rank first factor.
-    marker_first = DRM.bf(@formula(y ~ 0 + mi(x) + a + b), @formula(sigma ~ 1))
-    Xm, nm = DRM._joint_finite_native_state_design(marker_first, data, :x, levels, :categorical)
+    marker_first = DRModels.bf(@formula(y ~ 0 + mi(x) + a + b), @formula(sigma ~ 1))
+    Xm, nm = DRModels._joint_finite_native_state_design(marker_first, data, :x, levels, :categorical)
     mi_m = _finite_mi_columns(nm)
     fixed_m = _finite_nonmarker_columns(nm)
     @test size(Xm) == (36, 3, 6) # mi(3) + a(2) + b(1)
@@ -124,14 +123,14 @@ end
     @test Xm[:, 2, fixed_m] == Xm[:, 3, fixed_m]
 
     # A numeric covariate does not consume the first-factor full-rank role.
-    numeric_before = DRM.bf(@formula(y ~ 0 + z + mi(x) + a), @formula(sigma ~ 1))
-    Xz, nz = DRM._joint_finite_native_state_design(numeric_before, data, :x, levels, :categorical)
+    numeric_before = DRModels.bf(@formula(y ~ 0 + z + mi(x) + a), @formula(sigma ~ 1))
+    Xz, nz = DRModels._joint_finite_native_state_design(numeric_before, data, :x, levels, :categorical)
     @test size(Xz) == (36, 3, 6) # z + mi(3) + a(2)
     @test length(_finite_mi_columns(nz)) == 3
 
     # Fixed-factor interactions are retained and remain state invariant.
-    interaction = DRM.bf(@formula(y ~ 0 + a * b + mi(x)), @formula(sigma ~ 1))
-    Xab, nab = DRM._joint_finite_native_state_design(interaction, data, :x, levels, :categorical)
+    interaction = DRModels.bf(@formula(y ~ 0 + a * b + mi(x)), @formula(sigma ~ 1))
+    Xab, nab = DRModels._joint_finite_native_state_design(interaction, data, :x, levels, :categorical)
     fixed_ab = _finite_nonmarker_columns(nab)
     @test size(Xab) == (36, 3, 8) # a(3) + b(1) + mi(2) + a:b(2)
     @test length(_finite_mi_columns(nab)) == 2
@@ -140,17 +139,17 @@ end
 
     # Ordered predictors use their existing polynomial state contrasts under an
     # intercept, but respect first-factor full coding without one.
-    Xo, no = DRM._joint_finite_native_state_design(intercept, data, :x, levels, :ordinal)
+    Xo, no = DRModels._joint_finite_native_state_design(intercept, data, :x, levels, :ordinal)
     mi_o = _finite_mi_columns(no)
     @test size(Xo) == (36, 3, 5)
     @test no[mi_o] == ["mi(x).L", "mi(x).Q"]
-    @test Xo[1, :, mi_o] ≈ DRM._joint_finite_polynomials(3) atol = 2e-14
-    Xof, nof = DRM._joint_finite_native_state_design(factor_first, data, :x, levels, :ordinal)
+    @test Xo[1, :, mi_o] ≈ DRModels._joint_finite_polynomials(3) atol = 2e-14
+    Xof, nof = DRModels._joint_finite_native_state_design(factor_first, data, :x, levels, :ordinal)
     mi_of = _finite_mi_columns(nof)
     @test size(Xof) == (36, 3, 6)
     @test nof[mi_of] == ["mi(x).L", "mi(x).Q"]
-    @test Xof[1, :, mi_of] ≈ DRM._joint_finite_polynomials(3) atol = 2e-14
-    Xon, non = DRM._joint_finite_native_state_design(marker_first, data, :x, levels, :ordinal)
+    @test Xof[1, :, mi_of] ≈ DRModels._joint_finite_polynomials(3) atol = 2e-14
+    Xon, non = DRModels._joint_finite_native_state_design(marker_first, data, :x, levels, :ordinal)
     mi_on = _finite_mi_columns(non)
     @test size(Xon) == (36, 3, 6)
     @test Xon[1, :, mi_on] == Matrix{Float64}(I, 3, 3)
@@ -167,7 +166,7 @@ end
         for (id, form) in _finite_factor_forms()
             reference = fixtures[id]
             @test reference["model_matrix_error"] == 0
-            actual, names = DRM._joint_finite_native_state_design(form, data, :x, levels, predictor)
+            actual, names = DRModels._joint_finite_native_state_design(form, data, :x, levels, predictor)
             @test names == String.(reference["mu_names"])
             @test actual ≈ _finite_factor_reference_state_design(_finite_bool_factor_reference, reference) atol = 2e-14 rtol = 0
         end
@@ -183,8 +182,8 @@ end
         a = repeat(["base", "level & dry", "level: wet"], 2),
         b = repeat(["b & high", "b: base"], inner = 3),
     )
-    punctuation_form = DRM.bf(@formula(y ~ a * b + mi(x)), @formula(sigma ~ 1))
-    _, punctuation_names = DRM._joint_finite_native_state_design(
+    punctuation_form = DRModels.bf(@formula(y ~ a * b + mi(x)), @formula(sigma ~ 1))
+    _, punctuation_names = DRModels._joint_finite_native_state_design(
         punctuation_form, punctuation, :x, levels, :categorical)
     @test punctuation_names == [
         "(Intercept)", "alevel & dry", "alevel: wet", "bb: base",
@@ -192,26 +191,26 @@ end
     ]
 
     # Formula admission must use the same construction, not a separate branch.
-    bool_first = DRM.bf(@formula(y ~ 0 + flag + mi(x)), @formula(sigma ~ 1))
-    Xbool, nbool = DRM._joint_finite_native_state_design(bool_first, data, :x, levels, :categorical)
+    bool_first = DRModels.bf(@formula(y ~ 0 + flag + mi(x)), @formula(sigma ~ 1))
+    Xbool, nbool = DRModels._joint_finite_native_state_design(bool_first, data, :x, levels, :categorical)
     @test nbool == ["flagFALSE", "flagTRUE", "mi(x)medium", "mi(x)high"]
-    categorical_fit = drm(factor_first, DRM.Gaussian(); data = data,
+    categorical_fit = drm(factor_first, DRModels.Gaussian(); data = data,
         impute = (x = categorical,), missing = ctl, g_tol = 1e-8)
-    @test categorical_fit isa DRM.JointFiniteDrmFit
+    @test categorical_fit isa DRModels.JointFiniteDrmFit
     @test categorical_fit.prepared.prepared.X_mu_state ≈ Xf atol = 2e-14
-    ordinal_fit = drm(marker_first, DRM.Gaussian(); data = data,
+    ordinal_fit = drm(marker_first, DRModels.Gaussian(); data = data,
         impute = (x = ordinal,), missing = ctl, g_tol = 1e-8)
-    @test ordinal_fit isa DRM.JointFiniteDrmFit
+    @test ordinal_fit isa DRModels.JointFiniteDrmFit
     @test ordinal_fit.prepared.prepared.X_mu_state ≈ Xon atol = 2e-14
-    bool_fit = drm(bool_first, DRM.Gaussian(); data = data,
+    bool_fit = drm(bool_first, DRModels.Gaussian(); data = data,
         impute = (x = categorical,), missing = ctl, g_tol = 1e-8)
-    @test bool_fit isa DRM.JointFiniteDrmFit
+    @test bool_fit isa DRModels.JointFiniteDrmFit
     @test bool_fit.prepared.prepared.X_mu_state ≈ Xbool atol = 2e-14
 
     # Native R retains both logical levels even in an all-FALSE data slice;
     # the TRUE full-rank column is therefore deliberately all zero.
     one_level_bool = merge(data, (; flag = fill(false, 36)))
-    Xfalse, nfalse = DRM._joint_finite_native_state_design(
+    Xfalse, nfalse = DRModels._joint_finite_native_state_design(
         bool_first, one_level_bool, :x, levels, :categorical)
     @test size(Xfalse) == (36, 3, 4)
     @test nfalse == ["flagFALSE", "flagTRUE", "mi(x)medium", "mi(x)high"]
@@ -225,13 +224,13 @@ end
     ordered_data = merge(data, (; ordered = [_FiniteOrderedLike(levels[mod1(i, 3)]) for i in 1:36]))
     # The same values in an unrelated column cannot narrow an otherwise
     # admitted design: the guard inspects formula-used columns only.
-    unrelated_X, unrelated_names = DRM._joint_finite_native_state_design(
+    unrelated_X, unrelated_names = DRModels._joint_finite_native_state_design(
         factor_first, ordered_data, :x, levels, :categorical)
     @test unrelated_names == nf
     @test unrelated_X ≈ Xf atol = 2e-14 rtol = 0
-    ordered_form = DRM.bf(@formula(y ~ 0 + ordered + mi(x)), @formula(sigma ~ 1))
+    ordered_form = DRModels.bf(@formula(y ~ 0 + ordered + mi(x)), @formula(sigma ~ 1))
     ordered_error = try
-        drm(ordered_form, DRM.Gaussian(); data = ordered_data,
+        drm(ordered_form, DRModels.Gaussian(); data = ordered_data,
             impute = (x = categorical,), missing = ctl, g_tol = 1e-8)
         nothing
     catch error

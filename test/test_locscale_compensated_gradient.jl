@@ -1,4 +1,4 @@
-using DRM
+using DRModels
 using Test, TOML, LinearAlgebra, SparseArrays, SpecialFunctions, ForwardDiff
 using LinearAlgebra: issuccess
 
@@ -37,10 +37,10 @@ end
     y, gidx, G = f["y"], f["gidx"], f["G"]
     eta0 = hcat(ones(length(y)), f["x"]) * theta[1:2]
     psi0 = fill(theta[3], length(y))
-    P = DRM.prior_precision(sparse(1.0I, G, G), DRM._ls_inv2x2(DRM._ls_lc_to_Λ(theta[4:6])))
-    Ze = DRM._ls_canonical_Zeta(length(y)); Zp = DRM._ls_canonical_Zpsi(length(y))
+    P = DRModels.prior_precision(sparse(1.0I, G, G), DRModels._ls_inv2x2(DRModels._ls_lc_to_Λ(theta[4:6])))
+    Ze = DRModels._ls_canonical_Zeta(length(y)); Zp = DRModels._ls_canonical_Zpsi(length(y))
     reference = _test_gamma_fixed_precision_gradient(y, eta0, psi0, gidx, failed_a, P, Ze, Zp)
-    actual = DRM._ls_joint_grad(Val(:gamma), y, eta0, psi0, gidx, failed_a, P, Ze, Zp)
+    actual = DRModels._ls_joint_grad(Val(:gamma), y, eta0, psi0, gidx, failed_a, P, Ze, Zp)
     @test maximum(abs, BigFloat.(actual) - reference) < big"1e-12"
     # The old rounded gradient incorrectly certified this separate point.
     false_accepted = [-0.19461138381538123, 0.09862478013269314,
@@ -49,10 +49,10 @@ end
                       -0.10754978309036813, 0.05450388751858372]
     false_residual = _test_gamma_fixed_precision_gradient(y, eta0, psi0, gidx, false_accepted, P, Ze, Zp)
     @test norm(false_residual) > big"1e-9" * (1 + norm(BigFloat.(false_accepted)))
-    _, certified = DRM._ls_inner_certificate(Val(:gamma), y, eta0, psi0, gidx,
+    _, certified = DRModels._ls_inner_certificate(Val(:gamma), y, eta0, psi0, gidx,
                                              G, P, Ze, Zp, false_accepted, 1e-9)
     @test !certified
-    mode, factor, ok = DRM._ls_inner_mode(Val(:gamma), y, eta0, psi0, gidx, G, P, Ze, Zp)
+    mode, factor, ok = DRModels._ls_inner_mode(Val(:gamma), y, eta0, psi0, gidx, G, P, Ze, Zp)
     @test ok
     @test factor !== nothing && issuccess(factor)
     exact_residual = _test_gamma_fixed_precision_gradient(y, eta0, psi0, gidx, mode, P, Ze, Zp)
@@ -63,19 +63,19 @@ end
     G = 3; n = 9
     gidx = repeat(1:G, inner=3)
     Q = sparse(SymTridiagonal(fill(2.0, G), fill(-0.3, G-1)))
-    P = DRM.prior_precision(Q, [2.0 0.2; 0.2 1.5])
+    P = DRModels.prior_precision(Q, [2.0 0.2; 0.2 1.5])
     a = [0.2, -0.1, 0.05, 0.1, -0.2, 0.15]
     y = collect(range(0.7, 2.3; length=n))
     eta0 = fill(0.2, n); psi0 = fill(0.5, n)
     Ze = hcat(ones(n), collect(range(-0.5, 0.5; length=n)))
     Zp = hcat(fill(0.25, n), ones(n))
-    actual = DRM._ls_joint_grad(Val(:gamma), y, eta0, psi0, gidx, a, P, Ze, Zp)
+    actual = DRModels._ls_joint_grad(Val(:gamma), y, eta0, psi0, gidx, a, P, Ze, Zp)
     reference = _test_gamma_fixed_precision_gradient(y, eta0, psi0, gidx, a, P, Ze, Zp)
     @test maximum(abs, BigFloat.(actual) - reference) < big"1e-12"
-    J = ForwardDiff.jacobian(x -> DRM._ls_joint_grad(Val(:gamma), y, eta0, psi0, gidx, x, P, Ze, Zp), a)
-    H = DRM._ls_joint_hess(Val(:gamma), y, eta0, psi0, gidx, G, a, P, Ze, Zp)
+    J = ForwardDiff.jacobian(x -> DRModels._ls_joint_grad(Val(:gamma), y, eta0, psi0, gidx, x, P, Ze, Zp), a)
+    H = DRModels._ls_joint_hess(Val(:gamma), y, eta0, psi0, gidx, G, a, P, Ze, Zp)
     @test J ≈ Matrix(H) rtol=1e-12 atol=1e-12
-    objective_gradient = ForwardDiff.gradient(x -> DRM._ls_joint(Val(:gamma), y, eta0, psi0, gidx, x, P, Ze, Zp), a)
+    objective_gradient = ForwardDiff.gradient(x -> DRModels._ls_joint(Val(:gamma), y, eta0, psi0, gidx, x, P, Ze, Zp), a)
     @test maximum(abs, BigFloat.(objective_gradient) - reference) < big"1e-12"
     # Primal specialization with nonidentity Q and noncanonical loadings.
     frozen_objective = setprecision(BigFloat, 256) do
@@ -84,11 +84,11 @@ end
             j = 2gidx[i] - 1
             eta = eta0[i] + Ze[i,1]*a[j] + Ze[i,2]*a[j+1]
             psi = psi0[i] + Zp[i,1]*a[j] + Zp[i,2]*a[j+1]
-            total += BigFloat(DRM._ls_nll(Val(:gamma), y[i], eta, psi))
+            total += BigFloat(DRModels._ls_nll(Val(:gamma), y[i], eta, psi))
         end
         total
     end
-    primal = DRM._ls_joint(Val(:gamma), y, eta0, psi0, gidx, a, P, Ze, Zp)
+    primal = DRModels._ls_joint(Val(:gamma), y, eta0, psi0, gidx, a, P, Ze, Zp)
     @test abs(BigFloat(primal) - frozen_objective) <= 2eps(primal)
 
 
@@ -108,8 +108,8 @@ end
     y, gidx, G = f["y"], f["gidx"], f["G"]
     eta0 = hcat(ones(length(y)), f["x"]) * theta[1:2]
     psi0 = fill(theta[3], length(y))
-    P = DRM.prior_precision(sparse(1.0I, G, G), DRM._ls_inv2x2(DRM._ls_lc_to_Λ(theta[4:6])))
-    Ze = DRM._ls_canonical_Zeta(length(y)); Zp = DRM._ls_canonical_Zpsi(length(y))
+    P = DRModels.prior_precision(sparse(1.0I, G, G), DRModels._ls_inv2x2(DRModels._ls_lc_to_Λ(theta[4:6])))
+    Ze = DRModels._ls_canonical_Zeta(length(y)); Zp = DRModels._ls_canonical_Zpsi(length(y))
     # Reference isolates multiplication and accumulation error: lift each
     # unchanged Float64 kernel output, but evaluate the prior exactly in BigFloat.
     frozen_reference(v) = setprecision(BigFloat, 256) do
@@ -117,11 +117,11 @@ end
         total = dot(vb, BigFloat.(P) * vb) / 2
         for i in eachindex(y)
             j = 2gidx[i] - 1
-            total += BigFloat(DRM._ls_nll(Val(:gamma), y[i], eta0[i] + v[j], psi0[i] + v[j+1]))
+            total += BigFloat(DRModels._ls_nll(Val(:gamma), y[i], eta0[i] + v[j], psi0[i] + v[j+1]))
         end
         total
     end
-    actual(v) = DRM._ls_joint(Val(:gamma), y, eta0, psi0, gidx, v, P, Ze, Zp)
+    actual(v) = DRModels._ls_joint(Val(:gamma), y, eta0, psi0, gidx, v, P, Ze, Zp)
     for v in (a, trial)
         @test abs(BigFloat(actual(v)) - frozen_reference(v)) <= 2eps(actual(v))
     end

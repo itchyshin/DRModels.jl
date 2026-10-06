@@ -17,7 +17,7 @@
 # Usage: julia --project=. tools/lss_sparse_multi_scaling_pilot.jl [p1 p2 ...]
 # Default ladder: 1000 2500 5000 10000
 
-using DRM
+using DRModels
 using Random
 using LinearAlgebra
 using SparseArrays
@@ -123,12 +123,12 @@ function _fill_ratio(fx)
     n = fx.n
     Xmu = hcat(ones(n), fx.x)
     Xsigma = ones(n, 1)
-    site_gidx, G_iid = DRM._group_index(fx.dat.site)
-    comp_iid = DRM._sparse_lss_iid_comp(site_gidx, G_iid, ones(G_iid, 1))
-    comp_phy = DRM._sparse_lss_phylo_comp(fx.species_idx, fx.p, ones(fx.p, 1), fx.phy)
+    site_gidx, G_iid = DRModels._group_index(fx.dat.site)
+    comp_iid = DRModels._sparse_lss_iid_comp(site_gidx, G_iid, ones(G_iid, 1))
+    comp_phy = DRModels._sparse_lss_phylo_comp(fx.species_idx, fx.p, ones(fx.p, 1), fx.phy)
     sp_comps = [comp_iid, comp_phy]
     theta = zeros(2 + 1 + 1 + 1)
-    asm = DRM._lss_sparse_multi_assemble(theta, fx.dat.y, Xmu, Xsigma, sp_comps)
+    asm = DRModels._lss_sparse_multi_assemble(theta, fx.dat.y, Xmu, Xsigma, sp_comps)
     H = asm.H
     dim = size(H, 1)
     ch = cholesky(Symmetric(H); check = false)
@@ -154,7 +154,7 @@ function _run_one(fx, method::Symbol)
     rss_mb = Sys.maxrss() / 1024^2
 
     ll = method === :ML ? loglik(fit) : reml_loglik(fit)
-    route = DRM._lss_multi_route(fit)
+    route = DRModels._lss_multi_route(fit)
     fr = _fill_ratio(fx)
 
     return (p = fx.p, n = fx.n, G_iid = fx.G_iid, method = method, wall = wall,

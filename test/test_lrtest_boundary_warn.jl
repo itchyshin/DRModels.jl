@@ -7,7 +7,7 @@
 # A non-variance (mean / scale coefficient) drop must NOT warn.
 #
 # Uses only Test macros (@test_logs / @test_warn) — no extra Logging dependency.
-using DRM, Test, Random
+using DRModels, Test, Random
 
 @testset "lrtest boundary variance-component warning (#304)" begin
     Random.seed!(20260703)

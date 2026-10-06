@@ -18,7 +18,7 @@
 #   3. Reduction invariant: a one-column constant Xσ reproduces the scalar
 #      `_phylo_mean_laplace_nuisance_fg` bit-for-bit (no regression on `sigma ~ 1`).
 
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 import Distributions
 using SpecialFunctions: loggamma
@@ -27,7 +27,7 @@ using SpecialFunctions: loggamma
 function _nb2_hetero_aux(yint, yf)
     return ησ -> begin
         r = exp.(clamp.(-2 .* ησ, -8.0, 8.0))
-        lconst = [loggamma(yf[i] + r[i]) - loggamma(r[i]) - DRM._logfactorial(yint[i])
+        lconst = [loggamma(yf[i] + r[i]) - loggamma(r[i]) - DRModels._logfactorial(yint[i])
                   for i in eachindex(yint)]
         return (y = yf, size = r, lconst = lconst)
     end
@@ -40,7 +40,7 @@ end
     species = repeat(1:p, inner = m)
     n = length(species)
     x = randn(n)
-    Q, leaf_node, _ = DRM._poisson_phylo_setup(phy, species)
+    Q, leaf_node, _ = DRModels._poisson_phylo_setup(phy, species)
     q = size(Q, 1)
     logdetQ = logdet(cholesky(Symmetric(Q); check = false))
     C = sigma_phy_dense(phy; σ²_phy = 0.45^2)
@@ -58,7 +58,7 @@ end
     NTOL = 1e-10; NMAX = 400; FDH = 1e-4
     # θ = [βμ(2); βσ(2); logσphylo], OFF the optimum.
     θ = [0.10, 0.45, 1.2, 0.6, log(0.55)]
-    val0, g_an, b_base, ok = DRM._phylo_mean_laplace_hetero_fg(
+    val0, g_an, b_base, ok = DRModels._phylo_mean_laplace_hetero_fg(
         Val(:nb2_hetero), aux_from, n, Xμ, Xσ, leaf_node, Q, logdetQ, θ;
         grad = true, b0 = zeros(q), newton_tol = NTOL, newton_maxiter = NMAX,
     )
@@ -68,10 +68,10 @@ end
     for k in eachindex(θ)
         tp = copy(θ); tp[k] += FDH
         tm = copy(θ); tm[k] -= FDH
-        fp = DRM._phylo_mean_laplace_hetero_fg(Val(:nb2_hetero), aux_from, n, Xμ, Xσ,
+        fp = DRModels._phylo_mean_laplace_hetero_fg(Val(:nb2_hetero), aux_from, n, Xμ, Xσ,
             leaf_node, Q, logdetQ, tp; grad = false, b0 = copy(b_base),
             newton_tol = NTOL, newton_maxiter = NMAX)[1]
-        fm = DRM._phylo_mean_laplace_hetero_fg(Val(:nb2_hetero), aux_from, n, Xμ, Xσ,
+        fm = DRModels._phylo_mean_laplace_hetero_fg(Val(:nb2_hetero), aux_from, n, Xμ, Xσ,
             leaf_node, Q, logdetQ, tm; grad = false, b0 = copy(b_base),
             newton_tol = NTOL, newton_maxiter = NMAX)[1]
         g_fd[k] = (fp - fm) / (2FDH)
@@ -128,7 +128,7 @@ end
     species = repeat(1:p, inner = m)
     n = length(species)
     x = randn(n)
-    Q, leaf_node, _ = DRM._poisson_phylo_setup(phy, species)
+    Q, leaf_node, _ = DRModels._poisson_phylo_setup(phy, species)
     q = size(Q, 1)
     logdetQ = logdet(cholesky(Symmetric(Q); check = false))
     C = sigma_phy_dense(phy; σ²_phy = 0.40^2)
@@ -141,16 +141,16 @@ end
 
     aux_scalar(ls) = (y = yf, size = exp(clamp(-2 * ls, -8, 8)),
         lconst = [loggamma(yf[i] + exp(clamp(-2 * ls, -8, 8))) - loggamma(exp(clamp(-2 * ls, -8, 8))) -
-                  DRM._logfactorial(yint[i]) for i in eachindex(yint)])
+                  DRModels._logfactorial(yint[i]) for i in eachindex(yint)])
     aux_hetero = _nb2_hetero_aux(yint, yf)
     Xσ1 = ones(n, 1)
 
     θ = [0.1, 0.4, log(3.0), log(0.55)]           # same layout: pσ = 1
     NTOL = 1e-10; NMAX = 400
-    vs, gs, _, oks = DRM._phylo_mean_laplace_nuisance_fg(
+    vs, gs, _, oks = DRModels._phylo_mean_laplace_nuisance_fg(
         Val(:nb2_fixed), aux_scalar, n, Xμ, leaf_node, Q, logdetQ, θ;
         grad = true, b0 = zeros(q), newton_tol = NTOL, newton_maxiter = NMAX)
-    vh, gh, _, okh = DRM._phylo_mean_laplace_hetero_fg(
+    vh, gh, _, okh = DRModels._phylo_mean_laplace_hetero_fg(
         Val(:nb2_hetero), aux_hetero, n, Xμ, Xσ1, leaf_node, Q, logdetQ, θ;
         grad = true, b0 = zeros(q), newton_tol = NTOL, newton_maxiter = NMAX)
     @test oks && okh

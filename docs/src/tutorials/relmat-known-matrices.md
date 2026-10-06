@@ -2,18 +2,18 @@
 
 !!! note "Status — Stable (Gaussian mean, supplied K)"
     Mirrors drmTMB's [Known-matrix relatedness with relmat](https://itchyshin.github.io/drmTMB/articles/relmat-known-matrices.html).
-    **In DRM.jl today:** `relmat(1 | id)` with a user-supplied relatedness matrix
+    **In DRModels.jl today:** `relmat(1 | id)` with a user-supplied relatedness matrix
     `K` on the Gaussian **mean** — a structured random intercept fit in closed
     form. `animal()` (pedigree) and `phylo()` (tree) reuse this engine.
 
 When units are *related* by a known matrix — a pedigree, a phylogeny, a kinship
 matrix — the random intercept is no longer i.i.d.: `u ~ N(0, σ_s² K)` with `K`
 the known relatedness. For a Gaussian mean the marginal stays Gaussian,
-`y ~ N(Xβ, D + σ_s² Z K Zᵀ)`, so DRM.jl fits it in **closed form** (PGLS-style,
+`y ~ N(Xβ, D + σ_s² Z K Zᵀ)`, so DRModels.jl fits it in **closed form** (PGLS-style,
 no approximation). Supply `K` (ordered by the grouping's first appearance):
 
 ```@example relmat
-using DRM, Random, LinearAlgebra
+using DRModels, Random, LinearAlgebra
 Random.seed!(1)
 
 G = 40
@@ -42,7 +42,7 @@ data. The same engine powers `animal(1 | id)` (with a pedigree-derived `A`) and
 !!! note "Gaussian mean vs location-scale"
     This closed-form path is for structured effects on the **mean**. When the
     structured effect also acts on `log σ` (the q=4 phylogenetic location-scale
-    model), DRM.jl uses its verified sparse-Laplace engine — see `HANDOVER.md`.
+    model), DRModels.jl uses its verified sparse-Laplace engine — see `HANDOVER.md`.
 
 ## See also
 

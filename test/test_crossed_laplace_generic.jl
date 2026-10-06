@@ -1,12 +1,12 @@
 using Test, Random, Statistics
 import Distributions
-using DRM
+using DRModels
 
 logistic(x) = 1 / (1 + exp(-x))
 
 function crossed_components(g, h)
-    gidx, G = DRM._group_index(g)
-    hidx, H = DRM._group_index(h)
+    gidx, G = DRModels._group_index(g)
+    hidx, H = DRModels._group_index(h)
     return [
         (ones(length(g)), gidx, G, "g"),
         (ones(length(h)), hidx, H, "h"),
@@ -48,7 +48,7 @@ end
 
     ntr = fill(8.0, n)
     s = Float64.([rand(rng, Distributions.Binomial(round(Int, ntr[i]), logistic(η[i]))) for i in 1:n])
-    fit_bin = DRM._fit_binomial_crossed_laplace(DRM.Binomial(), s, ntr, X, comps, ["(Intercept)", "x"], 1e-7)
+    fit_bin = DRModels._fit_binomial_crossed_laplace(DRModels.Binomial(), s, ntr, X, comps, ["(Intercept)", "x"], 1e-7)
     sd_bin = re_sd(fit_bin)
     @test fit_bin.converged
     @test abs(coef(fit_bin, :mu)[2] - β[2]) < 0.08
@@ -58,13 +58,13 @@ end
     μ = exp.(η)
     size = 3.0
     ynb = Float64.([rand(rng, Distributions.NegativeBinomial(size, size / (size + μ[i]))) for i in 1:n])
-    fit_nb = DRM._fit_nb2_fixed_crossed_laplace(DRM.NegBinomial2(), ynb, size, X, comps, ["(Intercept)", "x"], 1e-7)
+    fit_nb = DRModels._fit_nb2_fixed_crossed_laplace(DRModels.NegBinomial2(), ynb, size, X, comps, ["(Intercept)", "x"], 1e-7)
     sd_nb = re_sd(fit_nb)
     @test fit_nb.converged
     @test abs(coef(fit_nb, :mu)[2] - β[2]) < 0.08
     @test abs(sd_nb[:g] - σg) < 0.12
     @test abs(sd_nb[:h] - σh) < 0.12
-    fit_nb_est = DRM._fit_nb2_crossed_laplace(DRM.NegBinomial2(), ynb, X, ones(n, 1), comps, ["(Intercept)", "x"], ["(Intercept)"], 1e-7)
+    fit_nb_est = DRModels._fit_nb2_crossed_laplace(DRModels.NegBinomial2(), ynb, X, ones(n, 1), comps, ["(Intercept)", "x"], ["(Intercept)"], 1e-7)
     sd_nb_est = re_sd(fit_nb_est)
     @test fit_nb_est.converged
     @test abs(coef(fit_nb_est, :mu)[2] - β[2]) < 0.08
@@ -74,13 +74,13 @@ end
 
     shape = 7.0
     yg = Float64.([rand(rng, Distributions.Gamma(shape, μ[i] / shape)) for i in 1:n])
-    fit_gamma = DRM._fit_gamma_fixed_crossed_laplace(DRM.Gamma(), yg, shape, X, comps, ["(Intercept)", "x"], 1e-7)
+    fit_gamma = DRModels._fit_gamma_fixed_crossed_laplace(DRModels.Gamma(), yg, shape, X, comps, ["(Intercept)", "x"], 1e-7)
     sd_gamma = re_sd(fit_gamma)
     @test fit_gamma.converged
     @test abs(coef(fit_gamma, :mu)[2] - β[2]) < 0.08
     @test abs(sd_gamma[:g] - σg) < 0.12
     @test abs(sd_gamma[:h] - σh) < 0.12
-    fit_gamma_est = DRM._fit_gamma_crossed_laplace(DRM.Gamma(), yg, X, ones(n, 1), comps, ["(Intercept)", "x"], ["(Intercept)"], 1e-7)
+    fit_gamma_est = DRModels._fit_gamma_crossed_laplace(DRModels.Gamma(), yg, X, ones(n, 1), comps, ["(Intercept)", "x"], ["(Intercept)"], 1e-7)
     sd_gamma_est = re_sd(fit_gamma_est)
     @test fit_gamma_est.converged
     @test abs(coef(fit_gamma_est, :mu)[2] - β[2]) < 0.08
@@ -91,13 +91,13 @@ end
     φ = 25.0
     p = logistic.(η)
     yb = Float64.([rand(rng, Distributions.Beta(p[i] * φ, (1 - p[i]) * φ)) for i in 1:n])
-    fit_beta = DRM._fit_beta_fixed_crossed_laplace(DRM.Beta(), yb, φ, X, comps, ["(Intercept)", "x"], 1e-7)
+    fit_beta = DRModels._fit_beta_fixed_crossed_laplace(DRModels.Beta(), yb, φ, X, comps, ["(Intercept)", "x"], 1e-7)
     sd_beta = re_sd(fit_beta)
     @test fit_beta.converged
     @test abs(coef(fit_beta, :mu)[2] - β[2]) < 0.08
     @test abs(sd_beta[:g] - σg) < 0.12
     @test abs(sd_beta[:h] - σh) < 0.12
-    fit_beta_est = DRM._fit_beta_crossed_laplace(DRM.Beta(), yb, X, ones(n, 1), comps, ["(Intercept)", "x"], ["(Intercept)"], 1e-7)
+    fit_beta_est = DRModels._fit_beta_crossed_laplace(DRModels.Beta(), yb, X, ones(n, 1), comps, ["(Intercept)", "x"], ["(Intercept)"], 1e-7)
     sd_beta_est = re_sd(fit_beta_est)
     @test fit_beta_est.converged
     @test abs(coef(fit_beta_est, :mu)[2] - β[2]) < 0.08
@@ -135,7 +135,7 @@ end
     η = [0.8 + 0.5 * x[i] + bg[gids[i]] + bh[hids[i]] for i in 1:n]
     μ = exp.(η)
     ynb = Float64.([rand(rng, Distributions.NegativeBinomial(true_size, true_size / (true_size + μ[i]))) for i in 1:n])
-    fit318 = DRM._fit_nb2_crossed_laplace(DRM.NegBinomial2(), ynb, hcat(ones(n), x),
+    fit318 = DRModels._fit_nb2_crossed_laplace(DRModels.NegBinomial2(), ynb, hcat(ones(n), x),
                                           ones(n, 1), comps318, ["(Intercept)", "x"],
                                           ["(Intercept)"], 1e-7)
     @test abs(exp(-2 * coef(fit318, :sigma)[1]) - true_size) < 0.8
@@ -160,14 +160,14 @@ end
     yint = round.(Int, y_nb)
     nb_aux(logsize) = begin
         r = exp(clamp(-2 * logsize, -8.0, 8.0))
-        lconst = [DRM.loggamma(yint[i] + r) - DRM.loggamma(r) - DRM._logfactorial(yint[i]) for i in eachindex(yint)]
+        lconst = [DRModels.loggamma(yint[i] + r) - DRModels.loggamma(r) - DRModels._logfactorial(yint[i]) for i in eachindex(yint)]
         (y = Float64.(yint), size = r, lconst = lconst)
     end
 
     y_gamma = Float64.([rand(rng, Distributions.Gamma(6.0, μ[i] / 6.0)) for i in 1:n])
     gamma_aux(logsigma) = begin
         α = exp(clamp(-2 * logsigma, -8.0, 8.0))
-        lconst = [α * log(α) - DRM.loggamma(α) + (α - 1) * log(y_gamma[i]) for i in eachindex(y_gamma)]
+        lconst = [α * log(α) - DRModels.loggamma(α) + (α - 1) * log(y_gamma[i]) for i in eachindex(y_gamma)]
         (y = y_gamma, shape = α, lconst = lconst)
     end
 
@@ -176,7 +176,7 @@ end
     ylogit = log.(y_beta) .- log1p.(-y_beta)
     beta_aux(logsigma) = begin
         φ = exp(clamp(-2 * logsigma, -8.0, 8.0))
-        (y = y_beta, precision = φ, ylogit = ylogit, lgammaφ = DRM.loggamma(φ))
+        (y = y_beta, precision = φ, ylogit = ylogit, lgammaφ = DRModels.loggamma(φ))
     end
 
     θ_nb = [0.12, 0.32, -0.5 * log(2.3), log(0.32), log(0.24)]
@@ -188,12 +188,12 @@ end
         (Val(:gamma_fixed), gamma_aux, θ_gamma),
         (Val(:beta_fixed), beta_aux, θ_beta),
     )
-        val, grad, _, ok = DRM._crossed_mean_laplace_nuisance_fg(
+        val, grad, _, ok = DRModels._crossed_mean_laplace_nuisance_fg(
             kind, aux_from, n, X, gidx, G, hidx, H, θ; grad = true
         )
         @test ok
         @test isfinite(val)
-        fd = central_gradient(θp -> DRM._crossed_mean_laplace_nuisance_fg(
+        fd = central_gradient(θp -> DRModels._crossed_mean_laplace_nuisance_fg(
             kind, aux_from, n, X, gidx, G, hidx, H, θp; grad = false
         )[1], θ)
         @test maximum(abs.(grad .- fd)) <= 1e-6

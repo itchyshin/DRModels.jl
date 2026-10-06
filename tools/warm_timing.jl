@@ -3,7 +3,7 @@
 #
 # Native-Julia warm-workflow timing harness. Reads the fixtures written by
 # tools/warm_timing_fixtures.jl and, for each registered workflow, fits it via
-# DRM.jl's own public front end (`drm(...)`), never through the R bridge --
+# DRModels.jl's own public front end (`drm(...)`), never through the R bridge --
 # this is a pure Julia process, timed independently of tools/warm_timing.R.
 #
 # Registry: docs/dev-log/evidence/julia-r-parity/warm-workflow-registry.md
@@ -35,7 +35,7 @@
 # not the actual covariance computation. Where the fitted objective closure
 # is available (`fit.nll !== nothing`) and differentiable through ForwardDiff,
 # this harness FORCES real recomputation: `ForwardDiff.hessian(fit.nll,
-# fit.theta)` then `DRM._vcov_from_hessian(...)` -- the exact steps the
+# fit.theta)` then `DRModels._vcov_from_hessian(...)` -- the exact steps the
 # fitter itself ran to produce `fit.vcov` (verified byte-for-byte identical
 # on 7/10 registered workflows, 2026-09-02). Two workflow families cannot be
 # recomputed this way: the q4 bivariate phylogenetic route
@@ -56,7 +56,7 @@
 #       --out docs/dev-log/evidence/julia-r-parity/warm-timing-julia-tN.tsv
 #   (add --workflow NAME to run a single workflow, e.g. for the smoke pre-run)
 
-using DRM
+using DRModels
 using ForwardDiff
 using LinearAlgebra
 using Printf
@@ -111,7 +111,7 @@ end
 num(v) = parse.(Float64, v)
 ints(v) = parse.(Int, v)
 
-read_tree(path) = DRM.augmented_phy(read(path, String))
+read_tree(path) = DRModels.augmented_phy(read(path, String))
 
 # ---- per-workflow definitions ---------------------------------------------
 # Each entry: fit() -> DrmFit, uncertainty (Function or `nothing` if the
@@ -121,7 +121,7 @@ read_tree(path) = DRM.augmented_phy(read(path, String))
 # (NOT a cached-field read -- see header note). `nothing` if this workflow's
 # route cannot be recomputed this way (checked once at registration below,
 # not silently retried per call).
-force_vcov(fit) = DRM._vcov_from_hessian(ForwardDiff.hessian(fit.nll, fit.theta))
+force_vcov(fit) = DRModels._vcov_from_hessian(ForwardDiff.hessian(fit.nll, fit.theta))
 
 # True iff `force_vcov` actually works for a representative fit from this
 # route (probed once when building the registry, not per timed call).

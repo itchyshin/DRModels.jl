@@ -11,7 +11,7 @@
 #
 # Grep: VA-vs-LA
 
-using DRM
+using DRModels
 using Random
 using Printf
 import Distributions

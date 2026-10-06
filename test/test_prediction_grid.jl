@@ -3,7 +3,7 @@
 # (Cartesian product) while holding every other predictor at a reference value.
 # Independent of DrmFit (operates on plain NamedTuples), but must compose with
 # predict_parameters(fit, prediction_grid(...)).
-using DRM
+using DRModels
 using Test, Random
 using Statistics: mean
 

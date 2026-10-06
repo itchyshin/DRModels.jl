@@ -1,16 +1,16 @@
-# test_xfam_external_validation.jl — INDEPENDENT validation of DRM.jl's
+# test_xfam_external_validation.jl — INDEPENDENT validation of DRModels.jl's
 # cross-family latent correlation (`fit_mixed_family`) against external references.
 #
-# DRM's shared-latent correlation
+# DRModels's shared-latent correlation
 #     rho = lambda1 lambda2 / sqrt((lambda1^2 + v1) (lambda2^2 + v2)),  v_k = link_residual(fam_k),
 # is the SAME estimand as the trait-trait residual correlation of a 2-response,
 # 1-factor GLLVM. Three independent checks, in increasing scope:
 #
-#  (1) EXTERNAL PACKAGE — Gaussian x Gaussian, DRM (GHQ engine) vs `gllvm`
+#  (1) EXTERNAL PACKAGE — Gaussian x Gaussian, DRModels (GHQ engine) vs `gllvm`
 #      (VA/Laplace engine, an entirely separate codebase). gllvm::getResidualCor
 #      on a 2-column `gllvm(num.lv = 1)` fit IS this rho (verified: it equals
 #      lambda1 lambda2 / sqrt((lambda1^2+phi1^2)(lambda2^2+phi2^2)) reconstructed from
-#      gllvm's own loadings). DRM refits the IDENTICAL simulated data and must agree
+#      gllvm's own loadings). DRModels refits the IDENTICAL simulated data and must agree
 #      to cross-package tolerance. GUARDED: skips (with @info) if the gllvm fixture
 #      is absent, so the suite is portable to machines without R/gllvm. Regenerate
 #      with `Rscript test/parity/gen_xfam_external.R`.
@@ -21,20 +21,20 @@
 #      therefore validated in (2) against an independent Monte-Carlo reference.
 #
 #  (2) CROSS-FAMILY, INDEPENDENT MONTE-CARLO — Gaussian x Poisson. The population
-#      latent-scale rho is computed from the TRUE generative parameters using DRM's
+#      latent-scale rho is computed from the TRUE generative parameters using DRModels's
 #      documented standardization (v1 = sigma1^2; v2 = log(1 + 1/mu-bar2) with
 #      mu-bar2 = E_x[exp(X beta2)] the conditional-mean baseline, EXCLUDING the
 #      latent — this is `rho_of`'s convention, mu-bar2 from X*beta2 alone). The
-#      reference uses no DRM fit. DRM's estimate at large n must converge to it.
+#      reference uses no DRModels fit. DRModels's estimate at large n must converge to it.
 #
 #  (3) CLOSED FORM — Gaussian x Gaussian, where the marginal is exactly bivariate
 #      normal so rho = lambda1 lambda2 / sqrt((lambda1^2+sigma1^2)(lambda2^2+sigma2^2))
-#      holds analytically. DRM must recover it.
+#      holds analytically. DRModels must recover it.
 #
 # License: gllvm is GPL; only its fitted NUMBERS (data, not source) are stored in
 # the fixture — mirrors the drmTMB parity-fixture contract (AGENTS.md s.3).
 
-using DRM
+using DRModels
 using Test, Random, Statistics, Printf
 using TOML
 using DelimitedFiles: readdlm
@@ -73,15 +73,15 @@ const _XFAM_FIXDIR = joinpath(@__DIR__, "parity", "fixtures", "xfam-external-gll
             n = length(y1)
             X1 = hcat(ones(n), x); X2 = hcat(ones(n), x)
 
-            fit = DRM.fit_mixed_family(y1 = y1, X1 = X1, fam1 = Gaussian(),
+            fit = DRModels.fit_mixed_family(y1 = y1, X1 = X1, fam1 = Gaussian(),
                                        y2 = y2, X2 = X2, fam2 = Gaussian(),
                                        confint = false)
             @test fit.converged
-            # DRM (GHQ) and gllvm (VA) fit the SAME data → same estimand, agree to
+            # DRModels (GHQ) and gllvm (VA) fit the SAME data → same estimand, agree to
             # cross-package tolerance. (On the calibration data the achieved gap was
             # ~1e-4; the 2e-2 band is a conservative engine-vs-engine margin.)
             @test isapprox(fit.rho_latent, rho_gllvm; atol = atol_x)
-            # Same marginal bivariate-normal likelihood: DRM's optimum is at least
+            # Same marginal bivariate-normal likelihood: DRModels's optimum is at least
             # as high as gllvm's (the rho/logLik are identified even though the
             # individual Gaussian-axis loadings sit on a flat ridge).
             @test fit.loglik >= ll_gllvm - 0.25
@@ -98,7 +98,7 @@ const _XFAM_FIXDIR = joinpath(@__DIR__, "parity", "fixtures", "xfam-external-gll
         β1 = [0.5, 0.8]; β2 = [0.3, -0.5]
         λ1 = 0.8; λ2 = 0.6; σ1 = 0.5
 
-        # Independent population reference (no DRM fit): DRM's standardization with
+        # Independent population reference (no DRModels fit): DRModels's standardization with
         # mu-bar2 = E_x[exp(X beta2)] (conditional-mean baseline). E_x is a 2e6-draw
         # Monte-Carlo over the TRUE covariate law.
         xref = randn(MersenneTwister(777), 2_000_000)
@@ -107,7 +107,7 @@ const _XFAM_FIXDIR = joinpath(@__DIR__, "parity", "fixtures", "xfam-external-gll
         v2_ref = log1p(1 / μ̄2)                       # Poisson link-residual (N&S 2010)
         rho_ref = (λ1 * λ2) / sqrt((λ1^2 + v1_ref) * (λ2^2 + v2_ref))
 
-        # DRM fits at large n; average a few seeds to suppress Monte-Carlo scatter.
+        # DRModels fits at large n; average a few seeds to suppress Monte-Carlo scatter.
         # (n = 10_000 × 3 seeds gave |mean - ref| ≈ 8e-4, max single-seed ≈ 6e-3.)
         n = 10_000
         seeds = (101, 202, 303)
@@ -118,8 +118,8 @@ const _XFAM_FIXDIR = joinpath(@__DIR__, "parity", "fixtures", "xfam-external-gll
             η2 = X2 * β2 .+ λ2 .* u
             y1 = X1 * β1 .+ λ1 .* u .+ σ1 .* randn(rng, n)
             y2 = Float64[_xfam_rpois(rng, exp(clamp(η2[i], -20.0, 20.0))) for i in 1:n]
-            DRM.fit_mixed_family(y1 = y1, X1 = X1, fam1 = Gaussian(),
-                                 y2 = y2, X2 = X2, fam2 = DRM.Poisson(),
+            DRModels.fit_mixed_family(y1 = y1, X1 = X1, fam1 = Gaussian(),
+                                 y2 = y2, X2 = X2, fam2 = DRModels.Poisson(),
                                  confint = false)
         end
         @test all(f -> f.converged, fits)
@@ -130,7 +130,7 @@ const _XFAM_FIXDIR = joinpath(@__DIR__, "parity", "fixtures", "xfam-external-gll
         @test isapprox(mean(f.λ1 for f in fits), λ1; atol = 0.05)
         @test isapprox(mean(f.λ2 for f in fits), λ2; atol = 0.05)
         @test isapprox(mean(f.σ1 for f in fits), σ1; atol = 0.05)
-        # Reconstruct DRM's own rho from its (λ, v) — pins the reported value to the
+        # Reconstruct DRModels's own rho from its (λ, v) — pins the reported value to the
         # documented formula (self-consistency, not a coincidence).
         for f in fits
             @test isapprox(f.rho_latent,
@@ -156,7 +156,7 @@ const _XFAM_FIXDIR = joinpath(@__DIR__, "parity", "fixtures", "xfam-external-gll
         y2 = X2 * β2 .+ λ2 .* u .+ σ2 .* randn(rng, n)
         rho_closed = (λ1 * λ2) / sqrt((λ1^2 + σ1^2) * (λ2^2 + σ2^2))
 
-        fit = DRM.fit_mixed_family(y1 = y1, X1 = X1, fam1 = Gaussian(),
+        fit = DRModels.fit_mixed_family(y1 = y1, X1 = X1, fam1 = Gaussian(),
                                    y2 = y2, X2 = X2, fam2 = Gaussian(),
                                    confint = false)
         @test fit.converged

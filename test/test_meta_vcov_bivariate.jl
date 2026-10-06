@@ -2,7 +2,7 @@
 # covariance, the engine path that unblocks drmTMB's `meta_vcov_bivariate`.
 #
 # WHY THIS EXISTS. The A4d design pass refused to port `meta_vcov_bivariate`
-# because "the output would have no consumer": DRM.jl's `meta_V` was
+# because "the output would have no consumer": DRModels.jl's `meta_V` was
 # diagonal-univariate only and the bivariate route ignored it. This slice builds
 # the consumer — per-study known 2x2 sampling covariance added to the bivariate
 # residual model, S_i = V_i + [[sigma1^2, rho*sigma1*sigma2], [., sigma2^2]] —
@@ -14,7 +14,7 @@
 # Cross-implementation parity vs native drmTMB lives in tools/parity_biv_meta.R;
 # THIS file must not be able to pass by both implementations sharing a bug.
 
-using DRM
+using DRModels
 using Test
 using Random
 using LinearAlgebra

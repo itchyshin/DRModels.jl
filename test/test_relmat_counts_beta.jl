@@ -19,7 +19,7 @@
 #       finite-difference gradient of the true marginal NLL to ≤ 1e-6 (the FD
 #       gate the gradient path must pass), evaluated at a θ OFF the optimum so
 #       the implicit db̂/dθ terms are exercised — with a relmat-derived precision.
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 import Distributions
 using SpecialFunctions: loggamma, digamma
@@ -44,7 +44,7 @@ const _BT_NMAX = 400
 const _BT_FDH  = 1e-4
 function _fd_nuisance_relmat_beta(kind, aux_from, n, Xμ, leaf_node, Q, logdetQ, θ, b_base)
     function mnll(t)
-        v = DRM._phylo_mean_laplace_nuisance_fg(
+        v = DRModels._phylo_mean_laplace_nuisance_fg(
             kind, aux_from, n, Xμ, leaf_node, Q, logdetQ, Vector{Float64}(t);
             grad = false, b0 = copy(b_base), newton_tol = _BT_NTOL, newton_maxiter = _BT_NMAX,
         )[1]
@@ -60,7 +60,7 @@ function _fd_nuisance_relmat_beta(kind, aux_from, n, Xμ, leaf_node, Q, logdetQ,
     return g
 end
 
-# Beta NLL inverse-precision aux, mirroring DRM's internal `_beta_laplace_setup`
+# Beta NLL inverse-precision aux, mirroring DRModels's internal `_beta_laplace_setup`
 # exactly (φ = 1/σ²; logit-transformed responses cached). θσ is stored as
 # -0.5·log φ, so the recovered precision is exp(-2·coef(:sigma)).
 function _beta_aux_from(y, ylogit)
@@ -113,7 +113,7 @@ end
     μ = _logistic_b.(0.30 .+ 0.40 .* x .+ u[id])
     y = Float64.([rand(rng, Distributions.Beta(μi * φtrue, (1 - μi) * φtrue)) for μi in μ])
 
-    Q, leaf_node = DRM._general_cov_setup(Matrix(C), id)
+    Q, leaf_node = DRModels._general_cov_setup(Matrix(C), id)
     q = size(Q, 1)
     logdetQ = logdet(cholesky(Symmetric(Q); check = false))
     Xμ = hcat(ones(n), x)
@@ -121,7 +121,7 @@ end
     aux_from = _beta_aux_from(y, ylogit)
     # θ = [βμ(2); -0.5·log φ; logσ_relmat], OFF the optimum (pick φ ≈ 8.0).
     θ = [0.15, 0.50, -0.5 * log(8.0), log(0.55)]
-    val0, g_an, b_base, ok = DRM._phylo_mean_laplace_nuisance_fg(
+    val0, g_an, b_base, ok = DRModels._phylo_mean_laplace_nuisance_fg(
         Val(:beta_fixed), aux_from, n, Xμ, leaf_node, Q, logdetQ, θ;
         grad = true, b0 = zeros(q), newton_tol = _BT_NTOL, newton_maxiter = _BT_NMAX,
     )

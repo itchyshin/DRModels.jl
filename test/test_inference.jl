@@ -1,7 +1,7 @@
-# Wald inference for fitted DRM models: standard errors from the observed
+# Wald inference for fitted DRModels models: standard errors from the observed
 # information (vcov) and Wald confidence intervals. Mirrors drmTMB's default
 # `confint(..., method = "wald")`.
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 
 @testset "Wald inference: stderror + confint" begin
@@ -49,7 +49,7 @@ end
     # slot 1 identified (var 0.04); slot 2 on the boundary (negative variance)
     V = [0.04 0.0; 0.0 -1.0e-6]
     empty = Dict{Symbol,Vector{Float64}}()
-    fit = DRM.DrmFit(Gaussian(), blocks, coefnames, theta, V, -10.0, 100, false,
+    fit = DRModels.DrmFit(Gaussian(), blocks, coefnames, theta, V, -10.0, 100, false,
                      empty, empty, empty)
 
     se = stderror(fit)

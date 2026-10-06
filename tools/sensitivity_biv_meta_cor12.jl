@@ -1,6 +1,6 @@
 # Misspecified cor12: the analyst GUESSES the sampling correlation. How much does
 # a wrong guess cost the heterogeneity correlation?
-using DRM, Random, LinearAlgebra, Statistics, Printf
+using DRModels, Random, LinearAlgebra, Statistics, Printf
 const BF = bf(mu1=@formula(y1 ~ x), mu2=@formula(y2 ~ x),
               sigma1=@formula(sigma1 ~ 1), sigma2=@formula(sigma2 ~ 1),
               rho12=@formula(rho12 ~ 1))

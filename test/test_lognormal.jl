@@ -2,7 +2,7 @@
 # formula μ is the mean of log y (identity link on the log scale); σ is the SD of
 # log y (log link). logpdf = Normal(log y; μ, σ) − log y. Fixed effects, ML.
 # Mirrors drmTMB's `lognormal`.
-using DRM
+using DRModels
 using Test, Random
 
 @testset "LogNormal (positive continuous) — recovery" begin

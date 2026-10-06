@@ -290,6 +290,7 @@ function fit_q4_sparse_fisherz(prob::AugProblem, Q_cond::SparseMatrixCSC;
              rho = collect(βblk[o5+1:o5+kr]))
     Σa_hat = fz_DRD(Vector{Float64}(φa_hat))
     cors = fz_correlations(Vector{Float64}(φa_hat))
+    nll_mean = _objective_at_minimizer_fg(fg!, res)   # NOT Optim.minimum(res): see optim_minimum_guard.jl
     return (
         ψ = ψ_hat,
         φa = Vector{Float64}(φa_hat),
@@ -298,8 +299,8 @@ function fit_q4_sparse_fisherz(prob::AugProblem, Q_cond::SparseMatrixCSC;
         Λ = Σa_hat,                              # alias: same object the ML path calls Λ
         correlations = cors,                     # (c21,c31,c41,c32,c42,c43) over axes (μ1,μ2,σ1,σ2)
         sds = sqrt.(diag(Σa_hat)),
-        nll = Optim.minimum(res) * nobs,
-        loglik = -Optim.minimum(res) * nobs,
+        nll = nll_mean * nobs,
+        loglik = -nll_mean * nobs,
         converged = Optim.converged(res),
         iterations = Optim.iterations(res),
         g_residual = Optim.g_residual(res),

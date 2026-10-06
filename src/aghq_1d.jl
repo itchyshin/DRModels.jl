@@ -1,4 +1,4 @@
-# aghq_1d.jl — DRM-native 1-D Liu–Pierce adaptive Gauss–Hermite quadrature
+# aghq_1d.jl — DRModels-native 1-D Liu–Pierce adaptive Gauss–Hermite quadrature
 # around existing `_gauss_hermite` (#448, lever 2).
 #
 # This is plumbing, not a recovery headline. k=1 recovers the 1-point Laplace

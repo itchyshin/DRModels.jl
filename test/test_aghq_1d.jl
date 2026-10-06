@@ -7,13 +7,13 @@
 #
 # Default `marginal = :LA` stays today's GHQ-32. Capability row stays missing.
 
-using DRM
+using DRModels
 using Test
 using Random
 using LinearAlgebra
 import Distributions
 
-const DA = DRM
+const DA = DRModels
 
 # ── S1 / S2 kernel ───────────────────────────────────────────────────────────
 
@@ -203,7 +203,9 @@ end
             @test e isa ArgumentError
             msg = sprint(showerror, e)
             @test occursin("AGHQ", msg)
-            @test occursin("448", msg)
+            # crossed intercepts are now an AGHQ route (#761) that refuses only when
+            # both groupings have more than 8 levels (this fixture: 12 and 12+)
+            @test occursin(tag == "crossed" ? "761" : "448", msg)
         end
 
         # associate_pairs QuadGK is not AGHQ — reject the keyword rather than

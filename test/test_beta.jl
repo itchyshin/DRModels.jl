@@ -1,9 +1,9 @@
 # Beta family: responses on the open interval (0,1) — proportions, rates. Logit
 # link on the mean μ; the `sigma` slot carries σ with the drmTMB precision
 # mapping φ = 1/σ² (so a Beta(μφ, (1-μ)φ) likelihood). Fixed effects, ML.
-using DRM
+using DRModels
 using Test, Random
-import Distributions          # qualified — DRM has its own `Beta` family type
+import Distributions          # qualified — DRModels has its own `Beta` family type
 
 @testset "Beta (proportions, logit link) — recovery" begin
     Random.seed!(20260617)

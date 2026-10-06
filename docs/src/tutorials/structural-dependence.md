@@ -1,7 +1,7 @@
 # Structural dependence overview
 
 !!! note "Status — Stable"
-    Mirrors drmTMB's [Structural dependence overview](https://itchyshin.github.io/drmTMB/articles/structural-dependence.html). **In DRM.jl today:** all four structured-effect markers on the mean — `relmat` (supplied `K`), `animal` (pedigree `A`), `phylo` (tree), and `spatial` (coordinates) — are available. For Gaussian responses with these effects on the mean, latent effects integrate out exactly; covariance parameters are estimated numerically. The q=4 phylogenetic bivariate engine is also available.
+    Mirrors drmTMB's [Structural dependence overview](https://itchyshin.github.io/drmTMB/articles/structural-dependence.html). **In DRModels.jl today:** all four structured-effect markers on the mean — `relmat` (supplied `K`), `animal` (pedigree `A`), `phylo` (tree), and `spatial` (coordinates) — are available. For Gaussian responses with these effects on the mean, latent effects integrate out exactly; covariance parameters are estimated numerically. The q=4 phylogenetic bivariate engine is also available.
 
 A structured effect puts a **known correlation** among the group-level random
 intercepts instead of treating groups as independent. The marker names where

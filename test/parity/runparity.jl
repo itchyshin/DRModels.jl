@@ -1,6 +1,6 @@
 # runparity.jl — gated R-parity runner (executed only under DRM_PARITY_TESTS=1,
 # wired from test/runtests.jl). Globs test/parity/fixtures/*/expected.toml, fits
-# each case with DRM.jl by ML, and applies compare.jl's contract against the
+# each case with DRModels.jl by ML, and applies compare.jl's contract against the
 # committed drmTMB reference numbers.
 #
 # NO RCall at run time — fixtures are static, generated out-of-band (GENERATING.md).
@@ -8,7 +8,7 @@
 # trivially with an @info, because an empty real-fixture set is expected until a
 # maintainer with local R + drmTMB generates them.
 
-using DRM       # exports @formula, bf, drm, families, markers
+using DRModels       # exports @formula, bf, drm, families, markers
 using Test
 using TOML
 
@@ -28,11 +28,11 @@ function _parity_family(family::AbstractString)
     fam == "gaussian_bivariate" && return Gaussian()
     fam == "student" && return Student()
     fam == "nbinom2" && return NegBinomial2()
-    fam == "beta" && return DRM.Beta()
-    fam == "poisson" && return DRM.Poisson()
-    fam == "gamma" && return DRM.Gamma()
-    fam == "binomial" && return DRM.Binomial()
-    fam == "lognormal" && return DRM.LogNormal()
+    fam == "beta" && return DRModels.Beta()
+    fam == "poisson" && return DRModels.Poisson()
+    fam == "gamma" && return DRModels.Gamma()
+    fam == "binomial" && return DRModels.Binomial()
+    fam == "lognormal" && return DRModels.LogNormal()
     return nothing
 end
 
@@ -115,7 +115,7 @@ let fixtures_root = joinpath(@__DIR__, "fixtures")
             @testset "$casename" begin
                 # xfam-external-gllvm is a cross-package estimand OUT of the
                 # Workflow G / #370 cohort; skip rather than error on incomplete
-                # expected.toml (missing aic / not a DRM.jl family fit).
+                # expected.toml (missing aic / not a DRModels.jl family fit).
                 if casename == "xfam-external-gllvm"
                     @info "Skipping `$casename`: out of Workflow G / #370 cohort (cross-package gllvm estimand)"
                     @test_skip xfam_out_of_cohort
