@@ -34,7 +34,7 @@ makedocs(
             "What is tested" => "capabilities.md",
             "Coming from R?" => "coming-from-r.md",
             "R and Julia vocabulary" => "rosetta.md",
-            "drmTMB parity scoreboard" => "drmtmb-parity.md",
+            "drmTMB parity" => "drmtmb-parity.md",
         ],
         "Choose a model" => [
             "model-guides/model-map.md",

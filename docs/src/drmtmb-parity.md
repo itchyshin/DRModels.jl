@@ -30,7 +30,7 @@ overclaim parity:
 claim.** A row can be `claim_status = covered` — implemented, tested,
 documented, with point/SE/logLik parity evidence — while its interval-coverage
 fence stays completely untouched. Every row's R-bridge route is `experimental`
-by construction (see [Honest gaps](#honest-gaps)): "covered" describes what the
+by construction (see [Honest gaps](#Honest-gaps)): "covered" describes what the
 *direct-Julia engine* delivers and what evidence backs it, not that the R
 bridge is production-ready.
 
