@@ -158,6 +158,102 @@ class ReaderSurfaceAuditTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertIn("LANDING CONTRACT PASSED", result.stdout)
 
+    def test_internal_handoff_destinations_are_rejected(self) -> None:
+        cases = (
+            "See `HANDOVER.md` for model support.",
+            "See [details](https://github.com/org/repo/blob/main/HANDOVER.md).",
+            "See [details](../HANDOVER.md#supported-models).",
+            "See [details](../HANDOVER%2Emd).",
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for text in cases:
+                with self.subTest(text=text):
+                    (root / "guide.md").write_text(text, encoding="utf-8")
+                    result = self.invoke(root)
+                    self.assertEqual(result.returncode, 1, result.stdout)
+                    self.assertIn("internal_handoff", result.stdout)
+
+    def test_beginner_process_phrases_are_rejected_but_scientific_terms_are_allowed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for text in ("Read the validation receipt.", "This is an admitted route.",
+                         "Compare the certified cells.", "Wait for the merge gate."):
+                with self.subTest(text=text):
+                    (root / "getting-started.md").write_text(text, encoding="utf-8")
+                    result = self.invoke(root)
+                    self.assertEqual(result.returncode, 1, result.stdout)
+                    self.assertIn("beginner_process", result.stdout)
+            (root / "getting-started.md").write_text(
+                "Count cells in each sample. Validate the model with simulated data. "
+                "Study receipt of treatment and a gate in a laboratory maze.", encoding="utf-8")
+            self.assertEqual(self.invoke(root).returncode, 0)
+
+    def reader_flow_fixture(self, docs: Path, route: str, text: str) -> Path:
+        root = docs / "src"
+        (root / "model-guides").mkdir(parents=True)
+        (root / route).write_text(text, encoding="utf-8")
+        (root / "example.md").write_text("# A worked example\n", encoding="utf-8")
+        (docs / "make.jl").write_text(f'makedocs(pages = ["{route}", "example.md"])\n', encoding="utf-8")
+        return root
+
+    def test_published_key_routes_keep_question_and_next_step_sections(self) -> None:
+        cases = {
+            "index.md": "## What is distributional regression?\nDescribe average and spread.\n\n## Choose your analysis\n[Fit a model](example.md)\n",
+            "model-guides/model-map.md": "# What can I fit today?\nChoose a model for your response.\n\n## Which page next\n[Fit a model](../example.md)\n",
+            "getting-started.md": "# Getting started\n\n## Where to go next\n[Another model](example.md)\n",
+        }
+        for route, text in cases.items():
+            with self.subTest(route=route), tempfile.TemporaryDirectory() as tmp:
+                root = self.reader_flow_fixture(Path(tmp), route, text)
+                self.assertEqual(self.invoke(root, "--public-only").returncode, 0)
+                # A title elsewhere on the page cannot stand in for a missing
+                # route section; the section must be a real Markdown heading.
+                (root / route).write_text(text.replace("## ", ""), encoding="utf-8")
+                result = self.invoke(root, "--public-only")
+                self.assertEqual(result.returncode, 1, result.stdout)
+                self.assertIn("reader_flow", result.stdout)
+
+    def test_next_step_requires_an_existing_local_page_in_its_section(self) -> None:
+        for link in ("No next step.", "[Next](missing.md)", "[Next](https://example.org)",
+                     "[Next](getting-started.md#top)", "[Next](hidden.md)",
+                     "```markdown\n[Next](example.md)\n```"):
+            with self.subTest(link=link), tempfile.TemporaryDirectory() as tmp:
+                root = self.reader_flow_fixture(Path(tmp), "getting-started.md",
+                    "# Getting started\n[Early link](example.md)\n\n## Where to go next\n" + link)
+                (root / "hidden.md").write_text("# An unpublished page\n", encoding="utf-8")
+                result = self.invoke(root, "--public-only")
+                self.assertEqual(result.returncode, 1, result.stdout)
+                self.assertIn("next step", result.stdout)
+
+    def test_question_heading_cannot_be_removed_while_retaining_next_steps(self) -> None:
+        for route, next_section, link in (
+            ("index.md", "Choose your analysis", "example.md"),
+            ("model-guides/model-map.md", "Which page next", "../example.md"),
+        ):
+            with self.subTest(route=route), tempfile.TemporaryDirectory() as tmp:
+                root = self.reader_flow_fixture(Path(tmp), route,
+                    f"# Technical details\n\n## {next_section}\n[Next]({link})\n")
+                result = self.invoke(root, "--public-only")
+                self.assertEqual(result.returncode, 1, result.stdout)
+                self.assertIn("missing question heading", result.stdout)
+
+    def test_question_must_precede_the_first_runnable_example(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            text = "```@example first\nfit = drm(...)\n```\n\n## What is distributional regression?\nMeaning.\n\n## Choose your analysis\n[Fit](example.md)\n"
+            root = self.reader_flow_fixture(Path(tmp), "index.md", text)
+            result = self.invoke(root, "--public-only")
+            self.assertEqual(result.returncode, 1, result.stdout)
+            self.assertIn("before the first runnable example", result.stdout)
+
+    def test_headings_in_code_fences_cannot_satisfy_reader_flow(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self.reader_flow_fixture(Path(tmp), "getting-started.md",
+                "# Getting started\n\n```markdown\n## Where to go next\n[Next](example.md)\n```\n")
+            result = self.invoke(root, "--public-only")
+            self.assertEqual(result.returncode, 1, result.stdout)
+            self.assertIn("reader_flow", result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
