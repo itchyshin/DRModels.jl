@@ -2,10 +2,9 @@
 
 DRM.jl is the Julia twin of R's `drmTMB` — a from-scratch distributional-regression
 engine (mean μ, scale **σ**, residual correlation **ρ12**) built around a sparse,
-exact-gradient Laplace substrate. This page is the live **catch-up scoreboard**:
-where DRM.jl stands against the `drmTMB` capability ledger, and — separately —
-where the R↔Julia bridge (`engine = "julia"`) stands against DRM.jl's own
-direct-Julia engine. **ML is the default** (REML likelihoods aren't comparable
+exact-gradient Laplace substrate. This page says where DRM.jl stands against
+`drmTMB`, and, separately, where the R↔Julia bridge (`engine = "julia"`)
+stands against DRM.jl's own direct-Julia engine. **ML is the default** (REML likelihoods aren't comparable
 across fixed-effect structures); REML is opt-in.
 
 Naming is kept stable across both packages: `sigma`, never `tau`, for scale;
@@ -35,7 +34,7 @@ by construction (see [Honest gaps](#honest-gaps)): "covered" describes what the
 *direct-Julia engine* delivers and what evidence backs it, not that the R
 bridge is production-ready.
 
-## Capability ledger
+## Compared routes
 
 Twelve capabilities are tracked, sourced from `drmTMB`'s
 `inst/extdata/julia-capabilities.tsv`. The **claim boundary** column carries
@@ -111,7 +110,7 @@ is deliberately not being spent on it.
 - **Package registration waits for v0.7.1 (D-183); CRAN is a separate,
   independently held gate.** Neither this page nor any row on it implies
   registration or CRAN release timing — those are tracked and gated
-  elsewhere and are not claims this scoreboard makes.
+  elsewhere and are not claims this page makes.
 
 ---
 
