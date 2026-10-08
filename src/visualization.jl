@@ -35,6 +35,7 @@ On a homogeneous Toeplitz `temporal()` fit, `k` must be a mean coefficient: the
 function profile_curve(
     fit::DrmFit, k::Int; npoints::Int=41, span::Real=3.0, level::Real=0.95
 )
+    level = _validate_ci_level(level; what="profile_curve")
     fit.nll === nothing && throw(
         ArgumentError(
             "profile_curve requires the fitted objective; this model was not built with one",

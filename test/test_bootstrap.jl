@@ -93,15 +93,19 @@ using Test, Random
     phy_data = (; y_phy, x_phy, species)
     phy_fit = drm(phy_form, Gaussian(); data = phy_data, tree = phy,
         algorithm = :em, g_tol = 1e-4)
+    # This EM stop leaves `converged = false` on a non-degenerate fit. These
+    # assertions check solver-control forwarding, so they keep the pre-#962
+    # counting (`check_converged = false`). The default is now `true`.
     br_phy = bootstrap_result(phy_fit; data = phy_data, tree = phy, B = 2,
-        rng = MersenneTwister(13), algorithm = :em, g_tol = 1e-4)
+        rng = MersenneTwister(13), algorithm = :em, g_tol = 1e-4,
+        check_converged = false)
     @test br_phy.attempted == 2
     @test br_phy.used == 2
     @test br_phy.failed == 0
     @test length(br_phy.summary) == length(coef(phy_fit))
     br_phy_formula = bootstrap_result(phy_form, Gaussian(); data = phy_data,
         tree = phy, B = 1, rng = MersenneTwister(14),
-        algorithm = :em, g_tol = 1e-4)
+        algorithm = :em, g_tol = 1e-4, check_converged = false)
     @test br_phy_formula.used == 1
 
     fit0 = drm(form, Gaussian(); data = (; y, x))

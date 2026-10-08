@@ -609,7 +609,8 @@ function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ,
     # reml_q4.jl do -- do NOT add a #491-style fallback, which only papers over it.
     res = _re_lbfgs_with_restart(nll, θ0, θ0_restart, g_tol, pμ + pσ + 1, std(res0))
     θ̂ = Optim.minimizer(res)
-    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    H = ForwardDiff.hessian(nll, θ̂)
+    V = _vcov_from_hessian(H)
 
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :resd => (pμ+pσ+1):(pμ+pσ+1)]
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
@@ -647,16 +648,17 @@ function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ,
     # criterion false; the true gradient ∞-norm there exceeded 1e-3 in 95 of them
     # and 1.0 in 45, worst 3.7e137 (with a POSITIVE Gaussian loglik of +980).
     #
-    # `Optim.g_converged` is exactly the right test, not an approximation of it:
-    # over the same grid `Optim.g_residual(res)` equalled
-    # `maximum(abs, ForwardDiff.gradient(nll, θ̂))` with max absolute difference
-    # 0.0 across 5,349 gradient-converged fits, and the largest such norm was
-    # 9.996e-9 -- inside `g_tol`. Restarting LBFGS from the stalled point was
-    # measured and REJECTED: of those 1,042 it recovered 665, left 377, made the
-    # objective WORSE in 143, and produced NaN. So only the reported flag changes
-    # here -- θ̂, the ML/REML objective and logLik are byte-identical.
-    # Guard: test/test_ranef_varying_scale_convergence.jl.
-    converged = drm_optim_converged(res)
+    # `Optim.g_converged` matched the recomputed gradient on the unscaled grid
+    # (largest norm 9.996e-9, inside `g_tol`). It is NOT unit-free: the same
+    # varying-scale model at `x * 1000` stalls with `|g|∞` just above 1e-8
+    # while the Newton step is a tiny fraction of an SE (drmTMB #1503). The
+    # reported flag is `Optim.converged` (the x/f/g OR, which is what fires on
+    # that plateau) and not the iteration cap, together with the Newton-step
+    # test. `g_converged` is not consulted. θ̂, the objective and logLik are
+    # unchanged. Guard: test/test_ranef_varying_scale_convergence.jl and the
+    # scaled-predictor bootstrap in test/test_triage_g_twin_inputs.jl.
+    converged = Optim.converged(res) && !Optim.iteration_limit_reached(res) &&
+        _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
     # Profile intervals reuse the ML Woodbury nll (same convention as FE REML).
     fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, converged, means, obs, scales), nll_ml), re)
     if reml

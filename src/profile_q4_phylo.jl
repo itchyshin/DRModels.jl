@@ -49,11 +49,11 @@ The calibrated complement to [`bootstrap_sigma_a`].
 function profile_sigma_a(fit::DrmFit; level::Real = 0.95, axes = :all, chibar::Bool = false,
                          n_newton::Union{Nothing,Int} = nothing, g_tol::Real = 1e-3,
                          max_bisect::Int = 14)
+    level = _validate_ci_level(level; what="profile_sigma_a")
     re = fit.ranef
     (re isa NamedTuple && haskey(re, :prob) && haskey(re, :Sigma_a) && haskey(re, :Q_cond)) ||
         throw(ArgumentError("profile_sigma_a requires a bivariate q=4 phylogenetic fit whose " *
             "ranef carries `prob` (re-fit on this DRModels version)"))
-    0 < level < 1 || throw(ArgumentError("level must be in (0, 1)"))
     is_converged(fit) ||
         @warn "profile_sigma_a: the supplied fit did not converge; profile CIs may be unreliable"
     prob = re.prob
