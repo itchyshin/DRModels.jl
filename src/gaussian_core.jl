@@ -201,6 +201,38 @@ struct DrmFit{F}
     # two-structured route). The bootstrap simulator reads it so its draws come
     # from the model that was fitted.
     phylo_scale::Symbol
+
+    # Inner constructor: `converged` is the optimiser flag AND a finite,
+    # non-sentinel optimum. A non-finite log-likelihood, a failed-fit sentinel
+    # (`-1e18`, `-floatmax`, anything `≤ -1e15`), or a non-finite coefficient
+    # never lands as `converged = true` (#1009, #1012, #1019).
+    function DrmFit(family, blocks, coefnames, theta, vcov, loglik, nobs, converged,
+                    means, obs, scales, formula, nll, nllgrad, ranef, estim_method,
+                    reml_loglik, ml_loglik, marginal, phylo_penalty, penalty,
+                    iterations, phylo_scale)
+        # `new` does not convert. The previous default constructor did, and
+        # fitters pass the odd Int log-likelihood or adjoint covariance.
+        new{typeof(family)}(
+            family,
+            convert(Vector{Pair{Symbol,UnitRange{Int}}}, blocks),
+            convert(Vector{Pair{Symbol,Vector{String}}}, coefnames),
+            convert(Vector{Float64}, theta),
+            convert(Matrix{Float64}, vcov),
+            convert(Float64, loglik),
+            convert(Int, nobs),
+            _report_converged(converged, loglik, theta),
+            convert(Dict{Symbol,Vector{Float64}}, means),
+            convert(Dict{Symbol,Vector{Float64}}, obs),
+            convert(Dict{Symbol,Vector{Float64}}, scales),
+            formula, nll, nllgrad, ranef, estim_method,
+            convert(Float64, reml_loglik),
+            convert(Float64, ml_loglik),
+            marginal,
+            convert(Float64, phylo_penalty),
+            penalty,
+            convert(Int, iterations),
+            phylo_scale)
+    end
 end
 
 # 11-arg outer constructor: formula + nll + nllgrad + ranef default to nothing;
@@ -342,7 +374,10 @@ function _is_response_missing(x)
     return false
 end
 
-function _coerce_response_column(raw)
+function _coerce_response_column(raw; name::AbstractString="response")
+    # `Inf` is not the missing-value code. Every response read (formula routes,
+    # the bridge label schema, joint-missing designs) passes through here.
+    _require_finite_inputs(; response=(raw, name))
     y = Vector{Float64}(undef, length(raw))
     observed = Vector{Bool}(undef, length(raw))
     @inbounds for i in eachindex(raw)
@@ -387,7 +422,8 @@ end
 # at unobserved response positions.
 function _design(response::Symbol, rhs, data; schema_cache = nothing, schema_key = nothing)
     raw_response = _table_column(data, response)
-    y_response, observed = _coerce_response_column(raw_response)
+    y_response, observed = _coerce_response_column(raw_response; name=String(response))
+    _require_finite_predictor_columns(rhs, data, response)
     design_data = all(observed) ? data :
         _replace_table_column(data, response, ifelse.(observed, y_response, 0.0))
     ft = FormulaTerm(Term(response), rhs)
@@ -421,7 +457,60 @@ function _design(response::Symbol, rhs, data; schema_cache = nothing, schema_key
         rethrow(e)
     end
     Xm = X isa AbstractMatrix ? Matrix{Float64}(X) : reshape(Float64.(collect(X)), :, 1)
-    return y_response, Xm, String.(vec(coefnames(ft.rhs)))
+    names = String.(vec(coefnames(ft.rhs)))
+    # Catches a finite column that a transform (`log`, `I(1 / x)`, …) turned
+    # non-finite. Plain `NaN`/`Inf` columns are already named above.
+    _require_finite_inputs(; predictors=(Xm, names))
+    return y_response, Xm, names
+end
+
+# Predictor columns named by a fixed-effect RHS. Grouping factors stripped by
+# `_split_ranef` never reach here. Non-numeric columns (factors) are skipped
+# by the checker; `missing` / `NaN` / `Inf` in a numeric column are not.
+function _finite_input_symbols(term, out::Vector{Symbol}=Symbol[])
+    if term isa Term
+        push!(out, term.sym)
+    end
+    if term isa Union{Tuple,AbstractVector}
+        for t in term
+            _finite_input_symbols(t, out)
+        end
+        return out
+    end
+    if hasproperty(term, :terms)
+        terms = getproperty(term, :terms)
+        if terms isa Union{Tuple,AbstractVector}
+            for t in terms
+                _finite_input_symbols(t, out)
+            end
+        end
+    end
+    if hasproperty(term, :args)
+        args = getproperty(term, :args)
+        if args isa Union{Tuple,AbstractVector}
+            for t in args
+                _finite_input_symbols(t, out)
+            end
+        end
+    end
+    return out
+end
+
+function _require_finite_predictor_columns(rhs, data, response::Symbol; context::AbstractString="drm")
+    seen = Set{Symbol}()
+    for sym in _finite_input_symbols(rhs)
+        sym === response && continue
+        sym in seen && continue
+        push!(seen, sym)
+        col = try
+            _table_column(data, sym)
+        catch
+            continue
+        end
+        col isa AbstractArray || continue
+        _require_finite_inputs(; predictors=(col, String(sym)), context=context)
+    end
+    return nothing
 end
 
 """
@@ -513,6 +602,12 @@ refits of a `:Laplace` fit use `:Laplace` too.
 
 Incomplete responses (`missing` or `NaN` in `y`) are supported under the
 observed-rows pattern (matching `response = "include"` in the R bridge).
+`Inf` and `-Inf` are not missing values: they raise `ArgumentError` naming
+the response column and the row. A non-finite predictor, offset, or
+coordinate raises the same way, naming that argument. A returned fit never
+has `converged = true` when its log-likelihood is non-finite or a failed-fit
+sentinel (`≤ -1e15`, including `-1e18` and `-floatmax`) or when any
+coefficient is non-finite.
 For Location-Scale-Scale models, the group index and scale design Z_g
 are parameterised over all G levels, while the likelihood is evaluated on
 observed rows.
@@ -1054,6 +1149,7 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         gidx, G = _group_index(getproperty(data, grp))
         if kind === :spatial
             coords === nothing && error("spatial(1 | $grp) needs `coords = …`")
+            _require_finite_inputs(; coords=coords)
             cmat = Matrix{Float64}(coords)
             size(cmat, 1) == G || error("coords must have $G rows (one per `$grp` level)")
             return _withformula(_fit_spatial_gaussian(fam, y, Xμ, Xσ, gidx, G, cmat, nmμ, nmσ, grp, g_tol), f)
@@ -1240,9 +1336,9 @@ function _fit_fixed_gaussian_missing_response(fam::Gaussian, y, Xμ, Xσ, nmμ, 
 end
 
 function _formula_response_observed_mask(f::DrmFormula, data)
-    _, observed1 = _coerce_response_column(_table_column(data, f.response))
+    _, observed1 = _coerce_response_column(_table_column(data, f.response); name=String(f.response))
     f.response2 === nothing && return observed1
-    _, observed2 = _coerce_response_column(_table_column(data, f.response2))
+    _, observed2 = _coerce_response_column(_table_column(data, f.response2); name=String(f.response2))
     length(observed1) == length(observed2) ||
         throw(ArgumentError("drm: the two response columns have different lengths"))
     return observed1 .& observed2
@@ -1275,9 +1371,9 @@ function _fit_observed_response_rows(fitfun::Function, f::DrmFormula, data)
 end
 
 function _full_response_obs(f::DrmFormula, data)
-    y, observed1 = _coerce_response_column(_table_column(data, f.response))
+    y, observed1 = _coerce_response_column(_table_column(data, f.response); name=String(f.response))
     f.response2 === nothing && return Dict(:mu => y)
-    y2, observed2 = _coerce_response_column(_table_column(data, f.response2))
+    y2, observed2 = _coerce_response_column(_table_column(data, f.response2); name=String(f.response2))
     ntr = y .+ y2
     prop = y ./ ntr
     prop[.!(observed1 .& observed2)] .= NaN
@@ -1285,9 +1381,9 @@ function _full_response_obs(f::DrmFormula, data)
 end
 
 function _full_trials(f::DrmFormula, data)
-    y, observed1 = _coerce_response_column(_table_column(data, f.response))
+    y, observed1 = _coerce_response_column(_table_column(data, f.response); name=String(f.response))
     f.response2 === nothing && return ones(length(y))
-    y2, observed2 = _coerce_response_column(_table_column(data, f.response2))
+    y2, observed2 = _coerce_response_column(_table_column(data, f.response2); name=String(f.response2))
     ntr = y .+ y2
     ntr[.!(observed1 .& observed2)] .= NaN
     return ntr

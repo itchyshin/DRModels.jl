@@ -188,6 +188,8 @@ shape consumed by the row-contract tests.
 function drm_bridge_q2_phylo(; Y, X, species, tree, options = Dict{String,Any}())
     y = Matrix{Float64}(Y)
     x = Matrix{Float64}(X)
+    _require_finite_array(y, "Y"; context="drm_bridge_q2_phylo")
+    _require_finite_array(x, "X"; context="drm_bridge_q2_phylo")
     sp = Int.(vec(species))
     size(y, 2) == 2 ||
         throw(ArgumentError("drm_bridge_q2_phylo: `Y` must have exactly two columns"))
@@ -232,6 +234,9 @@ function drm_bridge_q2_known_precision(; Y, X, group, Q,
     x = Matrix{Float64}(X)
     g = Int.(vec(group))
     qmat = Matrix{Float64}(Q)
+    _require_finite_array(y, "Y"; context="drm_bridge_q2_known_precision")
+    _require_finite_array(x, "X"; context="drm_bridge_q2_known_precision")
+    _require_finite_array(qmat, "Q"; context="drm_bridge_q2_known_precision")
     st, source = _bridge_q2_known_precision_provider(structured_type,
                                                      precision_source)
     size(y, 2) == 2 ||

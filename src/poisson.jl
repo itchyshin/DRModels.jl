@@ -125,6 +125,7 @@ function _offset_vector(offset_term, data)
     v isa AbstractMatrix && size(v, 2) == 1 && (v = vec(v))
     v isa AbstractVector ||
         error("Poisson(): `offset(...)` must resolve to a single numeric column")
+    _require_finite_inputs(; offset=v)
     return Float64.(v)
 end
 
@@ -188,6 +189,7 @@ function drm(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
             return _withformula(_fit_poisson_phylo_laplace(fam, y, Xμ, labels, tree, nmμ, grp, g_tol;
                                                           se = se, reml = reml), f)
         elseif kind === :spatial && K === nothing && coords !== nothing
+            _require_finite_inputs(; coords=coords)
             # Coordinate-based exponential-kernel spatial covariance with the range
             # ρ ESTIMATED JOINTLY (#270): C(ρ) = exp(-d/ρ) from the site distances,
             # ρ enters the outer parameter vector, and its gradient flows through
@@ -656,6 +658,7 @@ supplies the exact outer gradient and the covariance Hessian. Recovered blocks:
 """
 function _fit_poisson_spatial_coord(fam::Poisson, y, Xμ, labels, coords, nmμ, grp,
                                     g_tol; se::Bool = true)
+    _require_finite_inputs(; coords=coords)
     n = length(y)
     pμ = size(Xμ, 2)
     gidx, G = _group_index(labels)

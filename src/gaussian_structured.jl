@@ -547,6 +547,7 @@ end
 # so it is rebuilt each evaluation; otherwise the closed-form marginal is as in
 # `_fit_structured_gaussian`.
 function _fit_spatial_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, coords, nmμ, nmσ, grp, g_tol)
+    _require_finite_inputs(; coords=coords)
     n = length(y)
     pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     # The spatial range is only identified with ≥2 distinct sites; a single level
