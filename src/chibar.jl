@@ -119,6 +119,10 @@ Same as [`chibar_pvalue`](@ref): the `q` dropped parameters are variances tested
 at `0`; for `q = 2` they are independent; all other parameters are interior; ML
 fits. A negative statistic clamps to the boundary p-value.
 
+The same refusals as [`lrtest`](@ref) apply before the statistic is formed:
+REML fits whose fixed structure differs, a sentinel log-likelihood, different
+marginal approximations, a penalized MAP fit, and fits with different `nobs`.
+
 # Example
 ```julia
 # Random intercept vs no random effect: dropping (1 | g) removes ONE variance.
@@ -134,6 +138,9 @@ t.pvalue_naive     # χ²(1): P(χ²₁ > stat)     — conservative (≈ 2× to
 function lrt_boundary(fit_full::DrmFit, fit_reduced::DrmFit; q::Integer = 1)
     _reml_compare_guard(fit_reduced, fit_full, "lrt_boundary")
     _sentinel_compare_guard(fit_reduced, fit_full, "lrt_boundary")
+    _marginal_compare_guard(fit_reduced, fit_full, "lrt_boundary")
+    _map_compare_guard(fit_reduced, fit_full, "lrt_boundary")
+    _nobs_compare_guard(fit_reduced, fit_full, "lrt_boundary")
     statistic = 2 * (loglik(fit_full) - loglik(fit_reduced))
     pvalue = chibar_pvalue(statistic, q)
     pvalue_naive = ccdf(Chisq(q), max(statistic, 0.0))

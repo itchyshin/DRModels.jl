@@ -26,15 +26,18 @@
   `"bootstrap_at_boundary"` and warn as well; a dropped replicate still warns
   in that case, naming `bootstrap_at_boundary`. Gaussian location-scale,
   random-intercept, and location-scale-scale fits judge `converged` by the
-  Newton step in standard-error units (`max |H⁻¹g| / SE ≤ 1e-3`), not by an
-  absolute gradient of `1e-8`, so a change of predictor units does not turn a
-  stationary fit into a failed one. The q=4 bridge bootstrap uses the same
+  Newton step in standard-error units (`max |H⁻¹g| / SE ≤ 1e-3`) together with
+  `Optim.converged` and a stop short of the iteration limit. The absolute
+  `g_converged` check at `1e-8` is not part of that flag, so a change of
+  predictor units does not turn a stationary fit into a failed one. The q=4
+  bridge bootstrap uses the same
   `check_converged = true` rule as the univariate bridge. Set
   `check_converged = false` only to reproduce the old intervals.
 
-- **`update` and `lrtest` refuse two silent mismatches (#1008, #1002).**
+- **`update` and the likelihood-ratio tests refuse silent mismatches (#1008, #1002).**
   `update(...; method = :ML)` on a penalized MAP fit drops the stored penalty
   unless `penalty` is passed again. Passing `family` to `update` is an error
-  that names the argument. `lrtest` errors when the two fits have different
-  `nobs`, so a missing-response or imputed refit is not compared with the seed
-  as if they were the same sample.
+  that names the argument. `lrtest` and `lrt_boundary` error when the two fits
+  have different `nobs`, different marginal approximations, or a penalized MAP
+  estimate, so a missing-response or imputed refit is not compared with the
+  seed as if they were the same sample.

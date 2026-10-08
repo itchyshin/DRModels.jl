@@ -1173,7 +1173,10 @@ function _fit_fixed_gaussian(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, g_tol)
     θ̂ = Optim.minimizer(res)
     H = ForwardDiff.hessian(nll, θ̂)
     V = _vcov_from_hessian(H)
-    converged = _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
+    # x/f/g OR, not the iteration cap, and the Newton step in SE units.
+    # `g_converged` is the absolute 1e-8 check and is not part of this flag.
+    converged = Optim.converged(res) && !Optim.iteration_limit_reached(res) &&
+        _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ)]
     names = [:mu => nmμ, :sigma => nmσ]
     means = Dict(:mu => Xμ * θ̂[1:pμ])

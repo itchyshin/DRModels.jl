@@ -243,4 +243,70 @@ end
                     data = (; y, x = xs))
         @test is_converged(fixed)
     end
+
+    @testset "a true group SD of 0 keeps every replicate and flags the boundary" begin
+        # Group means of the residual are exactly zero, so the random-intercept
+        # variance sits on the boundary. The singular Hessian takes the
+        # absolute-gradient fallback; the replicate must still be kept, and
+        # the retained log-SD draws must be flagged.
+        rng = MersenneTwister(0)
+        G = 16
+        m = 6
+        n = G * m
+        g = repeat(1:G, inner = m)
+        x = randn(rng, n)
+        e = 0.5 .* randn(rng, n)
+        for k in 1:G
+            idx = findall(==(k), g)
+            e[idx] .-= mean(e[idx])
+        end
+        y = 0.2 .+ 0.4 .* x .+ e
+        data = (; y, x, g)
+        fit0 = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), Gaussian(); data)
+        @test is_converged(fit0)
+        resd = findfirst(p -> first(p) === :resd, fit0.blocks)
+        @test resd !== nothing
+        @test exp(fit0.theta[last(fit0.blocks[resd])[1]]) < 1e-4
+        blogs, bounded = Test.collect_test_logs() do
+            bootstrap_result(fit0; data, B = 40, rng = MersenneTwister(0))
+        end
+        @test bounded.failed == 0
+        @test bounded.used == 40
+        @test bounded.status == "bootstrap_at_boundary"
+        @test any(name -> startswith(name, "resd:"), bounded.boundary_params)
+        @test any(l -> occursin("bootstrap_at_boundary", string(l.message)), blogs)
+    end
+
+    @testset "lrt_boundary refuses different nobs, marginal, and MAP" begin
+        g = repeat(1:8, inner = 6)
+        x = randn(MersenneTwister(12), 48)
+        y = 0.2 .+ 0.3 .* x .+ randn(MersenneTwister(13), 48)
+        data = (; y, x, g)
+        full = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), Gaussian(); data)
+        reduced = drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), Gaussian(); data)
+        ok = lrt_boundary(full, reduced; q = 1)
+        @test ok.q == 1
+        @test ok.pvalue == chibar_pvalue(ok.statistic, 1)
+
+        short = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), Gaussian();
+                    data = (y = y[1:24], x = x[1:24], g = g[1:24]))
+        nmsg = _argmsg(() -> lrt_boundary(full, short))
+        @test occursin("lrt_boundary", nmsg)
+        @test occursin("nobs", nmsg)
+        @test occursin("different samples", nmsg)
+
+        # Both fits keep a random intercept, so a marginal mismatch is not
+        # excused by an exact fixed-effects likelihood.
+        other = drm(bf(@formula(y ~ 1 + (1 | g)), @formula(sigma ~ 1)), Gaussian(); data)
+        lap = DRModels._withmarginal(other, :Laplace)
+        mmsg = _argmsg(() -> lrt_boundary(full, lap))
+        @test occursin("marginal", mmsg)
+        @test occursin(":LA", mmsg)
+        @test occursin(":Laplace", mmsg)
+
+        mapped = DRModels._withmap(full, 0.1, nothing)
+        pmsg = _argmsg(() -> lrt_boundary(mapped, reduced))
+        @test occursin("penalized", pmsg)
+        @test occursin("MAP", pmsg)
+    end
 end

@@ -225,7 +225,10 @@ function _fit_ranef_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, nmμ, 
     H = ForwardDiff.hessian(nll, θ̂)
     V = _vcov_from_hessian(H)
     # Absolute `g_tol` is not unit-free: a scaled predictor stalls just above 1e-8.
-    converged = _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
+    # `Optim.converged` is the x/f/g OR; `g_converged` (absolute 1e-8) is not
+    # part of this flag. Stopping on the iteration cap is not a minimum.
+    converged = Optim.converged(res) && !Optim.iteration_limit_reached(res) &&
+        _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
 
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :sd => (pμ+pσ+1):(pμ+pσ+psd)]
     names = [:mu => nmμ, :sigma => nmσ, :sd => nmsd]
@@ -495,7 +498,10 @@ function _fit_structured_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, K
     θ̂ = Optim.minimizer(res)
     H = ForwardDiff.hessian(nll, θ̂)
     V = _vcov_from_hessian(H)
-    converged = _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
+    # Same flag as the scalar route: x/f/g OR, not the iteration cap, and the
+    # Newton step in SE units. `g_converged` stays out (absolute 1e-8).
+    converged = Optim.converged(res) && !Optim.iteration_limit_reached(res) &&
+        _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
 
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), block => (pμ+pσ+1):(pμ+pσ+psd)]
     names = [:mu => nmμ, :sigma => nmσ, block => nmsd]
@@ -656,7 +662,10 @@ function _fit_gaussian_lss_multi(fam::Gaussian, y, Xμ, Xσ, comps::Vector{_LssC
     θ̂ = Optim.minimizer(res)
     H = ForwardDiff.hessian(nll, θ̂)
     Vcov = _vcov_from_hessian(H)
-    converged = _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
+    # Same flag as the scalar route: x/f/g OR, not the iteration cap, and the
+    # Newton step in SE units. `g_converged` stays out (absolute 1e-8).
+    converged = Optim.converged(res) && !Optim.iteration_limit_reached(res) &&
+        _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
 
     iid = [ci for (ci, c) in enumerate(comps) if c.K === nothing]
     phy = [ci for (ci, c) in enumerate(comps) if c.K !== nothing]

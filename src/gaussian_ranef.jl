@@ -652,10 +652,13 @@ function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ,
     # (largest norm 9.996e-9, inside `g_tol`). It is NOT unit-free: the same
     # varying-scale model at `x * 1000` stalls with `|g|∞` just above 1e-8
     # while the Newton step is a tiny fraction of an SE (drmTMB #1503). The
-    # reported flag is that Newton-step test. θ̂, the objective and logLik are
+    # reported flag is `Optim.converged` (the x/f/g OR, which is what fires on
+    # that plateau) and not the iteration cap, together with the Newton-step
+    # test. `g_converged` is not consulted. θ̂, the objective and logLik are
     # unchanged. Guard: test/test_ranef_varying_scale_convergence.jl and the
     # scaled-predictor bootstrap in test/test_triage_g_twin_inputs.jl.
-    converged = _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
+    converged = Optim.converged(res) && !Optim.iteration_limit_reached(res) &&
+        _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
     # Profile intervals reuse the ML Woodbury nll (same convention as FE REML).
     fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, converged, means, obs, scales), nll_ml), re)
     if reml
