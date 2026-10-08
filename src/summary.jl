@@ -165,6 +165,12 @@ _sentinel_loglik(fit::DrmFit) = !isfinite(fit.loglik) || fit.loglik <= -1e15
 function _nondegenerate_fit(fit::DrmFit)
     _sentinel_loglik(fit) && return false
     fit.family isa Gaussian || return true
+    # A temporal Gaussian puts the response variance in the AR/OU term. A
+    # residual SD near 0 is that split (`sigma_ratio` in `_temporal_boundary`),
+    # which the optimiser can report as converged. It is not the saturated-mean
+    # collapse this bar rejects (#461). Treating it as degeneracy drops every
+    # bootstrap replicate of a boundary temporal fit.
+    _is_temporal_fit(fit) && return true
     haskey(fit.scales, :sigma) || return true
     s = fit.scales[:sigma]
     smax = maximum(abs, s)

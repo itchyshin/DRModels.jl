@@ -36,6 +36,11 @@ marginal approximations, and a penalized MAP fit, the same three guards
 `lrtest` already had. Pass `check_converged = false` to recover the old
 percentile.
 
+A temporal Gaussian with its residual SD on the `sigma_ratio` boundary is
+`is_converged` when the optimiser converged. That split is the documented
+temporal boundary, not the saturated-mean collapse. Bootstrap of
+`test/test_temporal_ar1.jl` was dropping all 8 replicates on that bar.
+
 ## Follow-ups filed, not in this commit
 
 - #1046 — unpack `:recov` / `:phylocov` (blocks the `(1 + x | g)` slope-variance-0 test).
@@ -61,7 +66,7 @@ boundary flag. `fit_mixed_family`'s `B = 0` remains "do not bootstrap".
 Local Julia 1.10.12, targeted files only (the full suite is the CI shard matrix):
 
 - `test/test_triage_g_twin_inputs.jl` — 135 passed (55.4s), including `x * 1000` at 40/40 and group SD 0 at 40/40 with `bootstrap_at_boundary`
-- `test/test_lss_bootstrap_contract.jl` — 60 passed (57.9s) after the `Optim.converged` conjunction
+- `test/test_temporal_ar1.jl` — 130 passed (50.3s). CI run 37725449141 had failed this file on shard 4/4 (all 8 bootstrap replicates dropped). The LSS contract in that same run was 60/60 on both Julia versions.
 - `test/test_comparison.jl` — 12 passed
 - `test/test_bootstrap.jl` — 46 passed
 - `test/test_ranef_varying_scale_convergence.jl` — 6 passed

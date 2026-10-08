@@ -29,8 +29,11 @@
   Newton step in standard-error units (`max |H⁻¹g| / SE ≤ 1e-3`) together with
   `Optim.converged` and a stop short of the iteration limit. The absolute
   `g_converged` check at `1e-8` is not part of that flag, so a change of
-  predictor units does not turn a stationary fit into a failed one. The q=4
-  bridge bootstrap uses the same
+  predictor units does not turn a stationary fit into a failed one. A temporal Gaussian whose residual SD sits
+  on the documented `sigma_ratio` boundary stays `is_converged` when the
+  optimiser converged: that split is not the saturated-mean collapse the
+  degeneracy bar rejects, and dropping it discarded every bootstrap replicate.
+  The q=4 bridge bootstrap uses the same
   `check_converged = true` rule as the univariate bridge. Set
   `check_converged = false` only to reproduce the old intervals.
 
