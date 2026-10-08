@@ -22,10 +22,23 @@ subagents.
 ## Behaviour change
 
 Direct `bootstrap_ci` / `bootstrap_summary` / `bootstrap_result` calls that used
-to keep unconverged replicates now treat them as failures. `failures = :error`
-(still the default) aborts; `failures = :skip` drops them and warns. Intervals
-can change for models that previously admitted diverged refits. Pass
-`check_converged = false` to recover the old percentile.
+to keep unconverged replicates now drop them, set `bootstrap_incomplete`, and
+warn. `failures = :error` (still the default) aborts only when a refit throws.
+Gaussian location-scale, random-intercept, and location-scale-scale fits report
+`converged` from the Newton step in standard-error units
+(`max |H⁻¹g| / SE ≤ 1e-3`), with an absolute `|g| ≤ 1e-3` fallback when the
+Hessian is not usable. An absolute gradient of `1e-8` marked the same stationary
+fit as failed once the predictors were rescaled. Pass `check_converged = false`
+to recover the old percentile.
+
+## Follow-ups named, not in this commit
+
+- `:recov` and `:phylocov` draws are still not unpacked into SDs and
+  correlations for the boundary flag. A `(1 + x | g)` slope-variance-0 case
+  is the regression that belongs with that unpack.
+- `algorithm = :em` still treats `iterations < 500` as converged
+  (`src/location_only.jl`). The phylogenetic solver-control checks in
+  `test/test_bootstrap.jl` still pass `check_converged = false` for that reason.
 
 ## Not stored, so not carried by `update`
 
@@ -38,11 +51,12 @@ boundary flag. `fit_mixed_family`'s `B = 0` remains "do not bootstrap".
 
 Local Julia 1.10.12, targeted files only (the full suite is the CI shard matrix):
 
-- `test/test_triage_g_twin_inputs.jl` — 99 passed
+- `test/test_triage_g_twin_inputs.jl` — 117 passed
+- `test/test_lss_bootstrap_contract.jl` — 60 passed
 - `test/test_comparison.jl` — 12 passed
 - `test/test_bootstrap.jl` — 46 passed
-- `test/test_bootstrap_thread_flags.jl` — 2 passed
-- `test/test_bridge_biv_inference.jl` — 71 passed
+- `test/test_ranef_varying_scale_convergence.jl` — 6 passed
+- Earlier on the first commit: `test_bootstrap_thread_flags` 2, `test_bridge_biv_inference` 71
 
 The phylogenetic solver-control checks in `test_bootstrap.jl` pass
 `check_converged = false`. That EM fixture stops at `g_tol = 1e-4` with

@@ -67,6 +67,7 @@ function lrtest(reduced::DrmFit, full::DrmFit)
     _sentinel_compare_guard(reduced, full, "lrtest")
     _marginal_compare_guard(reduced, full, "lrtest")
     _map_compare_guard(reduced, full, "lrtest")
+    _nobs_compare_guard(reduced, full, "lrtest")
     Δdof = dof(full) - dof(reduced)
     Δdof > 0 || throw(ArgumentError(
         "lrtest: `full` must have more parameters than `reduced` " *
@@ -211,6 +212,18 @@ end
 # the data. drmTMB flags the same hazard as a note from `check_penalized_fit()`;
 # because a silent wrong p-value is worse than a refusal, DRModels.jl errors here and
 # surfaces the same information through `check_drm(fit).penalized_map`.
+# `update` of a missing-response or imputed fit can refit a different set of
+# rows than the seed. The two log-likelihoods are then not a nested comparison
+# (#1002). Refuse that pair rather than returning a statistic on mixed samples.
+function _nobs_compare_guard(a::DrmFit, b::DrmFit, verb::AbstractString)
+    nobs(a) == nobs(b) && return nothing
+    throw(ArgumentError(
+        "$verb: the two fits were estimated on different samples " *
+        "(nobs = $(nobs(a)) vs $(nobs(b))). A likelihood-ratio comparison " *
+        "requires the same observations, which a missing-response or imputed " *
+        "`update` does not guarantee. Refit both on the same rows."))
+end
+
 function _map_compare_guard(a::DrmFit, b::DrmFit, verb::AbstractString)
     (a.estim_method === :MAP || b.estim_method === :MAP) || return nothing
     throw(ArgumentError(
@@ -338,9 +351,12 @@ family and every estimation option the fit stores:
 - `penalty` — the stored [`drm_phylo_penalty`](@ref) specification of a `:MAP` fit.
 
 Explicit keywords override those stored options (`update(fit, formula; data,
-method = :ML)` refits a REML seed by maximum likelihood). An unnamed extra
-positional argument is an error: a keyword-only refit would otherwise drop it
-and silently ignore the value.
+method = :ML)` refits a REML seed by maximum likelihood). Changing `method`
+on a penalized MAP fit drops the stored penalty unless `penalty` is passed
+again; otherwise `method = :ML` would still be a MAP refit. `family` is not a
+refit keyword: the fitted family is kept, and passing one is an error. An
+unnamed extra positional argument is an error: a keyword-only refit would
+otherwise drop it and silently ignore the value.
 
 `data` must be supplied. A `DrmFit` does not retain its observations, nor the
 options that were only arguments to the original `drm` call: `K`, `A`, `tree`,
@@ -361,7 +377,20 @@ function update(fit::DrmFit, formula, args...; data, kwargs...)
         "`method = ...`, or another named argument; an unnamed extra is dropped " *
         "by a keyword-only refit and would silently refit without it " *
         "(got $(length(args)) unnamed)."))
+    if haskey(kwargs, :family)
+        throw(ArgumentError(
+            "update keeps the fitted family. `family` is not a refit keyword; " *
+            "call `drm(formula, family; data = ...)` to fit a different family " *
+            "(got family = $(repr(kwargs[:family])))."))
+    end
     stored = _update_stored_options(fit)
+    # A caller who changes the estimator does not want the old MAP penalty.
+    # Passing `penalty` explicitly still overrides that drop.
+    caller_method = get(kwargs, :method, nothing)
+    if caller_method !== nothing && caller_method != fit.estim_method &&
+            haskey(stored, :penalty) && !haskey(kwargs, :penalty)
+        stored = Base.structdiff(stored, NamedTuple{(:penalty,)})
+    end
     merged = merge(stored, NamedTuple(kwargs))
     return drm(formula, fit.family; data = data, merged...)
 end

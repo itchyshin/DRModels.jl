@@ -69,3 +69,48 @@ That is the defect in DRModels.jl#944. Routes that deliberately stop on `f_relto
 near a variance boundary are not switched to this predicate.
 """
 drm_optim_converged(res) = Optim.converged(res) && Optim.g_converged(res)
+
+import LinearAlgebra
+
+# Unit-free stationarity, the drmTMB #1503 rule. An absolute gradient tolerance
+# (Optim's `g_tol = 1e-8`) moves with the predictor units: the same model at
+# `x` and at `x * 1000` can stall with `|g|∞` just above 1e-8 while the Newton
+# step is a negligible fraction of a standard error. Converged means
+#
+#     max_i | (H⁻¹ g)_i | / SE_i  ≤  1e-3
+#
+# with `SE_i = sqrt((H⁻¹)_ii)`. A Hessian that is non-finite, singular, or not
+# positive definite is not usable for that ratio. A saddle (a negative
+# eigenvalue) is not a minimum. A singular Hessian falls back to the absolute
+# rule `max |g| ≤ 1e-3`, which still rejects a runaway and accepts a stall
+# that only missed the absolute 1e-8 bar.
+const _UNITFREE_SE_TOL = 1e-3
+const _UNITFREE_ABS_TOL = 1e-3
+
+function _unitfree_converged(H::AbstractMatrix, g::AbstractVector)
+    length(g) == size(H, 1) == size(H, 2) || return false
+    all(isfinite, g) || return false
+    abs_ok = maximum(abs, g) <= _UNITFREE_ABS_TOL
+    all(isfinite, H) || return abs_ok
+    Hs = Matrix{Float64}(H)
+    Hs = LinearAlgebra.Symmetric((Hs .+ Hs') ./ 2)
+    ev = LinearAlgebra.eigvals(Hs)
+    all(isfinite, ev) || return abs_ok
+    scale = maximum(abs, ev)
+    scale == 0 && return abs_ok
+    # A negative eigenvalue is a saddle, not a minimum (same bar as the vcov guard).
+    minimum(ev) < -_VCOV_RTOL * scale && return false
+    minimum(abs, ev) <= _VCOV_RTOL * scale && return abs_ok
+    C = LinearAlgebra.cholesky(Hs; check = false)
+    LinearAlgebra.issuccess(C) || return abs_ok
+    δ = C \ collect(Float64, g)
+    n = length(g)
+    se2 = LinearAlgebra.diag(C \ Matrix{Float64}(LinearAlgebra.I, n, n))
+    worst = 0.0
+    for i in 1:n
+        se = sqrt(max(se2[i], 0.0))
+        se > 0 || return abs_ok
+        worst = max(worst, abs(δ[i]) / se)
+    end
+    return worst <= _UNITFREE_SE_TOL
+end

@@ -111,11 +111,24 @@ end
                        data = dphy, tree = phy)
         @test map_u.estim_method === :MAP
         @test map_u.penalty == pen
+        # Changing the estimator drops the stored MAP penalty unless one is passed.
+        ml_from_map = update(mapfit,
+            bf(@formula(y ~ 1 + phylo(1 | species)), @formula(sigma ~ 1));
+            data = dphy, tree = phy, method = :ML)
+        @test ml_from_map.estim_method === :ML
+        @test ml_from_map.penalty === nothing
 
         # A NamedTuple in this slot is splatted into keywords. The silent-drop
         # case is a real positional extra beside a supplied `data`.
         unnamed = _argmsg(() -> update(reml, reduced_f, "dropped"; data = data))
         @test occursin("named arguments", unnamed)
+        famsg = _argmsg(() -> update(reml, reduced_f; data = data, family = Poisson()))
+        @test occursin("family", famsg)
+
+        short = drm(form, Gaussian(); data = (y = y[1:30], x = x[1:30]))
+        nmsg = _argmsg(() -> lrtest(short, fit))
+        @test occursin("nobs", nmsg)
+        @test occursin("different samples", nmsg)
     end
 
     @testset "#962 check_converged defaults to true; dropped replicates warn" begin
@@ -145,10 +158,19 @@ end
         @test any(l -> occursin("bootstrap_incomplete", string(l.message)), logs)
         @test any(l -> occursin("dropping", string(l.message)), logs)
 
-        # Default `failures = :error` still aborts; non-convergence is a failure.
+        # Default `failures = :error` still aborts a thrown refit. A replicate
+        # that merely did not converge is dropped, warned, and does not abort.
         calls[] = 0
+        elogs, edrop = Test.collect_test_logs() do
+            DRModels._bootstrap_result(
+                fit, form, data, 3, 0.95, MersenneTwister(8), false, drop_second)
+        end
+        @test edrop.failed == 1
+        @test edrop.used == 2
+        @test edrop.status == "bootstrap_incomplete"
+        @test any(l -> occursin("dropping", string(l.message)), elogs)
         @test_throws ErrorException DRModels._bootstrap_result(
-            fit, form, data, 3, 0.95, MersenneTwister(8), false, drop_second)
+            fit, form, data, 2, 0.95, MersenneTwister(8), false, _ -> error("forced refit failure"))
 
         g = repeat(1:8, inner = 5)
         yb = 0.3 .+ 0.2 .* randn(MersenneTwister(9), 40)
@@ -195,5 +217,30 @@ end
         @test bothres.status == "bootstrap_at_boundary"
         @test any(l -> occursin("dropping", string(l.message)) &&
                       occursin("bootstrap_at_boundary", string(l.message)), both)
+    end
+
+    @testset "scaled predictors stay converged and keep every bootstrap replicate" begin
+        rng = MersenneTwister(1503)
+        n = 240
+        G = 24
+        g = repeat(1:G, inner = n ÷ G)
+        x0 = randn(rng, n)
+        b = 0.4 .* randn(rng, G)
+        y = 0.3 .+ 0.5 .* x0 .+ b[g] .+ exp.(-0.3 .+ 0.15 .* x0) .* randn(rng, n)
+        for scale in (1.0, 1000.0)
+            xs = x0 .* scale
+            data = (; y, x = xs, g)
+            scaled = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ x)),
+                         Gaussian(); data)
+            @test is_converged(scaled)
+            res = bootstrap_result(scaled; data, B = 40, rng = MersenneTwister(1503))
+            @test res.failed == 0
+            @test res.used == 40
+            @test res.status == "bootstrap"
+        end
+        xs = x0 .* 1e5
+        fixed = drm(bf(@formula(y ~ x), @formula(sigma ~ x)), Gaussian();
+                    data = (; y, x = xs))
+        @test is_converged(fixed)
     end
 end

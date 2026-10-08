@@ -1,1 +1,1 @@
-| 2026-10-08 | **Triage G twins** (#1018, #1008, #962) | targeted files, not the full suite | ✅ `test_triage_g_twin_inputs` 99, `test_comparison` 12, `test_bootstrap` 46, `test_bootstrap_thread_flags` 2, `test_bridge_biv_inference` 71 | Shannon |
+| 2026-10-08 | **Triage G twins** (#1018, #1008, #962) | targeted files, not the full suite | ✅ triage 117, LSS bootstrap contract 60, comparison 12, bootstrap 46. Unit-free Newton/SE convergence; non-converged refits skipped. `:recov`/`:phylocov` boundary unpack and EM `iterations < 500` left as follow-ups | Shannon |

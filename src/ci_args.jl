@@ -38,6 +38,10 @@ end
 # correlations (|ρ| > 0.98): at a 5% share the lower endpoint has already
 # collapsed onto the bound. Fewer than 20 retained draws is too small for a
 # share (one draw of two would read as 50%), so the flag stays silent there.
+# Message recorded when a replicate is dropped for non-convergence rather than
+# because the refit threw. `failures = :error` aborts only on thrown refits.
+const _BOOTSTRAP_UNCONVERGED = "refit did not converge or landed on a degenerate optimum"
+
 const _BOOTSTRAP_SD_BOUNDARY = 1e-4
 const _BOOTSTRAP_RHO_BOUNDARY = 0.98
 const _BOOTSTRAP_BOUNDARY_SHARE = 0.05

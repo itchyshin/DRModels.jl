@@ -108,6 +108,7 @@ function bootstrap_sigma_a(fit::DrmFit; data, B::Real = 300, level::Real = 0.95,
     cor_draws = Matrix{Float64}(undef, B, 6)
     ok = falses(B)
     messages = Vector{Union{Nothing,String}}(nothing, B)
+    refit_error = fill(false, B)
     seeds = rand(rng, UInt, B)
 
     function run_one!(b)
@@ -129,14 +130,17 @@ function bootstrap_sigma_a(fit::DrmFit; data, B::Real = 300, level::Real = 0.95,
             fitb = drm(form, fam; data = datab, tree = phy,
                        q4_g_tol = q4_g_tol, q4_iterations = q4_iterations,
                        q4_vcov = false, method = fit.estim_method)
-            (!check_converged || is_converged(fitb)) ||
-                error("refit did not converge")
+            if check_converged && !is_converged(fitb)
+                messages[b] = _BOOTSTRAP_UNCONVERGED
+                return nothing
+            end
             Σb = Matrix{Float64}(fitb.ranef.Sigma_a)
             sd_draws[b, :] = sqrt.(max.(diag(Σb), 0.0))
             cor_draws[b, :] = _q4_cor_offdiag(Σb, cor_pairs)
             ok[b] = true
         catch err
             messages[b] = sprint(showerror, err)
+            refit_error[b] = true
         end
         return nothing
     end
@@ -150,10 +154,10 @@ function bootstrap_sigma_a(fit::DrmFit; data, B::Real = 300, level::Real = 0.95,
         messages[b] === nothing && continue
         push!(failure_rows, (replicate = b, seed = seeds[b], message = messages[b]::String))
     end
-    if !isempty(failure_rows) && failures === :error
-        f = first(failure_rows)
-        throw(ErrorException("bootstrap_sigma_a failed in $(length(failure_rows)) of " *
-            "$B replicates; first failure replicate $(f.replicate), seed $(f.seed): $(f.message)"))
+    if failures === :error && any(refit_error)
+        first_b = findfirst(refit_error)
+        throw(ErrorException("bootstrap_sigma_a failed in $(count(refit_error)) of " *
+            "$B replicates; first failure replicate $(first_b), seed $(seeds[first_b]): $(messages[first_b])"))
     end
     used = count(ok)
     if used == 0

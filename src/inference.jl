@@ -1627,14 +1627,13 @@ Auditable parametric bootstrap. Returns a `NamedTuple` with:
 - `worker_threads`, `julia_threads`, `blas_threads`, `blas_oversubscribed`,
   `elapsed` — CPU context and wall-clock time for the simulated-refit phase.
 
-`failures = :error` (default) records failures and then errors if any replicate
-failed. `failures = :skip` computes summaries from successful replicates and
-keeps the failure records in the return value. `check_converged = true` (the
-default) treats a refit that did not converge, or that landed on a degenerate
-optimum, as a failed replicate. A dropped replicate is not a clean percentile:
-the result's `status` is `"bootstrap_incomplete"` (or `"bootstrap_at_boundary"`
-when the retained draws also sit on a bound) and a warning names that status.
-Set `check_converged = false` only to reproduce the old behaviour that counted
+`failures = :error` (default) aborts when a refit throws. A refit that does
+not converge, or that lands on a degenerate optimum, is not that kind of
+error: with `check_converged = true` (the default) it is dropped, `status` is
+`"bootstrap_incomplete"` (or `"bootstrap_at_boundary"` when the retained draws
+also sit on a bound), and a warning names that status. `failures = :skip`
+does the same for thrown refits instead of aborting. Set
+`check_converged = false` only to reproduce the old behaviour that counted
 unconverged refits in the interval. Passing an existing `DrmFit`
 reuses that point estimate as the bootstrap seed fit and starts directly with
 the `B` simulated refits. Gaussian bootstrap refits pass `algorithm` and
@@ -2245,6 +2244,10 @@ function _bootstrap_result(
     # silently lose a successful replicate. Byte-addressable flags are independent.
     ok = fill(false, B)
     messages = Vector{Union{Nothing,String}}(nothing, B)
+    # A thrown refit is an error. A non-converged refit is a drop: it warns and
+    # sets `bootstrap_incomplete`, and it does not abort under `failures = :error`.
+    # `Vector{Bool}` is bit-packed, so parallel writes can drop a flag.
+    refit_error = zeros(UInt8, B)
     seeds = rand(rng, UInt, B)
 
     function run_one!(b)
@@ -2259,12 +2262,14 @@ function _bootstrap_result(
             # rejects a degenerate optimum (sigma collapsed, likelihood runaway),
             # which the optimiser's own flag happily calls converged (#461).
             if check_converged && !is_converged(fitb)
-                error("refit did not converge or landed on a degenerate optimum")
+                messages[b] = _BOOTSTRAP_UNCONVERGED
+            else
+                draws[b, :] = coef(fitb)
+                ok[b] = true
             end
-            draws[b, :] = coef(fitb)
-            ok[b] = true
         catch err
             messages[b] = sprint(showerror, err)
+            refit_error[b] = 0x01
         end
         return nothing
     end
@@ -2289,11 +2294,11 @@ function _bootstrap_result(
         messages[b] === nothing && continue
         push!(failure_rows, (replicate=b, seed=seeds[b], message=messages[b]::String))
     end
-    if !isempty(failure_rows) && failures === :error
-        first_failure = first(failure_rows)
+    if failures === :error && any(!iszero, refit_error)
+        first_b = findfirst(!iszero, refit_error)
         throw(
             ErrorException(
-                "bootstrap failed in $(length(failure_rows)) of $B replicates; first failure replicate $(first_failure.replicate), seed $(first_failure.seed): $(first_failure.message)",
+                "bootstrap failed in $(count(!iszero, refit_error)) of $B replicates; first failure replicate $(first_b), seed $(seeds[first_b]): $(messages[first_b])",
             ),
         )
     end
