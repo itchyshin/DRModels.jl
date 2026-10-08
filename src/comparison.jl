@@ -327,23 +327,61 @@ weights(fit) == ones(nobs(fit))   # all-ones prior weights
 weights(fit::DrmFit) = ones(nobs(fit))
 
 """
-    update(fit::DrmFit, formula; data, kwargs...) -> DrmFit
+    update(fit::DrmFit, formula, args...; data, kwargs...) -> DrmFit
 
-Refit `fit`'s model with a new `formula` (a [`bf`](@ref) bundle), reusing the
-**fitted family** — the convenience refit verb, mirroring R's `update`. Equivalent
-to `drm(formula, family(fit); data = data, kwargs...)`.
+Refit `fit` with a new `formula` (a [`bf`](@ref) bundle), reusing the fitted
+family and every estimation option the fit stores:
 
-`data` must be supplied: a `DrmFit` does **not** retain its data, so `update`
-cannot reuse the original observations. Any extra keyword arguments (`K`, `A`,
-`tree`, `coords`, `g_tol`, …) are forwarded to [`drm`](@ref).
+- `method` — `:REML` when `fit.estim_method === :REML` (the default `:ML` is
+  `drm`'s own default and is not repeated);
+- `marginal` — when it is not the default `:LA`;
+- `penalty` — the stored [`drm_phylo_penalty`](@ref) specification of a `:MAP` fit.
+
+Explicit keywords override those stored options (`update(fit, formula; data,
+method = :ML)` refits a REML seed by maximum likelihood). An unnamed extra
+positional argument is an error: a keyword-only refit would otherwise drop it
+and silently ignore the value.
+
+`data` must be supplied. A `DrmFit` does not retain its observations, nor the
+options that were only arguments to the original `drm` call: `K`, `A`, `tree`,
+`coords`, `algorithm`, `g_tol`, `profile_ci`, `phylo_coupled`, `sparse`,
+`impute`, and `missing`. Pass those again as keywords when the refit needs them.
 
 # Example
 ```julia
 full    = drm(bf(@formula(y ~ 1 + x), @formula(sigma ~ 1 + x)), Gaussian(); data)
-# Drop x everywhere, keeping the same Gaussian family:
+# Drop x everywhere, keeping the same Gaussian family and the seed estimator:
 reduced = update(full, bf(@formula(y ~ 1), @formula(sigma ~ 1)); data = data)
 length(coef(reduced)) < length(coef(full))   # fewer parameters
 ```
 """
-update(fit::DrmFit, formula; data, kwargs...) =
-    drm(formula, fit.family; data = data, kwargs...)
+function update(fit::DrmFit, formula, args...; data, kwargs...)
+    isempty(args) || throw(ArgumentError(
+        "update requires named arguments. Pass values as `data = ...`, " *
+        "`method = ...`, or another named argument; an unnamed extra is dropped " *
+        "by a keyword-only refit and would silently refit without it " *
+        "(got $(length(args)) unnamed)."))
+    stored = _update_stored_options(fit)
+    merged = merge(stored, NamedTuple(kwargs))
+    return drm(formula, fit.family; data = data, merged...)
+end
+
+# Estimation options `DrmFit` actually stores. `:ML` and `:LA` are `drm`
+# defaults, so repeating them would be a no-op; a `:MAP` fit is repeated by
+# its stored penalty, not by `method = :MAP` (the fitter rejects that symbol).
+function _update_stored_options(fit::DrmFit)
+    kw = Pair{Symbol,Any}[]
+    if fit.estim_method === :REML
+        push!(kw, :method => :REML)
+    elseif fit.estim_method === :MAP
+        fit.penalty === nothing && throw(ArgumentError(
+            "update: this fit is marked :MAP but does not store a penalty " *
+            "specification, so the refit cannot repeat the penalized estimator."))
+    elseif fit.estim_method !== :ML
+        throw(ArgumentError(
+            "update: unsupported estim_method :$(fit.estim_method)"))
+    end
+    fit.penalty === nothing || push!(kw, :penalty => fit.penalty)
+    fit.marginal === :LA || push!(kw, :marginal => fit.marginal)
+    return NamedTuple(kw)
+end

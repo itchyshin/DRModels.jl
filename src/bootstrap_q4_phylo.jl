@@ -37,6 +37,10 @@ Returns a `NamedTuple` with
   `coevolution_cor`, now with CIs. A correlation whose axis collapses is
   unidentified and comes back with a wide interval (e.g. ρ_a(μ1,μ2) spanning the
   sign when a σ-axis pins).
+- `status` — `"bootstrap"` when every replicate is kept, `"bootstrap_incomplete"`
+  when any is dropped and at least two remain, `"bootstrap_at_boundary"` when the
+  retained draws also sit on an SD or correlation bound, or
+  `"bootstrap_unavailable"` when fewer than two remain. A dropped replicate warns.
 - `attempted`, `used`, `failed`, `failures`, `level`, `draws` (the `used × 4`
   matrix of replicate SDs), `cor_draws` (`used × 6`), `axes`, `cor_pairs`, `elapsed`.
 
@@ -49,10 +53,14 @@ response columns are overwritten per replicate).
 With `failures = :warn` (default) failed refits are dropped and reported in
 `failures`; `failures = :error` rethrows on the first failure.
 """
-function bootstrap_sigma_a(fit::DrmFit; data, B::Int = 300, level::Real = 0.95,
+function bootstrap_sigma_a(fit::DrmFit; data, B::Real = 300, level::Real = 0.95,
                            rng = Random.default_rng(), failures::Symbol = :warn,
                            check_converged::Bool = true,
                            q4_g_tol::Real = 1e-3, q4_iterations::Int = 300)
+    B = _validate_bootstrap_B(B)
+    (failures === :warn || failures === :error) ||
+        throw(ArgumentError("failures must be :warn or :error"))
+    level = _validate_ci_level(level; what="bootstrap_sigma_a")
     re = fit.ranef
     (re isa NamedTuple && haskey(re, :Sigma_a) && haskey(re, :Q_cond) &&
      haskey(re, :phy) && re.phy isa AugmentedPhy && haskey(re, :species) &&
@@ -63,10 +71,6 @@ function bootstrap_sigma_a(fit::DrmFit; data, B::Int = 300, level::Real = 0.95,
         "do not yet have a bootstrap path."))
     fit.formula isa BivariateDrmFormula || throw(ArgumentError(
         "bootstrap_sigma_a requires a BivariateDrmFormula fit created by drm"))
-    B >= 1 || throw(ArgumentError("bootstrap requires B >= 1"))
-    (failures === :warn || failures === :error) ||
-        throw(ArgumentError("failures must be :warn or :error"))
-    0 < level < 1 || throw(ArgumentError("level must be in (0, 1)"))
 
     Σa = Matrix{Float64}(re.Sigma_a)
     Q_cond = re.Q_cond
@@ -182,10 +186,25 @@ function bootstrap_sigma_a(fit::DrmFit; data, B::Int = 300, level::Real = 0.95,
                             upper = Statistics.quantile(col, 1 - α)))
     end
 
+    boundary_params = String[]
+    if used >= _BOOTSTRAP_BOUNDARY_MIN_DRAWS
+        for a in 1:4
+            _bootstrap_param_at_boundary(axes[a], @view used_sd[:, a]) || continue
+            push!(boundary_params, String(axes[a]))
+        end
+        for c in 1:6
+            _bootstrap_param_at_boundary(cor_names[c], @view used_cor[:, c]) || continue
+            push!(boundary_params, String(cor_names[c]))
+        end
+    end
+    failed_n = length(failure_rows)
+    status = _finish_bootstrap_status(used, failed_n, boundary_params)
+
     return (summary = summary, cor_summary = cor_summary, failures = failure_rows,
-            attempted = B, used = used, failed = length(failure_rows), seeds = seeds,
+            attempted = B, used = used, failed = failed_n, seeds = seeds,
             level = level, draws = used_sd, cor_draws = used_cor, axes = axes,
-            cor_pairs = cor_names, elapsed = elapsed)
+            cor_pairs = cor_names, elapsed = elapsed, status = status,
+            boundary_params = boundary_params, check_converged = check_converged)
 end
 
 # The 6 unique among-axis correlations from a 4×4 Σ_a, in `pairs` order. A

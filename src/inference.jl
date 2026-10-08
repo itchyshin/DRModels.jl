@@ -190,6 +190,7 @@ Mirrors drmTMB's `confint(fit, method = "wald" | "profile")`.
 function confint(
     fit::DrmFit; level::Real=0.95, method::Symbol=:wald, threads::Bool=false, parm=nothing
 )
+    level = _validate_ci_level(level; what="confint")
     method === :wald && _wald_withheld(fit) && throw(ArgumentError("confint: Homogeneous Toeplitz " *
         "mean-coefficient Wald intervals are not yet qualified; mean-coefficient likelihood " *
         "profiles are qualified in drmTMB's retained primary panel cells, Wald covariance and " *
@@ -289,6 +290,7 @@ coefficient-level policy: each job owns its nuisance state, while its lower and
 upper endpoint chains remain serial.
 """
 function profile_result(fit::DrmFit; level::Real=0.95, threads::Bool=false, parm=nothing)
+    level = _validate_ci_level(level; what="profile_result")
     _wald_withheld(fit) && (parm = _homtoep_profile_parm(fit, parm))
     fit.nll isa LocScaleObjective && return _ls_profile_result(
         fit; level=level, threads=threads, parm=parm
@@ -467,6 +469,7 @@ function _ci_coef_selected(param::Symbol, coef::AbstractString, parm)
 end
 
 function _wald_ci(fit::DrmFit, level::Real, parm)
+    level = _validate_ci_level(level; what="confint")
     _ci_validate_parm(fit, parm)
     se = stderror(fit)
     z = quantile(Normal(), 1 - (1 - level) / 2)
@@ -1359,7 +1362,7 @@ function bootstrap_ci(
     formula::DrmFormula,
     family::Gaussian;
     data,
-    B::Int=300,
+    B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
     K=nothing,
@@ -1368,7 +1371,7 @@ function bootstrap_ci(
     coords=nothing,
     threads::Bool=false,
     failures::Symbol=:error,
-    check_converged::Bool=false,
+    check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
 )
@@ -1401,7 +1404,7 @@ function bootstrap_ci(
     formula::DrmFormula,
     family;
     data,
-    B::Int=300,
+    B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
     K=nothing,
@@ -1410,7 +1413,7 @@ function bootstrap_ci(
     coords=nothing,
     threads::Bool=false,
     failures::Symbol=:error,
-    check_converged::Bool=false,
+    check_converged::Bool=true,
 )
     rows = bootstrap_summary(
         formula, family; data, B, level, rng, K, A, tree, coords, threads, failures,
@@ -1422,7 +1425,7 @@ end
 function bootstrap_ci(
     fit::DrmFit;
     data,
-    B::Int=300,
+    B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
     K=nothing,
@@ -1431,7 +1434,7 @@ function bootstrap_ci(
     coords=nothing,
     threads::Bool=false,
     failures::Symbol=:error,
-    check_converged::Bool=false,
+    check_converged::Bool=true,
 )
     rows = bootstrap_summary(
         fit; data, B, level, rng, K, A, tree, coords, threads, failures, check_converged
@@ -1442,7 +1445,7 @@ end
 function bootstrap_ci(
     fit::DrmFit{<:Gaussian};
     data,
-    B::Int=300,
+    B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
     K=nothing,
@@ -1451,7 +1454,7 @@ function bootstrap_ci(
     coords=nothing,
     threads::Bool=false,
     failures::Symbol=:error,
-    check_converged::Bool=false,
+    check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
 )
@@ -1492,7 +1495,7 @@ function bootstrap_summary(
     formula::DrmFormula,
     family::Gaussian;
     data,
-    B::Int=300,
+    B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
     K=nothing,
@@ -1501,7 +1504,7 @@ function bootstrap_summary(
     coords=nothing,
     threads::Bool=false,
     failures::Symbol=:error,
-    check_converged::Bool=false,
+    check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
 )
@@ -1532,7 +1535,7 @@ function bootstrap_summary(
     formula::DrmFormula,
     family;
     data,
-    B::Int=300,
+    B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
     K=nothing,
@@ -1541,7 +1544,7 @@ function bootstrap_summary(
     coords=nothing,
     threads::Bool=false,
     failures::Symbol=:error,
-    check_converged::Bool=false,
+    check_converged::Bool=true,
 )
     result = bootstrap_result(
         formula, family; data, B, level, rng, K, A, tree, coords, threads, failures,
@@ -1553,7 +1556,7 @@ end
 function bootstrap_summary(
     fit::DrmFit;
     data,
-    B::Int=300,
+    B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
     K=nothing,
@@ -1562,7 +1565,7 @@ function bootstrap_summary(
     coords=nothing,
     threads::Bool=false,
     failures::Symbol=:error,
-    check_converged::Bool=false,
+    check_converged::Bool=true,
 )
     result = bootstrap_result(
         fit; data, B, level, rng, K, A, tree, coords, threads, failures, check_converged
@@ -1573,7 +1576,7 @@ end
 function bootstrap_summary(
     fit::DrmFit{<:Gaussian};
     data,
-    B::Int=300,
+    B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
     K=nothing,
@@ -1582,7 +1585,7 @@ function bootstrap_summary(
     coords=nothing,
     threads::Bool=false,
     failures::Symbol=:error,
-    check_converged::Bool=false,
+    check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
 )
@@ -1606,14 +1609,19 @@ function bootstrap_summary(
 end
 
 """
-    bootstrap_result(formula, family; data, B = 300, level = 0.95, rng = default_rng(), threads = false, failures = :error, check_converged = false, K =, A =, tree =, coords =, algorithm = :auto, g_tol = 1e-8)
-    bootstrap_result(fit; data, B = 300, level = 0.95, rng = default_rng(), threads = false, failures = :error, check_converged = false, K =, A =, tree =, coords =, algorithm = :auto, g_tol = 1e-8)
+    bootstrap_result(formula, family; data, B = 300, level = 0.95, rng = default_rng(), threads = false, failures = :error, check_converged = true, K =, A =, tree =, coords =, algorithm = :auto, g_tol = 1e-8)
+    bootstrap_result(fit; data, B = 300, level = 0.95, rng = default_rng(), threads = false, failures = :error, check_converged = true, K =, A =, tree =, coords =, algorithm = :auto, g_tol = 1e-8)
 
 Auditable parametric bootstrap. Returns a `NamedTuple` with:
 
 - `summary` — the same rows returned by `bootstrap_summary`;
 - `failures` — rows `(replicate, seed, message)` for failed refits;
 - `attempted`, `used`, `failed` — replicate counts;
+- `status` — `"bootstrap"` when every replicate was kept, `"bootstrap_incomplete"`
+  when any replicate was dropped and at least two remain, `"bootstrap_at_boundary"`
+  when those retained draws pile up on a variance-component or correlation bound,
+  or `"bootstrap_unavailable"` when fewer than two replicates remain;
+- `boundary_params` — `"param:coef"` names that triggered the boundary status;
 - `seeds` — the per-replicate seeds used for reproducibility;
 - `threaded` — whether threaded refits were actually used.
 - `worker_threads`, `julia_threads`, `blas_threads`, `blas_oversubscribed`,
@@ -1621,8 +1629,13 @@ Auditable parametric bootstrap. Returns a `NamedTuple` with:
 
 `failures = :error` (default) records failures and then errors if any replicate
 failed. `failures = :skip` computes summaries from successful replicates and
-keeps the failure records in the return value. Set `check_converged = true` to
-treat non-converged refits as failed replicates. Passing an existing `DrmFit`
+keeps the failure records in the return value. `check_converged = true` (the
+default) treats a refit that did not converge, or that landed on a degenerate
+optimum, as a failed replicate. A dropped replicate is not a clean percentile:
+the result's `status` is `"bootstrap_incomplete"` (or `"bootstrap_at_boundary"`
+when the retained draws also sit on a bound) and a warning names that status.
+Set `check_converged = false` only to reproduce the old behaviour that counted
+unconverged refits in the interval. Passing an existing `DrmFit`
 reuses that point estimate as the bootstrap seed fit and starts directly with
 the `B` simulated refits. Gaussian bootstrap refits pass `algorithm` and
 `g_tol` through to `drm(...)`; this is useful for large structured models where
@@ -1634,7 +1647,7 @@ function bootstrap_result(
     formula::DrmFormula,
     family::Gaussian;
     data,
-    B::Int=300,
+    B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
     K=nothing,
@@ -1643,7 +1656,7 @@ function bootstrap_result(
     coords=nothing,
     threads::Bool=false,
     failures::Symbol=:error,
-    check_converged::Bool=false,
+    check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
 )
@@ -1660,7 +1673,7 @@ end
 function bootstrap_result(
     fit::DrmFit{<:Gaussian};
     data,
-    B::Int=300,
+    B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
     K=nothing,
@@ -1669,7 +1682,7 @@ function bootstrap_result(
     coords=nothing,
     threads::Bool=false,
     failures::Symbol=:error,
-    check_converged::Bool=false,
+    check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
 )
@@ -1686,7 +1699,7 @@ function bootstrap_result(
     _check_bootstrap_failure_mode(failures)
     formula = _bootstrap_fit_formula(fit)
     # LSS refits must preserve the seed fit's estimator. Other Gaussian routes
-    # forward REML and a non-default marginal. MAP is still not forwarded.
+    # forward REML, a non-default marginal, and a stored phylo penalty (MAP).
     # On the univariate refit, a non-default marginal (:Laplace, :VA, :AGHQ)
     # and a REML seed are forwarded too. Otherwise the replicate is the default
     # :LA / ML fit and the interval describes a different estimator
@@ -1721,7 +1734,7 @@ function bootstrap_result(
     formula::DrmFormula,
     family;
     data,
-    B::Int=300,
+    B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
     K=nothing,
@@ -1730,7 +1743,7 @@ function bootstrap_result(
     coords=nothing,
     threads::Bool=false,
     failures::Symbol=:error,
-    check_converged::Bool=false,
+    check_converged::Bool=true,
 )
     _check_bootstrap_failure_mode(failures)
     # #480: mirror #479's fit-based fix. Forward a structured-matrix keyword to
@@ -1762,7 +1775,7 @@ end
 function bootstrap_result(
     fit::DrmFit;
     data,
-    B::Int=300,
+    B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
     K=nothing,
@@ -1771,7 +1784,7 @@ function bootstrap_result(
     coords=nothing,
     threads::Bool=false,
     failures::Symbol=:error,
-    check_converged::Bool=false,
+    check_converged::Bool=true,
 )
     # Bivariate q=4 phylogenetic fit: there is no scalar SD block to refit-and-
     # recoef; the quantities of interest are the among-axis SDs sqrt.(diag(Σ_a)).
@@ -1863,7 +1876,9 @@ end
 # Keywords a bootstrap replicate must repeat so it is the same estimator as
 # the seed fit. `:LA` and `:ML` are the `drm` defaults and are omitted.
 # Gaussian location-scale-scale passes the seed method explicitly, `:ML` or
-# `:REML`. That route rejects any other method.
+# `:REML`. That route rejects any other method. A penalized MAP seed is
+# repeated by forwarding the stored `penalty` (the fitter does not take
+# `method = :MAP`).
 function _bootstrap_refit_kwargs(fit::DrmFit)
     kw = Pair{Symbol,Any}[]
     if _is_gaussian_lss(fit)
@@ -1873,7 +1888,12 @@ function _bootstrap_refit_kwargs(fit::DrmFit)
         push!(kw, :method => method)
     elseif estimation_method(fit) === :REML
         push!(kw, :method => :REML)
+    elseif estimation_method(fit) === :MAP
+        fit.penalty === nothing && throw(ArgumentError(
+            "bootstrap refit: this fit is :MAP but stores no penalty, so the " *
+            "replicate cannot repeat the penalized estimator"))
     end
+    fit.penalty === nothing || push!(kw, :penalty => fit.penalty)
     fit.marginal === :LA || push!(kw, :marginal => fit.marginal)
     return NamedTuple(kw)
 end
@@ -2206,17 +2226,18 @@ function _bootstrap_result(
     fit0,
     formula::Union{DrmFormula,BivariateDrmFormula},
     data,
-    B::Int,
+    B::Real,
     level::Real,
     rng,
     threads::Bool,
     refit;
     failures::Symbol=:error,
-    check_converged::Bool=false,
+    check_converged::Bool=true,
     simulate_fn=nothing,
 )
     _check_bootstrap_failure_mode(failures)
-    B >= 1 || throw(ArgumentError("bootstrap requires B >= 1"))
+    B = _validate_bootstrap_B(B)
+    level = _validate_ci_level(level; what="bootstrap")
     est = coef(fit0)
     p = length(est)
     draws = Matrix{Float64}(undef, B, p)
@@ -2278,13 +2299,17 @@ function _bootstrap_result(
     end
     used = count(ok)
     used > 0 || throw(ErrorException("all $B bootstrap replicates failed"))
-    summary = _homtoep_bootstrap_rows(fit0, _bootstrap_summary_rows(fit0, draws[ok, :], est, level))
+    kept = draws[ok, :]
+    summary = _homtoep_bootstrap_rows(fit0, _bootstrap_summary_rows(fit0, kept, est, level))
+    boundary_params = _bootstrap_boundary_params(fit0, kept)
+    failed_n = length(failure_rows)
+    status = _finish_bootstrap_status(used, failed_n, boundary_params)
     return (
         summary=summary,
         failures=failure_rows,
         attempted=B,
         used=used,
-        failed=length(failure_rows),
+        failed=failed_n,
         seeds=seeds,
         threaded=threaded,
         worker_threads=_worker_threads(threaded, B),
@@ -2293,6 +2318,8 @@ function _bootstrap_result(
         blas_oversubscribed=_blas_oversubscribed(threaded),
         elapsed=elapsed,
         check_converged=check_converged,
+        status=status,
+        boundary_params=boundary_params,
     )
 end
 
@@ -2401,6 +2428,18 @@ function _bootstrap_ci_rows(rows)
         (param=r.param, coef=r.coef, estimate=r.estimate, lower=r.lower, upper=r.upper) for
         r in rows
     ]
+end
+
+function _bootstrap_boundary_params(fit0, draws)
+    names = String[]
+    size(draws, 1) < _BOOTSTRAP_BOUNDARY_MIN_DRAWS && return names
+    for ((pp, r), (_, nms)) in zip(fit0.blocks, fit0.coefnames)
+        for (j, col) in enumerate(r)
+            _bootstrap_param_at_boundary(pp, @view draws[:, col]) || continue
+            push!(names, string(pp, ":", nms[j]))
+        end
+    end
+    return names
 end
 
 function _bootstrap_summary_rows(fit0, draws, est, level)

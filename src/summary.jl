@@ -312,6 +312,7 @@ those blocks are still reported. A boundary / singular direction (Inf SE) also
 reports `NaN` z / p rather than a spurious `z = 0, p = 1`.
 """
 function coeftable(fit::DrmFit; level::Real = 0.95)
+    level = _validate_ci_level(level; what="coeftable")
     se = _display_se(fit)
     z = quantile(Normal(), 1 - (1 - level) / 2)
     est = Float64[]; ses = Float64[]; zs = Float64[]; ps = Float64[]
