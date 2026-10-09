@@ -207,10 +207,10 @@ end
 function _resolve_structured_matrix(kind::Symbol, grp::Symbol, G::Int; K, A, tree, coords)
     Cmat = if kind === :relmat
         K === nothing && error("relmat(1 | $grp) needs `K = …`")
-        Matrix{Float64}(K)
+        _finite_user_matrix(K, "K")
     elseif kind === :animal
         A === nothing && error("animal(1 | $grp) needs the relatedness matrix `A = …`")
-        Matrix{Float64}(A)
+        _finite_user_matrix(A, "A")
     elseif kind === :phylo
         tree === nothing && error("phylo(1 | $grp) needs `tree = …`")
         _phylo_correlation(tree)
@@ -520,6 +520,7 @@ function _drm_gaussian_structured_plus_ranef(fam::Gaussian, structured, re, meta
             throw(ArgumentError("drm: a correlated `(1 + $(var) | $(g))` block cannot be combined " *
                 "with `$(marker)` on this route; independent `(1 | $(g)) + (0 + $(var) | $(g))` " *
                 "terms can."))
+        re_kind === :intercept || _require_finite_data_column(data, var)
         w = re_kind === :intercept ? ones(n) : Float64.(getproperty(data, var))
         gidx, G = _group_index(getproperty(data, g))
         label = re_kind === :intercept ? (g === sgrp ? "$(g)_iid" : String(g)) : "$(g):$(var)"
@@ -547,6 +548,7 @@ end
 # so it is rebuilt each evaluation; otherwise the closed-form marginal is as in
 # `_fit_structured_gaussian`.
 function _fit_spatial_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, coords, nmμ, nmσ, grp, g_tol)
+    _require_finite_inputs(; coords=coords)
     n = length(y)
     pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     # The spatial range is only identified with ≥2 distinct sites; a single level
@@ -984,10 +986,10 @@ function _sparse_struct_comp(kind::Symbol, grp::Symbol, G::Int, gidx;
         return _phylo_aug_comp(gidx, G, tree, grp)
     elseif kind === :relmat
         K === nothing && error("relmat(1 | $grp) needs `K = …`")
-        return _dense_comp(gidx, G, Matrix{Float64}(K), grp)
+        return _dense_comp(gidx, G, _finite_user_matrix(K, "K"), grp)
     elseif kind === :animal
         A === nothing && error("animal(1 | $grp) needs the relatedness matrix `A = …`")
-        return _dense_comp(gidx, G, Matrix{Float64}(A), grp)
+        return _dense_comp(gidx, G, _finite_user_matrix(A, "A"), grp)
     else
         error("the sparse two-structured path supports phylo / relmat / animal " *
               "components (got $kind for `$grp`)")

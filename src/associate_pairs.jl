@@ -113,8 +113,8 @@ function associate_pairs(fit_1::DrmFit, fit_2::DrmFit; kernel = nothing,
             "`kernel = latent_normal()` declaration — there is no implicit " *
             "association kernel."))
     association === nothing || _assoc_intercept_only(association)
-    _assoc_require_converged(fit_1, "fit_1")
-    _assoc_require_converged(fit_2, "fit_2")
+    _assoc_guard_margin(fit_1, "fit_1")
+    _assoc_guard_margin(fit_2, "fit_2")
 
     pc, comps = _assoc_components(fit_1, fit_2)
     loglik, n = _assoc_loglik_for(pc, comps)
@@ -148,9 +148,18 @@ function associate_pairs(fit_1::DrmFit, fit_2::DrmFit; kernel = nothing,
     η = _assoc_eta(best_a)
     tol = 1e-7 * (1 + abs(best_o))
     finite = filter(isfinite, objectives)
-    disagree = length(finite) < 2 || (maximum(finite) - minimum(finite)) > tol
+    # Every start hit the non-finite sentinel (`prevfloat(Inf)`), so the
+    # profile never saw a real likelihood. That is a disagreement with itself,
+    # and it is not a fit to return.
+    all_sentinel = isempty(finite)
+    disagree = all_sentinel || length(finite) < 2 || (maximum(finite) - minimum(finite)) > tol
+    ll = -best_o
+    if all_sentinel || _loglik_is_sentinel(ll) || !isfinite(best_a)
+        throw(ArgumentError("associate_pairs: the pair log-likelihood is non-finite " *
+            "at the optimum (loglik = $ll). The association was not estimated."))
+    end
 
-    return PairAssociation(pc, [best_a], ["(Intercept)"], η, -best_o,
+    return PairAssociation(pc, [best_a], ["(Intercept)"], η, ll,
                            [score], [curv], abs(η) >= 0.995, disagree, n, comps)
 end
 
@@ -399,6 +408,33 @@ function _assoc_require_converged(f::DrmFit, name::AbstractString)
         "were exact: a non-converged fit (e.g. a dispersion collapsed to its " *
         "boundary) would bias the association with no visible failure. Refit the " *
         "margin first, or use `engine = \"tmb\"` for that margin."))
+end
+
+# A margin fitted after dropping missing responses still stores the full
+# `obs`/`means` vectors, NaN in the dropped rows, with `nobs` equal to the
+# kept rows (#1021). Pairing that vector with the other margin evaluates a
+# non-finite likelihood at every trial and used to return `eta ≈ 0.995` with
+# loglik `-floatmax`. Refuse the margin instead.
+function _assoc_guard_margin(f::DrmFit, name::AbstractString)
+    _assoc_require_converged(f, name)
+    haskey(f.obs, :mu) || return nothing
+    y = f.obs[:mu]
+    nobs(f) == length(y) || throw(ArgumentError(
+        "associate_pairs: `$name` dropped rows (nobs = $(nobs(f)), stored response " *
+        "length = $(length(y))). A staged association pairs on the stored rows, so a " *
+        "margin fitted after dropping missing responses cannot be frozen. Drop the " *
+        "incomplete rows from every margin before fitting (`drm_listwise`)."))
+    _require_finite_inputs(; response=(y, "$name response"),
+                           response_allow_missing=false, context="associate_pairs")
+    if haskey(f.means, :mu)
+        _require_finite_inputs(; predictors=(f.means[:mu], "$name mu"),
+                               context="associate_pairs")
+    end
+    if haskey(f.scales, :sigma)
+        _require_finite_inputs(; predictors=(f.scales[:sigma], "$name sigma"),
+                               context="associate_pairs")
+    end
+    return nothing
 end
 
 # ── shared margin extractors ─────────────────────────────────────────────────

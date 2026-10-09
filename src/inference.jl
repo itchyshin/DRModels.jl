@@ -2078,6 +2078,7 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing, tree
             (g, fit.phylo_scale === :correlation ? _phylo_correlation(phy) :
                                                    sigma_phy_dense(phy; σ²_phy = 1.0))
         elseif structured[1] === :spatial && K === nothing && coords !== nothing
+            _require_finite_inputs(; coords=coords, context="spatial bootstrap")
             cmat = Matrix{Float64}(coords)
             size(cmat, 1) == G0 ||
                 throw(ArgumentError("spatial bootstrap coords must have one row per `$g` level (G = $G0)"))

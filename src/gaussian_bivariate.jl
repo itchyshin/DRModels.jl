@@ -762,12 +762,12 @@ function _fit_bivariate_q2_structured(f::BivariateDrmFormula, fam::Gaussian, dat
         make_coevo_problem(phy_obj, Y, Matrix{Float64}(X1); species = sp)
     elseif kind === :relmat
         K === nothing && error("relmat(1 | $grp) needs `K = …`")
-        C = Matrix{Float64}(K)
+        C = _finite_user_matrix(K, "K")
         size(C) == (G, G) || error("relmat structured matrix must be $(G)×$(G) (the number of `$grp` levels)")
         make_coevo_problem_from_covariance(C, Y, Matrix{Float64}(X1); group = gidx)
     elseif kind === :animal
         A === nothing && error("animal(1 | $grp) needs `A = …`")
-        C = Matrix{Float64}(A)
+        C = _finite_user_matrix(A, "A")
         size(C) == (G, G) || error("animal relatedness matrix must be $(G)×$(G) (the number of `$grp` levels)")
         make_coevo_problem_from_covariance(C, Y, Matrix{Float64}(X1); group = gidx)
     elseif kind === :spatial
@@ -940,6 +940,7 @@ end
 # kernel each evaluation. Here rho is fixed, so the two are different models.
 function _spatial_covariance_from_coords(grp::Symbol, G::Int, coords, spatial_range)
     coords === nothing && error("spatial(1 | $grp) needs `coords = …`")
+    _require_finite_inputs(; coords=coords)
     G >= 2 || error("spatial(1 | $grp) needs at least 2 distinct sites; got G=$G")
     # A 1-D transect is naturally written as a plain Vector (`coords = [0.0, 1.0, 2.0]`),
     # but `Matrix{Float64}(::Vector)` has no method and raised a bare MethodError. Accept it
@@ -981,13 +982,13 @@ function _q4_structured_precision(kind::Symbol, grp::Symbol, G::Int;
                                   K, A, coords, spatial_range)
     if kind === :relmat
         K === nothing && error("relmat(1 | $grp) needs `K = …`")
-        C = Matrix{Float64}(K)
+        C = _finite_user_matrix(K, "K")
         size(C) == (G, G) || error("relmat structured matrix must be $(G)×$(G) (the number of `$grp` levels)")
         isposdef(Symmetric(C)) || error("relmat K must be positive definite")
         return Matrix(inv(cholesky(Symmetric(C))))
     elseif kind === :animal
         A === nothing && error("animal(1 | $grp) needs `A = …`")
-        C = Matrix{Float64}(A)
+        C = _finite_user_matrix(A, "A")
         size(C) == (G, G) || error("animal relatedness matrix must be $(G)×$(G) (the number of `$grp` levels)")
         isposdef(Symmetric(C)) || error("animal A must be positive definite")
         return Matrix(inv(cholesky(Symmetric(C))))
@@ -1157,6 +1158,7 @@ function _fit_bivariate_q4_structured(f::BivariateDrmFormula, fam::Gaussian, dat
 end
 
 function _q4_default_spatial_range(coords, G::Int)
+    _require_finite_inputs(; coords=coords)
     Cmat = Matrix{Float64}(coords)
     Ddist = [sqrt(sum(abs2, Cmat[k, :] .- Cmat[l, :])) for k in 1:G, l in 1:G]
     return sum(Ddist) / (G^2 - G)
