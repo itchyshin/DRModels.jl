@@ -1,3 +1,5 @@
+import Tables
+
 # finite_inputs.jl — one front-door check for non-finite model inputs, and the
 # converged-flag backstop that every DrmFit constructor applies.
 #
@@ -30,15 +32,27 @@ offending index.
 function _require_finite_inputs(; response=nothing, predictors=nothing,
                                 weights=nothing, offset=nothing, coords=nothing,
                                 response_allow_missing::Bool=true,
+                                observed=nothing,
                                 context::AbstractString="drm")
     response === nothing || _require_finite_response(response[1], response[2];
         allow_missing=response_allow_missing, context=context)
     predictors === nothing || _require_finite_predictors(predictors[1], predictors[2];
-        context=context)
+        context=context, observed=observed)
     weights === nothing || _require_finite_array(weights, "weights"; context=context)
     offset === nothing || _require_finite_array(offset, "offset"; context=context)
     coords === nothing || _require_finite_array(coords, "coords"; context=context)
     return nothing
+end
+
+# A row whose response is missing or NaN is dropped before the fit. A non-finite
+# predictor on that row must not be an error (#1045 review, case F). `observed`
+# is the response mask; `nothing` checks every row (weights, offsets, coords,
+# and a prediction table that has no response).
+function _skip_unobserved_row(observed, i)::Bool
+    observed === nothing && return false
+    i isa Integer || return false
+    1 <= i <= length(observed) || return false
+    return !observed[i]
 end
 
 # `missing` / `NaN` may mark an unobserved response. `Inf` may not.
@@ -65,10 +79,10 @@ function _require_finite_response(values, name; allow_missing::Bool, context::Ab
     return nothing
 end
 
-function _require_finite_predictors(values, names; context::AbstractString)
+function _require_finite_predictors(values, names; context::AbstractString, observed=nothing)
     if values isa AbstractVector
         label = names isa AbstractString ? names : (isempty(names) ? "predictor" : string(first(names)))
-        _require_finite_array(values, label; context=context, kind="predictor")
+        _require_finite_array(values, label; context=context, kind="predictor", observed=observed)
         return nothing
     end
     values isa AbstractMatrix || return nothing
@@ -82,6 +96,7 @@ function _require_finite_predictors(values, names; context::AbstractString)
             "column $j"
         end
         for i in 1:size(values, 1)
+            _skip_unobserved_row(observed, i) && continue
             bad = _input_offender(values[i, j]; allow_missing=false)
             bad === nothing && continue
             throw(ArgumentError(
@@ -91,11 +106,24 @@ function _require_finite_predictors(values, names; context::AbstractString)
     return nothing
 end
 
-function _require_finite_array(values, argument; context::AbstractString="drm", kind::AbstractString="")
-    values isa AbstractArray || return nothing
+# A coordinate table (a column table, a DataFrame, a vector of rows) is not an
+# AbstractArray, so the old early return skipped it and `Matrix{Float64}` later
+# kept the NaN. Materialise a table and check that. Anything else that is not
+# an array is left to the caller (a scalar offset is not a coordinate table).
+function _finite_check_values(values)
+    values isa AbstractArray && return values
+    Tables.istable(values) || return nothing
+    return Tables.matrix(values)
+end
+
+function _require_finite_array(values, argument; context::AbstractString="drm",
+                               kind::AbstractString="", observed=nothing)
+    values = _finite_check_values(values)
+    values === nothing && return nothing
     prefix = kind == "" ? "`$argument`" : "$kind `$argument`"
     if ndims(values) == 1
         for (i, x) in pairs(values)
+            _skip_unobserved_row(observed, i) && continue
             bad = _input_offender(x; allow_missing=false)
             bad === nothing && continue
             throw(ArgumentError(
@@ -104,6 +132,7 @@ function _require_finite_array(values, argument; context::AbstractString="drm", 
         return nothing
     end
     for I in CartesianIndices(values)
+        _skip_unobserved_row(observed, I[1]) && continue
         bad = _input_offender(values[I]; allow_missing=false)
         bad === nothing && continue
         loc = ndims(values) == 2 ? "row $(I[1]), column $(I[2])" : "index $I"
@@ -111,6 +140,26 @@ function _require_finite_array(values, argument; context::AbstractString="drm", 
             "$context: $prefix contains a non-finite value ($bad) at $loc."))
     end
     return nothing
+end
+
+"""
+    _require_finite_data_column(data, name; label = string(name))
+
+Named check for a covariate read straight from `data` (a random-slope column,
+a `meta_V` variance, a failures column) rather than through the fixed-effect
+design. The `ArgumentError` names `label` and the first offending row.
+"""
+function _require_finite_data_column(data, name::Symbol; label::AbstractString=string(name),
+                                     context::AbstractString="drm")
+    _require_finite_inputs(; predictors=(_table_column(data, name), label), context=context)
+    return nothing
+end
+
+# User-supplied relatedness / phylogenetic covariance. Checked before
+# `Matrix{Float64}` so a table-shaped `K` or `A` cannot skip the finite test.
+function _finite_user_matrix(M, name::AbstractString)
+    _require_finite_array(M, name)
+    return Matrix{Float64}(M)
 end
 
 # Failed-fit sentinels. A flat objective is reported as nll = 1e18, so the

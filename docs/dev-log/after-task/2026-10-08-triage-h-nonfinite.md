@@ -44,6 +44,16 @@ Julia 1.10.12, `julia --project=.`, one process per batch. Every `@testset` belo
 
 1114 passed, 0 failed. Times are the `@testset` times; a file with several testsets is the sum of those times. `bench/run_sparse_tmb_nd.jl` was not re-run. The Laplace objective was not edited.
 
+## Review round (2026-10-09)
+
+The predictor check in `_design` now runs only on rows whose response is observed, so a missing response and a `NaN` predictor on that same row fit with `nobs = n - 1` (review case F). Named checks cover `meta_V` variances, random-slope covariates read from `data`, the phylogenetic structured slope, user `K`/`A` matrices, `fit_phylo_interaction`, and the binomial/beta-binomial failures column. Coordinate tables are materialised before the finite check. Tree branch lengths were already rejected by `_phy_branch_length` (the edge is named). The assembled length vector is checked again by `_phy_require_finite_lengths` in `sparse_phy.jl`, so the experimental location-only loader can `include` that file without `finite_inputs.jl`. `predict(newdata)` without a response checks every row, so a `NaN` predictor there is an error. The bare `catch` in the column walker now rethrows anything that is not a missing-column error.
+
 ## Rose
 
 Claim: the four issues are fixed by one helper plus the constructor backstop, and the sibling routes listed above are covered because they call that helper or `_design`. Evidence: the table above, including one repro per issue in `test/test_triage_h_nonfinite.jl` and the existing route suites. No drmTMB source was vendored. No speed or parity number was changed. Observation `weights` are not a `drm` argument (`weights(fit)` is all ones); the helper rejects a non-finite weights vector and the test calls it directly. That is a gap in the public API, not a silent NaN fit.
+
+## Full suite (2026-10-09, Julia 1.10.12, `--check-bounds=yes`)
+
+`Pkg.test()` ran the discovered files through `test_q4_reml_vcov.jl` and then stopped. That file's native `vcov` pin failed with `maximum(relerr) = 0.0021784715166058583` against `1e-3`. The same number, on the same line, fails on commit `32e2d0c94` with these edits stashed, so it is not caused by the finite-input checks. The experimental optimizer file, which the first `Pkg.test()` aborted on (`_require_finite_array` undefined inside the standalone `sparse_phy.jl` include), passes 12/12 after the length check moved into `sparse_phy.jl`.
+
+The 113 files after `test_q4_reml_vcov.jl` were included in a continuation process. Files that load `StableRNGs` or other test-only packages were re-run in an environment that has those packages. No `@test` failed in that continuation. `test/test_triage_h_nonfinite.jl` is 87/87.

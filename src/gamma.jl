@@ -130,6 +130,7 @@ function drm(f::DrmFormula, fam::Gamma; data, tree = nothing, K = nothing,
             return _withformula(_fit_gamma_ranef(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol), f)
         elseif rk === :corr            # (1 + x | g) → correlated 2-D Gauss–Hermite
             isva && _va_reject(fam, "a correlated random slope `(1 + x | g)`")
+            _require_finite_data_column(data, var)
             return _withformula(_fit_gamma_corr_ranef(fam, y, Xμ, Xσ, Float64.(getproperty(data, var)), gidx, G, nmμ, nmσ, grp, g_tol), f)
         else
             error("Gamma() supports `(1 | g)` or `(1 + x | g)` on the mean")

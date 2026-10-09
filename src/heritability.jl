@@ -504,7 +504,7 @@ function _conditional_ratio(fit::DrmFit, newdata; kind::Symbol, level::Real, wha
               "two-component ratio")
     nd = NamedTuple(pairs(newdata))
     nrows = length(first(values(nd)))
-    ndr = merge(nd, NamedTuple{(f.response,)}((zeros(nrows),)))
+    ndr = _predict_data(nd, f.response)
     _, Xsd, _ = _design(f.response, last(parts[1]), ndr)
     fixed_sigma, _, _, _ = _split_ranef(Dict(f.forms)[:sigma])
     _, Xσ, _ = _design(f.response, fixed_sigma, ndr; schema_cache = f.schema_cache, schema_key = :sigma)

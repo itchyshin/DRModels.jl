@@ -762,12 +762,12 @@ function _fit_bivariate_q2_structured(f::BivariateDrmFormula, fam::Gaussian, dat
         make_coevo_problem(phy_obj, Y, Matrix{Float64}(X1); species = sp)
     elseif kind === :relmat
         K === nothing && error("relmat(1 | $grp) needs `K = …`")
-        C = Matrix{Float64}(K)
+        C = _finite_user_matrix(K, "K")
         size(C) == (G, G) || error("relmat structured matrix must be $(G)×$(G) (the number of `$grp` levels)")
         make_coevo_problem_from_covariance(C, Y, Matrix{Float64}(X1); group = gidx)
     elseif kind === :animal
         A === nothing && error("animal(1 | $grp) needs `A = …`")
-        C = Matrix{Float64}(A)
+        C = _finite_user_matrix(A, "A")
         size(C) == (G, G) || error("animal relatedness matrix must be $(G)×$(G) (the number of `$grp` levels)")
         make_coevo_problem_from_covariance(C, Y, Matrix{Float64}(X1); group = gidx)
     elseif kind === :spatial
@@ -982,13 +982,13 @@ function _q4_structured_precision(kind::Symbol, grp::Symbol, G::Int;
                                   K, A, coords, spatial_range)
     if kind === :relmat
         K === nothing && error("relmat(1 | $grp) needs `K = …`")
-        C = Matrix{Float64}(K)
+        C = _finite_user_matrix(K, "K")
         size(C) == (G, G) || error("relmat structured matrix must be $(G)×$(G) (the number of `$grp` levels)")
         isposdef(Symmetric(C)) || error("relmat K must be positive definite")
         return Matrix(inv(cholesky(Symmetric(C))))
     elseif kind === :animal
         A === nothing && error("animal(1 | $grp) needs `A = …`")
-        C = Matrix{Float64}(A)
+        C = _finite_user_matrix(A, "A")
         size(C) == (G, G) || error("animal relatedness matrix must be $(G)×$(G) (the number of `$grp` levels)")
         isposdef(Symmetric(C)) || error("animal A must be positive definite")
         return Matrix(inv(cholesky(Symmetric(C))))

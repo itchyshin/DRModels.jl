@@ -280,12 +280,12 @@ end
 function _poisson_structured_cov(kind::Symbol, grp::Symbol, K, A, coords)
     if kind === :relmat
         K === nothing && error("relmat(1 | $grp) needs `K = …` (the relatedness/covariance matrix)")
-        return Matrix{Float64}(K)
+        return _finite_user_matrix(K, "K")
     elseif kind === :animal
         A === nothing && error("animal(1 | $grp) needs the relatedness matrix `A = …`")
-        return Matrix{Float64}(A)
+        return _finite_user_matrix(A, "A")
     else  # :spatial
-        K !== nothing && return Matrix{Float64}(K)
+        K !== nothing && return _finite_user_matrix(K, "K")
         error("spatial(1 | $grp) for counts needs either a precomputed spatial covariance " *
               "via `K = …`, or site `coords = …` (a G×2 coordinate matrix) for coordinate-based " *
               "exponential-kernel covariance with the range estimated jointly")

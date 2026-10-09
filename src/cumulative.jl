@@ -193,6 +193,7 @@ function drm(f::DrmFormula, fam::CumulativeLogit; data, tree = nothing, g_tol::R
         if rk === :intercept
             return _withformula(_fit_cumulative_ranef(fam, yi, Xμ, K, gidx, G, nmμ, grp, g_tol), f)
         elseif rk === :slope
+            _require_finite_data_column(data, var)
             xs = Float64.(getproperty(data, var))
             return _withformula(
                 _fit_cumulative_slope_ranef(fam, yi, Xμ, K, xs, gidx, G, nmμ, grp, g_tol), f)

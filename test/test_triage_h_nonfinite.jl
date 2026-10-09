@@ -224,4 +224,117 @@ _names_arg(e, needle) = e isa ArgumentError && occursin(needle, e.msg)
         @test isfinite(loglik(fitn))
         @test all(isfinite, coef(fitn))
     end
+
+    @testset "missing response drops a NaN predictor on that row" begin
+        # Review case F. Base fitted this (nobs = n - 1). The predictor check
+        # used to run before the row was dropped.
+        rng = MersenneTwister(7)
+        n = 120
+        x = randn(rng, n)
+        y = 1 .+ 0.5 .* x .+ randn(rng, n)
+        yb = Vector{Union{Missing,Float64}}(y)
+        yb[7] = missing
+        xb = copy(x)
+        xb[7] = NaN
+        fit = with_logger(NullLogger()) do
+            drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), Gaussian();
+                data = (; y = yb, x = xb))
+        end
+        @test nobs(fit) == n - 1
+        @test fit.converged
+        @test is_converged(fit)
+        @test isfinite(loglik(fit))
+        @test all(isfinite, coef(fit))
+
+        # The same row pattern on a family that subsets first, then rebuilds
+        # the full-length prediction from the original table.
+        yp = Float64.(rand(rng, 0:3, n))
+        ypm = Vector{Union{Missing,Float64}}(yp)
+        ypm[7] = missing
+        fitp = with_logger(NullLogger()) do
+            drm(bf(@formula(y ~ x)), Poisson(); data = (; y = ypm, x = xb))
+        end
+        @test nobs(fitp) == n - 1
+        @test isfinite(loglik(fitp))
+
+        # A NaN predictor on an observed row is still an error.
+        xbad = copy(x)
+        xbad[9] = NaN
+        e = _err(() -> drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), Gaussian();
+                           data = (; y = yb, x = xbad)))
+        @test _names_arg(e, "predictor `x`")
+        @test occursin("row 9", e.msg)
+    end
+
+    @testset "named checks outside the fixed design" begin
+        n = 24
+        x = randn(n)
+        y = 0.2 .+ 0.3 .* x .+ 0.2 .* randn(n)
+        g = repeat(1:4, inner = 6)
+        z = randn(n)
+        z[3] = Inf
+        e = _err(() -> drm(bf(@formula(y ~ x + (1 + z | g)), @formula(sigma ~ 1)),
+                           Gaussian(); data = (; y, x, z, g)))
+        @test _names_arg(e, "predictor `z`")
+        @test occursin("row 3", e.msg)
+
+        v = fill(0.25, n)
+        v[2] = Inf
+        e = _err(() -> drm(bf(@formula(y ~ x + meta_V(v)), @formula(sigma ~ 1)),
+                           Gaussian(); data = (; y, x, v)))
+        @test _names_arg(e, "meta_V(v)")
+        @test occursin("row 2", e.msg)
+
+        tree = "((t1:0.5,t2:0.5):0.5,(t3:0.5,t4:0.5):0.5);"
+        sp = repeat(["t1", "t2", "t3", "t4"], inner = 6)
+        e = _err(() -> drm(bf(@formula(y ~ x + phylo(1 + z | sp)), @formula(sigma ~ 1)),
+                           Gaussian(); data = (; y, x, z, sp), tree = tree))
+        @test _names_arg(e, "predictor `z`")
+        @test occursin("row 3", e.msg)
+
+        coords = (easting = [0.0, NaN, 1.0], northing = [0.0, 1.0, 0.0])
+        id = repeat(1:3, inner = 4)
+        e = _err(() -> drm(bf(@formula(y ~ 1 + spatial(1 | id)), @formula(sigma ~ 1)),
+                           Gaussian();
+                           data = (; y = randn(length(id)), id), coords = coords))
+        @test _names_arg(e, "coords")
+        @test occursin("row 2", e.msg)
+
+        K = [1.0 0.2; 0.2 NaN]
+        id2 = repeat(1:2, inner = 4)
+        e = _err(() -> drm(bf(@formula(y ~ 1 + relmat(1 | id)), @formula(sigma ~ 1)),
+                           Gaussian();
+                           data = (; y = randn(length(id2)), id = id2), K = K))
+        @test _names_arg(e, "`K`")
+
+        e = _err(() -> DRModels.make_phy([(3, 1, 0.5), (3, 2, Inf)], 2))
+        @test _names_arg(e, "branch length")
+        @test occursin("3 -> 2", e.msg)
+
+        e = _err(() -> DRModels.fit_phylo_interaction(
+            [1.0, Inf, 0.0, 0.0], ones(4, 1),
+            [1.0 0.0; 0.0 1.0], [1.0 0.0; 0.0 1.0]))
+        @test _names_arg(e, "response `y`")
+        @test occursin("row 2", e.msg)
+
+        s = [1.0, 0.0, 2.0, 1.0]
+        f = [1.0, Inf, 0.0, 1.0]
+        e = _err(() -> drm(bf(@formula(cbind(s, f) ~ x)), Binomial();
+                           data = (; s, f, x = randn(4))))
+        @test _names_arg(e, "`f`")
+        @test occursin("row 2", e.msg)
+    end
+
+    @testset "predict(newdata) rejects a NaN predictor" begin
+        n = 30
+        x = randn(n)
+        y = 0.2 .+ 0.4 .* x .+ 0.2 .* randn(n)
+        fit = drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), Gaussian(); data = (; y, x))
+        newx = copy(x)
+        newx[4] = NaN
+        e = _err(() -> predict(fit, (; x = newx)))
+        @test _names_arg(e, "predictor `x`")
+        @test occursin("row 4", e.msg)
+        @test all(isfinite, predict(fit, (; x = x)))
+    end
 end
