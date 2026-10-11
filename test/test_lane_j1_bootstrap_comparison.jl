@@ -242,9 +242,18 @@ _j1_with_converged(fit::DrmFit, flag::Bool) =
         calls[] = 0
         @test_throws ErrorException DRModels._bootstrap_result(
             fit0, form, d0, 4, 0.95, MersenneTwister(3), false, flaky; failures = :error)
-        # Every replicate failing is still an error under the default.
-        @test_throws ErrorException DRModels._bootstrap_result(
-            fit0, form, d0, 2, 0.95, MersenneTwister(3), false, _ -> error("always"))
+        # Every replicate failing is still an error under the default, and the
+        # error names the first failure's cause.
+        allfail = try
+            DRModels._bootstrap_result(fit0, form, d0, 2, 0.95, MersenneTwister(3), false,
+                                       _ -> error("always fails here"))
+            nothing
+        catch err
+            err
+        end
+        @test allfail isa ErrorException
+        @test occursin("all 2 bootstrap replicates failed", allfail.msg)
+        @test occursin("always fails here", allfail.msg)
     end
 
     @testset "#951 bridge refuses keywords the family's drm does not take" begin

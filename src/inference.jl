@@ -2358,7 +2358,16 @@ function _bootstrap_result(
         )
     end
     used = count(ok)
-    used > 0 || throw(ErrorException("all $B bootstrap replicates failed"))
+    if used == 0
+        # Name the first failure, as `bootstrap_sigma_a` does: under the default
+        # `failures = :skip` this is the only error a caller sees when every
+        # refit throws (e.g. a missing `tree`), so it must carry the cause.
+        detail = isempty(failure_rows) ? "" : begin
+            f = first(failure_rows)
+            "; first failure replicate $(f.replicate), seed $(f.seed): $(f.message)"
+        end
+        throw(ErrorException("all $B bootstrap replicates failed$detail"))
+    end
     kept = draws[ok, :]
     summary = _homtoep_bootstrap_rows(fit0, _bootstrap_summary_rows(fit0, kept, est, level))
     boundary_params = _bootstrap_boundary_params(fit0, kept)
