@@ -5,7 +5,6 @@
 # #1020, #1014, #1013, #1010, #966, #1017). Every refusal must be an
 # ArgumentError whose message names the offending argument.
 using DRModels
-using DRModels.StatsModels
 using Test, Random, LinearAlgebra
 
 _j3_msg(f) = try
