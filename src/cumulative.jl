@@ -133,7 +133,7 @@ function _cumulative_cut_init(y, K, n)
     return δ0
 end
 
-function drm(f::DrmFormula, fam::CumulativeLogit; data, tree = nothing, g_tol::Real = 1e-8,
+@drm_entry function drm(f::DrmFormula, fam::CumulativeLogit; data, tree = nothing, g_tol::Real = 1e-8,
              se::Bool = true)
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
         drm(f, fam; data = data_observed, tree = tree, g_tol = g_tol, se = se)
@@ -209,20 +209,22 @@ end
 
 function _fit_cumulative(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, nmμ, g_tol)
     n = length(y); pμ = size(Xμ, 2); nc = K - 1
+    w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
     function nll(θ)
         β = θ[1:pμ]; δ = θ[pμ+1:pμ+nc]
         cuts = _cumulative_cuts(δ)
         η = pμ == 0 ? zeros(eltype(θ), n) : Xμ * β
         s = zero(eltype(θ))
         @inbounds for i in 1:n
-            s -= _cumulative_loglik(y[i], η[i], cuts, K, nc)
+            s -= w[i] * (_cumulative_loglik(y[i], η[i], cuts, K, nc))
         end
         return s
     end
     θ0 = zeros(pμ + nc)
     θ0[(pμ+1):(pμ+nc)] = _cumulative_cut_init(y, K, n)
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    res = _ctl_optimize((x0, opts) -> Optim.optimize(nll, x0, Optim.LBFGS(), opts; autodiff = :forward),
+                       θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
+    θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ, :cutpoints => (pμ+1):(pμ+nc)]
     names = [:mu => nmμ, :cutpoints => ["theta$k" for k in 1:nc]]
     # fitted = expected category score Σ_k k·P(y=k)

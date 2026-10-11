@@ -113,7 +113,7 @@ fit = drm(f, Student(); data = dat)
 2 + exp(coef(fit, :nu)[1])   # estimated shared degrees of freedom
 ```
 """
-function drm(f::BivariateDrmFormula, fam::Student; data, g_tol::Real = 1e-8,
+@drm_entry function drm(f::BivariateDrmFormula, fam::Student; data, g_tol::Real = 1e-8,
              method::Symbol = :ML)
     method === :ML ||
         throw(ArgumentError("drm: the bivariate Student-t route implements ML only " *
