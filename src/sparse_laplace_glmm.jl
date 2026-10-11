@@ -246,6 +246,11 @@ end
 
 function _poisson_phylo_setup(tree, labels)
     phy = tree isa AugmentedPhy ? tree : augmented_phy(tree)
+    # #996: these routes keep raw branch lengths too, so `sd_phylo` is on the
+    # tree-height-dependent scale exactly as on the Gaussian routes; give the
+    # same one-time warning they give (it was missing on every non-Gaussian
+    # phylo route).
+    _warn_if_tree_not_unit_height(phy)
     keep = setdiff(1:phy.n_total, [phy.root_index])
     q = length(keep)
     Q = phy.Q_topology[keep, keep]

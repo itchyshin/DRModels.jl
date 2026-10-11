@@ -3,12 +3,12 @@
 # parameter, matching Gaussian/Beta/Gamma), and the NB2 size is θ = 1/σ² =
 # exp(-2·coef(:sigma)) — the locked twin convention (drmTMB: size = 1/σ²). Every
 # fitter here computes `r = exp(-2·ησ)` accordingly. Variance = μ + μ²/θ, so θ → ∞
-# recovers Poisson. The likelihood is Distributions' NegativeBinomial(θ, p) with
-# p = θ/(θ+μ) — verified ForwardDiff-safe. Fixed effects, ML. Mirrors drmTMB's
-# `nbinom2`.
+# recovers Poisson. The likelihood is the log1p-space NB2 log-pmf `_nb2_logpmf`
+# (below; it never forms p = θ/(θ+μ), which quantises at near-Poisson size,
+# #866/#982) — ForwardDiff-safe. Fixed effects, ML. Mirrors drmTMB's `nbinom2`.
 
 using Distributions: NegativeBinomial, logpdf
-using SpecialFunctions: loggamma
+using SpecialFunctions: loggamma, logbeta
 
 # Distributions' `zero(p) < p <= one(p)` rejects ForwardDiff Duals whose *value*
 # is 1.0 but whose partials are nonzero — `one(p)` has zero partials, so Dual
@@ -206,9 +206,14 @@ function _fit_negbin2_ranef(fam::NegBinomial2, y, Xμ, Xσ, gidx, G, nmμ, nmσ,
     rule = _AGHQRule(1, K); Zre = ones(n, 1); bcache = zeros(1, G)   # #719: per-group AGHQ
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]; σb = exp(θ[pμ+pσ+1])
-        η0 = Xμ * βμ; ησ = clamp.(Xσ * βσ, -20.0, 20.0)
-        ll = (i, η) -> (μ = exp(clamp(η, -20.0, 20.0)); r = exp(-2 * ησ[i]); p = r / (r + μ);
-                        logpdf(_nb2(r, p), yint[i]))
+        # #982 / #1039: `_nb2_logpmf` never forms p = r/(r+μ), which quantises
+        # at near-Poisson size (r ≳ 1e12) and made this objective collapse and
+        # turn irreproducible there; the soft clamp (identity inside ±20, as
+        # the fixed-effect path) keeps the dispersion gradient alive past the
+        # band instead of the hard clamp's exactly-zero AD derivative (#959).
+        η0 = Xμ * βμ; ησ = _softclamp.(Xσ * βσ, -20.0, 20.0, 3.0)
+        ll = (i, η) -> (μ = exp(clamp(η, -20.0, 20.0)); r = exp(-2 * ησ[i]);
+                        _nb2_logpmf(r, μ, yint[i]))
         L = reshape([σb], 1, 1)
         return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache)
     end
@@ -247,9 +252,9 @@ function _fit_negbin2_corr_ranef(fam::NegBinomial2, y, Xμ, Xσ, xs, gidx, G, nm
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
         L = _corr_ranef_L(θ[pμ+pσ+1], θ[pμ+pσ+2], θ[pμ+pσ+3])   # Σ_re = L Lᵀ
-        η0 = Xμ * βμ; ησ = clamp.(Xσ * βσ, -20.0, 20.0)
-        ll = (i, η) -> (μ = exp(clamp(η, -20.0, 20.0)); r = exp(-2 * ησ[i]); p = r / (r + μ);
-                        logpdf(_nb2(r, p), yint[i]))
+        η0 = Xμ * βμ; ησ = _softclamp.(Xσ * βσ, -20.0, 20.0, 3.0)   # as `_fit_negbin2_ranef` (#982/#1039)
+        ll = (i, η) -> (μ = exp(clamp(η, -20.0, 20.0)); r = exp(-2 * ησ[i]);
+                        _nb2_logpmf(r, μ, yint[i]))
         return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache)
     end
     m = sum(y) / n; v = sum(abs2, y .- m) / max(n - 1, 1)
@@ -279,9 +284,9 @@ function _fit_negbin2_zi(fam::NegBinomial2, y, Xμ, Xσ, Xzi, nmμ, nmσ, nmzi, 
         ηz = clamp.(Xzi * βz, -30.0, 30.0)
         s = zero(eltype(θ))
         @inbounds for i in 1:n
-            μ = exp(ημ[i]); r = exp(-2 * ησ[i]); p = r / (r + μ)
+            μ = exp(ημ[i]); r = exp(-2 * ησ[i])
             lπ = _log_logistic(ηz[i]); l1mπ = _log1m_logistic(ηz[i])
-            nb = logpdf(_nb2(r, p), yint[i])
+            nb = _nb2_logpmf(r, μ, yint[i])                # #998: no quantised p
             if iszero_y[i]
                 s -= _logaddexp(lπ, l1mπ + nb)             # log(π + (1-π)·NB(0))
             else
@@ -336,9 +341,8 @@ end
 #     log1p(j/r), so Σ log(r+j) = k·log(r) + Σ log1p(j/r), and for j ≤ k-1 ≪ r
 #     the Taylor series of log1p(j/r) in powers of 1/r can be summed in closed
 #     form via the power sums Σj, Σj², Σj³, Σj⁴ (O(1), no loop over j).
-#   - otherwise: direct loggamma(k+r) - loggamma(r) (SpecialFunctions.loggamma
-#     is itself accurate to ~eps at any argument; the difference is only
-#     cancellation-prone once r ≫ k, handled above).
+#   - otherwise: loggamma(k) - logbeta(r, k) (= log Γ(k+r)/Γ(r); see the
+#     branch for why not the direct loggamma difference, #998).
 function _nb2_loggammadiff(r, k::Integer)
     k == 0 && return 0.0
     if k <= 32
@@ -355,7 +359,12 @@ function _nb2_loggammadiff(r, k::Integer)
         S4 = n * (n + 1) * (2n + 1) * (3.0n^2 + 3.0n - 1) / 30
         return k * log(r) + S1 / r - S2 / (2r^2) + S3 / (3r^3) - S4 / (4r^4)
     else
-        return loggamma(k + r) - loggamma(r)
+        # Γ(k+r)/Γ(r) = Γ(k)/B(r, k): `logbeta` (Rmath's lbeta algorithm, with
+        # the Stirling corrections for large arguments) does not form the two
+        # O(r log r) loggammas whose difference this is. The direct
+        # loggamma(k + r) - loggamma(r) left an absolute error of ~eps·r·log r,
+        # ~4e-7 at r = 1e8, k = 160 (#998).
+        return loggamma(k) - logbeta(r, k)
     end
 end
 
@@ -427,8 +436,13 @@ function _fit_negbin2(fam::NegBinomial2, y, Xμ, Xσ, nmμ, nmσ, g_tol)
         ησ = _softclamp.(Xσ * βσ, -20.0, 20.0, 3.0)  # NegativeBinomial rejects p ≤ 0 / size ≤ 0
         s = zero(eltype(θ))
         @inbounds for i in 1:n
-            μ = exp(ημ[i]); r = exp(-2 * ησ[i]); p = r / (r + μ)   # r = θ (size)
-            s -= logpdf(_nb2(r, p), yint[i])
+            μ = exp(ημ[i]); r = exp(-2 * ησ[i])           # r = θ (size)
+            # #982: `_nb2_logpmf`, not `logpdf(NegativeBinomial(r, r/(r+μ)))`.
+            # At near-Poisson size (log σ ≈ -15, r ≈ 1e13) p = r/(r+μ) keeps
+            # only ~3 significant digits of 1 − p, the log-likelihood picks up
+            # O(0.01-0.2) rounding noise, and the optimiser found logLik values
+            # ABOVE the Poisson maximum that NB2 can only approach from below.
+            s -= _nb2_logpmf(r, μ, yint[i])
         end
         return s
     end
