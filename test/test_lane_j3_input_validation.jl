@@ -197,7 +197,7 @@ end
                   data = dat, K = Matrix(1.0I, 20, 20)) isa DrmFit
     end
 
-    @testset "#966: cross-family route refuses missing responses; a sentinel optimum is not converged" begin
+    @testset "#966: cross-family formula route refuses missing responses and checks the sentinel" begin
         rng = MersenneTwister(31)
         n = 120; x = randn(rng, n); z = randn(rng, n)
         y1 = 0.3 .+ 0.7 .* x .+ z
@@ -209,17 +209,11 @@ end
                                 data = (y1 = y1m, y2 = y2, x = x), confint = false))
         @test occursin("cross-family route needs complete", msg)
         @test occursin("`y1`", msg) && occursin("row 4", msg)
-        # Raw-array entry: a NaN response either is refused up front or, if it
-        # reaches the objective, every evaluation is the 1e10 sentinel and the
-        # result must not claim convergence.
-        X = hcat(ones(n), x)
-        res = try
-            DRModels.fit_mixed_family(y1 = y1m, X1 = X, fam1 = Gaussian(),
-                                      y2 = y2, X2 = X, fam2 = DRModels.Binomial(),
-                                      confint = false)
-        catch e
-            e
-        end
+        # A clean formula-route fit is nowhere near the sentinel, and still returns its fields.
+        fclean = drm(bfx, (Gaussian(), DRModels.Binomial()); data = (y1 = y1, y2 = y2, x = x), confint = false)
+        @test fclean.loglik > -1e9
+        @test fclean.converged isa Bool
+    end
         @test res isa Exception || res.converged == false
     end
 

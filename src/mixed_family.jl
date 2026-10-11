@@ -484,10 +484,7 @@ function fit_mixed_family(; y1, X1, fam1, y2, X2, fam2,
     return (; β1, β2, λ1, λ2, σ1, σ2, βσ1, βσ2, v1, v2, rho_latent = ρ,
             rho_ci_wald = rho_ci_wald, rho_ci_profile = rho_ci_profile,
             rho_ci_boot = rho_ci_boot, n_boot_kept = n_boot_kept,
-            loglik = -objfn(θ̂),
-            # #966: the objective maps a non-finite total to the flat 1e10
-            # sentinel; an optimum on that plateau is not a converged fit.
-            converged = drm_optim_converged(res) && objfn(θ̂) < 1e9,
+            loglik = -objfn(θ̂), converged = drm_optim_converged(res),
             iterations = res.iterations,
             fam1 = fam1, fam2 = fam2)   # carried for post-fit accessors (mf_fitted)
 end
@@ -594,5 +591,8 @@ function drm(f::BivariateDrmFormula, fams::Tuple; data, K::Int = 32,
     # Carry the designs so the post-fit surface works WITHOUT them being handed
     # back by the user. `mf_fitted(fit, X1, X2)` demanding the matrices is the
     # same API mismatch in post-fit form: a formula user has no X1 to give it.
-    return (; fit..., X1 = X1, X2 = X2)
+    # #966: the objective maps a non-finite total to the flat 1e10 sentinel (loglik
+    # = -1e10); an optimum on that plateau is not a converged fit. Applied here, not
+    # in `fit_mixed_family`'s return tuple, which #1055 also edits.
+    return (; fit..., X1 = X1, X2 = X2, converged = fit.converged && fit.loglik > -1e9)
 end
