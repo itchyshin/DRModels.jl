@@ -1370,7 +1370,7 @@ function bootstrap_ci(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
+    failures::Symbol=:skip,
     check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
@@ -1412,7 +1412,7 @@ function bootstrap_ci(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
+    failures::Symbol=:skip,
     check_converged::Bool=true,
 )
     rows = bootstrap_summary(
@@ -1433,7 +1433,7 @@ function bootstrap_ci(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
+    failures::Symbol=:skip,
     check_converged::Bool=true,
 )
     rows = bootstrap_summary(
@@ -1453,7 +1453,7 @@ function bootstrap_ci(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
+    failures::Symbol=:skip,
     check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
@@ -1485,10 +1485,11 @@ Parametric bootstrap coefficient summaries in one pass: point estimate,
 bootstrap standard error, and percentile confidence interval. This is the
 bootstrap analogue of using `stderror(fit)` plus `confint(fit)`, avoiding a
 second bootstrap run when both SEs and intervals are needed. Row fields are
-`(param, coef, estimate, std_error, lower, upper)`. By default, any failed
-replicate errors after all failures are recorded. Set `failures = :skip` to
-compute summaries from successful replicates; call `bootstrap_result` to
-inspect the skipped failures. A homogeneous Toeplitz `temporal()` fit returns
+`(param, coef, estimate, std_error, lower, upper)`. By default
+(`failures = :skip`) a refit that throws is recorded and dropped, and the
+summaries come from the successful replicates with a `bootstrap_incomplete`
+warning; call `bootstrap_result` to inspect the recorded failures. Set
+`failures = :error` to abort instead when any refit throws. A homogeneous Toeplitz `temporal()` fit returns
 the mean-coefficient rows only, as [`bootstrap_ci`](@ref).
 """
 function bootstrap_summary(
@@ -1503,7 +1504,7 @@ function bootstrap_summary(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
+    failures::Symbol=:skip,
     check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
@@ -1543,7 +1544,7 @@ function bootstrap_summary(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
+    failures::Symbol=:skip,
     check_converged::Bool=true,
 )
     result = bootstrap_result(
@@ -1564,7 +1565,7 @@ function bootstrap_summary(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
+    failures::Symbol=:skip,
     check_converged::Bool=true,
 )
     result = bootstrap_result(
@@ -1584,7 +1585,7 @@ function bootstrap_summary(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
+    failures::Symbol=:skip,
     check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
@@ -1609,8 +1610,8 @@ function bootstrap_summary(
 end
 
 """
-    bootstrap_result(formula, family; data, B = 300, level = 0.95, rng = default_rng(), threads = false, failures = :error, check_converged = true, K =, A =, tree =, coords =, algorithm = :auto, g_tol = 1e-8)
-    bootstrap_result(fit; data, B = 300, level = 0.95, rng = default_rng(), threads = false, failures = :error, check_converged = true, K =, A =, tree =, coords =, algorithm = :auto, g_tol = 1e-8)
+    bootstrap_result(formula, family; data, B = 300, level = 0.95, rng = default_rng(), threads = false, failures = :skip, check_converged = true, K =, A =, tree =, coords =, algorithm = :auto, g_tol = 1e-8)
+    bootstrap_result(fit; data, B = 300, level = 0.95, rng = default_rng(), threads = false, failures = :skip, check_converged = true, K =, A =, tree =, coords =, algorithm = :auto, g_tol = 1e-8)
 
 Auditable parametric bootstrap. Returns a `NamedTuple` with:
 
@@ -1627,12 +1628,14 @@ Auditable parametric bootstrap. Returns a `NamedTuple` with:
 - `worker_threads`, `julia_threads`, `blas_threads`, `blas_oversubscribed`,
   `elapsed` — CPU context and wall-clock time for the simulated-refit phase.
 
-`failures = :error` (default) aborts when a refit throws. A refit that does
-not converge, or that lands on a degenerate optimum, is not that kind of
-error: with `check_converged = true` (the default) it is dropped, `status` is
-`"bootstrap_incomplete"` (or `"bootstrap_at_boundary"` when the retained draws
-also sit on a bound), and a warning names that status. `failures = :skip`
-does the same for thrown refits instead of aborting. Set
+`failures = :skip` (the default, matching drmTMB) records a refit that throws
+in `failures`, drops it, and keeps going: `status` is `"bootstrap_incomplete"`
+(or `"bootstrap_at_boundary"` when the retained draws also sit on a bound) and
+a warning names that status. A refit that does not converge, or that lands on
+a degenerate optimum, is dropped the same way when `check_converged = true`
+(the default). `failures = :error` aborts instead as soon as the replicates
+are done if any refit threw; non-converged refits are still drops, not errors.
+All replicates failing is an error under either setting. Set
 `check_converged = false` only to reproduce the old behaviour that counted
 unconverged refits in the interval. Passing an existing `DrmFit`
 reuses that point estimate as the bootstrap seed fit and starts directly with
@@ -1654,7 +1657,7 @@ function bootstrap_result(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
+    failures::Symbol=:skip,
     check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
@@ -1680,7 +1683,7 @@ function bootstrap_result(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
+    failures::Symbol=:skip,
     check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
@@ -1741,7 +1744,7 @@ function bootstrap_result(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
+    failures::Symbol=:skip,
     check_converged::Bool=true,
 )
     _check_bootstrap_failure_mode(failures)
@@ -1782,7 +1785,7 @@ function bootstrap_result(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
+    failures::Symbol=:skip,
     check_converged::Bool=true,
 )
     # Bivariate q=4 phylogenetic fit: there is no scalar SD block to refit-and-
@@ -2280,7 +2283,7 @@ function _bootstrap_result(
     rng,
     threads::Bool,
     refit;
-    failures::Symbol=:error,
+    failures::Symbol=:skip,
     check_converged::Bool=true,
     simulate_fn=nothing,
 )
@@ -2296,6 +2299,8 @@ function _bootstrap_result(
     messages = Vector{Union{Nothing,String}}(nothing, B)
     # A thrown refit is an error. A non-converged refit is a drop: it warns and
     # sets `bootstrap_incomplete`, and it does not abort under `failures = :error`.
+    # The default `failures = :skip` records a thrown refit the same way
+    # (decision 18, #1052, matching drmTMB).
     # `Vector{Bool}` is bit-packed, so parallel writes can drop a flag.
     refit_error = zeros(UInt8, B)
     seeds = rand(rng, UInt, B)

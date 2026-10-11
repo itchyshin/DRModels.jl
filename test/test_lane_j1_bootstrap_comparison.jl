@@ -224,6 +224,29 @@ _j1_with_converged(fit::DrmFit, flag::Bool) =
         @test occursin("g_tool", kmsg)
     end
 
+    @testset "#1052 a thrown refit is recorded by default (decision 18)" begin
+        form = bf(@formula(y ~ x), @formula(sigma ~ 1))
+        d0 = (y = y, x = x)
+        fit0 = drm(form, Gaussian(); data = d0)
+        calls = Ref(0)
+        flaky = datab -> (calls[] += 1; calls[] == 2 ? error("forced refit failure") :
+                          drm(form, Gaussian(); data = datab))
+        res = @test_logs (:warn, r"bootstrap_incomplete") match_mode = :any DRModels._bootstrap_result(
+            fit0, form, d0, 4, 0.95, MersenneTwister(3), false, flaky)
+        @test res.attempted == 4
+        @test res.used == 3
+        @test res.failed == 1
+        @test res.status == "bootstrap_incomplete"
+        @test occursin("forced refit failure", res.failures[1].message)
+        # The abort is still available on request.
+        calls[] = 0
+        @test_throws ErrorException DRModels._bootstrap_result(
+            fit0, form, d0, 4, 0.95, MersenneTwister(3), false, flaky; failures = :error)
+        # Every replicate failing is still an error under the default.
+        @test_throws ErrorException DRModels._bootstrap_result(
+            fit0, form, d0, 2, 0.95, MersenneTwister(3), false, _ -> error("always"))
+    end
+
     @testset "#951 bridge refuses keywords the family's drm does not take" begin
         rp = MersenneTwister(11)
         xp = randn(rp, 50)

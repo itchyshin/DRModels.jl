@@ -13,3 +13,8 @@
   `fit_mixed_family` returns `boot_status` and `n_boot_failed` (#1051). The q2
   bridge entry points reject unknown option keys (#1011), and `drm_bridge`
   refuses by name an option the family's `drm` does not take (#951).
+- **Bootstrap default: a failed refit is recorded, not fatal.** `bootstrap_ci`,
+  `bootstrap_summary` and `bootstrap_result` now default to `failures = :skip`
+  (decision 18, #1052): a refit that throws is recorded in `failures`, the run
+  continues, and the result is `bootstrap_incomplete` with a warning, matching
+  drmTMB. Pass `failures = :error` for the old abort.

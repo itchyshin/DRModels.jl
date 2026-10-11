@@ -51,9 +51,15 @@ target code that exists only on that branch (`src/ci_args.jl`).
   area, and the bivariate q4 `g_tol` comment is a direct-Julia-call issue
   outside the bridge; neither is changed here.
 
+- **#1052 (decision 18, approved 2026-10-11).** The public `bootstrap_ci`,
+  `bootstrap_summary` and `bootstrap_result` methods (and `_bootstrap_result`)
+  default to `failures = :skip`: a refit that throws is recorded in
+  `failures`, dropped, and the run returns `bootstrap_incomplete` with a
+  warning, as drmTMB does. `failures = :error` still aborts; all replicates
+  failing is still an error.
+
 ## Not changed (owner decisions)
 
-- #1052: the default of `failures` (`:error` today).
 - #1011 item 3: a minimum-success floor for status `"bootstrap"`.
 - #1025: forwarding is already on main for fit-based calls; formula-based
   bootstrap methods have no `method` / `marginal` keyword (API addition).
