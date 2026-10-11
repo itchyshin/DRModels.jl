@@ -1,0 +1,1 @@
+| 2026-10-11 | **Scale-spread bar in `is_converged`; SkewNormal nu Wald caveat** (#1059, #1060) | `test/test_converged_scale_spread_skewnormal_nu.jl` + sharded `Pkg.test()` (4 shards, 1 BLAS thread, Julia 1.12.7) | see PR body for the shard tally. DRModels.jl-side only; the drmTMB `is_converged.drmTMB_julia` / `check_drm.drmTMB_julia` halves are not in this repo | Shannon |
