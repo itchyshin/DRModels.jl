@@ -385,7 +385,8 @@ end
 # predictor matrix. If the real response contains `missing` / `NaN`, the formula
 # builder gets a numeric placeholder column while the returned `y` keeps `NaN`
 # at unobserved response positions.
-function _design(response::Symbol, rhs, data; schema_cache = nothing, schema_key = nothing)
+function _design(response::Symbol, rhs, data; schema_cache = nothing, schema_key = nothing,
+                 store_schema::Bool = true)
     raw_response = _table_column(data, response)
     y_response, observed = _coerce_response_column(raw_response)
     design_data = all(observed) ? data :
@@ -399,29 +400,80 @@ function _design(response::Symbol, rhs, data; schema_cache = nothing, schema_key
     # data) computes the schema and stores it; a later call with the same key
     # (`predict`/`predict_parameters` on `newdata`) reuses that TRAINING schema
     # instead of rebuilding factor contrasts/levels from whatever rows `newdata`
-    # happens to contain — `apply_schema` then raises a clear error if `newdata`
-    # carries a factor level the training schema never saw.
+    # happens to contain. `store_schema = false` (the predict paths) reads the
+    # cache but never writes to it, so a prediction on a fit whose fitter did not
+    # populate the cache cannot plant a NEWDATA schema that later calls would
+    # mistake for the training one.
     reused_training_schema = schema_cache !== nothing && haskey(schema_cache[], schema_key)
     sch = if reused_training_schema
         schema_cache[][schema_key]
     else
         s = schema(ft, design_data)
-        schema_cache !== nothing && (schema_cache[][schema_key] = s)
+        (store_schema && schema_cache !== nothing) && (schema_cache[][schema_key] = s)
         s
     end
+    # #1015: name the actual problem (a missing column, a missing value, a level
+    # the training schema never saw) before `modelcols`, instead of reporting
+    # every `modelcols` failure as an unseen factor level.
+    reused_training_schema && _check_newdata_against_schema(rhs, sch, design_data, response, schema_key)
     ft = apply_schema(ft, sch, StatisticalModel)
     _, X = try
         modelcols(ft, design_data)
     catch e
-        if reused_training_schema
-            throw(ArgumentError("predict: `newdata` contains a factor level not seen when " *
-                "the model was fitted (parameter `$(schema_key)`); refit including that level, " *
-                "or drop the offending rows from `newdata`. Original error: " * sprint(showerror, e)))
-        end
-        rethrow(e)
+        reused_training_schema || rethrow(e)
+        throw(ArgumentError("predict: could not build the `$(schema_key)` design matrix " *
+            "from `newdata`: " * sprint(showerror, e)))
     end
     Xm = X isa AbstractMatrix ? Matrix{Float64}(X) : reshape(Float64.(collect(X)), :, 1)
     return y_response, Xm, String.(vec(coefnames(ft.rhs)))
+end
+
+# Columns a fixed-effect RHS reads (`StatsModels.termvars`), or `nothing` when the
+# RHS holds something termvars cannot walk (then the checks below are skipped and
+# `modelcols` reports whatever it finds).
+_rhs_columns(rhs) = try
+    unique(StatsModels.termvars(rhs))
+catch
+    nothing
+end
+
+_has_table_column(data, name::Symbol) =
+    data isa NamedTuple ? haskey(data, name) :
+    data isa AbstractDict ? (haskey(data, name) || haskey(data, String(name))) :
+    name in propertynames(data)
+
+# Pre-`modelcols` checks of `newdata` against a reused TRAINING schema (#1015).
+# Each failure gets its own message; anything these checks do not cover still
+# reaches `modelcols`, whose error is passed through under a neutral headline.
+function _check_newdata_against_schema(rhs, sch, data, response::Symbol, key)
+    cols = _rhs_columns(rhs)
+    cols === nothing && return nothing
+    for c in cols
+        c === response && continue
+        _has_table_column(data, c) ||
+            throw(ArgumentError("predict: column `$c` (used by the `$key` formula) is missing " *
+                                "from `newdata`."))
+        col = _table_column(data, c)
+        col isa AbstractVector || continue
+        any(ismissing, col) &&
+            throw(ArgumentError("predict: column `$c` in `newdata` contains `missing` " *
+                                "(used by the `$key` formula); drop or impute those rows first."))
+    end
+    sch isa StatsModels.Schema || return nothing
+    for (_, t) in pairs(sch.schema)
+        t isa StatsModels.CategoricalTerm || continue
+        t.sym in cols || continue
+        col = _table_column(data, t.sym)
+        col isa AbstractVector || continue
+        levs = t.contrasts.levels
+        unseen = unique(filter(v -> !any(l -> isequal(l, v) || l == v, levs), col))
+        isempty(unseen) ||
+            throw(ArgumentError("predict: `newdata` column `$(t.sym)` contains level(s) " *
+                join(string.(unseen), ", ") * " not seen when the model was fitted (parameter " *
+                "`$key`; fitted levels: " * join(string.(levs), ", ") * "). Refit including " *
+                "that level, or drop the offending rows from `newdata`."))
+    end
+    return nothing
 end
 
 """
@@ -1711,10 +1763,11 @@ function predict(fit::DrmFit, newdata; type::Symbol = :response, se::Bool = fals
         # must still yield its fixed design here; the flag only relaxes parsing.
         fixed_mu, _, _, _ = _split_ranef(Dict(f.forms)[:mu]; allow_phylo_slope = true,
                                          allow_temporal = true)
+        # #1006: an `offset(...)` the fitter applied (coefficient fixed at 1) is
+        # stripped from the design and added to η, exactly as at fit time.
+        fixed_mu, off = _predict_offset(fit, fixed_mu, nd, :mu)
         ndr = merge(nd, NamedTuple{(f.response,)}((zeros(nrows),)))
-        _, Xnew, _ = _design(f.response, fixed_mu, ndr;
-                              schema_cache = f.schema_cache, schema_key = :mu)
-        η = Xnew * coef(fit, :mu)
+        Xnew, η = _predict_design(fit, f.response, fixed_mu, ndr, :mu, f.schema_cache, off)
         pred = type === :link ? η : _mean_response(fit.family, η)
         se || return pred
         r = _block_range(fit, :mu)
@@ -1726,10 +1779,11 @@ function predict(fit::DrmFit, newdata; type::Symbol = :response, se::Bool = fals
         fixed2, _, _, _ = _split_ranef(fm[:mu2])
         nd1 = merge(nd, NamedTuple{(f.response1,)}((zeros(nrows),)))
         nd2 = merge(nd, NamedTuple{(f.response2,)}((zeros(nrows),)))
-        _, X1, _ = _design(f.response1, fixed1, nd1)
-        _, X2, _ = _design(f.response2, fixed2, nd2)
-        η1 = X1 * coef(fit, :mu1)
-        η2 = X2 * coef(fit, :mu2)
+        # #1000: the bivariate formula caches no training schema, so contrasts are
+        # rebuilt from `newdata`; `_predict_design` refuses when the rebuilt
+        # columns are not the fitted ones (it used to mis-predict silently).
+        X1, η1 = _predict_design(fit, f.response1, fixed1, nd1, :mu1, nothing, nothing)
+        X2, η2 = _predict_design(fit, f.response2, fixed2, nd2, :mu2, nothing, nothing)
         pred = type === :link ?
             Dict(:mu1 => η1, :mu2 => η2) :
             Dict(:mu1 => _mean_response(fit.family, η1),
@@ -1741,6 +1795,63 @@ function predict(fit::DrmFit, newdata; type::Symbol = :response, se::Bool = fals
             :mu2 => _delta_se(X2, view(V, r2, r2), η2, type, fit.family, :mu2))
         return (; prediction = pred, se = se_dict)
     end
+end
+
+# Coefficient names of one block, or `nothing` when the fit has no such block.
+function _block_coefnames(fit::DrmFit, p::Symbol)
+    for (q, ns) in fit.coefnames
+        q === p && return ns
+    end
+    return nothing
+end
+
+# Design matrix and linear predictor of parameter `p` at `newdata` (`ndr`, the
+# dummy response column already merged in). The training schema is read, never
+# written (`store_schema = false`). The columns built from `newdata` must be the
+# fitted block's columns, in order: a fitter that did not cache its schema
+# rebuilds factor contrasts from `newdata`, and a subset / reordered / different
+# level set then gives columns that no longer line up with `coef(fit, p)` —
+# silently wrong when the count happens to match (#1000). Refuse instead.
+function _predict_design(fit::DrmFit, resp::Symbol, rhs, ndr, p::Symbol, cache, off)
+    _, X, nms = _design(resp, rhs, ndr; schema_cache = cache, schema_key = p,
+                        store_schema = false)
+    fitted = _block_coefnames(fit, p)
+    if fitted !== nothing && nms != fitted
+        throw(ArgumentError("predict: the `$p` design built from `newdata` has columns " *
+            "[" * join(nms, ", ") * "] but the fitted coefficients are [" *
+            join(fitted, ", ") * "]. A factor in `newdata` probably has a different set " *
+            "or order of levels than the data the model was fitted to; supply every " *
+            "fitted level (unused rows can be dropped from the result afterwards)."))
+    end
+    η = X * coef(fit, p)
+    off === nothing || (η = η .+ off)
+    return X, η
+end
+
+# Strip an `offset(...)` term from parameter `p`'s fixed RHS and evaluate it on
+# `newdata` (#1006). Only an offset the fitter actually APPLIED is handled here:
+# the Poisson mean strips it at fit time (`_extract_offset`, poisson.jl), so its
+# fitted names carry no `offset(...)` column. A family that does not strip it
+# fitted the term as an ordinary covariate with its own coefficient, so it stays
+# in the design and is predicted the same way it was fitted.
+function _predict_offset(fit::DrmFit, rhs, nd, p::Symbol)
+    p === :mu || return rhs, nothing
+    fitted = _block_coefnames(fit, p)
+    (fitted === nothing || any(n -> startswith(n, "offset("), fitted)) && return rhs, nothing
+    rhs2, offset_term = _extract_offset(rhs)
+    offset_term === nothing && return rhs, nothing
+    cols = _rhs_columns(offset_term)
+    if cols !== nothing
+        for c in cols
+            _has_table_column(nd, c) ||
+                throw(ArgumentError("predict: the offset column `$c` is missing from " *
+                    "`newdata`; supply it (for example the log exposure of each new row)."))
+            col = _table_column(nd, c)
+            (col isa AbstractVector && any(ismissing, col)) &&
+                throw(ArgumentError("predict: the offset column `$c` in `newdata` contains `missing`."))
+        end
+    end
+    return rhs2, _offset_vector(offset_term, nd)
 end
 
 # Inverse mean-link per family: maps the linear predictor Xβ to the response
@@ -1912,12 +2023,9 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
         resp = bivar ? (p === :mu2 ? f.response2 : f.response1) : f.response
         fixed_p, _, _, _ = _split_ranef(forms[p]; allow_phylo_slope = true,
                                        allow_temporal = true)   # #620 / temporal fits keep predicting
-        _, Xp, _ = if bivar
-            _design(resp, fixed_p, ndr)
-        else
-            _design(resp, fixed_p, ndr; schema_cache = f.schema_cache, schema_key = p)
-        end
-        ηp = Xp * coef(fit, p)
+        off = nothing
+        bivar || ((fixed_p, off) = _predict_offset(fit, fixed_p, nd, p))   # #1006
+        Xp, ηp = _predict_design(fit, resp, fixed_p, ndr, p, bivar ? nothing : f.schema_cache, off)   # #1000
         val = type === :link ? ηp : _param_response(fit.family, p, ηp)
         if se
             se_p = _delta_se(Xp, view(V, r, r), ηp, type, fit.family, p)
