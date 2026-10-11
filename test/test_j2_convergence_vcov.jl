@@ -199,3 +199,49 @@ end
         @test_skip "fit did not route through LocOnlyObjective"
     end
 end
+
+@testset "#961 non-finite Hessian on finite data: NaN vcov, not a LAPACK error" begin
+    H = [1.0 0.0; 0.0 Inf]
+    V, hf = @test_logs (:warn, r"not finite") match_mode = :any DRModels._vcov_from_hessian_checked(H, true)
+    @test hf == false
+    @test size(V) == (2, 2) && all(isnan, V)
+    # NaN data: the guard is called unchanged and still throws (owner decision 14).
+    @test_throws Exception DRModels._vcov_from_hessian_checked([1.0 0.0; 0.0 NaN], false)
+    # Healthy matrix: identical to the guard.
+    V2, hf2 = DRModels._vcov_from_hessian_checked([2.0 0.0; 0.0 4.0], true)
+    @test hf2 && V2 ≈ [0.5 0.0; 0.0 0.25]
+end
+
+@testset "#952 a fit ending on the sentinel warns" begin
+    fit = DRModels.DrmFit(Gaussian(), [:mu => 1:1, :sigma => 2:2],
+        [:mu => ["(Intercept)"], :sigma => ["(Intercept)"]],
+        zeros(2), fill(NaN, 2, 2), -1e18, 5, false,
+        Dict(:mu => zeros(5)), Dict(:mu => collect(1.0:5.0)), Dict(:sigma => ones(5)))
+    @test_logs (:warn, r"FAILED") match_mode = :any DRModels._warn_variance_boundary(fit)
+end
+
+@testset "#978 sparse phylo-mean: mean SEs from the joint observed information" begin
+    Random.seed!(978)
+    G = 48
+    phy = random_balanced_tree(G; branch_length = 0.3)
+    m = 2; n = G * m
+    species = repeat(1:G; inner = m)
+    z = randn(G)
+    x = z[species] .+ 0.3 .* randn(n)          # covariate aligned with the tree structure
+    C = sigma_phy_dense(phy; σ²_phy = 1.0)
+    u = 0.8 .* (cholesky(Symmetric(C ./ maximum(diag(C)))).L * randn(G))
+    y = 0.2 .+ 0.5 .* x .+ u[species] .+ 0.5 .* randn(n)
+    fit = drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ 1)), Gaussian();
+              data = (; y, x, species), tree = phy)
+    V = vcov(fit)
+    if fit.nll isa DRModels.LocOnlyObjective && all(isfinite, V)
+        # Cross block is no longer zero by construction.
+        @test any(!iszero, V[1:2, 3:4])
+        # Mean SEs match the inverse of a finite-difference Hessian of the full objective.
+        Hfd = DRModels._finite_hessian(fit.nll, fit.theta; h = DRModels._fd_hessian_step(n))
+        Vfd = inv(Symmetric(Hfd))
+        @test sqrt.(diag(V)[1:2]) ≈ sqrt.(diag(Vfd)[1:2]) rtol = 5e-3
+    else
+        @test_skip "fit did not route through the sparse phylo-mean objective"
+    end
+end

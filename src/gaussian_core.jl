@@ -1171,23 +1171,10 @@ function _fit_fixed_gaussian(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, g_tol)
     θ0[pμ+1] = log(std(y - Xμ * βμ0) + eps())
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res)
-    Hθ = ForwardDiff.hessian(nll, θ̂)
-    # #968: a (near-)constant response sends log σ → -∞ and the Hessian
-    # overflows. With finite data that is a degenerate fit, not a NaN input,
-    # so report it (NaN vcov, converged = false) instead of the LAPACK error
-    # `_vcov_from_hessian` raises on a non-finite matrix. A NaN in the data
-    # itself still reaches the guard and throws, as before.
-    hess_finite = all(isfinite, Hθ)
-    data_finite = all(isfinite, y) && all(isfinite, Xμ) && all(isfinite, Xσ)
-    V = if hess_finite || !data_finite
-        _vcov_from_hessian(Hθ)
-    else
-        @warn "Gaussian fit: the Hessian is not finite at the optimum (the residual " *
-              "scale has collapsed towards 0, e.g. a constant response). Wald standard " *
-              "errors are withheld and the fit is reported as not converged." log_sigma =
-            θ̂[(pμ+1):(pμ+pσ)]
-        fill(NaN, pμ + pσ, pμ + pσ)
-    end
+    # #968: a (near-)constant response sends log σ → -∞ and the Hessian overflows.
+    V, hess_finite = _vcov_from_hessian_checked(ForwardDiff.hessian(nll, θ̂),
+                                                _all_finite(y, Xμ, Xσ);
+                                                context = "Gaussian location-scale")
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ)]
     names = [:mu => nmμ, :sigma => nmσ]
     means = Dict(:mu => Xμ * θ̂[1:pμ])

@@ -3399,6 +3399,25 @@ function _fit_structured_gaussian_em(
     return DrmFit(fam, blocks, names, θ̂, V, r.loglik, n, converged, means, obs, scales)
 end
 
+# Central finite-difference Jacobian dβ̂/dv of the profiled GLS solution
+# `_loconly_profile_beta(prob, v[1], v[2])` (pμ × 2), or `nothing` if a probe fails.
+# The sparse Cholesky inside is not dual-number safe, hence finite differences.
+function _loconly_beta_jacobian(prob::LocOnlyProblem, v::AbstractVector)
+    β0 = _loconly_profile_beta(prob, v[1], v[2])[1]
+    β0 === nothing && return nothing
+    Gβ = zeros(length(β0), 2)
+    for k in 1:2
+        h = 1e-5 * max(1.0, abs(v[k]))
+        vp = collect(Float64, v); vm = collect(Float64, v)
+        vp[k] += h; vm[k] -= h
+        βp = _loconly_profile_beta(prob, vp[1], vp[2])[1]
+        βm = _loconly_profile_beta(prob, vm[1], vm[2])[1]
+        (βp === nothing || βm === nothing) && return nothing
+        Gβ[:, k] .= (βp .- βm) ./ (2h)
+    end
+    return all(isfinite, Gβ) ? Gβ : nothing
+end
+
 function _fit_structured_gaussian_sparse_lbfgs(
     fam::Gaussian, y, Xμ, Xσ, gidx, G, phy::AugmentedPhy, nmμ, nmσ, grp, g_tol;
     penalty = nothing, reml::Bool = false
@@ -3519,8 +3538,24 @@ function _fit_structured_gaussian_sparse_lbfgs(
             return val
         end
         Hv = _finite_hessian(fv, vhat; h = _fd_hessian_step(n))
-        V[(pμ + 1):(pμ + 2), (pμ + 1):(pμ + 2)] .=
-            _vcov_from_fd_hessian(Hv; context = "sparse phylo-mean variance block")
+        Vvv = _vcov_from_fd_hessian(Hv; context = "sparse phylo-mean variance block")
+        V[(pμ + 1):(pμ + 2), (pμ + 1):(pμ + 2)] .= Vvv
+        # #978: orthogonality holds in EXPECTATION only. The joint observed
+        # information has a β–variance cross block, so the Wald covariance of the
+        # mean coefficients is (X'V⁻¹X)⁻¹ + G Vvv Gᵀ with G = dβ̂/dv (the profiled
+        # GLS solution's sensitivity to the variance parameters), and the cross
+        # block is G Vvv (the Schur-complement form drmTMB's joint sdreport gives).
+        # ML only: the REML mean block is (X'V⁻¹X)⁻¹ by construction. Skipped when
+        # the variance block or the Jacobian is not finite, keeping the conditional
+        # block rather than turning finite mean SEs into NaN.
+        if !reml && all(isfinite, Vvv) && all(isfinite, V[1:pμ, 1:pμ])
+            Gβ = _loconly_beta_jacobian(prob, vhat)
+            if Gβ !== nothing
+                V[1:pμ, 1:pμ] .+= Gβ * Vvv * Gβ'
+                V[1:pμ, (pμ + 1):(pμ + 2)] .= Gβ * Vvv
+                V[(pμ + 1):(pμ + 2), 1:pμ] .= (Gβ * Vvv)'
+            end
+        end
     end
     e = prob.y .- prob.X * β̂
     u_post = chM \ (prob.S' * e / σ²)
