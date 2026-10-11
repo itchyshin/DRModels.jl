@@ -90,6 +90,6 @@ no overlap with this diff.
 
 Claim vs evidence: speed claims are measured here on one machine and one synthetic
 InstEval-shaped design; the real-data identity check is limited to the 2000 rows in
-the issue. The full 369-file suite run is recorded in the PR. No drmTMB GPL source
+the issue. Full suite on the final code, every file in its own process (4 at a time, 1 BLAS thread): 15,341 passed, 0 failed or errored, 709 top-level testsets, 368 of 369 files (`test_q4_perf_identities.jl` is a `--gate` CLI script, not run standalone; `test_reml_q4_allaxes.jl` needs `using Test` preloaded and passed 9/9 that way). Per-shard `Pkg.test()` runs on the QR-only build also passed for shards 2-4 (3,715 / 4,117 / 3,578). No drmTMB GPL source
 vendored; the InstEval data is not committed; the design is synthetic. Scope: only
 the Gaussian multi-component route changed.
