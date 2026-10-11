@@ -549,6 +549,27 @@ function _nb2_va_inner(η0idx, yidx, rsize::T, τ::T, z, lwπ; iters::Int = 30) 
     return m, exp(r)
 end
 
+# #999: the NB2 / Gamma / Beta VA kernels score each group under its FIRST
+# member's dispersion predictor, which is right only when the single `sigma`
+# column is constant (an intercept). `pσ == 1` alone admits `sigma ~ 0 + x`.
+_va_constant_column(X::AbstractMatrix) = size(X, 2) == 1 && all(==(X[1, 1]), view(X, :, 1))
+
+# #999 / #959: those kernels clamp η_σ to ±`b` INSIDE the objective, so beyond the
+# band the ELBO is flat in that coordinate and the optimiser can stop past it.
+# Report the scale the objective actually scored (clamped), and say when the
+# clamp was active, since the stored `coef(fit, :sigma)` is then not the value
+# the likelihood used.
+function _va_scored_sigma(Xσ, βσ, b::Float64, route::AbstractString)
+    η = Xσ * βσ
+    if any(e -> abs(e) > b, η)
+        @warn "$route: the `sigma` linear predictor ended at $(round(maximum(abs, η); sigdigits = 4)) " *
+              "in absolute value, past the ±$b clamp inside the variational objective. The " *
+              "objective is flat there, so `coef(fit, :sigma)` is not identified by the data; " *
+              "the reported scale is the clamped value that was scored (DRModels.jl #959)."
+    end
+    return exp.(clamp.(η, -b, b))
+end
+
 # Mean-field Gaussian VA fit for the NB2 random-intercept model. Same call shape as
 # `_fit_negbin2_ranef`; `loglik` carries the **ELBO** (a lower bound), not the exact
 # marginal log-likelihood. θ = [β_μ; β_σ (= log θ_size); log σ_b], matching the
@@ -559,7 +580,7 @@ function _fit_nb2_ranef_va(fam::NegBinomial2, y, Xμ, Xσ, gidx, G, nmμ, nmσ, 
     # the per-group dispersion is read from the FIRST member's predictor, which is
     # only correct when ησ is constant across a group (σ ~ 1). A non-intercept Xσ
     # would silently score every other member under the wrong dispersion (#325).
-    pσ == 1 || error("_fit_nb2_ranef_va supports only sigma ~ 1 " *
+    (pσ == 1 && _va_constant_column(Xσ)) || error("_fit_nb2_ranef_va supports only sigma ~ 1 " *
                      "(intercept-only dispersion); got pσ=$(pσ)")
     yint = round.(Int, y)
     members = [Int[] for _ in 1:G]
@@ -601,7 +622,7 @@ function _fit_nb2_ranef_va(fam::NegBinomial2, y, Xμ, Xσ, gidx, G, nmμ, nmσ, 
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :resd => (pμ+pσ+1):(pμ+pσ+1)]
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))   # population μ (b=0)
-    scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
+    scales = Dict(:sigma => _va_scored_sigma(Xσ, θ̂[(pμ+1):(pμ+pσ)], 20.0, "_fit_nb2_ranef_va"))   # #999
     # loglik field carries the ELBO (a lower bound); label downstream as :VA.
     return _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll)
 end
@@ -709,7 +730,7 @@ function _fit_gamma_ranef_va(fam::Gamma, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, 
     n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     # Intercept-only-dispersion guard: the per-group shape is read from the first
     # member's predictor, valid only when ησ is constant across a group (#325).
-    pσ == 1 || error("_fit_gamma_ranef_va supports only sigma ~ 1 " *
+    (pσ == 1 && _va_constant_column(Xσ)) || error("_fit_gamma_ranef_va supports only sigma ~ 1 " *
                      "(intercept-only dispersion); got pσ=$(pσ)")
     ly = log.(y)                                       # b-/θ-free log responses
     members = [Int[] for _ in 1:G]
@@ -751,7 +772,7 @@ function _fit_gamma_ranef_va(fam::Gamma, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, 
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :resd => (pμ+pσ+1):(pμ+pσ+1)]
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))   # population μ (b=0)
-    scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
+    scales = Dict(:sigma => _va_scored_sigma(Xσ, θ̂[(pμ+1):(pμ+pσ)], 15.0, "_fit_gamma_ranef_va"))   # #999
     # loglik field carries the ELBO (a lower bound); label downstream as :VA.
     return _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll)
 end
@@ -855,7 +876,7 @@ function _fit_beta_ranef_va(fam::Beta, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_
     n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     # Intercept-only-precision guard: the per-group precision is read from the first
     # member's predictor, valid only when ησ is constant across a group (#325).
-    pσ == 1 || error("_fit_beta_ranef_va supports only sigma ~ 1 " *
+    (pσ == 1 && _va_constant_column(Xσ)) || error("_fit_beta_ranef_va supports only sigma ~ 1 " *
                      "(intercept-only dispersion); got pσ=$(pσ)")
     ly = log.(y); l1my = log.(1 .- y)                  # b-/θ-free log responses
     members = [Int[] for _ in 1:G]
@@ -896,7 +917,7 @@ function _fit_beta_ranef_va(fam::Beta, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :resd => (pμ+pσ+1):(pμ+pσ+1)]
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
     means = Dict(:mu => _logistic.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))   # population μ (b=0)
-    scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
+    scales = Dict(:sigma => _va_scored_sigma(Xσ, θ̂[(pμ+1):(pμ+pσ)], 15.0, "_fit_beta_ranef_va"))   # #999
     # loglik field carries the ELBO (a lower bound); label downstream as :VA.
     return _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll)
 end
