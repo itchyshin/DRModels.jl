@@ -568,6 +568,8 @@ function _poisson_spatial_mode(y, η0, gidx, Cinv, invσ2, b0;
     G = size(Cinv, 1)
     b = T.(b0)
     Hch = nothing
+    met_tol = false
+    last_sn = Inf
     for _ in 1:maxiter
         grad = invσ2 .* (Cinv * b)
         diagH = zeros(T, G)
@@ -582,9 +584,20 @@ function _poisson_spatial_mode(y, η0, gidx, Cinv, invσ2, b0;
         issuccess(Hch) || return b, Hch, false
         step = Hch \ grad
         b = b .- step
-        norm(step) <= tol * (1 + norm(b)) && break
+        last_sn = ForwardDiff.value(norm(step))
+        if last_sn <= tol * (1 + ForwardDiff.value(norm(b)))
+            met_tol = true
+            break
+        end
     end
-    Hch === nothing && return b, Hch, false
+    # Cap exhausted (#1024). `tol = 1e-12` can sit below the rounding floor of
+    # an ill-conditioned `Cinv`, so a last Newton step at the 1e-8 relative
+    # level still counts as the mode (the Laplace value error is O(step^2));
+    # anything larger means the loop ran out before reaching the mode.
+    if !met_tol && Hch !== nothing
+        met_tol = last_sn <= max(tol, 1e-8) * (1 + ForwardDiff.value(norm(b)))
+    end
+    (Hch === nothing || !met_tol) && return b, Hch, false
     # Refresh μ̂ / H at the final b so the returned Cholesky is exactly H(b̂).
     diagH = zeros(T, G)
     @inbounds for i in eachindex(y)

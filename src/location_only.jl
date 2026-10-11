@@ -3292,6 +3292,9 @@ function em_fit(
 
     ll_prev = -Inf
     iter = 0
+    # #1047: record whether the relative log-likelihood stop actually fired,
+    # instead of letting callers infer it from the iteration count.
+    converged = false
 
     for it in 1:max_iter
         iter = it
@@ -3322,7 +3325,8 @@ function em_fit(
         σ² = σ²_new
 
         ll = marginal_loglik(prob, β, σ²_phy, σ²)
-        if abs(ll - ll_prev) < reltol * (1 + abs(ll_prev))
+        if isfinite(ll) && abs(ll - ll_prev) < reltol * (1 + abs(ll_prev))
+            converged = true
             break
         end
         ll_prev = ll
@@ -3332,7 +3336,8 @@ function em_fit(
     e = prob.y .- prob.X * β
     u_post = chM \ (prob.S' * e / σ²)
     ll_final = marginal_loglik(prob, β, σ²_phy, σ²)
-    return (β=β, σ²_phy=σ²_phy, σ²=σ², u=u_post, loglik=ll_final, iterations=iter)
+    return (β=β, σ²_phy=σ²_phy, σ²=σ², u=u_post, loglik=ll_final, iterations=iter,
+            converged=converged && isfinite(ll_final))
 end
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -3388,7 +3393,9 @@ function _fit_structured_gaussian_em(
     means = Dict(:mu => Xμ * r.β + prob.S * r.u)
     obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => fill(sqrt(r.σ²), n))
-    converged = r.iterations < 500
+    # #1047: the EM's own stopping rule, not `iterations < max_iter` (which
+    # misreads a stop that lands exactly on the cap).
+    converged = r.converged
     return DrmFit(fam, blocks, names, θ̂, V, r.loglik, n, converged, means, obs, scales)
 end
 

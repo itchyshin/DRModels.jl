@@ -80,7 +80,10 @@ function _poisson_laplace_mode(y, η0, Z, compid, logσ; b0 = nothing,
         end
         accepted || return b, ch, iters, false
     end
-    return b, ch, iters, ch !== nothing
+    # Cap exhausted without the step meeting `tol` (#1024): `b` is not the mode
+    # and `ch` factors the Hessian at the previous iterate, so report failure
+    # and let the caller take its non-finite-objective sentinel path.
+    return b, ch, iters, false
 end
 
 # The FD step for the outer vcov Hessian must GROW with n. The objective under
@@ -363,7 +366,10 @@ function _poisson_phylo_mode(y, η0, leaf_node, Q, logσ; b0 = nothing,
             accepted || return b, ch, iters, false
         end
     end
-    return b, ch, iters, ch !== nothing
+    # Cap exhausted without the step meeting `tol` (#1024): `b` is not the mode
+    # and `ch` factors the Hessian at the previous iterate, so report failure
+    # and let the caller take its non-finite-objective sentinel path.
+    return b, ch, iters, false
 end
 
 """
@@ -696,7 +702,10 @@ function _phylo_mean_mode(kind, aux, η0, leaf_node, Q, logσ; b0 = nothing,
             accepted || return b, ch, iters, false
         end
     end
-    return b, ch, iters, ch !== nothing
+    # Cap exhausted without the step meeting `tol` (#1024): `b` is not the mode
+    # and `ch` factors the Hessian at the previous iterate, so report failure
+    # and let the caller take its non-finite-objective sentinel path.
+    return b, ch, iters, false
 end
 
 function _phylo_mean_laplace_nuisance_fg(kind, aux_from, n::Int, Xμ, leaf_node,
@@ -1685,7 +1694,10 @@ function _poisson_crossed_mode(y, η0, gidx, G, hidx, Hh, logσ; b0 = nothing,
             accepted || return b, ch, iters, false
         end
     end
-    return b, ch, iters, ch !== nothing
+    # Cap exhausted without the step meeting `tol` (#1024): `b` is not the mode
+    # and `ch` factors the Hessian at the previous iterate, so report failure
+    # and let the caller take its non-finite-objective sentinel path.
+    return b, ch, iters, false
 end
 
 """
@@ -2836,7 +2848,10 @@ function _crossed_mean_mode(kind, aux, η0, gidx, G, hidx, Hh, logσ; b0 = nothi
             accepted || return b, ch, iters, false
         end
     end
-    return b, ch, iters, ch !== nothing
+    # Cap exhausted without the step meeting `tol` (#1024): `b` is not the mode
+    # and `ch` factors the Hessian at the previous iterate, so report failure
+    # and let the caller take its non-finite-objective sentinel path.
+    return b, ch, iters, false
 end
 
 # A log-SD coordinate whose finite-difference stencil lies entirely outside the

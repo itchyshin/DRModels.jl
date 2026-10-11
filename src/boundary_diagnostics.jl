@@ -130,6 +130,17 @@ function _variance_boundary(fit::DrmFit; ratio::Real = _VARIANCE_BOUNDARY_RATIO)
     )
 end
 
+# A boundary diagnostic must never break a fit, but a failure inside it must not
+# read as a clean fit either (#1003): rethrow interrupts, otherwise say which
+# diagnostic failed and why, then let the caller carry on with `nothing`.
+function _boundary_diagnostic_failed(name::AbstractString, err)
+    err isa InterruptException && rethrow(err)
+    @warn "drm: the $(name) diagnostic failed and was skipped, so this fit has NOT " *
+          "been checked for that boundary (absence of a warning is not a clean bill)." error =
+        sprint(showerror, err)
+    return nothing
+end
+
 # Fit-time advisory. Silent on a clean fit, on fits the diagnostic does not cover,
 # and inside bootstrap refits (`_without_boundary_warnings`).
 function _warn_variance_boundary(fit)
@@ -138,8 +149,8 @@ function _warn_variance_boundary(fit)
     _is_temporal_fit(fit) && return _warn_temporal_boundary(fit)   # temporal(): its own rules
     vb = try
         _variance_boundary(fit)
-    catch
-        nothing        # a diagnostic must never break a fit
+    catch err
+        _boundary_diagnostic_failed("variance-boundary", err)
     end
     vb === nothing && return fit
     msg = _variance_boundary_message(vb)
