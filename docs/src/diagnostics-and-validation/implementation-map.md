@@ -37,10 +37,10 @@ adaptive 2-D GHQ (`src/adaptive_ghq.jl`, #834); crossed intercepts by the sparse
 
 | Family | Fixed | `(1\|g)` | `(1+x\|g)` | crossed | other |
 |---|---|---|---|---|---|
-| Student-t | `_fit_student` | `_fit_student_ranef` | `_fit_student_corr_ranef` | — | — |
-| Poisson | `_fit_poisson` | `_fit_poisson_ranef` | `_fit_poisson_corr_ranef` | `_fit_poisson_crossed_laplace` | `zi` / `hu`: `_fit_poisson_zi` / `_fit_poisson_hu` |
+| Student-t | `_fit_student` | `_fit_student_ranef` | `_fit_student_corr_ranef` | `_fit_student_crossed_laplace` | independent slope `(1\|g)+(0+x\|g)`: `_fit_indep_re_laplace` (#960; Laplace, drmTMB parity) |
+| Poisson | `_fit_poisson` (+ `offset()`) | `_fit_poisson_ranef` (+ `offset()`, #941) | `_fit_poisson_corr_ranef` | `_fit_poisson_crossed_laplace` | `zi` / `hu`: `_fit_poisson_zi` / `_fit_poisson_hu` |
 | NB2 | `_fit_negbin2` | `_fit_negbin2_ranef` | `_fit_negbin2_corr_ranef` | `_fit_nb2_crossed_laplace` | `zi` / `hu`: `_fit_negbin2_zi` / `_fit_negbin2_hu`; truncated: `_fit_truncated_negbin2` |
-| Gamma | `_fit_gamma` | `_fit_gamma_ranef` | `_fit_gamma_corr_ranef` | `_fit_gamma_crossed_laplace` | — |
+| Gamma | `_fit_gamma` | `_fit_gamma_ranef` | `_fit_gamma_corr_ranef` | `_fit_gamma_crossed_laplace` | independent slope `(1\|g)+(0+x\|g)`: `_fit_indep_re_laplace` (#960; Laplace, drmTMB parity) |
 | Beta | `_fit_beta` | `_fit_beta_ranef` | `_fit_beta_corr_ranef` | `_fit_beta_crossed_laplace` | — |
 | Binomial | `_fit_binomial` | `_fit_binomial_ranef` | — | `_fit_binomial_crossed_laplace` | — |
 | Beta-binomial | `_fit_betabinomial` | `_fit_betabinomial_ranef` | `_fit_betabinomial_corr_ranef` | — | `cbind(s, f)` response |
