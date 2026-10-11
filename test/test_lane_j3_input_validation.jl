@@ -68,7 +68,7 @@ end
         phy = DRModels.augmented_phy(tr)
         @test_throws ArgumentError DRModels._phylo_mean_leaf_index(phy, uppercase.(g))
         msg = _j3_msg(() -> DRModels._phylo_mean_leaf_index(phy, uppercase.(g)))
-        @test occursin("tip names", msg) && occursin("\"A\"", msg)
+        @test occursin("tip names", msg) && occursin("\"F\"", msg)   # first unmatched label, first-seen order
         # partial name match (some labels are tips, one is not) is refused too
         gp = copy(g); gp[gp .== "f"] .= "F"
         @test_throws ArgumentError DRModels._poisson_phylo_setup(tr, gp)
