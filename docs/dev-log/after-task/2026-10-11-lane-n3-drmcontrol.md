@@ -30,7 +30,6 @@ Shannon led. No subagents ran. Perspectives: Boole (front end and API), Noether
 - `src/comparison.jl`: `weights(fit)` returns the weights or `nothing`.
 - `DrmFit` gains a trailing `control_info` field. A 23-argument compatibility
   constructor keeps all 131 existing `DrmFit(...)` call sites unchanged.
-- `stderror` returns NaN, not Inf, for an all-NaN vcov.
 - Bootstrap refits forward the seed fit's weights.
 - Docs: `model-guides/convergence.md` worked example, Rosetta and capabilities rows.
 

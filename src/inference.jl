@@ -30,9 +30,7 @@ stderror(fit::DrmFit) = _wald_withheld(fit) ? _homtoep_refuse_wald("stderror") :
 
 # Internal: the Hessian-based SEs regardless of the public Wald scope (profile
 # step sizes, plots); `_display_se` is what `coeftable` / `show` print.
-# An all-NaN vcov means the SEs were never computed (`se = false`, #942), which is
-# not the same as an unidentified direction: report NaN, not Inf.
-_stderror(fit::DrmFit) = all(isnan, fit.vcov) ? fill(NaN, size(fit.vcov, 1)) : _boundary_se.(diag(fit.vcov))
+_stderror(fit::DrmFit) = _boundary_se.(diag(fit.vcov))
 _display_se(fit::DrmFit) = _wald_withheld(fit) ? fill(NaN, length(fit.theta)) : _stderror(fit)
 
 # √v where the variance is identified (finite, positive); Inf otherwise. Keeps a

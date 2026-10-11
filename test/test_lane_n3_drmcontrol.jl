@@ -100,7 +100,7 @@ _n3_quiet(f) = redirect_stderr(devnull) do; f(); end
             @test loglik(nose) == loglik(full)
             @test all(isnan, vcov(nose))
             @test control_info(nose).se === :skipped
-            @test all(isnan, stderror(nose))
+            @test all(isinf, stderror(nose))          # existing se = false contract: all-Inf
             # SEs later, from the Hessian accessor
             @test inv(hessian(nose)) ≈ vcov(full) rtol = 1e-6
         end
