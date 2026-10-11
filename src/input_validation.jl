@@ -4,7 +4,8 @@
 # misread without a word:
 #
 # * a formula for a parameter the family does not have (`nu ~ z` on Poisson) —
-#   fitted without it (#1027);
+#   fitted without it (#1027, #939);
+# * `offset(x)` outside the Poisson mean — estimated as a free slope (#938);
 # * a `tree`, `K`, `A` or `coords` keyword with no matching marker in the
 #   formula — fitted as the plain model (#1010);
 # * a formula column shorter or longer than the response — read past its end
@@ -58,6 +59,29 @@ function _require_family_dpars(f::DrmFormula, fam)
         throw(ArgumentError("drm: $(_family_label(fam)) has no `$p` parameter, so the " *
             "$what cannot be fitted and would be dropped. This family models $has. " *
             "Remove the `$p` formula or choose a family that has that parameter."))
+    end
+    return nothing
+end
+
+# ── #938: `offset(...)` outside the Poisson mean ─────────────────────────────
+#
+# `offset(x)` is an identity marker that only `drm(::Poisson)` extracts (from
+# the mean formula, with the coefficient fixed at 1). Anywhere else it reached
+# the design matrix as an ordinary column named `offset(x)` and got a free
+# coefficient, so the fitted model was not the one asked for.
+_has_offset_term(t) =
+    (t isa Tuple || t isa AbstractVector) ? any(_has_offset_term, t) :
+    t isa FunctionTerm ? (t.f === offset || any(_has_offset_term, t.args)) : false
+
+function _require_offset_supported(f::DrmFormula, fam)
+    for (p, rhs) in f.forms
+        _has_offset_term(rhs) || continue
+        (fam isa Poisson && p === :mu) && continue   # Poisson applies it (and owns its limits)
+        where_ = p === :mu ? "the mean formula" : "the `$p` formula"
+        throw(ArgumentError("drm: `offset(...)` in $where_ is not supported for " *
+            "$(_family_label(fam)); it would be estimated as a free coefficient instead of " *
+            "entering with coefficient 1. Only the Poisson() mean applies an offset; for " *
+            "other families add the term as an ordinary covariate if a free slope is intended."))
     end
     return nothing
 end
@@ -208,12 +232,13 @@ end
     _drm_entry_guard(f, fam, data; tree, K, A, coords)
 
 The input checks every univariate `drm(::DrmFormula, family)` method runs
-first: family parameters (#1027), formula column lengths (#1022) and unused
-structured keywords (#1010).
+first: family parameters (#1027), `offset(...)` placement (#938), formula
+column lengths (#1022) and unused structured keywords (#1010).
 """
 function _drm_entry_guard(f::DrmFormula, fam, data; tree = nothing, K = nothing,
                           A = nothing, coords = nothing)
     _require_family_dpars(f, fam)
+    _require_offset_supported(f, fam)
     _require_formula_column_lengths(f, data)
     _require_structured_keywords_used(f, fam; tree = tree, K = K, A = A, coords = coords)
     return nothing

@@ -238,4 +238,44 @@ end
         ols = 1 - sum(abs2, yk .- Xk * bk) / sum(abs2, yk .- sum(yk) / length(yk))
         @test r ≈ ols atol = 1e-6
     end
+
+    @testset "#938: offset() outside the Poisson mean is refused, not freed" begin
+        rng = MersenneTwister(938)
+        n = 150; x = randn(rng, n); logb = 0.3 .* randn(rng, n); g = repeat(1:15, inner = 10)
+        c = Float64[_j3_rpois(rng, exp(0.2 + 0.3x[i] + logb[i])) for i in 1:n]
+        d = (c = c, x = x, logb = logb, g = g)
+        fnb = bf(@formula(c ~ x + offset(logb)), @formula(sigma ~ 1))
+        @test_throws ArgumentError drm(fnb, NegBinomial2(); data = d, se = false)
+        @test occursin("offset(...)", _j3_msg(() -> drm(fnb, NegBinomial2(); data = d, se = false)))
+        @test_throws ArgumentError drm(bf(@formula(c ~ x + offset(logb) + (1 | g)), @formula(sigma ~ 1)),
+                                       NegBinomial2(); data = d, se = false)
+        y = 1 .+ 0.5x .+ logb .+ randn(rng, n)
+        @test_throws ArgumentError drm(bf(@formula(y ~ x + offset(logb)), @formula(sigma ~ 1)),
+                                       Gaussian(); data = merge(d, (y = y,)))
+        # an offset in a non-mean Poisson formula is refused too
+        @test_throws ArgumentError drm(bf(@formula(c ~ x), @formula(zi ~ offset(logb))),
+                                       DRModels.Poisson(); data = d, se = false)
+        # the Poisson mean still applies it with coefficient 1 (no `offset` coefficient)
+        fp = drm(bf(@formula(c ~ x + offset(logb))), DRModels.Poisson(); data = d, se = false)
+        @test length(coef(fp, :mu)) == 2
+    end
+
+    @testset "#939: CumulativeLogit refuses a sigma formula with covariates" begin
+        # Same guard as #1027 (its CumulativeLogit row above); pinned here by issue.
+        rng = MersenneTwister(939)
+        n = 150; x = randn(rng, n); z = randn(rng, n)
+        k = Float64.(clamp.(round.(Int, 3 .+ x .+ randn(rng, n)), 1, 5))
+        @test_throws ArgumentError drm(bf(@formula(k ~ x), @formula(sigma ~ z)), CumulativeLogit();
+                                       data = (k = k, x = x, z = z))
+    end
+
+    @testset "#926: r2_constant_sigma refuses a scale random intercept" begin
+        rng = MersenneTwister(926)
+        G = 20; g = repeat(1:G, inner = 10); n = length(g); x = randn(rng, n)
+        s = exp.(0.6 .* randn(rng, G))
+        y = 1 .+ 0.5x .+ s[g] .* randn(rng, n)
+        fit = drm(bf(@formula(y ~ x), @formula(sigma ~ 1 + (1 | g))), Gaussian();
+                  data = (y = y, x = x, g = g))
+        @test_throws ArgumentError r2_constant_sigma(fit)
+    end
 end

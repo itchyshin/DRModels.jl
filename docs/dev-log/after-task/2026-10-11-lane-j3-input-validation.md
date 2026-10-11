@@ -4,8 +4,8 @@
 
 Refuse, with an `ArgumentError` that names the argument, inputs the `drm`
 entry points used to accept and then drop or misread silently. Code-review
-issues #1027, #1026, #1022, #1020, #1014, #1013, #1010, #966 and #1017
-(campaign of 2026-10-11, lane J3).
+issues #1027, #1026, #1022, #1020, #1014, #1013, #1010, #966 and #1017, plus
+#939, #938 and #926 added by the coordinator (campaign of 2026-10-11, lane J3).
 
 ## 2. Implemented
 
@@ -17,7 +17,11 @@ New `src/input_validation.jl`, included after the family files:
     does not model is refused. A per-family table (`_family_dpars`) lists the
     secondary parameters each method consumes. A constant `sigma` (which `bf`
     always adds) is accepted for families without sigma. Binomial and the
-    truncated families keep their own existing checks.
+    truncated families keep their own existing checks. This also fixes #939
+    (CumulativeLogit `sigma ~ x`).
+  - `_require_offset_supported` (#938): `offset(...)` is refused anywhere
+    except the Poisson mean, where Poisson applies it with coefficient 1 and
+    keeps its own limits. Elsewhere it used to get a free coefficient.
   - `_require_formula_column_lengths` (#1022): every column the formula reads
     (responses, predictors, grouping, slope, `meta_V`, temporal time) must have
     one value per response row. The bivariate Gaussian, Student, LogNormal and
@@ -39,7 +43,8 @@ New `src/input_validation.jl`, included after the family files:
   the 1e10 sentinel.
 - `r2_constant_sigma` (#1017) refuses any fit whose formula has a random,
   structured, `meta_V` or temporal part, or which has blocks other than
-  mu/sigma. It drops non-finite rows from both sums.
+  mu/sigma. It drops non-finite rows from both sums. Because the walk covers
+  the `sigma` formula, `sigma ~ 1 + (1 | g)` is refused too (#926, r2 part).
 
 ## 3a. Decisions and Rejected Alternatives
 
@@ -49,6 +54,11 @@ New `src/input_validation.jl`, included after the family files:
 - `profile_ci` (#1010): left as accept-and-ignore, because
   `test_sigma_re_laplace.jl` asserts that the bridge sets it on every profile
   call. Changing that is an owner decision.
+- #926 bootstrap part (the marginal simulator ignores a scale random
+  effect) is in the bootstrap code, lane J1's area, and was not changed.
+- #938: refusing was chosen over implementing a coefficient-1 offset for
+  every family; drmTMB applies offsets for all families, so implementing it
+  is a feature for the owner to schedule.
 - #957 (labelled `A`/`coords` matched by id): needs an API decision (a
   labelled matrix or an `ids =` keyword). Not changed.
 
