@@ -223,6 +223,27 @@ _j1_with_converged(fit::DrmFit, flag::Bool) =
         @test occursin("drm_bridge_q2_known_precision", kmsg)
         @test occursin("g_tool", kmsg)
     end
+
+    @testset "#951 bridge refuses keywords the family's drm does not take" begin
+        rp = MersenneTwister(11)
+        xp = randn(rp, 50)
+        dp = Dict("y" => Float64.(rand(rp, 0:4, 50)), "x" => xp)
+        # Poisson's drm has no `algorithm` keyword: a named refusal, not a MethodError.
+        amsg = _j1_argmsg(() -> drm_bridge(; formula = "y ~ x", family = "poisson", data = dp,
+            options = Dict{String,Any}("algorithm" => "lbfgs")))
+        @test occursin("algorithm", amsg)
+        @test occursin("Poisson()", amsg)
+        # Student's drm has no covariance-provider keywords.
+        ds = Dict("y" => randn(rp, 50), "x" => xp)
+        tmsg = _j1_argmsg(() -> drm_bridge(; formula = "y ~ x", family = "student", data = ds,
+            tree = "((a:1,b:1):1,(c:1,d:1):1);"))
+        @test occursin("tree", tmsg)
+        @test occursin("structured", tmsg)
+        # A keyword the family does declare is still forwarded.
+        ok = drm_bridge(; formula = "y ~ x", family = "poisson", data = dp,
+                        options = Dict{String,Any}("se" => false))
+        @test isfinite(ok["loglik"])
+    end
 end
 
 end # module

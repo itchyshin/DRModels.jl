@@ -575,7 +575,27 @@ function _bridge_fit(bundle, fam, data; tree, K, A, coords, options)
     if haskey(options, :q4_vcov)
         kwargs[:q4_vcov] = Bool(options[:q4_vcov])
     end
+    _bridge_check_drm_keywords(bundle, fam, kwargs)
     return drm(bundle, fam; data = data, kwargs...)
+end
+
+# #951: every keyword the bridge forwards must be one the selected `drm` method
+# declares. `marginal` already had this check; `algorithm`, `method`, `se`,
+# `profile_ci`, `phylo_coupled`, `sparse`, the q4 controls and the covariance
+# providers (`tree`, `K`, `A`, `coords`) did not, so a Poisson or Student fit
+# with `algorithm` or `tree` reached R as a bare `MethodError`. A `drm` method
+# that takes `kwargs...` passes this check and keeps its own refusals.
+function _bridge_check_drm_keywords(bundle, fam, kwargs)
+    sig = Tuple{typeof(bundle),typeof(fam)}
+    hasmethod(drm, sig, (:data,)) || return nothing   # no such method at all: let `drm` say so
+    bad = sort!([k for k in keys(kwargs) if !hasmethod(drm, sig, (:data, k))])
+    isempty(bad) && return nothing
+    providers = intersect(bad, (:tree, :K, :A, :coords))
+    detail = isempty(providers) ? "" :
+        " A covariance provider (`$(join(providers, "`, `"))`) means this family has " *
+        "no structured (phylo / relmat / animal / spatial) route here."
+    throw(ArgumentError("drm_bridge: option(s) `$(join(bad, "`, `"))` are not available " *
+        "for $(nameof(typeof(fam)))() with this formula type; omit them.$detail"))
 end
 
 function _bridge_is_bivariate_phylo_q4(bundle, fam, tree)

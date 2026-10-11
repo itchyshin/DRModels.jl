@@ -42,6 +42,15 @@ target code that exists only on that branch (`src/ci_args.jl`).
 - **#1011.** Items 1 and 2: the profile-failure message no longer recommends
   `method = "wald"`, and the q2 bridge entry points reject unknown option keys.
 
+- **#951 (added by the coordinator).** `_bridge_fit` checks every forwarded
+  keyword with `hasmethod` against the family's `drm` method and refuses an
+  unsupported one by name (a covariance provider gets a "no structured route"
+  note). Before, only `marginal` was checked; the rest reached R as a bare
+  `MethodError`. The Gaussian fixed-effect half (`algorithm = :gls`/`:lbfgs`/
+  `:sparse` accepted with no effect) is in `gaussian_core.jl`, lane J3's
+  area, and the bivariate q4 `g_tol` comment is a direct-Julia-call issue
+  outside the bridge; neither is changed here.
+
 ## Not changed (owner decisions)
 
 - #1052: the default of `failures` (`:error` today).

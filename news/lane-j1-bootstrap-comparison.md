@@ -11,4 +11,5 @@
   conditional simulator (#997). `bootstrap_sigma_a` reports an undefined
   correlation as `NaN` rather than `0.0` and returns `prior_ridge` (#1004).
   `fit_mixed_family` returns `boot_status` and `n_boot_failed` (#1051). The q2
-  bridge entry points reject unknown option keys (#1011).
+  bridge entry points reject unknown option keys (#1011), and `drm_bridge`
+  refuses by name an option the family's `drm` does not take (#951).
