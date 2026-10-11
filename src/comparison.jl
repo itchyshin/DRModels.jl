@@ -73,6 +73,7 @@ function lrtest(reduced::DrmFit, full::DrmFit)
         "lrtest: `full` must have more parameters than `reduced` " *
         "(dof(full) = $(dof(full)), dof(reduced) = $(dof(reduced)); " *
         "did you pass the arguments as (reduced, full)?)"))
+    _unconverged_compare_warn(reduced, full, "lrtest")
     _boundary_vc_warn(reduced, full, "lrtest")
     statistic = 2 * (loglik(full) - loglik(reduced))
     pvalue = ccdf(Chisq(Δdof), max(statistic, 0))
@@ -205,6 +206,61 @@ function _reml_compare_guard(a::DrmFit, b::DrmFit, verb::AbstractString)
     return nothing
 end
 
+# Two fits enter a likelihood ratio only if they were estimated on the same
+# observations. `update` of a missing-response or imputed fit, or two fits on
+# differently filtered data, can use different rows (#1002). Equal `nobs` is
+# not enough (#1053): one fit can drop row 3 and the other row 10. A `DrmFit`
+# does not keep a row mask, but it does keep the observed response per mean
+# parameter (`fit.obs`), which is data, not a model quantity. When both fits
+# record the same response slots, their observed (finite) values must agree as
+# sorted vectors. Sorting makes the check independent of row order (the same
+# rows in a different order are the same sample) while a different row set
+# still changes the values. Missing rows are stored as NaN on the full-length
+# routes and dropped on the complete-case routes; filtering non-finite values
+# first makes the two storage forms compare equal on the same rows. When the
+# slots or the observed lengths differ the routes store the response
+# differently, so only the count is compared.
+function _nobs_compare_guard(a::DrmFit, b::DrmFit, verb::AbstractString)
+    nobs(a) == nobs(b) || throw(ArgumentError(
+        "$verb: the two fits were estimated on different samples " *
+        "(nobs = $(nobs(a)) vs $(nobs(b))). A likelihood-ratio comparison " *
+        "requires the same observations, which a missing-response or imputed " *
+        "`update` does not guarantee. Refit both on the same rows."))
+    slot = _observed_rows_mismatch(a, b)
+    slot === nothing && return nothing
+    throw(ArgumentError(
+        "$verb: the two fits were estimated on different samples: both have " *
+        "nobs = $(nobs(a)), but the observed `$slot` responses differ, so " *
+        "different rows entered the two likelihoods. A likelihood-ratio " *
+        "comparison requires the same observations. Refit both on the same rows."))
+end
+
+# First response slot whose observed values differ between `a` and `b`, or
+# `nothing` when every comparable slot agrees (or none is comparable).
+function _observed_rows_mismatch(a::DrmFit, b::DrmFit)
+    (a.obs isa AbstractDict && b.obs isa AbstractDict) || return nothing
+    for slot in sort!(collect(intersect(keys(a.obs), keys(b.obs))))
+        ya = sort!(filter(isfinite, a.obs[slot]))
+        yb = sort!(filter(isfinite, b.obs[slot]))
+        length(ya) == length(yb) || continue
+        ya == yb || return slot
+    end
+    return nothing
+end
+
+# Convergence caveat (#1002): an LR statistic from a fit that did not converge
+# can be off in either direction, so the p-value means little. The guards above
+# refuse the sentinel plateau outright; a finite log-likelihood from a fit that
+# reports `converged = false` is still compared, with a warning naming the fit.
+function _unconverged_compare_warn(reduced::DrmFit, full::DrmFit, verb::AbstractString)
+    bad = String[nm for (nm, f) in (("reduced", reduced), ("full", full)) if !f.converged]
+    isempty(bad) && return nothing
+    @warn "$verb: the $(join(bad, " and ")) fit did not converge (`converged = false`). " *
+          "The likelihood-ratio statistic may be wrong in either direction; refit " *
+          "(different start values, optimiser, or tolerance) before relying on the p-value."
+    return nothing
+end
+
 # Penalized-MAP guard (A4c): a penalized fit is a maximum-a-posteriori estimate,
 # so its variance components are deliberately shrunk toward zero. The likelihood
 # ratio of two such fits does not have the usual chi-square reference
@@ -212,18 +268,6 @@ end
 # the data. drmTMB flags the same hazard as a note from `check_penalized_fit()`;
 # because a silent wrong p-value is worse than a refusal, DRModels.jl errors here and
 # surfaces the same information through `check_drm(fit).penalized_map`.
-# `update` of a missing-response or imputed fit can refit a different set of
-# rows than the seed. The two log-likelihoods are then not a nested comparison
-# (#1002). Refuse that pair rather than returning a statistic on mixed samples.
-function _nobs_compare_guard(a::DrmFit, b::DrmFit, verb::AbstractString)
-    nobs(a) == nobs(b) && return nothing
-    throw(ArgumentError(
-        "$verb: the two fits were estimated on different samples " *
-        "(nobs = $(nobs(a)) vs $(nobs(b))). A likelihood-ratio comparison " *
-        "requires the same observations, which a missing-response or imputed " *
-        "`update` does not guarantee. Refit both on the same rows."))
-end
-
 function _map_compare_guard(a::DrmFit, b::DrmFit, verb::AbstractString)
     (a.estim_method === :MAP || b.estim_method === :MAP) || return nothing
     throw(ArgumentError(
@@ -259,8 +303,12 @@ end
 # pair is a random-effect-free fit (exact log-likelihood) against a non-VA fit,
 # e.g. the fixed-effects model against a `marginal = :Laplace` random intercept.
 function _marginal_compare_guard(a::DrmFit, b::DrmFit, verb::AbstractString)
-    a.marginal === b.marginal && return nothing
     no_va = a.marginal !== :VA && b.marginal !== :VA
+    # Two VA fits carry the same tag but still compare two ELBOs. Each ELBO is
+    # loglik - KL(q || posterior), and the KL gap differs between the reduced
+    # and the full model, so their difference is not a likelihood ratio (#1036).
+    # `aic` / `bic` / `aicc` refuse any VA fit for the same reason.
+    no_va && a.marginal === b.marginal && return nothing
     no_va && (_fit_is_re_free(a) || _fit_is_re_free(b)) && return nothing
     reason = if !no_va
         "the VA objective is an ELBO, not a log-likelihood (#136)"
@@ -269,6 +317,14 @@ function _marginal_compare_guard(a::DrmFit, b::DrmFit, verb::AbstractString)
             " (`:LA` is GHQ-32 on an ordinary `(1 | g)`; `:Laplace` is the one-point Laplace approximation)" : ""
         "the two approximate the random-effect integral differently$detail, so their " *
         "log-likelihood difference would mix model fit with integration error"
+    end
+    if a.marginal === :VA && b.marginal === :VA
+        throw(ArgumentError(
+            "$verb: cannot compare two `marginal = :VA` fits: the VA objective is an " *
+            "ELBO, not a log-likelihood (#136), and the gap between the ELBO and the " *
+            "log-likelihood differs between the two models, so their difference has no " *
+            "chi-square reference (#1036). Refit both with `marginal = :LA`, `:Laplace` " *
+            "or `:AGHQ` to test."))
     end
     throw(ArgumentError(
         "$verb: cannot compare fits with different marginal approximations " *

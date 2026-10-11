@@ -2021,6 +2021,32 @@ function _is_meta_gaussian_re(fit::DrmFit)
     return metav !== nothing && (!isempty(re) || structured !== nothing)
 end
 
+# The marginal simulator could not be built for a fit that HAS a random effect
+# on the mean. `nothing` sends `_bootstrap_result` to the conditional
+# `simulate`, which reuses the fitted random effects and collapses a
+# variance-component interval (#459: 1674x too narrow). That fallback used to
+# be silent (#997). It is kept, because fixed-effect intervals from it are
+# still usable, but the reason is now reported.
+function _marginal_simulator_fallback(reason::AbstractString)
+    @warn "bootstrap: could not build the marginal simulator ($reason). Falling back " *
+          "to the conditional `simulate`, which reuses the fitted random effects: " *
+          "random-effect SD and correlation intervals from this bootstrap are too " *
+          "narrow (#459, #997). Pass the same `data` and covariance provider used " *
+          "to fit, or use `profile` intervals for the variance components."
+    return nothing
+end
+
+# `(1 | g)` is the only ordinary bar the marginal simulator draws.
+function _ordinary_re_is_intercept(lhs)
+    kind = try
+        first(_re_kind(lhs))
+    catch err
+        err isa ErrorException || rethrow()
+        :unsupported
+    end
+    return kind === :intercept
+end
+
 function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing, tree=nothing,
                                    coords=nothing)
     # temporal(): `simulate` already draws the full marginal model (a fresh chain
@@ -2067,7 +2093,8 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing, tree
     phylo_leaf = nothing   # row → tree-leaf index, set for a phylo field
     grp, Kg = if structured !== nothing
         g = structured[2]
-        hasproperty(data, g) || return nothing
+        hasproperty(data, g) ||
+            return _marginal_simulator_fallback("`data` has no `$(g)` column")
         _, G0 = _group_index(getproperty(data, g))
         # SCALE TRAP -- verified by round-trip, not assumed. `re_sd` for a PHYLO term
         # is defined against the RAW covariance `sigma_phy_dense(phy)`, whose diagonal
@@ -2079,7 +2106,8 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing, tree
         # and used as given, so there the resolver's matrix is already correct.
         if structured[1] === :phylo
             phy = tree isa AbstractString ? augmented_phy(tree) : tree
-            phy === nothing && return nothing
+            phy === nothing && return _marginal_simulator_fallback(
+                "the `phylo(1 | $(g))` field needs the fitted `tree = ...`")
             # Rows → tree LEAVES by name / tip index (#482, `_phylo_mean_leaf_index`),
             # exactly as every Gaussian and non-Gaussian phylo mean fit maps them,
             # NOT by first-seen order. First-seen order drew the field on the wrong
@@ -2117,15 +2145,27 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing, tree
         end
     else
         # Ordinary `(1 | g)`: independent random intercepts, so the covariance is I.
-        length(re) == 1 || return nothing
+        length(re) == 1 || return _marginal_simulator_fallback(
+            "the mean has $(length(re)) random-effect bars and the marginal simulator draws one")
         g = re[1][2]
-        hasproperty(data, g) || return nothing
+        # The draw below is ONE intercept per group. A `(0 + x | g)` slope or a
+        # correlated `(1 + x | g)` intercept-and-slope field would be bootstrapped as
+        # the wrong (intercept-only) model, the same defect #620 refuses for
+        # `phylo(1 + x | g)` (#997).
+        _ordinary_re_is_intercept(re[1][1]) ||
+            throw(ArgumentError("bootstrap: the marginal simulator for a random-slope " *
+                "`($(_structured_re_lhs_text(re[1][1])) | $(g))` field is not implemented " *
+                "(#997); it would bootstrap an intercept-only model. Use `profile` " *
+                "intervals or the Wald `vcov`"))
+        hasproperty(data, g) ||
+            return _marginal_simulator_fallback("`data` has no `$(g)` column")
         _, G0 = _group_index(getproperty(data, g))
         (g, Matrix{Float64}(LinearAlgebra.I, G0, G0))
     end
 
     gidx, G = phylo_leaf === nothing ? _group_index(getproperty(data, grp)) : phylo_leaf
-    size(Kg) == (G, G) || return nothing
+    size(Kg) == (G, G) || return _marginal_simulator_fallback(
+        "the `$(grp)` covariance is $(size(Kg, 1))×$(size(Kg, 2)) but `data` has $(G) levels")
     # Location-scale-scale fits (#544/#545): the RE SD is per group,
     # σ_g,k = exp(Z_k' α), so the draw scales each group's effect individually.
     # For the PHYLO lss fit the α coefficients are defined against the
@@ -2136,18 +2176,22 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing, tree
     lss_sd = _sd_parts(fit.formula); lss_phy = _sdphylo_parts(fit.formula)
     sd_g = if !isempty(lss_sd) || !isempty(lss_phy)
         (sgrp, srhs) = isempty(lss_phy) ? lss_sd[1] : lss_phy[1]
-        sgrp === grp || return nothing
+        sgrp === grp || return _marginal_simulator_fallback(
+            "the `sd($(sgrp))` formula and the mean field `$(grp)` use different groups")
         if !isempty(lss_phy)
             phy = tree isa AbstractString ? augmented_phy(tree) : tree
-            phy === nothing && return nothing
+            phy === nothing && return _marginal_simulator_fallback(
+                "the `sd($(grp), phylogenetic)` field needs the fitted `tree = ...`")
             Kg = _phylo_correlation(phy)
-            size(Kg) == (G, G) || return nothing
+            size(Kg) == (G, G) || return _marginal_simulator_fallback(
+                "the tree has $(size(Kg, 1)) tips but `data` has $(G) `$(grp)` levels")
         end
         Zg, _ = _sd_group_design(fit.formula.response, srhs, data, gidx, G, grp)
         exp.(Zg * coef(fit, isempty(lss_phy) ? :sd : :sd_phylo))
     else
         sds = re_sd(fit)
-        (sds isa AbstractDict && haskey(sds, grp)) || return nothing
+        (sds isa AbstractDict && haskey(sds, grp)) || return _marginal_simulator_fallback(
+            "the fit reports no random-effect SD for `$(grp)`")
         fill(Float64(sds[grp]), G)
     end
     L = cholesky(Symmetric(Matrix{Float64}(Kg))).L
@@ -2173,12 +2217,16 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing, tree
     # directly instead of inferring it. Fall back to `means[:mu]` only if `predict`
     # is unavailable, and refuse rather than guess if that is also unusable.
     mu_fixed = try
-        v = Vector{Float64}(predict(fit, data))
-        length(v) == length(fit.means[:mu]) ? v : nothing
-    catch
-        nothing
+        Vector{Float64}(predict(fit, data))
+    catch err
+        # Not a bare `catch`: the reason is reported, so a genuine `predict` bug
+        # is visible instead of turning into a collapsed interval (#997).
+        err isa InterruptException && rethrow()
+        return _marginal_simulator_fallback(
+            "`predict(fit, data)` failed: $(sprint(showerror, err))")
     end
-    mu_fixed === nothing && return nothing
+    length(mu_fixed) == length(fit.means[:mu]) || return _marginal_simulator_fallback(
+        "`predict(fit, data)` returned $(length(mu_fixed)) rows, the fit has $(length(fit.means[:mu]))")
 
     if fit.family isa Gaussian
         sigma = Vector{Float64}(_scale_vector(fit, :sigma))
@@ -2209,11 +2257,13 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing, tree
     # duplicating it here.
     eta_fixed = try
         Vector{Float64}(predict(fit, data; type = :link))
-    catch
-        nothing
+    catch err
+        err isa InterruptException && rethrow()
+        return _marginal_simulator_fallback(
+            "`predict(fit, data; type = :link)` failed: $(sprint(showerror, err))")
     end
-    eta_fixed === nothing && return nothing
-    length(eta_fixed) == fit.nobs || return nothing
+    length(eta_fixed) == fit.nobs || return _marginal_simulator_fallback(
+        "`predict(fit, data; type = :link)` returned $(length(eta_fixed)) rows, the fit has $(fit.nobs)")
     return function (rng)
         u = sd_g .* (L * randn(rng, G))
         mu_star = _mean_response(fit.family, eta_fixed .+ u[gidx])
@@ -2439,6 +2489,13 @@ function _bootstrap_boundary_params(fit0, draws)
     names = String[]
     size(draws, 1) < _BOOTSTRAP_BOUNDARY_MIN_DRAWS && return names
     for ((pp, r), (_, nms)) in zip(fit0.blocks, fit0.coefnames)
+        if pp in _BOOTSTRAP_COV_BLOCK_PARAMS
+            # The Cholesky entries mix SDs and correlations, so a boundary in
+            # any implied SD or correlation flags every entry of the block (#1046).
+            _bootstrap_cov_block_at_boundary(pp, draws[:, r]) || continue
+            append!(names, [string(pp, ":", nm) for nm in nms])
+            continue
+        end
         for (j, col) in enumerate(r)
             _bootstrap_param_at_boundary(pp, @view draws[:, col]) || continue
             push!(names, string(pp, ":", nms[j]))
