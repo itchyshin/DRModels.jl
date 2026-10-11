@@ -155,8 +155,10 @@ end
     # Dispersion gradient is not identically zero past the old hard clamp.
     gσ = ForwardDiff.gradient(fn.nll, [β0, -21.0, lsb])[2]
     @test isfinite(gσ)
-    # NB2 cannot beat the Poisson GLMM by more than quadrature noise here.
-    @test loglik(fn) ≤ loglik(fp) + 1e-3
+    # The NB2 optimum is at least as good as its own Poisson limit at these
+    # (β0, σ_b). (It may legitimately exceed the Poisson GLMM fit: Poisson
+    # data can show sampling overdispersion, so no upper bound is asserted.)
+    @test loglik(fn) ≥ -nllp - 1e-4
 end
 
 @testset "#1015 predict: newdata errors name the actual cause" begin

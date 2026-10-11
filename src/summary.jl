@@ -308,7 +308,7 @@ null is always "coefficient = 0 **on the working scale** of that block":
 | `:mu`, `:mu1`, `:mu2` | coefficient = 0 |
 | `:rho12` | atanh ρ12 = 0, i.e. ρ12 = 0 |
 | `:sigma`, `:sigma1`, `:sigma2` | coefficient = 0 on log σ: an intercept tests σ = 1 (unit-dependent), a slope tests equal dispersion |
-| `:resd`, `:resid` | log σ_b = 0, i.e. σ_b = 1 — **not** the σ_b = 0 variance boundary |
+| `:resd`, `:resid` | `log σ_b = 0`, i.e. `σ_b = 1` — **not** the `σ_b = 0` variance boundary |
 | `:recov`, `:phylocov` | Cholesky entry = 0 (no single interpretable null) |
 
 The table object carries no statement of these nulls (`show(fit)` prints them
