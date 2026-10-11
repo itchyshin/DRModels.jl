@@ -605,8 +605,15 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     # `(… | g)` effects on the mean or on sigma, iid `sd(g) ~ …`). Refuse it here,
     # above those routes. `:gls` / `:lbfgs` stay the documented aliases for the
     # default fitters.
+    # The multi-component sd() route (several iid sd() parts, or an iid part beside
+    # a mean marker) DOES read `algorithm` / `sparse`: its router logs why a sparse
+    # request falls back to dense (#563 S7b.4), so it is exempt. The single iid
+    # `sd(g) ~ …` route does not read them.
+    _sdp_here = _sd_parts(f)
+    _multi_sd = !isempty(_sdp_here) &&
+        !(structured === nothing && length(re) == 1 && length(_sdp_here) == 1)
     if (algorithm === :sparse || sparse === true) && isempty(all_structured) &&
-       structured_sigma === nothing && isempty(_sdphylo_parts(f))
+       structured_sigma === nothing && isempty(_sdphylo_parts(f)) && !_multi_sd
         throw(ArgumentError("drm: `" * (algorithm === :sparse ? "algorithm = :sparse" : "sparse = true") *
             "` selects a sparse structured-Gaussian solver, but this model has no structured " *
             "term (`phylo`, `relmat`, `animal`, `spatial` or `sd(…, phylogenetic)`), so it would " *
