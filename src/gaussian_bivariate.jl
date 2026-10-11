@@ -154,6 +154,7 @@ function drm(f::BivariateDrmFormula, fam::Gaussian; data, tree = nothing,
              g_tol::Real = 1e-8, q4_g_tol::Real = 1e-3,
              q4_iterations::Int = 300, q4_n_newton::Int = 40,
              q4_vcov::Bool = true, method::Symbol = :ML, V = nothing)
+    _require_formula_column_lengths(f, data)   # #1022: no ragged columns under @inbounds
     method in (:ML, :REML) ||
         throw(ArgumentError("drm: `method` must be :ML (default) or :REML (got :$method)"))
     rhs = Dict(f.forms)
@@ -983,12 +984,14 @@ function _q4_structured_precision(kind::Symbol, grp::Symbol, G::Int;
         K === nothing && error("relmat(1 | $grp) needs `K = …`")
         C = Matrix{Float64}(K)
         size(C) == (G, G) || error("relmat structured matrix must be $(G)×$(G) (the number of `$grp` levels)")
+        C = _require_symmetric_finite_covariance(C, "`K` for `relmat(1 | $grp)`")   # #1020
         isposdef(Symmetric(C)) || error("relmat K must be positive definite")
         return Matrix(inv(cholesky(Symmetric(C))))
     elseif kind === :animal
         A === nothing && error("animal(1 | $grp) needs `A = …`")
         C = Matrix{Float64}(A)
         size(C) == (G, G) || error("animal relatedness matrix must be $(G)×$(G) (the number of `$grp` levels)")
+        C = _require_symmetric_finite_covariance(C, "`A` for `animal(1 | $grp)`")   # #1020
         isposdef(Symmetric(C)) || error("animal A must be positive definite")
         return Matrix(inv(cholesky(Symmetric(C))))
     elseif kind === :spatial

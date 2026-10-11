@@ -131,6 +131,7 @@ end
 function drm(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
              A = nothing, coords = nothing, g_tol::Real = 1e-8, se::Bool = true,
              marginal::Symbol = :LA, method = nothing, nAGQ::Int = 5)
+    _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, coords = coords)   # #1027 #1022 #1010
     # `method` is the ML/REML selector. LA/VA/AGHQ is `marginal` (Q1 / #136 / #448).
     # `:REML` is the opt-in Cox–Reid restricted objective, admitted on Poisson
     # `(1 | g)` GHQ under `:LA` (#443) and on `_fit_poisson_general_laplace`

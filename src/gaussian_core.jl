@@ -524,6 +524,7 @@ function drm(f::DrmFormula, fam::Gaussian; kwargs...)
 end
 
 function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree = nothing, coords = nothing, g_tol::Real = 1e-8, algorithm::Symbol = :auto, method::Symbol = :ML, profile_ci::Bool = false, phylo_coupled::Bool = false, penalty = nothing, sparse = nothing, impute = nothing, missing = nothing, marginal::Symbol = :LA)
+    _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, coords = coords)   # #1027 #1022 #1010
     mkind = _gaussian_marginal(marginal)
     laplace = mkind === :Laplace
     aghq = mkind === :AGHQ

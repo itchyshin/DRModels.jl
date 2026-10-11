@@ -484,7 +484,10 @@ function fit_mixed_family(; y1, X1, fam1, y2, X2, fam2,
     return (; β1, β2, λ1, λ2, σ1, σ2, βσ1, βσ2, v1, v2, rho_latent = ρ,
             rho_ci_wald = rho_ci_wald, rho_ci_profile = rho_ci_profile,
             rho_ci_boot = rho_ci_boot, n_boot_kept = n_boot_kept,
-            loglik = -objfn(θ̂), converged = drm_optim_converged(res),
+            loglik = -objfn(θ̂),
+            # #966: the objective maps a non-finite total to the flat 1e10
+            # sentinel; an optimum on that plateau is not a converged fit.
+            converged = drm_optim_converged(res) && objfn(θ̂) < 1e9,
             iterations = res.iterations,
             fam1 = fam1, fam2 = fam2)   # carried for post-fit accessors (mf_fitted)
 end
@@ -542,6 +545,7 @@ This route is **experimental** — see the `cross_family_latent` capability row.
 function drm(f::BivariateDrmFormula, fams::Tuple; data, K::Int = 32,
              g_tol::Real = 1e-6, confint::Bool = true, level::Real = 0.95,
              profile::Bool = false, B::Int = 0, rng = Random.default_rng())
+    _require_formula_column_lengths(f, data)   # #1022: no ragged columns under @inbounds
     length(fams) == 2 || throw(ArgumentError(
         "drm: the cross-family route takes exactly two families, e.g. " *
         "`(Gaussian(), Poisson())` (got $(length(fams)))"))
@@ -567,6 +571,16 @@ function drm(f::BivariateDrmFormula, fams::Tuple; data, K::Int = 32,
 
     y1, X1, _ = _design(f.response1, rhs[:mu1], data)
     y2, X2, _ = _design(f.response2, rhs[:mu2], data)
+    # #966: `_design` marks a missing response with NaN, which made every
+    # objective evaluation the 1e10 sentinel. This route has no observed-rows
+    # path, so refuse here, naming the column.
+    for (yk, rk) in ((y1, f.response1), (y2, f.response2))
+        bad = findfirst(!isfinite, yk)
+        bad === nothing ||
+            throw(ArgumentError("drm: the cross-family route needs complete, finite " *
+                "responses; `$rk` is missing or non-finite at row $bad. Drop those rows " *
+                "first (e.g. with `drm_listwise`)."))
+    end
     # σ designs: the sigma formulas reuse a real LHS (only the matrix is kept),
     # exactly as the Gaussian bivariate residual route does.
     _, Xs1, _ = _design(f.response1, get(rhs, :sigma1, ConstantTerm(1)), data)

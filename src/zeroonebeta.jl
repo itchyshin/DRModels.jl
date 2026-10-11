@@ -48,6 +48,7 @@ struct ZeroOneBeta end
 
 function drm(f::DrmFormula, fam::ZeroOneBeta; data, tree = nothing, K = nothing,
              A = nothing, coords = nothing, g_tol::Real = 1e-8, se::Bool = true)
+    _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, coords = coords)   # #1027 #1022 #1010
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
         drm(f, fam; data = data_observed, tree = tree, K = K, A = A,
             coords = coords, g_tol = g_tol, se = se)

@@ -56,6 +56,7 @@ fit_phy = drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ 1)),
 struct LogNormal end
 
 function drm(f::DrmFormula, fam::LogNormal; data, tree = nothing, K = nothing, g_tol::Real = 1e-8)
+    _drm_entry_guard(f, fam, data; tree = tree, K = K)   # #1027 #1022 #1010
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
         drm(f, fam; data = data_observed, tree = tree, K = K, g_tol = g_tol)
     end

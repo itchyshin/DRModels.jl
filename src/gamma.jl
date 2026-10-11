@@ -44,6 +44,7 @@ struct Gamma end
 function drm(f::DrmFormula, fam::Gamma; data, tree = nothing, K = nothing,
              A = nothing, coords = nothing, g_tol::Real = 1e-8, se::Bool = true,
              marginal::Symbol = :LA, method = nothing)
+    _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, coords = coords)   # #1027 #1022 #1010
     _reject_method_as_marginal(fam, method)
     _scalar_laplace_requested(marginal) &&     # Arc 2: TMB-convention Laplace, ordinary (1 | g)
         return _drm_ordinary_laplace(f, fam; data = data, tree = tree, K = K, A = A,
