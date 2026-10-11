@@ -438,6 +438,10 @@ Univariate Gaussian fits support fixed effects plus the structured-effect
 markers documented under [`phylo`](@ref), [`spatial`](@ref), [`animal`](@ref),
 [`relmat`](@ref), and [`meta_V`](@ref).
 
+`ids = …` labels the rows of the relatedness matrix `A` of an `animal(1 | g)`
+term, so `A` is matched to the data by label instead of by order of first
+appearance (see [`animal`](@ref)).
+
 ## `algorithm` and `sparse` — solver selection
 
 `algorithm` (default `:auto`) and `sparse` choose how the model is fit:
@@ -594,6 +598,19 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
             algorithm = algorithm, penalty = penalty, phylo_coupled = phylo_coupled,
             sparse = sparse, has_missing_response = has_missing_response, g_tol = g_tol,
             structured_slope = structured_slope, tree = tree), f)
+    end
+    # #951: a sparse solver request on a model with no structured term anywhere
+    # (mean marker, sigma marker, `sd(g, phylogenetic)`, temporal) would be accepted
+    # with no effect on every remaining cell (fixed effects, meta_V, ordinary
+    # `(… | g)` effects on the mean or on sigma, iid `sd(g) ~ …`). Refuse it here,
+    # above those routes. `:gls` / `:lbfgs` stay the documented aliases for the
+    # default fitters.
+    if (algorithm === :sparse || sparse === true) && isempty(all_structured) &&
+       structured_sigma === nothing && isempty(_sdphylo_parts(f))
+        throw(ArgumentError("drm: `" * (algorithm === :sparse ? "algorithm = :sparse" : "sparse = true") *
+            "` selects a sparse structured-Gaussian solver, but this model has no structured " *
+            "term (`phylo`, `relmat`, `animal`, `spatial` or `sd(…, phylogenetic)`), so it would " *
+            "have no effect. Use the default `algorithm = :auto`."))
     end
     # #620 two-SD phylogenetic random slope `phylo(1 + x | g)` on the Gaussian
     # mean: validate HERE, above every route that can return, so no other
@@ -1122,15 +1139,6 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         return _withphyloscale(_withformula(
             _fit_structured_gaussian(fam, y, Xμ, Xσ, gidx, G, Kmat, nmμ, nmσ, grp, g_tol), f), :correlation)
     end
-    # #951: every structured route has returned above. The cells below (meta_V,
-    # fixed effects, ordinary `(… | g)` effects) have no sparse solver, so a
-    # sparse request would be accepted with no effect. `:gls` / `:lbfgs` stay the
-    # documented aliases for these cells' default fitters.
-    (algorithm === :sparse || sparse === true) &&
-        throw(ArgumentError("drm: `" * (algorithm === :sparse ? "algorithm = :sparse" : "sparse = true") *
-            "` selects a sparse structured-Gaussian solver, but this model has no structured " *
-            "term (`phylo`, `relmat`, `animal`, `spatial` or `sd(…, phylogenetic)`), so it would " *
-            "have no effect. Use the default `algorithm = :auto`."))
     if metav !== nothing
         vv = Float64.(getproperty(data, metav))    # known sampling variances
         return _withformula(_fit_meta_gaussian(fam, y, Xμ, Xσ, vv, nmμ, nmσ, g_tol), f)

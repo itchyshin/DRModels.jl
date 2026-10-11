@@ -33,6 +33,14 @@ relmat(x) = x   # marker; intercepted during formula parsing
 Animal-model structured random intercept. Supply the additive-relatedness matrix
 over the levels of `id` via `drm(...; A = A)`. Reuses the closed-form
 structured-Gaussian engine (same as [`relmat`](@ref)).
+
+`A` is matched to the data **by label**, so its rows may be in any order:
+pass it as a table whose column names are the animal labels, or as a plain
+matrix together with `ids = [label of each row]`. Rows of `A` for labels that
+are not in the data are dropped; a level of `id` with no row in `A` is an
+`ArgumentError`. A plain matrix without `ids` is taken to be in order of first
+appearance of `id` in the data, and warns once per session. `ids` is accepted by
+the Gaussian, Poisson, NegBinomial2, Gamma, Beta and ZeroOneBeta `drm` methods.
 """
 animal(x) = x
 

@@ -269,7 +269,7 @@ function _poisson_phylo_setup(tree, labels)
     numeric_labels = true
     @inbounds for i in eachindex(labels)
         li = labels[i]
-        if li isa Integer && 1 <= Int(li) <= phy.n_leaves
+        if li isa Real && isinteger(li) && 1 <= Int(li) <= phy.n_leaves   # Float64 codes from R too (#1026)
             leaf_node[i] = leaf_pos[Int(li)]
         else
             numeric_labels = false

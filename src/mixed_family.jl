@@ -545,10 +545,10 @@ This route is **experimental** — see the `cross_family_latent` capability row.
 function drm(f::BivariateDrmFormula, fams::Tuple; data, K::Int = 32,
              g_tol::Real = 1e-6, confint::Bool = true, level::Real = 0.95,
              profile::Bool = false, B::Int = 0, rng = Random.default_rng())
-    _require_formula_column_lengths(f, data)   # #1022: no ragged columns under @inbounds
     length(fams) == 2 || throw(ArgumentError(
         "drm: the cross-family route takes exactly two families, e.g. " *
         "`(Gaussian(), Poisson())` (got $(length(fams)))"))
+    _require_formula_column_lengths(f, data)   # #1022: no ragged columns under @inbounds
     fam1, fam2 = fams
     rhs = Dict(f.forms)
 

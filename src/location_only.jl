@@ -155,7 +155,7 @@ function _phylo_mean_leaf_index(phy::AugmentedPhy, labels)
     numeric_labels = true
     @inbounds for i in eachindex(labels)
         li = labels[i]
-        if li isa Integer && 1 <= Int(li) <= phy.n_leaves
+        if li isa Real && isinteger(li) && 1 <= Int(li) <= phy.n_leaves   # Float64 codes from R too (#1026)
             leaf[i] = Int(li)
         else
             numeric_labels = false

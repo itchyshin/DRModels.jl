@@ -13,7 +13,7 @@
 # * phylo group labels that are not tip names — mapped to tips by first-seen
 #   order when the level count happened to equal the tip count (#1026);
 # * an asymmetric or non-finite bivariate `K` / `A` — one triangle read (#1020);
-# * a non-positive `meta_V` sampling variance on the no-random-effect route (#1014).
+# * a negative or non-finite `meta_V` sampling variance on the no-random-effect route (#1014).
 #
 # Every message names the offending argument.
 
@@ -73,15 +73,19 @@ _has_offset_term(t) =
     (t isa Tuple || t isa AbstractVector) ? any(_has_offset_term, t) :
     t isa FunctionTerm ? (t.f === offset || any(_has_offset_term, t.args)) : false
 
-function _require_offset_supported(f::DrmFormula, fam)
+function _require_offset_supported(f::DrmFormula, fam; laplace::Bool = false)
     for (p, rhs) in f.forms
         _has_offset_term(rhs) || continue
-        (fam isa Poisson && p === :mu) && continue   # Poisson applies it (and owns its limits)
+        # Poisson applies it (and owns its limits) on the default route only: the
+        # `marginal = :Laplace` route (`_drm_ordinary_laplace`) never extracts it.
+        (fam isa Poisson && p === :mu && !laplace) && continue
         where_ = p === :mu ? "the mean formula" : "the `$p` formula"
+        how = laplace ? " with `marginal = :Laplace`" : ""
         throw(ArgumentError("drm: `offset(...)` in $where_ is not supported for " *
-            "$(_family_label(fam)); it would be estimated as a free coefficient instead of " *
-            "entering with coefficient 1. Only the Poisson() mean applies an offset; for " *
-            "other families add the term as an ordinary covariate if a free slope is intended."))
+            "$(_family_label(fam))$how; it would be estimated as a free coefficient instead of " *
+            "entering with coefficient 1. Only the Poisson() mean on the default marginal " *
+            "applies an offset; otherwise add the term as an ordinary covariate if a free " *
+            "slope is intended."))
     end
     return nothing
 end
@@ -236,9 +240,9 @@ first: family parameters (#1027), `offset(...)` placement (#938), formula
 column lengths (#1022) and unused structured keywords (#1010).
 """
 function _drm_entry_guard(f::DrmFormula, fam, data; tree = nothing, K = nothing,
-                          A = nothing, coords = nothing)
+                          A = nothing, coords = nothing, laplace::Bool = false)
     _require_family_dpars(f, fam)
-    _require_offset_supported(f, fam)
+    _require_offset_supported(f, fam; laplace = laplace)
     _require_formula_column_lengths(f, data)
     _require_structured_keywords_used(f, fam; tree = tree, K = K, A = A, coords = coords)
     return nothing
@@ -285,10 +289,13 @@ end
 
 # ── #1014: known sampling variances ─────────────────────────────────────────
 function _require_meta_V_variances(vv, name)
+    # Non-negative, like drmTMB (`validate_known_v_diag` refuses only negative and
+    # non-finite values; a zero-variance study is legitimate). The fitted variance
+    # is v + σ², so a zero v is numerically safe.
     for (i, v) in pairs(vv)
-        (isfinite(v) && v > 0) ||
+        (isfinite(v) && v >= 0) ||
             throw(ArgumentError("drm: `meta_V($name)` sampling variances must be finite and " *
-                "strictly positive; row $i has $v."))
+                "non-negative; row $i has $v."))
     end
     return nothing
 end

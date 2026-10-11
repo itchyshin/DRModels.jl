@@ -78,6 +78,11 @@ end
         codes = repeat(101:106, inner = 2)
         @test length(DRModels._phylo_mean_leaf_index(phy, codes)) == length(codes)
 
+        # integer-valued Float64 codes (R doubles) are tip indices, like the same codes as Int
+        gf = repeat([6.0, 5.0, 4.0, 3.0, 2.0, 1.0], inner = 2)
+        @test DRModels._phylo_mean_leaf_index(phy, gf) == DRModels._phylo_mean_leaf_index(phy, Int.(gf))
+        @test DRModels._phylo_mean_leaf_index(phy, gf) == Int.(gf)
+
         # end to end on a Laplace route
         rng = MersenneTwister(11)
         n = length(g); x = randn(rng, n)
@@ -138,16 +143,20 @@ end
         @test drm(form, Gaussian(); data = dat, K = K0) isa DrmFit
     end
 
-    @testset "#1014: meta_V without a random effect refuses non-positive variances" begin
+    @testset "#1014: meta_V without a random effect refuses negative or non-finite variances" begin
         rng = MersenneTwister(3)
         n = 40; x = randn(rng, n); y = 1 .+ 0.5x .+ randn(rng, n)
         fm = bf(@formula(y ~ x + meta_V(v)), @formula(sigma ~ 1))
         vneg1 = [i == 1 ? -0.1 : 0.05 for i in 1:n]
         @test_throws ArgumentError drm(fm, Gaussian(); data = (y = y, x = x, v = vneg1))
-        @test occursin("strictly positive",
+        @test occursin("non-negative",
                        _j3_msg(() -> drm(fm, Gaussian(); data = (y = y, x = x, v = vneg1))))
         @test_throws ArgumentError drm(fm, Gaussian(); data = (y = y, x = x, v = fill(-0.05, n)))
         @test drm(fm, Gaussian(); data = (y = y, x = x, v = fill(0.05, n))) isa DrmFit
+        # a zero-variance study is legitimate (drmTMB accepts it): v + sigma^2 stays positive
+        v0 = [0.0; fill(0.05, n - 1)]
+        @test drm(fm, Gaussian(); data = (y = y, x = x, v = v0)) isa DrmFit
+        @test_throws ArgumentError drm(fm, Gaussian(); data = (y = y, x = x, v = [NaN; fill(0.05, n - 1)]))
     end
 
     @testset "#1013: drm_listwise takes temporal() formulas and refuses ragged tables" begin
@@ -254,6 +263,12 @@ end
         # an offset in a non-mean Poisson formula is refused too
         @test_throws ArgumentError drm(bf(@formula(c ~ x), @formula(zi ~ offset(logb))),
                                        DRModels.Poisson(); data = d, se = false)
+        # the `marginal = :Laplace` Poisson route never extracts the offset: refused, not freed
+        @test_throws ArgumentError drm(bf(@formula(c ~ x + offset(logb) + (1 | g))),
+                                       DRModels.Poisson(); data = d, marginal = :Laplace, se = false)
+        @test occursin("marginal = :Laplace", _j3_msg(() -> drm(
+            bf(@formula(c ~ x + offset(logb) + (1 | g))), DRModels.Poisson();
+            data = d, marginal = :Laplace, se = false)))
         # the Poisson mean still applies it with coefficient 1 (no `offset` coefficient)
         fp = drm(bf(@formula(c ~ x + offset(logb))), DRModels.Poisson(); data = d, se = false)
         @test length(coef(fp, :mu)) == 2
@@ -290,6 +305,14 @@ end
                        _j3_msg(() -> drm(ffix, Gaussian(); data = d, algorithm = :sparse)))
         @test_throws ArgumentError drm(ffix, Gaussian(); data = d, sparse = true)
         @test_throws ArgumentError drm(fre, Gaussian(); data = d, algorithm = :sparse)
+        # unstructured sigma random intercept and iid sd(g): same refusal (not silently dense)
+        fsig = bf(@formula(y ~ x), @formula(sigma ~ 1 + (1 | g)))
+        fboth = bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1 + (1 | g)))
+        fsd = bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1), @formula(sd(g) ~ 1))
+        for ff in (fsig, fboth, fsd)
+            @test_throws ArgumentError drm(ff, Gaussian(); data = d, sparse = true)
+            @test_throws ArgumentError drm(ff, Gaussian(); data = d, algorithm = :sparse)
+        end
         # `:gls` / `:lbfgs` are the documented aliases for these cells' default fitter
         @test loglik(drm(ffix, Gaussian(); data = d, algorithm = :gls)) ≈
               loglik(drm(ffix, Gaussian(); data = d)) atol = 1e-10
