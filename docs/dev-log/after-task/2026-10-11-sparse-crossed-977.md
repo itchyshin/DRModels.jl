@@ -86,10 +86,28 @@ no overlap with this diff.
   warm start) — separate issue, estimates-affecting.
 - The `(1 | g) + (1 | h)` non-Gaussian crossed Laplace routes are untouched.
 
-## 6. Rose audit
+## 6. Rose audit (claim vs evidence, scope, drift, license)
 
-Claim vs evidence: speed claims are measured here on one machine and one synthetic
-InstEval-shaped design; the real-data identity check is limited to the 2000 rows in
-the issue. Full suite on the final code, every file in its own process (4 at a time, 1 BLAS thread): 16,484 passed, 0 failed or errored, 711 top-level testsets, 369 of 370 files incl. lane J4's new file; the slow testsets gated behind `DRM_SLOW_TESTS` in `test_locscale_profile.jl` skip by design (`test_q4_perf_identities.jl` is a `--gate` CLI script, not run standalone; `test_reml_q4_allaxes.jl` needs `using Test` preloaded and passed 9/9 that way). That run was on this branch BEFORE merging main (lane J4, #1058, which also edits `gaussian_ranef.jl`); after the clean merge the 12 files most related to the change (this kernel test, multi-RE, cancellation sweep, ranef, crossed SE forwarding, LSS sparse multi, bridge LSS routes, postfit, predict SE, J4's own test, …) were rerun and all exit 0. Earlier per-shard `Pkg.test()` runs (QR-only build) passed for shards 2-4; shard 1 aborts at `test_locscale_profile_status.jl`, which fails identically on pristine main. No drmTMB GPL source
-vendored; the InstEval data is not committed; the design is synthetic. Scope: only
-the Gaussian multi-component route changed.
+Verdict: **clean after three fixes made during the audit.**
+
+- Claim: "estimates, logLik and BLUPs unchanged". Evidence existed for logLik,
+  coefficients, objective and gradient; BLUPs were only length-checked. **Fixed:** the
+  kernel test now compares `ranef` with the dense GLS conditional means to 1e-8
+  (test file is 51/51, not 50/50).
+- Claim: speed. Evidence is the bench rows (`bench/out/crossed_sparse_977.csv`, matches
+  the PR table) on one machine, one synthetic InstEval-shaped design, 1 thread; the real
+  InstEval check is identity only, on the issue's 2000 rows. The 331 s and drmTMB times are
+  the reporter's, not re-run; 1318 s here was measured under CPU contention and is labelled
+  an upper bound. The n = 20000 gap to drmTMB is stated, not hidden.
+- Drift in code comments: the `_multi_re_qr` header said M is never formed and the vcov
+  comment named `cholesky(M + I)`; both now describe the Cholesky/QR split. Comment-only.
+- Drift in docs on main: none found (no page states the crossed size limit on main). The open
+  docs PR #1056 (lane J5, #988) adds "crossed Gaussian size limit" notes that cite #977; they
+  become stale once this merges and need updating by that lane.
+- Scope: only `_fit_multi_ranef_gaussian` changed; optimiser, starts and tolerances are
+  untouched; q = 4 route untouched (baseline logLik -256.5118).
+- License: no drmTMB GPL source vendored; no InstEval data committed (bench design is
+  synthetic); the only repository data file added is a bench timing CSV.
+- Residual risk, stated not fixed: the Cholesky gate `max diag(M) <= 1e4` is a bound-based
+  choice (logdet error ~ q * 1e4 * eps), supported by the cancellation sweep and the
+  QR-vs-Cholesky fit agreement, not proven for every design. Follow-up: evaluation count.

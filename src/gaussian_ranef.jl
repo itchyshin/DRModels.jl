@@ -986,12 +986,18 @@ end
 # r′D⁻¹r − c′(M + I)⁻¹c lose every digit as σ_e → 0 with one record per level
 # (the #835/#837 cancellation class; measured: nll off by 0.63 at log σ_e = −16
 # and −0.44 in logdet alone at −18, test_cancellation_sweep.jl). We therefore
-# never form M: `_multi_re_qr` takes the QR factorisation of the stacked design
+# never form M in the dense / Dual-number route: `_multi_re_qr` takes the QR factorisation of the stacked design
 # [D^{-1/2}Z̃; I] (RᵀR = I + Z̃ᵀD⁻¹Z̃ exactly, without squaring the condition
 # number), reads logdet(M + I) = 2Σ log|Rᵢᵢ|, and evaluates the quadratic as the
 # penalised RSS Σ (rᵢ − z̃ᵢᵀb̂)²/Dᵢ + ‖b̂‖² at the least-squares mode b̂ (every term
 # ≥ 0). Identical to the Woodbury expressions in exact arithmetic. Closed-form
 # GLS; Z precomputed.
+#
+# #977: the Float64 objective/gradient no longer call this dense QR. They use
+# `_multi_re_factor` (gaussian_multi_re_sparse.jl): a sparse Cholesky of M when
+# max diag(M) <= 1e4 (cancellation cannot bite there), else the sparse QR of the
+# same stacked design, so the guard above is kept. This dense version remains
+# for ForwardDiff (Dual) calls and as the reference in test_multi_re_sparse_kernel.jl.
 function _multi_re_qr(Z̃::AbstractMatrix, sdinv::AbstractVector, r::AbstractVector)
     T = promote_type(eltype(Z̃), eltype(sdinv), eltype(r))
     q = size(Z̃, 2)
@@ -1084,7 +1090,7 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
     res = Optim.optimize(od, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol))
     θ̂ = Optim.minimizer(res)
     # vcov from the AD Hessian of `nll`. `nll` returns a flat 1e18 penalty when
-    # `cholesky(M + I)` fails, so ForwardDiff's directional probes near a
+    # the capacitance factorisation fails, so ForwardDiff's directional probes near a
     # near-singular capacitance (extreme σ ratios) can straddle that branch and
     # pollute the Hessian. Detect the leak (θ̂ on the penalty, or a non-finite /
     # non-PD Hessian) and report NaN rather than a silently corrupted vcov,

@@ -111,6 +111,15 @@ end
         # BLUPs: same penalised least-squares mode as the dense route
         re = ranef(fit)
         @test length(re[:g]) == 40 && length(re[:h]) == 25
+        # BLUPs equal the dense GLS conditional means at θ̂: b̂ = σ_col ⊙ M⁻¹ Z̃ᵀD⁻¹r
+        let θ = fit.theta, pμ = 2
+            r = y .- hcat(ones(n), x) * θ[1:pμ]
+            ησ = θ[pμ+1]; σcol = vcat(fill(exp(θ[pμ+2]), 40), fill(exp(θ[pμ+3]), 25))
+            Zt = Matrix(sparse(repeat(1:n, 2), vcat(g, 40 .+ h), 1.0, n, 65)) .* σcol'
+            M = I + Zt' * Zt .* exp(-2ησ)
+            bd = σcol .* (M \ (Zt' * r .* exp(-2ησ)))
+            @test maximum(abs, vcat(re[:g], re[:h]) .- bd) < 1e-8
+        end
     end
 
     @testset "three components + varying sigma" begin
