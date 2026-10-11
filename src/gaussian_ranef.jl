@@ -1005,19 +1005,16 @@ end
 function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol)
     n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     K = length(comps)
-    Gks = [c[3] for c in comps]
-    q = sum(Gks)
-    offs = cumsum([0; Gks])
-    Z = zeros(n, q)
-    colcomp = Vector{Int}(undef, q)
-    for (k, (w, gidx, Gk, _)) in enumerate(comps)
-        for c in 1:Gk
-            colcomp[offs[k]+c] = k
-        end
-        @inbounds for i in 1:n
-            Z[i, offs[k]+gidx[i]] = w[i]
-        end
-    end
+    # #977: Z is kept sparse (one nonzero per component per row) and the Float64
+    # objective/gradient use the sparse QR + selected-inverse kernel in
+    # gaussian_multi_re_sparse.jl. Dual-number calls (ForwardDiff) fall back to
+    # the dense `_multi_re_qr` on `Zdense`, built only on first use.
+    des = _multi_re_design(comps, n)
+    q = size(des.Z, 2)
+    offs = des.offs
+    colcomp = des.colcomp
+    Zdense = Ref{Union{Nothing,Matrix{Float64}}}(nothing)
+    _zdense() = (Zdense[] === nothing && (Zdense[] = Matrix(des.Z)); Zdense[]::Matrix{Float64})
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
         ημ = Xμ * βμ
@@ -1025,9 +1022,15 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
         invD = exp.(-2 .* ησ); r = y .- ημ
         σk = [exp(clamp(θ[pμ+pσ+k], -30.0, 30.0)) for k in 1:K]
         σcol = [σk[colcomp[c]] for c in 1:q]
-        Z̃ = Z .* σcol'                             # scale each column by its σ_k
-        _, bhat, logdetM = _multi_re_qr(Z̃, exp.(-ησ), r)
-        e = r .- Z̃ * bhat
+        if eltype(θ) === Float64
+            Z̃s = des.Z * Diagonal(σcol)            # scale each column by its σ_k
+            _, bhat, logdetM = _multi_re_sparse_qr(Z̃s, exp.(-ησ), r)
+            e = r .- Z̃s * bhat
+        else
+            Z̃ = _zdense() .* σcol'
+            _, bhat, logdetM = _multi_re_qr(Z̃, exp.(-ησ), r)
+            e = r .- Z̃ * bhat
+        end
         quad = sum(invD .* e .^ 2) + sum(abs2, bhat)
         logdetV = sum(2 .* ησ) + logdetM
         val = 0.5 * (logdetV + quad) + 0.5 * n * log(2π)
@@ -1044,23 +1047,22 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
         r = y .- ημ
         σk = [exp(clamp(θ[pμ+pσ+k], -30.0, 30.0)) for k in 1:K]
         σcol = [σk[colcomp[c]] for c in 1:q]
-        Z̃ = Z .* σcol'
-        R, bscaled, _ = _multi_re_qr(Z̃, exp.(-ησ), r)   # RᵀR = I + Z̃ᵀD⁻¹Z̃
+        Z̃s = des.Z * Diagonal(σcol)
+        F, bscaled, _ = _multi_re_sparse_qr(Z̃s, exp.(-ησ), r)   # RᵀR = P(I + Z̃ᵀD⁻¹Z̃)Pᵀ
         all(isfinite, bscaled) || return Gout
-        Rinv = UpperTriangular(R) \ Matrix{Float64}(I, q, q)
-        Hinv = Rinv * Rinv'
-        α = invD .* (r .- Z̃ * bscaled)             # V⁻¹r
+        S = _multi_re_selinv(F, des.Mpat)                    # M⁻¹ on the factor pattern
+        α = invD .* (r .- Z̃s * bscaled)            # V⁻¹r
 
         Gout[1:pμ] .= -(Xμ' * α)
 
         # d nll / d ησᵢ = Dᵢ[(V⁻¹)ᵢᵢ - αᵢ²], Dᵢ = exp(2ησᵢ).
-        lever = vec(sum((Z̃ * Hinv) .* Z̃, dims = 2))
+        lever = _multi_re_leverage(S, des, σk)     # z̃ᵢᵀ M⁻¹ z̃ᵢ
         diagVinv = invD .- invD .^ 2 .* lever
         Gout[pμ+1:pμ+pσ] .= Xσ' * ((diagVinv .- α .^ 2) ./ invD)
 
         # With whitened Z̃, dV/dlogσₖ = 2 Z̃ₖZ̃ₖᵀ, and
         # Z̃ᵀV⁻¹Z̃ = I - (I + Z̃ᵀD⁻¹Z̃)⁻¹.
-        dH = diag(Hinv)
+        dH = _selinv_diag(S, q)
         @inbounds for k in 1:K
             cols = (offs[k]+1):offs[k+1]
             Gout[pμ+pσ+k] = sum(1 .- dH[cols]) - sum(abs2, bscaled[cols])
@@ -1084,9 +1086,13 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
     # pollute the Hessian. Detect the leak (θ̂ on the penalty, or a non-finite /
     # non-PD Hessian) and report NaN rather than a silently corrupted vcov,
     # matching the phylo/sparse paths.
+    # #977: above `_MULTI_RE_DENSE_HESSIAN_MAXQ` RE columns the Dual-number dense
+    # QR is O((n + q) q²) per Hessian column, so the Hessian is instead a central
+    # difference of the exact sparse analytic gradient (same guards below).
     V = let
         pen = oftype(sum(θ̂), 1e18)
-        Hθ = ForwardDiff.hessian(nll, θ̂)
+        Hθ = q <= _MULTI_RE_DENSE_HESSIAN_MAXQ ? ForwardDiff.hessian(nll, θ̂) :
+             _fd_hessian_from_grad(grad!, θ̂)
         if nll(θ̂) >= pen || !all(isfinite, Hθ) || !isposdef(Symmetric(Hθ))
             @warn "multi-RE Gaussian vcov: Hessian is not usable (near-singular " *
                   "capacitance or penalty leak); returning NaN standard errors."
@@ -1116,10 +1122,9 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
         ησ = clamp.(Xσ * βσ, -30.0, 30.0); invD = exp.(-2 .* ησ); r = y .- Xμ * βμ
         σk = [exp(clamp(θ̂[pμ+pσ+k], -30.0, 30.0)) for k in 1:K]
         σcol = [σk[colcomp[c]] for c in 1:q]
-        Z̃ = Z .* σcol'
-        ZtDir = Z̃' * (invD .* r)
-        M = Z̃' * (invD .* Z̃)
-        bscaled = cholesky(Symmetric(M + I)) \ ZtDir   # at θ̂ this is well-conditioned
+        # The penalised least-squares mode of the same sparse QR the objective
+        # uses: b̂ = (I + Z̃ᵀD⁻¹Z̃)⁻¹Z̃ᵀD⁻¹r, without forming the capacitance.
+        _, bscaled, _ = _multi_re_sparse_qr(des.Z * Diagonal(σcol), exp.(-ησ), r)
         bfull = σcol .* bscaled                         # back to natural RE scale
         d = Dict{Symbol,Vector{Float64}}()
         for (k, c) in enumerate(comps)

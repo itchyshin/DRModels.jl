@@ -1,0 +1,1 @@
+| 2026-10-11 | **Sparse Gaussian crossed `(1\|g)+(1\|h)`** (#977 / lane N5) | `Pkg.test()` + `test/test_multi_re_sparse_kernel.jl` + `bench/bench_crossed_sparse_977.jl`, Julia 1.10.4 (conda-forge, SuiteSparse 7.2.1 jll), 4 cores | PLACEHOLDER_RESULT | Shannon |
