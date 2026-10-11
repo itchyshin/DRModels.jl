@@ -134,6 +134,23 @@ function _vcov_from_hessian_checked(H::AbstractMatrix, data_finite::Bool;
     return (fill(NaN, size(H)), false)
 end
 
+"""
+    _vcov_from_gram(G; context = "")
+
+Inverse of a design Gram / GLS information block `X'WX`. Its eigenvalue ratio
+reflects the units of the predictors (an uncentred `year ≈ 2000` gives ~1e-11),
+which says nothing about identifiability, so a positive-definite Gram is inverted
+directly and silently (as before the REML sites went through the guard, #956).
+Only a matrix that is not numerically positive definite is passed to
+[`_vcov_from_hessian`](@ref), which warns and falls back.
+"""
+function _vcov_from_gram(G::AbstractMatrix; context::AbstractString = "")
+    Gs = Matrix(Symmetric((Matrix(G) + Matrix(G)') / 2))
+    all(isfinite, Gs) || return _vcov_from_hessian(Gs; context = context)
+    F = cholesky(Symmetric(Gs); check = false)
+    return issuccess(F) ? Matrix(Symmetric(inv(F))) : _vcov_from_hessian(Gs; context = context)
+end
+
 _all_finite(xs...) = all(x -> all(isfinite, x), xs)
 
 """

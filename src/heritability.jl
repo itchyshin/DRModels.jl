@@ -349,8 +349,9 @@ Returns a `NamedTuple`:
 - `corrected` — the bias-corrected estimate `g(θ̂) + ½·tr(H_g·V)` (delta only);
 - `se`        — the delta-method standard error (delta only);
 - `ci`        — the `(lower, upper)` CI, **clamped to `[0, 1]`** (when the
-  delta-method SE is not finite this is the clamped `(-Inf, Inf)`, i.e. `(0, 1)`:
-  read `status`, which is then `:vcov_unavailable`);
+  delta-method SE is not finite the bounds are `(NaN, NaN)` when the covariance
+  is all-NaN (a saddle) or the clamped `(0, 1)` when it is finite but gives a
+  negative variance: read `status`, which is then `:vcov_unavailable`);
 - `level`     — the confidence level;
 - `method`    — the method used;
 - `status`    — `:ok`, or the first applicable caveat: `:not_converged`
@@ -537,8 +538,10 @@ function _conditional_ratio(fit::DrmFit, newdata; kind::Symbol, level::Real, wha
     z = quantile(Normal(), 1 - (1 - level) / 2)
     lo = 1 ./ (1 .+ exp.(-(d .- z .* se)))
     hi = 1 ./ (1 .+ exp.(-(d .+ z .* se)))
+    # #1007 (review): the same fit-level guards as the one-argument form.
+    st = _ratio_status(fit, all(isfinite, se) ? :ok : :vcov_unavailable)
     return (estimate = est, se_logit = se, lower = lo, upper = hi, level = level,
-            method = :wald_logit)
+            method = :wald_logit, status = st)
 end
 
 repeatability(fit::DrmFit, newdata; level::Real = 0.95) =
@@ -586,7 +589,7 @@ function _emit_ratio(fit::DrmFit, focal::Int, denom::Vector{Int}; level, method,
         r = _ratio_profile(fit, focal, denom; level = level, resid = resid, omega = omega)
         lo, hi = r.ci.lower, r.ci.upper
         ci_st = (isnan(lo) || isnan(hi)) ? :profile_unresolved :
-                (lo == 0.0 || hi == 1.0) ? :profile_edge : :ok
+                (lo <= 1e-6 || hi >= 1 - 1e-6) ? :profile_edge : :ok   # nll_at_ratio(1) = Inf, so the upper arm ends near 1 - 5e-7
         st = _ratio_status(fit, ci_st)
         return (estimate = r.estimate, corrected = r.estimate, bias = 0.0,
                 se = NaN, ci = r.ci, level = r.level, method = :profile, status = st)
@@ -607,7 +610,7 @@ function _ratio_status(fit::DrmFit, ci_status::Symbol)
     st === :penalized_map && @warn "variance ratio: penalized (MAP) fit -- the variance " *
         "components are deliberately shrunk, so this is not a likelihood-based ratio." status = st
     st === :vcov_unavailable && @warn "variance ratio: the delta-method standard error is " *
-        "not finite (no usable covariance), so the [0, 1] interval carries no information. " *
+        "not finite (no usable covariance), so the interval is NaN or the uninformative [0, 1]. " *
         "Use `method = :profile`." status = st
     st === :profile_edge && @warn "variance ratio: a profile bound is the 0/1 edge, not a " *
         "likelihood-ratio crossing (one-sided interval)." status = st

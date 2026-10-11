@@ -561,7 +561,7 @@ function _fit_bivariate_residual_reml(f::BivariateDrmFormula, fam::Gaussian, dat
     Vφ = _vcov_from_hessian(ForwardDiff.hessian(nll_reml, φ̂);
                             context = "bivariate Gaussian REML (variance parameters)")
     G = ForwardDiff.jacobian(φ -> _profile(φ)[1], φ̂)      # d bhat / d phi
-    Vβ = _vcov_from_hessian(Matrix(Ĥ); context = "bivariate Gaussian REML (mean GLS)") .+
+    Vβ = _vcov_from_gram(Matrix(Ĥ); context = "bivariate Gaussian REML (mean GLS)") .+
          G * Vφ * transpose(G)
     Cβφ = G * Vφ
     V = zeros(pβ + pφ, pβ + pφ)

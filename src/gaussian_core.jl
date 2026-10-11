@@ -1462,7 +1462,7 @@ function _fit_fixed_gaussian_reml(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, g_tol)
     w = exp.(-2 .* ησ̂)
     # #956: guarded inverses (the ML route already uses `_vcov_from_hessian`);
     # a rank-deficient design now warns and pseudo-inverts instead of throwing.
-    Vμ = _vcov_from_hessian(Xμ' * (w .* Xμ); context = "Gaussian REML (mean WLS)")
+    Vμ = _vcov_from_gram(Xμ' * (w .* Xμ); context = "Gaussian REML (mean WLS)")
     Hσ = ForwardDiff.hessian(nll_reml, βσ̂)
     Vσ = _vcov_from_hessian(Hσ; context = "Gaussian REML (scale)")
     V = zeros(pμ + pσ, pμ + pσ)

@@ -264,3 +264,19 @@ end
     @test_logs (:warn, r"random-effect log SD.*dispersion log sigma") match_mode = :any DRModels._warn_laplace_clamp(
         fit; logsigma = [4.0])
 end
+
+@testset "review: PD design Gram blocks invert silently; singular ones still warn" begin
+    X = hcat(ones(50), 2000 .+ 10 .* randn(MersenneTwister(1), 50))   # uncentred predictor
+    G = X' * X
+    @test cond(G) > 1e10
+    V = @test_nowarn DRModels._vcov_from_gram(G)
+    @test V ≈ inv(G) rtol = 1e-6
+    Gs = [1.0 2.0; 2.0 4.0]                                            # exactly singular
+    @test_logs (:warn, r"singular|positive definite") match_mode = :any DRModels._vcov_from_gram(Gs)
+end
+
+@testset "review: profile_edge fires near the upper bound" begin
+    # the upper arm of a ratio profile ends near 1 - 5e-7 (nll_at_ratio(1) = Inf)
+    src = read(joinpath(pkgdir(DRModels), "src", "heritability.jl"), String)
+    @test occursin("hi >= 1 - 1e-6", src)
+end
