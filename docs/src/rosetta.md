@@ -45,10 +45,10 @@ distributional parameter (`sigma` defaults to `~ 1`).
 | `gaussian()` | `Gaussian()` | `sigma` |
 | `student()` | `Student()` | `sigma`, `nu` |
 | `skew_normal()` | `SkewNormal()` | `sigma`, `nu` (slant `alpha`; moment form on both sides) |
-| `poisson()` | `Poisson()` | — (mean only; `zi`, `hu`) |
-| `nbinom2()` | `NegBinomial2()` | `sigma` (dispersion `θ = 1/σ²`); `zi`, `hu` |
-| `truncated_nbinom2()` | `TruncatedNegBinomial2()` | `sigma` (dispersion `θ = 1/σ²`) |
-| `beta()` | `Beta()` | `sigma` (precision `φ = 1/σ²`) |
+| `poisson()` | `Poisson()` | — (mean only); `zi` on both sides; `hu` (hurdle Poisson) in Julia only |
+| `nbinom2()` | `NegBinomial2()` | `sigma` (dispersion `θ = 1/σ²`); `zi` on both sides; Julia also accepts `hu` here (the R hurdle is the next row) |
+| `truncated_nbinom2()` | `TruncatedNegBinomial2()` | `sigma` (dispersion `θ = 1/σ²`); add `hu` for the hurdle NB2 model on both sides |
+| `beta_family()` | `Beta()` | `sigma` (precision `φ = 1/σ²`) |
 | `beta_binomial()` | `BetaBinomial()` | `sigma` (`φ = 1/σ²`) |
 | `binomial()` | `Binomial()` | — (mean only) |
 | `Gamma()` | `Gamma()` | `sigma` (CV; shape `α = 1/σ²`) |
@@ -69,7 +69,7 @@ distributional parameter (`sigma` defaults to `~ 1`).
 | Crossed REs | `y ~ x + (1 \| g) + (1 \| h)` | `@formula(y ~ x + (1 \| g) + (1 \| h))` |
 | Two-column response | `cbind(s, f) ~ x` | `@formula(cbind(s, f) ~ x)` |
 | Zero-inflation | `bf(y ~ x, zi ~ 1)` | `bf(@formula(y ~ x), @formula(zi ~ 1))` |
-| Hurdle | `bf(y ~ x, hu ~ 1)` | `bf(@formula(y ~ x), @formula(hu ~ 1))` |
+| Hurdle (NB2) | `bf(y ~ x, sigma ~ 1, hu ~ 1)` with `truncated_nbinom2()` | `bf(@formula(y ~ x), @formula(sigma ~ 1), @formula(hu ~ 1))` with `TruncatedNegBinomial2()` or `NegBinomial2()` |
 
 ### Bivariate (two responses + residual correlation)
 
@@ -125,7 +125,7 @@ fit = drm(
 | build a covariate grid for prediction | `prediction_grid(reference; predictor = values, …)` |
 | `simulate(fit)` | `simulate(fit)` |
 | `summary(fit)` | `summary(fit)` (prints the Wald coefficient table) |
-| `weights(fit)` | planned (parity gap) |
+| `weights(fit)` (returns the prior weights passed to `drmTMB(..., weights = w)`) | not equivalent: `drm()` has no prior-weights argument, so `weights(fit)` always returns a vector of ones |
 | `family(fit)` | `family(fit)` |
 | `is_converged(fit)` / convergence diagnostics | `is_converged(fit)` / `check_drm(fit)` |
 

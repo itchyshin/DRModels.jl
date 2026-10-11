@@ -179,8 +179,11 @@ Confidence intervals for every coefficient, as a vector of
   the per-endpoint diagnostics instead of an exception.
   Pass `threads = true` to profile coefficients in parallel when the fitted
   objective is thread-safe; if only one coefficient is profiled, its lower and
-  upper endpoint searches are run in parallel instead. Canonical location–scale
-  profiling remains serial in this release, including when `threads = true`.
+  upper endpoint searches are run in parallel instead. Coupled location–scale
+  random-effect fits (a shared `(1 | p | group)` term on `mu` and `sigma`) also
+  profile coefficients in parallel, but each coefficient's lower and
+  upper endpoint searches stay serial, so profiling a single coefficient there
+  gains nothing from `threads = true`.
 - `parm = :resd` or `parm = [:mu, :resd]` — restrict intervals to one or more
   parameter blocks. This is especially useful for profiling random-effect SDs
   without also profiling fixed-effect coefficients.

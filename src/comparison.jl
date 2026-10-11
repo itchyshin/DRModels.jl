@@ -313,10 +313,12 @@ end
 """
     weights(fit::DrmFit) -> Vector{Float64}
 
-Prior (per-observation) weights used in the fit — drmTMB / glmmTMB's `weights()`.
-DRModels.jl fits do not currently store prior weights, so this returns
-`ones(nobs(fit))` (every observation weighted equally). Extends
-`StatsAPI.weights`.
+Prior (per-observation) weights of the fit. Extends `StatsAPI.weights`.
+
+This is **not** an equivalent of drmTMB's or glmmTMB's `weights()`: `drm()` has
+no prior-weights argument, so every fit weights each observation equally and
+this always returns `ones(nobs(fit))`. Fit weighted data in drmTMB or glmmTMB
+instead.
 
 # Example
 ```julia

@@ -302,7 +302,8 @@ above, and it does so by delegation rather than by a second engine.
 
 | Capability | Status |
 |---|---|
-| `lrtest`, `anova`, `aicc`, `weights`, `update` | **Tested** |
+| `lrtest`, `anova`, `aicc`, `update` | **Tested** |
+| Prior observation weights (`drmTMB(..., weights = w)`) | **Not available**: `drm()` has no weights argument, and `weights(fit)` returns a vector of ones for every fit |
 | `aic` / `bic` / `dof` / `nobs` / `deviance` / `dof_residual` | **Tested** |
 | `coef` / `vcov` / `confint` / `stderror` / `coeftable` | **Tested** |
 | `fixef` / `re_sd` / `vc` / `ranef` / `sigma` / `corpairs` | **Tested** |
@@ -355,6 +356,7 @@ To avoid overclaiming, note these boundaries:
   evidence. Gaussian observed-response masking and missing-response handling for
   Location–Scale–Scale `sd()` models are available. General multiple imputation
   outside the joint-model routes and an `na.action`-style option are absent.
+  See [Handling missing data](model-guides/missing-data.md) for what to do now.
 - **VA/ELBO:** experimental random-intercept VA is limited to `(1|g)` for
   Poisson, Binomial, NB2, Gamma, and Beta (`sigma ~ 1` where applicable).
   Phylogenetic, crossed, correlated-slope, and zero-inflated/hurdle variants are

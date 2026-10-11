@@ -59,9 +59,12 @@ extrapolated “N× faster” claim is retired.
   are independent refits; profile-likelihood endpoints are independent per
   coefficient. `confint(fit; method = :profile, threads = true)` profiles
   coefficients in parallel when the objective is thread-safe — set
-  `JULIA_NUM_THREADS` to engage it. Within a single coefficient the lower and
-  upper endpoint chains stay serial, so the gain scales with the number of
-  coefficients profiled, not with threads per coefficient.
+  `JULIA_NUM_THREADS` to engage it. On the coupled location–scale random-effect
+  route (NB2 or Gamma with a shared `(1 | p | group)` term on `mu` and `sigma`),
+  each coefficient's lower and upper endpoint searches stay serial, so the
+  gain scales with the number of coefficients profiled; profiling one
+  coefficient there is no faster with threads. On other thread-safe routes a
+  single profiled coefficient runs its two endpoint searches in parallel.
 - **Parallel backend: threads in one Julia process.** `threads = true` uses
   Julia threads inside a single process; start Julia with `--threads=N` or set
   `JULIA_NUM_THREADS`. Concurrent multi-threaded BLAS calls can be slower than a
