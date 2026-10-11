@@ -71,9 +71,11 @@ extrapolated “N× faster” claim is retired.
   `pmap`) interface. To spread a simulation grid over many cores or machines,
   run independent Julia processes (for example one cluster job per cell or
   seed) and combine their saved results.
-- **Check the fit cheaply.** [`check_drm`](@ref) reports convergence and
-  covariance conditioning without re-fitting — useful before committing to an
-  expensive bootstrap.
+- **Check the fit cheaply.** [`check_drm`](@ref) reports convergence, the
+  gradient and covariance conditioning without re-fitting — useful before
+  committing to an expensive bootstrap. Its `converged` flag alone is not proof
+  of a maximum; read `max_abs_grad` and `grad_source` with it (see
+  [Improving convergence](convergence.md)).
 - **A single fit is single-threaded by design.** As in drmTMB, one `drm()` fit
   runs on one thread, and `drm()` has no `threads` option. The parallel
   speed-ups are across independent work:
@@ -89,6 +91,15 @@ GLMM paths (Poisson/NB2/Beta/Gamma random effects via quadrature) are designed
 for moderate group counts rather than p = 10,000-scale phylogenies; for very
 large structured problems, the phylogenetic location–scale engine is the path
 that has been benchmarked to scale.
+
+!!! warning "Gaussian crossed random effects do not scale yet"
+    Gaussian models with crossed random intercepts, such as
+    `y ~ x + (1 | rater) + (1 | item)`, use a dense calculation whose time
+    grows roughly with the square of the number of rows. In one measured case
+    a fit took about 30 s at 500 rows, 330 s at 2,000 rows and 1,100 s at
+    4,000 rows, where drmTMB took under a second ([DRModels.jl#977](https://github.com/itchyshin/DRModels.jl/issues/977)). Until this is
+    fixed, use drmTMB or glmmTMB for crossed Gaussian models above about
+    2,000 rows.
 
 ## Related software
 

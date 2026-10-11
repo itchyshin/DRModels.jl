@@ -52,7 +52,13 @@ exp(coef(fit, :sigma)[1])     # residual SD (≈ 0.4)
 `sigma_phy_dense` supplies the raw-tree covariance `C`. The coefficient
 `σ_phylo²` multiplies this covariance: the phylogenetic effect’s SD at tip `i` is
 `σ_phylo * sqrt(C[i, i])`, not necessarily `σ_phylo`. Both the simulation and
-`re_sd` above use that raw-tree scale. Fitting estimates the phylogenetic and
+`re_sd` above use that raw-tree scale. That holds for this example's
+`sigma ~ 1`. If you add covariates to the `sigma` formula, the same term is
+fitted by another route that reports `re_sd` on the correlation scale (the
+tree rescaled to height 1, as drmTMB always does), so the value changes by a
+factor of `sqrt(height)` although the model's phylogenetic variance has not
+changed ([DRModels.jl#979](https://github.com/itchyshin/DRModels.jl/issues/979)). Check which scale your fit uses before comparing fits or
+reporting the coefficient. Fitting estimates the phylogenetic and
 residual SD parameters jointly using the exact Gaussian marginal likelihood.
 
 To report this result, state that `re_sd` is the phylogenetic SD coefficient for
@@ -75,6 +81,8 @@ The call site is identical — add `phylo(1 | species)` to the mean formula, pas
 `tree =`. Here is a phylogenetic Poisson count model: a shared tree effect on
 `log λ` on top of a fixed slope. We simulate with a known phylogenetic SD and
 recover it.
+
+The code below also loads the `Distributions` package to simulate data. If you have not added it to your Julia environment, run `using Pkg; Pkg.add("Distributions")` once first.
 
 ```@example phycount
 using DRModels, Random, LinearAlgebra

@@ -1,17 +1,18 @@
 # Getting started
 
+DRModels.jl fits *distributional* regression models: the mean and the residual
+standard deviation (SD) of a response each get their own formula, so a
+covariate can change both the average and the spread. In formulas and in
+`coef(fit, …)` the mean **μ** is called `mu` and the residual SD **σ** is called
+`sigma`. Some response families have further parameters that can also take a
+formula; see [Choosing response families](families.md).
+
 !!! note "What you will do"
     Fit a Gaussian model in which a predictor changes both an outcome's average
     and its residual spread. You will then read the estimated changes, check
     whether the optimiser converged, and see what an interval means. For the
     full set of currently supported models, see
     [What can I fit today?](model-guides/model-map.md).
-
-DRModels.jl is *distributional* regression: instead of a single linear predictor for
-the mean, a chosen response family can let you give its supported parameters
-their own formulas. The simplest case puts a formula on the mean **μ** and a formula on
-the residual scale **σ**, so the spread of the data can change with covariates
-just like the mean does.
 
 This page takes you from a clean Julia session to a fitted model and shows how to
 turn its output into a scientific statement. The worked data are simulated so
@@ -37,10 +38,20 @@ using DRModels
 If you are developing DRModels.jl from a local clone, replace the installation
 line with `Pkg.develop(path = "/absolute/path/to/your/DRModels.jl")`.
 
+Some pages in this manual also load `Distributions` (to simulate data) or
+`CairoMakie` and `AlgebraOfGraphics` (to draw figures). Julia lets you load
+only packages you have added yourself, so add these once if a page uses them:
+
+```julia
+Pkg.add(["Distributions", "CairoMakie", "AlgebraOfGraphics"])
+```
+
 The two verbs you will use the most are exported at the top level:
 
 - `bf(...)` — bundle one formula per distributional parameter (alias
-  `drm_formula`), using the familiar drmTMB / brms pattern.
+  `drm_formula`). In glmmTMB terms, `bf(@formula(y ~ x), @formula(sigma ~ x))`
+  is `glmmTMB(y ~ x, dispformula = ~ x)`; drmTMB and brms use the same `bf`
+  name.
 - `drm(formula, family; data = ...)` — fit the model by maximum likelihood.
 
 ## Fit a first model where variability matters
@@ -55,20 +66,27 @@ that second result.
 using DRModels, Random
 Random.seed!(20260610)
 
-n    = 400
-x    = randn(n)
-μ    = 1.0 .+ 0.5 .* x            # mean increases with x
-logσ = -0.4 .+ 0.3 .* x           # log residual SD ALSO increases with x
-y    = μ .+ exp.(logσ) .* randn(n)
-dat  = (; y, x)
+n         = 400
+x         = randn(n)                  # n draws from a standard normal
+mu        = 1.0 .+ 0.5 .* x           # mean increases with x
+log_sigma = -0.4 .+ 0.3 .* x          # log residual SD ALSO increases with x
+y         = mu .+ exp.(log_sigma) .* randn(n)
+dat       = (; y, x)                  # a named table with columns y and x
 
 fit = drm(bf(@formula(y ~ x), @formula(sigma ~ x)), Gaussian(); data = dat)
 ```
 
+Three pieces of Julia syntax appear here. A dot before an operator or after a
+function name (`.+`, `.*`, `exp.(…)`) applies it to every element of a vector,
+as R's arithmetic does automatically. `(; y, x)` makes a named table from
+the vectors `y` and `x`. `@formula(…)` writes a model formula, as `~` does in
+R. If your data are in a `DataFrame` (for example read from a CSV file with
+CSV.jl), pass it directly: `data = df`.
+
 `bf(@formula(y ~ x), @formula(sigma ~ x))` is the whole idea in one line: the
 first formula sets the response and the **μ** sub-model; the second sets the
 **σ** sub-model. (Drop the `sigma` formula and it defaults to `sigma ~ 1`, a
-constant scale — ordinary homoscedastic regression.)
+constant residual SD — the ordinary regression that `lm` or `lmer` fits.)
 
 ## Read the coefficients
 
@@ -113,6 +131,15 @@ above:
 ```@example getstarted
 is_converged(fit)
 ```
+
+`true` is necessary but not sufficient. It says the optimiser stopped by its
+own rules; it does not prove the estimates sit at a well-defined maximum. A fit
+can stop on a flat stretch of the likelihood, or with a parameter at its limit
+(a variance at zero, a Student-t `nu` running to infinity), and still report
+`true`. Its stricter checks for a collapsed residual SD apply to Gaussian fits
+only. [`check_drm`](@ref) adds the size of the gradient (`max_abs_grad`) and
+whether the covariance is usable; read its `grad_source` before trusting its
+`ok` summary, and see [Improving convergence](model-guides/convergence.md).
 
 `summary(fit)` prints estimates, standard errors, Wald intervals, and its
 coefficient-level `z` and `p` summaries for every block at once. Treat those
@@ -160,7 +187,8 @@ The same front end also provides these next steps; the
   `dof_residual`, and `rho12` (bivariate residual correlation).
 - **Non-Gaussian phylogenetic random effects** — `phylo(1 | species, tree)` on
   the mean for Poisson, NegBinomial2, Gamma, Beta, and Binomial families
-  (constant `σ`), via a sparse Laplace approximation, plus crossed intercepts
+  (constant `sigma`), fitted with a Laplace approximation (the method glmmTMB
+  also uses to integrate out random effects), plus crossed intercepts
   `(1 | g) + (1 | h)` for the same families.
 
 ## Where to go next

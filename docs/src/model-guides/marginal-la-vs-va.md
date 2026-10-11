@@ -2,10 +2,12 @@
 
 !!! note "Status — Experimental"
     A variational (VA / ELBO) marginal is an **opt-in Experimental** alternative
-    for random-intercept `(1 | g)` models. **`:LA` remains the default.** For a
-    scalar Poisson random intercept, `:LA` uses fixed, non-adaptive 32-node
-    Gauss–Hermite quadrature, not one-point Laplace or adaptive GHQ. Other
-    `:LA` routes are not identified by this statement.
+    for random-intercept `(1 | g)` models. **`:LA` remains the default.** For
+    one ordinary random intercept on the mean of a non-Gaussian family,
+    `:LA` uses per-group *adaptive* Gauss–Hermite quadrature (5 nodes per group;
+    21 for Tweedie, 41 for CumulativeLogit), not one-point Laplace. For a
+    Gaussian random intercept on `sigma` it uses fixed, non-adaptive 32-node
+    quadrature.
 
     **Available scope:** Poisson, Binomial, NegBinomial2,
     Gamma, and Beta `(1 | g)` via `drm(...; marginal = :VA)` (scale families need
@@ -32,9 +34,14 @@ biased marginal biases exactly those parameters.
 
 ### The default `:LA` route
 
-For a scalar Poisson random intercept `(1 | g)`, the public default `:LA` route
-uses fixed, non-adaptive 32-node Gauss–Hermite quadrature. It is neither
-one-point Laplace nor adaptive Gauss–Hermite quadrature. A Laplace approximation
+For one ordinary random intercept `(1 | g)` on the mean of a non-Gaussian
+family (Poisson, Binomial, NegBinomial2, Gamma, Beta, BetaBinomial, Student-t),
+the public default `:LA` route uses per-group **adaptive** Gauss–Hermite
+quadrature with 5 nodes: each group's nodes are centred and scaled at that
+group's posterior mode. Tweedie uses the same scheme with 21 nodes and
+CumulativeLogit with 41. A Gaussian random intercept on `sigma`,
+`sigma ~ 1 + (1 | g)`, instead uses fixed, non-adaptive 32-node quadrature
+placed on the prior scale. A Laplace approximation
 in general replaces the integrand with a Gaussian centred at the posterior mode of `z`,
 matched in curvature (the Hessian) at that mode. It is exact only when the
 responses are Gaussian, a Gaussian random effect enters the mean linearly, and
@@ -45,8 +52,11 @@ approximation.
 ### Matching drmTMB: `marginal = :Laplace`
 
 drmTMB (TMB) integrates an ordinary random intercept by the one-point Laplace
-approximation, so on `(1 | g)` the default `:LA` route (GHQ-32) and drmTMB fit
-the same model with different integrators. On ten test datasets with a moderate
+approximation, so on `(1 | g)` the default `:LA` route and drmTMB fit the same
+model with different integrators. The measurements below were made when the
+default for these families was still a fixed, non-adaptive 32-node grid; they
+have not yet been repeated with the current adaptive default, which is designed
+to follow sharply peaked groups. On ten test datasets with a moderate
 family `sigma` (0.3 to 0.5) and a random-intercept SD of 0.6, their
 log-likelihoods differed by 0.06 to 1.3 units. The gap does not stay that small.
 When the family `sigma` is small, each group's integrand is sharply peaked, the
@@ -71,7 +81,7 @@ families), by maximum likelihood. `Student()` accepts it too for one ordinary
 `(1 | g)` on the mean (`sigma` and `nu` may carry fixed-effect formulas). The only other model that accepts it is a
 Gaussian random intercept on `sigma`, `sigma ~ 1 + (1 | g)`, with a fixed-effect
 mean. Any other model with `marginal = :Laplace` is refused; nothing is
-silently fitted by GHQ-32 under that label.
+silently fitted by another integrator under that label.
 
 To test the random intercept, compare the `:Laplace` fit with the
 fixed-effects model fitted as usual (no `marginal`): `lrtest(fixed, fit)`. The
@@ -156,7 +166,7 @@ against a curvature match at a single point.
 | Gaussian response with a Gaussian RE entering the mean linearly and independent residual variance | VA adds nothing — the marginal is already exact here. |
 | Ordinary Gamma `(1\|g)` shape | LA ≈ VA in the scoped Gamma comparison; **prefer LA** (15–20× faster warm). |
 | Two-part / hurdle / ZINB geometry | VA may help in principle, but **DRModels.jl does not currently support these VA models**. |
-| Speed-critical fits | Route-specific: `:LA` is the default; Poisson scalar random intercepts use fixed GHQ-32. |
+| Speed-critical fits | Route-specific: `:LA` is the default; non-Gaussian scalar random intercepts use per-group adaptive quadrature (5 nodes for most families). |
 
 In short: **`:LA` is the default and its numerical implementation is
 route-specific.** On the public Gamma random-intercept cell, Julia matches the
@@ -213,8 +223,9 @@ be interpreted as reproducing drmTMB's marginal likelihood. The option is most
 relevant where a one-mode approximation is scientifically questionable, such as
 two-part shape or ZINB multimodality, although those VA models are not currently
 supported in DRModels.jl. On ordinary Gamma `(1 | g)`, the evaluated comparison
-does **not** show a VA accuracy edge; prefer LA over VA: the default `:LA` (GHQ-32
-on this cell), or `marginal = :Laplace` to fit drmTMB's Laplace approximation.
+does **not** show a VA accuracy edge; prefer LA over VA: the default `:LA`
+(5-node adaptive quadrature on this cell), or `marginal = :Laplace` to fit
+drmTMB's Laplace approximation.
 
 ## See also
 

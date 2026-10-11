@@ -18,7 +18,7 @@ Three differences cover almost everything:
     The R snippets show drmTMB's grammar (which itself mirrors **brms**). The
     family-constructor and S3 method spellings here were reconciled (2026-06-03)
     against drmTMB's exported interface; the
-    parameterisations (e.g. Beta `φ = 1/σ²`) match. drmTMB reuses the base-R
+    parameterisations (e.g. Beta `φ = 1/σ²`) match, except where a row below says otherwise (the spatial range). drmTMB reuses the base-R
     `stats` families (`gaussian()`, `poisson()`, `Gamma()`, `binomial()`) rather
     than redefining them. This page is maintained from the Julia side.
 
@@ -95,7 +95,7 @@ fit = drm(
 | Relatedness matrix | `y ~ x + relmat(1 \| id)`, `K = K` | `@formula(y ~ x + relmat(1 \| id))`, `K = K` |
 | Animal model | `y ~ x + animal(1 \| id)`, `A = A` | `@formula(y ~ x + animal(1 \| id))`, `A = A` |
 | Phylogenetic | `y ~ x + phylo(1 \| species)`, `tree = tree` | `@formula(y ~ x + phylo(1 \| species))`, `tree = tree` |
-| Spatial | `y ~ x + spatial(1 \| site)`, `coords = xy` | `@formula(y ~ x + spatial(1 \| site))`, `coords = xy` |
+| Spatial | `y ~ x + spatial(1 \| site)`, `coords = xy` (range fixed at the median pairwise distance) | `@formula(y ~ x + spatial(1 \| site))`, `coords = xy` (range estimated: a different model) |
 | Meta-analysis (univariate) | `gaussian()` + `meta_V(v)` | `Gaussian()` + `meta_V(v)` |
 | Meta-analysis (bivariate, known sampling covariance) | `meta_V(V = meta_vcov_bivariate(...))` **inside** `mu1` | `meta_vcov_bivariate(...)` passed as `drm(...; V = V)` — see [meta-analysis](model-guides/meta-analysis.md) |
 
