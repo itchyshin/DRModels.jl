@@ -337,4 +337,21 @@ end
     @test loglik(f2) ≤ -81.56541 + 5e-2
 end
 
+
+@testset "#945 crossed NB2 with a sigma covariate: user-facing refusal" begin
+    Random.seed!(945)
+    n = 240; gg = repeat(1:12, inner = 20); hh = repeat(1:10, outer = 24); x = randn(n)
+    y = Float64.(rand.(Distributions.Poisson.(exp.(1 .+ 0.3 .* randn(12)[gg] .+ 0.3 .* randn(10)[hh]))))
+    err = try
+        drm(bf(@formula(y ~ 1 + (1 | g) + (1 | h)), @formula(sigma ~ 1 + x)), NegBinomial2();
+            data = (; y, x, g = gg, h = hh)); nothing
+    catch e
+        e
+    end
+    @test err isa ErrorException
+    m = sprint(showerror, err)
+    @test occursin("sigma ~ 1", m) && occursin("crossed", m)
+    @test !occursin("_fit_", m)                    # no internal function name
+end
+
 end
