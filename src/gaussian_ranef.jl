@@ -1092,7 +1092,7 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
     V = let
         pen = oftype(sum(θ̂), 1e18)
         Hθ = q <= _MULTI_RE_DENSE_HESSIAN_MAXQ ? ForwardDiff.hessian(nll, θ̂) :
-             _fd_hessian_from_grad(grad!, θ̂)
+             _multi_re_fd_hessian(grad!, θ̂)
         if nll(θ̂) >= pen || !all(isfinite, Hθ) || !isposdef(Symmetric(Hθ))
             @warn "multi-RE Gaussian vcov: Hessian is not usable (near-singular " *
                   "capacitance or penalty leak); returning NaN standard errors."

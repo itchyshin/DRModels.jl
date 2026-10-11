@@ -276,7 +276,7 @@ end
 # Central-difference Hessian of an exact analytic gradient (used for the vcov
 # when q is too large for ForwardDiff through the dense objective). Step
 # h = ∛eps · max(1, |θⱼ|) balances truncation O(h²) and rounding O(eps/h).
-function _fd_hessian_from_grad(grad!, θ::Vector{Float64})
+function _multi_re_fd_hessian(grad!, θ::Vector{Float64})
     p = length(θ)
     H = zeros(p, p)
     gp = zeros(p); gm = zeros(p)
