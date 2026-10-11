@@ -253,7 +253,12 @@ _n3_quiet(f) = redirect_stderr(devnull) do; f(); end
             # Student / SkewNormal shape parameters can sit on a flat ridge; the
             # objective is what must agree. Elsewhere the estimates match too.
             if !(lab in ("Student", "SkewNormal"))
-                @test coef(a) ≈ coef(b) atol = 1e-4
+                # A log-scale parameter driven towards its boundary (|value| > 6,
+                # e.g. a dispersion on near-Poisson data) is flat in the
+                # likelihood: compare the identified entries only. The objective
+                # itself is asserted above for every family.
+                ok = abs.(coef(b)) .< 6
+                @test coef(a)[ok] ≈ coef(b)[ok] atol = 1e-4
             end
             @test nobs(a) == _N3_N                       # rows, zero-weight rows included
         end
