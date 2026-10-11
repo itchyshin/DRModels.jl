@@ -22,12 +22,14 @@ If you know glmmTMB, the `sigma` formula plays the role of `dispformula`.
 DRModels.jl is a standalone Julia package; no R installation is needed. It is
 the Julia companion of the R package
 [drmTMB](https://github.com/itchyshin/drmTMB) and uses the same model
-vocabulary (`bf(...)`, `sigma`, `rho12`, `meta_V`).
+vocabulary (`bf(...)`, `sigma`, `rho12`, `meta_V`). Documentation:
+<https://itchyshin.github.io/DRModels.jl/dev/> (built from the current `main`
+branch).
 
 > **Status: experimental, version 0.7.1.** Install it from GitHub (it is not
 > yet in the Julia General registry). The public API may still change across
 > the 0.x series. Before choosing a model, check
-> [what is tested](docs/src/capabilities.md).
+> [what is tested](https://itchyshin.github.io/DRModels.jl/dev/capabilities).
 
 ## Install
 
@@ -105,7 +107,7 @@ Every 95% interval covers its true value. The `sigma` habitat coefficient is a
 log residual-SD contrast: `exp(0.503) ≈ 1.65`, so residual SD in grassland is
 about 1.65 times that in forest (true ratio `exp(0.45) ≈ 1.57`).
 
-Next: the [Getting started](docs/src/getting-started.md) page explains each
+Next: the [Getting started](https://itchyshin.github.io/DRModels.jl/dev/getting-started) page explains each
 step, how to read intervals, and what to check before you report a fit.
 
 ## What you can fit
@@ -126,7 +128,7 @@ The same `bf(...)` grammar covers:
   bivariate phylogenetic location-scale model.
 
 Support differs by family and structure. The
-[capabilities page](docs/src/capabilities.md) lists, row by row, what is tested
+[capabilities page](https://itchyshin.github.io/DRModels.jl/dev/capabilities) lists, row by row, what is tested
 and what is refused. One limit to know now: Gaussian models with **crossed**
 random intercepts slow down steeply as the number of rows grows (about 330 s
 at 2,000 rows in one measured case,
@@ -139,11 +141,11 @@ tests (`lrtest`), and AIC/BIC are available. Maximum likelihood (ML) is the
 default; restricted ML (`method = :REML`) is available for a listed set of
 Gaussian models. An interval being available is not a coverage guarantee: no
 route claims calibrated coverage. See the
-[capabilities page](docs/src/capabilities.md#inference) for the exact scope.
+[capabilities page](https://itchyshin.github.io/DRModels.jl/dev/capabilities#inference) for the exact scope.
 
 **From R.** An optional `engine = "julia"` route in drmTMB can call
 DRModels.jl from R. That route is experimental; see
-[Coming from R](docs/src/coming-from-r.md).
+[Coming from R](https://itchyshin.github.io/DRModels.jl/dev/coming-from-r).
 
 ## Speed on a large phylogenetic model
 

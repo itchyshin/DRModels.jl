@@ -83,6 +83,19 @@ Gaussian random intercept on `sigma`, `sigma ~ 1 + (1 | g)`, with a fixed-effect
 mean. Any other model with `marginal = :Laplace` is refused; nothing is
 silently fitted by another integrator under that label.
 
+!!! warning "A `sigma` formula with covariates breaks log-likelihood comparisons with drmTMB"
+    For NegBinomial2, Gamma and Beta models with a random intercept and
+    covariates in `sigma`, such as `sigma ~ mined` with `(1 | site)` on the
+    mean, `marginal = :Laplace` is refused. The default `:LA` route then
+    integrates with adaptive quadrature while drmTMB uses its Laplace
+    approximation, so the two log-likelihoods differ by the integrator and are
+    **not comparable**: on three real data sets (glmmTMB's Salamanders,
+    grouseticks and Owls) the gap was 0.04 to 1.25 units. Do not use the
+    difference for a likelihood-ratio test, AIC comparison or parity check
+    across the two packages; compare the parameter estimates instead, or
+    refit with `sigma ~ 1` and `marginal = :Laplace`, which reproduces drmTMB.
+    A Laplace route for `sigma` covariates is tracked in [DRModels.jl#943](https://github.com/itchyshin/DRModels.jl/issues/943).
+
 To test the random intercept, compare the `:Laplace` fit with the
 fixed-effects model fitted as usual (no `marginal`): `lrtest(fixed, fit)`. The
 fixed-effects log-likelihood is exact, so the pair is comparable. `lrtest`
