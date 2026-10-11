@@ -56,60 +56,69 @@ The two verbs you will use the most are exported at the top level:
 
 ## Fit a first model where variability matters
 
-Suppose you are studying body size along a temperature gradient. Temperature may
-change the average body size, but it may also make individuals more or less
-variable. We simulate that situation here: the mean rises with `x`, and the
-residual standard deviation also rises with `x`. A mean-only model would miss
-that second result.
+This is the same example as the drmTMB package's first model, on the same
+data. 120 individuals were sampled in two habitats, forest and grassland.
+Habitat and temperature shift mean growth, and habitat also changes how much
+growth varies between individuals. A mean-only model would miss that second
+result.
+
+The data are simulated, with these true values: mean growth
+`1 + 0.6·grassland + 0.4·temperature`, and log residual SD
+`-0.5 + 0.45·grassland`. Julia's random numbers cannot reproduce R's
+`set.seed(1)`, so the table is shipped with the package as
+`test/data/habitat_growth.csv`, generated from drmTMB's code (provenance in
+`test/data/README.md`). Reading it needs only base Julia:
 
 ```@example getstarted
-using DRModels, Random
-Random.seed!(20260610)
+using DRModels
 
-n         = 400
-x         = randn(n)                  # n draws from a standard normal
-mu        = 1.0 .+ 0.5 .* x           # mean increases with x
-log_sigma = -0.4 .+ 0.3 .* x          # log residual SD ALSO increases with x
-y         = mu .+ exp.(log_sigma) .* randn(n)
-dat       = (; y, x)                  # a named table with columns y and x
+path = pkgdir(DRModels, "test", "data", "habitat_growth.csv")
+rows = split.(readlines(path)[2:end], ',')          # skip the header line
+habitat     = String[r[1] for r in rows]
+temperature = parse.(Float64, [r[2] for r in rows])
+growth      = parse.(Float64, [r[3] for r in rows])
+dat = (; growth, habitat, temperature)              # a named table of columns
 
-fit = drm(bf(@formula(y ~ x), @formula(sigma ~ x)), Gaussian(); data = dat)
+fit = drm(bf(@formula(growth ~ habitat + temperature), @formula(sigma ~ habitat)),
+          Gaussian(); data = dat)
 ```
 
-Three pieces of Julia syntax appear here. A dot before an operator or after a
-function name (`.+`, `.*`, `exp.(…)`) applies it to every element of a vector,
-as R's arithmetic does automatically. `(; y, x)` makes a named table from
-the vectors `y` and `x`. `@formula(…)` writes a model formula, as `~` does in
-R. If your data are in a `DataFrame` (for example read from a CSV file with
-CSV.jl), pass it directly: `data = df`.
+For your own data, a `DataFrame` (for example read from a CSV file with CSV.jl)
+works directly: `data = df`. Two pieces of Julia syntax appear above. `(; growth,
+habitat, temperature)` makes a named table from existing vectors, and
+`@formula(…)` writes a model formula, as `~` does in R.
 
-`bf(@formula(y ~ x), @formula(sigma ~ x))` is the whole idea in one line: the
-first formula sets the response and the **μ** sub-model; the second sets the
-**σ** sub-model. (Drop the `sigma` formula and it defaults to `sigma ~ 1`, a
-constant residual SD — the ordinary regression that `lm` or `lmer` fits.)
+`bf(@formula(growth ~ habitat + temperature), @formula(sigma ~ habitat))` is the
+whole idea in one line: the first formula sets the response and the **μ**
+sub-model; the second sets the **σ** sub-model. (Drop the `sigma` formula and it
+defaults to `sigma ~ 1`, a constant residual SD — the ordinary regression that
+`lm` or `lmer` fits.)
 
 ## Read the coefficients
 
 `coef(fit, :param)` returns the coefficient block for one distributional
-parameter. The mean block is on the **response scale** and should recover
-`(1.0, 0.5)`:
+parameter. The mean block is on the **response scale** (intercept, grassland
+contrast, temperature slope). The true values are `(1.0, 0.6, 0.4)`; the
+estimates land within about one standard error of them:
 
 ```@example getstarted
 coef(fit, :mu)
 ```
 
-The scale block acts on **log σ**, so it should recover `(-0.4, 0.3)`:
+The scale block acts on **log σ** (intercept, grassland contrast). The true
+values are `(-0.5, 0.45)`:
 
 ```@example getstarted
 coef(fit, :sigma)
 ```
 
-A positive σ-slope means the residual spread grows with `x`. Because the σ link
-is logarithmic, exponentiating a slope turns it into a **multiplicative effect on
-the residual SD** per unit of `x`:
+A positive grassland coefficient in the σ block means residual growth is more
+variable in grassland than in forest. Because the σ link is logarithmic,
+exponentiating a coefficient turns it into a **multiplicative effect on the
+residual SD**:
 
 ```@example getstarted
-exp(coef(fit, :sigma)[2])      # residual-SD ratio per one-unit increase in x
+exp(coef(fit, :sigma)[2])      # grassland / forest residual-SD ratio (true value 1.57)
 ```
 
 Calling `coef(fit)` with no parameter concatenates every block into one vector
