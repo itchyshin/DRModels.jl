@@ -278,4 +278,21 @@ end
                   data = (y = y, x = x, g = g))
         @test_throws ArgumentError r2_constant_sigma(fit)
     end
+
+    @testset "#951: a sparse solver request on an unstructured Gaussian cell is refused" begin
+        rng = MersenneTwister(951)
+        n = 120; x = randn(rng, n); g = repeat(1:12, inner = 10)
+        y = 1 .+ 0.5x .+ 0.6 .* randn(rng, 12)[g] .+ randn(rng, n)
+        d = (y = y, x = x, g = g)
+        ffix = bf(@formula(y ~ x), @formula(sigma ~ 1))
+        fre = bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1))
+        @test_throws ArgumentError drm(ffix, Gaussian(); data = d, algorithm = :sparse)
+        @test occursin("algorithm = :sparse",
+                       _j3_msg(() -> drm(ffix, Gaussian(); data = d, algorithm = :sparse)))
+        @test_throws ArgumentError drm(ffix, Gaussian(); data = d, sparse = true)
+        @test_throws ArgumentError drm(fre, Gaussian(); data = d, algorithm = :sparse)
+        # `:gls` / `:lbfgs` are the documented aliases for these cells' default fitter
+        @test loglik(drm(ffix, Gaussian(); data = d, algorithm = :gls)) ≈
+              loglik(drm(ffix, Gaussian(); data = d)) atol = 1e-10
+    end
 end

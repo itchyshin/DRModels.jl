@@ -1112,6 +1112,15 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         return _withphyloscale(_withformula(
             _fit_structured_gaussian(fam, y, Xμ, Xσ, gidx, G, Kmat, nmμ, nmσ, grp, g_tol), f), :correlation)
     end
+    # #951: every structured route has returned above. The cells below (meta_V,
+    # fixed effects, ordinary `(… | g)` effects) have no sparse solver, so a
+    # sparse request would be accepted with no effect. `:gls` / `:lbfgs` stay the
+    # documented aliases for these cells' default fitters.
+    (algorithm === :sparse || sparse === true) &&
+        throw(ArgumentError("drm: `" * (algorithm === :sparse ? "algorithm = :sparse" : "sparse = true") *
+            "` selects a sparse structured-Gaussian solver, but this model has no structured " *
+            "term (`phylo`, `relmat`, `animal`, `spatial` or `sd(…, phylogenetic)`), so it would " *
+            "have no effect. Use the default `algorithm = :auto`."))
     if metav !== nothing
         vv = Float64.(getproperty(data, metav))    # known sampling variances
         return _withformula(_fit_meta_gaussian(fam, y, Xμ, Xσ, vv, nmμ, nmσ, g_tol), f)
