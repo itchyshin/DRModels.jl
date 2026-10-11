@@ -53,6 +53,12 @@ flags) and Rose (claim versus evidence). No subagents.
   bound that was the #1023 sentinel artefact; it now accepts a genuine
   crossing above the domain edge or an open (-Inf, "did not cross") arm.
 
+- **#959 (owner decision a).** Clamps unchanged; `_warn_at_clamp` /
+  `_warn_laplace_clamp` warn when a fit ends at a likelihood clamp (sparse-Laplace
+  RE log SD [-8, 3] and dispersion log sigma [-4, 4]; Tweedie log sigma ±15 and
+  power logit ±12; zero-one beta log sigma ±15; spatial Poisson). Quiet inside
+  bootstrap / profile refits. VA and NB2 (1|g) are lane J4's (#1058).
+
 ## 3a. Decisions and rejected alternatives
 
 - The `heritability` CI stays clamped to `[0, 1]` when the SE is not finite
@@ -74,7 +80,8 @@ flags) and Rose (claim versus evidence). No subagents.
 
 Julia could not be installed in the authoring container, so nothing was run
 locally. PR CI run 38112128451 on head c699354: all 8 test shards (Julia 1.10
-and 1, 4 shards each) and `ci-ok` green. Round 1 (run 38100089811) failed on
+and 1, 4 shards each) and `ci-ok` green. After #959 (head 577c71f): run 38126763006 green (8 shards, ci-ok, docs).
+Round 1 (run 38100089811) failed on
 the bridge sentinel assertion and on a wrong #956 repro; both corrected.
 
 ## 5. Rose
