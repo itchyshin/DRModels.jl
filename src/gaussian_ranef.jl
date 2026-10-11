@@ -1346,13 +1346,28 @@ _musig_primal(x::Real) = x
 
 # Damped-Newton 2-D mode-finder on stripped Float64 primals. Groups here are
 # tiny (drmTMB twin cells run G ≈ 8..60, n_g ≈ 6..12), so this converges in a
-# handful of iterations; step-halving on the gradient norm guards against the
-# occasional overshoot from the δ-nonlinearity (e = exp(−2δ)) far from (0,0).
+# handful of iterations.
+#
+# #927: h(b, δ) is NOT jointly convex — by Cauchy–Schwarz det H can be negative
+# when a group's residuals share one sign (H_bδ² = 4(Σ rᵢeᵢ)² can exceed
+# H_bb·H_δδ). The old finder accepted any step that shrank the GRADIENT norm, so
+# it could settle on a saddle of h; det H < 0 there, and `log(detH)` in the
+# Laplace term threw a DomainError (sleepstudy, the #745 fixture). Now each step
+# must DECREASE h (Armijo backtracking), and the direction is Newton on H
+# shifted to be positive definite (a descent direction even where H is
+# indefinite), so the finder converges to a minimum, where H is PD.
+function _musig_h(r_idx, eta0_idx, b, δ, sb_mu2, sb_sigma2)
+    m = length(r_idx)
+    D = sum((r_idx .- b) .^ 2 .* exp.(-2 .* (eta0_idx .+ δ)))
+    return m * δ + 0.5 * D + 0.5 * b^2 / sb_mu2 + 0.5 * δ^2 / sb_sigma2
+end
+
 function _musig_mode_primal(r_idx::Vector{Float64}, eta0_idx::Vector{Float64},
                             sb_mu2::Float64, sb_sigma2::Float64)
     m = length(r_idx)
     b = 0.0; δ = 0.0
-    for _ in 1:100
+    h = _musig_h(r_idx, eta0_idx, b, δ, sb_mu2, sb_sigma2)
+    for _ in 1:200
         e = exp.(-2 .* (eta0_idx .+ δ))
         resid = r_idx .- b
         D = sum(resid .^ 2 .* e)
@@ -1363,29 +1378,28 @@ function _musig_mode_primal(r_idx::Vector{Float64}, eta0_idx::Vector{Float64},
         Hbb = sum(e) + 1 / sb_mu2
         Hbδ = -dDdb
         Hδδ = 2 * D + 1 / sb_sigma2
-        detH = Hbb * Hδδ - Hbδ^2
-        if !isfinite(detH) || detH <= 0
-            Δb = -gb / max(Hbb, 1e-8)
-            Δδ = -gδ / max(Hδδ, 1e-8)
-        else
-            Δb = -(Hδδ * gb - Hbδ * gδ) / detH
-            Δδ = -(-Hbδ * gb + Hbb * gδ) / detH
-        end
+        tr2 = 0.5 * (Hbb + Hδδ)
+        λmin = tr2 - sqrt(max(tr2^2 - (Hbb * Hδδ - Hbδ^2), 0.0))
+        shift = λmin > 1e-10 * tr2 ? 0.0 : (1e-6 * tr2 - λmin + 1e-12)
+        A = Hbb + shift; C = Hδδ + shift
+        detA = A * C - Hbδ^2
+        Δb = -(C * gb - Hbδ * gδ) / detA
+        Δδ = -(-Hbδ * gb + A * gδ) / detA
+        slope = gb * Δb + gδ * Δδ                     # < 0: descent direction
+        (isfinite(slope) && slope < 0) || (Δb = -gb; Δδ = -gδ; slope = -(gb^2 + gδ^2))
         step = 1.0
-        g0 = gb^2 + gδ^2
-        while step > 1e-8
+        moved = false
+        while step > 1e-12
             bn = b + step * Δb; δn = δ + step * Δδ
-            en = exp.(-2 .* (eta0_idx .+ δn))
-            residn = r_idx .- bn
-            Dn = sum(residn .^ 2 .* en)
-            gbn = 0.5 * (-2 * sum(residn .* en)) + bn / sb_mu2
-            gδn = m - Dn + δn / sb_sigma2
-            if gbn^2 + gδn^2 <= g0 || step < 1e-3
-                b, δ = bn, δn
+            hn = _musig_h(r_idx, eta0_idx, bn, δn, sb_mu2, sb_sigma2)
+            if isfinite(hn) && hn <= h + 1e-4 * step * slope
+                b, δ, h = bn, δn, hn
+                moved = true
                 break
             end
             step *= 0.5
         end
+        moved || break
     end
     return b, δ
 end
@@ -1457,6 +1471,10 @@ function _fit_musigma_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, nmμ, 
             r_idx = r_all[idx]; eta0_idx = η0_all[idx]
             b, δ, D, Hbb, Hbδ, Hδδ = _musig_refine(r_idx, eta0_idx, sb_mu2, sb_sigma2, m)
             detH = Hbb * Hδδ - Hbδ^2
+            # #927: a non-PD Laplace Hessian (a line-search probe far from the
+            # optimum) gets a LARGE FINITE barrier, not log of a negative number
+            # (DomainError) and not +Inf (HagerZhang asserts finiteness).
+            (isfinite(detH) && detH > 0) || return s + T(REML_NONPD_PENALTY)
             Ak = sum(eta0_idx)
             nll_group = 0.5 * m * l2π + Ak + m * δ + 0.5 * D +
                         0.5 * l2π + θ[pμ+pσ+1] + 0.5 * b^2 / sb_mu2 +
