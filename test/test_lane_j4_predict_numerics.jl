@@ -31,6 +31,17 @@ function _j4_tweedie_full(y, μ, φ, p)
     return -λ - y / γ - log(y) + m + log(sum(exp.(t .- m)))
 end
 
+# Minimal quoted-CSV reader for the vendored fixtures (numbers or strings).
+function _j4_csv(path)
+    lines = readlines(path)
+    hdr = Symbol.(replace.(split(lines[1], ","), "\"" => ""))
+    cols = [String[] for _ in hdr]
+    for l in lines[2:end], (j, v) in enumerate(split(l, ","))
+        push!(cols[j], replace(v, "\"" => ""))
+    end
+    return NamedTuple{Tuple(hdr)}(Tuple(cols))
+end
+
 @testset "lane J4: predict / residuals / numerics" begin
 
 @testset "#1028 Tweedie density: series window follows the peak" begin
@@ -283,6 +294,45 @@ end
     d2 = DRModels._conditional_dist(NegBinomial2(), 1; μ = [150.0],
                                     scales = Dict(:sigma => [0.5]), obs = Dict(:mu => [150.0]))
     @test d2 isa Distributions.NegativeBinomial
+end
+
+
+
+@testset "#927 mean + sigma random intercepts with a sigma covariate fit" begin
+    ss = _j4_csv(joinpath(@__DIR__, "fixtures", "lme4", "sleepstudy.csv"))
+    y = parse.(Float64, ss.Reaction); Days = parse.(Float64, ss.Days)
+    Subject = "S" .* ss.Subject
+    fit = drm(bf(@formula(Reaction ~ 1 + Days + (1 | Subject)),
+                 @formula(sigma ~ 1 + Days + (1 | Subject))), Gaussian();
+              data = (; Reaction = y, Days, Subject))
+    @test isfinite(loglik(fit))
+    @test fit.nll(fit.theta) < DRModels.REML_NONPD_PENALTY   # optimum is not on the barrier
+    # drmTMB 0.7.1 (TMB Laplace, same model) reports logLik -883.4328 (#927 comment).
+    @test loglik(fit) ≈ -883.4328 atol = 0.05
+
+    # The 2-D mode finder returns a MINIMUM (PD Hessian, zero gradient) on a
+    # group whose residuals share one sign, where h(b, δ) has a saddle.
+    r = [3.0, 3.2, 2.9, 3.1, 3.05]; η0 = fill(-1.0, 5)
+    b, δ = DRModels._musig_mode_primal(r, η0, 0.25, 0.09)
+    e = exp.(-2 .* (η0 .+ δ)); res = r .- b; D = sum(res .^ 2 .* e)
+    Hbb = sum(e) + 1 / 0.25; Hbδ = 2 * sum(res .* e); Hδδ = 2D + 1 / 0.09
+    @test Hbb * Hδδ - Hbδ^2 > 0
+    @test abs(-sum(res .* e) + b / 0.25) < 1e-8
+    @test abs(5 - D + δ / 0.09) < 1e-8
+end
+
+
+@testset "#953 CumulativeLogit crossed RE is not below the model it nests" begin
+    w = _j4_csv(joinpath(@__DIR__, "fixtures", "ordinal", "wine.csv"))
+    dat = (; rating = parse.(Int, w.rating), temp = w.temp, contact = w.contact,
+           judge = w.judge, bottle = w.bottle)
+    f2 = drm(bf(@formula(rating ~ 1 + temp + contact + (1 | judge) + (1 | bottle))),
+             CumulativeLogit(); data = dat)
+    # drmTMB 0.7.1 and ordinal::clmm (both Laplace) give -81.56541 for this
+    # model AND for the single (1 | judge) model it nests (bottle SD ~ 2e-5);
+    # DRModels.jl returned -81.7577 (#953).
+    @test loglik(f2) ≥ -81.56541 - 5e-3
+    @test loglik(f2) ≤ -81.56541 + 5e-2
 end
 
 end

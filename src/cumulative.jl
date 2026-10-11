@@ -689,11 +689,35 @@ function _fit_cumulative_crossed_laplace(fam::CumulativeLogit, y::Vector{Int}, X
             θβ0 = θβ0, se = false, polish_iterations = polish_iterations)
     end
 
-    δ0 = _cumulative_cut_init(y, K, n)
     obj(δ) = -inner_fit(δ).loglik
-    res = Optim.optimize(obj, δ0, Optim.NelderMead(),
-                         Optim.Options(iterations = 500, g_tol = g_tol))
-    δ̂ = Optim.minimizer(res)
+    # #953: the profile deviance in δ is only as smooth as each inner fit's
+    # convergence, and one Nelder–Mead run from the empirical-proportion start
+    # stopped 0.19 below the single-random-intercept fit the crossed model
+    # nests (`ordinal::wine`, bottle SD → 0). Start from the best of the
+    # empirical start and the cutpoints of each one-component fit (the nested
+    # models, so the crossed fit starts no worse than them up to the
+    # GHQ-vs-Laplace gap), then restart Nelder–Mead from its own optimum until
+    # a restart no longer improves (a standard remedy for a collapsed simplex).
+    starts = Vector{Vector{Float64}}([_cumulative_cut_init(y, K, n)])
+    for c in comps
+        try
+            f1 = _fit_cumulative_ranef(fam, y, Xμ, K, c[2], c[3], nmμ, c[4], g_tol)
+            push!(starts, f1.theta[(pμ+1):(pμ+nc)])
+        catch
+            # a failed one-component fit only loses a candidate start
+        end
+    end
+    fstarts = map(δ -> (v = obj(δ); isfinite(v) ? v : Inf), starts)
+    δ̂ = starts[argmin(fstarts)]; best = minimum(fstarts)
+    for _ in 1:4
+        res = Optim.optimize(obj, δ̂, Optim.NelderMead(),
+                             Optim.Options(iterations = 500, g_tol = g_tol))
+        fnew = Optim.minimum(res)
+        fnew < best || break
+        improved = best - fnew
+        δ̂ = Optim.minimizer(res); best = fnew
+        improved < 1e-6 && break
+    end
     fit = inner_fit(δ̂; polish_iterations = 25)
 
     pμ2 = pμ    # (== pμ; named for readability against the block-index arithmetic below)
