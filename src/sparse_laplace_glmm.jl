@@ -3405,7 +3405,7 @@ end
 function _fit_nb2_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
                                   se::Bool = false, polish_iterations::Int = 0)
     length(comps) == 2 || error("_fit_nb2_crossed_laplace requires two random-intercept components")
-    size(Xσ, 2) == 1 || error("drm(NegBinomial2()): crossed random intercepts `(1 | g) + (1 | h)` require `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
+    (size(Xσ, 2) == 1 && all(==(1.0), @view Xσ[:, 1])) || error("drm(NegBinomial2()): crossed random intercepts `(1 | g) + (1 | h)` require `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
     yint = round.(Int, y)
     function aux_from(logσ)
         r = exp(clamp(-2 * logσ, -8.0, 8.0))      # ψ = log σ; size r = 1/σ² = exp(−2ψ) (drmTMB)
@@ -3439,7 +3439,7 @@ optimum (`_crossed_aghq_nuisance_start`).
 function _fit_nb2_crossed_aghq(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol; se::Bool = true,
                                K_g::Int = _CROSSED_AGHQ_KG, K_h::Union{Nothing,Int} = nothing)
     length(comps) == 2 || error("_fit_nb2_crossed_aghq requires two random-intercept components")
-    size(Xσ, 2) == 1 || error("drm(NegBinomial2()): crossed random intercepts `(1 | g) + (1 | h)` require `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
+    (size(Xσ, 2) == 1 && all(==(1.0), @view Xσ[:, 1])) || error("drm(NegBinomial2()): crossed random intercepts `(1 | g) + (1 | h)` require `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
     yint = round.(Int, y)
     function aux_from(logσ)
         r = exp(clamp(-2 * logσ, -8.0, 8.0))
@@ -3456,7 +3456,7 @@ end
 function _fit_gamma_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
                                     se::Bool = true, polish_iterations::Int = 5)
     length(comps) == 2 || error("_fit_gamma_crossed_laplace requires two random-intercept components")
-    size(Xσ, 2) == 1 || error("drm(Gamma()): crossed random intercepts `(1 | g) + (1 | h)` require `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
+    (size(Xσ, 2) == 1 && all(==(1.0), @view Xσ[:, 1])) || error("drm(Gamma()): crossed random intercepts `(1 | g) + (1 | h)` require `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
     yv = Float64.(y)
     function aux_from(logsigma)
         α = exp(clamp(-2 * logsigma, -8.0, 8.0))
@@ -3488,7 +3488,7 @@ JOINTLY with β and the two variance components, using the same `aux_from` as
 function _fit_gamma_crossed_aghq(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol; se::Bool = true,
                                  K_g::Int = _CROSSED_AGHQ_KG, K_h::Union{Nothing,Int} = nothing)
     length(comps) == 2 || error("_fit_gamma_crossed_aghq requires two random-intercept components")
-    size(Xσ, 2) == 1 || error("drm(Gamma()): crossed random intercepts `(1 | g) + (1 | h)` require `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
+    (size(Xσ, 2) == 1 && all(==(1.0), @view Xσ[:, 1])) || error("drm(Gamma()): crossed random intercepts `(1 | g) + (1 | h)` require `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
     yv = Float64.(y)
     function aux_from(logsigma)
         α = exp(clamp(-2 * logsigma, -8.0, 8.0))
@@ -3505,7 +3505,7 @@ end
 function _fit_beta_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
                                    se::Bool = true, polish_iterations::Int = 0)
     length(comps) == 2 || error("_fit_beta_crossed_laplace requires two random-intercept components")
-    size(Xσ, 2) == 1 || error("drm(Beta()): crossed random intercepts `(1 | g) + (1 | h)` require `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
+    (size(Xσ, 2) == 1 && all(==(1.0), @view Xσ[:, 1])) || error("drm(Beta()): crossed random intercepts `(1 | g) + (1 | h)` require `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
     yv = Float64.(y)
     ylogit = log.(yv) .- log1p.(-yv)
     function aux_from(logsigma)
@@ -3538,7 +3538,7 @@ optimum (`_crossed_aghq_nuisance_start`).
 function _fit_beta_crossed_aghq(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol; se::Bool = true,
                                 K_g::Int = _CROSSED_AGHQ_KG, K_h::Union{Nothing,Int} = nothing)
     length(comps) == 2 || error("_fit_beta_crossed_aghq requires two random-intercept components")
-    size(Xσ, 2) == 1 || error("drm(Beta()): crossed random intercepts `(1 | g) + (1 | h)` require `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
+    (size(Xσ, 2) == 1 && all(==(1.0), @view Xσ[:, 1])) || error("drm(Beta()): crossed random intercepts `(1 | g) + (1 | h)` require `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
     yv = Float64.(y)
     ylogit = log.(yv) .- log1p.(-yv)
     function aux_from(logsigma)

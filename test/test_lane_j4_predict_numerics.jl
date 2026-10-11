@@ -352,6 +352,16 @@ end
     m = sprint(showerror, err)
     @test occursin("sigma ~ 1", m) && occursin("crossed", m)
     @test !occursin("_fit_", m)                    # no internal function name
+    # A single covariate-only column (`sigma ~ 0 + x`) has one column but is not
+    # constant: it must be refused too, not fitted as a constant.
+    err0 = try
+        drm(bf(@formula(y ~ 1 + (1 | g) + (1 | h)), @formula(sigma ~ 0 + x)), NegBinomial2();
+            data = (; y, x, g = gg, h = hh)); nothing
+    catch e
+        e
+    end
+    @test err0 isa ErrorException
+    @test occursin("sigma ~ 1", sprint(showerror, err0))
 end
 
 end

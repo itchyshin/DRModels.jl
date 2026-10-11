@@ -31,6 +31,24 @@ Work the lane-J4 code-review issues of the 2026-10-11 campaign: #1028, #998,
   warning (#996).
 - Tests: `test/test_lane_j4_predict_numerics.jl` (auto-discovered).
 
+- Added after the first push (#927, #953, #945), all of which move fits or
+  messages that parity receipts may pin:
+  - #927 `src/gaussian_ranef.jl`: the 2-D mode finder of the Gaussian mean +
+    sigma random-intercept route (`_fit_musigma_ranef_gaussian`) now accepts a
+    step only if it lowers the Laplace objective h(b, δ) (Armijo), with Newton on
+    a positive-definite-shifted Hessian; a non-PD Hessian returns a finite
+    barrier. Fits that already converged to a minimum are unchanged to
+    optimiser tolerance; cells that used to hit a saddle or a DomainError now fit.
+  - #953 `src/cumulative.jl`: the crossed ordinal route starts its cutpoint
+    search from the best of the empirical start and each single-random-intercept
+    fit's cutpoints, and restarts Nelder–Mead until no improvement. logLik can
+    only move up for the same data (the `ordinal::wine` cell: -81.7577 →
+    drmTMB's -81.5654).
+  - #945 `src/sparse_laplace_glmm.jl`: 12 internal "currently supports a
+    constant sigma formula" errors (crossed + relmat/animal/spatial NB2, Gamma,
+    Beta Laplace/AGHQ) are user-facing; the six crossed fitters now also refuse
+    a non-constant single column (`sigma ~ 0 + x`).
+
 ## 3a. Decisions and Rejected Alternatives
 
 - #995/#996: a correct structured PIT needs either conditional residuals or the
@@ -42,6 +60,16 @@ Work the lane-J4 code-review issues of the 2026-10-11 campaign: #1028, #998,
   silent case for every family instead.
 - #959: sparse-Laplace and Tweedie clamps left in place (owner decision on
   widening to drmTMB's ±12 soft band vs a `check_drm` flag).
+
+- #1000 residual gap: on the routes with no fit-time schema (bivariate and
+  non-Gaussian families) the guard compares coefficient NAMES. An unseen level
+  that sorts before every fitted non-reference level, while the fitted reference
+  level is absent from `newdata`, yields the same names and is not detected.
+  Closing that needs the training levels stored on every route (decision 3 in
+  the PR).
+- #770 clash: the NB2 `(1|g)` route now soft-clamps η_σ (identity in ±20,
+  smooth beyond); #770's hard-clamp reported sigma should be reconciled when both
+  merge (reported scale = `exp(softclamp(η_σ))` there).
 
 ## 4. Verification
 
