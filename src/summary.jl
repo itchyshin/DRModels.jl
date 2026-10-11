@@ -305,17 +305,23 @@ are on each block's working scale (μ on the response scale; σ on log σ; ρ12 
 atanh ρ12; random-effect SDs on log σ_b). Row names are prefixed with the block
 (e.g. `"mu: (Intercept)"`) so they stay unique across blocks.
 
-The `z` and `Pr(>|z|)` columns carry an interpretable Wald test **only** for
-blocks whose working-scale-zero null is a meaningful hypothesis: the location
-blocks `:mu`/`:mu1`/`:mu2` (coefficient = 0) and `:rho12` (atanh ρ12 = 0 ⇔ no
-correlation). For `:sigma`/`:sigma1`/`:sigma2`/`:resd`/`:resid`/`:recov`/
-`:phylocov` the zero-on-working-scale null is not the scientific one — e.g.
-`log σ = 0` means `σ = 1`, not the `σ = 0` variance boundary — so those rows show
-`z` and `Pr(>|z|)` as `NaN` rather than a misleading test of an arbitrary scale
-reference. To test a variance component against 0 use a
-boundary-corrected likelihood-ratio test (`lrt_boundary`); the estimate and SE for
-those blocks are still reported. A boundary / singular direction (Inf SE) also
-reports `NaN` z / p rather than a spurious `z = 0, p = 1`.
+The `z` and `Pr(>|z|)` columns are the Wald `z = Estimate / Std.Error` and its
+two-sided normal p-value for **every** row with a finite standard error, and the
+null is always "coefficient = 0 **on the working scale** of that block":
+
+| block | null tested by the z and p columns |
+|:------|:--------------------------------|
+| `:mu`, `:mu1`, `:mu2` | coefficient = 0 |
+| `:rho12` | atanh ρ12 = 0, i.e. ρ12 = 0 |
+| `:sigma`, `:sigma1`, `:sigma2` | coefficient = 0 on log σ: an intercept tests σ = 1 (unit-dependent), a slope tests equal dispersion |
+| `:resd`, `:resid` | `log σ_b = 0`, i.e. `σ_b = 1` — **not** the `σ_b = 0` variance boundary |
+| `:recov`, `:phylocov` | Cholesky entry = 0 (no single interpretable null) |
+
+The table object carries no statement of these nulls (`show(fit)` prints them
+under each block heading). To test a variance component against 0 use a
+boundary-corrected likelihood-ratio test (`lrt_boundary`), not the `:resd`
+row. A boundary / singular direction (non-finite SE) reports `NaN` z / p rather
+than a spurious `z = 0, p = 1`.
 """
 function coeftable(fit::DrmFit; level::Real = 0.95)
     level = _validate_ci_level(level; what="coeftable")

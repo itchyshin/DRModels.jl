@@ -67,16 +67,22 @@ end
 function _conditional_dist(fam::TruncatedPoisson, i; μ, scales, obs, kwargs...)
     return Distributions.Poisson(max(μ[i], 0.0))
 end
+# NB2 with size φ and mean μ. Past φ > 1e10·max(μ, 1) the NB2 and Poisson CDFs
+# differ by less than ~μ/φ < 1e-10, while p = φ/(φ+μ) has begun to quantise in
+# float64 (at φ ~ 1e17, μ ~ 150 the implied mean is off by ~5%, #998): use the
+# Poisson limit there instead of the quantised NB2.
+_nb2_conditional(φ, μ) = φ > 1e10 * max(μ, 1.0) ? Distributions.Poisson(max(μ, 0.0)) :
+    Distributions.NegativeBinomial(φ, φ / (φ + μ))
 function _conditional_dist(fam::NegBinomial2, i; μ, scales, obs, kwargs...)
     φ = 1 / (scales[:sigma][i]^2)               # scales[:sigma] = σ now; NB2 size = 1/σ²
-    return Distributions.NegativeBinomial(φ, φ / (φ + μ[i]))
+    return _nb2_conditional(φ, μ[i])
 end
 # TruncatedNegBinomial2 returns the *base* (untruncated) NB2; the zero-truncation
 # F(k) = (NB.cdf(k) − NB.cdf(0)) / (1 − NB.cdf(0)) for k ≥ 1 is applied in the
 # discrete driver (avoids the `truncated` discrete-lower-bound convention).
 function _conditional_dist(fam::TruncatedNegBinomial2, i; μ, scales, obs, kwargs...)
     φ = 1 / (scales[:sigma][i]^2)               # scales[:sigma] = σ now; NB2 size = 1/σ²
-    return Distributions.NegativeBinomial(φ, φ / (φ + μ[i]))
+    return _nb2_conditional(φ, μ[i])
 end
 function _conditional_dist(fam::Binomial, i; μ, scales, obs, kwargs...)
     n = round(Int, scales[:trials][i])
@@ -189,6 +195,42 @@ function _ordinary_resd_block(fit::DrmFit)
     return nothing
 end
 
+# Is the lone mean `:resd` block a STRUCTURED random effect (phylo / relmat /
+# animal / spatial marker on the mean formula, or a companion parameter block
+# such as a spatial `:range`) rather than an ordinary `(1 | g)`? Read off the
+# retained formula; a fit without one is treated as ordinary (the old rule).
+function _structured_mean_re(fit::DrmFit)
+    any(p -> first(p) in (:range, :temporal_phi, :temporal_decay, :temporal_pac), fit.blocks) &&
+        return true
+    f = fit.formula
+    f isa DrmFormula || return false
+    st = try
+        _split_ranef(Dict(f.forms)[:mu]; allow_phylo_slope = true, allow_temporal = true)[4]
+    catch
+        nothing
+    end
+    return st !== nothing
+end
+
+# #995 / #996 / #981: the σ_b-marginal PIT is exact for an ordinary `(1 | g)`.
+# For a structured effect it is calibrated only when (i) `fitted(fit)` is the
+# population-level mean and (ii) every unit's random-effect variance is σ_b².
+# Neither is guaranteed: the Gaussian sparse / EM phylo routes store
+# BLUP-conditional fitted means (the random effect would be counted twice), and
+# on the raw branch-length scale a tip's variance is σ_b²·C_ii (σ_b²·h on an
+# ultrametric tree of height h). Say so instead of returning residuals that look
+# calibrated. A correct structured reference is an owner decision (see #995).
+function _warn_structured_pit()
+    @warn "residuals(type = :quantile): this fit's random intercept is a structured " *
+          "(phylo / relmat / animal / spatial) effect. The σ_b-marginal reference used " *
+          "here assumes a population-level fitted mean and a random-effect variance of " *
+          "σ_b² for every unit (tree height 1, or a unit-diagonal relatedness / spatial " *
+          "matrix). Gaussian sparse / EM phylo fits store BLUP-conditional fitted means " *
+          "and raw-branch-length trees give unit variances σ_b²·C_ii, so these residuals " *
+          "can be mis-calibrated (DRModels.jl #995, #996)." maxlog = 1
+    return nothing
+end
+
 # Precomputed marginalisation context for `_cdf_value`, or `nothing` when the
 # fit has no single ordinary random intercept, or the family has no verified
 # mapping for its axis: the links above for the mean, Gaussian only for log σ
@@ -206,6 +248,7 @@ function _ranef_marginal_mix(fit::DrmFit, fam, μ)
     end
     linkpair = _ranef_link(fam)
     linkpair === nothing && return nothing
+    _structured_mean_re(fit) && _warn_structured_pit()
     link, invlink = linkpair
     eta0 = [link(μ[i]) for i in eachindex(μ)]
     return (axis = :mu, invlink = invlink, eta0 = eta0, rt2σb = sqrt(2.0) * σb,
