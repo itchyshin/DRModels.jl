@@ -214,8 +214,6 @@ end
         @test fclean.loglik > -1e9
         @test fclean.converged isa Bool
     end
-        @test res isa Exception || res.converged == false
-    end
 
     @testset "#1017: r2_constant_sigma refuses structured / meta_V fits and handles NaN rows" begin
         rng = MersenneTwister(17)
