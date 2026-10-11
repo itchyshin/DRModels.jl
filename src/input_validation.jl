@@ -292,3 +292,94 @@ function _require_meta_V_variances(vv, name)
     end
     return nothing
 end
+
+# ── #957: `A` matched to the data by label ──────────────────────────────────
+#
+# Rows and columns of the relatedness matrix `A` used to be taken as the levels
+# of the `animal(1 | g)` group in order of first appearance, with no check: a
+# matrix in sorted-id order (the natural export from a pedigree tool) gave a
+# different, silently wrong fit. `A` is now matched by label when labels are
+# given, either as a table whose column names are the labels or as a plain
+# matrix plus `ids = …` (the label of each row). An unlabelled matrix keeps the
+# old first-appearance convention and warns once per session.
+
+function _animal_group(f::DrmFormula)
+    for (_, rhs) in f.forms
+        g = _animal_group_term(rhs)
+        g === nothing || return g
+    end
+    return nothing
+end
+
+function _animal_group_term(t)
+    if t isa Tuple || t isa AbstractVector
+        for s in t
+            g = _animal_group_term(s)
+            g === nothing || return g
+        end
+    elseif t isa FunctionTerm
+        if t.f === animal
+            bar = t.args[1]
+            (bar isa FunctionTerm && length(bar.args) == 2 && bar.args[2] isa Term) &&
+                return bar.args[2].sym
+        end
+        for a in t.args
+            g = _animal_group_term(a)
+            g === nothing || return g
+        end
+    end
+    return nothing
+end
+
+"""
+    _resolve_relatedness_labels(f, data, A, ids) -> A′
+
+Return `A` with its rows and columns in the order the fitters expect (the
+levels of the `animal(1 | g)` group in order of first appearance), matching by
+label when `A` is a table (column names are the labels) or `ids` is given.
+Levels without a row in `A` are an `ArgumentError`; rows of `A` for labels not
+in the data are dropped (the marginal of `A` over the observed labels).
+"""
+function _resolve_relatedness_labels(f::DrmFormula, data, A, ids)
+    if A === nothing
+        ids === nothing ||
+            throw(ArgumentError("drm: `ids = …` labels the rows of the relatedness matrix " *
+                "`A`, but no `A` was supplied."))
+        return nothing
+    end
+    labels_A, M = if ids !== nothing
+        (collect(ids), A isa AbstractMatrix ? A : Tables.matrix(A))
+    elseif !(A isa AbstractMatrix) && Tables.istable(A)
+        (String.(collect(Tables.columnnames(Tables.columns(A)))), Tables.matrix(A))
+    else
+        (nothing, A)
+    end
+    grp = _animal_group(f)
+    grp === nothing && return M      # no animal() term: the #1010 guard has already refused `A`
+    if labels_A === nothing
+        @warn "drm: `A` has no labels, so its rows and columns are taken to be the levels " *
+              "of `$grp` in order of first appearance in the data. Pass `ids = …` (the " *
+              "label of each row of `A`), or `A` as a table whose column names are the " *
+              "labels, to match `A` by label instead." maxlog = 1
+        return M
+    end
+    n = length(labels_A)
+    size(M) == (n, n) ||
+        throw(ArgumentError("drm: `A` is $(size(M, 1))×$(size(M, 2)) but has $n label(s); " *
+            "give one label per row."))
+    pos = Dict{String,Int}()
+    for (i, l) in enumerate(labels_A)
+        k = string(l)
+        haskey(pos, k) &&
+            throw(ArgumentError("drm: the label \"$k\" appears more than once in the labels of `A`."))
+        pos[k] = i
+    end
+    levels = unique(collect(_table_column(data, grp)))   # `_group_index` order
+    absent = [string(l) for l in levels if !haskey(pos, string(l))]
+    isempty(absent) ||
+        throw(ArgumentError("drm: $(length(absent)) level(s) of `$grp` have no row in `A` " *
+            "(e.g. " * join(("\"$x\"" for x in first(absent, 3)), ", ") *
+            (length(absent) > 3 ? ", …" : "") * "). Every level must be one of the labels of `A`."))
+    perm = [pos[string(l)] for l in levels]
+    return Matrix{Float64}(M)[perm, perm]
+end

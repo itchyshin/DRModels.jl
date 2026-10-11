@@ -5,7 +5,8 @@
 Refuse, with an `ArgumentError` that names the argument, inputs the `drm`
 entry points used to accept and then drop or misread silently. Code-review
 issues #1027, #1026, #1022, #1020, #1014, #1013, #1010, #966 and #1017, plus
-#939, #938 and #926 added by the coordinator (campaign of 2026-10-11, lane J3).
+#939, #938, #926 and the Gaussian half of #951 added by the coordinator, and the
+approved decisions 15 (#974, #963) and 16 (#957) (campaign of 2026-10-11, lane J3).
 
 ## 2. Implemented
 
@@ -41,6 +42,16 @@ New `src/input_validation.jl`, included after the family files:
 - Cross-family `drm(bf, (fam1, fam2))` (#966) refuses a missing response,
   naming the column. `fit_mixed_family` clears `converged` when the optimum is
   the 1e10 sentinel.
+- `algorithm = :sparse` / `sparse = true` on an unstructured Gaussian cell is
+  refused (#951); `:gls` / `:lbfgs` stay documented aliases there.
+- `_resolve_relatedness_labels` (#957, decision 16): `A` is matched to the data
+  by label when it is a table (column names are the labels) or comes with the
+  new `ids = …` keyword (Gaussian, Poisson, NB2, Gamma, Beta, ZeroOneBeta).
+  Labels absent from the data are dropped; a data level without a row in `A`
+  is refused. An unlabelled matrix keeps the first-appearance convention and
+  warns once per session.
+- Readable refusals (decision 15): univariate Gaussian `V = …` (#974, used to
+  be a bare MethodError) and `animal`/`relmat`/`spatial` on `sigma` (#963).
 - `r2_constant_sigma` (#1017) refuses any fit whose formula has a random,
   structured, `meta_V` or temporal part, or which has blocks other than
   mu/sigma. It drops non-finite rows from both sums. Because the walk covers
@@ -59,8 +70,10 @@ New `src/input_validation.jl`, included after the family files:
 - #938: refusing was chosen over implementing a coefficient-1 offset for
   every family; drmTMB applies offsets for all families, so implementing it
   is a feature for the owner to schedule.
-- #957 (labelled `A`/`coords` matched by id): needs an API decision (a
-  labelled matrix or an `ids =` keyword). Not changed.
+- #957: done per decision 16 for univariate `A`. Not changed: `K` (relmat)
+  and `coords` (spatial) keep the first-appearance convention; the bivariate
+  animal route is unchanged; bootstrap / LRT refit helpers do not forward
+  `ids`, so pass `A` as a labelled table when refitting.
 
 ## 4. Verification
 

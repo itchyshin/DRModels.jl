@@ -518,13 +518,21 @@ are parameterised over all G levels, while the likelihood is evaluated on
 observed rows.
 """
 function drm(f::DrmFormula, fam::Gaussian; kwargs...)
+    # #974: a dense known sampling covariance is consumed by the BIVARIATE
+    # route only; on this route `V` used to end in a bare MethodError.
+    haskey(kwargs, :V) &&
+        throw(ArgumentError("drm: `V = …` (a dense known sampling covariance) is supported " *
+            "for the bivariate Gaussian route only, `bf(mu1 = …, mu2 = …, …)` with " *
+            "`meta_vcov_bivariate`. For a univariate model, known diagonal sampling variances " *
+            "go in the formula as `meta_V(v)`; a dense univariate `V` is not implemented yet."))
     # The residual-variance / structured-variance BOUNDARY advisory (#724, #697) is
     # attached here, once, rather than in each of the fitter's return paths.
     return _warn_variance_boundary(_drm_gaussian_fit(f, fam; kwargs...))
 end
 
-function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree = nothing, coords = nothing, g_tol::Real = 1e-8, algorithm::Symbol = :auto, method::Symbol = :ML, profile_ci::Bool = false, phylo_coupled::Bool = false, penalty = nothing, sparse = nothing, impute = nothing, missing = nothing, marginal::Symbol = :LA)
+function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree = nothing, coords = nothing, g_tol::Real = 1e-8, algorithm::Symbol = :auto, method::Symbol = :ML, profile_ci::Bool = false, phylo_coupled::Bool = false, penalty = nothing, sparse = nothing, impute = nothing, missing = nothing, marginal::Symbol = :LA, ids = nothing)
     _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, coords = coords)   # #1027 #1022 #1010
+    A = _resolve_relatedness_labels(f, data, A, ids)   # #957: match `A` by label
     mkind = _gaussian_marginal(marginal)
     laplace = mkind === :Laplace
     aghq = mkind === :AGHQ
@@ -677,8 +685,10 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         sigma_kind, sigma_grp = structured_sigma
         if sigma_kind !== :phylo
             throw(ArgumentError("drm (Gaussian): `$(sigma_kind)(1 | $(sigma_grp))` on `sigma` is " *
-                "not yet supported in the univariate route — only `phylo(1 | g)` is wired for B1. " *
-                "Use `relmat`/`animal`/`spatial` on the MEAN axis, or file an issue."))
+                "not implemented in DRModels.jl yet (a known gap, #963); the only structured random " *
+                "effect on `sigma` is `phylo(1 | g)`. Keep `$(sigma_kind)(1 | $(sigma_grp))` on the " *
+                "mean and model `sigma` with fixed effects or an ordinary `(1 | $(sigma_grp))` " *
+                "random effect."))
         end
         tree === nothing && error("phylo(1 | $(sigma_grp)) on sigma needs `tree = …`")
         phy = tree isa AbstractString ? augmented_phy(tree) : tree

@@ -294,4 +294,46 @@ end
         @test loglik(drm(ffix, Gaussian(); data = d, algorithm = :gls)) ≈
               loglik(drm(ffix, Gaussian(); data = d)) atol = 1e-10
     end
+
+    @testset "#957: A is matched to the data by label (ids = … or a labelled table)" begin
+        rng = MersenneTwister(957)
+        G = 8; m = 6
+        ids_sorted = ["a$(i)" for i in 1:G]                    # A's row labels, sorted
+        B = randn(rng, G, G); A0 = Matrix(Symmetric(B * B' / G + 0.5I))   # A0 in sorted order
+        first_seen = ids_sorted[[5, 2, 8, 1, 7, 3, 6, 4]]      # data visit animals in this order
+        animal_col = repeat(first_seen, inner = m); n = length(animal_col)
+        u = cholesky(A0).L * randn(rng, G)
+        x = randn(rng, n)
+        y = 1 .+ 0.5x .+ 0.8 .* u[indexin(animal_col, ids_sorted)] .+ randn(rng, n)
+        d = (y = y, x = x, animal = animal_col)
+        f = bf(@formula(y ~ x + animal(1 | animal)), @formula(sigma ~ 1))
+        o = indexin(first_seen, ids_sorted)
+        ll_ref = loglik(drm(f, Gaussian(); data = d, A = A0[o, o]))       # first-appearance order
+        ll_ids = loglik(drm(f, Gaussian(); data = d, A = A0, ids = ids_sorted))
+        @test ll_ids ≈ ll_ref atol = 1e-8
+        Atab = NamedTuple{Tuple(Symbol.(ids_sorted))}(Tuple(collect(eachcol(A0))))
+        ll_tab = loglik(drm(f, Gaussian(); data = d, A = Atab))
+        @test ll_tab ≈ ll_ref atol = 1e-8
+        # extra labels (animals not in the data) are dropped; a level missing from A is refused
+        ids_plus = vcat(ids_sorted, "z9"); Aplus = Matrix(1.0I, G + 1, G + 1); Aplus[1:G, 1:G] .= A0
+        @test loglik(drm(f, Gaussian(); data = d, A = Aplus, ids = ids_plus)) ≈ ll_ref atol = 1e-8
+        @test_throws ArgumentError drm(f, Gaussian(); data = d, A = A0[1:G-1, 1:G-1],
+                                       ids = ids_sorted[1:G-1])
+        @test_throws ArgumentError drm(f, Gaussian(); data = d, A = A0, ids = ids_sorted[1:G-1])
+        # `ids` without `A` is refused
+        @test_throws ArgumentError drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), Gaussian();
+                                       data = d, ids = ids_sorted)
+    end
+
+    @testset "#974 / #963: readable refusals for univariate V = and animal() on sigma" begin
+        rng = MersenneTwister(974)
+        n = 10; x = randn(rng, n); y = randn(rng, n)
+        msg = _j3_msg(() -> drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), Gaussian();
+                                data = (y = y, x = x), V = Matrix(0.01I, n, n)))
+        @test occursin("`V = …`", msg) && occursin("bivariate", msg) && occursin("meta_V", msg)
+        G = 5; g = repeat(1:G, inner = 6); n2 = length(g); x2 = randn(rng, n2); y2 = randn(rng, n2)
+        fs = bf(@formula(y ~ x + animal(1 | g)), @formula(sigma ~ 1 + animal(1 | g)))
+        msg2 = _j3_msg(() -> drm(fs, Gaussian(); data = (y = y2, x = x2, g = g), A = Matrix(1.0I, G, G)))
+        @test occursin("#963", msg2) && occursin("on `sigma`", msg2)
+    end
 end
