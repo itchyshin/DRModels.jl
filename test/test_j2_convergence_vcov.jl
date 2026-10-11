@@ -245,3 +245,22 @@ end
         @test_skip "fit did not route through the sparse phylo-mean objective"
     end
 end
+
+@testset "#959 a fit ending at a likelihood clamp is reported" begin
+    hits = @test_logs (:warn, r"clamp inside the likelihood") match_mode = :any DRModels._warn_at_clamp(
+        "test", ["log sigma" => ([-1.0, 15.0], -15.0, 15.0)])
+    @test length(hits) == 1 && occursin("upper clamp", hits[1])
+    # Interior values: no warning, no hits.
+    @test isempty(@test_logs DRModels._warn_at_clamp("test", ["log sigma" => ([-1.0, 2.0], -15.0, 15.0)]))
+    # Quiet inside bootstrap / profile refits, but still detected.
+    quiet = @test_logs DRModels._without_boundary_warnings(() ->
+        DRModels._warn_at_clamp("test", ["x" => ([-8.0], -8.0, 3.0)]))
+    @test length(quiet) == 1
+    # Sparse-Laplace layout: random-effect log SD at -8 and dispersion log σ at 4.
+    fit = DRModels.DrmFit(Poisson(), [:mu => 1:1, :sigma => 2:2, :resd => 3:3],
+        [:mu => ["(Intercept)"], :sigma => ["(Intercept)"], :resd => ["g"]],
+        [0.0, 4.0, -8.0], Matrix(1.0I, 3, 3), -10.0, 5, true,
+        Dict(:mu => ones(5)), Dict(:mu => ones(5)), Dict{Symbol,Vector{Float64}}())
+    @test_logs (:warn, r"random-effect log SD.*dispersion log sigma") match_mode = :any DRModels._warn_laplace_clamp(
+        fit; logsigma = [4.0])
+end

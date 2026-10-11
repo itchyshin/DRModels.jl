@@ -708,5 +708,7 @@ function _fit_poisson_spatial_coord(fam::Poisson, y, Xμ, labels, coords, nmμ, 
     obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict{Symbol,Vector{Float64}}()
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nll(θ̂), n, drm_optim_converged(res), means, obs, scales)
+    _warn_at_clamp("spatial Poisson", ["random-effect log SD" => (θ̂[pμ+1:pμ+1], -8.0, 3.0),   # #959
+                                       "log range" => (θ̂[pμ+2:pμ+2], -8.0, 8.0)])
     return _withiterations(_withnll(fit, nll), Optim.iterations(res))
 end
