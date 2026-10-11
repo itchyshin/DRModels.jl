@@ -1013,6 +1013,7 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
     q = size(des.Z, 2)
     offs = des.offs
     colcomp = des.colcomp
+    cache = Ref{Any}(nothing)     # factor at the last Float64 θ: grad! reuses nll's
     Zdense = Ref{Union{Nothing,Matrix{Float64}}}(nothing)
     _zdense() = (Zdense[] === nothing && (Zdense[] = Matrix(des.Z)); Zdense[]::Matrix{Float64})
     function nll(θ)
@@ -1024,7 +1025,8 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
         σcol = [σk[colcomp[c]] for c in 1:q]
         if eltype(θ) === Float64
             Z̃s = des.Z * Diagonal(σcol)            # scale each column by its σ_k
-            _, bhat, logdetM = _multi_re_sparse_qr(Z̃s, exp.(-ησ), r)
+            fac = _multi_re_cached_factor!(cache, θ, Z̃s, exp.(-ησ), r)
+            bhat = fac.bhat; logdetM = fac.logdetM
             e = r .- Z̃s * bhat
         else
             Z̃ = _zdense() .* σcol'
@@ -1048,9 +1050,10 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
         σk = [exp(clamp(θ[pμ+pσ+k], -30.0, 30.0)) for k in 1:K]
         σcol = [σk[colcomp[c]] for c in 1:q]
         Z̃s = des.Z * Diagonal(σcol)
-        F, bscaled, _ = _multi_re_sparse_qr(Z̃s, exp.(-ησ), r)   # RᵀR = P(I + Z̃ᵀD⁻¹Z̃)Pᵀ
+        fac = _multi_re_cached_factor!(cache, θ, Z̃s, exp.(-ησ), r)   # LLᵀ = P(I + Z̃ᵀD⁻¹Z̃)Pᵀ
+        bscaled = fac.bhat
         all(isfinite, bscaled) || return Gout
-        S = _multi_re_selinv(F, des.Mpat)                    # M⁻¹ on the factor pattern
+        S = _multi_re_selinv(fac, des.Mpat)                  # M⁻¹ on the factor pattern
         α = invD .* (r .- Z̃s * bscaled)            # V⁻¹r
 
         Gout[1:pμ] .= -(Xμ' * α)
@@ -1122,9 +1125,9 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
         ησ = clamp.(Xσ * βσ, -30.0, 30.0); invD = exp.(-2 .* ησ); r = y .- Xμ * βμ
         σk = [exp(clamp(θ̂[pμ+pσ+k], -30.0, 30.0)) for k in 1:K]
         σcol = [σk[colcomp[c]] for c in 1:q]
-        # The penalised least-squares mode of the same sparse QR the objective
-        # uses: b̂ = (I + Z̃ᵀD⁻¹Z̃)⁻¹Z̃ᵀD⁻¹r, without forming the capacitance.
-        _, bscaled, _ = _multi_re_sparse_qr(des.Z * Diagonal(σcol), exp.(-ησ), r)
+        # The penalised least-squares mode of the same sparse factor the objective
+        # uses: b̂ = (I + Z̃ᵀD⁻¹Z̃)⁻¹Z̃ᵀD⁻¹r.
+        bscaled = _multi_re_factor(des.Z * Diagonal(σcol), exp.(-ησ), r).bhat
         bfull = σcol .* bscaled                         # back to natural RE scale
         d = Dict{Symbol,Vector{Float64}}()
         for (k, c) in enumerate(comps)

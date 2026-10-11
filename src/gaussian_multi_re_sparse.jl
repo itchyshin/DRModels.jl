@@ -39,6 +39,10 @@ using LinearAlgebra
 # differences of the exact sparse analytic gradient instead.
 const _MULTI_RE_DENSE_HESSIAN_MAXQ = 200
 
+# Fraction of the trailing triangle that must be structurally nonzero before the
+# selected inverse treats it as a dense LAPACK block.
+const _MULTI_RE_TAIL_FILL = Ref(0.9)
+
 """
     _MultiREDesign
 
@@ -96,6 +100,70 @@ function _multi_re_sparse_qr(Z̃::SparseMatrixCSC{Float64,Int}, sdinv::AbstractV
     return F, bhat, logdetM
 end
 
+# `max diag(M)` above which the Cholesky route is not trusted. Forming
+# M = I + Z̃ᵀD⁻¹Z̃ then factoring it loses roughly log10(cond M) digits to
+# rounding, and cond M ≤ q · max diag(M); at 1e4 the logdet error is bounded by
+# ~q · 1e4 · eps ≈ 1e-8 even for q = 4000 and is far smaller in practice. Past it
+# (σ_e → 0 against the random-effect SDs: the #835/#837 cancellation class) the
+# QR of the stacked design is used, which never forms M.
+const _MULTI_RE_CHOL_MAXDIAG = Ref(1e4)
+
+"""
+    _MultiREFactor
+
+`L` is a lower-triangular sparse factor with `L Lᵀ = M[perm, perm]`,
+`M = I + Z̃ᵀD⁻¹Z̃`; `bhat` the penalised least-squares mode, `logdetM = logdet(M)`,
+and `route` is `:cholesky` or `:qr`.
+"""
+struct _MultiREFactor
+    L::SparseMatrixCSC{Float64,Int}
+    perm::Vector{Int}
+    bhat::Vector{Float64}
+    logdetM::Float64
+    route::Symbol
+end
+
+"""
+    _multi_re_factor(Z̃, sdinv, r; allow_chol = true) -> _MultiREFactor
+
+Sparse Woodbury capacitance factor. Cholesky of `M` (CHOLMOD, fill-reducing
+ordering) when `max diag(M) ≤ _MULTI_RE_CHOL_MAXDIAG[]` and the factorisation
+succeeds; otherwise the sparse QR of `[D^{-1/2}Z̃; I]`.
+"""
+function _multi_re_factor(Z̃::SparseMatrixCSC{Float64,Int}, sdinv::AbstractVector{Float64},
+                          r::AbstractVector{Float64}; allow_chol::Bool = true)
+    q = size(Z̃, 2)
+    if allow_chol
+        d2 = sdinv .^ 2
+        W = Z̃' * Diagonal(d2)
+        M = W * Z̃ + sparse(1.0I, q, q)
+        if maximum(view(M, diagind(M))) <= _MULTI_RE_CHOL_MAXDIAG[]
+            ch = cholesky(Symmetric(M); check = false)
+            if issuccess(ch)
+                bhat = ch \ (W * r)
+                if all(isfinite, bhat)
+                    return _MultiREFactor(sparse(ch.L), Vector{Int}(ch.p), bhat, logdet(ch), :cholesky)
+                end
+            end
+        end
+    end
+    F, bhat, logdetM = _multi_re_sparse_qr(Z̃, sdinv, r)
+    size(F.R, 1) == q || throw(ErrorException("multi-RE factor is rank deficient"))
+    return _MultiREFactor(sparse(transpose(F.R)), Vector{Int}(F.pcol), bhat, logdetM, :qr)
+end
+
+# Last-factor cache: Optim evaluates `nll(θ)` and then `grad!(θ)` at the same
+# point, and the factorisation is the expensive part of both.
+function _multi_re_cached_factor!(cache::Ref{Any}, θ::AbstractVector{Float64}, Z̃, sdinv, r)
+    c = cache[]
+    if c !== nothing && c[1] == θ
+        return c[2]::_MultiREFactor
+    end
+    fac = _multi_re_factor(Z̃, sdinv, r)
+    cache[] = (copy(θ), fac)
+    return fac
+end
+
 """
     _MultiRESelInv
 
@@ -131,16 +199,15 @@ end
     return S.Zvals[idx]
 end
 
-# Lower factor L = Rᵀ with positive diagonal (row signs of R flipped; LLᵀ is
+# Lower factor L (for a QR route L = Rᵀ) with positive diagonal (column signs flipped; LLᵀ is
 # unchanged) and its pattern closed under the elimination tree, so every entry
 # the Takahashi recursion reads is stored (fill positions hold explicit zeros).
 # The pattern is seeded with the pattern of M itself (`Mperm`, permuted like
 # R's columns), not only R's: a QR factor can be structurally sparser than the
 # symbolic Cholesky factor of M (exact cancellation when the stacked design is
 # not strong Hall), and the leverage needs M⁻¹ on every pattern entry of M.
-function _closed_lower_factor(R::SparseMatrixCSC{Float64,Int}, Mperm::SparseMatrixCSC{Float64,Int})
-    q = size(R, 2)
-    L = sparse(transpose(R))
+function _closed_lower_factor(L::SparseMatrixCSC{Float64,Int}, Mperm::SparseMatrixCSC{Float64,Int})
+    q = size(L, 2)
     rows = [Int[] for _ in 1:q]
     vals = [Float64[] for _ in 1:q]
     @inbounds for j in 1:q
@@ -195,24 +262,22 @@ function _closed_lower_factor(R::SparseMatrixCSC{Float64,Int}, Mperm::SparseMatr
 end
 
 """
-    _multi_re_selinv(F, Mpat) -> _MultiRESelInv
+    _multi_re_selinv(F::_MultiREFactor, Mpat) -> _MultiRESelInv
 
 Entries of `M⁻¹` on the factor pattern, where `F` is the sparse QR from
-`_multi_re_sparse_qr` (`RᵀR = M[pcol, pcol]`). Takahashi recursion on the
+`_multi_re_factor` (`LLᵀ = M[perm, perm]`). Takahashi recursion on the
 leading columns, dense LAPACK inverse on the trailing dense block.
 """
-function _multi_re_selinv(F, Mpat::SparseMatrixCSC{Float64,Int})
-    R = F.R
-    q = size(R, 2)
-    size(R, 1) == q || throw(ErrorException("multi-RE factor is rank deficient"))
-    colptr, rowval, Lvals = _closed_lower_factor(R, Mpat[F.pcol, F.pcol])
+function _multi_re_selinv(F::_MultiREFactor, Mpat::SparseMatrixCSC{Float64,Int})
+    q = size(F.L, 2)
+    colptr, rowval, Lvals = _closed_lower_factor(F.L, Mpat[F.perm, F.perm])
     # Trailing dense block: the smallest t whose trailing triangle is at least
     # half full (then padding it to dense at most doubles its storage).
     t = q; cnt = 0
     for j in q:-1:1
         cnt += colptr[j+1] - colptr[j]
         m = q - j + 1
-        if 2 * cnt >= m * (m + 1) ÷ 2
+        if cnt >= _MULTI_RE_TAIL_FILL[] * (m * (m + 1) ÷ 2)
             t = j
         end
     end
@@ -225,7 +290,7 @@ function _multi_re_selinv(F, Mpat::SparseMatrixCSC{Float64,Int})
     @inbounds for j in 1:md, i in 1:(j-1)
         L22[i, j] = L22[j, i]
     end
-    S = _MultiRESelInv(colptr, rowval, zeros(length(Lvals)), t, L22, invperm(F.pcol))
+    S = _MultiRESelInv(colptr, rowval, zeros(length(Lvals)), t, L22, invperm(F.perm))
     Zvals = S.Zvals
     @inbounds for j in (t-1):-1:1
         cs = colptr[j]; ce = colptr[j+1] - 1

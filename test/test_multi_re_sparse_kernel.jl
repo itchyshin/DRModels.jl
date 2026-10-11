@@ -137,18 +137,36 @@ end
         @test isapprox(sqrt.(diag(fit.vcov)), sqrt.(diag(Vref)); rtol = 1e-5)
     end
 
-    @testset "selected inverse = dense inverse on the factor pattern" begin
+    @testset "factor + selected inverse = dense, both routes" begin
         n = 300; y, g, h, x, _ = _sk_crossed(rng, n, 50, 30)
         des = _SK._multi_re_design([(ones(n), g, 50, "g"), (ones(n), h, 30, "h")], n)
         sd = exp.(0.2 .* randn(rng, n))
         Z̃ = des.Z * Diagonal(vcat(fill(1.3, 50), fill(0.6, 30)))
-        F, b, ld = _SK._multi_re_sparse_qr(Z̃, sd, y)
         M = I + Matrix(Z̃)' * Diagonal(sd .^ 2) * Matrix(Z̃)
-        @test ld ≈ logdet(M) rtol = 1e-12
-        @test b ≈ M \ (Matrix(Z̃)' * (sd .^ 2 .* y)) rtol = 1e-10
-        S = _SK._multi_re_selinv(F, des.Mpat)
         Minv = inv(M)
-        @test maximum(abs, _SK._selinv_diag(S, 80) .- diag(Minv)) < 1e-12
-        @test maximum(abs, [_SK._selinv_get(S, g[i], 50 + h[i]) - Minv[g[i], 50+h[i]] for i in 1:n]) < 1e-12
+        for allow_chol in (true, false)
+            fac = _SK._multi_re_factor(Z̃, sd, y; allow_chol = allow_chol)
+            @test fac.route === (allow_chol ? :cholesky : :qr)
+            @test fac.logdetM ≈ logdet(M) rtol = 1e-12
+            @test fac.bhat ≈ M \ (Matrix(Z̃)' * (sd .^ 2 .* y)) rtol = 1e-10
+            S = _SK._multi_re_selinv(fac, des.Mpat)
+            @test maximum(abs, _SK._selinv_diag(S, 80) .- diag(Minv)) < 1e-12
+            @test maximum(abs, [_SK._selinv_get(S, g[i], 50 + h[i]) - Minv[g[i], 50+h[i]] for i in 1:n]) < 1e-12
+        end
+        # the gate: an extreme σ_e/σ_k ratio makes max diag(M) huge -> QR route
+        fac = _SK._multi_re_factor(Z̃, fill(1e6, n), y)
+        @test fac.route === :qr
+    end
+
+    @testset "both routes give the same fit (gate forced either way)" begin
+        n = 400; y, g, h, x, _ = _sk_crossed(rng, n, 40, 25)
+        comps = [(ones(n), g, 40, "g"), (ones(n), h, 25, "h")]
+        args = (Gaussian(), y, hcat(ones(n), x), ones(n, 1), comps, ["a", "b"], ["s"], 1e-8)
+        f1 = _SK._fit_multi_ranef_gaussian(args...)
+        old = _SK._MULTI_RE_CHOL_MAXDIAG[]
+        _SK._MULTI_RE_CHOL_MAXDIAG[] = 0.0          # force the QR route
+        f2 = try _SK._fit_multi_ranef_gaussian(args...) finally _SK._MULTI_RE_CHOL_MAXDIAG[] = old end
+        @test abs(f1.loglik - f2.loglik) < 1e-8
+        @test maximum(abs, f1.theta .- f2.theta) < 1e-6
     end
 end
