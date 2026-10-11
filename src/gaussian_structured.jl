@@ -923,11 +923,9 @@ function _fit_two_structured_gaussian_sparse_spec(fam::Gaussian, y, Xμ, Xσ,
         Hmat[:, k] .= (gp .- gm) ./ (2 * step)
     end
     Hmat .= 0.5 .* (Hmat .+ Hmat')
-    V = hess_ok ? (try
-        Matrix(inv(Symmetric(Hmat)))
-    catch
+    # #956: guarded constructor (an indefinite FD Hessian is no longer inverted).
+    V = hess_ok ? _vcov_from_fd_hessian(Hmat; context = "two-structured Gaussian") :
         fill(NaN, np, np)
-    end) : fill(NaN, np, np)
 
     grp1 = comp1.grp; grp2 = comp2.grp
     blocks = [:mu => iβμ, :sigma => iβσ, :resd => (il1):(il2)]

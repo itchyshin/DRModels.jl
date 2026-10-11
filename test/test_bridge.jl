@@ -310,7 +310,16 @@ using Test, Random, LinearAlgebra
     @test pprofile["status"] == "profile"
     @test pprofile["used"] == 1
     @test pprofile["failed"] == 0
-    @test isfinite(pprofile["lower"])
+    # #1023: the location-only resd profile used to bisect onto the 1e18 sentinel
+    # at the |log sd| < 50 domain bound and return ~-50 as a "finite" endpoint.
+    # The lower arm is now either a genuine crossing inside the domain or open
+    # (-Inf, "did not cross"), never the sentinel edge.
+    if isfinite(pprofile["lower"])
+        @test pprofile["lower"] > -49
+    else
+        @test pprofile["lower"] == -Inf
+        @test occursin("did not cross", pprofile["message"])
+    end
     @test isfinite(pprofile["upper"])
 
     pbootstrap = drm_bridge_inference(;
