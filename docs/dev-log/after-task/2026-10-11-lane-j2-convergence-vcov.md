@@ -42,6 +42,17 @@ flags) and Rose (claim versus evidence). No subagents.
   and computes `failed` / `*_endpoint_failed` / `*_nuisance_*` instead of
   hard-coding them.
 
+- **Coordinator follow-ups.** #935 is the #1047 defect (fixed there). #961
+  (vcov half) and #968 share `_vcov_from_hessian_checked`: a non-finite Hessian
+  on finite data gives a NaN vcov and `converged = false` (Student fixed / RI /
+  correlated-RE fitters, Gaussian fixed). #952: a fit ending on the
+  failed-objective sentinel warns at fit time. #978: the sparse phylo-mean
+  route adds the β–variance cross block (`G Vvv Gᵀ`), so ML mean SEs come
+  from the joint observed information.
+- **Test correction.** `test_bridge.jl` asserted a finite lower `resd` profile
+  bound that was the #1023 sentinel artefact; it now accepts a genuine
+  crossing above the domain edge or an open (-Inf, "did not cross") arm.
+
 ## 3a. Decisions and rejected alternatives
 
 - The `heritability` CI stays clamped to `[0, 1]` when the SE is not finite
@@ -53,13 +64,18 @@ flags) and Rose (claim versus evidence). No subagents.
   variance; changing it touches ~95 call sites), #946 (q4/q2/coevolution
   `f_reltol` stops on the verified engine), #965 (VA inner stationarity
   detector needs a place on the fit).
+- Parked from the follow-ups: #936 (same recalibration as #1049), #937
+  (Student nu multi-start), the line-search half of #961 and the tree-scale
+  root cause of #952.
 - #1049, #1050 and #983 describe code that exists only on draft PR #1044
   (`_unitfree_converged`); nothing to change on main until it merges.
 
 ## 4. Verification
 
 Julia could not be installed in the authoring container, so nothing was run
-locally. The PR's GitHub Actions CI is the test runner; see the PR for the run id.
+locally. PR CI run 38112128451 on head c699354: all 8 test shards (Julia 1.10
+and 1, 4 shards each) and `ci-ok` green. Round 1 (run 38100089811) failed on
+the bridge sentinel assertion and on a wrong #956 repro; both corrected.
 
 ## 5. Rose
 
