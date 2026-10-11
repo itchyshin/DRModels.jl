@@ -295,11 +295,8 @@ function _fit_locscale(kind, y, Xμ, Xψ, gidx, G, Q;
     # a stationarity test. Certify that route with a fresh exact gradient at θ̂
     # (the same certificate the refinement ladder uses). Gradient-based routes
     # keep their own flag, which already includes the `g_tol` criterion.
-    converged = Optim.converged(res)
-    if optimizer === :nelder_mead
-        converged = converged && _ls_gradient_certified(g!, θ̂, g_tol)
-        nll(θ̂)                   # restore warm[] at θ̂ after the gradient call
-    end
+    converged = _ls_converged_flag(optimizer, Optim.converged(res), g!, θ̂, g_tol)
+    optimizer === :nelder_mead && nll(θ̂)   # restore warm[] at θ̂ after the gradient call
     # Wald inference (opt-in): observed information = Hessian of the exact gradient.
     V = !se ? nothing : whitened ?
         _ls_whitened_vcov(kind, y, Xμ, Xψ, gidx, G, Q, θ̂, Zη, Zψ; seed=warm[]) :
@@ -314,6 +311,14 @@ function _fit_locscale(kind, y, Xμ, Xψ, gidx, G, Q;
             nll = nll(θ̂),
             converged = converged,
             optimizer = optimizer)
+end
+
+# The `converged` decision of `_fit_locscale` (#1005): a gradient-based route
+# keeps Optim's own flag; a Nelder-Mead result (simplex-spread test only) also
+# needs an exact-gradient certificate at θ̂.
+function _ls_converged_flag(optimizer::Symbol, optim_converged::Bool, g!, θ̂, g_tol)
+    optimizer === :nelder_mead || return optim_converged
+    return optim_converged && _ls_gradient_certified(g!, θ̂, g_tol)
 end
 
 # Exact-gradient stationarity certificate for a derivative-free result (#1005).

@@ -146,6 +146,20 @@ end
     @test !DRModels._ls_gradient_certified((g, t) -> error("boom"), θ, 1e-6)
 end
 
+@testset "#1005 the locscale converged flag by optimiser route" begin
+    θ = [0.1, 0.2]
+    flat(g, t) = (g .= 0.0; g)
+    steep(g, t) = (g .= 1.0; g)
+    # gradient-based routes keep Optim's flag, whatever the gradient says here
+    @test DRModels._ls_converged_flag(:newton_trust_region, true, steep, θ, 1e-6)
+    @test DRModels._ls_converged_flag(:lbfgs, true, steep, θ, 1e-6)
+    @test !DRModels._ls_converged_flag(:lbfgs, false, flat, θ, 1e-6)
+    # Nelder-Mead: its own simplex test is not enough
+    @test !DRModels._ls_converged_flag(:nelder_mead, true, steep, θ, 1e-6)   # was `true`
+    @test DRModels._ls_converged_flag(:nelder_mead, true, flat, θ, 1e-6)
+    @test !DRModels._ls_converged_flag(:nelder_mead, false, flat, θ, 1e-6)
+end
+
 @testset "#1007 variance ratios carry the fit's status" begin
     Random.seed!(42)
     G = 25; m = 6; nn = G * m
