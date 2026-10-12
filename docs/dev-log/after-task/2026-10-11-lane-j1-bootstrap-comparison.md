@@ -58,9 +58,11 @@ target code that exists only on that branch (`src/ci_args.jl`).
   warning, as drmTMB does. `failures = :error` still aborts; all replicates
   failing is still an error.
 
-- **#1048.** With J2's #1047 on main (EM reports its own `converged`), the two
-  `check_converged = false` overrides in the phylo solver-control test of
-  `test/test_bootstrap.jl` are removed and the test asserts `phy_fit.converged`.
+- **#1048 (not done).** With J2's #1047 on main, the EM phylo fit in
+  `test/test_bootstrap.jl` (`algorithm = :em, g_tol = 1e-4`) still reports
+  `converged = false` (CI, 2026-10-12), so the two `check_converged = false`
+  overrides stay, with an updated comment. The issue's premise does not hold for
+  this fixture; J2 should look at why that EM stop is not a convergence.
   Merge note: `_fit_fixed_gaussian` combines #1044's unit-free convergence flag
   with J2's non-finite-Hessian guard (#968); both must hold for `converged`.
 
