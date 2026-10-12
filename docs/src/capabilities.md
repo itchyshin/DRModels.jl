@@ -29,7 +29,7 @@ run separately.
 
 | Family | Mean-axis random effects | Status and boundary |
 |---|---|---|
-| Gaussian | intercepts, slopes, correlated, crossed, and structured effects | **Tested**; crossed fits slow down steeply above about 2,000 rows ([DRModels.jl#977](https://github.com/itchyshin/DRModels.jl/issues/977)) |
+| Gaussian | intercepts, slopes, correlated, crossed, and structured effects | **Tested**; crossed fits are fast at moderate sizes but still slower than drmTMB at tens of thousands of rows (see [Working with large data](model-guides/large-data.md)) |
 | Student-t | intercepts and slopes | **Tested** |
 | SkewNormal | — | **Tested** fixed effects; random effects are refused |
 | Poisson | intercepts, slopes, crossed, and phylogenetic effects | **Tested** |
@@ -56,11 +56,11 @@ run separately.
     coefficient of variation below about 1.8%, very tightly concentrated
     proportions, or nearly Poisson counts with large means. Such a fit still
     reports `converged = true`, with `sigma` at about 0.018 and a
-    log-likelihood a little below the true maximum, and nothing warns you.
-    If your fitted `sigma` is at 0.018, treat the dispersion estimate as a
-    bound, not an estimate, and compare with the same model without the
-    random effect or with drmTMB, which uses a wider cap and flags fits that
-    reach it. Tracked in
+    log-likelihood a little below the true maximum, but it now also warns
+    that the fit ended at a likelihood clamp. If you see that warning, or your
+    fitted `sigma` is at 0.018, treat the dispersion estimate as a bound, not
+    an estimate, and compare with the same model without the random effect or
+    with drmTMB, which uses a wider cap. The cap itself is unchanged; see
     [DRModels.jl#959](https://github.com/itchyshin/DRModels.jl/issues/959).
     Ordinary `(1 | g)` random intercepts and fixed-effect fits do not use this
     cap.
@@ -111,7 +111,7 @@ random effect: `sd(group) ~ z` or `sd(species, phylogenetic) ~ z`.
 | Gaussian random intercept `(1\|g)` | **Tested** |
 | Gaussian random slope `(x\|g)` | **Tested** |
 | Correlated intercept and slope | **Tested** |
-| Multiple, crossed, or nested grouping factors | **Tested**; for Gaussian crossed factors, fit time grows roughly with the square of the number of rows (about 330 s at 2,000 rows in one measured case, [DRModels.jl#977](https://github.com/itchyshin/DRModels.jl/issues/977)); use drmTMB or glmmTMB above about 2,000 rows |
+| Multiple, crossed, or nested grouping factors | **Tested**; Gaussian crossed factors fit in about 0.3 s at 2,000 rows and 45 s at 20,000 rows on one synthetic design, still slower than drmTMB at tens of thousands of rows (see [Working with large data](model-guides/large-data.md)) |
 | Poisson crossed random effects | **Tested** with sparse Laplace integration |
 
 ### Structured random effects with a known relatedness matrix (closed-form Gaussian)
@@ -123,7 +123,7 @@ Gaussian and is fit in closed form (PGLS / matrix-determinant lemma).
 |---|---|---|
 | `relmat(1\|id)` | user matrix `K` | **Tested** |
 | `animal(1\|id)` | additive-relatedness `A` | **Tested** |
-| `phylo(1\|species)` on the **mean** | tree (`AugmentedPhy` or Newick) | **Tested**; with `sigma ~ 1`, mean-coefficient SEs are conditional GLS SEs, slightly smaller than drmTMB's joint SEs ([DRModels.jl#978](https://github.com/itchyshin/DRModels.jl/issues/978)) |
+| `phylo(1\|species)` on the **mean** | tree (`AugmentedPhy` or Newick) | **Tested** |
 | `spatial(1\|site)` | coordinates; `K(ρ)=exp(-d/ρ)`, with ρ estimated | **Tested**; drmTMB's `spatial()` fixes ρ at the median pairwise distance instead, so the two packages fit different models from the same formula |
 | `temporal(1\|id, time, ar1)` / `temporal(1\|id, time, ou)` on the **mean** (drmTMB development version: `temporal(1 \| id, time = …, structure = "ar1"/"ou")`, not yet released) | an integer occasion (AR1) or numeric elapsed-time (OU) column | **Tested** (`test/test_temporal_ar1.jl`, `test/test_temporal_ou.jl`): dense-oracle likelihood to 1e-10, recovery, and a GLLVModels.jl logLik cross-check to 1e-13. ML, `sigma ~ 1`, optional same-id `(1\|id)` only; other families, `sigma` terms, slopes, REML and other structured terms are refused by name. `fitted`/`predict` are population-level (drmTMB's `fitted` is conditional; conditional effects are in `ranef`); `simulate`/`bootstrap_ci` draw a fresh temporal chain. Wald SEs and intervals are reported for every coordinate (drmTMB: AR1 mean coefficients only; OU Wald refused), and `bootstrap_ci` covers every coordinate (drmTMB refuses the temporal bootstrap); these are extensions with no interval calibration claimed. drmTMB parity: 8 cells (AR1 and OU, with and without `(1\|id)`, including the drmTMB article's two datasets) matched logLik to ≤ 1e-11 and every estimate to ≤ 1e-8 relative in the measured run (Julia 1.12.6, Linux, Totoro); the tests enforce 1e-8 absolute (logLik) and 1e-6 relative (`test/test_parity_temporal.jl`; worked example: [Temporal AR1, OU and Toeplitz effects](tutorials/temporal-random-effects.md)). |
 | `phylo(1\|species) + temporal(1\|species, elapsed, ou)` on the **mean**, `drm(...; tree)` (drmTMB development version: `phylo(1 \| species, tree = tree) + temporal(1 \| species, time = elapsed, structure = "ou")`, not yet released) | an **ultrametric** Newick tree (or `AugmentedPhy`) whose tips are exactly the observed species; zero-length branches allowed; numeric elapsed time | **Tested** (`test/test_temporal_phylo_ou.jl`): additive phylogenetic stable intercept (tip-correlation scale, as drmTMB) + independent OU path per species + noise; dense-oracle likelihood ≤ 9.2e-13 (random θ, decay and stable-SD extremes), zero-length branches and the pruning pass on non-ultrametric trees exact to 1e-10, dense-oracle modes, recovery smoke, full-model `simulate` (Julia 1.10.12). drmTMB's rules are refused by name (OU only, same grouping, no `(1\|species)`, ≥ 3 species with ≥ 2 times, ≥ 3 lags, tips = species, ultrametric tree). drmTMB parity: 2 cells (the drmTMB commit is recorded in each cell's `expected.meta.toml`) — logLik ≤ 5.5e-12, estimates ≤ 2.1e-11 relative, conditional fitted ≤ 2.3e-12 (Julia 1.10.12). No interval claim: profile `confint` warns that the intervals are uncalibrated, as drmTMB's does. drmTMB refuses Wald and bootstrap intervals for this fit; DRModels.jl returns them as an extension, without a calibration claim, and does not warn that they are uncalibrated. Temporal boundary diagnostic in `check_drm(fit).temporal_boundary`. Worked example: [Temporal AR1, OU and Toeplitz effects](tutorials/temporal-random-effects.md). |
@@ -262,7 +262,7 @@ above, and it does so by delegation rather than by a second engine.
 
 | Method | Status |
 |---|---|
-| Wald SEs + CIs (observed information) | **Tested**; one exception: Gaussian `phylo(1\|species)` on the mean with `sigma ~ 1` reports mean-coefficient SEs conditional on the variance parameters (generalised least squares), which can be slightly smaller than the joint observed-information SEs drmTMB reports (1.5% in one measured case, [DRModels.jl#978](https://github.com/itchyshin/DRModels.jl/issues/978)) |
+| Wald SEs + CIs (observed information) | **Tested** |
 | Profile-likelihood CIs (`profile_result`, `confint(:profile)`) | **Tested** |
 | Parametric bootstrap (`bootstrap_ci`/`_summary`/`_result`, serial + threaded) | **Tested** |
 | REML for fixed-effect Gaussian location–scale and Gaussian mean `(1 \| g)` | **Tested** |

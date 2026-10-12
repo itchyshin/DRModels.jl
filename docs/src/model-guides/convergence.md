@@ -23,7 +23,8 @@ check_drm(fit)
 
 The report is a `NamedTuple`:
 
-- `converged` — did the optimiser report success? This is the optimiser's own
+- `converged` — did the optimiser report success, and (for Gaussian fits) is the
+  fit non-degenerate, as [`is_converged`](@ref) decides? This is still a
   stopping rule, not proof of a maximum (see below).
 - `max_abs_grad` — `max|∇nll|` at the solution, the largest slope of the
   negative log-likelihood. Near a clean interior optimum this is ≈ 0; a large

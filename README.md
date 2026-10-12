@@ -129,11 +129,11 @@ The same `bf(...)` grammar covers:
 
 Support differs by family and structure. The
 [capabilities page](https://itchyshin.github.io/DRModels.jl/dev/capabilities) lists, row by row, what is tested
-and what is refused. One limit to know now: Gaussian models with **crossed**
-random intercepts slow down steeply as the number of rows grows (about 330 s
-at 2,000 rows in one measured case,
-[#977](https://github.com/itchyshin/DRModels.jl/issues/977)); above a few
-thousand rows, use drmTMB or glmmTMB for that model until this is fixed.
+and what is refused. One limit to know: Gaussian models with **crossed**
+random intercepts are now fast at moderate sizes (about 0.3 s at 2,000 rows
+and 45 s at 20,000 rows on a synthetic design of that shape,
+[#977](https://github.com/itchyshin/DRModels.jl/issues/977)), but they are
+still slower than drmTMB or glmmTMB at tens of thousands of rows.
 
 **Inference.** Every fit gives Wald standard errors and intervals.
 Profile-likelihood intervals, parametric bootstrap intervals, likelihood-ratio
