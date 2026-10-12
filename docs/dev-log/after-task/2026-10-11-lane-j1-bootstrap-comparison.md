@@ -58,12 +58,17 @@ target code that exists only on that branch (`src/ci_args.jl`).
   warning, as drmTMB does. `failures = :error` still aborts; all replicates
   failing is still an error.
 
+- **#1048.** With J2's #1047 on main (EM reports its own `converged`), the two
+  `check_converged = false` overrides in the phylo solver-control test of
+  `test/test_bootstrap.jl` are removed and the test asserts `phy_fit.converged`.
+  Merge note: `_fit_fixed_gaussian` combines #1044's unit-free convergence flag
+  with J2's non-finite-Hessian guard (#968); both must hold for `converged`.
+
 ## Not changed (owner decisions)
 
 - #1011 item 3: a minimum-success floor for status `"bootstrap"`.
 - #1025: forwarding is already on main for fit-based calls; formula-based
   bootstrap methods have no `method` / `marginal` keyword (API addition).
-- #1048: blocked on #1047 (J2, EM convergence flag).
 
 ## Verification
 
