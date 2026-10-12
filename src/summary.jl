@@ -219,7 +219,10 @@ function Base.show(io::IO, ::MIME"text/plain", fit::DrmFit)
     println(io, "Distributional regression fit (", fam, ")")
     println(io, "  nobs = ", fit.nobs,
                 "   logLik = ", @sprintf("%.4f", fit.loglik),
-                "   converged = ", fit.converged)
+                "   converged = ", is_converged(fit))
+    # #949: show the trusted accessor; say so when the raw optimiser flag disagrees.
+    (fit.converged && !is_converged(fit)) && println(io, "  (the optimiser stopped normally, " *
+        "but the fit is degenerate -- see `is_converged`)")
     _wald_withheld(fit) && println(io, "  Wald SEs withheld (homogeneous Toeplitz, as drmTMB): `sigma` is the " *
         "TOTAL within-series SD; use profile intervals for mean coefficients.")
 

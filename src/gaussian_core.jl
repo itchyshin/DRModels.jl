@@ -1224,10 +1224,13 @@ function _fit_fixed_gaussian(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, g_tol)
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res)
     H = ForwardDiff.hessian(nll, θ̂)
-    V = _vcov_from_hessian(H)
+    # #968: a (near-)constant response sends log σ → -∞ and the Hessian overflows.
+    V, hess_finite = _vcov_from_hessian_checked(H, _all_finite(y, Xμ, Xσ);
+                                                context = "Gaussian location-scale")
     # x/f/g OR, not the iteration cap, and the Newton step in SE units.
     # `g_converged` is the absolute 1e-8 check and is not part of this flag.
-    converged = Optim.converged(res) && !Optim.iteration_limit_reached(res) &&
+    # A non-finite Hessian on finite data is never converged (#968).
+    converged = hess_finite && Optim.converged(res) && !Optim.iteration_limit_reached(res) &&
         _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ)]
     names = [:mu => nmμ, :sigma => nmσ]
@@ -1513,9 +1516,11 @@ function _fit_fixed_gaussian_reml(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, g_tol)
     # location–scale), reusing the WLS information for β_μ and the FD Hessian of
     # the restricted objective for β_σ.
     w = exp.(-2 .* ησ̂)
-    Vμ = inv(Symmetric(Xμ' * (w .* Xμ)))
+    # #956: guarded inverses (the ML route already uses `_vcov_from_hessian`);
+    # a rank-deficient design now warns and pseudo-inverts instead of throwing.
+    Vμ = _vcov_from_gram(Xμ' * (w .* Xμ); context = "Gaussian REML (mean WLS)")
     Hσ = ForwardDiff.hessian(nll_reml, βσ̂)
-    Vσ = inv(Symmetric(Hσ))
+    Vσ = _vcov_from_hessian(Hσ; context = "Gaussian REML (scale)")
     V = zeros(pμ + pσ, pμ + pσ)
     V[1:pμ, 1:pμ] .= Vμ
     V[(pμ+1):(pμ+pσ), (pμ+1):(pμ+pσ)] .= Vσ
