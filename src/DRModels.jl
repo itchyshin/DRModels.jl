@@ -78,6 +78,7 @@ include("reml_q2.jl")  # #470: REML for the bivariate q=2 structured residual-co
 include("gaussian_core.jl")
 include("meta_vcov_bivariate.jl")  # A8: known bivariate sampling covariance (drmTMB meta_vcov_bivariate)
 include("gaussian_bivariate.jl")
+include("gaussian_multi_re_sparse.jl")  # #977: sparse QR + selected inverse for (1|g)+(1|h)+…
 include("gaussian_ranef.jl")
 include("gaussian_lss.jl")   # #544: location-scale-scale sd(g) ~ x on the (1|g) SD
 include("aghq_1d.jl")            # #448: 1-D Liu–Pierce AGHQ around `_gauss_hermite`

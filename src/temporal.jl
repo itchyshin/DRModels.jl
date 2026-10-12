@@ -759,7 +759,9 @@ function _fit_temporal_homtoep(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, tt, lay, 
         θ0[iσ] = log(sqrt(v0))
         θ0[iκ] .= κ0
         res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-        (best === nothing || Optim.minimum(res) < Optim.minimum(best)) && (best = res)
+        # #964: compare the objective re-evaluated at each minimizer; a bare
+        # `Optim.minimum` can be stale after a failed line search.
+        best = best === nothing ? res : _better_restart(nll, best, res)
     end
     θ̂ = Optim.minimizer(best)
     V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
@@ -867,7 +869,9 @@ function _fit_temporal_gaussian(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, tt, lay,
                                            x_abstol = NaN, x_reltol = NaN,
                                            f_abstol = NaN, f_reltol = NaN);
                              autodiff = :forward)
-        (best === nothing || Optim.minimum(res) < Optim.minimum(best)) && (best = res)
+        # #964: compare the objective re-evaluated at each minimizer; a bare
+        # `Optim.minimum` can be stale after a failed line search.
+        best = best === nothing ? res : _better_restart(nll, best, res)
     end
     θ̂ = Optim.minimizer(best)
     V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
@@ -1242,8 +1246,8 @@ function _warn_temporal_boundary(fit)
     get(task_local_storage(), :drm_quiet_boundary, false) === true && return fit
     found = try
         _temporal_boundary(fit)
-    catch
-        nothing                      # a diagnostic must never break a fit
+    catch err
+        _boundary_diagnostic_failed("temporal-boundary", err)   # #1003
     end
     (found === nothing || isempty(found)) || @warn "drm: " * _temporal_boundary_message(found)
     return fit

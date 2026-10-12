@@ -665,7 +665,8 @@ function _loconly_profile_result(
         stats=stats,
         attempted=length(jobs),
         used=length(rows),
-        failed=0,
+        # #1023: computed from the per-arm flags, as on the generic path.
+        failed=count(s -> s.lower_endpoint_failed || s.upper_endpoint_failed, stats),
         threaded=threaded,
         worker_threads=_worker_threads(threaded, endpoint_threaded ? 2 : length(jobs)),
         julia_threads=Threads.nthreads(),
@@ -707,18 +708,18 @@ function _loconly_profile_row_result(
         lower_unbounded=lstats.unbounded,
         upper_unbounded=rstats.unbounded,
         nonmonotone=lstats.nonmonotone || rstats.nonmonotone,
-        # `_loconly_profile_endpoint_result` was not in scope for DRModels.jl#493 (the
-        # reported degenerate fit routes through the generic path, not here) and
-        # is not instrumented for the same bracket-collapse failure; default false
-        # rather than claim a check that was not made.
-        lower_endpoint_failed=false,
-        upper_endpoint_failed=false,
+        # #1023: these are now measured by `_loconly_profile_endpoint_result`
+        # (sentinel / non-finite objective and the nuisance solve's own exit),
+        # not hard-coded. The bracket-collapse residual check of #493 is still
+        # specific to the generic path.
+        lower_endpoint_failed=lstats.endpoint_failed,
+        upper_endpoint_failed=rstats.endpoint_failed,
         lower_nuisance_method=:specialized,
         upper_nuisance_method=:specialized,
-        lower_nuisance_fallback=false,
-        upper_nuisance_fallback=false,
-        lower_nuisance_reason=:not_checked,
-        upper_nuisance_reason=:not_checked,
+        lower_nuisance_fallback=lstats.nuisance_fallback,
+        upper_nuisance_fallback=rstats.nuisance_fallback,
+        lower_nuisance_reason=lstats.nuisance_reason,
+        upper_nuisance_reason=rstats.nuisance_reason,
     )
     return row, stats
 end
@@ -730,40 +731,71 @@ function _loconly_profile_endpoint_result(
     lσ_start = Float64(lσ0)
     evaluations = 0
     gradient_evaluations = 0
+    last_nuisance = (fallback=false, reason=:accepted)
 
+    # #1023: an evaluation is usable only when the nuisance solve finished and the
+    # objective is finite and below the sentinel. A sentinel or NaN is never read
+    # as "above the threshold" (that turned the edge of the failure region into a
+    # CI endpoint).
     function heval(t)
-        f, lσ_opt, slope = _loconly_profiled_resd_nll(obj, lσ_start, estimate + dir * t)
-        lσ_start = lσ_opt
+        f, lσ_opt, slope, nuisance = _loconly_profiled_resd_nll(obj, lσ_start, estimate + dir * t)
+        nuisance.accepted && (lσ_start = lσ_opt)
         evaluations += 1
         gradient_evaluations += 1
-        return (f - target, dir * slope)
+        last_nuisance = nuisance
+        return (h=f - target, hp=dir * slope, ok=nuisance.accepted)
     end
-
-    tlo = 0.0
-    thi = 0.1
-    hhi, _ = heval(thi)
-    hprev = hhi
-    nonmonotone = false
-    iters = 0
-    while isfinite(hhi) && hhi < 0 && iters < 60
-        tlo = thi
-        thi *= 1.6
-        hhi, _ = heval(thi)
-        isfinite(hhi) && hhi < hprev - 1e-12 && (nonmonotone = true)
-        hprev = hhi
-        iters += 1
-    end
-    if isfinite(hhi) && hhi < 0
-        value = dir < 0 ? -Inf : Inf
+    # The log-SD parameterisation is bounded (|log σ_phy| < 50, `_loconly_profile_beta`).
+    # A profile still below the threshold at that edge is unbounded within the
+    # parameter space, not a failed search.
+    at_domain_edge(t) = !(abs(estimate + dir * t) < 50)
+    function arm(value; unbounded=false, endpoint_failed=false, iters=0, root_iterations=0,
+                 nonmonotone=false)
         stats = (
             evaluations=evaluations,
             gradient_evaluations=gradient_evaluations,
             bracket_expansions=iters,
-            root_iterations=0,
-            unbounded=true,
+            root_iterations=root_iterations,
+            unbounded=unbounded,
             nonmonotone=nonmonotone,
+            endpoint_failed=endpoint_failed,
+            nuisance_fallback=last_nuisance.fallback,
+            nuisance_reason=last_nuisance.reason,
         )
         return value, stats
+    end
+    open_value = dir < 0 ? -Inf : Inf
+
+    tlo = 0.0
+    thi = 0.1
+    at_domain_edge(thi) && return arm(open_value; unbounded=true)
+    ev = heval(thi)
+    ev.ok || return arm(open_value; endpoint_failed=true)
+    hhi = ev.h
+    hprev = hhi
+    nonmonotone = false
+    iters = 0
+    t_edge = 49.999 - dir * estimate     # last probe just inside the domain bound
+    while hhi < 0 && iters < 60
+        tnext = thi * 1.6
+        if at_domain_edge(tnext)
+            # Probe once just inside the bound; still below the threshold there
+            # means no crossing exists in the parameter space.
+            t_edge > thi || return arm(open_value; unbounded=true, iters=iters,
+                                       nonmonotone=nonmonotone)
+            tnext = t_edge
+        end
+        tlo = thi
+        thi = tnext
+        ev = heval(thi)
+        ev.ok || return arm(open_value; endpoint_failed=true, iters=iters, nonmonotone=nonmonotone)
+        hhi = ev.h
+        hhi < hprev - 1e-12 && (nonmonotone = true)
+        hprev = hhi
+        iters += 1
+    end
+    if hhi < 0
+        return arm(open_value; unbounded=true, iters=iters, nonmonotone=nonmonotone)
     end
     nonmonotone && (tlo = 0.0)   # conservative bracket to the first crossing (see _profile_endpoint_result)
 
@@ -771,23 +803,18 @@ function _loconly_profile_endpoint_result(
     root_iterations = 0
     for _ in 1:80
         root_iterations += 1
-        ht, hp = heval(t)
+        ev = heval(t)
+        ev.ok || return arm(open_value; endpoint_failed=true, iters=iters,
+                            root_iterations=root_iterations, nonmonotone=nonmonotone)
+        ht, hp = ev.h, ev.hp
         abs(ht) < 1e-9 && break
         ht < 0 ? (tlo = t) : (thi = t)
         tn = (!nonmonotone && isfinite(hp) && hp > 0) ? t - ht / hp : (tlo + thi) / 2
         t = (tlo < tn < thi) ? tn : (tlo + thi) / 2
         thi - tlo < 1e-8 && break
     end
-    value = estimate + dir * t
-    stats = (
-        evaluations=evaluations,
-        gradient_evaluations=gradient_evaluations,
-        bracket_expansions=iters,
-        root_iterations=root_iterations,
-        unbounded=false,
-        nonmonotone=nonmonotone,
-    )
-    return value, stats
+    return arm(estimate + dir * t; iters=iters, root_iterations=root_iterations,
+               nonmonotone=nonmonotone)
 end
 
 function _loconly_profiled_resd_nll(obj::LocOnlyObjective, lσ0::Real, lσ_phy::Real)
@@ -797,6 +824,7 @@ function _loconly_profiled_resd_nll(obj::LocOnlyObjective, lσ0::Real, lσ_phy::
         G !== nothing && (G[1] = grad[1])
         return F === nothing ? nothing : val
     end
+    fallback = false
     res = try
         od = Optim.NLSolversBase.only_fg!(fg!)
         Optim.optimize(
@@ -805,7 +833,10 @@ function _loconly_profiled_resd_nll(obj::LocOnlyObjective, lσ0::Real, lσ_phy::
             Optim.LBFGS(; linesearch=Optim.LineSearches.BackTracking(; order=3)),
             Optim.Options(; iterations=80, g_tol=1e-8, x_abstol=1e-10),
         )
-    catch
+    catch err
+        err isa InterruptException && rethrow(err)
+        # #1023: the fallback is recorded (and its own exit checked below).
+        fallback = true
         obj1(x) = _loconly_profile_fg(obj.prob, x[1], lσ_phy)[1]
         Optim.optimize(
             obj1,
@@ -816,7 +847,20 @@ function _loconly_profiled_resd_nll(obj::LocOnlyObjective, lσ0::Real, lσ_phy::
     end
     lσ = Optim.minimizer(res)[1]
     val, grad, _, _ = _loconly_profile_fg(obj.prob, lσ, lσ_phy)
-    return val, lσ, grad[2]
+    # #1023: an unfinished nuisance minimisation gives a profile NLL that is too
+    # high (an interval that is too narrow), and the 1e18 sentinel is not a value.
+    reason = if !(isfinite(lσ) && isfinite(val)) || val >= _LOCONLY_PENALTY / 100
+        :nonfinite_objective
+    elseif !(Optim.converged(res) || abs(grad[1]) <= 1e-6 * max(1, obj.prob.n))
+        # A backtracking line search can stop "unsuccessfully" at a rounding-level
+        # optimum, so a scale-free score check (the residual-scale score is a sum
+        # over n observations) also certifies the nuisance solve.
+        fallback ? :fallback_not_converged : :not_converged
+    else
+        :accepted
+    end
+    nuisance = (accepted=reason === :accepted, fallback=fallback, reason=reason)
+    return val, lσ, grad[2], nuisance
 end
 
 # Profiled objective: minimise nll over every component except k, with θ[k] = v.
@@ -2547,7 +2591,9 @@ end
 Post-fit convergence / identifiability diagnostics — drmTMB's `check_drm()`.
 Returns a `NamedTuple` and logs a short report:
 
-- `converged` — the optimiser's convergence flag.
+- `converged` — [`is_converged`](@ref)`(fit)`: the optimiser's convergence flag
+  AND the degeneracy bar, so a Gaussian fit whose scale collapsed is reported
+  `false` here even when `fit.converged` is `true` (#949).
 - `max_abs_grad` — `max|∇nll|` at the optimum (≈ 0 at a clean interior optimum;
   `NaN` when no gradient could be produced: see `grad_source` for which of the
   two reasons applies).
@@ -2630,11 +2676,13 @@ function check_drm(fit::DrmFit; grad_tol::Real=1e-3)
     # report a correct fit as broken, so the gradient criterion is dropped for MAP
     # fits and `max_abs_grad` is reported for information only.
     penalized = fit.estim_method === :MAP
-    vb = try _variance_boundary(fit) catch; nothing end
-    tb = try _temporal_boundary(fit) catch; nothing end
-    ok = fit.converged && (penalized || isnan(mag) || mag <= grad_tol) && pd
+    # #1003: a failed diagnostic warns instead of reading as "not that kind of fit".
+    vb = try _variance_boundary(fit) catch err; _boundary_diagnostic_failed("variance-boundary", err) end
+    tb = try _temporal_boundary(fit) catch err; _boundary_diagnostic_failed("temporal-boundary", err) end
+    conv = is_converged(fit)   # #949: the trusted accessor, not the raw flag
+    ok = conv && (penalized || isnan(mag) || mag <= grad_tol) && pd
     report = (
-        converged=fit.converged,
+        converged=conv,
         max_abs_grad=mag,
         grad_source=grad.source,
         vcov_complete=vcov_complete,
