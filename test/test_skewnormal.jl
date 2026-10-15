@@ -103,13 +103,17 @@ end
 # SAY so — a symmetric-data fit used to print the nu SE with no caveat at all.
 @testset "Skew-normal — nu-near-0 Wald caveat in check_drm (#1060)" begin
     f = bf(@formula(y ~ x), @formula(sigma ~ 1), @formula(nu ~ 1))
-    # symmetric errors: true ν = 0, so the fitted slant sits near 0
+    # symmetric errors (true ν = 0). A free fit's ν̂ on such data is NOT reliably
+    # near 0 (CI measured min|ν̂| = 1.69 here: the slant is weakly identified), so
+    # pin the fitted slant at 0.1 to test the check_drm wiring deterministically.
     Random.seed!(1060)
     n = 300; x = randn(n)
     sym = (; y = 1 .+ 0.5 .* x .+ randn(n), x)
     fit0 = drm(f, SkewNormal(); data = sym)
+    fit0.scales[:nu] .= 0.1
     r0 = @test_logs (:info, "check_drm") (:warn, r"slant ν̂ is near 0.*Wald") match_mode = :any check_drm(fit0)
     @test r0.skew_normal_nu_wald.near_zero
+    @test r0.skew_normal_nu_wald.min_abs_nu ≈ 0.1
     @test r0.skew_normal_nu_wald.min_abs_nu < r0.skew_normal_nu_wald.cut
 
     # strongly skewed data: ν̂ far from 0 → no caveat
