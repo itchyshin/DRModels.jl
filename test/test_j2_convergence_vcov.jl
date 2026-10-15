@@ -145,14 +145,17 @@ Base.get(::_J2BugDict, k, d) = error("boom (test): not a shape error")
 Base.length(::_J2BugDict) = 0
 Base.iterate(::_J2BugDict, s...) = nothing
 
+# The helper rethrows, which is only meaningful from inside a `catch`, as at its call sites.
+_j2_via_catch(e) = try; throw(e); catch err; DRModels._boundary_diagnostic_failed("x", err); end
+
 @testset "#1003 only shape errors are caught by the boundary diagnostics" begin
-    @test DRModels._boundary_diagnostic_failed("x", KeyError(:a)) === nothing
-    @test DRModels._boundary_diagnostic_failed("x", BoundsError([1], 2)) === nothing
-    @test DRModels._boundary_diagnostic_failed("x", DimensionMismatch("d")) === nothing
-    @test_throws ErrorException DRModels._boundary_diagnostic_failed("x", ErrorException("bug"))
-    @test_throws AssertionError DRModels._boundary_diagnostic_failed("x", AssertionError("bug"))
-    @test_throws OutOfMemoryError DRModels._boundary_diagnostic_failed("x", OutOfMemoryError())
-    @test_throws InterruptException DRModels._boundary_diagnostic_failed("x", InterruptException())
+    @test _j2_via_catch(KeyError(:a)) === nothing
+    @test _j2_via_catch(BoundsError([1], 2)) === nothing
+    @test _j2_via_catch(DimensionMismatch("d")) === nothing
+    @test_throws ErrorException _j2_via_catch(ErrorException("bug"))
+    @test_throws AssertionError _j2_via_catch(AssertionError("bug"))
+    @test_throws OutOfMemoryError _j2_via_catch(OutOfMemoryError())
+    @test_throws InterruptException _j2_via_catch(InterruptException())
     fit = DRModels.DrmFit(Gaussian(), [:mu => 1:1, :sigma => 2:2, :resd => 3:3],
         [:mu => ["(Intercept)"], :sigma => ["(Intercept)"], :resd => ["g"]],
         zeros(3), Matrix(1.0I, 3, 3), -10.0, 5, true,
