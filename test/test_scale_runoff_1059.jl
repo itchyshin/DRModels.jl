@@ -24,6 +24,17 @@ using Test, Random
     @test !DRModels._scale_runoff(Dict(:sigma => [1e-9, 2e-9]))   # units: uniform tiny scale is fine
     @test !DRModels._scale_runoff(Dict{Symbol,Vector{Float64}}())
 
+    # Behavioural forcing case: a well-identified fit (finite Hessian) whose fitted
+    # scale spans e^10 (> 1e4) across observations. Before #1059 it reported
+    # converged = true; the spread rule now reports false. The issue's own repro
+    # above already reports false on main (non-finite Hessian), so it cannot force.
+    Random.seed!(3)
+    nb = 4000; xb = rand(nb)
+    yb = 0.5 .* xb .+ exp.(-5 .+ 10 .* xb) .* randn(nb)
+    fit_b = drm(bf(@formula(y ~ x), @formula(sigma ~ x)), Gaussian(); data = (; y = yb, x = xb))
+    @test maximum(log.(fit_b.scales[:sigma])) - minimum(log.(fit_b.scales[:sigma])) > log(1e4)
+    @test fit_b.converged == false
+
     # A well-behaved heteroscedastic fit still converges.
     Random.seed!(2)
     m = 800; z = randn(m)
