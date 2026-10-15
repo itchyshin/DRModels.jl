@@ -17,7 +17,7 @@ end
 
 # An AbstractDict whose lookups throw, to make a boundary diagnostic fail.
 struct _J2ThrowingDict <: AbstractDict{Symbol,Any} end
-Base.get(::_J2ThrowingDict, k, d) = error("boom (test)")
+Base.get(::_J2ThrowingDict, k, d) = throw(KeyError(k))   # an "unexpected fit shape" error
 Base.length(::_J2ThrowingDict) = 0
 Base.iterate(::_J2ThrowingDict, s...) = nothing
 
@@ -136,6 +136,29 @@ end
         Dict(:mu => zeros(5)), Dict(:mu => collect(1.0:5.0)), Dict(:sigma => ones(5)),
         nothing, nothing, nothing, _J2ThrowingDict(), :ML, NaN, -10.0, :LA)
     @test_logs (:warn, r"diagnostic failed") match_mode = :any DRModels._warn_variance_boundary(fit)
+end
+
+# #1003, narrowed: only an unexpected-fit-shape error is downgraded to a warning;
+# a bug of any other kind (or a resource error) must propagate, not be swallowed.
+struct _J2BugDict <: AbstractDict{Symbol,Any} end
+Base.get(::_J2BugDict, k, d) = error("boom (test): not a shape error")
+Base.length(::_J2BugDict) = 0
+Base.iterate(::_J2BugDict, s...) = nothing
+
+@testset "#1003 only shape errors are caught by the boundary diagnostics" begin
+    @test DRModels._boundary_diagnostic_failed("x", KeyError(:a)) === nothing
+    @test DRModels._boundary_diagnostic_failed("x", BoundsError([1], 2)) === nothing
+    @test DRModels._boundary_diagnostic_failed("x", DimensionMismatch("d")) === nothing
+    @test_throws ErrorException DRModels._boundary_diagnostic_failed("x", ErrorException("bug"))
+    @test_throws AssertionError DRModels._boundary_diagnostic_failed("x", AssertionError("bug"))
+    @test_throws OutOfMemoryError DRModels._boundary_diagnostic_failed("x", OutOfMemoryError())
+    @test_throws InterruptException DRModels._boundary_diagnostic_failed("x", InterruptException())
+    fit = DRModels.DrmFit(Gaussian(), [:mu => 1:1, :sigma => 2:2, :resd => 3:3],
+        [:mu => ["(Intercept)"], :sigma => ["(Intercept)"], :resd => ["g"]],
+        zeros(3), Matrix(1.0I, 3, 3), -10.0, 5, true,
+        Dict(:mu => zeros(5)), Dict(:mu => collect(1.0:5.0)), Dict(:sigma => ones(5)),
+        nothing, nothing, nothing, _J2BugDict(), :ML, NaN, -10.0, :LA)
+    @test_throws ErrorException DRModels._warn_variance_boundary(fit)
 end
 
 @testset "#1005 Nelder-Mead locscale results need an exact-gradient certificate" begin
