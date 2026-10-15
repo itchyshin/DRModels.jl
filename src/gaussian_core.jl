@@ -1234,7 +1234,8 @@ function _fit_fixed_gaussian(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, g_tol)
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n,
-                        drm_optim_converged(res) && hess_finite, means, obs, scales), nll),
+                        drm_optim_converged(res) && hess_finite && !_scale_runoff(scales),
+                        means, obs, scales), nll),
         Optim.iterations(res))
 end
 
@@ -1548,7 +1549,8 @@ function _fit_fixed_gaussian_reml(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, g_tol)
         end
         return s + const_2pi
     end
-    fit = DrmFit(fam, blocks, names, θ̂, V, reml_ll, n, drm_optim_converged(res), means, obs, scales)
+    fit = DrmFit(fam, blocks, names, θ̂, V, reml_ll, n,
+                 drm_optim_converged(res) && !_scale_runoff(scales), means, obs, scales)
     return _withiterations(_withreml(_withnll(fit, nll_full), reml_ll, ml_ll), Optim.iterations(res))
 end
 
