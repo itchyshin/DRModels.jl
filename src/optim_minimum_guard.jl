@@ -74,7 +74,16 @@ drm_optim_converged(res) = Optim.converged(res) && Optim.g_converged(res)
     _SCALE_RUNOFF_LOG_SPREAD
 
 Unit-free bound on the spread of fitted `log σ_i` across observations used by
-[`_scale_runoff`](@ref): `log(1e4)`, i.e. a 10⁴-fold range of fitted scales.
+[`_scale_runoff`](@ref): `log(1e4)`, i.e. a 10⁴-fold range of fitted scales
+(10⁸-fold in variance).
+
+Why 10⁴: it is a judgement threshold, not a derived or calibrated one. It is the
+`log(1e4)` spread that DRModels.jl#1059 proposes, taken from drmTMB's native
+engine rule, so the two routes can agree. It is far larger than the scale range
+of ordinary heteroscedastic data, yet far from floating-point limits, so a fit
+beyond it is more often a collapsing scale than a real design. The cost is that a
+genuinely well-identified fit with a wider range is also reported as not
+converged. Change it here only.
 """
 const _SCALE_RUNOFF_LOG_SPREAD = log(1e4)
 
