@@ -2634,6 +2634,11 @@ Returns a `NamedTuple` and logs a short report:
   1e-3 · sd(y), OU decay × longest series span below 1e-4 or × shortest gap above 30,
   AR1 |φ̂| above 0.999. drmTMB reports such a fit as `convergence_status() == "boundary"`
   (still converged). Does not affect `ok`.
+- `skew_normal_nu_wald` — `nothing` unless the fit is [`SkewNormal`](@ref); then
+  `(near_zero, min_abs_nu, cut)`. `near_zero` is `true` when the smallest fitted
+  slant `|ν̂|` is below `cut = 0.5`: the information matrix is singular at `ν = 0`, so
+  the Wald SE for `nu` is unreliable there (#1060; drmTMB's `skew_normal_nu_wald`
+  note) and a warning is emitted. Does not affect `ok`.
 - `ok` — `true` when converged, the gradient is small, and the covariance is PD.
   On a penalized fit the gradient criterion is **dropped**: the stored objective
   is unpenalized, so its gradient is non-zero at the MAP optimum by construction
@@ -2676,6 +2681,7 @@ function check_drm(fit::DrmFit; grad_tol::Real=1e-3)
     # #1003: a failed diagnostic warns instead of reading as "not that kind of fit".
     vb = try _variance_boundary(fit) catch err; _boundary_diagnostic_failed("variance-boundary", err) end
     tb = try _temporal_boundary(fit) catch err; _boundary_diagnostic_failed("temporal-boundary", err) end
+    snw = _skew_normal_nu_wald(fit)   # #1060: `nothing` unless SkewNormal
     conv = is_converged(fit)   # #949: the trusted accessor, not the raw flag
     ok = conv && (penalized || isnan(mag) || mag <= grad_tol) && pd
     report = (
@@ -2689,6 +2695,7 @@ function check_drm(fit::DrmFit; grad_tol::Real=1e-3)
         penalized_map=penalized,
         variance_boundary=vb,
         temporal_boundary=tb === nothing ? nothing : (at_boundary = !isempty(tb), findings = tb),
+        skew_normal_nu_wald=snw,
         ok=ok,
     )
     @info "check_drm" converged = report.converged max_abs_grad = report.max_abs_grad grad_source =
@@ -2717,6 +2724,7 @@ function check_drm(fit::DrmFit; grad_tol::Real=1e-3)
     vbmsg = vb === nothing ? nothing : _variance_boundary_message(vb)
     vbmsg === nothing || @warn "check_drm: " * vbmsg
     (tb === nothing || isempty(tb)) || @warn "check_drm: " * _temporal_boundary_message(tb)
+    (snw === nothing || !snw.near_zero) || @warn "check_drm: " * _skew_normal_nu_wald_message(snw)
     # drmTMB emits the equivalent advisory from `check_penalized_fit()`.
     penalized && @warn "check_drm: penalized (MAP) fit — standard errors come from the penalized " *
         "curvature and are credible-interval-shaped, not frequentist. `loglik` is the UNPENALIZED " *
