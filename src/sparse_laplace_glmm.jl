@@ -159,6 +159,54 @@ function _finite_hessian(f, x; h::Real = 1e-4)
     return H
 end
 
+# Wald Hessian by central differences of an EXACT gradient (issue #1073).
+#
+# `_finite_hessian` second-differences the objective VALUE, whose error is
+# ~ eps_f / h^2. On a Laplace objective eps_f is the noise of the inner mode
+# solve (warm-started, solved to a tolerance), and at the old n-scaled step the
+# noise swamps the curvature in the between-cluster directions (grouseticks NB2
+# crossed: intercept/YEAR SEs 4-10% too small). Differencing the gradient gives
+# error ~ eps_g / h, and the step is cbrt(eps) * max(1, |x_i|), independent of n.
+#
+# The gradient must be the exact implicit derivative through the inner mode, and
+# the caller should evaluate it with the inner solve tightened and cold-started
+# (`_SE_MODE_TOL`), so a stencil point is not contaminated by a warm start.
+# Failure convention matches `_finite_hessian`: an all-NaN matrix plus a warning,
+# never a made-up SE. `require_pd` (default) also returns NaN when the
+# symmetrised Hessian is not positive definite.
+const _SE_MODE_TOL = 1e-12
+const _SE_MODE_MAXITER = 100
+
+function _finite_hessian_from_gradient(grad!, x; require_pd::Bool = true,
+                                       context::AbstractString = "Laplace")
+    n = length(x)
+    fail(msg) = (@warn("$context vcov: $msg; reporting a NaN vcov (standard errors unavailable)");
+                 fill(NaN, n, n))
+    H = zeros(n, n)
+    gp = zeros(n); gm = zeros(n)
+    for i in 1:n
+        hi = cbrt(eps(Float64)) * max(1.0, abs(x[i]))
+        e = zeros(n); e[i] = hi
+        grad!(gp, x .+ e); grad!(gm, x .- e)
+        (all(isfinite, gp) && all(isfinite, gm)) ||
+            return fail("gradient is non-finite at a Hessian stencil point")
+        H[:, i] .= (gp .- gm) ./ (2hi)
+    end
+    H = (H .+ H') ./ 2
+    all(isfinite, H) || return fail("gradient-difference Hessian is non-finite")
+    if require_pd && !isposdef(Symmetric(H))
+        return fail("gradient-difference Hessian is not positive definite at the optimum")
+    end
+    return H
+end
+
+# True when a log-SD / log-dispersion coordinate sits at (or within a stencil of)
+# its clamp, where the objective is flat in that coordinate but the analytic
+# gradient is not; the gradient-difference Hessian is then not defined and the
+# caller keeps the value-based path with its clamp handling.
+_clamp_active(θ, ks; lo::Real = -8.0, hi::Real = 3.0, tol::Real = 1e-3) =
+    any(k -> θ[k] <= lo + tol || θ[k] >= hi - tol, ks)
+
 # ---------------------------------------------------------------------------
 # Boundary polish for a collapsed variance component (issue #422).
 #
@@ -2897,16 +2945,25 @@ function _fit_crossed_mean_laplace(fam, kind, aux, n::Int, Xμ, gidx, G, hidx, H
     pμ = size(Xμ, 2)
     last_b = zeros(G + Hh)
 
-    function eval_laplace(θ; grad::Bool = false)
+    function eval_laplace(θ; grad::Bool = false, tight::Bool = false)
         βμ = θ[1:pμ]
         logσ = clamp.(θ[pμ+1:pμ+2], -8.0, 3.0)
         η0 = Xμ * βμ
-        b, ch, _, ok = _crossed_mean_mode(kind, aux, η0, gidx, G, hidx, Hh, logσ; b0 = last_b)
-        if !ok
-            b, ch, _, ok = _crossed_mean_mode(kind, aux, η0, gidx, G, hidx, Hh, logσ; b0 = zeros(G + Hh))
+        if tight
+            # SE build (#1073): cold start, tightened inner solve, no warm-state
+            # carry-over, so the stencil sees the same mode solve at every point.
+            b, ch, _, ok = _crossed_mean_mode(kind, aux, η0, gidx, G, hidx, Hh, logσ;
+                                              b0 = zeros(G + Hh), tol = _SE_MODE_TOL,
+                                              maxiter = _SE_MODE_MAXITER)
+            ok || return grad ? (1e18, fill(NaN, length(θ))) : 1e18
+        else
+            b, ch, _, ok = _crossed_mean_mode(kind, aux, η0, gidx, G, hidx, Hh, logσ; b0 = last_b)
+            if !ok
+                b, ch, _, ok = _crossed_mean_mode(kind, aux, η0, gidx, G, hidx, Hh, logσ; b0 = zeros(G + Hh))
+            end
+            ok || return grad ? (1e18, zeros(length(θ))) : 1e18
+            last_b .= b
         end
-        ok || return grad ? (1e18, zeros(length(θ))) : 1e18
-        last_b .= b
 
         invg = exp(-2 * logσ[1])
         invh = exp(-2 * logσ[2])
@@ -2994,7 +3051,18 @@ function _fit_crossed_mean_laplace(fam, kind, aux, n::Int, Xμ, gidx, G, hidx, H
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
     V = if se
         hstep = _fd_hessian_step(n)
-        Hθ = _finite_hessian(nll, θ̂; h = hstep)
+        # #1073: central differences of the exact gradient with a tight, cold
+        # inner solve. When a log-SD is at its clamp the objective is flat there
+        # but the gradient is not, so that case keeps the value-based path and
+        # the flat-column handling below.
+        use_grad_hessian = !_clamp_active(θ̂, (pμ + 1):(pμ + 2); lo = -8.0, hi = 3.0)
+        Hθ = if use_grad_hessian
+            se_grad!(Gout, θ) = (Gout .= eval_laplace(θ; grad = true, tight = true)[2])
+            _finite_hessian_from_gradient(se_grad!, θ̂;
+                context = "sparse-Laplace GLMM (crossed-mean)")
+        else
+            _finite_hessian(nll, θ̂; h = hstep)
+        end
         # log σ is clamped to [-8, 3]. Past that box the objective does not
         # depend on the coordinate, so a settled stencil is exact 0 and the
         # singular path keeps the intercept and slope. Finite-difference
@@ -3020,14 +3088,16 @@ end
 
 function _crossed_mean_laplace_nuisance_fg(kind, aux_from, n::Int, Xμ, gidx, G,
                                            hidx, Hh, θ; grad::Bool = false,
-                                           b0 = nothing)
+                                           b0 = nothing, mode_tol::Real = 1e-8,
+                                           mode_maxiter::Int = 60)
     pμ = length(θ) - 3
     βμ = θ[1:pμ]
     θσ = clamp(θ[pμ+1], -8.0, 8.0)
     logσ = clamp.(θ[pμ+2:pμ+3], -8.0, 3.0)
     aux = aux_from(θσ)
     η0 = Xμ * βμ
-    b, ch, _, ok = _crossed_mean_mode(kind, aux, η0, gidx, G, hidx, Hh, logσ; b0 = b0)
+    b, ch, _, ok = _crossed_mean_mode(kind, aux, η0, gidx, G, hidx, Hh, logσ; b0 = b0,
+                                      tol = mode_tol, maxiter = mode_maxiter)
     if !ok
         return grad ? (1e18, zeros(length(θ)), b, false) : (1e18, b, false)
     end
@@ -3167,7 +3237,21 @@ function _fit_crossed_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, gi
     nllhat = nll(θ̂)
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
     V = if se
-        Hθ = _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        # #1073: central differences of the exact gradient, inner mode solve
+        # tightened and cold-started at each stencil point. A clamped coordinate
+        # (flat objective, non-flat gradient) keeps the value-based path.
+        Hθ = if _clamp_active(θ̂, (pμ + 1):(pμ + 3); lo = -8.0, hi = 3.0)
+            _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        else
+            se_grad!(Gout, θ) = begin
+                _, g, _, ok = _crossed_mean_laplace_nuisance_fg(
+                    kind, aux_from, n, Xμ, gidx, G, hidx, Hh, θ; grad = true,
+                    b0 = zeros(G + Hh), mode_tol = _SE_MODE_TOL, mode_maxiter = _SE_MODE_MAXITER)
+                Gout .= ok ? g : NaN
+            end
+            _finite_hessian_from_gradient(se_grad!, θ̂;
+                context = "sparse-Laplace GLMM (crossed-mean nuisance)")
+        end
         _vcov_from_fd_hessian(Hθ; context = "sparse-Laplace GLMM (crossed-mean nuisance)")
     else
         fill(NaN, length(θ̂), length(θ̂))
