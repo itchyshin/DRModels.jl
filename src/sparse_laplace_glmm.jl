@@ -207,6 +207,20 @@ end
 _clamp_active(θ, ks; lo::Real = -8.0, hi::Real = 3.0, tol::Real = 1e-3) =
     any(k -> θ[k] <= lo + tol || θ[k] >= hi - tol, ks)
 
+# A log-SD this small (sd < ~1e-3 of the residual scale) is a variance collapse:
+# the marginal is flat in that coordinate, the gradient-difference Hessian is
+# singular, and the value-based path plus the singular-vcov guard owns that case.
+const _SE_LOGSD_LO = -7.0
+
+# Adapt a route's tight, cold-started `fg(θ) -> (val, grad, b, ok)` into the
+# in-place `grad!(Gout, θ)` that `_finite_hessian_from_gradient` differences.
+# A failed inner solve becomes NaN, which the helper turns into an all-NaN vcov.
+_se_grad(fgtight) = function (Gout, θ)
+    _, g, _, ok = fgtight(θ)
+    Gout .= ok ? g : NaN
+    return Gout
+end
+
 # ---------------------------------------------------------------------------
 # Boundary polish for a collapsed variance component (issue #422).
 #
@@ -664,7 +678,15 @@ function _fit_poisson_general_laplace(fam::Poisson, y, Xμ, Q, leaf_node, nmμ, 
     grad!(gfinal, θ̂)
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
     V = if se
-        Hθ = _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        Hθ = if _clamp_active(θ̂, (pμ + 1):(pμ + 1); lo = _SE_LOGSD_LO)
+            _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        else
+            _finite_hessian_from_gradient(
+                _se_grad(θ -> _poisson_phylo_laplace_fg(
+                    y, Xμ, leaf_node, Q, logdetQ, lf, θ; grad = true, b0 = zeros(q),
+                    newton_tol = _SE_MODE_TOL, newton_maxiter = _SE_MODE_MAXITER)),
+                θ̂; context = "sparse-Laplace Poisson (general covariance)")
+        end
         _vcov_from_fd_hessian(Hθ; context = "sparse-Laplace Poisson (general covariance)")
     else
         fill(NaN, length(θ̂), length(θ̂))
@@ -943,7 +965,15 @@ function _fit_general_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, Q,
     grad!(gfinal, θ̂)
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
     V = if se
-        Hθ = _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        Hθ = if _clamp_active(θ̂, (pμ + 2):(pμ + 2); lo = _SE_LOGSD_LO)
+            _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        else
+            _finite_hessian_from_gradient(
+                _se_grad(θ -> _phylo_mean_laplace_nuisance_fg(
+                    kind, aux_from, n, Xμ, leaf_node, Q, logdetQ, θ; grad = true, b0 = zeros(q),
+                    newton_tol = _SE_MODE_TOL, newton_maxiter = _SE_MODE_MAXITER)),
+                θ̂; context = "sparse-Laplace GLMM (general-mean nuisance)")
+        end
         _vcov_from_fd_hessian(Hθ; context = "sparse-Laplace GLMM (general-mean nuisance)")
     else
         fill(NaN, length(θ̂), length(θ̂))
@@ -1896,7 +1926,15 @@ function _fit_poisson_crossed_intercepts_laplace(fam::Poisson, y, Xμ, gidx, G, 
     nllhat = nll(θ̂)
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
     V = if se
-        Hθ = _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        Hθ = if _clamp_active(θ̂, (pμ + 1):(pμ + 2); lo = _SE_LOGSD_LO)
+            _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        else
+            _finite_hessian_from_gradient(
+                _se_grad(θ -> _poisson_crossed_laplace_fg(
+                    y, Xμ, gidx, G, hidx, Hh, lf, θ; grad = true, b0 = zeros(G + Hh),
+                    newton_tol = _SE_MODE_TOL, newton_maxiter = _SE_MODE_MAXITER)),
+                θ̂; context = "sparse-Laplace Poisson (crossed intercepts)")
+        end
         _vcov_from_fd_hessian(Hθ; context = "sparse-Laplace Poisson (crossed intercepts)")
     else
         fill(NaN, length(θ̂), length(θ̂))
@@ -1954,17 +1992,24 @@ function _fit_poisson_crossed_laplace(fam::Poisson, y, Xμ, comps, nmμ, g_tol; 
 
     last_b = zeros(size(Z, 2))
     last_iters = Ref(0)
-    function eval_laplace(θ; grad::Bool = false)
+    function eval_laplace(θ; grad::Bool = false, tight::Bool = false)
         βμ = θ[1:pμ]
         logσ = clamp.(θ[pμ+1:pμ+K], -8.0, 3.0)
         η0 = Xμ * βμ
-        b, ch, iters, ok = _poisson_laplace_mode(y, η0, Z, compid, logσ; b0 = last_b)
-        if !ok
-            b, ch, iters, ok = _poisson_laplace_mode(y, η0, Z, compid, logσ; b0 = zeros(size(Z, 2)))
+        if tight
+            # SE build (#1073): cold start + tightened inner solve; touches no warm state.
+            b, ch, iters, ok = _poisson_laplace_mode(y, η0, Z, compid, logσ;
+                b0 = zeros(size(Z, 2)), tol = _SE_MODE_TOL, maxiter = _SE_MODE_MAXITER)
+            ok || return grad ? (1e18, fill(NaN, length(θ))) : 1e18
+        else
+            b, ch, iters, ok = _poisson_laplace_mode(y, η0, Z, compid, logσ; b0 = last_b)
+            if !ok
+                b, ch, iters, ok = _poisson_laplace_mode(y, η0, Z, compid, logσ; b0 = zeros(size(Z, 2)))
+            end
+            last_iters[] = iters
+            ok || return grad ? (1e18, zeros(length(θ))) : 1e18
+            last_b .= b
         end
-        last_iters[] = iters
-        ok || return grad ? (1e18, zeros(length(θ))) : 1e18
-        last_b .= b
         η = clamp.(η0 .+ Z * b, -30.0, 30.0)
         μ = exp.(η)
         data = zero(eltype(θ))
@@ -2068,7 +2113,13 @@ function _fit_poisson_crossed_laplace(fam::Poisson, y, Xμ, comps, nmμ, g_tol; 
     end
     θ̂ = Optim.minimizer(res)
     V = if se
-        H = _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        H = if _clamp_active(θ̂, (pμ + 1):(pμ + K); lo = _SE_LOGSD_LO)
+            _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        else
+            _finite_hessian_from_gradient(
+                (Gout, θ) -> (Gout .= eval_laplace(θ; grad = true, tight = true)[2]),
+                θ̂; context = "sparse-Laplace Poisson (crossed)")
+        end
         _vcov_from_fd_hessian(H; context = "sparse-Laplace Poisson (crossed)")
     else
         fill(NaN, length(θ̂), length(θ̂))
