@@ -765,6 +765,7 @@ function fit_q4_reml(prob::AugProblem, Q_cond::SparseMatrixCSC;
                      phi0=nothing, beta0=nothing, Lambda0=nothing,
                      g_tol::Float64=1e-3, iterations::Int=200,
                      n_newton::Int=40, h_fd::Float64=1e-5,
+                     f_reltol::Float64=1e-5,
                      # `lc_zero`: same block-diagonal Σ_a constraint as the ML path —
                      # log-Cholesky indices (1..10) pinned to 0. Here they map into
                      # the phi vector (β_μ AND β_σ profiled out), at offset kr.
@@ -856,7 +857,7 @@ function fit_q4_reml(prob::AugProblem, Q_cond::SparseMatrixCSC;
         LBFGS(m=5,
               alphaguess=Optim.LineSearches.InitialStatic(scaled=true),
               linesearch=Optim.LineSearches.BackTracking(order=3)),
-        Optim.Options(g_tol=gtol_i, f_reltol=1e-5, successive_f_tol=10,
+        Optim.Options(g_tol=gtol_i, f_reltol=f_reltol, successive_f_tol=10,
                       iterations=iters_i, show_trace=verbose, show_every=1),
     )
 

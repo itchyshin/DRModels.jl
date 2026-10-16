@@ -495,6 +495,7 @@ function fit_q4_sparse_tmb(prob::AugProblem, Q_cond::SparseMatrixCSC;
                            θ0 = nothing, β0 = nothing, Λ0 = nothing,
                            g_tol::Float64 = 1e-3, iterations::Int = 200,
                            n_newton::Int = 40, show_trace::Bool = false,
+                           f_reltol::Float64 = 1e-7,
                            # `lc_zero`: log-Cholesky indices (1..10) pinned to 0 so
                            # the optimiser never moves them — an OUTER constraint on
                            # Σ_a, leaving marginal_and_exact_grad untouched. Zeroing
@@ -578,7 +579,7 @@ function fit_q4_sparse_tmb(prob::AugProblem, Q_cond::SparseMatrixCSC;
         # this engine and drmTMB hit it (drmTMB: "false convergence (8)"). The
         # correct criterion is RELATIVE OBJECTIVE CHANGE (info-geometry-scout.md,
         # pain #3). Require 2 successive sub-tol steps to avoid a premature stop.
-        Optim.Options(g_tol = g_tol, f_reltol = 1e-7, successive_f_tol = 3,
+        Optim.Options(g_tol = g_tol, f_reltol = f_reltol, successive_f_tol = 3,
                       iterations = iterations,
                       show_trace = show_trace, show_every = 1),
     )

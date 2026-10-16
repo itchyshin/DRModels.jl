@@ -236,6 +236,7 @@ function fit_q4_sparse_fisherz(prob::AugProblem, Q_cond::SparseMatrixCSC;
                                g_tol::Float64 = 1e-3, iterations::Int = 200,
                                n_newton::Int = 40, show_trace::Bool = false,
                                time_limit::Float64 = 25.0,
+                               f_reltol::Float64 = 1e-7,
                                linesearch = Optim.LineSearches.MoreThuente())
     if ψ0 === nothing
         β0 === nothing && error("supply ψ0 or (β0, Λ0/Σa0)")
@@ -276,7 +277,7 @@ function fit_q4_sparse_fisherz(prob::AugProblem, Q_cond::SparseMatrixCSC;
         od, ψ0,
         LBFGS(alphaguess = Optim.LineSearches.InitialStatic(scaled = true),
               linesearch = linesearch),
-        Optim.Options(g_tol = g_tol, f_reltol = 1e-7, successive_f_tol = 3,
+        Optim.Options(g_tol = g_tol, f_reltol = f_reltol, successive_f_tol = 3,
                       iterations = iterations, time_limit = time_limit,
                       show_trace = show_trace, show_every = 1),
     )

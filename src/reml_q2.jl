@@ -323,7 +323,8 @@ route's arithmetic, which the q=4 gate confirmed by tightening from 5.5436 to
 function fit_coevolution_q2_reml(prob::CoevoProblem, Q_cond::SparseMatrixCSC;
                                  β0 = nothing, Λ0 = nothing, σ0 = nothing,
                                  rho0::Real = 0.0, g_tol::Float64 = 1e-6,
-                                 iterations::Int = 1000, fd_h::Float64 = 1e-6)
+                                 iterations::Int = 1000, fd_h::Float64 = 1e-6,
+                                 f_reltol::Float64 = 1e-10)
     prob.q == 2 || throw(ArgumentError("fit_coevolution_q2_reml requires q = 2"))
     β0 === nothing && (β0 = prob.X \ prob.Y)
     β0 = Matrix{Float64}(β0)
@@ -358,7 +359,7 @@ function fit_coevolution_q2_reml(prob::CoevoProblem, Q_cond::SparseMatrixCSC;
     res = Optim.optimize(negreml, g!, phi0,
                          Optim.LBFGS(linesearch = Optim.LineSearches.MoreThuente()),
                          Optim.Options(g_tol = g_tol, iterations = iterations,
-                                       f_reltol = 1e-10, successive_f_tol = 2))
+                                       f_reltol = f_reltol, successive_f_tol = 2))
     phî = Optim.minimizer(res)
     Λ̂, D̂, chΛ̂ = _q2_reml_unpack_phi(phî)
     reml_ll, β̂, û = _q2_reml_ll(prob, Q_cond, Λ̂, D̂, chΛ̂, β_cache[])

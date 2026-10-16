@@ -425,7 +425,7 @@ Returns `(; β, Λ, σ_res, loglik, converged, iterations, θ)`.
 function fit_coevolution(prob::CoevoProblem, Q_cond::SparseMatrixCSC;
                          β0 = nothing, Λ0 = nothing, σ0 = nothing,
                          g_tol::Float64 = 1e-6, iterations::Int = 1000,
-                         fd_h::Float64 = 1e-6)
+                         fd_h::Float64 = 1e-6, f_reltol::Float64 = 1e-10)
     q = prob.q
     if β0 === nothing
         β0 = prob.X \ prob.Y                      # k × q OLS
@@ -466,7 +466,7 @@ function fit_coevolution(prob::CoevoProblem, Q_cond::SparseMatrixCSC;
     res = Optim.optimize(negℓ, g!, θ0,
                          Optim.LBFGS(linesearch = Optim.LineSearches.MoreThuente()),
                          Optim.Options(g_tol = g_tol, iterations = iterations,
-                                       f_reltol = 1e-10, successive_f_tol = 2))
+                                       f_reltol = f_reltol, successive_f_tol = 2))
     θ̂ = Optim.minimizer(res)
     β̂, Λ̂, σ̂ = coevo_unpack(prob, θ̂)
     return (; β = β̂, Λ = Λ̂, σ_res = σ̂,
@@ -519,7 +519,8 @@ function fit_coevolution_q2_residual(prob::CoevoProblem, Q_cond::SparseMatrixCSC
                                      σ0 = nothing, rho0 = 0.0,
                                      g_tol::Float64 = 1e-6,
                                      iterations::Int = 1000,
-                                     fd_h::Float64 = 1e-6)
+                                     fd_h::Float64 = 1e-6,
+                                     f_reltol::Float64 = 1e-10)
     prob.q == 2 || throw(ArgumentError("fit_coevolution_q2_residual requires q = 2"))
     if β0 === nothing
         β0 = prob.X \ prob.Y
@@ -560,7 +561,7 @@ function fit_coevolution_q2_residual(prob::CoevoProblem, Q_cond::SparseMatrixCSC
     res = Optim.optimize(negℓ, g!, θ0,
                          Optim.LBFGS(linesearch = Optim.LineSearches.MoreThuente()),
                          Optim.Options(g_tol = g_tol, iterations = iterations,
-                                       f_reltol = 1e-10, successive_f_tol = 2))
+                                       f_reltol = f_reltol, successive_f_tol = 2))
     θ̂ = Optim.minimizer(res)
     β̂, Λ̂, D̂, σ̂, ρ̂ = coevo_q2_residual_unpack(prob, θ̂)
     # #503 (follow-up): `negℓ` above already catches a throw from
