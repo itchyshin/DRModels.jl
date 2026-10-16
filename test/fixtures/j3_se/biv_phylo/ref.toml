@@ -1,6 +1,10 @@
 route = "biv_phylo"
 drmTMB_version = "0.7.1"
+drmTMB_commit = "ca3ddefa5ea11bbfd3b765615dfbb89305d2485a"
 R_version = "4.4.3"
+opt_convergence = 0
+pd_hess = true
+comparable = true
 tmb_names = ["beta_mu1", "beta_mu1", "beta_mu2", "beta_mu2", "beta_sigma1", "beta_sigma2", "beta_rho12", "log_sd_phylo", "log_sd_phylo", "eta_cor_phylo"]
 loglik = -1001.6048034680855
 max_grad = 3.488567e-11

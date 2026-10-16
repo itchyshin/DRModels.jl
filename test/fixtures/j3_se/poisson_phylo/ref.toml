@@ -1,6 +1,10 @@
 route = "poisson_phylo"
 drmTMB_version = "0.7.1"
+drmTMB_commit = "ca3ddefa5ea11bbfd3b765615dfbb89305d2485a"
 R_version = "4.4.3"
+opt_convergence = 0
+pd_hess = true
+comparable = true
 tmb_names = ["beta_mu", "beta_mu", "log_sd_phylo"]
 loglik = -439.9810934621637
 max_grad = 9.225287e-12

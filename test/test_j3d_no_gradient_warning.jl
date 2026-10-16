@@ -7,8 +7,9 @@
 #      factorises through CHOLMOD and so has no gradient at all: every fit on it warns,
 #      ML and REML, whichever structured provider (one unconditional call after the provider
 #      dispatch; phylo ML/REML and relmat ML are fitted here);
-#   3. the REML arm of the Gaussian phylo-mean variance block (location_only.jl), which has
-#      only a finite-difference gradient.
+#   3. the Gaussian phylo-mean variance block (location_only.jl): since J3e (#1091) BOTH arms
+#      difference an exact score (REML: `_loconly_reml_fg`), so neither takes the no-gradient
+#      path; on J3d (#1082) the REML arm had only a finite-difference gradient and warned.
 # The clamp fallback (a gradient exists but a log-SD has collapsed) keeps its own warning,
 # `_warn_value_hessian`; both are checked to be distinct below.
 using DRModels
@@ -124,7 +125,7 @@ _j3d_q2_formula(term) = bf(mu1 = term(:y1), mu2 = term(:y2),
     @test vcov(fitq) ≈ vcov(fitK) rtol = 1e-12  # same fit, same SEs: only the message is muted
 end
 
-@testset "Gaussian phylo mean: REML variance block has no exact gradient and warns; ML does not" begin
+@testset "Gaussian phylo mean: both arms have an exact score, so neither warns about a missing gradient" begin
     rng = MersenneTwister(1082)
     p = 40
     phy = random_balanced_tree(p; branch_length = 0.2)
@@ -136,9 +137,10 @@ end
     y = [0.4 + 0.6 * x[k] + u[pos[phy.leaf_indices[k]]] + 0.4 * randn(rng) for k in 1:p]
     dat = (; y, x, species = copy(phy.leaf_names))
     f = bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ 1))
-    fitr = @test_logs (:warn, r"^sparse phylo-mean variance block \(REML\) vcov: this route has no exact gradient") match_mode = :any drm(
-        f, Gaussian(); data = dat, tree = phy, method = :REML)
-    @test all(isfinite, vcov(fitr))
-    logs, fitm = _j3d_logs(() -> drm(f, Gaussian(); data = dat, tree = phy))
-    @test !_j3d_has(logs, _J3D_NOGRAD)       # the ML arm differences the exact profiled score
+    for method in (:ML, :REML)
+        logs, fit = _j3d_logs(() -> drm(f, Gaussian(); data = dat, tree = phy, method = method))
+        @test !_j3d_has(logs, _J3D_NOGRAD)   # ML: profiled score; REML: exact restricted score
+        @test fit.nllgrad !== nothing
+        @test all(isfinite, vcov(fit))
+    end
 end

@@ -1,0 +1,12 @@
+route = "sim_binomial_crossed_s4"
+drmTMB_version = "0.7.1"
+drmTMB_commit = "ca3ddefa5ea11bbfd3b765615dfbb89305d2485a"
+R_version = "4.4.3"
+opt_convergence = 0
+pd_hess = true
+comparable = true
+tmb_names = ["beta_mu", "beta_mu", "log_sd_mu", "log_sd_mu"]
+loglik = -782.5934787814449
+max_grad = 3.266654e-11
+theta = [0.15990887213237695, 0.35475170706018577, -0.61442314289600775, -1.2567443184127949]
+se = [0.1088824592223968, 0.036296734721829101, 0.13362029947220047, 0.20462442572437295]

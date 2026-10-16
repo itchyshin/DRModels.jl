@@ -1,0 +1,12 @@
+route = "sim_poisson_crossed3_s4"
+drmTMB_version = "0.7.1"
+drmTMB_commit = "ca3ddefa5ea11bbfd3b765615dfbb89305d2485a"
+R_version = "4.4.3"
+opt_convergence = 0
+pd_hess = true
+comparable = true
+tmb_names = ["beta_mu", "beta_mu", "log_sd_mu", "log_sd_mu", "log_sd_mu"]
+loglik = -604.45261455240325
+max_grad = 9.589662e-12
+theta = [0.19453941720058274, 0.45450220156740995, -0.78563507529685639, -1.3404669738589294, -1.9508664874664616]
+se = [0.11104492962799123, 0.042087123048999961, 0.15674030230953484, 0.24841705933432495, 0.44868004778026116]

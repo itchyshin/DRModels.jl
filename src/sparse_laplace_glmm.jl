@@ -175,6 +175,10 @@ end
 # never a made-up SE. `require_pd` (default) also returns NaN when the
 # symmetrised Hessian is not positive definite.
 const _SE_MODE_TOL = 1e-12
+# If the cold solve cannot reach 1e-12 (rounding floor of the step norm), retry cold at looser
+# tolerances before giving up: a NaN vcov is worse than a 1e-8-converged mode, whose gradient is
+# still accurate to ~1e-8 -- far below the old stencil noise.
+const _SE_MODE_TOLS = (1e-12, 1e-10, 1e-8)
 const _SE_MODE_MAXITER = 100
 
 function _finite_hessian_from_gradient(grad!, x; require_pd::Bool = true,
@@ -241,8 +245,14 @@ const _SE_LOGSD_LO = -7.0
 # in-place `grad!(Gout, θ)` that `_finite_hessian_from_gradient` differences.
 # A failed inner solve becomes NaN, which the helper turns into an all-NaN vcov.
 _se_grad(fgtight) = function (Gout, θ)
-    _, g, _, ok = fgtight(θ)
-    Gout .= ok ? g : NaN
+    for tol in _SE_MODE_TOLS
+        _, g, _, ok = fgtight(θ, tol)
+        if ok
+            Gout .= g
+            return Gout
+        end
+    end
+    Gout .= NaN
     return Gout
 end
 
@@ -708,9 +718,9 @@ function _fit_poisson_general_laplace(fam::Poisson, y, Xμ, Q, leaf_node, nmμ, 
             _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
         else
             _finite_hessian_from_gradient(
-                _se_grad(θ -> _poisson_phylo_laplace_fg(
+                _se_grad((θ, tol) -> _poisson_phylo_laplace_fg(
                     y, Xμ, leaf_node, Q, logdetQ, lf, θ; grad = true, b0 = zeros(q),
-                    newton_tol = _SE_MODE_TOL, newton_maxiter = _SE_MODE_MAXITER)),
+                    newton_tol = tol, newton_maxiter = _SE_MODE_MAXITER)),
                 θ̂; context = "sparse-Laplace Poisson (general covariance)")
         end
         _vcov_from_fd_hessian(Hθ; context = "sparse-Laplace Poisson (general covariance)")
@@ -998,9 +1008,9 @@ function _fit_general_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, Q,
             _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
         else
             _finite_hessian_from_gradient(
-                _se_grad(θ -> _phylo_mean_laplace_nuisance_fg(
+                _se_grad((θ, tol) -> _phylo_mean_laplace_nuisance_fg(
                     kind, aux_from, n, Xμ, leaf_node, Q, logdetQ, θ; grad = true, b0 = zeros(q),
-                    newton_tol = _SE_MODE_TOL, newton_maxiter = _SE_MODE_MAXITER)),
+                    newton_tol = tol, newton_maxiter = _SE_MODE_MAXITER)),
                 θ̂; context = "sparse-Laplace GLMM (general-mean nuisance)")
         end
         _vcov_from_fd_hessian(Hθ; context = "sparse-Laplace GLMM (general-mean nuisance)")
@@ -1200,9 +1210,9 @@ function _fit_phylo_mean_laplace_hetero(fam, kind, aux_from, n::Int, Xμ, Xσ,
             _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
         else
             _finite_hessian_from_gradient(
-                _se_grad(θ -> _phylo_mean_laplace_hetero_fg(
+                _se_grad((θ, tol) -> _phylo_mean_laplace_hetero_fg(
                     kind, aux_from, n, Xμ, Xσ, leaf_node, Q, logdetQ, θ; grad = true, b0 = zeros(q),
-                    newton_tol = _SE_MODE_TOL, newton_maxiter = _SE_MODE_MAXITER)),
+                    newton_tol = tol, newton_maxiter = _SE_MODE_MAXITER)),
                 θ̂; context = "sparse-Laplace GLMM (phylo-mean, covariate dispersion)")
         end
         _vcov_from_fd_hessian(Hθ; context = "sparse-Laplace GLMM (phylo-mean, covariate dispersion)")
@@ -1362,9 +1372,9 @@ function _fit_phylo_mean_laplace(fam, kind, aux, n::Int, Xμ, labels, tree, nmμ
             _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
         else
             _finite_hessian_from_gradient(
-                _se_grad(θ -> _phylo_mean_laplace_fg(
+                _se_grad((θ, tol) -> _phylo_mean_laplace_fg(
                     kind, aux, n, Xμ, leaf_node, Q, logdetQ, θ; grad = true, b0 = zeros(q),
-                    newton_tol = _SE_MODE_TOL, newton_maxiter = _SE_MODE_MAXITER)),
+                    newton_tol = tol, newton_maxiter = _SE_MODE_MAXITER)),
                 θ̂; context = "sparse-Laplace GLMM (phylo-mean)")
         end
         _vcov_from_fd_hessian(Hθ; context = "sparse-Laplace GLMM (phylo-mean)")
@@ -1978,9 +1988,9 @@ function _fit_poisson_crossed_intercepts_laplace(fam::Poisson, y, Xμ, gidx, G, 
             _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
         else
             _finite_hessian_from_gradient(
-                _se_grad(θ -> _poisson_crossed_laplace_fg(
+                _se_grad((θ, tol) -> _poisson_crossed_laplace_fg(
                     y, Xμ, gidx, G, hidx, Hh, lf, θ; grad = true, b0 = zeros(G + Hh),
-                    newton_tol = _SE_MODE_TOL, newton_maxiter = _SE_MODE_MAXITER)),
+                    newton_tol = tol, newton_maxiter = _SE_MODE_MAXITER)),
                 θ̂; context = "sparse-Laplace Poisson (crossed intercepts)")
         end
         _vcov_from_fd_hessian(Hθ; context = "sparse-Laplace Poisson (crossed intercepts)")
@@ -2046,8 +2056,12 @@ function _fit_poisson_crossed_laplace(fam::Poisson, y, Xμ, comps, nmμ, g_tol; 
         η0 = Xμ * βμ
         if tight
             # SE build (#1073): cold start + tightened inner solve; touches no warm state.
-            b, ch, iters, ok = _poisson_laplace_mode(y, η0, Z, compid, logσ;
-                b0 = zeros(size(Z, 2)), tol = _SE_MODE_TOL, maxiter = _SE_MODE_MAXITER)
+            b = ch = iters = nothing; ok = false
+            for tol in _SE_MODE_TOLS
+                b, ch, iters, ok = _poisson_laplace_mode(y, η0, Z, compid, logσ;
+                    b0 = zeros(size(Z, 2)), tol = tol, maxiter = _SE_MODE_MAXITER)
+                ok && break
+            end
             ok || return grad ? (1e18, fill(NaN, length(θ))) : 1e18
         else
             b, ch, iters, ok = _poisson_laplace_mode(y, η0, Z, compid, logσ; b0 = last_b)
@@ -3052,9 +3066,13 @@ function _fit_crossed_mean_laplace(fam, kind, aux, n::Int, Xμ, gidx, G, hidx, H
         if tight
             # SE build (#1073): cold start, tightened inner solve, no warm-state
             # carry-over, so the stencil sees the same mode solve at every point.
-            b, ch, _, ok = _crossed_mean_mode(kind, aux, η0, gidx, G, hidx, Hh, logσ;
-                                              b0 = zeros(G + Hh), tol = _SE_MODE_TOL,
-                                              maxiter = _SE_MODE_MAXITER)
+            b = ch = nothing; ok = false
+            for tol in _SE_MODE_TOLS
+                b, ch, _, ok = _crossed_mean_mode(kind, aux, η0, gidx, G, hidx, Hh, logσ;
+                                                  b0 = zeros(G + Hh), tol = tol,
+                                                  maxiter = _SE_MODE_MAXITER)
+                ok && break
+            end
             ok || return grad ? (1e18, fill(NaN, length(θ))) : 1e18
         else
             b, ch, _, ok = _crossed_mean_mode(kind, aux, η0, gidx, G, hidx, Hh, logσ; b0 = last_b)
@@ -3346,12 +3364,9 @@ function _fit_crossed_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, gi
             _warn_value_hessian("sparse-Laplace GLMM (crossed-mean nuisance)")
             _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
         else
-            se_grad!(Gout, θ) = begin
-                _, g, _, ok = _crossed_mean_laplace_nuisance_fg(
-                    kind, aux_from, n, Xμ, gidx, G, hidx, Hh, θ; grad = true,
-                    b0 = zeros(G + Hh), mode_tol = _SE_MODE_TOL, mode_maxiter = _SE_MODE_MAXITER)
-                Gout .= ok ? g : NaN
-            end
+            se_grad! = _se_grad((θ, tol) -> _crossed_mean_laplace_nuisance_fg(
+                kind, aux_from, n, Xμ, gidx, G, hidx, Hh, θ; grad = true,
+                b0 = zeros(G + Hh), mode_tol = tol, mode_maxiter = _SE_MODE_MAXITER))
             _finite_hessian_from_gradient(se_grad!, θ̂;
                 context = "sparse-Laplace GLMM (crossed-mean nuisance)")
         end

@@ -616,9 +616,9 @@ function _fit_cumulative_phylo_laplace(fam::CumulativeLogit, y::Vector{Int}, Xμ
             _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
         else
             _finite_hessian_from_gradient(
-                _se_grad(θ -> _cumulative_phylo_laplace_fg(
+                _se_grad((θ, tol) -> _cumulative_phylo_laplace_fg(
                     y, K, nc, n, Xμ, leaf_node, Q, logdetQ, θ; grad = true, b0 = zeros(q),
-                    newton_tol = _SE_MODE_TOL, newton_maxiter = _SE_MODE_MAXITER)),
+                    newton_tol = tol, newton_maxiter = _SE_MODE_MAXITER)),
                 θ̂; context = "sparse-Laplace CumulativeLogit (phylo-mean)")
         end
         _vcov_from_fd_hessian(Hθ; context = "sparse-Laplace CumulativeLogit (phylo-mean)")

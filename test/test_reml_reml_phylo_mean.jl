@@ -112,10 +112,15 @@ using Test, Random, LinearAlgebra, Statistics
     # at the REML optimum -- measured (1.01, 0.99) on the two variance parameters,
     # which reads as "not converged" for a converged fit -- through the R bridge's
     # `gradient` field. The ML fit keeps its analytic score; the REML fit carries
-    # none, because there is no analytic score for the log-determinant term here.
+    # EXACT restricted score (#1073): the ML score plus the closed-form derivative of
+    # 1/2 log det Xmu'V^-1 Xmu -- not the ML score, and not a finite difference.
     @test fit_reml.nll !== nothing
     @test fit_reml.nll(fit_reml.theta) ≈ -fit_reml.reml_loglik rtol = 1e-9
-    @test fit_reml.nllgrad === nothing
+    @test fit_reml.nllgrad !== nothing
+    let g = zeros(length(fit_reml.theta))
+        fit_reml.nllgrad(g, fit_reml.theta)
+        @test maximum(abs, g) < 1e-5          # a stationary point of the RESTRICTED objective
+    end
     @test fit_ml.nll(fit_ml.theta) ≈ -fit_ml.loglik rtol = 1e-9
     @test fit_ml.nllgrad !== nothing
 
@@ -125,8 +130,16 @@ using Test, Random, LinearAlgebra, Statistics
     σ²_reml = exp(2 * lσ_reml)
     _, _, chM, _ = DRModels.build_M(prob, exp(2 * lσphy_reml), σ²_reml)
     VX = DRModels.Vinv_mul(prob, chM, σ²_reml, prob.X)
-    gls_se = sqrt.(diag(inv(Symmetric(0.5 .* (prob.X' * VX .+ VX' * prob.X)))))
-    @test se[1:pμ] ≈ gls_se rtol = 1e-8
+    Ainv = inv(Symmetric(0.5 .* (prob.X' * VX .+ VX' * prob.X)))
+    gls_se = sqrt.(diag(Ainv))
+    # #1073 (F4): the REML mean block is the JOINT covariance (X'V^-1 X)^-1 + G Vvv G', with Vvv the
+    # restricted variance block, as drmTMB reports; (X'V^-1 X)^-1 alone is only conditional on the
+    # variance parameters and is a lower bound.
+    vhat = [lσ_reml, lσphy_reml]
+    Gβ = DRModels._loconly_beta_jacobian(prob, vhat)
+    Vvv = fit_reml.vcov[(pμ + 1):(pμ + 2), (pμ + 1):(pμ + 2)]
+    @test fit_reml.vcov[1:pμ, 1:pμ] ≈ Ainv .+ Gβ * Vvv * Gβ' rtol = 1e-8
+    @test all(se[1:pμ] .>= gls_se .* (1 - 1e-12))
 end
 
 @testset "Gaussian mean-only phylo REML: adjacent shapes still refuse" begin
