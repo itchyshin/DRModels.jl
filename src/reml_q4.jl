@@ -728,6 +728,14 @@ and scale fixed effects) are profiled out internally; only beta_rho stays outer.
 Returns NamedTuple: (phi, beta, Lambda, reml_loglik, ml_loglik, converged,
                      iterations, g_residual, f_calls, u_hat)
 
+`converged` needs the final evaluation's inner (u, beta) mode to be found
+(#526), a finite restricted objective, and a gradient-verified outer optimum
+(#946): the exact phi gradient at the reported point, over the free (unpinned)
+coordinates, must meet the CALLER's `g_tol` on the mean objective or pass the
+unit-free Newton-decrement test (`_gradient_verified`); an iteration- or
+time-limit stop never counts. The restart, rescue and polish below still steer
+on Optim's own flag, so the estimates are those of the f_reltol-stopping run.
+
 # Automatic warm restart
 
 On some cells the REML LBFGS's first line-search step from the ML warm start

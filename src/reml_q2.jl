@@ -300,9 +300,17 @@ while profiling beta, the profile step is an EXACT single Newton step (not an
 iterative/alternating scheme) — see `_q2_profile_and_schur`.
 
 Returns `(; β, Λ, residual_cov, σ_res, rho12, reml_loglik, ml_loglik, loglik,
-converged, iterations, u_hat)`, mirroring `fit_coevolution_q2_residual`'s
+converged, iterations, g_residual, u_hat)`, mirroring `fit_coevolution_q2_residual`'s
 field names (`loglik` is set to `reml_loglik`, matching the q=4 REML fitter's
 convention in `_fit_bivariate_q4_structured`).
+
+`converged` is gradient-verified (#946): Optim's own flag is true at an `f_reltol`
+plateau whatever the gradient, so the route instead requires the gradient
+re-evaluated at the minimizer to meet `g_tol` (on the mean objective Optim
+sees) or the unit-free Newton-decrement test, and never counts an iteration-
+or time-limit stop; see `_gradient_verified`. `g_residual` is the max-abs mean-scale
+finite-difference gradient at the reported point (`NaN` if a probe was not
+finite). `f_reltol` (default `1e-10`) is Optim's relative-objective stop.
 
 # Normalisation convention (#477)
 

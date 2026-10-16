@@ -219,6 +219,12 @@ Fit the q=4 PLSM in the separation (`D·R·D`) OUTER parameterization, with
 `Σ_a = D R D`, `D = diag(exp.(d))` and `R = C Cᵀ` a correlation matrix. The inner
 engine is the UNTOUCHED `marginal_and_exact_grad`. Returns `Σ_a` and the 6
 among-axis correlations directly, alongside the usual fit diagnostics.
+`converged` is gradient-verified (#946): Optim's own flag is true at an `f_reltol`
+plateau whatever the gradient, so the route instead requires the gradient
+re-evaluated at the minimizer to meet `g_tol` (on the mean objective Optim
+sees) or the unit-free Newton-decrement test, and never counts an iteration-
+or time-limit stop; see `_gradient_verified`. `g_residual` is Optim's last
+mean-scale gradient norm.
 
 !!! warning "The name says Fisher-z; the map is not Fisher-z"
     `fisherz` here, and the `fz_` prefix throughout, is historical. `R` is built

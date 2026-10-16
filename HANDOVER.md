@@ -74,7 +74,7 @@ inference now in `src/inference.jl`). Full grid + caveats: `report/comparison-gr
 
 | Claim | Number | Status |
 |---|---|---|
-| **Single fit p=100 vs drmTMB** | **1.14 s vs 2.48 s = 2.18×**; logLik −256.51 ≈ −256.52; converged (drmTMB: "false convergence 8") | ✅ head-to-head |
+| **Single fit p=100 vs drmTMB** | **1.14 s vs 2.48 s = 2.18×**; logLik −256.51 ≈ −256.52; converged (drmTMB: "false convergence 8"). *#946 (2026-10-16): `converged` is now gradient-verified; this fit stays converged only by the absolute test (g_resid 9.53e-4 ≤ g_tol 1e-3, Julia 1.12.7), with a Newton decrement of 1.0e-3 nats left on the boundary plateau. See `report/comparison-grid.md` §2.* | ✅ head-to-head |
 | **O(p) scaling** (per-dim-variance, nrep=4) | p=100/1k/5k/**10k** = 0.77 / 4.5 / 49.5 / **112.9 s**; **k≈1.08** | ✅ verified |
 | **Location-only (conjugate)** | **EM 3.1× faster than LBFGS** (p=200/1k), same MLE | ✅ conjugacy thesis |
 | **Inference at the variance boundary** | Wald valid **16/17** params (drmTMB sdreport = all-NaN); bootstrap **60/60** | ✅ a genuine inferential edge |
@@ -133,6 +133,9 @@ data attach only at the p leaf nodes.
   invariant across p), Inf barrier on PD/ρ-guard violations, **relative-objective
   stopping** (the singular variance boundary makes ‖g‖ plateau; gradient-norm
   stopping never fires — same spot where drmTMB reports "false convergence 8").
+  That rule only STOPS the optimiser; since #946 the reported `converged` is
+  gradient-verified (`_gradient_verified`), so a plateau stop with a large
+  gradient reads `converged = false`, as drmTMB's does.
 - **O(p) data sampler** (`bench/run_scaling.jl` `gen`): `u ~ N(0,P⁻¹)` via sparse
   `cholesky(P)` + triangular solve (`F.UP \ z`); verified `Cov(û)≈P⁻¹` at p=8.
   Replaces the dense-Σ_phy O(p³) generator (capped ~p=3000).
@@ -215,7 +218,8 @@ infra for AI-REML — **not** `algorithm = :natgrad`). Those promotions do
    objective is unbounded below at scale.
 3. **Singular variance boundary (Watanabe)** — near sd_phy→0, ‖g‖ plateaus and
    drmTMB's `sdreport` returns NaN. Use relative-objective stopping; for inference
-   prefer bootstrap / χ̄² over Wald there.
+   prefer bootstrap / χ̄² over Wald there. (#946: such a stop is reported as
+   converged only if the gradient test or the Newton-decrement test passes.)
 4. **Dense-Σ_phy generator caps ~p=3000** — always use the O(p) precision sampler
    at large p.
 

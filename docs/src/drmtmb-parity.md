@@ -72,7 +72,10 @@ is deliberately not being spent on it.
   in 1.14 s (logLik −256.51, converged) against drmTMB's 2.48 s (logLik
   −256.52, `converged=false` code 8) — **2.18× faster**, measured 2026-05-30.
   This is a **then**-measured single-machine, single-fixture comparison, not a
-  standing warm-workflow claim (see `report/comparison-grid.md`).
+  standing warm-workflow claim (see `report/comparison-grid.md`). Since #946
+  the reported `converged` is gradient-verified; re-measured 2026-10-16 the fit
+  is converged by the absolute gradient test only (g_resid 9.53e-4 ≤ 1e-3),
+  and drmTMB at `ca3ddef` still reports false convergence (8) there.
 - **O(p) sparse phylogenetic path (direct Julia only):** a biological
   per-dimension-variance model scales at k≈1.08 (near-perfect O(p)) from
   p=100 to **p=10,000** (112.9 s), using a Takahashi sparse-precision sampler

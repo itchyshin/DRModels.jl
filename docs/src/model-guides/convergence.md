@@ -84,7 +84,12 @@ to it:
 - **Off-diagonal initialisation.** Starting the cross-covariance Cholesky away
   from zero (the `lc3`/`lc7` entries) avoids a saddle near the diagonal start.
 - **The Watanabe-singular boundary.** When a per-axis phylogenetic variance is
-  near zero the model sits at a singular point; the optimiser flags the plateau
-  rather than chasing a flat ridge. This matches drmTMB's behaviour (it reports
-  "false convergence") — both engines are correct; the geometry, not the
-  optimiser, is the limiting factor.
+  near zero the model sits at a singular point; the optimiser stops on the
+  plateau (a relative change of the objective) rather than chasing a flat
+  ridge. That stop is not a convergence verdict: `converged` is true only if
+  the gradient at the reported point meets `g_tol` or the Newton decrement is
+  negligible (#946), so a plateau stop with a large gradient reads
+  `converged = false`. This matches drmTMB's behaviour (it reports
+  "false convergence"); the geometry, not the optimiser, is the limiting
+  factor. Inspect the reported `g_residual` and prefer profile or bootstrap
+  intervals for the collapsed axis.

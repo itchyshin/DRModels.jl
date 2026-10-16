@@ -420,7 +420,14 @@ central finite-difference gradient: the marginal is a single sparse solve, so FD
 is cheap, and a quasi-Newton method converges far faster than a simplex on the
 `k·q + q(q+1)/2 + q`-dimensional θ. ForwardDiff cannot flow through the CHOLMOD
 factor (the same constraint the q=4 engine hits), hence FD rather than AD here.
-Returns `(; β, Λ, σ_res, loglik, converged, iterations, θ)`.
+Returns `(; β, Λ, σ_res, loglik, converged, iterations, g_residual, θ)`.
+`converged` is gradient-verified (#946): Optim's own flag is true at an `f_reltol`
+plateau whatever the gradient, so the route instead requires the gradient
+re-evaluated at the minimizer to meet `g_tol` (on the mean objective Optim
+sees) or the unit-free Newton-decrement test, and never counts an iteration-
+or time-limit stop; see `_gradient_verified`. `g_residual` is the max-abs mean-scale
+finite-difference gradient at `θ` (`NaN` if a probe was not finite). `f_reltol`
+(default `1e-10`) is Optim's relative-objective stop.
 """
 function fit_coevolution(prob::CoevoProblem, Q_cond::SparseMatrixCSC;
                          β0 = nothing, Λ0 = nothing, σ0 = nothing,
@@ -515,6 +522,14 @@ Fit the q=2 phylogenetic coevolution model with a bivariate residual covariance.
 This is the same target as drmTMB's bivariate Gaussian q2 location route:
 two phylogenetic random-effect axes (`mu1`, `mu2`) plus residual `rho12`.
 It is ML-only and complete-response only at the caller level.
+
+`converged` is gradient-verified (#946): Optim's own flag is true at an `f_reltol`
+plateau whatever the gradient, so the route instead requires the gradient
+re-evaluated at the minimizer to meet `g_tol` (on the mean objective Optim
+sees) or the unit-free Newton-decrement test, and never counts an iteration-
+or time-limit stop; see `_gradient_verified`. The fit must also evaluate its
+objective at `θ` (`cholesky_ok`). `g_residual` is the max-abs mean-scale
+finite-difference gradient at `θ` (`NaN` if a probe was not finite).
 """
 function fit_coevolution_q2_residual(prob::CoevoProblem, Q_cond::SparseMatrixCSC;
                                      β0 = nothing, Λ0 = nothing,

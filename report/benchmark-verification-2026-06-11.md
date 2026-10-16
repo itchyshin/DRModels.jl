@@ -24,7 +24,7 @@ invocations (each does a warm-up fit + 2 timed fits, reports best-of-2).
 | Quantity | Documented (claim) | Measured (this session) | Verdict |
 |---|---|---|---|
 | logLik (Julia) | −256.51 | **−256.5177** (deterministic, both runs) | ✅ matches |
-| converged | true | **true** (iters 97, g_resid 7.2e-3) | ✅ |
+| converged | true | **true** (iters 97, g_resid 7.2e-3) | ✅ *(#946, 2026-10-16: that `true` was Optim's f-plateau flag; with g_resid 7.2e-3 > g_tol 1e-3 the gradient-verified flag would read false. See `report/comparison-grid.md` §2 note.)* |
 | wall (Julia) | 1.14 s | **1.098 s / 1.123 s** (two runs) | ✅ at/under claim |
 | drmTMB baseline | 2.48 s | 2.48 s (documented constant; **not re-run** — see §4) | — |
 | speedup | 2.18× | **2.21× / 2.26×** (= 2.48 / measured) | ✅ meets-or-exceeds |
