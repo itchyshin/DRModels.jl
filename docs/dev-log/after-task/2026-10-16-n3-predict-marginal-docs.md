@@ -64,8 +64,9 @@ Docs-only fix lane at base `f71b292` (drmTMB pin `ca3ddef`), PR #1100.
   receipt (2026-09-30, after #719) shows 0.01–0.24 log-likelihood units on seven
   Poisson/Beta/NB2/Gamma/Student cells, with the default within about 5e-4 of a
   61-node reference and drmTMB the further. The pages lead with the receipt and give
-  0.0014 as one example, attributed by date and commit (published pages may not cite
-  `dev-log/` paths or "issue #N"). The first push led with 0.0014; the audit caught it.
+  0.0014 as one example, kept because the brief asks for it and attributed by date,
+  commits and a bare `#1070` (the audits ban `dev-log/` paths and "issue #N"
+  phrasing, not a bare number). The first push led with 0.0014; the audit caught it.
 - **`:Laplace` "for parity, not a better default" is scoped** to the adaptive cells:
   on Gaussian `sigma ~ (1 | g)` the default is the fixed grid and `capabilities.md`
   already (correctly) recommends `:Laplace` for large groups.
@@ -106,6 +107,19 @@ Two adversarial passes; see the PR for the full list.
   row; the prediction page's `se.fit` claim; temporal "every structured term"; `re_sd`
   scale wording; logit "closer to 1/2" (now "strictly, whenever Xβ̂ ≠ 0"); test
   comment; NEWS fragment overstatements.
-- Round 2 (targeted re-check of the fixes): pending at this commit; recorded in the next one.
+- Round 2: a targeted re-check of the round-2 fixes (three reviewers and one skeptic per
+  finding, 19 agents). Every new number was re-derived from the receipt and confirmed;
+  16 findings survived, one major: `type = :response` was still described as always
+  applying the inverse link, which is false for the ZeroOneBeta mean, CumulativeLogit
+  (`predict` refuses those fits) and the Student / SkewNormal `nu` in
+  `predict_parameters`. Fixed in round 3 by scoping those sentences and naming the
+  exceptions, together with the minors: LogNormal `phylo` fits also store conditional
+  means; the `:Laplace` refusal sorting (BetaBinomial, Student); the range scoped to the
+  datasets it comes from (sparse binary data implies about 0.27); "1e-8" for
+  log-likelihoods vs 5e-8 for estimates; Getting started's `:Laplace` advice scoped to
+  the accepting families; rosetta table labels; the prediction page's in-sample
+  identity; and the stale `Laplace` / `AGHQ` / `MarginalMethod` docstrings.
+- Verdict: **clean for a docs-only lane**, given that the remaining inaccuracies are
+  code behaviour (listed in 3a) that the docs now describe instead of hiding.
 - License: drmTMB behaviour is described from `R/methods.R` / `man/*.Rd` at `ca3ddef`
   in our own words; no GPL text copied.

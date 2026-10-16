@@ -105,8 +105,10 @@ stayed within about 5e-4 of it. A later Poisson `(1 | g)` comparison
   on the mean of Poisson, Binomial, NegBinomial2, Gamma and Beta (with
   `sigma ~ 1`) or Student, and for a Gaussian random intercept on `sigma`
   (`sigma ~ 1 + (1 | g)`, fixed-effect `sigma` covariates allowed) with a
-  fixed-effect mean, by maximum likelihood. Other random-effect structures on
-  those families are refused with an `ArgumentError`; LogNormal, ZeroOneBeta,
+  fixed-effect mean, by maximum likelihood. Every other model whose `drm` takes a
+  `marginal` keyword (BetaBinomial included) refuses it, with an `ArgumentError`
+  except for shapes Student never fits, which raise a plain error; LogNormal,
+  ZeroOneBeta,
   Tweedie, CumulativeLogit, SkewNormal, the truncated count families and every
   bivariate model have no `marginal` keyword and raise a `MethodError`. Crossed
   and structured routes need no option, because their default already is the

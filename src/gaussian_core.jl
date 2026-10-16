@@ -1593,8 +1593,10 @@ Exceptions:
   EM store `Xβ̂ + Sû`, conditional on the fitted phylogenetic effects;
 - ZeroOneBeta stores the zero/one-inflated mixture mean and CumulativeLogit the
   expected category score;
-- LogNormal stores `exp(Xβ̂)` (the median) on its own routes, and the log-scale
-  means on its crossed, structured and bivariate routes.
+- LogNormal stores `exp(Xβ̂)` (the median) on its own routes, and the Gaussian
+  log-scale fit's means on its crossed, structured and bivariate routes (so on
+  its default `phylo(1 | g)` route they include the fitted phylogenetic effects,
+  as above).
 
 drmTMB's `fitted()` adds the fitted random-effect modes and, for some families
 (LogNormal, zero-inflated, hurdle and truncated counts), returns the unconditional
@@ -1758,7 +1760,9 @@ Population-level prediction on `newdata` (a NamedTuple / column table) with ever
 random and structured effect **set to zero**: the prediction for an average group
 (`b = 0`), not an average over groups. `type = :link` returns `Xβ̂`;
 `type = :response` (default) applies the family inverse link to it, `g⁻¹(Xβ̂)`
-(`exp` for Poisson/Gamma, `logistic` for Beta/Binomial, identity for Gaussian).
+(`exp` for Poisson/Gamma, `logistic` for Beta/Binomial, identity for Gaussian);
+for ZeroOneBeta it currently returns `Xβ̂` without the logit link, and
+CumulativeLogit fits are not supported.
 Grouping columns in `newdata` are not used, so a group level the model never saw
 is predicted exactly like a fitted one. Univariate returns a vector; bivariate
 returns `Dict(:mu1 => …, :mu2 => …)`. In-sample, `predict(fit, data) ≈ fitted(fit)`
@@ -2015,13 +2019,15 @@ distributional parameter the model carries — always `:mu` and (when the family
 uses it) `:sigma`, plus any family extras present (`:nu`, `:zi`, `:hu`, `:zoi`,
 `:coi`).
 
-`type = :response` (default) applies each parameter's inverse link. In-sample it
-reproduces [`marginal_parameters`](@ref) (i.e. `fit.means[:mu]`,
-`fit.scales[...]`) for the mean and `sigma` of the GLM-type families, but not for
-the Student or SkewNormal `nu`, a `meta_V` `sigma`, or the means listed under
-[`fitted`](@ref), which are stored on another scale or conditional on the random
-effects. `type = :link` returns the linear predictor `Xβ̂` per parameter (the
-working scale).
+`type = :response` (default) applies each parameter's inverse link, with current
+exceptions: `nu` uses `exp` for every family but Tweedie (so a Student `nu` comes
+back as `ν − 2` and a SkewNormal `nu` as `exp` of the slant), and the ZeroOneBeta
+mean is left on the link scale. In-sample it reproduces
+[`marginal_parameters`](@ref) (i.e. `fit.means[:mu]`, `fit.scales[...]`) for the
+mean and `sigma` of the GLM-type families and for LogNormal's own routes, but not
+for those `nu` parameters, a `meta_V` `sigma` (stored as `√(v + σ²)`), or the
+[`fitted`](@ref) means stored conditionally or on another scale. `type = :link`
+returns the linear predictor `Xβ̂` per parameter (the working scale).
 
 For a univariate fit the parameters are `:mu`, (`:sigma`) plus family extras; for
 a bivariate fit they are `:mu1, :mu2, :sigma1, :sigma2, :rho12` (each from its own

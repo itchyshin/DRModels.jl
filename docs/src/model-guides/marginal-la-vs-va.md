@@ -51,8 +51,8 @@ nodes per group) and drmTMB fit the same model with different integrators. On
 seven Poisson, Beta, NegBinomial2, Gamma and Student test datasets their
 log-likelihoods differed by 0.01 to 0.24 units, with drmTMB's always the one
 further from a 61-node quadrature reference (a later Poisson comparison showed
-a gap of about 0.0014); with `marginal = :Laplace` the two agree to within
-about 1e-8. The default is usually the more accurate integral, so use
+a gap of about 0.0014); with `marginal = :Laplace` their log-likelihoods agree
+to within about 1e-8 and their estimates to about 5e-8 (relative). The default is usually the more accurate integral, so use
 `:Laplace` for parity with drmTMB, not as a better default.
 
 The gap used to be larger. Before version 0.7.2, `:LA` integrated an ordinary

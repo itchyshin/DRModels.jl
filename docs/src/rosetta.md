@@ -119,7 +119,7 @@ fit = drm(
 | `rho12(fit)` | `rho12(fit)` |
 | `corpairs(fit)` | `corpairs(fit)` / `corpairs_data(fit)` |
 | `fitted(fit)` / `residuals(fit)` | `fitted(fit)` / `residuals(fit)` |
-| `predict(fit, newdata)` (response mean) | `predict(fit, newdata; type = :response)` |
+| `predict(fit, newdata)` (response scale, random effects at zero) | `predict(fit, newdata; type = :response)` |
 | predict **every** distributional parameter at new data | `predict_parameters(fit, newdata; type = :response)` |
 | in-sample fitted per-observation parameters | `marginal_parameters(fit)` |
 | build a covariate grid for prediction | `prediction_grid(reference; predictor = values, …)` |
@@ -140,15 +140,16 @@ distributional parameters:
 
 | Intent | drmTMB (R) | DRModels.jl (Julia) |
 |---|---|---|
-| Response-scale mean at new data | `predict(fit, newdata)` | `predict(fit, newdata; type = :response)` |
+| Response-scale prediction at new data (random effects at zero) | `predict(fit, newdata)` | `predict(fit, newdata; type = :response)` |
 | Linear-predictor (link) scale | `predict(fit, newdata, type = "link")` | `predict(fit, newdata; type = :link)` |
 | Predict **all** distributional parameters | (capability: predict each `bf()` parameter) | `predict_parameters(fit, newdata; type = :response)` |
 | In-sample fitted per-obs parameters | (capability: per-observation fitted parameters) | `marginal_parameters(fit)` |
 | Build a covariate grid | (capability: hold-others / sweep grid) | `prediction_grid(reference; predictor = values, …)` |
 
 - `predict(fit, newdata; type = :response)` returns the response-scale prediction
-  (the family inverse link applied to `Xβ̂` — `exp`/`logistic`/identity); `type =
-  :link` returns `Xβ̂`. Univariate gives a vector; bivariate gives
+  (for the GLM-type families, the inverse link applied to `Xβ̂` —
+  `exp`/`logistic`/identity; ZeroOneBeta currently returns the logit-scale `Xβ̂`);
+  `type = :link` returns `Xβ̂`. Univariate gives a vector; bivariate gives
   `Dict(:mu1 => …, :mu2 => …)`. Random effects are set to zero, so with a
   nonlinear link this is the prediction for an average group, not the mean
   averaged over groups.
@@ -178,7 +179,7 @@ distributional parameters:
   the inverse-link location (for LogNormal, the median `exp(Xβ̂)`).
 
 drmTMB's exact R spelling for per-parameter prediction is not asserted here
-(only the capability is); the response-mean `predict` row is the verified parity
+(only the capability is); the response-scale `predict` row is the verified parity
 point.
 
 ## Naming rules to remember

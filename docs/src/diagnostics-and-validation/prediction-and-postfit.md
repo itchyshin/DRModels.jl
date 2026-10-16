@@ -91,7 +91,8 @@ For the per-observation fitted parameters at the **training** data there is a
 cheap accessor that reads straight from the fit (no recomputation) —
 [`marginal_parameters`](@ref). In-sample it equals
 `predict_parameters(fit, data)` for the mean and `sigma` of the GLM-type families
-(Gaussian, Poisson, NegBinomial2, Gamma, Beta, Binomial), as here:
+(Gaussian, Poisson, NegBinomial2, Gamma, Beta, Binomial), as here (the
+[`predict_parameters`](@ref) docstring lists the exceptions):
 
 ```@example postfit
 mp = marginal_parameters(fit)
