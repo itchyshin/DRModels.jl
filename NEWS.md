@@ -6,6 +6,8 @@ human-readable changelog.
 
 ## Development
 
+- **Gaussian `phylo(1 | g)` quantile residuals are now the population-level PIT (#995, #996).** The sparse and conjugate-EM routes store the BLUP-conditional mean in `fitted()`, and the quantile residual integrated σ_b around that mean, counting the random effect twice, and used σ_b² for every tip although a tip's prior variance is σ_b²·C_ii on a raw branch-length tree. `residuals(fit; type = :quantile)` now centres on the fixed-effect mean `Xβ̂` and uses σ_b²·C_ii per tip, so it equals `(y − Xβ̂) / √(σ̂_e² + σ̂_b² C_ii)` exactly, and no longer warns. The dense structured fallback keeps the warning. `fit.ranef` on these fits is now a dict-like `LocOnlyRanef` (same `group => BLUPs` entries); the EM route now stores its BLUPs too.
+
 ## v0.7.2 — 2026-10-04
 
 - **Location-scale fits no longer stall at a variance boundary.** Two loops in the location-scale fit counted an exactly tied objective as progress and had no stall stop, so a fit whose variance component slid to its zero boundary could spin for tens of minutes (a 4-species Gamma bootstrap test took 12 to 74 minutes on CI, depending on the runner's BLAS kernel). The inner mode solve now stops a run of 40 exactly tied steps only when the gradient is far above its bound and cannot reach it in the remaining iterations, and the certified refinement ladder stops a run only after 100 iterations with a bit-identical position, value and gradient. Converging fits are unchanged: across 30 test files every location-scale fit is bit-identical to before, and the fixture's standard errors and `check_drm` verdict are unchanged.

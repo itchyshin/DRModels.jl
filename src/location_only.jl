@@ -110,6 +110,42 @@ function make_loc_problem(phy::AugmentedPhy, y, X; species=1:(phy.n_leaves))
     )
 end
 
+# #995 / #996: what the quantile residual of a Gaussian `phylo(1 | g)` fit needs
+# beyond the BLUPs. `fit.means[:mu]` on these routes is CONDITIONAL
+# (`Xβ̂ + S û`), so the population-level PIT must be centred on the fixed-effect
+# mean `Xβ̂` instead, and a tip's prior variance on the raw branch-length scale
+# is `σ_phy² · C_ii`, not `σ_phy²`. `DrmFit` has no slot for either, and both
+# `fit.means` and `fit.scales` are enumerated by public accessors (`sigma()`,
+# the bridge dpars), so they ride on `fit.ranef`. It is an `AbstractDict` over
+# the same `group => BLUPs` entries the plain `Dict` held, so `ranef()`,
+# `get(fit.ranef, name, nothing)` and `fit.ranef isa AbstractDict` are unchanged.
+struct LocOnlyRanef <: AbstractDict{Symbol,Vector{Float64}}
+    effects::Dict{Symbol,Vector{Float64}}   # group => per-tip BLUPs (tree leaf order)
+    mu_fixed::Vector{Float64}               # Xμ β̂ (population-level mean), one per row
+    prob::LocOnlyProblem                    # rows -> tips, and the tip covariance
+end
+Base.length(r::LocOnlyRanef) = length(r.effects)
+Base.iterate(r::LocOnlyRanef, st...) = iterate(r.effects, st...)
+Base.getindex(r::LocOnlyRanef, k) = r.effects[k]
+Base.get(r::LocOnlyRanef, k, default) = get(r.effects, k, default)
+Base.haskey(r::LocOnlyRanef, k) = haskey(r.effects, k)
+
+# C_ii for each data row: the diagonal of the raw branch-length tip covariance
+# `Q_cond⁻¹` at the row's tip (Cov(u) = σ_phy² Q_cond⁻¹, see `build_M`). One
+# sparse solve per distinct tip; called once per `residuals(type = :quantile)`.
+function _loconly_row_tip_variance(prob::LocOnlyProblem)
+    F = cholesky(Symmetric(prob.Q_cond))
+    tv = fill(NaN, prob.p)
+    e = zeros(prob.n_keep)
+    for k in unique(prob.species)
+        j = prob.leaf_pos[k]
+        e[j] = 1.0
+        tv[k] = (F \ e)[j]
+        e[j] = 0.0
+    end
+    return tv[prob.species]
+end
+
 """
     _phylo_mean_leaf_index(phy::AugmentedPhy, labels) -> Vector{Int}
 
@@ -3396,7 +3432,9 @@ function _fit_structured_gaussian_em(
     # #1047: the EM's own stopping rule, not `iterations < max_iter` (which
     # misreads a stop that lands exactly on the cap).
     converged = r.converged
-    return DrmFit(fam, blocks, names, θ̂, V, r.loglik, n, converged, means, obs, scales)
+    fit = DrmFit(fam, blocks, names, θ̂, V, r.loglik, n, converged, means, obs, scales)
+    return _withranef(fit, LocOnlyRanef(
+        Dict{Symbol,Vector{Float64}}(Symbol(grp) => r.u[prob.leaf_pos]), Xμ * r.β, prob))
 end
 
 # Central finite-difference Jacobian dβ̂/dv of the profiled GLS solution
@@ -3594,7 +3632,8 @@ function _fit_structured_gaussian_sparse_lbfgs(
     end
     fit = _withranef(
         reml ? _withnll(fit, reml_full_nll) : _withnll(fit, loc_obj, nllgrad!),
-        Dict(Symbol(grp) => u_post[prob.leaf_pos])
+        LocOnlyRanef(
+            Dict{Symbol,Vector{Float64}}(Symbol(grp) => u_post[prob.leaf_pos]), Xμ * β̂, prob)
     )
     if penalty !== nothing
         fit = _withmap(fit, _phylo_pen_apply_single!(nothing, penalty, v̂, 2), penalty)
