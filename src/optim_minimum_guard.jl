@@ -71,6 +71,35 @@ near a variance boundary are not switched to this predicate.
 drm_optim_converged(res) = Optim.converged(res) && Optim.g_converged(res)
 
 """
+    _NEWTON_DECREMENT_TOL
+
+Per-observation bound on the Newton decrement `½ g'H⁻¹g` used by
+[`_newton_decrement_small`](@ref). `1e-10` is a judgement threshold, not a derived
+or calibrated one: the decrement approximates the nll still to be gained, so
+`n * 1e-10` is far below any change in logLik a user could act on, yet far above
+the floating-point noise of a fit at the optimum. Change it here only.
+"""
+const _NEWTON_DECREMENT_TOL = 1e-10
+
+"""
+    _newton_decrement_small(g, H, n) -> Bool
+
+Unit-free stationarity test (DRModels.jl#983). The absolute `g_tol` of
+[`drm_optim_converged`](@ref) is unit dependent: for a tiny residual SD the mean
+gradient scales like `1/σ²` and coefficient noise alone exceeds `g_tol` at the exact
+optimum. The Newton decrement `½ g'H⁻¹g` is invariant to affine reparametrisation
+(so to rescaling `y`). True only when `H` is finite and positive definite, `g` is
+finite, and the decrement is below `n * _NEWTON_DECREMENT_TOL`. A plateau with a
+large gradient has a large decrement and is still rejected (#944).
+"""
+function _newton_decrement_small(g::AbstractVector, H::AbstractMatrix, n::Integer)
+    (all(isfinite, g) && all(isfinite, H)) || return false
+    F = cholesky(Symmetric(Matrix(H)); check = false)
+    issuccess(F) || return false
+    return 0.5 * dot(g, F \ g) <= n * _NEWTON_DECREMENT_TOL
+end
+
+"""
     _SCALE_RUNOFF_LOG_SPREAD
 
 Unit-free bound on the spread of fitted `log σ_i` across observations used by

@@ -1224,17 +1224,25 @@ function _fit_fixed_gaussian(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, g_tol)
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res)
     # #968: a (near-)constant response sends log σ → -∞ and the Hessian overflows.
-    V, hess_finite = _vcov_from_hessian_checked(ForwardDiff.hessian(nll, θ̂),
-                                                _all_finite(y, Xμ, Xσ);
+    H = ForwardDiff.hessian(nll, θ̂)
+    V, hess_finite = _vcov_from_hessian_checked(H, _all_finite(y, Xμ, Xσ);
                                                 context = "Gaussian location-scale")
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ)]
     names = [:mu => nmμ, :sigma => nmσ]
     means = Dict(:mu => Xμ * θ̂[1:pμ])
     obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
+    # #983: the absolute g_tol is unit dependent (gradient ~ 1/σ²), so a fit at the
+    # optimum of a tiny-scale response never meets it. Accept a unit-free
+    # stationary point (small Newton decrement) unless Optim hit its iteration cap.
+    # A line-search stall at the optimum (noise-limited) is exactly this case.
+    # #944 (plateau, large decrement) and #1059 (run-off) still apply.
+    stationary = drm_optim_converged(res) ||
+        (hess_finite && !Optim.iteration_limit_reached(res) &&
+         _newton_decrement_small(ForwardDiff.gradient(nll, θ̂), H, n))
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n,
-                        drm_optim_converged(res) && hess_finite && !_scale_runoff(scales),
+                        stationary && hess_finite && !_scale_runoff(scales),
                         means, obs, scales), nll),
         Optim.iterations(res))
 end

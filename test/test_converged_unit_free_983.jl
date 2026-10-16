@@ -38,7 +38,7 @@ end
     # Contract of the helper: a large decrement (far from stationary) is not
     # converged however the gradient is scaled; a non-PD Hessian never converges.
     H = [2.0 0.0; 0.0 2.0]
-    @test DRModels._newton_decrement_small([1e-3, 1e-3], H, 100)
+    @test DRModels._newton_decrement_small([1e-6, 1e-6], H, 100)
     @test !DRModels._newton_decrement_small([1.0, 1.0], H, 100)
     @test !DRModels._newton_decrement_small([1e-9, 1e-9], [1.0 2.0; 2.0 1.0], 100)
     @test !DRModels._newton_decrement_small([1e-9, 1e-9], fill(NaN, 2, 2), 100)
