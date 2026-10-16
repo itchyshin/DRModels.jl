@@ -172,14 +172,14 @@ integrates over them, and that integral has to be approximated. For an ordinary
 random intercept on the mean of most non-Gaussian families, DRModels.jl's
 default (`marginal = :LA`) uses adaptive Gauss–Hermite quadrature with 5 nodes
 per group, whereas drmTMB uses the Laplace approximation. The two packages
-therefore report slightly different log-likelihoods for the same model (about
-0.0014 apart in one Poisson comparison). To reproduce drmTMB's numbers, pass
-`marginal = :Laplace`. That option is for parity, not a better default: the
-adaptive quadrature is usually the more accurate integral. Compare `loglik`,
+therefore report different log-likelihoods for the same model, by about 0.001
+to 0.24 units on the datasets compared so far. To reproduce drmTMB's numbers,
+pass `marginal = :Laplace`. That option is for parity, not a better default:
+the adaptive quadrature is usually the more accurate integral. Compare `loglik`,
 `lrtest`, `aic` and `bic` only between fits that use the same approximation.
 The [drmTMB parity page](drmtmb-parity.md#Default-marginal-approximation)
-lists the default for each kind of random effect and the models that accept
-`:Laplace`.
+lists the defaults for the main random-effect routes and the models that
+accept `:Laplace`.
 
 ## Where to go next
 

@@ -1582,14 +1582,23 @@ nobs(fit::DrmFit) = fit.nobs
 """
     fitted(fit)
 
-Fitted mean(s) on the response scale. Univariate models return the μ vector;
-bivariate models return `Dict(:mu1=>…, :mu2=>…)`. On a random-effect fit this is
-the population-level value with the random effects at zero (for most families
-`g⁻¹(Xβ̂)`, the value [`predict`](@ref) gives in-sample), not the marginal mean
-averaged over them. Exception: the default Gaussian `phylo(1 | g)` mean route
-stores `Xβ̂ + Sû`, conditional on the fitted phylogenetic effects (and LogNormal
-structured fits keep the Gaussian log-scale fit's means). drmTMB's `fitted()`
-instead adds the fitted random-effect modes.
+Fitted value(s) of the mean parameter: the μ vector for univariate models,
+`Dict(:mu1=>…, :mu2=>…)` for bivariate models. On a random-effect fit this is the
+population-level value with the random effects at zero, not the marginal mean
+averaged over them. For the GLM-type families (Gaussian, Poisson, NegBinomial2,
+Gamma, Beta, Binomial) it is `g⁻¹(Xβ̂)`, the value [`predict`](@ref) gives in-sample.
+
+Exceptions:
+- the Gaussian `phylo(1 | g)` mean routes fitted by sparse L-BFGS (the default) or
+  EM store `Xβ̂ + Sû`, conditional on the fitted phylogenetic effects;
+- ZeroOneBeta stores the zero/one-inflated mixture mean and CumulativeLogit the
+  expected category score;
+- LogNormal stores `exp(Xβ̂)` (the median) on its own routes, and the log-scale
+  means on its crossed, structured and bivariate routes.
+
+drmTMB's `fitted()` adds the fitted random-effect modes and, for some families
+(LogNormal, zero-inflated, hurdle and truncated counts), returns the unconditional
+response mean, so the two packages' `fitted` values are not directly comparable.
 """
 fitted(fit::DrmFit) = haskey(fit.means, :mu) ? fit.means[:mu] : fit.means
 
@@ -1753,24 +1762,26 @@ random and structured effect **set to zero**: the prediction for an average grou
 Grouping columns in `newdata` are not used, so a group level the model never saw
 is predicted exactly like a fitted one. Univariate returns a vector; bivariate
 returns `Dict(:mu1 => …, :mu2 => …)`. In-sample, `predict(fit, data) ≈ fitted(fit)`
-wherever `fitted` also stores the `b = 0` value, as on the fixed-effect and
-ordinary `(1 | g)` routes (see [`fitted`](@ref) for the exception).
+on the fixed-effect and ordinary `(1 | g)` routes of the GLM-type families
+(Gaussian, Poisson, NegBinomial2, Gamma, Beta, Binomial); [`fitted`](@ref) lists
+the fits whose stored values differ.
 
 With an identity link (Gaussian) the `b = 0` prediction is also the marginal mean,
 averaged over the random-effect distribution. With a nonlinear link it is not,
 because the inverse link of the average linear predictor differs from the average
-of the inverse link. For a log link and one normal random intercept of SD `σ_b`,
-the marginal mean is `exp(Xβ̂ + σ_b²/2)`, that is
+of the inverse link. For a log link (Poisson, NegBinomial2, Gamma) and one normal
+random intercept of SD `σ_b`, the marginal mean is `exp(Xβ̂ + σ_b²/2)`, that is
 `predict(fit, newdata) .* exp(re_sd(fit)[:g]^2 / 2)` for grouping `g`. For a logit
-link it has no closed form and lies closer to 1/2 than `predict` does. DRModels.jl
-has no marginal-mean predictor: in other cases, average `g⁻¹(Xβ̂ + b)` over
-`b ~ N(0, σ_b²)` numerically.
+link it has no closed form and lies between `predict` and 1/2 (strictly closer to
+1/2 whenever `Xβ̂ ≠ 0`). DRModels.jl has no marginal-mean predictor: in other cases,
+average `g⁻¹(Xβ̂ + b)` over `b ~ N(0, σ_b²)` numerically.
 
-drmTMB's `predict()` with `newdata` returns the same fixed-effect, population-level
-value (random effects at zero), so the two packages' predictions compare like with
-like. Without `newdata`, drmTMB's `predict()`, and so its `fitted()`, add the fitted
-random-effect modes for the fitted rows; DRModels.jl's `predict` always takes
-`newdata`.
+drmTMB's `predict()` with `newdata` also sets the random effects to zero, so for the
+GLM-type families above the two packages' predictions compare like with like
+(drmTMB's LogNormal prediction is the log-scale `μ`; compare it with
+`type = :link`). Without `newdata`, drmTMB's `predict()`, and so its `fitted()`, add
+the fitted random-effect modes for the fitted rows; DRModels.jl's `predict` always
+takes `newdata`.
 
 `se = false` (default) is the point prediction above. `se = true` adds
 **delta-method standard errors** for the mean (the glmmTMB `se.fit` convention;
@@ -2004,11 +2015,13 @@ distributional parameter the model carries — always `:mu` and (when the family
 uses it) `:sigma`, plus any family extras present (`:nu`, `:zi`, `:hu`, `:zoi`,
 `:coi`).
 
-`type = :response` (default) applies each parameter's inverse link, so in-sample
-it reproduces [`marginal_parameters`](@ref) (i.e. `fit.means[:mu]`,
-`fit.scales[...]`) wherever those stored values are themselves the `b = 0` values
-(see [`fitted`](@ref)). `type = :link` returns the linear predictor `Xβ̂` per
-parameter (the working scale).
+`type = :response` (default) applies each parameter's inverse link. In-sample it
+reproduces [`marginal_parameters`](@ref) (i.e. `fit.means[:mu]`,
+`fit.scales[...]`) for the mean and `sigma` of the GLM-type families, but not for
+the Student or SkewNormal `nu`, a `meta_V` `sigma`, or the means listed under
+[`fitted`](@ref), which are stored on another scale or conditional on the random
+effects. `type = :link` returns the linear predictor `Xβ̂` per parameter (the
+working scale).
 
 For a univariate fit the parameters are `:mu`, (`:sigma`) plus family extras; for
 a bivariate fit they are `:mu1, :mu2, :sigma1, :sigma2, :rho12` (each from its own
@@ -2164,9 +2177,10 @@ scale / correlation parameter from `fit.scales` (e.g. `:sigma`, `:nu`, `:zi`,
 
 Despite the name, nothing is averaged over the random effects: on a random-effect
 fit these are the stored population-level values, with the random effects at zero
-(see [`fitted`](@ref) for the route that stores conditional means). In-sample
-they equal `predict_parameters(fit, data)` (response scale) wherever the stored
-values are the `b = 0` values.
+(see [`fitted`](@ref) for the routes that store conditional means or another
+scale). In-sample they equal `predict_parameters(fit, data)` (response scale) for
+the mean and `sigma` of the GLM-type families; [`predict_parameters`](@ref) lists
+the parameters for which they do not.
 
 # Example
 ```julia
@@ -2564,8 +2578,9 @@ end
 
 Estimated random-effect standard deviations, keyed by grouping factor. A
 mean-axis random intercept (`y ~ x + (1|g)`) or independent slope
-(`y ~ x + (0+x|g)`) is keyed by the bare group name and is on the response
-scale. A scale-axis random intercept (`sigma ~ 1 + (1|g)`) is keyed
+(`y ~ x + (0+x|g)`) is keyed by the bare group name and is on the mean's
+linear-predictor (link) scale, which is the response scale only for an identity
+link such as Gaussian's. A scale-axis random intercept (`sigma ~ 1 + (1|g)`) is keyed
 `<group>_logsigma` because that SD lives on the log-σ scale — the two are NOT
 directly comparable, and the suffix keeps them distinct so a side-by-side read
 is not silently mixing scales. A correlated random intercept+slope block

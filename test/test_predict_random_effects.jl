@@ -10,8 +10,9 @@ using Test, StableRNGs, QuadGK
 import Distributions
 
 @testset "#1092 predict sets random effects to zero (b = 0), not the marginal mean" begin
-    # E[h(Z)] for Z ~ N(0, 1), by Gauss–Kronrod quadrature (the tails beyond ±12
-    # carry less than 1e-30 of the mass for the integrands below).
+    # E[h(Z)] for Z ~ N(0, 1), by Gauss–Kronrod quadrature on [-12, 12]; the
+    # truncated tails cost under 1e-25 of each integral here (σ_b ≲ 1.5), far
+    # below the test tolerances.
     enorm(h) = quadgk(z -> h(z) * exp(-z^2 / 2) / sqrt(2π), -12.0, 12.0; rtol = 1e-12)[1]
 
     @testset "Poisson (1 | g): log link" begin

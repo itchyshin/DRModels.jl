@@ -47,12 +47,13 @@ approximation.
 
 drmTMB (TMB) integrates an ordinary random intercept by the one-point Laplace
 approximation, so on `(1 | g)` the default `:LA` route (adaptive quadrature, 5
-nodes per group) and drmTMB fit the same model with different integrators. In a
-Poisson `(1 | g)` comparison on three simulated datasets, drmTMB's
-log-likelihood was about 0.0014 units lower than the default fit's; with
-`marginal = :Laplace`, the dataset checked agreed to 5.6e-9. The default is
-usually the more accurate integral, so use `:Laplace` for parity with drmTMB,
-not as a better default.
+nodes per group) and drmTMB fit the same model with different integrators. On
+seven Poisson, Beta, NegBinomial2, Gamma and Student test datasets their
+log-likelihoods differed by 0.01 to 0.24 units, with drmTMB's always the one
+further from a 61-node quadrature reference (a later Poisson comparison showed
+a gap of about 0.0014); with `marginal = :Laplace` the two agree to within
+about 1e-8. The default is usually the more accurate integral, so use
+`:Laplace` for parity with drmTMB, not as a better default.
 
 The gap used to be larger. Before version 0.7.2, `:LA` integrated an ordinary
 `(1 | g)` on a fixed 32-node grid on the prior scale. On ten test datasets with a
@@ -165,7 +166,7 @@ against a curvature match at a single point.
 |---|---|
 | Fixed-effects-only model | VA adds nothing — there is no latent integral to approximate. |
 | Gaussian response with a Gaussian RE entering the mean linearly and independent residual variance | VA adds nothing — the marginal is already exact here. |
-| Ordinary Gamma `(1\|g)` shape | LA ≈ VA in the scoped Gamma comparison; **prefer LA** (15–20× faster warm). |
+| Ordinary Gamma `(1\|g)` shape | LA ≈ VA in the scoped Gamma comparison; **prefer LA** (15–20× faster warm, timed before version 0.7.2 with the fixed 32-node grid). |
 | Two-part / hurdle / ZINB geometry | VA may help in principle, but **DRModels.jl does not currently support these VA models**. |
 | Speed-critical fits | Route-specific: `:LA` is the default; Poisson scalar random intercepts use adaptive GHQ with 5 nodes per group. |
 
@@ -226,7 +227,8 @@ relevant where a one-mode approximation is scientifically questionable, such as
 two-part shape or ZINB multimodality, although those VA models are not currently
 supported in DRModels.jl. On ordinary Gamma `(1 | g)`, the evaluated comparison
 does **not** show a VA accuracy edge; prefer LA over VA: the default `:LA` (adaptive
-GHQ with 5 nodes per group on this cell), or `marginal = :Laplace` to fit drmTMB's Laplace approximation.
+GHQ with 5 nodes per group on this cell since version 0.7.2; the comparison
+used the earlier fixed grid), or `marginal = :Laplace` to fit drmTMB's Laplace approximation.
 
 ## See also
 
