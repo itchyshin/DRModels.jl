@@ -3605,10 +3605,13 @@ function _fit_structured_gaussian_sparse_lbfgs(
         # mean coefficients is (X'V⁻¹X)⁻¹ + G Vvv Gᵀ with G = dβ̂/dv (the profiled
         # GLS solution's sensitivity to the variance parameters), and the cross
         # block is G Vvv (the Schur-complement form drmTMB's joint sdreport gives).
-        # ML only: the REML mean block is (X'V⁻¹X)⁻¹ by construction. Skipped when
-        # the variance block or the Jacobian is not finite, keeping the conditional
-        # block rather than turning finite mean SEs into NaN.
-        if !reml && all(isfinite, Vvv) && all(isfinite, V[1:pμ, 1:pμ])
+        # REML too (#1073, F4): (X'V⁻¹X)⁻¹ is only the covariance of β̂ CONDITIONAL on the
+        # variance parameters. drmTMB's REML β SEs are the joint ones; on ape::carnivora the
+        # conditional slope SE is 0.02378 against drmTMB's 0.02686, and (X'V⁻¹X)⁻¹ + G Vvv Gᵀ with
+        # Vvv from the RESTRICTED Hessian reproduces 0.2203 / 0.02686 to four digits. Skipped
+        # when the variance block or the Jacobian is not finite, keeping the conditional block
+        # rather than turning finite mean SEs into NaN.
+        if all(isfinite, Vvv) && all(isfinite, V[1:pμ, 1:pμ])
             Gβ = _loconly_beta_jacobian(prob, vhat)
             if Gβ !== nothing
                 V[1:pμ, 1:pμ] .+= Gβ * Vvv * Gβ'

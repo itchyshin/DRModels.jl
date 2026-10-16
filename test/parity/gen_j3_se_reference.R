@@ -31,7 +31,8 @@ fmt <- function(x) paste0("[", paste(formatC(x, digits = 17, format = "g"), coll
 drmtmb_commit <- Sys.getenv("DRMTMB_COMMIT", unset = NA_character_)
 
 write_ref <- function(route, fit, perm, data, tree = NULL, extra = character(),
-                      se_ok = TRUE) {
+                      se_ok = TRUE, theta_lead = numeric(), se_lead = numeric(),
+                      lead_names = character()) {
   dir <- file.path(out_root, route)
   dir.create(dir, recursive = TRUE, showWarnings = FALSE)
   utils::write.csv(data, file.path(dir, "data.csv"), row.names = FALSE)
@@ -62,11 +63,11 @@ write_ref <- function(route, fit, perm, data, tree = NULL, extra = character(),
     sprintf("pd_hess = %s", tolower(as.character(pd_ok))),
     sprintf("comparable = %s", tolower(as.character(comparable))),
     sprintf("tmb_names = %s",
-            paste0("[", paste(sprintf("\"%s\"", names(par)[perm]), collapse = ", "), "]")),
+            paste0("[", paste(sprintf("\"%s\"", c(lead_names, names(par)[perm])), collapse = ", "), "]")),
     sprintf("loglik = %s", formatC(as.numeric(logLik(fit)), digits = 17, format = "g")),
     sprintf("max_grad = %s", formatC(max(abs(gr)), digits = 6, format = "e")),
-    sprintf("theta = %s", fmt(as.numeric(par)[perm])),
-    sprintf("se = %s", fmt(se[perm])),
+    sprintf("theta = %s", fmt(c(theta_lead, as.numeric(par)[perm]))),
+    sprintf("se = %s", fmt(c(se_lead, se[perm]))),
     extra
   )
   writeLines(lines, file.path(dir, "ref.toml"))
@@ -330,6 +331,17 @@ for (reml in c(FALSE, TRUE)) {
     cc <- carnivora_data(); assign("tree", cc$tree, envir = globalenv())
     f <- drmTMB(bf(lSB ~ lSW + phylo(1 | species, tree = tree), sigma ~ 1), family = gaussian(),
                 data = cc$data, REML = reml)
-    write_ref(r, f, 1:4, cc$data, cc$tree)
+    if (reml) {
+      # Under REML the mean coefficients are integrated out (TMB `random`), so `opt$par` holds
+      # only (sigma, log sd_phylo). The mean coefficients and their SEs are the GLS ones drmTMB
+      # reports through coef() / vcov(); they lead the vector, matching DRModels' theta order.
+      mu_names <- names(coef(f)$mu)
+      write_ref(r, f, 1:2, cc$data, cc$tree,
+                theta_lead = as.numeric(coef(f)$mu),
+                se_lead = sqrt(diag(vcov(f)))[paste0("mu:", mu_names)],
+                lead_names = paste0("mu:", mu_names), extra = "reml = true")
+    } else {
+      write_ref(r, f, 1:4, cc$data, cc$tree)
+    }
   }
 }

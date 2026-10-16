@@ -1,0 +1,29 @@
+| route | drmTMB commit | opt$convergence | sdr$pdHess | DRModels SHA | converged | status | max rel. SE diff |
+|---|---|---|---|---|---|---|---|
+| poisson_phylo | `ca3ddef` | 0 | true | `50c3d0e` | true | compared | 8.3e-8 |
+| nb2_phylo | `ca3ddef` | 0 | true | `50c3d0e` | true | compared | 4.6e-7 |
+| nb2_phylo_hetero | `ca3ddef` | 0 | true | `50c3d0e` | true | compared | 8.9e-7 |
+| binomial_phylo | `ca3ddef` | 0 | true | `50c3d0e` | true | compared | 4.3e-8 |
+| poisson_crossed2 | `ca3ddef` | 0 | true | `50c3d0e` | true | compared | 4.1e-7 |
+| poisson_crossed3 | `ca3ddef` | 0 | true | `50c3d0e` | true | compared | 1.9e-7 |
+| binomial_crossed | `ca3ddef` | 0 | true | `50c3d0e` | true | compared | 8.9e-8 |
+| ordinary_poisson | `ca3ddef` | 0 | true | `50c3d0e` | true | compared | 6.5e-8 |
+| ordinary_nb2 | `ca3ddef` | 0 | true | `50c3d0e` | true | compared | 2.0e-7 |
+| cumulative_phylo | `ca3ddef` | 0 | true | `50c3d0e` | true | compared | 1.5e-7 |
+| gaussian_phylo | `ca3ddef` | 0 | true | `50c3d0e` | true | compared | 3.1e-7 |
+| biv_phylo | `ca3ddef` | 0 | true | `50c3d0e` | true | compared | 5.6e-5 |
+| sim_poisson_crossed3_s1 | `ca3ddef` | 0 | true | `50c3d0e` | true | compared | 2.3e-7 |
+| sim_binomial_crossed_s1 | `ca3ddef` | 0 | true | `50c3d0e` | true | compared | 2.4e-7 |
+| sim_gamma_crossed_s1 | `ca3ddef` | 0 | true | `50c3d0e` | true | compared | 3.3e-7 |
+| sim_poisson_crossed3_s2 | `ca3ddef` | 0 | true | `50c3d0e` | true | compared | 9.4e-7 |
+| sim_binomial_crossed_s2 | `ca3ddef` | 0 | true | `50c3d0e` | true | compared | 1.6e-7 |
+| sim_gamma_crossed_s2 | `ca3ddef` | 0 | true | `50c3d0e` | true | compared | 3.3e-7 |
+| sim_poisson_crossed3_s3 | `ca3ddef` | 0 | true | `50c3d0e` | true | compared | 2.3e-7 |
+| sim_binomial_crossed_s3 | `ca3ddef` | 0 | true | `50c3d0e` | true | compared | 2.0e-7 |
+| sim_gamma_crossed_s3 | `ca3ddef` | 0 | true | `50c3d0e` | true | compared | 3.3e-7 |
+| sim_poisson_crossed3_s4 | `ca3ddef` | 0 | true | `50c3d0e` | true | compared | 2.3e-5 |
+| sim_binomial_crossed_s4 | `ca3ddef` | 0 | true | `50c3d0e` | true | compared | 2.8e-7 |
+| sim_gamma_crossed_s4 | `ca3ddef` | 0 | true | `50c3d0e` | true | compared | 3.3e-7 |
+| alfalfa_gamma_crossed | `ca3ddef` | 0 | true | `50c3d0e` | true | compared | 3.3e-7 |
+| carnivora_ml | `ca3ddef` | 0 | true | `50c3d0e` | true | compared | 1.3e-6 |
+| carnivora_reml | `ca3ddef` | 0 | true | `50c3d0e` | true | compared | 6.6e-6 |

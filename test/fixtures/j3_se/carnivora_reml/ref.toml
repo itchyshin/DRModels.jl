@@ -1,0 +1,13 @@
+route = "carnivora_reml"
+drmTMB_version = "0.7.1"
+drmTMB_commit = "ca3ddefa5ea11bbfd3b765615dfbb89305d2485a"
+R_version = "4.4.3"
+opt_convergence = 0
+pd_hess = true
+comparable = true
+tmb_names = ["mu:(Intercept)", "mu:lSW", "beta_sigma", "log_sd_phylo"]
+loglik = -29.233751401022971
+max_grad = 5.422383e-09
+theta = [2.5529336007925778, 0.59909015082980455, -1.450726283965422, -0.94990807498503671]
+se = [0.2202980216653547, 0.026863102500995596, 0.13165592221368036, 0.25401047875102606]
+reml = true
