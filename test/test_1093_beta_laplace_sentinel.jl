@@ -8,7 +8,8 @@
 # Data are simulated in Julia (the original drmTMB CSV is not in the repo); the
 # reference for the optimum is the GHQ default route, which fits the same model.
 using DRModels
-using Test, Random, Distributions, LinearAlgebra, Logging
+using Test, Random, LinearAlgebra, Logging
+import Distributions
 
 function _sim_beta_1093(seed; G = 20, n = 400, nsq = 0, phi = 3.0, b0 = 0.3, b1 = 0.8, sdu = 0.5)
     rng = MersenneTwister(seed)
