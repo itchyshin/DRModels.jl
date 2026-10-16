@@ -887,7 +887,8 @@ function _fit_bivariate_q2_structured(f::BivariateDrmFormula, fam::Gaussian, dat
     #
     # NOT SILENT (#1073): with no exact gradient there is no gradient-difference
     # Hessian to fall back FROM, so every fit on this route takes the value-based
-    # path and says so (ML and REML alike; quiet inside bootstrap refits).
+    # path and says so (ML and REML alike; muted only under
+    # `_without_boundary_warnings`).
     _warn_no_gradient_hessian("bivariate Gaussian q=2 structured ($kind)")
     V = _vcov_from_fd_hessian(_finite_hessian(nll, θ̂; h = _fd_hessian_step(2 * length(y1)));
                            context = "bivariate Gaussian q=2 structured ($kind) " *

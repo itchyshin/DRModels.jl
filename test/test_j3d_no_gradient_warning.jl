@@ -5,7 +5,8 @@
 #      exact gradient today, but the branch is reachable and must not be silent);
 #   2. the bivariate Gaussian q=2 structured route (gaussian_bivariate.jl), whose objective
 #      factorises through CHOLMOD and so has no gradient at all: every fit on it warns,
-#      ML and REML, whichever structured provider;
+#      ML and REML, whichever structured provider (one unconditional call after the provider
+#      dispatch; phylo ML/REML and relmat ML are fitted here);
 #   3. the Gaussian phylo-mean variance block (location_only.jl): since J3e (#1091) BOTH arms
 #      difference an exact score (REML: `_loconly_reml_fg`), so neither takes the no-gradient
 #      path; on J3d (#1082) the REML arm had only a finite-difference gradient and warned.
@@ -102,8 +103,10 @@ _j3d_q2_formula(term) = bf(mu1 = term(:y1), mu2 = term(:y2),
     fphy = _j3d_q2_formula(y -> y === :y1 ? @formula(y1 ~ x + phylo(1 | species)) :
                                             @formula(y2 ~ x + phylo(1 | species)))
     for method in (:ML, :REML)
-        fit = @test_logs (:warn, r"^bivariate Gaussian q=2 structured \(phylo\) vcov: this route has no exact gradient") match_mode = :any drm(
-            fphy, Gaussian(); data = dat, tree = phy, method = method)
+        logs, fit = _j3d_logs(() -> drm(fphy, Gaussian(); data = dat, tree = phy, method = method))
+        # exactly one no-gradient warning per fit, naming the route and its provider
+        @test count(l -> occursin(_J3D_NOGRAD, string(l.message)), logs) == 1
+        @test _j3d_has(logs, r"^bivariate Gaussian q=2 structured \(phylo\) vcov: this route has no exact gradient")
         @test all(isfinite, vcov(fit))
     end
     datK, K = _j3d_q2_relmat()
@@ -115,7 +118,7 @@ _j3d_q2_formula(term) = bf(mu1 = term(:y1), mu2 = term(:y2),
     # the warning comes from the vcov build, so it is emitted once per fit
     logs, _ = _j3d_logs(() -> drm(frel, Gaussian(); data = datK, K = K, method = :ML))
     @test count(l -> occursin(_J3D_NOGRAD, string(l.message)), logs) == 1
-    # a bootstrap refit (`_without_boundary_warnings`) discards its vcov and stays quiet
+    # `_without_boundary_warnings` (the bootstrap-refit switch) mutes the message; the vcov is unchanged
     logs, fitq = _j3d_logs(() -> DRModels._without_boundary_warnings(
         () -> drm(frel, Gaussian(); data = datK, K = K, method = :ML)))
     @test !_j3d_has(logs, _J3D_NOGRAD)
