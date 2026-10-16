@@ -82,3 +82,33 @@ end
     V = @test_logs (:warn,) DRModels._vcov_from_fd_hessian(H; context = "1093")
     @test all(isnan, V)
 end
+
+@testset "#1093 failed inner solve: ok=false / NaN gradient, never 1e18 with a zero gradient" begin
+    d = _sim_beta_1093(1; nsq = 40)
+    G = 20; n = 400
+    Xμ = hcat(ones(n), d.x); gidx = repeat(1:G, inner = n ÷ G)
+    kind, aux_from, θβ0, θσ0 = DRModels._ordinary_laplace_scale_setup(DRModels.Beta(), d.y, Xμ)
+    Q = DRModels._ordinary_laplace_Q(G)
+    θ0 = vcat(θβ0, θσ0, log(0.4))
+
+    @testset "kernel: capped Newton iterations -> ok = false, NaN gradient" begin
+        out = DRModels._phylo_mean_laplace_nuisance_fg(kind, aux_from, n, Xμ, gidx, Q, 0.0, θ0;
+                  grad = true, b0 = zeros(G), raw_scales = true, newton_maxiter = 1)
+        @test out[4] === false
+        @test out[1] >= 1e16 && all(isnan, out[2])
+        v = DRModels._phylo_mean_laplace_nuisance_fg(kind, aux_from, n, Xμ, gidx, Q, 0.0, θ0;
+                  grad = false, b0 = zeros(G), raw_scales = true, newton_maxiter = 1)
+        @test v[3] === false
+    end
+
+    @testset "outer loop: an inner solve that always fails -> converged = false" begin
+        p = length(θ0)
+        fg_fail = (θ, b0, grad) -> grad ? (1e18, fill(NaN, p), b0, false) : (1e18, b0, false)
+        θ̂, nllhat, conv, _, nll, grad! = DRModels._ordinary_laplace_optimize(
+            fg_fail, θ0, n, G, 1e-6; se = false, context = "1093 forced failure")
+        @test conv === false
+        @test nllhat >= 1e16
+        g = zeros(p); grad!(g, θ̂)
+        @test all(isnan, g)                     # not a stationary-looking zero
+    end
+end
