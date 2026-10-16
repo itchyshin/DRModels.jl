@@ -40,6 +40,7 @@ outliers, and `ν → ∞` tends to Gaussian. Mirrors `drmTMB`'s `student` famil
 ```julia
 fit = drm(bf(y ~ x, sigma ~ 1, nu ~ 1), Student(); data = dat)
 2 + exp(coef(fit, :nu)[1])  # estimated degrees of freedom (ν = 2 + exp(η))
+predict_parameters(fit, dat)[:nu]   # same quantity (response-scale ν, not exp(η))
 
 # Opt-in TMB-convention Laplace for one ordinary `(1 | g)` on the mean (what drmTMB fits):
 fit_lap = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), Student(); data = dat,
