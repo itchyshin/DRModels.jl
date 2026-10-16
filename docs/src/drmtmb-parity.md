@@ -65,6 +65,63 @@ R comparator for a mixed-family pair can exist in drmTMB, so the row cannot
 reach `covered` on the ordinary parity bar and simulation-recovery evidence
 is deliberately not being spent on it.
 
+## Default marginal approximation
+
+drmTMB integrates every random effect with TMB's Laplace approximation.
+DRModels.jl's default, `marginal = :LA`, means "this route's own integrator",
+which is not always the Laplace approximation:
+
+- **An ordinary random intercept `(1 | g)` on a non-Gaussian mean** (Poisson,
+  Binomial, NegBinomial2, Gamma, Beta, BetaBinomial, Student): per-group
+  adaptive Gauss–Hermite quadrature with **5 nodes per group**, centred on each
+  group's posterior mode. Tweedie uses 21 nodes and CumulativeLogit 41;
+  LogNormal's integral is exact.
+- **A correlated `(1 + x | g)` on a non-Gaussian mean**: the same adaptive
+  quadrature, 5 nodes per axis.
+- **Gaussian `sigma ~ 1 + (1 | g)` and ZeroOneBeta `(1 | g)`**: a fixed
+  32-node Gauss–Hermite grid.
+- **Crossed intercepts `(1 | g) + (1 | h)`, and `phylo` / `relmat` / `animal` /
+  `spatial` terms, on a non-Gaussian mean**: the Laplace approximation, as in
+  drmTMB.
+- **Gaussian random or structured effects on the mean**: the exact marginal,
+  which the Laplace approximation also gives exactly.
+
+On the quadrature cells the two packages fit the same model with different
+integrators, so their log-likelihoods and estimates differ slightly. In a
+Poisson `(1 | g)` comparison (2026-10-15, three simulated datasets), drmTMB's
+log-likelihood was about 0.0014 lower than the default DRModels.jl fit on every
+dataset.
+
+- **To match drmTMB, pass `marginal = :Laplace`.** Refitted that way, the
+  Poisson dataset checked agreed to 5.6e-9 in log-likelihood and to 1e-11 in the
+  estimates; ten earlier test datasets agreed to 4e-10 or better. `:Laplace` is
+  accepted for one ordinary `(1 | g)` on the mean of Poisson, Binomial,
+  NegBinomial2, Gamma and Beta (with `sigma ~ 1`) or Student, and for Gaussian
+  `sigma ~ 1 + (1 | g)` with a fixed-effect mean, by maximum likelihood. Every
+  other model refuses it: with an `ArgumentError` where the family's `drm` takes
+  a `marginal` keyword, and with a `MethodError` (unsupported keyword) for
+  LogNormal, ZeroOneBeta, Tweedie, CumulativeLogit, SkewNormal, the truncated
+  count families and every bivariate model. Crossed and structured routes need
+  no option, because their default already is the Laplace approximation.
+- **`:Laplace` is for parity, not a better default.** The Laplace approximation
+  is adaptive quadrature with a single node, so the default's extra nodes
+  usually make it the more accurate integral of the same model. Laplace loses
+  accuracy when groups are small or counts sit near zero (binary data above
+  all), where each group's posterior is far from Gaussian.
+- **Compare like with like.** Log-likelihoods, likelihood-ratio tests, AIC and
+  BIC are comparable only between fits that use the same approximation, and
+  across the two packages only when both use the Laplace approximation.
+  `fit.marginal` records the option (`:LA`, `:Laplace`, `:AGHQ` or `:VA`).
+  `lrtest` and `anova` refuse a pair whose options differ (a fit with no random
+  effects, whose log-likelihood is exact, may be paired with any
+  non-variational fit); `aic`, `bic` and `aicc` do not check. The option is not
+  the integrator: two default fits on different routes, such as `(1 | g)`
+  against `(1 | g) + (1 | h)`, use different integrators, and no check catches
+  that.
+
+The [Laplace vs variational marginals](model-guides/marginal-la-vs-va.md) guide
+covers the approximations in more depth.
+
 ## Performance
 
 - **Verified single-fit speedup:** on the real q4_p100 dataset, same Laplace
@@ -119,4 +176,7 @@ Sources: `drmTMB`'s `inst/extdata/julia-capabilities.tsv` (12-row ledger,
 this repo's `docs/design/capability-status.md` (direct-Julia
 implemented/rejected/planned/missing audit); this repo's
 `report/comparison-grid.md` (2026-05-30 engine × model × objective grid, the
-source of the 2.18× and O(p) figures). Compiled 2026-09-01.
+source of the 2.18× and O(p) figures). Compiled 2026-09-01. The default marginal
+approximation section was added 2026-10-16; its Poisson `(1 | g)` figures come
+from a 2026-10-15 comparison of drmTMB at commit `ca3ddef` with DRModels.jl at
+commit `f71b292`.

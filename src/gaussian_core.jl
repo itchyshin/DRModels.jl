@@ -1582,8 +1582,14 @@ nobs(fit::DrmFit) = fit.nobs
 """
     fitted(fit)
 
-Fitted mean(s). Univariate / random-effect models return the μ vector (the
-population/marginal mean `Xβ̂`); bivariate models return `Dict(:mu1=>…, :mu2=>…)`.
+Fitted mean(s) on the response scale. Univariate models return the μ vector;
+bivariate models return `Dict(:mu1=>…, :mu2=>…)`. On a random-effect fit this is
+the population-level value with the random effects at zero (for most families
+`g⁻¹(Xβ̂)`, the value [`predict`](@ref) gives in-sample), not the marginal mean
+averaged over them. Exception: the default Gaussian `phylo(1 | g)` mean route
+stores `Xβ̂ + Sû`, conditional on the fitted phylogenetic effects (and LogNormal
+structured fits keep the Gaussian log-scale fit's means). drmTMB's `fitted()`
+instead adds the fitted random-effect modes.
 """
 fitted(fit::DrmFit) = haskey(fit.means, :mu) ? fit.means[:mu] : fit.means
 
@@ -1739,15 +1745,36 @@ end
 """
     predict(fit, newdata; type = :response, se = false) -> Vector / Dict / NamedTuple
 
-Population-level prediction on `newdata` (a NamedTuple / column table), random /
-structured effects integrated out. `type = :response` (default) returns the
-response-scale mean — the family inverse link applied to `Xβ̂` (`exp` for
-Poisson/Gamma, `logistic` for Beta/Binomial, identity for Gaussian); `type = :link`
-returns `Xβ̂`. In-sample, `predict(fit, data) ≈ fitted(fit)`. Univariate returns a
-vector; bivariate returns `Dict(:mu1 => …, :mu2 => …)`.
+Population-level prediction on `newdata` (a NamedTuple / column table) with every
+random and structured effect **set to zero**: the prediction for an average group
+(`b = 0`), not an average over groups. `type = :link` returns `Xβ̂`;
+`type = :response` (default) applies the family inverse link to it, `g⁻¹(Xβ̂)`
+(`exp` for Poisson/Gamma, `logistic` for Beta/Binomial, identity for Gaussian).
+Grouping columns in `newdata` are not used, so a group level the model never saw
+is predicted exactly like a fitted one. Univariate returns a vector; bivariate
+returns `Dict(:mu1 => …, :mu2 => …)`. In-sample, `predict(fit, data) ≈ fitted(fit)`
+wherever `fitted` also stores the `b = 0` value, as on the fixed-effect and
+ordinary `(1 | g)` routes (see [`fitted`](@ref) for the exception).
+
+With an identity link (Gaussian) the `b = 0` prediction is also the marginal mean,
+averaged over the random-effect distribution. With a nonlinear link it is not,
+because the inverse link of the average linear predictor differs from the average
+of the inverse link. For a log link and one normal random intercept of SD `σ_b`,
+the marginal mean is `exp(Xβ̂ + σ_b²/2)`, that is
+`predict(fit, newdata) .* exp(re_sd(fit)[:g]^2 / 2)` for grouping `g`. For a logit
+link it has no closed form and lies closer to 1/2 than `predict` does. DRModels.jl
+has no marginal-mean predictor: in other cases, average `g⁻¹(Xβ̂ + b)` over
+`b ~ N(0, σ_b²)` numerically.
+
+drmTMB's `predict()` with `newdata` returns the same fixed-effect, population-level
+value (random effects at zero), so the two packages' predictions compare like with
+like. Without `newdata`, drmTMB's `predict()`, and so its `fitted()`, add the fitted
+random-effect modes for the fitted rows; DRModels.jl's `predict` always takes
+`newdata`.
 
 `se = false` (default) is the point prediction above. `se = true` adds
-**delta-method standard errors** for the mean (glmmTMB/drmTMB `se.fit` parity):
+**delta-method standard errors** for the mean (the glmmTMB `se.fit` convention;
+drmTMB's `predict()` has no `se.fit` argument):
 
 - univariate → a `NamedTuple` `(; prediction, se)`;
 - bivariate  → a `NamedTuple` `(; prediction::Dict, se::Dict)` keyed `:mu1, :mu2`.
@@ -1755,7 +1782,8 @@ vector; bivariate returns `Dict(:mu1 => …, :mu2 => …)`.
 The SE uses the μ-block of `vcov(fit)`: link scale `se_i = sqrt(xᵢ' Vμ xᵢ)`
 (with `Vμ = vcov(fit)[r, r]`, `r` the `:mu` coef range from `fit.blocks`);
 response scale multiplies by the inverse-link derivative `|dμ/dη|` at `η̂`
-(identity → 1, exp → `exp(η)`, logistic → `μ(1−μ)`).
+(identity → 1, exp → `exp(η)`, logistic → `μ(1−μ)`). It carries the uncertainty
+in `β̂` only; the random-effect variance is not added.
 """
 function predict(fit::DrmFit, newdata; type::Symbol = :response, se::Bool = false)
     f = fit.formula
@@ -1969,15 +1997,17 @@ end
         -> Dict{Symbol,NamedTuple}        (se = true)
 
 Population-level prediction of **every** distributional parameter at `newdata`
-(a NamedTuple / column table), random / structured effects integrated out
-(exactly like [`predict`](@ref)). The returned `Dict` has one entry per
+(a NamedTuple / column table), with random / structured effects set to zero
+(exactly like [`predict`](@ref): the average group, not an average over groups).
+The returned `Dict` has one entry per
 distributional parameter the model carries — always `:mu` and (when the family
 uses it) `:sigma`, plus any family extras present (`:nu`, `:zi`, `:hu`, `:zoi`,
 `:coi`).
 
 `type = :response` (default) applies each parameter's inverse link, so in-sample
 it reproduces [`marginal_parameters`](@ref) (i.e. `fit.means[:mu]`,
-`fit.scales[...]`). `type = :link` returns the linear predictor `Xβ̂` per
+`fit.scales[...]`) wherever those stored values are themselves the `b = 0` values
+(see [`fitted`](@ref)). `type = :link` returns the linear predictor `Xβ̂` per
 parameter (the working scale).
 
 For a univariate fit the parameters are `:mu`, (`:sigma`) plus family extras; for
@@ -2132,7 +2162,11 @@ the stored fit — a cheap accessor with no recomputation. Returns the mean(s) f
 scale / correlation parameter from `fit.scales` (e.g. `:sigma`, `:nu`, `:zi`,
 `:hu`, `:zoi`, `:coi`; `:sigma1`/`:sigma2`/`:rho12` for a bivariate fit).
 
-In-sample these equal `predict_parameters(fit, data)` (response scale).
+Despite the name, nothing is averaged over the random effects: on a random-effect
+fit these are the stored population-level values, with the random effects at zero
+(see [`fitted`](@ref) for the route that stores conditional means). In-sample
+they equal `predict_parameters(fit, data)` (response scale) wherever the stored
+values are the `b = 0` values.
 
 # Example
 ```julia

@@ -121,8 +121,10 @@ fittw = drm(bf(@formula(y ~ x), @formula(sigma ~ 1), @formula(nu ~ 1)), Tweedie(
 ```
 
 An ordinary `(1 | g)` random intercept, and an independent `(0 + x | g)`
-random slope, on `mu` are both supported (32-node Gauss–Hermite marginal,
-matching drmTMB's `tweedie() mu ~ x + (1 | g)` / `(0 + x | g)`); the group
+random slope, on `mu` are both supported (the models drmTMB fits as
+`tweedie() mu ~ x + (1 | g)` / `(0 + x | g)`, integrated here by per-group
+adaptive Gauss–Hermite quadrature with 21 nodes where drmTMB uses the Laplace
+approximation, so log-likelihoods differ slightly); the group
 SD is `exp(coef(fit, :resd)[1])` either way. The CORRELATED random slope
 `(1 + x | g)`, random effects on `sigma`/`nu`, and structured (phylo/relmat)
 markers on `mu` remain unimplemented (drmTMB rejects the same forms).
@@ -256,8 +258,9 @@ coef(fito, :mu)[1]      # slope ≈ 0.8
 ```
 
 An ordinary random intercept `(1 | g)` or an independent random slope
-`(0 + x | g)` on `mu` is integrated out by 32-node Gauss–Hermite quadrature
-(the same scheme as the Poisson/Gamma/Tweedie GLMM routes); the correlated
+`(0 + x | g)` on `mu` is integrated out by per-group adaptive Gauss–Hermite
+quadrature with 41 nodes (the scheme the Poisson/Gamma/Tweedie GLMM routes use
+with 5, 5 and 21 nodes); the correlated
 form `(1 + x | g)` is not implemented.
 
 ```julia

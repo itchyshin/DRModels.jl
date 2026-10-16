@@ -26,7 +26,7 @@ fit_phy = drm(bf(@formula(y ~ x + phylo(1 | species))), Poisson();
               data = dat, tree = tr, se = false)
 
 # Experimental: Poisson random-intercept variational (ELBO) marginal.
-# Default remains `marginal = :LA` (GHQ-32 on an ordinary `(1 | g)`). `loglik` on a VA fit is an ELBO.
+# Default remains `marginal = :LA` (adaptive GHQ, 5 nodes per group, on an ordinary `(1 | g)`). `loglik` on a VA fit is an ELBO.
 fit_va = drm(bf(@formula(y ~ x + (1 | g))), Poisson(); data = dat, marginal = :VA)
 
 # TMB-convention Laplace on an ordinary `(1 | g)`, as native drmTMB fits it (ML only).
@@ -36,9 +36,9 @@ fit_lap = drm(bf(@formula(y ~ x + (1 | g))), Poisson(); data = dat, marginal = :
 fit_reml = drm(bf(@formula(y ~ x + (1 | g))), Poisson(); data = dat, method = :REML)
 estimation_method(fit_reml)   # :REML
 
-# Opt-in 1-D Liu–Pierce AGHQ for `(1 | g)` only. Default `:LA` stays
-# non-adaptive GHQ-32. k=1 ≡ 1-point Laplace; this identity does not establish
-# parameter recovery. `:REML` is not available with `:AGHQ`.
+# Opt-in 1-D Liu–Pierce AGHQ for `(1 | g)` only, with `nAGQ` nodes. The default
+# `:LA` is already per-group adaptive GHQ with 5 nodes. k=1 ≡ 1-point Laplace; this
+# identity does not establish parameter recovery. `:REML` is not available with `:AGHQ`.
 fit_aghq = drm(bf(@formula(y ~ x + (1 | g))), Poisson();
                data = dat, marginal = :AGHQ, nAGQ = 5)
 fit_aghq.marginal   # :AGHQ
@@ -52,7 +52,7 @@ fit_phy_reml = drm(bf(@formula(y ~ x + phylo(1 | species))), Poisson();
 `method = :REML` is **opt-in — ML remains the default**. It maximises the Cox–Reid
 adjusted profile likelihood `ℓ_ML − ½·log|I_ββ|` on two Poisson routes:
 
-- a scalar random intercept `(1 | g)` integrated by GHQ-32
+- a scalar random intercept `(1 | g)` integrated by per-group adaptive GHQ (5 nodes)
 - phylogenetic / `relmat` / `animal` / precomputed-spatial Laplace
   (`_fit_poisson_general_laplace`)
 
