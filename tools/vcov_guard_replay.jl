@@ -64,14 +64,17 @@ function main(paths)
     rows = map(calls) do c
         fin = all(isfinite, c.H)
         if !fin
-            return (c = c, legacy = :nonfinite, new = :nonfinite, rH = NaN, rM = NaN, ufmin = NaN)
+            return (c = c, legacy = :nonfinite, new = :nonfinite, rH = NaN, rM = NaN, rR = NaN, ufmin = NaN)
         end
         evH = eigvals(Symmetric(c.H))
         s = scaling(c.H, c.unitfree, FLOOR)
         evM = eigvals(Symmetric(s .* c.H .* s'))
+        # Collinearity alone: every coordinate equilibrated by its own curvature.
+        s1 = scaling(c.H, Int[], FLOOR)
+        evR = eigvals(Symmetric(s1 .* c.H .* s1'))
         ufmin = isempty(c.unitfree) ? NaN : minimum(c.H[k, k] for k in c.unitfree)
         (c = c, legacy = decide(evH, LEGACY_RTOL), new = decide(evM, RTOL),
-         rH = ratio(evH), rM = ratio(evM), ufmin = ufmin)
+         rH = ratio(evH), rM = ratio(evM), rR = minimum(evR) / maximum(abs, evR), ufmin = ufmin)
     end
     @printf("%d calls from %d files; RTOL = %g, FLOOR = %g\n", length(rows),
             length(unique(r.c.file for r in rows)), RTOL, FLOOR)
@@ -89,6 +92,18 @@ function main(paths)
         n > 0 && @printf("  [1e%d, 1e%d)  %6d\n", e, e + 1, n)
     end
     @printf("  exactly 0      %6d\n", count(==(0), rM))
+    hist(xs, label) = begin
+        println("\n", label, " (decade histogram; signed values <= 0 counted apart):")
+        for e in -17:2
+            n = count(x -> 10.0^e <= x < 10.0^(e + 1), xs)
+            n > 0 && @printf("  [1e%d, 1e%d)  %6d\n", e, e + 1, n)
+        end
+        @printf("  <= 0           %6d\n", count(<=(0), xs))
+    end
+    hist(filter(isfinite, [r.rR for r in rows]),
+         "Collinearity: min eig / max |eig| with EVERY coordinate equilibrated")
+    hist(filter(isfinite, [r.ufmin for r in rows]),
+         "Boundary: smallest unit-free curvature, natural units")
     println("\nThe 40 equilibrated ratios nearest the threshold:")
     near = sort(filter(r -> isfinite(r.rM), rows), by = r -> abs(log10(max(r.rM, 1e-300)) - log10(RTOL)))
     for r in near[1:min(40, end)]
