@@ -3155,6 +3155,43 @@ function _loconly_profile_fg(prob::LocOnlyProblem, lσ::Real, lσ_phy::Real)
     return nll, grad, β, chM
 end
 
+# EXACT restricted (REML) objective and score for the Gaussian phylo-mean route (#1073).
+#
+#   nll_R(v) = nll_ML^profile(v) + ½ log det A(v) − ½ k log 2π,   A = Xμ' V⁻¹ Xμ,
+#   V = σ² I + σ²_phy C,  C = S Q⁻¹ S'  (Q = Q_cond, the root-conditioned tree precision).
+#
+# The profiled-ML part has the analytic score of `_loconly_profile_fg` (β̂ profiled, so the
+# envelope theorem applies). For the restriction term, with W = V⁻¹ Xμ and ∂A = −W' (∂V) W,
+#
+#   ∂(½ log det A)/∂log σ     = −σ²      · tr(A⁻¹ W' W)
+#   ∂(½ log det A)/∂log σ_phy = −σ²_phy  · tr(A⁻¹ (S'W)' Q⁻¹ (S'W)) = −tr(A⁻¹ (S'W)' (P⁻¹ S'W)),
+#
+# where P = Q/σ²_phy is the matrix `build_M` already factors as `chP` (so P⁻¹ = σ²_phy Q⁻¹).
+# No finite differencing anywhere: only a p×p inverse (p = number of mean coefficients) and
+# one solve with the existing sparse factor `chP`. Returns `(nll, grad, penalty_grad)`; on a
+# failed inner solve the sentinel objective, zero gradients.
+function _loconly_reml_fg(prob::LocOnlyProblem, lσ::Real, lσ_phy::Real)
+    ml, g_ml, β, chM = _loconly_profile_fg(prob, lσ, lσ_phy)
+    if β === nothing || !isfinite(ml) || ml >= _LOCONLY_PENALTY
+        return _LOCONLY_PENALTY, zeros(2), zeros(2)
+    end
+    σ² = exp(2 * Float64(lσ))
+    σ²_phy = exp(2 * Float64(lσ_phy))
+    _, _, _, chP = build_M(prob, σ²_phy, σ²)
+    W = Vinv_mul(prob, chM, σ², prob.X)
+    info = Matrix(0.5 .* (prob.X' * W .+ W' * prob.X))
+    ch = cholesky(Symmetric(info); check = false)
+    issuccess(ch) || return _LOCONLY_PENALTY, zeros(2), zeros(2)
+    Ainv = Matrix(ch \ Matrix{Float64}(I, size(info, 1), size(info, 1)))
+    StW = prob.S' * W
+    gσ = -σ² * sum(Ainv .* (W' * W))
+    gphy = -sum(Ainv .* (StW' * (chP \ StW)))
+    pen = sum(log, diag(ch.U))
+    nll = ml + pen - _loconly_reml_constant_offset(prob)
+    ok = isfinite(nll) && nll < _LOCONLY_PENALTY
+    return (ok ? nll : _LOCONLY_PENALTY), g_ml .+ [gσ, gphy], [gσ, gphy]
+end
+
 function _loconly_marginal_grad!(g, prob::LocOnlyProblem, θ::AbstractVector, pμ::Int)
     fill!(g, 0.0)
     length(θ) == pμ + 2 || throw(
@@ -3459,15 +3496,14 @@ function _fit_structured_gaussian_sparse_lbfgs(
     # depend on beta, so the profiled beta-hat at fixed (v1, v2) is unchanged.
     # On a failed inner solve `_loconly_profile_fg` returns a sentinel with a zero
     # gradient — leave that alone rather than penalising a non-solution.
-    # REML has no analytic score on this spine (the log-determinant term differentiates
-    # through the sparse Cholesky), so it uses the central finite-difference gradient
-    # `_loconly_fd_gradient2` — the same objective/gradient pair the validated
-    # `_loconly_reml_optimizer_diagnostic` uses, over the same 2-parameter space.
+    # REML: exact restricted score `_loconly_reml_fg` (profiled-ML score plus the closed-form
+    # derivative of ½ log det Xμ'V⁻¹Xμ, #1073); the earlier finite-difference gradient
+    # `_loconly_fd_gradient2` is gone from this route.
     reml_obj(v) = _loconly_reml_nll(prob, v[1], v[2])
     function fg!(F, G, v)
         if reml
-            val = reml_obj(v)
-            G !== nothing && copyto!(G, _loconly_fd_gradient2(reml_obj, v))
+            val, grad, _ = _loconly_reml_fg(prob, v[1], v[2])
+            G !== nothing && copyto!(G, grad)
             return F === nothing ? nothing : val
         end
         val, grad, β, _ = _loconly_profile_fg(prob, v[1], v[2])
@@ -3537,22 +3573,26 @@ function _fit_structured_gaussian_sparse_lbfgs(
             end
             return val
         end
-        # #1073: ML arm differences the exact analytic gradient of the profiled
-        # objective (`_loconly_profile_fg` + the penalty gradient), not its value.
-        # The REML arm has only an FD gradient (`_loconly_fd_gradient2`), so it,
-        # and any collapsed variance (flat objective), keep the value-based path
-        # and stay known-noisy.
-        Hv = if reml || _clamp_active(vhat, 1:2; lo = _SE_LOGSD_LO)
+        # #1073: both arms difference an EXACT analytic gradient, not the objective value:
+        # ML the profiled score (`_loconly_profile_fg` + the penalty gradient), REML the
+        # restricted score (`_loconly_reml_fg`). Only a collapsed variance (flat objective)
+        # keeps the value-based path and stays known-noisy.
+        Hv = if _clamp_active(vhat, 1:2; lo = _SE_LOGSD_LO)
             _finite_hessian(fv, vhat; h = _fd_hessian_step(n))
         else
             _finite_hessian_from_gradient(vhat; context = "sparse phylo-mean variance block") do Gout, v
-                val, grad, βv, _ = _loconly_profile_fg(prob, v[1], v[2])
-                if βv === nothing
-                    Gout .= NaN
+                if reml
+                    val, grad, _ = _loconly_reml_fg(prob, v[1], v[2])
+                    Gout .= val >= _LOCONLY_PENALTY ? NaN : grad
                 else
-                    grad = copy(grad)
-                    penalty !== nothing && _phylo_pen_apply_single!(grad, penalty, v, 2)
-                    Gout .= grad
+                    val, grad, βv, _ = _loconly_profile_fg(prob, v[1], v[2])
+                    if βv === nothing
+                        Gout .= NaN
+                    else
+                        grad = copy(grad)
+                        penalty !== nothing && _phylo_pen_apply_single!(grad, penalty, v, 2)
+                        Gout .= grad
+                    end
                 end
                 return Gout
             end
@@ -3600,9 +3640,18 @@ function _fit_structured_gaussian_sparse_lbfgs(
     # converged — the same class of silent mislabel as returning ML wearing a REML
     # label. So a REML fit carries the RESTRICTED objective as a function of the full
     # θ = [β; log σ_e; log σ_phylo] (the restriction term does not depend on β, so
-    # this agrees with the profiled value at β̂), and NO gradient: there is no
-    # analytic score for the log-determinant term on this sparse spine, and reporting
-    # a finite-difference one as if it were exact would be its own small lie.
+    # this agrees with the profiled value at β̂). Its gradient is the EXACT restricted
+    # score (#1073, `_loconly_reml_fg`), never the ML score and never a finite difference.
+    # Exact full-θ REML score: the ML score at (β, v) plus the restriction term's derivative
+    # in v (zero in β, since the restriction does not depend on β). `_loconly_reml_fg` supplies
+    # it; the ML part is the existing `_loconly_marginal_grad!`.
+    reml_nllgrad! = function (g, θ)
+        _loconly_marginal_grad!(g, prob, θ, pμ)
+        _, _, pg = _loconly_reml_fg(prob, θ[pμ + 1], θ[pμ + 2])
+        g[pμ + 1] += pg[1]
+        g[pμ + 2] += pg[2]
+        return g
+    end
     reml_full_nll = function (θ)
         ml = _loconly_marginal_nll(prob, @view(θ[1:pμ]), θ[pμ + 1], θ[pμ + 2])
         isfinite(ml) || return _LOCONLY_PENALTY
@@ -3612,7 +3661,7 @@ function _fit_structured_gaussian_sparse_lbfgs(
         return isfinite(val) ? val : _LOCONLY_PENALTY
     end
     fit = _withranef(
-        reml ? _withnll(fit, reml_full_nll) : _withnll(fit, loc_obj, nllgrad!),
+        reml ? _withnll(fit, reml_full_nll, reml_nllgrad!) : _withnll(fit, loc_obj, nllgrad!),
         Dict(Symbol(grp) => u_post[prob.leaf_pos])
     )
     if penalty !== nothing

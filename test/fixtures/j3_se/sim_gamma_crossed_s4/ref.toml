@@ -1,0 +1,12 @@
+route = "sim_gamma_crossed_s4"
+drmTMB_version = "0.7.1"
+drmTMB_commit = "ca3ddefa5ea11bbfd3b765615dfbb89305d2485a"
+R_version = "4.4.3"
+opt_convergence = 0
+pd_hess = true
+comparable = true
+tmb_names = ["beta_mu", "beta_mu", "beta_sigma", "log_sd_mu", "log_sd_mu"]
+loglik = -484.02895807243124
+max_grad = 3.470215e-09
+theta = [0.40988937115651308, 0.41470559048381456, -0.69765270343050123, -0.69720292235039116, -1.1013426070940908]
+se = [0.10658110470208167, 0.027879117101095821, 0.036906899207471471, 0.12510555661531697, 0.16960206870094285]

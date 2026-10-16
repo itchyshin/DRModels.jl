@@ -28,20 +28,32 @@ only <- if (nzchar(only)) strsplit(only, ",")[[1]] else NULL
 
 fmt <- function(x) paste0("[", paste(formatC(x, digits = 17, format = "g"), collapse = ", "), "]")
 
+drmtmb_commit <- Sys.getenv("DRMTMB_COMMIT", unset = NA_character_)
+
 write_ref <- function(route, fit, perm, data, tree = NULL, extra = character(),
                       se_ok = TRUE) {
   dir <- file.path(out_root, route)
   dir.create(dir, recursive = TRUE, showWarnings = FALSE)
   utils::write.csv(data, file.path(dir, "data.csv"), row.names = FALSE)
-  if (!is.null(tree)) ape::write.tree(tree, file.path(dir, "tree.newick"))
+  if (!is.null(tree)) ape::write.tree(tree, file.path(dir, "tree.newick"), digits = 17)
   par <- fit$opt$par
   gr <- as.numeric(fit$obj$gr(par))
   se <- sqrt(diag(fit$sdr$cov.fixed))
   stopifnot(length(perm) == length(par), all(sort(perm) == seq_along(par)))
+  # Per-row validity of the REFERENCE: drmTMB's own optimiser converged and its sdreport
+  # Hessian is positive definite. If either fails the row is "not comparable" (neither pass
+  # nor fail) and the Julia test reports it as such instead of comparing numbers.
+  conv_ok <- identical(as.integer(fit$opt$convergence), 0L)
+  pd_ok <- isTRUE(fit$sdr$pdHess)
+  comparable <- conv_ok && pd_ok && all(is.finite(se))
   lines <- c(
     sprintf("route = \"%s\"", route),
     sprintf("drmTMB_version = \"%s\"", as.character(utils::packageVersion("drmTMB"))),
+    sprintf("drmTMB_commit = \"%s\"", if (is.na(drmtmb_commit)) "unrecorded" else drmtmb_commit),
     sprintf("R_version = \"%s\"", paste(R.version$major, R.version$minor, sep = ".")),
+    sprintf("opt_convergence = %d", as.integer(fit$opt$convergence)),
+    sprintf("pd_hess = %s", tolower(as.character(pd_ok))),
+    sprintf("comparable = %s", tolower(as.character(comparable))),
     sprintf("tmb_names = %s",
             paste0("[", paste(sprintf("\"%s\"", names(par)[perm]), collapse = ", "), "]")),
     sprintf("loglik = %s", formatC(as.numeric(logLik(fit)), digits = 17, format = "g")),
@@ -51,9 +63,10 @@ write_ref <- function(route, fit, perm, data, tree = NULL, extra = character(),
     extra
   )
   writeLines(lines, file.path(dir, "ref.toml"))
-  cat(sprintf("%-18s n=%d  max|grad|=%.2e  se=%s\n", route, nrow(data), max(abs(gr)),
+  cat(sprintf("%-22s n=%d  conv=%d pd.hess=%s  max|grad|=%.2e  se=%s\n", route, nrow(data),
+              as.integer(fit$opt$convergence), pd_ok, max(abs(gr)),
               paste(signif(se[perm], 4), collapse = " ")))
-  stopifnot(max(abs(gr)) < 1e-6)
+  if (comparable) stopifnot(max(abs(gr)) < 1e-6)
 }
 
 want <- function(route) is.null(only) || route %in% only
@@ -228,4 +241,88 @@ if (want("biv_phylo")) {                  # gaussian_bivariate.jl :887 (no exact
                  sigma1 ~ 1, sigma2 ~ 1, rho12 ~ 1),
               family = biv_gaussian(), data = d)
   write_ref("biv_phylo", f, 1:10, d, tree, extra = "n_shared = 8")
+}
+
+# ---- Engine A additions (#1073) -----------------------------------------------------------
+# Rows added after the Simulator / Data fitter audits. The Simulator's `gen.R` is not in
+# this checkout, so the three crossed families below are simulated HERE from the audit's
+# stated design (n = 400, 40/25/15 levels, sd 0.5/0.4/0.3, shape 4, 10 binomial trials) and
+# its seed formula; they are the same designs, not byte-identical datasets.
+sim_seed <- function(route, rep) (20281016000 + route * 100 + rep) %% 2147483647
+
+sim_crossed <- function(route, rep, K3 = FALSE) {
+  set.seed(sim_seed(route, rep))
+  n <- 400L
+  g <- sample(seq_len(40L), n, replace = TRUE); h <- sample(seq_len(25L), n, replace = TRUE)
+  x <- stats::rnorm(n)
+  eta <- 0.3 + 0.4 * x + stats::rnorm(40L, 0, 0.5)[g] + stats::rnorm(25L, 0, 0.4)[h]
+  d <- data.frame(g = paste0("g", g), h = paste0("h", h), x = x)
+  if (K3) {
+    k <- sample(seq_len(15L), n, replace = TRUE)
+    d$k <- paste0("k", k)
+    eta <- eta + stats::rnorm(15L, 0, 0.3)[k]
+  }
+  list(d = d, eta = eta, n = n)
+}
+
+for (rep in 1:4) {
+  r <- sprintf("sim_poisson_crossed3_s%d", rep)       # sparse_laplace_glmm.jl :2023
+  if (want(r)) {
+    s <- sim_crossed(6, rep, K3 = TRUE); s$d$y <- stats::rpois(s$n, exp(s$eta))
+    f <- drmTMB(drm_formula(y ~ x + (1 | g) + (1 | h) + (1 | k)), family = poisson(), data = s$d)
+    write_ref(r, f, 1:5, s$d)
+  }
+  r <- sprintf("sim_binomial_crossed_s%d", rep)       # :2997
+  if (want(r)) {
+    s <- sim_crossed(7, rep)
+    s$d$succ <- stats::rbinom(s$n, 10L, stats::plogis(s$eta)); s$d$fail <- 10L - s$d$succ
+    f <- drmTMB(drm_formula(cbind(succ, fail) ~ x + (1 | g) + (1 | h)), family = binomial(), data = s$d)
+    write_ref(r, f, 1:4, s$d)
+  }
+  r <- sprintf("sim_gamma_crossed_s%d", rep)          # :3170 (Gamma)
+  if (want(r)) {
+    s <- sim_crossed(8, rep)
+    s$d$y <- stats::rgamma(s$n, shape = 4, rate = 4 / exp(s$eta))
+    f <- drmTMB(drm_formula(y ~ x + (1 | g) + (1 | h), sigma ~ 1), family = Gamma(link = "log"),
+                data = s$d)
+    write_ref(r, f, 1:5, s$d)
+  }
+}
+
+if (want("alfalfa_gamma_crossed")) {      # Wave E: nlme::Alfalfa, Block x Variety
+  a <- nlme::Alfalfa
+  d <- data.frame(Yield = a$Yield, Date = as.character(a$Date), Block = as.character(a$Block),
+                  Variety = as.character(a$Variety))
+  f <- drmTMB(drm_formula(Yield ~ Date + (1 | Block) + (1 | Variety), sigma ~ 1),
+              family = Gamma(link = "log"), data = d)
+  write_ref("alfalfa_gamma_crossed", f, 1:7, d)
+}
+
+# ---- F4: ape::carnivora, Gaussian + phylo mean (location_only.jl :3540), ML and REML ---------
+carnivora_data <- function() {
+  utils::data("carnivora", package = "ape", envir = environment())
+  cv <- get("carnivora", envir = environment())
+  cv$Species <- gsub(" ", "_", as.character(cv$Species))
+  cv <- cv[!is.na(cv$SB) & !is.na(cv$SW) & !duplicated(cv$Species), ]
+  for (k in c("SuperFamily", "Family", "Genus", "Species")) cv[[k]] <- factor(as.character(cv[[k]]))
+  tr <- ape::compute.brlen(ape::as.phylo(~SuperFamily/Family/Genus/Species, data = cv),
+                           method = "Grafen")
+  tr <- ape::multi2di(tr, random = FALSE)
+  tr$edge.length[tr$edge.length <= 0] <- 1e-6
+  tr$node.label <- NULL
+  dep <- ape::node.depth.edgelength(tr); n <- ape::Ntip(tr)
+  te <- match(seq_len(n), tr$edge[, 2])
+  tr$edge.length[te] <- tr$edge.length[te] + (max(dep[seq_len(n)]) - dep[seq_len(n)])
+  tr$edge.length <- tr$edge.length / max(ape::node.depth.edgelength(tr)[seq_len(n)])
+  list(tree = tr, data = data.frame(species = cv$Species, lSB = log(cv$SB), lSW = log(cv$SW)))
+}
+
+for (reml in c(FALSE, TRUE)) {
+  r <- if (reml) "carnivora_reml" else "carnivora_ml"
+  if (want(r)) {
+    cc <- carnivora_data(); assign("tree", cc$tree, envir = globalenv())
+    f <- drmTMB(bf(lSB ~ lSW + phylo(1 | species, tree = tree), sigma ~ 1), family = gaussian(),
+                data = cc$data, REML = reml)
+    write_ref(r, f, 1:4, cc$data, cc$tree)
+  }
 }
