@@ -1610,8 +1610,13 @@ What a correct model implies depends on the route:
   but residuals of one group stay correlated. **On the mean**, this covers
   any lone mean random intercept, including a `phylo()` or `relmat()` term;
   the fitted SD `σ̂_b` is used as every observation's random-effect SD, which
-  is exact when the relatedness matrix has a unit diagonal (for example an
-  ultrametric tree of height 1). **On the scale**, for a Gaussian
+  matches the model when the relatedness matrix has a unit diagonal (for
+  example an ultrametric tree of height 1). The 32-node rule is accurate to
+  about 1e-6 in `r_i` while `σ̂_b / σ̂ ≤ 2`, but its error grows beyond that
+  (6e-3 at 4, 0.12 at 10). The default sparse / EM Gaussian `phylo(1 | g)`
+  route is exact instead: `F_i` is the closed-form marginal
+  `N(x_i'β̂, σ̂² + σ̂_b² C_ii)`, centred on the fixed-effect mean, with the
+  tip's own variance `C_ii` from the tree (#995, #996). **On the scale**, for a Gaussian
   `sigma ~ 1 + (1 | g)`, `F_i` mixes `N(μ_i, (σ_i e^b)²)` over
   `b ~ N(0, τ̂²)`, with `σ_i` the fixed-effect scale. When `τ̂` is moderate
   or large these residuals can be under-dispersed (SD below 1) even under a

@@ -928,6 +928,8 @@ function ranef(fit::DrmFit)
     if fit.ranef isa NamedTuple && haskey(fit.ranef, :effects)
         return fit.ranef.effects
     end
+    # Gaussian phylo-mean fits wrap their BLUP `Dict` with Xβ̂ and the tree (#995).
+    fit.ranef isa LocOnlyRanef && return fit.ranef.effects
     return fit.ranef
 end
 

@@ -1,0 +1,13 @@
+- **Gaussian `phylo(1 | g)` quantile residuals are now the population-level (marginal) PIT (#995, #996).**
+  - **What was wrong.** The sparse and conjugate-EM routes store the BLUP-conditional mean in `fitted()`. The quantile residual integrated σ_b around that mean, counting the random effect twice. It also used σ_b² for every tip, although a tip's prior variance is σ_b²·C_ii on a raw branch-length tree.
+  - **What it does now.** `residuals(fit; type = :quantile)` centres on the fixed-effect mean `Xβ̂` and uses σ_b²·C_ii per tip, evaluated in closed form, so it equals `(y − Xβ̂) / √(σ̂_e² + σ̂_b² C_ii)` to rounding. In the upper tail, the Φ⁻¹(Φ(·)) round trip shared by every family keeps that to about |r| ≤ 4 and caps |r| at 8.13. It no longer warns.
+  - **Why not quadrature.** The 32-node Gauss–Hermite mixture used for other random intercepts is not accurate enough here: its residual error is 6e-3 at σ̂_b √C_ii / σ̂_e = 4 and 0.12 at 10.
+  - **Unchanged.** The dense structured fallback keeps the warning, a known false positive (#1104).
+  - **Twin note.** drmTMB 0.7.1's quantile residual for this model is conditional on the phylo modes, `(y − Xβ̂ − û)/σ̂`, although its documentation describes a fixed-effect-only one. The two engines therefore differ by design (max 1.46 and 3.93 on the cases in `docs/dev-log/evidence/2026-10-16-995-phylo-quantile-residual-parity.md`), while agreeing to about 1e-9 under either convention. The drmTMB-side decision is tracked in #1101.
+- **`fit.ranef` on these fits is now a dict-like `LocOnlyRanef` that also carries `Xβ̂` and the tree (#995).**
+  - It has the same `group => BLUPs` entries, and `ranef(fit)` still returns that `Dict`.
+  - LogNormal `phylo(1 | g)` fits reuse the Gaussian route on log y, so they carry one too. Their quantile residuals are unchanged and still warn; they are mis-calibrated, as before this change (#1102).
+  - The EM route now stores its BLUPs as well. As a result `ranef(fit)` works on it, `r2_constant_sigma` refuses it as a random-effects fit (it used to return 1 − RSS/TSS), and the variance-boundary diagnostic now covers it.
+- **The per-tip variance C_ii behind that residual costs O(p) (#995).**
+  - It is the diagonal of the root-conditioned tree covariance, read from a Takahashi selected inverse and cached on the fit.
+  - It takes about 1 kB per tip: 0.01 s at 16,384 tips and 0.21 s at 262,144.

@@ -278,7 +278,19 @@ end
     fit = drm(bf(@formula(y ~ x + phylo(1 | species))), Gaussian();
               data = (; y, x = xs, species), tree = phy)
     @test DRModels._structured_mean_re(fit)
-    @test_logs (:warn, r"#995") match_mode = :any residuals(fit; type = :quantile)
+    # The Gaussian sparse / EM phylo route is now handled exactly (fixed-effect
+    # centre + per-tip σ_b² C_ii, test_995_phylo_pit_centre.jl): no warning.
+    @test fit.ranef isa DRModels.LocOnlyRanef
+    @test_nowarn residuals(fit; type = :quantile)
+    # The dense structured fallback keeps the warning for now. It is a known
+    # false positive: that route stores fitted = Xβ̂ on the tip-correlation
+    # scale (C_ii = 1), so its σ_b-marginal PIT is already centred correctly
+    # (on this data it matches the closed-form marginal to 8e-14). Dropping the
+    # warning there is tracked in #1104, not part of #995.
+    dfit = drm(bf(@formula(y ~ x + phylo(1 | species))), Gaussian();
+               data = (; y, x = xs, species), tree = phy, algorithm = :gls)
+    @test DRModels._structured_mean_re(dfit)
+    @test_logs (:warn, r"#995") match_mode = :any residuals(dfit; type = :quantile)
 
     G = 20; gg = repeat(1:G, inner = 10); xo = randn(10G)
     yo = 0.3 .+ xo .+ (0.5 .* randn(G))[gg] .+ 0.5 .* randn(10G)
