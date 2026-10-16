@@ -211,12 +211,20 @@ _clamp_active(θ, ks; lo::Real = -8.0, hi::Real = 3.0, tol::Real = 1e-3) =
 # [-8, 3] by the objective. `disp` are log-dispersion coordinates, whose REAL bound is the
 # family's: NB2 / Gamma / Beta `aux_from` clamp `-2 log sigma` to [-8, 8], i.e. log sigma to
 # [-4, 4] (`_dispersion_clamp`), narrower than the [-8, 8] box `_crossed_mean_laplace_nuisance_fg`
-# applies first. A coordinate at its clamp makes the objective flat there while the gradient
-# is not, so the gradient-difference Hessian is undefined and the route falls back to the
+# applies first. `eta` is an optional per-observation log-sigma linear predictor
+# (`ησ = Xσ·βσ` on the hetero phylo-mean route): the clamp lives on those fitted
+# values, not on the βσ coordinates, so a slope can be interior while some
+# observations sit on the family's bound. A coordinate (or observation) at its
+# clamp makes the objective flat there while the gradient is not, so the
+# gradient-difference Hessian is undefined and the route falls back to the
 # value-based (known-noisy) `_finite_hessian`.
-function _se_hessian_path(θ̂; sd = (), disp = (), disp_bound::Real = 4.0, sd_lo::Real = -8.0)
+function _se_hessian_path(θ̂; sd = (), disp = (), disp_bound::Real = 4.0, sd_lo::Real = -8.0,
+                          eta = nothing)
+    eta_hit = eta !== nothing &&
+        _clamp_active(eta, eachindex(eta); lo = -disp_bound, hi = disp_bound)
     (_clamp_active(θ̂, sd; lo = sd_lo, hi = 3.0) ||
-     _clamp_active(θ̂, disp; lo = -disp_bound, hi = disp_bound)) ? :value : :gradient
+     _clamp_active(θ̂, disp; lo = -disp_bound, hi = disp_bound) ||
+     eta_hit) ? :value : :gradient
 end
 
 # Real bound of log sigma for the families routed through `_crossed_mean_laplace_nuisance_fg`.
@@ -1195,7 +1203,13 @@ function _fit_phylo_mean_laplace_hetero(fam, kind, aux_from, n::Int, Xμ, Xσ,
     grad!(gfinal, θ̂)
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
     V = if se
-        Hθ = if _se_hessian_path(θ̂; sd = (pμ + pσ + 1):(pμ + pσ + 1), sd_lo = _SE_LOGSD_LO) === :value
+        # log-SD collapse *or* a per-observation ησ = Xσ·βσ sitting at the
+        # family's dispersion clamp (fg :1047, then aux_from to ±`_dispersion_clamp`).
+        # Checking βσ coordinates themselves would miss a slope that is interior
+        # while some observations are already flat.
+        Hθ = if _se_hessian_path(θ̂; sd = (pμ + pσ + 1):(pμ + pσ + 1), sd_lo = _SE_LOGSD_LO,
+                                 eta = Xσ * θ̂[pμ+1:pμ+pσ],
+                                 disp_bound = _dispersion_clamp(kind)) === :value
             _warn_value_hessian("sparse-Laplace GLMM (phylo-mean, covariate dispersion)")
             _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
         else
