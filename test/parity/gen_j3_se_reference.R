@@ -8,6 +8,8 @@
 # reference numbers, all re-ordered into DRModels.jl's theta order:
 #   theta     drmTMB opt$par
 #   se        sqrt(diag(sdreport cov.fixed)) at opt$par
+#   (REML rows: the leading mean entries are coef(f)$mu and sqrt(diag(vcov(f))), the JOINT REML
+#    mean SEs, because TMB integrates the mean out of opt$par; see the carnivora block)
 #   max_grad  max |gradient of the TMB marginal objective at opt$par| (must be < 1e-6)
 #   loglik    drmTMB logLik
 # License boundary: numbers and simulated data only. No drmTMB source is copied (see
@@ -27,16 +29,17 @@ only <- Sys.getenv("DRM_J3_ONLY", "")
 only <- if (nzchar(only)) strsplit(only, ",")[[1]] else NULL
 
 # TOML has no `NaN` / `NA` / `Inf` literals (formatC writes those). NA and NaN alike are
-# written as TOML `nan`, +/-Inf as `inf` / `-inf`, so a missing or NaN reference SE reaches the
-# Julia harness as NaN and the row is "not comparable" there (dropped like a missing value)
-# instead of a TOML parse error.
-fmt <- function(x) {
-  v <- formatC(x, digits = 17, format = "g")
+# written as TOML `nan`, +/-Inf as `inf` / `-inf`, so a missing or NaN reference number reaches
+# the Julia harness as NaN (a NaN SE makes the row "not comparable" there, dropped like a
+# missing value) instead of a TOML parse error. Used for every number written to ref.toml.
+tomlnum <- function(x, ...) {
+  v <- formatC(x, ...)
   v[is.na(x)] <- "nan"
   inf <- !is.na(x) & is.infinite(x)
   v[inf] <- ifelse(x[inf] > 0, "inf", "-inf")
-  paste0("[", paste(v, collapse = ", "), "]")
+  v
 }
+fmt <- function(x) paste0("[", paste(tomlnum(x, digits = 17, format = "g"), collapse = ", "), "]")
 
 drmtmb_commit <- Sys.getenv("DRMTMB_COMMIT", unset = NA_character_)
 
@@ -76,8 +79,8 @@ write_ref <- function(route, fit, perm, data, tree = NULL, extra = character(),
     sprintf("comparable = %s", tolower(as.character(comparable))),
     sprintf("tmb_names = %s",
             paste0("[", paste(sprintf("\"%s\"", c(lead_names, names(par)[perm])), collapse = ", "), "]")),
-    sprintf("loglik = %s", formatC(as.numeric(logLik(fit)), digits = 17, format = "g")),
-    sprintf("max_grad = %s", formatC(max(abs(gr)), digits = 6, format = "e")),
+    sprintf("loglik = %s", tomlnum(as.numeric(logLik(fit)), digits = 17, format = "g")),
+    sprintf("max_grad = %s", tomlnum(max(abs(gr)), digits = 6, format = "e")),
     sprintf("theta = %s", fmt(c(theta_lead, as.numeric(par)[perm]))),
     sprintf("se = %s", fmt(c(se_lead, se[perm]))),
     extra
@@ -351,10 +354,14 @@ for (reml in c(FALSE, TRUE)) {
       # uncertainty propagated through beta_hat(v)), not the conditional GLS (X'V^-1 X)^-1: on
       # this fixture 0.026863 vs 0.023784 for the lSW slope (#1091).
       mu_names <- names(coef(f)$mu)
+      lead <- paste0("mu:", mu_names)
+      # a naming mismatch must stop here, not reach ref.toml as NA (which the harness would
+      # then drop as "not comparable" without anyone noticing)
+      stopifnot(all(lead %in% names(diag(vcov(f)))))
       write_ref(r, f, 1:2, cc$data, cc$tree,
                 theta_lead = as.numeric(coef(f)$mu),
-                se_lead = sqrt(diag(vcov(f)))[paste0("mu:", mu_names)],
-                lead_names = paste0("mu:", mu_names), extra = "reml = true")
+                se_lead = sqrt(diag(vcov(f)))[lead],
+                lead_names = lead, extra = "reml = true")
     } else {
       write_ref(r, f, 1:4, cc$data, cc$tree)
     }

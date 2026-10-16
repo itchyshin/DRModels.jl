@@ -80,7 +80,8 @@ function j3_check(route::AbstractString, fit; rtol_se = 0.01, opt_tol = 2e-4,
     push!(J3_LEDGER, (route = String(route), drmTMB_commit = get(ref, "drmTMB_commit", "unrecorded"),
                       opt_convergence = get(ref, "opt_convergence", missing),
                       pd_hess = get(ref, "pd_hess", missing), drm_sha = j3_sha(),
-                      converged = is_converged(fit), status = status, n_compared = "$ns/$(length(θ_tmb))",
+                      converged = is_converged(fit), status = status,
+                      n_compared = comparable ? "$ns/$(length(θ_tmb))" : "0/$(length(θ_tmb))",
                       max_rel_se = comparable ? maximum(abs.(se_jl_all[1:ns] ./ se_tmb[1:ns] .- 1)) : NaN))
     @testset "$route" begin
         if !comparable
