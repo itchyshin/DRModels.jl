@@ -33,7 +33,14 @@ write_ref <- function(route, fit, perm, data, tree = NULL, extra = character(),
   dir <- file.path(out_root, route)
   dir.create(dir, recursive = TRUE, showWarnings = FALSE)
   utils::write.csv(data, file.path(dir, "data.csv"), row.names = FALSE)
-  if (!is.null(tree)) ape::write.tree(tree, file.path(dir, "tree.newick"))
+  if (!is.null(tree)) {
+    ape::write.tree(tree, file.path(dir, "tree.newick"))
+    # ape's own tip covariance (height-1 tree, so covariance = correlation): the independent
+    # dense reference in test/j3_dense_reference.jl builds its prior from this, not from
+    # DRModels' sparse augmented tree precision.
+    utils::write.csv(ape::vcv(tree)[levels(data$species), levels(data$species)],
+                     file.path(dir, "cov.csv"))
+  }
   par <- fit$opt$par
   gr <- as.numeric(fit$obj$gr(par))
   se <- sqrt(diag(fit$sdr$cov.fixed))

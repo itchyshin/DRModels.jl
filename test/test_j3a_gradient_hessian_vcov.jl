@@ -7,9 +7,11 @@
 # tightened cold-started inner solve, on the two crossed-mean routes.
 #
 # Reference for the grouseticks test: drmTMB 0.7.1 (ca3ddef) `sqrt(diag(f$sdr$cov.fixed))`
-# at `f$opt$par`, as posted in #1073 (Data fitter / Simulator). Honesty note: the thread
-# does not record TMB's max |gradient| at opt$par, so the "< 1e-6 at the SE point" check
-# is done on the Julia side (the Julia and R optima agree to 1e-8 per the issue).
+# at `f$opt$par`, as posted in #1073 (Data fitter / Simulator) and re-run locally on the same
+# data: for that reference fit `fit$opt$convergence == 0`, `fit$sdr$pdHess == TRUE` (drmTMB
+# exposes TMB's `pdHess`, the `pd.hess` flag) and max |gradient| at `opt$par` = 1.5e-10.
+# The issue thread does not record TMB's max |gradient| itself, so the "< 1e-6 at the SE
+# point" check is also done on the Julia side (the Julia and R optima agree to 1e-8).
 using DRModels
 using Test, LinearAlgebra, Random
 import Distributions
@@ -77,11 +79,11 @@ end
     @test all(abs.(se ./ se_tmb .- 1) .< 0.01)
 end
 
-@testset "J3a: crossed-mean (binomial) SEs agree with a stable FD of the exact gradient" begin
-    # NOT a native-drmTMB comparison: the reference is central differences of the
-    # route's own exact gradient at h = 1e-3 (the check Simulator used on #1073, which
-    # matched drmTMB to 1e-8 on grouseticks). Route 2997 is therefore marked
-    # self-consistent, not natively verified.
+@testset "J3a: crossed-mean (binomial) SEs vs an independent ForwardDiff Hessian" begin
+    # Reference: test/j3_dense_reference.jl -- dense Laplace marginal, Float64 mode carried in
+    # Dual arithmetic, Hessian by ForwardDiff. It shares no code with the route and differences
+    # neither a gradient nor a value. (Native drmTMB agreement for this route is in J3b.)
+    include("j3_dense_reference.jl")
     rng = MersenneTwister(1073)
     G, H, n = 22, 16, 700
     x = randn(rng, n)
@@ -98,14 +100,67 @@ end
     fit = DRModels._fit_binomial_crossed_laplace(DRModels.Binomial(), s, ntr, X, comps,
                                                  ["(Intercept)", "x"], 1e-7; se = true)
     @test fit.converged
-    θ = copy(fit.theta); p = length(θ)
-    Href = zeros(p, p); gp = zeros(p); gm = zeros(p)
-    for i in 1:p
-        hi = 1e-3 * (1 + abs(θ[i])); e = zeros(p); e[i] = hi
-        fit.nllgrad(gp, θ .+ e); fit.nllgrad(gm, θ .- e)
-        Href[:, i] .= (gp .- gm) ./ (2hi)
-    end
-    se_ref = sqrt.(diag(inv(Symmetric((Href .+ Href') ./ 2))))
+    θ = copy(fit.theta)
+    spec = DenseSpec(2, X, hcat(indicator(gidx, Gn), indicator(hidx, Hn)), obs_binomial(s, ntr),
+                     prior_iid([Gn, Hn], [3, 4]))
+    # the dense objective is the route's objective up to a constant
+    θ2 = θ .+ [0.01, -0.02, 0.03, -0.02]
+    @test dense_laplace_nll(θ2, spec) - dense_laplace_nll(θ, spec) ≈ fit.nll(θ2) - fit.nll(θ) atol = 1e-6
+    se_ref = dense_laplace_se(θ, spec)
     se = sqrt.(diag(fit.vcov))
-    @test all(abs.(se ./ se_ref .- 1) .< 1e-3)
+    @test all(abs.(se ./ se_ref .- 1) .< 1e-4)
+end
+
+@testset "J3a: which Hessian is used when a coordinate is at its clamp (review fixes)" begin
+    pμ = 4
+    # The log-dispersion's REAL bound is the family's: NB2 / Gamma / Beta clamp `-2 log sigma`
+    # to [-8, 8] inside `aux_from`, i.e. log sigma to [-4, 4]; Tweedie uses it raw ([-8, 8]).
+    # A value in (3, 4) is INTERIOR for NB2 and must take the gradient path (it used to fall
+    # back silently because it was checked against the log-SD box [-8, 3]).
+    bnb = DRModels._dispersion_clamp(Val(:nb2_fixed))
+    @test bnb == 4.0 && DRModels._dispersion_clamp(Val(:gamma_fixed)) == 4.0 &&
+          DRModels._dispersion_clamp(Val(:beta_fixed)) == 4.0
+    @test DRModels._dispersion_clamp(Val(:tweedie_fixed)) == 8.0
+    path(θ; b = bnb) = DRModels._se_hessian_path(θ; disp = (pμ + 1,), sd = (pμ + 2):(pμ + 3), disp_bound = b)
+    θ = [0.1, 0.2, 0.3, 0.4, 3.5, -0.3, -0.5]
+    @test path(θ) === :gradient                    # theta_sigma_hat = 3.5 > 3, inside NB2's [-4, 4]
+    θ[pμ + 1] = 3.9995                             # within tol of NB2's upper clamp
+    @test path(θ) === :value
+    θ[pμ + 1] = 5.0                                # outside NB2's box (flat), inside Tweedie's
+    @test path(θ) === :value
+    @test path(θ; b = DRModels._dispersion_clamp(Val(:tweedie_fixed))) === :gradient
+    θ[pμ + 1] = 3.5; θ[pμ + 2] = 3.0               # a log-SD at ITS upper clamp
+    @test path(θ) === :value
+    θ[pμ + 2] = -0.3; θ[pμ + 3] = -8.0             # a log-SD at its lower clamp
+    @test path(θ) === :value
+
+    # The fallback is not silent.
+    @test_logs (:warn, r"falling back to the value-based finite-difference Hessian") DRModels._warn_value_hessian("test")
+
+    # End to end: a real NB2 crossed fit whose RE SD collapses to its clamp must warn and
+    # still return a finite or NaN vcov of the right shape (never throw).
+    rng = MersenneTwister(1073)
+    n = 300
+    a = ["a$(rand(rng, 1:30))" for _ in 1:n]; b = ["b$(rand(rng, 1:20))" for _ in 1:n]
+    x = randn(rng, n)
+    y = Float64.([rand(rng, Distributions.NegativeBinomial(3.0, 3.0 / (3.0 + exp(0.3 + 0.4 * x[i])))) for i in 1:n])
+    fit = @test_logs (:warn, r"falling back to the value-based finite-difference Hessian") match_mode = :any drm(
+        bf(@formula(y ~ x + (1 | a) + (1 | b)), @formula(sigma ~ 1)), NegBinomial2();
+        data = (; y, x, a, b))
+    @test size(vcov(fit)) == (length(fit.theta), length(fit.theta))
+    @test minimum(fit.theta[end-1:end]) < -7.9    # the collapse that triggered the branch
+
+    # The branch decision above is only right if the exact gradient really is valid for
+    # log-dispersion in (3, 4): at theta_sigma = 3.5 (CV ~ 33) the stored gradient must agree with
+    # central differences of the stored objective. A real NB2 crossed fit that far out runs off
+    # with converged = false (a separate issue, deliberately NOT addressed here), so this point is
+    # evaluated rather than fitted.
+    gt = _j3a_read_grouse()
+    gfit = drm(bf(@formula(TICKS ~ 1 + YEAR + cHEIGHT + (1 | BROOD) + (1 | LOCATION)),
+                  @formula(sigma ~ 1)), NegBinomial2(); data = gt)
+    θ5 = copy(gfit.theta); θ5[5] = 3.5
+    g5 = zeros(7); gfit.nllgrad(g5, θ5)
+    fd5 = [(gfit.nll(θ5 .+ 1e-4 .* (1:7 .== k)) - gfit.nll(θ5 .- 1e-4 .* (1:7 .== k))) / 2e-4 for k in 1:7]
+    @test g5[5] != 0                                 # not flat: the objective is not clamped at 3.5
+    @test maximum(abs.(g5 .- fd5)) < 1e-3 * max(1.0, maximum(abs.(g5)))
 end
