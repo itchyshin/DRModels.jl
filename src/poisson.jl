@@ -91,6 +91,48 @@ _logfactorial(k::Integer) = sum(log, 2:k; init = 0.0)   # log k!  (0 for k = 0, 
 # is fixed at 1 (an offset, not a regressor): `η = Xμβ + offset`.
 offset(x) = x
 
+# #1097: `offset = v` (a vector with one value per row of `data`) on the families
+# that apply an offset. It is the same thing as writing `offset(v)` in the mean
+# formula: the vector becomes a data column, `offset(<column>)` is appended to the
+# mean, and the fit is delegated to the formula path. That way rows dropped for a
+# missing response carry their offset with them, and every route that supports a
+# formula offset supports the keyword (and every route that refuses one refuses
+# it, by the same message). `predict(fit, newdata)` then needs that column in
+# `newdata`, under the name `_offset_arg`.
+const _OFFSET_ARG_COLUMN = :_offset_arg
+function _offset_kw_to_formula(f::DrmFormula, data, offset_value)   # NOT `offset`: @formula below needs the global function
+    n = length(_table_column(data, f.response))
+    off = try
+        Float64.(collect(offset_value))
+    catch
+        throw(ArgumentError("drm: `offset =` must be a numeric vector without `missing`"))
+    end
+    length(off) == n ||
+        throw(ArgumentError("drm: `offset =` must have one value per row of `data` " *
+                            "(got $(length(off)), expected $n)"))
+    all(isfinite, off) ||
+        throw(ArgumentError("drm: `offset =` must be finite for every observation"))
+    mu = nothing
+    for (p, r) in f.forms
+        p === :mu && (mu = r)
+    end
+    _has_offset_term(mu) &&
+        throw(ArgumentError("drm: give the mean offset either as `offset(...)` in the formula " *
+                            "or as `offset =`, not both"))
+    term = @formula(_ ~ offset(_offset_arg)).rhs
+    mu_new = mu isa Tuple ? (mu..., term) : (mu, term)
+    forms = Pair{Symbol,Any}[p => (p === :mu ? mu_new : r) for (p, r) in f.forms]
+    f2 = DrmFormula(f.response, forms, f.response2, f.schema_cache)
+    data2 = merge(Tables.columntable(data), NamedTuple{(_OFFSET_ARG_COLUMN,)}((off,)))
+    return f2, data2
+end
+
+# Families that do not apply an offset refuse the keyword by name.
+_refuse_offset_kw(fam) = throw(ArgumentError("drm: `offset =` is not supported for " *
+    "$(nameof(typeof(fam)))(); offsets are applied on the mean of Poisson(), NegBinomial2() " *
+    "and Gaussian() (and the NegBinomial2() `sigma` formula). It would otherwise be " *
+    "estimated as a free coefficient. See issues #938 and #1097."))
+
 # Split an `offset(...)` marker off a (already `_split_ranef`-stripped) rhs,
 # returning `(rhs_without_offset, offset_term_or_nothing)`. At most one
 # `offset(...)` term is admitted, matching drmTMB (`y ~ x + offset(log_exposure)`).
@@ -159,7 +201,16 @@ end
 
 function drm(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
              A = nothing, coords = nothing, g_tol::Real = 1e-8, se::Bool = true,
-             marginal::Symbol = :LA, method = nothing, nAGQ::Int = 5)
+             marginal::Symbol = :LA, method = nothing, nAGQ::Int = 5, ids = nothing,
+             offset = nothing)
+    if offset !== nothing                    # #1097: `offset =` is `offset(<column>)` in the mean
+        f2, data2 = _offset_kw_to_formula(f, data, offset)
+        return drm(f2, fam; data = data2, tree = tree, K = K, A = A, coords = coords,
+                   g_tol = g_tol, se = se, marginal = marginal, method = method,
+                   nAGQ = nAGQ, ids = ids)
+    end
+    _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, coords = coords,
+                     laplace = _scalar_laplace_requested(marginal))   # #1027 #1022 #1010 #938
     # `method` is the ML/REML selector. LA/VA/AGHQ is `marginal` (Q1 / #136 / #448).
     # `:REML` is the opt-in Cox–Reid restricted objective, admitted on Poisson
     # `(1 | g)` GHQ under `:LA` (#443) and on `_fit_poisson_general_laplace`
@@ -175,9 +226,10 @@ function drm(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
         drm(f, fam; data = data_observed, tree = tree, K = K, A = A,
             coords = coords, g_tol = g_tol, se = se, marginal = marginal,
-            method = method, nAGQ = nAGQ)
+            method = method, nAGQ = nAGQ, ids = ids)
     end
     missing_fit !== nothing && return missing_fit
+    A = _resolve_relatedness_labels(f, data, A, ids)   # #957: match `A` by label
 
     marg = _marginal_method(marginal)                     # :LA (default), :VA (#136), :AGHQ (#448)
     isva = marg isa Variational
@@ -192,11 +244,26 @@ function drm(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
     off = offset_term === nothing ? zeros(length(y)) : _offset_vector(offset_term, data)
     length(off) == length(y) ||
         error("Poisson(): `offset(...)` must have one value per observation")
+    all(isfinite, off) ||
+        throw(ArgumentError("Poisson(): `offset(...)` must be finite for every observation"))
     all(yi -> yi ≥ 0 && isinteger(yi), y) ||
         error("Poisson() requires non-negative integer counts as the response")
-    if offset_term !== nothing && (st !== nothing || !isempty(re) || haskey(rhs, :zi) || haskey(rhs, :hu))
-        error("Poisson(): `offset(...)` is currently only supported on the fixed-effects-only " *
-              "mean (no random effect, structured marker, `zi`, or `hu`)")
+    # #938 / #1097: the offset (coefficient fixed at 1) is applied on the
+    # fixed-effects mean and on ONE ordinary `(1 | g)` under :LA / :AGHQ (and
+    # :Laplace, in `_drm_ordinary_laplace`). Every other route refuses it by name.
+    offr = offset_term === nothing ? nothing : off
+    no_offset(route) = offr === nothing || throw(ArgumentError(
+        "Poisson(): `offset(...)` is not supported with $route; it is applied only on the " *
+        "fixed-effects mean and on a single ordinary `(1 | g)` (marginal = :LA, :AGHQ or " *
+        ":Laplace). Fit without the offset or fold it into the data. See issues #938 and #1097."))
+    if offr !== nothing
+        st !== nothing && no_offset("a phylogenetic/structured random effect")
+        (haskey(rhs, :zi) || haskey(rhs, :hu)) && no_offset("a `zi`/`hu` part")
+        length(re) > 1 && no_offset("crossed/multiple random intercepts")
+        isva && !isempty(re) && no_offset("`marginal = :VA`")
+        if !isempty(re) && _re_kind(re[1][1])[1] !== :intercept
+            no_offset("a correlated random slope `(1 + x | g)`")
+        end
     end
     if st !== nothing
         isva && _va_reject(fam, "a phylogenetic/structured random effect")
@@ -266,9 +333,11 @@ function drm(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
             isva && return _withformula(_withmarginal(
                 _fit_poisson_ranef_va(fam, y, Xμ, gidx, G, nmμ, grp, g_tol), :VA), f)
             isaghq && return _withformula(_withmarginal(
-                _fit_poisson_ranef_aghq(fam, y, Xμ, gidx, G, nmμ, grp, g_tol; nAGQ = nAGQ), :AGHQ), f)
+                _fit_poisson_ranef_aghq(fam, y, Xμ, gidx, G, nmμ, grp, g_tol; nAGQ = nAGQ,
+                                        offset = offr), :AGHQ), f)
             return _withformula(
-                _fit_poisson_ranef(fam, y, Xμ, gidx, G, nmμ, grp, g_tol; reml = reml), f)
+                _fit_poisson_ranef(fam, y, Xμ, gidx, G, nmμ, grp, g_tol; reml = reml,
+                                   offset = offr), f)
         elseif rk === :corr                               # (1 + x | g) → 2-D GHQ (NOT AGHQ)
             isva && _va_reject(fam, "a correlated random slope `(1 + x | g)`")
             isaghq && _aghq_reject(fam, "a correlated random slope `(1 + x | g)` (12² tensor GHQ is not AGHQ)")
@@ -338,7 +407,8 @@ end
 #
 # ML stays the default: Cox–Reid OVER-corrects once clusters are plentiful (+4.38% at
 # G=40 against −12.37% for ML at G=10).
-function _fit_poisson_ranef(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol; reml::Bool = false, K::Int = _RANEF1D_AGHQ_K)
+function _fit_poisson_ranef(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol; reml::Bool = false, K::Int = _RANEF1D_AGHQ_K,
+                             offset = nothing)
     n = length(y); pμ = size(Xμ, 2)
     members = [Int[] for _ in 1:G]
     for i in 1:n
@@ -348,13 +418,14 @@ function _fit_poisson_ranef(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol; rem
     rule = _AGHQRule(1, K); Zre = ones(n, 1); bcache = zeros(1, G)   # #719: per-group AGHQ
     function nll(θ)
         βμ = θ[1:pμ]; σb = exp(θ[pμ+1])
-        η0 = Xμ * βμ
+        η0 = _eta_with_offset(Xμ, βμ, offset)      # #938: offset fixed at 1
         ll = (i, η) -> (ηc = clamp(η, -30.0, 30.0); y[i] * ηc - exp(ηc) - lf[i])
         L = reshape([σb], 1, 1)
         return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache)
     end
     θ0 = zeros(pμ + 1)
     θ0[1] = log(sum(y) / n + eps())
+    θ0[1:pμ] .= _offset_start(θ0[1:pμ], Xμ, offset)
     θ0[pμ+1] = log(0.5)
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res); conv = drm_optim_converged(res)
@@ -369,12 +440,12 @@ function _fit_poisson_ranef(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol; rem
         # Wald vcov under a restricted objective must be the inverse Hessian OF THAT
         # objective (#310), not the ML observed information.
         V = _glsp_reml_vcov(grad_fn, θ̂, pμ)
-        means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
+        means = Dict(:mu => exp.(_eta_with_offset(Xμ, θ̂[1:pμ], offset))); obs = Dict(:mu => Vector{Float64}(y))
         fit = _withnll(DrmFit(fam, blocks, names, θ̂, V, -ml_nll, n, conv, means, obs, scales), nll)
         return _withreml(fit, -reml_nll, -ml_nll)
     end
     V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
-    means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))   # population λ (b=0)
+    means = Dict(:mu => exp.(_eta_with_offset(Xμ, θ̂[1:pμ], offset))); obs = Dict(:mu => Vector{Float64}(y))   # population λ (b=0)
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, conv, means, obs, scales), nll),
         Optim.iterations(res))
@@ -385,7 +456,8 @@ end
 # the group posterior mode (`_poisson_group_aghq_logint`) instead of
 # prior-scaled GHQ-32. Default `:LA` is unchanged. `nAGQ=1` is 1-point Laplace
 # plumbing, not a recovery claim. `:REML` is rejected upstream.
-function _fit_poisson_ranef_aghq(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol; nAGQ::Int = 5)
+function _fit_poisson_ranef_aghq(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol; nAGQ::Int = 5,
+                                   offset = nothing)
     nAGQ >= 1 || throw(ArgumentError("nAGQ must be ≥ 1; got $nAGQ"))
     n = length(y); pμ = size(Xμ, 2)
     members = [Int[] for _ in 1:G]
@@ -395,7 +467,7 @@ function _fit_poisson_ranef_aghq(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol
     lf = [_logfactorial(round(Int, yi)) for yi in y]
     function nll(θ)
         βμ = θ[1:pμ]; σb = exp(θ[pμ+1])
-        η0 = Xμ * βμ
+        η0 = _eta_with_offset(Xμ, βμ, offset)      # #938: offset fixed at 1
         s = zero(eltype(θ))
         for idx in members
             isempty(idx) && continue
@@ -405,6 +477,7 @@ function _fit_poisson_ranef_aghq(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol
     end
     θ0 = zeros(pμ + 1)
     θ0[1] = log(sum(y) / n + eps())
+    θ0[1:pμ] .= _offset_start(θ0[1:pμ], Xμ, offset)
     θ0[pμ+1] = log(0.5)
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res); conv = drm_optim_converged(res)
@@ -412,7 +485,7 @@ function _fit_poisson_ranef_aghq(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol
     names = [:mu => nmμ, :resd => [String(grp)]]
     scales = Dict{Symbol,Vector{Float64}}()
     V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
-    means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
+    means = Dict(:mu => exp.(_eta_with_offset(Xμ, θ̂[1:pμ], offset))); obs = Dict(:mu => Vector{Float64}(y))
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, conv, means, obs, scales), nll),
         Optim.iterations(res))

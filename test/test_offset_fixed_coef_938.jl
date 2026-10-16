@@ -17,6 +17,10 @@
 #   * Gaussian identity: the offset fit equals the fit of `y - offset`;
 #   * refusals name the offending formula part.
 #
+# #1097 shift test: moving the offset by log 2 (location, and the NB2 sigma
+# formula) moves the matching intercept by exactly -log 2 and leaves logLik and
+# every other coefficient unchanged. `offset =` is the same as `offset(<column>)`.
+#
 # Data are simulated here (own RNG): no external or AGPL data enter the MIT tree.
 # The Owls parity row lives in test_offset_owls_parity_938.jl (gated).
 
@@ -180,35 +184,93 @@ end
         @test_throws ArgumentError predict(fit, (; y = zeros(5), x = nd0.x))
     end
 
-    @testset "refusals name the formula part (no silent free coefficient)" begin
-        # an offset anywhere but the mean can't be held fixed on these routes
-        for fam in (NegBinomial2(), Gaussian())
-            err = try
-                drm(bf(@formula(y ~ 1 + x), @formula(sigma ~ 1 + offset(lo))), fam; data = d)
-                nothing
-            catch e
-                e
-            end
-            @test err isa ArgumentError
-            err isa ArgumentError && @test occursin("offset", err.msg)
+    @testset "log 2 shift test (#1097): intercept moves by exactly -log 2" begin
+        l2 = log(2.0)
+        ds = (; d..., lo2 = d.lo .+ l2)
+        # `a` is the fit with the offset, `b` the fit with the offset moved by log 2;
+        # `k` is the index of the matching intercept in θ.
+        function shifted(a, b, k)
+            @test length(coef(a)) == length(coef(b))
+            @test loglik(b) ≈ loglik(a) atol = 1e-5
+            ca = coef(a); cb = coef(b)
+            @test cb[k] ≈ ca[k] - l2 atol = 5e-4
+            keep = setdiff(eachindex(ca), (k,))
+            @test cb[keep] ≈ ca[keep] atol = 5e-4
         end
-        # NB2 routes that do not apply the offset must refuse, not fit it as a column
+        sg = @formula(sigma ~ 1)
+        # NB2 fixed effects, location offset (Wave L route 3)
+        shifted(drm(bf(@formula(y ~ 1 + x + offset(lo)), @formula(sigma ~ 1 + x)), NegBinomial2(); data = ds),
+                drm(bf(@formula(y ~ 1 + x + offset(lo2)), @formula(sigma ~ 1 + x)), NegBinomial2(); data = ds), 1)
+        # NB2 fixed effects, SIGMA offset: log σ = γ + offset (θ = [β0 β1 γ0 γ1])
+        shifted(drm(bf(@formula(y ~ 1 + x), @formula(sigma ~ 1 + x + offset(lo))), NegBinomial2(); data = ds),
+                drm(bf(@formula(y ~ 1 + x), @formula(sigma ~ 1 + x + offset(lo2))), NegBinomial2(); data = ds), 3)
+        # NB2 (1 | g), location offset, :LA and :Laplace (Wave L route 1)
+        for kw in ((;), (; marginal = :Laplace))
+            shifted(drm(bf(@formula(y ~ 1 + x + offset(lo) + (1 | g)), sg), NegBinomial2(); data = ds, kw...),
+                    drm(bf(@formula(y ~ 1 + x + offset(lo2) + (1 | g)), sg), NegBinomial2(); data = ds, kw...), 1)
+        end
+        # NB2 (1 | g), sigma offset (default :LA only; θ = [β0 β1 γ0 σ_b])
+        shifted(drm(bf(@formula(y ~ 1 + x + (1 | g)), @formula(sigma ~ 1 + offset(lo))), NegBinomial2(); data = ds),
+                drm(bf(@formula(y ~ 1 + x + (1 | g)), @formula(sigma ~ 1 + offset(lo2))), NegBinomial2(); data = ds), 3)
+        # Poisson fixed effects, and (1 | g) under :LA and :Laplace (Wave L route 2)
+        dp = _off938_counts(family = :poisson)
+        dps = (; dp..., lo2 = dp.lo .+ l2)
+        shifted(drm(bf(@formula(y ~ 1 + x + offset(lo))), Poisson(); data = dps),
+                drm(bf(@formula(y ~ 1 + x + offset(lo2))), Poisson(); data = dps), 1)
+        for kw in ((;), (; marginal = :Laplace))
+            shifted(drm(bf(@formula(y ~ 1 + x + offset(lo) + (1 | g))), Poisson(); data = dps, kw...),
+                    drm(bf(@formula(y ~ 1 + x + offset(lo2) + (1 | g))), Poisson(); data = dps, kw...), 1)
+        end
+        # Gaussian identity
+        rng = MersenneTwister(20261018)
+        xg = randn(rng, n); log_ = log.(rand(rng, n) .* 4 .+ 0.5)
+        dg = (; y = 0.5 .+ 0.8 .* xg .+ log_ .+ 0.6 .* randn(rng, n), x = xg, lo = log_, lo2 = log_ .+ l2)
+        shifted(drm(bf(@formula(y ~ 1 + x + offset(lo)), sg), Gaussian(); data = dg),
+                drm(bf(@formula(y ~ 1 + x + offset(lo2)), sg), Gaussian(); data = dg), 1)
+    end
+
+    @testset "offset = argument is the same as offset(<column>) (#1097)" begin
+        fa = drm(bf(@formula(y ~ 1 + x + offset(lo)), @formula(sigma ~ 1)), NegBinomial2(); data = d)
+        fb = drm(bf(@formula(y ~ 1 + x), @formula(sigma ~ 1)), NegBinomial2(); data = d, offset = d.lo)
+        @test coef(fb) ≈ coef(fa) atol = 1e-8
+        @test loglik(fb) ≈ loglik(fa) atol = 1e-8
+        @test length(coef(fb, :mu)) == 2
+        @test !_off938_has_offset_name(fb)
+    end
+
+    @testset "refusals name the route (no silent free coefficient)" begin
+        # an offset in sigma where the route cannot hold it fixed
+        @test_throws ArgumentError drm(bf(@formula(y ~ 1 + x), @formula(sigma ~ 1 + offset(lo))),
+                                       Gaussian(); data = d)
+        err = try
+            drm(bf(@formula(y ~ 1 + x + (1 | g)), @formula(sigma ~ 1 + offset(lo))),
+                NegBinomial2(); data = d, marginal = :Laplace); nothing
+        catch e
+            e
+        end
+        @test err isa ArgumentError && occursin("sigma", err.msg) && occursin("offset", err.msg)
+        # NB2 and Poisson routes that do not apply the offset must refuse, not fit it as a column
+        dh = (; d..., h = string.("h", repeat(1:6, outer = 60)))
         @test_throws ArgumentError drm(
             bf(@formula(y ~ 1 + x + offset(lo) + (1 | g) + (1 | h)), @formula(sigma ~ 1)),
-            NegBinomial2(); data = (; d..., h = string.("h", repeat(1:6, outer = 60))))
+            NegBinomial2(); data = dh)
+        @test_throws ArgumentError drm(
+            bf(@formula(y ~ 1 + x + offset(lo) + (1 | g) + (1 | h))), Poisson(); data = dh)
         @test_throws ArgumentError drm(
             bf(@formula(y ~ 1 + x + offset(lo)), @formula(sigma ~ 1), @formula(zi ~ 1)),
             NegBinomial2(); data = d)
-        # other families: apply or refuse, never fit `offset(lo)` as a covariate
+        @test_throws ArgumentError drm(
+            bf(@formula(y ~ 1 + x + offset(lo)), @formula(zi ~ 1)), Poisson(); data = d)
+        # other families: refuse, never fit `offset(lo)` as a covariate; and refuse `offset =`
         pos = (; d..., y = d.y .+ 1.0, y01 = clamp.((d.y .+ 0.5) ./ (maximum(d.y) + 1), 0.01, 0.99))
         for (fam, resp) in ((Gamma(), :y), (LogNormal(), :y), (Student(), :y), (Beta(), :y01))
             f = resp === :y ?
                 bf(@formula(y ~ 1 + x + offset(lo)), @formula(sigma ~ 1)) :
                 bf(@formula(y01 ~ 1 + x + offset(lo)), @formula(sigma ~ 1))
             @test_throws ArgumentError drm(f, fam; data = pos)
+            f0 = resp === :y ? bf(@formula(y ~ 1 + x), @formula(sigma ~ 1)) :
+                               bf(@formula(y01 ~ 1 + x), @formula(sigma ~ 1))
+            @test_throws ArgumentError drm(f0, fam; data = pos, offset = pos.lo)
         end
-        # there is no `offset =` keyword: it must fail loudly
-        @test_throws MethodError drm(bf(@formula(y ~ 1 + x), @formula(sigma ~ 1)),
-                                     NegBinomial2(); data = d, offset = d.lo)
     end
 end

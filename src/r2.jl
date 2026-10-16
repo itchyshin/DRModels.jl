@@ -76,9 +76,14 @@ function r2_constant_sigma(fit::DrmFit)
     end
 
     # --- refuse: random effects --------------------------------------------
-    if fit.ranef !== nothing
+    # `fit.ranef` is set by some routes only (#1017): a spatial / relmat fit
+    # carries extra variance blocks instead, and a `meta_V` fit carries neither,
+    # so the formula and the block list are checked too.
+    part = fit.ranef !== nothing ? "random effects" : _r2_random_part(fit)
+    if part !== nothing
         throw(ArgumentError(
-            "r2_constant_sigma refuses a fit with random effects. What is wanted " *
+            "r2_constant_sigma refuses a fit with random effects (this fit has " *
+            "$(part)). What is wanted " *
             "there is a MARGINAL R² (fixed effects only) or a CONDITIONAL R² " *
             "(fixed + random) in the sense of Nakagawa & Schielzeth — two different " *
             "numbers, neither equal to 1 - RSS/TSS. Picking one silently would " *
@@ -120,9 +125,55 @@ function r2_constant_sigma(fit::DrmFit)
         "r2_constant_sigma: response and fitted values differ in length " *
         "($(length(y)) vs $(length(ŷ)))."))
 
-    ss_res = sum(abs2, y .- ŷ)
-    ss_tot = sum(abs2, y .- (sum(y) / length(y)))
+    # Rows dropped by an observed-rows fit keep NaN in `fit.obs`; leave them out
+    # of both sums, as the fit did (#1017: a NaN made `ss_tot` NaN, which was then
+    # reported as "zero variance").
+    keep = isfinite.(y) .& isfinite.(ŷ)
+    any(keep) || throw(ArgumentError(
+        "r2_constant_sigma: no row has a finite response and fitted value."))
+    yk = y[keep]; ŷk = ŷ[keep]
+    ss_res = sum(abs2, yk .- ŷk)
+    ss_tot = sum(abs2, yk .- (sum(yk) / length(yk)))
     ss_tot > 0 || throw(ArgumentError(
-        "r2_constant_sigma: the response has zero variance, so R² is undefined."))
+        "r2_constant_sigma: the observed response has zero variance, so R² is undefined."))
     return 1 - ss_res / ss_tot
+end
+
+# The random or structured part a fit carries, as a short description, or
+# `nothing`. Looks at the formula (random-effect bars, structured markers,
+# `meta_V`, `temporal`) and at any parameter block besides `:mu` and `:sigma`.
+function _r2_random_part(fit::DrmFit)
+    f = fit.formula
+    if f isa DrmFormula
+        for (p, rhs) in f.forms
+            sp = String(p)
+            (startswith(sp, "sd_") || startswith(sp, "sdphy_")) && return "an `sd(…) ~ …` submodel"
+            found = _r2_marker(rhs)
+            found === nothing || return found
+        end
+    end
+    extra = [p for (p, _) in fit.blocks if !(p in (:mu, :sigma))]
+    isempty(extra) || return "extra parameter block(s) $(join(extra, ", "))"
+    return nothing
+end
+
+function _r2_marker(t)
+    if t isa Tuple || t isa AbstractVector
+        for s in t
+            found = _r2_marker(s)
+            found === nothing || return found
+        end
+    elseif t isa FunctionTerm
+        t.f === (|) && return "a random effect"
+        t.f === meta_V && return "`meta_V(...)` known sampling variances"
+        for (fn, nm) in ((phylo, "phylo"), (relmat, "relmat"), (animal, "animal"),
+                         (spatial, "spatial"), (temporal, "temporal"))
+            t.f === fn && return "a `$nm(...)` term"
+        end
+        for a in t.args
+            found = _r2_marker(a)
+            found === nothing || return found
+        end
+    end
+    return nothing
 end

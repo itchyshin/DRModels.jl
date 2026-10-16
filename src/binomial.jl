@@ -145,9 +145,11 @@ struct Binomial end
 #     MethodError: no method matching drm(::DrmFormula, ::Binomial; K=…)
 # — a dispatch failure instead of the explanation this method already carries a
 # few lines below. Taking the arguments lets that refusal actually be reached.
-function drm(f::DrmFormula, fam::Binomial; data, tree = nothing, K = nothing,
+function drm(f::DrmFormula, fam::Binomial; offset = nothing, data, tree = nothing, K = nothing,
              A = nothing, coords = nothing, g_tol::Real = 1e-8,
              se::Bool = true, marginal::Symbol = :LA, method = nothing)
+    offset === nothing || _refuse_offset_kw(fam)   # #1097
+    _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, coords = coords)   # #1027 #1022 #1010
     _reject_method_as_marginal(fam, method)
     _scalar_laplace_requested(marginal) &&     # Arc 2: TMB-convention Laplace, ordinary (1 | g)
         return _drm_ordinary_laplace(f, fam; data = data, tree = tree, K = K, A = A,

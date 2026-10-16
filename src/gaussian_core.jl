@@ -7,7 +7,7 @@
 # brms / drmTMB. Each formula's left-hand side names its distributional
 # parameter — `y ~ …` sets the response + μ predictor, `sigma ~ …` sets log σ.
 
-using StatsModels: @formula, FormulaTerm, Term, ConstantTerm, FunctionTerm, InteractionTerm,
+using StatsModels: @formula, FormulaTerm, Term, ConstantTerm, FunctionTerm,
     schema, apply_schema, modelcols, coefnames
 using Statistics: std, mean
 using Random: default_rng
@@ -387,19 +387,15 @@ end
 # estimated coefficient (a silently different model), so refuse instead. Every
 # fixed-effect design in the package is built here, so this one check covers every
 # family and every distributional parameter (`sigma`, `nu`, `zi`, `hu`, …).
-_has_offset_term(::Any) = false
-_has_offset_term(t::FunctionTerm) = t.f === offset || any(_has_offset_term, t.args)
-_has_offset_term(t::InteractionTerm) = any(_has_offset_term, t.terms)
-_has_offset_term(t::Tuple) = any(_has_offset_term, t)
 
 function _refuse_unapplied_offset(response::Symbol, rhs)
     throw(ArgumentError("drm: `offset(...)` cannot be held fixed (coefficient 1) on this fit " *
         "route, so it is refused rather than estimated as an ordinary covariate: " *
-        "`$(response) ~ $(rhs)`. An offset is applied only on the mean `mu` of " *
-        "Gaussian (identity link), Poisson and NegBinomial2 (log link) fits without " *
-        "`zi`/`hu`, structured effects, or crossed/slope random effects; it is not " *
-        "supported in `sigma`, `nu`, `zi` or `hu`. Fold it into the data instead " *
-        "(shift or rescale the response), or drop it. See issue #938."))
+        "`$(response) ~ $(rhs)`. An offset is applied on the mean `mu` of Gaussian " *
+        "(identity link), Poisson and NegBinomial2 (log link) fits, and on the NegBinomial2 " *
+        "`sigma` formula (fixed effects, or one `(1 | g)` under `marginal = :LA`), but not " *
+        "with `zi`/`hu`, structured effects, crossed/slope random effects, `marginal = :VA`, " *
+        "or on any other family or parameter. See issues #938 and #1097."))
 end
 
 # Build a design matrix for one parameter's RHS. We reuse the response as a
@@ -513,6 +509,10 @@ Univariate Gaussian fits support fixed effects plus the structured-effect
 markers documented under [`phylo`](@ref), [`spatial`](@ref), [`animal`](@ref),
 [`relmat`](@ref), and [`meta_V`](@ref).
 
+`ids = …` labels the rows of the relatedness matrix `A` of an `animal(1 | g)`
+term, so `A` is matched to the data by label instead of by order of first
+appearance (see [`animal`](@ref)).
+
 ## `algorithm` and `sparse` — solver selection
 
 `algorithm` (default `:auto`) and `sparse` choose how the model is fit:
@@ -602,10 +602,25 @@ are parameterised over all G levels, while the likelihood is evaluated on
 observed rows.
 """
 function drm(f::DrmFormula, fam::Gaussian; kwargs...)
+    # #974: a dense known sampling covariance is consumed by the BIVARIATE
+    # route only; on this route `V` used to end in a bare MethodError.
+    haskey(kwargs, :V) &&
+        throw(ArgumentError("drm: `V = …` (a dense known sampling covariance) is supported " *
+            "for the bivariate Gaussian route only, `bf(mu1 = …, mu2 = …, …)` with " *
+            "`meta_vcov_bivariate`. For a univariate model, known diagonal sampling variances " *
+            "go in the formula as `meta_V(v)`; a dense univariate `V` is not implemented yet."))
     # #938: `offset(z)` on the identity-link mean is an additive known constant, so
     # the fit of `y ~ x + offset(z)` is exactly the fit of `y - z ~ x` (likelihood,
     # REML likelihood and every variance component are unchanged). Fit the shifted
     # problem and put the offset back into the fitted means.
+    if haskey(kwargs, :offset) && kwargs[:offset] !== nothing          # #1097: `offset =`
+        haskey(kwargs, :data) ||
+            throw(ArgumentError("drm: `offset =` needs `data = …`"))
+        f2, data2 = _offset_kw_to_formula(f, kwargs[:data], kwargs[:offset])
+        rest = (; (k => v for (k, v) in kwargs if k !== :offset && k !== :data)...)
+        return drm(f2, fam; data = data2, rest...)
+    end
+    haskey(kwargs, :offset) && (kwargs = (; (k => v for (k, v) in kwargs if k !== :offset)...))
     f_fit, kw_fit, off = _gaussian_offset_shift(f, kwargs)
     # The residual-variance / structured-variance BOUNDARY advisory (#724, #697) is
     # attached here, once, rather than in each of the fitter's return paths.
@@ -661,7 +676,9 @@ function _gaussian_offset_restore(fit::DrmFit, f_orig::DrmFormula, off::Abstract
     return _withformula(fit, f_orig)
 end
 
-function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree = nothing, coords = nothing, g_tol::Real = 1e-8, algorithm::Symbol = :auto, method::Symbol = :ML, profile_ci::Bool = false, phylo_coupled::Bool = false, penalty = nothing, sparse = nothing, impute = nothing, missing = nothing, marginal::Symbol = :LA)
+function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree = nothing, coords = nothing, g_tol::Real = 1e-8, algorithm::Symbol = :auto, method::Symbol = :ML, profile_ci::Bool = false, phylo_coupled::Bool = false, penalty = nothing, sparse = nothing, impute = nothing, missing = nothing, marginal::Symbol = :LA, ids = nothing)
+    _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, coords = coords)   # #1027 #1022 #1010
+    A = _resolve_relatedness_labels(f, data, A, ids)   # #957: match `A` by label
     mkind = _gaussian_marginal(marginal)
     laplace = mkind === :Laplace
     aghq = mkind === :AGHQ
@@ -723,6 +740,26 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
             algorithm = algorithm, penalty = penalty, phylo_coupled = phylo_coupled,
             sparse = sparse, has_missing_response = has_missing_response, g_tol = g_tol,
             structured_slope = structured_slope, tree = tree), f)
+    end
+    # #951: a sparse solver request on a model with no structured term anywhere
+    # (mean marker, sigma marker, `sd(g, phylogenetic)`, temporal) would be accepted
+    # with no effect on every remaining cell (fixed effects, meta_V, ordinary
+    # `(… | g)` effects on the mean or on sigma, iid `sd(g) ~ …`). Refuse it here,
+    # above those routes. `:gls` / `:lbfgs` stay the documented aliases for the
+    # default fitters.
+    # The multi-component sd() route (several iid sd() parts, or an iid part beside
+    # a mean marker) DOES read `algorithm` / `sparse`: its router logs why a sparse
+    # request falls back to dense (#563 S7b.4), so it is exempt. The single iid
+    # `sd(g) ~ …` route does not read them.
+    _sdp_here = _sd_parts(f)
+    _multi_sd = !isempty(_sdp_here) &&
+        !(structured === nothing && length(re) == 1 && length(_sdp_here) == 1)
+    if (algorithm === :sparse || sparse === true) && isempty(all_structured) &&
+       structured_sigma === nothing && isempty(_sdphylo_parts(f)) && !_multi_sd
+        throw(ArgumentError("drm: `" * (algorithm === :sparse ? "algorithm = :sparse" : "sparse = true") *
+            "` selects a sparse structured-Gaussian solver, but this model has no structured " *
+            "term (`phylo`, `relmat`, `animal`, `spatial` or `sd(…, phylogenetic)`), so it would " *
+            "have no effect. Use the default `algorithm = :auto`."))
     end
     # #620 two-SD phylogenetic random slope `phylo(1 + x | g)` on the Gaussian
     # mean: validate HERE, above every route that can return, so no other
@@ -814,8 +851,10 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         sigma_kind, sigma_grp = structured_sigma
         if sigma_kind !== :phylo
             throw(ArgumentError("drm (Gaussian): `$(sigma_kind)(1 | $(sigma_grp))` on `sigma` is " *
-                "not yet supported in the univariate route — only `phylo(1 | g)` is wired for B1. " *
-                "Use `relmat`/`animal`/`spatial` on the MEAN axis, or file an issue."))
+                "not implemented in DRModels.jl yet (a known gap, #963); the only structured random " *
+                "effect on `sigma` is `phylo(1 | g)`. Keep `$(sigma_kind)(1 | $(sigma_grp))` on the " *
+                "mean and model `sigma` with fixed effects or an ordinary `(1 | $(sigma_grp))` " *
+                "random effect."))
         end
         tree === nothing && error("phylo(1 | $(sigma_grp)) on sigma needs `tree = …`")
         phy = tree isa AbstractString ? augmented_phy(tree) : tree
@@ -1928,7 +1967,6 @@ end
 # it); the `startswith(n, "offset(")` test below only keeps a fit object from an
 # older version predicting the way it was fitted.
 function _predict_offset(fit::DrmFit, rhs, nd, p::Symbol)
-    p === :mu || return rhs, nothing
     fitted = _block_coefnames(fit, p)
     (fitted === nothing || any(n -> startswith(n, "offset("), fitted)) && return rhs, nothing
     rhs2, offset_term = _extract_offset(rhs)

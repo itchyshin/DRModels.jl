@@ -181,7 +181,9 @@ end
     @test !occursin("not seen", m2)
     m3 = msg(() -> predict(fit, (x = [0.0], grp = ["z"])))
     @test occursin("not seen when the model was fitted", m3) && occursin("z", m3)
-    fo = drm(bf(@formula(y ~ x + offset(off)), @formula(sigma ~ 1)), Gaussian();
+    # A function term of `off` (not `offset(off)`: lane J3 refuses `offset()` outside the
+    # Poisson mean instead of estimating it as a free coefficient, #938).
+    fo = drm(bf(@formula(y ~ x + log(off)), @formula(sigma ~ 1)), Gaussian();
              data = (y = y, x = x, off = off))
     m4 = msg(() -> predict(fo, (x = [0.0, 1.0],)))
     @test occursin("column `off`", m4) && !occursin("not seen", m4)

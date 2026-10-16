@@ -115,6 +115,7 @@ fit = drm(f, Student(); data = dat)
 """
 function drm(f::BivariateDrmFormula, fam::Student; data, g_tol::Real = 1e-8,
              method::Symbol = :ML)
+    _require_formula_column_lengths(f, data)   # #1022: no ragged columns under @inbounds
     method === :ML ||
         throw(ArgumentError("drm: the bivariate Student-t route implements ML only " *
             "(got method = :$method). drmTMB's `biv_student()` first slice has no " *

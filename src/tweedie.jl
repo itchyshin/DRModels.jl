@@ -122,7 +122,9 @@ struct Tweedie end
 
 _logit12(η) = 1 + 1 / (1 + exp(-η))            # (1,2) link for the power p
 
-function drm(f::DrmFormula, fam::Tweedie; data, g_tol::Real = 1e-8)
+function drm(f::DrmFormula, fam::Tweedie; offset = nothing, data, g_tol::Real = 1e-8)
+    offset === nothing || _refuse_offset_kw(fam)   # #1097
+    _drm_entry_guard(f, fam, data)   # #1027 #1022
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
         drm(f, fam; data = data_observed, g_tol = g_tol)
     end

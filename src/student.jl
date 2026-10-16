@@ -48,8 +48,10 @@ fit_lap = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), Student(); dat
 """
 struct Student end
 
-function drm(f::DrmFormula, fam::Student; data, g_tol::Real = 1e-8,
+function drm(f::DrmFormula, fam::Student; offset = nothing, data, g_tol::Real = 1e-8,
              se::Bool = true, marginal::Symbol = :LA)
+    offset === nothing || _refuse_offset_kw(fam)   # #1097
+    _drm_entry_guard(f, fam, data)   # #1027 #1022
     # `marginal = :Laplace` (opt-in, ordinary `(1 | g)` on the mean): the TMB-convention
     # Laplace integrator drmTMB uses; the default `:LA` is unchanged (adaptive GHQ).
     laplace = _scalar_laplace_requested(marginal)

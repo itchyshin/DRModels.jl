@@ -98,6 +98,10 @@ function _drm_ordinary_laplace(f::DrmFormula, fam; data, tree = nothing,
         throw(ArgumentError("marginal = :Laplace: `offset(...)` is applied only for Poisson() and " *
             "NegBinomial2() (coefficient fixed at 1); $(nameof(typeof(fam)))() with a random " *
             "intercept refuses it rather than fitting it as an ordinary covariate. See issue #938."))
+    _has_offset_term(get(rhs, :sigma, ConstantTerm(1))) &&
+        throw(ArgumentError("marginal = :Laplace: an `offset(...)` in the `sigma` formula is not " *
+            "supported on this route (the dispersion is a single parameter here); use the " *
+            "default `marginal = :LA` for NegBinomial2(), which applies it. See issue #1097."))
     mv === nothing || _ordinary_laplace_reject(fam, "a `meta_V` marker")
     st === nothing || _ordinary_laplace_reject(fam, "a phylogenetic/structured random effect")
     length(re) == 1 || _ordinary_laplace_reject(fam,
