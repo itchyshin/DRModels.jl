@@ -20,6 +20,18 @@ end
                   data = d, tree = j3_tree("nb2_phylo"))
         j3_check("nb2_phylo", fit)
     end
+    @testset "NB2 phylo, covariate dispersion (:1091)" begin
+        d = j3_data("nb2_phylo_hetero"; numeric = [:x, :y])
+        fit = drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ x)), NegBinomial2();
+                  data = d, tree = j3_tree("nb2_phylo_hetero"))
+        j3_check("nb2_phylo_hetero", fit)
+    end
+    @testset "Binomial phylo (:1244)" begin
+        d = j3_data("binomial_phylo"; numeric = [:x, :succ, :fail])
+        fit = drm(bf(@formula(cbind(succ, fail) ~ x + phylo(1 | species))), Binomial();
+                  data = d, tree = j3_tree("binomial_phylo"))
+        j3_check("binomial_phylo", fit)
+    end
     @testset "Poisson crossed, two intercepts (:1851)" begin
         d = j3_data("poisson_crossed2"; numeric = [:x, :y])
         fit = drm(bf(@formula(y ~ x + (1 | a) + (1 | b))), Poisson(); data = d)
@@ -34,5 +46,12 @@ end
         d = j3_data("binomial_crossed"; numeric = [:x, :succ, :fail])
         fit = drm(bf(@formula(cbind(succ, fail) ~ x + (1 | a) + (1 | b))), Binomial(); data = d)
         j3_check("binomial_crossed", fit)
+    end
+    @testset "cumulative logit phylo (cumulative.jl :614)" begin
+        d = j3_data("cumulative_phylo"; numeric = [:x])
+        d = merge(d, (; y = parse.(Int, d.y)))
+        fit = drm(bf(@formula(y ~ x + phylo(1 | species))), CumulativeLogit(); data = d,
+                  tree = j3_tree("cumulative_phylo"))
+        j3_check("cumulative_phylo", fit)
     end
 end

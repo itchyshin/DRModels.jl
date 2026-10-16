@@ -1166,7 +1166,15 @@ function _fit_phylo_mean_laplace_hetero(fam, kind, aux_from, n::Int, Xμ, Xσ,
     grad!(gfinal, θ̂)
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
     V = if se
-        Hθ = _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        Hθ = if _clamp_active(θ̂, (pμ + pσ + 1):(pμ + pσ + 1); lo = _SE_LOGSD_LO)
+            _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        else
+            _finite_hessian_from_gradient(
+                _se_grad(θ -> _phylo_mean_laplace_hetero_fg(
+                    kind, aux_from, n, Xμ, Xσ, leaf_node, Q, logdetQ, θ; grad = true, b0 = zeros(q),
+                    newton_tol = _SE_MODE_TOL, newton_maxiter = _SE_MODE_MAXITER)),
+                θ̂; context = "sparse-Laplace GLMM (phylo-mean, covariate dispersion)")
+        end
         _vcov_from_fd_hessian(Hθ; context = "sparse-Laplace GLMM (phylo-mean, covariate dispersion)")
     else
         fill(NaN, length(θ̂), length(θ̂))
@@ -1319,7 +1327,15 @@ function _fit_phylo_mean_laplace(fam, kind, aux, n::Int, Xμ, labels, tree, nmμ
     grad!(gfinal, θ̂)
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
     V = if se
-        Hθ = _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        Hθ = if _clamp_active(θ̂, (pμ + 1):(pμ + 1); lo = _SE_LOGSD_LO)
+            _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        else
+            _finite_hessian_from_gradient(
+                _se_grad(θ -> _phylo_mean_laplace_fg(
+                    kind, aux, n, Xμ, leaf_node, Q, logdetQ, θ; grad = true, b0 = zeros(q),
+                    newton_tol = _SE_MODE_TOL, newton_maxiter = _SE_MODE_MAXITER)),
+                θ̂; context = "sparse-Laplace GLMM (phylo-mean)")
+        end
         _vcov_from_fd_hessian(Hθ; context = "sparse-Laplace GLMM (phylo-mean)")
     else
         fill(NaN, length(θ̂), length(θ̂))

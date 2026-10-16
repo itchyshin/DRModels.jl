@@ -97,6 +97,28 @@ if (want("nb2_phylo")) {                  # :898 (general-mean nuisance)
   write_ref("nb2_phylo", f, 1:4, d, g$tree)
 }
 
+if (want("nb2_phylo_hetero")) {           # :1091 (phylo mean, covariate dispersion)
+  g <- phylo_data(20261003, 40, 8, 1.0)
+  eta <- 0.4 + 0.35 * g$x + g$u[as.integer(g$sp)]
+  size <- exp(1.2 + 0.5 * g$x)
+  d <- data.frame(species = g$sp, x = g$x, y = stats::rnbinom(g$n, mu = exp(eta), size = size))
+  f <- drmTMB(bf(y ~ x + phylo(1 | species, tree = tree), sigma ~ x),
+              family = nbinom2(), data = d)
+  write_ref("nb2_phylo_hetero", f, 1:5, d, g$tree)
+}
+
+if (want("binomial_phylo")) {             # :1244 (phylo mean, fixed aux)
+  g <- phylo_data(20261004, 40, 8, 1.0)
+  eta <- 0.2 + 0.5 * g$x + g$u[as.integer(g$sp)]
+  ntr <- rep(10L, g$n)
+  d <- data.frame(species = g$sp, x = g$x, succ = stats::rbinom(g$n, ntr, stats::plogis(eta)),
+                  fail = NA_integer_)
+  d$fail <- ntr - d$succ
+  f <- drmTMB(bf(cbind(succ, fail) ~ x + phylo(1 | species, tree = tree)),
+              family = binomial(), data = d)
+  write_ref("binomial_phylo", f, 1:3, d, g$tree)
+}
+
 # ---- crossed random intercepts ----------------------------------------------------------
 crossed_data <- function(seed, G, H, n, sd_a, sd_b, K3 = FALSE, sd_c = 0.6) {
   set.seed(seed)
@@ -147,6 +169,15 @@ ordinary_data <- function(seed, G, m, sd_g) {
 }
 
 # ---- cumulative logit, phylogenetic mean intercept --------------------------------------
+if (want("cumulative_phylo")) {           # cumulative.jl :614
+  g <- phylo_data(1, 60, 6, 1.6)
+  lat <- 0.6 * g$x + g$u[as.integer(g$sp)] + stats::rlogis(g$n)
+  y <- findInterval(lat, c(-0.5, 0.6)) + 1L
+  d <- data.frame(species = g$sp, x = g$x, y = y)
+  f <- drmTMB(bf(y ~ x + phylo(1 | species, tree = tree)), family = cumulative_logit(),
+              data = within(d, y <- ordered(y, levels = 1:3)))
+  write_ref("cumulative_phylo", f, 1:4, d, g$tree)
+}
 
 # ---- Gaussian phylogenetic mean (location-only sparse route) ----------------------------
 
