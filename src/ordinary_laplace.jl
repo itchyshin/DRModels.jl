@@ -90,6 +90,18 @@ function _drm_ordinary_laplace(f::DrmFormula, fam; data, tree = nothing,
         end
     end
     fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
+    # #938: `offset(z)` is applied (coefficient fixed at 1, never in θ) for Poisson
+    # and NegBinomial2; every other family on this route refuses it, because the
+    # marker would otherwise reach the design matrix as a free covariate.
+    fixed_mu, offset_term = _extract_offset(fixed_mu)
+    offset_term === nothing || fam isa Poisson || fam isa NegBinomial2 ||
+        throw(ArgumentError("marginal = :Laplace: `offset(...)` is applied only for Poisson() and " *
+            "NegBinomial2() (coefficient fixed at 1); $(nameof(typeof(fam)))() with a random " *
+            "intercept refuses it rather than fitting it as an ordinary covariate. See issue #938."))
+    _has_offset_term(get(rhs, :sigma, ConstantTerm(1))) &&
+        throw(ArgumentError("marginal = :Laplace: an `offset(...)` in the `sigma` formula is not " *
+            "supported on this route (the dispersion is a single parameter here); use the " *
+            "default `marginal = :LA` for NegBinomial2(), which applies it. See issue #1097."))
     mv === nothing || _ordinary_laplace_reject(fam, "a `meta_V` marker")
     st === nothing || _ordinary_laplace_reject(fam, "a phylogenetic/structured random effect")
     length(re) == 1 || _ordinary_laplace_reject(fam,
@@ -109,15 +121,18 @@ function _drm_ordinary_laplace(f::DrmFormula, fam; data, tree = nothing,
         fit = _fit_binomial_ordinary_laplace(fam, s, ntr, Xμ, gidx, G, nmμ, grp, g_tol; se = se)
     else
         y, Xμ, nmμ = _design(f.response, fixed_mu, data)
+        off = _offset_for_fit(fam, offset_term, data, length(y))        # #938
         if fam isa Poisson
             all(yi -> yi ≥ 0 && isinteger(yi), y) ||
                 error("Poisson() requires non-negative integer counts as the response")
-            fit = _fit_poisson_ordinary_laplace(fam, y, Xμ, gidx, G, nmμ, grp, g_tol; se = se)
+            fit = _fit_poisson_ordinary_laplace(fam, y, Xμ, gidx, G, nmμ, grp, g_tol; se = se,
+                                                offset = off)
         else
             _, Xσ, nmσ = _design(f.response, get(rhs, :sigma, ConstantTerm(1)), data)
             (size(Xσ, 2) == 1 && all(==(1.0), @view Xσ[:, 1])) ||
                 _ordinary_laplace_reject(fam, "a non-constant `sigma` formula")
-            fit = _fit_scale_ordinary_laplace(fam, y, Xμ, gidx, G, nmμ, nmσ, grp, g_tol; se = se)
+            fit = _fit_scale_ordinary_laplace(fam, y, Xμ, gidx, G, nmμ, nmσ, grp, g_tol; se = se,
+                                              offset = off)
         end
     end
     return _withformula(_withmarginal(fit, :Laplace), f)
@@ -264,19 +279,20 @@ _ordinary_laplace_Q(G::Int) = spdiagm(0 => ones(Float64, G))
 const _ORDINARY_LAPLACE_NEWTON_TOL = 1e-13
 
 function _fit_poisson_ordinary_laplace(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol;
-                                       se::Bool = true)
+                                       se::Bool = true, offset = nothing)
     n = length(y); pμ = size(Xμ, 2)
     Q = _ordinary_laplace_Q(G)
     lf = [_logfactorial(round(Int, yi)) for yi in y]
     fg = (θ, b0, grad) -> _poisson_phylo_laplace_fg(y, Xμ, gidx, Q, 0.0, lf, θ;
                                                     grad = grad, b0 = b0, raw_scales = true,
-                                                    newton_tol = _ORDINARY_LAPLACE_NEWTON_TOL)
-    θ0 = vcat(_poisson_fixed_start(y, Xμ), log(0.4))
+                                                    newton_tol = _ORDINARY_LAPLACE_NEWTON_TOL,
+                                                    offset = offset)
+    θ0 = vcat(_offset_start(_poisson_fixed_start(y, Xμ), Xμ, offset), log(0.4))
     θ̂, nllhat, conv, V, nll, grad! = _ordinary_laplace_optimize(
         fg, θ0, n, G, g_tol; se = se, context = "ordinary Laplace Poisson (1 | $grp)")
     blocks = [:mu => 1:pμ, :resd => (pμ+1):(pμ+1)]
     names = [:mu => nmμ, :resd => [String(grp)]]
-    means = Dict(:mu => exp.(Xμ * θ̂[1:pμ]))
+    means = Dict(:mu => exp.(_eta_with_offset(Xμ, θ̂[1:pμ], offset)))
     obs = Dict(:mu => Vector{Float64}(y))
     fit = DrmFit(fam, blocks, names, θ̂, V, -nllhat, n, conv, means, obs,
                  Dict{Symbol,Vector{Float64}}())
@@ -411,15 +427,15 @@ _ordinary_laplace_check_response(::Beta, y) =
 const _ORDINARY_LAPLACE_PLATEAU_LOGSIGMA = -8.0
 
 function _fit_scale_ordinary_laplace(fam, y, Xμ, gidx, G, nmμ, nmσ, grp, g_tol;
-                                     se::Bool = true)
+                                     se::Bool = true, offset = nothing)
     _ordinary_laplace_check_response(fam, y)
     n = length(y); pμ = size(Xμ, 2)
     Q = _ordinary_laplace_Q(G)
     kind, aux_from, θβ0, θσ0 = _ordinary_laplace_scale_setup(fam, y, Xμ)
     fg = (θ, b0, grad) -> _phylo_mean_laplace_nuisance_fg(
         kind, aux_from, n, Xμ, gidx, Q, 0.0, θ; grad = grad, b0 = b0, raw_scales = true,
-        newton_tol = _ORDINARY_LAPLACE_NEWTON_TOL)
-    θ0 = vcat(θβ0, θσ0, log(0.4))
+        newton_tol = _ORDINARY_LAPLACE_NEWTON_TOL, offset = offset)
+    θ0 = vcat(_offset_start(θβ0, Xμ, offset), θσ0, log(0.4))
     ctx = "ordinary Laplace $(nameof(typeof(fam))) (1 | $grp)"
     # Both stages run with se = false: the covariance is computed once, below,
     # for the fit the guard keeps. A discarded plateau fit's Hessian is singular
@@ -443,7 +459,8 @@ function _fit_scale_ordinary_laplace(fam, y, Xμ, gidx, G, nmμ, nmσ, grp, g_to
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+1), :resd => (pμ+2):(pμ+2)]
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
     auxhat = aux_from(θ̂[pμ+1])
-    means = Dict(:mu => [_laplace_mean(kind, dot(@view(Xμ[i, :]), θ̂[1:pμ])) for i in 1:n])
+    ηhat = _eta_with_offset(Xμ, θ̂[1:pμ], offset)
+    means = Dict(:mu => [_laplace_mean(kind, ηhat[i]) for i in 1:n])
     obs = Dict(:mu => [_laplace_obs(kind, auxhat, i) for i in 1:n])
     scales = Dict(:sigma => fill(exp(θ̂[pμ+1]), n))
     fit = DrmFit(fam, blocks, names, θ̂, V, -nllhat, n, conv, means, obs, scales)

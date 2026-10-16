@@ -122,7 +122,8 @@ struct Tweedie end
 
 _logit12(η) = 1 + 1 / (1 + exp(-η))            # (1,2) link for the power p
 
-function drm(f::DrmFormula, fam::Tweedie; data, g_tol::Real = 1e-8)
+function drm(f::DrmFormula, fam::Tweedie; offset = nothing, data, g_tol::Real = 1e-8)
+    offset === nothing || _refuse_offset_kw(fam)   # #1097
     _drm_entry_guard(f, fam, data)   # #1027 #1022
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
         drm(f, fam; data = data_observed, g_tol = g_tol)
@@ -216,6 +217,8 @@ function _fit_tweedie(fam::Tweedie, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol)
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))   # response-scale μ̂
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):i1]),
                   :nu => _logit12.(Xν * θ̂[(i1+1):i2]))
+    _warn_at_clamp("Tweedie", ["log sigma" => (Xσ * θ̂[(pμ+1):i1], -15.0, 15.0),   # #959
+                               "power (logit scale)" => (Xν * θ̂[(i1+1):i2], -12.0, 12.0)])
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
@@ -274,6 +277,8 @@ function _fit_tweedie_ranef(fam::Tweedie, y, Xμ, Xσ, Xν, gidx, G, nmμ, nmσ,
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):i1]),
                   :nu => _logit12.(Xν * θ̂[(i1+1):i2]))
+    _warn_at_clamp("Tweedie", ["log sigma" => (Xσ * θ̂[(pμ+1):i1], -15.0, 15.0),   # #959
+                               "power (logit scale)" => (Xν * θ̂[(i1+1):i2], -12.0, 12.0)])
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
@@ -318,6 +323,8 @@ function _fit_tweedie_slope_ranef(fam::Tweedie, y, Xμ, Xσ, Xν, xs, gidx, G, n
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):i1]),
                   :nu => _logit12.(Xν * θ̂[(i1+1):i2]))
+    _warn_at_clamp("Tweedie", ["log sigma" => (Xσ * θ̂[(pμ+1):i1], -15.0, 15.0),   # #959
+                               "power (logit scale)" => (Xν * θ̂[(i1+1):i2], -12.0, 12.0)])
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))

@@ -80,7 +80,10 @@ function _poisson_laplace_mode(y, η0, Z, compid, logσ; b0 = nothing,
         end
         accepted || return b, ch, iters, false
     end
-    return b, ch, iters, ch !== nothing
+    # Cap exhausted without the step meeting `tol` (#1024): `b` is not the mode
+    # and `ch` factors the Hessian at the previous iterate, so report failure
+    # and let the caller take its non-finite-objective sentinel path.
+    return b, ch, iters, false
 end
 
 # The FD step for the outer vcov Hessian must GROW with n. The objective under
@@ -371,7 +374,10 @@ function _poisson_phylo_mode(y, η0, leaf_node, Q, logσ; b0 = nothing,
             accepted || return b, ch, iters, false
         end
     end
-    return b, ch, iters, ch !== nothing
+    # Cap exhausted without the step meeting `tol` (#1024): `b` is not the mode
+    # and `ch` factors the Hessian at the previous iterate, so report failure
+    # and let the caller take its non-finite-objective sentinel path.
+    return b, ch, iters, false
 end
 
 """
@@ -398,7 +404,7 @@ introduces. Returns `(val[, grad], b, ok)`; on a non-PD inner solve `ok = false`
 function _poisson_phylo_laplace_fg(y, Xμ, leaf_node, Q, logdetQ, lf, θ;
                                    grad::Bool = false, b0 = nothing,
                                    newton_tol::Real = 1e-10, newton_maxiter::Int = 60,
-                                   raw_scales::Bool = false)
+                                   raw_scales::Bool = false, offset = nothing)
     # newton_tol was 1e-8 until 2026-08-26. That is tight enough for coefficients
     # and logLik (parity ~1e-8) but NOT for the SECOND-derivative quantity: the
     # inner mode's residual error propagates into the Hessian, and therefore into
@@ -421,7 +427,7 @@ function _poisson_phylo_laplace_fg(y, Xμ, leaf_node, Q, logdetQ, lf, θ;
     # the same function everywhere, as TMB's does. Default: unchanged clamp.
     logσ = raw_scales ? θ[pμ+1] : clamp(θ[pμ+1], -8.0, 3.0)
     invσ2 = exp(-2 * logσ)
-    η0 = Xμ * βμ
+    η0 = _eta_with_offset(Xμ, βμ, offset)       # #938: offset(...) fixed at 1, never in θ
     b, ch, _, ok = _poisson_phylo_mode(y, η0, leaf_node, Q, logσ;
                                        b0 = b0, tol = newton_tol, maxiter = newton_maxiter)
     if !ok
@@ -624,6 +630,7 @@ function _fit_poisson_general_laplace(fam::Poisson, y, Xμ, Q, leaf_node, nmμ, 
     obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict{Symbol,Vector{Float64}}()
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
+    _warn_laplace_clamp(fit)   # #959: say when a clamp is active
     fit = _withnll(fit, nll, grad!)
     reml || return fit
     # Opt-in Cox–Reid (#450): same helpers as the Poisson GHQ cell (#443 / #444).
@@ -704,14 +711,17 @@ function _phylo_mean_mode(kind, aux, η0, leaf_node, Q, logσ; b0 = nothing,
             accepted || return b, ch, iters, false
         end
     end
-    return b, ch, iters, ch !== nothing
+    # Cap exhausted without the step meeting `tol` (#1024): `b` is not the mode
+    # and `ch` factors the Hessian at the previous iterate, so report failure
+    # and let the caller take its non-finite-objective sentinel path.
+    return b, ch, iters, false
 end
 
 function _phylo_mean_laplace_nuisance_fg(kind, aux_from, n::Int, Xμ, leaf_node,
                                          Q, logdetQ, θ; grad::Bool = false,
                                          b0 = nothing, newton_tol::Real = 1e-10,
                                          newton_maxiter::Int = 60,
-                                         raw_scales::Bool = false)
+                                         raw_scales::Bool = false, offset = nothing)
     pμ = length(θ) - 2
     βμ = θ[1:pμ]
     # `raw_scales = true`: no clamp on the dispersion or the RE log-SD (see
@@ -719,7 +729,7 @@ function _phylo_mean_laplace_nuisance_fg(kind, aux_from, n::Int, Xμ, leaf_node,
     θσ = raw_scales ? θ[pμ+1] : clamp(θ[pμ+1], -8.0, 8.0)
     logσ = raw_scales ? θ[pμ+2] : clamp(θ[pμ+2], -8.0, 3.0)
     aux = aux_from(θσ)
-    η0 = Xμ * βμ
+    η0 = _eta_with_offset(Xμ, βμ, offset)       # #938: offset(...) fixed at 1, never in θ
     b, ch, _, ok = _phylo_mean_mode(kind, aux, η0, leaf_node, Q, logσ; b0 = b0,
                                     tol = newton_tol, maxiter = newton_maxiter)
     if !ok
@@ -900,6 +910,7 @@ function _fit_general_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, Q,
     obs = Dict(:mu => [_laplace_obs(kind, auxhat, i) for i in 1:n])
     scales = merge(Dict(:sigma => fill(sigma_scale(θ̂[pμ+1]), n)), extra_scales)
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
+    _warn_laplace_clamp(fit; logsigma = θ̂[pμ+1:pμ+1])   # #959: say when a clamp is active
     return _withnll(fit, nll, grad!)
 end
 
@@ -1093,6 +1104,7 @@ function _fit_phylo_mean_laplace_hetero(fam, kind, aux_from, n::Int, Xμ, Xσ,
     obs = Dict(:mu => [_laplace_obs(kind, auxhat, i) for i in 1:n])
     scales = Dict(:sigma => [sigma_scale(ησ̂[i]) for i in 1:n])
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
+    _warn_laplace_clamp(fit; logsigma = Xσ * θ̂[pμ+1:pμ+pσ])   # #959: say when a clamp is active
     return _withnll(fit, nll, grad!)
 end
 
@@ -1242,6 +1254,7 @@ function _fit_phylo_mean_laplace(fam, kind, aux, n::Int, Xμ, labels, tree, nmμ
     means = Dict(:mu => [_laplace_mean(kind, dot(@view(Xμ[i, :]), θ̂[1:pμ])) for i in 1:n])
     obs = Dict(:mu => [_laplace_obs(kind, aux, i) for i in 1:n])
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
+    _warn_laplace_clamp(fit)   # #959: say when a clamp is active
     return _withnll(fit, nll, grad!)
 end
 
@@ -1693,7 +1706,10 @@ function _poisson_crossed_mode(y, η0, gidx, G, hidx, Hh, logσ; b0 = nothing,
             accepted || return b, ch, iters, false
         end
     end
-    return b, ch, iters, ch !== nothing
+    # Cap exhausted without the step meeting `tol` (#1024): `b` is not the mode
+    # and `ch` factors the Hessian at the previous iterate, so report failure
+    # and let the caller take its non-finite-objective sentinel path.
+    return b, ch, iters, false
 end
 
 """
@@ -1846,6 +1862,7 @@ function _fit_poisson_crossed_intercepts_laplace(fam::Poisson, y, Xμ, gidx, G, 
     obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict{Symbol,Vector{Float64}}()
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
+    _warn_laplace_clamp(fit)   # #959: say when a clamp is active
     return _withnll(fit, nll, grad!)
 end
 
@@ -2028,6 +2045,7 @@ function _fit_poisson_crossed_laplace(fam::Poisson, y, Xμ, comps, nmμ, g_tol; 
     grad!(gfinal, θ̂)
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
+    _warn_laplace_clamp(fit)   # #959: say when a clamp is active
     return _withnll(fit, nll, grad!)
 end
 
@@ -2844,7 +2862,10 @@ function _crossed_mean_mode(kind, aux, η0, gidx, G, hidx, Hh, logσ; b0 = nothi
             accepted || return b, ch, iters, false
         end
     end
-    return b, ch, iters, ch !== nothing
+    # Cap exhausted without the step meeting `tol` (#1024): `b` is not the mode
+    # and `ch` factors the Hessian at the previous iterate, so report failure
+    # and let the caller take its non-finite-objective sentinel path.
+    return b, ch, iters, false
 end
 
 # A log-SD coordinate whose finite-difference stencil lies entirely outside the
@@ -2996,6 +3017,7 @@ function _fit_crossed_mean_laplace(fam, kind, aux, n::Int, Xμ, gidx, G, hidx, H
     obs = Dict(:mu => [_laplace_obs(kind, aux, i) for i in 1:n])
     scales = Dict{Symbol,Vector{Float64}}()
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
+    _warn_laplace_clamp(fit)   # #959: say when a clamp is active
     return _withnll(fit, nll, grad!)
 end
 
@@ -3160,6 +3182,7 @@ function _fit_crossed_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, gi
     obs = Dict(:mu => [_laplace_obs(kind, auxhat, i) for i in 1:n])
     scales = merge(Dict(:sigma => fill(sigma_scale(θ̂[pμ+1]), n)), extra_scales)
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
+    _warn_laplace_clamp(fit; logsigma = θ̂[pμ+1:pμ+1])   # #959: say when a clamp is active
     return _withnll(fit, nll, grad!)
 end
 
@@ -3274,6 +3297,7 @@ function _fit_crossed_mean_aghq(fam, ll, n::Int, Xμ, comps, nmμ, g_tol; θ0,
     obs = Dict(:mu => Vector{Float64}(obsvec))
     scales = Dict{Symbol,Vector{Float64}}()
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
+    _warn_laplace_clamp(fit)   # #959: say when a clamp is active
     return _withiterations(_withmarginal(_withnll(fit, nll, grad!), :AGHQ), Optim.iterations(res))
 end
 
@@ -3364,6 +3388,7 @@ function _fit_crossed_mean_aghq_nuisance(fam, kind, aux_from, n::Int, Xμ, comps
     obs = Dict(:mu => [_laplace_obs(kind, auxhat, i) for i in 1:n])
     scales = merge(Dict(:sigma => fill(sigma_scale(θ̂[pμ+1]), n)), extra_scales)
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
+    _warn_laplace_clamp(fit; logsigma = θ̂[pμ+1:pμ+1])   # #959: say when a clamp is active
     return _withiterations(_withmarginal(_withnll(fit, nll, grad!), :AGHQ), Optim.iterations(res))
 end
 

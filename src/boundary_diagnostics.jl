@@ -130,16 +130,88 @@ function _variance_boundary(fit::DrmFit; ratio::Real = _VARIANCE_BOUNDARY_RATIO)
     )
 end
 
+# A boundary diagnostic must never break a fit, but a failure inside it must not
+# read as a clean fit either (#1003): rethrow interrupts, otherwise say which
+# diagnostic failed and why, then let the caller carry on with `nothing`.
+function _boundary_diagnostic_failed(name::AbstractString, err)
+    err isa InterruptException && rethrow(err)
+    @warn "drm: the $(name) diagnostic failed and was skipped, so this fit has NOT " *
+          "been checked for that boundary (absence of a warning is not a clean bill)." error =
+        sprint(showerror, err)
+    return nothing
+end
+
+# ---------------------------------------------------------------------------
+# #959 (owner decision 2026-10-11, option a): several likelihoods clamp a scale
+# parameter INSIDE the objective, so past the clamp the value is flat and the
+# optimiser can stop there with `converged = true`. The clamps stay; a fit that
+# ends at one is reported, as drmTMB's `drm_logsigma_clamp_active` does.
+# ---------------------------------------------------------------------------
+const _CLAMP_ACTIVE_TOL = 1e-3   # on the clamped (log / logit) scale
+
+"""
+    _warn_at_clamp(route, checks) -> Vector{String}
+
+`checks` is a list of `label => (values, lo, hi)`: the fitted values of a
+parameter (or linear predictor) that the objective clamps to `[lo, hi]`. Warns
+once, naming every check whose values reach a bound (within
+`_CLAMP_ACTIVE_TOL`), and returns those labels. Silent inside bootstrap /
+profile refits (`_without_boundary_warnings`).
+"""
+function _warn_at_clamp(route::AbstractString, checks)
+    hits = String[]
+    for (label, (vals, lo, hi)) in checks
+        v = filter(isfinite, collect(Float64, vals))
+        isempty(v) && continue
+        at_lo = minimum(v) <= lo + _CLAMP_ACTIVE_TOL
+        at_hi = maximum(v) >= hi - _CLAMP_ACTIVE_TOL
+        (at_lo || at_hi) || continue
+        push!(hits, string(label, " at its ", at_lo ? "lower" : "upper", " clamp ",
+                           at_lo ? lo : hi, " (fitted range ", round(minimum(v); sigdigits = 4),
+                           " to ", round(maximum(v); sigdigits = 4), ")"))
+    end
+    isempty(hits) && return hits
+    get(task_local_storage(), :drm_quiet_boundary, false) === true && return hits
+    @warn "drm ($route): a scale parameter ended at a clamp inside the likelihood. Past the " *
+          "clamp the objective is flat, so the reported value is the clamp, not an estimate, " *
+          "and its standard error is not meaningful (DRModels.jl #959). " * join(hits, "; ") *
+          ". Consider rescaling the response, a simpler scale model, or `marginal = :Laplace` " *
+          "(unclamped) where available."
+    return hits
+end
+
+# The sparse-Laplace (`marginal = :LA`) structured / crossed routes clamp every
+# random-effect log-SD (`:resd`) to [-8, 3] and the dispersion through
+# `clamp(-2 log σ, -8, 8)`, i.e. log σ in [-4, 4]. `logsigma` is the fitted
+# log-σ (the coefficient, or the per-row linear predictor `Xσ β̂σ`).
+function _warn_laplace_clamp(fit::DrmFit; logsigma = nothing)
+    checks = Pair{String,Tuple{Vector{Float64},Float64,Float64}}[]
+    if any(p -> first(p) === :resd, fit.blocks)
+        push!(checks, "random-effect log SD" =>
+              (fit.theta[_block_range(fit, :resd)], -8.0, 3.0))
+    end
+    logsigma === nothing ||
+        push!(checks, "dispersion log sigma" => (collect(Float64, logsigma), -4.0, 4.0))
+    _warn_at_clamp("sparse Laplace", checks)
+    return fit
+end
+
 # Fit-time advisory. Silent on a clean fit, on fits the diagnostic does not cover,
 # and inside bootstrap refits (`_without_boundary_warnings`).
 function _warn_variance_boundary(fit)
     fit isa DrmFit || return fit
     get(task_local_storage(), :drm_quiet_boundary, false) === true && return fit
+    # #952: a fit that ended on the failed-objective sentinel used to come back
+    # silently (only `loglik = -1e18` and `converged = false` said so).
+    _sentinel_loglik(fit) && @warn "drm: the fit FAILED -- the optimiser ended on the " *
+        "failed-objective sentinel (logLik = $(fit.loglik)), so the estimates are not an " *
+        "optimum (often still the start values). Try rescaling the response or the tree " *
+        "(see `phylo_tree_height`), or a simpler model." converged = fit.converged
     _is_temporal_fit(fit) && return _warn_temporal_boundary(fit)   # temporal(): its own rules
     vb = try
         _variance_boundary(fit)
-    catch
-        nothing        # a diagnostic must never break a fit
+    catch err
+        _boundary_diagnostic_failed("variance-boundary", err)
     end
     vb === nothing && return fit
     msg = _variance_boundary_message(vb)

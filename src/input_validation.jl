@@ -63,29 +63,39 @@ function _require_family_dpars(f::DrmFormula, fam)
     return nothing
 end
 
-# ── #938: `offset(...)` outside the Poisson mean ─────────────────────────────
+# ── #938 / #1097: where `offset(...)` is applied, and where it is refused ─────
 #
-# `offset(x)` is an identity marker that only `drm(::Poisson)` extracts (from
-# the mean formula, with the coefficient fixed at 1). Anywhere else it reached
-# the design matrix as an ordinary column named `offset(x)` and got a free
-# coefficient, so the fitted model was not the one asked for.
+# `offset(x)` is an identity marker. A route that APPLIES it strips the marker and
+# adds it to the linear predictor with the coefficient fixed at 1. On any other
+# route it used to reach the design matrix as an ordinary column named
+# `offset(x)` and got a free coefficient (a silently different model), so every
+# route that cannot hold it fixed refuses it. Applied:
+#   * `mu` of Poisson (fixed effects, one `(1 | g)` under :LA / :AGHQ / :Laplace),
+#     NegBinomial2 (fixed effects, one `(1 | g)` under :LA / :Laplace) and
+#     Gaussian (identity link; every mean structure);
+#   * `sigma` of NegBinomial2 (fixed effects, one `(1 | g)` under :LA).
+# The route-level refusals (VA, crossed, slopes, structured, zi/hu, Laplace sigma)
+# live in the family methods and name their route; this entry check refuses the
+# family × parameter combinations that never apply an offset.
 _has_offset_term(t) =
     (t isa Tuple || t isa AbstractVector) ? any(_has_offset_term, t) :
-    t isa FunctionTerm ? (t.f === offset || any(_has_offset_term, t.args)) : false
+    t isa FunctionTerm ? (t.f === offset || any(_has_offset_term, t.args)) :
+    t isa StatsModels.InteractionTerm ? any(_has_offset_term, t.terms) : false
+
+_offset_param_applied(::Union{Poisson,NegBinomial2,Gaussian}, p::Symbol) = p === :mu
+_offset_param_applied(::NegBinomial2, p::Symbol) = p === :mu || p === :sigma
+_offset_param_applied(::Any, ::Symbol) = false
 
 function _require_offset_supported(f::DrmFormula, fam; laplace::Bool = false)
     for (p, rhs) in f.forms
         _has_offset_term(rhs) || continue
-        # Poisson applies it (and owns its limits) on the default route only: the
-        # `marginal = :Laplace` route (`_drm_ordinary_laplace`) never extracts it.
-        (fam isa Poisson && p === :mu && !laplace) && continue
+        _offset_param_applied(fam, p) && continue
         where_ = p === :mu ? "the mean formula" : "the `$p` formula"
-        how = laplace ? " with `marginal = :Laplace`" : ""
         throw(ArgumentError("drm: `offset(...)` in $where_ is not supported for " *
-            "$(_family_label(fam))$how; it would be estimated as a free coefficient instead of " *
-            "entering with coefficient 1. Only the Poisson() mean on the default marginal " *
-            "applies an offset; otherwise add the term as an ordinary covariate if a free " *
-            "slope is intended."))
+            "$(_family_label(fam)); it would be estimated as a free coefficient instead of " *
+            "entering with coefficient 1, so it is refused. Offsets are applied on the mean of " *
+            "Poisson(), NegBinomial2() and Gaussian(), and on the NegBinomial2() `sigma` " *
+            "formula. See issues #938 and #1097."))
     end
     return nothing
 end

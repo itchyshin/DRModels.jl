@@ -46,8 +46,9 @@ fit_phy = drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ 1),
 """
 struct ZeroOneBeta end
 
-function drm(f::DrmFormula, fam::ZeroOneBeta; data, tree = nothing, K = nothing,
+function drm(f::DrmFormula, fam::ZeroOneBeta; offset = nothing, data, tree = nothing, K = nothing,
              A = nothing, coords = nothing, g_tol::Real = 1e-8, se::Bool = true, ids = nothing)
+    offset === nothing || _refuse_offset_kw(fam)   # #1097
     _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, coords = coords)   # #1027 #1022 #1010
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
         drm(f, fam; data = data_observed, tree = tree, K = K, A = A,
@@ -153,6 +154,7 @@ function _fit_zeroonebeta(fam::ZeroOneBeta, y, Xμ, Xσ, Xz, Xc, nmμ, nmσ, nmz
                   :sigma => exp.(Xσ * θ̂[(pμ+1):i1]),
                   :zoi => zoî,
                   :coi => coî)
+    _warn_at_clamp("zero-one beta", ["log sigma" => (Xσ * θ̂[(pμ+1):i1], -15.0, 15.0)])   # #959
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
@@ -227,6 +229,7 @@ function _fit_zeroonebeta_ranef(fam::ZeroOneBeta, y, Xμ, Xσ, Xz, Xc, gidx, G, 
                   :sigma => exp.(Xσ * θ̂[(pμ+1):i1]),
                   :zoi => zoî,
                   :coi => coî)
+    _warn_at_clamp("zero-one beta", ["log sigma" => (Xσ * θ̂[(pμ+1):i1], -15.0, 15.0)])   # #959
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))

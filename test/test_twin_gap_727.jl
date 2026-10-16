@@ -83,7 +83,7 @@ import Distributions
         @test abs(coef(fit_no_off, :mu)[1] - β[1]) > 0.3   # visibly biased without the offset
     end
 
-    @testset "offset(...) refused outside the fixed-effects-only mean" begin
+    @testset "offset(...) with a random intercept is applied; zi/hu refused (#938, #1097)" begin
         Random.seed!(20260930)
         n = 400
         x = randn(n)
@@ -91,15 +91,17 @@ import Distributions
         g = repeat(1:20, inner = 20)
         y = Float64.(rand.(Distributions.Poisson.(exp.(0.2 .+ 0.3 .* x))))
 
-        @test_throws ErrorException drm(
-            bf(@formula(y ~ x + offset(log_exposure) + (1 | g))), Poisson();
-            data = (; y, x, log_exposure, g),
-        )
-        @test_throws ErrorException drm(
+        # one ordinary `(1 | g)`: the offset is applied (coefficient fixed at 1), so only
+        # the intercept and `x` are mean coefficients; it used to be refused (#727)
+        fit = drm(bf(@formula(y ~ x + offset(log_exposure) + (1 | g))), Poisson();
+                  data = (; y, x, log_exposure, g))
+        @test length(coef(fit, :mu)) == 2
+        # `zi` / `hu` cannot hold the offset fixed: refused with an ArgumentError naming the offset
+        @test_throws ArgumentError drm(
             bf(@formula(y ~ x + offset(log_exposure)), @formula(zi ~ 1)), Poisson();
             data = (; y, x, log_exposure),
         )
-        @test_throws ErrorException drm(
+        @test_throws ArgumentError drm(
             bf(@formula(y ~ x + offset(log_exposure)), @formula(hu ~ 1)), Poisson();
             data = (; y, x, log_exposure),
         )

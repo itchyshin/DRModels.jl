@@ -73,13 +73,26 @@ fit_va = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), NegBinomial2();
 # Requires `sigma ~ 1`; ML only.
 fit_lap = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), NegBinomial2();
               data = dat, marginal = :Laplace)
+
+# Known exposure: `offset(z)` enters log μ with its coefficient FIXED at 1 (it is
+# never a parameter). Supported on the fixed-effects mean and on one ordinary
+# `(1 | g)` (`:LA` or `:Laplace`); every other route (VA, crossed, slopes,
+# structured, `zi`/`hu`) is refused with an error. An offset in the `sigma` formula
+# (log σ) is applied the same way on the fixed-effects fit and under `:LA`.
+fit_off = drm(bf(@formula(y ~ x + offset(log_exposure)), @formula(sigma ~ 1)),
+              NegBinomial2(); data = dat)
 ```
 """
 struct NegBinomial2 end
 
 function drm(f::DrmFormula, fam::NegBinomial2; data, tree = nothing, K = nothing,
              A = nothing, coords = nothing, g_tol::Real = 1e-8, se::Bool = true,
-             marginal::Symbol = :LA, method = nothing, ids = nothing)
+             marginal::Symbol = :LA, method = nothing, ids = nothing, offset = nothing)
+    if offset !== nothing                    # #1097: `offset =` is `offset(<column>)` in the mean
+        f2, data2 = _offset_kw_to_formula(f, data, offset)
+        return drm(f2, fam; data = data2, tree = tree, K = K, A = A, coords = coords,
+                   g_tol = g_tol, se = se, marginal = marginal, method = method, ids = ids)
+    end
     _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, coords = coords)   # #1027 #1022 #1010
     _reject_method_as_marginal(fam, method)
     _scalar_laplace_requested(marginal) &&     # Arc 2: TMB-convention Laplace, ordinary (1 | g)
@@ -101,6 +114,10 @@ function drm(f::DrmFormula, fam::NegBinomial2; data, tree = nothing, K = nothing
     # formulas → one 2×2 group-level covariance fit by the augmented-state engine.
     lc = _ls_coupled_re(rhs[:mu], get(rhs, :sigma, ConstantTerm(1)))
     if lc !== nothing
+        (_has_offset_term(rhs[:mu]) || _has_offset_term(get(rhs, :sigma, ConstantTerm(1)))) &&   # #938: this engine does not apply an offset
+            throw(ArgumentError("NegBinomial2(): `offset(...)` is not supported with a coupled " *
+                "location–scale random effect `(1 | tag | group)` (the offset cannot be held " *
+                "fixed on this route); see issue #938."))
         isva && _va_reject(fam, "a coupled location–scale random effect")
         isaghq && _aghq_reject(fam, "a coupled location–scale random effect")
         return _withformula(_fit_locscale_frontend(Val(:nb2), fam, f, rhs, lc, data;
@@ -114,6 +131,8 @@ function drm(f::DrmFormula, fam::NegBinomial2; data, tree = nothing, K = nothing
                           "intercepts `(1 | g) + (1 | h)` only, #761)")
     mv === nothing ||
         error("NegBinomial2() does not support meta_V markers")
+    fixed_mu, offset_term = _extract_offset(fixed_mu)     # #938: offset(z), coefficient fixed at 1
+    sigma_rhs, sigma_offset_term = _extract_offset(get(rhs, :sigma, ConstantTerm(1)))   # #1097: offset on log σ
     for (pname, r) in f.forms          # only the mean may carry a random effect
         pname === :mu && continue
         _, re2, mv2, st2 = _split_ranef(r)
@@ -121,10 +140,20 @@ function drm(f::DrmFormula, fam::NegBinomial2; data, tree = nothing, K = nothing
             error("NegBinomial2(): only the mean formula may carry a random effect")
     end
     y, Xμ, nmμ = _design(f.response, fixed_mu, data)
-    _, Xσ, nmσ = _design(f.response, get(rhs, :sigma, ConstantTerm(1)), data)
+    _, Xσ, nmσ = _design(f.response, sigma_rhs, data)
     all(yi -> yi ≥ 0 && isinteger(yi), y) ||
         error("NegBinomial2() requires non-negative integer counts as the response")
+    off = _offset_for_fit(fam, offset_term, data, length(y))
+    soff = _offset_for_fit(fam, sigma_offset_term, data, length(y))
+    # #938: the offset is applied (fixed at 1) on the fixed-effects mean and on one
+    # ordinary `(1 | g)` under marginal = :LA; every other route refuses it by name.
+    no_offset(route) = (off === nothing && soff === nothing) || throw(ArgumentError(
+        "NegBinomial2(): `offset(...)` is not supported with $route; it is applied only on " *
+        "the fixed-effects mean and `sigma`, and on a single ordinary `(1 | g)` (mean: " *
+        "marginal = :LA or :Laplace; `sigma`: :LA). Fit without the offset or fold it into " *
+        "the data. See issues #938 and #1097."))
     if st !== nothing
+        no_offset("a phylogenetic/structured random effect")
         isva && _va_reject(fam, "a phylogenetic/structured random effect")
         isempty(re) ||
             error("NegBinomial2() phylo structured effects cannot be combined with ordinary random effects yet")
@@ -154,6 +183,7 @@ function drm(f::DrmFormula, fam::NegBinomial2; data, tree = nothing, K = nothing
         (haskey(rhs, :zi) || haskey(rhs, :hu)) &&
             error("NegBinomial2() random effects cannot be combined with `zi`/`hu` yet")
         if length(re) > 1
+            no_offset("crossed/multiple random intercepts")
             isva && _va_reject(fam, "crossed/multiple random intercepts")
             all(_re_kind(r[1])[1] === :intercept for r in re) ||
                 error("NegBinomial2() supports multiple random effects only as crossed/nested intercepts, e.g. `(1 | g) + (1 | h)`")
@@ -168,12 +198,15 @@ function drm(f::DrmFormula, fam::NegBinomial2; data, tree = nothing, K = nothing
         gidx, G = _group_index(getproperty(data, grp))
         if rk === :intercept                              # (1 | g) → 1-D GHQ (Laplace) or VA (#136)
             if isva
+                no_offset("`marginal = :VA`")
                 size(Xσ, 2) == 1 || _va_reject(fam, "a non-constant `sigma` formula (VA kernels require `sigma ~ 1`)")
                 return _withformula(_withmarginal(
                     _fit_nb2_ranef_va(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol), :VA), f)
             end
-            return _withformula(_fit_negbin2_ranef(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol), f)
+            return _withformula(_fit_negbin2_ranef(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol;
+                                                   offset = off, sigma_offset = soff), f)
         elseif rk === :corr                               # (1 + x | g) → 2-D GHQ
+            no_offset("a correlated random slope `(1 + x | g)`")
             isva && _va_reject(fam, "a correlated random slope `(1 + x | g)`")
             return _withformula(_fit_negbin2_corr_ranef(fam, y, Xμ, Xσ, Float64.(getproperty(data, var)), gidx, G, nmμ, nmσ, grp, g_tol), f)
         else
@@ -183,6 +216,7 @@ function drm(f::DrmFormula, fam::NegBinomial2; data, tree = nothing, K = nothing
     isva && _va_reject(fam, "no random intercept (fixed-effects-only / zi / hu)")
     haskey(rhs, :zi) && haskey(rhs, :hu) &&
         error("`zi` and `hu` cannot both be specified (zero-inflation vs hurdle)")
+    (haskey(rhs, :zi) || haskey(rhs, :hu)) && no_offset("a `zi`/`hu` part")
     if haskey(rhs, :zi)                                   # zero-inflated NB (ZINB)
         _, Xzi, nmzi = _design(f.response, rhs[:zi], data)
         return _withformula(_fit_negbin2_zi(fam, y, Xμ, Xσ, Xzi, nmμ, nmσ, nmzi, g_tol), f)
@@ -191,14 +225,16 @@ function drm(f::DrmFormula, fam::NegBinomial2; data, tree = nothing, K = nothing
         _, Xhu, nmhu = _design(f.response, rhs[:hu], data)
         return _withformula(_fit_negbin2_hu(fam, y, Xμ, Xσ, Xhu, nmμ, nmσ, nmhu, g_tol), f)
     end
-    return _withformula(_fit_negbin2(fam, y, Xμ, Xσ, nmμ, nmσ, g_tol), f)
+    return _withformula(_fit_negbin2(fam, y, Xμ, Xσ, nmμ, nmσ, g_tol; offset = off,
+                                     sigma_offset = soff), f)
 end
 
 # NB2 count GLMM with a random intercept (1|g) on log μ. b_g ~ N(0,σ_b²) is
 # integrated out per group by 32-node Gauss–Hermite quadrature; the scale `log σ`
 # (the `sigma` slot, size θ = 1/σ²) is a fixed effect. Same scheme as the Poisson
 # GLMM.
-function _fit_negbin2_ranef(fam::NegBinomial2, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol; K::Int = _RANEF1D_AGHQ_K)
+function _fit_negbin2_ranef(fam::NegBinomial2, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol; K::Int = _RANEF1D_AGHQ_K,
+                            offset = nothing, sigma_offset = nothing)
     n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     members = [Int[] for _ in 1:G]
     for i in 1:n
@@ -213,7 +249,7 @@ function _fit_negbin2_ranef(fam::NegBinomial2, y, Xμ, Xσ, gidx, G, nmμ, nmσ,
         # turn irreproducible there; the soft clamp (identity inside ±20, as
         # the fixed-effect path) keeps the dispersion gradient alive past the
         # band instead of the hard clamp's exactly-zero AD derivative (#959).
-        η0 = Xμ * βμ; ησ = _softclamp.(Xσ * βσ, -20.0, 20.0, 3.0)
+        η0 = _eta_with_offset(Xμ, βμ, offset); ησ = _softclamp.(_eta_with_offset(Xσ, βσ, sigma_offset), -20.0, 20.0, 3.0)   # #938: offset fixed at 1
         ll = (i, η) -> (μ = exp(clamp(η, -20.0, 20.0)); r = exp(-2 * ησ[i]);
                         _nb2_logpmf(r, μ, yint[i]))
         L = reshape([σb], 1, 1)
@@ -222,14 +258,16 @@ function _fit_negbin2_ranef(fam::NegBinomial2, y, Xμ, Xσ, gidx, G, nmμ, nmσ,
     m = sum(y) / n; v = sum(abs2, y .- m) / max(n - 1, 1)
     θ0 = zeros(pμ + pσ + 1)
     θ0[1] = log(m + eps())
+    θ0[1:pμ] .= _offset_start(θ0[1:pμ], Xμ, offset)
     θ0[pμ+1] = -0.5 * log(max(m^2 / max(v - m, 0.1 * m + eps()), 0.5))
+    θ0[(pμ+1):(pμ+pσ)] .= _offset_start(θ0[(pμ+1):(pμ+pσ)], Xσ, sigma_offset)
     θ0[pμ+pσ+1] = log(0.5)
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :resd => (pμ+pσ+1):(pμ+pσ+1)]
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
-    means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))   # population μ (b=0)
-    scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
+    means = Dict(:mu => exp.(_eta_with_offset(Xμ, θ̂[1:pμ], offset))); obs = Dict(:mu => Vector{Float64}(y))   # population μ (b=0)
+    scales = Dict(:sigma => exp.(_eta_with_offset(Xσ, θ̂[(pμ+1):(pμ+pσ)], sigma_offset)))
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
         Optim.iterations(res))
@@ -426,7 +464,8 @@ function _fit_negbin2_hu(fam::NegBinomial2, y, Xμ, Xσ, Xhu, nmμ, nmσ, nmhu, 
         Optim.iterations(res))
 end
 
-function _fit_negbin2(fam::NegBinomial2, y, Xμ, Xσ, nmμ, nmσ, g_tol)
+function _fit_negbin2(fam::NegBinomial2, y, Xμ, Xσ, nmμ, nmσ, g_tol; offset = nothing,
+                      sigma_offset = nothing)
     n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     yint = round.(Int, y)
     function nll(θ)
@@ -434,8 +473,8 @@ function _fit_negbin2(fam::NegBinomial2, y, Xμ, Xσ, nmμ, nmσ, g_tol)
         # Soft guards (see `_softclamp` above): identity across the original hard
         # band so no legitimate fit is distorted, smooth beyond so the gradient
         # stays live — restoring agreement with drmTMB's smooth guard.
-        ημ = _softclamp.(Xμ * βμ, -20.0, 20.0, 3.0)  # keep p ∈ (0,1) on a runaway
-        ησ = _softclamp.(Xσ * βσ, -20.0, 20.0, 3.0)  # NegativeBinomial rejects p ≤ 0 / size ≤ 0
+        ημ = _softclamp.(_eta_with_offset(Xμ, βμ, offset), -20.0, 20.0, 3.0)  # keep p ∈ (0,1) on a runaway; #938: offset fixed at 1
+        ησ = _softclamp.(_eta_with_offset(Xσ, βσ, sigma_offset), -20.0, 20.0, 3.0)  # NegativeBinomial rejects p ≤ 0 / size ≤ 0; #1097: offset fixed at 1
         s = zero(eltype(θ))
         @inbounds for i in 1:n
             μ = exp(ημ[i]); r = exp(-2 * ησ[i])           # r = θ (size)
@@ -451,13 +490,15 @@ function _fit_negbin2(fam::NegBinomial2, y, Xμ, Xσ, nmμ, nmσ, g_tol)
     m = sum(y) / n; v = sum(abs2, y .- m) / max(n - 1, 1)
     θ0 = zeros(pμ + pσ)
     θ0[1] = log(m + eps())                                  # log-mean intercept
+    θ0[1:pμ] .= _offset_start(θ0[1:pμ], Xμ, offset)
     θ0[pμ+1] = -0.5 * log(max(m^2 / max(v - m, 0.1 * m + eps()), 0.5))  # MoM dispersion init
+    θ0[(pμ+1):(pμ+pσ)] .= _offset_start(θ0[(pμ+1):(pμ+pσ)], Xσ, sigma_offset)
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ)]
     names = [:mu => nmμ, :sigma => nmσ]
-    means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))  # response-scale μ̂
-    scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
+    means = Dict(:mu => exp.(_eta_with_offset(Xμ, θ̂[1:pμ], offset))); obs = Dict(:mu => Vector{Float64}(y))  # response-scale μ̂
+    scales = Dict(:sigma => exp.(_eta_with_offset(Xσ, θ̂[(pμ+1):(pμ+pσ)], sigma_offset)))
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
         Optim.iterations(res))
@@ -490,7 +531,8 @@ fit = drm(bf(y ~ x, sigma ~ 1, hu ~ w), TruncatedNegBinomial2(); data = dat)
 """
 struct TruncatedNegBinomial2 end
 
-function drm(f::DrmFormula, fam::TruncatedNegBinomial2; data, g_tol::Real = 1e-8)
+function drm(f::DrmFormula, fam::TruncatedNegBinomial2; offset = nothing, data, g_tol::Real = 1e-8)
+    offset === nothing || _refuse_offset_kw(fam)   # #1097
     _drm_entry_guard(f, fam, data)   # #1027 #1022
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
         drm(f, fam; data = data_observed, g_tol = g_tol)

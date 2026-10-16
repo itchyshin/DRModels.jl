@@ -239,31 +239,39 @@ end
         @test r ≈ ols atol = 1e-6
     end
 
-    @testset "#938: offset() outside the Poisson mean is refused, not freed" begin
+    @testset "#938 / #1097: offset() is applied (coefficient 1) or refused, never freed" begin
         rng = MersenneTwister(938)
         n = 150; x = randn(rng, n); logb = 0.3 .* randn(rng, n); g = repeat(1:15, inner = 10)
         c = Float64[_j3_rpois(rng, exp(0.2 + 0.3x[i] + logb[i])) for i in 1:n]
         d = (c = c, x = x, logb = logb, g = g)
-        fnb = bf(@formula(c ~ x + offset(logb)), @formula(sigma ~ 1))
-        @test_throws ArgumentError drm(fnb, NegBinomial2(); data = d, se = false)
-        @test occursin("offset(...)", _j3_msg(() -> drm(fnb, NegBinomial2(); data = d, se = false)))
-        @test_throws ArgumentError drm(bf(@formula(c ~ x + offset(logb) + (1 | g)), @formula(sigma ~ 1)),
-                                       NegBinomial2(); data = d, se = false)
+        # applied: no `offset` coefficient on NB2 (fixed and (1 | g)), Poisson, Gaussian
+        fnb = drm(bf(@formula(c ~ x + offset(logb)), @formula(sigma ~ 1)),
+                  NegBinomial2(); data = d, se = false)
+        @test length(coef(fnb, :mu)) == 2
+        fnr = drm(bf(@formula(c ~ x + offset(logb) + (1 | g)), @formula(sigma ~ 1)),
+                  NegBinomial2(); data = d, se = false)
+        @test length(coef(fnr, :mu)) == 2
         y = 1 .+ 0.5x .+ logb .+ randn(rng, n)
-        @test_throws ArgumentError drm(bf(@formula(y ~ x + offset(logb)), @formula(sigma ~ 1)),
-                                       Gaussian(); data = merge(d, (y = y,)))
-        # an offset in a non-mean Poisson formula is refused too
-        @test_throws ArgumentError drm(bf(@formula(c ~ x), @formula(zi ~ offset(logb))),
-                                       DRModels.Poisson(); data = d, se = false)
-        # the `marginal = :Laplace` Poisson route never extracts the offset: refused, not freed
-        @test_throws ArgumentError drm(bf(@formula(c ~ x + offset(logb) + (1 | g))),
-                                       DRModels.Poisson(); data = d, marginal = :Laplace, se = false)
-        @test occursin("marginal = :Laplace", _j3_msg(() -> drm(
-            bf(@formula(c ~ x + offset(logb) + (1 | g))), DRModels.Poisson();
-            data = d, marginal = :Laplace, se = false)))
-        # the Poisson mean still applies it with coefficient 1 (no `offset` coefficient)
+        fg = drm(bf(@formula(y ~ x + offset(logb)), @formula(sigma ~ 1)),
+                 Gaussian(); data = merge(d, (y = y,)))
+        @test length(coef(fg, :mu)) == 2
         fp = drm(bf(@formula(c ~ x + offset(logb))), DRModels.Poisson(); data = d, se = false)
         @test length(coef(fp, :mu)) == 2
+        fpl = drm(bf(@formula(c ~ x + offset(logb) + (1 | g))), DRModels.Poisson();
+                  data = d, marginal = :Laplace, se = false)
+        @test length(coef(fpl, :mu)) == 2
+        # refused, by name: a non-mean Poisson part, a Gaussian sigma offset, other families
+        @test_throws ArgumentError drm(bf(@formula(c ~ x), @formula(zi ~ offset(logb))),
+                                       DRModels.Poisson(); data = d, se = false)
+        err = try
+            drm(bf(@formula(y ~ x), @formula(sigma ~ 1 + offset(logb))),
+                Gaussian(); data = merge(d, (y = y,))); nothing
+        catch e
+            e
+        end
+        @test err isa ArgumentError && occursin("offset(...)", err.msg)
+        @test_throws ArgumentError drm(bf(@formula(c ~ x + offset(logb)), @formula(sigma ~ 1)),
+                                       DRModels.Gamma(); data = merge(d, (c = c .+ 1,)))
     end
 
     @testset "#939: CumulativeLogit refuses a sigma formula with covariates" begin

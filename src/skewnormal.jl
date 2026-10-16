@@ -42,7 +42,8 @@ coef(fit, :nu)[1]           # estimated slant α (identity)
 """
 struct SkewNormal end
 
-function drm(f::DrmFormula, fam::SkewNormal; data, g_tol::Real = 1e-8)
+function drm(f::DrmFormula, fam::SkewNormal; offset = nothing, data, g_tol::Real = 1e-8)
+    offset === nothing || _refuse_offset_kw(fam)   # #1097
     _drm_entry_guard(f, fam, data)   # #1027 #1022
     _lss_only_gaussian_guard(f, fam)   # #544: refuse, never silently drop, sd() parts
     rhs = Dict(f.forms)
