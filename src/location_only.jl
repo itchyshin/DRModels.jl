@@ -117,8 +117,9 @@ end
 # is `σ_phy² · C_ii`, not `σ_phy²`. `DrmFit` has no slot for either, and both
 # `fit.means` and `fit.scales` are enumerated by public accessors (`sigma()`,
 # the bridge dpars), so they ride on `fit.ranef`. It is an `AbstractDict` over
-# the same `group => BLUPs` entries the plain `Dict` held, so `ranef()`,
-# `get(fit.ranef, name, nothing)` and `fit.ranef isa AbstractDict` are unchanged.
+# the same `group => BLUPs` entries the plain `Dict` held, so
+# `get(fit.ranef, name, nothing)` and `fit.ranef isa AbstractDict` are unchanged,
+# and `ranef(fit)` unwraps it to that `Dict`.
 struct LocOnlyRanef <: AbstractDict{Symbol,Vector{Float64}}
     effects::Dict{Symbol,Vector{Float64}}   # group => per-tip BLUPs (tree leaf order)
     mu_fixed::Vector{Float64}               # Xμ β̂ (population-level mean), one per row

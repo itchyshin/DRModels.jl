@@ -30,6 +30,12 @@ function _tv995_bytes(prob)
     return @allocated _tv995(prob)
 end
 
+# The same for the cached method on a fit's `LocOnlyRanef`.
+function _tv995_cached_bytes(r)
+    _tv995(r)
+    return @allocated _tv995(r)
+end
+
 # A binary tree with p tips and random branch lengths in [0.05, 1.05]:
 # root-to-tip distances differ by tip (not ultrametric).
 function _tv995_random_tree(p; seed)
@@ -106,4 +112,7 @@ end
     σb = exp(fit.theta[first(bl[:resd])])
     ref = (y .- β[1] .- β[2] .* x) ./ sqrt.(σe^2 .+ σb^2 .* diag(C)[species])
     @test residuals(fit; type = :quantile) ≈ ref atol = 1e-10
+    # C_ii is cached on the fit after the first call; a second call reuses it.
+    @test fit.ranef.tipvar[] !== nothing
+    @test _tv995_cached_bytes(fit.ranef) < _tv995_bytes(fit.ranef.prob) / 100
 end

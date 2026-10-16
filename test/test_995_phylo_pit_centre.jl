@@ -56,7 +56,14 @@ end
                 r = residuals(fit; type = :quantile)
                 ref = _marginal_reference_995(fit, sim)
                 @test r ≈ ref atol = 1e-4
+                # `ranef()` still returns the documented `Dict`, not the wrapper.
+                @test ranef(fit) isa Dict{Symbol,Vector{Float64}}
             end
+            # The EM route now stores its BLUPs (it stored none before this PR),
+            # so `ranef` works on it and `r2_constant_sigma` refuses it as a
+            # random-effects fit instead of returning 1 − RSS/TSS.
+            @test ranef(fits.em)[:species] ≈ ranef(fits.sparse)[:species] atol = 1e-4
+            @test_throws ArgumentError r2_constant_sigma(fits.em)
         end
     end
 end
