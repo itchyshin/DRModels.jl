@@ -40,6 +40,7 @@ const _R1088_ROWS = NamedTuple[]
 @testset "#1088: NB2 crossed fit reaches drmTMB's point (size ~0.002)" begin
     for route in ("nb2_runoff_s7_n1500", "nb2_runoff_s8_n1500", "nb2_runoff_s7_n800")
         ref = _r1088_ref(route)
+        DRModels._CROSSED_NUISANCE_BOX_REFITS[] = 0
         fit = _r1088_fit(_r1088_data(route))
         θ = fit.theta
         θt = Float64.(ref["theta"])
@@ -88,6 +89,9 @@ const _R1088_ROWS = NamedTuple[]
                 # so only a loose band is asserted (the J3 convention for that path).
                 @test all(abs.(se[live] ./ se_t[live] .- 1) .< 0.10)
             end
+            # Must actually take the box re-fit: a family whose inner fits use se=false can
+            # otherwise pass the point assertions on base by construction.
+            @test DRModels._CROSSED_NUISANCE_BOX_REFITS[] > 0
         end
     end
 end
@@ -121,6 +125,79 @@ end
     @test !f0.converged
     @test f0.theta[3] > 100                          # 3021.5 on Julia 1.12.6
     @test -f0.loglik > -_r1088_ref("nb2_runoff_s7_n1500")["loglik"] + 100   # 1034.05 vs 426.15
+end
+
+@testset "#1088: SE gradient ladder records and warns at the 1e-8 fallback" begin
+    # Fake inner solve: 1e-12 and 1e-10 fail, 1e-8 succeeds. No real fit: this is the
+    # rung the reviewer asked to surface, and the (3, 4) NB2 case often stops at 1e-10.
+    DRModels._SE_MODE_TOL_USED[] = NaN
+    seen = Float64[]
+    fgtight = function (θ, tol)
+        push!(seen, Float64(tol))
+        ok = tol >= last(DRModels._SE_MODE_TOLS) - 0.0
+        return (0.0, copy(θ), Float64[], ok)
+    end
+    g! = DRModels._se_grad(fgtight)
+    G = zeros(2)
+    g!(G, [1.0, 2.0])
+    @test G == [1.0, 2.0]
+    @test seen == collect(DRModels._SE_MODE_TOLS)
+    @test DRModels._SE_MODE_TOL_USED[] == last(DRModels._SE_MODE_TOLS)
+    @test_logs (:warn, r"fell back to 1\.0e-8") DRModels._warn_se_mode_fallback("test", 1e-8)
+    @test_logs DRModels._without_boundary_warnings(() -> DRModels._warn_se_mode_fallback("test", 1e-8))
+    @test DRModels._warn_se_mode_fallback("test", 1e-12) === nothing
+    @test DRModels._warn_se_mode_fallback("test", 1e-10) === nothing
+    @test DRModels._warn_se_mode_fallback("test", NaN) === nothing
+
+    # Tightest rung succeeds: record 1e-12, no warning.
+    DRModels._SE_MODE_TOL_USED[] = NaN
+    g12! = DRModels._se_grad((θ, tol) -> (0.0, copy(θ), Float64[], true))
+    g12!(G, [0.0, 0.0])
+    @test DRModels._SE_MODE_TOL_USED[] == first(DRModels._SE_MODE_TOLS)
+    @test_logs DRModels._warn_se_mode_fallback("test", DRModels._SE_MODE_TOL_USED[])
+end
+
+@testset "#1088: Gamma crossed run-off is recovered (default recover_runoff=true)" begin
+    # Tweedie crossed inner fits use se=false (src/tweedie.jl), so that route's existing
+    # test is identical to base unless the box re-fit actually fires. Gamma is the same
+    # `_fit_crossed_mean_laplace_nuisance` path with recover_runoff=true by default, and
+    # one public Tweedie crossed fit is 36+ CPU-min. Fixture: shape 0.002, G=15, H=12,
+    # n=200, seed 7 (test/parity/gen_1088_nb2_runoff_data.jl).
+    d = _r1088_data("gamma_runoff_s7_n200")
+    n = length(d.y)
+    gidx, G = DRModels._group_index(d.g)
+    hidx, H = DRModels._group_index(d.h)
+    comps = [(ones(n), gidx, G, "g"), (ones(n), hidx, H, "h")]
+    X = hcat(ones(n), d.x)
+    Xσ = ones(n, 1)
+    bγ = DRModels._dispersion_clamp(Val(:gamma_fixed))
+
+    DRModels._CROSSED_NUISANCE_BOX_REFITS[] = 0
+    f0 = @test_logs (:warn, r"ended past an upper clamp") match_mode = :any DRModels._fit_gamma_crossed_laplace(
+        Gamma(), d.y, X, Xσ, comps, ["(Intercept)", "x"], ["(Intercept)"], 1e-8;
+        se = false, recover_runoff = false)
+    @test !f0.converged
+    @test any(>(3.0), f0.theta[4:5])                 # log SDs past the upper clamp
+    @test DRModels._CROSSED_NUISANCE_BOX_REFITS[] == 0
+
+    DRModels._CROSSED_NUISANCE_BOX_REFITS[] = 0
+    f1 = DRModels._fit_gamma_crossed_laplace(
+        Gamma(), d.y, X, Xσ, comps, ["(Intercept)", "x"], ["(Intercept)"], 1e-8;
+        se = false)                                  # recover_runoff=true is the default
+    @test DRModels._CROSSED_NUISANCE_BOX_REFITS[] > 0
+    @test is_converged(f1)
+    @test f1.theta[3] < bγ
+    @test all(<(3.0), f1.theta[4:5])
+    @test isfinite(f1.loglik) && -f1.loglik < 1e17   # not the 1e18 sentinel of a failed inner solve
+
+    # Public drm() uses the same default. se=true here, so this also exercises the ladder.
+    DRModels._CROSSED_NUISANCE_BOX_REFITS[] = 0
+    DRModels._SE_MODE_TOL_USED[] = NaN
+    fit = drm(bf(@formula(y ~ 1 + x + (1 | g) + (1 | h)), @formula(sigma ~ 1)),
+              Gamma(); data = d)
+    @test DRModels._CROSSED_NUISANCE_BOX_REFITS[] > 0
+    @test is_converged(fit)
+    @test all(<(3.0), fit.theta[4:5])
 end
 
 println("\n#1088 / #1073 comparison rows (drmTMB ", first(_R1088_DRMTMB, 7), "):")
