@@ -1787,11 +1787,12 @@ function predict(fit::DrmFit, newdata; type::Symbol = :response, se::Bool = fals
         fixed2, _, _, _ = _split_ranef(fm[:mu2])
         nd1 = merge(nd, NamedTuple{(f.response1,)}((zeros(nrows),)))
         nd2 = merge(nd, NamedTuple{(f.response2,)}((zeros(nrows),)))
-        # #1000: the bivariate formula caches no training schema, so contrasts are
-        # rebuilt from `newdata`; `_predict_design` refuses when the rebuilt
-        # columns are not the fitted ones (it used to mis-predict silently).
-        X1, η1 = _predict_design(fit, f.response1, fixed1, nd1, :mu1, nothing, nothing)
-        X2, η2 = _predict_design(fit, f.response2, fixed2, nd2, :mu2, nothing, nothing)
+        # #1000: reuse the training schema cached on the formula at fit time, so a
+        # subset / reordered `newdata` factor gets the fitted contrasts. A fit whose
+        # fitter cached nothing falls back to rebuilding, and `_predict_design`
+        # refuses when the rebuilt columns are not the fitted ones.
+        X1, η1 = _predict_design(fit, f.response1, fixed1, nd1, :mu1, f.schema_cache, nothing)
+        X2, η2 = _predict_design(fit, f.response2, fixed2, nd2, :mu2, f.schema_cache, nothing)
         pred = type === :link ?
             Dict(:mu1 => η1, :mu2 => η2) :
             Dict(:mu1 => _mean_response(fit.family, η1),
@@ -2033,7 +2034,7 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
                                        allow_temporal = true)   # #620 / temporal fits keep predicting
         off = nothing
         bivar || ((fixed_p, off) = _predict_offset(fit, fixed_p, nd, p))   # #1006
-        Xp, ηp = _predict_design(fit, resp, fixed_p, ndr, p, bivar ? nothing : f.schema_cache, off)   # #1000
+        Xp, ηp = _predict_design(fit, resp, fixed_p, ndr, p, f.schema_cache, off)   # #1000
         val = type === :link ? ηp : _param_response(fit.family, p, ηp)
         if se
             se_p = _delta_se(Xp, view(V, r, r), ηp, type, fit.family, p)
