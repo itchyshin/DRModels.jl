@@ -696,16 +696,28 @@ function _phylo_mean_mode(kind, aux, η0, leaf_node, Q, logσ; b0 = nothing,
             f0 = joint(b)
             α = 1.0
             accepted = false
+            # Rounding slack (#1093): near the mode the true decrease is below
+            # the floating-point resolution of a joint worth hundreds of nats,
+            # so a strict `<=` rejects every step and the search reports failure
+            # at a point that is already the mode to ~1e-9.
+            slack = 8 * eps(Float64) * (1 + abs(f0))
             while α >= 1e-4
                 trial = b .- α .* step
-                if joint(trial) <= f0
+                if joint(trial) <= f0 + slack
                     b = trial
                     accepted = true
                     break
                 end
                 α *= 0.5
             end
-            accepted || return b, ch, iters, false
+            if !accepted
+                # `ch` succeeded, so the Hessian is positive definite and the
+                # Newton step is a descent direction. Once that step is tiny we
+                # are inside the quadratic basin and the objective cannot resolve
+                # it: take it in full rather than fail closed.
+                sn <= 1e-6 * (1 + norm(b)) || return b, ch, iters, false
+                b = b .- step
+            end
         end
     end
     # Cap exhausted without the step meeting `tol` (#1024): `b` is not the mode
@@ -2847,16 +2859,28 @@ function _crossed_mean_mode(kind, aux, η0, gidx, G, hidx, Hh, logσ; b0 = nothi
             f0 = joint(b)
             α = 1.0
             accepted = false
+            # Rounding slack (#1093): near the mode the true decrease is below
+            # the floating-point resolution of a joint worth hundreds of nats,
+            # so a strict `<=` rejects every step and the search reports failure
+            # at a point that is already the mode to ~1e-9.
+            slack = 8 * eps(Float64) * (1 + abs(f0))
             while α >= 1e-4
                 trial = b .- α .* step
-                if joint(trial) <= f0
+                if joint(trial) <= f0 + slack
                     b = trial
                     accepted = true
                     break
                 end
                 α *= 0.5
             end
-            accepted || return b, ch, iters, false
+            if !accepted
+                # `ch` succeeded, so the Hessian is positive definite and the
+                # Newton step is a descent direction. Once that step is tiny we
+                # are inside the quadratic basin and the objective cannot resolve
+                # it: take it in full rather than fail closed.
+                sn <= 1e-6 * (1 + norm(b)) || return b, ch, iters, false
+                b = b .- step
+            end
         end
     end
     # Cap exhausted without the step meeting `tol` (#1024): `b` is not the mode
