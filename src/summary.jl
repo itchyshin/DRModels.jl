@@ -207,6 +207,23 @@ Extends `StatsAPI.dof_residual`.
 """
 dof_residual(fit::DrmFit) = nobs(fit) - dof(fit)
 
+# #1071: name the integrator behind the printed logLik. `:LA` (the default) and
+# `:Laplace` give different logLik values for the same random-effect model (the
+# default is the more accurate; `:Laplace` is what drmTMB reports), so a cross-engine
+# or cross-approximation AIC/LRT is only valid between like approximations. The node
+# count is deliberately not printed: it differs by route (e.g. Poisson `(1|g)` uses
+# 32-point GHQ, Binomial `(1|g)` a 5-point adaptive rule), so a fixed "GHQ-32" would
+# sometimes be false. Printed only when the fit has random effects or a non-default
+# integrator, so fixed-effect fits are unchanged.
+function _marginal_note(fit::DrmFit)
+    (fit.ranef === nothing && fit.marginal === :LA) && return nothing
+    desc = fit.marginal === :LA      ? "default integrator" :
+           fit.marginal === :Laplace ? "Laplace approximation, as drmTMB" :
+           fit.marginal === :VA      ? "variational ELBO" :
+           fit.marginal === :AGHQ    ? "adaptive Gauss-Hermite quadrature" : "integrator"
+    return "  logLik (marginal :" * String(fit.marginal) * ", " * desc * ")"
+end
+
 function Base.show(io::IO, ::MIME"text/plain", fit::DrmFit)
     se = _display_se(fit)
     fam = _family_name(fit.family)
@@ -214,6 +231,8 @@ function Base.show(io::IO, ::MIME"text/plain", fit::DrmFit)
     println(io, "  nobs = ", fit.nobs,
                 "   logLik = ", @sprintf("%.4f", fit.loglik),
                 "   converged = ", is_converged(fit))
+    mnote = _marginal_note(fit)
+    mnote === nothing || println(io, mnote)
     # #949: show the trusted accessor; say so when the raw optimiser flag disagrees.
     (fit.converged && !is_converged(fit)) && println(io, "  (the optimiser stopped normally, " *
         "but the fit is degenerate -- see `is_converged`)")
