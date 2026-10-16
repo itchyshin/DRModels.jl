@@ -92,13 +92,24 @@ function _bridge_align_labelled(M, labels, dat, group, what::AbstractString)
     return _align_labelled_matrix(M, labels, getproperty(dat, gsym), what)
 end
 
+# The string a group id is matched by. R sends numeric ids as Float64, so the
+# id 1 is `1.0` here but "1" in R's row names; integer-valued floats are written
+# as plain integers ("1", "100000") to agree with drmTMB's `drm_julia_group_key`.
+function _group_label(v)
+    if v isa AbstractFloat && isfinite(v) && isinteger(v) && abs(v) < 1e15
+        return string(Int64(v))
+    end
+    return String(string(v))
+end
+
 # Reorder the rows and columns of the square matrix `M` (row/column names
 # `labels`) to the first-appearance order of `values`. Refuses, with an
 # ArgumentError, a matrix whose labels are duplicated or miss a group level.
 # Labels beyond the data's levels are dropped (the matrix may cover more
 # individuals than the data).
 function _align_labelled_matrix(M, labels, values, what::AbstractString)
-    lab = String.(collect(labels))
+    # A length-1 character vector can arrive from R unboxed as a bare String.
+    lab = _group_label.(labels isa AbstractString ? [labels] : collect(labels))
     size(M, 1) == size(M, 2) == length(lab) || throw(ArgumentError(
         "drm_bridge: `$(what)` is $(size(M, 1))×$(size(M, 2)) but `$(what)_labels` " *
         "has $(length(lab)) entries"))
@@ -111,7 +122,7 @@ function _align_labelled_matrix(M, labels, values, what::AbstractString)
     lv = String[]
     seen = Set{String}()
     for v in values
-        s = String(string(v))
+        s = _group_label(v)
         s in seen || (push!(seen, s); push!(lv, s))
     end
     missing_lv = [l for l in lv if !haskey(pos, l)]

@@ -55,3 +55,39 @@ using LinearAlgebra
     @test_throws ArgumentError fit(K_labels = ids, structured_group = "id")
     @test_throws ArgumentError fit(K = ksorted, K_labels = ids, structured_group = "nope")
 end
+
+@testset "drm_bridge labelled K with numeric ids (drmTMB#1512)" begin
+    # R sends numeric ids as Float64 while its row names are strings: id 1 is
+    # `1.0` here and "1" in R, and 100000 is `100000.0` here but "1e+05" under
+    # R's as.character(). Both must match the plain-integer string.
+    rng = MersenneTwister(15121)
+    ids = [100000, 2, 7, 31, 4]
+    G, nrep = length(ids), 3
+    appear = ids[randperm(rng, G)]
+    B = randn(rng, G, G)
+    Kfull = Matrix(Symmetric(B * B' / G + I))      # indexed by `ids`
+    ord = [findfirst(==(i), ids) for i in appear]
+    Kappear = Kfull[ord, ord]
+    u = cholesky(Symmetric(Kappear)).L * randn(rng, G)
+    gid = repeat(appear, inner = nrep)
+    x = randn(rng, G * nrep)
+    y = 0.4 .+ 0.3 .* x .+ repeat(u, inner = nrep) .+ 0.7 .* randn(rng, G * nrep)
+    labels = string.(ids)                          # what R sends: "100000", "2", ...
+
+    for idcol in (Float64.(gid), gid)              # Float64 (from R) and Int
+        dat = (; y, x, id = idcol)
+        run(; kw...) = drm_bridge(; formula = "y ~ x + relmat(1 | id); sigma ~ 1",
+                                  family = "gaussian", data = dat, kw...)
+        ref = run(K = Kappear)
+        al = run(K = Kfull, K_labels = labels, structured_group = "id")
+        @test al["loglik"] ≈ ref["loglik"] atol = 1e-8
+    end
+
+    @test DRModels._group_label(1.0) == "1"
+    @test DRModels._group_label(100000.0) == "100000"
+    @test DRModels._group_label(2.5) == "2.5"
+    @test DRModels._group_label("a") == "a"
+    # R-boxed labels: Vector{Any} of strings, and a bare String for one level.
+    @test DRModels._align_labelled_matrix(ones(1, 1), "only", ["only", "only"], "K") == ones(1, 1)
+    @test DRModels._align_labelled_matrix(Kfull, Any[labels...], Float64.(gid), "K") ≈ Kappear
+end
