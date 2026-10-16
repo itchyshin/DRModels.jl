@@ -192,6 +192,66 @@ function drm(f::DrmFormula, fam::NegBinomial2; data, tree = nothing, K = nothing
     return _withformula(_fit_negbin2(fam, y, Xμ, Xσ, nmμ, nmσ, g_tol), f)
 end
 
+# ---------------------------------------------------------------------------
+# #1039 / #1069 / #1072: NB2 at the Poisson limit.
+#
+# With no overdispersion the NB2 likelihood increases in the size r = 1/sigma^2
+# without bound, so the MLE is on the Poisson boundary (log sigma -> -Inf). Two
+# optimiser problems live there. (1) On a runaway the objective can go non-finite
+# inside the Hager-Zhang line search, which ASSERTS rather than backs off
+# (`isfinite(phi_c)`, #1039); (2) the search can run onto that flat plateau
+# although an interior sigma has a higher likelihood (#1069).
+
+# Run each attempt in turn; an `AssertionError` (the line-search assertion) moves on
+# to the next attempt, any other error propagates, and the last attempt's error
+# surfaces if every attempt fails.
+function _with_optimizer_fallback(attempts)
+    for (i, attempt) in enumerate(attempts)
+        try
+            return attempt()
+        catch err
+            (err isa AssertionError && i < length(attempts)) || rethrow()
+        end
+    end
+end
+
+function _nb2_optimize(nll, θ0, g_tol)
+    return _with_optimizer_fallback([
+        () -> Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward),
+        () -> Optim.optimize(nll, θ0, Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking(order = 3)),
+                             Optim.Options(g_tol = g_tol); autodiff = :forward),
+        # derivative-free last resort: no line search to assert; reports `converged = false`
+        # unless it genuinely converges
+        () -> Optim.optimize(nll, θ0, Optim.NelderMead(), Optim.Options(iterations = 5000)),
+    ])
+end
+
+# log sigma at or below this is the Poisson limit: size r = exp(-2 log sigma) > ~1e7,
+# so the NB2 and Poisson log-likelihoods differ by far less than any tolerance.
+const _NB2_POISSON_LIMIT_LOGSIGMA = -8.0
+# interior start used to test whether the plateau hides a higher-likelihood sigma
+const _NB2_INTERIOR_LOGSIGMA = -4.0
+
+_nb2_at_poisson_limit(ησ) = !isempty(ησ) && !any(isnan, ησ) && maximum(ησ) < _NB2_POISSON_LIMIT_LOGSIGMA
+
+# Optimise `nll`; if the fit lands on the Poisson plateau, refit once from an interior
+# dispersion and keep that fit only if it is interior AND has a lower nll (#1069).
+# `iσ` indexes the dispersion coefficients in θ; `Xσ` is the dispersion design.
+function _nb2_minimize(nll, θ0, iσ, Xσ, g_tol)
+    res = _nb2_optimize(nll, θ0, g_tol)
+    _nb2_at_poisson_limit(Xσ * Optim.minimizer(res)[iσ]) || return res
+    θi = copy(θ0); θi[iσ] .= 0.0; θi[first(iσ)] = _NB2_INTERIOR_LOGSIGMA
+    res2 = try
+        _nb2_optimize(nll, θi, g_tol)
+    catch err
+        err isa AssertionError || rethrow()
+        return res
+    end
+    θ2 = Optim.minimizer(res2)
+    interior = all(isfinite, θ2) && maximum(Xσ * θ2[iσ]) > _NB2_POISSON_LIMIT_LOGSIGMA
+    return (interior && isfinite(Optim.minimum(res2)) && Optim.minimum(res2) < Optim.minimum(res) - 1e-6) ? res2 : res
+end
+
 # NB2 count GLMM with a random intercept (1|g) on log μ. b_g ~ N(0,σ_b²) is
 # integrated out per group by 32-node Gauss–Hermite quadrature; the scale `log σ`
 # (the `sigma` slot, size θ = 1/σ²) is a fixed effect. Same scheme as the Poisson
@@ -222,15 +282,15 @@ function _fit_negbin2_ranef(fam::NegBinomial2, y, Xμ, Xσ, gidx, G, nmμ, nmσ,
     θ0[1] = log(m + eps())
     θ0[pμ+1] = -0.5 * log(max(m^2 / max(v - m, 0.1 * m + eps()), 0.5))
     θ0[pμ+pσ+1] = log(0.5)
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    res = _nb2_minimize(nll, θ0, (pμ+1):(pμ+pσ), Xσ, g_tol)   # #1039 / #1069
     θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :resd => (pμ+pσ+1):(pμ+pσ+1)]
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))   # population μ (b=0)
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
-    return _withiterations(
+    return _warn_nb2_poisson_limit(_withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
-        Optim.iterations(res))
+        Optim.iterations(res)))
 end
 
 # NB2 count GLMM with a CORRELATED random intercept+slope (1 + x | g) on log μ:
@@ -450,15 +510,15 @@ function _fit_negbin2(fam::NegBinomial2, y, Xμ, Xσ, nmμ, nmσ, g_tol)
     θ0 = zeros(pμ + pσ)
     θ0[1] = log(m + eps())                                  # log-mean intercept
     θ0[pμ+1] = -0.5 * log(max(m^2 / max(v - m, 0.1 * m + eps()), 0.5))  # MoM dispersion init
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    res = _nb2_minimize(nll, θ0, (pμ+1):(pμ+pσ), Xσ, g_tol)   # #1039 / #1069
     θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ)]
     names = [:mu => nmμ, :sigma => nmσ]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))  # response-scale μ̂
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
-    return _withiterations(
+    return _warn_nb2_poisson_limit(_withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
-        Optim.iterations(res))
+        Optim.iterations(res)))   # #1072
 end
 
 """

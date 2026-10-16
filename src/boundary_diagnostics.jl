@@ -184,6 +184,30 @@ function _warn_at_clamp(route::AbstractString, checks)
     return hits
 end
 
+# #1072: NB2 with no overdispersion. The likelihood increases in the size
+# r = 1/sigma^2 without bound, so the MLE is the Poisson limit and the reported
+# log sigma is an optimiser-stopping value, not an estimate. `converged` is left as
+# the optimiser reported it (a valid boundary MLE); this only says what the fit is.
+# `fit.scales[:sigma]` is exp(Xσ β̂σ) per row.
+_nb2_at_poisson_limit(fit::DrmFit) =
+    fit.family isa NegBinomial2 && haskey(fit.scales, :sigma) &&
+    _nb2_at_poisson_limit(log.(fit.scales[:sigma]))
+
+function _warn_nb2_poisson_limit(fit)
+    fit isa DrmFit || return fit
+    _nb2_at_poisson_limit(fit) || return fit
+    get(task_local_storage(), :drm_quiet_boundary, false) === true && return fit
+    @warn "drm (NegBinomial2): the data show no overdispersion, so the fit is at the Poisson " *
+          "limit (sigma -> 0, size -> Inf; fitted log sigma " *
+          "$(round(maximum(log.(fit.scales[:sigma])); sigdigits = 4))). The location estimates " *
+          "and logLik are those of the Poisson fit, but the reported sigma is an optimiser-stopping " *
+          "value, not an estimate, and Wald standard errors from this fit can be NaN (including for " *
+          "the location effects) or meaningless. Prefer `Poisson()` for the location effects; test " *
+          "overdispersion with the 0.5 chi2_0 + 0.5 chi2_1 mixture, not a Wald test on sigma " *
+          "(DRModels.jl #1072)." converged = fit.converged
+    return fit
+end
+
 # The sparse-Laplace (`marginal = :LA`) structured / crossed routes clamp every
 # random-effect log-SD (`:resd`) to [-8, 3] and the dispersion through
 # `clamp(-2 log σ, -8, 8)`, i.e. log σ in [-4, 4]. `logsigma` is the fitted
