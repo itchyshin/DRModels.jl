@@ -41,9 +41,18 @@ largest (see [`_vcov_guard_decision`](@ref)).
 # its boundary, eigenvector alignment 1.000) whose fully equilibrated ratio was
 # 0.2 .. 1. So the two questions are now asked separately -- collinearity on the
 # equilibrated matrix (`_VCOV_RTOL`), flatness of declared unit-free coordinates
-# in natural units (`_VCOV_FLAT_CURVATURE`). PROVISIONAL pending the census on
-# this design; the measured distributions and margins are recorded with
-# `_VCOV_FLAT_CURVATURE` below.
+# in natural units (`_VCOV_FLAT_CURVATURE`).
+#
+# RECALIBRATED 2026-10-16 on this design (tools/vcov_guard_census.jl on commit
+# 39e623e: 2,796 guard calls from 149 test files, Linux, Julia 1.11.7, replayed
+# with tools/vcov_guard_replay.jl). The equilibrated ratio is again bimodal:
+#
+#   non-identified cluster      11 exactly 0, 7 in 4.0e-17 .. 1.5e-15, top 1.5e-10
+#   next point                  6.2e-6 (then 9.9e-4, then a continuum to 1)
+#   empty gap                   4.6 orders; 3e-8 sits +2.3 above / -2.3 below
+#
+# Falsified by: a healthy fixture whose equilibrated ratio falls below ~1e-7, or
+# a genuinely non-identified one above ~1e-9.
 const _VCOV_RTOL = 3e-8
 
 """
@@ -51,6 +60,26 @@ Curvature, in natural units, at or below which a coordinate declared unit-free
 counts as flat, i.e. at a variance/dispersion boundary: its Wald SE would exceed
 `1 / sqrt(_VCOV_FLAT_CURVATURE)` on the log / atanh / logit scale.
 """
+# CALIBRATED 2026-10-16 on the same census. In natural units the curvatures of
+# the declared coordinates (3,638 of them) have NO gap above 3.6e-7 -- the same
+# continuum the 2026-08-26 calibration found above 1e-7 -- so the threshold is
+# anchored on the fixtures rather than on a gap:
+#
+#   boundary fixtures (must warn)                         curvature
+#     NB2 r -> infinity (VA, anchor (c))                  8.2e-6
+#     q=2 structured log L22 (structured corr -> +/-1)    9.2e-6 .. 1.2e-5
+#     binomial clamp; crossed-mean degenerate grouping    4.0e-5; 7.2e-5
+#   next recorded point: an interior q=2 REML log L22     1.32e-4 (not flagged
+#     by the unscaled rule either)
+#
+# 1e-4 (Wald SE >= 100 on the log scale) splits them with a THIN margin, 0.14
+# orders above and 0.12 below. It is also the old rule's effective absolute cut at
+# a typical Hessian scale (3e-8 * ~3e3). Coordinates past a likelihood clamp are
+# exactly flat and are zeroed before the guard on the sparse-Laplace routes
+# (`_zero_flat_clamped_logsd_columns!`), so their finite-difference noise (up to
+# 1e-4 and -1e-3 measured) does not ride on this margin. Falsified by: a
+# true-boundary fixture measuring above ~1e-4 on another platform, or an interior
+# one below it.
 const _VCOV_FLAT_CURVATURE = 1e-4
 
 # Instrumentation hook for recalibrating the guard: `tools/vcov_guard_census.jl`
