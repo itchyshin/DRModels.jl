@@ -253,8 +253,10 @@ _withformula(fit::DrmFit, f) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit
     fit.training_schema)
 
 # Attach the training schema the fitter recorded while building its designs (see
-# `DrmFit.training_schema`). Anything that is not a `DrmFit` passes through.
-_withschema(fit::DrmFit, training_schema::Dict{Symbol,Any}) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
+# `DrmFit.training_schema`). Anything that is not a `DrmFit` passes through; a
+# `DrmFit` always takes the schema (a wrong type fails in the constructor rather
+# than being dropped).
+_withschema(fit::DrmFit, training_schema) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
     fit.vcov, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula, fit.nll, fit.nllgrad, fit.ranef,
     fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale,
     training_schema)
@@ -1276,12 +1278,14 @@ end
 
 # Rebuilders for the missing-response routes: refit rows are the OBSERVED ones,
 # but `means`/`obs`/`scales` are restored over the FULL design so `predict`,
-# `fitted` and `simulate` line up with the caller's table. Both pass all 22
-# fields rather than the 19-arg compatibility constructor -- that one defaults
+# `fitted` and `simulate` line up with the caller's table. Both pass every
+# field rather than a compatibility constructor -- the 19-arg one defaults
 # `phylo_penalty`/`penalty`/`iterations` to absent, which silently reset the
 # inner fit's recorded iteration count to -1 ("unknown"). The bridge exports it
 # as `iterations`, so a masked-response fit reported no optimiser effort while
-# the identical complete-case fit reported 7 (#646).
+# the identical complete-case fit reported 7 (#646). Likewise the 23-arg one
+# would drop `training_schema` (#1000), which the LogNormal missing-response
+# path has already attached when it reaches `_with_full_response_rows`.
 function _with_full_fixed_gaussian_rows(fit::DrmFit, y_full, Xμ_full, Xσ_full)
     rμ = _block_range(fit, :mu)
     rσ = _block_range(fit, :sigma)

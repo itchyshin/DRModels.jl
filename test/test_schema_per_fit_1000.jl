@@ -100,8 +100,23 @@ end
     @test_throws ArgumentError predict(fit2, (x = [0.0], grp = ["a"]))
 end
 
-# The bivariate LogNormal fit is the Gaussian fit on log(y), rebuilt with the
+# LogNormal fits that delegate to the Gaussian fit on log(y) rebuild it with the
 # Jacobian-shifted likelihood; the rebuild must keep the Gaussian fit's schema.
+@testset "#1000 univariate LogNormal (crossed) keeps the delegated fit's training schema" begin
+    Random.seed!(1004)
+    G = 12; H = 10; n = 220
+    g = rand(1:G, n); h = rand(1:H, n); x = randn(n)
+    grp = repeat(["a", "b", "c", "d"], outer = 55)
+    bg = 0.3 .* randn(G); bh = 0.25 .* randn(H)
+    y = exp.(0.1 .+ 0.35 .* x .+ 0.4 .* (grp .== "b") .- 0.3 .* (grp .== "d") .+
+             bg[g] .+ bh[h] .+ 0.4 .* randn(n))
+    data = (; y, x, grp, g, h)
+    fit = drm(bf(@formula(y ~ x + grp + (1 | g) + (1 | h))), LogNormal(); data = data)
+    sub = findall(!=("a"), grp)[1:6]
+    @test predict(fit, (x = x[sub], grp = grp[sub]); type = :link) ≈
+          predict(fit, data; type = :link)[sub]
+end
+
 @testset "#1000 bivariate LogNormal keeps the delegated fit's training schema" begin
     Random.seed!(1002)
     n = 150; x = randn(n); grp = repeat(["a", "b", "c"], outer = 50)

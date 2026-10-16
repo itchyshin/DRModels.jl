@@ -7,12 +7,12 @@
 using DRModels
 using Test, Random, LinearAlgebra, SparseArrays
 
-# Rebuild a fit with selected fields replaced (all 23 positional fields).
+# Rebuild a fit with selected fields replaced (all 24 positional fields).
 function _j2_rebuild(fit; converged = fit.converged, scales = fit.scales, ranef = fit.ranef)
     return DRModels.DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta, fit.vcov,
         fit.loglik, fit.nobs, converged, fit.means, fit.obs, scales, fit.formula, fit.nll,
         fit.nllgrad, ranef, fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal,
-        fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale)
+        fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale, fit.training_schema)
 end
 
 # An AbstractDict whose lookups throw, to make a boundary diagnostic fail.
