@@ -11,18 +11,21 @@
 #       Gaussian(); data, tree)
 #
 # by ML (the default), and writes <dir>/<case>.julia.csv with, per row:
-#   q_julia     residuals(fit; type = :quantile)           (population-level PIT)
+#   q_julia     residuals(fit; type = :quantile)           (marginal PIT over the phylo effect)
 #   fitted      fitted(fit) = Xβ̂ + û                        (conditional mean)
 #   mu_fixed    Xβ̂
 #   cii         C_ii, the row's raw branch-length tip variance
 #   q_cond      (y − fitted) / σ̂_e                          (conditional form)
-#   q_gh32      the same population-level PIT from the 32-node Gauss–Hermite
+#   q_gh32      the same marginal PIT from the 32-node Gauss–Hermite
 #               mixture used before the closed form (diagnostic only: what PR
 #               #1078's head 8563231 returned)
 # and <dir>/<case>.julia.toml with the scalars (estimates, logLik, convergence,
-# the DRModels.jl commit).
-using DRModels, LinearAlgebra, Printf
+# the DRModels.jl commit, and the expected spread of sd(q_julia) under the fitted
+# model: a plug-in value and a seeded 200-refit parametric bootstrap).
+using DRModels, LinearAlgebra, Printf, Random, Statistics
 import Distributions
+
+const NBOOT = 200
 
 function _read_fixture(path)
     lines = readlines(path)
@@ -97,7 +100,23 @@ function run_case(dir, case)
         sd_v = sqrt.(diag(V))
         R = V ./ (sd_v * transpose(sd_v))
         n = length(d.y)
+        # Plug-in value: the fitted V is taken as the truth, and the estimation of
+        # β and of the variances is ignored.
         @printf(io, "pit_expected_sample_var = %.17g\n", (tr(R) - sum(R) / n) / (n - 1))
+        # Spread: a parametric bootstrap at the fitted parameters (simulate y from
+        # N(Xβ̂, V), refit, take sd of the quantile residuals), seeded.
+        X = hcat(ones(n), d.x)
+        Lv = cholesky(Symmetric(V)).L
+        rng = Random.MersenneTwister(995)
+        sds = map(1:NBOOT) do _
+            ys = X * β .+ Lv * randn(rng, n)
+            fb = drm(f, Gaussian(); data = (; y = ys, x = d.x, species = d.species), tree = phy)
+            std(residuals(fb; type = :quantile))
+        end
+        qs = Statistics.quantile(sds, [0.05, 0.5, 0.95])
+        @printf(io, "pit_sd_boot_n = %d\n", NBOOT)
+        @printf(io, "pit_sd_boot_q05 = %.17g\npit_sd_boot_q50 = %.17g\npit_sd_boot_q95 = %.17g\n", qs...)
+        @printf(io, "pit_sd_boot_frac_le_observed = %.17g\n", mean(sds .<= std(q)))
     end
     return nothing
 end

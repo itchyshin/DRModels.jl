@@ -60,10 +60,12 @@ end
                 @test ranef(fit) isa Dict{Symbol,Vector{Float64}}
             end
             # The EM route now stores its BLUPs (it stored none before this PR),
-            # so `ranef` works on it and `r2_constant_sigma` refuses it as a
-            # random-effects fit instead of returning 1 − RSS/TSS.
+            # so `ranef` works on it, `r2_constant_sigma` refuses it as a
+            # random-effects fit instead of returning 1 − RSS/TSS, and the
+            # variance-boundary diagnostic now covers it.
             @test ranef(fits.em)[:species] ≈ ranef(fits.sparse)[:species] atol = 1e-4
             @test_throws ArgumentError r2_constant_sigma(fits.em)
+            @test DRModels._variance_boundary(fits.em) !== nothing
         end
     end
 end

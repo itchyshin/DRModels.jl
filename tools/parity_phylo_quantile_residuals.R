@@ -2,10 +2,12 @@
 # for a Gaussian `phylo(1 | g)` mean model (#995, PR #1078).
 #
 # WHY THIS EXISTS. PR #1078 makes DRModels.jl's `residuals(fit; type = :quantile)`
-# the population-level PIT, (y − Xβ̂) / √(σ̂_e² + σ̂_b² C_ii). Whether that now
-# disagrees with drmTMB's `residuals(fit, type = "quantile")` on the same fit had
-# not been measured. This script measures it and separates the two possible
-# causes of a difference:
+# the PIT of the MARGINAL distribution over the phylo effect,
+# (y − Xβ̂) / √(σ̂_e² + σ̂_b² C_ii). ("Marginal" here, because drmTMB uses
+# "population-level" for its fixed-effect-only newdata prediction, a different
+# thing.) Whether that now disagrees with drmTMB's
+# `residuals(fit, type = "quantile")` on the same fit had not been measured.
+# This script measures it and separates the two possible causes of a difference:
 #
 #   engine      the two fits land on different estimates or modes;
 #   convention  the two engines define the residual differently.
@@ -13,11 +15,16 @@
 # For each case it records, besides the headline max |q_julia − q_drmTMB|:
 #   * the Julia CONDITIONAL residual (y − fitted) / σ̂_e against drmTMB's
 #     residual (an engine-level comparison under drmTMB's convention);
-#   * drmTMB's own estimates under the POPULATION-level convention,
+#   * drmTMB's own estimates under the MARGINAL convention,
 #     (y − Xβ̂) / √(σ̂² + σ̂_phylo²), against the Julia residual (an
 #     engine-level comparison under DRModels.jl's convention; drmTMB's tree is
 #     normalised to tip variance 1, so C_ii = 1 on that side);
 #   * that drmTMB's residual is exactly (y − fitted(fit)) / sigma(fit);
+#   * the residual drmTMB's DOCUMENTATION describes ("fixed-effect … not
+#     marginal"), computed with drmTMB's own
+#     qnorm(fitted_distribution(fit, newdata = dat)$p(y)) = (y − Xβ̂) / σ̂,
+#     against the Julia residual, so a "make the code match the docs" option
+#     is measured too;
 #   * logLik, coefficients, σ̂, σ̂_phylo (drmTMB's correlation scale) and both
 #     convergence flags.
 #
@@ -122,6 +129,11 @@ for (cs in cases) {
   sdp_r <- as.numeric(fit$sdpars$mu[["phylo(1 | species)"]])
   xb_r <- b_r[1] + b_r[2] * dat$x
   q_r_marg <- (dat$y - xb_r) / sqrt(sig_r^2 + sdp_r^2)
+  # The documented route: drmTMB's fixed-effect (newdata) prediction with σ̂
+  # only. pnorm saturates for large |z|, so qnorm can return ±Inf; those rows
+  # are counted and left out of the max.
+  q_doc <- stats::qnorm(fitted_distribution(fit, newdata = dat)$p(dat$y))
+  ok_doc <- is.finite(q_doc)
 
   jc <- utils::read.csv(file.path(work, paste0(cs$id, ".julia.csv")))
   jt <- read_toml_flat(file.path(work, paste0(cs$id, ".julia.toml")))
@@ -134,12 +146,19 @@ for (cs in cases) {
     max_abs_qcond_julia_vs_drmtmb = max(abs(jc$q_cond - q_r)),
     max_abs_q_julia_vs_drmtmb_marginal = max(abs(jc$q_julia - q_r_marg)),
     max_abs_drmtmb_q_vs_its_pearson = max(abs(q_r - (dat$y - fitted_r) / sig_r)),
+    max_abs_q_julia_vs_drmtmb_doc_route = max(abs(jc$q_julia - q_doc)[ok_doc]),
+    max_abs_doc_route_vs_fixed_effect_z = max(abs(q_doc - (dat$y - xb_r) / sig_r)[ok_doc]),
+    n_nonfinite_doc_route = sum(!ok_doc),
     max_abs_fitted_diff = max(abs(jc$fitted - fitted_r)),
     max_abs_xbeta_diff = max(abs(jc$mu_fixed - xb_r)),
     max_abs_q_gh32_vs_closed = max(abs(jc$q_gh32 - jc$q_julia)),
     cor_q_julia_drmtmb = stats::cor(jc$q_julia, q_r),
     sd_q_julia = stats::sd(jc$q_julia), sd_q_drmtmb = stats::sd(q_r),
-    sd_pit_expected_under_model = sqrt(num("pit_expected_sample_var")),
+    sd_pit_plugin_sqrt_expected_var = sqrt(num("pit_expected_sample_var")),
+    sd_pit_boot_q05 = num("pit_sd_boot_q05"), sd_pit_boot_q50 = num("pit_sd_boot_q50"),
+    sd_pit_boot_q95 = num("pit_sd_boot_q95"),
+    sd_pit_boot_frac_le_observed = num("pit_sd_boot_frac_le_observed"),
+    sd_pit_boot_n = num("pit_sd_boot_n"),
     loglik_julia = num("loglik"), loglik_drmtmb = as.numeric(logLik(fit)),
     beta_julia = paste(fmt17(c(num("beta0"), num("beta1"))), collapse = ";"),
     beta_drmtmb = paste(fmt17(b_r), collapse = ";"),
@@ -161,7 +180,7 @@ utils::write.table(res, out_path, sep = "\t", row.names = FALSE, quote = FALSE)
 
 for (i in seq_len(nrow(res))) {
   r <- res[i, ]
-  cat(sprintf(paste0("%-14s headline %.3e | engine (conditional) %.3e | engine (population) %.3e | ",
+  cat(sprintf(paste0("%-14s headline %.3e | engine (conditional) %.3e | engine (marginal) %.3e | ",
                      "logLik %.8f / %.8f | conv julia=%s drmTMB code=%d pdHess=%s\n"),
               r$case, r$max_abs_q_julia_vs_drmtmb, r$max_abs_qcond_julia_vs_drmtmb,
               r$max_abs_q_julia_vs_drmtmb_marginal, r$loglik_julia, r$loglik_drmtmb,
