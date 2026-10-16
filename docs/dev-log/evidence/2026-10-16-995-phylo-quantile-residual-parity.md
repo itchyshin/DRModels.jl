@@ -11,7 +11,7 @@ Terminology. "Marginal" below means the distribution of y with the phylo effect 
 
 | | DRModels.jl | drmTMB |
 |---|---|---|
-| Commit | `9a86d58cde3e11fce2f29d9d1e1ba1d7bd0d3e14` (PR #1078; `src/` clean). The residual code is as in `dbe2d45`; `9a86d58` only changes `ranef()`'s return type. | `ca3ddefa5ea11bbfd3b765615dfbb89305d2485a` (origin/main), installed from a scratch clone, not vendored |
+| Commit | `9a86d58cde3e11fce2f29de01f859f89370acbfb` (PR #1078; `src/` clean). The residual code is as in `dbe2d45`; `9a86d58` only changes `ranef()`'s return type. | `ca3ddefa5ea11bbfd3b765615dfbb89305d2485a` (origin/main), installed from a scratch clone, not vendored |
 | Version | 0.7.2 + PR #1078 | 0.7.1, code hash `7c5b5e9f40f7faafd82b89b980ea0c9e171ac3ba08f547ae5b0835d009cec977` |
 | Runtime | Julia 1.12.7 (conda-forge) | R 4.5.3, TMB 1.9.23 (conda-forge) |
 | Call | `drm(bf(@formula(y ~ x + phylo(1 \| species)), @formula(sigma ~ 1)), Gaussian(); data, tree)` | `drmTMB(bf(y ~ x + phylo(1 \| species, tree = tree), sigma ~ 1), family = gaussian(), data = dat)` |
@@ -61,7 +61,7 @@ The harness computes that documented residual with drmTMB's own `qnorm(fitted_di
 2. fixed-effect only (what the residual docs say);
 3. marginal (what DRModels.jl now returns)?
 
-Whichever it is, the docs and the code should then agree. Only option 3 gives parity with DRModels.jl: "make the code match the docs" (option 2) would still differ by up to 1.8 on the fixture. This is not drmTMB#1513, which an earlier PR body cited; #1513 is a draft about `mi()` quadrature.
+This is tracked as twin-track issue #1101, for mirroring on drmTMB's tracker. Whichever it is, the docs and the code should then agree. Only option 3 gives parity with DRModels.jl: "make the code match the docs" (option 2) would still differ by up to 1.8 on the fixture. This is not drmTMB#1513, which an earlier PR body cited; #1513 is a draft about `mi()` quadrature.
 
 **What this comparison does not test.** In every case the tree is ultrametric and every tip is observed, so C_ii is the same for every row. drmTMB's `phylo()` aborts on non-ultrametric trees and normalises tip variance to 1, so the cross-engine check cannot reach the per-tip σ_b²·C_ii part of the change (#996). `fixture_hraw` does check a constant C_ii = h ≠ 1. The tip-varying case is covered only by DRModels.jl's own tests: `test/test_995_tip_variance_linear.jl` (caterpillar tree, C_ii from 0.15 to 7.05) and `test/test_995_phylo_pit_centre.jl`.
 
@@ -84,7 +84,7 @@ PR #1078's head `8563231` computed the same marginal PIT from a 32-node Gauss–
 |---|---|---|---|---|---|---|---|---|
 | max residual error, \|q\| ≤ 4 | 2e-11 | 1.3e-6 | 5.4e-5 | 5.6e-4 | 6.2e-3 | 0.020 | 0.12 | 0.21 |
 
-Commit `dbe2d45` evaluates the Gaussian marginal in closed form on this route. The ordinary Gaussian `(1 | g)` mean intercept still uses the same 32-node mixture, so it carries the same error when σ̂_b / σ̂_e is large. That is out of scope here and is listed as a follow-up in the after-task report.
+Commit `dbe2d45` evaluates the Gaussian marginal in closed form on this route. The ordinary Gaussian `(1 | g)` mean intercept still uses the same 32-node mixture, so it carries the same error when σ̂_b / σ̂_e is large. That is out of scope here and is tracked in #1103.
 
 ## Reproduce
 

@@ -46,10 +46,16 @@ fixed-effect mean `Xβ̂`, not on `fit.means[:mu]` (which holds `Xβ̂ + S û`),
   - The PR said the residual "is now exactly" the marginal, but the 32-node mixture is exact only while σ_b√C_ii/σ_e ≲ 1.
   - Its residual error is 5.4e-5 at 2.5, 6.2e-3 at 4, 0.020 at 5 and 0.12 at 10. It was 0.031 on the caterpillar test and 0.035 on the parity `strong_signal` case.
 - **The ordinary Gaussian `(1 | g)` route keeps the quadrature.** It is pre-existing #760 behaviour with its own tests; changing it would widen the PR. See §5.
-- **Not stacked on #1075 / the J3 stack.**
+- **Not stacked on #1075 / the J3 stack; coordinated instead.**
   - #1075 does not touch `src/location_only.jl`.
-  - The J3 stack's edits there are #1082 (main 3537–3543) and #1091 (main 3155–3599).
-  - The resume touched only head lines 120–122 (comment) and 138–146 of that file, which none of them reach.
+  - The J3 stack's edits in that file are #1082 (main 3537–3543) and #1091 (main 3155–3160 and 3459–3599).
+  - The whole PR touches three ranges of the file (head numbering at f1b2382):
+    - head 113–157, new code after main 112;
+    - head 3444–3446, replacing main 3399, inside `_fit_structured_gaussian_em`;
+    - head 3644–3645, replacing main 3597, inside `_fit_structured_gaussian_sparse_lbfgs`.
+  - **The one textual conflict:** main 3597 is next to #1091's rewrite of main 3596. Resolve it by keeping both edits: `reml ? _withnll(fit, reml_full_nll, reml_nllgrad!) : …` together with `LocOnlyRanef(…)`.
+  - J3's own note on #1073 already proposes that whichever lands second rebases and reruns the other's tests.
+  - The resume itself changed only head 120–122 (comment) and 138–146 of this file, which no J3 PR reaches.
 - **"Marginal", not "population-level", in cross-engine text.** drmTMB uses "population-level" for its fixed-effect-only `newdata` prediction (σ̂ alone), a different residual.
 
 ## 3b. Evidence
@@ -87,21 +93,48 @@ fixed-effect mean `Xβ̂`, not on `fit.means[:mu]` (which holds `Xβ̂ + S û`),
 
 ## 5. Open
 
-- **drmTMB-side owner decision (queued; drmTMB not edited).** For structured-mean fits, should `residuals(type = "quantile")` be:
+- **drmTMB-side owner decision (queued as #1101; drmTMB not edited).** For structured-mean fits, should `residuals(type = "quantile")` be:
   1. conditional (what its code does);
   2. fixed-effect only (what its residual docs say);
   3. marginal (what DRModels.jl returns)?
 
-  Only option 3 gives parity, and the docs should match whichever is chosen. The earlier PR body cited drmTMB#1513, which is unrelated (`mi()` quadrature). The decision still needs an issue on the drmTMB tracker; this session could not write there.
-- **LogNormal `phylo(1 | g)` quantile residuals are badly mis-calibrated, pre-existing** (review: max error 10.5 against the log-scale marginal).
+  Only option 3 gives parity, and the docs should match whichever is chosen. The earlier PR body cited drmTMB#1513, which is unrelated (`mi()` quadrature). #1101 needs mirroring on the drmTMB tracker; this session could not write there.
+- **LogNormal `phylo(1 | g)` quantile residuals are badly mis-calibrated, pre-existing (#1102).** Reproduced on `main` f71b292 and on this branch: max error 9.89 against the log-scale marginal; sd(q) 3.02 against 0.90.
   - The structured LogNormal route fits Gaussian on log y and keeps the log-scale conditional mean in `fitted()`. The residual then takes the log twice and double-counts σ_b.
   - Not changed here; it needs its own issue. Fixes: `src/lognormal.jl` should store the response-scale median, and `_ranef_marginal_mix` needs a LogNormal + `LocOnlyRanef` closed-form branch.
-- **Ordinary Gaussian `(1 | g)` quantile residuals** use the same 32-node mixture, with the same error at large σ_b/σ_e.
-- **Quantile residuals in the far upper tail.** The PIT round trip Φ⁻¹(clamp(Φ(z))) shared by all continuous families loses precision beyond |z| ≈ 5 and caps |r| at 8.13. For the Gaussian closed form the residual could be returned as z directly.
-- **The dense `algorithm = :gls` phylo route** stores `means = Xβ̂` on the tip-correlation scale (C_ii = 1), so its PIT is already the marginal one. Its #995 warning looks like a false positive (a scout reading, not run); it was left unchanged.
+- **Ordinary Gaussian `(1 | g)` quantile residuals** use the same 32-node mixture, with the same error at large σ_b/σ_e (#1103).
+- **Quantile residuals in the far upper tail (#1103).** The PIT round trip Φ⁻¹(clamp(Φ(z))) shared by all continuous families loses precision beyond |z| ≈ 5 and caps |r| at 8.13. For the Gaussian closed form the residual could be returned as z directly.
+- **The dense `algorithm = :gls` phylo route (#1104)** stores `means = Xβ̂` on the tip-correlation scale (C_ii = 1), so its PIT is already the marginal one. Its #995 warning is a false positive: on the j4 test data, `fitted − Xβ̂` = 0.0 and the residual matches the closed form to 8e-14. The warning was left unchanged, and the j4 test comment now says why.
 - **#981:** spatial / relmat / animal structured effects still warn.
-- **Doc drift.** `fitted()`'s docstring says it returns the population mean, but on these routes it is conditional (`Xβ̂ + û`). Noted, not changed.
+- **Doc drift (#1104).** `fitted()`'s docstring says it returns the population mean, but on these routes it is conditional (`Xβ̂ + û`). Noted, not changed. The `residuals()` docstring was updated in this PR (`src/gaussian_core.jl`, the "On the mean" sentence).
 
 ## 6. Rose audit
 
-An independent Rose-lens pass (claim vs evidence, scope, drift, license) was run on the diff, together with the other three review lenses. Its verdict and the fixes it prompted are recorded in the PR body under "Rose audit".
+An independent Rose-lens pass (claim vs evidence, scope, drift, license) was run on the diff at 9a86d58, plus the working copy.
+
+**Verdict: PASS-WITH-FIXES.** It reproduced:
+- the GH error table, the caterpillar errors (2.9e-15 closed form, 0.031 quadrature) and the C_ii cost figures;
+- the test counts;
+- every evidence number against the TSV.
+
+It found no drmTMB GPL source in the diff; the harness only calls drmTMB's API, and the quotes are short documentation excerpts.
+
+Fixes it prompted, all in the commit after f1b2382:
+- the `residuals()` docstring now describes the closed-form route and qualifies the 32-node rule;
+- the J3 overlap is stated for the whole PR, including the #1091 adjacency (§3a);
+- a hand-completed commit SHA in the evidence note was wrong and has been replaced with `git rev-parse` output;
+- the check-log entry was added;
+- worked example: N/A (see below);
+- the NEWS O(p) bullet now states only the new cost, since `main` never computed C_ii;
+- the j4 test comment now gives the correct reason for the `:gls` warning;
+- the follow-ups are on the ledger (#1101–#1104).
+
+## 7. Definition of Done
+
+- **Implementation:** yes.
+- **Tests:** yes; failing first where a new behaviour was added (§3b).
+- **Docstrings:** no new public symbol, so none needed; `residuals()`'s existing docstring was updated.
+- **Worked example:** N/A. No public API changed; `residuals(fit; type = :quantile)` is called as before.
+- **Check-log:** `docs/dev-log/check-log.d/2026-10-16-phylo-pit-centre-995.md`.
+- **After-task:** this file.
+- **Rose audit:** §6.

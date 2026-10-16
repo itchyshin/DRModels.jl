@@ -282,8 +282,11 @@ end
     # centre + per-tip σ_b² C_ii, test_995_phylo_pit_centre.jl): no warning.
     @test fit.ranef isa DRModels.LocOnlyRanef
     @test_nowarn residuals(fit; type = :quantile)
-    # The dense structured fallback still stores no population-level reference,
-    # so it keeps the warning.
+    # The dense structured fallback keeps the warning for now. It is a known
+    # false positive: that route stores fitted = Xβ̂ on the tip-correlation
+    # scale (C_ii = 1), so its σ_b-marginal PIT is already centred correctly
+    # (on this data it matches the closed-form marginal to 8e-14). Dropping the
+    # warning there is tracked in #1104, not part of #995.
     dfit = drm(bf(@formula(y ~ x + phylo(1 | species))), Gaussian();
                data = (; y, x = xs, species), tree = phy, algorithm = :gls)
     @test DRModels._structured_mean_re(dfit)
