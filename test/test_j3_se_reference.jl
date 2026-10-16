@@ -194,13 +194,45 @@ end
             Vvv = inv(Symmetric((Hv .+ Hv') ./ 2))
             vcat(sqrt.(diag(inv(Symmetric(Am)) .+ Gd * Vvv * Gd')), sqrt.(diag(Vvv)))
         end
-        j3_check("carnivora_reml", fit; gradient = false, dense_se = dense_se)
+        ns = j3_check("carnivora_reml", fit; gradient = false, dense_se = dense_se)
+        # all FOUR theta entries are compared -- the two mean coefficients (joint SEs, see
+        # dense_se above) as well as log sigma and log sd_phylo: no `n_shared` cut, although
+        # TMB's REML `opt$par` holds only the two variance parameters
+        @test !haskey(j3_ref("carnivora_reml"), "n_shared")
+        @test ns == length(fit.theta) == length(j3_ref("carnivora_reml")["se"]) == 4
         # the REML score is EXACT: it matches the dense ForwardDiff gradient of the restricted
         # objective at the optimum and away from it (it used to be a finite difference)
         @test fit.nllgrad !== nothing
         for θ in (copy(fit.theta), fit.theta .+ [0.05, -0.02, 0.1, -0.08])
             g = zeros(4); fit.nllgrad(g, θ)
             @test maximum(abs.(g .- ForwardDiff.gradient(full, θ))) < 1e-6
+        end
+    end
+    @testset "harness: a NaN SE is dropped like a missing value on both engines; only ns coordinates decide" begin
+        ok = TOML.parse("theta = [0.1, 0.2, 0.3]\nse = [0.5, 0.6, 0.7]\ncomparable = true")
+        @test j3_status(ok, [0.5, 0.6, 0.7], 3) == ("compared", true)
+        # drmTMB side: a NaN SE (TOML `nan`, as the generator writes it) even when the
+        # generator's `comparable` flag is true -> not comparable, neither pass nor fail
+        tmbnan = TOML.parse("theta = [0.1, 0.2, 0.3]\nse = [0.5, nan, 0.7]\ncomparable = true")
+        st, c = j3_status(tmbnan, [0.5, 0.6, 0.7], 3)
+        @test !c && occursin("drmTMB", st)
+        @test !j3_status(merge(ok, Dict("comparable" => false)), [0.5, 0.6, 0.7], 3)[2]
+        # DRModels side: NaN SEs (a Hessian that is not positive definite)
+        st, c = j3_status(ok, [0.5, NaN, 0.7], 3)
+        @test !c && occursin("DRModels", st)
+        @test !j3_status(ok, [0.5, Inf, 0.7], 3)[2]
+        # only the `ns` compared coordinates decide (biv_phylo compares 8 of 10)
+        @test j3_status(ok, [0.5, 0.6, NaN], 2) == ("compared", true)
+        @test j3_status(tmbnan, [0.5, 0.6, 0.7], 1) == ("compared", true)
+        # `n_shared` defaults to every coordinate and is checked against the reference
+        @test j3_ns(ok) == 3
+        @test j3_ns(merge(ok, Dict("n_shared" => 2))) == 2
+        @test_throws ErrorException j3_ns(merge(ok, Dict("n_shared" => 4)))
+        # every committed fixture: theta and se line up and ns is valid
+        for r in sort(filter(d -> isdir(joinpath(J3_DIR, d)), readdir(J3_DIR)))
+            ref = j3_ref(r)
+            @test length(ref["theta"]) == length(ref["se"])
+            @test j3_ns(ref) == (r == "biv_phylo" ? 8 : length(ref["theta"]))
         end
     end
 end

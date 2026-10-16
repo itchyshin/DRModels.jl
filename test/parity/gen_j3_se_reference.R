@@ -26,7 +26,17 @@ out_root <- file.path("test", "fixtures", "j3_se")
 only <- Sys.getenv("DRM_J3_ONLY", "")
 only <- if (nzchar(only)) strsplit(only, ",")[[1]] else NULL
 
-fmt <- function(x) paste0("[", paste(formatC(x, digits = 17, format = "g"), collapse = ", "), "]")
+# TOML has no `NaN` / `NA` / `Inf` literals (formatC writes those). NA and NaN alike are
+# written as TOML `nan`, +/-Inf as `inf` / `-inf`, so a missing or NaN reference SE reaches the
+# Julia harness as NaN and the row is "not comparable" there (dropped like a missing value)
+# instead of a TOML parse error.
+fmt <- function(x) {
+  v <- formatC(x, digits = 17, format = "g")
+  v[is.na(x)] <- "nan"
+  inf <- !is.na(x) & is.infinite(x)
+  v[inf] <- ifelse(x[inf] > 0, "inf", "-inf")
+  paste0("[", paste(v, collapse = ", "), "]")
+}
 
 drmtmb_commit <- Sys.getenv("DRMTMB_COMMIT", unset = NA_character_)
 
@@ -53,7 +63,9 @@ write_ref <- function(route, fit, perm, data, tree = NULL, extra = character(),
   # nor fail) and the Julia test reports it as such instead of comparing numbers.
   conv_ok <- identical(as.integer(fit$opt$convergence), 0L)
   pd_ok <- isTRUE(fit$sdr$pdHess)
-  comparable <- conv_ok && pd_ok && all(is.finite(se))
+  # Every SE written to ref.toml counts, the REML lead (mean) SEs included: a NaN SE on the
+  # drmTMB side is dropped like a missing value, exactly as a NaN SE on the DRModels side is.
+  comparable <- conv_ok && pd_ok && all(is.finite(c(se_lead, se)))
   lines <- c(
     sprintf("route = \"%s\"", route),
     sprintf("drmTMB_version = \"%s\"", as.character(utils::packageVersion("drmTMB"))),
@@ -333,8 +345,11 @@ for (reml in c(FALSE, TRUE)) {
                 data = cc$data, REML = reml)
     if (reml) {
       # Under REML the mean coefficients are integrated out (TMB `random`), so `opt$par` holds
-      # only (sigma, log sd_phylo). The mean coefficients and their SEs are the GLS ones drmTMB
+      # only (sigma, log sd_phylo). The mean coefficients and their SEs are the ones drmTMB
       # reports through coef() / vcov(); they lead the vector, matching DRModels' theta order.
+      # Those SEs are the JOINT ones from sdreport, (X'V^-1 X)^-1 + G Vvv G' (variance-parameter
+      # uncertainty propagated through beta_hat(v)), not the conditional GLS (X'V^-1 X)^-1: on
+      # this fixture 0.026863 vs 0.023784 for the lSW slope (#1091).
       mu_names <- names(coef(f)$mu)
       write_ref(r, f, 1:2, cc$data, cc$tree,
                 theta_lead = as.numeric(coef(f)$mu),

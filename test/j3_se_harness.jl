@@ -42,32 +42,48 @@ function j3_sha()
     end
 end
 
-# `fit` is the DRModels fit; `rtol_se` is the SE tolerance against sdreport.
-#
-# Row validity (#1073 Engine A): a row is compared only if BOTH sides produced a usable
-# Hessian. drmTMB side: `fit$opt$convergence == 0` and `sdr$pdHess` (recorded in ref.toml as
-# `comparable`). DRModels side: finite SEs (a non-positive-definite Hessian gives NaN SEs and a
-# warning). Otherwise the row is "not comparable": reported, neither passed nor failed.
+# Row validity (#1073 Engine A). A NaN (or Inf) SE is dropped like a missing value on BOTH
+# engines: the row is "not comparable" (reported, neither passed nor failed), whichever side
+# the NaN came from. drmTMB side: `fit$opt$convergence != 0`, `sdr$pdHess` false, or a
+# non-finite SE (ref.toml's `comparable`, and the SEs themselves, written as TOML `nan`).
+# DRModels side: a Hessian that is not positive definite gives NaN SEs and a warning. Only
+# the `ns` compared coordinates decide it (`n_shared`: the leading coordinates that share a
+# parameterisation with drmTMB; the rest are an equivalent parameterisation of a covariance
+# factor and are not compared). Returns (status, comparable).
+function j3_status(ref, se_jl_all, ns)
+    se_tmb = Float64.(ref["se"])
+    ref_ok = get(ref, "comparable", true) && all(isfinite, se_tmb[1:ns])
+    jl_ok = all(isfinite, se_jl_all[1:ns])
+    status = !ref_ok ? "not comparable (drmTMB: convergence != 0, pdHess false or a NaN SE)" :
+             !jl_ok ? "not comparable (DRModels: Hessian not positive definite, NaN SEs)" : "compared"
+    return status, ref_ok && jl_ok
+end
+
+# `n_shared` (default: every coordinate), checked against the reference's own length.
+function j3_ns(ref)
+    ns = get(ref, "n_shared", length(ref["theta"]))
+    1 <= ns <= min(length(ref["theta"]), length(ref["se"])) ||
+        error("ref.toml: n_shared = $ns outside 1:$(min(length(ref["theta"]), length(ref["se"])))")
+    return ns
+end
+
+# `fit` is the DRModels fit; `rtol_se` is the SE tolerance against sdreport. Returns `ns`, the
+# number of leading coordinates compared, so a caller can pin it (see the REML F4 row).
 function j3_check(route::AbstractString, fit; rtol_se = 0.01, opt_tol = 2e-4,
                   gradient::Bool = true, known_noisy::Bool = false, dense_se = nothing)
     ref = j3_ref(route)
     θ_tmb = Float64.(ref["theta"]); se_tmb = Float64.(ref["se"])
-    # `n_shared`: leading coordinates that share a parameterisation with drmTMB (the rest
-    # are a different but equivalent parameterisation of a covariance factor).
-    ns = get(ref, "n_shared", length(θ_tmb))
+    ns = j3_ns(ref)
     reml = get(ref, "reml", false)
-    ref_ok = get(ref, "comparable", true)
     se_jl_all = sqrt.(diag(vcov(fit)))
-    jl_ok = all(isfinite, se_jl_all[1:ns])
-    status = !ref_ok ? "not comparable (drmTMB: convergence != 0 or pdHess false)" :
-             !jl_ok ? "not comparable (DRModels: Hessian not positive definite, NaN SEs)" : "compared"
+    status, comparable = j3_status(ref, se_jl_all, ns)
     push!(J3_LEDGER, (route = String(route), drmTMB_commit = get(ref, "drmTMB_commit", "unrecorded"),
                       opt_convergence = get(ref, "opt_convergence", missing),
                       pd_hess = get(ref, "pd_hess", missing), drm_sha = j3_sha(),
-                      converged = is_converged(fit), status = status,
-                      max_rel_se = (ref_ok && jl_ok) ? maximum(abs.(se_jl_all[1:ns] ./ se_tmb[1:ns] .- 1)) : NaN))
+                      converged = is_converged(fit), status = status, n_compared = "$ns/$(length(θ_tmb))",
+                      max_rel_se = comparable ? maximum(abs.(se_jl_all[1:ns] ./ se_tmb[1:ns] .- 1)) : NaN))
     @testset "$route" begin
-        if !(ref_ok && jl_ok)
+        if !comparable
             @test_skip false                        # not comparable: neither pass nor fail
         else
             @test ref["max_grad"] < 1e-6                              # 1. reference usable
@@ -108,16 +124,18 @@ function j3_check(route::AbstractString, fit; rtol_se = 0.01, opt_tol = 2e-4,
             end
         end
     end
+    return ns
 end
 
 # Markdown ledger of every row (written when DRM_J3_LEDGER=<path> is set).
 function j3_write_ledger(path)
     open(path, "w") do io
-        println(io, "| route | drmTMB commit | opt\$convergence | sdr\$pdHess | DRModels SHA | converged | status | max rel. SE diff |")
-        println(io, "|---|---|---|---|---|---|---|---|")
+        println(io, "| route | drmTMB commit | opt\$convergence | sdr\$pdHess | DRModels SHA | converged | status | coords compared | max rel. SE diff |")
+        println(io, "|---|---|---|---|---|---|---|---|---|")
         for r in J3_LEDGER
             println(io, "| ", r.route, " | `", first(r.drmTMB_commit, 7), "` | ", r.opt_convergence, " | ",
                     r.pd_hess, " | `", first(r.drm_sha, 7), "` | ", r.converged, " | ", r.status, " | ",
+                    r.n_compared, " | ",
                     isnan(r.max_rel_se) ? "n/a" : string(round(r.max_rel_se; sigdigits = 2)), " |")
         end
     end
