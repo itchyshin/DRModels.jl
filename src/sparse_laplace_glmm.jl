@@ -876,6 +876,12 @@ function _fit_general_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, Q,
     od = Optim.OnceDifferentiable(nll, grad!, θ0)
     method = Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking())
     res_fast = Optim.optimize(od, θ0, method, Optim.Options(g_tol = g_tol, iterations = 250))
+    # #1069: an NB2 fit that ended at the lower dispersion clamp is re-run once from an
+    # interior start (a no-op for every other kernel)
+    res_fast = _nb2_laplace_refit(kind, res_fast, nll, θ0, (pμ+1):(pμ+1), nothing; warm = last_b) do θs
+        Optim.optimize(Optim.OnceDifferentiable(nll, grad!, θs), θs, method,
+                       Optim.Options(g_tol = g_tol, iterations = 250))
+    end
     res = if polish_iterations > 0
         try
             θp = Optim.minimizer(res_fast)
@@ -1069,6 +1075,12 @@ function _fit_phylo_mean_laplace_hetero(fam, kind, aux_from, n::Int, Xμ, Xσ,
     od = Optim.OnceDifferentiable(nll, grad!, θ0)
     method = Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking())
     res_fast = Optim.optimize(od, θ0, method, Optim.Options(g_tol = g_tol, iterations = 250))
+    # #1069: an NB2 fit whose every row ended at the lower dispersion clamp is re-run
+    # once from an interior start (a no-op for every other kernel)
+    res_fast = _nb2_laplace_refit(kind, res_fast, nll, θ0, (pμ+1):(pμ+pσ), Xσ; warm = last_b) do θs
+        Optim.optimize(Optim.OnceDifferentiable(nll, grad!, θs), θs, method,
+                       Optim.Options(g_tol = g_tol, iterations = 250))
+    end
     res = if polish_iterations > 0
         try
             θp = Optim.minimizer(res_fast)
@@ -3149,6 +3161,12 @@ function _fit_crossed_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, gi
     od = Optim.OnceDifferentiable(nll, grad!, θ0)
     method = Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking())
     res_fast = Optim.optimize(od, θ0, method, Optim.Options(g_tol = g_tol, iterations = 250))
+    # #1069: an NB2 fit that ended at the lower dispersion clamp is re-run once from an
+    # interior start (a no-op for every other kernel)
+    res_fast = _nb2_laplace_refit(kind, res_fast, nll, θ0, (pμ+1):(pμ+1), nothing; warm = last_b) do θs
+        Optim.optimize(Optim.OnceDifferentiable(nll, grad!, θs), θs, method,
+                       Optim.Options(g_tol = g_tol, iterations = 250))
+    end
     res = if polish_iterations > 0
         try
             θp = Optim.minimizer(res_fast)
@@ -3471,7 +3489,10 @@ function _fit_nb2_crossed_aghq(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol; se::B
         lconst = [loggamma(yint[i] + r) - loggamma(r) - _logfactorial(yint[i]) for i in eachindex(yint)]
         return (y = Float64.(yint), size = r, lconst = lconst)
     end
-    lap = _fit_nb2_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol; se = false)
+    # The Laplace fit is only the start; its clamp / Poisson-limit warnings would repeat
+    # the AGHQ fit's own (#1072), so it runs silent.
+    lap = _without_boundary_warnings(() ->
+        _fit_nb2_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol; se = false))
     return _fit_crossed_mean_aghq_nuisance(fam, Val(:nb2_fixed), aux_from, length(y), Xμ, comps,
                                            nmμ, nmσ, g_tol;
                                            θ0 = _crossed_aghq_nuisance_start(lap, size(Xμ, 2)),

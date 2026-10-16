@@ -51,6 +51,20 @@ dispersion formula `sigma ~ x` is supported (a per-observation log σ, so a
 per-observation size θ = 1/σ²), while the crossed-intercept route still
 requires `sigma ~ 1`.
 
+When the counts show no overdispersion the NB2 maximum-likelihood estimate is the
+Poisson limit (σ → 0, size → ∞). On the fixed-effects route without `zi`/`hu`, the
+default `(1 | g)` route and the sparse-Laplace routes (`phylo(1 | g)`,
+`relmat`/`animal`/`spatial(1 | g)` and crossed random intercepts, including the Laplace
+start of `marginal = :AGHQ`), a fit that ends at that limit is refitted once from an
+interior σ and the refit is kept only if it is interior with the higher likelihood; a
+fit that stays at the limit comes with a warning. The other NB2 routes (`zi`/`hu`,
+`(1 + x | g)`, `marginal = :VA` or `:Laplace`, the coupled location–scale
+`(1 | p | g)`) do neither yet. The sparse-Laplace routes cap the size at `exp(8)`
+(log σ ≥ −4), so there the limit is that cap, the reported σ is not an estimate, and the
+other estimates can stop short of NB2 at the cap (`converged` may be false).
+Prefer `Poisson()` for the location effects, and test overdispersion with the
+½χ²₀ + ½χ²₁ mixture rather than a Wald test on σ.
+
 ```julia
 fit = drm(bf(y ~ x, sigma ~ 1), NegBinomial2(); data = dat)
 fit = drm(bf(y ~ x + (1 | g) + (1 | h), sigma ~ 1), NegBinomial2(); data = dat)
@@ -232,7 +246,21 @@ const _NB2_POISSON_LIMIT_LOGSIGMA = -8.0
 # interior start used to test whether the plateau hides a higher-likelihood sigma
 const _NB2_INTERIOR_LOGSIGMA = -4.0
 
-_nb2_at_poisson_limit(ησ) = !isempty(ησ) && !any(isnan, ησ) && maximum(ησ) < _NB2_POISSON_LIMIT_LOGSIGMA
+# Every row's fitted log sigma is below `limit`.
+_nb2_at_poisson_limit(ησ; limit::Real = _NB2_POISSON_LIMIT_LOGSIGMA) =
+    !isempty(ησ) && !any(isnan, ησ) && maximum(ησ) < limit
+
+# Keep the interior refit `res2` over the plateau fit `res` only if it is interior AND has
+# a lower nll (#1069); `logσ(θ)` is the per-row fitted log sigma. Both nlls are evaluated
+# fresh at the minimizers: on a plateau a failed line search can leave `Optim.minimum`
+# stale (optim_minimum_guard.jl).
+function _nb2_keep_interior(nll, res, res2, logσ, limit)
+    θ2 = Optim.minimizer(res2)
+    (all(isfinite, θ2) && !_nb2_at_poisson_limit(logσ(θ2); limit = limit)) || return res
+    f1 = _objective_at_minimizer(nll, res)
+    f2 = _objective_at_minimizer(nll, res2)   # last, so a stateful nll is left at res2
+    return (isfinite(f2) && f2 < f1 - 1e-6) ? res2 : res
+end
 
 # Optimise `nll`; if the fit lands on the Poisson plateau, refit once from an interior
 # dispersion and keep that fit only if it is interior AND has a lower nll (#1069).
@@ -247,9 +275,43 @@ function _nb2_minimize(nll, θ0, iσ, Xσ, g_tol)
         err isa AssertionError || rethrow()
         return res
     end
-    θ2 = Optim.minimizer(res2)
-    interior = all(isfinite, θ2) && maximum(Xσ * θ2[iσ]) > _NB2_POISSON_LIMIT_LOGSIGMA
-    return (interior && isfinite(Optim.minimum(res2)) && Optim.minimum(res2) < Optim.minimum(res) - 1e-6) ? res2 : res
+    return _nb2_keep_interior(nll, res, res2, θ -> Xσ * θ[iσ], _NB2_POISSON_LIMIT_LOGSIGMA)
+end
+
+# The sparse-Laplace NB2 routes (phylo / relmat / animal / spatial / crossed, and the
+# crossed AGHQ route's Laplace prefit) clamp the size at r = exp(8) through
+# `clamp(-2 log sigma, -8, 8)`, so there log sigma >= -4 and the Poisson limit IS that
+# lower clamp. Past it the objective is flat in log sigma while the analytic gradient is
+# the gradient AT the clamp, so a search that crosses it can stop there (or drift on)
+# although an interior sigma has a lower nll (#1069 on these routes).
+const _NB2_LAPLACE_LOGSIGMA_CLAMP = -4.0
+# interior restart; the `marginal = :Laplace` plateau guard restarts from -1.0 too
+const _NB2_LAPLACE_INTERIOR_LOGSIGMA = -1.0
+# at the clamp: every row within `_CLAMP_ACTIVE_TOL` of it, the tolerance `_warn_at_clamp` uses
+_nb2_laplace_poisson_limit() = _NB2_LAPLACE_LOGSIGMA_CLAMP + _CLAMP_ACTIVE_TOL
+
+# Called by the three nuisance spines right after their optimiser returns `res`, before
+# the polish, the covariance, `converged` and the clamp warning, so all of those describe
+# the kept fit and a discarded attempt never warns. An NB2 fit (`kind` `:nb2_fixed` /
+# `:nb2_hetero`) that ended at the lower dispersion clamp is re-run once from an interior
+# start with `optimize_from(θ)` (the spine's own optimiser call) and the re-run is kept
+# only if it is interior AND has a lower nll. A no-op for every other kernel, so the Gamma
+# / Beta / BetaBinomial / Tweedie / ZeroOneBeta fits through the same spines are untouched.
+# `nll` is the spine's objective; `iσ` indexes the dispersion coefficients in θ; `Xσ` is the
+# dispersion design, or `nothing` for a scalar log sigma. `warm` is the spine's inner-mode
+# warm start (`last_b`), which the refit moves: a rejected refit restores it, so the rest
+# of the fit (nll, gradient, finite-difference Hessian) is exactly what it was without one.
+_nb2_laplace_refit(optimize_from, kind, res, nll, θ0, iσ, Xσ; warm = nothing) = res
+function _nb2_laplace_refit(optimize_from, ::Union{Val{:nb2_fixed},Val{:nb2_hetero}}, res, nll, θ0, iσ, Xσ;
+                            warm = nothing)
+    logσ = θ -> Xσ === nothing ? θ[iσ] : Xσ * θ[iσ]
+    limit = _nb2_laplace_poisson_limit()
+    _nb2_at_poisson_limit(logσ(Optim.minimizer(res)); limit = limit) || return res
+    saved = warm === nothing ? nothing : copy(warm)
+    θi = copy(θ0); θi[iσ] .= 0.0; θi[first(iσ)] = _NB2_LAPLACE_INTERIOR_LOGSIGMA
+    kept = _nb2_keep_interior(nll, res, optimize_from(θi), logσ, limit)
+    kept === res && saved !== nothing && copyto!(warm, saved)
+    return kept
 end
 
 # NB2 count GLMM with a random intercept (1|g) on log μ. b_g ~ N(0,σ_b²) is
