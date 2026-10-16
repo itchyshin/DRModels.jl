@@ -12,9 +12,11 @@ next to the θσ = 3.5 point evaluation in `test_j3a_gradient_hessian_vcov.jl`. 
 
 ## 2. Implemented
 
-- **Diagnosis (reproduced exactly).** The data generator twin from the issue reproduces all
-  three end points and objectives to the printed digits: 1034.05 / 724.21 / 1145.06 at the
-  run-off, and 426.146 at drmTMB's point. The run-off is one step. The MoM start caps the NB2
+- **Diagnosis (reproduced).** The data generator twin from the issue reproduces the three
+  run-off objectives to the printed digits (1034.05 / 724.21 / 1145.06), the s7 / n = 1500 end
+  point [-222.18, -24.37, 3021.5, 616.2, 686.8], and 426.146 at drmTMB's point. The n = 800 end
+  point printed in the issue thread ([-162.4, 5.6, 705.2, 326.5, 350.7]) came from #1075's
+  earlier head `0b72541f`. On `740521f4` it ends at log σ 1542.6 with the same objective. The run-off is one step. The MoM start caps the NB2
   size at 0.5 (log σ = 0.35) while the MLE is ≈ 0.0025 (log σ ≈ 3), so the start gradient is
   ≈ [227, 26, -3021, -617, -688]. LBFGS's first, unscaled step (α = 1, accepted by Armijo because
   1034.05 < 2979.84) lands past every clamp. There the objective is flat but the analytic
@@ -43,19 +45,29 @@ next to the θσ = 3.5 point evaluation in `test_j3a_gradient_hessian_vcov.jl`. 
 - **Step-capped LBFGS (`InitialStatic(scaled = true)`) as the re-fit:** it reaches drmTMB's
   point on all three sets, but nothing stops it leaving the box again. On n = 800 it stops at
   drmTMB's code-1 point (198.2952), while the box re-fit finds 198.2334.
-- **Always box-constrained:** rejected. It changes every fit on five families' routes, and
-  collapsed log SDs would end at about -7.9 instead of at or past -8, which changes the SE path
-  (#1073's tests depend on it).
+- **Always box-constrained:** rejected because it changes the path of every fit on five
+  families' routes, for fits that never left the box. An earlier argument here, that
+  collapsed log SDs would then end at about -7.9 and change the SE path, came from a run at
+  `g_tol = 1e-6`. The adversarial review measured it at the route's `g_tol = 1e-8`, and there
+  the box ends within 4e-4 of -8 on the #1088 sets (-8.0, -8.0, -7.99964) and within 2e-11 on
+  `test_j3a`'s n = 300 collapse fit, inside the 1e-3 window that keeps the value path. So that argument does not hold
+  and is withdrawn.
 - **Making the gradient zero past a clamp:** rejected on its own. The run-off point would then
   look stationary and be reported as converged.
 - **The lower side** (Poisson / no-dispersion limit, variance collapse) is a legitimate
-  boundary and is not treated as a run-off (#422 / #959 own it). The upper side cannot hold an
-  MLE: NB2 size → 0 drives log f(y) → -∞ for any y > 0.
+  boundary and is not treated as a run-off (#422 / #959 own it). On the upper side the
+  likelihood falls to -∞ whenever there is one non-degenerate observation (NB2 size → 0 drives
+  log f(y) → -∞ for any y > 0; likewise Gamma, Beta, and BetaBinomial with 0 < y < n). On
+  degenerate data (all-or-none BetaBinomial, all-zero Tweedie) the supremum itself lies past
+  the clamp. The warning says so, and the fit is still marked not converged, because the
+  reported value is the clamp, not an estimate.
 
 ## 3b. Evidence
 
-Local runs (Julia 1.12.6, `--check-bounds=yes`, BLAS 1 thread; drmTMB 0.7.1 `ca3ddef`,
-R 4.4.3, TMB 1.9.23, all installed from conda-forge in this container).
+Local runs: Julia 1.12.6 (conda-forge), `--check-bounds=yes`, BLAS 1 thread. drmTMB 0.7.1 was
+installed with `R CMD INSTALL` from a source checkout at `ca3ddef` (GitHub), against R 4.4.3
+and TMB 1.9.23 from conda-forge. The `drmTMB_commit` in each `ref.toml` is set by hand through
+`DRMTMB_COMMIT`, not read from the installed package.
 
 | set | drmTMB `opt$convergence` | `sdr$pdHess` | log σ drmTMB | log σ DRModels | nll drmTMB | nll DRModels | status |
 |---|---|---|---|---|---|---|---|

@@ -154,9 +154,9 @@ end
 
     # The branch decision above is only right if the exact gradient really is valid for
     # log-dispersion in (3, 4): at theta_sigma = 3.5 (CV ~ 33) the stored gradient must agree with
-    # central differences of the stored objective. A real NB2 crossed fit that far out runs off
-    # with converged = false (a separate issue, deliberately NOT addressed here), so this point is
-    # evaluated rather than fitted.
+    # central differences of the stored objective. When this check was written, a real NB2 crossed
+    # fit that far out ran off with converged = false (#1088), so this point is evaluated rather
+    # than fitted; the real fit follows below.
     gt = _j3a_read_grouse()
     gfit = drm(bf(@formula(TICKS ~ 1 + YEAR + cHEIGHT + (1 | BROOD) + (1 | LOCATION)),
                   @formula(sigma ~ 1)), NegBinomial2(); data = gt)

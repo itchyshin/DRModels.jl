@@ -266,13 +266,18 @@ end
 # start gradient is ~3e3, so LBFGS's first, unscaled step lands at log sigma ≈ 3021 and log
 # SDs ≈ 616 / 687. The objective there (1034) is below the start's (2980), so the line search
 # accepts it; the next line search fails on the flat objective with a non-zero gradient.
-# drmTMB's optimum (426.1) is inside the box.
+# drmTMB's optimum (426.1) is reached inside the box (its log SDs, -64 and -8.3, sit on the
+# flat lower side, where the clamped objective equals its value at -8).
 #
 # Only the UPPER side counts as a run-off: there the family degenerates (NB2 size, Gamma
-# shape, Beta precision -> 0, or a random-effect SD > e^3 on the link scale) and the MLE
-# cannot sit there. The lower side (Poisson / no-dispersion limit, variance collapse) is a
-# legitimate boundary, handled as before (#422, #959). Returns the descriptions of the
-# coordinates that ran off, or `nothing`.
+# shape, Beta precision -> 0, Tweedie dispersion -> inf, or a random-effect SD > e^3 on the
+# link scale). With at least one non-degenerate observation (NB2 / Tweedie y > 0, Gamma / Beta
+# any y, BetaBinomial 0 < y < n) the likelihood falls to -inf there, so an end point past the
+# upper clamp is a run-off. On degenerate data (all-or-none BetaBinomial, all-zero Tweedie)
+# the supremum itself lies past the clamp; the reported value is then the clamp, not an
+# estimate, and is flagged the same way. The lower side (Poisson / no-dispersion limit,
+# variance collapse) is a legitimate boundary, handled as before (#422, #959). Returns the
+# descriptions of the coordinates past an upper clamp, or `nothing`.
 function _nuisance_runoff(θ, pμ::Int, disp_bound::Real; sd_hi::Real = 3.0, tol::Real = 1e-6)
     all(isfinite, θ) || return ["a non-finite estimate"]
     hits = String[]
@@ -306,15 +311,16 @@ function _crossed_nuisance_box_refit(nll, grad!, θ0, pμ::Int, disp_bound::Real
     end
 end
 
-# A fit that still ends past an upper clamp is not an optimum; say so (silent inside
-# bootstrap / profile refits, like the other boundary warnings).
+# A fit that still ends past an upper clamp has no usable estimate there; say so (silent
+# inside bootstrap / profile refits, like the other boundary warnings).
 function _warn_nuisance_runoff(context::AbstractString, hits; refit_tried::Bool = true)
     get(task_local_storage(), :drm_quiet_boundary, false) === true && return nothing
-    @warn "drm ($context): the optimiser ran off past a clamp (" * join(hits, "; ") *
-          "). The objective is flat there, so the reported estimates are not an optimum and " *
-          "the fit is marked converged = false; do not use its estimates or standard errors " *
-          "(DRModels.jl #1088). " *
-          (refit_tried ? "A re-fit inside the clamp box did not recover it. " : "") *
+    @warn "drm ($context): the fit ended past an upper clamp (" * join(hits, "; ") *
+          "). The objective is flat there, so these values are not estimates: either the " *
+          "optimiser ran off, or the data are degenerate (e.g. all-or-none BetaBinomial " *
+          "counts) and the supremum lies past the clamp. The fit is marked converged = " *
+          "false; do not use its estimates or standard errors (DRModels.jl #1088). " *
+          (refit_tried ? "A re-fit inside the clamp box did not do better. " : "") *
           "Consider rescaling the response or a simpler random-effect structure."
     return nothing
 end

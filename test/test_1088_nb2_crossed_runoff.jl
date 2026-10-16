@@ -43,7 +43,10 @@ const _R1088_ROWS = NamedTuple[]
         fit = _r1088_fit(_r1088_data(route))
         θ = fit.theta
         θt = Float64.(ref["theta"])
-        se = sqrt.(diag(vcov(fit)))
+        # A collapsed log SD sends this route to the value-based Hessian, whose entry for that
+        # coordinate is noise-dominated and BLAS-kernel dependent; a negative diagonal there
+        # must read as "no SE", not throw.
+        se = [v >= 0 ? sqrt(v) : NaN for v in diag(vcov(fit))]
         se_t = Float64.(ref["se"])
         # SEs are compared only on coordinates that are not collapsed on either side.
         live = [k for k in eachindex(θt) if k <= 3 || (θt[k] > -8.0 && θ[k] > -8.0 + 1e-3)]
@@ -102,7 +105,7 @@ end
     @test DRModels._nuisance_runoff([0.1, 0.2, NaN, 0.0, 0.0], pμ, b) !== nothing
     @test DRModels._nuisance_runoff([0.1, 0.2, 5.0, 0.0, 0.0], pμ,
                                     DRModels._dispersion_clamp(Val(:tweedie_fixed))) === nothing
-    @test_logs (:warn, r"ran off past a clamp") DRModels._warn_nuisance_runoff("test", hits)
+    @test_logs (:warn, r"ended past an upper clamp") DRModels._warn_nuisance_runoff("test", hits)
     @test_logs DRModels._without_boundary_warnings(() -> DRModels._warn_nuisance_runoff("test", hits))
 
     # End to end: with the re-fit switched off, the first pass reproduces the issue's end point,
@@ -112,7 +115,7 @@ end
     gidx, G = DRModels._group_index(d.g)
     hidx, H = DRModels._group_index(d.h)
     comps = [(ones(n), gidx, G, "g"), (ones(n), hidx, H, "h")]
-    f0 = @test_logs (:warn, r"ran off past a clamp") match_mode = :any DRModels._fit_nb2_crossed_laplace(
+    f0 = @test_logs (:warn, r"ended past an upper clamp") match_mode = :any DRModels._fit_nb2_crossed_laplace(
         NegBinomial2(), d.y, hcat(ones(n), d.x), ones(n, 1), comps, ["(Intercept)", "x"],
         ["(Intercept)"], 1e-8; recover_runoff = false)
     @test !f0.converged
