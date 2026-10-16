@@ -121,6 +121,8 @@ end
     @test bnb == 4.0 && DRModels._dispersion_clamp(Val(:gamma_fixed)) == 4.0 &&
           DRModels._dispersion_clamp(Val(:beta_fixed)) == 4.0
     @test DRModels._dispersion_clamp(Val(:tweedie_fixed)) == 8.0
+    @test DRModels._dispersion_clamp(Val(:betabinomial_fixed)) == 4.0
+    @test_throws ArgumentError DRModels._dispersion_clamp(Val(:poisson_unregistered))
     path(θ; b = bnb) = DRModels._se_hessian_path(θ; disp = (pμ + 1,), sd = (pμ + 2):(pμ + 3), disp_bound = b)
     θ = [0.1, 0.2, 0.3, 0.4, 3.5, -0.3, -0.5]
     @test path(θ) === :gradient                    # theta_sigma_hat = 3.5 > 3, inside NB2's [-4, 4]
