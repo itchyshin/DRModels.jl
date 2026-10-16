@@ -219,6 +219,12 @@ Fit the q=4 PLSM in the separation (`D·R·D`) OUTER parameterization, with
 `Σ_a = D R D`, `D = diag(exp.(d))` and `R = C Cᵀ` a correlation matrix. The inner
 engine is the UNTOUCHED `marginal_and_exact_grad`. Returns `Σ_a` and the 6
 among-axis correlations directly, alongside the usual fit diagnostics.
+`converged` is gradient-verified (#946): Optim's own flag is true at an `f_reltol`
+plateau whatever the gradient, so the route instead requires the gradient
+re-evaluated at the minimizer to meet `g_tol` (on the mean objective Optim
+sees) or the unit-free Newton-decrement test, and never counts an iteration-
+or time-limit stop; see `_gradient_verified`. `g_residual` is Optim's last
+mean-scale gradient norm.
 
 !!! warning "The name says Fisher-z; the map is not Fisher-z"
     `fisherz` here, and the `fz_` prefix throughout, is historical. `R` is built
@@ -236,6 +242,7 @@ function fit_q4_sparse_fisherz(prob::AugProblem, Q_cond::SparseMatrixCSC;
                                g_tol::Float64 = 1e-3, iterations::Int = 200,
                                n_newton::Int = 40, show_trace::Bool = false,
                                time_limit::Float64 = 25.0,
+                               f_reltol::Float64 = 1e-7,
                                linesearch = Optim.LineSearches.MoreThuente())
     if ψ0 === nothing
         β0 === nothing && error("supply ψ0 or (β0, Λ0/Σa0)")
@@ -276,7 +283,7 @@ function fit_q4_sparse_fisherz(prob::AugProblem, Q_cond::SparseMatrixCSC;
         od, ψ0,
         LBFGS(alphaguess = Optim.LineSearches.InitialStatic(scaled = true),
               linesearch = linesearch),
-        Optim.Options(g_tol = g_tol, f_reltol = 1e-7, successive_f_tol = 3,
+        Optim.Options(g_tol = g_tol, f_reltol = f_reltol, successive_f_tol = 3,
                       iterations = iterations, time_limit = time_limit,
                       show_trace = show_trace, show_every = 1),
     )
@@ -291,6 +298,23 @@ function fit_q4_sparse_fisherz(prob::AugProblem, Q_cond::SparseMatrixCSC;
     Σa_hat = fz_DRD(Vector{Float64}(φa_hat))
     cors = fz_correlations(Vector{Float64}(φa_hat))
     nll_mean = _objective_at_minimizer_fg(fg!, res)   # NOT Optim.minimum(res): see optim_minimum_guard.jl
+    # #946: gradient-verified flag, as in `fit_q4_sparse_tmb`. Exact SUM-scale ψ
+    # gradient at ψ̂, warm-started from the mode `fg!` just left in `u_cache`; the
+    # FD Hessian is built only if the absolute g_tol test fails.
+    grad_ψ = function (ψ)
+        try
+            _, g, _, _ = fz_marginal_and_grad(prob, Q_cond, Vector{Float64}(ψ);
+                                              u0 = u_cache[], n_newton = n_newton)
+            return g
+        catch e
+            (e isa DomainError || e isa LinearAlgebra.PosDefException ||
+             e isa LinearAlgebra.SingularException || e isa ArgumentError) || rethrow(e)
+            return fill(NaN, length(ψ))
+        end
+    end
+    converged = _gradient_verified(res, grad_ψ(ψ_hat), nobs, g_tol,
+        () -> _fd_hessian_from_grad(grad_ψ, ψ_hat; hstep = 1e-4, retry_step = 1e-4,
+                                    scaled = false))
     return (
         ψ = ψ_hat,
         φa = Vector{Float64}(φa_hat),
@@ -301,7 +325,7 @@ function fit_q4_sparse_fisherz(prob::AugProblem, Q_cond::SparseMatrixCSC;
         sds = sqrt.(diag(Σa_hat)),
         nll = nll_mean * nobs,
         loglik = -nll_mean * nobs,
-        converged = Optim.converged(res),
+        converged = converged,
         iterations = Optim.iterations(res),
         g_residual = Optim.g_residual(res),
         f_calls = Optim.f_calls(res),

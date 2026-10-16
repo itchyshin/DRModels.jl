@@ -300,9 +300,17 @@ while profiling beta, the profile step is an EXACT single Newton step (not an
 iterative/alternating scheme) — see `_q2_profile_and_schur`.
 
 Returns `(; β, Λ, residual_cov, σ_res, rho12, reml_loglik, ml_loglik, loglik,
-converged, iterations, u_hat)`, mirroring `fit_coevolution_q2_residual`'s
+converged, iterations, g_residual, u_hat)`, mirroring `fit_coevolution_q2_residual`'s
 field names (`loglik` is set to `reml_loglik`, matching the q=4 REML fitter's
 convention in `_fit_bivariate_q4_structured`).
+
+`converged` is gradient-verified (#946): Optim's own flag is true at an `f_reltol`
+plateau whatever the gradient, so the route instead requires the gradient
+re-evaluated at the minimizer to meet `g_tol` (on the mean objective Optim
+sees) or the unit-free Newton-decrement test, and never counts an iteration-
+or time-limit stop; see `_gradient_verified`. `g_residual` is the max-abs mean-scale
+finite-difference gradient at the reported point (`NaN` if a probe was not
+finite). `f_reltol` (default `1e-10`) is Optim's relative-objective stop.
 
 # Normalisation convention (#477)
 
@@ -323,7 +331,8 @@ route's arithmetic, which the q=4 gate confirmed by tightening from 5.5436 to
 function fit_coevolution_q2_reml(prob::CoevoProblem, Q_cond::SparseMatrixCSC;
                                  β0 = nothing, Λ0 = nothing, σ0 = nothing,
                                  rho0::Real = 0.0, g_tol::Float64 = 1e-6,
-                                 iterations::Int = 1000, fd_h::Float64 = 1e-6)
+                                 iterations::Int = 1000, fd_h::Float64 = 1e-6,
+                                 f_reltol::Float64 = 1e-10)
     prob.q == 2 || throw(ArgumentError("fit_coevolution_q2_reml requires q = 2"))
     β0 === nothing && (β0 = prob.X \ prob.Y)
     β0 = Matrix{Float64}(β0)
@@ -345,20 +354,14 @@ function fit_coevolution_q2_reml(prob::CoevoProblem, Q_cond::SparseMatrixCSC;
         return -rv / n
     end
 
-    function g!(G, phi)
-        @inbounds for j in eachindex(phi)
-            pp = copy(phi); pp[j] += fd_h
-            pm = copy(phi); pm[j] -= fd_h
-            fp = negreml(pp); fm = negreml(pm)
-            G[j] = (isfinite(fp) && isfinite(fm)) ? (fp - fm) / (2fd_h) : 0.0
-        end
-        return G
-    end
+    # #946: a non-finite probe no longer zero-fills its coordinate (a fabricated 0
+    # counted toward g_tol); the search direction takes the one-sided difference.
+    g!(G, phi) = _fd_gradient!(G, negreml, phi, fd_h; one_sided = true)
 
     res = Optim.optimize(negreml, g!, phi0,
                          Optim.LBFGS(linesearch = Optim.LineSearches.MoreThuente()),
                          Optim.Options(g_tol = g_tol, iterations = iterations,
-                                       f_reltol = 1e-10, successive_f_tol = 2))
+                                       f_reltol = f_reltol, successive_f_tol = 2))
     phî = Optim.minimizer(res)
     Λ̂, D̂, chΛ̂ = _q2_reml_unpack_phi(phî)
     reml_ll, β̂, û = _q2_reml_ll(prob, Q_cond, Λ̂, D̂, chΛ̂, β_cache[])
@@ -384,8 +387,19 @@ function fit_coevolution_q2_reml(prob::CoevoProblem, Q_cond::SparseMatrixCSC;
     # exactly the marginalised fixed effects (`nbeta = k * q` above); `rho12`
     # comes from `D̂`, not from `β̂`, so it is correctly not counted.
     reml_ll_norm = _reml_normalise(reml_ll, length(β̂))
+
+    # #946: gradient-verified flag. The f_reltol stop above ends the run at a
+    # plateau whatever the gradient, so `Optim.converged(res)` is not the verdict.
+    # Strict FD gradient at phî (a non-finite probe is NaN and fails), scaled from
+    # the mean objective to the sum; the FD Hessian is built only if the absolute
+    # g_tol test fails. Evaluated after the final `_q2_reml_ll` above, so the
+    # probes' updates of `β_cache` cannot touch the reported point.
+    g_hat = _fd_gradient!(similar(phî), negreml, phî, fd_h)
+    converged = isfinite(reml_ll) &&
+        _gradient_verified(res, n .* g_hat, n, g_tol,
+                           () -> _fd_hessian_from_values(φ -> n * negreml(φ), phî))
     return (; β = β̂, Λ = Λ̂, residual_cov = D̂, σ_res = σ̂, rho12 = ρ̂,
             reml_loglik = reml_ll_norm, ml_loglik = ml_ll, loglik = reml_ll_norm,
-            converged = Optim.converged(res), iterations = Optim.iterations(res),
-            u_hat = û)
+            converged = converged, iterations = Optim.iterations(res),
+            g_residual = maximum(abs, g_hat), u_hat = û)
 end

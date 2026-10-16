@@ -40,6 +40,19 @@ Both sit at the Watanabe-singular variance boundary (sd_phy[3,4]≈0.1–0.2); t
 logLik gap is 0.01 and both flag the plateau (drmTMB "false convergence 8";
 Julia g_resid=1.7e-3). Model-geometry artefact, not an engine bug.
 
+> **#946 re-measurement (2026-10-16, Julia 1.12.7, Optim 1.13.3; drmTMB at
+> `ca3ddef`).** The "converged = true" above was Optim's own flag, which is
+> true at an `f_reltol` plateau whatever the gradient; with g_resid = 1.7e-3 >
+> g_tol = 1e-3 it would now read `false`. The reported flag is now
+> gradient-verified. On the current engine the same fit stops at logLik
+> −256.5064, 114 iterations, g_resid 9.53e-4 ≤ 1e-3, so it is still
+> `converged`, by the absolute test alone: the Newton decrement there is
+> 1.0e-3 nats (threshold 1e-8), i.e. the point is short of the plateau's
+> supremum, and at `g_tol = 1e-4` the same route reports `false`. drmTMB
+> `ca3ddef` on the same data: logLik −256.514619, "false convergence (8)",
+> `convergence_status` degenerate. Timings were not re-measured (shared,
+> loaded machine).
+
 ---
 
 ## 3. O(p) scaling — biological per-dimension-variance model  ✓ VERIFIED (Julia) + ✓ PAIRED (2026-08-03)
@@ -132,7 +145,7 @@ At the q4_p100 ML optimum:
 3. Location-only conjugate cell: **EM 3.1× faster than LBFGS**, same MLE — conjugacy thesis confirmed.
 4. Inference: Wald **16/17 valid SEs where drmTMB is all-NaN**; bootstrap **60/60** valid CIs.
 5. Julia-EM ML×location-scale: verified *negative* (stalls −259.79).
-6. Exact gradient O(p); convergence flag correct at the singular plateau.
+6. Exact gradient O(p); convergence flag correct at the singular plateau. *(Superseded by #946: that flag was Optim's f-plateau verdict; it is now gradient-verified — see the §2 note.)*
 
 **NEEDS HUMAN REVIEW:**
 1. REML scale-axis behaviour + exact REML gradient + production stability (§5).

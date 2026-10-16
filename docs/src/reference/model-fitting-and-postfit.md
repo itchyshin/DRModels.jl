@@ -284,6 +284,15 @@ builds that problem and its root-conditioned precision from a phylogeny.
 Starting values must be supplied as either `θ0` (the full parameter vector)
 or `β0` (the mean coefficients).
 
+The optimiser stops on a relative change of the objective (`f_reltol`,
+default `1e-7`), because near a variance boundary the gradient plateaus. That
+is a stopping rule, not a verdict: the returned `converged` is true only when
+the exact gradient at the reported point meets `g_tol` on the per-observation
+objective, or the unit-free Newton decrement is negligible (below
+`1e-10` per observation), and never on an iteration-limit stop (#946). A
+boundary plateau that stops with a large gradient is therefore reported as
+not converged, as drmTMB reports "false convergence" there.
+
 The documented q=4 marginal evaluator and general-q coevolution bindings are
 listed below.
 

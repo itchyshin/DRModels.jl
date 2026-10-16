@@ -420,12 +420,19 @@ central finite-difference gradient: the marginal is a single sparse solve, so FD
 is cheap, and a quasi-Newton method converges far faster than a simplex on the
 `k·q + q(q+1)/2 + q`-dimensional θ. ForwardDiff cannot flow through the CHOLMOD
 factor (the same constraint the q=4 engine hits), hence FD rather than AD here.
-Returns `(; β, Λ, σ_res, loglik, converged, iterations, θ)`.
+Returns `(; β, Λ, σ_res, loglik, converged, iterations, g_residual, θ)`.
+`converged` is gradient-verified (#946): Optim's own flag is true at an `f_reltol`
+plateau whatever the gradient, so the route instead requires the gradient
+re-evaluated at the minimizer to meet `g_tol` (on the mean objective Optim
+sees) or the unit-free Newton-decrement test, and never counts an iteration-
+or time-limit stop; see `_gradient_verified`. `g_residual` is the max-abs mean-scale
+finite-difference gradient at `θ` (`NaN` if a probe was not finite). `f_reltol`
+(default `1e-10`) is Optim's relative-objective stop.
 """
 function fit_coevolution(prob::CoevoProblem, Q_cond::SparseMatrixCSC;
                          β0 = nothing, Λ0 = nothing, σ0 = nothing,
                          g_tol::Float64 = 1e-6, iterations::Int = 1000,
-                         fd_h::Float64 = 1e-6)
+                         fd_h::Float64 = 1e-6, f_reltol::Float64 = 1e-10)
     q = prob.q
     if β0 === nothing
         β0 = prob.X \ prob.Y                      # k × q OLS
@@ -453,26 +460,28 @@ function fit_coevolution(prob::CoevoProblem, Q_cond::SparseMatrixCSC;
     end
 
     # Central FD gradient of the cheap conjugate marginal (no CHOLMOD-through-AD).
-    function g!(G, θ)
-        @inbounds for k in eachindex(θ)
-            tp = copy(θ); tp[k] += fd_h
-            tm = copy(θ); tm[k] -= fd_h
-            fp = negℓ(tp); fm = negℓ(tm)
-            G[k] = (isfinite(fp) && isfinite(fm)) ? (fp - fm) / (2fd_h) : 0.0
-        end
-        return G
-    end
+    # #946: a non-finite probe takes the one-sided difference, never a fabricated 0.
+    g!(G, θ) = _fd_gradient!(G, negℓ, θ, fd_h; one_sided = true)
 
     res = Optim.optimize(negℓ, g!, θ0,
                          Optim.LBFGS(linesearch = Optim.LineSearches.MoreThuente()),
                          Optim.Options(g_tol = g_tol, iterations = iterations,
-                                       f_reltol = 1e-10, successive_f_tol = 2))
+                                       f_reltol = f_reltol, successive_f_tol = 2))
     θ̂ = Optim.minimizer(res)
     β̂, Λ̂, σ̂ = coevo_unpack(prob, θ̂)
+    ℓ̂ = -_objective_at_minimizer(negℓ, res) * n
+    # #946: gradient-verified flag (see `_gradient_verified`): strict FD gradient at
+    # θ̂, scaled from the mean objective to the sum; the FD Hessian is built only if
+    # the absolute g_tol test fails.
+    g_hat = _fd_gradient!(similar(θ̂), negℓ, θ̂, fd_h)
+    converged = isfinite(ℓ̂) &&
+        _gradient_verified(res, n .* g_hat, n, g_tol,
+                           () -> _fd_hessian_from_values(θ -> n * negℓ(θ), θ̂))
     return (; β = β̂, Λ = Λ̂, σ_res = σ̂,
-            loglik = -_objective_at_minimizer(negℓ, res) * n,
-            converged = Optim.converged(res),
+            loglik = ℓ̂,
+            converged = converged,
             iterations = Optim.iterations(res),
+            g_residual = maximum(abs, g_hat),
             θ = θ̂)
 end
 
@@ -513,13 +522,22 @@ Fit the q=2 phylogenetic coevolution model with a bivariate residual covariance.
 This is the same target as drmTMB's bivariate Gaussian q2 location route:
 two phylogenetic random-effect axes (`mu1`, `mu2`) plus residual `rho12`.
 It is ML-only and complete-response only at the caller level.
+
+`converged` is gradient-verified (#946): Optim's own flag is true at an `f_reltol`
+plateau whatever the gradient, so the route instead requires the gradient
+re-evaluated at the minimizer to meet `g_tol` (on the mean objective Optim
+sees) or the unit-free Newton-decrement test, and never counts an iteration-
+or time-limit stop; see `_gradient_verified`. The fit must also evaluate its
+objective at `θ` (`cholesky_ok`). `g_residual` is the max-abs mean-scale
+finite-difference gradient at `θ` (`NaN` if a probe was not finite).
 """
 function fit_coevolution_q2_residual(prob::CoevoProblem, Q_cond::SparseMatrixCSC;
                                      β0 = nothing, Λ0 = nothing,
                                      σ0 = nothing, rho0 = 0.0,
                                      g_tol::Float64 = 1e-6,
                                      iterations::Int = 1000,
-                                     fd_h::Float64 = 1e-6)
+                                     fd_h::Float64 = 1e-6,
+                                     f_reltol::Float64 = 1e-10)
     prob.q == 2 || throw(ArgumentError("fit_coevolution_q2_residual requires q = 2"))
     if β0 === nothing
         β0 = prob.X \ prob.Y
@@ -547,20 +565,13 @@ function fit_coevolution_q2_residual(prob::CoevoProblem, Q_cond::SparseMatrixCSC
         return isfinite(ℓ) ? -ℓ / n : Inf
     end
 
-    function g!(G, θ)
-        @inbounds for k in eachindex(θ)
-            tp = copy(θ); tp[k] += fd_h
-            tm = copy(θ); tm[k] -= fd_h
-            fp = negℓ(tp); fm = negℓ(tm)
-            G[k] = (isfinite(fp) && isfinite(fm)) ? (fp - fm) / (2fd_h) : 0.0
-        end
-        return G
-    end
+    # #946: a non-finite probe takes the one-sided difference, never a fabricated 0.
+    g!(G, θ) = _fd_gradient!(G, negℓ, θ, fd_h; one_sided = true)
 
     res = Optim.optimize(negℓ, g!, θ0,
                          Optim.LBFGS(linesearch = Optim.LineSearches.MoreThuente()),
                          Optim.Options(g_tol = g_tol, iterations = iterations,
-                                       f_reltol = 1e-10, successive_f_tol = 2))
+                                       f_reltol = f_reltol, successive_f_tol = 2))
     θ̂ = Optim.minimizer(res)
     β̂, Λ̂, D̂, σ̂, ρ̂ = coevo_q2_residual_unpack(prob, θ̂)
     # #503 (follow-up): `negℓ` above already catches a throw from
@@ -579,10 +590,18 @@ function fit_coevolution_q2_residual(prob::CoevoProblem, Q_cond::SparseMatrixCSC
          e isa LinearAlgebra.SingularException) || rethrow(e)
         ℓ = NaN; û = zeros(prob.q * prob.N); cholesky_ok = false
     end
+    # #946: gradient-verified flag (see `_gradient_verified`): strict FD gradient at
+    # θ̂, scaled from the mean objective to the sum; the FD Hessian is built only if
+    # the absolute g_tol test fails.
+    g_hat = _fd_gradient!(similar(θ̂), negℓ, θ̂, fd_h)
+    converged = cholesky_ok &&
+        _gradient_verified(res, n .* g_hat, n, g_tol,
+                           () -> _fd_hessian_from_values(θ -> n * negℓ(θ), θ̂))
     return (; β = β̂, Λ = Λ̂, residual_cov = D̂, σ_res = σ̂, rho12 = ρ̂,
             loglik = ℓ,
-            converged = cholesky_ok && Optim.converged(res),
+            converged = converged,
             iterations = Optim.iterations(res),
+            g_residual = maximum(abs, g_hat),
             θ = θ̂,
             u_hat = û)
 end

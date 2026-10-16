@@ -495,6 +495,12 @@ function fit_q4_sparse_tmb(prob::AugProblem, Q_cond::SparseMatrixCSC;
                            θ0 = nothing, β0 = nothing, Λ0 = nothing,
                            g_tol::Float64 = 1e-3, iterations::Int = 200,
                            n_newton::Int = 40, show_trace::Bool = false,
+                           f_reltol::Float64 = 1e-7,
+                           # `converged_hessian = false` skips the Newton-decrement
+                           # branch of the #946 verdict (no FD Hessian), so
+                           # `converged` then needs the absolute g_tol test. For
+                           # internal warm starts that never read the flag.
+                           converged_hessian::Bool = true,
                            # `lc_zero`: log-Cholesky indices (1..10) pinned to 0 so
                            # the optimiser never moves them — an OUTER constraint on
                            # Σ_a, leaving marginal_and_exact_grad untouched. Zeroing
@@ -578,7 +584,10 @@ function fit_q4_sparse_tmb(prob::AugProblem, Q_cond::SparseMatrixCSC;
         # this engine and drmTMB hit it (drmTMB: "false convergence (8)"). The
         # correct criterion is RELATIVE OBJECTIVE CHANGE (info-geometry-scout.md,
         # pain #3). Require 2 successive sub-tol steps to avoid a premature stop.
-        Optim.Options(g_tol = g_tol, f_reltol = 1e-7, successive_f_tol = 3,
+        # That is a STOPPING rule, not a convergence verdict: the reported
+        # `converged` is gradient-verified below (#946), so a plateau stop with a
+        # large gradient is returned as not converged.
+        Optim.Options(g_tol = g_tol, f_reltol = f_reltol, successive_f_tol = 3,
                       iterations = iterations,
                       show_trace = show_trace, show_every = 1),
     )
@@ -586,13 +595,36 @@ function fit_q4_sparse_tmb(prob::AugProblem, Q_cond::SparseMatrixCSC;
     θ_hat = Optim.minimizer(res)
     β_hat, lc_hat = unpack_theta(prob, θ_hat)
     nll_mean = _objective_at_minimizer_fg(fg!, res)   # NOT Optim.minimum(res): see optim_minimum_guard.jl
+    # #946: the f_reltol stop above ends the run at a plateau whatever the gradient,
+    # so `Optim.converged(res)` is not a convergence verdict. Re-evaluate the exact
+    # SUM-scale gradient at θ̂ over the free (unpinned) coordinates, warm-started
+    # from the mode `fg!` just left in `u_cache`, and apply the shared gradient rule.
+    # Probes bypass `fg!`, so its caches and call counts are untouched.
+    free = setdiff(eachindex(θ_hat), θ_zero)
+    grad_free = function (θf)
+        θ = copy(θ_hat); θ[free] .= θf
+        try
+            _, g, _, _ = marginal_and_exact_grad(prob, Q_cond, θ; u0 = u_cache[],
+                                                 n_newton = n_newton, chol_ref = chol_ref)
+            return g[free]
+        catch e
+            (e isa DomainError || e isa LinearAlgebra.PosDefException ||
+             e isa LinearAlgebra.SingularException || e isa ArgumentError) || rethrow(e)
+            return fill(NaN, length(free))
+        end
+    end
+    hessian = converged_hessian ?
+        () -> _fd_hessian_from_grad(grad_free, θ_hat[free]; hstep = 1e-4,
+                                    retry_step = 1e-4, scaled = false) : nothing
+    converged = _gradient_verified(res, grad_free(θ_hat[free]), length(prob.leaf_node),
+                                   g_tol, hessian)
     return (
         θ = θ_hat,
         β = β_hat,
         Λ = lc_to_Λ(lc_hat),
         nll = nll_mean * length(prob.leaf_node),   # un-normalise (mean obj)
         loglik = -nll_mean * length(prob.leaf_node),
-        converged = Optim.converged(res),
+        converged = converged,
         iterations = Optim.iterations(res),
         g_residual = Optim.g_residual(res),
         f_calls = Optim.f_calls(res),
