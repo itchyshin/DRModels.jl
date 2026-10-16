@@ -168,6 +168,20 @@ ordinary_data <- function(seed, G, m, sd_g) {
        eta = 0.3 + 0.4 * x + stats::rnorm(G, 0, sd_g)[g], n = G * m)
 }
 
+if (want("ordinary_poisson")) {           # ordinary_laplace.jl :193 (Poisson kernel)
+  o <- ordinary_data(20261008, 40, 8, 0.7)
+  o$d$y <- stats::rpois(o$n, exp(o$eta))
+  f <- drmTMB(drm_formula(y ~ x + (1 | g)), family = poisson(), data = o$d)
+  write_ref("ordinary_poisson", f, 1:3, o$d)
+}
+
+if (want("ordinary_nb2")) {               # ordinary_laplace.jl :193 (scale kernel)
+  o <- ordinary_data(20261009, 40, 8, 0.7)
+  o$d$y <- stats::rnbinom(o$n, mu = exp(o$eta), size = 4)
+  f <- drmTMB(drm_formula(y ~ x + (1 | g), sigma ~ 1), family = nbinom2(), data = o$d)
+  write_ref("ordinary_nb2", f, 1:4, o$d)
+}
+
 # ---- cumulative logit, phylogenetic mean intercept --------------------------------------
 if (want("cumulative_phylo")) {           # cumulative.jl :614
   g <- phylo_data(1, 60, 6, 1.6)
@@ -180,6 +194,14 @@ if (want("cumulative_phylo")) {           # cumulative.jl :614
 }
 
 # ---- Gaussian phylogenetic mean (location-only sparse route) ----------------------------
+if (want("gaussian_phylo")) {             # location_only.jl :3540
+  g <- phylo_data(20261010, 40, 6, 1.0)
+  d <- data.frame(species = g$sp, x = g$x,
+                  y = 0.3 + 0.5 * g$x + g$u[as.integer(g$sp)] + stats::rnorm(g$n, 0, 0.7))
+  f <- drmTMB(bf(y ~ x + phylo(1 | species, tree = tree), sigma ~ 1), family = gaussian(),
+              data = d)
+  write_ref("gaussian_phylo", f, 1:4, d, g$tree)
+}
 
 # ---- bivariate Gaussian q = 2, shared phylogenetic intercept (value-closure route) ----------
 # DRModels parameterises the 2x2 group covariance by a Cholesky factor, drmTMB by
@@ -187,3 +209,23 @@ if (want("cumulative_phylo")) {           # cumulative.jl :614
 # residual SDs, atanh rho12 and the log of the first group SD) share a parameterisation. A block of the covariance of
 # the other coordinates is invariant under a reparameterisation of THEM, so the SEs of
 # those 8 are comparable; `n_shared` tells the test how many to compare.
+if (want("biv_phylo")) {                  # gaussian_bivariate.jl :887 (no exact gradient)
+  set.seed(901)
+  p <- 120L; m <- 4L
+  tree <- make_tree(p)
+  A <- ape::vcv(tree, corr = TRUE)
+  Lam <- matrix(c(0.6, 0.3, 0.3, 0.5), 2)
+  U <- t(chol(A)) %*% matrix(stats::rnorm(p * 2), p, 2) %*% chol(Lam)
+  species <- factor(rep(tree$tip.label, each = m), levels = tree$tip.label)
+  n <- length(species); x <- stats::rnorm(n)
+  e <- matrix(stats::rnorm(2 * n), n, 2) %*% chol(matrix(c(0.4, 0.1, 0.1, 0.5), 2))
+  d <- data.frame(species = species, x = x,
+                  y1 = 0.2 + 0.3 * x + U[as.integer(species), 1] + e[, 1],
+                  y2 = -0.1 + 0.2 * x + U[as.integer(species), 2] + e[, 2])
+  assign("tree", tree, envir = globalenv())
+  f <- drmTMB(bf(mu1 = y1 ~ x + phylo(1 | species, tree = tree),
+                 mu2 = y2 ~ x + phylo(1 | species, tree = tree),
+                 sigma1 ~ 1, sigma2 ~ 1, rho12 ~ 1),
+              family = biv_gaussian(), data = d)
+  write_ref("biv_phylo", f, 1:10, d, tree, extra = "n_shared = 8")
+}

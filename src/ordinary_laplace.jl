@@ -182,15 +182,25 @@ function _ordinary_laplace_optimize(fg, θ0, n::Int, q::Int, g_tol; se::Bool,
         nllhat = nll(θ̂)
         converged = _ordinary_laplace_newton_converged(grad!, θ̂, gfinal)
     end
-    V = _ordinary_laplace_vcov(nll, θ̂, n; se = se, context = context)
+    V = _ordinary_laplace_vcov(nll, θ̂, n; se = se, context = context, grad! = grad!)
     return θ̂, nllhat, converged, V, nll, grad!
 end
 
 # Wald covariance from the finite-difference Hessian of the outer objective, or
 # a NaN matrix when `se = false`.
-function _ordinary_laplace_vcov(nll, θ̂, n::Int; se::Bool, context::AbstractString)
+function _ordinary_laplace_vcov(nll, θ̂, n::Int; se::Bool, context::AbstractString,
+                                grad! = nothing)
     V = if se
-        _vcov_from_fd_hessian(_finite_hessian(nll, θ̂; h = _fd_hessian_step(n)); context = context)
+        # #1073: central differences of the exact outer gradient. The inner solve
+        # already runs at `_ORDINARY_LAPLACE_NEWTON_TOL` (1e-13), so warm vs cold
+        # starts agree to roundoff. A collapsed variance (the last coordinate is
+        # log sigma_b) or a route with no gradient keeps the value-based path.
+        H = if grad! === nothing || _clamp_active(θ̂, length(θ̂):length(θ̂); lo = _SE_LOGSD_LO)
+            _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        else
+            _finite_hessian_from_gradient(grad!, θ̂; context = context)
+        end
+        _vcov_from_fd_hessian(H; context = context)
     else
         fill(NaN, length(θ̂), length(θ̂))
     end
@@ -439,7 +449,7 @@ function _fit_scale_ordinary_laplace(fam, y, Xμ, gidx, G, nmμ, nmσ, grp, g_to
             θ̂, nllhat, conv, _, nll, grad! = alt
         end
     end
-    V = _ordinary_laplace_vcov(nll, θ̂, n; se = se, context = ctx)
+    V = _ordinary_laplace_vcov(nll, θ̂, n; se = se, context = ctx, grad! = grad!)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+1), :resd => (pμ+2):(pμ+2)]
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
     auxhat = aux_from(θ̂[pμ+1])

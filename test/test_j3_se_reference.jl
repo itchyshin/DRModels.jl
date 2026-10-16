@@ -47,11 +47,41 @@ end
         fit = drm(bf(@formula(cbind(succ, fail) ~ x + (1 | a) + (1 | b))), Binomial(); data = d)
         j3_check("binomial_crossed", fit)
     end
+    @testset "ordinary Laplace Poisson (ordinary_laplace.jl :193)" begin
+        d = j3_data("ordinary_poisson"; numeric = [:x, :y])
+        fit = drm(bf(@formula(y ~ x + (1 | g))), Poisson(); data = d, marginal = :Laplace)
+        j3_check("ordinary_poisson", fit)
+    end
+    @testset "ordinary Laplace NB2 (:193, scale kernel)" begin
+        d = j3_data("ordinary_nb2"; numeric = [:x, :y])
+        fit = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), NegBinomial2();
+                  data = d, marginal = :Laplace)
+        j3_check("ordinary_nb2", fit)
+    end
     @testset "cumulative logit phylo (cumulative.jl :614)" begin
         d = j3_data("cumulative_phylo"; numeric = [:x])
         d = merge(d, (; y = parse.(Int, d.y)))
         fit = drm(bf(@formula(y ~ x + phylo(1 | species))), CumulativeLogit(); data = d,
                   tree = j3_tree("cumulative_phylo"))
         j3_check("cumulative_phylo", fit)
+    end
+    @testset "Gaussian phylo mean, ML (location_only.jl :3540)" begin
+        d = j3_data("gaussian_phylo"; numeric = [:x, :y])
+        fit = drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ 1)), Gaussian();
+                  data = d, tree = j3_tree("gaussian_phylo"))
+        j3_check("gaussian_phylo", fit)
+    end
+    @testset "bivariate Gaussian q=2 phylo, NO exact gradient: KNOWN-NOISY (gaussian_bivariate.jl :887)" begin
+        d = j3_data("biv_phylo"; numeric = [:x, :y1, :y2])
+        fit = drm(bf(mu1 = @formula(y1 ~ x + phylo(1 | species)),
+                     mu2 = @formula(y2 ~ x + phylo(1 | species)),
+                     sigma1 = @formula(sigma1 ~ 1), sigma2 = @formula(sigma2 ~ 1),
+                     rho12 = @formula(rho12 ~ 1)), Gaussian();
+                  data = d, tree = j3_tree("biv_phylo"), method = :ML)
+        # The route is a sparse CHOLMOD objective with no gradient (ForwardDiff cannot pass
+        # through it), so the Hessian stays a second difference of the VALUE. Marked
+        # known-noisy: only a 10% sanity band is asserted and it is not counted as native
+        # parity for the exact-gradient routes.
+        j3_check("biv_phylo", fit; gradient = false, known_noisy = true)
     end
 end

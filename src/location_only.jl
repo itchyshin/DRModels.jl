@@ -3537,7 +3537,26 @@ function _fit_structured_gaussian_sparse_lbfgs(
             end
             return val
         end
-        Hv = _finite_hessian(fv, vhat; h = _fd_hessian_step(n))
+        # #1073: ML arm differences the exact analytic gradient of the profiled
+        # objective (`_loconly_profile_fg` + the penalty gradient), not its value.
+        # The REML arm has only an FD gradient (`_loconly_fd_gradient2`), so it,
+        # and any collapsed variance (flat objective), keep the value-based path
+        # and stay known-noisy.
+        Hv = if reml || _clamp_active(vhat, 1:2; lo = _SE_LOGSD_LO)
+            _finite_hessian(fv, vhat; h = _fd_hessian_step(n))
+        else
+            _finite_hessian_from_gradient(vhat; context = "sparse phylo-mean variance block") do Gout, v
+                val, grad, βv, _ = _loconly_profile_fg(prob, v[1], v[2])
+                if βv === nothing
+                    Gout .= NaN
+                else
+                    grad = copy(grad)
+                    penalty !== nothing && _phylo_pen_apply_single!(grad, penalty, v, 2)
+                    Gout .= grad
+                end
+                return Gout
+            end
+        end
         Vvv = _vcov_from_fd_hessian(Hv; context = "sparse phylo-mean variance block")
         V[(pμ + 1):(pμ + 2), (pμ + 1):(pμ + 2)] .= Vvv
         # #978: orthogonality holds in EXPECTATION only. The joint observed
