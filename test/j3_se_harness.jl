@@ -14,6 +14,7 @@
 # Check 3 is skipped for a route with no exact gradient (value-closure routes); those are
 # tested for finiteness only and are labelled known-noisy.
 using DRModels, Test, TOML, LinearAlgebra
+include(joinpath(@__DIR__, "j3_dense_reference.jl"))
 
 const J3_DIR = joinpath(@__DIR__, "fixtures", "j3_se")
 
@@ -33,7 +34,7 @@ j3_tree(route) = DRModels._bridge_tree(read(joinpath(J3_DIR, route, "tree.newick
 
 # `fit` is the DRModels fit; `rtol_se` is the SE tolerance against sdreport.
 function j3_check(route::AbstractString, fit; rtol_se = 0.01, opt_tol = 2e-4,
-                  gradient::Bool = true, known_noisy::Bool = false)
+                  gradient::Bool = true, known_noisy::Bool = false, dense_se = nothing)
     ref = j3_ref(route)
     θ_tmb = Float64.(ref["theta"]); se_tmb = Float64.(ref["se"])
     # `n_shared`: leading coordinates that share a parameterisation with drmTMB (the rest
@@ -58,6 +59,13 @@ function j3_check(route::AbstractString, fit; rtol_se = 0.01, opt_tol = 2e-4,
                 (G, θ) -> (fit.nllgrad(G, θ); G .*= -1; G), θ_tmb; context = route)
             @test all(isnan, Hneg)
         end
+        if dense_se !== nothing
+            # 5. an independent reference (j3_dense_reference.jl: dense Laplace marginal,
+            #    Hessian by ForwardDiff): it must agree with the reported SEs at the Julia
+            #    optimum, and with drmTMB's sdreport at drmTMB's optimum.
+            @test all(abs.(dense_se(fit.theta) ./ sqrt.(diag(vcov(fit))) .- 1) .< 1e-4)
+            @test all(abs.(dense_se(θ_tmb) ./ se_tmb .- 1) .< 1e-3)
+        end
         se = sqrt.(diag(vcov(fit)))[1:ns]                          # 4. reported SEs
         se_tmb = se_tmb[1:ns]
         @test all(isfinite, se)
@@ -69,4 +77,16 @@ function j3_check(route::AbstractString, fit; rtol_se = 0.01, opt_tol = 2e-4,
             @test all(abs.(se ./ se_tmb .- 1) .< rtol_se)
         end
     end
+end
+
+# unique string levels -> integer index (sorted), and the cov.csv tip covariance in tip order
+function j3_levels(v)
+    u = sort(unique(v)); m = Dict(x => i for (i, x) in enumerate(u))
+    return [m[x] for x in v], length(u)
+end
+function j3_cov(route)
+    lines = readlines(joinpath(J3_DIR, route, "cov.csv"))
+    tips = [strip(c, '"') for c in split(lines[1], ',')][2:end]
+    C = [parse(Float64, c) for l in lines[2:end] for c in split(l, ',')[2:end]]
+    return reshape(C, length(tips), length(tips)) |> permutedims, tips
 end
