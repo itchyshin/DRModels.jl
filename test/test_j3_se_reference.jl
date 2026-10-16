@@ -30,13 +30,19 @@ end
         d = j3_data("nb2_phylo_hetero"; numeric = [:x, :y])
         fit = drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ x)), NegBinomial2();
                   data = d, tree = j3_tree("nb2_phylo_hetero"))
-        j3_check("nb2_phylo_hetero", fit)
+        C, tips = j3_cov("nb2_phylo_hetero"); sidx = [findfirst(==(s), tips) for s in d.species]
+        spec = DenseSpec(2, hcat(ones(length(d.y)), d.x), indicator(sidx, length(tips)),
+                         obs_nb2_hetero(d.y, d.x, 3), prior_cov(C, 5))
+        j3_check("nb2_phylo_hetero", fit; dense_se = th -> dense_laplace_se(th, spec))
     end
     @testset "Binomial phylo (:1244)" begin
         d = j3_data("binomial_phylo"; numeric = [:x, :succ, :fail])
         fit = drm(bf(@formula(cbind(succ, fail) ~ x + phylo(1 | species))), Binomial();
                   data = d, tree = j3_tree("binomial_phylo"))
-        j3_check("binomial_phylo", fit)
+        C, tips = j3_cov("binomial_phylo"); sidx = [findfirst(==(s), tips) for s in d.species]
+        spec = DenseSpec(2, hcat(ones(length(d.x)), d.x), indicator(sidx, length(tips)),
+                         obs_binomial(d.succ, d.succ .+ d.fail), prior_cov(C, 3))
+        j3_check("binomial_phylo", fit; dense_se = th -> dense_laplace_se(th, spec))
     end
     @testset "Poisson crossed, two intercepts (:1851)" begin
         d = j3_data("poisson_crossed2"; numeric = [:x, :y])
@@ -68,6 +74,10 @@ end
         d = merge(d, (; y = parse.(Int, d.y)))
         fit = drm(bf(@formula(y ~ x + phylo(1 | species))), CumulativeLogit(); data = d,
                   tree = j3_tree("cumulative_phylo"))
-        j3_check("cumulative_phylo", fit)
+        C, tips = j3_cov("cumulative_phylo"); sidx = [findfirst(==(s), tips) for s in d.species]
+        # the cumulative model has NO intercept: eta = beta * x
+        spec = DenseSpec(1, reshape(d.x, :, 1), indicator(sidx, length(tips)),
+                         obs_cumlogit3(d.y, 2), prior_cov(C, 4))
+        j3_check("cumulative_phylo", fit; dense_se = th -> dense_laplace_se(th, spec))
     end
 end

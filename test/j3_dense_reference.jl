@@ -111,3 +111,22 @@ function prior_cov(C, sd_index)
 end
 
 indicator(idx, G) = (Z = zeros(length(idx), G); for (i, g) in enumerate(idx); Z[i, g] = 1.0; end; Z)
+
+# NB2 with a log-linear dispersion: psi_i = theta[i0] + theta[i0+1] * z_i, size r_i = exp(-2 psi_i)
+function obs_nb2_hetero(y, z, i0)
+    return function (η, i, θ)
+        r = exp(-2 * (θ[i0] + θ[i0+1] * z[i])); μ = exp(η)
+        return -(loggamma(y[i] + r) - loggamma(r) + r * log(r) + y[i] * η - (r + y[i]) * log(r + μ))
+    end
+end
+
+# cumulative logit, K = 3 ordered categories y in 1:3; theta[i0] = first cutpoint, theta[i0+1] the
+# log of the gap to the second (the ordered parameterisation drmTMB and DRModels both use)
+function obs_cumlogit3(y, i0)
+    return function (η, i, θ)
+        c1 = θ[i0]; c2 = θ[i0] + exp(θ[i0+1])
+        F(c) = _logistic(c - η)
+        pr = y[i] == 1 ? F(c1) : (y[i] == 2 ? F(c2) - F(c1) : 1 - F(c2))
+        return -log(pr)
+    end
+end

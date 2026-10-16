@@ -1303,7 +1303,8 @@ function _fit_phylo_mean_laplace_hetero(fam, kind, aux_from, n::Int, Xμ, Xσ,
     grad!(gfinal, θ̂)
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
     V = if se
-        Hθ = if _clamp_active(θ̂, (pμ + pσ + 1):(pμ + pσ + 1); lo = _SE_LOGSD_LO)
+        Hθ = if _se_hessian_path(θ̂; sd = (pμ + pσ + 1):(pμ + pσ + 1), sd_lo = _SE_LOGSD_LO) === :value
+            _warn_value_hessian("sparse-Laplace GLMM (phylo-mean, covariate dispersion)")
             _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
         else
             _finite_hessian_from_gradient(
@@ -1464,7 +1465,8 @@ function _fit_phylo_mean_laplace(fam, kind, aux, n::Int, Xμ, labels, tree, nmμ
     grad!(gfinal, θ̂)
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
     V = if se
-        Hθ = if _clamp_active(θ̂, (pμ + 1):(pμ + 1); lo = _SE_LOGSD_LO)
+        Hθ = if _se_hessian_path(θ̂; sd = (pμ + 1):(pμ + 1), sd_lo = _SE_LOGSD_LO) === :value
+            _warn_value_hessian("sparse-Laplace GLMM (phylo-mean)")
             _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
         else
             _finite_hessian_from_gradient(
