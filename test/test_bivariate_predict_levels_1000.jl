@@ -1,5 +1,6 @@
 # #1000: bivariate predict / predict_parameters must reuse the training schema
-# (factor contrasts + level order) cached at fit time, not rebuild it from newdata.
+# (factor contrasts + level order) recorded on the fit at fit time, not rebuild it
+# from newdata. Refitting the same formula object: test_schema_per_fit_1000.jl.
 using DRModels
 using Test, Random
 
@@ -38,15 +39,4 @@ using Test, Random
 
     # An unseen level is still refused, loudly.
     @test_throws ArgumentError predict(fit, (x = [0.0], grp = ["d"]))
-
-    # Refitting the same formula object on data with different levels re-learns
-    # the schema rather than reusing the stale one.
-    f = bf(mu1 = @formula(y1 ~ x + grp), mu2 = @formula(y2 ~ x + grp))
-    drm(f, Gaussian(); data = data)
-    keep = grp .!= "a"
-    data2 = (y1 = y1[keep], y2 = y2[keep], x = x[keep], grp = grp[keep])
-    fit2 = drm(f, Gaussian(); data = data2)
-    @test length(coef(fit2, :mu1)) == 3
-    @test length(predict(fit2, data2; type = :link)[:mu1]) == length(data2.x)
-    @test_throws ArgumentError predict(fit2, (x = [0.0], grp = ["a"]))   # "a" not in fit2's data
 end

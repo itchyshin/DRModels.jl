@@ -265,5 +265,6 @@ function _lognormal_jacobian_shift(fam::LogNormal, gfit::DrmFit, y::Vector{Float
                  gfit.loglik - jac, gfit.nobs, gfit.converged, gfit.means,
                  Dict(:mu => y), gfit.scales, gfit.formula, lnll, gfit.nllgrad, gfit.ranef,
                  gfit.estim_method, reml_ll, gfit.ml_loglik - jac, gfit.marginal,
-                 gfit.phylo_penalty, gfit.penalty, gfit.iterations, gfit.phylo_scale)
+                 gfit.phylo_penalty, gfit.penalty, gfit.iterations, gfit.phylo_scale,
+                 gfit.training_schema)   # #1000: predict reuses the Gaussian fit's schema
 end

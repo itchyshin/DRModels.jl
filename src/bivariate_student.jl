@@ -138,12 +138,13 @@ end
 
 function _fit_bivariate_residual(f::BivariateDrmFormula, fam::Student, data, rhs,
                                  g_tol::Real)
-    y1, X1, nm1 = _biv_design(f, :mu1, f.response1, rhs[:mu1], data)
-    y2, X2, nm2 = _biv_design(f, :mu2, f.response2, rhs[:mu2], data)
-    _, Xs1, nms1 = _biv_design(f, :sigma1, f.response1, rhs[:sigma1], data)
-    _, Xs2, nms2 = _biv_design(f, :sigma2, f.response1, rhs[:sigma2], data)
-    _, Xν, nmν = _biv_design(f, :nu, f.response1, get(rhs, :nu, ConstantTerm(1)), data)
-    _, Xr, nmr = _biv_design(f, :rho12, f.response1, rhs[:rho12], data)
+    training_schema = Dict{Symbol,Any}()   # #1000: this fit's, attached on return
+    y1, X1, nm1 = _biv_design(training_schema, :mu1, f.response1, rhs[:mu1], data)
+    y2, X2, nm2 = _biv_design(training_schema, :mu2, f.response2, rhs[:mu2], data)
+    _, Xs1, nms1 = _biv_design(training_schema, :sigma1, f.response1, rhs[:sigma1], data)
+    _, Xs2, nms2 = _biv_design(training_schema, :sigma2, f.response1, rhs[:sigma2], data)
+    _, Xν, nmν = _biv_design(training_schema, :nu, f.response1, get(rhs, :nu, ConstantTerm(1)), data)
+    _, Xr, nmr = _biv_design(training_schema, :rho12, f.response1, rhs[:rho12], data)
 
     n = length(y1)
     obs1 = _observed_response_mask(y1)
@@ -234,11 +235,11 @@ function _fit_bivariate_residual(f::BivariateDrmFormula, fam::Student, data, rhs
                   :sigma2 => exp.(Xs2 * θ̂[rng(4)]),
                   :nu => 2 .+ exp.(Xν * θ̂[rng(5)]),
                   :rho12 => RHO_GUARD .* tanh.(Xr * θ̂[rng(6)]))
-    return _withiterations(
+    return _withschema(_withiterations(
         _withformula(
             _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n_like,
                             drm_optim_converged(res), means, obs, scales), nll), f),
-        Optim.iterations(res))
+        Optim.iterations(res)), training_schema)
 end
 
 # --- Parametric-bootstrap replicate draw (#766) ------------------------------

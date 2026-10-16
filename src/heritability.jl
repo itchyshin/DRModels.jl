@@ -517,7 +517,8 @@ function _conditional_ratio(fit::DrmFit, newdata; kind::Symbol, level::Real, wha
     ndr = merge(nd, NamedTuple{(f.response,)}((zeros(nrows),)))
     _, Xsd, _ = _design(f.response, last(parts[1]), ndr)
     fixed_sigma, _, _, _ = _split_ranef(Dict(f.forms)[:sigma])
-    _, Xσ, _ = _design(f.response, fixed_sigma, ndr; schema_cache = f.schema_cache, schema_key = :sigma)
+    _, Xσ, _ = _design(f.response, fixed_sigma, ndr; schema_cache = fit.training_schema,
+                       schema_key = :sigma, store_schema = false)   # #1000: the fit's training schema
     isd, isg = have[numblk], have[:sigma]
     (size(Xsd, 2) == length(isd) && size(Xσ, 2) == length(isg)) ||
         throw(DimensionMismatch("$what(fit, newdata): `newdata` builds a design with " *

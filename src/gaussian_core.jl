@@ -33,17 +33,10 @@ struct DrmFormula
     response::Symbol
     forms::Vector{Pair{Symbol,Any}}
     response2::Any   # second response column (failures), for `cbind(s, f)` beta-binomial; else nothing
-    # Populated at fit time (`drm(f::DrmFormula, ...)`, gaussian_core.jl) with the
-    # `StatsModels.schema(...)` object built from the TRAINING data, one entry per
-    # distributional parameter (`:mu`, `:sigma`, …). `predict` / `predict_parameters`
-    # reuse it so a factor predictor's contrasts/level order/reference level come
-    # from the fitted data, not from whatever rows `newdata` happens to contain
-    # (issue #609 item 1: subset, reordered, or unseen levels in `newdata`).
-    schema_cache::Base.RefValue{Dict{Symbol,Any}}
+    # No fitted state lives here: one formula object can be fitted to several data
+    # sets. The training factor schema that `predict` reuses is recorded on the fit
+    # (`DrmFit.training_schema`, #609 item 1, #1000).
 end
-
-DrmFormula(response::Symbol, forms::Vector{Pair{Symbol,Any}}, response2) =
-    DrmFormula(response, forms, response2, Ref(Dict{Symbol,Any}()))
 
 # 2-arg convenience: single-column response (the common case).
 DrmFormula(response::Symbol, forms::Vector{Pair{Symbol,Any}}) = DrmFormula(response, forms, nothing)
@@ -201,6 +194,15 @@ struct DrmFit{F}
     # two-structured route). The bootstrap simulator reads it so its draws come
     # from the model that was fitted.
     phylo_scale::Symbol
+    # The `StatsModels` schema of each distributional parameter's fixed design,
+    # built from THIS fit's training data (`:mu`, `:sigma`; bivariate `:mu1`,
+    # `:mu2`, `:sigma1`, `:sigma2`, `:nu`, `:rho12`). `predict` /
+    # `predict_parameters` reuse it, so `newdata` gets the fitted contrasts,
+    # reference level and level order (#609 item 1). It lives on the fit, not the
+    # formula, so refitting one formula object to other data cannot change an
+    # earlier fit's predictions (#1000). Empty when the route records none; predict
+    # then rebuilds the design from `newdata` and checks its columns.
+    training_schema::Dict{Symbol,Any}
 end
 
 # 11-arg outer constructor: formula + nll + nllgrad + ranef default to nothing;
@@ -234,41 +236,66 @@ DrmFit(family, blocks, coefnames, theta, vcov, loglik, nobs, converged, means, o
            formula, nll, nllgrad, ranef, estim_method, reml_loglik, ml_loglik, marginal,
            phylo_penalty, penalty, iterations, :covariance)
 
+# 23-arg compatibility constructor: `training_schema` defaults to empty. Only
+# `_withschema` records one; the rebuilders below carry it over, so it survives
+# whatever is applied after it (e.g. LogNormal's `_withformula` on a delegated
+# Gaussian fit).
+DrmFit(family, blocks, coefnames, theta, vcov, loglik, nobs, converged, means, obs, scales,
+       formula, nll, nllgrad, ranef, estim_method, reml_loglik, ml_loglik, marginal,
+       phylo_penalty, penalty, iterations, phylo_scale) =
+    DrmFit(family, blocks, coefnames, theta, vcov, loglik, nobs, converged, means, obs, scales,
+           formula, nll, nllgrad, ranef, estim_method, reml_loglik, ml_loglik, marginal,
+           phylo_penalty, penalty, iterations, phylo_scale, Dict{Symbol,Any}())
+
 _withformula(fit::DrmFit, f) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
     fit.vcov, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, f, fit.nll, fit.nllgrad, fit.ranef,
-    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale)
+    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale,
+    fit.training_schema)
+
+# Attach the training schema the fitter recorded while building its designs (see
+# `DrmFit.training_schema`). Anything that is not a `DrmFit` passes through.
+_withschema(fit::DrmFit, training_schema::Dict{Symbol,Any}) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
+    fit.vcov, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula, fit.nll, fit.nllgrad, fit.ranef,
+    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale,
+    training_schema)
+_withschema(fit, _) = fit
 
 # Attach the (negative) log-likelihood closure so profile intervals can re-optimise
 # the nuisance parameters at each fixed value. nll(θ) must accept the full θ vector.
 _withnll(fit::DrmFit, nll, nllgrad = nothing) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
     fit.vcov, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula, nll, nllgrad, fit.ranef,
-    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale)
+    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale,
+    fit.training_schema)
 
 # Attach per-group conditional random-effect estimates (BLUPs). `re` is a
 # Dict{Symbol,...} keyed by grouping factor; see ranef(fit) for the public accessor.
 _withranef(fit::DrmFit, re) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
     fit.vcov, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula, fit.nll, fit.nllgrad, re,
-    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale)
+    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale,
+    fit.training_schema)
 
 # Mark the fit as REML-estimated, recording both the REML and ML log-likelihoods.
 # The public `loglik` slot is set to the REML value (with the documented
 # cross-structure caveat); `ml_loglik` stays available for ML-style comparison.
 _withreml(fit::DrmFit, reml_ll::Real, ml_ll::Real) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
     fit.vcov, Float64(reml_ll), fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula, fit.nll, fit.nllgrad, fit.ranef,
-    :REML, Float64(reml_ll), Float64(ml_ll), fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale)
+    :REML, Float64(reml_ll), Float64(ml_ll), fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale,
+    fit.training_schema)
 
 # Mark the fit as penalized-MAP. `loglik` is left as the UNPENALIZED data
 # log-likelihood (drmTMB keeps `fit$logLik` unpenalized too) and the penalty at
 # the optimum is recorded separately, so `-objective == loglik - phylo_penalty`.
 _withmap(fit::DrmFit, pen_value::Real, spec) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
     fit.vcov, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula, fit.nll, fit.nllgrad, fit.ranef,
-    :MAP, fit.reml_loglik, fit.ml_loglik, fit.marginal, Float64(pen_value), spec, fit.iterations, fit.phylo_scale)
+    :MAP, fit.reml_loglik, fit.ml_loglik, fit.marginal, Float64(pen_value), spec, fit.iterations, fit.phylo_scale,
+    fit.training_schema)
 
 # Tag the integral approximation (`:LA` default, `:Laplace`, `:VA` ELBO, `:AGHQ`). Does not
 # change `loglik`; the caller is responsible for putting an ELBO in that slot.
 _withmarginal(fit::DrmFit, m::Symbol) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
     fit.vcov, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula, fit.nll, fit.nllgrad, fit.ranef,
-    fit.estim_method, fit.reml_loglik, fit.ml_loglik, m, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale)
+    fit.estim_method, fit.reml_loglik, fit.ml_loglik, m, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale,
+    fit.training_schema)
 
 # Record how many iterations the optimiser actually took. Separate from the
 # `iterations` OPTION (a cap on the maximum); this is the achieved count, and it
@@ -277,12 +304,14 @@ _withmarginal(fit::DrmFit, m::Symbol) = DrmFit(fit.family, fit.blocks, fit.coefn
 # rather than reporting 0, which would read as "converged instantly".
 _withiterations(fit::DrmFit, n::Integer) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
     fit.vcov, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula, fit.nll, fit.nllgrad, fit.ranef,
-    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, Int(n), fit.phylo_scale)
+    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, Int(n), fit.phylo_scale,
+    fit.training_schema)
 
 # Record the tip matrix a phylo field's SD is defined against (see `DrmFit.phylo_scale`).
 _withphyloscale(fit::DrmFit, m::Symbol) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
     fit.vcov, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula, fit.nll, fit.nllgrad, fit.ranef,
-    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, m)
+    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, m,
+    fit.training_schema)
 
 """
     niterations(fit) -> Int
@@ -395,21 +424,22 @@ function _design(response::Symbol, rhs, data; schema_cache = nothing, schema_key
     # The 3-arg apply_schema with a StatisticalModel context adds R's implicit
     # intercept (so `y ~ x` means `y ~ 1 + x`, matching drmTMB); explicit
     # `1 + x` / `0 + x` are respected. `schema_cache`/`schema_key`, when given
-    # (issue #609 item 1), make this call read-through a cache keyed by
-    # distributional parameter: the FIRST call (at fit time, `data` = training
-    # data) computes the schema and stores it; a later call with the same key
-    # (`predict`/`predict_parameters` on `newdata`) reuses that TRAINING schema
-    # instead of rebuilding factor contrasts/levels from whatever rows `newdata`
-    # happens to contain. `store_schema = false` (the predict paths) reads the
-    # cache but never writes to it, so a prediction on a fit whose fitter did not
-    # populate the cache cannot plant a NEWDATA schema that later calls would
-    # mistake for the training one.
-    reused_training_schema = schema_cache !== nothing && haskey(schema_cache[], schema_key)
+    # (issue #609 item 1), make this call read-through a `Dict` keyed by
+    # distributional parameter. At fit time the fitter passes a FRESH dict, which
+    # becomes the fit's `training_schema` (#1000): the call computes the schema
+    # from the training data and stores it. A later call with the same key
+    # (`predict`/`predict_parameters` on `newdata`, passing `fit.training_schema`)
+    # reuses that TRAINING schema instead of rebuilding factor contrasts/levels
+    # from whatever rows `newdata` happens to contain. `store_schema = false` (the
+    # predict paths) reads the dict but never writes to it, so a prediction on a
+    # fit whose fitter recorded no schema cannot plant a NEWDATA schema that later
+    # calls would mistake for the training one.
+    reused_training_schema = schema_cache !== nothing && haskey(schema_cache, schema_key)
     sch = if reused_training_schema
-        schema_cache[][schema_key]
+        schema_cache[schema_key]
     else
         s = schema(ft, design_data)
-        (store_schema && schema_cache !== nothing) && (schema_cache[][schema_key] = s)
+        (store_schema && schema_cache !== nothing) && (schema_cache[schema_key] = s)
         s
     end
     # #1015: name the actual problem (a missing column, a missing value, a level
@@ -570,12 +600,17 @@ are parameterised over all G levels, while the likelihood is evaluated on
 observed rows.
 """
 function drm(f::DrmFormula, fam::Gaussian; kwargs...)
+    # A fresh dict per call (#1000): `_drm_gaussian_fit` records the training
+    # schema of the mean and scale designs in it, and it is attached to THIS fit,
+    # so refitting `f` to other data leaves earlier fits' predictions alone.
+    training_schema = Dict{Symbol,Any}()
+    fit = _withschema(_drm_gaussian_fit(f, fam, training_schema; kwargs...), training_schema)
     # The residual-variance / structured-variance BOUNDARY advisory (#724, #697) is
     # attached here, once, rather than in each of the fitter's return paths.
-    return _warn_variance_boundary(_drm_gaussian_fit(f, fam; kwargs...))
+    return _warn_variance_boundary(fit)
 end
 
-function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree = nothing, coords = nothing, g_tol::Real = 1e-8, algorithm::Symbol = :auto, method::Symbol = :ML, profile_ci::Bool = false, phylo_coupled::Bool = false, penalty = nothing, sparse = nothing, impute = nothing, missing = nothing, marginal::Symbol = :LA)
+function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian, training_schema::Dict{Symbol,Any}; data, K = nothing, A = nothing, tree = nothing, coords = nothing, g_tol::Real = 1e-8, algorithm::Symbol = :auto, method::Symbol = :ML, profile_ci::Bool = false, phylo_coupled::Bool = false, penalty = nothing, sparse = nothing, impute = nothing, missing = nothing, marginal::Symbol = :LA)
     mkind = _gaussian_marginal(marginal)
     laplace = mkind === :Laplace
     aghq = mkind === :AGHQ
@@ -618,12 +653,12 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
                                 "fit is a maximum-a-posteriori (MAP) estimator and REML is a " *
                                 "restricted-likelihood estimator. Use `method = :ML` (the default)."))
     end
-    # `schema_cache`/`schema_key`: caches the TRAINING schema (factor
-    # contrasts/levels) per parameter so `predict`/`predict_parameters` on
-    # `newdata` reuse it (issue #609 item 1) instead of rebuilding contrasts
-    # from whatever rows `newdata` happens to contain.
-    y, Xμ, nmμ = _design(f.response, fixed_mu, data; schema_cache = f.schema_cache, schema_key = :mu)
-    _, Xσ, nmσ = _design(f.response, fixed_sigma, data; schema_cache = f.schema_cache, schema_key = :sigma)
+    # `schema_cache`/`schema_key`: records the TRAINING schema (factor
+    # contrasts/levels) per parameter in this fit's `training_schema`, so
+    # `predict`/`predict_parameters` on `newdata` reuse it (issue #609 item 1, #1000)
+    # instead of rebuilding contrasts from whatever rows `newdata` happens to contain.
+    y, Xμ, nmμ = _design(f.response, fixed_mu, data; schema_cache = training_schema, schema_key = :mu)
+    _, Xσ, nmσ = _design(f.response, fixed_sigma, data; schema_cache = training_schema, schema_key = :sigma)
     response_observed = _observed_response_mask(y)
     has_missing_response = !all(response_observed)
     all_structured = _collect_structured(rhs[:mu])
@@ -1259,6 +1294,7 @@ function _with_full_fixed_gaussian_rows(fit::DrmFit, y_full, Xμ_full, Xσ_full)
         fit.formula, fit.nll, fit.nllgrad, fit.ranef,
         fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal,
         fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale,
+        fit.training_schema,
     )
 end
 
@@ -1429,6 +1465,7 @@ function _with_full_response_rows(fit::DrmFit, f::DrmFormula, data)
         fit.formula, fit.nll, fit.nllgrad, fit.ranef,
         fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal,
         fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale,
+        fit.training_schema,
     )
 end
 
@@ -1775,7 +1812,7 @@ function predict(fit::DrmFit, newdata; type::Symbol = :response, se::Bool = fals
         # stripped from the design and added to η, exactly as at fit time.
         fixed_mu, off = _predict_offset(fit, fixed_mu, nd, :mu)
         ndr = merge(nd, NamedTuple{(f.response,)}((zeros(nrows),)))
-        Xnew, η = _predict_design(fit, f.response, fixed_mu, ndr, :mu, f.schema_cache, off)
+        Xnew, η = _predict_design(fit, f.response, fixed_mu, ndr, :mu, off)
         pred = type === :link ? η : _mean_response(fit.family, η)
         se || return pred
         r = _block_range(fit, :mu)
@@ -1787,12 +1824,12 @@ function predict(fit::DrmFit, newdata; type::Symbol = :response, se::Bool = fals
         fixed2, _, _, _ = _split_ranef(fm[:mu2])
         nd1 = merge(nd, NamedTuple{(f.response1,)}((zeros(nrows),)))
         nd2 = merge(nd, NamedTuple{(f.response2,)}((zeros(nrows),)))
-        # #1000: reuse the training schema cached on the formula at fit time, so a
-        # subset / reordered `newdata` factor gets the fitted contrasts. A fit whose
-        # fitter cached nothing falls back to rebuilding, and `_predict_design`
+        # #1000: `_predict_design` reuses the training schema recorded on the fit,
+        # so a subset / reordered `newdata` factor gets the fitted contrasts. A fit
+        # whose fitter recorded none falls back to rebuilding, and `_predict_design`
         # refuses when the rebuilt columns are not the fitted ones.
-        X1, η1 = _predict_design(fit, f.response1, fixed1, nd1, :mu1, f.schema_cache, nothing)
-        X2, η2 = _predict_design(fit, f.response2, fixed2, nd2, :mu2, f.schema_cache, nothing)
+        X1, η1 = _predict_design(fit, f.response1, fixed1, nd1, :mu1, nothing)
+        X2, η2 = _predict_design(fit, f.response2, fixed2, nd2, :mu2, nothing)
         pred = type === :link ?
             Dict(:mu1 => η1, :mu2 => η2) :
             Dict(:mu1 => _mean_response(fit.family, η1),
@@ -1815,14 +1852,14 @@ function _block_coefnames(fit::DrmFit, p::Symbol)
 end
 
 # Design matrix and linear predictor of parameter `p` at `newdata` (`ndr`, the
-# dummy response column already merged in). The training schema is read, never
-# written (`store_schema = false`). The columns built from `newdata` must be the
-# fitted block's columns, in order: a fitter that did not cache its schema
-# rebuilds factor contrasts from `newdata`, and a subset / reordered / different
-# level set then gives columns that no longer line up with `coef(fit, p)` —
-# silently wrong when the count happens to match (#1000). Refuse instead.
-function _predict_design(fit::DrmFit, resp::Symbol, rhs, ndr, p::Symbol, cache, off)
-    _, X, nms = _design(resp, rhs, ndr; schema_cache = cache, schema_key = p,
+# dummy response column already merged in). The fit's `training_schema` is read,
+# never written (`store_schema = false`). The columns built from `newdata` must be
+# the fitted block's columns, in order: a fitter that recorded no schema rebuilds
+# factor contrasts from `newdata`, and a subset / reordered / different level set
+# then gives columns that no longer line up with `coef(fit, p)` — silently wrong
+# when the count happens to match (#1000). Refuse instead.
+function _predict_design(fit::DrmFit, resp::Symbol, rhs, ndr, p::Symbol, off)
+    _, X, nms = _design(resp, rhs, ndr; schema_cache = fit.training_schema, schema_key = p,
                         store_schema = false)
     fitted = _block_coefnames(fit, p)
     if fitted !== nothing && nms != fitted
@@ -2034,7 +2071,7 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
                                        allow_temporal = true)   # #620 / temporal fits keep predicting
         off = nothing
         bivar || ((fixed_p, off) = _predict_offset(fit, fixed_p, nd, p))   # #1006
-        Xp, ηp = _predict_design(fit, resp, fixed_p, ndr, p, f.schema_cache, off)   # #1000
+        Xp, ηp = _predict_design(fit, resp, fixed_p, ndr, p, off)   # #1000
         val = type === :link ? ηp : _param_response(fit.family, p, ηp)
         if se
             se_p = _delta_se(Xp, view(V, r, r), ηp, type, fit.family, p)

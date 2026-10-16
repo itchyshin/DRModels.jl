@@ -13,11 +13,12 @@
 #   (d) contains a level never fitted   → silently different contrasts, or
 #                                          an opaque StatsModels error.
 #
-# Fix: `DrmFormula` now carries a `schema_cache` populated at fit time (the
-# first `_design` call, on training data); `predict`/`predict_parameters`
-# pass the same cache key so they reuse the TRAINING schema instead of
-# rebuilding it from `newdata`. An unseen level then raises a clear
-# `ArgumentError` naming the parameter and the problem.
+# Fix: the training schema is recorded at fit time (the `_design` call on
+# training data) and `predict`/`predict_parameters` pass the same key so they
+# reuse the TRAINING schema instead of rebuilding it from `newdata`. An unseen
+# level then raises a clear `ArgumentError` naming the parameter and the
+# problem. (The schema was first cached on `DrmFormula`; #1000 moved it to the
+# fit, `DrmFit.training_schema`, so a refit of the same formula cannot alter it.)
 #
 # This fixture cross-checks DRModels.jl's own `predict()` against R's
 # `model.matrix()` (the same contrast machinery drmTMB relies on) applied to

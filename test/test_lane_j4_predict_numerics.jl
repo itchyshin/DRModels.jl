@@ -229,10 +229,10 @@ end
     same = (x = [0.0, 0.0, 0.0], grp = ["b", "c", "d"])
     @test_throws ArgumentError predict(bfit, same)
     @test_throws ArgumentError predict_parameters(bfit, same)
-    # Fewer levels: the bivariate formula now caches its training schema (#1000),
+    # Fewer levels: the bivariate fit now records its training schema (#1000),
     # so a subset gets the fitted contrasts instead of an error.
     @test predict(bfit, (x = [0.0, 0.0], grp = ["b", "c"]); type = :link)[:mu1] ≈ p[:mu1][2:3]
-    # Non-Gaussian fit (its fitter caches no training schema) gets the same guard.
+    # Non-Gaussian fit (its fitter records no training schema) gets the same guard.
     yc = Float64.(rand.(Distributions.Poisson.(exp.(0.5 .+ 0.3 .* (grp .== "b")))))
     pfit = drm(bf(@formula(y ~ grp)), Poisson(); data = (y = yc, grp = grp))
     @test predict(pfit, (grp = ["a", "b", "c"],)) ≈ fitted(pfit)[1:3] rtol = 1e-10
