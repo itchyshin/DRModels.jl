@@ -292,6 +292,23 @@ function fit_q4_sparse_fisherz(prob::AugProblem, Q_cond::SparseMatrixCSC;
     Σa_hat = fz_DRD(Vector{Float64}(φa_hat))
     cors = fz_correlations(Vector{Float64}(φa_hat))
     nll_mean = _objective_at_minimizer_fg(fg!, res)   # NOT Optim.minimum(res): see optim_minimum_guard.jl
+    # #946: gradient-verified flag, as in `fit_q4_sparse_tmb`. Exact SUM-scale ψ
+    # gradient at ψ̂, warm-started from the mode `fg!` just left in `u_cache`; the
+    # FD Hessian is built only if the absolute g_tol test fails.
+    grad_ψ = function (ψ)
+        try
+            _, g, _, _ = fz_marginal_and_grad(prob, Q_cond, Vector{Float64}(ψ);
+                                              u0 = u_cache[], n_newton = n_newton)
+            return g
+        catch e
+            (e isa DomainError || e isa LinearAlgebra.PosDefException ||
+             e isa LinearAlgebra.SingularException || e isa ArgumentError) || rethrow(e)
+            return fill(NaN, length(ψ))
+        end
+    end
+    converged = _gradient_verified(res, grad_ψ(ψ_hat), nobs, g_tol,
+        () -> _fd_hessian_from_grad(grad_ψ, ψ_hat; hstep = 1e-4, retry_step = 1e-4,
+                                    scaled = false))
     return (
         ψ = ψ_hat,
         φa = Vector{Float64}(φa_hat),
@@ -302,7 +319,7 @@ function fit_q4_sparse_fisherz(prob::AugProblem, Q_cond::SparseMatrixCSC;
         sds = sqrt.(diag(Σa_hat)),
         nll = nll_mean * nobs,
         loglik = -nll_mean * nobs,
-        converged = Optim.converged(res),
+        converged = converged,
         iterations = Optim.iterations(res),
         g_residual = Optim.g_residual(res),
         f_calls = Optim.f_calls(res),

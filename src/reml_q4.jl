@@ -789,7 +789,8 @@ function fit_q4_reml(prob::AugProblem, Q_cond::SparseMatrixCSC;
                                      β0=beta0, Λ0=Matrix(Lambda0),
                                      g_tol=max(g_tol*5, 1e-2),
                                      iterations=min(iterations, 100),
-                                     n_newton=n_newton, lc_zero=lc_zero_idx)
+                                     n_newton=n_newton, lc_zero=lc_zero_idx,
+                                     converged_hessian=false)   # flag unused
         phi0 = pack_phi(prob, r_ml_ws.β.rho, r_ml_ws.Λ)
         beta_ws = (mu1=r_ml_ws.β.mu1, mu2=r_ml_ws.β.mu2,
                    s1=r_ml_ws.β.s1, s2=r_ml_ws.β.s2)
@@ -901,7 +902,8 @@ function fit_q4_reml(prob::AugProblem, Q_cond::SparseMatrixCSC;
                                          β0=beta0, Λ0=Matrix(Lambda0),
                                          g_tol=max(g_tol_coarse*5, 1e-2),
                                          iterations=min(iterations, 100),
-                                         n_newton=n_newton, lc_zero=lc_zero_idx)
+                                         n_newton=n_newton, lc_zero=lc_zero_idx,
+                                         converged_hessian=false)   # flag unused
         phi0_coarse = pack_phi(prob, r_ml_coarse.β.rho, r_ml_coarse.Λ)
         phi0_coarse[phi_zero] .= 0.0
 
@@ -1017,18 +1019,44 @@ function fit_q4_reml(prob::AugProblem, Q_cond::SparseMatrixCSC;
     # the inner-convergence criterion (#526): it measures the thing that flag was
     # a proxy for, directly, and it is also exactly the condition under which the
     # exact gradient — and therefore `g_residual` — means anything.
-    nll_hat, _, uhat, bhat, ch_H, gz_hat = reml_nll_and_exact_grad(
+    nll_hat, g_hat, uhat, bhat, ch_H, gz_hat = reml_nll_and_exact_grad(
         prob, Q_cond, phi_hat; u0=u_cache[], beta0=beta_cache[], n_newton=n_newton)
     # The warm-cached u0/beta0 are the last line-search state, which need not sit at
     # the JOINT (u, β) mode for phi_hat. If that lands on the non-PD Schur barrier
     # (S not PD ⇒ nll_hat = Inf), re-evaluate COLD so the alternation and joint
     # Newton re-converge the mode at phi_hat (mirrors the Gate-B cold check).
     if !isfinite(nll_hat)
-        nll_hat, _, uhat, bhat, ch_H, gz_hat = reml_nll_and_exact_grad(
+        nll_hat, g_hat, uhat, bhat, ch_H, gz_hat = reml_nll_and_exact_grad(
             prob, Q_cond, phi_hat; n_newton=n_newton)
     end
     rhat     = isfinite(nll_hat) ? -nll_hat : -Inf
     inner_ok = isfinite(gz_hat) && gz_hat < 1e-6
+
+    # #946: gradient-verified outer flag. The f_reltol stop (and an f-converged
+    # #497 rescue) can leave `Optim.converged(res)` true with a large gradient, and
+    # after the #575 polish `res` was judged at g_tol/10, so neither
+    # `Optim.converged` nor `Optim.g_converged` is the verdict. Use the exact
+    # SUM-scale gradient of the final evaluation above, over the free (unpinned)
+    # phi coordinates, against the CALLER's g_tol. The FD-Hessian probes call
+    # `reml_nll_and_exact_grad` directly, warm-started from (uhat, bhat), so the
+    # caches of `fg!` and the reported point are untouched.
+    free = setdiff(1:nph, phi_zero)
+    beta_hat_ws = (mu1=bhat.mu1, mu2=bhat.mu2, s1=bhat.s1, s2=bhat.s2)
+    reml_grad_free = function (phif)
+        pv = copy(phi_hat); pv[free] .= phif
+        try
+            nllv, gv, = reml_nll_and_exact_grad(prob, Q_cond, pv; u0=uhat,
+                                                beta0=beta_hat_ws, n_newton=n_newton)
+            return isfinite(nllv) ? gv[free] : fill(NaN, length(free))
+        catch e
+            (e isa DomainError || e isa LinearAlgebra.PosDefException ||
+             e isa LinearAlgebra.SingularException || e isa ArgumentError) || rethrow(e)
+            return fill(NaN, length(free))
+        end
+    end
+    outer_ok = isfinite(nll_hat) && _gradient_verified(res, g_hat[free], nobs, g_tol,
+        () -> _fd_hessian_from_grad(reml_grad_free, phi_hat[free]; hstep=1e-4,
+                                    retry_step=1e-4, scaled=false))
     W_hat    = whitened_prior(Q_cond, lc_to_chol(lc_hat, 4).L)
     mlhat    = laplace_ll(prob, W_hat, bhat, u_to_whitened(W_hat, uhat), ch_H)
 
@@ -1054,8 +1082,9 @@ function fit_q4_reml(prob::AugProblem, Q_cond::SparseMatrixCSC;
             # inner (u, beta) alternation to have met its joint criterion, so
             # "converged" means the same thing users read on the ML path — at
             # the optimum, with the mode actually found — instead of only the
-            # outer optimiser's verdict over phi.
-            converged  = Optim.converged(res) && inner_ok,
+            # outer optimiser's verdict over phi. #946: and that outer verdict is
+            # gradient-verified (`outer_ok` above), not `Optim.converged(res)`.
+            converged  = outer_ok && inner_ok,
             iterations = Optim.iterations(res),
             g_residual = g_resid_val,
             f_calls    = eval_cnt[],

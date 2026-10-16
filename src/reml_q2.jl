@@ -346,15 +346,9 @@ function fit_coevolution_q2_reml(prob::CoevoProblem, Q_cond::SparseMatrixCSC;
         return -rv / n
     end
 
-    function g!(G, phi)
-        @inbounds for j in eachindex(phi)
-            pp = copy(phi); pp[j] += fd_h
-            pm = copy(phi); pm[j] -= fd_h
-            fp = negreml(pp); fm = negreml(pm)
-            G[j] = (isfinite(fp) && isfinite(fm)) ? (fp - fm) / (2fd_h) : 0.0
-        end
-        return G
-    end
+    # #946: a non-finite probe no longer zero-fills its coordinate (a fabricated 0
+    # counted toward g_tol); the search direction takes the one-sided difference.
+    g!(G, phi) = _fd_gradient!(G, negreml, phi, fd_h; one_sided = true)
 
     res = Optim.optimize(negreml, g!, phi0,
                          Optim.LBFGS(linesearch = Optim.LineSearches.MoreThuente()),
@@ -385,8 +379,19 @@ function fit_coevolution_q2_reml(prob::CoevoProblem, Q_cond::SparseMatrixCSC;
     # exactly the marginalised fixed effects (`nbeta = k * q` above); `rho12`
     # comes from `D̂`, not from `β̂`, so it is correctly not counted.
     reml_ll_norm = _reml_normalise(reml_ll, length(β̂))
+
+    # #946: gradient-verified flag. The f_reltol stop above ends the run at a
+    # plateau whatever the gradient, so `Optim.converged(res)` is not the verdict.
+    # Strict FD gradient at phî (a non-finite probe is NaN and fails), scaled from
+    # the mean objective to the sum; the FD Hessian is built only if the absolute
+    # g_tol test fails. Evaluated after the final `_q2_reml_ll` above, so the
+    # probes' updates of `β_cache` cannot touch the reported point.
+    g_hat = _fd_gradient!(similar(phî), negreml, phî, fd_h)
+    converged = isfinite(reml_ll) &&
+        _gradient_verified(res, n .* g_hat, n, g_tol,
+                           () -> _fd_hessian_from_values(φ -> n * negreml(φ), phî))
     return (; β = β̂, Λ = Λ̂, residual_cov = D̂, σ_res = σ̂, rho12 = ρ̂,
             reml_loglik = reml_ll_norm, ml_loglik = ml_ll, loglik = reml_ll_norm,
-            converged = Optim.converged(res), iterations = Optim.iterations(res),
-            u_hat = û)
+            converged = converged, iterations = Optim.iterations(res),
+            g_residual = maximum(abs, g_hat), u_hat = û)
 end

@@ -71,6 +71,35 @@ near a variance boundary are not switched to this predicate.
 drm_optim_converged(res) = Optim.converged(res) && Optim.g_converged(res)
 
 """
+    _NEWTON_DECREMENT_TOL
+
+Per-observation bound on the Newton decrement `½ g'H⁻¹g` used by
+[`_newton_decrement_small`](@ref). `1e-10` is a judgement threshold, not a derived
+or calibrated one: the decrement approximates the nll still to be gained, so
+`n * 1e-10` is far below any change in logLik a user could act on, yet far above
+the floating-point noise of a fit at the optimum. Change it here only.
+"""
+const _NEWTON_DECREMENT_TOL = 1e-10
+
+"""
+    _newton_decrement_small(g, H, n) -> Bool
+
+Unit-free stationarity test (DRModels.jl#983). The absolute `g_tol` of
+[`drm_optim_converged`](@ref) is unit dependent: for a tiny residual SD the mean
+gradient scales like `1/σ²` and coefficient noise alone exceeds `g_tol` at the exact
+optimum. The Newton decrement `½ g'H⁻¹g` is invariant to affine reparametrisation
+(so to rescaling `y`). True only when `H` is finite and positive definite, `g` is
+finite, and the decrement is below `n * _NEWTON_DECREMENT_TOL`. A plateau with a
+large gradient has a large decrement and is still rejected (#944).
+"""
+function _newton_decrement_small(g::AbstractVector, H::AbstractMatrix, n::Integer)
+    (all(isfinite, g) && all(isfinite, H)) || return false
+    F = cholesky(Symmetric(Matrix(H)); check = false)
+    issuccess(F) || return false
+    return 0.5 * dot(g, F \ g) <= n * _NEWTON_DECREMENT_TOL
+end
+
+"""
     _SCALE_RUNOFF_LOG_SPREAD
 
 Unit-free bound on the spread of fitted `log σ_i` across observations used by
@@ -107,4 +136,84 @@ function _scale_runoff(scales)
     all(s -> isfinite(s) && s > 0, σ) || return true
     lo, hi = extrema(log, σ)
     return hi - lo > _SCALE_RUNOFF_LOG_SPREAD
+end
+
+"""
+    _fd_gradient!(G, f, θ, h; one_sided = false) -> G
+
+Central finite-difference gradient of `f` at `θ` with absolute step `h`, written
+into `G`. A coordinate whose `θ ± h` probe is not finite is `NaN`, never `0`
+(DRModels.jl#946): a zero there counts toward Optim's `g_tol` and can manufacture
+a "converged" point exactly where the objective stops being finite, i.e. at the
+variance boundary. When every probe is finite the result is the plain central
+difference, unchanged from the inline loops this replaces.
+
+`one_sided = true` is for an optimiser's search direction only: a coordinate with
+exactly one finite probe then takes the one-sided difference against `f(θ)`
+(evaluated once, only if needed), so the line search keeps a genuine slope instead
+of a fabricated zero. It is still `NaN` when neither probe, or `f(θ)` itself, is
+finite. A convergence verdict must use the strict default.
+"""
+function _fd_gradient!(G::AbstractVector, f, θ::AbstractVector, h::Real;
+                       one_sided::Bool = false)
+    f0 = nothing
+    @inbounds for k in eachindex(θ)
+        tp = copy(θ); tp[k] += h
+        tm = copy(θ); tm[k] -= h
+        fp = f(tp); fm = f(tm)
+        if isfinite(fp) && isfinite(fm)
+            G[k] = (fp - fm) / (2h)
+        elseif one_sided && (isfinite(fp) || isfinite(fm))
+            f0 === nothing && (f0 = f(θ))
+            G[k] = !isfinite(f0) ? NaN : isfinite(fp) ? (fp - f0) / h : (f0 - fm) / h
+        else
+            G[k] = NaN
+        end
+    end
+    return G
+end
+
+"""
+    _gradient_verified(res, g, n, g_tol, hessian) -> Bool
+
+Gradient-verified `converged` flag for the routes that let Optim stop on a relative
+objective change (`f_reltol`): the q=4 ML, Fisher-z and REML fitters and the
+coevolution q / q=2 residual / q=2 REML fitters (DRModels.jl#946). `Optim.converged`
+is an OR over the x, f and g criteria, so on those routes it is `true` at an
+f-plateau whatever the gradient. This adds no new criterion: it is the two-branch
+rule of `_fit_fixed_gaussian` (#983), drm_optim_converged's gradient test OR the
+unit-free [`_newton_decrement_small`](@ref), applied to a gradient re-evaluated
+at the minimizer.
+
+- `g`: gradient of the SUM-scale negative log-likelihood at the minimizer, over
+  the free coordinates only (a pinned coordinate's gradient is not zero; its
+  constraint is active). Re-evaluated, not Optim's cached one, which can be stale
+  after a failed line search (see this file's header) or belong to a polish run
+  judged at another tolerance. Finite-difference gradients must come from the
+  strict [`_fd_gradient!`](@ref), so a non-finite probe is `NaN` and fails.
+- `n`: number of observations (data rows), as in `_newton_decrement_small`.
+- `g_tol`: the caller's tolerance on the MEAN-scale gradient these routes hand to
+  Optim, so the first branch is `maximum(abs, g) / n <= g_tol`, the test
+  `Optim.g_converged` applies.
+- `hessian`: zero-argument function returning `(H, ok)`, the sum-scale Hessian
+  over the same free coordinates (e.g. `_fd_hessian_from_grad` or
+  `_fd_hessian_from_values`). It is called only when the first branch fails, so a
+  fit that meets `g_tol` pays nothing extra. `nothing` skips the second branch
+  (cheap, conservative verdict for internal warm starts).
+
+True when `g` is finite and either Optim reports convergence with the absolute
+gradient test met, or the stop was not a budget stop (iteration or time limit) and
+the Newton decrement is below `n * _NEWTON_DECREMENT_TOL` with a finite positive
+definite `H`. An f-plateau with a large gradient, typical at a variance boundary,
+has a large decrement and is reported as not converged. There is no separate
+boundary status: a boundary fit is `converged` only if it meets this gradient rule.
+"""
+function _gradient_verified(res, g::AbstractVector, n::Integer, g_tol::Real, hessian)
+    all(isfinite, g) || return false
+    Optim.converged(res) && maximum(abs, g; init = 0.0) / n <= g_tol && return true
+    (Optim.iteration_limit_reached(res) || res.stopped_by.time_limit) && return false
+    hessian === nothing && return false
+    H, ok = hessian()
+    ok || return false
+    return _newton_decrement_small(g, H, n)
 end

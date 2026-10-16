@@ -453,15 +453,8 @@ function fit_coevolution(prob::CoevoProblem, Q_cond::SparseMatrixCSC;
     end
 
     # Central FD gradient of the cheap conjugate marginal (no CHOLMOD-through-AD).
-    function g!(G, θ)
-        @inbounds for k in eachindex(θ)
-            tp = copy(θ); tp[k] += fd_h
-            tm = copy(θ); tm[k] -= fd_h
-            fp = negℓ(tp); fm = negℓ(tm)
-            G[k] = (isfinite(fp) && isfinite(fm)) ? (fp - fm) / (2fd_h) : 0.0
-        end
-        return G
-    end
+    # #946: a non-finite probe takes the one-sided difference, never a fabricated 0.
+    g!(G, θ) = _fd_gradient!(G, negℓ, θ, fd_h; one_sided = true)
 
     res = Optim.optimize(negℓ, g!, θ0,
                          Optim.LBFGS(linesearch = Optim.LineSearches.MoreThuente()),
@@ -469,10 +462,19 @@ function fit_coevolution(prob::CoevoProblem, Q_cond::SparseMatrixCSC;
                                        f_reltol = f_reltol, successive_f_tol = 2))
     θ̂ = Optim.minimizer(res)
     β̂, Λ̂, σ̂ = coevo_unpack(prob, θ̂)
+    ℓ̂ = -_objective_at_minimizer(negℓ, res) * n
+    # #946: gradient-verified flag (see `_gradient_verified`): strict FD gradient at
+    # θ̂, scaled from the mean objective to the sum; the FD Hessian is built only if
+    # the absolute g_tol test fails.
+    g_hat = _fd_gradient!(similar(θ̂), negℓ, θ̂, fd_h)
+    converged = isfinite(ℓ̂) &&
+        _gradient_verified(res, n .* g_hat, n, g_tol,
+                           () -> _fd_hessian_from_values(θ -> n * negℓ(θ), θ̂))
     return (; β = β̂, Λ = Λ̂, σ_res = σ̂,
-            loglik = -_objective_at_minimizer(negℓ, res) * n,
-            converged = Optim.converged(res),
+            loglik = ℓ̂,
+            converged = converged,
             iterations = Optim.iterations(res),
+            g_residual = maximum(abs, g_hat),
             θ = θ̂)
 end
 
@@ -548,15 +550,8 @@ function fit_coevolution_q2_residual(prob::CoevoProblem, Q_cond::SparseMatrixCSC
         return isfinite(ℓ) ? -ℓ / n : Inf
     end
 
-    function g!(G, θ)
-        @inbounds for k in eachindex(θ)
-            tp = copy(θ); tp[k] += fd_h
-            tm = copy(θ); tm[k] -= fd_h
-            fp = negℓ(tp); fm = negℓ(tm)
-            G[k] = (isfinite(fp) && isfinite(fm)) ? (fp - fm) / (2fd_h) : 0.0
-        end
-        return G
-    end
+    # #946: a non-finite probe takes the one-sided difference, never a fabricated 0.
+    g!(G, θ) = _fd_gradient!(G, negℓ, θ, fd_h; one_sided = true)
 
     res = Optim.optimize(negℓ, g!, θ0,
                          Optim.LBFGS(linesearch = Optim.LineSearches.MoreThuente()),
@@ -580,10 +575,18 @@ function fit_coevolution_q2_residual(prob::CoevoProblem, Q_cond::SparseMatrixCSC
          e isa LinearAlgebra.SingularException) || rethrow(e)
         ℓ = NaN; û = zeros(prob.q * prob.N); cholesky_ok = false
     end
+    # #946: gradient-verified flag (see `_gradient_verified`): strict FD gradient at
+    # θ̂, scaled from the mean objective to the sum; the FD Hessian is built only if
+    # the absolute g_tol test fails.
+    g_hat = _fd_gradient!(similar(θ̂), negℓ, θ̂, fd_h)
+    converged = cholesky_ok &&
+        _gradient_verified(res, n .* g_hat, n, g_tol,
+                           () -> _fd_hessian_from_values(θ -> n * negℓ(θ), θ̂))
     return (; β = β̂, Λ = Λ̂, residual_cov = D̂, σ_res = σ̂, rho12 = ρ̂,
             loglik = ℓ,
-            converged = cholesky_ok && Optim.converged(res),
+            converged = converged,
             iterations = Optim.iterations(res),
+            g_residual = maximum(abs, g_hat),
             θ = θ̂,
             u_hat = û)
 end
