@@ -130,3 +130,19 @@ function obs_cumlogit3(y, i0)
         return -log(pr)
     end
 end
+
+# Gaussian phylo mean, closed form (no Laplace needed): y ~ N(X beta, s2 I + p2 C),
+# theta = [beta; log s; log s_phy]. ML or REML (the REML adds 1/2 logdet X'V^-1 X).
+function dense_gaussian_phylo_nll(θ::AbstractVector, y, X, Cobs; reml::Bool = false)
+    p = size(X, 2)
+    V = exp(2 * θ[p+1]) * I + exp(2 * θ[p+2]) * Cobs
+    F = cholesky(Symmetric(V))
+    if reml
+        VX = F \ X; A = X' * VX
+        β = A \ (X' * (F \ y))
+        e = y - X * β
+        return 0.5 * (logdet(F) + dot(e, F \ e)) + 0.5 * logdet(Symmetric(A))
+    end
+    e = y - X * θ[1:p]
+    return 0.5 * (logdet(F) + dot(e, F \ e))
+end
