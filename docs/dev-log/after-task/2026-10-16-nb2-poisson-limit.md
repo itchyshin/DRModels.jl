@@ -42,6 +42,14 @@ Adversarial review of the second round (four lenses, each finding put to an inde
   at the clamp they can stop short of them (`converged` false), and location SEs can be NaN on the
   covariate-sigma route. Reworded. The docstring now names the routes that do neither.
 
+CI on `edf46f4` (run 38905892545): Julia 1 shard 1/4 failed in this file. CI's `1` leg is Julia 1.13.2,
+which had not been checked locally. Three assertions pinned a KEPT covariate-sigma refit
+(`_nb2pl_phylo_z(4; size = 1500)`, to a partly clamped optimum 0.25 nats better). On identical data that
+refit was kept on 1.12.6 and missed on 1.10.10 (fresh process) and 1.13.2, a floating-point knife
+edge, so the pin was removed rather than loosened; the covariate-sigma spine keeps its end-to-end
+warning tests and the unit-tested refit decision. Every remaining pin (crossed seed 17's kept refit,
+the clamp-warning seeds, AGHQ seed 3) agrees on all three versions in fresh processes.
+
 Known limitations, measured, not fixed here: at the clamp the other coordinates can be under-optimised
 by the inconsistent gradient (up to 0.086 nats against the clamp profile on one phylo draw), the
 reported sigma there is wherever the optimiser stopped (e.g. log sigma -9.1), and `converged` is often

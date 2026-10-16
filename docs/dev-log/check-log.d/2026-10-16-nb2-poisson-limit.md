@@ -16,9 +16,9 @@
   silently, so it warns once. Both refits compare the nll evaluated at each minimizer, not
   `Optim.minimum` (`src/optim_minimum_guard.jl`).
 - Tests: `test/test_nb2_poisson_limit.jl` (red on `727b003`, base + test only). Second round: every
-  sparse-Laplace testset is red on `ff0f9ee` (20 failed, 1 errored; the first-round tests pass there);
-  the file passes 75/75 on Julia 1.12.6 (default flags, and `--check-bounds=yes` as `Pkg.test` runs)
-  and on Julia 1.10.10 (`--check-bounds=yes`). The #1039 / #1069 data are fixtures
+  sparse-Laplace testset is red on `ff0f9ee` (17 failed, 1 errored; the first-round tests pass there);
+  the file passes 72/72 with `--check-bounds=yes` (as `Pkg.test` runs) on Julia 1.12.6, 1.10.10 and
+  1.13.2 (CI's `1` leg is 1.13.2, not 1.12). The #1039 / #1069 data are fixtures
   (`test/fixtures/nb2_poisson_limit/`, md5 of seed 20282004 = the one in #1039): `Random.seed!` draws
   different counts on Julia 1.10.
 - Local runs (Julia 1.12.6, Optim 1.13.3): 16 touched-route test files, 1,958 tests, pass; the 8 checked

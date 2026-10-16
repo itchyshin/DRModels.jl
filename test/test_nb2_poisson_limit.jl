@@ -254,22 +254,11 @@ const _NB2PL_GENERIC = r"dispersion log sigma"
         @test maximum(rowlogσ(fit, d)) > -4 + 1e-3
         @test !any(m -> occursin(_NB2PL_CLAMPED, m), msgs)
         @test any(m -> occursin(_NB2PL_GENERIC, m), msgs)
-        # #1069 on this spine: from its own start every row ends at the clamp (log sigma
-        # [-4.002, -1.241]); the kept refit puts the z = 1 rows inside it, at log sigma -2.75.
-        d, phy = _nb2pl_phylo_z(4; size = 1500.0)
-        fit = drm(f, NegBinomial2(); data = d, tree = phy, se = false)
-        @test coef(fit, :sigma) ≈ [-4.755, 2.006] atol = 0.05
-        @test maximum(rowlogσ(fit, d)) > -4 + 0.5
-        # The best fit with every row at the clamp (sigma coefficients (-4, 0), the rest
-        # re-optimised) is worse.
-        Optim = DRModels.Optim
-        others = [1, 2, 5]
-        full(v) = (θ = zeros(5); θ[others] = v; θ[3] = -4.0; θ[4] = 0.0; θ)
-        prof = Optim.optimize(v -> fit.nll(full(v)),
-                              (G, v) -> (Gf = zeros(5); fit.nllgrad(Gf, full(v)); G .= Gf[others]),
-                              fit.theta[others], Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking()),
-                              Optim.Options(iterations = 500))
-        @test fit.nll(full(Optim.minimizer(prof))) - (-loglik(fit)) > 0.15      # 0.247 here
+        # No end-to-end pin of a KEPT refit on this spine: the one kept case found
+        # (`_nb2pl_phylo_z(4; size = 1500)`, refit to a partly clamped optimum 0.25 nats
+        # better) is a knife edge. On identical data the refit reached it on Julia 1.12.6
+        # and missed it on 1.10.10 and 1.13.2, so pinning it tests floating-point paths.
+        # The decision on this spine (rows Xσ βσ, every row at the clamp) is tested below.
     end
 
     @testset "#1069 on the sparse-Laplace spines: the refit decision" begin
