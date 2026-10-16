@@ -107,7 +107,8 @@ end
 
 @testset "_finite_hessian NaN: ordinary-Laplace caller does not throw" begin
     nll = θ -> 1e18
-    V = @test_logs (:warn, r"reporting a NaN vcov") DRModels._ordinary_laplace_vcov(
+    # no `grad!`: the value-based fallback says so first (#1073), then the stencil fails
+    V = @test_logs (:warn, r"no exact gradient") (:warn, r"reporting a NaN vcov") DRModels._ordinary_laplace_vcov(
         nll, [0.1, 0.2, 0.3], 100; se = true, context = "test")
     @test V isa Matrix{Float64}
     @test size(V) == (3, 3) && all(isnan, V)
