@@ -188,31 +188,39 @@ end
 # converged when a group still is not at θ̂ (`_va_inner_converged`).
 # ──────────────────────────────────────────────────────────────────────────────
 
+# The 2×2 matrix [a b; b d] with det = a·d − b² is usably negative definite: a < 0,
+# d < 0 and det clear of its own rounding error, about eps·(|a·d| + b²). Before
+# #965 the test was det > eps·(1 + |a| + |b| + |d|), which compares a product of
+# entries with a sum of them. It let a positive-definite H through (only det was
+# tested), and it damped a negative-definite H whose Hrr is merely tiny: with s
+# far below its optimum, Hrr ≈ −(τ + E)·s/2 can be 1e-25, and the damped r step
+# then crept up by ~1e-2 per iteration instead of taking the capped Newton step.
+_va_negdef(a, d, b, det) = a < 0 && d < 0 && det > 4 * eps(typeof(det)) * (abs(a * d) + b * b)
+
 # Levenberg-damped 2×2 Newton step for the inner ELBO problem. An ascent step
-# needs H ≺ 0, i.e. Hmm < 0 and det = Hmm·Hrr − Hmr² > 0. Grow a damping λ,
-# subtracted from the diagonal (H − λI is "more negative-definite"), until both
-# hold with margin; this replaces the old sign-flipping guard (det = ±eps(T)),
-# which could keep a spuriously negative det and turn the ascent step into a
-# descent, and it caps the eps(T)-division blow-up. Testing det alone (before
-# #965) let a positive-definite H through, whose "Newton step" descends. Returns
-# the ascent step (Δm, Δr) that solves (H − λI)·Δ = −g, or (0, 0) when no damping
-# makes H − λI negative definite (a non-finite entry), instead of dividing by a
-# bad det; the caller's stationarity check then reports the group. Smooth in the
-# entries for outer AD when no damping is needed (λ = 0, the generic case).
+# needs H ≺ 0 (`_va_negdef`). Otherwise grow a damping λ, subtracted from the
+# diagonal (H − λI is "more negative-definite"), until it is; this replaces the
+# old sign-flipping guard (det = ±eps(T)), which could keep a spuriously negative
+# det and turn the ascent step into a descent, and it caps the eps(T)-division
+# blow-up. Returns the ascent step (Δm, Δr) that solves (H − λI)·Δ = −g, or (0, 0)
+# when no damping makes H − λI negative definite (a non-finite entry), instead of
+# dividing by a bad det; the caller's stationarity check then reports the group.
+# Smooth in the entries for outer AD when no damping is needed (λ = 0, the
+# generic case).
 function _va_damped_step(Hmm::T, Hmr::T, Hrr::T, gm::T, gr::T) where {T}
     tol = eps(T) * (one(T) + abs(Hmm) + abs(Hrr) + abs(Hmr))
     a = Hmm; d = Hrr
     det = a * d - Hmr * Hmr
     λ = zero(T)
-    if !(a < -tol && det > tol)
+    if !_va_negdef(a, d, Hmr, det)
         λ = max(tol, abs(Hmm) + abs(Hrr) + abs(Hmr))
         for _ in 1:60
             a = Hmm - λ; d = Hrr - λ
             det = a * d - Hmr * Hmr
-            (a < -tol && det > tol) && break
+            _va_negdef(a, d, Hmr, det) && break
             λ *= T(2)
         end
-        (a < -tol && det > tol) || return zero(T), zero(T)
+        _va_negdef(a, d, Hmr, det) || return zero(T), zero(T)
     end
     Δm = -(d * gm - Hmr * gr) / det
     Δr = -(-Hmr * gm + a * gr) / det
@@ -250,16 +258,21 @@ end
 # orders of magnitude below this (see `_va_newton_decrement2`).
 const _VA_INNER_TOL = 1e-14
 # The inner unroll always takes its fixed `iters` Newton steps (25 Poisson, 30 for
-# the quadrature families), as before #965, so a group that was solved within
-# them gets the same (m, s). A group that is still not stationary continues, up to
-# `_VA_INNER_MAXITERS` steps in all; whatever is left unsolved is reported.
+# the quadrature families), as before #965. A group that is still not stationary
+# continues, up to `_VA_INNER_MAXITERS` steps in all; whatever is left unsolved is
+# reported. A group that ends the unroll with λ² ≤ `_VA_INNER_DONE` stops there;
+# one that meets `_VA_INNER_TOL` only narrowly, or only after the unroll, takes two
+# more Newton steps, so the returned point (and the derivative the outer
+# ForwardDiff carries through it) is not left at the edge of the tolerance.
 const _VA_INNER_MAXITERS = 200
+const _VA_INNER_DONE = 1e-20
 
 # Shared inner driver: damped Newton ascent on the group ELBO `F(m, r)` from the
 # warm start (m, r). `gH(m, r)` returns (gm, gr, Hmm, Hmr, Hrr), the gradient and
 # Hessian of F in (m, r). Takes exactly `iters` steps, then keeps stepping while
-# the squared Newton decrement exceeds `_VA_INNER_TOL`, stopping at `maxiters`
-# steps or when the line search can no longer move the iterate. Returns
+# the squared Newton decrement exceeds `_VA_INNER_TOL` (plus the polishing steps
+# described at `_VA_INNER_DONE`), stopping at `maxiters` steps or when the line
+# search can no longer move the iterate. Returns
 # (m, r, λ²) with λ² measured at the returned point. Iterates and λ² carry the
 # working eltype; the extra steps and the stop test read only primal values, so
 # the outer ForwardDiff still differentiates the unrolled map.
@@ -273,11 +286,7 @@ function _va_inner_solve(gH, F, m::T, r::T, iters::Int, maxiters::Int) where {T}
         if it > iters
             it > maxiters && break
             if dec <= _VA_INNER_TOL
-                # Solved within the fixed unroll: stop, with (m, r) exactly as
-                # before #965. Solved later: two more Newton steps first, so the
-                # returned point (and the derivative carried through it) is not
-                # left at the edge of the tolerance.
-                (it == iters + 1 || npolish == 2) && break
+                (npolish == 2 || (it == iters + 1 && dec <= _VA_INNER_DONE)) && break
                 npolish += 1
             end
         end
@@ -325,8 +334,11 @@ function _poisson_va_inner(A::T, S::T, τ::T; iters::Int = 25,
         # Hessian in (m, r). With ∂E/∂m = E, ∂E/∂s = E/2 ⇒ ∂E/∂r = (E/2)·s:
         Hmm = -E - τ
         Hmr = -(E / 2) * s
-        # ∂gr/∂r = s·[ (-1/s² - E/2)·s ] + gr   (product rule through r); assemble directly:
-        Hrr = (-(one(T) / s) - (E / 2) * s) * (s / 2) + gr  # d/dr of gr
+        # ∂gr/∂r with gr = ½ − (τ + E)·s/2 and ∂E/∂r = (E/2)·s. Written as a sum of
+        # non-positive terms: the old form (−1/s − (E/2)·s)·(s/2) + gr cancels its
+        # two ±½ terms, which rounds Hrr to 0 when (τ + E)·s is tiny (an all-zero
+        # group with a huge Σe^{η0}), forcing damping and creeping r steps (#965).
+        Hrr = -(τ + E) * (s / 2) - E * s * s / 4
         (gm, gr, Hmm, Hmr, Hrr)
     end
     m, r, dec = _va_inner_solve(gH, F, m, r, iters, maxiters)

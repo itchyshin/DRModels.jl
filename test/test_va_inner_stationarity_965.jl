@@ -8,7 +8,10 @@
 #       direction into a descent direction; `_va_backtrack` then rejects every
 #       trial and the iterate never moves (2000 iterations change nothing).
 #       All-zero / all-one groups under a very large random-effect SD.
-#   (2) CAP. 25/30 steps of at most |Δm| = 4 cannot reach a far optimum.
+#   (2) CAP. 25/30 steps of at most |Δm| = 4 cannot reach a far optimum. Also an
+#       all-zero group with a huge Σe^{η0} (log S ≳ 36): the warm start puts s far
+#       below its optimum, Hrr rounds to 0 or is tiny, and the old det-vs-entries
+#       test damped every step so r crept up by ~1e-2 per step.
 #   (3) ROUNDOFF (Binomial). `s·η − n·softplus(η)` cancels when η ≫ 0 and s ≈ n;
 #       the ~1e-11 evaluation noise exceeds the line-search tolerance and freezes
 #       the solve at |∇F| ≈ 2.5e-6. Reached by a realistic aggregated-binomial
@@ -47,7 +50,11 @@ const _GH_LWπ = log.(_GH_W) .- 0.5 * log(π)
         # (A, log S, log σ_b): all-zero groups under σ_b = e⁴ ≈ 55. On base the
         # first keeps |∇F| = 2.5 for any number of iterations (STALL); the second
         # has |∇F| = 1.66 after 25 steps but is solvable (CAP).
-        for (A, lS, lσ) in ((0.0, -37.0, 4.0), (0.0, -19.0, 4.0), (0.0, -38.0, 4.5))
+        # The last three are the scout cells at θ̂ of measured fits: R2 (huge S) at
+        # an ordinary σ_b, and the CAP / STALL groups of two converged = true fits.
+        for (A, lS, lσ) in ((0.0, -37.0, 4.0), (0.0, -19.0, 4.0), (0.0, -38.0, 4.5),
+                            (10.0, 60.0, 0.0), (0.0, log(4) + 37.599058437158035, 3.6710579140424255),
+                            (0.0, -61.242185737691955, 3.8612174228408462))
             S = exp(lS); τ = exp(-2lσ)
             out = DVI._poisson_va_inner(A, S, τ)
             @test _pois_inner_gnorm(A, S, τ, out[1], out[2]) < 1e-6
@@ -111,6 +118,11 @@ const _GH_LWπ = log.(_GH_W) .- 0.5 * log(π)
         @test Δm * 1.0 + Δr * 1.0 > 0
         @test DVI._va_damped_step(-1.0, 0.0, -2.0, 1.0, 1.0) == (1.0, 0.5)   # ND: plain Newton
         @test DVI._va_damped_step(NaN, 0.0, -1.0, 1.0, 1.0) == (0.0, 0.0)
+        # A negative-definite H with a tiny Hrr (s far below its optimum) gets the
+        # plain Newton step; the old det > eps·(1 + |entries|) test damped it to
+        # Δr ≈ 0.04.
+        Δm, Δr = DVI._va_damped_step(-12.0, 0.0, -5e-26, 56.6, 0.5)
+        @test Δm ≈ 56.6 / 12 && Δr ≈ 0.5 / 5e-26
         # The capped step keeps the Newton direction (the clamp did not).
         cm, cr = DVI._va_cap_step(-19.27, 0.52)
         @test cm ≈ -4.0 && cr / cm ≈ 0.52 / -19.27
@@ -164,5 +176,26 @@ const _GH_LWπ = log.(_GH_W) .- 0.5 * log(π)
         dec = fill(NaN, G)
         fit.nll(θ̂, dec)
         @test all(d -> d <= DVI._VA_INNER_TOL, dec)
+    end
+
+    @testset "Poisson (1 | g) fit: no converged = true at a non-stationary inner" begin
+        # Four groups, one all-zero. On base the fit stops at θ̂ = [37.60, 3.67]
+        # (σ_b ≈ 39) with converged = true, while group 1's inner (A = 0,
+        # log S ≈ 39) is capped at |∇F| = 0.20; the profiled ELBO there is 7.5 nats
+        # below the VA optimum near θ = [2.84, 1.43] (the default :LA fit is
+        # [2.81, 1.45]).
+        y = [0.0, 0.0, 0.0, 0.0, 12.0, 147.0, 1778.0]
+        g = [1, 1, 1, 1, 2, 3, 4]
+        fit = drm(bf(@formula(y ~ 1 + (1 | g))), Poisson(); data = (; y, g), marginal = :VA)
+        θ̂ = fit.theta; τ = exp(-2θ̂[end])
+        worst = maximum(1:4) do k
+            idx = findall(==(k), g); A = sum(y[idx]); S = length(idx) * exp(θ̂[1])
+            out = DVI._poisson_va_inner(A, S, τ)
+            _pois_inner_gnorm(A, S, τ, out[1], out[2])
+        end
+        @test fit.converged
+        @test worst < 1e-6
+        @test θ̂ ≈ [2.8367, 1.4298] atol = 1e-3
+        @test loglik(fit) ≈ -24.8805 atol = 1e-3
     end
 end
