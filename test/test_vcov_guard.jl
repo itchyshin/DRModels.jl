@@ -39,12 +39,14 @@ const DVG = DRModels
     end
 
     @testset "near-singular Hessian is treated as singular on every platform" begin
-        # cond ~ 1e16: the knife edge where LAPACK may or may not throw.
+        # cond ~ 1e16: the knife edge where LAPACK may or may not throw. The third
+        # coordinate is the NB2 log-size, a unit-free coordinate (#936): only a
+        # coordinate declared unit-free can be judged flat in absolute terms.
         H = [39.8 -14.5 0.0 3.8
              -14.5 85.6 0.0 0.4
              0.0 0.0 9.85e-16 0.0
              3.8 0.4 0.0 12.1]
-        V = @test_logs (:warn,) DVG._vcov_from_hessian(H)
+        V = @test_logs (:warn,) DVG._vcov_from_hessian(H; unitfree = [3])
         @test all(isfinite, V)
         @test V[3, 3] < 1.0   # not the 1e15 a raw inverse would produce
     end

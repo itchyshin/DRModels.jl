@@ -1,0 +1,6 @@
+# Provenance of expected_drmtmb.toml (no drmTMB code)
+drmTMB_version = "0.7.1"
+TMB_version = "1.9.23"
+R_version = "4.4.3"
+call = "drmTMB(bf(y ~ year, sigma ~ 1), family = gaussian(), data = d)"
+date = "2026-10-16"

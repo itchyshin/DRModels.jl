@@ -609,7 +609,8 @@ function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ,
     # reml_q4.jl do -- do NOT add a #491-style fallback, which only papers over it.
     res = _re_lbfgs_with_restart(nll, θ0, θ0_restart, g_tol, pμ + pσ + 1, std(res0))
     θ̂ = Optim.minimizer(res)
-    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    uf = vcat(_unitfree_columns(Xσ, pμ), pμ + pσ + 1)
+    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); unitfree = uf)
 
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :resd => (pμ+pσ+1):(pμ+pσ+1)]
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
@@ -875,7 +876,9 @@ function _fit_correlated_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, xs,
         θ[pμ+pσ+3] = Σ21 / L11
         θ
     end
-    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    # log L11, log L22 are unit-free; the raw off-diagonal L21 is not.
+    uf = vcat(_unitfree_columns(Xσ, pμ), pμ + pσ + 1, pμ + pσ + 2)
+    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); unitfree = uf)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :recov => (pμ+pσ+1):(pμ+pσ+3)]
     names = [:mu => nmμ, :sigma => nmσ, :recov => ["$(grp):L11", "$(grp):L22", "$(grp):L21"]]
     means = Dict(:mu => Xμ * θ̂[1:pμ]); obs = Dict(:mu => Vector{Float64}(y))
@@ -1218,7 +1221,9 @@ function _fit_sigma_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, nmμ, nm
     θ0[pμ+1] = log(std(res0) + eps())
     θ0[pμ+pσ+1] = log(0.5 * std(res0) + eps())   # σ_b init
     res = Optim.optimize(obj, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(obj, θ̂))
+    θ̂ = Optim.minimizer(res)
+    uf = vcat(_unitfree_columns(Xσ, pμ), pμ + pσ + 1)
+    V = _vcov_from_hessian(ForwardDiff.hessian(obj, θ̂); unitfree = uf)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :resd => (pμ+pσ+1):(pμ+pσ+1)]
     # Tag the RE-SD name with `_logsigma`: this random intercept lives on the
     # log-σ (scale) axis, so `re_sd`/`vc` surface a value that is NOT comparable to
@@ -1506,7 +1511,8 @@ function _fit_musigma_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, nmμ, 
     θ0[pμ+pσ+2] = log(0.3)
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res)
-    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    uf = vcat(_unitfree_columns(Xσ, pμ), pμ + pσ + 1, pμ + pσ + 2)
+    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); unitfree = uf)
 
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :resd => (pμ+pσ+1):(pμ+pσ+2)]
     # Same `_logsigma`-suffix convention as `_fit_sigma_ranef_gaussian` (#322):

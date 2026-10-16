@@ -20,42 +20,91 @@
 # say so out loud when the fit is at a boundary.
 
 """
-Relative tolerance below which a Hessian eigenvalue counts as numerically zero.
+Relative eigenvalue tolerance of the covariance guard, applied to the
+EQUILIBRATED Hessian (see [`_vcov_scaling`](@ref)).
 """
-# CALIBRATED 2026-08-26 against the measured distribution, not chosen by feel.
-# Was 1e-12, which only caught Hessians singular to MACHINE PRECISION and missed
-# merely catastrophic ones -- a fit with a variance of 1.5e+07 in one direction
-# reported an SE of ~3937 with no warning at all.
+# HISTORY. Calibrated 2026-08-26 (#513) at 3e-8 on the UNSCALED Hessian's
+# min|eig| / max|eig|, from a census of every guard call in the suite: a bimodal
+# distribution with a degenerate cluster at 4e-12 .. 5.5e-9 (log-SDs flat at the
+# sparse-Laplace clamp, implied SE 2,192-6,136) and the next point at 1.09e-7.
 #
-# Instrumented every _vcov_from_hessian call in the full suite (1,970 calls) on
-# Linux, under both inner-solve tolerances. The distribution is BIMODAL below
-# ~1e-7 and a smooth continuum of ordinary condition numbers above it:
-#
-#   arm            non-singular degenerate cluster    next point    empty gap
-#   newton_tol 1e-8    9.84e-09 .. 1.62e-08           1.09e-07      0.83 orders
-#   newton_tol 1e-10   4.14e-12 .. 5.53e-09           1.09e-07      1.30 orders
-#
-# 3e-8 splits that confirmed-empty gap: +0.73 orders above the degenerate cluster
-# and +0.56 below the nearest other point. ZERO healthy fits are newly warned on
-# in either arm -- the 38 calls that newly fire are 23 fixtures across three
-# sparse-Laplace routes, every one with an implied SE of 2,192-6,136.
-#
-# NOTE this threshold is a fix for a specific hole, NOT a general boundary
-# detector: above ~1e-7 the distribution is continuous, so no relative-ratio
-# threshold up there could be principled.
-#
-# ALSO NOTE the hole is PRE-EXISTING, not introduced by tightening newton_tol:
-# 6 calls already sit in the missed zone at the OLD tolerance. Tightening the
-# inner solve widened it from 6 to 38 by moving fits off exact float zero onto
-# the solver's own noise floor -- it made a latent weakness visible.
-#
-# Falsified by: a genuinely healthy fixture measuring <= ~1e-7; or this cluster's
-# top (5.53e-9) creeping toward 3e-8 on another BLAS/LAPACK build -- the margin
-# is 0.73 orders, comfortable but not enormous.
+# That unscaled ratio is not a property of the fit. It moves with the units of y
+# and of the predictors (#936): `y ~ year` with year = 2000 +/- 10 measured
+# 4.4e-12, and the same fit with y * 1e4 measured 5.4e-9 -- inside the
+# degenerate cluster -- so a well-identified fit was reported as "at a variance
+# boundary", and near 1e-16 `pinv` truncated real directions (y * 1e8: intercept
+# SE 13,088 for a true 9.6e6). The ratio is now taken on the equilibrated matrix,
+# whose eigenvalues do not move with units. RECALIBRATED 2026-10-16 on that
+# matrix; the census and the gap it splits are recorded below.
 const _VCOV_RTOL = 3e-8
 
 """
-    _vcov_from_hessian(H; context = "")
+Curvature floor, in natural units, for the coordinates a caller declares
+unit-free (see [`_vcov_scaling`](@ref)).
+"""
+const _VCOV_UNITFREE_FLOOR = 1e3
+
+# Instrumentation hook for recalibrating the guard: `tools/vcov_guard_census.jl`
+# sets it to a `(Hs, context, unitfree) -> nothing` recorder and runs the full
+# suite. It is `nothing` in normal use and the guard's decision never reads it.
+const _VCOV_CENSUS_HOOK = Ref{Any}(nothing)
+
+"""
+    _unitfree_columns(X, offset = 0) -> Vector{Int}
+
+Parameter indices (`offset + j`) of the columns `j` of a design matrix `X` whose
+coefficients are dimensionless: columns that take only the values 0 and 1 (an
+intercept or an indicator). A coefficient of any other column is measured in the
+units of its predictor, so its curvature says nothing about identifiability.
+Use it for the dispersion / shape / zero-inflation / correlation formulas
+(log, logit or atanh link) when building the `unitfree` argument of
+[`_vcov_from_hessian`](@ref). Do NOT use it for an identity-link location
+formula: there even the intercept carries the units of `y`.
+"""
+_unitfree_columns(X::AbstractMatrix, offset::Integer = 0) =
+    Int[offset + j for j in axes(X, 2) if all(v -> v == 0 || v == 1, view(X, :, j))]
+
+"""
+    _vcov_scaling(Hs, unitfree) -> s::Vector{Float64}
+
+Diagonal scaling that makes the guard's decision independent of units (#936).
+The guard tests `M = Diagonal(s) * Hs * Diagonal(s)` instead of `Hs`, with
+
+- `s[k] = 1 / sqrt(|Hs[k, k]|)` for an ordinary coordinate (a regression
+  coefficient, whose scale is set by the units of `y` and of its predictor).
+  Rescaling such a coordinate rescales its row and column of `Hs` and leaves `M`
+  unchanged, so neither an uncentred `year` nor `y * 1e4` moves the decision. A
+  coordinate with zero curvature keeps `s[k] = 1` (its row of `M` stays zero).
+- `s[k] = 1 / sqrt(max(|Hs[k, k]|, _VCOV_UNITFREE_FLOOR))` for a coordinate in
+  `unitfree`: a log standard deviation or dispersion, a correlation on the
+  atanh scale, an intercept of a log-link dispersion formula, a cut-point.
+  Its curvature is already in natural units, so a flat one -- the signature of
+  a variance boundary -- keeps its smallness in `M` instead of being normalised
+  away. A test that rescaled every coordinate could not see it: at a variance
+  boundary the log-SD's whole row of `Hs` decays together, so its correlation
+  row tends to zero and the equilibrated matrix looks perfectly conditioned.
+
+`unitfree` lists parameter indices; see [`_unitfree_columns`](@ref).
+"""
+function _vcov_scaling(Hs::AbstractMatrix, unitfree)
+    p = size(Hs, 1)
+    natural = falses(p)
+    for k in unitfree
+        1 <= k <= p || throw(ArgumentError(
+            "unitfree index $k is outside the $(p)x$(p) Hessian"))
+        natural[k] = true
+    end
+    s = Vector{Float64}(undef, p)
+    for k in 1:p
+        c = abs(Hs[k, k])
+        c = natural[k] ? max(c, _VCOV_UNITFREE_FLOOR) : (c == 0 ? one(c) : c)
+        s[k] = 1 / sqrt(c)
+    end
+    return s
+end
+
+"""
+    _vcov_from_hessian(H; context = "", unitfree = ())
 
 Covariance matrix from an observed-information (Hessian) matrix, guarded against
 boundary degeneracy.
@@ -64,10 +113,20 @@ Symmetrises `H`, then inverts it, unless it is numerically singular or not
 positive definite. A clearly negative eigenvalue means the point is not a
 minimum: the function warns and returns a `NaN` covariance rather than
 `inv(H)` or a pseudo-inverse. A numerically zero eigenvalue (a variance
-boundary) still falls back to the Moore–Penrose pseudo-inverse and warns,
-naming the flat coordinates. The decision is made from the eigenvalues rather
-than from whether `inv` happens to throw, so the result does not depend on the
-LAPACK build or CPU.
+boundary, or a combination of parameters the data cannot separate) falls back
+to a pseudo-inverse and warns, naming the flat coordinates. The decision is made
+from eigenvalues rather than from whether `inv` happens to throw, so the result
+does not depend on the LAPACK build or CPU.
+
+The eigenvalues are those of the equilibrated matrix of [`_vcov_scaling`](@ref),
+so the decision does not change with the units of `y` or of the predictors
+(#936). `unitfree` lists the coordinates whose curvature is meaningful in
+absolute terms (log-SDs, log-dispersions, atanh-correlations, cut-points, the
+0/1 columns of a dispersion formula); only those can be reported as flat at a
+boundary. Leave it empty for a matrix of regression coefficients only. When the
+matrix is healthy the result is exactly `inv(H)`; the pseudo-inverse of the
+fallback is taken on the equilibrated matrix and mapped back, so it too is
+equivariant under a change of units.
 
 The pseudo-inverse keeps a fit usable, but standard errors for the flagged
 coordinates are not trustworthy: at a variance boundary the sampling
@@ -75,16 +134,20 @@ distribution is not the usual normal approximation. Use `method = :profile` or
 the bootstrap entry points for those targets (see `src/inference.jl`), or the
 χ̄² boundary machinery in `src/chibar.jl`.
 """
-function _vcov_from_hessian(H::AbstractMatrix; context::AbstractString = "")
+function _vcov_from_hessian(H::AbstractMatrix; context::AbstractString = "", unitfree = ())
     Hs = Matrix(H)
     Hs = Matrix(Symmetric((Hs + Hs') / 2))
     isempty(Hs) && return Hs
+    (hook = _VCOV_CENSUS_HOOK[]) === nothing || hook(Hs, context, unitfree)
 
-    ev = eigvals(Symmetric(Hs))
+    s = _vcov_scaling(Hs, unitfree)
+    M = Matrix(Symmetric(s .* Hs .* s'))
+    ev = eigvals(Symmetric(M))
     scale = maximum(abs, ev)
     # A negative eigenvalue is a saddle or a ridge, not a variance boundary.
     # `minimum(abs, ev)` cannot see it, and `inv` of that matrix has a negative
-    # diagonal (DRModels.jl#972). Do not pseudo-invert it either.
+    # diagonal (DRModels.jl#972). Do not pseudo-invert it either. Congruence by
+    # the positive scaling keeps the signs of the eigenvalues (Sylvester).
     if scale != 0 && minimum(ev) < -_VCOV_RTOL * scale
         neg = findall(<( -_VCOV_RTOL * scale), ev)
         @warn """
@@ -95,16 +158,23 @@ function _vcov_from_hessian(H::AbstractMatrix; context::AbstractString = "")
     end
 
     if scale == 0 || minimum(abs, ev) <= _VCOV_RTOL * scale
-        d = abs.(diag(Hs))
-        dmax = maximum(d)
-        flat = dmax == 0 ? collect(eachindex(d)) : findall(<=(_VCOV_RTOL * dmax), d)
+        m = diag(M)
+        flat = scale == 0 ? collect(eachindex(m)) : findall(<=(_VCOV_RTOL * scale), m)
+        E = eigen(Symmetric(M))
+        v = E.vectors[:, argmin(abs.(E.values))]
+        null_dir = findall(>=(0.1 * maximum(abs, v)), abs.(v))
+        cause = isempty(flat) ?
+            "A combination of parameters is not identified (the Hessian is singular after\n" *
+            "rescaling every coordinate to unit curvature), so standard errors for the\n" *
+            "coordinates in that direction are NOT trustworthy." :
+            "The fit is at a variance/dispersion boundary, so standard errors for the\n" *
+            "flagged coordinates are NOT trustworthy."
         @warn """
               Hessian is numerically singular at the optimum — using a pseudo-inverse.
-              The fit is at a variance/dispersion boundary, so standard errors for the
-              flagged coordinates are NOT trustworthy. Prefer `confint(fit, method = :profile)`
+              $cause Prefer `confint(fit, method = :profile)`
               or the bootstrap entry points for those targets.
-              """ context flat_coordinates = flat rcond = scale == 0 ? 0.0 : minimum(abs, ev) / scale
-        V0 = pinv(Hs)
+              """ context flat_coordinates = flat null_direction_coordinates = null_dir rcond = scale == 0 ? 0.0 : minimum(abs, ev) / scale
+        V0 = s .* pinv(M) .* s'
     else
         V0 = inv(Hs)
     end
@@ -113,7 +183,7 @@ function _vcov_from_hessian(H::AbstractMatrix; context::AbstractString = "")
 end
 
 """
-    _vcov_from_hessian_checked(H, data_finite; context = "") -> (V, hessian_finite)
+    _vcov_from_hessian_checked(H, data_finite; context = "", unitfree = ()) -> (V, hessian_finite)
 
 [`_vcov_from_hessian`](@ref) for a ForwardDiff Hessian at an optimum whose
 objective may have run off to a degenerate limit (#968, #961): a residual scale
@@ -125,9 +195,10 @@ non-finite matrix. With non-finite data the guard is called unchanged and keeps
 throwing (owner decision 14: NaN-predictor fits rely on it).
 """
 function _vcov_from_hessian_checked(H::AbstractMatrix, data_finite::Bool;
-                                    context::AbstractString = "")
+                                    context::AbstractString = "", unitfree = ())
     hf = all(isfinite, H)
-    (hf || !data_finite) && return (_vcov_from_hessian(H; context = context), hf)
+    (hf || !data_finite) &&
+        return (_vcov_from_hessian(H; context = context, unitfree = unitfree), hf)
     @warn "The Hessian is not finite at the optimum (a scale parameter has run off " *
           "towards a degenerate limit, e.g. a constant or badly scaled response). Wald " *
           "standard errors are withheld and the fit is reported as not converged." context
@@ -219,7 +290,7 @@ function _fd_hessian_from_values(f, θ̂::AbstractVector; hstep::Real = 1e-5,
 end
 
 """
-    _vcov_from_fd_hessian(H; context = "")
+    _vcov_from_fd_hessian(H; context = "", unitfree = ())
 
 [`_vcov_from_hessian`](@ref) for a Hessian from `_finite_hessian`, which signals a
 failed stencil (non-finite probe or the failed-fit sentinel) with an all-NaN
@@ -228,7 +299,7 @@ NaN-vcov convention of the other guarded Hessian helpers) rather than crashing i
 `eigvals`. Deliberately NOT folded into `_vcov_from_hessian`: elsewhere a NaN
 Hessian (e.g. NaN in a predictor) must keep throwing.
 """
-function _vcov_from_fd_hessian(H::AbstractMatrix; context::AbstractString = "")
+function _vcov_from_fd_hessian(H::AbstractMatrix; context::AbstractString = "", unitfree = ())
     all(isfinite, H) || return fill(NaN, size(H)...)
-    return _vcov_from_hessian(H; context = context)
+    return _vcov_from_hessian(H; context = context, unitfree = unitfree)
 end

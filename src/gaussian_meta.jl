@@ -44,7 +44,7 @@ function _fit_meta_gaussian(fam::Gaussian, y, Xμ, Xσ, vv, nmμ, nmσ, g_tol)
     θ0[pμ+1] = log(std(y - Xμ * βμ0) / 2 + eps())   # σ below the total residual sd
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res)
-    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); unitfree = _unitfree_columns(Xσ, pμ))
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ)]
     names = [:mu => nmμ, :sigma => nmσ]
     means = Dict(:mu => Xμ * θ̂[1:pμ])
@@ -164,7 +164,8 @@ function _fit_meta_gaussian_re(fam::Gaussian, y, Xμ, Xσ, vv, comps, nmμ, nmσ
     θ0[(pμ+pσ+1):end] .= log(s0 + eps())
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res)
-    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    uf = vcat(_unitfree_columns(Xσ, pμ), (pμ+pσ+1):(pμ+pσ+K))
+    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); unitfree = uf)
 
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :resd => (pμ+pσ+1):(pμ+pσ+K)]
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(c[4]) for c in comps]]

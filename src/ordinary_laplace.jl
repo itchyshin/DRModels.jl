@@ -131,7 +131,7 @@ end
 # Newton-decrement fallback for the convergence flag (see below).
 function _ordinary_laplace_optimize(fg, θ0, n::Int, q::Int, g_tol; se::Bool,
                                     context::AbstractString,
-                                    polish_iterations::Int = 15)
+                                    polish_iterations::Int = 15, unitfree = ())
     last_b = zeros(q)
     function eval_laplace(θ, grad::Bool)
         out = fg(θ, last_b, grad)
@@ -182,15 +182,17 @@ function _ordinary_laplace_optimize(fg, θ0, n::Int, q::Int, g_tol; se::Bool,
         nllhat = nll(θ̂)
         converged = _ordinary_laplace_newton_converged(grad!, θ̂, gfinal)
     end
-    V = _ordinary_laplace_vcov(nll, θ̂, n; se = se, context = context)
+    V = _ordinary_laplace_vcov(nll, θ̂, n; se = se, context = context, unitfree = unitfree)
     return θ̂, nllhat, converged, V, nll, grad!
 end
 
 # Wald covariance from the finite-difference Hessian of the outer objective, or
-# a NaN matrix when `se = false`.
-function _ordinary_laplace_vcov(nll, θ̂, n::Int; se::Bool, context::AbstractString)
+# a NaN matrix when `se = false`. `unitfree` is forwarded to the guard.
+function _ordinary_laplace_vcov(nll, θ̂, n::Int; se::Bool, context::AbstractString,
+                                unitfree = ())
     V = if se
-        _vcov_from_fd_hessian(_finite_hessian(nll, θ̂; h = _fd_hessian_step(n)); context = context)
+        _vcov_from_fd_hessian(_finite_hessian(nll, θ̂; h = _fd_hessian_step(n));
+                              context = context, unitfree = unitfree)
     else
         fill(NaN, length(θ̂), length(θ̂))
     end
@@ -273,7 +275,8 @@ function _fit_poisson_ordinary_laplace(fam::Poisson, y, Xμ, gidx, G, nmμ, grp,
                                                     newton_tol = _ORDINARY_LAPLACE_NEWTON_TOL)
     θ0 = vcat(_poisson_fixed_start(y, Xμ), log(0.4))
     θ̂, nllhat, conv, V, nll, grad! = _ordinary_laplace_optimize(
-        fg, θ0, n, G, g_tol; se = se, context = "ordinary Laplace Poisson (1 | $grp)")
+        fg, θ0, n, G, g_tol; se = se, context = "ordinary Laplace Poisson (1 | $grp)",
+        unitfree = [pμ + 1])                           # log σ_b
     blocks = [:mu => 1:pμ, :resd => (pμ+1):(pμ+1)]
     names = [:mu => nmμ, :resd => [String(grp)]]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ]))
@@ -298,7 +301,8 @@ function _fit_binomial_ordinary_laplace(fam::Binomial, s, ntr, Xμ, gidx, G, nm�
     p̄ = clamp(sum(s) / max(sum(ntr), 1), 1e-4, 1 - 1e-4)
     θ0 = zeros(pμ + 1); θ0[1] = log(p̄ / (1 - p̄)); θ0[end] = log(0.4)
     θ̂, nllhat, conv, V, nll, grad! = _ordinary_laplace_optimize(
-        fg, θ0, n, G, g_tol; se = se, context = "ordinary Laplace Binomial (1 | $grp)")
+        fg, θ0, n, G, g_tol; se = se, context = "ordinary Laplace Binomial (1 | $grp)",
+        unitfree = [pμ + 1])                           # log σ_b
     blocks = [:mu => 1:pμ, :resd => (pμ+1):(pμ+1)]
     names = [:mu => nmμ, :resd => [String(grp)]]
     means = Dict(:mu => [_laplace_mean(kind, dot(@view(Xμ[i, :]), θ̂[1:pμ])) for i in 1:n])
@@ -439,7 +443,8 @@ function _fit_scale_ordinary_laplace(fam, y, Xμ, gidx, G, nmμ, nmσ, grp, g_to
             θ̂, nllhat, conv, _, nll, grad! = alt
         end
     end
-    V = _ordinary_laplace_vcov(nll, θ̂, n; se = se, context = ctx)
+    # log σ (family dispersion, sigma ~ 1) and log σ_b are unit-free.
+    V = _ordinary_laplace_vcov(nll, θ̂, n; se = se, context = ctx, unitfree = (pμ+1):(pμ+2))
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+1), :resd => (pμ+2):(pμ+2)]
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
     auxhat = aux_from(θ̂[pμ+1])
@@ -574,8 +579,9 @@ function _fit_student_ordinary_laplace(fam::Student, y, Xμ, Xσ, Xν, gidx, G, 
     gfinal = ForwardDiff.gradient(nll, θ̂)
     converged = nllhat < 1e17 && all(isfinite, gfinal) &&
                 (Optim.converged(res) || _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol))
+    uf = vcat(_unitfree_columns(Xσ, pμ), _unitfree_columns(Xν, pμ + pσ), k + 1)
     V = se ? _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂);
-                                context = "ordinary Laplace Student (1 | $grp)") :
+                                context = "ordinary Laplace Student (1 | $grp)", unitfree = uf) :
              fill(NaN, k + 1, k + 1)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :nu => (pμ+pσ+1):k, :resd => (k+1):(k+1)]
     names = [:mu => nmμ, :sigma => nmσ, :nu => nmν, :resd => [String(grp)]]
