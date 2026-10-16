@@ -1,13 +1,9 @@
 # missing_data.jl — listwise-deletion (complete-case) preprocessing for `drm`.
 #
-# Status (issue #49): DRModels.jl has NO native missing-data handling. A `missing` or
-# `NaN` in a response or predictor column makes `drm(...)` ERROR (a `KeyError`
-# from the StatsModels schema for `missing`, or `ArgumentError: matrix contains
-# Infs or NaNs` from the linear-algebra solve for `NaN`) — it does not silently
-# corrupt the fit, but the error is opaque about the cause. This file adds the
-# smallest safe, documented path: explicit listwise deletion with a clear
-# warning, so users have a guided complete-case route instead of hand-rolling row
-# drops. It touches NO engine code — it is pure data preprocessing.
+# Status (issues #49 / #1089 / #1111): a `missing` in a *predictor* is refused
+# by name (`drm_listwise`). A complete `Union{Missing,T<:Number}` predictor is
+# narrowed so StatsModels keeps it numeric. `NaN`/`Inf` still error from the
+# linear-algebra path. This file is the documented complete-case helper.
 #
 # FIML for missing *responses* (the principled alternative that keeps partially
 # observed rows — important for the bivariate / q=4 coevolution models) and
@@ -71,8 +67,10 @@ helper is an interim complete-case path, not a substitute.
 
 Only the columns the model uses are checked, so unrelated columns with missing
 values do not cause rows to be dropped. Set `verbose = false` to suppress the
-warning (the drop still happens). If no rows are dropped the input columns are
-returned unchanged.
+warning (the drop still happens). After a complete-case pass, a
+`Union{Missing,T<:Number}` predictor with no remaining missings is narrowed
+to `T` so `drm` does not dummy-code it (issue #1111). `Vector{Any}` columns
+(R `factor()` via the bridge) are left alone.
 """
 function drm_listwise(formula::Union{DrmFormula,BivariateDrmFormula}, data; verbose::Bool = true)
     Tables.istable(data) ||
@@ -109,11 +107,15 @@ function drm_listwise(formula::Union{DrmFormula,BivariateDrmFormula}, data; verb
               "This discards partial information — see issue #49 for the FIML alternative."
     end
 
-    ndropped == 0 && return cols
+    if ndropped == 0
+        # Even when nothing is dropped, narrow complete Union{Missing,T<:Number}
+        # columns (#1111). Do not `identity.` a `Vector{Any}` R-factor column.
+        names = keys(cols)
+        return NamedTuple{names}(map(_narrow_union_missing_numeric, values(cols)))
+    end
     # Subset every column of the table (not just model columns) so downstream code
     # that reaches for extra columns still sees aligned, complete rows. `identity.`
     # re-narrows each kept column's eltype — dropping the now-impossible `Missing`
     # from a `Union{Missing,T}` column so the result is a plain `Vector{T}`.
-    # `drm` itself also narrows a complete `Union{Missing,T}` predictor (#1111).
     return NamedTuple{keys(cols)}(map(col -> identity.(col[keep]), values(cols)))
 end

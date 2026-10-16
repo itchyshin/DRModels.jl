@@ -14,9 +14,10 @@ Refs #1089, #1111, #931.
 - **#1089** `_design` runs `_prepare_predictor_table` first. An actual `missing`
   in a predictor is an `ArgumentError` naming `drm_listwise`. drm still does
   not drop incomplete predictor rows.
-- **#1111** A `Union{Missing,T}` predictor with no missings is narrowed with
-  `identity.` so StatsModels keeps it numeric (the dummy-coded-missing-as-a
-  factor bug).
+- **#1111** A `Union{Missing,T<:Number}` predictor with no missings is
+  narrowed so StatsModels keeps it numeric. `Vector{Any}` is left alone
+  (the R bridge's `factor()` encoding). `drm_listwise`'s no-drop branch
+  does the same narrowing.
 - **#931 option (b)** Every `drm` method takes `weights = nothing`.
   Fixed-effect Gaussian / Poisson / Gamma / Beta multiply the per-row
   log-likelihood; integer weights match row duplication. Random-effect,
@@ -35,8 +36,11 @@ Refs #1089, #1111, #931.
 ## 4. Verification
 
 - Red-proof: `test/test_fx4_missing_predictor_weights.jl` failed on the pin
-  (KeyError, MethodError, `ones()` stub) and passes after the fix.
-- `Pkg.test()` after the fix.
+  (KeyError, MethodError, `ones()` stub) and passes after the fix (31 tests).
+- Sibling: `test_bridge_base_r_names.jl` row 7 (`factor(h)`) failed when
+  `identity.` narrowed `Vector{Any}`; after skipping `Any`, 20/20 pass.
+- `test_missing_listwise.jl` 30/30; `test_comparison.jl` 12/12
+  (`weights(fit) === nothing`).
 
 ## 5. Rose audit
 

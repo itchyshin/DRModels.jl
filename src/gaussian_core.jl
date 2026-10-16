@@ -498,9 +498,24 @@ catch
     nothing
 end
 
+# Narrow a complete `Union{Missing,T<:Number}` column so StatsModels keeps it
+# continuous (#1111). Never touch `Vector{Any}`: the R bridge materialises
+# `factor(x)` as `Any` so StatsModels takes the categorical branch
+# (`bridge.jl`). Blanket `identity.` would turn a numeric factor back into a
+# slope.
+_narrow_union_missing_numeric(col) = col
+function _narrow_union_missing_numeric(col::AbstractVector)
+    et = eltype(col)
+    et === Any && return col
+    Missing <: et || return col
+    nonmissingtype(et) <: Number || return col
+    any(ismissing, col) && return col
+    return identity.(col)
+end
+
 # Fit-time predictor hygiene (#1089, #1111). Errors on actual `missing` cells
-# (pointing at `drm_listwise`); narrows a `Union{Missing,T}` column with no
-# missings so StatsModels treats a numeric predictor as numeric.
+# (pointing at `drm_listwise`); narrows a complete `Union{Missing,T<:Number}`
+# column so StatsModels treats it as numeric. Leaves `Vector{Any}` alone.
 function _prepare_predictor_table(rhs, data, response::Symbol)
     cols = _rhs_columns(rhs)
     cols === nothing && return data
@@ -515,9 +530,8 @@ function _prepare_predictor_table(rhs, data, response::Symbol)
             push!(missing_cols, c)
             continue
         end
-        if Missing <: eltype(col)
-            design_data = _replace_table_column(design_data, c, identity.(col))
-        end
+        narrowed = _narrow_union_missing_numeric(col)
+        narrowed === col || (design_data = _replace_table_column(design_data, c, narrowed))
     end
     isempty(missing_cols) || throw(ArgumentError(
         "drm: predictor column(s) " * join("`" .* string.(missing_cols) .* "`", ", ") *

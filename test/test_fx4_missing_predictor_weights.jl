@@ -47,6 +47,19 @@ using LinearAlgebra
         @test length(coef(fit, :mu)) == 2
         @test isfinite(loglik(fit))
         @test is_converged(fit)
+        # drm_listwise no-drop must also narrow (#1111); it used to return the
+        # Union column unchanged.
+        f = bf(@formula(y ~ 1 + x), @formula(sigma ~ 1))
+        clean = drm_listwise(f, (; y, x); verbose = false)
+        @test eltype(clean.x) === Float64
+        @test length(coef(drm(f, Gaussian(); data = clean), :mu)) == 2
+        # Vector{Any} is the bridge's R `factor()` encoding — must stay
+        # categorical, not be identity.'d into a slope. Four numeric levels
+        # dummy-code as intercept + 3 dummies; a continuous column is 2.
+        h = Any[Float64(mod1(i, 4)) for i in 1:n]
+        fit_fac = drm(bf(@formula(y ~ 1 + h), @formula(sigma ~ 1)), Gaussian();
+                      data = (; y, h))
+        @test length(coef(fit_fac, :mu)) == 4
     end
 
     @testset "#931 weights= is a named keyword, not a MethodError" begin
