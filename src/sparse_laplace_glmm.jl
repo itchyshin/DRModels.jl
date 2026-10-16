@@ -180,6 +180,13 @@ const _SE_MODE_TOL = 1e-12
 # still accurate to ~1e-8 -- far below the old stencil noise.
 const _SE_MODE_TOLS = (1e-12, 1e-10, 1e-8)
 const _SE_MODE_MAXITER = 100
+# Loosest inner-mode tolerance a `_se_grad` Hessian build actually used (NaN until a
+# stencil point succeeds). Tests read it; `_warn_se_mode_fallback` warns at 1e-8.
+const _SE_MODE_TOL_USED = Ref(NaN)
+# Attempts of `_crossed_nuisance_box_refit`. Tests reset this and assert it is
+# nonzero on a known run-off, so a family whose inner fits use `se = false`
+# cannot pass by construction (the Tweedie crossed route).
+const _CROSSED_NUISANCE_BOX_REFITS = Ref(0)
 
 function _finite_hessian_from_gradient(grad!, x; require_pd::Bool = true,
                                        context::AbstractString = "Laplace")
@@ -243,19 +250,34 @@ _warn_value_hessian(context::AbstractString) =
           "finite-difference Hessian. Its standard errors are known to be noisy (inner-solve " *
           "noise / h^2); treat them with caution.")
 
-# Adapt a route's tight, cold-started `fg(θ) -> (val, grad, b, ok)` into the
+# Adapt a route's tight, cold-started `fg(θ, tol) -> (val, grad, b, ok)` into the
 # in-place `grad!(Gout, θ)` that `_finite_hessian_from_gradient` differences.
 # A failed inner solve becomes NaN, which the helper turns into an all-NaN vcov.
+# Single definition of the tolerance ladder: callers pass `tol` into `fgtight`.
+# #1079 currently has a one-shot `_se_grad(fgtight(θ))` twin; whichever of
+# #1079 / #1099 lands second deletes the duplicate and keeps this ladder.
 _se_grad(fgtight) = function (Gout, θ)
     for tol in _SE_MODE_TOLS
         _, g, _, ok = fgtight(θ, tol)
         if ok
             Gout .= g
+            prev = _SE_MODE_TOL_USED[]
+            _SE_MODE_TOL_USED[] = isnan(prev) ? Float64(tol) : max(prev, Float64(tol))
             return Gout
         end
     end
     Gout .= NaN
     return Gout
+end
+
+# The 1e-8 rung of `_SE_MODE_TOLS` is a last resort: a NaN vcov is worse, but the
+# inner solve is looser than the usual SE path. Warn once per Hessian (the
+# caller reads `_SE_MODE_TOL_USED`). Silent inside bootstrap / profile refits.
+function _warn_se_mode_fallback(context::AbstractString, tol::Real)
+    (isfinite(tol) && tol == last(_SE_MODE_TOLS)) || return nothing
+    get(task_local_storage(), :drm_quiet_boundary, false) === true && return nothing
+    @warn("$context vcov: the SE inner mode solve could not reach $(first(_SE_MODE_TOLS)) and fell back to $tol. Standard errors still use the exact gradient, but the inner solve is looser than the usual SE path.")
+    return nothing
 end
 
 # Run-off guard for `_fit_crossed_mean_laplace_nuisance` (issue #1088).
@@ -296,6 +318,7 @@ end
 # upper side is not enough: the collapsed log SDs then run off downwards (to ~ -1e9 on the
 # #1088 sets) and the search misses an interior SD. Returns the Optim result, or `nothing`.
 function _crossed_nuisance_box_refit(nll, grad!, θ0, pμ::Int, disp_bound::Real, g_tol)
+    _CROSSED_NUISANCE_BOX_REFITS[] += 1
     np = length(θ0)
     lo = fill(-Inf, np); hi = fill(Inf, np)
     lo[pμ+1] = -disp_bound; hi[pμ+1] = disp_bound
@@ -3388,11 +3411,15 @@ function _fit_crossed_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, gi
         else
             # Tolerance ladder (ported from J3e, #1073): at log-dispersion in (3, 4) the
             # counts are heavy-tailed and the cold 1e-12 solve stalls on its rounding floor.
+            _SE_MODE_TOL_USED[] = NaN
             se_grad! = _se_grad((θ, tol) -> _crossed_mean_laplace_nuisance_fg(
                 kind, aux_from, n, Xμ, gidx, G, hidx, Hh, θ; grad = true,
                 b0 = zeros(G + Hh), mode_tol = tol, mode_maxiter = _SE_MODE_MAXITER))
-            _finite_hessian_from_gradient(se_grad!, θ̂;
+            Hgrad = _finite_hessian_from_gradient(se_grad!, θ̂;
                 context = "sparse-Laplace GLMM (crossed-mean nuisance)")
+            _warn_se_mode_fallback("sparse-Laplace GLMM (crossed-mean nuisance)",
+                                   _SE_MODE_TOL_USED[])
+            Hgrad
         end
         _vcov_from_fd_hessian(Hθ; context = "sparse-Laplace GLMM (crossed-mean nuisance)")
     else
@@ -3706,7 +3733,8 @@ function _fit_nb2_crossed_aghq(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol; se::B
 end
 
 function _fit_gamma_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
-                                    se::Bool = true, polish_iterations::Int = 5)
+                                    se::Bool = true, polish_iterations::Int = 5,
+                                    recover_runoff::Bool = true)
     length(comps) == 2 || error("_fit_gamma_crossed_laplace requires two random-intercept components")
     (size(Xσ, 2) == 1 && all(==(1.0), @view Xσ[:, 1])) || error("drm(Gamma()): crossed random intercepts `(1 | g) + (1 | h)` require `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
     yv = Float64.(y)
@@ -3724,7 +3752,7 @@ function _fit_gamma_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
         fam, Val(:gamma_fixed), aux_from, length(yv), Xμ, comps[1][2], comps[1][3],
         comps[2][2], comps[2][3], nmμ, nmσ, [comps[1][4], comps[2][4]], g_tol;
         θβ0 = θβ0, θσ0 = -0.5 * log(α0), sigma_scale = exp,
-        se = se, polish_iterations = polish_iterations
+        se = se, polish_iterations = polish_iterations, recover_runoff = recover_runoff
     )
 end
 

@@ -108,9 +108,13 @@ and TMB 1.9.23 from conda-forge. The `drmTMB_commit` in each `ref.toml` is set b
   An unfloored start reaches drmTMB's point on the three sets; on n = 800 that is the code-1
   point at 198.2952, above the box re-fit's 198.2334. It would change every NB2 crossed fit,
   so it is left for an estimates-affecting slice.
-- The run-off recovery is demonstrated on NB2 only. On Gamma, Beta, BetaBinomial and Tweedie
-  the guard is inert on the existing tests (0 re-fit calls), and no run-off case has been
-  constructed for them.
+- The run-off recovery was first demonstrated on NB2 only. A Gamma crossed run-off
+  (`gamma_runoff_s7_n200`, shape 0.002) is now in `test_1088`: on base `740521f4` it ends at
+  log SDs 18.55 / 25.32 with `converged = false`; with the box re-fit the counter is 1 and
+  the fit is inside the box. Tweedie was not used: its crossed inner fits use `se = false`,
+  so the existing `test_crossed_tweedie` is identical to base unless the re-fit fires, and
+  one public Tweedie crossed fit is 36+ CPU-min. Beta / BetaBinomial still have no run-off
+  case.
 
 ## 5. Rose audit (claim vs evidence, scope, drift, license)
 
@@ -124,8 +128,8 @@ Verdict: **clean after the fixes below.**
   and a test comment. All were corrected in `3152d2f`. Speed: only the re-fit's extra cost is
   given, as an upper bound measured under contention. The q = 4 engine's wall time is not
   claimed.
-- **Scope honesty.** The fix runs on five families' routes, but recovery is shown only for
-  NB2 (section 4). The SE ladder is a verbatim port from J3e and is labelled as such. The
+- **Scope honesty.** The fix runs on five families' routes. Recovery is shown for NB2
+  (this report) and Gamma (review-fix follow-up). The SE ladder is a verbatim port from J3e and is labelled as such. The
   n = 800 set is labelled not comparable (drmTMB code 1) and is not counted as a parity pass.
   The drmTMB s7 / n = 1500 SEs are all NaN, so only its optimum is compared.
 - **Verification gap.** CI does not run on this stacked PR (the workflow triggers on PRs
