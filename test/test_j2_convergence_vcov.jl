@@ -5,7 +5,7 @@
 # shown for a degenerate fit, a sentinel read as a CI endpoint) or the recorded
 # status the fix adds did not exist.
 using DRModels
-using Test, Random, LinearAlgebra, SparseArrays
+using Test, Random, LinearAlgebra, SparseArrays, Logging
 
 # Rebuild a fit with selected fields replaced (all 23 positional fields).
 function _j2_rebuild(fit; converged = fit.converged, scales = fit.scales, ranef = fit.ranef)
@@ -162,6 +162,59 @@ _j2_via_catch(e) = try; throw(e); catch err; DRModels._boundary_diagnostic_faile
         Dict(:mu => zeros(5)), Dict(:mu => collect(1.0:5.0)), Dict(:sigma => ones(5)),
         nothing, nothing, nothing, _J2BugDict(), :ML, NaN, -10.0, :LA)
     @test_throws ErrorException DRModels._warn_variance_boundary(fit)
+end
+
+# #1003, the other call sites of `_boundary_diagnostic_failed`: the temporal fit-time
+# advisory (`_warn_temporal_boundary`, src/temporal.jl) and both diagnostics inside
+# `check_drm` (src/inference.jl). The fits are synthetic; the failure is injected
+# through the one field each diagnostic reads that nothing else on that path reads.
+function _j2_diag_fit(blocks, coefnames, ranef)
+    k = sum(length(last(b)) for b in blocks)
+    return DRModels.DrmFit(Gaussian(), blocks, coefnames, zeros(k), Matrix(1.0I, k, k),
+        -10.0, 5, true, Dict(:mu => zeros(5)), Dict(:mu => collect(1.0:5.0)),
+        Dict(:sigma => ones(5)), nothing, nothing, nothing, ranef, :ML, NaN, -10.0, :LA)
+end
+_j2_variance_fit(ranef) = _j2_diag_fit(
+    [:mu => 1:1, :sigma => 2:2, :resd => 3:3],
+    [:mu => ["(Intercept)"], :sigma => ["(Intercept)"], :resd => ["g"]], ranef)
+_j2_temporal_fit(ranef) = _j2_diag_fit(
+    [:mu => 1:1, :sigma => 2:2],
+    [:mu => ["(Intercept)"], :sigma => ["(Intercept)"]], ranef)
+
+# A `temporal` info whose `gaps` (read by `_temporal_boundary` only) throws `err`.
+struct _J2TemporalInfo{I,E}
+    real::I
+    err::E
+end
+Base.getproperty(x::_J2TemporalInfo, s::Symbol) =
+    s === :gaps ? throw(getfield(x, :err)) : getproperty(getfield(x, :real), s)
+
+@testset "#1003 temporal and check_drm call sites: shape errors warn, anything else propagates" begin
+    shape = KeyError(:gaps)
+    bug = ErrorException("boom (test): not a shape error")
+    tfit(err) = _j2_temporal_fit((temporal = _J2TemporalInfo((structure = :homtoep,), err),))
+    quiet(f) = with_logger(f, NullLogger())
+
+    # Control: the same fit with a healthy `temporal` info is silent and reports no
+    # finding, so the injected error is what the cases below react to.
+    ok = _j2_temporal_fit((temporal = (structure = :homtoep, gaps = [[0.0, 1.0, 2.0]]),))
+    @test_logs min_level = Logging.Warn DRModels._warn_variance_boundary(ok)
+    rep = quiet(() -> check_drm(ok))
+    @test rep.temporal_boundary !== nothing && !rep.temporal_boundary.at_boundary
+
+    # Temporal advisory at fit time (src/temporal.jl `_warn_temporal_boundary`).
+    @test_logs (:warn, r"temporal-boundary diagnostic failed") match_mode = :any DRModels._warn_variance_boundary(tfit(shape))
+    @test_throws ErrorException DRModels._warn_variance_boundary(tfit(bug))
+
+    # Temporal diagnostic inside check_drm (src/inference.jl).
+    rep = @test_logs (:warn, r"temporal-boundary diagnostic failed") match_mode = :any check_drm(tfit(shape))
+    @test rep.temporal_boundary === nothing
+    @test_throws ErrorException quiet(() -> check_drm(tfit(bug)))
+
+    # Variance diagnostic inside check_drm (src/inference.jl).
+    rep = @test_logs (:warn, r"variance-boundary diagnostic failed") match_mode = :any check_drm(_j2_variance_fit(_J2ThrowingDict()))
+    @test rep.variance_boundary === nothing
+    @test_throws ErrorException quiet(() -> check_drm(_j2_variance_fit(_J2BugDict())))
 end
 
 @testset "#1005 Nelder-Mead locscale results need an exact-gradient certificate" begin
