@@ -101,12 +101,12 @@ end
                                                  ["(Intercept)", "x"], 1e-7; se = true)
     @test fit.converged
     θ = copy(fit.theta)
+    spec = DenseSpec(2, X, hcat(indicator(gidx, Gn), indicator(hidx, Hn)), obs_binomial(s, ntr),
+                     prior_iid([Gn, Hn], [3, 4]))
     # the dense objective is the route's objective up to a constant
     θ2 = θ .+ [0.01, -0.02, 0.03, -0.02]
-    @test (dense_binomial_crossed_nll(θ2, s, ntr, X, gidx, hidx, Gn, Hn) -
-           dense_binomial_crossed_nll(θ, s, ntr, X, gidx, hidx, Gn, Hn)) ≈ fit.nll(θ2) - fit.nll(θ) atol = 1e-6
-    Href = dense_binomial_crossed_hessian(θ, s, ntr, X, gidx, hidx, Gn, Hn)
-    se_ref = sqrt.(diag(inv(Symmetric((Href .+ Href') ./ 2))))
+    @test dense_laplace_nll(θ2, spec) - dense_laplace_nll(θ, spec) ≈ fit.nll(θ2) - fit.nll(θ) atol = 1e-6
+    se_ref = dense_laplace_se(θ, spec)
     se = sqrt.(diag(fit.vcov))
     @test all(abs.(se ./ se_ref .- 1) .< 1e-4)
 end
