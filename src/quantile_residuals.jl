@@ -250,14 +250,15 @@ function _ranef_marginal_mix(fit::DrmFit, fam, μ)
     linkpair = _ranef_link(fam)
     linkpair === nothing && return nothing
     # #995 / #996: a Gaussian sparse / EM `phylo(1 | g)` fit stores the CONDITIONAL
-    # mean in `fit.means` (BLUPs included), so centre the quadrature on the
-    # fixed-effect mean `Xβ̂` it also carries, and give tip i its prior SD
-    # σ_b √C_ii (raw branch-length scale). The marginal is then exactly
-    # N(x_i'β̂, σ_e² + σ_b² C_ii); nothing is double-counted, so no warning.
+    # mean in `fit.means` (BLUPs included), so centre on the fixed-effect mean
+    # `Xβ̂` it also carries, and give tip i its prior variance σ_b² C_ii (raw
+    # branch-length scale). The marginal N(x_i'β̂, σ_e² + σ_b² C_ii) is closed
+    # form, so `_cdf_value` evaluates it directly: the 32-node quadrature is off
+    # by 6e-3 in the residual at σ_b √C_ii / σ_e = 4 and by 0.12 at 10. Nothing
+    # is double-counted, so no warning.
     if fit.ranef isa LocOnlyRanef && fam isa Gaussian
-        rt2σb_row = sqrt(2.0) * σb .* sqrt.(_loconly_row_tip_variance(fit.ranef))
-        return (axis = :mu, invlink = identity, eta0 = fit.ranef.mu_fixed,
-                rt2σb = rt2σb_row, z = z, wk = w ./ sqrt(π))
+        return (axis = :mu_gaussian, eta0 = fit.ranef.mu_fixed,
+                vb = σb^2 .* _loconly_row_tip_variance(fit.ranef))
     end
     _structured_mean_re(fit) && _warn_structured_pit()
     link, invlink = linkpair
@@ -274,6 +275,10 @@ function _cdf_value(fam, i, yval; μ, scales, obs, gsis, mix)
         d = _conditional_dist(fam, i; μ = μ, scales = scales, obs = obs, gamma_sigma_is_shape = gsis)
         return Distributions.cdf(d, yval)
     end
+    if mix.axis === :mu_gaussian   # closed-form Gaussian marginal (#995 / #996)
+        return Distributions.cdf(Distributions.Normal(mix.eta0[i],
+                                     sqrt(scales[:sigma][i]^2 + mix.vb[i])), yval)
+    end
     acc = 0.0
     scales_i = _at_index(scales, i); obs_i = _at_index(obs, i)
     if mix.axis === :sigma
@@ -285,9 +290,8 @@ function _cdf_value(fam, i, yval; μ, scales, obs, gsis, mix)
         end
         return acc
     end
-    rt2σb = mix.rt2σb isa AbstractVector ? mix.rt2σb[i] : mix.rt2σb   # per-tip SD for phylo (#996)
     @inbounds for k in eachindex(mix.z)
-        μk = mix.invlink(mix.eta0[i] + rt2σb * mix.z[k])
+        μk = mix.invlink(mix.eta0[i] + mix.rt2σb * mix.z[k])
         d = _conditional_dist(fam, 1; μ = [μk], scales = scales_i, obs = obs_i, gamma_sigma_is_shape = gsis)
         acc += mix.wk[k] * Distributions.cdf(d, yval)
     end

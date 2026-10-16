@@ -134,21 +134,15 @@ Base.get(r::LocOnlyRanef, k, default) = get(r.effects, k, default)
 Base.haskey(r::LocOnlyRanef, k) = haskey(r.effects, k)
 
 # C_ii for each data row: the diagonal of the raw branch-length tip covariance
-# `Q_cond⁻¹` at the row's tip (Cov(u) = σ_phy² Q_cond⁻¹, see `build_M`). One
-# sparse solve per distinct tip (O(p) solves, so O(p²) in the number of tips);
-# `_loconly_row_tip_variance(::LocOnlyRanef)` below caches the result so repeated
-# `residuals(type = :quantile)` calls on one fit pay it once.
+# `Q_cond⁻¹` at the row's tip (Cov(u) = σ_phy² Q_cond⁻¹, see `build_M`). The
+# diagonal always lies in the Cholesky pattern, so the Takahashi selected
+# inverse returns it exactly in O(nnz(L)), which is O(p) on a tree precision
+# (the leaf-variance idiom of `gaussian_sparse_lss.jl`). One solve per tip
+# would be O(p²). `_loconly_row_tip_variance(::LocOnlyRanef)` below caches the
+# result so repeated `residuals(type = :quantile)` calls on one fit pay it once.
 function _loconly_row_tip_variance(prob::LocOnlyProblem)
-    F = cholesky(Symmetric(prob.Q_cond))
-    tv = fill(NaN, prob.p)
-    e = zeros(prob.n_keep)
-    for k in unique(prob.species)
-        j = prob.leaf_pos[k]
-        e[j] = 1.0
-        tv[k] = (F \ e)[j]
-        e[j] = 0.0
-    end
-    return tv[prob.species]
+    d = takahashi_diag(cholesky(Symmetric(prob.Q_cond)))
+    return d[prob.leaf_pos[prob.species]]
 end
 
 function _loconly_row_tip_variance(r::LocOnlyRanef)
