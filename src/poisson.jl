@@ -101,9 +101,9 @@ function _extract_offset(rhs)
     for t in terms
         if t isa FunctionTerm && t.f === offset
             offset_term === nothing ||
-                error("Poisson(): only one `offset(...)` term is supported")
+                error("drm: only one `offset(...)` term is supported")
             length(t.args) == 1 ||
-                error("Poisson(): `offset(...)` takes exactly one term, e.g. `offset(log_exposure)`")
+                error("drm: `offset(...)` takes exactly one term, e.g. `offset(log_exposure)`")
             offset_term = t.args[1]
         else
             push!(fixed, t)
@@ -112,6 +112,35 @@ function _extract_offset(rhs)
     fixed_rhs = isempty(fixed) ? ConstantTerm(1) :
                 length(fixed) == 1 ? fixed[1] : Tuple(fixed)
     return fixed_rhs, offset_term
+end
+
+# #938: linear predictor with an optional fixed offset. `offset === nothing`
+# is the offset-free path (identical arithmetic to the previous `Xμ * β`).
+_eta_with_offset(X, β, ::Nothing) = X * β
+_eta_with_offset(X, β, offset) = X * β .+ offset
+
+# #938: shift an intercept start value by the mean offset, so a fit with a large
+# offset (e.g. log exposure ≈ 5) does not start far from its optimum. A start
+# value only; it never changes the objective. Applied only when column 1 of `X`
+# is an intercept.
+function _offset_start(θβ0, X, offset)
+    θ = collect(Float64, θβ0)
+    if offset !== nothing && !isempty(θ) && size(X, 2) ≥ 1 && all(==(1.0), @view X[:, 1])
+        θ[1] -= sum(offset) / length(offset)
+    end
+    return θ
+end
+
+# #938: evaluate the offset of a fit that applies one, with the per-observation
+# length and finiteness checks every applying route needs. `nothing` -> `nothing`.
+function _offset_for_fit(fam, offset_term, data, n::Integer)
+    offset_term === nothing && return nothing
+    off = _offset_vector(offset_term, data)
+    length(off) == n ||
+        throw(ArgumentError("$(nameof(typeof(fam)))(): `offset(...)` must have one value per observation"))
+    all(isfinite, off) ||
+        throw(ArgumentError("$(nameof(typeof(fam)))(): `offset(...)` must be finite for every observation"))
+    return off
 end
 
 # Evaluate an `offset(...)` term (a plain column reference or an arbitrary
@@ -124,7 +153,7 @@ function _offset_vector(offset_term, data)
     v = modelcols(t, data)
     v isa AbstractMatrix && size(v, 2) == 1 && (v = vec(v))
     v isa AbstractVector ||
-        error("Poisson(): `offset(...)` must resolve to a single numeric column")
+        error("drm: `offset(...)` must resolve to a single numeric column")
     return Float64.(v)
 end
 

@@ -7,7 +7,7 @@
 # brms / drmTMB. Each formula's left-hand side names its distributional
 # parameter — `y ~ …` sets the response + μ predictor, `sigma ~ …` sets log σ.
 
-using StatsModels: @formula, FormulaTerm, Term, ConstantTerm, FunctionTerm,
+using StatsModels: @formula, FormulaTerm, Term, ConstantTerm, FunctionTerm, InteractionTerm,
     schema, apply_schema, modelcols, coefnames
 using Statistics: std, mean
 using Random: default_rng
@@ -380,6 +380,28 @@ function _replace_table_column(data, name::Symbol, replacement)
     return NamedTuple{names}(Tuple(vals))
 end
 
+# #938: `offset(z)` is a marker with a coefficient FIXED at 1. A route that applies
+# it strips the marker (`_extract_offset`) BEFORE it builds a design matrix, so an
+# `offset(...)` term still present in a right-hand side handed to `_design` means
+# the route cannot hold it fixed. Building the column anyway would give it a free,
+# estimated coefficient (a silently different model), so refuse instead. Every
+# fixed-effect design in the package is built here, so this one check covers every
+# family and every distributional parameter (`sigma`, `nu`, `zi`, `hu`, …).
+_has_offset_term(::Any) = false
+_has_offset_term(t::FunctionTerm) = t.f === offset || any(_has_offset_term, t.args)
+_has_offset_term(t::InteractionTerm) = any(_has_offset_term, t.terms)
+_has_offset_term(t::Tuple) = any(_has_offset_term, t)
+
+function _refuse_unapplied_offset(response::Symbol, rhs)
+    throw(ArgumentError("drm: `offset(...)` cannot be held fixed (coefficient 1) on this fit " *
+        "route, so it is refused rather than estimated as an ordinary covariate: " *
+        "`$(response) ~ $(rhs)`. An offset is applied only on the mean `mu` of " *
+        "Gaussian (identity link), Poisson and NegBinomial2 (log link) fits without " *
+        "`zi`/`hu`, structured effects, or crossed/slope random effects; it is not " *
+        "supported in `sigma`, `nu`, `zi` or `hu`. Fold it into the data instead " *
+        "(shift or rescale the response), or drop it. See issue #938."))
+end
+
 # Build a design matrix for one parameter's RHS. We reuse the response as a
 # dummy LHS so the formula is valid for `schema`/`modelcols`, then keep only the
 # predictor matrix. If the real response contains `missing` / `NaN`, the formula
@@ -387,6 +409,7 @@ end
 # at unobserved response positions.
 function _design(response::Symbol, rhs, data; schema_cache = nothing, schema_key = nothing,
                  store_schema::Bool = true)
+    _has_offset_term(rhs) && _refuse_unapplied_offset(response, rhs)    # #938
     raw_response = _table_column(data, response)
     y_response, observed = _coerce_response_column(raw_response)
     design_data = all(observed) ? data :
@@ -561,6 +584,15 @@ quadrature; wherever the Gaussian marginal is closed-form it is exact).
 `:Laplace` always means the Laplace approximation drmTMB computes. Bootstrap
 refits of a `:Laplace` fit use `:Laplace` too.
 
+## `offset(z)` on the mean
+
+`offset(z)` in the mean formula enters the linear predictor with its coefficient
+fixed at 1: `μ = Xβ + z`. It is never a column of the design matrix and never a
+parameter. With the identity link this is exactly the fit of `y - z`, so it is
+applied by shifting the response and adding `z` back into the fitted means;
+`predict(fit, newdata)` needs `z` in `newdata`. It is not supported in `sigma`
+(refused with an error), and not with missing or `NaN` responses.
+
 ## Missing response handling
 
 Incomplete responses (`missing` or `NaN` in `y`) are supported under the
@@ -570,9 +602,63 @@ are parameterised over all G levels, while the likelihood is evaluated on
 observed rows.
 """
 function drm(f::DrmFormula, fam::Gaussian; kwargs...)
+    # #938: `offset(z)` on the identity-link mean is an additive known constant, so
+    # the fit of `y ~ x + offset(z)` is exactly the fit of `y - z ~ x` (likelihood,
+    # REML likelihood and every variance component are unchanged). Fit the shifted
+    # problem and put the offset back into the fitted means.
+    f_fit, kw_fit, off = _gaussian_offset_shift(f, kwargs)
     # The residual-variance / structured-variance BOUNDARY advisory (#724, #697) is
     # attached here, once, rather than in each of the fitter's return paths.
-    return _warn_variance_boundary(_drm_gaussian_fit(f, fam; kwargs...))
+    fit = _warn_variance_boundary(_drm_gaussian_fit(f_fit, fam; kw_fit...))
+    return off === nothing ? fit : _gaussian_offset_restore(fit, f, off)
+end
+
+# Strip an `offset(...)` from the Gaussian mean and shift the response by it.
+# Returns `(formula, kwargs, offset_or_nothing)`; with no offset it returns its
+# inputs untouched. A term nested inside another term (e.g. `x * offset(z)`) is
+# not stripped and is refused by the `_design` guard.
+function _gaussian_offset_shift(f::DrmFormula, kwargs)
+    mu_rhs = nothing
+    for (p, r) in f.forms
+        p === :mu && (mu_rhs = r)
+    end
+    (mu_rhs !== nothing && _has_offset_term(mu_rhs)) || return f, kwargs, nothing
+    haskey(kwargs, :data) || return f, kwargs, nothing   # the missing `data` error is raised downstream
+    _has_joint_mi(f) && return f, kwargs, nothing        # joint mi() frontend refuses offsets itself
+    rhs_fixed, offset_term = _extract_offset(mu_rhs)
+    offset_term === nothing && return f, kwargs, nothing
+    data = kwargs[:data]
+    raw = _table_column(data, f.response)
+    (any(ismissing, raw) || any(v -> v isa Real && isnan(v), raw)) &&
+        throw(ArgumentError("Gaussian(): `offset(...)` is not supported with missing or NaN " *
+            "responses (the offset is applied by shifting the response); drop those rows first."))
+    off = _offset_vector(offset_term, data)
+    length(off) == length(raw) ||
+        throw(ArgumentError("Gaussian(): `offset(...)` must have one value per observation"))
+    all(isfinite, off) ||
+        throw(ArgumentError("Gaussian(): `offset(...)` must be finite for every observation"))
+    forms = Pair{Symbol,Any}[p => (p === :mu ? rhs_fixed : r) for (p, r) in f.forms]
+    f_shift = DrmFormula(f.response, forms, f.response2, f.schema_cache)
+    data_shift = _replace_table_column(data, f.response, Float64.(raw) .- off)
+    return f_shift, merge((; kwargs...), (; data = data_shift)), off
+end
+
+# Undo the response shift on the fitted object: the fitted means gain the offset
+# back, the observed response is the original one, and the stored formula is the
+# user's (so `predict(newdata)` strips and re-applies the offset).
+_gaussian_offset_restore(fit, ::DrmFormula, ::AbstractVector{Float64}) =
+    throw(ArgumentError("Gaussian(): `offset(...)` is not supported on this fit route " *
+        "(it returned a $(nameof(typeof(fit))), not a DrmFit); remove the offset or fit " *
+        "`y - offset` explicitly."))
+function _gaussian_offset_restore(fit::DrmFit, f_orig::DrmFormula, off::AbstractVector{Float64})
+    (haskey(fit.means, :mu) && length(fit.means[:mu]) == length(off) &&
+     haskey(fit.obs, :mu) && length(fit.obs[:mu]) == length(off)) ||
+        throw(ArgumentError("Gaussian(): `offset(...)` is not supported on this fit route " *
+            "(the fitted means are not one per observation); remove the offset or fit " *
+            "`y - offset` explicitly."))
+    fit.means[:mu] = fit.means[:mu] .+ off
+    fit.obs[:mu] = fit.obs[:mu] .+ off
+    return _withformula(fit, f_orig)
 end
 
 function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree = nothing, coords = nothing, g_tol::Real = 1e-8, algorithm::Symbol = :auto, method::Symbol = :ML, profile_ci::Bool = false, phylo_coupled::Bool = false, penalty = nothing, sparse = nothing, impute = nothing, missing = nothing, marginal::Symbol = :LA)
@@ -1836,10 +1922,11 @@ end
 
 # Strip an `offset(...)` term from parameter `p`'s fixed RHS and evaluate it on
 # `newdata` (#1006). Only an offset the fitter actually APPLIED is handled here:
-# the Poisson mean strips it at fit time (`_extract_offset`, poisson.jl), so its
-# fitted names carry no `offset(...)` column. A family that does not strip it
-# fitted the term as an ordinary covariate with its own coefficient, so it stays
-# in the design and is predicted the same way it was fitted.
+# Gaussian, Poisson and NegBinomial2 strip it at fit time (`_extract_offset`,
+# poisson.jl), so their fitted names carry no `offset(...)` column. Since #938 no
+# route fits an `offset(...)` as an ordinary covariate (the `_design` guard refuses
+# it); the `startswith(n, "offset(")` test below only keeps a fit object from an
+# older version predicting the way it was fitted.
 function _predict_offset(fit::DrmFit, rhs, nd, p::Symbol)
     p === :mu || return rhs, nothing
     fitted = _block_coefnames(fit, p)

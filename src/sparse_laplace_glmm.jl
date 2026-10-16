@@ -401,7 +401,7 @@ introduces. Returns `(val[, grad], b, ok)`; on a non-PD inner solve `ok = false`
 function _poisson_phylo_laplace_fg(y, Xμ, leaf_node, Q, logdetQ, lf, θ;
                                    grad::Bool = false, b0 = nothing,
                                    newton_tol::Real = 1e-10, newton_maxiter::Int = 60,
-                                   raw_scales::Bool = false)
+                                   raw_scales::Bool = false, offset = nothing)
     # newton_tol was 1e-8 until 2026-08-26. That is tight enough for coefficients
     # and logLik (parity ~1e-8) but NOT for the SECOND-derivative quantity: the
     # inner mode's residual error propagates into the Hessian, and therefore into
@@ -424,7 +424,7 @@ function _poisson_phylo_laplace_fg(y, Xμ, leaf_node, Q, logdetQ, lf, θ;
     # the same function everywhere, as TMB's does. Default: unchanged clamp.
     logσ = raw_scales ? θ[pμ+1] : clamp(θ[pμ+1], -8.0, 3.0)
     invσ2 = exp(-2 * logσ)
-    η0 = Xμ * βμ
+    η0 = _eta_with_offset(Xμ, βμ, offset)       # #938: offset(...) fixed at 1, never in θ
     b, ch, _, ok = _poisson_phylo_mode(y, η0, leaf_node, Q, logσ;
                                        b0 = b0, tol = newton_tol, maxiter = newton_maxiter)
     if !ok
@@ -718,7 +718,7 @@ function _phylo_mean_laplace_nuisance_fg(kind, aux_from, n::Int, Xμ, leaf_node,
                                          Q, logdetQ, θ; grad::Bool = false,
                                          b0 = nothing, newton_tol::Real = 1e-10,
                                          newton_maxiter::Int = 60,
-                                         raw_scales::Bool = false)
+                                         raw_scales::Bool = false, offset = nothing)
     pμ = length(θ) - 2
     βμ = θ[1:pμ]
     # `raw_scales = true`: no clamp on the dispersion or the RE log-SD (see
@@ -726,7 +726,7 @@ function _phylo_mean_laplace_nuisance_fg(kind, aux_from, n::Int, Xμ, leaf_node,
     θσ = raw_scales ? θ[pμ+1] : clamp(θ[pμ+1], -8.0, 8.0)
     logσ = raw_scales ? θ[pμ+2] : clamp(θ[pμ+2], -8.0, 3.0)
     aux = aux_from(θσ)
-    η0 = Xμ * βμ
+    η0 = _eta_with_offset(Xμ, βμ, offset)       # #938: offset(...) fixed at 1, never in θ
     b, ch, _, ok = _phylo_mean_mode(kind, aux, η0, leaf_node, Q, logσ; b0 = b0,
                                     tol = newton_tol, maxiter = newton_maxiter)
     if !ok
