@@ -153,7 +153,9 @@ function drm(f::BivariateDrmFormula, fam::Gaussian; data, tree = nothing,
              spatial_range = nothing,
              g_tol::Real = 1e-8, q4_g_tol::Real = 1e-3,
              q4_iterations::Int = 300, q4_n_newton::Int = 40,
-             q4_vcov::Bool = true, method::Symbol = :ML, V = nothing)
+             q4_vcov::Bool = true, method::Symbol = :ML, V = nothing,
+             weights = nothing)
+    _refuse_prior_weights(weights, "on bivariate Gaussian() fits")
     method in (:ML, :REML) ||
         throw(ArgumentError("drm: `method` must be :ML (default) or :REML (got :$method)"))
     rhs = Dict(f.forms)

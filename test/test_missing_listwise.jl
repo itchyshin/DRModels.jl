@@ -1,9 +1,9 @@
 # Missing-data handling (issue #49).
 #
 # Two jobs:
-#   (A) DOCUMENT current behaviour — a raw `missing`/`NaN` response or predictor
-#       makes `drm` ERROR (it does not silently produce a garbage fit). This pins
-#       the status quo so a future FIML/imputation path is a deliberate change.
+#   (A) DOCUMENT current behaviour — a raw `missing`/`NaN` RESPONSE is an
+#       observed-rows fit with a warning; a raw `missing` PREDICTOR is a named
+#       ArgumentError pointing at `drm_listwise` (#1089), not a silent drop.
 #   (B) ANCHOR the new `drm_listwise` complete-case preprocessing: it drops the
 #       right rows, warns, the cleaned data fits, and a listwise fit on
 #       MAR-deleted data recovers parameters ≈ the complete-data fit.

@@ -46,14 +46,22 @@ _logistic(η) = 1 / (1 + exp(-η))
 
 function drm(f::DrmFormula, fam::Beta; data, tree = nothing, K = nothing,
              A = nothing, coords = nothing, g_tol::Real = 1e-8, se::Bool = true,
-             marginal::Symbol = :LA, method = nothing)
+             marginal::Symbol = :LA, method = nothing, weights = nothing)
     _reject_method_as_marginal(fam, method)
-    _scalar_laplace_requested(marginal) &&     # Arc 2: TMB-convention Laplace, ordinary (1 | g)
+    if _scalar_laplace_requested(marginal)     # Arc 2: TMB-convention Laplace, ordinary (1 | g)
+        _refuse_prior_weights(weights, "on Beta() Laplace random-effect routes")
         return _drm_ordinary_laplace(f, fam; data = data, tree = tree, K = K, A = A,
                                      coords = coords, g_tol = g_tol, se = se, method = method)
+    end
+    observed = _formula_response_observed_mask(f, data)
+    w_pass = weights
+    if weights !== nothing && !all(observed)
+        w_pass = _validate_prior_weights(weights, length(observed))[observed]
+    end
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
         drm(f, fam; data = data_observed, tree = tree, K = K, A = A,
-            coords = coords, g_tol = g_tol, se = se, marginal = marginal, method = method)
+            coords = coords, g_tol = g_tol, se = se, marginal = marginal, method = method,
+            weights = w_pass)
     end
     missing_fit !== nothing && return missing_fit
 
@@ -76,6 +84,8 @@ function drm(f::DrmFormula, fam::Beta; data, tree = nothing, K = nothing,
     end
     y, Xμ, nmμ = _design(f.response, fixed_mu, data)
     _, Xσ, nmσ = _design(f.response, get(rhs, :sigma, ConstantTerm(1)), data)
+    _formula_has_ranef(f) &&
+        _refuse_prior_weights(weights, "on Beta() random-effect / structured routes")
     all(yi -> 0 < yi < 1, y) ||
         error("Beta() requires responses strictly in the open interval (0, 1)")
     if st !== nothing
@@ -129,7 +139,8 @@ function drm(f::DrmFormula, fam::Beta; data, tree = nothing, K = nothing,
         end
     end
     isva && _va_reject(fam, "no random intercept (fixed-effects-only)")
-    return _withformula(_fit_beta(fam, y, Xμ, Xσ, nmμ, nmσ, g_tol), f)
+    wts = _validate_prior_weights(weights, length(y))
+    return _withweights(_withformula(_fit_beta(fam, y, Xμ, Xσ, nmμ, nmσ, g_tol, wts), f), wts)
 end
 
 # Beta GLMM with a random intercept (1|g) on the logit mean. b_g ~ N(0,σ_b²)
@@ -203,19 +214,21 @@ function _fit_beta_corr_ranef(fam::Beta, y, Xμ, Xσ, xs, gidx, G, nmμ, nmσ, g
         Optim.iterations(res))
 end
 
-function _fit_beta(fam::Beta, y, Xμ, Xσ, nmμ, nmσ, g_tol)
+function _fit_beta(fam::Beta, y, Xμ, Xσ, nmμ, nmσ, g_tol, weights = nothing)
     n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     function nll(θ)
+        T = eltype(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
         # Soft guards (see `_softclamp` in negbinomial.jl): identity across the
         # original hard band so no legitimate fit is distorted, smooth beyond so
         # the gradient stays live — restoring agreement with drmTMB's smooth guard.
         ημ = _softclamp.(Xμ * βμ, -30.0, 30.0, 3.0)   # μ ∈ (0,1) strictly
         ησ = _softclamp.(Xσ * βσ, -15.0, 15.0, 3.0)   # φ = exp(-2ησ) finite & > 0
-        s = zero(eltype(θ))
+        s = zero(T)
         @inbounds for i in 1:n
             μ = _logistic(ημ[i]); φ = exp(-2 * ησ[i])
-            s -= Distributions.logpdf(Distributions.Beta(μ * φ, (1 - μ) * φ), y[i])
+            wi = _row_weight(weights, i, T)
+            s -= wi * Distributions.logpdf(Distributions.Beta(μ * φ, (1 - μ) * φ), y[i])
         end
         return s
     end

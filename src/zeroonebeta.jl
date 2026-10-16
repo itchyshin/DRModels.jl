@@ -47,7 +47,9 @@ fit_phy = drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ 1),
 struct ZeroOneBeta end
 
 function drm(f::DrmFormula, fam::ZeroOneBeta; data, tree = nothing, K = nothing,
-             A = nothing, coords = nothing, g_tol::Real = 1e-8, se::Bool = true)
+             A = nothing, coords = nothing, g_tol::Real = 1e-8, se::Bool = true,
+             weights = nothing)
+    _refuse_prior_weights(weights, "on ZeroOneBeta() fits")
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
         drm(f, fam; data = data_observed, tree = tree, K = K, A = A,
             coords = coords, g_tol = g_tol, se = se)

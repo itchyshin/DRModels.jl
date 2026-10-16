@@ -130,7 +130,8 @@ end
 
 function drm(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
              A = nothing, coords = nothing, g_tol::Real = 1e-8, se::Bool = true,
-             marginal::Symbol = :LA, method = nothing, nAGQ::Int = 5)
+             marginal::Symbol = :LA, method = nothing, nAGQ::Int = 5,
+             weights = nothing)
     # `method` is the ML/REML selector. LA/VA/AGHQ is `marginal` (Q1 / #136 / #448).
     # `:REML` is the opt-in Cox–Reid restricted objective, admitted on Poisson
     # `(1 | g)` GHQ under `:LA` (#443) and on `_fit_poisson_general_laplace`
@@ -139,14 +140,21 @@ function drm(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
     # than ignoring the request.
     meth = _reject_method_as_marginal(fam, method; allow_reml = true)
     reml = meth === :REML
-    _scalar_laplace_requested(marginal) &&     # Arc 2: TMB-convention Laplace, ordinary (1 | g)
+    if _scalar_laplace_requested(marginal)     # Arc 2: TMB-convention Laplace, ordinary (1 | g)
+        _refuse_prior_weights(weights, "on Poisson() Laplace random-effect routes")
         return _drm_ordinary_laplace(f, fam; data = data, tree = tree, K = K, A = A,
                                      coords = coords, g_tol = g_tol, se = se, method = method)
+    end
 
+    observed = _formula_response_observed_mask(f, data)
+    w_pass = weights
+    if weights !== nothing && !all(observed)
+        w_pass = _validate_prior_weights(weights, length(observed))[observed]
+    end
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
         drm(f, fam; data = data_observed, tree = tree, K = K, A = A,
             coords = coords, g_tol = g_tol, se = se, marginal = marginal,
-            method = method, nAGQ = nAGQ)
+            method = method, nAGQ = nAGQ, weights = w_pass)
     end
     missing_fit !== nothing && return missing_fit
 
@@ -160,6 +168,9 @@ function drm(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
         error("Poisson() does not support meta_V markers")
     fixed_mu, offset_term = _extract_offset(fixed_mu)     # #727: offset(log_exposure), coefficient fixed at 1
     y, Xμ, nmμ = _design(f.response, fixed_mu, data)
+    if _formula_has_ranef(f) || haskey(rhs, :zi) || haskey(rhs, :hu)
+        _refuse_prior_weights(weights, "on Poisson() random-effect / zi / hu routes")
+    end
     off = offset_term === nothing ? zeros(length(y)) : _offset_vector(offset_term, data)
     length(off) == length(y) ||
         error("Poisson(): `offset(...)` must have one value per observation")
@@ -265,7 +276,8 @@ function drm(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
         _, Xhu, nmhu = _design(f.response, rhs[:hu], data)
         return _withformula(_fit_poisson_hu(fam, y, Xμ, Xhu, nmμ, nmhu, g_tol), f)
     end
-    return _withformula(_fit_poisson(fam, y, Xμ, nmμ, g_tol; offset = off), f)
+    wts = _validate_prior_weights(weights, length(y))
+    return _withweights(_withformula(_fit_poisson(fam, y, Xμ, nmμ, g_tol; offset = off, weights = wts), f), wts)
 end
 
 # Resolve a structured marker (relmat/animal/spatial) for a count family to its
@@ -501,15 +513,18 @@ function _fit_poisson_hu(fam::Poisson, y, Xμ, Xhu, nmμ, nmhu, g_tol)
         Optim.iterations(res))
 end
 
-function _fit_poisson(fam::Poisson, y, Xμ, nmμ, g_tol; offset::AbstractVector{<:Real} = zeros(length(y)))
+function _fit_poisson(fam::Poisson, y, Xμ, nmμ, g_tol; offset::AbstractVector{<:Real} = zeros(length(y)),
+                      weights = nothing)
     n = length(y); pμ = size(Xμ, 2)
     lf = [_logfactorial(round(Int, yi)) for yi in y]    # constant log y! term
     off = Float64.(offset)
     function nll(θ)
+        T = eltype(θ)
         ημ = Xμ * θ .+ off                              # log λ; offset() coefficient fixed at 1
-        s = zero(eltype(θ))
+        s = zero(T)
         @inbounds for i in 1:n
-            s -= y[i] * ημ[i] - exp(ημ[i]) - lf[i]
+            wi = _row_weight(weights, i, T)
+            s -= wi * (y[i] * ημ[i] - exp(ημ[i]) - lf[i])
         end
         return s
     end

@@ -59,7 +59,8 @@ fit_phy = drm(bf(@formula(cbind(successes, failures) ~ x + phylo(1 | species)), 
 struct BetaBinomial end
 
 function drm(f::DrmFormula, fam::BetaBinomial; data, tree = nothing, g_tol::Real = 1e-8,
-             se::Bool = true, marginal::Symbol = :LA)
+             se::Bool = true, marginal::Symbol = :LA, weights = nothing)
+    _refuse_prior_weights(weights, "on BetaBinomial() fits")
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
         drm(f, fam; data = data_observed, tree = tree, g_tol = g_tol, se = se, marginal = marginal)
     end

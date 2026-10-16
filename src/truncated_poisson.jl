@@ -29,7 +29,8 @@ fit = drm(bf(y ~ x, hu ~ w), TruncatedPoisson(); data = dat)
 """
 struct TruncatedPoisson end
 
-function drm(f::DrmFormula, fam::TruncatedPoisson; data, g_tol::Real = 1e-8)
+function drm(f::DrmFormula, fam::TruncatedPoisson; data, g_tol::Real = 1e-8, weights = nothing)
+    _refuse_prior_weights(weights, "on TruncatedPoisson() fits")
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
         drm(f, fam; data = data_observed, g_tol = g_tol)
     end

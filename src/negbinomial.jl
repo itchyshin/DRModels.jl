@@ -79,7 +79,8 @@ struct NegBinomial2 end
 
 function drm(f::DrmFormula, fam::NegBinomial2; data, tree = nothing, K = nothing,
              A = nothing, coords = nothing, g_tol::Real = 1e-8, se::Bool = true,
-             marginal::Symbol = :LA, method = nothing)
+             marginal::Symbol = :LA, method = nothing, weights = nothing)
+    _refuse_prior_weights(weights, "on NegBinomial2() fits")
     _reject_method_as_marginal(fam, method)
     _scalar_laplace_requested(marginal) &&     # Arc 2: TMB-convention Laplace, ordinary (1 | g)
         return _drm_ordinary_laplace(f, fam; data = data, tree = tree, K = K, A = A,
@@ -488,7 +489,9 @@ fit = drm(bf(y ~ x, sigma ~ 1, hu ~ w), TruncatedNegBinomial2(); data = dat)
 """
 struct TruncatedNegBinomial2 end
 
-function drm(f::DrmFormula, fam::TruncatedNegBinomial2; data, g_tol::Real = 1e-8)
+function drm(f::DrmFormula, fam::TruncatedNegBinomial2; data, g_tol::Real = 1e-8,
+             weights = nothing)
+    _refuse_prior_weights(weights, "on TruncatedNegBinomial2() fits")
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
         drm(f, fam; data = data_observed, g_tol = g_tol)
     end

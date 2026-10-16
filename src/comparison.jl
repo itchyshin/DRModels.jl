@@ -311,20 +311,23 @@ function aicc(fit::DrmFit)
 end
 
 """
-    weights(fit::DrmFit) -> Vector{Float64}
+    weights(fit::DrmFit) -> Union{Nothing,Vector{Float64}}
 
 Prior (per-observation) weights used in the fit — drmTMB / glmmTMB's `weights()`.
-DRModels.jl fits do not currently store prior weights, so this returns
-`ones(nobs(fit))` (every observation weighted equally). Extends
-`StatsAPI.weights`.
+Unweighted fits return `nothing` (not a fake `ones(nobs)` vector). Weighted
+fixed-effect Gaussian / Poisson / Gamma / Beta fits return the vector passed to
+`drm(...; weights = w)` (issue #931). Extends `StatsAPI.weights`.
 
 # Example
 ```julia
 fit = drm(bf(@formula(y ~ 1 + x), @formula(sigma ~ 1)), Gaussian(); data)
-weights(fit) == ones(nobs(fit))   # all-ones prior weights
+weights(fit) === nothing          # unweighted
+fitw = drm(bf(@formula(y ~ 1 + x), @formula(sigma ~ 1)), Gaussian();
+           data, weights = fill(2.0, nobs(fit)))
+weights(fitw) == fill(2.0, nobs(fitw))
 ```
 """
-weights(fit::DrmFit) = ones(nobs(fit))
+weights(fit::DrmFit) = fit.prior_weights
 
 """
     update(fit::DrmFit, formula; data, kwargs...) -> DrmFit

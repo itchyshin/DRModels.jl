@@ -43,14 +43,22 @@ struct Gamma end
 
 function drm(f::DrmFormula, fam::Gamma; data, tree = nothing, K = nothing,
              A = nothing, coords = nothing, g_tol::Real = 1e-8, se::Bool = true,
-             marginal::Symbol = :LA, method = nothing)
+             marginal::Symbol = :LA, method = nothing, weights = nothing)
     _reject_method_as_marginal(fam, method)
-    _scalar_laplace_requested(marginal) &&     # Arc 2: TMB-convention Laplace, ordinary (1 | g)
+    if _scalar_laplace_requested(marginal)     # Arc 2: TMB-convention Laplace, ordinary (1 | g)
+        _refuse_prior_weights(weights, "on Gamma() Laplace random-effect routes")
         return _drm_ordinary_laplace(f, fam; data = data, tree = tree, K = K, A = A,
                                      coords = coords, g_tol = g_tol, se = se, method = method)
+    end
+    observed = _formula_response_observed_mask(f, data)
+    w_pass = weights
+    if weights !== nothing && !all(observed)
+        w_pass = _validate_prior_weights(weights, length(observed))[observed]
+    end
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
         drm(f, fam; data = data_observed, tree = tree, K = K, A = A,
-            coords = coords, g_tol = g_tol, se = se, marginal = marginal, method = method)
+            coords = coords, g_tol = g_tol, se = se, marginal = marginal, method = method,
+            weights = w_pass)
     end
     missing_fit !== nothing && return missing_fit
 
@@ -84,6 +92,8 @@ function drm(f::DrmFormula, fam::Gamma; data, tree = nothing, K = nothing,
     end
     y, Xμ, nmμ = _design(f.response, fixed_mu, data)
     _, Xσ, nmσ = _design(f.response, get(rhs, :sigma, ConstantTerm(1)), data)
+    _formula_has_ranef(f) &&
+        _refuse_prior_weights(weights, "on Gamma() random-effect / structured routes")
     all(yi -> yi > 0, y) || error("Gamma() requires strictly positive responses")
     if st !== nothing
         isva && _va_reject(fam, "a phylogenetic/structured random effect")
@@ -136,7 +146,8 @@ function drm(f::DrmFormula, fam::Gamma; data, tree = nothing, K = nothing,
         end
     end
     isva && _va_reject(fam, "no random intercept (fixed-effects-only)")
-    return _withformula(_fit_gamma(fam, y, Xμ, Xσ, nmμ, nmσ, g_tol), f)
+    wts = _validate_prior_weights(weights, length(y))
+    return _withweights(_withformula(_fit_gamma(fam, y, Xμ, Xσ, nmμ, nmσ, g_tol, wts), f), wts)
 end
 
 # Gamma GLMM with a random intercept (1|g) on the log mean. b_g ~ N(0,σ_b²)
@@ -209,19 +220,21 @@ function _fit_gamma_corr_ranef(fam::Gamma, y, Xμ, Xσ, xs, gidx, G, nmμ, nmσ,
         Optim.iterations(res))
 end
 
-function _fit_gamma(fam::Gamma, y, Xμ, Xσ, nmμ, nmσ, g_tol)
+function _fit_gamma(fam::Gamma, y, Xμ, Xσ, nmμ, nmσ, g_tol, weights = nothing)
     n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     function nll(θ)
+        T = eltype(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
         # Soft guards (see `_softclamp` in negbinomial.jl): identity across the
         # original hard band so no legitimate fit is distorted, smooth beyond so
         # the gradient stays live — restoring agreement with drmTMB's smooth guard.
         ημ = _softclamp.(Xμ * βμ, -30.0, 30.0, 3.0)   # μ > 0 finite
         ησ = _softclamp.(Xσ * βσ, -15.0, 15.0, 3.0)   # α = exp(-2ησ) > 0 finite
-        s = zero(eltype(θ))
+        s = zero(T)
         @inbounds for i in 1:n
             μ = exp(ημ[i]); α = exp(-2 * ησ[i])  # shape = 1/σ²
-            s -= Distributions.logpdf(Distributions.Gamma(α, μ / α), y[i])
+            wi = _row_weight(weights, i, T)
+            s -= wi * Distributions.logpdf(Distributions.Gamma(α, μ / α), y[i])
         end
         return s
     end

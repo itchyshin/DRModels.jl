@@ -54,10 +54,11 @@ clean = drm_listwise(bf(y ~ x, sigma ~ x), data)        # @warn names the droppe
 fit   = drm(bf(y ~ x, sigma ~ x), Gaussian(); data = clean)
 ```
 
-Why this exists: DRModels.jl has no native missing-data path, so a raw `missing`/`NaN`
-response or predictor makes `drm` error with an opaque message. `drm_listwise`
-gives a guided, documented complete-case route and emits a clear `@warn` reporting
-how many rows (and which columns) were removed.
+Why this exists: a raw `missing` in a **predictor** is refused by name (issue
+#1089) rather than dropped inside `drm`. `drm_listwise` is the documented
+complete-case route; it emits a clear `@warn` reporting how many rows (and which
+columns) were removed. Incomplete **responses** are handled separately by the
+observed-rows path inside `drm`.
 
 !!! warning "Listwise deletion discards information"
     For the **bivariate / q=4 coevolution** models a row is dropped if *either*
@@ -112,8 +113,7 @@ function drm_listwise(formula::Union{DrmFormula,BivariateDrmFormula}, data; verb
     # Subset every column of the table (not just model columns) so downstream code
     # that reaches for extra columns still sees aligned, complete rows. `identity.`
     # re-narrows each kept column's eltype — dropping the now-impossible `Missing`
-    # from a `Union{Missing,T}` response so the result is a plain `Vector{T}` that
-    # `drm` accepts (an un-narrowed `Union{Missing,…}` column would still break the
-    # fitter's numeric path).
+    # from a `Union{Missing,T}` column so the result is a plain `Vector{T}`.
+    # `drm` itself also narrows a complete `Union{Missing,T}` predictor (#1111).
     return NamedTuple{keys(cols)}(map(col -> identity.(col[keep]), values(cols)))
 end

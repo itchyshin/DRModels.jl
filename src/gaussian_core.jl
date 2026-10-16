@@ -201,6 +201,9 @@ struct DrmFit{F}
     # two-structured route). The bootstrap simulator reads it so its draws come
     # from the model that was fitted.
     phylo_scale::Symbol
+    # Prior (per-observation) weights when `drm(...; weights = w)` was used on a
+    # supported fixed-effect route (#931). `nothing` means the fit is unweighted.
+    prior_weights::Union{Nothing,Vector{Float64}}
 end
 
 # 11-arg outer constructor: formula + nll + nllgrad + ranef default to nothing;
@@ -234,41 +237,49 @@ DrmFit(family, blocks, coefnames, theta, vcov, loglik, nobs, converged, means, o
            formula, nll, nllgrad, ranef, estim_method, reml_loglik, ml_loglik, marginal,
            phylo_penalty, penalty, iterations, :covariance)
 
+# 23-field constructor: `prior_weights` defaults to unweighted (`nothing`).
+DrmFit(family, blocks, coefnames, theta, vcov, loglik, nobs, converged, means, obs, scales,
+       formula, nll, nllgrad, ranef, estim_method, reml_loglik, ml_loglik, marginal,
+       phylo_penalty, penalty, iterations, phylo_scale) =
+    DrmFit(family, blocks, coefnames, theta, vcov, loglik, nobs, converged, means, obs, scales,
+           formula, nll, nllgrad, ranef, estim_method, reml_loglik, ml_loglik, marginal,
+           phylo_penalty, penalty, iterations, phylo_scale, nothing)
+
 _withformula(fit::DrmFit, f) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
     fit.vcov, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, f, fit.nll, fit.nllgrad, fit.ranef,
-    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale)
+    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale, fit.prior_weights)
 
 # Attach the (negative) log-likelihood closure so profile intervals can re-optimise
 # the nuisance parameters at each fixed value. nll(θ) must accept the full θ vector.
 _withnll(fit::DrmFit, nll, nllgrad = nothing) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
     fit.vcov, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula, nll, nllgrad, fit.ranef,
-    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale)
+    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale, fit.prior_weights)
 
 # Attach per-group conditional random-effect estimates (BLUPs). `re` is a
 # Dict{Symbol,...} keyed by grouping factor; see ranef(fit) for the public accessor.
 _withranef(fit::DrmFit, re) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
     fit.vcov, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula, fit.nll, fit.nllgrad, re,
-    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale)
+    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale, fit.prior_weights)
 
 # Mark the fit as REML-estimated, recording both the REML and ML log-likelihoods.
 # The public `loglik` slot is set to the REML value (with the documented
 # cross-structure caveat); `ml_loglik` stays available for ML-style comparison.
 _withreml(fit::DrmFit, reml_ll::Real, ml_ll::Real) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
     fit.vcov, Float64(reml_ll), fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula, fit.nll, fit.nllgrad, fit.ranef,
-    :REML, Float64(reml_ll), Float64(ml_ll), fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale)
+    :REML, Float64(reml_ll), Float64(ml_ll), fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale, fit.prior_weights)
 
 # Mark the fit as penalized-MAP. `loglik` is left as the UNPENALIZED data
 # log-likelihood (drmTMB keeps `fit$logLik` unpenalized too) and the penalty at
 # the optimum is recorded separately, so `-objective == loglik - phylo_penalty`.
 _withmap(fit::DrmFit, pen_value::Real, spec) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
     fit.vcov, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula, fit.nll, fit.nllgrad, fit.ranef,
-    :MAP, fit.reml_loglik, fit.ml_loglik, fit.marginal, Float64(pen_value), spec, fit.iterations, fit.phylo_scale)
+    :MAP, fit.reml_loglik, fit.ml_loglik, fit.marginal, Float64(pen_value), spec, fit.iterations, fit.phylo_scale, fit.prior_weights)
 
 # Tag the integral approximation (`:LA` default, `:Laplace`, `:VA` ELBO, `:AGHQ`). Does not
 # change `loglik`; the caller is responsible for putting an ELBO in that slot.
 _withmarginal(fit::DrmFit, m::Symbol) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
     fit.vcov, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula, fit.nll, fit.nllgrad, fit.ranef,
-    fit.estim_method, fit.reml_loglik, fit.ml_loglik, m, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale)
+    fit.estim_method, fit.reml_loglik, fit.ml_loglik, m, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale, fit.prior_weights)
 
 # Record how many iterations the optimiser actually took. Separate from the
 # `iterations` OPTION (a cap on the maximum); this is the achieved count, and it
@@ -277,12 +288,57 @@ _withmarginal(fit::DrmFit, m::Symbol) = DrmFit(fit.family, fit.blocks, fit.coefn
 # rather than reporting 0, which would read as "converged instantly".
 _withiterations(fit::DrmFit, n::Integer) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
     fit.vcov, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula, fit.nll, fit.nllgrad, fit.ranef,
-    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, Int(n), fit.phylo_scale)
+    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, Int(n), fit.phylo_scale, fit.prior_weights)
 
 # Record the tip matrix a phylo field's SD is defined against (see `DrmFit.phylo_scale`).
 _withphyloscale(fit::DrmFit, m::Symbol) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
     fit.vcov, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula, fit.nll, fit.nllgrad, fit.ranef,
-    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, m)
+    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, m, fit.prior_weights)
+
+# Attach prior observation weights (#931). `nothing` is a no-op so callers can
+# wrap every return path without checking.
+_withweights(fit::DrmFit, ::Nothing) = fit
+function _withweights(fit::DrmFit, w::AbstractVector)
+    return DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
+        fit.vcov, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula, fit.nll, fit.nllgrad, fit.ranef,
+        fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale,
+        Vector{Float64}(w))
+end
+
+# Prior-weight keyword (#931). Unweighted fits pass `nothing`. Random-effect and
+# unimplemented family routes refuse with a named ArgumentError (never a MethodError).
+function _validate_prior_weights(weights, n::Integer)
+    weights === nothing && return nothing
+    w = Float64.(vec(collect(weights)))
+    length(w) == n || throw(ArgumentError(
+        "drm: `weights` has length $(length(w)) but the data have $n rows."))
+    all(wi -> isfinite(wi) && wi >= 0, w) || throw(ArgumentError(
+        "drm: `weights` must be finite and non-negative."))
+    return w
+end
+
+function _refuse_prior_weights(weights, why::AbstractString)
+    weights === nothing && return nothing
+    throw(ArgumentError(
+        "drm: `weights` is not supported $why (issue #931). " *
+        "Fixed-effect Gaussian, Poisson, Gamma and Beta routes accept `weights`; " *
+        "random-effect and other family routes do not yet."))
+end
+
+@inline _row_weight(::Nothing, i, ::Type{T}) where {T} = one(T)
+@inline _row_weight(w::AbstractVector, i, ::Type{T}) where {T} = convert(T, w[i])
+function _nll_weight_total(weights, n::Integer, ::Type{T}) where {T}
+    weights === nothing && return convert(T, n)
+    return convert(T, sum(weights))
+end
+
+function _formula_has_ranef(f::DrmFormula)
+    for (_, rhs) in f.forms
+        _, re, mv, st = _split_ranef(rhs)
+        (!isempty(re) || mv !== nothing || st !== nothing) && return true
+    end
+    return false
+end
 
 """
     niterations(fit) -> Int
@@ -387,6 +443,11 @@ end
 # at unobserved response positions.
 function _design(response::Symbol, rhs, data; schema_cache = nothing, schema_key = nothing,
                  store_schema::Bool = true)
+    # #1089 / #1111: a `missing` in a predictor used to reach StatsModels as a
+    # factor level (`KeyError: key missing not found`). Refuse by name, and
+    # narrow `Union{Missing,T}` columns that contain no missings so they stay
+    # numeric instead of dummy-coded.
+    data = _prepare_predictor_table(rhs, data, response)
     raw_response = _table_column(data, response)
     y_response, observed = _coerce_response_column(raw_response)
     design_data = all(observed) ? data :
@@ -435,6 +496,34 @@ _rhs_columns(rhs) = try
     unique(StatsModels.termvars(rhs))
 catch
     nothing
+end
+
+# Fit-time predictor hygiene (#1089, #1111). Errors on actual `missing` cells
+# (pointing at `drm_listwise`); narrows a `Union{Missing,T}` column with no
+# missings so StatsModels treats a numeric predictor as numeric.
+function _prepare_predictor_table(rhs, data, response::Symbol)
+    cols = _rhs_columns(rhs)
+    cols === nothing && return data
+    design_data = data
+    missing_cols = Symbol[]
+    for c in cols
+        c === response && continue
+        _has_table_column(design_data, c) || continue
+        col = _table_column(design_data, c)
+        col isa AbstractVector || continue
+        if any(ismissing, col)
+            push!(missing_cols, c)
+            continue
+        end
+        if Missing <: eltype(col)
+            design_data = _replace_table_column(design_data, c, identity.(col))
+        end
+    end
+    isempty(missing_cols) || throw(ArgumentError(
+        "drm: predictor column(s) " * join("`" .* string.(missing_cols) .* "`", ", ") *
+        " contain `missing`. `drm` does not drop incomplete predictor rows; " *
+        "call `drm_listwise(formula, data)` first (issue #1089)."))
+    return design_data
 end
 
 _has_table_column(data, name::Symbol) =
@@ -568,14 +657,28 @@ observed-rows pattern (matching `response = "include"` in the R bridge).
 For Location-Scale-Scale models, the group index and scale design Z_g
 are parameterised over all G levels, while the likelihood is evaluated on
 observed rows.
+
+A `missing` in a **predictor** is not dropped: `drm` throws an `ArgumentError`
+naming [`drm_listwise`](@ref) (issue #1089). A `Union{Missing,T}` predictor
+column that is actually complete is narrowed so StatsModels keeps it numeric
+(issue #1111) rather than dummy-coding `missing` as a factor level.
+
+## `weights` — prior observation weights (#931)
+
+`drm(..., weights = w)` is a named keyword on every family. Fixed-effect
+Gaussian, Poisson, Gamma and Beta routes multiply each row's log-likelihood
+contribution by `w[i]` (integer weights match row duplication). Random-effect,
+structured, REML, and other-family routes refuse with an `ArgumentError`
+naming issue #931 (never a `MethodError`). Unweighted fits store
+`weights(fit) === nothing`.
 """
-function drm(f::DrmFormula, fam::Gaussian; kwargs...)
+function drm(f::DrmFormula, fam::Gaussian; weights = nothing, kwargs...)
     # The residual-variance / structured-variance BOUNDARY advisory (#724, #697) is
     # attached here, once, rather than in each of the fitter's return paths.
-    return _warn_variance_boundary(_drm_gaussian_fit(f, fam; kwargs...))
+    return _warn_variance_boundary(_drm_gaussian_fit(f, fam; weights = weights, kwargs...))
 end
 
-function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree = nothing, coords = nothing, g_tol::Real = 1e-8, algorithm::Symbol = :auto, method::Symbol = :ML, profile_ci::Bool = false, phylo_coupled::Bool = false, penalty = nothing, sparse = nothing, impute = nothing, missing = nothing, marginal::Symbol = :LA)
+function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree = nothing, coords = nothing, g_tol::Real = 1e-8, algorithm::Symbol = :auto, method::Symbol = :ML, profile_ci::Bool = false, phylo_coupled::Bool = false, penalty = nothing, sparse = nothing, impute = nothing, missing = nothing, marginal::Symbol = :LA, weights = nothing)
     mkind = _gaussian_marginal(marginal)
     laplace = mkind === :Laplace
     aghq = mkind === :AGHQ
@@ -587,6 +690,7 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     method in (:ML, :REML) ||
         throw(ArgumentError("drm: `method` must be :ML (default) or :REML (got :$method)"))
     if _has_joint_mi(f)
+        _refuse_prior_weights(weights, "on the joint `mi()` missing-predictor route")
         return _fit_joint_formula(f, data; impute=impute,
             missing=missing === nothing ? miss_control() : missing,
             g_tol=g_tol, method=method, algorithm=algorithm, K=K, A=A,
@@ -602,6 +706,15 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     fixed_mu, re, metav, structured, structured_slope, temporal_term =
         _split_ranef(rhs[:mu]; allow_phylo_slope = true, allow_temporal = true)   # (1|g), meta_V(v), relmat/animal/phylo/spatial(1|g), temporal(...)
     fixed_sigma, sigma_re, _, structured_sigma = _split_ranef(rhs[:sigma])  # (1|g)→GHQ; structured_sigma = phylo(1|g) on σ
+    if weights !== nothing
+        gaussian_re = !isempty(re) || !isempty(sigma_re) || metav !== nothing ||
+            structured !== nothing || structured_sigma !== nothing ||
+            structured_slope !== nothing || temporal_term !== nothing
+        gaussian_re &&
+            _refuse_prior_weights(weights, "on Gaussian() random-effect / structured / meta / temporal routes")
+        method === :REML &&
+            _refuse_prior_weights(weights, "with method = :REML")
+    end
     # Penalized MAP (A4c). Validated here, once, so that a `penalty` handed to a
     # route that cannot honour it ERRORS instead of being silently dropped —
     # a dropped penalty would return an ML fit wearing a MAP label.
@@ -626,6 +739,10 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     _, Xσ, nmσ = _design(f.response, fixed_sigma, data; schema_cache = f.schema_cache, schema_key = :sigma)
     response_observed = _observed_response_mask(y)
     has_missing_response = !all(response_observed)
+    wts = _validate_prior_weights(weights, length(y))
+    if has_missing_response && wts !== nothing
+        wts = wts[response_observed]
+    end
     all_structured = _collect_structured(rhs[:mu])
     # D-310 temporal(1 | id, time, ar1|ou): dispatched FIRST, before every route
     # that could otherwise claim (and silently mis-fit) the formula. The router
@@ -1169,13 +1286,13 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     end
     if isempty(re)
         if has_missing_response
-            return _withformula(_fit_fixed_gaussian_missing_response(
-                fam, y, Xμ, Xσ, nmμ, nmσ, g_tol, method), f)
+            return _withweights(_withformula(_fit_fixed_gaussian_missing_response(
+                fam, y, Xμ, Xσ, nmμ, nmσ, g_tol, method, wts), f), wts)
         end
         if method === :REML
             return _withformula(_fit_fixed_gaussian_reml(fam, y, Xμ, Xσ, nmμ, nmσ, g_tol), f)
         end
-        return _withformula(_fit_fixed_gaussian(fam, y, Xμ, Xσ, nmμ, nmσ, g_tol), f)
+        return _withweights(_withformula(_fit_fixed_gaussian(fam, y, Xμ, Xσ, nmμ, nmσ, g_tol, wts), f), wts)
     end
     re_kinds = [_re_kind(rl) for (rl, _) in re]
     if length(re) == 1 && re_kinds[1][1] === :corr           # (1 + x | g)
@@ -1204,18 +1321,21 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
 end
 
 # univariate Gaussian location–scale, fixed effects only (closed form, ML)
-function _fit_fixed_gaussian(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, g_tol)
+function _fit_fixed_gaussian(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, g_tol,
+                             weights = nothing)
     n = length(y)
     pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     function nll(θ)
+        T = eltype(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
         ημ = Xμ * βμ; ησ = Xσ * βσ                 # log σ
-        s = zero(eltype(θ))
+        s = zero(T)
         @inbounds for i in 1:n
             r = y[i] - ημ[i]
-            s += ησ[i] + 0.5 * r * r * exp(-2 * ησ[i])
+            wi = _row_weight(weights, i, T)
+            s += wi * (ησ[i] + 0.5 * r * r * exp(-2 * ησ[i]))
         end
-        return s + 0.5 * n * log(2π)
+        return s + 0.5 * _nll_weight_total(weights, n, T) * log(2π)
     end
     βμ0 = Xμ \ y
     θ0 = zeros(pμ + pσ)
@@ -1240,8 +1360,8 @@ end
 
 # Rebuilders for the missing-response routes: refit rows are the OBSERVED ones,
 # but `means`/`obs`/`scales` are restored over the FULL design so `predict`,
-# `fitted` and `simulate` line up with the caller's table. Both pass all 22
-# fields rather than the 19-arg compatibility constructor -- that one defaults
+# `fitted` and `simulate` line up with the caller's table. Both pass every field
+# rather than the 19-arg compatibility constructor -- that one defaults
 # `phylo_penalty`/`penalty`/`iterations` to absent, which silently reset the
 # inner fit's recorded iteration count to -1 ("unknown"). The bridge exports it
 # as `iterations`, so a masked-response fit reported no optimiser effort while
@@ -1257,11 +1377,12 @@ function _with_full_fixed_gaussian_rows(fit::DrmFit, y_full, Xμ_full, Xσ_full)
         fit.loglik, fit.nobs, fit.converged, means, obs, scales,
         fit.formula, fit.nll, fit.nllgrad, fit.ranef,
         fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal,
-        fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale,
+        fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale, fit.prior_weights,
     )
 end
 
-function _fit_fixed_gaussian_missing_response(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, g_tol, method::Symbol)
+function _fit_fixed_gaussian_missing_response(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, g_tol, method::Symbol,
+                                             weights = nothing)
     observed = _observed_response_mask(y)
     n_observed = count(observed)
     n_observed > 0 ||
@@ -1289,10 +1410,12 @@ function _fit_fixed_gaussian_missing_response(fam::Gaussian, y, Xμ, Xσ, nmμ, 
     y_obs = Vector{Float64}(y[observed])
     Xμ_obs = Matrix{Float64}(Xμ[observed, :])
     Xσ_obs = Matrix{Float64}(Xσ[observed, :])
+    w_obs = weights === nothing ? nothing :
+        _validate_prior_weights(weights, n_observed)
     fit_obs = method === :REML ?
         _fit_fixed_gaussian_reml(fam, y_obs, Xμ_obs, Xσ_obs, nmμ, nmσ, g_tol) :
-        _fit_fixed_gaussian(fam, y_obs, Xμ_obs, Xσ_obs, nmμ, nmσ, g_tol)
-    return _with_full_fixed_gaussian_rows(fit_obs, y, Xμ, Xσ)
+        _fit_fixed_gaussian(fam, y_obs, Xμ_obs, Xσ_obs, nmμ, nmσ, g_tol, w_obs)
+    return _withweights(_with_full_fixed_gaussian_rows(fit_obs, y, Xμ, Xσ), w_obs)
 end
 
 function _formula_response_observed_mask(f::DrmFormula, data)
@@ -1427,7 +1550,7 @@ function _with_full_response_rows(fit::DrmFit, f::DrmFormula, data)
         fit.loglik, fit.nobs, fit.converged, means, obs, scales,
         fit.formula, fit.nll, fit.nllgrad, fit.ranef,
         fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal,
-        fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale,
+        fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale, fit.prior_weights,
     )
 end
 

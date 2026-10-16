@@ -114,7 +114,8 @@ fit = drm(f, Student(); data = dat)
 ```
 """
 function drm(f::BivariateDrmFormula, fam::Student; data, g_tol::Real = 1e-8,
-             method::Symbol = :ML)
+             method::Symbol = :ML, weights = nothing)
+    _refuse_prior_weights(weights, "on bivariate Student() fits")
     method === :ML ||
         throw(ArgumentError("drm: the bivariate Student-t route implements ML only " *
             "(got method = :$method). drmTMB's `biv_student()` first slice has no " *

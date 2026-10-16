@@ -125,7 +125,7 @@ fit = drm(
 | build a covariate grid for prediction | `prediction_grid(reference; predictor = values, …)` |
 | `simulate(fit)` | `simulate(fit)` |
 | `summary(fit)` | `summary(fit)` (prints the Wald coefficient table) |
-| `weights(fit)` | planned (parity gap) |
+| `weights(fit)` | `weights(fit)` (`nothing` if unweighted; FE Gaussian/Poisson/Gamma/Beta store `drm(...; weights = w)`) |
 | `family(fit)` | `family(fit)` |
 | `is_converged(fit)` / convergence diagnostics | `is_converged(fit)` / `check_drm(fit)` |
 

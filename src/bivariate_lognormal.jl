@@ -84,7 +84,9 @@ corpairs(fit)  # log-residual rho12
 function drm(f::BivariateDrmFormula, fam::LogNormal; data, tree = nothing,
              K = nothing, A = nothing, coords = nothing, spatial_range = nothing,
              g_tol::Real = 1e-8, q4_g_tol::Real = 1e-3, q4_iterations::Int = 300,
-             q4_n_newton::Int = 40, q4_vcov::Bool = true, method::Symbol = :ML)
+             q4_n_newton::Int = 40, q4_vcov::Bool = true, method::Symbol = :ML,
+             weights = nothing)
+    _refuse_prior_weights(weights, "on bivariate LogNormal() fits")
     method === :ML ||
         throw(ArgumentError("drm: the bivariate lognormal route implements ML only " *
             "(got method = :$method). drmTMB's `biv_lognormal()` first slice has no " *

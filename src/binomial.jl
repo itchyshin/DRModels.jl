@@ -147,7 +147,9 @@ struct Binomial end
 # few lines below. Taking the arguments lets that refusal actually be reached.
 function drm(f::DrmFormula, fam::Binomial; data, tree = nothing, K = nothing,
              A = nothing, coords = nothing, g_tol::Real = 1e-8,
-             se::Bool = true, marginal::Symbol = :LA, method = nothing)
+             se::Bool = true, marginal::Symbol = :LA, method = nothing,
+             weights = nothing)
+    _refuse_prior_weights(weights, "on Binomial() fits")
     _reject_method_as_marginal(fam, method)
     _scalar_laplace_requested(marginal) &&     # Arc 2: TMB-convention Laplace, ordinary (1 | g)
         return _drm_ordinary_laplace(f, fam; data = data, tree = tree, K = K, A = A,

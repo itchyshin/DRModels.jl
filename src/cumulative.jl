@@ -134,7 +134,8 @@ function _cumulative_cut_init(y, K, n)
 end
 
 function drm(f::DrmFormula, fam::CumulativeLogit; data, tree = nothing, g_tol::Real = 1e-8,
-             se::Bool = true)
+             se::Bool = true, weights = nothing)
+    _refuse_prior_weights(weights, "on CumulativeLogit() fits")
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
         drm(f, fam; data = data_observed, tree = tree, g_tol = g_tol, se = se)
     end

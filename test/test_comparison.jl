@@ -33,8 +33,8 @@ using Test, Random
     end
 
     @testset "weights" begin
-        @test weights(full) == ones(nobs(full))
-        @test weights(reduced) == ones(nobs(reduced))
+        @test weights(full) === nothing
+        @test weights(reduced) === nothing
     end
 
     @testset "update" begin
