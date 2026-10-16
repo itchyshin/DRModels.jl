@@ -139,8 +139,8 @@ function _fit_lognormal_ranef(fam::LogNormal, y, Xμ, Xσ, gidx, G, nmμ, nmσ, 
     θ0[pμ+1] = log(std(ly - Xμ * βμ0) + eps()); θ0[pμ+pσ+1] = log(0.5)
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res)
-    # #936: sigma 0/1 columns (log σ) and log σ_b.
-    uf = vcat(_unitfree_columns(Xσ, pμ), pμ + pσ + 1)
+    # #936: 0/1 mean (dimensionless link) and sigma 0/1 columns (log σ) and log σ_b.
+    uf = vcat(_unitfree_columns(Xμ), _unitfree_columns(Xσ, pμ), pμ + pσ + 1)
     V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); unitfree = uf)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :resd => (pμ+pσ+1):(pμ+pσ+1)]
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
@@ -180,8 +180,8 @@ function _fit_lognormal_corr_ranef(fam::LogNormal, y, Xμ, Xσ, xs, gidx, G, nm�
     θ0[pμ+pσ+1] = log(0.4); θ0[pμ+pσ+2] = log(0.4); θ0[pμ+pσ+3] = 0.0
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res)
-    # #936: sigma 0/1 columns and log L11, log L22 (the raw L21 is not unit-free).
-    uf = vcat(_unitfree_columns(Xσ, pμ), pμ + pσ + 1, pμ + pσ + 2)
+    # #936: 0/1 mean (dimensionless link) and sigma 0/1 columns and log L11, log L22 (the raw L21 is not unit-free).
+    uf = vcat(_unitfree_columns(Xμ), _unitfree_columns(Xσ, pμ), pμ + pσ + 1, pμ + pσ + 2)
     V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); unitfree = uf)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :recov => (pμ+pσ+1):(pμ+pσ+3)]
     names = [:mu => nmμ, :sigma => nmσ, :recov => ["$(grp):L11", "$(grp):L22", "$(grp):L21"]]
@@ -211,8 +211,8 @@ function _fit_lognormal(fam::LogNormal, y, Xμ, Xσ, nmμ, nmσ, g_tol)
     θ0[pμ+1] = log(std(ly - Xμ * βμ0) + eps())
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res)
-    # #936: sigma 0/1 columns (log σ).
-    uf = _unitfree_columns(Xσ, pμ)
+    # #936: 0/1 mean (dimensionless link) and sigma 0/1 columns (log σ).
+    uf = vcat(_unitfree_columns(Xμ), _unitfree_columns(Xσ, pμ))
     V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); unitfree = uf)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ)]
     names = [:mu => nmμ, :sigma => nmσ]

@@ -617,9 +617,9 @@ function _fit_poisson_general_laplace(fam::Poisson, y, Xμ, Q, leaf_node, nmμ, 
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
     V = if se
         Hθ = _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
-        # #936: the RE log-SD keeps natural-scale curvature; βμ does not.
+        # #936: the RE log-SD keeps natural-scale curvature; so do the 0/1 columns of a non-identity-link mean.
         _vcov_from_fd_hessian(Hθ; context = "sparse-Laplace Poisson (general covariance)",
-                              unitfree = [pμ + 1])
+                              unitfree = vcat(_location_unitfree_columns(fam, Xμ), pμ + 1))
     else
         fill(NaN, length(θ̂), length(θ̂))
     end
@@ -898,9 +898,9 @@ function _fit_general_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, Q,
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
     V = if se
         Hθ = _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
-        # #936: scalar log σ dispersion (sigma ~ 1) and the RE log-SD; not βμ.
+        # #936: scalar log σ dispersion (sigma ~ 1) and the RE log-SD, and the 0/1 columns of a non-identity-link mean.
         _vcov_from_fd_hessian(Hθ; context = "sparse-Laplace GLMM (general-mean nuisance)",
-                              unitfree = [pμ + 1, pμ + 2])
+                              unitfree = vcat(_location_unitfree_columns(fam, Xμ), pμ + 1, pμ + 2))
     else
         fill(NaN, length(θ̂), length(θ̂))
     end
@@ -1093,8 +1093,8 @@ function _fit_phylo_mean_laplace_hetero(fam, kind, aux_from, n::Int, Xμ, Xσ,
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
     V = if se
         Hθ = _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
-        # #936: 0/1 columns of the log-σ formula and the phylo log-SD; not βμ.
-        uf = vcat(_unitfree_columns(Xσ, pμ), pμ + pσ + 1)
+        # #936: 0/1 columns of the log-σ formula and the phylo log-SD, and the 0/1 columns of a non-identity-link mean.
+        uf = vcat(_location_unitfree_columns(fam, Xμ), _unitfree_columns(Xσ, pμ), pμ + pσ + 1)
         _vcov_from_fd_hessian(Hθ; context = "sparse-Laplace GLMM (phylo-mean, covariate dispersion)",
                               unitfree = uf)
     else
@@ -1249,9 +1249,9 @@ function _fit_phylo_mean_laplace(fam, kind, aux, n::Int, Xμ, labels, tree, nmμ
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
     V = if se
         Hθ = _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
-        # #936: the phylo log-SD keeps natural-scale curvature; βμ does not.
+        # #936: the phylo log-SD keeps natural-scale curvature; so do the 0/1 columns of a non-identity-link mean.
         _vcov_from_fd_hessian(Hθ; context = "sparse-Laplace GLMM (phylo-mean)",
-                              unitfree = [pμ + 1])
+                              unitfree = vcat(_location_unitfree_columns(fam, Xμ), pμ + 1))
     else
         fill(NaN, length(θ̂), length(θ̂))
     end
@@ -1858,9 +1858,9 @@ function _fit_poisson_crossed_intercepts_laplace(fam::Poisson, y, Xμ, gidx, G, 
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
     V = if se
         Hθ = _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
-        # #936: the two crossed RE log-SDs; not βμ.
+        # #936: the two crossed RE log-SDs, and the 0/1 columns of a non-identity-link mean.
         _vcov_from_fd_hessian(Hθ; context = "sparse-Laplace Poisson (crossed intercepts)",
-                              unitfree = (pμ + 1):(pμ + 2))
+                              unitfree = vcat(_location_unitfree_columns(fam, Xμ), (pμ + 1):(pμ + 2)))
     else
         fill(NaN, length(θ̂), length(θ̂))
     end
@@ -2032,9 +2032,9 @@ function _fit_poisson_crossed_laplace(fam::Poisson, y, Xμ, comps, nmμ, g_tol; 
     θ̂ = Optim.minimizer(res)
     V = if se
         H = _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
-        # #936: the K component log-SDs; not βμ.
+        # #936: the K component log-SDs, and the 0/1 columns of a non-identity-link mean.
         _vcov_from_fd_hessian(H; context = "sparse-Laplace Poisson (crossed)",
-                              unitfree = (pμ + 1):(pμ + K))
+                              unitfree = vcat(_location_unitfree_columns(fam, Xμ), (pμ + 1):(pμ + K)))
     else
         fill(NaN, length(θ̂), length(θ̂))
     end
@@ -3017,9 +3017,9 @@ function _fit_crossed_mean_laplace(fam, kind, aux, n::Int, Xμ, gidx, G, hidx, H
         # Zero only a column that is tiny relative to the Hessian scale. A
         # large negative column stays for that guard and is not pseudo-inverted.
         _zero_flat_clamped_logsd_columns!(Hθ, θ̂, (pμ + 1):(pμ + 2), hstep)
-        # #936: the two crossed RE log-SDs; not βμ.
+        # #936: the two crossed RE log-SDs, and the 0/1 columns of a non-identity-link mean.
         _vcov_from_fd_hessian(Hθ; context = "sparse-Laplace GLMM (crossed-mean)",
-                              unitfree = (pμ + 1):(pμ + 2))
+                              unitfree = vcat(_location_unitfree_columns(fam, Xμ), (pμ + 1):(pμ + 2)))
     else
         fill(NaN, length(θ̂), length(θ̂))
     end
@@ -3183,9 +3183,9 @@ function _fit_crossed_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, gi
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
     V = if se
         Hθ = _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
-        # #936: scalar log σ dispersion (sigma ~ 1) and the two RE log-SDs; not βμ.
+        # #936: scalar log σ dispersion (sigma ~ 1) and the two RE log-SDs, and the 0/1 columns of a non-identity-link mean.
         _vcov_from_fd_hessian(Hθ; context = "sparse-Laplace GLMM (crossed-mean nuisance)",
-                              unitfree = (pμ + 1):(pμ + 3))
+                              unitfree = vcat(_location_unitfree_columns(fam, Xμ), (pμ + 1):(pμ + 3)))
     else
         fill(NaN, length(θ̂), length(θ̂))
     end
@@ -3303,9 +3303,9 @@ function _fit_crossed_mean_aghq(fam, ll, n::Int, Xμ, comps, nmμ, g_tol; θ0,
     nllhat = nll(θ̂)
     gfinal = ForwardDiff.gradient(nll, θ̂)
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
-    # #936: the two crossed RE log-SDs; not βμ.
+    # #936: the two crossed RE log-SDs, and the 0/1 columns of a non-identity-link mean.
     V = se ? _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); context = "crossed AGHQ",
-                                unitfree = (pμ + 1):(pμ + 2)) :
+                                unitfree = vcat(_location_unitfree_columns(fam, Xμ), (pμ + 1):(pμ + 2))) :
              fill(NaN, length(θ̂), length(θ̂))
     blocks = [:mu => 1:pμ, :resd => (pμ+1):(pμ+2)]
     names = [:mu => nmμ, :resd => labels]
@@ -3395,9 +3395,9 @@ function _fit_crossed_mean_aghq_nuisance(fam, kind, aux_from, n::Int, Xμ, comps
     nllhat = nll(θ̂)
     gfinal = ForwardDiff.gradient(nll, θ̂)
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
-    # #936: scalar log σ dispersion (sigma ~ 1) and the two RE log-SDs; not βμ.
+    # #936: scalar log σ dispersion (sigma ~ 1) and the two RE log-SDs, and the 0/1 columns of a non-identity-link mean.
     V = se ? _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); context = "crossed AGHQ (nuisance)",
-                                unitfree = (pμ + 1):(pμ + 3)) :
+                                unitfree = vcat(_location_unitfree_columns(fam, Xμ), (pμ + 1):(pμ + 3))) :
              fill(NaN, length(θ̂), length(θ̂))
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+1), :resd => (pμ+2):(pμ+3)]
     names = [:mu => nmμ, :sigma => nmσ, :resd => labels]

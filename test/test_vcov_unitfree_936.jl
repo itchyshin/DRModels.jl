@@ -210,6 +210,99 @@ end
     @test se_slope[3] ≈ se_slope[1] rtol = 1e-6
 end
 
+@testset "#936 vcov guard: origin shifts in dispersion and ordinal formulas" begin
+    # Review of the first design: flooring a declared 0/1 intercept inside the
+    # singularity test shrank its diagonal, so an uncentred covariate in the SAME
+    # formula (sigma ~ year, an ordinal cut-point next to year) brought the false
+    # warning back. Collinearity is now judged on the fully equilibrated matrix.
+    rng = StableRNG(20261016)
+    n = 30
+    year = 2000 .+ randn(rng, n)
+    y = 0.5 .+ exp.(0.1 .* (year .- 2000)) .* randn(rng, n)
+    lg = Test.TestLogger(min_level = Logging.Warn)
+    fs = Logging.with_logger(lg) do
+        drm(bf(@formula(y ~ 1), @formula(sigma ~ year)), Gaussian(); data = (; y, year))
+    end
+    @test isempty(_uf936_guard_warnings(lg.logs))
+    fsc = drm(bf(@formula(y ~ 1), @formula(sigma ~ year)), Gaussian(); data = (; y, year = year .- 2000))
+    # the slope SE does not depend on the origin of year
+    @test sqrt(vcov(fs)[3, 3]) ≈ sqrt(vcov(fsc)[3, 3]) rtol = 1e-6
+
+    # CumulativeLogit y ~ year, year in 1997:2003: the first cut-point is the latent
+    # intercept and is declared unit-free; the origin of year must not matter.
+    rng2 = StableRNG(936)
+    yr = repeat(1997:2003, 15)
+    lat = 0.3 .* (yr .- 2000) .+ randn(rng2, length(yr))
+    yo = [l < -0.5 ? 1 : l < 0.7 ? 2 : 3 for l in lat]
+    lgo = Test.TestLogger(min_level = Logging.Warn)
+    fo = Logging.with_logger(lgo) do
+        drm(bf(@formula(yo ~ yr)), CumulativeLogit(); data = (; yo, yr = Float64.(yr)))
+    end
+    @test isempty(_uf936_guard_warnings(lgo.logs))
+    foc = drm(bf(@formula(yo ~ yr)), CumulativeLogit(); data = (; yo, yr = Float64.(yr .- 2000)))
+    @test sqrt(vcov(fo)[1, 1]) ≈ sqrt(vcov(foc)[1, 1]) rtol = 1e-5
+end
+
+@testset "#936 vcov guard: degenerate diagonals" begin
+    # A noise-level NEGATIVE diagonal on an ordinary coordinate is numerically zero
+    # curvature, not a saddle: pseudo-inverse with a warning, as before #936.
+    lg = Test.TestLogger(min_level = Logging.Warn)
+    V = Logging.with_logger(lg) do
+        DRModels._vcov_from_hessian([1e4 0.0; 0.0 -1e-9])
+    end
+    @test length(lg.logs) == 1
+    @test occursin("numerically singular", string(lg.logs[1].message))
+    @test lg.logs[1].kwargs[:null_direction_coordinates] == [2]
+    @test V[1, 1] ≈ 1e-4
+    # ... but a clearly negative curvature is a saddle whatever the units.
+    @test_logs (:warn, r"not positive definite") DRModels._vcov_from_hessian([1e4 0.0; 0.0 -1e-1])
+    # A 1x1 flat unit-free coordinate is flagged in absolute terms (it used to be
+    # its own reference scale and could never warn).
+    lg1 = Test.TestLogger(min_level = Logging.Warn)
+    Logging.with_logger(lg1) do
+        DRModels._vcov_from_hessian(fill(1e-9, 1, 1); unitfree = [1])
+    end
+    @test length(lg1.logs) == 1
+    @test lg1.logs[1].kwargs[:flat_coordinates] == [1]
+    # ... and its noise of the other sign is flat too, not a saddle.
+    lg2 = Test.TestLogger(min_level = Logging.Warn)
+    Logging.with_logger(lg2) do
+        DRModels._vcov_from_hessian(fill(-1e-9, 1, 1); unitfree = [1])
+    end
+    @test length(lg2.logs) == 1
+    @test lg2.logs[1].kwargs[:flat_coordinates] == [1]
+    # A finite but indefinite matrix with a subnormal diagonal must not throw.
+    Vs = @test_logs (:warn, r"not positive definite") DRModels._vcov_from_hessian([5e-324 1.0; 1.0 5e-324])
+    @test all(isnan, Vs)
+    # A non-finite Hessian still throws (NaN-predictor fits rely on it).
+    @test_throws ArgumentError DRModels._vcov_from_hessian([1.0 NaN; NaN 1.0])
+end
+
+@testset "#936 vcov guard: separated and all-zero levels on log/logit links" begin
+    # The 0/1 columns of a log/logit-link location formula are dimensionless, so a
+    # level whose curvature vanishes is still reported (it was reported only by
+    # luck of units before #936, and not at all by the first unit-free design).
+    rng = StableRNG(9361)
+    G = 10; m = 10; n = G * m
+    g = repeat(1:G, inner = m)
+    trt = Float64.(repeat([0, 1], inner = 5, outer = G))
+    s = [trt[i] == 1 ? 1.0 : Float64(rand(rng) < 0.4) for i in 1:n]
+    lg = Test.TestLogger(min_level = Logging.Warn)
+    Logging.with_logger(lg) do
+        drm(bf(@formula(cbind(s, fail) ~ trt + (1 | g))), Binomial();
+            data = (; s, fail = 1 .- s, trt, g))
+    end
+    @test any(l -> occursin("numerically singular", string(l.message)), lg.logs)
+
+    f = repeat(["a", "b", "c"], inner = 20)
+    yp = [fi == "c" ? 0.0 : Float64(rand(rng, 0:4)) for fi in f]
+    lgp = Test.TestLogger(min_level = Logging.Warn)
+    Logging.with_logger(lgp) do
+        drm(bf(@formula(yp ~ f)), Poisson(); data = (; yp, f))
+    end
+    @test any(l -> occursin("numerically singular", string(l.message)), lgp.logs)
+end
+
 @testset "#936 _unitfree_columns" begin
     X = hcat(ones(4), [0.0, 1.0, 1.0, 0.0], [0.3, 1.2, -2.0, 4.0], [1.0, 1.0, 1.0, 1.0] .* 2)
     @test DRModels._unitfree_columns(X) == [1, 2]

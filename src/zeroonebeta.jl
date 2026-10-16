@@ -142,7 +142,7 @@ function _fit_zeroonebeta(fam::ZeroOneBeta, y, Xμ, Xσ, Xz, Xc, nmμ, nmσ, nmz
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res)
     # #936: sigma, zoi and coi 0/1 columns.
-    uf = vcat(_unitfree_columns(Xσ, pμ), _unitfree_columns(Xz, i1), _unitfree_columns(Xc, i2))
+    uf = vcat(_unitfree_columns(Xμ), _unitfree_columns(Xσ, pμ), _unitfree_columns(Xz, i1), _unitfree_columns(Xc, i2))
     V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); unitfree = uf)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):i1, :zoi => (i1+1):i2, :coi => (i2+1):i3]
     names = [:mu => nmμ, :sigma => nmσ, :zoi => nmz, :coi => nmc]
@@ -219,7 +219,7 @@ function _fit_zeroonebeta_ranef(fam::ZeroOneBeta, y, Xμ, Xσ, Xz, Xc, gidx, G, 
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res)
     # #936: sigma, zoi and coi 0/1 columns, and log σ_b.
-    uf = vcat(_unitfree_columns(Xσ, pμ), _unitfree_columns(Xz, i1), _unitfree_columns(Xc, i2), i3 + 1)
+    uf = vcat(_unitfree_columns(Xμ), _unitfree_columns(Xσ, pμ), _unitfree_columns(Xz, i1), _unitfree_columns(Xc, i2), i3 + 1)
     V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); unitfree = uf)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):i1, :zoi => (i1+1):i2, :coi => (i2+1):i3,
               :resd => (i3+1):(i3+1)]

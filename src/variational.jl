@@ -313,8 +313,8 @@ function _fit_poisson_ranef_va(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol)
     θ0[pμ+1] = log(0.5)
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res)
-    # #936: log σ_b is unit-free; the log-link mean coefficients are not.
-    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); unitfree = [pμ + 1])
+    # #936: the 0/1 log-link mean columns and log σ_b are unit-free.
+    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); unitfree = vcat(_unitfree_columns(Xμ), pμ + 1))
     blocks = [:mu => 1:pμ, :resd => (pμ+1):(pμ+1)]
     names = [:mu => nmμ, :resd => [String(grp)]]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
@@ -448,8 +448,8 @@ function _fit_binomial_ranef_va(fam::Binomial, s, ntr, Xμ, gidx, G, nmμ, grp, 
     θ0[1] = log(p̄ / (1 - p̄)); θ0[pμ+1] = log(0.5)
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res)
-    # #936: log σ_b is unit-free; the logit-link mean coefficients are not.
-    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); unitfree = [pμ + 1])
+    # #936: the 0/1 logit-link mean columns and log σ_b are unit-free.
+    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); unitfree = vcat(_unitfree_columns(Xμ), pμ + 1))
     blocks = [:mu => 1:pμ, :resd => (pμ+1):(pμ+1)]
     names = [:mu => nmμ, :resd => [String(grp)]]
     means = Dict(:mu => _logistic.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => s ./ ntr)   # population μ (b=0)
@@ -623,8 +623,8 @@ function _fit_nb2_ranef_va(fam::NegBinomial2, y, Xμ, Xσ, gidx, G, nmμ, nmσ, 
     θ0[pμ+pσ+1] = log(0.5)
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res)
-    # #936: sigma 0/1 columns (log σ) and log σ_b.
-    uf = vcat(_unitfree_columns(Xσ, pμ), pμ + pσ + 1)
+    # #936: 0/1 mean (dimensionless link) and sigma 0/1 columns (log σ) and log σ_b.
+    uf = vcat(_unitfree_columns(Xμ), _unitfree_columns(Xσ, pμ), pμ + pσ + 1)
     V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); unitfree = uf)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :resd => (pμ+pσ+1):(pμ+pσ+1)]
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
@@ -776,8 +776,8 @@ function _fit_gamma_ranef_va(fam::Gamma, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, 
     θ0[pμ+pσ+1] = log(0.5)
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res)
-    # #936: sigma 0/1 columns (log σ) and log σ_b.
-    uf = vcat(_unitfree_columns(Xσ, pμ), pμ + pσ + 1)
+    # #936: 0/1 mean (dimensionless link) and sigma 0/1 columns (log σ) and log σ_b.
+    uf = vcat(_unitfree_columns(Xμ), _unitfree_columns(Xσ, pμ), pμ + pσ + 1)
     V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); unitfree = uf)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :resd => (pμ+pσ+1):(pμ+pσ+1)]
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
@@ -924,8 +924,8 @@ function _fit_beta_ranef_va(fam::Beta, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_
     θ0[pμ+pσ+1] = log(0.5)
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res)
-    # #936: sigma 0/1 columns (log σ) and log σ_b.
-    uf = vcat(_unitfree_columns(Xσ, pμ), pμ + pσ + 1)
+    # #936: 0/1 mean (dimensionless link) and sigma 0/1 columns (log σ) and log σ_b.
+    uf = vcat(_unitfree_columns(Xμ), _unitfree_columns(Xσ, pμ), pμ + pσ + 1)
     V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); unitfree = uf)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :resd => (pμ+pσ+1):(pμ+pσ+1)]
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
