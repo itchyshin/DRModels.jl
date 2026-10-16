@@ -152,6 +152,21 @@ end
         @test loglik(fm) ≈ loglik(fn) atol = 1e-6
     end
 
+    @testset "offset absent from coef, vcov and summary (native Julia)" begin
+        fits = (
+            drm(bf(@formula(y ~ 1 + x + offset(lo)), @formula(sigma ~ 1 + x)), NegBinomial2(); data = d),
+            drm(bf(@formula(y ~ 1 + x + offset(lo) + (1 | g)), @formula(sigma ~ 1)), NegBinomial2(); data = d),
+            drm(bf(@formula(y ~ 1 + x + offset(lo) + (1 | g)), @formula(sigma ~ 1)), NegBinomial2();
+                data = d, marginal = :Laplace),
+        )
+        for fit in fits
+            @test size(vcov(fit)) == (length(coef(fit)), length(coef(fit)))
+            @test !_off938_has_offset_name(fit)
+            @test !occursin("offset", sprint(show, MIME("text/plain"), fit))
+            @test !occursin("offset", sprint(show, fit))
+        end
+    end
+
     @testset "predict(newdata) uses the NEW offset" begin
         fit = drm(bf(@formula(y ~ 1 + x + offset(lo)), @formula(sigma ~ 1)),
                   NegBinomial2(); data = d)
