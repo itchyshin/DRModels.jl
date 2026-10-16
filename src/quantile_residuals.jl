@@ -255,7 +255,7 @@ function _ranef_marginal_mix(fit::DrmFit, fam, μ)
     # σ_b √C_ii (raw branch-length scale). The marginal is then exactly
     # N(x_i'β̂, σ_e² + σ_b² C_ii); nothing is double-counted, so no warning.
     if fit.ranef isa LocOnlyRanef && fam isa Gaussian
-        rt2σb_row = sqrt(2.0) * σb .* sqrt.(_loconly_row_tip_variance(fit.ranef.prob))
+        rt2σb_row = sqrt(2.0) * σb .* sqrt.(_loconly_row_tip_variance(fit.ranef))
         return (axis = :mu, invlink = identity, eta0 = fit.ranef.mu_fixed,
                 rt2σb = rt2σb_row, z = z, wk = w ./ sqrt(π))
     end

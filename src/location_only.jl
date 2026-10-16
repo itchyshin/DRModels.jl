@@ -123,7 +123,10 @@ struct LocOnlyRanef <: AbstractDict{Symbol,Vector{Float64}}
     effects::Dict{Symbol,Vector{Float64}}   # group => per-tip BLUPs (tree leaf order)
     mu_fixed::Vector{Float64}               # Xμ β̂ (population-level mean), one per row
     prob::LocOnlyProblem                    # rows -> tips, and the tip covariance
+    tipvar::Base.RefValue{Union{Nothing,Vector{Float64}}}   # lazy per-row C_ii cache
 end
+LocOnlyRanef(effects, mu_fixed, prob) =
+    LocOnlyRanef(effects, mu_fixed, prob, Ref{Union{Nothing,Vector{Float64}}}(nothing))
 Base.length(r::LocOnlyRanef) = length(r.effects)
 Base.iterate(r::LocOnlyRanef, st...) = iterate(r.effects, st...)
 Base.getindex(r::LocOnlyRanef, k) = r.effects[k]
@@ -132,7 +135,9 @@ Base.haskey(r::LocOnlyRanef, k) = haskey(r.effects, k)
 
 # C_ii for each data row: the diagonal of the raw branch-length tip covariance
 # `Q_cond⁻¹` at the row's tip (Cov(u) = σ_phy² Q_cond⁻¹, see `build_M`). One
-# sparse solve per distinct tip; called once per `residuals(type = :quantile)`.
+# sparse solve per distinct tip (O(p) solves, so O(p²) in the number of tips);
+# `_loconly_row_tip_variance(::LocOnlyRanef)` below caches the result so repeated
+# `residuals(type = :quantile)` calls on one fit pay it once.
 function _loconly_row_tip_variance(prob::LocOnlyProblem)
     F = cholesky(Symmetric(prob.Q_cond))
     tv = fill(NaN, prob.p)
@@ -144,6 +149,15 @@ function _loconly_row_tip_variance(prob::LocOnlyProblem)
         e[j] = 0.0
     end
     return tv[prob.species]
+end
+
+function _loconly_row_tip_variance(r::LocOnlyRanef)
+    tv = r.tipvar[]
+    if tv === nothing
+        tv = _loconly_row_tip_variance(r.prob)
+        r.tipvar[] = tv
+    end
+    return tv
 end
 
 """
