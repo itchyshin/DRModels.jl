@@ -3576,8 +3576,9 @@ function _fit_structured_gaussian_sparse_lbfgs(
         # #1073: both arms difference an EXACT analytic gradient, not the objective value:
         # ML the profiled score (`_loconly_profile_fg` + the penalty gradient), REML the
         # restricted score (`_loconly_reml_fg`). Only a collapsed variance (flat objective)
-        # keeps the value-based path and stays known-noisy.
-        Hv = if _clamp_active(vhat, 1:2; lo = _SE_LOGSD_LO)
+        # keeps the value-based path and stays known-noisy (and says so).
+        Hv = if _se_hessian_path(vhat; sd = 1:2, sd_lo = _SE_LOGSD_LO) === :value
+            _warn_value_hessian("sparse phylo-mean variance block")
             _finite_hessian(fv, vhat; h = _fd_hessian_step(n))
         else
             _finite_hessian_from_gradient(vhat; context = "sparse phylo-mean variance block") do Gout, v

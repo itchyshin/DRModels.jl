@@ -195,7 +195,9 @@ function _ordinary_laplace_vcov(nll, θ̂, n::Int; se::Bool, context::AbstractSt
         # already runs at `_ORDINARY_LAPLACE_NEWTON_TOL` (1e-13), so warm vs cold
         # starts agree to roundoff. A collapsed variance (the last coordinate is
         # log sigma_b) or a route with no gradient keeps the value-based path.
-        H = if grad! === nothing || _clamp_active(θ̂, length(θ̂):length(θ̂); lo = _SE_LOGSD_LO)
+        H = if grad! === nothing ||
+               _se_hessian_path(θ̂; sd = length(θ̂):length(θ̂), sd_lo = _SE_LOGSD_LO) === :value
+            grad! === nothing || _warn_value_hessian(context)
             _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
         else
             _finite_hessian_from_gradient(grad!, θ̂; context = context)
