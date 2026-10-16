@@ -13,8 +13,8 @@
 # The issue thread does not record TMB's max |gradient| itself, so the "< 1e-6 at the SE
 # point" check is also done on the Julia side (the Julia and R optima agree to 1e-8).
 using DRModels
-using Test, LinearAlgebra, Random
-import Distributions
+using Test, LinearAlgebra, Random, Logging
+import Distributions, TOML
 
 @testset "J3a: _finite_hessian_from_gradient (helper)" begin
     A = [4.0 1.0 0.0; 1.0 3.0 0.5; 0.0 0.5 2.0]
@@ -165,4 +165,32 @@ end
     fd5 = [(gfit.nll(θ5 .+ 1e-4 .* (1:7 .== k)) - gfit.nll(θ5 .- 1e-4 .* (1:7 .== k))) / 2e-4 for k in 1:7]
     @test g5[5] != 0                                 # not flat: the objective is not clamped at 3.5
     @test maximum(abs.(g5 .- fd5)) < 1e-3 * max(1.0, maximum(abs.(g5)))
+
+    # ... and a REAL fit that lands there (#1088). Fixture nb2_disp3to4_s1_n5000 (size 0.0015,
+    # RE SD 1.2, 6 x 6 levels; test/parity/gen_1088_nb2_runoff_*): native drmTMB ca3ddef converges
+    # (opt$convergence 0, sdr$pdHess, log sigma 3.203, both RE SDs interior), so the gradient path
+    # is the one taken and its SEs have a reference. It needs both #1088 changes: the first pass
+    # leaves the clamp box (log sigma 2574) and is recovered by the box re-fit, and the cold
+    # 1e-12 SE inner solve stalls on its rounding floor at a stencil point (NaN vcov) unless the
+    # tolerance ladder retries it at 1e-10 / 1e-8.
+    dir34 = joinpath(@__DIR__, "fixtures", "j3_se", "nb2_disp3to4_s1_n5000")
+    ref34 = TOML.parsefile(joinpath(dir34, "ref.toml"))
+    rows34 = [split(l, ',') for l in readlines(joinpath(dir34, "data.csv"))[2:end]]
+    d34 = (; y = [parse(Float64, r[1]) for r in rows34], x = [parse(Float64, r[2]) for r in rows34],
+             g = String[r[3] for r in rows34], h = String[r[4] for r in rows34])
+    @test ref34["opt_convergence"] == 0 && ref34["pd_hess"] && ref34["comparable"]
+    # no warning at all: no clamp, no value-Hessian fallback, no NaN vcov, no run-off
+    fit34 = @test_logs min_level = Logging.Warn drm(
+        bf(@formula(y ~ 1 + x + (1 | g) + (1 | h)), @formula(sigma ~ 1)), NegBinomial2(); data = d34)
+    θ34 = fit34.theta
+    @test is_converged(fit34)
+    @test 3 < θ34[3] < 4                             # theta_sigma_hat in (3, 4), fitted
+    @test DRModels._se_hessian_path(θ34; disp = (3,), sd = 4:5, disp_bound = bnb) === :gradient
+    @test maximum(abs.(θ34 .- ref34["theta"])) < 2e-4
+    @test loglik(fit34) ≈ ref34["loglik"] atol = 1e-5
+    g34 = zeros(5); fit34.nllgrad(g34, θ34)
+    @test maximum(abs, g34) < 1e-4
+    se34 = sqrt.(diag(vcov(fit34)))
+    @test all(isfinite, se34)
+    @test all(abs.(se34 ./ ref34["se"] .- 1) .< 0.01)   # vs drmTMB sdreport
 end
