@@ -194,10 +194,13 @@ function _ordinary_laplace_vcov(nll, θ̂, n::Int; se::Bool, context::AbstractSt
         # #1073: central differences of the exact outer gradient. The inner solve
         # already runs at `_ORDINARY_LAPLACE_NEWTON_TOL` (1e-13), so warm vs cold
         # starts agree to roundoff. A collapsed variance (the last coordinate is
-        # log sigma_b) or a route with no gradient keeps the value-based path.
-        H = if grad! === nothing ||
-               _se_hessian_path(θ̂; sd = length(θ̂):length(θ̂), sd_lo = _SE_LOGSD_LO) === :value
-            grad! === nothing || _warn_value_hessian(context)
+        # log sigma_b) or a caller with no gradient keeps the value-based path,
+        # and each of the two says so: neither fallback is silent.
+        H = if grad! === nothing
+            _warn_no_gradient_hessian(context)
+            _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        elseif _se_hessian_path(θ̂; sd = length(θ̂):length(θ̂), sd_lo = _SE_LOGSD_LO) === :value
+            _warn_value_hessian(context)
             _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
         else
             _finite_hessian_from_gradient(grad!, θ̂; context = context)

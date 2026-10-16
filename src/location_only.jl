@@ -3541,9 +3541,12 @@ function _fit_structured_gaussian_sparse_lbfgs(
         # objective (`_loconly_profile_fg` + the penalty gradient), not its value.
         # The REML arm has only an FD gradient (`_loconly_fd_gradient2`), so it,
         # and any collapsed variance (flat objective), keep the value-based path
-        # and stay known-noisy.
-        Hv = if reml || _se_hessian_path(vhat; sd = 1:2, sd_lo = _SE_LOGSD_LO) === :value
-            reml || _warn_value_hessian("sparse phylo-mean variance block")
+        # and stay known-noisy. Each of the two says so: neither is silent.
+        Hv = if reml
+            _warn_no_gradient_hessian("sparse phylo-mean variance block (REML)")
+            _finite_hessian(fv, vhat; h = _fd_hessian_step(n))
+        elseif _se_hessian_path(vhat; sd = 1:2, sd_lo = _SE_LOGSD_LO) === :value
+            _warn_value_hessian("sparse phylo-mean variance block")
             _finite_hessian(fv, vhat; h = _fd_hessian_step(n))
         else
             _finite_hessian_from_gradient(vhat; context = "sparse phylo-mean variance block") do Gout, v
