@@ -219,11 +219,18 @@ function _se_hessian_path(θ̂; sd = (), disp = (), disp_bound::Real = 4.0)
      _clamp_active(θ̂, disp; lo = -disp_bound, hi = disp_bound)) ? :value : :gradient
 end
 
-# Real bound of log sigma for the families routed through `_crossed_mean_laplace_nuisance_fg`.
-# Tweedie uses logsigma raw (only the fg's own [-8, 8] clamp applies); every other kind builds
-# its aux through `clamp(-2 * logsigma, -8, 8)`.
+# Real bound of log sigma for each family routed through `_crossed_mean_laplace_nuisance_fg`,
+# listed explicitly: a new family has no entry and errors here rather than inheriting a bound
+# it was never checked against. Tweedie uses logsigma raw (only the fg's own [-8, 8] clamp
+# applies); the others build their aux through `clamp(-2 * logsigma, -8, 8)`, i.e. [-4, 4].
+_dispersion_clamp(::Val{:nb2_fixed}) = 4.0
+_dispersion_clamp(::Val{:gamma_fixed}) = 4.0
+_dispersion_clamp(::Val{:beta_fixed}) = 4.0
+_dispersion_clamp(::Val{:betabinomial_fixed}) = 4.0
 _dispersion_clamp(::Val{:tweedie_fixed}) = 8.0
-_dispersion_clamp(::Val) = 4.0
+_dispersion_clamp(k::Val) = throw(ArgumentError(
+    "_dispersion_clamp: no log-dispersion bound registered for family kind $(typeof(k).parameters[1]); " *
+    "add one before routing it through _crossed_mean_laplace_nuisance_fg"))
 
 # The fallback must not be silent: the reported SEs of such a fit come from the noisy stencil.
 _warn_value_hessian(context::AbstractString) =
