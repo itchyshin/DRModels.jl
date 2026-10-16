@@ -188,7 +188,51 @@ function _nondegenerate_fit(fit::DrmFit)
         length(obs) > 1 && (yscale = std(obs))
     end
     isfinite(yscale) || (yscale = 1.0)
-    return smax > 1e-6 * max(yscale, eps(Float64))
+    smax > 1e-6 * max(yscale, eps(Float64)) || return false
+    return !_unbounded_scale_spike(fit)
+end
+
+# DRModels.jl#1059, parity with drmTMB#1469. A `sigma ~ x` fit can send the scale
+# of ONE observation to zero while the location predictor passes through that
+# observation exactly: the Gaussian likelihood then has no finite maximum, the
+# optimiser still reports convergence, and the largest-scale bar above cannot
+# see it because the other scales stay ordinary. Two conditions together mark it,
+# and neither refers to an absolute scale:
+#   1. the fitted scales span more than `_UNBOUNDED_SCALE_RATIO` (a ratio, so it
+#      does not depend on the units of the response);
+#   2. the smallest-scale observation is fitted exactly: |y - mu| / sigma is below
+#      `_UNBOUNDED_EXACT_FIT_TOL`. On a well-posed heteroscedastic fit that
+#      residual is an ordinary N(0, 1) draw, so |z| < 1e-3 has probability 8e-4.
+# Conservative on purpose: fits with random effects or `meta_V` are left alone
+# (the stored `means` are not the marginal fit there, and the known sampling
+# variance keeps a meta-analysis likelihood bounded), and so are non-Gaussian
+# families, where a small dispersion is a legitimate limit.
+const _UNBOUNDED_SCALE_RATIO = 1e4
+const _UNBOUNDED_EXACT_FIT_TOL = 1e-3
+
+function _formula_has_meta_V(fit::DrmFit)
+    try
+        return occursin("meta_V", sprint(show, fit.formula))
+    catch
+        return false
+    end
+end
+
+function _unbounded_scale_spike(fit::DrmFit)
+    fit.family isa Gaussian || return false
+    fit.ranef === nothing || return false
+    (haskey(fit.scales, :sigma) && haskey(fit.means, :mu) && haskey(fit.obs, :mu)) ||
+        return false
+    _formula_has_meta_V(fit) && return false
+    s, μ, y = fit.scales[:sigma], fit.means[:mu], fit.obs[:mu]
+    (length(s) == length(μ) == length(y)) || return false
+    rows = [i for i in eachindex(s) if isfinite(s[i]) && s[i] >= 0 && isfinite(μ[i]) && isfinite(y[i])]
+    length(rows) < 2 && return false
+    r = rows[argmin(s[rows])]
+    smin, smax = s[r], maximum(s[rows])
+    (smax > _UNBOUNDED_SCALE_RATIO * smin) || return false
+    # A scale that underflowed to exactly zero is a collapse by itself.
+    return s[r] == 0 || abs(y[r] - μ[r]) < _UNBOUNDED_EXACT_FIT_TOL * s[r]
 end
 
 """
