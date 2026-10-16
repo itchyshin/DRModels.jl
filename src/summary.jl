@@ -219,6 +219,8 @@ function Base.show(io::IO, ::MIME"text/plain", fit::DrmFit)
         "but the fit is degenerate -- see `is_converged`)")
     _wald_withheld(fit) && println(io, "  Wald SEs withheld (homogeneous Toeplitz, as drmTMB): `sigma` is the " *
         "TOTAL within-series SD; use profile intervals for mean coefficients.")
+    (!_wald_withheld(fit) && _hessian_se_unusable(fit)) && println(io,
+        "  Wald SEs withheld (Hessian not positive definite, or the fit is not converged)")
 
     # Residual SD on the RESPONSE scale + residual dof (issue #752). An R user
     # looks for these first: lm() prints both and drmTMB prints sigma. The value

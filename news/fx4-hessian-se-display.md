@@ -1,0 +1,1 @@
+- **Wald SEs are not printed from a non-positive-definite Hessian or an unconverged fit.** `show` / `coeftable` withhold the Std.Error column (NaN, with a one-line note) when `vcov` is NaN or the optimiser did not converge. `is_converged` is unchanged. Mirrors drmTMB refusing `vcov()` when `pdHess` is FALSE (GasolineYield / sweep t8).

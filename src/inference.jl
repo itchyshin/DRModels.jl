@@ -31,7 +31,19 @@ stderror(fit::DrmFit) = _wald_withheld(fit) ? _homtoep_refuse_wald("stderror") :
 # Internal: the Hessian-based SEs regardless of the public Wald scope (profile
 # step sizes, plots); `_display_se` is what `coeftable` / `show` print.
 _stderror(fit::DrmFit) = _boundary_se.(diag(fit.vcov))
-_display_se(fit::DrmFit) = _wald_withheld(fit) ? fill(NaN, length(fit.theta)) : _stderror(fit)
+# Print / `coeftable` must not present Wald SEs as usable when the Hessian is
+# not positive definite (NaN / negative-variance vcov) or the fit is not
+# converged (GasolineYield; sweep t8). Homogeneous Toeplitz still goes through
+# `_wald_withheld`. Do not change `is_converged` (drmTMB #1554).
+_display_se(fit::DrmFit) = (_wald_withheld(fit) || _hessian_se_unusable(fit)) ?
+    fill(NaN, length(fit.theta)) : _stderror(fit)
+
+function _hessian_se_unusable(fit::DrmFit)
+    is_converged(fit) || return true
+    V = fit.vcov
+    isempty(V) && return false
+    return any(isnan, V) || any(<(0), diag(V))
+end
 
 # √v where the variance is identified (finite, positive); Inf otherwise. Keeps a
 # non-PD boundary direction from poisoning the whole SE vector with NaN.

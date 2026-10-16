@@ -1,0 +1,1 @@
+| 2026-10-16 | **FX4 Hessian SE display** (GasolineYield / non-PD) | `julia --project=. -e 'include("test/test_fx4_hessian_se_display.jl")'` + `Pkg.test()` | ✅ red-proof: pin prints Inf/finite SEs from NaN vcov and unconverged fits; after the fix, `coeftable`/`show` withhold NaN SEs and say so. `is_converged` unchanged | Shannon |
