@@ -18,10 +18,12 @@
 #       fit that reported `converged = true` (fit-level testset below).
 #
 # The fix keeps the fixed unroll, caps the step along its own direction, damps a
-# non-negative-definite Hessian, keeps stepping while the squared Newton
-# decrement λ² = gᵀ(−H)⁻¹g exceeds `_VA_INNER_TOL`, writes the Binomial kernel
-# without cancellation, re-measures every group's λ² at θ̂ and ANDs the result
-# into `converged` (with a warning). Each testset below fails on base.
+# Hessian only when it is not usably negative definite, keeps stepping while the
+# squared Newton decrement λ² = gᵀ(−H)⁻¹g exceeds max(1e-14, the rounding of the
+# group ELBO) (the inner functions return ρ = λ² / that bound), writes the
+# Binomial kernel and the Poisson Hrr without cancellation, re-measures every
+# group's ρ at θ̂ and ANDs ρ ≤ 1 into `converged` (with a warning). Each testset
+# below except the last fails on base.
 
 using DRModels
 using Test
@@ -29,6 +31,7 @@ using ForwardDiff
 using StableRNGs
 using Logging
 import Distributions
+import SpecialFunctions
 
 const DVI = DRModels
 
@@ -58,7 +61,7 @@ const _GH_LWπ = log.(_GH_W) .- 0.5 * log(π)
             S = exp(lS); τ = exp(-2lσ)
             out = DVI._poisson_va_inner(A, S, τ)
             @test _pois_inner_gnorm(A, S, τ, out[1], out[2]) < 1e-6
-            @test length(out) == 3 && out[3] <= DVI._VA_INNER_TOL
+            @test length(out) == 3 && out[3] <= 1
         end
     end
 
@@ -73,7 +76,7 @@ const _GH_LWπ = log.(_GH_W) .- 0.5 * log(π)
             obj = u -> DVI._binom_va_group_elbo(u[1], u[2], η0, s, nt, τ, _GH_Z, _GH_LWπ)
             out = DVI._binom_va_inner(η0, s, nt, τ, _GH_Z, _GH_LWπ)
             @test _ad_inner_gnorm(obj, out[1], out[2]) < 1e-6
-            @test length(out) == 3 && out[3] <= DVI._VA_INNER_TOL
+            @test length(out) == 3 && out[3] <= 1
         end
     end
 
@@ -132,19 +135,23 @@ const _GH_LWπ = log.(_GH_W) .- 0.5 * log(π)
     @testset "an inner solve stopped short is reported, not hidden" begin
         # One step from the warm start cannot reach the optimum of a former CAP cell.
         out = DVI._poisson_va_inner(0.0, exp(-19.0), exp(-8.0); iters = 1, maxiters = 1)
-        @test out[3] > DVI._VA_INNER_TOL
+        @test out[3] > 1
         @test DVI._va_newton_decrement2(1.0, 0.0, 1.0, 0.0, -1.0) == Inf   # H not ND
         @test DVI._va_newton_decrement2(2.0, 0.0, -4.0, 0.0, -1.0) ≈ 1.0     # gᵀ(−H)⁻¹g
+        # The bound is 1e-14 unless the group ELBO is large enough that 32·eps·|F|
+        # (twice the line search's tie tolerance) exceeds it.
+        @test DVI._va_inner_bound(0.0) == 1e-14
+        @test DVI._va_inner_bound(-1e4) ≈ 32 * eps() * (1 + 1e4)
     end
 
     @testset "fit-level report: converged ANDs the inner check, with a warning" begin
-        @test DVI._va_inner_converged([0.0, 1e-20, DVI._VA_INNER_TOL], "route") === true
-        ok = @test_logs (:warn, r"inner solve did not reach stationarity for 2 of 3 groups.*#965") DVI._va_inner_converged([0.0, 1e-3, NaN], "route")
+        @test DVI._va_inner_converged([0.0, 1e-6, 1.0], "route") === true
+        ok = @test_logs (:warn, r"inner solve did not reach stationarity for 2 of 3 groups.*#965") DVI._va_inner_converged([0.0, 1e3, NaN], "route")
         @test ok === false
         # Quiet inside bootstrap / profile refits (same switch as the clamp warnings),
         # but still not converged.
         task_local_storage(:drm_quiet_boundary, true) do
-            quiet = @test_logs DVI._va_inner_converged([1e-3], "route")
+            quiet = @test_logs DVI._va_inner_converged([1e3], "route")
             @test quiet === false
         end
     end
@@ -175,7 +182,7 @@ const _GH_LWπ = log.(_GH_W) .- 0.5 * log(π)
         # The fit's own objective records the same per-group λ² it ANDs into converged.
         dec = fill(NaN, G)
         fit.nll(θ̂, dec)
-        @test all(d -> d <= DVI._VA_INNER_TOL, dec)
+        @test all(d -> d <= 1, dec)
     end
 
     @testset "Poisson (1 | g) fit: no converged = true at a non-stationary inner" begin
@@ -197,5 +204,36 @@ const _GH_LWπ = log.(_GH_W) .- 0.5 * log(π)
         @test worst < 1e-6
         @test θ̂ ≈ [2.8367, 1.4298] atol = 1e-3
         @test loglik(fit) ≈ -24.8805 atol = 1e-3
+    end
+
+    @testset "NB2 kernel: no cancellation, no false alarm at a large size" begin
+        # The old kernel built each node from terms of size r·log r that cancel; at
+        # NB2 size ≈ 430 its rounding noise in the group ELBO stalled the inner solve
+        # at λ² ≈ 1e-11 (ρ ≈ 17 with the stationarity check), so this ordinary fit
+        # was flagged. The b-dependent part is now y·η − (y + r)·log1p(μ/r) and the
+        # b-free part a sum of log1p(k/r).
+        for (y, r) in (([1, 3, 0, 2], 430.0), ([0, 5, 12], 3.6e8), ([2, 0], exp(40.0)))
+            exact = sum(Float64(SpecialFunctions.loggamma(big(k) + big(r)) - SpecialFunctions.loggamma(big(r)) -
+                                k * log(big(r))) for k in y)
+            @test DVI._nb2_group_const(y, r) ≈ exact rtol = 1e-12 atol = 1e-14
+        end
+        η0 = [0.5, -1.0, 2.0]; yk = [1, 0, 7]
+        for r in (0.3, 430.0, 1e9), b in (-3.0, 0.1, 4.0)
+            μ = exp.(big.(η0) .+ b); R = big(r)
+            exact = Float64(sum(yk[j] * (η0[j] + b) - (yk[j] + R) * log1p(μ[j] / R) for j in 1:3))
+            @test DVI._nb2_group_kernel(b, η0, yk, r) ≈ exact rtol = 1e-12 atol = 1e-12
+        end
+        rng = StableRNG(7_000_000 + 10000 * 3 + 100 * 2 + 15 + 4)
+        G, ng = 20, 4; n = G * ng
+        g = repeat(1:G, inner = ng); x = randn(rng, n)
+        bg = 1.5 .* randn(rng, G)
+        η = -0.5 .+ 0.5 .* x .+ bg[g]
+        y = Float64.([rand(rng, Distributions.NegativeBinomial(2.0, 2.0 / (2.0 + exp(e)))) for e in η])
+        gidx, _ = DVI._group_index(g)
+        fit = @test_logs min_level = Logging.Warn DVI._fit_nb2_ranef_va(DVI.NegBinomial2(), y,
+                  hcat(ones(n), x), ones(n, 1), gidx, G, ["(Intercept)", "x"], ["(Intercept)"], :g, 1e-8)
+        @test fit.converged
+        dec = fill(NaN, G); fit.nll(fit.theta, dec)
+        @test all(d -> d <= 1, dec)
     end
 end

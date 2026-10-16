@@ -253,40 +253,48 @@ function _va_newton_decrement2(gm::T, gr::T, Hmm::T, Hmr::T, Hrr::T) where {T}
     return (-Hrr * gm * gm + 2 * Hmr * gm * gr - Hmm * gr * gr) / det
 end
 
-# A group's inner profile counts as solved when λ² ≤ `_VA_INNER_TOL`: the group
-# ELBO is then within about 5e-15 of its maximum and λ ≤ 1e-7. Rounding sits many
-# orders of magnitude below this (see `_va_newton_decrement2`).
+# A group's inner profile counts as solved when λ²/2, the ELBO gain a Newton step
+# still promises, is too small to matter or too small to see:
+#     λ² ≤ max(_VA_INNER_TOL, 32·eps·(1 + |F|)).
+# The first bound puts the group ELBO within about 5e-15 of its maximum (λ ≤ 1e-7).
+# The second is twice the tie tolerance of `_va_backtrack`: a gain below it is lost
+# in the rounding of F, so the line search cannot take it and the solve is not
+# asked to. It is the larger one when F is formed from large terms, e.g. NB2 at a
+# large size, where loggamma(y + r) − loggamma(r) cancels terms of size r·log r.
+# The driver reports ρ = λ² / bound, so a group is solved iff ρ ≤ 1.
 const _VA_INNER_TOL = 1e-14
+_va_inner_bound(F0) = max(_VA_INNER_TOL, 32 * eps(Float64) * (1 + abs(F0)))
 # The inner unroll always takes its fixed `iters` Newton steps (25 Poisson, 30 for
 # the quadrature families), as before #965. A group that is still not stationary
 # continues, up to `_VA_INNER_MAXITERS` steps in all; whatever is left unsolved is
-# reported. A group that ends the unroll with λ² ≤ `_VA_INNER_DONE` stops there;
-# one that meets `_VA_INNER_TOL` only narrowly, or only after the unroll, takes two
-# more Newton steps, so the returned point (and the derivative the outer
-# ForwardDiff carries through it) is not left at the edge of the tolerance.
+# reported. A group that ends the unroll with ρ ≤ `_VA_INNER_DONE` stops there; one
+# that is solved only narrowly, or only after the unroll, takes two more Newton
+# steps, so the returned point (and the derivative the outer ForwardDiff carries
+# through it) is not left at the edge of the tolerance.
 const _VA_INNER_MAXITERS = 200
-const _VA_INNER_DONE = 1e-20
+const _VA_INNER_DONE = 1e-6
 
 # Shared inner driver: damped Newton ascent on the group ELBO `F(m, r)` from the
 # warm start (m, r). `gH(m, r)` returns (gm, gr, Hmm, Hmr, Hrr), the gradient and
 # Hessian of F in (m, r). Takes exactly `iters` steps, then keeps stepping while
-# the squared Newton decrement exceeds `_VA_INNER_TOL` (plus the polishing steps
+# the group is not solved (ρ > 1, see `_va_inner_bound`; plus the polishing steps
 # described at `_VA_INNER_DONE`), stopping at `maxiters` steps or when the line
-# search can no longer move the iterate. Returns
-# (m, r, λ²) with λ² measured at the returned point. Iterates and λ² carry the
-# working eltype; the extra steps and the stop test read only primal values, so
-# the outer ForwardDiff still differentiates the unrolled map.
+# search can no longer move the iterate. Returns (m, r, ρ) with ρ measured at the
+# returned point. Iterates and ρ carry the working eltype; the extra steps and the
+# stop test read only primal values, so the outer ForwardDiff still differentiates
+# the unrolled map.
 function _va_inner_solve(gH, F, m::T, r::T, iters::Int, maxiters::Int) where {T}
     maxiters = max(maxiters, iters)
-    dec = T(Inf)
+    ρ = T(Inf)
     npolish = 0
     for it in 1:(maxiters + 1)
         gm, gr, Hmm, Hmr, Hrr = gH(m, r)
-        dec = _va_newton_decrement2(gm, gr, Hmm, Hmr, Hrr)
+        F0 = F(m, r)
+        ρ = _va_newton_decrement2(gm, gr, Hmm, Hmr, Hrr) / _va_inner_bound(F0)
         if it > iters
             it > maxiters && break
-            if dec <= _VA_INNER_TOL
-                (npolish == 2 || (it == iters + 1 && dec <= _VA_INNER_DONE)) && break
+            if ρ <= 1
+                (npolish == 2 || (it == iters + 1 && ρ <= _VA_INNER_DONE)) && break
                 npolish += 1
             end
         end
@@ -296,19 +304,19 @@ function _va_inner_solve(gH, F, m::T, r::T, iters::Int, maxiters::Int) where {T}
         # full Newton step changes the ELBO by ~roundoff, so a strict `≥ F0` test
         # would spuriously backtrack to α≈0 and stall; the tolerance accepts such
         # steps (α=1) while still rejecting the genuine overshoot the guard targets.
-        m1, r1 = _va_backtrack(F, m, r, Δm, Δr)
+        m1, r1 = _va_backtrack(F, m, r, Δm, Δr, F0)
         # Past the fixed unroll, an iterate the line search cannot move stays where
-        # it is on every later step: stop, keeping the λ² measured at that point.
+        # it is on every later step: stop, keeping the ρ measured at that point.
         it >= iters && m1 == m && r1 == r && break
         m, r = m1, r1
     end
-    return m, r, dec
+    return m, r, ρ
 end
 
 # Inner per-group solve. Given the group totals A = Σ y_i and S = Σ e^{η0_i}, and
-# the prior precision τ = 1/σ², return (m, s, λ²): the ELBO-stationary (m, s) and
-# the squared Newton decrement at it (`_va_newton_decrement2`; ≤ `_VA_INNER_TOL`
-# when solved). Differentiable in (A, S, τ): the iterates are carried in the
+# the prior precision τ = 1/σ², return (m, s, ρ): the ELBO-stationary (m, s) and
+# its squared Newton decrement relative to the solved bound (`_va_inner_bound`;
+# ρ ≤ 1 when solved). Differentiable in (A, S, τ): the iterates are carried in the
 # working eltype, so ForwardDiff propagates through the unrolled Newton steps.
 # Stationarity equations (§4.4):
 #   m: A − e^{m+s/2}·S − τ·m = 0
@@ -341,8 +349,8 @@ function _poisson_va_inner(A::T, S::T, τ::T; iters::Int = 25,
         Hrr = -(τ + E) * (s / 2) - E * s * s / 4
         (gm, gr, Hmm, Hmr, Hrr)
     end
-    m, r, dec = _va_inner_solve(gH, F, m, r, iters, maxiters)
-    return m, exp(r), dec
+    m, r, ρ = _va_inner_solve(gH, F, m, r, iters, maxiters)
+    return m, exp(r), ρ
 end
 
 # Shared backtracking line search for the inner ELBO ascent. Accepts the full
@@ -350,8 +358,7 @@ end
 # (so roundoff near the optimum does not trigger a stall), halving α otherwise.
 # If even the smallest trial still decreases F, take α=0 (do not move) rather than
 # accept a tiny wrong step — keeps the unrolled map monotone for the outer AD.
-function _va_backtrack(F, m::T, r::T, Δm::T, Δr::T) where {T}
-    F0 = F(m, r)
+function _va_backtrack(F, m::T, r::T, Δm::T, Δr::T, F0 = F(m, r)) where {T}
     tol = eps(T) * (one(T) + abs(F0)) * T(16)
     α = one(T)
     for _ in 1:20
@@ -370,24 +377,26 @@ function _va_ad_gH(obj, m, r)
     return g[1], g[2], H[1, 1], H[1, 2], H[2, 2]
 end
 
-# Fit-level inner check (#965). `dec[g]` is group g's squared Newton decrement at
-# θ̂, recorded by one more Float64 evaluation of the objective. Returns whether
-# every group met `_VA_INNER_TOL`; the fitters AND it into `converged`, since the
-# outer optimiser's convergence test cannot see the inner solves. When a group
-# failed, `loglik` is below the profiled ELBO and the gradient the optimiser used
-# was not the profile's gradient, so warn too (quiet inside bootstrap and profile
-# refits, like the clamp warnings).
-function _va_inner_converged(dec::AbstractVector{<:Real}, route::AbstractString)
-    bad = count(d -> !(d <= _VA_INNER_TOL), dec)
+# Fit-level inner check (#965). `ρ[g]` is group g's inner ρ at θ̂ (squared Newton
+# decrement over its bound, `_va_inner_bound`), recorded by one more Float64
+# evaluation of the objective. Returns whether every group is solved (ρ ≤ 1); the
+# fitters AND it into `converged`, since the outer optimiser's convergence test
+# cannot see the inner solves. When a group is not, `loglik` is below the profiled
+# ELBO and the gradient the optimiser used was not the profile's gradient, so warn
+# too (quiet inside bootstrap and profile refits, like the clamp warnings).
+function _va_inner_converged(ρ::AbstractVector{<:Real}, route::AbstractString)
+    bad = count(d -> !(d <= 1), ρ)
     bad == 0 && return true
     get(task_local_storage(), :drm_quiet_boundary, false) === true && return false
-    worst = maximum(d -> isnan(d) ? Inf : Float64(d), dec)
+    worst = maximum(d -> isnan(d) ? Inf : Float64(d), ρ)
     @warn "$route: the variational inner solve did not reach stationarity for $bad of " *
-          "$(length(dec)) groups at the fitted parameters (largest squared Newton decrement " *
-          "$(round(worst; sigdigits = 3)), tolerance $(_VA_INNER_TOL)). The reported ELBO is " *
-          "then below the profiled ELBO, and the optimiser did not follow the profiled " *
-          "ELBO's gradient, so the fit is marked not converged (DRModels.jl #965). " *
-          "`marginal = :LA` (the default) has no inner solve of this kind."
+          "$(length(ρ)) groups at the fitted parameters (the largest squared Newton " *
+          "decrement is $(round(worst; sigdigits = 3)) times its tolerance). The reported " *
+          "ELBO is then below the profiled ELBO, and the optimiser did not follow the " *
+          "profiled ELBO's gradient, so the fit is marked not converged (DRModels.jl #965). " *
+          "It can also mean the group ELBO carries too much rounding error to resolve its " *
+          "maximum (e.g. NegBinomial2 near its Poisson limit). `marginal = :LA` (the " *
+          "default) has no inner solve of this kind."
     return false
 end
 
@@ -405,7 +414,7 @@ function _fit_poisson_ranef_va(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol)
     lfsum = sum(lf)                                       # Σ log y_i!  (θ-free constant)
 
     # nll(θ) = −ELBO(θ, m*(θ), s*(θ)), with the inner (m,s) profiled per group.
-    # Passing `dec` (a length-G vector) also records each group's inner λ² (#965).
+    # Passing `dec` (a length-G vector) also records each group's inner ρ (#965).
     function nll(θ, dec = nothing)
         βμ = θ[1:pμ]; logσ = θ[pμ+1]
         σ2 = exp(2 * logσ); τ = one(eltype(θ)) / σ2
@@ -416,8 +425,8 @@ function _fit_poisson_ranef_va(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol)
             isempty(idx) && continue
             S = sum(@view eη0[idx])                       # Σ e^{η0_i} in group g
             Ag = convert(eltype(θ), A[g])
-            m, s, λ2 = _poisson_va_inner(Ag, S, τ)
-            dec === nothing || (dec[g] = λ2)
+            m, s, ρ = _poisson_va_inner(Ag, S, τ)
+            dec === nothing || (dec[g] = ρ)
             # E_q[Σ log p] = Σ y_i·η0_i + A_g·m − e^{m+s/2}·S − (Σ log y_i! handled globally)
             yη0 = sum(y[i] * η0[i] for i in idx)
             Eqlp = yη0 + Ag * m - exp(m + s / 2) * S
@@ -439,7 +448,7 @@ function _fit_poisson_ranef_va(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol)
     names = [:mu => nmμ, :resd => [String(grp)]]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict{Symbol,Vector{Float64}}()
-    # One more Float64 evaluation at θ̂ gives the ELBO and each group's inner λ²; a
+    # One more Float64 evaluation at θ̂ gives the ELBO and each group's inner ρ; a
     # group whose inner solve is not stationary makes the fit not converged (#965).
     dec = zeros(G)
     ll = -nll(θ̂, dec)
@@ -485,12 +494,18 @@ function _binom_group_kernel(b, η0idx, sidx, nidx)
     v = zero(promote_type(typeof(b), eltype(η0idx)))
     @inbounds for j in eachindex(η0idx)
         η = η0idx[j] + b
-        # s·η − n·log(1 + e^η), written as −s·log(1 + e^{−η}) − (n − s)·log(1 + e^η)
-        # (`_log1pexp`, the stable softplus). Same value, but both terms are ≤ 0, so
-        # nothing cancels. The old form lost ~1e-11 to cancellation when η ≫ 0 and
-        # s ≈ n (many trials, nearly all successes); that noise sat above the inner
-        # line search's tolerance and froze the solve short of stationarity (#965).
-        v -= sidx[j] * _log1pexp(-η) + (nidx[j] - sidx[j]) * _log1pexp(η)
+        # s·η − n·log(1 + e^η) = −s·log(1 + e^{−η}) − (n − s)·log(1 + e^η), evaluated
+        # with one exp and one log1p as −n·log(1 + e^{−|η|}) minus the s·|η| or
+        # (n − s)·η term. Every piece is ≤ 0, so nothing cancels: the old
+        # s·η − n·softplus(η) lost ~1e-11 when η ≫ 0 and s ≈ n (many trials, nearly
+        # all successes), which sat above the inner line search's tolerance and froze
+        # the solve short of stationarity (#965). One branch for value and
+        # derivative keeps ForwardDiff consistent at η = 0.
+        if η > zero(η)
+            v -= nidx[j] * log1p(exp(-η)) + (nidx[j] - sidx[j]) * η
+        else
+            v -= nidx[j] * log1p(exp(η)) - sidx[j] * η
+        end
     end
     return v
 end
@@ -516,8 +531,8 @@ end
 # `_va_inner_solve`. Gradient and Hessian in the 2-vector (m, r) come from
 # ForwardDiff of the group ELBO closure (nodes are constants ⇒ smooth). Iterates
 # carry the working eltype, so the outer ForwardDiff differentiates through the
-# converged (m*, s*). Returns (m, s, λ²), λ² the squared Newton decrement at the
-# returned point (#965). `z`, `lwπ` are the Gauss–Hermite nodes and log w − ½ log π
+# converged (m*, s*). Returns (m, s, ρ), ρ the inner stationarity measure at the
+# returned point (`_va_inner_bound`, #965). `z`, `lwπ` are the Gauss–Hermite nodes and log w − ½ log π
 # arrays.
 function _binom_va_inner(η0idx, sidx, nidx, τ::T, z, lwπ; iters::Int = 30,
                          maxiters::Int = _VA_INNER_MAXITERS) where {T}
@@ -548,7 +563,7 @@ function _fit_binomial_ranef_va(fam::Binomial, s, ntr, Xμ, gidx, G, nmμ, grp, 
     # log C(n_i, s_i): b- and θ-free constant, summed once.
     lcoef = sum(_logfactorial(nint[i]) - _logfactorial(sint[i]) - _logfactorial(nint[i] - sint[i]) for i in 1:n)
 
-    function nll(θ, dec = nothing)               # `dec`: record each group's inner λ² (#965)
+    function nll(θ, dec = nothing)               # `dec`: record each group's inner ρ (#965)
         βμ = θ[1:pμ]; logσ = θ[pμ+1]
         σ2 = exp(2 * logσ); τ = one(eltype(θ)) / σ2
         η0 = Xμ * βμ
@@ -558,8 +573,8 @@ function _fit_binomial_ranef_va(fam::Binomial, s, ntr, Xμ, gidx, G, nmμ, grp, 
             η0idx = @view η0[idx]
             sidx = @view sint[idx]
             nidx = @view nint[idx]
-            m, sg, λ2 = _binom_va_inner(η0idx, sidx, nidx, τ, z, lwπ)
-            dec === nothing || (dec[g] = λ2)
+            m, sg, ρ = _binom_va_inner(η0idx, sidx, nidx, τ, z, lwπ)
+            dec === nothing || (dec[g] = ρ)
             elbo += _binom_va_group_elbo(m, log(sg), η0idx, sidx, nidx, τ, z, lwπ)
         end
         return -(elbo + lcoef)
@@ -574,7 +589,7 @@ function _fit_binomial_ranef_va(fam::Binomial, s, ntr, Xμ, gidx, G, nmμ, grp, 
     names = [:mu => nmμ, :resd => [String(grp)]]
     means = Dict(:mu => _logistic.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => s ./ ntr)   # population μ (b=0)
     scales = Dict(:trials => Float64.(nint))
-    # One more Float64 evaluation at θ̂ gives the ELBO and each group's inner λ²; a
+    # One more Float64 evaluation at θ̂ gives the ELBO and each group's inner ρ; a
     # group whose inner solve is not stationary makes the fit not converged (#965).
     dec = zeros(G)
     ll = -nll(θ̂, dec)
@@ -599,7 +614,9 @@ end
 # Mean-field q(b_g) = N(m_g, s_g). Writing the b-dependent log-pmf kernel
 #   ℓ_i(b) = loggamma(y_i+θ) − loggamma(θ) + θ·log(θ/(θ+μ_i)) + y_i·log(μ_i/(θ+μ_i))
 # with μ_i = exp(η0_i + b)  (the −log y_i! coefficient is b- and θ-free → a global
-# constant), then with b = m + √(2s)·z_k (z_k, w_k the K-node Gauss–Hermite rule):
+# constant; the b-free loggamma part is added outside the quadrature, see
+# `_nb2_group_kernel`), then with b = m + √(2s)·z_k (z_k, w_k the K-node
+# Gauss–Hermite rule):
 #   E_q[Σ_{i∈g} ℓ_i] ≈ Σ_k (w_k/√π) · Σ_{i∈g} ℓ_i(m + √(2s)·z_k)
 #   KL(N(m,s)‖N(0,σ²)) = ½[ s/σ² + m²/σ² − 1 − log(s/σ²) ]
 #   group ELBO  F_g(m,r) = E_q[Σℓ] − KL,     r = log s
@@ -614,31 +631,59 @@ end
 # propagate through both the unrolled steps and the dependence on θ.
 # ──────────────────────────────────────────────────────────────────────────────
 
-# b-dependent NB2 log-pmf kernel summed over a group, as a function of the latent
-# value b (the −log y_i! term is dropped — it is b- and θ-free, handled globally).
-# η0idx/yidx are the group's linear predictors and integer counts; `r` is the size
-# θ. Same algebraic form as the NB2 log-pmf in sparse_laplace_glmm.jl:
-#   loggamma(y+r) − loggamma(r) + r·log(r/(r+μ)) + y·log(μ/(r+μ)),  μ = e^{η0+b}.
-# Differentiable in b, η0 and r (loggamma is ForwardDiff-safe via SpecialFunctions).
+# b-dependent part of the NB2 log-pmf, summed over a group, as a function of the
+# latent value b (the −log y_i! term is dropped — it is b- and θ-free, handled
+# globally). η0idx/yidx are the group's linear predictors and integer counts; `r` is
+# the size θ. With μ = e^{η0+b} the log-pmf (as in sparse_laplace_glmm.jl) is
+#   loggamma(y+r) − loggamma(r) + r·log(r/(r+μ)) + y·log(μ/(r+μ))
+#     = [loggamma(y+r) − loggamma(r) − y·log r] + y·η − (y + r)·log(1 + μ/r).
+# The bracket does not depend on b: `_nb2_group_const` adds it once per group,
+# outside the quadrature, and the inner solve never sees it. What is left has no
+# cancellation. The old form built every node's value from terms of size r·log r
+# (about 2600 at r = 430) that cancel to a value of order 1, and that rounding noise
+# in the group ELBO froze the inner solve short of stationarity (#965).
+# log(1 + μ/r) is the stable softplus of η − log r, which does not overflow at a far
+# quadrature node either. Differentiable in b, η0 and r.
 function _nb2_group_kernel(b, η0idx, yidx, r)
     v = zero(promote_type(typeof(b), eltype(η0idx), typeof(r)))
     lr = log(r)
     @inbounds for j in eachindex(η0idx)
         η = η0idx[j] + b
-        μ = exp(η)
-        lden = log(r + μ)                              # log(r + μ)
-        # r·[log r − log(r+μ)] + y·[log μ − log(r+μ)] + loggamma(y+r) − loggamma(r)
-        v += r * (lr - lden) + yidx[j] * (η - lden) +
-             loggamma(yidx[j] + r) - loggamma(r)
+        v += yidx[j] * η - (yidx[j] + r) * _log1pexp(η - lr)
+    end
+    return v
+end
+
+# The b-free part of a group's NB2 log-pmf (see `_nb2_group_kernel`):
+# Σ_j loggamma(y_j + r) − loggamma(r) − y_j·log r. For a count up to
+# `_NB2_CONST_SUMMAX` it is summed as Σ_{k<y} log(1 + k/r), which is exact and does
+# not cancel: the loggamma difference loses about eps·r·log r, i.e. 1e-6 at
+# r = 4e8 and hundreds of nats in the Poisson limit (r → e⁴⁰ at the clamp), where it
+# made the reported ELBO positive. Larger counts keep the loggamma difference.
+# Differentiable in r (loggamma is ForwardDiff-safe via SpecialFunctions).
+const _NB2_CONST_SUMMAX = 1000
+function _nb2_group_const(yidx, r)
+    lr = log(r); lgr = loggamma(r)
+    v = zero(typeof(r))
+    @inbounds for y in yidx
+        if y <= _NB2_CONST_SUMMAX
+            for k in 1:(y - 1)
+                v += log1p(k / r)
+            end
+        else
+            v += loggamma(y + r) - lgr - y * lr
+        end
     end
     return v
 end
 
 # Per-group GHQ ELBO F(m, r) = E_q[Σ ℓ] − KL, with q = N(m, s), s = e^r, the prior
-# precision τ = 1/σ², and the NB2 size `rsize` = θ. `z` are the Gauss–Hermite
-# nodes, `lwπ = log(w) − ½·log π` the log weights. Smooth in (m, r); used both for
-# the inner solve and (at the optimum) the reported value. `rsize` is held fixed
-# inside the inner solve, but enters E_q[Σℓ] so the outer AD sees ∂ELBO/∂logθ.
+# precision τ = 1/σ², and the NB2 size `rsize` = θ, WITHOUT the b-free
+# `_nb2_group_const` (the fitter adds it to the reported value). `z` are the
+# Gauss–Hermite nodes, `lwπ = log(w) − ½·log π` the log weights. Smooth in (m, r);
+# used both for the inner solve and (at the optimum) the reported value. `rsize` is
+# held fixed inside the inner solve, but enters E_q[Σℓ] so the outer AD sees
+# ∂ELBO/∂logθ.
 function _nb2_va_group_elbo(m, r, η0idx, yidx, rsize, τ, z, lwπ)
     s = exp(r)
     sd = sqrt(2 * s)                                   # √(2s): b = m + √(2s)·z_k
@@ -656,8 +701,8 @@ end
 # `_va_inner_solve`, at fixed size `rsize`. Gradient and Hessian in (m, r) come from
 # ForwardDiff of the group-ELBO closure (nodes and θ are constants ⇒ smooth).
 # Iterates carry the working eltype, so the outer ForwardDiff differentiates
-# through the converged (m*, s*). Returns (m, s, λ²), λ² the squared Newton
-# decrement at the returned point (#965). `z`, `lwπ` are the GH nodes and
+# through the converged (m*, s*). Returns (m, s, ρ), ρ the inner stationarity
+# measure at the returned point (`_va_inner_bound`, #965). `z`, `lwπ` are the GH nodes and
 # log w − ½ log π arrays.
 function _nb2_va_inner(η0idx, yidx, rsize::T, τ::T, z, lwπ; iters::Int = 30,
                        maxiters::Int = _VA_INNER_MAXITERS) where {T}
@@ -715,7 +760,7 @@ function _fit_nb2_ranef_va(fam::NegBinomial2, y, Xμ, Xσ, gidx, G, nmμ, nmσ, 
     lwπ = log.(w) .- 0.5 * log(π)                      # log w − ½ log π
     lfsum = sum(_logfactorial(yint[i]) for i in 1:n)   # Σ log y_i!: b-/θ-free constant
 
-    function nll(θ, dec = nothing)               # `dec`: record each group's inner λ² (#965)
+    function nll(θ, dec = nothing)               # `dec`: record each group's inner ρ (#965)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]; logσ = θ[pμ+pσ+1]
         σ2 = exp(2 * logσ); τ = one(eltype(θ)) / σ2
         η0 = Xμ * βμ
@@ -728,9 +773,10 @@ function _fit_nb2_ranef_va(fam::NegBinomial2, y, Xμ, Xσ, gidx, G, nmμ, nmσ, 
             # NB2 size for this group's observations. With `sigma ~ 1` (the only
             # case routed here) ησ is constant across i, so take the group's value.
             rsize = exp(-2 * ησ[idx[1]])      # ψ = log σ; NB2 size = 1/σ² = exp(−2ψ) (drmTMB)
-            m, sg, λ2 = _nb2_va_inner(η0idx, yidx, rsize, τ, z, lwπ)
-            dec === nothing || (dec[g] = λ2)
-            elbo += _nb2_va_group_elbo(m, log(sg), η0idx, yidx, rsize, τ, z, lwπ)
+            m, sg, ρ = _nb2_va_inner(η0idx, yidx, rsize, τ, z, lwπ)
+            dec === nothing || (dec[g] = ρ)
+            elbo += _nb2_va_group_elbo(m, log(sg), η0idx, yidx, rsize, τ, z, lwπ) +
+                    _nb2_group_const(yidx, rsize)
         end
         return -(elbo - lfsum)
     end
@@ -746,7 +792,7 @@ function _fit_nb2_ranef_va(fam::NegBinomial2, y, Xμ, Xσ, gidx, G, nmμ, nmσ, 
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))   # population μ (b=0)
     scales = Dict(:sigma => _va_scored_sigma(Xσ, θ̂[(pμ+1):(pμ+pσ)], 20.0, "_fit_nb2_ranef_va"))   # #999
-    # One more Float64 evaluation at θ̂ gives the ELBO and each group's inner λ²; a
+    # One more Float64 evaluation at θ̂ gives the ELBO and each group's inner ρ; a
     # group whose inner solve is not stationary makes the fit not converged (#965).
     dec = zeros(G)
     ll = -nll(θ̂, dec)
@@ -828,8 +874,8 @@ end
 # `_va_inner_solve`, at fixed shape `α`. Gradient and Hessian in (m, r) come from
 # ForwardDiff of the group-ELBO closure (nodes and α are constants ⇒ smooth).
 # Iterates carry the working eltype, so the outer ForwardDiff differentiates
-# through the converged (m*, s*). Returns (m, s, λ²), λ² the squared Newton
-# decrement at the returned point (#965). `z`, `lwπ` are the GH nodes and
+# through the converged (m*, s*). Returns (m, s, ρ), ρ the inner stationarity
+# measure at the returned point (`_va_inner_bound`, #965). `z`, `lwπ` are the GH nodes and
 # log w − ½ log π arrays.
 function _gamma_va_inner(η0idx, yidx, lyidx, α::T, τ::T, z, lwπ; iters::Int = 30,
                          maxiters::Int = _VA_INNER_MAXITERS) where {T}
@@ -863,7 +909,7 @@ function _fit_gamma_ranef_va(fam::Gamma, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, 
     z, w = _gauss_hermite(12)
     lwπ = log.(w) .- 0.5 * log(π)                      # log w − ½ log π
 
-    function nll(θ, dec = nothing)               # `dec`: record each group's inner λ² (#965)
+    function nll(θ, dec = nothing)               # `dec`: record each group's inner ρ (#965)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]; logσb = θ[pμ+pσ+1]
         σ2 = exp(2 * logσb); τ = one(eltype(θ)) / σ2
         η0 = Xμ * βμ
@@ -877,8 +923,8 @@ function _fit_gamma_ranef_va(fam::Gamma, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, 
             # Gamma shape for this group's observations. With `sigma ~ 1` (the only
             # case routed here) ησ is constant across i, so take the group's value.
             α = exp(-2 * ησ[idx[1]])
-            m, sg, λ2 = _gamma_va_inner(η0idx, yidx, lyidx, α, τ, z, lwπ)
-            dec === nothing || (dec[g] = λ2)
+            m, sg, ρ = _gamma_va_inner(η0idx, yidx, lyidx, α, τ, z, lwπ)
+            dec === nothing || (dec[g] = ρ)
             elbo += _gamma_va_group_elbo(m, log(sg), η0idx, yidx, lyidx, α, τ, z, lwπ)
         end
         return -elbo
@@ -895,7 +941,7 @@ function _fit_gamma_ranef_va(fam::Gamma, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, 
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))   # population μ (b=0)
     scales = Dict(:sigma => _va_scored_sigma(Xσ, θ̂[(pμ+1):(pμ+pσ)], 15.0, "_fit_gamma_ranef_va"))   # #999
-    # One more Float64 evaluation at θ̂ gives the ELBO and each group's inner λ²; a
+    # One more Float64 evaluation at θ̂ gives the ELBO and each group's inner ρ; a
     # group whose inner solve is not stationary makes the fit not converged (#965).
     dec = zeros(G)
     ll = -nll(θ̂, dec)
@@ -973,8 +1019,8 @@ end
 # `_va_inner_solve`, at fixed precision `φ`. Gradient and Hessian in (m, r) come
 # from ForwardDiff of the group-ELBO closure (nodes and φ are constants ⇒ smooth).
 # Iterates carry the working eltype, so the outer ForwardDiff differentiates
-# through the converged (m*, s*). Returns (m, s, λ²), λ² the squared Newton
-# decrement at the returned point (#965). `z`, `lwπ` are the GH nodes and
+# through the converged (m*, s*). Returns (m, s, ρ), ρ the inner stationarity
+# measure at the returned point (`_va_inner_bound`, #965). `z`, `lwπ` are the GH nodes and
 # log w − ½ log π arrays.
 function _beta_va_inner(η0idx, lyidx, l1myidx, φ::T, τ::T, ȳ, z, lwπ; iters::Int = 30,
                         maxiters::Int = _VA_INNER_MAXITERS) where {T}
@@ -1006,7 +1052,7 @@ function _fit_beta_ranef_va(fam::Beta, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_
     z, w = _gauss_hermite(12)
     lwπ = log.(w) .- 0.5 * log(π)                      # log w − ½ log π
 
-    function nll(θ, dec = nothing)               # `dec`: record each group's inner λ² (#965)
+    function nll(θ, dec = nothing)               # `dec`: record each group's inner ρ (#965)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]; logσb = θ[pμ+pσ+1]
         σ2 = exp(2 * logσb); τ = one(eltype(θ)) / σ2
         η0 = Xμ * βμ
@@ -1021,8 +1067,8 @@ function _fit_beta_ranef_va(fam::Beta, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_
             # only case routed here) ησ is constant across i, so take the group's value.
             φ = exp(-2 * ησ[idx[1]])
             ȳg = sum(@view y[idx]) / length(idx)
-            m, sg, λ2 = _beta_va_inner(η0idx, lyidx, l1myidx, φ, τ, ȳg, z, lwπ)
-            dec === nothing || (dec[g] = λ2)
+            m, sg, ρ = _beta_va_inner(η0idx, lyidx, l1myidx, φ, τ, ȳg, z, lwπ)
+            dec === nothing || (dec[g] = ρ)
             elbo += _beta_va_group_elbo(m, log(sg), η0idx, lyidx, l1myidx, φ, τ, z, lwπ)
         end
         return -elbo
@@ -1039,7 +1085,7 @@ function _fit_beta_ranef_va(fam::Beta, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
     means = Dict(:mu => _logistic.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))   # population μ (b=0)
     scales = Dict(:sigma => _va_scored_sigma(Xσ, θ̂[(pμ+1):(pμ+pσ)], 15.0, "_fit_beta_ranef_va"))   # #999
-    # One more Float64 evaluation at θ̂ gives the ELBO and each group's inner λ²; a
+    # One more Float64 evaluation at θ̂ gives the ELBO and each group's inner ρ; a
     # group whose inner solve is not stationary makes the fit not converged (#965).
     dec = zeros(G)
     ll = -nll(θ̂, dec)

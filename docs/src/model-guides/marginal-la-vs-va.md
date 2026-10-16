@@ -201,10 +201,11 @@ numbers look plausible:
    same simulated data.
 4. **Inner stationarity at the fit.** Each group's variational mean and
    variance come from an inner Newton solve. At the fitted parameters every
-   group's solve must be stationary (squared Newton decrement at most `1e-14`).
-   If one is not, the reported ELBO is below the profiled ELBO and the optimiser
-   did not follow its gradient, so the fit is marked `converged = false` with a
-   warning (#965).
+   group's solve must be stationary: its squared Newton decrement, twice the
+   ELBO gain still on offer, must be at most `1e-14` or below the rounding error
+   of the group ELBO. If one is not, the reported ELBO is below the profiled ELBO
+   and the optimiser did not follow its gradient, so the fit is marked
+   `converged = false` with a warning (#965).
 
 On Gamma `(1 | g)`, the evaluated comparison finds LA ≈ VA on shape `α` and LA is
 much faster. VA beyond random
