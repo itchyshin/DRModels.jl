@@ -207,6 +207,31 @@ end
 _clamp_active(θ, ks; lo::Real = -8.0, hi::Real = 3.0, tol::Real = 1e-3) =
     any(k -> θ[k] <= lo + tol || θ[k] >= hi - tol, ks)
 
+# Which Hessian a route's SE build uses (#1073). `sd` are log-SD coordinates, clamped to
+# [-8, 3] by the objective. `disp` are log-dispersion coordinates, whose REAL bound is the
+# family's: NB2 / Gamma / Beta `aux_from` clamp `-2 log sigma` to [-8, 8], i.e. log sigma to
+# [-4, 4] (`_dispersion_clamp`), narrower than the [-8, 8] box `_crossed_mean_laplace_nuisance_fg`
+# applies first. A coordinate at its clamp makes the objective flat there while the gradient
+# is not, so the gradient-difference Hessian is undefined and the route falls back to the
+# value-based (known-noisy) `_finite_hessian`.
+function _se_hessian_path(θ̂; sd = (), disp = (), disp_bound::Real = 4.0, sd_lo::Real = -8.0)
+    (_clamp_active(θ̂, sd; lo = sd_lo, hi = 3.0) ||
+     _clamp_active(θ̂, disp; lo = -disp_bound, hi = disp_bound)) ? :value : :gradient
+end
+
+# Real bound of log sigma for the families routed through `_crossed_mean_laplace_nuisance_fg`.
+# Tweedie uses logsigma raw (only the fg's own [-8, 8] clamp applies); every other kind builds
+# its aux through `clamp(-2 * logsigma, -8, 8)`.
+_dispersion_clamp(::Val{:tweedie_fixed}) = 8.0
+_dispersion_clamp(::Val) = 4.0
+
+# The fallback must not be silent: the reported SEs of such a fit come from the noisy stencil.
+_warn_value_hessian(context::AbstractString) =
+    @warn("$context vcov: a variance or dispersion coordinate sits at its clamp, so the " *
+          "gradient-difference Hessian is not defined; falling back to the value-based " *
+          "finite-difference Hessian. Its standard errors are known to be noisy (inner-solve " *
+          "noise / h^2); treat them with caution.")
+
 # A log-SD this small (sd < ~1e-3 of the residual scale) is a variance collapse:
 # the marginal is flat in that coordinate, the gradient-difference Hessian is
 # singular, and the value-based path plus the singular-vcov guard owns that case.
@@ -678,7 +703,8 @@ function _fit_poisson_general_laplace(fam::Poisson, y, Xμ, Q, leaf_node, nmμ, 
     grad!(gfinal, θ̂)
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
     V = if se
-        Hθ = if _clamp_active(θ̂, (pμ + 1):(pμ + 1); lo = _SE_LOGSD_LO)
+        Hθ = if _se_hessian_path(θ̂; sd = (pμ + 1):(pμ + 1), sd_lo = _SE_LOGSD_LO) === :value
+            _warn_value_hessian("sparse-Laplace Poisson (general covariance)")
             _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
         else
             _finite_hessian_from_gradient(
@@ -965,7 +991,10 @@ function _fit_general_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, Q,
     grad!(gfinal, θ̂)
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
     V = if se
-        Hθ = if _clamp_active(θ̂, (pμ + 2):(pμ + 2); lo = _SE_LOGSD_LO)
+        # log-dispersion: the fg clamps it to [-8, 8] but `aux_from` to the family's [-4, 4]
+        Hθ = if _se_hessian_path(θ̂; disp = (pμ + 1,), sd = (pμ + 2):(pμ + 2),
+                                 disp_bound = _dispersion_clamp(kind), sd_lo = _SE_LOGSD_LO) === :value
+            _warn_value_hessian("sparse-Laplace GLMM (general-mean nuisance)")
             _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
         else
             _finite_hessian_from_gradient(
@@ -1926,7 +1955,8 @@ function _fit_poisson_crossed_intercepts_laplace(fam::Poisson, y, Xμ, gidx, G, 
     nllhat = nll(θ̂)
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
     V = if se
-        Hθ = if _clamp_active(θ̂, (pμ + 1):(pμ + 2); lo = _SE_LOGSD_LO)
+        Hθ = if _se_hessian_path(θ̂; sd = (pμ + 1):(pμ + 2), sd_lo = _SE_LOGSD_LO) === :value
+            _warn_value_hessian("sparse-Laplace Poisson (crossed intercepts)")
             _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
         else
             _finite_hessian_from_gradient(
@@ -2113,7 +2143,8 @@ function _fit_poisson_crossed_laplace(fam::Poisson, y, Xμ, comps, nmμ, g_tol; 
     end
     θ̂ = Optim.minimizer(res)
     V = if se
-        H = if _clamp_active(θ̂, (pμ + 1):(pμ + K); lo = _SE_LOGSD_LO)
+        H = if _se_hessian_path(θ̂; sd = (pμ + 1):(pμ + K), sd_lo = _SE_LOGSD_LO) === :value
+            _warn_value_hessian("sparse-Laplace Poisson (crossed)")
             _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
         else
             _finite_hessian_from_gradient(
@@ -3106,7 +3137,8 @@ function _fit_crossed_mean_laplace(fam, kind, aux, n::Int, Xμ, gidx, G, hidx, H
         # inner solve. When a log-SD is at its clamp the objective is flat there
         # but the gradient is not, so that case keeps the value-based path and
         # the flat-column handling below.
-        use_grad_hessian = !_clamp_active(θ̂, (pμ + 1):(pμ + 2); lo = -8.0, hi = 3.0)
+        use_grad_hessian = _se_hessian_path(θ̂; sd = (pμ + 1):(pμ + 2)) === :gradient
+        use_grad_hessian || _warn_value_hessian("sparse-Laplace GLMM (crossed-mean)")
         Hθ = if use_grad_hessian
             se_grad!(Gout, θ) = (Gout .= eval_laplace(θ; grad = true, tight = true)[2])
             _finite_hessian_from_gradient(se_grad!, θ̂;
@@ -3291,7 +3323,9 @@ function _fit_crossed_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, gi
         # #1073: central differences of the exact gradient, inner mode solve
         # tightened and cold-started at each stencil point. A clamped coordinate
         # (flat objective, non-flat gradient) keeps the value-based path.
-        Hθ = if _clamp_active(θ̂, (pμ + 1):(pμ + 3); lo = -8.0, hi = 3.0)
+        Hθ = if _se_hessian_path(θ̂; disp = (pμ + 1,), sd = (pμ + 2):(pμ + 3),
+                                 disp_bound = _dispersion_clamp(kind)) === :value
+            _warn_value_hessian("sparse-Laplace GLMM (crossed-mean nuisance)")
             _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
         else
             se_grad!(Gout, θ) = begin
