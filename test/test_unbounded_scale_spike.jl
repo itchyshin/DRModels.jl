@@ -22,8 +22,8 @@ using DRModels: is_converged
     n = 40
     x = randn(rng, n)
     y = 0.3 .+ 0.5 .* x .+ randn(rng, n) .* exp.(0.1 .* x)
-    template = drm(bf(DRModels.@formula(y ~ x), DRModels.@formula(sigma ~ x));
-                   data = (y = y, x = x), family = Gaussian())
+    f = bf(DRModels.@formula(y ~ x), DRModels.@formula(sigma ~ x))
+    template = drm(f, Gaussian(); data = (y = y, x = x))
     @test is_converged(template)               # the honest fit is fine
 
     # Build a fit that has the same optimiser flag but the per-row signature of
