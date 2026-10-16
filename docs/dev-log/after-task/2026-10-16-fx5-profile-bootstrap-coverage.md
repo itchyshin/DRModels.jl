@@ -110,3 +110,7 @@ the t9 receipt numbers cited as the finding, not as a new measurement.
 - Refs #1117 — implemented.
 - Refs #1119 — options only; twin of itchyshin/drmTMB#1315.
 - itchyshin/drmTMB#1562 — investigation, not a profile-construction bug.
+  drmTMB push was 403 (`Permission to itchyshin/drmTMB.git denied to
+  cursor[bot]`). Branch `cursor/fx5-t9-slope-coverage-e28d` @
+  `5fea1f634073ae162bbbe78ae5e1a053fb77b1ac` is local only. Apply
+  `docs/dev-log/evidence/2026-10-16-drmtmb-1562.patch` on that pin.
