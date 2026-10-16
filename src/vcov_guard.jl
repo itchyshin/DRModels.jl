@@ -232,3 +232,21 @@ function _vcov_from_fd_hessian(H::AbstractMatrix; context::AbstractString = "")
     all(isfinite, H) || return fill(NaN, size(H)...)
     return _vcov_from_hessian(H; context = context)
 end
+
+# #1073: a route with NO exact gradient builds its Wald Hessian from second
+# differences of the objective VALUE (`_finite_hessian`). That fallback must not
+# be silent: those SEs carry the stencil's truncation and rounding error (amplified
+# by 1/h^2) and have no exact-gradient Hessian to be checked against. This is a
+# different case from `_warn_value_hessian` (sparse_laplace_glmm.jl), where a
+# gradient exists but a coordinate sits at its clamp. Muted only under
+# `_without_boundary_warnings` (the switch bootstrap refits set; their vcov is
+# never reported).
+function _warn_no_gradient_hessian(context::AbstractString)
+    get(task_local_storage(), :drm_quiet_boundary, false) === true && return nothing
+    @warn "$context vcov: this route has no exact gradient, so the Wald Hessian is a " *
+          "finite difference of the objective value (not of an exact gradient). Its " *
+          "standard errors carry the stencil's truncation and rounding error (objective-" *
+          "evaluation error / h^2) and cannot be checked against an exact-gradient Hessian; " *
+          "treat them with caution (DRModels.jl #1073)."
+    return nothing
+end

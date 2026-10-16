@@ -3537,7 +3537,47 @@ function _fit_structured_gaussian_sparse_lbfgs(
             end
             return val
         end
-        Hv = _finite_hessian(fv, vhat; h = _fd_hessian_step(n))
+        # #1073: ML arm differences the exact analytic gradient of the profiled
+        # objective (`_loconly_profile_fg` + the penalty gradient), not its value.
+        # The REML arm has only an FD gradient (`_loconly_fd_gradient2`), so it,
+        # and any collapsed variance (flat objective), keep the value-based path
+        # and stay known-noisy. Each of the two says so: neither is silent.
+        Hv = if reml
+            _warn_no_gradient_hessian("sparse phylo-mean variance block (REML)")
+            _finite_hessian(fv, vhat; h = _fd_hessian_step(n))
+        elseif _se_hessian_path(vhat; sd = 1:2, sd_lo = _SE_LOGSD_LO) === :value
+            _warn_value_hessian("sparse phylo-mean variance block")
+            _finite_hessian(fv, vhat; h = _fd_hessian_step(n))
+        else
+            Hg = _finite_hessian_from_gradient(vhat; require_pd = false,
+                                               context = "sparse phylo-mean variance block") do Gout, v
+                val, grad, βv, _ = _loconly_profile_fg(prob, v[1], v[2])
+                if βv === nothing
+                    Gout .= NaN
+                else
+                    grad = copy(grad)
+                    penalty !== nothing && _phylo_pen_apply_single!(grad, penalty, v, 2)
+                    Gout .= grad
+                end
+                return Gout
+            end
+            if !all(isfinite, Hg) || isposdef(Symmetric(Hg))
+                Hg                      # exact-gradient Hessian, or its NaN failure (already warned)
+            else
+                # #697: a variance pair that is not separately identified (a star tree:
+                # sigma_a and sigma_e) makes this Hessian singular in exact arithmetic, and
+                # the gradient stencil lands its smallest eigenvalue on either side of zero
+                # (measured -2.6e-11 relative). Pseudo-inverting that gives NEGATIVE
+                # variances, so keep the pre-#1073 value-based Hessian and its calibrated
+                # boundary guard (`_vcov_from_hessian`), and say so.
+                @warn "sparse phylo-mean variance block vcov: the gradient-difference Hessian " *
+                      "is not positive definite at the optimum (a variance pair that is not " *
+                      "separately identified, or a variance boundary); falling back to the " *
+                      "value-based finite-difference Hessian and its boundary guard. Treat " *
+                      "these standard errors with caution (DRModels.jl #1073, #697)."
+                _finite_hessian(fv, vhat; h = _fd_hessian_step(n))
+            end
+        end
         Vvv = _vcov_from_fd_hessian(Hv; context = "sparse phylo-mean variance block")
         V[(pμ + 1):(pμ + 2), (pμ + 1):(pμ + 2)] .= Vvv
         # #978: orthogonality holds in EXPECTATION only. The joint observed
