@@ -285,7 +285,8 @@ function _augment_zeroonebeta_fit(fit::DrmFit, zoi, coi, nmz, nmc, y, n, nb)
     return DrmFit(fit.family, blocks, names, θ̂, V, fit.loglik, fit.nobs, fit.converged,
                   means, obs, scales, fit.formula, fit.nll, fit.nllgrad, fit.ranef,
                   fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal,
-                  fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale)
+                  fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale,
+                  fit.training_schema)
 end
 
 """
