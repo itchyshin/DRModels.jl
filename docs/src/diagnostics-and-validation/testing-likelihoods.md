@@ -58,7 +58,10 @@ log-densities, clamped predictors), the **Hessian** gives the observed-informati
 `vcov`, and the stored objective lets `confint(; method = :profile)` re-optimise
 the nuisance parameters by inverting the likelihood ratio. The boundary-aware Wald
 path maps a non-positive / non-finite stored variance to `Inf` (an unbounded CI
-for an unidentified direction) rather than a silent `NaN`.
+for an unidentified direction) rather than a silent `NaN`. This covers variance
+components at zero; a shape parameter at its limit, such as Student-t `nu`
+running towards infinity, can still show a standard error of 0
+([DRModels.jl#969](https://github.com/itchyshin/DRModels.jl/issues/969)).
 
 ## Where the results live
 

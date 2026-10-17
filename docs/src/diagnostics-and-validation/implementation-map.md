@@ -22,10 +22,10 @@ sparse CHOLMOD factorisation those routes rely on. The rows below differ in
 | fixed effects | direct ML | `_fit_fixed_gaussian` |
 | random intercept `(1\|g)` | closed-form marginal (Woodbury / determinant lemma) | `_fit_ranef_gaussian` |
 | correlated `(1+x\|g)` | per-group 2×2 block capacitance, log-Cholesky Σ | `_fit_correlated_ranef_gaussian` |
-| crossed `(1\|g)+(1\|h)` | whitened-Woodbury dense capacitance `M = I + Z̃ᵀD⁻¹Z̃` | `_fit_multi_ranef_gaussian` |
+| crossed `(1\|g)+(1\|h)` | Woodbury capacitance `M = I + Z̃ᵀD⁻¹Z̃`, sparse Cholesky (sparse QR fallback), selected-inverse gradient | `_fit_multi_ranef_gaussian` |
 | scale RE `sigma ~ (1\|g)` | 32-node Gauss–Hermite marginal on log σ (default); per-group 1-D Laplace with `marginal = :Laplace` | `_fit_sigma_ranef_gaussian` |
 | `relmat` / `animal` / `phylo` | structured GLS (determinant lemma + Woodbury, known K) | `_fit_structured_gaussian` |
-| `spatial(1\|site)` | exponential kernel `K(ρ)=exp(-d/ρ)`, range estimated | `_fit_spatial_gaussian` |
+| `spatial(1\|site)` | exponential kernel `K(ρ)=exp(-d/ρ)`, range estimated (drmTMB fixes it at the median pairwise distance) | `_fit_spatial_gaussian` |
 | meta-analysis `meta_V(v)` | known-variance GLS + heterogeneity τ | `_fit_meta_gaussian` |
 
 ## Non-Gaussian families
@@ -45,7 +45,7 @@ adaptive 2-D GHQ (`src/adaptive_ghq.jl`, #834); crossed intercepts by the sparse
 | Binomial | `_fit_binomial` | `_fit_binomial_ranef` | — | `_fit_binomial_crossed_laplace` | — |
 | Beta-binomial | `_fit_betabinomial` | `_fit_betabinomial_ranef` | `_fit_betabinomial_corr_ranef` | — | `cbind(s, f)` response |
 | LogNormal | `_fit_lognormal` | `_fit_lognormal_ranef` | `_fit_lognormal_corr_ranef` | — | — |
-| Zero-one-inflated Beta | `_fit_zeroonebeta` | — | — | — | closed `[0,1]` |
+| Zero-one-inflated Beta | `_fit_zeroonebeta` | — | — | — | closed `[0,1]`; `coi` unidentified without both exact 0s and 1s |
 | Tweedie | `_fit_tweedie` | `_fit_tweedie_ranef` | — | — | compound Poisson–Gamma; independent slope `_fit_tweedie_slope_ranef` (correlated `(1+x\|g)` refused) |
 | Cumulative-logit | `_fit_cumulative` | `_fit_cumulative_ranef` | — | — | ordered categorical; independent slope `_fit_cumulative_slope_ranef`, phylo `_fit_cumulative_phylo_laplace` (correlated `(1+x\|g)` refused) |
 

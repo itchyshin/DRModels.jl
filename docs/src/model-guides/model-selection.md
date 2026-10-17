@@ -90,6 +90,8 @@ exp(coef(fit_sigma_x, :sigma)[2])         # residual-SD ratio per unit x
 
 ## A tail assumption: Gaussian vs Student-t
 
+The code below also loads the `Distributions` package to simulate data. If you have not added it to your Julia environment, run `using Pkg; Pkg.add("Distributions")` once first.
+
 A robust [`Student`](@ref) model is useful when the process can produce
 unusually large residuals. Here the data are generated with heavy-tailed
 (t with 4 df) residuals, then fit with a Gaussian model and a Student-t model
@@ -162,7 +164,12 @@ check_drm(fit_zinb2)
 ```
 
 Exclude errored fits from selection, and treat a non-converged or boundary fit
-as a diagnostic finding, not as an ordinary winner.
+as a diagnostic finding, not as an ordinary winner. A `converged` value of
+`true` in the table above is not enough on its own to call a fit clean: a fit
+can report `true` with a parameter at its limit (for example a zero-inflation
+probability or a dispersion running to its boundary). Read `max_abs_grad`,
+`grad_source` and the estimates themselves too; see
+[Improving convergence](convergence.md).
 
 ## Practical checklist
 
