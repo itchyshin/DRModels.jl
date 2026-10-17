@@ -1,0 +1,54 @@
+# test_j3_se_reference.jl -- #1073 lane J3: SEs from the exact gradient vs native drmTMB sdreport.
+# One @testset per route, see j3_se_harness.jl for what each route is checked against.
+include("j3_se_harness.jl")
+
+function j3_data(route; numeric = Symbol[])
+    c = j3_read_csv(route)
+    return NamedTuple{Tuple(keys(c))}(Tuple(k in numeric ? j3_float(v) : v for (k, v) in c))
+end
+
+@testset "J3: Hessian from the exact gradient vs drmTMB sdreport (#1073)" begin
+    @testset "Poisson phylo (sparse_laplace_glmm.jl :619)" begin
+        d = j3_data("poisson_phylo"; numeric = [:x, :y])
+        fit = drm(bf(@formula(y ~ x + phylo(1 | species))), Poisson(); data = d,
+                  tree = j3_tree("poisson_phylo"))
+        C, tips = j3_cov("poisson_phylo"); sidx = [findfirst(==(s), tips) for s in d.species]
+        spec = DenseSpec(2, hcat(ones(length(d.y)), d.x), indicator(sidx, length(tips)),
+                         obs_poisson(d.y), prior_cov(C, 3))
+        j3_check("poisson_phylo", fit; dense_se = th -> dense_laplace_se(th, spec))
+    end
+    @testset "NB2 phylo (:898)" begin
+        d = j3_data("nb2_phylo"; numeric = [:x, :y])
+        fit = drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ 1)), NegBinomial2();
+                  data = d, tree = j3_tree("nb2_phylo"))
+        C, tips = j3_cov("nb2_phylo"); sidx = [findfirst(==(s), tips) for s in d.species]
+        spec = DenseSpec(2, hcat(ones(length(d.y)), d.x), indicator(sidx, length(tips)),
+                         obs_nb2(d.y, 3), prior_cov(C, 4))
+        j3_check("nb2_phylo", fit; dense_se = th -> dense_laplace_se(th, spec))
+    end
+    @testset "Poisson crossed, two intercepts (:1851)" begin
+        d = j3_data("poisson_crossed2"; numeric = [:x, :y])
+        fit = drm(bf(@formula(y ~ x + (1 | a) + (1 | b))), Poisson(); data = d)
+        ai, Ga = j3_levels(d.a); bi, Gb = j3_levels(d.b)
+        spec = DenseSpec(2, hcat(ones(length(d.y)), d.x), hcat(indicator(ai, Ga), indicator(bi, Gb)),
+                         obs_poisson(d.y), prior_iid([Ga, Gb], [3, 4]))
+        j3_check("poisson_crossed2", fit; dense_se = th -> dense_laplace_se(th, spec))
+    end
+    @testset "Poisson crossed, three components (:2023)" begin
+        d = j3_data("poisson_crossed3"; numeric = [:x, :y])
+        fit = drm(bf(@formula(y ~ x + (1 | a) + (1 | b) + (1 | c))), Poisson(); data = d)
+        ai, Ga = j3_levels(d.a); bi, Gb = j3_levels(d.b); ci, Gc = j3_levels(d.c)
+        spec = DenseSpec(2, hcat(ones(length(d.y)), d.x),
+                         hcat(indicator(ai, Ga), indicator(bi, Gb), indicator(ci, Gc)),
+                         obs_poisson(d.y), prior_iid([Ga, Gb, Gc], [3, 4, 5]))
+        j3_check("poisson_crossed3", fit; dense_se = th -> dense_laplace_se(th, spec))
+    end
+    @testset "Binomial crossed (:2997)" begin
+        d = j3_data("binomial_crossed"; numeric = [:x, :succ, :fail])
+        fit = drm(bf(@formula(cbind(succ, fail) ~ x + (1 | a) + (1 | b))), Binomial(); data = d)
+        ai, Ga = j3_levels(d.a); bi, Gb = j3_levels(d.b)
+        spec = DenseSpec(2, hcat(ones(length(d.x)), d.x), hcat(indicator(ai, Ga), indicator(bi, Gb)),
+                         obs_binomial(d.succ, d.succ .+ d.fail), prior_iid([Ga, Gb], [3, 4]))
+        j3_check("binomial_crossed", fit; dense_se = th -> dense_laplace_se(th, spec))
+    end
+end
