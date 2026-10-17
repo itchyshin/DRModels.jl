@@ -126,10 +126,12 @@ routes, most to least specific:
      the prior with no likelihood term" (`gaussian_core.jl`, the σ-phylo
      missing-response block).
   2. integer tip index `1:phy.n_leaves`.
-  3. positional (`_group_index`, first-seen order) — the only tier with no
-     name information to anchor to, so it requires `labels` to visit every
-     tip exactly once (`G == phy.n_leaves`); this is the pre-#482 behaviour,
-     kept as a last-resort fallback.
+  3. positional (`_group_index`, first-seen order) — for purely NUMERIC labels
+     only (codes outside `1:phy.n_leaves`), which carry no name to anchor to;
+     it requires `labels` to visit every tip exactly once
+     (`G == phy.n_leaves`). Labels that carry names (strings, symbols,
+     categorical levels) but are not all tip names are refused instead of
+     being matched by order of appearance (#1026).
 
 Throws an `ArgumentError` naming the mismatch if none of the three tiers
 apply (e.g. group labels that are neither tree tip names nor valid integer
@@ -153,7 +155,7 @@ function _phylo_mean_leaf_index(phy::AugmentedPhy, labels)
     numeric_labels = true
     @inbounds for i in eachindex(labels)
         li = labels[i]
-        if li isa Integer && 1 <= Int(li) <= phy.n_leaves
+        if li isa Real && isinteger(li) && 1 <= Int(li) <= phy.n_leaves   # Float64 codes from R too (#1026)
             leaf[i] = Int(li)
         else
             numeric_labels = false
@@ -162,6 +164,9 @@ function _phylo_mean_leaf_index(phy::AugmentedPhy, labels)
     end
     numeric_labels && return leaf
 
+    # #1026: name-bearing labels are matched by name only (never by position).
+    _refuse_unmatched_tip_labels(labels, phy.leaf_names;
+                                 context = "drm (Gaussian phylo mean)")
     gidx, G = _group_index(labels)
     G == phy.n_leaves ||
         throw(ArgumentError("drm (Gaussian phylo mean): the group column has $(G) distinct " *

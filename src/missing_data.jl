@@ -22,24 +22,10 @@ using StatsModels: StatsModels
 _is_missing_cell(v) = ismissing(v) || (v isa Real && !isfinite(v))
 
 # Response + predictor column symbols referenced by a (bivariate) formula bundle.
-# Predictors come from `StatsModels.termvars` over each parameter's RHS; responses
-# are the bundle's response column(s).
-function _model_columns(f::DrmFormula)
-    cols = Symbol[f.response]
-    f.response2 === nothing || push!(cols, f.response2)
-    for (_, rhs) in f.forms
-        append!(cols, StatsModels.termvars(rhs))
-    end
-    return unique(cols)
-end
-
-function _model_columns(f::BivariateDrmFormula)
-    cols = Symbol[f.response1, f.response2]
-    for (_, rhs) in f.forms
-        append!(cols, StatsModels.termvars(rhs))
-    end
-    return unique(cols)
-end
+# `_formula_column_symbols` (input_validation.jl) walks each parameter's RHS and
+# skips the structure keyword of `temporal(1 | id, time, ar1)`, which is not a
+# data column (#1013); responses are the bundle's response column(s).
+_model_columns(f::Union{DrmFormula,BivariateDrmFormula}) = _formula_column_symbols(f)
 
 """
     drm_listwise(formula, data; verbose = true) -> NamedTuple
@@ -84,7 +70,10 @@ function drm_listwise(formula::Union{DrmFormula,BivariateDrmFormula}, data; verb
             throw(ArgumentError("drm_listwise: column `$c` referenced by the formula is not in `data`."))
     end
 
-    n = length(first(cols))
+    # Every model column must have one value per response row before the
+    # `@inbounds` scan below (#1013: a short column was read past its end).
+    _require_formula_column_lengths(formula, cols; context = "drm_listwise")
+    n = length(cols[_formula_response_symbol(formula)])
     # A row is kept iff every model column is present + finite in that row.
     keep = trues(n)
     offenders = Symbol[]

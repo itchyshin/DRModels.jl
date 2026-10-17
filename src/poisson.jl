@@ -130,7 +130,9 @@ end
 
 function drm(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
              A = nothing, coords = nothing, g_tol::Real = 1e-8, se::Bool = true,
-             marginal::Symbol = :LA, method = nothing, nAGQ::Int = 5)
+             marginal::Symbol = :LA, method = nothing, nAGQ::Int = 5, ids = nothing)
+    _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, coords = coords,
+                     laplace = _scalar_laplace_requested(marginal))   # #1027 #1022 #1010 #938
     # `method` is the ML/REML selector. LA/VA/AGHQ is `marginal` (Q1 / #136 / #448).
     # `:REML` is the opt-in Cox–Reid restricted objective, admitted on Poisson
     # `(1 | g)` GHQ under `:LA` (#443) and on `_fit_poisson_general_laplace`
@@ -146,9 +148,10 @@ function drm(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
         drm(f, fam; data = data_observed, tree = tree, K = K, A = A,
             coords = coords, g_tol = g_tol, se = se, marginal = marginal,
-            method = method, nAGQ = nAGQ)
+            method = method, nAGQ = nAGQ, ids = ids)
     end
     missing_fit !== nothing && return missing_fit
+    A = _resolve_relatedness_labels(f, data, A, ids)   # #957: match `A` by label
 
     marg = _marginal_method(marginal)                     # :LA (default), :VA (#136), :AGHQ (#448)
     isva = marg isa Variational
