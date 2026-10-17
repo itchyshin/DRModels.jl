@@ -379,6 +379,13 @@ function _fit_poisson_ranef_aghq(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol
     θ0[pμ+1] = log(0.5)
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res); conv = drm_optim_converged(res)
+    # A penalised objective at the optimum means some group posterior could not be
+    # evaluated there (#1063): fail cleanly rather than report a meaningless fit.
+    nll̂ = nll(θ̂)
+    (isfinite(nll̂) && nll̂ < -_AGHQ_PENALTY_LOGINT) || error(
+        "marginal = :AGHQ could not evaluate the Poisson (1 | $grp) group integrals at the optimum " *
+        "(non-finite or non-log-concave group posterior; #1063). " *
+        "Use the default marginal = :LA or marginal = :Laplace for this model.")
     blocks = [:mu => 1:pμ, :resd => (pμ+1):(pμ+1)]
     names = [:mu => nmμ, :resd => [String(grp)]]
     scales = Dict{Symbol,Vector{Float64}}()
@@ -574,6 +581,8 @@ function _poisson_spatial_mode(y, η0, gidx, Cinv, invσ2, b0;
     G = size(Cinv, 1)
     b = T.(b0)
     Hch = nothing
+    met_tol = false
+    last_sn = Inf
     for _ in 1:maxiter
         grad = invσ2 .* (Cinv * b)
         diagH = zeros(T, G)
@@ -588,9 +597,20 @@ function _poisson_spatial_mode(y, η0, gidx, Cinv, invσ2, b0;
         issuccess(Hch) || return b, Hch, false
         step = Hch \ grad
         b = b .- step
-        norm(step) <= tol * (1 + norm(b)) && break
+        last_sn = ForwardDiff.value(norm(step))
+        if last_sn <= tol * (1 + ForwardDiff.value(norm(b)))
+            met_tol = true
+            break
+        end
     end
-    Hch === nothing && return b, Hch, false
+    # Cap exhausted (#1024). `tol = 1e-12` can sit below the rounding floor of
+    # an ill-conditioned `Cinv`, so a last Newton step at the 1e-8 relative
+    # level still counts as the mode (the Laplace value error is O(step^2));
+    # anything larger means the loop ran out before reaching the mode.
+    if !met_tol && Hch !== nothing
+        met_tol = last_sn <= max(tol, 1e-8) * (1 + ForwardDiff.value(norm(b)))
+    end
+    (Hch === nothing || !met_tol) && return b, Hch, false
     # Refresh μ̂ / H at the final b so the returned Cholesky is exactly H(b̂).
     diagH = zeros(T, G)
     @inbounds for i in eachindex(y)
@@ -701,5 +721,7 @@ function _fit_poisson_spatial_coord(fam::Poisson, y, Xμ, labels, coords, nmμ, 
     obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict{Symbol,Vector{Float64}}()
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nll(θ̂), n, drm_optim_converged(res), means, obs, scales)
+    _warn_at_clamp("spatial Poisson", ["random-effect log SD" => (θ̂[pμ+1:pμ+1], -8.0, 3.0),   # #959
+                                       "log range" => (θ̂[pμ+2:pμ+2], -8.0, 8.0)])
     return _withiterations(_withnll(fit, nll), Optim.iterations(res))
 end

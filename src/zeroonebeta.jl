@@ -153,6 +153,7 @@ function _fit_zeroonebeta(fam::ZeroOneBeta, y, Xμ, Xσ, Xz, Xc, nmμ, nmσ, nmz
                   :sigma => exp.(Xσ * θ̂[(pμ+1):i1]),
                   :zoi => zoî,
                   :coi => coî)
+    _warn_at_clamp("zero-one beta", ["log sigma" => (Xσ * θ̂[(pμ+1):i1], -15.0, 15.0)])   # #959
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
@@ -227,6 +228,7 @@ function _fit_zeroonebeta_ranef(fam::ZeroOneBeta, y, Xμ, Xσ, Xz, Xc, gidx, G, 
                   :sigma => exp.(Xσ * θ̂[(pμ+1):i1]),
                   :zoi => zoî,
                   :coi => coî)
+    _warn_at_clamp("zero-one beta", ["log sigma" => (Xσ * θ̂[(pμ+1):i1], -15.0, 15.0)])   # #959
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
