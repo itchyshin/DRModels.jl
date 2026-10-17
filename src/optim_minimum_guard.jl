@@ -71,6 +71,49 @@ near a variance boundary are not switched to this predicate.
 drm_optim_converged(res) = Optim.converged(res) && Optim.g_converged(res)
 
 """
+    _NEWTON_DECREMENT_TOL
+
+Per-observation bound on the Newton decrement `½ g'H⁻¹g` used by
+[`_newton_decrement_small`](@ref). `1e-10` is a judgement threshold, not a derived
+or calibrated one: the decrement approximates the nll still to be gained, so
+`n * 1e-10` is far below any change in logLik a user could act on, yet far above
+the floating-point noise of a fit at the optimum. Change it here only.
+"""
+const _NEWTON_DECREMENT_TOL = 1e-10
+
+"""
+    _newton_decrement_small(g, H, n) -> Bool
+
+Unit-free stationarity test (DRModels.jl#983). The absolute `g_tol` of
+[`drm_optim_converged`](@ref) is unit dependent: for a tiny residual SD the mean
+gradient scales like `1/σ²` and coefficient noise alone exceeds `g_tol` at the exact
+optimum. The Newton decrement `½ g'H⁻¹g` is invariant to affine reparametrisation
+(so to rescaling `y`). True only when `H` is finite and positive definite, `g` is
+finite, and the decrement is below `n * _NEWTON_DECREMENT_TOL`. A plateau with a
+large gradient has a large decrement and is still rejected (#944).
+
+The mean-block curvature scales like `1/σ²` while the log-σ curvature stays `O(n)`,
+so the unscaled Hessian has condition number `~ 1/σ²` and an unscaled Cholesky can
+fail on some LAPACK builds even though `H` is theoretically PD. The decrement is
+therefore computed after diagonal equilibration (`D^{-1/2} H D^{-1/2}`), which
+leaves the decrement unchanged and makes the factorisation well-conditioned.
+A zero diagonal is a structurally flat coordinate and is rejected.
+"""
+function _newton_decrement_small(g::AbstractVector, H::AbstractMatrix, n::Integer)
+    (all(isfinite, g) && all(isfinite, H)) || return false
+    Hs = Matrix(Symmetric(Matrix(H)))
+    d = abs.(diag(Hs))
+    all(>(0), d) || return false
+    s = inv.(sqrt.(d))
+    He = Symmetric((s * s') .* Hs)
+    ge = s .* g
+    F = cholesky(He; check = false)
+    issuccess(F) || return false
+    δ = 0.5 * dot(ge, F \ ge)
+    return isfinite(δ) && δ <= n * _NEWTON_DECREMENT_TOL
+end
+
+"""
     _SCALE_RUNOFF_LOG_SPREAD
 
 Unit-free bound on the spread of fitted `log σ_i` across observations used by
