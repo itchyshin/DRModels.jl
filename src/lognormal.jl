@@ -51,13 +51,29 @@ exp(coef(fit, :sigma)[1])      # SD of log y
 
 fit_phy = drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ 1)),
               LogNormal(); data = dat, tree = tr)
+
+# TMB-convention Laplace on an ordinary `(1 | g)`. For LogNormal the default
+# AGHQ-K=1 path is already exact Laplace (identity link on log y); `:Laplace`
+# accepts the same fitter and tags `fit.marginal`.
+fit_lap = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)),
+              LogNormal(); data = dat, marginal = :Laplace)
 ```
 """
 struct LogNormal end
 
-function drm(f::DrmFormula, fam::LogNormal; data, tree = nothing, K = nothing, g_tol::Real = 1e-8)
+function drm(f::DrmFormula, fam::LogNormal; data, tree = nothing, K = nothing,
+             g_tol::Real = 1e-8, marginal::Symbol = :LA)
+    # `:Laplace` (opt-in, ordinary `(1 | g)` on the mean): the existing AGHQ-K=1
+    # path is already exact for this family (identity link on log y). The default
+    # `:LA` is unchanged. Other symbols are refused so a typo is not a silent
+    # MethodError (sweep-oct16 t6).
+    laplace = _scalar_laplace_requested(marginal)
+    laplace || marginal === :LA || throw(ArgumentError(
+        "drm (LogNormal): marginal = :$marginal is not available; use `:LA` (default) " *
+        "or `:Laplace` (ordinary `(1 | g)` on the mean)."))
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
-        drm(f, fam; data = data_observed, tree = tree, K = K, g_tol = g_tol)
+        drm(f, fam; data = data_observed, tree = tree, K = K, g_tol = g_tol,
+            marginal = marginal)
     end
     missing_fit !== nothing && return missing_fit
 
@@ -71,6 +87,15 @@ function drm(f::DrmFormula, fam::LogNormal; data, tree = nothing, K = nothing, g
         _, re2, mv2, st2 = _split_ranef(r)
         (isempty(re2) && mv2 === nothing && st2 === nothing) ||
             error("LogNormal(): only the mean formula may carry a random effect")
+    end
+    if laplace && !(length(re) == 1 && st === nothing && _re_kind(re[1][1])[1] === :intercept)
+        throw(ArgumentError("marginal = :Laplace is not available for LogNormal() with " *
+            (isempty(re) && st === nothing ? "no random effect (fixed-effects-only)" :
+             st !== nothing ? "a structured `phylo`/`relmat` marker (already exact Gaussian-on-log-y)" :
+             length(re) > 1 ? "crossed/multiple random effects (already exact Gaussian-on-log-y)" :
+             "a random slope `(1 + x | g)`") *
+            ". This route covers exactly one ordinary random intercept `(1 | g)` on the mean; " *
+            "omit `marginal` (the default `:LA`) for other models."))
     end
     if st !== nothing                  # structured marker on the mean (#563 S8)
         st[1] in (:phylo, :relmat) ||
@@ -96,8 +121,10 @@ function drm(f::DrmFormula, fam::LogNormal; data, tree = nothing, K = nothing, g
             error("LogNormal() supports a single random-effect term on the mean")
         (rk, var) = _re_kind(re[1][1]); grp = re[1][2]
         gidx, G = _group_index(getproperty(data, grp))
-        if rk === :intercept           # (1 | g) → 1-D Gauss–Hermite
-            return _withformula(_fit_lognormal_ranef(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol), f)
+        if rk === :intercept           # (1 | g) → 1-D Gauss–Hermite (exact Laplace)
+            fit_re = _fit_lognormal_ranef(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol)
+            laplace && (fit_re = _withmarginal(fit_re, :Laplace))
+            return _withformula(fit_re, f)
         elseif rk === :corr            # (1 + x | g) → correlated 2-D Gauss–Hermite
             return _withformula(_fit_lognormal_corr_ranef(fam, y, Xμ, Xσ, Float64.(getproperty(data, var)), gidx, G, nmμ, nmσ, grp, g_tol), f)
         else
