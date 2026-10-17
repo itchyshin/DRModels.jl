@@ -69,3 +69,42 @@ That is the defect in DRModels.jl#944. Routes that deliberately stop on `f_relto
 near a variance boundary are not switched to this predicate.
 """
 drm_optim_converged(res) = Optim.converged(res) && Optim.g_converged(res)
+
+"""
+    _SCALE_RUNOFF_LOG_SPREAD
+
+Unit-free bound on the spread of fitted `log σ_i` across observations used by
+[`_scale_runoff`](@ref): `log(1e4)`, i.e. a 10⁴-fold range of fitted scales
+(10⁸-fold in variance).
+
+Why 10⁴: it is a judgement threshold, not a derived or calibrated one. It is the
+`log(1e4)` spread that DRModels.jl#1059 proposes, taken from drmTMB's native
+engine rule, so the two routes can agree. It is far larger than the scale range
+of ordinary heteroscedastic data, yet far from floating-point limits, so a fit
+beyond it is more often a collapsing scale than a real design. The cost is that a
+genuinely well-identified fit with a wider range is also reported as not
+converged. Change it here only.
+"""
+const _SCALE_RUNOFF_LOG_SPREAD = log(1e4)
+
+"""
+    _scale_runoff(scales) -> Bool
+
+True when the fitted scale has run off toward zero (or infinity) for some
+observations (DRModels.jl#1059). `scales` is the fit's `Dict(:sigma => σ_i)`.
+The rule is the spread `maximum(log σ) - minimum(log σ)` across observations
+exceeding `log(1e4)`; it is invariant to the units of the response (rescaling
+`y` shifts every `log σ_i` by the same constant), unlike an absolute log-sigma
+bound. A divergent `sigma ~ x` fit (a group whose response is constant, so its
+log σ → -∞ while the gradient test still fires) is flagged; a non-finite or
+non-positive scale counts as run-off. Callers AND the negation into
+`converged`, as the Hessian-finite check already is.
+"""
+function _scale_runoff(scales)
+    σ = get(scales, :sigma, nothing)
+    σ === nothing && return false
+    isempty(σ) && return false
+    all(s -> isfinite(s) && s > 0, σ) || return true
+    lo, hi = extrema(log, σ)
+    return hi - lo > _SCALE_RUNOFF_LOG_SPREAD
+end
