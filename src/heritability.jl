@@ -168,8 +168,11 @@ function _ratio_delta(fit::DrmFit, focal::Int, denom::Vector{Int}; level::Real,
                       resid::Int = 0, omega::Vector{Int} = Int[])
     g = _ratio_closure(focal, denom; resid = resid, omega = omega)
     bc = bias_correct(fit, g; level = level)
+    # #1007: a non-finite SE means "no uncertainty estimate". Clamping its (-Inf, Inf)
+    # interval would report a finite, valid-looking (0, 1), so the interval is NaN.
+    ci = isfinite(bc.se) ? _clamp01_ci(bc.ci) : (lower = NaN, upper = NaN)
     return (estimate = bc.estimate, corrected = bc.corrected, bias = bc.bias,
-            se = bc.se, ci = _clamp01_ci(bc.ci), level = bc.level)
+            se = bc.se, ci = ci, level = bc.level)
 end
 
 # ---------------------------------------------------------------------------
@@ -348,9 +351,19 @@ Returns a `NamedTuple`:
 - `estimate`  — the plug-in ratio `g(θ̂)` (exactly in `[0, 1]`);
 - `corrected` — the bias-corrected estimate `g(θ̂) + ½·tr(H_g·V)` (delta only);
 - `se`        — the delta-method standard error (delta only);
-- `ci`        — the `(lower, upper)` CI, **clamped to `[0, 1]`**;
+- `ci`        — the `(lower, upper)` CI, **clamped to `[0, 1]`** (when the
+  delta-method SE is not finite the bounds are `(NaN, NaN)` (an all-NaN covariance
+  or a finite but non-positive-definite one that gives a negative variance); read
+  `status`, which is then `:vcov_unavailable`);
 - `level`     — the confidence level;
-- `method`    — the method used.
+- `method`    — the method used;
+- `status`    — `:ok`, or the first applicable caveat: `:not_converged`
+  ([`is_converged`](@ref) is false, which includes a sentinel log-likelihood),
+  `:penalized_map` (a MAP fit, whose variance components are deliberately
+  shrunk), `:vcov_unavailable` (delta SE not finite), `:profile_edge` (a profile
+  bound is the `0`/`1` edge, i.e. one-sided, not a likelihood-ratio crossing) or
+  `:profile_unresolved` (a profile bound is `NaN`). Every caveat except `:ok`
+  also warns.
 
 The gradient and Hessian of the ratio are threaded EXACTLY through the
 log σ → variance map by automatic differentiation. At a variance boundary
@@ -530,8 +543,10 @@ function _conditional_ratio(fit::DrmFit, newdata; kind::Symbol, level::Real, wha
     z = quantile(Normal(), 1 - (1 - level) / 2)
     lo = 1 ./ (1 .+ exp.(-(d .- z .* se)))
     hi = 1 ./ (1 .+ exp.(-(d .+ z .* se)))
+    # #1007 (review): the same fit-level guards as the one-argument form.
+    st = _ratio_status(fit, all(isfinite, se) ? :ok : :vcov_unavailable)
     return (estimate = est, se_logit = se, lower = lo, upper = hi, level = level,
-            method = :wald_logit)
+            method = :wald_logit, status = st)
 end
 
 repeatability(fit::DrmFit, newdata; level::Real = 0.95) =
@@ -572,13 +587,37 @@ function _emit_ratio(fit::DrmFit, focal::Int, denom::Vector{Int}; level, method,
                      resid::Int = 0, omega::Vector{Int} = Int[])
     if method === :delta
         r = _ratio_delta(fit, focal, denom; level = level, resid = resid, omega = omega)
+        st = _ratio_status(fit, isfinite(r.se) ? :ok : :vcov_unavailable)
         return (estimate = r.estimate, corrected = r.corrected, bias = r.bias,
-                se = r.se, ci = r.ci, level = r.level, method = :delta)
+                se = r.se, ci = r.ci, level = r.level, method = :delta, status = st)
     elseif method === :profile
         r = _ratio_profile(fit, focal, denom; level = level, resid = resid, omega = omega)
+        lo, hi = r.ci.lower, r.ci.upper
+        ci_st = (isnan(lo) || isnan(hi)) ? :profile_unresolved :
+                (lo <= 1e-6 || hi >= 1 - 1e-6) ? :profile_edge : :ok   # nll_at_ratio(1) = Inf, so the upper arm ends near 1 - 5e-7
+        st = _ratio_status(fit, ci_st)
         return (estimate = r.estimate, corrected = r.estimate, bias = 0.0,
-                se = NaN, ci = r.ci, level = r.level, method = :profile)
+                se = NaN, ci = r.ci, level = r.level, method = :profile, status = st)
     else
         throw(ArgumentError("method must be :delta or :profile, got $method"))
     end
+end
+
+# #1007: the ratio accessors used to ignore the fit's own status, so a stalled,
+# degenerate or penalized fit returned a ratio that looked like any other. Fit-level
+# caveats take precedence over interval-level ones; every caveat warns once.
+function _ratio_status(fit::DrmFit, ci_status::Symbol)
+    st = !is_converged(fit) ? :not_converged :
+         fit.estim_method === :MAP ? :penalized_map : ci_status
+    st === :not_converged && @warn "variance ratio: the fit is not converged (or is " *
+        "degenerate / at the failed-objective sentinel; see `is_converged`), so the ratio " *
+        "and its interval are not trustworthy." status = st
+    st === :penalized_map && @warn "variance ratio: penalized (MAP) fit -- the variance " *
+        "components are deliberately shrunk, so this is not a likelihood-based ratio." status = st
+    st === :vcov_unavailable && @warn "variance ratio: the delta-method standard error is " *
+        "not finite (no usable covariance), so the interval is NaN. " *
+        "Use `method = :profile`." status = st
+    st === :profile_edge && @warn "variance ratio: a profile bound is the 0/1 edge, not a " *
+        "likelihood-ratio crossing (one-sided interval)." status = st
+    return st
 end

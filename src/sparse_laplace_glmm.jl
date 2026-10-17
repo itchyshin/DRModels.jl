@@ -80,7 +80,10 @@ function _poisson_laplace_mode(y, η0, Z, compid, logσ; b0 = nothing,
         end
         accepted || return b, ch, iters, false
     end
-    return b, ch, iters, ch !== nothing
+    # Cap exhausted without the step meeting `tol` (#1024): `b` is not the mode
+    # and `ch` factors the Hessian at the previous iterate, so report failure
+    # and let the caller take its non-finite-objective sentinel path.
+    return b, ch, iters, false
 end
 
 # The FD step for the outer vcov Hessian must GROW with n. The objective under
@@ -246,6 +249,11 @@ end
 
 function _poisson_phylo_setup(tree, labels)
     phy = tree isa AugmentedPhy ? tree : augmented_phy(tree)
+    # #996: these routes keep raw branch lengths too, so `sd_phylo` is on the
+    # tree-height-dependent scale exactly as on the Gaussian routes; give the
+    # same one-time warning they give (it was missing on every non-Gaussian
+    # phylo route).
+    _warn_if_tree_not_unit_height(phy)
     keep = setdiff(1:phy.n_total, [phy.root_index])
     q = length(keep)
     Q = phy.Q_topology[keep, keep]
@@ -363,7 +371,10 @@ function _poisson_phylo_mode(y, η0, leaf_node, Q, logσ; b0 = nothing,
             accepted || return b, ch, iters, false
         end
     end
-    return b, ch, iters, ch !== nothing
+    # Cap exhausted without the step meeting `tol` (#1024): `b` is not the mode
+    # and `ch` factors the Hessian at the previous iterate, so report failure
+    # and let the caller take its non-finite-objective sentinel path.
+    return b, ch, iters, false
 end
 
 """
@@ -616,6 +627,7 @@ function _fit_poisson_general_laplace(fam::Poisson, y, Xμ, Q, leaf_node, nmμ, 
     obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict{Symbol,Vector{Float64}}()
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
+    _warn_laplace_clamp(fit)   # #959: say when a clamp is active
     fit = _withnll(fit, nll, grad!)
     reml || return fit
     # Opt-in Cox–Reid (#450): same helpers as the Poisson GHQ cell (#443 / #444).
@@ -696,7 +708,10 @@ function _phylo_mean_mode(kind, aux, η0, leaf_node, Q, logσ; b0 = nothing,
             accepted || return b, ch, iters, false
         end
     end
-    return b, ch, iters, ch !== nothing
+    # Cap exhausted without the step meeting `tol` (#1024): `b` is not the mode
+    # and `ch` factors the Hessian at the previous iterate, so report failure
+    # and let the caller take its non-finite-objective sentinel path.
+    return b, ch, iters, false
 end
 
 function _phylo_mean_laplace_nuisance_fg(kind, aux_from, n::Int, Xμ, leaf_node,
@@ -892,6 +907,7 @@ function _fit_general_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, Q,
     obs = Dict(:mu => [_laplace_obs(kind, auxhat, i) for i in 1:n])
     scales = merge(Dict(:sigma => fill(sigma_scale(θ̂[pμ+1]), n)), extra_scales)
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
+    _warn_laplace_clamp(fit; logsigma = θ̂[pμ+1:pμ+1])   # #959: say when a clamp is active
     return _withnll(fit, nll, grad!)
 end
 
@@ -1085,6 +1101,7 @@ function _fit_phylo_mean_laplace_hetero(fam, kind, aux_from, n::Int, Xμ, Xσ,
     obs = Dict(:mu => [_laplace_obs(kind, auxhat, i) for i in 1:n])
     scales = Dict(:sigma => [sigma_scale(ησ̂[i]) for i in 1:n])
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
+    _warn_laplace_clamp(fit; logsigma = Xσ * θ̂[pμ+1:pμ+pσ])   # #959: say when a clamp is active
     return _withnll(fit, nll, grad!)
 end
 
@@ -1234,6 +1251,7 @@ function _fit_phylo_mean_laplace(fam, kind, aux, n::Int, Xμ, labels, tree, nmμ
     means = Dict(:mu => [_laplace_mean(kind, dot(@view(Xμ[i, :]), θ̂[1:pμ])) for i in 1:n])
     obs = Dict(:mu => [_laplace_obs(kind, aux, i) for i in 1:n])
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
+    _warn_laplace_clamp(fit)   # #959: say when a clamp is active
     return _withnll(fit, nll, grad!)
 end
 
@@ -1301,9 +1319,9 @@ O(p) gradient and Takahashi log-det derivatives carry over unchanged (#167).
 function _fit_nb2_relmat_laplace(fam, y, Xμ, Xσ, C, labels, nmμ, nmσ, grp,
                                  g_tol; se::Bool = true,
                                  polish_iterations::Int = 0)
-    size(Xσ, 2) == 1 || error("_fit_nb2_relmat_laplace currently supports a constant sigma formula")
+    size(Xσ, 2) == 1 || error("drm(NegBinomial2()): a `relmat`/`animal`/`spatial` random effect requires `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
     all(x -> x == 1.0, @view Xσ[:, 1]) ||
-        error("_fit_nb2_relmat_laplace currently supports a constant sigma formula")
+        error("drm(NegBinomial2()): a `relmat`/`animal`/`spatial` random effect requires `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
     Q, leaf_node = _general_cov_setup(C, labels)
     aux_from, θβ0, θσ0 = _nb2_laplace_setup(y, Xμ)
     return _fit_general_mean_laplace_nuisance(
@@ -1397,9 +1415,9 @@ differs (`C⁻¹` vs the tree topology). Exact O(p) gradient carries over (#167)
 function _fit_gamma_relmat_laplace(fam, y, Xμ, Xσ, C, labels, nmμ, nmσ, grp,
                                    g_tol; se::Bool = true,
                                    polish_iterations::Int = 5)
-    size(Xσ, 2) == 1 || error("_fit_gamma_relmat_laplace currently supports a constant sigma formula")
+    size(Xσ, 2) == 1 || error("drm(Gamma()): a `relmat`/`animal`/`spatial` random effect requires `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
     all(x -> x == 1.0, @view Xσ[:, 1]) ||
-        error("_fit_gamma_relmat_laplace currently supports a constant sigma formula")
+        error("drm(Gamma()): a `relmat`/`animal`/`spatial` random effect requires `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
     Q, leaf_node = _general_cov_setup(C, labels)
     aux_from, θβ0, θσ0 = _gamma_laplace_setup(y, Xμ)
     return _fit_general_mean_laplace_nuisance(
@@ -1478,9 +1496,9 @@ differs (`C⁻¹` vs the tree topology). Exact O(p) gradient carries over (#167)
 function _fit_beta_relmat_laplace(fam, y, Xμ, Xσ, C, labels, nmμ, nmσ, grp,
                                   g_tol; se::Bool = true,
                                   polish_iterations::Int = 0)
-    size(Xσ, 2) == 1 || error("_fit_beta_relmat_laplace currently supports a constant sigma formula")
+    size(Xσ, 2) == 1 || error("drm(Beta()): a `relmat`/`animal`/`spatial` random effect requires `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
     all(x -> x == 1.0, @view Xσ[:, 1]) ||
-        error("_fit_beta_relmat_laplace currently supports a constant sigma formula")
+        error("drm(Beta()): a `relmat`/`animal`/`spatial` random effect requires `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
     Q, leaf_node = _general_cov_setup(C, labels)
     aux_from, θβ0, θσ0 = _beta_laplace_setup(y, Xμ)
     return _fit_general_mean_laplace_nuisance(
@@ -1685,7 +1703,10 @@ function _poisson_crossed_mode(y, η0, gidx, G, hidx, Hh, logσ; b0 = nothing,
             accepted || return b, ch, iters, false
         end
     end
-    return b, ch, iters, ch !== nothing
+    # Cap exhausted without the step meeting `tol` (#1024): `b` is not the mode
+    # and `ch` factors the Hessian at the previous iterate, so report failure
+    # and let the caller take its non-finite-objective sentinel path.
+    return b, ch, iters, false
 end
 
 """
@@ -1838,6 +1859,7 @@ function _fit_poisson_crossed_intercepts_laplace(fam::Poisson, y, Xμ, gidx, G, 
     obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict{Symbol,Vector{Float64}}()
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
+    _warn_laplace_clamp(fit)   # #959: say when a clamp is active
     return _withnll(fit, nll, grad!)
 end
 
@@ -2020,6 +2042,7 @@ function _fit_poisson_crossed_laplace(fam::Poisson, y, Xμ, comps, nmμ, g_tol; 
     grad!(gfinal, θ̂)
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
+    _warn_laplace_clamp(fit)   # #959: say when a clamp is active
     return _withnll(fit, nll, grad!)
 end
 
@@ -2836,7 +2859,10 @@ function _crossed_mean_mode(kind, aux, η0, gidx, G, hidx, Hh, logσ; b0 = nothi
             accepted || return b, ch, iters, false
         end
     end
-    return b, ch, iters, ch !== nothing
+    # Cap exhausted without the step meeting `tol` (#1024): `b` is not the mode
+    # and `ch` factors the Hessian at the previous iterate, so report failure
+    # and let the caller take its non-finite-objective sentinel path.
+    return b, ch, iters, false
 end
 
 # A log-SD coordinate whose finite-difference stencil lies entirely outside the
@@ -2988,6 +3014,7 @@ function _fit_crossed_mean_laplace(fam, kind, aux, n::Int, Xμ, gidx, G, hidx, H
     obs = Dict(:mu => [_laplace_obs(kind, aux, i) for i in 1:n])
     scales = Dict{Symbol,Vector{Float64}}()
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
+    _warn_laplace_clamp(fit)   # #959: say when a clamp is active
     return _withnll(fit, nll, grad!)
 end
 
@@ -3152,6 +3179,7 @@ function _fit_crossed_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, gi
     obs = Dict(:mu => [_laplace_obs(kind, auxhat, i) for i in 1:n])
     scales = merge(Dict(:sigma => fill(sigma_scale(θ̂[pμ+1]), n)), extra_scales)
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
+    _warn_laplace_clamp(fit; logsigma = θ̂[pμ+1:pμ+1])   # #959: say when a clamp is active
     return _withnll(fit, nll, grad!)
 end
 
@@ -3266,6 +3294,7 @@ function _fit_crossed_mean_aghq(fam, ll, n::Int, Xμ, comps, nmμ, g_tol; θ0,
     obs = Dict(:mu => Vector{Float64}(obsvec))
     scales = Dict{Symbol,Vector{Float64}}()
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
+    _warn_laplace_clamp(fit)   # #959: say when a clamp is active
     return _withiterations(_withmarginal(_withnll(fit, nll, grad!), :AGHQ), Optim.iterations(res))
 end
 
@@ -3356,6 +3385,7 @@ function _fit_crossed_mean_aghq_nuisance(fam, kind, aux_from, n::Int, Xμ, comps
     obs = Dict(:mu => [_laplace_obs(kind, auxhat, i) for i in 1:n])
     scales = merge(Dict(:sigma => fill(sigma_scale(θ̂[pμ+1]), n)), extra_scales)
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
+    _warn_laplace_clamp(fit; logsigma = θ̂[pμ+1:pμ+1])   # #959: say when a clamp is active
     return _withiterations(_withmarginal(_withnll(fit, nll, grad!), :AGHQ), Optim.iterations(res))
 end
 
@@ -3400,7 +3430,7 @@ end
 function _fit_nb2_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
                                   se::Bool = false, polish_iterations::Int = 0)
     length(comps) == 2 || error("_fit_nb2_crossed_laplace requires two random-intercept components")
-    size(Xσ, 2) == 1 || error("_fit_nb2_crossed_laplace currently supports a constant sigma formula")
+    (size(Xσ, 2) == 1 && all(==(1.0), @view Xσ[:, 1])) || error("drm(NegBinomial2()): crossed random intercepts `(1 | g) + (1 | h)` require `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
     yint = round.(Int, y)
     function aux_from(logσ)
         r = exp(clamp(-2 * logσ, -8.0, 8.0))      # ψ = log σ; size r = 1/σ² = exp(−2ψ) (drmTMB)
@@ -3434,7 +3464,7 @@ optimum (`_crossed_aghq_nuisance_start`).
 function _fit_nb2_crossed_aghq(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol; se::Bool = true,
                                K_g::Int = _CROSSED_AGHQ_KG, K_h::Union{Nothing,Int} = nothing)
     length(comps) == 2 || error("_fit_nb2_crossed_aghq requires two random-intercept components")
-    size(Xσ, 2) == 1 || error("_fit_nb2_crossed_aghq currently supports a constant sigma formula")
+    (size(Xσ, 2) == 1 && all(==(1.0), @view Xσ[:, 1])) || error("drm(NegBinomial2()): crossed random intercepts `(1 | g) + (1 | h)` require `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
     yint = round.(Int, y)
     function aux_from(logσ)
         r = exp(clamp(-2 * logσ, -8.0, 8.0))
@@ -3451,7 +3481,7 @@ end
 function _fit_gamma_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
                                     se::Bool = true, polish_iterations::Int = 5)
     length(comps) == 2 || error("_fit_gamma_crossed_laplace requires two random-intercept components")
-    size(Xσ, 2) == 1 || error("_fit_gamma_crossed_laplace currently supports a constant sigma formula")
+    (size(Xσ, 2) == 1 && all(==(1.0), @view Xσ[:, 1])) || error("drm(Gamma()): crossed random intercepts `(1 | g) + (1 | h)` require `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
     yv = Float64.(y)
     function aux_from(logsigma)
         α = exp(clamp(-2 * logsigma, -8.0, 8.0))
@@ -3483,7 +3513,7 @@ JOINTLY with β and the two variance components, using the same `aux_from` as
 function _fit_gamma_crossed_aghq(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol; se::Bool = true,
                                  K_g::Int = _CROSSED_AGHQ_KG, K_h::Union{Nothing,Int} = nothing)
     length(comps) == 2 || error("_fit_gamma_crossed_aghq requires two random-intercept components")
-    size(Xσ, 2) == 1 || error("_fit_gamma_crossed_aghq currently supports a constant sigma formula")
+    (size(Xσ, 2) == 1 && all(==(1.0), @view Xσ[:, 1])) || error("drm(Gamma()): crossed random intercepts `(1 | g) + (1 | h)` require `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
     yv = Float64.(y)
     function aux_from(logsigma)
         α = exp(clamp(-2 * logsigma, -8.0, 8.0))
@@ -3500,7 +3530,7 @@ end
 function _fit_beta_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
                                    se::Bool = true, polish_iterations::Int = 0)
     length(comps) == 2 || error("_fit_beta_crossed_laplace requires two random-intercept components")
-    size(Xσ, 2) == 1 || error("_fit_beta_crossed_laplace currently supports a constant sigma formula")
+    (size(Xσ, 2) == 1 && all(==(1.0), @view Xσ[:, 1])) || error("drm(Beta()): crossed random intercepts `(1 | g) + (1 | h)` require `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
     yv = Float64.(y)
     ylogit = log.(yv) .- log1p.(-yv)
     function aux_from(logsigma)
@@ -3533,7 +3563,7 @@ optimum (`_crossed_aghq_nuisance_start`).
 function _fit_beta_crossed_aghq(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol; se::Bool = true,
                                 K_g::Int = _CROSSED_AGHQ_KG, K_h::Union{Nothing,Int} = nothing)
     length(comps) == 2 || error("_fit_beta_crossed_aghq requires two random-intercept components")
-    size(Xσ, 2) == 1 || error("_fit_beta_crossed_aghq currently supports a constant sigma formula")
+    (size(Xσ, 2) == 1 && all(==(1.0), @view Xσ[:, 1])) || error("drm(Beta()): crossed random intercepts `(1 | g) + (1 | h)` require `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
     yv = Float64.(y)
     ylogit = log.(yv) .- log1p.(-yv)
     function aux_from(logsigma)

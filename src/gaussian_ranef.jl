@@ -988,12 +988,18 @@ end
 # r′D⁻¹r − c′(M + I)⁻¹c lose every digit as σ_e → 0 with one record per level
 # (the #835/#837 cancellation class; measured: nll off by 0.63 at log σ_e = −16
 # and −0.44 in logdet alone at −18, test_cancellation_sweep.jl). We therefore
-# never form M: `_multi_re_qr` takes the QR factorisation of the stacked design
+# never form M in the dense / Dual-number route: `_multi_re_qr` takes the QR factorisation of the stacked design
 # [D^{-1/2}Z̃; I] (RᵀR = I + Z̃ᵀD⁻¹Z̃ exactly, without squaring the condition
 # number), reads logdet(M + I) = 2Σ log|Rᵢᵢ|, and evaluates the quadratic as the
 # penalised RSS Σ (rᵢ − z̃ᵢᵀb̂)²/Dᵢ + ‖b̂‖² at the least-squares mode b̂ (every term
 # ≥ 0). Identical to the Woodbury expressions in exact arithmetic. Closed-form
 # GLS; Z precomputed.
+#
+# #977: the Float64 objective/gradient no longer call this dense QR. They use
+# `_multi_re_factor` (gaussian_multi_re_sparse.jl): a sparse Cholesky of M when
+# max diag(M) <= 1e4 (cancellation cannot bite there), else the sparse QR of the
+# same stacked design, so the guard above is kept. This dense version remains
+# for ForwardDiff (Dual) calls and as the reference in test_multi_re_sparse_kernel.jl.
 function _multi_re_qr(Z̃::AbstractMatrix, sdinv::AbstractVector, r::AbstractVector)
     T = promote_type(eltype(Z̃), eltype(sdinv), eltype(r))
     q = size(Z̃, 2)
@@ -1007,19 +1013,17 @@ end
 function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol)
     n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     K = length(comps)
-    Gks = [c[3] for c in comps]
-    q = sum(Gks)
-    offs = cumsum([0; Gks])
-    Z = zeros(n, q)
-    colcomp = Vector{Int}(undef, q)
-    for (k, (w, gidx, Gk, _)) in enumerate(comps)
-        for c in 1:Gk
-            colcomp[offs[k]+c] = k
-        end
-        @inbounds for i in 1:n
-            Z[i, offs[k]+gidx[i]] = w[i]
-        end
-    end
+    # #977: Z is kept sparse (one nonzero per component per row) and the Float64
+    # objective/gradient use the sparse QR + selected-inverse kernel in
+    # gaussian_multi_re_sparse.jl. Dual-number calls (ForwardDiff) fall back to
+    # the dense `_multi_re_qr` on `Zdense`, built only on first use.
+    des = _multi_re_design(comps, n)
+    q = size(des.Z, 2)
+    offs = des.offs
+    colcomp = des.colcomp
+    cache = Ref{Any}(nothing)     # factor at the last Float64 θ: grad! reuses nll's
+    Zdense = Ref{Union{Nothing,Matrix{Float64}}}(nothing)
+    _zdense() = (Zdense[] === nothing && (Zdense[] = Matrix(des.Z)); Zdense[]::Matrix{Float64})
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
         ημ = Xμ * βμ
@@ -1027,9 +1031,16 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
         invD = exp.(-2 .* ησ); r = y .- ημ
         σk = [exp(clamp(θ[pμ+pσ+k], -30.0, 30.0)) for k in 1:K]
         σcol = [σk[colcomp[c]] for c in 1:q]
-        Z̃ = Z .* σcol'                             # scale each column by its σ_k
-        _, bhat, logdetM = _multi_re_qr(Z̃, exp.(-ησ), r)
-        e = r .- Z̃ * bhat
+        if eltype(θ) === Float64
+            Z̃s = des.Z * Diagonal(σcol)            # scale each column by its σ_k
+            fac = _multi_re_cached_factor!(cache, θ, Z̃s, exp.(-ησ), r)
+            bhat = fac.bhat; logdetM = fac.logdetM
+            e = r .- Z̃s * bhat
+        else
+            Z̃ = _zdense() .* σcol'
+            _, bhat, logdetM = _multi_re_qr(Z̃, exp.(-ησ), r)
+            e = r .- Z̃ * bhat
+        end
         quad = sum(invD .* e .^ 2) + sum(abs2, bhat)
         logdetV = sum(2 .* ησ) + logdetM
         val = 0.5 * (logdetV + quad) + 0.5 * n * log(2π)
@@ -1046,23 +1057,23 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
         r = y .- ημ
         σk = [exp(clamp(θ[pμ+pσ+k], -30.0, 30.0)) for k in 1:K]
         σcol = [σk[colcomp[c]] for c in 1:q]
-        Z̃ = Z .* σcol'
-        R, bscaled, _ = _multi_re_qr(Z̃, exp.(-ησ), r)   # RᵀR = I + Z̃ᵀD⁻¹Z̃
+        Z̃s = des.Z * Diagonal(σcol)
+        fac = _multi_re_cached_factor!(cache, θ, Z̃s, exp.(-ησ), r)   # LLᵀ = P(I + Z̃ᵀD⁻¹Z̃)Pᵀ
+        bscaled = fac.bhat
         all(isfinite, bscaled) || return Gout
-        Rinv = UpperTriangular(R) \ Matrix{Float64}(I, q, q)
-        Hinv = Rinv * Rinv'
-        α = invD .* (r .- Z̃ * bscaled)             # V⁻¹r
+        S = _multi_re_selinv(fac, des.Mpat)                  # M⁻¹ on the factor pattern
+        α = invD .* (r .- Z̃s * bscaled)            # V⁻¹r
 
         Gout[1:pμ] .= -(Xμ' * α)
 
         # d nll / d ησᵢ = Dᵢ[(V⁻¹)ᵢᵢ - αᵢ²], Dᵢ = exp(2ησᵢ).
-        lever = vec(sum((Z̃ * Hinv) .* Z̃, dims = 2))
+        lever = _multi_re_leverage(S, des, σk)     # z̃ᵢᵀ M⁻¹ z̃ᵢ
         diagVinv = invD .- invD .^ 2 .* lever
         Gout[pμ+1:pμ+pσ] .= Xσ' * ((diagVinv .- α .^ 2) ./ invD)
 
         # With whitened Z̃, dV/dlogσₖ = 2 Z̃ₖZ̃ₖᵀ, and
         # Z̃ᵀV⁻¹Z̃ = I - (I + Z̃ᵀD⁻¹Z̃)⁻¹.
-        dH = diag(Hinv)
+        dH = _selinv_diag(S, q)
         @inbounds for k in 1:K
             cols = (offs[k]+1):offs[k+1]
             Gout[pμ+pσ+k] = sum(1 .- dH[cols]) - sum(abs2, bscaled[cols])
@@ -1081,14 +1092,18 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
     res = Optim.optimize(od, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol))
     θ̂ = Optim.minimizer(res)
     # vcov from the AD Hessian of `nll`. `nll` returns a flat 1e18 penalty when
-    # `cholesky(M + I)` fails, so ForwardDiff's directional probes near a
+    # the capacitance factorisation fails, so ForwardDiff's directional probes near a
     # near-singular capacitance (extreme σ ratios) can straddle that branch and
     # pollute the Hessian. Detect the leak (θ̂ on the penalty, or a non-finite /
     # non-PD Hessian) and report NaN rather than a silently corrupted vcov,
     # matching the phylo/sparse paths.
+    # #977: above `_MULTI_RE_DENSE_HESSIAN_MAXQ` RE columns the Dual-number dense
+    # QR is O((n + q) q²) per Hessian column, so the Hessian is instead a central
+    # difference of the exact sparse analytic gradient (same guards below).
     V = let
         pen = oftype(sum(θ̂), 1e18)
-        Hθ = ForwardDiff.hessian(nll, θ̂)
+        Hθ = q <= _MULTI_RE_DENSE_HESSIAN_MAXQ ? ForwardDiff.hessian(nll, θ̂) :
+             _multi_re_fd_hessian(grad!, θ̂)
         if nll(θ̂) >= pen || !all(isfinite, Hθ) || !isposdef(Symmetric(Hθ))
             @warn "multi-RE Gaussian vcov: Hessian is not usable (near-singular " *
                   "capacitance or penalty leak); returning NaN standard errors."
@@ -1118,10 +1133,9 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
         ησ = clamp.(Xσ * βσ, -30.0, 30.0); invD = exp.(-2 .* ησ); r = y .- Xμ * βμ
         σk = [exp(clamp(θ̂[pμ+pσ+k], -30.0, 30.0)) for k in 1:K]
         σcol = [σk[colcomp[c]] for c in 1:q]
-        Z̃ = Z .* σcol'
-        ZtDir = Z̃' * (invD .* r)
-        M = Z̃' * (invD .* Z̃)
-        bscaled = cholesky(Symmetric(M + I)) \ ZtDir   # at θ̂ this is well-conditioned
+        # The penalised least-squares mode of the same sparse factor the objective
+        # uses: b̂ = (I + Z̃ᵀD⁻¹Z̃)⁻¹Z̃ᵀD⁻¹r.
+        bscaled = _multi_re_factor(des.Z * Diagonal(σcol), exp.(-ησ), r).bhat
         bfull = σcol .* bscaled                         # back to natural RE scale
         d = Dict{Symbol,Vector{Float64}}()
         for (k, c) in enumerate(comps)
@@ -1348,13 +1362,28 @@ _musig_primal(x::Real) = x
 
 # Damped-Newton 2-D mode-finder on stripped Float64 primals. Groups here are
 # tiny (drmTMB twin cells run G ≈ 8..60, n_g ≈ 6..12), so this converges in a
-# handful of iterations; step-halving on the gradient norm guards against the
-# occasional overshoot from the δ-nonlinearity (e = exp(−2δ)) far from (0,0).
+# handful of iterations.
+#
+# #927: h(b, δ) is NOT jointly convex — by Cauchy–Schwarz det H can be negative
+# when a group's residuals share one sign (H_bδ² = 4(Σ rᵢeᵢ)² can exceed
+# H_bb·H_δδ). The old finder accepted any step that shrank the GRADIENT norm, so
+# it could settle on a saddle of h; det H < 0 there, and `log(detH)` in the
+# Laplace term threw a DomainError (sleepstudy, the #745 fixture). Now each step
+# must DECREASE h (Armijo backtracking), and the direction is Newton on H
+# shifted to be positive definite (a descent direction even where H is
+# indefinite), so the finder converges to a minimum, where H is PD.
+function _musig_h(r_idx, eta0_idx, b, δ, sb_mu2, sb_sigma2)
+    m = length(r_idx)
+    D = sum((r_idx .- b) .^ 2 .* exp.(-2 .* (eta0_idx .+ δ)))
+    return m * δ + 0.5 * D + 0.5 * b^2 / sb_mu2 + 0.5 * δ^2 / sb_sigma2
+end
+
 function _musig_mode_primal(r_idx::Vector{Float64}, eta0_idx::Vector{Float64},
                             sb_mu2::Float64, sb_sigma2::Float64)
     m = length(r_idx)
     b = 0.0; δ = 0.0
-    for _ in 1:100
+    h = _musig_h(r_idx, eta0_idx, b, δ, sb_mu2, sb_sigma2)
+    for _ in 1:200
         e = exp.(-2 .* (eta0_idx .+ δ))
         resid = r_idx .- b
         D = sum(resid .^ 2 .* e)
@@ -1365,29 +1394,28 @@ function _musig_mode_primal(r_idx::Vector{Float64}, eta0_idx::Vector{Float64},
         Hbb = sum(e) + 1 / sb_mu2
         Hbδ = -dDdb
         Hδδ = 2 * D + 1 / sb_sigma2
-        detH = Hbb * Hδδ - Hbδ^2
-        if !isfinite(detH) || detH <= 0
-            Δb = -gb / max(Hbb, 1e-8)
-            Δδ = -gδ / max(Hδδ, 1e-8)
-        else
-            Δb = -(Hδδ * gb - Hbδ * gδ) / detH
-            Δδ = -(-Hbδ * gb + Hbb * gδ) / detH
-        end
+        tr2 = 0.5 * (Hbb + Hδδ)
+        λmin = tr2 - sqrt(max(tr2^2 - (Hbb * Hδδ - Hbδ^2), 0.0))
+        shift = λmin > 1e-10 * tr2 ? 0.0 : (1e-6 * tr2 - λmin + 1e-12)
+        A = Hbb + shift; C = Hδδ + shift
+        detA = A * C - Hbδ^2
+        Δb = -(C * gb - Hbδ * gδ) / detA
+        Δδ = -(-Hbδ * gb + A * gδ) / detA
+        slope = gb * Δb + gδ * Δδ                     # < 0: descent direction
+        (isfinite(slope) && slope < 0) || (Δb = -gb; Δδ = -gδ; slope = -(gb^2 + gδ^2))
         step = 1.0
-        g0 = gb^2 + gδ^2
-        while step > 1e-8
+        moved = false
+        while step > 1e-12
             bn = b + step * Δb; δn = δ + step * Δδ
-            en = exp.(-2 .* (eta0_idx .+ δn))
-            residn = r_idx .- bn
-            Dn = sum(residn .^ 2 .* en)
-            gbn = 0.5 * (-2 * sum(residn .* en)) + bn / sb_mu2
-            gδn = m - Dn + δn / sb_sigma2
-            if gbn^2 + gδn^2 <= g0 || step < 1e-3
-                b, δ = bn, δn
+            hn = _musig_h(r_idx, eta0_idx, bn, δn, sb_mu2, sb_sigma2)
+            if isfinite(hn) && hn <= h + 1e-4 * step * slope
+                b, δ, h = bn, δn, hn
+                moved = true
                 break
             end
             step *= 0.5
         end
+        moved || break
     end
     return b, δ
 end
@@ -1459,6 +1487,10 @@ function _fit_musigma_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, nmμ, 
             r_idx = r_all[idx]; eta0_idx = η0_all[idx]
             b, δ, D, Hbb, Hbδ, Hδδ = _musig_refine(r_idx, eta0_idx, sb_mu2, sb_sigma2, m)
             detH = Hbb * Hδδ - Hbδ^2
+            # #927: a non-PD Laplace Hessian (a line-search probe far from the
+            # optimum) gets a LARGE FINITE barrier, not log of a negative number
+            # (DomainError) and not +Inf (HagerZhang asserts finiteness).
+            (isfinite(detH) && detH > 0) || return s + T(REML_NONPD_PENALTY)
             Ak = sum(eta0_idx)
             nll_group = 0.5 * m * l2π + Ak + m * δ + 0.5 * D +
                         0.5 * l2π + θ[pμ+pσ+1] + 0.5 * b^2 / sb_mu2 +
