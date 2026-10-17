@@ -44,8 +44,12 @@ gradient-difference Hessian is undefined.
 
 - Red-proof on `92cefb58` (test added, src unchanged): 8 pass / 2 fail / 2 error.
 - After the route: `test/test_j3c_hetero_clamp_hessian.jl` 12/12 in 24.7 s
-  (Julia 1.10.10).
-- Full `Pkg.test()` recorded in the check-log row for this slice.
+  standalone and again 12/12 inside the full suite (Julia 1.10.10).
+- Full suite: `julia --project=test --startup-file=no test/runtests.jl`
+  (374 files, unsharded) **16,746 passed / 0 failed** (737 testsets), EXIT 0.
+  `Pkg.test()` from the root project errors `can not merge projects` in this
+  container (pre-existing overlay issue; runtests.jl is the documented local
+  equivalent). Tweedie crossed (#737) took 73m50s on first compile; not a hang.
 
 ## 5. Rose
 
