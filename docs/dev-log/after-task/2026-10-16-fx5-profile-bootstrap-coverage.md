@@ -91,12 +91,18 @@ status, crossed Gaussian/Poisson `:resd`) all passed after the rewrite.
 
 ## 5. Checks run
 
-- Red-proof: FAIL on the unfixed tree, PASS (25/25) after.
+- Red-proof: FAIL on the unfixed tree, PASS (25/25) after; re-confirmed
+  25/25 in 30.7 s on head `0bd19b879`.
 - Sibling profile battery: `test_profile_ci.jl`,
   `test_profile_nuisance_status.jl`, `test_profile_acceptance_oracles.jl`,
   `test_sentinel_generic_profile.jl`, `test_j2_convergence_vcov.jl`,
   `test_bridge_profile_status.jl`, `test_locscale_profile_status.jl`.
-- Full `Pkg.test()` (recorded in the check-log / PR once finished).
+- Full unsharded `Pkg.test()`: 179 `@testset`s passed, then stalled on
+  pre-existing `test_crossed_tweedie.jl` (nested ForwardDiff + Brent
+  power-p profile; not on the generic `confint` path this slice edits)
+  for >50 min at 99.9% CPU with no further log. Not treated as a
+  regression of #1117. CI run ids: `38983946104` (test shards /
+  `changes`), `38983946098` (docs).
 
 ## 6. License / Rose
 
@@ -107,10 +113,10 @@ the t9 receipt numbers cited as the finding, not as a new measurement.
 
 ## 7. Issue ledger
 
-- Refs #1117 — implemented.
+- Closes #1117 — implemented and red-proofed.
 - Refs #1119 — options only; twin of itchyshin/drmTMB#1315.
-- itchyshin/drmTMB#1562 — investigation, not a profile-construction bug.
-  drmTMB push was 403 (`Permission to itchyshin/drmTMB.git denied to
+- Refs itchyshin/drmTMB#1562 — investigation, not a profile-construction
+  bug. drmTMB push was 403 (`Permission to itchyshin/drmTMB.git denied to
   cursor[bot]`). Branch `cursor/fx5-t9-slope-coverage-e28d` @
   `5fea1f634073ae162bbbe78ae5e1a053fb77b1ac` is local only. Apply
   `docs/dev-log/evidence/2026-10-16-drmtmb-1562.patch` on that pin.
