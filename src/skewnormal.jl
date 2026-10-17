@@ -42,6 +42,35 @@ coef(fit, :nu)[1]           # estimated slant α (identity)
 """
 struct SkewNormal end
 
+# The skew-normal information matrix is singular at ν = 0 (the slant and the
+# location/scale are confounded there), so a Wald SE for ν is not trustworthy when
+# the truth may be near 0 (#1060). ν̂ alone cannot tell: on symmetric data ν̂ is
+# routinely ±1 with a large SE. Two heuristic triggers: every fitted |ν_i| below
+# `_SKEWNORMAL_NU_WALD_BAR`, or a 95% Wald test that the whole `nu` block is 0
+# not rejected (the data are compatible with ν = 0).
+const _SKEWNORMAL_NU_WALD_BAR = 0.5
+function _skewnormal_nu_wald_unreliable(ν::AbstractVector, θν::AbstractVector = Float64[],
+                                        Vν::AbstractMatrix = zeros(0, 0))
+    isempty(ν) && return false
+    all(isfinite, ν) || return false
+    maximum(abs, ν) < _SKEWNORMAL_NU_WALD_BAR && return true
+    (isempty(θν) || size(Vν) != (length(θν), length(θν)) || !all(isfinite, Vν)) && return false
+    w = try
+        θν' * (Symmetric(Vν) \ θν)
+    catch
+        return true                 # singular nu-block covariance: SEs untrustworthy
+    end
+    return isfinite(w) && w < Distributions.quantile(Distributions.Chisq(length(θν)), 0.95)
+end
+
+function _warn_skewnormal_nu_wald(ν::AbstractVector, θν::AbstractVector, Vν::AbstractMatrix)
+    _skewnormal_nu_wald_unreliable(ν, θν, Vν) || return nothing
+    @warn "SkewNormal: the fitted slant ν is compatible with 0 (max |ν| = $(round(maximum(abs, ν); digits = 3))); " *
+          "the information matrix is singular there, so Wald standard errors for the `nu` " *
+          "block are NOT trustworthy. Prefer `confint(fit, method = :profile)` or the bootstrap."
+    return nothing
+end
+
 function drm(f::DrmFormula, fam::SkewNormal; data, g_tol::Real = 1e-8)
     _lss_only_gaussian_guard(f, fam)   # #544: refuse, never silently drop, sd() parts
     rhs = Dict(f.forms)
@@ -106,6 +135,8 @@ function _fit_skewnormal(fam::SkewNormal, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_
     means = Dict(:mu => Xμ * θ̂[1:pμ]); obs = Dict(:mu => Vector{Float64}(y))   # μ = response-scale mean
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]),
                   :nu => Xν * θ̂[(pμ+pσ+1):(pμ+pσ+pν)])
+    νr = (pμ+pσ+1):(pμ+pσ+pν)
+    _warn_skewnormal_nu_wald(scales[:nu], θ̂[νr], V[νr, νr])
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))

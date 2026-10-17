@@ -188,7 +188,13 @@ function _nondegenerate_fit(fit::DrmFit)
         length(obs) > 1 && (yscale = std(obs))
     end
     isfinite(yscale) || (yscale = 1.0)
-    return smax > 1e-6 * max(yscale, eps(Float64))
+    smax > 1e-6 * max(yscale, eps(Float64)) || return false
+    # Unit-free runaway-scale bar (#1059): `smax` alone cannot see a scale that
+    # collapses for SOME observations (e.g. `sigma ~ x` with a constant response in
+    # one group) while another group keeps an O(1) scale. A fitted-sigma spread
+    # beyond 1e8 across rows is a ridge toward sigma = 0, whatever the units.
+    sfin = filter(isfinite, abs.(s))
+    return isempty(sfin) || minimum(sfin) > 1e-8 * smax
 end
 
 """
