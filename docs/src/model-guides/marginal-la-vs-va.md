@@ -207,6 +207,18 @@ decrement, twice the ELBO gain still on offer, must be at most `1e-14`, or below
 the rounding error of the group ELBO when the solve cannot go further. If one is
 not, the reported ELBO is below the profiled ELBO and the optimiser did not follow
 its gradient, so the fit is marked `converged = false` with a warning (#965).
+For example, in this small Poisson fit one group is all zeros:
+
+```julia
+y = [0, 0, 0, 0, 12, 147, 1778.0]; g = [1, 1, 1, 1, 2, 3, 4]
+fit = drm(bf(@formula(y ~ 1 + (1 | g))), Poisson(); data = (; y, g), marginal = :VA)
+fit.converged   # true, with every group's inner solve stationary
+coef(fit)       # ≈ [2.837, 1.430]; ELBO ≈ -24.88
+```
+
+Before #965 this fit stopped at `coef(fit) ≈ [37.60, 3.67]`, with an ELBO of
+−32.37 that was 7.5 nats below the variational optimum, and still reported
+`converged = true`.
 
 On Gamma `(1 | g)`, the evaluated comparison finds LA ≈ VA on shape `α` and LA is
 much faster. VA beyond random

@@ -8,14 +8,19 @@
 #       direction into a descent direction; `_va_backtrack` then rejects every
 #       trial and the iterate never moves (2000 iterations change nothing).
 #       All-zero / all-one groups under a very large random-effect SD.
-#   (2) CAP. 25/30 steps of at most |Δm| = 4 cannot reach a far optimum. Also an
-#       all-zero group with a huge Σe^{η0} (log S ≳ 36): the warm start puts s far
-#       below its optimum, Hrr rounds to 0 or is tiny, and the old det-vs-entries
-#       test damped every step so r crept up by ~1e-2 per step.
+#   (2) CAP. The solve keeps moving but cannot get there in 25/30 steps: the
+#       coordinate clamp leaves a direction along which F barely rises, so the line
+#       search accepts only 2⁻⁴ to 2⁻⁹ of each step (the Poisson and Binomial cells);
+#       elsewhere |Δr| ≤ 2 or Newton's own +1 step sets the pace (Gamma). Also a
+#       group with a huge Σe^{η0}: the warm start puts r = log s near −log S, far
+#       below its optimum. Under σ_b ≈ 39 (log S ≳ 37) r climbs only at the
+#       |Δr| = 2 cap; at σ_b ≈ 1 (log S ≳ 40) Hrr is tiny, the old det-vs-entries
+#       test damped every step, and r crept up by ~1e-2 per step.
 #   (3) ROUNDOFF (Binomial). `s·η − n·softplus(η)` cancels when η ≫ 0 and s ≈ n;
 #       the ~1e-11 evaluation noise exceeds the line-search tolerance and freezes
-#       the solve at |∇F| ≈ 2.5e-6. Reached by a realistic aggregated-binomial
-#       fit that reported `converged = true` (fit-level testset below).
+#       the solve short of stationarity (|∇F| = 5.4e-6 in the unit cell, 2.5e-6
+#       for group 6 of a realistic aggregated-binomial fit that reported
+#       `converged = true`; fit-level testset below).
 #
 # (Further mechanisms, found later, are pinned below: the old det-only damping test
 # let a positive-definite H through (Beta); the NB2, Gamma and Beta kernels cancelled
@@ -27,16 +32,17 @@
 # within λ² ≤ 1e-8 of the maximum, and keeps stepping until the squared Newton
 # decrement λ² = gᵀ(−H)⁻¹g is at most 1e-14. A group the solve cannot take that far
 # is judged by ρ = λ² / max(1e-14, 32·eps·(1 + |F|)), which the inner functions
-# return. The Binomial, NB2, Gamma and Beta kernels and the Poisson Hrr are written
-# without cancellation, and every group's ρ is re-measured at θ̂ and ρ ≤ 1 ANDed
-# into `converged` (with a warning).
+# return. The Binomial, NB2 and Gamma kernels, the Beta kernel above φ = 50 and the
+# Poisson Hrr are written without cancellation, and every group's ρ is re-measured
+# at θ̂ and ρ ≤ 1 ANDed into `converged` (with a warning).
 #
 # Every testset fails on base. These fail on an assertion about base's behaviour:
 # the Poisson and Binomial inner cells; the Binomial kernel; the envelope gradient;
-# the damped step; the inner cells of NB2, Gamma and Beta; the Binomial, Poisson
-# and both Gamma fits. The rest also exercise new functions (the reporter, the
-# Newton zone, the kernel constants and the `nll(θ, ρ)` recording), and the NB2
-# fit is a no-false-alarm guard.
+# the damped step; the inner cells of NB2, Gamma and Beta; the Binomial, Poisson,
+# both Gamma, the Beta and the positive-ELBO NB2 fits. The rest fail on base because
+# they call new code: the reporter, the stopped-short ρ with `maxiters` and its
+# bound, the Newton zone, the kernel constants, the `nll(θ, ρ)` recording and the
+# fitters' `va_inner` keyword; the NB2 size ≈ 430 fit is a no-false-alarm guard.
 
 using DRModels
 using Test
@@ -115,9 +121,11 @@ const _GH_LWπ = log.(_GH_W) .- 0.5 * log(π)
     @testset "Poisson inner: stall and cap cells reach stationarity" begin
         # (A, log S, log σ_b): all-zero groups under σ_b = e⁴ ≈ 55. On base the
         # first keeps |∇F| = 2.5 for any number of iterations (STALL); the second
-        # has |∇F| = 1.66 after 25 steps but is solvable (CAP).
-        # The last three are the scout cells at θ̂ of measured fits: R2 (huge S) at
-        # an ordinary σ_b, and the CAP / STALL groups of two converged = true fits.
+        # has |∇F| = 1.66 after 25 steps but is solvable (CAP); the third, under
+        # σ_b = e^4.5 ≈ 90, is a STALL at |∇F| = 0.62.
+        # The last three: a synthetic huge-S group (A = 10, log S = 60, σ_b = 1)
+        # whose r creeps ~7e-3 per step on base, and the CAP / STALL groups at θ̂
+        # of two converged = true fits.
         for (A, lS, lσ) in ((0.0, -37.0, 4.0), (0.0, -19.0, 4.0), (0.0, -38.0, 4.5),
                             (10.0, 60.0, 0.0), (0.0, log(4) + 37.599058437158035, 3.6710579140424255),
                             (0.0, -61.242185737691955, 3.8612174228408462))
@@ -207,12 +215,12 @@ const _GH_LWπ = log.(_GH_W) .- 0.5 * log(π)
         @test DVI._va_inner_bound(-1e4) ≈ 32 * eps() * (1 + 1e4)
     end
 
-    @testset "fit-level report: converged ANDs the inner check, with a warning" begin
+    @testset "reporter: a non-stationary group returns false, with a warning" begin
         @test DVI._va_inner_converged([0.0, 1e-6, 1.0], "route") === true
         ok = @test_logs (:warn, r"inner solve did not reach stationarity for 2 of 3 groups.*#965") DVI._va_inner_converged([0.0, 1e3, NaN], "route")
         @test ok === false
-        # Quiet inside bootstrap / profile refits (same switch as the clamp warnings),
-        # but still not converged.
+        # Quiet inside bootstrap refits (the switch `_without_boundary_warnings` sets,
+        # as for the clamp warnings), but still not converged.
         task_local_storage(:drm_quiet_boundary, true) do
             quiet = @test_logs DVI._va_inner_converged([1e3], "route")
             @test quiet === false
@@ -242,7 +250,8 @@ const _GH_LWπ = log.(_GH_W) .- 0.5 * log(π)
         end
         @test fit.converged
         @test worst < 1e-6
-        # The fit's own objective records the same per-group λ² it ANDs into converged.
+        # The fit's own objective records the per-group ρ (λ² over its bound) that the
+        # fitter ANDs into converged.
         dec = fill(NaN, G)
         fit.nll(θ̂, dec)
         @test all(d -> d <= 1, dec)
@@ -289,8 +298,8 @@ const _GH_LWπ = log.(_GH_W) .- 0.5 * log(π)
             @test DVI._nb2_group_kernel(b, η0, yk, r) ≈ exact rtol = 1e-14 atol = 1e-12
         end
         # No false alarm at NB2 size ≈ 430 on ordinary data. (Base has no check; with
-        # the old kernel, a driver without the Newton zone stalled one group here at
-        # λ² ≈ 1e-11 and flagged the fit.)
+        # the old kernel, drivers without the Newton zone left one or two groups here
+        # at λ² = 2e-14 to 5.5e-13 and flagged the fit.)
         rng = StableRNG(7_000_000 + 10000 * 3 + 100 * 2 + 15 + 4)
         G, ng = 20, 4; n = G * ng
         g = repeat(1:G, inner = ng); x = randn(rng, n)
@@ -306,8 +315,9 @@ const _GH_LWπ = log.(_GH_W) .- 0.5 * log(π)
     end
 
     @testset "Gamma and Beta kernels: no cancellation at a large shape / precision" begin
-        # Each cell also evaluates the OLD (pre-#965) kernel in Float64 and checks that
-        # it misses the BigFloat value by more than the tolerance the new one meets.
+        # At the largest shape and precision (α, φ = 1e6) the test also evaluates the
+        # OLD (pre-#965) kernel in Float64 and checks that it misses the BigFloat
+        # value by more than the tolerance the new one meets.
         lgb(x) = SpecialFunctions.loggamma(x)
         for x in (1e-3, 0.5, 14.9, 15.0, 1e3, 1e8)
             X = big(x)
@@ -391,8 +401,9 @@ const _GH_LWπ = log.(_GH_W) .- 0.5 * log(π)
     @testset "inner cells of NB2, Gamma and Beta reach stationarity" begin
         # Unit-level cells per family, each failing on base (measured there):
         #   NB2 all-zero group, σ_b = e^4.25: STALL, |∇F| = 0.17 for any iterations;
-        #   Gamma warm start 29 below its optimum: CAP, |∇F| = 0.15 after 30 steps
-        #     (the Newton step on this kernel is exactly +1 per step from below);
+        #   Gamma warm start ~26 below its optimum (m₀ = 0, m* = 26.3): CAP,
+        #     |∇F| = 0.15 after 30 steps (the Newton step on this kernel is +1 per
+        #     step from below, to ~1e-5);
         #   Gamma, shape 0.01, σ_b = e^5: STALL, |∇F| = 1.47;
         #   Beta, a positive-definite H that the old det-only test let through: STALL,
         #     |∇F| = 2.9 (the maximum is at m ≈ 2.314, log s ≈ −1.774);
@@ -439,5 +450,84 @@ const _GH_LWπ = log.(_GH_W) .- 0.5 * log(π)
         @test worst < 1e-6
         @test θ̂ ≈ [1.948032, 7.701650, 0.378781, 1.991434] atol = 1e-4
         @test loglik(fit) ≈ -225.239306 atol = 1e-4
+    end
+
+    @testset "Beta (1 | g) fit at precision ≈ 1e6: every inner solved" begin
+        # Small μ, precision ≈ 1e6. On base this fit reports converged = true while
+        # kernel rounding (terms of size φ·log φ) freezes three groups at |∇F| = 1.3e-5
+        # to 4.1e-5 (λ² up to 6.7e-10). Here θ̂ itself is right to ~1e-9: the base
+        # certificate was wrong, the estimate was not.
+        rng = StableRNG(5)
+        G, per = 10, 10; n = G * per
+        g = repeat(1:G, inner = per); x = randn(rng, n); bg = randn(rng, G)
+        μ = DVI._logistic.(-6.0 .+ 0.5 .* x .+ bg[g])
+        y = [clamp(rand(rng, Distributions.Beta(m * 1e6, (1 - m) * 1e6)), 1e-300, prevfloat(1.0)) for m in μ]
+        fit = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), Beta();
+                  data = (; y, x, g), marginal = :VA)
+        θ̂ = fit.theta; τ = exp(-2θ̂[end]); φ = exp(-2clamp(θ̂[3], -15, 15)); η0 = θ̂[1] .+ θ̂[2] .* x
+        worst = maximum(1:G) do k
+            idx = findall(==(k), g); e = η0[idx]; ly = log.(y[idx]); l1my = log.(1 .- y[idx])
+            out = DVI._beta_va_inner(e, ly, l1my, φ, τ, sum(y[idx]) / per, _GH_Z, _GH_LWπ)
+            obj = u -> DVI._beta_va_group_elbo(u[1], u[2], e, ly, l1my, φ, τ, _GH_Z, _GH_LWπ)
+            _ad_inner_gnorm(obj, out[1], out[2])
+        end
+        @test fit.converged
+        @test worst < 1e-6
+        dec = fill(NaN, G); fit.nll(θ̂, dec)
+        @test all(d -> d <= 1, dec)
+    end
+
+    @testset "NB2 (1 | g) fit near the Poisson limit: no positive ELBO" begin
+        # Large RE SD, NB2 size → ∞. On base the old kernel's cancellation of r·log r
+        # terms gives this fit an ELBO of +2577.42, impossible for a count likelihood,
+        # with converged = true. The fix: ELBO −68.774, every inner ρ ≤ 1.
+        rng = StableRNG(7_031_127)
+        G, ng = 20, 2; n = G * ng
+        g = repeat(1:G, inner = ng); x = randn(rng, n); bg = 2.5 .* randn(rng, G)
+        η = -0.5 .+ 0.5 .* x .+ bg[g]
+        y = Float64.([rand(rng, Distributions.NegativeBinomial(2.0, 2.0 / (2.0 + exp(e)))) for e in η])
+        gidx, _ = DVI._group_index(g)
+        fit = DVI._fit_nb2_ranef_va(DVI.NegBinomial2(), y, hcat(ones(n), x), ones(n, 1), gidx, G,
+                                    ["(Intercept)", "x"], ["(Intercept)"], :g, 1e-8)
+        @test loglik(fit) < 0
+        @test loglik(fit) ≈ -68.7741 atol = 1e-3
+        @test fit.converged
+        dec = fill(NaN, G); fit.nll(fit.theta, dec)
+        @test all(d -> d <= 1, dec)
+    end
+
+    @testset "fitters: a forced non-stationary inner gives converged = false, with a warning" begin
+        # `va_inner = (iters = 1, maxiters = 1)` stops every inner solve after one
+        # Newton step. Each of the five fitters must then report converged = false and
+        # warn, although its outer optimiser stops (g_tol = 1e-3); with the default
+        # inner the same data converge.
+        rng = StableRNG(965)
+        G, ng = 6, 4; n = G * ng
+        g = repeat(1:G, inner = ng); x = randn(rng, n); b = randn(rng, G)
+        η = 0.3 .+ 0.5 .* x .+ b[g]; gidx, _ = DVI._group_index(g); X = hcat(ones(n), x)
+        nm = ["(Intercept)", "x"]; Xs = ones(n, 1); nms = ["(Intercept)"]
+        yp = Float64.([rand(rng, Distributions.Poisson(exp(e))) for e in η])
+        sb = Float64.([rand(rng, Distributions.Binomial(6, DVI._logistic(e))) for e in η])
+        yn = Float64.([rand(rng, Distributions.NegativeBinomial(3.0, 3.0 / (3.0 + exp(e)))) for e in η])
+        yg = [rand(rng, Distributions.Gamma(4.0, exp(e) / 4.0)) for e in η]
+        yb = [rand(rng, Distributions.Beta(DVI._logistic(e) * 10, (1 - DVI._logistic(e)) * 10)) for e in η]
+        fitters = (
+            kw -> DVI._fit_poisson_ranef_va(DVI.Poisson(), yp, X, gidx, G, nm, :g, 1e-3; kw...),
+            kw -> DVI._fit_binomial_ranef_va(DVI.Binomial(), sb, fill(6.0, n), X, gidx, G, nm, :g, 1e-3; kw...),
+            kw -> DVI._fit_nb2_ranef_va(DVI.NegBinomial2(), yn, X, Xs, gidx, G, nm, nms, :g, 1e-3; kw...),
+            kw -> DVI._fit_gamma_ranef_va(DVI.Gamma(), yg, X, Xs, gidx, G, nm, nms, :g, 1e-3; kw...),
+            kw -> DVI._fit_beta_ranef_va(DVI.Beta(), yb, X, Xs, gidx, G, nm, nms, :g, 1e-3; kw...))
+        one_step = (va_inner = (iters = 1, maxiters = 1),)
+        for f in fitters
+            @test f((;)).converged
+            fit = @test_logs (:warn, r"did not reach stationarity.*#965") match_mode = :any f(one_step)
+            @test fit.converged === false
+            @test fit.loglik ≈ -fit.nll(fit.theta)
+            dec = fill(NaN, G); fit.nll(fit.theta, dec)
+            @test maximum(dec) > 1
+        end
+        # Quiet inside bootstrap refits, and still not converged.
+        quiet = @test_logs min_level = Logging.Warn DVI._without_boundary_warnings(() -> fitters[1](one_step))
+        @test quiet.converged === false
     end
 end

@@ -36,7 +36,9 @@ Gaussian-variational (VA/ELBO) marginal — opt-in alternative to `Laplace`
 for bias-sensitive random-effect models (#136). Public `drm` path (Experimental):
 Poisson / Binomial / NegBinomial2 / Gamma / Beta random intercept `(1 | g)` via
 `marginal = :VA` (scale families need `sigma ~ 1`). Phylo, crossed, correlated
-slopes, ZI/hu, and 136e stay unwired; #136 stays open."""
+slopes, ZI/hu, and 136e stay unwired; #136 stays open. A `:VA` fit reports
+`converged = false`, with a warning, when some group's inner variational solve is
+not stationary at the fitted parameters (#965)."""
 struct Variational <: MarginalMethod end
 
 """    AGHQ <: MarginalMethod
@@ -203,8 +205,9 @@ _va_negdef(a, d, b, det) = a < 0 && d < 0 && det > 4 * eps(typeof(det)) * (abs(a
 # old sign-flipping guard (det = ±eps(T)), which could keep a spuriously negative
 # det and turn the ascent step into a descent, and it caps the eps(T)-division
 # blow-up. Returns the ascent step (Δm, Δr) that solves (H − λI)·Δ = −g, or (0, 0)
-# when no damping makes H − λI negative definite (a non-finite entry), instead of
-# dividing by a bad det; the caller's stationarity check then reports the group.
+# when no damping makes H − λI negative definite (a non-finite entry, or entries so
+# large that det overflows), instead of dividing by a bad det; the caller's
+# stationarity check then reports the group.
 # Smooth in the entries for outer AD when no damping is needed (λ = 0, the
 # generic case).
 function _va_damped_step(Hmm::T, Hmr::T, Hrr::T, gm::T, gr::T) where {T}
@@ -239,13 +242,14 @@ end
 
 # Inner stationarity (#965). The measure is the squared Newton decrement
 # λ² = gᵀ(−H)⁻¹g of the group ELBO F in (m, r = log s): λ²/2 estimates how far F
-# is below its maximum, in log-likelihood units, and λ bounds the error that a
+# is below its maximum, in log-likelihood units, and λ controls the error that a
 # non-stationary inner point puts into the outer gradient (ForwardDiff
-# differentiates through the inner iterations). A plain gradient test would have
-# to tolerate the Float64 rounding of a large-count group (|∇F| ≈ eps·Σyᵢ, about
-# 2e-6 at Σyᵢ = 1e10), whereas rounding leaves λ² near eps²·Σyᵢ (about 5e-22
-# there). Returns Inf when H is not negative definite or an entry is not finite:
-# such a point is not a maximum.
+# differentiates through the inner iterations): to first order that error is at
+# most λ times the inner point's sensitivity to θ in the metric of −H. A plain
+# gradient test would have to tolerate the Float64 rounding of a large-count group
+# (|∇F| a few times eps·Σyᵢ, up to about 2e-5 at Σyᵢ = 1e10), whereas rounding
+# leaves λ² of order |∇F|²/Σyᵢ (at most about 4e-20 there). Returns Inf when H is
+# not negative definite or an entry is not finite: such a point is not a maximum.
 function _va_newton_decrement2(gm::T, gr::T, Hmm::T, Hmr::T, Hrr::T) where {T}
     det = Hmm * Hrr - Hmr * Hmr
     (isfinite(gm) && isfinite(gr) && isfinite(det) && Hmm < 0 && det > 0) || return T(Inf)
@@ -264,13 +268,16 @@ end
 # tolerance).
 const _VA_INNER_TOL = 1e-14
 _va_inner_bound(F0) = max(_VA_INNER_TOL, 32 * eps(Float64) * (1 + abs(F0)))
-# The inner unroll always takes its fixed `iters` Newton steps (25 Poisson, 30 for
-# the quadrature families), as before #965. A group that is still not stationary
+# The inner unroll takes its fixed `iters` Newton steps (25 Poisson, 30 for the
+# quadrature families), as before #965, one fewer when the last step would not move
+# the iterate. A group that is still not stationary
 # continues, up to `_VA_INNER_MAXITERS` steps in all. A group that ends the unroll
 # with λ² ≤ `_VA_INNER_DONE` stops there; any other group that meets the tolerance
 # takes two more Newton steps, so the returned point (and the derivative the outer
 # ForwardDiff carries through it) is not left at the edge of the tolerance.
 const _VA_INNER_MAXITERS = 200
+const _VA_POISSON_INNER_ITERS = 25
+const _VA_GHQ_INNER_ITERS = 30
 const _VA_INNER_DONE = 1e-20
 # Within λ² ≤ `_VA_NEWTON_ZONE` of the maximum (H negative definite) the inner
 # solve takes the full Newton step without the line search. That close, the step is
@@ -334,7 +341,7 @@ end
 # Stationarity equations (§4.4):
 #   m: A − e^{m+s/2}·S − τ·m = 0
 #   s: 1/s − τ − e^{m+s/2}·S = 0          (parameterised in r = log s)
-function _poisson_va_inner(A::T, S::T, τ::T; iters::Int = 25,
+function _poisson_va_inner(A::T, S::T, τ::T; iters::Int = _VA_POISSON_INNER_ITERS,
                            maxiters::Int = _VA_INNER_MAXITERS) where {T}
     # Warm start: prior-shrunk MAP-ish mean, modest variance.
     m = log((A + one(T)) / (S + one(T)))            # ≈ log of the per-member rate
@@ -396,7 +403,9 @@ end
 # fitters AND it into `converged`, since the outer optimiser's convergence test
 # cannot see the inner solves. When a group is not, `loglik` is below the profiled
 # ELBO and the gradient the optimiser used was not the profile's gradient, so warn
-# too (quiet inside bootstrap and profile refits, like the clamp warnings).
+# too (quiet inside bootstrap refits, `_without_boundary_warnings`, like the
+# sparse-Laplace clamp warning `_warn_at_clamp`; the `:VA` clamp warning in
+# `_va_scored_sigma` is not quieted).
 function _va_inner_converged(ρ::AbstractVector{<:Real}, route::AbstractString)
     bad = count(d -> !(d <= 1), ρ)
     bad == 0 && return true
@@ -414,8 +423,14 @@ end
 
 # Closed-form Poisson random-intercept VA fit. Same call shape as
 # `_fit_poisson_ranef`; returns a `DrmFit` whose `loglik` field carries the
-# **ELBO** (a lower bound), not the exact marginal log-likelihood.
-function _fit_poisson_ranef_va(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol)
+# **ELBO** (a lower bound), not the exact marginal log-likelihood. `va_inner`
+# overrides the inner solve's `iters` / `maxiters` (the defaults when empty); tests
+# use it to force a non-stationary inner (#965). Every inner call receives one
+# (iters, maxiters) NamedTuple, so the default and an override share compiled code.
+# The other four fitters take the same keyword.
+function _fit_poisson_ranef_va(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol;
+                               va_inner = (;))
+    ik = (; iters = _VA_POISSON_INNER_ITERS, maxiters = _VA_INNER_MAXITERS, va_inner...)
     n = length(y); pμ = size(Xμ, 2)
     members = [Int[] for _ in 1:G]
     for i in 1:n
@@ -437,7 +452,7 @@ function _fit_poisson_ranef_va(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol)
             isempty(idx) && continue
             S = sum(@view eη0[idx])                       # Σ e^{η0_i} in group g
             Ag = convert(eltype(θ), A[g])
-            m, s, ρ = _poisson_va_inner(Ag, S, τ)
+            m, s, ρ = _poisson_va_inner(Ag, S, τ; ik...)
             dec === nothing || (dec[g] = ρ)
             # E_q[Σ log p] = Σ y_i·η0_i + A_g·m − e^{m+s/2}·S − (Σ log y_i! handled globally)
             yη0 = sum(y[i] * η0[i] for i in idx)
@@ -546,7 +561,7 @@ end
 # converged (m*, s*). Returns (m, s, ρ), ρ the inner stationarity measure at the
 # returned point (`_va_inner_bound`, #965). `z`, `lwπ` are the Gauss–Hermite nodes
 # and log w − ½ log π arrays.
-function _binom_va_inner(η0idx, sidx, nidx, τ::T, z, lwπ; iters::Int = 30,
+function _binom_va_inner(η0idx, sidx, nidx, τ::T, z, lwπ; iters::Int = _VA_GHQ_INNER_ITERS,
                          maxiters::Int = _VA_INNER_MAXITERS) where {T}
     p̄ = clamp(sum(sidx) / max(sum(nidx), one(T)), T(1e-3), one(T) - T(1e-3))
     # Warm start: a prior-shrunk logit of the group success rate, modest variance.
@@ -561,7 +576,9 @@ end
 # Mean-field Gaussian VA fit for the Binomial/Bernoulli random-intercept model.
 # Same call shape as `_fit_binomial_ranef`; `loglik` carries the **ELBO** (a lower
 # bound), not the exact marginal log-likelihood. θ = [β_μ; log σ_b].
-function _fit_binomial_ranef_va(fam::Binomial, s, ntr, Xμ, gidx, G, nmμ, grp, g_tol)
+function _fit_binomial_ranef_va(fam::Binomial, s, ntr, Xμ, gidx, G, nmμ, grp, g_tol;
+                                va_inner = (;))
+    ik = (; iters = _VA_GHQ_INNER_ITERS, maxiters = _VA_INNER_MAXITERS, va_inner...)
     n = length(s); pμ = size(Xμ, 2)
     sint = round.(Int, s); nint = round.(Int, ntr)
     members = [Int[] for _ in 1:G]
@@ -585,7 +602,7 @@ function _fit_binomial_ranef_va(fam::Binomial, s, ntr, Xμ, gidx, G, nmμ, grp, 
             η0idx = @view η0[idx]
             sidx = @view sint[idx]
             nidx = @view nint[idx]
-            m, sg, ρ = _binom_va_inner(η0idx, sidx, nidx, τ, z, lwπ)
+            m, sg, ρ = _binom_va_inner(η0idx, sidx, nidx, τ, z, lwπ; ik...)
             dec === nothing || (dec[g] = ρ)
             elbo += _binom_va_group_elbo(m, log(sg), η0idx, sidx, nidx, τ, z, lwπ)
         end
@@ -718,7 +735,7 @@ end
 # through the converged (m*, s*). Returns (m, s, ρ), ρ the inner stationarity
 # measure at the returned point (`_va_inner_bound`, #965). `z`, `lwπ` are the GH
 # nodes and log w − ½ log π arrays.
-function _nb2_va_inner(η0idx, yidx, rsize::T, τ::T, z, lwπ; iters::Int = 30,
+function _nb2_va_inner(η0idx, yidx, rsize::T, τ::T, z, lwπ; iters::Int = _VA_GHQ_INNER_ITERS,
                        maxiters::Int = _VA_INNER_MAXITERS) where {T}
     ȳ = sum(yidx) / length(yidx)
     # Warm start: a prior-shrunk log of the group mean count, modest variance.
@@ -755,7 +772,9 @@ end
 # `_fit_negbin2_ranef`; `loglik` carries the **ELBO** (a lower bound), not the exact
 # marginal log-likelihood. θ = [β_μ; β_σ (= log θ_size); log σ_b], matching the
 # block layout of the GHQ baseline so accessors line up.
-function _fit_nb2_ranef_va(fam::NegBinomial2, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol)
+function _fit_nb2_ranef_va(fam::NegBinomial2, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol;
+                           va_inner = (;))
+    ik = (; iters = _VA_GHQ_INNER_ITERS, maxiters = _VA_INNER_MAXITERS, va_inner...)
     n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     # Enforce the intercept-only-dispersion assumption the group scoring relies on:
     # the per-group dispersion is read from the FIRST member's predictor, which is
@@ -787,7 +806,7 @@ function _fit_nb2_ranef_va(fam::NegBinomial2, y, Xμ, Xσ, gidx, G, nmμ, nmσ, 
             # NB2 size for this group's observations. With `sigma ~ 1` (the only
             # case routed here) ησ is constant across i, so take the group's value.
             rsize = exp(-2 * ησ[idx[1]])      # ψ = log σ; NB2 size = 1/σ² = exp(−2ψ) (drmTMB)
-            m, sg, ρ = _nb2_va_inner(η0idx, yidx, rsize, τ, z, lwπ)
+            m, sg, ρ = _nb2_va_inner(η0idx, yidx, rsize, τ, z, lwπ; ik...)
             dec === nothing || (dec[g] = ρ)
             elbo += _nb2_va_group_elbo(m, log(sg), η0idx, yidx, rsize, τ, z, lwπ) +
                     _nb2_group_const(yidx, rsize)
@@ -911,7 +930,8 @@ end
 # through the converged (m*, s*). Returns (m, s, ρ), ρ the inner stationarity
 # measure at the returned point (`_va_inner_bound`, #965). `z`, `lwπ` are the GH
 # nodes and log w − ½ log π arrays.
-function _gamma_va_inner(η0idx, yidx, lyidx, α::T, τ::T, z, lwπ; iters::Int = 30,
+function _gamma_va_inner(η0idx, yidx, lyidx, α::T, τ::T, z, lwπ;
+                         iters::Int = _VA_GHQ_INNER_ITERS,
                          maxiters::Int = _VA_INNER_MAXITERS) where {T}
     # Warm start: the τ → 0, s → 0 maximiser, m = log(mean(y·e^{−η0})), in log space.
     # The old log(ȳ + eps) − mean(η0) differs from it when y does not track η0 within
@@ -932,7 +952,9 @@ end
 # as `_fit_gamma_ranef`; `loglik` carries the **ELBO** (a lower bound), not the
 # exact marginal log-likelihood. θ = [β_μ; β_σ (= log σ, so α = exp(−2β_σ)); log σ_b],
 # matching the block layout of the GHQ baseline so accessors line up.
-function _fit_gamma_ranef_va(fam::Gamma, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol)
+function _fit_gamma_ranef_va(fam::Gamma, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol;
+                             va_inner = (;))
+    ik = (; iters = _VA_GHQ_INNER_ITERS, maxiters = _VA_INNER_MAXITERS, va_inner...)
     n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     # Intercept-only-dispersion guard: the per-group shape is read from the first
     # member's predictor, valid only when ησ is constant across a group (#325).
@@ -962,7 +984,7 @@ function _fit_gamma_ranef_va(fam::Gamma, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, 
             # Gamma shape for this group's observations. With `sigma ~ 1` (the only
             # case routed here) ησ is constant across i, so take the group's value.
             α = exp(-2 * ησ[idx[1]])
-            m, sg, ρ = _gamma_va_inner(η0idx, yidx, lyidx, α, τ, z, lwπ)
+            m, sg, ρ = _gamma_va_inner(η0idx, yidx, lyidx, α, τ, z, lwπ; ik...)
             dec === nothing || (dec[g] = ρ)
             elbo += _gamma_va_group_elbo(m, log(sg), η0idx, yidx, lyidx, α, τ, z, lwπ) +
                     _gamma_group_const(lyidx, α)
@@ -1036,8 +1058,10 @@ end
 # of `_BETA_DIRECT_MAXPREC` the loggamma terms are small enough that they barely
 # cancel, so the cheaper direct form is used there, minus the same bracket:
 #   (φ−1)·log φ − φ + log 2π − loggamma(a) − loggamma(c) + a·log y + c·log(1−y).
-# Both forms are exact; they agree to the Stirling truncation (< 3e-14) at the
-# switch. Differentiable in b, η0 and φ.
+# Both forms are exact algebra (the large-φ one up to the Stirling truncation,
+# < 3e-14); at the switch they agree to rounding, up to about 1e-13 per observation
+# (2e-13 for y near 0 or 1), mostly the direct form's. Differentiable in b, η0
+# and φ.
 const _BETA_DIRECT_MAXPREC = 50.0
 function _beta_group_kernel(b, η0idx, lyidx, l1myidx, φ)
     v = zero(promote_type(typeof(b), eltype(η0idx), typeof(φ)))
@@ -1098,7 +1122,8 @@ end
 # through the converged (m*, s*). Returns (m, s, ρ), ρ the inner stationarity
 # measure at the returned point (`_va_inner_bound`, #965). `z`, `lwπ` are the GH
 # nodes and log w − ½ log π arrays.
-function _beta_va_inner(η0idx, lyidx, l1myidx, φ::T, τ::T, ȳ, z, lwπ; iters::Int = 30,
+function _beta_va_inner(η0idx, lyidx, l1myidx, φ::T, τ::T, ȳ, z, lwπ;
+                        iters::Int = _VA_GHQ_INNER_ITERS,
                         maxiters::Int = _VA_INNER_MAXITERS) where {T}
     p̄ = clamp(T(ȳ), T(1e-3), one(T) - T(1e-3))
     # Warm start: a prior-shrunk logit of the group mean, minus the fixed part.
@@ -1114,7 +1139,9 @@ end
 # as `_fit_beta_ranef`; `loglik` carries the **ELBO** (a lower bound), not the
 # exact marginal log-likelihood. θ = [β_μ; β_σ (= log σ, so φ = exp(−2β_σ)); log σ_b],
 # matching the block layout of the GHQ baseline so accessors line up.
-function _fit_beta_ranef_va(fam::Beta, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol)
+function _fit_beta_ranef_va(fam::Beta, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol;
+                            va_inner = (;))
+    ik = (; iters = _VA_GHQ_INNER_ITERS, maxiters = _VA_INNER_MAXITERS, va_inner...)
     n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     # Intercept-only-precision guard: the per-group precision is read from the first
     # member's predictor, valid only when ησ is constant across a group (#325).
@@ -1143,7 +1170,7 @@ function _fit_beta_ranef_va(fam::Beta, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_
             # only case routed here) ησ is constant across i, so take the group's value.
             φ = exp(-2 * ησ[idx[1]])
             ȳg = sum(@view y[idx]) / length(idx)
-            m, sg, ρ = _beta_va_inner(η0idx, lyidx, l1myidx, φ, τ, ȳg, z, lwπ)
+            m, sg, ρ = _beta_va_inner(η0idx, lyidx, l1myidx, φ, τ, ȳg, z, lwπ; ik...)
             dec === nothing || (dec[g] = ρ)
             elbo += _beta_va_group_elbo(m, log(sg), η0idx, lyidx, l1myidx, φ, τ, z, lwπ) +
                     _beta_group_const(lyidx, l1myidx, φ)
