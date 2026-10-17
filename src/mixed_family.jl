@@ -431,7 +431,11 @@ function fit_mixed_family(; y1, X1, fam1, y2, X2, fam2,
         H = ForwardDiff.hessian(objfn, copy(θ̂))
         # #956: guarded constructor, so an indefinite H (saddle / ridge stop)
         # gives a NaN interval instead of a Wald CI from a non-PD curvature.
-        V = _vcov_from_fd_hessian(H; context = "cross-family rho Wald CI")
+        # #936: log λ1 and the 0/1 columns of the log-σ dispersion sub-models; the
+        # signed raw loading λ2 (θ[iλ2]) is not unit-free.
+        uf = vcat(iλ1, s1 ? _unitfree_columns(Xsigma1, p1 + p2 + 2) : Int[],
+                  s2 ? _unitfree_columns(Xsigma2, p1 + p2 + 2 + q1) : Int[])
+        V = _vcov_from_fd_hessian(H; context = "cross-family rho Wald CI", unitfree = uf)
         g = ForwardDiff.gradient(t -> atanh(clamp(rho_of(t), -0.999999, 0.999999)), copy(θ̂))
         var_z = dot(g, V * g)
         if isfinite(var_z) && var_z > 0

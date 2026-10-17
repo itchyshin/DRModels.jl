@@ -764,7 +764,9 @@ function _fit_temporal_homtoep(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, tt, lay, 
         best = best === nothing ? res : _better_restart(nll, best, res)
     end
     θ̂ = Optim.minimizer(best)
-    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    # log σ (sigma ~ 1) and the atanh partial autocorrelations κ are unit-free.
+    uf = vcat(_unitfree_columns(Xσ, pμ), iκ)
+    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); unitfree = uf)
 
     blocks = [:mu => 1:pμ, :sigma => iσ:iσ, :temporal_pac => iκ]
     names = [:mu => nmμ, :sigma => nmσ, :temporal_pac => ["pac_lag$(m)" for m in 1:(K-1)]]
@@ -874,7 +876,10 @@ function _fit_temporal_gaussian(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, tt, lay,
         best = best === nothing ? res : _better_restart(nll, best, res)
     end
     θ̂ = Optim.minimizer(best)
-    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    # log σ (sigma ~ 1), then (log σ_b | log σ_a,) log σ_t and the persistence
+    # (AR1 atanh φ, OU log λ): every coordinate after βμ is unit-free.
+    uf = vcat(_unitfree_columns(Xσ, pμ), (iσ + 1):np)
+    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); unitfree = uf)
 
     # Conditional modes at θ̂, temporal effects back in DATA ROW order.
     r̂ = y .- Xμ * θ̂[1:pμ]

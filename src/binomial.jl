@@ -49,13 +49,13 @@ end
 # Covariance for the quadrature routes at a runaway optimum (e.g. separated data):
 # the AD Hessian can be non-finite, and `_vcov_from_hessian` (deliberately) throws on
 # that. Report the repo's NaN-covariance convention (standard errors Inf) with a
-# warning so the fit itself is not lost.
-function _vcov_or_nan(H::AbstractMatrix)
+# warning so the fit itself is not lost. `unitfree` is forwarded to the guard (#936).
+function _vcov_or_nan(H::AbstractMatrix; unitfree = ())
     if !all(isfinite, H)
         @warn "Hessian at the optimum is not finite (runaway or separated fit): covariance is NaN, standard errors Inf."
         return fill(NaN, size(H))
     end
-    return _vcov_from_hessian(H)
+    return _vcov_from_hessian(H; unitfree = unitfree)
 end
 
 """
@@ -251,7 +251,9 @@ function _fit_binomial(fam::Binomial, s, ntr, Xμ, nmμ, g_tol)
     p̄ = clamp(sum(s) / max(sum(ntr), 1), 1e-3, 1 - 1e-3)   # overall success rate
     θ0 = zeros(pμ); θ0[1] = log(p̄ / (1 - p̄))               # logit p̄
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    θ̂ = Optim.minimizer(res)
+    # #936: the 0/1 columns of the logit-link mean are unit-free.
+    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); unitfree = _unitfree_columns(Xμ))
     blocks = [:mu => 1:pμ]; names = [:mu => nmμ]
     means = Dict(:mu => _logistic.(Xμ * θ̂))                # fitted success probability
     V = _separation_guard(Xμ, s, ntr, θ̂, V, means[:mu], nmμ)   # #731: detect + warn, SE → Inf
@@ -300,7 +302,10 @@ function _fit_binomial_ranef(fam::Binomial, s, ntr, Xμ, gidx, G, nmμ, grp, g_t
     θ0 = zeros(pμ + 1)
     θ0[1] = log(p̄ / (1 - p̄)); θ0[pμ+1] = log(0.5)
     res = _optimize_with_fallback(nll, θ0, g_tol)
-    θ̂ = Optim.minimizer(res); V = _vcov_or_nan(ForwardDiff.hessian(nll, θ̂))
+    θ̂ = Optim.minimizer(res)
+    # #936: the 0/1 logit-mean columns and log σ_b are unit-free (a separated
+    # level is flat); a coefficient on a continuous predictor is not.
+    V = _vcov_or_nan(ForwardDiff.hessian(nll, θ̂); unitfree = vcat(_unitfree_columns(Xμ), pμ + 1))
     blocks = [:mu => 1:pμ, :resd => (pμ+1):(pμ+1)]
     names = [:mu => nmμ, :resd => [String(grp)]]
     means = Dict(:mu => _logistic.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => s ./ ntr)   # population μ (b=0)
@@ -358,7 +363,10 @@ function _fit_binomial_corr_ranef(fam::Binomial, s, ntr, Xμ, xs, gidx, G, nmμ,
     θ0[1] = log(p̄ / (1 - p̄))                                # logit p̄
     θ0[pμ+1] = log(0.4); θ0[pμ+2] = log(0.4); θ0[pμ+3] = 0.0
     res = _optimize_with_fallback(nll, θ0, g_tol)
-    θ̂ = Optim.minimizer(res); V = _vcov_or_nan(ForwardDiff.hessian(nll, θ̂))
+    θ̂ = Optim.minimizer(res)
+    # #936: the 0/1 logit-mean columns and log L11, log L22 are unit-free; the raw
+    # off-diagonal L21 is not.
+    V = _vcov_or_nan(ForwardDiff.hessian(nll, θ̂); unitfree = vcat(_unitfree_columns(Xμ), pμ + 1, pμ + 2))
     blocks = [:mu => 1:pμ, :recov => (pμ+1):(pμ+3)]
     names = [:mu => nmμ, :recov => ["$(grp):L11", "$(grp):L22", "$(grp):L21"]]
     means = Dict(:mu => _logistic.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => s ./ ntr)

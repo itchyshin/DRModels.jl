@@ -344,7 +344,9 @@ function _fit_poisson_ranef(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol; rem
         fit = _withnll(DrmFit(fam, blocks, names, θ̂, V, -ml_nll, n, conv, means, obs, scales), nll)
         return _withreml(fit, -reml_nll, -ml_nll)
     end
-    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    # #936: the 0/1 columns of the log-link mean and log σ_b are unit-free; a
+    # coefficient on a continuous predictor is not.
+    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); unitfree = vcat(_unitfree_columns(Xμ), pμ + 1))
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))   # population λ (b=0)
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, conv, means, obs, scales), nll),
@@ -389,7 +391,9 @@ function _fit_poisson_ranef_aghq(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol
     blocks = [:mu => 1:pμ, :resd => (pμ+1):(pμ+1)]
     names = [:mu => nmμ, :resd => [String(grp)]]
     scales = Dict{Symbol,Vector{Float64}}()
-    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    # #936: the 0/1 columns of the log-link mean and log σ_b are unit-free; a
+    # coefficient on a continuous predictor is not.
+    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); unitfree = vcat(_unitfree_columns(Xμ), pμ + 1))
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, conv, means, obs, scales), nll),
@@ -419,7 +423,11 @@ function _fit_poisson_corr_ranef(fam::Poisson, y, Xμ, xs, gidx, G, nmμ, grp, g
     θ0[1] = log(sum(y) / n + eps())
     θ0[pμ+1] = log(0.4); θ0[pμ+2] = log(0.4); θ0[pμ+3] = 0.0
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    θ̂ = Optim.minimizer(res)
+    # #936: the 0/1 mean columns and log L11, log L22 are unit-free; the raw
+    # off-diagonal L21 is not.
+    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂);
+                           unitfree = vcat(_unitfree_columns(Xμ), pμ + 1, pμ + 2))
     blocks = [:mu => 1:pμ, :recov => (pμ+1):(pμ+3)]
     names = [:mu => nmμ, :recov => ["$(grp):L11", "$(grp):L22", "$(grp):L21"]]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
@@ -461,7 +469,10 @@ function _fit_poisson_zi(fam::Poisson, y, Xμ, Xzi, nmμ, nmzi, g_tol)
     θ0 = zeros(pμ + pz)
     θ0[1] = log((isempty(pos) ? sum(y) / n : sum(pos) / length(pos)) + eps())   # λ from non-zeros
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    θ̂ = Optim.minimizer(res)
+    # #936: 0/1 columns of the log-link mean and of zi (logit link).
+    uf = vcat(_unitfree_columns(Xμ), _unitfree_columns(Xzi, pμ))
+    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); unitfree = uf)
     blocks = [:mu => 1:pμ, :zi => (pμ+1):(pμ+pz)]
     names = [:mu => nmμ, :zi => nmzi]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
@@ -498,7 +509,10 @@ function _fit_poisson_hu(fam::Poisson, y, Xμ, Xhu, nmμ, nmhu, g_tol)
     θ0 = zeros(pμ + ph)
     θ0[1] = log((isempty(pos) ? sum(y) / n : sum(pos) / length(pos)) + eps())   # λ from non-zeros
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    θ̂ = Optim.minimizer(res)
+    # #936: 0/1 columns of the log-link mean and of hu (logit link).
+    uf = vcat(_unitfree_columns(Xμ), _unitfree_columns(Xhu, pμ))
+    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); unitfree = uf)
     blocks = [:mu => 1:pμ, :hu => (pμ+1):(pμ+ph)]
     names = [:mu => nmμ, :hu => nmhu]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
@@ -522,7 +536,9 @@ function _fit_poisson(fam::Poisson, y, Xμ, nmμ, g_tol; offset::AbstractVector{
     end
     θ0 = zeros(pμ); θ0[1] = log(sum(y) / n + eps()) - (isempty(off) ? 0.0 : sum(off) / n)
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    θ̂ = Optim.minimizer(res)
+    # #936: the 0/1 columns of the log-link mean are unit-free (an all-zero level is flat).
+    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); unitfree = _unitfree_columns(Xμ))
     blocks = [:mu => 1:pμ]; names = [:mu => nmμ]
     means = Dict(:mu => exp.(Xμ * θ̂ .+ off)); obs = Dict(:mu => Vector{Float64}(y))   # response-scale λ
     scales = Dict{Symbol,Vector{Float64}}()
@@ -700,8 +716,10 @@ function _fit_poisson_spatial_coord(fam::Poisson, y, Xμ, labels, coords, nmμ, 
     θ̂ = Optim.minimizer(res)
     V = if se
         try
+            # #936: 0/1 mean columns, log σ_b and log ρ are unit-free.
             _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂);
-                               context = "poisson spatial coordinates")
+                               context = "poisson spatial coordinates",
+                               unitfree = vcat(_unitfree_columns(Xμ), pμ + 1, pμ + 2))
         catch
             fill(NaN, length(θ̂), length(θ̂))
         end

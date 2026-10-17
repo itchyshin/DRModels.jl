@@ -100,7 +100,9 @@ function _fit_skewnormal(fam::SkewNormal, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_
     θ0[pμ+1] = log(sd0)                                # σ init (SD scale)
     θ0[pμ+pσ+1] = α0                                   # slant init (identity)
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    θ̂ = Optim.minimizer(res)
+    uf = vcat(_unitfree_columns(Xσ, pμ), _unitfree_columns(Xν, pμ + pσ))
+    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); unitfree = uf)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :nu => (pμ+pσ+1):(pμ+pσ+pν)]
     names = [:mu => nmμ, :sigma => nmσ, :nu => nmν]
     means = Dict(:mu => Xμ * θ̂[1:pμ]); obs = Dict(:mu => Vector{Float64}(y))   # μ = response-scale mean

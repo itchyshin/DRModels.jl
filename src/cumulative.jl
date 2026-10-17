@@ -222,7 +222,10 @@ function _fit_cumulative(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, nmμ, g_t
     θ0 = zeros(pμ + nc)
     θ0[(pμ+1):(pμ+nc)] = _cumulative_cut_init(y, K, n)
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    θ̂ = Optim.minimizer(res)
+    # #936: the cut-points (first cut and log increments) and the 0/1 location columns
+    # are unit-free (latent logistic scale); a coefficient on a continuous predictor is not.
+    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); unitfree = vcat(_unitfree_columns(Xμ), (pμ+1):(pμ+nc)))
     blocks = [:mu => 1:pμ, :cutpoints => (pμ+1):(pμ+nc)]
     names = [:mu => nmμ, :cutpoints => ["theta$k" for k in 1:nc]]
     # fitted = expected category score Σ_k k·P(y=k)
@@ -278,7 +281,9 @@ function _fit_cumulative_ranef(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, gid
     θ0[(pμ+1):(pμ+nc)] = _cumulative_cut_init(y, K, n)
     θ0[pμ+nc+1] = log(0.5)             # σ_b
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    θ̂ = Optim.minimizer(res)
+    # #936: the cut-points and log σ_b are unit-free; so are the 0/1 location columns.
+    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); unitfree = vcat(_unitfree_columns(Xμ), (pμ+1):(pμ+nc+1)))
     blocks = [:mu => 1:pμ, :cutpoints => (pμ+1):(pμ+nc), :resd => (pμ+nc+1):(pμ+nc+1)]
     names = [:mu => nmμ, :cutpoints => ["theta$k" for k in 1:nc], :resd => [String(grp)]]
     β̂ = θ̂[1:pμ]; cuts_hat = _cumulative_cuts(θ̂[pμ+1:pμ+nc])
@@ -314,7 +319,9 @@ function _fit_cumulative_slope_ranef(fam::CumulativeLogit, y::Vector{Int}, Xμ, 
     θ0[(pμ+1):(pμ+nc)] = _cumulative_cut_init(y, K, n)
     θ0[pμ+nc+1] = log(0.5)             # σ_b
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    θ̂ = Optim.minimizer(res)
+    # #936: the cut-points and log σ_b are unit-free; so are the 0/1 location columns.
+    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); unitfree = vcat(_unitfree_columns(Xμ), (pμ+1):(pμ+nc+1)))
     blocks = [:mu => 1:pμ, :cutpoints => (pμ+1):(pμ+nc), :resd => (pμ+nc+1):(pμ+nc+1)]
     names = [:mu => nmμ, :cutpoints => ["theta$k" for k in 1:nc], :resd => [String(grp)]]
     β̂ = θ̂[1:pμ]; cuts_hat = _cumulative_cuts(θ̂[pμ+1:pμ+nc])
@@ -612,7 +619,9 @@ function _fit_cumulative_phylo_laplace(fam::CumulativeLogit, y::Vector{Int}, Xμ
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
     V = if se
         Hθ = _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
-        _vcov_from_fd_hessian(Hθ; context = "sparse-Laplace CumulativeLogit (phylo-mean)")
+        # #936: the cut-points and log σ are unit-free; so are the 0/1 location columns.
+        _vcov_from_fd_hessian(Hθ; context = "sparse-Laplace CumulativeLogit (phylo-mean)",
+                              unitfree = vcat(_unitfree_columns(Xμ), (pμ+1):(pμ+nc+1)))
     else
         fill(NaN, length(θ̂), length(θ̂))
     end

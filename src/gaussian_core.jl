@@ -1226,7 +1226,8 @@ function _fit_fixed_gaussian(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, g_tol)
     # #968: a (near-)constant response sends log σ → -∞ and the Hessian overflows.
     V, hess_finite = _vcov_from_hessian_checked(ForwardDiff.hessian(nll, θ̂),
                                                 _all_finite(y, Xμ, Xσ);
-                                                context = "Gaussian location-scale")
+                                                context = "Gaussian location-scale",
+                                                unitfree = _unitfree_columns(Xσ, pμ))
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ)]
     names = [:mu => nmμ, :sigma => nmσ]
     means = Dict(:mu => Xμ * θ̂[1:pμ])
@@ -1516,7 +1517,8 @@ function _fit_fixed_gaussian_reml(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, g_tol)
     # a rank-deficient design now warns and pseudo-inverts instead of throwing.
     Vμ = _vcov_from_gram(Xμ' * (w .* Xμ); context = "Gaussian REML (mean WLS)")
     Hσ = ForwardDiff.hessian(nll_reml, βσ̂)
-    Vσ = _vcov_from_hessian(Hσ; context = "Gaussian REML (scale)")
+    Vσ = _vcov_from_hessian(Hσ; context = "Gaussian REML (scale)",
+                            unitfree = _unitfree_columns(Xσ))
     V = zeros(pμ + pσ, pμ + pσ)
     V[1:pμ, 1:pμ] .= Vμ
     V[(pμ+1):(pμ+pσ), (pμ+1):(pμ+pσ)] .= Vσ

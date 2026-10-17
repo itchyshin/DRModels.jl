@@ -222,7 +222,9 @@ function _fit_ranef_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, nmμ, 
 
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res)
-    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    # 0/1 columns of the sigma and sd() submodels (log links); not βμ.
+    uf = vcat(_unitfree_columns(Xσ, pμ), _unitfree_columns(Zg, pμ + pσ))
+    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); unitfree = uf)
 
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :sd => (pμ+pσ+1):(pμ+pσ+psd)]
     names = [:mu => nmμ, :sigma => nmσ, :sd => nmsd]
@@ -490,7 +492,9 @@ function _fit_structured_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, K
                                        f_abstol = NaN, f_reltol = NaN);
                          autodiff = :forward)
     θ̂ = Optim.minimizer(res)
-    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    # 0/1 columns of the sigma and sd_phylo submodels (log links); not βμ.
+    uf = vcat(_unitfree_columns(Xσ, pμ), _unitfree_columns(Zg, pμ + pσ))
+    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); unitfree = uf)
 
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), block => (pμ+pσ+1):(pμ+pσ+psd)]
     names = [:mu => nmμ, :sigma => nmσ, block => nmsd]
@@ -649,7 +653,10 @@ function _fit_gaussian_lss_multi(fam::Gaussian, y, Xμ, Xσ, comps::Vector{_LssC
     end
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res)
-    Vcov = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    # 0/1 columns of the sigma submodel and of each component's sd() submodel.
+    uf = vcat(_unitfree_columns(Xσ, pμ),
+              (_unitfree_columns(c.Zg, offs[ci]) for (ci, c) in enumerate(comps))...)
+    Vcov = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); unitfree = uf)
 
     iid = [ci for (ci, c) in enumerate(comps) if c.K === nothing]
     phy = [ci for (ci, c) in enumerate(comps) if c.K !== nothing]
