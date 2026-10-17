@@ -1234,12 +1234,14 @@ function _fit_fixed_gaussian(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, g_tol)
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
     # #983: the absolute g_tol is unit dependent (gradient ~ 1/σ²), so a fit at the
     # optimum of a tiny-scale response never meets it. Accept a unit-free
-    # stationary point (small Newton decrement) unless Optim hit its iteration cap.
-    # A line-search stall at the optimum (noise-limited) is exactly this case.
+    # stationary point (small Newton decrement). LBFGS can exhaust its iteration
+    # cap on noise-limited steps at that same optimum (seed 20275937 at SD
+    # exp(-9.2) takes 1000 iterations with decrement ~1e-23); the cap is not
+    # evidence against stationarity once the decrement is already small. A
+    # cap-hit far from the optimum has a large decrement and stays false.
     # #944 (plateau, large decrement) and #1059 (run-off) still apply.
     stationary = drm_optim_converged(res) ||
-        (hess_finite && !Optim.iteration_limit_reached(res) &&
-         _newton_decrement_small(ForwardDiff.gradient(nll, θ̂), H, n))
+        (hess_finite && _newton_decrement_small(ForwardDiff.gradient(nll, θ̂), H, n))
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n,
                         stationary && hess_finite && !_scale_runoff(scales),

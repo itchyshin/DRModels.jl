@@ -91,12 +91,26 @@ optimum. The Newton decrement `½ g'H⁻¹g` is invariant to affine reparametris
 (so to rescaling `y`). True only when `H` is finite and positive definite, `g` is
 finite, and the decrement is below `n * _NEWTON_DECREMENT_TOL`. A plateau with a
 large gradient has a large decrement and is still rejected (#944).
+
+The mean-block curvature scales like `1/σ²` while the log-σ curvature stays `O(n)`,
+so the unscaled Hessian has condition number `~ 1/σ²` and an unscaled Cholesky can
+fail on some LAPACK builds even though `H` is theoretically PD. The decrement is
+therefore computed after diagonal equilibration (`D^{-1/2} H D^{-1/2}`), which
+leaves the decrement unchanged and makes the factorisation well-conditioned.
+A zero diagonal is a structurally flat coordinate and is rejected.
 """
 function _newton_decrement_small(g::AbstractVector, H::AbstractMatrix, n::Integer)
     (all(isfinite, g) && all(isfinite, H)) || return false
-    F = cholesky(Symmetric(Matrix(H)); check = false)
+    Hs = Matrix(Symmetric(Matrix(H)))
+    d = abs.(diag(Hs))
+    all(>(0), d) || return false
+    s = inv.(sqrt.(d))
+    He = Symmetric((s * s') .* Hs)
+    ge = s .* g
+    F = cholesky(He; check = false)
     issuccess(F) || return false
-    return 0.5 * dot(g, F \ g) <= n * _NEWTON_DECREMENT_TOL
+    δ = 0.5 * dot(ge, F \ ge)
+    return isfinite(δ) && δ <= n * _NEWTON_DECREMENT_TOL
 end
 
 """

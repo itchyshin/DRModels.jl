@@ -18,6 +18,12 @@ end
     fits = [_fit983(s, exp(-9.2)) for s in seeds]
     @test all(f -> f.converged, fits)
     # A smaller scale is the same problem, only more severe.
+    # None of these seeds sit at a genuine variance boundary: σ̂ stays ~ SD,
+    # the log-σ curvature is ~ 2n, and the vcov_guard "flat coordinate 3"
+    # warning is a false relative-diagonal flag (#936). LBFGS can still hit
+    # its iteration cap on noise-limited steps at the optimum (seed 20275937
+    # at SD exp(-9.2) took 1000 iterations with decrement ~ 1e-23 locally);
+    # that cap must not veto a small Newton decrement.
     @test all(s -> _fit983(s, 1e-5).converged, seeds)
     # Unit-free: the verdict matches the rescaled-y fit, and the estimates agree.
     for s in seeds[1:4]
@@ -42,4 +48,10 @@ end
     @test !DRModels._newton_decrement_small([1.0, 1.0], H, 100)
     @test !DRModels._newton_decrement_small([1e-9, 1e-9], [1.0 2.0; 2.0 1.0], 100)
     @test !DRModels._newton_decrement_small([1e-9, 1e-9], fill(NaN, 2, 2), 100)
+    # Ill-conditioned but PD (mean block ~ 1/σ², log-σ ~ 2n). Equilibration
+    # must still accept a noise-sized gradient and reject a large one.
+    H_ill = [1e12 0.0 0.0; 0.0 1e12 0.0; 0.0 0.0 200.0]
+    @test DRModels._newton_decrement_small([1e-4, 1e-4, 1e-8], H_ill, 100)
+    @test !DRModels._newton_decrement_small([1e6, 1e6, 1.0], H_ill, 100)
+    @test !DRModels._newton_decrement_small([1e-9, 1e-9], [2.0 0.0; 0.0 0.0], 100)
 end
