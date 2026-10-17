@@ -190,6 +190,7 @@ Mirrors drmTMB's `confint(fit, method = "wald" | "profile")`.
 function confint(
     fit::DrmFit; level::Real=0.95, method::Symbol=:wald, threads::Bool=false, parm=nothing
 )
+    level = _validate_ci_level(level; what="confint")
     method === :wald && _wald_withheld(fit) && throw(ArgumentError("confint: Homogeneous Toeplitz " *
         "mean-coefficient Wald intervals are not yet qualified; mean-coefficient likelihood " *
         "profiles are qualified in drmTMB's retained primary panel cells, Wald covariance and " *
@@ -289,6 +290,7 @@ coefficient-level policy: each job owns its nuisance state, while its lower and
 upper endpoint chains remain serial.
 """
 function profile_result(fit::DrmFit; level::Real=0.95, threads::Bool=false, parm=nothing)
+    level = _validate_ci_level(level; what="profile_result")
     _wald_withheld(fit) && (parm = _homtoep_profile_parm(fit, parm))
     fit.nll isa LocScaleObjective && return _ls_profile_result(
         fit; level=level, threads=threads, parm=parm
@@ -467,6 +469,7 @@ function _ci_coef_selected(param::Symbol, coef::AbstractString, parm)
 end
 
 function _wald_ci(fit::DrmFit, level::Real, parm)
+    level = _validate_ci_level(level; what="confint")
     _ci_validate_parm(fit, parm)
     se = stderror(fit)
     z = quantile(Normal(), 1 - (1 - level) / 2)
@@ -1403,7 +1406,7 @@ function bootstrap_ci(
     formula::DrmFormula,
     family::Gaussian;
     data,
-    B::Int=300,
+    B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
     K=nothing,
@@ -1411,8 +1414,8 @@ function bootstrap_ci(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
-    check_converged::Bool=false,
+    failures::Symbol=:skip,
+    check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
 )
@@ -1445,7 +1448,7 @@ function bootstrap_ci(
     formula::DrmFormula,
     family;
     data,
-    B::Int=300,
+    B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
     K=nothing,
@@ -1453,8 +1456,8 @@ function bootstrap_ci(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
-    check_converged::Bool=false,
+    failures::Symbol=:skip,
+    check_converged::Bool=true,
 )
     rows = bootstrap_summary(
         formula, family; data, B, level, rng, K, A, tree, coords, threads, failures,
@@ -1466,7 +1469,7 @@ end
 function bootstrap_ci(
     fit::DrmFit;
     data,
-    B::Int=300,
+    B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
     K=nothing,
@@ -1474,8 +1477,8 @@ function bootstrap_ci(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
-    check_converged::Bool=false,
+    failures::Symbol=:skip,
+    check_converged::Bool=true,
 )
     rows = bootstrap_summary(
         fit; data, B, level, rng, K, A, tree, coords, threads, failures, check_converged
@@ -1486,7 +1489,7 @@ end
 function bootstrap_ci(
     fit::DrmFit{<:Gaussian};
     data,
-    B::Int=300,
+    B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
     K=nothing,
@@ -1494,8 +1497,8 @@ function bootstrap_ci(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
-    check_converged::Bool=false,
+    failures::Symbol=:skip,
+    check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
 )
@@ -1526,17 +1529,18 @@ Parametric bootstrap coefficient summaries in one pass: point estimate,
 bootstrap standard error, and percentile confidence interval. This is the
 bootstrap analogue of using `stderror(fit)` plus `confint(fit)`, avoiding a
 second bootstrap run when both SEs and intervals are needed. Row fields are
-`(param, coef, estimate, std_error, lower, upper)`. By default, any failed
-replicate errors after all failures are recorded. Set `failures = :skip` to
-compute summaries from successful replicates; call `bootstrap_result` to
-inspect the skipped failures. A homogeneous Toeplitz `temporal()` fit returns
+`(param, coef, estimate, std_error, lower, upper)`. By default
+(`failures = :skip`) a refit that throws is recorded and dropped, and the
+summaries come from the successful replicates with a `bootstrap_incomplete`
+warning; call `bootstrap_result` to inspect the recorded failures. Set
+`failures = :error` to abort instead when any refit throws. A homogeneous Toeplitz `temporal()` fit returns
 the mean-coefficient rows only, as [`bootstrap_ci`](@ref).
 """
 function bootstrap_summary(
     formula::DrmFormula,
     family::Gaussian;
     data,
-    B::Int=300,
+    B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
     K=nothing,
@@ -1544,8 +1548,8 @@ function bootstrap_summary(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
-    check_converged::Bool=false,
+    failures::Symbol=:skip,
+    check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
 )
@@ -1576,7 +1580,7 @@ function bootstrap_summary(
     formula::DrmFormula,
     family;
     data,
-    B::Int=300,
+    B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
     K=nothing,
@@ -1584,8 +1588,8 @@ function bootstrap_summary(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
-    check_converged::Bool=false,
+    failures::Symbol=:skip,
+    check_converged::Bool=true,
 )
     result = bootstrap_result(
         formula, family; data, B, level, rng, K, A, tree, coords, threads, failures,
@@ -1597,7 +1601,7 @@ end
 function bootstrap_summary(
     fit::DrmFit;
     data,
-    B::Int=300,
+    B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
     K=nothing,
@@ -1605,8 +1609,8 @@ function bootstrap_summary(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
-    check_converged::Bool=false,
+    failures::Symbol=:skip,
+    check_converged::Bool=true,
 )
     result = bootstrap_result(
         fit; data, B, level, rng, K, A, tree, coords, threads, failures, check_converged
@@ -1617,7 +1621,7 @@ end
 function bootstrap_summary(
     fit::DrmFit{<:Gaussian};
     data,
-    B::Int=300,
+    B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
     K=nothing,
@@ -1625,8 +1629,8 @@ function bootstrap_summary(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
-    check_converged::Bool=false,
+    failures::Symbol=:skip,
+    check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
 )
@@ -1650,23 +1654,34 @@ function bootstrap_summary(
 end
 
 """
-    bootstrap_result(formula, family; data, B = 300, level = 0.95, rng = default_rng(), threads = false, failures = :error, check_converged = false, K =, A =, tree =, coords =, algorithm = :auto, g_tol = 1e-8)
-    bootstrap_result(fit; data, B = 300, level = 0.95, rng = default_rng(), threads = false, failures = :error, check_converged = false, K =, A =, tree =, coords =, algorithm = :auto, g_tol = 1e-8)
+    bootstrap_result(formula, family; data, B = 300, level = 0.95, rng = default_rng(), threads = false, failures = :skip, check_converged = true, K =, A =, tree =, coords =, algorithm = :auto, g_tol = 1e-8)
+    bootstrap_result(fit; data, B = 300, level = 0.95, rng = default_rng(), threads = false, failures = :skip, check_converged = true, K =, A =, tree =, coords =, algorithm = :auto, g_tol = 1e-8)
 
 Auditable parametric bootstrap. Returns a `NamedTuple` with:
 
 - `summary` — the same rows returned by `bootstrap_summary`;
 - `failures` — rows `(replicate, seed, message)` for failed refits;
 - `attempted`, `used`, `failed` — replicate counts;
+- `status` — `"bootstrap"` when every replicate was kept, `"bootstrap_incomplete"`
+  when any replicate was dropped and at least two remain, `"bootstrap_at_boundary"`
+  when those retained draws pile up on a variance-component or correlation bound,
+  or `"bootstrap_unavailable"` when fewer than two replicates remain;
+- `boundary_params` — `"param:coef"` names that triggered the boundary status;
 - `seeds` — the per-replicate seeds used for reproducibility;
 - `threaded` — whether threaded refits were actually used.
 - `worker_threads`, `julia_threads`, `blas_threads`, `blas_oversubscribed`,
   `elapsed` — CPU context and wall-clock time for the simulated-refit phase.
 
-`failures = :error` (default) records failures and then errors if any replicate
-failed. `failures = :skip` computes summaries from successful replicates and
-keeps the failure records in the return value. Set `check_converged = true` to
-treat non-converged refits as failed replicates. Passing an existing `DrmFit`
+`failures = :skip` (the default, matching drmTMB) records a refit that throws
+in `failures`, drops it, and keeps going: `status` is `"bootstrap_incomplete"`
+(or `"bootstrap_at_boundary"` when the retained draws also sit on a bound) and
+a warning names that status. A refit that does not converge, or that lands on
+a degenerate optimum, is dropped the same way when `check_converged = true`
+(the default). `failures = :error` aborts instead as soon as the replicates
+are done if any refit threw; non-converged refits are still drops, not errors.
+All replicates failing is an error under either setting. Set
+`check_converged = false` only to reproduce the old behaviour that counted
+unconverged refits in the interval. Passing an existing `DrmFit`
 reuses that point estimate as the bootstrap seed fit and starts directly with
 the `B` simulated refits. Gaussian bootstrap refits pass `algorithm` and
 `g_tol` through to `drm(...)`; this is useful for large structured models where
@@ -1678,7 +1693,7 @@ function bootstrap_result(
     formula::DrmFormula,
     family::Gaussian;
     data,
-    B::Int=300,
+    B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
     K=nothing,
@@ -1686,8 +1701,8 @@ function bootstrap_result(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
-    check_converged::Bool=false,
+    failures::Symbol=:skip,
+    check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
 )
@@ -1704,7 +1719,7 @@ end
 function bootstrap_result(
     fit::DrmFit{<:Gaussian};
     data,
-    B::Int=300,
+    B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
     K=nothing,
@@ -1712,8 +1727,8 @@ function bootstrap_result(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
-    check_converged::Bool=false,
+    failures::Symbol=:skip,
+    check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
 )
@@ -1730,7 +1745,7 @@ function bootstrap_result(
     _check_bootstrap_failure_mode(failures)
     formula = _bootstrap_fit_formula(fit)
     # LSS refits must preserve the seed fit's estimator. Other Gaussian routes
-    # forward REML and a non-default marginal. MAP is still not forwarded.
+    # forward REML, a non-default marginal, and a stored phylo penalty (MAP).
     # On the univariate refit, a non-default marginal (:Laplace, :VA, :AGHQ)
     # and a REML seed are forwarded too. Otherwise the replicate is the default
     # :LA / ML fit and the interval describes a different estimator
@@ -1765,7 +1780,7 @@ function bootstrap_result(
     formula::DrmFormula,
     family;
     data,
-    B::Int=300,
+    B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
     K=nothing,
@@ -1773,8 +1788,8 @@ function bootstrap_result(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
-    check_converged::Bool=false,
+    failures::Symbol=:skip,
+    check_converged::Bool=true,
 )
     _check_bootstrap_failure_mode(failures)
     # #480: mirror #479's fit-based fix. Forward a structured-matrix keyword to
@@ -1806,7 +1821,7 @@ end
 function bootstrap_result(
     fit::DrmFit;
     data,
-    B::Int=300,
+    B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
     K=nothing,
@@ -1814,8 +1829,8 @@ function bootstrap_result(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:error,
-    check_converged::Bool=false,
+    failures::Symbol=:skip,
+    check_converged::Bool=true,
 )
     # Bivariate q=4 phylogenetic fit: there is no scalar SD block to refit-and-
     # recoef; the quantities of interest are the among-axis SDs sqrt.(diag(Σ_a)).
@@ -1907,7 +1922,9 @@ end
 # Keywords a bootstrap replicate must repeat so it is the same estimator as
 # the seed fit. `:LA` and `:ML` are the `drm` defaults and are omitted.
 # Gaussian location-scale-scale passes the seed method explicitly, `:ML` or
-# `:REML`. That route rejects any other method.
+# `:REML`. That route rejects any other method. A penalized MAP seed is
+# repeated by forwarding the stored `penalty` (the fitter does not take
+# `method = :MAP`).
 function _bootstrap_refit_kwargs(fit::DrmFit)
     kw = Pair{Symbol,Any}[]
     if _is_gaussian_lss(fit)
@@ -1917,7 +1934,12 @@ function _bootstrap_refit_kwargs(fit::DrmFit)
         push!(kw, :method => method)
     elseif estimation_method(fit) === :REML
         push!(kw, :method => :REML)
+    elseif estimation_method(fit) === :MAP
+        fit.penalty === nothing && throw(ArgumentError(
+            "bootstrap refit: this fit is :MAP but stores no penalty, so the " *
+            "replicate cannot repeat the penalized estimator"))
     end
+    fit.penalty === nothing || push!(kw, :penalty => fit.penalty)
     fit.marginal === :LA || push!(kw, :marginal => fit.marginal)
     return NamedTuple(kw)
 end
@@ -2046,6 +2068,32 @@ function _is_meta_gaussian_re(fit::DrmFit)
     return metav !== nothing && (!isempty(re) || structured !== nothing)
 end
 
+# The marginal simulator could not be built for a fit that HAS a random effect
+# on the mean. `nothing` sends `_bootstrap_result` to the conditional
+# `simulate`, which reuses the fitted random effects and collapses a
+# variance-component interval (#459: 1674x too narrow). That fallback used to
+# be silent (#997). It is kept, because fixed-effect intervals from it are
+# still usable, but the reason is now reported.
+function _marginal_simulator_fallback(reason::AbstractString)
+    @warn "bootstrap: could not build the marginal simulator ($reason). Falling back " *
+          "to the conditional `simulate`, which reuses the fitted random effects: " *
+          "random-effect SD and correlation intervals from this bootstrap are too " *
+          "narrow (#459, #997). Pass the same `data` and covariance provider used " *
+          "to fit, or use `profile` intervals for the variance components."
+    return nothing
+end
+
+# `(1 | g)` is the only ordinary bar the marginal simulator draws.
+function _ordinary_re_is_intercept(lhs)
+    kind = try
+        first(_re_kind(lhs))
+    catch err
+        err isa ErrorException || rethrow()
+        :unsupported
+    end
+    return kind === :intercept
+end
+
 function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing, tree=nothing,
                                    coords=nothing)
     # temporal(): `simulate` already draws the full marginal model (a fresh chain
@@ -2092,7 +2140,8 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing, tree
     phylo_leaf = nothing   # row → tree-leaf index, set for a phylo field
     grp, Kg = if structured !== nothing
         g = structured[2]
-        hasproperty(data, g) || return nothing
+        hasproperty(data, g) ||
+            return _marginal_simulator_fallback("`data` has no `$(g)` column")
         _, G0 = _group_index(getproperty(data, g))
         # SCALE TRAP -- verified by round-trip, not assumed. `re_sd` for a PHYLO term
         # is defined against the RAW covariance `sigma_phy_dense(phy)`, whose diagonal
@@ -2104,7 +2153,8 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing, tree
         # and used as given, so there the resolver's matrix is already correct.
         if structured[1] === :phylo
             phy = tree isa AbstractString ? augmented_phy(tree) : tree
-            phy === nothing && return nothing
+            phy === nothing && return _marginal_simulator_fallback(
+                "the `phylo(1 | $(g))` field needs the fitted `tree = ...`")
             # Rows → tree LEAVES by name / tip index (#482, `_phylo_mean_leaf_index`),
             # exactly as every Gaussian and non-Gaussian phylo mean fit maps them,
             # NOT by first-seen order. First-seen order drew the field on the wrong
@@ -2142,15 +2192,27 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing, tree
         end
     else
         # Ordinary `(1 | g)`: independent random intercepts, so the covariance is I.
-        length(re) == 1 || return nothing
+        length(re) == 1 || return _marginal_simulator_fallback(
+            "the mean has $(length(re)) random-effect bars and the marginal simulator draws one")
         g = re[1][2]
-        hasproperty(data, g) || return nothing
+        # The draw below is ONE intercept per group. A `(0 + x | g)` slope or a
+        # correlated `(1 + x | g)` intercept-and-slope field would be bootstrapped as
+        # the wrong (intercept-only) model, the same defect #620 refuses for
+        # `phylo(1 + x | g)` (#997).
+        _ordinary_re_is_intercept(re[1][1]) ||
+            throw(ArgumentError("bootstrap: the marginal simulator for a random-slope " *
+                "`($(_structured_re_lhs_text(re[1][1])) | $(g))` field is not implemented " *
+                "(#997); it would bootstrap an intercept-only model. Use `profile` " *
+                "intervals or the Wald `vcov`"))
+        hasproperty(data, g) ||
+            return _marginal_simulator_fallback("`data` has no `$(g)` column")
         _, G0 = _group_index(getproperty(data, g))
         (g, Matrix{Float64}(LinearAlgebra.I, G0, G0))
     end
 
     gidx, G = phylo_leaf === nothing ? _group_index(getproperty(data, grp)) : phylo_leaf
-    size(Kg) == (G, G) || return nothing
+    size(Kg) == (G, G) || return _marginal_simulator_fallback(
+        "the `$(grp)` covariance is $(size(Kg, 1))×$(size(Kg, 2)) but `data` has $(G) levels")
     # Location-scale-scale fits (#544/#545): the RE SD is per group,
     # σ_g,k = exp(Z_k' α), so the draw scales each group's effect individually.
     # For the PHYLO lss fit the α coefficients are defined against the
@@ -2161,18 +2223,22 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing, tree
     lss_sd = _sd_parts(fit.formula); lss_phy = _sdphylo_parts(fit.formula)
     sd_g = if !isempty(lss_sd) || !isempty(lss_phy)
         (sgrp, srhs) = isempty(lss_phy) ? lss_sd[1] : lss_phy[1]
-        sgrp === grp || return nothing
+        sgrp === grp || return _marginal_simulator_fallback(
+            "the `sd($(sgrp))` formula and the mean field `$(grp)` use different groups")
         if !isempty(lss_phy)
             phy = tree isa AbstractString ? augmented_phy(tree) : tree
-            phy === nothing && return nothing
+            phy === nothing && return _marginal_simulator_fallback(
+                "the `sd($(grp), phylogenetic)` field needs the fitted `tree = ...`")
             Kg = _phylo_correlation(phy)
-            size(Kg) == (G, G) || return nothing
+            size(Kg) == (G, G) || return _marginal_simulator_fallback(
+                "the tree has $(size(Kg, 1)) tips but `data` has $(G) `$(grp)` levels")
         end
         Zg, _ = _sd_group_design(fit.formula.response, srhs, data, gidx, G, grp)
         exp.(Zg * coef(fit, isempty(lss_phy) ? :sd : :sd_phylo))
     else
         sds = re_sd(fit)
-        (sds isa AbstractDict && haskey(sds, grp)) || return nothing
+        (sds isa AbstractDict && haskey(sds, grp)) || return _marginal_simulator_fallback(
+            "the fit reports no random-effect SD for `$(grp)`")
         fill(Float64(sds[grp]), G)
     end
     L = cholesky(Symmetric(Matrix{Float64}(Kg))).L
@@ -2198,12 +2264,16 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing, tree
     # directly instead of inferring it. Fall back to `means[:mu]` only if `predict`
     # is unavailable, and refuse rather than guess if that is also unusable.
     mu_fixed = try
-        v = Vector{Float64}(predict(fit, data))
-        length(v) == length(fit.means[:mu]) ? v : nothing
-    catch
-        nothing
+        Vector{Float64}(predict(fit, data))
+    catch err
+        # Not a bare `catch`: the reason is reported, so a genuine `predict` bug
+        # is visible instead of turning into a collapsed interval (#997).
+        err isa InterruptException && rethrow()
+        return _marginal_simulator_fallback(
+            "`predict(fit, data)` failed: $(sprint(showerror, err))")
     end
-    mu_fixed === nothing && return nothing
+    length(mu_fixed) == length(fit.means[:mu]) || return _marginal_simulator_fallback(
+        "`predict(fit, data)` returned $(length(mu_fixed)) rows, the fit has $(length(fit.means[:mu]))")
 
     if fit.family isa Gaussian
         sigma = Vector{Float64}(_scale_vector(fit, :sigma))
@@ -2234,11 +2304,13 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing, tree
     # duplicating it here.
     eta_fixed = try
         Vector{Float64}(predict(fit, data; type = :link))
-    catch
-        nothing
+    catch err
+        err isa InterruptException && rethrow()
+        return _marginal_simulator_fallback(
+            "`predict(fit, data; type = :link)` failed: $(sprint(showerror, err))")
     end
-    eta_fixed === nothing && return nothing
-    length(eta_fixed) == fit.nobs || return nothing
+    length(eta_fixed) == fit.nobs || return _marginal_simulator_fallback(
+        "`predict(fit, data; type = :link)` returned $(length(eta_fixed)) rows, the fit has $(fit.nobs)")
     return function (rng)
         u = sd_g .* (L * randn(rng, G))
         mu_star = _mean_response(fit.family, eta_fixed .+ u[gidx])
@@ -2250,17 +2322,18 @@ function _bootstrap_result(
     fit0,
     formula::Union{DrmFormula,BivariateDrmFormula},
     data,
-    B::Int,
+    B::Real,
     level::Real,
     rng,
     threads::Bool,
     refit;
-    failures::Symbol=:error,
-    check_converged::Bool=false,
+    failures::Symbol=:skip,
+    check_converged::Bool=true,
     simulate_fn=nothing,
 )
     _check_bootstrap_failure_mode(failures)
-    B >= 1 || throw(ArgumentError("bootstrap requires B >= 1"))
+    B = _validate_bootstrap_B(B)
+    level = _validate_ci_level(level; what="bootstrap")
     est = coef(fit0)
     p = length(est)
     draws = Matrix{Float64}(undef, B, p)
@@ -2268,6 +2341,12 @@ function _bootstrap_result(
     # silently lose a successful replicate. Byte-addressable flags are independent.
     ok = fill(false, B)
     messages = Vector{Union{Nothing,String}}(nothing, B)
+    # A thrown refit is an error. A non-converged refit is a drop: it warns and
+    # sets `bootstrap_incomplete`, and it does not abort under `failures = :error`.
+    # The default `failures = :skip` records a thrown refit the same way
+    # (decision 18, #1052, matching drmTMB).
+    # `Vector{Bool}` is bit-packed, so parallel writes can drop a flag.
+    refit_error = zeros(UInt8, B)
     seeds = rand(rng, UInt, B)
 
     function run_one!(b)
@@ -2282,12 +2361,14 @@ function _bootstrap_result(
             # rejects a degenerate optimum (sigma collapsed, likelihood runaway),
             # which the optimiser's own flag happily calls converged (#461).
             if check_converged && !is_converged(fitb)
-                error("refit did not converge or landed on a degenerate optimum")
+                messages[b] = _BOOTSTRAP_UNCONVERGED
+            else
+                draws[b, :] = coef(fitb)
+                ok[b] = true
             end
-            draws[b, :] = coef(fitb)
-            ok[b] = true
         catch err
             messages[b] = sprint(showerror, err)
+            refit_error[b] = 0x01
         end
         return nothing
     end
@@ -2312,23 +2393,36 @@ function _bootstrap_result(
         messages[b] === nothing && continue
         push!(failure_rows, (replicate=b, seed=seeds[b], message=messages[b]::String))
     end
-    if !isempty(failure_rows) && failures === :error
-        first_failure = first(failure_rows)
+    if failures === :error && any(!iszero, refit_error)
+        first_b = findfirst(!iszero, refit_error)
         throw(
             ErrorException(
-                "bootstrap failed in $(length(failure_rows)) of $B replicates; first failure replicate $(first_failure.replicate), seed $(first_failure.seed): $(first_failure.message)",
+                "bootstrap failed in $(count(!iszero, refit_error)) of $B replicates; first failure replicate $(first_b), seed $(seeds[first_b]): $(messages[first_b])",
             ),
         )
     end
     used = count(ok)
-    used > 0 || throw(ErrorException("all $B bootstrap replicates failed"))
-    summary = _homtoep_bootstrap_rows(fit0, _bootstrap_summary_rows(fit0, draws[ok, :], est, level))
+    if used == 0
+        # Name the first failure, as `bootstrap_sigma_a` does: under the default
+        # `failures = :skip` this is the only error a caller sees when every
+        # refit throws (e.g. a missing `tree`), so it must carry the cause.
+        detail = isempty(failure_rows) ? "" : begin
+            f = first(failure_rows)
+            "; first failure replicate $(f.replicate), seed $(f.seed): $(f.message)"
+        end
+        throw(ErrorException("all $B bootstrap replicates failed$detail"))
+    end
+    kept = draws[ok, :]
+    summary = _homtoep_bootstrap_rows(fit0, _bootstrap_summary_rows(fit0, kept, est, level))
+    boundary_params = _bootstrap_boundary_params(fit0, kept)
+    failed_n = length(failure_rows)
+    status = _finish_bootstrap_status(used, failed_n, boundary_params)
     return (
         summary=summary,
         failures=failure_rows,
         attempted=B,
         used=used,
-        failed=length(failure_rows),
+        failed=failed_n,
         seeds=seeds,
         threaded=threaded,
         worker_threads=_worker_threads(threaded, B),
@@ -2337,6 +2431,8 @@ function _bootstrap_result(
         blas_oversubscribed=_blas_oversubscribed(threaded),
         elapsed=elapsed,
         check_converged=check_converged,
+        status=status,
+        boundary_params=boundary_params,
     )
 end
 
@@ -2445,6 +2541,25 @@ function _bootstrap_ci_rows(rows)
         (param=r.param, coef=r.coef, estimate=r.estimate, lower=r.lower, upper=r.upper) for
         r in rows
     ]
+end
+
+function _bootstrap_boundary_params(fit0, draws)
+    names = String[]
+    size(draws, 1) < _BOOTSTRAP_BOUNDARY_MIN_DRAWS && return names
+    for ((pp, r), (_, nms)) in zip(fit0.blocks, fit0.coefnames)
+        if pp in _BOOTSTRAP_COV_BLOCK_PARAMS
+            # The Cholesky entries mix SDs and correlations, so a boundary in
+            # any implied SD or correlation flags every entry of the block (#1046).
+            _bootstrap_cov_block_at_boundary(pp, draws[:, r]) || continue
+            append!(names, [string(pp, ":", nm) for nm in nms])
+            continue
+        end
+        for (j, col) in enumerate(r)
+            _bootstrap_param_at_boundary(pp, @view draws[:, col]) || continue
+            push!(names, string(pp, ":", nms[j]))
+        end
+    end
+    return names
 end
 
 function _bootstrap_summary_rows(fit0, draws, est, level)

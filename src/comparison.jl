@@ -67,11 +67,13 @@ function lrtest(reduced::DrmFit, full::DrmFit)
     _sentinel_compare_guard(reduced, full, "lrtest")
     _marginal_compare_guard(reduced, full, "lrtest")
     _map_compare_guard(reduced, full, "lrtest")
+    _nobs_compare_guard(reduced, full, "lrtest")
     Δdof = dof(full) - dof(reduced)
     Δdof > 0 || throw(ArgumentError(
         "lrtest: `full` must have more parameters than `reduced` " *
         "(dof(full) = $(dof(full)), dof(reduced) = $(dof(reduced)); " *
         "did you pass the arguments as (reduced, full)?)"))
+    _unconverged_compare_warn(reduced, full, "lrtest")
     _boundary_vc_warn(reduced, full, "lrtest")
     statistic = 2 * (loglik(full) - loglik(reduced))
     pvalue = ccdf(Chisq(Δdof), max(statistic, 0))
@@ -204,6 +206,61 @@ function _reml_compare_guard(a::DrmFit, b::DrmFit, verb::AbstractString)
     return nothing
 end
 
+# Two fits enter a likelihood ratio only if they were estimated on the same
+# observations. `update` of a missing-response or imputed fit, or two fits on
+# differently filtered data, can use different rows (#1002). Equal `nobs` is
+# not enough (#1053): one fit can drop row 3 and the other row 10. A `DrmFit`
+# does not keep a row mask, but it does keep the observed response per mean
+# parameter (`fit.obs`), which is data, not a model quantity. When both fits
+# record the same response slots, their observed (finite) values must agree as
+# sorted vectors. Sorting makes the check independent of row order (the same
+# rows in a different order are the same sample) while a different row set
+# still changes the values. Missing rows are stored as NaN on the full-length
+# routes and dropped on the complete-case routes; filtering non-finite values
+# first makes the two storage forms compare equal on the same rows. When the
+# slots or the observed lengths differ the routes store the response
+# differently, so only the count is compared.
+function _nobs_compare_guard(a::DrmFit, b::DrmFit, verb::AbstractString)
+    nobs(a) == nobs(b) || throw(ArgumentError(
+        "$verb: the two fits were estimated on different samples " *
+        "(nobs = $(nobs(a)) vs $(nobs(b))). A likelihood-ratio comparison " *
+        "requires the same observations, which a missing-response or imputed " *
+        "`update` does not guarantee. Refit both on the same rows."))
+    slot = _observed_rows_mismatch(a, b)
+    slot === nothing && return nothing
+    throw(ArgumentError(
+        "$verb: the two fits were estimated on different samples: both have " *
+        "nobs = $(nobs(a)), but the observed `$slot` responses differ, so " *
+        "different rows entered the two likelihoods. A likelihood-ratio " *
+        "comparison requires the same observations. Refit both on the same rows."))
+end
+
+# First response slot whose observed values differ between `a` and `b`, or
+# `nothing` when every comparable slot agrees (or none is comparable).
+function _observed_rows_mismatch(a::DrmFit, b::DrmFit)
+    (a.obs isa AbstractDict && b.obs isa AbstractDict) || return nothing
+    for slot in sort!(collect(intersect(keys(a.obs), keys(b.obs))))
+        ya = sort!(filter(isfinite, a.obs[slot]))
+        yb = sort!(filter(isfinite, b.obs[slot]))
+        length(ya) == length(yb) || continue
+        ya == yb || return slot
+    end
+    return nothing
+end
+
+# Convergence caveat (#1002): an LR statistic from a fit that did not converge
+# can be off in either direction, so the p-value means little. The guards above
+# refuse the sentinel plateau outright; a finite log-likelihood from a fit that
+# reports `converged = false` is still compared, with a warning naming the fit.
+function _unconverged_compare_warn(reduced::DrmFit, full::DrmFit, verb::AbstractString)
+    bad = String[nm for (nm, f) in (("reduced", reduced), ("full", full)) if !f.converged]
+    isempty(bad) && return nothing
+    @warn "$verb: the $(join(bad, " and ")) fit did not converge (`converged = false`). " *
+          "The likelihood-ratio statistic may be wrong in either direction; refit " *
+          "(different start values, optimiser, or tolerance) before relying on the p-value."
+    return nothing
+end
+
 # Penalized-MAP guard (A4c): a penalized fit is a maximum-a-posteriori estimate,
 # so its variance components are deliberately shrunk toward zero. The likelihood
 # ratio of two such fits does not have the usual chi-square reference
@@ -246,8 +303,12 @@ end
 # pair is a random-effect-free fit (exact log-likelihood) against a non-VA fit,
 # e.g. the fixed-effects model against a `marginal = :Laplace` random intercept.
 function _marginal_compare_guard(a::DrmFit, b::DrmFit, verb::AbstractString)
-    a.marginal === b.marginal && return nothing
     no_va = a.marginal !== :VA && b.marginal !== :VA
+    # Two VA fits carry the same tag but still compare two ELBOs. Each ELBO is
+    # loglik - KL(q || posterior), and the KL gap differs between the reduced
+    # and the full model, so their difference is not a likelihood ratio (#1036).
+    # `aic` / `bic` / `aicc` refuse any VA fit for the same reason.
+    no_va && a.marginal === b.marginal && return nothing
     no_va && (_fit_is_re_free(a) || _fit_is_re_free(b)) && return nothing
     reason = if !no_va
         "the VA objective is an ELBO, not a log-likelihood (#136)"
@@ -256,6 +317,14 @@ function _marginal_compare_guard(a::DrmFit, b::DrmFit, verb::AbstractString)
             " (`:LA` is GHQ-32 on an ordinary `(1 | g)`; `:Laplace` is the one-point Laplace approximation)" : ""
         "the two approximate the random-effect integral differently$detail, so their " *
         "log-likelihood difference would mix model fit with integration error"
+    end
+    if a.marginal === :VA && b.marginal === :VA
+        throw(ArgumentError(
+            "$verb: cannot compare two `marginal = :VA` fits: the VA objective is an " *
+            "ELBO, not a log-likelihood (#136), and the gap between the ELBO and the " *
+            "log-likelihood differs between the two models, so their difference has no " *
+            "chi-square reference (#1036). Refit both with `marginal = :LA`, `:Laplace` " *
+            "or `:AGHQ` to test."))
     end
     throw(ArgumentError(
         "$verb: cannot compare fits with different marginal approximations " *
@@ -327,23 +396,77 @@ weights(fit) == ones(nobs(fit))   # all-ones prior weights
 weights(fit::DrmFit) = ones(nobs(fit))
 
 """
-    update(fit::DrmFit, formula; data, kwargs...) -> DrmFit
+    update(fit::DrmFit, formula, args...; data, kwargs...) -> DrmFit
 
-Refit `fit`'s model with a new `formula` (a [`bf`](@ref) bundle), reusing the
-**fitted family** — the convenience refit verb, mirroring R's `update`. Equivalent
-to `drm(formula, family(fit); data = data, kwargs...)`.
+Refit `fit` with a new `formula` (a [`bf`](@ref) bundle), reusing the fitted
+family and every estimation option the fit stores:
 
-`data` must be supplied: a `DrmFit` does **not** retain its data, so `update`
-cannot reuse the original observations. Any extra keyword arguments (`K`, `A`,
-`tree`, `coords`, `g_tol`, …) are forwarded to [`drm`](@ref).
+- `method` — `:REML` when `fit.estim_method === :REML` (the default `:ML` is
+  `drm`'s own default and is not repeated);
+- `marginal` — when it is not the default `:LA`;
+- `penalty` — the stored [`drm_phylo_penalty`](@ref) specification of a `:MAP` fit.
+
+Explicit keywords override those stored options (`update(fit, formula; data,
+method = :ML)` refits a REML seed by maximum likelihood). Changing `method`
+on a penalized MAP fit drops the stored penalty unless `penalty` is passed
+again; otherwise `method = :ML` would still be a MAP refit. `family` is not a
+refit keyword: the fitted family is kept, and passing one is an error. An
+unnamed extra positional argument is an error: a keyword-only refit would
+otherwise drop it and silently ignore the value.
+
+`data` must be supplied. A `DrmFit` does not retain its observations, nor the
+options that were only arguments to the original `drm` call: `K`, `A`, `tree`,
+`coords`, `algorithm`, `g_tol`, `profile_ci`, `phylo_coupled`, `sparse`,
+`impute`, and `missing`. Pass those again as keywords when the refit needs them.
 
 # Example
 ```julia
 full    = drm(bf(@formula(y ~ 1 + x), @formula(sigma ~ 1 + x)), Gaussian(); data)
-# Drop x everywhere, keeping the same Gaussian family:
+# Drop x everywhere, keeping the same Gaussian family and the seed estimator:
 reduced = update(full, bf(@formula(y ~ 1), @formula(sigma ~ 1)); data = data)
 length(coef(reduced)) < length(coef(full))   # fewer parameters
 ```
 """
-update(fit::DrmFit, formula; data, kwargs...) =
-    drm(formula, fit.family; data = data, kwargs...)
+function update(fit::DrmFit, formula, args...; data, kwargs...)
+    isempty(args) || throw(ArgumentError(
+        "update requires named arguments. Pass values as `data = ...`, " *
+        "`method = ...`, or another named argument; an unnamed extra is dropped " *
+        "by a keyword-only refit and would silently refit without it " *
+        "(got $(length(args)) unnamed)."))
+    if haskey(kwargs, :family)
+        throw(ArgumentError(
+            "update keeps the fitted family. `family` is not a refit keyword; " *
+            "call `drm(formula, family; data = ...)` to fit a different family " *
+            "(got family = $(repr(kwargs[:family])))."))
+    end
+    stored = _update_stored_options(fit)
+    # A caller who changes the estimator does not want the old MAP penalty.
+    # Passing `penalty` explicitly still overrides that drop.
+    caller_method = get(kwargs, :method, nothing)
+    if caller_method !== nothing && caller_method != fit.estim_method &&
+            haskey(stored, :penalty) && !haskey(kwargs, :penalty)
+        stored = Base.structdiff(stored, NamedTuple{(:penalty,)})
+    end
+    merged = merge(stored, NamedTuple(kwargs))
+    return drm(formula, fit.family; data = data, merged...)
+end
+
+# Estimation options `DrmFit` actually stores. `:ML` and `:LA` are `drm`
+# defaults, so repeating them would be a no-op; a `:MAP` fit is repeated by
+# its stored penalty, not by `method = :MAP` (the fitter rejects that symbol).
+function _update_stored_options(fit::DrmFit)
+    kw = Pair{Symbol,Any}[]
+    if fit.estim_method === :REML
+        push!(kw, :method => :REML)
+    elseif fit.estim_method === :MAP
+        fit.penalty === nothing && throw(ArgumentError(
+            "update: this fit is marked :MAP but does not store a penalty " *
+            "specification, so the refit cannot repeat the penalized estimator."))
+    elseif fit.estim_method !== :ML
+        throw(ArgumentError(
+            "update: unsupported estim_method :$(fit.estim_method)"))
+    end
+    fit.penalty === nothing || push!(kw, :penalty => fit.penalty)
+    fit.marginal === :LA || push!(kw, :marginal => fit.marginal)
+    return NamedTuple(kw)
+end

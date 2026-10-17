@@ -119,6 +119,13 @@ Same as [`chibar_pvalue`](@ref): the `q` dropped parameters are variances tested
 at `0`; for `q = 2` they are independent; all other parameters are interior; ML
 fits. A negative statistic clamps to the boundary p-value.
 
+The same refusals as [`lrtest`](@ref) apply before the statistic is formed:
+REML fits whose fixed structure differs, a sentinel log-likelihood, different
+marginal approximations (including two `:VA` fits), a penalized MAP fit, and
+fits estimated on different rows. `fit_full` must have more parameters than
+`fit_reduced`, and `q` cannot exceed that difference. A fit that reports
+`converged = false` is compared with a warning.
+
 # Example
 ```julia
 # Random intercept vs no random effect: dropping (1 | g) removes ONE variance.
@@ -134,6 +141,23 @@ t.pvalue_naive     # χ²(1): P(χ²₁ > stat)     — conservative (≈ 2× to
 function lrt_boundary(fit_full::DrmFit, fit_reduced::DrmFit; q::Integer = 1)
     _reml_compare_guard(fit_reduced, fit_full, "lrt_boundary")
     _sentinel_compare_guard(fit_reduced, fit_full, "lrt_boundary")
+    _marginal_compare_guard(fit_reduced, fit_full, "lrt_boundary")
+    _map_compare_guard(fit_reduced, fit_full, "lrt_boundary")
+    _nobs_compare_guard(fit_reduced, fit_full, "lrt_boundary")
+    # #1002: the argument order is (full, reduced), the reverse of `lrtest`. A
+    # swapped call gives a negative statistic, which the mixture clamps to
+    # p = 1 with no message. `q` boundary components cannot exceed the number
+    # of parameters `fit_full` adds.
+    Δdof = dof(fit_full) - dof(fit_reduced)
+    Δdof > 0 || throw(ArgumentError(
+        "lrt_boundary: `fit_full` must have more parameters than `fit_reduced` " *
+        "(dof(fit_full) = $(dof(fit_full)), dof(fit_reduced) = $(dof(fit_reduced))). " *
+        "The argument order is lrt_boundary(fit_full, fit_reduced; q), the reverse of " *
+        "lrtest(reduced, full)."))
+    q <= Δdof || throw(ArgumentError(
+        "lrt_boundary: q = $q boundary variance components cannot exceed the " *
+        "$Δdof parameter(s) `fit_full` adds over `fit_reduced`."))
+    _unconverged_compare_warn(fit_reduced, fit_full, "lrt_boundary")
     statistic = 2 * (loglik(fit_full) - loglik(fit_reduced))
     pvalue = chibar_pvalue(statistic, q)
     pvalue_naive = ccdf(Chisq(q), max(statistic, 0.0))
