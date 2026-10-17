@@ -1919,6 +1919,7 @@ function _bootstrap_refit_kwargs(fit::DrmFit)
         push!(kw, :method => :REML)
     end
     fit.marginal === :LA || push!(kw, :marginal => fit.marginal)
+    weights(fit) === nothing || push!(kw, :weights => weights(fit))   # #931: same weighted likelihood
     return NamedTuple(kw)
 end
 

@@ -58,7 +58,7 @@ fit_phy = drm(bf(@formula(cbind(successes, failures) ~ x + phylo(1 | species)), 
 """
 struct BetaBinomial end
 
-function drm(f::DrmFormula, fam::BetaBinomial; data, tree = nothing, g_tol::Real = 1e-8,
+@drm_entry function drm(f::DrmFormula, fam::BetaBinomial; data, tree = nothing, g_tol::Real = 1e-8,
              se::Bool = true, marginal::Symbol = :LA)
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
         drm(f, fam; data = data_observed, tree = tree, g_tol = g_tol, se = se, marginal = marginal)
@@ -203,13 +203,14 @@ end
 function _fit_betabinomial(fam::BetaBinomial, s, ntr, Xμ, Xσ, nmμ, nmσ, g_tol)
     n = length(s); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     sint = round.(Int, s); nint = round.(Int, ntr)
+    w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
         ημ = Xμ * βμ                             # unclamped: see `_betabinomial_logit_ll`
         ησ = clamp.(Xσ * βσ, -15.0, 15.0)        # φ = exp(-2ησ) > 0 finite
         v = zero(eltype(θ))
         @inbounds for i in 1:n
-            v -= _betabinomial_logit_ll(nint[i], sint[i], ημ[i], exp(-2 * ησ[i]))
+            v -= w[i] * (_betabinomial_logit_ll(nint[i], sint[i], ημ[i], exp(-2 * ησ[i])))
         end
         return v
     end
@@ -217,8 +218,9 @@ function _fit_betabinomial(fam::BetaBinomial, s, ntr, Xμ, Xσ, nmμ, nmσ, g_to
     θ0 = zeros(pμ + pσ)
     θ0[1] = log(p̄ / (1 - p̄))                                # logit p̄
     θ0[pμ+1] = -0.5 * log(10.0)                             # moderate precision init (φ ≈ 10)
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    res = _ctl_optimize((x0, opts) -> Optim.optimize(nll, x0, Optim.LBFGS(), opts; autodiff = :forward),
+                       θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
+    θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ)]
     names = [:mu => nmμ, :sigma => nmσ]
     means = Dict(:mu => _logistic.(Xμ * θ̂[1:pμ]))           # fitted mean success probability
