@@ -253,36 +253,43 @@ function _va_newton_decrement2(gm::T, gr::T, Hmm::T, Hmr::T, Hrr::T) where {T}
     return (-Hrr * gm * gm + 2 * Hmr * gm * gr - Hmm * gr * gr) / det
 end
 
-# A group's inner profile counts as solved when λ²/2, the ELBO gain a Newton step
-# still promises, is too small to matter or too small to see:
-#     λ² ≤ max(_VA_INNER_TOL, 32·eps·(1 + |F|)).
-# The first bound puts the group ELBO within about 5e-15 of its maximum (λ ≤ 1e-7).
-# The second is twice the tie tolerance of `_va_backtrack`: a gain below it is lost
-# in the rounding of F, so the line search cannot take it and the solve is not
-# asked to. It is the larger one when F is formed from large terms, e.g. NB2 at a
-# large size, where loggamma(y + r) − loggamma(r) cancels terms of size r·log r.
-# The driver reports ρ = λ² / bound, so a group is solved iff ρ ≤ 1.
+# The inner solve runs until λ² ≤ `_VA_INNER_TOL`: the group ELBO is then within
+# about 5e-15 of its maximum and λ ≤ 1e-7. A group it cannot take that far (the line
+# search stops moving the iterate, or `_VA_INNER_MAXITERS` runs out) is judged by
+#     ρ = λ² / max(_VA_INNER_TOL, 32·eps·(1 + |F|)),
+# and counts as solved iff ρ ≤ 1. The second term is twice the tie tolerance of
+# `_va_backtrack`: a remaining gain λ²/2 below it is lost in the rounding of F, so
+# the line search cannot take it and the solve cannot be faulted for leaving it.
+# The inner functions return ρ (ρ ≤ λ²/1e-14 ≤ 1 for a group that met the
+# tolerance).
 const _VA_INNER_TOL = 1e-14
 _va_inner_bound(F0) = max(_VA_INNER_TOL, 32 * eps(Float64) * (1 + abs(F0)))
 # The inner unroll always takes its fixed `iters` Newton steps (25 Poisson, 30 for
 # the quadrature families), as before #965. A group that is still not stationary
-# continues, up to `_VA_INNER_MAXITERS` steps in all; whatever is left unsolved is
-# reported. A group that ends the unroll with ρ ≤ `_VA_INNER_DONE` stops there; one
-# that is solved only narrowly, or only after the unroll, takes two more Newton
-# steps, so the returned point (and the derivative the outer ForwardDiff carries
-# through it) is not left at the edge of the tolerance.
+# continues, up to `_VA_INNER_MAXITERS` steps in all. A group that ends the unroll
+# with λ² ≤ `_VA_INNER_DONE` stops there; any other group that meets the tolerance
+# takes two more Newton steps, so the returned point (and the derivative the outer
+# ForwardDiff carries through it) is not left at the edge of the tolerance.
 const _VA_INNER_MAXITERS = 200
-const _VA_INNER_DONE = 1e-6
+const _VA_INNER_DONE = 1e-20
+# Within λ² ≤ `_VA_NEWTON_ZONE` of the maximum (H negative definite) the inner
+# solve takes the full Newton step without the line search. That close, the step is
+# at most ~1e-4 in the metric of H and Newton converges quadratically, while the
+# line search compares two values of F whose rounding can exceed the ELBO gain the
+# step offers, so it would reject a correct step and freeze the iterate (the
+# Binomial, NB2, Gamma and Beta kernels at a large size, shape or precision, #965).
+# Further out, where a step can overshoot, the line search still decides.
+const _VA_NEWTON_ZONE = 1e-8
 
 # Shared inner driver: damped Newton ascent on the group ELBO `F(m, r)` from the
 # warm start (m, r). `gH(m, r)` returns (gm, gr, Hmm, Hmr, Hrr), the gradient and
-# Hessian of F in (m, r). Takes exactly `iters` steps, then keeps stepping while
-# the group is not solved (ρ > 1, see `_va_inner_bound`; plus the polishing steps
-# described at `_VA_INNER_DONE`), stopping at `maxiters` steps or when the line
-# search can no longer move the iterate. Returns (m, r, ρ) with ρ measured at the
-# returned point. Iterates and ρ carry the working eltype; the extra steps and the
-# stop test read only primal values, so the outer ForwardDiff still differentiates
-# the unrolled map.
+# Hessian of F in (m, r). Takes exactly `iters` steps, then keeps stepping until
+# λ² ≤ `_VA_INNER_TOL` (plus the polishing steps described at `_VA_INNER_DONE`),
+# stopping early at `maxiters` steps or when the line search can no longer move the
+# iterate. Returns (m, r, ρ) with ρ (see `_va_inner_bound`) measured at the returned
+# point. Iterates and ρ carry the working eltype; the extra steps and the stop test
+# read only primal values, so the outer ForwardDiff still differentiates the
+# unrolled map.
 function _va_inner_solve(gH, F, m::T, r::T, iters::Int, maxiters::Int) where {T}
     maxiters = max(maxiters, iters)
     ρ = T(Inf)
@@ -290,21 +297,23 @@ function _va_inner_solve(gH, F, m::T, r::T, iters::Int, maxiters::Int) where {T}
     for it in 1:(maxiters + 1)
         gm, gr, Hmm, Hmr, Hrr = gH(m, r)
         F0 = F(m, r)
-        ρ = _va_newton_decrement2(gm, gr, Hmm, Hmr, Hrr) / _va_inner_bound(F0)
+        λ2 = _va_newton_decrement2(gm, gr, Hmm, Hmr, Hrr)
+        ρ = λ2 / _va_inner_bound(F0)
         if it > iters
             it > maxiters && break
-            if ρ <= 1
-                (npolish == 2 || (it == iters + 1 && ρ <= _VA_INNER_DONE)) && break
+            if λ2 <= _VA_INNER_TOL
+                (npolish == 2 || (it == iters + 1 && λ2 <= _VA_INNER_DONE)) && break
                 npolish += 1
             end
         end
         # Levenberg-damped ascent step, capped along its own direction.
         Δm, Δr = _va_cap_step(_va_damped_step(Hmm, Hmr, Hrr, gm, gr)...)
-        # Backtracking with a sufficient-decrease tolerance. Near the optimum the
-        # full Newton step changes the ELBO by ~roundoff, so a strict `≥ F0` test
-        # would spuriously backtrack to α≈0 and stall; the tolerance accepts such
-        # steps (α=1) while still rejecting the genuine overshoot the guard targets.
-        m1, r1 = _va_backtrack(F, m, r, Δm, Δr, F0)
+        # Backtracking with a sufficient-decrease tolerance, except inside the
+        # Newton zone (see `_VA_NEWTON_ZONE`). Near the optimum the full Newton step
+        # changes the ELBO by ~roundoff, so a strict `≥ F0` test would spuriously
+        # backtrack to α≈0 and stall; the tolerance accepts such steps (α=1) while
+        # still rejecting the genuine overshoot the guard targets.
+        m1, r1 = λ2 <= _VA_NEWTON_ZONE ? (m + Δm, r + Δr) : _va_backtrack(F, m, r, Δm, Δr, F0)
         # Past the fixed unroll, an iterate the line search cannot move stays where
         # it is on every later step: stop, keeping the ρ measured at that point.
         it >= iters && m1 == m && r1 == r && break
@@ -834,26 +843,46 @@ end
 # propagate through both the unrolled steps and the dependence on α.
 # ──────────────────────────────────────────────────────────────────────────────
 
-# b-dependent Gamma log-density kernel summed over a group, as a function of the
-# latent value b. η0idx/yidx/lyidx are the group's linear predictors, responses and
-# precomputed log y_i; `α` is the shape exp(−2·log σ). Same algebraic form as the
-# shape–scale Gamma log-density used in gamma.jl (`Gamma(α, μ/α)`), expanded:
-#   (α−1)·log y − α·y/μ − α·(η0+b) + α·log α − loggamma(α),  μ = e^{η0+b}.
-# Differentiable in b, η0 and α (loggamma is ForwardDiff-safe via SpecialFunctions).
+# b-dependent part of the Gamma log-density, summed over a group, as a function of
+# the latent value b. η0idx/lyidx are the group's linear predictors and precomputed
+# log y_i (`yidx`, the responses, is kept for the call shape); `α` is the shape
+# exp(−2·log σ). With μ = e^{η}, η = η0 + b and u = η − log y, the shape–scale
+# Gamma log-density used in gamma.jl (`Gamma(α, μ/α)`) is
+#   (α−1)·log y − α·y/μ − α·η + α·log α − loggamma(α)
+#     = [−log y + α·log α − α − loggamma(α)] − α·(e^{−u} + u − 1).
+# The bracket does not depend on b: `_gamma_group_const` adds it once per group,
+# outside the quadrature, and the inner solve never sees it. e^{−u} + u − 1 ≥ 0 is
+# evaluated as expm1(−u) + u, so nothing large cancels. The old form summed terms
+# of size α·(|η| + log α) to a value of order 1; at a large shape (CV ≲ 1%) that
+# rounding noise in the group ELBO stalled the inner solve (#965). Differentiable in
+# b, η0 and α.
 function _gamma_group_kernel(b, η0idx, yidx, lyidx, α)
     v = zero(promote_type(typeof(b), eltype(η0idx), typeof(α)))
-    lα = log(α)
     @inbounds for j in eachindex(η0idx)
-        η = η0idx[j] + b
-        μ = exp(η)
-        # (α−1)·log y − α·y/μ − α·η + α·log α − loggamma(α)
-        v += (α - one(α)) * lyidx[j] - α * yidx[j] / μ - α * η + α * lα - loggamma(α)
+        u = η0idx[j] + b - lyidx[j]
+        v -= α * (expm1(-u) + u)
     end
     return v
 end
 
+# Stirling remainder S(x) = loggamma(x) − (x − ½)·log x + x − ½·log 2π: from its
+# asymptotic series for x ≥ 15 (the first omitted term, 1/(1188·x⁹), is below 3e-14
+# there), and directly below that, where the cancellation is ≲ 1e-14.
+function _lgamma_stirling_rem(x)
+    x < 15 && return loggamma(x) - (x - 0.5) * log(x) + x - 0.5 * log(2π)
+    ix2 = inv(x * x)
+    return inv(x) * (1 / 12 - ix2 * (1 / 360 - ix2 * (1 / 1260 - ix2 / 1680)))
+end
+
+# The b-free part of a group's Gamma log-density (see `_gamma_group_kernel`):
+# Σ_j −log y_j + α·log α − α − loggamma(α), with α·log α − α − loggamma(α) written
+# as ½·log α − ½·log 2π − S(α) so it does not cancel at a large shape either.
+_gamma_group_const(lyidx, α) =
+    -sum(lyidx) + length(lyidx) * (0.5 * log(α) - 0.5 * log(2π) - _lgamma_stirling_rem(α))
+
 # Per-group GHQ ELBO F(m, r) = E_q[Σ ℓ] − KL, with q = N(m, s), s = e^r, the prior
-# precision τ = 1/σ_b², and the Gamma shape `α`. `z` are the Gauss–Hermite nodes,
+# precision τ = 1/σ_b², and the Gamma shape `α`, WITHOUT the b-free
+# `_gamma_group_const` (the fitter adds it to the reported value). `z` are the Gauss–Hermite nodes,
 # `lwπ = log(w) − ½·log π` the log weights. Smooth in (m, r); used both for the
 # inner solve and (at the optimum) the reported value. `α` is held fixed inside the
 # inner solve, but enters E_q[Σℓ] so the outer AD sees ∂ELBO/∂logσ.
@@ -925,7 +954,8 @@ function _fit_gamma_ranef_va(fam::Gamma, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, 
             α = exp(-2 * ησ[idx[1]])
             m, sg, ρ = _gamma_va_inner(η0idx, yidx, lyidx, α, τ, z, lwπ)
             dec === nothing || (dec[g] = ρ)
-            elbo += _gamma_va_group_elbo(m, log(sg), η0idx, yidx, lyidx, α, τ, z, lwπ)
+            elbo += _gamma_va_group_elbo(m, log(sg), η0idx, yidx, lyidx, α, τ, z, lwπ) +
+                    _gamma_group_const(lyidx, α)
         end
         return -elbo
     end
@@ -978,27 +1008,41 @@ end
 # iterates carry the working eltype so the outer ForwardDiff sees ∂ELBO/∂logσ).
 # ──────────────────────────────────────────────────────────────────────────────
 
-# b-dependent Beta log-density kernel summed over a group, as a function of the
-# latent value b. η0idx/lyidx/l1myidx are the group's linear predictors and the
-# precomputed log y_i and log(1−y_i); `φ` is the precision exp(−2·log σ). Same
-# algebraic form as the Beta log-density used in beta.jl (`Beta(μφ, (1−μ)φ)`):
-#   loggamma(φ) − loggamma(μφ) − loggamma((1−μ)φ) + (μφ−1)·log y + ((1−μ)φ−1)·log(1−y),
-#   μ = logistic(η0+b).
-# Differentiable in b, η0 and φ (loggamma is ForwardDiff-safe via SpecialFunctions).
+# b-dependent part of the Beta log-density, summed over a group, as a function of
+# the latent value b. η0idx/lyidx/l1myidx are the group's linear predictors and the
+# precomputed log y_i and log(1−y_i); `φ` is the precision exp(−2·log σ). With
+# μ = logistic(η0+b), a = μφ, c = (1−μ)φ and the Stirling remainder
+# S(x) = loggamma(x) − (x−½)·log x + x − ½·log 2π (`_lgamma_stirling_rem`), the
+# Beta log-density used in beta.jl (`Beta(μφ, (1−μ)φ)`) is exactly
+#   loggamma(φ) − loggamma(a) − loggamma(c) + (a−1)·log y + (c−1)·log(1−y)
+#     = [½·log φ − ½·log 2π + S(φ) − log y − log(1−y)]
+#       − φ·KL(μ‖y) + ½·log(μ(1−μ)) − S(a) − S(c),
+# with KL(μ‖y) = μ·log(μ/y) + (1−μ)·log((1−μ)/(1−y)) ≥ 0. The bracket does not
+# depend on b: `_beta_group_const` adds it once per group, outside the quadrature,
+# and the inner solve never sees it. The old form summed loggamma terms of size
+# φ·log φ that cancel to a value of order log φ; at a large precision that rounding
+# noise in the group ELBO stalled the inner solve (#965). log μ and log(1 − μ) are
+# taken as −softplus(∓η), so 1 − μ is not formed by subtraction. Differentiable in
+# b, η0 and φ.
 function _beta_group_kernel(b, η0idx, lyidx, l1myidx, φ)
     v = zero(promote_type(typeof(b), eltype(η0idx), typeof(φ)))
-    lgφ = loggamma(φ)
     @inbounds for j in eachindex(η0idx)
-        μ = _logistic(η0idx[j] + b)
-        a1 = μ * φ; a2 = (one(μ) - μ) * φ
-        v += lgφ - loggamma(a1) - loggamma(a2) +
-             (a1 - one(a1)) * lyidx[j] + (a2 - one(a2)) * l1myidx[j]
+        η = η0idx[j] + b
+        lμ = -_log1pexp(-η); l1mμ = -_log1pexp(η)      # log μ, log(1 − μ)
+        μ = exp(lμ); omμ = exp(l1mμ)
+        kl = μ * (lμ - lyidx[j]) + omμ * (l1mμ - l1myidx[j])
+        v += -φ * kl + (lμ + l1mμ) / 2 - _lgamma_stirling_rem(μ * φ) - _lgamma_stirling_rem(omμ * φ)
     end
     return v
 end
 
+# The b-free part of a group's Beta log-density (see `_beta_group_kernel`).
+_beta_group_const(lyidx, l1myidx, φ) =
+    -sum(lyidx) - sum(l1myidx) + length(lyidx) * (0.5 * log(φ) - 0.5 * log(2π) + _lgamma_stirling_rem(φ))
+
 # Per-group GHQ ELBO F(m, r) = E_q[Σ ℓ] − KL, with q = N(m, s), s = e^r, the prior
-# precision τ = 1/σ_b², and the Beta precision `φ`. `z` are the Gauss–Hermite nodes,
+# precision τ = 1/σ_b², and the Beta precision `φ`, WITHOUT the b-free
+# `_beta_group_const` (the fitter adds it to the reported value). `z` are the Gauss–Hermite nodes,
 # `lwπ = log(w) − ½·log π` the log weights. Smooth in (m, r); used both for the
 # inner solve and (at the optimum) the reported value. `φ` is held fixed inside the
 # inner solve, but enters E_q[Σℓ] so the outer AD sees ∂ELBO/∂logσ.
@@ -1069,7 +1113,8 @@ function _fit_beta_ranef_va(fam::Beta, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_
             ȳg = sum(@view y[idx]) / length(idx)
             m, sg, ρ = _beta_va_inner(η0idx, lyidx, l1myidx, φ, τ, ȳg, z, lwπ)
             dec === nothing || (dec[g] = ρ)
-            elbo += _beta_va_group_elbo(m, log(sg), η0idx, lyidx, l1myidx, φ, τ, z, lwπ)
+            elbo += _beta_va_group_elbo(m, log(sg), η0idx, lyidx, l1myidx, φ, τ, z, lwπ) +
+                    _beta_group_const(lyidx, l1myidx, φ)
         end
         return -elbo
     end
