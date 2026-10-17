@@ -24,6 +24,7 @@ using DelimitedFiles
 using StableRNGs
 using TOML
 using Random
+using ForwardDiff
 import Distributions
 
 const _UF936 = DRModels
@@ -179,35 +180,47 @@ end
     @test isempty(lg.logs[1].kwargs[:flat_coordinates])
     @test lg.logs[1].kwargs[:null_direction_coordinates] == [1, 2]
 
-    # Integration (AD Hessian): NB2 with a random intercept fitted by VA to Poisson
-    # data drives the NB2 size to r -> infinity, so the log-sigma coordinate is flat
-    # (test_vcov_guard.jl, anchor (c) of test_variational.jl). Rescaling the
-    # predictor must neither hide that boundary nor move the slope SE off scale.
+    # Integration on a real objective: NB2 with a random intercept, fitted by VA to
+    # Poisson data, has its size at r -> infinity, so the log-sigma coordinate is
+    # flat (test_vcov_guard.jl; anchor (c) of test_variational.jl). Where LBFGS
+    # stops along that flat ridge depends on the path, hence on the units and the
+    # Julia version (1.10 and 1.11 stop at different points), so the Hessian is
+    # taken at a FIXED point deep in the regime (log sigma = -12) rather than at
+    # three separately optimised fits. Rescaling x by c maps it exactly to
+    # D H D with D = diag(1, c, 1, 1); the boundary must stay flagged and the slope
+    # SE must scale by 1/c. `uf` is built exactly as the VA NB2 call site builds it.
+    rng = MersenneTwister(1362)
+    ng, per = 8, 6
+    gidx = repeat(1:ng, inner = per)
+    n = ng * per
+    x = randn(rng, n)
+    X = hcat(ones(n), x)
+    bg = 0.5 .* randn(rng, ng)
+    yv = Float64.([rand(rng, Distributions.Poisson(exp((X * [0.4, -0.3])[i] + bg[gidx[i]])))
+                   for i in 1:n])
+    fv = Logging.with_logger(Logging.NullLogger()) do
+        DRModels._fit_nb2_ranef_va(DRModels.NegBinomial2(), yv, X, ones(n, 1), gidx, ng,
+                                   ["(Intercept)", "x"], ["(Intercept)"], :g, 1e-8)
+    end
+    Hva = ForwardDiff.hessian(fv.nll, [0.44, -0.386, -12.0, -1.09])
+    ufva = vcat(DRModels._unitfree_columns(X), DRModels._unitfree_columns(ones(n, 1), 2), 4)
+    @test ufva == [1, 3, 4]
     se_slope = Float64[]
     for c in (1.0, 1e3, 1e-3)
-        rng = MersenneTwister(1362)
-        ng, per = 8, 6
-        gidx = repeat(1:ng, inner = per)
-        n = ng * per
-        x = randn(rng, n)
-        X = hcat(ones(n), x)
-        bg = 0.5 .* randn(rng, ng)
-        yv = Float64.([rand(rng, Distributions.Poisson(exp((X * [0.4, -0.3])[i] + bg[gidx[i]])))
-                       for i in 1:n])
+        D = Diagonal([1.0, c, 1.0, 1.0])
         lgv = Test.TestLogger(min_level = Logging.Warn)
-        fv = Logging.with_logger(lgv) do
-            DRModels._fit_nb2_ranef_va(DRModels.NegBinomial2(), yv, hcat(ones(n), c .* x), ones(n, 1),
-                                       gidx, ng, ["(Intercept)", "x"], ["(Intercept)"], :g, 1e-8)
+        Vv = Logging.with_logger(lgv) do
+            DRModels._vcov_from_hessian(D * Hva * D; unitfree = ufva)
         end
         sing = filter(l -> occursin("numerically singular", string(l.message)), lgv.logs)
         @test length(sing) == 1
         @test occursin("variance/dispersion boundary", string(sing[1].message))
         @test sing[1].kwargs[:flat_coordinates] == [3]        # the NB2 log-sigma
-        @test all(isfinite, fv.vcov)
-        push!(se_slope, c * sqrt(fv.vcov[2, 2]))
+        @test all(isfinite, Vv)
+        push!(se_slope, c * sqrt(Vv[2, 2]))
     end
-    @test se_slope[2] ≈ se_slope[1] rtol = 1e-6
-    @test se_slope[3] ≈ se_slope[1] rtol = 1e-6
+    @test se_slope[2] ≈ se_slope[1] rtol = 1e-8
+    @test se_slope[3] ≈ se_slope[1] rtol = 1e-8
 end
 
 @testset "#936 vcov guard: origin shifts in dispersion and ordinal formulas" begin
@@ -280,27 +293,64 @@ end
 
 @testset "#936 vcov guard: separated and all-zero levels on log/logit links" begin
     # The 0/1 columns of a log/logit-link location formula are dimensionless, so a
-    # level whose curvature vanishes is still reported (it was reported only by
-    # luck of units before #936, and not at all by the first unit-free design).
+    # level whose curvature vanishes is reported (before #936 only by luck of
+    # units; not at all by the first unit-free design). Where an optimiser stops
+    # on a runaway coefficient is path- and platform-dependent, so the Hessian of
+    # each fit's own objective is taken at a fixed point in the runaway regime, and
+    # `unitfree` is built the way the call site builds it.
     rng = StableRNG(9361)
     G = 10; m = 10; n = G * m
     g = repeat(1:G, inner = m)
     trt = Float64.(repeat([0, 1], inner = 5, outer = G))
     s = [trt[i] == 1 ? 1.0 : Float64(rand(rng) < 0.4) for i in 1:n]
-    lg = Test.TestLogger(min_level = Logging.Warn)
-    Logging.with_logger(lg) do
-        drm(bf(@formula(cbind(s, fail) ~ trt + (1 | g))), Binomial();
-            data = (; s, fail = 1 .- s, trt, g))
+    # What the call site itself declares, captured through the census hook.
+    seen = Any[]
+    DRModels._VCOV_CENSUS_HOOK[] = (H, ctx, uf) -> push!(seen, collect(uf))
+    fb = try
+        Logging.with_logger(Logging.NullLogger()) do
+            drm(bf(@formula(cbind(s, fail) ~ trt + (1 | g))), Binomial();
+                data = (; s, fail = 1 .- s, trt, g))
+        end
+    finally
+        DRModels._VCOV_CENSUS_HOOK[] = nothing
     end
-    @test any(l -> occursin("numerically singular", string(l.message)), lg.logs)
+    @test isfinite(loglik(fb))
+    ufb = vcat(DRModels._unitfree_columns(hcat(ones(n), trt)), 3)      # binomial.jl (1 | g) site
+    @test ufb == [1, 2, 3]
+    @test seen == [ufb]
+    Hb = ForwardDiff.hessian(fb.nll, [-0.4, 30.0, log(0.3)])          # every trt = 1 row a success
+    lgb = Test.TestLogger(min_level = Logging.Warn)
+    Logging.with_logger(lgb) do
+        DRModels._vcov_from_hessian(Hb; unitfree = ufb)
+    end
+    @test length(lgb.logs) == 1
+    @test lgb.logs[1].kwargs[:flat_coordinates] == [2]
+    # ... and the same matrix with the trt column declared ordinary is silent
+    # (its curvature alone cannot be judged), which is what #936's first design did.
+    @test_logs DRModels._vcov_from_hessian(Hb; unitfree = [3])
 
     f = repeat(["a", "b", "c"], inner = 20)
     yp = [fi == "c" ? 0.0 : Float64(rand(rng, 0:4)) for fi in f]
+    empty!(seen)
+    DRModels._VCOV_CENSUS_HOOK[] = (H, ctx, uf) -> push!(seen, collect(uf))
+    fp = try
+        Logging.with_logger(Logging.NullLogger()) do
+            drm(bf(@formula(yp ~ f)), Poisson(); data = (; yp, f))
+        end
+    finally
+        DRModels._VCOV_CENSUS_HOOK[] = nothing
+    end
+    @test isfinite(loglik(fp))
+    Xp = hcat(ones(60), f .== "b", f .== "c")
+    @test DRModels._unitfree_columns(Xp) == [1, 2, 3]                   # poisson.jl fixed site
+    @test seen == [[1, 2, 3]]
+    Hp = ForwardDiff.hessian(fp.nll, [log(2.0), 0.0, -25.0])          # level "c": all zero
     lgp = Test.TestLogger(min_level = Logging.Warn)
     Logging.with_logger(lgp) do
-        drm(bf(@formula(yp ~ f)), Poisson(); data = (; yp, f))
+        DRModels._vcov_from_hessian(Hp; unitfree = DRModels._unitfree_columns(Xp))
     end
-    @test any(l -> occursin("numerically singular", string(l.message)), lgp.logs)
+    @test length(lgp.logs) == 1
+    @test lgp.logs[1].kwargs[:flat_coordinates] == [3]
 end
 
 @testset "#936 _unitfree_columns" begin

@@ -120,10 +120,18 @@ Julia 1.11.7).
     fit-level assertions: false warnings for uncentred year and `y * 1e4`, and
     SEs of 13,088 vs 9.6e6 and 2.39 vs 2.28e9 at `y * 1e8`. The guard-level
     testsets need the new API.
-  - The review-driven testsets fail on 120746b (6 fail, 5 error).
-  - The suite passes on the branch: 119 assertions together with
-    `test/test_vcov_guard.jl`. `test/test_crossed_se_forwarding.jl` gives 21/21
-    after the nuisance-route zeroing.
+  - The review-driven testsets fail on 120746b (7 fail, 5 error), including the
+    two call-site checks, which capture through `_VCOV_CENSUS_HOOK` the `unitfree`
+    list the binomial `(1 | g)` and Poisson sites actually pass.
+  - `test/test_vcov_unitfree_936.jl` passes 110/110 on Julia 1.11.7 and on 1.10.12;
+    `test/test_vcov_guard.jl` 20/20 and `test/test_crossed_se_forwarding.jl` 21/21
+    (after the nuisance-route zeroing) on both.
+  - The boundary integration checks take the Hessian of each fit's own objective
+    at a fixed point in the degenerate regime (NB2 log sigma = -12, a separated
+    level at logit 30, an all-zero level at log -25). An earlier version compared
+    three separately optimised NB2-VA fits, which CI Julia 1.10 showed stop at
+    different points on the flat ridge (slope SE 0.116 / 0.090 / 0.101); where an
+    optimiser stops along a flat direction is not a property of the guard.
 - **Exactness.** The SEs equal the centred or rescaled fit after the exact
   transformation, and the closed-form Gaussian ML SEs in BigFloat, to 1e-8
   relative.
