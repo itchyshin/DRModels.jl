@@ -19,7 +19,8 @@ const _BRIDGE_TREE_CACHE_MAX = 4
 """
     drm_bridge(; formula, family, data, tree = nothing, K = nothing,
                A = nothing, coords = nothing, newdata = nothing,
-               options = Dict())
+               options = Dict(), K_labels = nothing, A_labels = nothing,
+               structured_group = nothing)
 
 Fit a DRModels.jl model through a marshalling-friendly boundary for R callers.
 `formula` may be a semicolon-separated string such as
@@ -38,6 +39,13 @@ are rejected rather than approximated. These materialised columns are NOT
 (yet) reconstructed for `newdata` — a formula using them combined with `newdata`
 fails with a missing-column error.
 
+`K` / `A` are matched to the levels of the grouping variable by position
+(first appearance in `data`). To match by name instead, pass `K_labels` /
+`A_labels` (the matrix's row/column names) together with `structured_group`
+(the grouping column, as a string): the matrix is reordered to first-appearance
+order, and a duplicated label or a missing group level throws `ArgumentError`
+rather than fitting against the wrong rows.
+
 The return value is a `Dict{String,Any}` made of primitive R-reconstructable
 pieces: named coefficients, covariance matrix, likelihood summaries, fitted
 values, residuals, scales, and residual correlations when present.
@@ -50,8 +58,14 @@ what `fitted_distribution(object, newdata = ...)` needs.
 """
 function drm_bridge(; formula, family::AbstractString, data, tree = nothing,
         K = nothing, A = nothing, coords = nothing, newdata = nothing,
-        options = Dict{String,Any}())
+        options = Dict{String,Any}(), K_labels = nothing, A_labels = nothing,
+        structured_group = nothing)
     dat = _bridge_data(data)
+    # Labelled K / A (drmTMB#1512): the engine pairs row i of K / A with the i-th
+    # group in first-appearance order and never looks at names. When the caller
+    # supplies the matrix's row/column labels, align by name first, or refuse.
+    K = _bridge_align_labelled(K, K_labels, dat, structured_group, "K")
+    A = _bridge_align_labelled(A, A_labels, dat, structured_group, "A")
     bundle, dat, labels = _bridge_formula(formula, family, dat; labels = true)
     fam = _bridge_family(family)
     opts = _bridge_options(options)
@@ -60,6 +74,64 @@ function drm_bridge(; formula, family::AbstractString, data, tree = nothing,
                       coords = coords, options = opts)
     return _bridge_flatten(fit; family = String(family), newdata = newdata,
                            labels = labels, coef_labels = coef_labels)
+end
+
+# Align a labelled structured matrix to the first-appearance order of the data's
+# grouping variable (the order every DRModels.jl structured route assumes).
+# `labels === nothing` leaves the matrix untouched (positional contract).
+function _bridge_align_labelled(M, labels, dat, group, what::AbstractString)
+    labels === nothing && return M
+    M === nothing && throw(ArgumentError(
+        "drm_bridge: `$(what)_labels` was supplied without `$(what)`"))
+    group === nothing && throw(ArgumentError(
+        "drm_bridge: `$(what)_labels` needs `structured_group` (the grouping " *
+        "variable the matrix is indexed by)"))
+    gsym = Symbol(group)
+    hasproperty(dat, gsym) || throw(ArgumentError(
+        "drm_bridge: `structured_group = \"$(group)\"` is not a column of `data`"))
+    return _align_labelled_matrix(M, labels, getproperty(dat, gsym), what)
+end
+
+# The string a group id is matched by. R sends numeric ids as Float64, so the
+# id 1 is `1.0` here but "1" in R's row names; integer-valued floats are written
+# as plain integers ("1", "100000") to agree with drmTMB's `drm_julia_group_key`.
+function _group_label(v)
+    if v isa AbstractFloat && isfinite(v) && isinteger(v) && abs(v) < 1e15
+        return string(Int64(v))
+    end
+    return String(string(v))
+end
+
+# Reorder the rows and columns of the square matrix `M` (row/column names
+# `labels`) to the first-appearance order of `values`. Refuses, with an
+# ArgumentError, a matrix whose labels are duplicated or miss a group level.
+# Labels beyond the data's levels are dropped (the matrix may cover more
+# individuals than the data).
+function _align_labelled_matrix(M, labels, values, what::AbstractString)
+    # A length-1 character vector can arrive from R unboxed as a bare String.
+    lab = _group_label.(labels isa AbstractString ? [labels] : collect(labels))
+    size(M, 1) == size(M, 2) == length(lab) || throw(ArgumentError(
+        "drm_bridge: `$(what)` is $(size(M, 1))×$(size(M, 2)) but `$(what)_labels` " *
+        "has $(length(lab)) entries"))
+    pos = Dict{String,Int}()
+    for (i, l) in enumerate(lab)
+        haskey(pos, l) && throw(ArgumentError(
+            "drm_bridge: `$(what)_labels` has duplicated label \"$(l)\""))
+        pos[l] = i
+    end
+    lv = String[]
+    seen = Set{String}()
+    for v in values
+        s = _group_label(v)
+        s in seen || (push!(seen, s); push!(lv, s))
+    end
+    missing_lv = [l for l in lv if !haskey(pos, l)]
+    isempty(missing_lv) || throw(ArgumentError(
+        "drm_bridge: `$(what)_labels` does not cover every group level; missing " *
+        join(("\"" * l * "\"" for l in first(missing_lv, 5)), ", ") *
+        (length(missing_lv) > 5 ? ", …" : "")))
+    idx = [pos[l] for l in lv]
+    return Matrix{Float64}(M)[idx, idx]
 end
 
 """
