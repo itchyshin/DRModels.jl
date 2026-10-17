@@ -6,6 +6,8 @@ human-readable changelog.
 
 ## Development
 
+- **Poisson and NB2 fixed-effect fits now warn when the MLE does not exist (#1109).** An all-zero response or a design whose positive counts lie only on a face of the covariate cone (Haberman 1974; Santos Silva and Tenreyro 2010) is screened with the same cone already used for binomial separation, using `s = 1{y > 0}` and `ntr = 1 + s`. The fit is still returned; flagged location coefficients have `Inf` standard errors. `is_converged` is unchanged (the shared twin-flag contract is drmTMB #1554).
+
 ## v0.7.2 — 2026-10-04
 
 - **Location-scale fits no longer stall at a variance boundary.** Two loops in the location-scale fit counted an exactly tied objective as progress and had no stall stop, so a fit whose variance component slid to its zero boundary could spin for tens of minutes (a 4-species Gamma bootstrap test took 12 to 74 minutes on CI, depending on the runner's BLAS kernel). The inner mode solve now stops a run of 40 exactly tied steps only when the gradient is far above its bound and cannot reach it in the remaining iterations, and the certified refinement ladder stops a run only after 100 iterations with a bit-identical position, value and gradient. Converging fits are unchanged: across 30 test files every location-scale fit is bit-identical to before, and the fixture's standard errors and `check_drm` verdict are unchanged.
