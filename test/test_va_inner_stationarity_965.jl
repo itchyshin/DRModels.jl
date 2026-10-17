@@ -17,13 +17,26 @@
 #       the solve at |∇F| ≈ 2.5e-6. Reached by a realistic aggregated-binomial
 #       fit that reported `converged = true` (fit-level testset below).
 #
+# (Further mechanisms, found later, are pinned below: the old det-only damping test
+# let a positive-definite H through (Beta); the NB2, Gamma and Beta kernels cancelled
+# terms of size r·log r, α·log α or φ·log φ; the Gamma warm start sat far below its
+# optimum, where Newton creeps +1 per step.)
+#
 # The fix keeps the fixed unroll, caps the step along its own direction, damps a
-# Hessian only when it is not usably negative definite, keeps stepping while the
-# squared Newton decrement λ² = gᵀ(−H)⁻¹g exceeds max(1e-14, the rounding of the
-# group ELBO) (the inner functions return ρ = λ² / that bound), writes the
-# Binomial kernel and the Poisson Hrr without cancellation, re-measures every
-# group's ρ at θ̂ and ANDs ρ ≤ 1 into `converged` (with a warning). Each testset
-# below except the last fails on base.
+# Hessian only when it is not usably negative definite, takes full Newton steps
+# within λ² ≤ 1e-8 of the maximum, and keeps stepping until the squared Newton
+# decrement λ² = gᵀ(−H)⁻¹g is at most 1e-14. A group the solve cannot take that far
+# is judged by ρ = λ² / max(1e-14, 32·eps·(1 + |F|)), which the inner functions
+# return. The Binomial, NB2, Gamma and Beta kernels and the Poisson Hrr are written
+# without cancellation, and every group's ρ is re-measured at θ̂ and ρ ≤ 1 ANDed
+# into `converged` (with a warning).
+#
+# Every testset fails on base. These fail on an assertion about base's behaviour:
+# the Poisson and Binomial inner cells; the Binomial kernel; the envelope gradient;
+# the damped step; the inner cells of NB2, Gamma and Beta; the Binomial, Poisson
+# and both Gamma fits. The rest also exercise new functions (the reporter, the
+# Newton zone, the kernel constants and the `nll(θ, ρ)` recording), and the NB2
+# fit is a no-false-alarm guard.
 
 using DRModels
 using Test
@@ -43,6 +56,56 @@ function _pois_inner_gnorm(A, S, τ, m, s)
 end
 # |∇F| by ForwardDiff of a quadrature-family group ELBO `obj(u)`, u = [m, log s].
 _ad_inner_gnorm(obj, m, s) = hypot(ForwardDiff.gradient(obj, [m, log(s)])...)
+
+# Data for the Gamma end-to-end testset, as literals so the test does not depend on
+# a sampler stream: 20 groups of 4 drawn from the model (β0 = 0.5, β1 = 8, shape 2,
+# σ_b = 1, StableRNG(1)) plus group 21, two observations with EQUAL y = e^0.5 at
+# x = ±4.5, a high-leverage group whose responses do not follow x.
+const _GAMMA965_Y = [
+    0.006634014162002215, 0.29188841667879223, 333.72974234699007,
+    0.0008420943669918487, 2.7923279661918185e-7, 1.600881735405424, 34104.70902594438,
+    645.2180645515004, 2.898162500721262, 13.066392314764828, 1.017796423885318e-5,
+    2.5084014885619004, 5.888201134435547e-7, 0.17618092691864048, 8.99838669646414,
+    24.152237047955445, 14.636206494982517, 5.5842578509061664e-5, 7823.306587610906,
+    0.002078251200184794, 167.68225765737125, 258986.68590687535, 0.023082936320790014,
+    0.002669944723382729, 139.6470415185482, 24.862163817896167, 102.97837394418167,
+    7.795826012491152e-5, 0.009391351441623723, 0.0035721640149102766,
+    13.165218866837689, 11.565158054785801, 0.17588760576688028, 22.033074438747857,
+    1706.4393659369232, 237862.82934969713, 68.33908848583, 0.0015211362928358573,
+    3474.193604166241, 1.2653787145019604, 1.063863456538067, 0.000142714302763192,
+    66.21905825847, 1.6926749139184738, 0.00021870164639301723, 4351.267313644083,
+    6.99924343085768e-7, 3.737334814543326e8, 1.0856497455701273,
+    0.0021649566708228703, 55.29975440956056, 12.7938620406297, 42.82857464726425,
+    11.741084282467543, 0.013379116815300518, 0.035762160708531214,
+    0.42100927432386576, 436.973855807545, 0.1259237240309934, 0.09000184053009064,
+    67.30961243107349, 3.998648533188118e6, 0.0018846862758439646, 0.8453187675564455,
+    1.0706110455715134e-8, 20389.02463209108, 1477.9557106187506, 99.16103473844238,
+    6.578054962265386e-5, 1305.4117538885598, 102.09796785406505, 139.92794806361448,
+    146.9491898020529, 2.1688328296438604e-7, 0.35824097342151473,
+    2.605716037556776e-11, 75441.48722620151, 200.11119828218, 0.001082083062783665,
+    0.3089005331872578, 1.6487212707001282, 1.6487212707001282]
+const _GAMMA965_X = [
+    -0.5325200748641231, 0.098465514284785, 0.7528865221245234, -0.8435374038742546,
+    -2.0138293556311067, -0.26980764119712713, 1.0322934723039892, 0.6755660991191906,
+    0.08216082754396425, 0.24692664035915107, -1.5005291473189497, 0.32863200921212465,
+    -1.8531987065432076, -0.33719082654695276, 0.03566251637914036,
+    0.23214355889044092, 0.556345368618102, -1.0278210092684674, 1.206403573149015,
+    -0.6205921994412764, 0.6123082058797865, 1.4913944293489885, -0.6757996689733272,
+    -0.7512237101939829, 0.49395595649913915, 0.4136706876598097, 0.5566484200778432,
+    -1.2580215560803685, -0.5406150525395599, -0.7281156252321607, 0.3213483657325198,
+    0.6882831873751686, -0.3899398874160884, 0.05438833466615296, 0.7283022866605751,
+    1.331489923091551, 0.4986114118380903, -0.8584115280138382, 0.9910360582065267,
+    0.03813525217366319, -0.001413359889278404, -0.8526640041940637,
+    0.6751427795073505, 0.31584286771756176, -0.9460270317435727, 1.1048619354568248,
+    -1.7254776725212033, 2.6333449175920385, 0.049062337276717195, -0.5403822275366147,
+    0.2896304349055892, 0.14525905655767543, 0.5908630515307562, 0.2874973018846024,
+    -0.3571020878849498, -0.3574789623630043, 0.13695883374649123, 1.0419815412419215,
+    0.052755040558498466, -0.2461920035269255, 0.8457263707411052, 1.88049002193508,
+    -0.7759877870846973, 0.1443425453284156, -2.1996744272017246, 1.3443365695149092,
+    0.9360605441917709, 0.597384740176566, -1.2363025017625762, 0.9808989479195825,
+    0.6666812074800155, 0.9377943118424776, 0.5404062939314883, -1.8489132707132137,
+    0.020810881369009222, -2.9322666947228786, 1.532931723220232, 0.799768011679008,
+    -0.8791568057139619, -0.08685885565775965, -4.5, 4.5]
 
 const _GH_Z, _GH_W = DVI._gauss_hermite(12)
 const _GH_LWπ = log.(_GH_W) .- 0.5 * log(π)
@@ -207,22 +270,27 @@ const _GH_LWπ = log.(_GH_W) .- 0.5 * log(π)
     end
 
     @testset "NB2 kernel: no cancellation, no false alarm at a large size" begin
-        # The old kernel built each node from terms of size r·log r that cancel; at
-        # NB2 size ≈ 430 its rounding noise in the group ELBO stalled the inner solve
-        # at λ² ≈ 1e-11 (ρ ≈ 17 with the stationarity check), so this ordinary fit
-        # was flagged. The b-dependent part is now y·η − (y + r)·log1p(μ/r) and the
-        # b-free part a sum of log1p(k/r).
-        for (y, r) in (([1, 3, 0, 2], 430.0), ([0, 5, 12], 3.6e8), ([2, 0], exp(40.0)))
-            exact = sum(Float64(SpecialFunctions.loggamma(big(k) + big(r)) - SpecialFunctions.loggamma(big(r)) -
-                                k * log(big(r))) for k in y)
-            @test DVI._nb2_group_const(y, r) ≈ exact rtol = 1e-12 atol = 1e-14
+        # The b-dependent part is −y·log1p(r/μ) − r·log1p(μ/r), a sum of non-positive
+        # terms; the b-free Σ loggamma(y+r) − loggamma(r) is built without cancelling
+        # its r·log r terms (exactly for y ≤ 1000, by the Stirling remainder above).
+        # The old kernel's cancellation is what gave the Poisson-limit fits ELBOs of
+        # +2577 and +3539 on base (test_vcov_guard.jl's fixture is one of them).
+        lgb(x) = SpecialFunctions.loggamma(x)
+        for (y, r) in (([1, 3, 0, 2], 430.0), ([0, 5, 12], 3.6e8), ([2, 0], exp(40.0)),
+                       ([1001, 3], 3.6e8), ([3000], exp(40.0)), ([100_000], 2.5))
+            R = big(r)
+            exact = Float64(sum(lgb(big(k) + R) - lgb(R) for k in y))
+            @test DVI._nb2_group_const(y, r) ≈ exact rtol = 1e-14 atol = 1e-12
         end
-        η0 = [0.5, -1.0, 2.0]; yk = [1, 0, 7]
-        for r in (0.3, 430.0, 1e9), b in (-3.0, 0.1, 4.0)
+        η0 = [0.5, -1.0, 2.0]; yk = [1, 0, 1000]
+        for r in (0.3, 1.0, 430.0, 1e9), b in (-3.0, 0.1, 4.0)
             μ = exp.(big.(η0) .+ b); R = big(r)
-            exact = Float64(sum(yk[j] * (η0[j] + b) - (yk[j] + R) * log1p(μ[j] / R) for j in 1:3))
-            @test DVI._nb2_group_kernel(b, η0, yk, r) ≈ exact rtol = 1e-12 atol = 1e-12
+            exact = Float64(sum(-yk[j] * log1p(R / μ[j]) - R * log1p(μ[j] / R) for j in 1:3))
+            @test DVI._nb2_group_kernel(b, η0, yk, r) ≈ exact rtol = 1e-14 atol = 1e-12
         end
+        # No false alarm at NB2 size ≈ 430 on ordinary data. (Base has no check; with
+        # the old kernel, a driver without the Newton zone stalled one group here at
+        # λ² ≈ 1e-11 and flagged the fit.)
         rng = StableRNG(7_000_000 + 10000 * 3 + 100 * 2 + 15 + 4)
         G, ng = 20, 4; n = G * ng
         g = repeat(1:G, inner = ng); x = randn(rng, n)
@@ -235,5 +303,141 @@ const _GH_LWπ = log.(_GH_W) .- 0.5 * log(π)
         @test fit.converged
         dec = fill(NaN, G); fit.nll(fit.theta, dec)
         @test all(d -> d <= 1, dec)
+    end
+
+    @testset "Gamma and Beta kernels: no cancellation at a large shape / precision" begin
+        # Each cell also evaluates the OLD (pre-#965) kernel in Float64 and checks that
+        # it misses the BigFloat value by more than the tolerance the new one meets.
+        lgb(x) = SpecialFunctions.loggamma(x)
+        for x in (1e-3, 0.5, 14.9, 15.0, 1e3, 1e8)
+            X = big(x)
+            exact = Float64(lgb(X) - (X - 0.5) * log(X) + X - 0.5 * log(2 * big(π)))
+            @test DVI._lgamma_stirling_rem(x) ≈ exact atol = 5e-14
+        end
+        gamma_old(b, η0, y, ly, α) = sum((α - 1) * ly[j] - α * y[j] / exp(η0[j] + b) - α * (η0[j] + b) +
+                                         α * log(α) - lgb(α) for j in eachindex(η0))
+        for α in (1e4, 1e6), b in (-0.3, 0.2)
+            η0 = [0.1, 1.5]; y = exp.(η0 .+ b .+ [0.01, -0.02]); ly = log.(y)
+            A = big(α)
+            exact = Float64(sum((A - 1) * log(big(y[j])) - A * big(y[j]) / exp(big(η0[j]) + b) - A * (big(η0[j]) + b) +
+                                A * log(A) - lgb(A) for j in 1:2))
+            got = DVI._gamma_group_kernel(b, η0, y, ly, α) + DVI._gamma_group_const(ly, α)
+            tol = 1e-13 * (1 + abs(exact))
+            @test abs(got - exact) <= tol
+            α == 1e6 && @test abs(gamma_old(b, η0, y, ly, α) - exact) > tol
+        end
+        beta_old(b, η0, ly, l1my, φ) = sum((μ = DVI._logistic(η0[j] + b); lgb(φ) - lgb(μ * φ) - lgb((1 - μ) * φ) +
+                                            (μ * φ - 1) * ly[j] + ((1 - μ) * φ - 1) * l1my[j]) for j in eachindex(η0))
+        for φ in (3.0, 1e4, 1e6), b in (-0.4, 0.3)
+            η0 = [0.2, -1.0]; y = DVI._logistic.(η0 .+ b) .+ [0.003, -0.002]; ly = log.(y); l1my = log1p.(-y)
+            P = big(φ)
+            exact = Float64(sum((μ = 1 / (1 + exp(-(big(η0[j]) + b))); lgb(P) - lgb(μ * P) - lgb((1 - μ) * P) +
+                                (μ * P - 1) * log(big(y[j])) + ((1 - μ) * P - 1) * log1p(-big(y[j]))) for j in 1:2))
+            got = DVI._beta_group_kernel(b, η0, ly, l1my, φ) + DVI._beta_group_const(ly, l1my, φ)
+            tol = 5e-12 * (1 + abs(exact))
+            @test abs(got - exact) <= tol
+            φ == 1e6 && @test abs(beta_old(b, η0, ly, l1my, φ) - exact) > tol
+        end
+    end
+
+    @testset "Newton zone: full steps where the line search cannot resolve the gain" begin
+        # A concave quadratic whose VALUE carries 1e-9 of deterministic rounding-like
+        # noise while its gradient and Hessian are exact. From a start inside the zone
+        # the gain on offer (~1e-12) is below the noise: 200 damped Newton steps that
+        # all go through the line search freeze short of the optimum (asserted), while
+        # the full Newton steps taken in the zone converge.
+        noise(m, r) = 1e-9 * sin(1e7 * m + 3e6 * r)
+        F = (m, r) -> -(m - 1)^2 - 2 * (r + 2)^2 + 0.5 * (m - 1) * (r + 2) + noise(m, r)
+        gH = (m, r) -> (-2 * (m - 1) + 0.5 * (r + 2), -4 * (r + 2) + 0.5 * (m - 1), -2.0, 0.5, -4.0)
+        m0, r0 = 1 + 1e-6, -2 + 1e-6
+        @test DVI._va_newton_decrement2(gH(m0, r0)...) <= DVI._VA_NEWTON_ZONE
+        mb, rb = m0, r0
+        for _ in 1:200
+            gm, gr, Hmm, Hmr, Hrr = gH(mb, rb)
+            mb, rb = DVI._va_backtrack(F, mb, rb, DVI._va_damped_step(Hmm, Hmr, Hrr, gm, gr)...)
+        end
+        @test abs(mb - 1) > 1e-8                       # the line search alone stalls
+        m, r, ρ = DVI._va_inner_solve(gH, F, m0, r0, 30, 200)
+        @test abs(m - 1) < 1e-12 && abs(r + 2) < 1e-12
+        @test ρ <= 1
+    end
+
+    @testset "Gamma (1 | g) fit at CV ≈ 1%: every inner solved" begin
+        # Shape ≈ 1e4. On base the kernel's rounding noise stalls the inner solves:
+        # converged = true with the worst group at λ² = 9.4e-13, |∇F| = 9.7e-7.
+        rng = StableRNG(100 * 2 + 4)
+        G, ng = 20, 5; n = G * ng
+        g = repeat(1:G, inner = ng); x = randn(rng, n); bg = 0.5 .* randn(rng, G)
+        η = 0.3 .+ 0.5 .* x .+ bg[g]
+        y = [rand(rng, Distributions.Gamma(1e4, exp(e) / 1e4)) for e in η]
+        gidx, _ = DVI._group_index(g)
+        fit = @test_logs min_level = Logging.Warn DVI._fit_gamma_ranef_va(DVI.Gamma(), y, hcat(ones(n), x),
+                  ones(n, 1), gidx, G, ["(Intercept)", "x"], ["(Intercept)"], :g, 1e-8)
+        @test fit.converged
+        θ̂ = fit.theta; τ = exp(-2θ̂[end]); α = exp(-2clamp(θ̂[3], -15, 15)); η0 = θ̂[1] .+ θ̂[2] .* x
+        worst = maximum(1:G) do k
+            idx = findall(==(k), g); e = η0[idx]; yk = y[idx]; lyk = log.(yk)
+            out = DVI._gamma_va_inner(e, yk, lyk, α, τ, _GH_Z, _GH_LWπ)
+            obj = u -> DVI._gamma_va_group_elbo(u[1], u[2], e, yk, lyk, α, τ, _GH_Z, _GH_LWπ)
+            u = [out[1], log(out[2])]
+            gv = ForwardDiff.gradient(obj, u)
+            -(gv' * (ForwardDiff.hessian(obj, u) \ gv))          # λ² = gᵀ(−H)⁻¹g
+        end
+        @test worst <= 1e-14
+        dec = fill(NaN, G); fit.nll(fit.theta, dec)
+        @test all(d -> d <= 1, dec)
+    end
+
+    @testset "inner cells of NB2, Gamma and Beta reach stationarity" begin
+        # Unit-level cells per family, each failing on base (measured there):
+        #   NB2 all-zero group, σ_b = e^4.25: STALL, |∇F| = 0.17 for any iterations;
+        #   Gamma warm start 29 below its optimum: CAP, |∇F| = 0.15 after 30 steps
+        #     (the Newton step on this kernel is exactly +1 per step from below);
+        #   Gamma, shape 0.01, σ_b = e^5: STALL, |∇F| = 1.47;
+        #   Beta, a positive-definite H that the old det-only test let through: STALL,
+        #     |∇F| = 2.9 (the maximum is at m ≈ 2.314, log s ≈ −1.774);
+        #   Beta, top quadrature node past μ == 1.0 (old 1 − logistic(η)): F = −Inf
+        #     cliff, |∇F| = 12.3.
+        obj_nb = u -> DVI._nb2_va_group_elbo(u[1], u[2], [0.0], [0], 1.0, exp(-8.5), _GH_Z, _GH_LWπ)
+        out = DVI._nb2_va_inner([0.0], [0], 1.0, exp(-8.5), _GH_Z, _GH_LWπ)
+        @test _ad_inner_gnorm(obj_nb, out[1], out[2]) < 1e-6 && out[3] <= 1
+        for (η0, y, α, τ) in (([-29.0, 29.0], [1.0, 1.0], 2.0, 1.0), ([0.0], [1.0], 0.01, exp(-10.0)))
+            ly = log.(y)
+            obj = u -> DVI._gamma_va_group_elbo(u[1], u[2], η0, y, ly, α, τ, _GH_Z, _GH_LWπ)
+            out = DVI._gamma_va_inner(η0, y, ly, α, τ, _GH_Z, _GH_LWπ)
+            @test _ad_inner_gnorm(obj, out[1], out[2]) < 1e-6 && out[3] <= 1
+        end
+        for (η0, y, φ, τ) in (([0.0, 0.0], [0.1, 0.999], 30.0, 0.01), ([20.0], [0.9], 100.0, 1.0))
+            ly = log.(y); l1my = log1p.(-y)
+            obj = u -> DVI._beta_va_group_elbo(u[1], u[2], η0, ly, l1my, φ, τ, _GH_Z, _GH_LWπ)
+            out = DVI._beta_va_inner(η0, ly, l1my, φ, τ, sum(y) / length(y), _GH_Z, _GH_LWπ)
+            @test _ad_inner_gnorm(obj, out[1], out[2]) < 1e-6 && out[3] <= 1
+        end
+        out = DVI._beta_va_inner([0.0, 0.0], log.([0.1, 0.999]), log1p.(-[0.1, 0.999]), 30.0, 0.01,
+                                 0.5495, _GH_Z, _GH_LWπ)
+        @test out[1] ≈ 2.3137446 atol = 1e-6
+        @test log(out[2]) ≈ -1.7738484 atol = 1e-6
+    end
+
+    @testset "Gamma (1 | g) fit: a high-leverage group no longer derails the fit" begin
+        # On base this fit reports converged = true at θ̂ = [2.084, 7.034, 0.457, 1.870]
+        # with ELBO −230.69: group 21's inner starts ~31 below its optimum, creeps +1
+        # per Newton step and is left at |∇F| = 3.2 after 30. The VA optimum (every
+        # inner stationary) is θ = [1.948, 7.702, 0.379, 1.991], 5.45 nats better.
+        y = _GAMMA965_Y; x = _GAMMA965_X
+        g = vcat(repeat(1:20, inner = 4), [21, 21])
+        fit = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), Gamma();
+                  data = (; y, x, g), marginal = :VA)
+        θ̂ = fit.theta; τ = exp(-2θ̂[end]); α = exp(-2clamp(θ̂[3], -15, 15)); η0 = θ̂[1] .+ θ̂[2] .* x
+        worst = maximum(1:21) do k
+            idx = findall(==(k), g); e = η0[idx]; yk = y[idx]; lyk = log.(yk)
+            out = DVI._gamma_va_inner(e, yk, lyk, α, τ, _GH_Z, _GH_LWπ)
+            obj = u -> DVI._gamma_va_group_elbo(u[1], u[2], e, yk, lyk, α, τ, _GH_Z, _GH_LWπ)
+            _ad_inner_gnorm(obj, out[1], out[2])
+        end
+        @test fit.converged
+        @test worst < 1e-6
+        @test θ̂ ≈ [1.948032, 7.701650, 0.378781, 1.991434] atol = 1e-4
+        @test loglik(fit) ≈ -225.239306 atol = 1e-4
     end
 end

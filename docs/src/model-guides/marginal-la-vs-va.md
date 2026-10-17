@@ -199,13 +199,14 @@ numbers look plausible:
 3. **Family limits.** The negative binomial becomes Poisson as its size
    `r → ∞`, so NB2-VA should approach Poisson-VA when both are applied to the
    same simulated data.
-4. **Inner stationarity at the fit.** Each group's variational mean and
-   variance come from an inner Newton solve. At the fitted parameters every
-   group's solve must be stationary: its squared Newton decrement, twice the
-   ELBO gain still on offer, must be at most `1e-14` or below the rounding error
-   of the group ELBO. If one is not, the reported ELBO is below the profiled ELBO
-   and the optimiser did not follow its gradient, so the fit is marked
-   `converged = false` with a warning (#965).
+
+Separately from these checks, every `:VA` fit verifies its own inner solves. Each
+group's variational mean and variance come from an inner Newton solve, and at the
+fitted parameters every group's solve must be stationary: its squared Newton
+decrement, twice the ELBO gain still on offer, must be at most `1e-14`, or below
+the rounding error of the group ELBO when the solve cannot go further. If one is
+not, the reported ELBO is below the profiled ELBO and the optimiser did not follow
+its gradient, so the fit is marked `converged = false` with a warning (#965).
 
 On Gamma `(1 | g)`, the evaluated comparison finds LA ≈ VA on shape `α` and LA is
 much faster. VA beyond random

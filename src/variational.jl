@@ -287,9 +287,11 @@ const _VA_NEWTON_ZONE = 1e-8
 # λ² ≤ `_VA_INNER_TOL` (plus the polishing steps described at `_VA_INNER_DONE`),
 # stopping early at `maxiters` steps or when the line search can no longer move the
 # iterate. Returns (m, r, ρ) with ρ (see `_va_inner_bound`) measured at the returned
-# point. Iterates and ρ carry the working eltype; the extra steps and the stop test
-# read only primal values, so the outer ForwardDiff still differentiates the
-# unrolled map.
+# point. Iterates and ρ carry the working eltype; the stop tests compare primal
+# values only (`_va_primal`), so a Float64 and a ForwardDiff evaluation take the same
+# steps and the outer ForwardDiff differentiates that unrolled map.
+_va_primal(x) = x
+_va_primal(x::ForwardDiff.Dual) = _va_primal(ForwardDiff.value(x))
 function _va_inner_solve(gH, F, m::T, r::T, iters::Int, maxiters::Int) where {T}
     maxiters = max(maxiters, iters)
     ρ = T(Inf)
@@ -299,10 +301,11 @@ function _va_inner_solve(gH, F, m::T, r::T, iters::Int, maxiters::Int) where {T}
         F0 = F(m, r)
         λ2 = _va_newton_decrement2(gm, gr, Hmm, Hmr, Hrr)
         ρ = λ2 / _va_inner_bound(F0)
+        λ2p = _va_primal(λ2)
         if it > iters
             it > maxiters && break
-            if λ2 <= _VA_INNER_TOL
-                (npolish == 2 || (it == iters + 1 && λ2 <= _VA_INNER_DONE)) && break
+            if λ2p <= _VA_INNER_TOL
+                (npolish == 2 || (it == iters + 1 && λ2p <= _VA_INNER_DONE)) && break
                 npolish += 1
             end
         end
@@ -313,10 +316,11 @@ function _va_inner_solve(gH, F, m::T, r::T, iters::Int, maxiters::Int) where {T}
         # changes the ELBO by ~roundoff, so a strict `≥ F0` test would spuriously
         # backtrack to α≈0 and stall; the tolerance accepts such steps (α=1) while
         # still rejecting the genuine overshoot the guard targets.
-        m1, r1 = λ2 <= _VA_NEWTON_ZONE ? (m + Δm, r + Δr) : _va_backtrack(F, m, r, Δm, Δr, F0)
+        m1, r1 = λ2p <= _VA_NEWTON_ZONE ? (m + Δm, r + Δr) : _va_backtrack(F, m, r, Δm, Δr, F0)
         # Past the fixed unroll, an iterate the line search cannot move stays where
         # it is on every later step: stop, keeping the ρ measured at that point.
-        it >= iters && m1 == m && r1 == r && break
+        stuck = _va_primal(m1) == _va_primal(m) && _va_primal(r1) == _va_primal(r)
+        it >= iters && stuck && break
         m, r = m1, r1
     end
     return m, r, ρ
@@ -403,9 +407,8 @@ function _va_inner_converged(ρ::AbstractVector{<:Real}, route::AbstractString)
           "decrement is $(round(worst; sigdigits = 3)) times its tolerance). The reported " *
           "ELBO is then below the profiled ELBO, and the optimiser did not follow the " *
           "profiled ELBO's gradient, so the fit is marked not converged (DRModels.jl #965). " *
-          "It can also mean the group ELBO carries too much rounding error to resolve its " *
-          "maximum (e.g. NegBinomial2 near its Poisson limit). `marginal = :LA` (the " *
-          "default) has no inner solve of this kind."
+          "It can also mean the rounding error of a group ELBO exceeds the gain left to " *
+          "take. `marginal = :LA` (the default) has no inner solve of this kind."
     return false
 end
 
@@ -541,8 +544,8 @@ end
 # ForwardDiff of the group ELBO closure (nodes are constants ⇒ smooth). Iterates
 # carry the working eltype, so the outer ForwardDiff differentiates through the
 # converged (m*, s*). Returns (m, s, ρ), ρ the inner stationarity measure at the
-# returned point (`_va_inner_bound`, #965). `z`, `lwπ` are the Gauss–Hermite nodes and log w − ½ log π
-# arrays.
+# returned point (`_va_inner_bound`, #965). `z`, `lwπ` are the Gauss–Hermite nodes
+# and log w − ½ log π arrays.
 function _binom_va_inner(η0idx, sidx, nidx, τ::T, z, lwπ; iters::Int = 30,
                          maxiters::Int = _VA_INNER_MAXITERS) where {T}
     p̄ = clamp(sum(sidx) / max(sum(nidx), one(T)), T(1e-3), one(T) - T(1e-3))
@@ -550,9 +553,9 @@ function _binom_va_inner(η0idx, sidx, nidx, τ::T, z, lwπ; iters::Int = 30,
     m = log(p̄ / (one(T) - p̄))
     r = log(one(T) / (τ + one(T)))                    # s ≈ 1/(τ + 1): small spread
     obj = u -> _binom_va_group_elbo(u[1], u[2], η0idx, sidx, nidx, τ, z, lwπ)
-    m, r, dec = _va_inner_solve((mm, rr) -> _va_ad_gH(obj, mm, rr),
-                                (mm, rr) -> obj([mm, rr]), m, r, iters, maxiters)
-    return m, exp(r), dec
+    m, r, ρ = _va_inner_solve((mm, rr) -> _va_ad_gH(obj, mm, rr),
+                              (mm, rr) -> obj([mm, rr]), m, r, iters, maxiters)
+    return m, exp(r), ρ
 end
 
 # Mean-field Gaussian VA fit for the Binomial/Bernoulli random-intercept model.
@@ -645,42 +648,44 @@ end
 # globally). η0idx/yidx are the group's linear predictors and integer counts; `r` is
 # the size θ. With μ = e^{η0+b} the log-pmf (as in sparse_laplace_glmm.jl) is
 #   loggamma(y+r) − loggamma(r) + r·log(r/(r+μ)) + y·log(μ/(r+μ))
-#     = [loggamma(y+r) − loggamma(r) − y·log r] + y·η − (y + r)·log(1 + μ/r).
-# The bracket does not depend on b: `_nb2_group_const` adds it once per group,
-# outside the quadrature, and the inner solve never sees it. What is left has no
-# cancellation. The old form built every node's value from terms of size r·log r
-# (about 2600 at r = 430) that cancel to a value of order 1, and that rounding noise
-# in the group ELBO froze the inner solve short of stationarity (#965).
-# log(1 + μ/r) is the stable softplus of η − log r, which does not overflow at a far
-# quadrature node either. Differentiable in b, η0 and r.
+#     = [loggamma(y+r) − loggamma(r)] − y·log(1 + r/μ) − r·log(1 + μ/r),
+# with both logs taken as the stable softplus of ±(η − log r), so the b-dependent
+# part is a sum of non-positive terms and nothing in it cancels (nor overflows at a
+# far quadrature node). The bracket does not depend on b: `_nb2_group_const` adds it
+# once per group, outside the quadrature, and the inner solve never sees it. The old
+# form built every node's value from terms of size r·log r (about 2600 at r = 430)
+# that cancel to a value of order 1, and that rounding noise in the group ELBO froze
+# the inner solve short of stationarity (#965). Differentiable in b, η0 and r.
 function _nb2_group_kernel(b, η0idx, yidx, r)
     v = zero(promote_type(typeof(b), eltype(η0idx), typeof(r)))
     lr = log(r)
     @inbounds for j in eachindex(η0idx)
-        η = η0idx[j] + b
-        v += yidx[j] * η - (yidx[j] + r) * _log1pexp(η - lr)
+        x = η0idx[j] + b - lr                          # log(μ/r)
+        v -= yidx[j] * _log1pexp(-x) + r * _log1pexp(x)
     end
     return v
 end
 
 # The b-free part of a group's NB2 log-pmf (see `_nb2_group_kernel`):
-# Σ_j loggamma(y_j + r) − loggamma(r) − y_j·log r. For a count up to
-# `_NB2_CONST_SUMMAX` it is summed as Σ_{k<y} log(1 + k/r), which is exact and does
-# not cancel: the loggamma difference loses about eps·r·log r, i.e. 1e-6 at
-# r = 4e8 and hundreds of nats in the Poisson limit (r → e⁴⁰ at the clamp), where it
-# made the reported ELBO positive. Larger counts keep the loggamma difference.
-# Differentiable in r (loggamma is ForwardDiff-safe via SpecialFunctions).
+# Σ_j loggamma(y_j + r) − loggamma(r) = Σ_j [y_j·log r + D(y_j, r)], with
+# D(y, r) = loggamma(y + r) − loggamma(r) − y·log r formed without cancellation:
+# as Σ_{k<y} log(1 + k/r) (exact) for a count up to `_NB2_CONST_SUMMAX`, and above
+# that as (y + r − ½)·log(1 + y/r) − y + S(y + r) − S(r), S the Stirling remainder.
+# The plain loggamma difference loses about eps·r·log r: 1e-6 at r = 4e8 and
+# hundreds of nats in the Poisson limit (r → e⁴⁰ at the clamp), where it made the
+# reported ELBO positive. Differentiable in r.
 const _NB2_CONST_SUMMAX = 1000
 function _nb2_group_const(yidx, r)
-    lr = log(r); lgr = loggamma(r)
+    lr = log(r); Sr = _lgamma_stirling_rem(r)
     v = zero(typeof(r))
     @inbounds for y in yidx
+        v += y * lr
         if y <= _NB2_CONST_SUMMAX
             for k in 1:(y - 1)
                 v += log1p(k / r)
             end
         else
-            v += loggamma(y + r) - lgr - y * lr
+            v += (y + r - 0.5) * log1p(y / r) - y + _lgamma_stirling_rem(y + r) - Sr
         end
     end
     return v
@@ -711,8 +716,8 @@ end
 # ForwardDiff of the group-ELBO closure (nodes and θ are constants ⇒ smooth).
 # Iterates carry the working eltype, so the outer ForwardDiff differentiates
 # through the converged (m*, s*). Returns (m, s, ρ), ρ the inner stationarity
-# measure at the returned point (`_va_inner_bound`, #965). `z`, `lwπ` are the GH nodes and
-# log w − ½ log π arrays.
+# measure at the returned point (`_va_inner_bound`, #965). `z`, `lwπ` are the GH
+# nodes and log w − ½ log π arrays.
 function _nb2_va_inner(η0idx, yidx, rsize::T, τ::T, z, lwπ; iters::Int = 30,
                        maxiters::Int = _VA_INNER_MAXITERS) where {T}
     ȳ = sum(yidx) / length(yidx)
@@ -720,9 +725,9 @@ function _nb2_va_inner(η0idx, yidx, rsize::T, τ::T, z, lwπ; iters::Int = 30,
     m = log(ȳ + one(T)) - sum(η0idx) / length(η0idx)  # centre on the group's mean rate
     r = log(one(T) / (τ + one(T)))                    # s ≈ 1/(τ + 1): small spread
     obj = u -> _nb2_va_group_elbo(u[1], u[2], η0idx, yidx, rsize, τ, z, lwπ)
-    m, r, dec = _va_inner_solve((mm, rr) -> _va_ad_gH(obj, mm, rr),
-                                (mm, rr) -> obj([mm, rr]), m, r, iters, maxiters)
-    return m, exp(r), dec
+    m, r, ρ = _va_inner_solve((mm, rr) -> _va_ad_gH(obj, mm, rr),
+                              (mm, rr) -> obj([mm, rr]), m, r, iters, maxiters)
+    return m, exp(r), ρ
 end
 
 # #999: the NB2 / Gamma / Beta VA kernels score each group under its FIRST
@@ -882,10 +887,10 @@ _gamma_group_const(lyidx, α) =
 
 # Per-group GHQ ELBO F(m, r) = E_q[Σ ℓ] − KL, with q = N(m, s), s = e^r, the prior
 # precision τ = 1/σ_b², and the Gamma shape `α`, WITHOUT the b-free
-# `_gamma_group_const` (the fitter adds it to the reported value). `z` are the Gauss–Hermite nodes,
-# `lwπ = log(w) − ½·log π` the log weights. Smooth in (m, r); used both for the
-# inner solve and (at the optimum) the reported value. `α` is held fixed inside the
-# inner solve, but enters E_q[Σℓ] so the outer AD sees ∂ELBO/∂logσ.
+# `_gamma_group_const` (the fitter adds it to the reported value). `z` are the
+# Gauss–Hermite nodes, `lwπ = log(w) − ½·log π` the log weights. Smooth in (m, r);
+# used both for the inner solve and (at the optimum) the reported value. `α` is held
+# fixed inside the inner solve, but enters E_q[Σℓ] so the outer AD sees ∂ELBO/∂logσ.
 function _gamma_va_group_elbo(m, r, η0idx, yidx, lyidx, α, τ, z, lwπ)
     s = exp(r)
     sd = sqrt(2 * s)                                   # √(2s): b = m + √(2s)·z_k
@@ -904,18 +909,23 @@ end
 # ForwardDiff of the group-ELBO closure (nodes and α are constants ⇒ smooth).
 # Iterates carry the working eltype, so the outer ForwardDiff differentiates
 # through the converged (m*, s*). Returns (m, s, ρ), ρ the inner stationarity
-# measure at the returned point (`_va_inner_bound`, #965). `z`, `lwπ` are the GH nodes and
-# log w − ½ log π arrays.
+# measure at the returned point (`_va_inner_bound`, #965). `z`, `lwπ` are the GH
+# nodes and log w − ½ log π arrays.
 function _gamma_va_inner(η0idx, yidx, lyidx, α::T, τ::T, z, lwπ; iters::Int = 30,
                          maxiters::Int = _VA_INNER_MAXITERS) where {T}
-    ȳ = sum(yidx) / length(yidx)
-    # Warm start: a prior-shrunk log of the group mean, modest variance.
-    m = log(ȳ + eps(T)) - sum(η0idx) / length(η0idx)  # centre on the group's mean rate
+    # Warm start: the τ → 0, s → 0 maximiser, m = log(mean(y·e^{−η0})), in log space.
+    # The old log(ȳ + eps) − mean(η0) differs from it when y does not track η0 within
+    # the group, and its eps floor ties it to the units of y; from far below, the
+    # Newton step on this exponential kernel is exactly +1 per iteration, so a start
+    # 30 nats low used the whole fixed unroll (#965).
+    u0 = lyidx .- η0idx
+    umax = maximum(u0)
+    m = umax + log(sum(exp.(u0 .- umax)) / length(u0))
     r = log(one(T) / (τ + one(T)))                    # s ≈ 1/(τ + 1): small spread
     obj = u -> _gamma_va_group_elbo(u[1], u[2], η0idx, yidx, lyidx, α, τ, z, lwπ)
-    m, r, dec = _va_inner_solve((mm, rr) -> _va_ad_gH(obj, mm, rr),
-                                (mm, rr) -> obj([mm, rr]), m, r, iters, maxiters)
-    return m, exp(r), dec
+    m, r, ρ = _va_inner_solve((mm, rr) -> _va_ad_gH(obj, mm, rr),
+                              (mm, rr) -> obj([mm, rr]), m, r, iters, maxiters)
+    return m, exp(r), ρ
 end
 
 # Mean-field Gaussian VA fit for the Gamma random-intercept model. Same call shape
@@ -1022,30 +1032,52 @@ end
 # and the inner solve never sees it. The old form summed loggamma terms of size
 # φ·log φ that cancel to a value of order log φ; at a large precision that rounding
 # noise in the group ELBO stalled the inner solve (#965). log μ and log(1 − μ) are
-# taken as −softplus(∓η), so 1 − μ is not formed by subtraction. Differentiable in
-# b, η0 and φ.
+# taken as −softplus(∓η), so 1 − μ is not formed by subtraction. Up to a precision
+# of `_BETA_DIRECT_MAXPREC` the loggamma terms are small enough that they barely
+# cancel, so the cheaper direct form is used there, minus the same bracket:
+#   (φ−1)·log φ − φ + log 2π − loggamma(a) − loggamma(c) + a·log y + c·log(1−y).
+# Both forms are exact; they agree to the Stirling truncation (< 3e-14) at the
+# switch. Differentiable in b, η0 and φ.
+const _BETA_DIRECT_MAXPREC = 50.0
 function _beta_group_kernel(b, η0idx, lyidx, l1myidx, φ)
     v = zero(promote_type(typeof(b), eltype(η0idx), typeof(φ)))
+    if φ <= _BETA_DIRECT_MAXPREC
+        Kφ = (φ - 1) * log(φ) - φ + log(2π)
+        @inbounds for j in eachindex(η0idx)
+            η = η0idx[j] + b
+            a = _logistic(η) * φ; c = _logistic(-η) * φ
+            v += Kφ - loggamma(a) - loggamma(c) + a * lyidx[j] + c * l1myidx[j]
+        end
+        return v
+    end
     @inbounds for j in eachindex(η0idx)
         η = η0idx[j] + b
-        lμ = -_log1pexp(-η); l1mμ = -_log1pexp(η)      # log μ, log(1 − μ)
-        μ = exp(lμ); omμ = exp(l1mμ)
+        # log μ, log(1 − μ), μ and 1 − μ from one exp and one log1p (t = e^{−|η|},
+        # taken per branch so ForwardDiff sees one formula on each side of η = 0).
+        if η > zero(η)
+            t = exp(-η); L = log1p(t); q = inv(one(t) + t)
+            lμ = -L; l1mμ = -η - L; μ = q; omμ = t * q
+        else
+            t = exp(η); L = log1p(t); q = inv(one(t) + t)
+            lμ = η - L; l1mμ = -L; μ = t * q; omμ = q
+        end
         kl = μ * (lμ - lyidx[j]) + omμ * (l1mμ - l1myidx[j])
-        v += -φ * kl + (lμ + l1mμ) / 2 - _lgamma_stirling_rem(μ * φ) - _lgamma_stirling_rem(omμ * φ)
+        v += -φ * kl + (lμ + l1mμ) / 2 -
+             _lgamma_stirling_rem(μ * φ) - _lgamma_stirling_rem(omμ * φ)
     end
     return v
 end
 
 # The b-free part of a group's Beta log-density (see `_beta_group_kernel`).
-_beta_group_const(lyidx, l1myidx, φ) =
-    -sum(lyidx) - sum(l1myidx) + length(lyidx) * (0.5 * log(φ) - 0.5 * log(2π) + _lgamma_stirling_rem(φ))
+_beta_group_const(lyidx, l1myidx, φ) = -sum(lyidx) - sum(l1myidx) +
+    length(lyidx) * (0.5 * log(φ) - 0.5 * log(2π) + _lgamma_stirling_rem(φ))
 
 # Per-group GHQ ELBO F(m, r) = E_q[Σ ℓ] − KL, with q = N(m, s), s = e^r, the prior
 # precision τ = 1/σ_b², and the Beta precision `φ`, WITHOUT the b-free
-# `_beta_group_const` (the fitter adds it to the reported value). `z` are the Gauss–Hermite nodes,
-# `lwπ = log(w) − ½·log π` the log weights. Smooth in (m, r); used both for the
-# inner solve and (at the optimum) the reported value. `φ` is held fixed inside the
-# inner solve, but enters E_q[Σℓ] so the outer AD sees ∂ELBO/∂logσ.
+# `_beta_group_const` (the fitter adds it to the reported value). `z` are the
+# Gauss–Hermite nodes, `lwπ = log(w) − ½·log π` the log weights. Smooth in (m, r);
+# used both for the inner solve and (at the optimum) the reported value. `φ` is held
+# fixed inside the inner solve, but enters E_q[Σℓ] so the outer AD sees ∂ELBO/∂logσ.
 function _beta_va_group_elbo(m, r, η0idx, lyidx, l1myidx, φ, τ, z, lwπ)
     s = exp(r)
     sd = sqrt(2 * s)                                   # √(2s): b = m + √(2s)·z_k
@@ -1064,8 +1096,8 @@ end
 # from ForwardDiff of the group-ELBO closure (nodes and φ are constants ⇒ smooth).
 # Iterates carry the working eltype, so the outer ForwardDiff differentiates
 # through the converged (m*, s*). Returns (m, s, ρ), ρ the inner stationarity
-# measure at the returned point (`_va_inner_bound`, #965). `z`, `lwπ` are the GH nodes and
-# log w − ½ log π arrays.
+# measure at the returned point (`_va_inner_bound`, #965). `z`, `lwπ` are the GH
+# nodes and log w − ½ log π arrays.
 function _beta_va_inner(η0idx, lyidx, l1myidx, φ::T, τ::T, ȳ, z, lwπ; iters::Int = 30,
                         maxiters::Int = _VA_INNER_MAXITERS) where {T}
     p̄ = clamp(T(ȳ), T(1e-3), one(T) - T(1e-3))
@@ -1073,9 +1105,9 @@ function _beta_va_inner(η0idx, lyidx, l1myidx, φ::T, τ::T, ȳ, z, lwπ; iters
     m = log(p̄ / (one(T) - p̄)) - sum(η0idx) / length(η0idx)
     r = log(one(T) / (τ + one(T)))                    # s ≈ 1/(τ + 1): small spread
     obj = u -> _beta_va_group_elbo(u[1], u[2], η0idx, lyidx, l1myidx, φ, τ, z, lwπ)
-    m, r, dec = _va_inner_solve((mm, rr) -> _va_ad_gH(obj, mm, rr),
-                                (mm, rr) -> obj([mm, rr]), m, r, iters, maxiters)
-    return m, exp(r), dec
+    m, r, ρ = _va_inner_solve((mm, rr) -> _va_ad_gH(obj, mm, rr),
+                              (mm, rr) -> obj([mm, rr]), m, r, iters, maxiters)
+    return m, exp(r), ρ
 end
 
 # Mean-field Gaussian VA fit for the Beta random-intercept model. Same call shape
