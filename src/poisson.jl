@@ -379,6 +379,13 @@ function _fit_poisson_ranef_aghq(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol
     θ0[pμ+1] = log(0.5)
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res); conv = drm_optim_converged(res)
+    # A penalised objective at the optimum means some group posterior could not be
+    # evaluated there (#1063): fail cleanly rather than report a meaningless fit.
+    nll̂ = nll(θ̂)
+    (isfinite(nll̂) && nll̂ < -_AGHQ_PENALTY_LOGINT) || error(
+        "marginal = :AGHQ could not evaluate the Poisson (1 | $grp) group integrals at the optimum " *
+        "(non-finite or non-log-concave group posterior; #1063). " *
+        "Use the default marginal = :LA or marginal = :Laplace for this model.")
     blocks = [:mu => 1:pμ, :resd => (pμ+1):(pμ+1)]
     names = [:mu => nmμ, :resd => [String(grp)]]
     scales = Dict{Symbol,Vector{Float64}}()
