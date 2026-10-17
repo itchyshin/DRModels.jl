@@ -274,6 +274,17 @@ function _phy_branch_length(value, label::AbstractString)
     return length
 end
 
+# Assembled lengths, after `_phy_branch_length` has accepted each edge. Kept
+# in this file so a standalone `include("sparse_phy.jl")` (the experimental
+# location-only loader) does not depend on `finite_inputs.jl`.
+function _phy_require_finite_lengths(branch_lengths)
+    for (i, v) in pairs(branch_lengths)
+        isfinite(v) || throw(ArgumentError(
+            "tree branch length contains a non-finite value ($v) at edge $i."))
+    end
+    return nothing
+end
+
 function _phy_validate_leaf_names(names::AbstractVector{<:AbstractString}, p::Int)
     length(names) == p || throw(ArgumentError(
         "leaf_names must contain exactly $p names"))
@@ -438,6 +449,7 @@ function augmented_phy(newick::AbstractString)
     Q, branch_lengths = _phy_topology_precision(edges, n_total)
     length(branch_lengths) == n_total - 1 ||
         throw(ArgumentError("expected $(n_total - 1) edges, got $(length(branch_lengths))"))
+    _phy_require_finite_lengths(branch_lengths)
 
     leaf_idx_new = collect(1:p)           # by construction
     leaf_names_new = leaf_names           # already in encounter order
@@ -525,6 +537,7 @@ function make_phy(edges::AbstractVector, n_leaves::Integer;
     Q, branch_lengths = _phy_topology_precision(normalized, n_total)
     length(normalized) == n_total - 1 || throw(ArgumentError(
         "phylogenetic tree must have $(n_total - 1) edges, got $(length(normalized))"))
+    _phy_require_finite_lengths(branch_lengths)
     return AugmentedPhy{Float64}(Int(n_leaves), n_total, Q, collect(1:n_leaves), names,
                                  branch_lengths, root)
 end

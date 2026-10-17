@@ -422,7 +422,7 @@ function _fit_structured_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, K
     n ≤ 5000 || throw(ArgumentError("drm: this forced dense `sd_phylo` route assembles a $(n)×$(n) " *
         "marginal covariance and is limited to 5000 rows. Use `sparse = true` or " *
         "`algorithm = :sparse_lbfgs` for the existing O(p) whole-tree engine."))
-    Ksym = Symmetric(Matrix{Float64}(K))
+    Ksym = Symmetric(_finite_user_matrix(K, "K"))
 
     function nll_ml(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]; α = θ[pμ+pσ+1:pμ+pσ+psd]
