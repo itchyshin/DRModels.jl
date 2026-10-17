@@ -1742,7 +1742,8 @@ end
 Population-level prediction on `newdata` (a NamedTuple / column table), random /
 structured effects integrated out. `type = :response` (default) returns the
 response-scale mean — the family inverse link applied to `Xβ̂` (`exp` for
-Poisson/Gamma, `logistic` for Beta/Binomial, identity for Gaussian); `type = :link`
+Poisson/Gamma, `logistic` for Beta/Binomial/ZeroOneBeta, identity for Gaussian);
+`type = :link`
 returns `Xβ̂`. In-sample, `predict(fit, data) ≈ fitted(fit)`. Univariate returns a
 vector; bivariate returns `Dict(:mu1 => …, :mu2 => …)`.
 
@@ -1861,13 +1862,15 @@ function _predict_offset(fit::DrmFit, rhs, nd, p::Symbol)
 end
 
 # Inverse mean-link per family: maps the linear predictor Xβ to the response
-# scale (matching `fitted`). Identity for Gaussian/Student; exp for log-link
-# families; logistic for logit-link families; linear predictor otherwise.
+# scale (matching `fitted` except ZeroOneBeta, whose fitted value is the
+# unconditional mixture mean). Identity for Gaussian/Student; exp for log-link
+# families; logistic for logit-link families including ZeroOneBeta; linear
+# predictor otherwise.
 function _mean_response(fam, η)
     if fam isa Poisson || fam isa NegBinomial2 || fam isa TruncatedNegBinomial2 || fam isa TruncatedPoisson ||
        fam isa Gamma || fam isa LogNormal || fam isa Tweedie
         return exp.(clamp.(η, -30.0, 30.0))
-    elseif fam isa Beta || fam isa Binomial || fam isa BetaBinomial
+    elseif fam isa Beta || fam isa Binomial || fam isa BetaBinomial || fam isa ZeroOneBeta
         return _logistic.(clamp.(η, -30.0, 30.0))
     else
         return η
@@ -1880,7 +1883,8 @@ end
 # reproduces the in-sample fitted parameters. Sources reused:
 #   :mu    → `_mean_response(fam, η)` (identity/exp/logistic; gaussian_core.jl)
 #   :sigma → exp.(η)                  (e.g. gaussian_core.jl `_fit_fixed_gaussian`)
-#   :nu    → exp.(η) for Student (student.jl), `_logit12.(η)` for Tweedie (tweedie.jl)
+#   :nu    → 2 .+ exp.(η) for Student (student.jl; ν>2), identity for SkewNormal
+#            (slant α), `_logit12.(η)` for Tweedie (tweedie.jl)
 #   :zi    → `_logistic.(η)`          (poisson.jl / negbinomial.jl)
 #   :hu    → `_logistic.(η)`          (poisson.jl / negbinomial.jl)
 #   :zoi   → `_logistic.(η)`          (zeroonebeta.jl)
@@ -1897,7 +1901,10 @@ function _param_response(fam, p::Symbol, η)
     elseif p === :rho12
         return RHO_GUARD .* tanh.(η)   # guarded link, matches the fit's stored ρ12
     elseif p === :nu
-        return fam isa Tweedie ? _logit12.(η) : exp.(η)
+        fam isa Tweedie && return _logit12.(η)
+        fam isa Student && return 2 .+ exp.(η)          # ν = 2 + exp(η) > 2
+        fam isa SkewNormal && return η                   # slant α, identity
+        throw(ArgumentError("predict_parameters: no inverse link known for :nu on $(typeof(fam))"))
     elseif p === :zi || p === :hu || p === :zoi || p === :coi
         return _logistic.(η)
     else
@@ -1917,7 +1924,7 @@ function _link_deriv(fam, p::Symbol, η)
         if fam isa Poisson || fam isa NegBinomial2 || fam isa TruncatedNegBinomial2 || fam isa TruncatedPoisson ||
            fam isa Gamma || fam isa LogNormal || fam isa Tweedie
             return exp.(clamp.(η, -30.0, 30.0))               # log link
-        elseif fam isa Beta || fam isa Binomial || fam isa BetaBinomial
+        elseif fam isa Beta || fam isa Binomial || fam isa BetaBinomial || fam isa ZeroOneBeta
             μ = _logistic.(clamp.(η, -30.0, 30.0))            # logit link
             return μ .* (1 .- μ)
         else
@@ -1932,8 +1939,12 @@ function _link_deriv(fam, p::Symbol, η)
         if fam isa Tweedie
             s = _logistic.(η)                                 # _logit12 = 1 + σ(η)
             return s .* (1 .- s)
+        elseif fam isa Student
+            return exp.(η)                                    # d(2+exp)/dη
+        elseif fam isa SkewNormal
+            return ones(length(η))                            # identity
         else
-            return exp.(η)                                    # log link
+            throw(ArgumentError("predict: no inverse-link derivative known for :nu on $(typeof(fam))"))
         end
     elseif p === :zi || p === :hu || p === :zoi || p === :coi
         μ = _logistic.(η)                                     # logit link
