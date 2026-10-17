@@ -54,5 +54,10 @@ is the claim; Gamma SEs at this DGP are not claimed.
 
 Verdict: **clean for the review-fix claims.** Recovery is now shown for NB2 and Gamma, not
 Tweedie (cost / `se = false`). The 1e-8 warning is unit-tested; the (3, 4) NB2 fit is not
-claimed to hit that rung. License: fixture numbers only. CI does not trigger on this stacked
-PR (workflow `pull_request` branches: `[main]` only); leave draft until a green run exists.
+claimed to hit that rung. License: fixture numbers only.
+
+Priority change (Shinichi, 2026-10-17): #1099 comes first. PR retargeted to `main` so
+`pull_request` CI can run, marked ready for review, `Closes #1088`. Isolated Gamma
+run-off (Julia 1.10.10): `recover_runoff=false` leaves log SDs 18.55 / 25.32 with
+counter 0; default `true` recovers (θσ = 1.277, log SDs 2.03 / 2.13, nll = −4466)
+with box-re-fit counter 1.
