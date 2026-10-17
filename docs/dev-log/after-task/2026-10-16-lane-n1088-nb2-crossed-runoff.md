@@ -89,15 +89,19 @@ and TMB 1.9.23 from conda-forge. The `drmTMB_commit` in each `ref.toml` is set b
   0.4–2.0 s). Measured with three other test processes sharing 4 cores, so these are upper bounds.
 - q = 4 engine (`bench/run_sparse_tmb_nd.jl`): logLik −256.5064, 116 iterations, identical on
   base `740521f4` and on this branch. The route is not touched; wall time is not claimed.
-- Regression reruns on the fix: 15 of 16 files pass (`crossed_laplace_generic` 53/53,
+- Regression reruns on the fix: all 16 files pass (`crossed_laplace_generic` 53/53,
   `crossed_se_forwarding` 21/21, `betabinomial_crossed_laplace` 12/12, `finite_hessian_nan`
   38/38, `crossed_aghq_families`, `twin_gap_761`, `numerical_guards`, `boundary_polish`,
   `binomial_clamp`, `poisson_crossed_laplace`, `crossed_cumulative`, `twin_gap_569`,
   `twin_gap_739`, `ll_sanity_fuzzer`, `lane_j4_predict_numerics`). The four group-1 files ran
   with a call counter on `_crossed_nuisance_box_refit`, which counted 0 calls: on the route's
   existing tests the re-fit never fires and the optimiser path is the base one.
-  `crossed_tweedie` (one fit takes over 36 CPU-min here, on base too) is still running at the
-  time of this commit, with the same counter.
+  `crossed_tweedie` 9/9 in 124.9 min on `84d327e` code, with `_CROSSED_NUISANCE_BOX_REFITS`
+  reading 0 at the end: the re-fit never fired inside its Brent profile over the power, and
+  its inner fits use `se = false`, so its result is the base one by construction. The four
+  route-owned files were rerun on `9df3805` (same code as `84d327e`, which adds
+  `_warn_se_mode_fallback`) and pass again. `test_1088` 62/62 and `test_j3a` 45/45 on
+  `84d327e` (Julia 1.12.6).
 
 ## 4. Open / follow-ups
 
@@ -112,9 +116,9 @@ and TMB 1.9.23 from conda-forge. The `drmTMB_commit` in each `ref.toml` is set b
   (`gamma_runoff_s7_n200`, shape 0.002) is now in `test_1088`: on base `740521f4` it ends at
   log SDs 18.55 / 25.32 with `converged = false`; with the box re-fit the counter is 1 and
   the fit is inside the box. Tweedie was not used: its crossed inner fits use `se = false`,
-  so the existing `test_crossed_tweedie` is identical to base unless the re-fit fires, and
-  one public Tweedie crossed fit is 36+ CPU-min. Beta / BetaBinomial still have no run-off
-  case.
+  so the existing `test_crossed_tweedie` is identical to base unless the re-fit fires (it
+  does not: 0 calls over the whole file, 3b), and one public Tweedie crossed fit takes over
+  36 CPU-min. Beta / BetaBinomial still have no run-off case.
 
 ## 5. Rose audit (claim vs evidence, scope, drift, license)
 
