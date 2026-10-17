@@ -202,11 +202,13 @@ function _warn_variance_boundary(fit)
     fit isa DrmFit || return fit
     get(task_local_storage(), :drm_quiet_boundary, false) === true && return fit
     # #952: a fit that ended on the failed-objective sentinel used to come back
-    # silently (only `loglik = -1e18` and `converged = false` said so).
+    # silently (only `loglik = -1e18` and `converged = false` said so). The
+    # `converged` field printed is `is_converged`, as `show` and `check_drm` print:
+    # the raw optimiser flag can read `true` on the sentinel plateau.
     _sentinel_loglik(fit) && @warn "drm: the fit FAILED -- the optimiser ended on the " *
         "failed-objective sentinel (logLik = $(fit.loglik)), so the estimates are not an " *
         "optimum (often still the start values). Try rescaling the response or the tree " *
-        "(see `phylo_tree_height`), or a simpler model." converged = fit.converged
+        "(see `phylo_tree_height`), or a simpler model." converged = is_converged(fit)
     _is_temporal_fit(fit) && return _warn_temporal_boundary(fit)   # temporal(): its own rules
     vb = try
         _variance_boundary(fit)

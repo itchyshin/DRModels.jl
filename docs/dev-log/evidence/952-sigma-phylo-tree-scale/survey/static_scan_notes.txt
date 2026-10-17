@@ -1,0 +1,11 @@
+Static survey of /opt/fix/src (2b3e8f3) for #952-style tree-height dependence. No Julia/R run.
+Only gaussian_locscale_phylo.jl + boundary_diagnostics.jl differ base->fix, so every sibling below is byte-identical in base and fix.
+
+PHYLO ON A SCALE AXIS, RAW Q, ABSOLUTE STARTS, NOT RESCALED:
+ - NB2/Gamma coupled (1|p|phylo(sp)) on mu+sigma: negbinomial.jl:100-108, gamma.jl:64-71 -> locscale_frontend.jl:180/161 -> locscale_fit.jl:339 (_locscale_phylo_setup -> sparse_laplace_glmm.jl:250-259 raw Q) -> locscale_fit.jl:138 _fit_locscale, λ0=[log .3,0,log .3] (l.140), 1e18 sentinel (l.33,173), NM fallback l.219. Profile boundary locscale_profile.jl:41 (-8.0).
+ - Bivariate Gaussian q=4 phylo (mu1,mu2,sigma1,sigma2): gaussian_bivariate.jl:182 -> :1170 _fit_bivariate_q4_phylo; Λ0 abs at :1208-1213 (var .30 mu, .08 sigma); make_problem sparse_em_fit.jl:18-21 raw Q_topology; fit_q4_sparse_tmb.jl:494 / reml_q4.jl:764. No height warning. Biv LogNormal delegates (bivariate_lognormal.jl:84 -> drm(Gaussian)).
+FIXED: Gaussian σ-phylo (separate / coupled / sigma-only, ML/REML/penalty): gaussian_core.jl:727-817 -> gaussian_locscale_phylo.jl:1417 (rescale 1331, unscale 1360, fit 1429).
+MEAN-ONLY, RAW Q, ABSOLUTE START/CLAMP (low): sparse_laplace_glmm.jl start log .4 (598,875,1068,1221), clamp [-8,3] (425,727,939,1114), polish floor log 1e-6 (182); cumulative.jl 591/431; Gaussian sparse_lbfgs location_only.jl:3421 data-scaled starts; EM 3360; q2 biv gaussian_bivariate.jl:736, Λ0 .25 at 803/814; meta_V gaussian_core.jl:1029-1041.
+NORMALISED: _phylo_correlation (gaussian_structured.jl:52), _phylo_aug_comp (:736), sd_phylo LSS sparse inv_sd (gaussian_sparse_lss.jl:13-27,333), temporal (temporal.jl:481-498), phylo_interaction.jl:27-31, phylo slope gaussian_core.jl:891.
+REFUSED: Student structured (student.jl:68); sigma ~ phylo for non-Gaussian (gamma.jl:83 etc.); LogNormal/SkewNormal/Tweedie sigma RE; mixed family; joint-missing tree; temporal+sigma phylo (temporal.jl:985).
+UNREACHABLE: _fit_corr_locscale (locscale_corr.jl:101) and _locscale_structured_q (locscale_fit.jl:364) have no callers; src/experimental not included.
