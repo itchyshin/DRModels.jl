@@ -67,6 +67,7 @@ function lrtest(reduced::DrmFit, full::DrmFit)
     _sentinel_compare_guard(reduced, full, "lrtest")
     _marginal_compare_guard(reduced, full, "lrtest")
     _map_compare_guard(reduced, full, "lrtest")
+    _nobs_compare_guard(reduced, full, "lrtest")
     Δdof = dof(full) - dof(reduced)
     Δdof > 0 || throw(ArgumentError(
         "lrtest: `full` must have more parameters than `reduced` " *
@@ -211,6 +212,18 @@ end
 # the data. drmTMB flags the same hazard as a note from `check_penalized_fit()`;
 # because a silent wrong p-value is worse than a refusal, DRModels.jl errors here and
 # surfaces the same information through `check_drm(fit).penalized_map`.
+# `update` of a missing-response or imputed fit can refit a different set of
+# rows than the seed. The two log-likelihoods are then not a nested comparison
+# (#1002). Refuse that pair rather than returning a statistic on mixed samples.
+function _nobs_compare_guard(a::DrmFit, b::DrmFit, verb::AbstractString)
+    nobs(a) == nobs(b) && return nothing
+    throw(ArgumentError(
+        "$verb: the two fits were estimated on different samples " *
+        "(nobs = $(nobs(a)) vs $(nobs(b))). A likelihood-ratio comparison " *
+        "requires the same observations, which a missing-response or imputed " *
+        "`update` does not guarantee. Refit both on the same rows."))
+end
+
 function _map_compare_guard(a::DrmFit, b::DrmFit, verb::AbstractString)
     (a.estim_method === :MAP || b.estim_method === :MAP) || return nothing
     throw(ArgumentError(
@@ -327,23 +340,77 @@ weights(fit) == ones(nobs(fit))   # all-ones prior weights
 weights(fit::DrmFit) = ones(nobs(fit))
 
 """
-    update(fit::DrmFit, formula; data, kwargs...) -> DrmFit
+    update(fit::DrmFit, formula, args...; data, kwargs...) -> DrmFit
 
-Refit `fit`'s model with a new `formula` (a [`bf`](@ref) bundle), reusing the
-**fitted family** — the convenience refit verb, mirroring R's `update`. Equivalent
-to `drm(formula, family(fit); data = data, kwargs...)`.
+Refit `fit` with a new `formula` (a [`bf`](@ref) bundle), reusing the fitted
+family and every estimation option the fit stores:
 
-`data` must be supplied: a `DrmFit` does **not** retain its data, so `update`
-cannot reuse the original observations. Any extra keyword arguments (`K`, `A`,
-`tree`, `coords`, `g_tol`, …) are forwarded to [`drm`](@ref).
+- `method` — `:REML` when `fit.estim_method === :REML` (the default `:ML` is
+  `drm`'s own default and is not repeated);
+- `marginal` — when it is not the default `:LA`;
+- `penalty` — the stored [`drm_phylo_penalty`](@ref) specification of a `:MAP` fit.
+
+Explicit keywords override those stored options (`update(fit, formula; data,
+method = :ML)` refits a REML seed by maximum likelihood). Changing `method`
+on a penalized MAP fit drops the stored penalty unless `penalty` is passed
+again; otherwise `method = :ML` would still be a MAP refit. `family` is not a
+refit keyword: the fitted family is kept, and passing one is an error. An
+unnamed extra positional argument is an error: a keyword-only refit would
+otherwise drop it and silently ignore the value.
+
+`data` must be supplied. A `DrmFit` does not retain its observations, nor the
+options that were only arguments to the original `drm` call: `K`, `A`, `tree`,
+`coords`, `algorithm`, `g_tol`, `profile_ci`, `phylo_coupled`, `sparse`,
+`impute`, and `missing`. Pass those again as keywords when the refit needs them.
 
 # Example
 ```julia
 full    = drm(bf(@formula(y ~ 1 + x), @formula(sigma ~ 1 + x)), Gaussian(); data)
-# Drop x everywhere, keeping the same Gaussian family:
+# Drop x everywhere, keeping the same Gaussian family and the seed estimator:
 reduced = update(full, bf(@formula(y ~ 1), @formula(sigma ~ 1)); data = data)
 length(coef(reduced)) < length(coef(full))   # fewer parameters
 ```
 """
-update(fit::DrmFit, formula; data, kwargs...) =
-    drm(formula, fit.family; data = data, kwargs...)
+function update(fit::DrmFit, formula, args...; data, kwargs...)
+    isempty(args) || throw(ArgumentError(
+        "update requires named arguments. Pass values as `data = ...`, " *
+        "`method = ...`, or another named argument; an unnamed extra is dropped " *
+        "by a keyword-only refit and would silently refit without it " *
+        "(got $(length(args)) unnamed)."))
+    if haskey(kwargs, :family)
+        throw(ArgumentError(
+            "update keeps the fitted family. `family` is not a refit keyword; " *
+            "call `drm(formula, family; data = ...)` to fit a different family " *
+            "(got family = $(repr(kwargs[:family])))."))
+    end
+    stored = _update_stored_options(fit)
+    # A caller who changes the estimator does not want the old MAP penalty.
+    # Passing `penalty` explicitly still overrides that drop.
+    caller_method = get(kwargs, :method, nothing)
+    if caller_method !== nothing && caller_method != fit.estim_method &&
+            haskey(stored, :penalty) && !haskey(kwargs, :penalty)
+        stored = Base.structdiff(stored, NamedTuple{(:penalty,)})
+    end
+    merged = merge(stored, NamedTuple(kwargs))
+    return drm(formula, fit.family; data = data, merged...)
+end
+
+# Estimation options `DrmFit` actually stores. `:ML` and `:LA` are `drm`
+# defaults, so repeating them would be a no-op; a `:MAP` fit is repeated by
+# its stored penalty, not by `method = :MAP` (the fitter rejects that symbol).
+function _update_stored_options(fit::DrmFit)
+    kw = Pair{Symbol,Any}[]
+    if fit.estim_method === :REML
+        push!(kw, :method => :REML)
+    elseif fit.estim_method === :MAP
+        fit.penalty === nothing && throw(ArgumentError(
+            "update: this fit is marked :MAP but does not store a penalty " *
+            "specification, so the refit cannot repeat the penalized estimator."))
+    elseif fit.estim_method !== :ML
+        throw(ArgumentError(
+            "update: unsupported estim_method :$(fit.estim_method)"))
+    end
+    fit.penalty === nothing || push!(kw, :penalty => fit.penalty)
+    fit.marginal === :LA || push!(kw, :marginal => fit.marginal)
+    return NamedTuple(kw)
+end
