@@ -9,7 +9,10 @@
 - `carni70.nwk` - `carni70$tre`, the ultrametric Newick tree as shipped (height 53.8).
 
 Prepared with the code in DRModels.jl issue #952 (`prep.R`), ade4 1.7-24 and
-ape 5.8-1; the values are identical to the CSV block posted in that issue. Only
+ape 5.8-1, by `docs/dev-log/evidence/952-sigma-phylo-tree-scale/core/drmtmb_native.R`.
+The values agree with the CSV block posted in that issue to 1e-15: 69 of 70 rows are
+textually identical, and one `lrange` value differs in its last printed digit
+(Linux R 4.5.3 here, macOS R 4.6.0 there). The Newick tree is byte-identical. Only
 the dataset is vendored; no ade4 code is copied. ade4's DESCRIPTION license is
 `GPL (>= 2)`, and the dataset ships inside the package under it; it is also
 published in the paper above. (Issue #952 cites Diniz-Filho, de Sant'Ana & Bini
@@ -23,7 +26,7 @@ the raw tree and on the tree with every branch divided by 53.8:
 | Model | logLik | df |
 |---|---|---|
 | `lsize ~ lrange + phylo(1 \| species)`, `sigma ~ 1 + phylo(1 \| species)` (native: estimates the mu-sigma phylo correlation) | -111.84106326 | 6 |
-| the same objective (`f$obj$fn`) with `eta_cor_phylo` held at 0, minimised over the other 5 parameters with `nlminb` (DRModels.jl's default separate block) | -111.94867803 | 5 |
+| the same objective (`f$obj$fn`) with `eta_cor_phylo` held at 0, minimised over the other 5 parameters with `nlminb` from two starts (DRModels.jl's default separate block; `nlminb` code 1 at `rel.tol = 1e-14`, max\|grad\| 1.2e-5; script `docs/dev-log/evidence/952-sigma-phylo-tree-scale/core/drmtmb_cor0.R`) | -111.94867803 | 5 |
 
 Native fit parameters (`f$opt$par`): `beta_mu` = 1.39559462183, 0.42067158068;
 `beta_sigma` = -0.01110875406; `log_sd_phylo` = -0.68444385693 (mu),

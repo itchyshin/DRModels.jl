@@ -1315,12 +1315,15 @@ end
 # (log SD = log 0.3), the coupled bound's SD floor, the REML boundary rules and
 # the Nelder-Mead simplex are all absolute log-SD values. On ade4::carni70
 # (height 53.8) the start log 0.3 is an SD of 0.3·√53.8 = 2.2 on the unit-height
-# scale; there the inner mode runs into the σ → 0 collapse (σ-latents near -49,
-# min Hessian eigenvalue -1e11), the objective is the 1e18 sentinel at the start,
-# and the separate fit never left it (logLik -1e18). The coupled fit ended 7.7
-# nats below drmTMB. The fix: fit on the unit-tip-variance tree, where those
-# constants were calibrated and where drmTMB's `vcv(tree, corr = TRUE)` puts an
-# ultrametric tree, and map the estimates back to the raw scale.
+# scale; there the inner mode runs into the σ → 0 collapse (σ-latents between -49
+# and -14, min Hessian eigenvalue -1e11), the objective is the 1e18 sentinel at the
+# start, and the separate fit never left it (logLik -1e18). The coupled fit ended
+# 7.7 nats below drmTMB. The fix: fit on the unit-tip-variance tree (the scale most
+# of this route's fixtures use, and where drmTMB's `vcv(tree, corr = TRUE)` puts an
+# ultrametric tree), and map the estimates back to the raw scale. On a tree whose
+# height is not 1 those constants therefore act on unit-height SDs, so near a
+# variance boundary a convergence flag or a NaN vcov can differ from earlier
+# versions while the estimates do not.
 # ---------------------------------------------------------------------------
 
 # Maximum root-to-node path length of the tree behind `Q`, i.e. the tree height

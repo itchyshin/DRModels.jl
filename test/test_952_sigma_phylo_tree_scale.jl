@@ -164,9 +164,11 @@ _fit952(tree; kw...) = with_logger(NullLogger()) do
     drm(_F952, Gaussian(); data = _data952(), tree = tree, kw...)
 end
 
-# The issue's call on the raw tree, in the default suite so that CI guards the fit
-# on the rescaled tree: about 4 s after the fix. (On the unfixed code it took 158 s
-# and returned the -1e18 sentinel, measured 2026-10-16.)
+# The issue's call on the raw tree, in the default suite so that CI catches a return
+# of the -1e18 sentinel: a 4 s fit once compiled (the cell took 56.5 s in a fresh
+# local shard, compilation included). On the unfixed code the fit took 158 s and
+# returned the sentinel (measured 2026-10-16). Raw-vs-unit invariance and the
+# drmTMB comparisons other than this one are in the DRM_SLOW_TESTS cells below.
 @testset "#952: the issue's default fit on the raw tree" begin
     fit = _fit952(_NWK952)
     @test loglik(fit) > -1e15                                   # never the sentinel
