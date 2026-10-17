@@ -159,6 +159,195 @@ function _finite_hessian(f, x; h::Real = 1e-4)
     return H
 end
 
+# Wald Hessian by central differences of an EXACT gradient (issue #1073).
+#
+# `_finite_hessian` second-differences the objective VALUE, whose error is
+# ~ eps_f / h^2. On a Laplace objective eps_f is the noise of the inner mode
+# solve (warm-started, solved to a tolerance), and at the old n-scaled step the
+# noise swamps the curvature in the between-cluster directions (grouseticks NB2
+# crossed: intercept/YEAR SEs 4-10% too small). Differencing the gradient gives
+# error ~ eps_g / h, and the step is cbrt(eps) * max(1, |x_i|), independent of n.
+#
+# The gradient must be the exact implicit derivative through the inner mode, and
+# the caller should evaluate it with the inner solve tightened and cold-started
+# (`_SE_MODE_TOL`), so a stencil point is not contaminated by a warm start.
+# Failure convention matches `_finite_hessian`: an all-NaN matrix plus a warning,
+# never a made-up SE. `require_pd` (default) also returns NaN when the
+# symmetrised Hessian is not positive definite.
+const _SE_MODE_TOL = 1e-12
+# If the cold solve cannot reach 1e-12 (rounding floor of the step norm), retry cold at looser
+# tolerances before giving up: a NaN vcov is worse than a 1e-8-converged mode, whose gradient is
+# still accurate to ~1e-8 -- far below the old stencil noise.
+const _SE_MODE_TOLS = (1e-12, 1e-10, 1e-8)
+const _SE_MODE_MAXITER = 100
+# Loosest inner-mode tolerance a `_se_grad` Hessian build actually used (NaN until a
+# stencil point succeeds). Tests read it; `_warn_se_mode_fallback` warns at 1e-8.
+const _SE_MODE_TOL_USED = Ref(NaN)
+# Attempts of `_crossed_nuisance_box_refit`. Tests reset this and assert it is
+# nonzero on a known run-off, so a family whose inner fits use `se = false`
+# cannot pass by construction (the Tweedie crossed route).
+const _CROSSED_NUISANCE_BOX_REFITS = Ref(0)
+
+function _finite_hessian_from_gradient(grad!, x; require_pd::Bool = true,
+                                       context::AbstractString = "Laplace")
+    n = length(x)
+    fail(msg) = (@warn("$context vcov: $msg; reporting a NaN vcov (standard errors unavailable)");
+                 fill(NaN, n, n))
+    H = zeros(n, n)
+    gp = zeros(n); gm = zeros(n)
+    for i in 1:n
+        hi = cbrt(eps(Float64)) * max(1.0, abs(x[i]))
+        e = zeros(n); e[i] = hi
+        grad!(gp, x .+ e); grad!(gm, x .- e)
+        (all(isfinite, gp) && all(isfinite, gm)) ||
+            return fail("gradient is non-finite at a Hessian stencil point")
+        H[:, i] .= (gp .- gm) ./ (2hi)
+    end
+    H = (H .+ H') ./ 2
+    all(isfinite, H) || return fail("gradient-difference Hessian is non-finite")
+    if require_pd && !isposdef(Symmetric(H))
+        return fail("gradient-difference Hessian is not positive definite at the optimum")
+    end
+    return H
+end
+
+# True when a log-SD / log-dispersion coordinate sits at (or within a stencil of)
+# its clamp, where the objective is flat in that coordinate but the analytic
+# gradient is not; the gradient-difference Hessian is then not defined and the
+# caller keeps the value-based path with its clamp handling.
+_clamp_active(θ, ks; lo::Real = -8.0, hi::Real = 3.0, tol::Real = 1e-3) =
+    any(k -> θ[k] <= lo + tol || θ[k] >= hi - tol, ks)
+
+# Which Hessian a route's SE build uses (#1073). `sd` are log-SD coordinates, clamped to
+# [-8, 3] by the objective. `disp` are log-dispersion coordinates, whose REAL bound is the
+# family's: NB2 / Gamma / Beta `aux_from` clamp `-2 log sigma` to [-8, 8], i.e. log sigma to
+# [-4, 4] (`_dispersion_clamp`), narrower than the [-8, 8] box `_crossed_mean_laplace_nuisance_fg`
+# applies first. A coordinate at its clamp makes the objective flat there while the gradient
+# is not, so the gradient-difference Hessian is undefined and the route falls back to the
+# value-based (known-noisy) `_finite_hessian`.
+function _se_hessian_path(θ̂; sd = (), disp = (), disp_bound::Real = 4.0)
+    (_clamp_active(θ̂, sd; lo = -8.0, hi = 3.0) ||
+     _clamp_active(θ̂, disp; lo = -disp_bound, hi = disp_bound)) ? :value : :gradient
+end
+
+# Real bound of log sigma for each family routed through `_crossed_mean_laplace_nuisance_fg`,
+# listed explicitly: a new family has no entry and errors here rather than inheriting a bound
+# it was never checked against. Tweedie uses logsigma raw (only the fg's own [-8, 8] clamp
+# applies); the others build their aux through `clamp(-2 * logsigma, -8, 8)`, i.e. [-4, 4].
+_dispersion_clamp(::Val{:nb2_fixed}) = 4.0
+_dispersion_clamp(::Val{:gamma_fixed}) = 4.0
+_dispersion_clamp(::Val{:beta_fixed}) = 4.0
+_dispersion_clamp(::Val{:betabinomial_fixed}) = 4.0
+_dispersion_clamp(::Val{:tweedie_fixed}) = 8.0
+_dispersion_clamp(k::Val) = throw(ArgumentError(
+    "_dispersion_clamp: no log-dispersion bound registered for family kind $(typeof(k).parameters[1]); " *
+    "add one before routing it through _crossed_mean_laplace_nuisance_fg"))
+
+# The fallback must not be silent: the reported SEs of such a fit come from the noisy stencil.
+_warn_value_hessian(context::AbstractString) =
+    @warn("$context vcov: a variance or dispersion coordinate sits at its clamp, so the " *
+          "gradient-difference Hessian is not defined; falling back to the value-based " *
+          "finite-difference Hessian. Its standard errors are known to be noisy (inner-solve " *
+          "noise / h^2); treat them with caution.")
+
+# Adapt a route's tight, cold-started `fg(θ, tol) -> (val, grad, b, ok)` into the
+# in-place `grad!(Gout, θ)` that `_finite_hessian_from_gradient` differences.
+# A failed inner solve becomes NaN, which the helper turns into an all-NaN vcov.
+# Single definition of the tolerance ladder: callers pass `tol` into `fgtight`.
+# #1079 currently has a one-shot `_se_grad(fgtight(θ))` twin; whichever of
+# #1079 / #1099 lands second deletes the duplicate and keeps this ladder.
+_se_grad(fgtight) = function (Gout, θ)
+    for tol in _SE_MODE_TOLS
+        _, g, _, ok = fgtight(θ, tol)
+        if ok
+            Gout .= g
+            prev = _SE_MODE_TOL_USED[]
+            _SE_MODE_TOL_USED[] = isnan(prev) ? Float64(tol) : max(prev, Float64(tol))
+            return Gout
+        end
+    end
+    Gout .= NaN
+    return Gout
+end
+
+# The 1e-8 rung of `_SE_MODE_TOLS` is a last resort: a NaN vcov is worse, but the
+# inner solve is looser than the usual SE path. Warn once per Hessian (the
+# caller reads `_SE_MODE_TOL_USED`). Silent inside bootstrap / profile refits.
+function _warn_se_mode_fallback(context::AbstractString, tol::Real)
+    (isfinite(tol) && tol == last(_SE_MODE_TOLS)) || return nothing
+    get(task_local_storage(), :drm_quiet_boundary, false) === true && return nothing
+    @warn("$context vcov: the SE inner mode solve could not reach $(first(_SE_MODE_TOLS)) and fell back to $tol. Standard errors still use the exact gradient, but the inner solve is looser than the usual SE path.")
+    return nothing
+end
+
+# Run-off guard for `_fit_crossed_mean_laplace_nuisance` (issue #1088).
+#
+# θ = [β; log-dispersion; log SD₁; log SD₂]. Past its clamp a coordinate no longer changes
+# the objective, but the analytic gradient there is evaluated at the clamped value and is
+# NOT zero. On the #1088 NB2 sets (size ≈ 0.002) the MoM start is capped at size 0.5 and the
+# start gradient is ~3e3, so LBFGS's first, unscaled step lands at log sigma ≈ 3021 and log
+# SDs ≈ 616 / 687. The objective there (1034) is below the start's (2980), so the line search
+# accepts it; the next line search fails on the flat objective with a non-zero gradient.
+# drmTMB's optimum (426.1) is reached inside the box (its log SDs, -64 and -8.3, sit on the
+# flat lower side, where the clamped objective equals its value at -8).
+#
+# Only the UPPER side counts as a run-off: there the family degenerates (NB2 size, Gamma
+# shape, Beta precision -> 0, Tweedie dispersion -> inf, or a random-effect SD > e^3 on the
+# link scale). With at least one non-degenerate observation (NB2 / Tweedie y > 0, Gamma / Beta
+# any y, BetaBinomial 0 < y < n) the likelihood falls to -inf there, so an end point past the
+# upper clamp is a run-off. On degenerate data (all-or-none BetaBinomial, all-zero Tweedie)
+# the supremum itself lies past the clamp; the reported value is then the clamp, not an
+# estimate, and is flagged the same way. The lower side (Poisson / no-dispersion limit,
+# variance collapse) is a legitimate boundary, handled as before (#422, #959). Returns the
+# descriptions of the coordinates past an upper clamp, or `nothing`.
+function _nuisance_runoff(θ, pμ::Int, disp_bound::Real; sd_hi::Real = 3.0, tol::Real = 1e-6)
+    all(isfinite, θ) || return ["a non-finite estimate"]
+    hits = String[]
+    θ[pμ+1] > disp_bound + tol &&
+        push!(hits, "log-dispersion (log sigma) = $(round(θ[pμ+1]; sigdigits = 5)) past its upper clamp $(disp_bound)")
+    for k in (pμ + 2):length(θ)
+        θ[k] > sd_hi + tol &&
+            push!(hits, "random-effect log SD = $(round(θ[k]; sigdigits = 5)) past its upper clamp $(sd_hi)")
+    end
+    return isempty(hits) ? nothing : hits
+end
+
+# Re-fit inside the box where the objective depends on every coordinate and the analytic
+# gradient is its derivative: log-dispersion in [-disp_bound, disp_bound], log SDs in
+# [-8, 3] (the clamps of `_crossed_mean_laplace_nuisance_fg` / `aux_from`). Bounding only the
+# upper side is not enough: the collapsed log SDs then run off downwards (to ~ -1e9 on the
+# #1088 sets) and the search misses an interior SD. Returns the Optim result, or `nothing`.
+function _crossed_nuisance_box_refit(nll, grad!, θ0, pμ::Int, disp_bound::Real, g_tol)
+    _CROSSED_NUISANCE_BOX_REFITS[] += 1
+    np = length(θ0)
+    lo = fill(-Inf, np); hi = fill(Inf, np)
+    lo[pμ+1] = -disp_bound; hi[pμ+1] = disp_bound
+    lo[(pμ + 2):np] .= -8.0; hi[(pμ + 2):np] .= 3.0
+    θs = clamp.(θ0, lo .+ 0.1, hi .- 0.1)          # Fminbox needs an interior start
+    return try
+        od = Optim.OnceDifferentiable(nll, grad!, θs)
+        Optim.optimize(od, lo, hi, θs, Optim.Fminbox(Optim.LBFGS()),
+                       Optim.Options(g_tol = g_tol, outer_iterations = 20, iterations = 250))
+    catch err
+        err isa InterruptException && rethrow()
+        nothing
+    end
+end
+
+# A fit that still ends past an upper clamp has no usable estimate there; say so (silent
+# inside bootstrap / profile refits, like the other boundary warnings).
+function _warn_nuisance_runoff(context::AbstractString, hits; refit_tried::Bool = true)
+    get(task_local_storage(), :drm_quiet_boundary, false) === true && return nothing
+    @warn "drm ($context): the fit ended past an upper clamp (" * join(hits, "; ") *
+          "). The objective is flat there, so these values are not estimates: either the " *
+          "optimiser ran off, or the data are degenerate (e.g. all-or-none BetaBinomial " *
+          "counts) and the supremum lies past the clamp. The fit is marked converged = " *
+          "false; do not use its estimates or standard errors (DRModels.jl #1088). " *
+          (refit_tried ? "A re-fit inside the clamp box did not do better. " : "") *
+          "Consider rescaling the response or a simpler random-effect structure."
+    return nothing
+end
+
 # ---------------------------------------------------------------------------
 # Boundary polish for a collapsed variance component (issue #422).
 #
@@ -2897,16 +3086,25 @@ function _fit_crossed_mean_laplace(fam, kind, aux, n::Int, Xμ, gidx, G, hidx, H
     pμ = size(Xμ, 2)
     last_b = zeros(G + Hh)
 
-    function eval_laplace(θ; grad::Bool = false)
+    function eval_laplace(θ; grad::Bool = false, tight::Bool = false)
         βμ = θ[1:pμ]
         logσ = clamp.(θ[pμ+1:pμ+2], -8.0, 3.0)
         η0 = Xμ * βμ
-        b, ch, _, ok = _crossed_mean_mode(kind, aux, η0, gidx, G, hidx, Hh, logσ; b0 = last_b)
-        if !ok
-            b, ch, _, ok = _crossed_mean_mode(kind, aux, η0, gidx, G, hidx, Hh, logσ; b0 = zeros(G + Hh))
+        if tight
+            # SE build (#1073): cold start, tightened inner solve, no warm-state
+            # carry-over, so the stencil sees the same mode solve at every point.
+            b, ch, _, ok = _crossed_mean_mode(kind, aux, η0, gidx, G, hidx, Hh, logσ;
+                                              b0 = zeros(G + Hh), tol = _SE_MODE_TOL,
+                                              maxiter = _SE_MODE_MAXITER)
+            ok || return grad ? (1e18, fill(NaN, length(θ))) : 1e18
+        else
+            b, ch, _, ok = _crossed_mean_mode(kind, aux, η0, gidx, G, hidx, Hh, logσ; b0 = last_b)
+            if !ok
+                b, ch, _, ok = _crossed_mean_mode(kind, aux, η0, gidx, G, hidx, Hh, logσ; b0 = zeros(G + Hh))
+            end
+            ok || return grad ? (1e18, zeros(length(θ))) : 1e18
+            last_b .= b
         end
-        ok || return grad ? (1e18, zeros(length(θ))) : 1e18
-        last_b .= b
 
         invg = exp(-2 * logσ[1])
         invh = exp(-2 * logσ[2])
@@ -2994,7 +3192,19 @@ function _fit_crossed_mean_laplace(fam, kind, aux, n::Int, Xμ, gidx, G, hidx, H
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
     V = if se
         hstep = _fd_hessian_step(n)
-        Hθ = _finite_hessian(nll, θ̂; h = hstep)
+        # #1073: central differences of the exact gradient with a tight, cold
+        # inner solve. When a log-SD is at its clamp the objective is flat there
+        # but the gradient is not, so that case keeps the value-based path and
+        # the flat-column handling below.
+        use_grad_hessian = _se_hessian_path(θ̂; sd = (pμ + 1):(pμ + 2)) === :gradient
+        use_grad_hessian || _warn_value_hessian("sparse-Laplace GLMM (crossed-mean)")
+        Hθ = if use_grad_hessian
+            se_grad!(Gout, θ) = (Gout .= eval_laplace(θ; grad = true, tight = true)[2])
+            _finite_hessian_from_gradient(se_grad!, θ̂;
+                context = "sparse-Laplace GLMM (crossed-mean)")
+        else
+            _finite_hessian(nll, θ̂; h = hstep)
+        end
         # log σ is clamped to [-8, 3]. Past that box the objective does not
         # depend on the coordinate, so a settled stencil is exact 0 and the
         # singular path keeps the intercept and slope. Finite-difference
@@ -3020,14 +3230,16 @@ end
 
 function _crossed_mean_laplace_nuisance_fg(kind, aux_from, n::Int, Xμ, gidx, G,
                                            hidx, Hh, θ; grad::Bool = false,
-                                           b0 = nothing)
+                                           b0 = nothing, mode_tol::Real = 1e-8,
+                                           mode_maxiter::Int = 60)
     pμ = length(θ) - 3
     βμ = θ[1:pμ]
     θσ = clamp(θ[pμ+1], -8.0, 8.0)
     logσ = clamp.(θ[pμ+2:pμ+3], -8.0, 3.0)
     aux = aux_from(θσ)
     η0 = Xμ * βμ
-    b, ch, _, ok = _crossed_mean_mode(kind, aux, η0, gidx, G, hidx, Hh, logσ; b0 = b0)
+    b, ch, _, ok = _crossed_mean_mode(kind, aux, η0, gidx, G, hidx, Hh, logσ; b0 = b0,
+                                      tol = mode_tol, maxiter = mode_maxiter)
     if !ok
         return grad ? (1e18, zeros(length(θ)), b, false) : (1e18, b, false)
     end
@@ -3100,6 +3312,7 @@ function _fit_crossed_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, gi
                                             θβ0, θσ0::Real, sigma_scale,
                                             se::Bool = false,
                                             polish_iterations::Int = 0,
+                                            recover_runoff::Bool = true,
                                             extra_scales = Dict{Symbol,Vector{Float64}}())
     pμ = size(Xμ, 2)
     last_b = zeros(G + Hh)
@@ -3162,12 +3375,52 @@ function _fit_crossed_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, gi
         res_fast
     end
     θ̂ = Optim.minimizer(res)
+    # #1088: a first pass that ran off past an upper clamp is re-fitted inside the clamp box;
+    # the re-fit is adopted only if it strictly lowers the objective. Fits that stay inside
+    # the box take exactly the path they took before.
+    disp_bound = _dispersion_clamp(kind)
+    if recover_runoff && _nuisance_runoff(θ̂, pμ, disp_bound) !== nothing
+        nll_runoff = nll(θ̂)
+        rec = _crossed_nuisance_box_refit(nll, grad!, θ0, pμ, disp_bound, g_tol)
+        if rec !== nothing
+            θrec = copy(Optim.minimizer(rec))
+            if isfinite(nll(θrec)) && nll(θrec) < nll_runoff
+                res = rec
+                θ̂ = θrec
+            end
+        end
+    end
     gfinal = zeros(length(θ̂))
     grad!(gfinal, θ̂)
     nllhat = nll(θ̂)
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
+    runoff = _nuisance_runoff(θ̂, pμ, disp_bound)
+    if runoff !== nothing
+        converged = false
+        _warn_nuisance_runoff("sparse Laplace, crossed random intercepts with an estimated dispersion",
+                              runoff; refit_tried = recover_runoff)
+    end
     V = if se
-        Hθ = _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        # #1073: central differences of the exact gradient, inner mode solve
+        # tightened and cold-started at each stencil point. A clamped coordinate
+        # (flat objective, non-flat gradient) keeps the value-based path.
+        Hθ = if _se_hessian_path(θ̂; disp = (pμ + 1,), sd = (pμ + 2):(pμ + 3),
+                                 disp_bound = _dispersion_clamp(kind)) === :value
+            _warn_value_hessian("sparse-Laplace GLMM (crossed-mean nuisance)")
+            _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        else
+            # Tolerance ladder (ported from J3e, #1073): at log-dispersion in (3, 4) the
+            # counts are heavy-tailed and the cold 1e-12 solve stalls on its rounding floor.
+            _SE_MODE_TOL_USED[] = NaN
+            se_grad! = _se_grad((θ, tol) -> _crossed_mean_laplace_nuisance_fg(
+                kind, aux_from, n, Xμ, gidx, G, hidx, Hh, θ; grad = true,
+                b0 = zeros(G + Hh), mode_tol = tol, mode_maxiter = _SE_MODE_MAXITER))
+            Hgrad = _finite_hessian_from_gradient(se_grad!, θ̂;
+                context = "sparse-Laplace GLMM (crossed-mean nuisance)")
+            _warn_se_mode_fallback("sparse-Laplace GLMM (crossed-mean nuisance)",
+                                   _SE_MODE_TOL_USED[])
+            Hgrad
+        end
         _vcov_from_fd_hessian(Hθ; context = "sparse-Laplace GLMM (crossed-mean nuisance)")
     else
         fill(NaN, length(θ̂), length(θ̂))
@@ -3428,7 +3681,8 @@ function _fit_poisson_crossed_aghq(fam, y, Xμ, comps, nmμ, g_tol; se::Bool = t
 end
 
 function _fit_nb2_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
-                                  se::Bool = false, polish_iterations::Int = 0)
+                                  se::Bool = false, polish_iterations::Int = 0,
+                                  recover_runoff::Bool = true)
     length(comps) == 2 || error("_fit_nb2_crossed_laplace requires two random-intercept components")
     (size(Xσ, 2) == 1 && all(==(1.0), @view Xσ[:, 1])) || error("drm(NegBinomial2()): crossed random intercepts `(1 | g) + (1 | h)` require `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
     yint = round.(Int, y)
@@ -3448,7 +3702,7 @@ function _fit_nb2_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
         fam, Val(:nb2_fixed), aux_from, length(y), Xμ, comps[1][2], comps[1][3],
         comps[2][2], comps[2][3], nmμ, nmσ, [comps[1][4], comps[2][4]], g_tol;
         θβ0 = _poisson_fixed_start(y, Xμ), θσ0 = θσ0, sigma_scale = exp,
-        se = se, polish_iterations = polish_iterations
+        se = se, polish_iterations = polish_iterations, recover_runoff = recover_runoff
     )
 end
 
@@ -3479,7 +3733,8 @@ function _fit_nb2_crossed_aghq(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol; se::B
 end
 
 function _fit_gamma_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
-                                    se::Bool = true, polish_iterations::Int = 5)
+                                    se::Bool = true, polish_iterations::Int = 5,
+                                    recover_runoff::Bool = true)
     length(comps) == 2 || error("_fit_gamma_crossed_laplace requires two random-intercept components")
     (size(Xσ, 2) == 1 && all(==(1.0), @view Xσ[:, 1])) || error("drm(Gamma()): crossed random intercepts `(1 | g) + (1 | h)` require `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
     yv = Float64.(y)
@@ -3497,7 +3752,7 @@ function _fit_gamma_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
         fam, Val(:gamma_fixed), aux_from, length(yv), Xμ, comps[1][2], comps[1][3],
         comps[2][2], comps[2][3], nmμ, nmσ, [comps[1][4], comps[2][4]], g_tol;
         θβ0 = θβ0, θσ0 = -0.5 * log(α0), sigma_scale = exp,
-        se = se, polish_iterations = polish_iterations
+        se = se, polish_iterations = polish_iterations, recover_runoff = recover_runoff
     )
 end
 
