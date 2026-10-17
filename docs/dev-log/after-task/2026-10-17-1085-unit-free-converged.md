@@ -57,8 +57,12 @@ CI run 38846590757 failed the `1e-5` assertion (line 21) on both Julia
 versions: the same cap veto, with platform-dependent iteration counts. Line 19
 (`exp(-9.2)`) passed on CI and failed here — the same defect, different seed.
 
-After the fix, `test/test_converged_unit_free_983.jl` and `DRM_TEST_SHARD=4/4`
-are recorded in the check-log entry.
+After the fix, on Julia 1.10.12 (OpenBLAS, one BLAS thread):
+
+- `test/test_converged_unit_free_983.jl`: 14 pass (6 + 8), including the
+  ill-conditioned-Hessian helper cases.
+- `DRM_TEST_SHARD=4/4 julia --project=test test/runtests.jl`: exit 0 in 857 s
+  (93 of 373 files; the #983 file 6+8 pass).
 
 ## 4. Rose audit
 
