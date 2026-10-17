@@ -161,8 +161,9 @@ same maximum-likelihood optimum.
 ### Fitted values and conditional effects
 
 One convention differs from drmTMB. In DRModels.jl, `fitted(fit)` (and
-`predict`) is the **population-level** mean ``X\hat\beta``, the convention for
-every structured term in this package; drmTMB's `fitted()` adds the estimated
+`predict`) is the **population-level** mean ``X\hat\beta``, as on most
+structured routes in this package (the Gaussian and LogNormal `phylo` mean
+routes are the exception; see `fitted`); drmTMB's `fitted()` adds the estimated
 site and temporal deviations. Those conditional deviations are available from
 `ranef`: `ranef(fit)[:site]` holds the temporal deviation for each row (in data
 order) and `ranef(fit)[:site_iid]` the stable intercept for each site.

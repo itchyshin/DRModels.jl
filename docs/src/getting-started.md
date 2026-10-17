@@ -152,8 +152,10 @@ The same front end also provides these next steps; the
 [capability map](model-guides/model-map.md) records their current boundaries:
 
 - **Per-parameter prediction** — `predict_parameters` (fitted μ/σ/… on new
-  data), `marginal_parameters` (population-averaged), and `prediction_grid` for
-  building a swept `newdata` grid from a reference table.
+  data), `marginal_parameters` (the stored in-sample values), and
+  `prediction_grid` for building a swept `newdata` grid from a reference table.
+  Predictions set any random effects to zero: they describe an average group,
+  not an average over groups.
 - **Auditable profile-likelihood CIs** — `profile_result` returns the full
   profile object behind `confint(fit; method = :profile)`.
 - **Post-fit accessors** — `summary`, `family`, `is_converged`, `deviance`,
@@ -162,6 +164,24 @@ The same front end also provides these next steps; the
   the mean for Poisson, NegBinomial2, Gamma, Beta, and Binomial families
   (constant `σ`), via a sparse Laplace approximation, plus crossed intercepts
   `(1 | g) + (1 | h)` for the same families.
+
+## Random effects and the default approximation
+
+A model with random effects, such as `y ~ x + (1 | g)`, has a likelihood that
+integrates over them, and that integral has to be approximated. For an ordinary
+random intercept on the mean of most non-Gaussian families, DRModels.jl's
+default (`marginal = :LA`) uses adaptive Gauss–Hermite quadrature with 5 nodes
+per group, whereas drmTMB uses the Laplace approximation. The two packages
+therefore report different log-likelihoods for the same model, by about 0.001
+to 0.24 units on the count, Beta, Gamma and Student datasets compared so far.
+To reproduce drmTMB's numbers for Poisson, Binomial or Student, or for
+NegBinomial2, Gamma or Beta with `sigma ~ 1`, pass `marginal = :Laplace`. That
+option is for parity, not a better default: the adaptive quadrature is usually
+the more accurate integral. Compare `loglik`,
+`lrtest`, `aic` and `bic` only between fits that use the same approximation.
+The [drmTMB parity page](drmtmb-parity.md#Default-marginal-approximation)
+lists the defaults for the main random-effect routes and the models that
+accept `:Laplace`.
 
 ## Where to go next
 

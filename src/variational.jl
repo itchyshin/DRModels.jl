@@ -8,26 +8,29 @@
     MarginalMethod
 
 How a model's random-effect integral is approximated. Subtypes: `Laplace`
-(mode + curvature; the default, what drmTMB/TMB use), `Variational`
+(mode + curvature, what drmTMB/TMB use; the type the default `:LA` resolves to,
+though each route keeps its own default integrator — see `Laplace`), `Variational`
 (maximize an ELBO over a Gaussian q; opt-in, steadier on dispersion/shape — #136),
-and `AGHQ` (1-D Liu–Pierce adaptive Gauss–Hermite; opt-in Poisson `(1 | g)` only — #448).
+and `AGHQ` (adaptive Gauss–Hermite; opt-in on Poisson `(1 | g)`, two crossed
+intercepts and Gaussian `sigma ~ 1 + (1 | g)` — #448, #761).
 """
 abstract type MarginalMethod end
 
 """    Laplace <: MarginalMethod
 
-Laplace marginal: Gaussian approximation at the posterior mode. The default.
-On an ordinary `(1 | g)` (Poisson, Binomial, NegBinomial2, Gamma, Beta) the
-public `:LA` path is **non-adaptive GHQ-32**, not 1-point Laplace and not AGHQ.
+Laplace marginal: Gaussian approximation at the posterior mode (adaptive
+Gauss–Hermite quadrature with a single node). The type `:LA` resolves to.
 
 Naming convention: `marginal = :LA` selects the *default integrator of the
-route*, which is Laplace on most random-effect routes but non-adaptive GHQ-32
-on the single random-intercept routes (an ordinary `(1 | g)`, Gaussian
-`sigma ~ 1 + (1 | g)`) and exact wherever the Gaussian marginal is closed-form.
+route*: per-group adaptive Gauss–Hermite quadrature on an ordinary `(1 | g)` on a
+non-Gaussian mean (5 nodes; 21 for Tweedie, 41 for CumulativeLogit) and on
+`(1 + x | g)` (5 per axis); a fixed 32-node grid on Gaussian `sigma ~ 1 + (1 | g)`
+and ZeroOneBeta `(1 | g)`; the Laplace approximation on crossed and structured
+routes; and exact wherever the Gaussian marginal is closed-form.
 `marginal = :Laplace` *forces* the Laplace approximation that drmTMB (TMB)
 computes; it is implemented for an ordinary `(1 | g)` on Poisson, Binomial,
-NegBinomial2, Gamma and Beta (`ordinary_laplace.jl`) and for a Gaussian random
-intercept on `sigma`. The fit is tagged `marginal = :Laplace`."""
+NegBinomial2, Gamma, Beta (`ordinary_laplace.jl`) and Student, and for a Gaussian
+random intercept on `sigma`. The fit is tagged `marginal = :Laplace`."""
 struct Laplace <: MarginalMethod end
 
 """    Variational <: MarginalMethod
@@ -41,10 +44,12 @@ struct Variational <: MarginalMethod end
 
 """    AGHQ <: MarginalMethod
 
-1-D Liu–Pierce adaptive Gauss–Hermite quadrature (#448). Opt-in via
-`marginal = :AGHQ` on Poisson `(1 | g)` only (`nAGQ=5` default). This is
-plumbing — k=1 ≡ 1-point Laplace; k≈5 nll agrees with GHQ-32. Not a
-recovery headline, not a capability-chip flip, not tensor AGHQ on phylo
+Adaptive Gauss–Hermite quadrature (Liu–Pierce; #448). Opt-in via
+`marginal = :AGHQ` on Poisson `(1 | g)` (`nAGQ = 5` default), on two crossed
+intercepts `(1 | g) + (1 | h)` in Poisson, Binomial, NegBinomial2, Gamma, Beta and
+BetaBinomial when one grouping has at most 8 levels (#761), and on Gaussian
+`sigma ~ 1 + (1 | g)`. k = 1 ≡ 1-point Laplace. On Poisson `(1 | g)` the default
+`:LA` already integrates by 5-node adaptive quadrature. Not tensor AGHQ on phylo
 Laplace. `:REML` is not wired to `:AGHQ` this slice."""
 struct AGHQ <: MarginalMethod end
 

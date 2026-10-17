@@ -3,9 +3,9 @@
 !!! note "Status — Experimental"
     A variational (VA / ELBO) marginal is an **opt-in Experimental** alternative
     for random-intercept `(1 | g)` models. **`:LA` remains the default.** For a
-    scalar Poisson random intercept, `:LA` uses fixed, non-adaptive 32-node
-    Gauss–Hermite quadrature, not one-point Laplace or adaptive GHQ. Other
-    `:LA` routes are not identified by this statement.
+    scalar Poisson random intercept, `:LA` uses per-group adaptive
+    Gauss–Hermite quadrature with 5 nodes, not one-point Laplace. Other `:LA`
+    routes are not identified by this statement.
 
     **Available scope:** Poisson, Binomial, NegBinomial2,
     Gamma, and Beta `(1 | g)` via `drm(...; marginal = :VA)` (scale families need
@@ -33,9 +33,10 @@ biased marginal biases exactly those parameters.
 ### The default `:LA` route
 
 For a scalar Poisson random intercept `(1 | g)`, the public default `:LA` route
-uses fixed, non-adaptive 32-node Gauss–Hermite quadrature. It is neither
-one-point Laplace nor adaptive Gauss–Hermite quadrature. A Laplace approximation
-in general replaces the integrand with a Gaussian centred at the posterior mode of `z`,
+uses per-group adaptive Gauss–Hermite quadrature: 5 nodes per group, centred on
+that group's posterior mode and scaled by the curvature there. With a single
+node it would be the Laplace approximation, which in general replaces the
+integrand with a Gaussian centred at the posterior mode of `z`,
 matched in curvature (the Hessian) at that mode. It is exact only when the
 responses are Gaussian, a Gaussian random effect enters the mean linearly, and
 the residual variance is independent of that random effect; then the integrand
@@ -45,18 +46,29 @@ approximation.
 ### Matching drmTMB: `marginal = :Laplace`
 
 drmTMB (TMB) integrates an ordinary random intercept by the one-point Laplace
-approximation, so on `(1 | g)` the default `:LA` route (GHQ-32) and drmTMB fit
-the same model with different integrators. On ten test datasets with a moderate
-family `sigma` (0.3 to 0.5) and a random-intercept SD of 0.6, their
-log-likelihoods differed by 0.06 to 1.3 units. The gap does not stay that small.
-When the family `sigma` is small, each group's integrand is sharply peaked, the
-32 fixed quadrature nodes miss it, and the default `:LA` can report convergence
-at the wrong optimum. On three Gamma and Beta test datasets with family `sigma`
-between 0.003 and 0.012, the default fit reported `converged = true` with a
+approximation, so on `(1 | g)` the default `:LA` route (adaptive quadrature, 5
+nodes per group) and drmTMB fit the same model with different integrators. On
+seven Poisson, Beta, NegBinomial2, Gamma and Student test datasets their
+log-likelihoods differed by 0.01 to 0.24 units, with drmTMB's always the one
+further from a 61-node quadrature reference (a later Poisson comparison showed
+a gap of about 0.0014); with `marginal = :Laplace` their log-likelihoods agree
+to within about 1e-8 and their estimates to about 5e-8 (relative). The default is usually the more accurate integral, so use
+`:Laplace` for parity with drmTMB, not as a better default.
+
+The gap used to be larger. Before version 0.7.2, `:LA` integrated an ordinary
+`(1 | g)` on a fixed 32-node grid on the prior scale. On ten test datasets with a
+moderate family `sigma` (0.3 to 0.5) and a random-intercept SD of 0.6, that
+grid's log-likelihoods differed from drmTMB's by 0.06 to 1.3 units. When the
+family `sigma` is small, each group's integrand is sharply peaked and the fixed
+nodes missed it: on three Gamma and Beta test datasets with family `sigma`
+between 0.003 and 0.012, the old default reported `converged = true` with a
 log-likelihood 295 to 501 units below drmTMB's and a `sigma` 3.2 to 20 times
-drmTMB's; `marginal = :Laplace` matched drmTMB on all three. Use
-`marginal = :Laplace` for such data. To reproduce
-drmTMB's numbers, request the Laplace approximation explicitly:
+drmTMB's, while `marginal = :Laplace` matched drmTMB on all three. Adaptive
+quadrature centres its nodes on each group's mode, which is what that grid
+lacked, but those datasets have not been re-run against the adaptive default.
+With a family `sigma` that small, compare the default fit with a `:Laplace` fit.
+
+To reproduce drmTMB's numbers, request the Laplace approximation explicitly:
 
 ```julia
 using DRModels
@@ -71,7 +83,7 @@ families), by maximum likelihood. `Student()` accepts it too for one ordinary
 `(1 | g)` on the mean (`sigma` and `nu` may carry fixed-effect formulas). The only other model that accepts it is a
 Gaussian random intercept on `sigma`, `sigma ~ 1 + (1 | g)`, with a fixed-effect
 mean. Any other model with `marginal = :Laplace` is refused; nothing is
-silently fitted by GHQ-32 under that label.
+silently fitted by the default integrator under that label.
 
 To test the random intercept, compare the `:Laplace` fit with the
 fixed-effects model fitted as usual (no `marginal`): `lrtest(fixed, fit)`. The
@@ -154,9 +166,9 @@ against a curvature match at a single point.
 |---|---|
 | Fixed-effects-only model | VA adds nothing — there is no latent integral to approximate. |
 | Gaussian response with a Gaussian RE entering the mean linearly and independent residual variance | VA adds nothing — the marginal is already exact here. |
-| Ordinary Gamma `(1\|g)` shape | LA ≈ VA in the scoped Gamma comparison; **prefer LA** (15–20× faster warm). |
+| Ordinary Gamma `(1\|g)` shape | LA ≈ VA in the scoped Gamma comparison; **prefer LA** (15–20× faster warm, timed before version 0.7.2 with the fixed 32-node grid). |
 | Two-part / hurdle / ZINB geometry | VA may help in principle, but **DRModels.jl does not currently support these VA models**. |
-| Speed-critical fits | Route-specific: `:LA` is the default; Poisson scalar random intercepts use fixed GHQ-32. |
+| Speed-critical fits | Route-specific: `:LA` is the default; Poisson scalar random intercepts use adaptive GHQ with 5 nodes per group. |
 
 In short: **`:LA` is the default and its numerical implementation is
 route-specific.** On the public Gamma random-intercept cell, Julia matches the
@@ -194,8 +206,9 @@ numbers look plausible:
    ordinary independent log-likelihood. This pins the no-RE limit exactly.
 2. **ELBO ≤ dense quadrature.** At low latent dimension the true marginal is
    computed by dense *adaptive* Gauss–Hermite. The ELBO, being a lower bound,
-   must sit at or below it — never above. (Non-adaptive engine GHQ centred at 0
-   can sit below the ELBO; that is not a counterexample.)
+   must sit at or below it — never above. (A non-adaptive grid centred at 0, such
+   as the engine's default before version 0.7.2, can sit below the ELBO; that is
+   not a counterexample.)
 3. **Family limits.** The negative binomial becomes Poisson as its size
    `r → ∞`, so NB2-VA should approach Poisson-VA when both are applied to the
    same simulated data.
@@ -213,8 +226,9 @@ be interpreted as reproducing drmTMB's marginal likelihood. The option is most
 relevant where a one-mode approximation is scientifically questionable, such as
 two-part shape or ZINB multimodality, although those VA models are not currently
 supported in DRModels.jl. On ordinary Gamma `(1 | g)`, the evaluated comparison
-does **not** show a VA accuracy edge; prefer LA over VA: the default `:LA` (GHQ-32
-on this cell), or `marginal = :Laplace` to fit drmTMB's Laplace approximation.
+does **not** show a VA accuracy edge; prefer LA over VA: the default `:LA` (adaptive
+GHQ with 5 nodes per group on this cell since version 0.7.2; the comparison
+used the earlier fixed grid), or `marginal = :Laplace` to fit drmTMB's Laplace approximation.
 
 ## See also
 

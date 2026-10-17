@@ -29,7 +29,9 @@ coef(fit, :mu), coef(fit, :sigma)
 
 [`predict`](@ref) evaluates the fitted **mean** at a `newdata` column table. By
 default it returns the response scale; pass `type = :link` for the linear
-predictor.
+predictor. Any random or structured effects are set to zero, so on a random-effect
+fit this is the prediction for an average group, not the mean averaged over
+groups.
 
 ```@example postfit
 nd = (; x = [-1.0, 0.0, 1.0])
@@ -38,7 +40,9 @@ predict(fit, nd)                 # μ̂ at x = -1, 0, 1  (response scale)
 
 ### Standard errors (the delta method)
 
-Add `se = true` for delta-method standard errors — the glmmTMB/drmTMB `se.fit`.
+Add `se = true` for delta-method standard errors — the glmmTMB `se.fit`
+convention (drmTMB's `predict()` has no standard-error option). They carry the
+uncertainty in `β̂` only.
 You get back a `NamedTuple` `(; prediction, se)`:
 
 ```@example postfit
@@ -86,7 +90,9 @@ predict_parameters(fit, grid)[:sigma]   # σ̂ rising across the x sweep
 For the per-observation fitted parameters at the **training** data there is a
 cheap accessor that reads straight from the fit (no recomputation) —
 [`marginal_parameters`](@ref). In-sample it equals
-`predict_parameters(fit, data)`:
+`predict_parameters(fit, data)` for the mean and `sigma` of the GLM-type families
+(Gaussian, Poisson, NegBinomial2, Gamma, Beta, Binomial), as here (the
+[`predict_parameters`](@ref) docstring lists the exceptions):
 
 ```@example postfit
 mp = marginal_parameters(fit)
