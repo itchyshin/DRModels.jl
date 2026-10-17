@@ -24,8 +24,10 @@ Does not change `is_converged` (drmTMB #1554 methods choice).
 ## 4. Verification
 
 - Red-proof `test/test_fx4_hessian_se_display.jl`: fails on the pin (Inf / finite
-  SEs), passes after.
-- `Pkg.test()`.
+  SEs), passes after (12/12).
+- Sibling: `test_summary.jl` 18, `test_summary_method.jl` 5,
+  `test_summary_zp_suppress.jl` 34, `test_vcov_guard.jl` 20. All pass.
+- Engine bench `bench/run_sparse_tmb_nd.jl`: logLik −256.5123 (baseline −256.51).
 
 ## 5. Rose audit
 
