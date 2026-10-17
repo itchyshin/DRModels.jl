@@ -5,7 +5,9 @@
 # `lsize ~ 1 + lrange + phylo(1 | species)`, `sigma ~ 1 + phylo(1 | species)`
 # returned logLik = -1e18 at its start values, and the coupled fit stopped at
 # -119.531, 7.7 nats below drmTMB; on the same tree with every branch divided by
-# 53.8 both reached drmTMB's optimum. Cause: the route fitted on the raw branch
+# 53.8 the separate fit reached drmTMB's optimum with the phylo correlation held
+# at 0 (-111.94867803) and the coupled fit drmTMB's native optimum
+# (-111.84106326). Cause: the route fitted on the raw branch
 # lengths with absolute log-SD constants (start log 0.3, i.e. SD 0.3·√53.8 = 2.2
 # on the unit-height scale, where the inner mode runs into the sigma -> 0
 # collapse). The route now fits on the unit-height tree and maps the estimates
@@ -155,18 +157,28 @@ end
     @test failed[1].kwargs[:converged] === false
 end
 
-# ---- end to end: the issue's repro (DRM_SLOW_TESTS=1) -----------------------
+const _F952 = bf(@formula(lsize ~ 1 + lrange + phylo(1 | species)),
+                 @formula(sigma ~ 1 + phylo(1 | species)))
+
+_fit952(tree; kw...) = with_logger(NullLogger()) do
+    drm(_F952, Gaussian(); data = _data952(), tree = tree, kw...)
+end
+
+# The issue's call on the raw tree, in the default suite so that CI guards the fit
+# on the rescaled tree: about 4 s after the fix. (On the unfixed code it took 158 s
+# and returned the -1e18 sentinel, measured 2026-10-16.)
+@testset "#952: the issue's default fit on the raw tree" begin
+    fit = _fit952(_NWK952)
+    @test loglik(fit) > -1e15                                   # never the sentinel
+    @test is_converged(fit)
+    @test abs(loglik(fit) - (-111.94867803)) < 1e-3   # drmTMB ca3ddef, correlation held at 0
+end
+
+# ---- end to end: raw vs unit trees and drmTMB (DRM_SLOW_TESTS=1) -------------
 # About 5 s per fit after the fix plus compilation; on the unfixed code the raw
 # separate fit took 158 s and the raw coupled fit 87 s (measured, 2026-10-16), so
 # these cells run only with DRM_SLOW_TESTS=1.
 if _SLOW952
-    const _F952 = bf(@formula(lsize ~ 1 + lrange + phylo(1 | species)),
-                     @formula(sigma ~ 1 + phylo(1 | species)))
-
-    _fit952(tree; kw...) = with_logger(NullLogger()) do
-        drm(_F952, Gaussian(); data = _data952(), tree = tree, kw...)
-    end
-
     @testset "#952: separate block (the default) on the raw and unit-height trees" begin
         raw = _fit952(_NWK952); unit = _fit952(_NWK952_UNIT)
         for fit in (raw, unit)
