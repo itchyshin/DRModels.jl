@@ -555,9 +555,14 @@ function _fit_bivariate_residual_reml(f::BivariateDrmFormula, fam::Gaussian, dat
     β̂, â, b̂, ĉ, logdetŜ, Ĥ = _profile(φ̂)
     θ̂ = vcat(β̂, φ̂)
 
-    Vφ = inv(Symmetric(ForwardDiff.hessian(nll_reml, φ̂)))
+    # #956: both inverses go through the guarded constructor, so a singular or
+    # indefinite φ-Hessian (a boundary correlation or variance) warns and falls
+    # back like every ML route instead of raising a bare SingularException.
+    Vφ = _vcov_from_hessian(ForwardDiff.hessian(nll_reml, φ̂);
+                            context = "bivariate Gaussian REML (variance parameters)")
     G = ForwardDiff.jacobian(φ -> _profile(φ)[1], φ̂)      # d bhat / d phi
-    Vβ = Matrix(inv(Symmetric(Ĥ))) .+ G * Vφ * transpose(G)
+    Vβ = _vcov_from_gram(Matrix(Ĥ); context = "bivariate Gaussian REML (mean GLS)") .+
+         G * Vφ * transpose(G)
     Cβφ = G * Vφ
     V = zeros(pβ + pφ, pβ + pφ)
     V[1:pβ, 1:pβ] .= Vβ

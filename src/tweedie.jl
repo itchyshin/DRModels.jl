@@ -13,17 +13,61 @@ using SpecialFunctions: loggamma
 # The dominant n and the summation window are chosen in Float64 (detached, so the
 # window doesn't break differentiability), then the window is summed in the
 # parameter's number type so ForwardDiff differentiates through `loggamma(-nα)`.
+#
+# Window (#1028). The terms are log-concave in n and peak near
+# n* ≈ y^{2-p} / (φ(2-p)), with a width that grows like √n*. The old fixed search
+# (n ≤ 400) and fixed ±30-term window missed most of the mass once n* passed a
+# few hundred — finite log-densities wrong by up to thousands of nats. Now the
+# peak starts from the Stirling solution of d logW_n / dn = 0,
+#   z − log n + α log(−α n) = 0  ⇒  log n* = (z + α log(−α)) / (1 − α),
+# is polished to the exact integer maximum by a local climb, and the window grows
+# from the peak in both directions until a term falls `_TWEEDIE_DROP` nats below
+# the peak (each dropped term then contributes < e^-40 relative). If the window
+# would need more than `_TWEEDIE_MAX_HALFWIDTH` terms on a side the density is
+# returned as NaN, never as a finite truncated value.
+const _TWEEDIE_DROP = 40.0
+const _TWEEDIE_MAX_HALFWIDTH = 1_000_000
+
+function _tweedie_window(zv::Float64, αv::Float64)
+    logWn(nn) = nn * zv - loggamma(nn + 1.0) - loggamma(-nn * αv)
+    lnpk = (zv + αv * log(-αv)) / (1 - αv)
+    n0 = isfinite(lnpk) ? clamp(exp(lnpk), 1.0, 1e15) : 1.0
+    nmax = max(1, round(Int, n0))
+    best = logWn(float(nmax))
+    isfinite(best) || return nothing
+    while true                                   # climb to the integer maximum
+        up = logWn(float(nmax + 1))
+        if up > best
+            nmax += 1; best = up; continue
+        end
+        nmax > 1 || break
+        dn = logWn(float(nmax - 1))
+        dn > best || break
+        nmax -= 1; best = dn
+    end
+    cut = best - _TWEEDIE_DROP
+    jl = nmax
+    while jl > 1 && logWn(float(jl - 1)) >= cut
+        jl -= 1
+        nmax - jl > _TWEEDIE_MAX_HALFWIDTH && return nothing
+    end
+    jh = nmax
+    while logWn(float(jh + 1)) >= cut
+        jh += 1
+        jh - nmax > _TWEEDIE_MAX_HALFWIDTH && return nothing
+    end
+    return jl, jh
+end
+
+# Plain Float64 value of a (possibly nested, e.g. inside `ForwardDiff.hessian`) Dual.
+_tw_value(x::ForwardDiff.Dual) = _tw_value(ForwardDiff.value(x))
+_tw_value(x::Real) = Float64(x)
+
 function _tweedie_logW(y, λ, α, γ)
     z = log(λ) - α * log(y) + α * log(γ)
-    zv = ForwardDiff.value(z); αv = ForwardDiff.value(α)
-    logWn(nn) = nn * zv - loggamma(nn + 1.0) - loggamma(-nn * αv)
-    nmax = 1; best = logWn(1.0)
-    for nn in 2:400
-        l = logWn(float(nn))
-        l > best && (best = l; nmax = nn)
-        (l < best - 45 && nn > nmax) && break
-    end
-    jl = max(1, nmax - 30); jh = nmax + 30
+    win = _tweedie_window(_tw_value(z), _tw_value(α))
+    win === nothing && return z * NaN
+    jl, jh = win
     terms = [j * z - loggamma(j + 1.0) - loggamma(-j * α) for j in jl:jh]
     m = maximum(terms)
     return m + log(sum(exp(t - m) for t in terms))
@@ -171,6 +215,8 @@ function _fit_tweedie(fam::Tweedie, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol)
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))   # response-scale μ̂
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):i1]),
                   :nu => _logit12.(Xν * θ̂[(i1+1):i2]))
+    _warn_at_clamp("Tweedie", ["log sigma" => (Xσ * θ̂[(pμ+1):i1], -15.0, 15.0),   # #959
+                               "power (logit scale)" => (Xν * θ̂[(i1+1):i2], -12.0, 12.0)])
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
@@ -229,6 +275,8 @@ function _fit_tweedie_ranef(fam::Tweedie, y, Xμ, Xσ, Xν, gidx, G, nmμ, nmσ,
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):i1]),
                   :nu => _logit12.(Xν * θ̂[(i1+1):i2]))
+    _warn_at_clamp("Tweedie", ["log sigma" => (Xσ * θ̂[(pμ+1):i1], -15.0, 15.0),   # #959
+                               "power (logit scale)" => (Xν * θ̂[(i1+1):i2], -12.0, 12.0)])
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
@@ -273,6 +321,8 @@ function _fit_tweedie_slope_ranef(fam::Tweedie, y, Xμ, Xσ, Xν, xs, gidx, G, n
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):i1]),
                   :nu => _logit12.(Xν * θ̂[(i1+1):i2]))
+    _warn_at_clamp("Tweedie", ["log sigma" => (Xσ * θ̂[(pμ+1):i1], -15.0, 15.0),   # #959
+                               "power (logit scale)" => (Xν * θ̂[(i1+1):i2], -12.0, 12.0)])
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))

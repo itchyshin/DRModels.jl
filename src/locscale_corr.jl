@@ -195,8 +195,10 @@ function _fit_slope_axis_re(kind, y, Xμ, Xψ, xs, gidx, G, Q;
                 gm = _sigma_re_grad(kind, y, Xμ, Xψ, gidx, G, Q, tm, Zη, Zψ)
                 H[:, j] .= (gp .- gm) ./ (2h)
             end
-            Matrix(inv(Symmetric(H)))
-        catch
+            # #956: guarded constructor; an indefinite FD Hessian is not inverted.
+            _vcov_from_fd_hessian(H; context = "slope-axis random effect")
+        catch err
+            err isa InterruptException && rethrow(err)
             fill(NaN, npr, npr)
         end
     else

@@ -439,11 +439,9 @@ function fit_mixed_family(; y1, X1, fam1, y2, X2, fam2,
     rho_ci_wald = (NaN, NaN)
     if confint
         H = ForwardDiff.hessian(objfn, copy(θ̂))
-        V = try
-            inv(H)
-        catch
-            fill(NaN, size(H))
-        end
+        # #956: guarded constructor, so an indefinite H (saddle / ridge stop)
+        # gives a NaN interval instead of a Wald CI from a non-PD curvature.
+        V = _vcov_from_fd_hessian(H; context = "cross-family rho Wald CI")
         g = ForwardDiff.gradient(t -> atanh(clamp(rho_of(t), -0.999999, 0.999999)), copy(θ̂))
         var_z = dot(g, V * g)
         if isfinite(var_z) && var_z > 0
