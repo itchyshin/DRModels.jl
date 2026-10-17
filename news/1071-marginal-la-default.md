@@ -1,0 +1,1 @@
+- **`show`, `summary` and `coeftable` now name the default `:LA` integrator on random-effect fits (#1071).** Non-Gaussian GLMM routes such as Poisson `(1|g)` never store BLUPs, so the label is keyed off the random-effect block, not `fit.ranef`. `:Laplace` / `:VA` / `:AGHQ` wording is unchanged. Fixed-effect output is unchanged.

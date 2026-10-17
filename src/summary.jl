@@ -207,6 +207,68 @@ Extends `StatsAPI.dof_residual`.
 """
 dof_residual(fit::DrmFit) = nobs(fit) - dof(fit)
 
+# #1071: name the integrator behind the printed logLik. `:LA` (the default) and
+# `:Laplace` give different logLik values for the same random-effect model (the
+# default is the more accurate; `:Laplace` is what drmTMB reports), so a cross-engine
+# or cross-approximation AIC/LRT is only valid between like approximations. The node
+# count is deliberately not printed: it differs by route (e.g. Poisson `(1|g)` uses
+# 32-point GHQ, Binomial `(1|g)` a 5-point adaptive rule), so a fixed "GHQ-32" would
+# sometimes be false. Printed only when the fit has random effects or a non-default
+# integrator, so fixed-effect fits are unchanged.
+#
+# Do not use `fit.ranef === nothing` as the "no RE" test. Non-Gaussian GLMM
+# routes (Poisson/Binomial `(1|g)` GHQ / Laplace) never store BLUPs — they
+# integrate the random effect out of the marginal likelihood — so `ranef`
+# is `nothing` on the default `:LA` path even though a `:resd` block is
+# present. That was why CI shard 2/4 failed at test_summary_marginal_label.jl:24.
+# The block set matches `ranef()`'s "has a random-effect block" check, plus
+# group-level / LSS variance-component blocks that also name an integrator.
+const _RE_BLOCKS = (:resd, :recov, :sd, :sd_phylo, :phylocov, :resd_mu, :resd_sigma)
+
+_has_re_block(fit::DrmFit) =
+    fit.ranef !== nothing || any(p -> first(p) in _RE_BLOCKS, fit.blocks)
+
+function _marginal_note(fit::DrmFit)
+    (!_has_re_block(fit) && fit.marginal === :LA) && return nothing
+    desc = fit.marginal === :LA      ? "default integrator" :
+           fit.marginal === :Laplace ? "Laplace approximation, as drmTMB" :
+           fit.marginal === :VA      ? "variational ELBO" :
+           fit.marginal === :AGHQ    ? "adaptive Gauss-Hermite quadrature" : "integrator"
+    return "logLik (marginal :" * String(fit.marginal) * ", " * desc * ")"
+end
+
+# Thin print wrapper so `summary(fit)` and `coeftable(fit)` name the integrator
+# the same way `show(fit)` does, without changing `.cols` / `.rownms`.
+struct DrmCoefTable
+    table::CoefTable
+    note::Union{Nothing,String}
+end
+
+function Base.getproperty(ct::DrmCoefTable, name::Symbol)
+    name === :table && return getfield(ct, :table)
+    name === :note && return getfield(ct, :note)
+    return getproperty(getfield(ct, :table), name)
+end
+
+Base.propertynames(::DrmCoefTable, ::Bool=false) =
+    (:cols, :colnms, :rownms, :pvalcol, :teststatcol, :table, :note)
+
+function _print_marginal_note(io::IO, ct::DrmCoefTable)
+    n = getfield(ct, :note)
+    n === nothing && return
+    println(io, n)
+end
+
+function Base.show(io::IO, ct::DrmCoefTable)
+    _print_marginal_note(io, ct)
+    show(io, getfield(ct, :table))
+end
+
+function Base.show(io::IO, mime::MIME"text/plain", ct::DrmCoefTable)
+    _print_marginal_note(io, ct)
+    show(io, mime, getfield(ct, :table))
+end
+
 function Base.show(io::IO, ::MIME"text/plain", fit::DrmFit)
     se = _display_se(fit)
     fam = _family_name(fit.family)
@@ -214,6 +276,8 @@ function Base.show(io::IO, ::MIME"text/plain", fit::DrmFit)
     println(io, "  nobs = ", fit.nobs,
                 "   logLik = ", @sprintf("%.4f", fit.loglik),
                 "   converged = ", is_converged(fit))
+    mnote = _marginal_note(fit)
+    mnote === nothing || println(io, "  ", mnote)
     # #949: show the trusted accessor; say so when the raw optimiser flag disagrees.
     (fit.converged && !is_converged(fit)) && println(io, "  (the optimiser stopped normally, " *
         "but the fit is degenerate -- see `is_converged`)")
@@ -289,12 +353,14 @@ end
     summary(fit::DrmFit)
 
 Coefficient table for a fitted model — the DRModels.jl analogue of drmTMB's `summary()`.
-Returns the same `CoefTable` as [`coeftable`](@ref) (estimates, SEs, z, p, CIs).
+Returns the same table as [`coeftable`](@ref) (estimates, SEs, z, p, CIs).
+Printing the table names the marginal approximation behind `logLik` when the
+fit has random effects or a non-default integrator.
 """
 Base.summary(fit::DrmFit) = coeftable(fit)
 
 """
-    coeftable(fit::DrmFit; level = 0.95) -> StatsBase.CoefTable
+    coeftable(fit::DrmFit; level = 0.95)
 
 Wald coefficient table across every parameter block: columns Estimate,
 Std.Error, z, Pr(>|z|), and a `level` confidence interval (Lower/Upper). Values
@@ -319,6 +385,10 @@ under each block heading). To test a variance component against 0 use a
 boundary-corrected likelihood-ratio test (`lrt_boundary`), not the `:resd`
 row. A boundary / singular direction (non-finite SE) reports `NaN` z / p rather
 than a spurious `z = 0, p = 1`.
+
+Printing the table (`summary(fit)` is the same object) names the marginal
+approximation behind `logLik` when the fit has random effects or a non-default
+integrator, matching `show(fit)`. Column values and row names are unchanged.
 """
 function coeftable(fit::DrmFit; level::Real = 0.95)
     se = _display_se(fit)
@@ -338,5 +408,5 @@ function coeftable(fit::DrmFit; level::Real = 0.95)
     lvl = round(Int, 100 * level)
     colnms = ["Estimate", "Std.Error", "z", "Pr(>|z|)", "Lower $lvl%", "Upper $lvl%"]
     mat = hcat(est, ses, zs, ps, lo, hi)
-    return CoefTable(mat, colnms, rownms, 4, 3)   # pvalcol = 4, teststatcol = 3
+    return DrmCoefTable(CoefTable(mat, colnms, rownms, 4, 3), _marginal_note(fit))
 end
