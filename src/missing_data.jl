@@ -117,3 +117,56 @@ function drm_listwise(formula::Union{DrmFormula,BivariateDrmFormula}, data; verb
     # fitter's numeric path).
     return NamedTuple{keys(cols)}(map(col -> identity.(col[keep]), values(cols)))
 end
+
+
+# #1089: native na.omit for incomplete PREDICTOR rows. Returns `nothing` when the
+# predictors need no work; otherwise the table to fit on. A `missing`/non-finite
+# predictor cell drops that row (together with rows whose response is missing/NaN,
+# matching R's na.omit) and `@warn`s with the count. A `Union{Missing,T}` predictor
+# column holding no missing is narrowed (#1111: StatsModels would dummy-code it).
+function _complete_case_predictors(f::DrmFormula, data)
+    Tables.istable(data) || return nothing
+    cols = Tables.columntable(data)
+    _has_joint_mi(f) && return nothing
+    resp = f.response2 === nothing ? (f.response,) : (f.response, f.response2)
+    pred = [c for c in _model_columns(f) if haskey(cols, c) && !(c in resp)]
+    isempty(pred) && return nothing
+    n = length(first(cols))
+    keep = trues(n)
+    offenders = Symbol[]
+    narrow = false
+    for c in pred
+        col = cols[c]
+        Missing <: eltype(col) && (narrow = true)
+        bad = false
+        @inbounds for i in 1:n
+            if _is_missing_cell(col[i])
+                keep[i] = false
+                bad = true
+            end
+        end
+        bad && push!(offenders, c)
+    end
+    if isempty(offenders)
+        narrow || return nothing
+        newcols = map(keys(cols)) do k
+            k in pred ? identity.(cols[k]) : cols[k]
+        end
+        return NamedTuple{keys(cols)}(Tuple(newcols))
+    end
+    for r in resp
+        haskey(cols, r) || continue
+        col = cols[r]
+        @inbounds for i in 1:n
+            keep[i] && _is_missing_cell(col[i]) && (keep[i] = false)
+        end
+    end
+    ndrop = n - count(keep)
+    count(keep) > 0 ||
+        throw(ArgumentError("drm: every row has a missing/non-finite value in the response or a predictor"))
+    @warn "drm: $(ndrop) of $(n) rows have a missing/non-finite value in the response or " *
+          "predictor column(s) $(join(offenders, ", ")) and were dropped (complete-case fit, " *
+          "like R's na.omit). Use `drm_listwise` to preprocess explicitly, or supply complete " *
+          "data, to silence this."
+    return NamedTuple{keys(cols)}(Tuple(map(c -> identity.(c[keep]), values(cols))))
+end

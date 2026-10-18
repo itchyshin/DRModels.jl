@@ -570,6 +570,15 @@ are parameterised over all G levels, while the likelihood is evaluated on
 observed rows.
 """
 function drm(f::DrmFormula, fam::Gaussian; kwargs...)
+    # #1089: incomplete predictor rows are dropped (na.omit) with a counted warning.
+    kw = Dict{Symbol,Any}(kwargs)
+    if haskey(kw, :data)
+        cc = _complete_case_predictors(f, kw[:data])
+        if cc !== nothing
+            kw[:data] = cc
+            return drm(f, fam; kw...)
+        end
+    end
     # The residual-variance / structured-variance BOUNDARY advisory (#724, #697) is
     # attached here, once, rather than in each of the fitter's return paths.
     return _warn_variance_boundary(_drm_gaussian_fit(f, fam; kwargs...))
@@ -1315,6 +1324,9 @@ function _subset_table_rows(data, rows)
 end
 
 function _fit_observed_response_rows(fitfun::Function, f::DrmFormula, data)
+    # #1089: incomplete predictor rows are dropped (na.omit) with a counted warning.
+    cc = _complete_case_predictors(f, data)
+    cc === nothing || return fitfun(cc)
     observed = _formula_response_observed_mask(f, data)
     all(observed) && return nothing
     count(observed) > 0 ||

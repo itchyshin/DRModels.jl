@@ -6,6 +6,8 @@ human-readable changelog.
 
 ## Development
 
+- **A `missing` or non-finite predictor no longer crashes `drm` (#1089).** Rows with a `missing`/`NaN` predictor are dropped, together with rows whose response is missing, like R's `na.omit` (drmTMB), with a warning giving the dropped count. Applies to the Gaussian entry and to every family that goes through the observed-rows wrapper. A `Union{Missing,Float64}` predictor with no missing value is now narrowed instead of being dummy-coded (#1111). A missing response alone keeps its existing route-level behaviour; a `missing` in the `(1 | g)` grouping column is dropped too when predictors are missing, but the standalone case (#1112) is not yet handled.
+
 ## v0.7.2 — 2026-10-04
 
 - **Location-scale fits no longer stall at a variance boundary.** Two loops in the location-scale fit counted an exactly tied objective as progress and had no stall stop, so a fit whose variance component slid to its zero boundary could spin for tens of minutes (a 4-species Gamma bootstrap test took 12 to 74 minutes on CI, depending on the runner's BLAS kernel). The inner mode solve now stops a run of 40 exactly tied steps only when the gradient is far above its bound and cannot reach it in the remaining iterations, and the certified refinement ladder stops a run only after 100 iterations with a bit-identical position, value and gradient. Converging fits are unchanged: across 30 test files every location-scale fit is bit-identical to before, and the fixture's standard errors and `check_drm` verdict are unchanged.

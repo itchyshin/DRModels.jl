@@ -37,10 +37,14 @@ using Test, Random
             @test isfinite(loglik(fit))                     # not garbage — the bad row was dropped
         end
 
-        # `NaN` in a predictor → still errors (predictor missingness is out of scope).
+        # `NaN` in a predictor → row dropped (na.omit) with a counted warning (#1089).
         xnan = copy(x); xnan[5] = NaN
-        @test_throws Exception drm(bf(@formula(y ~ x), @formula(sigma ~ 1)),
-                                   Gaussian(); data = (; y = ybase, x = xnan))
+        io = IOBuffer()
+        fitn = Base.CoreLogging.with_logger(Base.CoreLogging.SimpleLogger(io, Base.CoreLogging.Warn)) do
+            drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), Gaussian(); data = (; y = ybase, x = xnan))
+        end
+        @test occursin("1 of $n rows", String(take!(io)))
+        @test nobs(fitn) == n - 1
     end
 
     @testset "(B1) drm_listwise drops the right rows + warns" begin
