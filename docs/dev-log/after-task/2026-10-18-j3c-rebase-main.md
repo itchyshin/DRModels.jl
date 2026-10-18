@@ -8,7 +8,8 @@ Noether on the SE contract. No subagents.
 
 ## 2. Implemented
 
-- Cherry-picked the five unique J3c commits onto #1079 `a2df49c12`:
+- Cherry-picked the five unique J3c commits onto #1079, then rebased onto
+  `edec98493` (the docs-only CI retrigger on `a2df49c12`):
   `e6095f16a`, `92cefb586`, `90c12190b`, `c8e7631eb`, `67faafc2d`. All applied
   without conflict.
 - J3c SE sites still called the one-shot `_se_grad(θ -> …)`. Updated
