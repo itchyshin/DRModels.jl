@@ -137,7 +137,7 @@ function _complete_case_predictors(f::DrmFormula, data)
     narrow = false
     for c in pred
         col = cols[c]
-        Missing <: eltype(col) && (narrow = true)
+        (Missing <: eltype(col) && nonmissingtype(eltype(col)) <: Real) && (narrow = true)
         bad = false
         @inbounds for i in 1:n
             if _is_missing_cell(col[i])
@@ -150,7 +150,7 @@ function _complete_case_predictors(f::DrmFormula, data)
     if isempty(offenders)
         narrow || return nothing
         newcols = map(keys(cols)) do k
-            k in pred ? identity.(cols[k]) : cols[k]
+            (k in pred && nonmissingtype(eltype(cols[k])) <: Real) ? identity.(cols[k]) : cols[k]
         end
         return NamedTuple{keys(cols)}(Tuple(newcols))
     end
