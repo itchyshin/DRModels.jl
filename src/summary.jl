@@ -5,10 +5,12 @@
 #     family / nobs / logLik / convergence, then a Wald coefficient table
 #     (Coef. / Std.Error / z / Pr(>|z|)) sectioned by parameter block, in the
 #     order the blocks appear on the fit. This is the always-available verb.
-#   * `coeftable(fit; level)` — a `StatsBase.CoefTable` (Estimate / Std.Error /
-#     z / Pr(>|z|) / Lower / Upper) across every block. `coeftable` and
-#     `CoefTable` both come from StatsModels (a direct dep, re-exporting
-#     StatsBase/StatsAPI), so this adds no new dependency.
+#   * `coeftable(fit; level)` — returns a real `StatsBase.CoefTable` (Estimate /
+#     Std.Error / z / Pr(>|z|) / Lower / Upper) across every block, so
+#     `ct isa CoefTable` and `DataFrame(ct)` work. `coeftable` is the StatsAPI
+#     method; `CoefTable` is the StatsBase type (re-exported by StatsModels, a
+#     direct dep). The integrator note (#1071) is printed by `show(fit)`, not
+#     by this table.
 #
 # z = estimate / se on each block's working scale (μ on the response scale; σ on
 # log σ; ρ12 on atanh ρ12; random-effect SDs on log σ_b — matching `confint`).
@@ -237,38 +239,6 @@ function _marginal_note(fit::DrmFit)
     return "logLik (marginal :" * String(fit.marginal) * ", " * desc * ")"
 end
 
-# Thin print wrapper so `summary(fit)` and `coeftable(fit)` name the integrator
-# the same way `show(fit)` does, without changing `.cols` / `.rownms`.
-struct DrmCoefTable
-    table::CoefTable
-    note::Union{Nothing,String}
-end
-
-function Base.getproperty(ct::DrmCoefTable, name::Symbol)
-    name === :table && return getfield(ct, :table)
-    name === :note && return getfield(ct, :note)
-    return getproperty(getfield(ct, :table), name)
-end
-
-Base.propertynames(::DrmCoefTable, ::Bool=false) =
-    (:cols, :colnms, :rownms, :pvalcol, :teststatcol, :table, :note)
-
-function _print_marginal_note(io::IO, ct::DrmCoefTable)
-    n = getfield(ct, :note)
-    n === nothing && return
-    println(io, n)
-end
-
-function Base.show(io::IO, ct::DrmCoefTable)
-    _print_marginal_note(io, ct)
-    show(io, getfield(ct, :table))
-end
-
-function Base.show(io::IO, mime::MIME"text/plain", ct::DrmCoefTable)
-    _print_marginal_note(io, ct)
-    show(io, mime, getfield(ct, :table))
-end
-
 function Base.show(io::IO, ::MIME"text/plain", fit::DrmFit)
     se = _display_se(fit)
     fam = _family_name(fit.family)
@@ -353,14 +323,13 @@ end
     summary(fit::DrmFit)
 
 Coefficient table for a fitted model — the DRModels.jl analogue of drmTMB's `summary()`.
-Returns the same table as [`coeftable`](@ref) (estimates, SEs, z, p, CIs).
-Printing the table names the marginal approximation behind `logLik` when the
-fit has random effects or a non-default integrator.
+Returns the same `CoefTable` as [`coeftable`](@ref) (estimates, SEs, z, p, CIs).
+The integrator behind `logLik` is named by `show(fit)`, not by this table.
 """
 Base.summary(fit::DrmFit) = coeftable(fit)
 
 """
-    coeftable(fit::DrmFit; level = 0.95)
+    coeftable(fit::DrmFit; level = 0.95) -> StatsBase.CoefTable
 
 Wald coefficient table across every parameter block: columns Estimate,
 Std.Error, z, Pr(>|z|), and a `level` confidence interval (Lower/Upper). Values
@@ -386,9 +355,9 @@ boundary-corrected likelihood-ratio test (`lrt_boundary`), not the `:resd`
 row. A boundary / singular direction (non-finite SE) reports `NaN` z / p rather
 than a spurious `z = 0, p = 1`.
 
-Printing the table (`summary(fit)` is the same object) names the marginal
-approximation behind `logLik` when the fit has random effects or a non-default
-integrator, matching `show(fit)`. Column values and row names are unchanged.
+Returns a real `StatsBase.CoefTable` (`ct isa CoefTable`, and `DataFrame(ct)`
+works). The integrator behind `logLik` is named by `show(fit)`, not by this
+table.
 """
 function coeftable(fit::DrmFit; level::Real = 0.95)
     se = _display_se(fit)
@@ -408,5 +377,5 @@ function coeftable(fit::DrmFit; level::Real = 0.95)
     lvl = round(Int, 100 * level)
     colnms = ["Estimate", "Std.Error", "z", "Pr(>|z|)", "Lower $lvl%", "Upper $lvl%"]
     mat = hcat(est, ses, zs, ps, lo, hi)
-    return DrmCoefTable(CoefTable(mat, colnms, rownms, 4, 3), _marginal_note(fit))
+    return CoefTable(mat, colnms, rownms, 4, 3)   # pvalcol = 4, teststatcol = 3
 end
