@@ -247,9 +247,15 @@ _dispersion_clamp(::Val{:gamma_fixed}) = 4.0
 _dispersion_clamp(::Val{:beta_fixed}) = 4.0
 _dispersion_clamp(::Val{:betabinomial_fixed}) = 4.0
 _dispersion_clamp(::Val{:tweedie_fixed}) = 8.0
+# Hetero phylo-mean kinds: same family bounds as the `_fixed` twins. `aux_from`
+# still clamps `-2 ησ` to [-8, 8], i.e. ησ to [-4, 4]. Listed explicitly so a
+# new hetero kind errors here rather than inheriting a catch-all (J3a review).
+_dispersion_clamp(::Val{:nb2_hetero}) = 4.0
+_dispersion_clamp(::Val{:gamma_hetero}) = 4.0
+_dispersion_clamp(::Val{:beta_hetero}) = 4.0
 _dispersion_clamp(k::Val) = throw(ArgumentError(
     "_dispersion_clamp: no log-dispersion bound registered for family kind $(typeof(k).parameters[1]); " *
-    "add one before routing it through _crossed_mean_laplace_nuisance_fg"))
+    "add one before routing it through a Laplace SE path"))
 
 # The fallback must not be silent: the reported SEs of such a fit come from the noisy stencil.
 _warn_value_hessian(context::AbstractString) =
@@ -1322,9 +1328,9 @@ function _fit_phylo_mean_laplace_hetero(fam, kind, aux_from, n::Int, Xμ, Xσ,
             _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
         else
             _finite_hessian_from_gradient(
-                _se_grad(θ -> _phylo_mean_laplace_hetero_fg(
+                _se_grad((θ, tol) -> _phylo_mean_laplace_hetero_fg(
                     kind, aux_from, n, Xμ, Xσ, leaf_node, Q, logdetQ, θ; grad = true, b0 = zeros(q),
-                    newton_tol = _SE_MODE_TOL, newton_maxiter = _SE_MODE_MAXITER)),
+                    newton_tol = tol, newton_maxiter = _SE_MODE_MAXITER)),
                 θ̂; context = "sparse-Laplace GLMM (phylo-mean, covariate dispersion)")
         end
         _vcov_from_fd_hessian(Hθ; context = "sparse-Laplace GLMM (phylo-mean, covariate dispersion)")
@@ -1484,9 +1490,9 @@ function _fit_phylo_mean_laplace(fam, kind, aux, n::Int, Xμ, labels, tree, nmμ
             _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
         else
             _finite_hessian_from_gradient(
-                _se_grad(θ -> _phylo_mean_laplace_fg(
+                _se_grad((θ, tol) -> _phylo_mean_laplace_fg(
                     kind, aux, n, Xμ, leaf_node, Q, logdetQ, θ; grad = true, b0 = zeros(q),
-                    newton_tol = _SE_MODE_TOL, newton_maxiter = _SE_MODE_MAXITER)),
+                    newton_tol = tol, newton_maxiter = _SE_MODE_MAXITER)),
                 θ̂; context = "sparse-Laplace GLMM (phylo-mean)")
         end
         _vcov_from_fd_hessian(Hθ; context = "sparse-Laplace GLMM (phylo-mean)")
