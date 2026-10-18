@@ -49,3 +49,29 @@ Verdict: **clean for the rebase claim.** Unique work is still the three J3c
 routes plus the hetero per-observation clamp. The ladder adaptation and
 explicit hetero `_dispersion_clamp` methods are rebase fixes required by
 #1099 / J3a, not a new SE-accuracy claim. Status stays draft. No `Closes`.
+
+## 6. CI retrigger
+
+The force-push landed while the PR still targeted `#1079`'s branch. Retargeted
+to `main`; this prose commit is a `synchronize` so CI can start. The full
+local suite on this tree is unchanged (16,817 / 0).
+
+## 7. Julia 1 shard 1/4 (run 39136437802)
+
+`test/test_j3c_hetero_clamp_hessian.jl:66` failed on Julia 1.13.2:
+`fit.theta[end] = -8.119 ≯ _SE_LOGSD_LO = -7`. Reproduced locally. The
+engine path is fine: the 1.13 `Distributions.NegativeBinomial` redraw is
+not the 1.10 draw, and that 1.13 `y` collapses phylo log-SD to the fg
+floor. The unit `_se_hessian_path` assertions still passed (11/12).
+
+Fix: freeze the 1.10.12 `y` in the e2e block so the fallback stays the
+ησ-clamp case on both CI versions. No `src/` change. Still **Refs #1073**,
+no `Closes`.
+
+Local after the pin:
+
+| case | result |
+|---|---|
+| `test_j3c_hetero_clamp_hessian.jl` Julia 1.10.12 | 13/13 |
+| `test_j3c_hetero_clamp_hessian.jl` Julia 1.13.2 | 13/13 |
+| focused J3 + #1088 (1.10.12, `--check-bounds=yes`) | 232/232 |

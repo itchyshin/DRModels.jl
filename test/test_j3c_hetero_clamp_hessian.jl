@@ -8,8 +8,7 @@
 # flat in that direction while the analytic gradient is not, so the
 # gradient-difference Hessian is undefined: those fits must take the value path.
 using DRModels
-using Test, LinearAlgebra, Random
-import Distributions
+using Test
 
 @testset "J3c: hetero per-observation log-sigma clamp uses the value Hessian (Refs #1073)" begin
     # Family bound on ησ is the aux_from clamp, not the fg's wider [-8, 8] box.
@@ -42,22 +41,24 @@ import Distributions
     @test DRModels._se_hessian_path(θ_ok; sd = 4:4, sd_lo = DRModels._SE_LOGSD_LO,
                                     eta = Xσ * θ_ok[2:3], disp_bound = 4.0) === :gradient
 
-    # End to end: generate past the family's ±4 bound so the fitted ησ hits the
-    # clamp while the phylo log-SD stays interior. The SE block must warn and
-    # fall back (never throw).
-    rng = MersenneTwister(1080)
+    # End to end: fitted ησ past the family's ±4 bound, phylo log-SD interior.
+    # The SE block must warn and fall back (never throw).
+    #
+    # `y` is a frozen Julia 1.10.12 draw (MersenneTwister(1080); log σ = 2.6 x
+    # past ±4; NB2 size r = exp(-2 clamp(ησ, -4, 4)); phylo σ = 0.35).
+    # `Distributions.NegativeBinomial` RNG is not stable across 1.10 → 1.13;
+    # the 1.13 redraw collapsed phylo log-SD below `_SE_LOGSD_LO` and made
+    # this look like an SD-floor fallback instead of the ησ-clamp path.
     p, m = 8, 6
     phy = random_balanced_tree(p; branch_length = 0.20)
     species = repeat(1:p, inner = m)
     n = length(species)
     x = collect(range(-1.7, 1.7; length = n))
-    C = sigma_phy_dense(phy; σ²_phy = 0.35^2)
-    u = cholesky(Symmetric(C)).L * randn(rng, p)
-    # log σ = 0 + 2.6 x → tails past ±4; size r = exp(-2 log σ)
-    ησ_true = 2.6 .* x
-    sz = exp.(-2 .* clamp.(ησ_true, -4.0, 4.0))
-    μ = exp.(0.15 .+ 0.25 .* x .+ u[species])
-    y = Float64.([rand(rng, Distributions.NegativeBinomial(sz[i], sz[i] / (sz[i] + μ[i]))) for i in 1:n])
+    y = [1.0, 2.0, 0.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 4.0, 1.0,
+         2.0, 1.0, 2.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0,
+         6.0, 0.0, 1.0, 0.0, 0.0, 15.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+         0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    @test length(y) == n
     fit = @test_logs (:warn, r"falling back to the value-based finite-difference Hessian") match_mode = :any drm(
         bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ x)), NegBinomial2();
         data = (; y, x, species), tree = phy)
