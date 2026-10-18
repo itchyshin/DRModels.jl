@@ -130,6 +130,7 @@ fit = drm(
 | `obj$gr(opt$par)` / `sdreport()$cov.fixed` | `gradient(fit)` / `hessian(fit)` (negative log-likelihood, `coef(fit)` order and scale) |
 | `family(fit)` | `family(fit)` |
 | `is_converged(fit)` / convergence diagnostics | `is_converged(fit)` / `check_drm(fit)` |
+| `convergence_status(fit)` (`"converged"` / `"boundary"` / `"degenerate"`) | `convergence_status(fit)` (`:converged` / `:boundary` / `:degenerate`) |
 
 ### Prediction
 

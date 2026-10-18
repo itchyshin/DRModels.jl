@@ -41,7 +41,13 @@ fit_lap = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), Gamma();
 """
 struct Gamma end
 
-@drm_entry function drm(f::DrmFormula, fam::Gamma; data, tree = nothing, K = nothing,
+# FX3b: `se = false` is recorded on the fit (`DrmFit.uncertainty`), so
+# `convergence_status` does not read the skipped (NaN) covariance as a failure.
+@drm_entry function drm(f::DrmFormula, fam::Gamma; se::Bool = true, kwargs...)
+    return _withuncertainty(_drm_gamma_fit(f, fam; se = se, kwargs...), se)
+end
+
+function _drm_gamma_fit(f::DrmFormula, fam::Gamma; data, tree = nothing, K = nothing,
              A = nothing, coords = nothing, g_tol::Real = 1e-8, se::Bool = true,
              marginal::Symbol = :LA, method = nothing)
     _reject_method_as_marginal(fam, method)

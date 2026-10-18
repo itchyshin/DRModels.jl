@@ -165,7 +165,9 @@ update
 ```@docs
 check_drm
 family
+convergence_status
 is_converged
+converged
 deviance
 dof_residual
 r2_constant_sigma

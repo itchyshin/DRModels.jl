@@ -54,7 +54,7 @@ function profile_sigma_a(fit::DrmFit; level::Real = 0.95, axes = :all, chibar::B
         throw(ArgumentError("profile_sigma_a requires a bivariate q=4 phylogenetic fit whose " *
             "ranef carries `prob` (re-fit on this DRModels version)"))
     0 < level < 1 || throw(ArgumentError("level must be in (0, 1)"))
-    is_converged(fit) ||
+    _converged_nondegenerate(fit) ||   # FX3b: a boundary Sigma_a is what this profiles
         @warn "profile_sigma_a: the supplied fit did not converge; profile CIs may be unreliable"
     prob = re.prob
     Q_cond = re.Q_cond

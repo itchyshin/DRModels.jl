@@ -178,17 +178,19 @@ fit = drm(
             "package: it is accepted only on the bivariate residual-correlation route, which " *
             "marginalises no random effect and so has nothing for a restricted likelihood to " *
             "correct — use method = :ML."))
+    # FX3b: `q4_vcov = false` is recorded on the fit (`DrmFit.uncertainty`), so
+    # `convergence_status` does not read the skipped (NaN) covariance as a failure.
     if structured_marker !== nothing && structured_marker[1] === :phylo_q4
-        return _fit_bivariate_q4_phylo(
+        return _withuncertainty(_fit_bivariate_q4_phylo(
             f, fam, data, fixed, structured_marker, tree;
             q4_g_tol = q4_g_tol,
             q4_iterations = q4_iterations,
             q4_n_newton = q4_n_newton,
             q4_vcov = q4_vcov,
             method = method,
-        )
+        ), q4_vcov)
     elseif structured_marker !== nothing && structured_marker[1] === :structured_q4
-        return _fit_bivariate_q4_structured(
+        return _withuncertainty(_fit_bivariate_q4_structured(
             f, fam, data, fixed, structured_marker, tree, K, A, coords;
             spatial_range = spatial_range,
             q4_g_tol = q4_g_tol,
@@ -196,7 +198,7 @@ fit = drm(
             q4_n_newton = q4_n_newton,
             q4_vcov = q4_vcov,
             method = method,
-        )
+        ), q4_vcov)
     elseif structured_marker !== nothing && structured_marker[1] === :structured_q2
         # No route-wide `coords` guard here: each provider branch below refuses
         # when ITS OWN input is missing (relmat needs `K`, animal needs `A`,

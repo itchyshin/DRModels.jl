@@ -58,7 +58,13 @@ fit_phy = drm(bf(@formula(cbind(successes, failures) ~ x + phylo(1 | species)), 
 """
 struct BetaBinomial end
 
-@drm_entry function drm(f::DrmFormula, fam::BetaBinomial; data, tree = nothing, g_tol::Real = 1e-8,
+# FX3b: `se = false` is recorded on the fit (`DrmFit.uncertainty`), so
+# `convergence_status` does not read the skipped (NaN) covariance as a failure.
+@drm_entry function drm(f::DrmFormula, fam::BetaBinomial; se::Bool = true, kwargs...)
+    return _withuncertainty(_drm_betabinomial_fit(f, fam; se = se, kwargs...), se)
+end
+
+function _drm_betabinomial_fit(f::DrmFormula, fam::BetaBinomial; data, tree = nothing, g_tol::Real = 1e-8,
              se::Bool = true, marginal::Symbol = :LA)
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
         drm(f, fam; data = data_observed, tree = tree, g_tol = g_tol, se = se, marginal = marginal)

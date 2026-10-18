@@ -315,8 +315,9 @@ end
 # Tenreyro 2010, Econ. Lett. 107:310-312). The binomial cone decides the
 # case when s = 1{y > 0} and ntr = 1 + s (#1109). The binomial
 # near-separation rule is not used: it reads μ̂ as probabilities.
-# `converged` is left unchanged (#1109); the shared is_converged contract
-# is drmTMB #1554.
+# `converged` is left unchanged (#1109). Returns `(V, nonexistent)`; the fitter
+# records `nonexistent` as `DrmFit.geometry`, which `convergence_status` reads
+# as `:degenerate` (FX3b; the twin contract is drmTMB #1554).
 function _count_mle_existence_guard(X, y, V, names; idx = 1:size(X, 2))
     s = Float64.(y .> 0)
     ntr = 1 .+ s
@@ -330,7 +331,7 @@ function _count_mle_existence_guard(X, y, V, names; idx = 1:size(X, 2))
                   nor ruled out; inspect large coefficients and standard errors.
                   """ separation = :inconclusive flagged_coefficients = String[]
         end
-        return V
+        return V, false
     end
     flagged = det.flagged
     quiet = get(task_local_storage(), :drm_quiet_boundary, false)
@@ -348,5 +349,5 @@ function _count_mle_existence_guard(X, y, V, names; idx = 1:size(X, 2))
         k = idx[j]
         V2[k, :] .= NaN; V2[:, k] .= NaN; V2[k, k] = Inf
     end
-    return V2
+    return V2, true
 end

@@ -139,13 +139,19 @@ fit_lap = drm(bf(@formula(y ~ x + (1 | g))), Binomial(); data = dat, marginal = 
 """
 struct Binomial end
 
+# FX3b: `se = false` is recorded on the fit (`DrmFit.uncertainty`), so
+# `convergence_status` does not read the skipped (NaN) covariance as a failure.
+@drm_entry function drm(f::DrmFormula, fam::Binomial; se::Bool = true, kwargs...)
+    return _withuncertainty(_drm_binomial_fit(f, fam; se = se, kwargs...), se)
+end
+
 # `K` / `A` / `coords` are ACCEPTED BUT NOT SUPPORTED: Binomial admits `phylo`
 # alone among the structured markers. Without them in the signature a user
 # writing `relmat(1 | g)` with `K = K` got a bare
 #     MethodError: no method matching drm(::DrmFormula, ::Binomial; K=…)
 # — a dispatch failure instead of the explanation this method already carries a
 # few lines below. Taking the arguments lets that refusal actually be reached.
-@drm_entry function drm(f::DrmFormula, fam::Binomial; data, tree = nothing, K = nothing,
+function _drm_binomial_fit(f::DrmFormula, fam::Binomial; data, tree = nothing, K = nothing,
              A = nothing, coords = nothing, g_tol::Real = 1e-8,
              se::Bool = true, marginal::Symbol = :LA, method = nothing)
     _reject_method_as_marginal(fam, method)

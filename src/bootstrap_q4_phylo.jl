@@ -125,7 +125,7 @@ function bootstrap_sigma_a(fit::DrmFit; data, B::Int = 300, level::Real = 0.95,
             fitb = drm(form, fam; data = datab, tree = phy,
                        q4_g_tol = q4_g_tol, q4_iterations = q4_iterations,
                        q4_vcov = false, method = fit.estim_method)
-            (!check_converged || is_converged(fitb)) ||
+            (!check_converged || _converged_nondegenerate(fitb)) ||   # FX3b: keep boundary draws
                 error("refit did not converge")
             Σb = Matrix{Float64}(fitb.ranef.Sigma_a)
             sd_draws[b, :] = sqrt.(max.(diag(Σb), 0.0))

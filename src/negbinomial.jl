@@ -77,7 +77,13 @@ fit_lap = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), NegBinomial2()
 """
 struct NegBinomial2 end
 
-@drm_entry function drm(f::DrmFormula, fam::NegBinomial2; data, tree = nothing, K = nothing,
+# FX3b: `se = false` is recorded on the fit (`DrmFit.uncertainty`), so
+# `convergence_status` does not read the skipped (NaN) covariance as a failure.
+@drm_entry function drm(f::DrmFormula, fam::NegBinomial2; se::Bool = true, kwargs...)
+    return _withuncertainty(_drm_negbinomial2_fit(f, fam; se = se, kwargs...), se)
+end
+
+function _drm_negbinomial2_fit(f::DrmFormula, fam::NegBinomial2; data, tree = nothing, K = nothing,
              A = nothing, coords = nothing, g_tol::Real = 1e-8, se::Bool = true,
              marginal::Symbol = :LA, method = nothing)
     _reject_method_as_marginal(fam, method)
@@ -461,11 +467,12 @@ function _fit_negbin2(fam::NegBinomial2, y, Xμ, Xσ, nmμ, nmσ, g_tol)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ)]
     names = [:mu => nmμ, :sigma => nmσ]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))  # response-scale μ̂
-    V = _count_mle_existence_guard(Xμ, y, V, nmμ; idx = 1:pμ)   # sibling of #1109
+    V, nonexistent = _count_mle_existence_guard(Xμ, y, V, nmμ; idx = 1:pμ)   # sibling of #1109
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
-    return _withiterations(
+    fit = _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
         Optim.iterations(res))
+    return nonexistent ? _withgeometry(fit, :count_mle_nonexistent) : fit
 end
 
 """

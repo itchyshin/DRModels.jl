@@ -1,7 +1,8 @@
 # Poisson / NB2 MLE-existence screen (#1109; drmTMB twin #1553).
 # Policy: detect and warn -- the fit is returned, SEs of flagged mu
-# coefficients are Inf. `is_converged` is unchanged (shared-flag contract
-# is drmTMB #1554).
+# coefficients are Inf. The optimiser flag `fit.converged` is unchanged;
+# `convergence_status` reads the fit as :degenerate, so `is_converged` is
+# false (FX3b, the shared twin contract of drmTMB #1554).
 using DRModels
 using Test, Logging, Random
 import Distributions
@@ -49,7 +50,10 @@ end
     @test recs[1].kwargs[:separation] === :count_mle_nonexistent
     se = stderror(fit)
     @test all(isinf, se)
-    @test is_converged(fit)  # #1109: flag unchanged
+    @test fit.converged                          # the optimiser flag is unchanged
+    @test fit.geometry === :count_mle_nonexistent
+    @test convergence_status(fit) === :degenerate   # FX3b
+    @test !is_converged(fit)
 end
 
 @testset "extreme-x Poisson warns and reports Inf SE (#1109 r27)" begin
@@ -59,6 +63,7 @@ end
     @test !isempty(recs)
     @test recs[1].kwargs[:separation] === :count_mle_nonexistent
     @test all(isinf, stderror(fit))
+    @test convergence_status(fit) === :degenerate
 end
 
 @testset "all-zero NB2 warns and reports Inf SE (sibling of #1109)" begin
@@ -70,6 +75,26 @@ end
     @test recs[1].kwargs[:separation] === :count_mle_nonexistent
     se_mu = stderror(fit)[1:2]
     @test all(isinf, se_mu)
+    @test fit.geometry === :count_mle_nonexistent
+    @test convergence_status(fit) === :degenerate
+end
+
+# The geometry verdict must not depend on whether standard errors were
+# computed: with `se = false` the covariance rules are skipped, so only the
+# recorded cone screen can say the MLE does not exist (drmTMB: step 2 runs
+# under `drm_control(se = FALSE)` too).
+@testset "se = false keeps the count MLE verdict (FX3b)" begin
+    for (fam, form) in ((Poisson(), bf(@formula(y ~ 1 + x))),
+                        (NegBinomial2(), bf(@formula(y ~ 1 + x), @formula(sigma ~ 1))))
+        fit, recs = _pois_capture() do
+            drm(form, fam; data = (; y = _POIS_Y0, x = _POIS_X0), se = false)
+        end
+        @test !isempty(recs)
+        @test fit.uncertainty === :skipped
+        @test fit.geometry === :count_mle_nonexistent
+        @test convergence_status(fit) === :degenerate
+        @test !is_converged(fit)
+    end
 end
 
 @testset "ordinary Poisson is not flagged" begin
@@ -81,5 +106,7 @@ end
     end
     @test isempty(recs)
     @test all(isfinite, stderror(fit))
+    @test fit.geometry === :ok
+    @test convergence_status(fit) === :converged
     @test is_converged(fit)
 end

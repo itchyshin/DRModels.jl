@@ -1666,7 +1666,9 @@ Auditable parametric bootstrap. Returns a `NamedTuple` with:
 `failures = :error` (default) records failures and then errors if any replicate
 failed. `failures = :skip` computes summaries from successful replicates and
 keeps the failure records in the return value. Set `check_converged = true` to
-treat non-converged refits as failed replicates. Passing an existing `DrmFit`
+treat non-converged or degenerate refits as failed replicates. A refit at a
+variance boundary is kept: [`convergence_status`](@ref) calls it `:boundary`,
+but it is a real draw. Passing an existing `DrmFit`
 reuses that point estimate as the bootstrap seed fit and starts directly with
 the `B` simulated refits. Gaussian bootstrap refits pass `algorithm` and
 `g_tol` through to `drm(...)`; this is useful for large structured models where
@@ -2279,10 +2281,12 @@ function _bootstrap_result(
             ysim = simulate_fn === nothing ? simulate(fit0; rng=rr) : simulate_fn(rr)
             datab = _bootstrap_data(formula, data, ysim)
             fitb = _without_boundary_warnings(() -> refit(datab))
-            # `is_converged`, not the raw `.converged` field: the accessor also
-            # rejects a degenerate optimum (sigma collapsed, likelihood runaway),
-            # which the optimiser's own flag happily calls converged (#461).
-            if check_converged && !is_converged(fitb)
+            # Not the raw `.converged` field: this gate also rejects a degenerate
+            # optimum (sigma collapsed, likelihood runaway), which the optimiser's
+            # own flag happily calls converged (#461). Not `is_converged` either
+            # (FX3b): a refit whose variance component lands on its boundary is a
+            # real draw, and dropping it would bias the interval away from zero.
+            if check_converged && !_converged_nondegenerate(fitb)
                 error("refit did not converge or landed on a degenerate optimum")
             end
             draws[b, :] = coef(fitb)
@@ -2589,9 +2593,11 @@ end
 Post-fit convergence / identifiability diagnostics — drmTMB's `check_drm()`.
 Returns a `NamedTuple` and logs a short report:
 
-- `converged` — [`is_converged`](@ref)`(fit)`: the optimiser's convergence flag
-  AND the degeneracy bar, so a Gaussian fit whose scale collapsed is reported
-  `false` here even when `fit.converged` is `true` (#949).
+- `convergence_status` — [`convergence_status`](@ref)`(fit)`: `:converged`,
+  `:boundary` or `:degenerate`, by the same rules as drmTMB (FX3b).
+- `converged` — [`is_converged`](@ref)`(fit)`, i.e. `convergence_status ===
+  :converged`. A Gaussian fit whose scale collapsed is reported `false` here even
+  when `fit.converged` is `true` (#949), and so is a `:boundary` fit (FX3b).
 - `max_abs_grad` — `max|∇nll|` at the optimum (≈ 0 at a clean interior optimum;
   `NaN` when no gradient could be produced: see `grad_source` for which of the
   two reasons applies).
@@ -2634,8 +2640,10 @@ Returns a `NamedTuple` and logs a short report:
   `(at_boundary, findings)`, drmTMB's `temporal_boundary` rules: residual σ̂ below
   1e-3 · sd(y), OU decay × longest series span below 1e-4 or × shortest gap above 30,
   AR1 |φ̂| above 0.999. drmTMB reports such a fit as `convergence_status() == "boundary"`
-  (still converged). Does not affect `ok`.
-- `ok` — `true` when converged, the gradient is small, and the covariance is PD.
+  (so its `is_converged` is false since FX3b). Does not affect `ok`.
+- `ok` — `true` when `convergence_status` is not `:degenerate`, the gradient is
+  small, and the covariance is PD. A `:boundary` fit can be `ok` (drmTMB reports
+  it as a note, and a degenerate fit as a warning).
   On a penalized fit the gradient criterion is **dropped**: the stored objective
   is unpenalized, so its gradient is non-zero at the MAP optimum by construction
   and scoring it would report a correct fit as broken. It is also dropped
@@ -2677,9 +2685,11 @@ function check_drm(fit::DrmFit; grad_tol::Real=1e-3)
     # #1003: a failed diagnostic warns instead of reading as "not that kind of fit".
     vb = try _variance_boundary(fit) catch err; _boundary_diagnostic_failed("variance-boundary", err) end
     tb = try _temporal_boundary(fit) catch err; _boundary_diagnostic_failed("temporal-boundary", err) end
-    conv = is_converged(fit)   # #949: the trusted accessor, not the raw flag
-    ok = conv && (penalized || isnan(mag) || mag <= grad_tol) && pd
+    status = convergence_status(fit)   # FX3b twin status; #949: not the raw flag
+    conv = status === :converged       # is_converged(fit)
+    ok = status !== :degenerate && (penalized || isnan(mag) || mag <= grad_tol) && pd
     report = (
+        convergence_status=status,
         converged=conv,
         max_abs_grad=mag,
         grad_source=grad.source,
@@ -2692,7 +2702,7 @@ function check_drm(fit::DrmFit; grad_tol::Real=1e-3)
         temporal_boundary=tb === nothing ? nothing : (at_boundary = !isempty(tb), findings = tb),
         ok=ok,
     )
-    @info "check_drm" converged = report.converged max_abs_grad = report.max_abs_grad grad_source =
+    @info "check_drm" convergence_status = report.convergence_status converged = report.converged max_abs_grad = report.max_abs_grad grad_source =
         report.grad_source vcov_complete = report.vcov_complete vcov_posdef = report.vcov_posdef min_eigval =
         report.min_eigval cond = report.cond penalized_map = report.penalized_map ok = report.ok
     vcov_complete || @warn "check_drm: the stored covariance has non-finite entries, so " *

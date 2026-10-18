@@ -12,6 +12,7 @@ import ForwardDiff
         fit = drm(bf(@formula(y ~ x + z), @formula(sigma ~ 1)), Gaussian(); data = (; y, x, z))
         r = check_drm(fit)
         @test r.converged
+        @test r.convergence_status === :converged   # FX3b twin status
         @test r.vcov_posdef
         @test r.max_abs_grad < 1e-2          # near a clean interior optimum
         @test r.min_eigval > 0
@@ -32,7 +33,8 @@ import ForwardDiff
         # `grad_source` added by the AD-safety fix: `max_abs_grad` alone cannot say
         # whether the number is an exact gradient, a finite-difference stand-in, or
         # absent, and the last of those silently satisfies `ok`.
-        @test keys(r) == (:converged, :max_abs_grad, :grad_source, :vcov_complete,
+        # `convergence_status` added by FX3b: the three-valued twin status.
+        @test keys(r) == (:convergence_status, :converged, :max_abs_grad, :grad_source, :vcov_complete,
                           :vcov_posdef, :min_eigval, :cond, :penalized_map,
                           :variance_boundary, :temporal_boundary, :ok)
         # `variance_boundary` (#724/#697): `nothing` unless a Gaussian fit has a grouped /
@@ -114,7 +116,12 @@ import ForwardDiff
         @test isnan(r.min_eigval)
         @test r.cond == Inf
         @test !r.ok                             # honestly not-ok, rather than an exception
-        @test r.converged                       # ...but the FIT itself converged
+        @test fit.converged                     # ...but the optimiser itself converged
+        # FX3b: a covariance that was requested and came back non-finite is not
+        # an interior optimum, so the twin status is :degenerate and
+        # `converged` (`is_converged`) is false.
+        @test r.convergence_status === :degenerate
+        @test !r.converged
     end
 
     # ---------------------------------------------------------------------------

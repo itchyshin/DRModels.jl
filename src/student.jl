@@ -48,7 +48,13 @@ fit_lap = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), Student(); dat
 """
 struct Student end
 
-@drm_entry function drm(f::DrmFormula, fam::Student; data, g_tol::Real = 1e-8,
+# FX3b: `se = false` is recorded on the fit (`DrmFit.uncertainty`), so
+# `convergence_status` does not read the skipped (NaN) covariance as a failure.
+@drm_entry function drm(f::DrmFormula, fam::Student; se::Bool = true, kwargs...)
+    return _withuncertainty(_drm_student_fit(f, fam; se = se, kwargs...), se)
+end
+
+function _drm_student_fit(f::DrmFormula, fam::Student; data, g_tol::Real = 1e-8,
              se::Bool = true, marginal::Symbol = :LA)
     # `marginal = :Laplace` (opt-in, ordinary `(1 | g)` on the mean): the TMB-convention
     # Laplace integrator drmTMB uses; the default `:LA` is unchanged (adaptive GHQ).

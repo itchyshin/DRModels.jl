@@ -160,8 +160,10 @@ fabricated zero or `NaN` standing in for it:
 - `optimizer` — `"Optim.LBFGS"` when [`niterations`](@ref) recorded an achieved
   iteration count (see its docstring for exactly which routes that covers);
   `missing` on a route with no single outer optimiser call to attribute one to.
-- `converged` — [`is_converged`](@ref)`(fit)` (the optimiser flag AND the
-  degeneracy bar), the same value as the top-level bridge `converged` (#949).
+- `converged` — the optimiser flag AND the degeneracy bar, the same value as
+  the top-level bridge `converged` (#949). Since FX3b this is not
+  [`is_converged`](@ref), which is also `false` at a `:boundary` optimum; the
+  bridge sends [`convergence_status`](@ref) as its own key.
 - `iterations` — `niterations(fit)`; `missing` when unrecorded (`niterations`
   returns `-1`).
 - `max_abs_grad`, `grad_source` — the same `(magnitude, source)` pair
@@ -208,7 +210,7 @@ function bridge_diagnostics(fit::DrmFit)
         route = fit.nll === nothing ? "none" : String(nameof(typeof(fit.nll))),
         integrator = fit.marginal,
         optimizer = iters >= 0 ? "Optim.LBFGS" : missing,
-        converged = is_converged(fit),
+        converged = _converged_nondegenerate(fit),
         iterations = iters >= 0 ? iters : missing,
         max_abs_grad = no_gradient ? missing : grad.magnitude,
         grad_source = grad.source,

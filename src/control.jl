@@ -274,7 +274,8 @@ end
 _withcontrolinfo(fit, V, report) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
     V, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula, fit.nll,
     fit.nllgrad, fit.ranef, fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal,
-    fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale, report)
+    fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale, report,
+    fit.uncertainty, fit.geometry)
 
 # ---------------------------------------------------------------------------
 # Helpers the fitters call

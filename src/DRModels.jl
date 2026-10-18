@@ -141,6 +141,7 @@ include("profile_q4_phylo.jl")   # Ayumi #2: profile-likelihood CIs for the q=4 
 include("bootstrap_q4_phylo.jl") # Ayumi #2: parametric bootstrap of the q=4 among-axis SDs (boundary-honest CIs)
 include("variational.jl")
 include("ordinary_laplace.jl")      # Arc 2: marginal = :Laplace on ordinary (1 | g) (TMB convention)
+include("convergence_status.jl")  # FX3b: the three-valued twin status shared with drmTMB
 include("summary.jl")
 include("fit_derivatives.jl")  # #971 #994: gradient / hessian / control_info accessors
 include("r2.jl")             # R2 for the constant-sigma Gaussian case ONLY; refuses elsewhere
@@ -185,7 +186,7 @@ export @formula, bf, drm_formula, drm, Gaussian, Student, SkewNormal, Poisson, N
        drm_figure, plot_profile, plot_parameter_surface, plot_corpairs,
        gaussian_locscale_phylo_sds,
        profile_sigma_a,
-       is_converged, niterations, deviance, dof_residual,
+       is_converged, converged, convergence_status, niterations, deviance, dof_residual,
        lrtest, anova, aicc, weights, update,
        chibar_pvalue, lrt_boundary,
        bias_correct,
