@@ -14,6 +14,23 @@ const _OS_RE = bf(@formula(y ~ 1 + x + (1 | g)), @formula(sigma ~ 1 + x))
 @testset "optimizer selection" begin
     @test DRMControl().optimizer === :default
     @test DRMControl(nothing, nothing, 1, true, 1, 0.5).optimizer === :default
+    legacy_report = try
+        DRMControlReport(DRMControl(), Float64[], 0, true, :computed, nothing)
+    catch err
+        err
+    end
+    @test legacy_report isa DRMControlReport
+    if legacy_report isa DRMControlReport
+        @test legacy_report.requested_optimizer === :default
+        @test legacy_report.actual_optimizer === :unrecorded
+        @test isempty(legacy_report.optimizer_runs)
+        @test legacy_report.selected_optimizer_stage === :none
+        @test legacy_report.native_controls.maxit === nothing
+    end
+    legacy_selected = DRMControlReport(DRMControl(optimizer = :bfgs), Float64[],
+                                       0, true, :computed, nothing)
+    @test legacy_selected.requested_optimizer === :bfgs
+    @test legacy_selected.actual_optimizer === :unrecorded
     @test_throws ArgumentError DRMControl(optimizer = :nelder_mead)
 
     base = drm(_OS_FIXED, Gaussian(); data = _OS_DATA, control = DRMControl(se = false))
@@ -79,6 +96,38 @@ const _OS_RE = bf(@formula(y ~ 1 + x + (1 | g)), @formula(sigma ~ 1 + x))
     single_formula = drm(bf(@formula(y ~ 1 + x)), Gaussian(); data = _OS_DATA,
                          control = DRMControl(optimizer = :bfgs, se = false))
     @test control_info(single_formula).actual_optimizer === :bfgs
+
+    # A bad parm and missing data make an unguarded inference call fail cheaply;
+    # the selector-specific error must win before any nuisance or bootstrap refit.
+    selected_gaussian = drm(_OS_FIXED, Gaussian(); data = _OS_DATA,
+                            control = DRMControl(optimizer = :bfgs))
+    selected_poisson = drm(count_formula, Poisson(); data = count_data,
+                           control = DRMControl(optimizer = :lbfgs, se = false))
+    @test length(confint(selected_gaussian; method = :wald)) == length(coef(selected_gaussian))
+    function selector_refused(call)
+        err = try
+            call()
+            nothing
+        catch caught
+            caught
+        end
+        @test err isa ArgumentError
+        @test err isa ArgumentError && occursin("optimizer", sprint(showerror, err))
+    end
+    selector_refused(() -> profile_result(selected_gaussian; parm = :not_a_parameter))
+    selector_refused(() -> confint(selected_gaussian; method = :profile,
+                                  parm = :not_a_parameter))
+    for fit in (selected_gaussian, selected_poisson)
+        selector_refused(() -> bootstrap_result(fit; data = nothing, B = 1))
+        selector_refused(() -> bootstrap_summary(fit; data = nothing, B = 1))
+        selector_refused(() -> bootstrap_ci(fit; data = nothing, B = 1))
+    end
+    default_inference = drm(_OS_FIXED, Gaussian(); data = _OS_DATA,
+                            control = DRMControl())
+    @test profile_result(default_inference; parm = :mu).attempted == 2
+    default_bootstrap = bootstrap_result(default_inference; data = _OS_DATA,
+                                         B = 1, rng = MersenneTwister(20261019))
+    @test default_bootstrap.attempted == default_bootstrap.used == 1
 
     re_default = drm(_OS_RE, Gaussian(); data = _OS_DATA)
     re_control_default = drm(_OS_RE, Gaussian(); data = _OS_DATA,

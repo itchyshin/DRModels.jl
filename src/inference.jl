@@ -146,6 +146,17 @@ function _with_pinned_blas(f, active::Bool)
     end
 end
 
+function _refuse_selected_optimizer_refit(fit::DrmFit, entrypoint::AbstractString)
+    info = fit.control_info
+    if info isa DRMControlReport && info.requested_optimizer !== :default
+        throw(ArgumentError("$entrypoint: this fit requested `control.optimizer = " *
+                            "$(repr(info.requested_optimizer))`; inference refits do not " *
+                            "yet forward the selected optimizer. Refit with " *
+                            "`DRMControl(optimizer = :default)` for this inference route."))
+    end
+    return nothing
+end
+
 """
     confint(fit; level = 0.95, method = :wald, threads = false, parm = nothing)
 
@@ -181,6 +192,8 @@ Confidence intervals for every coefficient, as a vector of
   objective is thread-safe; if only one coefficient is profiled, its lower and
   upper endpoint searches are run in parallel instead. Canonical location–scale
   profiling remains serial in this release, including when `threads = true`.
+  A fit that explicitly selected `DRMControl(optimizer = :lbfgs | :bfgs)` is
+  refused before profiling, because nuisance refits cannot yet forward it.
 - `parm = :resd` or `parm = [:mu, :resd]` — restrict intervals to one or more
   parameter blocks. This is especially useful for profiling random-effect SDs
   without also profiling fixed-effect coefficients.
@@ -196,6 +209,7 @@ function confint(
         "intervals remain deferred. Use `method = :profile`."))
     method === :wald && return _wald_ci(fit, level, parm)
     if method === :profile
+        _refuse_selected_optimizer_refit(fit, "confint(method = :profile)")
         # drmTMB (#1448): the paired phylo() + OU route has point-recovery
         # evidence only; its profile intervals are not calibrated.
         _is_paired_phylo_temporal(fit) && @warn "confint: profile intervals from the paired " *
@@ -287,8 +301,10 @@ independent profile coefficients; when one coefficient is profiled, its endpoint
 arms may run in parallel. Canonical location–scale profile jobs use only the
 coefficient-level policy: each job owns its nuisance state, while its lower and
 upper endpoint chains remain serial.
+A fit with an explicit `DRMControl.optimizer` is refused before profiling.
 """
 function profile_result(fit::DrmFit; level::Real=0.95, threads::Bool=false, parm=nothing)
+    _refuse_selected_optimizer_refit(fit, "profile_result")
     _wald_withheld(fit) && (parm = _homtoep_profile_parm(fit, parm))
     fit.nll isa LocScaleObjective && return _ls_profile_result(
         fit; level=level, threads=threads, parm=parm
@@ -1398,6 +1414,8 @@ counts and per-replicate failure messages. If you already have
 the bootstrap replicates. A homogeneous Toeplitz `temporal()` fit returns the
 mean-coefficient rows only (drmTMB refuses the temporal bootstrap and defers
 σ and lag-correlation intervals).
+The fit-based form refuses a fit with an explicit `DRMControl.optimizer`
+before any bootstrap refit; the formula-based form keeps its default solver.
 """
 function bootstrap_ci(
     formula::DrmFormula,
@@ -1477,6 +1495,7 @@ function bootstrap_ci(
     failures::Symbol=:error,
     check_converged::Bool=false,
 )
+    _refuse_selected_optimizer_refit(fit, "bootstrap_ci")
     rows = bootstrap_summary(
         fit; data, B, level, rng, K, A, tree, coords, threads, failures, check_converged
     )
@@ -1499,6 +1518,7 @@ function bootstrap_ci(
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
 )
+    _refuse_selected_optimizer_refit(fit, "bootstrap_ci")
     rows = bootstrap_summary(
         fit;
         data,
@@ -1531,6 +1551,8 @@ replicate errors after all failures are recorded. Set `failures = :skip` to
 compute summaries from successful replicates; call `bootstrap_result` to
 inspect the skipped failures. A homogeneous Toeplitz `temporal()` fit returns
 the mean-coefficient rows only, as [`bootstrap_ci`](@ref).
+The fit-based form refuses a fit with an explicit `DRMControl.optimizer`
+before any bootstrap refit.
 """
 function bootstrap_summary(
     formula::DrmFormula,
@@ -1608,6 +1630,7 @@ function bootstrap_summary(
     failures::Symbol=:error,
     check_converged::Bool=false,
 )
+    _refuse_selected_optimizer_refit(fit, "bootstrap_summary")
     result = bootstrap_result(
         fit; data, B, level, rng, K, A, tree, coords, threads, failures, check_converged
     )
@@ -1630,6 +1653,7 @@ function bootstrap_summary(
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
 )
+    _refuse_selected_optimizer_refit(fit, "bootstrap_summary")
     result = bootstrap_result(
         fit;
         data,
@@ -1673,6 +1697,8 @@ the `B` simulated refits. Gaussian bootstrap refits pass `algorithm` and
 `:auto` selects a sparse route and the tolerance is part of the benchmarked
 workflow. For a homogeneous Toeplitz `temporal()` fit, `summary` holds the
 mean-coefficient rows only, as [`bootstrap_ci`](@ref).
+The fit-based form refuses a fit with an explicit `DRMControl.optimizer`
+before any bootstrap refit.
 """
 function bootstrap_result(
     formula::DrmFormula,
@@ -1717,6 +1743,7 @@ function bootstrap_result(
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
 )
+    _refuse_selected_optimizer_refit(fit, "bootstrap_result")
     # Bivariate q=4 phylogenetic fit (also a DrmFit{<:Gaussian}): no scalar SD
     # block to refit-and-recoef — the quantities of interest are the among-axis
     # SDs sqrt.(diag(Σ_a)). Route to the dedicated parametric bootstrap, which
@@ -1817,6 +1844,7 @@ function bootstrap_result(
     failures::Symbol=:error,
     check_converged::Bool=false,
 )
+    _refuse_selected_optimizer_refit(fit, "bootstrap_result")
     # Bivariate q=4 phylogenetic fit: there is no scalar SD block to refit-and-
     # recoef; the quantities of interest are the among-axis SDs sqrt.(diag(Σ_a)).
     # Route to the dedicated parametric bootstrap (boundary-honest percentile CIs).

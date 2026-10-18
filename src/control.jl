@@ -60,8 +60,10 @@ drmTMB's `drm_control()`.
   structured, bivariate and REML routes refuse an explicit optimizer. Gaussian
   selection also requires `algorithm = :auto` and no alternate integration,
   imputation or profiling options.
-  This control selects the primary fit only; profile and bootstrap refits do
-  not inherit it.
+  This control selects the primary fit only. Fit-based `profile_result`,
+  `confint(...; method = :profile)` and `bootstrap_*` refuse an explicitly
+  selected fit until their refits can forward the method. Wald intervals remain
+  available when standard errors were computed.
 
 The default `DRMControl()` changes nothing: a fit with it is identical to a fit
 without `control`.
@@ -173,6 +175,24 @@ struct DRMControlReport
     optimizer_runs::Tuple
     selected_optimizer_stage::Symbol
     native_controls::NamedTuple
+end
+
+_ctl_control_snapshot(c::DRMControl) =
+    DRMControl(; maxit = c.maxit, start = c.start === nothing ? nothing : copy(c.start),
+               multi_start = c.multi_start, se = c.se, seed = c.seed,
+               jitter = c.jitter, optimizer = c.optimizer)
+
+_ctl_native_controls(c::DRMControl) =
+    (maxit = c.maxit, start = c.start === nothing ? nothing : Tuple(c.start),
+     multi_start = c.multi_start, seed = c.seed, jitter = c.jitter, se = c.se)
+
+# Retain the report constructor exported by the original six-field control API.
+# It has no solver trace, so the actual method must remain unrecorded.
+function DRMControlReport(c::DRMControl, lls::Vector{Float64}, kept::Int,
+                          agree::Bool, se::Symbol, weights::Union{Nothing,Vector{Float64}})
+    return DRMControlReport(_ctl_control_snapshot(c), copy(lls), kept, agree, se,
+                            weights === nothing ? nothing : copy(weights),
+                            c.optimizer, :unrecorded, (), :none, _ctl_native_controls(c))
 end
 
 # ---------------------------------------------------------------------------
@@ -335,15 +355,10 @@ function _ctl_finish(fit, scope::_ControlScope, fam)
     end
     selected_run = scope.kept > 0 ? scope.kept : length(scope.optimizer_runs)
     actual = isempty(scope.optimizer_runs) ? :unrecorded : scope.optimizer_runs[selected_run].method
-    snapshot = DRMControl(; maxit = c.maxit, start = c.start === nothing ? nothing : copy(c.start),
-                           multi_start = c.multi_start, se = c.se, seed = c.seed,
-                           jitter = c.jitter, optimizer = c.optimizer)
-    native = (maxit = c.maxit, start = c.start === nothing ? nothing : Tuple(c.start),
-              multi_start = c.multi_start, seed = c.seed, jitter = c.jitter, se = c.se)
-    report = DRMControlReport(snapshot, copy(lls), scope.kept, agree, se,
+    report = DRMControlReport(_ctl_control_snapshot(c), copy(lls), scope.kept, agree, se,
                               scope.weights === nothing ? nothing : copy(scope.weights),
                               c.optimizer, actual, Tuple(scope.optimizer_runs),
-                              scope.selected_optimizer_stage, native)
+                              scope.selected_optimizer_stage, _ctl_native_controls(c))
     return _withcontrolinfo(fit, V, report)
 end
 

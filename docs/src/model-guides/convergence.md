@@ -99,8 +99,12 @@ boundary tie rule still apply. Its own two starts are reported separately in
 route. Gaussian selection requires the ordinary ML route with
 `algorithm = :auto`, and refuses alternate integration, imputation or
 profiling options. Other random, structured, bivariate and REML routes refuse
-an explicit optimizer by name. Profile and bootstrap refits do not inherit
-this primary-fit selection. Solver agreement alone does not establish
+an explicit optimizer by name. `profile_result`, `confint(...; method = :profile)`
+and fit-based `bootstrap_result`, `bootstrap_summary` and `bootstrap_ci` refuse
+fits with an explicit optimizer choice before starting any refit; they cannot
+yet forward the selected method. Refit with `optimizer = :default` to use those
+inference routes. Wald intervals remain available when standard errors were
+computed. Solver agreement alone does not establish
 parameter identification.
 
 `se = false` works on every route:
