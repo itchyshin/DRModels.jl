@@ -600,6 +600,14 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         throw(ArgumentError("drm: `algorithm` must be one of :auto, :gls, :lbfgs, :em, :sparse, :sparse_lbfgs (got :$algorithm)"))
     method in (:ML, :REML) ||
         throw(ArgumentError("drm: `method` must be :ML (default) or :REML (got :$method)"))
+    ctl_scope = _active_control_scope()
+    if ctl_scope !== nothing && ctl_scope.control.optimizer !== :default
+        method === :ML || throw(ArgumentError("drm: `control.optimizer` is supported for Gaussian ML primary fits only; REML is not qualified"))
+        (algorithm === :auto && !laplace && !aghq && impute === nothing &&
+         missing === nothing && penalty === nothing && sparse === nothing &&
+         !profile_ci && !phylo_coupled) ||
+            throw(ArgumentError("drm: `control.optimizer` requires the ordinary Gaussian ML route (`algorithm = :auto`, no alternate integration, imputation or profiling)"))
+    end
     if _has_joint_mi(f)
         return _fit_joint_formula(f, data; impute=impute,
             missing=missing === nothing ? miss_control() : missing,
@@ -1237,7 +1245,7 @@ function _fit_fixed_gaussian(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, g_tol)
     θ0 = zeros(pμ + pσ)
     θ0[1:pμ] .= βμ0
     θ0[pμ+1] = log(std(y - Xμ * βμ0) + eps())
-    res = _ctl_optimize((x0, opts) -> Optim.optimize(nll, x0, Optim.LBFGS(), opts; autodiff = :forward),
+    res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
                        θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
     θ̂ = Optim.minimizer(res)
     # #968: a (near-)constant response sends log σ → -∞ and the Hessian overflows.
