@@ -19,7 +19,8 @@
 # (opt$convergence, sdr$pdHess, fitted log-dispersion, opt$par, sdreport SEs, logLik) from
 # the data written by test/parity/gen_1088_nb2_runoff_data.jl.
 using DRModels
-using Test, TOML, LinearAlgebra, Logging
+using Test, TOML, LinearAlgebra, Logging, Random
+import Distributions
 
 const _R1088_DIR = joinpath(@__DIR__, "fixtures", "j3_se")
 const _R1088_DRMTMB = "ca3ddefa5ea11bbfd3b765615dfbb89305d2485a"
@@ -198,6 +199,85 @@ end
     @test DRModels._CROSSED_NUISANCE_BOX_REFITS[] > 0
     @test is_converged(fit)
     @test all(<(3.0), fit.theta[4:5])
+end
+
+@testset "#1088: Beta crossed run-off (precision near 0) is recovered" begin
+    # Beta draws at precision 0.01 pile up at the 0 / 1 edges (clamped to [1e-100, 1 - 1e-12]);
+    # the first LBFGS pass runs off in log sigma (precision -> 0) and the box re-fit recovers.
+    # Generated in-test (G = 15, H = 12, n = 300, MersenneTwister(3)); no drmTMB reference.
+    rng = MersenneTwister(3)
+    G, H, n = 15, 12, 300
+    gi = rand(rng, 1:G, n); hi = rand(rng, 1:H, n); x = randn(rng, n)
+    bg = 0.5 .* randn(rng, G); bh = 0.4 .* randn(rng, H)
+    μ = 1 ./ (1 .+ exp.(-(0.2 .+ 0.3 .* x .+ bg[gi] .+ bh[hi])))
+    φ = 0.01
+    y = [clamp(rand(rng, Distributions.Beta(μ[i] * φ, (1 - μ[i]) * φ)), 1e-100, 1 - 1e-12)
+         for i in 1:n]
+    comps = [(ones(n), gi, G, "g"), (ones(n), hi, H, "h")]
+    X = hcat(ones(n), x)
+    Xσ = ones(n, 1)
+    nmμ = ["(Intercept)", "x"]; nmσ = ["(Intercept)"]
+    bβ = DRModels._dispersion_clamp(Val(:beta_fixed))
+
+    # Without the re-fit the first pass ends past the clamp: warns and is not converged.
+    DRModels._CROSSED_NUISANCE_BOX_REFITS[] = 0
+    f0 = @test_logs (:warn, r"ended past an upper clamp") match_mode = :any DRModels._fit_beta_crossed_laplace(
+        DRModels.Beta(), y, X, Xσ, comps, nmμ, nmσ, 1e-8; se = false, recover_runoff = false)
+    @test !f0.converged
+    @test f0.theta[3] > bβ
+    @test DRModels._CROSSED_NUISANCE_BOX_REFITS[] == 0
+
+    # Default (recover_runoff = true): the box re-fit fires and lands inside the box.
+    DRModels._CROSSED_NUISANCE_BOX_REFITS[] = 0
+    f1 = DRModels._fit_beta_crossed_laplace(
+        DRModels.Beta(), y, X, Xσ, comps, nmμ, nmσ, 1e-8; se = false)
+    @test DRModels._CROSSED_NUISANCE_BOX_REFITS[] > 0
+    @test f1.theta[3] <= 4.0                          # log sigma inside the clamp box
+    @test all(<(3.0), f1.theta[4:5])
+    @test f1.converged
+    @test f1.loglik > f0.loglik
+
+    # Public drm() takes the same default.
+    DRModels._CROSSED_NUISANCE_BOX_REFITS[] = 0
+    fit = drm(bf(@formula(y ~ 1 + x + (1 | g) + (1 | h)), @formula(sigma ~ 1)), DRModels.Beta();
+              data = (; y, x, g = ["g$i" for i in gi], h = ["h$i" for i in hi]))
+    @test DRModels._CROSSED_NUISANCE_BOX_REFITS[] > 0
+    @test fit.theta[3] <= 4.0
+    @test is_converged(fit)
+end
+
+@testset "#1088: all-or-none BetaBinomial crossed fit warns and is not converged" begin
+    # Every observation is 0 or n successes: the supremum lies past the dispersion clamp
+    # (precision -> 0 is the Bernoulli limit), so the end point is the clamp, not an estimate.
+    rng = MersenneTwister(1)
+    G, H, n, ntr = 15, 12, 300, 8
+    gi = rand(rng, 1:G, n); hi = rand(rng, 1:H, n); x = randn(rng, n)
+    bg = 0.5 .* randn(rng, G); bh = 0.4 .* randn(rng, H)
+    p = 1 ./ (1 .+ exp.(-(0.2 .+ 0.3 .* x .+ bg[gi] .+ bh[hi])))
+    successes = [rand(rng) < p[i] ? Float64(ntr) : 0.0 for i in 1:n]
+    failures = ntr .- successes
+    bbd = DRModels._dispersion_clamp(Val(:betabinomial_fixed))
+    comps = [(ones(n), gi, G, "g"), (ones(n), hi, H, "h")]
+    X = hcat(ones(n), x)
+    nmμ = ["(Intercept)", "x"]; nmσ = ["(Intercept)"]
+
+    # recover_runoff = false: the first pass ends far past the clamp -> run-off warning.
+    f0 = @test_logs (:warn, r"ended past an upper clamp") match_mode = :any DRModels._fit_betabinomial_crossed_laplace(
+        BetaBinomial(), successes, fill(Float64(ntr), n), X, comps, nmμ, nmσ, 1e-8;
+        se = false, recover_runoff = false)
+    @test !f0.converged
+    @test f0.theta[3] > bbd
+
+    # Default: the box re-fit is adopted (lower objective) and ends AT the clamp, so the
+    # run-off check (strictly past the clamp) is quiet; the #959 boundary warning fires.
+    DRModels._CROSSED_NUISANCE_BOX_REFITS[] = 0
+    d = (; successes, failures, x, g = ["g$i" for i in gi], h = ["h$i" for i in hi])
+    fit = @test_logs (:warn, r"scale parameter ended at a clamp") match_mode = :any drm(
+        bf(@formula(cbind(successes, failures) ~ x + (1 | g) + (1 | h)), @formula(sigma ~ 1)),
+        BetaBinomial(); data = d)
+    @test DRModels._CROSSED_NUISANCE_BOX_REFITS[] > 0
+    @test !is_converged(fit)
+    @test fit.theta[3] ≈ bbd atol = 1e-6
 end
 
 println("\n#1088 / #1073 comparison rows (drmTMB ", first(_R1088_DRMTMB, 7), "):")
