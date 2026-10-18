@@ -75,3 +75,4 @@ Local after the pin:
 | `test_j3c_hetero_clamp_hessian.jl` Julia 1.10.12 | 13/13 |
 | `test_j3c_hetero_clamp_hessian.jl` Julia 1.13.2 | 13/13 |
 | focused J3 + #1088 (1.10.12, `--check-bounds=yes`) | 232/232 |
+| full `julia --project=test --check-bounds=yes test/runtests.jl` (1.10.12, warm) | **EXIT 0**, 15:27:56–18:20:58Z; no `Test Failed` / `LoadError` |
