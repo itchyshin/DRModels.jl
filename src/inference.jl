@@ -2641,9 +2641,11 @@ Returns a `NamedTuple` and logs a short report:
   1e-3 · sd(y), OU decay × longest series span below 1e-4 or × shortest gap above 30,
   AR1 |φ̂| above 0.999. drmTMB reports such a fit as `convergence_status() == "boundary"`
   (so its `is_converged` is false since FX3b). Does not affect `ok`.
-- `ok` — `true` when `convergence_status` is not `:degenerate`, the gradient is
-  small, and the covariance is PD. A `:boundary` fit can be `ok` (drmTMB reports
-  it as a note, and a degenerate fit as a warning).
+- `ok` — `true` when the optimiser converged at a non-degenerate optimum (the
+  test `is_converged` made before FX3b), the gradient is small, and the
+  covariance is PD. It does not read `convergence_status`, which is reported in
+  its own field: a `:boundary` fit, or one the twin rules call `:degenerate` for
+  an inflated standard error, can still be `ok`.
   On a penalized fit the gradient criterion is **dropped**: the stored objective
   is unpenalized, so its gradient is non-zero at the MAP optimum by construction
   and scoring it would report a correct fit as broken. It is also dropped
@@ -2687,7 +2689,7 @@ function check_drm(fit::DrmFit; grad_tol::Real=1e-3)
     tb = try _temporal_boundary(fit) catch err; _boundary_diagnostic_failed("temporal-boundary", err) end
     status = convergence_status(fit)   # FX3b twin status; #949: not the raw flag
     conv = status === :converged       # is_converged(fit)
-    ok = status !== :degenerate && (penalized || isnan(mag) || mag <= grad_tol) && pd
+    ok = _converged_nondegenerate(fit) && (penalized || isnan(mag) || mag <= grad_tol) && pd
     report = (
         convergence_status=status,
         converged=conv,

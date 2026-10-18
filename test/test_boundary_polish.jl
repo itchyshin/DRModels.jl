@@ -118,5 +118,11 @@ end
     # the supported provider still fits
     phy = random_balanced_tree(G; branch_length = 0.25)
     fit = drm(bf(@formula(y ~ x + phylo(1 | g))), DRModels.Binomial(); data = (; y, x, g), tree = phy)
-    @test is_converged(fit)
+    # FX3b: `is_converged` is now true only for an interior optimum. This
+    # pure-noise response puts the phylo SD at its lower clamp, where the twin
+    # status is :boundary or, when the curvature there comes out negative,
+    # :degenerate (it differs across platforms). The check this line made before
+    # FX3b, the optimiser flag and no sentinel, is `_converged_nondegenerate`.
+    @test DRModels._converged_nondegenerate(fit)
+    @test convergence_status(fit) !== :converged
 end

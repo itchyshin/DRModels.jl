@@ -91,7 +91,11 @@ function _check818(fx; rtol_β = 1e-5, rtol_sd = 1e-4)
               tree = nwk, method = :ML, phylo_coupled = true, g_tol = 1e-8)
     ll_n = _num818(nr["logLik"])
     @testset "$fx" begin
-        @test is_converged(fit)
+        # FX3b: the optimum is on (or at) the correlation bound, where the Hessian
+        # is not PD and the covariance is NaN, so the twin status is :degenerate
+        # and `is_converged` is false. This checks what `is_converged` checked
+        # before FX3b: the optimiser flag and no sentinel.
+        @test DRModels._converged_nondegenerate(fit)
         @test dof(fit) == parse(Int, nr["df"])
         @test loglik(fit) >= ll_n - 1e-6
         @test abs(loglik(fit) - ll_n) <= 1e-6
