@@ -33,7 +33,7 @@ Local: Julia 1.10.12, `--check-bounds=yes`, BLAS 1 thread.
 | `test/test_j3c_hetero_clamp_hessian.jl` | 12/12 |
 | `test/test_j3a_gradient_hessian_vcov.jl` | 45/45 |
 | `test/test_1088_nb2_crossed_runoff.jl` | 62/62 |
-| full suite | pending in this file; filled after the run |
+| full `julia --project=test --check-bounds=yes test/runtests.jl` (375 files) | **16,817 passed / 0 failed** (741 testsets), EXIT 0, 05:19:51–14:26:31Z |
 
 License: fixtures are generated drmTMB numbers only.
 
