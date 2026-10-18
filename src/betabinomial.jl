@@ -109,13 +109,13 @@ function drm(f::DrmFormula, fam::BetaBinomial; data, tree = nothing, g_tol::Real
             (size(Xσ, 2) == 1 && all(x -> x == 1.0, @view Xσ[:, 1])) ||
                 error("BetaBinomial() crossed random intercepts currently support only a constant sigma formula")
             comps = map(re) do r
-                grp = r[2]; gidx, G = _group_index(getproperty(data, grp))
+                grp = r[2]; gidx, G = _group_index(getproperty(data, grp); col = grp)
                 (ones(length(s)), gidx, G, String(grp))
             end
             isaghq && return _withformula(_fit_betabinomial_crossed_aghq(fam, s, ntr, Xμ, comps, nmμ, nmσ, g_tol; se = se), f)   # #761
             return _withformula(_fit_betabinomial_crossed_laplace(fam, s, ntr, Xμ, comps, nmμ, nmσ, g_tol; se = se), f)
         end
-        (rk, var) = _re_kind(re[1][1]); grp = re[1][2]; gidx, G = _group_index(getproperty(data, grp))
+        (rk, var) = _re_kind(re[1][1]); grp = re[1][2]; gidx, G = _group_index(getproperty(data, grp); col = grp)
         if rk === :intercept                              # (1 | g) → 1-D GHQ
             return _withformula(_fit_betabinomial_ranef(fam, s, ntr, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol), f)
         elseif rk === :corr                               # (1 + x | g) → 2-D GHQ

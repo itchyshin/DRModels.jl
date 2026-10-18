@@ -101,7 +101,7 @@ function _drm_ordinary_laplace(f::DrmFormula, fam; data, tree = nothing,
     lhs isa ConstantTerm && lhs.n == 1 ||
         _ordinary_laplace_reject(fam, "`($lhs_text | $(re[1][2]))` (only `(1 | g)` is covered)")
     grp = re[1][2]
-    gidx, G = _group_index(getproperty(data, grp))
+    gidx, G = _group_index(getproperty(data, grp); col = grp)
 
     if fam isa Binomial
         s, ntr = _binomial_response(f, data)

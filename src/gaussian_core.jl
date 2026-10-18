@@ -987,7 +987,7 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         # and the `if method === :REML` validator both throw before a formula
         # with a mean random effect can reach here, so this branch is ML/
         # complete-response only by construction; no additional check needed.
-        gidx, G = _group_index(getproperty(data, mgrp))
+        gidx, G = _group_index(getproperty(data, mgrp); col = mgrp)
         return _withformula(_fit_musigma_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, mgrp, g_tol), f)
     end
     if !isempty(sigma_re)                                      # random effect on log σ
@@ -996,7 +996,7 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         (length(sigma_re) == 1 && _re_kind(sigma_re[1][1])[1] === :intercept) ||
             error("`sigma` random effects support a single random intercept `(1 | g)`")
         sgrp = sigma_re[1][2]
-        gidx, G = _group_index(getproperty(data, sgrp))
+        gidx, G = _group_index(getproperty(data, sgrp); col = sgrp)
         return _withformula(_fit_sigma_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, sgrp, g_tol;
                                                       laplace = laplace, aghq = aghq), f)
     end
@@ -1021,7 +1021,7 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
                 throw(ArgumentError("drm: only random INTERCEPTS `(1 | g)` are implemented " *
                     "alongside `meta_V(...)`; a random slope with known sampling variances " *
                     "is not implemented on this engine yet."))
-            gidx, G = _group_index(getproperty(data, grp))
+            gidx, G = _group_index(getproperty(data, grp); col = grp)
             push!(comps, (gidx, G, nothing, String(grp)))
         end
         for (kind, grp) in all_structured
@@ -1040,7 +1040,7 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
                 # drmTMB's exactly; only the SD's unit differs.
                 Cmat = sigma_phy_dense(phy; σ²_phy = 1.0)
             elseif kind === :relmat || kind === :animal
-                gidx, G = _group_index(getproperty(data, grp))
+                gidx, G = _group_index(getproperty(data, grp); col = grp)
                 Cmat = _resolve_structured_matrix(kind, grp, G; K = K, A = A, tree = tree, coords = coords)
             else
                 throw(ArgumentError("drm: `$(kind)(1 | $grp)` is not implemented alongside " *
@@ -1103,7 +1103,7 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     end
     if structured !== nothing
         kind, grp = structured
-        gidx, G = _group_index(getproperty(data, grp))
+        gidx, G = _group_index(getproperty(data, grp); col = grp)
         if kind === :spatial
             coords === nothing && error("spatial(1 | $grp) needs `coords = …`")
             cmat = Matrix{Float64}(coords)
@@ -1180,7 +1180,7 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     re_kinds = [_re_kind(rl) for (rl, _) in re]
     if length(re) == 1 && re_kinds[1][1] === :corr           # (1 + x | g)
         (_, grp) = re[1]; (_, var) = re_kinds[1]
-        gidx, G = _group_index(getproperty(data, grp))
+        gidx, G = _group_index(getproperty(data, grp); col = grp)
         xs = Float64.(getproperty(data, var))
         return _withformula(_fit_correlated_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, xs, nmμ, nmσ, grp, g_tol;
                                                           reml = method === :REML), f)
@@ -1189,7 +1189,7 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         error("a correlated `(1 + x | g)` block must be the only random-effect term")
     if length(re) == 1                                        # single scalar component
         (_, grp) = re[1]; (kind, var) = re_kinds[1]
-        gidx, G = _group_index(getproperty(data, grp))
+        gidx, G = _group_index(getproperty(data, grp); col = grp)
         w = kind === :intercept ? ones(length(y)) : Float64.(getproperty(data, var))
         reml_here = method === :REML && kind === :intercept
         return _withformula(_fit_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ, grp, g_tol;
@@ -1197,7 +1197,7 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     end
     comps = map(zip(re, re_kinds)) do ((_, grp), (kind, var))  # multiple scalar components
         w = kind === :intercept ? ones(length(y)) : Float64.(getproperty(data, var))
-        gidx, Gk = _group_index(getproperty(data, grp))
+        gidx, Gk = _group_index(getproperty(data, grp); col = grp)
         (w, gidx, Gk, String(grp))
     end
     return _withformula(_fit_multi_ranef_gaussian(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol), f)

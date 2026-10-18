@@ -112,7 +112,7 @@ function _drm_gaussian_lss(f::DrmFormula, fam::Gaussian, sdp, re, re_kinds, stru
     grp === sgrp ||
         throw(ArgumentError("drm: `sd($sgrp)` must name the grouping of the random effect — " *
             "the mean formula has `(1 | $grp)`."))
-    gidx, G = _group_index(getproperty(data, grp))
+    gidx, G = _group_index(getproperty(data, grp); col = grp)
     Zg, nmsd = _sd_group_design(f.response, srhs, data, gidx, G, grp)
     if has_missing_response
         observed = _observed_response_mask(y)
@@ -805,7 +805,7 @@ function _drm_gaussian_lss_multi(f::DrmFormula, fam::Gaussian, sdp, sdpp, re, re
     phy_tree = nothing   # captured for the sparse router branch below (#563 S7b.4)
     sdmap = Dict(sdp)
     for grp in re_groups                          # iid components first (block layout)
-        gidx, G = _group_index(getproperty(data, grp))
+        gidx, G = _group_index(getproperty(data, grp); col = grp)
         if haskey(sdmap, grp)
             Zg, nm = _sd_group_design(f.response, sdmap[grp], data, gidx, G, grp)
         else

@@ -160,7 +160,7 @@ function drm(f::DrmFormula, fam::Tweedie; data, g_tol::Real = 1e-8)
                 error("Tweedie() crossed/multiple random intercepts currently require a " *
                       "constant `nu` formula")
             comps = map(re) do r
-                grp = r[2]; gidx, G = _group_index(getproperty(data, grp))
+                grp = r[2]; gidx, G = _group_index(getproperty(data, grp); col = grp)
                 (ones(length(y)), gidx, G, String(grp))
             end
             return _withformula(_fit_tweedie_crossed_laplace(fam, y, Xμ, comps, nmμ, nmσ, nmν, g_tol), f)
@@ -170,7 +170,7 @@ function drm(f::DrmFormula, fam::Tweedie; data, g_tol::Real = 1e-8)
                   "`(0 + x | g)` random slope on `mu`; crossed/multiple random effects " *
                   "are not implemented")
         (rk, var) = _re_kind(re[1][1]); grp = re[1][2]
-        gidx, G = _group_index(getproperty(data, grp))
+        gidx, G = _group_index(getproperty(data, grp); col = grp)
         if rk === :intercept
             return _withformula(
                 _fit_tweedie_ranef(fam, y, Xμ, Xσ, Xν, gidx, G, nmμ, nmσ, nmν, grp, g_tol), f)

@@ -95,7 +95,7 @@ function drm(f::DrmFormula, fam::LogNormal; data, tree = nothing, K = nothing, g
         length(re) == 1 ||
             error("LogNormal() supports a single random-effect term on the mean")
         (rk, var) = _re_kind(re[1][1]); grp = re[1][2]
-        gidx, G = _group_index(getproperty(data, grp))
+        gidx, G = _group_index(getproperty(data, grp); col = grp)
         if rk === :intercept           # (1 | g) → 1-D Gauss–Hermite
             return _withformula(_fit_lognormal_ranef(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol), f)
         elseif rk === :corr            # (1 + x | g) → correlated 2-D Gauss–Hermite

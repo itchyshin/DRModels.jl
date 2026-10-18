@@ -209,7 +209,21 @@ function _re_kind(re_lhs)
 end
 
 # Map group labels to 1:G (stable first-seen order), O(n).
-function _group_index(labels)
+#
+# A `missing` (or non-finite numeric, e.g. NaN) label is refused rather than
+# pooled into one extra level (#1112): `Dict` treats `missing`/`NaN` as ordinary
+# keys, so every route that reads a raw grouping column would otherwise fit a
+# phantom extra group with `nobs` unchanged. drmTMB drops those rows;
+# `drm_listwise(formula, data)` is the guided complete-case route here.
+function _group_index(labels; col = nothing)
+    for l in labels
+        if _is_missing_cell(l)
+            where = col === nothing ? "a grouping column" : "grouping column `$col`"
+            throw(ArgumentError("$where contains missing or non-finite labels " *
+                "(`missing`/`NaN`/`Inf`); they would be pooled into one extra group. " *
+                "Drop those rows first, e.g. `data = drm_listwise(formula, data)`."))
+        end
+    end
     lvl = Dict{eltype(labels),Int}()
     gidx = Vector{Int}(undef, length(labels))
     for (i, l) in enumerate(labels)

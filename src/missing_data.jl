@@ -4,7 +4,9 @@
 # `NaN` in a response or predictor column makes `drm(...)` ERROR (a `KeyError`
 # from the StatsModels schema for `missing`, or `ArgumentError: matrix contains
 # Infs or NaNs` from the linear-algebra solve for `NaN`) — it does not silently
-# corrupt the fit, but the error is opaque about the cause. This file adds the
+# corrupt the fit, but the error is opaque about the cause. (A `missing`/`NaN` in a
+# random-effect GROUPING column is refused by `_group_index` with an ArgumentError
+# naming the column — #1112 — rather than pooled into an extra level.) This file adds the
 # smallest safe, documented path: explicit listwise deletion with a clear
 # warning, so users have a guided complete-case route instead of hand-rolling row
 # drops. It touches NO engine code — it is pure data preprocessing.
