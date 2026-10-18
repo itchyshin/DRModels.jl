@@ -45,3 +45,7 @@ License: fixtures are generated drmTMB numbers only. No GPL source.
 Verdict: **clean for the rebase claim.** The unique work is still the four J3b
 SE sites plus the shared harness. The `#1099` ladder is inherited, not
 re-implemented. Status stays draft. No `Closes` for a partial #1073 fix.
+
+## 6. CI retrigger
+
+The force-push landed while the PR still targeted `#1099`'s branch, so GitHub Actions (`pull_request` / `branches: [main]`) did not run. Retargeted to `main`; this prose commit is a `synchronize` on the main-based PR so CI can start. The full local suite on `a2df49c12` is unchanged (16,763 / 0).
