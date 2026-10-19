@@ -97,6 +97,21 @@ end
     end
 end
 
+# drmTMB reads the bridge `converged` key as its step-1 optimiser flag
+# (drmTMB #1564). A fit whose MLE does not exist must not send `true` there,
+# even though the raw optimiser flag `fit.converged` is unchanged.
+@testset "bridge converged key requires geometry === :ok (#1129)" begin
+    for fam in ("poisson", "nbinom2")
+        b, recs = _pois_capture() do
+            drm_bridge(; formula = fam == "poisson" ? "y ~ x" : "y ~ x; sigma ~ 1",
+                       family = fam, data = (; y = _POIS_Y0, x = _POIS_X0))
+        end
+        @test !isempty(recs)
+        @test b["converged"] === false
+        @test b["convergence_status"] == "degenerate"
+    end
+end
+
 @testset "ordinary Poisson is not flagged" begin
     Random.seed!(20261016)
     x = randn(40)
