@@ -201,6 +201,11 @@ struct DrmFit{F}
     # two-structured route). The bootstrap simulator reads it so its draws come
     # from the model that was fitted.
     phylo_scale::Symbol
+    # What `drm(...; control, weights)` did (#942 #948 #994 #931): a
+    # `DRMControlReport`, or `nothing` when neither keyword was given. Set only by
+    # the `drm` entry wrapper (`_withcontrolinfo`, src/control.jl), after the route
+    # has returned, so the `_with*` rebuilders below need not carry it.
+    control_info::Any
 end
 
 # 11-arg outer constructor: formula + nll + nllgrad + ranef default to nothing;
@@ -233,6 +238,15 @@ DrmFit(family, blocks, coefnames, theta, vcov, loglik, nobs, converged, means, o
     DrmFit(family, blocks, coefnames, theta, vcov, loglik, nobs, converged, means, obs, scales,
            formula, nll, nllgrad, ranef, estim_method, reml_loglik, ml_loglik, marginal,
            phylo_penalty, penalty, iterations, :covariance)
+
+# 23-arg compatibility constructor: `control_info` defaults to `nothing`
+# (no `control` / `weights` given). Every fitter and `_with*` rebuilder uses it.
+DrmFit(family, blocks, coefnames, theta, vcov, loglik, nobs, converged, means, obs, scales,
+       formula, nll, nllgrad, ranef, estim_method, reml_loglik, ml_loglik, marginal,
+       phylo_penalty, penalty, iterations, phylo_scale) =
+    DrmFit(family, blocks, coefnames, theta, vcov, loglik, nobs, converged, means, obs, scales,
+           formula, nll, nllgrad, ranef, estim_method, reml_loglik, ml_loglik, marginal,
+           phylo_penalty, penalty, iterations, phylo_scale, nothing)
 
 _withformula(fit::DrmFit, f) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
     fit.vcov, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, f, fit.nll, fit.nllgrad, fit.ranef,
@@ -569,8 +583,9 @@ For Location-Scale-Scale models, the group index and scale design Z_g
 are parameterised over all G levels, while the likelihood is evaluated on
 observed rows.
 """
-function drm(f::DrmFormula, fam::Gaussian; kwargs...)
+@drm_entry function drm(f::DrmFormula, fam::Gaussian; kwargs...)
     # #1089: incomplete predictor rows are dropped (na.omit) with a counted warning.
+    # The re-entry uses the SAME formula object, so it stays inside the control scope.
     kw = Dict{Symbol,Any}(kwargs)
     if haskey(kw, :data)
         cc = _complete_case_predictors(f, kw[:data])
@@ -595,6 +610,14 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         throw(ArgumentError("drm: `algorithm` must be one of :auto, :gls, :lbfgs, :em, :sparse, :sparse_lbfgs (got :$algorithm)"))
     method in (:ML, :REML) ||
         throw(ArgumentError("drm: `method` must be :ML (default) or :REML (got :$method)"))
+    ctl_scope = _active_control_scope()
+    if ctl_scope !== nothing && ctl_scope.control.optimizer !== :default
+        method === :ML || throw(ArgumentError("drm: `control.optimizer` is supported for Gaussian ML primary fits only; REML is not qualified"))
+        (algorithm === :auto && !laplace && !aghq && impute === nothing &&
+         missing === nothing && penalty === nothing && sparse === nothing &&
+         !profile_ci && !phylo_coupled) ||
+            throw(ArgumentError("drm: `control.optimizer` requires the ordinary Gaussian ML route (`algorithm = :auto`, no alternate integration, imputation or profiling)"))
+    end
     if _has_joint_mi(f)
         return _fit_joint_formula(f, data; impute=impute,
             missing=missing === nothing ? miss_control() : missing,
@@ -1216,26 +1239,34 @@ end
 function _fit_fixed_gaussian(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, g_tol)
     n = length(y)
     pμ, pσ = size(Xμ, 2), size(Xσ, 2)
+    w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
+    sw = sum(w)                          # == n exactly when unweighted
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
         ημ = Xμ * βμ; ησ = Xσ * βσ                 # log σ
         s = zero(eltype(θ))
         @inbounds for i in 1:n
             r = y[i] - ημ[i]
-            s += ησ[i] + 0.5 * r * r * exp(-2 * ησ[i])
+            s += w[i] * (ησ[i] + 0.5 * r * r * exp(-2 * ησ[i]))
         end
-        return s + 0.5 * n * log(2π)
+        return s + 0.5 * sw * log(2π)
     end
     βμ0 = Xμ \ y
     θ0 = zeros(pμ + pσ)
     θ0[1:pμ] .= βμ0
     θ0[pμ+1] = log(std(y - Xμ * βμ0) + eps())
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
+                       θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
     θ̂ = Optim.minimizer(res)
     # #968: a (near-)constant response sends log σ → -∞ and the Hessian overflows.
-    V, hess_finite = _vcov_from_hessian_checked(ForwardDiff.hessian(nll, θ̂),
-                                                _all_finite(y, Xμ, Xσ);
-                                                context = "Gaussian location-scale")
+    hess_finite = true
+    V = _ctl_se(θ̂) do
+        Vh, hf = _vcov_from_hessian_checked(ForwardDiff.hessian(nll, θ̂),
+                                            _all_finite(y, Xμ, Xσ);
+                                            context = "Gaussian location-scale")
+        hess_finite = hf
+        Vh
+    end
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ)]
     names = [:mu => nmμ, :sigma => nmσ]
     means = Dict(:mu => Xμ * θ̂[1:pμ])
@@ -1483,6 +1514,9 @@ the REML parameters, for reference). Internal — reached via `drm(...; method =
 """
 function _fit_fixed_gaussian_reml(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, g_tol)
     n = length(y)
+    # REML profiles the mean out, so prior weights would also change the
+    # restricted-likelihood correction; refuse them by name (#931).
+    _ctl_weights(n; supported = false, route = "the Gaussian REML route (`method = :REML`)")
     pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     const_2pi = 0.5 * n * log(2π)
 
