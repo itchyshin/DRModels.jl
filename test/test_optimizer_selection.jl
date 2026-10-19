@@ -1,4 +1,5 @@
-using DRModels, Test, Random, Optim
+using DRModels, Test, Random
+using DRModels: Optim
 
 const _OS_RNG = MersenneTwister(20261018)
 const _OS_N = 72
