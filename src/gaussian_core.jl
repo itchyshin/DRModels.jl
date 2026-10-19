@@ -394,6 +394,32 @@ function _replace_table_column(data, name::Symbol, replacement)
     return NamedTuple{names}(Tuple(vals))
 end
 
+# #1113: StatsModels copies NaN / Inf in a numeric predictor straight into the
+# design, and the fit then returns starting values (or an unnamed LAPACK error).
+# Reject a non-finite predictor on a row whose response is observed, naming the
+# column and row. A row with a missing/NaN response is dropped by the
+# observed-rows wrapper, so its predictor is not checked. `missing` cells are
+# left to the schema (#1089). Called from the fit paths of `_design` only.
+function _check_finite_predictors(rhs, data, response::Symbol, observed)
+    cols = _rhs_columns(rhs)
+    cols === nothing && return nothing
+    for c in cols
+        c === response && continue
+        _has_table_column(data, c) || continue
+        col = _table_column(data, c)
+        eltype(col) <: Union{Missing, Real} || continue
+        length(col) == length(observed) || continue
+        for i in eachindex(col)
+            v = col[i]
+            if observed[i] && !ismissing(v) && !isfinite(v)
+                throw(ArgumentError("drm: predictor `$c` contains a non-finite value " *
+                    "($(v)) at row $i. Remove or impute the row, or use `drm_listwise`."))
+            end
+        end
+    end
+    return nothing
+end
+
 # Build a design matrix for one parameter's RHS. We reuse the response as a
 # dummy LHS so the formula is valid for `schema`/`modelcols`, then keep only the
 # predictor matrix. If the real response contains `missing` / `NaN`, the formula
@@ -403,6 +429,9 @@ function _design(response::Symbol, rhs, data; schema_cache = nothing, schema_key
                  store_schema::Bool = true)
     raw_response = _table_column(data, response)
     y_response, observed = _coerce_response_column(raw_response)
+    # The predict paths (`store_schema = false`) keep their NaN-in, NaN-out behaviour;
+    # the post-fit full-row prediction also scores the dropped NaN-response rows.
+    store_schema && _check_finite_predictors(rhs, data, response, observed)
     design_data = all(observed) ? data :
         _replace_table_column(data, response, ifelse.(observed, y_response, 0.0))
     ft = FormulaTerm(Term(response), rhs)
@@ -1343,7 +1372,7 @@ function _fit_observed_response_rows(fitfun::Function, f::DrmFormula, data)
         throw(ArgumentError("drm: at least one response row must be observed"))
     # Missing/NaN RESPONSE rows are dropped (observed-rows fit), matching glmmTMB's
     # default `na.action`. Warn so it is never SILENT (reconciles #241 auto-handling
-    # with #258's "not silently fit" contract). Predictor missingness still errors.
+    # with #258's "not silently fit" contract). A NaN/Inf predictor on an observed-response row errors (#1113).
     ndrop = count(!, observed)
     @warn "drm: $(ndrop) of $(length(observed)) rows have a missing/NaN response and were " *
           "dropped (observed-rows fit, like glmmTMB's default na.action). Use `drm_listwise` " *

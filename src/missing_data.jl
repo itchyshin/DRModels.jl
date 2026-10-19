@@ -1,10 +1,10 @@
 # missing_data.jl — listwise-deletion (complete-case) preprocessing for `drm`.
 #
 # Status (issue #49): DRModels.jl has NO native missing-data handling. A `missing` or
-# `NaN` in a response or predictor column makes `drm(...)` ERROR (a `KeyError`
-# from the StatsModels schema for `missing`, or `ArgumentError: matrix contains
-# Infs or NaNs` from the linear-algebra solve for `NaN`) — it does not silently
-# corrupt the fit, but the error is opaque about the cause. This file adds the
+# `NaN` in a predictor column makes `drm(...)` ERROR (a `KeyError` from the
+# StatsModels schema for `missing`, or an `ArgumentError` naming the column and
+# row for a non-finite value, #1113); a `missing`/`NaN` response row is dropped
+# with a warning. This file adds the
 # smallest safe, documented path: explicit listwise deletion with a clear
 # warning, so users have a guided complete-case route instead of hand-rolling row
 # drops. It touches NO engine code — it is pure data preprocessing.
@@ -55,7 +55,7 @@ fit   = drm(bf(y ~ x, sigma ~ x), Gaussian(); data = clean)
 ```
 
 Why this exists: DRModels.jl has no native missing-data path, so a raw `missing`/`NaN`
-response or predictor makes `drm` error with an opaque message. `drm_listwise`
+predictor makes `drm` error (a `KeyError` for `missing`, a named `ArgumentError` for `NaN`/`Inf`). `drm_listwise`
 gives a guided, documented complete-case route and emits a clear `@warn` reporting
 how many rows (and which columns) were removed.
 
