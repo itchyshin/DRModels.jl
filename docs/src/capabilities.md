@@ -283,7 +283,7 @@ above, and it does so by delegation rather than by a second engine.
 |---|---|
 | `lrtest`, `anova`, `aicc`, `update` | **Tested** |
 | `weights(fit)` and `drm(...; weights = w)` | **Tested** on the fixed-effect ML routes of the univariate families (integer weights reproduce row duplication on all 16 routes, `test/test_lane_n3_drmcontrol.jl`); `weights(fit)` is `nothing` when none were given. Random-effect, structured, bivariate and REML routes refuse `weights =` by name (#931 tracks the rollout) |
-| `drm(...; control = DRMControl(maxit, start, multi_start, se))`, `gradient(fit)`, `hessian(fit)`, `control_info(fit)` | **Tested**: `se = false` on every route; `maxit` / `start` / `multi_start` on the fixed-effect routes of the univariate families (other routes refuse them by name) |
+| `drm(...; control = DRMControl(maxit, start, multi_start, se, optimizer))`, `gradient(fit)`, `hessian(fit)`, `control_info(fit)` | **Tested**: `se = false` on every route; `maxit` / `start` / `multi_start` on fixed-effect univariate ML routes; direct `optimizer = :lbfgs` / `:bfgs` on those routes and Gaussian ML with one mean random intercept. Other random, structured, bivariate and REML routes refuse an explicit method; fit-based profile/bootstrap entrypoints refuse explicitly selected fits before refitting. |
 | `aic` / `bic` / `dof` / `nobs` / `deviance` / `dof_residual` | **Tested** |
 | `coef` / `vcov` / `confint` / `stderror` / `coeftable` | **Tested** |
 | `fixef` / `re_sd` / `vc` / `ranef` / `sigma` / `corpairs` | **Tested** |
