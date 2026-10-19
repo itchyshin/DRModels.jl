@@ -39,7 +39,9 @@ predict_parameters(fit, dat)[:nu]   # same slant (identity; not exp(η))
     Near `ν = 0` the model is (locally) symmetric Gaussian and the slant is only
     weakly identified — its standard error inflates and recovery is loose. The
     fitter starts `ν` at a small nonzero value seeded by the sample-skewness sign
-    to break this symmetry.
+    to break this symmetry. The information matrix is singular at `ν = 0`, so the
+    Wald SE for `nu` is unreliable there; [`check_drm`](@ref) flags it
+    (`skew_normal_nu_wald`) and warns (#1060).
 """
 struct SkewNormal end
 
@@ -113,3 +115,26 @@ function _fit_skewnormal(fam::SkewNormal, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
 end
+
+# #1060: the skew-normal information matrix is singular at ν = 0 (the family
+# collapses to the Gaussian, so the slant's score is identically zero there), so
+# the Wald SE for ν is not trustworthy in a neighbourhood of 0 — drmTMB#1336
+# measured type-I 0.236 for the nominal-0.05 Wald test. This is the DRModels.jl
+# counterpart of drmTMB's `skew_normal_nu_wald` check_drm() note. The cutoff
+# (smallest |ν̂ᵢ| below `cut`) is this package's own choice, not a drmTMB constant.
+# Returns `nothing` for any other family.
+const _SKEWNORMAL_NU_WALD_CUT = 0.5
+
+function _skew_normal_nu_wald(fit::DrmFit; cut::Real = _SKEWNORMAL_NU_WALD_CUT)
+    fit.family isa SkewNormal || return nothing
+    haskey(fit.scales, :nu) || return nothing
+    ν = fit.scales[:nu]
+    m = minimum(abs, ν)
+    return (near_zero = m < cut, min_abs_nu = m, cut = float(cut))
+end
+
+_skew_normal_nu_wald_message(r) =
+    "SkewNormal slant ν̂ is near 0 (smallest |ν̂| = $(round(r.min_abs_nu; digits = 3)) < " *
+    "$(r.cut)): the information matrix is singular at ν = 0 (the model collapses to the " *
+    "Gaussian), so the Wald SE / CI / test for `nu` is unreliable (anti-conservative; " *
+    "drmTMB#1336). Prefer a likelihood-ratio test of ν = 0 or a profile / bootstrap interval."
