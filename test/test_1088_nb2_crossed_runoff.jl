@@ -20,7 +20,6 @@
 # the data written by test/parity/gen_1088_nb2_runoff_data.jl.
 using DRModels
 using Test, TOML, LinearAlgebra, Logging, Random
-import Distributions
 
 const _R1088_DIR = joinpath(@__DIR__, "fixtures", "j3_se")
 const _R1088_DRMTMB = "ca3ddefa5ea11bbfd3b765615dfbb89305d2485a"
@@ -204,17 +203,15 @@ end
 @testset "#1088: Beta crossed run-off (precision near 0) is recovered" begin
     # Beta draws at precision 0.01 pile up at the 0 / 1 edges (clamped to [1e-100, 1 - 1e-12]);
     # the first LBFGS pass runs off in log sigma (precision -> 0) and the box re-fit recovers.
-    # Generated in-test (G = 15, H = 12, n = 300, MersenneTwister(3)); no drmTMB reference.
-    rng = MersenneTwister(3)
-    G, H, n = 15, 12, 300
-    gi = rand(rng, 1:G, n); hi = rand(rng, 1:H, n); x = randn(rng, n)
-    bg = 0.5 .* randn(rng, G); bh = 0.4 .* randn(rng, H)
-    μ = 1 ./ (1 .+ exp.(-(0.2 .+ 0.3 .* x .+ bg[gi] .+ bh[hi])))
-    φ = 0.01
-    y = [clamp(rand(rng, Distributions.Beta(μ[i] * φ, (1 - μ[i]) * φ)), 1e-100, 1 - 1e-12)
-         for i in 1:n]
-    comps = [(ones(n), gi, G, "g"), (ones(n), hi, H, "h")]
-    X = hcat(ones(n), x)
+    # Fixture: G=15, H=12, n=300, seed 3 (test/parity/gen_1088_nb2_runoff_data.jl); no drmTMB
+    # reference. Frozen because MersenneTwister draws differ on Julia 1.10, where the start
+    # objective is already the failed-inner-solve sentinel and nothing runs off.
+    d = _r1088_data("beta_runoff_s3_n300")
+    y = d.y; n = length(y)
+    gidx, G = DRModels._group_index(d.g)
+    hidx, H = DRModels._group_index(d.h)
+    comps = [(ones(n), gidx, G, "g"), (ones(n), hidx, H, "h")]
+    X = hcat(ones(n), d.x)
     Xσ = ones(n, 1)
     nmμ = ["(Intercept)", "x"]; nmσ = ["(Intercept)"]
     bβ = DRModels._dispersion_clamp(Val(:beta_fixed))
@@ -240,7 +237,7 @@ end
     # Public drm() takes the same default.
     DRModels._CROSSED_NUISANCE_BOX_REFITS[] = 0
     fit = drm(bf(@formula(y ~ 1 + x + (1 | g) + (1 | h)), @formula(sigma ~ 1)), DRModels.Beta();
-              data = (; y, x, g = ["g$i" for i in gi], h = ["h$i" for i in hi]))
+              data = d)
     @test DRModels._CROSSED_NUISANCE_BOX_REFITS[] > 0
     @test fit.theta[3] <= 4.0
     @test is_converged(fit)
