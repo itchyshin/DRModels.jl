@@ -108,6 +108,13 @@ effects on the mean **and** scale, structured (`relmat` / `animal` / `phylo` /
 q=4 phylogenetic location–scale (PLSM) route — see
 [Capabilities](docs/src/capabilities.md) for the precise, test-cited matrix.
 
+Run the head-to-head and the O(p) scaling curve:
+
+```bash
+julia --project=. bench/run_sparse_tmb_nd.jl     # 2.18× vs drmTMB, p=100
+julia --project=. bench/run_scaling.jl           # O(p) curve to p=10,000
+```
+
 ## Choosing an optimizer
 
 For supported fixed-effect maximum-likelihood fits, you can request either
@@ -131,13 +138,6 @@ control_info(fit_bfgs).actual_optimizer     # optimizer used by the fit
 Optimizer selection is limited to the primary ML routes described in the
 [convergence guide](docs/src/model-guides/convergence.md), which also documents
 restarts, unsupported routes, and inference refits.
-
-Run the head-to-head and the O(p) scaling curve:
-
-```bash
-julia --project=. bench/run_sparse_tmb_nd.jl     # 2.18× vs drmTMB, p=100
-julia --project=. bench/run_scaling.jl           # O(p) curve to p=10,000
-```
 
 ## Repository layout (mirrors GLLVModels.jl)
 
