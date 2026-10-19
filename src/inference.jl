@@ -31,7 +31,17 @@ stderror(fit::DrmFit) = _wald_withheld(fit) ? _homtoep_refuse_wald("stderror") :
 # Internal: the Hessian-based SEs regardless of the public Wald scope (profile
 # step sizes, plots); `_display_se` is what `coeftable` / `show` print.
 _stderror(fit::DrmFit) = _boundary_se.(diag(fit.vcov))
-_display_se(fit::DrmFit) = _wald_withheld(fit) ? fill(NaN, length(fit.theta)) : _stderror(fit)
+_display_se(fit::DrmFit) = (_wald_withheld(fit) || _se_untrusted(fit)) ? fill(NaN, length(fit.theta)) : _stderror(fit)
+
+# #1127: `coeftable` / `show` print no Wald SEs for a fit the optimiser flagged not
+# converged (`is_converged`), or whose stored covariance is not positive definite.
+# drmTMB refuses `vcov()` in that case; here `vcov` / `stderror` keep their semantics
+# (other callers pin them) and only the printed table is gated.
+function _se_untrusted(fit::DrmFit)
+    is_converged(fit) || return true
+    V = fit.vcov
+    return !(all(isfinite, V) && isposdef(Symmetric(V)))
+end
 
 # √v where the variance is identified (finite, positive); Inf otherwise. Keeps a
 # non-PD boundary direction from poisoning the whole SE vector with NaN.
