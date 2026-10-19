@@ -119,6 +119,30 @@ function drm_listwise(formula::Union{DrmFormula,BivariateDrmFormula}, data; verb
 end
 
 
+# Does a formula term contain a random-effect / structured marker (`|` anywhere
+# inside it, `meta_V`, `temporal`)? Those columns (grouping labels, known
+# variances, time) are validated by their own routes and must not be dropped
+# silently; only ordinary fixed-effect predictor columns take the na.omit path.
+_is_special_re_term(t) = false
+function _is_special_re_term(t::StatsModels.FunctionTerm)
+    (t.f === (|) || t.f === meta_V || t.f === temporal) && return true
+    return any(_is_special_re_term, t.args)
+end
+
+# Columns of the ordinary (fixed-effect) predictor terms of a formula bundle.
+function _fixed_predictor_columns(f::DrmFormula)
+    cols = Symbol[]
+    for (_, rhs) in f.forms
+        for t in (rhs isa Tuple ? collect(rhs) : Any[rhs])
+            _is_special_re_term(t) || append!(cols, StatsModels.termvars(t))
+        end
+    end
+    return unique(cols)
+end
+
+# R's is.na: `missing` or NaN (an Inf is left to downstream validation).
+_is_na_cell(v) = ismissing(v) || (v isa AbstractFloat && isnan(v))
+
 # #1089: native na.omit for incomplete PREDICTOR rows. Returns `nothing` when the
 # predictors need no work; otherwise the table to fit on. A `missing`/non-finite
 # predictor cell drops that row (together with rows whose response is missing/NaN,
@@ -129,7 +153,7 @@ function _complete_case_predictors(f::DrmFormula, data)
     cols = Tables.columntable(data)
     _has_joint_mi(f) && return nothing
     resp = f.response2 === nothing ? (f.response,) : (f.response, f.response2)
-    pred = [c for c in _model_columns(f) if haskey(cols, c) && !(c in resp)]
+    pred = [c for c in _fixed_predictor_columns(f) if haskey(cols, c) && !(c in resp)]
     isempty(pred) && return nothing
     n = length(first(cols))
     keep = trues(n)
@@ -140,7 +164,7 @@ function _complete_case_predictors(f::DrmFormula, data)
         (Missing <: eltype(col) && nonmissingtype(eltype(col)) <: Real) && (narrow = true)
         bad = false
         @inbounds for i in 1:n
-            if _is_missing_cell(col[i])
+            if _is_na_cell(col[i])
                 keep[i] = false
                 bad = true
             end
@@ -158,13 +182,13 @@ function _complete_case_predictors(f::DrmFormula, data)
         haskey(cols, r) || continue
         col = cols[r]
         @inbounds for i in 1:n
-            keep[i] && _is_missing_cell(col[i]) && (keep[i] = false)
+            keep[i] && _is_na_cell(col[i]) && (keep[i] = false)
         end
     end
     ndrop = n - count(keep)
     count(keep) > 0 ||
         throw(ArgumentError("drm: every row has a missing/non-finite value in the response or a predictor"))
-    @warn "drm: $(ndrop) of $(n) rows have a missing/non-finite value in the response or " *
+    @warn "drm: $(ndrop) of $(n) rows have a missing/NaN value in the response or " *
           "predictor column(s) $(join(offenders, ", ")) and were dropped (complete-case fit, " *
           "like R's na.omit). Use `drm_listwise` to preprocess explicitly, or supply complete " *
           "data, to silence this."
