@@ -2550,7 +2550,9 @@ end
 function _restore_response_mask!(ysim::AbstractVector{Float64}, raw)
     length(raw) == length(ysim) || throw(ArgumentError(
         "bootstrap draw has length $(length(ysim)), expected $(length(raw)) (one value " *
-        "per row of `data`); pass the same `data` the model was fitted to"))
+        "per row of `data`); pass the same `data` the model was fitted to. If `drm` " *
+        "dropped rows with a missing value when it fitted the model (#1089), pass " *
+        "`drm_listwise(formula, data)` as `data`"))
     @inbounds for i in eachindex(ysim)
         if _is_response_missing(raw[i])
             ysim[i] = NaN
