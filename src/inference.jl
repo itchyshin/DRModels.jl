@@ -197,6 +197,9 @@ Confidence intervals for every coefficient, as a vector of
 - `parm = :resd` or `parm = [:mu, :resd]` — restrict intervals to one or more
   parameter blocks. This is especially useful for profiling random-effect SDs
   without also profiling fixed-effect coefficients.
+  A random-effect SD (`:resd`) whose lower arm reaches the numerical floor
+  without an LR crossing is reported on the SD scale as `[0, u]` (drmTMB
+  `profile.boundary`), not as a thrown error and not as `(-Inf, Inf)`.
 
 Mirrors drmTMB's `confint(fit, method = "wald" | "profile")`.
 """
@@ -710,6 +713,8 @@ function _loconly_profile_row_result(
         lo, lstats = _loconly_profile_endpoint_result(obj, lσ0, est, nllhat, half, -1.0)
         hi, rstats = _loconly_profile_endpoint_result(obj, lσ0, est, nllhat, half, +1.0)
     end
+    rewritten = _rewrite_log_sd_boundary_ci(job, est, lo, hi, lstats, rstats)
+    rewritten === nothing || return rewritten
     row = (param=job.param, coef=job.coef, estimate=est, lower=lo, upper=hi)
     stats = (
         param=job.param,
@@ -908,6 +913,24 @@ end
 # read as a profile crossing.  A uniformly shifted objective (reference also
 # huge) is a precision problem, handled below, not a sentinel.
 const _PROFILE_SENTINEL = 1e16
+
+# drmTMB `profile_endpoint_crossing(..., allow_lower_boundary = TRUE)` for
+# exp-transformed SD targets (R/profile.R). A lower arm that reaches
+# `log(sqrt(eps))` without crossing the LR threshold is the SD-scale boundary 0,
+# not a failed search and not the whole real line. Refs #1117.
+const _PROFILE_SD_LOG_FLOOR = log(sqrt(eps(Float64)))
+# Pseudo-inverse SEs at a collapsed variance can be ~1e-19 and then the
+# geometric bracket never leaves the floor (seed 20261016902: 1.6^40 * 5e-19
+# stays at 6e-11). Treat that as "no usable step".
+const _PROFILE_MIN_STEP = 1e-6
+
+_is_log_sd_profile_param(param::Symbol) =
+    param === :resd || param === :resd_mu || param === :resd_sigma
+
+function _profile_usable_step(se_k::Real, est::Real)
+    (isfinite(se_k) && se_k > _PROFILE_MIN_STEP) && return Float64(se_k)
+    return 1.0
+end
 
 function _profile_reference_difference(value::Real, reference::Real)
     (isfinite(value) && isfinite(reference) && abs(value) >= _PROFILE_SENTINEL &&
@@ -1139,14 +1162,17 @@ end
 # bracket is accepted, otherwise we fall back to bisection. Correctness is
 # bracket-guaranteed; the analytic slope only buys faster (quadratic) convergence.
 # Each evaluation warm-starts the nuisance optimisation from the previous û.
-function _profile_endpoint(nll, nllgrad, θ̂, k, nllhat, half, s, dir, u0, autodiff)
+function _profile_endpoint(nll, nllgrad, θ̂, k, nllhat, half, s, dir, u0, autodiff;
+                           allow_lower_boundary::Bool=false)
     value, _ = _profile_endpoint_result(
-        nll, nllgrad, θ̂, k, nllhat, half, s, dir, u0, autodiff
+        nll, nllgrad, θ̂, k, nllhat, half, s, dir, u0, autodiff;
+        allow_lower_boundary=allow_lower_boundary,
     )
     return value
 end
 
-function _profile_endpoint_result(nll, nllgrad, θ̂, k, nllhat, half, s, dir, u0, autodiff)
+function _profile_endpoint_result(nll, nllgrad, θ̂, k, nllhat, half, s, dir, u0, autodiff;
+                                 allow_lower_boundary::Bool=false)
     target = nllhat + half
     p = length(θ̂)
     nidx = p - 1
@@ -1202,6 +1228,31 @@ function _profile_endpoint_result(nll, nllgrad, θ̂, k, nllhat, half, s, dir, u
         )
         return value, stats
     end
+    function boundary_arm(nuisance, root_iterations=0, bracket_expansions=0, nonmonotone=false)
+        # #1117 / drmTMB allow_lower_boundary: the LR threshold was not crossed
+        # before the log-SD floor. That is a one-sided [0, u] interval, not a
+        # failed endpoint (confint must not throw) and not (-Inf, Inf).
+        stats = (
+            evaluations=evaluations,
+            gradient_evaluations=gradient_evaluations,
+            bracket_expansions=bracket_expansions,
+            root_iterations=root_iterations,
+            unbounded=true,
+            nonmonotone=nonmonotone,
+            endpoint_failed=false,
+            nuisance_method=nuisance.method,
+            nuisance_fallback=nuisance.fallback,
+            nuisance_reason=:sd_boundary,
+        )
+        return -Inf, stats
+    end
+    coord(t) = θ̂[k] + dir * t
+    at_sd_floor(t) = allow_lower_boundary && dir < 0 && coord(t) <= _PROFILE_SD_LOG_FLOOR
+    t_floor = allow_lower_boundary && dir < 0 ? (θ̂[k] - _PROFILE_SD_LOG_FLOOR) : Inf
+    dummy_boundary = (method=:not_checked, fallback=false, reason=:sd_boundary)
+    if allow_lower_boundary && dir < 0 && θ̂[k] <= _PROFILE_SD_LOG_FLOOR
+        return boundary_arm(dummy_boundary)
+    end
     # Bracket: expand until h > 0. h(t) is assumed increasing (LR profile), but an
     # inexactly-solved inner nuisance optimisation can make it slightly non-monotone
     # (dip below `target` then rise). We track this and reset `tlo = 0` so
@@ -1209,23 +1260,41 @@ function _profile_endpoint_result(nll, nllgrad, θ̂, k, nllhat, half, s, dir, u
     # does not establish that the returned crossing is globally first.
     tlo = 0.0
     thi = s
+    if at_sd_floor(thi)
+        t_floor <= 0 && return boundary_arm(dummy_boundary)
+        thi = t_floor
+    end
     evalhi = heval(thi)
-    evalhi.ok || return failed_arm(evalhi.nuisance)
+    if !evalhi.ok
+        return at_sd_floor(thi) ? boundary_arm(evalhi.nuisance) : failed_arm(evalhi.nuisance)
+    end
     hhi = evalhi.h
     hprev = hhi
     nonmonotone = false
     iters = 0
     while hhi < 0 && iters < 40
         tlo = thi
-        thi *= 1.6
+        tnext = thi * 1.6
+        if at_sd_floor(tnext)
+            t_floor <= thi && return boundary_arm(evalhi.nuisance, 0, iters, nonmonotone)
+            tnext = t_floor
+        end
+        thi = tnext
         evalhi = heval(thi)
-        evalhi.ok || return failed_arm(evalhi.nuisance, 0, iters, nonmonotone)
+        if !evalhi.ok
+            return at_sd_floor(thi) ? boundary_arm(evalhi.nuisance, 0, iters, nonmonotone) :
+                failed_arm(evalhi.nuisance, 0, iters, nonmonotone)
+        end
         hhi = evalhi.h
         hhi < hprev - 1e-12 && (nonmonotone = true)
         hprev = hhi
         iters += 1
+        at_sd_floor(thi) && hhi < 0 && return boundary_arm(evalhi.nuisance, 0, iters, nonmonotone)
     end
     if hhi < 0
+        if at_sd_floor(thi)
+            return boundary_arm(evalhi.nuisance, 0, iters, nonmonotone)
+        end
         # A searched-range limit is meaningful only when the profiled value is
         # separated from the LR target by more than its represented-NLL
         # cancellation.  Otherwise the sign itself is unresolved.
@@ -1355,11 +1424,13 @@ function _profile_row_result(
 )
     k = job.k
     est = θ̂[k]
-    s = (isfinite(se[k]) && se[k] > 0) ? se[k] : max(abs(est), 1.0)
+    allow_lower = _is_log_sd_profile_param(job.param)
+    s = _profile_usable_step(se[k], est)
     u0 = θ̂[[i for i in 1:length(θ̂) if i != k]]
     if endpoint_threads && Threads.nthreads() > 1
         left = Threads.@spawn _profile_endpoint_result(
-            nll, nllgrad, θ̂, k, nllhat, half, s, -1, u0, autodiff
+            nll, nllgrad, θ̂, k, nllhat, half, s, -1, u0, autodiff;
+            allow_lower_boundary=allow_lower,
         )
         right = Threads.@spawn _profile_endpoint_result(
             nll, nllgrad, θ̂, k, nllhat, half, s, +1, u0, autodiff
@@ -1368,12 +1439,15 @@ function _profile_row_result(
         hi, rstats = fetch(right)
     else
         lo, lstats = _profile_endpoint_result(
-            nll, nllgrad, θ̂, k, nllhat, half, s, -1, u0, autodiff
+            nll, nllgrad, θ̂, k, nllhat, half, s, -1, u0, autodiff;
+            allow_lower_boundary=allow_lower,
         )
         hi, rstats = _profile_endpoint_result(
             nll, nllgrad, θ̂, k, nllhat, half, s, +1, u0, autodiff
         )
     end
+    rewritten = _rewrite_log_sd_boundary_ci(job, est, lo, hi, lstats, rstats)
+    rewritten === nothing || return rewritten
     row = (param=job.param, coef=job.coef, estimate=est, lower=lo, upper=hi)
     stats = (
         param=job.param,
@@ -1392,6 +1466,39 @@ function _profile_row_result(
         lower_nuisance_fallback=lstats.nuisance_fallback,
         upper_nuisance_fallback=rstats.nuisance_fallback,
         lower_nuisance_reason=lstats.nuisance_reason,
+        upper_nuisance_reason=rstats.nuisance_reason,
+    )
+    return row, stats
+end
+
+# #1117: a log-SD lower arm that hit the floor (or failed there) is the
+# SD-scale boundary 0. Report [0, exp(u)] so confint neither throws nor
+# returns (-Inf, Inf). Interior (both-finite) resd rows stay on log σ_b.
+function _rewrite_log_sd_boundary_ci(job, log_est, lo, hi, lstats, rstats)
+    _is_log_sd_profile_param(job.param) || return nothing
+    lower_boundary = (lo == -Inf) && (lstats.unbounded || lstats.endpoint_failed)
+    lower_boundary || return nothing
+    sd_est = log_est <= _PROFILE_SD_LOG_FLOOR ? 0.0 : exp(log_est)
+    upper_ok = isfinite(hi) && !rstats.endpoint_failed && !rstats.unbounded
+    sd_hi = upper_ok ? exp(hi) : Inf
+    row = (param=job.param, coef=job.coef, estimate=sd_est, lower=0.0, upper=sd_hi)
+    stats = (
+        param=job.param,
+        coef=job.coef,
+        evaluations=lstats.evaluations + rstats.evaluations,
+        gradient_evaluations=lstats.gradient_evaluations + rstats.gradient_evaluations,
+        bracket_expansions=lstats.bracket_expansions + rstats.bracket_expansions,
+        root_iterations=lstats.root_iterations + rstats.root_iterations,
+        lower_unbounded=true,
+        upper_unbounded=!upper_ok,
+        nonmonotone=lstats.nonmonotone || rstats.nonmonotone,
+        lower_endpoint_failed=false,
+        upper_endpoint_failed=rstats.endpoint_failed,
+        lower_nuisance_method=hasproperty(lstats, :nuisance_method) ? lstats.nuisance_method : :specialized,
+        upper_nuisance_method=hasproperty(rstats, :nuisance_method) ? rstats.nuisance_method : :specialized,
+        lower_nuisance_fallback=lstats.nuisance_fallback,
+        upper_nuisance_fallback=rstats.nuisance_fallback,
+        lower_nuisance_reason=:sd_boundary,
         upper_nuisance_reason=rstats.nuisance_reason,
     )
     return row, stats
