@@ -581,7 +581,19 @@ Incomplete responses (`missing` or `NaN` in `y`) are supported under the
 observed-rows pattern (matching `response = "include"` in the R bridge).
 For Location-Scale-Scale models, the group index and scale design Z_g
 are parameterised over all G levels, while the likelihood is evaluated on
-observed rows.
+observed rows. With a `(… | g)` random effect or `meta_V(...)` and no
+structured term, rows with a missing response are dropped, with a warning
+that gives the count.
+
+## Missing predictor handling
+
+Rows with a `missing` predictor value are dropped before the fit, with a
+warning that gives the count, so the fit uses the complete cases (R's
+`na.omit`, which is what drmTMB does). `nobs(fit)` counts the rows used. A
+`relmat`/`animal`/`spatial` term whose level order the drop would change is
+refused instead, because its matrix is matched to the levels by position.
+An `mi(x)` joint formula models its missing predictors rather than dropping
+them.
 """
 @drm_entry function drm(f::DrmFormula, fam::Gaussian; kwargs...)
     # The residual-variance / structured-variance BOUNDARY advisory (#724, #697) is
@@ -609,6 +621,7 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     end
     (impute === nothing && missing === nothing) ||
         throw(ArgumentError("drm: `impute` and `missing` controls currently require an additive mi(x) joint-model formula; they are not ignored on other routes"))
+    data = _drop_missing_predictor_rows(f, data)   # #1089: R's na.omit, with a count
     rhs = Dict(f.forms)
     # `allow_phylo_slope = true`: the Gaussian mean is the one route that fits
     # `phylo(1 + x | g)` (#620, two independent phylogenetic fields); the slope
@@ -631,6 +644,14 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
             throw(ArgumentError("drm: `penalty` and `method = :REML` cannot be combined — a penalized " *
                                 "fit is a maximum-a-posteriori (MAP) estimator and REML is a " *
                                 "restricted-likelihood estimator. Use `method = :ML` (the default)."))
+    end
+    # #1089: a `(… | g)` random effect or `meta_V(...)` with no structured,
+    # temporal or sd() term has no observed-rows path, so rows with a missing
+    # response are dropped here, before the design and its schema are built.
+    if temporal_term === nothing && structured === nothing && structured_sigma === nothing &&
+       isempty(_sdphylo_parts(f)) && isempty(_sd_parts(f)) &&
+       !(isempty(re) && isempty(sigma_re) && metav === nothing)
+        data = _drop_missing_response_rows(f, data)
     end
     # `schema_cache`/`schema_key`: caches the TRAINING schema (factor
     # contrasts/levels) per parameter so `predict`/`predict_parameters` on
@@ -934,9 +955,11 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         # leaf matching (#482) keeps a fully-masked species in the phylo prior
         # with no likelihood term, exactly like the σ-phylo route above. Only
         # this exact cell is unwrapped: the dense structured fallback
-        # (non-constant sigma design), relmat/animal/spatial, `(1|g)`, and
-        # `meta_V` match rows to levels POSITIONALLY, which is not subset-safe
-        # (#482's trap), so they still refuse below.
+        # (non-constant sigma design) and relmat/animal/spatial match rows to
+        # levels POSITIONALLY, which is not subset-safe (#482's trap), so they
+        # still refuse below. (`(1|g)` and `meta_V` without a structured term
+        # never get here: their missing-response rows were dropped before the
+        # design was built, #1089.)
         phylo_mean_cell = structured !== nothing && structured[1] === :phylo &&
             length(all_structured) == 1 && isempty(re) && isempty(sigma_re) &&
             metav === nothing && size(Xσ, 2) == 1 &&
@@ -960,10 +983,11 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
                 "fixed-effect univariate location-scale models, the σ-phylo location-scale " *
                 "route, and the phylo-MEAN cell (`phylo(1 | g)` on the mean with `sigma ~ 1`, " *
                 "fitted as observed rows + full tree, matching drmTMB's " *
-                "`response = \"include\"`). This is a ROUTE-level restriction, not a " *
+                "`response = \"include\"`); with a `(… | g)` random effect or `meta_V` and no " *
+                "structured term, those rows are dropped. This is a ROUTE-level restriction, not a " *
                 "family-level one — DRModels.jl's engine has no missing-response handling for a " *
-                "relmat/animal/spatial mean term, a random effect, `meta_V`, or a phylo mean " *
-                "with a non-constant sigma design, whose positional row-to-level matching is " *
+                "relmat/animal/spatial mean term, or a phylo mean with a non-constant sigma " *
+                "design or another random effect, whose positional row-to-level matching is " *
                 "not subset-safe (#482). Dropping the missing-response rows before calling " *
                 "`drm` (matching `missing = miss_control(response = \"drop\")` at the R " *
                 "bridge, or `drm_listwise` natively) is the supported route there."))
@@ -1337,13 +1361,17 @@ function _subset_table_rows(data, rows)
 end
 
 function _fit_observed_response_rows(fitfun::Function, f::DrmFormula, data)
+    # #1089: rows with a `missing` predictor are dropped first (with a warning
+    # that gives the count), and the fit starts again on the remaining rows.
+    data_cc = _drop_missing_predictor_rows(f, data)
+    data_cc === data || return fitfun(data_cc)
     observed = _formula_response_observed_mask(f, data)
     all(observed) && return nothing
     count(observed) > 0 ||
         throw(ArgumentError("drm: at least one response row must be observed"))
     # Missing/NaN RESPONSE rows are dropped (observed-rows fit), matching glmmTMB's
     # default `na.action`. Warn so it is never SILENT (reconciles #241 auto-handling
-    # with #258's "not silently fit" contract). Predictor missingness still errors.
+    # with #258's "not silently fit" contract). Missing predictors were dropped above.
     ndrop = count(!, observed)
     @warn "drm: $(ndrop) of $(length(observed)) rows have a missing/NaN response and were " *
           "dropped (observed-rows fit, like glmmTMB's default na.action). Use `drm_listwise` " *

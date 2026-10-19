@@ -56,6 +56,8 @@ struct SkewNormal end
         (isempty(re2) && mv2 === nothing && st2 === nothing) ||
             error("SkewNormal() supports fixed effects only")
     end
+    # #1089: drop rows with a missing predictor or response (R's na.omit), with a count.
+    data = _drop_missing_response_rows(f, _drop_missing_predictor_rows(f, data))
     y, Xμ, nmμ = _design(f.response, rhs[:mu], data)
     _, Xσ, nmσ = _design(f.response, get(rhs, :sigma, ConstantTerm(1)), data)
     _, Xν, nmν = _design(f.response, get(rhs, :nu, ConstantTerm(1)), data)

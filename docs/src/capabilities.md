@@ -334,8 +334,11 @@ To avoid overclaiming, note these boundaries:
   `JointFiniteDrmFit`, `imputed`, and `miss_control`) are exported for evaluation,
   but their API and numerics may change and they are not covered by R-parity
   evidence. Gaussian observed-response masking and missing-response handling for
-  Location–Scale–Scale `sd()` models are available. General multiple imputation
-  outside the joint-model routes and an `na.action`-style option are absent.
+  Location–Scale–Scale `sd()` models are available. `drm` drops rows with a
+  `missing` predictor, and rows with a missing response on the Gaussian `(1|g)`
+  and `meta_V` routes, with a warning that gives the count (R's `na.omit`, as
+  drmTMB does; #1089). General multiple imputation outside the joint-model
+  routes and an `na.action` option to choose another behaviour are absent.
 - **VA/ELBO:** experimental random-intercept VA is limited to `(1|g)` for
   Poisson, Binomial, NB2, Gamma, and Beta (`sigma ~ 1` where applicable).
   Phylogenetic, crossed, correlated-slope, and zero-inflated/hurdle variants are
