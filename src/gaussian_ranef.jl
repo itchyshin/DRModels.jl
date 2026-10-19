@@ -656,7 +656,11 @@ function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ,
     # reml_q4.jl do -- do NOT add a #491-style fallback, which only papers over it.
     res = _re_lbfgs_with_restart(nll, θ0, θ0_restart, g_tol, pμ + pσ + 1, std(res0))
     θ̂ = Optim.minimizer(res)
-    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    # #1114 (#968 convention): sigma running off to 0 overflows the Hessian; withhold
+    # the vcov and report converged = false instead of the LAPACK ArgumentError.
+    V, hess_finite = _vcov_from_hessian_checked(ForwardDiff.hessian(nll, θ̂),
+                                                _all_finite(y, Xμ, Xσ, w);
+                                                context = "Gaussian (1 | g) location-scale")
 
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :resd => (pμ+pσ+1):(pμ+pσ+1)]
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
@@ -703,7 +707,7 @@ function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ,
     # objective WORSE in 143, and produced NaN. So only the reported flag changes
     # here -- θ̂, the ML/REML objective and logLik are byte-identical.
     # Guard: test/test_ranef_varying_scale_convergence.jl.
-    converged = drm_optim_converged(res)
+    converged = drm_optim_converged(res) && hess_finite
     # Profile intervals reuse the ML Woodbury nll (same convention as FE REML).
     fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, converged, means, obs, scales), nll_ml), re)
     if reml

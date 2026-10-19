@@ -6,6 +6,8 @@ human-readable changelog.
 
 ## Development
 
+- **Gaussian `(1 | g)` with `sigma ~ z` no longer throws `ArgumentError: matrix contains Infs or NaNs` when the residual sigma collapses to 0** (for example when every group has one row). The fit now warns, withholds the Wald covariance (all `NaN`) and reports `converged = false`, as the fixed-effect Gaussian route has since #968 (#1114).
+
 ## v0.7.2 — 2026-10-04
 
 - **Location-scale fits no longer stall at a variance boundary.** Two loops in the location-scale fit counted an exactly tied objective as progress and had no stall stop, so a fit whose variance component slid to its zero boundary could spin for tens of minutes (a 4-species Gamma bootstrap test took 12 to 74 minutes on CI, depending on the runner's BLAS kernel). The inner mode solve now stops a run of 40 exactly tied steps only when the gradient is far above its bound and cannot reach it in the remaining iterations, and the certified refinement ladder stops a run only after 100 iterations with a bit-identical position, value and gradient. Converging fits are unchanged: across 30 test files every location-scale fit is bit-identical to before, and the fixture's standard errors and `check_drm` verdict are unchanged.
