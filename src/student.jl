@@ -48,7 +48,7 @@ fit_lap = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), Student(); dat
 """
 struct Student end
 
-function drm(f::DrmFormula, fam::Student; data, g_tol::Real = 1e-8,
+@drm_entry function drm(f::DrmFormula, fam::Student; data, g_tol::Real = 1e-8,
              se::Bool = true, marginal::Symbol = :LA)
     # `marginal = :Laplace` (opt-in, ordinary `(1 | g)` on the mean): the TMB-convention
     # Laplace integrator drmTMB uses; the default `:LA` is unchanged (adaptive GHQ).
@@ -194,13 +194,14 @@ end
 function _fit_student(fam::Student, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol)
     n = length(y)
     pμ, pσ, pν = size(Xμ, 2), size(Xσ, 2), size(Xν, 2)
+    w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]; βν = θ[pμ+pσ+1:pμ+pσ+pν]
         ημ = Xμ * βμ; ησ = Xσ * βσ; ην = Xν * βν
         s = zero(eltype(θ))
         @inbounds for i in 1:n
             z = (y[i] - ημ[i]) * exp(-ησ[i])
-            s -= _student_logpdf_std(z, ην[i]) - ησ[i]       # − log σ Jacobian
+            s -= w[i] * (_student_logpdf_std(z, ην[i]) - ησ[i])       # − log σ Jacobian
         end
         return s
     end
@@ -209,11 +210,17 @@ function _fit_student(fam::Student, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol)
     θ0[1:pμ] .= βμ0
     θ0[pμ+1] = log(std(y - Xμ * βμ0) + eps())       # σ init
     θ0[pμ+pσ+1] = log(10.0)                          # ν init (mildly heavy-tailed)
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    res = _ctl_optimize((x0, opts) -> Optim.optimize(nll, x0, Optim.LBFGS(), opts; autodiff = :forward),
+                       θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
     θ̂ = Optim.minimizer(res)
     # #961: a non-finite Hessian on finite data is a degenerate fit, not a crash.
-    V, hess_finite = _vcov_from_hessian_checked(ForwardDiff.hessian(nll, θ̂),
-                                                _all_finite(y, Xμ, Xσ, Xν); context = "Student")
+    hess_finite = true
+    V = _ctl_se(θ̂) do
+        Vh, hf = _vcov_from_hessian_checked(ForwardDiff.hessian(nll, θ̂),
+                                            _all_finite(y, Xμ, Xσ, Xν); context = "Student")
+        hess_finite = hf
+        Vh
+    end
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :nu => (pμ+pσ+1):(pμ+pσ+pν)]
     names = [:mu => nmμ, :sigma => nmσ, :nu => nmν]
     means = Dict(:mu => Xμ * θ̂[1:pμ]); obs = Dict(:mu => Vector{Float64}(y))

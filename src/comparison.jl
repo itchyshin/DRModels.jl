@@ -311,20 +311,32 @@ function aicc(fit::DrmFit)
 end
 
 """
-    weights(fit::DrmFit) -> Vector{Float64}
+    weights(fit::DrmFit) -> Union{Vector{Float64}, Nothing}
 
-Prior (per-observation) weights used in the fit — drmTMB / glmmTMB's `weights()`.
-DRModels.jl fits do not currently store prior weights, so this returns
-`ones(nobs(fit))` (every observation weighted equally). Extends
+Prior (per-observation) weights the fit was made with, from
+`drm(...; weights = w)`, or `nothing` when no weights were given. Extends
 `StatsAPI.weights`.
+
+The weights multiply each row's log-likelihood (drmTMB semantics), so
+`loglik`, `aic`, `bic`, profiles and likelihood-ratio tests use the weighted
+likelihood. `nobs(fit)` still counts rows, zero-weight rows included.
+
+Prior weights are implemented on the fixed-effect ML routes of the univariate
+families. Any other route refuses `weights =` with an `ArgumentError`
+(#931; the family-by-family rollout to random-effect routes is tracked there).
+
+Before #931 step (b), this accessor returned `ones(nobs(fit))` for every fit,
+which looked like weights had been used.
 
 # Example
 ```julia
-fit = drm(bf(@formula(y ~ 1 + x), @formula(sigma ~ 1)), Gaussian(); data)
-weights(fit) == ones(nobs(fit))   # all-ones prior weights
+fit  = drm(bf(@formula(y ~ 1 + x), @formula(sigma ~ 1)), Gaussian(); data)
+weights(fit) === nothing          # no prior weights given
+fitw = drm(bf(@formula(y ~ 1 + x), @formula(sigma ~ 1)), Gaussian(); data, weights = w)
+weights(fitw) == w
 ```
 """
-weights(fit::DrmFit) = ones(nobs(fit))
+weights(fit::DrmFit) = fit.control_info === nothing ? nothing : fit.control_info.weights
 
 """
     update(fit::DrmFit, formula; data, kwargs...) -> DrmFit

@@ -58,12 +58,35 @@ that is almost constant). Re-centre or drop one; refit.
 
 If `converged` is `false` but `max_abs_grad` is still sizable, the optimiser ran
 out of iterations rather than hitting a boundary. Tighten the gradient tolerance
-and refit:
+and refit. To raise the iteration cap or supply starting values, pass one
+`DRMControl` (the names follow drmTMB's `drm_control()`):
 
 ```julia
-fit = drm(bf(@formula(y ~ x), @formula(sigma ~ x)), Gaussian();
-          data = dat, g_tol = 1e-10)
+f = bf(@formula(y ~ x), @formula(sigma ~ x))
+fit = drm(f, Gaussian(); data = dat, g_tol = 1e-10,
+          control = DRMControl(maxit = 2000))
+
+# Start from another fit's estimates, or try five starts and keep the best:
+fit2 = drm(f, Gaussian(); data = dat, control = DRMControl(start = coef(fit)))
+fit5 = drm(f, Gaussian(); data = dat, control = DRMControl(multi_start = 5))
+control_info(fit5).start_logliks     # one log-likelihood per start
+control_info(fit5).starts_agree      # false (and a warning) if they disagree
 ```
+
+`maxit`, `start` and `multi_start` work on the fixed-effect routes of the
+univariate families. A model with random or structured terms refuses them with
+an `ArgumentError` rather than ignoring them. `se = false` works on every route:
+
+```julia
+fit = drm(f, Gaussian(); data = dat, control = DRMControl(se = false))
+H = hessian(fit)                    # observed information, `coef(fit)` order
+inv(H)                              # the covariance, computed later
+g = gradient(fit)                   # ≈ 0 at the optimum
+g' * (H \ g)                        # scaled Newton decrement: a stationarity audit
+```
+
+`gradient` and `hessian` are of the negative log-likelihood the
+optimiser minimised, in the same order and on the same scale as `coef(fit)`.
 
 ## Step 3 — scale and standardise
 

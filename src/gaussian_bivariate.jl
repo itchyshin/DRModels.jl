@@ -148,7 +148,7 @@ fit = drm(
 )
 ```
 """
-function drm(f::BivariateDrmFormula, fam::Gaussian; data, tree = nothing,
+@drm_entry function drm(f::BivariateDrmFormula, fam::Gaussian; data, tree = nothing,
              K = nothing, A = nothing, coords = nothing,
              spatial_range = nothing,
              g_tol::Real = 1e-8, q4_g_tol::Real = 1e-3,

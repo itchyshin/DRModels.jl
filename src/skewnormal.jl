@@ -42,7 +42,7 @@ coef(fit, :nu)[1]           # estimated slant α (identity)
 """
 struct SkewNormal end
 
-function drm(f::DrmFormula, fam::SkewNormal; data, g_tol::Real = 1e-8)
+@drm_entry function drm(f::DrmFormula, fam::SkewNormal; data, g_tol::Real = 1e-8)
     _lss_only_gaussian_guard(f, fam)   # #544: refuse, never silently drop, sd() parts
     rhs = Dict(f.forms)
     _, re, mv, st = _split_ranef(rhs[:mu])
@@ -73,6 +73,7 @@ function _fit_skewnormal(fam::SkewNormal, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_
     n = length(y)
     pμ, pσ, pν = size(Xμ, 2), size(Xσ, 2), size(Xν, 2)
     rt2_π = sqrt(2.0 / π)
+    w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]; βν = θ[pμ+pσ+1:pμ+pσ+pν]
         ημ = Xμ * βμ; ησ = Xσ * βσ; ην = Xν * βν      # ημ = mean, ησ = log σ, ην = slant α
@@ -84,8 +85,8 @@ function _fit_skewnormal(fam::SkewNormal, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_
             ξ = μ - ω * δ * rt2_π
             z = (y[i] - ξ) / ω
             # log f = log2 + logφ(z) + logΦ(α z) − log ω
-            s -= log(2.0) + Distributions.logpdf(Distributions.Normal(), z) +
-                 Distributions.logcdf(Distributions.Normal(), α * z) - log(ω)
+            s -= w[i] * (log(2.0) + Distributions.logpdf(Distributions.Normal(), z) +
+                         Distributions.logcdf(Distributions.Normal(), α * z) - log(ω))
         end
         return s
     end
@@ -99,8 +100,9 @@ function _fit_skewnormal(fam::SkewNormal, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_
     θ0[1:pμ] .= βμ0
     θ0[pμ+1] = log(sd0)                                # σ init (SD scale)
     θ0[pμ+pσ+1] = α0                                   # slant init (identity)
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    res = _ctl_optimize((x0, opts) -> Optim.optimize(nll, x0, Optim.LBFGS(), opts; autodiff = :forward),
+                       θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
+    θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :nu => (pμ+pσ+1):(pμ+pσ+pν)]
     names = [:mu => nmμ, :sigma => nmσ, :nu => nmν]
     means = Dict(:mu => Xμ * θ̂[1:pμ]); obs = Dict(:mu => Vector{Float64}(y))   # μ = response-scale mean
