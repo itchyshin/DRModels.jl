@@ -20,7 +20,9 @@ Zero-one-inflated beta family for proportions on the closed interval `[0,1]`
 interior), `sigma` (log; precision `φ = 1/σ²`), `zoi` (logit; probability the
 value is a boundary 0/1), `coi` (logit; probability of 1 given a boundary).
 Mirrors `drmTMB`'s `zero_one_beta`. `fitted` returns the unconditional mean
-`(1-zoi)·μ + zoi·coi`.
+`(1-zoi)·μ + zoi·coi`. `predict` / `predict_parameters(..., type = :response)[:mu]`
+return the interior beta mean `logistic(Xβ̂)` (the same quantity drmTMB
+returns for the `mu` dpar), not the mixture mean.
 
 A random intercept on the mean, `(1 | g)`, is admitted the same way `Beta()`
 admits it: `b_g ~ N(0, σ_b²)` on the logit mean is integrated out per group by

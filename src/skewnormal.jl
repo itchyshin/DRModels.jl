@@ -32,6 +32,7 @@ fit = drm(bf(y ~ x, sigma ~ 1, nu ~ 1), SkewNormal(); data = dat)
 coef(fit, :mu)[1]           # mean of y (identity)
 exp(coef(fit, :sigma)[1])   # SD of y
 coef(fit, :nu)[1]           # estimated slant α (identity)
+predict_parameters(fit, dat)[:nu]   # same slant (identity; not exp(η))
 ```
 
 !!! note
