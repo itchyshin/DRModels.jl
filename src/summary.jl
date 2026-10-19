@@ -164,6 +164,7 @@ _sentinel_loglik(fit::DrmFit) = !isfinite(fit.loglik) || fit.loglik <= -1e15
 
 function _nondegenerate_fit(fit::DrmFit)
     _sentinel_loglik(fit) && return false
+    _design_rank_deficient(fit) && return false   # #1110: aliased fixed-effect column
     fit.family isa Gaussian || return true
     haskey(fit.scales, :sigma) || return true
     s = fit.scales[:sigma]

@@ -46,6 +46,9 @@ include("fit_q4_sparse_tmb.jl")
 # unguarded `inv` whose outcome depends on the LAPACK build.
 include("vcov_guard.jl")
 
+# Rank check of each parameter's fixed-effect design (#1110).
+include("design_rank.jl")
+
 # Shared "evaluate at the minimizer, not Optim.minimum" helper (#optim-minimum-audit):
 # after a failed line search, Optim.jl's cached `Optim.minimum(res)` can hold a
 # rejected trial's value while `Optim.minimizer(res)` has already moved on.

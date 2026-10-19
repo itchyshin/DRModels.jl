@@ -2777,7 +2777,15 @@ Returns a `NamedTuple` and logs a short report:
   slant `|ν̂|` is below `cut = 0.5`: the information matrix is singular at `ν = 0`, so
   the Wald SE for `nu` is unreliable there (#1060; drmTMB's `skew_normal_nu_wald`
   note) and a warning is emitted. Does not affect `ok`.
-- `ok` — `true` when converged, the gradient is small, and the covariance is PD.
+- `fixed_effect_rank_deficiency` — `nothing` unless a fixed-effect design (`mu` or
+  `sigma`) had an aliased column (`sigma ~ 1 + x + z` with `z = 2x + 1`, a duplicated
+  column); then `(deficient = true, blocks)`, one `(param, rank, ncol, aliased)` per
+  rank-deficient block, naming the aliased coefficients (#1110; drmTMB's
+  `fixed_effect_rank_deficiency`). Such a fit is not converged (`is_converged` is
+  `false`), the aliased coordinates' SEs are `NaN`, and `ok` is `false`. Detected on the
+  Gaussian location-scale route.
+- `ok` — `true` when converged, the gradient is small, the covariance is PD, and no
+  fixed-effect design is rank-deficient.
   On a penalized fit the gradient criterion is **dropped**: the stored objective
   is unpenalized, so its gradient is non-zero at the MAP optimum by construction
   and scoring it would report a correct fit as broken. It is also dropped
@@ -2820,8 +2828,9 @@ function check_drm(fit::DrmFit; grad_tol::Real=1e-3)
     vb = try _variance_boundary(fit) catch err; _boundary_diagnostic_failed("variance-boundary", err) end
     tb = try _temporal_boundary(fit) catch err; _boundary_diagnostic_failed("temporal-boundary", err) end
     snw = _skew_normal_nu_wald(fit)   # #1060: `nothing` unless SkewNormal
+    frd = _fixed_effect_rank_deficiency(fit)   # #1110: `nothing` unless a design is aliased
     conv = is_converged(fit)   # #949: the trusted accessor, not the raw flag
-    ok = conv && (penalized || isnan(mag) || mag <= grad_tol) && pd
+    ok = conv && (penalized || isnan(mag) || mag <= grad_tol) && pd && frd === nothing
     report = (
         converged=conv,
         max_abs_grad=mag,
@@ -2834,12 +2843,14 @@ function check_drm(fit::DrmFit; grad_tol::Real=1e-3)
         variance_boundary=vb,
         temporal_boundary=tb === nothing ? nothing : (at_boundary = !isempty(tb), findings = tb),
         skew_normal_nu_wald=snw,
+        fixed_effect_rank_deficiency=frd,
         ok=ok,
     )
     @info "check_drm" converged = report.converged max_abs_grad = report.max_abs_grad grad_source =
         report.grad_source vcov_complete = report.vcov_complete vcov_posdef = report.vcov_posdef min_eigval =
         report.min_eigval cond = report.cond penalized_map = report.penalized_map ok = report.ok
-    vcov_complete || @warn "check_drm: the stored covariance has non-finite entries, so " *
+    # #1110: the NaN rows of an aliased design are explained by its own warning below.
+    (vcov_complete || frd !== nothing) || @warn "check_drm: the stored covariance has non-finite entries, so " *
         "`vcov_posdef` / `min_eigval` / `cond` could not be computed and `ok` is false. This is " *
         "EXPECTED on routes that report a partial covariance — the sparse phylo fitter computes " *
         "the fixed-effect block only. Wald SEs on the finite directions are still usable; for the " *
@@ -2863,6 +2874,7 @@ function check_drm(fit::DrmFit; grad_tol::Real=1e-3)
     vbmsg === nothing || @warn "check_drm: " * vbmsg
     (tb === nothing || isempty(tb)) || @warn "check_drm: " * _temporal_boundary_message(tb)
     (snw === nothing || !snw.near_zero) || @warn "check_drm: " * _skew_normal_nu_wald_message(snw)
+    frd === nothing || @warn "check_drm: " * _design_rank_message(frd.blocks)
     # drmTMB emits the equivalent advisory from `check_penalized_fit()`.
     penalized && @warn "check_drm: penalized (MAP) fit — standard errors come from the penalized " *
         "curvature and are credible-interval-shaped, not frequentist. `loglik` is the UNPENALIZED " *

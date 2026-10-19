@@ -598,7 +598,7 @@ them.
 @drm_entry function drm(f::DrmFormula, fam::Gaussian; kwargs...)
     # The residual-variance / structured-variance BOUNDARY advisory (#724, #697) is
     # attached here, once, rather than in each of the fitter's return paths.
-    return _warn_variance_boundary(_drm_gaussian_fit(f, fam; kwargs...))
+    return _apply_design_rank(_warn_variance_boundary(_drm_gaussian_fit(f, fam; kwargs...)))
 end
 
 function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree = nothing, coords = nothing, g_tol::Real = 1e-8, algorithm::Symbol = :auto, method::Symbol = :ML, profile_ci::Bool = false, phylo_coupled::Bool = false, penalty = nothing, sparse = nothing, impute = nothing, missing = nothing, marginal::Symbol = :LA)
@@ -667,6 +667,7 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     # from whatever rows `newdata` happens to contain.
     y, Xμ, nmμ = _design(f.response, fixed_mu, data; schema_cache = f.schema_cache, schema_key = :mu)
     _, Xσ, nmσ = _design(f.response, fixed_sigma, data; schema_cache = f.schema_cache, schema_key = :sigma)
+    _check_fixed_design_rank((:mu, Xμ, nmμ), (:sigma, Xσ, nmσ))   # #1110
     response_observed = _observed_response_mask(y)
     has_missing_response = !all(response_observed)
     all_structured = _collect_structured(rhs[:mu])
