@@ -1846,6 +1846,15 @@ end
 function _predict_design(fit::DrmFit, resp::Symbol, rhs, ndr, p::Symbol, cache, off)
     _, X, nms = _design(resp, rhs, ndr; schema_cache = cache, schema_key = p,
                         store_schema = false)
+    if fit.family isa CumulativeLogit && p === :mu
+        # #1121: the ordinal fitter drops the location intercept (the cutpoints
+        # absorb it), so drop the implicit one here too.
+        ic = findfirst(==("(Intercept)"), nms)
+        if ic !== nothing
+            keep = setdiff(1:length(nms), ic)
+            X = X[:, keep]; nms = nms[keep]
+        end
+    end
     fitted = _block_coefnames(fit, p)
     if fitted !== nothing && nms != fitted
         throw(ArgumentError("predict: the `$p` design built from `newdata` has columns " *
