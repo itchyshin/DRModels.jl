@@ -148,12 +148,13 @@ fit = drm(
 )
 ```
 """
-function drm(f::BivariateDrmFormula, fam::Gaussian; data, tree = nothing,
+@drm_entry function drm(f::BivariateDrmFormula, fam::Gaussian; data, tree = nothing,
              K = nothing, A = nothing, coords = nothing,
              spatial_range = nothing,
              g_tol::Real = 1e-8, q4_g_tol::Real = 1e-3,
              q4_iterations::Int = 300, q4_n_newton::Int = 40,
              q4_vcov::Bool = true, method::Symbol = :ML, V = nothing)
+    data = _drop_missing_predictor_rows(f, data)   # #1089: R's na.omit, with a count
     method in (:ML, :REML) ||
         throw(ArgumentError("drm: `method` must be :ML (default) or :REML (got :$method)"))
     rhs = Dict(f.forms)

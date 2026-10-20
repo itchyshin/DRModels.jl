@@ -129,7 +129,7 @@ function _offset_vector(offset_term, data)
     return Float64.(v)
 end
 
-function drm(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
+@drm_entry function drm(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
              A = nothing, coords = nothing, g_tol::Real = 1e-8, se::Bool = true,
              marginal::Symbol = :LA, method = nothing, nAGQ::Int = 5)
     # `method` is the ML/REML selector. LA/VA/AGHQ is `marginal` (Q1 / #136 / #448).
@@ -445,6 +445,7 @@ function _fit_poisson_zi(fam::Poisson, y, Xμ, Xzi, nmμ, nmzi, g_tol)
     n = length(y); pμ, pz = size(Xμ, 2), size(Xzi, 2)
     lf = [_logfactorial(round(Int, yi)) for yi in y]
     iszero_y = y .== 0
+    w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
     function nll(θ)
         βμ = θ[1:pμ]; βz = θ[pμ+1:pμ+pz]
         ημ = clamp.(Xμ * βμ, -30.0, 30.0); ηz = clamp.(Xzi * βz, -30.0, 30.0)
@@ -452,9 +453,9 @@ function _fit_poisson_zi(fam::Poisson, y, Xμ, Xzi, nmμ, nmzi, g_tol)
         @inbounds for i in 1:n
             λ = exp(ημ[i]); lπ = _log_logistic(ηz[i]); l1mπ = _log1m_logistic(ηz[i])
             if iszero_y[i]
-                s -= _logaddexp(lπ, l1mπ - λ)              # log(π + (1-π)e^{-λ})
+                s -= w[i] * (_logaddexp(lπ, l1mπ - λ))              # log(π + (1-π)e^{-λ})
             else
-                s -= l1mπ + (y[i] * ημ[i] - λ - lf[i])
+                s -= w[i] * (l1mπ + (y[i] * ημ[i] - λ - lf[i]))
             end
         end
         return s
@@ -462,8 +463,9 @@ function _fit_poisson_zi(fam::Poisson, y, Xμ, Xzi, nmμ, nmzi, g_tol)
     pos = y[y.>0]
     θ0 = zeros(pμ + pz)
     θ0[1] = log((isempty(pos) ? sum(y) / n : sum(pos) / length(pos)) + eps())   # λ from non-zeros
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
+                       θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
+    θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ, :zi => (pμ+1):(pμ+pz)]
     names = [:mu => nmμ, :zi => nmzi]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
@@ -480,6 +482,7 @@ function _fit_poisson_hu(fam::Poisson, y, Xμ, Xhu, nmμ, nmhu, g_tol)
     n = length(y); pμ, ph = size(Xμ, 2), size(Xhu, 2)
     lf = [_logfactorial(round(Int, yi)) for yi in y]
     iszero_y = y .== 0
+    w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
     function nll(θ)
         βμ = θ[1:pμ]; βh = θ[pμ+1:pμ+ph]
         ημ = clamp.(Xμ * βμ, -30.0, 30.0); ηh = clamp.(Xhu * βh, -30.0, 30.0)
@@ -487,11 +490,11 @@ function _fit_poisson_hu(fam::Poisson, y, Xμ, Xhu, nmμ, nmhu, g_tol)
         @inbounds for i in 1:n
             lπ = _log_logistic(ηh[i]); l1mπ = _log1m_logistic(ηh[i])
             if iszero_y[i]
-                s -= lπ                                        # log π
+                s -= w[i] * (lπ)                                        # log π
             else
                 λ = exp(ημ[i])
                 lpos = y[i] * ημ[i] - λ - lf[i]                # log Poisson(k; λ)
-                s -= l1mπ + lpos - _log1mexp(-λ)               # − log(1 − e^{-λ})
+                s -= w[i] * (l1mπ + lpos - _log1mexp(-λ))               # − log(1 − e^{-λ})
             end
         end
         return s
@@ -499,8 +502,9 @@ function _fit_poisson_hu(fam::Poisson, y, Xμ, Xhu, nmμ, nmhu, g_tol)
     pos = y[y.>0]
     θ0 = zeros(pμ + ph)
     θ0[1] = log((isempty(pos) ? sum(y) / n : sum(pos) / length(pos)) + eps())   # λ from non-zeros
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
+                       θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
+    θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ, :hu => (pμ+1):(pμ+ph)]
     names = [:mu => nmμ, :hu => nmhu]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
@@ -514,17 +518,19 @@ function _fit_poisson(fam::Poisson, y, Xμ, nmμ, g_tol; offset::AbstractVector{
     n = length(y); pμ = size(Xμ, 2)
     lf = [_logfactorial(round(Int, yi)) for yi in y]    # constant log y! term
     off = Float64.(offset)
+    w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
     function nll(θ)
         ημ = Xμ * θ .+ off                              # log λ; offset() coefficient fixed at 1
         s = zero(eltype(θ))
         @inbounds for i in 1:n
-            s -= y[i] * ημ[i] - exp(ημ[i]) - lf[i]
+            s -= w[i] * (y[i] * ημ[i] - exp(ημ[i]) - lf[i])
         end
         return s
     end
     θ0 = zeros(pμ); θ0[1] = log(sum(y) / n + eps()) - (isempty(off) ? 0.0 : sum(off) / n)
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
+                       θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
+    θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ]; names = [:mu => nmμ]
     means = Dict(:mu => exp.(Xμ * θ̂ .+ off)); obs = Dict(:mu => Vector{Float64}(y))   # response-scale λ
     scales = Dict{Symbol,Vector{Float64}}()

@@ -75,7 +75,8 @@ include("coevolution_q.jl")
 include("reml_q2.jl")  # #470: REML for the bivariate q=2 structured residual-correlation route
 
 # Gaussian location–scale front end (public bf()/drm() API).
-include("finite_inputs.jl")  # non-finite input check + converged backstop (#1009 #1012 #1019 #1021)
+include("control.jl")          # #942 #948 #994 #931: DRMControl, @drm_entry, prior weights (before every family `drm`)
+include("finite_inputs.jl")    # non-finite input check + converged backstop (#1009 #1012 #1019 #1021)
 include("gaussian_core.jl")
 include("meta_vcov_bivariate.jl")  # A8: known bivariate sampling covariance (drmTMB meta_vcov_bivariate)
 include("gaussian_bivariate.jl")
@@ -113,6 +114,7 @@ include("associate_pairs.jl")    # drmTMB `associate_pairs()`: STAGED frozen-mar
 include("zeroonebeta.jl")
 include("tweedie.jl")
 include("cumulative.jl")
+include("cumulative_predict.jl")  # #1121: predict drops the location intercept, as the fitter does
 include("link_residual.jl")      # S3: per-family link-scale variance for cross-family ρ
 include("mixed_family.jl")       # S3: cross-family bivariate via shared-latent GHQ
 include("mixed_family_postfit.jl") # post-fit accessors for fit_mixed_family
@@ -142,6 +144,7 @@ include("bootstrap_q4_phylo.jl") # Ayumi #2: parametric bootstrap of the q=4 amo
 include("variational.jl")
 include("ordinary_laplace.jl")      # Arc 2: marginal = :Laplace on ordinary (1 | g) (TMB convention)
 include("summary.jl")
+include("fit_derivatives.jl")  # #971 #994: gradient / hessian / control_info accessors
 include("r2.jl")             # R2 for the constant-sigma Gaussian case ONLY; refuses elsewhere
 include("visualization.jl")
 include("plotting_ext.jl")   # #336: method-less drm_figure stub + thin plot_* (DRModelsMakieExt)
@@ -201,6 +204,8 @@ export @formula, bf, drm_formula, drm, Gaussian, Student, SkewNormal, Poisson, N
 
 # Public API — post-fit accessors for the cross-family bivariate fit
 # (`fit_mixed_family`, currently reached as `DRModels.fit_mixed_family`).
+# #942 #948 #994 #971 #931 (owner decisions 8a / 9b): one control keyword + derivative accessors
+export DRMControl, DRMControlReport, control_info, gradient, hessian
 export mf_coef, mf_aic, mf_bic, mf_fitted, mf_summary
 export r2_constant_sigma
 
