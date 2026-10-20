@@ -29,7 +29,7 @@ fit = drm(bf(y ~ x, hu ~ w), TruncatedPoisson(); data = dat)
 """
 struct TruncatedPoisson end
 
-function drm(f::DrmFormula, fam::TruncatedPoisson; data, g_tol::Real = 1e-8)
+@drm_entry function drm(f::DrmFormula, fam::TruncatedPoisson; data, g_tol::Real = 1e-8)
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
         drm(f, fam; data = data_observed, g_tol = g_tol)
     end
@@ -67,19 +67,21 @@ end
 function _fit_truncated_poisson(fam::TruncatedPoisson, y, Xμ, nmμ, g_tol)
     n = length(y); pμ = size(Xμ, 2)
     lf = [_logfactorial(round(Int, yi)) for yi in y]
+    w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
     function nll(θ)
         ημ = clamp.(Xμ * θ, -30.0, 30.0)
         s = zero(eltype(θ))
         @inbounds for i in 1:n
             λ = exp(ημ[i])
-            s -= (y[i] * ημ[i] - λ - lf[i]) - _log1mexp(-λ)   # divide out P(0): zero-truncated
+            s -= w[i] * ((y[i] * ημ[i] - λ - lf[i]) - _log1mexp(-λ))   # divide out P(0): zero-truncated
         end
         return s
     end
     θ0 = zeros(pμ)
     θ0[1] = log(sum(y) / n + eps())
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
+                       θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
+    θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ]
     names = [:mu => nmμ]
     means = Dict(:mu => exp.(Xμ * θ̂)); obs = Dict(:mu => Vector{Float64}(y))   # untruncated Poisson mean λ̂
