@@ -206,6 +206,39 @@ struct DrmFit{F}
     # the `drm` entry wrapper (`_withcontrolinfo`, src/control.jl), after the route
     # has returned, so the `_with*` rebuilders below need not carry it.
     control_info::Any
+
+    # Inner constructor: `converged` is the optimiser flag AND a finite,
+    # non-sentinel optimum. A non-finite log-likelihood, a failed-fit sentinel
+    # (`-1e18`, `-floatmax`, anything `≤ -1e15`), or a non-finite coefficient
+    # never lands as `converged = true` (#1009, #1012, #1019).
+    function DrmFit(family, blocks, coefnames, theta, vcov, loglik, nobs, converged,
+                    means, obs, scales, formula, nll, nllgrad, ranef, estim_method,
+                    reml_loglik, ml_loglik, marginal, phylo_penalty, penalty,
+                    iterations, phylo_scale, control_info)
+        # `new` does not convert. The previous default constructor did, and
+        # fitters pass the odd Int log-likelihood or adjoint covariance.
+        new{typeof(family)}(
+            family,
+            convert(Vector{Pair{Symbol,UnitRange{Int}}}, blocks),
+            convert(Vector{Pair{Symbol,Vector{String}}}, coefnames),
+            convert(Vector{Float64}, theta),
+            convert(Matrix{Float64}, vcov),
+            convert(Float64, loglik),
+            convert(Int, nobs),
+            _report_converged(converged, loglik, theta),
+            convert(Dict{Symbol,Vector{Float64}}, means),
+            convert(Dict{Symbol,Vector{Float64}}, obs),
+            convert(Dict{Symbol,Vector{Float64}}, scales),
+            formula, nll, nllgrad, ranef, estim_method,
+            convert(Float64, reml_loglik),
+            convert(Float64, ml_loglik),
+            marginal,
+            convert(Float64, phylo_penalty),
+            penalty,
+            convert(Int, iterations),
+            phylo_scale,
+            control_info)
+    end
 end
 
 # 11-arg outer constructor: formula + nll + nllgrad + ranef default to nothing;
@@ -356,7 +389,10 @@ function _is_response_missing(x)
     return false
 end
 
-function _coerce_response_column(raw)
+function _coerce_response_column(raw; name::AbstractString="response")
+    # `Inf` is not the missing-value code. Every response read (formula routes,
+    # the bridge label schema, joint-missing designs) passes through here.
+    _require_finite_inputs(; response=(raw, name))
     y = Vector{Float64}(undef, length(raw))
     observed = Vector{Bool}(undef, length(raw))
     @inbounds for i in eachindex(raw)
@@ -402,7 +438,15 @@ end
 function _design(response::Symbol, rhs, data; schema_cache = nothing, schema_key = nothing,
                  store_schema::Bool = true)
     raw_response = _table_column(data, response)
-    y_response, observed = _coerce_response_column(raw_response)
+    y_response, observed = _coerce_response_column(raw_response; name=String(response))
+    # Predict reuses the training schema and names a missing column, a `missing`
+    # cell, or an unseen level before the generic non-finite check (#1015).
+    # A fit still rejects those cells here, before the schema is built.
+    reused_training_schema = schema_cache !== nothing && haskey(schema_cache[], schema_key)
+    reused_training_schema || _require_finite_predictor_columns(rhs, data, response; observed=observed)
+    # Only rows that stay in the fit. A missing/NaN response is dropped later
+    # (`_fit_observed_response_rows`, `_fit_fixed_gaussian_missing_response`);
+    # a NaN predictor on that same row is dropped with it.
     design_data = all(observed) ? data :
         _replace_table_column(data, response, ifelse.(observed, y_response, 0.0))
     ft = FormulaTerm(Term(response), rhs)
@@ -417,8 +461,7 @@ function _design(response::Symbol, rhs, data; schema_cache = nothing, schema_key
     # happens to contain. `store_schema = false` (the predict paths) reads the
     # cache but never writes to it, so a prediction on a fit whose fitter did not
     # populate the cache cannot plant a NEWDATA schema that later calls would
-    # mistake for the training one.
-    reused_training_schema = schema_cache !== nothing && haskey(schema_cache[], schema_key)
+    #     mistake for the training one.
     sch = if reused_training_schema
         schema_cache[][schema_key]
     else
@@ -439,7 +482,76 @@ function _design(response::Symbol, rhs, data; schema_cache = nothing, schema_key
             "from `newdata`: " * sprint(showerror, e)))
     end
     Xm = X isa AbstractMatrix ? Matrix{Float64}(X) : reshape(Float64.(collect(X)), :, 1)
-    return y_response, Xm, String.(vec(coefnames(ft.rhs)))
+    names = String.(vec(coefnames(ft.rhs)))
+    # Catches a finite column that a transform (`log`, `I(1 / x)`, …) turned
+    # non-finite. Plain `NaN`/`Inf` columns are already named above. The same
+    # observed-row mask: a transform that is non-finite only on a dropped
+    # response row is not an error.
+    _require_finite_inputs(; predictors=(Xm, names), observed=observed)
+    return y_response, Xm, names
+end
+
+# Predictor columns named by a fixed-effect RHS. Grouping factors stripped by
+# `_split_ranef` never reach here. Non-numeric columns (factors) are skipped
+# by the checker; `missing` / `NaN` / `Inf` in a numeric column are not.
+function _finite_input_symbols(term, out::Vector{Symbol}=Symbol[])
+    if term isa Term
+        push!(out, term.sym)
+    end
+    if term isa Union{Tuple,AbstractVector}
+        for t in term
+            _finite_input_symbols(t, out)
+        end
+        return out
+    end
+    if hasproperty(term, :terms)
+        terms = getproperty(term, :terms)
+        if terms isa Union{Tuple,AbstractVector}
+            for t in terms
+                _finite_input_symbols(t, out)
+            end
+        end
+    end
+    if hasproperty(term, :args)
+        args = getproperty(term, :args)
+        if args isa Union{Tuple,AbstractVector}
+            for t in args
+                _finite_input_symbols(t, out)
+            end
+        end
+    end
+    return out
+end
+
+function _require_finite_predictor_columns(rhs, data, response::Symbol;
+                                          context::AbstractString="drm", observed=nothing)
+    seen = Set{Symbol}()
+    for sym in _finite_input_symbols(rhs)
+        sym === response && continue
+        sym in seen && continue
+        push!(seen, sym)
+        col = try
+            _table_column(data, sym)
+        catch e
+            # The symbol is not a column. The schema error from `modelcols` is
+            # the one to surface. A lookup bug is not a missing column.
+            _missing_column_lookup(e) || rethrow()
+            continue
+        end
+        col isa AbstractArray || continue
+        _require_finite_inputs(; predictors=(col, String(sym)), context=context,
+                               observed=observed)
+    end
+    return nothing
+end
+
+function _missing_column_lookup(e)::Bool
+    e isa KeyError && return true
+    e isa ArgumentError && return true
+    if e isa ErrorException
+        return occursin("not found", e.msg) || occursin("no field", e.msg)
+    end
+    return false
 end
 
 # Columns a fixed-effect RHS reads (`StatsModels.termvars`), or `nothing` when the
@@ -579,6 +691,16 @@ refits of a `:Laplace` fit use `:Laplace` too.
 
 Incomplete responses (`missing` or `NaN` in `y`) are supported under the
 observed-rows pattern (matching `response = "include"` in the R bridge).
+`Inf` and `-Inf` are not missing values: they raise `ArgumentError` naming
+the response column and the row. A non-finite predictor on an *observed* row,
+or a non-finite offset or coordinate, raises the same way, naming that
+argument. A non-finite predictor on a row whose response is `missing` or
+`NaN` is dropped with that row. `predict` on `newdata` that does not carry
+the response checks every row, so a `NaN` predictor there is an error rather
+than a `NaN` prediction. A returned fit never
+has `converged = true` when its log-likelihood is non-finite or a failed-fit
+sentinel (`≤ -1e15`, including `-1e18` and `-floatmax`) or when any
+coefficient is non-finite.
 For Location-Scale-Scale models, the group index and scale design Z_g
 are parameterised over all G levels, while the likelihood is evaluated on
 observed rows. With a `(… | g)` random effect or `meta_V(...)` and no
@@ -932,6 +1054,7 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         # Rows → tree leaves BY NAME / tip index (#482), never by first-seen order.
         gidx_phy = _phylo_mean_leaf_index(phy, getproperty(data, grp))
         Cphy = _phylo_correlation(phy)
+        _require_finite_data_column(data, structured_slope)
         xs = Float64.(getproperty(data, structured_slope))
         return _withformula(_fit_phylo_slope_gaussian(fam, y, Xμ, Xσ, gidx_phy, phy.n_leaves,
             Cphy, xs, nmμ, nmσ, grp, structured_slope, g_tol), f)
@@ -1099,6 +1222,7 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
             throw(ArgumentError("drm: two random components alongside `meta_V(...)` share a " *
                 "grouping factor ($(join(grps, ", "))); give each component its own grouping " *
                 "column. (A phylo(1 | sp) + (1 | sp) pair is not implemented on this route.)"))
+        _require_finite_data_column(data, metav; label="meta_V($(metav))")
         vv = Float64.(getproperty(data, metav))
         return _withformula(_fit_meta_gaussian_re(fam, y, Xμ, Xσ, vv, comps, nmμ, nmσ, g_tol), f)
     end
@@ -1152,16 +1276,17 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         gidx, G = _group_index(getproperty(data, grp))
         if kind === :spatial
             coords === nothing && error("spatial(1 | $grp) needs `coords = …`")
+            _require_finite_inputs(; coords=coords)
             cmat = Matrix{Float64}(coords)
             size(cmat, 1) == G || error("coords must have $G rows (one per `$grp` level)")
             return _withformula(_fit_spatial_gaussian(fam, y, Xμ, Xσ, gidx, G, cmat, nmμ, nmσ, grp, g_tol), f)
         end
         Kmat = if kind === :relmat
             K === nothing && error("relmat(1 | $grp) needs `K = …`")
-            Matrix{Float64}(K)
+            _finite_user_matrix(K, "K")
         elseif kind === :animal
             A === nothing && error("animal(1 | $grp) needs the relatedness matrix `A = …`")
-            Matrix{Float64}(A)
+            _finite_user_matrix(A, "A")
         else  # :phylo
             tree === nothing && error("phylo(1 | $grp) needs `tree = …`")
             use_sparse_phylo = algorithm in (:auto, :em, :sparse, :sparse_lbfgs) &&
@@ -1210,6 +1335,7 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
             _fit_structured_gaussian(fam, y, Xμ, Xσ, gidx, G, Kmat, nmμ, nmσ, grp, g_tol), f), :correlation)
     end
     if metav !== nothing
+        _require_finite_data_column(data, metav; label="meta_V($(metav))")
         vv = Float64.(getproperty(data, metav))    # known sampling variances
         return _withformula(_fit_meta_gaussian(fam, y, Xμ, Xσ, vv, nmμ, nmσ, g_tol), f)
     end
@@ -1227,6 +1353,7 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     if length(re) == 1 && re_kinds[1][1] === :corr           # (1 + x | g)
         (_, grp) = re[1]; (_, var) = re_kinds[1]
         gidx, G = _group_index(getproperty(data, grp))
+        _require_finite_data_column(data, var)
         xs = Float64.(getproperty(data, var))
         return _withformula(_fit_correlated_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, xs, nmμ, nmσ, grp, g_tol;
                                                           reml = method === :REML), f)
@@ -1236,12 +1363,14 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     if length(re) == 1                                        # single scalar component
         (_, grp) = re[1]; (kind, var) = re_kinds[1]
         gidx, G = _group_index(getproperty(data, grp))
+        kind === :intercept || _require_finite_data_column(data, var)
         w = kind === :intercept ? ones(length(y)) : Float64.(getproperty(data, var))
         reml_here = method === :REML && kind === :intercept
         return _withformula(_fit_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ, grp, g_tol;
                                                reml = reml_here), f)
     end
     comps = map(zip(re, re_kinds)) do ((_, grp), (kind, var))  # multiple scalar components
+        kind === :intercept || _require_finite_data_column(data, var)
         w = kind === :intercept ? ones(length(y)) : Float64.(getproperty(data, var))
         gidx, Gk = _group_index(getproperty(data, grp))
         (w, gidx, Gk, String(grp))
@@ -1353,9 +1482,9 @@ function _fit_fixed_gaussian_missing_response(fam::Gaussian, y, Xμ, Xσ, nmμ, 
 end
 
 function _formula_response_observed_mask(f::DrmFormula, data)
-    _, observed1 = _coerce_response_column(_table_column(data, f.response))
+    _, observed1 = _coerce_response_column(_table_column(data, f.response); name=String(f.response))
     f.response2 === nothing && return observed1
-    _, observed2 = _coerce_response_column(_table_column(data, f.response2))
+    _, observed2 = _coerce_response_column(_table_column(data, f.response2); name=String(f.response2))
     length(observed1) == length(observed2) ||
         throw(ArgumentError("drm: the two response columns have different lengths"))
     return observed1 .& observed2
@@ -1392,9 +1521,9 @@ function _fit_observed_response_rows(fitfun::Function, f::DrmFormula, data)
 end
 
 function _full_response_obs(f::DrmFormula, data)
-    y, observed1 = _coerce_response_column(_table_column(data, f.response))
+    y, observed1 = _coerce_response_column(_table_column(data, f.response); name=String(f.response))
     f.response2 === nothing && return Dict(:mu => y)
-    y2, observed2 = _coerce_response_column(_table_column(data, f.response2))
+    y2, observed2 = _coerce_response_column(_table_column(data, f.response2); name=String(f.response2))
     ntr = y .+ y2
     prop = y ./ ntr
     prop[.!(observed1 .& observed2)] .= NaN
@@ -1402,9 +1531,9 @@ function _full_response_obs(f::DrmFormula, data)
 end
 
 function _full_trials(f::DrmFormula, data)
-    y, observed1 = _coerce_response_column(_table_column(data, f.response))
+    y, observed1 = _coerce_response_column(_table_column(data, f.response); name=String(f.response))
     f.response2 === nothing && return ones(length(y))
-    y2, observed2 = _coerce_response_column(_table_column(data, f.response2))
+    y2, observed2 = _coerce_response_column(_table_column(data, f.response2); name=String(f.response2))
     ntr = y .+ y2
     ntr[.!(observed1 .& observed2)] .= NaN
     return ntr
@@ -1415,8 +1544,9 @@ function _cumulative_full_components(fit::DrmFit, data)
     forms = Dict(f.forms)
     fixed_mu, _, _, _ = _split_ranef(forms[:mu])
     nrows = length(_table_column(data, f.response))
-    ndr = _replace_table_column(data, f.response, zeros(nrows))
-    _, Xμ, nmμ = _design(f.response, fixed_mu, ndr)
+    # Keep the real response so a missing row is not treated as observed when
+    # the full-length score is rebuilt.
+    _, Xμ, nmμ = _design(f.response, fixed_mu, data)
     ic = findfirst(==("(Intercept)"), nmμ)
     if ic !== nothing
         keep = setdiff(1:length(nmμ), ic)
@@ -1827,6 +1957,20 @@ The SE uses the μ-block of `vcov(fit)`: link scale `se_i = sqrt(xᵢ' Vμ xᵢ)
 response scale multiplies by the inverse-link derivative `|dμ/dη|` at `η̂`
 (identity → 1, exp → `exp(η)`, logistic → `μ(1−μ)`).
 """
+# Keep a response column that is already in `newdata`, so a missing response
+# still marks that row as unobserved and a NaN predictor there is dropped with
+# it. A prediction table that omits the response gets a finite dummy, and every
+# row is checked — `predict(newdata)` with a NaN predictor is an error.
+function _predict_data(nd::NamedTuple, responses::Symbol...)
+    nrows = isempty(nd) ? 0 : length(first(values(nd)))
+    extras = Pair{Symbol,Vector{Float64}}[]
+    for r in responses
+        haskey(nd, r) || push!(extras, r => zeros(nrows))
+    end
+    isempty(extras) && return nd
+    return merge(nd, NamedTuple(extras))
+end
+
 function predict(fit::DrmFit, newdata; type::Symbol = :response, se::Bool = false)
     f = fit.formula
     f === nothing && error("predict: this fit did not retain its formula")
@@ -1842,7 +1986,7 @@ function predict(fit::DrmFit, newdata; type::Symbol = :response, se::Bool = fals
         # #1006: an `offset(...)` the fitter applied (coefficient fixed at 1) is
         # stripped from the design and added to η, exactly as at fit time.
         fixed_mu, off = _predict_offset(fit, fixed_mu, nd, :mu)
-        ndr = merge(nd, NamedTuple{(f.response,)}((zeros(nrows),)))
+        ndr = _predict_data(nd, f.response)
         Xnew, η = _predict_design(fit, f.response, fixed_mu, ndr, :mu, f.schema_cache, off)
         pred = type === :link ? η : _mean_response(fit.family, η)
         se || return pred
@@ -1853,8 +1997,8 @@ function predict(fit::DrmFit, newdata; type::Symbol = :response, se::Bool = fals
         fm = Dict(f.forms)
         fixed1, _, _, _ = _split_ranef(fm[:mu1])
         fixed2, _, _, _ = _split_ranef(fm[:mu2])
-        nd1 = merge(nd, NamedTuple{(f.response1,)}((zeros(nrows),)))
-        nd2 = merge(nd, NamedTuple{(f.response2,)}((zeros(nrows),)))
+        nd1 = _predict_data(nd, f.response1)
+        nd2 = _predict_data(nd, f.response2)
         # #1000: the bivariate formula caches no training schema, so contrasts are
         # rebuilt from `newdata`; `_predict_design` refuses when the rebuilt
         # columns are not the fitted ones (it used to mis-predict silently).
@@ -2101,8 +2245,8 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
     # function is not reliably bound in local scope).
     bivar = !(f isa DrmFormula)
     ndr = bivar ?
-        merge(nd, NamedTuple{(f.response1, f.response2)}((zeros(nrows), zeros(nrows)))) :
-        merge(nd, NamedTuple{(f.response,)}((zeros(nrows),)))
+        _predict_data(nd, f.response1, f.response2) :
+        _predict_data(nd, f.response)
     out = se ? Dict{Symbol,NamedTuple}() : Dict{Symbol,Vector{Float64}}()
     for (p, r) in fit.blocks
         haskey(forms, p) || continue          # skip RE-SD / cutpoint blocks (:resd, :recov, :cutpoints, …)
