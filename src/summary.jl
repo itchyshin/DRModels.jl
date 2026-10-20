@@ -225,9 +225,6 @@ function Base.show(io::IO, ::MIME"text/plain", fit::DrmFit)
     _wald_withheld(fit) && println(io, "  Wald SEs withheld (homogeneous Toeplitz, as drmTMB): `sigma` is the " *
         "TOTAL within-series SD; use profile intervals for mean coefficients.")
 
-    _se_untrusted(fit) && !_wald_withheld(fit) && println(io, "  Wald SEs withheld: the fit is not " *
-        "converged or its Hessian is not positive definite (#1127); see `check_drm`.")
-
     # Residual SD on the RESPONSE scale + residual dof (issue #752). An R user
     # looks for these first: lm() prints both and drmTMB prints sigma. The value
     # is already computed (fit.scales[:sigma]); this only prints it.
