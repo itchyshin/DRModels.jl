@@ -1429,6 +1429,11 @@ function _full_means_and_scales(fit::DrmFit, data)
 
     params = predict_parameters(fit, data)
     means = Dict(:mu => params[:mu])
+    if fit.family isa SkewNormal
+        # ν is the slant α on an identity link; the `:response` inverse link would
+        # store exp(α) (#1120), so rebuild the full rows from the link scale.
+        params[:nu] = predict_parameters(fit, data; type = :link)[:nu]
+    end
 
     scales = Dict{Symbol,Vector{Float64}}()
     for (p, value) in params
