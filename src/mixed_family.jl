@@ -543,6 +543,7 @@ This route is **experimental** — see the `cross_family_latent` capability row.
     length(fams) == 2 || throw(ArgumentError(
         "drm: the cross-family route takes exactly two families, e.g. " *
         "`(Gaussian(), Poisson())` (got $(length(fams)))"))
+    data = _drop_missing_predictor_rows(f, data)   # #1089: R's na.omit, with a count
     fam1, fam2 = fams
     rhs = Dict(f.forms)
 

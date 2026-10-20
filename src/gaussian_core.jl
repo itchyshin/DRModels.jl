@@ -581,7 +581,19 @@ Incomplete responses (`missing` or `NaN` in `y`) are supported under the
 observed-rows pattern (matching `response = "include"` in the R bridge).
 For Location-Scale-Scale models, the group index and scale design Z_g
 are parameterised over all G levels, while the likelihood is evaluated on
-observed rows.
+observed rows. With a `(… | g)` random effect or `meta_V(...)` and no
+structured term, rows with a missing response are dropped, with a warning
+that gives the count.
+
+## Missing predictor handling
+
+Rows with a `missing` predictor value are dropped before the fit, with a
+warning that gives the count, so the fit uses the complete cases (R's
+`na.omit`, which is what drmTMB does). `nobs(fit)` counts the rows used. A
+`relmat`/`animal`/`spatial` term whose level order the drop would change is
+refused instead, because its matrix is matched to the levels by position.
+An `mi(x)` joint formula models its missing predictors rather than dropping
+them.
 """
 @drm_entry function drm(f::DrmFormula, fam::Gaussian; kwargs...)
     # The residual-variance / structured-variance BOUNDARY advisory (#724, #697) is
@@ -600,6 +612,14 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         throw(ArgumentError("drm: `algorithm` must be one of :auto, :gls, :lbfgs, :em, :sparse, :sparse_lbfgs (got :$algorithm)"))
     method in (:ML, :REML) ||
         throw(ArgumentError("drm: `method` must be :ML (default) or :REML (got :$method)"))
+    ctl_scope = _active_control_scope()
+    if ctl_scope !== nothing && ctl_scope.control.optimizer !== :default
+        method === :ML || throw(ArgumentError("drm: `control.optimizer` is supported for Gaussian ML primary fits only; REML is not qualified"))
+        (algorithm === :auto && !laplace && !aghq && impute === nothing &&
+         missing === nothing && penalty === nothing && sparse === nothing &&
+         !profile_ci && !phylo_coupled) ||
+            throw(ArgumentError("drm: `control.optimizer` requires the ordinary Gaussian ML route (`algorithm = :auto`, no alternate integration, imputation or profiling)"))
+    end
     if _has_joint_mi(f)
         return _fit_joint_formula(f, data; impute=impute,
             missing=missing === nothing ? miss_control() : missing,
@@ -609,6 +629,7 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     end
     (impute === nothing && missing === nothing) ||
         throw(ArgumentError("drm: `impute` and `missing` controls currently require an additive mi(x) joint-model formula; they are not ignored on other routes"))
+    data = _drop_missing_predictor_rows(f, data)   # #1089: R's na.omit, with a count
     rhs = Dict(f.forms)
     # `allow_phylo_slope = true`: the Gaussian mean is the one route that fits
     # `phylo(1 + x | g)` (#620, two independent phylogenetic fields); the slope
@@ -631,6 +652,14 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
             throw(ArgumentError("drm: `penalty` and `method = :REML` cannot be combined — a penalized " *
                                 "fit is a maximum-a-posteriori (MAP) estimator and REML is a " *
                                 "restricted-likelihood estimator. Use `method = :ML` (the default)."))
+    end
+    # #1089: a `(… | g)` random effect or `meta_V(...)` with no structured,
+    # temporal or sd() term has no observed-rows path, so rows with a missing
+    # response are dropped here, before the design and its schema are built.
+    if temporal_term === nothing && structured === nothing && structured_sigma === nothing &&
+       isempty(_sdphylo_parts(f)) && isempty(_sd_parts(f)) &&
+       !(isempty(re) && isempty(sigma_re) && metav === nothing)
+        data = _drop_missing_response_rows(f, data)
     end
     # `schema_cache`/`schema_key`: caches the TRAINING schema (factor
     # contrasts/levels) per parameter so `predict`/`predict_parameters` on
@@ -934,9 +963,11 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         # leaf matching (#482) keeps a fully-masked species in the phylo prior
         # with no likelihood term, exactly like the σ-phylo route above. Only
         # this exact cell is unwrapped: the dense structured fallback
-        # (non-constant sigma design), relmat/animal/spatial, `(1|g)`, and
-        # `meta_V` match rows to levels POSITIONALLY, which is not subset-safe
-        # (#482's trap), so they still refuse below.
+        # (non-constant sigma design) and relmat/animal/spatial match rows to
+        # levels POSITIONALLY, which is not subset-safe (#482's trap), so they
+        # still refuse below. (`(1|g)` and `meta_V` without a structured term
+        # never get here: their missing-response rows were dropped before the
+        # design was built, #1089.)
         phylo_mean_cell = structured !== nothing && structured[1] === :phylo &&
             length(all_structured) == 1 && isempty(re) && isempty(sigma_re) &&
             metav === nothing && size(Xσ, 2) == 1 &&
@@ -960,10 +991,11 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
                 "fixed-effect univariate location-scale models, the σ-phylo location-scale " *
                 "route, and the phylo-MEAN cell (`phylo(1 | g)` on the mean with `sigma ~ 1`, " *
                 "fitted as observed rows + full tree, matching drmTMB's " *
-                "`response = \"include\"`). This is a ROUTE-level restriction, not a " *
+                "`response = \"include\"`); with a `(… | g)` random effect or `meta_V` and no " *
+                "structured term, those rows are dropped. This is a ROUTE-level restriction, not a " *
                 "family-level one — DRModels.jl's engine has no missing-response handling for a " *
-                "relmat/animal/spatial mean term, a random effect, `meta_V`, or a phylo mean " *
-                "with a non-constant sigma design, whose positional row-to-level matching is " *
+                "relmat/animal/spatial mean term, or a phylo mean with a non-constant sigma " *
+                "design or another random effect, whose positional row-to-level matching is " *
                 "not subset-safe (#482). Dropping the missing-response rows before calling " *
                 "`drm` (matching `missing = miss_control(response = \"drop\")` at the R " *
                 "bridge, or `drm_listwise` natively) is the supported route there."))
@@ -1237,7 +1269,7 @@ function _fit_fixed_gaussian(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, g_tol)
     θ0 = zeros(pμ + pσ)
     θ0[1:pμ] .= βμ0
     θ0[pμ+1] = log(std(y - Xμ * βμ0) + eps())
-    res = _ctl_optimize((x0, opts) -> Optim.optimize(nll, x0, Optim.LBFGS(), opts; autodiff = :forward),
+    res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
                        θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
     θ̂ = Optim.minimizer(res)
     # #968: a (near-)constant response sends log σ → -∞ and the Hessian overflows.
@@ -1337,13 +1369,17 @@ function _subset_table_rows(data, rows)
 end
 
 function _fit_observed_response_rows(fitfun::Function, f::DrmFormula, data)
+    # #1089: rows with a `missing` predictor are dropped first (with a warning
+    # that gives the count), and the fit starts again on the remaining rows.
+    data_cc = _drop_missing_predictor_rows(f, data)
+    data_cc === data || return fitfun(data_cc)
     observed = _formula_response_observed_mask(f, data)
     all(observed) && return nothing
     count(observed) > 0 ||
         throw(ArgumentError("drm: at least one response row must be observed"))
     # Missing/NaN RESPONSE rows are dropped (observed-rows fit), matching glmmTMB's
     # default `na.action`. Warn so it is never SILENT (reconciles #241 auto-handling
-    # with #258's "not silently fit" contract). Predictor missingness still errors.
+    # with #258's "not silently fit" contract). Missing predictors were dropped above.
     ndrop = count(!, observed)
     @warn "drm: $(ndrop) of $(length(observed)) rows have a missing/NaN response and were " *
           "dropped (observed-rows fit, like glmmTMB's default na.action). Use `drm_listwise` " *
@@ -1429,11 +1465,6 @@ function _full_means_and_scales(fit::DrmFit, data)
 
     params = predict_parameters(fit, data)
     means = Dict(:mu => params[:mu])
-    if fit.family isa SkewNormal
-        # ν is the slant α on an identity link; the `:response` inverse link would
-        # store exp(α) (#1120), so rebuild the full rows from the link scale.
-        params[:nu] = predict_parameters(fit, data; type = :link)[:nu]
-    end
 
     scales = Dict{Symbol,Vector{Float64}}()
     for (p, value) in params
@@ -1640,8 +1671,13 @@ What a correct model implies depends on the route:
   but residuals of one group stay correlated. **On the mean**, this covers
   any lone mean random intercept, including a `phylo()` or `relmat()` term;
   the fitted SD `σ̂_b` is used as every observation's random-effect SD, which
-  is exact when the relatedness matrix has a unit diagonal (for example an
-  ultrametric tree of height 1). **On the scale**, for a Gaussian
+  matches the model when the relatedness matrix has a unit diagonal (for
+  example an ultrametric tree of height 1). The 32-node rule is accurate to
+  about 1e-6 in `r_i` while `σ̂_b / σ̂ ≤ 2`, but its error grows beyond that
+  (6e-3 at 4, 0.12 at 10). The default sparse / EM Gaussian `phylo(1 | g)`
+  route is exact instead: `F_i` is the closed-form marginal
+  `N(x_i'β̂, σ̂² + σ̂_b² C_ii)`, centred on the fixed-effect mean, with the
+  tip's own variance `C_ii` from the tree (#995, #996). **On the scale**, for a Gaussian
   `sigma ~ 1 + (1 | g)`, `F_i` mixes `N(μ_i, (σ_i e^b)²)` over
   `b ~ N(0, τ̂²)`, with `σ_i` the fixed-effect scale. When `τ̂` is moderate
   or large these residuals can be under-dispersed (SD below 1) even under a
@@ -1772,7 +1808,8 @@ end
 Population-level prediction on `newdata` (a NamedTuple / column table), random /
 structured effects integrated out. `type = :response` (default) returns the
 response-scale mean — the family inverse link applied to `Xβ̂` (`exp` for
-Poisson/Gamma, `logistic` for Beta/Binomial, identity for Gaussian); `type = :link`
+Poisson/Gamma, `logistic` for Beta/Binomial/ZeroOneBeta, identity for Gaussian);
+`type = :link`
 returns `Xβ̂`. In-sample, `predict(fit, data) ≈ fitted(fit)`. Univariate returns a
 vector; bivariate returns `Dict(:mu1 => …, :mu2 => …)`.
 
@@ -1891,13 +1928,15 @@ function _predict_offset(fit::DrmFit, rhs, nd, p::Symbol)
 end
 
 # Inverse mean-link per family: maps the linear predictor Xβ to the response
-# scale (matching `fitted`). Identity for Gaussian/Student; exp for log-link
-# families; logistic for logit-link families; linear predictor otherwise.
+# scale (matching `fitted` except ZeroOneBeta, whose fitted value is the
+# unconditional mixture mean). Identity for Gaussian/Student; exp for log-link
+# families; logistic for logit-link families including ZeroOneBeta; linear
+# predictor otherwise.
 function _mean_response(fam, η)
     if fam isa Poisson || fam isa NegBinomial2 || fam isa TruncatedNegBinomial2 || fam isa TruncatedPoisson ||
        fam isa Gamma || fam isa LogNormal || fam isa Tweedie
         return exp.(clamp.(η, -30.0, 30.0))
-    elseif fam isa Beta || fam isa Binomial || fam isa BetaBinomial
+    elseif fam isa Beta || fam isa Binomial || fam isa BetaBinomial || fam isa ZeroOneBeta
         return _logistic.(clamp.(η, -30.0, 30.0))
     else
         return η
@@ -1910,7 +1949,8 @@ end
 # reproduces the in-sample fitted parameters. Sources reused:
 #   :mu    → `_mean_response(fam, η)` (identity/exp/logistic; gaussian_core.jl)
 #   :sigma → exp.(η)                  (e.g. gaussian_core.jl `_fit_fixed_gaussian`)
-#   :nu    → exp.(η) for Student (student.jl), `_logit12.(η)` for Tweedie (tweedie.jl)
+#   :nu    → 2 .+ exp.(η) for Student (student.jl; ν>2), identity for SkewNormal
+#            (slant α), `_logit12.(η)` for Tweedie (tweedie.jl)
 #   :zi    → `_logistic.(η)`          (poisson.jl / negbinomial.jl)
 #   :hu    → `_logistic.(η)`          (poisson.jl / negbinomial.jl)
 #   :zoi   → `_logistic.(η)`          (zeroonebeta.jl)
@@ -1927,7 +1967,10 @@ function _param_response(fam, p::Symbol, η)
     elseif p === :rho12
         return RHO_GUARD .* tanh.(η)   # guarded link, matches the fit's stored ρ12
     elseif p === :nu
-        return fam isa Tweedie ? _logit12.(η) : exp.(η)
+        fam isa Tweedie && return _logit12.(η)
+        fam isa Student && return 2 .+ exp.(η)          # ν = 2 + exp(η) > 2
+        fam isa SkewNormal && return η                   # slant α, identity
+        throw(ArgumentError("predict_parameters: no inverse link known for :nu on $(typeof(fam))"))
     elseif p === :zi || p === :hu || p === :zoi || p === :coi
         return _logistic.(η)
     else
@@ -1947,7 +1990,7 @@ function _link_deriv(fam, p::Symbol, η)
         if fam isa Poisson || fam isa NegBinomial2 || fam isa TruncatedNegBinomial2 || fam isa TruncatedPoisson ||
            fam isa Gamma || fam isa LogNormal || fam isa Tweedie
             return exp.(clamp.(η, -30.0, 30.0))               # log link
-        elseif fam isa Beta || fam isa Binomial || fam isa BetaBinomial
+        elseif fam isa Beta || fam isa Binomial || fam isa BetaBinomial || fam isa ZeroOneBeta
             μ = _logistic.(clamp.(η, -30.0, 30.0))            # logit link
             return μ .* (1 .- μ)
         else
@@ -1962,8 +2005,12 @@ function _link_deriv(fam, p::Symbol, η)
         if fam isa Tweedie
             s = _logistic.(η)                                 # _logit12 = 1 + σ(η)
             return s .* (1 .- s)
+        elseif fam isa Student
+            return exp.(η)                                    # d(2+exp)/dη
+        elseif fam isa SkewNormal
+            return ones(length(η))                            # identity
         else
-            return exp.(η)                                    # log link
+            throw(ArgumentError("predict: no inverse-link derivative known for :nu on $(typeof(fam))"))
         end
     elseif p === :zi || p === :hu || p === :zoi || p === :coi
         μ = _logistic.(η)                                     # logit link

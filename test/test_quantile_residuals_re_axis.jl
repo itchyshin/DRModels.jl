@@ -95,7 +95,16 @@ _qra_mean_marginal(fit, sb) =
         mix = DRModels._ranef_marginal_mix(fit, fit.family, fit.means[:mu])
         @test mix !== nothing
         q = residuals(fit; type = :quantile)
-        @test maximum(abs.(q .- _qra_mean_marginal(fit, re_sd(fit)[:species]))) < 1e-6
+        # #995: the fit's `means[:mu]` is BLUP-conditional, so the population-level
+        # reference is centred on the fixed-effect mean Xβ̂ (height-1 tree: C_ii = 1).
+        # Computed here from the coefficients, not from anything the engine stores.
+        μfix = fit.theta[1] .+ fit.theta[2] .* xs
+        σb = re_sd(fit)[:species]
+        q_ref = _qra_q.(Distributions.cdf.(_QRA_N01, (y .- μfix) ./
+                                                      sqrt.(fit.scales[:sigma] .^ 2 .+ σb^2)))
+        @test maximum(abs.(q .- q_ref)) < 1e-6
+        # ... and it is NOT the old double-counted reference around the conditional mean.
+        @test maximum(abs.(q .- _qra_mean_marginal(fit, σb))) > 0.05
     end
 
     @testset "lone relmat(1 | id) on the mean: σ_b-marginal" begin

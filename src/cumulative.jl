@@ -222,7 +222,7 @@ function _fit_cumulative(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, nmμ, g_t
     end
     θ0 = zeros(pμ + nc)
     θ0[(pμ+1):(pμ+nc)] = _cumulative_cut_init(y, K, n)
-    res = _ctl_optimize((x0, opts) -> Optim.optimize(nll, x0, Optim.LBFGS(), opts; autodiff = :forward),
+    res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
                        θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
     θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ, :cutpoints => (pμ+1):(pμ+nc)]

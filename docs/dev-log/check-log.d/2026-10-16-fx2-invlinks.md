@@ -1,0 +1,1 @@
+| 2026-10-16 | **FX2 inverse links** (sweep-oct16 t6; Student ν / SkewNormal ν / ZeroOneBeta μ) | `julia --project=test test/test_fx2_invlinks.jl` red-then-green + full `Pkg.test()` | ✅ Student `_param_response(η=0)` 1→3; SkewNormal ν identity; ZeroOneBeta μ logistic; sibling Tweedie/Poisson/Beta/Gaussian unchanged. LogNormal μ left as methods choice. | Shannon |

@@ -32,13 +32,16 @@ fit = drm(bf(y ~ x, sigma ~ 1, nu ~ 1), SkewNormal(); data = dat)
 coef(fit, :mu)[1]           # mean of y (identity)
 exp(coef(fit, :sigma)[1])   # SD of y
 coef(fit, :nu)[1]           # estimated slant α (identity)
+predict_parameters(fit, dat)[:nu]   # same slant (identity; not exp(η))
 ```
 
 !!! note
     Near `ν = 0` the model is (locally) symmetric Gaussian and the slant is only
     weakly identified — its standard error inflates and recovery is loose. The
     fitter starts `ν` at a small nonzero value seeded by the sample-skewness sign
-    to break this symmetry.
+    to break this symmetry. The information matrix is singular at `ν = 0`, so the
+    Wald SE for `nu` is unreliable there; [`check_drm`](@ref) flags it
+    (`skew_normal_nu_wald`) and warns (#1060).
 """
 struct SkewNormal end
 
@@ -62,6 +65,8 @@ struct SkewNormal end
         (isempty(re2) && mv2 === nothing && st2 === nothing) ||
             error("SkewNormal() supports fixed effects only")
     end
+    # #1089: drop rows with a missing predictor or response (R's na.omit), with a count.
+    data = _drop_missing_response_rows(f, _drop_missing_predictor_rows(f, data))
     y, Xμ, nmμ = _design(f.response, rhs[:mu], data)
     _, Xσ, nmσ = _design(f.response, get(rhs, :sigma, ConstantTerm(1)), data)
     _, Xν, nmν = _design(f.response, get(rhs, :nu, ConstantTerm(1)), data)
@@ -106,7 +111,7 @@ function _fit_skewnormal(fam::SkewNormal, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_
     θ0[1:pμ] .= βμ0
     θ0[pμ+1] = log(sd0)                                # σ init (SD scale)
     θ0[pμ+pσ+1] = α0                                   # slant init (identity)
-    res = _ctl_optimize((x0, opts) -> Optim.optimize(nll, x0, Optim.LBFGS(), opts; autodiff = :forward),
+    res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
                        θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
     θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :nu => (pμ+pσ+1):(pμ+pσ+pν)]
@@ -118,3 +123,26 @@ function _fit_skewnormal(fam::SkewNormal, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
 end
+
+# #1060: the skew-normal information matrix is singular at ν = 0 (the family
+# collapses to the Gaussian, so the slant's score is identically zero there), so
+# the Wald SE for ν is not trustworthy in a neighbourhood of 0 — drmTMB#1336
+# measured type-I 0.236 for the nominal-0.05 Wald test. This is the DRModels.jl
+# counterpart of drmTMB's `skew_normal_nu_wald` check_drm() note. The cutoff
+# (smallest |ν̂ᵢ| below `cut`) is this package's own choice, not a drmTMB constant.
+# Returns `nothing` for any other family.
+const _SKEWNORMAL_NU_WALD_CUT = 0.5
+
+function _skew_normal_nu_wald(fit::DrmFit; cut::Real = _SKEWNORMAL_NU_WALD_CUT)
+    fit.family isa SkewNormal || return nothing
+    haskey(fit.scales, :nu) || return nothing
+    ν = fit.scales[:nu]
+    m = minimum(abs, ν)
+    return (near_zero = m < cut, min_abs_nu = m, cut = float(cut))
+end
+
+_skew_normal_nu_wald_message(r) =
+    "SkewNormal slant ν̂ is near 0 (smallest |ν̂| = $(round(r.min_abs_nu; digits = 3)) < " *
+    "$(r.cut)): the information matrix is singular at ν = 0 (the model collapses to the " *
+    "Gaussian), so the Wald SE / CI / test for `nu` is unreliable (anti-conservative; " *
+    "drmTMB#1336). Prefer a likelihood-ratio test of ν = 0 or a profile / bootstrap interval."

@@ -416,8 +416,41 @@ end
 # near-tie, prefer whichever result sits closer to the interior.
 function _re_lbfgs_with_restart(nll, θ0::AbstractVector, θ0_restart::AbstractVector,
                                 g_tol::Real, lσb_idx::Int, scale_ref::Real)
+    scope = _active_control_scope()
+    requested = scope === nothing ? :default : scope.control.optimizer
+    method_name = requested === :bfgs ? :bfgs : :lbfgs
+    method = requested === :bfgs ? Optim.BFGS() : Optim.LBFGS()
+    scope !== nothing && requested !== :default && (scope.used_optim = true)
+    finish(res, stage) = begin
+        scope !== nothing && (scope.selected_optimizer_stage = stage)
+        res
+    end
+    function record(stage, start, res)
+        scope === nothing && return
+        x = Optim.minimizer(res)
+        objective = _objective_at_minimizer(nll, res)
+        finite = isfinite(objective) && all(isfinite, x)
+        gradient_inf = if finite
+            try
+                maximum(abs, ForwardDiff.gradient(nll, x))
+            catch err
+                err isa InterruptException && rethrow(err)
+                Inf
+            end
+        else
+            Inf
+        end
+        run = (method = method_name, stage = stage, start_index = stage === :primary ? 1 : 2,
+               start = Tuple(Float64.(start)), iterations = Optim.iterations(res),
+               converged = Optim.converged(res), objective = objective,
+               gradient_inf = gradient_inf, g_tol = Float64(g_tol), maxit = nothing,
+               status = finite && isfinite(gradient_inf) ? :finite : :nonfinite)
+        push!(scope.optimizer_runs, run)
+        return run
+    end
     opts = Optim.Options(g_tol = g_tol)
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), opts; autodiff = :forward)
+    res = Optim.optimize(nll, θ0, method, opts; autodiff = :forward)
+    record(:primary, θ0, res)
     θ̂ = Optim.minimizer(res)
     # NON-FINITE RESULT (Linux/Julia 1.10.12, seed 20 of the RUNAWAY panel, #848).
     # From the data-driven start LBFGS can report `converged` with a NaN
@@ -432,26 +465,40 @@ function _re_lbfgs_with_restart(nll, θ0::AbstractVector, θ0_restart::AbstractV
     g_inf = primary_ok ? maximum(abs, ForwardDiff.gradient(nll, θ̂)) : Inf
     at_boundary = primary_ok && exp(θ̂[lσb_idx]) < 1e-3 * max(scale_ref, eps())
     if !primary_ok || !(g_inf <= g_tol) || at_boundary
-        res_restart = Optim.optimize(nll, θ0_restart, Optim.LBFGS(), opts; autodiff = :forward)
+        res_restart = Optim.optimize(nll, θ0_restart, method, opts; autodiff = :forward)
+        restart_run = record(:restart, θ0_restart, res_restart)
         θ̂_restart = Optim.minimizer(res_restart)
         # Compare the objective AT each minimizer, not `Optim.minimum` (#849,
         # optim_minimum_guard.jl): these runs may have failed a line search.
         f_restart = _objective_at_minimizer(nll, res_restart)
         restart_ok = isfinite(f_restart) && all(isfinite, θ̂_restart)
+        if requested !== :default
+            # An explicit method keeps the same conditional restart, but a
+            # restart candidate must also pass a fresh exact-gradient check.
+            restart_certified = restart_ok && restart_run.gradient_inf <= g_tol
+            primary_certified = primary_ok && g_inf <= g_tol
+            if !primary_certified && !restart_certified
+                throw(ErrorException("drm: selected $(requested) failed exact-gradient certification from both Gaussian random-intercept starts"))
+            elseif !restart_certified
+                return finish(res, :primary)
+            elseif !primary_certified
+                return finish(res_restart, :restart)
+            end
+        end
         if !primary_ok
-            return restart_ok ? res_restart : res
+            return restart_ok ? finish(res_restart, :restart) : finish(res, :primary)
         elseif !restart_ok
-            return res
+            return finish(res, :primary)
         end
         Δ = f_restart - f_primary
         near_tie = abs(Δ) <= 1e-6 * max(1, abs(f_primary))
         if Δ < 0 && !near_tie
-            return res_restart
+            return finish(res_restart, :restart)
         elseif near_tie && abs(θ̂_restart[lσb_idx]) < abs(θ̂[lσb_idx])
-            return res_restart
+            return finish(res_restart, :restart)
         end
     end
-    return res
+    return finish(res, :primary)
 end
 
 # Gaussian location–scale with one random intercept (1 | g) on the mean.
@@ -928,6 +975,8 @@ function ranef(fit::DrmFit)
     if fit.ranef isa NamedTuple && haskey(fit.ranef, :effects)
         return fit.ranef.effects
     end
+    # Gaussian phylo-mean fits wrap their BLUP `Dict` with Xβ̂ and the tree (#995).
+    fit.ranef isa LocOnlyRanef && return fit.ranef.effects
     return fit.ranef
 end
 
