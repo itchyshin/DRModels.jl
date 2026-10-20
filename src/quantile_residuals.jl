@@ -260,6 +260,13 @@ function _ranef_marginal_mix(fit::DrmFit, fam, μ)
         return (axis = :mu_gaussian, eta0 = fit.ranef.mu_fixed,
                 vb = σb^2 .* _loconly_row_tip_variance(fit.ranef))
     end
+    # #1103: an ordinary Gaussian `(1 | g)` on the mean has the same closed-form
+    # marginal N(μ, σ² + σ_b²), with `μ` the fixed-effect mean, so skip the
+    # quadrature (6e-3 off at σ_b/σ = 4, 0.12 at 10). Structured effects keep
+    # the mixture and its warning.
+    if fam isa Gaussian && !_structured_mean_re(fit)
+        return (axis = :mu_gaussian, eta0 = μ, vb = fill(σb^2, length(μ)))
+    end
     _structured_mean_re(fit) && _warn_structured_pit()
     link, invlink = linkpair
     eta0 = [link(μ[i]) for i in eachindex(μ)]
