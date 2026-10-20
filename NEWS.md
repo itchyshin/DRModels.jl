@@ -6,6 +6,8 @@ human-readable changelog.
 
 ## Development
 
+- **`lrtest(Poisson, NegBinomial2)` now warns that the extra `sigma` is a boundary null (#1115).** The packaged p-value stays the naive χ² (the existing "do not silently swap" contract from #304). Use `lrt_boundary(nb, pois; q = 1)` for the Self–Liang / Stram–Lee 50:50 chi-bar p-value, which is what drmTMB `anova()` now reports for the same pair. Sibling family nests are unchanged. This does not put finite-sample type-I at 5% (#1116, #1118).
+
 ## v0.7.2 — 2026-10-04
 
 - **Location-scale fits no longer stall at a variance boundary.** Two loops in the location-scale fit counted an exactly tied objective as progress and had no stall stop, so a fit whose variance component slid to its zero boundary could spin for tens of minutes (a 4-species Gamma bootstrap test took 12 to 74 minutes on CI, depending on the runner's BLAS kernel). The inner mode solve now stops a run of 40 exactly tied steps only when the gradient is far above its bound and cannot reach it in the remaining iterations, and the certified refinement ladder stops a run only after 100 iterations with a bit-identical position, value and gradient. Converging fits are unchanged: across 30 test files every location-scale fit is bit-identical to before, and the fixture's standard errors and `check_drm` verdict are unchanged.

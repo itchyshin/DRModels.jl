@@ -36,16 +36,20 @@ fits *better* — a sign the models are not actually nested, or one did not
 converge) is still returned as-is, but the p-value clamps the statistic at zero
 (so `pvalue` stays in `[0, 1]`); inspect `statistic` directly in that case.
 
-!!! warning "Variance components are a boundary null"
+!!! warning "Variance components and Poisson ⊂ NB2 are a boundary null"
     The `χ²(dof)` reference is only valid when the extra parameters in `full` are
     interior (regular). When `full` adds a **variance component** that `reduced`
     lacks (a random-effect SD, `:resd`/`:resid`; a Cholesky covariance entry,
-    `:recov`; a group-level covariance, `:phylocov`), the tested null (variance =
-    0) sits on the **boundary** of the parameter space and the statistic follows a
-    chi-bar-square mixture, not `χ²(dof)` (Self & Liang 1987; Stram & Lee 1994).
-    The naive `χ²` p-value is then **conservative** (too large — the test loses
-    power). `lrtest` detects this case and emits a one-time warning; use
-    `lrt_boundary` (or a parametric bootstrap) for a boundary-correct p-value.
+    `:recov`; a group-level covariance, `:phylocov`), or when `full` is
+    `NegBinomial2()` and `reduced` is `Poisson()` (the extra `sigma` tested at
+    0), the tested null sits on the **boundary** of the parameter space and the
+    statistic follows a chi-bar-square mixture, not `χ²(dof)` (Self & Liang
+    1987; Stram & Lee 1994). The naive `χ²` p-value is then **conservative**
+    (too large — the test loses power). `lrtest` detects these cases and emits
+    a one-time warning; use `lrt_boundary` (or a parametric bootstrap) for a
+    boundary-correct p-value. This function does **not** swap the reported
+    p-value (#304). drmTMB's `anova()` does swap in the mixture for the same
+    pairs; call `lrt_boundary` here to match that p-value.
 
 # Example
 ```julia
@@ -119,9 +123,20 @@ function _variance_component_blocks(fit::DrmFit)
                  if p in _VARIANCE_COMPONENT_BLOCKS && length(r) > 0]
 end
 
-# Boundary caveat (issue #304): when `full` carries a variance-component block that
-# `reduced` does not, the naive χ²(Δdof) LR reference is INVALID — the tested
-# variance sits on the boundary of its space, so the statistic follows a
+# Nested family pairs whose extra distributional parameter is tested at 0.
+# Only the filed t10 pair is wired: Poisson ⊂ NegBinomial2 (sigma → 0).
+# Sibling nests stay unwired; see the FX6 methods note.
+function _family_boundary_nest(reduced_fam, full_fam)
+    (reduced_fam isa Poisson && full_fam isa NegBinomial2) || return nothing
+    return (added = :sigma, q = 1)
+end
+_family_boundary_nest(reduced::DrmFit, full::DrmFit) =
+    _family_boundary_nest(reduced.family, full.family)
+
+# Boundary caveat (issue #304, family-dispersion #1115): when `full` carries a
+# variance-component block that `reduced` does not, OR when the pair is Poisson
+# ⊂ NegBinomial2, the naive χ²(Δdof) LR reference is INVALID — the tested
+# parameter sits on the boundary of its space, so the statistic follows a
 # chi-bar-square mixture and the χ² p-value is CONSERVATIVE (too large; the test
 # loses power). We do NOT silently swap the reference (the mixture order and
 # independence assumptions need the caller's knowledge of the design), but we WARN
@@ -129,14 +144,25 @@ end
 function _boundary_vc_warn(reduced::DrmFit, full::DrmFit, verb::AbstractString)
     dropped = setdiff(_variance_component_blocks(full),
                       _variance_component_blocks(reduced))
-    isempty(dropped) && return nothing
+    if !isempty(dropped)
+        @warn(
+            "$verb: `full` adds variance-component block(s) $(dropped) that `reduced` " *
+            "lacks, so this compares a variance component against 0 — a BOUNDARY null. " *
+            "The reported χ²($(dof(full) - dof(reduced))) p-value is INVALID there " *
+            "(conservative: too large, so the test loses power); the correct reference " *
+            "is a chi-bar-square mixture. Use `lrt_boundary(full, reduced; q = <#components>)` " *
+            "(or a parametric bootstrap) for a boundary-correct p-value.")
+        return nothing
+    end
+    nest = _family_boundary_nest(reduced, full)
+    nest === nothing && return nothing
     @warn(
-        "$verb: `full` adds variance-component block(s) $(dropped) that `reduced` " *
-        "lacks, so this compares a variance component against 0 — a BOUNDARY null. " *
-        "The reported χ²($(dof(full) - dof(reduced))) p-value is INVALID there " *
-        "(conservative: too large, so the test loses power); the correct reference " *
-        "is a chi-bar-square mixture. Use `lrt_boundary(full, reduced; q = <#components>)` " *
-        "(or a parametric bootstrap) for a boundary-correct p-value.")
+        "$verb: `full` is NegBinomial2 and `reduced` is Poisson, so this tests the extra " *
+        "sigma at 0 — a BOUNDARY null. The reported χ²($(dof(full) - dof(reduced))) " *
+        "p-value is INVALID there (conservative: too large, so the test loses power); " *
+        "the correct reference is a chi-bar-square mixture. Use " *
+        "`lrt_boundary(full, reduced; q = $(nest.q))` (or a parametric bootstrap) " *
+        "for a boundary-correct p-value.")
     return nothing
 end
 
@@ -311,20 +337,32 @@ function aicc(fit::DrmFit)
 end
 
 """
-    weights(fit::DrmFit) -> Vector{Float64}
+    weights(fit::DrmFit) -> Union{Vector{Float64}, Nothing}
 
-Prior (per-observation) weights used in the fit — drmTMB / glmmTMB's `weights()`.
-DRModels.jl fits do not currently store prior weights, so this returns
-`ones(nobs(fit))` (every observation weighted equally). Extends
+Prior (per-observation) weights the fit was made with, from
+`drm(...; weights = w)`, or `nothing` when no weights were given. Extends
 `StatsAPI.weights`.
+
+The weights multiply each row's log-likelihood (drmTMB semantics), so
+`loglik`, `aic`, `bic`, profiles and likelihood-ratio tests use the weighted
+likelihood. `nobs(fit)` still counts rows, zero-weight rows included.
+
+Prior weights are implemented on the fixed-effect ML routes of the univariate
+families. Any other route refuses `weights =` with an `ArgumentError`
+(#931; the family-by-family rollout to random-effect routes is tracked there).
+
+Before #931 step (b), this accessor returned `ones(nobs(fit))` for every fit,
+which looked like weights had been used.
 
 # Example
 ```julia
-fit = drm(bf(@formula(y ~ 1 + x), @formula(sigma ~ 1)), Gaussian(); data)
-weights(fit) == ones(nobs(fit))   # all-ones prior weights
+fit  = drm(bf(@formula(y ~ 1 + x), @formula(sigma ~ 1)), Gaussian(); data)
+weights(fit) === nothing          # no prior weights given
+fitw = drm(bf(@formula(y ~ 1 + x), @formula(sigma ~ 1)), Gaussian(); data, weights = w)
+weights(fitw) == w
 ```
 """
-weights(fit::DrmFit) = ones(nobs(fit))
+weights(fit::DrmFit) = fit.control_info === nothing ? nothing : fit.control_info.weights
 
 """
     update(fit::DrmFit, formula; data, kwargs...) -> DrmFit
