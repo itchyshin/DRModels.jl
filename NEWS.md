@@ -6,8 +6,6 @@ human-readable changelog.
 
 ## Development
 
-- **A rank-deficient fixed-effect design is no longer reported as a converged fit with finite SEs (#1110).** `sigma ~ 1 + x + z` with `z = 2x + 1`, or a duplicated column, in the `mu` or `sigma` design of a Gaussian fit now warns once (`fixed_effect_rank_deficiency`, naming the parameter block and the aliased coefficients), gives `is_converged(fit) == false` (the raw `fit.converged` flag is unchanged), reports `NaN` SEs for the aliased coordinates, and sets `check_drm(fit).ok = false` with a new `fixed_effect_rank_deficiency` field. The vcov guard no longer blames a variance boundary for the singular Hessian in this case. The log-likelihood and the pseudo-inverse covariance of the identified coefficients are unchanged. Only the Gaussian route is covered so far; the check is `DRModels._check_fixed_design_rank` in `src/design_rank.jl`, one line to add to another family's `drm` method. Twin of drmTMB #1470 / #1478.
-
 - **`lrtest(Poisson, NegBinomial2)` now warns that the extra `sigma` is a boundary null (#1115).** The packaged p-value stays the naive χ² (the existing "do not silently swap" contract from #304). Use `lrt_boundary(nb, pois; q = 1)` for the Self–Liang / Stram–Lee 50:50 chi-bar p-value, which is what drmTMB `anova()` now reports for the same pair. Sibling family nests are unchanged. This does not put finite-sample type-I at 5% (#1116, #1118).
 
 ## v0.7.2 — 2026-10-04
