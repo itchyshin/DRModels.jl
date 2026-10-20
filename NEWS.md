@@ -6,7 +6,7 @@ human-readable changelog.
 
 ## Development
 
-- **`drm(…, SkewNormal())` with a missing/NaN response now drops those rows (with the observed-rows warning) and fits,** like every other univariate family, instead of throwing `ArgumentError: matrix contains Infs or NaNs`. (#1123)
+- **`drm(…, SkewNormal())` with a missing/NaN response now goes through the same observed-rows wrapper as every other univariate family:** it warns, fits on the observed rows, and rebuilds the full input rows, so `fit.scales` / `predict` have one entry per input row (previously only the observed rows were kept). (#1123)
 
 - **`lrtest(Poisson, NegBinomial2)` now warns that the extra `sigma` is a boundary null (#1115).** The packaged p-value stays the naive χ² (the existing "do not silently swap" contract from #304). Use `lrt_boundary(nb, pois; q = 1)` for the Self–Liang / Stram–Lee 50:50 chi-bar p-value, which is what drmTMB `anova()` now reports for the same pair. Sibling family nests are unchanged. This does not put finite-sample type-I at 5% (#1116, #1118).
 
