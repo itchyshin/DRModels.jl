@@ -6,6 +6,8 @@ human-readable changelog.
 
 ## Development
 
+- **LogNormal `phylo` / `relmat` / crossed fits: `fitted` is now the response-scale median, and the quantile residual is the closed-form marginal (#1102); the dense `:gls` Gaussian `phylo(1 | g)` route no longer emits the structured-PIT warning (#1104).** These LogNormal fits kept the Gaussian-on-log(y) means, so `fitted` was on the log scale and `residuals(type = :quantile)` took log of it again (max error 9.9 against the closed form on a 32-tip tree). `fitted` is now `exp(Xb + u)` like the plain route, and the phylo PIT is `Phi((log y - x'b) / sqrt(se^2 + sb^2 C_ii))`. The `fitted` docstring now says which routes return the population mean `Xb` and which the conditional `Xb + u`.
+
 - **`lrtest(Poisson, NegBinomial2)` now warns that the extra `sigma` is a boundary null (#1115).** The packaged p-value stays the naive χ² (the existing "do not silently swap" contract from #304). Use `lrt_boundary(nb, pois; q = 1)` for the Self–Liang / Stram–Lee 50:50 chi-bar p-value, which is what drmTMB `anova()` now reports for the same pair. Sibling family nests are unchanged. This does not put finite-sample type-I at 5% (#1116, #1118).
 
 ## v0.7.2 — 2026-10-04
