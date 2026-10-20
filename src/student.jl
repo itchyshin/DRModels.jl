@@ -40,6 +40,7 @@ outliers, and `ν → ∞` tends to Gaussian. Mirrors `drmTMB`'s `student` famil
 ```julia
 fit = drm(bf(y ~ x, sigma ~ 1, nu ~ 1), Student(); data = dat)
 2 + exp(coef(fit, :nu)[1])  # estimated degrees of freedom (ν = 2 + exp(η))
+predict_parameters(fit, dat)[:nu]   # same quantity (response-scale ν, not exp(η))
 
 # Opt-in TMB-convention Laplace for one ordinary `(1 | g)` on the mean (what drmTMB fits):
 fit_lap = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), Student(); data = dat,
@@ -210,7 +211,7 @@ function _fit_student(fam::Student, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol)
     θ0[1:pμ] .= βμ0
     θ0[pμ+1] = log(std(y - Xμ * βμ0) + eps())       # σ init
     θ0[pμ+pσ+1] = log(10.0)                          # ν init (mildly heavy-tailed)
-    res = _ctl_optimize((x0, opts) -> Optim.optimize(nll, x0, Optim.LBFGS(), opts; autodiff = :forward),
+    res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
                        θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
     θ̂ = Optim.minimizer(res)
     # #961: a non-finite Hessian on finite data is a degenerate fit, not a crash.

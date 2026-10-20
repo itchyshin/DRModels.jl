@@ -113,6 +113,7 @@ include("associate_pairs.jl")    # drmTMB `associate_pairs()`: STAGED frozen-mar
 include("zeroonebeta.jl")
 include("tweedie.jl")
 include("cumulative.jl")
+include("cumulative_predict.jl")  # #1121: predict drops the location intercept, as the fitter does
 include("link_residual.jl")      # S3: per-family link-scale variance for cross-family ρ
 include("mixed_family.jl")       # S3: cross-family bivariate via shared-latent GHQ
 include("mixed_family_postfit.jl") # post-fit accessors for fit_mixed_family

@@ -119,6 +119,7 @@ fit = drm(f, Student(); data = dat)
         throw(ArgumentError("drm: the bivariate Student-t route implements ML only " *
             "(got method = :$method). drmTMB's `biv_student()` first slice has no " *
             "random effects, so there is nothing for REML to integrate out."))
+    data = _drop_missing_predictor_rows(f, data)   # #1089: R's na.omit, with a count
     rhs = Dict(f.forms)
     _, structured_marker = _bivariate_q4_marker(rhs)
     structured_marker === nothing ||
