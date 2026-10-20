@@ -6,8 +6,6 @@ human-readable changelog.
 
 ## Development
 
-- **Dense `V = V` on the univariate Gaussian route is now a named refusal (#974).** `drm(formula, Gaussian(); V = V)` threw a bare `MethodError`; it now throws an `ArgumentError` saying dense V is bivariate-only and pointing to `meta_vcov_bivariate` (wide `mu1`/`mu2` form) or `meta_V(vi)` for diagonal variances. The port stays parked. Docs also state that `NegBinomial2()` cannot represent underdispersion (use glmmTMB `compois` / `genpois`, #976) and that default-`:LA` logLik for `sigma ~ x + (1|g)` NB2/Gamma/Beta is not comparable with drmTMB/glmmTMB (#943).
-
 - **`lrtest(Poisson, NegBinomial2)` now warns that the extra `sigma` is a boundary null (#1115).** The packaged p-value stays the naive χ² (the existing "do not silently swap" contract from #304). Use `lrt_boundary(nb, pois; q = 1)` for the Self–Liang / Stram–Lee 50:50 chi-bar p-value, which is what drmTMB `anova()` now reports for the same pair. Sibling family nests are unchanged. This does not put finite-sample type-I at 5% (#1116, #1118).
 
 ## v0.7.2 — 2026-10-04
