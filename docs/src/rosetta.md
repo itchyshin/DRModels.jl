@@ -125,7 +125,9 @@ fit = drm(
 | build a covariate grid for prediction | `prediction_grid(reference; predictor = values, …)` |
 | `simulate(fit)` | `simulate(fit)` |
 | `summary(fit)` | `summary(fit)` (prints the Wald coefficient table) |
-| `weights(fit)` | planned (parity gap) |
+| `weights(fit)` | `weights(fit)`: the prior weights from `drm(...; weights = w)`, or `nothing` (fixed-effect ML routes only; other routes refuse `weights =`) |
+| `drm_control(maxit =, start =, multi_start =, se =)` | `control = DRMControl(maxit =, start =, multi_start =, se =)`; `maxit` / `start` / `multi_start` on fixed-effect routes, `se = false` on every route (`control_info(fit)` reports what it did) |
+| `obj$gr(opt$par)` / `sdreport()$cov.fixed` | `gradient(fit)` / `hessian(fit)` (negative log-likelihood, `coef(fit)` order and scale) |
 | `family(fit)` | `family(fit)` |
 | `is_converged(fit)` / convergence diagnostics | `is_converged(fit)` / `check_drm(fit)` |
 

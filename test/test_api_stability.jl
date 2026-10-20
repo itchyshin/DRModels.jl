@@ -39,6 +39,8 @@ const API_STABLE = [
     "predict", "predict_parameters", "marginal_parameters", "prediction_grid",
     "simulate", "family", "is_converged", "niterations",
     "estimation_method", "reml_loglik", "ml_loglik",
+    # control + derivative accessors (owner decision 8a, #942 #948 #994 #971)
+    "DRMControl", "gradient", "hessian",
     # inference
     "bootstrap_ci", "bootstrap_summary", "bootstrap_result",
     "bootstrap_sigma_a", "check_drm",
@@ -53,6 +55,9 @@ const API_STABLE = [
 ]
 
 const API_EXPERIMENTAL = [
+    # what drm(...; control, weights) did (#994 per-start logLiks). The names
+    # are this PR's proposal, not an owner decision, so not promised yet.
+    "control_info", "DRMControlReport",
     # r2_constant_sigma (2026-09-06): EXPERIMENTAL on purpose. The value it
     # returns is settled -- it is the ordinary lm() R2 -- but its REFUSAL
     # BOUNDARIES are what a caller actually programs against, and those may widen:
