@@ -3,8 +3,8 @@
 !!! note "Status — Stable"
     Mirrors drmTMB's [Improving convergence](https://itchyshin.github.io/drmTMB/articles/convergence.html). A practical guide to checking and improving a fit in **DRModels.jl**, built around the [`check_drm`](@ref) diagnostic.
 
-A distributional regression fits by maximum likelihood: `drm` runs an LBFGS
-optimiser (with a robust mode-finder for the phylogenetic engine) and stores
+A distributional regression fits by maximum likelihood: most `drm` routes run
+an LBFGS optimiser (with a robust mode-finder for the phylogenetic engine) and store
 whether it converged. Most models converge without intervention. This page is
 for the ones that don't — and how to tell the difference between a real problem
 and a model that is simply sitting at the edge of its parameter space.
@@ -74,8 +74,40 @@ control_info(fit5).starts_agree      # false (and a warning) if they disagree
 ```
 
 `maxit`, `start` and `multi_start` work on the fixed-effect routes of the
-univariate families. A model with random or structured terms refuses them with
-an `ArgumentError` rather than ignoring them. `se = false` works on every route:
+univariate families. You can request `:lbfgs` or `:bfgs` directly on those
+primary ML fits. Hold the model, data and internal-scale start fixed when
+comparing methods:
+
+```julia
+base = drm(f, Gaussian(); data = dat)
+x0 = coef(base)
+lb = drm(f, Gaussian(); data = dat,
+         control = DRMControl(optimizer = :lbfgs, start = x0))
+bf = drm(f, Gaussian(); data = dat,
+         control = DRMControl(optimizer = :bfgs, start = x0))
+control_info(bf).requested_optimizer   # :bfgs
+control_info(bf).actual_optimizer      # :bfgs
+control_info(bf).optimizer_runs        # every attempted start and native stopping result
+```
+
+`optimizer = :default` retains the route's current method and restart policy.
+Gaussian ML with one mean random intercept `(1 | g)` also accepts `:lbfgs` or
+`:bfgs`; its data-driven start, conditional restart, exact-gradient check and
+boundary tie rule still apply. Its own two starts are reported separately in
+`optimizer_runs`, and `selected_optimizer_stage` names the one retained.
+`maxit`, `start`, `multi_start`, `seed` and `jitter` are not available on this random-intercept
+route. Gaussian selection requires the ordinary ML route with
+`algorithm = :auto`, and refuses alternate integration, imputation or
+profiling options. Other random, structured, bivariate and REML routes refuse
+an explicit optimizer by name. `profile_result`, `confint(...; method = :profile)`
+and fit-based `bootstrap_result`, `bootstrap_summary` and `bootstrap_ci` refuse
+fits with an explicit optimizer choice before starting any refit; they cannot
+yet forward the selected method. Refit with `optimizer = :default` to use those
+inference routes. Wald intervals remain available when standard errors were
+computed. Solver agreement alone does not establish
+parameter identification.
+
+`se = false` works on every route:
 
 ```julia
 fit = drm(f, Gaussian(); data = dat, control = DRMControl(se = false))

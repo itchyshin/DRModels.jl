@@ -79,7 +79,7 @@ function _fit_truncated_poisson(fam::TruncatedPoisson, y, Xμ, nmμ, g_tol)
     end
     θ0 = zeros(pμ)
     θ0[1] = log(sum(y) / n + eps())
-    res = _ctl_optimize((x0, opts) -> Optim.optimize(nll, x0, Optim.LBFGS(), opts; autodiff = :forward),
+    res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
                        θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
     θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ]
