@@ -1,7 +1,7 @@
 # #1123: SkewNormal() drops missing-response rows (observed-rows fit, with a
 # warning) like every other univariate family, instead of throwing a bare
 # LAPACK "matrix contains Infs or NaNs" from the Hessian.
-using Test, DRModels, StatsModels, Random
+using Test, DRModels, Random
 
 @testset "SkewNormal missing response (#1123)" begin
     rng = MersenneTwister(1123)
