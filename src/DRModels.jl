@@ -77,6 +77,7 @@ include("reml_q2.jl")  # #470: REML for the bivariate q=2 structured residual-co
 # Gaussian location–scale front end (public bf()/drm() API).
 include("control.jl")          # #942 #948 #994 #931: DRMControl, @drm_entry, prior weights (before every family `drm`)
 include("gaussian_core.jl")
+include("ci_args.jl")            # shared level / B checks and bootstrap completion status
 include("meta_vcov_bivariate.jl")  # A8: known bivariate sampling covariance (drmTMB meta_vcov_bivariate)
 include("gaussian_bivariate.jl")
 include("gaussian_multi_re_sparse.jl")  # #977: sparse QR + selected inverse for (1|g)+(1|h)+…

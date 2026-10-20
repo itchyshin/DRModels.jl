@@ -403,7 +403,7 @@ function drm_bridge_inference(; formula, family::AbstractString, data,
         return _bridge_inference_flatten(
             row;
             method = "bootstrap",
-            status = result.used >= 2 ? "bootstrap" : "bootstrap_unavailable",
+            status = _bridge_bootstrap_status(result, row.param, row.coef),
             attempted = result.attempted,
             used = result.used,
             failed = result.failed,
@@ -3115,12 +3115,15 @@ function _bridge_bivariate_inference(fit, dat, method::AbstractString;
     if method == "bootstrap"
         rng = seed === nothing ? Random.default_rng() :
               Random.MersenneTwister(Int(seed))
+        # #962 / #459: the same rule as the univariate bridge. Unconverged
+        # refits must not enter the percentile. `failures = :warn` still drops
+        # them; the result status says `bootstrap_incomplete` when any were dropped.
         result = bootstrap_result(fit; data = dat, B = Int(B), level = level,
-                                  rng = rng, failures = :warn, check_converged = false)
+                                  rng = rng, failures = :warn, check_converged = true)
         return _bridge_inference_flatten_multi(
             result.summary;
             method = "bootstrap",
-            status = result.used >= 2 ? "bootstrap" : "bootstrap_unavailable",
+            status = _bridge_bootstrap_status(result),
             attempted = result.attempted, used = result.used, failed = result.failed,
             elapsed = result.elapsed,
             message = "$(result.used)/$(result.attempted) successful refits")
