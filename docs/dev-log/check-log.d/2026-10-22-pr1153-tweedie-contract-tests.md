@@ -1,0 +1,1 @@
+| 2026-10-22 | Tweedie contract tests (#1153) | Focused test `test/test_tweedie_contract.jl`: 54/54 pass in 15.5 s on Julia 1.10.0; test file unchanged from PR source | Focused test PASS; full `Pkg.test()` and fresh Documenter build pending on updated exact head | Codex |
