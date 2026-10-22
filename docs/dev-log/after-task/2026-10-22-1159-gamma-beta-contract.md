@@ -25,7 +25,7 @@ Refresh the narrow Gamma/Beta accessor-contract test PR onto the specified live 
 ## 5. Checks Run
 
 - `git fetch origin main refs/pull/1159/head:refs/remotes/origin/pr/1159`: verified main `b8dbf64e9065724bc359f139ff914d708e788bb6` and original PR head `41f76aed9158d642a1db3801e64dad846040b9e5` before changes.
-- `git diff --check origin/main...HEAD`: clean before the documentation entries were added; will be rerun on the final candidate.
+- `git diff --check`: PASS on an isolated reconstruction based at `b8dbf64e9065724bc359f139ff914d708e788bb6`, using all three files fetched from the exact PR head `f24f22a96315488cc35a1acd7c86b53758b216fe`. Their Git blob IDs matched the live PR files; the check therefore included the test, check-log, and after-task files.
 - Focused Julia test on the rebased source: 109 passed and 2 declared broken assertions; details below.
 - `julia tools/build_check_log.jl`: exited 0; the renderer warns about pre-existing malformed legacy entries in other check-log files. The new row uses the required one-row format.
 - `check-after-task.R`: structural check passed. The broader closeout compiler is blocked by unrelated pre-existing `UNMET` gates in the Shinichi brain repository's unlazy ledger; none belongs to this PR.
@@ -49,9 +49,9 @@ The first focused test invocation could not resolve the local `DRModels` package
 
 ## 10. Known Residuals
 
-- Full `Pkg.test()`, R parity, and Documenter were not run for the refreshed candidate.
+- Full `Pkg.test()` and R parity were not run for the refreshed candidate. Exact-head Julia CI ran the Documenter and docs-preview jobs successfully; this is not a stable documentation deployment.
 - The two Beta advice assertions remain broken by design until the user-facing refusal changes.
-- Exact-head GitHub CI after push is pending.
+- Exact existing PR head `f24f22a96315488cc35a1acd7c86b53758b216fe` passed `ci-ok`, Julia 1 and Julia 1.10 shards, Documenter, and docs-preview; `docs-deploy` and `scaling-sweep` were skipped. This report-only update will create a new head, which requires fresh exact-head checks before merge.
 
 ## 11. Team Learning
 
