@@ -253,4 +253,8 @@ end
     # full-row rebuild stores the slant α (identity link), not exp(α) (#1120)
     @test length(fit.scales[:nu]) == n
     @test all(≈(coef(fit, :nu)[1]), fit.scales[:nu])
+    pred_missing = predict(fit, dmiss)
+    pred_complete = predict(fit, complete)
+    @test length(pred_missing) == n
+    @test pred_missing ≈ pred_complete atol = 1e-10
 end

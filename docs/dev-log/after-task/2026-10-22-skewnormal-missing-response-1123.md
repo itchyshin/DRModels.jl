@@ -21,11 +21,11 @@ Kept the claim narrow: a missing or NaN response is dropped with a warning, the 
 
 ## 5. Checks run
 
-On the original PR head `abe4c4e6f0493610ccf79db5e5984e8f9eb447ee`, Julia 1.12.6 with `--check-bounds=yes` ran `test/test_1089_missing_rows_dropped.jl`: 51/51 shared missing-row assertions and 7/7 SkewNormal assertions passed. I reran that focused test after merging live main; the tested source candidate was `368fb8b2dd1fbc2addf19b8fac07ade89cecde4f`, with the same 51/51 and 7/7 passing. At the original pre-refresh head, GitHub Actions passed all eight Julia matrix shards, `ci-ok`, Documenter `docs`, and `docs-preview`. The refreshed branch includes live-main commits `b8dbf64e9065724bc359f139ff914d708e788bb6` and `08348d8e6`, which add two independent test files; full CI has not yet rerun on the refreshed head.
+On the original PR head `abe4c4e6f0493610ccf79db5e5984e8f9eb447ee`, Julia 1.12.6 with `--check-bounds=yes` ran `test/test_1089_missing_rows_dropped.jl`: 51/51 shared missing-row assertions and 7/7 SkewNormal assertions passed. After merging live main and adding two prediction assertions, I reran the focused test with Julia 1.12.6 and `--check-bounds=yes`: the shared missing-row set passed 51/51 and SkewNormal passed 9/9. The tested tree was source commit `4d8aa307973ae524f160ca3d2f289667d11f1527` plus the test-file change whose SHA-256 was `c1e8857d352a037b80b9a47294b683e9ebe50cd4c5c0ba9e94f4abfa9e40e756`. At the original pre-refresh head, GitHub Actions passed all eight Julia matrix shards, `ci-ok`, Documenter `docs`, and `docs-preview`. The refreshed branch includes live-main commits `b8dbf64e9065724bc359f139ff914d708e788bb6` and `08348d8e6`, which add two independent test files; fresh CI/Documenter checks are pending for the updated head.
 
 ## 6. Tests of the tests
 
-No test source was changed in this records-only update. The existing SkewNormal assertions check the warning, observed-row `nobs`, likelihood and location agreement with a hand-filtered reference fit, and full-row scale reconstruction.
+The review-requested prediction assertions were added to the existing SkewNormal testset; no implementation source was changed. The SkewNormal assertions check the warning, observed-row `nobs`, likelihood and location agreement with a hand-filtered reference fit, full-row scale reconstruction, and that predictions for the same incomplete input table have one value per original row and agree with predictions from the complete table.
 
 ## 7a. Issue ledger
 
