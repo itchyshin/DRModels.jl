@@ -123,12 +123,18 @@ using Distributions: TDist, Normal, cdf, quantile
         @test_throws r"marginal = :Laplace is not available for Student\(\) with no random effect" drm(
             form, Student(); data = data, marginal = :Laplace)
 
-        # tracks #1123: an Inf response reaches the optimiser and throws a
-        # linear-algebra ArgumentError rather than a named refusal. Pinned, not fixed.
+        # Inf is rejected by the shared finite-input guard before optimisation.
         yInf = copy(y); yInf[1] = Inf
-        @test_throws ArgumentError drm(form, Student(); data = (; y = yInf, x))
-        msg = try; drm(form, Student(); data = (; y = yInf, x)); ""; catch e; sprint(showerror, e); end
-        @test occursin("matrix contains Infs or NaNs", msg)
+        err = try
+            drm(form, Student(); data = (; y = yInf, x))
+            nothing
+        catch e
+            e
+        end
+        @test err isa ArgumentError
+        msg = err === nothing ? "" : sprint(showerror, err)
+        @test occursin("response `y`", msg)
+        @test occursin("Inf is not a missing value", msg)
 
         # NaN responses are dropped with a counted warning (#1089), not refused;
         yNaN = copy(y); yNaN[1] = NaN
