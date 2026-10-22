@@ -130,23 +130,23 @@ end
         @test isfinite(dof_residual(fit)) && dof_residual(fit) == n - k
     end
 
-    # Degenerate responses: the fit does NOT error. It reports `is_converged` true
-    # on the flat likelihood and says so only through warnings (singular Hessian,
-    # parameter pinned at a clamp). Recorded as-is so a change in behaviour is seen.
+    # Degenerate responses: a flat likelihood or a parameter pinned at a clamp must
+    # not be reported as a trustworthy converged fit. These expectations remain
+    # known-broken until the optimizer status distinguishes these cases.
     @testset "degenerate responses (current behaviour)" begin
         n = 200; x = randn(MersenneTwister(3), n)
         f = bf(@formula(y ~ x), @formula(sigma ~ 1), @formula(nu ~ 1))
 
         fit0 = @test_logs (:warn, r"numerically singular") (:warn, r"ended at a clamp") match_mode = :any drm(
             f, Tweedie(); data = (; y = zeros(n), x))
-        @test is_converged(fit0)
+        @test_broken !is_converged(fit0)
         @test coef(fit0, :mu)[1] < -20          # log mean driven to -inf
         @test loglik(fit0) ≈ 0 atol = 1e-6
 
         y1 = vcat(1.3, zeros(n - 1))
         fit1 = @test_logs (:warn, r"numerically singular") (:warn, r"ended at a clamp") match_mode = :any drm(
             f, Tweedie(); data = (; y = y1, x))
-        @test is_converged(fit1)
+        @test_broken !is_converged(fit1)
         @test coef(fit1, :nu)[1] < -11.9  # power pinned at its lower clamp
         @test isfinite(loglik(fit1))
     end

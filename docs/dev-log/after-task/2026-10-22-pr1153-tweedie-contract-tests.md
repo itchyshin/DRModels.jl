@@ -10,11 +10,11 @@ The test-only PR adds `test/test_tweedie_contract.jl`. It checks the Tweedie zer
 
 ## 3a. Decisions and Rejected Alternatives
 
-Kept the existing test source unchanged. The test verifies deterministic density, refusal, and accessor behavior; it does not add implementation, claim statistical recovery, or assess interval coverage. No NEWS fragment is needed for a test-only change.
+Changed only the two degenerate-response convergence assertions. Each now records the intended expectation, `!is_converged(fit)`, as `@test_broken`: the current fits emit singular-Hessian and clamp warnings but still report convergence. This keeps the optimizer-status defect visible without treating those fits as successful convergence. No production code changed, and no statistical recovery or interval-coverage claim is made.
 
 ## 4. Files Touched
 
-- Added `test/test_tweedie_contract.jl` in the original PR; SHA-256 `45b5378ce6860a8fdfa85f1813eaf6b9c117215006c89a41a55107c5420becba`, unchanged from source head `e6c766b5dd2f1ace9252160edd781e81c6585117`.
+- Updated `test/test_tweedie_contract.jl`; the only test changes are the two `@test_broken !is_converged(...)` expectations and their explanatory comment.
 - Added `docs/dev-log/check-log.d/2026-10-22-pr1153-tweedie-contract-tests.md`.
 - Added this after-task report.
 - Merged current live main `b8dbf64e9065724bc359f139ff914d708e788bb6` into the isolated PR branch without conflicts.
@@ -22,7 +22,8 @@ Kept the existing test source unchanged. The test verifies deterministic density
 ## 5. Checks Run
 
 - Offline environment preparation: `JULIA_DEPOT_PATH=/private/tmp/drmodels-pr1153-depot:/Users/z3437171/.julia JULIA_PKG_OFFLINE=true OPENBLAS_NUM_THREADS=1 JULIA_NUM_THREADS=1 julia --project=test -e 'using Pkg; Pkg.develop(path=pwd()); Pkg.instantiate()'` completed using the existing cache; no package sources were downloaded, and no tracked project file changed.
-- Focused test: `JULIA_DEPOT_PATH=/private/tmp/drmodels-pr1153-depot:/Users/z3437171/.julia OPENBLAS_NUM_THREADS=1 JULIA_NUM_THREADS=1 julia --project=test -e 'using DRModels; include("test/test_tweedie_contract.jl")'`: PASS, 54/54 in 15.5 seconds on Julia 1.10.0.
+- Previous focused test on PR head `7d0391c0125865e8675bf944ea41b561a41eb39c`: `JULIA_DEPOT_PATH=/private/tmp/drmodels-pr1153-depot:/Users/z3437171/.julia OPENBLAS_NUM_THREADS=1 JULIA_NUM_THREADS=1 julia --project=test -e 'using DRModels; include("test/test_tweedie_contract.jl")'`: PASS, 54/54 in 15.5 seconds on Julia 1.10.0. This run predates the two assertion corrections; exact-head CI must rerun it.
+- Updated focused test in the isolated PR clone: `JULIA_DEPOT_PATH=/private/tmp/drmodels-pr1153-depot:/Users/z3437171/.julia OPENBLAS_NUM_THREADS=1 JULIA_NUM_THREADS=1 julia --project=test -e 'using DRModels; include("test/test_tweedie_contract.jl")'`: 52 passed, 2 expected-broken, 54 total in 17.0 seconds. The two expected-broken assertions confirm that both fits still report convergence despite the warning conditions.
 - `julia tools/build_check_log.jl`: rendered this fragment as the expected row (line 454 in the generated preview). The builder also reported malformed legacy files elsewhere in `check-log.d/`; those files are outside this PR and were left untouched.
 - `git diff --check`: PASS.
 - The first focused-test attempt was blocked because the test environment had no manifest; a run with the root project was blocked by the sandbox's read-only default Julia cache. The successful run used a temporary writable depot under `/private/tmp` and the existing package cache.
@@ -30,7 +31,7 @@ Kept the existing test source unchanged. The test verifies deterministic density
 
 ## 6. Tests of the Tests
 
-The zero-response log density is checked against its closed-form atom, and quadrature checks atom plus continuous density normalization for three power parameters. Refusal tests pin error messages for unsupported response and model shapes. The accessor test exercises prediction, parameter prediction, fitted values, simulation, residuals, covariance, standard errors, confidence intervals, model criteria, and deviance on one fixed-effect fit. Degenerate all-zero and one-positive response cases pin the current warnings and fit state.
+The zero-response log density is checked against its closed-form atom, and quadrature checks atom plus continuous density normalization for three power parameters. Refusal tests pin error messages for unsupported response and model shapes. The accessor test exercises prediction, parameter prediction, fitted values, simulation, residuals, covariance, standard errors, confidence intervals, model criteria, and deviance on one fixed-effect fit. Degenerate all-zero and one-positive response cases pin the warning and boundary behavior; the intended non-convergence assertions are marked known-broken because the current fit status still reports convergence.
 
 ## 7a. Issue Ledger
 
@@ -46,7 +47,7 @@ The isolated clone inherited an unpopulated checkout index, then was switched to
 
 ## 10. Known Residuals
 
-This is focused contract-test evidence only. It does not establish recovery, interval calibration, full-suite health, or Tweedie dispersion-clamp behavior. Full package tests and Documenter must pass on the updated exact head before the PR is promoted.
+This is focused contract-test evidence only. The two degenerate convergence expectations are currently known-broken and identify a fit-status limitation; an optimizer fix is outside this test-only PR. It does not establish recovery, interval calibration, full-suite health, or Tweedie dispersion-clamp behavior. Exact-head CI, full package tests, and Documenter remain pending before promotion.
 
 ## 11. Team Learning
 
