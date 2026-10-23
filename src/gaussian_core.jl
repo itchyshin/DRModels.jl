@@ -1962,8 +1962,10 @@ random and structured effect **set to zero**: the prediction for an average grou
 `type = :response` (default) applies the family inverse link to it, `g⁻¹(Xβ̂)`
 (`exp` for Poisson/Gamma, `logistic` for Beta/Binomial/ZeroOneBeta, identity for
 Gaussian). For ZeroOneBeta this is the Beta-component mean `logistic(Xβ̂)`, not the
-zero/one-inflated mixture mean that [`fitted`](@ref) stores. CumulativeLogit fits
-are not supported.
+zero/one-inflated mixture mean that [`fitted`](@ref) stores. For CumulativeLogit,
+`predict` returns the location linear predictor `Xβ̂` on both `type = :link` and
+`type = :response` (as drmTMB does), not the expected category score that
+[`fitted`](@ref) stores.
 Grouping columns in `newdata` are not used, so a group level the model never saw
 is predicted exactly like a fitted one. Univariate returns a vector; bivariate
 returns `Dict(:mu1 => …, :mu2 => …)`. In-sample, `predict(fit, data) ≈ fitted(fit)`
