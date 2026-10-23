@@ -167,7 +167,7 @@ form = bf(mu1 = @formula(y1 ~ x), mu2 = @formula(y2 ~ x),
           sigma1 = @formula(sigma1 ~ 1), sigma2 = @formula(sigma2 ~ 1))
 fit = drm(form, (Gaussian(), Poisson()); data = dat, K = 32, profile = true)
 
-fit.converged        # did L-BFGS converge?
+fit.converged        # did L-BFGS report convergence? (not proof of a maximum)
 ```
 
 The fitted loadings and the link-scale residual variances feed the latent-scale

@@ -45,6 +45,10 @@ predict_parameters(fit, dat)[:nu]   # same quantity (response-scale ν, not exp(
 # Opt-in TMB-convention Laplace for one ordinary `(1 | g)` on the mean (what drmTMB fits):
 fit_lap = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), Student(); data = dat,
               marginal = :Laplace)
+
+# Independent random intercept and slope on one factor (#960, as drmTMB fits it; Laplace):
+fit_ind = drm(bf(@formula(y ~ x + (1 | g) + (0 + x | g)), @formula(sigma ~ 1)), Student(); data = dat)
+exp.(coef(fit_ind, :resd))         # SDs of the intercept and slope effects
 ```
 """
 struct Student end
@@ -85,8 +89,16 @@ struct Student end
             "omit `marginal` (the default `:LA`) for other models."))
     end
     if length(re) > 1                                     # crossed intercepts → Laplace (#725)
+        # Independent intercepts + slopes `(1 | g) + (0 + x | g)` (#960): TMB-convention
+        # Laplace, as drmTMB fits them.
+        slope_comps = _indep_slope_comps(re, data, length(y))
+        slope_comps === nothing ||
+            return _withformula(_fit_indep_re_laplace(fam, Val(:student), y, Xμ, Xσ, Xν,
+                                                      slope_comps, nmμ, nmσ, nmν, g_tol), f)
         (length(re) == 2 && all(_re_kind(r[1])[1] === :intercept for r in re)) ||
-            error("Student() supports multiple random effects on the mean only as two crossed/nested intercepts, e.g. `(1 | g) + (1 | h)`")
+            error("Student() supports multiple random effects on the mean only as two crossed/nested " *
+                  "intercepts `(1 | g) + (1 | h)` or independent intercepts and slopes " *
+                  "`(1 | g) + (0 + x | g)`")
         comps = map(re) do r
             gidx, G = _group_index(getproperty(data, r[2]); col = r[2])
             (gidx, G, String(r[2]))

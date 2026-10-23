@@ -46,6 +46,9 @@ include("fit_q4_sparse_tmb.jl")
 # unguarded `inv` whose outcome depends on the LAPACK build.
 include("vcov_guard.jl")
 
+# Rank check of each parameter's fixed-effect design (#1110).
+include("design_rank.jl")
+
 # Shared "evaluate at the minimizer, not Optim.minimum" helper (#optim-minimum-audit):
 # after a failed line search, Optim.jl's cached `Optim.minimum(res)` can hold a
 # rejected trial's value while `Optim.minimizer(res)` has already moved on.
@@ -83,6 +86,7 @@ include("meta_vcov_bivariate.jl")  # A8: known bivariate sampling covariance (dr
 include("gaussian_bivariate.jl")
 include("gaussian_multi_re_sparse.jl")  # #977: sparse QR + selected inverse for (1|g)+(1|h)+…
 include("gaussian_ranef.jl")
+include("gaussian_rs_sigma_ranef.jl")  # #960: (1 + x | g) mean + sigma (1 | g), per-group 3-D Laplace
 include("gaussian_lss.jl")   # #544: location-scale-scale sd(g) ~ x on the (1|g) SD
 include("aghq_1d.jl")            # #448: 1-D Liu–Pierce AGHQ around `_gauss_hermite`
 include("adaptive_ghq.jl")       # #834: per-group q-dim AGHQ for the (1 + x | g) routes
@@ -144,6 +148,7 @@ include("profile_q4_phylo.jl")   # Ayumi #2: profile-likelihood CIs for the q=4 
 include("bootstrap_q4_phylo.jl") # Ayumi #2: parametric bootstrap of the q=4 among-axis SDs (boundary-honest CIs)
 include("variational.jl")
 include("ordinary_laplace.jl")      # Arc 2: marginal = :Laplace on ordinary (1 | g) (TMB convention)
+include("indep_slopes_laplace.jl")   # #960: Gamma/Student (1 | g) + (0 + x | g), TMB-convention Laplace
 include("summary.jl")
 include("fit_derivatives.jl")  # #971 #994: gradient / hessian / control_info accessors
 include("r2.jl")             # R2 for the constant-sigma Gaussian case ONLY; refuses elsewhere

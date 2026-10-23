@@ -37,6 +37,12 @@ fit_va = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), Gamma();
 # Requires `sigma ~ 1`; ML only.
 fit_lap = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), Gamma();
               data = dat, marginal = :Laplace)
+
+# Independent random intercept and slope on one factor, `(1 | g) + (0 + x | g)` (#960,
+# what drmTMB fits; Laplace). A correlated `(1 + x | g)` is DRModels.jl's own GHQ route
+# (drmTMB refuses it for Gamma). `sigma` may carry covariates here.
+fit_ind = drm(bf(@formula(y ~ x + (1 | g) + (0 + x | g)), @formula(sigma ~ 1)), Gamma(); data = dat)
+exp.(coef(fit_ind, :resd))         # SDs of the intercept and slope effects
 ```
 """
 struct Gamma end
@@ -71,6 +77,9 @@ struct Gamma end
                                                     coords = coords), f)
     end
     fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
+    indep_slopes = st === nothing && length(re) > 1 && _has_indep_slopes(re)
+    isaghq && indep_slopes &&
+        _aghq_reject(fam, "independent random slopes `(0 + x | g)` (Laplace only, #960)")
     isaghq && !(length(re) > 1 && st === nothing) &&
         _aghq_reject(fam, "this model (Gamma `marginal = :AGHQ` covers crossed random " *
                           "intercepts `(1 | g) + (1 | h)` only, #761)")
@@ -110,8 +119,16 @@ struct Gamma end
     if !isempty(re)                    # random effect on the log mean → GHQ/Laplace or VA (#136)
         if length(re) > 1
             isva && _va_reject(fam, "crossed/multiple random intercepts")
+            # Independent intercepts + slopes `(1 | g) + (0 + x | g)` (#960): the
+            # TMB-convention Laplace drmTMB fits. Any sigma formula is admitted.
+            indep_slopes &&
+                return _withformula(_fit_indep_re_laplace(fam, Val(:gamma), y, Xμ, Xσ, nothing,
+                                                          _indep_slope_comps(re, data, length(y)),
+                                                          nmμ, nmσ, String[], g_tol), f)
             all(_re_kind(r[1])[1] === :intercept for r in re) ||
-                error("Gamma() supports multiple random effects only as crossed/nested intercepts, e.g. `(1 | g) + (1 | h)`")
+                error("Gamma() supports multiple random effects only as crossed/nested intercepts " *
+                      "`(1 | g) + (1 | h)` or independent intercepts and slopes `(1 | g) + (0 + x | g)`; " *
+                      "a correlated `(1 + x | g)` must be the only random-effect term")
             comps = map(re) do r
                 grp = r[2]; gidx, G = _group_index(getproperty(data, grp); col = grp)
                 (ones(length(y)), gidx, G, String(grp))
