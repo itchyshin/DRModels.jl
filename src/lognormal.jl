@@ -51,31 +51,35 @@ exp(coef(fit, :sigma)[1])      # SD of log y
 
 fit_phy = drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ 1)),
               LogNormal(); data = dat, tree = tr)
-
-# TMB-convention Laplace on an ordinary `(1 | g)`. For LogNormal the default
-# AGHQ-K=1 path is already exact Laplace (identity link on log y); `:Laplace`
-# accepts the same fitter and tags `fit.marginal`.
-fit_lap = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)),
-              LogNormal(); data = dat, marginal = :Laplace)
 ```
 """
 struct LogNormal end
 
-function drm(f::DrmFormula, fam::LogNormal; data, tree = nothing, K = nothing,
-             g_tol::Real = 1e-8, marginal::Symbol = :LA)
-    # `:Laplace` (opt-in, ordinary `(1 | g)` on the mean): the existing AGHQ-K=1
-    # path is already exact for this family (identity link on log y). The default
-    # `:LA` is unchanged. Other symbols are refused so a typo is not a silent
-    # MethodError (sweep-oct16 t6).
+@drm_entry function drm(f::DrmFormula, fam::LogNormal; data, tree = nothing, K = nothing, g_tol::Real = 1e-8,
+             marginal::Symbol = :LA)
+    # #1126: same `marginal` keyword as the other families. log y is exactly Gaussian
+    # given the random intercept, so the Laplace approximation is exact: `:Laplace`
+    # is the same fit as the default `:LA` (the mode-centred 1-node rule), tagged.
     laplace = _scalar_laplace_requested(marginal)
-    laplace || marginal === :LA || throw(ArgumentError(
-        "drm (LogNormal): marginal = :$marginal is not available; use `:LA` (default) " *
-        "or `:Laplace` (ordinary `(1 | g)` on the mean)."))
+    laplace || _marginal_method(marginal) isa Laplace ||
+        throw(ArgumentError("marginal = :$marginal is not available for LogNormal(): log y is " *
+            "Gaussian given the random effect, so the default `:LA` (exact Gauss–Hermite / " *
+            "Laplace) is used; `:Laplace` is accepted for an ordinary `(1 | g)` and gives the " *
+            "same fit. `:VA` and `:AGHQ` have no LogNormal route."))
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
-        drm(f, fam; data = data_observed, tree = tree, K = K, g_tol = g_tol,
-            marginal = marginal)
+        drm(f, fam; data = data_observed, tree = tree, K = K, g_tol = g_tol, marginal = marginal)
     end
     missing_fit !== nothing && return missing_fit
+    if laplace
+        _, re_l, mv_l, st_l = _split_ranef(Dict(f.forms)[:mu])
+        (length(re_l) == 1 && mv_l === nothing && st_l === nothing &&
+         _re_kind(re_l[1][1])[1] === :intercept) ||
+            throw(ArgumentError("marginal = :Laplace is not available for LogNormal() with this " *
+                "model. It covers exactly one ordinary random intercept `(1 | g)` on the mean; " *
+                "omit `marginal` (the default `:LA`) for other models."))
+        fit = drm(f, fam; data = data, tree = tree, K = K, g_tol = g_tol, marginal = :LA)
+        return _withmarginal(fit, :Laplace)
+    end
 
     _lss_only_gaussian_guard(f, fam)   # #544: refuse, never silently drop, sd() parts
     rhs = Dict(f.forms)
@@ -87,15 +91,6 @@ function drm(f::DrmFormula, fam::LogNormal; data, tree = nothing, K = nothing,
         _, re2, mv2, st2 = _split_ranef(r)
         (isempty(re2) && mv2 === nothing && st2 === nothing) ||
             error("LogNormal(): only the mean formula may carry a random effect")
-    end
-    if laplace && !(length(re) == 1 && st === nothing && _re_kind(re[1][1])[1] === :intercept)
-        throw(ArgumentError("marginal = :Laplace is not available for LogNormal() with " *
-            (isempty(re) && st === nothing ? "no random effect (fixed-effects-only)" :
-             st !== nothing ? "a structured `phylo`/`relmat` marker (already exact Gaussian-on-log-y)" :
-             length(re) > 1 ? "crossed/multiple random effects (already exact Gaussian-on-log-y)" :
-             "a random slope `(1 + x | g)`") *
-            ". This route covers exactly one ordinary random intercept `(1 | g)` on the mean; " *
-            "omit `marginal` (the default `:LA`) for other models."))
     end
     if st !== nothing                  # structured marker on the mean (#563 S8)
         st[1] in (:phylo, :relmat) ||
@@ -121,11 +116,10 @@ function drm(f::DrmFormula, fam::LogNormal; data, tree = nothing, K = nothing,
             error("LogNormal() supports a single random-effect term on the mean")
         (rk, var) = _re_kind(re[1][1]); grp = re[1][2]
         gidx, G = _group_index(getproperty(data, grp))
-        if rk === :intercept           # (1 | g) → 1-D Gauss–Hermite (exact Laplace)
-            fit_re = _fit_lognormal_ranef(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol)
-            laplace && (fit_re = _withmarginal(fit_re, :Laplace))
-            return _withformula(fit_re, f)
+        if rk === :intercept           # (1 | g) → 1-D Gauss–Hermite
+            return _withformula(_fit_lognormal_ranef(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol), f)
         elseif rk === :corr            # (1 + x | g) → correlated 2-D Gauss–Hermite
+            _require_finite_data_column(data, var)
             return _withformula(_fit_lognormal_corr_ranef(fam, y, Xμ, Xσ, Float64.(getproperty(data, var)), gidx, G, nmμ, nmσ, grp, g_tol), f)
         else
             error("LogNormal() supports `(1 | g)` or `(1 + x | g)` on the mean")
@@ -215,23 +209,26 @@ end
 
 function _fit_lognormal(fam::LogNormal, y, Xμ, Xσ, nmμ, nmσ, g_tol)
     n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
-    ly = log.(y); sumlogy = sum(ly)                  # Σ log y = the Jacobian offset
+    w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
+    ly = log.(y); sumlogy = sum(w .* ly)             # Σ wᵢ log yᵢ = the (weighted) Jacobian offset
+    sw = sum(w)                                      # == n exactly when unweighted
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
         ημ = Xμ * βμ; ησ = Xσ * βσ                   # ησ = log σ
         s = zero(eltype(θ))
         @inbounds for i in 1:n
             r = ly[i] - ημ[i]
-            s += ησ[i] + 0.5 * r * r * exp(-2 * ησ[i])
+            s += w[i] * (ησ[i] + 0.5 * r * r * exp(-2 * ησ[i]))
         end
-        return s + 0.5 * n * log(2π) + sumlogy        # Gaussian-on-log-y nll + Σ log y
+        return s + 0.5 * sw * log(2π) + sumlogy        # Gaussian-on-log-y nll + Σ log y
     end
     βμ0 = Xμ \ ly
     θ0 = zeros(pμ + pσ)
     θ0[1:pμ] .= βμ0
     θ0[pμ+1] = log(std(ly - Xμ * βμ0) + eps())
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
+                       θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
+    θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ)]
     names = [:mu => nmμ, :sigma => nmσ]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))  # response-scale median
