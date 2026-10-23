@@ -196,7 +196,17 @@ import Distributions
 
         # The trigger: lc_to_Λ overflows and marginal_and_exact_grad throws.
         @test !all(isfinite, DRModels.lc_to_Λ(fill(400.0, 10)))
-        @test_throws ArgumentError DRModels.marginal_and_exact_grad(prob, Q, θbad; n_newton = 30)
+        # Pre-whitening this threw ArgumentError from `inv(Λ)`. The whitened engine
+        # never inverts Λ; a non-finite Laplace value is now reported as +Inf (never
+        # -Inf, which would read as the best possible value to a value-only caller)
+        # with a non-finite gradient, which fit_q4_sparse_tmb's fg! rejects.
+        nll_bad, g_bad, _, _ = DRModels.marginal_and_exact_grad(prob, Q, θbad; n_newton = 30)
+        @test nll_bad == Inf
+        @test !all(isfinite, g_bad)
+        @test DRModels.marginal_nll(prob, Q, θbad; n_newton = 30)[1] == Inf
+        # ...and never less than the value at a sane θ (the "gain" hazard)
+        @test DRModels.marginal_nll(prob, Q, θbad; n_newton = 30)[1] >
+              DRModels.marginal_nll(prob, Q, θ; n_newton = 30)[1]
 
         # The barrier: a normal fit from a FINITE start must COMPLETE (no uncaught
         # ArgumentError), even though the line search may probe extreme θ where the

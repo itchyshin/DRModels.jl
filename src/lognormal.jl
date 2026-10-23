@@ -21,7 +21,13 @@ the **SD of `log y`**. The response-scale median is `exp(μ)`. Mirrors `drmTMB`'
 
 A random intercept `(1 | g)` or a correlated random intercept+slope `(1 + x | g)`
 may be placed on the log-mean `μ`; the group effect is integrated out by
-Gauss–Hermite quadrature (`re_sd(fit)[:g]` / `vc(fit)[:g]`).
+Gauss–Hermite quadrature (`re_sd(fit)[:g]` / `vc(fit)[:g]`). Crossed/multiple
+random intercepts, `(1 | g) + (1 | h)` (#736), delegate the same way as the
+structured markers below: `log(y)` is exactly Gaussian, so the fit runs
+WHOLESALE through `drm(f, Gaussian(); data = data-with-logged-response)`
+(`_fit_multi_ranef_gaussian`, the closed-form exact crossed marginal, not a
+Laplace approximation), with the reported log-likelihood shifted by
+`-sum(log y)`.
 
 ## Structured markers (`phylo`/`relmat`)
 
@@ -49,11 +55,31 @@ fit_phy = drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ 1)),
 """
 struct LogNormal end
 
-function drm(f::DrmFormula, fam::LogNormal; data, tree = nothing, K = nothing, g_tol::Real = 1e-8)
+@drm_entry function drm(f::DrmFormula, fam::LogNormal; data, tree = nothing, K = nothing, g_tol::Real = 1e-8,
+             marginal::Symbol = :LA)
+    # #1126: same `marginal` keyword as the other families. log y is exactly Gaussian
+    # given the random intercept, so the Laplace approximation is exact: `:Laplace`
+    # is the same fit as the default `:LA` (the mode-centred 1-node rule), tagged.
+    laplace = _scalar_laplace_requested(marginal)
+    laplace || _marginal_method(marginal) isa Laplace ||
+        throw(ArgumentError("marginal = :$marginal is not available for LogNormal(): log y is " *
+            "Gaussian given the random effect, so the default `:LA` (exact Gauss–Hermite / " *
+            "Laplace) is used; `:Laplace` is accepted for an ordinary `(1 | g)` and gives the " *
+            "same fit. `:VA` and `:AGHQ` have no LogNormal route."))
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
-        drm(f, fam; data = data_observed, tree = tree, K = K, g_tol = g_tol)
+        drm(f, fam; data = data_observed, tree = tree, K = K, g_tol = g_tol, marginal = marginal)
     end
     missing_fit !== nothing && return missing_fit
+    if laplace
+        _, re_l, mv_l, st_l = _split_ranef(Dict(f.forms)[:mu])
+        (length(re_l) == 1 && mv_l === nothing && st_l === nothing &&
+         _re_kind(re_l[1][1])[1] === :intercept) ||
+            throw(ArgumentError("marginal = :Laplace is not available for LogNormal() with this " *
+                "model. It covers exactly one ordinary random intercept `(1 | g)` on the mean; " *
+                "omit `marginal` (the default `:LA`) for other models."))
+        fit = drm(f, fam; data = data, tree = tree, K = K, g_tol = g_tol, marginal = :LA)
+        return _withmarginal(fit, :Laplace)
+    end
 
     _lss_only_gaussian_guard(f, fam)   # #544: refuse, never silently drop, sd() parts
     rhs = Dict(f.forms)
@@ -80,6 +106,12 @@ function drm(f::DrmFormula, fam::LogNormal; data, tree = nothing, K = nothing, g
     _, Xσ, nmσ = _design(f.response, get(rhs, :sigma, ConstantTerm(1)), data)
     all(yi -> yi > 0, y) || error("LogNormal() requires strictly positive responses")
     if !isempty(re)                    # random effect on the log-mean μ → GHQ
+        if length(re) > 1              # crossed/multiple intercepts (#736)
+            all(_re_kind(r[1])[1] === :intercept for r in re) ||
+                error("LogNormal() supports multiple random effects only as crossed/nested " *
+                      "intercepts, e.g. `(1 | g) + (1 | h)`")
+            return _withformula(_fit_lognormal_crossed(fam, f, data, g_tol), f)
+        end
         length(re) == 1 ||
             error("LogNormal() supports a single random-effect term on the mean")
         (rk, var) = _re_kind(re[1][1]); grp = re[1][2]
@@ -87,6 +119,7 @@ function drm(f::DrmFormula, fam::LogNormal; data, tree = nothing, K = nothing, g
         if rk === :intercept           # (1 | g) → 1-D Gauss–Hermite
             return _withformula(_fit_lognormal_ranef(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol), f)
         elseif rk === :corr            # (1 + x | g) → correlated 2-D Gauss–Hermite
+            _require_finite_data_column(data, var)
             return _withformula(_fit_lognormal_corr_ranef(fam, y, Xμ, Xσ, Float64.(getproperty(data, var)), gidx, G, nmμ, nmσ, grp, g_tol), f)
         else
             error("LogNormal() supports `(1 | g)` or `(1 + x | g)` on the mean")
@@ -110,26 +143,16 @@ function _fit_lognormal_ranef(fam::LogNormal, y, Xμ, Xσ, gidx, G, nmμ, nmσ, 
     for i in 1:n
         push!(members[gidx[i]], i)
     end
-    z, w = _gauss_hermite(32); logw = log.(w); K = length(z); rt2 = sqrt(2.0); lπ = log(π)
+    # The `(1|g)` marginal is linear-Gaussian in b_g (μ enters ly's mean by identity
+    # link, no transform), so K = 1 (the mode-centred Laplace/AGHQ node) is exact for
+    # this family — no larger rule can improve on it (#719).
+    rule = _AGHQRule(1, 1); Zre = ones(n, 1); bcache = zeros(1, G)
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]; σb = exp(θ[pμ+pσ+1])
         η0 = Xμ * βμ; ησ = clamp.(Xσ * βσ, -15.0, 15.0)
-        s = zero(eltype(θ))
-        for idx in members
-            isempty(idx) && continue
-            terms = Vector{eltype(θ)}(undef, K)
-            for k in 1:K
-                δ = rt2 * σb * z[k]; gll = logw[k]
-                for i in idx
-                    μ = clamp(η0[i] + δ, -30.0, 30.0); σ = exp(ησ[i])
-                    gll += Distributions.logpdf(Distributions.Normal(μ, σ), ly[i])
-                end
-                terms[k] = gll
-            end
-            mx = maximum(terms)
-            s -= (-0.5 * lπ + mx + log(sum(exp.(terms .- mx))))
-        end
-        return s + sumlogy                            # + Σ log y so loglik carries the Jacobian
+        ll = (i, η) -> Distributions.logpdf(Distributions.Normal(clamp(η, -30.0, 30.0), exp(ησ[i])), ly[i])
+        L = reshape([σb], 1, 1)
+        return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache) + sumlogy   # + Σ log y so loglik carries the Jacobian
     end
     βμ0 = Xμ \ ly
     θ0 = zeros(pμ + pσ + 1)
@@ -142,47 +165,31 @@ function _fit_lognormal_ranef(fam::LogNormal, y, Xμ, Xσ, gidx, G, nmμ, nmσ, 
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
     return _withiterations(
-        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
+        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
 end
 
 # LogNormal GLMM with a CORRELATED random intercept+slope (1 + x | g) on the
 # log-mean μ. Per group (b0,b1) ~ N(0, Σ_re), Σ_re = L Lᵀ with L = [l11 0; cc l22]
 # (log-Cholesky parameters a, b, cc; l11=exp(a), l22=exp(b)). The 2-D group integral
-# is taken by K×K Gauss–Hermite quadrature: substituting (b0,b1) = √2 L z turns the
-# prior integral into Σⱼₖ wⱼwₖ·(group likelihood at node j,k). σ = SD of log y is a
-# fixed effect. θ = [β_μ; β_σ; a, b, cc]. O(n_g·K²) per group. The constant −Σ log y
+# is taken by per-group ADAPTIVE Gauss–Hermite quadrature (`_aghq_marginal_loglik`,
+# #834; log y is Gaussian in b, so this is exact for any nq). σ = SD of log y is a
+# fixed effect. θ = [β_μ; β_σ; a, b, cc]. The constant −Σ log y
 # Jacobian is added to the reported loglik to match the fixed fitter's convention.
-function _fit_lognormal_corr_ranef(fam::LogNormal, y, Xμ, Xσ, xs, gidx, G, nmμ, nmσ, grp, g_tol)
+function _fit_lognormal_corr_ranef(fam::LogNormal, y, Xμ, Xσ, xs, gidx, G, nmμ, nmσ, grp, g_tol; nq::Int = _CORR_RANEF_AGHQ_K)
     n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     ly = log.(y); sumlogy = sum(ly)                  # Σ log y = the Jacobian offset
     members = [Int[] for _ in 1:G]
     for i in 1:n
         push!(members[gidx[i]], i)
     end
-    z1, w1 = _gauss_hermite(12); lw = log.(w1); K = length(z1); rt2 = sqrt(2.0); lπ = log(π)
+    rule = _AGHQRule(2, nq); Zre = hcat(ones(n), Float64.(xs)); bcache = zeros(2, G)   # #834: per-group AGHQ
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
-        l11 = exp(θ[pμ+pσ+1]); l22 = exp(θ[pμ+pσ+2]); cc = θ[pμ+pσ+3]
+        L = _corr_ranef_L(θ[pμ+pσ+1], θ[pμ+pσ+2], θ[pμ+pσ+3])
         η0 = Xμ * βμ; ησ = clamp.(Xσ * βσ, -15.0, 15.0)
-        s = zero(eltype(θ))
-        for idx in members
-            isempty(idx) && continue
-            terms = Vector{eltype(θ)}(undef, K * K); t = 0
-            for j in 1:K, k in 1:K
-                t += 1
-                b0 = rt2 * l11 * z1[j]; b1 = rt2 * (cc * z1[j] + l22 * z1[k])
-                gll = lw[j] + lw[k]
-                for i in idx
-                    μ = clamp(η0[i] + b0 + b1 * xs[i], -30.0, 30.0); σ = exp(ησ[i])
-                    gll += Distributions.logpdf(Distributions.Normal(μ, σ), ly[i])
-                end
-                terms[t] = gll
-            end
-            mx = maximum(terms)
-            s -= (-lπ + mx + log(sum(exp.(terms .- mx))))
-        end
-        return s + sumlogy                            # + Σ log y so loglik carries the Jacobian
+        ll = (i, η) -> Distributions.logpdf(Distributions.Normal(clamp(η, -30.0, 30.0), exp(ησ[i])), ly[i])
+        return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache) + sumlogy   # + Σ log y: Jacobian
     end
     βμ0 = Xμ \ ly
     θ0 = zeros(pμ + pσ + 3)
@@ -196,36 +203,56 @@ function _fit_lognormal_corr_ranef(fam::LogNormal, y, Xμ, Xσ, xs, gidx, G, nm�
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
     return _withiterations(
-        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
+        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
 end
 
 function _fit_lognormal(fam::LogNormal, y, Xμ, Xσ, nmμ, nmσ, g_tol)
     n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
-    ly = log.(y); sumlogy = sum(ly)                  # Σ log y = the Jacobian offset
+    w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
+    ly = log.(y); sumlogy = sum(w .* ly)             # Σ wᵢ log yᵢ = the (weighted) Jacobian offset
+    sw = sum(w)                                      # == n exactly when unweighted
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
         ημ = Xμ * βμ; ησ = Xσ * βσ                   # ησ = log σ
         s = zero(eltype(θ))
         @inbounds for i in 1:n
             r = ly[i] - ημ[i]
-            s += ησ[i] + 0.5 * r * r * exp(-2 * ησ[i])
+            s += w[i] * (ησ[i] + 0.5 * r * r * exp(-2 * ησ[i]))
         end
-        return s + 0.5 * n * log(2π) + sumlogy        # Gaussian-on-log-y nll + Σ log y
+        return s + 0.5 * sw * log(2π) + sumlogy        # Gaussian-on-log-y nll + Σ log y
     end
     βμ0 = Xμ \ ly
     θ0 = zeros(pμ + pσ)
     θ0[1:pμ] .= βμ0
     θ0[pμ+1] = log(std(ly - Xμ * βμ0) + eps())
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
+                       θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
+    θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ)]
     names = [:mu => nmμ, :sigma => nmσ]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))  # response-scale median
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
     return _withiterations(
-        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
+        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
+end
+
+# Crossed/multiple random intercepts `(1 | g) + (1 | h) + …` on the log-mean μ
+# (#736). `log(y)` is exactly Gaussian, so — exactly like the phylo/relmat
+# structured-marker delegation just below — this delegates the WHOLE fit to
+# the public Gaussian dispatcher on a logged copy of the response
+# (`_fit_multi_ranef_gaussian`, the closed-form exact crossed marginal
+# likelihood; no Laplace approximation, so no new integrator), and shifts the
+# reported log-likelihood by the parameter-free Jacobian `-sum(log y)`.
+# Requires strictly positive responses (checked before logging).
+function _fit_lognormal_crossed(fam::LogNormal, f::DrmFormula, data, g_tol)
+    cols = NamedTuple(pairs(data))
+    y = Vector{Float64}(getproperty(cols, f.response))
+    all(yi -> yi > 0, y) || error("LogNormal() requires strictly positive responses")
+    logdata = merge(cols, NamedTuple{(f.response,)}((log.(y),)))
+    gfit = drm(f, Gaussian(); data = logdata, g_tol = g_tol)
+    return _lognormal_jacobian_shift(fam, gfit, y)
 end
 
 # A `phylo(1 | group)` or `relmat(1 | group)` marker on the log-mean μ (#563
@@ -262,5 +289,5 @@ function _lognormal_jacobian_shift(fam::LogNormal, gfit::DrmFit, y::Vector{Float
                  gfit.loglik - jac, gfit.nobs, gfit.converged, gfit.means,
                  Dict(:mu => y), gfit.scales, gfit.formula, lnll, gfit.nllgrad, gfit.ranef,
                  gfit.estim_method, reml_ll, gfit.ml_loglik - jac, gfit.marginal,
-                 gfit.phylo_penalty, gfit.penalty, gfit.iterations)
+                 gfit.phylo_penalty, gfit.penalty, gfit.iterations, gfit.phylo_scale)
 end

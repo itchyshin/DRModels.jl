@@ -1,0 +1,85 @@
+=== DRM first-wave @ e9d50a110 threads=1 ===
+[drm-h2h-q4-vs-tmb-p1000] med=20.8147s ll=NaN conv=true
+  Activating project at `~/lanes/DRModels.jl-speed-kinds-20260923`
+wrote small n=1000 G=20 H=20
+wrote medium n=5000 G=50 H=50
+wrote fixedq_n20000 n=20000 G=50 H=50
+[drm-crossed-binomial] med=0.0374s ll=-1726 conv=true
+[drm-biv-gauss-rho12] med=0.0572s ll=-5333 conv=true
+[drm-profile-ci-locscale] med=0.0160s ll=-579.2 conv=true
+[drm-animal-gauss] med=0.0177s ll=-272 conv=true
+[drm-lss-sd-slope] med=0.0029s ll=-392 conv=true
+  Activating project at `~/lanes/DRModels.jl-speed-kinds-20260923`
+┌ Warning: drm-phylo-poisson FAILED
+│   exception =
+│    MethodError: no method matching Poisson(::Float64)
+│    The type `Poisson` exists, but no method is defined for this combination of argument types when trying to construct it.
+│    
+│    Closest candidates are:
+│      Poisson()
+│       @ DRModels ~/lanes/DRModels.jl-speed-kinds-20260923/src/poisson.jl:76
+│    
+│    Stacktrace:
+│     [1] top-level scope
+│       @ ~/lanes/DRModels.jl-speed-kinds-20260923/docs/dev-log/evidence/2026-09-23-speed-kinds-toward20/run_first_wave.jl:64
+│     [2] include(mod::Module, _path::String)
+│       @ Base ./Base.jl:306
+│     [3] exec_options(opts::Base.JLOptions)
+│       @ Base ./client.jl:317
+│     [4] _start()
+│       @ Base ./client.jl:550
+└ @ Main ~/lanes/DRModels.jl-speed-kinds-20260923/docs/dev-log/evidence/2026-09-23-speed-kinds-toward20/run_first_wave.jl:70
+┌ Warning: drm-phylo-nb2 FAILED
+│   exception =
+│    UndefVarError: `NegativeBinomial` not defined in `Main`
+│    Suggestion: check for spelling errors or missing imports.
+│    Hint: a global variable of this name also exists in Distributions.
+│    Stacktrace:
+│     [1] top-level scope
+│       @ ~/lanes/DRModels.jl-speed-kinds-20260923/docs/dev-log/evidence/2026-09-23-speed-kinds-toward20/run_first_wave.jl:84
+│     [2] include(mod::Module, _path::String)
+│       @ Base ./Base.jl:306
+│     [3] exec_options(opts::Base.JLOptions)
+│       @ Base ./client.jl:317
+│     [4] _start()
+│       @ Base ./client.jl:550
+└ @ Main ~/lanes/DRModels.jl-speed-kinds-20260923/docs/dev-log/evidence/2026-09-23-speed-kinds-toward20/run_first_wave.jl:90
+┌ Warning: drm-phylo-binomial FAILED
+│   exception =
+│    MethodError: no method matching Binomial(::Int64, ::Float64)
+│    The type `Binomial` exists, but no method is defined for this combination of argument types when trying to construct it.
+│    
+│    Closest candidates are:
+│      Binomial()
+│       @ DRModels ~/lanes/DRModels.jl-speed-kinds-20260923/src/binomial.jl:41
+│    
+│    Stacktrace:
+│     [1] top-level scope
+│       @ ~/lanes/DRModels.jl-speed-kinds-20260923/docs/dev-log/evidence/2026-09-23-speed-kinds-toward20/run_first_wave.jl:105
+│     [2] include(mod::Module, _path::String)
+│       @ Base ./Base.jl:306
+│     [3] exec_options(opts::Base.JLOptions)
+│       @ Base ./client.jl:317
+│     [4] _start()
+│       @ Base ./client.jl:550
+└ @ Main ~/lanes/DRModels.jl-speed-kinds-20260923/docs/dev-log/evidence/2026-09-23-speed-kinds-toward20/run_first_wave.jl:113
+┌ Warning: drm-phylo-gamma FAILED
+│   exception =
+│    MethodError: no method matching Gamma(::Float64, ::Float64)
+│    The type `Gamma` exists, but no method is defined for this combination of argument types when trying to construct it.
+│    
+│    Closest candidates are:
+│      Gamma()
+│       @ DRModels ~/lanes/DRModels.jl-speed-kinds-20260923/src/gamma.jl:37
+│    
+│    Stacktrace:
+│     [1] top-level scope
+│       @ ~/lanes/DRModels.jl-speed-kinds-20260923/docs/dev-log/evidence/2026-09-23-speed-kinds-toward20/run_first_wave.jl:164
+│     [2] include(mod::Module, _path::String)
+│       @ Base ./Base.jl:306
+│     [3] exec_options(opts::Base.JLOptions)
+│       @ Base ./client.jl:317
+│     [4] _start()
+│       @ Base ./client.jl:550
+└ @ Main ~/lanes/DRModels.jl-speed-kinds-20260923/docs/dev-log/evidence/2026-09-23-speed-kinds-toward20/run_first_wave.jl:171
+WROTE /home/snakagaw/lanes/DRModels.jl-speed-kinds-20260923/docs/dev-log/evidence/2026-09-23-speed-kinds-toward20/board_drm_first_wave_20260923_e9d50a110.csv n=6

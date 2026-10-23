@@ -36,16 +36,20 @@ fits *better* — a sign the models are not actually nested, or one did not
 converge) is still returned as-is, but the p-value clamps the statistic at zero
 (so `pvalue` stays in `[0, 1]`); inspect `statistic` directly in that case.
 
-!!! warning "Variance components are a boundary null"
+!!! warning "Variance components and Poisson ⊂ NB2 are a boundary null"
     The `χ²(dof)` reference is only valid when the extra parameters in `full` are
     interior (regular). When `full` adds a **variance component** that `reduced`
     lacks (a random-effect SD, `:resd`/`:resid`; a Cholesky covariance entry,
-    `:recov`; a group-level covariance, `:phylocov`), the tested null (variance =
-    0) sits on the **boundary** of the parameter space and the statistic follows a
-    chi-bar-square mixture, not `χ²(dof)` (Self & Liang 1987; Stram & Lee 1994).
-    The naive `χ²` p-value is then **conservative** (too large — the test loses
-    power). `lrtest` detects this case and emits a one-time warning; use
-    `lrt_boundary` (or a parametric bootstrap) for a boundary-correct p-value.
+    `:recov`; a group-level covariance, `:phylocov`), or when `full` is
+    `NegBinomial2()` and `reduced` is `Poisson()` (the extra `sigma` tested at
+    0), the tested null sits on the **boundary** of the parameter space and the
+    statistic follows a chi-bar-square mixture, not `χ²(dof)` (Self & Liang
+    1987; Stram & Lee 1994). The naive `χ²` p-value is then **conservative**
+    (too large — the test loses power). `lrtest` detects these cases and emits
+    a one-time warning; use `lrt_boundary` (or a parametric bootstrap) for a
+    boundary-correct p-value. This function does **not** swap the reported
+    p-value (#304). drmTMB's `anova()` does swap in the mixture for the same
+    pairs; call `lrt_boundary` here to match that p-value.
 
 # Example
 ```julia
@@ -64,8 +68,10 @@ t.pvalue       # < 0.05 when x is truly predictive
 """
 function lrtest(reduced::DrmFit, full::DrmFit)
     _reml_compare_guard(reduced, full, "lrtest")
+    _sentinel_compare_guard(reduced, full, "lrtest")
     _marginal_compare_guard(reduced, full, "lrtest")
     _map_compare_guard(reduced, full, "lrtest")
+    _nobs_compare_guard(reduced, full, "lrtest")
     Δdof = dof(full) - dof(reduced)
     Δdof > 0 || throw(ArgumentError(
         "lrtest: `full` must have more parameters than `reduced` " *
@@ -77,11 +83,38 @@ function lrtest(reduced::DrmFit, full::DrmFit)
     return (; statistic, dof = Δdof, pvalue)
 end
 
+# A fit stranded on the failed-objective sentinel plateau (loglik <= -1e15, see
+# `_sentinel_loglik`) has a meaningless likelihood: an LR statistic built from it is
+# ~1e18 and its p-value 0 or 1, an AIC ~2e18. Comparison verbs refuse it, like the
+# REML/VA refusals; information criteria return NaN with a warning.
+function _sentinel_compare_guard(reduced::DrmFit, full::DrmFit, verb::AbstractString)
+    for (nm, f) in (("reduced", reduced), ("full", full))
+        _sentinel_loglik(f) && throw(ArgumentError(
+            "$verb: the `$nm` fit is degenerate (loglik = $(loglik(f)), the failed-" *
+            "objective sentinel or non-finite): the optimiser never reached a valid " *
+            "likelihood, so a likelihood-ratio comparison is meaningless. Refit " *
+            "(different start values / optimiser) before comparing."))
+    end
+    return nothing
+end
+
+function _sentinel_infocrit_nan(fit::DrmFit, which::AbstractString)
+    _sentinel_loglik(fit) || return false
+    @warn "$which: fit is degenerate (loglik = $(fit.loglik), the failed-objective " *
+          "sentinel or non-finite); returning NaN. Refit before using information criteria."
+    return true
+end
+
 # Block symbols that carry a VARIANCE COMPONENT (random-effect SDs, Cholesky
 # covariance entries, group-level covariances). Dropping one of these between
 # `reduced` and `full` puts the tested null value (variance = 0) on the BOUNDARY of
 # the parameter space, where the LR statistic is NOT χ²(Δdof) — the correct
-# reference is a chi-bar-square mixture (see `lrt_boundary`/`chibar_pvalue`).
+# reference is a chi-bar-square mixture (see `lrt_boundary`/`chibar_pvalue`). These
+# names are shared across univariate AND bivariate fits (e.g. `:phylocov`/`:recov`
+# on a bivariate q=2/q=4 phylogenetic fit, same symbol as the univariate case), so
+# `_variance_component_blocks`/`_boundary_vc_warn` below already label a bivariate
+# fit's boundary variance components correctly (#639) — the per-parameter naming
+# gap only affected `_fixed_effect_structure` (:mu1/:mu2/… vs the univariate :mu).
 const _VARIANCE_COMPONENT_BLOCKS =
     (:resd, :resid, :recov, :phylocov, :resd_mu, :resd_sigma, :sd, :sd_phylo)
 
@@ -91,9 +124,20 @@ function _variance_component_blocks(fit::DrmFit)
                  if p in _VARIANCE_COMPONENT_BLOCKS && length(r) > 0]
 end
 
-# Boundary caveat (issue #304): when `full` carries a variance-component block that
-# `reduced` does not, the naive χ²(Δdof) LR reference is INVALID — the tested
-# variance sits on the boundary of its space, so the statistic follows a
+# Nested family pairs whose extra distributional parameter is tested at 0.
+# Only the filed t10 pair is wired: Poisson ⊂ NegBinomial2 (sigma → 0).
+# Sibling nests stay unwired; see the FX6 methods note.
+function _family_boundary_nest(reduced_fam, full_fam)
+    (reduced_fam isa Poisson && full_fam isa NegBinomial2) || return nothing
+    return (added = :sigma, q = 1)
+end
+_family_boundary_nest(reduced::DrmFit, full::DrmFit) =
+    _family_boundary_nest(reduced.family, full.family)
+
+# Boundary caveat (issue #304, family-dispersion #1115): when `full` carries a
+# variance-component block that `reduced` does not, OR when the pair is Poisson
+# ⊂ NegBinomial2, the naive χ²(Δdof) LR reference is INVALID — the tested
+# parameter sits on the boundary of its space, so the statistic follows a
 # chi-bar-square mixture and the χ² p-value is CONSERVATIVE (too large; the test
 # loses power). We do NOT silently swap the reference (the mixture order and
 # independence assumptions need the caller's knowledge of the design), but we WARN
@@ -101,42 +145,88 @@ end
 function _boundary_vc_warn(reduced::DrmFit, full::DrmFit, verb::AbstractString)
     dropped = setdiff(_variance_component_blocks(full),
                       _variance_component_blocks(reduced))
-    isempty(dropped) && return nothing
+    if !isempty(dropped)
+        @warn(
+            "$verb: `full` adds variance-component block(s) $(dropped) that `reduced` " *
+            "lacks, so this compares a variance component against 0 — a BOUNDARY null. " *
+            "The reported χ²($(dof(full) - dof(reduced))) p-value is INVALID there " *
+            "(conservative: too large, so the test loses power); the correct reference " *
+            "is a chi-bar-square mixture. Use `lrt_boundary(full, reduced; q = <#components>)` " *
+            "(or a parametric bootstrap) for a boundary-correct p-value.")
+        return nothing
+    end
+    nest = _family_boundary_nest(reduced, full)
+    nest === nothing && return nothing
     @warn(
-        "$verb: `full` adds variance-component block(s) $(dropped) that `reduced` " *
-        "lacks, so this compares a variance component against 0 — a BOUNDARY null. " *
-        "The reported χ²($(dof(full) - dof(reduced))) p-value is INVALID there " *
-        "(conservative: too large, so the test loses power); the correct reference " *
-        "is a chi-bar-square mixture. Use `lrt_boundary(full, reduced; q = <#components>)` " *
-        "(or a parametric bootstrap) for a boundary-correct p-value.")
+        "$verb: `full` is NegBinomial2 and `reduced` is Poisson, so this tests the extra " *
+        "sigma at 0 — a BOUNDARY null. The reported χ²($(dof(full) - dof(reduced))) " *
+        "p-value is INVALID there (conservative: too large, so the test loses power); " *
+        "the correct reference is a chi-bar-square mixture. Use " *
+        "`lrt_boundary(full, reduced; q = $(nest.q))` (or a parametric bootstrap) " *
+        "for a boundary-correct p-value.")
     return nothing
 end
 
-# Mean-structure fingerprint for the REML guard: the :mu block's coefficient
-# names (falls back to the :mu block width when names are absent).
-function _mean_structure(fit::DrmFit)
-    for (p, nms) in fit.coefnames
-        p === :mu && return nms
-    end
+# Blocks that REML actually RESTRICTS (marginalises/projects out): the response
+# MEAN's fixed effects. Univariate `:mu`; bivariate `:mu1`/`:mu2` (see
+# gaussian_bivariate.jl's Patterson–Thompson restriction, which "marginalises
+# beta_mu1/beta_mu2 only"). A dispersion submodel (`:sigma`/`:sigma1`/`:sigma2`)
+# or a correlation submodel (`:rho12`) is estimated INSIDE the restricted
+# likelihood as an ordinary (nuisance) parameter, exactly like a variance
+# component — comparing REML fits that share the mean design but differ in
+# THOSE blocks is the valid, everyday use of REML (e.g. testing a heteroscedastic
+# vs homoscedastic error model), not the REML trap.
+const _REML_RESTRICTED_MEAN_BLOCKS = (:mu, :mu1, :mu2)
+
+# Fixed-effect (MEAN) structure fingerprint for the REML guard (#639): the
+# mean block(s) actually restricted by REML, paired with their coefficient
+# names (falling back to the block width when names are absent). On a
+# univariate fit this is `:mu`; on a bivariate fit, `:mu1`/`:mu2`. Sorted by
+# block symbol so two fits with the same blocks in a different order still
+# compare equal.
+function _fixed_effect_structure(fit::DrmFit)
+    cn = Dict(fit.coefnames)
+    fx = Pair{Symbol,Vector{String}}[]
     for (p, r) in fit.blocks
-        p === :mu && return string.(collect(r))
+        p in _REML_RESTRICTED_MEAN_BLOCKS || continue
+        nms = haskey(cn, p) ? cn[p] : string.(collect(r))
+        push!(fx, p => nms)
     end
-    return String[]
+    sort!(fx; by = first)
+    return fx
 end
 
-# REML model-selection guard (issue #11): the classic REML trap is comparing
-# likelihoods of REML fits with DIFFERENT fixed-effect (mean) structures — the
+# REML model-selection guard (issue #11, generalized #639): a REML log-likelihood
+# is not comparable to an ML (or MAP) log-likelihood AT ALL — they are different
+# likelihoods — so any pair with different `estim_method`s is refused outright,
+# even when their fixed-effect structures happen to match. Among two REML fits,
+# the classic REML trap is comparing DIFFERENT MEAN structures — `:mu`/`:mu1`/
+# `:mu2` (generalized to bivariate fits by `_fixed_effect_structure`) — the
 # restricted likelihoods are built on different error-contrast bases and are not
-# comparable. Comparing REML fits that differ only in VARIANCE structure (same
-# mean) is valid. ML fits are always fine. We ERROR on the invalid case (the LR
-# test would be meaningless) and stay silent otherwise.
+# comparable. Comparing REML fits that differ only in a dispersion/correlation
+# submodel (`:sigma`/`:sigma1`/`:sigma2`/`:rho12`) or a variance-component
+# structure, with the SAME mean design, is valid — that submodel is a nuisance
+# parameter inside the restricted likelihood, not something REML restricts away.
+# ML-vs-ML is always fine. We ERROR on both invalid cases (the LR test would be
+# meaningless) and stay silent otherwise.
 function _reml_compare_guard(a::DrmFit, b::DrmFit, verb::AbstractString)
     (a.estim_method === :REML || b.estim_method === :REML) || return nothing
-    if _mean_structure(a) != _mean_structure(b)
+    if a.estim_method !== b.estim_method
         throw(ArgumentError(
-            "$verb: cannot compare REML fits with different fixed-effect (mean) structures — " *
-            "REML log-likelihoods are not comparable across mean structures (only across " *
-            "variance structures). Refit both with method = :ML for a cross-mean-structure test."))
+            "$verb: cannot compare fits estimated by different methods " *
+            "(estim_method = :$(a.estim_method) vs :$(b.estim_method)) — a REML " *
+            "log-likelihood is not comparable to an ML (or MAP) log-likelihood, " *
+            "even when their fixed-effect structures match: they are different " *
+            "likelihoods. Refit both with the same `method` (`:ML` to compare across " *
+            "fixed-effect structures, or `:REML` — with identical fixed-effect " *
+            "structure in every mean/scale block — to compare variance components)."))
+    end
+    if _fixed_effect_structure(a) != _fixed_effect_structure(b)
+        throw(ArgumentError(
+            "$verb: cannot compare REML fits with different fixed-effect structure in " *
+            "any mean or scale block — REML log-likelihoods are not comparable across " *
+            "fixed-effect structures (only across variance-component structure). Refit " *
+            "both with method = :ML for a cross-structure test."))
     end
     return nothing
 end
@@ -148,6 +238,18 @@ end
 # the data. drmTMB flags the same hazard as a note from `check_penalized_fit()`;
 # because a silent wrong p-value is worse than a refusal, DRModels.jl errors here and
 # surfaces the same information through `check_drm(fit).penalized_map`.
+# `update` of a missing-response or imputed fit can refit a different set of
+# rows than the seed. The two log-likelihoods are then not a nested comparison
+# (#1002). Refuse that pair rather than returning a statistic on mixed samples.
+function _nobs_compare_guard(a::DrmFit, b::DrmFit, verb::AbstractString)
+    nobs(a) == nobs(b) && return nothing
+    throw(ArgumentError(
+        "$verb: the two fits were estimated on different samples " *
+        "(nobs = $(nobs(a)) vs $(nobs(b))). A likelihood-ratio comparison " *
+        "requires the same observations, which a missing-response or imputed " *
+        "`update` does not guarantee. Refit both on the same rows."))
+end
+
 function _map_compare_guard(a::DrmFit, b::DrmFit, verb::AbstractString)
     (a.estim_method === :MAP || b.estim_method === :MAP) || return nothing
     throw(ArgumentError(
@@ -157,14 +259,46 @@ function _map_compare_guard(a::DrmFit, b::DrmFit, verb::AbstractString)
         "the penalized fits on their own terms."))
 end
 
-# Mixed-marginal guard (#136 Arc 0): a VA `loglik` is an ELBO, not a Laplace
-# marginal. Mixing `:LA` and `:VA` in lrtest / anova would be meaningless.
+# A fit whose formula has no random effect integrates nothing, so its `loglik` is
+# the exact log-likelihood whatever `marginal` tag it carries (a fixed-effects fit
+# is tagged `:LA` by default). Conservative: a bivariate formula, attached BLUPs, a
+# variance-component block, an `sd(g) ~ …` formula, or any random-effect /
+# structured / `meta_V` marker counts as "has a random effect".
+function _fit_is_re_free(fit::DrmFit)
+    f = fit.formula
+    (f isa DrmFormula && fit.ranef === nothing &&
+        isempty(_variance_component_blocks(fit))) || return false
+    for (name, rhs) in f.forms
+        startswith(String(name), "sd") && return false           # sd(g) ~ … / sd(g, phylogenetic) ~ …
+        for t in (rhs isa Tuple ? rhs : (rhs,))
+            t isa FunctionTerm && any(m -> t.f === m, (|, meta_V, relmat, animal, phylo, spatial)) &&
+                return false
+        end
+    end
+    return true
+end
+
+# Mixed-marginal guard (#136 Arc 0): fits whose random-effect integrals were
+# approximated differently are not comparable in lrtest / anova. A VA `loglik` is
+# an ELBO, not a log-likelihood; `:LA` (GHQ-32 on an ordinary `(1 | g)`) and
+# `:Laplace` (one-point Laplace) differ by integration error. The one safe mixed
+# pair is a random-effect-free fit (exact log-likelihood) against a non-VA fit,
+# e.g. the fixed-effects model against a `marginal = :Laplace` random intercept.
 function _marginal_compare_guard(a::DrmFit, b::DrmFit, verb::AbstractString)
     a.marginal === b.marginal && return nothing
+    no_va = a.marginal !== :VA && b.marginal !== :VA
+    no_va && (_fit_is_re_free(a) || _fit_is_re_free(b)) && return nothing
+    reason = if !no_va
+        "the VA objective is an ELBO, not a log-likelihood (#136)"
+    else
+        detail = Set((a.marginal, b.marginal)) == Set((:LA, :Laplace)) ?
+            " (`:LA` is GHQ-32 on an ordinary `(1 | g)`; `:Laplace` is the one-point Laplace approximation)" : ""
+        "the two approximate the random-effect integral differently$detail, so their " *
+        "log-likelihood difference would mix model fit with integration error"
+    end
     throw(ArgumentError(
         "$verb: cannot compare fits with different marginal approximations " *
-        "(`$(a.marginal)` vs `$(b.marginal)`) — the VA objective is an ELBO, not a " *
-        "Laplace log-likelihood (#136). Refit both with the same `marginal`."))
+        "(`:$(a.marginal)` vs `:$(b.marginal)`): $reason. Refit both with the same `marginal`."))
 end
 
 """
@@ -197,7 +331,7 @@ same data; lower is better.
 
 If `n - k - 1 <= 0` (too few observations for the correction to be defined),
 returns `Inf`. On a **VA** fit this errors before that short-circuit: `loglik`
-carries an ELBO, not a marginal log-likelihood (#136).
+carries an ELBO, not a marginal log-likelihood.
 
 # Example
 ```julia
@@ -208,6 +342,7 @@ isfinite(aicc(fit))         # finite whenever n - k - 1 > 0
 """
 function aicc(fit::DrmFit)
     _va_infocrit_guard(fit, "aicc")
+    _sentinel_infocrit_nan(fit, "aicc") && return NaN
     k = dof(fit)
     n = nobs(fit)
     n - k - 1 > 0 || return Inf
@@ -215,39 +350,105 @@ function aicc(fit::DrmFit)
 end
 
 """
-    weights(fit::DrmFit) -> Vector{Float64}
+    weights(fit::DrmFit) -> Union{Vector{Float64}, Nothing}
 
-Prior (per-observation) weights used in the fit — drmTMB / glmmTMB's `weights()`.
-DRModels.jl fits do not currently store prior weights, so this returns
-`ones(nobs(fit))` (every observation weighted equally). Extends
+Prior (per-observation) weights the fit was made with, from
+`drm(...; weights = w)`, or `nothing` when no weights were given. Extends
 `StatsAPI.weights`.
+
+The weights multiply each row's log-likelihood (drmTMB semantics), so
+`loglik`, `aic`, `bic`, profiles and likelihood-ratio tests use the weighted
+likelihood. `nobs(fit)` still counts rows, zero-weight rows included.
+
+Prior weights are implemented on the fixed-effect ML routes of the univariate
+families. Any other route refuses `weights =` with an `ArgumentError`
+(#931; the family-by-family rollout to random-effect routes is tracked there).
+
+Before #931 step (b), this accessor returned `ones(nobs(fit))` for every fit,
+which looked like weights had been used.
 
 # Example
 ```julia
-fit = drm(bf(@formula(y ~ 1 + x), @formula(sigma ~ 1)), Gaussian(); data)
-weights(fit) == ones(nobs(fit))   # all-ones prior weights
+fit  = drm(bf(@formula(y ~ 1 + x), @formula(sigma ~ 1)), Gaussian(); data)
+weights(fit) === nothing          # no prior weights given
+fitw = drm(bf(@formula(y ~ 1 + x), @formula(sigma ~ 1)), Gaussian(); data, weights = w)
+weights(fitw) == w
 ```
 """
-weights(fit::DrmFit) = ones(nobs(fit))
+weights(fit::DrmFit) = fit.control_info === nothing ? nothing : fit.control_info.weights
 
 """
-    update(fit::DrmFit, formula; data, kwargs...) -> DrmFit
+    update(fit::DrmFit, formula, args...; data, kwargs...) -> DrmFit
 
-Refit `fit`'s model with a new `formula` (a [`bf`](@ref) bundle), reusing the
-**fitted family** — the convenience refit verb, mirroring R's `update`. Equivalent
-to `drm(formula, family(fit); data = data, kwargs...)`.
+Refit `fit` with a new `formula` (a [`bf`](@ref) bundle), reusing the fitted
+family and every estimation option the fit stores:
 
-`data` must be supplied: a `DrmFit` does **not** retain its data, so `update`
-cannot reuse the original observations. Any extra keyword arguments (`K`, `A`,
-`tree`, `coords`, `g_tol`, …) are forwarded to [`drm`](@ref).
+- `method` — `:REML` when `fit.estim_method === :REML` (the default `:ML` is
+  `drm`'s own default and is not repeated);
+- `marginal` — when it is not the default `:LA`;
+- `penalty` — the stored [`drm_phylo_penalty`](@ref) specification of a `:MAP` fit.
+
+Explicit keywords override those stored options (`update(fit, formula; data,
+method = :ML)` refits a REML seed by maximum likelihood). Changing `method`
+on a penalized MAP fit drops the stored penalty unless `penalty` is passed
+again; otherwise `method = :ML` would still be a MAP refit. `family` is not a
+refit keyword: the fitted family is kept, and passing one is an error. An
+unnamed extra positional argument is an error: a keyword-only refit would
+otherwise drop it and silently ignore the value.
+
+`data` must be supplied. A `DrmFit` does not retain its observations, nor the
+options that were only arguments to the original `drm` call: `K`, `A`, `tree`,
+`coords`, `algorithm`, `g_tol`, `profile_ci`, `phylo_coupled`, `sparse`,
+`impute`, and `missing`. Pass those again as keywords when the refit needs them.
 
 # Example
 ```julia
 full    = drm(bf(@formula(y ~ 1 + x), @formula(sigma ~ 1 + x)), Gaussian(); data)
-# Drop x everywhere, keeping the same Gaussian family:
+# Drop x everywhere, keeping the same Gaussian family and the seed estimator:
 reduced = update(full, bf(@formula(y ~ 1), @formula(sigma ~ 1)); data = data)
 length(coef(reduced)) < length(coef(full))   # fewer parameters
 ```
 """
-update(fit::DrmFit, formula; data, kwargs...) =
-    drm(formula, fit.family; data = data, kwargs...)
+function update(fit::DrmFit, formula, args...; data, kwargs...)
+    isempty(args) || throw(ArgumentError(
+        "update requires named arguments. Pass values as `data = ...`, " *
+        "`method = ...`, or another named argument; an unnamed extra is dropped " *
+        "by a keyword-only refit and would silently refit without it " *
+        "(got $(length(args)) unnamed)."))
+    if haskey(kwargs, :family)
+        throw(ArgumentError(
+            "update keeps the fitted family. `family` is not a refit keyword; " *
+            "call `drm(formula, family; data = ...)` to fit a different family " *
+            "(got family = $(repr(kwargs[:family])))."))
+    end
+    stored = _update_stored_options(fit)
+    # A caller who changes the estimator does not want the old MAP penalty.
+    # Passing `penalty` explicitly still overrides that drop.
+    caller_method = get(kwargs, :method, nothing)
+    if caller_method !== nothing && caller_method != fit.estim_method &&
+            haskey(stored, :penalty) && !haskey(kwargs, :penalty)
+        stored = Base.structdiff(stored, NamedTuple{(:penalty,)})
+    end
+    merged = merge(stored, NamedTuple(kwargs))
+    return drm(formula, fit.family; data = data, merged...)
+end
+
+# Estimation options `DrmFit` actually stores. `:ML` and `:LA` are `drm`
+# defaults, so repeating them would be a no-op; a `:MAP` fit is repeated by
+# its stored penalty, not by `method = :MAP` (the fitter rejects that symbol).
+function _update_stored_options(fit::DrmFit)
+    kw = Pair{Symbol,Any}[]
+    if fit.estim_method === :REML
+        push!(kw, :method => :REML)
+    elseif fit.estim_method === :MAP
+        fit.penalty === nothing && throw(ArgumentError(
+            "update: this fit is marked :MAP but does not store a penalty " *
+            "specification, so the refit cannot repeat the penalized estimator."))
+    elseif fit.estim_method !== :ML
+        throw(ArgumentError(
+            "update: unsupported estim_method :$(fit.estim_method)"))
+    end
+    fit.penalty === nothing || push!(kw, :penalty => fit.penalty)
+    fit.marginal === :LA || push!(kw, :marginal => fit.marginal)
+    return NamedTuple(kw)
+end

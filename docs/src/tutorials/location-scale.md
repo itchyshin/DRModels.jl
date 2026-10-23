@@ -53,10 +53,11 @@ fit0 = drm(bf(@formula(y ~ 1), @formula(sigma ~ 1)), Gaussian(); data = dat)
 loglik(fit) - loglik(fit0)    # gain from letting σ depend on group
 ```
 
-A large positive gain says the variance structure is real signal. Quantify the
-σ effects with [`confint`](../model-guides/model-workflow.md) (Wald or profile),
-or turn the comparison into a formal test with `lrtest` / `aicc` — see
-[Prediction, residuals & model comparison](../diagnostics-and-validation/prediction-and-postfit.md).
+The gain measures how much better the more flexible model fits these data; it
+does not by itself establish a biological mechanism. Compare the models with
+`lrtest` or `aicc`, then interpret the estimated change in spread and its
+uncertainty with [`confint`](../model-guides/model-workflow.md) (Wald or
+profile). See [Prediction, residuals & model comparison](../diagnostics-and-validation/prediction-and-postfit.md).
 
 ## Random dispersion: a scale that varies by group
 
@@ -65,7 +66,11 @@ studies), put a **random intercept on `σ`** rather than a fixed level per group
 Because the random effect enters σ nonlinearly there is no closed-form marginal,
 so DRModels.jl integrates each group's effect out with per-group **Gauss–Hermite
 quadrature**. drmTMB uses Laplace: both target the same marginal model, but
-their numerical approximations need not be identical.
+their numerical approximations need not be identical. The default
+(`marginal = :LA`) is non-adaptive 32-node quadrature: close to exact for small
+groups, but it loses accuracy for groups of hundreds of rows, where Laplace does
+well. Pass `marginal = :Laplace` for large groups or to match drmTMB; the
+[capability page](../capabilities.md) gives the measured differences.
 
 ```@example ls
 Random.seed!(13)
@@ -80,7 +85,8 @@ re_sd(fitre)[:grp_logsigma]  # recovered log-σ group-effect SD (≈ 0.5)
 ```
 
 `re_sd` returns the scale-RE SD; `coef(fitre, :sigma)` is the population
-(group-average) `log σ`.
+(group-average) `log σ`, that is E[log σ], not log E[σ]. With a normal
+random effect of SD τ on log σ, the two differ by τ²/2.
 
 ## See also
 

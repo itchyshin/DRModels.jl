@@ -116,7 +116,7 @@ fit = drm(
 | `ranef(fit)` | `ranef(fit)` |
 | random-effect SDs | `re_sd(fit)` / `vc(fit)` |
 | `sigma(fit)` | `sigma(fit)` |
-| `rho12(fit)` | planned (parity gap) |
+| `rho12(fit)` | `rho12(fit)` |
 | `corpairs(fit)` | `corpairs(fit)` / `corpairs_data(fit)` |
 | `fitted(fit)` / `residuals(fit)` | `fitted(fit)` / `residuals(fit)` |
 | `predict(fit, newdata)` (response mean) | `predict(fit, newdata; type = :response)` |
@@ -124,8 +124,10 @@ fit = drm(
 | in-sample fitted per-observation parameters | `marginal_parameters(fit)` |
 | build a covariate grid for prediction | `prediction_grid(reference; predictor = values, …)` |
 | `simulate(fit)` | `simulate(fit)` |
-| `summary(fit)` | `show(fit)` / `coeftable(fit)` (no `summary` method) |
-| `weights(fit)` | planned (parity gap) |
+| `summary(fit)` | `summary(fit)` (prints the Wald coefficient table) |
+| `weights(fit)` | `weights(fit)`: the prior weights from `drm(...; weights = w)`, or `nothing` (fixed-effect ML routes only; other routes refuse `weights =`) |
+| `drm_control(maxit =, start =, multi_start =, se =)` | `control = DRMControl(maxit =, start =, multi_start =, se =)`; `maxit` / `start` / `multi_start` on fixed-effect routes, `se = false` on every route (`control_info(fit)` reports what it did) |
+| `obj$gr(opt$par)` / `sdreport()$cov.fixed` | `gradient(fit)` / `hessian(fit)` (negative log-likelihood, `coef(fit)` order and scale) |
 | `family(fit)` | `family(fit)` |
 | `is_converged(fit)` / convergence diagnostics | `is_converged(fit)` / `check_drm(fit)` |
 
@@ -177,6 +179,6 @@ point.
 - **ML is the default.** REML is an option (the likelihoods are not comparable
   across different fixed-effect structures, so ML is used for model selection).
 
-See also [Coming from R](coming-from-r.md) for the optional,
-optional `drmTMB(..., engine = "julia")` route via JuliaCall. It currently
-supports only the documented model types.
+For the optional R-to-Julia route, see [Coming from R](coming-from-r.md).
+It is limited to the documented admitted models; ordinary `drmTMB` use
+continues to use the default R engine.

@@ -1,0 +1,19 @@
+cell_id	kind	script_or_fixture	julia_med_s	tmb_med_s	speedup	abs_delta_ll	host	julia_sha	threads	status_note
+drm-bridge-student	student FE bridge n=180	bench/bridge_six_cell_timing.jl + #803 bank	0.002791	0.020	7.2	~0	Mac Studio w-kw3k3y6229	cf058168b	J=1 OB=1	H2H vs drmTMB 0.7.1 (end-arc bank)
+drm-bridge-biv-rho12	biv_gaussian rho12 bridge n=180	same #372	0.001319	0.020	15.2	~0	Mac Studio	cf058168b	J=1 OB=1	H2H vs drmTMB 0.7.1
+drm-bridge-gamma	gamma FE bridge n=180	plus5 #389/#803	0.000808	0.016	19.8	~0	Mac Studio	cf058168b	J=1 OB=1	H2H vs drmTMB 0.7.1
+drm-bridge-beta	beta FE bridge n=180	#372/#803	0.001356	NA	NA	NA	Mac Studio	cf058168b	J=1 OB=1	Julia tip abs; R arm FAIL argument a missing (fenced)
+drm-missing-gauss-n1000	Gaussian locscale missing-response n=1000	fixtures/missing_gauss_n1000.csv	0.001177	0.033	28.0	2.4e-4	Mac Studio	e9d50a110	J=1 OB=1	shared CSV H2H vs drmTMB 0.7.1
+drm-sigma-re-G40	Gaussian sigma~(1|g) G=40 m=8	fixtures/sigma_re_G40.csv	0.001696	0.113	66.6	0.065	Mac Studio	e9d50a110	J=1 OB=1	shared CSV walls; |dll|~0.065 disclosed (not bit-id)
+drm-tweedie-fe-n400	Tweedie FE n=400	fixtures/tweedie_fe_n400.csv	0.023955	0.061	2.55	~4e-5	Mac Studio	e9d50a110	J=1 OB=1	shared CSV H2H vs drmTMB 0.7.1
+drm-phylo-beta-p128	Beta phylo mu RE p=128 m=4	inline tip abs (fit_phylo_gamma_beta shape)	0.023632	NA	NA	NA	Mac Studio	e9d50a110	J=1 OB=1	tip abs only; no TMB pair this slice
+drm-phylo-poisson	phylo Poisson p=100 m=5	run_first_wave.jl / run_phylo_repair.jl	0.022278	NA	NA	NA	totoro	e9d50a110	J=1 BLAS=1	Julia abs Totoro; no TMB pair
+drm-phylo-nb2	phylo NB2 p=100 m=5	same	0.034751	NA	NA	NA	totoro	e9d50a110	J=1 BLAS=1	Julia abs Totoro
+drm-phylo-binomial	phylo binomial cbind p=128 m=4	same	0.023230	NA	NA	NA	totoro	e9d50a110	J=1 BLAS=1	Julia abs Totoro
+drm-phylo-gamma	phylo Gamma p=128 m=4	same	0.071680	NA	NA	NA	totoro	e9d50a110	J=1 BLAS=1	Julia abs; Julia-only fence OK
+drm-h2h-q4-vs-tmb-p1000	q4 phylo Julia abs p=1000	bench/head_to_head_q4_scaling.jl	20.814729	NA	NA	NA	totoro	e9d50a110	J=1 BLAS=1	TMB pair not run this receipt
+drm-crossed-binomial	crossed binomial small n=1000	bench/gen_crossed_family + fit	0.037384	NA	NA	NA	totoro	e9d50a110	J=1 BLAS=1	Julia abs Totoro
+drm-biv-gauss-rho12	bivariate residual rho12 n=2000	run_first_wave.jl	0.057182	NA	NA	NA	totoro	e9d50a110	J=1 BLAS=1	Julia abs Totoro
+drm-profile-ci-locscale	profile CI loc-scale n=600	run_first_wave.jl	0.015969	NA	NA	NA	totoro	e9d50a110	J=1 BLAS=1	Julia abs Totoro
+drm-animal-gauss	animal() Gaussian G=60	run_first_wave.jl	0.017705	NA	NA	NA	totoro	e9d50a110	J=1 BLAS=1	Julia abs Totoro
+drm-lss-sd-slope	sd(id)~sex LSS n=480	run_first_wave.jl	0.002877	NA	NA	NA	totoro	e9d50a110	J=1 BLAS=1	Julia abs Totoro

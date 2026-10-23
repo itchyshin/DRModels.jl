@@ -1,4 +1,4 @@
-cell_id	status	max_abs_coef_diff	loglik_diff	het_diff	tolerance	note
-biv_meta_indep	PARITY_PASS	7.775444865743e-07	4.98204144605552e-10	2.24512193164328e-06	1e-04	
-biv_meta_poscor	PARITY_PASS	2.55434175777669e-06	2.70196665042022e-09	2.68592301447268e-06	1e-04	
-biv_meta_negcor	PARITY_PASS	4.41632701159156e-07	1.41312739287969e-10	5.71339930921511e-08	1e-04	
+cell_id	status	max_abs_coef_diff	loglik_diff	het_diff	tolerance	note	drmtmb_code_hash
+biv_meta_indep	PARITY_PASS	7.775444865743e-07	4.98204144605552e-10	2.24512193164328e-06	1e-04		unknown (pre-#473)
+biv_meta_poscor	PARITY_PASS	2.55434175777669e-06	2.70196665042022e-09	2.68592301447268e-06	1e-04		unknown (pre-#473)
+biv_meta_negcor	PARITY_PASS	4.41632701159156e-07	1.41312739287969e-10	5.71339930921511e-08	1e-04		unknown (pre-#473)

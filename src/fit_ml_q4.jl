@@ -19,9 +19,10 @@ function Λ_to_lc(Λ)
 end
 
 # Marginal as a function of Λ (β fixed), fully-converged E-step.
+# Whitened prior (#857 site q4): Λ⁻¹ is never formed; the latent is v = (I⊗L⁻¹)u.
 function L_given_Λ(prob,Q_cond,β,Λ; nit=60)
-    P=prior_precision(Q_cond,inv(Λ)); u,ch,_=estep_mode(prob,P,β;n_newton=nit)
-    return laplace_ll(prob,P,β,u,ch)
+    W=whitened_prior(Q_cond,cholesky(Symmetric(Λ)).L); v,ch,_=estep_mode(prob,W,β;n_newton=nit)
+    return laplace_ll(prob,W,β,v,ch)
 end
 
 # Λ block: line-searched gradient ascent on the ML marginal (log-chol params).
@@ -49,8 +50,8 @@ function fit_ml(prob,Q_cond,β0,Λ0; max_em=100, tol=1e-5, n_lam=3, verbose=true
     for it in 1:max_em
         it_done=it; ll0=ll
         # β block: conditional Newton, accept if marginal improves
-        P=prior_precision(Q_cond,inv(Λ)); u,ch,_=estep_mode(prob,P,β;n_newton=60)
-        βn=mstep_beta(prob,u,β)
+        W=whitened_prior(Q_cond,cholesky(Symmetric(Λ)).L); v,ch,_=estep_mode(prob,W,β;n_newton=60)
+        βn=mstep_beta(prob,whitened_to_u(W,v),β)
         lln=L_given_Λ(prob,Q_cond,βn,Λ)
         if lln>=ll; β,ll=βn,lln; end
         # Λ block: a few line-searched ascent steps on the ML marginal

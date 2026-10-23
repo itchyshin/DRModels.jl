@@ -1,0 +1,12 @@
+# p=5000 reps_used=3 chosen_rep=1 fit_wall_s=82.4455 f_calls=26 chol_factorizations=289 chol_factorizations_per_eval=11.12 chol_reuse_fallbacks=0 converged=true loglik=-44265.6364 fd_vcov_wall_proj_s=204.0054
+# leaf-S3/S5 q4 fit profile (post-S5: fit wall + real CHOLMOD counters)
+# generated: 2026-09-23T13:05:24Z
+# git_sha: 12ee8a8c2
+# julia_version: 1.12.6
+# blas_config: LBTConfig([ILP64] libopenblas64_.so)
+# julia_threads: 4  blas_threads: 1
+# os: x86_64-linux-gnu  cpu: AMD EPYC 9655 96-Core Processor
+# peak_rss_kb (ps-sampled, not exact OS max): 881796
+# columns: p	rep	section	wall_s	count	bytes
+5000	1	fit_wall	82.445528	289	0
+5000	1	fd_vcov	204.005435	34	0

@@ -17,8 +17,17 @@ abstract type MarginalMethod end
 """    Laplace <: MarginalMethod
 
 Laplace marginal: Gaussian approximation at the posterior mode. The default.
-On Poisson `(1 | g)` the public `:LA` path is **non-adaptive GHQ-32**, not
-1-point Laplace and not AGHQ."""
+On an ordinary `(1 | g)` (Poisson, Binomial, NegBinomial2, Gamma, Beta) the
+public `:LA` path is **non-adaptive GHQ-32**, not 1-point Laplace and not AGHQ.
+
+Naming convention: `marginal = :LA` selects the *default integrator of the
+route*, which is Laplace on most random-effect routes but non-adaptive GHQ-32
+on the single random-intercept routes (an ordinary `(1 | g)`, Gaussian
+`sigma ~ 1 + (1 | g)`) and exact wherever the Gaussian marginal is closed-form.
+`marginal = :Laplace` *forces* the Laplace approximation that drmTMB (TMB)
+computes; it is implemented for an ordinary `(1 | g)` on Poisson, Binomial,
+NegBinomial2, Gamma and Beta (`ordinary_laplace.jl`) and for a Gaussian random
+intercept on `sigma`. The fit is tagged `marginal = :Laplace`."""
 struct Laplace <: MarginalMethod end
 
 """    Variational <: MarginalMethod
@@ -46,18 +55,32 @@ function _marginal_method(s::Symbol)
     t === :LA && return Laplace()
     t === :VA && return Variational()
     t === :AGHQ && return AGHQ()
-    throw(ArgumentError("unknown marginal method `:$s`; use :LA (Laplace, default), :VA (variational, #136), or :AGHQ (1-D Liu–Pierce, Poisson (1|g) only, #448)"))
+    t === :LAPLACE && throw(ArgumentError(
+        "marginal = :$s is not available on this route. `:Laplace` forces the Laplace " *
+        "approximation that drmTMB uses and is implemented for an ordinary random intercept " *
+        "`(1 | g)` on Poisson/Binomial/NegBinomial2/Gamma/Beta (routed by `drm` to the " *
+        "ordinary-Laplace front end, `_drm_ordinary_laplace`) and for a Gaussian random " *
+        "intercept on `sigma`, `sigma ~ 1 + (1 | g)`. Here use :LA (the default integrator " *
+        "for the route; on a single random intercept `(1 | g)` that is 32-node Gauss–Hermite " *
+        "quadrature, not Laplace), :VA (variational, #136), or :AGHQ (1-D Liu–Pierce, " *
+        "Poisson (1|g) only, #448)."))
+    throw(ArgumentError("unknown marginal method `:$s`; use :LA (the default integrator for the route: GHQ-32 on an ordinary `(1 | g)` and on Gaussian `sigma ~ 1 + (1 | g)`, Laplace on most other random-effect structures), :Laplace (TMB-convention Laplace, ordinary `(1 | g)` on Poisson/Binomial/NegBinomial2/Gamma/Beta, or a Gaussian random intercept on `sigma`), :VA (variational, #136), or :AGHQ (1-D Liu–Pierce, Poisson (1|g) only, #448)"))
 end
 
-# Route-or-reject for the public `marginal = :AGHQ` front end (#448). The only
-# certified cell this slice is Poisson `(1 | g)`. Every other family or
-# structure must error rather than silently falling back to GHQ-32 / Laplace
-# (that would mislabel `loglik` as AGHQ).
+# Route-or-reject for the public `marginal = :AGHQ` front end (#448, #761). The
+# certified cells are Poisson `(1 | g)` (1-D Liu–Pierce, #448) and crossed random
+# intercepts `(1 | g) + (1 | h)` on Binomial/Poisson/NegBinomial2/Gamma/Beta/
+# BetaBinomial when one grouping has at most `_CROSSED_AGHQ_HMAX` levels (nested
+# AGHQ, #761). Every other family or structure must error rather than silently
+# falling back to GHQ-32 / Laplace (that would mislabel `loglik` as AGHQ).
 function _aghq_reject(fam, what)
     throw(ArgumentError(
-        "marginal = :AGHQ (1-D Liu–Pierce, #448) is not available for $(nameof(typeof(fam)))() with $what. " *
-        "The public AGHQ path covers Poisson with a single random intercept `(1 | g)` only. " *
-        "Phylo, crossed, relmat, `(1 + x | g)`, associate_pairs QuadGK, and other families stay on " *
+        "marginal = :AGHQ is not available for $(nameof(typeof(fam)))() with $what. " *
+        "The public AGHQ path covers two cells: Poisson with a single random intercept " *
+        "`(1 | g)` (1-D Liu–Pierce, #448), and crossed random intercepts `(1 | g) + (1 | h)` " *
+        "on Binomial/Poisson/NegBinomial2/Gamma/Beta/BetaBinomial when one grouping has at " *
+        "most $(_CROSSED_AGHQ_HMAX) levels (nested adaptive Gauss–Hermite, #761). Phylo, " *
+        "relmat, `(1 + x | g)`, associate_pairs QuadGK, and other structures stay on " *
         "marginal = :LA (the default; on `(1 | g)` that is GHQ-32, not AGHQ)."))
 end
 
@@ -71,7 +94,7 @@ function _fit_va(args...; kwargs...)
           "NegBinomial2 (`_fit_nb2_ranef_va`), Gamma (`_fit_gamma_ranef_va`) and Beta " *
           "(`_fit_beta_ranef_va`) random-intercept cases so far; other families are not " *
           "yet wired — see https://github.com/itchyshin/DRModels.jl/issues/136. Use " *
-          "marginal = :LA (Laplace, the default).")
+          "marginal = :LA (the default integrator: GHQ-32 on an ordinary `(1 | g)`, Laplace on most other random-effect structures).")
 end
 
 # Route-or-reject for the public `marginal = :VA` front end (#136). Public VA
@@ -88,7 +111,7 @@ function _va_reject(fam, what)
         "marginal = :VA (variational ELBO, #136) is not available for $(nameof(typeof(fam)))() with $what. " *
         "The public VA path is Experimental and covers Poisson, Binomial, NegBinomial2, Gamma, and Beta " *
         "with a single random intercept `(1 | g)` (`sigma ~ 1` where the family has a scale). " *
-        "Use marginal = :LA (Laplace, the default) for this model."))
+        "Use marginal = :LA (the default integrator: GHQ-32 on an ordinary `(1 | g)`, Laplace on most other random-effect structures) for this model."))
 end
 
 # `method` is the ML/REML selector. LA/VA is `marginal` (Q1 / #136).
@@ -103,10 +126,13 @@ function _reject_method_as_marginal(fam, method; allow_reml::Bool = false)
     method === nothing && return nothing
     ms = Symbol(uppercase(String(method)))
     famname = nameof(typeof(fam))
-    if ms === :VA || ms === :LA || ms === :AGHQ
+    if ms === :VA || ms === :LA || ms === :LAPLACE || ms === :AGHQ
+        canon = ms === :LAPLACE ? :Laplace : ms          # the documented spelling, not the uppercased key
         throw(ArgumentError(
-            "drm ($famname): `method = :$ms` is not the Laplace/VA/AGHQ selector. " *
-            "Use `marginal = :$ms` (`:LA` default; `:VA` opt-in ELBO, #136; " *
+            "drm ($famname): `method = :$method` is not the Laplace/VA/AGHQ selector. " *
+            "Use `marginal = :$canon` (`:LA` default, GHQ-32 on an ordinary `(1 | g)`; " *
+            "`:Laplace` TMB-convention Laplace on an ordinary `(1 | g)`; " *
+            "`:VA` opt-in ELBO, #136; " *
             "`:AGHQ` 1-D Liu–Pierce on Poisson (1|g) only, #448). " *
             "`method` is reserved for `:ML`/`:REML`."))
     end
@@ -115,11 +141,13 @@ function _reject_method_as_marginal(fam, method; allow_reml::Bool = false)
         allow_reml && return :REML
         throw(ArgumentError(
             "drm ($famname): unknown `method = :$method`. $famname is ML-only; " *
-            "for Laplace vs variational vs AGHQ use `marginal = :LA`, `:VA` (#136), or `:AGHQ` (#448)."))
+            "for the integrator use `marginal = :LA` (default; GHQ-32 on an ordinary `(1 | g)`), `:Laplace` " *
+            "(TMB-convention Laplace, ordinary `(1 | g)`), `:VA` (#136), or `:AGHQ` (#448)."))
     end
     throw(ArgumentError(
         "drm ($famname): unknown `method = :$method`. $famname is ML-only; " *
-        "for Laplace vs variational vs AGHQ use `marginal = :LA`, `:VA` (#136), or `:AGHQ` (#448)."))
+        "for the integrator use `marginal = :LA` (default; GHQ-32 on an ordinary `(1 | g)`), `:Laplace` " *
+        "(TMB-convention Laplace, ordinary `(1 | g)`), `:VA` (#136), or `:AGHQ` (#448)."))
 end
 
 # `method = :REML` reached a route the restricted (Cox–Reid) objective is not certified
@@ -290,7 +318,7 @@ function _fit_poisson_ranef_va(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol)
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict{Symbol,Vector{Float64}}()
     # loglik field carries the ELBO (a lower bound); label downstream as :VA.
-    return _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll)
+    return _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll)
 end
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -423,7 +451,7 @@ function _fit_binomial_ranef_va(fam::Binomial, s, ntr, Xμ, gidx, G, nmμ, grp, 
     means = Dict(:mu => _logistic.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => s ./ ntr)   # population μ (b=0)
     scales = Dict(:trials => Float64.(nint))
     # loglik field carries the ELBO (a lower bound); label downstream as :VA.
-    return _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll)
+    return _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll)
 end
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -521,6 +549,27 @@ function _nb2_va_inner(η0idx, yidx, rsize::T, τ::T, z, lwπ; iters::Int = 30) 
     return m, exp(r)
 end
 
+# #999: the NB2 / Gamma / Beta VA kernels score each group under its FIRST
+# member's dispersion predictor, which is right only when the single `sigma`
+# column is constant (an intercept). `pσ == 1` alone admits `sigma ~ 0 + x`.
+_va_constant_column(X::AbstractMatrix) = size(X, 2) == 1 && all(==(X[1, 1]), view(X, :, 1))
+
+# #999 / #959: those kernels clamp η_σ to ±`b` INSIDE the objective, so beyond the
+# band the ELBO is flat in that coordinate and the optimiser can stop past it.
+# Report the scale the objective actually scored (clamped), and say when the
+# clamp was active, since the stored `coef(fit, :sigma)` is then not the value
+# the likelihood used.
+function _va_scored_sigma(Xσ, βσ, b::Float64, route::AbstractString)
+    η = Xσ * βσ
+    if any(e -> abs(e) > b, η)
+        @warn "$route: the `sigma` linear predictor ended at $(round(maximum(abs, η); sigdigits = 4)) " *
+              "in absolute value, past the ±$b clamp inside the variational objective. The " *
+              "objective is flat there, so `coef(fit, :sigma)` is not identified by the data; " *
+              "the reported scale is the clamped value that was scored (DRModels.jl #959)."
+    end
+    return exp.(clamp.(η, -b, b))
+end
+
 # Mean-field Gaussian VA fit for the NB2 random-intercept model. Same call shape as
 # `_fit_negbin2_ranef`; `loglik` carries the **ELBO** (a lower bound), not the exact
 # marginal log-likelihood. θ = [β_μ; β_σ (= log θ_size); log σ_b], matching the
@@ -531,7 +580,7 @@ function _fit_nb2_ranef_va(fam::NegBinomial2, y, Xμ, Xσ, gidx, G, nmμ, nmσ, 
     # the per-group dispersion is read from the FIRST member's predictor, which is
     # only correct when ησ is constant across a group (σ ~ 1). A non-intercept Xσ
     # would silently score every other member under the wrong dispersion (#325).
-    pσ == 1 || error("_fit_nb2_ranef_va supports only sigma ~ 1 " *
+    (pσ == 1 && _va_constant_column(Xσ)) || error("_fit_nb2_ranef_va supports only sigma ~ 1 " *
                      "(intercept-only dispersion); got pσ=$(pσ)")
     yint = round.(Int, y)
     members = [Int[] for _ in 1:G]
@@ -573,9 +622,9 @@ function _fit_nb2_ranef_va(fam::NegBinomial2, y, Xμ, Xσ, gidx, G, nmμ, nmσ, 
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :resd => (pμ+pσ+1):(pμ+pσ+1)]
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))   # population μ (b=0)
-    scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
+    scales = Dict(:sigma => _va_scored_sigma(Xσ, θ̂[(pμ+1):(pμ+pσ)], 20.0, "_fit_nb2_ranef_va"))   # #999
     # loglik field carries the ELBO (a lower bound); label downstream as :VA.
-    return _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll)
+    return _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll)
 end
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -681,7 +730,7 @@ function _fit_gamma_ranef_va(fam::Gamma, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, 
     n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     # Intercept-only-dispersion guard: the per-group shape is read from the first
     # member's predictor, valid only when ησ is constant across a group (#325).
-    pσ == 1 || error("_fit_gamma_ranef_va supports only sigma ~ 1 " *
+    (pσ == 1 && _va_constant_column(Xσ)) || error("_fit_gamma_ranef_va supports only sigma ~ 1 " *
                      "(intercept-only dispersion); got pσ=$(pσ)")
     ly = log.(y)                                       # b-/θ-free log responses
     members = [Int[] for _ in 1:G]
@@ -723,9 +772,9 @@ function _fit_gamma_ranef_va(fam::Gamma, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, 
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :resd => (pμ+pσ+1):(pμ+pσ+1)]
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))   # population μ (b=0)
-    scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
+    scales = Dict(:sigma => _va_scored_sigma(Xσ, θ̂[(pμ+1):(pμ+pσ)], 15.0, "_fit_gamma_ranef_va"))   # #999
     # loglik field carries the ELBO (a lower bound); label downstream as :VA.
-    return _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll)
+    return _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll)
 end
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -827,7 +876,7 @@ function _fit_beta_ranef_va(fam::Beta, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_
     n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     # Intercept-only-precision guard: the per-group precision is read from the first
     # member's predictor, valid only when ησ is constant across a group (#325).
-    pσ == 1 || error("_fit_beta_ranef_va supports only sigma ~ 1 " *
+    (pσ == 1 && _va_constant_column(Xσ)) || error("_fit_beta_ranef_va supports only sigma ~ 1 " *
                      "(intercept-only dispersion); got pσ=$(pσ)")
     ly = log.(y); l1my = log.(1 .- y)                  # b-/θ-free log responses
     members = [Int[] for _ in 1:G]
@@ -868,7 +917,7 @@ function _fit_beta_ranef_va(fam::Beta, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :resd => (pμ+pσ+1):(pμ+pσ+1)]
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
     means = Dict(:mu => _logistic.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))   # population μ (b=0)
-    scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
+    scales = Dict(:sigma => _va_scored_sigma(Xσ, θ̂[(pμ+1):(pμ+pσ)], 15.0, "_fit_beta_ranef_va"))   # #999
     # loglik field carries the ELBO (a lower bound); label downstream as :VA.
-    return _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll)
+    return _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll)
 end

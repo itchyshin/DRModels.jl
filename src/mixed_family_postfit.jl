@@ -60,8 +60,21 @@ end
 Akaike information criterion, `-2·loglik + 2·k`, where `k = _mf_nparams(fit)` is
 the number of free parameters. `fit_mixed_family` fits by ML, so this is
 directly comparable across mean/dispersion structures. Lower is better.
+Returns `NaN` (with a warning) for a non-converged fit or one on the 1e10
+objective sentinel (`loglik ≤ -1e9`).
 """
-mf_aic(fit) = -2 * fit.loglik + 2 * _mf_nparams(fit)
+function mf_aic(fit)
+    _mf_ic_ok(fit) || return NaN
+    return -2 * fit.loglik + 2 * _mf_nparams(fit)
+end
+
+# AIC/BIC guard: a non-converged fit, or one on the 1e10 objective sentinel
+# (loglik <= -1e9), has no meaningful likelihood — warn and let the caller return NaN.
+function _mf_ic_ok(fit)
+    ok = fit.converged && isfinite(fit.loglik) && fit.loglik > -1e9
+    ok || @warn "cross-family fit is non-converged or on the objective sentinel; information criterion is NaN"
+    return ok
+end
 
 """
     mf_bic(fit; nobs) -> Float64
@@ -73,6 +86,7 @@ better; comparable across structures (ML fit).
 """
 function mf_bic(fit; nobs::Integer)
     nobs > 0 || throw(ArgumentError("nobs must be positive"))
+    _mf_ic_ok(fit) || return NaN
     return -2 * fit.loglik + _mf_nparams(fit) * log(nobs)
 end
 

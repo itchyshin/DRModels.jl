@@ -46,6 +46,18 @@ DRModels.unpack_theta
 DRModels.pack_theta
 ```
 
+### Cholesky pattern-reuse internals (no stability guarantee)
+
+Opt-in `cholesky!` symbolic reuse on the q=4 phylo ML route (`chol_ref`
+kwarg; the default `nothing` keeps a fresh factorisation per call).
+
+```@docs
+DRModels.CholPatternCache
+DRModels.CholPatternMismatch
+DRModels._assert_chol_pattern_matches
+DRModels._add_diag
+```
+
 ### Newick and topology parser internals (no stability guarantee)
 
 ```@docs

@@ -28,6 +28,7 @@ from pathlib import Path
 ALIASES = {
     "nbinom2": "NegBinomial2",
     "truncated_nbinom2": "TruncatedNegBinomial2",
+    "truncated_poisson": "TruncatedPoisson",
     "biv_gaussian": "cbind",           # bivariate is cbind()/mvbind() in DRModels.jl
     "drmTMB": "drm",                   # the fitting verb
     "phylo_interaction": "fit_phylo_interaction",

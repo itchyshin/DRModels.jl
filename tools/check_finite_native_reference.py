@@ -4,7 +4,7 @@ import hashlib,json,math,sys
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 REF=ROOT/'docs/dev-log/evidence/julia-r-parity/finite-state/finite-native-003.json'
-REFERENCE_SHA256="d8f75d1d4652d5580cee935b3eeb22d003b7ccb33d7b58f149cef190a712e7cb"
+REFERENCE_SHA256="734560e416cf983d447aed529941bfba5b6395ab89a9a15689b27e43bf949c7b"
 def sha(p):return hashlib.sha256(p.read_bytes()).hexdigest()
 def require(ok,message):
     if not ok:raise ValueError(message)

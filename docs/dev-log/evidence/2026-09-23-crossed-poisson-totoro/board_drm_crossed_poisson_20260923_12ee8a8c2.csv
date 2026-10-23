@@ -1,0 +1,7 @@
+package,cell_id,fixture_id,n,G,H,kind,wall_med_s,wall_mean_s,logLik,converged,sha,host,julia,julia_threads,blas_threads,script,status
+DRModels,drm-crossed-poisson/single_control,single_control,1500,50,0,single,0.014540,0.014506,-2266.33453,TRUE,12ee8a8c2,totoro,1.12.6,1,1,bench/fit_crossed_poisson.jl,has_receipt
+DRModels,drm-crossed-poisson/crossed_small,crossed_small,1000,20,20,crossed,0.003369,0.003440,-1382.96925,TRUE,12ee8a8c2,totoro,1.12.6,1,1,bench/fit_crossed_poisson.jl,has_receipt
+DRModels,drm-crossed-poisson/crossed_medium,crossed_medium,5000,50,50,crossed,0.030849,0.105657,-7349.51164,TRUE,12ee8a8c2,totoro,1.12.6,1,1,bench/fit_crossed_poisson.jl,has_receipt
+DRModels,drm-crossed-poisson,crossed_large,20000,100,100,crossed,0.188416,0.189210,-29249.3722,TRUE,12ee8a8c2,totoro,1.12.6,1,1,bench/fit_crossed_poisson.jl,has_receipt
+DRModels,drm-crossed-poisson/fixedq_n1000,fixedq_n1000,1000,50,50,crossed,0.012609,0.013001,-1623.84431,TRUE,12ee8a8c2,totoro,1.12.6,1,1,bench/fit_crossed_poisson.jl,has_receipt
+DRModels,drm-crossed-poisson,fixedq_n20000,20000,50,50,crossed,0.174250,0.275173,-28860.0537,TRUE,12ee8a8c2,totoro,1.12.6,1,1,bench/fit_crossed_poisson.jl,has_receipt

@@ -58,6 +58,9 @@ function _block_title(p::Symbol)
     p === :coi     && return "Conditional-one inflation (logit)"
     p === :cutpoints && return "Cutpoints"
     p === :range   && return "Spatial range (log)"
+    p === :temporal_phi   && return "Temporal AR1 persistence (atanh φ)"
+    p === :temporal_decay && return "Temporal OU decay (log λ)"
+    p === :temporal_pac   && return "Temporal Toeplitz partial autocorrelations (atanh)"
     p === :resd    && return "Random-effect SD (log σ_b)"
     p === :sd      && return "RE SD model sd(group) (log σ_b)"
     p === :sd_phylo && return "Phylo SD model sd_phylo(group) (log σ_a)"
@@ -84,6 +87,9 @@ function _block_null_note(p::Symbol)
     p in (:resd, :resid)            && return ("H0: coefficient = 0 on log σ_b",
                                                 "NOT the σ_b = 0 boundary")
     p in (:recov, :phylocov)        && return ("H0: Cholesky entry = 0 (no single interpretable null)",)
+    p === :temporal_phi             && return ("H0: φ = 0 (atanh scale)",)
+    p === :temporal_decay           && return ("H0: log λ = 0 ⇔ λ = 1 (depends on the time unit)",)
+    p === :temporal_pac             && return ("H0: partial autocorrelation = 0 (atanh scale)",)
     return ()
 end
 
@@ -127,31 +133,52 @@ Whether this fit may be trusted: the optimiser reported convergence **and** the
 optimum is not degenerate. A `false` here means the reported estimates / standard
 errors should not be trusted.
 
-This is deliberately STRICTER than the raw `fit.converged` flag. The Gaussian
-log-likelihood is unbounded as the residual scale goes to zero: with one row per
-group a structured random effect can interpolate the data, so `sigma` collapses and
-the objective runs away to `+Inf`. `Optim.converged` only asks whether the gradient
-test was met, and at such a point it returns `true`.
+This agrees with `fit.converged` on a non-finite log-likelihood, a failed-fit
+sentinel (`≤ -1e15`, including `-1e18` and `-floatmax`), and any non-finite
+coefficient: the `DrmFit` constructor clears `converged` in those cases
+(`_report_converged`), so neither flag is true.
 
-Measured 2026-08-24 on a one-row-per-species phylo fit (#461):
+It is still STRICTER than `fit.converged` for a Gaussian residual scale that
+has collapsed. The Gaussian log-likelihood is unbounded as the residual scale
+goes to zero: with one row per group a structured random effect can interpolate
+the data, so `sigma` collapses and the objective runs away to `+Inf`.
+`Optim.converged` only asks whether the gradient test was met, and at such a
+point it returns `true`.
+
+For example, a one-row-per-species phylogenetic fit produced
 `sd_phylo = 22980`, `sigma = 7.5e-15`, `loglik = 6.8e13`, `converged = true` — and
-25% of parametric-bootstrap replicates landed on such a point. Downstream that is
-WORSE than an outright failure, because every consumer treats the fit as usable and
-a percentile interval silently inherits the nonsense.
+25% of parametric-bootstrap replicates in that example reached such a point.
+Including these invalid fits among successful refits can distort a percentile
+interval.
 
-Checked here, at the single public accessor, rather than at the ~30 `DrmFit`
-construction sites across 20 family files — one place that every consumer already
-goes through. `fit.converged` still exposes the raw optimiser flag for anyone who
-wants it.
+Use this accessor to check both convergence and degeneracy.
 """
 is_converged(fit::DrmFit) = fit.converged && _nondegenerate_fit(fit)
 
 # The degeneracy test behind `is_converged`. GAUSSIAN ONLY: for NB2/Beta/Gamma the
 # `:sigma` slot holds a dispersion or shape, where a genuinely small value is
 # legitimate, so applying a residual-scale test there would reject good fits.
+#
+# Sentinel bar. A failed objective evaluation is reported as a 1e18 sentinel nll,
+# so a fit stuck on that plateau has loglik = -1e18: FINITE, and (a zero-gradient
+# plateau) even "converged" per Optim. `_laplace_outer_converged` rejects
+# nll >= 1e17 on the nll scale; loglik <= -1e15 is the same bar taken a couple of
+# decades more conservatively on the loglik scale, so no genuine fit is caught
+# (a real loglik of -1e15 would need ~1e14 observations at O(10) nats each).
+_sentinel_loglik(fit::DrmFit) = _loglik_is_sentinel(fit.loglik)
+
 function _nondegenerate_fit(fit::DrmFit)
-    isfinite(fit.loglik) || return false
+    _sentinel_loglik(fit) && return false
+    # Same coefficient rule as `_report_converged`, so `is_converged` and
+    # `fit.converged` agree when a coefficient is non-finite.
+    _coefficients_finite(fit.theta) || return false
     fit.family isa Gaussian || return true
+    # A temporal Gaussian puts the response variance in the AR/OU term. A
+    # residual SD near 0 is that split (`sigma_ratio` in `_temporal_boundary`),
+    # which the optimiser can report as converged. It is not the saturated-mean
+    # collapse this bar rejects (#461). Treating it as degeneracy drops every
+    # bootstrap replicate of a boundary temporal fit.
+    _is_temporal_fit(fit) && return true
     haskey(fit.scales, :sigma) || return true
     s = fit.scales[:sigma]
     smax = maximum(abs, s)
@@ -182,9 +209,14 @@ end
     deviance(fit::DrmFit) -> Float64
 
 Deviance of the fitted model, `-2 · loglik(fit)` — drmTMB's `deviance()`.
+`NaN` (with a warning) on a fit stranded on the failed-objective sentinel.
 Extends `StatsAPI.deviance`.
 """
-deviance(fit::DrmFit) = -2 * loglik(fit)
+function deviance(fit::DrmFit)
+    # A fit stranded on the failed-objective sentinel has no deviance (#1093).
+    _sentinel_infocrit_nan(fit, "deviance") && return NaN
+    return -2 * loglik(fit)
+end
 
 """
     dof_residual(fit::DrmFit) -> Int
@@ -195,12 +227,17 @@ Extends `StatsAPI.dof_residual`.
 dof_residual(fit::DrmFit) = nobs(fit) - dof(fit)
 
 function Base.show(io::IO, ::MIME"text/plain", fit::DrmFit)
-    se = stderror(fit)
+    se = _display_se(fit)
     fam = _family_name(fit.family)
     println(io, "Distributional regression fit (", fam, ")")
     println(io, "  nobs = ", fit.nobs,
                 "   logLik = ", @sprintf("%.4f", fit.loglik),
-                "   converged = ", fit.converged)
+                "   converged = ", is_converged(fit))
+    # #949: show the trusted accessor; say so when the raw optimiser flag disagrees.
+    (fit.converged && !is_converged(fit)) && println(io, "  (the optimiser stopped normally, " *
+        "but the fit is degenerate -- see `is_converged`)")
+    _wald_withheld(fit) && println(io, "  Wald SEs withheld (homogeneous Toeplitz, as drmTMB): `sigma` is the " *
+        "TOTAL within-series SD; use profile intervals for mean coefficients.")
 
     # Residual SD on the RESPONSE scale + residual dof (issue #752). An R user
     # looks for these first: lm() prints both and drmTMB prints sigma. The value
@@ -284,20 +321,27 @@ are on each block's working scale (μ on the response scale; σ on log σ; ρ12 
 atanh ρ12; random-effect SDs on log σ_b). Row names are prefixed with the block
 (e.g. `"mu: (Intercept)"`) so they stay unique across blocks.
 
-The `z` and `Pr(>|z|)` columns carry an interpretable Wald test **only** for
-blocks whose working-scale-zero null is a meaningful hypothesis: the location
-blocks `:mu`/`:mu1`/`:mu2` (coefficient = 0) and `:rho12` (atanh ρ12 = 0 ⇔ no
-correlation). For `:sigma`/`:sigma1`/`:sigma2`/`:resd`/`:resid`/`:recov`/
-`:phylocov` the zero-on-working-scale null is not the scientific one — e.g.
-`log σ = 0` means `σ = 1`, not the `σ = 0` variance boundary — so those rows show
-`z` and `Pr(>|z|)` as `NaN` rather than a misleading test of an arbitrary scale
-reference. To test a variance component against 0 use a
-boundary-corrected likelihood-ratio test (`lrt_boundary`); the estimate and SE for
-those blocks are still reported. A boundary / singular direction (Inf SE) also
-reports `NaN` z / p rather than a spurious `z = 0, p = 1`.
+The `z` and `Pr(>|z|)` columns are the Wald `z = Estimate / Std.Error` and its
+two-sided normal p-value for **every** row with a finite standard error, and the
+null is always "coefficient = 0 **on the working scale** of that block":
+
+| block | null tested by the z and p columns |
+|:------|:--------------------------------|
+| `:mu`, `:mu1`, `:mu2` | coefficient = 0 |
+| `:rho12` | atanh ρ12 = 0, i.e. ρ12 = 0 |
+| `:sigma`, `:sigma1`, `:sigma2` | coefficient = 0 on log σ: an intercept tests σ = 1 (unit-dependent), a slope tests equal dispersion |
+| `:resd`, `:resid` | `log σ_b = 0`, i.e. `σ_b = 1` — **not** the `σ_b = 0` variance boundary |
+| `:recov`, `:phylocov` | Cholesky entry = 0 (no single interpretable null) |
+
+The table object carries no statement of these nulls (`show(fit)` prints them
+under each block heading). To test a variance component against 0 use a
+boundary-corrected likelihood-ratio test (`lrt_boundary`), not the `:resd`
+row. A boundary / singular direction (non-finite SE) reports `NaN` z / p rather
+than a spurious `z = 0, p = 1`.
 """
 function coeftable(fit::DrmFit; level::Real = 0.95)
-    se = stderror(fit)
+    level = _validate_ci_level(level; what="coeftable")
+    se = _display_se(fit)
     z = quantile(Normal(), 1 - (1 - level) / 2)
     est = Float64[]; ses = Float64[]; zs = Float64[]; ps = Float64[]
     lo = Float64[]; hi = Float64[]; rownms = String[]

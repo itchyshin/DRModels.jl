@@ -87,7 +87,6 @@ function _finite_prediction_rewrap(fit; covariance = DRModels.vcov(fit),
 end
 
 @testset "finite-state direct newdata prediction contract" begin
-    BLAS.set_num_threads(1)
     @test BLAS.get_num_threads() == 1
 
     ctl = DRModels.miss_control(response = "include", predictor = "model")

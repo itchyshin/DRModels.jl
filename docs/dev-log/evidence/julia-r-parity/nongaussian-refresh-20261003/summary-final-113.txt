@@ -1,0 +1,14 @@
+ONLY=all TREE=/home/snakagaw/claude-606b/after13 JULIA=julia version 1.13.1 2026-10-03T18:23:16Z
+GATE test_test_joint_missing_bridge exit=0 :: Test Summary:             | Pass  Total   Time test_joint_missing_bridge |   43     43  29.3s 
+GATE test_test_joint_missing_finite_bridge exit=0 :: Test Summary:                    | Pass  Total   Time test_joint_missing_finite_bridge |   38     38  29.0s 
+GATE test_test_joint_missing_finite_factor_coding exit=0 :: Test Summary:                           | Pass  Total   Time test_joint_missing_finite_factor_coding |  109    109  37.8s 
+GATE test_test_joint_missing_finite_frontend exit=0 :: Test Summary:                      | Pass  Total   Time test_joint_missing_finite_frontend |   86     86  42.4s 
+GATE test_test_joint_missing_finite exit=0 :: Test Summary:             | Pass  Total   Time test_joint_missing_finite |   85     85  24.0s 
+GATE test_test_joint_missing_finite_prediction exit=0 :: Test Summary:                        | Pass  Total   Time test_joint_missing_finite_prediction |   51     51  42.2s 
+GATE test_test_joint_missing_frontend exit=0 :: Test Summary:               | Pass  Total   Time test_joint_missing_frontend |   56     56  32.6s 
+GATE test_test_joint_missing_predictor exit=0 :: Test Summary:                | Pass  Total   Time test_joint_missing_predictor |   63     63  15.9s 
+GATE test_test_joint_missing_two_bridge exit=0 :: Test Summary:                 | Pass  Total   Time test_joint_missing_two_bridge |   45     45  30.1s 
+GATE test_test_joint_missing_two_frontend exit=0 :: Test Summary:                   | Pass  Total   Time test_joint_missing_two_frontend |   61     61  24.6s 
+GATE test_test_joint_missing_two_predictor exit=0 :: Test Summary:                    | Pass  Total   Time test_joint_missing_two_predictor |   84     84  21.2s 
+GATE test_test_joint_missing_uncertainty exit=0 :: Test Summary:                  | Pass  Total  Time test_joint_missing_uncertainty |   20     20  5.3s 
+DONE 2026-10-03T18:28:57Z
