@@ -73,6 +73,20 @@ but three user-facing decisions are open (tracked in #209):
    recognise the same grouping on both axes and route it jointly.
 3. **Accessor / `summary` names** for the 2×2 group-level covariance.
 
+## Tree height (2026-10-17, #952 lane n5)
+
+The routes here build Q from the raw branch lengths and start from absolute log SDs
+(λ0 = [log 0.3, 0, log 0.3]). On ade4::carni70 (ultrametric, height 53.8), the
+coupled Gamma location-scale fit `(1 | p | phylo(species))` on both `mu` and
+`sigma` returns logLik = -1e18 at the start values, not converged, with no warning.
+On the same tree divided by its height it fits (-187.3208, at the cor = 1 boundary).
+Evidence: `docs/dev-log/evidence/952-sigma-phylo-tree-scale/survey/gamma_phylo_sigma/`.
+NB2 shares the start on raw Q but was not measured.
+
+The Gaussian sigma-phylo route (`_fit_gaussian_locscale_phylo`, a separate engine)
+had the same failure. It now fits on the unit-height tree and reports on the raw
+scale (#952). The same rescaling is the proposed fix for `_fit_locscale`.
+
 ## Known limitations
 
 - One grouping factor per fit (the augmented state is single-grouping). Crossed
