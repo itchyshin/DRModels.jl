@@ -35,7 +35,9 @@ _fit_beta_1093(d; kw...) = drm(bf(@formula(y ~ 1 + x + (1 | g)), @formula(sigma 
         d = _sim_beta_1093(seed; nsq = 40)
         f = _fit_beta_1093(d; marginal = :Laplace)
         @test loglik(f) > -1e15
-        @test is_converged(f)
+        # Seed 5 sits on the RE-variance boundary, which FX3b reports as `:boundary`, so
+        # `is_converged` is false there; the pre-FX3b test is `_converged_nondegenerate`.
+        @test (seed == 5 ? DRModels._converged_nondegenerate(f) : is_converged(f))
         @test isfinite(aic(f)) && isfinite(deviance(f))
         # same model on the GHQ default route: the optima agree to Laplace-vs-GHQ error
         gh = _fit_beta_1093(d)
