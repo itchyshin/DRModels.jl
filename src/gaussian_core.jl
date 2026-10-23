@@ -722,7 +722,13 @@ An `mi(x)` joint formula models its missing predictors rather than dropping
 them.
 """
 @drm_entry function drm(f::DrmFormula, fam::Gaussian; kwargs...)
-    haskey(kwargs, :V) && throw(ArgumentError("drm: a dense known sampling covariance `V = V` is bivariate-only (#974). For a bivariate fit use `meta_vcov_bivariate` with the wide mu1/mu2 form; for known diagonal sampling variances on a univariate Gaussian use `meta_V(vi)` in the mean formula."))
+    # #974: a dense known sampling covariance is consumed by the BIVARIATE
+    # route only; on this route `V` used to end in a bare MethodError.
+    haskey(kwargs, :V) &&
+        throw(ArgumentError("drm: `V = …` (a dense known sampling covariance) is supported " *
+            "for the bivariate Gaussian route only, `bf(mu1 = …, mu2 = …, …)` with " *
+            "`meta_vcov_bivariate`. For a univariate model, known diagonal sampling variances " *
+            "go in the formula as `meta_V(v)`; a dense univariate `V` is not implemented yet."))
     # The residual-variance / structured-variance BOUNDARY advisory (#724, #697) is
     # attached here, once, rather than in each of the fitter's return paths.
     return _warn_variance_boundary(_drm_gaussian_fit(f, fam; kwargs...))
