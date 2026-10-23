@@ -20,7 +20,9 @@ Zero-one-inflated beta family for proportions on the closed interval `[0,1]`
 interior), `sigma` (log; precision `φ = 1/σ²`), `zoi` (logit; probability the
 value is a boundary 0/1), `coi` (logit; probability of 1 given a boundary).
 Mirrors `drmTMB`'s `zero_one_beta`. `fitted` returns the unconditional mean
-`(1-zoi)·μ + zoi·coi`.
+`(1-zoi)·μ + zoi·coi`. `predict` / `predict_parameters(..., type = :response)[:mu]`
+return the interior beta mean `logistic(Xβ̂)` (the same quantity drmTMB
+returns for the `mu` dpar), not the mixture mean.
 
 A random intercept on the mean, `(1 | g)`, is admitted the same way `Beta()`
 admits it: `b_g ~ N(0, σ_b²)` on the logit mean is integrated out per group by
@@ -146,7 +148,7 @@ function _fit_zeroonebeta(fam::ZeroOneBeta, y, Xμ, Xσ, Xz, Xc, nmμ, nmσ, nmz
     θ0[pμ+1] = -0.5 * log(10.0)               # σ (φ ≈ 10)
     θ0[i1+1] = log(fb / (1 - fb))             # logit zoi
     θ0[i2+1] = log(co0 / (1 - co0))           # logit coi
-    res = _ctl_optimize((x0, opts) -> Optim.optimize(nll, x0, Optim.LBFGS(), opts; autodiff = :forward),
+    res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
                        θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
     θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):i1, :zoi => (i1+1):i2, :coi => (i2+1):i3]

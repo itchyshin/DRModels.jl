@@ -55,11 +55,31 @@ fit_phy = drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ 1)),
 """
 struct LogNormal end
 
-@drm_entry function drm(f::DrmFormula, fam::LogNormal; data, tree = nothing, K = nothing, g_tol::Real = 1e-8)
+@drm_entry function drm(f::DrmFormula, fam::LogNormal; data, tree = nothing, K = nothing, g_tol::Real = 1e-8,
+             marginal::Symbol = :LA)
+    # #1126: same `marginal` keyword as the other families. log y is exactly Gaussian
+    # given the random intercept, so the Laplace approximation is exact: `:Laplace`
+    # is the same fit as the default `:LA` (the mode-centred 1-node rule), tagged.
+    laplace = _scalar_laplace_requested(marginal)
+    laplace || _marginal_method(marginal) isa Laplace ||
+        throw(ArgumentError("marginal = :$marginal is not available for LogNormal(): log y is " *
+            "Gaussian given the random effect, so the default `:LA` (exact Gauss–Hermite / " *
+            "Laplace) is used; `:Laplace` is accepted for an ordinary `(1 | g)` and gives the " *
+            "same fit. `:VA` and `:AGHQ` have no LogNormal route."))
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
-        drm(f, fam; data = data_observed, tree = tree, K = K, g_tol = g_tol)
+        drm(f, fam; data = data_observed, tree = tree, K = K, g_tol = g_tol, marginal = marginal)
     end
     missing_fit !== nothing && return missing_fit
+    if laplace
+        _, re_l, mv_l, st_l = _split_ranef(Dict(f.forms)[:mu])
+        (length(re_l) == 1 && mv_l === nothing && st_l === nothing &&
+         _re_kind(re_l[1][1])[1] === :intercept) ||
+            throw(ArgumentError("marginal = :Laplace is not available for LogNormal() with this " *
+                "model. It covers exactly one ordinary random intercept `(1 | g)` on the mean; " *
+                "omit `marginal` (the default `:LA`) for other models."))
+        fit = drm(f, fam; data = data, tree = tree, K = K, g_tol = g_tol, marginal = :LA)
+        return _withmarginal(fit, :Laplace)
+    end
 
     _lss_only_gaussian_guard(f, fam)   # #544: refuse, never silently drop, sd() parts
     rhs = Dict(f.forms)
@@ -99,6 +119,7 @@ struct LogNormal end
         if rk === :intercept           # (1 | g) → 1-D Gauss–Hermite
             return _withformula(_fit_lognormal_ranef(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol), f)
         elseif rk === :corr            # (1 + x | g) → correlated 2-D Gauss–Hermite
+            _require_finite_data_column(data, var)
             return _withformula(_fit_lognormal_corr_ranef(fam, y, Xμ, Xσ, Float64.(getproperty(data, var)), gidx, G, nmμ, nmσ, grp, g_tol), f)
         else
             error("LogNormal() supports `(1 | g)` or `(1 + x | g)` on the mean")
@@ -205,7 +226,7 @@ function _fit_lognormal(fam::LogNormal, y, Xμ, Xσ, nmμ, nmσ, g_tol)
     θ0 = zeros(pμ + pσ)
     θ0[1:pμ] .= βμ0
     θ0[pμ+1] = log(std(ly - Xμ * βμ0) + eps())
-    res = _ctl_optimize((x0, opts) -> Optim.optimize(nll, x0, Optim.LBFGS(), opts; autodiff = :forward),
+    res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
                        θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
     θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ)]

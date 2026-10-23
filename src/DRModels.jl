@@ -76,7 +76,9 @@ include("reml_q2.jl")  # #470: REML for the bivariate q=2 structured residual-co
 
 # Gaussian location–scale front end (public bf()/drm() API).
 include("control.jl")          # #942 #948 #994 #931: DRMControl, @drm_entry, prior weights (before every family `drm`)
+include("finite_inputs.jl")    # non-finite input check + converged backstop (#1009 #1012 #1019 #1021)
 include("gaussian_core.jl")
+include("ci_args.jl")            # shared level / B checks and bootstrap completion status
 include("meta_vcov_bivariate.jl")  # A8: known bivariate sampling covariance (drmTMB meta_vcov_bivariate)
 include("gaussian_bivariate.jl")
 include("gaussian_multi_re_sparse.jl")  # #977: sparse QR + selected inverse for (1|g)+(1|h)+…
@@ -113,6 +115,7 @@ include("associate_pairs.jl")    # drmTMB `associate_pairs()`: STAGED frozen-mar
 include("zeroonebeta.jl")
 include("tweedie.jl")
 include("cumulative.jl")
+include("cumulative_predict.jl")  # #1121: predict drops the location intercept, as the fitter does
 include("link_residual.jl")      # S3: per-family link-scale variance for cross-family ρ
 include("mixed_family.jl")       # S3: cross-family bivariate via shared-latent GHQ
 include("mixed_family_postfit.jl") # post-fit accessors for fit_mixed_family

@@ -140,11 +140,20 @@ end
 # nll >= 1e17 on the nll scale; loglik <= -1e15 is the same bar taken a couple of
 # decades more conservatively on the loglik scale, so no genuine fit is caught
 # (a real loglik of -1e15 would need ~1e14 observations at O(10) nats each).
-_sentinel_loglik(fit::DrmFit) = !isfinite(fit.loglik) || fit.loglik <= -1e15
+_sentinel_loglik(fit::DrmFit) = _loglik_is_sentinel(fit.loglik)
 
 function _nondegenerate_fit(fit::DrmFit)
     _sentinel_loglik(fit) && return false
+    # Same coefficient rule as `_report_converged`, so `is_converged` and
+    # `fit.converged` agree when a coefficient is non-finite.
+    _coefficients_finite(fit.theta) || return false
     fit.family isa Gaussian || return true
+    # A temporal Gaussian puts the response variance in the AR/OU term. A
+    # residual SD near 0 is that split (`sigma_ratio` in `_temporal_boundary`),
+    # which the optimiser can report as converged. It is not the saturated-mean
+    # collapse this bar rejects (#461). Treating it as degeneracy drops every
+    # bootstrap replicate of a boundary temporal fit.
+    _is_temporal_fit(fit) && return true
     haskey(fit.scales, :sigma) || return true
     s = fit.scales[:sigma]
     smax = maximum(abs, s)
@@ -175,9 +184,14 @@ end
     deviance(fit::DrmFit) -> Float64
 
 Deviance of the fitted model, `-2 · loglik(fit)` — drmTMB's `deviance()`.
+`NaN` (with a warning) on a fit stranded on the failed-objective sentinel.
 Extends `StatsAPI.deviance`.
 """
-deviance(fit::DrmFit) = -2 * loglik(fit)
+function deviance(fit::DrmFit)
+    # A fit stranded on the failed-objective sentinel has no deviance (#1093).
+    _sentinel_infocrit_nan(fit, "deviance") && return NaN
+    return -2 * loglik(fit)
+end
 
 """
     dof_residual(fit::DrmFit) -> Int
@@ -303,6 +317,7 @@ row. A boundary / singular direction (non-finite SE) reports `NaN` z / p rather
 than a spurious `z = 0, p = 1`.
 """
 function coeftable(fit::DrmFit; level::Real = 0.95)
+    level = _validate_ci_level(level; what="coeftable")
     se = _display_se(fit)
     z = quantile(Normal(), 1 - (1 - level) / 2)
     est = Float64[]; ses = Float64[]; zs = Float64[]; ps = Float64[]

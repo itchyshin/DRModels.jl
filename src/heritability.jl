@@ -395,6 +395,7 @@ marginal residual variance `E[σ²]`; see [`repeatability`](@ref).
 """
 function heritability(fit::DrmFit; component::Union{Symbol,Nothing} = nothing,
                       level::Real = 0.95, method::Symbol = :delta)
+    level = _validate_ci_level(level; what="heritability")
     return _signal_ratio(fit; component = component, level = level, method = method,
                          what = "heritability")
 end
@@ -422,6 +423,7 @@ marginal residual variance `E[σ²]`; see [`repeatability`](@ref).
 """
 function icc(fit::DrmFit; component::Union{Symbol,Nothing} = nothing,
              level::Real = 0.95, method::Symbol = :delta)
+    level = _validate_ci_level(level; what="icc")
     comps, resid_idx, omega = _variance_component_indices(fit)
     focal = _resolve_component(comps, component, "icc")
     denom = [focal, resid_idx]
@@ -500,7 +502,7 @@ repeatability(fit::DrmFit; component::Union{Symbol,Nothing} = nothing,
 # block :sd_phylo, ratio = phylogenetic h²(z)). logit R(z) = 2(η_sd − η_σ) is linear in
 # the coefficients, so the Wald SE on that scale is c'Vc with c = (2 x_sd, −2 x_σ).
 function _conditional_ratio(fit::DrmFit, newdata; kind::Symbol, level::Real, what::String)
-    0 < level < 1 || throw(ArgumentError("$what: `level` must be in (0, 1), got $level"))
+    level = _validate_ci_level(level; what=what)
     f = fit.formula
     f isa DrmFormula || error("$what: this fit did not retain its formula")
     numblk = kind === :iid ? :sd : :sd_phylo
@@ -519,7 +521,7 @@ function _conditional_ratio(fit::DrmFit, newdata; kind::Symbol, level::Real, wha
               "two-component ratio")
     nd = NamedTuple(pairs(newdata))
     nrows = length(first(values(nd)))
-    ndr = merge(nd, NamedTuple{(f.response,)}((zeros(nrows),)))
+    ndr = _predict_data(nd, f.response)
     _, Xsd, _ = _design(f.response, last(parts[1]), ndr)
     fixed_sigma, _, _, _ = _split_ranef(Dict(f.forms)[:sigma])
     _, Xσ, _ = _design(f.response, fixed_sigma, ndr; schema_cache = f.schema_cache, schema_key = :sigma)

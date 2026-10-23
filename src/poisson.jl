@@ -125,6 +125,7 @@ function _offset_vector(offset_term, data)
     v isa AbstractMatrix && size(v, 2) == 1 && (v = vec(v))
     v isa AbstractVector ||
         error("Poisson(): `offset(...)` must resolve to a single numeric column")
+    _require_finite_inputs(; offset=v)
     return Float64.(v)
 end
 
@@ -194,6 +195,7 @@ function _drm_poisson_fit(f::DrmFormula, fam::Poisson; data, tree = nothing, K =
             return _withformula(_fit_poisson_phylo_laplace(fam, y, Xμ, labels, tree, nmμ, grp, g_tol;
                                                           se = se, reml = reml), f)
         elseif kind === :spatial && K === nothing && coords !== nothing
+            _require_finite_inputs(; coords=coords)
             # Coordinate-based exponential-kernel spatial covariance with the range
             # ρ ESTIMATED JOINTLY (#270): C(ρ) = exp(-d/ρ) from the site distances,
             # ρ enters the outer parameter vector, and its gradient flows through
@@ -284,12 +286,12 @@ end
 function _poisson_structured_cov(kind::Symbol, grp::Symbol, K, A, coords)
     if kind === :relmat
         K === nothing && error("relmat(1 | $grp) needs `K = …` (the relatedness/covariance matrix)")
-        return Matrix{Float64}(K)
+        return _finite_user_matrix(K, "K")
     elseif kind === :animal
         A === nothing && error("animal(1 | $grp) needs the relatedness matrix `A = …`")
-        return Matrix{Float64}(A)
+        return _finite_user_matrix(A, "A")
     else  # :spatial
-        K !== nothing && return Matrix{Float64}(K)
+        K !== nothing && return _finite_user_matrix(K, "K")
         error("spatial(1 | $grp) for counts needs either a precomputed spatial covariance " *
               "via `K = …`, or site `coords = …` (a G×2 coordinate matrix) for coordinate-based " *
               "exponential-kernel covariance with the range estimated jointly")
@@ -467,7 +469,7 @@ function _fit_poisson_zi(fam::Poisson, y, Xμ, Xzi, nmμ, nmzi, g_tol)
     pos = y[y.>0]
     θ0 = zeros(pμ + pz)
     θ0[1] = log((isempty(pos) ? sum(y) / n : sum(pos) / length(pos)) + eps())   # λ from non-zeros
-    res = _ctl_optimize((x0, opts) -> Optim.optimize(nll, x0, Optim.LBFGS(), opts; autodiff = :forward),
+    res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
                        θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
     θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ, :zi => (pμ+1):(pμ+pz)]
@@ -506,7 +508,7 @@ function _fit_poisson_hu(fam::Poisson, y, Xμ, Xhu, nmμ, nmhu, g_tol)
     pos = y[y.>0]
     θ0 = zeros(pμ + ph)
     θ0[1] = log((isempty(pos) ? sum(y) / n : sum(pos) / length(pos)) + eps())   # λ from non-zeros
-    res = _ctl_optimize((x0, opts) -> Optim.optimize(nll, x0, Optim.LBFGS(), opts; autodiff = :forward),
+    res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
                        θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
     θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ, :hu => (pμ+1):(pμ+ph)]
@@ -532,7 +534,7 @@ function _fit_poisson(fam::Poisson, y, Xμ, nmμ, g_tol; offset::AbstractVector{
         return s
     end
     θ0 = zeros(pμ); θ0[1] = log(sum(y) / n + eps()) - (isempty(off) ? 0.0 : sum(off) / n)
-    res = _ctl_optimize((x0, opts) -> Optim.optimize(nll, x0, Optim.LBFGS(), opts; autodiff = :forward),
+    res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
                        θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
     θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ]; names = [:mu => nmμ]
@@ -690,6 +692,7 @@ supplies the exact outer gradient and the covariance Hessian. Recovered blocks:
 """
 function _fit_poisson_spatial_coord(fam::Poisson, y, Xμ, labels, coords, nmμ, grp,
                                     g_tol; se::Bool = true)
+    _require_finite_inputs(; coords=coords)
     n = length(y)
     pμ = size(Xμ, 2)
     gidx, G = _group_index(labels)

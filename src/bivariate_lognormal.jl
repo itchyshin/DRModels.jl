@@ -90,6 +90,7 @@ corpairs(fit)  # log-residual rho12
             "(got method = :$method). drmTMB's `biv_lognormal()` first slice has no " *
             "random effects to integrate out, and REML for the structured (phylo/" *
             "relmat/animal/spatial) cells is a later slice."))
+    data = _drop_missing_predictor_rows(f, data)   # #1089: R's na.omit, with a count
     cols = NamedTuple(pairs(data))
     y1 = Vector{Float64}(getproperty(cols, f.response1))
     y2 = Vector{Float64}(getproperty(cols, f.response2))

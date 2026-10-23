@@ -23,7 +23,7 @@ using Random: Xoshiro, randn
 
 """
     DRMControl(; maxit = nothing, start = nothing, multi_start = 1, se = true,
-                 seed = 1, jitter = 0.5)
+                 seed = 1, jitter = 0.5, optimizer = :default)
 
 Optimiser and inference settings for [`drm`](@ref), passed as one keyword:
 `drm(f, family; data, control = DRMControl(...))`. The field names follow
@@ -37,6 +37,7 @@ drmTMB's `drm_control()`.
 | `se` | `false` skips the standard errors. `vcov(fit)` is then all `NaN`. |
 | `seed` | Seed of the perturbations for `multi_start` (a DRModels.jl extension). |
 | `jitter` | Perturbation size for `multi_start`. Start `j > 1` is `x0 .+ jitter .* max.(abs.(x0), 1) .* z`, where `z` is standard normal (a DRModels.jl extension). |
+| `optimizer` | `:default` preserves the route's current method and restart policy. `:lbfgs` or `:bfgs` runs that Optim.jl method directly on qualified routes. |
 
 # Which routes honour which field
 
@@ -52,12 +53,23 @@ drmTMB's `drm_control()`.
   `ArgumentError` before fitting. A route that does not honour a field it was
   given never ignores it silently: it throws an `ArgumentError` that names the
   field.
+* `optimizer = :lbfgs` and `optimizer = :bfgs` work on the fixed-effect ML
+  routes above and Gaussian ML with one mean random intercept `(1 | g)`.
+  That random-intercept route uses its own conditional two-start restart;
+  `maxit`, `start`, `multi_start`, `seed` and `jitter` remain unavailable there. Other latent,
+  structured, bivariate and REML routes refuse an explicit optimizer. Gaussian
+  selection also requires `algorithm = :auto` and no alternate integration,
+  imputation or profiling options.
+  This control selects the primary fit only. Fit-based `profile_result`,
+  `confint(...; method = :profile)` and `bootstrap_*` refuse an explicitly
+  selected fit until their refits can forward the method. Wald intervals remain
+  available when standard errors were computed.
 
 The default `DRMControl()` changes nothing: a fit with it is identical to a fit
 without `control`.
 
-See [`control_info`](@ref) for what a controlled fit did (per-start
-log-likelihoods, the kept start, the `se` outcome).
+See [`control_info`](@ref) for the requested and actual method, attempted
+stages, native stopping settings, the kept start and the `se` outcome.
 
 # Example
 ```julia
@@ -76,7 +88,8 @@ struct DRMControl
     se::Bool
     seed::Int
     jitter::Float64
-    function DRMControl(maxit, start, multi_start, se, seed, jitter)
+    optimizer::Symbol
+    function DRMControl(maxit, start, multi_start, se, seed, jitter, optimizer)
         maxit === nothing || maxit >= 1 ||
             throw(ArgumentError("DRMControl: `maxit` must be a positive integer or `nothing`; got $maxit"))
         multi_start >= 1 ||
@@ -88,12 +101,19 @@ struct DRMControl
         end
         (isfinite(jitter) && jitter > 0) ||
             throw(ArgumentError("DRMControl: `jitter` must be a positive finite number; got $jitter"))
-        new(maxit, start, multi_start, se, seed, jitter)
+        optimizer in (:default, :lbfgs, :bfgs) ||
+            throw(ArgumentError("DRMControl: `optimizer` must be :default, :lbfgs or :bfgs; got $(repr(optimizer))"))
+        new(maxit, start, multi_start, se, seed, jitter, optimizer)
     end
 end
 
+# Preserve the six-argument constructor supplied by the original control API.
+DRMControl(maxit, start, multi_start, se, seed, jitter) =
+    DRMControl(maxit, start, multi_start, se, seed, jitter, :default)
+
 function DRMControl(; maxit = nothing, start = nothing, multi_start::Integer = 1,
-                    se::Bool = true, seed::Integer = 1, jitter::Real = 0.5)
+                    se::Bool = true, seed::Integer = 1, jitter::Real = 0.5,
+                    optimizer::Symbol = :default)
     maxit === nothing || maxit isa Integer ||
         throw(ArgumentError("DRMControl: `maxit` must be a positive integer or `nothing`; got $(repr(maxit))"))
     st = start === nothing ? nothing :
@@ -101,17 +121,18 @@ function DRMControl(; maxit = nothing, start = nothing, multi_start::Integer = 1
         throw(ArgumentError("DRMControl: `start` must be a real vector on the internal " *
                             "parameter scale, in `coef(fit)` order; got $(typeof(start))"))
     return DRMControl(maxit === nothing ? nothing : Int(maxit), st, Int(multi_start), se,
-                      Int(seed), Float64(jitter))
+                      Int(seed), Float64(jitter), optimizer)
 end
 
 function Base.show(io::IO, c::DRMControl)
     print(io, "DRMControl(maxit = ", repr(c.maxit), ", start = ",
           c.start === nothing ? "nothing" : "[$(length(c.start)) values]",
-          ", multi_start = ", c.multi_start, ", se = ", c.se, ")")
+          ", multi_start = ", c.multi_start, ", se = ", c.se,
+          ", optimizer = ", repr(c.optimizer), ")")
 end
 
 _ctl_optim_requested(c::DRMControl) =
-    c.maxit !== nothing || c.start !== nothing || c.multi_start > 1
+    c.maxit !== nothing || c.start !== nothing || c.multi_start > 1 || c.optimizer !== :default
 
 """
     DRMControlReport
@@ -120,7 +141,7 @@ What `drm(...; control, weights)` did, returned by [`control_info`](@ref).
 
 Fields:
 - `control::DRMControl`: the settings used.
-- `start_logliks::Vector{Float64}`: the final log-likelihood reached from each
+- `start_logliks::Vector{Float64}`: Optim.jl's reported log-likelihood from each
   start, in start order (`NaN` for a start that failed). Empty when the
   optimiser settings were not used.
 - `kept_start::Int`: index of the start that was kept (`0` when not used).
@@ -130,6 +151,17 @@ Fields:
   `:discarded` (the route computed it, and the wrapper dropped it because
   `se = false`).
 - `weights`: the prior weights, or `nothing`.
+- `requested_optimizer` / `actual_optimizer`: the request and the method run
+  on the selected stage (`:unrecorded` when this route does not expose its
+  optimizer to this report).
+- `optimizer_runs`: immutable per-attempt records in execution order with
+  method, stage, start, native iterations/convergence/objective/gradient
+  residual, stopping settings and finite/error status. The objective and
+  gradient residual on fixed-effect routes are Optim.jl's reported values;
+  Gaussian random-intercept entries recompute both at the returned minimizer.
+- `selected_optimizer_stage`: the stage that supplied the returned fit.
+- `native_controls`: a per-fit snapshot of `maxit`, `start`, `multi_start`,
+  `seed`, `jitter` and `se`.
 """
 struct DRMControlReport
     control::DRMControl
@@ -138,6 +170,29 @@ struct DRMControlReport
     starts_agree::Bool
     se::Symbol
     weights::Union{Nothing,Vector{Float64}}
+    requested_optimizer::Symbol
+    actual_optimizer::Symbol
+    optimizer_runs::Tuple
+    selected_optimizer_stage::Symbol
+    native_controls::NamedTuple
+end
+
+_ctl_control_snapshot(c::DRMControl) =
+    DRMControl(; maxit = c.maxit, start = c.start === nothing ? nothing : copy(c.start),
+               multi_start = c.multi_start, se = c.se, seed = c.seed,
+               jitter = c.jitter, optimizer = c.optimizer)
+
+_ctl_native_controls(c::DRMControl) =
+    (maxit = c.maxit, start = c.start === nothing ? nothing : Tuple(c.start),
+     multi_start = c.multi_start, seed = c.seed, jitter = c.jitter, se = c.se)
+
+# Retain the report constructor exported by the original six-field control API.
+# It has no solver trace, so the actual method must remain unrecorded.
+function DRMControlReport(c::DRMControl, lls::Vector{Float64}, kept::Int,
+                          agree::Bool, se::Symbol, weights::Union{Nothing,Vector{Float64}})
+    return DRMControlReport(_ctl_control_snapshot(c), copy(lls), kept, agree, se,
+                            weights === nothing ? nothing : copy(weights),
+                            c.optimizer, :unrecorded, (), :none, _ctl_native_controls(c))
 end
 
 # ---------------------------------------------------------------------------
@@ -153,6 +208,8 @@ mutable struct _ControlScope
     used_weights::Bool
     start_nll::Vector{Float64}
     kept::Int
+    optimizer_runs::Vector{NamedTuple}
+    selected_optimizer_stage::Symbol
 end
 
 const _CTL_KEY = :DRModels_drm_control_scope
@@ -189,16 +246,45 @@ function _ctl_has_latent_terms(f)
     return false
 end
 
+# The only latent route qualified for explicit solver choice is Gaussian ML
+# with one mean random intercept. Its own two-start safeguard stays in charge.
+function _ctl_simple_gaussian_re(f, fam)
+    f isa DrmFormula && fam isa Gaussian || return false
+    try
+        isempty(_sd_parts(f)) && isempty(_sdphylo_parts(f)) || return false
+        for (axis, rhs) in f.forms
+            _, re, mv, st = _split_ranef(rhs; allow_phylo_slope = true, allow_temporal = true)
+            (mv === nothing && st === nothing) || return false
+            if axis === :mu
+                length(re) == 1 && _re_kind(re[1][1])[1] === :intercept || return false
+            else
+                isempty(re) || return false
+            end
+        end
+        return true
+    catch
+        return false
+    end
+end
+
 function _ctl_preflight(scope::_ControlScope, f, fam)
     c = scope.control
     wants_optim = _ctl_optim_requested(c)
     wants_w = scope.weights !== nothing
     (wants_optim || wants_w) || return nothing
     _ctl_has_latent_terms(f) || return nothing
+    if c.optimizer !== :default && !wants_w && c.maxit === nothing &&
+       c.start === nothing && c.multi_start == 1 && c.seed == 1 && c.jitter == 0.5 &&
+       _ctl_simple_gaussian_re(f, fam)
+        return nothing
+    end
     what = String[]
     c.maxit !== nothing && push!(what, "maxit")
     c.start !== nothing && push!(what, "start")
     c.multi_start > 1 && push!(what, "multi_start")
+    c.seed != 1 && push!(what, "seed")
+    c.jitter != 0.5 && push!(what, "jitter")
+    c.optimizer !== :default && push!(what, "optimizer")
     wants_optim && (what = ["`control = DRMControl(" * join(what, ", ") * " = …)`"])
     wants_w && push!(what, "`weights`")
     kind = f isa DrmFormula ? "a model with random, structured, `meta_V` or `sd()` terms" :
@@ -223,7 +309,7 @@ function _drm_run_controlled(body::Function, f, fam, control, weights)
     control isa DRMControl ||
         throw(ArgumentError("drm: `control` must be a `DRMControl(...)`; got $(typeof(control))"))
     scope = _ControlScope(control, _check_prior_weights(weights), f,
-                          false, false, false, Float64[], 0)
+                          false, false, false, Float64[], 0, NamedTuple[], :none)
     _ctl_preflight(scope, f, fam)
     fit = task_local_storage(body, _CTL_KEY, scope)
     return _ctl_finish(fit, scope, fam)
@@ -234,7 +320,7 @@ function _ctl_finish(fit, scope::_ControlScope, fam)
     route = "$(typeof(fam)) route"
     if _ctl_optim_requested(c) && !scope.used_optim
         throw(ArgumentError("drm: this $route does not honour `control = DRMControl(maxit, " *
-            "start, multi_start)` yet (#948, #994); the fit was not returned. Drop those " *
+            "start, multi_start, optimizer)` yet (#948, #994); the fit was not returned. Drop those " *
             "fields or use a fixed-effect model."))
     end
     if scope.weights !== nothing && !scope.used_weights
@@ -267,7 +353,12 @@ function _ctl_finish(fit, scope::_ControlScope, fam)
                   "are $(lls)$(nfail > 0 ? "; $nfail start(s) failed" : ""). See `control_info(fit)`."
         end
     end
-    report = DRMControlReport(c, lls, scope.kept, agree, se, scope.weights)
+    selected_run = scope.kept > 0 ? scope.kept : length(scope.optimizer_runs)
+    actual = isempty(scope.optimizer_runs) ? :unrecorded : scope.optimizer_runs[selected_run].method
+    report = DRMControlReport(_ctl_control_snapshot(c), copy(lls), scope.kept, agree, se,
+                              scope.weights === nothing ? nothing : copy(scope.weights),
+                              c.optimizer, actual, Tuple(scope.optimizer_runs),
+                              scope.selected_optimizer_stage, _ctl_native_controls(c))
     return _withcontrolinfo(fit, V, report)
 end
 
@@ -284,17 +375,25 @@ _withcontrolinfo(fit, V, report) = DrmFit(fit.family, fit.blocks, fit.coefnames,
 """
     _ctl_optimize(run, θ0; g_tol) -> Optim result
 
-Run the outer optimiser of a fixed-effect route. `run(x0, options)` must call
+Run the outer optimiser of a fixed-effect route. `run(x0, options, method)` must call
 `Optim.optimize` from `x0` with `options`. Without an active `maxit` / `start` /
-`multi_start`, this is exactly `run(θ0, Optim.Options(g_tol = g_tol))`.
+`multi_start` or explicit selector, this uses the route's original LBFGS
+method and `Optim.Options(g_tol = g_tol)`.
 """
 function _ctl_optimize(run::Function, θ0::AbstractVector; g_tol::Real)
     s = _active_control_scope()
     if s === nothing || !_ctl_optim_requested(s.control)
-        return run(θ0, Optim.Options(g_tol = g_tol))
+        res = run(θ0, Optim.Options(g_tol = g_tol), Optim.LBFGS())
+        if s !== nothing
+            push!(s.optimizer_runs, _ctl_run_record(:lbfgs, :primary, 1, θ0, res, g_tol, nothing))
+            s.selected_optimizer_stage = :primary
+        end
+        return res
     end
     c = s.control
     s.used_optim = true
+    selected = c.optimizer === :bfgs ? Optim.BFGS() : Optim.LBFGS()
+    method = c.optimizer === :bfgs ? :bfgs : :lbfgs
     x0 = Vector{Float64}(θ0)
     if c.start !== nothing
         length(c.start) == length(x0) ||
@@ -311,12 +410,19 @@ function _ctl_optimize(run::Function, θ0::AbstractVector; g_tol::Real)
     for k in 1:c.multi_start
         xk = k == 1 ? x0 : x0 .+ c.jitter .* max.(abs.(x0), 1.0) .* randn(rng, length(x0))
         res = try
-            run(xk, opts)
+            run(xk, opts, selected)
         catch e
             (e isa InterruptException || c.multi_start == 1) && rethrow()
             nothing
         end
-        res === nothing && continue
+        if res === nothing
+            push!(s.optimizer_runs, (method = method, stage = :start, start_index = k,
+                                     start = Tuple(xk), iterations = missing,
+                                     converged = false, objective = NaN, gradient_inf = missing,
+                                     g_tol = Float64(g_tol), maxit = c.maxit, status = :error))
+            continue
+        end
+        push!(s.optimizer_runs, _ctl_run_record(method, :start, k, xk, res, g_tol, c.maxit))
         v = Optim.minimum(res)
         isfinite(v) || continue
         nll[k] = v
@@ -327,8 +433,17 @@ function _ctl_optimize(run::Function, θ0::AbstractVector; g_tol::Real)
     best === nothing &&
         error("drm: none of the $(c.multi_start) starts reached a finite objective")
     s.start_nll = nll; s.kept = kept
+    s.selected_optimizer_stage = :start
     return best
 end
+
+_ctl_run_record(method, stage, k, start, res, g_tol, maxit) =
+    (method = method, stage = stage, start_index = k, start = Tuple(Float64.(start)),
+     iterations = Optim.iterations(res), converged = Optim.converged(res),
+     objective = Optim.minimum(res), gradient_inf = Optim.g_residual(res),
+     g_tol = Float64(g_tol), maxit = maxit,
+     status = isfinite(Optim.minimum(res)) && all(isfinite, Optim.minimizer(res)) ?
+              :finite : :nonfinite)
 
 """
     _ctl_se(compute, θ̂) -> Matrix
