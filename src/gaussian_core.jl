@@ -2435,27 +2435,99 @@ fit = drm(bf(@formula(y ~ x), @formula(sigma ~ x)), Gaussian(); data)
 y1  = simulate(fit)               # Vector, length nobs (a homtoep fit that dropped
                                   # missing responses: one per data row, NaN there)
 Y   = simulate(fit; nsim = 100)   # 100 columns, one per draw
+ys  = simulate(fit; newdata = (x = [0.0, 1.0],))  # one row per newdata row
 ```
+
+`newdata` (optional) is a NamedTuple / column table. Draws are population-level
+(random / structured effects set to zero), one row per `newdata` row, using
+[`predict_parameters`](@ref) for the distributional parameters. Omit it to draw
+for the training design (back-compatible). Temporal fits refuse `newdata`.
 """
-function simulate(fit::DrmFit; nsim::Integer = 1, rng = default_rng())
+function simulate(fit::DrmFit; nsim::Integer = 1, rng = default_rng(), newdata = nothing)
     nsim >= 1 || throw(ArgumentError("simulate requires nsim >= 1, got $nsim"))
-    nsim == 1 && return _simulate_once(fit, rng)
-    first_draw = _simulate_once(fit, rng)
+    src = newdata === nothing ? fit : _fit_for_simulate_newdata(fit, newdata)
+    nsim == 1 && return _simulate_once(src, rng)
+    first_draw = _simulate_once(src, rng)
     if first_draw isa AbstractVector       # univariate: stack columns into a Matrix
         out = Matrix{eltype(first_draw)}(undef, length(first_draw), nsim)
         out[:, 1] = first_draw
         for s in 2:nsim
-            out[:, s] = _simulate_once(fit, rng)
+            out[:, s] = _simulate_once(src, rng)
         end
         return out
     else                                   # bivariate Dict: collect replicates
         reps = Vector{typeof(first_draw)}(undef, nsim)
         reps[1] = first_draw
         for s in 2:nsim
-            reps[s] = _simulate_once(fit, rng)
+            reps[s] = _simulate_once(src, rng)
         end
         return reps
     end
+end
+
+# Population-level (RE = 0) parameter table for `simulate(...; newdata)`. Rebuilds
+# a shallow `DrmFit` whose `means` / `scales` have one row per `newdata` row so
+# `_simulate_once` can reuse every family branch unchanged.
+function _fit_for_simulate_newdata(fit::DrmFit, newdata)
+    _is_temporal_fit(fit) && throw(ArgumentError(
+        "simulate: `newdata` is not supported for temporal() fits"))
+    fit.formula === nothing && error("simulate: this fit did not retain its formula")
+    pp = predict_parameters(fit, newdata)
+    n = length(first(values(pp)))
+    n > 0 || throw(ArgumentError("simulate: `newdata` has no rows"))
+    means = Dict{Symbol,Vector{Float64}}()
+    scales = Dict{Symbol,Vector{Float64}}()
+    for (k, v) in pp
+        if k === :mu || k === :mu1 || k === :mu2
+            means[k] = v
+        else
+            scales[k] = v
+        end
+    end
+    for k in keys(fit.scales)
+        haskey(scales, k) && continue
+        if k === :beta_mu
+            haskey(pp, :mu) || throw(ArgumentError("simulate: ZeroOneBeta `newdata` needs a :mu prediction"))
+            scales[k] = pp[:mu]
+        elseif k === :trials
+            scales[k] = _simulate_newdata_trials(fit, newdata, n)
+        elseif k === :ordinal_eta
+            haskey(pp, :mu) || throw(ArgumentError("simulate: CumulativeLogit `newdata` needs a :mu prediction"))
+            scales[k] = pp[:mu]
+        elseif k === :ordinal_cuts
+            scales[k] = fit.scales[:ordinal_cuts]          # shared cutpoints, not per-row
+        else
+            src = fit.scales[k]
+            if length(src) == 1 || (length(src) > 0 && length(unique(src)) == 1)
+                scales[k] = fill(src[1], n)
+            else
+                throw(ArgumentError(
+                    "simulate: `newdata` cannot recycle fitted `$k` " *
+                    "(length $(length(src)), not constant)"))
+            end
+        end
+    end
+    return DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta, fit.vcov,
+                  fit.loglik, n, fit.converged, means, fit.obs, scales, fit.formula,
+                  fit.nll, fit.nllgrad, nothing, fit.estim_method, fit.reml_loglik,
+                  fit.ml_loglik, fit.marginal)
+end
+
+function _simulate_newdata_trials(fit::DrmFit, newdata, n::Int)
+    nd = NamedTuple(pairs(newdata))
+    if haskey(nd, :trials)
+        t = Float64.(nd.trials)
+        length(t) == n || throw(ArgumentError(
+            "simulate: newdata.trials length $(length(t)) != $n"))
+        return t
+    end
+    src = fit.scales[:trials]
+    if length(src) == 1 || (length(src) > 0 && length(unique(src)) == 1)
+        return fill(src[1], n)
+    end
+    throw(ArgumentError(
+        "simulate: Binomial/BetaBinomial `newdata` needs a `trials` column when " *
+        "the fitted trials are not constant"))
 end
 
 # One residual-level replicate (the per-draw kernel). Returns a response Vector
