@@ -142,6 +142,26 @@ Most convergence trouble is conditioning. Two cheap fixes:
   fixed-effect structures; REML likelihoods are not. Keep ML when selecting
   models with [`aic`](@ref) / [`bic`](@ref).
 
+## Comparing logLik with drmTMB or glmmTMB (#943)
+
+For a `sigma ~ x + (1 | g)` model on `NegBinomial2()`, `Gamma()` or `Beta()`, the
+default `:LA` route integrates the random intercept by adaptive Gauss-Hermite
+quadrature. drmTMB and glmmTMB use the TMB Laplace approximation, so the two
+log-likelihoods are **not comparable**: do not compare `loglik`, `aic` or an LRT
+across the engines for these models. The estimates agree closely; the gap is the
+integration convention, not a different optimum. Measured on lme4 `grouseticks`,
+NB2 `ticks ~ year + height100 + (1 | brood)`:
+
+| `sigma` formula | DRModels.jl default `:LA` | drmTMB / glmmTMB (TMB Laplace) |
+|---|---|---|
+| `sigma ~ year` | -888.350 | -888.885 |
+| `sigma ~ 1` | -889.612 | -890.203 |
+
+With `sigma ~ 1`, `marginal = :Laplace` reproduces the drmTMB value
+(-890.2035). That route does not accept a non-constant `sigma`, and a
+TMB-convention Laplace for `sigma ~ x + (1 | g)` is not planned for now, so
+the comparison is not available for those models.
+
 ## The phylogenetic engine
 
 The verified q=4 phylogenetic location–scale engine has its own mode-finder

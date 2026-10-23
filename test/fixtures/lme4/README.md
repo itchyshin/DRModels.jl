@@ -1,6 +1,7 @@
 # lme4 teaching-dataset fixtures (issue #706)
 
 - `cbpp.csv` - `lme4::cbpp` (contagious bovine pleuropneumonia; 56 rows: herd, incidence, size, period).
+- `grouseticks.csv` - `lme4::grouseticks` (403 rows: TICKS, YEAR as character, cHEIGHT = cHEIGHT/10, BROOD, LOCATION); the exact prep of #1073. Used by `test/test_j3a_gradient_hessian_vcov.jl`.
 - `sleepstudy.csv` - `lme4::sleepstudy` (180 rows: Reaction, Days, Subject).
 
 Written with `write.csv(lme4::<name>, row.names = FALSE)` from lme4 2.0.1 (R).
