@@ -3,21 +3,21 @@
 #
 # DIAGNOSIS (drmTMB docs/dev-log/evidence/julia-r-parity/ayumi-target/2026-09-01-matched-q4/575-mechanism.md): on this fixture, `fit_q4_reml`
 # declares convergence (g_residual = 7.54e-4 < g_tol = 1e-3) at
-# reml_loglik = -219.630231, but DRM.jl's OWN objective evaluated at TMB's
+# reml_loglik = -219.630231, but DRModels.jl's OWN objective evaluated at TMB's
 # fitted point theta_hat_TMB (beta reprofiled by the same conditional-Newton
 # machinery) is -219.620508 -- strictly BETTER by 0.0097. So the solver is
 # not at even its own optimum, independent of any TMB comparison.
 #
-# This test pins DRM.jl's own reported loglik to be at least as good as the
+# This test pins DRModels.jl's own reported loglik to be at least as good as the
 # value its own objective attains at theta_hat_TMB (with a small tolerance),
 # so a regression back to the stop-short behaviour is caught directly without
 # depending on TMB reference numbers.
 #
-#   julia --project=. -e 'using DRM, Test; include("test/test_575_q4_optimum.jl")'
+#   julia --project=. -e 'using DRModels, Test; include("test/test_575_q4_optimum.jl")'
 
 module Test575Q4Optimum
 
-using DRM
+using DRModels
 using Test
 using DelimitedFiles: readdlm
 
@@ -48,7 +48,7 @@ end
               rho12  = @formula(rho12 ~ 1))
     fit = drm(form, Gaussian(); data = dat, tree = tree, method = :REML, q4_vcov = false)
 
-    # DRM.jl's own objective, evaluated at TMB's fitted point via the SAME
+    # DRModels.jl's own objective, evaluated at TMB's fitted point via the SAME
     # conditional-Newton profiling this route uses, attains -219.620508
     # (drmTMB docs/dev-log/evidence/julia-r-parity/ayumi-target/2026-09-01-matched-q4/575-mechanism.md). The solver must reach at least that,
     # up to a small numerical-tolerance margin -- otherwise it stopped short

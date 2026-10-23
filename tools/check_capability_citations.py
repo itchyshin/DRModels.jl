@@ -44,6 +44,8 @@ import argparse
 import os
 import re
 import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from runtests_files import wired_test_files  # noqa: E402
 
 DOC = "docs/design/capability-status.md"
 RUNTESTS = "test/runtests.jl"
@@ -190,7 +192,8 @@ def main() -> int:
 
     # --- check 3: WIRED -----------------------------------------------------
     if os.path.exists(RUNTESTS):
-        wired = includes(RUNTESTS)
+        # runtests.jl auto-discovers test_*.jl (see runtests_files.py)
+        wired = set(includes(RUNTESTS)) | wired_test_files(os.path.dirname(RUNTESTS))
         for tf in sorted(set(re.findall(r"`(?:test/)?(test_[A-Za-z0-9_]+\.jl)`", text))):
             if not os.path.exists(os.path.join("test", tf)):
                 continue

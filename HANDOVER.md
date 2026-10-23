@@ -1,6 +1,6 @@
-# DRM.jl — Project Handover & Roadmap
+# DRModels.jl — Project Handover & Roadmap
 
-> **Reader:** whoever continues `DRM.jl` (human, Codex, or Claude). **Purpose:**
+> **Reader:** whoever continues `DRModels.jl` (human, Codex, or Claude). **Purpose:**
 > hand over a *verified* proof-of-concept engine plus the full journey, the
 > architecture, the traps, and the exact ordered path to v0.1.0 — so you start
 > from knowledge, not from scratch. Every number here was reproduced by an
@@ -10,9 +10,9 @@
 
 ## 0. TL;DR
 
-- **What:** `DRM.jl` is the Julia twin of the R package **drmTMB**
+- **What:** `DRModels.jl` is the Julia twin of the R package **drmTMB**
   (univariate & bivariate *distributional* regression — a formula per parameter
-  μ/σ/ρ). It mirrors the **gllvmTMB → GLLVM.jl** move. Sister to GLLVM.jl.
+  μ/σ/ρ). It mirrors the **gllvmTMB → GLLVModels.jl** move. Sister to GLLVModels.jl.
 - **Why it exists:** drmTMB's selling-point model — the **q=4 phylogenetic
   bivariate location–scale model (PLSM)** — is wall-clock-bound by R/TMB in
   simulation studies. A fast Julia engine makes bootstrap / coverage / power
@@ -20,7 +20,7 @@
 - **Verified:** **2.18× faster than drmTMB** on the q=4 single fit (same data,
   same marginal), **near-perfect O(p) to 10,000 species**, and **valid confidence
   intervals where drmTMB's Hessian fails entirely**.
-- **State:** published at **https://github.com/itchyshin/DRM.jl** (MIT, public);
+- **State:** published at **https://github.com/itchyshin/DRModels.jl** (MIT, public);
   **v0.1.0 and v0.1.1 tagged**. The `drm()` / `bf()` front end is wired, all
   **13 families** (12 univariate + bivariate Gaussian) are implemented, exported,
   and recovery-tested, and **inference is wired** in `src/inference.jl` (Wald +
@@ -56,7 +56,7 @@
 Build **the fastest mixed-model fitting engine** for the drmTMB model class, in
 Julia, so the simulation studies that are bottlenecked by the R/TMB engine
 (ADEMP coverage grids, parametric bootstrap, power) become cheap. The precedent:
-the team's GLLVM.jl pilot hit ~340× over R/gllvmTMB on the closed-form Gaussian
+the team's GLLVModels.jl pilot hit ~340× over R/gllvmTMB on the closed-form Gaussian
 case. The open question this PoC answered: **can Julia also win on the *hard*
 model** — the q=4 PLSM (Nakagawa et al. 2025 MEE, Model 5), where a shared
 phylogenetic random effect drives `(μ1, μ2, log σ1, log σ2)` and the nonlinear
@@ -80,7 +80,7 @@ inference now in `src/inference.jl`). Full grid + caveats: `report/comparison-gr
 | **Inference at the variance boundary** | Wald valid **16/17** params (drmTMB sdreport = all-NaN); bootstrap **60/60** | ✅ a genuine inferential edge |
 | **REML mean-axis bias correction** | Λ[1,1] 0.70 → 0.83 (×1.18) | ⚠ mean-axis only |
 
-**Defensible story:** DRM.jl matches drmTMB's fit, runs 2.18× faster, scales
+**Defensible story:** DRModels.jl matches drmTMB's fit, runs 2.18× faster, scales
 near-perfect O(p) (where gllvmTMB's multi-trait gradient is O(p²) — *their* code,
 `sparse_phy_grad.jl`, "slope≈2"), EM wins on conjugate sub-models, and it returns
 usable uncertainty where drmTMB's Hessian is singular.
@@ -150,7 +150,7 @@ synthetic pure-noise p=100 tree still descends, unexplained) ·
 `poisson`, `negbinomial`, `beta`, `betabinomial`, `binomial`, `gamma`,
 `lognormal`, `zeroonebeta`, `tweedie`, `cumulative`) · `inference` (Wald +
 profile + bootstrap; `infer_q4` graduated here) · `summary` · `visualization` ·
-`DRM.jl`.
+`DRModels.jl`.
 **Experimental** (`src/experimental/`, migrated; **not fully wired** into the
 public API — do not claim otherwise): leftover `location_only` prototype copy ·
 `fit_em_natgrad` (**#13 FAIL** — stalls vs sparse TMB; not a public solver) ·
@@ -224,11 +224,11 @@ infra for AI-REML — **not** `algorithm = :natgrad`). Those promotions do
 ## 7. Current repo state
 
 Published, MIT, public; **v0.1.0 and v0.1.1 tagged**. `src/` core loads cleanly
-(`using DRM` resolves the include chain + exports). The `drm()` / `bf()` front
+(`using DRModels` resolves the include chain + exports). The `drm()` / `bf()` front
 end, all 13 families (12 univariate + bivariate Gaussian), and the inference
 surface (Wald + profile + bootstrap) are wired and exported; families are
 validated by simulation parameter recovery (numerical drmTMB-parity gate
-[#17](https://github.com/itchyshin/DRM.jl/issues/17) is **closed**;
+[#17](https://github.com/itchyshin/DRModels.jl/issues/17) is **closed**;
 `DRM_PARITY_TESTS=1` stays opt-in). Several comparison-suite capabilities have
 since been **promoted into the public module and exported**: opt-in **REML**
 (`method = :REML`, #11/#235) with the model-selection guard, the **conjugate-EM**
@@ -285,10 +285,10 @@ that already works here.
 
 ## 9. Decisions
 
-**Made:** package name `DRM` (drops the TMB suffix, matches GLLVM.jl pattern);
-**MIT license** (Julia-ecosystem norm + matches GLLVM.jl; DRM.jl is fresh code,
+**Made:** package name `DRModels` (drops the TMB suffix, matches GLLVModels.jl pattern);
+**MIT license** (Julia-ecosystem norm + matches GLLVModels.jl; DRModels.jl is fresh code,
 not a port of drmTMB's GPL source, so it's legally free to be MIT); **public**
-repo at `itchyshin/DRM.jl`; cost-disciplined CI.
+repo at `itchyshin/DRModels.jl`; cost-disciplined CI.
 **Open:** whether to vendor any drmTMB GPL source later (would force GPL —
 avoid, or isolate); Phase 1.5 bridge finish (#5).
 **Closed this arc / deferred:** Julia General-registry submission — **not until
@@ -313,7 +313,7 @@ natural-gradient = AI-REML; the singular boundary) · `why-q4-plsm-matters.md` �
 
 ```bash
 cd DRM.jl
-julia --project=. -e 'using Pkg; Pkg.instantiate(); using DRM; println("DRM loaded")'
+julia --project=. -e 'using Pkg; Pkg.instantiate(); using DRModels; println("DRModels loaded")'
 julia --project=. bench/run_sparse_tmb_nd.jl   # ~1.1 s, logLik −256.51, 2.18× vs drmTMB
 julia --project=. bench/run_scaling.jl         # k≈1.08 to p=10,000
 ```

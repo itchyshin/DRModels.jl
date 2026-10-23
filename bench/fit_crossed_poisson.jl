@@ -5,7 +5,7 @@
 
 import Pkg
 Pkg.activate(dirname(@__DIR__))
-using DRM
+using DRModels
 using LinearAlgebra
 using DelimitedFiles, Printf, Statistics
 
@@ -48,14 +48,14 @@ end
 function fit_cell(cell)
     y, x, g, h = read_fixture(cell.id)
     X = hcat(ones(length(y)), x)
-    gidx, G = DRM._group_index(g)
+    gidx, G = DRModels._group_index(g)
     comps = [(ones(length(y)), gidx, G, "g")]
     if cell.kind == "crossed"
-        hidx, H = DRM._group_index(h)
+        hidx, H = DRModels._group_index(h)
         push!(comps, (ones(length(y)), hidx, H, "h"))
     end
 
-    DRM._fit_poisson_crossed_laplace(DRM.Poisson(), y, X, comps, ["(Intercept)", "x"], 1e-7;
+    DRModels._fit_poisson_crossed_laplace(DRModels.Poisson(), y, X, comps, ["(Intercept)", "x"], 1e-7;
                                      se = false, polish_iterations = 0)
 end
 

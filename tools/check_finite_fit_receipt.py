@@ -3,6 +3,7 @@
 import json,math,sys,tomllib
 from pathlib import Path
 from check_finite_native_reference import ROOT,REF,REFERENCE_SHA256,sha,require,near,vec,matrix,row,nll,permutation
+import receipt_paths
 
 def inverse_hessian_check(c,theta,V):
     # Independent central-difference Hessian; absolute ||H V - I||_max <= 1e-4.
@@ -37,8 +38,10 @@ def check(r):
     source={str(p.relative_to(ROOT)):sha(p) for p in (ROOT/'src').rglob('*') if p.is_file()}
     require(r.get('source_before')==source and r.get('source_after')==source and r.get('source_unchanged') is True,'current source')
     runtime=r.get('runtime',{})
-    require(runtime.get('julia_threads')==1 and runtime.get('blas_threads')==1 and runtime.get('julia_version')=='1.10.0','runtime')
-    require(Path(runtime.get('loaded_source','')).resolve()==(ROOT/'src/DRM.jl').resolve(),'loaded source')
+    require(runtime.get('julia_threads')==1 and runtime.get('blas_threads')==1 and runtime.get('julia_version')=='1.10.12','runtime')
+    # Path-portable: the recorded absolute path must name <root>/src/DRModels.jl; the
+    # repo-relative source manifest above ties its bytes to this checkout.
+    receipt_paths.loaded_root(runtime.get('loaded_source'))
     require(type(r.get('seconds')) in (int,float) and math.isfinite(r['seconds']) and r['seconds']>0,'elapsed')
     require(set(r.get('cases',{}))=={'ordinal','categorical'},'case denominator')
     verdict={}

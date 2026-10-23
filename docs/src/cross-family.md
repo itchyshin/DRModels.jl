@@ -1,13 +1,11 @@
 # Cross-family bivariate dependence
 
 !!! note "Status — Experimental"
-    A first slice of bivariate modelling for **two responses from different
-    families** (e.g. Gaussian × Poisson), via a shared per-observation latent.
-    The matrix-level entry point is `DRM.fit_mixed_family` (not exported); the
-    `bf(...)` front end is wired as `drm(bf(...), (Gaussian(), Poisson());
-    data = …)` (`src/mixed_family.jl:440`). `Gaussian`, `Poisson`, `Binomial`,
-    `NegBinomial2`, `Beta` and `Gamma` axes are supported
-    (`src/mixed_family.jl:32-66`); the route takes family *instances*, e.g.
+    Bivariate modelling for **two responses from different families** (for
+    example, Gaussian × Poisson), using a shared per-observation latent.
+    Fit through the `bf(...)` front end, for example
+    `drm(bf(...), (Gaussian(), Poisson()); data = …)`. `Gaussian`, `Poisson`, `Binomial`,
+    `NegBinomial2`, `Beta` and `Gamma` axes are supported; the route takes family *instances*, e.g.
     `(Gaussian(), Poisson())`. The dependence is reported on the link/latent
     scale; the residual-correlation [`rho12`](tutorials/bivariate-coscale.md)
     model is the Gaussian × Gaussian special case.
@@ -18,7 +16,8 @@ couples two **Gaussian** responses through a residual correlation `ρ12`. But
 often the two responses are not from the same family — a continuous trait and a
 count, a count and a proportion. There is no single residual covariance matrix
 to write down, because the two responses live on different scales with different
-mean–variance relationships. `DRM.fit_mixed_family` handles that case.
+mean–variance relationships. The cross-family `drm(...)` route handles that
+case through a shared latent variable.
 
 ## The model
 
@@ -90,7 +89,7 @@ already carries:
 
 The numerator `λ₁ λ₂` is the cross-axis covariance contributed by the shared
 latent; each denominator term `λ_k² + v_k` is the total latent-scale variance of
-axis `k`. `v_k` comes from [`DRM.link_residual`](@ref):
+axis `k`. `v_k` comes from [`DRModels.link_residual`](@ref):
 
 - **Gaussian** (identity link): `v = σ²`, the fitted residual variance.
 - **Poisson** (log link): `v = log(1 + 1/μ̄)`, evaluated at a representative
@@ -113,7 +112,7 @@ computed from the fitted parameters and never enters the objective.
 
 ## Confidence intervals for ρ
 
-`fit_mixed_family` can return three intervals for `ρ`, each on the
+The cross-family fit can return three intervals for `ρ`, each on the
 correlation scale:
 
 | Field             | Method                                   | When to use |
@@ -141,12 +140,11 @@ correlation scale:
 ## Worked example: Gaussian × Poisson
 
 We simulate a continuous response (Gaussian) and a count (Poisson) that share a
-latent, recover the structure with `fit_mixed_family`, and read off the
+latent, fit the cross-family model through `drm(...)`, and read off the
 latent-scale correlation with its profile-likelihood interval.
 
 ```@example xfam
-using DRM, Random, Statistics
-using DRM: fit_mixed_family
+using DRModels, Random, Statistics
 Random.seed!(2024)
 
 n = 800
@@ -162,11 +160,12 @@ X2 = hcat(ones(n), x)
 η1 = X1 * β1 .+ λ1 .* u
 η2 = X2 * β2 .+ λ2 .* u
 y1 = η1 .+ randn(n)                                            # Gaussian, σ = 1
-y2 = [Float64(rand(DRM.Distributions.Poisson(exp(η2[i])))) for i in 1:n]  # Poisson
+y2 = [Float64(rand(DRModels.Distributions.Poisson(exp(η2[i])))) for i in 1:n]  # Poisson
+dat = (; y1, y2, x)
 
-fit = fit_mixed_family(; y1 = y1, X1 = X1, fam1 = Gaussian(),
-                         y2 = y2, X2 = X2, fam2 = Poisson(),
-                         K = 32, profile = true)
+form = bf(mu1 = @formula(y1 ~ x), mu2 = @formula(y2 ~ x),
+          sigma1 = @formula(sigma1 ~ 1), sigma2 = @formula(sigma2 ~ 1))
+fit = drm(form, (Gaussian(), Poisson()); data = dat, K = 32, profile = true)
 
 fit.converged        # did L-BFGS converge?
 ```
@@ -204,15 +203,14 @@ For the bootstrap interval, pass `B` (number of refits); it is omitted here to
 keep the page fast to build:
 
 ```julia
-fit_boot = fit_mixed_family(; y1, X1, fam1 = Gaussian(),
-                              y2, X2, fam2 = Poisson(),
-                              K = 32, B = 500)
+fit_boot = drm(form, (Gaussian(), Poisson()); data = dat, K = 32, B = 500)
 fit_boot.rho_ci_boot       # percentile interval from 500 parametric-bootstrap refits
 ```
 
 ## Returned fields
 
-`fit_mixed_family` returns a `NamedTuple`. The dependence-related fields are:
+The cross-family `drm(...)` call returns a `NamedTuple`. Its
+dependence-related fields are:
 
 | Field             | Meaning |
 |-------------------|---------|
@@ -229,12 +227,12 @@ variances `v1`/`v2`, the `loglik`, `converged`, and `iterations`.
 
 - [Changing residual coupling with rho12](tutorials/bivariate-coscale.md) — the
   Gaussian × Gaussian residual-correlation model that this generalises.
-- [`DRM.link_residual`](@ref) — the per-family link-scale variance `v_k`.
+- [`DRModels.link_residual`](@ref) — the per-family link-scale variance `v_k`.
 
 ## API
 
 ```@docs
-DRM.link_residual
+DRModels.link_residual
 ```
 
 ### Post-fit accessors

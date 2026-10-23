@@ -1,6 +1,6 @@
 # Post-fit accessors: fitted values and residuals, for univariate and bivariate
 # Gaussian models. (Base-only assertions so no extra test deps are needed.)
-using DRM
+using DRModels
 using Test, Random
 
 @testset "Post-fit: fitted + residuals" begin

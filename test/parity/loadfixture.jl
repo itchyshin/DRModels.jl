@@ -87,7 +87,7 @@ function load_expected(dir)::ParityExpected
     # Optional [se] block: per-coefficient Wald standard errors, keyed by the same
     # flat "<param>_<coefname>" convention as [coef]. The reserved `not_comparable`
     # array key is NOT an SE value — it names parameters whose SE must be declined
-    # rather than compared (e.g. a variance component pinned at DRM.jl's
+    # rather than compared (e.g. a variance component pinned at DRModels.jl's
     # _LAPLACE_LOG_SD_FLOOR, a boundary drmTMB does not share). Absent ⇒ SE checks
     # are skipped entirely, so every pre-existing fixture keeps passing unchanged.
     se = Dict{String,Float64}()

@@ -11,7 +11,7 @@
 #
 # CORRECTNESS ANCHOR (this file): the FD-REML refit. Both replacements must land on the SAME
 # restricted-likelihood optimum — the same σ-phylo SD — on the verified asymmetric route.
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 
 @testset "REML σ-phylo: clean-gradient refit matches FD-REML (asymmetric route)" begin
@@ -29,19 +29,19 @@ using Test, Random, LinearAlgebra
     pμ = size(Xμ, 2)
 
     kind = Val(:gaussian_mean)
-    Q, gidx, G = DRM._locscale_phylo_setup(phy, species)
-    Zη, Zψ = DRM._glsp_asym_loadings(n)
-    obj(θ)  = DRM._glsp_asym_nll(kind, y, Xμ, Xψ, gidx, G, Q, θ, Zη, Zψ)
-    grad(θ) = DRM._glsp_asym_grad(kind, y, Xμ, Xψ, gidx, G, Q, θ, Zη, Zψ)
+    Q, gidx, G = DRModels._locscale_phylo_setup(phy, species)
+    Zη, Zψ = DRModels._glsp_asym_loadings(n)
+    obj(θ)  = DRModels._glsp_asym_nll(kind, y, Xμ, Xψ, gidx, G, Q, θ, Zη, Zψ)
+    grad(θ) = DRModels._glsp_asym_grad(kind, y, Xμ, Xψ, gidx, G, Q, θ, Zη, Zψ)
 
     # ML estimate (the shared starting point for both refits).
     θ0 = vcat(Xμ \ y, [0.0], log(0.3))
-    θ̂_ml, ml_conv = DRM._glsp_optimise(obj, (g, θ) -> (g .= grad(θ); g), θ0)
+    θ̂_ml, ml_conv = DRModels._glsp_optimise(obj, (g, θ) -> (g .= grad(θ); g), θ0)
     @test ml_conv
 
     # FD-REML (the anchor) and the clean-gradient refit, from the identical ML start.
-    θ_fd, _, _, _                  = DRM._glsp_reml_refit(obj, grad, θ̂_ml, pμ; ml_converged = ml_conv)
-    θ_cg, conv_cg, _, _, nsteps    = DRM._glsp_reml_refit_clean(obj, grad, θ̂_ml, pμ; ml_converged = ml_conv)
+    θ_fd, _, _, _                  = DRModels._glsp_reml_refit(obj, grad, θ̂_ml, pμ; ml_converged = ml_conv)
+    θ_cg, conv_cg, _, _, nsteps    = DRModels._glsp_reml_refit_clean(obj, grad, θ̂_ml, pμ; ml_converged = ml_conv)
 
     sd_fd = exp(θ_fd[end]); sd_cg = exp(θ_cg[end])
     @info "clean-gradient refit vs FD-REML" sd_cg sd_fd diff = abs(sd_cg - sd_fd) nsteps conv_cg
@@ -70,18 +70,18 @@ end
     pμ = size(Xμ, 2)
 
     kind = Val(:gaussian_mean)
-    Q, gidx, G = DRM._locscale_phylo_setup(phy, species)
-    Zη, Zψ = DRM._glsp_asym_loadings(n)
-    obj(θ)  = DRM._glsp_asym_nll(kind, y, Xμ, Xψ, gidx, G, Q, θ, Zη, Zψ)
-    grad(θ) = DRM._glsp_asym_grad(kind, y, Xμ, Xψ, gidx, G, Q, θ, Zη, Zψ)
+    Q, gidx, G = DRModels._locscale_phylo_setup(phy, species)
+    Zη, Zψ = DRModels._glsp_asym_loadings(n)
+    obj(θ)  = DRModels._glsp_asym_nll(kind, y, Xμ, Xψ, gidx, G, Q, θ, Zη, Zψ)
+    grad(θ) = DRModels._glsp_asym_grad(kind, y, Xμ, Xψ, gidx, G, Q, θ, Zη, Zψ)
 
     θ0 = vcat(Xμ \ y, [0.0], log(0.3))
-    θ̂_ml, ml_conv = DRM._glsp_optimise(obj, (g, θ) -> (g .= grad(θ); g), θ0)
+    θ̂_ml, ml_conv = DRModels._glsp_optimise(obj, (g, θ) -> (g .= grad(θ); g), θ0)
     @test ml_conv
 
-    θ_fd, _, _, _ = DRM._glsp_reml_refit(obj, grad, θ̂_ml, pμ; ml_converged = ml_conv)
+    θ_fd, _, _, _ = DRModels._glsp_reml_refit(obj, grad, θ̂_ml, pμ; ml_converged = ml_conv)
     θ_nw, conv, _, _, nnewton =
-        DRM._glsp_reml_newton_asym(kind, y, Xμ, Xψ, gidx, G, Q, Zη, Zψ, θ̂_ml, pμ;
+        DRModels._glsp_reml_newton_asym(kind, y, Xμ, Xψ, gidx, G, Q, Zη, Zψ, θ̂_ml, pμ;
                                    ml_converged = ml_conv)
 
     sd_fd = exp(θ_fd[end]); sd_nw = exp(θ_nw[end])
@@ -106,19 +106,19 @@ end
     Xμ = ones(n, 1); Xψ = ones(n, 1); pμ = 1; pψ = 1
 
     kind = Val(:gaussian_mean)
-    Q, gidx, G = DRM._locscale_phylo_setup(phy, species)
-    Zη = DRM._ls_canonical_Zeta(n); Zψ = DRM._ls_canonical_Zpsi(n)
-    obj(θ)  = DRM._glsp_sep_nll(kind, y, Xμ, Xψ, gidx, G, Q, θ, Zη, Zψ)
-    grad(θ) = DRM._glsp_sep_grad(kind, y, Xμ, Xψ, gidx, G, Q, θ, Zη, Zψ)
+    Q, gidx, G = DRModels._locscale_phylo_setup(phy, species)
+    Zη = DRModels._ls_canonical_Zeta(n); Zψ = DRModels._ls_canonical_Zpsi(n)
+    obj(θ)  = DRModels._glsp_sep_nll(kind, y, Xμ, Xψ, gidx, G, Q, θ, Zη, Zψ)
+    grad(θ) = DRModels._glsp_sep_grad(kind, y, Xμ, Xψ, gidx, G, Q, θ, Zη, Zψ)
 
     θ0 = vcat(Xμ \ y, [0.0], log(0.3), log(0.3))   # [βμ; βψ; logL11; logL22]
-    θ̂_ml, ml_conv = DRM._glsp_optimise(obj, (g, θ) -> (g .= grad(θ); g), θ0)
+    θ̂_ml, ml_conv = DRModels._glsp_optimise(obj, (g, θ) -> (g .= grad(θ); g), θ0)
     @test ml_conv
 
     vidx = [pμ + pψ + 1, pμ + pψ + 2]              # logL11, logL22 (indices 3, 4)
-    θ_fd, _, _, _ = DRM._glsp_reml_refit(obj, grad, θ̂_ml, pμ; ml_converged = ml_conv)
+    θ_fd, _, _, _ = DRModels._glsp_reml_refit(obj, grad, θ̂_ml, pμ; ml_converged = ml_conv)
     θ_nw, conv, _, _, nstep =
-        DRM._glsp_reml_newton(obj, grad, θ̂_ml, pμ, vidx; ml_converged = ml_conv)
+        DRModels._glsp_reml_newton(obj, grad, θ̂_ml, pμ, vidx; ml_converged = ml_conv)
 
     sd_mu_fd = exp(θ_fd[3]); sd_sig_fd = exp(θ_fd[4])
     sd_mu_nw = exp(θ_nw[3]); sd_sig_nw = exp(θ_nw[4])
@@ -146,7 +146,7 @@ end
         data = (; y, species)
         form = bf(@formula(y ~ phylo(1 | species)), @formula(sigma ~ phylo(1 | species)))
         local fit
-        @test (fit = drm(form, Gaussian(); data = data, tree = phy, method = :REML)) isa DRM.DrmFit
+        @test (fit = drm(form, Gaussian(); data = data, tree = phy, method = :REML)) isa DRModels.DrmFit
         sd_sig = exp(coef(fit, :resd_sigma)[1])
         @test isfinite(sd_sig)
         @test sd_sig < 0.6                                          # near the boundary (true σ-phylo SD = 0)
@@ -190,7 +190,7 @@ end
     data = (; y, x, species)
     form = bf(@formula(y ~ x), @formula(sigma ~ phylo(1 | species)))   # asymmetric: mean fixed, σ-phylo
     local fit
-    @test (fit = drm(form, Gaussian(); data = data, tree = phy, method = :REML)) isa DRM.DrmFit
+    @test (fit = drm(form, Gaussian(); data = data, tree = phy, method = :REML)) isa DRModels.DrmFit
     @test isfinite(exp(coef(fit, :resd_sigma)[1]))       # a finite σ-phylo SD (near 0) — no NaN/throw
 end
 
@@ -215,7 +215,7 @@ end
     @test nobs(fit) == n - 20                            # the 20 missing rows dropped (observed-rows fit)
     @test 0.2 < exp(coef(fit, :resd_sigma)[1]) < 1.2     # σ-phylo SD recovered (true 0.5)
 
-    res = DRM.drm_bridge(; formula = "y ~ x; sigma ~ phylo(1 | species)", family = "gaussian",
+    res = DRModels.drm_bridge(; formula = "y ~ x; sigma ~ phylo(1 | species)", family = "gaussian",
                          data = Dict("y" => ym, "x" => x, "species" => species), tree = phy,
                          options = Dict("method" => "REML"))
     @test res["converged"]
@@ -244,14 +244,14 @@ end
     @test 0 <= row.lower < row.upper                                  # SD scale, ordered, ≥0
     @test row.lower < exp(coef(fit, :resd_sigma)[1]) < row.upper      # SD point inside the CI
 
-    res = DRM.drm_bridge_inference(; formula = "y ~ x; sigma ~ phylo(1 | species)", family = "gaussian",
+    res = DRModels.drm_bridge_inference(; formula = "y ~ x; sigma ~ phylo(1 | species)", family = "gaussian",
             data = Dict("y" => y, "x" => x, "species" => species), tree = phy,
             options = Dict("method" => "REML"), method = "profile")
     @test res["param"] == "resd_sigma"
     @test res["status"] == "profile"
     @test 0 <= res["lower"] < res["estimate"] < res["upper"]          # SD-scale boundary CI from R
 
-    explicit = DRM.drm_bridge_inference(; formula = "y ~ x; sigma ~ phylo(1 | species)", family = "gaussian",
+    explicit = DRModels.drm_bridge_inference(; formula = "y ~ x; sigma ~ phylo(1 | species)", family = "gaussian",
             data = Dict("y" => y, "x" => x, "species" => species), tree = phy,
             options = Dict("method" => "REML"), method = "profile", parm = "sd:sigma")
     @test explicit["param"] == "resd_sigma"

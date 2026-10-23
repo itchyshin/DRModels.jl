@@ -1,0 +1,7 @@
+drmtmb_version = "0.7.1"
+drmtmb_built = "R 4.6.1; x86_64-pc-linux-gnu; 2026-10-02 23:55:53 UTC; unix"
+drmtmb_code_hash = "4c37c67c63ecba08ea16459250f80915ee0ee972c1030ac4df8855bbf95277b3"
+# From the installed build's own record, Totoro ~/claude-mr/1442/Rlib-main/drmTMB/build-provenance.dcf (GitSHA, GitDirty, BuildTimeUTC).
+drmtmb_git_sha = "0eb0467851cc2902556764bdca5441b7bc053be6"
+drmtmb_git_dirty = false
+drmtmb_build_time_utc = "2026-10-02T23:55:52Z"

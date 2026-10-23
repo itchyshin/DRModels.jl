@@ -10,7 +10,7 @@
 #
 # What is NOT claimed: interval COVERAGE. These are pipeline/shape assertions plus
 # the #631 endpoint-failure contract — one fixture, one seed.
-using DRM, Test, Random, Statistics
+using DRModels, Test, Random, Statistics
 
 function _biv_residual_fixture(; n = 200, seed = 20260905)
     rng = Random.MersenneTwister(seed)
@@ -36,7 +36,7 @@ const _BIV_FML = Dict(
     fit = drm(bf(mu1 = @formula(y1 ~ x), mu2 = @formula(y2 ~ x),
                  sigma1 = @formula(sigma1 ~ 1), sigma2 = @formula(sigma2 ~ 1),
                  rho12 = @formula(rho12 ~ 1)), Gaussian(); data = dat)
-    @test fit.formula isa DRM.BivariateDrmFormula
+    @test fit.formula isa DRModels.BivariateDrmFormula
     @test fit.ranef === nothing           # residual-only: no Sigma_a route
     @test is_converged(fit)
 
@@ -116,7 +116,7 @@ end
              rho12 = @formula(rho12 ~ 1))
     data = (; y1 = [1.0, NaN, 3.0], y2 = [0.5, 0.6, NaN], x = [0.1, 0.2, 0.3])
     ysim = Dict(:mu1 => [9.0, 9.0, 9.0], :mu2 => [8.0, 8.0, 8.0])
-    out = DRM._bootstrap_data(fml, data, ysim)
+    out = DRModels._bootstrap_data(fml, data, ysim)
     @test out.y1[1] == 9.0
     @test isnan(out.y1[2])
     @test out.y1[3] == 9.0
@@ -128,14 +128,14 @@ end
     # `missing`-typed columns keep their eltype and their missing cells.
     data_m = (; y1 = Union{Missing,Float64}[1.0, missing, 3.0],
                 y2 = Union{Missing,Float64}[0.5, 0.6, 0.7], x = [0.1, 0.2, 0.3])
-    out_m = DRM._bootstrap_data(fml, data_m, ysim)
+    out_m = DRModels._bootstrap_data(fml, data_m, ysim)
     @test ismissing(out_m.y1[2])
     @test out_m.y1[1] == 9.0
     @test eltype(out_m.y1) === Union{Missing,Float64}
 
     # A draw of the wrong shape is refused, not silently recycled.
-    @test_throws ArgumentError DRM._bootstrap_data(fml, data, [1.0, 2.0, 3.0])
-    @test_throws ArgumentError DRM._bootstrap_data(
+    @test_throws ArgumentError DRModels._bootstrap_data(fml, data, [1.0, 2.0, 3.0])
+    @test_throws ArgumentError DRModels._bootstrap_data(
         fml, data, Dict(:mu1 => [9.0, 9.0], :mu2 => [8.0, 8.0, 8.0]))
 end
 
@@ -145,11 +145,11 @@ end
     fit = drm(bf(mu1 = @formula(y1 ~ x), mu2 = @formula(y2 ~ x),
                  sigma1 = @formula(sigma1 ~ 1), sigma2 = @formula(sigma2 ~ 1),
                  rho12 = @formula(rho12 ~ 1)), Gaussian(); data = dat)
-    stripped = DRM.DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta, fit.vcov,
+    stripped = DRModels.DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta, fit.vcov,
                           fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs,
                           fit.scales)
     @test stripped.formula === nothing
-    @test_throws ArgumentError DRM._bootstrap_fit_formula(stripped)
+    @test_throws ArgumentError DRModels._bootstrap_fit_formula(stripped)
 
     # The structured (q=4 phylo) bivariate fit is NOT admitted to this path: its
     # `Sigma_a` guard fires first, so bootstrap_result routes to bootstrap_sigma_a.

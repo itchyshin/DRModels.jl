@@ -30,7 +30,7 @@
 # leaf diagonal from S'S — but leaves ARE in Q_cond's pattern), so they are exact.
 #
 # Depends on `AugmentedPhy` / `sparse_phy.jl` and `takahashi_selinv` (already
-# loaded by the verified core engine include chain in DRM.jl — do NOT re-include).
+# loaded by the verified core engine include chain in DRModels.jl — do NOT re-include).
 
 using LinearAlgebra, SparseArrays, Statistics, Random
 
@@ -108,6 +108,51 @@ function make_loc_problem(phy::AugmentedPhy, y, X; species=1:(phy.n_leaves))
         S,
         STS_d,
     )
+end
+
+# #995 / #996: what the quantile residual of a Gaussian `phylo(1 | g)` fit needs
+# beyond the BLUPs. `fit.means[:mu]` on these routes is CONDITIONAL
+# (`Xβ̂ + S û`), so the population-level PIT must be centred on the fixed-effect
+# mean `Xβ̂` instead, and a tip's prior variance on the raw branch-length scale
+# is `σ_phy² · C_ii`, not `σ_phy²`. `DrmFit` has no slot for either, and both
+# `fit.means` and `fit.scales` are enumerated by public accessors (`sigma()`,
+# the bridge dpars), so they ride on `fit.ranef`. It is an `AbstractDict` over
+# the same `group => BLUPs` entries the plain `Dict` held, so
+# `get(fit.ranef, name, nothing)` and `fit.ranef isa AbstractDict` are unchanged,
+# and `ranef(fit)` unwraps it to that `Dict`.
+struct LocOnlyRanef <: AbstractDict{Symbol,Vector{Float64}}
+    effects::Dict{Symbol,Vector{Float64}}   # group => per-tip BLUPs (tree leaf order)
+    mu_fixed::Vector{Float64}               # Xμ β̂ (population-level mean), one per row
+    prob::LocOnlyProblem                    # rows -> tips, and the tip covariance
+    tipvar::Base.RefValue{Union{Nothing,Vector{Float64}}}   # lazy per-row C_ii cache
+end
+LocOnlyRanef(effects, mu_fixed, prob) =
+    LocOnlyRanef(effects, mu_fixed, prob, Ref{Union{Nothing,Vector{Float64}}}(nothing))
+Base.length(r::LocOnlyRanef) = length(r.effects)
+Base.iterate(r::LocOnlyRanef, st...) = iterate(r.effects, st...)
+Base.getindex(r::LocOnlyRanef, k) = r.effects[k]
+Base.get(r::LocOnlyRanef, k, default) = get(r.effects, k, default)
+Base.haskey(r::LocOnlyRanef, k) = haskey(r.effects, k)
+
+# C_ii for each data row: the diagonal of the raw branch-length tip covariance
+# `Q_cond⁻¹` at the row's tip (Cov(u) = σ_phy² Q_cond⁻¹, see `build_M`). The
+# diagonal always lies in the Cholesky pattern, so the Takahashi selected
+# inverse returns it exactly in O(nnz(L)), which is O(p) on a tree precision
+# (the leaf-variance idiom of `gaussian_sparse_lss.jl`). One solve per tip
+# would be O(p²). `_loconly_row_tip_variance(::LocOnlyRanef)` below caches the
+# result so repeated `residuals(type = :quantile)` calls on one fit pay it once.
+function _loconly_row_tip_variance(prob::LocOnlyProblem)
+    d = takahashi_diag(cholesky(Symmetric(prob.Q_cond)))
+    return d[prob.leaf_pos[prob.species]]
+end
+
+function _loconly_row_tip_variance(r::LocOnlyRanef)
+    tv = r.tipvar[]
+    if tv === nothing
+        tv = _loconly_row_tip_variance(r.prob)
+        r.tipvar[] = tv
+    end
+    return tv
 end
 
 """
@@ -582,18 +627,13 @@ function _loconly_reml_local_profile_diagnostic(prob::LocOnlyProblem, lσ::Real,
     )
 end
 
+# Guarded: a failed probe (non-finite, or the `_LOCONLY_PENALTY` sentinel) returns an
+# all-NaN 2x2 matrix -- the convention every caller already uses for a failed
+# diagnostic (`finite = false`) -- instead of differencing the sentinel into a
+# finite garbage Hessian.
 function _loconly_fd_hessian2(f, θ::AbstractVector{<:Real}; h::Real = 1e-4)
-    H = zeros(2, 2)
-    x = Float64.(θ)
-    for i in 1:2, j in 1:2
-        ei = zeros(2); ej = zeros(2)
-        si = h * max(abs(x[i]), 1.0)
-        sj = h * max(abs(x[j]), 1.0)
-        ei[i] = si; ej[j] = sj
-        H[i, j] = (f(x .+ ei .+ ej) - f(x .+ ei .- ej) -
-                   f(x .- ei .+ ej) + f(x .- ei .- ej)) / (4 * si * sj)
-    end
-    return 0.5 .* (H .+ H')
+    H, ok = _fd_hessian_from_values(f, Float64.(θ); hstep = h, sentinel = _LOCONLY_PENALTY)
+    return ok ? 0.5 .* (H .+ H') : fill(NaN, 2, 2)
 end
 
 function _loconly_fd_gradient2(f, θ::AbstractVector{<:Real}; h::Real = 1e-5)
@@ -758,7 +798,7 @@ function _loconly_reml_optimizer_diagnostic(prob::LocOnlyProblem; starts = nothi
         try
             res = Optim.optimize(od, copy(start), ls, opts)
             v = Float64.(Optim.minimizer(res))
-            nll = Optim.minimum(res)
+            nll = obj(v)   # NOT Optim.minimum(res): see optim_minimum_guard.jl
             grad = _loconly_fd_gradient2(obj, v)
             record = (
                 start_index = i,
@@ -890,7 +930,7 @@ function _loconly_reml_dense_score_optimizer_diagnostic(prob::LocOnlyProblem; st
         try
             res = Optim.optimize(od, copy(start), ls, opts)
             v = Float64.(Optim.minimizer(res))
-            nll = Optim.minimum(res)
+            nll = obj(v)   # NOT Optim.minimum(res): see optim_minimum_guard.jl
             score = _loconly_reml_dense_score_diagnostic(prob, v[1], v[2]).score
             record = (
                 start_index = i,
@@ -986,7 +1026,7 @@ function _loconly_reml_sparse_score_optimizer_diagnostic(prob::LocOnlyProblem; s
         try
             res = Optim.optimize(od, copy(start), ls, opts)
             v = Float64.(Optim.minimizer(res))
-            nll = Optim.minimum(res)
+            nll = obj(v)   # NOT Optim.minimum(res): see optim_minimum_guard.jl
             sparse_score = _loconly_reml_sparse_score_diagnostic(prob, v[1], v[2])
             record = (
                 start_index = i,
@@ -3012,7 +3052,7 @@ function _loconly_reml_external_comparator_candidates()
         (
             comparator_id = :internal_dense_gls_oracle,
             target = :gaussian_loconly_phylo_reml,
-            comparator = "DRM.jl dense GLS oracle",
+            comparator = "DRModels.jl dense GLS oracle",
             same_estimand_status = :same_estimand_internal,
             dependency_status = :internal,
             artifact_status = :covered_by_focused_test,
@@ -3297,6 +3337,9 @@ function em_fit(
 
     ll_prev = -Inf
     iter = 0
+    # #1047: record whether the relative log-likelihood stop actually fired,
+    # instead of letting callers infer it from the iteration count.
+    converged = false
 
     for it in 1:max_iter
         iter = it
@@ -3327,7 +3370,8 @@ function em_fit(
         σ² = σ²_new
 
         ll = marginal_loglik(prob, β, σ²_phy, σ²)
-        if abs(ll - ll_prev) < reltol * (1 + abs(ll_prev))
+        if isfinite(ll) && abs(ll - ll_prev) < reltol * (1 + abs(ll_prev))
+            converged = true
             break
         end
         ll_prev = ll
@@ -3337,7 +3381,8 @@ function em_fit(
     e = prob.y .- prob.X * β
     u_post = chM \ (prob.S' * e / σ²)
     ll_final = marginal_loglik(prob, β, σ²_phy, σ²)
-    return (β=β, σ²_phy=σ²_phy, σ²=σ², u=u_post, loglik=ll_final, iterations=iter)
+    return (β=β, σ²_phy=σ²_phy, σ²=σ², u=u_post, loglik=ll_final, iterations=iter,
+            converged=converged && isfinite(ll_final))
 end
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -3393,8 +3438,31 @@ function _fit_structured_gaussian_em(
     means = Dict(:mu => Xμ * r.β + prob.S * r.u)
     obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => fill(sqrt(r.σ²), n))
-    converged = r.iterations < 500
-    return DrmFit(fam, blocks, names, θ̂, V, r.loglik, n, converged, means, obs, scales)
+    # #1047: the EM's own stopping rule, not `iterations < max_iter` (which
+    # misreads a stop that lands exactly on the cap).
+    converged = r.converged
+    fit = DrmFit(fam, blocks, names, θ̂, V, r.loglik, n, converged, means, obs, scales)
+    return _withranef(fit, LocOnlyRanef(
+        Dict{Symbol,Vector{Float64}}(Symbol(grp) => r.u[prob.leaf_pos]), Xμ * r.β, prob))
+end
+
+# Central finite-difference Jacobian dβ̂/dv of the profiled GLS solution
+# `_loconly_profile_beta(prob, v[1], v[2])` (pμ × 2), or `nothing` if a probe fails.
+# The sparse Cholesky inside is not dual-number safe, hence finite differences.
+function _loconly_beta_jacobian(prob::LocOnlyProblem, v::AbstractVector)
+    β0 = _loconly_profile_beta(prob, v[1], v[2])[1]
+    β0 === nothing && return nothing
+    Gβ = zeros(length(β0), 2)
+    for k in 1:2
+        h = 1e-5 * max(1.0, abs(v[k]))
+        vp = collect(Float64, v); vm = collect(Float64, v)
+        vp[k] += h; vm[k] -= h
+        βp = _loconly_profile_beta(prob, vp[1], vp[2])[1]
+        βm = _loconly_profile_beta(prob, vm[1], vm[2])[1]
+        (βp === nothing || βm === nothing) && return nothing
+        Gβ[:, k] .= (βp .- βm) ./ (2h)
+    end
+    return all(isfinite, Gβ) ? Gβ : nothing
 end
 
 function _fit_structured_gaussian_sparse_lbfgs(
@@ -3465,7 +3533,7 @@ function _fit_structured_gaussian_sparse_lbfgs(
     best_val = Inf
     for start in starts
         res = Optim.optimize(od, start, ls, opts)
-        val = Optim.minimum(res)
+        val = _objective_at_minimizer_fg(fg!, res)   # NOT Optim.minimum(res): see optim_minimum_guard.jl
         if isfinite(val) && val < best_val
             best_res = res
             best_val = val
@@ -3517,8 +3585,24 @@ function _fit_structured_gaussian_sparse_lbfgs(
             return val
         end
         Hv = _finite_hessian(fv, vhat; h = _fd_hessian_step(n))
-        V[(pμ + 1):(pμ + 2), (pμ + 1):(pμ + 2)] .=
-            _vcov_from_hessian(Hv; context = "sparse phylo-mean variance block")
+        Vvv = _vcov_from_fd_hessian(Hv; context = "sparse phylo-mean variance block")
+        V[(pμ + 1):(pμ + 2), (pμ + 1):(pμ + 2)] .= Vvv
+        # #978: orthogonality holds in EXPECTATION only. The joint observed
+        # information has a β–variance cross block, so the Wald covariance of the
+        # mean coefficients is (X'V⁻¹X)⁻¹ + G Vvv Gᵀ with G = dβ̂/dv (the profiled
+        # GLS solution's sensitivity to the variance parameters), and the cross
+        # block is G Vvv (the Schur-complement form drmTMB's joint sdreport gives).
+        # ML only: the REML mean block is (X'V⁻¹X)⁻¹ by construction. Skipped when
+        # the variance block or the Jacobian is not finite, keeping the conditional
+        # block rather than turning finite mean SEs into NaN.
+        if !reml && all(isfinite, Vvv) && all(isfinite, V[1:pμ, 1:pμ])
+            Gβ = _loconly_beta_jacobian(prob, vhat)
+            if Gβ !== nothing
+                V[1:pμ, 1:pμ] .+= Gβ * Vvv * Gβ'
+                V[1:pμ, (pμ + 1):(pμ + 2)] .= Gβ * Vvv
+                V[(pμ + 1):(pμ + 2), 1:pμ] .= (Gβ * Vvv)'
+            end
+        end
     end
     e = prob.y .- prob.X * β̂
     u_post = chM \ (prob.S' * e / σ²)
@@ -3557,7 +3641,8 @@ function _fit_structured_gaussian_sparse_lbfgs(
     end
     fit = _withranef(
         reml ? _withnll(fit, reml_full_nll) : _withnll(fit, loc_obj, nllgrad!),
-        Dict(Symbol(grp) => u_post[prob.leaf_pos])
+        LocOnlyRanef(
+            Dict{Symbol,Vector{Float64}}(Symbol(grp) => u_post[prob.leaf_pos]), Xμ * β̂, prob)
     )
     if penalty !== nothing
         fit = _withmap(fit, _phylo_pen_apply_single!(nothing, penalty, v̂, 2), penalty)

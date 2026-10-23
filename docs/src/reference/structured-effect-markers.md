@@ -12,6 +12,26 @@ animal
 relmat
 ```
 
+## Temporal random effects (AR1 / OU)
+
+Wave 1 (Gaussian mean, `sigma ~ 1`, ML). The Julia spelling is positional
+because `@formula` cannot carry keyword arguments: drmTMB's
+`temporal(1 | id, time = occ, structure = "ar1")` is
+`temporal(1 | id, occ, ar1)` here (the R bridge accepts drmTMB's spelling).
+
+`fitted` and `predict` are population-level (`Xβ̂`; drmTMB's `fitted()` is
+conditional, the conditional temporal effects are `ranef(fit)[:id]`).
+`simulate` and `bootstrap_ci` draw a fresh temporal chain per series (and a
+fresh `(1 | id)` intercept), as drmTMB's default `simulate()`; drmTMB refuses
+the temporal bootstrap, so `bootstrap_ci` is an extension. Wald standard
+errors are reported for every coordinate; drmTMB exposes only AR1
+mean-coefficient Wald intervals, and no interval calibration is claimed.
+
+```@docs
+temporal
+temporal_parameters
+```
+
 ## Known sampling variance (meta-analysis)
 
 ```@docs
@@ -31,8 +51,8 @@ sd_phylo
 
 These exported helpers prepare or inspect phylogenetic covariance inputs for
 advanced workflows. They do not make every tree or structured-effect
-combination an admitted fitting route; use the capability matrix for that
-boundary.
+combination a supported model; use the capability page to check the combinations
+available for your response family.
 
 ```@docs
 augmented_phy

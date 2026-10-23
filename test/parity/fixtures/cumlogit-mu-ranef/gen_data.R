@@ -29,7 +29,7 @@ cat("loglik:", as.numeric(logLik(fit)), "\n")
 
 # The correlated random slope `(1 + x | id)` stays rejected by drmTMB 0.7.0
 # (`validate_cumulative_logit_mu_random_terms()`): only independent `(1 | id)`
-# intercepts and `(0 + x | id)` slopes are implemented. DRM.jl matches that
+# intercepts and `(0 + x | id)` slopes are implemented. DRModels.jl matches that
 # same-target scope this slice.
 res <- tryCatch(
   drmTMB(bf(y ~ x + (1 + x | id)), family = cumulative_logit(), data = dat),
@@ -37,7 +37,7 @@ res <- tryCatch(
 )
 cat("correlated-slope-fit error:", res, "\n")
 
-# integer-coded y (1..K) for DRM.jl, which does not use R's `ordered` class
+# integer-coded y (1..K) for DRModels.jl, which does not use R's `ordered` class
 dat$y_int <- as.integer(dat$y)
 write.csv(dat[, c("id", "x", "y_int")], "test/parity/fixtures/cumlogit-mu-ranef/data.csv",
           row.names = FALSE)

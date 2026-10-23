@@ -1,5 +1,5 @@
 # bench/cancellation_lss_probe.jl
-# Probe for DRM.jl issue #551:
+# Probe for DRModels.jl issue #551:
 # 1. Cancellation Gate Probe: test numerical stability of Woodbury subtraction
 #    vs GMRF sum-of-squares at small σ_e (1e-1 down to 1e-10) with non-constant D_a = exp(Z_g α).
 # 2. Analytic Takahashi gradient for α, β_μ, β_σ verified against ForwardDiff.
@@ -9,21 +9,21 @@ using SparseArrays
 using Random
 using ForwardDiff
 using Printf
-using DRM
+using DRModels
 
 function build_fixture(; G = 16, n_per_group = 2, seed = 42)
     rng = MersenneTwister(seed)
-    phy = DRM.random_balanced_tree(G; branch_length = 0.2)
-    Q, leaf_pos, q = DRM.augmented_tree_precision(phy)
+    phy = DRModels.random_balanced_tree(G; branch_length = 0.2)
+    Q, leaf_pos, q = DRModels.augmented_tree_precision(phy)
     Qs = dropzeros!(sparse(Symmetric(Matrix(Q))))
     chQ = cholesky(Symmetric(Qs); check = false)
-    Qinv = DRM.takahashi_selinv(chQ)
+    Qinv = DRModels.takahashi_selinv(chQ)
     leaf_var = [Qinv[leaf_pos[t], leaf_pos[t]] for t in 1:G]
     inv_sd = [1.0 / sqrt(leaf_var[t]) for t in 1:G]
     logdetCprior = -logdet(chQ)
 
     # Dense phylogenetic correlation matrix
-    K = DRM._phylo_correlation(phy)
+    K = DRModels._phylo_correlation(phy)
 
     # Design matrices
     n = G * n_per_group
@@ -191,7 +191,7 @@ function sparse_eval(θ, fix; scale_se = 1.0, want_grad = false)
     # -----------------------------------------------------------------
     # Analytic Takahashi gradients
     # -----------------------------------------------------------------
-    Hinv = DRM.takahashi_selinv(chH)
+    Hinv = DRModels.takahashi_selinv(chH)
 
     # u = V⁻¹ r = W (r - Z â)
     u = w .* res_lat

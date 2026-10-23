@@ -21,19 +21,34 @@ prepared cases do not close entire capability axes.
   imputed SDs and availability/status masks, predictions, native errors and losses.
   Both fits converged with observed-information covariance; numerical independent
   Hessian inversion checks pass (absolute max|HV-I|<=1e-4, predeclared).
-- Native oracle18damage controls and fit oracle17damage controls pass normally and
-  with Python assertions disabled. The fit oracle rejects arbitrary1000I covariance,
+- Native oracle18damage controls and fit oracle 20 damage controls pass normally and
+  with Python assertions disabled (17 until the PR #934 review added a forged-PASS
+  control at 1e-5, a just-above-4e-6 threshold control and a just-below positive
+  control). The validators compare source by repository-relative path and sha256. The fit oracle rejects arbitrary1000I covariance,
   changed SDs/masks and dishonest success flags. All raw failures are retained.
 - The updated developer page executes its3examples (`finite-kernel-002` build).
   This is source-build evidence only, not rendered/full-site/deployment evidence.
 
-## Strict native-default losses
+## Strict native-default parity (refreshed 2026-10-03, #606)
 
-The native comparator and4e-6 threshold are unchanged. Ordinal theta error2.163e-6
-passes, but prediction7.561e-6 and imputation5.124e-6 fail. Categorical theta1.741e-5
-and prediction9.576e-6 fail. Likelihood errors are below6.3e-9. These discrepancies
-remain open; close likelihoods do not waive coefficient/output parity.
-`check_finite_fit_receipt.py ... --require-parity` exits1 intentionally on this receipt.
+`finite-native-003.json`, `finite-reference-003.toml` and `finite-fit-002.toml` were
+regenerated against drmTMB `main` 0eb0467851, which Newton-polishes fits by
+default. The comparator, the 4e-6 threshold and the estimators are unchanged.
+Both default fits now pass:
+
+- ordinal: theta 2.7e-11, prediction 1.7e-11, imputation 2.8e-11, conditional SD
+  2.2e-11;
+- categorical: theta 1.0e-10, prediction 7.7e-11.
+
+`check_finite_fit_receipt.py ... --require-parity` now exits 0. The earlier
+losses were real disagreements with where the old build's `nlminb` stopped (ordinal
+theta 2.163e-6, prediction 7.561e-6, imputation 5.124e-6; categorical theta
+1.741e-5, prediction 9.576e-6). They are kept in git history and explained by
+`../finite-stopping/`, which now reads the retained pre-polish fixture
+`../finite-stopping/finite-native-003-prepolish.json`. Provenance, data
+reproduction (≤1.3e-15 from the frozen data), the validator anchor edits and the
+before/after checks are in `../nongaussian-refresh-20261003/`.
+`finite-julia-003.toml` is the fixed-point receipt against the refreshed reference.
 
 ## History and interpretation
 

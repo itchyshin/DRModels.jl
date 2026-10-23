@@ -13,7 +13,7 @@
 # a method that runs on both but returns materially different intervals is a
 # correctness gap. Both are recorded, and they are NOT the same finding.
 #
-#   DRM_JL_PATH=/path/to/DRM.jl Rscript tools/parity_intervals.R
+#   DRM_JL_PATH=/path/to/DRModels.jl Rscript tools/parity_intervals.R
 #
 # Deliberately uses the INSTALLED drmTMB, like every other parity script here --
 # never devtools::load_all() on the source tree, which on 2026-08-24 silently
@@ -112,7 +112,7 @@ list(
 # skew_normal, fixed effects (measured 2026-09-07). Profile is at parity: both
   # engines return a finite interval for `fixef:mu:x` agreeing to ~2e-6 relative.
   # Bootstrap is a MEASURED one-sided gap: native TMB gives 19/19 successful
-  # refits, while the Julia side fails every replicate because DRM.jl's
+  # refits, while the Julia side fails every replicate because DRModels.jl's
   # `_simulate_once` (src/gaussian_core.jl) has no SkewNormal branch and hits its
   # terminal "simulate: not yet supported" error. Expect UNSUPPORTED_JULIA on the
   # bootstrap row until that draw kernel gains the family. Fixture draw is the one

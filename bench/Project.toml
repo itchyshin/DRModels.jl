@@ -1,9 +1,9 @@
-# Bench environment for DRM.jl, separate from the package deps. Curie finalises
+# Bench environment for DRModels.jl, separate from the package deps. Curie finalises
 # the bench deps (e.g. BenchmarkTools, JSON for the q4_p100 truth fixture) when
 # the `bench/run_*.jl` runners are audited in Phase 1.0; this is the starting
 # scaffold (HANDOVER promised a bench/Project.toml — here it is).
 [deps]
-DRM = "6c755ef2-eed4-4cdd-aafe-b639090bd215"
+DRModels = "6c755ef2-eed4-4cdd-aafe-b639090bd215"
 DelimitedFiles = "8bb1440f-4735-579b-a4ab-409b98df4dab"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"

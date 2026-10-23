@@ -1,12 +1,12 @@
 # Bounded positive-fit checks on both frozen, nondegenerate native datasets.
-using DRM, ForwardDiff, LinearAlgebra, SHA, TOML
+using DRModels, ForwardDiff, LinearAlgebra, SHA, TOML
 
 length(ARGS) == 2 || error("usage: check_joint_predictor_fit.jl REFERENCE_TOML NEW_RECEIPT_TOML")
 reference_path, output_path = abspath.(ARGS)
 isfile(output_path) && error("refusing stale output")
 BLAS.set_num_threads(1)
 Threads.nthreads() == 1 && BLAS.get_num_threads() == 1 || error("wrong resource budget")
-source_root = dirname(pathof(DRM))
+source_root = dirname(pathof(DRModels))
 manifest() = Dict(relpath(joinpath(dir, name), source_root) => bytes2hex(sha256(read(joinpath(dir, name))))
                   for (dir, _, files) in walkdir(source_root) for name in files)
 before = manifest()
@@ -15,7 +15,7 @@ receipt = Dict{String,Any}("scope" => "Two prepared ML fits; no R bridge or inte
     "reference_sha256" => bytes2hex(sha256(read(reference_path))),
     "runner_sha256" => bytes2hex(sha256(read(@__FILE__))), "source_sha256" => before,
     "runtime" => Dict("julia_version" => string(VERSION), "julia_threads" => Threads.nthreads(),
-                       "blas_threads" => BLAS.get_num_threads(), "loaded_source" => pathof(DRM)),
+                       "blas_threads" => BLAS.get_num_threads(), "loaded_source" => pathof(DRModels)),
     "cases" => Dict{String,Any}())
 started = time()
 for kind in ("gaussian", "bernoulli")
@@ -26,13 +26,13 @@ for kind in ("gaussian", "bernoulli")
     model = prepared_joint_model(y, x, X, ones(n, 1), X; predictor = Symbol(kind),
         mu_names = ["(Intercept)", "z"], sigma_names = ["(Intercept)"],
         predictor_names = ["(Intercept)", "z"], original_row = Int.(ref["original_row"]))
-    initial = DRM.prepared_joint_initial(model)
+    initial = DRModels.prepared_joint_initial(model)
     fitted = fit_prepared_joint(model)
     theta = copy(fitted.fit.theta)
     objective = t -> prepared_joint_nll(fitted.prepared, t)
     gradient = ForwardDiff.gradient(objective, theta)
     H = ForwardDiff.hessian(objective, theta)
-    V = DRM.vcov(fitted.fit)
+    V = DRModels.vcov(fitted.fit)
     prior_objective = fitted.fit.nll(theta)
     model.Xmu[1, 1] += 100
     model.x[1] = 999
@@ -40,7 +40,7 @@ for kind in ("gaussian", "bernoulli")
     summary = joint_missing_summary(fitted)
     receipt["cases"][kind] = Dict("initial_theta" => initial, "theta" => theta,
         "native_theta" => Float64.(ref["theta"]), "nll" => objective(theta),
-        "reported_loglik" => DRM.loglik(fitted.fit), "gradient" => gradient,
+        "reported_loglik" => DRModels.loglik(fitted.fit), "gradient" => gradient,
         "row_loglik" => Float64.(prepared_joint_rowloglik(fitted.prepared, theta)),
         "x_observed" => collect(fitted.prepared.observed_x),
         "y_observed" => collect(fitted.prepared.observed_y),
@@ -49,7 +49,7 @@ for kind in ("gaussian", "bernoulli")
         "optimizer_status" => string(summary.optimizer_status),
         "covariance_status" => string(summary.covariance_status),
         "uncertainty_status" => string(summary.uncertainty_status),
-        "nobs" => DRM.nobs(fitted.fit), "all_rows" => summary.all_rows,
+        "nobs" => DRModels.nobs(fitted.fit), "all_rows" => summary.all_rows,
         "original_row" => summary.original_row, "snapshot_isolated" => isolated)
     println(kind, " optimizer=", summary.optimizer_status, " gradient=", maximum(abs, gradient))
 end

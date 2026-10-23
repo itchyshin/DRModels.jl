@@ -110,7 +110,7 @@ function _fit_phylo_gaussian_lss_sparse(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G,
             end
         end
 
-        # DRM.jl#627: accumulate the group quadratic term by a SCATTER over the n
+        # DRModels.jl#627: accumulate the group quadratic term by a SCATTER over the n
         # observations instead of a GATHER that rescanned all n rows once per
         # group.  The old nested loop was O(G*n); it dominated every gradient
         # call at whole-tree scale (measured 380.0 ms per gradient at G = 16,384
@@ -213,46 +213,17 @@ function _fit_phylo_gaussian_lss_sparse(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G,
 
         # Finite differences on exact analytic gradient for variance-covariance matrix
         grad_at(θ) = eval_core(unpack(θ)...; want_grad = true, use_ref = false)[2]
-        Hmat = zeros(np, np)
-        hstep = 1e-6
-        for k in 1:np
-            θp = copy(θ̂); θm = copy(θ̂)
-            step = hstep * max(abs(θ̂[k]), 1.0)
-            θp[k] += step; θm[k] -= step
-            gp = grad_at(θp); gm = grad_at(θm)
-            if isempty(gp) || isempty(gm)
-                step = 1e-4
-                θp = copy(θ̂); θm = copy(θ̂)
-                θp[k] += step; θm[k] -= step
-                gp = grad_at(θp); gm = grad_at(θm)
-            end
-            Hmat[:, k] .= (gp .- gm) ./ (2 * step)
-        end
-        Hmat .= 0.5 .* (Hmat .+ Hmat')
-        Vcov = _vcov_from_hessian(Hmat; context = "sparse LSS phylo")
+        Hmat, hess_ok = _fd_hessian_from_grad(grad_at, θ̂)
+        # A failed probe (empty gradient even after the retry) reports the NaN vcov, not a crash.
+        Vcov = hess_ok ? _vcov_from_hessian(Hmat; context = "sparse LSS phylo") : fill(NaN, np, np)
     else
         res = Optim.optimize(nll_reml_only, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :finite)
         θ̂ = Optim.minimizer(res)
 
-        # Finite difference Hessian for REML
-        Hmat = zeros(np, np)
-        hstep = 1e-5
-        for k in 1:np
-            for j in 1:np
-                if j >= k
-                    θpp = copy(θ̂); θpm = copy(θ̂); θmp = copy(θ̂); θmm = copy(θ̂)
-                    sk = hstep * max(abs(θ̂[k]), 1.0)
-                    sj = hstep * max(abs(θ̂[j]), 1.0)
-                    θpp[k] += sk; θpp[j] += sj
-                    θpm[k] += sk; θpm[j] -= sj
-                    θmp[k] -= sk; θmp[j] += sj
-                    θmm[k] -= sk; θmm[j] -= sj
-                    Hmat[k, j] = (nll_reml_only(θpp) - nll_reml_only(θpm) - nll_reml_only(θmp) + nll_reml_only(θmm)) / (4 * sk * sj)
-                    Hmat[j, k] = Hmat[k, j]
-                end
-            end
-        end
-        Vcov = _vcov_from_hessian(Hmat; context = "sparse LSS phylo REML")
+        # Finite difference Hessian for REML (value-based). A probe that is non-finite or hits
+        # the 1e18 failure sentinel reports the NaN vcov, not a garbage finite Hessian.
+        Hmat, hess_ok = _fd_hessian_from_values(nll_reml_only, θ̂)
+        Vcov = hess_ok ? _vcov_from_hessian(Hmat; context = "sparse LSS phylo REML") : fill(NaN, np, np)
     end
 
     # Random effects (BLUPs)
@@ -281,7 +252,7 @@ function _fit_phylo_gaussian_lss_sparse(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G,
     scales = Dict(:sigma => exp.(Xσ * θ̂[iβσ]))
 
     fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, Vcov, -nll_ml_only(θ̂), n,
-                                     Optim.converged(res), means, obs, scales), nll_ml_only,
+                                     drm_optim_converged(res), means, obs, scales), nll_ml_only,
                                 reml ? nothing : nllgrad!), re_dict)
     if reml
         return _withreml(fit, -nll_reml_only(θ̂), -nll_ml_only(θ̂))
@@ -952,23 +923,10 @@ function _fit_gaussian_lss_sparse_multi(fam::Gaussian, y, Xμ, Xσ, comps::Vecto
     # Finite differences on the exact analytic gradient (ML or REML, per
     # `reml`) for the variance-covariance matrix — see the docstring for why
     # this differs from #551's REML branch.
-    Hmat = zeros(np, np)
-    hstep = 1e-6
-    for k in 1:np
-        θp = copy(θ̂); θm = copy(θ̂)
-        step = hstep * max(abs(θ̂[k]), 1.0)
-        θp[k] += step; θm[k] -= step
-        gp = grad_at(θp); gm = grad_at(θm)
-        if isempty(gp) || isempty(gm)
-            step = 1e-4
-            θp = copy(θ̂); θm = copy(θ̂)
-            θp[k] += step; θm[k] -= step
-            gp = grad_at(θp); gm = grad_at(θm)
-        end
-        Hmat[:, k] .= (gp .- gm) ./ (2 * step)
-    end
-    Hmat .= 0.5 .* (Hmat .+ Hmat')
-    Vcov = _vcov_from_hessian(Hmat; context = reml ? "sparse LSS multi REML" : "sparse LSS multi")
+    Hmat, hess_ok = _fd_hessian_from_grad(grad_at, θ̂)
+    Vcov = hess_ok ?
+        _vcov_from_hessian(Hmat; context = reml ? "sparse LSS multi REML" : "sparse LSS multi") :
+        fill(NaN, np, np)
 
     # Random effects (BLUPs): joint â at θ̂, then each component's own
     # contribution at its own block offset — generalising :244-248's
@@ -1014,7 +972,7 @@ function _fit_gaussian_lss_sparse_multi(fam::Gaussian, y, Xμ, Xσ, comps::Vecto
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
 
     fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, Vcov, -nll_ml_only(θ̂), n,
-                                     Optim.converged(res), means, obs, scales), nll_ml_only,
+                                     drm_optim_converged(res), means, obs, scales), nll_ml_only,
                                 reml ? nothing : nllgrad!), re_dict)
     if reml
         return _withreml(fit, -nll_reml_only(θ̂), -nll_ml_only(θ̂))

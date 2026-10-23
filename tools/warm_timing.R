@@ -43,7 +43,7 @@
 # its cost (see registry doc "Estimate").
 #
 # Grammar notes found and fixed during this same validation pass (differ from
-# DRM.jl's Julia grammar -- see registry doc §3 for the full matched-call
+# DRModels.jl's Julia grammar -- see registry doc §3 for the full matched-call
 # tables):
 #   - `phylo(1 | grp, tree = TREE)` takes the tree INLINE in the formula on
 #     the R side (Julia: `tree=` is a separate `drm()` keyword argument).

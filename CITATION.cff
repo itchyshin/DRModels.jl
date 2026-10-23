@@ -1,6 +1,6 @@
 cff-version: 1.2.0
-message: "If you use DRM.jl, please cite it as below."
-title: "DRM.jl: Distributional Regression Models in Julia"
+message: "If you use DRModels.jl, please cite it as below."
+title: "DRModels.jl: Distributional Regression Models in Julia"
 abstract: >-
   A Julia engine and twin of the R package drmTMB for univariate and
   bivariate distributional regression (a separate formula per distributional
@@ -14,10 +14,10 @@ authors:
     orcid: "https://orcid.org/0000-0002-7765-5182"
     email: itchyshin@gmail.com
 license: MIT
-repository-code: "https://github.com/itchyshin/DRM.jl"
-url: "https://itchyshin.github.io/DRM.jl/"
-version: 0.1.2
-date-released: 2026-08-01
+repository-code: "https://github.com/itchyshin/DRModels.jl"
+url: "https://itchyshin.github.io/DRModels.jl/"
+version: 0.7.1
+date-released: 2026-09-06
 keywords:
   - distributional regression
   - location-scale models

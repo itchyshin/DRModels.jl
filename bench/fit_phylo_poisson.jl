@@ -5,7 +5,7 @@
 
 import Pkg
 Pkg.activate(dirname(@__DIR__))
-using DRM
+using DRModels
 using LinearAlgebra
 using DelimitedFiles, Printf, Statistics
 

@@ -1,4 +1,4 @@
-using DRM, Test, Random, LinearAlgebra
+using DRModels, Test, Random, LinearAlgebra
 
 @testset "actual LSS transformed scale coefficient labels" begin
     rng = MersenneTwister(563317)

@@ -1,9 +1,9 @@
-using DRM
+using DRModels
 using Test, LinearAlgebra
 
 @testset "q4 direct export status contract" begin
-    rows = DRM._bridge_q4_direct_export_status()
-    schema = DRM._bridge_q4_direct_export_schema()
+    rows = DRModels._bridge_q4_direct_export_status()
+    schema = DRModels._bridge_q4_direct_export_schema()
 
     @test length(rows) == 4
     @test all(row -> propertynames(row) == schema, rows)
@@ -19,7 +19,7 @@ using Test, LinearAlgebra
     @test all(row -> occursin("no R-via-Julia q4 bridge parity", row.claim_boundary), rows)
     @test all(row -> occursin("interval coverage", row.claim_boundary), rows)
 
-    validation = DRM._bridge_q4_validate_direct_export_status(rows)
+    validation = DRModels._bridge_q4_validate_direct_export_status(rows)
     @test validation.ok
     @test isempty(validation.errors)
     @test validation.n_rows == 4
@@ -27,7 +27,7 @@ using Test, LinearAlgebra
 
     bad_rows = collect(rows)
     bad_rows[3] = merge(bad_rows[3], (direct_sd_target = "sd_mu1",))
-    bad_validation = DRM._bridge_q4_validate_direct_export_status(Tuple(bad_rows))
+    bad_validation = DRModels._bridge_q4_validate_direct_export_status(Tuple(bad_rows))
     @test !bad_validation.ok
     @test any(err -> occursin("direct_sd_target", err), bad_validation.errors)
 end
@@ -47,7 +47,7 @@ end
         estim_method = :ML,
     )
 
-    point_export = DRM._bridge_q4_point_export(fake_fit; family = "biv_gaussian")
+    point_export = DRModels._bridge_q4_point_export(fake_fit; family = "biv_gaussian")
 
     @test point_export["target"] == "gaussian_q4_phylo"
     @test point_export["dimension"] == "q4"
@@ -66,11 +66,11 @@ end
     @test occursin("interval coverage", point_export["claim_boundary"])
 
     non_q4 = (ranef = nothing, estim_method = :ML)
-    @test isempty(DRM._bridge_q4_point_export(non_q4; family = "gaussian"))
+    @test isempty(DRModels._bridge_q4_point_export(non_q4; family = "gaussian"))
 end
 
 @testset "q4 phylocov names match log-Cholesky packing order" begin
-    @test DRM._q4_phylocov_names() == [
+    @test DRModels._q4_phylocov_names() == [
         "Sigma_a:L11",
         "Sigma_a:L21",
         "Sigma_a:L31",

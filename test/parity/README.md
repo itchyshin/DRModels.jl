@@ -5,7 +5,7 @@
 `DRM_PARITY_TESTS=1`; `gen_fixtures.R` regenerates the committed numeric
 fixtures on a maintainer machine with local R + drmTMB.
 
-This directory hosts the DRM.jl ↔ **drmTMB** numerical-parity suite (fixtures
+This directory hosts the DRModels.jl ↔ **drmTMB** numerical-parity suite (fixtures
 currently record **drmTMB 0.6.0** in `expected.meta.toml`, #392). It runs
 against **pre-generated drmTMB reference outputs** committed under
 `test/parity/fixtures/` so the gate runs on CI with **no live R + drmTMB
@@ -15,13 +15,13 @@ install** and with **no live R required** at all once fixtures exist.
 
 ## License note (read first)
 
-drmTMB is **GPL (≥3)**; DRM.jl is **MIT**. The license boundary is absolute:
+drmTMB is **GPL (≥3)**; DRModels.jl is **MIT**. The license boundary is absolute:
 
 - **Never vendor drmTMB GPL source** (no `.R`/`.cpp`/`.hpp` copied or adapted).
 - Fixtures are **generated outputs only** — the *numbers* produced by running
   drmTMB on a known dataset (coefficients, vcov, logLik, AIC), plus the input
-  data needed to reproduce a DRM.jl fit. Generated numeric outputs are facts,
-  not GPL-licensed code, so committing them keeps DRM.jl MIT-clean.
+  data needed to reproduce a DRModels.jl fit. Generated numeric outputs are facts,
+  not GPL-licensed code, so committing them keeps DRModels.jl MIT-clean.
 - Each fixture records its provenance (drmTMB version + the R call that produced
   it) in a sidecar `*.meta.toml`, but **no drmTMB code**.
 - **Rose** audits this boundary before every tag (the GPL→MIT guard).
@@ -51,8 +51,8 @@ test/parity/
     └── …                      # one subdir per parity case (mirrors the article/tutorial grid)
 ```
 
-Each fixture case is a self-contained folder: the **data** DRM.jl re-fits, plus
-the **expected** drmTMB numbers DRM.jl is compared against. Naming mirrors the
+Each fixture case is a self-contained folder: the **data** DRModels.jl re-fits, plus
+the **expected** drmTMB numbers DRModels.jl is compared against. Naming mirrors the
 tutorial slugs (`gaussian-locscale`, `robust-student`, `count-nbinom2`, …) so a
 parity case lines up 1:1 with the article it backs.
 
@@ -102,7 +102,7 @@ suite** — only the committed outputs.
 
 For each fixture case the harness:
 
-1. Loads `data.csv`, builds the DRM.jl `bf()` / `drm_formula()` + family, fits
+1. Loads `data.csv`, builds the DRModels.jl `bf()` / `drm_formula()` + family, fits
    by **ML** (the default; REML cases tagged explicitly).
 2. Loads `expected.toml`.
 3. Asserts, within tolerance:
@@ -116,11 +116,11 @@ For each fixture case the harness:
 
    The engine-quality battery's headline **R-parity ≤ 1e-6** gate applies to the
    tightest comparable quantity (logLik on the shared estimator); `vcov` is
-   looser because drmTMB's Hessian and DRM.jl's exact-gradient covariance can
-   differ in conditioning (this is a *documented DRM.jl advantage* — see
+   looser because drmTMB's Hessian and DRModels.jl's exact-gradient covariance can
+   differ in conditioning (this is a *documented DRModels.jl advantage* — see
    `report/comparison-grid.md`).
 
-4. On mismatch, reports the case name, the quantity, the drmTMB vs DRM.jl
+4. On mismatch, reports the case name, the quantity, the drmTMB vs DRModels.jl
    values, and the realized vs allowed tolerance.
 
 Tolerances are per-case overridable in `expected.toml` (`[tol]` block) so a hard
@@ -128,12 +128,12 @@ case (e.g. beta-binomial near a boundary) can relax without loosening the whole
 suite.
 
 The committed NB2 and Student fixtures use the **shared** working coefficient
-scales of current DRM.jl and drmTMB 0.6.0 — no Jacobian reparameterisation:
+scales of current DRModels.jl and drmTMB 0.6.0 — no Jacobian reparameterisation:
 
 - NB2 `sigma` is `log(σ)` in both (size = `exp(-2·σ)`).
 - Student `nu` is `log(ν − 2)` in both (`ν = 2 + exp(η)`).
 
-(An older Student transform to DRM.jl `log(ν)` was undone for #370 once DRM.jl
+(An older Student transform to DRModels.jl `log(ν)` was undone for #370 once DRModels.jl
 matched drmTMB's `log(ν − 2)` scale.)
 
 ---

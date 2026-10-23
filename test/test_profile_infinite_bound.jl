@@ -21,7 +21,7 @@
 #      the serial profile and with an independent TMB oracle.
 
 using Test
-using DRM
+using DRModels
 using StableRNGs
 using LinearAlgebra
 using Statistics
@@ -49,9 +49,9 @@ end
 # a log-linear phylogenetic SD submodel -- the reporter's model shape.
 function _p631_simulate(n::Int; seed = 42)
     rng = StableRNG(seed)
-    phy = DRM.augmented_phy(_p631_coal_newick(n, rng))
+    phy = DRModels.augmented_phy(_p631_coal_newick(n, rng))
     G = phy.n_leaves
-    K0 = DRM.sigma_phy_dense(phy; σ²_phy = 1.0)
+    K0 = DRModels.sigma_phy_dense(phy; σ²_phy = 1.0)
     dK = sqrt.(diag(K0)); K = K0 ./ (dK * dK')
     sp = String.(phy.leaf_names)
     t = 2 .* rand(rng, G) .- 1
@@ -128,7 +128,7 @@ _p631_formula() = bf(@formula(y ~ temp_z + temp_z2 + phylo(1 | species)),
     # Same tree and data exported to R; `confint(fit, parm = "fixef:mu:temp_z2",
     # method = "profile")` on the TMB engine (67.2 s) returned:
     #     lower = -0.477129166981   upper = -0.242574309249
-    # DRM.jl agrees to 2.8e-6 (lower) and 2.0e-6 (upper); the residual is
+    # DRModels.jl agrees to 2.8e-6 (lower) and 2.0e-6 (upper); the residual is
     # `tmbprofile`'s grid-and-spline resolution, not a disagreement about the
     # interval. The tolerance below is deliberately looser than that measured
     # gap, and far tighter than any difference that would matter to a user.
@@ -150,7 +150,7 @@ end
     # The bridge flattener is the last thing between a failed endpoint and R's
     # `confint()` data frame. It must refuse a non-finite bound outright.
     failed_row = (param = :mu, coef = "x", estimate = 0.5, lower = -Inf, upper = 1.0)
-    @test_throws ArgumentError DRM._bridge_inference_flatten(
+    @test_throws ArgumentError DRModels._bridge_inference_flatten(
         failed_row; method = "profile", status = "profile_failed", attempted = 1,
         used = 1, failed = 1, elapsed = 0.1, threaded = false, worker_threads = 1,
         julia_threads = 1, blas_threads = 1, message = "profile endpoint solve failed: lower")
@@ -158,7 +158,7 @@ end
     # A genuinely UNBOUNDED profile (the likelihood never crosses the LR
     # threshold in the searched range) is a different, honest answer and keeps
     # the "profile" status -- it must still pass through.
-    ok = DRM._bridge_inference_flatten(
+    ok = DRModels._bridge_inference_flatten(
         failed_row; method = "profile", status = "profile", attempted = 1,
         used = 1, failed = 0, elapsed = 0.1, threaded = false, worker_threads = 1,
         julia_threads = 1, blas_threads = 1,

@@ -1,6 +1,6 @@
 # test_lowbatch_j7.jl — regression tests for the low-severity twin-review fixes
 # (#322–#326). Each testset captures ONE fixed finding so a regression is caught.
-using DRM
+using DRModels
 using Test, Random
 import Distributions
 
@@ -23,11 +23,11 @@ end
     # silently return the first (μ-intercept) row as the SD interval.
     rows = [(param = :mu, coef = "(Intercept)", estimate = 0.3, lower = 0.1, upper = 0.5),
             (param = :mu, coef = "x",           estimate = 0.5, lower = 0.3, upper = 0.7)]
-    @test_throws ArgumentError DRM._bridge_pick_sd_row(rows)
+    @test_throws ArgumentError DRModels._bridge_pick_sd_row(rows)
     # And it still finds a genuine SD row.
     ok = [(param = :mu, coef = "(Intercept)", estimate = 0.3, lower = 0.1, upper = 0.5),
           (param = :resd, coef = "g", estimate = 0.4, lower = 0.2, upper = 0.6)]
-    @test DRM._bridge_pick_sd_row(ok).param === :resd
+    @test DRModels._bridge_pick_sd_row(ok).param === :resd
 end
 
 # --- #322.3: scale-axis RE SD is keyed `<grp>_logsigma`, distinct from mean axis ---
@@ -53,9 +53,9 @@ end
     Xσ_bad = hcat(ones(n), x)                 # sigma ~ x — must be rejected
     y = Float64.(rand(0:5, n))
     nmμ = ["(Intercept)", "x"]; nmσ = ["(Intercept)", "x"]
-    @test_throws ErrorException DRM._fit_nb2_ranef_va(DRM.NegBinomial2(), y, Xμ, Xσ_bad, gidx, ng, nmμ, nmσ, :g, 1e-6)
+    @test_throws ErrorException DRModels._fit_nb2_ranef_va(DRModels.NegBinomial2(), y, Xμ, Xσ_bad, gidx, ng, nmμ, nmσ, :g, 1e-6)
     yg = abs.(randn(n)) .+ 0.1
-    @test_throws ErrorException DRM._fit_gamma_ranef_va(DRM.Gamma(), yg, Xμ, Xσ_bad, gidx, ng, nmμ, nmσ, :g, 1e-6)
+    @test_throws ErrorException DRModels._fit_gamma_ranef_va(DRModels.Gamma(), yg, Xμ, Xσ_bad, gidx, ng, nmμ, nmσ, :g, 1e-6)
     yb = clamp.(rand(n), 0.01, 0.99)
-    @test_throws ErrorException DRM._fit_beta_ranef_va(DRM.Beta(), yb, Xμ, Xσ_bad, gidx, ng, nmμ, nmσ, :g, 1e-6)
+    @test_throws ErrorException DRModels._fit_beta_ranef_va(DRModels.Beta(), yb, Xμ, Xσ_bad, gidx, ng, nmμ, nmσ, :g, 1e-6)
 end

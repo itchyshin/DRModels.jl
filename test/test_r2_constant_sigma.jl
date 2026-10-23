@@ -6,7 +6,7 @@
 #
 # The refusal tests are the point of the function. Each one is a RED CONTROL for a
 # denominator that would otherwise be picked silently.
-using DRM, Test, Random
+using DRModels, Test, Random
 
 @testset "r2_constant_sigma" begin
     @testset "constant σ: equals the OLS R² exactly" begin
@@ -66,7 +66,7 @@ using DRM, Test, Random
         Random.seed!(11)
         n = 200; x = randn(n)
         yc = rand(0:5, n)
-        fit = drm(bf(@formula(yc ~ x)), Poisson(); data = (; yc, x))
+        fit = drm(bf(@formula(yc ~ x)), DRModels.Poisson(); data = (; yc, x))
         @test_throws ArgumentError r2_constant_sigma(fit)
     end
 
@@ -113,7 +113,7 @@ end
     @testset "GATED to Gaussian: no Residual SD label on other families" begin
         # scales[:sigma] holds a shape for Gamma and a dispersion for NB2, so the
         # label would be wrong there. Absence is the assertion.
-        cnt = drm(bf(@formula(yc ~ x)), Poisson(); data = (yc = rand(0:5, n), x = x))
+        cnt = drm(bf(@formula(yc ~ x)), DRModels.Poisson(); data = (yc = rand(0:5, n), x = x))
         @test !occursin("Residual SD", sprint(show, MIME("text/plain"), cnt))
     end
 end

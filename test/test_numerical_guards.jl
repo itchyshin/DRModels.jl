@@ -6,10 +6,10 @@
 # returning a poisoned value. (#324.6, dropping the laplace_ll ridge, is NOT applied:
 # the ridge is load-bearing for optimiser stability on the q=4 path — see the PR.)
 
-using DRM
+using DRModels
 using Test, LinearAlgebra, Random, SparseArrays, Statistics
 
-const _NG = DRM   # internal kernels live under DRM.*
+const _NG = DRModels   # internal kernels live under DRModels.*
 
 @testset "numerical-stability guards" begin
 

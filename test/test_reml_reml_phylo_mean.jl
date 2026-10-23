@@ -1,4 +1,4 @@
-# REML for the Gaussian MEAN-ONLY phylogenetic cell (DRM.jl #624 item (c)).
+# REML for the Gaussian MEAN-ONLY phylogenetic cell (DRModels.jl #624 item (c)).
 #
 #   bf(y ~ x + phylo(1 | species), sigma ~ 1),  Gaussian(),  method = :REML
 #
@@ -24,7 +24,7 @@
 # fixture; see drmTMB docs/dev-log/evidence/julia-r-parity/reml/
 # reml-phylo-mean-receipt.md).
 
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra, Statistics
 
 @testset "Gaussian mean-only phylo: method = :REML" begin
@@ -90,19 +90,19 @@ using Test, Random, LinearAlgebra, Statistics
     # The reported REML objective agrees with the route's own restricted
     # components evaluated at the REML optimum, and with the DENSE oracle in
     # the same file (a different assembly of the same restricted likelihood).
-    prob = DRM.make_loc_problem(phy, y, hcat(ones(n), x); species = species)
-    comp = DRM._loconly_reml_components(prob, lσ_reml, lσphy_reml)
+    prob = DRModels.make_loc_problem(phy, y, hcat(ones(n), x); species = species)
+    comp = DRModels._loconly_reml_components(prob, lσ_reml, lσphy_reml)
     @test comp.converged
     @test -comp.nll ≈ fit_reml.reml_loglik rtol = 1e-9
     @test -comp.ml_nll ≈ fit_reml.ml_loglik rtol = 1e-9
-    dense = DRM._loconly_dense_reml_components(prob, lσ_reml, lσphy_reml)
+    dense = DRModels._loconly_dense_reml_components(prob, lσ_reml, lσphy_reml)
     @test dense.nll ≈ comp.nll rtol = 1e-7 atol = 1e-7
 
     # The REML optimum really is a stationary point OF THE RESTRICTED objective
     # (not of the ML one): the restricted objective at the REML minimiser is no
     # larger than at the ML minimiser.
-    @test DRM._loconly_reml_nll(prob, lσ_reml, lσphy_reml) <=
-          DRM._loconly_reml_nll(prob, lσ_ml, lσphy_ml) + 1e-8
+    @test DRModels._loconly_reml_nll(prob, lσ_reml, lσphy_reml) <=
+          DRModels._loconly_reml_nll(prob, lσ_ml, lσphy_ml) + 1e-8
 
     # Standard errors are finite on every block (the variance block uses the
     # RESTRICTED curvature under REML), and the mean block is the canonical
@@ -123,8 +123,8 @@ using Test, Random, LinearAlgebra, Statistics
     @test all(isfinite, se)
     @test all(se .> 0)
     σ²_reml = exp(2 * lσ_reml)
-    _, _, chM, _ = DRM.build_M(prob, exp(2 * lσphy_reml), σ²_reml)
-    VX = DRM.Vinv_mul(prob, chM, σ²_reml, prob.X)
+    _, _, chM, _ = DRModels.build_M(prob, exp(2 * lσphy_reml), σ²_reml)
+    VX = DRModels.Vinv_mul(prob, chM, σ²_reml, prob.X)
     gls_se = sqrt.(diag(inv(Symmetric(0.5 .* (prob.X' * VX .+ VX' * prob.X)))))
     @test se[1:pμ] ≈ gls_se rtol = 1e-8
 end
@@ -142,7 +142,7 @@ end
     z = randn(n)
     y = 0.4 .+ 0.7 .* x .+ 0.5 .* randn(n)
 
-    # sigma carries a predictor -> DRM.jl routes to the DENSE structured fitter.
+    # sigma carries a predictor -> DRModels.jl routes to the DENSE structured fitter.
     data_lss = (y = y, x = x, z = z, species = species)
     f_lss = bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ z))
     @test_throws ArgumentError drm(f_lss, Gaussian(); data = data_lss, tree = phy,

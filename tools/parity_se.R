@@ -6,7 +6,7 @@
 # between two engines is NOT interval coverage — no coverage claim is made or
 # implied here; `interval_status` stays exactly as the capability registry says.
 #
-#   DRM_JL_PATH=/path/to/DRM.jl Rscript tools/parity_se.R
+#   DRM_JL_PATH=/path/to/DRModels.jl Rscript tools/parity_se.R
 #
 # Writes a TSV of results to `out_path` below (same append-style contract as
 # tools/parity_fixture.R). The final NEGATIVE_CONTROL row deliberately perturbs
@@ -19,7 +19,7 @@ out_path <- "docs/dev-log/evidence/parity-se.tsv"
 
 # Tolerance (relative, on each per-coefficient SE): SEs are second-order
 # quantities — sqrt(diag(inverse observed information)) — and the two engines
-# build that information differently (TMB sdreport AD-Hessian vs DRM.jl's
+# build that information differently (TMB sdreport AD-Hessian vs DRModels.jl's
 # central finite-difference Jacobian of its exact gradient, h = 1e-5), so they
 # will not agree at the 1e-4 coefficient tolerance. 1e-3 relative is the
 # measured-headroom choice; see docs/dev-log/evidence/2026-08-24-se-axis.md.
@@ -72,7 +72,7 @@ cells <- list(
     family  = function() biv_gaussian()
   ),
   list(
-    # NOT a drmTMB capability row -- Gaussian ordinary-RE Laplace is a DRM.jl
+    # NOT a drmTMB capability row -- Gaussian ordinary-RE Laplace is a DRModels.jl
     # cell with no counterpart in julia-capabilities.tsv. Prefixed so
     # tools/parity_crosscheck.py does not read it as an unmatched capability id.
     capability_id = "drmjl_only:gaussian_ranef",
@@ -173,7 +173,7 @@ compare_cell <- function(cell, perturb = 0) {
   res$se_tmb <- fmt_vec(st)
   res$se_julia <- fmt_vec(sj)
   # Boundary guard: an SE at a constrained boundary optimum (e.g. a variance
-  # component pinned at DRM.jl's log(1e-6) floor, which drmTMB does not share)
+  # component pinned at DRModels.jl's log(1e-6) floor, which drmTMB does not share)
   # is not comparable to an interior-optimum SE — no PASS/FAIL is meaningful.
   # Heuristic proxy here: a non-finite or degenerate (<= 1e-6) SE on either
   # side. The authoritative detector is theta-level (see compare.jl's
@@ -224,7 +224,7 @@ tab <- do.call(rbind, rows)
 # --- provenance stamp (#473) -------------------------------------------------
 # Record WHICH drmTMB build produced these numbers, not just its version string.
 # "drmTMB 0.7.0" identifies at least 16 different builds, so a version alone
-# cannot tell a later reader whether a disagreement is DRM.jl regressing or the
+# cannot tell a later reader whether a disagreement is DRModels.jl regressing or the
 # COMPARATOR having moved underneath the fixture. Stamped at write time from the
 # single definition in drmtmb_provenance_lib.R.
 .tools_dir <- tryCatch({

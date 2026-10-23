@@ -7,7 +7,7 @@
 # balanced tree both sparse routes match the legacy dense GLS/LBFGS surface, so
 # the correctness anchor is: same μ coefficients, same residual σ, and same
 # marginal logLik (rtol ~1e-3).
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 
 @testset "Gaussian phylo mean: :auto uses sparse L-BFGS and :em remains available" begin

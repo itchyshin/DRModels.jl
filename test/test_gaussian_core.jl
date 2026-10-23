@@ -2,7 +2,7 @@
 # Recovery test (Curie): simulate with known coefficients, fit via the public
 # API, assert recovery. This is the RED test for the `drm` / `bf` / `Gaussian`
 # front end.
-using DRM
+using DRModels
 using Test, Random
 
 @testset "Gaussian location-scale (univariate, fixed effects) — recovery" begin

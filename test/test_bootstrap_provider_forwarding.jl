@@ -1,4 +1,4 @@
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 
 @testset "coordinate provider survives every bootstrap surface" begin
@@ -25,8 +25,8 @@ using Test, Random, LinearAlgebra
     oracle_rng = MersenneTwister(seed)
     ustar = only(values(re_sd(fit))) .* (cholesky(Symmetric(Cfit)).L * randn(oracle_rng, G))
     expected = predict(fit, data) .+ ustar[site] .+
-               DRM._scale_vector(fit, :sigma) .* randn(oracle_rng, G*m)
-    simulator = DRM._marginal_simulator(fit, data; coords)
+               DRModels._scale_vector(fit, :sigma) .* randn(oracle_rng, G*m)
+    simulator = DRModels._marginal_simulator(fit, data; coords)
     @test simulator(MersenneTwister(seed)) ≈ expected atol=1e-12 rtol=1e-12
 
     fit_result = bootstrap_result(fit; data, coords, B=2,

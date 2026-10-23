@@ -6,7 +6,7 @@
 # the refusals — an over-broad staged route that silently accepts an unreviewed
 # pair class would be worse than one that errors.
 
-using DRM
+using DRModels
 using Test
 using Random
 import Distributions

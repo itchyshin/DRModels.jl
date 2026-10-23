@@ -2,7 +2,7 @@
 
 !!! note "Status — Stable (beta + beta-binomial + zero-one-inflated beta)"
     Mirrors drmTMB's [Proportions and success rates](https://itchyshin.github.io/drmTMB/articles/proportion-beta-binomial.html).
-    **In DRM.jl today:** the **beta** family `Beta()` for continuous proportions
+    **In DRModels.jl today:** the **beta** family `Beta()` for continuous proportions
     in `(0,1)`, the **beta-binomial** family `BetaBinomial()` for counts of
     successes out of known trials (`cbind(successes, failures) ~ …`), and the
     **zero-one-inflated beta** `ZeroOneBeta()` for proportions on `[0,1]`.
@@ -18,8 +18,8 @@ the beta **precision** `φ = 1/σ²` (drmTMB's convention) — larger `φ` means
 spread around the mean:
 
 ```@example beta
-using DRM, Random
-import Distributions          # `Beta` below is DRM's family; qualify the distribution
+using DRModels, Random
+import Distributions          # `Beta` below is DRModels's family; qualify the distribution
 Random.seed!(20260617)
 
 n = 3000

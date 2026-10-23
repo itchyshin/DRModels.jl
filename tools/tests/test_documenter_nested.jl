@@ -1,7 +1,7 @@
 using Documenter, DocumenterVitepress, Test, Logging
 
 # Reproduce the directory contract in an isolated, fresh documentation project.
-# This intentionally runs no DRM fits. The negative case must remain fatal.
+# This intentionally runs no DRModels fits. The negative case must remain fatal.
 function nested_probe(broken)
     # macOS /var and /private/var alias the same directory. Use one spelling
     # throughout; the installed writer otherwise constructs invalid relpaths.
@@ -20,7 +20,7 @@ function nested_probe(broken)
         remotes=nothing, sitename="Nested example contract", pagesonly=true,
         pages=["Nested" => "nested/probe.md"], warnonly=false,
         format=DocumenterVitepress.MarkdownVitepress(
-            repo="github.com/itchyshin/DRM.jl", devbranch="main", devurl="dev",
+            repo="github.com/itchyshin/DRModels.jl", devbranch="main", devurl="dev",
             inventory_version="0.0.0", build_vitepress=false, install_npm=false))
     output = joinpath(root, "build", ".documenter", "nested", "probe.md")
     @test isfile(output)

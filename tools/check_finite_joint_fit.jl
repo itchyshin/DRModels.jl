@@ -1,9 +1,9 @@
 # Retain native-default fitting discrepancies; never replace the comparator optimum.
-using DRM, LinearAlgebra, ForwardDiff, SHA, TOML
+using DRModels, LinearAlgebra, ForwardDiff, SHA, TOML
 root = dirname(@__DIR__)
 length(ARGS)==1 || error("usage: check_finite_joint_fit.jl NEW_RECEIPT_TOML")
 isfile(ARGS[1]) && error("refusing stale receipt")
-realpath(dirname(pathof(DRM))) == realpath(joinpath(root,"src")) || error("wrong loaded source")
+realpath(dirname(pathof(DRModels))) == realpath(joinpath(root,"src")) || error("wrong loaded source")
 BLAS.set_num_threads(1)
 Threads.nthreads()==1 || error("wrong resource budget")
 manifest()=Dict(relpath(joinpath(d,f),root)=>bytes2hex(sha256(read(joinpath(d,f)))) for (d,_,fs) in walkdir(joinpath(root,"src")) for f in fs)
@@ -14,7 +14,7 @@ mat(rows)=reduce(vcat,permutedims.(Float64.(v) for v in rows))
 receipt=Dict{String,Any}("scope"=>"prepared default-fit comparison only; no formula/bridge/performance claim",
     "source_before"=>before,"reference_sha256"=>bytes2hex(sha256(read(reference_path))),
     "runner_sha256"=>bytes2hex(sha256(read(@__FILE__))),"tolerance"=>4e-6,
-    "runtime"=>Dict("loaded_source"=>pathof(DRM),"julia_version"=>string(VERSION),"julia_threads"=>Threads.nthreads(),"blas_threads"=>BLAS.get_num_threads()),
+    "runtime"=>Dict("loaded_source"=>pathof(DRModels),"julia_version"=>string(VERSION),"julia_threads"=>Threads.nthreads(),"blas_threads"=>BLAS.get_num_threads()),
     "cases"=>Dict{String,Any}())
 started=time()
 for kind in ("ordinal","categorical")

@@ -15,7 +15,7 @@
 #
 # Worked example (ML is still the default):
 #
-#   using DRM
+#   using DRModels
 #   G, m = 8, 4
 #   g = repeat(1:G, inner = m); x = randn(G * m)
 #   y = Float64.(rand.(Ref(Random.default_rng()),
@@ -23,11 +23,11 @@
 #   fit = drm(bf(@formula(y ~ x + (1 | g))), Poisson(); data = (; y, x, g))
 #   estimation_method(fit) === :ML
 
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 import Distributions
 
-const D = DRM
+const D = DRModels
 
 @testset "Cox–Reid characterization (#441) — hook + uncertified routes" begin
     @testset "ML is still the Poisson default; (1|g) REML is opt-in (#443)" begin

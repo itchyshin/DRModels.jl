@@ -56,4 +56,41 @@ for label, mutate in damages:
     except (ValueError, KeyError, TypeError):
         continue
     raise RuntimeError("damaged fixture passed: " + label)
-print(f"JOINT_PUBLIC_NEGATIVE_CONTROLS_PASS mutations={len(damages)}")
+
+# Verdict-direction controls (same class as PR #934 review B1). Once the honest
+# native verdict is PASS, "native failure concealed" no longer forges a PASS. These
+# controls move the native theta in a copy, recompute the native log-likelihood and
+# the reported theta/loglik errors honestly, and keep native_status at PASS. A
+# validator that always says PASS, or that loosens 4e-6, accepts the forgery.
+import check_joint_frontend_fit_receipt as oracle
+
+
+def with_moved_native_theta(move):
+    changed = copy.deepcopy(receipt)
+    for kind, case in changed["cases"].items():
+        if case.get("native_status") != "PASS":
+            raise RuntimeError("verdict controls need an honest PASS receipt")
+        theta = case["raw_theta"]
+        case["native_raw_theta"] = [move(a, t) for a, t in zip(case["native_raw_theta"], theta)]
+        case["native_loglik"] = sum(oracle.expected_row_loglik(case["native_raw_theta"], reference[kind], kind))
+        case["native_errors"]["theta"] = max(abs(a-b) for a, b in zip(theta, case["native_raw_theta"]))
+        case["native_errors"]["loglik"] = abs(case["loglik"]-case["native_loglik"])
+    return changed
+
+
+verdict_controls = [
+    ("forged PASS, native theta +1e-5", lambda a, t: a+1e-5),
+    ("forged PASS, theta error 4.004e-6 just above the bar", lambda a, t: t+4e-6*(1+1e-3)),
+]
+for label, move in verdict_controls:
+    try:
+        check(with_moved_native_theta(move), reference, direct, rroot, jroot)
+    except ValueError as error:
+        if not str(error).endswith(": native verdict inconsistent"):
+            raise RuntimeError(label + " rejected for the wrong reason: " + str(error))
+        continue
+    raise RuntimeError("damaged fixture passed: " + label)
+# Positive control: just below the bar (3.996e-6) the same forgery is honest and
+# must be accepted, so the controls above fail only on the verdict.
+check(with_moved_native_theta(lambda a, t: t+4e-6*(1-1e-3)), reference, direct, rroot, jroot)
+print(f"JOINT_PUBLIC_NEGATIVE_CONTROLS_PASS mutations={len(damages)+len(verdict_controls)+1}")

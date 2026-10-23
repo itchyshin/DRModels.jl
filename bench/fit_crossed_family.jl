@@ -6,7 +6,7 @@
 import Pkg
 Pkg.activate(dirname(@__DIR__))
 
-using DRM
+using DRModels
 using DelimitedFiles, LinearAlgebra, Printf, Statistics
 
 BLAS.set_num_threads(1)
@@ -54,8 +54,8 @@ function design_parts(dat)
     n = length(dat.x)
     X = hcat(ones(n), dat.x)
     Xσ = ones(n, 1)
-    gidx, G = DRM._group_index(dat.g)
-    hidx, H = DRM._group_index(dat.h)
+    gidx, G = DRModels._group_index(dat.g)
+    hidx, H = DRModels._group_index(dat.h)
     comps = [(ones(n), gidx, G, "g"), (ones(n), hidx, H, "h")]
     return X, Xσ, comps
 end
@@ -65,19 +65,19 @@ function fit_family(family, dat)
     nmμ = ["(Intercept)", "x"]
     nmσ = ["(Intercept)"]
     if family == "poisson"
-        return DRM._fit_poisson_crossed_laplace(DRM.Poisson(), dat.y_pois, X, comps, nmμ, 1e-7;
+        return DRModels._fit_poisson_crossed_laplace(DRModels.Poisson(), dat.y_pois, X, comps, nmμ, 1e-7;
                                                 se = false, polish_iterations = 0)
     elseif family == "binomial"
-        return DRM._fit_binomial_crossed_laplace(DRM.Binomial(), dat.s, dat.s .+ dat.fail,
+        return DRModels._fit_binomial_crossed_laplace(DRModels.Binomial(), dat.s, dat.s .+ dat.fail,
                                                  X, comps, nmμ, 1e-7; polish_iterations = 10)
     elseif family == "nb2"
-        return DRM._fit_nb2_crossed_laplace(DRM.NegBinomial2(), dat.y_nb, X, Xσ,
+        return DRModels._fit_nb2_crossed_laplace(DRModels.NegBinomial2(), dat.y_nb, X, Xσ,
                                             comps, nmμ, nmσ, 1e-7)
     elseif family == "gamma"
-        return DRM._fit_gamma_crossed_laplace(DRM.Gamma(), dat.y_gamma, X, Xσ,
+        return DRModels._fit_gamma_crossed_laplace(DRModels.Gamma(), dat.y_gamma, X, Xσ,
                                               comps, nmμ, nmσ, 1e-7)
     elseif family == "beta"
-        return DRM._fit_beta_crossed_laplace(DRM.Beta(), dat.y_beta, X, Xσ,
+        return DRModels._fit_beta_crossed_laplace(DRModels.Beta(), dat.y_beta, X, Xσ,
                                              comps, nmμ, nmσ, 1e-7)
     end
     error("unknown family: $family")

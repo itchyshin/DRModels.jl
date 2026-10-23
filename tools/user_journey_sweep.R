@@ -1,6 +1,6 @@
 # user_journey_sweep.R — the USER-SEAT sweep of engine="julia".
 #
-# The owner's charge (2026-08-28): real users will consume DRM.jl from R, the
+# The owner's charge (2026-08-28): real users will consume DRModels.jl from R, the
 # owner personally hit "bugs and snags" doing so, and the parity harnesses—
 # which fit curated fixtures—cannot see that class of problem. This sweep types
 # models the way a user types them (factors, interactions, I()/poly()/scale(),
@@ -160,7 +160,7 @@ for (j in J) {
   } else if (!rt$ok && grepl("gaussian.*gaussian|cross-family|composed", res$tmb_error, ignore.case = TRUE)) {
     res$status <- "NO_NATIVE_COMPARATOR"
   } else if (!rj$ok) {
-    res$status <- if (grepl("engine = \"julia\"|DRM.jl|bridge|not support", res$julia_error, ignore.case = TRUE))
+    res$status <- if (grepl("engine = \"julia\"|DRModels.jl|bridge|not support", res$julia_error, ignore.case = TRUE))
       "JULIA_REFUSED" else "JULIA_ERROR"
   } else res$status <- "TMB_ERROR"
   rows[[length(rows) + 1L]] <- as.data.frame(res, stringsAsFactors = FALSE)

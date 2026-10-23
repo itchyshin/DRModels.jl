@@ -10,7 +10,7 @@
 #
 # Out of scope (follow-up under #49): FIML for missing responses; multiple
 # imputation for missing predictors. See report/fiml-missing-data-design.md.
-using DRM
+using DRModels
 using Test, Random
 
 @testset "Missing data — listwise deletion path (#49)" begin

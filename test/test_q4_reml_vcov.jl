@@ -43,11 +43,11 @@
 # the #563 S11 scout note (`s11-inference.md` §3.4) flags as possibly beyond
 # a "tonight" slice. That call belongs to a programme owner, not this test.
 #
-#   julia --project=. -e 'using DRM, Test; include("test/test_q4_reml_vcov.jl")'
+#   julia --project=. -e 'using DRModels, Test; include("test/test_q4_reml_vcov.jl")'
 
 module TestQ4RemlVcov
 
-using DRM
+using DRModels
 using Test
 using LinearAlgebra
 using DelimitedFiles: readdlm
@@ -141,7 +141,7 @@ end
         # Independent double-FD Hessian of the SAME ML marginal NLL (see docstring
         # above): diag(vcov) should agree to a loose 1e-3 relative tolerance.
         H_ind = _independent_fd_hessian(fit)
-        V_ind = DRM._vcov_from_hessian(H_ind; context = "test_q4_reml_vcov independent check")
+        V_ind = DRModels._vcov_from_hessian(H_ind; context = "test_q4_reml_vcov independent check")
         d_fit = diag(V)
         d_ind = diag(V_ind)
         relerr = abs.(d_fit .- d_ind) ./ max.(abs.(d_fit), 1e-8)
@@ -149,7 +149,7 @@ end
     end
 
     @testset "(b) bridge default (no explicit q4_vcov): all-NaN — current, deliberate behaviour" begin
-        out = DRM.drm_bridge(; formula = BRIDGE_FORMULA, family = BRIDGE_FAMILY,
+        out = DRModels.drm_bridge(; formula = BRIDGE_FORMULA, family = BRIDGE_FAMILY,
                              data = DAT, tree = TREE,
                              options = Dict{String,Any}("method" => "REML"))
         V = out["vcov"]
@@ -158,7 +158,7 @@ end
     end
 
     @testset "(c) bridge with explicit q4_vcov=true: finite SEs — the capability already exists" begin
-        out = DRM.drm_bridge(; formula = BRIDGE_FORMULA, family = BRIDGE_FAMILY,
+        out = DRModels.drm_bridge(; formula = BRIDGE_FORMULA, family = BRIDGE_FAMILY,
                              data = DAT, tree = TREE,
                              options = Dict{String,Any}("method" => "REML", "q4_vcov" => true))
         V = out["vcov"]

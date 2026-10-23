@@ -1,0 +1,15 @@
+# p=100 reps_used=3 chosen_rep=3 fit_wall_s=0.9758 f_calls=35 chol_factorizations=247 chol_factorizations_per_eval=7.06 chol_reuse_fallbacks=0 converged=true loglik=-765.7666 fd_vcov_wall_proj_s=3.2535
+# p=1000 reps_used=3 chosen_rep=2 fit_wall_s=10.3748 f_calls=25 chol_factorizations=289 chol_factorizations_per_eval=11.56 chol_reuse_fallbacks=0 converged=true loglik=-8661.6245 fd_vcov_wall_proj_s=28.9201
+# leaf-S3/S5 q4 fit profile (post-S5: fit wall + real CHOLMOD counters)
+# generated: 2026-09-23T11:43:28Z
+# git_sha: cf058168b
+# julia_version: 1.10.0
+# blas_config: LBTConfig([ILP64] libopenblas64_.dylib)
+# julia_threads: 4  blas_threads: 1
+# os: arm64-apple-darwin22.4.0  cpu: unknown
+# peak_rss_kb (ps-sampled, not exact OS max): -1
+# columns: p	rep	section	wall_s	count	bytes
+100	3	fit_wall	0.975821	247	0
+100	3	fd_vcov	3.253528	34	0
+1000	2	fit_wall	10.374758	289	0
+1000	2	fd_vcov	28.920108	34	0

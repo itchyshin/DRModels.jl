@@ -1,5 +1,5 @@
 # Information criteria for model selection: dof / aic / bic.
-using DRM, Test, Random
+using DRModels, Test, Random
 import Distributions
 
 @testset "AIC / BIC / dof" begin

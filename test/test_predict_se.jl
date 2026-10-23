@@ -2,7 +2,7 @@
 # (glmmTMB/drmTMB `se.fit` parity). The correctness anchor is an independent
 # recomputation of the link-scale SE from vcov(fit) + the rebuilt μ design,
 # plus back-compatibility of the default (se = false) path. No R needed.
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 
 @testset "predict / predict_parameters delta-method SE (Gaussian loc-scale)" begin
@@ -24,10 +24,10 @@ using Test, Random, LinearAlgebra
 
     # Rebuild the μ design exactly as `predict` does, and the μ-block vcov.
     f = fit.formula
-    fixed_mu, _, _, _ = DRM._split_ranef(Dict(f.forms)[:mu])
+    fixed_mu, _, _, _ = DRModels._split_ranef(Dict(f.forms)[:mu])
     ndr = merge(NamedTuple(pairs(data)), NamedTuple{(f.response,)}((zeros(n),)))
-    _, Xμ, _ = DRM._design(f.response, fixed_mu, ndr)
-    rμ = DRM._block_range(fit, :mu)
+    _, Xμ, _ = DRModels._design(f.response, fixed_mu, ndr)
+    rμ = DRModels._block_range(fit, :mu)
     Vμ = vcov(fit)[rμ, rμ]
 
     @testset "link-scale SE matches independent recomputation" begin

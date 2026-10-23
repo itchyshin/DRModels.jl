@@ -1,4 +1,4 @@
-using DRM, Test, LinearAlgebra
+using DRModels, Test, LinearAlgebra
 
 # Analytic profile with known nuisance optimum u = 2v and profile f(v) = v^2 / 2.
 _pn_nll(θ) = θ[1]^2 / 2 + (θ[2] - 2θ[1])^2 / 2
@@ -16,14 +16,14 @@ function _pn_fit(nll, θ; nllgrad=_pn_grad!)
         Dict{Symbol,Vector{Float64}}(), Dict{Symbol,Vector{Float64}}(),
         Dict{Symbol,Vector{Float64}}(),
     )
-    return nllgrad === nothing ? DRM._withnll(base, nll) : DRM._withnll(base, nll, nllgrad)
+    return nllgrad === nothing ? DRModels._withnll(base, nll) : DRModels._withnll(base, nll, nllgrad)
 end
 
 @testset "generic profile nuisance acceptance and status" begin
     θ = [0.0, 0.0]
 
     @testset "accepted solve is reevaluated at the reported minimizer" begin
-        result = DRM._profile_nuisance_result(
+        result = DRModels._profile_nuisance_result(
             _pn_nll, θ, 1, 1.5, [0.0]; autodiff = :stored, nllgrad = _pn_grad!,
         )
         @test result.accepted
@@ -37,7 +37,7 @@ end
 
     @testset "one-parameter profile is a valid direct evaluation" begin
         f1(θ) = θ[1]^2 / 2
-        direct = DRM._profile_nuisance_result(f1, [0.0], 1, 1.25, Float64[])
+        direct = DRModels._profile_nuisance_result(f1, [0.0], 1, 1.25, Float64[])
         @test direct.accepted
         @test direct.method == :direct
         @test !direct.fallback
@@ -46,22 +46,22 @@ end
         @test direct.value == 1.25^2 / 2
 
         nonfinite(θ) = θ[1] > 0 ? Inf : θ[1]^2
-        rejected = DRM._profile_nuisance_result(nonfinite, [0.0], 1, 1.0, Float64[])
+        rejected = DRModels._profile_nuisance_result(nonfinite, [0.0], 1, 1.0, Float64[])
         @test !rejected.accepted
         @test rejected.method == :direct
         @test rejected.reason == :nonfinite_objective
 
         interrupted(θ) = throw(InterruptException())
-        @test_throws InterruptException DRM._profile_nuisance_result(
+        @test_throws InterruptException DRModels._profile_nuisance_result(
             interrupted, [0.0], 1, 0.0, Float64[],
         )
-        @test_throws InterruptException DRM._profile_autodiff_mode(
+        @test_throws InterruptException DRModels._profile_autodiff_mode(
             interrupted, nothing, [0.0],
         )
     end
 
     @testset "Nelder-Mead fallback is accepted only on successful termination" begin
-        recovered = DRM._profile_nuisance_result(
+        recovered = DRModels._profile_nuisance_result(
             _pn_nll, θ, 1, 1.0, [0.0]; autodiff = :finite,
             primary_attempt = (obj, u0, method, autodiff, grad!) ->
                 (value=NaN, minimizer=copy(u0), accepted=false, method=method,
@@ -74,7 +74,7 @@ end
         @test recovered.reason == :accepted
         @test recovered.value ≈ 0.5 atol = 1e-8
 
-        exhausted = DRM._profile_nuisance_result(
+        exhausted = DRModels._profile_nuisance_result(
             _pn_nll, θ, 1, 1.0, [0.0]; autodiff = :finite,
             primary_attempt = (obj, u0, method, autodiff, grad!) ->
                 (value=NaN, minimizer=copy(u0), accepted=false, method=method,
@@ -89,7 +89,7 @@ end
 
     @testset "failed nuisance arm is not unbounded or warm-started" begin
         failing(θ) = θ[1] > 0.25 ? throw(DomainError(θ[1], "forced nuisance failure")) : _pn_nll(θ)
-        endpoint, arm = DRM._profile_endpoint_result(
+        endpoint, arm = DRModels._profile_endpoint_result(
             failing, nothing, θ, 1, 0.0, 0.5, 1.0, +1, [0.0], :finite,
         )
         @test endpoint == Inf
@@ -102,7 +102,7 @@ end
         # failure occurs at the first bisection refinement t = 0.5.
         refinement_failing(θ) = 0.4 < θ[1] < 0.6 ?
             throw(DomainError(θ[1], "forced refinement failure")) : _pn_nll(θ)
-        endpoint2, arm2 = DRM._profile_endpoint_result(
+        endpoint2, arm2 = DRModels._profile_endpoint_result(
             refinement_failing, nothing, θ, 1, 0.0, 0.3, 1.0, +1, [0.0], :finite,
         )
         @test endpoint2 == Inf
@@ -112,21 +112,21 @@ end
     end
 
     @testset "endpoint is the coordinate whose reevaluated profile hits target" begin
-        endpoint, arm = DRM._profile_endpoint_result(
+        endpoint, arm = DRModels._profile_endpoint_result(
             _pn_nll, _pn_grad!, θ, 1, 0.0, 2.0, 1.0, +1, [0.0], :stored,
         )
         @test !arm.endpoint_failed
         @test endpoint ≈ 2.0 atol = 1e-6
         @test abs(endpoint^2 / 2 - 2.0) < 1e-7
 
-        _, bad_reference = DRM._profile_endpoint_result(
+        _, bad_reference = DRModels._profile_endpoint_result(
             _pn_nll, _pn_grad!, θ, 1, 2.0, 0.5, 1.0, +1, [0.0], :stored,
         )
         @test bad_reference.endpoint_failed
         @test bad_reference.nuisance_reason == :below_reference
 
         shifted(θ) = 1e16 + _pn_nll(θ)
-        _, insufficient = DRM._profile_endpoint_result(
+        _, insufficient = DRModels._profile_endpoint_result(
             shifted, nothing, θ, 1, 1e16, 2.0, 1.0, +1, [0.0], :finite,
         )
         @test insufficient.endpoint_failed
@@ -136,7 +136,7 @@ end
         # return value must be a coordinate actually evaluated by the profile.
         seen = Float64[]
         traced(θ) = (push!(seen, θ[1]); _pn_nll(θ))
-        collapsed, collapsed_arm = DRM._profile_endpoint_result(
+        collapsed, collapsed_arm = DRModels._profile_endpoint_result(
             traced, nothing, θ, 1, 0.0, 2.0, 1.0, +1, [0.0], :finite,
         )
         @test !collapsed_arm.endpoint_failed
@@ -193,7 +193,7 @@ end
         @test_throws ArgumentError profile_curve(shifted_bad_ref, 1; npoints = 5, span = 3)
         shifted_good = _pn_fit(shifted_nll, [0.0, 0.0]; nllgrad=nothing)
         @test all(isfinite, profile_curve(shifted_good, 1; npoints = 3, span = 1).deviance)
-        @test_throws ArgumentError DRM._profile_plot_deviance(
+        @test_throws ArgumentError DRModels._profile_plot_deviance(
             floatmax(Float64), -floatmax(Float64), "test", "overflow",
         )
 

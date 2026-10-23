@@ -1,12 +1,12 @@
 #!/usr/bin/env julia
 # Bounded correctness pilot, not a performance benchmark or full G4 verdict.
-using DRM, Test, LinearAlgebra, TOML
+using DRModels, Test, LinearAlgebra, TOML
 BLAS.set_num_threads(1)
 @assert Threads.nthreads() == 4 "pilot requires four Julia threads"
 @assert BLAS.get_num_threads() == 1
-@assert realpath(pathof(DRM)) == realpath(joinpath(@__DIR__, "..", "src", "DRM.jl"))
+@assert realpath(pathof(DRModels)) == realpath(joinpath(@__DIR__, "..", "src", "DRModels.jl"))
 println("RUNTIME julia=", VERSION, " threads=", Threads.nthreads(),
-        " blas=", BLAS.get_num_threads(), " source=", pathof(DRM))
+        " blas=", BLAS.get_num_threads(), " source=", pathof(DRModels))
 include(joinpath(@__DIR__, "..", "test", "test_joint_missing_finite_factor_coding.jl"))
 include(joinpath(@__DIR__, "..", "test", "test_joint_missing_finite_frontend.jl"))
 

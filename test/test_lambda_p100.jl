@@ -41,11 +41,11 @@
 # re-measuring and re-scoping, not closing on this evidence.
 # `mstep_Lambda`/`fit_em_aug` remain NOT reachable from the public `drm()` API.
 
-using DRM
+using DRModels
 using Test, LinearAlgebra, Statistics
 using DelimitedFiles: readdlm
 
-const D = DRM
+const D = DRModels
 const FIX = joinpath(@__DIR__, "..", "bench", "fixtures")
 
 @testset "sparse-EM Λ M-step ascends the true Laplace marginal (q4_p100; was #472's descent, an artefact fixed in #577)" begin

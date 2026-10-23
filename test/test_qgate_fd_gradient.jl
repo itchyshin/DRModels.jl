@@ -20,7 +20,7 @@
 # that PASSED), evaluated at θ0 — away from the optimum the exact gradient must
 # still match FD because it carries the implicit (dû/dθ) correction.
 
-using DRM
+using DRModels
 using Test, LinearAlgebra, Random, Statistics
 
 @testset "Q-gate (#14): FD-vs-exact gradient ≤ 1e-6" begin
@@ -128,7 +128,7 @@ end
         y1[i] = m1 + e[1]; y2[i] = m2 + e[2]
     end
 
-    prob, Q_cond = DRM.make_problem_from_Q(Qdense, y1, y2, X1, X2, Xs1, Xs2, Xr;
+    prob, Q_cond = DRModels.make_problem_from_Q(Qdense, y1, y2, X1, X2, Xs1, Xs2, Xr;
                                            group = group)
 
     β0 = (mu1 = X1 \ y1, mu2 = X2 \ y2,

@@ -11,7 +11,7 @@
 #      (observed information of the scalar marginal);
 #   3. natural direction `H \\ g_lc` is a descent direction for the marginal NLL.
 
-using DRM
+using DRModels
 using Test, LinearAlgebra, Random, Statistics
 
 @testset "lc_metric (#13 S1b): Fisher / observed-info on lc" begin

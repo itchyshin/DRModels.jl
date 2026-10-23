@@ -14,12 +14,12 @@
 #
 # Issue #136 stays OPEN (Rung 1 wires Binomial/NB2/Gamma/Beta `(1|g)`; 136e later).
 
-using DRM
+using DRModels
 using Test
 using Random
 import Distributions
 
-const DV = DRM
+const DV = DRModels
 
 @testset "Poisson public VA frontend (#136 Arc 0)" begin
 

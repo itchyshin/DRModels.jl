@@ -12,7 +12,7 @@
 #
 # The consequence is not academic. Reinstalling drmTMB silently changes the
 # comparator under every banked number at once. A later re-run that disagrees
-# would look exactly like a DRM.jl regression, and the version string offers no
+# would look exactly like a DRModels.jl regression, and the version string offers no
 # way to tell the two apart. AGENTS.md already says to "re-anchor fixtures when
 # regenerating against a new installed version" — this makes "which version"
 # answerable.
@@ -60,7 +60,7 @@ if (length(args) >= 2 && args[1] == "--check") {
     paste0(
       "COMPARATOR CHANGED — the installed drmTMB is not the build these numbers were measured against.\n",
       "  recorded  %s\n  installed %s  (version %s, built %s)\n\n",
-      "Any disagreement you are about to see may be the COMPARATOR moving, not DRM.jl.\n",
+      "Any disagreement you are about to see may be the COMPARATOR moving, not DRModels.jl.\n",
       "Re-anchor the fixtures deliberately (AGENTS.md) rather than reading this as a regression.\n"
     ),
     substr(expected, 1, 32), substr(code_hash, 1, 32), version, built

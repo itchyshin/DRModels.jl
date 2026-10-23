@@ -1,8 +1,8 @@
-# ROADMAP.md — DRM.jl
+# ROADMAP.md — DRModels.jl
 
 > The phase plan. Each phase is a **GitHub Milestone**; each slice is an
 > **Issue**. This file is the human-readable overview — the live status is on
-> the [Milestones page](https://github.com/itchyshin/DRM.jl/milestones).
+> the [Milestones page](https://github.com/itchyshin/DRModels.jl/milestones).
 > Owner: **Ada**. Source of truth for the engine: [`HANDOVER.md`](HANDOVER.md).
 
 ## Where we are
@@ -13,18 +13,18 @@ end ships with drmTMB-exact grammar (Phase 1.1, Workflow B); inference graduated
 from `experimental/` into `src/inference.jl` (`infer_q4` wired — Wald + profile +
 bootstrap); and **all 13 families** (12 univariate + bivariate Gaussian) are
 implemented, exported, and recovery-tested. **v0.1.0 and v0.1.1 are tagged.**
-Phase 3 / [#7](https://github.com/itchyshin/DRM.jl/issues/7): all **26** drmTMB-target
+Phase 3 / [#7](https://github.com/itchyshin/DRModels.jl/issues/7): all **26** drmTMB-target
 Documenter slugs exist (inventory
 `docs/dev-log/evidence/2026-08-07-7-phase3-inventory.md`). Named carve-outs (pages
 present, not Stable): `phylogenetic-spatial` (**Theory + roadmap** — simultaneous
 phylo×spatial engine later) and `marginal-la-vs-va` (**Experimental** `(1 | g)`
-on five families; [#136](https://github.com/itchyshin/DRM.jl/issues/136) stays open).
+on five families; [#136](https://github.com/itchyshin/DRModels.jl/issues/136) stays open).
 **Phase 1.0 SCOPED closeout:** #13 decision gate **FAIL** — `fit_em_natgrad` not
 a public solver; `lc_metric` Fisher infra landed; Workflow Q JET gate added
 (FD/Allocs/multi-shape already evidenced). Leftover `experimental/` prototypes
 (SQUAREM / E-step variants / dense oracle / parked `fit_em_natgrad.jl`) stay
 unwired — **not** the public `method = :REML`, `algorithm = :em`, or `lc_metric`
-surfaces. Phase 1.5 / #5 and Workflow G / [#17](https://github.com/itchyshin/DRM.jl/issues/17)
+surfaces. Phase 1.5 / #5 and Workflow G / [#17](https://github.com/itchyshin/DRModels.jl/issues/17)
 are **closed** (experimental bridge bar; always-on `DRM_PARITY_TESTS=1` stays opt-in).
 **The verified q=4 PLSM engine (2.18× over drmTMB, O(p) to p=10,000) stays exactly as handed over.**
 
@@ -34,7 +34,7 @@ are **closed** (experimental bridge bar; always-on `DRM_PARITY_TESTS=1` stays op
 A faithful **twin** of [drmTMB](https://itchyshin.github.io/drmTMB/) —
 the same `bf()` formula surface, the same families, the same articles — running
 on a Julia engine that wins on speed, with an R↔Julia bridge so biologists can
-call DRM.jl from R via `engine = "julia"`. Parity anchor: **drmTMB v0.1.3**.
+call DRModels.jl from R via `engine = "julia"`. Parity anchor: **drmTMB v0.1.3**.
 
 ---
 
@@ -74,7 +74,7 @@ call DRM.jl from R via `engine = "julia"`. Parity anchor: **drmTMB v0.1.3**.
   `report/`; ✅ **JET gate** (`test_qgate_jet.jl` on `lc_to_Λ` / `Λ_to_lc`).
   Cross-check ≤ 1e-8 remains open.
 - `docs/Manifest.toml` + `bench/Manifest.toml` pinned (root Manifest stays
-  uncommitted — DRM.jl is a library).
+  uncommitted — DRModels.jl is a library).
 - Workflow R: first real estimator-optimisation run on the verified bench
   (parked unless a later arc under-runs).
 
@@ -85,7 +85,7 @@ call DRM.jl from R via `engine = "julia"`. Parity anchor: **drmTMB v0.1.3**.
   **tree-I/O** design issues. — ✅ `bf()` shipped, including bivariate
   keyword-form grammar (#115) and reserved-syntax rejections (#109).
 - Workflow G: RCall.jl parity gate (`DRM_PARITY_TESTS=1`) against vendored
-  drmTMB v0.1.3 outputs in `test/parity/fixtures/`. — ✅ issue [#17](https://github.com/itchyshin/DRM.jl/issues/17) closed; harness remains opt-in.
+  drmTMB v0.1.3 outputs in `test/parity/fixtures/`. — ✅ issue [#17](https://github.com/itchyshin/DRModels.jl/issues/17) closed; harness remains opt-in.
 - Fisher: thread the bootstrap and *measure* the speedup (currently unrun).
   — ✅ bootstrap entry points + threaded timing fixture (#131/#132).
 - Pat / Florence: first application articles (location–scale, bivariate
@@ -94,7 +94,7 @@ call DRM.jl from R via `engine = "julia"`. Parity anchor: **drmTMB v0.1.3**.
 ### Phase 1.5 — R-side bridge ships  ·  *milestone: `Phase 1.5`*
 
 - Lovelace: `drmTMB(formula, ..., engine = "julia")` lands in the R package,
-  calls DRM.jl via JuliaCall, returns a drmTMB-shaped result. The bridge glue
+  calls DRModels.jl via JuliaCall, returns a drmTMB-shaped result. The bridge glue
   lives in the drmTMB (R) repo. Hopper's parity gate guards equivalence.
 
 ### Phase 2 — Family expansion  ·  *milestone: `Phase 2`*  ·  ✅ effectively complete

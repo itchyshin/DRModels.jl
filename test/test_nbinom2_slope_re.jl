@@ -3,7 +3,7 @@
 # Xμ_iᵀβ + b0_{g(i)} + b1_{g(i)}·x_i, (b0,b1) ~ N(0, Σ), dispersion θ. The 2-D
 # group effect is integrated out per group by tensor-product Gauss–Hermite
 # quadrature. Recovery: β slope and the two RE SDs.
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 import Distributions
 

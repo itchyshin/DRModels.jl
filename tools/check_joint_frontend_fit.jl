@@ -2,7 +2,7 @@
 # Public-frontend receipt for the two frozen joint missing-predictor fixtures.
 # This is a bounded local fit check: no R process, bridge, or interval claim.
 
-using DRM, ForwardDiff, LinearAlgebra, SHA, TOML
+using DRModels, ForwardDiff, LinearAlgebra, SHA, TOML
 
 length(ARGS) == 3 || error("usage: check_joint_frontend_fit.jl DATA_REFERENCE_TOML UNCERTAINTY_REFERENCE_TOML NEW_RECEIPT_TOML")
 data_path, uncertainty_path, output_path = abspath.(ARGS)
@@ -13,7 +13,7 @@ isfile(output_path) && error("refusing stale output: $output_path")
 BLAS.set_num_threads(1)
 Threads.nthreads() == 1 && BLAS.get_num_threads() == 1 || error("wrong resource budget")
 
-source_root = dirname(pathof(DRM))
+source_root = dirname(pathof(DRModels))
 source_manifest() = Dict(
     relpath(joinpath(dir, file), source_root) => bytes2hex(sha256(read(joinpath(dir, file))))
     for (dir, _, files) in walkdir(source_root) for file in files
@@ -50,7 +50,7 @@ receipt = Dict{String,Any}(
         "julia_version" => string(VERSION),
         "julia_threads" => Threads.nthreads(),
         "blas_threads" => BLAS.get_num_threads(),
-        "loaded_source" => pathof(DRM),
+        "loaded_source" => pathof(DRModels),
     ),
     "cases" => Dict{String,Any}(),
 )

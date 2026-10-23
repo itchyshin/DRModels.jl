@@ -1,4 +1,4 @@
-using DRM
+using DRModels
 using Test, TOML, SparseArrays, LinearAlgebra
 
 # Generated reference values come from an independently implemented, whitened
@@ -18,7 +18,7 @@ using Test, TOML, SparseArrays, LinearAlgebra
     Q = sparse(1.0I, 4, 4)
     for case in fixture["cases"]
         @testset "$(case["label"])" begin
-            gradient = DRM._ls_marginal_grad(Val(:gamma), fixture["y"], Xmu, Xpsi,
+            gradient = DRModels._ls_marginal_grad(Val(:gamma), fixture["y"], Xmu, Xpsi,
                 fixture["gidx"], fixture["G"], Q, case["theta"])
             @test all(isfinite, gradient)
             # Absolute accuracy must respect the existing profile stationarity
@@ -27,7 +27,7 @@ using Test, TOML, SparseArrays, LinearAlgebra
             # Independently difference the inverse covariance in high precision
             # to exercise all three derivatives, including the diagonal ones.
             lambda = case["theta"][4:6]
-            derivatives = DRM._ls_precision_derivatives(lambda)
+            derivatives = DRModels._ls_precision_derivatives(lambda)
             setprecision(BigFloat, 256) do
                 h = big"1e-8"
                 for k in 1:3
@@ -53,7 +53,7 @@ end
 # BigFloat from the exact diagonal-covariance derivatives at c = 0.
 @testset "finite precision derivatives at zero covariance" begin
     lambda = [-180.0, 0.0, -180.0]
-    derivatives = DRM._ls_precision_derivatives(lambda)
+    derivatives = DRModels._ls_precision_derivatives(lambda)
     @test all(d -> all(isfinite, d), derivatives)
     setprecision(BigFloat, 256) do
         a = exp(big"360")

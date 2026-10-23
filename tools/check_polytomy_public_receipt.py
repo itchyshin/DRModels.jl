@@ -37,7 +37,7 @@ def check(r,rroot,jroot):
     require(r.get('runner_sha256')==sha(rroot/'tools/run-julia-polytomy-public.R'),'runner source')
     require(r.get('native_tolerance')==4e-6,'frozen tolerance')
     runtime=r.get('runtime',{})
-    require(runtime.get('threads')==1 and runtime.get('blas')==1 and runtime.get('source')==str(jroot/'src/DRM.jl'),'loaded runtime')
+    require(runtime.get('threads')==1 and runtime.get('blas')==1 and runtime.get('source')==str(jroot/'src/DRModels.jl'),'loaded runtime')
     require(isinstance(runtime.get('julia'),str) and isinstance(r.get('R_version'),str),'runtime versions')
     require(r.get('loaded_native_DLL_sha256')==sha(rroot/'src/drmTMB.so'),'loaded native DLL')
     require(set(r.get('cases',{}))=={'star','mixed'},'denominator')

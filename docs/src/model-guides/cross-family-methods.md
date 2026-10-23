@@ -2,13 +2,12 @@
 
 !!! note "Status — Experimental (engine), paper-section reference"
     The cross-family route is **Experimental** and not release-ready: the
-    evidence is a set of simulated fixtures covering five family pairs
-    (`test/test_mixed_family.jl`) and there is no interval-coverage study. The
+    evidence is a set of simulated fixtures covering five family pairs, and
+    there is no interval-coverage study. The
     maths below is what the code evaluates; the release status is what limits
     its use. See [Evidence & limits](../capabilities.md).
-    This page is the methods reference for the cross-family bivariate model
-    implemented by `fit_mixed_family` in `src/mixed_family.jl`, with the
-    link-scale standardisation in `src/link_residual.jl`. It documents the
+    This page is the methods reference for the cross-family bivariate model,
+    with link-scale standardisation. It documents the
     shared-latent construction, the Gauss–Hermite marginal likelihood, the
     link-residual variances ``v_k``, the latent-scale correlation ``\rho`` and its
     identifiability, the three confidence intervals, and the exact reduction to
@@ -505,5 +504,5 @@ separately.
 - [Which scale are you modelling?](which-scale.md) — link vs response scale.
 - [Laplace vs variational marginals](marginal-la-vs-va.md) — why a 1-D quadrature
   beats a Laplace match for the shape/dispersion parameters.
-- `fit_mixed_family` (in `src/mixed_family.jl`) — the fitting function this page
-  documents.
+- [Cross-family models](../cross-family.md) — fitting examples and supported
+  family pairs.

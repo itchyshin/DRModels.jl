@@ -6,9 +6,9 @@
 # the quantile residuals are ≈ N(0,1) by moments (mean≈0, var≈1) AND a seeded
 # one-sample Kolmogorov–Smirnov test against the standard normal. A wrong
 # per-family parameterization fails the KS / moment gate immediately.
-using DRM
+using DRModels
 using Test, Random, Statistics
-import Distributions          # qualified — DRM exports its own Poisson/Gamma families
+import Distributions          # qualified — DRModels exports its own Poisson/Gamma families
 
 # One-sample KS statistic D = sup_x |F_n(x) − Φ(x)| against the standard normal.
 # Under H0 (residuals ~ N(0,1)) the scaled statistic √n·D follows the Kolmogorov
@@ -64,7 +64,7 @@ moments_ok(r) = abs(mean(r)) < 0.15 && 0.85 < std(r) < 1.18
         y = Float64.([rand(Distributions.Poisson(λi)) for λi in λ])
         data = (; y, x)
 
-        fit = drm(bf(@formula(y ~ x)), DRM.Poisson(); data = data)
+        fit = drm(bf(@formula(y ~ x)), DRModels.Poisson(); data = data)
 
         Random.seed!(1)
         r = residuals(fit; type = :quantile)
@@ -100,7 +100,7 @@ moments_ok(r) = abs(mean(r)) < 0.15 && 0.85 < std(r) < 1.18
         y = exp.(meanlog .+ σ .* randn(n))
         data = (; y, x)
 
-        fit = drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), DRM.LogNormal(); data = data)
+        fit = drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), DRModels.LogNormal(); data = data)
         r = residuals(fit; type = :quantile)
         @test all(isfinite, r)
         @test moments_ok(r)
@@ -116,7 +116,7 @@ moments_ok(r) = abs(mean(r)) < 0.15 && 0.85 < std(r) < 1.18
         y = Float64.([rand(Distributions.Gamma(α, μi / α)) for μi in μ])
         data = (; y, x)
 
-        fit = drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), DRM.Gamma(); data = data)
+        fit = drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), DRModels.Gamma(); data = data)
         r = residuals(fit; type = :quantile)
         @test all(isfinite, r)
         @test moments_ok(r)
@@ -148,7 +148,7 @@ moments_ok(r) = abs(mean(r)) < 0.15 && 0.85 < std(r) < 1.18
 
         fit = drm(bf(@formula(y ~ x + (1 | p | species)),
                      @formula(sigma ~ 1 + (1 | p | species))),
-                  DRM.Gamma(); data = data, se = false)
+                  DRModels.Gamma(); data = data, se = false)
 
         # The sigma slot IS the shape here (≈ true α ≈ 4.95), not σ ≈ 1/√α ≈ 0.45.
         @test 3.5 < fit.scales[:sigma][1] < 6.5
@@ -169,7 +169,7 @@ moments_ok(r) = abs(mean(r)) < 0.15 && 0.85 < std(r) < 1.18
         y = Float64.([rand(Distributions.Beta(μi * φ, (1 - μi) * φ)) for μi in μ])
         data = (; y, x)
 
-        fit = drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), DRM.Beta(); data = data)
+        fit = drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), DRModels.Beta(); data = data)
         r = residuals(fit; type = :quantile)
         @test all(isfinite, r)
         @test moments_ok(r)
@@ -229,7 +229,7 @@ moments_ok(r) = abs(mean(r)) < 0.15 && 0.85 < std(r) < 1.18
         fail = ntrials .- succ
         data = (; succ, fail, x)
 
-        fit = drm(bf(@formula(cbind(succ, fail) ~ x)), DRM.Binomial(); data = data)
+        fit = drm(bf(@formula(cbind(succ, fail) ~ x)), DRModels.Binomial(); data = data)
         Random.seed!(13)
         r = residuals(fit; type = :quantile)
         @test all(isfinite, r)
@@ -248,7 +248,7 @@ moments_ok(r) = abs(mean(r)) < 0.15 && 0.85 < std(r) < 1.18
         data = (; succ, fail, x)
 
         fit = drm(bf(@formula(cbind(succ, fail) ~ x), @formula(sigma ~ 1)),
-                  DRM.BetaBinomial(); data = data)
+                  DRModels.BetaBinomial(); data = data)
         Random.seed!(14)
         r = residuals(fit; type = :quantile)
         @test all(isfinite, r)
@@ -320,7 +320,7 @@ moments_ok(r) = abs(mean(r)) < 0.15 && 0.85 < std(r) < 1.18
         x = randn(n)
         λ = exp.(0.3 .+ 0.4 .* x)
         y = Float64.([rand(Distributions.Poisson(λi)) for λi in λ])
-        fit = drm(bf(@formula(y ~ x)), DRM.Poisson(); data = (; y, x))
+        fit = drm(bf(@formula(y ~ x)), DRModels.Poisson(); data = (; y, x))
         r1 = residuals(fit; type = :quantile, rng = MersenneTwister(99))
         r2 = residuals(fit; type = :quantile, rng = MersenneTwister(99))
         @test r1 == r2

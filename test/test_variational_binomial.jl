@@ -13,16 +13,16 @@
 #       32-node Gauss–Hermite Laplace MLE (`_fit_binomial_ranef`). VA is a lower
 #       bound, so its ELBO ≤ the GHQ marginal log-likelihood — also checked.
 #
-# These need no external truth and no drmTMB call. The GHQ fit IS DRM.jl's
+# These need no external truth and no drmTMB call. The GHQ fit IS DRModels.jl's
 # verified Binomial RE marginal; the VA fit is the new code under test.
 
-using DRM
+using DRModels
 using Test
 using Random
 using Statistics
 import Distributions
 
-const DB = DRM   # internal kernels live under DRM.*
+const DB = DRModels   # internal kernels live under DRModels.*
 
 @testset "Binomial random-intercept VA (ELBO) marginal (#136)" begin
 

@@ -4,21 +4,21 @@
 # `@test_skip` placeholders. Fuller per-family coverage lives in
 # `test_va_poisson_elbo.jl` / `test_variational_{binomial,nb2,gamma}.jl`.
 
-using DRM
+using DRModels
 using Test
 using Random
 import Distributions
 
-const DVA = DRM
+const DVA = DRModels
 
 @testset "VA marginal scaffold (#136)" begin
-    @test DRM.Laplace() isa DRM.MarginalMethod
-    @test DRM.Variational() isa DRM.MarginalMethod
-    @test DRM._marginal_method(:LA) == DRM.Laplace()
-    @test DRM._marginal_method(:va) == DRM.Variational()   # case-insensitive
-    @test_throws ArgumentError DRM._marginal_method(:nope)
+    @test DRModels.Laplace() isa DRModels.MarginalMethod
+    @test DRModels.Variational() isa DRModels.MarginalMethod
+    @test DRModels._marginal_method(:LA) == DRModels.Laplace()
+    @test DRModels._marginal_method(:va) == DRModels.Variational()   # case-insensitive
+    @test_throws ArgumentError DRModels._marginal_method(:nope)
     # generic `_fit_va` is still the unwired-family stub — must error, citing #136
-    err = try; DRM._fit_va(); catch e; e; end
+    err = try; DRModels._fit_va(); catch e; e; end
     @test err isa ErrorException && occursin("136", err.msg)
 
     # ── Anchor (a): σ_RE → 0 ⇒ ELBO = independent Poisson log-likelihood ─────
@@ -129,8 +129,8 @@ const DVA = DRM
     # When n − k − 1 ≤ 0, `aicc` used to return Inf before calling `aic`, so a
     # tiny VA fit silently escaped the ELBO-is-not-a-likelihood error.
     @testset "aicc on a tiny VA fit errors (no Inf short-circuit)" begin
-        tiny = DRM._withmarginal(
-            DRM.DrmFit(Poisson(),
+        tiny = DRModels._withmarginal(
+            DRModels.DrmFit(Poisson(),
                        [:mu => 1:1, :resd => 2:2],
                        [:mu => ["(Intercept)"], :resd => ["g"]],
                        [0.0, -1.0], [1.0 0.0; 0.0 1.0], -10.0, 2, true,

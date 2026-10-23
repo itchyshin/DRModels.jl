@@ -3,14 +3,14 @@
 
 Why this exists
 ---------------
-`docs/src/capabilities.md` is what a user reads to decide whether DRM.jl does the
+`docs/src/capabilities.md` is what a user reads to decide whether DRModels.jl does the
 thing they need, and its Status column cites test files as the evidence. Two ways
 that can be false, both found on 2026-08-25:
 
   * A capability is declared **absent while it ships** — the cross-family bivariate
     model was listed "Absent -- no cross-family bivariate model is implemented"
     while `src/mixed_family.jl`, three wired test files and a ~450-line methods
-    guide were all on main (DRM.jl#490). A user went elsewhere past a working
+    guide were all on main (DRModels.jl#490). A user went elsewhere past a working
     feature. That direction is not mechanically checkable and is not what this
     guard does.
 
@@ -36,6 +36,8 @@ Usage:
   python3 tools/check_doc_test_citations.py [docs/src/capabilities.md ...]
 """
 import os, re, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from runtests_files import wired_test_files  # noqa: E402
 
 RUNNER = "test/runtests.jl"
 
@@ -43,7 +45,9 @@ def included_basenames(runner):
     src = open(runner, encoding="utf-8").read()
     # strip comments so a commented-out include() is not counted as wired
     code = "\n".join(l.split("#", 1)[0] for l in src.splitlines())
-    return {os.path.basename(m) for m in re.findall(r'include\(\s*"([^"]+)"\s*\)', code)}
+    literal = {os.path.basename(m) for m in re.findall(r'include\(\s*"([^"]+)"\s*\)', code)}
+    # runtests.jl auto-discovers test_*.jl (see runtests_files.py)
+    return literal | wired_test_files(os.path.dirname(runner) or ".")
 
 def main(argv):
     docs = argv[1:] or ["docs/src/capabilities.md"]

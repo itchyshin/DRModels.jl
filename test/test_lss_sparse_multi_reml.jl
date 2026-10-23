@@ -6,14 +6,14 @@
 # Self-contained: local copy of the S7b.1/S7b.2 nested fixture (distinctly
 # named) so this file runs standalone.
 #
-# Oracle 1 (design note §5, extended to REML): DRM._lss_sparse_multi_objective(θ,
+# Oracle 1 (design note §5, extended to REML): DRModels._lss_sparse_multi_objective(θ,
 # ...; reml = true) must equal an INDEPENDENT dense reconstruction: the S7b.1
 # dense ML oracle PLUS 0.5*logdet(Xμ'V⁻¹Xμ) - 0.5*pμ*log(2π) -- the same
 # normalisation convention _fit_gaussian_lss_multi's REML branch
 # (gaussian_lss.jl:634-638) and #558's single-component eval_reml
 # (gaussian_sparse_lss.jl:135-156) both use -- at three fixed θ, atol = 1e-8.
 #
-# Oracle 2: the REML gradient (DRM._lss_sparse_multi_objective_and_grad(...;
+# Oracle 2: the REML gradient (DRModels._lss_sparse_multi_objective_and_grad(...;
 # reml = true)) vs step-scanned central-FD on the REML objective, relative
 # error <= 1e-6 on β_σ and every α coordinate at the same three θ.
 #
@@ -28,7 +28,7 @@
 # no `reml` keyword at all.
 
 using Test
-using DRM
+using DRModels
 using StableRNGs
 using LinearAlgebra
 using SparseArrays
@@ -50,7 +50,7 @@ end
 # sites NESTED within species, 3 sites/species), n = 2 rows/site (n = 384).
 function _s7b3_nested_lsss_fixture(; depth = 6, sites_per_species = 3, n_per_site = 2,
                                    seed = 20260902)
-    phy = DRM.augmented_phy(_s7b3_make_balanced_newick(depth))
+    phy = DRModels.augmented_phy(_s7b3_make_balanced_newick(depth))
     Gsp = phy.n_leaves
     sp_names = String.(phy.leaf_names)
     Gsite = Gsp * sites_per_species
@@ -69,7 +69,7 @@ function _s7b3_nested_lsss_fixture(; depth = 6, sites_per_species = 3, n_per_sit
     α_phy = [-0.6, 0.25]
     α_iid = [-0.9]
 
-    K0 = DRM.sigma_phy_dense(phy; σ²_phy = 1.0)
+    K0 = DRModels.sigma_phy_dense(phy; σ²_phy = 1.0)
     dK = sqrt.(diag(K0)); K = K0 ./ (dK * dK')
     chK = cholesky(Symmetric(K))
     u_phy = chK.L * randn(rng, Gsp)
@@ -96,7 +96,7 @@ end
 # reports (gaussian_lss.jl:634-638, `+ 0.5*logdet(chX) - const_pμ`) and #558's
 # single-component eval_reml (gaussian_sparse_lss.jl:153-155): + 0.5*logdet(
 # Xμ'V⁻¹Xμ) - 0.5*pμ*log(2π). Reconstructed from the model definition, not by
-# calling any DRM.jl fitting routine, so it cannot share a bug with the sparse
+# calling any DRModels.jl fitting routine, so it cannot share a bug with the sparse
 # implementation under test.
 function _s7b3_dense_multi_lss_nll(theta, phy, y, Xmu, Xsigma, Zg_phy, gidx_phy, Zg_iid, gidx_iid;
                                    reml::Bool = false)
@@ -175,8 +175,8 @@ end
     Zg_phy = hcat(ones(fx.Gsp), fx.z_sp)
     Zg_iid = ones(fx.Gsite, 1)
 
-    phy_comp = DRM._sparse_lss_phylo_comp(fx.species_idx, fx.Gsp, Zg_phy, phy)
-    iid_comp = DRM._sparse_lss_iid_comp(fx.site_idx, fx.Gsite, Zg_iid)
+    phy_comp = DRModels._sparse_lss_phylo_comp(fx.species_idx, fx.Gsp, Zg_phy, phy)
+    iid_comp = DRModels._sparse_lss_iid_comp(fx.site_idx, fx.Gsite, Zg_iid)
     comps = [phy_comp, iid_comp]
 
     θ_opt = vcat(coef(fit_dense, :mu), coef(fit_dense, :sigma),
@@ -194,19 +194,19 @@ end
     dense_reml_oracle(θ) = _s7b3_dense_multi_lss_nll(θ, phy, dat.y, Xmu, Xsigma, Zg_phy,
                                                       fx.species_idx, Zg_iid, fx.site_idx;
                                                       reml = true)
-    ml_objective(θ) = DRM._lss_sparse_multi_objective(θ, dat.y, Xmu, Xsigma, comps)
-    reml_objective(θ) = DRM._lss_sparse_multi_objective(θ, dat.y, Xmu, Xsigma, comps; reml = true)
+    ml_objective(θ) = DRModels._lss_sparse_multi_objective(θ, dat.y, Xmu, Xsigma, comps)
+    reml_objective(θ) = DRModels._lss_sparse_multi_objective(θ, dat.y, Xmu, Xsigma, comps; reml = true)
 
     points = ("dense optimum" => θ_opt, "perturbed" => θ_perturbed,
               "boundary (iid logSD ≈ -6)" => θ_boundary)
 
     @testset "ML behaviour bit-identical for reml=false (S7b.1/S7b.2 unchanged)" begin
         for (label, θ) in points
-            @test DRM._lss_sparse_multi_objective(θ, dat.y, Xmu, Xsigma, comps; reml = false) ===
+            @test DRModels._lss_sparse_multi_objective(θ, dat.y, Xmu, Xsigma, comps; reml = false) ===
                   ml_objective(θ)
 
-            nll_default, grad_default = DRM._lss_sparse_multi_objective_and_grad(θ, dat.y, Xmu, Xsigma, comps)
-            nll_explicit, grad_explicit = DRM._lss_sparse_multi_objective_and_grad(θ, dat.y, Xmu, Xsigma, comps;
+            nll_default, grad_default = DRModels._lss_sparse_multi_objective_and_grad(θ, dat.y, Xmu, Xsigma, comps)
+            nll_explicit, grad_explicit = DRModels._lss_sparse_multi_objective_and_grad(θ, dat.y, Xmu, Xsigma, comps;
                                                                                     reml = false)
             @test nll_default === nll_explicit
             @test grad_default == grad_explicit
@@ -221,8 +221,8 @@ end
 
     @testset "REML gradient matches step-scanned central-FD; β_μ profiled out" begin
         for (label, θ) in points
-            nll_ml, grad_ml = DRM._lss_sparse_multi_objective_and_grad(θ, dat.y, Xmu, Xsigma, comps)
-            nll_reml, grad_reml = DRM._lss_sparse_multi_objective_and_grad(θ, dat.y, Xmu, Xsigma, comps;
+            nll_ml, grad_ml = DRModels._lss_sparse_multi_objective_and_grad(θ, dat.y, Xmu, Xsigma, comps)
+            nll_reml, grad_reml = DRModels._lss_sparse_multi_objective_and_grad(θ, dat.y, Xmu, Xsigma, comps;
                                                                             reml = true)
             @test isapprox(nll_reml, reml_objective(θ); atol = 1e-10)
             @test length(grad_reml) == length(θ)

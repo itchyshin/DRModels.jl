@@ -1,5 +1,5 @@
 # sigma(fit): fitted scale / dispersion accessor, mirroring drmTMB's sigma().
-using DRM
+using DRModels
 using Test, Random
 
 @testset "sigma() — fitted scale accessor" begin

@@ -17,7 +17,7 @@
 # `g .= P * u` (a fresh temporary) allocates > 0 and the same magnitude grows
 # with p — exactly the regression class the gate guards against.
 
-using DRM
+using DRModels
 using Test, LinearAlgebra, SparseArrays, Random
 
 # An allocating variant of the prior-coupling term (the regression we guard

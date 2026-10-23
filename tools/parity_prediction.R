@@ -36,8 +36,8 @@ save_receipt <- function() jsonlite::write_json(receipt, out, pretty = TRUE, aut
 start <- proc.time()[['elapsed']]
 drmTMB:::drm_julia_setup()
 JuliaCall::julia_command('using LinearAlgebra; LinearAlgebra.BLAS.set_num_threads(1)')
-receipt$Julia_runtime <- list(version = JuliaCall::julia_eval('string(VERSION)'), threads = JuliaCall::julia_eval('Threads.nthreads()'), blas = JuliaCall::julia_eval('LinearAlgebra.BLAS.get_num_threads()'), loaded_source = JuliaCall::julia_eval('pathof(DRM)'))
-if (normalizePath(receipt$Julia_runtime$loaded_source) != normalizePath(file.path(jl, 'src/DRM.jl'))) stop('wrong Julia source loaded')
+receipt$Julia_runtime <- list(version = JuliaCall::julia_eval('string(VERSION)'), threads = JuliaCall::julia_eval('Threads.nthreads()'), blas = JuliaCall::julia_eval('LinearAlgebra.BLAS.get_num_threads()'), loaded_source = JuliaCall::julia_eval('pathof(DRModels)'))
+if (normalizePath(receipt$Julia_runtime$loaded_source) != normalizePath(file.path(jl, 'src/DRModels.jl'))) stop('wrong Julia source loaded')
 dll <- getLoadedDLLs()[['drmTMB']][['path']]
 receipt$native_DLL <- list(path = dll, sha256 = sha(dll))
 for (nm in names(forms)) {

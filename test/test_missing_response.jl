@@ -1,4 +1,4 @@
-using DRM
+using DRModels
 using Test, Random
 
 @testset "Gaussian response-missing rows" begin

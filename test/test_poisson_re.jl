@@ -2,7 +2,7 @@
 # y ~ x + (1|g). log λ_i = Xμ_iᵀβ + b_{g(i)}, b_g ~ N(0,σ_b²). No closed-form
 # marginal — the group effect is integrated out per group by Gauss–Hermite
 # quadrature (the same machinery as the Gaussian σ-RE). Recovery: β + σ_b.
-using DRM
+using DRModels
 using Test, Random, Statistics
 import Distributions
 

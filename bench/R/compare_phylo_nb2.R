@@ -112,7 +112,7 @@ md <- c(
   sprintf("- p >= 1000 cells at least 2x faster: %s", if (large_gate) "PASS" else "FAIL"),
   sprintf("- Likelihood/estimate parity on reported metrics: %s", if (parity_gate) "PASS" else "FAIL"),
   "- CPU-aware timing: both engines are run without post-fit SE/sdreport; Julia pins BLAS to one thread and uses `g_tol = 1e-6` for the benchmark fits.",
-  "- Scale note: drmTMB reports NB2 public `sigma`; this report converts it to size `theta = 1 / sigma^2` before comparing with DRM.jl's current NB2 `sigma` slot.",
+  "- Scale note: drmTMB reports NB2 public `sigma`; this report converts it to size `theta = 1 / sigma^2` before comparing with DRModels.jl's current NB2 `sigma` slot.",
   "- Scope: NB2 mean model with `phylo(1 | species)` and `sigma ~ 1` only; no `zi`/`hu`, structured `sigma`, or q>1 non-Gaussian phylo model is claimed here.",
   "- All speedups above are measured from the JSON result files, not extrapolated.",
   ""

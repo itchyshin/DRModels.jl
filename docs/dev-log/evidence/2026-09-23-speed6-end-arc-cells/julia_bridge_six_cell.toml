@@ -1,0 +1,93 @@
+julia_threads = 1
+timestamp_utc = "2026-09-23T11:41:58.784"
+julia_version = "1.10.0"
+reps = 5
+hostname = "w-kw3k3y6229.psych.ualberta.ca"
+arm = "julia_drm_bridge"
+issued = "#372"
+blas_threads = 1
+
+[[cells]]
+times_s = [0.000851417, 0.00044625, 0.000403459, 0.000438584, 0.000492]
+max_s = 0.000851417
+family = "gaussian"
+warmup_discarded = true
+note = ""
+median_s = 0.00044625
+logLik = -215.46254513737045
+min_s = 0.000403459
+formula = "y ~ x; sigma ~ x"
+reps = 5
+ok = true
+cell = "gaussian-locscale"
+n = 180
+[[cells]]
+times_s = [0.001685875, 0.020725625, 0.001319417, 0.001160833, 0.001058167]
+max_s = 0.020725625
+family = "biv_gaussian"
+warmup_discarded = true
+note = ""
+median_s = 0.001319417
+logLik = -495.6182472347194
+min_s = 0.001058167
+formula = "mu1 = y1 ~ x; mu2 = y2 ~ x; sigma1 = sigma1 ~ 1; sigma2 = sigma2 ~ 1; rho12 = rho12 ~ 1"
+reps = 5
+ok = true
+cell = "gaussian-bivariate-rho12"
+n = 180
+[[cells]]
+times_s = [0.002791083, 0.003295959, 0.003769625, 0.001908166, 0.001668417]
+max_s = 0.003769625
+family = "student"
+warmup_discarded = true
+note = ""
+median_s = 0.002791083
+logLik = -240.2366518943298
+min_s = 0.001668417
+formula = "y ~ x; sigma ~ 1; nu ~ 1"
+reps = 5
+ok = true
+cell = "robust-student"
+n = 180
+[[cells]]
+times_s = [0.00131075, 0.001104667, 0.001149416, 0.001150417, 0.00111875]
+max_s = 0.00131075
+family = "nbinom2"
+warmup_discarded = true
+note = ""
+median_s = 0.001149416
+logLik = -278.705608709763
+min_s = 0.001104667
+formula = "y ~ x; sigma ~ 1"
+reps = 5
+ok = true
+cell = "count-nbinom2"
+n = 180
+[[cells]]
+times_s = [0.001587625, 0.001355875, 0.001389375, 0.0012655, 0.001243667]
+max_s = 0.001587625
+family = "beta"
+warmup_discarded = true
+note = ""
+median_s = 0.001355875
+logLik = 124.40999582851009
+min_s = 0.001243667
+formula = "y ~ x; sigma ~ 1"
+reps = 5
+ok = true
+cell = "proportion-beta"
+n = 180
+[[cells]]
+times_s = [0.001787833, 0.001380125, 0.000838292, 0.001032459, 0.000979833]
+max_s = 0.001787833
+family = "gaussian"
+warmup_discarded = true
+note = ""
+median_s = 0.001032459
+logLik = -93.7900534601859
+min_s = 0.000838292
+formula = "y ~ x + meta_V(v); sigma ~ 1"
+reps = 5
+ok = true
+cell = "meta-analysis-V"
+n = 160

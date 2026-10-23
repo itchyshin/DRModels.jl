@@ -1,6 +1,6 @@
 # test/test_lss_sparse_multi_gradient.jl
 # Issue #563, Phase-2 sub-slices S7b.2/S7b.2b: exact analytic gradient of the
-# sparse multi-component LSS objective (`DRM._lss_sparse_multi_objective_and_grad`),
+# sparse multi-component LSS objective (`DRModels._lss_sparse_multi_objective_and_grad`),
 # generalising #551's single-component gradient to `m` components sharing the
 # block augmented precision `H`, per
 # docs/src/developer-notes/lss-sparse-multi-component.md §3 (alignment table)
@@ -23,7 +23,7 @@
 # is caught, not silently reintroduced.
 
 using Test
-using DRM
+using DRModels
 using StableRNGs
 using LinearAlgebra
 using SparseArrays
@@ -44,7 +44,7 @@ end
 # sites NESTED within species, 3 sites/species), n = 2 rows/site (n = 384).
 function _s7b2_nested_lsss_fixture(; depth = 6, sites_per_species = 3, n_per_site = 2,
                                    seed = 20260902)
-    phy = DRM.augmented_phy(_s7b2_make_balanced_newick(depth))
+    phy = DRModels.augmented_phy(_s7b2_make_balanced_newick(depth))
     Gsp = phy.n_leaves
     sp_names = String.(phy.leaf_names)
     Gsite = Gsp * sites_per_species
@@ -63,7 +63,7 @@ function _s7b2_nested_lsss_fixture(; depth = 6, sites_per_species = 3, n_per_sit
     α_phy = [-0.6, 0.25]
     α_iid = [-0.9]
 
-    K0 = DRM.sigma_phy_dense(phy; σ²_phy = 1.0)
+    K0 = DRModels.sigma_phy_dense(phy; σ²_phy = 1.0)
     dK = sqrt.(diag(K0)); K = K0 ./ (dK * dK')
     chK = cholesky(Symmetric(K))
     u_phy = chK.L * randn(rng, Gsp)
@@ -121,8 +121,8 @@ end
     Zg_phy = hcat(ones(fx.Gsp), fx.z_sp)
     Zg_iid = ones(fx.Gsite, 1)
 
-    phy_comp = DRM._sparse_lss_phylo_comp(fx.species_idx, fx.Gsp, Zg_phy, phy)
-    iid_comp = DRM._sparse_lss_iid_comp(fx.site_idx, fx.Gsite, Zg_iid)
+    phy_comp = DRModels._sparse_lss_phylo_comp(fx.species_idx, fx.Gsp, Zg_phy, phy)
+    iid_comp = DRModels._sparse_lss_iid_comp(fx.site_idx, fx.Gsite, Zg_iid)
     comps = [phy_comp, iid_comp]
 
     θ_opt = vcat(coef(fit_dense, :mu), coef(fit_dense, :sigma),
@@ -134,14 +134,14 @@ end
     θ_boundary = copy(θ_opt)
     θ_boundary[end] = -6.0   # the iid component's (scalar) log-SD -> e^{-6}
 
-    objective(θ) = DRM._lss_sparse_multi_objective(θ, dat.y, Xmu, Xsigma, comps)
+    objective(θ) = DRModels._lss_sparse_multi_objective(θ, dat.y, Xmu, Xsigma, comps)
 
     points = ("dense optimum" => θ_opt, "perturbed" => θ_perturbed,
               "boundary (iid logSD ≈ -6)" => θ_boundary)
 
     @testset "exact gradient matches step-scanned central-FD (oracle 2)" begin
         for (label, θ) in points
-            nll, g_exact = DRM._lss_sparse_multi_objective_and_grad(θ, dat.y, Xmu, Xsigma, comps)
+            nll, g_exact = DRModels._lss_sparse_multi_objective_and_grad(θ, dat.y, Xmu, Xsigma, comps)
 
             # Objective must be bit-identical to _lss_sparse_multi_objective (S7b.1).
             @test nll === objective(θ)
@@ -166,7 +166,7 @@ end
         pmu = size(Xmu, 2); psig = size(Xsigma, 2)
         all_rel_errs = Float64[]
         for (label, θ) in points
-            _, g_diag = DRM._lss_sparse_multi_objective_and_grad(θ, dat.y, Xmu, Xsigma, comps;
+            _, g_diag = DRModels._lss_sparse_multi_objective_and_grad(θ, dat.y, Xmu, Xsigma, comps;
                                                                   cross_terms = false)
             g_fd = _s7b2_fd_grad(objective, θ)
 

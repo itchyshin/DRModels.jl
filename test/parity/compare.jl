@@ -1,23 +1,23 @@
 # compare.jl — pure numerical-parity comparison contract (no file I/O).
 #
 # This file is the heart of Workflow G (issue #17, deferred .jl code): it turns a
-# DRM.jl fit and a drmTMB reference (`ParityExpected`) into a pass/fail verdict
+# DRModels.jl fit and a drmTMB reference (`ParityExpected`) into a pass/fail verdict
 # with human-readable failure strings. It is deliberately I/O-free so it can be
 # unit-tested in full without any fixtures on disk — `loadfixture.jl` owns the
 # TOML/CSV parsing.
 #
 # IMPORTANT (honesty / license): this code does NOT itself contain or imply any
-# drmTMB parity claim. It only *compares* a DRM.jl fit to whatever expected
+# drmTMB parity claim. It only *compares* a DRModels.jl fit to whatever expected
 # numbers it is handed. Real drmTMB `expected.toml` fixtures are generated
 # out-of-band by a maintainer with local R + drmTMB (see GENERATING.md); the
-# always-on smoke test feeds it a DRM.jl self-consistency expected instead.
+# always-on smoke test feeds it a DRModels.jl self-consistency expected instead.
 
 """
     ParityExpected
 
 A drmTMB (or self-consistency) reference for one parity case. All fields are
 plain numbers/strings parsed from `expected.toml` (see `loadfixture.jl`) — no
-DRM.jl objects — so this struct is the stable comparison contract.
+DRModels.jl objects — so this struct is the stable comparison contract.
 
 Fields:
 - `family::String` — family tag, e.g. `"gaussian"`.
@@ -41,7 +41,7 @@ Fields:
 - `se_not_comparable::Vector{String}` — names (same flat convention) whose SE
   must NOT be numerically compared, from the reserved `not_comparable` array key
   inside the `[se]` block. Use for parameters pinned at a parameter-space
-  boundary in the reference fit (e.g. a variance component on DRM.jl's
+  boundary in the reference fit (e.g. a variance component on DRModels.jl's
   `_LAPLACE_LOG_SD_FLOOR = log(1e-6)`, which drmTMB does not share): an SE
   taken at a constrained boundary optimum is not comparable to one taken at an
   interior optimum, and no tolerance absorbs that. Such names are reported in
@@ -58,8 +58,8 @@ struct ParityExpected
     vcov::Union{Nothing,Matrix{Float64}}
     tol::Dict{String,Float64}
     # Optional group-level (location–scale) covariance reference: the grouping
-    # factor name + any of "sd_mu", "sd_sigma", "cor" (in DRM.jl's convention —
-    # the generator applies the drmTMB→DRM.jl reparameterisation, see GENERATING.md).
+    # factor name + any of "sd_mu", "sd_sigma", "cor" (in DRModels.jl's convention —
+    # the generator applies the drmTMB→DRModels.jl reparameterisation, see GENERATING.md).
     ranef_group::Union{Nothing,String}
     ranef::Dict{String,Float64}
     # Optional per-coefficient standard errors ([se] block); empty ⇒ not checked.
@@ -90,8 +90,8 @@ end
 """
     drm_coef_named(fit) -> Dict{String,Float64}
 
-Flatten a DRM.jl fit's coefficients into the fixture's flat naming
-`"<param>_<coefname>"`. This is the bridge between DRM.jl's block layout
+Flatten a DRModels.jl fit's coefficients into the fixture's flat naming
+`"<param>_<coefname>"`. This is the bridge between DRModels.jl's block layout
 (`fit.blocks :: Vector{Pair{Symbol,UnitRange}}` + `fit.coefnames ::
 Vector{Pair{Symbol,Vector{String}}}`) and the flat, order-independent name keys
 in `expected.toml`.
@@ -123,7 +123,7 @@ end
 """
     drm_se_named(fit) -> Dict{String,Float64}
 
-Flatten a DRM.jl fit's per-coefficient Wald standard errors — `sqrt` of the
+Flatten a DRModels.jl fit's per-coefficient Wald standard errors — `sqrt` of the
 diagonal of `vcov(fit)` — into the fixture's flat naming
 `"<param>_<coefname>"`, using the same block walk as [`drm_coef_named`](@ref)
 (vcov rows/cols follow θ's ordering). A non-positive diagonal entry yields
@@ -159,11 +159,11 @@ _within(a, b, rtol, atol) = abs(a - b) <= max(atol, rtol * max(abs(a), abs(b)))
                 rtol_coef=1e-4, atol_coef=1e-6,
                 rtol_vcov=1e-3, atol_vcov=1e-8, atol_loglik=1e-4) -> (passed, failures)
 
-Compare a DRM.jl `fit` against a `ParityExpected` reference under the README's
+Compare a DRModels.jl `fit` against a `ParityExpected` reference under the README's
 tolerance table. Returns a NamedTuple `(passed::Bool, failures::Vector{String})`
 — it NEVER throws on a numerical mismatch; instead it accumulates a
 human-readable line per failure of the form
-`"<case quantity>: drmTMB=… DRM.jl=… |Δ|=… > tol"`.
+`"<case quantity>: drmTMB=… DRModels.jl=… |Δ|=… > tol"`.
 
 Checks, in order:
 1. metadata — `n` and `df` must match the fit.
@@ -206,22 +206,22 @@ function compare_fit(fit, expected::ParityExpected;
     # 1. metadata.
     nfit = nobs(fit)
     nfit == expected.n ||
-        push!(failures, "nobs: drmTMB=$(expected.n) DRM.jl=$(nfit)")
+        push!(failures, "nobs: drmTMB=$(expected.n) DRModels.jl=$(nfit)")
     dfit = dof(fit)
     dfit == expected.df ||
-        push!(failures, "df: drmTMB=$(expected.df) DRM.jl=$(dfit)")
+        push!(failures, "df: drmTMB=$(expected.df) DRModels.jl=$(dfit)")
 
     # 2. coefficients — name-matched.
     for name in sort!(collect(keys(expected.coef)))
         want = expected.coef[name]
         if !haskey(got, name)
-            push!(failures, "coef[$name]: expected name absent from DRM.jl fit " *
+            push!(failures, "coef[$name]: expected name absent from DRModels.jl fit " *
                 "(have: $(join(sort!(collect(keys(got))), ", ")))")
             continue
         end
         have = got[name]
         if !_within(want, have, rc, ac)
-            push!(failures, "coef[$name]: drmTMB=$(want) DRM.jl=$(have) " *
+            push!(failures, "coef[$name]: drmTMB=$(want) DRModels.jl=$(have) " *
                 "|Δ|=$(abs(want - have)) > (rtol=$(rc), atol=$(ac))")
         end
     end
@@ -229,14 +229,14 @@ function compare_fit(fit, expected::ParityExpected;
     # 3. loglik.
     llh = loglik(fit)
     if !_within(expected.loglik, llh, 0.0, al)
-        push!(failures, "loglik: drmTMB=$(expected.loglik) DRM.jl=$(llh) " *
+        push!(failures, "loglik: drmTMB=$(expected.loglik) DRModels.jl=$(llh) " *
             "|Δ|=$(abs(expected.loglik - llh)) > atol=$(al)")
     end
 
     # 4. aic (derived from loglik + df).
     aic_fit = -2 * llh + 2 * dof(fit)
     if !_within(expected.aic, aic_fit, 0.0, aa)
-        push!(failures, "aic: drmTMB=$(expected.aic) DRM.jl=$(aic_fit) " *
+        push!(failures, "aic: drmTMB=$(expected.aic) DRModels.jl=$(aic_fit) " *
             "|Δ|=$(abs(expected.aic - aic_fit)) > atol=$(aa)")
     end
 
@@ -257,7 +257,7 @@ function compare_fit(fit, expected::ParityExpected;
         Vfit = vcov(fit)
         missing_names = [nm for nm in order if !haskey(idx, nm)]
         if !isempty(missing_names)
-            push!(failures, "vcov: expected order names absent from DRM.jl fit: " *
+            push!(failures, "vcov: expected order names absent from DRModels.jl fit: " *
                 join(missing_names, ", "))
         else
             perm = [idx[nm] for nm in order]
@@ -272,7 +272,7 @@ function compare_fit(fit, expected::ParityExpected;
                     have = Vp[i, j]
                     if !_within(want, have, rv, av)
                         push!(failures, "vcov[$(order[i]),$(order[j])]: " *
-                            "drmTMB=$(want) DRM.jl=$(have) " *
+                            "drmTMB=$(want) DRModels.jl=$(have) " *
                             "|Δ|=$(abs(want - have)) > (rtol=$(rv), atol=$(av))")
                     end
                 end
@@ -280,15 +280,15 @@ function compare_fit(fit, expected::ParityExpected;
         end
     end
 
-    # 6. group-level covariance (optional) — drmTMB VarCorr (reparam'd to DRM.jl
-    # convention by the generator) vs DRM.jl's `vc(fit)` for the location–scale Λ.
+    # 6. group-level covariance (optional) — drmTMB VarCorr (reparam'd to DRModels.jl
+    # convention by the generator) vs DRModels.jl's `vc(fit)` for the location–scale Λ.
     if expected.ranef_group !== nothing
         rr = _tol(expected, "rtol_ranef", 1e-3)
         ar = _tol(expected, "atol_ranef", 1e-6)
         V = vc(fit)
         gkey = Symbol(expected.ranef_group)
         if !haskey(V, gkey)
-            push!(failures, "ranef[$(expected.ranef_group)]: group absent from DRM.jl fit " *
+            push!(failures, "ranef[$(expected.ranef_group)]: group absent from DRModels.jl fit " *
                 "(have: $(join(string.(keys(V)), ", ")))")
         else
             Σ = V[gkey]
@@ -303,7 +303,7 @@ function compare_fit(fit, expected::ParityExpected;
                 end
                 have = got_re[key]
                 if !_within(want, have, rr, ar)
-                    push!(failures, "ranef[$key]: drmTMB=$(want) DRM.jl=$(have) " *
+                    push!(failures, "ranef[$key]: drmTMB=$(want) DRModels.jl=$(have) " *
                         "|Δ|=$(abs(want - have)) > (rtol=$(rr), atol=$(ar))")
                 end
             end
@@ -326,7 +326,7 @@ function compare_fit(fit, expected::ParityExpected;
         got_se = try
             drm_se_named(fit)
         catch err
-            push!(failures, "se: standard errors unavailable from DRM.jl fit " *
+            push!(failures, "se: standard errors unavailable from DRModels.jl fit " *
                 "($(sprint(showerror, err)))")
             nothing
         end
@@ -345,8 +345,8 @@ end
 # resolve `[tol]` overrides (`rtol_se`, `atol_se`) over the keyword defaults.
 #
 # Boundary discipline: a name in `expected.se_not_comparable` (fixture-declared,
-# reference fit on a boundary) or in `boundary` (caller-detected, DRM.jl fit on
-# a boundary — e.g. a log-SD within eps of `DRM._LAPLACE_LOG_SD_FLOOR`) is
+# reference fit on a boundary) or in `boundary` (caller-detected, DRModels.jl fit on
+# a boundary — e.g. a log-SD within eps of `DRModels._LAPLACE_LOG_SD_FLOOR`) is
 # NEVER numerically compared: its SE comes from a constrained boundary optimum
 # and is not the same quantity as an interior-optimum SE. It is recorded in
 # `skipped` as "name (reason)" so declining is visible, not silent.
@@ -368,7 +368,7 @@ function _compare_se!(failures::Vector{String}, skipped::Vector{String},
             continue
         end
         if name in detected
-            push!(skipped, "$name (DRM.jl fit: boundary-pinned)")
+            push!(skipped, "$name (DRModels.jl fit: boundary-pinned)")
             continue
         end
         want = expected.se[name]
@@ -379,13 +379,13 @@ function _compare_se!(failures::Vector{String}, skipped::Vector{String},
         end
         have = Float64(got[name])
         if !isfinite(have)
-            push!(failures, "se[$name]: drmTMB=$(want) DRM.jl=$(have) " *
+            push!(failures, "se[$name]: drmTMB=$(want) DRModels.jl=$(have) " *
                 "(non-finite — possible boundary-pinned parameter; if so, " *
                 "declare it in [se] not_comparable)")
             continue
         end
         if !_within(want, have, rs, as)
-            push!(failures, "se[$name]: drmTMB=$(want) DRM.jl=$(have) " *
+            push!(failures, "se[$name]: drmTMB=$(want) DRModels.jl=$(have) " *
                 "|Δ|=$(abs(want - have)) > (rtol=$(rs), atol=$(as))")
         end
     end
@@ -408,12 +408,12 @@ never throws on a numerical mismatch. An `expected` with an empty `se`
 dictionary passes trivially — the axis is simply unmeasured for that fixture.
 
 Boundary discipline: an SE taken at a constrained boundary optimum (a variance
-component pinned at DRM.jl's `_LAPLACE_LOG_SD_FLOOR = log(1e-6)`, a floor
+component pinned at DRModels.jl's `_LAPLACE_LOG_SD_FLOOR = log(1e-6)`, a floor
 drmTMB does not share) is not the same quantity as an interior-optimum SE, so
 such names are never numerically compared — no tolerance absorbs a
 different-kind-of-point. Two routes mark them: the fixture's `[se]` reserved
 `not_comparable` array key (reference-fit side, → `expected.se_not_comparable`)
-and the `boundary` keyword (DRM.jl-fit side; boundary detection is
+and the `boundary` keyword (DRModels.jl-fit side; boundary detection is
 family-specific, so the caller that can probe θ against the floor supplies the
 flat names). Both land in `skipped` with their reason — "we compared and they
 agreed" and "we declined to compare" stay distinguishable downstream.
@@ -440,7 +440,7 @@ function compare_se(fit, expected::ParityExpected;
         got = try
             drm_se_named(fit)
         catch err
-            push!(failures, "se: standard errors unavailable from DRM.jl fit " *
+            push!(failures, "se: standard errors unavailable from DRModels.jl fit " *
                 "($(sprint(showerror, err)))")
             nothing
         end
@@ -500,10 +500,10 @@ function compare_bridge(out::AbstractDict, expected::ParityExpected;
 
     nfit = Int(out["nobs"])
     nfit == expected.n ||
-        push!(failures, "nobs: drmTMB=$(expected.n) DRM.jl=$(nfit)")
+        push!(failures, "nobs: drmTMB=$(expected.n) DRModels.jl=$(nfit)")
     dfit = Int(out["df"])
     dfit == expected.df ||
-        push!(failures, "df: drmTMB=$(expected.df) DRM.jl=$(dfit)")
+        push!(failures, "df: drmTMB=$(expected.df) DRModels.jl=$(dfit)")
 
     for name in sort!(collect(keys(expected.coef)))
         want = expected.coef[name]
@@ -514,21 +514,21 @@ function compare_bridge(out::AbstractDict, expected::ParityExpected;
         end
         have = got[name]
         if !_within(want, have, rc, ac)
-            push!(failures, "coef[$name]: drmTMB=$(want) DRM.jl=$(have) " *
+            push!(failures, "coef[$name]: drmTMB=$(want) DRModels.jl=$(have) " *
                 "|Δ|=$(abs(want - have)) > (rtol=$(rc), atol=$(ac))")
         end
     end
 
     llh = Float64(out["loglik"])
     if !_within(expected.loglik, llh, 0.0, al)
-        push!(failures, "loglik: drmTMB=$(expected.loglik) DRM.jl=$(llh) " *
+        push!(failures, "loglik: drmTMB=$(expected.loglik) DRModels.jl=$(llh) " *
             "|Δ|=$(abs(expected.loglik - llh)) > atol=$(al)")
     end
 
     if haskey(out, "aic")
         aic_fit = Float64(out["aic"])
         if !_within(expected.aic, aic_fit, 0.0, aa)
-            push!(failures, "aic: drmTMB=$(expected.aic) DRM.jl=$(aic_fit) " *
+            push!(failures, "aic: drmTMB=$(expected.aic) DRModels.jl=$(aic_fit) " *
                 "|Δ|=$(abs(expected.aic - aic_fit)) > atol=$(aa)")
         end
     end
@@ -562,7 +562,7 @@ function compare_bridge(out::AbstractDict, expected::ParityExpected;
                     have = Vp[i, j]
                     if !_within(want, have, rv, av)
                         push!(failures, "vcov[$(order[i]),$(order[j])]: " *
-                            "drmTMB=$(want) DRM.jl=$(have) " *
+                            "drmTMB=$(want) DRModels.jl=$(have) " *
                             "|Δ|=$(abs(want - have)) > (rtol=$(rv), atol=$(av))")
                     end
                 end

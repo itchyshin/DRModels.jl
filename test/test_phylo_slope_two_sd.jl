@@ -23,7 +23,7 @@
 #     sdpars$mu["phylo(0 + x | species)"] = 0.225081189238
 #     coef mu = (0.863567925578, -0.292913465640), sigma (log) = -1.53266453997
 #     corpars = list()   (no intercept–slope correlation parameter exists)
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra, Statistics
 import Distributions
 
@@ -77,7 +77,7 @@ end
     y, x, species = data.y, data.x, data.species
     n = length(y)
     @test phylo_tree_height(phy) ≈ 1.0
-    C = DRM._phylo_correlation(phy)
+    C = DRModels._phylo_correlation(phy)
     @test C[1, 2] ≈ 0.75 && C[1, 3] ≈ 0.5 && C[1, 5] ≈ 0.25 && C[1, 9] ≈ 0.0
 
     fit = drm(bf(@formula(y ~ x + phylo(1 + x | species))), Gaussian(); data = data, tree = phy)
@@ -164,7 +164,7 @@ end
                                        data = data2, tree = phy)
         # non-Gaussian: refused here. drmTMB DOES fit this formula on further families,
         # and on Poisson/NegBinomial2 it fits a CORRELATED intercept-slope model
-        # (`has_phylo_mu_q2_covariance`) — a different model, so DRM.jl fails closed.
+        # (`has_phylo_mu_q2_covariance`) — a different model, so DRModels.jl fails closed.
         yp = Float64.(round.(Int, exp.(0.2 .+ 0.3 .* x)))
         err = try
             drm(bf(@formula(yp ~ x + phylo(1 + x | species))), Poisson();
@@ -205,6 +205,6 @@ end
         @test_throws ArgumentError drm(bf(@formula(y ~ x + phylo(1 + x | species))), Gaussian();
                                        data = (; y = ymiss, x, species), tree = phy)
         # the parametric-bootstrap marginal simulator is not built for this fit
-        @test_throws ArgumentError DRM._marginal_simulator(fit, data; tree = phy)
+        @test_throws ArgumentError DRModels._marginal_simulator(fit, data; tree = phy)
     end
 end

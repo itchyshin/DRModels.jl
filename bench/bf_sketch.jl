@@ -1,5 +1,5 @@
 ################################################################################
-# bf_sketch.jl — brms-style bf() multi-formula parser for DRM.jl
+# bf_sketch.jl — brms-style bf() multi-formula parser for DRModels.jl
 #
 # This is a SKETCH demonstrating how
 #
@@ -29,7 +29,7 @@ module BFSketch
 using StatsModels: AbstractTerm, ConstantTerm, FormulaTerm, FunctionTerm,
                    InteractionTerm, Schema, Term, apply_schema, term
 
-# Stub model type — DRM.jl would supply the real one.
+# Stub model type — DRModels.jl would supply the real one.
 abstract type DistributionalRegressionModel end
 
 
@@ -409,7 +409,7 @@ end
 #
 #   d) Likelihood: for Gaussian families, integrate out the REs analytically
 #      via marginal covariance (closed-form). For non-Gaussian, hand off
-#      to a Laplace wrapper (deferred to DRM.jl v0.3+).
+#      to a Laplace wrapper (deferred to DRModels.jl v0.3+).
 #      → For v0.1.x: Gaussian only. ~150 LOC reusing GLLVM.jl block patterns.
 
 end  # module BFSketch

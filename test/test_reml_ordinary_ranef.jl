@@ -3,7 +3,7 @@
 # Wired into test/runtests.jl by Option A (#445) after #423+#428 landed.
 # Worked example (after S2 lands):
 #
-#   using DRM
+#   using DRModels
 #   G, m = 12, 4; n = G * m
 #   g = repeat(1:G, inner = m); x = randn(n)
 #   y = 0.5 .+ 0.3 .* x .+ randn(G)[g] .+ 0.6 .* randn(n)
@@ -14,7 +14,7 @@
 #
 # Fence: σ-RE, random slopes, multi-ranef, non-Gaussian REML, q4 are out of scope.
 # ML remains the default. Not a drmTMB numeric-parity fixture.
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 import ForwardDiff
 

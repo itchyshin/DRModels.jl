@@ -4,7 +4,7 @@
 # group by Gauss–Hermite quadrature (drmTMB uses Laplace; for a 1-D effect AGHQ
 # is the standard, more accurate sibling). Recovery: mean coefficients, the σ
 # intercept (which absorbs the realized mean of b at finite G), and σ_b.
-using DRM
+using DRModels
 using Test, Random
 
 @testset "Gaussian random effect on sigma: sigma ~ 1 + (1|g) — recovery" begin

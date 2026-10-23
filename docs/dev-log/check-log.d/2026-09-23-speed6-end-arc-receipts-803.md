@@ -1,0 +1,1 @@
+| 2026-09-23 | **speed6 end-arc wall receipts** (#803) | merge-when-green (docs) | MERGED `3107f0c663` (head `4a5840c15f`); CI all SUCCESS/SKIPPED (`ci-ok`, Documenter, documenter/deploy); merge commit lands attested Julia vs drmTMB 0.7.1 warm medians (median 18.3×) + q4 tip fit-wall TSV after #781 | Shannon |

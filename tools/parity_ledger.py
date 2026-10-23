@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Reconcile the DRM.jl public surface against drmTMB's, at a named git ref.
+"""Reconcile the DRModels.jl public surface against drmTMB's, at a named git ref.
 
 The catch-up campaign's countdown. Reads three drmTMB artifacts -- `NAMESPACE`,
 `inst/extdata/julia-capabilities.tsv`, `inst/extdata/julia-gates.tsv` -- plus
-DRM.jl's own export block, and reports what the R bridge admits versus what the
+DRModels.jl's own export block, and reports what the R bridge admits versus what the
 Julia engine can actually fit. Reports BOTH directions: what drmTMB exports have
-no DRM.jl twin (the forward "genuinely owed" pass) and what DRM.jl exports have
-no drmTMB twin (the reverse "genuinely ahead" pass, #481) -- so DRM.jl growing a
+no DRModels.jl twin (the forward "genuinely owed" pass) and what DRModels.jl exports have
+no drmTMB twin (the reverse "genuinely ahead" pass, #481) -- so DRModels.jl growing a
 capability drmTMB lacks (e.g. #471's structured markers on bivariate LogNormal)
 is a written decision instead of unnoticed drift in either direction.
 
@@ -24,11 +24,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-# drmTMB R name -> DRM.jl symbol, where the twin exists under a different name.
+# drmTMB R name -> DRModels.jl symbol, where the twin exists under a different name.
 ALIASES = {
     "nbinom2": "NegBinomial2",
     "truncated_nbinom2": "TruncatedNegBinomial2",
-    "biv_gaussian": "cbind",           # bivariate is cbind()/mvbind() in DRM.jl
+    "truncated_poisson": "TruncatedPoisson",
+    "biv_gaussian": "cbind",           # bivariate is cbind()/mvbind() in DRModels.jl
     "drmTMB": "drm",                   # the fitting verb
     "phylo_interaction": "fit_phylo_interaction",
 }
@@ -38,7 +39,7 @@ NOT_CAPABILITY = {"gr", "drm_control", "meta_known_V"}
 
 # A4e. The raw "exports with no twin" count MIXES three different things, and
 # reporting their sum as one countdown overstates the work: it counts a
-# capability DRM.jl already has under another spelling, and work that correctly
+# capability DRModels.jl already has under another spelling, and work that correctly
 # lives in R, as though both were missing engine features.
 #
 # Each name below therefore carries a WRITTEN REASON, and the countdown reports
@@ -46,14 +47,14 @@ NOT_CAPABILITY = {"gr", "drm_control", "meta_known_V"}
 # it must say why.
 DELIBERATELY_NOT_PORTED = {
     # 2026-09-02 (drmTMB #1114): cross-engine objective at a supplied point.
-    # DRM.jl's counterparts are `reml_objective_at` (primitive, #589) and the
+    # DRModels.jl's counterparts are `reml_objective_at` (primitive, #589) and the
     # supported bridge entry `drm_bridge_objective_at` (#590); the name differs
     # by design because the Julia entry takes the bridge payload, not a fit.
-    "objective_at": "counterpart is drm_bridge_objective_at / reml_objective_at (DRM.jl #589/#590)",
+    "objective_at": "counterpart is drm_bridge_objective_at / reml_objective_at (DRModels.jl #589/#590)",
     # 2026-09-02 (drmTMB #1114): build provenance baked at install via configure.
-    # DRM.jl records the comparator build with tools/drmtmb_provenance.R --toml
-    # (DRM.jl#473) rather than a runtime accessor; a Julia twin is not owed.
-    "drm_provenance": "DRM.jl stamps comparator provenance via tools/drmtmb_provenance.R --toml (#473)",
+    # DRModels.jl records the comparator build with tools/drmtmb_provenance.R --toml
+    # (DRModels.jl#473) rather than a runtime accessor; a Julia twin is not owed.
+    "drm_provenance": "DRModels.jl stamps comparator provenance via tools/drmtmb_provenance.R --toml (#473)",
     # --- delivered, but spelled differently: a family plus a bivariate formula
     "biv_lognormal": "delivered as LogNormal() with a bivariate formula (A3a, parity-verified)",
     "biv_student": "delivered as Student() with a bivariate formula (A3b, parity-verified)",
@@ -61,7 +62,7 @@ DELIBERATELY_NOT_PORTED = {
     # --- delivered through the BRIDGE PAYLOAD; the R function correctly stays in R.
     #     A2a established that these five collapse to ONE contract: per-dpar
     #     response-scale columns. They are R post-fit functions that CONSUME the
-    #     Julia payload, not engine features DRM.jl is missing.
+    #     Julia payload, not engine features DRModels.jl is missing.
     "fitted_distribution": "R post-fit function fed by the drm_bridge dpars payload (A2a)",
     "qq_plot": "R post-fit function fed by the drm_bridge dpars payload (A2a)",
     "worm_plot": "R post-fit function fed by the drm_bridge dpars payload (A2a)",
@@ -81,11 +82,11 @@ DELIBERATELY_NOT_PORTED = {
     # --- genuinely absent, and blocked for a stated structural reason (A4d)
     "corpair": "BLOCKED: StatsModels' @formula cannot express keyword args or string "
                "literals, so drmTMB's syntax is not representable; and the fitted route "
-               "needs the labelled covariance-block grammar (1|p|id), absent in DRM.jl",
+               "needs the labelled covariance-block grammar (1|p|id), absent in DRModels.jl",
 }
 
-# #481. The forward pass above answers "what does drmTMB have that DRM.jl doesn't".
-# It never asks the reverse question, so DRM.jl can grow capabilities drmTMB has no
+# #481. The forward pass above answers "what does drmTMB have that DRModels.jl doesn't".
+# It never asks the reverse question, so DRModels.jl can grow capabilities drmTMB has no
 # analogue for -- e.g. #471's structured markers on bivariate LogNormal, which
 # drmTMB's own source refuses outright (R/drmTMB.R:8998, :9097) -- and the ledger
 # stays silent, because silence is all it can express in that direction.
@@ -97,8 +98,8 @@ DELIBERATELY_NOT_PORTED = {
 # does not appear as a row below. That is a real limit of a name-keyed instrument,
 # not a bug in this pass; it is recorded here rather than faked into a row.
 #
-# Each name below is DRM.jl exporting something drmTMB's NAMESPACE has no matching
-# symbol for. Most are legitimate and not a capability gap in DRM.jl's favour: a
+# Each name below is DRModels.jl exporting something drmTMB's NAMESPACE has no matching
+# symbol for. Most are legitimate and not a capability gap in DRModels.jl's favour: a
 # Julia-idiomatic generic name drmTMB reaches via S3method() on an already-global
 # base/stats generic (never its own export()), a struct/exception type backing
 # what R represents as an implicit S3 class tag, sparse-Laplace engine internals
@@ -167,7 +168,7 @@ AHEAD_ACCOUNTED = {
     "fz_init_from_Sigma": "Fisher-z parameter initialization from Sigma; engine internal",
     "fz_marginal_and_grad": "Fisher-z marginal likelihood + gradient; engine internal",
     "fz_phi_to_lc": "Fisher-z -> log-Cholesky parameter map; engine internal",
-    "gaussian_locscale_phylo_sds": "accessor over DRM.jl's SEPARATE-vs-COUPLED block representation for sigma~phylo fits; an internal representation detail, not a modelling capability",
+    "gaussian_locscale_phylo_sds": "accessor over DRModels.jl's SEPARATE-vs-COUPLED block representation for sigma~phylo fits; an internal representation detail, not a modelling capability",
     "joint_grad": "augmented-state joint gradient; engine internal",
     "joint_nll": "augmented-state joint negative log-likelihood; engine internal",
     "lc_len": "log-Cholesky parameter-vector length; engine internal",
@@ -253,7 +254,7 @@ def drmtmb_exports(repo: Path, ref: str) -> list[str]:
 
 
 def drmjl_exports(root: Path) -> list[str]:
-    src = (root / "src" / "DRM.jl").read_text()
+    src = (root / "src" / "DRModels.jl").read_text()
     names: list[str] = []
     for block in re.findall(r"^export\s+(.+?)(?=\n\s*\n|\nexport|\Z)", src, re.M | re.S):
         block = re.sub(r"#.*", "", block)
@@ -299,7 +300,7 @@ def main() -> int:
     accounted = [x for x in unmatched if x in DELIBERATELY_NOT_PORTED]
 
     # #481: the reverse pass. Same has_twin() logic, direction flipped -- reuses
-    # ALIASES (r_name -> j_name) by checking the ALIASES *values*, so a DRM.jl
+    # ALIASES (r_name -> j_name) by checking the ALIASES *values*, so a DRModels.jl
     # export spelled to match a known R alias (e.g. NegBinomial2 for nbinom2)
     # counts as twinned without duplicating the map.
     r_norm = {norm(x) for x in r_exports}
@@ -317,7 +318,7 @@ def main() -> int:
     gates = tsv_rows(args.drmtmb, args.ref, "inst/extdata/julia-gates.tsv")
 
     print(f"drmTMB {version} @ {args.ref} ({sha[:9]})")
-    print(f"  exports: {len(r_exports)}   DRM.jl exports: {len(j_exports)}")
+    print(f"  exports: {len(r_exports)}   DRModels.jl exports: {len(j_exports)}")
     print()
 
     print(f"BRIDGE CAPABILITY ROWS ({len(caps)}) -- the campaign's countdown")
@@ -339,20 +340,20 @@ def main() -> int:
         print(f"  {name:<22} {DELIBERATELY_NOT_PORTED[name]}")
     print()
 
-    print(f"drmTMB EXPORTS WITH NO DRM.jl TWIN ({len(missing)}) -- genuinely owed")
+    print(f"drmTMB EXPORTS WITH NO DRModels.jl TWIN ({len(missing)}) -- genuinely owed")
     for name in missing:
         print(f"  {name}")
     print()
 
     # #481: the reverse direction. Same shape as the forward blocks above --
-    # DRM.jl exports with no drmTMB twin, split into what's accounted for in
+    # DRModels.jl exports with no drmTMB twin, split into what's accounted for in
     # writing versus what's a genuine, unaccounted divergence.
     print(f"AHEAD OF drmTMB, ACCOUNTED FOR IN WRITING ({len(ahead_accounted)}) -- not a gap, and why")
     for name in ahead_accounted:
         print(f"  {name:<28} {AHEAD_ACCOUNTED[name]}")
     print()
 
-    print(f"DRM.jl EXPORTS WITH NO drmTMB TWIN ({len(ahead_missing)}) -- genuinely ahead")
+    print(f"DRModels.jl EXPORTS WITH NO drmTMB TWIN ({len(ahead_missing)}) -- genuinely ahead")
     for name in ahead_missing:
         print(f"  {name}")
     print()

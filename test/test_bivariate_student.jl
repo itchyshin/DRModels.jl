@@ -6,7 +6,7 @@
 # rho12 is the SCATTER correlation, and nu is SHARED across both margins by
 # construction — one scalar mixing variable governs both.
 
-using DRM
+using DRModels
 using Test
 using Random
 

@@ -9,6 +9,7 @@ import tomllib
 from pathlib import Path
 
 import check_joint_frontend_fit_receipt as oracle
+import receipt_paths
 
 require = oracle.require
 
@@ -16,16 +17,19 @@ require = oracle.require
 def check(receipt, reference, direct, rroot, jroot, native=False):
     require(receipt.get("status") == "PASS", "public adapter status")
     require(receipt.get("source_unchanged") is True, "source changed")
-    paths = set(rroot.glob("R/*.R")) | {rroot / "NAMESPACE"}
-    paths |= {p for p in (rroot / "src").rglob("*") if p.suffix in (".cpp", ".h", ".hpp")}
-    paths |= set((jroot / "src").rglob("*.jl"))
-    current = {str(p.resolve()): oracle.digest(p) for p in paths}
-    require(receipt.get("source_before") == current == receipt.get("source_after"), "public source manifest")
+    # Path-portable: recorded absolute paths are re-keyed by root and repo-relative
+    # path; the per-file sha256 values must equal these checkouts' (receipt_paths.py).
+    rroot, jroot = rroot.resolve(), jroot.resolve()
+    rpaths = set(rroot.glob("R/*.R")) | {rroot / "NAMESPACE"}
+    rpaths |= {p for p in (rroot / "src").rglob("*") if p.suffix in (".cpp", ".h", ".hpp")}
+    current = receipt_paths.local(rpaths, rroot, set((jroot / "src").rglob("*.jl")), jroot, oracle.digest)
+    recorded_root = receipt_paths.loaded_root(receipt.get("runtime", {}).get("source"))
+    require(receipt.get("source_before") == receipt.get("source_after")
+            and receipt_paths.recorded(receipt.get("source_before"), recorded_root) == current, "public source manifest")
     require(receipt.get("runner_sha256") == oracle.digest(rroot / "tools/run-julia-joint-public.R"), "runner hash")
     frozen_json = jroot / "docs/dev-log/evidence/julia-r-parity/missing-predictor-oracle/native-mi-oracle-003.json"
     require(receipt.get("fixture_sha256") == oracle.digest(frozen_json), "fixture hash")
     require(receipt.get("runtime", {}).get("threads") == 1 and receipt["runtime"].get("blas") == 1, "thread budget")
-    require(receipt["runtime"].get("source") == str(jroot / "src/DRM.jl"), "loaded Julia source")
     require(set(receipt.get("cases", {})) == {"gaussian", "bernoulli"}, "case denominator")
     for kind in ("gaussian", "bernoulli"):
         case, frozen, julia = receipt["cases"][kind], reference[kind], direct["cases"][kind]

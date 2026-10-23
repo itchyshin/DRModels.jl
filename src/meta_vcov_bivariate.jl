@@ -2,7 +2,7 @@
 # bivariate meta-analysis, the Julia twin of drmTMB's `meta_vcov_bivariate()`
 # (drmTMB R/meta-vcov.R) *plus the engine path that consumes it*.
 #
-# The A4d design pass refused to port the constructor alone because DRM.jl had
+# The A4d design pass refused to port the constructor alone because DRModels.jl had
 # no consumer — an exported function whose output nothing accepts closes an
 # export-name gap without closing a capability gap. This file ships both halves:
 # the constructor and the per-row known-V extension of the bivariate residual
@@ -22,7 +22,7 @@
 # SURFACE. drmTMB spells consumption `bf(mu1 = y1 ~ x + meta_V(V = V), ...)`.
 # That spelling uses a KEYWORD argument inside a formula, which StatsModels'
 # @formula cannot represent (the same macro limitation that blocks `corpair`,
-# documented in docs/dev-log/design/2026-08-15-a4d-design.md). DRM.jl therefore
+# documented in docs/dev-log/design/2026-08-15-a4d-design.md). DRModels.jl therefore
 # takes the object as a fit-call keyword — `drm(bfbiv, Gaussian(); data, V = …)`
 # — the same place `tree`/`K`/`A` already live. For the R→Julia bridge this is
 # the natural shape anyway: drmTMB parses `meta_V(V = …)` on the R side and
@@ -70,7 +70,7 @@ univariate `meta_V` contract: `sigma` is heterogeneity alone, `V` separate.)
 
 !!! note "drmTMB spelling"
     drmTMB writes `bf(mu1 = y1 ~ x + meta_V(V = V), …)`. A keyword argument
-    inside a formula is not representable in StatsModels' `@formula`, so DRM.jl
+    inside a formula is not representable in StatsModels' `@formula`, so DRModels.jl
     takes the object via the `V =` keyword instead — the same place `tree` /
     `K` / `A` live. Writing `meta_V(...)` inside a bivariate formula errors
     with a pointer to this keyword.

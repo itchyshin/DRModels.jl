@@ -38,7 +38,7 @@
 #   opt$convergence = 0, sdr$pdHess = TRUE
 #
 # TOLERANCE: drmTMB's `(1 | id)` route is TMB's Laplace approximation (one
-# saddlepoint per group, exact analytic Hessian); DRM.jl's route below is
+# saddlepoint per group, exact analytic Hessian); DRModels.jl's route below is
 # 32-node non-adaptive Gauss–Hermite quadrature per group (the same scheme as
 # the existing Poisson/Gamma `(1 | g)` routes in src/poisson.jl,
 # src/gamma.jl). These are two DIFFERENT marginal-likelihood approximations
@@ -55,7 +55,7 @@
 
 module TestTweedieRanef
 
-using DRM
+using DRModels
 using Test
 using DelimitedFiles: readdlm
 

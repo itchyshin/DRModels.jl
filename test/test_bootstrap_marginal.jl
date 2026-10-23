@@ -11,9 +11,9 @@
 # estimate was correct -- which is exactly why it survived. These tests fail if the
 # conditional simulator is ever restored.
 
-using Test, DRM, Random, Statistics, LinearAlgebra
-import Distributions   # qualified: DRM exports its own `Poisson` FAMILY
-# This file needs no direct StatsModels import: `@formula` is re-exported by DRM.
+using Test, DRModels, Random, Statistics, LinearAlgebra
+import Distributions   # qualified: DRModels exports its own `Poisson` FAMILY
+# This file needs no direct StatsModels import: `@formula` is re-exported by DRModels.
 # Tests that use StatsModels types import them explicitly from the test project.
 
 @testset "#459 parametric bootstrap redraws random effects" begin
@@ -32,7 +32,7 @@ import Distributions   # qualified: DRM exports its own `Poisson` FAMILY
     fit = drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ 1)),
               Gaussian(); data = dat, tree = phy)
 
-    sim = DRM._marginal_simulator(fit, dat; tree = phy)
+    sim = DRModels._marginal_simulator(fit, dat; tree = phy)
     @test sim !== nothing
 
     rng = MersenneTwister(11)
@@ -92,7 +92,7 @@ end
     # returns the fitted sd back (up to ML shrinkage); the correlation matrix
     # returns it shrunk by roughly sqrt(height).
     sdhat = re_sd(fit)[:species]
-    sim = DRM._marginal_simulator(fit, dat; tree = phy)
+    sim = DRModels._marginal_simulator(fit, dat; tree = phy)
     rng = MersenneTwister(7)
     got = Float64[]
     for _ in 1:6
@@ -189,7 +189,7 @@ end
     y = 0.2 .+ 0.5 .* x .+ (0.9 .* randn(G))[g] .+ 0.4 .* randn(n)
     d = (; y, x, g)
     f1 = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), Gaussian(); data = d)
-    s1 = DRM._marginal_simulator(f1, d)
+    s1 = DRModels._marginal_simulator(f1, d)
     @test s1 !== nothing
     r1 = roundtrip(s1,
                    ys -> drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)),
@@ -208,7 +208,7 @@ end
     d3 = (; y = y3, x = x3, id)
     f3 = drm(bf(@formula(y ~ x + relmat(1 | id)), @formula(sigma ~ 1)),
              Gaussian(); data = d3, K = K3)
-    s3 = DRM._marginal_simulator(f3, d3; K = K3)
+    s3 = DRModels._marginal_simulator(f3, d3; K = K3)
     @test s3 !== nothing
     r3 = roundtrip(s3,
                    ys -> drm(bf(@formula(y ~ x + relmat(1 | id)), @formula(sigma ~ 1)),
@@ -246,21 +246,21 @@ end
     dp = (; y = yp, x, g)
     mkp = dd -> drm(bf(@formula(y ~ 1 + x + (1 | g))), Poisson(); data = dd)
     fp = mkp(dp)
-    sp = DRM._marginal_simulator(fp, dp)
+    sp = DRModels._marginal_simulator(fp, dp)
     @test sp !== nothing
     # The replicates must carry the group structure, not a quarter of it.
     grpsd(v) = std([mean(v[g .== k]) for k in 1:G])
     rng = MersenneTwister(2)
     sim_bgsd = mean(grpsd(sp(rng)) for _ in 1:20)
     @test sim_bgsd > 0.5 * grpsd(yp)
-    @test 0.7 < rt(mkp, dp, DRM._marginal_simulator(fp, dp)) < 1.4
+    @test 0.7 < rt(mkp, dp, DRModels._marginal_simulator(fp, dp)) < 1.4
 
     # --- Binomial (a different link, so the inverse-link step is genuinely exercised)
     yb = Float64[rand(Distributions.Bernoulli(1 / (1 + exp(-(0.2 + 0.6 * x[i] + u[g[i]]))))) for i in 1:n]
     db = (; y = yb, x, g)
     mkb = dd -> drm(bf(@formula(y ~ 1 + x + (1 | g))), Binomial(); data = dd)
     fb = mkb(db)
-    sb = DRM._marginal_simulator(fb, db)
+    sb = DRModels._marginal_simulator(fb, db)
     @test sb !== nothing
-    @test 0.7 < rt(mkb, db, DRM._marginal_simulator(fb, db)) < 1.4
+    @test 0.7 < rt(mkb, db, DRModels._marginal_simulator(fb, db)) < 1.4
 end

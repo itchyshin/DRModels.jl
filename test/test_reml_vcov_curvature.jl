@@ -8,7 +8,7 @@
 # FD Hessian; this test anchors that it (a) is finite/PD on a well-identified fit,
 # (b) DIFFERS from the ML observed information at the same θ̂ in the variance
 # blocks, and (c) the ML/REML curvatures coincide when the penalty is flat.
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 
 @testset "REML vcov includes restricted-penalty curvature (#310)" begin
@@ -24,17 +24,17 @@ using Test, Random, LinearAlgebra
     Xμ = hcat(ones(n), x); Xψ = ones(n, 1)
     pμ = size(Xμ, 2)                                  # non-trivial mean design (pμ = 2)
 
-    Q, gidx, G = DRM._locscale_phylo_setup(phy, species)
+    Q, gidx, G = DRModels._locscale_phylo_setup(phy, species)
     kind = Val(:gaussian_mean)
-    Zη = DRM._ls_canonical_Zeta(n); Zψ = DRM._ls_canonical_Zpsi(n)
-    sep_grad_fn(θ) = DRM._glsp_sep_grad(kind, y, Xμ, Xψ, gidx, G, Q, θ, Zη, Zψ)
-    sep_obj(θ)     = DRM._glsp_sep_nll(kind, y, Xμ, Xψ, gidx, G, Q, θ, Zη, Zψ)
+    Zη = DRModels._ls_canonical_Zeta(n); Zψ = DRModels._ls_canonical_Zpsi(n)
+    sep_grad_fn(θ) = DRModels._glsp_sep_grad(kind, y, Xμ, Xψ, gidx, G, Q, θ, Zη, Zψ)
+    sep_obj(θ)     = DRModels._glsp_sep_nll(kind, y, Xμ, Xψ, gidx, G, Q, θ, Zη, Zψ)
 
     # ML fit, then REML refit (the production clean-gradient path).
     βμ0 = Xμ \ y
     θ0 = vcat(βμ0, [0.0], log(0.3), log(0.3))
-    θ̂_ml, conv = DRM._glsp_optimise(sep_obj, (g, θ) -> (g .= sep_grad_fn(θ); g), θ0)
-    θ̂, _, _, _, _ = DRM._glsp_reml_refit_clean(sep_obj, sep_grad_fn, θ̂_ml, pμ;
+    θ̂_ml, conv = DRModels._glsp_optimise(sep_obj, (g, θ) -> (g .= sep_grad_fn(θ); g), θ0)
+    θ̂, _, _, _, _ = DRModels._glsp_reml_refit_clean(sep_obj, sep_grad_fn, θ̂_ml, pμ;
                                                ml_converged = conv)
 
     # ML observed information at θ̂ (the OLD, incomplete curvature).
@@ -48,7 +48,7 @@ using Test, Random, LinearAlgebra
     Vml = Matrix(inv(chml))
 
     # REML observed information (the FIX): restricted-objective inverse Hessian.
-    Vreml = DRM._glsp_reml_vcov(sep_grad_fn, θ̂, pμ)
+    Vreml = DRModels._glsp_reml_vcov(sep_grad_fn, θ̂, pμ)
     @test all(isfinite, Vreml)                       # finite/PD on this fit
     @test isposdef(Symmetric((Vreml .+ Vreml') ./ 2))
 
@@ -67,6 +67,6 @@ using Test, Random, LinearAlgebra
     # pμ = 0 disables the penalty (empty S ⇒ Hpen = 0), so the helper reduces to the
     # ML observed information — a construction check that the penalty is the ONLY
     # difference between the REML and ML curvatures.
-    Vml_via_helper = DRM._glsp_reml_vcov(sep_grad_fn, θ̂, 0)
+    Vml_via_helper = DRModels._glsp_reml_vcov(sep_grad_fn, θ̂, 0)
     @test isapprox(diag(Vml_via_helper), diag(Vml); rtol = 1e-4)
 end

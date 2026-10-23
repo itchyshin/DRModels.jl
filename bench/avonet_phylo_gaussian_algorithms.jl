@@ -11,7 +11,7 @@
 import Pkg
 Pkg.activate(dirname(@__DIR__))
 
-using DRM
+using DRModels
 using DelimitedFiles
 using LinearAlgebra
 using Printf
@@ -184,7 +184,7 @@ function load_hackett_tree(path)
     newick = read(path, String)
     zero_count = length(collect(eachmatch(ZERO_BRANCH, newick)))
     positive_newick = replace(newick, ZERO_BRANCH => ":1e-8")
-    phy = DRM.augmented_phy(positive_newick)
+    phy = DRModels.augmented_phy(positive_newick)
     return positive_newick, phy, zero_count
 end
 
@@ -368,7 +368,7 @@ function write_report(path, context, rows, bootstrap_rows, profile_rows)
     open(path, "w") do io
         println(io, "# AVONET phylogenetic Gaussian algorithm scout")
         println(io)
-        println(io, "This report times the current Julia route for a real AVONET/Hackett Gaussian phylogenetic mean model with $(context.n_species) tree tips. It is a direct DRM.jl benchmark, not the R bridge timing table.")
+        println(io, "This report times the current Julia route for a real AVONET/Hackett Gaussian phylogenetic mean model with $(context.n_species) tree tips. It is a direct DRModels.jl benchmark, not the R bridge timing table.")
         println(io)
         println(io, "## Data and model")
         println(io)

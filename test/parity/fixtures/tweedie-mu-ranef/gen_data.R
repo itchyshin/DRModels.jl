@@ -42,7 +42,7 @@ cat("loglik:", as.numeric(logLik(fit)), "\n")
 
 # The correlated random slope `(1 + x | id)` stays rejected by drmTMB
 # 0.7.0 (`validate_tweedie_mu_random_terms()`): only `(1 | id)` and the
-# INDEPENDENT slope `(0 + x | id)` are implemented for tweedie() mu. DRM.jl
+# INDEPENDENT slope `(0 + x | id)` are implemented for tweedie() mu. DRModels.jl
 # matches that same-target scope this slice.
 res <- tryCatch(
   drmTMB(bf(y ~ x + (1 + x | id), nu ~ 1), family = tweedie(), data = sim$data),

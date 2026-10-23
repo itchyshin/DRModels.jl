@@ -2,7 +2,7 @@
 # parameter — μ (location), σ (scale, log link), ν (degrees of freedom, log
 # link). Heavy tails downweight outliers; as ν → ∞ it tends to Gaussian. Fixed
 # effects, maximum likelihood. Mirrors drmTMB's `student` family.
-using DRM
+using DRModels
 using Test, Random
 using Distributions: TDist
 

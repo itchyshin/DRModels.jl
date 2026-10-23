@@ -1,6 +1,6 @@
 #!/usr/bin/env julia
 
-using DRM
+using DRModels
 
 function _arg_value(args, flag, default)
     idx = findfirst(==(flag), args)
@@ -22,7 +22,7 @@ out = _arg_value(
              "2026-06-21-loconly-reml-simulation-status.tsv"),
 )
 
-result = DRM._loconly_reml_write_simulation_status_tsv(
+result = DRModels._loconly_reml_write_simulation_status_tsv(
     out;
     include_medium_stress = include_medium,
     include_large_stress = include_large,

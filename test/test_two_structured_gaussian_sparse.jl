@@ -6,7 +6,7 @@
 # + ZᵀZ/σ², with the variance-component gradient from the Takahashi selected
 # inverse — never forming the n×n V. The ANCHOR test below proves it returns
 # the SAME MLE + logLik as the dense path on identical inputs.
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra, SparseArrays
 
 _corr(M) = (d = sqrt.(diag(M)); M ./ (d * d'))
@@ -45,13 +45,13 @@ end
     # The two-structured router resolves BOTH relmat markers from a single `K`,
     # so to give each component its OWN correlation we call the fitter entries
     # directly — comparing dense vs sparse on byte-identical inputs (the anchor).
-    gidx1, G1 = DRM._group_index(species)
-    gidx2, G2 = DRM._group_index(id)
+    gidx1, G1 = DRModels._group_index(species)
+    gidx2, G2 = DRModels._group_index(id)
     Xμ = hcat(ones(n), x)
     nmμ = ["(Intercept)", "x"]
-    dense2 = DRM._fit_two_structured_gaussian(Gaussian(), y, Xμ, gidx1, G1, C1,
+    dense2 = DRModels._fit_two_structured_gaussian(Gaussian(), y, Xμ, gidx1, G1, C1,
         gidx2, G2, C2, nmμ, :species, :id, 1e-9)
-    sparse2 = DRM._fit_two_structured_gaussian_sparse(Gaussian(), y, Xμ, gidx1, G1, C1,
+    sparse2 = DRModels._fit_two_structured_gaussian_sparse(Gaussian(), y, Xμ, gidx1, G1, C1,
         gidx2, G2, C2, nmμ, :species, :id, 1e-9)
 
     @test sparse2.converged
@@ -80,14 +80,14 @@ end
     x = randn(n)
     y = 0.2 .+ 0.4 .* x .+ 0.7 .* randn(G)[species] .+ 0.5 .* randn(G)[id] .+ 0.3 .* randn(n)
     Xμ = hcat(ones(n), x)
-    gidx1, _ = DRM._group_index(species); gidx2, _ = DRM._group_index(id)
+    gidx1, _ = DRModels._group_index(species); gidx2, _ = DRModels._group_index(id)
 
     # Re-derive the closed-form NLL exactly (dense) and FD it, then compare to the
     # sparse path's analytic gradient via its own internal evaluator. We test the
     # gradient by checking the optimum: at the sparse MLE, the dense NLL gradient
     # is ~0. (A direct unit-grad test would need the internal closure; the anchor
     # test already pins logLik, and the optimiser used the analytic gradient.)
-    fit = DRM._fit_two_structured_gaussian_sparse(Gaussian(), y, Xμ, gidx1, G, C1,
+    fit = DRModels._fit_two_structured_gaussian_sparse(Gaussian(), y, Xμ, gidx1, G, C1,
         gidx2, G, C2, ["(Intercept)", "x"], :species, :id, 1e-10)
     @test fit.converged
 
@@ -127,9 +127,9 @@ end
     a2 = σ2 .* (cholesky(Symmetric(Canim)).L * randn(G))
     y = 0.3 .+ 0.5 .* x .+ a1[species] .+ a2[id] .+ σ .* randn(n)
     Xμ = hcat(ones(n), x)
-    gidx1, _ = DRM._group_index(species); gidx2, _ = DRM._group_index(id)
+    gidx1, _ = DRModels._group_index(species); gidx2, _ = DRModels._group_index(id)
 
-    fit = DRM._fit_two_structured_gaussian_sparse(Gaussian(), y, Xμ, gidx1, G, Cphy,
+    fit = DRModels._fit_two_structured_gaussian_sparse(Gaussian(), y, Xμ, gidx1, G, Cphy,
         gidx2, G, Canim, ["(Intercept)", "x"], :species, :id, 1e-9)
     @test fit.converged
     @test coef(fit, :mu)[2] ≈ 0.5 atol = 0.1

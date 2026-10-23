@@ -1,4 +1,4 @@
-using DRM, Random, LinearAlgebra, Statistics
+using DRModels, Random, LinearAlgebra, Statistics
 # UNIT-HEIGHT tree, so the simulated sd and the estimated sd are on the SAME scale.
 function unit_tree(G)
     p0 = random_balanced_tree(G; branch_length=1.0)

@@ -72,7 +72,7 @@ def check(r,native=False):
     require(r.get('runner_sha256')==sha(ROOT/'tools/check_two_gaussian_fit.jl'),'runner hash')
     sources={str(p.relative_to(ROOT/'src')):sha(p) for p in (ROOT/'src').rglob('*') if p.is_file()}
     require(r.get('source_unchanged') is True and r.get('source_before')==sources==r.get('source_after'),'source provenance')
-    runtime=r.get('runtime',{});require(runtime.get('threads')==1 and runtime.get('blas')==1 and runtime.get('source')==str(ROOT/'src/DRM.jl'),'runtime')
+    runtime=r.get('runtime',{});require(runtime.get('threads')==1 and runtime.get('blas')==1 and runtime.get('source')==str(ROOT/'src/DRModels.jl'),'runtime')
     require(r.get('original_row')==f['original_row'] and r.get('observed_y')==f['y_observed'] and r.get('observed_x1')==f['x1_observed'] and r.get('observed_x2')==f['x2_observed'],'rows and masks')
     require(r.get('snapshot_isolated') is True,'snapshot isolation')
     vector(r.get('initial'),11,'initial parameters')

@@ -1,0 +1,4 @@
+instantiate exit=0
+GATE S9-finite-state-evidence_G3 DOCS_SUBSET_EXAMPLES_ATLEAST3_OK DOCS_SUBSET_BUILD=/home/snakagaw/claude-606b/after/docs/build/finite-gate.RwAaxH/rendered
+GATE S9-finite-public_G4 exit=0 DOCS_SUBSET_BUILD=/home/snakagaw/claude-606b/after/docs/build/finite-doc-check.DXPune/output
+DONE

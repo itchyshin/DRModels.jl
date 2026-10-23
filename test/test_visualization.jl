@@ -1,7 +1,7 @@
 # Visualization data providers: parameter_surface (2-D profile deviance grid)
 # and corpairs_data (between-response correlation summary). Backend-free — we
 # test the numbers a plot would consume, mirroring drmTMB's plot_* helpers.
-using DRM
+using DRModels
 using Test, Random
 
 @testset "visualization data providers" begin

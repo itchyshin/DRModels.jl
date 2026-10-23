@@ -1,9 +1,9 @@
-using DRM, Test, Random, LinearAlgebra, Statistics
+using DRModels, Test, Random, LinearAlgebra, Statistics
 
 # A known-parameter fit isolates simulation from optimization. The covariance
 # below is hand-written from the shared path lengths of this height-two tree.
 function _boot_lss_fixture(; with_phylo=true, iid=Symbol[], varying_phylo=true, missing_tip=false)
-    tree = DRM.augmented_phy("(oak:2,(beech:1,cedar:1):1,(elm:1,(fir:0.5,gum:0.5):0.5):1);")
+    tree = DRModels.augmented_phy("(oak:2,(beech:1,cedar:1):1,(elm:1,(fir:0.5,gum:0.5):0.5):1);")
     labels = ["oak", "beech", "cedar", "elm", "fir", "gum"]
     idx = repeat([5, 1, 6, 3, 4, 2], inner=8)
     ztip = [-1.1, -.4, .2, .7, 1.3, 1.8]
@@ -44,7 +44,7 @@ function _boot_lss_fixture(; with_phylo=true, iid=Symbol[], varying_phylo=true, 
         push!(names,:sd_phylo=>(varying_phylo ? ["(Intercept)","z"] : ["(Intercept)"]))
     end
     observed = isfinite.(y)
-    fit=DRM._withformula(DRM.DrmFit(Gaussian(),blocks,names,theta,
+    fit=DRModels._withformula(DRModels.DrmFit(Gaussian(),blocks,names,theta,
         Matrix{Float64}(I,length(theta),length(theta)),0.,count(observed),true,
         Dict(:mu=>(.2 .+ .4 .* x[observed])),Dict(:mu=>y[observed]),
         Dict(:sigma=>exp.(-1. .+ .1 .* x[observed]))),f)
@@ -80,7 +80,7 @@ end
            (;with_phylo=true,iid=Symbol[],missing_tip=true)]
     for args in cases
         q=_boot_lss_fixture(;args...)
-        sim=DRM._marginal_simulator(q.fit,q.data;tree=q.tree)
+        sim=DRModels._marginal_simulator(q.fit,q.data;tree=q.tree)
         @test sim !== nothing
         if sim !== nothing
             for seed in (19,83)
@@ -101,7 +101,7 @@ end
     fit=drm(q.fit.formula,Gaussian();data=q.data,method=:REML)
     @test estimation_method(fit)==:REML
     B=3; seed=921
-    sim=DRM._marginal_simulator(fit,q.data)
+    sim=DRModels._marginal_simulator(fit,q.data)
     if sim === nothing
         @test sim !== nothing
     else
@@ -122,7 +122,7 @@ end
     q=_boot_lss_fixture()
     fit=drm(q.fit.formula,Gaussian();data=q.data,tree=q.tree,method=:REML)
     B=3; seed=409
-    sim=DRM._marginal_simulator(fit,q.data;tree=q.tree)
+    sim=DRModels._marginal_simulator(fit,q.data;tree=q.tree)
     @test sim !== nothing
     if sim !== nothing
         seeds=rand(MersenneTwister(seed),UInt,B)
@@ -138,32 +138,32 @@ end
     q=_boot_lss_fixture(with_phylo=true,iid=[:species,:study],missing_tip=true)
     missing_y=Union{Missing,Float64}[isnan(y) ? missing : y for y in q.data.y]
     dat=merge(q.data,(;y=missing_y))
-    sim=DRM._marginal_simulator(q.fit,dat;tree=q.tree)
+    sim=DRModels._marginal_simulator(q.fit,dat;tree=q.tree)
     got=sim(MersenneTwister(19)); expected=_boot_lss_oracle(q,19)
     @test isnan.(got)==ismissing.(missing_y)
     @test got[q.observed] ≈ expected[q.observed] atol=1e-12 rtol=1e-12
-    @test_throws ArgumentError DRM._marginal_simulator(q.fit,dat)
+    @test_throws ArgumentError DRModels._marginal_simulator(q.fit,dat)
     bad=deepcopy(q.fit); Dict(bad.coefnames)[:sd][1]="wrong-group: (Intercept)"
-    @test_throws ArgumentError DRM._marginal_simulator(bad,dat;tree=q.tree)
+    @test_throws ArgumentError DRModels._marginal_simulator(bad,dat;tree=q.tree)
     for block in (:mu,:sigma)
         wrong=deepcopy(q.fit); reverse!(Dict(wrong.coefnames)[block])
-        @test_throws ArgumentError DRM._marginal_simulator(wrong,dat;tree=q.tree)
+        @test_throws ArgumentError DRModels._marginal_simulator(wrong,dat;tree=q.tree)
     end
     short=map(v -> v[2:end],dat) # Remove an observed row, not the wholly masked last tip.
     @test count(!ismissing,short.y) != q.fit.nobs
-    @test_throws ArgumentError DRM._marginal_simulator(q.fit,short;tree=q.tree)
+    @test_throws ArgumentError DRModels._marginal_simulator(q.fit,short;tree=q.tree)
     for index in (1,3,5,8)
         wrong=deepcopy(q.fit); wrong.theta[index]=Inf
-        @test_throws ArgumentError DRM._marginal_simulator(wrong,dat;tree=q.tree)
+        @test_throws ArgumentError DRModels._marginal_simulator(wrong,dat;tree=q.tree)
     end
     labels=copy(dat.species);labels[findfirst(ismissing,missing_y)]="unknown"
-    @test_throws ArgumentError DRM._marginal_simulator(q.fit,merge(dat,(;species=labels));tree=q.tree)
+    @test_throws ArgumentError DRModels._marginal_simulator(q.fit,merge(dat,(;species=labels));tree=q.tree)
     # study has a scalar random intercept, but no explicit sd(study) submodel.
     f=bf(@formula(y ~ x + (1 | species) + (1 | study) + phylo(1 | species)),
          @formula(sigma ~ x), @formula(sd(species) ~ z),
          @formula(sd(species, phylogenetic) ~ z))
-    scalar_fit=DRM._withformula(q.fit,f)
-    simscalar=DRM._marginal_simulator(scalar_fit,dat;tree=q.tree)
+    scalar_fit=DRModels._withformula(q.fit,f)
+    simscalar=DRModels._marginal_simulator(scalar_fit,dat;tree=q.tree)
     draw=simscalar(MersenneTwister(19))
     @test draw[q.observed] ≈ expected[q.observed] atol=1e-12 rtol=1e-12
 end

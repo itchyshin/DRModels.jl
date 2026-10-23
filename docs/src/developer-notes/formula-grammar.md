@@ -1,9 +1,9 @@
 # Formula grammar
 
 !!! note "Status — Implemented (Gaussian surface)"
-    Mirrors drmTMB's [Formula grammar](https://itchyshin.github.io/drmTMB/articles/formula-grammar.html). The grammar below — both `bf` shapes, the structured markers, and the reserved-syntax rejections — is **live in DRM.jl today**. The Julia column is authoritative (taken from the source); for the R↔Julia spelling map see the [Rosetta — R ↔ Julia](@ref) page and the [R ↔ Julia bridge](@ref).
+    Mirrors drmTMB's [Formula grammar](https://itchyshin.github.io/drmTMB/articles/formula-grammar.html). The grammar below — both `bf` shapes, the structured markers, and the reserved-syntax rejections — is **live in DRModels.jl today**. The Julia column is authoritative (taken from the source); for the R↔Julia spelling map see the [Rosetta — R ↔ Julia](@ref) page and the [R ↔ Julia bridge](@ref).
 
-A DRM.jl model is **one linear-predictor formula per distributional parameter**,
+A DRModels.jl model is **one linear-predictor formula per distributional parameter**,
 bundled by [`bf`](@ref) (alias `drm_formula`) and handed to [`drm`](@ref). This
 mirrors `brms` / drmTMB: each formula's left-hand side names the parameter it
 predicts. `bf` has two shapes — a **univariate** positional form and a
@@ -49,7 +49,7 @@ bf(cbind(successes, failures) ~ x, sigma ~ 1)
 
 ### The implicit intercept
 
-DRM.jl follows R's rule: `y ~ x` means `y ~ 1 + x` (an intercept is added). Drop
+DRModels.jl follows R's rule: `y ~ x` means `y ~ 1 + x` (an intercept is added). Drop
 it explicitly with `0 + x` (or `-1`):
 
 ```julia

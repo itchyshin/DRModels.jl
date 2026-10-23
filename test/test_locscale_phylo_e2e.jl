@@ -6,7 +6,7 @@
 # precision + Takahashi, plus finite fixed-effect Wald SEs. It uses the whitened
 # route selected by the canonical coupled frontend; the legacy raw coordinate
 # route is not an end-to-end oracle for that frontend.
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra, SparseArrays
 import Distributions
 
@@ -27,13 +27,13 @@ _nb2_draw_p(η, ψ) = (r = exp(ψ); μ = exp(η);
     Xμ = hcat(ones(n), x); Xψ = ones(n, 1)
     y = [_nb2_draw_p(0.2 + 0.4x[i] + A[species[i], 1], 0.3 + A[species[i], 2]) for i in 1:n]
 
-    Q, gidx, G = DRM._locscale_phylo_setup(phy, species)
-    fit = DRM._fit_locscale(Val(:nb2), y, Xμ, Xψ, gidx, G, Q;
+    Q, gidx, G = DRModels._locscale_phylo_setup(phy, species)
+    fit = DRModels._fit_locscale(Val(:nb2), y, Xμ, Xψ, gidx, G, Q;
                             se = true, whitened = true)
 
-    certified = DRM._ls_whitened_eval(
+    certified = DRModels._ls_whitened_eval(
         Val(:nb2), y, Xμ, Xψ, gidx, G, Q, fit.θ,
-        DRM._ls_canonical_Zeta(length(y)), DRM._ls_canonical_Zpsi(length(y)),
+        DRModels._ls_canonical_Zeta(length(y)), DRModels._ls_canonical_Zpsi(length(y)),
     )
     @test fit.converged
     @test certified.status.ok

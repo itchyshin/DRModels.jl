@@ -14,7 +14,7 @@
 # implicit (db̂/dθ) correction terms are nonzero — a frozen-mode gradient would
 # fail this gate.
 
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 import Distributions
 
@@ -34,11 +34,11 @@ import Distributions
     y = Float64.([rand(Distributions.Poisson(λi)) for λi in λ])
 
     Xμ = hcat(ones(n), x)
-    Q, leaf_node, _ = DRM._poisson_phylo_setup(phy, species)
+    Q, leaf_node, _ = DRModels._poisson_phylo_setup(phy, species)
     q = size(Q, 1)
     qchol = cholesky(Symmetric(Q); check = false)
     logdetQ = logdet(qchol)
-    lf = [DRM._logfactorial(round(Int, yi)) for yi in y]
+    lf = [DRModels._logfactorial(round(Int, yi)) for yi in y]
 
     # θ = [βμ(2); logσ], deliberately OFF the optimum.
     θ = [0.10, 0.45, log(0.55)]
@@ -62,7 +62,7 @@ import Distributions
     # first-order flat at b̂, so a 1e-10 mode error perturbs it by O(1e-20).
     ntol = 1e-10
     nmax = 400
-    val0, g_an, b_base, ok = DRM._poisson_phylo_laplace_fg(
+    val0, g_an, b_base, ok = DRModels._poisson_phylo_laplace_fg(
         y, Xμ, leaf_node, Q, logdetQ, lf, θ;
         grad = true, b0 = zeros(q), newton_tol = ntol, newton_maxiter = nmax,
     )
@@ -71,7 +71,7 @@ import Distributions
     @test val0 < 1e17                      # genuine marginal, never the sentinel
 
     function mnll(t)
-        v = DRM._poisson_phylo_laplace_fg(
+        v = DRModels._poisson_phylo_laplace_fg(
             y, Xμ, leaf_node, Q, logdetQ, lf, Vector{Float64}(t);
             grad = false, b0 = copy(b_base), newton_tol = ntol, newton_maxiter = nmax,
         )[1]

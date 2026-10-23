@@ -73,10 +73,117 @@ class RenderedDocsFixture(unittest.TestCase):
         self.assertEqual(report["scope"]["external_links"], "reported_not_checked")
         self.assertEqual(report["external_targets"], ["https://example.invalid/out"])
 
+    def test_vitepress_numbered_build_maps_version_prefix_and_defers_versions_index(self) -> None:
+        (self.site / "siteinfo.js").write_text(
+            'var DOCUMENTER_CURRENT_VERSION = "previews/PR780";\n', encoding="utf-8"
+        )
+        (self.site / "index.html").write_text(
+            "<html><head><title>Home title</title>"
+            "<link rel='stylesheet' href='/DRModels.jl/previews/PR780/assets/site.css'>"
+            "<script src='/DRModels.jl/versions.js'></script>"
+            "<script src='/DRModels.jl/previews/PR780/siteinfo.js'></script></head>"
+            "<body><h1 id='home'>Home heading</h1>"
+            "<a href='/DRModels.jl/previews/PR780/guide/topic#topic'>Guide</a>"
+            "<img src='/DRModels.jl/previews/PR780/assets/logo.svg' alt='Logo'>"
+            "</body></html>",
+            encoding="utf-8",
+        )
+
+        report = AUDITOR.audit(
+            self.site,
+            self.source,
+            url_prefix="/DRModels.jl/previews/PR780",
+            deployment_root_targets={"/DRModels.jl/versions.js"},
+        )
+
+        self.assertEqual(report["failures"], [])
+        self.assertEqual(report["deployment_root_targets"], ["/DRModels.jl/versions.js"])
+
+    def test_vitepress_siteinfo_remains_required_in_numbered_build(self) -> None:
+        (self.site / "index.html").write_text(
+            "<html><head><title>Home title</title>"
+            "<script src='/DRModels.jl/versions.js'></script>"
+            "<script src='/DRModels.jl/previews/PR780/siteinfo.js'></script></head>"
+            "<body><h1 id='home'>Home heading</h1></body></html>",
+            encoding="utf-8",
+        )
+        report = AUDITOR.audit(
+            self.site,
+            self.source,
+            url_prefix="/DRModels.jl/previews/PR780",
+            deployment_root_targets={"/DRModels.jl/versions.js"},
+        )
+        self.assertTrue(any(
+            item["kind"] == "missing_asset"
+            and item.get("target") == "/DRModels.jl/previews/PR780/siteinfo.js"
+            for item in report["failures"]
+        ))
+
+    def test_unlisted_deployment_root_target_still_fails_closed(self) -> None:
+        (self.site / "index.html").write_text(
+            "<html><head><title>Home title</title>"
+            "<script src='/DRModels.jl/unexpected.js'></script></head>"
+            "<body><h1 id='home'>Home heading</h1></body></html>",
+            encoding="utf-8",
+        )
+        report = AUDITOR.audit(
+            self.site,
+            self.source,
+            url_prefix="/DRModels.jl/previews/PR780",
+            deployment_root_targets={"/DRModels.jl/versions.js"},
+        )
+        self.assertTrue(any(
+            item["kind"] == "missing_asset"
+            and item.get("target") == "/DRModels.jl/unexpected.js"
+            for item in report["failures"]
+        ))
+
     def test_missing_rendered_source_page_fails_closed(self) -> None:
         (self.source / "legacy.md").write_text("# Legacy\n", encoding="utf-8")
         report = self.run_audit()
         self.assertTrue(any(item["kind"] == "missing_rendered_source_page" for item in report["failures"]))
+
+    def test_explicit_emitted_source_set_excludes_private_source_notes(self) -> None:
+        (self.source / "developer-note.md").write_text("# Private note\n", encoding="utf-8")
+        report = AUDITOR.audit(
+            self.site,
+            self.source,
+            emitted_source_paths={"index.md", "guide/topic.md"},
+        )
+        self.assertEqual(report["failures"], [])
+        self.assertEqual(
+            {page["source_path"] for page in report["source_pages"]},
+            {"index.md", "guide/topic.md"},
+        )
+
+    def test_public_surface_rejects_developer_notes_and_dev_log_language(self) -> None:
+        (self.source / "developer-notes").mkdir()
+        (self.source / "developer-notes" / "private.md").write_text("# Private\n", encoding="utf-8")
+        (self.source / "index.md").write_text("# Home\n\nSee docs/dev-log/receipt.md\n", encoding="utf-8")
+        report = AUDITOR.audit(
+            self.site,
+            self.source,
+            emitted_source_paths={"index.md", "developer-notes/private.md"},
+        )
+        self.assertTrue(
+            {"forbidden_public_source_path", "forbidden_public_source_language"}
+            <= {item["kind"] for item in report["failures"]}
+        )
+
+    def test_rendered_internal_work_tracking_is_rejected(self) -> None:
+        (self.site / "guide" / "topic.html").write_text(
+            "<html><head><title>Topic title</title></head><body>"
+            "<h1 id='topic'>Topic heading</h1>"
+            "<p>This implementation lane closes PR #456.</p>"
+            "</body></html>",
+            encoding="utf-8",
+        )
+        report = self.run_audit()
+        self.assertTrue(any(
+            item["kind"] == "forbidden_rendered_public_language"
+            and item.get("page") == "guide/topic.html"
+            for item in report["failures"]
+        ))
 
     def test_missing_asset_fragment_and_image_alt_are_reported(self) -> None:
         (self.site / "index.html").write_text(

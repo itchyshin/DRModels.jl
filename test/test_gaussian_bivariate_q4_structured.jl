@@ -1,4 +1,4 @@
-using DRM
+using DRModels
 using Test, LinearAlgebra, Random, SparseArrays, Statistics
 
 # #189 — q=4 coevolution from relmat / animal / spatial (level-indexed Q_cond).
@@ -44,7 +44,7 @@ function _q4s_simulate(; G::Int = 8, nrep::Int = 3, seed::Int = 189,
         m2 = _Q4S_BETA.mu2[1] + _Q4S_BETA.mu2[2] * x[i] + U[2, k]
         s1 = exp(_Q4S_BETA.s1[1] + U[3, k])
         s2 = exp(_Q4S_BETA.s2[1] + U[4, k])
-        ρ = DRM.RHO_GUARD * tanh(_Q4S_BETA.rho[1])
+        ρ = DRModels.RHO_GUARD * tanh(_Q4S_BETA.rho[1])
         e = cholesky(Symmetric([s1^2 ρ*s1*s2; ρ*s1*s2 s2^2])).L * randn(rng, 2)
         y1[i] = m1 + e[1]
         y2[i] = m2 + e[2]
@@ -207,17 +207,17 @@ end
             data = fx.data, K = fx.K,
             q4_iterations = 100, q4_n_newton = 30, q4_vcov = false,
         )
-        adm = DRM._q2_lambda_admissible(Matrix{Float64}(fit.ranef.Sigma_a))
+        adm = DRModels._q2_lambda_admissible(Matrix{Float64}(fit.ranef.Sigma_a))
         @test !(fit.converged && !adm)   # never success at an inadmissible Λ
         @test all(isfinite, fit.theta)   # the gate is on the claim, not the fit
     end
 
     # The gate function itself, deterministically: singular, non-finite, and
     # ill-conditioned matrices refuse; a healthy matrix passes.
-    @test !DRM._q2_lambda_admissible([1.0 1.0; 1.0 1.0])
-    @test !DRM._q2_lambda_admissible([1.0 NaN; NaN 1.0])
-    @test !DRM._q2_lambda_admissible([1.0 0.0; 0.0 1e-13])
-    @test DRM._q2_lambda_admissible(Matrix{Float64}(LinearAlgebra.I, 4, 4))
+    @test !DRModels._q2_lambda_admissible([1.0 1.0; 1.0 1.0])
+    @test !DRModels._q2_lambda_admissible([1.0 NaN; NaN 1.0])
+    @test !DRModels._q2_lambda_admissible([1.0 0.0; 0.0 1e-13])
+    @test DRModels._q2_lambda_admissible(Matrix{Float64}(LinearAlgebra.I, 4, 4))
 
     # Positive control: the identified default fixture still reports converged,
     # so the gate separates regimes rather than failing everything.
@@ -225,8 +225,13 @@ end
     fit_ok = drm(
         _q4s_formula_relmat(), Gaussian();
         data = fx_ok.data, K = fx_ok.K,
-        q4_iterations = 120, q4_n_newton = 30, q4_vcov = false,
+        q4_iterations = 300, q4_n_newton = 30, q4_vcov = false,
     )
+    # 300, not 120: with the whitened ML objective (#857) LBFGS needs more than
+    # 120 iterations on this 24-obs fixture (converged=false at 120 on Julia 1.13;
+    # main's unwhitened objective converged at 120 and reported a 0.011-nat higher
+    # log-likelihood, consistent with its known near-singular-Λ bias); it
+    # converges within 300.
     @test fit_ok.converged
 end
 
@@ -239,9 +244,9 @@ end
     v = [0.0, 1.0, 2.0, 3.0]
     m = reshape(v, G, 1)
 
-    Qv = DRM._q4_structured_precision(:spatial, :site, G;
+    Qv = DRModels._q4_structured_precision(:spatial, :site, G;
                                       K = nothing, A = nothing, coords = v, spatial_range = 1.5)
-    Qm = DRM._q4_structured_precision(:spatial, :site, G;
+    Qm = DRModels._q4_structured_precision(:spatial, :site, G;
                                       K = nothing, A = nothing, coords = m, spatial_range = 1.5)
 
     @test size(Qv) == (G, G)
@@ -253,16 +258,16 @@ end
     # The admission is unambiguous: a FLATTENED 2-D layout has length 2G, so it reshapes to
     # a 2G-by-1 and is still caught by the row check, naming the expected shape.
     flat = vec(rand(G, 2))
-    @test_throws ErrorException DRM._q4_structured_precision(
+    @test_throws ErrorException DRModels._q4_structured_precision(
         :spatial, :site, G; K = nothing, A = nothing, coords = flat, spatial_range = 1.5)
 
     # Pre-existing shape errors stay clean errors, not MethodErrors.
-    @test_throws ErrorException DRM._q4_structured_precision(
+    @test_throws ErrorException DRModels._q4_structured_precision(
         :spatial, :site, G; K = nothing, A = nothing, coords = zeros(G, 0), spatial_range = 1.5)
 
     # Something that is neither a real vector nor matrix-convertible now names the expected
     # shape instead of surfacing a MethodError from the constructor.
     vv = [[0.0, 1.0], [2.0, 3.0], [4.0, 5.0], [6.0, 7.0]]
-    @test_throws ErrorException DRM._q4_structured_precision(
+    @test_throws ErrorException DRModels._q4_structured_precision(
         :spatial, :site, G; K = nothing, A = nothing, coords = vv, spatial_range = 1.5)
 end

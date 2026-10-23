@@ -1,7 +1,7 @@
-name = "DRM"
+name = "DRModels"
 uuid = "6c755ef2-eed4-4cdd-aafe-b639090bd215"
 authors = ["Shinichi Nakagawa <itchyshin@gmail.com>"]
-version = "0.7.1"
+version = "0.7.2"
 
 [deps]
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
@@ -23,7 +23,7 @@ AlgebraOfGraphics = "cbdf2221-f076-402e-a563-3d30da359d67"
 Makie = "ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a"
 
 [extensions]
-DRMMakieExt = ["AlgebraOfGraphics", "Makie"]
+DRModelsMakieExt = ["AlgebraOfGraphics", "Makie"]
 
 [compat]
 AlgebraOfGraphics = "0.13"

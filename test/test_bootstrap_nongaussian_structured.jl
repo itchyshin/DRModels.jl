@@ -13,7 +13,7 @@
 # re-supplies the same K/A/tree used to produce the fit, and a mismatch is
 # now caught by `drm(...)`'s own per-family checks instead of the generic
 # guard's misleading message.
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 import Distributions
 

@@ -1,5 +1,5 @@
 module TestPolytomyKernels
-using DRM, Test, LinearAlgebra, SparseArrays, ForwardDiff
+using DRModels, Test, LinearAlgebra, SparseArrays, ForwardDiff
 
 @testset "polytomy downstream dimensions and likelihood normalization" begin
     for (tree, C) in [
@@ -11,11 +11,11 @@ using DRM, Test, LinearAlgebra, SparseArrays, ForwardDiff
         species = [phy.n_leaves,1,phy.n_leaves,3,2,1]
         n = length(species); X=ones(n,1)
         Y=hcat(0.1 .* sin.(1:n),0.1 .* cos.(1:n))
-        prob2,Q2=DRM.make_coevo_problem(phy,Y,X;species)
+        prob2,Q2=DRModels.make_coevo_problem(phy,Y,X;species)
         @test prob2.N == phy.n_total-1
         @test prob2.leaf_node == species
         beta=zeros(1,2); Lambda=[0.3 0.04;0.04 0.2]; D=[0.5 0.05;0.05 0.7]
-        ll,u,H,P=DRM.coevo_marginal_cov(prob2,Q2,beta,Lambda,D)
+        ll,u,H,P=DRModels.coevo_marginal_cov(prob2,Q2,beta,Lambda,D)
         @test length(u)==2*(phy.n_total-1)
         @test size(P)==(length(u),length(u))
         # Independent observed covariance assembled from shared-path tip C.
@@ -26,17 +26,17 @@ using DRM, Test, LinearAlgebra, SparseArrays, ForwardDiff
         ridge=0.5*(logdet(Symmetric(Matrix(P))+1e-10I)-logdet(Symmetric(Matrix(P))))
         @test ll ≈ dense_ll+ridge atol=1e-10 rtol=0
 
-        prob4,Q4=DRM.make_problem(phy,Y[:,1],Y[:,2],X,X,X,X,X;species)
+        prob4,Q4=DRModels.make_problem(phy,Y[:,1],Y[:,2],X,X,X,X,X;species)
         @test prob4.n_total==phy.n_total-1
         @test prob4.leaf_node==species
-        P4=DRM.prior_precision(Q4,Matrix{Float64}(I,4,4)*5)
+        P4=DRModels.prior_precision(Q4,Matrix{Float64}(I,4,4)*5)
         nlatent=4*(phy.n_total-1); state=zeros(nlatent)
         @test size(P4)==(nlatent,nlatent)
         beta4=(mu1=[0.],mu2=[0.],s1=[-0.2],s2=[0.1],rho=[0.15])
         # Independent bivariate density; no calls to leaf_nll/leaf_hess.
         function joint_oracle(z)
             val=dot(z,Matrix(P4)*z)/2
-            rho=DRM.RHO_GUARD*tanh(0.15)
+            rho=DRModels.RHO_GUARD*tanh(0.15)
             for i in 1:n
                 k=4*(species[i]-1)
                 s1=exp(-0.2+z[k+3]);s2=exp(0.1+z[k+4])
@@ -47,12 +47,12 @@ using DRM, Test, LinearAlgebra, SparseArrays, ForwardDiff
             val
         end
         Hdense=ForwardDiff.hessian(joint_oracle,state)
-        Hsparse=DRM.build_Huu(prob4,P4,state,beta4)
+        Hsparse=DRModels.build_Huu(prob4,P4,state,beta4)
         @test Matrix(Hsparse) ≈ Hdense atol=1e-10 rtol=0
-        @test DRM.joint_nll(prob4,P4,state,beta4) ≈ joint_oracle(state) atol=1e-12 rtol=0
+        @test DRModels.joint_nll(prob4,P4,state,beta4) ≈ joint_oracle(state) atol=1e-12 rtol=0
         expected=-joint_oracle(state)-logdet(Symmetric(Hdense))/2+
             logdet(Symmetric(Matrix(P4))+1e-10I)/2
-        @test DRM.laplace_ll(prob4,P4,beta4,state,cholesky(Symmetric(Hsparse))) ≈ expected atol=1e-10 rtol=0
+        @test DRModels.laplace_ll(prob4,P4,beta4,state,cholesky(Symmetric(Hsparse))) ≈ expected atol=1e-10 rtol=0
         # Fixed-state formula/normalization check; state is not claimed to be a mode.
     end
 end

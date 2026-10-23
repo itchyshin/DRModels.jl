@@ -52,7 +52,7 @@ def main():
             lambda x: x.update(optimizer_converged="false"),
             lambda x: x.update(status="PASS"),
             lambda x: x.update(constrained_seconds=-1),
-            lambda x: x["source_after"].update({"src/DRM.jl": "damaged"}),
+            lambda x: x["source_after"].update({"src/DRModels.jl": "damaged"}),
         ]
         for mutate in mutations:
             bad = copy.deepcopy(d)

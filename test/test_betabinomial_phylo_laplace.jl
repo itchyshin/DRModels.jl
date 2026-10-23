@@ -4,7 +4,7 @@
 # test_gamma_beta_phylo_laplace.jl's shape; the exact FD-vs-analytic ≤ 1e-6
 # gate on the low-level kernel lives in test_nongaussian_phylo_grad_gate.jl.
 
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 import Distributions
 

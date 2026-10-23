@@ -1,20 +1,20 @@
 # eta-clamp twin-parity guard (#324). drmTMB does NOT clamp the mean predictor
-# and soft-clamps only the log-scale (identity, then a smooth tanh tail). DRM.jl
+# and soft-clamps only the log-scale (identity, then a smooth tanh tail). DRModels.jl
 # previously HARD-clamped the mean and scale predictors in the NB2, Gamma and Beta
 # density paths, so the two twins' likelihood surfaces (loglik AND gradient)
 # diverged at extreme eta: beyond the hard bound the gradient was a flat zero,
 # which drmTMB never produces. The fix replaces those hard clamps with
-# `DRM._softclamp`, identity across each family's original hard band (so no
+# `DRModels._softclamp`, identity across each family's original hard band (so no
 # legitimate fit is distorted — including a near-Poisson NB2 whose dispersion
 # eta_sigma sits near the old boundary) and C1-smooth beyond.
-using DRM
+using DRModels
 using Test, Random, ForwardDiff
 import Distributions
 
 _logistic_test(η) = 1 / (1 + exp(-η))
 
 @testset "eta-clamp twin parity (#324): soft-clamp ports drmTMB's guard" begin
-    sc = DRM._softclamp
+    sc = DRModels._softclamp
 
     @testset "identity inside the band (bit-for-bit, like drmTMB)" begin
         for x in (-12.0, -11.0, -5.0, -1.0, 0.0, 0.7, 3.0, 11.9, 12.0)
@@ -45,7 +45,7 @@ _logistic_test(η) = 1 / (1 + exp(-η))
     end
 
     @testset "the old hard clamp diverged from drmTMB at extreme eta_mu" begin
-        # drmTMB leaves the mean unclamped; the old DRM.jl hard clamp zeroed the
+        # drmTMB leaves the mean unclamped; the old DRModels.jl hard clamp zeroed the
         # gradient beyond the bound. Reproduce the divergence the fix removes.
         r = exp(-2 * 0.0); y = 5
         nb_none(b) = -Distributions.logpdf(Distributions.NegativeBinomial(r, r / (r + exp(b))), y)

@@ -3,7 +3,7 @@
 # (identity link), with the scale σ and df ν as fixed effects. Because groups are
 # disjoint the per-group 2-D integral factorises, so it is done by a 2-D
 # Gauss–Hermite tensor grid. Recovery: β slope, σ, ν, and the RE covariance Σ.
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 import Distributions
 using Distributions: TDist

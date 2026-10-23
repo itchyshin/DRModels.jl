@@ -2,7 +2,7 @@
 # y ~ x + (1|g). μ_i = Xμ_iᵀβ + b_{g(i)} (identity link), b_g ~ N(0,σ_b²); the
 # scale σ and degrees of freedom ν are fixed effects. The group effect is
 # integrated out per group by Gauss–Hermite quadrature. Recovery: β, σ, ν, σ_b.
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 import Distributions
 using Distributions: TDist

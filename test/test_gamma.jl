@@ -1,8 +1,8 @@
 # Gamma family: strictly-positive continuous responses (durations, sizes,
 # concentrations). Log link on the mean μ; the `sigma` slot carries σ = the
 # coefficient of variation, mapped to the shape α = 1/σ² (var = μ²σ²). Fixed
-# effects, ML. `Distributions.Gamma` is qualified — DRM has its own family type.
-using DRM
+# effects, ML. `Distributions.Gamma` is qualified — DRModels has its own family type.
+using DRModels
 using Test, Random
 import Distributions
 

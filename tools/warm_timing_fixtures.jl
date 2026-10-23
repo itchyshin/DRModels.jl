@@ -42,7 +42,7 @@ end
 # variance, the same convention bench_fit_h2h.R uses after its own
 # `edge.length / h` rescale). Covariance between two leaves = (shared root-to-
 # MRCA path length)/d. The Newick text below encodes exactly this topology and
-# these edge lengths, so drmTMB's ape::vcv.phylo(read.tree(...)) and DRM.jl's
+# these edge lengths, so drmTMB's ape::vcv.phylo(read.tree(...)) and DRModels.jl's
 # augmented_phy(...) both recover the SAME implied covariance used to simulate
 # the response here -- that is what "identical data" requires, not that the
 # tree LOOK like a real phylogeny.

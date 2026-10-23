@@ -2,7 +2,7 @@
 
 !!! note "Status — Stable"
     Mirrors drmTMB's [Robust continuous responses](https://itchyshin.github.io/drmTMB/articles/robust-student.html).
-    **In DRM.jl today:** the Student-t family `Student()` — a formula per
+    **In DRModels.jl today:** the Student-t family `Student()` — a formula per
     parameter for the location `μ`, scale `σ`, and degrees of freedom `ν`. Fixed
     effects, maximum likelihood.
 
@@ -18,7 +18,7 @@ Give each parameter its own formula, exactly like the Gaussian model — `nu ~ 1
 estimates a single degrees-of-freedom value:
 
 ```@example student
-using DRM, Random
+using DRModels, Random
 using Distributions: TDist
 Random.seed!(20260614)
 

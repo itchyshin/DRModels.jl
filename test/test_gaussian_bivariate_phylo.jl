@@ -1,4 +1,4 @@
-using DRM
+using DRModels
 using Test, LinearAlgebra, Random, SparseArrays, Statistics
 
 const _Q4_TEST_BETA = (
@@ -40,7 +40,7 @@ function _q4_frontend_data(; p::Int = 10, nrep::Int = 3, seed::Int = 187)
         m2 = _Q4_TEST_BETA.mu2[1] + _Q4_TEST_BETA.mu2[2] * x[i] + u[2]
         s1 = exp(_Q4_TEST_BETA.s1[1] + u[3])
         s2 = exp(_Q4_TEST_BETA.s2[1] + u[4])
-        ρ = DRM.RHO_GUARD * tanh(_Q4_TEST_BETA.rho[1])
+        ρ = DRModels.RHO_GUARD * tanh(_Q4_TEST_BETA.rho[1])
         e = cholesky(Symmetric([s1^2 ρ*s1*s2; ρ*s1*s2 s2^2])).L * randn(rng, 2)
         y1[i] = m1 + e[1]
         y2[i] = m2 + e[2]
@@ -185,7 +185,7 @@ end
 # construction and assert it zeros exactly the pinned lc positions.
 @testset "q=4 block-diagonal start is lc-consistent for general tags (#309)" begin
     tags = [:a, :b, :a, :b]                 # axis order mu1, mu2, sigma1, sigma2
-    lc_zero = DRM._q4_block_lc_zero(tags)
+    lc_zero = DRModels._q4_block_lc_zero(tags)
     @test lc_zero == [2, 4, 6, 9]           # Cholesky (2,1),(4,1),(3,2),(4,3)
 
     Λ0 = Matrix(Symmetric([
@@ -197,12 +197,12 @@ end
 
     # OLD hard-coded mu↔sigma cross-block mask leaves pinned lc entries NONZERO.
     Λ_old = copy(Λ0); Λ_old[1:2, 3:4] .= 0.0; Λ_old[3:4, 1:2] .= 0.0
-    @test any(abs.(DRM.Λ_to_lc(Λ_old)[lc_zero]) .> 1e-6)   # inconsistent (the bug)
+    @test any(abs.(DRModels.Λ_to_lc(Λ_old)[lc_zero]) .> 1e-6)   # inconsistent (the bug)
 
     # NEW lc-consistent zeroing: pin exactly the fit's lc_zero positions.
-    lc0 = DRM.Λ_to_lc(Λ0); lc0[lc_zero] .= 0.0
-    Λ_new = DRM.lc_to_Λ(lc0)
-    @test all(abs.(DRM.Λ_to_lc(Λ_new)[lc_zero]) .< 1e-10)  # exactly consistent
+    lc0 = DRModels.Λ_to_lc(Λ0); lc0[lc_zero] .= 0.0
+    Λ_new = DRModels.lc_to_Λ(lc0)
+    @test all(abs.(DRModels.Λ_to_lc(Λ_new)[lc_zero]) .< 1e-10)  # exactly consistent
     # Σ_a is block-diagonal across tags a,b: cross-tag entries are 0 …
     for (i, j) in ((1, 2), (1, 4), (3, 2), (3, 4))
         @test isapprox(Λ_new[i, j], 0.0; atol = 1e-10)

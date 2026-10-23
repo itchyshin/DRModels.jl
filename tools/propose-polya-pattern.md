@@ -19,11 +19,11 @@ gh issue create --repo itchyshin/gllvmTMB   --title "<title 2>" --body-file <(se
 
 ---
 
-### GLLVM.jl — adopt the DRM.jl "better-team" pattern
+### GLLVM.jl — adopt the DRModels.jl "better-team" pattern
 
-**Title:** Proposal: issues-ledger + scripted workflows + a Pólya scout persona (from DRM.jl)
+**Title:** Proposal: issues-ledger + scripted workflows + a Pólya scout persona (from DRModels.jl)
 
-DRM.jl (the distributional-regression sibling) trialled three practices in Phase 0
+DRModels.jl (the distributional-regression sibling) trialled three practices in Phase 0
 that might help GLLVM.jl too. Sharing in case they're useful — adopt, adapt, or
 decline.
 
@@ -40,10 +40,10 @@ decline.
 
 3. **A "Pólya" persona — scouting + creative combination** (see below). Watches
    the sibling packages + literature on a cadence and proposes original method
-   combinations as `idea` issues. Reciprocal: DRM.jl's Pólya already watches
+   combinations as `idea` issues. Reciprocal: DRModels.jl's Pólya already watches
    GLLVM.jl; if GLLVM.jl runs one too, the scouting compounds both ways.
 
-Happy to share the DRM.jl scaffold (AGENTS.md, the workflow scripts, the label
+Happy to share the DRModels.jl scaffold (AGENTS.md, the workflow scripts, the label
 set) if any of this looks worth copying.
 
 ---
@@ -53,12 +53,12 @@ set) if any of this looks worth copying.
 **Title:** Proposal: a routine "Pólya" scout + creative-combination persona
 
 gllvmTMB already runs a solid Issues + ROADMAP + after-task ledger, so this is
-just the one piece DRM.jl added that gllvmTMB doesn't have yet: a standing
+just the one piece DRModels.jl added that gllvmTMB doesn't have yet: a standing
 **scout** persona.
 
 **Pólya** does two things:
 
-1. **Routine scouting** (weekly + at each phase-start): watches drmTMB / DRM.jl /
+1. **Routine scouting** (weekly + at each phase-start): watches drmTMB / DRModels.jl /
    GLLVM.jl capabilities + NEWS and the relevant statistics/ecology literature,
    diffs against the last snapshot, and files one `idea` issue per actionable
    signal so nothing evaporates.
@@ -68,7 +68,7 @@ just the one piece DRM.jl added that gllvmTMB doesn't have yet: a standing
    boundary inference; a model × a structured layer a sibling already has).
    Pólya **proposes; it does not implement** — ideas land as issues.
 
-Reciprocal value: DRM.jl's Pólya already scouts gllvmTMB. If gllvmTMB runs one
+Reciprocal value: DRModels.jl's Pólya already scouts gllvmTMB. If gllvmTMB runs one
 too, each package feeds the others. Low cost (one cadence job + an `idea`
 label), and it keeps the family of packages cross-pollinating deliberately
 rather than by accident.

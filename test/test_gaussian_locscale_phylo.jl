@@ -12,7 +12,7 @@
 #
 # Hard gate before commit: all [Pass] lines visible in the @testset output.
 
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra, SparseArrays
 import Distributions
 
@@ -76,7 +76,7 @@ end
     # B1 must have a different (better) logLik than the constant-sigma baseline.
     @test loglik(fit_b1) > loglik(fit_base) - 1e-3
     # The sd_sigma parameter must be accessible and positive.
-    sds = DRM.gaussian_locscale_phylo_sds(fit_b1)
+    sds = DRModels.gaussian_locscale_phylo_sds(fit_b1)
     @test sds.sd_sigma > 0.0
     @test sds.sd_mu    > 0.0
 end
@@ -111,7 +111,7 @@ end
 
     @test is_converged(fit)
     @test isfinite(loglik(fit))
-    sds = DRM.gaussian_locscale_phylo_sds(fit)
+    sds = DRModels.gaussian_locscale_phylo_sds(fit)
     @info "Separate-block recovery" sd_mu_true sds.sd_mu sd_sigma_true sds.sd_sigma
     # Recovery within sampling (generous tolerances for a Laplace approximation).
     @test sds.sd_mu    ≈ sd_mu_true    atol = 0.25
@@ -152,16 +152,16 @@ end
     # The coupled route is reached via the internal function directly (the public
     # grammar always dispatches to SEPARATE when both axes carry `phylo(1|sp)`;
     # `coupled=true` is the internal kwarg for the correlated variant).
-    Q, gidx, G = DRM._locscale_phylo_setup(phy, data.species)
+    Q, gidx, G = DRModels._locscale_phylo_setup(phy, data.species)
     Xμ = hcat(ones(n), data.x); nmμ = ["(Intercept)", "x"]   # intercept + x
     Xψ = reshape(ones(n), n, 1); nmσ = ["(Intercept)"]
-    fit = DRM._fit_gaussian_locscale_phylo(
+    fit = DRModels._fit_gaussian_locscale_phylo(
         Gaussian(), Float64.(y), Xμ, Xψ, gidx, G, Q,
         nmμ, nmσ, "species";
         coupled = true, asymmetric = false, se = false, g_tol = 1e-6)
 
     @test isfinite(loglik(fit))
-    sds = DRM.gaussian_locscale_phylo_sds(fit)
+    sds = DRModels.gaussian_locscale_phylo_sds(fit)
     @info "Coupled-block recovery" sd_mu_true sds.sd_mu sd_sigma_true sds.sd_sigma
     cor_est = get(fit.scales, :lambda_cor, [NaN])[1]
     @info "Coupled correlation" cor_true cor_est
@@ -189,20 +189,20 @@ end
          exp(0.1 + u_sigma[species[i]]) * randn() for i in 1:n]
     Xμ = hcat(ones(n), x)
     Xψ = ones(n, 1)
-    Q, gidx, G = DRM._locscale_phylo_setup(phy, species)
-    Zη = DRM._ls_canonical_Zeta(n)
-    Zψ = DRM._ls_canonical_Zpsi(n)
+    Q, gidx, G = DRModels._locscale_phylo_setup(phy, species)
+    Zη = DRModels._ls_canonical_Zeta(n)
+    Zψ = DRModels._ls_canonical_Zpsi(n)
 
     # θ = [βμ(2); βψ(1); logL11; logL22], deliberately off-optimum.
     θ = [0.20, 0.35, 0.05, log(0.38), log(0.30)]
 
     kind = Val(:gaussian_mean)
-    g_an = DRM._glsp_sep_grad(kind, y, Xμ, Xψ, gidx, G, Q, θ, Zη, Zψ)
+    g_an = DRModels._glsp_sep_grad(kind, y, Xμ, Xψ, gidx, G, Q, θ, Zη, Zψ)
     @test all(isfinite, g_an)
     @test any(g_an .!= 0.0)
 
     # Cold-start FD objective (each call independently resolves the inner mode).
-    obj_fd = θ_ -> DRM._glsp_sep_nll(kind, y, Xμ, Xψ, gidx, G, Q, θ_, Zη, Zψ)
+    obj_fd = θ_ -> DRModels._glsp_sep_nll(kind, y, Xμ, Xψ, gidx, G, Q, θ_, Zη, Zψ)
     trough = _fd_gate_min_glsp(g_an, obj_fd, θ)
     @info "Gaussian σ-phylo FD gate (separate, h-sweep trough)" trough
     @test trough ≤ 1e-6
@@ -223,17 +223,17 @@ end
     y = [0.3 + 0.4*x[i] + exp(0.1 + u_sigma[species[i]]) * randn() for i in 1:n]
     Xμ = hcat(ones(n), x)
     Xψ = ones(n, 1)
-    Q, gidx, G = DRM._locscale_phylo_setup(phy, species)
-    Zη, Zψ = DRM._glsp_asym_loadings(n)
+    Q, gidx, G = DRModels._locscale_phylo_setup(phy, species)
+    Zη, Zψ = DRModels._glsp_asym_loadings(n)
 
     # θ = [βμ(2); βψ(1); logL22], off-optimum.
     θ = [0.25, 0.35, 0.05, log(0.35)]
 
     kind = Val(:gaussian_mean)
-    g_an = DRM._glsp_asym_grad(kind, y, Xμ, Xψ, gidx, G, Q, θ, Zη, Zψ)
+    g_an = DRModels._glsp_asym_grad(kind, y, Xμ, Xψ, gidx, G, Q, θ, Zη, Zψ)
     @test all(isfinite, g_an)
 
-    obj_fd = θ_ -> DRM._glsp_asym_nll(kind, y, Xμ, Xψ, gidx, G, Q, θ_, Zη, Zψ)
+    obj_fd = θ_ -> DRModels._glsp_asym_nll(kind, y, Xμ, Xψ, gidx, G, Q, θ_, Zη, Zψ)
     trough = _fd_gate_min_glsp(g_an, obj_fd, θ)
     @info "Gaussian σ-phylo FD gate (asymmetric, h-sweep trough)" trough
     @test trough ≤ 1e-6

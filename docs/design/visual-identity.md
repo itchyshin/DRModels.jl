@@ -1,4 +1,4 @@
-# DRM.jl visual identity
+# DRModels.jl visual identity
 
 The site mark, the palette it implies, and the constraints that produced both.
 This is an internal design note: `docs/design/` is outside `docs/src/`, so
@@ -9,9 +9,9 @@ nothing here is published. Written 2026-09-05, when the mark was adopted.
 Two density curves that share one mean and differ in spread, over a dashed
 centre line, on a hexagonal badge.
 
-`docs/src/assets/drmjl-mark.svg` is the editable master. Everything else is
-generated from it or from its simplified sibling; regenerate rather than edit
-a raster.
+`docs/src/assets/drmodels-mark.svg` is the editable master for the two-curve
+vector mark. The approved four-curve raster badge used in the navbar and hero
+is separate artwork; it must not be regenerated from this older vector mark.
 
 The mark states the package's subject rather than decorating it. A mean-only
 model can only say where a distribution sits. Distributional regression is the
@@ -34,7 +34,7 @@ Two constraints made it that and not something else:
 The badge shape is the Julia-ecosystem convention, which is why it is here. It
 is also the shape drmTMB uses. For a package whose whole positioning is *the
 Julia twin of drmTMB*, family resemblance is defensible and arguably correct.
-It is still a deliberate choice and not an accident, and if DRM.jl should ever
+It is still a deliberate choice and not an accident, and if DRModels.jl should ever
 read as visually independent, the same curves on a rounded square carry the
 idea unchanged. That variant was drawn and set aside, not overlooked.
 
@@ -44,7 +44,7 @@ A "convergence mark" — three coloured paths, for mean, spread and association,
 meeting a fitted-distribution disc — was proposed alongside this one
 (`archive/identity-convergence-mark-20260905`, with two further candidates).
 The idea is richer. It fails the first constraint: it carries an embedded
-`DRM.jl` wordmark that renders about 2 px tall at navbar size, and its light
+`DRModels.jl` wordmark that renders about 2 px tall at navbar size, and its light
 tile becomes a bright rectangle against a dark navbar. Read at a distance it
 also suggests a pipeline, which is not what this package is.
 
@@ -102,19 +102,21 @@ inside the badge: teal reaches 5.34:1 and indigo 4.40:1 against the navy.
 
 | File | Role |
 |---|---|
-| `docs/src/assets/drmjl-mark.svg` | editable master, 512 viewBox |
-| `docs/src/assets/drmjl-favicon.svg` | simplified sibling, 128 viewBox, fewer strokes |
+| `docs/src/assets/drmodels-mark.svg` | editable two-curve vector mark, 512 viewBox |
+| `docs/src/assets/drmodels-favicon.svg` | simplified two-curve sibling, 128 viewBox, fewer strokes |
 | `docs/src/assets/logo.png` | approved compact badge, navbar |
-| `docs/src/assets/drmjl-full-logo.png` | approved full badge, landing-page hero |
+| `docs/src/assets/drmodels-full-logo.png` | approved full four-curve badge, landing-page hero |
 | `docs/src/assets/favicon.ico` | approved compact badge, browser-tab icon |
 
 DocumenterVitepress wires the navbar itself: if `logo.png` exists it is copied
 to the published root and the config gets `logo: { src: '/logo.png', width: 24,
 height: 24 }`. There is nothing to add to `make.jl`. The hero references
-`/drmjl-full-logo.png` from the front matter of `docs/src/index.md`.
+`/drmodels-full-logo.png` from the front matter of `docs/src/index.md`.
 
-The two SVGs are the source of truth. Regenerate the raster and the icon from
-them; do not hand-edit either.
+The two SVGs are the source of truth for the two-curve vector mark only. The
+four-curve raster artwork was adopted without a matching tracked vector source;
+do not regenerate it from the SVGs or hand-edit it. A future visual revision
+should add an editable source asset before replacing the approved raster.
 
 ## Maintenance boundary
 

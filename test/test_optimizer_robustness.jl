@@ -1,5 +1,5 @@
 # Focused unit tests for the module-wired optimizer / mode-accuracy fixes
-# (#314, #317, #325.4). These exercise the DRM-module code paths directly.
+# (#314, #317, #325.4). These exercise the DRModels-module code paths directly.
 #
 #   #314  locscale_grad.jl    — `_ls_marginal_grad` must return an all-NaN vector
 #         (not all-zeros) when the inner Laplace mode fails, so a gradient-based
@@ -18,7 +18,7 @@
 #         EXACT model that was fit. Passing canonical loadings explicitly must give
 #         bit-identical CIs to the default.
 
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra, SparseArrays
 import Distributions
 
@@ -33,7 +33,7 @@ import Distributions
         gidx = repeat(1:G, inner = m)
         x = randn(n); z = randn(n)
         Xμ = hcat(ones(n), x); Xψ = hcat(ones(n), z)
-        Λt = DRM._ls_lc_to_Λ([log(0.4), 0.1, log(0.5)]); Lt = cholesky(Symmetric(Λt)).L
+        Λt = DRModels._ls_lc_to_Λ([log(0.4), 0.1, log(0.5)]); Lt = cholesky(Symmetric(Λt)).L
         A = [Lt * randn(2) for _ in 1:G]
         y = [(r = exp(0.2 + A[gidx[i]][2]); μ = exp(0.3 + 0.4x[i] + A[gidx[i]][1]);
               Float64(rand(Distributions.NegativeBinomial(r, r / (r + μ))))) for i in 1:n]
@@ -41,7 +41,7 @@ import Distributions
 
         # A feasible θ: gradient is finite and populated (no NaN).
         θgood = [0.3, 0.4, 0.1, -0.05, log(0.4), 0.1, log(0.5)]
-        ggood = DRM._ls_marginal_grad(Val(:nb2), y, Xμ, Xψ, gidx, G, Q, θgood)
+        ggood = DRModels._ls_marginal_grad(Val(:nb2), y, Xμ, Xψ, gidx, G, Q, θgood)
         @test all(isfinite, ggood)
         @test any(ggood .!= 0)
 
@@ -50,8 +50,8 @@ import Distributions
         # all-NaN — crucially NOT all-zeros (the pre-#314 behaviour that read as
         # convergence to a gradient-based optimiser).
         θbad = [0.25, 0.35, 0.1, -0.05, log(1e-8), 5.0, log(1e-8)]
-        vbad = DRM._ls_fit_nll(Val(:nb2), y, Xμ, Xψ, gidx, G, Q, θbad)
-        gbad = DRM._ls_marginal_grad(Val(:nb2), y, Xμ, Xψ, gidx, G, Q, θbad)
+        vbad = DRModels._ls_fit_nll(Val(:nb2), y, Xμ, Xψ, gidx, G, Q, θbad)
+        gbad = DRModels._ls_marginal_grad(Val(:nb2), y, Xμ, Xψ, gidx, G, Q, θbad)
         @test vbad >= 1e17                    # objective is the infeasible sentinel
         @test all(isnan, gbad)                # gradient signals infeasibility
         @test !any(iszero, gbad)              # NOT the old zero-vector stall signal
@@ -66,7 +66,7 @@ import Distributions
         gidx = repeat(1:G, inner = m)
         x = randn(n); z = randn(n)
         Xμ = hcat(ones(n), x); Xψ = hcat(ones(n), z)
-        Λt = DRM._ls_lc_to_Λ([log(0.4), 0.1, log(0.5)]); Lt = cholesky(Symmetric(Λt)).L
+        Λt = DRModels._ls_lc_to_Λ([log(0.4), 0.1, log(0.5)]); Lt = cholesky(Symmetric(Λt)).L
         A = [Lt * randn(2) for _ in 1:G]
         y = [(r = exp(0.2 + A[gidx[i]][2]); μ = exp(0.3 + 0.4x[i] + A[gidx[i]][1]);
               Float64(rand(Distributions.NegativeBinomial(r, r / (r + μ))))) for i in 1:n]
@@ -77,11 +77,11 @@ import Distributions
         # optimum. Strict nuisance checks may therefore report an explicit
         # failed endpoint; the contract here is that omitted and explicitly
         # canonical loadings produce the same complete result and diagnostics.
-        ci_def = DRM._ls_profile_ci_result(
+        ci_def = DRModels._ls_profile_ci_result(
             Val(:nb2), y, Xμ, Xψ, gidx, G, Q, θ̂; idx = 2, level = 0.95,
         )
-        Zη = DRM._ls_canonical_Zeta(n); Zψ = DRM._ls_canonical_Zpsi(n)
-        ci_exp = DRM._ls_profile_ci_result(
+        Zη = DRModels._ls_canonical_Zeta(n); Zψ = DRModels._ls_canonical_Zpsi(n)
+        ci_exp = DRModels._ls_profile_ci_result(
             Val(:nb2), y, Xμ, Xψ, gidx, G, Q, θ̂;
             idx = 2, level = 0.95, Zη = Zη, Zψ = Zψ,
         )
@@ -114,7 +114,7 @@ import Distributions
         for i in 1:n
             m1 = (X1[i, :]'β.mu1) + U[1, i]; m2 = (X2[i, :]'β.mu2) + U[2, i]
             s1 = exp((Xs1[i, :]'β.s1) + U[3, i]); s2 = exp((Xs2[i, :]'β.s2) + U[4, i])
-            ρ = DRM.RHO_GUARD * tanh(Xr[i, :]'β.rho)
+            ρ = DRModels.RHO_GUARD * tanh(Xr[i, :]'β.rho)
             e = cholesky([s1^2 ρ*s1*s2; ρ*s1*s2 s2^2]).L * randn(2)
             y1[i] = m1 + e[1]; y2[i] = m2 + e[2]
         end
@@ -147,12 +147,12 @@ import Distributions
         # A Hessian with NaN/Inf entries must yield a FINITE factor + a failure flag,
         # not an uncaught ArgumentError.
         Hbad = sparse(1.0I, n, n); Hbad[1, 1] = NaN; Hbad[2, 2] = Inf
-        chb, flag = DRM.sparse_pd_chol(Hbad)
+        chb, flag = DRModels.sparse_pd_chol(Hbad)
         @test flag == Inf                          # failure signalled
         @test isfinite(logdet(chb))                # factor is finite/usable
         # A clean PD Hessian still factorizes normally (guard is inert in range).
         Hgood = sparse(2.0I, n, n)
-        chg, fg = DRM.sparse_pd_chol(Hgood)
+        chg, fg = DRModels.sparse_pd_chol(Hgood)
         @test fg == 0.0
         @test logdet(chg) ≈ n * log(2.0)
 
@@ -169,8 +169,8 @@ import Distributions
         β = (mu1 = [0.0, 0.0], mu2 = [0.0, 0.0], s1 = [-0.4], s2 = [-0.5], rho = [0.3])
         u, chH, _ = estep_mode(prob, Pgood, β)
         Pbad = copy(Pgood); Pbad.nzval[1] = NaN     # inject a non-finite prior entry
-        @test DRM.laplace_ll(prob, Pbad, β, u, chH) == -Inf   # signalled, no throw
-        @test isfinite(DRM.laplace_ll(prob, Pgood, β, u, chH)) # clean case unaffected
+        @test DRModels.laplace_ll(prob, Pbad, β, u, chH) == -Inf   # signalled, no throw
+        @test isfinite(DRModels.laplace_ll(prob, Pgood, β, u, chH)) # clean case unaffected
     end
 
     # ---------------------------------------------------------------------------
@@ -189,21 +189,31 @@ import Distributions
         y1 = randn(n); y2 = randn(n)
         prob, Q = make_problem(phy, y1, y2, X1, X2, Xs1, Xs2, Xr)
         β = (mu1 = [0.0, 0.0], mu2 = [0.0, 0.0], s1 = [0.0], s2 = [0.0], rho = [0.0])
-        θ = DRM.pack_theta(β, DRM.lc_to_Λ(fill(0.1, 10)))
-        k1, k2, ks1, ks2, kr = DRM.beta_widths(prob)
+        θ = DRModels.pack_theta(β, DRModels.lc_to_Λ(fill(0.1, 10)))
+        k1, k2, ks1, ks2, kr = DRModels.beta_widths(prob)
         nβ = k1 + k2 + ks1 + ks2 + kr
         θbad = copy(θ); θbad[nβ+1:nβ+10] .= 400.0        # exp(400) overflows Λ
 
         # The trigger: lc_to_Λ overflows and marginal_and_exact_grad throws.
-        @test !all(isfinite, DRM.lc_to_Λ(fill(400.0, 10)))
-        @test_throws ArgumentError DRM.marginal_and_exact_grad(prob, Q, θbad; n_newton = 30)
+        @test !all(isfinite, DRModels.lc_to_Λ(fill(400.0, 10)))
+        # Pre-whitening this threw ArgumentError from `inv(Λ)`. The whitened engine
+        # never inverts Λ; a non-finite Laplace value is now reported as +Inf (never
+        # -Inf, which would read as the best possible value to a value-only caller)
+        # with a non-finite gradient, which fit_q4_sparse_tmb's fg! rejects.
+        nll_bad, g_bad, _, _ = DRModels.marginal_and_exact_grad(prob, Q, θbad; n_newton = 30)
+        @test nll_bad == Inf
+        @test !all(isfinite, g_bad)
+        @test DRModels.marginal_nll(prob, Q, θbad; n_newton = 30)[1] == Inf
+        # ...and never less than the value at a sane θ (the "gain" hazard)
+        @test DRModels.marginal_nll(prob, Q, θbad; n_newton = 30)[1] >
+              DRModels.marginal_nll(prob, Q, θ; n_newton = 30)[1]
 
         # The barrier: a normal fit from a FINITE start must COMPLETE (no uncaught
         # ArgumentError), even though the line search may probe extreme θ where the
         # marginal is non-finite — those steps are now rejected (return Inf) rather
         # than crashing the fit. (The bivariate-phylo front end exercises the exact
         # CI-failing config; here we just confirm the driver runs to completion.)
-        r = DRM.fit_q4_sparse_tmb(prob, Q;
+        r = DRModels.fit_q4_sparse_tmb(prob, Q;
                                   β0 = β, Λ0 = Matrix(Symmetric(0.3I(4))),
                                   iterations = 60, n_newton = 30)
         @test isfinite(r.loglik)                          # completed without throwing

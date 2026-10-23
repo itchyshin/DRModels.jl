@@ -2,7 +2,7 @@
 # logit μ_i = Xμ_iᵀβ + b_{g(i)}, b_g ~ N(0,σ_b²). No closed-form marginal — the
 # group effect is integrated out per group by 32-node Gauss–Hermite quadrature
 # (the same machinery as the Poisson/Beta σ-RE). Recovery: β + σ_b.
-using DRM
+using DRModels
 using Test, Random
 import Distributions
 
@@ -26,6 +26,7 @@ import Distributions
     @test isfinite(loglik(fit))
     @test fit.converged
     @test all(0 .< fitted(fit) .< 1)
-    # correlated slope is out of scope here — must be rejected
-    @test_throws ErrorException drm(bf(@formula(cbind(s, fail) ~ x + (1 + x | g))), Binomial(); data = data)
+    # correlated slope (1 + x | g) is now supported (#753) — see test_binomial_slope_re.jl;
+    # independent slope (0 + x | g) remains out of scope here — must be rejected
+    @test_throws ErrorException drm(bf(@formula(cbind(s, fail) ~ x + (0 + x | g))), Binomial(); data = data)
 end

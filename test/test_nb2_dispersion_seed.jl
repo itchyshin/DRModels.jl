@@ -9,10 +9,10 @@
 # It mattered because the wrong seed did not always fail: LBFGS recovered on many
 # datasets, so the suite stayed green while a whole region of dispersion space
 # silently converged to the Poisson boundary (sigma-hat 5.6e-7, `converged=false`)
-# and DRM.jl reported a logLik 291 units worse than drmTMB on the same data.
+# and DRModels.jl reported a logLik 291 units worse than drmTMB on the same data.
 # Found via the staged-association parity harness, not by a family test.
 
-using DRM
+using DRModels
 using Test
 using Random
 import Distributions

@@ -5,7 +5,7 @@ Developer note for the sparse multi-component LSS route, which lives in
 `gaussian_sparse_lss_multi.jl`). It was written as the symbolic-alignment pass
 before any code existed; the route has since been implemented, wired into
 `drm()` by the D-206 router (§1), and covered by the default test suite
-(`test/test_lss_sparse_multi*.jl`, `test/runtests.jl:107–110`) — see §9 for its
+(`test/test_lss_sparse_multi*.jl`, auto-discovered by `test/runtests.jl`) — see §9 for its
 documented internals. Scope: extend `#551`'s single-phylo-component O(p) sparse engine
 (`src/gaussian_sparse_lss.jl`) to **several** `sd()` submodels in one fit,
 the way `#555`'s dense engine (`_fit_gaussian_lss_multi`,
@@ -283,7 +283,7 @@ H]`, and the selected-pairs matrix `Ψ[gi,gj] := dot(ÂX[gi,:], C2[gj,:])`
 `g_α,c` trace term — is NOT re-derived in this note (an earlier draft left it
 as a TO-BUILD placeholder here, S7b.2 found the omission): it is fully
 derived and FD-verified in
-[`DRM._lss_sparse_multi_objective_and_grad`](@ref)'s own docstring
+[`DRModels._lss_sparse_multi_objective_and_grad`](@ref)'s own docstring
 (`gaussian_sparse_lss.jl`, the function's REML paragraph), which is the
 authoritative source for this derivation. Read it there rather than
 re-deriving it from this section.
@@ -528,13 +528,13 @@ leaving the feature unreachable from `drm()`.
 Module-level entry points of the sparse multi-component route (unexported; the public surface is `drm(...)` with several `sd()` parts).
 
 ```@docs
-DRM._fit_gaussian_lss_sparse_multi
-DRM._lss_sparse_multi_assemble
-DRM._lss_sparse_multi_objective
-DRM._lss_sparse_multi_objective_and_grad
-DRM._lss_sparse_multi_reml_pieces
-DRM._mark_lss_multi_route!
-DRM._lss_multi_route
-DRM._sparse_lss_iid_comp
-DRM._sparse_lss_phylo_comp
+DRModels._fit_gaussian_lss_sparse_multi
+DRModels._lss_sparse_multi_assemble
+DRModels._lss_sparse_multi_objective
+DRModels._lss_sparse_multi_objective_and_grad
+DRModels._lss_sparse_multi_reml_pieces
+DRModels._mark_lss_multi_route!
+DRModels._lss_multi_route
+DRModels._sparse_lss_iid_comp
+DRModels._sparse_lss_phylo_comp
 ```

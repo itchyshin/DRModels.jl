@@ -9,7 +9,7 @@
 #
 # #323.2: a boundary / singular direction (Inf SE) reports NaN z / p in the table,
 # not the misleading z = est/Inf = 0, p = 1 that reads as a confident null.
-using DRM, Test, Random
+using DRModels, Test, Random
 import Distributions
 
 @testset "coeftable/show z-p suppression (#320, #323.2)" begin
@@ -63,27 +63,27 @@ import Distributions
         # Unit-level check of the shared z/p helper: a location block with an Inf SE
         # (singular / boundary direction) must report NaN z and NaN p, NOT z = 0,
         # p = 1 (which reads as a confident non-significant result).
-        z, p = DRM._wald_zp(:mu, 0.7, Inf)
+        z, p = DRModels._wald_zp(:mu, 0.7, Inf)
         @test isnan(z) && isnan(p)
         # A finite-SE location coefficient still gets a real test.
-        z2, p2 = DRM._wald_zp(:mu, 2.0, 1.0)
+        z2, p2 = DRModels._wald_zp(:mu, 2.0, 1.0)
         @test isfinite(z2) && z2 == 2.0
         @test isfinite(p2) && 0.0 <= p2 <= 1.0
         # SUPERSEDED 2026-09-06: these blocks are no longer blanked. With a finite
         # SE every block gets a real Wald test on its own working scale; the null is
         # stated under the heading instead of the test being withheld.
         for (blk, est, se) in ((:sigma, -0.4, 0.05), (:resd, 0.7, 0.2), (:recov, 0.1, 0.3))
-            zb, pb = DRM._wald_zp(blk, est, se)
+            zb, pb = DRModels._wald_zp(blk, est, se)
             @test isfinite(zb) && zb ≈ est / se
             @test isfinite(pb) && 0.0 <= pb <= 1.0
         end
         # The suppression that REMAINS is the boundary one, and it is block-agnostic:
         # a non-finite SE is not a test, on any scale.
         for blk in (:sigma, :resd, :recov, :mu, :rho12)
-            @test all(isnan, DRM._wald_zp(blk, 0.5, Inf))
+            @test all(isnan, DRModels._wald_zp(blk, 0.5, Inf))
         end
         # :rho12 keeps a real test (rho12 = 0 is a meaningful null).
-        zr, pr = DRM._wald_zp(:rho12, 0.5, 0.1)
+        zr, pr = DRModels._wald_zp(:rho12, 0.5, 0.1)
         @test isfinite(zr) && zr == 5.0
     end
 

@@ -1,7 +1,7 @@
 # Model comparison + accessor parity: fit a Gaussian location–scale model where
 # x is genuinely predictive (in both μ and log σ), then check the nested
 # likelihood-ratio test, the AICc correction, prior weights, and `update`.
-using DRM
+using DRModels
 using Test, Random
 
 @testset "comparison: lrtest / anova / aicc / weights / update" begin
@@ -33,8 +33,9 @@ using Test, Random
     end
 
     @testset "weights" begin
-        @test weights(full) == ones(nobs(full))
-        @test weights(reduced) == ones(nobs(reduced))
+        # #931 step (b): no prior weights given -> `nothing`, not a ones() stub.
+        @test weights(full) === nothing
+        @test weights(reduced) === nothing
     end
 
     @testset "update" begin

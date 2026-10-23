@@ -9,11 +9,11 @@
 # !converged) and retries via a warm-restart schedule, judged at the SAME g_tol the
 # caller asked for. This file pins that outcome and its consequences.
 #
-#   julia --project=. -e 'using DRM, Test; include("test/test_q4_reml_warm_restart.jl")'
+#   julia --project=. -e 'using DRModels, Test; include("test/test_q4_reml_warm_restart.jl")'
 
 module TestQ4RemlWarmRestart
 
-using DRM
+using DRModels
 using Test
 using TOML
 using LinearAlgebra
@@ -59,28 +59,28 @@ end
     # returned NamedTuple's `g_residual` — not surfaced on `DrmFit` — can be
     # checked directly against the SAME `g_tol` the public default uses.
     rhs = Dict(FORM.forms)
-    fixed, marker = DRM._bivariate_q4_marker(rhs)
+    fixed, marker = DRModels._bivariate_q4_marker(rhs)
     grp = marker[2]
     lc_zero = length(marker) >= 3 ? marker[3] : Int[]
-    phy = DRM._as_augmented_phy(TREE)
+    phy = DRModels._as_augmented_phy(TREE)
 
-    y1, X1, _ = DRM._design(FORM.response1, fixed[:mu1], DAT)
-    y2, X2, _ = DRM._design(FORM.response2, fixed[:mu2], DAT)
-    _, Xs1, _ = DRM._design(FORM.response1, fixed[:sigma1], DAT)
-    _, Xs2, _ = DRM._design(FORM.response1, fixed[:sigma2], DAT)
-    _, Xr, _  = DRM._design(FORM.response1, fixed[:rho12], DAT)
+    y1, X1, _ = DRModels._design(FORM.response1, fixed[:mu1], DAT)
+    y2, X2, _ = DRModels._design(FORM.response2, fixed[:mu2], DAT)
+    _, Xs1, _ = DRModels._design(FORM.response1, fixed[:sigma1], DAT)
+    _, Xs2, _ = DRModels._design(FORM.response1, fixed[:sigma2], DAT)
+    _, Xr, _  = DRModels._design(FORM.response1, fixed[:rho12], DAT)
 
-    obs1 = DRM._observed_response_mask(y1)
-    obs2 = DRM._observed_response_mask(y2)
-    species = DRM._phylo_species_index(phy, getproperty(DAT, grp))
-    prob, Q_cond = DRM.make_problem(phy, y1, y2, X1, X2, Xs1, Xs2, Xr; species = species)
+    obs1 = DRModels._observed_response_mask(y1)
+    obs2 = DRModels._observed_response_mask(y2)
+    species = DRModels._phylo_species_index(phy, getproperty(DAT, grp))
+    prob, Q_cond = DRModels.make_problem(phy, y1, y2, X1, X2, Xs1, Xs2, Xr; species = species)
 
     β1 = X1[obs1, :] \ y1[obs1]
     β2 = X2[obs2, :] \ y2[obs2]
     res1 = y1[obs1] .- X1[obs1, :] * β1
     res2 = y2[obs2] .- X2[obs2, :] * β2
     β0 = (mu1 = β1, mu2 = β2,
-          s1 = DRM._initial_scale_beta(Xs1, res1), s2 = DRM._initial_scale_beta(Xs2, res2),
+          s1 = DRModels._initial_scale_beta(Xs1, res1), s2 = DRModels._initial_scale_beta(Xs2, res2),
           rho = zeros(size(Xr, 2)))
     Λ0 = Matrix(Symmetric([
         0.30 0.02 0.01 0.010
@@ -89,11 +89,11 @@ end
         0.01 0.01 0.005 0.080
     ]))
     if !isempty(lc_zero)
-        lc0 = DRM.Λ_to_lc(Λ0); lc0[lc_zero] .= 0.0; Λ0 = DRM.lc_to_Λ(lc0)
+        lc0 = DRModels.Λ_to_lc(Λ0); lc0[lc_zero] .= 0.0; Λ0 = DRModels.lc_to_Λ(lc0)
     end
 
     g_tol = 1e-3   # drm()'s default `q4_g_tol`
-    rr = DRM.fit_q4_reml(prob, Q_cond; beta0 = β0, Lambda0 = Λ0,
+    rr = DRModels.fit_q4_reml(prob, Q_cond; beta0 = β0, Lambda0 = Λ0,
                           g_tol = g_tol, iterations = 300, n_newton = 40, lc_zero = lc_zero)
 
     @test rr.converged == true

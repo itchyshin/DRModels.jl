@@ -10,7 +10,7 @@
 import Pkg
 Pkg.activate(dirname(@__DIR__))
 
-using DRM
+using DRModels
 using LinearAlgebra, Printf, Random, SparseArrays, Statistics
 
 BLAS.set_num_threads(1)
@@ -77,7 +77,7 @@ function _caterpillar_tree(p::Integer; branch_length::Real)
         push!(edges, (parent, leaf, Float64(branch_length)))
         current = parent
     end
-    return DRM.make_phy(edges, p; root_index = current)
+    return DRModels.make_phy(edges, p; root_index = current)
 end
 
 function _phy(shape::Symbol, p::Integer)
@@ -134,7 +134,7 @@ function _make_case(shape::Symbol, p::Integer; seed::Integer, nrep::Integer)
         m2 = dot(@view(X2[i, :]), βT.mu2) + U[2, k]
         s1 = exp(dot(@view(Xs1[i, :]), βT.s1) + U[3, k])
         s2 = exp(dot(@view(Xs2[i, :]), βT.s2) + U[4, k])
-        ρ = DRM.RHO_GUARD * tanh(dot(@view(Xr[i, :]), βT.rho))
+        ρ = DRModels.RHO_GUARD * tanh(dot(@view(Xr[i, :]), βT.rho))
         e = cholesky(Symmetric([s1^2 ρ*s1*s2; ρ*s1*s2 s2^2])).L * randn(rng, 2)
         y1[i] = m1 + e[1]
         y2[i] = m2 + e[2]

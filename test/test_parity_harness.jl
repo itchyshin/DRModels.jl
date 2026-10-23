@@ -2,12 +2,12 @@
 #
 # This is the CI verification that compare.jl + loadfixture.jl actually work: no
 # R, no committed drmTMB fixtures, fast. It does NOT claim drmTMB parity — it
-# proves the harness round-trips a DRM.jl fit against itself (self-consistency)
+# proves the harness round-trips a DRModels.jl fit against itself (self-consistency)
 # and, critically, that it DETECTS a deliberate mismatch. Real drmTMB parity is
 # the gated `runparity.jl` suite (DRM_PARITY_TESTS=1), fed by maintainer-
 # generated fixtures (GENERATING.md).
 
-using DRM
+using DRModels
 using Test, Random
 using TOML
 using LinearAlgebra: I

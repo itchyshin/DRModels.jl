@@ -1,7 +1,7 @@
 # Parametric bootstrap on non-Gaussian families. bootstrap_ci was Gaussian-only
 # because simulate() only knew how to draw Gaussian responses; this exercises the
 # generalised simulate + the family-agnostic bootstrap path.
-using DRM
+using DRModels
 using Test, Random
 import Distributions
 

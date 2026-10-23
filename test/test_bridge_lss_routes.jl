@@ -3,7 +3,7 @@
 # and missing-response ("include") semantics. One `@testset` per cell so the
 # ledger can count them; mirrors `test_bridge_lss_labels.jl`'s payload shape
 # and comparison style.
-using DRM, Test, Random, LinearAlgebra
+using DRModels, Test, Random, LinearAlgebra
 
 # ---- shared fixture builders ------------------------------------------------
 
@@ -30,7 +30,7 @@ function _s6_phylo_fixture(seed; p = 16, m = 5, branch_length = 0.25)
     z = zg[sidx]
     n = p * m
     x = randn(rng, n)
-    K = DRM._phylo_correlation(phy)
+    K = DRModels._phylo_correlation(phy)
     LK = cholesky(Symmetric(K)).L
     sigma_a = exp.(0.2 .+ 0.4 .* zg)
     u = sigma_a .* (LK * randn(rng, p))

@@ -82,6 +82,11 @@ function fit_phylo_interaction(y::AbstractVector, X::AbstractMatrix,
                                munames::Vector{String} = ["(Intercept)"],
                                group::Symbol = :interaction,
                                g_tol::Real = 1e-8)
+    _require_finite_inputs(; response=(y, "y"), response_allow_missing=false,
+                           context="fit_phylo_interaction")
+    _require_finite_array(X, "X"; context="fit_phylo_interaction")
+    _require_finite_array(C_A, "C_A"; context="fit_phylo_interaction")
+    _require_finite_array(C_B, "C_B"; context="fit_phylo_interaction")
     nA = size(C_A, 1); nB = size(C_B, 1)
     n = nA * nB
     length(y) == n ||
@@ -104,7 +109,8 @@ function fit_phylo_interaction(y::AbstractVector, X::AbstractMatrix,
                          autodiff = :forward)
     θ̂ = Optim.minimizer(res)
     V = try
-        Matrix(inv(Symmetric(ForwardDiff.hessian(nll, θ̂))))
+        _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂);
+                           context = "phylo interaction")
     catch
         fill(NaN, pμ + 2, pμ + 2)
     end
@@ -117,5 +123,5 @@ function fit_phylo_interaction(y::AbstractVector, X::AbstractMatrix,
     obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => fill(exp(θ̂[pμ+1]), n))
     return _withnll(DrmFit(Gaussian(), blocks, names, θ̂, V, -nll(θ̂), n,
-                           Optim.converged(res), means, obs, scales), nll)
+                           drm_optim_converged(res), means, obs, scales), nll)
 end

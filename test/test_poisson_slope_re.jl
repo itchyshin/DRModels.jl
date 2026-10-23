@@ -2,7 +2,7 @@
 # (1 + x | g). Per group (b0,b1) ~ N(0, Σ); log λ_i = Xμ_iᵀβ + b0_g + b1_g·x_i.
 # Because groups are disjoint the per-group 2-D integral factorises, so it is done
 # by a 2-D Gauss–Hermite tensor grid. Recovery: β slope and the RE covariance Σ.
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 import Distributions
 

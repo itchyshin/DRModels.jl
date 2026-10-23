@@ -1,8 +1,8 @@
 # `src/experimental/` — unwired variants, with verdicts
 
-**Nothing in this directory is loaded by `module DRM`.** Every file here is either a
+**Nothing in this directory is loaded by `module DRModels`.** Every file here is either a
 recorded negative result, a superseded predecessor of a production route, or a
-diagnostic oracle kept for reproducibility. The module docstring (`src/DRM.jl`) is the
+diagnostic oracle kept for reproducibility. The module docstring (`src/DRModels.jl`) is the
 authoritative wiring list; this README records *why each file is here*, so the
 directory reads as a set of findings rather than unfinished work. Completion-roadmap
 Wave B pass, 2026-08-27 (D-179 arc).

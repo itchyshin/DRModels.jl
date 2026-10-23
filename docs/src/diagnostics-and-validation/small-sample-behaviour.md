@@ -77,7 +77,7 @@ estimates (1.243). Coverage is therefore ~100 % — which sounds reassuring and 
 enough to always contain the truth conceals a bias of −1.85 (about 1.5 sampling SDs) rather than
 revealing it.
 
-**Do not read a wide interval on a small tree as evidence the estimate is fine.** See issue #495.
+**Do not read a wide interval on a small tree as evidence the estimate is fine.**
 
 ## Practical guidance
 
@@ -91,10 +91,9 @@ revealing it.
 
 ## Provenance
 
-Measured 2026-08-25 on the `bench/bias_ladder.jl` N-ladder and the coverage campaign
-(`docs/dev-log/evidence/2026-08-25-coverage-campaign-results.md`). Issues #495 (SE calibration) and
-#496 (bias) carry the full investigation.
+Measured 2026-08-25 on a prespecified N-ladder and coverage study. The
+reproducibility record retains the full calibration and bias investigation.
 
 The three-factor decomposition is not fully separated — the isolated exp()-link mechanism is 10–50×
 too small alone, so the explanation is a compound. The star-vs-balanced comparison is 15 replicates
-and is suggestive rather than production-grade. Both are stated in #496.
+and is suggestive rather than production-grade.

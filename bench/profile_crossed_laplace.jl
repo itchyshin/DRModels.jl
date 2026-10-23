@@ -13,7 +13,7 @@
 import Pkg
 Pkg.activate(dirname(@__DIR__))
 
-using DRM
+using DRModels
 using LinearAlgebra, Printf, Random, Statistics
 import Distributions
 
@@ -66,7 +66,7 @@ function family_rows(cell)
 
     ypoi = Float64.([rand(cell.rng, Distributions.Poisson(μ[i])) for i in 1:n])
     t, times, fit = median_fit_time(; reps = cell.n <= 5000 ? 5 : 3) do
-        DRM._fit_poisson_crossed_laplace(DRM.Poisson(), ypoi, cell.X, cell.comps, ["(Intercept)", "x"], 1e-7;
+        DRModels._fit_poisson_crossed_laplace(DRModels.Poisson(), ypoi, cell.X, cell.comps, ["(Intercept)", "x"], 1e-7;
                                          se = false, polish_iterations = 0)
     end
     push!(rows, (family = "Poisson", nuisance = "none", median_s = t, times = times,
@@ -76,7 +76,7 @@ function family_rows(cell)
     ntr = fill(8.0, n)
     s = Float64.([rand(cell.rng, Distributions.Binomial(round(Int, ntr[i]), logistic(cell.η[i]))) for i in 1:n])
     t, times, fit = median_fit_time(; reps = cell.n <= 5000 ? 5 : 3) do
-        DRM._fit_binomial_crossed_laplace(DRM.Binomial(), s, ntr, cell.X, cell.comps, ["(Intercept)", "x"], 1e-7;
+        DRModels._fit_binomial_crossed_laplace(DRModels.Binomial(), s, ntr, cell.X, cell.comps, ["(Intercept)", "x"], 1e-7;
                                           polish_iterations = 10)
     end
     push!(rows, (family = "Binomial", nuisance = "none", median_s = t, times = times,
@@ -86,7 +86,7 @@ function family_rows(cell)
     size = 3.0
     ynb = Float64.([rand(cell.rng, Distributions.NegativeBinomial(size, size / (size + μ[i]))) for i in 1:n])
     t, times, fit = median_fit_time(; reps = cell.n <= 5000 ? 5 : 3) do
-        DRM._fit_nb2_crossed_laplace(DRM.NegBinomial2(), ynb, cell.X, ones(n, 1),
+        DRModels._fit_nb2_crossed_laplace(DRModels.NegBinomial2(), ynb, cell.X, ones(n, 1),
                                      cell.comps, ["(Intercept)", "x"], ["(Intercept)"], 1e-7)
     end
     push!(rows, (family = "NB2", nuisance = "size estimated", median_s = t, times = times,
@@ -96,7 +96,7 @@ function family_rows(cell)
     shape = 7.0
     yg = Float64.([rand(cell.rng, Distributions.Gamma(shape, μ[i] / shape)) for i in 1:n])
     t, times, fit = median_fit_time(; reps = cell.n <= 5000 ? 5 : 3) do
-        DRM._fit_gamma_crossed_laplace(DRM.Gamma(), yg, cell.X, ones(n, 1),
+        DRModels._fit_gamma_crossed_laplace(DRModels.Gamma(), yg, cell.X, ones(n, 1),
                                        cell.comps, ["(Intercept)", "x"], ["(Intercept)"], 1e-7)
     end
     push!(rows, (family = "Gamma", nuisance = "shape estimated", median_s = t, times = times,
@@ -108,7 +108,7 @@ function family_rows(cell)
         p = logistic.(cell.η)
         ybeta = Float64.([rand(cell.rng, Distributions.Beta(p[i] * precision, (1 - p[i]) * precision)) for i in 1:n])
         t, times, fit = median_fit_time(; reps = cell.n <= 5000 ? 5 : 3) do
-            DRM._fit_beta_crossed_laplace(DRM.Beta(), ybeta, cell.X, ones(n, 1),
+            DRModels._fit_beta_crossed_laplace(DRModels.Beta(), ybeta, cell.X, ones(n, 1),
                                           cell.comps, ["(Intercept)", "x"], ["(Intercept)"], 1e-7)
         end
         push!(rows, (family = "Beta", nuisance = "precision estimated", median_s = t, times = times,
@@ -143,7 +143,7 @@ open(OUT, "w") do io
     println(io, "CPU-aware run: Julia threads = $(Threads.nthreads()), BLAS threads = $(BLAS.get_num_threads()).")
     println(io, "Poisson is drmTMB-comparable through the #70 paired benchmark. Binomial/NB2/Gamma/Beta here are internal Julia engine proofs; NB2/Gamma/Beta estimate one constant nuisance parameter in the Laplace objective with exact implicit nuisance-gradient corrections.")
     println(io, "The generic non-Gaussian path uses fused per-observation derivative kernels so value, mean derivatives, and nuisance derivatives share expensive link/special-function work.")
-    println(io, "The crossed Hessian path is adaptive: dense factorisation for q ≤ $(DRM.CROSSED_SPARSE_Q_THRESHOLD), sparse CHOLMOD + Takahashi selected inverse for larger q.")
+    println(io, "The crossed Hessian path is adaptive: dense factorisation for q ≤ $(DRModels.CROSSED_SPARSE_Q_THRESHOLD), sparse CHOLMOD + Takahashi selected inverse for larger q.")
     println(io)
     println(io, "| cell | family | n | G | H | median/s | beta1 | sd_g | sd_h | nuisance hat | nuisance truth | converged | nuisance |")
     println(io, "|:-----|:-------|--:|--:|--:|---------:|------:|-----:|-----:|-------------:|---------------:|:----------|:---------|")

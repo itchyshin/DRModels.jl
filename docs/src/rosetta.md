@@ -1,14 +1,14 @@
 # Rosetta — R ↔ Julia
 
-DRM.jl is the Julia twin of [drmTMB](https://itchyshin.github.io/drmTMB/), so the
+DRModels.jl is the Julia twin of [drmTMB](https://itchyshin.github.io/drmTMB/), so the
 modelling grammar is intentionally parallel: the same `bf()` formula bundle, the
 same distributional-parameter names, the same structured-effect markers. This
-page is a side-by-side phrasebook for translating a drmTMB (R) call into DRM.jl
+page is a side-by-side phrasebook for translating a drmTMB (R) call into DRModels.jl
 (Julia).
 
 Three differences cover almost everything:
 
-| | drmTMB (R) | DRM.jl (Julia) |
+| | drmTMB (R) | DRModels.jl (Julia) |
 |---|---|---|
 | **Fit verb** | `drmTMB(bf(...), family = ...)` | `drm(bf(...), Family(); data = ...)` |
 | **Family** | lower-case function — `gaussian()` | capitalised struct — `Gaussian()` |
@@ -17,8 +17,7 @@ Three differences cover almost everything:
 !!! note "On the R column"
     The R snippets show drmTMB's grammar (which itself mirrors **brms**). The
     family-constructor and S3 method spellings here were reconciled (2026-06-03)
-    against the verified drmTMB `NAMESPACE` (see
-    `docs/dev-log/decisions/2026-06-03-drmtmb-api-snapshot.md`); the
+    against drmTMB's exported interface; the
     parameterisations (e.g. Beta `φ = 1/σ²`) match. drmTMB reuses the base-R
     `stats` families (`gaussian()`, `poisson()`, `Gamma()`, `binomial()`) rather
     than redefining them. This page is maintained from the Julia side.
@@ -31,7 +30,7 @@ fit <- drmTMB(bf(y ~ x, sigma ~ x), family = gaussian(), data = dat)
 ```
 
 ```julia
-# Julia — DRM.jl
+# Julia — DRModels.jl
 fit = drm(bf(@formula(y ~ x), @formula(sigma ~ x)), Gaussian(); data = dat)
 ```
 
@@ -41,7 +40,7 @@ distributional parameter (`sigma` defaults to `~ 1`).
 
 ## Families
 
-| drmTMB (R) | DRM.jl (Julia) | extra parameters |
+| drmTMB (R) | DRModels.jl (Julia) | extra parameters |
 |---|---|---|
 | `gaussian()` | `Gaussian()` | `sigma` |
 | `student()` | `Student()` | `sigma`, `nu` |
@@ -61,7 +60,7 @@ distributional parameter (`sigma` defaults to `~ 1`).
 
 ## Formula grammar
 
-| Intent | drmTMB (R) | DRM.jl (Julia) |
+| Intent | drmTMB (R) | DRModels.jl (Julia) |
 |---|---|---|
 | Mean + scale | `bf(y ~ x, sigma ~ x)` | `bf(@formula(y ~ x), @formula(sigma ~ x))` |
 | Extra parameter | `bf(y ~ x, sigma ~ 1, nu ~ 1)` | `bf(@formula(y ~ x), @formula(sigma ~ 1), @formula(nu ~ 1))` |
@@ -81,15 +80,17 @@ drmTMB(bf(mu1 = y1 ~ x, mu2 = y2 ~ x, sigma1 = ~ x, sigma2 = ~ 1, rho12 = ~ 1),
 ```
 
 ```julia
-# Julia — DRM.jl  (keyword form; ρ12 is the residual correlation, on atanh ρ12)
-bf(mu1 = @formula(y1 ~ x), mu2 = @formula(y2 ~ x),
-   sigma1 = @formula(sigma1 ~ x), sigma2 = @formula(sigma2 ~ 1),
-   rho12 = @formula(rho12 ~ 1))
+# Julia — DRModels.jl  (ρ12 is the residual correlation, on atanh ρ12)
+fit = drm(
+    bf(mu1 = @formula(y1 ~ x), mu2 = @formula(y2 ~ x),
+       sigma1 = @formula(sigma1 ~ x), sigma2 = @formula(sigma2 ~ 1),
+       rho12 = @formula(rho12 ~ 1)),
+    Gaussian(); data = dat)
 ```
 
 ### Structured effects & meta-analysis
 
-| Intent | drmTMB (R) | DRM.jl (Julia) |
+| Intent | drmTMB (R) | DRModels.jl (Julia) |
 |---|---|---|
 | Relatedness matrix | `y ~ x + relmat(1 \| id)`, `K = K` | `@formula(y ~ x + relmat(1 \| id))`, `K = K` |
 | Animal model | `y ~ x + animal(1 \| id)`, `A = A` | `@formula(y ~ x + animal(1 \| id))`, `A = A` |
@@ -100,7 +101,7 @@ bf(mu1 = @formula(y1 ~ x), mu2 = @formula(y2 ~ x),
 
 ## Post-fit accessors
 
-| drmTMB (R) | DRM.jl (Julia) |
+| drmTMB (R) | DRModels.jl (Julia) |
 |---|---|
 | `coef(fit)` / `fixef(fit)` | `coef(fit)` / `fixef(fit)` |
 | `vcov(fit)` | `vcov(fit)` |
@@ -115,7 +116,7 @@ bf(mu1 = @formula(y1 ~ x), mu2 = @formula(y2 ~ x),
 | `ranef(fit)` | `ranef(fit)` |
 | random-effect SDs | `re_sd(fit)` / `vc(fit)` |
 | `sigma(fit)` | `sigma(fit)` |
-| `rho12(fit)` | planned (parity gap) |
+| `rho12(fit)` | `rho12(fit)` |
 | `corpairs(fit)` | `corpairs(fit)` / `corpairs_data(fit)` |
 | `fitted(fit)` / `residuals(fit)` | `fitted(fit)` / `residuals(fit)` |
 | `predict(fit, newdata)` (response mean) | `predict(fit, newdata; type = :response)` |
@@ -123,18 +124,20 @@ bf(mu1 = @formula(y1 ~ x), mu2 = @formula(y2 ~ x),
 | in-sample fitted per-observation parameters | `marginal_parameters(fit)` |
 | build a covariate grid for prediction | `prediction_grid(reference; predictor = values, …)` |
 | `simulate(fit)` | `simulate(fit)` |
-| `summary(fit)` | `show(fit)` / `coeftable(fit)` (no `summary` method) |
-| `weights(fit)` | planned (parity gap) |
+| `summary(fit)` | `summary(fit)` (prints the Wald coefficient table) |
+| `weights(fit)` | `weights(fit)`: the prior weights from `drm(...; weights = w)`, or `nothing` (fixed-effect ML routes only; other routes refuse `weights =`) |
+| `drm_control(maxit =, start =, multi_start =, se =)` | `control = DRMControl(maxit =, start =, multi_start =, se =)`; `maxit` / `start` / `multi_start` on fixed-effect routes, `se = false` on every route (`control_info(fit)` reports what it did) |
+| `obj$gr(opt$par)` / `sdreport()$cov.fixed` | `gradient(fit)` / `hessian(fit)` (negative log-likelihood, `coef(fit)` order and scale) |
 | `family(fit)` | `family(fit)` |
 | `is_converged(fit)` / convergence diagnostics | `is_converged(fit)` / `check_drm(fit)` |
 
 ### Prediction
 
 drmTMB centres prediction on `predict(fit, newdata)`, which returns the
-response-scale mean. DRM.jl matches that and adds first-class verbs for the
+response-scale mean. DRModels.jl matches that and adds first-class verbs for the
 *other* distributional parameters:
 
-| Intent | drmTMB (R) | DRM.jl (Julia) |
+| Intent | drmTMB (R) | DRModels.jl (Julia) |
 |---|---|---|
 | Response-scale mean at new data | `predict(fit, newdata)` | `predict(fit, newdata; type = :response)` |
 | Linear-predictor (link) scale | `predict(fit, newdata, type = "link")` | `predict(fit, newdata; type = :link)` |
@@ -171,10 +174,10 @@ Both twins guard the `log(sigma)` linear predictor inside the likelihood so a
 runaway scale cannot blow the objective up, and **both report the guarded value**:
 `sigma(fit)`, `simulate` and the quantile residuals describe the scale the
 likelihood actually scored, not a raw `exp(X_sigma * beta_sigma)` the model never
-evaluated (drmTMB `drm_clamped_sigma_eta()`; DRM.jl `_reported_sigma`).
+evaluated (drmTMB `drm_clamped_sigma_eta()`; DRModels.jl `_reported_sigma`).
 
 The *bands* differ on purpose. drmTMB soft-clamps every scale family at
-`logsigma_clamp = c(-12, 12, 3)`. DRM.jl keeps each family's own band — NB2
+`logsigma_clamp = c(-12, 12, 3)`. DRModels.jl keeps each family's own band — NB2
 ±20, Gamma ±15, Beta ±15 (margin 3) — because those families carry
 `size`/`shape`/`precision` `= exp(-2 * eta_sigma)`, where drmTMB's ±12 would
 distort legitimate fits (a near-Poisson NB2 wants `eta_sigma` ≈ -15); and the
@@ -196,5 +199,6 @@ scale is honest about what was scored rather than a reliable estimate.
 - **ML is the default.** REML is an option (the likelihoods are not comparable
   across different fixed-effect structures, so ML is used for model selection).
 
-See also the [R ↔ Julia bridge](r-julia-bridge.md) for the planned
-`drmTMB(..., engine = "julia")` round-trip via JuliaCall.
+For the optional R-to-Julia route, see [Coming from R](coming-from-r.md).
+It is limited to the documented admitted models; ordinary `drmTMB` use
+continues to use the default R engine.

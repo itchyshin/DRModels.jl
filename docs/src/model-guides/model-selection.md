@@ -2,7 +2,7 @@
 
 !!! note "Status — Stable"
     Mirrors drmTMB's [Model selection with AIC and BIC](https://itchyshin.github.io/drmTMB/articles/model-selection.html).
-    **In DRM.jl today:** information-criterion comparison (`aic`, `bic`,
+    **In DRModels.jl today:** information-criterion comparison (`aic`, `bic`,
     [`aicc`](@ref)) and the nested likelihood-ratio test ([`lrtest`](@ref) /
     [`anova`](@ref)) over fitted `drm` models, plus [`check_drm`](@ref) for the
     convergence / boundary diagnostics that belong beside any criterion table.
@@ -23,7 +23,7 @@ BIC = -2·loglik + log(n)·k
 `k` is the model degrees of freedom ([`dof`](@ref)) and `n` is the number of
 observations ([`nobs`](@ref)). BIC penalises extra parameters more strongly than
 AIC once `n > exp(2) ≈ 7.4`. Compare models **only** when they were fit by the
-same method (ML — DRM.jl's default) to the same response, on the same rows. Do
+same method (ML — DRModels.jl's default) to the same response, on the same rows. Do
 not compare a model fit to raw counts with one fit to transformed counts, or two
 fits that silently dropped different rows.
 
@@ -31,7 +31,7 @@ A small helper builds a criterion table across a named set of fits. It reads
 only public accessors, so it works for every family:
 
 ```@example modsel
-using DRM, Random
+using DRModels, Random
 
 function criterion_table(models::Pair{Symbol,<:Any}...)
     aics = [aic(m) for (_, m) in models]
@@ -79,7 +79,8 @@ likelihood-ratio test:
 lrtest(fit_sigma_constant, fit_sigma_x)   # (; statistic, dof, pvalue)
 ```
 
-A small p-value says the moving scale is real signal. Interpret the selected
+A small p-value supports the moving-scale term within these nested, checked
+candidate models; it is not proof of a biological mechanism. Interpret the selected
 σ-coefficient on the **ratio** scale — a one-unit increase in `x` multiplies the
 residual SD by `exp(slope)`:
 

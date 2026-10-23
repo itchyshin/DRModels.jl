@@ -2,7 +2,7 @@
 # Execute selected real documentation pages with fatal example errors.
 # Writes Vitepress Markdown only, keeps a fresh output directory, and reports
 # the exact selected pages/example count. Never claims whole-site coverage.
-using DRM, Documenter, DocumenterVitepress, LinearAlgebra
+using DRModels, Documenter, DocumenterVitepress, LinearAlgebra
 
 include(joinpath(@__DIR__, "parity_docs_navigation.jl"))
 
@@ -40,9 +40,9 @@ function main(args)
         (!isabspath(page) && !startswith(normpath(page), "..") && endswith(page,".md")) || error("invalid page $page")
         isfile(joinpath(DOCS,"src",page)) || error("missing page $page")
     end
-    realpath(pathof(DRM)) == realpath(joinpath(REPO,"src","DRM.jl")) || error("wrong DRM checkout loaded")
+    realpath(pathof(DRModels)) == realpath(joinpath(REPO,"src","DRModels.jl")) || error("wrong DRModels checkout loaded")
     BLAS.set_num_threads(1)
-    println("DOCS_RUNTIME julia=$(VERSION) threads=$(Threads.nthreads()) blas=$(BLAS.get_num_threads()) loaded_drm=$(pathof(DRM))")
+    println("DOCS_RUNTIME julia=$(VERSION) threads=$(Threads.nthreads()) blas=$(BLAS.get_num_threads()) loaded_drm=$(pathof(DRModels))")
     println("DOCS_SELECTED=$(join(selected, ','))")
     count_examples = sum(sum(startswith(strip(line), "```@example") for line in eachline(joinpath(DOCS,"src",page))) for page in selected)
     pages = [splitext(basename(page))[1] => page for page in selected]
@@ -58,11 +58,11 @@ function main(args)
     end
     started = time()
     makedocs(; root=DOCS, source="src", build=relpath(build,DOCS), clean=true,
-        sitename="DRM.jl", authors="Shinichi Nakagawa", pagesonly=(navigation == "subset"),
-        pages=pages, modules=(navigation == "production" ? [DRM] : Module[]),
+        sitename="DRModels.jl", authors="Shinichi Nakagawa", pagesonly=(navigation == "subset"),
+        pages=pages, modules=(navigation == "production" ? [DRModels] : Module[]),
         warnonly=(navigation == "subset" ? [:cross_references, :linkcheck, :footnote] : false),
         format=DocumenterVitepress.MarkdownVitepress(
-            repo="github.com/itchyshin/DRM.jl", devbranch="main", devurl="dev",
+            repo="github.com/itchyshin/DRModels.jl", devbranch="main", devurl="dev",
             build_vitepress=false, install_npm=false))
     expected = sort([joinpath(build,".documenter",p) for p in selected])
     emitted = sort([joinpath(dir,file) for (dir,_,files) in walkdir(build) for file in files if endswith(file,".md")])

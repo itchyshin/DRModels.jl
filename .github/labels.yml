@@ -1,4 +1,4 @@
-# DRM.jl label manifest. Kept in sync with tools/bootstrap-issues.jl (the script
+# DRModels.jl label manifest. Kept in sync with tools/bootstrap-issues.jl (the script
 # is the source of truth that actually creates them via `gh label create --force`).
 # `bug` and `enhancement` already exist on GitHub by default; we re-color them.
 
@@ -9,7 +9,7 @@
 - { name: r-bridge,        color: "5319e7", description: "Hopper / Lovelace — parity, engine=julia, RCall" }
 - { name: workflow,        color: "fbca04", description: "Changes to .claude/workflows/*.js" }
 - { name: engine-quality,  color: "0052cc", description: "Workflow Q gate work" }
-- { name: formula-parity,  color: "c2e0c6", description: "drmTMB ↔ DRM.jl formula contract (Boole)" }
+- { name: formula-parity,  color: "c2e0c6", description: "drmTMB ↔ DRModels.jl formula contract (Boole)" }
 - { name: idea,            color: "d4c5f9", description: "Pólya scouting signal / creative combination" }
 - { name: autoresearch,    color: "bfdadc", description: "Workflow R estimator-optimisation experiment" }
 - { name: phase-0,         color: "ededed", description: "Phase 0 — Team & workflows" }

@@ -1,4 +1,4 @@
-using DRM, Test
+using DRModels, Test
 using LinearAlgebra: BLAS
 
 @testset "inference BLAS pinning is composable across callers" begin
@@ -16,14 +16,14 @@ using LinearAlgebra: BLAS
 
         a_entered = Channel{Nothing}(1)
         b_entered = Channel{Nothing}(1)
-        a = Threads.@spawn DRM._with_pinned_blas(true) do
+        a = Threads.@spawn DRModels._with_pinned_blas(true) do
             put!(a_entered, nothing)
             take!(release_a)
         end
         take!(a_entered)
         @test BLAS.get_num_threads() == 1
 
-        b = Threads.@spawn DRM._with_pinned_blas(true) do
+        b = Threads.@spawn DRModels._with_pinned_blas(true) do
             put!(b_entered, nothing)
             take!(release_b)
         end
@@ -40,16 +40,16 @@ using LinearAlgebra: BLAS
         fetch(b)
         @test BLAS.get_num_threads() == 2
 
-        DRM._with_pinned_blas(true) do
+        DRModels._with_pinned_blas(true) do
             @test BLAS.get_num_threads() == 1
-            DRM._with_pinned_blas(true) do
+            DRModels._with_pinned_blas(true) do
                 @test BLAS.get_num_threads() == 1
             end
             @test BLAS.get_num_threads() == 1
         end
         @test BLAS.get_num_threads() == 2
 
-        DRM._with_pinned_blas(false) do
+        DRModels._with_pinned_blas(false) do
             @test BLAS.get_num_threads() == 2
         end
         @test BLAS.get_num_threads() == 2
@@ -57,16 +57,16 @@ using LinearAlgebra: BLAS
         # A scope that starts with BLAS already pinned participates in the same
         # nested lifetime accounting and restores that original one-thread state.
         BLAS.set_num_threads(1)
-        DRM._with_pinned_blas(true) do
+        DRModels._with_pinned_blas(true) do
             @test BLAS.get_num_threads() == 1
-            DRM._with_pinned_blas(true) do
+            DRModels._with_pinned_blas(true) do
                 @test BLAS.get_num_threads() == 1
             end
         end
         @test BLAS.get_num_threads() == 1
         BLAS.set_num_threads(2)
 
-        @test_throws ErrorException DRM._with_pinned_blas(true) do
+        @test_throws ErrorException DRModels._with_pinned_blas(true) do
             @test BLAS.get_num_threads() == 1
             error("intentional BLAS-pinning exception")
         end

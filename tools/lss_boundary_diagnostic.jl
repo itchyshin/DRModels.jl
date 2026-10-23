@@ -5,7 +5,7 @@
 # only the fixture-definition prefix of test/test_lss_tip_identity.jl and
 # byte-checks a reconstructed copy against that original fixture.
 
-using DRM
+using DRModels
 using ForwardDiff
 using LinearAlgebra
 using SHA
@@ -25,7 +25,7 @@ function _tree()
         (10, 1, 2.0), (10, 7, 1.0), (7, 2, 1.0), (7, 3, 1.0),
         (10, 8, 1.0), (8, 4, 1.0), (8, 9, 0.5), (9, 5, 0.5), (9, 6, 0.5),
     ]
-    return DRM.make_phy(edges, length(labels); root_index = 10, leaf_names = labels)
+    return DRModels.make_phy(edges, length(labels); root_index = 10, leaf_names = labels)
 end
 
 function _reconstructed_fixture(; order = [5, 1, 6, 3, 4, 2], covariance = _K_HAND)
@@ -78,7 +78,7 @@ function _fixture_pair(mode::Symbol, order)
         # The source-generator call mirrors the test exactly.  `_K_HAND` remains
         # confined to the independent covariance/nll oracle below.
         reconstructed = _reconstructed_fixture(order = order,
-            covariance = DRM._phylo_correlation(_tree()))
+            covariance = DRModels._phylo_correlation(_tree()))
         original = _original_test_fixture(order)
         _assert_fixture_bytes!(reconstructed, original, string(mode, "_", join(order, "_")))
         return original, reconstructed

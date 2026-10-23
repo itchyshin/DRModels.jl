@@ -15,16 +15,16 @@
 #       bound, so its ELBO ≤ the exact marginal log-likelihood — also checked
 #       against a high-order ADAPTIVE (mode-centered) GH reference at the VA fit.
 #
-# These need no external truth and no drmTMB call. The GHQ fit IS DRM.jl's
+# These need no external truth and no drmTMB call. The GHQ fit IS DRModels.jl's
 # verified NB2 RE marginal; the VA fit is the new code under test.
 
-using DRM
+using DRModels
 using Test
 using Random
 using Statistics
 import Distributions
 
-const DBNB = DRM   # internal kernels live under DRM.*
+const DBNB = DRModels   # internal kernels live under DRModels.*
 
 @testset "NB2 random-intercept VA (ELBO) marginal (#136)" begin
 

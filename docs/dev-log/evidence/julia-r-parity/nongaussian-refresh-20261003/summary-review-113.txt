@@ -1,0 +1,25 @@
+ONLY=all TREE=/home/snakagaw/claude-606c/tree JULIA=julia version 1.13.1 2026-10-03T19:18:48Z
+GATE S9-finite-state-evidence_G1 exit=0 :: FINITE_NATIVE_NEGATIVE_CONTROLS_PASS 18 FINITE_NATIVE_NEGATIVE_CONTROLS_PASS 18 
+GATE S9-finite-state-evidence_G2 exit=0 :: FINITE_FIT_NEGATIVE_CONTROLS_PASS 20 FINITE_FIT_NEGATIVE_CONTROLS_PASS 20 
+GATE S9-finite-state-evidence_G4 exit=0 :: FINITE_FIT_RECEIPT_VERIFIED {'ordinal': True, 'categorical': True} 
+GATE S9-finite-public_G2 exit=0 :: FINITE_PUBLIC_ORACLE_PASS {'ordinal': 'PASS', 'categorical': 'PASS'} FINITE_PUBLIC_DAMAGES_REJECTED 20 
+GATE S9-finite-public_G3 exit=0 :: {'ordinal': 'PASS', 'categorical': 'PASS'} FINITE_NATIVE_PARITY_PASS 
+GATE S9-joint-fit-parity_G1 exit=0 :: JOINT_FIT_RECEIPT_PASS cases=2 rows=320 native_parity=true 
+GATE S9-joint-public-fit_G5 exit=0 :: JOINT_FRONTEND_RECEIPT_PASS cases=2 rows=320 native_theta_checked=true deltas={'gaussian': 3.8125058665627876e-12, 'bernoulli': 1.0875744749228033e-11} 
+GATE S9-r-joint-native_G1 exit=0 :: JOINT_PUBLIC_ORACLE_PASS cases=2 rows=320 native_checked=true 
+GATE S9-r-joint-public-negatives exit=0 :: JOINT_PUBLIC_NEGATIVE_CONTROLS_PASS mutations=24 JOINT_PUBLIC_NEGATIVE_CONTROLS_PASS mutations=24 
+GATE S9-joint-native_G2 exit=0 :: JOINT_RECEIPT_NEGATIVES_PASS=11 JOINT_RECEIPT_NEGATIVES_PASS=11 
+GATE S10-finite-stopping-diagnostic exit=0 :: FINITE_STOPPING_DIAGNOSTIC_PASS {'ordinal': {'native_max_gradient': 0.001573169705340634, 'julia_independent_max_gradient': 1.1368683772161601e-08, 'displacement_residual_max': 6.356001848094714e-11}, 'categorical': {'native_max_gradient': 0.0009399121840727998, 'julia_independent_max_gradient': 8.526512829121202e-09, 'displacement_residual_max': 1.9967956024348845e-10}} FINITE_STOPPING_DAMAGES_RE
+GATE test_test_joint_missing_bridge exit=0 :: Test Summary:             | Pass  Total   Time test_joint_missing_bridge |   43     43  32.7s 
+GATE test_test_joint_missing_finite_bridge exit=0 :: Test Summary:                    | Pass  Total   Time test_joint_missing_finite_bridge |   38     38  28.1s 
+GATE test_test_joint_missing_finite_factor_coding exit=0 :: Test Summary:                           | Pass  Total   Time test_joint_missing_finite_factor_coding |  109    109  42.4s 
+GATE test_test_joint_missing_finite_frontend exit=0 :: Test Summary:                      | Pass  Total   Time test_joint_missing_finite_frontend |   86     86  48.6s 
+GATE test_test_joint_missing_finite exit=0 :: Test Summary:             | Pass  Total   Time test_joint_missing_finite |   85     85  24.0s 
+GATE test_test_joint_missing_finite_prediction exit=0 :: Test Summary:                        | Pass  Total   Time test_joint_missing_finite_prediction |   51     51  41.4s 
+GATE test_test_joint_missing_frontend exit=0 :: Test Summary:               | Pass  Total   Time test_joint_missing_frontend |   56     56  35.2s 
+GATE test_test_joint_missing_predictor exit=0 :: Test Summary:                | Pass  Total   Time test_joint_missing_predictor |   63     63  16.5s 
+GATE test_test_joint_missing_two_bridge exit=0 :: Test Summary:                 | Pass  Total   Time test_joint_missing_two_bridge |   45     45  29.6s 
+GATE test_test_joint_missing_two_frontend exit=0 :: Test Summary:                   | Pass  Total   Time test_joint_missing_two_frontend |   61     61  24.5s 
+GATE test_test_joint_missing_two_predictor exit=0 :: Test Summary:                    | Pass  Total   Time test_joint_missing_two_predictor |   84     84  20.8s 
+GATE test_test_joint_missing_uncertainty exit=0 :: Test Summary:                  | Pass  Total  Time test_joint_missing_uncertainty |   20     20  5.3s 
+DONE 2026-10-03T19:25:08Z

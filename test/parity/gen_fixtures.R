@@ -55,7 +55,7 @@ transform_expected <- function(case, coefs, V, order) {
   names(deriv) <- order
 
   ## NB2 sigma and Student nu are on the same working scales in drmTMB and
-  ## DRM.jl now (NB2: log(sigma) with size = exp(-2*sigma); Student:
+  ## DRModels.jl now (NB2: log(sigma) with size = exp(-2*sigma); Student:
   ## log(nu - 2) with nu = 2 + exp(eta)). The former reparameterisation
   ## transforms are the identity — keep this hook for any future scale drift.
 
@@ -259,7 +259,7 @@ generate_meta <- function() {
     "meta-analysis-V", seed, dat, "y ~ x + meta_V(v); sigma ~ 1", "gaussian",
     "drmTMB(drm_formula(y ~ x + meta_V(V = v), sigma ~ 1), family = gaussian(), data = dat)",
     fit,
-    "R drmTMB uses named meta_V(V = v); DRM.jl runner uses meta_V(v)."
+    "R drmTMB uses named meta_V(V = v); DRModels.jl runner uses meta_V(v)."
   )
 }
 
@@ -295,7 +295,7 @@ generate_nbinom2 <- function() {
     "count-nbinom2", seed, dat, "y ~ x; sigma ~ 1", "nbinom2",
     "drmTMB(drm_formula(y ~ x, sigma ~ 1), family = nbinom2(), data = dat)",
     fit,
-    "NB2 sigma is on the log(sigma) scale in both drmTMB and DRM.jl; size = exp(-2*sigma)."
+    "NB2 sigma is on the log(sigma) scale in both drmTMB and DRModels.jl; size = exp(-2*sigma)."
   )
 }
 
@@ -320,8 +320,8 @@ generate_beta <- function() {
 
 ## NB2 LOCATION–SCALE with a correlated species effect on BOTH the mean and the
 ## dispersion axis: bf(y ~ x + (1|p|species), sigma ~ x + (1|p|species)). This is
-## the model DRM.jl's augmented-state engine fits. The fixed sigma coefs now share
-## the log(sigma) scale (DRM.jl and drmTMB agree; size = exp(-2*sigma)), so no fixed-
+## the model DRModels.jl's augmented-state engine fits. The fixed sigma coefs now share
+## the log(sigma) scale (DRModels.jl and drmTMB agree; size = exp(-2*sigma)), so no fixed-
 ## coef transform is applied. The group covariance on the sigma axis still differs:
 ##   * a^psi_DRM = -2 * a^sigma_drmTMB, hence sd_sigma_DRM = 2 * sd_sigma_drmTMB and
 ##     cor(mu,sigma) flips sign.
@@ -367,7 +367,7 @@ generate_nbinom2_locscale <- function() {
     fit,
     note_extra = paste("Location-scale NB2: sigma fixed coefs share the log(sigma)",
                        "scale (no transform); only the sigma-axis group covariance is",
-                       "reparam'd (sd ×2, cor sign-flip) to DRM.jl's psi convention."),
+                       "reparam'd (sd ×2, cor sign-flip) to DRModels.jl's psi convention."),
     ranef = ranef
   )
 }
@@ -377,7 +377,7 @@ dir.create(file.path(repo_root(), "test", "parity", "fixtures"),
 
 ## NB2 with a covariate on the dispersion axis (sigma ~ x), FIXED effects — a
 ## location-scale-style model drmTMB DOES support today. Validates the shared
-## convention (both drmTMB and DRM.jl carry log(sigma); size = exp(-2*sigma))
+## convention (both drmTMB and DRModels.jl carry log(sigma); size = exp(-2*sigma))
 ## with a covariate, not just an intercept.
 generate_nbinom2_dispersion <- function() {
   seed <- 20260611
@@ -495,7 +495,7 @@ generate_lognormal <- function() {
 ## The coupled (1|p|species) mu/sigma correlated random effect is NOT yet
 ## supported by drmTMB ("planned for a later non-Gaussian random-effect gate"),
 ## so this case is guarded: it activates automatically once drmTMB implements it.
-## DRM.jl already fits this model; until drmTMB catches up it is validated
+## DRModels.jl already fits this model; until drmTMB catches up it is validated
 ## internally (marginal vs Gauss–Hermite, exact gradient vs finite differences,
 ## recovery, stationarity), not against drmTMB.
 if (length(.parity_only) == 0L || "nbinom2-locscale" %in% .parity_only) {

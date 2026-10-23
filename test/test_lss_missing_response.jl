@@ -14,7 +14,7 @@
 #   - include vs hand-dropped data are byte-identical on logLik and theta when
 #     every level has at least one observation.
 
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra, Statistics, StableRNGs
 
 @testset "#559 Location-scale-scale missing response" begin
@@ -76,7 +76,7 @@ using Test, Random, LinearAlgebra, Statistics, StableRNGs
         n = length(species)
         x = randn(rng, n)
         z = repeat(randn(rng, p), inner = m)  # species-level predictor
-        Kmat = DRM._phylo_correlation(phy)
+        Kmat = DRModels._phylo_correlation(phy)
         α_true = [0.2, 0.5]
         Zg_full = [ones(p) z[1:m:end]]
         σa = exp.(Zg_full * α_true)
@@ -255,7 +255,7 @@ using Test, Random, LinearAlgebra, Statistics, StableRNGs
         @test_throws ArgumentError drm(f_multi, Gaussian(); data = (; y, x, species, study))
     end
 
-    @testset "unsupported non-lss missing-response combinations still throw ArgumentError (leak guards)" begin
+    @testset "non-lss missing responses: relmat / phylo-hetero still throw (leak guards); (1 | g) and meta_V drop rows (#1089)" begin
         rng = StableRNG(20260945)
         G = 8
         m = 5
@@ -290,26 +290,21 @@ using Test, Random, LinearAlgebra, Statistics, StableRNGs
         @test err_phylo_hetero isa ArgumentError
         @test occursin("ROUTE-level", sprint(showerror, err_phylo_hetero))
 
-        # Plain (1 | g) WITHOUT sd(): still refused (positional matching not subset-safe)
-        err_ranef = nothing
-        try
-            drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)),
-                Gaussian(); data = (; y, x, g))
-        catch e
-            err_ranef = e
-        end
-        @test err_ranef isa ArgumentError
-        @test occursin("ROUTE-level", sprint(showerror, err_ranef))
+        # Plain (1 | g) WITHOUT sd() and meta_V: #1089 replaced the refusal with
+        # R's na.omit. The missing-response row is dropped from the TABLE before
+        # the design is built, so the group index is rebuilt from the kept rows
+        # (no positional trap), and the fit equals the hand-dropped one.
+        keep = .!ismissing.(y)
+        f_ranef() = bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1))
+        fit_ranef = @test_logs (:warn, r"1 of 40 rows have a missing/NaN response") match_mode = :any drm(f_ranef(), Gaussian(); data = (; y, x, g))
+        ref_ranef = drm(f_ranef(), Gaussian(); data = (; y = Float64.(y[keep]), x = x[keep], g = g[keep]))
+        @test nobs(fit_ranef) == n - 1
+        @test fit_ranef.theta == ref_ranef.theta
 
-        # meta_V: still refused
-        err_metav = nothing
-        try
-            drm(bf(@formula(y ~ x + meta_V(V)), @formula(sigma ~ 1)),
-                Gaussian(); data = (; y, x, V = ones(n)))
-        catch e
-            err_metav = e
-        end
-        @test err_metav isa ArgumentError
-        @test occursin("ROUTE-level", sprint(showerror, err_metav))
+        f_metav() = bf(@formula(y ~ x + meta_V(V)), @formula(sigma ~ 1))
+        fit_metav = @test_logs (:warn, r"1 of 40 rows have a missing/NaN response") match_mode = :any drm(f_metav(), Gaussian(); data = (; y, x, V = ones(n)))
+        ref_metav = drm(f_metav(), Gaussian(); data = (; y = Float64.(y[keep]), x = x[keep], V = ones(n - 1)))
+        @test nobs(fit_metav) == n - 1
+        @test fit_metav.theta == ref_metav.theta
     end
 end

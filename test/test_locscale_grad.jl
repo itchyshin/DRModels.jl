@@ -5,7 +5,7 @@
 # under both an i.i.d. prior and a phylogenetic-tree prior. A sign/index error in
 # any of the βμ / βψ / λ blocks (or the third-derivative or selected-inverse
 # terms) shows up here. Derivation: docs/dev-log/2026-06-06-locscale-exact-gradient.md.
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra, SparseArrays
 import Distributions
 
@@ -31,7 +31,7 @@ _grad_ok(ga, gfd; tol = 1e-4) = maximum(abs.(ga .- gfd)) < tol * (1 + maximum(ab
         gidx = repeat(1:G, inner = m)
         x = randn(n); z = randn(n)
         Xμ = hcat(ones(n), x); Xψ = hcat(ones(n), z)
-        Λt = DRM._ls_lc_to_Λ([log(0.4), 0.1, log(0.5)])
+        Λt = DRModels._ls_lc_to_Λ([log(0.4), 0.1, log(0.5)])
         Lt = cholesky(Symmetric(Λt)).L
         A = [Lt * randn(2) for _ in 1:G]
         y = [(r = exp(0.2 + A[gidx[i]][2]); μ = exp(0.3 + 0.4x[i] + A[gidx[i]][1]);
@@ -39,8 +39,8 @@ _grad_ok(ga, gfd; tol = 1e-4) = maximum(abs.(ga .- gfd)) < tol * (1 + maximum(ab
         Q = sparse(1.0 * I, G, G)
         θ = [0.25, 0.35, 0.1, -0.05, log(0.45), 0.08, log(0.55)]   # generic, not optimum
 
-        f = θ -> DRM._ls_fit_nll(Val(:nb2), y, Xμ, Xψ, gidx, G, Q, θ)
-        ga = DRM._ls_marginal_grad(Val(:nb2), y, Xμ, Xψ, gidx, G, Q, θ)
+        f = θ -> DRModels._ls_fit_nll(Val(:nb2), y, Xμ, Xψ, gidx, G, Q, θ)
+        ga = DRModels._ls_marginal_grad(Val(:nb2), y, Xμ, Xψ, gidx, G, Q, θ)
         gfd = _fd_grad(f, θ)
         @test all(isfinite, ga) && all(ga .!= 0)  # finite, populated gradient
         @test all(isfinite, gfd)
@@ -53,7 +53,7 @@ _grad_ok(ga, gfd; tol = 1e-4) = maximum(abs.(ga .- gfd)) < tol * (1 + maximum(ab
         gidx = repeat(1:G, inner = m)
         x = randn(n); z = randn(n)
         Xμ = hcat(ones(n), x); Xψ = hcat(ones(n), z)
-        Λt = DRM._ls_lc_to_Λ([log(0.35), 0.05, log(0.4)])
+        Λt = DRModels._ls_lc_to_Λ([log(0.35), 0.05, log(0.4)])
         Lt = cholesky(Symmetric(Λt)).L
         A = [Lt * randn(2) for _ in 1:G]
         y = [(α = exp(0.5 + A[gidx[i]][2]); μ = exp(0.2 + 0.3x[i] + A[gidx[i]][1]);
@@ -61,8 +61,8 @@ _grad_ok(ga, gfd; tol = 1e-4) = maximum(abs.(ga .- gfd)) < tol * (1 + maximum(ab
         Q = sparse(1.0 * I, G, G)
         θ = [0.15, 0.25, 0.4, 0.06, log(0.4), 0.05, log(0.45)]
 
-        f = θ -> DRM._ls_fit_nll(Val(:gamma), y, Xμ, Xψ, gidx, G, Q, θ)
-        ga = DRM._ls_marginal_grad(Val(:gamma), y, Xμ, Xψ, gidx, G, Q, θ)
+        f = θ -> DRModels._ls_fit_nll(Val(:gamma), y, Xμ, Xψ, gidx, G, Q, θ)
+        ga = DRModels._ls_marginal_grad(Val(:gamma), y, Xμ, Xψ, gidx, G, Q, θ)
         gfd = _fd_grad(f, θ)
         @test all(isfinite, ga) && all(ga .!= 0)
         @test all(isfinite, gfd)
@@ -75,7 +75,7 @@ _grad_ok(ga, gfd; tol = 1e-4) = maximum(abs.(ga .- gfd)) < tol * (1 + maximum(ab
         phy = random_balanced_tree(p; branch_length = 0.25)
         C = sigma_phy_dense(phy; σ²_phy = 1.0)
         LC = cholesky(Symmetric(C)).L
-        Λt = DRM._ls_lc_to_Λ([log(0.4), 0.0, log(0.3)])
+        Λt = DRModels._ls_lc_to_Λ([log(0.4), 0.0, log(0.3)])
         LΛ = cholesky(Symmetric(Λt)).L
         A = LC * randn(p, 2) * LΛ'
         species = repeat(1:p, inner = m)
@@ -83,11 +83,11 @@ _grad_ok(ga, gfd; tol = 1e-4) = maximum(abs.(ga .- gfd)) < tol * (1 + maximum(ab
         Xμ = hcat(ones(n), x); Xψ = hcat(ones(n), z)
         y = [(r = exp(0.2 + A[species[i], 2]); μ = exp(0.15 + 0.4x[i] + A[species[i], 1]);
               Float64(rand(Distributions.NegativeBinomial(r, r / (r + μ))))) for i in 1:n]
-        Q, gidx, G = DRM._locscale_phylo_setup(phy, species)
+        Q, gidx, G = DRModels._locscale_phylo_setup(phy, species)
         θ = [0.2, 0.3, 0.1, 0.04, log(0.42), 0.05, log(0.32)]
 
-        f = θ -> DRM._ls_fit_nll(Val(:nb2), y, Xμ, Xψ, gidx, G, Q, θ)
-        ga = DRM._ls_marginal_grad(Val(:nb2), y, Xμ, Xψ, gidx, G, Q, θ)
+        f = θ -> DRModels._ls_fit_nll(Val(:nb2), y, Xμ, Xψ, gidx, G, Q, θ)
+        ga = DRModels._ls_marginal_grad(Val(:nb2), y, Xμ, Xψ, gidx, G, Q, θ)
         gfd = _fd_grad(f, θ)
         @test all(isfinite, ga) && all(ga .!= 0)
         @test all(isfinite, gfd)

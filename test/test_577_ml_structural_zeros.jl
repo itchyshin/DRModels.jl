@@ -22,11 +22,11 @@
 # The 1e-3 absolute bar below therefore sits ~1.5 orders above the clean state
 # and ~4 orders below the defect.
 #
-#   julia --project=. -e 'using DRM, Test; include("test/test_577_ml_structural_zeros.jl")'
+#   julia --project=. -e 'using DRModels, Test; include("test/test_577_ml_structural_zeros.jl")'
 
 module Test577MLStructuralZeros
 
-using DRM
+using DRModels
 using Test
 using LinearAlgebra
 using SparseArrays
@@ -61,27 +61,27 @@ const FORM = bf(mu1    = @formula(y1 ~ x + phylo(1 | species)),
 # test_q4_reml_warm_restart.jl so no src edit is needed to reach it.
 function _engine_inputs()
     rhs = Dict(FORM.forms)
-    fixed, marker = DRM._bivariate_q4_marker(rhs)
+    fixed, marker = DRModels._bivariate_q4_marker(rhs)
     grp = marker[2]
-    phy = DRM._as_augmented_phy(TREE)
+    phy = DRModels._as_augmented_phy(TREE)
 
-    y1, X1, _ = DRM._design(FORM.response1, fixed[:mu1], DAT)
-    y2, X2, _ = DRM._design(FORM.response2, fixed[:mu2], DAT)
-    _, Xs1, _ = DRM._design(FORM.response1, fixed[:sigma1], DAT)
-    _, Xs2, _ = DRM._design(FORM.response1, fixed[:sigma2], DAT)
-    _, Xr, _  = DRM._design(FORM.response1, fixed[:rho12], DAT)
+    y1, X1, _ = DRModels._design(FORM.response1, fixed[:mu1], DAT)
+    y2, X2, _ = DRModels._design(FORM.response2, fixed[:mu2], DAT)
+    _, Xs1, _ = DRModels._design(FORM.response1, fixed[:sigma1], DAT)
+    _, Xs2, _ = DRModels._design(FORM.response1, fixed[:sigma2], DAT)
+    _, Xr, _  = DRModels._design(FORM.response1, fixed[:rho12], DAT)
 
-    obs1 = DRM._observed_response_mask(y1)
-    obs2 = DRM._observed_response_mask(y2)
-    species = DRM._phylo_species_index(phy, getproperty(DAT, grp))
-    prob, Q_cond = DRM.make_problem(phy, y1, y2, X1, X2, Xs1, Xs2, Xr; species = species)
+    obs1 = DRModels._observed_response_mask(y1)
+    obs2 = DRModels._observed_response_mask(y2)
+    species = DRModels._phylo_species_index(phy, getproperty(DAT, grp))
+    prob, Q_cond = DRModels.make_problem(phy, y1, y2, X1, X2, Xs1, Xs2, Xr; species = species)
 
     β1 = X1[obs1, :] \ y1[obs1]
     β2 = X2[obs2, :] \ y2[obs2]
     res1 = y1[obs1] .- X1[obs1, :] * β1
     res2 = y2[obs2] .- X2[obs2, :] * β2
     β0 = (mu1 = β1, mu2 = β2,
-          s1 = DRM._initial_scale_beta(Xs1, res1), s2 = DRM._initial_scale_beta(Xs2, res2),
+          s1 = DRModels._initial_scale_beta(Xs1, res1), s2 = DRModels._initial_scale_beta(Xs2, res2),
           rho = zeros(size(Xr, 2)))
     return prob, Q_cond, β0
 end
@@ -94,7 +94,7 @@ end
                           "block-diag"   => Matrix([1.0 0.2 0 0; 0.2 1.0 0 0;
                                                     0 0 1.0 0.2; 0 0 0.2 1.0]),
                           "dense"        => Matrix(1.0I(4)) .+ 0.1)
-        P = DRM.prior_precision(Q, Λinv)
+        P = DRModels.prior_precision(Q, Λinv)
         @test nnz(P) == nnz(Q) * 16          # every 4x4 axis entry stored
         @test Matrix(P) ≈ kron(Matrix(Q), Λinv)   # values unchanged
     end
@@ -107,16 +107,16 @@ end
     # worst case for the dropped-zeros pattern, and it is the point every
     # ML fit actually starts from.
     Λ_start = Matrix(0.3 * I(4))
-    θ = DRM.pack_theta(β0, Λ_start)
+    θ = DRModels.pack_theta(β0, Λ_start)
     nθ = length(θ)
     o6 = nθ - 10                      # the 10 log-Cholesky entries
 
     # u0 = nothing on every evaluation: a shared warm-start cache would let one
     # evaluation's mode contaminate the next one's objective (#575 heuristic 4).
-    nll_at(t) = first(DRM.marginal_and_exact_grad(prob, Q_cond, Vector{Float64}(t);
+    nll_at(t) = first(DRModels.marginal_and_exact_grad(prob, Q_cond, Vector{Float64}(t);
                                                   u0 = nothing, n_newton = 40))
 
-    nll, g, _, _ = DRM.marginal_and_exact_grad(prob, Q_cond, Vector{Float64}(θ);
+    nll, g, _, _ = DRModels.marginal_and_exact_grad(prob, Q_cond, Vector{Float64}(θ);
                                                u0 = nothing, n_newton = 40)
     @test isfinite(nll)
     @test all(isfinite, g)

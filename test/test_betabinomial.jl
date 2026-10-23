@@ -3,7 +3,7 @@
 # successes + failures), exactly as drmTMB. Logit link on the mean success
 # probability μ; the `sigma` slot is the overdispersion σ with precision
 # φ = 1/σ² (likelihood BetaBinomial(n, μφ, (1-μ)φ)). Fixed effects, ML.
-using DRM
+using DRModels
 using Test, Random
 import Distributions
 

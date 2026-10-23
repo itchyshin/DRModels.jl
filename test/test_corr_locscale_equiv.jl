@@ -10,14 +10,14 @@
 #   3. vc[:g] (2×2 RE covariance) close within ~10%.
 #
 # BetaBinomial and Student have no _corr_kind — they stay on GHQ untouched.
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra, SparseArrays
 import Distributions
 
-# Bring in the internal engine helpers (they are in the DRM module but not
-# exported; use DRM.func or reference via the module).
-const _fcloc = DRM._fit_corr_locscale
-const _corrkind = DRM._corr_kind
+# Bring in the internal engine helpers (they are in the DRModels module but not
+# exported; use DRModels.func or reference via the module).
+const _fcloc = DRModels._fit_corr_locscale
+const _corrkind = DRModels._corr_kind
 
 # ── helpers ─────────────────────────────────────────────────────────────────
 

@@ -8,7 +8,7 @@
 # - BLUPs
 
 using Test
-using DRM
+using DRModels
 using StableRNGs
 using LinearAlgebra
 using SparseArrays
@@ -24,9 +24,9 @@ function _make_balanced_newick(d)
 end
 
 function _simulate_lss_phylo(; depth = 5, n_per_group = 2, multi_cov = false, seed = 42)
-    phy = DRM.augmented_phy(_make_balanced_newick(depth))
+    phy = DRModels.augmented_phy(_make_balanced_newick(depth))
     G = phy.n_leaves
-    K0 = DRM.sigma_phy_dense(phy; σ²_phy = 1.0)
+    K0 = DRModels.sigma_phy_dense(phy; σ²_phy = 1.0)
     dK = sqrt.(diag(K0)); K = K0 ./ (dK * dK')
     rng = StableRNG(seed)
 
@@ -69,7 +69,7 @@ end
 @testset "Dense LSS capacity guard points to the sparse engine" begin
     n = 5_001
     err = try
-        DRM._fit_structured_gaussian_lss(
+        DRModels._fit_structured_gaussian_lss(
             Gaussian(), zeros(n), zeros(n, 1), zeros(n, 1), zeros(n, 1),
             ones(Int, n), n, zeros(0, 0), ["(Intercept)"], ["(Intercept)"],
             ["(Intercept)"], "species", 1e-8,
@@ -212,14 +212,14 @@ end
         gfd[k] = (fit.nll(θ .+ δ) - fit.nll(θ .- δ)) / (2h)
     end
     @test g ≈ gfd rtol = 2e-4 atol = 2e-5
-    @test DRM._profile_autodiff_mode(fit.nll, fit.nllgrad, fit.theta) === :stored
+    @test DRModels._profile_autodiff_mode(fit.nll, fit.nllgrad, fit.theta) === :stored
 
     # The sparse evaluator uses a finite penalty for invalid points.  Its stored
     # profile gradient must still make that failure unambiguously non-acceptable.
     g_bad = zeros(length(θ))
     fit.nllgrad(g_bad, fill(Inf, length(θ)))
     @test all(isnan, g_bad)
-    bad = DRM._profile_nuisance_result(
+    bad = DRModels._profile_nuisance_result(
         fit.nll, fit.theta, 1, Inf, fit.theta[2:end];
         autodiff = :stored, nllgrad = fit.nllgrad, primary_iterations = 2,
     )
@@ -258,7 +258,7 @@ end
     fit_reml = drm(f, Gaussian(); data = dat, tree = phy, sparse = true,
                    method = :REML, g_tol = 1e-8)
     @test fit_reml.nllgrad === nothing
-    @test DRM._profile_autodiff_mode(fit_reml.nll, fit_reml.nllgrad, fit_reml.theta) === :finite
+    @test DRModels._profile_autodiff_mode(fit_reml.nll, fit_reml.nllgrad, fit_reml.theta) === :finite
 end
 
 @testset "Sparse LSS: Large tree scaling sanity" begin

@@ -5,7 +5,7 @@
 # calls. xfam-external-gllvm is OUT of the #370 cohort (unsupported family /
 # cross-package estimand) and is skipped here.
 
-using DRM
+using DRModels
 using Test
 using TOML
 

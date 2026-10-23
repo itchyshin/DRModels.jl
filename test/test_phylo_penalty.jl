@@ -22,7 +22,7 @@
 # `sd_ML > 1/lambda`. Asserting unconditional shrinkage would be asserting a
 # false statement that happens to pass on a convenient fixture.
 
-using DRM
+using DRModels
 using Test
 using Random
 using LinearAlgebra
@@ -89,7 +89,7 @@ const _PEN_FORM = bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ 1))
 
     @testset "penalty = nothing is bit-identical to a plain ML fit" begin
         # The no-op guarantee. drmTMB gets it by always emitting the penalty DATA
-        # fields with penalize_phylo = 0L; DRM.jl gets it by branching on
+        # fields with penalize_phylo = 0L; DRModels.jl gets it by branching on
         # `penalty === nothing`. Either way it must be EXACT, not approximate —
         # this is what keeps every pre-existing phylo model untouched.
         fx = _pen_fixture(7)
@@ -233,7 +233,7 @@ const _PEN_FORM2 = bf(@formula(y ~ phylo(1 | species)), @formula(sigma ~ phylo(1
 
     @testset "coupled block: cor_sd shrinks the correlation toward zero" begin
         # The only block with a live phylo correlation. drmTMB penalises its
-        # UNCONSTRAINED correlation `eta_cor_phylo`; DRM.jl parameterises a
+        # UNCONSTRAINED correlation `eta_cor_phylo`; DRModels.jl parameterises a
         # Cholesky off-diagonal L21, so the port recovers cor = L21/sqrt(L21²+L22²)
         # and penalises atanh(cor). If that chain rule were wrong the correlation
         # would not move monotonically with the prior width — which is exactly what

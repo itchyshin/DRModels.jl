@@ -1,7 +1,7 @@
 # Public R-formula coefficient labels for the Julia bridge.  The numerical
 # design remains Julia-owned; this test only exercises the exported name and
 # public-selector contract.
-using DRM
+using DRModels
 using Test
 using Statistics
 using LinearAlgebra: I
@@ -88,7 +88,7 @@ import StatsAPI: StatisticalModel
         a = ["a", "b: c", "a", "b: c"],
         b = ["a", "a", "d & e", "d & e"],
     )
-    form, augmented, label_plan = DRM._bridge_formula(
+    form, augmented, label_plan = DRModels._bridge_formula(
         "y ~ a:b; sigma ~ 1", "gaussian", punctuated; labels = true)
     rhs = Dict(form.forms)[:mu]
     typed = apply_schema(FormulaTerm(Term(:y), rhs),
@@ -98,22 +98,22 @@ import StatsAPI: StatisticalModel
         "(Intercept)", "a: a & b: a", "a: b: c & b: a",
         "a: a & b: d & e", "a: b: c & b: d & e",
     ]
-    @test DRM._bridge_public_term_labels(typed.rhs, label_plan.atoms) ==
+    @test DRModels._bridge_public_term_labels(typed.rhs, label_plan.atoms) ==
           ["(Intercept)", "aa:ba", "ab: c:ba", "aa:bd & e", "ab: c:bd & e"]
 
     # Interaction labels follow formula-wide first appearance, so an otherwise
     # local `x:g` writes `ga:x` when `g` appeared earlier as a main effect.
     ordered = (; y = collect(1.0:6.0), x = collect(1.0:6.0),
                g = repeat(["a", "b", "c"], 2))
-    orderedform, orderedaug, orderedplan = DRM._bridge_formula(
+    orderedform, orderedaug, orderedplan = DRModels._bridge_formula(
         "y ~ 0 + g + x:g; sigma ~ 1", "gaussian", ordered; labels = true)
     orderedrhs = Dict(orderedform.forms)[:mu]
     orderedtyped = apply_schema(FormulaTerm(Term(:y), orderedrhs),
                                 schema(FormulaTerm(Term(:y), orderedrhs), orderedaug),
                                 StatisticalModel)
-    @test DRM._bridge_public_term_labels(
+    @test DRModels._bridge_public_term_labels(
         orderedtyped.rhs, orderedplan.atoms,
-        DRM._bridge_formula_symbol_order(orderedrhs)) ==
+        DRModels._bridge_formula_symbol_order(orderedrhs)) ==
         ["ga", "gb", "gc", "ga:x", "gb:x", "gc:x"]
 
     # Keep the raw Kronecker enumeration for two width-two factors, but write
@@ -122,23 +122,23 @@ import StatsAPI: StatisticalModel
     crossdata = (; y = collect(1.0:9.0),
                  a = repeat(["a", "b", "c"], inner = 3),
                  b = repeat(["a", "b", "c"], 3))
-    crossform, crossaug, crossplan = DRM._bridge_formula(
+    crossform, crossaug, crossplan = DRModels._bridge_formula(
         "y ~ a + b + b:a; sigma ~ 1", "gaussian", crossdata; labels = true)
     crossrhs = Dict(crossform.forms)[:mu]
     crosstyped = apply_schema(FormulaTerm(Term(:y), crossrhs),
                               schema(FormulaTerm(Term(:y), crossrhs), crossaug),
                               StatisticalModel)
     crossraw = String.(vec(coefnames(crosstyped.rhs)))
-    crosspublic = DRM._bridge_public_term_labels(
+    crosspublic = DRModels._bridge_public_term_labels(
         crosstyped.rhs, crossplan.atoms,
-        DRM._bridge_formula_symbol_order(crossrhs))
+        DRModels._bridge_formula_symbol_order(crossrhs))
     @test crossraw[end-3:end] == [
         "b: b & a: b", "b: c & a: b", "b: b & a: c", "b: c & a: c",
     ]
     @test crosspublic[end-3:end] == ["ab:bb", "ab:bc", "ac:bb", "ac:bc"]
 
     # Repeated materialisation is one exact source term, even across dpars.
-    _, _, repeated = DRM._bridge_formula(
+    _, _, repeated = DRModels._bridge_formula(
         "y ~ scale(x); sigma ~ scale(x)", "gaussian", dat; labels = true)
     @test length(repeated.atoms) == 1
     @test only(values(repeated.atoms)) == "scale(x)"
@@ -173,7 +173,7 @@ import StatsAPI: StatisticalModel
     )
     label_data = (; y = fill(1.0, 4), x = fill(2.0, 4), z = fill(1.0, 4))
     for (input, expected_label) in intrinsic
-        _, _, source_plan = DRM._bridge_formula(
+        _, _, source_plan = DRModels._bridge_formula(
             "y ~ I($input); sigma ~ 1", "gaussian", label_data; labels = true)
         @test only(values(source_plan.atoms)) == "I($expected_label)"
     end
@@ -190,18 +190,18 @@ import StatsAPI: StatisticalModel
     for row in numeric_rows[2:end]
         input, deparse, factor_label = split(row, '\t')
         value = parse(Float64, input)
-        @test DRM._bridge_r_number_label(input) == deparse
-        @test DRM._bridge_r_factor_level_label(value) == factor_label
+        @test DRModels._bridge_r_number_label(input) == deparse
+        @test DRModels._bridge_r_factor_level_label(value) == factor_label
     end
 
     # Existing bridge admission allows scalar functions around an I() term.
     # Label rendering must recurse through the typed FunctionTerm and preserve
     # the exact materialised atom provenance rather than rejecting or leaking
     # the private generated name.
-    nestedform, nestedaug, nestedplan = DRM._bridge_formula(
+    nestedform, nestedaug, nestedplan = DRModels._bridge_formula(
         "y ~ log1p(1 + I(x^2)); sigma ~ 1", "gaussian", label_data; labels = true)
     nestedrhs = Dict(nestedform.forms)[:mu]
-    nestedraw, nestedpublic = DRM._bridge_render_formula_block(
+    nestedraw, nestedpublic = DRModels._bridge_render_formula_block(
         nestedform, :mu, nestedrhs, nestedplan)
     @test nestedraw == ["(Intercept)", "log1p(1 + __bridge_I_1)"]
     @test nestedpublic == ["(Intercept)", "log1p(1 + I(x^2))"]
@@ -221,12 +221,12 @@ import StatsAPI: StatisticalModel
         fields = split(row, '\t')
         expression, expected = fields[1:2]
         expected_values = parse.(Float64, fields[3:end])
-        nested_form, nested_augmented, nested_labels = DRM._bridge_formula(
+        nested_form, nested_augmented, nested_labels = DRModels._bridge_formula(
             "y ~ $expression; sigma ~ 1", "gaussian", nested_data; labels = true)
         nested_rhs = Dict(nested_form.forms)[:mu]
-        raw_names, public_names = DRM._bridge_render_formula_block(
+        raw_names, public_names = DRModels._bridge_render_formula_block(
             nested_form, :mu, nested_rhs, nested_labels)
-        _, nested_X, nested_design_names = DRM._design(:y, nested_rhs, nested_augmented)
+        _, nested_X, nested_design_names = DRModels._design(:y, nested_rhs, nested_augmented)
         @test raw_names[2] == nested_design_names[2]
         @test public_names[2] == expected
         @test nested_X[:, 2] ≈ expected_values atol = 1e-12
@@ -244,12 +244,12 @@ import StatsAPI: StatisticalModel
         fields = split(row, '\t')
         expression, expected = fields[1:2]
         expected_values = parse.(Float64, fields[3:end])
-        scalar_form, scalar_augmented, scalar_labels = DRM._bridge_formula(
+        scalar_form, scalar_augmented, scalar_labels = DRModels._bridge_formula(
             "y ~ $expression; sigma ~ 1", "gaussian", nested_data; labels = true)
         scalar_rhs = Dict(scalar_form.forms)[:mu]
-        raw_names, public_names = DRM._bridge_render_formula_block(
+        raw_names, public_names = DRModels._bridge_render_formula_block(
             scalar_form, :mu, scalar_rhs, scalar_labels)
-        _, scalar_X, scalar_design_names = DRM._design(:y, scalar_rhs, scalar_augmented)
+        _, scalar_X, scalar_design_names = DRModels._design(:y, scalar_rhs, scalar_augmented)
         @test raw_names[2] == scalar_design_names[2]
         @test public_names[2] == expected
         @test scalar_X[:, 2] ≈ expected_values atol = 1e-12
@@ -269,12 +269,12 @@ import StatsAPI: StatisticalModel
          ifelse.(scalar_logic.x .> 0, scalar_logic.x .^ 2,
                  (scalar_logic.x .- Statistics.mean(scalar_logic.x)) ./ Statistics.std(scalar_logic.x))),
     )
-        logic_form, logic_augmented, logic_labels = DRM._bridge_formula(
+        logic_form, logic_augmented, logic_labels = DRModels._bridge_formula(
             "y ~ $expression; sigma ~ 1", "gaussian", scalar_logic; labels = true)
         logic_rhs = Dict(logic_form.forms)[:mu]
-        _, logic_public = DRM._bridge_render_formula_block(
+        _, logic_public = DRModels._bridge_render_formula_block(
             logic_form, :mu, logic_rhs, logic_labels)
-        _, logic_X, _ = DRM._design(:y, logic_rhs, logic_augmented)
+        _, logic_X, _ = DRModels._design(:y, logic_rhs, logic_augmented)
         @test logic_public[2] == expected
         @test logic_X[:, 2] ≈ values atol = 1e-12
     end
@@ -291,12 +291,12 @@ import StatsAPI: StatisticalModel
         fields = split(row, '\t')
         expression, expected = fields[1:2]
         expected_values = parse.(Float64, fields[3:end])
-        conditional_form, conditional_augmented, conditional_labels = DRM._bridge_formula(
+        conditional_form, conditional_augmented, conditional_labels = DRModels._bridge_formula(
             "y ~ $expression; sigma ~ 1", "gaussian", nested_data; labels = true)
         conditional_rhs = Dict(conditional_form.forms)[:mu]
-        _, conditional_public = DRM._bridge_render_formula_block(
+        _, conditional_public = DRModels._bridge_render_formula_block(
             conditional_form, :mu, conditional_rhs, conditional_labels)
-        _, conditional_X, _ = DRM._design(:y, conditional_rhs, conditional_augmented)
+        _, conditional_X, _ = DRModels._design(:y, conditional_rhs, conditional_augmented)
         @test conditional_public[2] == expected
         @test conditional_X[:, 2] ≈ expected_values atol = 1e-12
     end
@@ -305,17 +305,17 @@ import StatsAPI: StatisticalModel
     # exact public spellings below are both valid selectors because each dpar
     # owns an independent design column; a different spelling repeated within
     # one RHS remains an ambiguity rather than a silently collinear alias.
-    scopedform, _, scopedplan = DRM._bridge_formula(
+    scopedform, _, scopedplan = DRModels._bridge_formula(
         "y ~ I(x^2); sigma ~ I((x^2))", "gaussian", label_data; labels = true)
     @test Set(values(scopedplan.atoms)) == Set(["I(x^2)", "I((x^2))"])
     @test length(scopedplan.atoms) == 2
-    @test_throws ArgumentError DRM._bridge_formula(
+    @test_throws ArgumentError DRModels._bridge_formula(
         "y ~ I(x^2) + I((x^2)); sigma ~ 1", "gaussian", label_data; labels = true)
 
     # Distinct outer source spellings can share the same inner I() spelling
     # across dpars.  Their atoms must still be scoped apart so the translated
     # FunctionTerm keys cannot overwrite `mu` provenance with `sigma`.
-    outer_scoped, _, outer_plan = DRM._bridge_formula(
+    outer_scoped, _, outer_plan = DRModels._bridge_formula(
         "y ~ log1p(I(x^2)); sigma ~ log1p((I(x^2)))", "gaussian", label_data;
         labels = true)
     @test length(outer_plan.atoms) == 2
@@ -323,34 +323,34 @@ import StatsAPI: StatisticalModel
                    for value in values(part)) ==
           Set(["log1p(I(x^2))", "log1p((I(x^2)))"])
     outer_forms = Dict(outer_scoped.forms)
-    _, outer_mu_public = DRM._bridge_render_formula_block(
+    _, outer_mu_public = DRModels._bridge_render_formula_block(
         outer_scoped, :mu, outer_forms[:mu], outer_plan)
-    _, outer_sigma_public = DRM._bridge_render_formula_block(
+    _, outer_sigma_public = DRModels._bridge_render_formula_block(
         outer_scoped, :sigma, outer_forms[:sigma], outer_plan)
     @test outer_mu_public[2] == "log1p(I(x^2))"
     @test outer_sigma_public[2] == "log1p((I(x^2)))"
 
-    scale_scoped, _, scale_plan = DRM._bridge_formula(
+    scale_scoped, _, scale_plan = DRModels._bridge_formula(
         "y ~ exp(scale(x)); sigma ~ exp((scale(x)))", "gaussian", nested_data;
         labels = true)
     @test length(scale_plan.atoms) == 2
     scale_forms = Dict(scale_scoped.forms)
-    _, scale_mu_public = DRM._bridge_render_formula_block(
+    _, scale_mu_public = DRModels._bridge_render_formula_block(
         scale_scoped, :mu, scale_forms[:mu], scale_plan)
-    _, scale_sigma_public = DRM._bridge_render_formula_block(
+    _, scale_sigma_public = DRModels._bridge_render_formula_block(
         scale_scoped, :sigma, scale_forms[:sigma], scale_plan)
     @test scale_mu_public[2] == "exp(scale(x))"
     @test scale_sigma_public[2] == "exp((scale(x)))"
 
     # Even when no bridge column is materialised, source spelling is scoped by
     # dpar.  The AST for these two scalar calls is identical after parsing.
-    plain_scoped, _, plain_plan = DRM._bridge_formula(
+    plain_scoped, _, plain_plan = DRModels._bridge_formula(
         "y ~ exp(x); sigma ~ exp((x))", "gaussian", label_data; labels = true)
     @test isempty(plain_plan.atoms)
     plain_forms = Dict(plain_scoped.forms)
-    _, plain_mu_public = DRM._bridge_render_formula_block(
+    _, plain_mu_public = DRModels._bridge_render_formula_block(
         plain_scoped, :mu, plain_forms[:mu], plain_plan)
-    _, plain_sigma_public = DRM._bridge_render_formula_block(
+    _, plain_sigma_public = DRModels._bridge_render_formula_block(
         plain_scoped, :sigma, plain_forms[:sigma], plain_plan)
     @test plain_mu_public[2] == "exp(x)"
     @test plain_sigma_public[2] == "exp((x))"
@@ -358,13 +358,13 @@ import StatsAPI: StatisticalModel
     # Typed contrast labels distinguish Boolean and numeric levels from their
     # string look-alikes.  This is deliberately not a raw-name substitution.
     booldata = (; y = collect(1.0:4.0), g = Bool[false, true, false, true])
-    boolform, boolaug, boolplan = DRM._bridge_formula(
+    boolform, boolaug, boolplan = DRModels._bridge_formula(
         "y ~ factor(g); sigma ~ 1", "gaussian", booldata; labels = true)
     boolrhs = Dict(boolform.forms)[:mu]
     booltyped = apply_schema(FormulaTerm(Term(:y), boolrhs),
                              schema(FormulaTerm(Term(:y), boolrhs), boolaug),
                              StatisticalModel)
-    @test DRM._bridge_public_term_labels(booltyped.rhs, boolplan.atoms) ==
+    @test DRModels._bridge_public_term_labels(booltyped.rhs, boolplan.atoms) ==
           ["(Intercept)", "factor(g)TRUE"]
 
     for (high, rendered) in ((2.0, "2"), (10000.0, "10000"),
@@ -372,13 +372,13 @@ import StatsAPI: StatisticalModel
                              (1e-4, "1e-04"), (2e20, "2e+20"),
                              (1e-7, "1e-07"), (1.234567890123456, "1.23456789012346"))
         floatdata = (; y = collect(1.0:4.0), g = [0.0, high, 0.0, high])
-        floatform, floataug, floatplan = DRM._bridge_formula(
+        floatform, floataug, floatplan = DRModels._bridge_formula(
             "y ~ factor(g); sigma ~ 1", "gaussian", floatdata; labels = true)
         floatrhs = Dict(floatform.forms)[:mu]
         floattyped = apply_schema(FormulaTerm(Term(:y), floatrhs),
                                   schema(FormulaTerm(Term(:y), floatrhs), floataug),
                                   StatisticalModel)
-        @test DRM._bridge_public_term_labels(floattyped.rhs, floatplan.atoms) ==
+        @test DRModels._bridge_public_term_labels(floattyped.rhs, floatplan.atoms) ==
               ["(Intercept)", "factor(g)" * rendered]
     end
 
@@ -387,31 +387,31 @@ import StatsAPI: StatisticalModel
     # part of the public coordinate; only the typed materialised term changes.
     lssdata = (; y = [1.0, 1.2, 1.5, 1.7], x = [0.2, 0.2, 0.8, 0.8],
                g = ["a", "a", "b", "b"])
-    lssform, _, lssplan = DRM._bridge_formula(
+    lssform, _, lssplan = DRModels._bridge_formula(
         "y ~ 1 + (1 | g); sigma ~ 1; sd(g) ~ I(x^2)", "gaussian", lssdata;
         labels = true)
     lssrhs = only(last(p) for p in lssform.forms if first(p) == :sd_g)
-    lssgroupdesign, lssgroupnames = DRM._sd_group_design(
+    lssgroupdesign, lssgroupnames = DRModels._sd_group_design(
         :y, lssrhs, lssplan.data, [1, 1, 2, 2], 2, :g)
     @test lssgroupnames == ["(Intercept)", "__bridge_I_1"]
     @test lssgroupdesign[:, 2] ≈ [0.04, 0.64] atol = 1e-14
-    lssraw, _ = DRM._bridge_render_formula_block(lssform, :sd, lssrhs, lssplan)
+    lssraw, _ = DRModels._bridge_render_formula_block(lssform, :sd, lssrhs, lssplan)
     @test lssraw == ["(Intercept)", "__bridge_I_1"]
     lsspnames = ["g: " * name for name in lssraw]
     lssmap = Dict("sd_" * name => "sd_" * name for name in lsspnames)
-    DRM._bridge_lss_public_to_raw!(lssmap, lssform, Dict(:sd => lsspnames), lssplan)
+    DRModels._bridge_lss_public_to_raw!(lssmap, lssform, Dict(:sd => lsspnames), lssplan)
     @test lssmap["sd_g: __bridge_I_1"] == "sd_g: I(x^2)"
 
     # A single `sd(g) ~ g` formula has ordinary raw categorical names starting
     # with `g: `; it is not a multi-component group prefix.
-    lssfactor, _, lssfactorplan = DRM._bridge_formula(
+    lssfactor, _, lssfactorplan = DRModels._bridge_formula(
         "y ~ 1 + (1 | g); sigma ~ 1; sd(g) ~ g", "gaussian", lssdata;
         labels = true)
     lssfactorrhs = only(last(p) for p in lssfactor.forms if first(p) == :sd_g)
-    factorraw, factorpublic = DRM._bridge_render_formula_block(
+    factorraw, factorpublic = DRModels._bridge_render_formula_block(
         lssfactor, :sd, lssfactorrhs, lssfactorplan)
     lssfactormap = Dict("sd_" * name => "sd_" * name for name in factorraw)
-    DRM._bridge_lss_public_to_raw!(lssfactormap, lssfactor,
+    DRModels._bridge_lss_public_to_raw!(lssfactormap, lssfactor,
                                    Dict(:sd => factorraw), lssfactorplan)
     @test [lssfactormap["sd_" * name] for name in factorraw] ==
           ["sd_" * name for name in factorpublic]
@@ -419,7 +419,7 @@ import StatsAPI: StatisticalModel
     # Re-rendering schemas must follow `_design` exactly: missing/NaN response
     # values become placeholders only in the temporary schema table.
     missingdata = (; y = Any[1.0, missing, NaN, 2.0], x = [1.0, 2.0, 3.0, 4.0])
-    schema_data = DRM._bridge_label_schema_data(:y, missingdata)
+    schema_data = DRModels._bridge_label_schema_data(:y, missingdata)
     @test schema_data.y == [1.0, 0.0, 0.0, 2.0]
     @test ismissing(missingdata.y[2])
     @test isnan(missingdata.y[3])
@@ -429,11 +429,11 @@ import StatsAPI: StatisticalModel
     # the primitive bridge boundary.
     blocks = Pair{Symbol,UnitRange{Int}}[:mu => 1:1, :sigma => 2:2]
     names = Pair{Symbol,Vector{String}}[:mu => ["x"], :sigma => ["(Intercept)"]]
-    @test isnothing(DRM._bridge_validate_coordinate_axes(blocks, names, 2, Matrix{Float64}(I, 2, 2)))
-    @test_throws ErrorException DRM._bridge_validate_coordinate_axes(blocks, names, 2, ones(1, 1))
-    @test_throws ErrorException DRM._bridge_validate_coordinate_axes(
+    @test isnothing(DRModels._bridge_validate_coordinate_axes(blocks, names, 2, Matrix{Float64}(I, 2, 2)))
+    @test_throws ErrorException DRModels._bridge_validate_coordinate_axes(blocks, names, 2, ones(1, 1))
+    @test_throws ErrorException DRModels._bridge_validate_coordinate_axes(
         Pair{Symbol,UnitRange{Int}}[:mu => 1:1, :sigma => 1:1], names, 2, nothing)
-    @test_throws ErrorException DRM._bridge_validate_coordinate_axes(
+    @test_throws ErrorException DRModels._bridge_validate_coordinate_axes(
         Pair{Symbol,UnitRange{Int}}[:sigma => 2:2, :mu => 1:1],
         Pair{Symbol,Vector{String}}[:sigma => ["(Intercept)"], :mu => ["x"]],
         2, [1.0 0.0; 0.0 9.0])

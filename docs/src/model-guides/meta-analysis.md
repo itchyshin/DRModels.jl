@@ -1,10 +1,11 @@
 # Meta-analysis: known sampling variance, and the two correlations
 
 !!! note "Status — Stable (univariate `meta_V`), Stable (bivariate `V =`)"
-    Univariate meta-analysis via `meta_V(v)` has been in DRM.jl since the
-    Gaussian core. The **bivariate** known-sampling-covariance path — one known
-    2×2 block per study — arrived with `meta_vcov_bivariate` and the `V =`
-    keyword, and is parity-verified against drmTMB 0.7.0 (`tools/parity_biv_meta.R`).
+    Univariate meta-analysis via `meta_V(v)` has been in DRModels.jl since the
+    Gaussian core. The **bivariate** known-sampling-covariance path accepts one
+    known 2×2 block per study through `meta_vcov_bivariate` and the `V =`
+    keyword. On matched inputs, its likelihood has been checked against
+    drmTMB 0.7.0.
 
 ## 1. What makes meta-analysis different
 
@@ -105,7 +106,7 @@ drmTMB(bf(mu1 = y1 ~ x + meta_V(V = V), mu2 = y2 ~ x,
        family = c(gaussian(), gaussian()), data = dat)
 ```
 
-DRM.jl takes the object as a **fit-call keyword** instead:
+DRModels.jl takes the object as a **fit-call keyword** instead:
 
 ```julia
 drm(bf(mu1 = @formula(y1 ~ x), mu2 = @formula(y2 ~ x), …),
@@ -125,8 +126,8 @@ back directly, so a `V` built in R can be handed over unchanged.
 ### How wrong can your `cor12` guess be?
 
 Often you know `v1` and `v2` exactly but must *estimate* the sampling
-correlation. Measured (true sampling correlation 0.6, true heterogeneity
-ρ = −0.35, 40 replicates):
+correlation. In a 40-replicate recovery study with true sampling correlation
+0.6 and true heterogeneity correlation ρ = −0.35:
 
 | assumed `cor12` | bias in `rho12` |
 |---|---|
@@ -148,14 +149,15 @@ reporting which value you assumed.
 **And if you have no idea at all, still pass `V` with `cor12 = 0`** rather than
 omitting `V`: supplying the sampling *variances* matters separately from the
 correlation, and omitting `V` entirely was measurably worse (+0.091) than
-assuming independence (+0.062). Evidence:
-`docs/dev-log/evidence/2026-08-16-a12-biv-meta-recovery.md`.
+assuming independence (+0.062). This comparison comes from the package's
+parameter-recovery checks for the bivariate meta-analysis route.
 
 ## 4. What is *not* covered
 
 - **Known covariance with structured effects.** `V` combined with
   `phylo`/`relmat`/`animal`/`spatial` markers on the bivariate route is refused;
-  phylogenetic meta-analysis with known sampling covariance is a later slice.
+  phylogenetic meta-analysis with known sampling covariance is not currently
+  supported.
 - **REML with `V`** — ML only.
 - **Cross-study sampling covariance.** Only row-paired 2×2 blocks are supported.
   A dense matrix carrying off-block entries is **refused**, not silently
@@ -180,6 +182,6 @@ matches the number of studies.
 ## See also
 
 - [`meta_vcov_bivariate`](@ref) — the constructor and its validation.
+- [Meta-analysis tutorial](../tutorials/meta-analysis.md) — worked univariate
+  and multilevel examples.
 - The R↔Julia phrasebook: [`rosetta.md`](../rosetta.md).
-- `tools/parity_biv_meta.R` — the native-vs-Julia comparator behind the status
-  claim at the top of this page.

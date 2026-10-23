@@ -1,5 +1,5 @@
 # ML vs REML: σ-phylo SD recovery + boundary behaviour across signal levels.
-using DRM, Random, LinearAlgebra, Printf
+using DRModels, Random, LinearAlgebra, Printf
 println("\n# ML vs REML σ-phylo SD by true signal (mean over 3 seeds), p=20 species, m=4 reps")
 @printf("%-22s %-12s %-12s %-10s %-16s\n", "true σ_phylo", "ML σ-SD", "REML σ-SD", "REML/ML", "REML profile CI")
 for σtrue in [0.50, 0.15, 0.03]

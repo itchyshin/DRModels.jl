@@ -7,7 +7,7 @@
 # below — they are what makes delegating to the verified Gaussian kernel correct
 # rather than merely convenient.
 
-using DRM
+using DRModels
 using Test
 using Random
 using LinearAlgebra

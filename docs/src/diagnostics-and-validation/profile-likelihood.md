@@ -1,8 +1,8 @@
 # Profile-likelihood intervals
 
 !!! note "Status — Stable"
-    Mirrors drmTMB's [Profile-likelihood intervals](https://itchyshin.github.io/drmTMB/articles/profile-likelihood.html).
-    **In DRM.jl today:** profile-likelihood confidence intervals via
+    Related drmTMB article: [First-week intervals: fit, profile, and boundary](https://itchyshin.github.io/drmTMB/articles/first-week-intervals.html); see also [`profile.drmTMB`](https://itchyshin.github.io/drmTMB/reference/profile.drmTMB.html).
+    **In DRModels.jl today:** profile-likelihood confidence intervals via
     `confint(fit; method = :profile)`, the auditable [`profile_result`](@ref)
     object behind them, and the [`profile_curve`](@ref) data for a
     likelihood-ratio diagnostic plot.
@@ -26,7 +26,7 @@ y_i \mid \mu_i, \sigma \sim \operatorname{Normal}(\mu_i, \sigma^2),
 ```
 
 ```@example prof
-using DRM, Random
+using DRModels, Random
 Random.seed!(20260608)
 
 n = 70
@@ -96,6 +96,12 @@ for an unbounded statistical interval. `confint` warns when an endpoint fails;
 use `profile_result` to retain the diagnostics. The generic path rejects
 non-finite or unsuccessfully terminated nuisance solves. Optimizer termination
 alone does not prove a global optimum or a sufficiently small score.
+
+An ordinary random-effect SD (`:resd`) is a boundary parameter. When the lower
+arm reaches the numerical log-SD floor without an LR crossing, `confint` reports
+the SD-scale interval `[0, u]` (matching drmTMB `profile.boundary`) rather than
+throwing or returning `(-Inf, Inf)`. Interior SDs stay on the working `log σ_b`
+scale.
 
 If `lower_unbounded` or `upper_unbounded` is `true` without endpoint failure,
 the threshold was not crossed **within the searched range**. This is a useful

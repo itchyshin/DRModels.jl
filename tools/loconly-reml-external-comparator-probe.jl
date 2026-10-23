@@ -1,6 +1,6 @@
 #!/usr/bin/env julia
 
-using DRM
+using DRModels
 
 function _arg_value(args, flag, default)
     idx = findfirst(==(flag), args)
@@ -53,7 +53,7 @@ else
     _r_package_version(candidate_package, rscript)
 end
 
-result = DRM._loconly_reml_write_external_comparator_probe_tsv(
+result = DRModels._loconly_reml_write_external_comparator_probe_tsv(
     out;
     candidate_package = candidate_package,
     candidate_version = probe.version,

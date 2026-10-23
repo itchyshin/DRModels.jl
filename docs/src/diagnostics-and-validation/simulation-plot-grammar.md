@@ -1,7 +1,7 @@
 # Simulation plot grammar
 
 !!! note "Status — Implemented"
-    Mirrors drmTMB's [Simulation plot grammar](https://itchyshin.github.io/drmTMB/articles/simulation-plot-grammar.html). DRM.jl keeps the base package **plotting-dependency-free**: the helpers below return the *numbers a plot needs* — grids, deviances, correlations. Optional drawing is provided by **`DRMMakieExt`** (Makie + AlgebraOfGraphics weakdeps) via [`drm_figure`](../reference/visualization.md) / thin `plot_*` aliases. Default CI does **not** load Makie or render figures — only the method-less stub is gated.
+    Mirrors drmTMB's [Simulation plot grammar](https://itchyshin.github.io/drmTMB/articles/simulation-plot-grammar.html). DRModels.jl keeps the base package **plotting-dependency-free**: the helpers below return the *numbers a plot needs* — grids, deviances, correlations. Optional drawing is provided by **`DRModelsMakieExt`** (Makie + AlgebraOfGraphics weakdeps) via [`drm_figure`](../reference/visualization.md) / thin `plot_*` aliases. Default CI does **not** load Makie or render figures — only the method-less stub is gated.
 
 There are two ingredients: **`simulate`** (generate replicate data from a fit) and
 the **plot-data providers** (turn a fit into plottable grids).
@@ -68,4 +68,4 @@ Eye on the profile interval. The Documenter figure gallery may also render Eyes
 from `confint` rows — that is docs/gallery evidence, not default-CI evidence.
 
 Because every provider returns numbers (not figures), the base package stays free
-of a plotting dependency; drawing is opt-in via `DRMMakieExt`.
+of a plotting dependency; drawing is opt-in via `DRModelsMakieExt`.

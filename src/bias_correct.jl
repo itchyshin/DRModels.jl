@@ -1,5 +1,5 @@
 # bias_correct.jl — generalized-delta / epsilon-method bias correction for
-# smooth nonlinear DERIVED quantities of a fitted DRM model, in the spirit of
+# smooth nonlinear DERIVED quantities of a fitted DRModels model, in the spirit of
 # TMB's `sdreport(..., bias.correct = TRUE)` (Thorson & Kristensen 2016,
 # Fisheries Research 175:66–74).
 #
@@ -113,7 +113,7 @@ function bias_correct(θ̂::AbstractVector, V::AbstractMatrix, g::Function;
 end
 
 function _bias_correct(g, θ̂::AbstractVector, V::AbstractMatrix; level::Real)
-    0 < level < 1 || throw(ArgumentError("level must be in (0, 1), got $level"))
+    level = _validate_ci_level(level; what="bias_correct")
     θ = collect(float.(θ̂))
     n = length(θ)
     size(V) == (n, n) ||

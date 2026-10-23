@@ -2,7 +2,7 @@
 # N(0, Σ). The marginal is Gaussian; because groups are disjoint the Woodbury
 # capacitance is block-diagonal in 2×2 blocks, so the fit is O(G) closed form.
 # Recovery test: residual σ and the RE covariance Σ (its SDs).
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 
 @testset "Gaussian correlated random slope (1+x|g) — recovery" begin

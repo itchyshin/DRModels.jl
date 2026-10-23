@@ -5,10 +5,10 @@
 #   (a) augmented mode û at the leaf nodes  vs  dense leaf mode
 #   (b) augmented Laplace marginal          vs  dense leaf marginal
 
-using DRM
+using DRModels
 using Test, LinearAlgebra, ForwardDiff, Random
 
-const D = DRM
+const D = DRModels
 
 @testset "augmented sparse Laplace E-step matches dense leaf-only oracle (p=8)" begin
     Random.seed!(11)

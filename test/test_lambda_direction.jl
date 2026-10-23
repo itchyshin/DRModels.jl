@@ -6,10 +6,10 @@
 # directly via a line-searched gradient — `fit_ml_q4.jl`'s `lambda_ml_step`),
 # but they back the `sparse_em_fit.jl` demos and have no other test coverage.
 
-using DRM
+using DRModels
 using Test, LinearAlgebra, Random, Statistics
 
-const D = DRM
+const D = DRModels
 
 @testset "sparse-EM Λ M-step ascends the true Laplace marginal (p=8)" begin
     Random.seed!(7); p = 8; n = p

@@ -21,7 +21,7 @@
 # simulator the fit-based method uses so a variance-component CI is not
 # degenerate. `bootstrap_ci`/`bootstrap_summary` thread the same keywords
 # through. Both "Gaussian-only" comments are deleted.
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 import Distributions
 

@@ -5,7 +5,7 @@ body:
   - type: input
     id: slug
     attributes:
-      label: DRM.jl page slug
+      label: DRModels.jl page slug
       description: e.g. tutorials/bivariate-coscale
     validations:
       required: true

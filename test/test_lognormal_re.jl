@@ -2,7 +2,7 @@
 # y ~ x + (1|g) with log y Gaussian. μ_i = Xμ_iᵀβ + b_{g(i)} is the mean of log y,
 # b_g ~ N(0,σ_b²), σ = SD of log y. The group effect is integrated out by
 # Gauss–Hermite quadrature. Recovery: β, σ, σ_b.
-using DRM
+using DRModels
 using Test, Random
 import Distributions
 

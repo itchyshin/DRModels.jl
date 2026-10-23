@@ -6,7 +6,7 @@
 # intercept-only phylogenetic random effect as `phylo(1 | group)` on every
 # univariate family, Gaussian included — no error, byte-for-byte identical
 # theta/loglik/coefnames. drmTMB fits a genuine two-SD phylogenetic random
-# slope on Gaussian for this construct; DRM.jl has no such route yet.
+# slope on Gaussian for this construct; DRModels.jl has no such route yet.
 #
 # Fix: fail closed. `phylo(<not literal 1> | group)` on a univariate route
 # now throws `ArgumentError` naming the marker and saying it is not
@@ -25,7 +25,7 @@
 # They now refuse too, with a shorter message (no drmTMB-Gaussian claim, since
 # that has not been verified for these markers): "is not implemented on the
 # univariate routes; only the intercept form is".
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 import Distributions
 
@@ -261,7 +261,7 @@ end
 
     fit = drm(bf(@formula(y ~ x + (1 | p | phylo(species))),
                  @formula(sigma ~ 1 + (1 | p | phylo(species)))),
-              DRM.Gamma(); data = data, tree = phy, se = false)
+              DRModels.Gamma(); data = data, tree = phy, se = false)
     @test isfinite(loglik(fit))
 end
 

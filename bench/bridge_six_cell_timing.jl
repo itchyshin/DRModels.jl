@@ -1,7 +1,7 @@
 # bridge_six_cell_timing.jl — #372 Julia arm (drm_bridge wall-clock)
 #
 # CPU-aware local timing for the six #370 bridge fixture cells.
-# Does NOT touch src/; uses committed fixtures only. Stdlib + DRM only
+# Does NOT touch src/; uses committed fixtures only. Stdlib + DRModels only
 # (writes TOML — no JSON.jl dependency).
 #
 # Run from repo root:
@@ -19,7 +19,7 @@ using TOML
 
 BLAS.set_num_threads(1)
 
-using DRM
+using DRModels
 
 include(joinpath(@__DIR__, "..", "test", "parity", "loadfixture.jl"))
 

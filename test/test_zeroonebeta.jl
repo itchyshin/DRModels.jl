@@ -3,7 +3,7 @@
 # boundary (0 or 1; `coi` = P(1 | boundary)); otherwise a Beta(μ, φ) on (0,1).
 # Parameters mu (logit) / sigma (log, φ=1/σ²) / zoi (logit) / coi (logit), exactly
 # as drmTMB's `zero_one_beta`. Fixed effects, ML.
-using DRM
+using DRModels
 using Test, Random
 import Distributions
 

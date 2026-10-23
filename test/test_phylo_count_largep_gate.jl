@@ -28,7 +28,7 @@
 # three trees. Measured spread is ~1.08x. That gap is what the assertion below
 # is sized against.
 #
-# FIXED: `converged` at scale — DRM.jl#491
+# FIXED: `converged` at scale — DRModels.jl#491
 # -----------------------------------------------
 # `fit.converged` used to be true at p=128 and false for every p >= 192, while
 # the estimates got BETTER. `_laplace_outer_converged` compared a flat limit,
@@ -43,7 +43,7 @@
 # `false`, so that a fix would show up as "Unexpectedly Passed" instead of
 # looking like a regression. Now that #491 is fixed, it is a plain `@test`.
 
-using DRM
+using DRModels
 using Test
 using Random
 using LinearAlgebra
@@ -54,8 +54,8 @@ import Distributions
 function _largep_sim_fit(p::Int, branch_length::Real, sig::Real;
                          seed::Int = 4242, m::Int = 4, b0 = 0.2, b1 = 0.3, g_tol = 1e-8)
     rng = MersenneTwister(seed)
-    phy = DRM.random_balanced_tree(p; branch_length = branch_length)
-    Sraw = DRM.sigma_phy_dense(phy)              # diagonal = tree height
+    phy = DRModels.random_balanced_tree(p; branch_length = branch_length)
+    Sraw = DRModels.sigma_phy_dense(phy)              # diagonal = tree height
     L = cholesky(Symmetric(Sraw) + 1e-10I).L
     a = sig .* (L * randn(rng, p))
     species = repeat(1:p, inner = m)
@@ -63,7 +63,7 @@ function _largep_sim_fit(p::Int, branch_length::Real, sig::Real;
     x = randn(rng, n)
     eta = b0 .+ b1 .* x .+ a[species]
     y = Float64.([rand(rng, Distributions.Poisson(exp(clamp(eta[i], -20, 20)))) for i in 1:n])
-    fit = drm(bf(@formula(y ~ x + phylo(1 | species))), DRM.Poisson();
+    fit = drm(bf(@formula(y ~ x + phylo(1 | species))), DRModels.Poisson();
               data = (; y, x, species), tree = phy, se = false, g_tol = g_tol)
     return (; fit, height = Sraw[1, 1], n)
 end
@@ -102,7 +102,7 @@ end
         @test maximum(sds) / minimum(sds) < 1.5
     end
 
-    @testset "converged flag at scale (DRM.jl#491)" begin
+    @testset "converged flag at scale (DRModels.jl#491)" begin
         small = _largep_sim_fit(128, 0.2, SIG_TRUE)
         large = _largep_sim_fit(512, 0.2, SIG_TRUE)
         @test small.fit.converged
@@ -114,7 +114,7 @@ end
         @test isapprox(large.fit.theta[2], B1_TRUE; atol = 0.08)
     end
 
-    @testset "converged is not for sale (DRM.jl#491, D-179 #1)" begin
+    @testset "converged is not for sale (DRModels.jl#491, D-179 #1)" begin
         # The sharpest finding in #491: with the old `Optim.converged(res) &&
         # return true` short-circuit, ASKING for a sloppier fit made the flag
         # EASIER to earn -- g_tol = 10.0 reported converged at a relative
@@ -139,10 +139,10 @@ end
         # fall to 2.0e-5 (p=1000) and 8.1e-6 (p=3000). Cross-engine numbers
         # live in the R-side harness (tools/parity_classc_largep.R); this lock
         # just keeps the step's shape from silently reverting.
-        @test DRM._fd_hessian_step(48) == 1e-4        # small fixtures: unchanged
-        @test DRM._fd_hessian_step(400) == 1e-4       # clamp edge
-        @test DRM._fd_hessian_step(4000) ≈ 1e-3       # p=1000 cell
-        @test DRM._fd_hessian_step(12000) ≈ 3e-3      # p=3000 cell
-        @test DRM._fd_hessian_step(10^6) == 1e-2      # truncation guard
+        @test DRModels._fd_hessian_step(48) == 1e-4        # small fixtures: unchanged
+        @test DRModels._fd_hessian_step(400) == 1e-4       # clamp edge
+        @test DRModels._fd_hessian_step(4000) ≈ 1e-3       # p=1000 cell
+        @test DRModels._fd_hessian_step(12000) ≈ 3e-3      # p=3000 cell
+        @test DRModels._fd_hessian_step(10^6) == 1e-2      # truncation guard
     end
 end

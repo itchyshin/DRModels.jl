@@ -1,7 +1,7 @@
 # The bridge's `fitted`/`residuals` for a ZERO-INFLATED count fit
 # (`_bridge_fitted_marginal`, src/bridge.jl).
 #
-# DRM.jl's own `fitted(fit)` is `means[:mu]`, and for a zero-inflated Poisson or
+# DRModels.jl's own `fitted(fit)` is `means[:mu]`, and for a zero-inflated Poisson or
 # NegBinomial2 fit that slot deliberately holds the COUNT-COMPONENT mean
 # `exp(Xmu*betahat)` — `simulate`, `marginal_parameters` and `_bridge_dpars`
 # all read the component mean from it. drmTMB's `fitted()` for `zi_poisson` /
@@ -16,9 +16,9 @@
 # can see that.
 #
 # What must NOT change: hurdle (`hu ~ ...`) fits, plain counts, and every
-# non-count family keep DRM.jl's own `fitted`, and `dpars["mu"]` stays the
+# non-count family keep DRModels.jl's own `fitted`, and `dpars["mu"]` stays the
 # component mean for the zero-inflated fits too.
-using DRM
+using DRModels
 using Test
 using Random
 
@@ -53,7 +53,7 @@ _zim_bridge(formula, family) =
         # so the component mean and the unconditional mean genuinely differ.
         @test maximum(pz) > 0.05
         @test maximum(abs.(fitted_vals .- mu)) > 1e-3
-        # the dpar table is untouched: `mu` is still DRM.jl's own `fitted`,
+        # the dpar table is untouched: `mu` is still DRModels.jl's own `fitted`,
         # i.e. the count-component mean, which is the `mu` dpar drmTMB wants
         direct = drm(bf(@formula(y ~ x), @formula(sigma ~ 1), @formula(zi ~ w)),
                      NegBinomial2(); data = _ZIM_DATA)
@@ -74,7 +74,7 @@ _zim_bridge(formula, family) =
         for fam in ("nbinom2", "poisson")
             out = _zim_bridge(Dict("mu" => "y ~ x"), fam)
             fit = drm(bf(@formula(y ~ x)),
-                      fam == "nbinom2" ? NegBinomial2() : Poisson();
+                      fam == "nbinom2" ? NegBinomial2() : DRModels.Poisson();
                       data = _ZIM_DATA)
             @test isapprox(out["fitted"], fitted(fit); atol = 1e-10)
             @test isapprox(out["residuals"], residuals(fit); atol = 1e-10)
@@ -105,10 +105,10 @@ _zim_bridge(formula, family) =
     end
 
     @testset "(f) the helper itself: selection is scales[:zi], and it is total" begin
-        # A fit with no `:zi` scale returns DRM.jl's own values unchanged --
+        # A fit with no `:zi` scale returns DRModels.jl's own values unchanged --
         # the guard, not an accident of the families exercised above.
-        fit = drm(bf(@formula(y ~ x)), Poisson(); data = _ZIM_DATA)
-        f, r = DRM._bridge_fitted_marginal(fit)
+        fit = drm(bf(@formula(y ~ x)), DRModels.Poisson(); data = _ZIM_DATA)
+        f, r = DRModels._bridge_fitted_marginal(fit)
         @test !haskey(fit.scales, :zi)
         @test f == fitted(fit)
         @test isapprox(r, residuals(fit); atol = 1e-12)

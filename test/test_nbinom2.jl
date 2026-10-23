@@ -2,9 +2,9 @@
 # the `sigma` slot carries `log σ` with size θ = 1/σ² = exp(-2·coef(:sigma))
 # (#315/#316, matching drmTMB). Var = μ + μ²/θ; as θ → ∞ it tends to Poisson.
 # Fixed effects, ML. Mirrors drmTMB's `nbinom2`.
-using DRM
+using DRModels
 using Test, Random
-import Distributions          # qualified — DRM has its own family type
+import Distributions          # qualified — DRModels has its own family type
 
 @testset "Negative binomial (NB2, overdispersed counts) — recovery" begin
     Random.seed!(20260616)

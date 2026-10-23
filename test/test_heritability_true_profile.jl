@@ -10,8 +10,8 @@
 #       NLL above the frozen-substitution NLL (and here strictly lowers it), so the
 #       true profile is genuinely re-maximising;
 #   (2) the resulting :profile CI is a valid [0, 1] interval bracketing the estimate.
-using DRM, Test, Random, Statistics
-const Optim = DRM.Optim          # reuse the package's Optim (not a declared test dep)
+using DRModels, Test, Random, Statistics
+const Optim = DRModels.Optim          # reuse the package's Optim (not a declared test dep)
 
 @testset "heritability true profile re-optimises nuisance (#313)" begin
     Random.seed!(42)
@@ -21,7 +21,7 @@ const Optim = DRM.Optim          # reuse the package's Optim (not a declared tes
     y = 1.0 .+ b1[g] .+ b2[h] .+ 0.5 .* randn(nn)
     fit = drm(bf(@formula(y ~ 1 + (1 | g) + (1 | h))), Gaussian(); data = (; y, g, h))
 
-    comps, resid_idx = DRM._variance_component_indices(fit)
+    comps, resid_idx = DRModels._variance_component_indices(fit)
     @test length(comps) == 2                     # two structured components (trade off)
     focal = comps[1].second
     denom = vcat([idx for (_, idx) in comps], resid_idx)
@@ -29,7 +29,7 @@ const Optim = DRM.Optim          # reuse the package's Optim (not a declared tes
     θ̂ = copy(coef(fit))
     nll = fit.nll
     @test nll !== nothing
-    r̂ = DRM._ratio_closure(focal, denom)(θ̂)
+    r̂ = DRModels._ratio_closure(focal, denom)(θ̂)
 
     # Frozen-substitution NLL (the OLD, defective behaviour): S_others fixed at MLE.
     S0 = sum(exp(2 * θ̂[idx]) for idx in others)

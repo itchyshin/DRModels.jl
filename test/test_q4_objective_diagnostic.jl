@@ -1,4 +1,4 @@
-using DRM, Test, Random, LinearAlgebra
+using DRModels, Test, Random, LinearAlgebra
 
 function _q4_diagnostic_problem(; p::Int = 8, nrep::Int = 2, seed::Int = 293)
     rng = MersenneTwister(seed)
@@ -44,7 +44,7 @@ function _q4_diagnostic_problem(; p::Int = 8, nrep::Int = 2, seed::Int = 293)
         mu2 = dot(X2[i, :], beta.mu2) + u[2]
         s1 = exp(dot(Xs1[i, :], beta.s1) + u[3])
         s2 = exp(dot(Xs2[i, :], beta.s2) + u[4])
-        rho = DRM.RHO_GUARD * tanh(dot(Xr[i, :], beta.rho))
+        rho = DRModels.RHO_GUARD * tanh(dot(Xr[i, :], beta.rho))
         e = cholesky(Symmetric([s1^2 rho * s1 * s2; rho * s1 * s2 s2^2])).L *
             randn(rng, 2)
         y1[i] = mu1 + e[1]
@@ -58,7 +58,7 @@ end
 @testset "q4 ML objective diagnostic reports first non-finite component (#293)" begin
     prob, Q_cond, theta0 = _q4_diagnostic_problem()
 
-    diag = DRM.q4_marginal_diagnostic(prob, Q_cond, theta0;
+    diag = DRModels.q4_marginal_diagnostic(prob, Q_cond, theta0;
                                       n_newton = 20, gradient = true)
     @test diag.ok
     @test diag.first_nonfinite === nothing
@@ -70,13 +70,13 @@ end
 
     theta_nan = copy(theta0)
     theta_nan[1] = NaN
-    diag_nan = DRM.q4_marginal_diagnostic(prob, Q_cond, theta_nan)
+    diag_nan = DRModels.q4_marginal_diagnostic(prob, Q_cond, theta_nan)
     @test !diag_nan.ok
     @test diag_nan.first_nonfinite.stage == :theta
 
     theta_overflow = copy(theta0)
     theta_overflow[end] = 1000.0
-    diag_overflow = DRM.q4_marginal_diagnostic(prob, Q_cond, theta_overflow)
+    diag_overflow = DRModels.q4_marginal_diagnostic(prob, Q_cond, theta_overflow)
     @test !diag_overflow.ok
     @test diag_overflow.first_nonfinite.stage == :among_axis_covariance
 end

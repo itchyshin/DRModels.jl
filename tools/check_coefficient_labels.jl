@@ -1,6 +1,6 @@
-using DRM, Test, LinearAlgebra
+using DRModels, Test, LinearAlgebra
 BLAS.set_num_threads(1)
-println("RUNTIME source=", pathof(DRM), " Julia=", VERSION,
+println("RUNTIME source=", pathof(DRModels), " Julia=", VERSION,
         " threads=", Threads.nthreads(), " BLAS=", BLAS.get_num_threads())
 @test Threads.nthreads() == 1
 @test BLAS.get_num_threads() == 1

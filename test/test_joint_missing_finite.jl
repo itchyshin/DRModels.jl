@@ -1,4 +1,4 @@
-using DRM
+using DRModels
 using Test
 using ForwardDiff
 using LinearAlgebra
@@ -65,7 +65,7 @@ function _finite_fixture(predictor::Symbol; levels = ["low", "middle", "high"])
     end
     Xsigma = ones(n, 1)
     Xpredictor = reshape(copy(z), n, 1)
-    model = DRM.prepared_joint_model(y, x, Xstate, Xsigma, Xpredictor;
+    model = DRModels.prepared_joint_model(y, x, Xstate, Xsigma, Xpredictor;
         predictor = predictor, levels = levels, variable = :severity,
         mu_names = ["(Intercept)", "state_score"], sigma_names = ["(Intercept)"],
         predictor_names = ["z"], original_row = [31, 7, 88, 19])
@@ -89,34 +89,34 @@ function _finite_fit_fixture(predictor::Symbol)
         Xstate[i, k, 1] = 1.0
         Xstate[i, k, 2] = (-0.7 + 0.8 * (k - 1)) + 0.2 * z[i]
     end
-    return DRM.prepared_joint_model(y, x, Xstate, ones(n, 1), reshape(z, n, 1);
+    return DRModels.prepared_joint_model(y, x, Xstate, ones(n, 1), reshape(z, n, 1);
         predictor = predictor, levels = ["low", "middle", "high"], variable = :severity,
         original_row = collect(501:(500 + n)))
 end
 
 """Construct a fixed-theta fit for uncertainty-status tests, without an optimizer claim."""
 function _finite_synthetic_fit(model, theta; covariance_status::Symbol = :observed_information_inverse)
-    frozen = DRM._finite_joint_copy_model(model)
+    frozen = DRModels._finite_joint_copy_model(model)
     theta = Float64.(theta)
-    moments = DRM.prepared_joint_conditional_moments(frozen, theta)
-    nll = t -> DRM.prepared_joint_nll(frozen, t)
+    moments = DRModels.prepared_joint_conditional_moments(frozen, theta)
+    nll = t -> DRModels.prepared_joint_nll(frozen, t)
     p = length(theta)
     covariance = covariance_status === :observed_information_inverse ? Matrix{Float64}(I, p, p) : fill(NaN, p, p)
-    blocks, names = DRM._finite_joint_blocks(frozen)
-    ranges = DRM._finite_joint_ranges(frozen)
-    state_means = DRM._finite_joint_state_means(frozen, @view theta[ranges.beta])
+    blocks, names = DRModels._finite_joint_blocks(frozen)
+    ranges = DRModels._finite_joint_ranges(frozen)
+    state_means = DRModels._finite_joint_state_means(frozen, @view theta[ranges.beta])
     mu = [sum(moments.probabilities[i, k] * state_means[i, k] for k in eachindex(frozen.levels)) for i in eachindex(frozen.y)]
-    base = DRM.DrmFit(DRM.PreparedJointGaussian(), blocks, names, copy(theta), covariance, -nll(theta),
+    base = DRModels.DrmFit(DRModels.PreparedJointGaussian(), blocks, names, copy(theta), covariance, -nll(theta),
         count(frozen.observed_y), true, Dict{Symbol,Vector{Float64}}(:mu => Float64.(mu)),
         Dict{Symbol,Vector{Float64}}(:mu => Float64[v === missing ? NaN : v for v in frozen.y]),
         Dict{Symbol,Vector{Float64}}(:sigma => exp.(frozen.Xsigma * theta[ranges.delta])))
-    base = DRM._withnll(base, nll)
-    metadata = DRM.JointFiniteMissingMetadata(frozen.predictor, frozen.variable, copy(frozen.levels),
+    base = DRModels._withnll(base, nll)
+    metadata = DRModels.JointFiniteMissingMetadata(frozen.predictor, frozen.variable, copy(frozen.levels),
         copy(frozen.original_row), copy(frozen.observed_y), copy(frozen.observed_x),
         Float64.(moments.probabilities), Float64.(moments.mean), Float64.(moments.variance), copy(moments.status),
         length(frozen.y), count(i -> !frozen.observed_y[i] && frozen.observed_x[i], eachindex(frozen.y)),
         :not_computed, :converged, covariance_status)
-    return DRM.PreparedFiniteJointFit(base, frozen, metadata)
+    return DRModels.PreparedFiniteJointFit(base, frozen, metadata)
 end
 
 function _finite_reference(model, theta)
@@ -161,13 +161,13 @@ function _finite_reference(model, theta)
 end
 
 @testset "finite-state prepared joint API" begin
-    @test isdefined(DRM, :PreparedFiniteJointModel)
-    @test isdefined(DRM, :PreparedFiniteJointFit)
-    @test isdefined(DRM, :prepared_joint_model)
-    @test isdefined(DRM, :prepared_joint_rowloglik)
-    @test isdefined(DRM, :prepared_joint_conditional_moments)
-    @test isdefined(DRM, :fit_prepared_joint)
-    @test isdefined(DRM, :joint_missing_summary)
+    @test isdefined(DRModels, :PreparedFiniteJointModel)
+    @test isdefined(DRModels, :PreparedFiniteJointFit)
+    @test isdefined(DRModels, :prepared_joint_model)
+    @test isdefined(DRModels, :prepared_joint_rowloglik)
+    @test isdefined(DRModels, :prepared_joint_conditional_moments)
+    @test isdefined(DRModels, :fit_prepared_joint)
+    @test isdefined(DRModels, :joint_missing_summary)
 end
 
 @testset "ordinal finite-state likelihood, all masks, and posterior moments" begin
@@ -177,14 +177,14 @@ end
     @test model.variable === :severity
     @test model.observed_y == BitVector([true, true, false, false])
     @test model.observed_x == BitVector([true, false, true, false])
-    @test DRM._finite_joint_ntheta(model) == length(theta)
+    @test DRModels._finite_joint_ntheta(model) == length(theta)
 
     expected_row, expected_probabilities = _finite_reference(model, theta)
-    @test DRM.prepared_joint_rowloglik(model, theta) ≈ expected_row atol = 1e-12
-    @test DRM.prepared_joint_nll(model, theta) ≈ -sum(expected_row) atol = 1e-12
+    @test DRModels.prepared_joint_rowloglik(model, theta) ≈ expected_row atol = 1e-12
+    @test DRModels.prepared_joint_nll(model, theta) ≈ -sum(expected_row) atol = 1e-12
     @test expected_row[4] == 0.0
 
-    moments = DRM.prepared_joint_conditional_moments(model, theta)
+    moments = DRModels.prepared_joint_conditional_moments(model, theta)
     @test size(moments.probabilities) == (4, 3)
     @test moments.probabilities ≈ expected_probabilities atol = 1e-12
     @test vec(sum(moments.probabilities; dims = 2)) ≈ ones(4) atol = 1e-12
@@ -205,38 +205,38 @@ end
 @testset "categorical finite-state likelihood, label mapping, and no metric SE" begin
     model, theta = _finite_fixture(:categorical)
     expected_row, expected_probabilities = _finite_reference(model, theta)
-    @test DRM.prepared_joint_rowloglik(model, theta) ≈ expected_row atol = 1e-12
-    moments = DRM.prepared_joint_conditional_moments(model, theta)
+    @test DRModels.prepared_joint_rowloglik(model, theta) ≈ expected_row atol = 1e-12
+    moments = DRModels.prepared_joint_conditional_moments(model, theta)
     @test moments.probabilities ≈ expected_probabilities atol = 1e-12
     @test moments.mean == [2.0, 1.0, 3.0, 2.0]
     @test all(isnan, moments.variance)
     @test moments.status == [:observed, :categorical_posterior, :observed, :predictor_only]
-    categorical_blocks, categorical_names = DRM._finite_joint_blocks(model)
+    categorical_blocks, categorical_names = DRModels._finite_joint_blocks(model)
     @test Dict(categorical_blocks)[:mi_severity] == 4:5
     @test Dict(categorical_names)[:mi_severity] == ["middle:z", "high:z"]
     tied = copy(theta); tied[4:5] .= 0.0
-    @test DRM.prepared_joint_conditional_moments(model, tied).mean[4] == 1.0 # first maximum wins
+    @test DRModels.prepared_joint_conditional_moments(model, tied).mean[4] == 1.0 # first maximum wins
 
     # Rebase the nominal logits after a level permutation.  The scientific
     # likelihood is invariant and posterior columns follow the declared order.
     perm = [3, 1, 2]
     permuted_xstate = model.X_mu_state[:, perm, :]
     permuted_levels = model.levels[perm]
-    permuted = DRM.prepared_joint_model(model.y, Union{Missing,String}["middle", missing, "high", missing],
+    permuted = DRModels.prepared_joint_model(model.y, Union{Missing,String}["middle", missing, "high", missing],
         permuted_xstate, model.Xsigma, model.Xpredictor; predictor = :categorical,
         levels = permuted_levels, variable = :severity, mu_names = model.mu_names,
         sigma_names = model.sigma_names, predictor_names = model.predictor_names,
         original_row = model.original_row)
     permuted_theta = [theta[1:3]; -theta[5]; theta[4] - theta[5]]
-    @test DRM.prepared_joint_rowloglik(permuted, permuted_theta) ≈ expected_row atol = 1e-12
-    permuted_moments = DRM.prepared_joint_conditional_moments(permuted, permuted_theta)
+    @test DRModels.prepared_joint_rowloglik(permuted, permuted_theta) ≈ expected_row atol = 1e-12
+    permuted_moments = DRModels.prepared_joint_conditional_moments(permuted, permuted_theta)
     @test permuted_moments.probabilities[:, invperm(perm)] ≈ moments.probabilities atol = 1e-12
 end
 
 @testset "finite-state stable derivatives and validation" begin
     for predictor in (:ordinal, :categorical)
         model, theta = _finite_fixture(predictor)
-        nll = t -> DRM.prepared_joint_nll(model, t)
+        nll = t -> DRModels.prepared_joint_nll(model, t)
         @test ForwardDiff.gradient(nll, theta) ≈ _finite_central_gradient(nll, theta) atol = 1e-6 rtol = 1e-6
         H = ForwardDiff.hessian(nll, theta)
         direction = collect(range(-0.3, 0.4; length = length(theta)))
@@ -248,53 +248,53 @@ end
 
     ordinal, theta = _finite_fixture(:ordinal)
     extreme = copy(theta); extreme[4] = 1000.0; extreme[5] = 0.0; extreme[6] = log(1e-12)
-    @test all(isfinite, DRM.prepared_joint_rowloglik(ordinal, extreme))
-    extreme_moments = DRM.prepared_joint_conditional_moments(ordinal, extreme)
+    @test all(isfinite, DRModels.prepared_joint_rowloglik(ordinal, extreme))
+    extreme_moments = DRModels.prepared_joint_conditional_moments(ordinal, extreme)
     @test all(isfinite, extreme_moments.probabilities)
     @test vec(sum(extreme_moments.probabilities; dims = 2)) ≈ ones(4) atol = 1e-12
     extreme_low = copy(extreme); extreme_low[4] = -1000.0
-    @test all(isfinite, DRM.prepared_joint_rowloglik(ordinal, extreme_low))
-    @test all(isfinite, ForwardDiff.gradient(t -> DRM.prepared_joint_nll(ordinal, t), extreme_low))
+    @test all(isfinite, DRModels.prepared_joint_rowloglik(ordinal, extreme_low))
+    @test all(isfinite, ForwardDiff.gradient(t -> DRModels.prepared_joint_nll(ordinal, t), extreme_low))
     tiny_raw_spacing = copy(theta); tiny_raw_spacing[6] = -1000.0
-    @test all(isfinite, DRM.prepared_joint_rowloglik(ordinal, tiny_raw_spacing))
-    @test all(isfinite, ForwardDiff.gradient(t -> DRM.prepared_joint_nll(ordinal, t), tiny_raw_spacing))
+    @test all(isfinite, DRModels.prepared_joint_rowloglik(ordinal, tiny_raw_spacing))
+    @test all(isfinite, ForwardDiff.gradient(t -> DRModels.prepared_joint_nll(ordinal, t), tiny_raw_spacing))
     large_spacing = copy(theta); large_spacing[6] = 10.0
-    @test all(isfinite, DRM.prepared_joint_rowloglik(ordinal, large_spacing))
+    @test all(isfinite, DRModels.prepared_joint_rowloglik(ordinal, large_spacing))
 
     # `cut2 == cut1` after Float64 rounding here; the raw spacing still gives
     # the middle state positive mass when its log difference is evaluated stably.
     saturated = copy(theta); saturated[4] = 0.0; saturated[5] = 30.0; saturated[6] = log(1e-16)
-    saturated_moments = DRM.prepared_joint_conditional_moments(ordinal, saturated)
+    saturated_moments = DRModels.prepared_joint_conditional_moments(ordinal, saturated)
     @test all(isfinite, saturated_moments.probabilities)
     @test saturated_moments.probabilities[4, 2] > 0.0
 
     # A response can dominate an initially tiny state probability: posterior
     # enumeration must use log weights rather than underflowing probabilities.
-    dominant = DRM.prepared_joint_model([44.0], Union{Missing,String}[missing],
+    dominant = DRModels.prepared_joint_model([44.0], Union{Missing,String}[missing],
         reshape([1.0, 1.0, 1.0, -1.0, 0.0, 1.0], 1, 3, 2), ones(1, 1), zeros(1, 0);
         predictor = :ordinal, levels = ["low", "middle", "high"], variable = :severity)
     dominant_theta = [0.0, 40.0, log(0.1), 0.0, log(40.0)]
-    @test DRM.prepared_joint_conditional_moments(dominant, dominant_theta).probabilities[1, 3] > 1 - 1e-10
+    @test DRModels.prepared_joint_conditional_moments(dominant, dominant_theta).probabilities[1, 3] > 1 - 1e-10
 
     n = 3
     q0_state = zeros(n, 3, 2)
     q0_state[:, :, 1] .= 1.0
     q0_state[:, :, 2] .= reshape([-0.5, 0.0, 0.5], 1, 3)
-    q0 = DRM.prepared_joint_model([1.0, missing, -0.2], Union{Missing,String}["low", missing, "high"],
+    q0 = DRModels.prepared_joint_model([1.0, missing, -0.2], Union{Missing,String}["low", missing, "high"],
         q0_state, ones(n, 1), zeros(n, 0);
         predictor = :ordinal, levels = ["low", "middle", "high"], variable = :severity)
-    @test DRM._finite_joint_ntheta(q0) == 5 # beta(2), delta(1), cutraw(2); ordinal permits q = 0.
-    @test isfinite(DRM.prepared_joint_nll(q0, zeros(5)))
-    @test_throws ArgumentError DRM.prepared_joint_model(ordinal.y, ["unknown", missing, "high", missing],
+    @test DRModels._finite_joint_ntheta(q0) == 5 # beta(2), delta(1), cutraw(2); ordinal permits q = 0.
+    @test isfinite(DRModels.prepared_joint_nll(q0, zeros(5)))
+    @test_throws ArgumentError DRModels.prepared_joint_model(ordinal.y, ["unknown", missing, "high", missing],
         ordinal.X_mu_state, ordinal.Xsigma, ordinal.Xpredictor; predictor = :ordinal,
         levels = ordinal.levels, variable = :severity)
-    @test_throws ArgumentError DRM.prepared_joint_model(ordinal.y, ordinal.x, ordinal.X_mu_state,
+    @test_throws ArgumentError DRModels.prepared_joint_model(ordinal.y, ordinal.x, ordinal.X_mu_state,
         ordinal.Xsigma, zeros(4, 0); predictor = :categorical, levels = ordinal.levels, variable = :severity)
-    @test_throws ArgumentError DRM.prepared_joint_model(ordinal.y, ordinal.x, ordinal.X_mu_state,
+    @test_throws ArgumentError DRModels.prepared_joint_model(ordinal.y, ordinal.x, ordinal.X_mu_state,
         ordinal.Xsigma, ordinal.Xpredictor; predictor = :ordinal, levels = ["low", "low", "high"], variable = :severity)
     declared_x = Union{Missing,String}["middle", missing, "high", missing]
     intercept_error = try
-        DRM.prepared_joint_model(ordinal.y, declared_x, ordinal.X_mu_state, ordinal.Xsigma, ones(4, 1);
+        DRModels.prepared_joint_model(ordinal.y, declared_x, ordinal.X_mu_state, ordinal.Xsigma, ones(4, 1);
             predictor = :ordinal, levels = ordinal.levels, variable = :severity)
         nothing
     catch err
@@ -302,12 +302,12 @@ end
     end
     @test intercept_error isa ArgumentError
     @test occursin("span an intercept", sprint(showerror, intercept_error))
-    @test_throws ArgumentError DRM.prepared_joint_model(ordinal.y, declared_x, ordinal.X_mu_state,
+    @test_throws ArgumentError DRModels.prepared_joint_model(ordinal.y, declared_x, ordinal.X_mu_state,
         ordinal.Xsigma, hcat([1.0, 0.0, 1.0, 0.0], [0.0, 1.0, 0.0, 1.0]);
         predictor = :ordinal, levels = ordinal.levels, variable = :severity)
-    @test_throws ArgumentError DRM.prepared_joint_rowloglik(ordinal, theta[1:end-1])
+    @test_throws ArgumentError DRModels.prepared_joint_rowloglik(ordinal, theta[1:end-1])
     bad = copy(theta); bad[1] = Inf
-    @test_throws ArgumentError DRM.prepared_joint_nll(ordinal, bad)
+    @test_throws ArgumentError DRModels.prepared_joint_nll(ordinal, bad)
 end
 
 @testset "finite-state fit snapshot, covariance status, and copy isolation" begin
@@ -323,11 +323,11 @@ end
         Xstate[i, k, 1] = 1.0
         Xstate[i, k, 2] = (-0.7 + 0.8 * (k - 1)) + 0.2 * z[i]
     end
-    model = DRM.prepared_joint_model(y, x, Xstate, ones(n, 1), reshape(z, n, 1);
+    model = DRModels.prepared_joint_model(y, x, Xstate, ones(n, 1), reshape(z, n, 1);
         predictor = :ordinal, levels = ["low", "middle", "high"], variable = :severity,
         original_row = collect(501:(500 + n)))
-    fitted = DRM.fit_prepared_joint(model; g_tol = 1e-7)
-    @test fitted isa DRM.PreparedFiniteJointFit
+    fitted = DRModels.fit_prepared_joint(model; g_tol = 1e-7)
+    @test fitted isa DRModels.PreparedFiniteJointFit
     @test fitted.fit.nobs == count(model.observed_y)
     @test isfinite(fitted.fit.loglik)
     @test fitted.metadata.optimizer_status in (:converged, :not_converged)
@@ -343,7 +343,7 @@ end
     model.X_mu_state[1, 1, 1] = 1e6
     model.y[1] = -1e6
     @test fitted.fit.nll(fitted.fit.theta) == before
-    summary = DRM.joint_missing_summary(fitted)
+    summary = DRModels.joint_missing_summary(fitted)
     summary.original_row[1] = -1
     @test fitted.metadata.original_row[1] == 501
     @test size(summary.conditional_probabilities) == (n, K)
@@ -357,12 +357,12 @@ end
     categorical_model, categorical_theta = _finite_fixture(:categorical)
     ordinal_fit = _finite_synthetic_fit(ordinal_model, ordinal_theta)
     categorical_fit = _finite_synthetic_fit(categorical_model, categorical_theta)
-    ordinal_table = DRM.imputed(ordinal_fit; rows = :all, se = false)
+    ordinal_table = DRModels.imputed(ordinal_fit; rows = :all, se = false)
     @test ordinal_table.variable == fill("severity", length(ordinal_model.y))
     @test ordinal_table.original_row == ordinal_model.original_row
     @test ordinal_table.source[.!ordinal_model.observed_x] == fill("conditional_expected_score", count(.!ordinal_model.observed_x))
     @test all(ismissing, ordinal_table.std_error)
-    categorical_table = DRM.imputed(categorical_fit; rows = :all)
+    categorical_table = DRModels.imputed(categorical_fit; rows = :all)
     @test all(ismissing, categorical_table.std_error)
     @test categorical_table.source[.!categorical_model.observed_x] == fill("conditional_modal_category", count(.!categorical_model.observed_x))
     if categorical_fit.metadata.covariance_status === :observed_information_inverse
@@ -373,10 +373,10 @@ end
         @test all(!=("route_conditional_se_unavailable"), categorical_table.uncertainty_status)
     end
     failed = _finite_synthetic_fit(ordinal_model, ordinal_theta; covariance_status = :hessian_unavailable)
-    failed_table = DRM.imputed(failed; rows = :all)
+    failed_table = DRModels.imputed(failed; rows = :all)
     @test all(==("sdreport_failed"), failed_table.uncertainty_status)
     @test all(ismissing, failed_table.std_error)
-    @test_throws ArgumentError DRM.imputed(categorical_fit; rows = :elsewhere)
+    @test_throws ArgumentError DRModels.imputed(categorical_fit; rows = :elsewhere)
 end
 
 println("S9_FINITE_JOINT_RED_TO_GREEN")

@@ -39,7 +39,7 @@
 #     rises above 1e-6 even though the gradient is correct. The small fixture
 #     keeps |∇|≈O(1–10), where plain central differences at h=1e-4 sit at ~1e-8.
 
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra, SparseArrays
 import Distributions
 
@@ -76,8 +76,8 @@ _glsp_draw(ημ, ησ) = (α = exp(ησ); μ = exp(ημ); rand(Distributions.Gam
         y = [_glsp_draw(βμ[1] + βμ[2] * x[i] + A[species[i], 1],
                         βψ[1] + A[species[i], 2]) for i in 1:n]
 
-        Q, gidx, G = DRM._locscale_phylo_setup(phy, species)
-        fit = DRM._fit_locscale(Val(:gamma), y, Xμ, Xψ, gidx, G, Q; se = false)
+        Q, gidx, G = DRModels._locscale_phylo_setup(phy, species)
+        fit = DRModels._fit_locscale(Val(:gamma), y, Xμ, Xψ, gidx, G, Q; se = false)
         comp = fit.components                     # (sd_mu, sd_psi, cor_mu_psi)
 
         @test fit.converged
@@ -100,7 +100,7 @@ _glsp_draw(ημ, ησ) = (α = exp(ησ); μ = exp(ημ); rand(Distributions.Gam
 
         # Stationarity of the EXACT outer gradient at the fitted θ (converged
         # through the tree precision + Takahashi, not merely a flat LBFGS stop).
-        gmax = maximum(abs, DRM._ls_marginal_grad(Val(:gamma), y, Xμ, Xψ, gidx, G, Q, fit.θ))
+        gmax = maximum(abs, DRModels._ls_marginal_grad(Val(:gamma), y, Xμ, Xψ, gidx, G, Q, fit.θ))
         @test gmax < 1e-3
     end
 
@@ -113,7 +113,7 @@ _glsp_draw(ημ, ησ) = (α = exp(ησ); μ = exp(ημ); rand(Distributions.Gam
         phy = random_balanced_tree(p; branch_length = 0.25)
         C = sigma_phy_dense(phy; σ²_phy = 1.0)
         LC = cholesky(Symmetric(C)).L
-        Λt = DRM._ls_lc_to_Λ([log(0.42), 0.04, log(0.34)])
+        Λt = DRModels._ls_lc_to_Λ([log(0.42), 0.04, log(0.34)])
         LΛ = cholesky(Symmetric(Λt)).L
         A = LC * randn(p, 2) * LΛ'
         species = repeat(1:p, inner = m)
@@ -123,13 +123,13 @@ _glsp_draw(ημ, ησ) = (α = exp(ησ); μ = exp(ημ); rand(Distributions.Gam
         y = [_glsp_draw(0.2 + 0.4 * x[i] + A[species[i], 1],
                         0.5 + A[species[i], 2]) for i in 1:n]
 
-        Q, gidx, G = DRM._locscale_phylo_setup(phy, species)
+        Q, gidx, G = DRModels._locscale_phylo_setup(phy, species)
 
         # θ = [βμ(2); βψ(2); λ(3)], deliberately OFF the optimum so the implicit
         # dâ/dθ corrections (and every block of the gradient) are exercised.
         θ = [0.10, 0.45, 0.55, 0.05, log(0.40), 0.03, log(0.30)]
 
-        g_an = DRM._ls_marginal_grad(Val(:gamma), y, Xμ, Xψ, gidx, G, Q, θ)
+        g_an = DRModels._ls_marginal_grad(Val(:gamma), y, Xμ, Xψ, gidx, G, Q, θ)
         @test all(g_an .!= 0)                     # inner mode converged; gradient populated
         @test all(isfinite, g_an)
 
@@ -137,7 +137,7 @@ _glsp_draw(ημ, ησ) = (α = exp(ησ); μ = exp(ημ); rand(Distributions.Gam
         # solves the inner mode cold to tol = 1e-9 → deterministic objective).
         # h = 1e-4 matches the verified q4 Q-gate: truncation O(h²) ≈ 1e-8 stays
         # under the 1e-6 bar, h large enough to avoid catastrophic cancellation.
-        f = t -> DRM._ls_fit_nll(Val(:gamma), y, Xμ, Xψ, gidx, G, Q, t)
+        f = t -> DRModels._ls_fit_nll(Val(:gamma), y, Xμ, Xψ, gidx, G, Q, t)
         h = 1e-4
         g_fd = similar(g_an)
         for k in eachindex(θ)

@@ -20,7 +20,7 @@
 # inner solve keeps the safeguarded line search; we report its achieved FD error
 # at a looser-but-honest tolerance rather than forcing an unsafe full step.
 
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 import Distributions
 using SpecialFunctions: loggamma, digamma
@@ -32,7 +32,7 @@ function _phylo_setup_for_gate(seed; p = 12, m = 4, bl = 0.20)
     species = repeat(1:p, inner = m)
     n = length(species)
     x = randn(n)
-    Q, leaf_node, _ = DRM._poisson_phylo_setup(phy, species)
+    Q, leaf_node, _ = DRModels._poisson_phylo_setup(phy, species)
     q = size(Q, 1)
     logdetQ = logdet(cholesky(Symmetric(Q); check = false))
     σphy = 0.45
@@ -49,7 +49,7 @@ const FDH  = 1e-4
 # Central-difference gradient of a nuisance-route marginal, warm-started.
 function _fd_nuisance(kind, aux_from, n, Xμ, leaf_node, Q, logdetQ, θ, b_base)
     function mnll(t)
-        v = DRM._phylo_mean_laplace_nuisance_fg(
+        v = DRModels._phylo_mean_laplace_nuisance_fg(
             kind, aux_from, n, Xμ, leaf_node, Q, logdetQ, Vector{Float64}(t);
             grad = false, b0 = copy(b_base), newton_tol = NTOL, newton_maxiter = NMAX,
         )[1]
@@ -67,7 +67,7 @@ end
 
 function _fd_meanonly(kind, aux, n, Xμ, leaf_node, Q, logdetQ, θ, b_base)
     function mnll(t)
-        v = DRM._phylo_mean_laplace_fg(
+        v = DRModels._phylo_mean_laplace_fg(
             kind, aux, n, Xμ, leaf_node, Q, logdetQ, Vector{Float64}(t);
             grad = false, b0 = copy(b_base), newton_tol = NTOL, newton_maxiter = NMAX,
         )[1]
@@ -95,13 +95,13 @@ end
         # the production _nb2_laplace_setup). The engine's analytic gradient carries
         # the −2 chain factor, so the FD reference must read the slot as log σ too.
         r = exp(clamp(-2 * logsigma, -8.0, 8.0))
-        lconst = [loggamma(yint[i] + r) - loggamma(r) - DRM._logfactorial(yint[i]) for i in eachindex(yint)]
+        lconst = [loggamma(yint[i] + r) - loggamma(r) - DRModels._logfactorial(yint[i]) for i in eachindex(yint)]
         return (y = y, size = r, lconst = lconst)
     end
     # θ = [βμ(2); logσ; logσphylo], OFF the optimum. θσ stored as −0.5 log(size);
     # pick size ≈ 3.0 ⇒ logσ = −0.5 log 3.
     θ = [0.10, 0.45, -0.5 * log(3.0), log(0.55)]
-    val0, g_an, b_base, ok = DRM._phylo_mean_laplace_nuisance_fg(
+    val0, g_an, b_base, ok = DRModels._phylo_mean_laplace_nuisance_fg(
         Val(:nb2_fixed), aux_from, s.n, s.Xμ, s.leaf_node, s.Q, s.logdetQ, θ;
         grad = true, b0 = zeros(s.q), newton_tol = NTOL, newton_maxiter = NMAX,
     )
@@ -125,7 +125,7 @@ end
     end
     # θσ stored as -0.5 log α; pick α ≈ 4.0 ⇒ logσ = -0.5 log 4.
     θ = [0.10, 0.40, -0.5 * log(4.0), log(0.55)]
-    val0, g_an, b_base, ok = DRM._phylo_mean_laplace_nuisance_fg(
+    val0, g_an, b_base, ok = DRModels._phylo_mean_laplace_nuisance_fg(
         Val(:gamma_fixed), aux_from, s.n, s.Xμ, s.leaf_node, s.Q, s.logdetQ, θ;
         grad = true, b0 = zeros(s.q), newton_tol = NTOL, newton_maxiter = NMAX,
     )
@@ -143,12 +143,12 @@ end
     prob = _logistic.(-0.10 .+ 0.45 .* s.x .+ s.u[s.species])
     ntr = fill(10, s.n)
     sint = [rand(Distributions.Binomial(ntr[i], prob[i])) for i in 1:s.n]
-    logchoose = [DRM._logfactorial(ntr[i]) - DRM._logfactorial(sint[i]) -
-                 DRM._logfactorial(ntr[i] - sint[i]) for i in 1:s.n]
+    logchoose = [DRModels._logfactorial(ntr[i]) - DRModels._logfactorial(sint[i]) -
+                 DRModels._logfactorial(ntr[i] - sint[i]) for i in 1:s.n]
     aux = (s = sint, ntr = ntr, logchoose = logchoose)
     # θ = [βμ(2); logσphylo], OFF the optimum.
     θ = [0.05, 0.55, log(0.55)]
-    val0, g_an, b_base, ok = DRM._phylo_mean_laplace_fg(
+    val0, g_an, b_base, ok = DRModels._phylo_mean_laplace_fg(
         Val(:binomial), aux, s.n, s.Xμ, s.leaf_node, s.Q, s.logdetQ, θ;
         grad = true, b0 = zeros(s.q), newton_tol = NTOL, newton_maxiter = NMAX,
     )
@@ -179,7 +179,7 @@ const BETA_TOL = 1e-4
                 lgammaφ = loggamma(φ), digammaφ = digamma(φ))
     end
     θ = [0.05, 0.35, -0.5 * log(6.0), log(0.55)]
-    val0, g_an, b_base, ok = DRM._phylo_mean_laplace_nuisance_fg(
+    val0, g_an, b_base, ok = DRModels._phylo_mean_laplace_nuisance_fg(
         Val(:beta_fixed), aux_from, s.n, s.Xμ, s.leaf_node, s.Q, s.logdetQ, θ;
         grad = true, b0 = zeros(s.q), newton_tol = NTOL, newton_maxiter = NMAX,
     )
@@ -203,8 +203,8 @@ end
     μ = _logistic.(0.10 .+ 0.30 .* s.x .+ s.u[s.species])
     ntr = fill(8, s.n)
     sint = [rand(Distributions.BetaBinomial(ntr[i], μ[i] * φtrue, (1 - μ[i]) * φtrue)) for i in 1:s.n]
-    logchoose = [DRM._logfactorial(ntr[i]) - DRM._logfactorial(sint[i]) -
-                 DRM._logfactorial(ntr[i] - sint[i]) for i in 1:s.n]
+    logchoose = [DRModels._logfactorial(ntr[i]) - DRModels._logfactorial(sint[i]) -
+                 DRModels._logfactorial(ntr[i] - sint[i]) for i in 1:s.n]
     function aux_from(logsigma)
         φ = exp(clamp(-2 * logsigma, -8.0, 8.0))
         lgamma_nphi = [loggamma(ntr[i] + φ) for i in 1:s.n]
@@ -212,7 +212,7 @@ end
                 lgamma_nphi = lgamma_nphi, lgammaφ = loggamma(φ), digammaφ = digamma(φ))
     end
     θ = [0.05, 0.35, -0.5 * log(6.0), log(0.55)]
-    val0, g_an, b_base, ok = DRM._phylo_mean_laplace_nuisance_fg(
+    val0, g_an, b_base, ok = DRModels._phylo_mean_laplace_nuisance_fg(
         Val(:betabinomial_fixed), aux_from, s.n, s.Xμ, s.leaf_node, s.Q, s.logdetQ, θ;
         grad = true, b0 = zeros(s.q), newton_tol = NTOL, newton_maxiter = NMAX,
     )

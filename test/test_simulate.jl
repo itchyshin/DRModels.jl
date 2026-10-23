@@ -1,6 +1,6 @@
 # Parametric simulation from a fitted Gaussian model (the building block for a
 # parametric bootstrap). Residual-level draws: y* = μ̂ + (model residual SD)·z.
-using DRM
+using DRModels
 using Test, Random
 import Distributions
 

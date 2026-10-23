@@ -1,23 +1,23 @@
 # test_bridge_objective_at.jl — pin the SUPPORTED bridge entry point
-# `DRM.drm_bridge_objective_at`: the same (formula, family, data, tree,
+# `DRModels.drm_bridge_objective_at`: the same (formula, family, data, tree,
 # options) payload `drm_bridge` takes, plus an outer point (beta, Lambda,
-# rho12), routed to DRM.jl's own `reml_objective_at` (#575) — so the
+# rho12), routed to DRModels.jl's own `reml_objective_at` (#575) — so the
 # drmTMB R shim (`drm_julia_reml_objective_at()`, R/julia-bridge.R) stops
-# depending on five private DRM.jl names (`_bridge_data`, `_bridge_formula`,
+# depending on five private DRModels.jl names (`_bridge_data`, `_bridge_formula`,
 # `_bivariate_q4_marker`, `_design`, `_phylo_species_index`) reached by
 # qualified name.
 #
 # Numbers pinned to docs/dev-log/evidence/julia-r-parity/ayumi-target/
-# 2026-09-02-a5-cross-engine-receipt.md (DRM.jl @ dc3ce1908369e4734e92c37
+# 2026-09-02-a5-cross-engine-receipt.md (DRModels.jl @ dc3ce1908369e4734e92c37
 # 220dad951647b4844, the commit this branch stacks on):
-#   DRM.jl objective at TMB's fitted point   = -219.620688
-#   DRM.jl objective at Julia's own point    = -219.630326 (pre-#579; -219.614005 post-#579)
+#   DRModels.jl objective at TMB's fitted point   = -219.620688
+#   DRModels.jl objective at Julia's own point    = -219.630326 (pre-#579; -219.614005 post-#579)
 #
-#   julia --project=. -e 'using DRM, Test; include("test/test_bridge_objective_at.jl")'
+#   julia --project=. -e 'using DRModels, Test; include("test/test_bridge_objective_at.jl")'
 
 module TestBridgeObjectiveAt
 
-using DRM
+using DRModels
 using Test
 using TOML
 using LinearAlgebra
@@ -73,7 +73,7 @@ const BETA_TMB = (
     sigma2 = [Float64(EXPECTED["coef"]["sigma2_(Intercept)"])],
 )
 
-# Same FORM as test_reml_objective_at.jl — the `@formula` spelling DRM.jl's
+# Same FORM as test_reml_objective_at.jl — the `@formula` spelling DRModels.jl's
 # own bridge-formula parser produces from BRIDGE_FORMULA's string values.
 const FORM = bf(mu1    = @formula(y1 ~ x + phylo(1 | species)),
                  mu2    = @formula(y2 ~ x + phylo(1 | species)),
@@ -86,22 +86,22 @@ const FORM = bf(mu1    = @formula(y1 ~ x + phylo(1 | species)),
 # path at an IDENTICAL point.
 function _direct_problem()
     rhs = Dict(FORM.forms)
-    fixed, marker = DRM._bivariate_q4_marker(rhs)
+    fixed, marker = DRModels._bivariate_q4_marker(rhs)
     grp = marker[2]
-    phy = DRM._as_augmented_phy(TREE)
-    y1, X1, _ = DRM._design(FORM.response1, fixed[:mu1], DAT)
-    y2, X2, _ = DRM._design(FORM.response2, fixed[:mu2], DAT)
-    _, Xs1, _ = DRM._design(FORM.response1, fixed[:sigma1], DAT)
-    _, Xs2, _ = DRM._design(FORM.response1, fixed[:sigma2], DAT)
-    _, Xr, _  = DRM._design(FORM.response1, fixed[:rho12], DAT)
-    species = DRM._phylo_species_index(phy, getproperty(DAT, grp))
-    return DRM.make_problem(phy, y1, y2, X1, X2, Xs1, Xs2, Xr; species = species)
+    phy = DRModels._as_augmented_phy(TREE)
+    y1, X1, _ = DRModels._design(FORM.response1, fixed[:mu1], DAT)
+    y2, X2, _ = DRModels._design(FORM.response2, fixed[:mu2], DAT)
+    _, Xs1, _ = DRModels._design(FORM.response1, fixed[:sigma1], DAT)
+    _, Xs2, _ = DRModels._design(FORM.response1, fixed[:sigma2], DAT)
+    _, Xr, _  = DRModels._design(FORM.response1, fixed[:rho12], DAT)
+    species = DRModels._phylo_species_index(phy, getproperty(DAT, grp))
+    return DRModels.make_problem(phy, y1, y2, X1, X2, Xs1, Xs2, Xr; species = species)
 end
 
 @testset "drm_bridge_objective_at — bivariate q4 phylo REML" begin
 
     @testset "(a) reproduces #575's cross-engine receipt at TMB's point" begin
-        result = DRM.drm_bridge_objective_at(BRIDGE_FORMULA, BRIDGE_FAMILY, DAT, TREE,
+        result = DRModels.drm_bridge_objective_at(BRIDGE_FORMULA, BRIDGE_FAMILY, DAT, TREE,
                                               BRIDGE_OPTIONS;
                                               beta = BETA_TMB, Lambda = LAMBDA_TMB,
                                               rho12 = RHO12_TMB)
@@ -117,8 +117,8 @@ end
         res1 = prob.y1[obs1] .- prob.X1[obs1, :] * β1
         res2 = prob.y2[obs2] .- prob.X2[obs2, :] * β2
         β0 = (mu1 = β1, mu2 = β2,
-              s1 = DRM._initial_scale_beta(prob.Xs1, res1),
-              s2 = DRM._initial_scale_beta(prob.Xs2, res2),
+              s1 = DRModels._initial_scale_beta(prob.Xs1, res1),
+              s2 = DRModels._initial_scale_beta(prob.Xs2, res2),
               rho = zeros(size(prob.Xr, 2)))
         Λ0 = Matrix(Symmetric([
             0.30 0.02 0.01 0.010
@@ -126,17 +126,17 @@ end
             0.01 0.01 0.08 0.005
             0.01 0.01 0.005 0.080
         ]))
-        rr = DRM.fit_q4_reml(prob, Q_cond; beta0 = β0, Lambda0 = Λ0,
+        rr = DRModels.fit_q4_reml(prob, Q_cond; beta0 = β0, Lambda0 = Λ0,
                               g_tol = 1e-3, iterations = 300, n_newton = 40)
         @test rr.converged == true
 
         beta_julia = (mu1 = rr.beta.mu1, mu2 = rr.beta.mu2,
                       sigma1 = rr.beta.s1, sigma2 = rr.beta.s2)
-        result = DRM.drm_bridge_objective_at(BRIDGE_FORMULA, BRIDGE_FAMILY, DAT, TREE,
+        result = DRModels.drm_bridge_objective_at(BRIDGE_FORMULA, BRIDGE_FAMILY, DAT, TREE,
                                               BRIDGE_OPTIONS;
                                               beta = beta_julia, Lambda = rr.Lambda,
                                               rho12 = rr.beta.rho[1])
-        # HISTORY: the A5 receipt (DRM.jl @ dc3ce190, finite-difference mode-finder)
+        # HISTORY: the A5 receipt (DRModels.jl @ dc3ce190, finite-difference mode-finder)
         # recorded -219.630326 at Julia's own point. After #579 (exact REML
         # gradient, merged f930e8bf) fit_q4_reml's optimum on this fixture is
         # -219.614005, so the point moved with it; the TMB-point value above is
@@ -146,12 +146,12 @@ end
 
     @testset "(b) equals the private reml_objective_at path at an identical point" begin
         prob, Q_cond = _direct_problem()
-        phi_tmb = DRM.pack_phi(prob, [RHO12_TMB], LAMBDA_TMB)
+        phi_tmb = DRModels.pack_phi(prob, [RHO12_TMB], LAMBDA_TMB)
         beta0_tmb = (mu1 = BETA_TMB.mu1, mu2 = BETA_TMB.mu2,
                      s1 = BETA_TMB.sigma1, s2 = BETA_TMB.sigma2, rho = [RHO12_TMB])
-        direct = DRM.reml_objective_at(prob, Q_cond, phi_tmb; beta0 = beta0_tmb)
+        direct = DRModels.reml_objective_at(prob, Q_cond, phi_tmb; beta0 = beta0_tmb)
 
-        bridged = DRM.drm_bridge_objective_at(BRIDGE_FORMULA, BRIDGE_FAMILY, DAT, TREE,
+        bridged = DRModels.drm_bridge_objective_at(BRIDGE_FORMULA, BRIDGE_FAMILY, DAT, TREE,
                                                BRIDGE_OPTIONS;
                                                beta = BETA_TMB, Lambda = LAMBDA_TMB,
                                                rho12 = RHO12_TMB)
@@ -161,12 +161,12 @@ end
     @testset "(c) rejects a non-q4 payload" begin
         uni_formula = "y ~ x"
         uni_data = (; y = DAT.y1, x = DAT.x)
-        @test_throws ArgumentError DRM.drm_bridge_objective_at(uni_formula, "gaussian",
+        @test_throws ArgumentError DRModels.drm_bridge_objective_at(uni_formula, "gaussian",
                                                                  uni_data, TREE, Dict{String,Any}();
                                                                  beta = BETA_TMB, Lambda = LAMBDA_TMB,
                                                                  rho12 = RHO12_TMB)
         err = try
-            DRM.drm_bridge_objective_at(uni_formula, "gaussian", uni_data, TREE, Dict{String,Any}();
+            DRModels.drm_bridge_objective_at(uni_formula, "gaussian", uni_data, TREE, Dict{String,Any}();
                                          beta = BETA_TMB, Lambda = LAMBDA_TMB, rho12 = RHO12_TMB)
             nothing
         catch e
@@ -178,7 +178,7 @@ end
     @testset "(c) rejects a wrong-length beta" begin
         bad_beta = merge(BETA_TMB, (mu1 = [1.0],))
         err = try
-            DRM.drm_bridge_objective_at(BRIDGE_FORMULA, BRIDGE_FAMILY, DAT, TREE, BRIDGE_OPTIONS;
+            DRModels.drm_bridge_objective_at(BRIDGE_FORMULA, BRIDGE_FAMILY, DAT, TREE, BRIDGE_OPTIONS;
                                          beta = bad_beta, Lambda = LAMBDA_TMB, rho12 = RHO12_TMB)
             nothing
         catch e
@@ -190,7 +190,7 @@ end
 
     @testset "(c) rejects a non-4x4 Lambda" begin
         err = try
-            DRM.drm_bridge_objective_at(BRIDGE_FORMULA, BRIDGE_FAMILY, DAT, TREE, BRIDGE_OPTIONS;
+            DRModels.drm_bridge_objective_at(BRIDGE_FORMULA, BRIDGE_FAMILY, DAT, TREE, BRIDGE_OPTIONS;
                                          beta = BETA_TMB, Lambda = LAMBDA_TMB[1:3, 1:3], rho12 = RHO12_TMB)
             nothing
         catch e
@@ -201,7 +201,7 @@ end
     end
 
     @testset "(d) return shape" begin
-        result = DRM.drm_bridge_objective_at(BRIDGE_FORMULA, BRIDGE_FAMILY, DAT, TREE,
+        result = DRModels.drm_bridge_objective_at(BRIDGE_FORMULA, BRIDGE_FAMILY, DAT, TREE,
                                               BRIDGE_OPTIONS;
                                               beta = BETA_TMB, Lambda = LAMBDA_TMB,
                                               rho12 = RHO12_TMB)

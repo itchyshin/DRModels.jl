@@ -3,7 +3,7 @@
 # the combined capacitance is dense (components share observations) but small, so
 # a closed-form GLS via a (Σ G_k)×(Σ G_k) Cholesky. Recovery: residual σ + each
 # component's SD.
-using DRM
+using DRModels
 using Test, Random
 
 @testset "Gaussian crossed random intercepts (1|g)+(1|h) — recovery" begin

@@ -20,7 +20,7 @@
 #       the implicit db̂/dθ terms are exercised — driven through the SAME
 #       Q-generic `_phylo_mean_laplace_nuisance_fg` as the phylo gate, with a
 #       relmat-derived precision.
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra, Statistics
 import Distributions
 using SpecialFunctions: loggamma
@@ -43,7 +43,7 @@ const _NB_NMAX = 400
 const _NB_FDH  = 1e-4
 function _fd_nuisance_relmat(kind, aux_from, n, Xμ, leaf_node, Q, logdetQ, θ, b_base)
     function mnll(t)
-        v = DRM._phylo_mean_laplace_nuisance_fg(
+        v = DRModels._phylo_mean_laplace_nuisance_fg(
             kind, aux_from, n, Xμ, leaf_node, Q, logdetQ, Vector{Float64}(t);
             grad = false, b0 = copy(b_base), newton_tol = _NB_NTOL, newton_maxiter = _NB_NMAX,
         )[1]
@@ -103,18 +103,18 @@ end
     yint = [rand(rng, Distributions.NegativeBinomial(sizep, sizep / (sizep + μi))) for μi in μ]
     y = Float64.(yint)
 
-    Q, leaf_node = DRM._general_cov_setup(Matrix(C), id)
+    Q, leaf_node = DRModels._general_cov_setup(Matrix(C), id)
     q = size(Q, 1)
     logdetQ = logdet(cholesky(Symmetric(Q); check = false))
     Xμ = hcat(ones(n), x)
     function aux_from(logσ)
         r = exp(clamp(-2 * logσ, -8.0, 8.0))   # size r = 1/σ² = exp(−2ψ); ψ = log σ (drmTMB)
-        lconst = [loggamma(yint[i] + r) - loggamma(r) - DRM._logfactorial(yint[i]) for i in eachindex(yint)]
+        lconst = [loggamma(yint[i] + r) - loggamma(r) - DRModels._logfactorial(yint[i]) for i in eachindex(yint)]
         return (y = y, size = r, lconst = lconst)
     end
     # θ = [βμ(2); logσ (= −0.5·log size); logσ_relmat], OFF the optimum.
     θ = [0.10, 0.45, -0.5 * log(3.0), log(0.55)]
-    val0, g_an, b_base, ok = DRM._phylo_mean_laplace_nuisance_fg(
+    val0, g_an, b_base, ok = DRModels._phylo_mean_laplace_nuisance_fg(
         Val(:nb2_fixed), aux_from, n, Xμ, leaf_node, Q, logdetQ, θ;
         grad = true, b0 = zeros(q), newton_tol = _NB_NTOL, newton_maxiter = _NB_NMAX,
     )
@@ -167,7 +167,7 @@ end
     μ = exp.(0.30 .+ 0.30 .* x .+ u[id])
     y = [rand(rng, Distributions.Gamma(shape, μi / shape)) for μi in μ]
 
-    Q, leaf_node = DRM._general_cov_setup(Matrix(C), id)
+    Q, leaf_node = DRModels._general_cov_setup(Matrix(C), id)
     q = size(Q, 1)
     logdetQ = logdet(cholesky(Symmetric(Q); check = false))
     Xμ = hcat(ones(n), x)
@@ -178,7 +178,7 @@ end
     end
     # θσ stored as -0.5 log α; pick α ≈ 4.0; θ OFF the optimum.
     θ = [0.10, 0.40, -0.5 * log(4.0), log(0.55)]
-    val0, g_an, b_base, ok = DRM._phylo_mean_laplace_nuisance_fg(
+    val0, g_an, b_base, ok = DRModels._phylo_mean_laplace_nuisance_fg(
         Val(:gamma_fixed), aux_from, n, Xμ, leaf_node, Q, logdetQ, θ;
         grad = true, b0 = zeros(q), newton_tol = _NB_NTOL, newton_maxiter = _NB_NMAX,
     )

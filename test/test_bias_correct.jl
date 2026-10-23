@@ -8,7 +8,7 @@
 #      the corrected value matches the second-order expansion of the analytic
 #      E[exp] = exp(m + v/2), i.e. exp(m)(1 + v/2), to tolerance — a closed-form
 #      check proving the correction direction AND magnitude.
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 using Distributions: Normal, quantile
 

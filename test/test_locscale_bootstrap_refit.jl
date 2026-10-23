@@ -1,7 +1,7 @@
 # Retained failing public Gamma bootstrap fixture. Two identical-seed serial
 # and threaded refits must meet the original convergence criterion. B=2 is an
 # integration regression only, never evidence of interval coverage.
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 import Distributions
 
@@ -31,7 +31,7 @@ function _locscale_bootstrap_refit_fixture()
         Gamma();
         data=(; y, x, species),
     )
-    @test fit.nll isa DRM.LocScaleObjective
+    @test fit.nll isa DRModels.LocScaleObjective
     return fit
 end
 
@@ -62,14 +62,14 @@ end
     # only the first seed would let that optimizer-routing regression recur.
     seeds = rand(MersenneTwister(4001), UInt, 2)
     replays = map(seeds) do seed
-        yb = DRM._marginal_simulator(fit, data)(MersenneTwister(seed))
-        drm(fit.formula, fit.family; data=DRM._bootstrap_data(fit.formula, data, yb))
+        yb = DRModels._marginal_simulator(fit, data)(MersenneTwister(seed))
+        drm(fit.formula, fit.family; data=DRModels._bootstrap_data(fit.formula, data, yb))
     end
     p = size(obj.Xμ, 2) + size(obj.Xψ, 2)
     for replay in replays
         theta = vcat(replay.theta[1:p], replay.theta[p+1], replay.theta[p+3], replay.theta[p+2])
         @test is_converged(replay)
-        @test maximum(abs, DRM._ls_objective_gradient(replay.nll, theta)) <= 1e-8
+        @test maximum(abs, DRModels._ls_objective_gradient(replay.nll, theta)) <= 1e-8
     end
     # Merely relabelling the previously failed first-seed fit as converged must fail.
     replay = first(replays)
@@ -77,6 +77,6 @@ end
     previous_failed = [0.7100026355628111, 0.11333869814470285,
         1.1136994971048377, -9.904592396244107, -2.9795300738040686e-6,
         -10.214044558800888]
-    @test maximum(abs, DRM._ls_objective_gradient(replay.nll, previous_failed)) > 1e-8
+    @test maximum(abs, DRModels._ls_objective_gradient(replay.nll, previous_failed)) > 1e-8
     @test replay.nll(theta) <= replay.nll(previous_failed) + 8eps(46.50801917858662)
 end

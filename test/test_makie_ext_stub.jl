@@ -1,5 +1,5 @@
-# DRMMakieExt drawing stub (#336). Mirror of HSquared's hsquared_figure CI gate:
-# `drm_figure` is a STUB in /src; the drawing METHOD lives in ext/DRMMakieExt.jl
+# DRModelsMakieExt drawing stub (#336). Mirror of HSquared's hsquared_figure CI gate:
+# `drm_figure` is a STUB in /src; the drawing METHOD lives in ext/DRModelsMakieExt.jl
 # and loads only when Makie + AlgebraOfGraphics are in scope. Default CI must NOT
 # depend on Makie — these tests assert the stub stays method-less.
 #
@@ -7,10 +7,10 @@
 # when the extension is absent (the intended default). It does NOT prove the
 # drawing layer renders correctly. Optional local CairoMakie smoke is opt-in only
 # and is never claimed as CI evidence.
-using DRM
+using DRModels
 using Test
 
-@testset "drm_figure drawing stub (DRMMakieExt weak-dep, #336)" begin
+@testset "drm_figure drawing stub (DRModelsMakieExt weak-dep, #336)" begin
     @test drm_figure isa Function
     @test isempty(methods(drm_figure))          # stub: no methods without Makie+AoG
     @test_throws MethodError drm_figure((

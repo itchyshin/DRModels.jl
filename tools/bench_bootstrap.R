@@ -11,7 +11,7 @@
 # tools/benchmark-r-julia-bootstrap-refits.R), scaled down for a fast,
 # honest pre-run test.
 #
-# Owned by: Curie (DRM.jl performance lane), branch parity/se-axis.
+# Owned by: Curie (DRModels.jl performance lane), branch parity/se-axis.
 # D-139: this script is meant to be run first at small B (pre-run test)
 # before any larger B is committed to.
 
@@ -57,7 +57,7 @@ stopifnot(requireNamespace("JuliaCall", quietly = TRUE))
 ## working tree sitting on branch claude/handover-freshness-0718 with 102
 ## uncommitted files -- while another lane was concurrently running
 ## devtools::test() against that same tree, so the code under measurement could
-## change mid-run. The result was reported as a drmTMB-vs-DRM.jl benchmark; it was
+## change mid-run. The result was reported as a drmTMB-vs-DRModels.jl benchmark; it was
 ## nothing of the kind, and the printed banner said 0.6.0.9000 while the installed
 ## package was 0.7.0. A benchmark whose subject is a dirty checkout measures
 ## nothing reproducible.

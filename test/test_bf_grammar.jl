@@ -1,7 +1,7 @@
 # bf() grammar parity: the formula front end rejects the same reserved / mis-typed
 # syntax drmTMB rejects, with clear parallel error messages. Front-end only — no
 # fitting; bf builds the formula bundle from the parameter on each LHS.
-using DRM
+using DRModels
 using Test
 
 @testset "bf() grammar: valid forms still build" begin

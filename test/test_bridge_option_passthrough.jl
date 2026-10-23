@@ -1,4 +1,4 @@
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 
 @testset "drm_bridge option passthrough + gradient exposure" begin

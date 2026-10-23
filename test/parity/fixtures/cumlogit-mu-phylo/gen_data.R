@@ -58,7 +58,7 @@ cat("loglik:", as.numeric(logLik(fit)), "\n")
 tree_height <- max(ape::node.depth.edgelength(tree)[seq_along(tree$tip.label)])
 cat("tree_height:", tree_height, "\n")
 
-# Refusals this slice keeps (mirrors drmTMB's own validator + DRM.jl's iid
+# Refusals this slice keeps (mirrors drmTMB's own validator + DRModels.jl's iid
 # random-effect slice's own refusal cells): a slope structured term, and a
 # labelled marker.
 res_slope <- tryCatch(

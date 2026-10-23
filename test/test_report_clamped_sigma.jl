@@ -3,7 +3,7 @@
 #
 # Every NB2 / Gamma / Beta fitter guards the log-scale linear predictor before
 # exponentiating it — `_softclamp` on the fixed-effects routes (NB2 ±20, Gamma and
-# Beta ±15, margin 3), a hard `clamp` on the ranef / zi / hurdle / truncated
+# Beta ±15, margin 3; NB2 ranef routes too), a hard `clamp` on the Gamma / Beta ranef, zi / hurdle / truncated
 # routes. Post-fit the same routes stored `exp.(Xσ * θ̂)`, i.e. the UNguarded
 # predictor, so on any row where the guard bit, `sigma(fit)` (and `simulate`,
 # `residuals`, `predict`, all of which read `fit.scales[:sigma]`) described a
@@ -16,12 +16,12 @@
 # drmTMB's ±12 — a deliberate, documented difference (see `_softclamp` in
 # src/negbinomial.jl and docs/design/03-likelihoods.md). This file asserts INTERNAL
 # consistency (reported scale == scored scale), not band equality with R.
-using DRM
+using DRModels
 using Test, Random
 import Distributions
 
 # σ the likelihood scored, rebuilt from the fitted coefficients by hand.
-_scored_sigma_soft(Xσ, θσ, lo, hi, m) = exp.(DRM._softclamp.(Xσ * θσ, lo, hi, m))
+_scored_sigma_soft(Xσ, θσ, lo, hi, m) = exp.(DRModels._softclamp.(Xσ * θσ, lo, hi, m))
 
 @testset "reported sigma is the scale the likelihood scored (D-268, audit M2)" begin
 
@@ -142,7 +142,7 @@ _scored_sigma_soft(Xσ, θσ, lo, hi, m) = exp.(DRM._softclamp.(Xσ * θσ, lo, 
     end
 
     @testset "hard-guarded NB2 routes report the guarded scale too" begin
-        # The zero-inflated / hurdle / truncated / ranef NB2 routes hard-`clamp`
+        # The zero-inflated / hurdle / truncated NB2 routes hard-`clamp`
         # η_σ at ±20 in their likelihoods; they must report `exp(clamp(...))` for
         # the same reason. In band this is an identity, which is the state every
         # realistic fit is in — assert that it holds exactly.

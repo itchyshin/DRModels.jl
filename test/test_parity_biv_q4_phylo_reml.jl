@@ -3,7 +3,7 @@
 #
 # Wired into test/runtests.jl by Option A (#445) after #423+#428 landed.
 #
-#   julia --project=. -e 'using DRM, Test; include("test/test_parity_biv_q4_phylo_reml.jl")'
+#   julia --project=. -e 'using DRModels, Test; include("test/test_parity_biv_q4_phylo_reml.jl")'
 #
 # Claim fence: this file checks a native-vs-Julia same-target cell within the
 # row's declared [tol]. It does not claim R–Julia parity complete, interval
@@ -16,7 +16,7 @@
 # included later by runtests.jl (they used to live bare in Main).
 module TestParityBivQ4PhyloREML
 
-using DRM
+using DRModels
 using Test
 using TOML
 using DelimitedFiles: readdlm

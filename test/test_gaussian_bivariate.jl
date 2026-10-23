@@ -2,7 +2,7 @@
 # correlation ρ12 — fixed effects. Recovery test (Curie): simulate a correlated
 # bivariate response with known coefficients on μ1, μ2, log σ1, log σ2, and
 # atanh(ρ12), fit via the keyword `bf(mu1=…, mu2=…, …)` front end, recover.
-using DRM
+using DRModels
 using Test, Random, Statistics
 
 @testset "Bivariate Gaussian location-scale + rho12 — recovery" begin
@@ -46,15 +46,15 @@ end
 @testset "Bivariate residual-σ seed floor for saturated design (#324.3)" begin
     # Zero-residual (saturated) case: seed is floored, finite, and data-scaled.
     yobs = [1.0, 2.5, -0.7]
-    s = DRM._seed_ls(zeros(3), yobs)
+    s = DRModels._seed_ls(zeros(3), yobs)
     @test isfinite(s)
     @test s > -20                              # not the pre-fix log(eps()) ≈ −36
     @test s ≈ 0.5 * log(max(1e-6 * var(yobs), 1e-8))
     # Constant-response backstop (var(y) == 0) still finite via the 1e-8 floor.
-    @test isfinite(DRM._seed_ls(zeros(3), [2.0, 2.0, 2.0]))
+    @test isfinite(DRModels._seed_ls(zeros(3), [2.0, 2.0, 2.0]))
     # Non-saturated case is unchanged: seed = 0.5·log(mean(r²)).
     r = [0.3, -0.4, 0.1, 0.2]
-    @test DRM._seed_ls(r, randn(4)) ≈ 0.5 * log(sum(r .^ 2) / 4)
+    @test DRModels._seed_ls(r, randn(4)) ≈ 0.5 * log(sum(r .^ 2) / 4)
 
     # End-to-end saturated bivariate fit completes with a finite logLik (the
     # pre-fix start overflowed the first objective evaluation).

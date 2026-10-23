@@ -1,9 +1,9 @@
 # Poisson family: count responses with a log link on the mean (λ = exp(Xμβ)).
 # No dispersion parameter — for that, see the negative-binomial family. Fixed
 # effects, maximum likelihood. Mirrors drmTMB's `poisson`.
-using DRM
+using DRModels
 using Test, Random
-import Distributions          # qualified — DRM exports its own `Poisson` family
+import Distributions          # qualified — DRModels exports its own `Poisson` family
 
 @testset "Poisson (counts, log link) — recovery" begin
     Random.seed!(20260615)

@@ -1,4 +1,4 @@
-# inference.jl — Wald + profile-likelihood inference for fitted DRM models.
+# inference.jl — Wald + profile-likelihood inference for fitted DRModels models.
 # Wald: estimate ± z·se from the observed information stored on the fit, on each
 # parameter's working scale (log σ, atanh ρ12, log σ_b). Profile: invert the
 # likelihood-ratio statistic — the endpoints where 2(ℓ̂ − ℓ_profile) = χ²₁(level),
@@ -26,7 +26,12 @@ standard error — which propagates to an unbounded `(-Inf, Inf)` Wald interval.
 [`check_drm`](@ref) flags the same situation via `vcov_posdef`; drmTMB returns
 all-`NaN` from `sdreport` in this case.
 """
-stderror(fit::DrmFit) = _boundary_se.(diag(fit.vcov))
+stderror(fit::DrmFit) = _wald_withheld(fit) ? _homtoep_refuse_wald("stderror") : _stderror(fit)
+
+# Internal: the Hessian-based SEs regardless of the public Wald scope (profile
+# step sizes, plots); `_display_se` is what `coeftable` / `show` print.
+_stderror(fit::DrmFit) = _boundary_se.(diag(fit.vcov))
+_display_se(fit::DrmFit) = _wald_withheld(fit) ? fill(NaN, length(fit.theta)) : _stderror(fit)
 
 # √v where the variance is identified (finite, positive); Inf otherwise. Keeps a
 # non-PD boundary direction from poisoning the whole SE vector with NaN.
@@ -56,7 +61,7 @@ const _ProfileStatsRow = NamedTuple{
         :lower_unbounded,
         :upper_unbounded,
         :nonmonotone,
-        # DRM.jl#493: the refinement loop's `thi - tlo < 1e-8` bracket-collapse
+        # DRModels.jl#493: the refinement loop's `thi - tlo < 1e-8` bracket-collapse
         # exit was being treated identically to genuine convergence
         # (`abs(ht) < 1e-9`), which let a trapped, non-monotone profiled-nll
         # surface report a fabricated near-zero step as if it were a real
@@ -141,6 +146,17 @@ function _with_pinned_blas(f, active::Bool)
     end
 end
 
+function _refuse_selected_optimizer_refit(fit::DrmFit, entrypoint::AbstractString)
+    info = fit.control_info
+    if info isa DRMControlReport && info.requested_optimizer !== :default
+        throw(ArgumentError("$entrypoint: this fit requested `control.optimizer = " *
+                            "$(repr(info.requested_optimizer))`; inference refits do not " *
+                            "yet forward the selected optimizer. Refit with " *
+                            "`DRMControl(optimizer = :default)` for this inference route."))
+    end
+    return nothing
+end
+
 """
     confint(fit; level = 0.95, method = :wald, threads = false, parm = nothing)
 
@@ -169,24 +185,41 @@ Confidence intervals for every coefficient, as a vector of
   inspect that limitation.
   An endpoint arm that the search cannot certify is REFUSED, not returned: this
   method throws an `ArgumentError` naming the coefficient, the arm, and the
-  nuisance-solve reason rather than reporting the failed side as a signed `Inf`
-  (DRM.jl#631). Use [`profile_result`](@ref) when you want the same rows plus
+  nuisance-solve reason rather than reporting the failed side as a signed `Inf`.
+  Use [`profile_result`](@ref) when you want the same rows plus
   the per-endpoint diagnostics instead of an exception.
   Pass `threads = true` to profile coefficients in parallel when the fitted
   objective is thread-safe; if only one coefficient is profiled, its lower and
   upper endpoint searches are run in parallel instead. Canonical location–scale
   profiling remains serial in this release, including when `threads = true`.
+  A fit that explicitly selected `DRMControl(optimizer = :lbfgs | :bfgs)` is
+  refused before profiling, because nuisance refits cannot yet forward it.
 - `parm = :resd` or `parm = [:mu, :resd]` — restrict intervals to one or more
   parameter blocks. This is especially useful for profiling random-effect SDs
   without also profiling fixed-effect coefficients.
+  A random-effect SD (`:resd`) whose lower arm reaches the numerical floor
+  without an LR crossing is reported on the SD scale as `[0, u]` (drmTMB
+  `profile.boundary`), not as a thrown error and not as `(-Inf, Inf)`.
 
 Mirrors drmTMB's `confint(fit, method = "wald" | "profile")`.
 """
 function confint(
     fit::DrmFit; level::Real=0.95, method::Symbol=:wald, threads::Bool=false, parm=nothing
 )
+    level = _validate_ci_level(level; what="confint")
+    method === :wald && _wald_withheld(fit) && throw(ArgumentError("confint: Homogeneous Toeplitz " *
+        "mean-coefficient Wald intervals are not yet qualified; mean-coefficient likelihood " *
+        "profiles are qualified in drmTMB's retained primary panel cells, Wald covariance and " *
+        "intervals remain deferred. Use `method = :profile`."))
     method === :wald && return _wald_ci(fit, level, parm)
     if method === :profile
+        _refuse_selected_optimizer_refit(fit, "confint(method = :profile)")
+        # drmTMB (#1448): the paired phylo() + OU route has point-recovery
+        # evidence only; its profile intervals are not calibrated.
+        _is_paired_phylo_temporal(fit) && @warn "confint: profile intervals from the paired " *
+            "`phylo()` plus OU `temporal()` model are not calibrated. This development route has " *
+            "point-recovery evidence only; no interval-calibration study has been run. Do not " *
+            "report these intervals as confidence intervals."
         result = profile_result(fit; level, threads, parm)
         result.failed > 0 && _throw_profile_endpoint_failure(result)
         return result.ci
@@ -194,7 +227,7 @@ function confint(
     throw(ArgumentError("confint: method must be :wald or :profile (got :$method)"))
 end
 
-# DRM.jl#631: a failed endpoint arm must NEVER leave the user-facing interval
+# DRModels.jl#631: a failed endpoint arm must NEVER leave the user-facing interval
 # routine as a bound. `profile_result` is the AUDITABLE surface -- it keeps the
 # ±Inf convention alongside `lower_endpoint_failed` / `upper_endpoint_failed` so
 # a caller that asked for diagnostics can read them. `confint` is the surface a
@@ -256,7 +289,7 @@ Auditable profile-likelihood confidence intervals. Returns a `NamedTuple` with:
 - `ci` — the same rows `confint(fit; method = :profile)` returns, except that a
   FAILED endpoint arm is kept here as a signed `Inf` alongside its
   `lower_endpoint_failed` / `upper_endpoint_failed` flag. This is the auditable
-  surface; `confint` refuses such a row rather than returning it (DRM.jl#631);
+  surface; `confint` refuses such a row rather than returning it;
 - `stats` — per-coefficient endpoint work counts;
 - `endpoint_diagnostics` — canonical location–scale endpoint reason, last
   evaluated candidate, and residual for each arm; other profile backends omit
@@ -272,8 +305,12 @@ independent profile coefficients; when one coefficient is profiled, its endpoint
 arms may run in parallel. Canonical location–scale profile jobs use only the
 coefficient-level policy: each job owns its nuisance state, while its lower and
 upper endpoint chains remain serial.
+A fit with an explicit `DRMControl.optimizer` is refused before profiling.
 """
 function profile_result(fit::DrmFit; level::Real=0.95, threads::Bool=false, parm=nothing)
+    level = _validate_ci_level(level; what="profile_result")
+    _refuse_selected_optimizer_refit(fit, "profile_result")
+    _wald_withheld(fit) && (parm = _homtoep_profile_parm(fit, parm))
     fit.nll isa LocScaleObjective && return _ls_profile_result(
         fit; level=level, threads=threads, parm=parm
     )
@@ -307,7 +344,7 @@ function profile_result(fit::DrmFit; level::Real=0.95, threads::Bool=false, parm
     isfinite(nllhat) || throw(ArgumentError("profile intervals require a finite fitted objective"))
     autodiff = _profile_autodiff_mode(nll, nllgrad, θ̂)
     half = quantile(Chisq(1), level) / 2
-    se = stderror(fit)
+    se = _stderror(fit)
     jobs = _profile_jobs(fit, parm)
     rows = Vector{_CIRow}(undef, length(jobs))
     stats = Vector{_ProfileStatsRow}(undef, length(jobs))
@@ -341,7 +378,7 @@ function profile_result(fit::DrmFit; level::Real=0.95, threads::Bool=false, parm
             end
         end
     end
-    # DRM.jl#493: a coefficient counts as `failed` when either arm's endpoint
+    # DRModels.jl#493: a coefficient counts as `failed` when either arm's endpoint
     # search hit the bracket-collapse exit without genuine convergence (the row
     # is still returned, with ±Inf on the failed side — see `_profile_endpoint_result`).
     failed = count(s -> s.lower_endpoint_failed || s.upper_endpoint_failed, stats)
@@ -451,6 +488,7 @@ function _ci_coef_selected(param::Symbol, coef::AbstractString, parm)
 end
 
 function _wald_ci(fit::DrmFit, level::Real, parm)
+    level = _validate_ci_level(level; what="confint")
     _ci_validate_parm(fit, parm)
     se = stderror(fit)
     z = quantile(Normal(), 1 - (1 - level) / 2)
@@ -494,7 +532,7 @@ function _ls_profile_result(fit::DrmFit; level::Real=0.95, threads::Bool=false, 
     base = size(obj.Xμ, 2) + size(obj.Xψ, 2)
     perm = vcat(collect(1:base), [base + 1, base + 3, base + 2])  # involution
     θengine = fit.theta[perm]
-    se = stderror(fit)                                    # DrmFit (recov) order
+    se = _stderror(fit)                                   # DrmFit (recov) order
     jobs = _profile_jobs(fit, parm)
     rows = Vector{_CIRow}(undef, length(jobs))
     stats = Vector{_ProfileStatsRow}(undef, length(jobs))
@@ -646,7 +684,8 @@ function _loconly_profile_result(
         stats=stats,
         attempted=length(jobs),
         used=length(rows),
-        failed=0,
+        # #1023: computed from the per-arm flags, as on the generic path.
+        failed=count(s -> s.lower_endpoint_failed || s.upper_endpoint_failed, stats),
         threaded=threaded,
         worker_threads=_worker_threads(threaded, endpoint_threaded ? 2 : length(jobs)),
         julia_threads=Threads.nthreads(),
@@ -677,6 +716,8 @@ function _loconly_profile_row_result(
         lo, lstats = _loconly_profile_endpoint_result(obj, lσ0, est, nllhat, half, -1.0)
         hi, rstats = _loconly_profile_endpoint_result(obj, lσ0, est, nllhat, half, +1.0)
     end
+    rewritten = _rewrite_log_sd_boundary_ci(job, est, lo, hi, lstats, rstats)
+    rewritten === nothing || return rewritten
     row = (param=job.param, coef=job.coef, estimate=est, lower=lo, upper=hi)
     stats = (
         param=job.param,
@@ -688,18 +729,18 @@ function _loconly_profile_row_result(
         lower_unbounded=lstats.unbounded,
         upper_unbounded=rstats.unbounded,
         nonmonotone=lstats.nonmonotone || rstats.nonmonotone,
-        # `_loconly_profile_endpoint_result` was not in scope for DRM.jl#493 (the
-        # reported degenerate fit routes through the generic path, not here) and
-        # is not instrumented for the same bracket-collapse failure; default false
-        # rather than claim a check that was not made.
-        lower_endpoint_failed=false,
-        upper_endpoint_failed=false,
+        # #1023: these are now measured by `_loconly_profile_endpoint_result`
+        # (sentinel / non-finite objective and the nuisance solve's own exit),
+        # not hard-coded. The bracket-collapse residual check of #493 is still
+        # specific to the generic path.
+        lower_endpoint_failed=lstats.endpoint_failed,
+        upper_endpoint_failed=rstats.endpoint_failed,
         lower_nuisance_method=:specialized,
         upper_nuisance_method=:specialized,
-        lower_nuisance_fallback=false,
-        upper_nuisance_fallback=false,
-        lower_nuisance_reason=:not_checked,
-        upper_nuisance_reason=:not_checked,
+        lower_nuisance_fallback=lstats.nuisance_fallback,
+        upper_nuisance_fallback=rstats.nuisance_fallback,
+        lower_nuisance_reason=lstats.nuisance_reason,
+        upper_nuisance_reason=rstats.nuisance_reason,
     )
     return row, stats
 end
@@ -711,40 +752,71 @@ function _loconly_profile_endpoint_result(
     lσ_start = Float64(lσ0)
     evaluations = 0
     gradient_evaluations = 0
+    last_nuisance = (fallback=false, reason=:accepted)
 
+    # #1023: an evaluation is usable only when the nuisance solve finished and the
+    # objective is finite and below the sentinel. A sentinel or NaN is never read
+    # as "above the threshold" (that turned the edge of the failure region into a
+    # CI endpoint).
     function heval(t)
-        f, lσ_opt, slope = _loconly_profiled_resd_nll(obj, lσ_start, estimate + dir * t)
-        lσ_start = lσ_opt
+        f, lσ_opt, slope, nuisance = _loconly_profiled_resd_nll(obj, lσ_start, estimate + dir * t)
+        nuisance.accepted && (lσ_start = lσ_opt)
         evaluations += 1
         gradient_evaluations += 1
-        return (f - target, dir * slope)
+        last_nuisance = nuisance
+        return (h=f - target, hp=dir * slope, ok=nuisance.accepted)
     end
-
-    tlo = 0.0
-    thi = 0.1
-    hhi, _ = heval(thi)
-    hprev = hhi
-    nonmonotone = false
-    iters = 0
-    while isfinite(hhi) && hhi < 0 && iters < 60
-        tlo = thi
-        thi *= 1.6
-        hhi, _ = heval(thi)
-        isfinite(hhi) && hhi < hprev - 1e-12 && (nonmonotone = true)
-        hprev = hhi
-        iters += 1
-    end
-    if isfinite(hhi) && hhi < 0
-        value = dir < 0 ? -Inf : Inf
+    # The log-SD parameterisation is bounded (|log σ_phy| < 50, `_loconly_profile_beta`).
+    # A profile still below the threshold at that edge is unbounded within the
+    # parameter space, not a failed search.
+    at_domain_edge(t) = !(abs(estimate + dir * t) < 50)
+    function arm(value; unbounded=false, endpoint_failed=false, iters=0, root_iterations=0,
+                 nonmonotone=false)
         stats = (
             evaluations=evaluations,
             gradient_evaluations=gradient_evaluations,
             bracket_expansions=iters,
-            root_iterations=0,
-            unbounded=true,
+            root_iterations=root_iterations,
+            unbounded=unbounded,
             nonmonotone=nonmonotone,
+            endpoint_failed=endpoint_failed,
+            nuisance_fallback=last_nuisance.fallback,
+            nuisance_reason=last_nuisance.reason,
         )
         return value, stats
+    end
+    open_value = dir < 0 ? -Inf : Inf
+
+    tlo = 0.0
+    thi = 0.1
+    at_domain_edge(thi) && return arm(open_value; unbounded=true)
+    ev = heval(thi)
+    ev.ok || return arm(open_value; endpoint_failed=true)
+    hhi = ev.h
+    hprev = hhi
+    nonmonotone = false
+    iters = 0
+    t_edge = 49.999 - dir * estimate     # last probe just inside the domain bound
+    while hhi < 0 && iters < 60
+        tnext = thi * 1.6
+        if at_domain_edge(tnext)
+            # Probe once just inside the bound; still below the threshold there
+            # means no crossing exists in the parameter space.
+            t_edge > thi || return arm(open_value; unbounded=true, iters=iters,
+                                       nonmonotone=nonmonotone)
+            tnext = t_edge
+        end
+        tlo = thi
+        thi = tnext
+        ev = heval(thi)
+        ev.ok || return arm(open_value; endpoint_failed=true, iters=iters, nonmonotone=nonmonotone)
+        hhi = ev.h
+        hhi < hprev - 1e-12 && (nonmonotone = true)
+        hprev = hhi
+        iters += 1
+    end
+    if hhi < 0
+        return arm(open_value; unbounded=true, iters=iters, nonmonotone=nonmonotone)
     end
     nonmonotone && (tlo = 0.0)   # conservative bracket to the first crossing (see _profile_endpoint_result)
 
@@ -752,23 +824,18 @@ function _loconly_profile_endpoint_result(
     root_iterations = 0
     for _ in 1:80
         root_iterations += 1
-        ht, hp = heval(t)
+        ev = heval(t)
+        ev.ok || return arm(open_value; endpoint_failed=true, iters=iters,
+                            root_iterations=root_iterations, nonmonotone=nonmonotone)
+        ht, hp = ev.h, ev.hp
         abs(ht) < 1e-9 && break
         ht < 0 ? (tlo = t) : (thi = t)
         tn = (!nonmonotone && isfinite(hp) && hp > 0) ? t - ht / hp : (tlo + thi) / 2
         t = (tlo < tn < thi) ? tn : (tlo + thi) / 2
         thi - tlo < 1e-8 && break
     end
-    value = estimate + dir * t
-    stats = (
-        evaluations=evaluations,
-        gradient_evaluations=gradient_evaluations,
-        bracket_expansions=iters,
-        root_iterations=root_iterations,
-        unbounded=false,
-        nonmonotone=nonmonotone,
-    )
-    return value, stats
+    return arm(estimate + dir * t; iters=iters, root_iterations=root_iterations,
+               nonmonotone=nonmonotone)
 end
 
 function _loconly_profiled_resd_nll(obj::LocOnlyObjective, lσ0::Real, lσ_phy::Real)
@@ -778,6 +845,7 @@ function _loconly_profiled_resd_nll(obj::LocOnlyObjective, lσ0::Real, lσ_phy::
         G !== nothing && (G[1] = grad[1])
         return F === nothing ? nothing : val
     end
+    fallback = false
     res = try
         od = Optim.NLSolversBase.only_fg!(fg!)
         Optim.optimize(
@@ -786,7 +854,10 @@ function _loconly_profiled_resd_nll(obj::LocOnlyObjective, lσ0::Real, lσ_phy::
             Optim.LBFGS(; linesearch=Optim.LineSearches.BackTracking(; order=3)),
             Optim.Options(; iterations=80, g_tol=1e-8, x_abstol=1e-10),
         )
-    catch
+    catch err
+        err isa InterruptException && rethrow(err)
+        # #1023: the fallback is recorded (and its own exit checked below).
+        fallback = true
         obj1(x) = _loconly_profile_fg(obj.prob, x[1], lσ_phy)[1]
         Optim.optimize(
             obj1,
@@ -797,7 +868,20 @@ function _loconly_profiled_resd_nll(obj::LocOnlyObjective, lσ0::Real, lσ_phy::
     end
     lσ = Optim.minimizer(res)[1]
     val, grad, _, _ = _loconly_profile_fg(obj.prob, lσ, lσ_phy)
-    return val, lσ, grad[2]
+    # #1023: an unfinished nuisance minimisation gives a profile NLL that is too
+    # high (an interval that is too narrow), and the 1e18 sentinel is not a value.
+    reason = if !(isfinite(lσ) && isfinite(val)) || val >= _LOCONLY_PENALTY / 100
+        :nonfinite_objective
+    elseif !(Optim.converged(res) || abs(grad[1]) <= 1e-6 * max(1, obj.prob.n))
+        # A backtracking line search can stop "unsuccessfully" at a rounding-level
+        # optimum, so a scale-free score check (the residual-scale score is a sum
+        # over n observations) also certifies the nuisance solve.
+        fallback ? :fallback_not_converged : :not_converged
+    else
+        :accepted
+    end
+    nuisance = (accepted=reason === :accepted, fallback=fallback, reason=reason)
+    return val, lσ, grad[2], nuisance
 end
 
 # Profiled objective: minimise nll over every component except k, with θ[k] = v.
@@ -827,7 +911,35 @@ end
 # Compare profile and reference NLLs at their represented scale.  We retain an
 # eight-ULP cancellation allowance, but no relative-to-NLL tolerance: adding a
 # huge constant to an objective must not make a real one-unit discrepancy pass.
+# A profiled value at or beyond this while the reference NLL is ordinary is an
+# optimiser-wall sentinel (e.g. 1e18), never a real objective; it must not be
+# read as a profile crossing.  A uniformly shifted objective (reference also
+# huge) is a precision problem, handled below, not a sentinel.
+const _PROFILE_SENTINEL = 1e16
+
+# drmTMB `profile_endpoint_crossing(..., allow_lower_boundary = TRUE)` for
+# exp-transformed SD targets (R/profile.R). A lower arm that reaches
+# `log(sqrt(eps))` without crossing the LR threshold is the SD-scale boundary 0,
+# not a failed search and not the whole real line. Refs #1117.
+const _PROFILE_SD_LOG_FLOOR = log(sqrt(eps(Float64)))
+# Pseudo-inverse SEs at a collapsed variance can be ~1e-19 and then the
+# geometric bracket never leaves the floor (seed 20261016902: 1.6^40 * 5e-19
+# stays at 6e-11). Treat that as "no usable step".
+const _PROFILE_MIN_STEP = 1e-6
+
+_is_log_sd_profile_param(param::Symbol) =
+    param === :resd || param === :resd_mu || param === :resd_sigma
+
+function _profile_usable_step(se_k::Real, est::Real)
+    (isfinite(se_k) && se_k > _PROFILE_MIN_STEP) && return Float64(se_k)
+    return 1.0
+end
+
 function _profile_reference_difference(value::Real, reference::Real)
+    (isfinite(value) && isfinite(reference) && abs(value) >= _PROFILE_SENTINEL &&
+     abs(reference) < _PROFILE_SENTINEL) && return (
+        status=:sentinel_objective, difference=NaN, cancellation=NaN,
+    )
     (isfinite(value) && isfinite(reference)) || return (
         status=:nonfinite_objective, difference=NaN, cancellation=NaN,
     )
@@ -1053,14 +1165,17 @@ end
 # bracket is accepted, otherwise we fall back to bisection. Correctness is
 # bracket-guaranteed; the analytic slope only buys faster (quadratic) convergence.
 # Each evaluation warm-starts the nuisance optimisation from the previous û.
-function _profile_endpoint(nll, nllgrad, θ̂, k, nllhat, half, s, dir, u0, autodiff)
+function _profile_endpoint(nll, nllgrad, θ̂, k, nllhat, half, s, dir, u0, autodiff;
+                           allow_lower_boundary::Bool=false)
     value, _ = _profile_endpoint_result(
-        nll, nllgrad, θ̂, k, nllhat, half, s, dir, u0, autodiff
+        nll, nllgrad, θ̂, k, nllhat, half, s, dir, u0, autodiff;
+        allow_lower_boundary=allow_lower_boundary,
     )
     return value
 end
 
-function _profile_endpoint_result(nll, nllgrad, θ̂, k, nllhat, half, s, dir, u0, autodiff)
+function _profile_endpoint_result(nll, nllgrad, θ̂, k, nllhat, half, s, dir, u0, autodiff;
+                                 allow_lower_boundary::Bool=false)
     target = nllhat + half
     p = length(θ̂)
     nidx = p - 1
@@ -1116,6 +1231,31 @@ function _profile_endpoint_result(nll, nllgrad, θ̂, k, nllhat, half, s, dir, u
         )
         return value, stats
     end
+    function boundary_arm(nuisance, root_iterations=0, bracket_expansions=0, nonmonotone=false)
+        # #1117 / drmTMB allow_lower_boundary: the LR threshold was not crossed
+        # before the log-SD floor. That is a one-sided [0, u] interval, not a
+        # failed endpoint (confint must not throw) and not (-Inf, Inf).
+        stats = (
+            evaluations=evaluations,
+            gradient_evaluations=gradient_evaluations,
+            bracket_expansions=bracket_expansions,
+            root_iterations=root_iterations,
+            unbounded=true,
+            nonmonotone=nonmonotone,
+            endpoint_failed=false,
+            nuisance_method=nuisance.method,
+            nuisance_fallback=nuisance.fallback,
+            nuisance_reason=:sd_boundary,
+        )
+        return -Inf, stats
+    end
+    coord(t) = θ̂[k] + dir * t
+    at_sd_floor(t) = allow_lower_boundary && dir < 0 && coord(t) <= _PROFILE_SD_LOG_FLOOR
+    t_floor = allow_lower_boundary && dir < 0 ? (θ̂[k] - _PROFILE_SD_LOG_FLOOR) : Inf
+    dummy_boundary = (method=:not_checked, fallback=false, reason=:sd_boundary)
+    if allow_lower_boundary && dir < 0 && θ̂[k] <= _PROFILE_SD_LOG_FLOOR
+        return boundary_arm(dummy_boundary)
+    end
     # Bracket: expand until h > 0. h(t) is assumed increasing (LR profile), but an
     # inexactly-solved inner nuisance optimisation can make it slightly non-monotone
     # (dip below `target` then rise). We track this and reset `tlo = 0` so
@@ -1123,23 +1263,41 @@ function _profile_endpoint_result(nll, nllgrad, θ̂, k, nllhat, half, s, dir, u
     # does not establish that the returned crossing is globally first.
     tlo = 0.0
     thi = s
+    if at_sd_floor(thi)
+        t_floor <= 0 && return boundary_arm(dummy_boundary)
+        thi = t_floor
+    end
     evalhi = heval(thi)
-    evalhi.ok || return failed_arm(evalhi.nuisance)
+    if !evalhi.ok
+        return at_sd_floor(thi) ? boundary_arm(evalhi.nuisance) : failed_arm(evalhi.nuisance)
+    end
     hhi = evalhi.h
     hprev = hhi
     nonmonotone = false
     iters = 0
     while hhi < 0 && iters < 40
         tlo = thi
-        thi *= 1.6
+        tnext = thi * 1.6
+        if at_sd_floor(tnext)
+            t_floor <= thi && return boundary_arm(evalhi.nuisance, 0, iters, nonmonotone)
+            tnext = t_floor
+        end
+        thi = tnext
         evalhi = heval(thi)
-        evalhi.ok || return failed_arm(evalhi.nuisance, 0, iters, nonmonotone)
+        if !evalhi.ok
+            return at_sd_floor(thi) ? boundary_arm(evalhi.nuisance, 0, iters, nonmonotone) :
+                failed_arm(evalhi.nuisance, 0, iters, nonmonotone)
+        end
         hhi = evalhi.h
         hhi < hprev - 1e-12 && (nonmonotone = true)
         hprev = hhi
         iters += 1
+        at_sd_floor(thi) && hhi < 0 && return boundary_arm(evalhi.nuisance, 0, iters, nonmonotone)
     end
     if hhi < 0
+        if at_sd_floor(thi)
+            return boundary_arm(evalhi.nuisance, 0, iters, nonmonotone)
+        end
         # A searched-range limit is meaningful only when the profiled value is
         # separated from the LR target by more than its represented-NLL
         # cancellation.  Otherwise the sign itself is unresolved.
@@ -1168,7 +1326,7 @@ function _profile_endpoint_result(nll, nllgrad, θ̂, k, nllhat, half, s, dir, u
     t = (tlo + thi) / 2
     root_iterations = 0
     # `converged` is set ONLY by the genuine convergence test `abs(ht) < 1e-9`
-    # (DRM.jl#493). The loop's OTHER exit, `thi - tlo < 1e-8`, is a bracket-
+    # (DRModels.jl#493). The loop's OTHER exit, `thi - tlo < 1e-8`, is a bracket-
     # collapse safety valve, not a root: on a trapped, non-monotone profiled-nll
     # surface (the warm-started inner nuisance solve landing in a spurious local
     # optimum ~28 NLL units above the true profile, for every t on the affected
@@ -1225,7 +1383,7 @@ function _profile_endpoint_result(nll, nllgrad, θ̂, k, nllhat, half, s, dir, u
         if thi - tlo < 1e-8
             # Bracket collapsed. That is a genuine root iff the residual is small
             # relative to the target; otherwise the surface never crossed and the
-            # step is fabricated (DRM.jl#493).
+            # step is fabricated (DRModels.jl#493).
             converged = isfinite(ht) && abs(ht) + final_cancellation <= endpoint_tolerance
             converged && (t = t_eval)
             break
@@ -1269,11 +1427,13 @@ function _profile_row_result(
 )
     k = job.k
     est = θ̂[k]
-    s = (isfinite(se[k]) && se[k] > 0) ? se[k] : max(abs(est), 1.0)
+    allow_lower = _is_log_sd_profile_param(job.param)
+    s = _profile_usable_step(se[k], est)
     u0 = θ̂[[i for i in 1:length(θ̂) if i != k]]
     if endpoint_threads && Threads.nthreads() > 1
         left = Threads.@spawn _profile_endpoint_result(
-            nll, nllgrad, θ̂, k, nllhat, half, s, -1, u0, autodiff
+            nll, nllgrad, θ̂, k, nllhat, half, s, -1, u0, autodiff;
+            allow_lower_boundary=allow_lower,
         )
         right = Threads.@spawn _profile_endpoint_result(
             nll, nllgrad, θ̂, k, nllhat, half, s, +1, u0, autodiff
@@ -1282,12 +1442,15 @@ function _profile_row_result(
         hi, rstats = fetch(right)
     else
         lo, lstats = _profile_endpoint_result(
-            nll, nllgrad, θ̂, k, nllhat, half, s, -1, u0, autodiff
+            nll, nllgrad, θ̂, k, nllhat, half, s, -1, u0, autodiff;
+            allow_lower_boundary=allow_lower,
         )
         hi, rstats = _profile_endpoint_result(
             nll, nllgrad, θ̂, k, nllhat, half, s, +1, u0, autodiff
         )
     end
+    rewritten = _rewrite_log_sd_boundary_ci(job, est, lo, hi, lstats, rstats)
+    rewritten === nothing || return rewritten
     row = (param=job.param, coef=job.coef, estimate=est, lower=lo, upper=hi)
     stats = (
         param=job.param,
@@ -1311,6 +1474,39 @@ function _profile_row_result(
     return row, stats
 end
 
+# #1117: a log-SD lower arm that hit the floor (or failed there) is the
+# SD-scale boundary 0. Report [0, exp(u)] so confint neither throws nor
+# returns (-Inf, Inf). Interior (both-finite) resd rows stay on log σ_b.
+function _rewrite_log_sd_boundary_ci(job, log_est, lo, hi, lstats, rstats)
+    _is_log_sd_profile_param(job.param) || return nothing
+    lower_boundary = (lo == -Inf) && (lstats.unbounded || lstats.endpoint_failed)
+    lower_boundary || return nothing
+    sd_est = log_est <= _PROFILE_SD_LOG_FLOOR ? 0.0 : exp(log_est)
+    upper_ok = isfinite(hi) && !rstats.endpoint_failed && !rstats.unbounded
+    sd_hi = upper_ok ? exp(hi) : Inf
+    row = (param=job.param, coef=job.coef, estimate=sd_est, lower=0.0, upper=sd_hi)
+    stats = (
+        param=job.param,
+        coef=job.coef,
+        evaluations=lstats.evaluations + rstats.evaluations,
+        gradient_evaluations=lstats.gradient_evaluations + rstats.gradient_evaluations,
+        bracket_expansions=lstats.bracket_expansions + rstats.bracket_expansions,
+        root_iterations=lstats.root_iterations + rstats.root_iterations,
+        lower_unbounded=true,
+        upper_unbounded=!upper_ok,
+        nonmonotone=lstats.nonmonotone || rstats.nonmonotone,
+        lower_endpoint_failed=false,
+        upper_endpoint_failed=rstats.endpoint_failed,
+        lower_nuisance_method=hasproperty(lstats, :nuisance_method) ? lstats.nuisance_method : :specialized,
+        upper_nuisance_method=hasproperty(rstats, :nuisance_method) ? rstats.nuisance_method : :specialized,
+        lower_nuisance_fallback=lstats.nuisance_fallback,
+        upper_nuisance_fallback=rstats.nuisance_fallback,
+        lower_nuisance_reason=:sd_boundary,
+        upper_nuisance_reason=rstats.nuisance_reason,
+    )
+    return row, stats
+end
+
 """
     bootstrap_ci(formula, family; data, B = 300, level = 0.95, rng = default_rng(), threads = false, K =, A =, tree =, coords =, algorithm = :auto, g_tol = 1e-8)
     bootstrap_ci(fit; data, B = 300, level = 0.95, rng = default_rng(), threads = false, K =, A =, tree =, coords =, algorithm = :auto, g_tol = 1e-8)
@@ -1325,13 +1521,17 @@ and, for Gaussian fits, the solver controls (`algorithm` / `g_tol`) exactly as
 to [`drm`](@ref). Use `bootstrap_result` when you need attempted/used/failed
 counts and per-replicate failure messages. If you already have
 `fit = drm(...)`, pass the fit directly to avoid refitting the base model before
-the bootstrap replicates.
+the bootstrap replicates. A homogeneous Toeplitz `temporal()` fit returns the
+mean-coefficient rows only (drmTMB refuses the temporal bootstrap and defers
+σ and lag-correlation intervals).
+The fit-based form refuses a fit with an explicit `DRMControl.optimizer`
+before any bootstrap refit; the formula-based form keeps its default solver.
 """
 function bootstrap_ci(
     formula::DrmFormula,
     family::Gaussian;
     data,
-    B::Int=300,
+    B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
     K=nothing,
@@ -1340,7 +1540,7 @@ function bootstrap_ci(
     coords=nothing,
     threads::Bool=false,
     failures::Symbol=:error,
-    check_converged::Bool=false,
+    check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
 )
@@ -1373,7 +1573,7 @@ function bootstrap_ci(
     formula::DrmFormula,
     family;
     data,
-    B::Int=300,
+    B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
     K=nothing,
@@ -1382,7 +1582,7 @@ function bootstrap_ci(
     coords=nothing,
     threads::Bool=false,
     failures::Symbol=:error,
-    check_converged::Bool=false,
+    check_converged::Bool=true,
 )
     rows = bootstrap_summary(
         formula, family; data, B, level, rng, K, A, tree, coords, threads, failures,
@@ -1394,7 +1594,7 @@ end
 function bootstrap_ci(
     fit::DrmFit;
     data,
-    B::Int=300,
+    B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
     K=nothing,
@@ -1403,8 +1603,9 @@ function bootstrap_ci(
     coords=nothing,
     threads::Bool=false,
     failures::Symbol=:error,
-    check_converged::Bool=false,
+    check_converged::Bool=true,
 )
+    _refuse_selected_optimizer_refit(fit, "bootstrap_ci")
     rows = bootstrap_summary(
         fit; data, B, level, rng, K, A, tree, coords, threads, failures, check_converged
     )
@@ -1414,7 +1615,7 @@ end
 function bootstrap_ci(
     fit::DrmFit{<:Gaussian};
     data,
-    B::Int=300,
+    B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
     K=nothing,
@@ -1423,10 +1624,11 @@ function bootstrap_ci(
     coords=nothing,
     threads::Bool=false,
     failures::Symbol=:error,
-    check_converged::Bool=false,
+    check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
 )
+    _refuse_selected_optimizer_refit(fit, "bootstrap_ci")
     rows = bootstrap_summary(
         fit;
         data,
@@ -1457,13 +1659,16 @@ second bootstrap run when both SEs and intervals are needed. Row fields are
 `(param, coef, estimate, std_error, lower, upper)`. By default, any failed
 replicate errors after all failures are recorded. Set `failures = :skip` to
 compute summaries from successful replicates; call `bootstrap_result` to
-inspect the skipped failures.
+inspect the skipped failures. A homogeneous Toeplitz `temporal()` fit returns
+the mean-coefficient rows only, as [`bootstrap_ci`](@ref).
+The fit-based form refuses a fit with an explicit `DRMControl.optimizer`
+before any bootstrap refit.
 """
 function bootstrap_summary(
     formula::DrmFormula,
     family::Gaussian;
     data,
-    B::Int=300,
+    B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
     K=nothing,
@@ -1472,7 +1677,7 @@ function bootstrap_summary(
     coords=nothing,
     threads::Bool=false,
     failures::Symbol=:error,
-    check_converged::Bool=false,
+    check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
 )
@@ -1503,7 +1708,7 @@ function bootstrap_summary(
     formula::DrmFormula,
     family;
     data,
-    B::Int=300,
+    B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
     K=nothing,
@@ -1512,7 +1717,7 @@ function bootstrap_summary(
     coords=nothing,
     threads::Bool=false,
     failures::Symbol=:error,
-    check_converged::Bool=false,
+    check_converged::Bool=true,
 )
     result = bootstrap_result(
         formula, family; data, B, level, rng, K, A, tree, coords, threads, failures,
@@ -1524,7 +1729,7 @@ end
 function bootstrap_summary(
     fit::DrmFit;
     data,
-    B::Int=300,
+    B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
     K=nothing,
@@ -1533,8 +1738,9 @@ function bootstrap_summary(
     coords=nothing,
     threads::Bool=false,
     failures::Symbol=:error,
-    check_converged::Bool=false,
+    check_converged::Bool=true,
 )
+    _refuse_selected_optimizer_refit(fit, "bootstrap_summary")
     result = bootstrap_result(
         fit; data, B, level, rng, K, A, tree, coords, threads, failures, check_converged
     )
@@ -1544,7 +1750,7 @@ end
 function bootstrap_summary(
     fit::DrmFit{<:Gaussian};
     data,
-    B::Int=300,
+    B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
     K=nothing,
@@ -1553,10 +1759,11 @@ function bootstrap_summary(
     coords=nothing,
     threads::Bool=false,
     failures::Symbol=:error,
-    check_converged::Bool=false,
+    check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
 )
+    _refuse_selected_optimizer_refit(fit, "bootstrap_summary")
     result = bootstrap_result(
         fit;
         data,
@@ -1577,34 +1784,46 @@ function bootstrap_summary(
 end
 
 """
-    bootstrap_result(formula, family; data, B = 300, level = 0.95, rng = default_rng(), threads = false, failures = :error, check_converged = false, K =, A =, tree =, coords =, algorithm = :auto, g_tol = 1e-8)
-    bootstrap_result(fit; data, B = 300, level = 0.95, rng = default_rng(), threads = false, failures = :error, check_converged = false, K =, A =, tree =, coords =, algorithm = :auto, g_tol = 1e-8)
+    bootstrap_result(formula, family; data, B = 300, level = 0.95, rng = default_rng(), threads = false, failures = :error, check_converged = true, K =, A =, tree =, coords =, algorithm = :auto, g_tol = 1e-8)
+    bootstrap_result(fit; data, B = 300, level = 0.95, rng = default_rng(), threads = false, failures = :error, check_converged = true, K =, A =, tree =, coords =, algorithm = :auto, g_tol = 1e-8)
 
 Auditable parametric bootstrap. Returns a `NamedTuple` with:
 
 - `summary` — the same rows returned by `bootstrap_summary`;
 - `failures` — rows `(replicate, seed, message)` for failed refits;
 - `attempted`, `used`, `failed` — replicate counts;
+- `status` — `"bootstrap"` when every replicate was kept, `"bootstrap_incomplete"`
+  when any replicate was dropped and at least two remain, `"bootstrap_at_boundary"`
+  when those retained draws pile up on a variance-component or correlation bound,
+  or `"bootstrap_unavailable"` when fewer than two replicates remain;
+- `boundary_params` — `"param:coef"` names that triggered the boundary status;
 - `seeds` — the per-replicate seeds used for reproducibility;
 - `threaded` — whether threaded refits were actually used.
 - `worker_threads`, `julia_threads`, `blas_threads`, `blas_oversubscribed`,
   `elapsed` — CPU context and wall-clock time for the simulated-refit phase.
 
-`failures = :error` (default) records failures and then errors if any replicate
-failed. `failures = :skip` computes summaries from successful replicates and
-keeps the failure records in the return value. Set `check_converged = true` to
-treat non-converged refits as failed replicates. Passing an existing `DrmFit`
+`failures = :error` (default) aborts when a refit throws. A refit that does
+not converge, or that lands on a degenerate optimum, is not that kind of
+error: with `check_converged = true` (the default) it is dropped, `status` is
+`"bootstrap_incomplete"` (or `"bootstrap_at_boundary"` when the retained draws
+also sit on a bound), and a warning names that status. `failures = :skip`
+does the same for thrown refits instead of aborting. Set
+`check_converged = false` only to reproduce the old behaviour that counted
+unconverged refits in the interval. Passing an existing `DrmFit`
 reuses that point estimate as the bootstrap seed fit and starts directly with
 the `B` simulated refits. Gaussian bootstrap refits pass `algorithm` and
 `g_tol` through to `drm(...)`; this is useful for large structured models where
 `:auto` selects a sparse route and the tolerance is part of the benchmarked
-workflow.
+workflow. For a homogeneous Toeplitz `temporal()` fit, `summary` holds the
+mean-coefficient rows only, as [`bootstrap_ci`](@ref).
+The fit-based form refuses a fit with an explicit `DRMControl.optimizer`
+before any bootstrap refit.
 """
 function bootstrap_result(
     formula::DrmFormula,
     family::Gaussian;
     data,
-    B::Int=300,
+    B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
     K=nothing,
@@ -1613,7 +1832,7 @@ function bootstrap_result(
     coords=nothing,
     threads::Bool=false,
     failures::Symbol=:error,
-    check_converged::Bool=false,
+    check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
 )
@@ -1630,7 +1849,7 @@ end
 function bootstrap_result(
     fit::DrmFit{<:Gaussian};
     data,
-    B::Int=300,
+    B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
     K=nothing,
@@ -1639,10 +1858,11 @@ function bootstrap_result(
     coords=nothing,
     threads::Bool=false,
     failures::Symbol=:error,
-    check_converged::Bool=false,
+    check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
 )
+    _refuse_selected_optimizer_refit(fit, "bootstrap_result")
     # Bivariate q=4 phylogenetic fit (also a DrmFit{<:Gaussian}): no scalar SD
     # block to refit-and-recoef — the quantities of interest are the among-axis
     # SDs sqrt.(diag(Σ_a)). Route to the dedicated parametric bootstrap, which
@@ -1656,21 +1876,23 @@ function bootstrap_result(
     _check_bootstrap_failure_mode(failures)
     formula = _bootstrap_fit_formula(fit)
     # LSS refits must preserve the seed fit's estimator. Other Gaussian routes
-    # retain their existing dispatch here; MAP needs its separate penalty contract.
-    refit_options = if _is_gaussian_lss(fit)
-        method = estimation_method(fit)
-        method in (:ML, :REML) || throw(ArgumentError("LSS bootstrap supports ML/REML seed fits only"))
-        (; method)
-    else
-        (;)
-    end
-    # `drm(::BivariateDrmFormula, ::Gaussian; ...)` declares no `algorithm`
-    # keyword (src/gaussian_bivariate.jl), so forwarding it would throw a
-    # `MethodError` on the first replicate. `refit_options` is empty on this
-    # branch by construction — `_is_gaussian_lss` requires `fit.formula isa
-    # DrmFormula` — so dropping it changes nothing here either.
+    # forward REML, a non-default marginal, and a stored phylo penalty (MAP).
+    # On the univariate refit, a non-default marginal (:Laplace, :VA, :AGHQ)
+    # and a REML seed are forwarded too. Otherwise the replicate is the default
+    # :LA / ML fit and the interval describes a different estimator
+    # (DRModels.jl#1038, #1025).
+    refit_options = _bootstrap_refit_kwargs(fit)
+    # `drm(::BivariateDrmFormula, ::Gaussian; ...)` accepts `method` in
+    # (:ML, :REML) and does not accept `algorithm` or `marginal`
+    # (src/gaussian_bivariate.jl). Either of those keywords throws a
+    # MethodError on the first replicate. A bivariate formula is not a
+    # univariate LSS `DrmFormula`, so `_is_gaussian_lss` is false, but a
+    # REML seed still stores `method => :REML` in `refit_options`. Pass
+    # `method` only when that keyword is present, and leave `marginal` off
+    # this call.
     refit = if formula isa BivariateDrmFormula
-        datab -> drm(formula, fit.family; data=datab, K, A, tree, coords, g_tol)
+        biv_kw = _bootstrap_bivariate_refit_kwargs(refit_options)
+        datab -> drm(formula, fit.family; data=datab, K, A, tree, coords, g_tol, biv_kw...)
     else
         datab -> drm(formula, fit.family; data=datab, K, A, tree, coords, algorithm, g_tol, refit_options...)
     end
@@ -1689,7 +1911,7 @@ function bootstrap_result(
     formula::DrmFormula,
     family;
     data,
-    B::Int=300,
+    B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
     K=nothing,
@@ -1698,7 +1920,7 @@ function bootstrap_result(
     coords=nothing,
     threads::Bool=false,
     failures::Symbol=:error,
-    check_converged::Bool=false,
+    check_converged::Bool=true,
 )
     _check_bootstrap_failure_mode(failures)
     # #480: mirror #479's fit-based fix. Forward a structured-matrix keyword to
@@ -1730,7 +1952,7 @@ end
 function bootstrap_result(
     fit::DrmFit;
     data,
-    B::Int=300,
+    B::Real=300,
     level::Real=0.95,
     rng=default_rng(),
     K=nothing,
@@ -1739,8 +1961,9 @@ function bootstrap_result(
     coords=nothing,
     threads::Bool=false,
     failures::Symbol=:error,
-    check_converged::Bool=false,
+    check_converged::Bool=true,
 )
+    _refuse_selected_optimizer_refit(fit, "bootstrap_result")
     # Bivariate q=4 phylogenetic fit: there is no scalar SD block to refit-and-
     # recoef; the quantities of interest are the among-axis SDs sqrt.(diag(Σ_a)).
     # Route to the dedicated parametric bootstrap (boundary-honest percentile CIs).
@@ -1766,6 +1989,11 @@ function bootstrap_result(
     K !== nothing && (extra[:K] = K)
     A !== nothing && (extra[:A] = A)
     coords !== nothing && (extra[:coords] = coords)
+    # Repeat the seed fit's integrator and REML setting. :LA / ML are the
+    # defaults, so only a different choice is forwarded (DRModels.jl#1038, #1025).
+    for (k, v) in pairs(_bootstrap_refit_kwargs(fit))
+        extra[k] = v
+    end
     refit = datab -> drm(formula, fit.family; data=datab, extra...)
     simulate_fn = _marginal_simulator(fit, data; K=K, A=A, tree=tree,
                                       coords=coords)   # #459 / #479
@@ -1823,6 +2051,39 @@ end
 # (there conditional and marginal simulation coincide and `simulate` is correct).
 # Gaussian LSS bootstrap uses the full marginal model, not fitted random effects.
 # Prepared arrays are read-only; each call allocates its own draws and response.
+# Keywords a bootstrap replicate must repeat so it is the same estimator as
+# the seed fit. `:LA` and `:ML` are the `drm` defaults and are omitted.
+# Gaussian location-scale-scale passes the seed method explicitly, `:ML` or
+# `:REML`. That route rejects any other method. A penalized MAP seed is
+# repeated by forwarding the stored `penalty` (the fitter does not take
+# `method = :MAP`).
+function _bootstrap_refit_kwargs(fit::DrmFit)
+    kw = Pair{Symbol,Any}[]
+    if _is_gaussian_lss(fit)
+        method = estimation_method(fit)
+        method in (:ML, :REML) ||
+            throw(ArgumentError("LSS bootstrap supports ML/REML seed fits only"))
+        push!(kw, :method => method)
+    elseif estimation_method(fit) === :REML
+        push!(kw, :method => :REML)
+    elseif estimation_method(fit) === :MAP
+        fit.penalty === nothing && throw(ArgumentError(
+            "bootstrap refit: this fit is :MAP but stores no penalty, so the " *
+            "replicate cannot repeat the penalized estimator"))
+    end
+    fit.penalty === nothing || push!(kw, :penalty => fit.penalty)
+    fit.marginal === :LA || push!(kw, :marginal => fit.marginal)
+    weights(fit) === nothing || push!(kw, :weights => weights(fit))   # #931: same weighted likelihood
+    return NamedTuple(kw)
+end
+
+# Keywords the bivariate Gaussian bootstrap refit may pass to `drm`.
+# `method` is included only when the seed kwargs contain it. `marginal` is
+# left off, because that method does not accept it.
+function _bootstrap_bivariate_refit_kwargs(refit_options)
+    haskey(refit_options, :method) ? (; method = refit_options.method) : NamedTuple()
+end
+
 _is_gaussian_lss(fit::DrmFit) = fit.family isa Gaussian &&
     fit.formula isa DrmFormula &&
     (!isempty(_sd_parts(fit.formula)) || !isempty(_sdphylo_parts(fit.formula)))
@@ -1919,6 +2180,32 @@ end
 
 function _marginal_simulator(fit::DrmFit, data; K=nothing, A=nothing, tree=nothing,
                              coords=nothing)
+    sim = _marginal_simulator_build(fit, data; K, A, tree, coords)
+    # `nothing` sends `bootstrap` to the CONDITIONAL `simulate`. On the Gaussian
+    # `meta_V(...)` + random-effect route (`_fit_meta_gaussian_re`) that fallback
+    # is a different model: `means[:mu]` is Xβ and `scales[:sigma]` is √(v + σ²),
+    # so the conditional draw has NO random field at all. Refuse instead.
+    if sim === nothing && _is_meta_gaussian_re(fit)
+        throw(ArgumentError("bootstrap: could not build the marginal simulator for this " *
+            "`meta_V(...)` + random-effect fit (pass the same `data` and `tree` / `K` / `A` " *
+            "used to fit it); the conditional fallback would drop the random effect"))
+    end
+    return sim
+end
+
+function _is_meta_gaussian_re(fit::DrmFit)
+    (fit.family isa Gaussian && fit.formula isa DrmFormula) || return false
+    rhs = Dict(fit.formula.forms)
+    haskey(rhs, :mu) || return false
+    _, re, metav, structured, _ = _split_ranef(rhs[:mu]; allow_phylo_slope = true)
+    return metav !== nothing && (!isempty(re) || structured !== nothing)
+end
+
+function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing, tree=nothing,
+                                   coords=nothing)
+    # temporal(): `simulate` already draws the full marginal model (a fresh chain
+    # per series and a fresh `(1 | id)` intercept), so it IS the marginal simulator.
+    _is_temporal_fit(fit) && return rng -> _temporal_simulate(fit, rng)
     fit.nll isa LocScaleObjective &&
         return _ls_marginal_simulator(fit, data; K, A, tree, coords)
     _is_gaussian_lss(fit) && return _lss_marginal_simulator(fit, data; tree)
@@ -1928,7 +2215,23 @@ function _marginal_simulator(fit::DrmFit, data; K=nothing, A=nothing, tree=nothi
     (fit.family isa Gaussian && !haskey(fit.scales, :sigma)) && return nothing
     rhs = Dict(fit.formula.forms)
     haskey(rhs, :mu) || return nothing
-    _, re, _, structured, structured_slope = _split_ranef(rhs[:mu]; allow_phylo_slope = true)
+    _, re, metav_ms, structured, structured_slope = _split_ranef(rhs[:mu]; allow_phylo_slope = true)
+    # A Gaussian fit with SEVERAL random fields on the mean where at least one is
+    # structured or the fit has `meta_V(...)` (Arc 2: `_fit_meta_gaussian_re`, e.g.
+    # `phylo(1 | sp) + (1 | study)`, and the two-structured route, e.g.
+    # `phylo(1 | sp) + relmat(1 | id)`): the simulator below draws ONE field, so it
+    # would silently bootstrap a model with the other field(s) missing. Refuse.
+    # Fits whose fields are all ordinary bars keep their existing path (the
+    # `length(re) == 1` check below). A single field is drawn below: `scales[:sigma]`
+    # is √(v + σ²) under meta_V, and phylo rows go to tree leaves as the fit maps
+    # them (`phylo_leaf` below).
+    if fit.family isa Gaussian && (metav_ms !== nothing || structured !== nothing)
+        nfields = length(re) + length(_collect_structured(rhs[:mu]))
+        nfields <= 1 ||
+            throw(ArgumentError("bootstrap: the marginal simulator for a Gaussian fit " *
+                "with $(nfields) random fields on the mean is not implemented; use " *
+                "`profile` intervals or the Wald `vcov`"))
+    end
     # A Gaussian `phylo(1 + x | g)` fit (#620) carries TWO phylogenetic fields;
     # the simulator below draws a single structured intercept, so building it
     # would silently bootstrap the wrong (intercept-only) model. Refuse.
@@ -1941,6 +2244,7 @@ function _marginal_simulator(fit::DrmFit, data; K=nothing, A=nothing, tree=nothi
     (isempty(re) && structured === nothing) && return nothing
 
     # Which grouping factor, and what covariance does its random effect have?
+    phylo_leaf = nothing   # row → tree-leaf index, set for a phylo field
     grp, Kg = if structured !== nothing
         g = structured[2]
         hasproperty(data, g) || return nothing
@@ -1956,8 +2260,24 @@ function _marginal_simulator(fit::DrmFit, data; K=nothing, A=nothing, tree=nothi
         if structured[1] === :phylo
             phy = tree isa AbstractString ? augmented_phy(tree) : tree
             phy === nothing && return nothing
-            (g, sigma_phy_dense(phy; σ²_phy = 1.0))
+            # Rows → tree LEAVES by name / tip index (#482, `_phylo_mean_leaf_index`),
+            # exactly as every Gaussian and non-Gaussian phylo mean fit maps them,
+            # NOT by first-seen order. First-seen order drew the field on the wrong
+            # tips whenever the data's species order differed from the tree's
+            # (measured: sister-tip covariance 0.294 in the model, -0.005 in 6000
+            # draws), and a tree with tips absent from the data failed the size
+            # check and fell back to `simulate`. The tip matrix follows the fit's
+            # SD scale (`fit.phylo_scale`): the raw covariance on the sparse,
+            # meta_V and Laplace routes; the tip CORRELATION on the dense Gaussian
+            # fallback (`sigma ~ x`, `algorithm = :gls`/`:lbfgs`) and the
+            # two-structured route, where a raw-covariance draw over-disperses the
+            # field by the tree height (measured, height 1.5: drawn cov 0.284 vs
+            # 0.186 in the model; also wrong on main).
+            phylo_leaf = (_phylo_mean_leaf_index(phy, getproperty(data, g)), phy.n_leaves)
+            (g, fit.phylo_scale === :correlation ? _phylo_correlation(phy) :
+                                                   sigma_phy_dense(phy; σ²_phy = 1.0))
         elseif structured[1] === :spatial && K === nothing && coords !== nothing
+            _require_finite_inputs(; coords=coords, context="spatial bootstrap")
             cmat = Matrix{Float64}(coords)
             size(cmat, 1) == G0 ||
                 throw(ArgumentError("spatial bootstrap coords must have one row per `$g` level (G = $G0)"))
@@ -1985,7 +2305,7 @@ function _marginal_simulator(fit::DrmFit, data; K=nothing, A=nothing, tree=nothi
         (g, Matrix{Float64}(LinearAlgebra.I, G0, G0))
     end
 
-    gidx, G = _group_index(getproperty(data, grp))
+    gidx, G = phylo_leaf === nothing ? _group_index(getproperty(data, grp)) : phylo_leaf
     size(Kg) == (G, G) || return nothing
     # Location-scale-scale fits (#544/#545): the RE SD is per group,
     # σ_g,k = exp(Z_k' α), so the draw scales each group's effect individually.
@@ -2086,17 +2406,18 @@ function _bootstrap_result(
     fit0,
     formula::Union{DrmFormula,BivariateDrmFormula},
     data,
-    B::Int,
+    B::Real,
     level::Real,
     rng,
     threads::Bool,
     refit;
     failures::Symbol=:error,
-    check_converged::Bool=false,
+    check_converged::Bool=true,
     simulate_fn=nothing,
 )
     _check_bootstrap_failure_mode(failures)
-    B >= 1 || throw(ArgumentError("bootstrap requires B >= 1"))
+    B = _validate_bootstrap_B(B)
+    level = _validate_ci_level(level; what="bootstrap")
     est = coef(fit0)
     p = length(est)
     draws = Matrix{Float64}(undef, B, p)
@@ -2104,6 +2425,10 @@ function _bootstrap_result(
     # silently lose a successful replicate. Byte-addressable flags are independent.
     ok = fill(false, B)
     messages = Vector{Union{Nothing,String}}(nothing, B)
+    # A thrown refit is an error. A non-converged refit is a drop: it warns and
+    # sets `bootstrap_incomplete`, and it does not abort under `failures = :error`.
+    # `Vector{Bool}` is bit-packed, so parallel writes can drop a flag.
+    refit_error = zeros(UInt8, B)
     seeds = rand(rng, UInt, B)
 
     function run_one!(b)
@@ -2113,17 +2438,19 @@ function _bootstrap_result(
             # `simulate` is conditional and collapses a variance-component CI.
             ysim = simulate_fn === nothing ? simulate(fit0; rng=rr) : simulate_fn(rr)
             datab = _bootstrap_data(formula, data, ysim)
-            fitb = refit(datab)
+            fitb = _without_boundary_warnings(() -> refit(datab))
             # `is_converged`, not the raw `.converged` field: the accessor also
             # rejects a degenerate optimum (sigma collapsed, likelihood runaway),
             # which the optimiser's own flag happily calls converged (#461).
             if check_converged && !is_converged(fitb)
-                error("refit did not converge or landed on a degenerate optimum")
+                messages[b] = _BOOTSTRAP_UNCONVERGED
+            else
+                draws[b, :] = coef(fitb)
+                ok[b] = true
             end
-            draws[b, :] = coef(fitb)
-            ok[b] = true
         catch err
             messages[b] = sprint(showerror, err)
+            refit_error[b] = 0x01
         end
         return nothing
     end
@@ -2148,23 +2475,27 @@ function _bootstrap_result(
         messages[b] === nothing && continue
         push!(failure_rows, (replicate=b, seed=seeds[b], message=messages[b]::String))
     end
-    if !isempty(failure_rows) && failures === :error
-        first_failure = first(failure_rows)
+    if failures === :error && any(!iszero, refit_error)
+        first_b = findfirst(!iszero, refit_error)
         throw(
             ErrorException(
-                "bootstrap failed in $(length(failure_rows)) of $B replicates; first failure replicate $(first_failure.replicate), seed $(first_failure.seed): $(first_failure.message)",
+                "bootstrap failed in $(count(!iszero, refit_error)) of $B replicates; first failure replicate $(first_b), seed $(seeds[first_b]): $(messages[first_b])",
             ),
         )
     end
     used = count(ok)
     used > 0 || throw(ErrorException("all $B bootstrap replicates failed"))
-    summary = _bootstrap_summary_rows(fit0, draws[ok, :], est, level)
+    kept = draws[ok, :]
+    summary = _homtoep_bootstrap_rows(fit0, _bootstrap_summary_rows(fit0, kept, est, level))
+    boundary_params = _bootstrap_boundary_params(fit0, kept)
+    failed_n = length(failure_rows)
+    status = _finish_bootstrap_status(used, failed_n, boundary_params)
     return (
         summary=summary,
         failures=failure_rows,
         attempted=B,
         used=used,
-        failed=length(failure_rows),
+        failed=failed_n,
         seeds=seeds,
         threaded=threaded,
         worker_threads=_worker_threads(threaded, B),
@@ -2173,6 +2504,8 @@ function _bootstrap_result(
         blas_oversubscribed=_blas_oversubscribed(threaded),
         elapsed=elapsed,
         check_converged=check_converged,
+        status=status,
+        boundary_params=boundary_params,
     )
 end
 
@@ -2243,8 +2576,16 @@ end
 # `_is_response_missing` treats both `missing` and NaN as absent, exactly as
 # `_coerce_response_column` does when the fit reads the response, so the mask
 # restored here is the mask the fit itself used.
+#
+# A draw whose length differs from the data is an error, not a no-op: merged
+# back as-is, a short draw sits beside full-length covariates and every
+# replicate refit fails (or misaligns rows).
 function _restore_response_mask!(ysim::AbstractVector{Float64}, raw)
-    length(raw) == length(ysim) || return ysim
+    length(raw) == length(ysim) || throw(ArgumentError(
+        "bootstrap draw has length $(length(ysim)), expected $(length(raw)) (one value " *
+        "per row of `data`); pass the same `data` the model was fitted to. If `drm` " *
+        "dropped rows with a missing value when it fitted the model (#1089), pass " *
+        "`drm_listwise(formula, data)` as `data`"))
     @inbounds for i in eachindex(ysim)
         if _is_response_missing(raw[i])
             ysim[i] = NaN
@@ -2275,6 +2616,18 @@ function _bootstrap_ci_rows(rows)
         (param=r.param, coef=r.coef, estimate=r.estimate, lower=r.lower, upper=r.upper) for
         r in rows
     ]
+end
+
+function _bootstrap_boundary_params(fit0, draws)
+    names = String[]
+    size(draws, 1) < _BOOTSTRAP_BOUNDARY_MIN_DRAWS && return names
+    for ((pp, r), (_, nms)) in zip(fit0.blocks, fit0.coefnames)
+        for (j, col) in enumerate(r)
+            _bootstrap_param_at_boundary(pp, @view draws[:, col]) || continue
+            push!(names, string(pp, ":", nms[j]))
+        end
+    end
+    return names
 end
 
 function _bootstrap_summary_rows(fit0, draws, est, level)
@@ -2312,7 +2665,7 @@ end
 # Float64-only gradient callback; use it before trying ForwardDiff through the
 # objective. `nothing` means no objective -> (NaN, :none).
 #
-# WHY THE FALLBACK AND WHY THE SOURCE (measured 2026-09-05, DRM.jl origin/main
+# WHY THE FALLBACK AND WHY THE SOURCE (measured 2026-09-05, DRModels.jl origin/main
 # 109b6421c). FOUR shipping routes store a bare objective (no gradient callback)
 # that is exact on Float64 but NOT dual-number safe, so the unguarded
 # `ForwardDiff.gradient` on the last line THREW and the health check crashed on
@@ -2418,7 +2771,9 @@ end
 Post-fit convergence / identifiability diagnostics — drmTMB's `check_drm()`.
 Returns a `NamedTuple` and logs a short report:
 
-- `converged` — the optimiser's convergence flag.
+- `converged` — [`is_converged`](@ref)`(fit)`: the optimiser's convergence flag
+  AND the degeneracy bar, so a Gaussian fit whose scale collapsed is reported
+  `false` here even when `fit.converged` is `true` (#949).
 - `max_abs_grad` — `max|∇nll|` at the optimum (≈ 0 at a clean interior optimum;
   `NaN` when no gradient could be produced: see `grad_source` for which of the
   two reasons applies).
@@ -2449,6 +2804,24 @@ Returns a `NamedTuple` and logs a short report:
   (`penalty = drm_phylo_penalty(...)`). Such a fit reports standard errors from
   the *penalized* curvature, which are credible-interval-shaped rather than
   frequentist, and `loglik` is the *unpenalized* data log-likelihood.
+- `variance_boundary` — `nothing` unless the fit is Gaussian with a grouped / structured
+  random effect and a homoscedastic residual (`sigma ~ 1`); then the NamedTuple of
+  `_variance_boundary(fit)` (`residual_at_boundary`, `residual_ratio`,
+  `structured_at_boundary`, `structured_ratios`, `one_obs_per_group`). Flags a variance
+  component at its lower boundary (the residual σ̂ of a phylogenetic fit whose structured
+  term absorbs all the variance is an optimiser-stopping artefact, not an estimate — #724)
+  and says when σ_a and σ_e are separated only by the covariance structure (one
+  observation per group — #697). Does not affect `ok`.
+- `temporal_boundary` — `nothing` unless the fit has a `temporal()` term; then
+  `(at_boundary, findings)`, drmTMB's `temporal_boundary` rules: residual σ̂ below
+  1e-3 · sd(y), OU decay × longest series span below 1e-4 or × shortest gap above 30,
+  AR1 |φ̂| above 0.999. drmTMB reports such a fit as `convergence_status() == "boundary"`
+  (still converged). Does not affect `ok`.
+- `skew_normal_nu_wald` — `nothing` unless the fit is [`SkewNormal`](@ref); then
+  `(near_zero, min_abs_nu, cut)`. `near_zero` is `true` when the smallest fitted
+  slant `|ν̂|` is below `cut = 0.5`: the information matrix is singular at `ν = 0`, so
+  the Wald SE for `nu` is unreliable there (#1060; drmTMB's `skew_normal_nu_wald`
+  note) and a warning is emitted. Does not affect `ok`.
 - `ok` — `true` when converged, the gradient is small, and the covariance is PD.
   On a penalized fit the gradient criterion is **dropped**: the stored objective
   is unpenalized, so its gradient is non-zero at the MAP optimum by construction
@@ -2488,9 +2861,14 @@ function check_drm(fit::DrmFit; grad_tol::Real=1e-3)
     # report a correct fit as broken, so the gradient criterion is dropped for MAP
     # fits and `max_abs_grad` is reported for information only.
     penalized = fit.estim_method === :MAP
-    ok = fit.converged && (penalized || isnan(mag) || mag <= grad_tol) && pd
+    # #1003: a failed diagnostic warns instead of reading as "not that kind of fit".
+    vb = try _variance_boundary(fit) catch err; _boundary_diagnostic_failed("variance-boundary", err) end
+    tb = try _temporal_boundary(fit) catch err; _boundary_diagnostic_failed("temporal-boundary", err) end
+    snw = _skew_normal_nu_wald(fit)   # #1060: `nothing` unless SkewNormal
+    conv = is_converged(fit)   # #949: the trusted accessor, not the raw flag
+    ok = conv && (penalized || isnan(mag) || mag <= grad_tol) && pd
     report = (
-        converged=fit.converged,
+        converged=conv,
         max_abs_grad=mag,
         grad_source=grad.source,
         vcov_complete=vcov_complete,
@@ -2498,6 +2876,9 @@ function check_drm(fit::DrmFit; grad_tol::Real=1e-3)
         min_eigval=mineig,
         cond=cnd,
         penalized_map=penalized,
+        variance_boundary=vb,
+        temporal_boundary=tb === nothing ? nothing : (at_boundary = !isempty(tb), findings = tb),
+        skew_normal_nu_wald=snw,
         ok=ok,
     )
     @info "check_drm" converged = report.converged max_abs_grad = report.max_abs_grad grad_source =
@@ -2523,6 +2904,10 @@ function check_drm(fit::DrmFit; grad_tol::Real=1e-3)
         "scored against the gradient criterion: `ok = true` here means converged and " *
         "positive-definite covariance ONLY, with stationarity untested. `grad_source` is " *
         "`:unavailable`, which is NOT `:none` (a fit that stores no objective at all)."
+    vbmsg = vb === nothing ? nothing : _variance_boundary_message(vb)
+    vbmsg === nothing || @warn "check_drm: " * vbmsg
+    (tb === nothing || isempty(tb)) || @warn "check_drm: " * _temporal_boundary_message(tb)
+    (snw === nothing || !snw.near_zero) || @warn "check_drm: " * _skew_normal_nu_wald_message(snw)
     # drmTMB emits the equivalent advisory from `check_penalized_fit()`.
     penalized && @warn "check_drm: penalized (MAP) fit — standard errors come from the penalized " *
         "curvature and are credible-interval-shaped, not frequentist. `loglik` is the UNPENALIZED " *

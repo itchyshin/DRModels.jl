@@ -1,5 +1,5 @@
 # parity_associate.R — staged-association parity: drmTMB's `associate_pairs()`
-# against DRM.jl's, on identical data and identical frozen margins.
+# against DRModels.jl's, on identical data and identical frozen margins.
 #
 # The staged route needs TWO fitted margins plus a staged call, which the
 # per-cell `parity_fixture.R` harness does not construct — hence its own script.
@@ -9,7 +9,7 @@
 # optimiser. That is the honest comparison: a margin-fitting difference would
 # show up here, and should.
 #
-#   DRM_JL_PATH=/path/to/DRM.jl Rscript tools/parity_associate.R
+#   DRM_JL_PATH=/path/to/DRModels.jl Rscript tools/parity_associate.R
 
 suppressMessages(library(drmTMB))
 
@@ -58,11 +58,11 @@ fit_margin <- function(resp, fam, d) {
 # The Julia-side margin fit for a response/family pair, as a Julia expression.
 julia_margin <- function(resp, fam) {
   if (fam == "gaussian") {
-    sprintf('DRM.drm(DRM.bf(DRM.@formula(%s ~ x), DRM.@formula(sigma ~ 1)), DRM.Gaussian(); data = d)', resp)
+    sprintf('DRModels.drm(DRModels.bf(DRModels.@formula(%s ~ x), DRModels.@formula(sigma ~ 1)), DRModels.Gaussian(); data = d)', resp)
   } else if (fam == "binomial") {
-    sprintf('DRM.drm(DRM.bf(DRM.@formula(%s ~ x)), DRM.Binomial(); data = d)', resp)
+    sprintf('DRModels.drm(DRModels.bf(DRModels.@formula(%s ~ x)), DRModels.Binomial(); data = d)', resp)
   } else {
-    sprintf('DRM.drm(DRM.bf(DRM.@formula(%s ~ x), DRM.@formula(sigma ~ 1)), DRM.NegBinomial2(); data = d)', resp)
+    sprintf('DRModels.drm(DRModels.bf(DRModels.@formula(%s ~ x), DRModels.@formula(sigma ~ 1)), DRModels.NegBinomial2(); data = d)', resp)
   }
 }
 
@@ -88,7 +88,7 @@ for (cell in cells) {
     JuliaCall::julia_eval(sprintf(
       'let d = pa_d
          m1 = %s; m2 = %s
-         DRM.association(DRM.associate_pairs(m1, m2; kernel = DRM.latent_normal())).eta
+         DRModels.association(DRModels.associate_pairs(m1, m2; kernel = DRModels.latent_normal())).eta
        end',
       julia_margin(cell$f1, cell$fam1), julia_margin(cell$f2, cell$fam2)))
   }, error = function(e) {res$note <<- paste(res$note, conditionMessage(e)); NA_real_})

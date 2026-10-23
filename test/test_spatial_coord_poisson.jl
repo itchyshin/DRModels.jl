@@ -19,7 +19,7 @@
 #   3. Likelihood-scale cross-check — at a FIXED range, the coordinate-spatial
 #      marginal agrees with the verified `K = C(ρ)` sparse general-covariance path,
 #      confirming the new marginal is on the same scale as the engine it mirrors.
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 import ForwardDiff
 import Distributions
@@ -77,15 +77,15 @@ end
     y = Float64.([rand(rng, Distributions.Poisson(λi)) for λi in λ])
 
     Xμ = hcat(ones(n), x)
-    gidx, Gn = DRM._group_index(site)
+    gidx, Gn = DRModels._group_index(site)
     @test Gn == G
     Ddist = [sqrt(sum(abs2, coords[k, :] .- coords[l, :])) for k in 1:G, l in 1:G]
-    lf = [DRM._logfactorial(round(Int, yi)) for yi in y]
+    lf = [DRModels._logfactorial(round(Int, yi)) for yi in y]
 
     # Fresh warm-start buffer; θ deliberately OFF the optimum so the implicit
     # db̂/dθ terms (β, log σ_b, AND log ρ channels) are all nonzero.
     bref = zeros(G)
-    mnll(θ) = DRM._poisson_spatial_marginal(θ, y, Xμ, gidx, Ddist, lf, bref)
+    mnll(θ) = DRModels._poisson_spatial_marginal(θ, y, Xμ, gidx, Ddist, lf, bref)
 
     θ = [0.10, 0.42, log(0.60), log(2.2)]               # [β(2); log σ_b; log ρ], off-optimum
     v0 = mnll(θ)
@@ -125,9 +125,9 @@ end
     y = Float64.([rand(rng, Distributions.Poisson(exp(0.2 + 0.35x[i] + u[site[i]]))) for i in 1:n])
 
     Xμ = hcat(ones(n), x)
-    gidx, _ = DRM._group_index(site)
+    gidx, _ = DRModels._group_index(site)
     Ddist = [sqrt(sum(abs2, coords[k, :] .- coords[l, :])) for k in 1:G, l in 1:G]
-    lf = [DRM._logfactorial(round(Int, yi)) for yi in y]
+    lf = [DRModels._logfactorial(round(Int, yi)) for yi in y]
 
     # Reference fit via the verified K = C(ρfix) sparse path (range NOT estimated).
     Cfix = exp.(-Ddist ./ ρfix) + 1e-8 * I
@@ -141,6 +141,6 @@ end
     # with C unit-diagonal, so identical up to floating point).
     bref = zeros(G)
     θ = vcat(β_K, [logσ_K, log(ρfix)])
-    nll_coord = DRM._poisson_spatial_marginal(θ, y, Xμ, gidx, Ddist, lf, bref)
+    nll_coord = DRModels._poisson_spatial_marginal(θ, y, Xμ, gidx, Ddist, lf, bref)
     @test nll_coord ≈ -loglik(fit_K) rtol = 1e-6
 end

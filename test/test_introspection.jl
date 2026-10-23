@@ -10,7 +10,7 @@
 # a fixed-effect location-scale fit (profilable) and a σ-phylo fit (not, unless
 # it was fitted with `profile_ci = true`).
 
-using DRM
+using DRModels
 using Test
 using Random
 using LinearAlgebra

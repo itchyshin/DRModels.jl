@@ -1,4 +1,4 @@
-using Test, DRM, TOML, LinearAlgebra
+using Test, DRModels, TOML, LinearAlgebra
 function finite_bridge_payload(kind)
     c=TOML.parsefile(joinpath(@__DIR__,"..","docs/dev-log/evidence/julia-r-parity/finite-state/finite-reference-003.toml"))[kind]
     mat(v)=reduce(vcat,permutedims.(Float64.(r) for r in v))
@@ -13,25 +13,25 @@ function finite_bridge_payload(kind)
 end
 @testset "finite-state primitive transport" begin
     for kind in ("ordinal","categorical")
-        payload=finite_bridge_payload(kind);p=DRM._prepare_joint_bridge(payload)
-        @test p.model isa DRM.PreparedFiniteJointModel
+        payload=finite_bridge_payload(kind);p=DRModels._prepare_joint_bridge(payload)
+        @test p.model isa DRModels.PreparedFiniteJointModel
         @test p.model.levels==payload["levels"]
         @test p.model.observed_x==payload["observed_x"]
         expected=kind=="ordinal" ? [1,2,3,4,5,7,8,6] : collect(1:9)
         @test p.permutation==expected
         bad=deepcopy(payload);bad["state_layout"]="state_then_row"
-        @test_throws ArgumentError DRM._prepare_joint_bridge(bad)
+        @test_throws ArgumentError DRModels._prepare_joint_bridge(bad)
         bad=deepcopy(payload);bad["X_mu_state"][Int(bad["x"][1]),1]+=1
-        @test_throws ArgumentError DRM._prepare_joint_bridge(bad)
+        @test_throws ArgumentError DRModels._prepare_joint_bridge(bad)
         bad=deepcopy(payload);bad["x"][1]=4
-        @test_throws ArgumentError DRM._prepare_joint_bridge(bad)
+        @test_throws ArgumentError DRModels._prepare_joint_bridge(bad)
         bad=deepcopy(payload);bad["levels"][2]=bad["levels"][1]
-        @test_throws ArgumentError DRM._prepare_joint_bridge(bad)
+        @test_throws ArgumentError DRModels._prepare_joint_bridge(bad)
     end
 end
 @testset "finite-state fit result retains raw order and conditional outputs" begin
     for kind in ("ordinal","categorical")
-        p=finite_bridge_payload(kind);r=DRM.drm_bridge_joint(p)
+        p=finite_bridge_payload(kind);r=DRModels.drm_bridge_joint(p)
         @test r["schema"]=="joint_missing_finite_result_v1"
         @test r["predictor_levels"]==p["levels"]
         @test size(r["conditional_probabilities"])==(180,3)

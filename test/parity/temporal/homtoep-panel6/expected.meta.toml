@@ -1,0 +1,10 @@
+drmtmb_version = "0.7.1"
+drmtmb_code_hash = "0902e8358e83027e5186e4d3c6ea9851b6ddd4320c009fa5ac4998a937dbe2df"
+drmtmb_built = "R 4.6.1; x86_64-pc-linux-gnu; 2026-10-02 14:14:21 UTC; unix"
+drmtmb_sha = "90c740791991e5dfe17d16346a301fd12f5af384"
+r_version = "R version 4.6.1 (2026-06-24)"
+generated_on = "2026-10-02"
+r_call = "drmTMB(bf(y ~ x + temporal(1 | id, time = occ, structure = \"homtoep\"), sigma ~ 1), data = read.csv(\"homtoep_panel6.csv\"), family = gaussian(), REML = FALSE)"
+opt_convergence = 0
+max_abs_gradient = 1.4775567708122466e-13
+note = "Generated outputs only; no drmTMB source vendored. Point estimates at the ML optimum; no interval or calibration claim."

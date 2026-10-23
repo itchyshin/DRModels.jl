@@ -7,7 +7,7 @@
 # These are SMALL, targeted fits (niterations only needs `> 0`, not parameter
 # recovery), so `n` is kept modest and no `atol` recovery checks are made here
 # — those already live in each family's own test file.
-using DRM
+using DRModels
 using Test, Random
 import Distributions
 

@@ -3,4 +3,4 @@ generated_on = "2026-06-10"
 r_call = "gllvm(y = cbind(y1,y2), X = data.frame(x), formula = ~x, family = \"gaussian\", num.lv = 1)"
 seed = 20260610
 estimand = "getResidualCor[1,2] == lambda1 lambda2 / sqrt((lambda1^2+v1)(lambda2^2+v2))"
-note = "External reference for DRM cross-family rho. gllvm is GPL; only its fitted NUMBERS are stored (data, not source). gllvm fits ONE family per matrix, so this validates the SAME-family (Gaussian x Gaussian) identical-estimand case; the genuinely mixed Gaussian x Poisson rho is validated against a large-N Monte-Carlo in Julia."
+note = "External reference for DRModels cross-family rho. gllvm is GPL; only its fitted NUMBERS are stored (data, not source). gllvm fits ONE family per matrix, so this validates the SAME-family (Gaussian x Gaussian) identical-estimand case; the genuinely mixed Gaussian x Poisson rho is validated against a large-N Monte-Carlo in Julia."

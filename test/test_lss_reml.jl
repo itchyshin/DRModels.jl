@@ -8,7 +8,7 @@
 #      REML vs ML: convergence, metadata, defining property, finite SEs.
 #   3. Multi-component lss (lsss) REML vs ML: multi-RE models (iid + iid,
 #      iid + phylo) with per-component sd() formulas, metadata, finite SEs.
-using DRM
+using DRModels
 using Test, Random, Statistics, LinearAlgebra
 
 @testset "Location-scale-scale (lss) REML (#558)" begin
@@ -63,7 +63,7 @@ using Test, Random, Statistics, LinearAlgebra
         Random.seed!(55801)
         p = 20; m = 4; n = p * m
         phy = random_balanced_tree(p; branch_length = 0.25)
-        K = DRM._phylo_correlation(phy)
+        K = DRModels._phylo_correlation(phy)
         LK = cholesky(Symmetric(K)).L
 
         species = repeat(1:p, inner = m)
@@ -142,7 +142,7 @@ using Test, Random, Statistics, LinearAlgebra
         Random.seed!(55803)
         p = 15; m = 4; n = p * m
         phy = random_balanced_tree(p; branch_length = 0.3)
-        K = DRM._phylo_correlation(phy)
+        K = DRModels._phylo_correlation(phy)
         LK = cholesky(Symmetric(K)).L
 
         species = repeat(1:p, inner = m)

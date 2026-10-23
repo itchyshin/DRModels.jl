@@ -1,12 +1,12 @@
 # Same-parameter comparison against independently integrated native references.
-using DRM, LinearAlgebra, SHA, TOML
+using DRModels, LinearAlgebra, SHA, TOML
 
 length(ARGS) == 2 || error("usage: check_joint_predictor_reference.jl REFERENCE_TOML NEW_RECEIPT_TOML")
 reference_path, output_path = abspath.(ARGS)
 isfile(output_path) && error("refusing stale output")
 BLAS.set_num_threads(1)
 Threads.nthreads() == 1 && BLAS.get_num_threads() == 1 || error("wrong resource budget")
-source_root = dirname(pathof(DRM))
+source_root = dirname(pathof(DRModels))
 source_manifest() = Dict(relpath(joinpath(dir, name), source_root) => bytes2hex(sha256(read(joinpath(dir, name))))
                          for (dir, _, files) in walkdir(source_root) for name in files)
 before = source_manifest()
@@ -16,7 +16,7 @@ receipt = Dict{String,Any}(
     "reference_sha256" => bytes2hex(sha256(read(reference_path))),
     "source_sha256" => before,
     "runtime" => Dict("julia_version" => string(VERSION), "julia_threads" => Threads.nthreads(),
-                       "blas_threads" => BLAS.get_num_threads(), "loaded_source" => pathof(DRM)),
+                       "blas_threads" => BLAS.get_num_threads(), "loaded_source" => pathof(DRModels)),
     "cases" => Dict{String,Any}())
 started = time()
 for kind in ("gaussian", "bernoulli")

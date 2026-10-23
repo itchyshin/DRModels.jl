@@ -1,6 +1,6 @@
 # Parametric bootstrap confidence intervals: simulate B replicates from the
 # fitted model, refit each, take percentile intervals. Reuses simulate + drm.
-using DRM
+using DRModels
 using Test, Random
 
 @testset "Parametric bootstrap CI" begin
@@ -75,7 +75,7 @@ using Test, Random
     @test br_threaded.blas_oversubscribed == (br_threaded.threaded && br_threaded.blas_threads > 1)
     @test_throws ArgumentError bootstrap_result(form, Gaussian(); data = (; y, x),
         B = 2, failures = :warn)
-    @test_throws ArgumentError bootstrap_result(DRM._withformula(fit, nothing);
+    @test_throws ArgumentError bootstrap_result(DRModels._withformula(fit, nothing);
         data = (; y, x), B = 2)
 
     # Gaussian structured bootstrap refits should accept the same solver controls
@@ -93,15 +93,19 @@ using Test, Random
     phy_data = (; y_phy, x_phy, species)
     phy_fit = drm(phy_form, Gaussian(); data = phy_data, tree = phy,
         algorithm = :em, g_tol = 1e-4)
+    # This EM stop leaves `converged = false` on a non-degenerate fit. These
+    # assertions check solver-control forwarding, so they keep the pre-#962
+    # counting (`check_converged = false`). The default is now `true`.
     br_phy = bootstrap_result(phy_fit; data = phy_data, tree = phy, B = 2,
-        rng = MersenneTwister(13), algorithm = :em, g_tol = 1e-4)
+        rng = MersenneTwister(13), algorithm = :em, g_tol = 1e-4,
+        check_converged = false)
     @test br_phy.attempted == 2
     @test br_phy.used == 2
     @test br_phy.failed == 0
     @test length(br_phy.summary) == length(coef(phy_fit))
     br_phy_formula = bootstrap_result(phy_form, Gaussian(); data = phy_data,
         tree = phy, B = 1, rng = MersenneTwister(14),
-        algorithm = :em, g_tol = 1e-4)
+        algorithm = :em, g_tol = 1e-4, check_converged = false)
     @test br_phy_formula.used == 1
 
     fit0 = drm(form, Gaussian(); data = (; y, x))
@@ -111,7 +115,7 @@ using Test, Random
         calls[] == 2 && error("forced refit failure")
         return drm(form, Gaussian(); data = datab)
     end
-    forced = DRM._bootstrap_result(fit0, form, (; y, x), 5, 0.95,
+    forced = DRModels._bootstrap_result(fit0, form, (; y, x), 5, 0.95,
         MersenneTwister(4), false, forced_refit; failures = :skip)
     @test forced.attempted == 5
     @test forced.used == 4
@@ -121,6 +125,6 @@ using Test, Random
     @test length(forced.summary) == length(bs)
 
     calls[] = 0
-    @test_throws ErrorException DRM._bootstrap_result(fit0, form, (; y, x), 5,
+    @test_throws ErrorException DRModels._bootstrap_result(fit0, form, (; y, x), 5,
         0.95, MersenneTwister(4), false, forced_refit; failures = :error)
 end

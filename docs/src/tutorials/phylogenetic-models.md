@@ -2,17 +2,17 @@
 
 !!! note "Status — Stable (Gaussian + non-Gaussian mean; NB2/Gamma location–scale)"
     Mirrors drmTMB's [Phylogenetic structured effects](https://itchyshin.github.io/drmTMB/articles/phylogenetic-models.html).
-    **In DRM.jl today:** `phylo(1 | species)` on the **mean** — a phylogenetic
+    **In DRModels.jl today:** `phylo(1 | species)` on the **mean** — a phylogenetic
     random intercept. For Gaussian responses, the latent effects integrate out exactly and covariance
     parameters are estimated numerically; for the non-Gaussian
     families (Poisson, NB2, Binomial, Gamma, Beta, BetaBinomial) it is fit by the
     sparse augmented-state Laplace engine (constant `sigma` by default).
-    **Non-Gaussian phylogenetic location–scale** (#202) ships for
+    **Non-Gaussian phylogenetic location–scale** ships for
     `NegBinomial2()` / `Gamma()` via the coupled tag
-    `(1 | p | phylo(species))` on **both** `mu` and `sigma` (grammar B). Dual
-    issue-text `phylo(1|sp)` on both axes is **not** the public acceptance
-    surface. The q=4 bivariate PLSM remains the Gaussian flagship (see
-    `HANDOVER.md`).
+    `(1 | p | phylo(species))` on **both** `mu` and `sigma` (grammar B). Writing
+    separate `phylo(1|sp)` terms on both axes is **not** the public acceptance
+    surface. The q=4 bivariate PLSM remains the Gaussian flagship; its current
+    boundary is recorded in [Detailed capabilities & limits](../capabilities.md).
 
 Related species are not independent: closely related species have correlated
 trait values. `phylo(1 | species)` adds a random intercept with the
@@ -26,7 +26,7 @@ Pass the tree via `tree =` (an `AugmentedPhy` from `random_balanced_tree` /
 leaves:
 
 ```@example phy
-using DRM, Random, LinearAlgebra
+using DRModels, Random, LinearAlgebra
 Random.seed!(7)
 
 G = 64
@@ -55,6 +55,13 @@ exp(coef(fit, :sigma)[1])     # residual SD (≈ 0.4)
 `re_sd` above use that raw-tree scale. Fitting estimates the phylogenetic and
 residual SD parameters jointly using the exact Gaussian marginal likelihood.
 
+To report this result, state that `re_sd` is the phylogenetic SD coefficient for
+the supplied, raw-scaled tree and describe how that tree was scaled. Do not
+compare this coefficient directly with the residual SD, or turn the two into a
+variance proportion, unless the covariance scale makes that comparison valid.
+The tip-specific quantity `σ_phylo * sqrt(C[i, i])` is the relevant SD on the
+trait scale.
+
 ## Non-Gaussian responses (counts, proportions, …)
 
 Phylogenetic signal is not a Gaussian-only luxury — abundances, presence/absence,
@@ -62,7 +69,7 @@ and rates are all correlated across related species. For a non-Gaussian family t
 marginal is no longer closed-form, so `phylo(1 | species)` routes to the **sparse
 augmented-state Laplace** engine (the same machinery behind the q=4 PLSM, here
 with a non-Gaussian data term). Six families carry the phylo route today:
-**Poisson, NegBinomial2, Binomial, Gamma, Beta, BetaBinomial** (#166).
+**Poisson, NegBinomial2, Binomial, Gamma, Beta, BetaBinomial**.
 
 The call site is identical — add `phylo(1 | species)` to the mean formula, pass
 `tree =`. Here is a phylogenetic Poisson count model: a shared tree effect on
@@ -70,7 +77,7 @@ The call site is identical — add `phylo(1 | species)` to the mean formula, pas
 recover it.
 
 ```@example phycount
-using DRM, Random, LinearAlgebra
+using DRModels, Random, LinearAlgebra
 import Distributions
 Random.seed!(20260603)
 
@@ -99,10 +106,10 @@ re_sd(fit)[:species]      # phylogenetic SD on log λ (≈ 0.45)
 
 `BetaBinomial()` follows the same shape, with `cbind(successes, failures)` for
 the known-trials response and constant overdispersion via `sigma ~ 1`
-(`φ = 1/σ²`, #166):
+(`φ = 1/σ²`):
 
 ```@example phybb
-using DRM, Random, LinearAlgebra
+using DRModels, Random, LinearAlgebra
 import Distributions
 Random.seed!(20260802)
 G2 = 24
@@ -131,12 +138,13 @@ A few things worth knowing:
   variation. One observation per species does not automatically make a mean-only
   phylogenetic model unidentified; information depends on the family, tree, and
   model. Random effects on dispersion need their own identification checks; see
-  `HANDOVER.md` §6 for the location–scale setting.
+  [Detailed capabilities & limits](../capabilities.md) for the accepted
+  location--scale families and their current inference boundary.
 - **Mean-only phylo keeps constant dispersion.** The default non-Gaussian phylo
   route varies the **mean** with predictors and the structured effect and keeps
-  `sigma ~ 1`. Fixed predictors on `sigma` (#164) are separate. For a *structured*
-  effect on both axes, see **Phylogenetic location–scale** below (#202).
-  `BetaBinomial()`'s phylo/crossed mean routes remain constant-σ (#166).
+  `sigma ~ 1`. Fixed predictors on `sigma` are separate. For a *structured*
+  effect on both axes, see **Phylogenetic location–scale** below.
+  `BetaBinomial()`'s phylo/crossed mean routes remain constant-σ.
 - **Other families, same shape.** Swap `Poisson()` for `NegBinomial2()` (counts
   with overdispersion), `Binomial()` or `BetaBinomial()` (`cbind(s, f) ~ …` for
   successes/trials, the latter with extra-binomial overdispersion), `Gamma()`, or
@@ -158,9 +166,9 @@ fit = drm(
 ```
 
 `vc(fit)[:species]` is then a 2×2 named group-level covariance (mean-axis SD,
-scale-axis SD, and their correlation) — **not** residual `rho12`. Public
-recovery for NB2 and a Gamma public-route smoke live in
-`test/test_public_phylo_locscale.jl`. Prefer the coupled `(1 | p | phylo(…))`
+scale-axis SD, and their correlation) — **not** residual `rho12`. The NB2 route
+has recovery evidence and the Gamma route has public-interface smoke coverage.
+Prefer the coupled `(1 | p | phylo(…))`
 spelling; dual `phylo(1 | sp)` on both axes is rejected on the non-Gaussian
 families.
 

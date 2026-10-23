@@ -1,19 +1,19 @@
-# Deprecated marker internals
+# Moving older R code to DRModels.jl
 
-!!! note "Status — Reference (parity)"
-    Mirrors drmTMB's [Deprecated marker internals](https://itchyshin.github.io/drmTMB/reference/index.html) (2 in drmTMB). These are **deprecated drmTMB names**; DRM.jl ships the modern replacement and documents the mapping here so users porting R code know what to write instead. The deprecated names are *not* part of DRM.jl's public API.
+If you are translating an older `drmTMB` analysis, use the modern spelling in
+the table below. DRModels.jl does not carry the retired R names.
 
 ## Deprecation map
 
-| drmTMB (deprecated) | Use instead in DRM.jl | Notes |
+| drmTMB (deprecated) | Use instead in DRModels.jl | Notes |
 |---|---|---|
 | `meta_known_V(V)` | `meta_V(v)` | Meta-analysis with known sampling (co)variances. The modern spelling is `meta_V`, attached to a `Gaussian()` model: `drm(bf(y ~ meta_V(v)), Gaussian(); data = …)`. |
-| `gr(…)` | (no equivalent needed) | A drmTMB internal gradient helper; DRM.jl computes gradients via ForwardDiff / the exact implicit-function path, so there is no user-facing equivalent. |
+| `gr(…)` | (no equivalent needed) | This R helper has no user-facing Julia equivalent. |
 
-## Why DRM.jl doesn't carry the old names
+## Why the older names are not available
 
 drmTMB keeps `meta_known_V` / `gr` only as deprecated shims for backward
-compatibility with older R scripts. DRM.jl is a fresh Julia API, so it exposes
+compatibility with older R scripts. DRModels.jl is a fresh Julia API, so it exposes
 **only the current names** — there is no legacy surface to preserve. If you are
 translating an R script that calls `meta_known_V`, replace it with `meta_V`; the
 arguments (the known sampling variances) carry over directly.

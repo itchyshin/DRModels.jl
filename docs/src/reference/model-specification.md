@@ -1,7 +1,7 @@
 # Model specification
 
 !!! note "Status — Reference"
-    Mirrors drmTMB's [Model specification](https://itchyshin.github.io/drmTMB/reference/index.html) (13 items in drmTMB). A model is one [`bf`](@ref) formula bundle (one linear predictor per distributional parameter) plus a response family. All 13 drmTMB families are available.
+    Mirrors drmTMB's [Model specification](https://itchyshin.github.io/drmTMB/reference/index.html). A model is one [`bf`](@ref) formula bundle (one linear predictor per distributional parameter) plus a response family. DRModels.jl has fifteen response-family constructors: the fourteen under Response families and `SkewNormal` under Advanced family type.
 
 ## Formula bundle
 
@@ -19,6 +19,7 @@ Student
 Poisson
 NegBinomial2
 TruncatedNegBinomial2
+TruncatedPoisson
 Beta
 BetaBinomial
 Binomial
@@ -56,8 +57,8 @@ cbind
 ## [Modelled missing predictors](@id joint-predictor-formula)
 
 !!! warning "Experimental"
-    Exported for evaluation; fenced for v1.0 (D-181). API and numerics may
-    change; not covered by the R-parity scoreboard.
+    Exported for evaluation, not yet stable. API and numerics may
+    change. This route is not available through the R bridge.
 
 For a Gaussian response, `mi(x)` marks an additive predictor whose missing
 values are integrated out under a joint model. Observed predictor values inform
@@ -67,12 +68,13 @@ Gaussian predictor models, with complete remaining exogenous fixed-effect
 covariates. Neither the response nor either modelled predictor may appear in
 those fixed designs. Other response families, three or more predictors, mixed
 predictor families, random or structured effects, REML, and profile/bootstrap intervals
-are still outside this admission. The same narrow route is available as
-**development** through `drmTMB(..., engine = "julia")`; it does
-not establish full native fitted-result parity.
+are not supported here. The same narrow model is available experimentally through
+`drmTMB(..., engine = "julia")`; it does
+not yet reproduce every fitted result and post-fit method from drmTMB's default
+R/TMB engine.
 
 ```@example joint_formula
-using DRM, LinearAlgebra
+using DRModels, LinearAlgebra
 BLAS.set_num_threads(1)
 n = 32
 z = collect(range(-1.2, 1.2; length=n))
@@ -103,7 +105,7 @@ multiple-imputation draws nor interval-coverage guarantees. Check
 `coef(fit, :sigma_mi_x)` returns natural predictor SD; unqualified `coef(fit)` and
 `vcov(fit)` use the raw coordinates, including its log SD. Complete fixed-effect
 interactions/transforms are allowed; interactions involving `mi(x)` are not yet
-admitted.
+supported.
 
 For the R bridge, write the corresponding R formula and use
 `engine = "julia"`, `impute = list(x = x ~ z)` (or
@@ -111,10 +113,11 @@ For the R bridge, write the corresponding R formula and use
 predictor), and
 `missing = miss_control(response = "drop", predictor = "model")` or
 `miss_control(response = "include", predictor = "model")`.
-The R response-drop preprocessing differs from native-TMB behaviour and is not
-native parity. Its profile/bootstrap methods are explicitly unsupported. The
+Dropping responses before fitting behaves differently from drmTMB's default
+R/TMB engine. Profile and bootstrap intervals are not available here. The
 Gaussian predictor-SD Wald interval is a natural-scale delta interval, can cross
-zero, and is neither native-interval parity nor coverage evidence.
+zero, and has not been shown to have reliable coverage across datasets or
+sample sizes.
 
 With two Gaussian predictors, mark each separately and provide both predictor
 models. The `impute` entry order does not change which model belongs to which
@@ -123,7 +126,7 @@ covariates; conditioning on an observed response can correlate their missing
 values. The prepared fit retains that full conditional covariance.
 
 ```@example joint_formula_two
-using DRM, Random, LinearAlgebra
+using DRModels, Random, LinearAlgebra
 BLAS.set_num_threads(1)
 rng = MersenneTwister(9302)
 n = 64

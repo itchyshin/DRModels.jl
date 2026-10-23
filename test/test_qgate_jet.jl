@@ -10,7 +10,7 @@
 
 let
     lc = Float64[0.0, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-    JET.@test_opt target_modules = (DRM,) DRM.lc_to_Λ(lc)
-    Λ = DRM.lc_to_Λ(lc)
-    JET.@test_opt target_modules = (DRM,) DRM.Λ_to_lc(Λ)
+    JET.@test_opt target_modules = (DRModels,) DRModels.lc_to_Λ(lc)
+    Λ = DRModels.lc_to_Λ(lc)
+    JET.@test_opt target_modules = (DRModels,) DRModels.Λ_to_lc(Λ)
 end

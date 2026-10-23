@@ -1,6 +1,6 @@
 # test_coverage_accessors.jl — anchor previously-UNTESTED exported symbols.
 #
-# Survey (names(DRM) vs every test/*.jl reference) found five exported functions
+# Survey (names(DRModels) vs every test/*.jl reference) found five exported functions
 # with no direct test anywhere in the suite. This file pins each to its documented
 # contract so a signature/behaviour regression is caught:
 #
@@ -10,10 +10,10 @@
 #   • joint_grad   — its gradient wrt u (verified against a central difference)
 #   • build_Huu    — the augmented joint Hessian H_uu = P + blockdiag(leaf blocks)
 #
-# The engine trio is exercised through the public `DRM.` exports on the same small
+# The engine trio is exercised through the public `DRModels.` exports on the same small
 # p=8 augmented-tree problem used by test_sparse_aug.jl.
 
-using DRM
+using DRModels
 using Test, LinearAlgebra, SparseArrays, Random
 
 # ---------------------------------------------------------------------------
@@ -48,7 +48,7 @@ using Test, LinearAlgebra, SparseArrays, Random
 end
 
 # ---------------------------------------------------------------------------
-# Engine internals on a small augmented p=8 PLSM problem (built via DRM exports,
+# Engine internals on a small augmented p=8 PLSM problem (built via DRModels exports,
 # mirroring test_sparse_aug.jl's construction).
 # ---------------------------------------------------------------------------
 @testset "engine: unpack_theta / joint_nll / joint_grad / build_Huu" begin

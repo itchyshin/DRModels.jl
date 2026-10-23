@@ -4,7 +4,7 @@
 # coefficient to 6 decimals; fixture B (THREE random effects, five submodels)
 # the same. Reference numbers in the fixtures README.
 using Test
-using DRM
+using DRModels
 import LinearAlgebra
 
 function _read_lsss_csv(path)
@@ -22,7 +22,7 @@ const _LSSS_DIR = joinpath(@__DIR__, "fixtures", "lsss")
 @testset "lsss multi: iid + phylo, both sd ~ x (fixture A)" begin
     A = _read_lsss_csv(joinpath(_LSSS_DIR, "lsss_A.csv"))
     dat = (y = parse.(Float64, A["y"]), x = parse.(Float64, A["x"]), species = A["species"])
-    phy = DRM.augmented_phy(read(joinpath(_LSSS_DIR, "lsss_A.nwk"), String))
+    phy = DRModels.augmented_phy(read(joinpath(_LSSS_DIR, "lsss_A.nwk"), String))
     fit = drm(bf(@formula(y ~ x + (1 | species) + phylo(1 | species)),
                  @formula(sigma ~ 1),
                  @formula(sd(species) ~ x),
@@ -45,7 +45,7 @@ end
     B = _read_lsss_csv(joinpath(_LSSS_DIR, "lsss_B.csv"))
     dat = (y = parse.(Float64, B["y"]), x = parse.(Float64, B["x"]),
            species = B["species"], study = B["study"])
-    phy = DRM.augmented_phy(read(joinpath(_LSSS_DIR, "lsss_B.nwk"), String))
+    phy = DRModels.augmented_phy(read(joinpath(_LSSS_DIR, "lsss_B.nwk"), String))
     fit = drm(bf(@formula(y ~ x + (1 | species) + (1 | study) + phylo(1 | species)),
                  @formula(sigma ~ 1),
                  @formula(sd(species) ~ x),
@@ -65,7 +65,7 @@ end
     B = _read_lsss_csv(joinpath(_LSSS_DIR, "lsss_B.csv"))
     dat = (y = parse.(Float64, B["y"]), x = parse.(Float64, B["x"]),
            species = B["species"], study = B["study"])
-    phy = DRM.augmented_phy(read(joinpath(_LSSS_DIR, "lsss_B.nwk"), String))
+    phy = DRModels.augmented_phy(read(joinpath(_LSSS_DIR, "lsss_B.nwk"), String))
     # sd() naming a grouping with no matching random effect
     @test_throws ArgumentError drm(bf(@formula(y ~ x + (1 | species)),
                                       @formula(sd(study) ~ 1)),
@@ -94,7 +94,7 @@ end
     tv = parse.(Float64, M["temp"]); pv = parse.(Float64, M["prec"])
     dat = (y = parse.(Float64, M["y"]), temp = tv, prec = pv,
            temp2 = tv .^ 2, prec2 = pv .^ 2, species = M["species"])
-    phy = DRM.augmented_phy(read(joinpath(_LSSS_DIR, "m2_sparse_se.nwk"), String))
+    phy = DRModels.augmented_phy(read(joinpath(_LSSS_DIR, "m2_sparse_se.nwk"), String))
     fit = drm(bf(@formula(y ~ temp + temp2 + prec + prec2 + phylo(1 | species))),
               Gaussian(); data = dat, tree = phy)
     @test fit.converged

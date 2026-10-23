@@ -4,14 +4,14 @@
 # residual used to return logLik +1.1e105 with converged = true.
 #
 # CROSS-ENGINE EVIDENCE (2026-08-28, identical CSV + Newick, 64-tip tree):
-#   model                    DRM.jl                drmTMB
+#   model                    DRModels.jl                drmTMB
 #   sd_phylo ~ x   logLik    -69.13730392152723    -69.1373
 #                  mu        0.9944436, 0.4478094  0.9944436, 0.4478094
 #                  sigma    -1.2629298, 0.6845002 -1.26293,   0.6845002
 #                  sd_phylo -0.1869284,-0.1827045 -0.1869285, -0.1827046
 #   scalar (M5)    logLik    -70.38332423766208    -70.38332
 using Test
-using DRM
+using DRModels
 using StableRNGs
 using LinearAlgebra
 
@@ -25,9 +25,9 @@ function _balanced_newick(d)
 end
 
 function _qqq_sim(; depth = 6)
-    phy = DRM.augmented_phy(_balanced_newick(depth))
+    phy = DRModels.augmented_phy(_balanced_newick(depth))
     G = phy.n_leaves
-    K0 = DRM.sigma_phy_dense(phy; σ²_phy = 1.0)
+    K0 = DRModels.sigma_phy_dense(phy; σ²_phy = 1.0)
     dK = sqrt.(diag(K0)); K = K0 ./ (dK * dK')
     rng = StableRNG(11)
     x = randn(rng, G)
@@ -137,9 +137,9 @@ end
     # This one evaluates the objective directly and is path-independent.
     phy, dat = _qqq_sim()
     G = phy.n_leaves
-    C = DRM.sigma_phy_dense(phy; σ²_phy = 1.0)
+    C = DRModels.sigma_phy_dense(phy; σ²_phy = 1.0)
     X = hcat(ones(G), dat.x)
-    prob = DRM.make_loc_problem(phy, dat.y, X; species = 1:G)
+    prob = DRModels.make_loc_problem(phy, dat.y, X; species = 1:G)
 
     dense_nll(β, s2phy, s2) = begin
         V = s2 .* Matrix{Float64}(I, G, G) .+ s2phy .* C
@@ -157,9 +157,9 @@ end
     # dense-oracle assertion below.
     admitted = 0
     for gap in range(0.0, 0.5 * log(eps(Float64)) - 2.0; length = 60)
-        DRM._loconly_resolvable_scales(lσ_phy + gap, lσ_phy) || continue
+        DRModels._loconly_resolvable_scales(lσ_phy + gap, lσ_phy) || continue
         admitted += 1
-        β, nll, _ = DRM._loconly_profile_beta(prob, lσ_phy + gap, lσ_phy)
+        β, nll, _ = DRModels._loconly_profile_beta(prob, lσ_phy + gap, lσ_phy)
         @test β !== nothing
         β === nothing && continue
         ref = dense_nll(β, exp(2 * lσ_phy), exp(2 * (lσ_phy + gap)))
@@ -170,19 +170,19 @@ end
     @test admitted >= 20                     # an empty sweep is not a pass
 
     # The measured break point must be on the refused side, with margin.
-    @test !DRM._loconly_resolvable_scales(lσ_phy - 17.086, lσ_phy)
-    @test !DRM._loconly_resolvable_scales(lσ_phy + bar - 0.01, lσ_phy)
+    @test !DRModels._loconly_resolvable_scales(lσ_phy - 17.086, lσ_phy)
+    @test !DRModels._loconly_resolvable_scales(lσ_phy + bar - 0.01, lσ_phy)
     # ... and an ordinary fit is nowhere near it: the worst of the #461
     # fixture's 60 bootstrap refits sat at a gap of -1.033 (the 60 spanned
     # [-1.033, +1.439]), about eight nats clear of the bar.
-    @test DRM._loconly_resolvable_scales(lσ_phy - 1.5, lσ_phy)
+    @test DRModels._loconly_resolvable_scales(lσ_phy - 1.5, lσ_phy)
 end
 
 @testset "bridge: sd()/sd_phylo() parts route (#546)" begin
     dat = (y = [1.0, 2.0, 3.0, 4.0], x = [0.0, 1.0, 0.0, 1.0],
            z = [1.0, 1.0, 2.0, 2.0], g = ["a", "a", "b", "b"])
     # positional spelling — what drmTMB's `drm_julia_formula_entry` emits
-    b, _ = DRM._bridge_formula(["y ~ x + (1 | g)", "sigma ~ x", "sd(g) ~ z"], "gaussian", dat)
+    b, _ = DRModels._bridge_formula(["y ~ x + (1 | g)", "sigma ~ x", "sd(g) ~ z"], "gaussian", dat)
     @test first.(b.forms) == [:mu, :sigma, :sd_g]
     # dict spelling — what JuliaCall marshals a named R list into. The key is the
     # marker call itself, so the value (already the full formula) passes through
@@ -190,10 +190,10 @@ end
     dphy = (y = [1.0, 2.0], x = [0.0, 1.0], species = ["a", "b"])
     d = Dict{Symbol,Any}(:mu => "y ~ x + phylo(1 | species)", :sigma => "sigma ~ x",
                          Symbol("sd_phylo(species)") => "sd_phylo(species) ~ x")
-    b2, _ = DRM._bridge_formula(d, "gaussian", dphy)
+    b2, _ = DRModels._bridge_formula(d, "gaussian", dphy)
     @test Set(first.(b2.forms)) == Set([:mu, :sigma, :sdphy_species])
     # an unknown keyed part must ERROR, never be silently dropped (issue-#2 class)
-    @test_throws ArgumentError DRM._bridge_formula(
+    @test_throws ArgumentError DRModels._bridge_formula(
         Dict{Symbol,Any}(:mu => "y ~ x", :bogus => "bogus ~ x"), "gaussian",
         (y = [1.0, 2.0], x = [0.0, 1.0]))
 end

@@ -1,6 +1,6 @@
 # Diagnostic only: one constrained solve on the existing sparse LSS route.
 # Usage: julia --project=. tools/profile-scaling-pilot.jl DEPTH NEW_TOML
-using DRM, Random, LinearAlgebra, Statistics, TOML, SHA, Dates, Sockets
+using DRModels, Random, LinearAlgebra, Statistics, TOML, SHA, Dates, Sockets
 length(ARGS) == 2 || error("DEPTH NEW_TOML required")
 depth = parse(Int, ARGS[1]); 4 <= depth <= 8 || error("pilot depth must be 4:8")
 output = ARGS[2]; isfile(output) && error("refusing to overwrite evidence")
@@ -25,7 +25,7 @@ try
     end
     tree = augmented_phy(node("s",depth)); G = tree.n_leaves
     # Independent small dense simulator/oracle only; no dense engine substituted.
-    K = DRM.sigma_phy_dense(tree)
+    K = DRModels.sigma_phy_dense(tree)
     xg = randn(rng,G); zg = randn(rng,G)
     g = repeat(1:G,inner=2); x = xg[g]; z = zg[g]
     X = hcat(ones(length(g)),x,x.^2,z,z.^2)
@@ -45,7 +45,7 @@ try
     out["fit_bytes"] = timed.bytes;out["fit_converged"] = is_converged(fit)
     out["theta"] = theta;out["parameters"] = length(theta)
     out["stored_gradient"] = fit.nllgrad !== nothing
-    mode = DRM._profile_autodiff_mode(fit.nll,fit.nllgrad,theta)
+    mode = DRModels._profile_autodiff_mode(fit.nll,fit.nllgrad,theta)
     out["profile_derivative_mode"] = string(mode)
     a = exp.(Zg*coef(fit,:sd_phylo))
     # Residual noise is observation-level; repeat only the phylogenetic part.
@@ -61,21 +61,21 @@ try
         t = copy(theta);t[k]=value;t[ids]=u;calls[]+=1
         fit.nll(t)
     end
-    constrained = @timed DRM._profile_optimize(obj,theta[ids],mode)
+    constrained = @timed DRModels._profile_optimize(obj,theta[ids],mode)
     res = constrained.value
     out["constrained_seconds"] = constrained.time;out["constrained_bytes"] = constrained.bytes
     out["objective_calls"] = calls[]
-    out["optimizer_iterations"] = DRM.Optim.iterations(res)
-    out["optimizer_converged"] = DRM.Optim.converged(res)
-    out["optimizer_function_calls"] = DRM.Optim.f_calls(res)
-    out["optimizer_gradient_calls"] = DRM.Optim.g_calls(res)
-    uhat = DRM.Optim.minimizer(res)
+    out["optimizer_iterations"] = DRModels.Optim.iterations(res)
+    out["optimizer_converged"] = DRModels.Optim.converged(res)
+    out["optimizer_function_calls"] = DRModels.Optim.f_calls(res)
+    out["optimizer_gradient_calls"] = DRModels.Optim.g_calls(res)
+    uhat = DRModels.Optim.minimizer(res)
     score = map(eachindex(uhat)) do j
         h = cbrt(eps(Float64))*max(1,abs(uhat[j]));up=copy(uhat);um=copy(uhat)
         up[j]+=h;um[j]-=h;(obj(up)-obj(um))/(2h)
     end
     out["nuisance_score_maxabs"] = maximum(abs,score)
-    out["profile_deviance"] = 2*(DRM.Optim.minimum(res)-fit.nll(theta))
+    out["profile_deviance"] = 2*(DRModels.Optim.minimum(res)-fit.nll(theta))
     samples = [(@timed fit.nll(theta)) for _ in 1:5]
     out["warm_objective_seconds_median"] = median(t.time for t in samples)
     out["warm_objective_bytes_median"] = median(t.bytes for t in samples)

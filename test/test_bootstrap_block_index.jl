@@ -5,7 +5,7 @@
 # current contiguous, θ-ordered layouts both agree; the counter silently misaligns
 # names/estimates/SEs/CIs if a fit ever stores non-contiguous or reordered blocks.
 # This anchors the range-based indexing against a deliberately non-contiguous layout.
-using DRM, Test, Random, Statistics
+using DRModels, Test, Random, Statistics
 
 @testset "bootstrap summary indexes by stored block range (#325.3)" begin
     # A fit0 mock exposing only .blocks / .coefnames (all the summary reads). The
@@ -28,7 +28,7 @@ using DRM, Test, Random, Statistics
     # draws[:, j] ~ Normal(10j, j): mean ≈ 10j, sd ≈ j.
     draws = hcat((10.0 * j .+ float(j) .* randn(B) for j in 1:5)...)
 
-    rows = DRM._bootstrap_summary_rows(fit0, draws, est, 0.95)
+    rows = DRModels._bootstrap_summary_rows(fit0, draws, est, 0.95)
     @test length(rows) == 5
 
     # Row order follows `zip(blocks, coefnames)`: mu(1,2), sigma(4,5), resd(3).

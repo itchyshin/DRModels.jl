@@ -1,9 +1,9 @@
 # Adding distribution families
 
 !!! note "Status — Developer guide"
-    Mirrors drmTMB's [Adding distribution families](https://itchyshin.github.io/drmTMB/articles/adding-families.html). This page documents how families are actually built in DRM.jl today (the [`Poisson`](@ref) family is the worked reference). Adding a family is **Workflow H** (the `add-family` skill); it is the once-per-family loop of Phase 2.
+    Mirrors drmTMB's [Adding distribution families](https://itchyshin.github.io/drmTMB/articles/adding-families.html). This page documents how families are actually built in DRModels.jl today (the [`Poisson`](@ref) family is the worked reference). Adding a family is **Workflow H** (the `add-family` skill); it is the once-per-family loop of Phase 2.
 
-A family in DRM.jl is a small **struct** plus a `drm` method that builds the design
+A family in DRModels.jl is a small **struct** plus a `drm` method that builds the design
 matrices, writes the negative log-likelihood, and optimises it by maximum
 likelihood. Everything else — the `bf` front end, the design builder, the
 post-fit accessors, inference — is shared. Adding a family is therefore mostly
@@ -85,7 +85,7 @@ Conventions that matter:
 
 ### 4. Wire it into the module
 
-In `src/DRM.jl`, `include("myfamily.jl")` next to the other families and add the
+In `src/DRModels.jl`, `include("myfamily.jl")` next to the other families and add the
 struct to the family export list.
 
 ### 5. Add a recovery test
@@ -106,7 +106,10 @@ method:
 
 - **`(1 | g)`** — integrate the random intercept out by **Gauss–Hermite
   quadrature** (`_gauss_hermite`), `b = √2 σ_b z`.
-- **`(1 + x | g)`** — a 2-D Gauss–Hermite tensor grid over the log-Cholesky Σ.
+- **`(1 + x | g)`** — per-group adaptive Gauss–Hermite quadrature through the shared
+  helper `_aghq_marginal_loglik` (`src/adaptive_ghq.jl`, #834): the family supplies
+  only the per-observation log-density `ll(i, η)`; the grid is centred on each
+  group's mode and scaled by its curvature (5 nodes per axis; 1 node = Laplace).
 - **`(1 | g) + (1 | h)`** crossed — the shared sparse-Laplace spine
   (`sparse_laplace_glmm.jl`).
 - **`zi` / `hu`** — a second linear predictor for the zero-inflation / hurdle
@@ -121,7 +124,7 @@ Start with the fixed-effects fitter; add these only once the base family recover
 | 1 | `struct MyFamily end` + docstring (links, `sigma`↔φ) |
 | 2 | `drm(::DrmFormula, ::MyFamily; …)` method |
 | 3 | `_fit_myfamily` with AD-safe `nll`, `DrmFit`, `_withnll` |
-| 4 | `include` + export in `src/DRM.jl` |
+| 4 | `include` + export in `src/DRModels.jl` |
 | 5 | `test/test_myfamily.jl` recovery test + `runtests.jl` |
 | 6 | reference `@docs` entry + tutorial `@example` |
 | 7 | (optional) RE / `zi` / `hu` paths |

@@ -2,11 +2,11 @@
 # reproduces the R-side ape::vcv Σ_phy, and that sparse Cholesky +
 # Takahashi selected-inversion match dense linear algebra.
 
-using DRM
+using DRModels
 using Test, LinearAlgebra, SparseArrays
 using DelimitedFiles: readdlm
 
-const D = DRM
+const D = DRModels
 const FIX = joinpath(@__DIR__, "..", "bench", "fixtures")
 
 # ---------------------------------------------------------------------------

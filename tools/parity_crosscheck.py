@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Reconcile the two parity evidence stores against each other.
 
-DRM.jl records R-parity in two places that have never been compared:
+DRModels.jl records R-parity in two places that have never been compared:
 
   Route 1  `test/parity/fixtures/<slug>/expected.toml` — committed drmTMB
            outputs, replayed offline by `runparity.jl` with no R present.
@@ -184,7 +184,7 @@ def main():
         print("  %-26s family=%s" % (slug, route1[slug]["family"]))
     print()
 
-    # `drmjl_only:*` marks a DRM.jl cell with no counterpart row in drmTMB's
+    # `drmjl_only:*` marks a DRModels.jl cell with no counterpart row in drmTMB's
     # julia-capabilities.tsv. It is real evidence, just not evidence FOR a
     # capability row, so it is not an unmatched id.
     uncovered = sorted(c for c in set(route2) - set(SLUG_TO_CAPABILITY.values())
@@ -196,7 +196,7 @@ def main():
     print()
 
     if drmjl_only:
-        print("DRM.jl-ONLY CELLS (%d) -- real evidence, no drmTMB capability row"
+        print("DRModels.jl-ONLY CELLS (%d) -- real evidence, no drmTMB capability row"
               % len(drmjl_only))
         for cap in drmjl_only:
             print("  %-40s %s" % (cap, route2[cap][0][0]))

@@ -40,7 +40,7 @@ def validate(receipt, log):
     for path, digest in before.items():
         require(hashlib.sha256(Path(path).read_bytes()).hexdigest() == digest, path)
     require("COEFFICIENT_LABEL_COMBINED_PASS" in log)
-    require(f"RUNTIME source={root}/src/DRM.jl" in log)
+    require(f"RUNTIME source={root}/src/DRModels.jl" in log)
     require("threads=1 BLAS=1" in log)
     return True
 

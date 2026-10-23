@@ -12,7 +12,7 @@
 #     `distinct-levels == n_leaves` bijection — so a species SUBSET threw a
 #     confusing dimension-mismatch error naming an unrelated algorithm.
 #   - `response = "include"` — the bridge sends the NaN-response rows straight
-#     through; DRM.jl's `has_missing_response` gate refuses ANY structured
+#     through; DRModels.jl's `has_missing_response` gate refuses ANY structured
 #     mean route unconditionally (native reproduction, no bridge involved).
 #
 # Fixed the DEFAULT (`drop`) case by matching species to tree leaves BY NAME/
@@ -22,7 +22,7 @@
 # leaves it's missing from, exactly like the σ-phylo route already documents.
 # `include` remains refused (no missing-response likelihood exists yet for the
 # phylo-mean route) but the message is sharpened to say so honestly.
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra, Statistics
 
 @testset "#482 Gaussian mean-phylo missing response" begin
@@ -95,7 +95,7 @@ using Test, Random, LinearAlgebra, Statistics
         # string leaf names ("sp_1", …) rather than integer tip indices — confirm
         # the name-matching tier handles a subset the same way. `random_balanced_
         # tree` only names tips "L1".."Lp"; rebuild the same balanced topology
-        # with `species_$i` names via the lower-level `DRM.make_phy` edge builder
+        # with `species_$i` names via the lower-level `DRModels.make_phy` edge builder
         # (same pairing algorithm `random_balanced_tree` uses internally).
         Random.seed!(20260933)
         p = 16
@@ -118,7 +118,7 @@ using Test, Random, LinearAlgebra, Statistics
             i == length(current_level) && push!(new_level, current_level[i])
             current_level = new_level
         end
-        phy = DRM.make_phy(edges, p; root_index = current_level[1], leaf_names = leaf_names)
+        phy = DRModels.make_phy(edges, p; root_index = current_level[1], leaf_names = leaf_names)
         species = repeat(leaf_names, inner = m)
         n = length(species)
         x = randn(n)
@@ -172,7 +172,7 @@ using Test, Random, LinearAlgebra, Statistics
         # used. With rows conditionally independent given the latent field, a
         # missing Gaussian response integrates out of its own likelihood factor
         # entirely, so `include` is `drop` + prediction, not a new likelihood.
-        # DRM.jl therefore accepts masked responses on this cell by fitting the
+        # DRModels.jl therefore accepts masked responses on this cell by fitting the
         # observed rows against the FULL tree (the subset-tolerant #482 leaf
         # matching), instead of refusing. The two calls below must agree not
         # approximately but exactly: after the row filter they are the same

@@ -13,7 +13,7 @@
 #
 # Worked example:
 #
-#   using DRM, Random, Distributions
+#   using DRModels, Random, Distributions
 #   rng = MersenneTwister(443)
 #   G, m = 10, 6
 #   g = repeat(1:G, inner = m)
@@ -25,11 +25,11 @@
 #   fit_reml = drm(form, Poisson(); data = (; y, x, g), method = :REML)   # opt-in Cox–Reid
 #   estimation_method(fit_reml) === :REML
 
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 import Distributions
 
-const D = DRM
+const D = DRModels
 
 # One Poisson `(1 | g)` draw with a genuine scalar cluster effect, so σ̂_b is identified
 # (a σ→0 boundary fit has nothing for a restricted objective to correct).

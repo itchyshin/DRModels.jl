@@ -1,5 +1,5 @@
 name: Enhancement (capability slice)
-description: A new DRM.jl capability — a family, structured effect, inference, or engine slice.
+description: A new DRModels.jl capability — a family, structured effect, inference, or engine slice.
 labels: ["enhancement"]
 body:
   - type: textarea

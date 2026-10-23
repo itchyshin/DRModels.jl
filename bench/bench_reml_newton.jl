@@ -4,7 +4,7 @@
 # (the cross-engine ASReml/glmmTMB comparison is pending — σ-phylo location-scale has no
 # native R baseline, and glmmTMB here is TMB-version-mismatched). Run:
 #   julia --project=. bench/bench_reml_newton.jl
-using DRM, Random, LinearAlgebra, Printf
+using DRModels, Random, LinearAlgebra, Printf
 
 function gen_sep(p; m = 4, seed = 11)
     Random.seed!(seed)
@@ -21,18 +21,18 @@ end
 function bench_p(p)
     d = gen_sep(p)
     kind = Val(:gaussian_mean)
-    Q, gidx, G = DRM._locscale_phylo_setup(d.phy, d.species)
-    Zη = DRM._ls_canonical_Zeta(length(d.y)); Zψ = DRM._ls_canonical_Zpsi(length(d.y))
-    obj(θ)  = DRM._glsp_sep_nll(kind, d.y, d.Xμ, d.Xψ, gidx, G, Q, θ, Zη, Zψ)
-    grad(θ) = DRM._glsp_sep_grad(kind, d.y, d.Xμ, d.Xψ, gidx, G, Q, θ, Zη, Zψ)
+    Q, gidx, G = DRModels._locscale_phylo_setup(d.phy, d.species)
+    Zη = DRModels._ls_canonical_Zeta(length(d.y)); Zψ = DRModels._ls_canonical_Zpsi(length(d.y))
+    obj(θ)  = DRModels._glsp_sep_nll(kind, d.y, d.Xμ, d.Xψ, gidx, G, Q, θ, Zη, Zψ)
+    grad(θ) = DRModels._glsp_sep_grad(kind, d.y, d.Xμ, d.Xψ, gidx, G, Q, θ, Zη, Zψ)
     θ0 = vcat(d.Xμ \ d.y, [0.0], log(0.3), log(0.3))
-    θ̂_ml, mlc = DRM._glsp_optimise(obj, (g, θ) -> (g .= grad(θ); g), θ0)
+    θ̂_ml, mlc = DRModels._glsp_optimise(obj, (g, θ) -> (g .= grad(θ); g), θ0)
     vidx = [3, 4]
     # warm-up (exclude compilation from the timing)
-    DRM._glsp_reml_newton(obj, grad, θ̂_ml, 1, vidx; ml_converged = mlc)
-    DRM._glsp_reml_refit(obj, grad, θ̂_ml, 1; ml_converged = mlc)
-    t_nw = @elapsed ((θn, cn, _, _, ns) = DRM._glsp_reml_newton(obj, grad, θ̂_ml, 1, vidx; ml_converged = mlc))
-    t_fd = @elapsed ((θf, cf, _, _)     = DRM._glsp_reml_refit(obj, grad, θ̂_ml, 1; ml_converged = mlc))
+    DRModels._glsp_reml_newton(obj, grad, θ̂_ml, 1, vidx; ml_converged = mlc)
+    DRModels._glsp_reml_refit(obj, grad, θ̂_ml, 1; ml_converged = mlc)
+    t_nw = @elapsed ((θn, cn, _, _, ns) = DRModels._glsp_reml_newton(obj, grad, θ̂_ml, 1, vidx; ml_converged = mlc))
+    t_fd = @elapsed ((θf, cf, _, _)     = DRModels._glsp_reml_refit(obj, grad, θ̂_ml, 1; ml_converged = mlc))
     return (; p, t_nw, t_fd, ns, speedup = t_fd / t_nw, conv = cn,
             sd_match = abs(exp(θn[4]) - exp(θf[4])))
 end

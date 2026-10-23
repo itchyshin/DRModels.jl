@@ -1,11 +1,11 @@
-# test_ranef_varying_scale_convergence.jl -- DRM.jl #609 item 2 (varying-scale
+# test_ranef_varying_scale_convergence.jl -- DRModels.jl #609 item 2 (varying-scale
 # conditional cell, `bf(y ~ x + (1 | g), sigma ~ x)`, routed through
 # `_fit_ranef_gaussian` in src/gaussian_ranef.jl).
 #
-# WHAT #609 LEFT OPEN. The issue's own diagnosis established that DRM.jl reaches
+# WHAT #609 LEFT OPEN. The issue's own diagnosis established that DRModels.jl reaches
 # its optimum on this cell (sweeping `g_tol` from 1e-8 to 1e-16 moves the
 # coefficients by 1.3e-11) and handed the ~1e-5 parity gap to the drmTMB lane. It
-# never looked at the flag DRM.jl reports alongside that optimum, and that flag is
+# never looked at the flag DRModels.jl reports alongside that optimum, and that flag is
 # where this route does have a defect.
 #
 # THE DEFECT. `Optim.converged(res)` is the OR of the x, f and g criteria
@@ -46,11 +46,11 @@
 # be satisfied by reporting `false` wholesale). Per-fit numbers are printed, so
 # a future platform disagreement is legible from the CI log alone.
 #
-#   julia --project=test -e 'using DRM, Test; include("test/test_ranef_varying_scale_convergence.jl")'
+#   julia --project=test -e 'using DRModels, Test; include("test/test_ranef_varying_scale_convergence.jl")'
 
 module TestRanefVaryingScaleConvergence
 
-using DRM
+using DRModels
 using Test
 using LinearAlgebra
 using ForwardDiff
@@ -76,10 +76,38 @@ _fit(dat) = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ x)), Gaussian(); 
 _gradinf(fit) = maximum(abs, ForwardDiff.gradient(fit.nll, fit.theta))
 
 # The RUNAWAY region: sigma slope 10 over n = 40 in G = 4 groups puts the
-# steepest rows many orders of magnitude apart, so LBFGS climbs the unbounded
-# sigma_i -> 0 ridge. Measured on macOS/aarch64 2026-09-06 over seeds 1:20 --
-# 3 fits gradient-converged, 14 stalled (worst ||g||_inf = 4.23e124 with a
-# POSITIVE Gaussian loglik of +1929.55), 3 threw.
+# steepest rows many orders of magnitude apart. Measured on macOS/aarch64
+# 2026-09-06 over seeds 1:20 -- 3 fits gradient-converged, 14 stalled (worst
+# ||g||_inf = 4.23e124 with a POSITIVE Gaussian loglik of +1929.55), 3 threw.
+#
+# #746/#747 (2026-09-27): that "unbounded sigma_i -> 0 ridge" was NOT a property
+# of the likelihood. It was catastrophic cancellation in the Woodbury quadratic
+# q1 - q2 (both terms ~1/D_min, their rounding error far above the true value),
+# which let the computed nll go to -1e124 and LBFGS chase the rounding hole. With
+# the cancellation-free form (`_re_quad_stable`) the same panel measures 17 fits
+# gradient-converged (all ||g||_inf <= 4.2e-9), 0 stalled, 3 threw (with the
+# vcov guard bypassed to see where each of the 3 actually stops, measured
+# against drmTMB 0.7.1 on the same draw):
+#   seed 3:  boundary sd -> 0 local optimum, nll -132.1588362544, ||g||_inf
+#            1.4e-9 -- matches drmTMB's own boundary optimum -132.1588362548.
+#            The Hessian-overflow / vcov-guard throw is the right call here.
+#   seed 4:  DRModels also lands on a boundary local optimum (nll -179.80),
+#            but drmTMB finds an INTERIOR optimum (nll -56.9710494815, log sd
+#            -0.81, sigma slope 10.04) that is 123 nats better; DRModels' own
+#            `fit.nll` evaluated at drmTMB's parameters is 56.97105, so the
+#            better optimum exists on this objective and LBFGS simply missed
+#            it. Not a boundary-Hessian issue -- an optimiser miss, filed as a
+#            follow-up (see PR body).
+#   seed 10: DRModels does not converge at all (mu intercept 177.5, ||g||_inf
+#            10.8, nll -258.04) vs drmTMB's -163.4460683592, 95 nats worse.
+#            Not a boundary case -- a non-converged/diverged fit, filed as a
+#            follow-up (see PR body).
+# All 3 throws are safe (caught, not returned as silent garbage); only seed 3
+# is actually the boundary-Hessian-overflow case this comment used to claim
+# for all three. This behaviour (all 3 throwing) predates this PR -- origin/main
+# also threw on these same 3 seeds. Every converged logLik matches drmTMB 0.7.1
+# (TMB Laplace, exact for this Gaussian model) to <= 1e-9 where both reach the
+# same optimum.
 const RUNAWAY = (n = 40, G = 4, sigma_slope = 10.0, sd_b = 0.8)
 # The WELL-CONDITIONED region: the shape of #609's own 144-row fixture.
 const CLEAN = (n = 144, G = 12, sigma_slope = 0.15, sd_b = 0.8)
@@ -121,15 +149,15 @@ const CLEAN = (n = 144, G = 12, sigma_slope = 0.15, sd_b = 0.8)
     println("  runaway panel: $nrun fits, $nconv converged, $nstall stalled ",
             "(worst ||g||_inf $(worst_stall)), $nviol violations, $nerr threw")
 
-    # THE CONTRACT. Red on origin/main.
+    # THE CONTRACT. Red on origin/main before #609 item 2.
     @test nviol == 0
-    # FIXTURE GUARD: the panel must actually reach the defect, or `nviol == 0`
-    # is vacuous. If this fails, the region stopped stalling on this platform --
-    # widen the seed range or steepen `sigma_slope`; do not relax the line above.
-    @test nstall >= 1
-    # THE OTHER SIDE, inside the same region: the fix must not report `false`
-    # wholesale.
-    @test nconv >= 1
+    # The former fixture guard `nstall >= 1` asserted that this region STALLS.
+    # After #746/#747 it no longer does -- the stall was the cancellation
+    # artifact described above -- so the panel now guards the opposite: the
+    # region must be fitted, not merely flagged. (The #609 flag contract itself
+    # stays exercised: `nviol == 0` above, and the boundary cases below.)
+    # 17 measured on macOS/aarch64; margin for platform-dependent boundary seeds.
+    @test nconv >= 15
 
     # --- the OTHER side of the boundary, at the boundary -------------------
     # A well-behaved draw that genuinely meets the gradient criterion and sits

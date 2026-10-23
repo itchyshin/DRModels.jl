@@ -2,11 +2,11 @@
 
 !!! note "Status — Stable"
     Mirrors drmTMB's [Which scale are you modelling?](https://itchyshin.github.io/drmTMB/articles/which-scale.html).
-    **In DRM.jl today:** all of them — the residual scale `σ` (including a
+    **In DRModels.jl today:** all of them — the residual scale `σ` (including a
     random effect *on* `σ`), a group-level random-intercept SD, and known
     sampling variances via `meta_V`.
 
-"Variance" can mean different things, and DRM.jl keeps them separate:
+"Variance" can mean different things, and DRModels.jl keeps them separate:
 
 | Quantity | What it is | How you model it |
 |---|---|---|
@@ -18,7 +18,7 @@
 ## Residual σ vs group SD, side by side
 
 ```@example ws
-using DRM, Random
+using DRModels, Random
 Random.seed!(3)
 
 G = 60; m = 25; n = G * m
@@ -57,7 +57,7 @@ but its `sdreport` then returns **all-`NaN`** standard errors — one unidentifi
 direction poisons the entire SE vector, so you lose the uncertainty on *every*
 parameter, including the well-identified ones.
 
-DRM.jl keeps the inference you are entitled to:
+DRModels.jl keeps the inference you are entitled to:
 
 - **Boundary-aware Wald.** [`stderror`](@ref) reports a finite SE wherever the
   estimated variance is finite and positive, and `Inf` — an undefined,
@@ -77,7 +77,7 @@ DRM.jl keeps the inference you are entitled to:
 
 This is a **measured** advantage, not a hope. On the verified q=4 PLSM fit the
 observed information had a single negative eigenvalue — the singular variance
-direction — and DRM.jl still returned valid Wald SEs for the identified
+direction — and DRModels.jl still returned valid Wald SEs for the identified
 parameters where drmTMB's `sdreport` was all-`NaN`; a parametric bootstrap
 returned a finite interval for every replicate it was run on — no refit failed
 at the boundary. The counts and the run
@@ -91,4 +91,4 @@ conditions are in `report/comparison-grid.md`.
 
 ## See also
 
-- [Get started](../get-started.md) · [What can I fit today?](model-map.md)
+- [Get started](../getting-started.md) · [What can I fit today?](model-map.md)

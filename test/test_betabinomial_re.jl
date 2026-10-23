@@ -2,7 +2,7 @@
 # cbind(s, f) ~ x + (1|g). logit μ_i = Xμ_iᵀβ + b_{g(i)}, b_g ~ N(0,σ_b²), with
 # precision φ = 1/σ². The group effect is integrated out per group by 32-node
 # Gauss–Hermite quadrature. Recovery: β slope, φ, and σ_b.
-using DRM
+using DRModels
 using Test, Random, LinearAlgebra
 import Distributions
 
