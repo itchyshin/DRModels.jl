@@ -1827,8 +1827,19 @@ nobs(fit::DrmFit) = fit.nobs
 """
     fitted(fit)
 
-Fitted mean(s). Univariate / random-effect models return the μ vector (the
-population/marginal mean `Xβ̂`); bivariate models return `Dict(:mu1=>…, :mu2=>…)`.
+Fitted mean(s). Univariate / random-effect models return the μ vector;
+bivariate models return `Dict(:mu1=>…, :mu2=>…)`. Which mean depends on the route:
+
+- **Population mean `Xβ̂`**: fixed-effects fits, ordinary `(1 | g)` and crossed
+  random intercepts, `relmat` / `animal`, and the dense `algorithm = :gls` /
+  `:lbfgs` Gaussian `phylo(1 | g)` fitters.
+- **Conditional mean `Xβ̂ + u`** (the BLUPs included, as drmTMB's fitted-row
+  `predict()`): the sparse and EM Gaussian `phylo(1 | g)` routes, and so
+  `residuals(fit)` on them are conditional residuals. `predict(fit, data)` is
+  the fixed-effect `Xβ̂` on every route.
+
+`LogNormal` fits report the response-scale median `exp(·)` of the corresponding
+log-scale mean above, including the `phylo` / `relmat` and crossed routes (#1102).
 """
 fitted(fit::DrmFit) = haskey(fit.means, :mu) ? fit.means[:mu] : fit.means
 

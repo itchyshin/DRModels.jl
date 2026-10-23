@@ -1,0 +1,1 @@
+| 2026-10-22 | **Gamma/Beta fixed-effect contract tests** (#1159) | Focused Julia test; `git diff --check`; check-log and after-task validators | Focused test: 109 passed, 2 declared broken Beta advice assertions; no source changes | Codex |
