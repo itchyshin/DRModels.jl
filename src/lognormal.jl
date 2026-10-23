@@ -280,15 +280,18 @@ end
 # vcov, and ranef carry over untouched from the Gaussian fit on log(y); only
 # the likelihood VALUE (and everything derived from it: aic/bic/deviance)
 # shifts by the Jacobian — mirrors `_lognormal_jacobian_shift` in
-# src/bivariate_lognormal.jl for the univariate case.
+# src/bivariate_lognormal.jl for the univariate case. The Gaussian fit's `means`
+# are on the LOG scale; `fitted` / `simulate` / `residuals` expect the
+# response-scale median `exp(.)` like the plain LogNormal route (#1102).
 function _lognormal_jacobian_shift(fam::LogNormal, gfit::DrmFit, y::Vector{Float64})
     jac = sum(log, y)
     gnll = gfit.nll
     lnll = gnll === nothing ? nothing : (θ -> gnll(θ) + jac)   # nll = -loglik, so the Jacobian ADDS
     reml_ll = isnan(gfit.reml_loglik) ? gfit.reml_loglik : gfit.reml_loglik - jac
     return DrmFit(fam, gfit.blocks, gfit.coefnames, gfit.theta, gfit.vcov,
-                 gfit.loglik - jac, gfit.nobs, gfit.converged, gfit.means,
-                 Dict(:mu => y), gfit.scales, gfit.formula, lnll, gfit.nllgrad, gfit.ranef,
+                 gfit.loglik - jac, gfit.nobs, gfit.converged,
+                 Dict(:mu => exp.(gfit.means[:mu])), Dict(:mu => y), gfit.scales,
+                 gfit.formula, lnll, gfit.nllgrad, gfit.ranef,
                  gfit.estim_method, reml_ll, gfit.ml_loglik - jac, gfit.marginal,
                  gfit.phylo_penalty, gfit.penalty, gfit.iterations, gfit.phylo_scale)
 end
