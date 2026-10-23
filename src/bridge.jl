@@ -201,6 +201,7 @@ function drm_bridge_q2_phylo(; Y, X, species, tree, options = Dict{String,Any}()
     all(1 .<= sp .<= phy.n_leaves) ||
         throw(ArgumentError("drm_bridge_q2_phylo: `species` must contain 1-based tip indices"))
     opts = _bridge_options(options)
+    _bridge_check_option_keys(opts, _BRIDGE_Q2_OPTION_KEYS, "drm_bridge_q2_phylo")
     prob, Q_cond = make_coevo_problem(phy, y, x; species = sp)
     fit = fit_coevolution(
         prob,
@@ -246,6 +247,7 @@ function drm_bridge_q2_known_precision(; Y, X, group, Q,
     length(g) == size(y, 1) ||
         throw(ArgumentError("drm_bridge_q2_known_precision: `group` length must match the number of rows in `Y`"))
     opts = _bridge_options(options)
+    _bridge_check_option_keys(opts, _BRIDGE_Q2_OPTION_KEYS, "drm_bridge_q2_known_precision")
     prob, Q_cond = make_coevo_problem_from_precision(qmat, y, x; group = g)
     fit = fit_coevolution_q2_residual(
         prob,
@@ -355,8 +357,8 @@ function drm_bridge_inference(; formula, family::AbstractString, data,
             "drm_bridge_inference: profile endpoint search did not converge for " *
             "`$(row.param):$(row.coef)` — $(outcome.message). A non-converged " *
             "endpoint is NOT a confidence limit, so it is refused here rather " *
-            "than returned as an infinite bound. Use `method = \"wald\"` or " *
-            "`method = \"bootstrap\"` for this target."))
+            "than returned as an infinite bound. Use `method = \"bootstrap\"` " *
+            "for this target (this entry point has no `\"wald\"` method, #1011)."))
         return _bridge_inference_flatten(
             row;
             method = "profile",
@@ -486,14 +488,25 @@ const _BRIDGE_KNOWN_OPTION_KEYS = Set((
     :q4_g_tol, :q4_iterations, :q4_n_newton, :q4_vcov, :coef_labels,
 ))
 
+# The q2 diagnostic entry points (`drm_bridge_q2_phylo`,
+# `drm_bridge_q2_known_precision`) read only these solver controls. They used to
+# drop any other key silently, so a typo such as `"iteratons"` ran with the
+# default 180 iterations (#1011). Same fail-closed rule as `_bridge_fit`.
+const _BRIDGE_Q2_OPTION_KEYS = Set((:iterations, :g_tol, :fd_h))
+
+function _bridge_check_option_keys(options, known, who::AbstractString)
+    unknown = setdiff(keys(options), known)
+    isempty(unknown) || throw(ArgumentError(
+        "$who: unknown option key(s) `$(join(sort(String.(unknown)), "`, `"))`; " *
+        "known keys are: $(join(sort(String.(collect(known))), ", "))."))
+    return nothing
+end
+
 function _bridge_fit(bundle, fam, data; tree, K, A, coords, options)
     # Fail closed on an unknown option key (#527-adjacent): a typo'd or
     # not-yet-wired key must error loudly and NAME the key, rather than being
     # silently dropped and the caller left believing it took effect.
-    unknown = setdiff(keys(options), _BRIDGE_KNOWN_OPTION_KEYS)
-    isempty(unknown) || throw(ArgumentError(
-        "drm_bridge: unknown option key(s) `$(join(sort(String.(unknown)), "`, `"))`; " *
-        "known keys are: $(join(sort(String.(collect(_BRIDGE_KNOWN_OPTION_KEYS))), ", "))."))
+    _bridge_check_option_keys(options, _BRIDGE_KNOWN_OPTION_KEYS, "drm_bridge")
     kwargs = Dict{Symbol,Any}()
     tree !== nothing && (kwargs[:tree] = _bridge_tree(tree))
     K !== nothing && (kwargs[:K] = K)
@@ -567,7 +580,27 @@ function _bridge_fit(bundle, fam, data; tree, K, A, coords, options)
     if haskey(options, :q4_vcov)
         kwargs[:q4_vcov] = Bool(options[:q4_vcov])
     end
+    _bridge_check_drm_keywords(bundle, fam, kwargs)
     return drm(bundle, fam; data = data, kwargs...)
+end
+
+# #951: every keyword the bridge forwards must be one the selected `drm` method
+# declares. `marginal` already had this check; `algorithm`, `method`, `se`,
+# `profile_ci`, `phylo_coupled`, `sparse`, the q4 controls and the covariance
+# providers (`tree`, `K`, `A`, `coords`) did not, so a Poisson or Student fit
+# with `algorithm` or `tree` reached R as a bare `MethodError`. A `drm` method
+# that takes `kwargs...` passes this check and keeps its own refusals.
+function _bridge_check_drm_keywords(bundle, fam, kwargs)
+    sig = Tuple{typeof(bundle),typeof(fam)}
+    hasmethod(drm, sig, (:data,)) || return nothing   # no such method at all: let `drm` say so
+    bad = sort!([k for k in keys(kwargs) if !hasmethod(drm, sig, (:data, k))])
+    isempty(bad) && return nothing
+    providers = intersect(bad, (:tree, :K, :A, :coords))
+    detail = isempty(providers) ? "" :
+        " A covariance provider (`$(join(providers, "`, `"))`) means this family has " *
+        "no structured (phylo / relmat / animal / spatial) route here."
+    throw(ArgumentError("drm_bridge: option(s) `$(join(bad, "`, `"))` are not available " *
+        "for $(nameof(typeof(fam)))() with this formula type; omit them.$detail"))
 end
 
 function _bridge_is_bivariate_phylo_q4(bundle, fam, tree)

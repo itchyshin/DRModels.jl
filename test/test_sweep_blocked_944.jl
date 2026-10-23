@@ -5,7 +5,7 @@
 # f_reltol (#946) are not covered here.
 
 using DRModels, Test
-const Optim = DRModels.Optim
+using DRModels: Optim   # `using`, not `const`: a `const Optim` errors if an earlier file in the shard did `using DRModels: Optim`
 
 function _plateau_result(res)
     stopped = merge(res.stopped_by, (x_converged = true, f_converged = true, g_converged = false))

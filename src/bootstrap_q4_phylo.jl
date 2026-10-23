@@ -43,6 +43,10 @@ Returns a `NamedTuple` with
   `"bootstrap_unavailable"` when fewer than two remain. A dropped replicate warns.
 - `attempted`, `used`, `failed`, `failures`, `level`, `draws` (the `used × 4`
   matrix of replicate SDs), `cor_draws` (`used × 6`), `axes`, `cor_pairs`, `elapsed`.
+- `prior_ridge` — the absolute ridge added to `Σ_a` before the replicate random
+  effects are drawn: `0.0` unless `Σ_a` is numerically singular, in which case a
+  warning names it. A correlation draw whose axis SD is exactly 0 is `NaN` and
+  is left out of that correlation's interval.
 
 The interval is the honest report at a boundary: when a scale axis carries no
 phylogenetic signal its SD collapses and the percentile interval includes ~0,
@@ -94,7 +98,13 @@ function bootstrap_sigma_a(fit::DrmFit; data, B::Real = 300, level::Real = 0.95,
     node_pos = Dict(node => i for (i, node) in enumerate(keep))
     leaf_pos = [node_pos[phy.leaf_indices[k]] for k in 1:phy.n_leaves]
 
-    Fchol = _q4_re_prior_chol(Q_cond, Σa)
+    Fchol, prior_ridge = _q4_re_prior_chol(Q_cond, Σa)
+    # #1004: the ridge perturbs the simulated truth on an absolute scale, so a
+    # nonzero one is reported (and returned) rather than applied silently.
+    prior_ridge > 0 && @warn "bootstrap_sigma_a: the fitted Σ_a is numerically singular " *
+        "(an axis has collapsed), so the replicate random effects are drawn from " *
+        "Σ_a + $(prior_ridge)·I. The added ridge is absolute, not relative to the " *
+        "scale of the data; it is returned as `prior_ridge`."
     cols0 = Tables.columntable(data)
 
     axes = (:sd_mu1, :sd_mu2, :sd_sigma1, :sd_sigma2)
@@ -175,19 +185,11 @@ function bootstrap_sigma_a(fit::DrmFit; data, B::Real = 300, level::Real = 0.95,
                       Tuple{Symbol,String,Float64,Float64,Float64,Float64}}
     summary = RowT[]
     for a in 1:4
-        col = @view used_sd[:, a]
-        push!(summary, (param = axes[a], coef = String(axes[a]), estimate = est[a],
-                        std_error = Statistics.std(col),
-                        lower = Statistics.quantile(col, α),
-                        upper = Statistics.quantile(col, 1 - α)))
+        push!(summary, _q4_boot_row(axes[a], est[a], @view(used_sd[:, a]), α))
     end
     cor_summary = RowT[]
     for c in 1:6
-        col = @view used_cor[:, c]
-        push!(cor_summary, (param = cor_names[c], coef = String(cor_names[c]),
-                            estimate = cor_est[c], std_error = Statistics.std(col),
-                            lower = Statistics.quantile(col, α),
-                            upper = Statistics.quantile(col, 1 - α)))
+        push!(cor_summary, _q4_boot_row(cor_names[c], cor_est[c], @view(used_cor[:, c]), α))
     end
 
     boundary_params = String[]
@@ -197,7 +199,10 @@ function bootstrap_sigma_a(fit::DrmFit; data, B::Real = 300, level::Real = 0.95,
             push!(boundary_params, String(axes[a]))
         end
         for c in 1:6
-            _bootstrap_param_at_boundary(cor_names[c], @view used_cor[:, c]) || continue
+            # An undefined correlation (NaN: an axis SD of exactly 0 in that
+            # draw) counts as a draw on the bound, not as a missing draw.
+            col = map(v -> isfinite(v) ? v : 1.0, @view used_cor[:, c])
+            _bootstrap_param_at_boundary(cor_names[c], col) || continue
             push!(boundary_params, String(cor_names[c]))
         end
     end
@@ -208,31 +213,50 @@ function bootstrap_sigma_a(fit::DrmFit; data, B::Real = 300, level::Real = 0.95,
             attempted = B, used = used, failed = failed_n, seeds = seeds,
             level = level, draws = used_sd, cor_draws = used_cor, axes = axes,
             cor_pairs = cor_names, elapsed = elapsed, status = status,
-            boundary_params = boundary_params, check_converged = check_converged)
+            boundary_params = boundary_params, check_converged = check_converged,
+            prior_ridge = prior_ridge)
+end
+
+# One percentile row over the finite draws of a column. A correlation draw is
+# NaN when an axis SD is exactly 0 in that replicate (#1004); those draws are
+# left out of the interval instead of entering as fake zeros. Fewer than two
+# finite draws give NaN limits.
+function _q4_boot_row(param::Symbol, estimate::Real, col::AbstractVector, α::Real)
+    v = filter(isfinite, col)
+    ok = length(v) >= 2
+    return (param = param, coef = String(param), estimate = Float64(estimate),
+            std_error = ok ? Statistics.std(v) : NaN,
+            lower = ok ? Statistics.quantile(v, α) : NaN,
+            upper = ok ? Statistics.quantile(v, 1 - α) : NaN)
 end
 
 # The 6 unique among-axis correlations from a 4×4 Σ_a, in `pairs` order. A
 # collapsed axis (SD ≈ 0) makes its correlations unidentified — they come back
 # wide under the bootstrap: the honest "this coevolution correlation isn't
 # estimable here" report (e.g. ρ_a(μ1,μ2) riding toward ±1 when a σ-axis pins).
+# An axis SD of exactly 0 leaves the correlation undefined: NaN, not 0.0. A
+# substituted 0.0 entered the percentile interval as a real draw and pulled an
+# unidentified correlation toward "estimated near 0" (#1004).
 function _q4_cor_offdiag(Σ::AbstractMatrix, pairs)
     sd = sqrt.(max.(diag(Σ), 0.0))
     return Float64[(sd[i] > 0 && sd[j] > 0) ?
-                   clamp(Σ[i, j] / (sd[i] * sd[j]), -1.0, 1.0) : 0.0
+                   clamp(Σ[i, j] / (sd[i] * sd[j]), -1.0, 1.0) : NaN
                    for (i, j) in pairs]
 end
 
 # Cholesky of the tip-RE prior precision kron(Q_cond, Σ_a⁻¹). Σ_a may be near
 # singular at a σ-collapse; add a vanishing ridge only if the bare inverse fails,
 # so the common path is byte-identical to the engine's own prior_precision draw.
+# Returns `(chol, ridge)`; the caller reports a nonzero ridge (#1004).
 function _q4_re_prior_chol(Q_cond, Σa::AbstractMatrix)
     Σ = Matrix{Float64}(Σa)
     for ridge in (0.0, 1e-10, 1e-8, 1e-6)
         Σr = ridge == 0.0 ? Σ : Σ + ridge * I
         try
             P = prior_precision(Q_cond, inv(Symmetric(Σr)))
-            return cholesky(Symmetric(P))
-        catch
+            return cholesky(Symmetric(P)), ridge
+        catch err
+            err isa InterruptException && rethrow()
             continue
         end
     end

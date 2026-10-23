@@ -93,9 +93,11 @@ using Test, Random
     phy_data = (; y_phy, x_phy, species)
     phy_fit = drm(phy_form, Gaussian(); data = phy_data, tree = phy,
         algorithm = :em, g_tol = 1e-4)
-    # This EM stop leaves `converged = false` on a non-degenerate fit. These
-    # assertions check solver-control forwarding, so they keep the pre-#962
-    # counting (`check_converged = false`). The default is now `true`.
+    # This EM stop still leaves `converged = false` on a non-degenerate fit, even
+    # with the #1047 flag (CI on the merge of #1054, 2026-10-12), so #1048's
+    # premise does not hold for this fixture. These assertions check solver-control
+    # forwarding, so they keep the pre-#962 counting (`check_converged = false`).
+    # Remove the overrides when this fit reports `converged = true`.
     br_phy = bootstrap_result(phy_fit; data = phy_data, tree = phy, B = 2,
         rng = MersenneTwister(13), algorithm = :em, g_tol = 1e-4,
         check_converged = false)

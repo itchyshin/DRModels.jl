@@ -215,7 +215,12 @@ end
 
 # Percentile bootstrap CI from a vector of refits (`nothing` = threw). Refits that
 # did not converge or sit on the 1e10 sentinel (loglik <= -1e9) are skipped.
-# Returns `(ci, n_kept)`.
+# Returns `(ci, n_kept, status)`. `status` follows the univariate bootstrap
+# rules (#1051): `"bootstrap"` when every refit is kept, `"bootstrap_incomplete"`
+# when any was dropped, `"bootstrap_at_boundary"` when the kept draws of the
+# latent correlation pile up at |ρ| > 0.98, and `"bootstrap_unavailable"` when
+# too few refits remain for the interval (the existing `max(10, B ÷ 2)` rule,
+# unchanged). Any dropped refit warns.
 function _mf_boot_ci(fits, B, level)
     ρs = Float64[]
     for fb in fits
@@ -223,11 +228,19 @@ function _mf_boot_ci(fits, B, level)
         push!(ρs, fb.rho_latent)
     end
     filter!(isfinite, ρs)
-    if length(ρs) >= max(10, B ÷ 2)
+    kept = length(ρs)
+    failed = length(fits) - kept
+    if kept >= max(10, B ÷ 2)
         α = (1 - level) / 2
-        return (Statistics.quantile(ρs, α), Statistics.quantile(ρs, 1 - α)), length(ρs)
+        boundary = _bootstrap_param_at_boundary(:cor_rho_latent, ρs) ?
+            ["rho_latent"] : String[]
+        status = _finish_bootstrap_status(kept, failed, boundary)
+        return (Statistics.quantile(ρs, α), Statistics.quantile(ρs, 1 - α)), kept, status
     end
-    return (NaN, NaN), length(ρs)
+    @warn "fit_mixed_family: only $kept of $(length(fits)) bootstrap refits converged " *
+          "(at least $(max(10, B ÷ 2)) are needed), so the bootstrap interval for " *
+          "rho_latent is not available (NaN). The status is `bootstrap_unavailable`."
+    return (NaN, NaN), kept, "bootstrap_unavailable"
 end
 
 """
@@ -239,7 +252,12 @@ Fit the cross-family bivariate model (shared per-observation latent) and return 
 `NamedTuple` with fixed effects `β1`/`β2`, loadings `λ1`/`λ2`, per-axis scale
 `σ1`/`σ2` (`NaN` for dispersionless axes), dispersion sub-model coefficients
 `βσ1`/`βσ2` (`log σ` scale, empty for dispersionless axes), link-scale variances
-`v1`/`v2`, the latent-scale correlation `rho_latent`, `loglik`, `converged`,
+`v1`/`v2`, the latent-scale correlation `rho_latent`, its intervals
+`rho_ci_wald` / `rho_ci_profile` / `rho_ci_boot`, the bootstrap counts
+`n_boot_kept` / `n_boot_failed` and `boot_status` (`"none"` when `B = 0`,
+otherwise the univariate bootstrap status: `"bootstrap"`,
+`"bootstrap_incomplete"`, `"bootstrap_at_boundary"` or
+`"bootstrap_unavailable"`), `loglik`, `converged`,
 `iterations`, and the two family instances `fam1`/`fam2` (carried so the post-fit
 accessors in `mixed_family_postfit.jl` can recover each axis's inverse link).
 
@@ -468,6 +486,8 @@ function fit_mixed_family(; y1, X1, fam1, y2, X2, fam2,
     # local-naming note — so the resampled data is clean and the refits converge.)
     rho_ci_boot = (NaN, NaN)
     n_boot_kept = 0
+    n_boot_failed = 0
+    boot_status = "none"
     if B > 0
         η1f = X1 * β1; η2f = X2 * β2
         # Per-observation natural dispersion at θ̂ (constant = σ1/σ2 under the default
@@ -490,12 +510,14 @@ function fit_mixed_family(; y1, X1, fam1, y2, X2, fam2,
             end
             push!(fits, fb)
         end
-        rho_ci_boot, n_boot_kept = _mf_boot_ci(fits, B, level)
+        rho_ci_boot, n_boot_kept, boot_status = _mf_boot_ci(fits, B, level)
+        n_boot_failed = B - n_boot_kept
     end
 
     return (; β1, β2, λ1, λ2, σ1, σ2, βσ1, βσ2, v1, v2, rho_latent = ρ,
             rho_ci_wald = rho_ci_wald, rho_ci_profile = rho_ci_profile,
             rho_ci_boot = rho_ci_boot, n_boot_kept = n_boot_kept,
+            n_boot_failed = n_boot_failed, boot_status = boot_status,
             loglik = -objfn(θ̂), converged = drm_optim_converged(res),
             iterations = res.iterations,
             fam1 = fam1, fam2 = fam2)   # carried for post-fit accessors (mf_fitted)
