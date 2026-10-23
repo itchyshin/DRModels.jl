@@ -19,6 +19,15 @@ import Tables
 
 Gaussian response family: identity link on the mean `μ`, log link on the scale
 `σ` (so `σ` coefficients act on `log σ`). Mirrors `drmTMB::gaussian()`.
+
+```julia
+# Growth curves: a correlated random intercept + slope on the mean AND a random
+# intercept on sigma, same grouping factor (#960; per-group 3-D Laplace, as drmTMB):
+fit = drm(bf(@formula(weight ~ 1 + time + diet + (1 + time | chick)),
+             @formula(sigma ~ 1 + time + diet + (1 | chick))), Gaussian(); data = dat)
+vc(fit)[:chick]               # 2×2 intercept/slope covariance
+exp(coef(fit, :resd)[1])      # SD of the sigma random intercept
+```
 """
 struct Gaussian end
 
@@ -1139,9 +1148,11 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
             error("drm (Gaussian): a random effect on `sigma` combined with a mean random " *
                   "effect does not support a structured (phylo/relmat/animal/spatial) mean " *
                   "marker or `meta_V(...)` yet (#745 covers the plain `(1 | g)` + `(1 | g)` cell)")
-        (length(re) == 1 && _re_kind(re[1][1])[1] === :intercept) ||
+        mean_kind = length(re) == 1 ? _re_kind(re[1][1]) : (:multiple, nothing)
+        mean_kind[1] in (:intercept, :corr) ||
             error("drm (Gaussian): simultaneous mean + `sigma` random effects support a " *
-                  "single mean random INTERCEPT `(1 | g)` (no slopes, no crossed/multiple " *
+                  "single mean random INTERCEPT `(1 | g)` or a single correlated intercept " *
+                  "+ slope `(1 + x | g)` (no `(0 + x | g)`, no crossed/multiple " *
                   "terms) — got $(length(re)) term(s) on the mean")
         (length(sigma_re) == 1 && _re_kind(sigma_re[1][1])[1] === :intercept) ||
             error("drm (Gaussian): simultaneous mean + `sigma` random effects support a " *
@@ -1159,6 +1170,11 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         # with a mean random effect can reach here, so this branch is ML/
         # complete-response only by construction; no additional check needed.
         gidx, G = _group_index(getproperty(data, mgrp))
+        if mean_kind[1] === :corr      # (1 + x | g) on the mean + (1 | g) on sigma (#960)
+            xs = Float64.(getproperty(data, mean_kind[2]))
+            return _withformula(_fit_rs_sigma_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, xs,
+                                                             nmμ, nmσ, mgrp, g_tol), f)
+        end
         return _withformula(_fit_musigma_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, mgrp, g_tol), f)
     end
     if !isempty(sigma_re)                                      # random effect on log σ
