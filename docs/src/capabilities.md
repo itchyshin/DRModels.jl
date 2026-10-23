@@ -233,6 +233,7 @@ above, and it does so by delegation rather than by a second engine.
 | `gaussian()` + `meta_V(v)` with **known diagonal** sampling variances; τ on the σ intercept | **Tested** |
 | `meta_V(v)` plus random intercepts on the mean: `(1 \| study)`, `phylo(1 \| sp)`, `relmat(1 \| id)`, `animal(1 \| id)`, and sums of these with distinct grouping columns; `sigma ~ x` allowed | **Tested** (ML). Fits the same model as drmTMB `engine = "tmb"`: on seven comparison fits the log-likelihoods agree within 3e-10 and the estimates within 3e-9 (relative). A phylo SD is on the raw branch-length scale (× √height = drmTMB's). Not available: REML, random slopes, `spatial()`, a `sigma` random effect, `sd(g) ~ …`, two fields on one grouping column, missing responses; bootstrap with more than one field refuses. |
 | Bivariate known sampling covariance (`meta_vcov_bivariate`) | **Tested** |
+| Dense known sampling covariance `V = V` on the **univariate** Gaussian route (drmTMB's `meta_V(V = V)`) | **Not available**, by design (#974). `drm(f, Gaussian(); V = V)` throws an `ArgumentError`. Use the bivariate `meta_vcov_bivariate` route (wide `mu1`/`mu2` form), or `meta_V(vi)` for known diagonal sampling variances. |
 | Deprecated `meta_known_V` parity stub | — | **Not available**; use `meta_V` instead. |
 
 ## Inference
@@ -334,8 +335,11 @@ To avoid overclaiming, note these boundaries:
   `JointFiniteDrmFit`, `imputed`, and `miss_control`) are exported for evaluation,
   but their API and numerics may change and they are not covered by R-parity
   evidence. Gaussian observed-response masking and missing-response handling for
-  Location–Scale–Scale `sd()` models are available. General multiple imputation
-  outside the joint-model routes and an `na.action`-style option are absent.
+  Location–Scale–Scale `sd()` models are available. `drm` drops rows with a
+  `missing` predictor, and rows with a missing response on the Gaussian `(1|g)`
+  and `meta_V` routes, with a warning that gives the count (R's `na.omit`, as
+  drmTMB does; #1089). General multiple imputation outside the joint-model
+  routes and an `na.action` option to choose another behaviour are absent.
 - **VA/ELBO:** experimental random-intercept VA is limited to `(1|g)` for
   Poisson, Binomial, NB2, Gamma, and Beta (`sigma ~ 1` where applicable).
   Phylogenetic, crossed, correlated-slope, and zero-inflated/hurdle variants are

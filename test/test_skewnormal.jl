@@ -97,3 +97,41 @@ end
     @test row.lower < row.upper
     @test row.lower <= coef(fit, :mu)[2] <= row.upper
 end
+
+# #1060: the skew-normal information matrix is singular at ν = 0, so the Wald SE
+# for `nu` is unreliable near 0 (drmTMB#1336, type-I 0.236). `check_drm` should
+# say so. UNIT TEST of the check_drm warning (its wiring and its |ν̂| < 0.5 rule),
+# NOT a detection test: it does not show that a real near-zero-ν fit trips it.
+@testset "Skew-normal — UNIT TEST of the nu-near-0 Wald warning in check_drm (#1060)" begin
+    f = bf(@formula(y ~ x), @formula(sigma ~ 1), @formula(nu ~ 1))
+    # symmetric errors (true ν = 0). A free fit's ν̂ on such data is NOT reliably
+    # near 0 (CI measured min|ν̂| = 1.69 here: the slant is weakly identified), so
+    # the in-place `fit0.scales[:nu] .= 0.1` below OVERWRITES the fitted slant: this
+    # is a unit test of the warning, not evidence a real fit would trigger it.
+    Random.seed!(1060)
+    n = 300; x = randn(n)
+    sym = (; y = 1 .+ 0.5 .* x .+ randn(n), x)
+    fit0 = drm(f, SkewNormal(); data = sym)
+    fit0.scales[:nu] .= 0.1            # unit-test input: overwrite the fitted slant
+    r0 = @test_logs (:info, "check_drm") (:warn, r"slant ν̂ is near 0.*Wald") match_mode = :any check_drm(fit0)
+    @test r0.skew_normal_nu_wald.near_zero
+    @test r0.skew_normal_nu_wald.min_abs_nu ≈ 0.1
+    @test r0.skew_normal_nu_wald.min_abs_nu < r0.skew_normal_nu_wald.cut
+
+    # strongly skewed data (a real free fit): ν̂ far from 0 → no caveat
+    Random.seed!(1061)
+    y = similar(x)
+    for i in 1:n
+        ξ, ω = _moment_to_internal(1 + 0.5 * x[i], 1.2, 4.0)
+        y[i] = rand(DSkewNormal(ξ, ω, 4.0))
+    end
+    fit4 = drm(f, SkewNormal(); data = (; y, x))
+    r4 = check_drm(fit4)
+    @test !r4.skew_normal_nu_wald.near_zero
+    @test_logs (:info, "check_drm") match_mode = :any check_drm(fit4)
+    @test !any(l -> occursin("near 0", string(l.message)),
+               first(Test.collect_test_logs(() -> check_drm(fit4))))
+
+    # other families carry no such field value
+    @test check_drm(drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), Gaussian(); data = sym)).skew_normal_nu_wald === nothing
+end
