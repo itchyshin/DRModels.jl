@@ -26,6 +26,12 @@ meta_V(v) = v     # identity stub; the marker is intercepted during formula pars
 
 function _fit_meta_gaussian(fam::Gaussian, y, Xμ, Xσ, vv, nmμ, nmσ, g_tol)
     n = length(y)
+    # #1014: same rule as the random-effect route below. A negative variance
+    # used to be absorbed by σ² and the fit reported as converged.
+    length(vv) == n ||
+        throw(ArgumentError("drm: `meta_V(...)` needs one sampling variance per row " *
+            "($(length(vv)) given for $n rows)"))
+    _require_meta_V_variances(vv, "…")
     pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
@@ -91,8 +97,10 @@ function _fit_meta_gaussian_re(fam::Gaussian, y, Xμ, Xσ, vv, comps, nmμ, nmσ
     pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     K = length(comps)
     K ≥ 1 || error("drm: internal — _fit_meta_gaussian_re needs at least one random component")
-    all(>(0), vv) ||
-        throw(ArgumentError("drm: `meta_V(...)` sampling variances must be strictly positive"))
+    length(vv) == n ||
+        throw(ArgumentError("drm: `meta_V(...)` needs one sampling variance per row " *
+            "($(length(vv)) given for $n rows)"))
+    _require_meta_V_variances(vv, "…")
     Gks = [c[2] for c in comps]
     q = sum(Gks)
     offs = cumsum([0; Gks])
