@@ -27,7 +27,7 @@ parameters (`nu`, `zoi`, `coi`, ordinal cutpoints).
 | Proportions in `(0,1)` | `Beta()` | logit | precision via `φ = 1/σ²` |
 | Successes out of trials | `Binomial()` | logit | — (`cbind(s,f)` or `0/1`) |
 | Successes, overdispersed | `BetaBinomial()` | logit | precision via `φ = 1/σ²` |
-| Proportions on `[0,1]` incl. 0/1 | `ZeroOneBeta()` | logit | precision `φ` + `zoi` / `coi` |
+| Proportions on `[0,1]` incl. 0/1 (needs both exact 0s and 1s for `coi`) | `ZeroOneBeta()` | logit | precision `φ` + `zoi` / `coi` |
 | Ordered categories `1..K` | `CumulativeLogit()` | logit cutpoints | — (K−1 cutpoints) |
 
 A handful of families share the name of a `Distributions.jl` distribution
@@ -41,6 +41,8 @@ distribution to simulate, it qualifies it as `Distributions.Poisson` etc.
 
 Identity link on the mean, log link on the residual SD `σ`. The textbook
 location–scale model: both the mean and the spread can depend on covariates.
+
+The code below also loads the `Distributions` package to simulate data. If you have not added it to your Julia environment, run `using Pkg; Pkg.add("Distributions")` once first.
 
 ```@example fam
 using DRModels, Random
@@ -121,9 +123,12 @@ fittw = drm(bf(@formula(y ~ x), @formula(sigma ~ 1), @formula(nu ~ 1)), Tweedie(
 ```
 
 An ordinary `(1 | g)` random intercept, and an independent `(0 + x | g)`
-random slope, on `mu` are both supported (32-node Gauss–Hermite marginal,
-matching drmTMB's `tweedie() mu ~ x + (1 | g)` / `(0 + x | g)`); the group
-SD is `exp(coef(fit, :resd)[1])` either way. The CORRELATED random slope
+random slope, on `mu` are both supported. Each group's effect is integrated
+out by per-group adaptive Gauss–Hermite quadrature with 21 nodes; drmTMB fits
+the same `tweedie() mu ~ x + (1 | g)` / `(0 + x | g)` models with a one-point
+Laplace approximation, so log-likelihoods can differ slightly between the two
+packages (see [Laplace vs variational marginals](model-guides/marginal-la-vs-va.md)).
+The group SD is `exp(coef(fit, :resd)[1])` either way. The CORRELATED random slope
 `(1 + x | g)`, random effects on `sigma`/`nu`, and structured (phylo/relmat)
 markers on `mu` remain unimplemented (drmTMB rejects the same forms).
 
@@ -229,6 +234,18 @@ Beta mean (logit) and precision `φ` on the interior, plus `zoi` (logit
 probability the value is a boundary) and `coi` (logit probability of a 1 given a
 boundary).
 
+!!! warning "Data with only zeros, or only ones"
+    `coi` is estimated from the boundary values alone. If the data contain
+    exact zeros but no exact ones (or ones but no zeros), the best estimate of
+    `coi` is exactly 0 (or 1): the parameter is at its boundary and not
+    identified. The fit still reports `converged = true`, and the standard
+    error and interval for `coi` are meaningless. The `mu`, `sigma` and `zoi`
+    estimates are not affected, because `coi ~ 1` enters the likelihood
+    separately; report those and not `coi`. `coi` cannot currently be
+    dropped from the model, and an ordered-beta family, the usual alternative
+    for this case, is not available
+    ([DRModels.jl#975](https://github.com/itchyshin/DRModels.jl/issues/975)).
+
 ```@example fam
 Random.seed!(11)
 function rzob(xi)
@@ -264,9 +281,10 @@ coef(fito, :mu)[1]      # slope ≈ 0.8
 ```
 
 An ordinary random intercept `(1 | g)` or an independent random slope
-`(0 + x | g)` on `mu` is integrated out by 32-node Gauss–Hermite quadrature
-(the same scheme as the Poisson/Gamma/Tweedie GLMM routes); the correlated
-form `(1 + x | g)` is not implemented.
+`(0 + x | g)` on `mu` is integrated out by per-group adaptive Gauss–Hermite
+quadrature with 41 nodes (the same scheme as the Poisson/Gamma/Tweedie GLMM
+routes, with more nodes because ordinal group posteriors can be far from
+normal); the correlated form `(1 + x | g)` is not implemented.
 
 ```julia
 fit_re = drm(bf(y ~ x + (1 | g)), CumulativeLogit(); data = dat)
