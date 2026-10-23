@@ -66,7 +66,11 @@ studies), put a **random intercept on `σ`** rather than a fixed level per group
 Because the random effect enters σ nonlinearly there is no closed-form marginal,
 so DRModels.jl integrates each group's effect out with per-group **Gauss–Hermite
 quadrature**. drmTMB uses Laplace: both target the same marginal model, but
-their numerical approximations need not be identical.
+their numerical approximations need not be identical. The default
+(`marginal = :LA`) is non-adaptive 32-node quadrature: close to exact for small
+groups, but it loses accuracy for groups of hundreds of rows, where Laplace does
+well. Pass `marginal = :Laplace` for large groups or to match drmTMB; the
+[capability page](../capabilities.md) gives the measured differences.
 
 ```@example ls
 Random.seed!(13)
@@ -81,7 +85,8 @@ re_sd(fitre)[:grp_logsigma]  # recovered log-σ group-effect SD (≈ 0.5)
 ```
 
 `re_sd` returns the scale-RE SD; `coef(fitre, :sigma)` is the population
-(group-average) `log σ`.
+(group-average) `log σ`, that is E[log σ], not log E[σ]. With a normal
+random effect of SD τ on log σ, the two differ by τ²/2.
 
 ## See also
 

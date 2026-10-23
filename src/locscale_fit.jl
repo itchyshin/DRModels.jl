@@ -28,8 +28,7 @@ function _ls_fit_nll(kind, y, Xμ, Xψ, gidx, G, Q, θ,
     βμ = @view θ[1:pμ]
     βψ = @view θ[pμ+1:pμ+pψ]
     λv = @view θ[pμ+pψ+1:pμ+pψ+3]
-    Λ = _ls_lc_to_Λ(λv)
-    P = prior_precision(Q, _ls_inv2x2(Λ))
+    P = prior_precision(Q, _ls_lc_inv2x2(λv))   # stable: never forms Λ
     val, _, ok = _ls_marginal_nll(kind, y, Xμ * βμ, Xψ * βψ, gidx, G, P, Zη, Zψ)
     return ok ? val : 1e18
 end
@@ -88,6 +87,47 @@ function _ls_default_betastart(kind, y, Xμ)
     end
 end
 
+# Stall stop for one certified-refinement run. Those runs disable Optim's
+# x/f tolerances so that only the gradient criterion can mark them converged,
+# which also removed every way to stop a run that has stopped moving. On a
+# variance component sliding to its zero boundary the objective reaches its
+# Float64 floor: measured 2026-10-03 on the Gamma phylo bootstrap fixture, one
+# BFGS run sat at a bit-identical value from iteration 50 to 2000 (22k
+# objective calls), with its gradient norm frozen for 150+ iterations at a time.
+#
+# The callback is deliberately narrow: it ends a run only after
+# `_LS_REFINE_STUCK_WINDOW` consecutive iterations in which the iterate `x`, the
+# objective value and the gradient norm are all bit-identical to the previous
+# iteration -- the optimiser is not moving at all. Any movement, however small
+# or slow (an ill-conditioned problem at a large offset whose value no longer
+# changes in Float64, say), resets the count. It needs `extended_trace` for `x`;
+# without `x` in the state it never stops a run. A stopped run reports
+# `converged == false`, so it is rejected exactly as a run that exhausted its
+# budget would be; the certificate itself is unchanged.
+const _LS_REFINE_STUCK_WINDOW = 100
+
+function _ls_refine_stall_callback(window::Int = _LS_REFINE_STUCK_WINDOW)
+    last = Ref{Any}(nothing)
+    stuck = Ref(0)
+    return function (state)
+        x = get(state.metadata, "x", nothing)
+        current = x === nothing ? nothing : (state.value, state.g_norm, copy(x))
+        if current !== nothing && last[] !== nothing && isequal(current, last[])
+            stuck[] += 1
+        else
+            stuck[] = 0
+        end
+        last[] = current
+        return stuck[] >= window
+    end
+end
+
+# Options for one certified-refinement run (a fresh stall callback per run).
+_ls_refine_options(g_tol, iterations) =
+    Optim.Options(g_tol=g_tol, iterations=iterations,
+                  x_abstol=NaN, x_reltol=NaN, f_abstol=NaN, f_reltol=NaN,
+                  extended_trace=true, callback=_ls_refine_stall_callback())
+
 """
     _fit_locscale(kind, y, Xμ, Xψ, gidx, G, Q; ...)
 
@@ -127,8 +167,7 @@ function _fit_locscale(kind, y, Xμ, Xψ, gidx, G, Q;
             return result.status.ok ? result.value : 1e18
         end
         βμ = @view θ[1:pμ]; βψ = @view θ[pμ+1:pμ+pψ]
-        Λ = _ls_lc_to_Λ(θ[pμ+pψ+1:pμ+pψ+3])
-        P = prior_precision(Q, _ls_inv2x2(Λ))
+        P = prior_precision(Q, _ls_lc_inv2x2(θ[pμ+pψ+1:pμ+pψ+3]))   # stable: never forms Λ
         val, a, ok = _ls_marginal_nll(kind, y, Xμ * βμ, Xψ * βψ, gidx, G, P, Zη, Zψ; a0 = warm[])
         ok && (warm[] = copy(a))
         return ok ? val : 1e18
@@ -148,15 +187,25 @@ function _fit_locscale(kind, y, Xμ, Xψ, gidx, G, Q;
     opts = Optim.Options(g_tol = g_tol, iterations = iterations)
     nm() = (warm[] = nothing; Optim.optimize(nll, θ0, Optim.NelderMead(),
                           Optim.Options(iterations = max(iterations, 2000))))
+    # #1005: record which optimiser produced the result and say why a fallback
+    # ran, instead of swallowing the error.
+    optimizer = :newton_trust_region
     res = try
         Optim.optimize(nll, g!, h!, θ0, Optim.NewtonTrustRegion(), opts)
     catch err
         err isa InterruptException && rethrow(err)
+        @debug "locscale: Newton trust-region failed; falling back to L-BFGS" error =
+            sprint(showerror, err)
         warm[] = nothing
         try
+            optimizer = :lbfgs
             Optim.optimize(nll, g!, θ0, Optim.LBFGS(), opts)
         catch err2
             err2 isa InterruptException && rethrow(err2)
+            @warn "locscale: Newton trust-region and L-BFGS both failed; using Nelder-Mead. " *
+                  "Convergence is then certified by an exact-gradient check." newton_error =
+                sprint(showerror, err) lbfgs_error = sprint(showerror, err2)
+            optimizer = :nelder_mead
             nm()
         end
     end
@@ -168,6 +217,7 @@ function _fit_locscale(kind, y, Xμ, Xψ, gidx, G, Q;
     # a PD Λ (Λ = LLᵀ, det>0), so if the result is infeasible, fall back to the
     # conservative derivative-free solve.
     if any(!isfinite, θ̂) || !(nll(θ̂) < 1e17)
+        optimizer = :nelder_mead
         res = nm()
         θ̂ = Optim.minimizer(res)
     end
@@ -184,12 +234,11 @@ function _fit_locscale(kind, y, Xμ, Xψ, gidx, G, Q;
             baseline = _ls_whitened_eval(kind, y, Xμ, Xψ, gidx, G, Q, θ̂, Zη, Zψ;
                                          gradient=false)
             if baseline.status.ok && isfinite(baseline.value)
-                refine_opts = Optim.Options(g_tol=g_tol, iterations=iterations,
-                    x_abstol=NaN, x_reltol=NaN, f_abstol=NaN, f_reltol=NaN)
                 function certified_refinement(start, method)
                     warm[] = nothing
                     try
-                        candidate = Optim.optimize(nll, g!, copy(start), method, refine_opts)
+                        candidate = Optim.optimize(nll, g!, copy(start), method,
+                                                     _ls_refine_options(g_tol, iterations))
                         θc = Optim.minimizer(candidate)
                         if Optim.converged(candidate) && all(isfinite, θc)
                             checked = _ls_whitened_eval(kind, y, Xμ, Xψ, gidx, G, Q,
@@ -230,6 +279,7 @@ function _fit_locscale(kind, y, Xμ, Xψ, gidx, G, Q;
                 end
                 if refined !== nothing
                     res, θ̂ = refined
+                    optimizer = :certified_refinement
                 end
             end
         catch err
@@ -241,6 +291,12 @@ function _fit_locscale(kind, y, Xμ, Xψ, gidx, G, Q;
     end
     Λ̂ = _ls_lc_to_Λ(θ̂[pμ+pψ+1:pμ+pψ+3])
     nll(θ̂)                       # ensure warm[] holds the mode at θ̂ for the SE solve
+    # #1005: `Optim.converged` of a Nelder-Mead run is a simplex-spread test, not
+    # a stationarity test. Certify that route with a fresh exact gradient at θ̂
+    # (the same certificate the refinement ladder uses). Gradient-based routes
+    # keep their own flag, which already includes the `g_tol` criterion.
+    converged = _ls_converged_flag(optimizer, Optim.converged(res), g!, θ̂, g_tol)
+    optimizer === :nelder_mead && nll(θ̂)   # restore warm[] at θ̂ after the gradient call
     # Wald inference (opt-in): observed information = Hessian of the exact gradient.
     V = !se ? nothing : whitened ?
         _ls_whitened_vcov(kind, y, Xμ, Xψ, gidx, G, Q, θ̂, Zη, Zψ; seed=warm[]) :
@@ -253,7 +309,29 @@ function _fit_locscale(kind, y, Xμ, Xψ, gidx, G, Q;
             vcov = V,
             se = _ls_se(V),
             nll = nll(θ̂),
-            converged = Optim.converged(res))
+            converged = converged,
+            optimizer = optimizer)
+end
+
+# The `converged` decision of `_fit_locscale` (#1005): a gradient-based route
+# keeps Optim's own flag; a Nelder-Mead result (simplex-spread test only) also
+# needs an exact-gradient certificate at θ̂.
+function _ls_converged_flag(optimizer::Symbol, optim_converged::Bool, g!, θ̂, g_tol)
+    optimizer === :nelder_mead || return optim_converged
+    return optim_converged && _ls_gradient_certified(g!, θ̂, g_tol)
+end
+
+# Exact-gradient stationarity certificate for a derivative-free result (#1005).
+function _ls_gradient_certified(g!, θ̂, g_tol)
+    gr = similar(θ̂, Float64)
+    ok = try
+        g!(gr, θ̂)
+        true
+    catch err
+        err isa InterruptException && rethrow(err)
+        false
+    end
+    return ok && all(isfinite, gr) && maximum(abs, gr) <= g_tol
 end
 
 # Convenience: derive (Q, gidx, G) for the PHYLOGENETIC case from a tree and the

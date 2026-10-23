@@ -225,8 +225,13 @@ end
     fit_ok = drm(
         _q4s_formula_relmat(), Gaussian();
         data = fx_ok.data, K = fx_ok.K,
-        q4_iterations = 120, q4_n_newton = 30, q4_vcov = false,
+        q4_iterations = 300, q4_n_newton = 30, q4_vcov = false,
     )
+    # 300, not 120: with the whitened ML objective (#857) LBFGS needs more than
+    # 120 iterations on this 24-obs fixture (converged=false at 120 on Julia 1.13;
+    # main's unwhitened objective converged at 120 and reported a 0.011-nat higher
+    # log-likelihood, consistent with its known near-singular-Λ bias); it
+    # converges within 300.
     @test fit_ok.converged
 end
 

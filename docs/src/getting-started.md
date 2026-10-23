@@ -1,11 +1,10 @@
 # Getting started
 
-!!! note "Status — Stable"
-    A standalone first-fit walkthrough. Everything on this page runs against the
-    verified Gaussian front end (`drm` / `bf`) and the post-fit accessors
-    (`coef`, `loglik`, `confint`, `summary`). For moving between R and Julia,
-    see [Coming from R](coming-from-r.md) and the
-    [Rosetta](rosetta.md); for the full capability map see
+!!! note "What you will do"
+    Fit a Gaussian model in which a predictor changes both an outcome's average
+    and its residual spread. You will then read the estimated changes, check
+    whether the optimiser converged, and see what an interval means. For the
+    full set of currently supported models, see
     [What can I fit today?](model-guides/model-map.md).
 
 DRModels.jl is *distributional* regression: instead of a single linear predictor for
@@ -15,7 +14,9 @@ the residual scale **σ**, so the spread of the data can change with covariates
 just like the mean does.
 
 This page takes you from a clean Julia session to a fitted model and shows how to
-read what came back.
+turn its output into a scientific statement. The worked data are simulated so
+you can see the intended pattern clearly; a successful fit here is practice,
+not evidence about a real biological system.
 
 ## Install
 
@@ -42,12 +43,13 @@ The two verbs you will use the most are exported at the top level:
   `drm_formula`), using the familiar drmTMB / brms pattern.
 - `drm(formula, family; data = ...)` — fit the model by maximum likelihood.
 
-## Fit your first distributional regression
+## Fit a first model where variability matters
 
-We simulate data whose mean **and** spread both depend on a covariate `x`, then
-recover that structure. The mean rises with `x`; the residual standard deviation
-also rises with `x` (heteroscedasticity), so a mean-only model would be
-mis-specified.
+Suppose you are studying body size along a temperature gradient. Temperature may
+change the average body size, but it may also make individuals more or less
+variable. We simulate that situation here: the mean rises with `x`, and the
+residual standard deviation also rises with `x`. A mean-only model would miss
+that second result.
 
 ```@example getstarted
 using DRModels, Random

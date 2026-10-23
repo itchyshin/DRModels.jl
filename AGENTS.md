@@ -117,14 +117,17 @@ or `src/`, check `docs/dev-log/coordination-board.md` and open PRs for overlap.
 A slice is done when **all** hold (mirrors the drmTMB-grade routine):
 
 1. **Implementation** — the code works and is wired into the module.
-2. **Tests** — wired into `test/runtests.jl`; a failing test was written first
-   where applicable (TDD).
+2. **Tests** — a `test/test_*.jl` file (auto-discovered by `test/runtests.jl`; no
+   registration edit needed, see its CONFLICT-FREE REGISTRATION note); a failing
+   test was written first where applicable (TDD).
 3. **Docstrings** — public symbols documented.
 4. **Worked example** — a runnable example (or `@example` in Documenter).
 5. **Check-log** — add a per-slice entry as a new file in
    `docs/dev-log/check-log.d/` (one table row; see its README). Do not append to
    the frozen `docs/dev-log/check-log.md` table — per-file entries are
    collision-free across parallel PRs.
+   NEWS entries likewise go in a fragment `news/<slug>.md` (see `news/README.md`),
+   not in `NEWS.md` directly.
 6. **After-task report** — `docs/dev-log/after-task/YYYY-MM-DD-<slice>.md`.
 7. **Rose audit** — claim-vs-evidence verdict; scope honesty; no drift.
 

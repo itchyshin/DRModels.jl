@@ -4,7 +4,8 @@
     Mirrors drmTMB's [Figure gallery](https://itchyshin.github.io/drmTMB/articles/figure-gallery.html).
     **In DRModels.jl today:** publication-quality [CairoMakie](https://docs.makie.org/)
     figures rendered straight from fitted models, including the **Confidence Eye**
-    (Florence's house contract for interval plots).
+    (an interval drawn as a lens: a pale region spanning the interval, widest at the point
+    estimate and tapering to the interval limits).
 
 Every figure below is rendered at build time from a real `drm` fit — nothing is
 mocked.
@@ -44,10 +45,10 @@ fig
 
 ## The Confidence Eye
 
-DRModels.jl draws confidence intervals as **Confidence Eyes** — Florence's house
-contract: a **pale compatibility region** (the interval), a **darker outline**,
-and a **hollow point estimate**. The lens is widest at the estimate and tapers to
-the interval limits, so the eye literally narrows as the evidence sharpens.
+DRModels.jl draws confidence intervals as **Confidence Eyes**: a **pale compatibility
+region** (the interval), a **darker outline**, and a **hollow point estimate**. The
+lens is widest at the estimate and tapers to the interval limits, so the eye
+literally narrows as the evidence sharpens.
 
 Here each mean coefficient of a fit is drawn from its profile-likelihood
 interval:

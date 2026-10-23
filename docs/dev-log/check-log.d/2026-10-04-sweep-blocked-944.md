@@ -1,0 +1,1 @@
+| 2026-10-04 | **Block false plateau convergence** (#944 / PR #1041) | `test/test_sweep_blocked_944.jl` on Totoro, Julia 1.13; 1 OpenMP thread, 1 OpenBLAS thread, 4 Julia threads | ✅ 6/6 in 1.6 s; `drm_optim_converged` requires both Optim convergence and gradient convergence. Engine benchmark not run; #946 `f_reltol` routes unchanged | Shannon |

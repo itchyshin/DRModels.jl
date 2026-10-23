@@ -1,0 +1,16 @@
+0874f395aff7e8f547b93c0f7a1c60537e15fe62343ba3af3ee4c537645dabc3  test/fixtures/joint_missing_predictor/native_reference.toml
+d9d1c3db2a5f54d08bc4d51adc736810bdd9dea56c8399c01987f534a992383d  test/fixtures/joint_missing_predictor/native_uncertainty.toml
+5dd97b3cdc8a9720aa9581b2e71b8ed36e14f914053c96879cb574b111376688  docs/dev-log/evidence/julia-r-parity/missing-predictor-oracle/native-mi-oracle-003.json
+fde8a2e678df648c89671c68f3b9289f387ed878aaaea8f262ec04588451ab80  docs/dev-log/evidence/julia-r-parity/joint-prototype/joint-reference-002.json
+734560e416cf983d447aed529941bfba5b6395ab89a9a15689b27e43bf949c7b  docs/dev-log/evidence/julia-r-parity/finite-state/finite-native-003.json
+db8e93b12f96c42cdfe7571681741d8fe4c1996f343d7e571e506db8148134cc  docs/dev-log/evidence/julia-r-parity/finite-state/finite-reference-003.toml
+d4d13d43db477bb10e9bcf2a7e3f4f457dbf1aae58c6809b9c93f2f296a3ed48  docs/dev-log/evidence/julia-r-parity/finite-state/finite-fit-002.toml
+514875c0481e1f314895060a087f853a83b81916d0e4e7c6a19c6fdc707895ce  docs/dev-log/evidence/julia-r-parity/finite-state/finite-julia-003.toml
+62efd7ec2609c9ee89e9819b9794b1561a20ee892f5a2e744773984f7f7381b9  docs/dev-log/evidence/julia-r-parity/finite-frontends/finite-public-007.json
+404921dfed04121d0721a3f268c24730c6c8ff3e952e7323c0742fa2708cefb7  docs/dev-log/evidence/julia-r-parity/joint-bridge/joint-public-003.json
+869ed4b71c96af8bd051d382dd2b15dc848ff8d1ace88c57d4355220163bc244  docs/dev-log/evidence/julia-r-parity/joint-bridge/joint-direct-bridge-002.toml
+869ed4b71c96af8bd051d382dd2b15dc848ff8d1ace88c57d4355220163bc244  docs/dev-log/evidence/julia-r-parity/joint-frontend/joint-frontend-fit-002.toml
+320a3415500fd8c76bc0c249e012d38853916d668666ce3d7b6cac106975ad68  docs/dev-log/evidence/julia-r-parity/joint-frontend/joint-native-uncertainty-current-002.json
+3883a6c85f4880cf60536ee4681c0f8e014f3f7595f08f6025d40997963004b3  docs/dev-log/evidence/julia-r-parity/joint-prototype/joint-fit-003.toml
+86d0a99591040925d301efe753fc5e033c8de4bf73bb702bcb5c21d4fddd0be1  docs/dev-log/evidence/julia-r-parity/joint-prototype/joint-native-003.toml
+d8f75d1d4652d5580cee935b3eeb22d003b7ccb33d7b58f149cef190a712e7cb  docs/dev-log/evidence/julia-r-parity/finite-stopping/finite-native-003-prepolish.json

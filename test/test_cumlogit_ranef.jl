@@ -45,10 +45,9 @@
 #   opt$convergence = 0, sdr$pdHess = TRUE
 #
 # TOLERANCE: drmTMB's route is TMB's Laplace approximation (one saddlepoint
-# per group, exact analytic Hessian); DRModels.jl's route below is 32-node
-# non-adaptive Gauss–Hermite quadrature per group (the same scheme as the
-# existing Poisson/Gamma/Tweedie `(1 | g)` routes in src/poisson.jl,
-# src/gamma.jl, src/tweedie.jl). These are two DIFFERENT marginal-likelihood
+# per group, exact analytic Hessian); DRModels.jl's route below is 41-node
+# per-group ADAPTIVE Gauss–Hermite quadrature (src/adaptive_ghq.jl; it was
+# 32-node non-adaptive GHQ when these tolerances were set). These are two DIFFERENT marginal-likelihood
 # approximations of the same integral, not two runs of the same one, so exact
 # bit parity is not the bar; same-target numerical agreement is. n_each >= 15
 # obs/group keeps each group posterior close to Gaussian, so both

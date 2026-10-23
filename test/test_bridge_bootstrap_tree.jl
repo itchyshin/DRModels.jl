@@ -23,6 +23,10 @@ import Distributions
     fit = drm(formula, Gamma(); data, tree)
     @test fit.nll isa DRModels.LocScaleObjective
     @test is_converged(fit)
+    # The seed fit sits at a variance boundary; its fixed-effect Wald SEs and
+    # the check_drm verdict must survive the inner/refinement stall stops (#967).
+    @test all(isfinite, stderror(fit)[1:3])
+    @test check_drm(fit).ok
     direct = bootstrap_result(fit; data, tree, B=2, rng=MersenneTwister(4001),
                               failures=:skip, check_converged=true)
     println("DIRECT_TREE_BOOTSTRAP ", (direct.attempted, direct.used, direct.failed),

@@ -28,6 +28,8 @@ note.
 import os
 import re
 import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from runtests_files import wired_test_files  # noqa: E402
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TEST = os.path.join(REPO, "test")
@@ -65,6 +67,10 @@ def included_files():
     out = ["runtests.jl"]
     for n in names:
         if n.endswith(".jl"):
+            out.append(n)
+    # runtests.jl auto-discovers test_*.jl; add those (see runtests_files.py)
+    for n in sorted(wired_test_files(TEST)):
+        if n not in out:
             out.append(n)
     return out
 

@@ -1,0 +1,10 @@
+drmtmb_version = "0.7.1"
+drmtmb_code_hash = "360ff5cb86a9ad9d56154259f49c35b9fd647159c676f39d3789eb510124be4d"
+drmtmb_built = "R 4.6.1; x86_64-pc-linux-gnu; 2026-10-02 23:54:19 UTC; unix"
+drmtmb_sha = "07d1612ea2d31867feb4411988b3bc3fc38400c3"
+r_version = "R version 4.6.1 (2026-06-24)"
+generated_on = "2026-10-02"
+r_call = "drmTMB(bf(y ~ treatment + occasion + (1 | site) + temporal(1 | site, time = occasion, structure = \"ar1\"), sigma ~ 1), data = read.csv(\"vignette_ar1_sites.csv\"), family = gaussian(), REML = FALSE)"
+opt_convergence = 0
+max_abs_gradient = 8.0967682288957325e-12
+note = "Generated outputs only; no drmTMB source vendored. Point estimates at the ML optimum; no interval or calibration claim."

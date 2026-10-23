@@ -205,7 +205,7 @@ function _fit_sigma_axis_re(fam, kind, y, Xμ, Xψ, gidx, G, nmμ, nmσ, grp::St
         fill(NaN, length(θ̂), length(θ̂))
     end
 
-    return _sigma_re_build_drmfit(kind, fam, θ̂, V, nll_val, n, Optim.converged(res),
+    return _sigma_re_build_drmfit(kind, fam, θ̂, V, nll_val, n, drm_optim_converged(res),
                                    y, Xμ, Xψ, nmμ, nmσ, grp;
                                    obs_prop = obs_prop, trials = trials)
 end

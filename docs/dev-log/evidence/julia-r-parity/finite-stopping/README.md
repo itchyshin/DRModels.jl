@@ -8,10 +8,19 @@ The retained native default parity verdict remains **FAIL** at the strict `4e-6`
 
 The frozen inputs are:
 
-- native receipt: `finite-state/finite-native-003.json`, SHA-256 `d8f75d1d4652d5580cee935b3eeb22d003b7ccb33d7b58f149cef190a712e7cb`;
+- native receipt: `finite-stopping/finite-native-003-prepolish.json`, SHA-256 `d8f75d1d4652d5580cee935b3eeb22d003b7ccb33d7b58f149cef190a712e7cb`. It is byte-identical to `finite-state/finite-native-003.json` as it stood before the 2026-10-03 refresh (#606), which replaced that file with the Newton-polished anchor;
 - Julia/public receipt: `finite-frontends/finite-public-003.json`, SHA-256 `0147b2657c81b223e5c4e5742e0d66b90ca570b576da5ce04887e7dcf3ef2ee2`;
 - diagnostic: `finite-stopping/diagnostic-001.json`;
 - checker: `tools/check_finite_stopping_diagnostic.py`.
+
+**Cross-check after the 2026-10-03 refresh (#606).** The diagnostic's own Newton
+step, taken from the pre-polish anchor with the independently evaluated gradient
+and Hessian, lands on the new polished anchor (`finite-state/finite-native-003.json`,
+SHA-256 `734560e4…`): max |old anchor + Newton step − new anchor| is `4.5e-11`
+(ordinal) and `9.9e-11` (categorical), against a raw displacement of `2.16e-6` and
+`1.74e-5`. So drmTMB's Newton polish moves the native fit to the point this
+diagnostic predicted. Script and output:
+`../nongaussian-refresh-20261003/newton_xcheck.py` and `newton-xcheck-out.txt`.
 
 Reproducible checks (read-only):
 

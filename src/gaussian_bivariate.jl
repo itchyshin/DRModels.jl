@@ -91,6 +91,7 @@ function bf(; mu1::FormulaTerm, mu2::FormulaTerm, sigma1 = nothing, sigma2 = not
     # `_bivariate_q4_marker`) are byte-identical to before.
     nu === nothing || push!(forms, :nu => _rhs_or_intercept(nu))
     push!(forms, :rho12 => _rhs_or_intercept(rho12))
+    _temporal_check_forms(forms, ())
     return BivariateDrmFormula(_bivariate_response_sym(mu1, :mu1),
                                _bivariate_response_sym(mu2, :mu2), forms)
 end
@@ -147,12 +148,13 @@ fit = drm(
 )
 ```
 """
-function drm(f::BivariateDrmFormula, fam::Gaussian; data, tree = nothing,
+@drm_entry function drm(f::BivariateDrmFormula, fam::Gaussian; data, tree = nothing,
              K = nothing, A = nothing, coords = nothing,
              spatial_range = nothing,
              g_tol::Real = 1e-8, q4_g_tol::Real = 1e-3,
              q4_iterations::Int = 300, q4_n_newton::Int = 40,
              q4_vcov::Bool = true, method::Symbol = :ML, V = nothing)
+    data = _drop_missing_predictor_rows(f, data)   # #1089: R's na.omit, with a count
     method in (:ML, :REML) ||
         throw(ArgumentError("drm: `method` must be :ML (default) or :REML (got :$method)"))
     rhs = Dict(f.forms)
@@ -554,9 +556,14 @@ function _fit_bivariate_residual_reml(f::BivariateDrmFormula, fam::Gaussian, dat
     β̂, â, b̂, ĉ, logdetŜ, Ĥ = _profile(φ̂)
     θ̂ = vcat(β̂, φ̂)
 
-    Vφ = inv(Symmetric(ForwardDiff.hessian(nll_reml, φ̂)))
+    # #956: both inverses go through the guarded constructor, so a singular or
+    # indefinite φ-Hessian (a boundary correlation or variance) warns and falls
+    # back like every ML route instead of raising a bare SingularException.
+    Vφ = _vcov_from_hessian(ForwardDiff.hessian(nll_reml, φ̂);
+                            context = "bivariate Gaussian REML (variance parameters)")
     G = ForwardDiff.jacobian(φ -> _profile(φ)[1], φ̂)      # d bhat / d phi
-    Vβ = Matrix(inv(Symmetric(Ĥ))) .+ G * Vφ * transpose(G)
+    Vβ = _vcov_from_gram(Matrix(Ĥ); context = "bivariate Gaussian REML (mean GLS)") .+
+         G * Vφ * transpose(G)
     Cβφ = G * Vφ
     V = zeros(pβ + pφ, pβ + pφ)
     V[1:pβ, 1:pβ] .= Vβ
@@ -761,12 +768,12 @@ function _fit_bivariate_q2_structured(f::BivariateDrmFormula, fam::Gaussian, dat
         make_coevo_problem(phy_obj, Y, Matrix{Float64}(X1); species = sp)
     elseif kind === :relmat
         K === nothing && error("relmat(1 | $grp) needs `K = …`")
-        C = Matrix{Float64}(K)
+        C = _finite_user_matrix(K, "K")
         size(C) == (G, G) || error("relmat structured matrix must be $(G)×$(G) (the number of `$grp` levels)")
         make_coevo_problem_from_covariance(C, Y, Matrix{Float64}(X1); group = gidx)
     elseif kind === :animal
         A === nothing && error("animal(1 | $grp) needs `A = …`")
-        C = Matrix{Float64}(A)
+        C = _finite_user_matrix(A, "A")
         size(C) == (G, G) || error("animal relatedness matrix must be $(G)×$(G) (the number of `$grp` levels)")
         make_coevo_problem_from_covariance(C, Y, Matrix{Float64}(X1); group = gidx)
     elseif kind === :spatial
@@ -840,12 +847,16 @@ function _fit_bivariate_q2_structured(f::BivariateDrmFormula, fam::Gaussian, dat
     )
     nll = function (θ)
         β = hcat(θ[blocks[1].second], θ[blocks[2].second])
-        Λ = lc_to_cov(θ[blocks[6].second], 2)
+        # Build the Λ factor straight from θ (never `L L'`): #857 site K
+        # follow-up (draft #862) -- `lc_to_cov` here would form Λ in Float64
+        # before `coevo_marginal_cov` re-factors it, which is accurate only to
+        # l22 ≈ −18.
+        chΛ = lc_to_chol(θ[blocks[6].second], 2)
         σ1 = exp(θ[blocks[3].second][1])
         σ2 = exp(θ[blocks[4].second][1])
         ρ = RHO_GUARD * tanh(θ[blocks[5].second][1])
         D = Matrix(Symmetric([σ1^2 ρ * σ1 * σ2; ρ * σ1 * σ2 σ2^2]))
-        ℓ, = coevo_marginal_cov(prob, Q_cond, β, Λ, D)
+        ℓ, = coevo_marginal_cov(prob, Q_cond, β, chΛ, D)
         return -ℓ
     end
     # Observed-information vcov by finite differences of the marginal ML NLL.
@@ -874,7 +885,7 @@ function _fit_bivariate_q2_structured(f::BivariateDrmFormula, fam::Gaussian, dat
     # is wrong. The route-naming `context` below reaches the user through the
     # singularity warning; correcting the helper's prefix needs a shared file that
     # is out of scope for this change.
-    V = _vcov_from_hessian(_finite_hessian(nll, θ̂; h = _fd_hessian_step(2 * length(y1)));
+    V = _vcov_from_fd_hessian(_finite_hessian(nll, θ̂; h = _fd_hessian_step(2 * length(y1)));
                            context = "bivariate Gaussian q=2 structured ($kind) " *
                                      "finite-difference Hessian")
     means = Dict(:mu1 => X1 * fit_q2.β[:, 1], :mu2 => X2 * fit_q2.β[:, 2])
@@ -935,6 +946,7 @@ end
 # kernel each evaluation. Here rho is fixed, so the two are different models.
 function _spatial_covariance_from_coords(grp::Symbol, G::Int, coords, spatial_range)
     coords === nothing && error("spatial(1 | $grp) needs `coords = …`")
+    _require_finite_inputs(; coords=coords)
     G >= 2 || error("spatial(1 | $grp) needs at least 2 distinct sites; got G=$G")
     # A 1-D transect is naturally written as a plain Vector (`coords = [0.0, 1.0, 2.0]`),
     # but `Matrix{Float64}(::Vector)` has no method and raised a bare MethodError. Accept it
@@ -976,13 +988,13 @@ function _q4_structured_precision(kind::Symbol, grp::Symbol, G::Int;
                                   K, A, coords, spatial_range)
     if kind === :relmat
         K === nothing && error("relmat(1 | $grp) needs `K = …`")
-        C = Matrix{Float64}(K)
+        C = _finite_user_matrix(K, "K")
         size(C) == (G, G) || error("relmat structured matrix must be $(G)×$(G) (the number of `$grp` levels)")
         isposdef(Symmetric(C)) || error("relmat K must be positive definite")
         return Matrix(inv(cholesky(Symmetric(C))))
     elseif kind === :animal
         A === nothing && error("animal(1 | $grp) needs `A = …`")
-        C = Matrix{Float64}(A)
+        C = _finite_user_matrix(A, "A")
         size(C) == (G, G) || error("animal relatedness matrix must be $(G)×$(G) (the number of `$grp` levels)")
         isposdef(Symmetric(C)) || error("animal A must be positive definite")
         return Matrix(inv(cholesky(Symmetric(C))))
@@ -1152,6 +1164,7 @@ function _fit_bivariate_q4_structured(f::BivariateDrmFormula, fam::Gaussian, dat
 end
 
 function _q4_default_spatial_range(coords, G::Int)
+    _require_finite_inputs(; coords=coords)
     Cmat = Matrix{Float64}(coords)
     Ddist = [sqrt(sum(abs2, Cmat[k, :] .- Cmat[l, :])) for k in 1:G, l in 1:G]
     return sum(Ddist) / (G^2 - G)
@@ -1364,17 +1377,24 @@ _q2_phylocov_names() = ["Sigma_a:L11", "Sigma_a:L21", "Sigma_a:L22"]
 
 function _q4_fd_vcov(prob::AugProblem, Q_cond::SparseMatrixCSC, θ::Vector{Float64};
                      h::Real = 1e-4, n_newton::Int = 40, u0 = nothing)
-    nθ = length(θ)
-    H = zeros(nθ, nθ)
-    for k in 1:nθ
-        θp = copy(θ); θp[k] += h
-        θm = copy(θ); θm[k] -= h
-        # S5 change (c): warm u0 into every perturbed evaluation's inner Newton
-        # (u0 = nothing, the pre-S5 default, is unaffected -- still goes
-        # straight to the cold robust path).
-        _, gp, _, _ = marginal_and_exact_grad(prob, Q_cond, θp; u0 = u0, n_newton = n_newton)
-        _, gm, _, _ = marginal_and_exact_grad(prob, Q_cond, θm; u0 = u0, n_newton = n_newton)
-        H[:, k] .= (gp .- gm) ./ (2h)
+    # S5 change (c): warm u0 into every perturbed evaluation's inner Newton
+    # (u0 = nothing, the pre-S5 default, is unaffected -- still goes
+    # straight to the cold robust path).
+    grad_at = function (t)
+        try
+            return marginal_and_exact_grad(prob, Q_cond, t; u0 = u0, n_newton = n_newton)[2]
+        catch err
+            err isa InterruptException && rethrow(err)
+            return Float64[]      # a failed probe: reported as `ok = false` below
+        end
     end
+    return _q4_fd_vcov_from_grad(grad_at, θ; h = h)
+end
+
+# Guarded FD Hessian -> vcov. A failed / empty / non-finite gradient probe gives the
+# NaN-vcov convention the q=4 fitters already use for `q4_vcov = false`.
+function _q4_fd_vcov_from_grad(grad_at, θ::Vector{Float64}; h::Real = 1e-4)
+    H, ok = _fd_hessian_from_grad(grad_at, θ; hstep = h, retry_step = h, scaled = false)
+    ok || return fill(NaN, length(θ), length(θ))
     return _vcov_from_hessian(H; context = "q=4 finite-difference Hessian")
 end

@@ -1,0 +1,3 @@
+cell	logLik_native	log_sd_native	logLik_Laplace	log_sd_Laplace	logLik_default	log_sd_default	exact_at_default	default_minus_exact	default_minus_native
+L1_G5_m300_sdb050	-2495.378958	-0.9534	-2495.378958	-0.9534	-2496.366224	-0.2547	-2497.167548	+0.8013	-0.9873
+X3_sigx_G5_m300_sdb050	-2574.587958	-1.1395	-2574.587958	-1.1395	-2570.407496	-0.3151	-2576.675960	+6.2685	+4.1805

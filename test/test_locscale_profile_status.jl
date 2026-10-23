@@ -178,6 +178,39 @@ end
         @test difference.difference - half != 0.0
     end
 
+    @testset "boundary log-Cholesky diagonal is exempt from the gradient check" begin
+        # owner decision 15 (a): a log-diagonal below _LS_PROFILE_BOUNDARY_LOGCHOL
+        # is flat, so only that coordinate is dropped from the 1e-7 stationarity
+        # test; the exemption is reported, and other coordinates stay strict.
+        f = u -> sum(abs2, u)
+        gb!(g, u) = (g .= [0.0, 5e-7]; g)             # gradient only on coordinate 2
+        args = (f, gb!, [0.0, -9.0], true)
+        strict = DRModels._ls_profile_candidate_status(args...)
+        @test !strict.accepted && strict.reason == :not_stationary
+        ex = DRModels._ls_profile_candidate_status(args...; logchol_diag = [2])
+        @test ex.accepted && ex.reason == :accepted_boundary_exempt
+        @test ex.gradient_maxabs <= 1e-7
+        # Not on the boundary (value above the cutoff): no exemption.
+        off = DRModels._ls_profile_candidate_status(f, gb!, [0.0, -3.0], true; logchol_diag = [2])
+        @test !off.accepted && off.reason == :not_stationary
+        # A non-exempt coordinate above tolerance still rejects.
+        gc!(g, u) = (g .= [5e-7, 5e-7]; g)
+        other = DRModels._ls_profile_candidate_status(f, gc!, [0.0, -9.0], true; logchol_diag = [2])
+        @test !other.accepted && other.reason == :not_stationary
+        # L21 of the same row is exempt only when log L22 is on the boundary.
+        gl21!(g, u) = (g .= [0.0, 5e-7, 0.0]; g)      # coords: (b, L21, log L22)
+        l21 = DRModels._ls_profile_candidate_status(f, gl21!, [0.0, 0.0, -9.0], true;
+                                                    logchol_diag = [3], l21_pos = 2, l22_pos = 3)
+        @test l21.accepted && l21.reason == :accepted_boundary_exempt
+        l21off = DRModels._ls_profile_candidate_status(f, gl21!, [0.0, 0.0, -3.0], true;
+                                                       logchol_diag = [3], l21_pos = 2, l22_pos = 3)
+        @test !l21off.accepted
+        # Already stationary: reported as plain :accepted, not as an exemption.
+        g0!(g, u) = (g .= 0.0; g)
+        plain = DRModels._ls_profile_candidate_status(f, g0!, [0.0, -9.0], true; logchol_diag = [2])
+        @test plain.accepted && plain.reason == :accepted
+    end
+
     @testset "finite exhausted nuisance solution is rejected" begin
         # Optim's termination flag alone is insufficient: the profiler checks the
         # same 1e-7 free-gradient target on a fresh candidate evaluation.

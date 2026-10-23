@@ -62,9 +62,25 @@ extrapolated “N× faster” claim is retired.
   `JULIA_NUM_THREADS` to engage it. Within a single coefficient the lower and
   upper endpoint chains stay serial, so the gain scales with the number of
   coefficients profiled, not with threads per coefficient.
+- **Parallel backend: threads in one Julia process.** `threads = true` uses
+  Julia threads inside a single process; start Julia with `--threads=N` or set
+  `JULIA_NUM_THREADS`. Concurrent multi-threaded BLAS calls can be slower than a
+  serial run, so set BLAS to one thread before threading
+  (`using LinearAlgebra; BLAS.set_num_threads(1)`); the threaded bootstrap does
+  this for you. DRModels.jl has no Distributed.jl (`addprocs` / `@everywhere` /
+  `pmap`) interface. To spread a simulation grid over many cores or machines,
+  run independent Julia processes (for example one cluster job per cell or
+  seed) and combine their saved results.
 - **Check the fit cheaply.** [`check_drm`](@ref) reports convergence and
   covariance conditioning without re-fitting — useful before committing to an
   expensive bootstrap.
+- **A single fit is single-threaded by design.** As in drmTMB, one `drm()` fit
+  runs on one thread, and `drm()` has no `threads` option. The parallel
+  speed-ups are across independent work:
+  `bootstrap_ci(...; threads = true)` refits replicates in parallel, and
+  `confint(...; method = :profile, threads = true)` profiles coefficients in
+  parallel where the model allows it (see the profile tip above). Both need Julia started with several threads, for example by
+  setting `JULIA_NUM_THREADS`.
 
 ## Beyond the verified engine
 
@@ -73,3 +89,17 @@ GLMM paths (Poisson/NB2/Beta/Gamma random effects via quadrature) are designed
 for moderate group counts rather than p = 10,000-scale phylogenies; for very
 large structured problems, the phylogenetic location–scale engine is the path
 that has been benchmarked to scale.
+
+## Related software
+
+[Latte.jl](https://github.com/timweiland/Latte.jl) and
+[GaussianMarkovRandomFields.jl](https://github.com/timweiland/GaussianMarkovRandomFields.jl)
+offer related sparse-precision and Laplace-approximation machinery in Julia.
+DRModels.jl keeps its own engine and uses them as a comparison and an
+independent cross-check. On a 50-group Gaussian location-scale test model,
+Latte.jl's TMB-style Laplace engine, started from suitable values, matched the
+four DRModels.jl maximum-likelihood estimates to within 0.024 standard errors
+(the largest absolute difference divided by its standard error). Latte.jl's
+TMB-style engine reports a posterior mode under hyperpriors rather than a
+maximum-likelihood fit, so the agreement is a cross-check on one model, not a
+general equivalence.
