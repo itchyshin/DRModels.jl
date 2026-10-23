@@ -174,7 +174,7 @@ families.
 
 ## See also
 
-- [Location–scale–scale models](location-scale-scale.md) — predictors on the
+- [Location–scale–scale models](https://itchyshin.github.io/DRModels.jl/dev/tutorials/location-scale-scale) — predictors on the
   phylogenetic standard deviation (`sd(species, phylogenetic) ~ x`, Mizuno et al.
   macro-evolutionary framework).
 - [Known-matrix relatedness with relmat](relmat-known-matrices.md) — the same
