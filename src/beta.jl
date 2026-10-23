@@ -44,7 +44,7 @@ struct Beta end
 
 _logistic(η) = 1 / (1 + exp(-η))
 
-function drm(f::DrmFormula, fam::Beta; offset = nothing, data, tree = nothing, K = nothing,
+@drm_entry function drm(f::DrmFormula, fam::Beta; offset = nothing, data, tree = nothing, K = nothing,
              A = nothing, coords = nothing, g_tol::Real = 1e-8, se::Bool = true,
              marginal::Symbol = :LA, method = nothing, ids = nothing)
     offset === nothing || _refuse_offset_kw(fam)   # #1097
@@ -126,6 +126,7 @@ function drm(f::DrmFormula, fam::Beta; offset = nothing, data, tree = nothing, K
             return _withformula(_fit_beta_ranef(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol), f)
         elseif rk === :corr             # (1 + x | g) → 2-D Gauss–Hermite marginal
             isva && _va_reject(fam, "a correlated random slope `(1 + x | g)`")
+            _require_finite_data_column(data, var)
             return _withformula(_fit_beta_corr_ranef(fam, y, Xμ, Xσ, Float64.(getproperty(data, var)), gidx, G, nmμ, nmσ, grp, g_tol), f)
         else
             error("Beta() supports `(1 | g)` or `(1 + x | g)` on the mean, not `(0 + x | g)`")
@@ -208,6 +209,7 @@ end
 
 function _fit_beta(fam::Beta, y, Xμ, Xσ, nmμ, nmσ, g_tol)
     n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
+    w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
         # Soft guards (see `_softclamp` in negbinomial.jl): identity across the
@@ -218,7 +220,7 @@ function _fit_beta(fam::Beta, y, Xμ, Xσ, nmμ, nmσ, g_tol)
         s = zero(eltype(θ))
         @inbounds for i in 1:n
             μ = _logistic(ημ[i]); φ = exp(-2 * ησ[i])
-            s -= Distributions.logpdf(Distributions.Beta(μ * φ, (1 - μ) * φ), y[i])
+            s -= w[i] * (Distributions.logpdf(Distributions.Beta(μ * φ, (1 - μ) * φ), y[i]))
         end
         return s
     end
@@ -227,8 +229,9 @@ function _fit_beta(fam::Beta, y, Xμ, Xσ, nmμ, nmσ, g_tol)
     θ0 = zeros(pμ + pσ)
     θ0[1] = log(ȳ / (1 - ȳ))                          # logit mean
     θ0[pμ+1] = -0.5 * log(φ0)                          # σ = 1/√φ ⇒ log σ = -½ log φ
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
+                       θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
+    θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ)]
     names = [:mu => nmμ, :sigma => nmσ]
     means = Dict(:mu => _logistic.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))  # response-scale μ̂

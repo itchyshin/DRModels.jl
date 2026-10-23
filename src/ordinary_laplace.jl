@@ -28,7 +28,8 @@
 # file, `_fit_student_ordinary_laplace`; #714).
 #
 # Scope (everything else is refused, never silently rerouted to `:LA`):
-#   * exactly one ordinary `(1 | g)` on `mu`; no `(1 + x | g)`, `(0 + x | g)`,
+#   * exactly one ordinary `(1 | g)` on `mu` (Poisson may add one `offset(...)`,
+#     #941); no `(1 + x | g)`, `(0 + x | g)`,
 #     crossed/multiple terms, structured markers, `meta_V`, `zi`/`hu`;
 #   * NegBinomial2 / Gamma / Beta with `sigma ~ 1` (no random effect on sigma,
 #     no coupled location–scale `(1 | p | g)`);
@@ -153,7 +154,7 @@ function _ordinary_laplace_optimize(fg, θ0, n::Int, q::Int, g_tol; se::Bool,
         ok = out[end]
         ok || (out = fg(θ, zeros(q), grad); ok = out[end])
         if !ok
-            return grad ? (1e18, zeros(length(θ))) : 1e18
+            return grad ? (1e18, fill(NaN, length(θ))) : 1e18
         end
         last_b .= out[end-1]
         return grad ? (out[1], out[2]) : out[1]

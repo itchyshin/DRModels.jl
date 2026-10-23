@@ -81,7 +81,7 @@ coef(fit)      # mu1/mu2 on the log scale
 corpairs(fit)  # log-residual rho12
 ```
 """
-function drm(f::BivariateDrmFormula, fam::LogNormal; data, tree = nothing,
+@drm_entry function drm(f::BivariateDrmFormula, fam::LogNormal; data, tree = nothing,
              K = nothing, A = nothing, coords = nothing, spatial_range = nothing,
              g_tol::Real = 1e-8, q4_g_tol::Real = 1e-3, q4_iterations::Int = 300,
              q4_n_newton::Int = 40, q4_vcov::Bool = true, method::Symbol = :ML)
@@ -91,6 +91,7 @@ function drm(f::BivariateDrmFormula, fam::LogNormal; data, tree = nothing,
             "(got method = :$method). drmTMB's `biv_lognormal()` first slice has no " *
             "random effects to integrate out, and REML for the structured (phylo/" *
             "relmat/animal/spatial) cells is a later slice."))
+    data = _drop_missing_predictor_rows(f, data)   # #1089: R's na.omit, with a count
     cols = NamedTuple(pairs(data))
     y1 = Vector{Float64}(getproperty(cols, f.response1))
     y2 = Vector{Float64}(getproperty(cols, f.response2))

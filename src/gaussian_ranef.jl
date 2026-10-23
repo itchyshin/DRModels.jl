@@ -416,8 +416,41 @@ end
 # near-tie, prefer whichever result sits closer to the interior.
 function _re_lbfgs_with_restart(nll, θ0::AbstractVector, θ0_restart::AbstractVector,
                                 g_tol::Real, lσb_idx::Int, scale_ref::Real)
+    scope = _active_control_scope()
+    requested = scope === nothing ? :default : scope.control.optimizer
+    method_name = requested === :bfgs ? :bfgs : :lbfgs
+    method = requested === :bfgs ? Optim.BFGS() : Optim.LBFGS()
+    scope !== nothing && requested !== :default && (scope.used_optim = true)
+    finish(res, stage) = begin
+        scope !== nothing && (scope.selected_optimizer_stage = stage)
+        res
+    end
+    function record(stage, start, res)
+        scope === nothing && return
+        x = Optim.minimizer(res)
+        objective = _objective_at_minimizer(nll, res)
+        finite = isfinite(objective) && all(isfinite, x)
+        gradient_inf = if finite
+            try
+                maximum(abs, ForwardDiff.gradient(nll, x))
+            catch err
+                err isa InterruptException && rethrow(err)
+                Inf
+            end
+        else
+            Inf
+        end
+        run = (method = method_name, stage = stage, start_index = stage === :primary ? 1 : 2,
+               start = Tuple(Float64.(start)), iterations = Optim.iterations(res),
+               converged = Optim.converged(res), objective = objective,
+               gradient_inf = gradient_inf, g_tol = Float64(g_tol), maxit = nothing,
+               status = finite && isfinite(gradient_inf) ? :finite : :nonfinite)
+        push!(scope.optimizer_runs, run)
+        return run
+    end
     opts = Optim.Options(g_tol = g_tol)
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), opts; autodiff = :forward)
+    res = Optim.optimize(nll, θ0, method, opts; autodiff = :forward)
+    record(:primary, θ0, res)
     θ̂ = Optim.minimizer(res)
     # NON-FINITE RESULT (Linux/Julia 1.10.12, seed 20 of the RUNAWAY panel, #848).
     # From the data-driven start LBFGS can report `converged` with a NaN
@@ -432,26 +465,40 @@ function _re_lbfgs_with_restart(nll, θ0::AbstractVector, θ0_restart::AbstractV
     g_inf = primary_ok ? maximum(abs, ForwardDiff.gradient(nll, θ̂)) : Inf
     at_boundary = primary_ok && exp(θ̂[lσb_idx]) < 1e-3 * max(scale_ref, eps())
     if !primary_ok || !(g_inf <= g_tol) || at_boundary
-        res_restart = Optim.optimize(nll, θ0_restart, Optim.LBFGS(), opts; autodiff = :forward)
+        res_restart = Optim.optimize(nll, θ0_restart, method, opts; autodiff = :forward)
+        restart_run = record(:restart, θ0_restart, res_restart)
         θ̂_restart = Optim.minimizer(res_restart)
         # Compare the objective AT each minimizer, not `Optim.minimum` (#849,
         # optim_minimum_guard.jl): these runs may have failed a line search.
         f_restart = _objective_at_minimizer(nll, res_restart)
         restart_ok = isfinite(f_restart) && all(isfinite, θ̂_restart)
+        if requested !== :default
+            # An explicit method keeps the same conditional restart, but a
+            # restart candidate must also pass a fresh exact-gradient check.
+            restart_certified = restart_ok && restart_run.gradient_inf <= g_tol
+            primary_certified = primary_ok && g_inf <= g_tol
+            if !primary_certified && !restart_certified
+                throw(ErrorException("drm: selected $(requested) failed exact-gradient certification from both Gaussian random-intercept starts"))
+            elseif !restart_certified
+                return finish(res, :primary)
+            elseif !primary_certified
+                return finish(res_restart, :restart)
+            end
+        end
         if !primary_ok
-            return restart_ok ? res_restart : res
+            return restart_ok ? finish(res_restart, :restart) : finish(res, :primary)
         elseif !restart_ok
-            return res
+            return finish(res, :primary)
         end
         Δ = f_restart - f_primary
         near_tie = abs(Δ) <= 1e-6 * max(1, abs(f_primary))
         if Δ < 0 && !near_tie
-            return res_restart
+            return finish(res_restart, :restart)
         elseif near_tie && abs(θ̂_restart[lσb_idx]) < abs(θ̂[lσb_idx])
-            return res_restart
+            return finish(res_restart, :restart)
         end
     end
-    return res
+    return finish(res, :primary)
 end
 
 # Gaussian location–scale with one random intercept (1 | g) on the mean.
@@ -609,7 +656,11 @@ function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ,
     # reml_q4.jl do -- do NOT add a #491-style fallback, which only papers over it.
     res = _re_lbfgs_with_restart(nll, θ0, θ0_restart, g_tol, pμ + pσ + 1, std(res0))
     θ̂ = Optim.minimizer(res)
-    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    H = ForwardDiff.hessian(nll, θ̂)
+    # #1114 (#968 convention): sigma running off to 0 overflows the Hessian; withhold
+    # the vcov and report converged = false instead of the LAPACK ArgumentError.
+    V, hess_finite = _vcov_from_hessian_checked(H, _all_finite(y, Xμ, Xσ, w);
+                                                context = "Gaussian (1 | g) location-scale")
 
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :resd => (pμ+pσ+1):(pμ+pσ+1)]
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
@@ -647,16 +698,18 @@ function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ,
     # criterion false; the true gradient ∞-norm there exceeded 1e-3 in 95 of them
     # and 1.0 in 45, worst 3.7e137 (with a POSITIVE Gaussian loglik of +980).
     #
-    # `Optim.g_converged` is exactly the right test, not an approximation of it:
-    # over the same grid `Optim.g_residual(res)` equalled
-    # `maximum(abs, ForwardDiff.gradient(nll, θ̂))` with max absolute difference
-    # 0.0 across 5,349 gradient-converged fits, and the largest such norm was
-    # 9.996e-9 -- inside `g_tol`. Restarting LBFGS from the stalled point was
-    # measured and REJECTED: of those 1,042 it recovered 665, left 377, made the
-    # objective WORSE in 143, and produced NaN. So only the reported flag changes
-    # here -- θ̂, the ML/REML objective and logLik are byte-identical.
-    # Guard: test/test_ranef_varying_scale_convergence.jl.
-    converged = drm_optim_converged(res)
+    # `Optim.g_converged` matched the recomputed gradient on the unscaled grid
+    # (largest norm 9.996e-9, inside `g_tol`). It is NOT unit-free: the same
+    # varying-scale model at `x * 1000` stalls with `|g|∞` just above 1e-8
+    # while the Newton step is a tiny fraction of an SE (drmTMB #1503). The
+    # reported flag is `Optim.converged` (the x/f/g OR, which is what fires on
+    # that plateau) and not the iteration cap, together with the Newton-step
+    # test. `g_converged` is not consulted. θ̂, the objective and logLik are
+    # unchanged. Guard: test/test_ranef_varying_scale_convergence.jl and the
+    # scaled-predictor bootstrap in test/test_triage_g_twin_inputs.jl.
+    # #1114: a non-finite Hessian also means not converged.
+    converged = hess_finite && Optim.converged(res) && !Optim.iteration_limit_reached(res) &&
+        _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
     # Profile intervals reuse the ML Woodbury nll (same convention as FE REML).
     fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, converged, means, obs, scales), nll_ml), re)
     if reml
@@ -928,6 +981,8 @@ function ranef(fit::DrmFit)
     if fit.ranef isa NamedTuple && haskey(fit.ranef, :effects)
         return fit.ranef.effects
     end
+    # Gaussian phylo-mean fits wrap their BLUP `Dict` with Xβ̂ and the tree (#995).
+    fit.ranef isa LocOnlyRanef && return fit.ranef.effects
     return fit.ranef
 end
 

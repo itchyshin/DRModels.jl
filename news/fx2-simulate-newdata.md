@@ -1,0 +1,1 @@
+- **`simulate(fit; newdata)` draws one row per newdata row** (sweep-oct16 t6; twin of drmTMB #1536). The training-row call is unchanged. Draws are population-level (`predict_parameters`, RE = 0). Temporal fits refuse `newdata`. Binomial/BetaBinomial recycle a constant `trials` or require a `trials` column.

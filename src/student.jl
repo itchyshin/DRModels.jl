@@ -40,15 +40,20 @@ outliers, and `ν → ∞` tends to Gaussian. Mirrors `drmTMB`'s `student` famil
 ```julia
 fit = drm(bf(y ~ x, sigma ~ 1, nu ~ 1), Student(); data = dat)
 2 + exp(coef(fit, :nu)[1])  # estimated degrees of freedom (ν = 2 + exp(η))
+predict_parameters(fit, dat)[:nu]   # same quantity (response-scale ν, not exp(η))
 
 # Opt-in TMB-convention Laplace for one ordinary `(1 | g)` on the mean (what drmTMB fits):
 fit_lap = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), Student(); data = dat,
               marginal = :Laplace)
+
+# Independent random intercept and slope on one factor (#960, as drmTMB fits it; Laplace):
+fit_ind = drm(bf(@formula(y ~ x + (1 | g) + (0 + x | g)), @formula(sigma ~ 1)), Student(); data = dat)
+exp.(coef(fit_ind, :resd))         # SDs of the intercept and slope effects
 ```
 """
 struct Student end
 
-function drm(f::DrmFormula, fam::Student; offset = nothing, data, g_tol::Real = 1e-8,
+@drm_entry function drm(f::DrmFormula, fam::Student; offset = nothing, data, g_tol::Real = 1e-8,
              se::Bool = true, marginal::Symbol = :LA)
     offset === nothing || _refuse_offset_kw(fam)   # #1097
     _drm_entry_guard(f, fam, data)   # #1027 #1022
@@ -86,8 +91,16 @@ function drm(f::DrmFormula, fam::Student; offset = nothing, data, g_tol::Real = 
             "omit `marginal` (the default `:LA`) for other models."))
     end
     if length(re) > 1                                     # crossed intercepts → Laplace (#725)
+        # Independent intercepts + slopes `(1 | g) + (0 + x | g)` (#960): TMB-convention
+        # Laplace, as drmTMB fits them.
+        slope_comps = _indep_slope_comps(re, data, length(y))
+        slope_comps === nothing ||
+            return _withformula(_fit_indep_re_laplace(fam, Val(:student), y, Xμ, Xσ, Xν,
+                                                      slope_comps, nmμ, nmσ, nmν, g_tol), f)
         (length(re) == 2 && all(_re_kind(r[1])[1] === :intercept for r in re)) ||
-            error("Student() supports multiple random effects on the mean only as two crossed/nested intercepts, e.g. `(1 | g) + (1 | h)`")
+            error("Student() supports multiple random effects on the mean only as two crossed/nested " *
+                  "intercepts `(1 | g) + (1 | h)` or independent intercepts and slopes " *
+                  "`(1 | g) + (0 + x | g)`")
         comps = map(re) do r
             gidx, G = _group_index(getproperty(data, r[2]))
             (gidx, G, String(r[2]))
@@ -196,13 +209,14 @@ end
 function _fit_student(fam::Student, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol)
     n = length(y)
     pμ, pσ, pν = size(Xμ, 2), size(Xσ, 2), size(Xν, 2)
+    w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]; βν = θ[pμ+pσ+1:pμ+pσ+pν]
         ημ = Xμ * βμ; ησ = Xσ * βσ; ην = Xν * βν
         s = zero(eltype(θ))
         @inbounds for i in 1:n
             z = (y[i] - ημ[i]) * exp(-ησ[i])
-            s -= _student_logpdf_std(z, ην[i]) - ησ[i]       # − log σ Jacobian
+            s -= w[i] * (_student_logpdf_std(z, ην[i]) - ησ[i])       # − log σ Jacobian
         end
         return s
     end
@@ -211,11 +225,17 @@ function _fit_student(fam::Student, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol)
     θ0[1:pμ] .= βμ0
     θ0[pμ+1] = log(std(y - Xμ * βμ0) + eps())       # σ init
     θ0[pμ+pσ+1] = log(10.0)                          # ν init (mildly heavy-tailed)
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
+                       θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
     θ̂ = Optim.minimizer(res)
     # #961: a non-finite Hessian on finite data is a degenerate fit, not a crash.
-    V, hess_finite = _vcov_from_hessian_checked(ForwardDiff.hessian(nll, θ̂),
-                                                _all_finite(y, Xμ, Xσ, Xν); context = "Student")
+    hess_finite = true
+    V = _ctl_se(θ̂) do
+        Vh, hf = _vcov_from_hessian_checked(ForwardDiff.hessian(nll, θ̂),
+                                            _all_finite(y, Xμ, Xσ, Xν); context = "Student")
+        hess_finite = hf
+        Vh
+    end
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :nu => (pμ+pσ+1):(pμ+pσ+pν)]
     names = [:mu => nmμ, :sigma => nmσ, :nu => nmν]
     means = Dict(:mu => Xμ * θ̂[1:pμ]); obs = Dict(:mu => Vector{Float64}(y))

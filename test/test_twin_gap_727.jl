@@ -11,8 +11,10 @@
 #      not just a bare column reference, and gives the identical fit.
 #   4. Omitting the offset on the same DGP recovers a visibly biased intercept
 #      (the offset is not a no-op).
-#   5. `offset(...)` combined with a random effect, a structured marker, `zi`,
-#      or `hu` is refused with a clear error rather than silently ignored.
+#   5. `offset(...)` combined with a structured marker, `zi`, `hu`, a random slope or
+#      crossed effects is refused with a clear error rather than silently ignored.
+#      (`offset(...)` + ONE ordinary `(1 | g)` is admitted since #941 — see
+#      test_lane_n4_offset_slopes.jl.)
 
 using DRModels
 using Test, Random, LinearAlgebra
@@ -96,6 +98,11 @@ import Distributions
         fit = drm(bf(@formula(y ~ x + offset(log_exposure) + (1 | g))), Poisson();
                   data = (; y, x, log_exposure, g))
         @test length(coef(fit, :mu)) == 2
+        # a correlated random slope still refuses it (ArgumentError, #938)
+        @test_throws ArgumentError drm(
+            bf(@formula(y ~ x + offset(log_exposure) + (1 + x | g))), Poisson();
+            data = (; y, x, log_exposure, g),
+        )
         # `zi` / `hu` cannot hold the offset fixed: refused with an ArgumentError naming the offset
         @test_throws ArgumentError drm(
             bf(@formula(y ~ x + offset(log_exposure)), @formula(zi ~ 1)), Poisson();

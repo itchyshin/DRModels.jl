@@ -18,7 +18,7 @@ Three differences cover almost everything:
     The R snippets show drmTMB's grammar (which itself mirrors **brms**). The
     family-constructor and S3 method spellings here were reconciled (2026-06-03)
     against drmTMB's exported interface; the
-    parameterisations (e.g. Beta `φ = 1/σ²`) match. drmTMB reuses the base-R
+    parameterisations (e.g. Beta `φ = 1/σ²`) match, except where a row below says otherwise (the spatial range). drmTMB reuses the base-R
     `stats` families (`gaussian()`, `poisson()`, `Gamma()`, `binomial()`) rather
     than redefining them. This page is maintained from the Julia side.
 
@@ -45,10 +45,10 @@ distributional parameter (`sigma` defaults to `~ 1`).
 | `gaussian()` | `Gaussian()` | `sigma` |
 | `student()` | `Student()` | `sigma`, `nu` |
 | `skew_normal()` | `SkewNormal()` | `sigma`, `nu` (slant `alpha`; moment form on both sides) |
-| `poisson()` | `Poisson()` | — (mean only; `zi`, `hu`) |
-| `nbinom2()` | `NegBinomial2()` | `sigma` (dispersion `θ = 1/σ²`); `zi`, `hu` |
-| `truncated_nbinom2()` | `TruncatedNegBinomial2()` | `sigma` (dispersion `θ = 1/σ²`) |
-| `beta()` | `Beta()` | `sigma` (precision `φ = 1/σ²`) |
+| `poisson()` | `Poisson()` | — (mean only); `zi` on both sides; `hu` (hurdle Poisson) in Julia only |
+| `nbinom2()` | `NegBinomial2()` | `sigma` (dispersion `θ = 1/σ²`); `zi` on both sides; Julia also accepts `hu` here (the R hurdle is the next row) |
+| `truncated_nbinom2()` | `TruncatedNegBinomial2()` | `sigma` (dispersion `θ = 1/σ²`); add `hu` for the hurdle NB2 model on both sides |
+| `beta_family()` | `Beta()` | `sigma` (precision `φ = 1/σ²`) |
 | `beta_binomial()` | `BetaBinomial()` | `sigma` (`φ = 1/σ²`) |
 | `binomial()` | `Binomial()` | — (mean only) |
 | `Gamma()` | `Gamma()` | `sigma` (CV; shape `α = 1/σ²`) |
@@ -69,7 +69,7 @@ distributional parameter (`sigma` defaults to `~ 1`).
 | Crossed REs | `y ~ x + (1 \| g) + (1 \| h)` | `@formula(y ~ x + (1 \| g) + (1 \| h))` |
 | Two-column response | `cbind(s, f) ~ x` | `@formula(cbind(s, f) ~ x)` |
 | Zero-inflation | `bf(y ~ x, zi ~ 1)` | `bf(@formula(y ~ x), @formula(zi ~ 1))` |
-| Hurdle | `bf(y ~ x, hu ~ 1)` | `bf(@formula(y ~ x), @formula(hu ~ 1))` |
+| Hurdle (NB2) | `bf(y ~ x, sigma ~ 1, hu ~ 1)` with `truncated_nbinom2()` | `bf(@formula(y ~ x), @formula(sigma ~ 1), @formula(hu ~ 1))` with `TruncatedNegBinomial2()` or `NegBinomial2()` |
 
 ### Bivariate (two responses + residual correlation)
 
@@ -95,7 +95,7 @@ fit = drm(
 | Relatedness matrix | `y ~ x + relmat(1 \| id)`, `K = K` | `@formula(y ~ x + relmat(1 \| id))`, `K = K` |
 | Animal model | `y ~ x + animal(1 \| id)`, `A = A` | `@formula(y ~ x + animal(1 \| id))`, `A = A` |
 | Phylogenetic | `y ~ x + phylo(1 \| species)`, `tree = tree` | `@formula(y ~ x + phylo(1 \| species))`, `tree = tree` |
-| Spatial | `y ~ x + spatial(1 \| site)`, `coords = xy` | `@formula(y ~ x + spatial(1 \| site))`, `coords = xy` |
+| Spatial | `y ~ x + spatial(1 \| site)`, `coords = xy` (range fixed at the median pairwise distance) | `@formula(y ~ x + spatial(1 \| site))`, `coords = xy` (range estimated: a different model) |
 | Meta-analysis (univariate) | `gaussian()` + `meta_V(v)` | `Gaussian()` + `meta_V(v)` |
 | Meta-analysis (bivariate, known sampling covariance) | `meta_V(V = meta_vcov_bivariate(...))` **inside** `mu1` | `meta_vcov_bivariate(...)` passed as `drm(...; V = V)` — see [meta-analysis](model-guides/meta-analysis.md) |
 
@@ -125,7 +125,9 @@ fit = drm(
 | build a covariate grid for prediction | `prediction_grid(reference; predictor = values, …)` |
 | `simulate(fit)` | `simulate(fit)` |
 | `summary(fit)` | `summary(fit)` (prints the Wald coefficient table) |
-| `weights(fit)` | planned (parity gap) |
+| `weights(fit)` | `weights(fit)`: the prior weights from `drm(...; weights = w)`, or `nothing` (fixed-effect ML routes only; other routes refuse `weights =`) |
+| `drm_control(maxit =, start =, multi_start =, se =)` | `control = DRMControl(maxit =, start =, multi_start =, se =)`; `maxit` / `start` / `multi_start` on fixed-effect routes, `se = false` on every route (`control_info(fit)` reports what it did) |
+| `obj$gr(opt$par)` / `sdreport()$cov.fixed` | `gradient(fit)` / `hessian(fit)` (negative log-likelihood, `coef(fit)` order and scale) |
 | `family(fit)` | `family(fit)` |
 | `is_converged(fit)` / convergence diagnostics | `is_converged(fit)` / `check_drm(fit)` |
 

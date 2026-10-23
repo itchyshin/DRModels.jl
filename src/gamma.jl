@@ -37,11 +37,17 @@ fit_va = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), Gamma();
 # Requires `sigma ~ 1`; ML only.
 fit_lap = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), Gamma();
               data = dat, marginal = :Laplace)
+
+# Independent random intercept and slope on one factor, `(1 | g) + (0 + x | g)` (#960,
+# what drmTMB fits; Laplace). A correlated `(1 + x | g)` is DRModels.jl's own GHQ route
+# (drmTMB refuses it for Gamma). `sigma` may carry covariates here.
+fit_ind = drm(bf(@formula(y ~ x + (1 | g) + (0 + x | g)), @formula(sigma ~ 1)), Gamma(); data = dat)
+exp.(coef(fit_ind, :resd))         # SDs of the intercept and slope effects
 ```
 """
 struct Gamma end
 
-function drm(f::DrmFormula, fam::Gamma; offset = nothing, data, tree = nothing, K = nothing,
+@drm_entry function drm(f::DrmFormula, fam::Gamma; offset = nothing, data, tree = nothing, K = nothing,
              A = nothing, coords = nothing, g_tol::Real = 1e-8, se::Bool = true,
              marginal::Symbol = :LA, method = nothing, ids = nothing)
     offset === nothing || _refuse_offset_kw(fam)   # #1097
@@ -74,6 +80,9 @@ function drm(f::DrmFormula, fam::Gamma; offset = nothing, data, tree = nothing, 
                                                     coords = coords), f)
     end
     fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
+    indep_slopes = st === nothing && length(re) > 1 && _has_indep_slopes(re)
+    isaghq && indep_slopes &&
+        _aghq_reject(fam, "independent random slopes `(0 + x | g)` (Laplace only, #960)")
     isaghq && !(length(re) > 1 && st === nothing) &&
         _aghq_reject(fam, "this model (Gamma `marginal = :AGHQ` covers crossed random " *
                           "intercepts `(1 | g) + (1 | h)` only, #761)")
@@ -113,8 +122,16 @@ function drm(f::DrmFormula, fam::Gamma; offset = nothing, data, tree = nothing, 
     if !isempty(re)                    # random effect on the log mean → GHQ/Laplace or VA (#136)
         if length(re) > 1
             isva && _va_reject(fam, "crossed/multiple random intercepts")
+            # Independent intercepts + slopes `(1 | g) + (0 + x | g)` (#960): the
+            # TMB-convention Laplace drmTMB fits. Any sigma formula is admitted.
+            indep_slopes &&
+                return _withformula(_fit_indep_re_laplace(fam, Val(:gamma), y, Xμ, Xσ, nothing,
+                                                          _indep_slope_comps(re, data, length(y)),
+                                                          nmμ, nmσ, String[], g_tol), f)
             all(_re_kind(r[1])[1] === :intercept for r in re) ||
-                error("Gamma() supports multiple random effects only as crossed/nested intercepts, e.g. `(1 | g) + (1 | h)`")
+                error("Gamma() supports multiple random effects only as crossed/nested intercepts " *
+                      "`(1 | g) + (1 | h)` or independent intercepts and slopes `(1 | g) + (0 + x | g)`; " *
+                      "a correlated `(1 + x | g)` must be the only random-effect term")
             comps = map(re) do r
                 grp = r[2]; gidx, G = _group_index(getproperty(data, grp))
                 (ones(length(y)), gidx, G, String(grp))
@@ -133,6 +150,7 @@ function drm(f::DrmFormula, fam::Gamma; offset = nothing, data, tree = nothing, 
             return _withformula(_fit_gamma_ranef(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol), f)
         elseif rk === :corr            # (1 + x | g) → correlated 2-D Gauss–Hermite
             isva && _va_reject(fam, "a correlated random slope `(1 + x | g)`")
+            _require_finite_data_column(data, var)
             return _withformula(_fit_gamma_corr_ranef(fam, y, Xμ, Xσ, Float64.(getproperty(data, var)), gidx, G, nmμ, nmσ, grp, g_tol), f)
         else
             error("Gamma() supports `(1 | g)` or `(1 + x | g)` on the mean")
@@ -214,6 +232,7 @@ end
 
 function _fit_gamma(fam::Gamma, y, Xμ, Xσ, nmμ, nmσ, g_tol)
     n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
+    w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
         # Soft guards (see `_softclamp` in negbinomial.jl): identity across the
@@ -224,7 +243,7 @@ function _fit_gamma(fam::Gamma, y, Xμ, Xσ, nmμ, nmσ, g_tol)
         s = zero(eltype(θ))
         @inbounds for i in 1:n
             μ = exp(ημ[i]); α = exp(-2 * ησ[i])  # shape = 1/σ²
-            s -= Distributions.logpdf(Distributions.Gamma(α, μ / α), y[i])
+            s -= w[i] * (Distributions.logpdf(Distributions.Gamma(α, μ / α), y[i]))
         end
         return s
     end
@@ -233,8 +252,9 @@ function _fit_gamma(fam::Gamma, y, Xμ, Xσ, nmμ, nmσ, g_tol)
     θ0 = zeros(pμ + pσ)
     θ0[1] = log(ȳ + eps())                        # log mean
     θ0[pμ+1] = -0.5 * log(α0)                      # σ = 1/√α ⇒ log σ = -½ log α
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
+                       θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
+    θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ)]
     names = [:mu => nmμ, :sigma => nmσ]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))  # response-scale μ̂

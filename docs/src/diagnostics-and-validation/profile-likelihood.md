@@ -97,6 +97,12 @@ use `profile_result` to retain the diagnostics. The generic path rejects
 non-finite or unsuccessfully terminated nuisance solves. Optimizer termination
 alone does not prove a global optimum or a sufficiently small score.
 
+An ordinary random-effect SD (`:resd`) is a boundary parameter. When the lower
+arm reaches the numerical log-SD floor without an LR crossing, `confint` reports
+the SD-scale interval `[0, u]` (matching drmTMB `profile.boundary`) rather than
+throwing or returning `(-Inf, Inf)`. Interior SDs stay on the working `log σ_b`
+scale.
+
 If `lower_unbounded` or `upper_unbounded` is `true` without endpoint failure,
 the threshold was not crossed **within the searched range**. This is a useful
 diagnostic, not proof that the mathematical interval is infinite. Specialized

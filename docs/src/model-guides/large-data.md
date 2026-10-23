@@ -59,9 +59,12 @@ extrapolated “N× faster” claim is retired.
   are independent refits; profile-likelihood endpoints are independent per
   coefficient. `confint(fit; method = :profile, threads = true)` profiles
   coefficients in parallel when the objective is thread-safe — set
-  `JULIA_NUM_THREADS` to engage it. Within a single coefficient the lower and
-  upper endpoint chains stay serial, so the gain scales with the number of
-  coefficients profiled, not with threads per coefficient.
+  `JULIA_NUM_THREADS` to engage it. On the coupled location–scale random-effect
+  route (NB2 or Gamma with a shared `(1 | p | group)` term on `mu` and `sigma`),
+  each coefficient's lower and upper endpoint searches stay serial, so the
+  gain scales with the number of coefficients profiled; profiling one
+  coefficient there is no faster with threads. On other thread-safe routes a
+  single profiled coefficient runs its two endpoint searches in parallel.
 - **Parallel backend: threads in one Julia process.** `threads = true` uses
   Julia threads inside a single process; start Julia with `--threads=N` or set
   `JULIA_NUM_THREADS`. Concurrent multi-threaded BLAS calls can be slower than a
@@ -71,9 +74,11 @@ extrapolated “N× faster” claim is retired.
   `pmap`) interface. To spread a simulation grid over many cores or machines,
   run independent Julia processes (for example one cluster job per cell or
   seed) and combine their saved results.
-- **Check the fit cheaply.** [`check_drm`](@ref) reports convergence and
-  covariance conditioning without re-fitting — useful before committing to an
-  expensive bootstrap.
+- **Check the fit cheaply.** [`check_drm`](@ref) reports convergence, the
+  gradient and covariance conditioning without re-fitting — useful before
+  committing to an expensive bootstrap. Its `converged` flag alone is not proof
+  of a maximum; read `max_abs_grad` and `grad_source` with it (see
+  [Improving convergence](convergence.md)).
 - **A single fit is single-threaded by design.** As in drmTMB, one `drm()` fit
   runs on one thread, and `drm()` has no `threads` option. The parallel
   speed-ups are across independent work:
@@ -89,6 +94,20 @@ GLMM paths (Poisson/NB2/Beta/Gamma random effects via quadrature) are designed
 for moderate group counts rather than p = 10,000-scale phylogenies; for very
 large structured problems, the phylogenetic location–scale engine is the path
 that has been benchmarked to scale.
+
+!!! note "Gaussian crossed random effects"
+    Gaussian models with crossed random intercepts, such as
+    `y ~ x + (1 | rater) + (1 | item)`, use a sparse factorisation of the
+    random-effect system, so time grows far more slowly with the number of rows
+    than it did before
+    [DRModels.jl#977](https://github.com/itchyshin/DRModels.jl/issues/977) was
+    fixed (earlier, 2,000 rows took over five minutes). On a synthetic design
+    shaped like the `lme4::InstEval` ratings, one machine and one thread, a fit
+    took about 0.3 s at 2,000 rows, 45 s at 20,000 rows and 28 s at 100,000
+    rows. drmTMB is still faster at 20,000 rows, because the optimiser needs
+    many steps on weakly identified crossed designs, not because each step is
+    slow. For very large crossed data sets, compare timings with drmTMB or
+    glmmTMB before committing.
 
 ## Related software
 

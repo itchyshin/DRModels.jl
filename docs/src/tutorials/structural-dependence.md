@@ -12,7 +12,7 @@ that correlation comes from:
 | `relmat(1 \| id)` | an arbitrary known matrix `K` | `K = …` |
 | `animal(1 \| id)` | an additive-genetic pedigree | `A = …` |
 | `phylo(1 \| species)` | a phylogenetic tree | `tree = …` |
-| `spatial(1 \| site)` | distance between coordinates | `coords = …` (range estimated) |
+| `spatial(1 \| site)` | distance between coordinates | `coords = …` (range estimated; drmTMB fixes it at the median pairwise distance, see [Coordinate-spatial structured effects](spatial-models.md)) |
 
 For Gaussian responses with Gaussian structured effects entering the mean
 linearly and residual variance independent of those effects, all four have the
