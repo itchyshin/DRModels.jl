@@ -115,6 +115,30 @@ julia --project=. bench/run_sparse_tmb_nd.jl     # 2.18× vs drmTMB, p=100
 julia --project=. bench/run_scaling.jl           # O(p) curve to p=10,000
 ```
 
+## Choosing an optimizer
+
+For supported fixed-effect maximum-likelihood fits, you can request either
+`:bfgs` or `:lbfgs`. Here `dat` is a data frame or named tuple with numeric
+columns `y` and `x`; `:default` keeps the route's current optimizer and restart
+policy.
+
+```julia
+using DRModels
+
+form = bf(@formula(y ~ 1 + x), @formula(sigma ~ 1))
+fit_bfgs = drm(form, Gaussian(); data = dat,
+               control = DRMControl(optimizer = :bfgs))
+fit_lbfgs = drm(form, Gaussian(); data = dat,
+                control = DRMControl(optimizer = :lbfgs))
+
+control_info(fit_bfgs).requested_optimizer  # :bfgs
+control_info(fit_bfgs).actual_optimizer     # optimizer used by the fit
+```
+
+Optimizer selection is limited to the primary ML routes described in the
+[convergence guide](docs/src/model-guides/convergence.md), which also documents
+restarts, unsupported routes, and inference refits.
+
 ## Repository layout (mirrors GLLVModels.jl)
 
 ```

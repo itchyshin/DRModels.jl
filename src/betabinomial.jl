@@ -83,6 +83,10 @@ struct BetaBinomial end
         (isempty(re2) && mv2 === nothing && st2 === nothing) ||
             error("BetaBinomial(): only the mean formula may carry a random effect")
     end
+    _require_finite_inputs(; response=(_table_column(data, f.response), string(f.response)),
+                           response_allow_missing=false)
+    _require_finite_inputs(; response=(_table_column(data, f.response2), string(f.response2)),
+                           response_allow_missing=false)
     s = Float64.(getproperty(data, f.response))          # successes
     fl = Float64.(getproperty(data, f.response2))        # failures
     (all(si -> si ≥ 0 && isinteger(si), s) && all(fi -> fi ≥ 0 && isinteger(fi), fl)) ||
@@ -119,6 +123,7 @@ struct BetaBinomial end
         if rk === :intercept                              # (1 | g) → 1-D GHQ
             return _withformula(_fit_betabinomial_ranef(fam, s, ntr, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol), f)
         elseif rk === :corr                               # (1 + x | g) → 2-D GHQ
+            _require_finite_data_column(data, var)
             xs = Float64.(getproperty(data, var))
             return _withformula(_fit_betabinomial_corr_ranef(fam, s, ntr, Xμ, Xσ, xs, gidx, G, nmμ, nmσ, grp, g_tol), f)
         else
@@ -218,7 +223,7 @@ function _fit_betabinomial(fam::BetaBinomial, s, ntr, Xμ, Xσ, nmμ, nmσ, g_to
     θ0 = zeros(pμ + pσ)
     θ0[1] = log(p̄ / (1 - p̄))                                # logit p̄
     θ0[pμ+1] = -0.5 * log(10.0)                             # moderate precision init (φ ≈ 10)
-    res = _ctl_optimize((x0, opts) -> Optim.optimize(nll, x0, Optim.LBFGS(), opts; autodiff = :forward),
+    res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
                        θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
     θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ)]

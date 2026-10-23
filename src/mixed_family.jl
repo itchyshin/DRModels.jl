@@ -259,11 +259,25 @@ function fit_mixed_family(; y1, X1, fam1, y2, X2, fam2,
         trials1 = ones(length(y1)), trials2 = ones(length(y2)),
         Xsigma1 = ones(length(y1), 1), Xsigma2 = ones(length(y2), 1),
         K::Int = 32, g_tol::Float64 = 1e-6,
-        confint::Bool = true, level::Float64 = 0.95,
-        profile::Bool = false, B::Int = 0, rng = Random.default_rng(),
+        confint::Bool = true, level::Real = 0.95,
+        profile::Bool = false, B::Real = 0, rng = Random.default_rng(),
         aghq::Bool = false, aghq_K::Int = _RANEF1D_AGHQ_K)
+    level = _validate_ci_level(level; what="fit_mixed_family")
+    # `B = 0` means "do not bootstrap". Any other value is a replicate count.
+    # `false == 0`, so a Bool has to be rejected before that comparison.
+    B = !(B isa Bool) && B == 0 ? 0 : _validate_bootstrap_B(B)
     n = length(y1)
     n == length(y2) || throw(ArgumentError("y1 and y2 must have equal length"))
+    _require_finite_inputs(; response=(y1, "y1"), response_allow_missing=false,
+                           context="fit_mixed_family")
+    _require_finite_inputs(; response=(y2, "y2"), response_allow_missing=false,
+                           context="fit_mixed_family")
+    _require_finite_inputs(; predictors=(X1, "X1"), context="fit_mixed_family")
+    _require_finite_inputs(; predictors=(X2, "X2"), context="fit_mixed_family")
+    _require_finite_inputs(; predictors=(trials1, "trials1"), context="fit_mixed_family")
+    _require_finite_inputs(; predictors=(trials2, "trials2"), context="fit_mixed_family")
+    _require_finite_inputs(; predictors=(Xsigma1, "Xsigma1"), context="fit_mixed_family")
+    _require_finite_inputs(; predictors=(Xsigma2, "Xsigma2"), context="fit_mixed_family")
     p1 = size(X1, 2); p2 = size(X2, 2)
     # s1/s2: does each axis carry a `log σ` dispersion SUB-MODEL? `log σ` for all of
     # Gaussian/Beta/Gamma/NB2 (#315/#316); none for Poisson/Binomial. The scale is a
@@ -539,10 +553,11 @@ This route is **experimental** — see the `cross_family_latent` capability row.
 """
 @drm_entry function drm(f::BivariateDrmFormula, fams::Tuple; data, K::Int = 32,
              g_tol::Real = 1e-6, confint::Bool = true, level::Real = 0.95,
-             profile::Bool = false, B::Int = 0, rng = Random.default_rng())
+             profile::Bool = false, B::Real = 0, rng = Random.default_rng())
     length(fams) == 2 || throw(ArgumentError(
         "drm: the cross-family route takes exactly two families, e.g. " *
         "`(Gaussian(), Poisson())` (got $(length(fams)))"))
+    data = _drop_missing_predictor_rows(f, data)   # #1089: R's na.omit, with a count
     fam1, fam2 = fams
     rhs = Dict(f.forms)
 

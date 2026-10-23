@@ -222,12 +222,20 @@ _clamp_active(θ, ks; lo::Real = -8.0, hi::Real = 3.0, tol::Real = 1e-3) =
 # [-8, 3] by the objective. `disp` are log-dispersion coordinates, whose REAL bound is the
 # family's: NB2 / Gamma / Beta `aux_from` clamp `-2 log sigma` to [-8, 8], i.e. log sigma to
 # [-4, 4] (`_dispersion_clamp`), narrower than the [-8, 8] box `_crossed_mean_laplace_nuisance_fg`
-# applies first. A coordinate at its clamp makes the objective flat there while the gradient
-# is not, so the gradient-difference Hessian is undefined and the route falls back to the
+# applies first. `eta` is an optional per-observation log-sigma linear predictor
+# (`ησ = Xσ·βσ` on the hetero phylo-mean route): the clamp lives on those fitted
+# values, not on the βσ coordinates, so a slope can be interior while some
+# observations sit on the family's bound. A coordinate (or observation) at its
+# clamp makes the objective flat there while the gradient is not, so the
+# gradient-difference Hessian is undefined and the route falls back to the
 # value-based (known-noisy) `_finite_hessian`.
-function _se_hessian_path(θ̂; sd = (), disp = (), disp_bound::Real = 4.0)
-    (_clamp_active(θ̂, sd; lo = -8.0, hi = 3.0) ||
-     _clamp_active(θ̂, disp; lo = -disp_bound, hi = disp_bound)) ? :value : :gradient
+function _se_hessian_path(θ̂; sd = (), disp = (), disp_bound::Real = 4.0, sd_lo::Real = -8.0,
+                          eta = nothing)
+    eta_hit = eta !== nothing &&
+        _clamp_active(eta, eachindex(eta); lo = -disp_bound, hi = disp_bound)
+    (_clamp_active(θ̂, sd; lo = sd_lo, hi = 3.0) ||
+     _clamp_active(θ̂, disp; lo = -disp_bound, hi = disp_bound) ||
+     eta_hit) ? :value : :gradient
 end
 
 # Real bound of log sigma for each family routed through `_crossed_mean_laplace_nuisance_fg`,
@@ -239,9 +247,15 @@ _dispersion_clamp(::Val{:gamma_fixed}) = 4.0
 _dispersion_clamp(::Val{:beta_fixed}) = 4.0
 _dispersion_clamp(::Val{:betabinomial_fixed}) = 4.0
 _dispersion_clamp(::Val{:tweedie_fixed}) = 8.0
+# Hetero phylo-mean kinds: same family bounds as the `_fixed` twins. `aux_from`
+# still clamps `-2 ησ` to [-8, 8], i.e. ησ to [-4, 4]. Listed explicitly so a
+# new hetero kind errors here rather than inheriting a catch-all (J3a review).
+_dispersion_clamp(::Val{:nb2_hetero}) = 4.0
+_dispersion_clamp(::Val{:gamma_hetero}) = 4.0
+_dispersion_clamp(::Val{:beta_hetero}) = 4.0
 _dispersion_clamp(k::Val) = throw(ArgumentError(
     "_dispersion_clamp: no log-dispersion bound registered for family kind $(typeof(k).parameters[1]); " *
-    "add one before routing it through _crossed_mean_laplace_nuisance_fg"))
+    "add one before routing it through a Laplace SE path"))
 
 # The fallback must not be silent: the reported SEs of such a fit come from the noisy stencil.
 _warn_value_hessian(context::AbstractString) =
@@ -250,12 +264,18 @@ _warn_value_hessian(context::AbstractString) =
           "finite-difference Hessian. Its standard errors are known to be noisy (inner-solve " *
           "noise / h^2); treat them with caution.")
 
+# A log-SD this small (sd < ~1e-3 of the residual scale) is a variance collapse:
+# the marginal is flat in that coordinate, the gradient-difference Hessian is
+# singular, and the value-based path plus the singular-vcov guard owns that case.
+const _SE_LOGSD_LO = -7.0
+
+# Single `_se_grad`: the #1099 / J3e tolerance ladder. #1099 lands first; this
+# PR keeps that one definition and does not add a second copy. Callers pass
+# `fgtight(θ, tol)`.
 # Adapt a route's tight, cold-started `fg(θ, tol) -> (val, grad, b, ok)` into the
 # in-place `grad!(Gout, θ)` that `_finite_hessian_from_gradient` differences.
-# A failed inner solve becomes NaN, which the helper turns into an all-NaN vcov.
-# Single definition of the tolerance ladder: callers pass `tol` into `fgtight`.
-# #1079 currently has a one-shot `_se_grad(fgtight(θ))` twin; whichever of
-# #1079 / #1099 lands second deletes the duplicate and keeps this ladder.
+# Walks `_SE_MODE_TOLS`. A failed inner solve at every rung becomes NaN, which
+# the helper turns into an all-NaN vcov.
 _se_grad(fgtight) = function (Gout, θ)
     for tol in _SE_MODE_TOLS
         _, g, _, ok = fgtight(θ, tol)
@@ -324,8 +344,14 @@ function _crossed_nuisance_box_refit(nll, grad!, θ0, pμ::Int, disp_bound::Real
     lo[pμ+1] = -disp_bound; hi[pμ+1] = disp_bound
     lo[(pμ + 2):np] .= -8.0; hi[(pμ + 2):np] .= 3.0
     θs = clamp.(θ0, lo .+ 0.1, hi .- 0.1)          # Fminbox needs an interior start
+    # A failed inner solve reports a NaN gradient (#1093) so a fit is never called converged
+    # on it. Fminbox's Hager-Zhang line search asserts a finite slope and would throw, losing
+    # the whole re-fit, so inside this search only a non-finite gradient is zeroed (the value
+    # there is the 1e18 sentinel, so no step is taken towards it). The caller still reads
+    # convergence from the unwrapped `grad!` at the adopted point.
+    grad_finite!(Gout, θ) = (grad!(Gout, θ); all(isfinite, Gout) || fill!(Gout, 0.0); Gout)
     return try
-        od = Optim.OnceDifferentiable(nll, grad!, θs)
+        od = Optim.OnceDifferentiable(nll, grad_finite!, θs)
         Optim.optimize(od, lo, hi, θs, Optim.Fminbox(Optim.LBFGS()),
                        Optim.Options(g_tol = g_tol, outer_iterations = 20, iterations = 250))
     catch err
@@ -617,7 +643,7 @@ function _poisson_phylo_laplace_fg(y, Xμ, leaf_node, Q, logdetQ, lf, θ;
     b, ch, _, ok = _poisson_phylo_mode(y, η0, leaf_node, Q, logσ;
                                        b0 = b0, tol = newton_tol, maxiter = newton_maxiter)
     if !ok
-        return grad ? (1e18, zeros(length(θ)), b, false) : (1e18, b, false)
+        return grad ? (1e18, fill(NaN, length(θ)), b, false) : (1e18, b, false)
     end
 
     data = zero(eltype(θ))
@@ -757,7 +783,7 @@ function _fit_poisson_general_laplace(fam::Poisson, y, Xμ, Q, leaf_node, nmμ, 
                     y, Xμ, leaf_node, Q, logdetQ, lf, θ; grad = true, b0 = zeros(q)
                 )
             end
-            ok || return 1e18, zeros(length(θ))
+            ok || return 1e18, fill(NaN, length(θ))
             last_b .= b
             return val, g
         else
@@ -805,7 +831,16 @@ function _fit_poisson_general_laplace(fam::Poisson, y, Xμ, Q, leaf_node, nmμ, 
     grad!(gfinal, θ̂)
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
     V = if se
-        Hθ = _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        Hθ = if _se_hessian_path(θ̂; sd = (pμ + 1):(pμ + 1), sd_lo = _SE_LOGSD_LO) === :value
+            _warn_value_hessian("sparse-Laplace Poisson (general covariance)")
+            _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        else
+            _finite_hessian_from_gradient(
+                _se_grad((θ, tol) -> _poisson_phylo_laplace_fg(
+                    y, Xμ, leaf_node, Q, logdetQ, lf, θ; grad = true, b0 = zeros(q),
+                    newton_tol = tol, newton_maxiter = _SE_MODE_MAXITER)),
+                θ̂; context = "sparse-Laplace Poisson (general covariance)")
+        end
         _vcov_from_fd_hessian(Hθ; context = "sparse-Laplace Poisson (general covariance)")
     else
         fill(NaN, length(θ̂), length(θ̂))
@@ -885,16 +920,28 @@ function _phylo_mean_mode(kind, aux, η0, leaf_node, Q, logσ; b0 = nothing,
             f0 = joint(b)
             α = 1.0
             accepted = false
+            # Rounding slack (#1093): near the mode the true decrease is below
+            # the floating-point resolution of a joint worth hundreds of nats,
+            # so a strict `<=` rejects every step and the search reports failure
+            # at a point that is already the mode to ~1e-9.
+            slack = 8 * eps(Float64) * (1 + abs(f0))
             while α >= 1e-4
                 trial = b .- α .* step
-                if joint(trial) <= f0
+                if joint(trial) <= f0 + slack
                     b = trial
                     accepted = true
                     break
                 end
                 α *= 0.5
             end
-            accepted || return b, ch, iters, false
+            if !accepted
+                # `ch` succeeded, so the Hessian is positive definite and the
+                # Newton step is a descent direction. Once that step is tiny we
+                # are inside the quadratic basin and the objective cannot resolve
+                # it: take it in full rather than fail closed.
+                sn <= 1e-6 * (1 + norm(b)) || return b, ch, iters, false
+                b = b .- step
+            end
         end
     end
     # Cap exhausted without the step meeting `tol` (#1024): `b` is not the mode
@@ -919,7 +966,7 @@ function _phylo_mean_laplace_nuisance_fg(kind, aux_from, n::Int, Xμ, leaf_node,
     b, ch, _, ok = _phylo_mean_mode(kind, aux, η0, leaf_node, Q, logσ; b0 = b0,
                                     tol = newton_tol, maxiter = newton_maxiter)
     if !ok
-        return grad ? (1e18, zeros(length(θ)), b, false) : (1e18, b, false)
+        return grad ? (1e18, fill(NaN, length(θ)), b, false) : (1e18, b, false)
     end
 
     q = size(Q, 1)
@@ -1032,7 +1079,7 @@ function _fit_general_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, Q,
                     grad = true, b0 = zeros(q)
                 )
             end
-            ok || return 1e18, zeros(length(θ))
+            ok || return 1e18, fill(NaN, length(θ))
             last_b .= b
             return val, g
         else
@@ -1084,7 +1131,18 @@ function _fit_general_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, Q,
     grad!(gfinal, θ̂)
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
     V = if se
-        Hθ = _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        # log-dispersion: the fg clamps it to [-8, 8] but `aux_from` to the family's [-4, 4]
+        Hθ = if _se_hessian_path(θ̂; disp = (pμ + 1,), sd = (pμ + 2):(pμ + 2),
+                                 disp_bound = _dispersion_clamp(kind), sd_lo = _SE_LOGSD_LO) === :value
+            _warn_value_hessian("sparse-Laplace GLMM (general-mean nuisance)")
+            _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        else
+            _finite_hessian_from_gradient(
+                _se_grad((θ, tol) -> _phylo_mean_laplace_nuisance_fg(
+                    kind, aux_from, n, Xμ, leaf_node, Q, logdetQ, θ; grad = true, b0 = zeros(q),
+                    newton_tol = tol, newton_maxiter = _SE_MODE_MAXITER)),
+                θ̂; context = "sparse-Laplace GLMM (general-mean nuisance)")
+        end
         _vcov_from_fd_hessian(Hθ; context = "sparse-Laplace GLMM (general-mean nuisance)")
     else
         fill(NaN, length(θ̂), length(θ̂))
@@ -1132,7 +1190,7 @@ function _phylo_mean_laplace_hetero_fg(kind, aux_from, n::Int, Xμ, Xσ, leaf_no
     b, ch, _, ok = _phylo_mean_mode(kind, aux, η0, leaf_node, Q, logσ; b0 = b0,
                                     tol = newton_tol, maxiter = newton_maxiter)
     if !ok
-        return grad ? (1e18, zeros(length(θ)), b, false) : (1e18, b, false)
+        return grad ? (1e18, fill(NaN, length(θ)), b, false) : (1e18, b, false)
     end
 
     q = size(Q, 1)
@@ -1225,7 +1283,7 @@ function _fit_phylo_mean_laplace_hetero(fam, kind, aux_from, n::Int, Xμ, Xσ,
                     grad = true, b0 = zeros(q)
                 )
             end
-            ok || return 1e18, zeros(length(θ))
+            ok || return 1e18, fill(NaN, length(θ))
             last_b .= b
             return val, g
         else
@@ -1277,7 +1335,22 @@ function _fit_phylo_mean_laplace_hetero(fam, kind, aux_from, n::Int, Xμ, Xσ,
     grad!(gfinal, θ̂)
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
     V = if se
-        Hθ = _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        # log-SD collapse *or* a per-observation ησ = Xσ·βσ sitting at the
+        # family's dispersion clamp (fg :1047, then aux_from to ±`_dispersion_clamp`).
+        # Checking βσ coordinates themselves would miss a slope that is interior
+        # while some observations are already flat.
+        Hθ = if _se_hessian_path(θ̂; sd = (pμ + pσ + 1):(pμ + pσ + 1), sd_lo = _SE_LOGSD_LO,
+                                 eta = Xσ * θ̂[pμ+1:pμ+pσ],
+                                 disp_bound = _dispersion_clamp(kind)) === :value
+            _warn_value_hessian("sparse-Laplace GLMM (phylo-mean, covariate dispersion)")
+            _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        else
+            _finite_hessian_from_gradient(
+                _se_grad((θ, tol) -> _phylo_mean_laplace_hetero_fg(
+                    kind, aux_from, n, Xμ, Xσ, leaf_node, Q, logdetQ, θ; grad = true, b0 = zeros(q),
+                    newton_tol = tol, newton_maxiter = _SE_MODE_MAXITER)),
+                θ̂; context = "sparse-Laplace GLMM (phylo-mean, covariate dispersion)")
+        end
         _vcov_from_fd_hessian(Hθ; context = "sparse-Laplace GLMM (phylo-mean, covariate dispersion)")
     else
         fill(NaN, length(θ̂), length(θ̂))
@@ -1305,7 +1378,7 @@ function _phylo_mean_laplace_fg(kind, aux, n::Int, Xμ, leaf_node, Q, logdetQ, �
     b, ch, _, ok = _phylo_mean_mode(kind, aux, η0, leaf_node, Q, logσ; b0 = b0,
                                     tol = newton_tol, maxiter = newton_maxiter)
     if !ok
-        return grad ? (1e18, zeros(length(θ)), b, false) : (1e18, b, false)
+        return grad ? (1e18, fill(NaN, length(θ)), b, false) : (1e18, b, false)
     end
 
     q = size(Q, 1)
@@ -1379,7 +1452,7 @@ function _fit_phylo_mean_laplace(fam, kind, aux, n::Int, Xμ, labels, tree, nmμ
                     grad = true, b0 = zeros(q)
                 )
             end
-            ok || return 1e18, zeros(length(θ))
+            ok || return 1e18, fill(NaN, length(θ))
             last_b .= b
             return val, g
         else
@@ -1430,7 +1503,16 @@ function _fit_phylo_mean_laplace(fam, kind, aux, n::Int, Xμ, labels, tree, nmμ
     grad!(gfinal, θ̂)
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
     V = if se
-        Hθ = _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        Hθ = if _se_hessian_path(θ̂; sd = (pμ + 1):(pμ + 1), sd_lo = _SE_LOGSD_LO) === :value
+            _warn_value_hessian("sparse-Laplace GLMM (phylo-mean)")
+            _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        else
+            _finite_hessian_from_gradient(
+                _se_grad((θ, tol) -> _phylo_mean_laplace_fg(
+                    kind, aux, n, Xμ, leaf_node, Q, logdetQ, θ; grad = true, b0 = zeros(q),
+                    newton_tol = tol, newton_maxiter = _SE_MODE_MAXITER)),
+                θ̂; context = "sparse-Laplace GLMM (phylo-mean)")
+        end
         _vcov_from_fd_hessian(Hθ; context = "sparse-Laplace GLMM (phylo-mean)")
     else
         fill(NaN, length(θ̂), length(θ̂))
@@ -1918,7 +2000,7 @@ function _poisson_crossed_laplace_fg(y, Xμ, gidx, G, hidx, Hh, lf, θ;
     b, ch, _, ok = _poisson_crossed_mode(y, η0, gidx, G, hidx, Hh, logσ;
                                          b0 = b0, tol = newton_tol, maxiter = newton_maxiter)
     if !ok
-        return grad ? (1e18, zeros(length(θ)), b, false) : (1e18, b, false)
+        return grad ? (1e18, fill(NaN, length(θ)), b, false) : (1e18, b, false)
     end
     data = zero(eltype(θ))
     invg = exp(-2 * logσ[1])
@@ -1989,7 +2071,7 @@ function _fit_poisson_crossed_intercepts_laplace(fam::Poisson, y, Xμ, gidx, G, 
                     y, Xμ, gidx, G, hidx, Hh, lf, θ; grad = true, b0 = zeros(G + Hh)
                 )
             end
-            ok || return 1e18, zeros(length(θ))
+            ok || return 1e18, fill(NaN, length(θ))
             last_b .= b
             return val, g
         else
@@ -2037,7 +2119,16 @@ function _fit_poisson_crossed_intercepts_laplace(fam::Poisson, y, Xμ, gidx, G, 
     nllhat = nll(θ̂)
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
     V = if se
-        Hθ = _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        Hθ = if _se_hessian_path(θ̂; sd = (pμ + 1):(pμ + 2), sd_lo = _SE_LOGSD_LO) === :value
+            _warn_value_hessian("sparse-Laplace Poisson (crossed intercepts)")
+            _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        else
+            _finite_hessian_from_gradient(
+                _se_grad((θ, tol) -> _poisson_crossed_laplace_fg(
+                    y, Xμ, gidx, G, hidx, Hh, lf, θ; grad = true, b0 = zeros(G + Hh),
+                    newton_tol = tol, newton_maxiter = _SE_MODE_MAXITER)),
+                θ̂; context = "sparse-Laplace Poisson (crossed intercepts)")
+        end
         _vcov_from_fd_hessian(Hθ; context = "sparse-Laplace Poisson (crossed intercepts)")
     else
         fill(NaN, length(θ̂), length(θ̂))
@@ -2095,17 +2186,24 @@ function _fit_poisson_crossed_laplace(fam::Poisson, y, Xμ, comps, nmμ, g_tol; 
 
     last_b = zeros(size(Z, 2))
     last_iters = Ref(0)
-    function eval_laplace(θ; grad::Bool = false)
+    function eval_laplace(θ; grad::Bool = false, tight::Bool = false, mode_tol::Real = _SE_MODE_TOL)
         βμ = θ[1:pμ]
         logσ = clamp.(θ[pμ+1:pμ+K], -8.0, 3.0)
         η0 = Xμ * βμ
-        b, ch, iters, ok = _poisson_laplace_mode(y, η0, Z, compid, logσ; b0 = last_b)
-        if !ok
-            b, ch, iters, ok = _poisson_laplace_mode(y, η0, Z, compid, logσ; b0 = zeros(size(Z, 2)))
+        if tight
+            # SE build (#1073): cold start + tightened inner solve; touches no warm state.
+            b, ch, iters, ok = _poisson_laplace_mode(y, η0, Z, compid, logσ;
+                b0 = zeros(size(Z, 2)), tol = mode_tol, maxiter = _SE_MODE_MAXITER)
+            ok || return grad ? (1e18, fill(NaN, length(θ))) : 1e18
+        else
+            b, ch, iters, ok = _poisson_laplace_mode(y, η0, Z, compid, logσ; b0 = last_b)
+            if !ok
+                b, ch, iters, ok = _poisson_laplace_mode(y, η0, Z, compid, logσ; b0 = zeros(size(Z, 2)))
+            end
+            last_iters[] = iters
+            ok || return grad ? (1e18, fill(NaN, length(θ))) : 1e18
+            last_b .= b
         end
-        last_iters[] = iters
-        ok || return grad ? (1e18, zeros(length(θ))) : 1e18
-        last_b .= b
         η = clamp.(η0 .+ Z * b, -30.0, 30.0)
         μ = exp.(η)
         data = zero(eltype(θ))
@@ -2209,7 +2307,17 @@ function _fit_poisson_crossed_laplace(fam::Poisson, y, Xμ, comps, nmμ, g_tol; 
     end
     θ̂ = Optim.minimizer(res)
     V = if se
-        H = _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        H = if _se_hessian_path(θ̂; sd = (pμ + 1):(pμ + K), sd_lo = _SE_LOGSD_LO) === :value
+            _warn_value_hessian("sparse-Laplace Poisson (crossed)")
+            _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        else
+            _finite_hessian_from_gradient(
+                _se_grad((θ, tol) -> begin
+                    val, g = eval_laplace(θ; grad = true, tight = true, mode_tol = tol)
+                    (val, g, nothing, all(isfinite, g) && isfinite(val) && val < 1e17)
+                end),
+                θ̂; context = "sparse-Laplace Poisson (crossed)")
+        end
         _vcov_from_fd_hessian(H; context = "sparse-Laplace Poisson (crossed)")
     else
         fill(NaN, length(θ̂), length(θ̂))
@@ -3036,16 +3144,28 @@ function _crossed_mean_mode(kind, aux, η0, gidx, G, hidx, Hh, logσ; b0 = nothi
             f0 = joint(b)
             α = 1.0
             accepted = false
+            # Rounding slack (#1093): near the mode the true decrease is below
+            # the floating-point resolution of a joint worth hundreds of nats,
+            # so a strict `<=` rejects every step and the search reports failure
+            # at a point that is already the mode to ~1e-9.
+            slack = 8 * eps(Float64) * (1 + abs(f0))
             while α >= 1e-4
                 trial = b .- α .* step
-                if joint(trial) <= f0
+                if joint(trial) <= f0 + slack
                     b = trial
                     accepted = true
                     break
                 end
                 α *= 0.5
             end
-            accepted || return b, ch, iters, false
+            if !accepted
+                # `ch` succeeded, so the Hessian is positive definite and the
+                # Newton step is a descent direction. Once that step is tiny we
+                # are inside the quadratic basin and the objective cannot resolve
+                # it: take it in full rather than fail closed.
+                sn <= 1e-6 * (1 + norm(b)) || return b, ch, iters, false
+                b = b .- step
+            end
         end
     end
     # Cap exhausted without the step meeting `tol` (#1024): `b` is not the mode
@@ -3102,7 +3222,7 @@ function _fit_crossed_mean_laplace(fam, kind, aux, n::Int, Xμ, gidx, G, hidx, H
             if !ok
                 b, ch, _, ok = _crossed_mean_mode(kind, aux, η0, gidx, G, hidx, Hh, logσ; b0 = zeros(G + Hh))
             end
-            ok || return grad ? (1e18, zeros(length(θ))) : 1e18
+            ok || return grad ? (1e18, fill(NaN, length(θ))) : 1e18
             last_b .= b
         end
 
@@ -3241,7 +3361,7 @@ function _crossed_mean_laplace_nuisance_fg(kind, aux_from, n::Int, Xμ, gidx, G,
     b, ch, _, ok = _crossed_mean_mode(kind, aux, η0, gidx, G, hidx, Hh, logσ; b0 = b0,
                                       tol = mode_tol, maxiter = mode_maxiter)
     if !ok
-        return grad ? (1e18, zeros(length(θ)), b, false) : (1e18, b, false)
+        return grad ? (1e18, fill(NaN, length(θ)), b, false) : (1e18, b, false)
     end
 
     invg = exp(-2 * logσ[1])
@@ -3328,7 +3448,7 @@ function _fit_crossed_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, gi
                     grad = true, b0 = zeros(G + Hh)
                 )
             end
-            ok || return 1e18, zeros(length(θ))
+            ok || return 1e18, fill(NaN, length(θ))
             last_b .= b
             return val, g
         else
