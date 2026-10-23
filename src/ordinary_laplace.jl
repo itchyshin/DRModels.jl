@@ -138,7 +138,7 @@ function _ordinary_laplace_optimize(fg, θ0, n::Int, q::Int, g_tol; se::Bool,
         ok = out[end]
         ok || (out = fg(θ, zeros(q), grad); ok = out[end])
         if !ok
-            return grad ? (1e18, zeros(length(θ))) : 1e18
+            return grad ? (1e18, fill(NaN, length(θ))) : 1e18
         end
         last_b .= out[end-1]
         return grad ? (out[1], out[2]) : out[1]

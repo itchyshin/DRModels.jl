@@ -215,19 +215,20 @@ end
 # #995 / #996 / #981: the σ_b-marginal PIT is exact for an ordinary `(1 | g)`.
 # For a structured effect it is calibrated only when (i) `fitted(fit)` is the
 # population-level mean and (ii) every unit's random-effect variance is σ_b².
-# Neither is guaranteed: the Gaussian sparse / EM phylo routes store
-# BLUP-conditional fitted means (the random effect would be counted twice), and
-# on the raw branch-length scale a tip's variance is σ_b²·C_ii (σ_b²·h on an
-# ultrametric tree of height h). Say so instead of returning residuals that look
-# calibrated. A correct structured reference is an owner decision (see #995).
+# Gaussian sparse / EM `phylo(1 | g)` fits (`LocOnlyRanef`) are handled exactly
+# in `_ranef_marginal_mix` (fixed-effect centre, per-tip σ_b² C_ii) and never
+# reach this warning. Every other structured route still may violate (i) or
+# (ii) — a raw-branch-length tree gives tip variance σ_b²·C_ii (σ_b²·h on an
+# ultrametric tree of height h) — so say so instead of returning residuals that
+# look calibrated.
 function _warn_structured_pit()
     @warn "residuals(type = :quantile): this fit's random intercept is a structured " *
           "(phylo / relmat / animal / spatial) effect. The σ_b-marginal reference used " *
           "here assumes a population-level fitted mean and a random-effect variance of " *
           "σ_b² for every unit (tree height 1, or a unit-diagonal relatedness / spatial " *
-          "matrix). Gaussian sparse / EM phylo fits store BLUP-conditional fitted means " *
-          "and raw-branch-length trees give unit variances σ_b²·C_ii, so these residuals " *
-          "can be mis-calibrated (DRModels.jl #995, #996)." maxlog = 1
+          "matrix). Fits that store BLUP-conditional fitted means and raw-branch-length " *
+          "trees (unit variances σ_b²·C_ii) can give mis-calibrated residuals " *
+          "(DRModels.jl #995, #996)." maxlog = 1
     return nothing
 end
 
@@ -248,6 +249,24 @@ function _ranef_marginal_mix(fit::DrmFit, fam, μ)
     end
     linkpair = _ranef_link(fam)
     linkpair === nothing && return nothing
+    # #995 / #996: a Gaussian sparse / EM `phylo(1 | g)` fit stores the CONDITIONAL
+    # mean in `fit.means` (BLUPs included), so centre on the fixed-effect mean
+    # `Xβ̂` it also carries, and give tip i its prior variance σ_b² C_ii (raw
+    # branch-length scale). The marginal N(x_i'β̂, σ_e² + σ_b² C_ii) is closed
+    # form, so `_cdf_value` evaluates it directly: the 32-node quadrature is off
+    # by 6e-3 in the residual at σ_b √C_ii / σ_e = 4 and by 0.12 at 10. Nothing
+    # is double-counted, so no warning.
+    if fit.ranef isa LocOnlyRanef && fam isa Gaussian
+        return (axis = :mu_gaussian, eta0 = fit.ranef.mu_fixed,
+                vb = σb^2 .* _loconly_row_tip_variance(fit.ranef))
+    end
+    # #1103: an ordinary Gaussian `(1 | g)` on the mean has the same closed-form
+    # marginal N(μ, σ² + σ_b²), with `μ` the fixed-effect mean, so skip the
+    # quadrature (6e-3 off at σ_b/σ = 4, 0.12 at 10). Structured effects keep
+    # the mixture and its warning.
+    if fam isa Gaussian && !_structured_mean_re(fit)
+        return (axis = :mu_gaussian, eta0 = μ, vb = fill(σb^2, length(μ)))
+    end
     _structured_mean_re(fit) && _warn_structured_pit()
     link, invlink = linkpair
     eta0 = [link(μ[i]) for i in eachindex(μ)]
@@ -262,6 +281,10 @@ function _cdf_value(fam, i, yval; μ, scales, obs, gsis, mix)
     if mix === nothing
         d = _conditional_dist(fam, i; μ = μ, scales = scales, obs = obs, gamma_sigma_is_shape = gsis)
         return Distributions.cdf(d, yval)
+    end
+    if mix.axis === :mu_gaussian   # closed-form Gaussian marginal (#995 / #996)
+        return Distributions.cdf(Distributions.Normal(mix.eta0[i],
+                                     sqrt(scales[:sigma][i]^2 + mix.vb[i])), yval)
     end
     acc = 0.0
     scales_i = _at_index(scales, i); obs_i = _at_index(obs, i)
