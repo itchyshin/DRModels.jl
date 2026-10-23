@@ -190,7 +190,9 @@ end
         scales = copy(fitre.scales)
         scales[:sigma] = fill(0.2, length(fitre.scales[:sigma]))
         pinned = _with_theta(fitre; theta = θb, converged = true, scales = scales)
-        @test is_converged(pinned)
+        # FX3b: a pinned boundary log-SD is `:boundary`, so `is_converged` is false;
+        # the pre-FX3b test is `_converged_nondegenerate`.
+        @test DRModels._converged_nondegenerate(pinned)
         blogs, bounded = Test.collect_test_logs() do
             DRModels._bootstrap_result(
                 fitre, fre, db, 20, 0.95, MersenneTwister(10), false, _ -> pinned;
@@ -263,7 +265,9 @@ end
         y = 0.2 .+ 0.4 .* x .+ e
         data = (; y, x, g)
         fit0 = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), Gaussian(); data)
-        @test is_converged(fit0)
+        # FX3b: the zero group SD is `:boundary` (or `:degenerate` through its SE), so
+        # `is_converged` is false here; the pre-FX3b test is `_converged_nondegenerate`.
+        @test DRModels._converged_nondegenerate(fit0)
         resd = findfirst(p -> first(p) === :resd, fit0.blocks)
         @test resd !== nothing
         @test exp(fit0.theta[last(fit0.blocks[resd])[1]]) < 1e-4
