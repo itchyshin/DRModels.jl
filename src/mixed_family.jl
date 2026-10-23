@@ -286,6 +286,16 @@ function fit_mixed_family(; y1, X1, fam1, y2, X2, fam2,
     B = !(B isa Bool) && B == 0 ? 0 : _validate_bootstrap_B(B)
     n = length(y1)
     n == length(y2) || throw(ArgumentError("y1 and y2 must have equal length"))
+    _require_finite_inputs(; response=(y1, "y1"), response_allow_missing=false,
+                           context="fit_mixed_family")
+    _require_finite_inputs(; response=(y2, "y2"), response_allow_missing=false,
+                           context="fit_mixed_family")
+    _require_finite_inputs(; predictors=(X1, "X1"), context="fit_mixed_family")
+    _require_finite_inputs(; predictors=(X2, "X2"), context="fit_mixed_family")
+    _require_finite_inputs(; predictors=(trials1, "trials1"), context="fit_mixed_family")
+    _require_finite_inputs(; predictors=(trials2, "trials2"), context="fit_mixed_family")
+    _require_finite_inputs(; predictors=(Xsigma1, "Xsigma1"), context="fit_mixed_family")
+    _require_finite_inputs(; predictors=(Xsigma2, "Xsigma2"), context="fit_mixed_family")
     p1 = size(X1, 2); p2 = size(X2, 2)
     # s1/s2: does each axis carry a `log σ` dispersion SUB-MODEL? `log σ` for all of
     # Gaussian/Beta/Gamma/NB2 (#315/#316); none for Poisson/Binomial. The scale is a
@@ -563,12 +573,13 @@ Each axis takes its own `mu` and (where the family has one) `sigma` formula.
 Returns the `fit_mixed_family` result; see [`mf_summary`](@ref), [`mf_coef`](@ref).
 This route is **experimental** — see the `cross_family_latent` capability row.
 """
-function drm(f::BivariateDrmFormula, fams::Tuple; data, K::Int = 32,
+@drm_entry function drm(f::BivariateDrmFormula, fams::Tuple; data, K::Int = 32,
              g_tol::Real = 1e-6, confint::Bool = true, level::Real = 0.95,
              profile::Bool = false, B::Real = 0, rng = Random.default_rng())
     length(fams) == 2 || throw(ArgumentError(
         "drm: the cross-family route takes exactly two families, e.g. " *
         "`(Gaussian(), Poisson())` (got $(length(fams)))"))
+    data = _drop_missing_predictor_rows(f, data)   # #1089: R's na.omit, with a count
     fam1, fam2 = fams
     rhs = Dict(f.forms)
 
