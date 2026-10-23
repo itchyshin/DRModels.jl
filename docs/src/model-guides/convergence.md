@@ -54,6 +54,18 @@ A near-singular covariance with a large `cond` usually means two columns of a
 design matrix are nearly collinear (e.g. an intercept and a centred covariate
 that is almost constant). Re-centre or drop one; refit.
 
+An *exactly* aliased column is a different case: `sigma ~ 1 + x + z` with
+`z = 2x + 1`, or a duplicated column, leaves the likelihood flat along the alias
+direction, so the coefficient is not identified at all. `drm` (Gaussian
+location-scale route) checks the rank of each parameter's fixed-effect design
+once, warns with `fixed_effect_rank_deficiency` naming the parameter block and the
+aliased coefficients, and reports `is_converged(fit) == false`. The aliased
+coefficients' standard errors are `NaN`, and `check_drm(fit).ok` is `false` with the
+blocks listed in `check_drm(fit).fixed_effect_rank_deficiency`. The log-likelihood
+and the identified coefficients are unchanged (the covariance is still the
+pseudo-inverse); drop or recode the aliased column and refit. This matches
+drmTMB's `convergence_status() == "degenerate"` for the same designs.
+
 ### Stopped early
 
 If `converged` is `false` but `max_abs_grad` is still sizable, the optimiser ran
