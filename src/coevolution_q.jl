@@ -189,6 +189,7 @@ function make_coevo_problem_from_covariance(K::AbstractMatrix,
                                             Y::AbstractMatrix,
                                             X::AbstractMatrix;
                                             group = 1:size(K, 1))
+    _require_finite_array(K, "K")
     G = LinearAlgebra.checksquare(K)
     C = Matrix{Float64}(K)
     isposdef(Symmetric(C)) || error("known structured covariance must be positive definite")

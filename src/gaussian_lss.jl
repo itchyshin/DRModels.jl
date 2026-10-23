@@ -224,7 +224,13 @@ function _fit_ranef_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, nmμ, 
     θ̂ = Optim.minimizer(res)
     # 0/1 columns of the sigma and sd() submodels (log links); not βμ.
     uf = vcat(_unitfree_columns(Xσ, pμ), _unitfree_columns(Zg, pμ + pσ))
-    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); unitfree = uf)
+    H = ForwardDiff.hessian(nll, θ̂)
+    V = _vcov_from_hessian(H; unitfree = uf)
+    # Absolute `g_tol` is not unit-free: a scaled predictor stalls just above 1e-8.
+    # `Optim.converged` is the x/f/g OR; `g_converged` (absolute 1e-8) is not
+    # part of this flag. Stopping on the iteration cap is not a minimum.
+    converged = Optim.converged(res) && !Optim.iteration_limit_reached(res) &&
+        _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
 
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :sd => (pμ+pσ+1):(pμ+pσ+psd)]
     names = [:mu => nmμ, :sigma => nmσ, :sd => nmsd]
@@ -244,7 +250,7 @@ function _fit_ranef_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, nmμ, 
     end
     re = Dict(Symbol(grp) => blup)
     fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n,
-                                     drm_optim_converged(res), means, obs, scales), nll_ml), re)
+                                     converged, means, obs, scales), nll_ml), re)
     if reml
         return _withreml(fit, -nll_reml(θ̂), -nll_ml(θ̂))
     end
@@ -424,7 +430,7 @@ function _fit_structured_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, K
     n ≤ 5000 || throw(ArgumentError("drm: this forced dense `sd_phylo` route assembles a $(n)×$(n) " *
         "marginal covariance and is limited to 5000 rows. Use `sparse = true` or " *
         "`algorithm = :sparse_lbfgs` for the existing O(p) whole-tree engine."))
-    Ksym = Symmetric(Matrix{Float64}(K))
+    Ksym = Symmetric(_finite_user_matrix(K, "K"))
 
     function nll_ml(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]; α = θ[pμ+pσ+1:pμ+pσ+psd]
@@ -494,7 +500,12 @@ function _fit_structured_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, K
     θ̂ = Optim.minimizer(res)
     # 0/1 columns of the sigma and sd_phylo submodels (log links); not βμ.
     uf = vcat(_unitfree_columns(Xσ, pμ), _unitfree_columns(Zg, pμ + pσ))
-    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); unitfree = uf)
+    H = ForwardDiff.hessian(nll, θ̂)
+    V = _vcov_from_hessian(H; unitfree = uf)
+    # Same flag as the scalar route: x/f/g OR, not the iteration cap, and the
+    # Newton step in SE units. `g_converged` stays out (absolute 1e-8).
+    converged = Optim.converged(res) && !Optim.iteration_limit_reached(res) &&
+        _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
 
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), block => (pμ+pσ+1):(pμ+pσ+psd)]
     names = [:mu => nmμ, :sigma => nmσ, block => nmsd]
@@ -524,7 +535,7 @@ function _fit_structured_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, K
     end
     re = Dict(Symbol(grp) => blup)
     fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n,
-                                     drm_optim_converged(res), means, obs, scales), nll_ml), re)
+                                     converged, means, obs, scales), nll_ml), re)
     if reml
         return _withreml(fit, -nll_reml(θ̂), -nll_ml(θ̂))
     end
@@ -656,7 +667,12 @@ function _fit_gaussian_lss_multi(fam::Gaussian, y, Xμ, Xσ, comps::Vector{_LssC
     # 0/1 columns of the sigma submodel and of each component's sd() submodel.
     uf = vcat(_unitfree_columns(Xσ, pμ),
               (_unitfree_columns(c.Zg, offs[ci]) for (ci, c) in enumerate(comps))...)
-    Vcov = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); unitfree = uf)
+    H = ForwardDiff.hessian(nll, θ̂)
+    Vcov = _vcov_from_hessian(H; unitfree = uf)
+    # Same flag as the scalar route: x/f/g OR, not the iteration cap, and the
+    # Newton step in SE units. `g_converged` stays out (absolute 1e-8).
+    converged = Optim.converged(res) && !Optim.iteration_limit_reached(res) &&
+        _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
 
     iid = [ci for (ci, c) in enumerate(comps) if c.K === nothing]
     phy = [ci for (ci, c) in enumerate(comps) if c.K !== nothing]
@@ -682,7 +698,7 @@ function _fit_gaussian_lss_multi(fam::Gaussian, y, Xμ, Xσ, comps::Vector{_LssC
     obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
     fit = _withnll(DrmFit(fam, blocks, names, θ̂, Vcov, -nll(θ̂), n,
-                          drm_optim_converged(res), means, obs, scales), nll_ml)
+                          converged, means, obs, scales), nll_ml)
     if reml
         return _withreml(fit, -nll_reml(θ̂), -nll_ml(θ̂))
     end
