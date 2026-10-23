@@ -110,7 +110,8 @@ function fit_phylo_interaction(y::AbstractVector, X::AbstractMatrix,
     θ̂ = Optim.minimizer(res)
     V = try
         _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂);
-                           context = "phylo interaction")
+                           context = "phylo interaction",
+                           unitfree = (pμ+1):(pμ+2))     # log σ_e, log σ
     catch
         fill(NaN, pμ + 2, pμ + 2)
     end

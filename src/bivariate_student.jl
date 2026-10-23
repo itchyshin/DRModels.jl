@@ -223,7 +223,11 @@ function _fit_bivariate_residual(f::BivariateDrmFormula, fam::Student, data, rhs
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol);
                          autodiff = :forward)
     θ̂ = Optim.minimizer(res)
-    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); context = "bivariate Student-t")
+    # #936: 0/1 columns of the log-sigma1/2, log(nu - 2) and atanh-rho12 formulas.
+    uf = vcat(_unitfree_columns(Xs1, offs[3]), _unitfree_columns(Xs2, offs[4]),
+              _unitfree_columns(Xν, offs[5]), _unitfree_columns(Xr, offs[6]))
+    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); context = "bivariate Student-t",
+                           unitfree = uf)
 
     blocks = [:mu1 => rng(1), :mu2 => rng(2), :sigma1 => rng(3), :sigma2 => rng(4),
               :nu => rng(5), :rho12 => rng(6)]

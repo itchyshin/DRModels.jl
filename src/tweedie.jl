@@ -211,7 +211,10 @@ function _fit_tweedie(fam::Tweedie, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol)
     θ0[i1+1] = 0.0                     # p = 1.5
     res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
                        θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
-    θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
+    θ̂ = Optim.minimizer(res)
+    # #936: 0/1 mean (dimensionless link) and sigma (log σ) and nu (logit-(1,2) power) 0/1 columns.
+    uf = vcat(_unitfree_columns(Xμ), _unitfree_columns(Xσ, pμ), _unitfree_columns(Xν, i1))
+    V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); unitfree = uf), θ̂)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):i1, :nu => (i1+1):i2]
     names = [:mu => nmμ, :sigma => nmσ, :nu => nmν]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))   # response-scale μ̂
@@ -271,7 +274,10 @@ function _fit_tweedie_ranef(fam::Tweedie, y, Xμ, Xσ, Xν, gidx, G, nmμ, nmσ,
     θ0[i1+1] = 0.0                     # p = 1.5
     θ0[i2+1] = log(0.5)                # σ_b
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    θ̂ = Optim.minimizer(res)
+    # #936: 0/1 mean (dimensionless link) and sigma and nu 0/1 columns, and log σ_b.
+    uf = vcat(_unitfree_columns(Xμ), _unitfree_columns(Xσ, pμ), _unitfree_columns(Xν, i1), i2 + 1)
+    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); unitfree = uf)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):i1, :nu => (i1+1):i2, :resd => (i2+1):(i2+1)]
     names = [:mu => nmμ, :sigma => nmσ, :nu => nmν, :resd => [String(grp)]]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
@@ -317,7 +323,10 @@ function _fit_tweedie_slope_ranef(fam::Tweedie, y, Xμ, Xσ, Xν, xs, gidx, G, n
     θ0[i1+1] = 0.0                     # p = 1.5
     θ0[i2+1] = log(0.5)                # σ_b
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    θ̂ = Optim.minimizer(res)
+    # #936: 0/1 mean (dimensionless link) and sigma and nu 0/1 columns, and log σ_b (a log SD: rescaling x only shifts it).
+    uf = vcat(_unitfree_columns(Xμ), _unitfree_columns(Xσ, pμ), _unitfree_columns(Xν, i1), i2 + 1)
+    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); unitfree = uf)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):i1, :nu => (i1+1):i2, :resd => (i2+1):(i2+1)]
     names = [:mu => nmμ, :sigma => nmσ, :nu => nmν, :resd => [String(grp)]]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))

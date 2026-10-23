@@ -196,7 +196,8 @@ function _fit_slope_axis_re(kind, y, Xμ, Xψ, xs, gidx, G, Q;
                 H[:, j] .= (gp .- gm) ./ (2h)
             end
             # #956: guarded constructor; an indefinite FD Hessian is not inverted.
-            _vcov_from_fd_hessian(H; context = "slope-axis random effect")
+            _vcov_from_fd_hessian(H; context = "slope-axis random effect",
+                                  unitfree = vcat(_unitfree_columns(Xψ, pμ), pμ + pψ + 1))
         catch err
             err isa InterruptException && rethrow(err)
             fill(NaN, npr, npr)

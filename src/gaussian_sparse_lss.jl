@@ -198,6 +198,8 @@ function _fit_phylo_gaussian_lss_sparse(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G,
     θ0[iα] .= Zg \ fill(log(s0 / sqrt(2) + eps()), G)
 
     local res, θ̂, Vcov
+    # Unit-free coordinates for the guard: 0/1 columns of the sigma and sd_phylo submodels.
+    uf = vcat(_unitfree_columns(Xσ, pμ), _unitfree_columns(Zg, pμ + pσ))
 
     if !reml
         function fg!(F, Gout, θ)
@@ -215,7 +217,8 @@ function _fit_phylo_gaussian_lss_sparse(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G,
         grad_at(θ) = eval_core(unpack(θ)...; want_grad = true, use_ref = false)[2]
         Hmat, hess_ok = _fd_hessian_from_grad(grad_at, θ̂)
         # A failed probe (empty gradient even after the retry) reports the NaN vcov, not a crash.
-        Vcov = hess_ok ? _vcov_from_hessian(Hmat; context = "sparse LSS phylo") : fill(NaN, np, np)
+        Vcov = hess_ok ? _vcov_from_hessian(Hmat; context = "sparse LSS phylo", unitfree = uf) :
+            fill(NaN, np, np)
     else
         res = Optim.optimize(nll_reml_only, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :finite)
         θ̂ = Optim.minimizer(res)
@@ -223,7 +226,8 @@ function _fit_phylo_gaussian_lss_sparse(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G,
         # Finite difference Hessian for REML (value-based). A probe that is non-finite or hits
         # the 1e18 failure sentinel reports the NaN vcov, not a garbage finite Hessian.
         Hmat, hess_ok = _fd_hessian_from_values(nll_reml_only, θ̂)
-        Vcov = hess_ok ? _vcov_from_hessian(Hmat; context = "sparse LSS phylo REML") : fill(NaN, np, np)
+        Vcov = hess_ok ? _vcov_from_hessian(Hmat; context = "sparse LSS phylo REML", unitfree = uf) :
+            fill(NaN, np, np)
     end
 
     # Random effects (BLUPs)
@@ -924,8 +928,12 @@ function _fit_gaussian_lss_sparse_multi(fam::Gaussian, y, Xμ, Xσ, comps::Vecto
     # `reml`) for the variance-covariance matrix — see the docstring for why
     # this differs from #551's REML branch.
     Hmat, hess_ok = _fd_hessian_from_grad(grad_at, θ̂)
+    # 0/1 columns of the sigma submodel and of each component's sd() submodel.
+    uf = vcat(_unitfree_columns(Xσ, pμ),
+              (_unitfree_columns(c.Zg, offα[ci]) for (ci, c) in enumerate(comps))...)
     Vcov = hess_ok ?
-        _vcov_from_hessian(Hmat; context = reml ? "sparse LSS multi REML" : "sparse LSS multi") :
+        _vcov_from_hessian(Hmat; context = reml ? "sparse LSS multi REML" : "sparse LSS multi",
+                           unitfree = uf) :
         fill(NaN, np, np)
 
     # Random effects (BLUPs): joint â at θ̂, then each component's own

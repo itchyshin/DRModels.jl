@@ -1407,7 +1407,8 @@ function _fit_fixed_gaussian(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, g_tol)
     # control says `se = false` and the stored covariance is left as NaN.
     H = ForwardDiff.hessian(nll, θ̂)
     Vh, hess_finite = _vcov_from_hessian_checked(H, _all_finite(y, Xμ, Xσ);
-                                                context = "Gaussian location-scale")
+                                                context = "Gaussian location-scale",
+                                                unitfree = _unitfree_columns(Xσ, pμ))
     V = _ctl_se(θ̂) do
         Vh
     end
@@ -1711,7 +1712,8 @@ function _fit_fixed_gaussian_reml(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, g_tol)
     # a rank-deficient design now warns and pseudo-inverts instead of throwing.
     Vμ = _vcov_from_gram(Xμ' * (w .* Xμ); context = "Gaussian REML (mean WLS)")
     Hσ = ForwardDiff.hessian(nll_reml, βσ̂)
-    Vσ = _vcov_from_hessian(Hσ; context = "Gaussian REML (scale)")
+    Vσ = _vcov_from_hessian(Hσ; context = "Gaussian REML (scale)",
+                            unitfree = _unitfree_columns(Xσ))
     V = zeros(pμ + pσ, pμ + pσ)
     V[1:pμ, 1:pμ] .= Vμ
     V[(pμ+1):(pμ+pσ), (pμ+1):(pμ+pσ)] .= Vσ

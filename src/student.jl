@@ -138,8 +138,11 @@ function _fit_student_ranef(fam::Student, y, Xμ, Xσ, Xν, gidx, G, nmμ, nmσ,
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res)
     # #961: a non-finite Hessian on finite data is a degenerate fit, not a crash.
+    # #936: sigma / nu 0/1 columns and log sigma_b.
+    uf = vcat(_unitfree_columns(Xσ, pμ), _unitfree_columns(Xν, pμ + pσ), pμ + pσ + pν + 1)
     V, hess_finite = _vcov_from_hessian_checked(ForwardDiff.hessian(nll, θ̂),
-                                                _all_finite(y, Xμ, Xσ, Xν); context = "Student")
+                                                _all_finite(y, Xμ, Xσ, Xν); context = "Student",
+                                                unitfree = uf)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :nu => (pμ+pσ+1):(pμ+pσ+pν), :resd => (pμ+pσ+pν+1):(pμ+pσ+pν+1)]
     names = [:mu => nmμ, :sigma => nmσ, :nu => nmν, :resd => [String(grp)]]
     means = Dict(:mu => Xμ * θ̂[1:pμ]); obs = Dict(:mu => Vector{Float64}(y))   # population μ (b=0)
@@ -180,8 +183,12 @@ function _fit_student_corr_ranef(fam::Student, y, Xμ, Xσ, Xν, xs, gidx, G, nm
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res)
     # #961: a non-finite Hessian on finite data is a degenerate fit, not a crash.
+    # #936: sigma / nu 0/1 columns and log L11, log L22 (the raw L21 is not unit-free).
+    uf = vcat(_unitfree_columns(Xσ, pμ), _unitfree_columns(Xν, pμ + pσ),
+              pμ + pσ + pν + 1, pμ + pσ + pν + 2)
     V, hess_finite = _vcov_from_hessian_checked(ForwardDiff.hessian(nll, θ̂),
-                                                _all_finite(y, Xμ, Xσ, Xν); context = "Student")
+                                                _all_finite(y, Xμ, Xσ, Xν); context = "Student",
+                                                unitfree = uf)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :nu => (pμ+pσ+1):(pμ+pσ+pν), :recov => (pμ+pσ+pν+1):(pμ+pσ+pν+3)]
     names = [:mu => nmμ, :sigma => nmσ, :nu => nmν, :recov => ["$(grp):L11", "$(grp):L22", "$(grp):L21"]]
     means = Dict(:mu => Xμ * θ̂[1:pμ]); obs = Dict(:mu => Vector{Float64}(y))
@@ -215,10 +222,13 @@ function _fit_student(fam::Student, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol)
                        θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
     θ̂ = Optim.minimizer(res)
     # #961: a non-finite Hessian on finite data is a degenerate fit, not a crash.
+    # #936: sigma / nu 0/1 columns (log sigma, log(nu - 2)).
+    uf = vcat(_unitfree_columns(Xσ, pμ), _unitfree_columns(Xν, pμ + pσ))
     hess_finite = true
     V = _ctl_se(θ̂) do
         Vh, hf = _vcov_from_hessian_checked(ForwardDiff.hessian(nll, θ̂),
-                                            _all_finite(y, Xμ, Xσ, Xν); context = "Student")
+                                            _all_finite(y, Xμ, Xσ, Xν); context = "Student",
+                                            unitfree = uf)
         hess_finite = hf
         Vh
     end
@@ -384,8 +394,11 @@ function _fit_student_crossed_laplace(fam::Student, y, Xμ, Xσ, Xν, comps, nm�
     gfinal = ForwardDiff.gradient(nll, θ̂)
     converged = nllhat < 1e17 && all(isfinite, gfinal) &&
                 (Optim.converged(res) || _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol))
+    # #936: sigma / nu 0/1 columns and log sigma_g, log sigma_h.
+    uf = vcat(_unitfree_columns(Xσ, pμ), _unitfree_columns(Xν, pμ + pσ), k + 1, k + 2)
     V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂);
-                           context = "sparse-Laplace Student (crossed intercepts)")
+                           context = "sparse-Laplace Student (crossed intercepts)",
+                           unitfree = uf)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :nu => (pμ+pσ+1):k, :resd => (k+1):(k+2)]
     names = [:mu => nmμ, :sigma => nmσ, :nu => nmν, :resd => [lg, lh]]
     means = Dict(:mu => Xμ * θ̂[1:pμ]); obs = Dict(:mu => yv)      # population μ (b = 0)

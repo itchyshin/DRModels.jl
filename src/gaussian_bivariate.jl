@@ -360,7 +360,11 @@ function _fit_bivariate_residual(f::BivariateDrmFormula, fam::Gaussian, data, rh
 
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res)
-    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); context = "bivariate Gaussian")
+    # #936: log-sigma1/log-sigma2 and atanh-rho12 0/1 columns keep natural-scale curvature.
+    uf = vcat(_unitfree_columns(Xs1, offs[3]), _unitfree_columns(Xs2, offs[4]),
+              _unitfree_columns(Xr, offs[5]))
+    V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂); context = "bivariate Gaussian",
+                           unitfree = uf)
 
     blocks = [:mu1 => rng(1), :mu2 => rng(2), :sigma1 => rng(3), :sigma2 => rng(4), :rho12 => rng(5)]
     names = [:mu1 => nm1, :mu2 => nm2, :sigma1 => nms1, :sigma2 => nms2, :rho12 => nmr]
@@ -559,8 +563,12 @@ function _fit_bivariate_residual_reml(f::BivariateDrmFormula, fam::Gaussian, dat
     # #956: both inverses go through the guarded constructor, so a singular or
     # indefinite φ-Hessian (a boundary correlation or variance) warns and falls
     # back like every ML route instead of raising a bare SingularException.
+    # #936: φ = [sigma1; sigma2; rho12] coefficients, so offsets are within φ.
+    uf = vcat(_unitfree_columns(Xs1), _unitfree_columns(Xs2, ps1),
+              _unitfree_columns(Xr, ps1 + ps2))
     Vφ = _vcov_from_hessian(ForwardDiff.hessian(nll_reml, φ̂);
-                            context = "bivariate Gaussian REML (variance parameters)")
+                            context = "bivariate Gaussian REML (variance parameters)",
+                            unitfree = uf)
     G = ForwardDiff.jacobian(φ -> _profile(φ)[1], φ̂)      # d bhat / d phi
     Vβ = _vcov_from_gram(Matrix(Ĥ); context = "bivariate Gaussian REML (mean GLS)") .+
          G * Vφ * transpose(G)
@@ -885,9 +893,13 @@ function _fit_bivariate_q2_structured(f::BivariateDrmFormula, fam::Gaussian, dat
     # is wrong. The route-naming `context` below reaches the user through the
     # singularity warning; correcting the helper's prefix needs a shared file that
     # is out of scope for this change.
+    # #936: log sigma1, log sigma2, atanh rho12 (scalars, read straight from θ by
+    # `nll`) and the log-Cholesky diagonals log L11, log L22; the raw L21 is not.
+    uf = [2k + 1, 2k + 2, 2k + 3, 2k + 4, 2k + 6]
     V = _vcov_from_fd_hessian(_finite_hessian(nll, θ̂; h = _fd_hessian_step(2 * length(y1)));
                            context = "bivariate Gaussian q=2 structured ($kind) " *
-                                     "finite-difference Hessian")
+                                     "finite-difference Hessian",
+                           unitfree = uf)
     means = Dict(:mu1 => X1 * fit_q2.β[:, 1], :mu2 => X2 * fit_q2.β[:, 2])
     obs = Dict(:mu1 => Vector{Float64}(y1), :mu2 => Vector{Float64}(y2))
     scales = Dict(
@@ -1123,7 +1135,10 @@ function _fit_bivariate_q4_structured(f::BivariateDrmFormula, fam::Gaussian, dat
         copyto!(g, gg)
         return g
     end
-    V = q4_vcov ? _q4_fd_vcov(prob, Q_cond, θ̂; n_newton = q4_n_newton) :
+    # #936: sigma/rho12 0/1 columns and the log-Cholesky diagonals (lc 1, 5, 8, 10).
+    uf = vcat(_unitfree_columns(Xs1, offs[3]), _unitfree_columns(Xs2, offs[4]),
+              _unitfree_columns(Xr, offs[5]), offs[6] .+ [1, 5, 8, 10])
+    V = q4_vcov ? _q4_fd_vcov(prob, Q_cond, θ̂; n_newton = q4_n_newton, unitfree = uf) :
         fill(NaN, length(θ̂), length(θ̂))
 
     β̂ = r.β
@@ -1306,7 +1321,11 @@ function _fit_bivariate_q4_phylo(f::BivariateDrmFormula, fam::Gaussian, data, fi
     # at θ̂. Under method = :REML this is θ̂_reml, so V is the ML curvature at the
     # REML point; the restricted-penalty curvature (−0.5·∂²logdet S/∂θ²) is
     # omitted, mirroring the q=2 σ-phylo REML route (gaussian_locscale_phylo.jl).
-    V = q4_vcov ? _q4_fd_vcov(prob, Q_cond, θ̂; n_newton = q4_n_newton, u0 = u_hat) :
+    # #936: sigma/rho12 0/1 columns and the log-Cholesky diagonals (lc 1, 5, 8, 10).
+    uf = vcat(_unitfree_columns(Xs1, offs[3]), _unitfree_columns(Xs2, offs[4]),
+              _unitfree_columns(Xr, offs[5]), offs[6] .+ [1, 5, 8, 10])
+    V = q4_vcov ? _q4_fd_vcov(prob, Q_cond, θ̂; n_newton = q4_n_newton, u0 = u_hat,
+                              unitfree = uf) :
         fill(NaN, length(θ̂), length(θ̂))
 
     β̂ = r.β
@@ -1376,7 +1395,7 @@ end
 _q2_phylocov_names() = ["Sigma_a:L11", "Sigma_a:L21", "Sigma_a:L22"]
 
 function _q4_fd_vcov(prob::AugProblem, Q_cond::SparseMatrixCSC, θ::Vector{Float64};
-                     h::Real = 1e-4, n_newton::Int = 40, u0 = nothing)
+                     h::Real = 1e-4, n_newton::Int = 40, u0 = nothing, unitfree = ())
     # S5 change (c): warm u0 into every perturbed evaluation's inner Newton
     # (u0 = nothing, the pre-S5 default, is unaffected -- still goes
     # straight to the cold robust path).
@@ -1388,13 +1407,13 @@ function _q4_fd_vcov(prob::AugProblem, Q_cond::SparseMatrixCSC, θ::Vector{Float
             return Float64[]      # a failed probe: reported as `ok = false` below
         end
     end
-    return _q4_fd_vcov_from_grad(grad_at, θ; h = h)
+    return _q4_fd_vcov_from_grad(grad_at, θ; h = h, unitfree = unitfree)
 end
 
 # Guarded FD Hessian -> vcov. A failed / empty / non-finite gradient probe gives the
 # NaN-vcov convention the q=4 fitters already use for `q4_vcov = false`.
-function _q4_fd_vcov_from_grad(grad_at, θ::Vector{Float64}; h::Real = 1e-4)
+function _q4_fd_vcov_from_grad(grad_at, θ::Vector{Float64}; h::Real = 1e-4, unitfree = ())
     H, ok = _fd_hessian_from_grad(grad_at, θ; hstep = h, retry_step = h, scaled = false)
     ok || return fill(NaN, length(θ), length(θ))
-    return _vcov_from_hessian(H; context = "q=4 finite-difference Hessian")
+    return _vcov_from_hessian(H; context = "q=4 finite-difference Hessian", unitfree = unitfree)
 end

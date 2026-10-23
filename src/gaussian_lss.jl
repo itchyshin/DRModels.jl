@@ -222,8 +222,10 @@ function _fit_ranef_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, nmμ, 
 
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res)
+    # 0/1 columns of the sigma and sd() submodels (log links); not βμ.
+    uf = vcat(_unitfree_columns(Xσ, pμ), _unitfree_columns(Zg, pμ + pσ))
     H = ForwardDiff.hessian(nll, θ̂)
-    V = _vcov_from_hessian(H)
+    V = _vcov_from_hessian(H; unitfree = uf)
     # Absolute `g_tol` is not unit-free: a scaled predictor stalls just above 1e-8.
     # `Optim.converged` is the x/f/g OR; `g_converged` (absolute 1e-8) is not
     # part of this flag. Stopping on the iteration cap is not a minimum.
@@ -496,8 +498,10 @@ function _fit_structured_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, K
                                        f_abstol = NaN, f_reltol = NaN);
                          autodiff = :forward)
     θ̂ = Optim.minimizer(res)
+    # 0/1 columns of the sigma and sd_phylo submodels (log links); not βμ.
+    uf = vcat(_unitfree_columns(Xσ, pμ), _unitfree_columns(Zg, pμ + pσ))
     H = ForwardDiff.hessian(nll, θ̂)
-    V = _vcov_from_hessian(H)
+    V = _vcov_from_hessian(H; unitfree = uf)
     # Same flag as the scalar route: x/f/g OR, not the iteration cap, and the
     # Newton step in SE units. `g_converged` stays out (absolute 1e-8).
     converged = Optim.converged(res) && !Optim.iteration_limit_reached(res) &&
@@ -660,8 +664,11 @@ function _fit_gaussian_lss_multi(fam::Gaussian, y, Xμ, Xσ, comps::Vector{_LssC
     end
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res)
+    # 0/1 columns of the sigma submodel and of each component's sd() submodel.
+    uf = vcat(_unitfree_columns(Xσ, pμ),
+              (_unitfree_columns(c.Zg, offs[ci]) for (ci, c) in enumerate(comps))...)
     H = ForwardDiff.hessian(nll, θ̂)
-    Vcov = _vcov_from_hessian(H)
+    Vcov = _vcov_from_hessian(H; unitfree = uf)
     # Same flag as the scalar route: x/f/g OR, not the iteration cap, and the
     # Newton step in SE units. `g_converged` stays out (absolute 1e-8).
     converged = Optim.converged(res) && !Optim.iteration_limit_reached(res) &&

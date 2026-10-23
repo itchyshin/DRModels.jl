@@ -3585,7 +3585,8 @@ function _fit_structured_gaussian_sparse_lbfgs(
             return val
         end
         Hv = _finite_hessian(fv, vhat; h = _fd_hessian_step(n))
-        Vvv = _vcov_from_fd_hessian(Hv; context = "sparse phylo-mean variance block")
+        Vvv = _vcov_from_fd_hessian(Hv; context = "sparse phylo-mean variance block",
+                                    unitfree = 1:2)   # [log σ_e, log σ_phylo]
         V[(pμ + 1):(pμ + 2), (pμ + 1):(pμ + 2)] .= Vvv
         # #978: orthogonality holds in EXPECTATION only. The joint observed
         # information has a β–variance cross block, so the Wald covariance of the
