@@ -201,6 +201,7 @@ drm_bridge
 drm_bridge_inference
 drm_bridge_objective_at
 drm_listwise
+bridge_diagnostics
 ```
 
 ## Staged pair association diagnostics

@@ -93,6 +93,15 @@ _logfactorial(k::Integer) = sum(log, 2:k; init = 0.0)   # log k!  (0 for k = 0, 
 # `_extract_offset` (below) intercepts it before the mean design matrix is
 # built, so it never becomes an ordinary estimated covariate. Its coefficient
 # is fixed at 1 (an offset, not a regressor): `η = Xμβ + offset`.
+"""
+    offset(x)
+
+Formula marker for a known offset on the Poisson mean, for example
+`y ~ x + offset(log_exposure)`. The term enters the linear predictor with its
+coefficient fixed at 1 (`η = Xμβ + offset`); it is not estimated. At most one
+`offset(...)` term is allowed, and only on the Poisson mean. Outside a
+formula, `offset(x)` returns `x` unchanged.
+"""
 offset(x) = x
 
 # Split an `offset(...)` marker off a (already `_split_ranef`-stripped) rhs,
