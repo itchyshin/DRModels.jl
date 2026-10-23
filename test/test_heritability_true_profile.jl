@@ -11,7 +11,7 @@
 #       true profile is genuinely re-maximising;
 #   (2) the resulting :profile CI is a valid [0, 1] interval bracketing the estimate.
 using DRModels, Test, Random, Statistics
-const Optim = DRModels.Optim          # reuse the package's Optim (not a declared test dep)
+using DRModels: Optim                  # reuse the package's Optim (not a declared test dep); `using`, not `const`, so it cannot collide with other files' `using DRModels: Optim` in the shared Main
 
 @testset "heritability true profile re-optimises nuisance (#313)" begin
     Random.seed!(42)
