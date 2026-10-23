@@ -44,6 +44,10 @@ Negative-binomial (NB2) family for overdispersed counts: log link on the mean
 `coef(fit, :sigma)` is `log σ`). The NB2 size is `θ = 1/σ² = exp(-2·coef(:sigma))`,
 matching the Gamma/Beta convention and `drmTMB` (`size = 1/σ²`). Var = `μ + μ²/θ`;
 as `θ → ∞` it tends to [`Poisson`](@ref). Mirrors `drmTMB`'s `nbinom2` family.
+NB2 cannot represent dispersion below the Poisson limit (variance below the
+mean): on underdispersed counts `θ → ∞` and the fit sits at the Poisson
+log-likelihood. For underdispersed counts use glmmTMB's `compois` or `genpois`
+(as drmTMB advises, drmTMB#1466); DRModels.jl has no such family yet (#976).
 Crossed random intercepts on the mean, such as `(1 | g) + (1 | h)`, use the
 sparse-Laplace engine when `sigma ~ 1`. A phylogenetic random intercept on the
 mean, `phylo(1 | species)`, also uses the sparse-Laplace engine; here a covariate
