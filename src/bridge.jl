@@ -188,6 +188,8 @@ shape consumed by the row-contract tests.
 function drm_bridge_q2_phylo(; Y, X, species, tree, options = Dict{String,Any}())
     y = Matrix{Float64}(Y)
     x = Matrix{Float64}(X)
+    _require_finite_array(y, "Y"; context="drm_bridge_q2_phylo")
+    _require_finite_array(x, "X"; context="drm_bridge_q2_phylo")
     sp = Int.(vec(species))
     size(y, 2) == 2 ||
         throw(ArgumentError("drm_bridge_q2_phylo: `Y` must have exactly two columns"))
@@ -232,6 +234,9 @@ function drm_bridge_q2_known_precision(; Y, X, group, Q,
     x = Matrix{Float64}(X)
     g = Int.(vec(group))
     qmat = Matrix{Float64}(Q)
+    _require_finite_array(y, "Y"; context="drm_bridge_q2_known_precision")
+    _require_finite_array(x, "X"; context="drm_bridge_q2_known_precision")
+    _require_finite_array(qmat, "Q"; context="drm_bridge_q2_known_precision")
     st, source = _bridge_q2_known_precision_provider(structured_type,
                                                      precision_source)
     size(y, 2) == 2 ||
@@ -403,7 +408,7 @@ function drm_bridge_inference(; formula, family::AbstractString, data,
         return _bridge_inference_flatten(
             row;
             method = "bootstrap",
-            status = result.used >= 2 ? "bootstrap" : "bootstrap_unavailable",
+            status = _bridge_bootstrap_status(result, row.param, row.coef),
             attempted = result.attempted,
             used = result.used,
             failed = result.failed,
@@ -3115,12 +3120,15 @@ function _bridge_bivariate_inference(fit, dat, method::AbstractString;
     if method == "bootstrap"
         rng = seed === nothing ? Random.default_rng() :
               Random.MersenneTwister(Int(seed))
+        # #962 / #459: the same rule as the univariate bridge. Unconverged
+        # refits must not enter the percentile. `failures = :warn` still drops
+        # them; the result status says `bootstrap_incomplete` when any were dropped.
         result = bootstrap_result(fit; data = dat, B = Int(B), level = level,
-                                  rng = rng, failures = :warn, check_converged = false)
+                                  rng = rng, failures = :warn, check_converged = true)
         return _bridge_inference_flatten_multi(
             result.summary;
             method = "bootstrap",
-            status = result.used >= 2 ? "bootstrap" : "bootstrap_unavailable",
+            status = _bridge_bootstrap_status(result),
             attempted = result.attempted, used = result.used, failed = result.failed,
             elapsed = result.elapsed,
             message = "$(result.used)/$(result.attempted) successful refits")

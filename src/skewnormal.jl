@@ -46,6 +46,12 @@ predict_parameters(fit, dat)[:nu]   # same slant (identity; not exp(η))
 struct SkewNormal end
 
 @drm_entry function drm(f::DrmFormula, fam::SkewNormal; data, g_tol::Real = 1e-8)
+    # #1123: drop missing/NaN-response rows (warned), like every other univariate fitter.
+    missing_fit = _fit_observed_response_rows(f, data) do data_observed
+        drm(f, fam; data = data_observed, g_tol = g_tol)
+    end
+    missing_fit !== nothing && return missing_fit
+
     _lss_only_gaussian_guard(f, fam)   # #544: refuse, never silently drop, sd() parts
     rhs = Dict(f.forms)
     _, re, mv, st = _split_ranef(rhs[:mu])
