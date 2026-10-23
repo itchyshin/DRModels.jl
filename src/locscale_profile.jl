@@ -495,6 +495,7 @@ function _ls_profile_ci_result(kind, y, Xμ, Xψ, gidx, G, Q, θ̂; idx::Int, le
                                Zη = _ls_canonical_Zeta(length(y)),
                                Zψ = _ls_canonical_Zpsi(length(y)),
                                whitened::Bool = false)
+    level = _validate_ci_level(level; what="profile")
     nmin = if nll_min !== nothing
         nll_min
     elseif whitened

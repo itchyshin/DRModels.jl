@@ -1153,6 +1153,7 @@ end
 # singular-Wald failure. Returns (sd_lo, sd_hi) on the SD scale. Generic over the
 # block (separate / asymmetric) via the passed closures.
 function _glsp_profile_ci(nll, grad, θ̂, idx; level = 0.95)
+    level = _validate_ci_level(level; what="profile_ci")
     nll_min = nll(θ̂)
     thr  = 0.5 * Distributions.quantile(Distributions.Chisq(1), level)   # χ²₁/2
     free = setdiff(1:length(θ̂), idx)

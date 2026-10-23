@@ -53,7 +53,7 @@ native-vs-native agreement, not R-vs-Julia parity in the ordinary sense.
 | `phylo_gamma_beta_binomial` | Gamma/Beta/Binomial with phylo RE | ✅ | ✅ | 🔨 | ✅ native-vs-native coef/SE/logLik parity, one fixture |
 | `general_covariance_structured` | `relmat()` / relatedness K, Gaussian/Poisson/NB2/Gamma | ✅ | ✅ | 🔨 | ✅ SE parity to 1e-7–1e-6, one seed/family |
 | `cross_family_latent` | Shared-latent mixed-family (e.g. Gaussian × Poisson) | ⬜ **no native comparator** | ✅ | 🔨 (via drmTMB's own xfam bridge, not DRM.jl's `bridge.jl`) | ⚡ simulation recovery only — a parity claim is structurally impossible here |
-| `engine_control_surface` | `drm_control(optimizer=list(g_tol=…, algorithm=…))` | n/a | ✅ | 🔨 | ⬜ translation/route tests only, no performance/interval claim |
+| `engine_control_surface` | `drm_control(optimizer=list(g_tol=…, algorithm=…))` | `DRMControl(optimizer=:default/:lbfgs/:bfgs)` on qualified primary ML routes | ✅ | 🔨 | 🟡 Julia route-specific selector tested; R control-surface translation, profile/bootstrap forwarding and other routes remain open. No performance/interval claim. |
 | `plain_binomial_nonphylo` | Fixed-effect binomial trials, no random effects | ✅ | ✅ | 🔨 | ✅ logLik/coef `2.48e-13`, SE `1.27e-9` abs |
 | `location_scale_scale` | Location-scale-scale, `sd(group)`/`sd(group, phylogenetic)` | ✅ | ✅ | 🔨 | ✅ exact agreement across the Mizuno M2–M6q ladder (Δlogℓik = 0.000000) |
 
