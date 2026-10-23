@@ -189,6 +189,7 @@ function make_coevo_problem_from_covariance(K::AbstractMatrix,
                                             Y::AbstractMatrix,
                                             X::AbstractMatrix;
                                             group = 1:size(K, 1))
+    _require_finite_array(K, "K")
     G = LinearAlgebra.checksquare(K)
     # #1020: `Symmetric(C)` reads one triangle, so check symmetry and finiteness first.
     C = _require_symmetric_finite_covariance(K, "the known structured covariance (`K` / `A`)")

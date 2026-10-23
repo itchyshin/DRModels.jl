@@ -145,7 +145,7 @@ struct Binomial end
 #     MethodError: no method matching drm(::DrmFormula, ::Binomial; K=…)
 # — a dispatch failure instead of the explanation this method already carries a
 # few lines below. Taking the arguments lets that refusal actually be reached.
-function drm(f::DrmFormula, fam::Binomial; data, tree = nothing, K = nothing,
+@drm_entry function drm(f::DrmFormula, fam::Binomial; data, tree = nothing, K = nothing,
              A = nothing, coords = nothing, g_tol::Real = 1e-8,
              se::Bool = true, marginal::Symbol = :LA, method = nothing)
     _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, coords = coords)   # #1027 #1022 #1010
@@ -207,6 +207,7 @@ function drm(f::DrmFormula, fam::Binomial; data, tree = nothing, K = nothing,
             return _withformula(_fit_binomial_ranef(fam, s, ntr, Xμ, gidx, G, nmμ, grp, g_tol), f)
         elseif rk === :corr                                # (1 + x | g) → 2-D GHQ tensor (#753)
             isva && _va_reject(fam, "a correlated random slope `(1 + x | g)`")
+            _require_finite_data_column(data, var)
             xs = Float64.(getproperty(data, var))
             _binomial_check_slope_identifiable(xs, gidx, G, grp)
             return _withformula(_fit_binomial_corr_ranef(fam, s, ntr, Xμ, xs, gidx, G, nmμ, grp, g_tol), f)
@@ -228,6 +229,10 @@ function _binomial_response(f::DrmFormula, data)
             error("Binomial() with a single-column response requires a 0/1 (Bernoulli) vector; use cbind(successes, failures) for trial counts")
         ntr = ones(length(s))
     else                                                  # cbind(successes, failures): n = s + f
+        _require_finite_inputs(; response=(_table_column(data, f.response), string(f.response)),
+                               response_allow_missing=false)
+        _require_finite_inputs(; response=(_table_column(data, f.response2), string(f.response2)),
+                               response_allow_missing=false)
         s = Float64.(getproperty(data, f.response))       # successes
         fl = Float64.(getproperty(data, f.response2))     # failures
         (all(si -> si ≥ 0 && isinteger(si), s) && all(fi -> fi ≥ 0 && isinteger(fi), fl)) ||
@@ -241,18 +246,20 @@ function _fit_binomial(fam::Binomial, s, ntr, Xμ, nmμ, g_tol)
     n = length(s); pμ = size(Xμ, 2)
     sint = round.(Int, s); nint = round.(Int, ntr)
     lc = [_logchoose(nint[i], sint[i]) for i in 1:n]
+    w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
     function nll(θ)
         ημ = Xμ * θ                                       # unclamped: see `_binomial_logit_ll`
         v = zero(eltype(θ))
         @inbounds for i in 1:n
-            v -= _binomial_logit_ll(nint[i], sint[i], ημ[i], lc[i])
+            v -= w[i] * (_binomial_logit_ll(nint[i], sint[i], ημ[i], lc[i]))
         end
         return v
     end
     p̄ = clamp(sum(s) / max(sum(ntr), 1), 1e-3, 1 - 1e-3)   # overall success rate
     θ0 = zeros(pμ); θ0[1] = log(p̄ / (1 - p̄))               # logit p̄
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
+                       θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
+    θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ]; names = [:mu => nmμ]
     means = Dict(:mu => _logistic.(Xμ * θ̂))                # fitted success probability
     V = _separation_guard(Xμ, s, ntr, θ̂, V, means[:mu], nmμ)   # #731: detect + warn, SE → Inf

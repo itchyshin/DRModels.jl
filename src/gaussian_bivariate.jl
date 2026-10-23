@@ -148,13 +148,14 @@ fit = drm(
 )
 ```
 """
-function drm(f::BivariateDrmFormula, fam::Gaussian; data, tree = nothing,
+@drm_entry function drm(f::BivariateDrmFormula, fam::Gaussian; data, tree = nothing,
              K = nothing, A = nothing, coords = nothing,
              spatial_range = nothing,
              g_tol::Real = 1e-8, q4_g_tol::Real = 1e-3,
              q4_iterations::Int = 300, q4_n_newton::Int = 40,
              q4_vcov::Bool = true, method::Symbol = :ML, V = nothing)
     _require_formula_column_lengths(f, data)   # #1022: no ragged columns under @inbounds
+    data = _drop_missing_predictor_rows(f, data)   # #1089: R's na.omit, with a count
     method in (:ML, :REML) ||
         throw(ArgumentError("drm: `method` must be :ML (default) or :REML (got :$method)"))
     rhs = Dict(f.forms)
@@ -556,9 +557,14 @@ function _fit_bivariate_residual_reml(f::BivariateDrmFormula, fam::Gaussian, dat
     β̂, â, b̂, ĉ, logdetŜ, Ĥ = _profile(φ̂)
     θ̂ = vcat(β̂, φ̂)
 
-    Vφ = inv(Symmetric(ForwardDiff.hessian(nll_reml, φ̂)))
+    # #956: both inverses go through the guarded constructor, so a singular or
+    # indefinite φ-Hessian (a boundary correlation or variance) warns and falls
+    # back like every ML route instead of raising a bare SingularException.
+    Vφ = _vcov_from_hessian(ForwardDiff.hessian(nll_reml, φ̂);
+                            context = "bivariate Gaussian REML (variance parameters)")
     G = ForwardDiff.jacobian(φ -> _profile(φ)[1], φ̂)      # d bhat / d phi
-    Vβ = Matrix(inv(Symmetric(Ĥ))) .+ G * Vφ * transpose(G)
+    Vβ = _vcov_from_gram(Matrix(Ĥ); context = "bivariate Gaussian REML (mean GLS)") .+
+         G * Vφ * transpose(G)
     Cβφ = G * Vφ
     V = zeros(pβ + pφ, pβ + pφ)
     V[1:pβ, 1:pβ] .= Vβ
@@ -763,12 +769,12 @@ function _fit_bivariate_q2_structured(f::BivariateDrmFormula, fam::Gaussian, dat
         make_coevo_problem(phy_obj, Y, Matrix{Float64}(X1); species = sp)
     elseif kind === :relmat
         K === nothing && error("relmat(1 | $grp) needs `K = …`")
-        C = Matrix{Float64}(K)
+        C = _finite_user_matrix(K, "K")
         size(C) == (G, G) || error("relmat structured matrix must be $(G)×$(G) (the number of `$grp` levels)")
         make_coevo_problem_from_covariance(C, Y, Matrix{Float64}(X1); group = gidx)
     elseif kind === :animal
         A === nothing && error("animal(1 | $grp) needs `A = …`")
-        C = Matrix{Float64}(A)
+        C = _finite_user_matrix(A, "A")
         size(C) == (G, G) || error("animal relatedness matrix must be $(G)×$(G) (the number of `$grp` levels)")
         make_coevo_problem_from_covariance(C, Y, Matrix{Float64}(X1); group = gidx)
     elseif kind === :spatial
@@ -941,6 +947,7 @@ end
 # kernel each evaluation. Here rho is fixed, so the two are different models.
 function _spatial_covariance_from_coords(grp::Symbol, G::Int, coords, spatial_range)
     coords === nothing && error("spatial(1 | $grp) needs `coords = …`")
+    _require_finite_inputs(; coords=coords)
     G >= 2 || error("spatial(1 | $grp) needs at least 2 distinct sites; got G=$G")
     # A 1-D transect is naturally written as a plain Vector (`coords = [0.0, 1.0, 2.0]`),
     # but `Matrix{Float64}(::Vector)` has no method and raised a bare MethodError. Accept it
@@ -982,14 +989,14 @@ function _q4_structured_precision(kind::Symbol, grp::Symbol, G::Int;
                                   K, A, coords, spatial_range)
     if kind === :relmat
         K === nothing && error("relmat(1 | $grp) needs `K = …`")
-        C = Matrix{Float64}(K)
+        C = _finite_user_matrix(K, "K")
         size(C) == (G, G) || error("relmat structured matrix must be $(G)×$(G) (the number of `$grp` levels)")
         C = _require_symmetric_finite_covariance(C, "`K` for `relmat(1 | $grp)`")   # #1020
         isposdef(Symmetric(C)) || error("relmat K must be positive definite")
         return Matrix(inv(cholesky(Symmetric(C))))
     elseif kind === :animal
         A === nothing && error("animal(1 | $grp) needs `A = …`")
-        C = Matrix{Float64}(A)
+        C = _finite_user_matrix(A, "A")
         size(C) == (G, G) || error("animal relatedness matrix must be $(G)×$(G) (the number of `$grp` levels)")
         C = _require_symmetric_finite_covariance(C, "`A` for `animal(1 | $grp)`")   # #1020
         isposdef(Symmetric(C)) || error("animal A must be positive definite")
@@ -1160,6 +1167,7 @@ function _fit_bivariate_q4_structured(f::BivariateDrmFormula, fam::Gaussian, dat
 end
 
 function _q4_default_spatial_range(coords, G::Int)
+    _require_finite_inputs(; coords=coords)
     Cmat = Matrix{Float64}(coords)
     Ddist = [sqrt(sum(abs2, Cmat[k, :] .- Cmat[l, :])) for k in 1:G, l in 1:G]
     return sum(Ddist) / (G^2 - G)

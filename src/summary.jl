@@ -133,11 +133,17 @@ Whether this fit may be trusted: the optimiser reported convergence **and** the
 optimum is not degenerate. A `false` here means the reported estimates / standard
 errors should not be trusted.
 
-This is deliberately STRICTER than the raw `fit.converged` flag. The Gaussian
-log-likelihood is unbounded as the residual scale goes to zero: with one row per
-group a structured random effect can interpolate the data, so `sigma` collapses and
-the objective runs away to `+Inf`. `Optim.converged` only asks whether the gradient
-test was met, and at such a point it returns `true`.
+This agrees with `fit.converged` on a non-finite log-likelihood, a failed-fit
+sentinel (`≤ -1e15`, including `-1e18` and `-floatmax`), and any non-finite
+coefficient: the `DrmFit` constructor clears `converged` in those cases
+(`_report_converged`), so neither flag is true.
+
+It is still STRICTER than `fit.converged` for a Gaussian residual scale that
+has collapsed. The Gaussian log-likelihood is unbounded as the residual scale
+goes to zero: with one row per group a structured random effect can interpolate
+the data, so `sigma` collapses and the objective runs away to `+Inf`.
+`Optim.converged` only asks whether the gradient test was met, and at such a
+point it returns `true`.
 
 For example, a one-row-per-species phylogenetic fit produced
 `sd_phylo = 22980`, `sigma = 7.5e-15`, `loglik = 6.8e13`, `converged = true` — and
@@ -145,8 +151,7 @@ For example, a one-row-per-species phylogenetic fit produced
 Including these invalid fits among successful refits can distort a percentile
 interval.
 
-Use this accessor to check both convergence and degeneracy. `fit.converged`
-exposes only the raw optimiser flag.
+Use this accessor to check both convergence and degeneracy.
 """
 is_converged(fit::DrmFit) = fit.converged && _nondegenerate_fit(fit)
 
@@ -160,11 +165,20 @@ is_converged(fit::DrmFit) = fit.converged && _nondegenerate_fit(fit)
 # nll >= 1e17 on the nll scale; loglik <= -1e15 is the same bar taken a couple of
 # decades more conservatively on the loglik scale, so no genuine fit is caught
 # (a real loglik of -1e15 would need ~1e14 observations at O(10) nats each).
-_sentinel_loglik(fit::DrmFit) = !isfinite(fit.loglik) || fit.loglik <= -1e15
+_sentinel_loglik(fit::DrmFit) = _loglik_is_sentinel(fit.loglik)
 
 function _nondegenerate_fit(fit::DrmFit)
     _sentinel_loglik(fit) && return false
+    # Same coefficient rule as `_report_converged`, so `is_converged` and
+    # `fit.converged` agree when a coefficient is non-finite.
+    _coefficients_finite(fit.theta) || return false
     fit.family isa Gaussian || return true
+    # A temporal Gaussian puts the response variance in the AR/OU term. A
+    # residual SD near 0 is that split (`sigma_ratio` in `_temporal_boundary`),
+    # which the optimiser can report as converged. It is not the saturated-mean
+    # collapse this bar rejects (#461). Treating it as degeneracy drops every
+    # bootstrap replicate of a boundary temporal fit.
+    _is_temporal_fit(fit) && return true
     haskey(fit.scales, :sigma) || return true
     s = fit.scales[:sigma]
     smax = maximum(abs, s)
@@ -195,9 +209,14 @@ end
     deviance(fit::DrmFit) -> Float64
 
 Deviance of the fitted model, `-2 · loglik(fit)` — drmTMB's `deviance()`.
+`NaN` (with a warning) on a fit stranded on the failed-objective sentinel.
 Extends `StatsAPI.deviance`.
 """
-deviance(fit::DrmFit) = -2 * loglik(fit)
+function deviance(fit::DrmFit)
+    # A fit stranded on the failed-objective sentinel has no deviance (#1093).
+    _sentinel_infocrit_nan(fit, "deviance") && return NaN
+    return -2 * loglik(fit)
+end
 
 """
     dof_residual(fit::DrmFit) -> Int
@@ -213,7 +232,10 @@ function Base.show(io::IO, ::MIME"text/plain", fit::DrmFit)
     println(io, "Distributional regression fit (", fam, ")")
     println(io, "  nobs = ", fit.nobs,
                 "   logLik = ", @sprintf("%.4f", fit.loglik),
-                "   converged = ", fit.converged)
+                "   converged = ", is_converged(fit))
+    # #949: show the trusted accessor; say so when the raw optimiser flag disagrees.
+    (fit.converged && !is_converged(fit)) && println(io, "  (the optimiser stopped normally, " *
+        "but the fit is degenerate -- see `is_converged`)")
     _wald_withheld(fit) && println(io, "  Wald SEs withheld (homogeneous Toeplitz, as drmTMB): `sigma` is the " *
         "TOTAL within-series SD; use profile intervals for mean coefficients.")
 
@@ -318,6 +340,7 @@ row. A boundary / singular direction (non-finite SE) reports `NaN` z / p rather
 than a spurious `z = 0, p = 1`.
 """
 function coeftable(fit::DrmFit; level::Real = 0.95)
+    level = _validate_ci_level(level; what="coeftable")
     se = _display_se(fit)
     z = quantile(Normal(), 1 - (1 - level) / 2)
     est = Float64[]; ses = Float64[]; zs = Float64[]; ps = Float64[]

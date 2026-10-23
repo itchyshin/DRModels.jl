@@ -187,15 +187,25 @@ function _fit_locscale(kind, y, Xμ, Xψ, gidx, G, Q;
     opts = Optim.Options(g_tol = g_tol, iterations = iterations)
     nm() = (warm[] = nothing; Optim.optimize(nll, θ0, Optim.NelderMead(),
                           Optim.Options(iterations = max(iterations, 2000))))
+    # #1005: record which optimiser produced the result and say why a fallback
+    # ran, instead of swallowing the error.
+    optimizer = :newton_trust_region
     res = try
         Optim.optimize(nll, g!, h!, θ0, Optim.NewtonTrustRegion(), opts)
     catch err
         err isa InterruptException && rethrow(err)
+        @debug "locscale: Newton trust-region failed; falling back to L-BFGS" error =
+            sprint(showerror, err)
         warm[] = nothing
         try
+            optimizer = :lbfgs
             Optim.optimize(nll, g!, θ0, Optim.LBFGS(), opts)
         catch err2
             err2 isa InterruptException && rethrow(err2)
+            @warn "locscale: Newton trust-region and L-BFGS both failed; using Nelder-Mead. " *
+                  "Convergence is then certified by an exact-gradient check." newton_error =
+                sprint(showerror, err) lbfgs_error = sprint(showerror, err2)
+            optimizer = :nelder_mead
             nm()
         end
     end
@@ -207,6 +217,7 @@ function _fit_locscale(kind, y, Xμ, Xψ, gidx, G, Q;
     # a PD Λ (Λ = LLᵀ, det>0), so if the result is infeasible, fall back to the
     # conservative derivative-free solve.
     if any(!isfinite, θ̂) || !(nll(θ̂) < 1e17)
+        optimizer = :nelder_mead
         res = nm()
         θ̂ = Optim.minimizer(res)
     end
@@ -268,6 +279,7 @@ function _fit_locscale(kind, y, Xμ, Xψ, gidx, G, Q;
                 end
                 if refined !== nothing
                     res, θ̂ = refined
+                    optimizer = :certified_refinement
                 end
             end
         catch err
@@ -279,6 +291,12 @@ function _fit_locscale(kind, y, Xμ, Xψ, gidx, G, Q;
     end
     Λ̂ = _ls_lc_to_Λ(θ̂[pμ+pψ+1:pμ+pψ+3])
     nll(θ̂)                       # ensure warm[] holds the mode at θ̂ for the SE solve
+    # #1005: `Optim.converged` of a Nelder-Mead run is a simplex-spread test, not
+    # a stationarity test. Certify that route with a fresh exact gradient at θ̂
+    # (the same certificate the refinement ladder uses). Gradient-based routes
+    # keep their own flag, which already includes the `g_tol` criterion.
+    converged = _ls_converged_flag(optimizer, Optim.converged(res), g!, θ̂, g_tol)
+    optimizer === :nelder_mead && nll(θ̂)   # restore warm[] at θ̂ after the gradient call
     # Wald inference (opt-in): observed information = Hessian of the exact gradient.
     V = !se ? nothing : whitened ?
         _ls_whitened_vcov(kind, y, Xμ, Xψ, gidx, G, Q, θ̂, Zη, Zψ; seed=warm[]) :
@@ -291,7 +309,29 @@ function _fit_locscale(kind, y, Xμ, Xψ, gidx, G, Q;
             vcov = V,
             se = _ls_se(V),
             nll = nll(θ̂),
-            converged = Optim.converged(res))
+            converged = converged,
+            optimizer = optimizer)
+end
+
+# The `converged` decision of `_fit_locscale` (#1005): a gradient-based route
+# keeps Optim's own flag; a Nelder-Mead result (simplex-spread test only) also
+# needs an exact-gradient certificate at θ̂.
+function _ls_converged_flag(optimizer::Symbol, optim_converged::Bool, g!, θ̂, g_tol)
+    optimizer === :nelder_mead || return optim_converged
+    return optim_converged && _ls_gradient_certified(g!, θ̂, g_tol)
+end
+
+# Exact-gradient stationarity certificate for a derivative-free result (#1005).
+function _ls_gradient_certified(g!, θ̂, g_tol)
+    gr = similar(θ̂, Float64)
+    ok = try
+        g!(gr, θ̂)
+        true
+    catch err
+        err isa InterruptException && rethrow(err)
+        false
+    end
+    return ok && all(isfinite, gr) && maximum(abs, gr) <= g_tol
 end
 
 # Convenience: derive (Q, gidx, G) for the PHYLOGENETIC case from a tree and the

@@ -125,10 +125,11 @@ function _offset_vector(offset_term, data)
     v isa AbstractMatrix && size(v, 2) == 1 && (v = vec(v))
     v isa AbstractVector ||
         error("Poisson(): `offset(...)` must resolve to a single numeric column")
+    _require_finite_inputs(; offset=v)
     return Float64.(v)
 end
 
-function drm(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
+@drm_entry function drm(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
              A = nothing, coords = nothing, g_tol::Real = 1e-8, se::Bool = true,
              marginal::Symbol = :LA, method = nothing, nAGQ::Int = 5, ids = nothing)
     _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, coords = coords,
@@ -191,6 +192,7 @@ function drm(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
             return _withformula(_fit_poisson_phylo_laplace(fam, y, Xμ, labels, tree, nmμ, grp, g_tol;
                                                           se = se, reml = reml), f)
         elseif kind === :spatial && K === nothing && coords !== nothing
+            _require_finite_inputs(; coords=coords)
             # Coordinate-based exponential-kernel spatial covariance with the range
             # ρ ESTIMATED JOINTLY (#270): C(ρ) = exp(-d/ρ) from the site distances,
             # ρ enters the outer parameter vector, and its gradient flows through
@@ -281,12 +283,12 @@ end
 function _poisson_structured_cov(kind::Symbol, grp::Symbol, K, A, coords)
     if kind === :relmat
         K === nothing && error("relmat(1 | $grp) needs `K = …` (the relatedness/covariance matrix)")
-        return Matrix{Float64}(K)
+        return _finite_user_matrix(K, "K")
     elseif kind === :animal
         A === nothing && error("animal(1 | $grp) needs the relatedness matrix `A = …`")
-        return Matrix{Float64}(A)
+        return _finite_user_matrix(A, "A")
     else  # :spatial
-        K !== nothing && return Matrix{Float64}(K)
+        K !== nothing && return _finite_user_matrix(K, "K")
         error("spatial(1 | $grp) for counts needs either a precomputed spatial covariance " *
               "via `K = …`, or site `coords = …` (a G×2 coordinate matrix) for coordinate-based " *
               "exponential-kernel covariance with the range estimated jointly")
@@ -382,6 +384,13 @@ function _fit_poisson_ranef_aghq(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol
     θ0[pμ+1] = log(0.5)
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res); conv = drm_optim_converged(res)
+    # A penalised objective at the optimum means some group posterior could not be
+    # evaluated there (#1063): fail cleanly rather than report a meaningless fit.
+    nll̂ = nll(θ̂)
+    (isfinite(nll̂) && nll̂ < -_AGHQ_PENALTY_LOGINT) || error(
+        "marginal = :AGHQ could not evaluate the Poisson (1 | $grp) group integrals at the optimum " *
+        "(non-finite or non-log-concave group posterior; #1063). " *
+        "Use the default marginal = :LA or marginal = :Laplace for this model.")
     blocks = [:mu => 1:pμ, :resd => (pμ+1):(pμ+1)]
     names = [:mu => nmμ, :resd => [String(grp)]]
     scales = Dict{Symbol,Vector{Float64}}()
@@ -439,6 +448,7 @@ function _fit_poisson_zi(fam::Poisson, y, Xμ, Xzi, nmμ, nmzi, g_tol)
     n = length(y); pμ, pz = size(Xμ, 2), size(Xzi, 2)
     lf = [_logfactorial(round(Int, yi)) for yi in y]
     iszero_y = y .== 0
+    w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
     function nll(θ)
         βμ = θ[1:pμ]; βz = θ[pμ+1:pμ+pz]
         ημ = clamp.(Xμ * βμ, -30.0, 30.0); ηz = clamp.(Xzi * βz, -30.0, 30.0)
@@ -446,9 +456,9 @@ function _fit_poisson_zi(fam::Poisson, y, Xμ, Xzi, nmμ, nmzi, g_tol)
         @inbounds for i in 1:n
             λ = exp(ημ[i]); lπ = _log_logistic(ηz[i]); l1mπ = _log1m_logistic(ηz[i])
             if iszero_y[i]
-                s -= _logaddexp(lπ, l1mπ - λ)              # log(π + (1-π)e^{-λ})
+                s -= w[i] * (_logaddexp(lπ, l1mπ - λ))              # log(π + (1-π)e^{-λ})
             else
-                s -= l1mπ + (y[i] * ημ[i] - λ - lf[i])
+                s -= w[i] * (l1mπ + (y[i] * ημ[i] - λ - lf[i]))
             end
         end
         return s
@@ -456,8 +466,9 @@ function _fit_poisson_zi(fam::Poisson, y, Xμ, Xzi, nmμ, nmzi, g_tol)
     pos = y[y.>0]
     θ0 = zeros(pμ + pz)
     θ0[1] = log((isempty(pos) ? sum(y) / n : sum(pos) / length(pos)) + eps())   # λ from non-zeros
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
+                       θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
+    θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ, :zi => (pμ+1):(pμ+pz)]
     names = [:mu => nmμ, :zi => nmzi]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
@@ -474,6 +485,7 @@ function _fit_poisson_hu(fam::Poisson, y, Xμ, Xhu, nmμ, nmhu, g_tol)
     n = length(y); pμ, ph = size(Xμ, 2), size(Xhu, 2)
     lf = [_logfactorial(round(Int, yi)) for yi in y]
     iszero_y = y .== 0
+    w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
     function nll(θ)
         βμ = θ[1:pμ]; βh = θ[pμ+1:pμ+ph]
         ημ = clamp.(Xμ * βμ, -30.0, 30.0); ηh = clamp.(Xhu * βh, -30.0, 30.0)
@@ -481,11 +493,11 @@ function _fit_poisson_hu(fam::Poisson, y, Xμ, Xhu, nmμ, nmhu, g_tol)
         @inbounds for i in 1:n
             lπ = _log_logistic(ηh[i]); l1mπ = _log1m_logistic(ηh[i])
             if iszero_y[i]
-                s -= lπ                                        # log π
+                s -= w[i] * (lπ)                                        # log π
             else
                 λ = exp(ημ[i])
                 lpos = y[i] * ημ[i] - λ - lf[i]                # log Poisson(k; λ)
-                s -= l1mπ + lpos - _log1mexp(-λ)               # − log(1 − e^{-λ})
+                s -= w[i] * (l1mπ + lpos - _log1mexp(-λ))               # − log(1 − e^{-λ})
             end
         end
         return s
@@ -493,8 +505,9 @@ function _fit_poisson_hu(fam::Poisson, y, Xμ, Xhu, nmμ, nmhu, g_tol)
     pos = y[y.>0]
     θ0 = zeros(pμ + ph)
     θ0[1] = log((isempty(pos) ? sum(y) / n : sum(pos) / length(pos)) + eps())   # λ from non-zeros
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
+                       θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
+    θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ, :hu => (pμ+1):(pμ+ph)]
     names = [:mu => nmμ, :hu => nmhu]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
@@ -508,17 +521,19 @@ function _fit_poisson(fam::Poisson, y, Xμ, nmμ, g_tol; offset::AbstractVector{
     n = length(y); pμ = size(Xμ, 2)
     lf = [_logfactorial(round(Int, yi)) for yi in y]    # constant log y! term
     off = Float64.(offset)
+    w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
     function nll(θ)
         ημ = Xμ * θ .+ off                              # log λ; offset() coefficient fixed at 1
         s = zero(eltype(θ))
         @inbounds for i in 1:n
-            s -= y[i] * ημ[i] - exp(ημ[i]) - lf[i]
+            s -= w[i] * (y[i] * ημ[i] - exp(ημ[i]) - lf[i])
         end
         return s
     end
     θ0 = zeros(pμ); θ0[1] = log(sum(y) / n + eps()) - (isempty(off) ? 0.0 : sum(off) / n)
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
+                       θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
+    θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ]; names = [:mu => nmμ]
     means = Dict(:mu => exp.(Xμ * θ̂ .+ off)); obs = Dict(:mu => Vector{Float64}(y))   # response-scale λ
     scales = Dict{Symbol,Vector{Float64}}()
@@ -571,6 +586,8 @@ function _poisson_spatial_mode(y, η0, gidx, Cinv, invσ2, b0;
     G = size(Cinv, 1)
     b = T.(b0)
     Hch = nothing
+    met_tol = false
+    last_sn = Inf
     for _ in 1:maxiter
         grad = invσ2 .* (Cinv * b)
         diagH = zeros(T, G)
@@ -585,9 +602,20 @@ function _poisson_spatial_mode(y, η0, gidx, Cinv, invσ2, b0;
         issuccess(Hch) || return b, Hch, false
         step = Hch \ grad
         b = b .- step
-        norm(step) <= tol * (1 + norm(b)) && break
+        last_sn = ForwardDiff.value(norm(step))
+        if last_sn <= tol * (1 + ForwardDiff.value(norm(b)))
+            met_tol = true
+            break
+        end
     end
-    Hch === nothing && return b, Hch, false
+    # Cap exhausted (#1024). `tol = 1e-12` can sit below the rounding floor of
+    # an ill-conditioned `Cinv`, so a last Newton step at the 1e-8 relative
+    # level still counts as the mode (the Laplace value error is O(step^2));
+    # anything larger means the loop ran out before reaching the mode.
+    if !met_tol && Hch !== nothing
+        met_tol = last_sn <= max(tol, 1e-8) * (1 + ForwardDiff.value(norm(b)))
+    end
+    (Hch === nothing || !met_tol) && return b, Hch, false
     # Refresh μ̂ / H at the final b so the returned Cholesky is exactly H(b̂).
     diagH = zeros(T, G)
     @inbounds for i in eachindex(y)
@@ -659,6 +687,7 @@ supplies the exact outer gradient and the covariance Hessian. Recovered blocks:
 """
 function _fit_poisson_spatial_coord(fam::Poisson, y, Xμ, labels, coords, nmμ, grp,
                                     g_tol; se::Bool = true)
+    _require_finite_inputs(; coords=coords)
     n = length(y)
     pμ = size(Xμ, 2)
     gidx, G = _group_index(labels)
@@ -698,5 +727,7 @@ function _fit_poisson_spatial_coord(fam::Poisson, y, Xμ, labels, coords, nmμ, 
     obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict{Symbol,Vector{Float64}}()
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nll(θ̂), n, drm_optim_converged(res), means, obs, scales)
+    _warn_at_clamp("spatial Poisson", ["random-effect log SD" => (θ̂[pμ+1:pμ+1], -8.0, 3.0),   # #959
+                                       "log range" => (θ̂[pμ+2:pμ+2], -8.0, 8.0)])
     return _withiterations(_withnll(fit, nll), Optim.iterations(res))
 end

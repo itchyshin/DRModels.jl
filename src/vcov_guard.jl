@@ -113,6 +113,47 @@ function _vcov_from_hessian(H::AbstractMatrix; context::AbstractString = "")
 end
 
 """
+    _vcov_from_hessian_checked(H, data_finite; context = "") -> (V, hessian_finite)
+
+[`_vcov_from_hessian`](@ref) for a ForwardDiff Hessian at an optimum whose
+objective may have run off to a degenerate limit (#968, #961): a residual scale
+collapsing towards 0 overflows the curvature to `Inf`/`NaN`. When the DATA are
+finite that is a degenerate fit, not a NaN input, so it warns and returns an
+all-`NaN` covariance plus `hessian_finite = false` (callers report
+`converged = false`) instead of the LAPACK `ArgumentError` the guard raises on a
+non-finite matrix. With non-finite data the guard is called unchanged and keeps
+throwing (owner decision 14: NaN-predictor fits rely on it).
+"""
+function _vcov_from_hessian_checked(H::AbstractMatrix, data_finite::Bool;
+                                    context::AbstractString = "")
+    hf = all(isfinite, H)
+    (hf || !data_finite) && return (_vcov_from_hessian(H; context = context), hf)
+    @warn "The Hessian is not finite at the optimum (a scale parameter has run off " *
+          "towards a degenerate limit, e.g. a constant or badly scaled response). Wald " *
+          "standard errors are withheld and the fit is reported as not converged." context
+    return (fill(NaN, size(H)), false)
+end
+
+"""
+    _vcov_from_gram(G; context = "")
+
+Inverse of a design Gram / GLS information block `X'WX`. Its eigenvalue ratio
+reflects the units of the predictors (an uncentred `year ≈ 2000` gives ~1e-11),
+which says nothing about identifiability, so a positive-definite Gram is inverted
+directly and silently (as before the REML sites went through the guard, #956).
+Only a matrix that is not numerically positive definite is passed to
+[`_vcov_from_hessian`](@ref), which warns and falls back.
+"""
+function _vcov_from_gram(G::AbstractMatrix; context::AbstractString = "")
+    Gs = Matrix(Symmetric((Matrix(G) + Matrix(G)') / 2))
+    all(isfinite, Gs) || return _vcov_from_hessian(Gs; context = context)
+    F = cholesky(Symmetric(Gs); check = false)
+    return issuccess(F) ? Matrix(Symmetric(inv(F))) : _vcov_from_hessian(Gs; context = context)
+end
+
+_all_finite(xs...) = all(x -> all(isfinite, x), xs)
+
+"""
     _fd_hessian_from_grad(grad_at, θ̂; hstep = 1e-6, retry_step = 1e-4) -> (H, ok)
 
 Central finite-difference Hessian of an analytic gradient `grad_at(θ)`.

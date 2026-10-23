@@ -122,7 +122,7 @@ struct Tweedie end
 
 _logit12(η) = 1 + 1 / (1 + exp(-η))            # (1,2) link for the power p
 
-function drm(f::DrmFormula, fam::Tweedie; data, g_tol::Real = 1e-8)
+@drm_entry function drm(f::DrmFormula, fam::Tweedie; data, g_tol::Real = 1e-8)
     _drm_entry_guard(f, fam, data)   # #1027 #1022
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
         drm(f, fam; data = data_observed, g_tol = g_tol)
@@ -193,6 +193,7 @@ end
 function _fit_tweedie(fam::Tweedie, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol)
     n = length(y); pμ, pσ, pν = size(Xμ, 2), size(Xσ, 2), size(Xν, 2)
     i1 = pμ + pσ; i2 = i1 + pν
+    w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:i1]; βν = θ[i1+1:i2]
         ημ = clamp.(Xμ * βμ, -30.0, 30.0); ησ = clamp.(Xσ * βσ, -15.0, 15.0)
@@ -200,7 +201,7 @@ function _fit_tweedie(fam::Tweedie, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol)
         s = zero(eltype(θ))
         @inbounds for i in 1:n
             μ = exp(ημ[i]); φ = exp(2 * ησ[i]); p = _logit12(ην[i])   # φ = σ²
-            s -= _logpdf_tweedie(y[i], μ, φ, p)
+            s -= w[i] * (_logpdf_tweedie(y[i], μ, φ, p))
         end
         return s
     end
@@ -209,13 +210,16 @@ function _fit_tweedie(fam::Tweedie, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol)
     θ0[1] = log(ȳ + eps())            # log mean
     θ0[pμ+1] = 0.0                     # σ = 1 (φ = 1)
     θ0[i1+1] = 0.0                     # p = 1.5
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
+                       θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
+    θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):i1, :nu => (i1+1):i2]
     names = [:mu => nmμ, :sigma => nmσ, :nu => nmν]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))   # response-scale μ̂
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):i1]),
                   :nu => _logit12.(Xν * θ̂[(i1+1):i2]))
+    _warn_at_clamp("Tweedie", ["log sigma" => (Xσ * θ̂[(pμ+1):i1], -15.0, 15.0),   # #959
+                               "power (logit scale)" => (Xν * θ̂[(i1+1):i2], -12.0, 12.0)])
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
@@ -274,6 +278,8 @@ function _fit_tweedie_ranef(fam::Tweedie, y, Xμ, Xσ, Xν, gidx, G, nmμ, nmσ,
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):i1]),
                   :nu => _logit12.(Xν * θ̂[(i1+1):i2]))
+    _warn_at_clamp("Tweedie", ["log sigma" => (Xσ * θ̂[(pμ+1):i1], -15.0, 15.0),   # #959
+                               "power (logit scale)" => (Xν * θ̂[(i1+1):i2], -12.0, 12.0)])
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
@@ -318,6 +324,8 @@ function _fit_tweedie_slope_ranef(fam::Tweedie, y, Xμ, Xσ, Xν, xs, gidx, G, n
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):i1]),
                   :nu => _logit12.(Xν * θ̂[(i1+1):i2]))
+    _warn_at_clamp("Tweedie", ["log sigma" => (Xσ * θ̂[(pμ+1):i1], -15.0, 15.0),   # #959
+                               "power (logit scale)" => (Xν * θ̂[(i1+1):i2], -12.0, 12.0)])
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
