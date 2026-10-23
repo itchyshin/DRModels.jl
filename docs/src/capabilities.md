@@ -41,7 +41,7 @@ run separately.
 | Binomial | intercepts, crossed, and phylogenetic effects | **Tested**; slope random effects are refused |
 | Gamma | intercepts, slopes, crossed, and phylogenetic effects | **Tested**; crossed random effects have numerical tests but no complete worked analysis; shape cap on crossed and structured routes (see the note below the table) |
 | LogNormal | intercepts, slopes, phylogenetic, and known-matrix effects | **Tested**; `animal` and coordinate-spatial effects are refused |
-| ZeroOneBeta | — | **Tested** fixed effects; `coi` is not identified unless the data have both exact 0s and exact 1s |
+| ZeroOneBeta | mean (`mu`) random intercepts, `(1 \| g)` | **Tested**; `sigma`, `zoi` and `coi` stay fixed-effects-only; `coi` is not identified unless the data have both exact 0s and exact 1s |
 | Tweedie | intercepts and independent slopes | **Tested** |
 | CumulativeLogit (ordinal) | intercepts, independent slopes, and phylogenetic effects | **Tested** |
 | Underdispersed counts (variance below the mean) | — | **Not available**: no Conway–Maxwell–Poisson or generalised Poisson family. Use glmmTMB's `compois()` or `genpois()` families |
