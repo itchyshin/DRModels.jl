@@ -11,8 +11,10 @@
 #      not just a bare column reference, and gives the identical fit.
 #   4. Omitting the offset on the same DGP recovers a visibly biased intercept
 #      (the offset is not a no-op).
-#   5. `offset(...)` combined with a random effect, a structured marker, `zi`,
-#      or `hu` is refused with a clear error rather than silently ignored.
+#   5. `offset(...)` combined with a structured marker, `zi`, `hu`, a random slope or
+#      crossed effects is refused with a clear error rather than silently ignored.
+#      (`offset(...)` + ONE ordinary `(1 | g)` is admitted since #941 — see
+#      test_lane_n4_offset_slopes.jl.)
 
 using DRModels
 using Test, Random, LinearAlgebra
@@ -83,7 +85,7 @@ import Distributions
         @test abs(coef(fit_no_off, :mu)[1] - β[1]) > 0.3   # visibly biased without the offset
     end
 
-    @testset "offset(...) refused outside the fixed-effects-only mean" begin
+    @testset "offset(...) still refused on unsupported routes" begin
         Random.seed!(20260930)
         n = 400
         x = randn(n)
@@ -92,7 +94,7 @@ import Distributions
         y = Float64.(rand.(Distributions.Poisson.(exp.(0.2 .+ 0.3 .* x))))
 
         @test_throws ErrorException drm(
-            bf(@formula(y ~ x + offset(log_exposure) + (1 | g))), Poisson();
+            bf(@formula(y ~ x + offset(log_exposure) + (1 + x | g))), Poisson();
             data = (; y, x, log_exposure, g),
         )
         @test_throws ErrorException drm(

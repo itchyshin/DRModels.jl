@@ -14,6 +14,8 @@ tails, so outliers are downweighted instead of dominating. The shape parameter
 
 ## Fitting a Student-t model
 
+The code below also loads the `Distributions` package to simulate data. If you have not added it to your Julia environment, run `using Pkg; Pkg.add("Distributions")` once first.
+
 Give each parameter its own formula, exactly like the Gaussian model — `nu ~ 1`
 estimates a single degrees-of-freedom value:
 
@@ -42,7 +44,12 @@ exp(coef(fit, :sigma)[1])       # residual scale
 ```
 
 A small `ν` (say < 10) is the signal that robustness is earning its keep; a large
-`ν` says the data are effectively Gaussian and you could simplify.
+`ν` says the data are effectively Gaussian and you could simplify. When `ν` is
+very large (a `nu` coefficient above about 10, that is ν above about 20,000), the fit can
+still report `converged = true`, but the standard error and Wald interval for
+`nu` are not usable: they can show 0 and a zero-width interval
+([DRModels.jl#969](https://github.com/itchyshin/DRModels.jl/issues/969)). Refit
+with `Gaussian()` and compare the two with `aic`, or use a profile interval.
 
 !!! tip "Scale, not variance"
     For the t the residual *variance* is `σ² · ν/(ν−2)` (and is undefined for

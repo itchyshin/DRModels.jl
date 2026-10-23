@@ -1,0 +1,1 @@
+- **Gaussian `(1 | g)` with `sigma ~ z` no longer throws `ArgumentError: matrix contains Infs or NaNs` when the residual sigma collapses to 0** (for example when every group has one row). The fit now warns, withholds the Wald covariance (all `NaN`) and reports `converged = false`, as the fixed-effect Gaussian route has since #968 (#1114).

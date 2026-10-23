@@ -2,10 +2,12 @@
 
 !!! note "Status — Experimental"
     A variational (VA / ELBO) marginal is an **opt-in Experimental** alternative
-    for random-intercept `(1 | g)` models. **`:LA` remains the default.** For a
-    scalar Poisson random intercept, `:LA` uses per-group adaptive
-    Gauss–Hermite quadrature with 5 nodes, not one-point Laplace. Other `:LA`
-    routes are not identified by this statement.
+    for random-intercept `(1 | g)` models. **`:LA` remains the default.** For
+    one ordinary random intercept on the mean of a non-Gaussian family,
+    `:LA` uses per-group *adaptive* Gauss–Hermite quadrature (5 nodes per group;
+    21 for Tweedie, 41 for CumulativeLogit), not one-point Laplace. For a
+    Gaussian random intercept on `sigma` it uses fixed, non-adaptive 32-node
+    quadrature.
 
     **Available scope:** Poisson, Binomial, NegBinomial2,
     Gamma, and Beta `(1 | g)` via `drm(...; marginal = :VA)` (scale families need
@@ -32,11 +34,15 @@ biased marginal biases exactly those parameters.
 
 ### The default `:LA` route
 
-For a scalar Poisson random intercept `(1 | g)`, the public default `:LA` route
-uses per-group adaptive Gauss–Hermite quadrature: 5 nodes per group, centred on
-that group's posterior mode and scaled by the curvature there. With a single
-node it would be the Laplace approximation, which in general replaces the
-integrand with a Gaussian centred at the posterior mode of `z`,
+For one ordinary random intercept `(1 | g)` on the mean of a non-Gaussian
+family (Poisson, Binomial, NegBinomial2, Gamma, Beta, BetaBinomial, Student-t),
+the public default `:LA` route uses per-group **adaptive** Gauss–Hermite
+quadrature with 5 nodes: each group's nodes are centred and scaled at that
+group's posterior mode. Tweedie uses the same scheme with 21 nodes and
+CumulativeLogit with 41. A Gaussian random intercept on `sigma`,
+`sigma ~ 1 + (1 | g)`, instead uses fixed, non-adaptive 32-node quadrature
+placed on the prior scale. A Laplace approximation
+in general replaces the integrand with a Gaussian centred at the posterior mode of `z`,
 matched in curvature (the Hessian) at that mode. It is exact only when the
 responses are Gaussian, a Gaussian random effect enters the mean linearly, and
 the residual variance is independent of that random effect; then the integrand
@@ -83,7 +89,20 @@ families), by maximum likelihood. `Student()` accepts it too for one ordinary
 `(1 | g)` on the mean (`sigma` and `nu` may carry fixed-effect formulas). The only other model that accepts it is a
 Gaussian random intercept on `sigma`, `sigma ~ 1 + (1 | g)`, with a fixed-effect
 mean. Any other model with `marginal = :Laplace` is refused; nothing is
-silently fitted by the default integrator under that label.
+silently fitted by another integrator under that label.
+
+!!! warning "A `sigma` formula with covariates breaks log-likelihood comparisons with drmTMB"
+    For NegBinomial2, Gamma and Beta models with a random intercept and
+    covariates in `sigma`, such as `sigma ~ mined` with `(1 | site)` on the
+    mean, `marginal = :Laplace` is refused. The default `:LA` route then
+    integrates with adaptive quadrature while drmTMB uses its Laplace
+    approximation, so the two log-likelihoods differ by the integrator and are
+    **not comparable**: on three real data sets (glmmTMB's Salamanders,
+    grouseticks and Owls) the gap was 0.04 to 1.25 units. Do not use the
+    difference for a likelihood-ratio test, AIC comparison or parity check
+    across the two packages; compare the parameter estimates instead, or
+    refit with `sigma ~ 1` and `marginal = :Laplace`, which reproduces drmTMB.
+    A Laplace route for `sigma` covariates is tracked in [DRModels.jl#943](https://github.com/itchyshin/DRModels.jl/issues/943).
 
 To test the random intercept, compare the `:Laplace` fit with the
 fixed-effects model fitted as usual (no `marginal`): `lrtest(fixed, fit)`. The
@@ -168,7 +187,7 @@ against a curvature match at a single point.
 | Gaussian response with a Gaussian RE entering the mean linearly and independent residual variance | VA adds nothing — the marginal is already exact here. |
 | Ordinary Gamma `(1\|g)` shape | LA ≈ VA in the scoped Gamma comparison; **prefer LA** (15–20× faster warm, timed before version 0.7.2 with the fixed 32-node grid). |
 | Two-part / hurdle / ZINB geometry | VA may help in principle, but **DRModels.jl does not currently support these VA models**. |
-| Speed-critical fits | Route-specific: `:LA` is the default; Poisson scalar random intercepts use adaptive GHQ with 5 nodes per group. |
+| Speed-critical fits | Route-specific: `:LA` is the default; non-Gaussian scalar random intercepts use per-group adaptive quadrature (5 nodes for most families). |
 
 In short: **`:LA` is the default and its numerical implementation is
 route-specific.** On the public Gamma random-intercept cell, Julia matches the
@@ -212,6 +231,26 @@ numbers look plausible:
 3. **Family limits.** The negative binomial becomes Poisson as its size
    `r → ∞`, so NB2-VA should approach Poisson-VA when both are applied to the
    same simulated data.
+
+Separately from these checks, every `:VA` fit verifies its own inner solves. Each
+group's variational mean and variance come from an inner Newton solve, and at the
+fitted parameters every group's solve must be stationary: its squared Newton
+decrement, twice the ELBO gain still on offer, must be at most `1e-14`, or below
+the rounding error of the group ELBO when the solve cannot go further. If one is
+not, the reported ELBO is below the profiled ELBO and the optimiser did not follow
+its gradient, so the fit is marked `converged = false` with a warning (#965).
+For example, in this small Poisson fit one group is all zeros:
+
+```julia
+y = [0, 0, 0, 0, 12, 147, 1778.0]; g = [1, 1, 1, 1, 2, 3, 4]
+fit = drm(bf(@formula(y ~ 1 + (1 | g))), Poisson(); data = (; y, g), marginal = :VA)
+fit.converged   # true, with every group's inner solve stationary
+coef(fit)       # ≈ [2.837, 1.430]; ELBO ≈ -24.88
+```
+
+Before #965 this fit stopped at `coef(fit) ≈ [37.60, 3.67]`, with an ELBO of
+−32.37 that was 7.5 nats below the variational optimum, and still reported
+`converged = true`.
 
 On Gamma `(1 | g)`, the evaluated comparison finds LA ≈ VA on shape `α` and LA is
 much faster. VA beyond random
