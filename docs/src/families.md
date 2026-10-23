@@ -166,6 +166,14 @@ exp(-2 * coef(fitnb, :sigma)[1])      # estimated dispersion θ = 1/σ² ≈ 2.5
 The `sigma` coefficient is on the log-`σ` scale, and the NB2 dispersion is
 `θ = 1/σ² = exp(-2·coef(:sigma))` (not `exp(coef(:sigma))`).
 
+!!! warning "No underdispersion"
+    NB2 cannot represent dispersion below the Poisson limit: its variance is
+    never below the mean. On underdispersed counts the size `θ` goes to infinity
+    (`σ → 0`) and the fit sits at the Poisson log-likelihood. For underdispersed
+    counts use glmmTMB's `compois` or `genpois`, as drmTMB advises (drmTMB#1466).
+    DRModels.jl does not offer a Conway–Maxwell–Poisson or generalized-Poisson
+    family (#976).
+
 `TruncatedNegBinomial2()` is the same family conditioned on `y ≥ 1`, for counts
 that are positive by construction (litter sizes, group sizes given presence).
 `TruncatedPoisson()` is the Poisson conditioned on `y ≥ 1`; adding an `hu ~ ...`

@@ -1,0 +1,1 @@
+| 2026-10-08 | **Non-finite inputs and converged backstop** (#1009, #1012, #1019, #1021) | `test/test_triage_h_nonfinite.jl` plus the spatial, temporal, mixed, student, bridge and associate_pairs suites | ✅ inputs that used to return a silent non-finite fit now `ArgumentError` naming the argument; `converged` is cleared for a sentinel or non-finite optimum | Shannon |
