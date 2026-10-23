@@ -36,7 +36,8 @@ import ForwardDiff
         # `convergence_status` added by FX3b: the three-valued twin status.
         @test keys(r) == (:convergence_status, :converged, :max_abs_grad, :grad_source, :vcov_complete,
                           :vcov_posdef, :min_eigval, :cond, :penalized_map,
-                          :variance_boundary, :temporal_boundary, :skew_normal_nu_wald, :ok)
+                          :variance_boundary, :temporal_boundary, :skew_normal_nu_wald,
+                          :fixed_effect_rank_deficiency, :ok)
         # `variance_boundary` (#724/#697): `nothing` unless a Gaussian fit has a grouped /
         # structured random effect and a homoscedastic residual
         @test r.variance_boundary === nothing

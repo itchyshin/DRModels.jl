@@ -1306,6 +1306,87 @@ function _glsp_optimise(obj, grad!, θ0; g_tol = 1e-6, iterations = 1000)
 end
 
 # ---------------------------------------------------------------------------
+# Tree-scale normalisation (issue #952).
+#
+# `Q` is the root-removed Brownian-motion precision of the augmented tree on the
+# RAW branch lengths, so the phylo SDs this route reports are on the raw scale
+# (`_warn_if_tree_not_unit_height`). Rescaling every branch by c is an exact
+# reparameterisation, P = (Q/c) ⊗ Λ⁻¹ = Q ⊗ (cΛ)⁻¹, so the likelihood optimum
+# does not depend on the tree height. The fitter's numbers do, though: its starts
+# (log SD = log 0.3), the coupled bound's SD floor, the REML boundary rules and
+# the Nelder-Mead simplex are all absolute log-SD values. On ade4::carni70
+# (height 53.8) the start log 0.3 is an SD of 0.3·√53.8 = 2.2 on the unit-height
+# scale; there the inner mode runs into the σ → 0 collapse (σ-latents between -49
+# and -14, min Hessian eigenvalue -1e11), the objective is the 1e18 sentinel at the
+# start, and the separate fit never left it (logLik -1e18). The coupled fit ended
+# 7.7 nats below drmTMB. The fix: fit on the unit-tip-variance tree (the scale most
+# of this route's fixtures use, and where drmTMB's `vcv(tree, corr = TRUE)` puts an
+# ultrametric tree), and map the estimates back to the raw scale. On a tree whose
+# height is not 1 those constants therefore act on unit-height SDs, so near a
+# variance boundary a convergence flag or a NaN vcov can differ from earlier
+# versions while the estimates do not.
+# ---------------------------------------------------------------------------
+
+# Maximum root-to-node path length of the tree behind `Q`, i.e. the tree height
+# (`phylo_tree_height`): diag(Q⁻¹) holds the root-to-node path lengths, read off in
+# O(p) by the Takahashi recursion. A Q that is not positive definite, or a height
+# within 1e-6 of 1 (the tolerance `_warn_if_tree_not_unit_height` uses), gives 1,
+# which leaves the fit exactly as it was.
+function _glsp_tree_scale(Q)
+    c = try
+        F = cholesky(Symmetric(sparse(Float64.(Q))); check = false)
+        issuccess(F) || return 1.0
+        maximum(takahashi_diag(F))
+    catch err
+        err isa InterruptException && rethrow(err)
+        return 1.0
+    end
+    (isfinite(c) && c > 0) || return 1.0
+    isapprox(c, 1.0; rtol = 1e-6) && return 1.0
+    return Float64(c)
+end
+
+# The PC-prior penalty is specified on the RAW-scale SD. With sd_raw = sd/√c on the
+# rescaled tree, rate·sd_raw − log sd_raw − log rate equals the same expression in
+# sd with rate/√c (sd_u·√c), value and log-SD derivative alike; the correlation term
+# is scale free. So the rescaled fit sees exactly the user's penalty. (Not typed on
+# `PhyloPenalty`: phylo_penalty.jl is included after this file.)
+_glsp_rescale_penalty(::Nothing, c) = nothing
+_glsp_rescale_penalty(pen, c) =
+    PhyloPenalty(pen.sd_u * sqrt(c), pen.sd_alpha, pen.rate / sqrt(c), pen.cor_sd)
+
+# Map a fit made on the rescaled tree (Q·c) back to the raw branch-length scale:
+# Λ_raw = Λ/c, so each log SD (`:resd_mu`, `:resd_sigma`, the log L11 / log L22 of
+# `:recov`) moves by -½ log c, L21 is multiplied by 1/√c, and the covariance takes
+# the matching Jacobian (identity on the log SDs). The likelihood values, β, the
+# phylo correlation and the convergence flag are unchanged. `penalty` is the user's
+# raw-scale spec, recorded on a MAP fit in place of the rescaled one.
+function _glsp_unscale_fit(fit::DrmFit, c::Float64, penalty)
+    shift = 0.5 * log(c); r = 1 / sqrt(c)
+    θ = copy(fit.theta); J = ones(length(θ))
+    for (blk, rng) in fit.blocks
+        if blk === :resd_mu || blk === :resd_sigma
+            θ[rng] .-= shift
+        elseif blk === :recov                    # [logL11, logL22, L21]
+            i = first(rng)
+            θ[i] -= shift; θ[i+1] -= shift
+            θ[i+2] *= r; J[i+2] = r
+        end
+    end
+    V = fit.vcov .* (J * J')
+    scales = copy(fit.scales)
+    for k in (:lambda_sd_mu, :lambda_sd_sigma, :profile_ci_sd_mu, :profile_ci_sd_sigma)
+        haskey(scales, k) && (scales[k] = scales[k] .* r)
+    end
+    return DrmFit(fit.family, fit.blocks, fit.coefnames, θ, V, fit.loglik, fit.nobs,
+                  fit.converged, fit.means, fit.obs, scales, fit.formula, fit.nll,
+                  fit.nllgrad, fit.ranef, fit.estim_method, fit.reml_loglik, fit.ml_loglik,
+                  fit.marginal, fit.phylo_penalty,
+                  penalty === nothing ? fit.penalty : penalty, fit.iterations,
+                  fit.phylo_scale)
+end
+
+# ---------------------------------------------------------------------------
 # Public entry: _fit_gaussian_locscale_phylo
 # ---------------------------------------------------------------------------
 """
@@ -1331,16 +1412,33 @@ Gaussian location-scale likelihood through the q=2 augmented-state Laplace spine
 over (phylo effects, β_μ, β_σ) — native drmTMB's `REML = TRUE` quantity — via
 `_glsp_joint_reml_fit`; the reported β are the joint mode at the REML variance
 estimates.
+
+The fit is made on the tree rescaled to unit height and reported on the raw
+branch-length scale of `Q` (issue #952; see `_glsp_tree_scale`), so the
+log-likelihood and β do not depend on the tree height, and the phylo SDs scale
+with it as `sd_raw = sd_unit / √height`.
 """
 function _fit_gaussian_locscale_phylo(fam::Gaussian, y, Xμ, Xψ, gidx, G, Q,
-                                       nmμ, nmσ, grp::String;
-                                       coupled::Bool = false,
-                                       asymmetric::Bool = false,
-                                       se::Bool = true,
-                                       profile_ci::Bool = false,
-                                       reml::Bool = false,
-                                       g_tol::Real = 1e-6,
-                                       penalty = nothing)
+                                       nmμ, nmσ, grp::String; penalty = nothing,
+                                       kwargs...)
+    c = _glsp_tree_scale(Q)
+    c == 1.0 && return _glsp_fit(fam, y, Xμ, Xψ, gidx, G, Q, nmμ, nmσ, grp;
+                                 penalty = penalty, kwargs...)
+    fit = _glsp_fit(fam, y, Xμ, Xψ, gidx, G, c * Q, nmμ, nmσ, grp;
+                    penalty = _glsp_rescale_penalty(penalty, c), kwargs...)
+    return _glsp_unscale_fit(fit, c, penalty)
+end
+
+# The fitter itself, on whatever scale `Q` is given in (see above).
+function _glsp_fit(fam::Gaussian, y, Xμ, Xψ, gidx, G, Q,
+                   nmμ, nmσ, grp::String;
+                   coupled::Bool = false,
+                   asymmetric::Bool = false,
+                   se::Bool = true,
+                   profile_ci::Bool = false,
+                   reml::Bool = false,
+                   g_tol::Real = 1e-6,
+                   penalty = nothing)
     kind = Val(:gaussian_mean)
     n = length(y)
     pμ = size(Xμ, 2); pψ = size(Xψ, 2)

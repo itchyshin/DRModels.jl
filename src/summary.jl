@@ -147,6 +147,7 @@ function _nondegenerate_fit(fit::DrmFit)
     # Same coefficient rule as `_report_converged`, so `is_converged` and
     # `fit.converged` agree when a coefficient is non-finite.
     _coefficients_finite(fit.theta) || return false
+    _design_rank_deficient(fit) && return false   # #1110: aliased fixed-effect column
     fit.family isa Gaussian || return true
     # A temporal Gaussian puts the response variance in the AR/OU term. A
     # residual SD near 0 is that split (`sigma_ratio` in `_temporal_boundary`),

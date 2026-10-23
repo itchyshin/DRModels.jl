@@ -85,3 +85,29 @@ let d = gen_gamma_runoff(7, 200)
     end
     println("wrote ", dir, "  n=", length(d.y), "  ymax = ", maximum(d.y))
 end
+
+# Beta crossed run-off (same engine; recover_runoff=true is the default). Precision 0.01, so
+# the draws pile up at the 0 / 1 edges (clamped to [1e-100, 1 - 1e-12]). G=15, H=12, n=300,
+# MersenneTwister(3), logit μ = 0.2 + 0.3x, RE SDs 0.5 / 0.4. Written with Julia 1.12.6: the
+# MersenneTwister draws differ on Julia 1.10, and on the 1.10 draws the start objective is
+# already the failed-inner-solve sentinel, so there is no run-off to recover.
+function gen_beta_runoff(seed::Int, n::Int; G=15, H=12, φ=0.01)
+    rng = MersenneTwister(seed)
+    gi = rand(rng, 1:G, n); hi = rand(rng, 1:H, n); x = randn(rng, n)
+    bg = 0.5 .* randn(rng, G); bh = 0.4 .* randn(rng, H)
+    μ = 1 ./ (1 .+ exp.(-(0.2 .+ 0.3 .* x .+ bg[gi] .+ bh[hi])))
+    y = [clamp(rand(rng, Beta(μ[i] * φ, (1 - μ[i]) * φ)), 1e-100, 1 - 1e-12) for i in 1:n]
+    return (; y, x, g = ["g$i" for i in gi], h = ["h$i" for i in hi])
+end
+let d = gen_beta_runoff(3, 300)
+    dir = joinpath(OUT, "beta_runoff_s3_n300")
+    mkpath(dir)
+    open(joinpath(dir, "data.csv"), "w") do io
+        println(io, "y,x,g,h")
+        for i in eachindex(d.y)
+            println(io, d.y[i], ",", d.x[i], ",", d.g[i], ",", d.h[i])
+        end
+    end
+    println("wrote ", dir, "  n=", length(d.y), "  at 0 / 1 edges = ",
+            count(==(1e-100), d.y), " / ", count(==(1 - 1e-12), d.y))
+end

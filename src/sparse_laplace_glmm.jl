@@ -344,8 +344,14 @@ function _crossed_nuisance_box_refit(nll, grad!, θ0, pμ::Int, disp_bound::Real
     lo[pμ+1] = -disp_bound; hi[pμ+1] = disp_bound
     lo[(pμ + 2):np] .= -8.0; hi[(pμ + 2):np] .= 3.0
     θs = clamp.(θ0, lo .+ 0.1, hi .- 0.1)          # Fminbox needs an interior start
+    # A failed inner solve reports a NaN gradient (#1093) so a fit is never called converged
+    # on it. Fminbox's Hager-Zhang line search asserts a finite slope and would throw, losing
+    # the whole re-fit, so inside this search only a non-finite gradient is zeroed (the value
+    # there is the 1e18 sentinel, so no step is taken towards it). The caller still reads
+    # convergence from the unwrapped `grad!` at the adopted point.
+    grad_finite!(Gout, θ) = (grad!(Gout, θ); all(isfinite, Gout) || fill!(Gout, 0.0); Gout)
     return try
-        od = Optim.OnceDifferentiable(nll, grad!, θs)
+        od = Optim.OnceDifferentiable(nll, grad_finite!, θs)
         Optim.optimize(od, lo, hi, θs, Optim.Fminbox(Optim.LBFGS()),
                        Optim.Options(g_tol = g_tol, outer_iterations = 20, iterations = 250))
     catch err
@@ -610,7 +616,7 @@ introduces. Returns `(val[, grad], b, ok)`; on a non-PD inner solve `ok = false`
 function _poisson_phylo_laplace_fg(y, Xμ, leaf_node, Q, logdetQ, lf, θ;
                                    grad::Bool = false, b0 = nothing,
                                    newton_tol::Real = 1e-10, newton_maxiter::Int = 60,
-                                   raw_scales::Bool = false)
+                                   raw_scales::Bool = false, offset = nothing)
     # newton_tol was 1e-8 until 2026-08-26. That is tight enough for coefficients
     # and logLik (parity ~1e-8) but NOT for the SECOND-derivative quantity: the
     # inner mode's residual error propagates into the Hessian, and therefore into
@@ -634,6 +640,9 @@ function _poisson_phylo_laplace_fg(y, Xμ, leaf_node, Q, logdetQ, lf, θ;
     logσ = raw_scales ? θ[pμ+1] : clamp(θ[pμ+1], -8.0, 3.0)
     invσ2 = exp(-2 * logσ)
     η0 = Xμ * βμ
+    # #941: a known offset (coefficient fixed at 1) shifts η only; it is constant
+    # in θ and b, so every derivative below is unchanged.
+    offset === nothing || (η0 = η0 .+ offset)
     b, ch, _, ok = _poisson_phylo_mode(y, η0, leaf_node, Q, logσ;
                                        b0 = b0, tol = newton_tol, maxiter = newton_maxiter)
     if !ok
@@ -3897,7 +3906,8 @@ function _fit_gamma_crossed_aghq(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol; se:
 end
 
 function _fit_beta_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
-                                   se::Bool = true, polish_iterations::Int = 0)
+                                   se::Bool = true, polish_iterations::Int = 0,
+                                   recover_runoff::Bool = true)
     length(comps) == 2 || error("_fit_beta_crossed_laplace requires two random-intercept components")
     (size(Xσ, 2) == 1 && all(==(1.0), @view Xσ[:, 1])) || error("drm(Beta()): crossed random intercepts `(1 | g) + (1 | h)` require `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
     yv = Float64.(y)
@@ -3916,7 +3926,7 @@ function _fit_beta_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
         fam, Val(:beta_fixed), aux_from, length(yv), Xμ, comps[1][2], comps[1][3],
         comps[2][2], comps[2][3], nmμ, nmσ, [comps[1][4], comps[2][4]], g_tol;
         θβ0 = θβ0, θσ0 = -0.5 * log(φ0), sigma_scale = exp,
-        se = se, polish_iterations = polish_iterations
+        se = se, polish_iterations = polish_iterations, recover_runoff = recover_runoff
     )
 end
 
@@ -3957,7 +3967,8 @@ the verified Beta-family crossed nuisance Laplace spine
 kernel.
 """
 function _fit_betabinomial_crossed_laplace(fam, s, ntr, Xμ, comps, nmμ, nmσ, g_tol;
-                                           se::Bool = true, polish_iterations::Int = 0)
+                                           se::Bool = true, polish_iterations::Int = 0,
+                                           recover_runoff::Bool = true)
     length(comps) == 2 || error("_fit_betabinomial_crossed_laplace requires two random-intercept components")
     all(==(1.0), comps[1][1]) && all(==(1.0), comps[2][1]) ||
         error("_fit_betabinomial_crossed_laplace supports scalar random intercepts only")
@@ -3967,7 +3978,7 @@ function _fit_betabinomial_crossed_laplace(fam, s, ntr, Xμ, comps, nmμ, nmσ, 
         fam, Val(:betabinomial_fixed), aux_from, length(s), Xμ, comps[1][2], comps[1][3],
         comps[2][2], comps[2][3], nmμ, nmσ, [comps[1][4], comps[2][4]], g_tol;
         θβ0 = θβ0, θσ0 = θσ0, sigma_scale = exp,
-        se = se, polish_iterations = polish_iterations,
+        se = se, polish_iterations = polish_iterations, recover_runoff = recover_runoff,
         extra_scales = Dict(:trials => Float64.(nint))
     )
 end

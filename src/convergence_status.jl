@@ -9,8 +9,8 @@
 #   3  covariance square, finite, positive definite                         else :degenerate
 #   4  every diagonal SE finite                                             else :degenerate
 #   5  inflated SE: SE >= 50 and SE >= 1000 x median(SEs < 50)              :degenerate
-#   6  design rank: not applied here (a fit does not store its design; the
-#      drmTMB twin passes `design_rank_deficient = FALSE` for Julia fits)
+#   6  design rank: an aliased fixed-effect column (#1110) is caught in step 2
+#      via `_nondegenerate_fit` (`_design_rank_deficient`), as :degenerate
 #   7  any finite |rho12| > 0.98                                            :boundary
 #   8  any finite random-effect SD < 1e-4                                   :boundary
 #   9  otherwise                                                            :converged
@@ -96,9 +96,8 @@ numeric rules as drmTMB's `convergence_status()` (FX3b; drmTMB
 
 Rules 3 to 5 are skipped when standard errors were turned off (`se = false`, or
 `q4_vcov = false`), as drmTMB skips them for `drm_control(se = FALSE)`: such a
-fit is `:converged` unless rules 1, 2 or 6 apply. drmTMB's design-rank rule is
-not applied, because a fit does not store its design matrix; drmTMB does not
-apply it to Julia-engine fits either.
+fit is `:converged` unless rules 1 or 2 apply. A fit with an aliased fixed-effect
+column (#1110) is `:degenerate` through rule 2, as the design-rank rule of drmTMB.
 
 [`is_converged`](@ref) and [`converged`](@ref) are `true` only for
 `:converged`. The raw optimiser flag is `fit.converged`.

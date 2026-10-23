@@ -164,6 +164,7 @@ update
 
 ```@docs
 check_drm
+bridge_diagnostics
 family
 convergence_status
 is_converged

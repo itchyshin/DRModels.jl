@@ -657,7 +657,10 @@ function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ,
     res = _re_lbfgs_with_restart(nll, θ0, θ0_restart, g_tol, pμ + pσ + 1, std(res0))
     θ̂ = Optim.minimizer(res)
     H = ForwardDiff.hessian(nll, θ̂)
-    V = _vcov_from_hessian(H)
+    # #1114 (#968 convention): sigma running off to 0 overflows the Hessian; withhold
+    # the vcov and report converged = false instead of the LAPACK ArgumentError.
+    V, hess_finite = _vcov_from_hessian_checked(H, _all_finite(y, Xμ, Xσ, w);
+                                                context = "Gaussian (1 | g) location-scale")
 
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :resd => (pμ+pσ+1):(pμ+pσ+1)]
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
@@ -704,7 +707,8 @@ function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ,
     # test. `g_converged` is not consulted. θ̂, the objective and logLik are
     # unchanged. Guard: test/test_ranef_varying_scale_convergence.jl and the
     # scaled-predictor bootstrap in test/test_triage_g_twin_inputs.jl.
-    converged = Optim.converged(res) && !Optim.iteration_limit_reached(res) &&
+    # #1114: a non-finite Hessian also means not converged.
+    converged = hess_finite && Optim.converged(res) && !Optim.iteration_limit_reached(res) &&
         _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
     # Profile intervals reuse the ML Woodbury nll (same convention as FE REML).
     fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, converged, means, obs, scales), nll_ml), re)
