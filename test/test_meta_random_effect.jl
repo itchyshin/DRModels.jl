@@ -209,16 +209,19 @@ end
         d = _mre_phylo_data(phy, sp)
         fit = drm(f, Gaussian(); data = d, tree = phy)
         s2 = re_sd(fit)[:sp]^2
+        # The SD's scale follows the route (#979): the plain sparse mean fit is on the
+        # tip correlation (unit height); meta_V stays on the raw branch-length covariance.
+        Cs = fit.phylo_scale === :correlation ? DRModels._phylo_correlation(phy) : C
         sim = DRModels._marginal_simulator(fit, d; tree = phy)
         @test sim !== nothing
         Y = reduce(hcat, [sim(StableRNG(k)) for k in 1:4000])
         i, j, k = first_row(sp, L[1]), first_row(sp, L[2]), first_row(sp, L[3])
         # Model covariances: sisters L1/L2 share 1.0 of the 1.5 height, L1/L3 0.5.
         # MC SE ≈ 0.01 at 4000 draws; the first-seen-order bug missed by ≥ 0.15.
-        @test cov(Y[i, :], Y[j, :]) ≈ s2 * C[1, 2] atol = 0.05
-        @test cov(Y[i, :], Y[k, :]) ≈ s2 * C[1, 3] atol = 0.05
+        @test cov(Y[i, :], Y[j, :]) ≈ s2 * Cs[1, 2] atol = 0.05
+        @test cov(Y[i, :], Y[k, :]) ≈ s2 * Cs[1, 3] atol = 0.05
         # Row variance: phylo field + residual (√(v + σ²) on meta_V, σ plain).
-        @test var(Y[i, :]) ≈ s2 * C[1, 1] + fit.scales[:sigma][i]^2 rtol = 0.1
+        @test var(Y[i, :]) ≈ s2 * Cs[1, 1] + fit.scales[:sigma][i]^2 rtol = 0.1
     end
 
     # A meta_V + phylo fit whose simulator cannot be built REFUSES: returning
@@ -268,18 +271,18 @@ end
     fp = bf(@formula(y ~ x + phylo(1 | sp)), @formula(sigma ~ 1))
     fsx = bf(@formula(y ~ x + phylo(1 | sp)), @formula(sigma ~ x))
     ref = drm(fp, Gaussian(); data = d, tree = phy)         # sparse default route
-    @test ref.phylo_scale === :covariance
+    @test ref.phylo_scale === :correlation      # #979: the ultrametric sparse route fits at unit height
     @test loglik(drm(fp, Gaussian(); data = dp, tree = phy)) ≈ loglik(ref) atol = 1e-6
     for (f, kw) in ((fsx, (;)), (fp, (; algorithm = :lbfgs)), (fp, (; algorithm = :gls)))
         fit = drm(f, Gaussian(); data = d, tree = phy, kw...)
         @test fit.phylo_scale === :correlation
         # Row order does not change the model (first-seen mapping: it did) ...
         @test loglik(drm(f, Gaussian(); data = dp, tree = phy, kw...)) ≈ loglik(fit) atol = 1e-5
-        # ... and with `sigma ~ 1` it is the default route's model; only the SD's
-        # unit differs (correlation vs raw covariance: × √height).
+        # ... and with `sigma ~ 1` it is the default route's model, on the same SD
+        # scale since #979 (both the tip correlation).
         if f === fp
             @test loglik(fit) ≈ loglik(ref) atol = 1e-5
-            @test re_sd(fit)[:sp] ≈ re_sd(ref)[:sp] * sqrt(1.5) rtol = 1e-3
+            @test re_sd(fit)[:sp] ≈ re_sd(ref)[:sp] rtol = 1e-3
         end
         # The bootstrap draws this fit's model: rows by name, tip correlation.
         s2 = re_sd(fit)[:sp]^2
