@@ -143,9 +143,8 @@ end
 end
 
 @testset "#952: the fit-failed warning prints is_converged, not the raw flag" begin
-    # A sentinel fit handed `converged = true` (the Nelder-Mead plateau). Since #1057 the
-    # `DrmFit` constructor clears the raw flag on a sentinel loglik, so the flag reads
-    # `false` here too; the warning must still report `false`.
+    # A sentinel fit (loglik -1e18): the `DrmFit` constructor clears the optimiser flag
+    # on a sentinel (#1009 #1012 #1019), so the warning must print that cleared flag.
     blocks = Pair{Symbol,UnitRange{Int}}[:mu => 1:1, :sigma => 2:2]
     names = Pair{Symbol,Vector{String}}[:mu => ["(Intercept)"], :sigma => ["(Intercept)"]]
     fit = _D952.DrmFit(Gaussian(), blocks, names, [0.0, 0.0], fill(NaN, 2, 2), -1e18, 5, true,
