@@ -37,7 +37,7 @@ const API_STABLE = [
     "fixef", "re_sd", "vc", "ranef", "sigma", "corpairs", "rho12",
     "stderror", "confint", "coeftable", "fitted", "residuals",
     "predict", "predict_parameters", "marginal_parameters", "prediction_grid",
-    "simulate", "family", "is_converged", "niterations",
+    "simulate", "family", "is_converged", "converged", "convergence_status", "niterations",
     "estimation_method", "reml_loglik", "ml_loglik",
     # control + derivative accessors (owner decision 8a, #942 #948 #994 #971)
     "DRMControl", "gradient", "hessian",

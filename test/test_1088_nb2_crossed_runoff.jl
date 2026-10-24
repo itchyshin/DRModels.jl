@@ -56,7 +56,7 @@ const _R1088_ROWS = NamedTuple[]
                             opt_convergence = ref["opt_convergence"], pd_hess = ref["pd_hess"],
                             logdisp_drmTMB = ref["log_dispersion"], logdisp_DRModels = θ[3],
                             nll_drmTMB = -ref["loglik"], nll_DRModels = -loglik(fit),
-                            converged = is_converged(fit),
+                            converged = DRModels._converged_nondegenerate(fit),
                             status = ref["point_comparable"] ? "optimum compared" :
                                      "not comparable (drmTMB opt\$convergence = $(ref["opt_convergence"]))",
                             max_rel_se = se_ok ? maximum(abs.(se[live] ./ se_t[live] .- 1)) : NaN))
@@ -66,7 +66,9 @@ const _R1088_ROWS = NamedTuple[]
             # Inside the box and at a real optimum (base: log sigma 3021.5 / 2902.0 / 1542.6).
             @test θ[3] < DRModels._dispersion_clamp(Val(:nb2_fixed))
             @test all(<(3.0), θ[4:5])
-            @test is_converged(fit)
+            # FX3b: a random-effect log SD at its floor is `:boundary`, so `is_converged`
+            # is false; the pre-FX3b test is `_converged_nondegenerate`.
+            @test DRModels._converged_nondegenerate(fit)
             if ref["point_comparable"]
                 # drmTMB opt$convergence == 0: its optimum is the reference.
                 @test maximum(abs.(θ[1:3] .- θt[1:3])) < 2e-4        # beta and log-dispersion
@@ -185,7 +187,9 @@ end
         Gamma(), d.y, X, Xσ, comps, ["(Intercept)", "x"], ["(Intercept)"], 1e-8;
         se = false)                                  # recover_runoff=true is the default
     @test DRModels._CROSSED_NUISANCE_BOX_REFITS[] > 0
-    @test is_converged(f1)
+    # FX3b: the recovered run-off sits on a random-effect boundary (`:boundary`), so
+    # `is_converged` is false; the pre-FX3b test is `_converged_nondegenerate`.
+    @test DRModels._converged_nondegenerate(f1)
     @test f1.theta[3] < bγ
     @test all(<(3.0), f1.theta[4:5])
     @test isfinite(f1.loglik) && -f1.loglik < 1e17   # not the 1e18 sentinel of a failed inner solve
@@ -196,7 +200,9 @@ end
     fit = drm(bf(@formula(y ~ 1 + x + (1 | g) + (1 | h)), @formula(sigma ~ 1)),
               Gamma(); data = d)
     @test DRModels._CROSSED_NUISANCE_BOX_REFITS[] > 0
-    @test is_converged(fit)
+    # FX3b: the recovered run-off sits on a random-effect boundary (`:boundary`), so
+    # `is_converged` is false; the pre-FX3b test is `_converged_nondegenerate`.
+    @test DRModels._converged_nondegenerate(fit)
     @test all(<(3.0), fit.theta[4:5])
 end
 

@@ -126,36 +126,11 @@ function rho12(fit::DrmFit)
     return fit.scales[:rho12]
 end
 
-"""
-    is_converged(fit::DrmFit) -> Bool
+# `is_converged`, `converged` and `convergence_status` live in convergence_status.jl
+# (the FX3b twin contract with drmTMB).
 
-Whether this fit may be trusted: the optimiser reported convergence **and** the
-optimum is not degenerate. A `false` here means the reported estimates / standard
-errors should not be trusted.
-
-This agrees with `fit.converged` on a non-finite log-likelihood, a failed-fit
-sentinel (`≤ -1e15`, including `-1e18` and `-floatmax`), and any non-finite
-coefficient: the `DrmFit` constructor clears `converged` in those cases
-(`_report_converged`), so neither flag is true.
-
-It is still STRICTER than `fit.converged` for a Gaussian residual scale that
-has collapsed. The Gaussian log-likelihood is unbounded as the residual scale
-goes to zero: with one row per group a structured random effect can interpolate
-the data, so `sigma` collapses and the objective runs away to `+Inf`.
-`Optim.converged` only asks whether the gradient test was met, and at such a
-point it returns `true`.
-
-For example, a one-row-per-species phylogenetic fit produced
-`sd_phylo = 22980`, `sigma = 7.5e-15`, `loglik = 6.8e13`, `converged = true` — and
-25% of parametric-bootstrap replicates in that example reached such a point.
-Including these invalid fits among successful refits can distort a percentile
-interval.
-
-Use this accessor to check both convergence and degeneracy.
-"""
-is_converged(fit::DrmFit) = fit.converged && _nondegenerate_fit(fit)
-
-# The degeneracy test behind `is_converged`. GAUSSIAN ONLY: for NB2/Beta/Gamma the
+# The degeneracy test behind `convergence_status`'s geometry step (and
+# `_converged_nondegenerate`). GAUSSIAN ONLY: for NB2/Beta/Gamma the
 # `:sigma` slot holds a dispersion or shape, where a genuinely small value is
 # legitimate, so applying a residual-scale test there would reject good fits.
 #
@@ -231,12 +206,14 @@ function Base.show(io::IO, ::MIME"text/plain", fit::DrmFit)
     se = _display_se(fit)
     fam = _family_name(fit.family)
     println(io, "Distributional regression fit (", fam, ")")
+    status = convergence_status(fit)
     println(io, "  nobs = ", fit.nobs,
                 "   logLik = ", @sprintf("%.4f", fit.loglik),
-                "   converged = ", is_converged(fit))
+                "   convergence_status = ", status,
+                "   converged = ", status === :converged)
     # #949: show the trusted accessor; say so when the raw optimiser flag disagrees.
-    (fit.converged && !is_converged(fit)) && println(io, "  (the optimiser stopped normally, " *
-        "but the fit is degenerate -- see `is_converged`)")
+    (fit.converged && status !== :converged) && println(io, "  (the optimiser stopped normally, " *
+        "but convergence_status is ", status, " -- see `convergence_status`)")
     _wald_withheld(fit) && println(io, "  Wald SEs withheld (homogeneous Toeplitz, as drmTMB): `sigma` is the " *
         "TOTAL within-series SD; use profile intervals for mean coefficients.")
 

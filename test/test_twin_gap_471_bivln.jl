@@ -71,7 +71,11 @@ using Test, Random, LinearAlgebra, Statistics
                   rho12 = @formula(rho12 ~ 1))
         fit  = drm(form, LogNormal(); data = dat, A = A)
         gfit = drm(form, Gaussian();  data = (; y1 = log.(y1), y2 = log.(y2), x = x, id = grp), A = A)
-        @test is_converged(fit) && is_converged(gfit)
+        # FX3b: a near-zero Sigma_a direction has an inflated (or NaN) log-Cholesky
+        # standard error, so the twin status is :degenerate on both fits. This
+        # checks what `is_converged` checked before FX3b.
+        @test DRModels._converged_nondegenerate(fit) && DRModels._converged_nondegenerate(gfit)
+        @test convergence_status(fit) === convergence_status(gfit)   # delegation is exact
         @test coef(fit) ≈ coef(gfit) atol = 1e-8
         @test fit.ranef.Sigma_a ≈ gfit.ranef.Sigma_a atol = 1e-8
     end
@@ -118,7 +122,11 @@ using Test, Random, LinearAlgebra, Statistics
         fit  = drm(form, LogNormal(); data = dat, coords = coords, spatial_range = 2.0)
         gfit = drm(form, Gaussian();  data = (; y1 = log.(y1), y2 = log.(y2), x = x, site = grp),
                    coords = coords, spatial_range = 2.0)
-        @test is_converged(fit) && is_converged(gfit)
+        # FX3b: a near-zero Sigma_a direction has an inflated (or NaN) log-Cholesky
+        # standard error, so the twin status is :degenerate on both fits. This
+        # checks what `is_converged` checked before FX3b.
+        @test DRModels._converged_nondegenerate(fit) && DRModels._converged_nondegenerate(gfit)
+        @test convergence_status(fit) === convergence_status(gfit)   # delegation is exact
         @test coef(fit) ≈ coef(gfit) atol = 1e-8
         @test fit.ranef.Sigma_a ≈ gfit.ranef.Sigma_a atol = 1e-8
     end
@@ -153,7 +161,10 @@ using Test, Random, LinearAlgebra, Statistics
                   sigma1 = @formula(sigma1 ~ 1), sigma2 = @formula(sigma2 ~ 1),
                   rho12 = @formula(rho12 ~ 1))
         fit = drm(form, LogNormal(); data = dat, tree = phy)
-        @test is_converged(fit)
+        # FX3b: mu2's phylo SD is ~0.01 in the DGP, so its log-Cholesky standard
+        # error is inflated and the twin status is :degenerate. This checks what
+        # `is_converged` checked before FX3b.
+        @test DRModels._converged_nondegenerate(fit)
         # q=2 route: markers on mu1/mu2 only, so Sigma_a is 2x2 (mu1, mu2).
         σ_hat = sqrt(fit.ranef.Sigma_a[1, 1])
         @test isapprox(σ_hat, σ_phy_true; atol = 0.35)

@@ -1810,8 +1810,9 @@ not converge, or that lands on a degenerate optimum, is not that kind of
 error: with `check_converged = true` (the default) it is dropped, `status` is
 `"bootstrap_incomplete"` (or `"bootstrap_at_boundary"` when the retained draws
 also sit on a bound), and a warning names that status. `failures = :skip`
-does the same for thrown refits instead of aborting. Set
-`check_converged = false` only to reproduce the old behaviour that counted
+does the same for thrown refits instead of aborting. A refit at a variance
+boundary is kept: [`convergence_status`](@ref) calls it `:boundary`, but it is a
+real draw. Set `check_converged = false` only to reproduce the old behaviour that counted
 unconverged refits in the interval. Passing an existing `DrmFit`
 reuses that point estimate as the bootstrap seed fit and starts directly with
 the `B` simulated refits. Gaussian bootstrap refits pass `algorithm` and
@@ -2442,10 +2443,12 @@ function _bootstrap_result(
             ysim = simulate_fn === nothing ? simulate(fit0; rng=rr) : simulate_fn(rr)
             datab = _bootstrap_data(formula, data, ysim)
             fitb = _without_boundary_warnings(() -> refit(datab))
-            # `is_converged`, not the raw `.converged` field: the accessor also
-            # rejects a degenerate optimum (sigma collapsed, likelihood runaway),
-            # which the optimiser's own flag happily calls converged (#461).
-            if check_converged && !is_converged(fitb)
+            # Not the raw `.converged` field: this gate also rejects a degenerate
+            # optimum (sigma collapsed, likelihood runaway), which the optimiser's
+            # own flag happily calls converged (#461). Not `is_converged` either
+            # (FX3b): a refit whose variance component lands on its boundary is a
+            # real draw, and dropping it would bias the interval away from zero.
+            if check_converged && !_converged_nondegenerate(fitb)
                 messages[b] = _BOOTSTRAP_UNCONVERGED
             else
                 draws[b, :] = coef(fitb)
@@ -2774,9 +2777,11 @@ end
 Post-fit convergence / identifiability diagnostics — drmTMB's `check_drm()`.
 Returns a `NamedTuple` and logs a short report:
 
-- `converged` — [`is_converged`](@ref)`(fit)`: the optimiser's convergence flag
-  AND the degeneracy bar, so a Gaussian fit whose scale collapsed is reported
-  `false` here even when `fit.converged` is `true` (#949).
+- `convergence_status` — [`convergence_status`](@ref)`(fit)`: `:converged`,
+  `:boundary` or `:degenerate`, by the same rules as drmTMB (FX3b).
+- `converged` — [`is_converged`](@ref)`(fit)`, i.e. `convergence_status ===
+  :converged`. A Gaussian fit whose scale collapsed is reported `false` here even
+  when `fit.converged` is `true` (#949), and so is a `:boundary` fit (FX3b).
 - `max_abs_grad` — `max|∇nll|` at the optimum (≈ 0 at a clean interior optimum;
   `NaN` when no gradient could be produced: see `grad_source` for which of the
   two reasons applies).
@@ -2819,7 +2824,7 @@ Returns a `NamedTuple` and logs a short report:
   `(at_boundary, findings)`, drmTMB's `temporal_boundary` rules: residual σ̂ below
   1e-3 · sd(y), OU decay × longest series span below 1e-4 or × shortest gap above 30,
   AR1 |φ̂| above 0.999. drmTMB reports such a fit as `convergence_status() == "boundary"`
-  (still converged). Does not affect `ok`.
+  (so its `is_converged` is false since FX3b). Does not affect `ok`.
 - `skew_normal_nu_wald` — `nothing` unless the fit is [`SkewNormal`](@ref); then
   `(near_zero, min_abs_nu, cut)`. `near_zero` is `true` when the smallest fitted
   slant `|ν̂|` is below `cut = 0.5`: the information matrix is singular at `ν = 0`, so
@@ -2832,8 +2837,12 @@ Returns a `NamedTuple` and logs a short report:
   `fixed_effect_rank_deficiency`). Such a fit is not converged (`is_converged` is
   `false`), the aliased coordinates' SEs are `NaN`, and `ok` is `false`. Detected on the
   Gaussian location-scale route.
-- `ok` — `true` when converged, the gradient is small, the covariance is PD, and no
-  fixed-effect design is rank-deficient.
+- `ok` — `true` when the optimiser converged at a non-degenerate optimum (the
+  test `is_converged` made before FX3b), the gradient is small, the covariance is
+  PD, and no fixed-effect design is rank-deficient. It does not read
+  `convergence_status`, which is reported in its own field: a `:boundary` fit, or
+  one the twin rules call `:degenerate` for an inflated standard error, can still
+  be `ok`.
   On a penalized fit the gradient criterion is **dropped**: the stored objective
   is unpenalized, so its gradient is non-zero at the MAP optimum by construction
   and scoring it would report a correct fit as broken. It is also dropped
@@ -2875,11 +2884,13 @@ function check_drm(fit::DrmFit; grad_tol::Real=1e-3)
     # #1003: a failed diagnostic warns instead of reading as "not that kind of fit".
     vb = try _variance_boundary(fit) catch err; _boundary_diagnostic_failed("variance-boundary", err) end
     tb = try _temporal_boundary(fit) catch err; _boundary_diagnostic_failed("temporal-boundary", err) end
+    status = convergence_status(fit)   # FX3b twin status; #949: not the raw flag
     snw = _skew_normal_nu_wald(fit)   # #1060: `nothing` unless SkewNormal
     frd = _fixed_effect_rank_deficiency(fit)   # #1110: `nothing` unless a design is aliased
-    conv = is_converged(fit)   # #949: the trusted accessor, not the raw flag
-    ok = conv && (penalized || isnan(mag) || mag <= grad_tol) && pd && frd === nothing
+    conv = status === :converged       # is_converged(fit)
+    ok = _converged_nondegenerate(fit) && (penalized || isnan(mag) || mag <= grad_tol) && pd && frd === nothing
     report = (
+        convergence_status=status,
         converged=conv,
         max_abs_grad=mag,
         grad_source=grad.source,
@@ -2894,7 +2905,7 @@ function check_drm(fit::DrmFit; grad_tol::Real=1e-3)
         fixed_effect_rank_deficiency=frd,
         ok=ok,
     )
-    @info "check_drm" converged = report.converged max_abs_grad = report.max_abs_grad grad_source =
+    @info "check_drm" convergence_status = report.convergence_status converged = report.converged max_abs_grad = report.max_abs_grad grad_source =
         report.grad_source vcov_complete = report.vcov_complete vcov_posdef = report.vcov_posdef min_eigval =
         report.min_eigval cond = report.cond penalized_map = report.penalized_map ok = report.ok
     # #1110: the NaN rows of an aliased design are explained by its own warning below.

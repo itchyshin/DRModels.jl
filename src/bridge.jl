@@ -1718,7 +1718,14 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
         "bic" => bic(fit),
         "df" => dof(fit),
         "nobs" => nobs(fit),
-        "converged" => is_converged(fit),
+        # The optimiser-degeneracy-and-geometry gate, NOT `is_converged` (FX3b):
+        # drmTMB's Julia-engine twin reads this key as its step-1 optimiser flag
+        # and then classifies the fit itself, so a `:boundary` fit must still send
+        # `true`. A Poisson / NB2 fit whose MLE does not exist
+        # (`geometry === :count_mle_nonexistent`) sends `false`. The Julia
+        # classification travels as `convergence_status`.
+        "converged" => fit.geometry === :ok && _converged_nondegenerate(fit),
+        "convergence_status" => String(convergence_status(fit)),
         # estim_method / ml_loglik / infocrit_basis are unconditional (#624): every
         # DrmFit carries `estim_method` and an always-set `ml_loglik` (the plain ML
         # log-likelihood, equal to `loglik` for an ML fit). Before this, an R caller
@@ -2490,7 +2497,7 @@ function _bridge_q2_point_export(fit; family::AbstractString = "biv_gaussian",
             "residual_sd" => residual_sd,
             "residual_correlation" => Float64(first(fit.scales[:rho12])),
             "loglik" => Float64(loglik(fit)),
-            "converged" => Bool(is_converged(fit)),
+            "converged" => fit.geometry === :ok && _converged_nondegenerate(fit),   # as the top-level key (FX3b)
             "claim_boundary" => boundary,
         )
     end

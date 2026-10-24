@@ -215,6 +215,19 @@ struct DrmFit{F}
     # the `drm` entry wrapper (`_withcontrolinfo`, src/control.jl), after the route
     # has returned, so the `_with*` rebuilders below need not carry it.
     control_info::Any
+    # `:ok` (the default), or `:skipped` when the caller turned standard errors off
+    # (`se = false`, `q4_vcov = false`). `vcov` is all-NaN in both a skipped and a
+    # failed covariance, so this is the only record of which one happened. The
+    # twin `convergence_status` does not apply its covariance steps to a skipped
+    # one, as drmTMB does for `drm_control(se = FALSE)` (FX3b). Set by
+    # `_withuncertainty`.
+    uncertainty::Symbol
+    # `:ok` (the default), or `:count_mle_nonexistent` when the Poisson / NB2
+    # fixed-effect cone screen found no finite MLE (#1109). This is the twin
+    # `convergence_status` geometry step (FX3b). It is kept apart from `vcov` so
+    # the verdict is the same whether or not standard errors were computed. Set
+    # by `_withgeometry`.
+    geometry::Symbol
 
     # Inner constructor: `converged` is the optimiser flag AND a finite,
     # non-sentinel optimum. A non-finite log-likelihood, a failed-fit sentinel
@@ -223,7 +236,7 @@ struct DrmFit{F}
     function DrmFit(family, blocks, coefnames, theta, vcov, loglik, nobs, converged,
                     means, obs, scales, formula, nll, nllgrad, ranef, estim_method,
                     reml_loglik, ml_loglik, marginal, phylo_penalty, penalty,
-                    iterations, phylo_scale, control_info)
+                    iterations, phylo_scale, control_info, uncertainty, geometry)
         # `new` does not convert. The previous default constructor did, and
         # fitters pass the odd Int log-likelihood or adjoint covariance.
         new{typeof(family)}(
@@ -246,7 +259,7 @@ struct DrmFit{F}
             penalty,
             convert(Int, iterations),
             phylo_scale,
-            control_info)
+            control_info, uncertainty, geometry)
     end
 end
 
@@ -282,49 +295,67 @@ DrmFit(family, blocks, coefnames, theta, vcov, loglik, nobs, converged, means, o
            phylo_penalty, penalty, iterations, :covariance)
 
 # 23-arg compatibility constructor: `control_info` defaults to `nothing`
-# (no `control` / `weights` given). Every fitter and `_with*` rebuilder uses it.
+# (no `control` / `weights` given), and `uncertainty` and `geometry` default to
+# `:ok`; only a caller that turned standard errors off sets `:skipped`
+# (`_withuncertainty`), and only the Poisson / NB2 cone screen sets a geometry
+# (`_withgeometry`). Every fitter uses it.
 DrmFit(family, blocks, coefnames, theta, vcov, loglik, nobs, converged, means, obs, scales,
        formula, nll, nllgrad, ranef, estim_method, reml_loglik, ml_loglik, marginal,
        phylo_penalty, penalty, iterations, phylo_scale) =
     DrmFit(family, blocks, coefnames, theta, vcov, loglik, nobs, converged, means, obs, scales,
            formula, nll, nllgrad, ranef, estim_method, reml_loglik, ml_loglik, marginal,
-           phylo_penalty, penalty, iterations, phylo_scale, nothing)
+           phylo_penalty, penalty, iterations, phylo_scale, nothing, :ok, :ok)
+
+# 25-arg constructor for the `_with*` rebuilders: they carry `uncertainty` and
+# `geometry`, and `control_info` stays `nothing` (only `_withcontrolinfo` sets it).
+DrmFit(family, blocks, coefnames, theta, vcov, loglik, nobs, converged, means, obs, scales,
+       formula, nll, nllgrad, ranef, estim_method, reml_loglik, ml_loglik, marginal,
+       phylo_penalty, penalty, iterations, phylo_scale, uncertainty, geometry) =
+    DrmFit(family, blocks, coefnames, theta, vcov, loglik, nobs, converged, means, obs, scales,
+           formula, nll, nllgrad, ranef, estim_method, reml_loglik, ml_loglik, marginal,
+           phylo_penalty, penalty, iterations, phylo_scale, nothing, uncertainty, geometry)
 
 _withformula(fit::DrmFit, f) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
     fit.vcov, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, f, fit.nll, fit.nllgrad, fit.ranef,
-    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale)
+    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale,
+    fit.uncertainty, fit.geometry)
 
 # Attach the (negative) log-likelihood closure so profile intervals can re-optimise
 # the nuisance parameters at each fixed value. nll(θ) must accept the full θ vector.
 _withnll(fit::DrmFit, nll, nllgrad = nothing) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
     fit.vcov, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula, nll, nllgrad, fit.ranef,
-    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale)
+    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale,
+    fit.uncertainty, fit.geometry)
 
 # Attach per-group conditional random-effect estimates (BLUPs). `re` is a
 # Dict{Symbol,...} keyed by grouping factor; see ranef(fit) for the public accessor.
 _withranef(fit::DrmFit, re) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
     fit.vcov, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula, fit.nll, fit.nllgrad, re,
-    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale)
+    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale,
+    fit.uncertainty, fit.geometry)
 
 # Mark the fit as REML-estimated, recording both the REML and ML log-likelihoods.
 # The public `loglik` slot is set to the REML value (with the documented
 # cross-structure caveat); `ml_loglik` stays available for ML-style comparison.
 _withreml(fit::DrmFit, reml_ll::Real, ml_ll::Real) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
     fit.vcov, Float64(reml_ll), fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula, fit.nll, fit.nllgrad, fit.ranef,
-    :REML, Float64(reml_ll), Float64(ml_ll), fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale)
+    :REML, Float64(reml_ll), Float64(ml_ll), fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale,
+    fit.uncertainty, fit.geometry)
 
 # Mark the fit as penalized-MAP. `loglik` is left as the UNPENALIZED data
 # log-likelihood (drmTMB keeps `fit$logLik` unpenalized too) and the penalty at
 # the optimum is recorded separately, so `-objective == loglik - phylo_penalty`.
 _withmap(fit::DrmFit, pen_value::Real, spec) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
     fit.vcov, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula, fit.nll, fit.nllgrad, fit.ranef,
-    :MAP, fit.reml_loglik, fit.ml_loglik, fit.marginal, Float64(pen_value), spec, fit.iterations, fit.phylo_scale)
+    :MAP, fit.reml_loglik, fit.ml_loglik, fit.marginal, Float64(pen_value), spec, fit.iterations, fit.phylo_scale,
+    fit.uncertainty, fit.geometry)
 
 # Tag the integral approximation (`:LA` default, `:Laplace`, `:VA` ELBO, `:AGHQ`). Does not
 # change `loglik`; the caller is responsible for putting an ELBO in that slot.
 _withmarginal(fit::DrmFit, m::Symbol) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
     fit.vcov, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula, fit.nll, fit.nllgrad, fit.ranef,
-    fit.estim_method, fit.reml_loglik, fit.ml_loglik, m, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale)
+    fit.estim_method, fit.reml_loglik, fit.ml_loglik, m, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale,
+    fit.uncertainty, fit.geometry)
 
 # Record how many iterations the optimiser actually took. Separate from the
 # `iterations` OPTION (a cap on the maximum); this is the achieved count, and it
@@ -333,12 +364,29 @@ _withmarginal(fit::DrmFit, m::Symbol) = DrmFit(fit.family, fit.blocks, fit.coefn
 # rather than reporting 0, which would read as "converged instantly".
 _withiterations(fit::DrmFit, n::Integer) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
     fit.vcov, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula, fit.nll, fit.nllgrad, fit.ranef,
-    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, Int(n), fit.phylo_scale)
+    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, Int(n), fit.phylo_scale,
+    fit.uncertainty, fit.geometry)
 
 # Record the tip matrix a phylo field's SD is defined against (see `DrmFit.phylo_scale`).
 _withphyloscale(fit::DrmFit, m::Symbol) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
     fit.vcov, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula, fit.nll, fit.nllgrad, fit.ranef,
-    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, m)
+    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, m,
+    fit.uncertainty, fit.geometry)
+
+# Record that the caller turned standard errors off (see `DrmFit.uncertainty`).
+# `se = true` leaves the fit as it is; anything that is not a `DrmFit` (a joint
+# missing-data wrapper, say) passes through unchanged.
+_withuncertainty(fit::DrmFit, se::Bool) = se ? fit : DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
+    fit.vcov, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula, fit.nll, fit.nllgrad, fit.ranef,
+    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale,
+    :skipped, fit.geometry)
+_withuncertainty(fit, ::Bool) = fit
+
+# Record the outcome of a geometry screen (see `DrmFit.geometry`).
+_withgeometry(fit::DrmFit, g::Symbol) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
+    fit.vcov, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula, fit.nll, fit.nllgrad, fit.ranef,
+    fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale,
+    fit.uncertainty, g)
 
 """
     niterations(fit) -> Int
@@ -1497,6 +1545,7 @@ function _with_full_fixed_gaussian_rows(fit::DrmFit, y_full, Xμ_full, Xσ_full)
         fit.formula, fit.nll, fit.nllgrad, fit.ranef,
         fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal,
         fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale,
+        fit.uncertainty, fit.geometry,
     )
 end
 
@@ -1672,6 +1721,7 @@ function _with_full_response_rows(fit::DrmFit, f::DrmFormula, data)
         fit.formula, fit.nll, fit.nllgrad, fit.ranef,
         fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal,
         fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale,
+        fit.uncertainty, fit.geometry,
     )
 end
 

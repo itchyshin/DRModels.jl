@@ -53,9 +53,13 @@ end
     y = [_sigma_axis_gamma_draw(β0μ, β0ψ + u[gidx[i]]) for i in 1:n]
     Xμ = ones(n, 1); Xψ = ones(n, 1)
 
-    fit = DRModels._fit_sigma_axis_re(DRModels.Gamma(), Val(:gamma), y, Xμ, Xψ, gidx, G,
-                                 ["(Intercept)"], ["(Intercept)"], "g";
-                                 link = :log, se = false)
+    # FX3b: the public `drm(...; se = false)` records the skipped covariance on
+    # the fit (`DrmFit.uncertainty`); this calls the fitter directly, so record it
+    # here, or the deliberately NaN covariance would read as a failed one.
+    fit = DRModels._withuncertainty(
+        DRModels._fit_sigma_axis_re(DRModels.Gamma(), Val(:gamma), y, Xμ, Xψ, gidx, G,
+                                    ["(Intercept)"], ["(Intercept)"], "g";
+                                    link = :log, se = false), false)
     @test is_converged(fit)
     @test isfinite(loglik(fit))
     τ̂ = re_sd(fit)[:g_logsigma]     # scale-axis RE SD keyed on the log-σ axis
