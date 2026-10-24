@@ -27,6 +27,16 @@ function _reference_docs_names()
     return names
 end
 
+# `Base.Docs.hasdoc` only exists from Julia 1.11; the module's doc table works on 1.10 too.
+# An alias (`const drm_formula = bf`) carries no docstring of its own: Documenter finds the
+# one on the function it points to, so resolve the name to that function first.
+function _has_docstring(nm::Symbol)
+    v = getfield(DRModels, nm)
+    b = v isa Function ? Base.Docs.Binding(parentmodule(v), nameof(v)) :
+        Base.Docs.Binding(DRModels, nm)
+    return haskey(Base.Docs.meta(b.mod), b)
+end
+
 @testset "#985 reference pages list the user-facing exports" begin
     if !isdir(_REF_DIR)
         @info "docs/src/reference not found; skipping #985 check"
@@ -35,7 +45,7 @@ end
         for nm in ("bridge_diagnostics", "drm_formula", "offset")
             @testset "$nm" begin
                 @test nm in listed
-                @test Base.Docs.hasdoc(DRModels, Symbol(nm))
+                @test _has_docstring(Symbol(nm))
             end
         end
     end
