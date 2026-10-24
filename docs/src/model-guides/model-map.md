@@ -178,7 +178,7 @@ inference at a variance boundary.
 | Scale to large data | [Large data](large-data.md) |
 | Choose the marginal method (Laplace vs VA) | [Marginal: LA vs VA](marginal-la-vs-va.md) |
 | Model variability as signal (location–scale) | [When variance carries signal](../tutorials/location-scale.md) |
-| Predictors on a random effect's SD (location–scale–scale, incl. climate-dependent phylogenetic SD) | [Part 2: location–scale–scale](../tutorials/location-scale-scale.md) |
+| Predictors on a random effect's SD (location–scale–scale, incl. climate-dependent phylogenetic SD) | [Part 2: location–scale–scale](https://itchyshin.github.io/DRModels.jl/dev/tutorials/location-scale-scale) |
 | Change residual coupling with `rho12` | [Changing residual coupling with rho12](../tutorials/bivariate-coscale.md) |
 | Robust continuous responses | [Robust continuous responses](../tutorials/robust-student.md) |
 | Counts and extra zeros | [Count abundance and extra zeros](../tutorials/count-nbinom2.md) |
