@@ -13,6 +13,20 @@ BivariateDrmFormula
 offset
 ```
 
+### Other names used in formulas
+
+These exported names have no separate entry below:
+
+- `@formula(...)` is re-exported from StatsModels.jl; it writes one formula,
+  as `~` does in R. See the
+  [StatsModels.jl documentation](https://juliastats.org/StatsModels.jl/stable/formula/).
+- `drm_formula` is another name for [`bf`](@ref) (drmTMB's spelling); the two
+  are the same function.
+- `offset(x)` inside the mean formula adds `x` to the linear predictor with its
+  coefficient fixed at 1, as in R. It is currently supported for `Poisson()`
+  only, for example `@formula(y ~ x + offset(log_exposure))`; at most one
+  offset term is allowed.
+
 ## Response families
 
 ```@docs

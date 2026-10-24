@@ -344,8 +344,14 @@ function _crossed_nuisance_box_refit(nll, grad!, θ0, pμ::Int, disp_bound::Real
     lo[pμ+1] = -disp_bound; hi[pμ+1] = disp_bound
     lo[(pμ + 2):np] .= -8.0; hi[(pμ + 2):np] .= 3.0
     θs = clamp.(θ0, lo .+ 0.1, hi .- 0.1)          # Fminbox needs an interior start
+    # A failed inner solve reports a NaN gradient (#1093) so a fit is never called converged
+    # on it. Fminbox's Hager-Zhang line search asserts a finite slope and would throw, losing
+    # the whole re-fit, so inside this search only a non-finite gradient is zeroed (the value
+    # there is the 1e18 sentinel, so no step is taken towards it). The caller still reads
+    # convergence from the unwrapped `grad!` at the adopted point.
+    grad_finite!(Gout, θ) = (grad!(Gout, θ); all(isfinite, Gout) || fill!(Gout, 0.0); Gout)
     return try
-        od = Optim.OnceDifferentiable(nll, grad!, θs)
+        od = Optim.OnceDifferentiable(nll, grad_finite!, θs)
         Optim.optimize(od, lo, hi, θs, Optim.Fminbox(Optim.LBFGS()),
                        Optim.Options(g_tol = g_tol, outer_iterations = 20, iterations = 250))
     catch err
@@ -486,7 +492,7 @@ function _poisson_phylo_setup(tree, labels)
     numeric_labels = true
     @inbounds for i in eachindex(labels)
         li = labels[i]
-        if li isa Integer && 1 <= Int(li) <= phy.n_leaves
+        if li isa Real && isinteger(li) && 1 <= Int(li) <= phy.n_leaves   # Float64 codes from R too (#1026)
             leaf_node[i] = leaf_pos[Int(li)]
         else
             numeric_labels = false
@@ -495,6 +501,9 @@ function _poisson_phylo_setup(tree, labels)
     end
     numeric_labels && return Q, leaf_node, phy
 
+    # #1026: labels that carry names but do not all match tip names are refused;
+    # only purely numeric codes fall through to the positional match below.
+    _refuse_unmatched_tip_labels(labels, phy.leaf_names)
     gidx, G = _group_index(labels)
     G == phy.n_leaves ||
         error("phylo labels must match tree tip names, integer tip indices, or have one level per tree tip")
@@ -3900,7 +3909,8 @@ function _fit_gamma_crossed_aghq(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol; se:
 end
 
 function _fit_beta_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
-                                   se::Bool = true, polish_iterations::Int = 0)
+                                   se::Bool = true, polish_iterations::Int = 0,
+                                   recover_runoff::Bool = true)
     length(comps) == 2 || error("_fit_beta_crossed_laplace requires two random-intercept components")
     (size(Xσ, 2) == 1 && all(==(1.0), @view Xσ[:, 1])) || error("drm(Beta()): crossed random intercepts `(1 | g) + (1 | h)` require `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
     yv = Float64.(y)
@@ -3919,7 +3929,7 @@ function _fit_beta_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
         fam, Val(:beta_fixed), aux_from, length(yv), Xμ, comps[1][2], comps[1][3],
         comps[2][2], comps[2][3], nmμ, nmσ, [comps[1][4], comps[2][4]], g_tol;
         θβ0 = θβ0, θσ0 = -0.5 * log(φ0), sigma_scale = exp,
-        se = se, polish_iterations = polish_iterations
+        se = se, polish_iterations = polish_iterations, recover_runoff = recover_runoff
     )
 end
 
@@ -3960,7 +3970,8 @@ the verified Beta-family crossed nuisance Laplace spine
 kernel.
 """
 function _fit_betabinomial_crossed_laplace(fam, s, ntr, Xμ, comps, nmμ, nmσ, g_tol;
-                                           se::Bool = true, polish_iterations::Int = 0)
+                                           se::Bool = true, polish_iterations::Int = 0,
+                                           recover_runoff::Bool = true)
     length(comps) == 2 || error("_fit_betabinomial_crossed_laplace requires two random-intercept components")
     all(==(1.0), comps[1][1]) && all(==(1.0), comps[2][1]) ||
         error("_fit_betabinomial_crossed_laplace supports scalar random intercepts only")
@@ -3970,7 +3981,7 @@ function _fit_betabinomial_crossed_laplace(fam, s, ntr, Xμ, comps, nmμ, nmσ, 
         fam, Val(:betabinomial_fixed), aux_from, length(s), Xμ, comps[1][2], comps[1][3],
         comps[2][2], comps[2][3], nmμ, nmσ, [comps[1][4], comps[2][4]], g_tol;
         θβ0 = θβ0, θσ0 = θσ0, sigma_scale = exp,
-        se = se, polish_iterations = polish_iterations,
+        se = se, polish_iterations = polish_iterations, recover_runoff = recover_runoff,
         extra_scales = Dict(:trials => Float64.(nint))
     )
 end

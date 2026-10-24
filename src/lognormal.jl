@@ -57,6 +57,7 @@ struct LogNormal end
 
 @drm_entry function drm(f::DrmFormula, fam::LogNormal; data, tree = nothing, K = nothing, g_tol::Real = 1e-8,
              marginal::Symbol = :LA)
+    _drm_entry_guard(f, fam, data; tree = tree, K = K)   # #1027 #1022 #1010
     # #1126: same `marginal` keyword as the other families. log y is exactly Gaussian
     # given the random intercept, so the Laplace approximation is exact: `:Laplace`
     # is the same fit as the default `:LA` (the mode-centred 1-node rule), tagged.

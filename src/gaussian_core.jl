@@ -625,6 +625,10 @@ Univariate Gaussian fits support fixed effects plus the structured-effect
 markers documented under [`phylo`](@ref), [`spatial`](@ref), [`animal`](@ref),
 [`relmat`](@ref), and [`meta_V`](@ref).
 
+`ids = …` labels the rows of the relatedness matrix `A` of an `animal(1 | g)`
+term, so `A` is matched to the data by label instead of by order of first
+appearance (see [`animal`](@ref)).
+
 ## `algorithm` and `sparse` — solver selection
 
 `algorithm` (default `:auto`) and `sparse` choose how the model is fit:
@@ -727,13 +731,21 @@ An `mi(x)` joint formula models its missing predictors rather than dropping
 them.
 """
 @drm_entry function drm(f::DrmFormula, fam::Gaussian; kwargs...)
-    haskey(kwargs, :V) && throw(ArgumentError("drm: a dense known sampling covariance `V = V` is bivariate-only (#974). For a bivariate fit use `meta_vcov_bivariate` with the wide mu1/mu2 form; for known diagonal sampling variances on a univariate Gaussian use `meta_V(vi)` in the mean formula."))
+    # #974: a dense known sampling covariance is consumed by the BIVARIATE
+    # route only; on this route `V` used to end in a bare MethodError.
+    haskey(kwargs, :V) &&
+        throw(ArgumentError("drm: `V = …` (a dense known sampling covariance) is supported " *
+            "for the bivariate Gaussian route only, `bf(mu1 = …, mu2 = …, …)` with " *
+            "`meta_vcov_bivariate`. For a univariate model, known diagonal sampling variances " *
+            "go in the formula as `meta_V(v)`; a dense univariate `V` is not implemented yet."))
     # The residual-variance / structured-variance BOUNDARY advisory (#724, #697) is
     # attached here, once, rather than in each of the fitter's return paths.
     return _apply_design_rank(_warn_variance_boundary(_drm_gaussian_fit(f, fam; kwargs...)))
 end
 
-function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree = nothing, coords = nothing, g_tol::Real = 1e-8, algorithm::Symbol = :auto, method::Symbol = :ML, profile_ci::Bool = false, phylo_coupled::Bool = false, penalty = nothing, sparse = nothing, impute = nothing, missing = nothing, marginal::Symbol = :LA)
+function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree = nothing, coords = nothing, g_tol::Real = 1e-8, algorithm::Symbol = :auto, method::Symbol = :ML, profile_ci::Bool = false, phylo_coupled::Bool = false, penalty = nothing, sparse = nothing, impute = nothing, missing = nothing, marginal::Symbol = :LA, ids = nothing)
+    _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, coords = coords)   # #1027 #1022 #1010
+    A = _resolve_relatedness_labels(f, data, A, ids)   # #957: match `A` by label
     mkind = _gaussian_marginal(marginal)
     laplace = mkind === :Laplace
     aghq = mkind === :AGHQ
@@ -813,6 +825,26 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
             algorithm = algorithm, penalty = penalty, phylo_coupled = phylo_coupled,
             sparse = sparse, has_missing_response = has_missing_response, g_tol = g_tol,
             structured_slope = structured_slope, tree = tree), f)
+    end
+    # #951: a sparse solver request on a model with no structured term anywhere
+    # (mean marker, sigma marker, `sd(g, phylogenetic)`, temporal) would be accepted
+    # with no effect on every remaining cell (fixed effects, meta_V, ordinary
+    # `(… | g)` effects on the mean or on sigma, iid `sd(g) ~ …`). Refuse it here,
+    # above those routes. `:gls` / `:lbfgs` stay the documented aliases for the
+    # default fitters.
+    # The multi-component sd() route (several iid sd() parts, or an iid part beside
+    # a mean marker) DOES read `algorithm` / `sparse`: its router logs why a sparse
+    # request falls back to dense (#563 S7b.4), so it is exempt. The single iid
+    # `sd(g) ~ …` route does not read them.
+    _sdp_here = _sd_parts(f)
+    _multi_sd = !isempty(_sdp_here) &&
+        !(structured === nothing && length(re) == 1 && length(_sdp_here) == 1)
+    if (algorithm === :sparse || sparse === true) && isempty(all_structured) &&
+       structured_sigma === nothing && isempty(_sdphylo_parts(f)) && !_multi_sd
+        throw(ArgumentError("drm: `" * (algorithm === :sparse ? "algorithm = :sparse" : "sparse = true") *
+            "` selects a sparse structured-Gaussian solver, but this model has no structured " *
+            "term (`phylo`, `relmat`, `animal`, `spatial` or `sd(…, phylogenetic)`), so it would " *
+            "have no effect. Use the default `algorithm = :auto`."))
     end
     # #620 two-SD phylogenetic random slope `phylo(1 + x | g)` on the Gaussian
     # mean: validate HERE, above every route that can return, so no other
@@ -904,8 +936,10 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         sigma_kind, sigma_grp = structured_sigma
         if sigma_kind !== :phylo
             throw(ArgumentError("drm (Gaussian): `$(sigma_kind)(1 | $(sigma_grp))` on `sigma` is " *
-                "not yet supported in the univariate route — only `phylo(1 | g)` is wired for B1. " *
-                "Use `relmat`/`animal`/`spatial` on the MEAN axis, or file an issue."))
+                "not implemented in DRModels.jl yet (a known gap, #963); the only structured random " *
+                "effect on `sigma` is `phylo(1 | g)`. Keep `$(sigma_kind)(1 | $(sigma_grp))` on the " *
+                "mean and model `sigma` with fixed effects or an ordinary `(1 | $(sigma_grp))` " *
+                "random effect."))
         end
         tree === nothing && error("phylo(1 | $(sigma_grp)) on sigma needs `tree = …`")
         phy = tree isa AbstractString ? augmented_phy(tree) : tree

@@ -5,7 +5,7 @@
 # f_reltol (#946) are not covered here.
 
 using DRModels, Test
-const Optim = DRModels.Optim
+using DRModels: Optim   # import form: safe after any other `using DRModels: Optim` in the same shard
 
 function _plateau_result(res)
     stopped = merge(res.stopped_by, (x_converged = true, f_converged = true, g_converged = false))
