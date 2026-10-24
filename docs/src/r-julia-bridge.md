@@ -94,12 +94,13 @@ phy = augmented_phy("((A:1,B:2,C:3):4,D:5,E:6);")
 sigma_phy_dense(phy)
 ```
 
-For an ultrametric tree of height `h`, Julia's raw phylogenetic SD multiplied by
-`sqrt(h)` is on the correlation scale used by the R bridge. Check first which
-scale your fit reports: for a Gaussian `phylo(1 | species)` on the mean, the
-route with `sigma ~ 1` reports the raw branch-length scale (with a one-time
-warning per tree), while a `sigma` formula with covariates already reports the
-correlation scale, so multiplying by `sqrt(h)` is wrong there ([DRModels.jl#979](https://github.com/itchyshin/DRModels.jl/issues/979)). One height cannot
+For an ultrametric tree of height `h`, a raw branch-length phylogenetic SD
+multiplied by `sqrt(h)` is on the correlation scale used by the R bridge. Check
+first which scale your fit reports with `fit.phylo_scale`: a Gaussian
+`phylo(1 | species)` on the mean now reports the correlation scale (`:correlation`)
+for every `sigma` formula on an ultrametric tree, so multiplying by `sqrt(h)` is
+wrong there ([DRModels.jl#979](https://github.com/itchyshin/DRModels.jl/issues/979)); the non-Gaussian Laplace routes and a
+non-ultrametric tree still report the raw scale (`:covariance`). One height cannot
 standardize a tree whose tip depths differ. Accepting a topology does not itself
 verify every response family, profile interval or bootstrap workflow.
 

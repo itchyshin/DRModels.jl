@@ -31,7 +31,7 @@ Random.seed!(7)
 
 G = 64
 phy = random_balanced_tree(G; branch_length = 0.3)     # a tree over G species
-C = sigma_phy_dense(phy; σ²_phy = 1.0)                 # phylogenetic covariance
+C = sigma_phy_dense(phy; σ²_phy = 1.0) ./ phylo_tree_height(phy)  # tip correlation (ultrametric tree)
 
 m = 4; n = G * m
 species = repeat(1:G, inner = m)
@@ -42,31 +42,30 @@ y = 0.2 .+ 0.5 .* x .+ u[species] .+ 0.4 .* randn(n)
 fit = drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ 1)),
           Gaussian(); data = (; y, x, species), tree = phy)
 
-re_sd(fit)[:species]      # estimated raw-tree SD coefficient; simulation value 0.9
+re_sd(fit)[:species]      # estimated phylogenetic SD (correlation scale); simulation value 0.9
 ```
 
 ```@example phy
 exp(coef(fit, :sigma)[1])     # residual SD (≈ 0.4)
 ```
 
-`sigma_phy_dense` supplies the raw-tree covariance `C`. The coefficient
-`σ_phylo²` multiplies this covariance: the phylogenetic effect’s SD at tip `i` is
-`σ_phylo * sqrt(C[i, i])`, not necessarily `σ_phylo`. Both the simulation and
-`re_sd` above use that raw-tree scale. That holds for this example's
-`sigma ~ 1`. If you add covariates to the `sigma` formula, the same term is
-fitted by another route that reports `re_sd` on the correlation scale (the
-tree rescaled to height 1, as drmTMB always does), so the value changes by a
-factor of `sqrt(height)` although the model's phylogenetic variance has not
-changed ([DRModels.jl#979](https://github.com/itchyshin/DRModels.jl/issues/979)). Check which scale your fit uses before comparing fits or
-reporting the coefficient. Fitting estimates the phylogenetic and
+`sigma_phy_dense` returns the raw branch-length covariance, whose diagonal is
+the tree's height `h`. On an ultrametric tree, dividing it by `h` gives the tip
+correlation (what `ape::vcv(tree, corr = TRUE)` returns in R), which is the matrix
+the simulation above uses, so the coefficient `σ_phylo` is the phylogenetic SD at
+every tip. For a Gaussian `phylo(1 | species)` on the mean, `re_sd` reports
+`σ_phylo` on this correlation scale on every route and for every `sigma` formula
+(the tree is fitted at unit height, as drmTMB always does), so the value does not
+change with the height of the tree you supply or with the `sigma` formula
+([DRModels.jl#979](https://github.com/itchyshin/DRModels.jl/issues/979)). The one exception is a non-ultrametric tree: its tip
+correlation is tip-wise, not one rescaling, so the sparse `sigma ~ 1` route keeps the
+raw branch-length scale there and warns. Fitting estimates the phylogenetic and
 residual SD parameters jointly using the exact Gaussian marginal likelihood.
 
-To report this result, state that `re_sd` is the phylogenetic SD coefficient for
-the supplied, raw-scaled tree and describe how that tree was scaled. Do not
-compare this coefficient directly with the residual SD, or turn the two into a
-variance proportion, unless the covariance scale makes that comparison valid.
-The tip-specific quantity `σ_phylo * sqrt(C[i, i])` is the relevant SD on the
-trait scale.
+To report this result, state that `re_sd` is the phylogenetic SD on the tip
+correlation scale. Do not compare this coefficient directly with the residual SD,
+or turn the two into a variance proportion, unless the covariance scale makes that
+comparison valid.
 
 ## Non-Gaussian responses (counts, proportions, …)
 
