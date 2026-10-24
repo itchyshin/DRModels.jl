@@ -119,7 +119,7 @@ fit = drm(
 | `rho12(fit)` | `rho12(fit)` |
 | `corpairs(fit)` | `corpairs(fit)` / `corpairs_data(fit)` |
 | `fitted(fit)` / `residuals(fit)` | `fitted(fit)` / `residuals(fit)` |
-| `predict(fit, newdata)` (response mean) | `predict(fit, newdata; type = :response)` |
+| `predict(fit, newdata)` (response scale, random effects at zero) | `predict(fit, newdata; type = :response)` |
 | predict **every** distributional parameter at new data | `predict_parameters(fit, newdata; type = :response)` |
 | in-sample fitted per-observation parameters | `marginal_parameters(fit)` |
 | build a covariate grid for prediction | `prediction_grid(reference; predictor = values, …)` |
@@ -134,21 +134,27 @@ fit = drm(
 ### Prediction
 
 drmTMB centres prediction on `predict(fit, newdata)`, which returns the
-response-scale mean. DRModels.jl matches that and adds first-class verbs for the
-*other* distributional parameters:
+response-scale prediction with any random effects set to zero (an average
+group). DRModels.jl's `predict` also sets them to zero, so for the GLM-type
+families (Gaussian, Poisson, NegBinomial2, Gamma, Beta, Binomial) the two
+predictions compare directly; it adds first-class verbs for the *other*
+distributional parameters:
 
 | Intent | drmTMB (R) | DRModels.jl (Julia) |
 |---|---|---|
-| Response-scale mean at new data | `predict(fit, newdata)` | `predict(fit, newdata; type = :response)` |
+| Response-scale prediction at new data (random effects at zero) | `predict(fit, newdata)` | `predict(fit, newdata; type = :response)` |
 | Linear-predictor (link) scale | `predict(fit, newdata, type = "link")` | `predict(fit, newdata; type = :link)` |
 | Predict **all** distributional parameters | (capability: predict each `bf()` parameter) | `predict_parameters(fit, newdata; type = :response)` |
 | In-sample fitted per-obs parameters | (capability: per-observation fitted parameters) | `marginal_parameters(fit)` |
 | Build a covariate grid | (capability: hold-others / sweep grid) | `prediction_grid(reference; predictor = values, …)` |
 
-- `predict(fit, newdata; type = :response)` returns the response-scale mean (the
-  family inverse link applied to `Xβ̂` — `exp`/`logistic`/identity); `type =
-  :link` returns `Xβ̂`. Univariate gives a vector; bivariate gives
-  `Dict(:mu1 => …, :mu2 => …)`.
+- `predict(fit, newdata; type = :response)` returns the response-scale prediction
+  (for the GLM-type families, the inverse link applied to `Xβ̂` —
+  `exp`/`logistic`/identity; for ZeroOneBeta, `logistic(Xβ̂)`, the Beta-component mean rather than the mixture mean);
+  `type = :link` returns `Xβ̂`. Univariate gives a vector; bivariate gives
+  `Dict(:mu1 => …, :mu2 => …)`. Random effects are set to zero, so with a
+  nonlinear link this is the prediction for an average group, not the mean
+  averaged over groups.
 - `predict_parameters(fit, newdata)` returns a
   `Dict(:mu => …, :sigma => …, …)` with one entry per distributional parameter
   the family carries (plus any of `:nu`, `:zi`, `:hu`, `:zoi`, `:coi`); a
@@ -157,15 +163,25 @@ response-scale mean. DRModels.jl matches that and adds first-class verbs for the
   `type = :link` returns each working-scale linear predictor.
 - `marginal_parameters(fit)` reads the stored in-sample fitted parameters
   straight from the fit (no recomputation); in-sample it equals
-  `predict_parameters(fit, data)` on the response scale.
+  `predict_parameters(fit, data)` on the response scale for the mean and `sigma`
+  of the GLM-type families (the `predict_parameters` docstring lists the
+  exceptions).
 - `prediction_grid(reference; predictor = values, …)` builds a `newdata` column
   table by sweeping the named predictors over their value ranges (their Cartesian
   product) while holding every other predictor at its reference (mean for numeric
   columns). It is pure data, so it composes directly:
   `predict_parameters(fit, prediction_grid(...))`.
+- **Fitted values differ.** drmTMB's `fitted(fit)`, like its `predict(fit)`
+  without `newdata`, adds the fitted random-effect modes to each fitted row.
+  DRModels.jl's `fitted(fit)` is the population-level value with the random
+  effects at zero on most routes, so compare `predict(fit, newdata)` across the
+  two packages, not `fitted`. Even without random effects the definitions differ
+  for some families: for LogNormal and zero-inflated, hurdle or truncated counts,
+  drmTMB's `fitted` is the unconditional response mean, while DRModels.jl's is
+  the inverse-link location (for LogNormal, the median `exp(Xβ̂)`).
 
 drmTMB's exact R spelling for per-parameter prediction is not asserted here
-(only the capability is); the response-mean `predict` row is the verified parity
+(only the capability is); the response-scale `predict` row is the verified parity
 point.
 
 ## Deliberate difference — the log-scale numerical guard

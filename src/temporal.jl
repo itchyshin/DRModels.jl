@@ -111,8 +111,8 @@ also has `(1 | id)`, the stable intercept SD (`re_sd(fit)[:id_iid]`).
 
 Post-fit conventions (some differ from drmTMB):
 
-- `fitted(fit)` and `predict(fit, newdata)` are POPULATION-level, `Xβ̂` (the
-  DRModels convention for every structured term); drmTMB's `fitted()` adds the
+- `fitted(fit)` and `predict(fit, newdata)` are POPULATION-level, `Xβ̂` (as on
+  most structured routes; see [`fitted`](@ref)); drmTMB's `fitted()` adds the
   conditional temporal effects. Those are in `ranef(fit)[:id]`, data-row order
   (and `ranef(fit)[:id_iid]` per series for the ordinary intercept).
 - `simulate(fit)` draws from the fitted marginal model: a fresh stationary

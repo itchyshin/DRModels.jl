@@ -88,7 +88,7 @@ fit_ls = drm(bf(@formula(y ~ x + (1 | p | phylo(species))),
 exp(-2 * coef(fit, :sigma)[1])  # estimated size θ = 1/σ²
 
 # Experimental: NB2 random-intercept variational (ELBO) marginal.
-# Requires `sigma ~ 1`. Default remains `marginal = :LA` (GHQ-32 on an ordinary `(1 | g)`).
+# Requires `sigma ~ 1`. Default remains `marginal = :LA` (adaptive GHQ, 5 nodes per group, on an ordinary `(1 | g)`).
 fit_va = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), NegBinomial2();
              data = dat, marginal = :VA)
 

@@ -65,6 +65,78 @@ R comparator for a mixed-family pair can exist in drmTMB, so the row cannot
 reach `covered` on the ordinary parity bar and simulation-recovery evidence
 is deliberately not being spent on it.
 
+## Default marginal approximation
+
+drmTMB's native engine integrates every random effect with TMB's Laplace
+approximation. DRModels.jl's default, `marginal = :LA`, means "this route's own
+integrator", which is not always the Laplace approximation. On the main routes:
+
+- **An ordinary random intercept `(1 | g)` on a non-Gaussian mean** (Poisson,
+  Binomial, NegBinomial2, Gamma, Beta, BetaBinomial, Student): per-group
+  adaptive Gauss–Hermite quadrature with **5 nodes per group**, centred on each
+  group's posterior mode. Tweedie uses 21 nodes and CumulativeLogit 41;
+  LogNormal's single node is exact.
+- **A correlated `(1 + x | g)` on a non-Gaussian mean**: the same adaptive
+  quadrature, 5 nodes per axis.
+- **Gaussian `sigma ~ 1 + (1 | g)` and ZeroOneBeta `(1 | g)`**: a fixed
+  32-node Gauss–Hermite grid.
+- **Crossed intercepts `(1 | g) + (1 | h)`, and `phylo` / `relmat` / `animal` /
+  `spatial` terms, on a non-Gaussian mean**: the Laplace approximation, as in
+  drmTMB (LogNormal's are exact, being Gaussian fits on log y).
+- **Gaussian random or structured effects on the mean, with no random effect on
+  `sigma`**: the exact marginal, which the Laplace approximation also gives
+  exactly. With the same `(1 | g)` on both the mean and `sigma`, the default is
+  the Laplace approximation.
+
+On the adaptive-quadrature cells the two packages fit the same model with
+different integrators, so their log-likelihoods and estimates differ by more
+than rounding. On seven test datasets (Poisson, Beta, NegBinomial2, Gamma and
+Student random intercepts) the default and drmTMB log-likelihoods differed by
+0.01 to 0.24 units and the estimates by up to about 3%. In every case drmTMB's
+value was the one further from a 61-node quadrature reference; the default
+stayed within about 5e-4 of it. A later Poisson `(1 | g)` comparison
+(2026-10-15, three simulated datasets) showed a smaller gap, about 0.0014.
+
+- **To match drmTMB, pass `marginal = :Laplace`.** On ten test datasets
+  (Binomial included) the refitted log-likelihoods agreed with drmTMB's to
+  within 5e-11 and the estimates to within 5.4e-8 (relative); in the 2026-10-15
+  Poisson comparison, the dataset checked agreed to 5.6e-9 in log-likelihood
+  and 1e-11 in the estimates. `:Laplace` is accepted for one ordinary `(1 | g)`
+  on the mean of Poisson, Binomial, NegBinomial2, Gamma and Beta (with
+  `sigma ~ 1`) or Student, and for a Gaussian random intercept on `sigma`
+  (`sigma ~ 1 + (1 | g)`, fixed-effect `sigma` covariates allowed) with a
+  fixed-effect mean, by maximum likelihood. Every other model whose `drm` takes a
+  `marginal` keyword (BetaBinomial included) refuses it, with an `ArgumentError`
+  except for shapes Student never fits, which raise a plain error; LogNormal,
+  ZeroOneBeta,
+  Tweedie, CumulativeLogit, SkewNormal, the truncated count families and every
+  bivariate model have no `marginal` keyword and raise a `MethodError`. Crossed
+  and structured routes need no option, because their default already is the
+  Laplace approximation.
+- **On the adaptive-quadrature cells, `:Laplace` is for parity, not a better
+  default.** The Laplace approximation is adaptive quadrature with a single
+  node, so the default's extra nodes usually make it the more accurate integral
+  of the same model, as on the datasets above. Laplace loses accuracy when
+  groups are small or counts sit near zero (binary data above all), where each
+  group's posterior is far from Gaussian. Gaussian `sigma ~ 1 + (1 | g)` is the
+  exception: its fixed grid loses accuracy as groups grow, so for large groups
+  `:Laplace` (or `:AGHQ`) is the more accurate choice; see the scale-axis row
+  of [What is tested](capabilities.md).
+- **Compare like with like.** Log-likelihoods, likelihood-ratio tests, AIC and
+  BIC are comparable only between fits that use the same approximation, and
+  across the two packages only when both use the Laplace approximation.
+  `fit.marginal` records the option (`:LA`, `:Laplace`, `:AGHQ` or `:VA`; the
+  default Gaussian fit with `(1 | g)` on both the mean and `sigma` is tagged
+  `:Laplace`). `lrtest` and `anova` refuse a pair whose tags differ (a fit with
+  no random effects, whose log-likelihood is exact, may be paired with any
+  non-variational fit). `aic`, `bic` and `aicc` refuse a `:VA` fit but, taking
+  one fit at a time, cannot check that two fits match. The tag is not the
+  integrator: two default fits on different routes, such as `(1 | g)` against
+  `(1 | g) + (1 | h)`, use different integrators, and no check catches that.
+
+The [Laplace vs variational marginals](model-guides/marginal-la-vs-va.md) guide
+covers the approximations in more depth.
+
 ## Performance
 
 - **Verified single-fit speedup:** on the real q4_p100 dataset, same Laplace
@@ -119,4 +191,9 @@ Sources: `drmTMB`'s `inst/extdata/julia-capabilities.tsv` (12-row ledger,
 this repo's `docs/design/capability-status.md` (direct-Julia
 implemented/rejected/planned/missing audit); this repo's
 `report/comparison-grid.md` (2026-05-30 engine × model × objective grid, the
-source of the 2.18× and O(p) figures). Compiled 2026-09-01.
+source of the 2.18× and O(p) figures). Compiled 2026-09-01. The default marginal
+approximation section was added 2026-10-16. Its seven- and ten-dataset figures
+come from this repository's class-1 Laplace parity comparison (2026-09-30,
+Poisson, Binomial, Beta, NegBinomial2, Gamma and Student random intercepts);
+its 2026-10-15 Poisson figures from a comparison of drmTMB at commit `ca3ddef`
+with DRModels.jl at commit `f71b292` (#1070).
