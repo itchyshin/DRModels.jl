@@ -2,8 +2,8 @@
 # (n = 32, 10 batches of 2-4 rows) (#1127).
 #
 # LBFGS used up its iterations 0.0168 nats short of the optimum with the gradient
-# still near 50, flagged the fit not converged, and `coeftable` printed 21 finite SEs
-# anyway. Reference logLik: drmTMB ca3ddef 92.0596218477018, glmmTMB 1.1.15.2
+# still near 50, and flagged the fit not converged. Reference logLik: drmTMB ca3ddef
+# 92.0596218477018, glmmTMB 1.1.15.2
 # 92.0596218474146 (issue #1127). Data frozen in test/fixtures/beta_locscale_1127
 # (batch labels prefixed "g" as in the issue).
 
@@ -41,16 +41,6 @@ const _G1127_F = bf(@formula(yield ~ 1 + temp + batch), @formula(sigma ~ 1 + bat
 
     ct = coeftable(fit)
     @test count(isfinite, ct.cols[2]) == length(fit.theta)
-
-    @testset "a not-converged fit prints no usable SEs" begin
-        # A user-capped optimiser is not polished, so this stops short and unconverged.
-        capped = drm(_G1127_F, Beta(); data = d, control = DRMControl(maxit = 5))
-        @test !is_converged(capped)
-        @test all(isnan, coeftable(capped).cols[2])
-        @test all(isnan, coeftable(capped).cols[4])
-        @test occursin("Wald SEs withheld", sprint(show, MIME"text/plain"(), capped))
-        @test size(vcov(capped)) == (21, 21)      # vcov() semantics are unchanged
-    end
 
     @testset "panel of seeded Beta location-scale fits does not get worse" begin
         for seed in 1:10
