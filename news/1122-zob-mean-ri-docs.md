@@ -1,0 +1,1 @@
+- **`docs/src/capabilities.md` now lists `ZeroOneBeta()` mean random intercepts, `(1 | g)`, as supported** (the row said fixed effects only; the fit has worked since #723). `sigma`, `zoi` and `coi` stay fixed-effects-only. A test pins the fit and the docs row (#1122).
