@@ -107,7 +107,8 @@ The same q=4 model accepts level-indexed structured providers. Put
 `relmat(1 | id)`, `animal(1 | id)`, or `spatial(1 | site)` on **all four** axes
 and pass `K=…`, `A=…`, or `coords=…` respectively. Spatial uses a **fixed**
 range (`spatial_range`; default = mean pairwise site distance), rather than
-estimating range jointly. `bootstrap_sigma_a` is available only for tree-based
+estimating range jointly. drmTMB's default fixed range is the *median* positive
+pairwise distance, so pass `spatial_range` explicitly when comparing the two. `bootstrap_sigma_a` is available only for tree-based
 phylogenetic fits; calling it for the other structures raises an `ArgumentError`.
 
 ```julia

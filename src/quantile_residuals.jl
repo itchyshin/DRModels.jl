@@ -212,6 +212,26 @@ function _structured_mean_re(fit::DrmFit)
     return st !== nothing
 end
 
+# #1104: the dense `algorithm = :gls` Gaussian `phylo(1 | g)` route stores
+# `fitted = Xβ̂` exactly and fits the tip CORRELATION (`phylo_scale ===
+# :correlation`, C_ii = 1), so the σ_b-marginal PIT is already correct there and
+# the structured warning below is a false positive. The sparse / EM routes carry
+# a `LocOnlyRanef` and are handled exactly in `_ranef_marginal_mix`.
+function _dense_gls_phylo_pit_exact(fit::DrmFit)
+    fit.family isa Gaussian && fit.phylo_scale === :correlation || return false
+    fit.ranef isa LocOnlyRanef && return false
+    any(p -> first(p) in (:range, :temporal_phi, :temporal_decay, :temporal_pac), fit.blocks) &&
+        return false
+    f = fit.formula
+    f isa DrmFormula || return false
+    st = try
+        _split_ranef(Dict(f.forms)[:mu]; allow_phylo_slope = true, allow_temporal = true)[4]
+    catch
+        nothing
+    end
+    return st !== nothing && st[1] === :phylo
+end
+
 # #995 / #996 / #981: the σ_b-marginal PIT is exact for an ordinary `(1 | g)`.
 # For a structured effect it is calibrated only when (i) `fitted(fit)` is the
 # population-level mean and (ii) every unit's random-effect variance is σ_b².
@@ -260,7 +280,21 @@ function _ranef_marginal_mix(fit::DrmFit, fam, μ)
         return (axis = :mu_gaussian, eta0 = fit.ranef.mu_fixed,
                 vb = σb^2 .* _loconly_row_tip_variance(fit.ranef))
     end
-    _structured_mean_re(fit) && _warn_structured_pit()
+    # #1102: a LogNormal `phylo(1 | g)` fit is the Gaussian fit on log(y) with its
+    # `means` exponentiated, so the same closed form holds on the log scale:
+    # Φ((log y − x'β̂) / √(σ_e² + σ_b² C_ii)).
+    if fit.ranef isa LocOnlyRanef && fam isa LogNormal
+        return (axis = :mu_lognormal, eta0 = fit.ranef.mu_fixed,
+                vb = σb^2 .* _loconly_row_tip_variance(fit.ranef))
+    end
+    # #1103: an ordinary Gaussian `(1 | g)` on the mean has the same closed-form
+    # marginal N(μ, σ² + σ_b²), with `μ` the fixed-effect mean, so skip the
+    # quadrature (6e-3 off at σ_b/σ = 4, 0.12 at 10). Structured effects keep
+    # the mixture and its warning.
+    if fam isa Gaussian && !_structured_mean_re(fit)
+        return (axis = :mu_gaussian, eta0 = μ, vb = fill(σb^2, length(μ)))
+    end
+    _structured_mean_re(fit) && !_dense_gls_phylo_pit_exact(fit) && _warn_structured_pit()
     link, invlink = linkpair
     eta0 = [link(μ[i]) for i in eachindex(μ)]
     return (axis = :mu, invlink = invlink, eta0 = eta0, rt2σb = sqrt(2.0) * σb,
@@ -278,6 +312,10 @@ function _cdf_value(fam, i, yval; μ, scales, obs, gsis, mix)
     if mix.axis === :mu_gaussian   # closed-form Gaussian marginal (#995 / #996)
         return Distributions.cdf(Distributions.Normal(mix.eta0[i],
                                      sqrt(scales[:sigma][i]^2 + mix.vb[i])), yval)
+    end
+    if mix.axis === :mu_lognormal  # closed-form LogNormal marginal (#1102)
+        return yval > 0 ? Distributions.cdf(Distributions.Normal(mix.eta0[i],
+                                     sqrt(scales[:sigma][i]^2 + mix.vb[i])), log(yval)) : 0.0
     end
     acc = 0.0
     scales_i = _at_index(scales, i); obs_i = _at_index(obs, i)

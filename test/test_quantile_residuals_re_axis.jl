@@ -132,7 +132,7 @@ _qra_mean_marginal(fit, sb) =
         @test only(last(only(filter(p -> first(p) === :resd, fit.coefnames)))) == "g_logsigma"
         mix = DRModels._ranef_marginal_mix(fit, fit.family, fit.means[:mu])
         @test mix !== nothing
-        @test mix.axis === :mu
+        @test mix.axis === :mu_gaussian   # closed-form mean route (#1103)
         q = residuals(fit; type = :quantile)
         @test maximum(abs.(q .- _qra_mean_marginal(fit, re_sd(fit)[:g_logsigma]))) < 1e-6
     end

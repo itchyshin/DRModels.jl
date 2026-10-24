@@ -181,7 +181,9 @@ end
     @test !occursin("not seen", m2)
     m3 = msg(() -> predict(fit, (x = [0.0], grp = ["z"])))
     @test occursin("not seen when the model was fitted", m3) && occursin("z", m3)
-    fo = drm(bf(@formula(y ~ x + offset(off)), @formula(sigma ~ 1)), Gaussian();
+    # A function term of `off` (not `offset(off)`: lane J3 refuses `offset()` outside the
+    # Poisson mean instead of estimating it as a free coefficient, #938).
+    fo = drm(bf(@formula(y ~ x + log(off)), @formula(sigma ~ 1)), Gaussian();
              data = (y = y, x = x, off = off))
     m4 = msg(() -> predict(fo, (x = [0.0, 1.0],)))
     @test occursin("column `off`", m4) && !occursin("not seen", m4)
@@ -267,7 +269,7 @@ end
     @test (@test_logs DRModels._va_scored_sigma(ones(3, 1), [0.5], 20.0, "t")) ≈ fill(exp(0.5), 3)
 end
 
-@testset "#995 / #996 / #981 structured random intercept: warned, not silent" begin
+@testset "#995 / #996 / #981 structured random intercept: exact routes silent" begin
     Random.seed!(995)
     phy = random_balanced_tree(32; branch_length = 0.3)      # height 1.5
     @test phylo_tree_height(phy) ≈ 1.5
@@ -282,15 +284,13 @@ end
     # centre + per-tip σ_b² C_ii, test_995_phylo_pit_centre.jl): no warning.
     @test fit.ranef isa DRModels.LocOnlyRanef
     @test_nowarn residuals(fit; type = :quantile)
-    # The dense structured fallback keeps the warning for now. It is a known
-    # false positive: that route stores fitted = Xβ̂ on the tip-correlation
-    # scale (C_ii = 1), so its σ_b-marginal PIT is already centred correctly
-    # (on this data it matches the closed-form marginal to 8e-14). Dropping the
-    # warning there is tracked in #1104, not part of #995.
+    # The dense `algorithm = :gls` route stores fitted = Xβ̂ on the tip-correlation
+    # scale (C_ii = 1), so its σ_b-marginal PIT is already centred correctly (on
+    # this data it matches the closed-form marginal to 8e-14): no warning (#1104).
     dfit = drm(bf(@formula(y ~ x + phylo(1 | species))), Gaussian();
                data = (; y, x = xs, species), tree = phy, algorithm = :gls)
     @test DRModels._structured_mean_re(dfit)
-    @test_logs (:warn, r"#995") match_mode = :any residuals(dfit; type = :quantile)
+    @test_nowarn residuals(dfit; type = :quantile)
 
     G = 20; gg = repeat(1:G, inner = 10); xo = randn(10G)
     yo = 0.3 .+ xo .+ (0.5 .* randn(G))[gg] .+ 0.5 .* randn(10G)

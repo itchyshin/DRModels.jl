@@ -60,6 +60,7 @@ struct BetaBinomial end
 
 @drm_entry function drm(f::DrmFormula, fam::BetaBinomial; data, tree = nothing, g_tol::Real = 1e-8,
              se::Bool = true, marginal::Symbol = :LA)
+    _drm_entry_guard(f, fam, data; tree = tree)   # #1027 #1022 #1010
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
         drm(f, fam; data = data_observed, tree = tree, g_tol = g_tol, se = se, marginal = marginal)
     end
@@ -83,6 +84,10 @@ struct BetaBinomial end
         (isempty(re2) && mv2 === nothing && st2 === nothing) ||
             error("BetaBinomial(): only the mean formula may carry a random effect")
     end
+    _require_finite_inputs(; response=(_table_column(data, f.response), string(f.response)),
+                           response_allow_missing=false)
+    _require_finite_inputs(; response=(_table_column(data, f.response2), string(f.response2)),
+                           response_allow_missing=false)
     s = Float64.(getproperty(data, f.response))          # successes
     fl = Float64.(getproperty(data, f.response2))        # failures
     (all(si -> si ≥ 0 && isinteger(si), s) && all(fi -> fi ≥ 0 && isinteger(fi), fl)) ||
@@ -119,6 +124,7 @@ struct BetaBinomial end
         if rk === :intercept                              # (1 | g) → 1-D GHQ
             return _withformula(_fit_betabinomial_ranef(fam, s, ntr, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol), f)
         elseif rk === :corr                               # (1 + x | g) → 2-D GHQ
+            _require_finite_data_column(data, var)
             xs = Float64.(getproperty(data, var))
             return _withformula(_fit_betabinomial_corr_ranef(fam, s, ntr, Xμ, Xσ, xs, gidx, G, nmμ, nmσ, grp, g_tol), f)
         else

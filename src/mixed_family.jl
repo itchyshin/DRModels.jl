@@ -259,11 +259,25 @@ function fit_mixed_family(; y1, X1, fam1, y2, X2, fam2,
         trials1 = ones(length(y1)), trials2 = ones(length(y2)),
         Xsigma1 = ones(length(y1), 1), Xsigma2 = ones(length(y2), 1),
         K::Int = 32, g_tol::Float64 = 1e-6,
-        confint::Bool = true, level::Float64 = 0.95,
-        profile::Bool = false, B::Int = 0, rng = Random.default_rng(),
+        confint::Bool = true, level::Real = 0.95,
+        profile::Bool = false, B::Real = 0, rng = Random.default_rng(),
         aghq::Bool = false, aghq_K::Int = _RANEF1D_AGHQ_K)
+    level = _validate_ci_level(level; what="fit_mixed_family")
+    # `B = 0` means "do not bootstrap". Any other value is a replicate count.
+    # `false == 0`, so a Bool has to be rejected before that comparison.
+    B = !(B isa Bool) && B == 0 ? 0 : _validate_bootstrap_B(B)
     n = length(y1)
     n == length(y2) || throw(ArgumentError("y1 and y2 must have equal length"))
+    _require_finite_inputs(; response=(y1, "y1"), response_allow_missing=false,
+                           context="fit_mixed_family")
+    _require_finite_inputs(; response=(y2, "y2"), response_allow_missing=false,
+                           context="fit_mixed_family")
+    _require_finite_inputs(; predictors=(X1, "X1"), context="fit_mixed_family")
+    _require_finite_inputs(; predictors=(X2, "X2"), context="fit_mixed_family")
+    _require_finite_inputs(; predictors=(trials1, "trials1"), context="fit_mixed_family")
+    _require_finite_inputs(; predictors=(trials2, "trials2"), context="fit_mixed_family")
+    _require_finite_inputs(; predictors=(Xsigma1, "Xsigma1"), context="fit_mixed_family")
+    _require_finite_inputs(; predictors=(Xsigma2, "Xsigma2"), context="fit_mixed_family")
     p1 = size(X1, 2); p2 = size(X2, 2)
     # s1/s2: does each axis carry a `log σ` dispersion SUB-MODEL? `log σ` for all of
     # Gaussian/Beta/Gamma/NB2 (#315/#316); none for Poisson/Binomial. The scale is a
@@ -539,10 +553,11 @@ This route is **experimental** — see the `cross_family_latent` capability row.
 """
 @drm_entry function drm(f::BivariateDrmFormula, fams::Tuple; data, K::Int = 32,
              g_tol::Real = 1e-6, confint::Bool = true, level::Real = 0.95,
-             profile::Bool = false, B::Int = 0, rng = Random.default_rng())
+             profile::Bool = false, B::Real = 0, rng = Random.default_rng())
     length(fams) == 2 || throw(ArgumentError(
         "drm: the cross-family route takes exactly two families, e.g. " *
         "`(Gaussian(), Poisson())` (got $(length(fams)))"))
+    _require_formula_column_lengths(f, data)   # #1022: no ragged columns under @inbounds
     data = _drop_missing_predictor_rows(f, data)   # #1089: R's na.omit, with a count
     fam1, fam2 = fams
     rhs = Dict(f.forms)
@@ -566,6 +581,16 @@ This route is **experimental** — see the `cross_family_latent` capability row.
 
     y1, X1, _ = _design(f.response1, rhs[:mu1], data)
     y2, X2, _ = _design(f.response2, rhs[:mu2], data)
+    # #966: `_design` marks a missing response with NaN, which made every
+    # objective evaluation the 1e10 sentinel. This route has no observed-rows
+    # path, so refuse here, naming the column.
+    for (yk, rk) in ((y1, f.response1), (y2, f.response2))
+        bad = findfirst(!isfinite, yk)
+        bad === nothing ||
+            throw(ArgumentError("drm: the cross-family route needs complete, finite " *
+                "responses; `$rk` is missing or non-finite at row $bad. Drop those rows " *
+                "first (e.g. with `drm_listwise`)."))
+    end
     # σ designs: the sigma formulas reuse a real LHS (only the matrix is kept),
     # exactly as the Gaussian bivariate residual route does.
     _, Xs1, _ = _design(f.response1, get(rhs, :sigma1, ConstantTerm(1)), data)
@@ -579,5 +604,8 @@ This route is **experimental** — see the `cross_family_latent` capability row.
     # Carry the designs so the post-fit surface works WITHOUT them being handed
     # back by the user. `mf_fitted(fit, X1, X2)` demanding the matrices is the
     # same API mismatch in post-fit form: a formula user has no X1 to give it.
-    return (; fit..., X1 = X1, X2 = X2)
+    # #966: the objective maps a non-finite total to the flat 1e10 sentinel (loglik
+    # = -1e10); an optimum on that plateau is not a converged fit. Applied here, not
+    # in `fit_mixed_family`'s return tuple, which #1055 also edits.
+    return (; fit..., X1 = X1, X2 = X2, converged = fit.converged && fit.loglik > -1e9)
 end

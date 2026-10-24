@@ -148,6 +148,7 @@ struct Binomial end
 @drm_entry function drm(f::DrmFormula, fam::Binomial; data, tree = nothing, K = nothing,
              A = nothing, coords = nothing, g_tol::Real = 1e-8,
              se::Bool = true, marginal::Symbol = :LA, method = nothing)
+    _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, coords = coords)   # #1027 #1022 #1010
     _reject_method_as_marginal(fam, method)
     _scalar_laplace_requested(marginal) &&     # Arc 2: TMB-convention Laplace, ordinary (1 | g)
         return _drm_ordinary_laplace(f, fam; data = data, tree = tree, K = K, A = A,
@@ -206,6 +207,7 @@ struct Binomial end
             return _withformula(_fit_binomial_ranef(fam, s, ntr, Xμ, gidx, G, nmμ, grp, g_tol), f)
         elseif rk === :corr                                # (1 + x | g) → 2-D GHQ tensor (#753)
             isva && _va_reject(fam, "a correlated random slope `(1 + x | g)`")
+            _require_finite_data_column(data, var)
             xs = Float64.(getproperty(data, var))
             _binomial_check_slope_identifiable(xs, gidx, G, grp)
             return _withformula(_fit_binomial_corr_ranef(fam, s, ntr, Xμ, xs, gidx, G, nmμ, grp, g_tol), f)
@@ -227,6 +229,10 @@ function _binomial_response(f::DrmFormula, data)
             error("Binomial() with a single-column response requires a 0/1 (Bernoulli) vector; use cbind(successes, failures) for trial counts")
         ntr = ones(length(s))
     else                                                  # cbind(successes, failures): n = s + f
+        _require_finite_inputs(; response=(_table_column(data, f.response), string(f.response)),
+                               response_allow_missing=false)
+        _require_finite_inputs(; response=(_table_column(data, f.response2), string(f.response2)),
+                               response_allow_missing=false)
         s = Float64.(getproperty(data, f.response))       # successes
         fl = Float64.(getproperty(data, f.response2))     # failures
         (all(si -> si ≥ 0 && isinteger(si), s) && all(fi -> fi ≥ 0 && isinteger(fi), fl)) ||
