@@ -4,8 +4,11 @@
 # and a missing response on routes with no observed-rows path, with a warning
 # that gives the count (R's `na.omit`; the helpers are at the end of this
 # section). A `NaN` predictor still errors from the linear-algebra solve
-# (#1113). `drm_listwise` below is the explicit complete-case route: it also
-# drops `NaN`/`Inf` cells, and it is how to silence the warning. Neither
+# (#1113). (A `missing`/`NaN` in a random-effect GROUPING column is refused by
+# `_group_index` with an ArgumentError naming the column, #1112, rather than
+# pooled into an extra level.) `drm_listwise` below is the explicit
+# complete-case route: it also drops `NaN`/`Inf` cells, and it is how to
+# silence the warning. Neither
 # touches engine code — both are pure data preprocessing.
 #
 # FIML for missing *responses* (the principled alternative that keeps partially
@@ -58,17 +61,19 @@ function _predictor_columns(f::Union{DrmFormula,BivariateDrmFormula})
     return setdiff(unique(cols), _formula_responses(f))
 end
 
-# Subset every column to `keep`. A `Union{Missing,T}` vector that no longer
-# holds a `missing` is narrowed to `T`, so a numeric predictor reaches the
-# design as numbers; StatsModels would otherwise code it as a factor (#1111).
-# Anything else (a `Vector{Any}` R factor from the bridge, a column that still
-# holds a `missing`, a non-`Vector` array) keeps its own type.
-function _subset_kept_rows(col, keep)
-    sub = col[keep]
-    S = eltype(sub)
-    (sub isa Vector && S isa Union && Missing <: S && !any(ismissing, sub)) || return sub
-    return convert(Vector{nonmissingtype(S)}, sub)
+# A `Union{Missing,T}` vector that holds no `missing` is narrowed to `T`, so a
+# numeric predictor reaches the design as numbers; StatsModels would otherwise
+# code it as a factor (#1111). Anything else (a `Vector{Any}` R factor from the
+# bridge, a column that still holds a `missing`, a non-`Vector` array) is
+# returned as it came.
+function _narrow_nomissing(col)
+    S = eltype(col)
+    (col isa Vector && S isa Union && Missing <: S && !any(ismissing, col)) || return col
+    return convert(Vector{nonmissingtype(S)}, col)
 end
+
+# Subset every column to `keep`, narrowing each as above.
+_subset_kept_rows(col, keep) = _narrow_nomissing(col[keep])
 
 _subset_rows_narrowed(cols::NamedTuple, keep) =
     NamedTuple{keys(cols)}(map(col -> _subset_kept_rows(col, keep), values(cols)))
@@ -180,8 +185,9 @@ helper is an interim complete-case path, not a substitute.
 
 Only the columns the model uses are checked, so unrelated columns with missing
 values do not cause rows to be dropped. Set `verbose = false` to suppress the
-warning (the drop still happens). If no rows are dropped the input columns are
-returned unchanged.
+warning (the drop still happens). If no rows are dropped the columns are returned
+as they came, except that a `Union{Missing,T}` column that holds no `missing` is
+narrowed to `T` (as it is on the dropping branch), so it fits as numbers.
 """
 function drm_listwise(formula::Union{DrmFormula,BivariateDrmFormula}, data; verbose::Bool = true)
     Tables.istable(data) ||
@@ -221,7 +227,7 @@ function drm_listwise(formula::Union{DrmFormula,BivariateDrmFormula}, data; verb
               "This discards partial information — see issue #49 for the FIML alternative."
     end
 
-    ndropped == 0 && return cols
+    ndropped == 0 && return NamedTuple{keys(cols)}(map(_narrow_nomissing, values(cols)))   # #1111
     # Subset every column of the table (not just model columns) so downstream code
     # that reaches for extra columns still sees aligned, complete rows. `identity.`
     # re-narrows each kept column's eltype — dropping the now-impossible `Missing`

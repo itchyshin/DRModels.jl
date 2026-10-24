@@ -110,7 +110,7 @@ function _drm_zeroonebeta_fit(f::DrmFormula, fam::ZeroOneBeta; data, tree = noth
         (rk, _) = _re_kind(re[1][1]); grp = re[1][2]
         rk === :intercept ||
             error("ZeroOneBeta() supports `(1 | g)` on the mean, not `(0 + x | g)` or `(1 + x | g)`")
-        gidx, G = _group_index(getproperty(data, grp))
+        gidx, G = _group_index(getproperty(data, grp); col = grp)
         return _withformula(
             _fit_zeroonebeta_ranef(fam, y, Xμ, Xσ, Xz, Xc, gidx, G, nmμ, nmσ, nmz, nmc, grp, g_tol), f)
     end

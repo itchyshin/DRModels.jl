@@ -153,7 +153,13 @@ fit = drm(
              spatial_range = nothing,
              g_tol::Real = 1e-8, q4_g_tol::Real = 1e-3,
              q4_iterations::Int = 300, q4_n_newton::Int = 40,
-             q4_vcov::Bool = true, method::Symbol = :ML, V = nothing)
+             q4_vcov::Bool = true, method::Symbol = :ML, V = nothing,
+             marginal::Union{Nothing,Symbol} = nothing)
+    # #1094: this route has no `marginal` integrator choice. Refuse it by name
+    # rather than with a bare MethodError; the default `:LA` is a no-op.
+    (marginal === nothing || marginal === :LA) ||
+        throw(ArgumentError("drm: `marginal = :$marginal` is not supported for the bivariate " *
+            "Gaussian route (it has no `marginal` choice; the default `:LA` is the only value accepted)."))
     _require_formula_column_lengths(f, data)   # #1022: no ragged columns under @inbounds
     data = _drop_missing_predictor_rows(f, data)   # #1089: R's na.omit, with a count
     method in (:ML, :REML) ||
@@ -682,7 +688,9 @@ function _split_bivariate_q4_rhs(rhs, param::Symbol)
     structured = nothing
     for t in terms
         if t isa FunctionTerm && t.f === (|)
-            error("bivariate q=4 structured fits support only `phylo`/`relmat`/`animal`/`spatial(1 | group)` markers, not ordinary random effects")
+            throw(ArgumentError("bivariate q=4 structured fits support only `phylo`/`relmat`/`animal`/`spatial(1 | group)` markers, not ordinary random effects " *
+                "(`(1 | g)` or `(1 | p | g)` on `$param`). A bivariate Gaussian with ordinary correlated random effects is not supported in DRModels.jl; " *
+                "drmTMB fits it (`drmTMB(bf(mu1 = y1 ~ x + (1|p|g), mu2 = y2 ~ x + (1|p|g), ...), family = biv_gaussian())`)."))
         elseif t isa FunctionTerm && t.f === meta_V
             error("bivariate q=4 structured fits do not support `meta_V` markers")
         elseif t isa FunctionTerm && (t.f === relmat || t.f === animal || t.f === phylo || t.f === spatial)
