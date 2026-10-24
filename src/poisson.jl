@@ -30,7 +30,7 @@ fit_phy = drm(bf(@formula(y ~ x + phylo(1 | species))), Poisson();
               data = dat, tree = tr, se = false)
 
 # Experimental: Poisson random-intercept variational (ELBO) marginal.
-# Default remains `marginal = :LA` (GHQ-32 on an ordinary `(1 | g)`). `loglik` on a VA fit is an ELBO.
+# Default remains `marginal = :LA` (adaptive GHQ, 5 nodes per group, on an ordinary `(1 | g)`). `loglik` on a VA fit is an ELBO.
 fit_va = drm(bf(@formula(y ~ x + (1 | g))), Poisson(); data = dat, marginal = :VA)
 
 # TMB-convention Laplace on an ordinary `(1 | g)`, as native drmTMB fits it (ML only).
@@ -40,9 +40,9 @@ fit_lap = drm(bf(@formula(y ~ x + (1 | g))), Poisson(); data = dat, marginal = :
 fit_reml = drm(bf(@formula(y ~ x + (1 | g))), Poisson(); data = dat, method = :REML)
 estimation_method(fit_reml)   # :REML
 
-# Opt-in 1-D Liu–Pierce AGHQ for `(1 | g)` only. Default `:LA` stays
-# non-adaptive GHQ-32. k=1 ≡ 1-point Laplace; this identity does not establish
-# parameter recovery. `:REML` is not available with `:AGHQ`.
+# Opt-in 1-D Liu–Pierce AGHQ for `(1 | g)` only, with `nAGQ` nodes. The default
+# `:LA` is already per-group adaptive GHQ with 5 nodes. k=1 ≡ 1-point Laplace; this
+# identity does not establish parameter recovery. `:REML` is not available with `:AGHQ`.
 fit_aghq = drm(bf(@formula(y ~ x + (1 | g))), Poisson();
                data = dat, marginal = :AGHQ, nAGQ = 5)
 fit_aghq.marginal   # :AGHQ
@@ -56,7 +56,7 @@ fit_phy_reml = drm(bf(@formula(y ~ x + phylo(1 | species))), Poisson();
 `method = :REML` is **opt-in — ML remains the default**. It maximises the Cox–Reid
 adjusted profile likelihood `ℓ_ML − ½·log|I_ββ|` on two Poisson routes:
 
-- a scalar random intercept `(1 | g)` integrated by GHQ-32
+- a scalar random intercept `(1 | g)` integrated by per-group adaptive GHQ (5 nodes)
 - phylogenetic / `relmat` / `animal` / precomputed-spatial Laplace
   (`_fit_poisson_general_laplace`)
 
@@ -93,6 +93,15 @@ _logfactorial(k::Integer) = sum(log, 2:k; init = 0.0)   # log k!  (0 for k = 0, 
 # `_extract_offset` (below) intercepts it before the mean design matrix is
 # built, so it never becomes an ordinary estimated covariate. Its coefficient
 # is fixed at 1 (an offset, not a regressor): `η = Xμβ + offset`.
+"""
+    offset(x)
+
+Formula marker for a known offset on the Poisson mean, for example
+`y ~ x + offset(log_exposure)`. The term enters the linear predictor with its
+coefficient fixed at 1 (`η = Xμβ + offset`); it is not estimated. At most one
+`offset(...)` term is allowed, and only on the Poisson mean. Outside a
+formula, `offset(x)` returns `x` unchanged.
+"""
 offset(x) = x
 
 # Split an `offset(...)` marker off a (already `_split_ranef`-stripped) rhs,
@@ -235,13 +244,13 @@ end
             all(_re_kind(r[1])[1] === :intercept for r in re) ||
                 error("Poisson() supports multiple random effects only as crossed/nested intercepts, e.g. `(1 | g) + (1 | h)`")
             comps = map(re) do r
-                grp = r[2]; gidx, G = _group_index(getproperty(data, grp))
+                grp = r[2]; gidx, G = _group_index(getproperty(data, grp); col = grp)
                 (ones(length(y)), gidx, G, String(grp))
             end
             isaghq && return _withformula(_fit_poisson_crossed_aghq(fam, y, Xμ, comps, nmμ, g_tol; se = se), f)   # #761
             return _withformula(_fit_poisson_crossed_laplace(fam, y, Xμ, comps, nmμ, g_tol; se = se), f)
         end
-        (rk, var) = _re_kind(re[1][1]); grp = re[1][2]; gidx, G = _group_index(getproperty(data, grp))
+        (rk, var) = _re_kind(re[1][1]); grp = re[1][2]; gidx, G = _group_index(getproperty(data, grp); col = grp)
         if rk === :intercept                              # (1 | g) → GHQ-32 :LA, VA (#136), or 1-D AGHQ (#448)
             # The one route where `method = :REML` punches through (#443). VA is an ELBO,
             # not a likelihood, so a restricted correction of it is not defined.

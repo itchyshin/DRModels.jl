@@ -530,7 +530,7 @@ function _drm_gaussian_structured_plus_ranef(fam::Gaussian, structured, re, meta
                 "terms can."))
         re_kind === :intercept || _require_finite_data_column(data, var)
         w = re_kind === :intercept ? ones(n) : Float64.(getproperty(data, var))
-        gidx, G = _group_index(getproperty(data, g))
+        gidx, G = _group_index(getproperty(data, g); col = g)
         label = re_kind === :intercept ? (g === sgrp ? "$(g)_iid" : String(g)) : "$(g):$(var)"
         any(c -> c[5] == label, comps) &&
             throw(ArgumentError("drm: the random-effect term for `$(label)` appears twice in the " *
@@ -544,7 +544,7 @@ function _drm_gaussian_structured_plus_ranef(fam::Gaussian, structured, re, meta
         gidx = _phylo_mean_leaf_index(phy, getproperty(data, sgrp))
         push!(comps, (ones(n), gidx, phy.n_leaves, _phylo_correlation(phy), String(sgrp)))
     else  # :relmat / :animal — K over the levels in first-seen order
-        gidx, G = _group_index(getproperty(data, sgrp))
+        gidx, G = _group_index(getproperty(data, sgrp); col = sgrp)
         Kmat = _resolve_structured_matrix(kind, sgrp, G; K = K, A = A, tree = nothing, coords = nothing)
         push!(comps, (ones(n), gidx, G, Kmat, String(sgrp)))
     end

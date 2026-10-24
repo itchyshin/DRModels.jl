@@ -101,14 +101,14 @@ struct Student end
                   "intercepts `(1 | g) + (1 | h)` or independent intercepts and slopes " *
                   "`(1 | g) + (0 + x | g)`")
         comps = map(re) do r
-            gidx, G = _group_index(getproperty(data, r[2]))
+            gidx, G = _group_index(getproperty(data, r[2]); col = r[2])
             (gidx, G, String(r[2]))
         end
         return _withformula(_fit_student_crossed_laplace(fam, y, Xμ, Xσ, Xν, comps, nmμ, nmσ, nmν, g_tol), f)
     end
     if !isempty(re)                                       # random effect on the mean → GHQ
         length(re) == 1 || error("Student() supports a single random-effect term on the mean")
-        (rk, var) = _re_kind(re[1][1]); grp = re[1][2]; gidx, G = _group_index(getproperty(data, grp))
+        (rk, var) = _re_kind(re[1][1]); grp = re[1][2]; gidx, G = _group_index(getproperty(data, grp); col = grp)
         if rk === :intercept                              # (1 | g) → 1-D GHQ (or opt-in Laplace)
             laplace && return _withformula(_withmarginal(_fit_student_ordinary_laplace(
                 fam, y, Xμ, Xσ, Xν, gidx, G, nmμ, nmσ, nmν, grp, g_tol; se = se), :Laplace), f)

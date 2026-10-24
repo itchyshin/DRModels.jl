@@ -459,6 +459,7 @@ function _design(response::Symbol, rhs, data; schema_cache = nothing, schema_key
     # a NaN predictor on that same row is dropped with it.
     design_data = all(observed) ? data :
         _replace_table_column(data, response, ifelse.(observed, y_response, 0.0))
+    design_data = _narrow_design_columns(rhs, design_data, response)
     ft = FormulaTerm(Term(response), rhs)
     # The 3-arg apply_schema with a StatisticalModel context adds R's implicit
     # intercept (so `y ~ x` means `y ~ 1 + x`, matching drmTMB); explicit
@@ -499,6 +500,28 @@ function _design(response::Symbol, rhs, data; schema_cache = nothing, schema_key
     # response row is not an error.
     _require_finite_inputs(; predictors=(Xm, names), observed=observed)
     return y_response, Xm, names
+end
+
+# #1111: a predictor typed `Union{Missing,T}` that holds no `missing` would reach
+# StatsModels as a non-`Number` vector and be dummy-coded as a factor. Narrow
+# those columns to `T` (what `StatsModels.missing_omit` does in a `ModelFrame`);
+# `Vector{Any}` columns, such as the bridge's R `factor(x)`, are left alone.
+function _narrow_design_columns(rhs, data, response::Symbol)
+    cols = _rhs_columns(rhs)
+    cols === nothing && return data
+    narrowed = Dict{Symbol,Any}()
+    for c in cols
+        c === response && continue
+        _has_table_column(data, c) || continue
+        col = _table_column(data, c)
+        new = _narrow_nomissing(col)
+        new === col || (narrowed[c] = new)
+    end
+    isempty(narrowed) && return data
+    for (c, v) in narrowed
+        data = _replace_table_column(data, c, v)
+    end
+    return data
 end
 
 # Predictor columns named by a fixed-effect RHS. Grouping factors stripped by
@@ -1204,7 +1227,7 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         # and the `if method === :REML` validator both throw before a formula
         # with a mean random effect can reach here, so this branch is ML/
         # complete-response only by construction; no additional check needed.
-        gidx, G = _group_index(getproperty(data, mgrp))
+        gidx, G = _group_index(getproperty(data, mgrp); col = mgrp)
         if mean_kind[1] === :corr      # (1 + x | g) on the mean + (1 | g) on sigma (#960)
             xs = Float64.(getproperty(data, mean_kind[2]))
             return _withformula(_fit_rs_sigma_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, xs,
@@ -1218,7 +1241,7 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         (length(sigma_re) == 1 && _re_kind(sigma_re[1][1])[1] === :intercept) ||
             error("`sigma` random effects support a single random intercept `(1 | g)`")
         sgrp = sigma_re[1][2]
-        gidx, G = _group_index(getproperty(data, sgrp))
+        gidx, G = _group_index(getproperty(data, sgrp); col = sgrp)
         return _withformula(_fit_sigma_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, sgrp, g_tol;
                                                       laplace = laplace, aghq = aghq), f)
     end
@@ -1243,7 +1266,7 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
                 throw(ArgumentError("drm: only random INTERCEPTS `(1 | g)` are implemented " *
                     "alongside `meta_V(...)`; a random slope with known sampling variances " *
                     "is not implemented on this engine yet."))
-            gidx, G = _group_index(getproperty(data, grp))
+            gidx, G = _group_index(getproperty(data, grp); col = grp)
             push!(comps, (gidx, G, nothing, String(grp)))
         end
         for (kind, grp) in all_structured
@@ -1262,7 +1285,7 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
                 # drmTMB's exactly; only the SD's unit differs.
                 Cmat = sigma_phy_dense(phy; σ²_phy = 1.0)
             elseif kind === :relmat || kind === :animal
-                gidx, G = _group_index(getproperty(data, grp))
+                gidx, G = _group_index(getproperty(data, grp); col = grp)
                 Cmat = _resolve_structured_matrix(kind, grp, G; K = K, A = A, tree = tree, coords = coords)
             else
                 throw(ArgumentError("drm: `$(kind)(1 | $grp)` is not implemented alongside " *
@@ -1326,7 +1349,7 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     end
     if structured !== nothing
         kind, grp = structured
-        gidx, G = _group_index(getproperty(data, grp))
+        gidx, G = _group_index(getproperty(data, grp); col = grp)
         if kind === :spatial
             coords === nothing && error("spatial(1 | $grp) needs `coords = …`")
             _require_finite_inputs(; coords=coords)
@@ -1412,7 +1435,7 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     re_kinds = [_re_kind(rl) for (rl, _) in re]
     if length(re) == 1 && re_kinds[1][1] === :corr           # (1 + x | g)
         (_, grp) = re[1]; (_, var) = re_kinds[1]
-        gidx, G = _group_index(getproperty(data, grp))
+        gidx, G = _group_index(getproperty(data, grp); col = grp)
         _require_finite_data_column(data, var)
         xs = Float64.(getproperty(data, var))
         return _withformula(_fit_correlated_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, xs, nmμ, nmσ, grp, g_tol;
@@ -1422,7 +1445,7 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         error("a correlated `(1 + x | g)` block must be the only random-effect term")
     if length(re) == 1                                        # single scalar component
         (_, grp) = re[1]; (kind, var) = re_kinds[1]
-        gidx, G = _group_index(getproperty(data, grp))
+        gidx, G = _group_index(getproperty(data, grp); col = grp)
         kind === :intercept || _require_finite_data_column(data, var)
         w = kind === :intercept ? ones(length(y)) : Float64.(getproperty(data, var))
         reml_here = method === :REML && kind === :intercept
@@ -1432,7 +1455,7 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     comps = map(zip(re, re_kinds)) do ((_, grp), (kind, var))  # multiple scalar components
         kind === :intercept || _require_finite_data_column(data, var)
         w = kind === :intercept ? ones(length(y)) : Float64.(getproperty(data, var))
-        gidx, Gk = _group_index(getproperty(data, grp))
+        gidx, Gk = _group_index(getproperty(data, grp); col = grp)
         (w, gidx, Gk, String(grp))
     end
     return _withformula(_fit_multi_ranef_gaussian(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol), f)
@@ -1803,8 +1826,13 @@ function _fit_fixed_gaussian_reml(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, g_tol)
         end
         return s + const_2pi
     end
+    # #1170: unit-free converged flag, as on the ML route (#983). The Newton step of the
+    # restricted objective in SE units replaces the absolute `g_tol` gradient test, and the
+    # iteration cap still fails the flag. Only this route; the other sites are #1050.
+    converged = all(isfinite, Hσ) && Optim.converged(res) && !Optim.iteration_limit_reached(res) &&
+        _unitfree_converged(Hσ, ForwardDiff.gradient(nll_reml, βσ̂))
     fit = DrmFit(fam, blocks, names, θ̂, V, reml_ll, n,
-                 drm_optim_converged(res) && !_scale_runoff(scales), means, obs, scales)
+                 converged && !_scale_runoff(scales), means, obs, scales)
     return _withiterations(_withreml(_withnll(fit, nll_full), reml_ll, ml_ll), Optim.iterations(res))
 end
 
@@ -1838,19 +1866,32 @@ nobs(fit::DrmFit) = fit.nobs
 """
     fitted(fit)
 
-Fitted mean(s). Univariate / random-effect models return the μ vector;
-bivariate models return `Dict(:mu1=>…, :mu2=>…)`. Which mean depends on the route:
+Fitted value(s) of the mean parameter: the μ vector for univariate models,
+`Dict(:mu1=>…, :mu2=>…)` for bivariate models. On a random-effect fit this is the
+population-level value with the random effects at zero, not the marginal mean
+averaged over them. For the GLM-type families (Gaussian, Poisson, NegBinomial2,
+Gamma, Beta, Binomial) it is `g⁻¹(Xβ̂)`, the value [`predict`](@ref) gives in-sample.
+Which mean is stored depends on the route:
 
 - **Population mean `Xβ̂`**: fixed-effects fits, ordinary `(1 | g)` and crossed
   random intercepts, `relmat` / `animal`, and the dense `algorithm = :gls` /
   `:lbfgs` Gaussian `phylo(1 | g)` fitters.
-- **Conditional mean `Xβ̂ + u`** (the BLUPs included, as drmTMB's fitted-row
-  `predict()`): the sparse and EM Gaussian `phylo(1 | g)` routes, and so
-  `residuals(fit)` on them are conditional residuals. `predict(fit, data)` is
-  the fixed-effect `Xβ̂` on every route.
+- **Conditional mean `Xβ̂ + Sû`** (the BLUPs included, as drmTMB's fitted-row
+  `predict()`): the sparse L-BFGS (the default) and EM Gaussian `phylo(1 | g)`
+  routes, and so `residuals(fit)` on them are conditional residuals.
+  `predict(fit, data)` is the fixed-effect `Xβ̂` on every route.
 
-`LogNormal` fits report the response-scale median `exp(·)` of the corresponding
-log-scale mean above, including the `phylo` / `relmat` and crossed routes (#1102).
+Other exceptions:
+- ZeroOneBeta stores the zero/one-inflated mixture mean and CumulativeLogit the
+  expected category score;
+- `LogNormal` fits report the response-scale median `exp(·)` of the corresponding
+  log-scale mean above, including the `phylo` / `relmat` and crossed routes
+  (#1102), so on its sparse `phylo(1 | g)` route the median includes the fitted
+  phylogenetic effects.
+
+drmTMB's `fitted()` adds the fitted random-effect modes and, for some families
+(LogNormal, zero-inflated, hurdle and truncated counts), returns the unconditional
+response mean, so the two packages' `fitted` values are not directly comparable.
 """
 fitted(fit::DrmFit) = haskey(fit.means, :mu) ? fit.means[:mu] : fit.means
 
@@ -2011,16 +2052,43 @@ end
 """
     predict(fit, newdata; type = :response, se = false) -> Vector / Dict / NamedTuple
 
-Population-level prediction on `newdata` (a NamedTuple / column table), random /
-structured effects integrated out. `type = :response` (default) returns the
-response-scale mean — the family inverse link applied to `Xβ̂` (`exp` for
-Poisson/Gamma, `logistic` for Beta/Binomial/ZeroOneBeta, identity for Gaussian);
-`type = :link`
-returns `Xβ̂`. In-sample, `predict(fit, data) ≈ fitted(fit)`. Univariate returns a
-vector; bivariate returns `Dict(:mu1 => …, :mu2 => …)`.
+Population-level prediction on `newdata` (a NamedTuple / column table) with every
+random and structured effect **set to zero**: the prediction for an average group
+(`b = 0`), not an average over groups. `type = :link` returns `Xβ̂`;
+`type = :response` (default) applies the family inverse link to it, `g⁻¹(Xβ̂)`
+(`exp` for Poisson/Gamma, `logistic` for Beta/Binomial/ZeroOneBeta, identity for
+Gaussian). For ZeroOneBeta this is the Beta-component mean `logistic(Xβ̂)`, not the
+zero/one-inflated mixture mean that [`fitted`](@ref) stores. For CumulativeLogit,
+`predict` returns the location linear predictor `Xβ̂` on both `type = :link` and
+`type = :response` (as drmTMB does), not the expected category score that
+[`fitted`](@ref) stores.
+Grouping columns in `newdata` are not used, so a group level the model never saw
+is predicted exactly like a fitted one. Univariate returns a vector; bivariate
+returns `Dict(:mu1 => …, :mu2 => …)`. In-sample, `predict(fit, data) ≈ fitted(fit)`
+on the fixed-effect and ordinary `(1 | g)` routes of the GLM-type families
+(Gaussian, Poisson, NegBinomial2, Gamma, Beta, Binomial); [`fitted`](@ref) lists
+the fits whose stored values differ.
+
+With an identity link (Gaussian) the `b = 0` prediction is also the marginal mean,
+averaged over the random-effect distribution. With a nonlinear link it is not,
+because the inverse link of the average linear predictor differs from the average
+of the inverse link. For a log link (Poisson, NegBinomial2, Gamma) and one normal
+random intercept of SD `σ_b`, the marginal mean is `exp(Xβ̂ + σ_b²/2)`, that is
+`predict(fit, newdata) .* exp(re_sd(fit)[:g]^2 / 2)` for grouping `g`. For a logit
+link it has no closed form and lies between `predict` and 1/2 (strictly closer to
+1/2 whenever `Xβ̂ ≠ 0`). DRModels.jl has no marginal-mean predictor: in other cases,
+average `g⁻¹(Xβ̂ + b)` over `b ~ N(0, σ_b²)` numerically.
+
+drmTMB's `predict()` with `newdata` also sets the random effects to zero, so for the
+GLM-type families above the two packages' predictions compare like with like
+(drmTMB's LogNormal prediction is the log-scale `μ`; compare it with
+`type = :link`). Without `newdata`, drmTMB's `predict()`, and so its `fitted()`, add
+the fitted random-effect modes for the fitted rows; DRModels.jl's `predict` always
+takes `newdata`.
 
 `se = false` (default) is the point prediction above. `se = true` adds
-**delta-method standard errors** for the mean (glmmTMB/drmTMB `se.fit` parity):
+**delta-method standard errors** for the mean (the glmmTMB `se.fit` convention;
+drmTMB's `predict()` has no `se.fit` argument):
 
 - univariate → a `NamedTuple` `(; prediction, se)`;
 - bivariate  → a `NamedTuple` `(; prediction::Dict, se::Dict)` keyed `:mu1, :mu2`.
@@ -2028,7 +2096,8 @@ vector; bivariate returns `Dict(:mu1 => …, :mu2 => …)`.
 The SE uses the μ-block of `vcov(fit)`: link scale `se_i = sqrt(xᵢ' Vμ xᵢ)`
 (with `Vμ = vcov(fit)[r, r]`, `r` the `:mu` coef range from `fit.blocks`);
 response scale multiplies by the inverse-link derivative `|dμ/dη|` at `η̂`
-(identity → 1, exp → `exp(η)`, logistic → `μ(1−μ)`).
+(identity → 1, exp → `exp(η)`, logistic → `μ(1−μ)`). It carries the uncertainty
+in `β̂` only; the random-effect variance is not added.
 """
 # Keep a response column that is already in `newdata`, so a missing response
 # still marks that row as unobserved and a NaN predictor there is dropped with
@@ -2266,16 +2335,22 @@ end
         -> Dict{Symbol,NamedTuple}        (se = true)
 
 Population-level prediction of **every** distributional parameter at `newdata`
-(a NamedTuple / column table), random / structured effects integrated out
-(exactly like [`predict`](@ref)). The returned `Dict` has one entry per
+(a NamedTuple / column table), with random / structured effects set to zero
+(exactly like [`predict`](@ref): the average group, not an average over groups).
+The returned `Dict` has one entry per
 distributional parameter the model carries — always `:mu` and (when the family
 uses it) `:sigma`, plus any family extras present (`:nu`, `:zi`, `:hu`, `:zoi`,
 `:coi`).
 
-`type = :response` (default) applies each parameter's inverse link, so in-sample
-it reproduces [`marginal_parameters`](@ref) (i.e. `fit.means[:mu]`,
-`fit.scales[...]`). `type = :link` returns the linear predictor `Xβ̂` per
-parameter (the working scale).
+`type = :response` (default) applies each parameter's inverse link, with current
+exceptions: `nu` uses `exp` for every family but Tweedie (so a Student `nu` comes
+back as `ν − 2` and a SkewNormal `nu` as `exp` of the slant), and the ZeroOneBeta
+mean is left on the link scale. In-sample it reproduces
+[`marginal_parameters`](@ref) (i.e. `fit.means[:mu]`, `fit.scales[...]`) for the
+mean and `sigma` of the GLM-type families and for LogNormal's own routes, but not
+for those `nu` parameters, a `meta_V` `sigma` (stored as `√(v + σ²)`), or the
+[`fitted`](@ref) means stored conditionally or on another scale. `type = :link`
+returns the linear predictor `Xβ̂` per parameter (the working scale).
 
 For a univariate fit the parameters are `:mu`, (`:sigma`) plus family extras; for
 a bivariate fit they are `:mu1, :mu2, :sigma1, :sigma2, :rho12` (each from its own
@@ -2429,7 +2504,12 @@ the stored fit — a cheap accessor with no recomputation. Returns the mean(s) f
 scale / correlation parameter from `fit.scales` (e.g. `:sigma`, `:nu`, `:zi`,
 `:hu`, `:zoi`, `:coi`; `:sigma1`/`:sigma2`/`:rho12` for a bivariate fit).
 
-In-sample these equal `predict_parameters(fit, data)` (response scale).
+Despite the name, nothing is averaged over the random effects: on a random-effect
+fit these are the stored population-level values, with the random effects at zero
+(see [`fitted`](@ref) for the routes that store conditional means or another
+scale). In-sample they equal `predict_parameters(fit, data)` (response scale) for
+the mean and `sigma` of the GLM-type families; [`predict_parameters`](@ref) lists
+the parameters for which they do not.
 
 # Example
 ```julia
@@ -2899,8 +2979,9 @@ end
 
 Estimated random-effect standard deviations, keyed by grouping factor. A
 mean-axis random intercept (`y ~ x + (1|g)`) or independent slope
-(`y ~ x + (0+x|g)`) is keyed by the bare group name and is on the response
-scale. A scale-axis random intercept (`sigma ~ 1 + (1|g)`) is keyed
+(`y ~ x + (0+x|g)`) is keyed by the bare group name and is on the mean's
+linear-predictor (link) scale, which is the response scale only for an identity
+link such as Gaussian's. A scale-axis random intercept (`sigma ~ 1 + (1|g)`) is keyed
 `<group>_logsigma` because that SD lives on the log-σ scale — the two are NOT
 directly comparable, and the suffix keeps them distinct so a side-by-side read
 is not silently mixing scales. A correlated random intercept+slope block

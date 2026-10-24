@@ -7,8 +7,10 @@
 
 ```@docs
 bf
+drm_formula
 DrmFormula
 BivariateDrmFormula
+offset
 ```
 
 ### Other names used in formulas

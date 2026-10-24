@@ -180,7 +180,7 @@ end
                 error("CumulativeLogit() supports multiple random effects only as " *
                       "crossed/nested intercepts, e.g. `(1 | g) + (1 | h)`")
             comps = map(re) do r
-                grp = r[2]; gidx, G = _group_index(getproperty(data, grp))
+                grp = r[2]; gidx, G = _group_index(getproperty(data, grp); col = grp)
                 (ones(length(yi)), gidx, G, String(grp))
             end
             return _withformula(_fit_cumulative_crossed_laplace(fam, yi, Xμ, K, comps, nmμ, g_tol), f)
@@ -190,7 +190,7 @@ end
                   "`(0 + x | g)` random slope on `mu`; crossed/multiple random effects are " *
                   "not implemented in this slice")
         (rk, var) = _re_kind(re[1][1]); grp = re[1][2]
-        gidx, G = _group_index(getproperty(data, grp))
+        gidx, G = _group_index(getproperty(data, grp); col = grp)
         if rk === :intercept
             return _withformula(_fit_cumulative_ranef(fam, yi, Xμ, K, gidx, G, nmμ, grp, g_tol), f)
         elseif rk === :slope

@@ -289,9 +289,20 @@ what the open issue supports without a separate, explicit call.
 |---|---|
 | Bivariate structured random effect on all four axes (q4 PLSM) | implemented |
 | Cross-family bivariate (different families for y1 y2) | missing |
+| Bivariate Gaussian with ordinary correlated random effects, `(1 \| p \| g)` | rejected |
 | Missing-response handling (native, per fitted route) | missing |
 | Missing-predictor imputation (mi()) | experimental |
 | R to Julia bridge (engine=julia) | implemented |
+
+`Bivariate Gaussian with ordinary correlated random effects, (1 | p | g)` is
+`rejected`: `drm(::BivariateDrmFormula, ::Gaussian)` throws an `ArgumentError`
+that names drmTMB when `mu1`/`mu2`/`sigma1`/`sigma2` carry an ordinary `(1 | g)`
+or `(1 | p | g)` term (`_split_bivariate_q4_rhs`, `src/gaussian_bivariate.jl`).
+drmTMB fits this model, so it is a known R-side-only cell (#1094); only
+`phylo`/`relmat`/`animal`/`spatial` markers are accepted on this route. The same
+method also refuses a `marginal =` keyword other than the default `:LA` with an
+`ArgumentError`. Both refusals are pinned by
+`test/test_bivariate_refusals_1094.jl`.
 
 `Bivariate structured random effect on all four axes (q4 PLSM)` is the
 flagship verified engine (`src/sparse_phy.jl`, `src/takahashi_selinv.jl`,
