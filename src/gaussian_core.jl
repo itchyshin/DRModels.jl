@@ -1795,8 +1795,13 @@ function _fit_fixed_gaussian_reml(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, g_tol)
         end
         return s + const_2pi
     end
+    # #1170: unit-free converged flag, as on the ML route (#983). The Newton step of the
+    # restricted objective in SE units replaces the absolute `g_tol` gradient test, and the
+    # iteration cap still fails the flag. Only this route; the other sites are #1050.
+    converged = all(isfinite, Hσ) && Optim.converged(res) && !Optim.iteration_limit_reached(res) &&
+        _unitfree_converged(Hσ, ForwardDiff.gradient(nll_reml, βσ̂))
     fit = DrmFit(fam, blocks, names, θ̂, V, reml_ll, n,
-                 drm_optim_converged(res) && !_scale_runoff(scales), means, obs, scales)
+                 converged && !_scale_runoff(scales), means, obs, scales)
     return _withiterations(_withreml(_withnll(fit, nll_full), reml_ll, ml_ll), Optim.iterations(res))
 end
 
