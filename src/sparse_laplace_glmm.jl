@@ -492,7 +492,7 @@ function _poisson_phylo_setup(tree, labels)
     numeric_labels = true
     @inbounds for i in eachindex(labels)
         li = labels[i]
-        if li isa Integer && 1 <= Int(li) <= phy.n_leaves
+        if li isa Real && isinteger(li) && 1 <= Int(li) <= phy.n_leaves   # Float64 codes from R too (#1026)
             leaf_node[i] = leaf_pos[Int(li)]
         else
             numeric_labels = false
@@ -501,6 +501,9 @@ function _poisson_phylo_setup(tree, labels)
     end
     numeric_labels && return Q, leaf_node, phy
 
+    # #1026: labels that carry names but do not all match tip names are refused;
+    # only purely numeric codes fall through to the positional match below.
+    _refuse_unmatched_tip_labels(labels, phy.leaf_names)
     gidx, G = _group_index(labels)
     G == phy.n_leaves ||
         error("phylo labels must match tree tip names, integer tip indices, or have one level per tree tip")

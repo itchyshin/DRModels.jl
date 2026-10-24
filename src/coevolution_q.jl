@@ -191,7 +191,8 @@ function make_coevo_problem_from_covariance(K::AbstractMatrix,
                                             group = 1:size(K, 1))
     _require_finite_array(K, "K")
     G = LinearAlgebra.checksquare(K)
-    C = Matrix{Float64}(K)
+    # #1020: `Symmetric(C)` reads one triangle, so check symmetry and finiteness first.
+    C = _require_symmetric_finite_covariance(K, "the known structured covariance (`K` / `A`)")
     isposdef(Symmetric(C)) || error("known structured covariance must be positive definite")
     Q = Matrix(inv(cholesky(Symmetric(C))))
     size(Q) == (G, G) || error("internal covariance inversion returned the wrong size")
