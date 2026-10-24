@@ -66,7 +66,7 @@ function _block_title(p::Symbol)
     p === :sd_phylo && return "Phylo SD model sd_phylo(group) (log σ_a)"
     p === :resid   && return "Residual scale (log σ)"
     p === :recov   && return "Random-effect covariance (Cholesky)"
-    p === :phylocov && return "Group-level covariance Σ_a (log-Cholesky; see vc/coevolution)"
+    p === :phylocov && return "Group-level covariance Σ_a (log-Cholesky; Wald intervals uncalibrated)"
     return String(p)
 end
 

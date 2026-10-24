@@ -1,0 +1,1 @@
+- **q4 `Σ_a` (`:phylocov`) Wald intervals are now labelled uncalibrated** in the printed summary heading and in the bivariate coscale tutorial, with the measured coverage (off-diagonals 0.83 to 0.89, scale diagonals 0.995 to 1.0, mean diagonals near nominal). Documentation and labelling only: estimates, `confint` and the coverage fence are unchanged (#495).
