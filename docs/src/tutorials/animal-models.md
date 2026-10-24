@@ -29,12 +29,34 @@ closed form (PGLS-style), the same engine that powers
 
 Write the breeding effect as `animal(1 | id)` in the mean formula and supply the
 relatedness matrix with the `A =` keyword. `A` is a symmetric positive matrix
-indexed over the levels of `id` (one row/column per individual):
+with one row/column per individual, **ordered by the first appearance of `id`
+in the data** (the same rule as [`relmat`](relmat-known-matrices.md)):
 
 ```julia
 drm(bf(@formula(y ~ x + animal(1 | id)), @formula(sigma ~ 1)),
     Gaussian(); data = (; y, x, id), A = A)
 ```
+
+!!! warning "Order `A` by first appearance, not by sorted id"
+    A plain Julia matrix has no row names, so `drm` takes its rows and columns to
+    be the levels of `id` in order of first appearance in the data (it warns
+    once to say so). An `A` in sorted-id order, when the ids first appear in a
+    different order, pairs the wrong rows: the fit still reports
+    `converged = true` with a plausible-looking but wrong log-likelihood (on the
+    blue tit tarsus data the animal variance collapses towards 0). If `A` is
+    held in the order of `A_ids` (a vector of its row ids), either reorder it
+    to the data with one line,
+
+    ```julia
+    p = indexin(unique(id), A_ids)    # row of A for each id, in first-appearance order
+    A = A[p, p]
+    ```
+
+    or label it and let DRModels.jl match by id in any row order:
+    `drm(...; A = A, ids = A_ids)` (or pass `A` as a table whose column names
+    are the ids). `drm_bridge` takes the same labelling as `A_labels = A_ids`
+    together with `structured_group = "id"`. Labels that miss a level of `id`
+    are an error.
 
 `animal(1 | id)` and `relmat(1 | id)` are the same structured random intercept;
 `animal` simply names the genetic interpretation. The companion
