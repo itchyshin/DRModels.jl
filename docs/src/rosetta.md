@@ -168,6 +168,26 @@ drmTMB's exact R spelling for per-parameter prediction is not asserted here
 (only the capability is); the response-mean `predict` row is the verified parity
 point.
 
+## Deliberate difference — the log-scale numerical guard
+
+Both twins guard the `log(sigma)` linear predictor inside the likelihood so a
+runaway scale cannot blow the objective up, and **both report the guarded value**:
+`sigma(fit)`, `simulate` and the quantile residuals describe the scale the
+likelihood actually scored, not a raw `exp(X_sigma * beta_sigma)` the model never
+evaluated (drmTMB `drm_clamped_sigma_eta()`; DRModels.jl `_reported_sigma`).
+
+The *bands* differ on purpose. drmTMB soft-clamps every scale family at
+`logsigma_clamp = c(-12, 12, 3)`. DRModels.jl keeps each family's own band — NB2
+±20, Gamma ±15, Beta ±15 (margin 3) — because those families carry
+`size`/`shape`/`precision` `= exp(-2 * eta_sigma)`, where drmTMB's ±12 would
+distort legitimate fits (a near-Poisson NB2 wants `eta_sigma` ≈ -15); and the
+**Gaussian fixed-effects core is not clamped at all**, since its objective is
+well behaved without one. So on a row where `|eta_sigma| > 12` the two twins'
+likelihoods, optima and reported scales can differ — a documented divergence,
+not a bug. A fit that reaches any of these bands is at a dispersion boundary:
+the objective is flat there, the Wald SEs are untrustworthy, and the reported
+scale is honest about what was scored rather than a reliable estimate.
+
 ## Naming rules to remember
 
 - **Scale is `sigma`, never `tau`.** `bf(y ~ x, tau ~ x)` is rejected — use
