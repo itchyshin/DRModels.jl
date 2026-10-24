@@ -101,6 +101,18 @@ a distributional predictor, so
 `:rho12`, but not `:phylocov`. Use [`coevolution_cor`](@ref) for the among-axis
 correlation matrix of `Σ_a`.
 
+!!! warning "Wald intervals for `Σ_a` are uncalibrated"
+    The Wald intervals for the `:phylocov` entries (the log-Cholesky entries of
+    `Σ_a`) are **uncalibrated**: they do not have their nominal coverage, and
+    `summary` labels the block accordingly. In a 1000-replicate coverage
+    campaign (Gaussian REML, `q4_vcov = true`, nominal 95 %), the off-diagonal
+    entries covered 0.83 to 0.89 (under-coverage, worst where both axes are
+    scales), the two scale-axis diagonal entries covered 0.995 to 1.0
+    (over-coverage, intervals too wide to be informative), and the two mean-axis
+    diagonal entries were near nominal (0.95). Do not read these intervals as
+    95 % intervals; the `Σ_a` point estimates and `coevolution_cor` are
+    unchanged. See issue 495 for the measurements.
+
 ## Relmat / animal / spatial q=4 coevolution
 
 The same q=4 model accepts level-indexed structured providers. Put
