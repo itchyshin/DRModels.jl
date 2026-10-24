@@ -255,15 +255,53 @@ end
         # an offset in a non-mean Poisson formula is refused too
         @test_throws ArgumentError drm(bf(@formula(c ~ x), @formula(zi ~ offset(logb))),
                                        DRModels.Poisson(); data = d, se = false)
-        # the `marginal = :Laplace` Poisson route never extracts the offset: refused, not freed
-        @test_throws ArgumentError drm(bf(@formula(c ~ x + offset(logb) + (1 | g))),
-                                       DRModels.Poisson(); data = d, marginal = :Laplace, se = false)
-        @test occursin("marginal = :Laplace", _j3_msg(() -> drm(
-            bf(@formula(c ~ x + offset(logb) + (1 | g))), DRModels.Poisson();
-            data = d, marginal = :Laplace, se = false)))
         # the Poisson mean still applies it with coefficient 1 (no `offset` coefficient)
         fp = drm(bf(@formula(c ~ x + offset(logb))), DRModels.Poisson(); data = d, se = false)
         @test length(coef(fp, :mu)) == 2
+    end
+
+    @testset "#938 x #941: Poisson mean offset with one (1 | g) on :Laplace is applied, the rest refused" begin
+        rng = MersenneTwister(941)
+        n = 150; x = randn(rng, n); logb = 0.3 .* randn(rng, n); g = repeat(1:15, inner = 10)
+        h = repeat(1:10, outer = 15)
+        u = 0.5 .* randn(rng, 15)               # a real group effect, so the SD is identified
+        c = Float64[_j3_rpois(rng, exp(0.2 + 0.3x[i] + logb[i] + u[g[i]])) for i in 1:n]
+        d = (c = c, x = x, logb = logb, logb2 = logb .+ log(2), g = g, h = h)
+        P = DRModels.Poisson()
+        # applied: the offset is a fixed coefficient of 1, never an estimated column ...
+        f1 = bf(@formula(c ~ x + offset(logb) + (1 | g)))
+        f2 = bf(@formula(c ~ x + offset(logb2) + (1 | g)))
+        for marg in (:Laplace, :LA)
+            a = drm(f1, P; data = d, marginal = marg, se = false)
+            b = drm(f2, P; data = d, marginal = marg, se = false)
+            @test length(coef(a, :mu)) == 2
+            # ... so adding log 2 to the offset moves only the intercept, by exactly -log 2
+            @test coef(b, :mu)[1] ≈ coef(a, :mu)[1] - log(2) atol = 1e-4
+            @test coef(b, :mu)[2] ≈ coef(a, :mu)[2] atol = 1e-4
+            @test coef(b, :resd) ≈ coef(a, :resd) atol = 1e-4
+            @test loglik(b) ≈ loglik(a) atol = 1e-6
+        end
+        # refused: every shape the Laplace route does not cover still raises, with the offset
+        @test_throws ArgumentError drm(bf(@formula(c ~ x + offset(logb))), P;
+                                       data = d, marginal = :Laplace, se = false)          # no (1 | g)
+        @test_throws ArgumentError drm(bf(@formula(c ~ x + offset(logb) + (1 + x | g))), P;
+                                       data = d, marginal = :Laplace, se = false)          # slope
+        @test_throws ArgumentError drm(bf(@formula(c ~ x + offset(logb) + (1 | g) + (1 | h))), P;
+                                       data = d, marginal = :Laplace, se = false)          # crossed
+        @test_throws ArgumentError drm(bf(@formula(c ~ x + offset(logb) + relmat(1 | g))), P;
+                                       data = d, K = Matrix(1.0I, 15, 15),
+                                       marginal = :Laplace, se = false)                    # structured
+        @test_throws ArgumentError drm(bf(@formula(c ~ x + offset(logb) + (1 | g)),
+                                          @formula(zi ~ offset(logb))), P;
+                                       data = d, marginal = :Laplace, se = false)          # zi
+        # an offset on a non-Poisson family is refused on :Laplace as well, never freed
+        @test_throws ArgumentError drm(bf(@formula(c ~ x + offset(logb) + (1 | g)), @formula(sigma ~ 1)),
+                                       NegBinomial2(); data = d, marginal = :Laplace, se = false)
+        @test_throws ArgumentError drm(bf(@formula(c ~ x + offset(logb) + (1 | g))),
+                                       Binomial(); data = d, marginal = :Laplace, se = false)
+        @test occursin("offset(...)", _j3_msg(() -> drm(
+            bf(@formula(c ~ x + offset(logb) + (1 | g)), @formula(sigma ~ 1)),
+            NegBinomial2(); data = d, marginal = :Laplace, se = false)))
     end
 
     @testset "#939: CumulativeLogit refuses a sigma formula with covariates" begin
