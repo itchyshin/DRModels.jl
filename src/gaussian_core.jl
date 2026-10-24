@@ -204,11 +204,12 @@ struct DrmFit{F}
     # The tip matrix a `phylo(1 | g)` field's SD is defined against. Every phylo
     # mean fit maps rows to tips by name (`_phylo_mean_leaf_index`, #482); the
     # routes differ only in scale. `:covariance` (the default): the raw
-    # branch-length covariance `sigma_phy_dense` (the sparse phylo-mean, meta_V
-    # and non-Gaussian Laplace routes). `:correlation`: `_phylo_correlation`, the
-    # tip correlation (the dense Gaussian structured fallback and the
-    # two-structured route). The bootstrap simulator reads it so its draws come
-    # from the model that was fitted.
+    # branch-length covariance `sigma_phy_dense` (the sparse phylo-mean route on a
+    # NON-ultrametric tree, meta_V and non-Gaussian Laplace routes). `:correlation`:
+    # `_phylo_correlation`, the tip correlation (the dense Gaussian structured
+    # fallback, the two-structured route, and the sparse phylo-mean route on an
+    # ultrametric tree, which is fitted at unit height, #979). The bootstrap
+    # simulator reads it so its draws come from the model that was fitted.
     phylo_scale::Symbol
     # What `drm(...; control, weights)` did (#942 #948 #994 #931): a
     # `DRMControlReport`, or `nothing` when neither keyword was given. Set only by
@@ -1253,9 +1254,9 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
                 # Rows → tree leaves BY NAME (#482), never by first-seen order.
                 gidx = _phylo_mean_leaf_index(phy, getproperty(data, grp))
                 G = phy.n_leaves
-                # RAW branch-length tip covariance, the scale the default
-                # phylo-mean route reports `sd_phylo` on (and the scale the R
-                # bridge converts from, × sqrt(mean root-to-tip depth)). On an
+                # RAW branch-length tip covariance (unlike the sparse phylo-mean
+                # route, which has reported the correlation scale since #979; the
+                # R bridge converts from this one, × sqrt(mean root-to-tip depth)). On an
                 # ultrametric tree — the only kind drmTMB accepts — this is
                 # height × the tip correlation, so the model and logLik are
                 # drmTMB's exactly; only the SD's unit differs.
@@ -1346,7 +1347,14 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
                 isempty(sigma_re) && size(Xσ, 2) == 1
             if use_sparse_phylo
                 phy = tree isa AbstractString ? augmented_phy(tree) : tree
-        _warn_if_tree_not_unit_height(phy)
+                # #979: report `sd_phylo` on the tip-CORRELATION scale like every other
+                # Gaussian phylo route and drmTMB. An ultrametric tree is fitted at unit
+                # height (an exact reparameterisation: the same model, SD on the scale of
+                # `ape::vcv(tree, corr = TRUE)`); a tree that scalar rescaling cannot
+                # standardise stays on the raw scale, recorded as `:covariance`, with the
+                # tree-height warning.
+                phy, phylo_scale = _phylo_mean_correlation_tree(phy)
+                phylo_scale === :covariance && _warn_if_tree_not_unit_height(phy)
                 # Match rows to tree LEAVES BY NAME/tip-index (#482), not by the
                 # generic `_group_index` position used above for relmat/animal/
                 # spatial. `_group_index` numbers levels by first-seen order in
@@ -1359,17 +1367,17 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
                 # no observation and stays in the phylo prior only, matching the
                 # σ-phylo route's identical convention.
                 gidx_phy = _phylo_mean_leaf_index(phy, getproperty(data, grp))
-                algorithm in (:auto, :sparse_lbfgs) && return _withformula(
+                algorithm in (:auto, :sparse_lbfgs) && return _withphyloscale(_withformula(
                     _fit_structured_gaussian_sparse_lbfgs(fam, y, Xμ, Xσ, gidx_phy, phy.n_leaves, phy, nmμ, nmσ, grp, g_tol;
-                                                          penalty = penalty, reml = method === :REML), f)
+                                                          penalty = penalty, reml = method === :REML), f), phylo_scale)
                 # The conjugate-EM variant maximises a different surrogate; adding a
                 # prior to it is a separate derivation, not a wiring change.
                 penalty === nothing ||
                     throw(ArgumentError("drm: `penalty` is not wired for `algorithm = :$(algorithm)` " *
                                         "(the conjugate-EM phylo variant). Use `algorithm = :auto` or " *
                                         "`:sparse_lbfgs` for a penalized phylo fit."))
-                return _withformula(
-                    _fit_structured_gaussian_em(fam, y, Xμ, Xσ, gidx_phy, phy.n_leaves, phy, nmμ, nmσ, grp, g_tol), f)
+                return _withphyloscale(_withformula(
+                    _fit_structured_gaussian_em(fam, y, Xμ, Xσ, gidx_phy, phy.n_leaves, phy, nmμ, nmσ, grp, g_tol), f), phylo_scale)
             end
             penalty === nothing ||
                 throw(ArgumentError("drm: `penalty` is only wired for the sparse phylo route. This model " *
@@ -2903,8 +2911,10 @@ use [`vc`](@ref) for the full 2×2 covariance.
 ## `scale` (#732, twin drmTMB#1272)
 
 For a `phylo(1 | g)` grouping fitted on the default raw branch-length
-covariance (`fit.phylo_scale === :covariance`, the sparse Gaussian-mean and all
-non-Gaussian Laplace/GLMM phylo routes), `re_sd`'s default `scale = :native`
+covariance (`fit.phylo_scale === :covariance`: the sparse Gaussian-mean route on
+a non-ultrametric tree and all non-Gaussian Laplace/GLMM phylo routes; the sparse
+Gaussian-mean route on an ultrametric tree is on the correlation scale since #979),
+`re_sd`'s default `scale = :native`
 returns σ on that raw branch-length scale (tip variance = the tree's height
 `h`). drmTMB instead reports the phylogenetic SD on the tip-correlation scale
 (`ape::vcv(tree, corr = TRUE)`, tip variance 1 regardless of `h`); the two

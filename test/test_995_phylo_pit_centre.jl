@@ -32,7 +32,12 @@ function _marginal_reference_995(fit, sim)
     σe = exp(fit.theta[first(bl[:sigma])])
     σb = exp(fit.theta[first(bl[:resd])])
     d = sim.data
-    return (d.y .- β[1] .- β[2] .* d.x) ./ sqrt.(σe^2 .+ σb^2 .* sim.Cii)
+    # Tip prior variance σ_b² C_ii on the scale the fit's σ_b is defined against.
+    # Since #979 the ultrametric sparse / EM routes fit the tree at unit height
+    # (`phylo_scale === :correlation`), so C_ii = 1 there; the raw branch-length
+    # C_ii applies on a `:covariance` fit.
+    Cii = fit.phylo_scale === :correlation ? sim.Cii ./ maximum(sim.Cii) : sim.Cii
+    return (d.y .- β[1] .- β[2] .* d.x) ./ sqrt.(σe^2 .+ σb^2 .* Cii)
 end
 
 @testset "#995/#996 Gaussian phylo PIT is centred on the fixed-effect mean" begin
