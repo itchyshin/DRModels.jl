@@ -161,7 +161,7 @@ _logit12(η) = 1 + 1 / (1 + exp(-η))            # (1,2) link for the power p
                 error("Tweedie() crossed/multiple random intercepts currently require a " *
                       "constant `nu` formula")
             comps = map(re) do r
-                grp = r[2]; gidx, G = _group_index(getproperty(data, grp))
+                grp = r[2]; gidx, G = _group_index(getproperty(data, grp); col = grp)
                 (ones(length(y)), gidx, G, String(grp))
             end
             return _withformula(_fit_tweedie_crossed_laplace(fam, y, Xμ, comps, nmμ, nmσ, nmν, g_tol), f)
@@ -171,7 +171,7 @@ _logit12(η) = 1 + 1 / (1 + exp(-η))            # (1,2) link for the power p
                   "`(0 + x | g)` random slope on `mu`; crossed/multiple random effects " *
                   "are not implemented")
         (rk, var) = _re_kind(re[1][1]); grp = re[1][2]
-        gidx, G = _group_index(getproperty(data, grp))
+        gidx, G = _group_index(getproperty(data, grp); col = grp)
         if rk === :intercept
             return _withformula(
                 _fit_tweedie_ranef(fam, y, Xμ, Xσ, Xν, gidx, G, nmμ, nmσ, nmν, grp, g_tol), f)

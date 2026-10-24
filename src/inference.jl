@@ -2251,7 +2251,7 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing, tree
     grp, Kg = if structured !== nothing
         g = structured[2]
         hasproperty(data, g) || return nothing
-        _, G0 = _group_index(getproperty(data, g))
+        _, G0 = _group_index(getproperty(data, g); col = g)
         # SCALE TRAP -- verified by round-trip, not assumed. `re_sd` for a PHYLO term
         # is defined against the RAW covariance `sigma_phy_dense(phy)`, whose diagonal
         # is the tree height, NOT the normalised correlation that
@@ -2304,11 +2304,11 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing, tree
         length(re) == 1 || return nothing
         g = re[1][2]
         hasproperty(data, g) || return nothing
-        _, G0 = _group_index(getproperty(data, g))
+        _, G0 = _group_index(getproperty(data, g); col = g)
         (g, Matrix{Float64}(LinearAlgebra.I, G0, G0))
     end
 
-    gidx, G = phylo_leaf === nothing ? _group_index(getproperty(data, grp)) : phylo_leaf
+    gidx, G = phylo_leaf === nothing ? _group_index(getproperty(data, grp); col = grp) : phylo_leaf
     size(Kg) == (G, G) || return nothing
     # Location-scale-scale fits (#544/#545): the RE SD is per group,
     # σ_g,k = exp(Z_k' α), so the draw scales each group's effect individually.

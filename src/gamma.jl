@@ -132,14 +132,14 @@ struct Gamma end
                       "`(1 | g) + (1 | h)` or independent intercepts and slopes `(1 | g) + (0 + x | g)`; " *
                       "a correlated `(1 + x | g)` must be the only random-effect term")
             comps = map(re) do r
-                grp = r[2]; gidx, G = _group_index(getproperty(data, grp))
+                grp = r[2]; gidx, G = _group_index(getproperty(data, grp); col = grp)
                 (ones(length(y)), gidx, G, String(grp))
             end
             isaghq && return _withformula(_fit_gamma_crossed_aghq(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol; se = se), f)   # #761
             return _withformula(_fit_gamma_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol; se = se), f)
         end
         (rk, var) = _re_kind(re[1][1]); grp = re[1][2]
-        gidx, G = _group_index(getproperty(data, grp))
+        gidx, G = _group_index(getproperty(data, grp); col = grp)
         if rk === :intercept           # (1 | g) → 1-D Gauss–Hermite (Laplace) or VA (#136)
             if isva
                 size(Xσ, 2) == 1 || _va_reject(fam, "a non-constant `sigma` formula (VA kernels require `sigma ~ 1`)")

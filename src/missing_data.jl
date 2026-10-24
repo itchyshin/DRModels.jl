@@ -4,8 +4,11 @@
 # and a missing response on routes with no observed-rows path, with a warning
 # that gives the count (R's `na.omit`; the helpers are at the end of this
 # section). A `NaN` predictor still errors from the linear-algebra solve
-# (#1113). `drm_listwise` below is the explicit complete-case route: it also
-# drops `NaN`/`Inf` cells, and it is how to silence the warning. Neither
+# (#1113). (A `missing`/`NaN` in a random-effect GROUPING column is refused by
+# `_group_index` with an ArgumentError naming the column, #1112, rather than
+# pooled into an extra level.) `drm_listwise` below is the explicit
+# complete-case route: it also drops `NaN`/`Inf` cells, and it is how to
+# silence the warning. Neither
 # touches engine code — both are pure data preprocessing.
 #
 # FIML for missing *responses* (the principled alternative that keeps partially

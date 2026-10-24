@@ -1,0 +1,1 @@
+| 2026-10-19 | **Missing/NaN grouping label refused, not pooled** (#1112) | `test/test_1112_missing_group_label.jl` (RED 6/9 fail → GREEN 9/9) + every other `test_*.jl` run per file | ✅ no regression: the only non-passing files (`test_bridge_bootstrap_tree`, `test_reml_q4_missing_response`, `test_crossed_tweedie` timeout) fail identically on parent `b1832c7` | Shannon |
