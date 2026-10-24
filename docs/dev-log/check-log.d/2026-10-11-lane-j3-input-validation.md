@@ -1,0 +1,1 @@
+| 2026-10-11 | **Lane J3: fit-entry input validation** (#1027 #1026 #1022 #1020 #1014 #1013 #1010 #966 #1017) | PR CI (`Pkg.test()`, Julia 1.10 + 1, 4 shards); no local run (Julia not installable in the agent container) | see the PR's CI summary comment; new `test/test_lane_j3_input_validation.jl` | Shannon |

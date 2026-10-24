@@ -1,0 +1,1 @@
+| 2026-10-22 | Tweedie contract tests (#1153) | Focused test on updated candidate: 52 passed, 2 expected-broken, 54 total in 17.0 s on Julia 1.10.0; broken expectations mark current false-convergence status | Local focused test PASS with known-broken assertions; exact-head CI, full `Pkg.test()`, and fresh Documenter build pending | Codex |

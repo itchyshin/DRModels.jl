@@ -8,6 +8,26 @@ human-readable changelog.
 
 - **`lrtest(Poisson, NegBinomial2)` now warns that the extra `sigma` is a boundary null (#1115).** The packaged p-value stays the naive χ² (the existing "do not silently swap" contract from #304). Use `lrt_boundary(nb, pois; q = 1)` for the Self–Liang / Stram–Lee 50:50 chi-bar p-value, which is what drmTMB `anova()` now reports for the same pair. Sibling family nests are unchanged. This does not put finite-sample type-I at 5% (#1116, #1118).
 
+- **`sigma(fit)` reports the scale the likelihood scored, on every NB2 / Gamma / Beta
+  route (Dinnage audit M2, D-268).** Each of those fitters guards the log-scale linear
+  predictor before exponentiating it — `_softclamp` on the fixed-effects and NB2 ranef routes, a hard
+  `clamp` on the Gamma / Beta ranef and the zi / hurdle / truncated routes — but then
+  stored the UNguarded `exp.(Xσ * θ̂)` in `scales[:sigma]`. On any row where the guard
+  bit, `sigma(fit)`, `simulate`, `residuals` and `predict` (all of which read
+  `fit.scales[:sigma]`) described a scale the model never evaluated, and `loglik(fit)`
+  could not be reproduced from the reported parameters. MEASURED on the new fixtures: the
+  reported NB2 scale was 75x the scale the likelihood scored (6.99e11 vs 9.30e9), Gamma
+  3.3x low, Beta 1.45x low. Twelve reporting sites now route θ̂ through the same guard the
+  objective used, via `_reported_sigma` — the design DRModels.jl's multi-RE Gaussian route
+  already used, and the Julia twin of drmTMB's `drm_clamped_sigma_eta()`. INSIDE the band
+  the guard is exactly the identity, so every fit that never approached it reports
+  bit-for-bit what it reported before (asserted with `==`, not `≈`). The BANDS are
+  unchanged and deliberately differ from drmTMB's ±12 — NB2 ±20, Gamma ±15, Beta ±15,
+  and no clamp at all in the Gaussian fixed-effects core — now written up in
+  `docs/src/rosetta.md`. NOT covered: `predict`/`predict_parameters` at new data, which
+  still map η → σ unguarded, and the kernel-based Laplace routes.
+  `test/test_report_clamped_sigma.jl`.
+
 ## v0.7.2 — 2026-10-04
 
 - **Location-scale fits no longer stall at a variance boundary.** Two loops in the location-scale fit counted an exactly tied objective as progress and had no stall stop, so a fit whose variance component slid to its zero boundary could spin for tens of minutes (a 4-species Gamma bootstrap test took 12 to 74 minutes on CI, depending on the runner's BLAS kernel). The inner mode solve now stops a run of 40 exactly tied steps only when the gradient is far above its bound and cannot reach it in the remaining iterations, and the certified refinement ladder stops a run only after 100 iterations with a bit-identical position, value and gradient. Converging fits are unchanged: across 30 test files every location-scale fit is bit-identical to before, and the fixture's standard errors and `check_drm` verdict are unchanged.

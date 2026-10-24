@@ -60,6 +60,7 @@ struct BetaBinomial end
 
 @drm_entry function drm(f::DrmFormula, fam::BetaBinomial; data, tree = nothing, g_tol::Real = 1e-8,
              se::Bool = true, marginal::Symbol = :LA)
+    _drm_entry_guard(f, fam, data; tree = tree)   # #1027 #1022 #1010
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
         drm(f, fam; data = data_observed, tree = tree, g_tol = g_tol, se = se, marginal = marginal)
     end
