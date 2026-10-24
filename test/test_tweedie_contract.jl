@@ -131,22 +131,22 @@ end
     end
 
     # Degenerate responses: a flat likelihood or a parameter pinned at a clamp must
-    # not be reported as a trustworthy converged fit. These expectations remain
-    # known-broken until the optimizer status distinguishes these cases.
+    # not be reported as a trustworthy converged fit. The DrmFit constructor now
+    # clears the converged flag for these sentinel fits (#952), so both are asserted.
     @testset "degenerate responses (current behaviour)" begin
         n = 200; x = randn(MersenneTwister(3), n)
         f = bf(@formula(y ~ x), @formula(sigma ~ 1), @formula(nu ~ 1))
 
         fit0 = @test_logs (:warn, r"numerically singular") (:warn, r"ended at a clamp") match_mode = :any drm(
             f, Tweedie(); data = (; y = zeros(n), x))
-        @test_broken !is_converged(fit0)
+        @test !is_converged(fit0)
         @test coef(fit0, :mu)[1] < -20          # log mean driven to -inf
         @test loglik(fit0) ≈ 0 atol = 1e-6
 
         y1 = vcat(1.3, zeros(n - 1))
         fit1 = @test_logs (:warn, r"numerically singular") (:warn, r"ended at a clamp") match_mode = :any drm(
             f, Tweedie(); data = (; y = y1, x))
-        @test_broken !is_converged(fit1)
+        @test !is_converged(fit1)
         @test coef(fit1, :nu)[1] < -11.9  # power pinned at its lower clamp
         @test isfinite(loglik(fit1))
     end
