@@ -92,7 +92,7 @@ set:
 | [`Beta`](@ref) | proportions in (0,1) | logit | precision `φ = 1/σ²` |
 | [`BetaBinomial`](@ref) | successes / trials, overdispersed | logit | `φ = 1/σ²` (`cbind`) |
 | [`Binomial`](@ref) | successes / trials | logit | — (`cbind` or 0/1) |
-| [`ZeroOneBeta`](@ref) | proportions on `[0,1]` incl. 0 and 1 | logit | `φ` + `zoi` / `coi` |
+| [`ZeroOneBeta`](@ref) | proportions on `[0,1]` incl. 0 and 1 (`coi` needs both exact 0s and 1s) | logit | `φ` + `zoi` / `coi` |
 | [`CumulativeLogit`](@ref) | ordered categories `1..K` | logit (cutpoints) | K−1 ordered cutpoints |
 
 The count modifiers — `zi` (zero-inflation, ZIP / ZINB), `hu` (hurdle), and the
@@ -110,7 +110,7 @@ Write them as terms in the mean formula:
 | Random intercept / slope | `(1 \| g)`, `(0 + x \| g)`, `(1 + x \| g)` | exchangeable group variation; correlated slopes |
 | Crossed / nested RE | `(1 \| g) + (1 \| h)` | multiple grouping factors |
 | [`phylo`](@ref) | `phylo(1 \| species)` | covariance from a phylogenetic tree |
-| [`spatial`](@ref) | `spatial(1 \| site)` | exponential kernel over coordinates, estimated range |
+| [`spatial`](@ref) | `spatial(1 \| site)` | exponential kernel over coordinates, estimated range (drmTMB fixes the range) |
 | [`animal`](@ref) | `animal(1 \| id)` | additive-genetic covariance from a pedigree `A` |
 | [`relmat`](@ref) | `relmat(1 \| id)` | a user-supplied relatedness matrix `K` |
 | [`meta_V`](@ref) | `meta_V(v)` | known sampling (co)variances for meta-analysis |
@@ -178,7 +178,7 @@ inference at a variance boundary.
 | Scale to large data | [Large data](large-data.md) |
 | Choose the marginal method (Laplace vs VA) | [Marginal: LA vs VA](marginal-la-vs-va.md) |
 | Model variability as signal (location–scale) | [When variance carries signal](../tutorials/location-scale.md) |
-| Predictors on a random effect's SD (location–scale–scale, incl. climate-dependent phylogenetic SD) | [Part 2: location–scale–scale](../tutorials/location-scale-scale.md) |
+| Predictors on a random effect's SD (location–scale–scale, incl. climate-dependent phylogenetic SD) | [Part 2: location–scale–scale](https://itchyshin.github.io/DRModels.jl/dev/tutorials/location-scale-scale) |
 | Change residual coupling with `rho12` | [Changing residual coupling with rho12](../tutorials/bivariate-coscale.md) |
 | Robust continuous responses | [Robust continuous responses](../tutorials/robust-student.md) |
 | Counts and extra zeros | [Count abundance and extra zeros](../tutorials/count-nbinom2.md) |
