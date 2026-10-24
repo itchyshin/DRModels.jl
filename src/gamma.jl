@@ -55,16 +55,18 @@ end
 
 function _drm_gamma_fit(f::DrmFormula, fam::Gamma; data, tree = nothing, K = nothing,
              A = nothing, coords = nothing, g_tol::Real = 1e-8, se::Bool = true,
-             marginal::Symbol = :LA, method = nothing)
+             marginal::Symbol = :LA, method = nothing, ids = nothing)
+    _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, coords = coords)   # #1027 #1022 #1010
     _reject_method_as_marginal(fam, method)
     _scalar_laplace_requested(marginal) &&     # Arc 2: TMB-convention Laplace, ordinary (1 | g)
         return _drm_ordinary_laplace(f, fam; data = data, tree = tree, K = K, A = A,
                                      coords = coords, g_tol = g_tol, se = se, method = method)
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
         drm(f, fam; data = data_observed, tree = tree, K = K, A = A,
-            coords = coords, g_tol = g_tol, se = se, marginal = marginal, method = method)
+            coords = coords, g_tol = g_tol, se = se, marginal = marginal, method = method, ids = ids)
     end
     missing_fit !== nothing && return missing_fit
+    A = _resolve_relatedness_labels(f, data, A, ids)   # #957: match `A` by label
 
     marg = _marginal_method(marginal)                     # :LA (default), :VA (#136), or :AGHQ (#761)
     isaghq = marg isa AGHQ
@@ -190,7 +192,7 @@ function _fit_gamma_ranef(fam::Gamma, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_t
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :resd => (pμ+pσ+1):(pμ+pσ+1)]
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
-    scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
+    scales = Dict(:sigma => _reported_sigma(Xσ * θ̂[(pμ+1):(pμ+pσ)], -15.0, 15.0))
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
         Optim.iterations(res))
@@ -227,7 +229,7 @@ function _fit_gamma_corr_ranef(fam::Gamma, y, Xμ, Xσ, xs, gidx, G, nmμ, nmσ,
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :recov => (pμ+pσ+1):(pμ+pσ+3)]
     names = [:mu => nmμ, :sigma => nmσ, :recov => ["$(grp):L11", "$(grp):L22", "$(grp):L21"]]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
-    scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
+    scales = Dict(:sigma => _reported_sigma(Xσ * θ̂[(pμ+1):(pμ+pσ)], -15.0, 15.0))
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
         Optim.iterations(res))
@@ -261,7 +263,7 @@ function _fit_gamma(fam::Gamma, y, Xμ, Xσ, nmμ, nmσ, g_tol)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ)]
     names = [:mu => nmμ, :sigma => nmσ]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))  # response-scale μ̂
-    scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
+    scales = Dict(:sigma => _reported_sigma(Xσ * θ̂[(pμ+1):(pμ+pσ)], -15.0, 15.0, 3.0))
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
         Optim.iterations(res))

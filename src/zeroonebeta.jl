@@ -55,12 +55,14 @@ struct ZeroOneBeta end
 end
 
 function _drm_zeroonebeta_fit(f::DrmFormula, fam::ZeroOneBeta; data, tree = nothing, K = nothing,
-             A = nothing, coords = nothing, g_tol::Real = 1e-8, se::Bool = true)
+             A = nothing, coords = nothing, g_tol::Real = 1e-8, se::Bool = true, ids = nothing)
+    _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, coords = coords)   # #1027 #1022 #1010
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
         drm(f, fam; data = data_observed, tree = tree, K = K, A = A,
-            coords = coords, g_tol = g_tol, se = se)
+            coords = coords, g_tol = g_tol, se = se, ids = ids)
     end
     missing_fit !== nothing && return missing_fit
+    A = _resolve_relatedness_labels(f, data, A, ids)   # #957: match `A` by label
 
     _lss_only_gaussian_guard(f, fam)   # #544: refuse, never silently drop, sd() parts
     rhs = Dict(f.forms)

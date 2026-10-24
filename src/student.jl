@@ -61,6 +61,7 @@ end
 
 function _drm_student_fit(f::DrmFormula, fam::Student; data, g_tol::Real = 1e-8,
              se::Bool = true, marginal::Symbol = :LA)
+    _drm_entry_guard(f, fam, data)   # #1027 #1022
     # `marginal = :Laplace` (opt-in, ordinary `(1 | g)` on the mean): the TMB-convention
     # Laplace integrator drmTMB uses; the default `:LA` is unchanged (adaptive GHQ).
     laplace = _scalar_laplace_requested(marginal)
