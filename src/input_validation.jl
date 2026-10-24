@@ -69,23 +69,25 @@ end
 # the mean formula, with the coefficient fixed at 1). Anywhere else it reached
 # the design matrix as an ordinary column named `offset(x)` and got a free
 # coefficient, so the fitted model was not the one asked for.
+#
+# Poisson applies it on both of its routes: the default one and, with one
+# ordinary `(1 | g)`, `marginal = :Laplace` (#941; `_drm_ordinary_laplace` passes
+# it to `_fit_poisson_ordinary_laplace`). Each route refuses the shapes it does
+# not cover, so this guard only has to separate Poisson `mu` from everything else.
 _has_offset_term(t) =
     (t isa Tuple || t isa AbstractVector) ? any(_has_offset_term, t) :
     t isa FunctionTerm ? (t.f === offset || any(_has_offset_term, t.args)) : false
 
-function _require_offset_supported(f::DrmFormula, fam; laplace::Bool = false)
+function _require_offset_supported(f::DrmFormula, fam)
     for (p, rhs) in f.forms
         _has_offset_term(rhs) || continue
-        # Poisson applies it (and owns its limits) on the default route only: the
-        # `marginal = :Laplace` route (`_drm_ordinary_laplace`) never extracts it.
-        (fam isa Poisson && p === :mu && !laplace) && continue
+        # Poisson applies it (and owns its limits) on every route it has.
+        (fam isa Poisson && p === :mu) && continue
         where_ = p === :mu ? "the mean formula" : "the `$p` formula"
-        how = laplace ? " with `marginal = :Laplace`" : ""
         throw(ArgumentError("drm: `offset(...)` in $where_ is not supported for " *
-            "$(_family_label(fam))$how; it would be estimated as a free coefficient instead of " *
-            "entering with coefficient 1. Only the Poisson() mean on the default marginal " *
-            "applies an offset; otherwise add the term as an ordinary covariate if a free " *
-            "slope is intended."))
+            "$(_family_label(fam)); it would be estimated as a free coefficient instead of " *
+            "entering with coefficient 1. Only the Poisson() mean applies an offset; " *
+            "otherwise add the term as an ordinary covariate if a free slope is intended."))
     end
     return nothing
 end
@@ -240,9 +242,9 @@ first: family parameters (#1027), `offset(...)` placement (#938), formula
 column lengths (#1022) and unused structured keywords (#1010).
 """
 function _drm_entry_guard(f::DrmFormula, fam, data; tree = nothing, K = nothing,
-                          A = nothing, coords = nothing, laplace::Bool = false)
+                          A = nothing, coords = nothing)
     _require_family_dpars(f, fam)
-    _require_offset_supported(f, fam; laplace = laplace)
+    _require_offset_supported(f, fam)
     _require_formula_column_lengths(f, data)
     _require_structured_keywords_used(f, fam; tree = tree, K = K, A = A, coords = coords)
     return nothing
