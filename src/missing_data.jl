@@ -61,17 +61,19 @@ function _predictor_columns(f::Union{DrmFormula,BivariateDrmFormula})
     return setdiff(unique(cols), _formula_responses(f))
 end
 
-# Subset every column to `keep`. A `Union{Missing,T}` vector that no longer
-# holds a `missing` is narrowed to `T`, so a numeric predictor reaches the
-# design as numbers; StatsModels would otherwise code it as a factor (#1111).
-# Anything else (a `Vector{Any}` R factor from the bridge, a column that still
-# holds a `missing`, a non-`Vector` array) keeps its own type.
-function _subset_kept_rows(col, keep)
-    sub = col[keep]
-    S = eltype(sub)
-    (sub isa Vector && S isa Union && Missing <: S && !any(ismissing, sub)) || return sub
-    return convert(Vector{nonmissingtype(S)}, sub)
+# A `Union{Missing,T}` vector that holds no `missing` is narrowed to `T`, so a
+# numeric predictor reaches the design as numbers; StatsModels would otherwise
+# code it as a factor (#1111). Anything else (a `Vector{Any}` R factor from the
+# bridge, a column that still holds a `missing`, a non-`Vector` array) is
+# returned as it came.
+function _narrow_nomissing(col)
+    S = eltype(col)
+    (col isa Vector && S isa Union && Missing <: S && !any(ismissing, col)) || return col
+    return convert(Vector{nonmissingtype(S)}, col)
 end
+
+# Subset every column to `keep`, narrowing each as above.
+_subset_kept_rows(col, keep) = _narrow_nomissing(col[keep])
 
 _subset_rows_narrowed(cols::NamedTuple, keep) =
     NamedTuple{keys(cols)}(map(col -> _subset_kept_rows(col, keep), values(cols)))
@@ -183,8 +185,9 @@ helper is an interim complete-case path, not a substitute.
 
 Only the columns the model uses are checked, so unrelated columns with missing
 values do not cause rows to be dropped. Set `verbose = false` to suppress the
-warning (the drop still happens). If no rows are dropped the input columns are
-returned unchanged.
+warning (the drop still happens). If no rows are dropped the columns are returned
+as they came, except that a `Union{Missing,T}` column that holds no `missing` is
+narrowed to `T` (as it is on the dropping branch), so it fits as numbers.
 """
 function drm_listwise(formula::Union{DrmFormula,BivariateDrmFormula}, data; verbose::Bool = true)
     Tables.istable(data) ||
@@ -224,7 +227,7 @@ function drm_listwise(formula::Union{DrmFormula,BivariateDrmFormula}, data; verb
               "This discards partial information — see issue #49 for the FIML alternative."
     end
 
-    ndropped == 0 && return cols
+    ndropped == 0 && return NamedTuple{keys(cols)}(map(_narrow_nomissing, values(cols)))   # #1111
     # Subset every column of the table (not just model columns) so downstream code
     # that reaches for extra columns still sees aligned, complete rows. `identity.`
     # re-narrows each kept column's eltype — dropping the now-impossible `Missing`

@@ -458,6 +458,7 @@ function _design(response::Symbol, rhs, data; schema_cache = nothing, schema_key
     # a NaN predictor on that same row is dropped with it.
     design_data = all(observed) ? data :
         _replace_table_column(data, response, ifelse.(observed, y_response, 0.0))
+    design_data = _narrow_design_columns(rhs, design_data, response)
     ft = FormulaTerm(Term(response), rhs)
     # The 3-arg apply_schema with a StatisticalModel context adds R's implicit
     # intercept (so `y ~ x` means `y ~ 1 + x`, matching drmTMB); explicit
@@ -498,6 +499,28 @@ function _design(response::Symbol, rhs, data; schema_cache = nothing, schema_key
     # response row is not an error.
     _require_finite_inputs(; predictors=(Xm, names), observed=observed)
     return y_response, Xm, names
+end
+
+# #1111: a predictor typed `Union{Missing,T}` that holds no `missing` would reach
+# StatsModels as a non-`Number` vector and be dummy-coded as a factor. Narrow
+# those columns to `T` (what `StatsModels.missing_omit` does in a `ModelFrame`);
+# `Vector{Any}` columns, such as the bridge's R `factor(x)`, are left alone.
+function _narrow_design_columns(rhs, data, response::Symbol)
+    cols = _rhs_columns(rhs)
+    cols === nothing && return data
+    narrowed = Dict{Symbol,Any}()
+    for c in cols
+        c === response && continue
+        _has_table_column(data, c) || continue
+        col = _table_column(data, c)
+        new = _narrow_nomissing(col)
+        new === col || (narrowed[c] = new)
+    end
+    isempty(narrowed) && return data
+    for (c, v) in narrowed
+        data = _replace_table_column(data, c, v)
+    end
+    return data
 end
 
 # Predictor columns named by a fixed-effect RHS. Grouping factors stripped by
