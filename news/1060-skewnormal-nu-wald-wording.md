@@ -1,0 +1,1 @@
+- **The `SkewNormal` and `check_drm` docs now state the real `skew_normal_nu_wald` rule** (the note fires when any fitted `|ν̂| < 0.5`, an uncalibrated heuristic with no Wald test) instead of pointing at a drmTMB note as its source (#1060).
