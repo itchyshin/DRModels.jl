@@ -374,6 +374,22 @@ function _warn_nuisance_runoff(context::AbstractString, hits; refit_tried::Bool 
     return nothing
 end
 
+# A crossed nuisance fit that ends on the failed-inner-solve sentinel (objective >= 1e17, the
+# value the inner-solve failure branches return as 1e18) has no estimate at all: the optimiser
+# never left a point where the Laplace mode solve fails, so nothing ran past a clamp and
+# `_warn_nuisance_runoff` stays silent (#1142). This is a separate message from the NaN-vcov one
+# and does not touch the optimiser, the estimates or the converged flag (which
+# `_laplace_outer_converged` already sets to false at nll >= 1e17).
+function _warn_crossed_nuisance_failed(context::AbstractString, nllhat::Real)
+    get(task_local_storage(), :drm_quiet_boundary, false) === true && return nothing
+    @warn "drm ($context): the fit failed. The objective ended on the failed-inner-solve " *
+          "sentinel (" * string(nllhat) * "), so the Laplace mode solve failed at the " *
+          "point the optimiser stopped and there is no usable estimate. The fit is marked " *
+          "converged = false; do not use its estimates or standard errors (DRModels.jl #1142). " *
+          "Consider rescaling the response or a simpler random-effect structure."
+    return nothing
+end
+
 # ---------------------------------------------------------------------------
 # Boundary polish for a collapsed variance component (issue #422).
 #
@@ -3525,6 +3541,10 @@ function _fit_crossed_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, gi
         converged = false
         _warn_nuisance_runoff("sparse Laplace, crossed random intercepts with an estimated dispersion",
                               runoff; refit_tried = recover_runoff)
+    end
+    if !isfinite(nllhat) || nllhat >= 1e17
+        _warn_crossed_nuisance_failed(
+            "sparse Laplace, crossed random intercepts with an estimated dispersion", nllhat)
     end
     V = if se
         # #1073: central differences of the exact gradient, inner mode solve
