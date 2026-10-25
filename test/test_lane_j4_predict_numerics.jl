@@ -8,7 +8,8 @@
 #   #998 / #1039  NB2 (1 | g) objective collapses at near-Poisson size
 #   #1015  predict: every newdata error reported as an unseen factor level
 #   #1006  predict / predict_parameters ignored offset()
-#   #1000  bivariate (and non-Gaussian) predict rebuilt factor contrasts silently
+#   #1000  bivariate predict reuses the training schema; non-Gaussian still
+#          rebuilds contrasts from newdata and the column guard refuses a mismatch
 #   #1016  coeftable docstring said z/p are NaN for sigma / resd rows
 #   #999   VA kernels: `pσ == 1` admitted `sigma ~ 0 + x`; unclamped scale
 #   #995 / #996 / #981  structured random intercept in quantile residuals
@@ -231,8 +232,9 @@ end
     same = (x = [0.0, 0.0, 0.0], grp = ["b", "c", "d"])
     @test_throws ArgumentError predict(bfit, same)
     @test_throws ArgumentError predict_parameters(bfit, same)
-    # Fewer levels: loud before too (DimensionMismatch), now an ArgumentError.
-    @test_throws ArgumentError predict(bfit, (x = [0.0, 0.0], grp = ["b", "c"]))
+    # Fewer levels: the training schema keeps the fitted contrasts.
+    psub = predict(bfit, (x = [0.0, 0.0], grp = ["b", "c"]); type = :link)
+    @test psub[:mu1] ≈ [b1[1] + b1[3], b1[1] + b1[4]]
     # Non-Gaussian fit (its fitter caches no training schema) gets the same guard.
     yc = Float64.(rand.(Distributions.Poisson.(exp.(0.5 .+ 0.3 .* (grp .== "b")))))
     pfit = drm(bf(@formula(y ~ grp)), Poisson(); data = (y = yc, grp = grp))

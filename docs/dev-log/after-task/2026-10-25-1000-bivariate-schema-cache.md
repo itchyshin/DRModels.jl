@@ -10,7 +10,7 @@ Bivariate `predict` / `predict_parameters` rebuilt factor contrasts from `newdat
 
 ## Evidence
 
-`test/test_bivariate_schema_cache_1000.jl` (13/13) plus `test/test_predict.jl` (4/4) on Julia 1.10.12 with `--check-bounds=yes`. A three-level factor, predict on the `"b"` rows only, matches the full-data prediction on those rows; an unseen level still errors. The same subset check is run on a bivariate Student-t fit.
+`test/test_bivariate_schema_cache_1000.jl` (13/13) plus `test/test_predict.jl` (4/4) and `test/test_lane_j4_predict_numerics.jl` (122/122) on Julia 1.10.12 with `--check-bounds=yes`. A three-level factor, predict on the `"b"` rows only, matches the full-data prediction on those rows; an unseen level still errors. The same subset check is run on a bivariate Student-t fit. The J4 #1000 cell that used to require an `ArgumentError` on a level subset now checks the fitted contrasts.
 
 ## Not done
 
