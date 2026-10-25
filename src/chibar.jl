@@ -119,6 +119,18 @@ Same as [`chibar_pvalue`](@ref): the `q` dropped parameters are variances tested
 at `0`; for `q = 2` they are independent; all other parameters are interior; ML
 fits. A negative statistic clamps to the boundary p-value.
 
+# Finite-sample behaviour: Gaussian `(1 | g)` with few groups
+The 50:50 mixture is the asymptotic null law, and it is accepted as is for the
+Gaussian random-intercept test `lrt_boundary(full, reduced; q = 1)` (dropping
+`(1 | g)`). With few groups it is **conservative**: in 500 null replicates
+(`sd_b = 0`, 25 groups of 12, `y = 0.4 - 0.5 x + 0.7 ε`, nominal α = 0.05) the
+chi-bar p-value rejected in about 3.4% of replicates (17/500), against 1.2% (6/500)
+for the naive `lrtest` χ²₁ p-value; 58.6% of the statistics sat on the χ²(0) atom.
+The statistics match `drmTMB` on the same data to about 1e-8, so this is the
+behaviour of the reference distribution, not of the fit. A `pvalue` just above
+0.05 is therefore weak evidence for dropping the random effect, and no mixture
+weights are changed. See issue #1118.
+
 The same refusals as [`lrtest`](@ref) apply before the statistic is formed:
 REML fits whose fixed structure differs, a sentinel log-likelihood, different
 marginal approximations, a penalized MAP fit, and fits on different
