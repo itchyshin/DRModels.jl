@@ -983,7 +983,7 @@ calling `ranef` on such a fit throws an `ArgumentError` instead of silently
 returning an empty `Dict`.
 """
 function ranef(fit::DrmFit)
-    if fit.ranef === nothing
+    if fit.ranef === nothing || fit.ranef isa PhyloTipVariance   # tip variances only, no modes
         has_re_block = any(p -> first(p) in (:resd, :recov, :sd, :sd_phylo), fit.blocks)
         has_re_block && throw(ArgumentError("ranef: this fit has a random-effect block " *
             "but no stored conditional modes -- the non-Gaussian GLMM marginal route " *
