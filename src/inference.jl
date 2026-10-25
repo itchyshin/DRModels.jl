@@ -1510,6 +1510,27 @@ function _rewrite_log_sd_boundary_ci(job, log_est, lo, hi, lstats, rstats)
     return row, stats
 end
 
+# #1119: the percentile bootstrap interval for a sigma coefficient in a mixed model
+# under-covers (measured 83 to 90% at a nominal 95%; profile 92 to 94%). The interval is
+# kept as is; `bootstrap_ci` only warns, once per call, and points to the profile route.
+_term_has_bar(t::FunctionTerm) = t.f === (|) || any(_term_has_bar, t.args)
+_term_has_bar(t::Tuple) = any(_term_has_bar, t)
+_term_has_bar(t::AbstractVector) = any(_term_has_bar, t)
+_term_has_bar(_) = false
+
+function _warn_bootstrap_sigma_percentile(formula, rows)
+    hasproperty(formula, :forms) || return nothing
+    any(p -> _term_has_bar(p.second), formula.forms) || return nothing
+    any(r -> startswith(string(r.param), "sigma"), rows) || return nothing
+    @warn "bootstrap_ci: the percentile interval for a `sigma` coefficient in a mixed model " *
+          "(a model with random effects) is too narrow: in a simulation of a Gaussian " *
+          "location-scale model with a mean random intercept it covered 83 to 90% at a " *
+          "nominal 95%, against 92 to 94% for profile intervals. The percentile intervals " *
+          "are returned unchanged; prefer `confint(fit, method = :profile)` for the " *
+          "`sigma` terms."
+    return nothing
+end
+
 """
     bootstrap_ci(formula, family; data, B = 300, level = 0.95, rng = default_rng(), threads = false, K =, A =, tree =, coords =, algorithm = :auto, g_tol = 1e-8)
     bootstrap_ci(fit; data, B = 300, level = 0.95, rng = default_rng(), threads = false, K =, A =, tree =, coords =, algorithm = :auto, g_tol = 1e-8)
@@ -1529,6 +1550,12 @@ mean-coefficient rows only (drmTMB refuses the temporal bootstrap and defers
 σ and lag-correlation intervals).
 The fit-based form refuses a fit with an explicit `DRMControl.optimizer`
 before any bootstrap refit; the formula-based form keeps its default solver.
+
+The intervals are plain percentile intervals. For a `sigma` coefficient in a mixed
+model (a model with random effects) they are too narrow, and `bootstrap_ci` warns
+and recommends `confint(fit, method = :profile)` (percentile covered 83 to 90% at a
+nominal 95% in a simulated Gaussian location-scale model with a mean random
+intercept; profile covered 92 to 94%).
 """
 function bootstrap_ci(
     formula::DrmFormula,
@@ -1564,6 +1591,7 @@ function bootstrap_ci(
         algorithm,
         g_tol,
     )
+    _warn_bootstrap_sigma_percentile(formula, rows)
     return _bootstrap_ci_rows(rows)
 end
 
@@ -1591,6 +1619,7 @@ function bootstrap_ci(
         formula, family; data, B, level, rng, K, A, tree, coords, threads, failures,
         check_converged
     )
+    _warn_bootstrap_sigma_percentile(formula, rows)
     return _bootstrap_ci_rows(rows)
 end
 
@@ -1612,6 +1641,7 @@ function bootstrap_ci(
     rows = bootstrap_summary(
         fit; data, B, level, rng, K, A, tree, coords, threads, failures, check_converged
     )
+    _warn_bootstrap_sigma_percentile(fit.formula, rows)
     return _bootstrap_ci_rows(rows)
 end
 
@@ -1648,6 +1678,7 @@ function bootstrap_ci(
         algorithm,
         g_tol,
     )
+    _warn_bootstrap_sigma_percentile(fit.formula, rows)
     return _bootstrap_ci_rows(rows)
 end
 
