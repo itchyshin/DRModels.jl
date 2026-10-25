@@ -131,11 +131,12 @@ end
     end
 
     # is_converged is true only when convergence_status is :converged (FX3b).
-    # Both fits warn that the Hessian is numerically singular. The covariance
-    # on the fit comes from that guard. convergence_status returns :degenerate
-    # from its covariance block (rules 3 to 5). The all-zero log-likelihood
-    # is about 0 and the one-spike log-likelihood is finite, so both stay
-    # above the -1e15 sentinel.
+    # Rule 1 does not apply: the optimiser flag stays true, the all-zero
+    # log-likelihood is about 0, and the one-spike log-likelihood is above
+    # -1e15. Rule 2 does not apply: geometry stays :ok. Both fits warn that
+    # the Hessian is numerically singular, and the pseudo-inverse covariance
+    # has a smallest eigenvalue that is not strictly positive, so rule 3
+    # returns :degenerate.
     @testset "degenerate responses (current behaviour)" begin
         n = 200; x = randn(MersenneTwister(3), n)
         f = bf(@formula(y ~ x), @formula(sigma ~ 1), @formula(nu ~ 1))
@@ -143,14 +144,20 @@ end
         fit0 = @test_logs (:warn, r"numerically singular") (:warn, r"ended at a clamp") match_mode = :any drm(
             f, Tweedie(); data = (; y = zeros(n), x))
         @test !is_converged(fit0)
+        @test fit0.converged
+        @test fit0.geometry === :ok
         @test coef(fit0, :mu)[1] < -20          # log mean driven to -inf
         @test loglik(fit0) ≈ 0 atol = 1e-6
+        @test minimum(eigvals(Symmetric(Matrix{Float64}(fit0.vcov), :L))) <= 0
 
         y1 = vcat(1.3, zeros(n - 1))
         fit1 = @test_logs (:warn, r"numerically singular") (:warn, r"ended at a clamp") match_mode = :any drm(
             f, Tweedie(); data = (; y = y1, x))
         @test !is_converged(fit1)
+        @test fit1.converged
+        @test fit1.geometry === :ok
         @test coef(fit1, :nu)[1] < -11.9  # power pinned at its lower clamp
-        @test isfinite(loglik(fit1))
+        @test loglik(fit1) > -1e15
+        @test minimum(eigvals(Symmetric(Matrix{Float64}(fit1.vcov), :L))) <= 0
     end
 end
