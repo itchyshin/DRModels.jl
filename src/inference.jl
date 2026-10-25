@@ -1801,9 +1801,9 @@ Auditable parametric bootstrap. Returns a `NamedTuple` with:
   or `"bootstrap_unavailable"` when fewer than two replicates remain;
 - `boundary_params` — `"param:coef"` names that triggered the boundary status;
 - `seeds` — the per-replicate seeds used for reproducibility;
-- `estimation_method`, `marginal` — the estimator of the seed fit (`:ML`, `:REML` or
+- `estimation_method`, `marginal`: the estimator of the seed fit (`:ML`, `:REML` or
   `:MAP`; `:LA`, `:Laplace`, `:VA` or `:AGHQ`);
-- `refit_estimation_method`, `refit_marginal` — the estimator the kept replicates
+- `refit_estimation_method`, `refit_marginal`: the estimator the kept replicates
   used (`:mixed` if they differ). They equal the seed's, and a warning is issued
   if they do not;
 - `threaded` — whether threaded refits were actually used.
@@ -1829,7 +1829,10 @@ The fit-based form refuses a fit with an explicit `DRMControl.optimizer`
 before any bootstrap refit. The fit-based form repeats the seed fit's REML,
 marginal (`:Laplace`, `:VA`, `:AGHQ`) and MAP penalty in every replicate. The
 formula-based form takes `method` (`:ML` or `:REML`), `marginal` and `penalty` and
-uses them for the seed fit and the replicates alike (DRModels.jl#1025).
+uses them for the seed fit and the replicates alike (DRModels.jl#1025). A joint
+`mi(x)` fit (`impute`/`missing` controls) is not bootstrapped: there is no
+`bootstrap_result` method for `JointDrmFit`, and the call raises a `MethodError`
+rather than refitting with default settings.
 """
 function bootstrap_result(
     formula::DrmFormula,
