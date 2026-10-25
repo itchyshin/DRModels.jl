@@ -2205,6 +2205,47 @@ function _is_meta_gaussian_re(fit::DrmFit)
     return metav !== nothing && (!isempty(re) || structured !== nothing)
 end
 
+# A Gaussian `sigma ~ 1 + (1 | g)` (and the same term next to a mean RE)
+# stores the population (b = 0) scale in `scales[:sigma]`. The log-σ
+# intercept SD is `re_sd(fit)[Symbol("$(g)_logsigma")]`. Nothing to draw
+# when the scale formula has no ordinary intercept RE (#926).
+function _sigma_ranef_components(fit::DrmFit, data)
+    (fit.family isa Gaussian && fit.formula isa DrmFormula) || return nothing
+    rhs = Dict(fit.formula.forms)
+    haskey(rhs, :sigma) || return nothing
+    _, sigma_re, _, structured_sigma = _split_ranef(rhs[:sigma])
+    (structured_sigma === nothing && length(sigma_re) == 1) || return nothing
+    first(_re_kind(sigma_re[1][1])) === :intercept || return nothing
+    grp = sigma_re[1][2]
+    hasproperty(data, grp) || return nothing
+    labels = getproperty(data, grp)
+    any(ismissing, labels) && return nothing
+    gidx, G = _group_index(labels; col = grp)
+    sds = re_sd(fit)
+    key = Symbol("$(grp)_logsigma")
+    (sds isa AbstractDict && haskey(sds, key)) || return nothing
+    τ = Float64(sds[key])
+    (isfinite(τ) && τ > 0) || return nothing
+    return (; gidx, G, τ)
+end
+
+# Sigma-only route: no mean RE, so the earlier builder returned `nothing`
+# and bootstrap used the conditional `simulate` (constant σ). Draw the
+# log-σ intercept and scale each row's residual SD.
+function _sigma_only_marginal_simulator(fit::DrmFit, data)
+    sig = _sigma_ranef_components(fit, data)
+    sig === nothing && return nothing
+    haskey(fit.means, :mu) || return nothing
+    mu = Vector{Float64}(fit.means[:mu])
+    sigma0 = Vector{Float64}(_scale_vector(fit, :sigma))
+    n = length(mu)
+    (length(sigma0) == n && length(sig.gidx) == n) || return nothing
+    return function (rng)
+        u = sig.τ .* randn(rng, sig.G)
+        return mu .+ (sigma0 .* exp.(u[sig.gidx])) .* randn(rng, n)
+    end
+end
+
 function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing, tree=nothing,
                                    coords=nothing)
     # temporal(): `simulate` already draws the full marginal model (a fresh chain
@@ -2243,9 +2284,12 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing, tree
         throw(ArgumentError("bootstrap: the marginal simulator for the Gaussian " *
             "`phylo(1 + $(structured_slope) | $(structured[2]))` two-SD random-slope fit is " *
             "not implemented (#620); use `profile` intervals or the Wald `vcov`"))
-    # No random effect on the mean: conditional and marginal coincide, and the
-    # plain `simulate` is already correct. Nothing to build.
-    (isempty(re) && structured === nothing) && return nothing
+    # No random effect on the mean: conditional and marginal coincide UNLESS
+    # there is a scale-axis random intercept (`sigma ~ (1 | g)`). That case
+    # used to fall through to `simulate`, which draws at b = 0 (#926).
+    if isempty(re) && structured === nothing
+        return _sigma_only_marginal_simulator(fit, data)
+    end
 
     # Which grouping factor, and what covariance does its random effect have?
     phylo_leaf = nothing   # row → tree-leaf index, set for a phylo field
@@ -2368,9 +2412,11 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing, tree
     if fit.family isa Gaussian
         sigma = Vector{Float64}(_scale_vector(fit, :sigma))
         n = length(mu_fixed)
+        sig = _sigma_ranef_components(fit, data)
         return function (rng)
             u = sd_g .* (L * randn(rng, G))
-            return mu_fixed .+ u[gidx] .+ sigma .* randn(rng, n)
+            σ = sig === nothing ? sigma : sigma .* exp.(sig.τ .* randn(rng, sig.G)[sig.gidx])
+            return mu_fixed .+ u[gidx] .+ σ .* randn(rng, n)
         end
     end
 
