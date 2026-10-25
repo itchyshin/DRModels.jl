@@ -27,6 +27,40 @@ function _student_logpdf_std(z, ην)
     return -0.5 * log(2π) - r / 4 + r^3 / 24 - (1 + r) / 2 * z^2 * L
 end
 
+# DRModels.jl#937: a Student fit whose ν has run off to the Gaussian limit.
+# ν = 2 + exp(ην) is a flat ridge once ην is large: the objective is identical to
+# the Gaussian one to ~1e-12, so a single LBFGS start from ν = 12 can slide down
+# the ridge and stop there while a heavy-tailed optimum sits several nll units
+# lower (sleepstudy, `Student()`, `(1 | Subject)`, `sigma ~ Days`: logLik -891.912 at
+# ν ≈ 1.3e12 against -887.51 at ν ≈ 3). `_STUDENT_NU_CUTOFF` is a judgement
+# threshold, not a derived one: ν > 1000 is 1/ν < 1e-3, where `_student_logpdf_std`
+# has already switched to its Gaussian-limit series and the Wald SE of ην is not
+# valid. Change it here only.
+const _STUDENT_NU_CUTOFF = 1000.0
+
+# `ην` is the ν linear predictor for each row: any row above the cutoff counts.
+_student_nu_runoff(ν::AbstractVector) = any(>(_STUDENT_NU_CUTOFF), ν)
+
+# A second LBFGS start for the single-start Student routes, as the crossed-intercept
+# route restarts (#827). Run only when the first run stopped without the gradient
+# criterion or with ν beyond the cutoff. `θ1` is the alternative start: ν back in
+# the heavy-tailed range and the random-effect scale on the scale of the data (the
+# fixed `σ_b = 0.5` first start is what lets sleepstudy slide onto the Gaussian
+# ridge; restarting from θ̂ or from ν = 4 alone stays on it). The better minimiser wins, compared on a FRESH nll at
+# each minimiser (never `Optim.minimum`, see optim_minimum_guard.jl). A failed
+# second run (a line-search exception) keeps the first result.
+function _student_second_start(nll, res, θ1, Xν, iν, g_tol)
+    nu_of(r) = 2 .+ exp.(Xν * Optim.minimizer(r)[iν])
+    (drm_optim_converged(res) && !_student_nu_runoff(nu_of(res))) && return res
+    res2 = try
+        Optim.optimize(nll, θ1, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    catch err
+        err isa Union{ErrorException,AssertionError} || rethrow()
+        return res
+    end
+    return _better_restart(nll, res, res2)
+end
+
 """
     Student()
 
@@ -155,6 +189,9 @@ function _fit_student_ranef(fam::Student, y, Xμ, Xσ, Xν, gidx, G, nmμ, nmσ,
     θ0[pμ+pσ+1] = log(10.0)                           # ν init (mildly heavy-tailed)
     θ0[pμ+pσ+pν+1] = log(0.5)                         # σ_b init
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    θ1 = copy(θ0); θ1[pμ+pσ+1] = log(2.0)             # #937: second start at ν = 4 ...
+    θ1[pμ+pσ+pν+1] = θ0[pμ+1] - log(2.0)              # ... and σ_b = half the residual SD (crossed route)
+    res = _student_second_start(nll, res, θ1, Xν, (pμ+pσ+1):(pμ+pσ+pν), g_tol)
     θ̂ = Optim.minimizer(res)
     # #961: a non-finite Hessian on finite data is a degenerate fit, not a crash.
     V, hess_finite = _vcov_from_hessian_checked(ForwardDiff.hessian(nll, θ̂),
@@ -197,6 +234,9 @@ function _fit_student_corr_ranef(fam::Student, y, Xμ, Xσ, Xν, xs, gidx, G, nm
     θ0[pμ+pσ+1] = log(10.0)                           # ν init
     θ0[pμ+pσ+pν+1] = log(0.4); θ0[pμ+pσ+pν+2] = log(0.4); θ0[pμ+pσ+pν+3] = 0.0   # log-Cholesky init
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    θ1 = copy(θ0); θ1[pμ+pσ+1] = log(2.0)             # #937: second start at ν = 4 ...
+    θ1[pμ+pσ+pν+1] = θ1[pμ+pσ+pν+2] = θ0[pμ+1] - log(2.0)   # ... and L11, L22 at half the residual SD
+    res = _student_second_start(nll, res, θ1, Xν, (pμ+pσ+1):(pμ+pσ+pν), g_tol)
     θ̂ = Optim.minimizer(res)
     # #961: a non-finite Hessian on finite data is a degenerate fit, not a crash.
     V, hess_finite = _vcov_from_hessian_checked(ForwardDiff.hessian(nll, θ̂),

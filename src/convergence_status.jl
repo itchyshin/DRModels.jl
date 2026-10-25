@@ -16,6 +16,12 @@
 #   8  any finite random-effect SD < 1e-4                                   :boundary
 #   9  otherwise                                                            :converged
 #
+# DRModels-only addition (DRModels.jl#937, owner decision 25 Oct 2026; drmTMB has no
+# counterpart yet): for a `Student()` fit, a gradient that is not small
+# (`_student_gradient_large`) is `:degenerate`, placed after step 5, and a degrees of
+# freedom above `_STUDENT_NU_CUTOFF` is `:boundary`, placed with step 7. Both only
+# ever turn a `:converged` verdict into a non-converged one.
+#
 # Steps 3-5 are not applied when standard errors were turned off
 # (`DrmFit.uncertainty === :skipped`), as drmTMB does for
 # `drm_control(se = FALSE)`: a skipped covariance is not a failed one.
@@ -69,6 +75,27 @@ function _twin_re_sd_values(fit::DrmFit)
     return collect(Float64, values(d))
 end
 
+# DRModels.jl#937: a Student fit whose gradient at the reported optimum is not
+# small. Same bar as the Laplace routes' outer check (`_LAPLACE_OUTER_RELTOL`: the
+# sup-norm of the objective gradient per observation). A fit with no stored
+# objective, or a gradient that cannot be evaluated, is not rejected on this rule.
+function _student_gradient_large(fit::DrmFit)
+    fit.family isa Student || return false
+    g = try
+        gradient(fit)
+    catch err
+        err isa InterruptException && rethrow()
+        return false
+    end
+    return !all(isfinite, g) ||
+           norm(g, Inf) / max(fit.nobs, 1) > _LAPLACE_OUTER_RELTOL
+end
+
+# DRModels.jl#937: a Student fit with a fitted ν above `_STUDENT_NU_CUTOFF` in any
+# row is at the Gaussian limit of the family: a boundary, with an invalid Wald SE.
+_student_at_gaussian_limit(fit::DrmFit) =
+    fit.family isa Student && _student_nu_runoff(get(fit.scales, :nu, Float64[]))
+
 function _twin_rho12_values(fit::DrmFit)
     r = corpairs(fit)
     return r isa AbstractVector ? collect(Float64, r) : Float64[]
@@ -97,6 +124,14 @@ numeric rules as drmTMB's `convergence_status()` (FX3b; drmTMB
    fitted random-effect SD ([`re_sd`](@ref)) is below `1e-4`.
 7. `:converged` otherwise.
 
+Two further rules apply to [`Student`](@ref) fits only (DRModels.jl#937; drmTMB
+has no counterpart). The first sits after rule 5: `:degenerate` when the objective
+gradient at the reported optimum is not small (sup-norm per observation above
+`1e-6`, the bar the Laplace routes use). The second sits with rule 6: `:boundary`
+when the fitted `ν` exceeds `1000` in any row, i.e. the fit has run off to the
+Gaussian limit, where the log-likelihood is flat in `ν` and its Wald standard
+error is not valid.
+
 Rules 3 to 5 are skipped when standard errors were turned off (`se = false`, or
 `q4_vcov = false`), as drmTMB skips them for `drm_control(se = FALSE)`: such a
 fit is `:converged` unless rules 1 or 2 apply. A fit with an aliased fixed-effect
@@ -117,7 +152,9 @@ function convergence_status(fit::DrmFit)
             return :degenerate
         end
     end
+    _student_gradient_large(fit) && return :degenerate
     at_boundary =
+        _student_at_gaussian_limit(fit) ||
         any(s -> isfinite(s) && s < _TWIN_RE_SD_BOUNDARY, _twin_re_sd_values(fit)) ||
         any(r -> isfinite(r) && abs(r) > _TWIN_RHO12_BOUNDARY, _twin_rho12_values(fit))
     return at_boundary ? :boundary : :converged
