@@ -7,7 +7,7 @@
 #   fitted without it (#1027, #939);
 # * `offset(x)` outside the Poisson mean — estimated as a free slope (#938);
 # * a `tree`, `K`, `A` or `coords` keyword, or `profile_ci = true`, with no
-#   matching marker in the formula — fitted as the plain model (#1010);
+#   matching marker in the formula (fitted as the plain model) (#1010);
 # * a formula column shorter or longer than the response — read past its end
 #   under `@inbounds` (segfault, or a silently wrong `meta_V` fit; #1022);
 # * phylo group labels that are not tip names — mapped to tips by first-seen

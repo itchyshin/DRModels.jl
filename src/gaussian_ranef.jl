@@ -1666,9 +1666,9 @@ function _gaussian_laplace_validate(f::DrmFormula, fam::Gaussian, data, algorith
     method === :ML || rej("`method = :$method`")
     penalty === nothing || rej("`penalty`")
     algorithm === :auto || rej("`algorithm = :$algorithm`")
-    # `profile_ci` is not checked: it only precomputes the sigma-phylo location-scale
-    # CIs, so it is ignored on this route exactly as on the default (:LA) route, and
-    # `drm_bridge_inference(method = "profile")` sets it for every univariate fit.
+    # `profile_ci` needs no check here: `_require_profile_ci_used` (input_validation.jl)
+    # already refused it for any formula with no sigma `phylo(1 | g)` term, and this
+    # route has none, so `profile_ci = true` never reaches this point.
     phylo_coupled && rej("`phylo_coupled = true`")
     (sparse === nothing || sparse === false) || rej("`sparse = $sparse`")
     return nothing
