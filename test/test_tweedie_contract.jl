@@ -131,8 +131,11 @@ end
     end
 
     # Degenerate responses: a flat likelihood or a parameter pinned at a clamp must
-    # not be reported as a trustworthy converged fit. The DrmFit constructor now
-    # clears the converged flag for these sentinel fits (#952), so both are asserted.
+    # not be reported as a trustworthy converged fit. is_converged is true only
+    # when convergence_status is :converged (FX3b). Both fits warn that the
+    # Hessian is numerically singular, and that covariance step returns
+    # :degenerate. The all-zero log-likelihood is about 0 and the one-spike
+    # log-likelihood is finite, so both stay above the -1e15 sentinel bar.
     @testset "degenerate responses (current behaviour)" begin
         n = 200; x = randn(MersenneTwister(3), n)
         f = bf(@formula(y ~ x), @formula(sigma ~ 1), @formula(nu ~ 1))
