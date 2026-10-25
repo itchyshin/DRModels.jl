@@ -1,0 +1,1 @@
+| 2026-10-25 | **Capability-page presentation and evidence scope** | 11 source regressions; strict 19f7 audit build; 48 rendered pages and cell checks | Local checks pass; exact-head CI, deployment and live verification remain required | Codex documentation audit |
