@@ -140,12 +140,12 @@ end
 
 function _fit_bivariate_residual(f::BivariateDrmFormula, fam::Student, data, rhs,
                                  g_tol::Real)
-    y1, X1, nm1 = _design(f.response1, rhs[:mu1], data)
-    y2, X2, nm2 = _design(f.response2, rhs[:mu2], data)
-    _, Xs1, nms1 = _design(f.response1, rhs[:sigma1], data)
-    _, Xs2, nms2 = _design(f.response1, rhs[:sigma2], data)
-    _, Xν, nmν = _design(f.response1, get(rhs, :nu, ConstantTerm(1)), data)
-    _, Xr, nmr = _design(f.response1, rhs[:rho12], data)
+    y1, X1, nm1 = _biv_design(f, f.response1, rhs[:mu1], data, :mu1)
+    y2, X2, nm2 = _biv_design(f, f.response2, rhs[:mu2], data, :mu2)
+    _, Xs1, nms1 = _biv_design(f, f.response1, rhs[:sigma1], data, :sigma1)
+    _, Xs2, nms2 = _biv_design(f, f.response1, rhs[:sigma2], data, :sigma2)
+    _, Xν, nmν = _biv_design(f, f.response1, get(rhs, :nu, ConstantTerm(1)), data, :nu)
+    _, Xr, nmr = _biv_design(f, f.response1, rhs[:rho12], data, :rho12)
 
     n = length(y1)
     obs1 = _observed_response_mask(y1)

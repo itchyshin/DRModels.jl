@@ -1,0 +1,1 @@
+- **Bivariate `predict` reuses the training factor schema (#1000).** `BivariateDrmFormula` now carries the same `schema_cache` as the univariate formula. A `newdata` table that holds a subset of the fitted factor levels predicts those rows instead of rebuilding contrasts (or throwing a raw StatsModels error). `predict_parameters` uses the same cache.

@@ -11,13 +11,22 @@
     BivariateDrmFormula
 
 Two-response formula bundle (μ1, μ2, σ1, σ2, ρ12), built by the keyword form of
-[`bf`](@ref).
+[`bf`](@ref). The `schema_cache` field holds the training-data factor schema
+written at fit time, so [`predict`](@ref) / [`predict_parameters`](@ref) keep
+the fitted contrasts when `newdata` is a level subset (#1000).
 """
 struct BivariateDrmFormula
     response1::Symbol
     response2::Symbol
     forms::Vector{Pair{Symbol,Any}}
+    # Same training-schema cache as `DrmFormula` (#1000 / #609). Fit-time
+    # `_design` writes one entry per parameter; `predict` / `predict_parameters`
+    # reuse it so a factor in `newdata` keeps the fitted contrasts.
+    schema_cache::Base.RefValue{Dict{Symbol,Any}}
 end
+
+BivariateDrmFormula(response1::Symbol, response2::Symbol, forms::Vector{Pair{Symbol,Any}}) =
+    BivariateDrmFormula(response1, response2, forms, Ref(Dict{Symbol,Any}()))
 
 _rhs_or_intercept(f) = f === nothing ? ConstantTerm(1) : f.rhs
 
@@ -247,12 +256,15 @@ end
 # residual-only bivariate Gaussian route's ML fitter and its REML fitter
 # (#624 / drmTMB #1142). Moved out of `_fit_bivariate_residual` unchanged so the
 # two estimators build ONE design and ONE parameter layout, not two that drift.
+_biv_design(f::BivariateDrmFormula, response::Symbol, rhs, data, key::Symbol) =
+    _design(response, rhs, data; schema_cache = f.schema_cache, schema_key = key)
+
 function _biv_residual_designs(f::BivariateDrmFormula, rhs, data)
-    y1, X1, nm1 = _design(f.response1, rhs[:mu1], data)
-    y2, X2, nm2 = _design(f.response2, rhs[:mu2], data)
-    _, Xs1, nms1 = _design(f.response1, rhs[:sigma1], data)   # reuse a real LHS;
-    _, Xs2, nms2 = _design(f.response1, rhs[:sigma2], data)   # only the matrix is kept
-    _, Xr, nmr = _design(f.response1, rhs[:rho12], data)
+    y1, X1, nm1 = _biv_design(f, f.response1, rhs[:mu1], data, :mu1)
+    y2, X2, nm2 = _biv_design(f, f.response2, rhs[:mu2], data, :mu2)
+    _, Xs1, nms1 = _biv_design(f, f.response1, rhs[:sigma1], data, :sigma1)
+    _, Xs2, nms2 = _biv_design(f, f.response1, rhs[:sigma2], data, :sigma2)
+    _, Xr, nmr = _biv_design(f, f.response1, rhs[:rho12], data, :rho12)
 
     n = length(y1)
     obs1 = _observed_response_mask(y1)
@@ -763,11 +775,11 @@ function _fit_bivariate_q2_structured(f::BivariateDrmFormula, fam::Gaussian, dat
     marker[1] === :structured_q2 || error("internal error: expected q2 structured marker")
     kind = marker[2]
     grp = marker[3]
-    y1, X1, nm1 = _design(f.response1, fixed[:mu1], data)
-    y2, X2, nm2 = _design(f.response2, fixed[:mu2], data)
-    _, Xs1, nms1 = _design(f.response1, fixed[:sigma1], data)
-    _, Xs2, nms2 = _design(f.response1, fixed[:sigma2], data)
-    _, Xr, nmr = _design(f.response1, fixed[:rho12], data)
+    y1, X1, nm1 = _biv_design(f, f.response1, fixed[:mu1], data, :mu1)
+    y2, X2, nm2 = _biv_design(f, f.response2, fixed[:mu2], data, :mu2)
+    _, Xs1, nms1 = _biv_design(f, f.response1, fixed[:sigma1], data, :sigma1)
+    _, Xs2, nms2 = _biv_design(f, f.response1, fixed[:sigma2], data, :sigma2)
+    _, Xr, nmr = _biv_design(f, f.response1, fixed[:rho12], data, :rho12)
     all(isfinite, y1) && all(isfinite, y2) ||
         throw(ArgumentError("drm: bivariate q=2 structured Julia route currently requires complete responses"))
     size(Xs1, 2) == 1 && size(Xs2, 2) == 1 && size(Xr, 2) == 1 ||
@@ -1049,11 +1061,11 @@ function _fit_bivariate_q4_structured(f::BivariateDrmFormula, fam::Gaussian, dat
     grp = marker[3]
     lc_zero = length(marker) >= 4 ? marker[4] : Int[]
     _ = tree   # unused for non-phylo providers; accepted for API symmetry
-    y1, X1, nm1 = _design(f.response1, fixed[:mu1], data)
-    y2, X2, nm2 = _design(f.response2, fixed[:mu2], data)
-    _, Xs1, nms1 = _design(f.response1, fixed[:sigma1], data)
-    _, Xs2, nms2 = _design(f.response1, fixed[:sigma2], data)
-    _, Xr, nmr = _design(f.response1, fixed[:rho12], data)
+    y1, X1, nm1 = _biv_design(f, f.response1, fixed[:mu1], data, :mu1)
+    y2, X2, nm2 = _biv_design(f, f.response2, fixed[:mu2], data, :mu2)
+    _, Xs1, nms1 = _biv_design(f, f.response1, fixed[:sigma1], data, :sigma1)
+    _, Xs2, nms2 = _biv_design(f, f.response1, fixed[:sigma2], data, :sigma2)
+    _, Xr, nmr = _biv_design(f, f.response1, fixed[:rho12], data, :rho12)
     obs1 = _observed_response_mask(y1)
     obs2 = _observed_response_mask(y2)
     (count(obs1) >= size(X1, 2) && count(obs2) >= size(X2, 2)) ||
@@ -1202,11 +1214,11 @@ function _fit_bivariate_q4_phylo(f::BivariateDrmFormula, fam::Gaussian, data, fi
     tree === nothing && error("phylo(1 | $grp) needs `tree = …`")
     phy = _as_augmented_phy(tree)
 
-    y1, X1, nm1 = _design(f.response1, fixed[:mu1], data)
-    y2, X2, nm2 = _design(f.response2, fixed[:mu2], data)
-    _, Xs1, nms1 = _design(f.response1, fixed[:sigma1], data)
-    _, Xs2, nms2 = _design(f.response1, fixed[:sigma2], data)
-    _, Xr, nmr = _design(f.response1, fixed[:rho12], data)
+    y1, X1, nm1 = _biv_design(f, f.response1, fixed[:mu1], data, :mu1)
+    y2, X2, nm2 = _biv_design(f, f.response2, fixed[:mu2], data, :mu2)
+    _, Xs1, nms1 = _biv_design(f, f.response1, fixed[:sigma1], data, :sigma1)
+    _, Xs2, nms2 = _biv_design(f, f.response1, fixed[:sigma2], data, :sigma2)
+    _, Xr, nmr = _biv_design(f, f.response1, fixed[:rho12], data, :rho12)
     # #19: missing responses are supported via a per-cell observed mask — observed
     # cells enter the likelihood, the full tree is kept. make_problem records the mask
     # (NaN ⇒ missing) and zeroes the missing values; here we only guard identifiability
