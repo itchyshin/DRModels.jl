@@ -170,7 +170,8 @@ function _drm_poisson_fit(f::DrmFormula, fam::Poisson; data, tree = nothing, K =
             method = method, nAGQ = nAGQ, ids = ids)
     end
     missing_fit !== nothing && return missing_fit
-    A = _resolve_relatedness_labels(f, data, A, ids)   # #957: match `A` by label
+    A = _resolve_relatedness_labels(f, data, A, ids; coords = coords)   # #957: match `A` by label
+    coords = _resolve_coords_labels(f, data, coords, ids)   # #957: match `coords` by site label
 
     marg = _marginal_method(marginal)                     # :LA (default), :VA (#136), :AGHQ (#448)
     isva = marg isa Variational
