@@ -179,3 +179,33 @@ end
                     on.loglik, on.nobs, on.converged, on.means, on.obs, on.scales)
     @test convergence_status(failed) === :degenerate
 end
+
+# #1186: binomial (quasi-)complete separation is a geometry flag, as drmTMB's
+# `binomial_separation` reason in `drm_mle_nonexistent()` (R/mle-existence.R), so
+# it is `:degenerate` even when the SE steps are skipped (`se = false`).
+@testset "binomial separation is a geometry flag, with or without SEs (#1186)" begin
+    x = collect(range(-2, 2; length = 40))
+    ysep = Float64.(x .> 0)                       # completely separated by x
+    yctl = [0,0,1,0,0,0,1,0,1,0,0,1,0,1,0,1,1,0,1,0, 0,1,1,0,1,1,0,1,1,1,0,1,1,1,1,0,1,1,1,1]
+    fit_binom(y; kw...) = with_logger(NullLogger()) do
+        drm(bf(@formula(y ~ 1 + x)), Binomial(); data = (; y = Float64.(y), x = x), kw...)
+    end
+    off = fit_binom(ysep; se = false)
+    @test off.uncertainty === :skipped
+    @test off.geometry === :binomial_separation
+    @test convergence_status(off) === :degenerate
+    @test !is_converged(off)
+    on = fit_binom(ysep)
+    @test on.geometry === :binomial_separation
+    @test convergence_status(on) === :degenerate
+    # a non-separated control is untouched
+    ctl_off = fit_binom(yctl; se = false)
+    @test ctl_off.uncertainty === :skipped
+    @test ctl_off.geometry === :ok
+    @test convergence_status(ctl_off) === :converged
+    ctl_on = fit_binom(yctl)
+    @test ctl_on.geometry === :ok
+    @test convergence_status(ctl_on) === :converged
+    # the guard still sets the Inf SE that it set before
+    @test any(isinf, diag(on.vcov))
+end
