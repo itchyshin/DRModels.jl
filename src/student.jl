@@ -46,9 +46,12 @@ _student_nu_runoff(ν::AbstractVector) = any(>(_STUDENT_NU_CUTOFF), ν)
 # criterion or with ν beyond the cutoff. `θ1` is the alternative start: ν back in
 # the heavy-tailed range and the random-effect scale on the scale of the data (the
 # fixed `σ_b = 0.5` first start is what lets sleepstudy slide onto the Gaussian
-# ridge; restarting from θ̂ or from ν = 4 alone stays on it). The better minimiser wins, compared on a FRESH nll at
-# each minimiser (never `Optim.minimum`, see optim_minimum_guard.jl). A failed
-# second run (a line-search exception) keeps the first result.
+# ridge; restarting from θ̂ or from ν = 4 alone stays on it). The better minimiser
+# wins, compared on a FRESH nll at each minimiser (never `Optim.minimum`, see
+# optim_minimum_guard.jl). A failed second run (a line-search exception) keeps the
+# first result. Only the `(1 | g)` and `(1 + x | g)` GHQ routes call this: the
+# opt-in `marginal = :Laplace` route and the fixed-effects-only route do not
+# (DRModels.jl#937 stays open for them); `is_converged` rejects their ν runoff.
 function _student_second_start(nll, res, θ1, Xν, iν, g_tol)
     nu_of(r) = 2 .+ exp.(Xν * Optim.minimizer(r)[iν])
     (drm_optim_converged(res) && !_student_nu_runoff(nu_of(res))) && return res

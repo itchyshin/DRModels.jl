@@ -29,6 +29,17 @@ end
         @test is_converged(fit)
     end
 
+    @testset "sleepstudy marginal = :Laplace: no second start yet, but not reported converged" begin
+        ss = _read_csv_937("sleepstudy.csv")
+        sleep = (; Reaction = parse.(Float64, ss[:Reaction]), Days = parse.(Float64, ss[:Days]),
+                   Subject = ss[:Subject])
+        # #937 stays open for this route: the fit still ends at the Gaussian limit
+        # (logLik -891.912); the status rules must not call it converged.
+        fl = drm(bf(@formula(Reaction ~ Days + (1 | Subject)), @formula(sigma ~ Days),
+                    @formula(nu ~ 1)), Student(); data = sleep, marginal = :Laplace)
+        @test !is_converged(fl)
+    end
+
     @testset "is_converged rejects ν above the cutoff" begin
         Random.seed!(937)
         n = 400; x = randn(n)
