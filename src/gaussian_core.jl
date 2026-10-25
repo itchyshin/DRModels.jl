@@ -855,6 +855,7 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     fixed_mu, re, metav, structured, structured_slope, temporal_term =
         _split_ranef(rhs[:mu]; allow_phylo_slope = true, allow_temporal = true)   # (1|g), meta_V(v), relmat/animal/phylo/spatial(1|g), temporal(...)
     fixed_sigma, sigma_re, _, structured_sigma = _split_ranef(rhs[:sigma])  # (1|g)→GHQ; structured_sigma = phylo(1|g) on σ
+    _require_profile_ci_used(profile_ci, structured_sigma)   # #1010
     # Penalized MAP (A4c). Validated here, once, so that a `penalty` handed to a
     # route that cannot honour it ERRORS instead of being silently dropped —
     # a dropped penalty would return an ML fit wearing a MAP label.

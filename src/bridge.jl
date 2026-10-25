@@ -387,7 +387,8 @@ function drm_bridge_inference(; formula, family::AbstractString, data,
     # `parm` target profiles the fit's own re-optimisable objective and never reads
     # that precomputed stash, so it is skipped there too — matching the R bridge's
     # previous qualified-internal call, which never set this option either.
-    (!is_biv && (target === nothing || target.kind === :sd) && bridge_method == "profile") &&
+    (!is_biv && (target === nothing || target.kind === :sd) && bridge_method == "profile" &&
+     _bridge_has_sigma_phylo(bundle, fam)) &&
         (opts[:profile_ci] = true)
     tree_obj = tree === nothing ? nothing : _bridge_tree(tree)
     fit = _bridge_fit(bundle, fam, dat; tree = tree_obj, K = K,
@@ -641,6 +642,14 @@ function _bridge_fit(bundle, fam, data; tree, K, A, coords, options)
     end
     return drm(bundle, fam; data = data, kwargs...)
 end
+
+# `profile_ci` is accepted only where it is consumed, a Gaussian formula with
+# `phylo(1 | g)` on `sigma` (#1010); other univariate fits are profiled after
+# fitting, so the bridge must not request it for them.
+_bridge_has_sigma_phylo(bundle, fam) =
+    bundle isa DrmFormula && fam isa Gaussian &&
+    haskey(Dict(bundle.forms), :sigma) &&
+    (s = _split_ranef(Dict(bundle.forms)[:sigma])[4]; s !== nothing && s[1] === :phylo)
 
 function _bridge_is_bivariate_phylo_q4(bundle, fam, tree)
     return bundle isa BivariateDrmFormula && fam isa Gaussian && tree !== nothing

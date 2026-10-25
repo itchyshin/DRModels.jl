@@ -6,8 +6,8 @@
 # * a formula for a parameter the family does not have (`nu ~ z` on Poisson) —
 #   fitted without it (#1027, #939);
 # * `offset(x)` outside the Poisson mean — estimated as a free slope (#938);
-# * a `tree`, `K`, `A` or `coords` keyword with no matching marker in the
-#   formula — fitted as the plain model (#1010);
+# * a `tree`, `K`, `A` or `coords` keyword, or `profile_ci = true`, with no
+#   matching marker in the formula — fitted as the plain model (#1010);
 # * a formula column shorter or longer than the response — read past its end
 #   under `@inbounds` (segfault, or a silently wrong `meta_V` fit; #1022);
 # * phylo group labels that are not tip names — mapped to tips by first-seen
@@ -232,6 +232,26 @@ function _require_structured_keywords_used(f::DrmFormula, fam; tree = nothing, K
     A === nothing || :animal in kinds || unused("A", "`animal(1 | g)`")
     coords === nothing || :spatial in kinds || unused("coords", "`spatial(1 | g)`")
     return nothing
+end
+
+"""
+    _require_profile_ci_used(profile_ci, structured_sigma)
+
+`profile_ci = true` only precomputes the profile intervals of the Gaussian
+`phylo(1 | g)`-on-`sigma` location-scale routes (`structured_sigma` is the
+`(kind, group)` pair `_split_ranef` returns for the `sigma` formula). On every
+other route the flag was dropped and a fit with no profile intervals came back
+(#1010), so it is refused here like `tree`, `K`, `A` and `coords`.
+"""
+function _require_profile_ci_used(profile_ci::Bool, structured_sigma)
+    profile_ci || return nothing
+    (structured_sigma !== nothing && structured_sigma[1] === :phylo) && return nothing
+    throw(ArgumentError("drm: `profile_ci = true` was supplied but the formula has no " *
+        "`phylo(1 | g)` term on `sigma`, the only Gaussian route that precomputes profile " *
+        "intervals, so `profile_ci` would be ignored and a fit with no profile intervals " *
+        "returned. Add the marker to the `sigma` formula or drop the `profile_ci` argument; " *
+        "`profile_result(fit)` and `confint(fit, method = :profile)` profile any other " *
+        "fit after it is fitted."))
 end
 
 """
