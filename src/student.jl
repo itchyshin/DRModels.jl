@@ -234,20 +234,24 @@ function _fit_student(fam::Student, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol)
                        θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
     θ̂ = Optim.minimizer(res)
     # #961: a non-finite Hessian on finite data is a degenerate fit, not a crash.
-    hess_finite = true
+    # The Hessian is always formed: the unit-free converged flag needs it even when
+    # control says `se = false` and the stored covariance is left as NaN (#1050).
+    H = ForwardDiff.hessian(nll, θ̂)
+    Vh, hess_finite = _vcov_from_hessian_checked(H, _all_finite(y, Xμ, Xσ, Xν); context = "Student")
     V = _ctl_se(θ̂) do
-        Vh, hf = _vcov_from_hessian_checked(ForwardDiff.hessian(nll, θ̂),
-                                            _all_finite(y, Xμ, Xσ, Xν); context = "Student")
-        hess_finite = hf
         Vh
     end
+    # x/f/g OR, not the iteration cap, and the Newton step in SE units (#1050).
+    # `g_converged` is the absolute 1e-8 check and is not part of this flag.
+    converged = hess_finite && Optim.converged(res) && !Optim.iteration_limit_reached(res) &&
+        _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :nu => (pμ+pσ+1):(pμ+pσ+pν)]
     names = [:mu => nmμ, :sigma => nmσ, :nu => nmν]
     means = Dict(:mu => Xμ * θ̂[1:pμ]); obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]),
                   :nu => 2 .+ exp.(Xν * θ̂[(pμ+pσ+1):(pμ+pσ+pν)]))
     return _withiterations(
-        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res) && hess_finite, means, obs, scales), nll),
+        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, converged, means, obs, scales), nll),
         Optim.iterations(res))
 end
 
