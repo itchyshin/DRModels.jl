@@ -25,7 +25,7 @@ Other audit changes remain separately owned and uncommitted; they are outside th
 
 ## 5. Checks Run
 
-Eleven source/table regression tests passed. The existing reader-check CI step now runs them; deployment triggers and protections are unchanged. A strict Documenter build on the 19f7 audit snapshot passed. Its 48 generated HTML pages had zero unexpected local link, asset, fragment, or visible raw-math failures; the deployment-root versions.js reference is separately recorded. Rendered capability assertions passed after correcting the checker's inline-text normalization. The final pointer wording still requires exact-head CI and publication verification before this milestone can be called complete.
+Six focused source/table regression tests passed against the committed capability page. The first PR check also ran five broader audit tests whose repairs were not in this slice; those tests were separated into the broader audit before rerunning the focused check. The existing reader-check CI step now runs them; deployment triggers and protections are unchanged. A strict Documenter build on the 19f7 audit snapshot passed. Its 48 generated HTML pages had zero unexpected local link, asset, fragment, or visible raw-math failures; the deployment-root versions.js reference is separately recorded. Rendered capability assertions passed after correcting the checker's inline-text normalization. The final pointer wording still requires exact-head CI and publication verification before this milestone can be called complete.
 
 ## 6. Tests of the Tests
 
