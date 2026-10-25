@@ -1,8 +1,10 @@
 # test_twin_gap_732.jl — twin drmTMB#1272: `re_sd(fit)` on a `phylo(1 | g)`
 # grouping is reported on the RAW branch-length scale (tip variance = the
 # tree's height `h`) by every route whose `fit.phylo_scale === :covariance`
-# (the sparse Gaussian-mean phylo route and every non-Gaussian Laplace/GLMM
-# phylo route). drmTMB instead reports that SD on the tip-CORRELATION scale
+# (every non-Gaussian Laplace/GLMM phylo route, and the sparse Gaussian-mean
+# route on a NON-ultrametric tree; the sparse Gaussian-mean route on an
+# ultrametric tree is on the correlation scale since #979). drmTMB instead
+# reports that SD on the tip-CORRELATION scale
 # (`ape::vcv(tree, corr = TRUE)`, tip variance 1). FE and logLik already agree
 # between the two engines (#732 issue title) — this is a reporting-convention
 # gap, not a numerical defect, and the exact conversion is
@@ -31,7 +33,7 @@ using DRModels
 using Test
 using TOML
 using DelimitedFiles: readdlm
-using Random, LinearAlgebra
+using Random, LinearAlgebra, Logging
 
 _within(a, b, rtol, atol) = abs(a - b) <= max(atol, rtol * max(abs(a), abs(b)))
 
@@ -55,28 +57,21 @@ _within(a, b, rtol, atol) = abs(a - b) <= max(atol, rtol * max(abs(a), abs(b)))
         form = bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ 1))
         fit = drm(form, Gaussian(); data = dat, tree = tree)
         @test is_converged(fit)
-        @test fit.phylo_scale === :covariance
+        # #979: the sparse sigma ~ 1 route fits an ultrametric tree at unit height,
+        # so its `re_sd` is already drmTMB's correlation-scale number and
+        # `scale = :drmtmb` is a no-op (no `tree` needed), as on the other
+        # `:correlation` routes below.
+        @test fit.phylo_scale === :correlation
 
         native = re_sd(fit)
         @test haskey(native, :species)
-
-        # Conversion is exact algebra (not a fit re-run): re-derive the same
-        # factor independently of `re_sd`'s internals and confirm it lands on
-        # drmTMB's pinned number.
         phy = augmented_phy(tree)
-        h = phylo_tree_height(phy)
-        by_hand = native[:species] * sqrt(h)
-        @test _within(by_hand, ref_sd_phylo, 0.0, atol_re_sd)
+        @test _within(Float64(native[:species]), ref_sd_phylo, 0.0, atol_re_sd)
 
-        # The accessor option reproduces the same number, both ways of naming
-        # the tree (newick string, and a pre-built AugmentedPhy).
-        got_newick = re_sd(fit; scale = :drmtmb, tree = tree)
-        got_phy = re_sd(fit; scale = :drmtmb, tree = phy)
-        @test _within(Float64(got_newick[:species]), ref_sd_phylo, 0.0, atol_re_sd)
-        @test _within(Float64(got_phy[:species]), ref_sd_phylo, 0.0, atol_re_sd)
-
-        # Default is UNCHANGED: `re_sd(fit)` alone still returns the raw value.
-        @test re_sd(fit) == native
+        # The accessor option is the identity, with or without a tree.
+        @test re_sd(fit; scale = :drmtmb) == native
+        @test re_sd(fit; scale = :drmtmb, tree = tree) == native
+        @test re_sd(fit; scale = :drmtmb, tree = phy) == native
         @test re_sd(fit; scale = :native) == native
     end
 
@@ -161,7 +156,18 @@ _within(a, b, rtol, atol) = abs(a - b) <= max(atol, rtol * max(abs(a), abs(b)))
                   Gaussian(); data = dat, tree = tree)
 
         @test_throws ArgumentError re_sd(fit; scale = :bogus)
-        @test_throws ArgumentError re_sd(fit; scale = :drmtmb)   # no tree given
+
+        # A `:covariance`-scale fit needs the tree to convert. The Gaussian sparse
+        # route is on the correlation scale since #979 for an ultrametric tree, so
+        # use a NON-ultrametric one (first tip branch doubled), which stays raw.
+        tree_nu = replace(tree, r":([0-9.eE+-]+)" => m -> ":" * repr(2 * parse(Float64, m[2:end])); count = 1)
+        @test !DRModels._phylo_tree_is_ultrametric(augmented_phy(tree_nu))
+        fit_nu = Logging.with_logger(Logging.NullLogger()) do
+            drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ 1)),
+                Gaussian(); data = dat, tree = tree_nu)
+        end
+        @test fit_nu.phylo_scale === :covariance
+        @test_throws ArgumentError re_sd(fit_nu; scale = :drmtmb)   # no tree given
     end
 end
 

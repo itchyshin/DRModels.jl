@@ -135,3 +135,28 @@ end
     # other families carry no such field value
     @test check_drm(drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), Gaussian(); data = sym)).skew_normal_nu_wald === nothing
 end
+
+# #1060: the docs must state the real rule, the package's own cutoff on |ν̂| with no
+# Wald test behind it, and must not attribute the caveat to a drmTMB note. Pins the
+# documented cutoff to the constant that `check_drm` actually uses.
+@testset "Skew-normal: nu-near-0 cutoff is pinned and documented (#1060)" begin
+    cut = DRModels._SKEWNORMAL_NU_WALD_CUT
+    @test cut == 0.5
+    sn_doc = string(@doc SkewNormal)
+    cd_doc = string(@doc check_drm)
+    for d in (sn_doc, cd_doc)
+        @test !occursin("drmTMB's `skew_normal_nu_wald`", d)
+        @test occursin("uncalibrated", d)
+        @test occursin("|ν̂| < $(cut)", d)
+    end
+    # the value `check_drm` reports is the documented constant
+    Random.seed!(1060)
+    n = 100; x = randn(n)
+    fit = drm(bf(@formula(y ~ x), @formula(sigma ~ 1), @formula(nu ~ 1)), SkewNormal();
+              data = (; y = 1 .+ 0.5 .* x .+ randn(n), x))
+    fit.scales[:nu] .= cut - 0.01
+    @test check_drm(fit).skew_normal_nu_wald.cut == cut
+    @test check_drm(fit).skew_normal_nu_wald.near_zero
+    fit.scales[:nu] .= cut + 0.01
+    @test !check_drm(fit).skew_normal_nu_wald.near_zero
+end

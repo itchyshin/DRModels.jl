@@ -40,8 +40,9 @@ predict_parameters(fit, dat)[:nu]   # same slant (identity; not exp(η))
     weakly identified — its standard error inflates and recovery is loose. The
     fitter starts `ν` at a small nonzero value seeded by the sample-skewness sign
     to break this symmetry. The information matrix is singular at `ν = 0`, so the
-    Wald SE for `nu` is unreliable there; [`check_drm`](@ref) flags it
-    (`skew_normal_nu_wald`) and warns (#1060).
+    Wald SE for `nu` is unreliable there. [`check_drm`](@ref) reports
+    `skew_normal_nu_wald` and warns when any fitted |ν̂| < 0.5. This cutoff is an
+    uncalibrated heuristic of this package; no Wald test is run (#1060).
 """
 struct SkewNormal end
 
@@ -128,9 +129,9 @@ end
 # #1060: the skew-normal information matrix is singular at ν = 0 (the family
 # collapses to the Gaussian, so the slant's score is identically zero there), so
 # the Wald SE for ν is not trustworthy in a neighbourhood of 0 — drmTMB#1336
-# measured type-I 0.236 for the nominal-0.05 Wald test. This is the DRModels.jl
-# counterpart of drmTMB's `skew_normal_nu_wald` check_drm() note. The cutoff
-# (smallest |ν̂ᵢ| below `cut`) is this package's own choice, not a drmTMB constant.
+# measured type-I 0.236 for the nominal-0.05 Wald test. The rule is this package's
+# own: the note fires when any fitted |ν̂ᵢ| < `cut` (0.5). The cutoff is an
+# uncalibrated heuristic, not a drmTMB constant, and no Wald test is run.
 # Returns `nothing` for any other family.
 const _SKEWNORMAL_NU_WALD_CUT = 0.5
 

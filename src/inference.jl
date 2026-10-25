@@ -2826,10 +2826,10 @@ Returns a `NamedTuple` and logs a short report:
   AR1 |φ̂| above 0.999. drmTMB reports such a fit as `convergence_status() == "boundary"`
   (so its `is_converged` is false since FX3b). Does not affect `ok`.
 - `skew_normal_nu_wald` — `nothing` unless the fit is [`SkewNormal`](@ref); then
-  `(near_zero, min_abs_nu, cut)`. `near_zero` is `true` when the smallest fitted
-  slant `|ν̂|` is below `cut = 0.5`: the information matrix is singular at `ν = 0`, so
-  the Wald SE for `nu` is unreliable there (#1060; drmTMB's `skew_normal_nu_wald`
-  note) and a warning is emitted. Does not affect `ok`.
+  `(near_zero, min_abs_nu, cut)`. `near_zero` is `true` when any fitted slant
+  |ν̂| < 0.5 (`cut`): the information matrix is singular at `ν = 0`, so the Wald SE
+  for `nu` is unreliable there (#1060), and a warning is emitted. The cutoff is an
+  uncalibrated heuristic of this package; no Wald test is run. Does not affect `ok`.
 - `fixed_effect_rank_deficiency` — `nothing` unless a fixed-effect design (`mu` or
   `sigma`) had an aliased column (`sigma ~ 1 + x + z` with `z = 2x + 1`, a duplicated
   column); then `(deficient = true, blocks)`, one `(param, rank, ncol, aliased)` per

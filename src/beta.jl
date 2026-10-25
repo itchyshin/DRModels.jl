@@ -212,6 +212,35 @@ function _fit_beta_corr_ranef(fam::Beta, y, Xμ, Xσ, xs, gidx, G, nmμ, nmσ, g
         Optim.iterations(res))
 end
 
+# Newton polish for the fixed-effect Beta location-scale fit (#1127). LBFGS on a raw
+# design (e.g. `temp` near 300 beside a factor `sigma` block with 2-4 rows per level)
+# can exhaust its iterations, or stop on a plateau, with the gradient still far above
+# `g_tol`. From that stop point, Newton with the ForwardDiff gradient and Hessian
+# converges in a few steps. The polished run is kept ONLY if the objective is finite and
+# no worse AND it reaches `g_tol`, so a fit that already met `g_tol` is returned untouched
+# and nothing can get worse. Skipped when the user took control of the optimiser (`maxit` / `start` /
+# `multi_start` / `optimizer`), so a requested cap or start is honoured.
+function _beta_newton_polish(res, nll, g_tol)
+    s = _active_control_scope()
+    (s !== nothing && _ctl_optim_requested(s.control)) && return res
+    Optim.g_residual(res) <= g_tol && return res
+    θ = Optim.minimizer(res)
+    all(isfinite, θ) || return res
+    pol = try
+        Optim.optimize(nll, θ, Optim.Newton(), Optim.Options(g_tol = g_tol, iterations = 200);
+                       autodiff = :forward)
+    catch e
+        e isa InterruptException && rethrow()
+        return res
+    end
+    v = Optim.minimum(pol)
+    # Accept only a genuine stationary point: with 2 rows per level the scale can run off
+    # to a boundary where Newton keeps "improving" nll at a huge gradient. Such a fit is
+    # left exactly as the primary run reported it.
+    return (isfinite(v) && v <= Optim.minimum(res) && all(isfinite, Optim.minimizer(pol)) &&
+            Optim.g_residual(pol) <= g_tol) ? pol : res
+end
+
 function _fit_beta(fam::Beta, y, Xμ, Xσ, nmμ, nmσ, g_tol)
     n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
@@ -236,6 +265,7 @@ function _fit_beta(fam::Beta, y, Xμ, Xσ, nmμ, nmσ, g_tol)
     θ0[pμ+1] = -0.5 * log(φ0)                          # σ = 1/√φ ⇒ log σ = -½ log φ
     res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
                        θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
+    res = _beta_newton_polish(res, nll, g_tol)         # #1127
     θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ)]
     names = [:mu => nmμ, :sigma => nmσ]
