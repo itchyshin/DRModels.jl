@@ -121,7 +121,8 @@ fits. A negative statistic clamps to the boundary p-value.
 
 The same refusals as [`lrtest`](@ref) apply before the statistic is formed:
 REML fits whose fixed structure differs, a sentinel log-likelihood, different
-marginal approximations, a penalized MAP fit, and fits with different `nobs`.
+marginal approximations, a penalized MAP fit, and fits on different
+observation rows (not only a different `nobs`).
 
 # Example
 ```julia

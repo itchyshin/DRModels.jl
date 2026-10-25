@@ -60,8 +60,9 @@ res = residuals(fit)       # observed − fitted
 For a bivariate model, `fitted` / `residuals` return one vector per response,
 keyed `Dict(:mu1 => …, :mu2 => …)`.
 
-Predict the mean on **new** data (population level — any random/structured
-effects set to zero, so an average group rather than an average over groups):
+Predict the mean on **new** data (`type = :response` returns `invlink(Xβ)`
+with random and structured effects set to 0, so an average group rather than
+an average over groups):
 
 ```@example wf
 predict(fit, (; x = [-1.0, 0.0, 1.0]))    # μ̂ at three new x values

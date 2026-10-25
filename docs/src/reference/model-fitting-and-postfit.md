@@ -60,13 +60,14 @@ residuals
     `exp(η + b)` over a non-degenerate random effect `b`. Interpret the result as
     a fixed-effect prediction.
 
-[`predict`](@ref) returns the response (mean) prediction, but a distributional
-regression also models the scale and—bivariately—the correlation. Use
-[`predict_parameters`](@ref) to obtain the population-level value of **every**
-distributional parameter the model carries (`:mu`, `:sigma`, plus any family
-extras) at new covariate values, with random / structured effects set to zero.
-This is an inverse-link transformation of the fixed-effect linear predictor,
-not response-scale integration over the random-effect distribution. [`marginal_parameters`](@ref) is the cheap in-sample accessor that reads the
+[`predict`](@ref) with `type = :response` returns `invlink(Xβ)` with random
+effects set to 0. A distributional regression also models the scale and,
+bivariately, the correlation. Use [`predict_parameters`](@ref) to obtain the
+population-level value of **every** distributional parameter the model carries
+(`:mu`, `:sigma`, plus any family extras) at new covariate values, also with
+random / structured effects set to zero. That is the same inverse-link of the
+fixed-effect linear predictor, not response-scale integration over the
+random-effect distribution. [`marginal_parameters`](@ref) is the cheap in-sample accessor that reads the
 fitted per-observation parameters straight off the fit. [`prediction_grid`](@ref)
 builds the new-data table to sweep over (varying chosen predictors, holding the
 rest at a reference value).

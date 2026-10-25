@@ -27,9 +27,10 @@ coef(fit, :mu), coef(fit, :sigma)
 
 ## Predicting the mean at new data
 
-[`predict`](@ref) evaluates the fitted **mean** at a `newdata` column table. By
-default it returns the response scale; pass `type = :link` for the linear
-predictor. Any random or structured effects are set to zero, so on a random-effect
+[`predict`](@ref) evaluates the fitted **mean** at a `newdata` column table.
+`type = :response` (the default) returns `invlink(Xβ̂)` with every random
+effect set to 0; pass `type = :link` for the linear predictor `Xβ̂`. Those
+random or structured effects are not integrated out, so on a random-effect
 fit this is the prediction for an average group, not the mean averaged over
 groups.
 
