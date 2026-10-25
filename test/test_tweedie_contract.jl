@@ -130,24 +130,39 @@ end
         @test isfinite(dof_residual(fit)) && dof_residual(fit) == n - k
     end
 
-    # Degenerate responses: a flat likelihood or a parameter pinned at a clamp must
-    # not be reported as a trustworthy converged fit. These expectations remain
-    # known-broken until the optimizer status distinguishes these cases.
+    # is_converged is true only when convergence_status is :converged (FX3b).
+    # Rule 1 does not apply: the optimiser flag stays true, and both
+    # log-likelihoods are strictly above -1e15. Rule 2 does not apply:
+    # geometry is :ok, every coefficient is finite, and the design-rank
+    # flag is recorded only on the Gaussian route (src/gaussian_core.jl),
+    # so a Tweedie fit is not caught there. _nondegenerate_fit then returns
+    # true because the family is not Gaussian. Both fits warn that the
+    # Hessian is numerically singular. The pseudo-inverse has a smallest
+    # eigenvalue of 0. Rule 3 requires that eigenvalue to be strictly
+    # positive, so convergence_status returns :degenerate at rule 3.
     @testset "degenerate responses (current behaviour)" begin
         n = 200; x = randn(MersenneTwister(3), n)
         f = bf(@formula(y ~ x), @formula(sigma ~ 1), @formula(nu ~ 1))
 
         fit0 = @test_logs (:warn, r"numerically singular") (:warn, r"ended at a clamp") match_mode = :any drm(
             f, Tweedie(); data = (; y = zeros(n), x))
-        @test_broken !is_converged(fit0)
+        @test !is_converged(fit0)
+        @test fit0.converged
+        @test fit0.geometry === :ok
+        @test all(isfinite, fit0.theta)
         @test coef(fit0, :mu)[1] < -20          # log mean driven to -inf
         @test loglik(fit0) ≈ 0 atol = 1e-6
+        @test minimum(eigvals(Symmetric(Matrix{Float64}(fit0.vcov), :L))) <= 0
 
         y1 = vcat(1.3, zeros(n - 1))
         fit1 = @test_logs (:warn, r"numerically singular") (:warn, r"ended at a clamp") match_mode = :any drm(
             f, Tweedie(); data = (; y = y1, x))
-        @test_broken !is_converged(fit1)
+        @test !is_converged(fit1)
+        @test fit1.converged
+        @test fit1.geometry === :ok
+        @test all(isfinite, fit1.theta)
         @test coef(fit1, :nu)[1] < -11.9  # power pinned at its lower clamp
-        @test isfinite(loglik(fit1))
+        @test loglik(fit1) > -1e15
+        @test minimum(eigvals(Symmetric(Matrix{Float64}(fit1.vcov), :L))) <= 0
     end
 end

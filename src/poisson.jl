@@ -142,7 +142,13 @@ function _offset_vector(offset_term, data)
     return Float64.(v)
 end
 
-@drm_entry function drm(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
+# FX3b: `se = false` is recorded on the fit (`DrmFit.uncertainty`), so
+# `convergence_status` does not read the skipped (NaN) covariance as a failure.
+@drm_entry function drm(f::DrmFormula, fam::Poisson; se::Bool = true, kwargs...)
+    return _withuncertainty(_drm_poisson_fit(f, fam; se = se, kwargs...), se)
+end
+
+function _drm_poisson_fit(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
              A = nothing, coords = nothing, g_tol::Real = 1e-8, se::Bool = true,
              marginal::Symbol = :LA, method = nothing, nAGQ::Int = 5, ids = nothing)
     _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, coords = coords)   # #1027 #1022 #1010 #938
@@ -563,10 +569,12 @@ function _fit_poisson(fam::Poisson, y, Xμ, nmμ, g_tol; offset::AbstractVector{
     θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ]; names = [:mu => nmμ]
     means = Dict(:mu => exp.(Xμ * θ̂ .+ off)); obs = Dict(:mu => Vector{Float64}(y))   # response-scale λ
+    V, nonexistent = _count_mle_existence_guard(Xμ, y, V, nmμ)   # #1109: detect + warn, SE → Inf
     scales = Dict{Symbol,Vector{Float64}}()
-    return _withiterations(
+    fit = _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
+    return nonexistent ? _withgeometry(fit, :count_mle_nonexistent) : fit
 end
 
 # ===========================================================================

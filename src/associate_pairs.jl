@@ -402,7 +402,7 @@ end
 # -2909.5), and the association came back attenuated -- 0.42 against drmTMB's
 # 0.58 -- with nothing in the result to indicate why.
 function _assoc_require_converged(f::DrmFit, name::AbstractString)
-    is_converged(f) && return nothing
+    _converged_nondegenerate(f) && return nothing
     throw(ArgumentError("associate_pairs: `$name` did not converge, so it cannot be " *
         "frozen as a margin. A staged association conditions on the margin as if it " *
         "were exact: a non-converged fit (e.g. a dispersion collapsed to its " *

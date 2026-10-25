@@ -310,3 +310,44 @@ function _separation_guard(X, s, ntr, θ̂, V, μ̂, names; maxiter = nothing)
     end
     return V2
 end
+
+# Poisson / NB2 fixed-effect existence (Haberman 1974; Santos Silva and
+# Tenreyro 2010, Econ. Lett. 107:310-312). The binomial cone decides the
+# case when s = 1{y > 0} and ntr = 1 + s (#1109). The binomial
+# near-separation rule is not used: it reads μ̂ as probabilities.
+# `converged` is left unchanged (#1109). Returns `(V, nonexistent)`; the fitter
+# records `nonexistent` as `DrmFit.geometry`, which `convergence_status` reads
+# as `:degenerate` (FX3b; the twin contract is drmTMB #1554).
+function _count_mle_existence_guard(X, y, V, names; idx = 1:size(X, 2))
+    s = Float64.(y .> 0)
+    ntr = 1 .+ s
+    det = _detect_separation(X, s, ntr)
+    if !det.separated
+        if !det.conclusive
+            quiet = get(task_local_storage(), :drm_quiet_boundary, false)
+            quiet || @warn """
+                  The Poisson / NB2 MLE-existence check was inconclusive (its
+                  iteration budget ran out). Existence is neither confirmed
+                  nor ruled out; inspect large coefficients and standard errors.
+                  """ separation = :inconclusive flagged_coefficients = String[]
+        end
+        return V, false
+    end
+    flagged = det.flagged
+    quiet = get(task_local_storage(), :drm_quiet_boundary, false)
+    partial = det.conclusive ? "" :
+        "\nThe existence check ran out of its iteration budget, so this list may be incomplete."
+    quiet || @warn """
+          Poisson / NB2 fixed-effect maximum-likelihood estimate does not exist
+          (all-zero counts, or positives only on a face of the covariate cone;
+          Haberman 1974; Santos Silva and Tenreyro 2010). The reported
+          coefficients are an arbitrary optimiser stop. Their standard errors
+          are Inf and their Wald intervals are (-Inf, Inf).$partial
+          """ separation = :count_mle_nonexistent flagged_coefficients = (isempty(flagged) ? String[] : String.(names[flagged]))
+    V2 = copy(V)
+    for j in flagged
+        k = idx[j]
+        V2[k, :] .= NaN; V2[:, k] .= NaN; V2[k, k] = Inf
+    end
+    return V2, true
+end

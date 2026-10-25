@@ -133,7 +133,13 @@ function _cumulative_cut_init(y, K, n)
     return δ0
 end
 
-@drm_entry function drm(f::DrmFormula, fam::CumulativeLogit; data, tree = nothing, g_tol::Real = 1e-8,
+# FX3b: `se = false` is recorded on the fit (`DrmFit.uncertainty`), so
+# `convergence_status` does not read the skipped (NaN) covariance as a failure.
+@drm_entry function drm(f::DrmFormula, fam::CumulativeLogit; se::Bool = true, kwargs...)
+    return _withuncertainty(_drm_cumulative_fit(f, fam; se = se, kwargs...), se)
+end
+
+function _drm_cumulative_fit(f::DrmFormula, fam::CumulativeLogit; data, tree = nothing, g_tol::Real = 1e-8,
              se::Bool = true)
     _drm_entry_guard(f, fam, data; tree = tree)   # #1027 #1022 #1010
     missing_fit = _fit_observed_response_rows(f, data) do data_observed

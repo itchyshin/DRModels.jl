@@ -130,7 +130,8 @@ function bootstrap_sigma_a(fit::DrmFit; data, B::Real = 300, level::Real = 0.95,
             fitb = drm(form, fam; data = datab, tree = phy,
                        q4_g_tol = q4_g_tol, q4_iterations = q4_iterations,
                        q4_vcov = false, method = fit.estim_method)
-            if check_converged && !is_converged(fitb)
+            # FX3b: keep boundary draws
+            if check_converged && !_converged_nondegenerate(fitb)
                 messages[b] = _BOOTSTRAP_UNCONVERGED
                 return nothing
             end

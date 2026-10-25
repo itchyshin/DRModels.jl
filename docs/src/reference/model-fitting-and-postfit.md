@@ -166,7 +166,9 @@ update
 check_drm
 bridge_diagnostics
 family
+convergence_status
 is_converged
+converged
 deviance
 dof_residual
 r2_constant_sigma

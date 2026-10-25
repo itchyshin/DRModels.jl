@@ -358,7 +358,9 @@ Returns a `NamedTuple`:
 - `level`     — the confidence level;
 - `method`    — the method used;
 - `status`    — `:ok`, or the first applicable caveat: `:not_converged`
-  ([`is_converged`](@ref) is false, which includes a sentinel log-likelihood),
+  (the optimiser did not stop normally, or the optimum is degenerate, which
+  includes a sentinel log-likelihood; a variance component on its boundary,
+  [`convergence_status`](@ref) `:boundary`, is not flagged here),
   `:penalized_map` (a MAP fit, whose variance components are deliberately
   shrunk), `:vcov_unavailable` (delta SE not finite), `:profile_edge` (a profile
   bound is the `0`/`1` edge, i.e. one-sided, not a likelihood-ratio crossing) or
@@ -607,10 +609,10 @@ end
 # degenerate or penalized fit returned a ratio that looked like any other. Fit-level
 # caveats take precedence over interval-level ones; every caveat warns once.
 function _ratio_status(fit::DrmFit, ci_status::Symbol)
-    st = !is_converged(fit) ? :not_converged :
+    st = !_converged_nondegenerate(fit) ? :not_converged :
          fit.estim_method === :MAP ? :penalized_map : ci_status
     st === :not_converged && @warn "variance ratio: the fit is not converged (or is " *
-        "degenerate / at the failed-objective sentinel; see `is_converged`), so the ratio " *
+        "degenerate / at the failed-objective sentinel; see `convergence_status`), so the ratio " *
         "and its interval are not trustworthy." status = st
     st === :penalized_map && @warn "variance ratio: penalized (MAP) fit -- the variance " *
         "components are deliberately shrunk, so this is not a likelihood-based ratio." status = st

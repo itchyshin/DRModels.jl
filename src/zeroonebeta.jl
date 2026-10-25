@@ -48,7 +48,13 @@ fit_phy = drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ 1),
 """
 struct ZeroOneBeta end
 
-@drm_entry function drm(f::DrmFormula, fam::ZeroOneBeta; data, tree = nothing, K = nothing,
+# FX3b: `se = false` is recorded on the fit (`DrmFit.uncertainty`), so
+# `convergence_status` does not read the skipped (NaN) covariance as a failure.
+@drm_entry function drm(f::DrmFormula, fam::ZeroOneBeta; se::Bool = true, kwargs...)
+    return _withuncertainty(_drm_zeroonebeta_fit(f, fam; se = se, kwargs...), se)
+end
+
+function _drm_zeroonebeta_fit(f::DrmFormula, fam::ZeroOneBeta; data, tree = nothing, K = nothing,
              A = nothing, coords = nothing, g_tol::Real = 1e-8, se::Bool = true, ids = nothing)
     _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, coords = coords)   # #1027 #1022 #1010
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
@@ -291,7 +297,8 @@ function _augment_zeroonebeta_fit(fit::DrmFit, zoi, coi, nmz, nmc, y, n, nb)
     return DrmFit(fit.family, blocks, names, θ̂, V, fit.loglik, fit.nobs, fit.converged,
                   means, obs, scales, fit.formula, fit.nll, fit.nllgrad, fit.ranef,
                   fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal,
-                  fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale)
+                  fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale,
+                  fit.uncertainty, fit.geometry)
 end
 
 """
