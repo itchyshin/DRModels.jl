@@ -1,0 +1,1 @@
+- **`lrt_boundary` now documents that the 50:50 chi-bar p-value is conservative for Poisson vs NegBinomial2 (#1116).** In 500 Poisson-null replicates (n = 250) it rejected about 3% of the time at nominal 5% (the naive `lrtest` χ² gave 1.8%). The mixture weights are unchanged; this is a docs-only change.
