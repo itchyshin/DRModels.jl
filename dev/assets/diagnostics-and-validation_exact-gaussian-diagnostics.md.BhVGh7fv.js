@@ -14,7 +14,7 @@ import{_ as i,o as a,c as e,ao as n}from"./chunks/framework.Bvvu7GsH.js";const c
 <span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF;">    Gaussian</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8;">();</span></span>
 <span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8;">    data </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583;">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8;"> dat,</span></span>
 <span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8;">)</span></span></code></pre></div><div class="language- vp-adaptive-theme"><button title="Copy Code" class="copy"></button><span class="lang"></span><pre class="shiki shiki-themes github-light github-dark vp-code" tabindex="0"><code><span class="line"><span style="--shiki-light:#24292e;--shiki-dark:#e1e4e8;">Distributional regression fit (Gaussian)</span></span>
-<span class="line"><span style="--shiki-light:#24292e;--shiki-dark:#e1e4e8;">  nobs = 96   logLik = -64.8113   converged = true</span></span>
+<span class="line"><span style="--shiki-light:#24292e;--shiki-dark:#e1e4e8;">  nobs = 96   logLik = -64.8113   convergence_status = converged   converged = true</span></span>
 <span class="line"><span style="--shiki-light:#24292e;--shiki-dark:#e1e4e8;">  Residual SD (response scale) = 0.4057   dof_residual = 92</span></span>
 <span class="line"></span>
 <span class="line"><span style="--shiki-light:#24292e;--shiki-dark:#e1e4e8;">Mean model (μ):</span></span>
