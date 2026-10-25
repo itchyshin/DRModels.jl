@@ -426,6 +426,9 @@ end
 # random intercept `(1 | g)` on the mean (#760), or a Gaussian one on log σ
 # (#923), judges every row against the σ_b-MARGINAL distribution, not the
 # fixed-effect-only (b = 0) distribution — see `_ranef_marginal_mix`.
+# Gaussian and LogNormal closed-form marginals (#1103 / #1102) return the
+# exact z-score and skip Φ⁻¹(Φ(z)), which otherwise loses upper-tail
+# precision and caps |r| at about 8.13.
 function _quantile_residuals(fit::DrmFit, rng)
     haskey(fit.means, :mu) ||
         throw(ArgumentError("residuals(type=:quantile) is univariate-only"))
@@ -461,6 +464,22 @@ function _quantile_residuals(fit::DrmFit, rng)
     # shape/family this does not cover.
     mix = _ranef_marginal_mix(fit, fam, μ)
     u = Vector{Float64}(undef, n)
+    # #1103: N(η, σ² + v_b) is closed form. Returning z = (y − η) / √(σ² + v_b)
+    # (or the log-y form for LogNormal) avoids Φ⁻¹(clamp(Φ(z), eps, 1−eps)).
+    if mix !== nothing && mix.axis === :mu_gaussian
+        @inbounds for i in 1:n
+            u[i] = (y[i] - mix.eta0[i]) / sqrt(fit.scales[:sigma][i]^2 + mix.vb[i])
+        end
+        return u
+    elseif mix !== nothing && mix.axis === :mu_lognormal
+        @inbounds for i in 1:n
+            yi = y[i]
+            u[i] = yi > 0 ?
+                (log(yi) - mix.eta0[i]) / sqrt(fit.scales[:sigma][i]^2 + mix.vb[i]) :
+                Distributions.quantile(std_normal, lo)
+        end
+        return u
+    end
     if _is_continuous_family(fam)
         @inbounds for i in 1:n
             F = _cdf_value(fam, i, y[i]; μ = μ, scales = fit.scales, obs = fit.obs,

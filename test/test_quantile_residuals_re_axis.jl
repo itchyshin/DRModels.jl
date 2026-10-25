@@ -16,10 +16,11 @@ const _QRA_N01 = Distributions.Normal()
 _qra_q(F) = Distributions.quantile(_QRA_N01, clamp(F, eps(), 1 - eps()))
 
 # Lone mean random intercept, Gaussian: integrating b ~ N(0, σ_b²) out of
-# N(μ + b, σ²) gives N(μ, σ² + σ_b²) exactly.
+# N(μ + b, σ²) gives N(μ, σ² + σ_b²) exactly. #1103 returns that z-score
+# directly; do not send it through Φ⁻¹(Φ(z)).
 _qra_mean_marginal(fit, sb) =
-    _qra_q.(Distributions.cdf.(_QRA_N01, (fit.obs[:mu] .- fit.means[:mu]) ./
-                                         sqrt.(fit.scales[:sigma] .^ 2 .+ sb^2)))
+    (fit.obs[:mu] .- fit.means[:mu]) ./ sqrt.(fit.scales[:sigma] .^ 2 .+ sb^2)
+_qra_roundtrip(z) = _qra_q.(Distributions.cdf.(_QRA_N01, z))
 
 @testset "quantile residuals: random-intercept axis routing (#923)" begin
     Random.seed!(923)
@@ -68,6 +69,8 @@ _qra_mean_marginal(fit, sb) =
                   data = (; y, x, g))
         @test DRModels._ranef_marginal_mix(fit, fit.family, fit.means[:mu]) === nothing
         q = residuals(fit; type = :quantile)
+        # Two random-effect blocks: no closed-form mix, so the residual is still
+        # the Φ⁻¹(Φ(z)) value at b = 0.
         @test q ≈ _qra_q.(Distributions.cdf.(_QRA_N01, (y .- fit.means[:mu]) ./ fit.scales[:sigma])) atol = 1e-10
     end
 
@@ -100,8 +103,7 @@ _qra_mean_marginal(fit, sb) =
         # Computed here from the coefficients, not from anything the engine stores.
         μfix = fit.theta[1] .+ fit.theta[2] .* xs
         σb = re_sd(fit)[:species]
-        q_ref = _qra_q.(Distributions.cdf.(_QRA_N01, (y .- μfix) ./
-                                                      sqrt.(fit.scales[:sigma] .^ 2 .+ σb^2)))
+        q_ref = (y .- μfix) ./ sqrt.(fit.scales[:sigma] .^ 2 .+ σb^2)
         @test maximum(abs.(q .- q_ref)) < 1e-6
         # ... and it is NOT the old double-counted reference around the conditional mean.
         @test maximum(abs.(q .- _qra_mean_marginal(fit, σb))) > 0.05
@@ -154,5 +156,26 @@ _qra_mean_marginal(fit, sb) =
         @test !(fit.formula isa DRModels.DrmFormula)
         @test DRModels._ordinary_resd_block(fit).axis === :sigma
         @test DRModels._ranef_marginal_mix(fit, fit.family, fit.means[:mu]) === nothing
+    end
+
+    @testset "#1103 Gaussian (1 | g) residual is the exact z-score" begin
+        # At σ_b/σ = 10 the Φ⁻¹(Φ(z)) round trip is off by about 0.12 for
+        # |z| ≤ 4 (issue table). The closed-form path must return z itself.
+        Random.seed!(1103)
+        G = 20; m = 8; n = G * m
+        g = repeat(1:G, inner = m); x = randn(n)
+        y = 0.2 .+ 0.3 .* x .+ (5.0 .* randn(G))[g] .+ 0.5 .* randn(n)
+        fit = drm(bf(@formula(y ~ x + (1 | g))), Gaussian(); data = (; y, x, g))
+        mix = DRModels._ranef_marginal_mix(fit, fit.family, fit.means[:mu])
+        @test mix !== nothing && mix.axis === :mu_gaussian
+        q = residuals(fit; type = :quantile)
+        z = _qra_mean_marginal(fit, re_sd(fit)[:g])
+        @test maximum(abs.(q .- z)) < 1e-12
+        ratio = re_sd(fit)[:g] / mean(fit.scales[:sigma])
+        @test ratio > 4
+        # The old PIT path returns Φ⁻¹(clamp(Φ(z), eps, 1-eps)). That
+        # round trip is already 8e-3 off at z = 8 and caps |r| at ~8.13.
+        @test abs(_qra_roundtrip(8.0) - 8.0) > 1e-3
+        @test abs(_qra_roundtrip(10.0)) < 8.2
     end
 end
