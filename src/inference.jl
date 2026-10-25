@@ -1787,7 +1787,7 @@ function bootstrap_summary(
 end
 
 """
-    bootstrap_result(formula, family; data, B = 300, level = 0.95, rng = default_rng(), threads = false, failures = :error, check_converged = true, K =, A =, tree =, coords =, algorithm = :auto, g_tol = 1e-8)
+    bootstrap_result(formula, family; data, B = 300, level = 0.95, rng = default_rng(), threads = false, failures = :error, check_converged = true, K =, A =, tree =, coords =, algorithm = :auto, g_tol = 1e-8, method = :ML, marginal = :LA, penalty = nothing)
     bootstrap_result(fit; data, B = 300, level = 0.95, rng = default_rng(), threads = false, failures = :error, check_converged = true, K =, A =, tree =, coords =, algorithm = :auto, g_tol = 1e-8)
 
 Auditable parametric bootstrap. Returns a `NamedTuple` with:
@@ -1801,6 +1801,11 @@ Auditable parametric bootstrap. Returns a `NamedTuple` with:
   or `"bootstrap_unavailable"` when fewer than two replicates remain;
 - `boundary_params` — `"param:coef"` names that triggered the boundary status;
 - `seeds` — the per-replicate seeds used for reproducibility;
+- `estimation_method`, `marginal` — the estimator of the seed fit (`:ML`, `:REML` or
+  `:MAP`; `:LA`, `:Laplace`, `:VA` or `:AGHQ`);
+- `refit_estimation_method`, `refit_marginal` — the estimator the kept replicates
+  used (`:mixed` if they differ). They equal the seed's, and a warning is issued
+  if they do not;
 - `threaded` — whether threaded refits were actually used.
 - `worker_threads`, `julia_threads`, `blas_threads`, `blas_oversubscribed`,
   `elapsed` — CPU context and wall-clock time for the simulated-refit phase.
@@ -1821,7 +1826,10 @@ the `B` simulated refits. Gaussian bootstrap refits pass `algorithm` and
 workflow. For a homogeneous Toeplitz `temporal()` fit, `summary` holds the
 mean-coefficient rows only, as [`bootstrap_ci`](@ref).
 The fit-based form refuses a fit with an explicit `DRMControl.optimizer`
-before any bootstrap refit.
+before any bootstrap refit. The fit-based form repeats the seed fit's REML,
+marginal (`:Laplace`, `:VA`, `:AGHQ`) and MAP penalty in every replicate. The
+formula-based form takes `method` (`:ML` or `:REML`), `marginal` and `penalty` and
+uses them for the seed fit and the replicates alike (DRModels.jl#1025).
 """
 function bootstrap_result(
     formula::DrmFormula,
@@ -1839,10 +1847,14 @@ function bootstrap_result(
     check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
+    method::Symbol=:ML,
+    marginal::Symbol=:LA,
+    penalty=nothing,
 )
     _check_bootstrap_failure_mode(failures)
-    fit0 = drm(formula, family; data, K, A, tree, coords, algorithm, g_tol)
-    refit = datab -> drm(formula, family; data=datab, K, A, tree, coords, algorithm, g_tol)
+    opts = _bootstrap_formula_options(method, marginal, penalty)
+    fit0 = drm(formula, family; data, K, A, tree, coords, algorithm, g_tol, opts...)
+    refit = datab -> drm(formula, family; data=datab, K, A, tree, coords, algorithm, g_tol, opts...)
     simulate_fn = _marginal_simulator(fit0, data; K, A, tree, coords)
     return _bootstrap_result(
         fit0, formula, data, B, level, rng, threads, refit;
@@ -1925,6 +1937,9 @@ function bootstrap_result(
     threads::Bool=false,
     failures::Symbol=:error,
     check_converged::Bool=true,
+    method::Symbol=:ML,
+    marginal::Symbol=:LA,
+    penalty=nothing,
 )
     _check_bootstrap_failure_mode(failures)
     # #480: mirror #479's fit-based fix. Forward a structured-matrix keyword to
@@ -1942,6 +1957,11 @@ function bootstrap_result(
     K !== nothing && (extra[:K] = K)
     A !== nothing && (extra[:A] = A)
     coords !== nothing && (extra[:coords] = coords)
+    # #1025: only a non-default estimator is forwarded, as `drm` for some
+    # families does not declare `method`, `marginal` or `penalty`.
+    for (k, v) in pairs(_bootstrap_formula_options(method, marginal, penalty))
+        extra[k] = v
+    end
     fit0 = drm(formula, family; data, extra...)
     refit = datab -> drm(formula, family; data=datab, extra...)
     # #459/#479: redraw the random effects rather than conditioning on the
@@ -2080,6 +2100,26 @@ function _bootstrap_refit_kwargs(fit::DrmFit)
     weights(fit) === nothing || push!(kw, :weights => weights(fit))   # #931: same weighted likelihood
     return NamedTuple(kw)
 end
+
+# Estimator keywords the formula-based `bootstrap_result` forwards to `drm` for
+# the seed fit and every replicate. Defaults (`:ML`, `:LA`, no penalty) are left
+# off, matching `_bootstrap_refit_kwargs`. A MAP fit is requested with `penalty`,
+# not `method = :MAP`.
+function _bootstrap_formula_options(method::Symbol, marginal::Symbol, penalty)
+    method in (:ML, :REML) || throw(ArgumentError(
+        "bootstrap_result: `method` must be :ML or :REML (got :$method); " *
+        "request a penalized MAP fit with `penalty`"))
+    kw = Pair{Symbol,Any}[]
+    method === :ML || push!(kw, :method => method)
+    marginal === :LA || push!(kw, :marginal => marginal)
+    penalty === nothing || push!(kw, :penalty => penalty)
+    return NamedTuple(kw)
+end
+
+# The estimator a fit used, for the record on a bootstrap result. A fit type
+# that carries no estimator (a joint-model fit) reports `:unknown`.
+_bootstrap_estimator(fit::DrmFit) = (estimation_method(fit), fit.marginal)
+_bootstrap_estimator(fit) = (:unknown, :unknown)
 
 # Keywords the bivariate Gaussian bootstrap refit may pass to `drm`.
 # `method` is included only when the seed kwargs contain it. `marginal` is
@@ -2479,6 +2519,7 @@ function _bootstrap_result(
     # sets `bootstrap_incomplete`, and it does not abort under `failures = :error`.
     # `Vector{Bool}` is bit-packed, so parallel writes can drop a flag.
     refit_error = zeros(UInt8, B)
+    refit_estimator = fill((:unknown, :unknown), B)
     seeds = rand(rng, UInt, B)
 
     function run_one!(b)
@@ -2498,6 +2539,7 @@ function _bootstrap_result(
                 messages[b] = _BOOTSTRAP_UNCONVERGED
             else
                 draws[b, :] = coef(fitb)
+                refit_estimator[b] = _bootstrap_estimator(fitb)
                 ok[b] = true
             end
         catch err
@@ -2542,6 +2584,13 @@ function _bootstrap_result(
     boundary_params = _bootstrap_boundary_params(fit0, kept)
     failed_n = length(failure_rows)
     status = _finish_bootstrap_status(used, failed_n, boundary_params)
+    seed_method, seed_marginal = _bootstrap_estimator(fit0)
+    kept_est = unique(refit_estimator[ok])
+    refit_method = length(kept_est) == 1 ? kept_est[1][1] : :mixed
+    refit_marginal = length(kept_est) == 1 ? kept_est[1][2] : :mixed
+    (refit_method, refit_marginal) == (seed_method, seed_marginal) ||
+        seed_method === :unknown ||
+        @warn "bootstrap replicates used a different estimator from the seed fit; the interval does not describe the point estimate's estimator" seed_method seed_marginal refit_method refit_marginal
     return (
         summary=summary,
         failures=failure_rows,
@@ -2549,6 +2598,10 @@ function _bootstrap_result(
         used=used,
         failed=failed_n,
         seeds=seeds,
+        estimation_method=seed_method,
+        marginal=seed_marginal,
+        refit_estimation_method=refit_method,
+        refit_marginal=refit_marginal,
         threaded=threaded,
         worker_threads=_worker_threads(threaded, B),
         julia_threads=Threads.nthreads(),
