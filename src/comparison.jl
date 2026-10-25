@@ -31,10 +31,13 @@ Returns a `NamedTuple` `(; statistic, dof, pvalue)`:
 - `pvalue = ccdf(Chisq(dof), max(statistic, 0))` — the upper-tail χ² p-value.
 
 `dof` must be positive (`full` must have more parameters than `reduced`),
-otherwise an `ArgumentError` is thrown. A negative `statistic` (the reduced model
-fits *better* — a sign the models are not actually nested, or one did not
-converge) is still returned as-is, but the p-value clamps the statistic at zero
-(so `pvalue` stays in `[0, 1]`); inspect `statistic` directly in that case.
+otherwise an `ArgumentError` is thrown. Both fits must have been estimated on
+the same observation rows, not only the same `nobs`: two fits that drop
+different rows and happen to keep the same count are refused (#1053). A
+negative `statistic` (the reduced model fits *better*, a sign the models are
+not actually nested, or one did not converge) is still returned as-is, but the
+p-value clamps the statistic at zero (so `pvalue` stays in `[0, 1]`); inspect
+`statistic` directly in that case.
 
 !!! warning "Variance components and Poisson ⊂ NB2 are a boundary null"
     The `χ²(dof)` reference is only valid when the extra parameters in `full` are
@@ -238,18 +241,6 @@ end
 # the data. drmTMB flags the same hazard as a note from `check_penalized_fit()`;
 # because a silent wrong p-value is worse than a refusal, DRModels.jl errors here and
 # surfaces the same information through `check_drm(fit).penalized_map`.
-# `update` of a missing-response or imputed fit can refit a different set of
-# rows than the seed. The two log-likelihoods are then not a nested comparison
-# (#1002). Refuse that pair rather than returning a statistic on mixed samples.
-function _nobs_compare_guard(a::DrmFit, b::DrmFit, verb::AbstractString)
-    nobs(a) == nobs(b) && return nothing
-    throw(ArgumentError(
-        "$verb: the two fits were estimated on different samples " *
-        "(nobs = $(nobs(a)) vs $(nobs(b))). A likelihood-ratio comparison " *
-        "requires the same observations, which a missing-response or imputed " *
-        "`update` does not guarantee. Refit both on the same rows."))
-end
-
 function _map_compare_guard(a::DrmFit, b::DrmFit, verb::AbstractString)
     (a.estim_method === :MAP || b.estim_method === :MAP) || return nothing
     throw(ArgumentError(
@@ -257,6 +248,56 @@ function _map_compare_guard(a::DrmFit, b::DrmFit, verb::AbstractString)
         "fit shrinks its variance components, so the likelihood-ratio statistic does not have " *
         "the usual chi-square distribution. Refit both without `penalty` to test, or compare " *
         "the penalized fits on their own terms."))
+end
+
+# Rows that entered the likelihood (#1053). Finite observed values are the
+# storage-invariant fingerprint: a Gaussian `(1 | g)` fit listwise-drops a
+# missing y, while the fixed-effect route keeps a NaN on the original length.
+# When both fits store the same length, the finite-observation mask is compared
+# too, so two padded fits that drop different rows still disagree even if the
+# remaining y values coincide. `update` of a missing-response or imputed fit
+# can refit a different set of rows than the seed (#1002).
+function _obs_mask_vals(y::AbstractVector)
+    mask = BitVector(undef, length(y))
+    vals = Float64[]
+    sizehint!(vals, length(y))
+    @inbounds for (i, yi) in enumerate(y)
+        fin = isfinite(yi)
+        mask[i] = fin
+        fin && push!(vals, yi)
+    end
+    return mask, vals
+end
+
+function _same_obs_rowset(mask_a, vals_a, mask_b, vals_b)
+    vals_a == vals_b || return false
+    length(mask_a) == length(mask_b) || return true
+    return mask_a == mask_b
+end
+
+function _same_likelihood_rows(a::DrmFit, b::DrmFit)
+    nobs(a) == nobs(b) || return false
+    ka = sort!(collect(keys(a.obs)))
+    kb = sort!(collect(keys(b.obs)))
+    ka == kb || return false
+    for k in ka
+        ma, va = _obs_mask_vals(a.obs[k])
+        mb, vb = _obs_mask_vals(b.obs[k])
+        _same_obs_rowset(ma, va, mb, vb) || return false
+    end
+    return true
+end
+
+function _nobs_compare_guard(a::DrmFit, b::DrmFit, verb::AbstractString)
+    _same_likelihood_rows(a, b) && return nothing
+    detail = nobs(a) == nobs(b) ?
+        "nobs = $(nobs(a)) on both, but the observation rows differ" :
+        "nobs = $(nobs(a)) vs $(nobs(b))"
+    throw(ArgumentError(
+        "$verb: the two fits were estimated on different samples " *
+        "($detail). A likelihood-ratio comparison " *
+        "requires the same observations, which a missing-response or imputed " *
+        "`update` does not guarantee. Refit both on the same rows."))
 end
 
 # A fit whose formula has no random effect integrates nothing, so its `loglik` is

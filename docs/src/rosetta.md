@@ -149,11 +149,11 @@ distributional parameters:
 | In-sample fitted per-obs parameters | (capability: per-observation fitted parameters) | `marginal_parameters(fit)` |
 | Build a covariate grid | (capability: hold-others / sweep grid) | `prediction_grid(reference; predictor = values, …)` |
 
-- `predict(fit, newdata; type = :response)` returns the response-scale prediction
-  (for the GLM-type families, the inverse link applied to `Xβ̂` —
-  `exp`/`logistic`/identity; for ZeroOneBeta, `logistic(Xβ̂)`, the Beta-component mean rather than the mixture mean);
-  `type = :link` returns `Xβ̂`. Univariate gives a vector; bivariate gives
-  `Dict(:mu1 => …, :mu2 => …)`. Random effects are set to zero, so with a
+- `predict(fit, newdata; type = :response)` returns `invlink(Xβ̂)` with
+  random effects set to 0 (for the GLM-type families, `exp`/`logistic`/identity
+  applied to `Xβ̂`; for ZeroOneBeta, `logistic(Xβ̂)`, the Beta-component mean
+  rather than the mixture mean); `type = :link` returns `Xβ̂`. Univariate
+  gives a vector; bivariate gives `Dict(:mu1 => …, :mu2 => …)`. With a
   nonlinear link this is the prediction for an average group, not the mean
   averaged over groups.
 - `predict_parameters(fit, newdata)` returns a

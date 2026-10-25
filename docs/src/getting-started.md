@@ -190,8 +190,8 @@ The same front end also provides these next steps; the
 - **Per-parameter prediction** — `predict_parameters` (fitted μ/σ/… on new
   data), `marginal_parameters` (the stored in-sample values), and
   `prediction_grid` for building a swept `newdata` grid from a reference table.
-  Predictions set any random effects to zero: they describe an average group,
-  not an average over groups.
+  `predict(...; type = :response)` returns `invlink(Xβ)` with random effects
+  set to 0: an average group, not an average over groups.
 - **Auditable profile-likelihood CIs** — `profile_result` returns the full
   profile object behind `confint(fit; method = :profile)`.
 - **Post-fit accessors** — `summary`, `family`, `is_converged`, `deviance`,

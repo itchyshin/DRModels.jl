@@ -2105,9 +2105,9 @@ end
 Population-level prediction on `newdata` (a NamedTuple / column table) with every
 random and structured effect **set to zero**: the prediction for an average group
 (`b = 0`), not an average over groups. `type = :link` returns `Xβ̂`;
-`type = :response` (default) applies the family inverse link to it, `g⁻¹(Xβ̂)`
-(`exp` for Poisson/Gamma, `logistic` for Beta/Binomial/ZeroOneBeta, identity for
-Gaussian). For ZeroOneBeta this is the Beta-component mean `logistic(Xβ̂)`, not the
+`type = :response` (default) returns `invlink(Xβ̂)` with those random effects
+set to 0 (equivalently `g⁻¹(Xβ̂)`: `exp` for Poisson/Gamma, `logistic` for
+Beta/Binomial/ZeroOneBeta, identity for Gaussian). For ZeroOneBeta this is the Beta-component mean `logistic(Xβ̂)`, not the
 zero/one-inflated mixture mean that [`fitted`](@ref) stores. For CumulativeLogit,
 `predict` returns the location linear predictor `Xβ̂` on both `type = :link` and
 `type = :response` (as drmTMB does), not the expected category score that
