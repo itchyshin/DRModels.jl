@@ -90,7 +90,11 @@ using Test, Random, LinearAlgebra, Statistics
     # The reported REML objective agrees with the route's own restricted
     # components evaluated at the REML optimum, and with the DENSE oracle in
     # the same file (a different assembly of the same restricted likelihood).
-    prob = DRModels.make_loc_problem(phy, y, hcat(ones(n), x); species = species)
+    # The route fits the ultrametric tree at unit height since #979 (the SD is on the
+    # correlation scale), so the oracle problem is built on that same tree.
+    phy_fit, _ = DRModels._phylo_mean_correlation_tree(phy)
+    @test fit_reml.phylo_scale === :correlation
+    prob = DRModels.make_loc_problem(phy_fit, y, hcat(ones(n), x); species = species)
     comp = DRModels._loconly_reml_components(prob, lσ_reml, lσphy_reml)
     @test comp.converged
     @test -comp.nll ≈ fit_reml.reml_loglik rtol = 1e-9

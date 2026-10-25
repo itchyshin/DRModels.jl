@@ -249,8 +249,10 @@ end
     fit = drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ 1)),
               Gaussian(); data = data, tree = phy)
     gphy = DRModels._phylo_mean_leaf_index(phy, data.species)
+    # #979: the route fits an ultrametric tree at unit height (correlation-scale SD).
+    phy_fit, _ = DRModels._phylo_mean_correlation_tree(phy)
     direct = DRModels._fit_structured_gaussian_sparse_lbfgs(Gaussian(), Float64.(data.y), X, Xσ,
-        gphy, phy.n_leaves, phy, nmμ, nmσ, :species, 1e-8; penalty = nothing, reml = false)
+        gphy, phy.n_leaves, phy_fit, nmμ, nmσ, :species, 1e-8; penalty = nothing, reml = false)
     @test coef(fit) == coef(direct) && loglik(fit) == loglik(direct)
     # relmat only -> the closed-form single-structured fitter, byte-identical
     Random.seed!(1); M = randn(6, 6); K = M * M' / 6 + I
