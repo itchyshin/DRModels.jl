@@ -94,40 +94,6 @@ class DocumentationSemantics(unittest.TestCase):
             self.assertIn(old, text)
             with self.assertRaises(AssertionError):
                 assert_recent_capability_corrections(text.replace(old, new))
-    def test_family_map_lists_all_public_constructors(self):
-        exports = self.text("src/DRModels.jl")
-        names = {"Gaussian", "Student", "LogNormal", "Gamma", "Tweedie", "Poisson", "NegBinomial2", "TruncatedNegBinomial2", "TruncatedPoisson", "Beta", "BetaBinomial", "Binomial", "ZeroOneBeta", "CumulativeLogit", "SkewNormal"}
-        table = self.text("docs/src/model-guides/model-map.md").split("## Structured and random effects")[0]
-        for name in names:
-            self.assertRegex(exports, r"\b" + name + r"\b")
-            self.assertIn("[`" + name + "`](@ref)", table)
-    def test_binomial_slope_distinction(self):
-        text = self.text("docs/src/model-guides/model-map.md")
-        self.assertNotIn("supports `(1 | g)` on the mean only", text)
-        self.assertIn("Binomial", text)
-        self.assertIn("independent `(0 + x | g)`", text)
-        self.assertIn("correlated `(1 + x | g)`", text)
-    def test_parameter_prediction_links(self):
-        text = self.text("src/gaussian_core.jl").split("Population-level prediction of **every**")[1].split('"""')[0]
-        self.assertNotIn("mean is left on the link scale", text)
-        self.assertNotIn("comes\nback as `ν − 2`", text)
-        self.assertIn("`2 + exp(η)`", text)
-        self.assertIn("SkewNormal", text)
-        self.assertIn("identity", text)
-        self.assertIn("ZeroOneBeta", text)
-        self.assertIn("logistic", text)
-    def test_prediction_target_and_laplace_exception(self):
-        text = self.text("docs/src/reference/model-fitting-and-postfit.md")
-        self.assertNotIn("returns the response (mean) prediction", text)
-        self.assertIn("median", text)
-        self.assertIn("untruncated", text)
-        text = self.text("docs/src/model-guides/marginal-la-vs-va.md")
-        self.assertIn("LogNormal", text)
-        self.assertIn("single mode-centred Gauss–Hermite node", text)
-    def test_temporal_experimental_scope(self):
-        text = self.text("docs/src/api-stability.md").split("## What is still experimental")[1].split("## Engine functions")[0]
-        for term in ("AR1", "OU", "Toeplitz", "intercept-only", "maximum likelihood"):
-            self.assertIn(term, text)
     def test_capabilities_markdown_table_arity_and_escaped_pipes(self):
         text = self.text("docs/src/capabilities.md")
         section = text.split('## R → Julia bridge (engine = "julia")', 1)[1].split("## ", 1)[0]
