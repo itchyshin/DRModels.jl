@@ -258,7 +258,12 @@ end
 # flagged coefficients' rows/columns set to NaN and their variances to Inf
 # (`stderror` → Inf, Wald `confint` → (-Inf, Inf)), and warns. Internal refits
 # (bootstrap replicates, run under `_without_boundary_warnings`) stay quiet.
-function _separation_guard(X, s, ntr, θ̂, V, μ̂, names; maxiter = nothing)
+# `_separation_check` also returns whether the exact screen found (quasi-)complete
+# separation; the fitter records that as `DrmFit.geometry` (#1186), which
+# `convergence_status` reads as `:degenerate` whether or not SEs were computed.
+_separation_guard(args...; kwargs...) = first(_separation_check(args...; kwargs...))
+
+function _separation_check(X, s, ntr, θ̂, V, μ̂, names; maxiter = nothing)
     det = _detect_separation(X, s, ntr; maxiter = maxiter)
     kind = :none
     flagged = det.flagged
@@ -279,7 +284,7 @@ function _separation_guard(X, s, ntr, θ̂, V, μ̂, names; maxiter = nothing)
             kind = :inconclusive
         end
     end
-    kind === :none && return V
+    kind === :none && return V, false
     quiet = get(task_local_storage(), :drm_quiet_boundary, false)
     if kind === :inconclusive
         quiet || @warn """
@@ -288,7 +293,7 @@ function _separation_guard(X, s, ntr, θ̂, V, μ̂, names; maxiter = nothing)
               out; inspect large coefficients and standard errors, or compare with a
               penalised (Firth / MSPL) fit.
               """ separation = kind flagged_coefficients = String[]
-        return V
+        return V, false
     end
     what = kind === :near ?
         "near-separation (a coefficient that moves the logit across the whole $(_SEP_NEAR_P) to 1 − $(_SEP_NEAR_P) probability range has Wald |z| below $(_SEP_NEAR_Z), with fitted probabilities within $(_SEP_NEAR_P) of 0/1)" :
@@ -308,7 +313,7 @@ function _separation_guard(X, s, ntr, θ̂, V, μ̂, names; maxiter = nothing)
     for j in flagged
         V2[j, :] .= NaN; V2[:, j] .= NaN; V2[j, j] = Inf
     end
-    return V2
+    return V2, kind === :complete_or_quasi
 end
 
 # Poisson / NB2 fixed-effect existence (Haberman 1974; Santos Silva and

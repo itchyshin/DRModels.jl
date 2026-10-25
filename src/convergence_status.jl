@@ -4,7 +4,8 @@
 # `docs/design/278-twin-convergence-status.md`:
 #
 #   1  optimiser gate: `fit.converged`, finite loglik strictly above -1e15  else :degenerate
-#   2  geometry: Poisson / NB2 cone (`DrmFit.geometry`), Gaussian all-sigma
+#   2  geometry: Poisson / NB2 cone and fixed-effect binomial (quasi-)complete
+#      separation (`DrmFit.geometry`), Gaussian all-sigma
 #      collapse (`_nondegenerate_fit`)                                      :degenerate
 #   3  covariance square, finite, positive definite                         else :degenerate
 #   4  every diagonal SE finite                                             else :degenerate
@@ -83,8 +84,10 @@ numeric rules as drmTMB's `convergence_status()` (FX3b; drmTMB
 1. `:degenerate` unless the optimiser stopped normally (`fit.converged`) at a
    finite log-likelihood strictly above the `-1e15` failed-objective sentinel.
 2. `:degenerate` when a geometry screen fired: a Poisson or NegBinomial2
-   fixed-effect MLE that does not exist (#1109), or a Gaussian residual scale
-   collapsed onto the data.
+   fixed-effect MLE that does not exist (#1109), a fixed-effect-only Binomial
+   fit with (quasi-)complete separation (#1186; drmTMB `binomial_separation`),
+   or a Gaussian residual scale collapsed onto the data. The geometry flag is
+   recorded at fit time, so it applies with `se = false` too.
 3. `:degenerate` unless `vcov(fit)` is square, finite and positive definite.
 4. `:degenerate` unless every standard error is finite.
 5. `:degenerate` when a standard error is at least 50 **and** at least 1000

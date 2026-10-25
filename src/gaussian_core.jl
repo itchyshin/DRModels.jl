@@ -223,8 +223,10 @@ struct DrmFit{F}
     # one, as drmTMB does for `drm_control(se = FALSE)` (FX3b). Set by
     # `_withuncertainty`.
     uncertainty::Symbol
-    # `:ok` (the default), or `:count_mle_nonexistent` when the Poisson / NB2
-    # fixed-effect cone screen found no finite MLE (#1109). This is the twin
+    # `:ok` (the default), `:count_mle_nonexistent` when the Poisson / NB2
+    # fixed-effect cone screen found no finite MLE (#1109), or
+    # `:binomial_separation` when the fixed-effect binomial screen found
+    # (quasi-)complete separation (#1186). This is the twin
     # `convergence_status` geometry step (FX3b). It is kept apart from `vcov` so
     # the verdict is the same whether or not standard errors were computed. Set
     # by `_withgeometry`.
@@ -298,7 +300,7 @@ DrmFit(family, blocks, coefnames, theta, vcov, loglik, nobs, converged, means, o
 # 23-arg compatibility constructor: `control_info` defaults to `nothing`
 # (no `control` / `weights` given), and `uncertainty` and `geometry` default to
 # `:ok`; only a caller that turned standard errors off sets `:skipped`
-# (`_withuncertainty`), and only the Poisson / NB2 cone screen sets a geometry
+# (`_withuncertainty`), and only the Poisson / NB2 cone and binomial separation screens set a geometry
 # (`_withgeometry`). Every fitter uses it.
 DrmFit(family, blocks, coefnames, theta, vcov, loglik, nobs, converged, means, obs, scales,
        formula, nll, nllgrad, ranef, estim_method, reml_loglik, ml_loglik, marginal,
