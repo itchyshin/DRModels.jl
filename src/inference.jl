@@ -1546,8 +1546,10 @@ function _warn_bootstrap_sigma_percentile(formula, rows)
 end
 
 """
-    bootstrap_ci(formula, family; data, B = 300, level = 0.95, rng = default_rng(), threads = false, K =, A =, tree =, coords =, algorithm = :auto, g_tol = 1e-8)
-    bootstrap_ci(fit; data, B = 300, level = 0.95, rng = default_rng(), threads = false, K =, A =, tree =, coords =, algorithm = :auto, g_tol = 1e-8)
+    bootstrap_ci(formula, family::Gaussian; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true, algorithm = :auto, g_tol = 1e-8)
+    bootstrap_ci(formula, family; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true)
+    bootstrap_ci(fit::DrmFit{<:Gaussian}; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true, algorithm = :auto, g_tol = 1e-8)
+    bootstrap_ci(fit::DrmFit; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true)
 
 Parametric bootstrap confidence intervals: fit the model, then `simulate` `B`
 replicate responses, refit each, and take percentile intervals per coefficient.
@@ -1697,8 +1699,10 @@ function bootstrap_ci(
 end
 
 """
-    bootstrap_summary(formula, family; data, B = 300, level = 0.95, rng = default_rng(), threads = false, K =, A =, tree =, coords =, algorithm = :auto, g_tol = 1e-8)
-    bootstrap_summary(fit; data, B = 300, level = 0.95, rng = default_rng(), threads = false, K =, A =, tree =, coords =, algorithm = :auto, g_tol = 1e-8)
+    bootstrap_summary(formula, family::Gaussian; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true, algorithm = :auto, g_tol = 1e-8)
+    bootstrap_summary(formula, family; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true)
+    bootstrap_summary(fit::DrmFit{<:Gaussian}; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true, algorithm = :auto, g_tol = 1e-8)
+    bootstrap_summary(fit::DrmFit; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true)
 
 Parametric bootstrap coefficient summaries in one pass: point estimate,
 bootstrap standard error, and percentile confidence interval. This is the
