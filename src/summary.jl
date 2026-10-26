@@ -202,6 +202,27 @@ Extends `StatsAPI.dof_residual`.
 """
 dof_residual(fit::DrmFit) = nobs(fit) - dof(fit)
 
+# #1071: name the integrator behind the printed logLik. `:LA` (the default) and
+# `:Laplace` give different logLik values for the same random-effect model: the
+# default is the more accurate, `:Laplace` is the one-point approximation drmTMB
+# reports. A cross-engine or cross-approximation AIC / LRT is only valid between
+# like approximations. The quadrature node count is deliberately not printed: it
+# differs by route, so a fixed "GHQ-32" would sometimes be false. Not printed for a
+# random-effect-free fit (exact logLik, nothing to name) or a Gaussian `:LA` fit
+# (the Gaussian marginal is exact), so those outputs are unchanged. The "has a
+# random effect" test is `_fit_is_re_free` (comparison.jl), not
+# `fit.ranef === nothing`: Poisson / Binomial `(1|g)` never store BLUPs.
+function _marginal_note(fit::DrmFit)
+    m = fit.marginal
+    (_fit_is_re_free(fit) || (m === :LA && fit.family isa Gaussian)) && return nothing
+    desc = m === :LA      ? "default integrator, not the one-point Laplace drmTMB reports; " *
+                            "`marginal = :Laplace` matches drmTMB" :
+           m === :Laplace ? "one-point Laplace approximation, as drmTMB" :
+           m === :VA      ? "variational ELBO, not a log-likelihood" :
+           m === :AGHQ    ? "adaptive Gauss-Hermite quadrature" : "integrator"
+    return "logLik (marginal :" * String(m) * ", " * desc * ")"
+end
+
 function Base.show(io::IO, ::MIME"text/plain", fit::DrmFit)
     se = _display_se(fit)
     fam = _family_name(fit.family)
@@ -211,6 +232,8 @@ function Base.show(io::IO, ::MIME"text/plain", fit::DrmFit)
                 "   logLik = ", @sprintf("%.4f", fit.loglik),
                 "   convergence_status = ", status,
                 "   converged = ", status === :converged)
+    mnote = _marginal_note(fit)
+    mnote === nothing || println(io, "  ", mnote)
     # #949: show the trusted accessor; say so when the raw optimiser flag disagrees.
     (fit.converged && status !== :converged) && println(io, "  (the optimiser stopped normally, " *
         "but convergence_status is ", status, " -- see `convergence_status`)")

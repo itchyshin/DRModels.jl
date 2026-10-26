@@ -1,0 +1,1 @@
+| 2026-10-25 | **Name the marginal approximation in show(fit)** (#1071) | `julia +1.12 --project=test test/test_summary_marginal_label.jl` plus test_summary, test_summary_method, test_summary_zp_suppress and the other tests that print a fit | 9/9 new pass (3 red on main); neighbours pass | Claude |
