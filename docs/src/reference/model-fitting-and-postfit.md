@@ -150,8 +150,25 @@ for the lower-level interface; these overloads do not expand the formula or
 R-bridge admission boundaries above.
 
 ```@docs
+DRModels.PreparedJointModel
+DRModels.PreparedJointFit
+DRModels.PreparedFiniteJointModel
+DRModels.PreparedFiniteJointFit
+DRModels.prepared_joint_model
+DRModels.prepared_joint_rowloglik
+DRModels.prepared_joint_conditional_moments
 DRModels.fit_prepared_joint
 ```
+
+### [Prepared negative log-likelihood](@id prepared_joint_nll)
+
+`prepared_joint_nll(model, theta)` returns
+`-sum(prepared_joint_rowloglik(model, theta))` for the prepared Gaussian,
+finite-state, and two-Gaussian-predictor routes. It evaluates the supplied
+parameter vector without fitting the model. Predictor-only rows retain their
+predictor likelihood; rows with the response and all modelled predictors missing
+contribute zero. These are Experimental array interfaces with the same
+admission and uncertainty limits described above.
 
 ### Prepared-model summaries and finite-state imputations
 
@@ -359,4 +376,8 @@ listed below.
 marginal_nll
 CoevoProblem
 lc_to_cov
+```
+
+```@docs
+DRModels.joint_missing_summary
 ```

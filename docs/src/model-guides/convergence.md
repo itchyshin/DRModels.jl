@@ -162,7 +162,7 @@ optimiser minimised, in the same order and on the same scale as `coef(fit)`.
 
 ## Step 3 — scale and standardise
 
-Most convergence trouble is conditioning. Two cheap fixes:
+Check conditioning first. Two cheap fixes:
 
 - **Standardise covariates.** Predictors on wildly different scales make the
   Hessian ill-conditioned. Centre and scale continuous covariates before fitting.
