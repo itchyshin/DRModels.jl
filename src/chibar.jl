@@ -136,6 +136,16 @@ REML fits whose fixed structure differs, a sentinel log-likelihood, different
 marginal approximations, a penalized MAP fit, and fits on different
 observation rows (not only a different `nobs`).
 
+# Finite-sample behaviour: Poisson vs NegBinomial2
+The 50:50 mixture is the asymptotic null law, and it is accepted as is for the
+family nest `lrt_boundary(nb, pois; q = 1)` (`Poisson` ⊂ `NegBinomial2`, where the
+extra dispersion `sigma` sits on the boundary). In finite samples it is
+**conservative** for this pair: in 500 Poisson-null replicates (n = 250, `y ~
+Poisson(exp(0.4 + 0.3 x))`, nominal α = 0.05) the 50:50 p-value rejected in about
+3% of replicates (15/500), against 1.8% (9/500) for the naive `lrtest` χ²₁ p-value.
+So a `pvalue` just above 0.05 here is not evidence for the Poisson model, and the
+test is somewhat low-powered near the boundary; no mixture weights are changed.
+
 # Example
 ```julia
 # Random intercept vs no random effect: dropping (1 | g) removes ONE variance.
