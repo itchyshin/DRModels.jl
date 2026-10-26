@@ -212,5 +212,18 @@ class DocumentationSemantics(unittest.TestCase):
         old = "This is deliberately conservative: ‘tested’ means the route has a worked example and routine checks for the listed use."
         with self.assertRaisesRegex(AssertionError, "numerical checks"):
             assert_tested_definition_scope(old)
+
+    def test_marginal_comparison_claims_are_bound_to_the_retained_smoke(self):
+        text = " ".join(self.text("docs/src/model-guides/marginal-la-vs-va.md").split())
+        report_url = (
+            "https://github.com/itchyshin/DRModels.jl/blob/"
+            "64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716/report/va-vs-laplace-bias.md"
+        )
+        self.assertIn(report_url, text)
+        self.assertRegex(text, r"three-seed smoke")
+        self.assertIn("does not establish general accuracy or coverage", text)
+        self.assertNotIn("295 to 501 units", text)
+        self.assertNotIn("3.2 to 20 times", text)
+        self.assertNotRegex(text, r"depend on the optimiser, the OS, or the BLAS")
 if __name__ == "__main__":
     unittest.main()

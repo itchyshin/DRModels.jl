@@ -13,8 +13,11 @@
     Gamma, and Beta `(1 | g)` via `drm(...; marginal = :VA)` (scale families need
     `sigma ~ 1`). That `loglik` is an ELBO, not a Laplace log-likelihood. Mixed
     LA/VA AIC / LRT errors. Phylo / crossed / correlated slopes / ZI / hurdle /
-    `sigma ~ x` are not supported. In the evaluated Gamma random-intercept
-    model, LA and VA agree on shape while LA is faster.
+    `sigma ~ x` are not supported. In a retained three-seed smoke on one public
+    Gamma random-intercept example, LA and VA gave similar shape estimates;
+    warm VA fits took 15–21 times as long in the two timed replicates. This
+    smoke does not establish general accuracy or coverage. See the
+    [source-pinned report](https://github.com/itchyshin/DRModels.jl/blob/64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716/report/va-vs-laplace-bias.md).
 
 ## What "the marginal" is, and why it matters
 
@@ -28,9 +31,9 @@ L(θ) = ∫ p(y | z, θ) p(z | θ) dz.
 ```
 
 That integral has no closed form for non-Gaussian families, so it must be
-approximated. The quality of the approximation is not a side detail: it is what
-the dispersion, shape, and zero-inflation parameters are estimated *against*. A
-biased marginal biases exactly those parameters.
+approximated. The quality of the approximation matters because the dispersion,
+shape, and zero-inflation parameters are estimated against that marginal. An
+approximation error can affect those parameter estimates.
 
 ### The default `:LA` route
 
@@ -64,18 +67,13 @@ comparisons, the adaptive default was closer to the 61-node reference. This
 does not establish a general accuracy ranking. Use `:Laplace` when matching
 drmTMB's integration rule.
 
-The gap used to be larger. Before version 0.7.2, `:LA` integrated an ordinary
-`(1 | g)` on a fixed 32-node grid on the prior scale. On ten test datasets with a
-moderate family `sigma` (0.3 to 0.5) and a random-intercept SD of 0.6, that
-grid's log-likelihoods differed from drmTMB's by 0.06 to 1.3 units. When the
-family `sigma` is small, each group's integrand is sharply peaked and the fixed
-nodes missed it: on three Gamma and Beta test datasets with family `sigma`
-between 0.003 and 0.012, the old default reported `converged = true` with a
-log-likelihood 295 to 501 units below drmTMB's and a `sigma` 3.2 to 20 times
-drmTMB's, while `marginal = :Laplace` matched drmTMB on all three. Adaptive
-quadrature centres its nodes on each group's mode, which is what that grid
-lacked, but those datasets have not been re-run against the adaptive default.
-With a family `sigma` that small, compare the default fit with a `:Laplace` fit.
+Before version 0.7.2, the ordinary mean-random-intercept `:LA` route used a
+fixed, prior-centred 32-node grid; the current route uses adaptive, mode-centred
+quadrature. Historical low-`sigma` comparisons for the old route are not
+evidence about the current route. The retained smoke report below evaluates a
+different, single public Gamma example and does not establish general accuracy
+or coverage. Use `marginal = :Laplace` when the goal is to match drmTMB's
+integration rule.
 
 To reproduce drmTMB's numbers, request the Laplace approximation explicitly:
 
@@ -119,19 +117,20 @@ with the same `marginal`.
 
 The trouble starts when the integrand is **not** close to Gaussian:
 
-- **Skewed or heavy-tailed posteriors** — a single mode-plus-curvature match
-  understates the mass in the tail, so the integral, and the variance/shape
-  parameters tied to it, are off.
-- **Multimodal posteriors** — LA sees one mode and is blind to the others; which
-  mode it lands on can depend on the optimiser, the OS, or the BLAS.
-- **Dispersion / shape / zero-inflation parameters** — these read the *shape* of
-  the integrand, not just its peak, so they absorb the approximation error
-  first. Mean (location) parameters are comparatively robust.
+- **Skewed or heavy-tailed posteriors** — a single mode-plus-curvature match can
+  miss tail mass. The resulting integral and parameters tied to it may differ
+  from their values under a more accurate integration rule.
+- **Multimodal posteriors** — a one-mode curvature approximation does not
+  represent other modes or their contribution to the integral.
+- **Dispersion / shape / zero-inflation parameters** — these depend on more than
+  the integrand's peak and can be sensitive to integration error. Mean
+  (location) parameters can also be affected; the impact depends on the model
+  and data.
 
 ## Why the approximation can matter
 
-Related latent-variable models in GLLVModels.jl illustrate two geometries in
-which a one-mode curvature approximation can be unreliable:
+Related latent-variable models in GLLVM.jl illustrate two geometries in which
+a one-mode curvature approximation may be unreliable:
 
 - **Two-part Gamma shape.** A Gamma shape parameter can be sensitive to how a
   single-mode approximation represents a skewed positive density. The available
@@ -178,9 +177,10 @@ needs:
   reduces to a single integral over the scalar `η`, approximated with the
   configured Gauss–Hermite nodes.
 
-Because `q` carries a *variance* `v`, not just a location, it represents tail and
-spread directly, so the shape and dispersion parameters are no longer estimated
-against a curvature match at a single point.
+Because `q` carries a *variance* `v`, it represents latent spread as well as
+location. The factorised Gaussian approximation still cannot represent every
+tail shape, dependence structure, or multiple modes, so the ELBO remains an
+approximation to the marginal likelihood.
 
 ## When to use which
 
@@ -188,15 +188,16 @@ against a curvature match at a single point.
 |---|---|
 | Fixed-effects-only model | VA adds nothing — there is no latent integral to approximate. |
 | Gaussian response with a Gaussian RE entering the mean linearly and independent residual variance | VA adds nothing — the marginal is already exact here. |
-| Ordinary Gamma `(1\|g)` shape | LA ≈ VA in the scoped Gamma comparison; **prefer LA** (15–20× faster warm, timed before version 0.7.2 with the fixed 32-node grid). |
+| Ordinary Gamma `(1\|g)` shape | LA and VA gave similar shape estimates in one three-seed smoke; warm VA fits were 15–21× slower in the two timed replicates. This is not a general accuracy, coverage, or runtime result; see the [source-pinned report](https://github.com/itchyshin/DRModels.jl/blob/64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716/report/va-vs-laplace-bias.md). |
 | Two-part / hurdle / ZINB geometry | VA may help in principle, but **DRModels.jl does not currently support these VA models**. |
 | Speed-critical fits | Route-specific: `:LA` is the default; non-Gaussian scalar random intercepts use per-group adaptive quadrature (5 nodes for most families). |
 
 In short: **`:LA` is the default and its numerical implementation is
-route-specific.** On the public Gamma random-intercept cell, Julia matches the
-R/TMB pattern: the two marginals agree on `α` and LA wins on time
-in the evaluated Gamma comparison. The two-part and zero-inflated models where
-VA could be most useful are not currently supported here.
+route-specific.** In the retained three-seed smoke on one public Gamma
+random-intercept example, LA and VA gave similar `α` estimates and LA was
+faster in the two warm replicates. That small comparison does not establish a
+general accuracy or runtime ranking. The two-part and zero-inflated models
+where VA could be useful are not currently supported here.
 
 ## The public API (Experimental)
 
@@ -251,10 +252,11 @@ fit.converged   # true, with every group's inner solve stationary
 coef(fit)       # ≈ [2.837, 1.430]; ELBO ≈ -24.88
 ```
 
-On Gamma `(1 | g)`, the evaluated comparison finds LA ≈ VA on shape `α` and LA is
-much faster. VA beyond random
-intercepts (phylo / crossed / ZI / hurdle) and two-part models is not supported
-here.
+On one public Gamma `(1 | g)` example, the retained three-seed smoke found
+similar LA and VA estimates of shape `α`, with LA faster in the two warm
+replicates. It does not establish general accuracy, coverage, or runtime.
+VA beyond random intercepts (phylo / crossed / ZI / hurdle) and two-part models
+is not supported here. See the [source-pinned smoke report](https://github.com/itchyshin/DRModels.jl/blob/64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716/report/va-vs-laplace-bias.md).
 
 ## How this differs from drmTMB
 
@@ -263,10 +265,11 @@ marginal alongside LA is therefore a Julia-only option; a VA result should not
 be interpreted as reproducing drmTMB's marginal likelihood. The option is most
 relevant where a one-mode approximation is scientifically questionable, such as
 two-part shape or ZINB multimodality, although those VA models are not currently
-supported in DRModels.jl. On ordinary Gamma `(1 | g)`, the evaluated comparison
-does **not** show a VA accuracy edge; prefer LA over VA: the default `:LA` (adaptive
-GHQ with 5 nodes per group on this cell since version 0.7.2; the comparison
-used the earlier fixed grid), or `marginal = :Laplace` to fit drmTMB's Laplace approximation.
+supported in DRModels.jl. On one ordinary Gamma `(1 | g)` example, the retained
+three-seed smoke did **not** show a VA accuracy edge. That small comparison does
+not rank accuracy or runtime generally. Use the default `:LA` for the current
+adaptive route, or `marginal = :Laplace` to fit drmTMB's Laplace approximation.
+See the [source-pinned report](https://github.com/itchyshin/DRModels.jl/blob/64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716/report/va-vs-laplace-bias.md).
 
 ## See also
 
