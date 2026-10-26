@@ -74,8 +74,9 @@ REML is also unavailable for the structured models; use `method = :ML`
 
 ```julia
 d = (; y1 = exp.(0.4 .+ randn(200)), y2 = exp.(0.1 .+ randn(200)), x = randn(200))
-fit = drm(bf(@formula(y1 ~ x), @formula(y2 ~ x),
-             @formula(sigma1 ~ 1), @formula(sigma2 ~ 1), @formula(rho12 ~ 1)),
+fit = drm(bf(mu1 = @formula(y1 ~ x), mu2 = @formula(y2 ~ x),
+             sigma1 = @formula(sigma1 ~ 1), sigma2 = @formula(sigma2 ~ 1),
+             rho12 = @formula(rho12 ~ 1)),
           LogNormal(); data = d)
 coef(fit)      # mu1/mu2 on the log scale
 corpairs(fit)  # log-residual rho12

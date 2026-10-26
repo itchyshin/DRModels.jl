@@ -76,17 +76,19 @@ binomial-type responses — see the
 
 Pick the family from the *shape* of the response; the
 [Choosing response families](distribution-families.md) guide has the full
-decision table and worked examples. DRModels.jl implements drmTMB's complete family
-set:
+decision table and worked examples. The fifteen response-family constructors
+are listed below; SkewNormal is an advanced fixed-effect route:
 
 | Family | Response | Mean link | `sigma` slot / extras |
 |---|---|---|---|
 | [`Gaussian`](@ref) | real-valued, symmetric | identity | residual SD `σ` (log) |
 | [`Student`](@ref) | real-valued, heavy tails | identity | scale `σ` + d.o.f. `nu` |
+| [`SkewNormal`](@ref) | real-valued, asymmetric (fixed effects only) | identity on mean `μ` | scale `σ` + slant `nu` (identity) |
 | [`LogNormal`](@ref) | positive, multiplicative | identity on `log y` | SD of `log y` |
 | [`Gamma`](@ref) | positive, continuous | log | CV → shape `α = 1/σ²` |
 | [`Tweedie`](@ref) | positive **with exact zeros** | log | √dispersion `σ` + power `nu` ∈ (1,2) |
 | [`Poisson`](@ref) | counts (var ≈ mean) | log | — (`+ zi` / `+ hu`) |
+| [`TruncatedPoisson`](@ref) | positive counts (≥ 1) | log (untruncated rate) | None |
 | [`NegBinomial2`](@ref) | overdispersed counts (NB2) | log | dispersion `θ` (`+ zi` / `+ hu`) |
 | [`TruncatedNegBinomial2`](@ref) | positive counts (≥ 1) | log | dispersion `θ` |
 | [`Beta`](@ref) | proportions in (0,1) | logit | precision `φ = 1/σ²` |
@@ -119,11 +121,16 @@ Write them as terms in the mean formula:
 intercept/slope, correlated and crossed RE, phylo / spatial / animal / relmat
 structure, `meta_V`, and a random effect *on* `sigma` — fit in closed form or
 via a sparse augmented-state Laplace approximation. The non-Gaussian families
-(Poisson, NB2, Binomial, Gamma, Beta, Student-t, LogNormal, Beta-binomial,
+(Poisson, NB2, Binomial, Gamma, Beta, Student-t, Beta-binomial,
 Tweedie and CumulativeLogit) carry random intercepts via Gauss–Hermite
-marginals, and random slopes for every one of them except `Binomial()`, which
-supports `(1 | g)` on the mean only. The [capability matrix](../capabilities.md) records which slope form —
-independent or correlated — each family admits.
+marginals, with family-specific random-slope support. `Binomial()` admits a
+correlated `(1 + x | g)` mean effect but refuses an independent `(0 + x | g)`
+term; enough within-group information is needed to identify the correlated
+effect. The [capability matrix](../capabilities.md) records which independent
+or correlated slope forms each family admits.
+`LogNormal()` ordinary mean random-intercept fits use a single mode-centred
+Gauss–Hermite node, which is exact because the response is Gaussian on
+`log(y)`. Its crossed and structured routes delegate to Gaussian fitters.
 **Phylogenetic** (`phylo`) effects go via a sparse Laplace path for Poisson,
 NB2, Binomial, Gamma, Beta, Beta-binomial and CumulativeLogit. On that path NB2, Gamma and Beta
 accept a covariate dispersion formula `sigma ~ x` (a per-observation log σ),

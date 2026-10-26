@@ -2,10 +2,10 @@
 
 !!! note "Status — Tested (Gaussian mean, ML)"
     Mirrors drmTMB's *Temporal AR1, OU, and Toeplitz effects* article
-    (`vignettes/temporal-random-effects.Rmd`). That article and drmTMB's
-    `temporal()` term are in drmTMB's **development version** only: they are
-    not yet in a drmTMB release or on its main branch, so released drmTMB
-    reports an unknown term for the R spellings below. **In DRModels.jl today:** one
+    ([R tutorial](https://itchyshin.github.io/drmTMB/articles/temporal-random-effects.html)).
+    The article and `temporal()` term are available on drmTMB's `main` branch.
+    Check your installed version before using the R spellings below.
+    **In DRModels.jl today:** one
     intercept-only `temporal(1 | id, time, ar1)` or `temporal(1 | id, time, ou)`
     term on the Gaussian **mean**, with `sigma ~ 1`, fitted by ML, optionally
     alongside an ordinary `(1 | id)` on the same `id`, or (OU only) alongside a
@@ -181,11 +181,10 @@ drmtmb_fitted = Float64.(ar1_ref["conditional"]["fitted"])   # drmTMB's fitted(f
  max_abs_diff = maximum(abs.(conditional .- drmtmb_fitted)))
 ```
 
-All 288 conditional values agree with drmTMB's `fitted(fit)` to the
-`max_abs_diff` shown. That agreement is looser than the agreement of the
-estimates because of drmTMB's side: for this fit, the modes drmTMB stores are
-not exactly the modes at its own reported optimum, while DRModels.jl's modes
-are exact. The residuals below inherit the same small difference.
+This example compares all 288 conditional fitted values and prints their
+maximum absolute difference. Treat that value as specific to this fixture, not
+as a general prediction-parity result. The residuals below use the same
+conditional convention, with the definition and boundary caveat stated here.
 
 Standardised residuals use the same conditional convention as drmTMB's
 Pearson and quantile residuals. `residuals(fit; type = :quantile)` is
@@ -263,9 +262,9 @@ expect profile limits to agree less tightly than the Wald limits; the
 differences on this page are measured, not asserted.
 
 No coverage is claimed for AR1 intervals of either kind. drmTMB's first AR1
-calibration pilot found a residual-SD boundary in a primary short-series case,
-so its AR1 profile and Wald intervals carry no coverage claim, and DRModels.jl
-makes none either.
+calibration pilot found a primary short-series fit with false convergence,
+a non-positive-definite Hessian, and unavailable coefficient intervals.
+That result provides no coverage evidence for either package.
 
 drmTMB refuses every interval for `sigma`, the variance components and the
 persistence or decay: Wald, profile and bootstrap. DRModels.jl returns them as
@@ -355,13 +354,14 @@ of this model (its article computes this one with `profile_engine =
 compare_ci(confint(toeplitz_fit; method = :profile, parm = :mu => "treatment"), toep_ref["profile"])
 ```
 
-A retained 4,000-fit drmTMB campaign qualified these mean-effect profiles in
-three predeclared 80-site, six-occasion panels: AR1-shaped, non-exponential,
-and negative first-lag correlation patterns. The 20-site stress panel had
-lower intercept coverage, so this is evidence for those primary panel
-designs, not a coverage claim for every Toeplitz analysis, and it was obtained
-with drmTMB: DRModels.jl reproduces the same likelihood, but no separate
-calibration study has been run on its intervals. Both packages refuse Wald
+A retained 4,000-fit drmTMB campaign, reported in the drmTMB
+[temporal-effects article](https://itchyshin.github.io/drmTMB/articles/temporal-random-effects.html),
+qualified these mean-effect profiles in three predeclared 80-site,
+six-occasion panels: AR1-shaped, non-exponential, and negative first-lag
+correlation patterns. The 20-site stress panel had lower intercept coverage,
+so this is evidence for those primary panel designs, not a coverage claim for
+every Toeplitz analysis. It is drmTMB evidence; this page cites no separate
+DRModels.jl calibration study for these intervals. Both packages refuse Wald
 covariance and intervals (`vcov`, `stderror`, `confint(fit)`,
 `predict(...; se = true)`) and profile intervals for `sigma` or the lag
 correlations. `confint(fit; method = :profile)` without `parm` profiles the
@@ -444,9 +444,10 @@ calibration evidence. On these data drmTMB's check gives:
 ou_ref["check_drm"]
 ```
 
-The status is a `note` (profile intervals are available for this fit, with
-calibration unqualified), not a warning, so by drmTMB's rule the interval may
-be reported, without a coverage claim.
+The displayed `note` says profile intervals are available for this fit while
+calibration remains unqualified. It is status information for this example,
+not interval-coverage evidence; under drmTMB's reporting rule the interval may
+be reported without a coverage claim.
 
 DRModels.jl has **no equivalent check yet**: its `check_drm` does not assess
 temporal profile intervals. Before reporting a DRModels.jl OU profile
@@ -455,14 +456,16 @@ uncalibrated.
 
 drmTMB qualified fixed-mean profile intervals for OU in a retained 3,000-fit
 campaign across three predeclared scenarios (80 sites measured at 6 or 12
-irregular occasions, with and without stable site intercepts). That result
-does not establish general temporal coverage, it was obtained with drmTMB,
-and this page does not extend it: DRModels.jl reproduces the same likelihood,
-but no separate calibration study has been run on its intervals. drmTMB
+irregular occasions, with and without stable site intercepts), as reported in
+its [temporal-effects article](https://itchyshin.github.io/drmTMB/articles/temporal-random-effects.html).
+That result does not establish general temporal coverage and does not establish
+calibration for DRModels.jl; this page cites no separate DRModels.jl interval
+calibration study. drmTMB
 refuses all OU Wald intervals, and every interval for `sigma`, the decay and
 the variance components. DRModels.jl returns them as described for AR1 above:
-as an extension, without a calibration claim, and without a warning that they
-are uncalibrated.
+as an extension, without a calibration claim. Warning behavior depends on the
+specific method and route; do not interpret the absence of a warning as
+calibration evidence.
 
 ## Phylogenetic stable effects with OU deviations
 
@@ -620,15 +623,15 @@ out = drm_bridge(; formula = "y ~ treatment + (1 | site) + " *
 
 ## Evidence
 
-Eight drmTMB parity cells — AR1 and OU, each with and without `(1 | id)`, on
-these two datasets and on two further simulated fixtures — are checked on
-every test run (`test/test_parity_temporal.jl`, cells in
-`test/parity/temporal/`). In the measured run (Julia 1.12.6 on Linux, Totoro),
-the log-likelihood agreed with drmTMB to better than ``10^{-10}`` and every
-coefficient, SD, persistence and decay to better than ``10^{-8}`` relative.
-The tests enforce looser tolerances, ``10^{-8}`` absolute for the
-log-likelihood and ``10^{-6}`` relative for the parameters, to leave room for
-other platforms. The likelihood itself is also checked against
+An early measured run covered eight AR1/OU parity cells, each with and without
+`(1 | id)`, on two tutorial datasets and two simulated fixtures. The reference
+outputs were generated with drmTMB 0.7.1 on 2026-10-02; the reported measured
+run used Julia 1.12.6 on Linux (Totoro). It reported log-likelihood differences
+below ``10^{-10}`` and parameter differences below ``10^{-8}`` relative. The
+current test suite contains 13 temporal parity fixtures, including paired
+phylogenetic OU and homogeneous Toeplitz routes. Its assertions use ``10^{-8}``
+absolute for log-likelihood and ``10^{-6}`` relative for parameters, rather
+than the tighter reported measurements. The likelihood is also checked against
 a dense multivariate-normal oracle (`test/test_temporal_ar1.jl`,
 `test/test_temporal_ou.jl`).
 
@@ -642,13 +645,15 @@ to ``2 \times 10^{-15}`` relative, including partial autocorrelations near
 ±1, and its partial-autocorrelation parameterisation against dense Schur
 complements (`test/test_temporal_homtoep.jl`).
 
-Two more cells cover the paired phylogenetic + OU model: drmTMB's article data
-above and a 24-species simulated fixture. On Julia 1.10.12 and 1.13 (Linux, Totoro)
-they agree with drmTMB to about ``10^{-11}`` in logLik and to
-``2 \times 10^{-9}`` (relative) or better in every estimate; the conditional
-fitted values and the conditional residuals (`residuals(fit; type = :quantile)`
-against drmTMB's Pearson residuals) agree to ``10^{-10}`` or better. The exact
-figures vary a little with the Julia version and with bounds checking. Their numbers come from drmTMB
+Two cells cover the paired phylogenetic + OU model: drmTMB's article data
+above and a 24-species simulated fixture. On Julia 1.10.12 and 1.13 (Linux,
+Totoro), the recorded comparison reports logLik and parameter differences for
+these fixtures; the current regression test checks conditional fitted values
+and parameter agreement at its stated tolerances. For conditional residuals
+(`residuals(fit; type = :quantile)` against drmTMB's Pearson residuals), the
+test asserts an absolute difference no greater than ``10^{-6}``; it does not
+support a tighter general bound, so none is claimed here. The exact figures
+vary with Julia version and bounds checking. The reference numbers come from drmTMB
 development commit `012258e9f` (recorded in each cell's
 `expected.meta.toml`). The paired likelihood is checked against a dense oracle
 (``9.2 \times 10^{-13}``, including the decay and stable-SD extremes and a

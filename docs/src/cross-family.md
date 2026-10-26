@@ -117,9 +117,9 @@ correlation scale:
 
 | Field             | Method                                   | When to use |
 |-------------------|------------------------------------------|-------------|
-| `rho_ci_wald`     | Fisher-z (delta method on `atanh ρ`)     | Always computed (`confint = true`); cheapest. |
-| `rho_ci_profile`  | Profile likelihood (`profile = true`)    | **Recommended** — best calibrated near the boundary. |
-| `rho_ci_boot`     | Parametric bootstrap (`B = …` refits)    | Most robust; most expensive. |
+| `rho_ci_wald`     | Fisher-z (delta method on `atanh ρ`)     | Computed with `confint = true`; inspect covariance diagnostics. |
+| `rho_ci_profile`  | Profile likelihood (`profile = true`)    | Inspect likelihood shape and endpoint diagnostics; coverage is not established. |
+| `rho_ci_boot`     | Parametric bootstrap (`B = …` refits)    | Model-based resampling; inspect refit failures and successful-refit counts. |
 
 - **Fisher-z Wald** applies the delta method to `atanh(ρ(θ))` using the observed
   information (the Hessian of the marginal negative log-likelihood), then maps
@@ -127,15 +127,15 @@ correlation scale:
   transform keeps the interval inside `(-1, 1)`. Returns `(NaN, NaN)` if the
   Hessian is not invertible.
 
-- **Profile likelihood** (recommended) re-optimises the model under a soft
-  constraint that fixes `ρ(θ)` at a trial value on the `atanh` scale, and bisects
-  for the values where the deviance rises by the `χ²(1)` quantile. It is better
-  calibrated than Wald when `ρ` is near `±1`, and cheaper than the bootstrap.
+- **Profile likelihood** re-optimises the model under a soft constraint that
+  fixes `ρ(θ)` at a trial value on the `atanh` scale, and bisects for the values
+  where the deviance rises by the `χ²(1)` quantile. Its calibration is asymptotic;
+  no interval-coverage study establishes superiority over Wald for these routes.
 
 - **Parametric bootstrap** resamples the shared latent and the per-family draws
   at the fitted parameters, refits each replicate, and takes the percentile
-  interval of the resulting `ρ̂`. It makes the fewest distributional assumptions
-  but costs `B` extra fits.
+  interval of the resulting `ρ̂`. It depends on the fitted joint model and
+  costs `B` extra fits; finite endpoints do not by themselves establish coverage.
 
 ## Worked example: Gaussian × Poisson
 

@@ -164,8 +164,8 @@ the bivariate keyword form), returning a column `NamedTuple` ready to pass strai
 to [`drm`](@ref). This is **listwise deletion** (a.k.a. complete-case analysis).
 
 ```julia
-clean = drm_listwise(bf(y ~ x, sigma ~ x), data)        # @warn names the dropped rows
-fit   = drm(bf(y ~ x, sigma ~ x), Gaussian(); data = clean)
+clean = drm_listwise(bf(@formula(y ~ x), @formula(sigma ~ x)), data)        # @warn names the dropped rows
+fit   = drm(bf(@formula(y ~ x), @formula(sigma ~ x)), Gaussian(); data = clean)
 ```
 
 Why this exists: `drm` itself drops rows with a `missing` predictor (and a missing

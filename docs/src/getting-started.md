@@ -213,8 +213,9 @@ therefore report different log-likelihoods for the same model, by about 0.001
 to 0.24 units on the count, Beta, Gamma and Student datasets compared so far.
 To reproduce drmTMB's numbers for Poisson, Binomial or Student, or for
 NegBinomial2, Gamma or Beta with `sigma ~ 1`, pass `marginal = :Laplace`. That
-option is for parity, not a better default: the adaptive quadrature is usually
-the more accurate integral. Compare `loglik`,
+option provides a matched approximation for package comparisons. The listed
+log-likelihood differences do not establish which approximation is more
+accurate. Compare `loglik`,
 `lrtest`, `aic` and `bic` only between fits that use the same approximation.
 The [drmTMB parity page](drmtmb-parity.md#Default-marginal-approximation)
 lists the defaults for the main random-effect routes and the models that
