@@ -1,17 +1,17 @@
 # Capability parity with drmTMB
 
-DRM.jl is the Julia twin of R's `drmTMB` — a from-scratch distributional-regression
+DRModels.jl is the Julia twin of R's `drmTMB`, a from-scratch distributional-regression
 engine (mean μ, scale **σ**, residual correlation **ρ12**) built around a sparse,
-exact-gradient Laplace substrate. This page says where DRM.jl stands against
+exact-gradient Laplace substrate. This page says where DRModels.jl stands against
 `drmTMB`, and, separately, where the R↔Julia bridge (`engine = "julia"`)
-stands against DRM.jl's own direct-Julia engine. **ML is the default** (REML likelihoods aren't comparable
+stands against DRModels.jl's own direct-Julia engine. **ML is the default** (REML likelihoods aren't comparable
 across fixed-effect structures); REML is opt-in.
 
 Naming is kept stable across both packages: `sigma`, never `tau`, for scale;
 `rho12` for bivariate residual correlation. Group-level (phylo/spatial/study)
 covariance summaries are named structured-effect terms, not `rho12`.
 
-Legend: ✅ available · 🔨 in progress · ⬜ planned · ⚡ DRM.jl advantage.
+Legend: ✅ available · 🔨 in progress · ⬜ planned · ⚡ DRModels.jl advantage.
 
 ## The route axis
 
@@ -22,48 +22,48 @@ overclaim parity:
 | Column | What it answers |
 |:-------|:-----------------|
 | **Native R** (drmTMB/TMB) | Does the R package's own C++/TMB engine fit this model? |
-| **Direct Julia** (DRM.jl) | Does DRM.jl's own engine fit this model, called directly from Julia? |
-| **R bridge** (`engine = "julia"`) | Does calling `drmTMB(..., engine = "julia")` from R reach DRM.jl and return a result? |
-| **Inference evidence** | What evidence exists that the *numbers* agree (coefficients, SEs, logLik, and — separately, rarely — interval coverage)? |
+| **Direct Julia** (DRModels.jl) | Does DRModels.jl's own engine fit this model, called directly from Julia? |
+| **R bridge** (`engine = "julia"`) | Does calling `drmTMB(..., engine = "julia")` from R reach DRModels.jl and return a result? |
+| **Inference evidence** | What evidence exists that the *numbers* agree (coefficients, SEs, logLik, and separately assessed interval coverage)? |
 
 **"Covered" in the drmTMB ledger is a capability claim, never a coverage
-claim.** A row can be `claim_status = covered` — implemented, tested,
-documented, with point/SE/logLik parity evidence — while its interval-coverage
-fence stays completely untouched. Every row's R-bridge route is `experimental`
-by construction (see [Honest gaps](#Honest-gaps)): "covered" describes what the
-*direct-Julia engine* delivers and what evidence backs it, not that the R
-bridge is production-ready.
+claim.** A row can be `claim_status = covered` (implemented, tested,
+documented, with point/SE/logLik parity evidence) while its interval-coverage
+fence stays separate. The R bridge has its own admission status and restrictions;
+strong direct-Julia evidence does not by itself qualify an R bridge route.
 
 ## Compared routes
 
-Twelve capabilities are tracked, sourced from `drmTMB`'s
+The twelve selected capabilities below are sourced from `drmTMB`'s
 `inst/extdata/julia-capabilities.tsv`. The **claim boundary** column carries
-each row's evidence honestly — several rows have no native R comparator at
+each row's evidence; several rows have no native R comparator at
 all, so their evidence route is simulation recovery or same-target
 native-vs-native agreement, not R-vs-Julia parity in the ordinary sense.
 
 | Capability | Route (plain English) | Native R | Direct Julia | R bridge | Inference evidence |
 |:-----------|:-----------------------|:--------:|:-------------:|:--------:|:---------------------|
-| `base_gaussian_location_scale` | Gaussian location-scale, `bf(y~x, sigma~z)` | ✅ | ✅ | 🔨 | ✅ coef/SE/logLik parity (2026-08-24/08-15) |
-| `biv_gaussian_residual` | Bivariate Gaussian, residual `rho12` | ✅ | ✅ | 🔨 | ✅ one-draw coef/SE/logLik parity, n=400 |
+| `base_gaussian_location_scale` | Gaussian location-scale, `bf(y~x, sigma~z)` | ✅ | ✅ | ✅ supported | ✅ coef/SE/logLik parity (2026-08-24/08-15) |
+| `biv_gaussian_residual` | Bivariate Gaussian, residual `rho12` | ✅ | ✅ | ✅ supported | ✅ one-draw coef/SE/logLik parity, n=400 |
 | `gaussian_phylo_mean` | Gaussian phylo random intercept on the mean | ✅ | ✅ | 🔨 | ✅ phylo-SD agreement + measured mean-block coverage; sigma-axis solver defect open |
-| `gaussian_response_mask` | Missing Gaussian response, `response="include"` | ✅ | ✅ | 🔨 | ✅ include==drop equality, cross-engine `\|Δlogℓik\| = 4e-10` |
-| `biv_q4_phylo_reml` | q4 bivariate phylo location-scale, REML | ✅ | ✅ | ⬜ (halted by design) | ✅ coef parity; measured coverage argues **against** promotion (off-diagonal phylocov under/over-covers) |
-| `phylo_count_large_p` | Poisson/NB2 with large-p sparse phylo RE | ✅ | ✅ | 🔨 | ✅ SE parity to p=3000 (199–295×); p=10,000 is DRM.jl-only, no native comparator attempted |
+| `gaussian_response_mask` | Missing Gaussian response, `response="include"` | ✅ | ✅ | ✅ supported | ✅ include==drop equality, cross-engine `\|Δlogℓik\| = 4e-10` |
+| `biv_q4_phylo_reml` | q4 bivariate phylo location-scale, REML | ✅ | ✅ | 🔨 experimental | ✅ coef parity; measured coverage argues **against** promotion (off-diagonal phylocov under/over-covers) |
+| `phylo_count_large_p` | Poisson/NB2 with large-p sparse phylo RE | ✅ | ✅ | 🔨 | ✅ SE parity to p=3000 (199–295×); p=10,000 is DRModels.jl-only, no native comparator attempted |
 | `phylo_gamma_beta_binomial` | Gamma/Beta/Binomial with phylo RE | ✅ | ✅ | 🔨 | ✅ native-vs-native coef/SE/logLik parity, one fixture |
 | `general_covariance_structured` | `relmat()` / relatedness K, Gaussian/Poisson/NB2/Gamma | ✅ | ✅ | 🔨 | ✅ SE parity to 1e-7–1e-6, one seed/family |
-| `cross_family_latent` | Shared-latent mixed-family (e.g. Gaussian × Poisson) | ⬜ **no native comparator** | ✅ | 🔨 (via drmTMB's own xfam bridge, not DRM.jl's `bridge.jl`) | ⚡ simulation recovery only — a parity claim is structurally impossible here |
+| `cross_family_latent` | Shared-latent mixed-family (e.g. Gaussian × Poisson) | ⬜ **no native comparator** | ✅ | 🔨 (via drmTMB's own xfam bridge, not DRModels.jl's `bridge.jl`) | ⚡ simulation recovery only; a parity claim is structurally impossible here |
 | `engine_control_surface` | `drm_control(optimizer=list(g_tol=…, algorithm=…))` | `DRMControl(optimizer=:default/:lbfgs/:bfgs)` on qualified primary ML routes | ✅ | 🔨 | 🟡 Julia route-specific selector tested; R control-surface translation, profile/bootstrap forwarding and other routes remain open. No performance/interval claim. |
-| `plain_binomial_nonphylo` | Fixed-effect binomial trials, no random effects | ✅ | ✅ | 🔨 | ✅ logLik/coef `2.48e-13`, SE `1.27e-9` abs |
+| `plain_binomial_nonphylo` | Fixed-effect binomial trials, no random effects | ✅ | ✅ | ✅ supported | ✅ logLik/coef `2.48e-13`, SE `1.27e-9` abs |
 | `location_scale_scale` | Location-scale-scale, `sd(group)`/`sd(group, phylogenetic)` | ✅ | ✅ | 🔨 | ✅ exact agreement across the Mizuno M2–M6q ladder (Δlogℓik = 0.000000) |
 
-All twelve rows carry `r_bridge_status = experimental` in the source ledger —
-none is promoted past that regardless of how strong the direct-Julia evidence
-is. Eleven of twelve rows are `claim_status = covered`; `cross_family_latent`
-is `partial` by a **permanent, owner-signed boundary** (D-179 #3) — no native
-R comparator for a mixed-family pair can exist in drmTMB, so the row cannot
-reach `covered` on the ordinary parity bar and simulation-recovery evidence
-is deliberately not being spent on it.
+For these twelve selected rows, the source ledger records four R bridge routes
+as `supported` and eight as `experimental`. Ten have `claim_status = covered`;
+`cross_family_latent` is `partial`, and `engine_control_surface` is
+`experimental`. These statuses apply to each documented route and its limits,
+not every model in a family. The ledger also contains other capabilities.
+The R bridge remains Experimental as an overall interface; a `supported`
+route entry does not make every bridge input stable or supported.
+A mixed-family pair without a native R comparator cannot establish ordinary
+R-versus-Julia parity through simulation recovery alone.
 
 ## Default marginal approximation
 
@@ -105,26 +105,25 @@ stayed within about 5e-4 of it. A later Poisson `(1 | g)` comparison
   on the mean of Poisson, Binomial, NegBinomial2, Gamma and Beta (with
   `sigma ~ 1`) or Student, and for a Gaussian random intercept on `sigma`
   (`sigma ~ 1 + (1 | g)`, fixed-effect `sigma` covariates allowed) with a
-  fixed-effect mean, by maximum likelihood. Every other model whose `drm` takes a
-  `marginal` keyword (BetaBinomial included) refuses it, with an `ArgumentError`
-  except for shapes Student never fits, which raise a plain error; LogNormal,
-  ZeroOneBeta,
-  Tweedie, CumulativeLogit, SkewNormal, the truncated count families and every
-  bivariate model have no `marginal` keyword and raise a `MethodError`. Crossed
-  and structured routes need no option, because their default already is the
-  Laplace approximation.
-- **On the adaptive-quadrature cells, `:Laplace` is for parity, not a better
-  default.** The Laplace approximation is adaptive quadrature with a single
-  node, so the default's extra nodes usually make it the more accurate integral
-  of the same model, as on the datasets above. Laplace loses accuracy when
-  groups are small or counts sit near zero (binary data above all), where each
-  group's posterior is far from Gaussian. Gaussian `sigma ~ 1 + (1 | g)` is the
-  exception: its fixed grid loses accuracy as groups grow, so for large groups
-  `:Laplace` (or `:AGHQ`) is the more accurate choice; see the scale-axis row
-  of [What is tested](capabilities.md).
-- **Compare like with like.** Log-likelihoods, likelihood-ratio tests, AIC and
-  BIC are comparable only between fits that use the same approximation, and
-  across the two packages only when both use the Laplace approximation.
+  fixed-effect mean, by maximum likelihood. `LogNormal()` also accepts
+  `:Laplace` for one ordinary mean random intercept: it returns the same exact
+  single-node mode-centred quadrature fit as its default and records the
+  requested label. Other LogNormal models refuse this selector. For families
+  without a documented `:Laplace` route, use their default; a `marginal`
+  keyword is not accepted by every family. Crossed and structured
+  non-Gaussian routes generally use Laplace by default, with exact Gaussian
+  calculations for the delegated LogNormal routes.
+- **Match the integration rule for the comparison.** On the named adaptive-
+  quadrature test cells, the default was closer to the 61-node reference.
+  Extra nodes alone do not guarantee greater accuracy. Small groups and counts
+  near zero can produce non-Gaussian group posteriors, so inspect sensitivity
+  to the integration rule. Gaussian `sigma ~ 1 + (1 | g)` uses a fixed grid;
+  its recorded large-group comparisons favoured `:Laplace` or `:AGHQ`. See
+  the scale-axis row of [What is tested](capabilities.md).
+- **Compare like with like.** Use the same likelihood convention and
+  approximation when comparing log-likelihoods, likelihood-ratio tests, AIC
+  and BIC across these engines. For the random-effect cells discussed here,
+  match the integration rule before making a cross-package comparison.
   `fit.marginal` records the option (`:LA`, `:Laplace`, `:AGHQ` or `:VA`; the
   default Gaussian fit with `(1 | g)` on both the mean and `sigma` is tagged
   `:Laplace`). `lrtest` and `anova` refuse a pair whose tags differ (a fit with
@@ -146,7 +145,7 @@ the family draw. This matches drmTMB's default `simulate(fit)`
 (`re.form = NA`, for which `~0` is a synonym). It is the simulator the
 parametric bootstrap already used (#459, #462).
 
-The two packages differ in three ways:
+The packages differ in these additional ways:
 
 - **DRModels.jl needs `data`.** A fit does not keep its grouping columns, so a
   random-effect fit takes `data =`, the table it was fitted to (plus `tree`,
@@ -160,29 +159,32 @@ The two packages differ in three ways:
 - **drmTMB's `re.form = NULL` has no DRModels.jl counterpart.** It draws
   conditional on the fitted random-effect modes.
 
-`simulate(fit; newdata)` stays population level (random effects at zero) in
-DRModels.jl, whatever `re` says.
+For non-temporal fits, `simulate(fit; newdata)` stays population level (random
+effects at zero) in DRModels.jl, whatever `re` says. This `newdata` simulation
+route is Julia-only; drmTMB does not accept `newdata` for simulation. Temporal
+fits in DRModels.jl reject `newdata`.
 
 ## Performance
 
-- **Verified single-fit speedup:** on the real q4_p100 dataset, same Laplace
-  ML marginal, DRM.jl's direct-Julia engine (`fit_q4_sparse_tmb.jl`) converged
-  in 1.14 s (logLik −256.51, converged) against drmTMB's 2.48 s (logLik
-  −256.52, `converged=false` code 8) — **2.18× faster**, measured 2026-05-30.
-  This is a **then**-measured single-machine, single-fixture comparison, not a
-  standing warm-workflow claim (see `report/comparison-grid.md`).
+- **Retained single-fit comparison:** on the real q4_p100 dataset, using the
+  same Laplace ML objective, DRModels.jl's direct-Julia engine
+  (`fit_q4_sparse_tmb.jl`) converged in 1.14 s (logLik −256.51), while drmTMB
+  took 2.48 s (logLik −256.52, `converged=false` code 8). The R fit's false
+  convergence limits interpretation of the timing ratio. These measurements
+  describe one machine and fixture on 2026-05-30; they do not establish current
+  warm-workflow performance (see `report/comparison-grid.md`).
 - **O(p) sparse phylogenetic path (direct Julia only):** a biological
   per-dimension-variance model scales at k≈1.08 (near-perfect O(p)) from
   p=100 to **p=10,000** (112.9 s), using a Takahashi sparse-precision sampler
   that never forms the dense Σ_phy. A separate paired head-to-head against
   drmTMB 0.6.0 on Totoro found the ratio crosses over near p≈1000 (Julia
-  faster at p=100, drmTMB comparable-or-faster from p=1000 up) — an earlier
+  faster at p=100, drmTMB comparable-or-faster from p=1000 up). An earlier
   "~12× at p=10,000" figure was an **extrapolation** and has been retired.
 - **R-bridge warm-workflow performance is NOT yet measured (open gap, tracked
   informally as G5).** No number in this repo compares a *warm* R-bridge call
-  against native drmTMB or against DRM.jl's own direct-Julia path.
+  against native drmTMB or against DRModels.jl's own direct-Julia path.
 - A **2026-09-01 q4 bridge fixture run** exists in the repo's evidence trail
-  but is **execution evidence only** — it used a mismatched control preset
+  but is **execution evidence only**; it used a mismatched control preset
   and a cold Julia start. It demonstrates the bridge round-trips a q4
   fixture and returns a result; it makes **no bridge speed claim**, and
   should not be read as one.
@@ -193,9 +195,8 @@ DRModels.jl, whatever `re` says.
   ledger rows carry that status regardless of how mature the underlying
   direct-Julia engine is; none has been promoted to a production-ready bridge
   claim.
-- **Profile-likelihood and bootstrap parity are unverified.** A raw 343-tip
-  diagnostic fixture has shown unbounded upper confidence-interval endpoints;
-  this has not been resolved into a calibrated parity or coverage claim.
+- **Profile-likelihood and bootstrap parity are unverified.** This page does
+  not establish cross-engine agreement or interval coverage for either method.
 - **q4 phylogenetic covariance correlations are derived-only.** The scale-axis
   and cross-covariance entries of the q4 PLSM `Sigma_a` block have not been
   through a calibrated coverage campaign; measured evidence on
@@ -207,7 +208,7 @@ DRModels.jl, whatever `re` says.
   profile or bootstrap CIs on the q4 engine is not.
 - **Package registration waits for v0.7.1 (D-183); CRAN is a separate,
   independently held gate.** Neither this page nor any row on it implies
-  registration or CRAN release timing — those are tracked and gated
+  registration or CRAN release timing, which are tracked and gated
   elsewhere and are not claims this page makes.
 
 ---
@@ -217,7 +218,7 @@ Sources: `drmTMB`'s `inst/extdata/julia-capabilities.tsv` (12-row ledger,
 this repo's `docs/design/capability-status.md` (direct-Julia
 implemented/rejected/planned/missing audit); this repo's
 `report/comparison-grid.md` (2026-05-30 engine × model × objective grid, the
-source of the 2.18× and O(p) figures). Compiled 2026-09-01. The default marginal
+source of the retained single-fit and scaling figures). Compiled 2026-09-01. The default marginal
 approximation section was added 2026-10-16. Its seven- and ten-dataset figures
 come from this repository's class-1 Laplace parity comparison (2026-09-30,
 Poisson, Binomial, Beta, NegBinomial2, Gamma and Student random intercepts);

@@ -1546,8 +1546,10 @@ function _warn_bootstrap_sigma_percentile(formula, rows)
 end
 
 """
-    bootstrap_ci(formula, family; data, B = 300, level = 0.95, rng = default_rng(), threads = false, K =, A =, tree =, coords =, algorithm = :auto, g_tol = 1e-8)
-    bootstrap_ci(fit; data, B = 300, level = 0.95, rng = default_rng(), threads = false, K =, A =, tree =, coords =, algorithm = :auto, g_tol = 1e-8)
+    bootstrap_ci(formula, family::Gaussian; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true, algorithm = :auto, g_tol = 1e-8)
+    bootstrap_ci(formula, family; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true)
+    bootstrap_ci(fit::DrmFit{<:Gaussian}; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true, algorithm = :auto, g_tol = 1e-8)
+    bootstrap_ci(fit::DrmFit; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true)
 
 Parametric bootstrap confidence intervals: fit the model, then `simulate` `B`
 replicate responses, refit each, and take percentile intervals per coefficient.
@@ -1697,8 +1699,10 @@ function bootstrap_ci(
 end
 
 """
-    bootstrap_summary(formula, family; data, B = 300, level = 0.95, rng = default_rng(), threads = false, K =, A =, tree =, coords =, algorithm = :auto, g_tol = 1e-8)
-    bootstrap_summary(fit; data, B = 300, level = 0.95, rng = default_rng(), threads = false, K =, A =, tree =, coords =, algorithm = :auto, g_tol = 1e-8)
+    bootstrap_summary(formula, family::Gaussian; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true, algorithm = :auto, g_tol = 1e-8)
+    bootstrap_summary(formula, family; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true)
+    bootstrap_summary(fit::DrmFit{<:Gaussian}; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true, algorithm = :auto, g_tol = 1e-8)
+    bootstrap_summary(fit::DrmFit; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true)
 
 Parametric bootstrap coefficient summaries in one pass: point estimate,
 bootstrap standard error, and percentile confidence interval. This is the
@@ -1832,28 +1836,31 @@ function bootstrap_summary(
 end
 
 """
-    bootstrap_result(formula, family; data, B = 300, level = 0.95, rng = default_rng(), threads = false, failures = :error, check_converged = true, K =, A =, tree =, coords =, algorithm = :auto, g_tol = 1e-8, method = :ML, marginal = :LA, penalty = nothing)
-    bootstrap_result(fit; data, B = 300, level = 0.95, rng = default_rng(), threads = false, failures = :error, check_converged = true, K =, A =, tree =, coords =, algorithm = :auto, g_tol = 1e-8)
+    bootstrap_result(formula, family::Gaussian; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true, algorithm = :auto, g_tol = 1e-8, method = :ML, marginal = :LA, penalty = nothing)
+    bootstrap_result(formula, family; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true, method = :ML, marginal = :LA, penalty = nothing)
+    bootstrap_result(fit::DrmFit{<:Gaussian}; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true, algorithm = :auto, g_tol = 1e-8)
+    bootstrap_result(fit; data, B = 300, level = 0.95, rng = default_rng(), K = nothing, A = nothing, tree = nothing, coords = nothing, threads = false, failures = :error, check_converged = true)
 
 Auditable parametric bootstrap. Returns a `NamedTuple` with:
 
-- `summary` — the same rows returned by `bootstrap_summary`;
-- `failures` — rows `(replicate, seed, message)` for failed refits;
-- `attempted`, `used`, `failed` — replicate counts;
-- `status` — `"bootstrap"` when every replicate was kept, `"bootstrap_incomplete"`
+- `summary`: the same rows returned by `bootstrap_summary`;
+- `failures`: rows `(replicate, seed, message)` for failed refits;
+- `attempted`, `used`, `failed`: replicate counts;
+- `status`: `"bootstrap"` when every replicate was kept, `"bootstrap_incomplete"`
   when any replicate was dropped and at least two remain, `"bootstrap_at_boundary"`
   when those retained draws pile up on a variance-component or correlation bound,
-  or `"bootstrap_unavailable"` when fewer than two replicates remain;
-- `boundary_params` — `"param:coef"` names that triggered the boundary status;
-- `seeds` — the per-replicate seeds used for reproducibility;
+  or `"bootstrap_unavailable"` when exactly one replicate remains. If none
+  remain, the call raises an error;
+- `boundary_params`: `"param:coef"` names that triggered the boundary status;
+- `seeds`: the per-replicate seeds used for reproducibility;
 - `estimation_method`, `marginal`: the estimator of the seed fit (`:ML`, `:REML` or
   `:MAP`; `:LA`, `:Laplace`, `:VA` or `:AGHQ`);
-- `refit_estimation_method`, `refit_marginal`: the estimator the kept replicates
-  used (`:mixed` if they differ). They equal the seed's, and a warning is issued
-  if they do not;
-- `threaded` — whether threaded refits were actually used.
+- `refit_estimation_method`, `refit_marginal`: the estimator the retained
+  replicates used (`:mixed` if their estimators differ). A warning marks a
+  mismatch with a known seed estimator;
+- `threaded`: whether threaded refits were actually used.
 - `worker_threads`, `julia_threads`, `blas_threads`, `blas_oversubscribed`,
-  `elapsed` — CPU context and wall-clock time for the simulated-refit phase.
+  `elapsed`: CPU context and wall-clock time for the simulated-refit phase.
 
 `failures = :error` (default) aborts when a refit throws. A refit that does
 not converge, or that lands on a degenerate optimum, is not that kind of
@@ -1874,7 +1881,9 @@ The fit-based form refuses a fit with an explicit `DRMControl.optimizer`
 before any bootstrap refit. The fit-based form repeats the seed fit's REML,
 marginal (`:Laplace`, `:VA`, `:AGHQ`) and MAP penalty in every replicate. The
 formula-based form takes `method` (`:ML` or `:REML`), `marginal` and `penalty` and
-uses them for the seed fit and the replicates alike (DRModels.jl#1025). A joint
+uses them for the seed fit and the replicates alike (DRModels.jl#1025).
+The selected family route must support any requested non-default estimator or
+penalty. `algorithm` and `g_tol` are Gaussian-overload controls. A joint
 `mi(x)` fit (`impute`/`missing` controls) is not bootstrapped: there is no
 `bootstrap_result` method for `JointDrmFit`, and the call raises a `MethodError`
 rather than refitting with default settings.

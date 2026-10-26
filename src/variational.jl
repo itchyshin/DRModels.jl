@@ -71,7 +71,7 @@ function _marginal_method(s::Symbol)
         "for the route; on a single random intercept `(1 | g)` that is 32-node Gauss–Hermite " *
         "quadrature, not Laplace), :VA (variational, #136), or :AGHQ (1-D Liu–Pierce, " *
         "Poisson (1|g) only, #448)."))
-    throw(ArgumentError("unknown marginal method `:$s`; use :LA (the default integrator for the route: GHQ-32 on an ordinary `(1 | g)` and on Gaussian `sigma ~ 1 + (1 | g)`, Laplace on most other random-effect structures), :Laplace (TMB-convention Laplace, ordinary `(1 | g)` on Poisson/Binomial/NegBinomial2/Gamma/Beta, or a Gaussian random intercept on `sigma`), :VA (variational, #136), or :AGHQ (1-D Liu–Pierce, Poisson (1|g) only, #448)"))
+    throw(ArgumentError("unknown marginal method `:$s`; use :LA (the documented default integrator for this route), :Laplace (TMB-convention Laplace, ordinary `(1 | g)` on Poisson/Binomial/NegBinomial2/Gamma/Beta, or a Gaussian random intercept on `sigma`), :VA (variational, #136), or :AGHQ (1-D Liu–Pierce, Poisson (1|g) only, #448)"))
 end
 
 # Route-or-reject for the public `marginal = :AGHQ` front end (#448, #761). The
@@ -88,7 +88,7 @@ function _aghq_reject(fam, what)
         "on Binomial/Poisson/NegBinomial2/Gamma/Beta/BetaBinomial when one grouping has at " *
         "most $(_CROSSED_AGHQ_HMAX) levels (nested adaptive Gauss–Hermite, #761). Phylo, " *
         "relmat, `(1 + x | g)`, associate_pairs QuadGK, and other structures stay on " *
-        "marginal = :LA (the default; on `(1 | g)` that is GHQ-32, not AGHQ)."))
+        "marginal = :LA (the documented default integrator for this route)."))
 end
 
 # Generic stub entry point. Public VA kernels live on the per-family
@@ -101,7 +101,7 @@ function _fit_va(args...; kwargs...)
           "NegBinomial2 (`_fit_nb2_ranef_va`), Gamma (`_fit_gamma_ranef_va`) and Beta " *
           "(`_fit_beta_ranef_va`) random-intercept cases so far; other families are not " *
           "yet wired — see https://github.com/itchyshin/DRModels.jl/issues/136. Use " *
-          "marginal = :LA (the default integrator: GHQ-32 on an ordinary `(1 | g)`, Laplace on most other random-effect structures).")
+          "marginal = :LA (the documented default integrator for this route).")
 end
 
 # Route-or-reject for the public `marginal = :VA` front end (#136). Public VA
@@ -118,7 +118,7 @@ function _va_reject(fam, what)
         "marginal = :VA (variational ELBO, #136) is not available for $(nameof(typeof(fam)))() with $what. " *
         "The public VA path is Experimental and covers Poisson, Binomial, NegBinomial2, Gamma, and Beta " *
         "with a single random intercept `(1 | g)` (`sigma ~ 1` where the family has a scale). " *
-        "Use marginal = :LA (the default integrator: GHQ-32 on an ordinary `(1 | g)`, Laplace on most other random-effect structures) for this model."))
+        "Use marginal = :LA (the documented default integrator for this route) for this model."))
 end
 
 # `method` is the ML/REML selector. LA/VA is `marginal` (Q1 / #136).
@@ -137,7 +137,7 @@ function _reject_method_as_marginal(fam, method; allow_reml::Bool = false)
         canon = ms === :LAPLACE ? :Laplace : ms          # the documented spelling, not the uppercased key
         throw(ArgumentError(
             "drm ($famname): `method = :$method` is not the Laplace/VA/AGHQ selector. " *
-            "Use `marginal = :$canon` (`:LA` default, GHQ-32 on an ordinary `(1 | g)`; " *
+            "Use `marginal = :$canon` (`:LA` is the documented default integrator for this route; " *
             "`:Laplace` TMB-convention Laplace on an ordinary `(1 | g)`; " *
             "`:VA` opt-in ELBO, #136; " *
             "`:AGHQ` 1-D Liu–Pierce on Poisson (1|g) only, #448). " *
@@ -148,12 +148,12 @@ function _reject_method_as_marginal(fam, method; allow_reml::Bool = false)
         allow_reml && return :REML
         throw(ArgumentError(
             "drm ($famname): unknown `method = :$method`. $famname is ML-only; " *
-            "for the integrator use `marginal = :LA` (default; GHQ-32 on an ordinary `(1 | g)`), `:Laplace` " *
+            "for the integrator use `marginal = :LA` (the documented default integrator for this route), `:Laplace` " *
             "(TMB-convention Laplace, ordinary `(1 | g)`), `:VA` (#136), or `:AGHQ` (#448)."))
     end
     throw(ArgumentError(
         "drm ($famname): unknown `method = :$method`. $famname is ML-only; " *
-        "for the integrator use `marginal = :LA` (default; GHQ-32 on an ordinary `(1 | g)`), `:Laplace` " *
+        "for the integrator use `marginal = :LA` (the documented default integrator for this route), `:Laplace` " *
         "(TMB-convention Laplace, ordinary `(1 | g)`), `:VA` (#136), or `:AGHQ` (#448)."))
 end
 
