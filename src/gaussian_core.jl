@@ -702,6 +702,8 @@ markers documented under [`phylo`](@ref), [`spatial`](@ref), [`animal`](@ref),
 `ids = …` labels the rows of the relatedness matrix `A` of an `animal(1 | g)`
 term, so `A` is matched to the data by label instead of by order of first
 appearance (see [`animal`](@ref)).
+Likewise `ids = …` labels the rows of `coords` of a `spatial(1 | site)` term (or
+`coords` is a `Dict` keyed by site label); see [`spatial`](@ref).
 
 ## `algorithm` and `sparse` — solver selection
 
@@ -819,7 +821,8 @@ end
 
 function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree = nothing, coords = nothing, g_tol::Real = 1e-8, algorithm::Symbol = :auto, method::Symbol = :ML, profile_ci::Bool = false, phylo_coupled::Bool = false, penalty = nothing, sparse = nothing, impute = nothing, missing = nothing, marginal::Symbol = :LA, ids = nothing)
     _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, coords = coords)   # #1027 #1022 #1010
-    A = _resolve_relatedness_labels(f, data, A, ids)   # #957: match `A` by label
+    A = _resolve_relatedness_labels(f, data, A, ids; coords = coords)   # #957: match `A` by label
+    coords = _resolve_coords_labels(f, data, coords, ids)   # #957: match `coords` by site label
     mkind = _gaussian_marginal(marginal)
     laplace = mkind === :Laplace
     aghq = mkind === :AGHQ

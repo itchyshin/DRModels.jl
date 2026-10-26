@@ -119,7 +119,8 @@ function _drm_negbinomial2_fit(f::DrmFormula, fam::NegBinomial2; data, tree = no
             coords = coords, g_tol = g_tol, se = se, marginal = marginal, method = method, ids = ids)
     end
     missing_fit !== nothing && return missing_fit
-    A = _resolve_relatedness_labels(f, data, A, ids)   # #957: match `A` by label
+    A = _resolve_relatedness_labels(f, data, A, ids; coords = coords)   # #957: match `A` by label
+    coords = _resolve_coords_labels(f, data, coords, ids)   # #957: match `coords` by site label
 
     marg = _marginal_method(marginal)                     # :LA (default), :VA (#136), or :AGHQ (#761)
     isaghq = marg isa AGHQ

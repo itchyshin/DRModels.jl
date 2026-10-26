@@ -312,28 +312,30 @@ end
 # matrix plus `ids = …` (the label of each row). An unlabelled matrix keeps the
 # old first-appearance convention and warns once per session.
 
-function _animal_group(f::DrmFormula)
+_animal_group(f::DrmFormula) = _marker_group(f, animal)
+
+function _marker_group(f::DrmFormula, marker)
     for (_, rhs) in f.forms
-        g = _animal_group_term(rhs)
+        g = _animal_group_term(rhs, marker)
         g === nothing || return g
     end
     return nothing
 end
 
-function _animal_group_term(t)
+function _animal_group_term(t, marker = animal)
     if t isa Tuple || t isa AbstractVector
         for s in t
-            g = _animal_group_term(s)
+            g = _animal_group_term(s, marker)
             g === nothing || return g
         end
     elseif t isa FunctionTerm
-        if t.f === animal
+        if t.f === marker
             bar = t.args[1]
             (bar isa FunctionTerm && length(bar.args) == 2 && bar.args[2] isa Term) &&
                 return bar.args[2].sym
         end
         for a in t.args
-            g = _animal_group_term(a)
+            g = _animal_group_term(a, marker)
             g === nothing || return g
         end
     end
@@ -349,11 +351,11 @@ label when `A` is a table (column names are the labels) or `ids` is given.
 Levels without a row in `A` are an `ArgumentError`; rows of `A` for labels not
 in the data are dropped (the marginal of `A` over the observed labels).
 """
-function _resolve_relatedness_labels(f::DrmFormula, data, A, ids)
+function _resolve_relatedness_labels(f::DrmFormula, data, A, ids; coords = nothing)
     if A === nothing
-        ids === nothing ||
+        (ids === nothing || coords !== nothing) ||
             throw(ArgumentError("drm: `ids = …` labels the rows of the relatedness matrix " *
-                "`A`, but no `A` was supplied."))
+                "`A` or of the site coordinates `coords`, but neither was supplied."))
         return nothing
     end
     labels_A, M = if ids !== nothing
@@ -391,4 +393,76 @@ function _resolve_relatedness_labels(f::DrmFormula, data, A, ids)
             (length(absent) > 3 ? ", …" : "") * "). Every level must be one of the labels of `A`."))
     perm = [pos[string(l)] for l in levels]
     return Matrix{Float64}(M)[perm, perm]
+end
+
+# ── #957 (spatial half): `coords` matched to the sites by label ────────────
+#
+# Row k of `coords` used to be the k-th level of the `spatial(1 | site)` group in
+# first-appearance order, checked only by row count; a matrix sorted by site id
+# gave a different likelihood and a collapsed range with `converged = true`.
+# Same contract as `A`: labels come from `ids = …` (one per row of `coords`) or
+# from a Dict keyed by site label; an unlabelled matrix keeps the old convention
+# and warns once per session. `ids` labels `A` when the formula has an
+# `animal()` term, otherwise `coords`.
+
+const _COORDS_WARNED = Ref(false)
+
+function _warn_unlabelled_coords(grp)
+    _COORDS_WARNED[] && return nothing
+    _COORDS_WARNED[] = true
+    @warn "drm: `coords` has no labels, so its rows are taken to be the levels of `$grp` " *
+          "in order of first appearance in the data. Pass `ids = …` (the site label of each " *
+          "row of `coords`), or `coords` as a Dict keyed by site label, to match `coords` " *
+          "by label instead."
+    return nothing
+end
+
+"""
+    _resolve_coords_labels(f, data, coords, ids) -> coords′
+
+Return `coords` with its rows in the order the spatial fitters expect (the levels
+of the `spatial(1 | g)` group in order of first appearance), matching by site
+label when `coords` is a `Dict` (site label => coordinate) or `ids` labels its
+rows. A level with no coordinates is an `ArgumentError`; coordinates for sites not
+in the data are dropped.
+"""
+function _resolve_coords_labels(f::DrmFormula, data, coords, ids)
+    coords === nothing && return nothing
+    grp = _marker_group(f, spatial)
+    grp === nothing && return coords          # no spatial() term: the entry guard handles `coords`
+    labels_c, M = if coords isa AbstractDict
+        ks = collect(keys(coords))
+        rows = [v isa Real ? [Float64(v)] : Float64.(collect(v)) for v in values(coords)]
+        length(unique(length.(rows))) <= 1 ||
+            throw(ArgumentError("drm: the coordinates in `coords` have different lengths."))
+        (ks, isempty(rows) ? zeros(0, 0) : permutedims(reduce(hcat, rows)))
+    elseif ids !== nothing && _animal_group(f) === nothing
+        (collect(ids), coords)
+    else
+        (nothing, coords)
+    end
+    if labels_c === nothing
+        _warn_unlabelled_coords(grp)
+        return coords
+    end
+    isvec = M isa AbstractVector
+    n = length(labels_c)
+    size(M, 1) == n ||
+        throw(ArgumentError("drm: `coords` has $(size(M, 1)) row(s) but $n label(s); " *
+            "give one label per row."))
+    pos = Dict{String,Int}()
+    for (i, l) in enumerate(labels_c)
+        k = string(l)
+        haskey(pos, k) &&
+            throw(ArgumentError("drm: the label \"$k\" appears more than once in the labels of `coords`."))
+        pos[k] = i
+    end
+    levels = unique(collect(_table_column(data, grp)))   # `_group_index` order
+    absent = [string(l) for l in levels if !haskey(pos, string(l))]
+    isempty(absent) ||
+        throw(ArgumentError("drm: $(length(absent)) level(s) of `$grp` have no row in `coords` " *
+            "(e.g. " * join(("\"$x\"" for x in first(absent, 3)), ", ") *
+            (length(absent) > 3 ? ", …" : "") * "). Every level must be one of the labels of `coords`."))
+    perm = [pos[string(l)] for l in levels]
+    return isvec ? Vector{Float64}(M)[perm] : Matrix{Float64}(M)[perm, :]
 end

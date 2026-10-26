@@ -317,6 +317,9 @@ boot = bootstrap_result(fit_reml; data = dat, B = 4,
 (attempted = boot.attempted, used = boot.used, failed = boot.failed)
 ```
 
+The result also records the estimator: `boot.estimation_method` is the seed fit's
+and `boot.refit_estimation_method` the replicates' (`:REML` for both here).
+
 Four replicates keep this example quick; they are too few for an interval you
 would report. Choose the number of replicates for your analysis and retain
 `boot.failures`, which records failed replicate seeds and messages. For a

@@ -69,7 +69,11 @@ end
 
 Coordinate-spatial structured random intercept on the Gaussian mean. Pass site
 coordinates via `drm(...; coords = coords)` (a `G×2` matrix, one row per `site`
-level in first-seen order). The spatial correlation `K(ρ) = exp(-d / ρ)` is built
+level). `coords` is matched to the data **by site label**: pass it as a plain
+matrix together with `ids = [site label of each row]`, or as a `Dict` keyed by site
+label. Coordinates for sites not in the data are dropped; a level of `site` with no
+coordinates is an `ArgumentError`. A plain matrix without `ids` is taken to be in order
+of first appearance of `site` in the data, and warns once per session. The spatial correlation `K(ρ) = exp(-d / ρ)` is built
 from pairwise distances and the range `ρ` is estimated jointly. Closed-form
 Gaussian marginal (K is rebuilt each evaluation since it depends on `ρ`).
 """
