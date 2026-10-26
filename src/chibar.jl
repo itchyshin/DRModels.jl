@@ -129,7 +129,7 @@ for the naive `lrtest` χ²₁ p-value; 58.6% of the statistics sat on the χ²(
 The statistics match `drmTMB` on the same data to about 1e-8, so this is the
 behaviour of the reference distribution, not of the fit. A `pvalue` just above
 0.05 is therefore weak evidence for dropping the random effect, and no mixture
-weights are changed. See issue #1118.
+weights are changed.
 
 The same refusals as [`lrtest`](@ref) apply before the statistic is formed:
 REML fits whose fixed structure differs, a sentinel log-likelihood, different
