@@ -133,7 +133,6 @@ Poisson(exp(0.4 + 0.3 x))`, nominal α = 0.05) the 50:50 p-value rejected in abo
 3% of replicates (15/500), against 1.8% (9/500) for the naive `lrtest` χ²₁ p-value.
 So a `pvalue` just above 0.05 here is not evidence for the Poisson model, and the
 test is somewhat low-powered near the boundary; no mixture weights are changed.
-See issue #1116.
 
 # Example
 ```julia
