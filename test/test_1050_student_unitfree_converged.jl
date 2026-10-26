@@ -14,11 +14,16 @@ end
 @testset "#1050 Student unit-free converged flag" begin
     f = bf(@formula(y ~ x), @formula(sigma ~ 1), @formula(nu ~ 1))
 
-    # Reps 46 and 50 stop with |g|inf of 5e-8 and 2e-7 at a valid optimum.
+    # The unit-free test accepts a gradient above the old absolute 1e-8 bar
+    # when the Newton step is tiny in SE units. This check is deterministic.
+    @test DRModels._unitfree_converged([2.0 0.0; 0.0 2.0], [3e-8, 3e-8])
+
+    # Reps 46 and 50 stop with |g|inf of about 5e-8 and 2e-7 on Totoro. The
+    # exact |g|inf depends on the CPU and BLAS (it was 7e-9 on a CI runner),
+    # so only the converged flag is asserted, not that the old test fails.
     for rep in (46, 50)
         fit = drm(f, Student(); data = _gen_1050_student(rep))
         g = DRModels.ForwardDiff.gradient(fit.nll, fit.theta)
-        @test maximum(abs, g) > 1e-8                    # the old absolute test fails
         @test DRModels._unitfree_converged(
             DRModels.ForwardDiff.hessian(fit.nll, fit.theta), g)
         @test fit.converged
