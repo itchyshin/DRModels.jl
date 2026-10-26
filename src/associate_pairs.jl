@@ -12,13 +12,13 @@
 # simultaneous eta bands or profiles), and this port must not offer intervals the
 # twin refuses.
 #
-# First slice: the `gaussian_bernoulli` pair class, whose likelihood is CLOSED
-# FORM. The Gaussian margin's latent is observed exactly, so the Bernoulli's
-# contribution is a conditional univariate normal CDF — no rectangle probability,
-# no quadrature, no new dependency. The four pair classes that censor BOTH
-# latents need a 1-D adaptive integral with a retained error estimate and are
-# deliberately deferred (design note
-# `docs/dev-log/design/2026-08-15-a3c-design-staged-association.md`).
+# Gaussian × Bernoulli and Gaussian × NB2 use closed-form conditional-normal
+# probabilities: the Gaussian margin's latent value is observed. Bernoulli ×
+# Bernoulli, Bernoulli × NB2, and NB2 × NB2 censor both latent values
+# and use one-dimensional adaptive rectangle integration. All five classes
+# retain frozen fitted margins; these implementation routes do not establish
+# general interval calibration. The initial staged design is recorded in
+# `docs/dev-log/design/2026-08-15-a3c-design-staged-association.md`.
 
 using Distributions: Normal, cdf, logcdf, logccdf, logpdf, pdf, quantile
 import Distributions
