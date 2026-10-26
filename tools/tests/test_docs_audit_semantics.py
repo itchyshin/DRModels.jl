@@ -135,6 +135,11 @@ class DocumentationSemantics(unittest.TestCase):
         self.assertEqual(markdown_table_cells(r"| `phylo(1\|g)` | **Tested** |"), ["`phylo(1|g)`", "**Tested**"])
     def test_capabilities_tested_definition_scope(self):
         assert_tested_definition_scope(self.text("docs/src/capabilities.md"))
+    def test_profile_ci_formula_refusal_is_documented(self):
+        text = re.sub(r"\s+", " ", self.text("docs/src/capabilities.md"))
+        self.assertIn("`profile_ci = true` is refused unless the `sigma` formula contains", text)
+        self.assertIn("use `confint(fit, method = :profile)` after fitting", text)
+        self.assertIn("currently ignores `profile_ci = true`", text)
     def test_capabilities_r_bridge_row_keeps_two_cell_scope_qualification(self):
         text = self.text("docs/src/capabilities.md")
         section = text.split('## R → Julia bridge (engine = "julia")', 1)[1].split("## ", 1)[0]

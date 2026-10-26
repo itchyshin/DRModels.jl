@@ -208,8 +208,11 @@ intervals have regular package-test coverage.
     zero is reported as converged, with no Wald covariance. On the scale-only
     and separate blocks, `profile_ci = true` gives its `[0, upper]` interval.
     The coupled block computes no profile interval, under ML or REML, and
-    ignores `profile_ci = true` without a warning. A non-Gaussian scale-axis-only intercept is not part of
-    the public formula grammar.
+    currently ignores `profile_ci = true`. For other Gaussian formulas, passing
+    `profile_ci = true` is refused unless the `sigma` formula contains
+    `phylo(1 | g)`; to profile a fitted model outside these routes, use
+    `confint(fit, method = :profile)` after fitting. A non-Gaussian scale-axis-only
+    intercept is not part of the public formula grammar.
 
 ## Coevolution: q=4 phylogenetic bivariate location–scale model (PLSM)
 
