@@ -63,31 +63,28 @@ function _require_family_dpars(f::DrmFormula, fam)
     return nothing
 end
 
-# ── #938: `offset(...)` outside the Poisson mean ─────────────────────────────
+# ── #938: `offset(...)` outside the mean formula ─────────────────────────────
 #
-# `offset(x)` is an identity marker that only `drm(::Poisson)` extracts (from
-# the mean formula, with the coefficient fixed at 1). Anywhere else it reached
-# the design matrix as an ordinary column named `offset(x)` and got a free
-# coefficient, so the fitted model was not the one asked for.
-#
-# Poisson applies it on both of its routes: the default one and, with one
-# ordinary `(1 | g)`, `marginal = :Laplace` (#941; `_drm_ordinary_laplace` passes
-# it to `_fit_poisson_ordinary_laplace`). Each route refuses the shapes it does
-# not cover, so this guard only has to separate Poisson `mu` from everything else.
+# `offset(x)` is an identity marker. Every univariate family extracts it from the
+# MEAN formula and adds it to the linear predictor with its coefficient fixed at
+# 1 (Poisson since #727/#941, the other families since #938), on the routes that
+# can hold it fixed; every other route refuses it by name (`_refuse_offset_route`,
+# and the `_design` backstop for anything left over). In any other formula
+# (`sigma`, `nu`, `zi`, `hu`, ...) it is refused here, as drmTMB refuses it.
 _has_offset_term(t) =
     (t isa Tuple || t isa AbstractVector) ? any(_has_offset_term, t) :
+    t isa StatsModels.InteractionTerm ? any(_has_offset_term, t.terms) :   # `x * offset(z)`
     t isa FunctionTerm ? (t.f === offset || any(_has_offset_term, t.args)) : false
 
 function _require_offset_supported(f::DrmFormula, fam)
     for (p, rhs) in f.forms
         _has_offset_term(rhs) || continue
-        # Poisson applies it (and owns its limits) on every route it has.
-        (fam isa Poisson && p === :mu) && continue
-        where_ = p === :mu ? "the mean formula" : "the `$p` formula"
-        throw(ArgumentError("drm: `offset(...)` in $where_ is not supported for " *
-            "$(_family_label(fam)); it would be estimated as a free coefficient instead of " *
-            "entering with coefficient 1. Only the Poisson() mean applies an offset; " *
-            "otherwise add the term as an ordinary covariate if a free slope is intended."))
+        # The mean: each family's routes apply it (coefficient 1) or refuse it by name.
+        p === :mu && continue
+        throw(ArgumentError("drm: `offset(...)` in the `$p` formula is not supported for " *
+            "$(_family_label(fam)); an offset enters only the mean formula, with its " *
+            "coefficient fixed at 1 (drmTMB refuses an offset in `$p` too). Add the term " *
+            "as an ordinary covariate if a free slope is intended."))
     end
     return nothing
 end

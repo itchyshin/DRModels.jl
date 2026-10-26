@@ -67,6 +67,9 @@ function _drm_zeroonebeta_fit(f::DrmFormula, fam::ZeroOneBeta; data, tree = noth
     _lss_only_gaussian_guard(f, fam)   # #544: refuse, never silently drop, sd() parts
     rhs = Dict(f.forms)
     fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
+    fixed_mu, offset_term = _extract_offset(fixed_mu)   # #938: offset(z), coefficient fixed at 1
+    offset_term === nothing || (isempty(re) && mv === nothing && st === nothing) ||
+        _refuse_offset_route(fam, "a random, structured or `meta_V` term on the mean")
     mv === nothing ||
         error("ZeroOneBeta() does not support meta_V markers")
     for (pname, r) in f.forms          # only the mean may carry a random effect
@@ -114,17 +117,17 @@ function _drm_zeroonebeta_fit(f::DrmFormula, fam::ZeroOneBeta; data, tree = noth
         return _withformula(
             _fit_zeroonebeta_ranef(fam, y, Xμ, Xσ, Xz, Xc, gidx, G, nmμ, nmσ, nmz, nmc, grp, g_tol), f)
     end
-    return _withformula(_fit_zeroonebeta(fam, y, Xμ, Xσ, Xz, Xc, nmμ, nmσ, nmz, nmc, g_tol), f)
+    return _withformula(_fit_zeroonebeta(fam, y, Xμ, Xσ, Xz, Xc, nmμ, nmσ, nmz, nmc, g_tol; offset = _offset_for_fit(fam, offset_term, data, size(Xμ, 1))), f)
 end
 
-function _fit_zeroonebeta(fam::ZeroOneBeta, y, Xμ, Xσ, Xz, Xc, nmμ, nmσ, nmz, nmc, g_tol)
+function _fit_zeroonebeta(fam::ZeroOneBeta, y, Xμ, Xσ, Xz, Xc, nmμ, nmσ, nmz, nmc, g_tol; offset = nothing)
     n = length(y)
     pμ, pσ, pz, pc = size(Xμ, 2), size(Xσ, 2), size(Xz, 2), size(Xc, 2)
     i1 = pμ + pσ; i2 = i1 + pz; i3 = i2 + pc
     w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:i1]; βz = θ[i1+1:i2]; βc = θ[i2+1:i3]
-        ημ = clamp.(Xμ * βμ, -30.0, 30.0); ησ = clamp.(Xσ * βσ, -15.0, 15.0)
+        ημ = clamp.(_eta_with_offset(Xμ, βμ, offset), -30.0, 30.0); ησ = clamp.(Xσ * βσ, -15.0, 15.0)
         ηz = clamp.(Xz * βz, -30.0, 30.0); ηc = clamp.(Xc * βc, -30.0, 30.0)
         s = zero(eltype(θ))
         @inbounds for i in 1:n
@@ -150,12 +153,13 @@ function _fit_zeroonebeta(fam::ZeroOneBeta, y, Xμ, Xσ, Xz, Xc, nmμ, nmσ, nmz
     θ0[pμ+1] = -0.5 * log(10.0)               # σ (φ ≈ 10)
     θ0[i1+1] = log(fb / (1 - fb))             # logit zoi
     θ0[i2+1] = log(co0 / (1 - co0))           # logit coi
+    θ0[1:pμ] .= _offset_start(θ0[1:pμ], Xμ, offset)   # #938
     res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
                        θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
     θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):i1, :zoi => (i1+1):i2, :coi => (i2+1):i3]
     names = [:mu => nmμ, :sigma => nmσ, :zoi => nmz, :coi => nmc]
-    μ̂ = _logistic.(Xμ * θ̂[1:pμ])
+    μ̂ = _logistic.(_eta_with_offset(Xμ, θ̂[1:pμ], offset))
     zoî = _logistic.(Xz * θ̂[(i1+1):i2]); coî = _logistic.(Xc * θ̂[(i2+1):i3])
     means = Dict(:mu => (1 .- zoî) .* μ̂ .+ zoî .* coî)   # unconditional mean (drmTMB fitted)
     obs = Dict(:mu => Vector{Float64}(y))

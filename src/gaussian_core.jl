@@ -497,6 +497,15 @@ end
 # at unobserved response positions.
 function _design(response::Symbol, rhs, data; schema_cache = nothing, schema_key = nothing,
                  store_schema::Bool = true)
+    # #938 backstop: a route that applies an offset strips it (`_extract_offset`)
+    # before it builds a design. One that still reaches here was not held at
+    # coefficient 1 (for example `x * offset(z)`), so refuse it rather than
+    # estimate it as an ordinary column.
+    _has_offset_term(rhs) &&
+        throw(ArgumentError("drm: `offset(...)` in `$(response) ~ $(rhs)` cannot be held " *
+            "fixed at coefficient 1 on this route, so it is refused rather than estimated as " *
+            "an ordinary covariate. Use one top-level `offset(z)` term in the mean formula. " *
+            "See issue #938."))
     raw_response = _table_column(data, response)
     y_response, observed = _coerce_response_column(raw_response; name=String(response))
     # Predict reuses the training schema and names a missing column, a `missing`
@@ -814,9 +823,69 @@ them.
             "for the bivariate Gaussian route only, `bf(mu1 = …, mu2 = …, …)` with " *
             "`meta_vcov_bivariate`. For a univariate model, known diagonal sampling variances " *
             "go in the formula as `meta_V(v)`; a dense univariate `V` is not implemented yet."))
+    # #938: `offset(z)` on the identity-link mean is a known additive constant, so
+    # the fit of `y ~ x + offset(z)` is exactly the fit of `y - z ~ x` (the same
+    # likelihood and the same estimates). Fit the shifted response, then put the
+    # offset back into the fitted means and the observed response.
+    f_fit, kw_fit, off = _gaussian_offset_shift(f, fam, kwargs)
     # The residual-variance / structured-variance BOUNDARY advisory (#724, #697) is
     # attached here, once, rather than in each of the fitter's return paths.
-    return _apply_design_rank(_warn_variance_boundary(_drm_gaussian_fit(f, fam; kwargs...)))
+    fit = _apply_design_rank(_warn_variance_boundary(_drm_gaussian_fit(f_fit, fam; kw_fit...)))
+    return off === nothing ? fit : _gaussian_offset_restore(fit, f, off)
+end
+
+# #938: strip a top-level `offset(...)` from the Gaussian mean and subtract it from
+# the response. Returns `(formula, kwargs, offset)`, the inputs unchanged (and
+# `nothing`) without an offset. Only the fixed-effects mean is covered: a random,
+# structured or `meta_V` term, an `sd()` part, a joint `mi()` model, missing
+# responses or a non-default `marginal` refuse it by name.
+function _gaussian_offset_shift(f::DrmFormula, fam, kwargs)
+    mu_rhs = nothing
+    for (p, r) in f.forms
+        p === :mu && (mu_rhs = r)
+    end
+    (mu_rhs !== nothing && _has_offset_term(mu_rhs)) || return f, kwargs, nothing
+    haskey(kwargs, :data) || return f, kwargs, nothing     # the missing-`data` error is raised downstream
+    _has_joint_mi(f) && _refuse_offset_route(fam, "a joint `mi()` missing-predictor model")
+    _, re, mv, st = _split_ranef(mu_rhs; allow_phylo_slope = true, allow_temporal = true)
+    (isempty(re) && mv === nothing && st === nothing) ||
+        _refuse_offset_route(fam, "a random, structured or `meta_V` term on the mean")
+    for (p, r) in f.forms
+        p === :mu && continue
+        _, re2, mv2, st2 = _split_ranef(r; allow_phylo_slope = true, allow_temporal = true)
+        (isempty(re2) && mv2 === nothing && st2 === nothing) ||
+            _refuse_offset_route(fam, "a random or structured term on `$p`")
+    end
+    isempty(_sd_parts(f)) || _refuse_offset_route(fam, "an `sd()` variance part")
+    get(kwargs, :marginal, :LA) === :LA ||
+        _refuse_offset_route(fam, "`marginal = :$(kwargs[:marginal])`")
+    rhs_fixed, offset_term = _extract_offset(mu_rhs)
+    offset_term === nothing && return f, kwargs, nothing  # nested only: the `_design` backstop refuses it
+    data = kwargs[:data]
+    raw = _table_column(data, f.response)
+    (any(ismissing, raw) || any(v -> v isa Real && isnan(v), raw)) &&
+        _refuse_offset_route(fam, "missing or `NaN` responses (drop those rows first)")
+    off = _offset_for_fit(fam, offset_term, data, length(raw))
+    forms = Pair{Symbol,Any}[p => (p === :mu ? rhs_fixed : r) for (p, r) in f.forms]
+    f_shift = DrmFormula(f.response, forms, f.response2, f.schema_cache)
+    data_shift = _replace_table_column(data, f.response, Float64.(raw) .- off)
+    # The shifted fit belongs to the caller's control / weights scope, which is
+    # keyed to the formula object (`_drm_run_controlled`).
+    scope = _active_control_scope()
+    scope !== nothing && scope.formula === f && (scope.formula = f_shift)
+    return f_shift, merge((; kwargs...), (; data = data_shift)), off
+end
+
+# #938: undo the response shift on the fit: the fitted means and the observed
+# response gain the offset back, and the fit keeps the user's formula, so
+# `predict(fit, newdata)` strips the offset and adds it from `newdata`.
+function _gaussian_offset_restore(fit::DrmFit, f_orig::DrmFormula, off::Vector{Float64})
+    (length(fit.means[:mu]) == length(off) && length(fit.obs[:mu]) == length(off)) ||
+        error("Gaussian(): internal error restoring `offset(...)` (#938): the fitted means " *
+              "are not one per observation")
+    fit.means[:mu] = fit.means[:mu] .+ off
+    fit.obs[:mu] = fit.obs[:mu] .+ off
+    return _withformula(fit, f_orig)
 end
 
 function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree = nothing, coords = nothing, g_tol::Real = 1e-8, algorithm::Symbol = :auto, method::Symbol = :ML, profile_ci::Bool = false, phylo_coupled::Bool = false, penalty = nothing, sparse = nothing, impute = nothing, missing = nothing, marginal::Symbol = :LA, ids = nothing)

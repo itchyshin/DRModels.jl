@@ -96,11 +96,19 @@ _logfactorial(k::Integer) = sum(log, 2:k; init = 0.0)   # log k!  (0 for k = 0, 
 """
     offset(x)
 
-Formula marker for a known offset on the Poisson mean, for example
-`y ~ x + offset(log_exposure)`. The term enters the linear predictor with its
-coefficient fixed at 1 (`η = Xμβ + offset`); it is not estimated. At most one
-`offset(...)` term is allowed, and only on the Poisson mean. Outside a
-formula, `offset(x)` returns `x` unchanged.
+Formula marker for a known offset in the mean formula, for example
+`y ~ x + offset(log_exposure)`. The term enters the mean's linear predictor with
+its coefficient fixed at 1 (`η = Xμβ + offset`); it is not estimated, as in
+drmTMB. Every univariate family applies it on the fixed-effects mean (for
+`Gaussian()` that is exactly the fit of `y - offset`). Some families also apply it
+with random effects: `Poisson()` with one ordinary `(1 | g)` (`marginal = :LA`,
+`:AGHQ` or `:Laplace`); `NegBinomial2()` with `zi`/`hu` and with one ordinary
+`(1 | g)` (`:LA` or `:Laplace`); `Gamma()` and `Beta()` with one `(1 | g)` under
+`marginal = :Laplace`. Every other route raises an `ArgumentError` that names
+it. An offset in any formula other than the mean (`sigma`, `nu`, `zi`, ...) is
+refused, as drmTMB refuses it. At most one `offset(...)` term is allowed.
+`predict(fit, newdata)` needs the offset column in `newdata`. Outside a formula,
+`offset(x)` returns `x` unchanged.
 """
 offset(x) = x
 
@@ -114,9 +122,9 @@ function _extract_offset(rhs)
     for t in terms
         if t isa FunctionTerm && t.f === offset
             offset_term === nothing ||
-                error("Poisson(): only one `offset(...)` term is supported")
+                error("drm: only one `offset(...)` term is supported")
             length(t.args) == 1 ||
-                error("Poisson(): `offset(...)` takes exactly one term, e.g. `offset(log_exposure)`")
+                error("drm: `offset(...)` takes exactly one term, e.g. `offset(log_exposure)`")
             offset_term = t.args[1]
         else
             push!(fixed, t)
@@ -137,10 +145,51 @@ function _offset_vector(offset_term, data)
     v = modelcols(t, data)
     v isa AbstractMatrix && size(v, 2) == 1 && (v = vec(v))
     v isa AbstractVector ||
-        error("Poisson(): `offset(...)` must resolve to a single numeric column")
+        error("drm: `offset(...)` must resolve to a single numeric column")
     _require_finite_inputs(; offset=v)
     return Float64.(v)
 end
+
+# #938: linear predictor with an optional known offset (coefficient fixed at 1).
+# `nothing` is the offset-free path, the same arithmetic as before (`X * β`).
+_eta_with_offset(X, β, ::Nothing) = X * β
+_eta_with_offset(X, β, offset) = X * β .+ offset
+_add_offset(η, ::Nothing) = η
+_add_offset(η, offset) = η .+ offset
+
+# #938: move an intercept start value by the mean offset, so a fit with a large
+# offset (a log exposure of 5, say) does not start far from its optimum. Only a
+# start value: the objective is unchanged. Applied only when column 1 of `X` is
+# an intercept.
+function _offset_start(θβ0, X, offset)
+    θ = collect(Float64, θβ0)
+    if offset !== nothing && !isempty(θ) && size(X, 2) ≥ 1 && all(==(1.0), @view X[:, 1])
+        θ[1] -= sum(offset) / length(offset)
+    end
+    return θ
+end
+
+# #938: the offset vector of a route that applies one (`nothing` without an
+# offset), with the one-value-per-row and finiteness checks.
+function _offset_for_fit(fam, offset_term, data, n::Integer)
+    offset_term === nothing && return nothing
+    off = _offset_vector(offset_term, data)
+    length(off) == n ||
+        throw(ArgumentError("$(_family_label(fam)): `offset(...)` must have one value per observation"))
+    return off
+end
+
+# #938: a route that cannot hold the offset at coefficient 1 refuses it by name,
+# instead of letting `_design` build it as an estimated column.
+_refuse_offset_route(fam, route) = throw(ArgumentError(
+    "$(_family_label(fam)): `offset(...)` in the mean formula is not supported with $route; " *
+    "the offset (coefficient fixed at 1) is applied on the fixed-effects mean" *
+    (fam isa NegBinomial2 ? ", with `zi`/`hu`, and with one ordinary `(1 | g)` " *
+                            "(`marginal = :LA` or `:Laplace`)" :
+     (fam isa Gamma || fam isa Beta) ? " and with one ordinary `(1 | g)` under " *
+                                       "`marginal = :Laplace`" : "") *
+    ". Fit without the offset, or add the term as an ordinary covariate if a free " *
+    "slope is intended. See issue #938."))
 
 # FX3b: `se = false` is recorded on the fit (`DrmFit.uncertainty`), so
 # `convergence_status` does not read the skipped (NaN) covariance as a failure.
