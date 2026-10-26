@@ -1,7 +1,7 @@
 # Parametric bootstrap confidence intervals: simulate B replicates from the
 # fitted model, refit each, take percentile intervals. Reuses simulate + drm.
 using DRModels
-using Test, Random
+using Test, Random, LinearAlgebra
 
 @testset "Parametric bootstrap CI" begin
     Random.seed!(11)
@@ -87,25 +87,27 @@ using Test, Random
     m = 2
     species = repeat(1:G, inner = m)
     x_phy = randn(G * m)
-    y_phy = 0.2 .+ 0.5 .* x_phy .+ 0.3 .* randn(G * m)
+    # A genuine phylogenetic signal (sd 0.8 on the tip-correlation scale) keeps
+    # the variance component off its boundary, so the EM refits stop on their
+    # own relative-loglik rule instead of crawling to sigma_phy = 0 (#1048).
+    u_phy = 0.8 .* (cholesky(Symmetric(DRModels._phylo_correlation(phy))).L * randn(G))
+    y_phy = 0.2 .+ 0.5 .* x_phy .+ u_phy[species] .+ 0.3 .* randn(G * m)
     phy_form = bf(@formula(y_phy ~ x_phy + phylo(1 | species)),
                   @formula(sigma ~ 1))
     phy_data = (; y_phy, x_phy, species)
     phy_fit = drm(phy_form, Gaussian(); data = phy_data, tree = phy,
         algorithm = :em, g_tol = 1e-4)
-    # This EM stop leaves `converged = false` on a non-degenerate fit. These
-    # assertions check solver-control forwarding, so they keep the pre-#962
-    # counting (`check_converged = false`). The default is now `true`.
+    # The EM stop reports convergence from its own relative-loglik criterion
+    # (#1047), so the default `check_converged = true` keeps both replicates.
     br_phy = bootstrap_result(phy_fit; data = phy_data, tree = phy, B = 2,
-        rng = MersenneTwister(13), algorithm = :em, g_tol = 1e-4,
-        check_converged = false)
+        rng = MersenneTwister(13), algorithm = :em, g_tol = 1e-4)
     @test br_phy.attempted == 2
     @test br_phy.used == 2
     @test br_phy.failed == 0
     @test length(br_phy.summary) == length(coef(phy_fit))
     br_phy_formula = bootstrap_result(phy_form, Gaussian(); data = phy_data,
         tree = phy, B = 1, rng = MersenneTwister(14),
-        algorithm = :em, g_tol = 1e-4, check_converged = false)
+        algorithm = :em, g_tol = 1e-4)
     @test br_phy_formula.used == 1
 
     fit0 = drm(form, Gaussian(); data = (; y, x))
