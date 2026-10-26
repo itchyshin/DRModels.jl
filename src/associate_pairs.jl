@@ -1,16 +1,16 @@
-# associate_pairs.jl — staged (frozen-margin) association, the Julia twin of
+# associate_pairs.jl: staged (frozen-margin) association, the Julia twin of
 # drmTMB's `associate_pairs()` / `latent_normal()` / `association()`.
 #
 # THIS IS A TWO-STAGE ESTIMATOR, NOT A JOINT MODEL. Two univariate models are
 # fitted independently, then FROZEN, and a single latent-normal copula
 # association is estimated conditional on them. The margins are never refitted.
 #
-# The consequence has to be stated wherever the uncertainty is reported: because
-# the margins are treated as exact, the association's standard error is
-# CONDITIONAL — it ignores margin estimation error. drmTMB bounds its own version
-# the same way (alpha-scale Wald only, an experimental-interval warning, and no
-# simultaneous eta bands or profiles), and this port must not offer intervals the
-# twin refuses.
+# Reported association standard errors here are conditional on the fitted
+# margins; they do not propagate margin-estimation uncertainty. R's drmTMB
+# separately provides a two-stage Godambe covariance on admitted pairs; that
+# does not supply such a covariance for this Julia estimator. Keep the Julia
+# qualification explicit and consult the capability guide for route-specific
+# interval evidence. The likelihood alone does not establish calibration.
 #
 # Gaussian × Bernoulli and Gaussian × NB2 use closed-form conditional-normal
 # probabilities: the Gaussian margin's latent value is observed. Bernoulli ×
