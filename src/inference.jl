@@ -2099,7 +2099,8 @@ end
 
 # --- Marginal parametric bootstrap simulation (#459) -------------------------
 #
-# `simulate(fit)` is a CONDITIONAL simulator: for a Gaussian fit it returns
+# `simulate(fit; re = :zero)` (before #1092 the only `simulate`) is a CONDITIONAL
+# simulator: for a Gaussian fit it returns
 # `fit.means[:mu] .+ fit.scales[:sigma] .* randn(n)`, and `fit.means[:mu]` ALREADY
 # CONTAINS the fitted BLUPs. Bootstrapping a fixed effect that way is defensible.
 # Bootstrapping a VARIANCE COMPONENT that way is not: every replicate re-uses the
@@ -2574,8 +2575,10 @@ function _bootstrap_result(
         rr = Random.MersenneTwister(seeds[b])
         try
             # Marginal draw when the fit has random effects (#459); the plain
-            # `simulate` is conditional and collapses a variance-component CI.
-            ysim = simulate_fn === nothing ? simulate(fit0; rng=rr) : simulate_fn(rr)
+            # `simulate(fit0; re = :zero)` is conditional and collapses a variance-component CI.
+            # `re = :zero` keeps the fallback's previous draw (#1092 changed the
+            # `simulate` default; this path is reached only without a simulator).
+            ysim = simulate_fn === nothing ? simulate(fit0; rng=rr, re=:zero) : simulate_fn(rr)
             datab = _bootstrap_data(formula, data, ysim)
             fitb = _without_boundary_warnings(() -> refit(datab))
             # Not the raw `.converged` field: this gate also rejects a degenerate

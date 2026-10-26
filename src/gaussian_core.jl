@@ -2585,13 +2585,33 @@ function marginal_parameters(fit::DrmFit)
 end
 
 """
-    simulate(fit; nsim = 1, rng = default_rng())
+    simulate(fit; nsim = 1, rng = default_rng(), data, re = :marginal)
 
-Draw parametric (residual-level) replicate response(s) from the fitted model —
-the building block of a parametric bootstrap and posterior-predictive checks.
-Each draw uses the fitted per-observation mean μ̂ and the fitted dispersion /
-scale parameters for the family; for random-effect models the draw is
-conditional on the random effects being zero (population level).
+Draw parametric replicate response(s) from the fitted model, the building
+block of a parametric bootstrap and posterior-predictive checks. Each draw uses
+the fitted fixed-effect mean and the fitted dispersion / scale parameters for
+the family.
+
+Random effects (`re`, #1092):
+- `re = :marginal` (the default) draws FRESH random effects for every
+  replicate from their fitted distribution, `u* ~ N(0, sd^2 K)`, adds them to
+  the fixed-effect linear predictor and then draws the response. This is the
+  same marginal simulator the parametric bootstrap uses (#459, #462), and it
+  matches drmTMB's default `simulate(fit)` (`re.form = NA`). A random-effect
+  fit needs `data =`, the table it was fitted to (and `tree` / `K` / `A` /
+  `coords` for a structured term, as in [`bootstrap_ci`](@ref)), because the
+  fit does not keep the grouping columns. Without `data`, or for a
+  random-effect structure the marginal simulator does not cover, `simulate`
+  throws an `ArgumentError` rather than fall back to `b = 0`.
+- `re = :zero` draws with every random effect set to zero (population level),
+  which was the only behaviour before #1092. It needs no `data`. drmTMB has no
+  such mode; its `re.form = NULL` (conditional on the fitted modes) has no
+  counterpart here. Do not use `re = :zero` draws for a parametric bootstrap or
+  a posterior-predictive check of random-effect variation: they carry no
+  between-group signal.
+
+A fit without random effects ignores `re` and `data`. A `temporal()` fit
+always draws the full marginal model (a fresh chain per series), as before.
 
 Return value (univariate / random-effect / meta models):
 - `nsim == 1` → a length-`nobs` response `Vector` (back-compatible).
@@ -2616,30 +2636,79 @@ ys  = simulate(fit; newdata = (x = [0.0, 1.0],))  # one row per newdata row
 ```
 
 `newdata` (optional) is a NamedTuple / column table. Draws are population-level
-(random / structured effects set to zero), one row per `newdata` row, using
-[`predict_parameters`](@ref) for the distributional parameters. Omit it to draw
-for the training design (back-compatible). Temporal fits refuse `newdata`.
+(random / structured effects set to zero, whatever `re` says), one row per
+`newdata` row, using [`predict_parameters`](@ref) for the distributional
+parameters. Omit it to draw for the training design. Temporal fits refuse
+`newdata`.
 """
-function simulate(fit::DrmFit; nsim::Integer = 1, rng = default_rng(), newdata = nothing)
+function simulate(fit::DrmFit; nsim::Integer = 1, rng = default_rng(), newdata = nothing,
+                  re::Symbol = :marginal, data = nothing, K = nothing, A = nothing,
+                  tree = nothing, coords = nothing)
     nsim >= 1 || throw(ArgumentError("simulate requires nsim >= 1, got $nsim"))
+    re in (:marginal, :zero) || throw(ArgumentError(
+        "simulate: `re` must be :marginal (fresh random effects, the default) or " *
+        ":zero (random effects set to zero), got :$re"))
     src = newdata === nothing ? fit : _fit_for_simulate_newdata(fit, newdata)
-    nsim == 1 && return _simulate_once(src, rng)
-    first_draw = _simulate_once(src, rng)
+    draw = if newdata === nothing && re === :marginal && _simulate_needs_marginal(fit)
+        _simulate_marginal_draw(fit, data; K, A, tree, coords)
+    else
+        r -> _simulate_once(src, r)
+    end
+    nsim == 1 && return draw(rng)
+    first_draw = draw(rng)
     if first_draw isa AbstractVector       # univariate: stack columns into a Matrix
         out = Matrix{eltype(first_draw)}(undef, length(first_draw), nsim)
         out[:, 1] = first_draw
         for s in 2:nsim
-            out[:, s] = _simulate_once(src, rng)
+            out[:, s] = draw(rng)
         end
         return out
     else                                   # bivariate Dict: collect replicates
         reps = Vector{typeof(first_draw)}(undef, nsim)
         reps[1] = first_draw
         for s in 2:nsim
-            reps[s] = _simulate_once(src, rng)
+            reps[s] = draw(rng)
         end
         return reps
     end
+end
+
+# Does `simulate(fit)` (default `re = :marginal`) need the marginal simulator?
+# True when any distributional formula carries a random or structured effect
+# (`(… | g)`, `phylo` / `relmat` / `animal` / `spatial`, or an `sd(g) ~ …`
+# part). `temporal()` fits already draw the full marginal model inside
+# `_simulate_once`, so they are excluded. Read off the formula alone, because
+# the fit does not keep the data (#1092).
+function _simulate_needs_marginal(fit::DrmFit)
+    _is_temporal_fit(fit) && return false
+    f = fit.formula
+    (f isa DrmFormula || f isa BivariateDrmFormula) || return false
+    markers = (|, relmat, animal, phylo, spatial)
+    for (k, rhs) in f.forms
+        (startswith(String(k), "sd_") || startswith(String(k), "sdphy_")) && return true
+        terms = rhs isa Tuple ? rhs : (rhs,)
+        any(t -> t isa FunctionTerm && any(m -> t.f === m, markers), terms) && return true
+    end
+    return false
+end
+
+# The default random-effect draw: the bootstrap's marginal simulator (#459,
+# #462). Refuse rather than draw at b = 0 when it cannot be built (#1092).
+function _simulate_marginal_draw(fit::DrmFit, data; K = nothing, A = nothing,
+                                 tree = nothing, coords = nothing)
+    data === nothing && throw(ArgumentError(
+        "simulate: this fit has random effects, and the default `re = :marginal` " *
+        "draws fresh ones for every replicate, which needs the data the model was " *
+        "fitted to: pass `data = ...` (and `tree` / `K` / `A` / `coords` for a " *
+        "structured term), or pass `re = :zero` to draw with the random effects " *
+        "set to zero"))
+    sim = _marginal_simulator(fit, data; K, A, tree, coords)
+    sim === nothing && throw(ArgumentError(
+        "simulate: no marginal (fresh random effect) simulator is available for this " *
+        "random-effect structure, or `data` does not match the fit; pass the fitting " *
+        "`data` (and `tree` / `K` / `A` / `coords`), or `re = :zero` to draw with the " *
+        "random effects set to zero"))
+    return sim
 end
 
 # Population-level (RE = 0) parameter table for `simulate(...; newdata)`. Rebuilds
