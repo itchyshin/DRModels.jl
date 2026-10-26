@@ -140,17 +140,22 @@ end
     @test_logs (:warn, r"falling back to the value-based finite-difference Hessian") DRModels._warn_value_hessian("test")
 
     # End to end: a real NB2 crossed fit whose RE SD collapses to its clamp must warn and
-    # still return a finite or NaN vcov of the right shape (never throw).
+    # still return a vcov of the right shape (never throw). Since #1190 the clamped log SD is held
+    # fixed and the SEs of the other coordinates come from the Hessian of the remaining ones, so
+    # the value-based fallback is not taken.
     rng = MersenneTwister(1073)
     n = 300
     a = ["a$(rand(rng, 1:30))" for _ in 1:n]; b = ["b$(rand(rng, 1:20))" for _ in 1:n]
     x = randn(rng, n)
     y = Float64.([rand(rng, Distributions.NegativeBinomial(3.0, 3.0 / (3.0 + exp(0.3 + 0.4 * x[i])))) for i in 1:n])
-    fit = @test_logs (:warn, r"falling back to the value-based finite-difference Hessian") match_mode = :any drm(
+    fit = @test_logs (:warn, r"treated as fixed at the boundary") match_mode = :any drm(
         bf(@formula(y ~ x + (1 | a) + (1 | b)), @formula(sigma ~ 1)), NegBinomial2();
         data = (; y, x, a, b))
     @test size(vcov(fit)) == (length(fit.theta), length(fit.theta))
     @test minimum(fit.theta[end-1:end]) < -7.9    # the collapse that triggered the branch
+    kc = [k for k in length(fit.theta)-1:length(fit.theta) if fit.theta[k] < -7.9]
+    @test all(isnan, vcov(fit)[kc, :]) && all(isnan, vcov(fit)[:, kc])   # no SE for the clamped SD (#1190)
+    @test all(isfinite, diag(vcov(fit))[setdiff(1:length(fit.theta), kc)])
 
     # The branch decision above is only right if the exact gradient really is valid for
     # log-dispersion in (3, 4): at theta_sigma = 3.5 (CV ~ 33) the stored gradient must agree with

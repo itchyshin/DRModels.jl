@@ -189,20 +189,25 @@ const _SE_MODE_TOL_USED = Ref(NaN)
 const _CROSSED_NUISANCE_BOX_REFITS = Ref(0)
 
 function _finite_hessian_from_gradient(grad!, x; require_pd::Bool = true,
-                                       context::AbstractString = "Laplace")
+                                       context::AbstractString = "Laplace",
+                                       coords = eachindex(x))
     n = length(x)
+    # `coords` (#1190): the coordinates to difference. The result is the Hessian block of those
+    # coordinates, with every other coordinate held fixed at `x`; the default is all of them.
+    m = length(coords)
     fail(msg) = (@warn("$context vcov: $msg; reporting a NaN vcov (standard errors unavailable)");
-                 fill(NaN, n, n))
-    H = zeros(n, n)
+                 fill(NaN, m, m))
+    H = zeros(n, m)
     gp = zeros(n); gm = zeros(n)
-    for i in 1:n
+    for (c, i) in enumerate(coords)
         hi = cbrt(eps(Float64)) * max(1.0, abs(x[i]))
         e = zeros(n); e[i] = hi
         grad!(gp, x .+ e); grad!(gm, x .- e)
         (all(isfinite, gp) && all(isfinite, gm)) ||
             return fail("gradient is non-finite at a Hessian stencil point")
-        H[:, i] .= (gp .- gm) ./ (2hi)
+        H[:, c] .= (gp .- gm) ./ (2hi)
     end
+    H = H[collect(coords), :]
     H = (H .+ H') ./ 2
     all(isfinite, H) || return fail("gradient-difference Hessian is non-finite")
     if require_pd && !isposdef(Symmetric(H))
@@ -3242,6 +3247,43 @@ function _zero_flat_clamped_logsd_columns!(H, θ, ks, h; lo::Float64 = -8.0, hi:
     return H
 end
 
+# #1190: covariance when a log-SD coordinate sits at its clamp. There the objective is flat
+# in that coordinate, so its Hessian row is (near) zero and inverting the whole matrix breaks
+# down: the pseudo-inverse reports a meaningless SE for the clamped coordinate and, when
+# finite-difference noise tips one eigenvalue negative, blanks every SE. Treat each clamped
+# log SD as fixed at the boundary and invert the Hessian of the remaining coordinates. The
+# clamped coordinate gets NaN (NA) variances and covariances, with a boundary warning.
+_clamped_logsd_coords(θ, ks; lo::Real = -8.0, hi::Real = 3.0, tol::Real = 1e-3) =
+    [k for k in ks if θ[k] <= lo + tol || θ[k] >= hi - tol]
+
+# Covariance from the Hessian block `Hfree` of the coordinates `free`, with the `fixed`
+# coordinates (a clamped log SD) reported as NaN.
+function _vcov_with_fixed_coords(Hfree, n::Int, free, fixed; context::AbstractString = "",
+                                 lo::Real = -8.0, hi::Real = 3.0)
+    V = fill(NaN, n, n)
+    all(isfinite, Hfree) || return V
+    V[free, free] .= _vcov_from_fd_hessian(Hfree; context = context)
+    get(task_local_storage(), :drm_quiet_boundary, false) === true ||
+        @warn("$context vcov: random-effect log SD coordinate(s) $(collect(fixed)) sit at the " *
+              "clamp [$(lo), $(hi)], so the Hessian is flat there. They are treated as fixed " *
+              "at the boundary: standard errors of the other coordinates come from the Hessian " *
+              "of the remaining parameters. The standard error of the clamped coordinate is not " *
+              "trustworthy and is reported as NaN.")
+    return V
+end
+
+# `_vcov_from_fd_hessian` of a full Hessian `H`, with the clamped log-SD coordinates in `ks`
+# fixed. With none clamped this is exactly `_vcov_from_fd_hessian`.
+function _vcov_with_clamped_logsd_fixed(H, θ, ks; context::AbstractString = "",
+                                        lo::Real = -8.0, hi::Real = 3.0, tol::Real = 1e-3)
+    fixed = _clamped_logsd_coords(θ, ks; lo = lo, hi = hi, tol = tol)
+    isempty(fixed) && return _vcov_from_fd_hessian(H; context = context)
+    all(isfinite, H) || return fill(NaN, size(H)...)
+    free = setdiff(axes(H, 1), fixed)
+    return _vcov_with_fixed_coords(H[free, free], size(H, 1), free, fixed;
+                                   context = context, lo = lo, hi = hi)
+end
+
 function _fit_crossed_mean_laplace(fam, kind, aux, n::Int, Xμ, gidx, G, hidx, Hh,
                                    nmμ, labels, g_tol; θβ0 = nothing,
                                    se::Bool = false, polish_iterations::Int = 0)
@@ -3570,24 +3612,42 @@ function _fit_crossed_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, gi
         # #1073: central differences of the exact gradient, inner mode solve
         # tightened and cold-started at each stencil point. A clamped coordinate
         # (flat objective, non-flat gradient) keeps the value-based path.
-        Hθ = if _se_hessian_path(θ̂; disp = (pμ + 1,), sd = (pμ + 2):(pμ + 3),
-                                 disp_bound = _dispersion_clamp(kind)) === :value
-            _warn_value_hessian("sparse-Laplace GLMM (crossed-mean nuisance)")
-            _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
-        else
-            # Tolerance ladder (ported from J3e, #1073): at log-dispersion in (3, 4) the
-            # counts are heavy-tailed and the cold 1e-12 solve stalls on its rounding floor.
+        se_tight = _se_grad((θ, tol) -> _crossed_mean_laplace_nuisance_fg(
+            kind, aux_from, n, Xμ, gidx, G, hidx, Hh, θ; grad = true,
+            b0 = zeros(G + Hh), mode_tol = tol, mode_maxiter = _SE_MODE_MAXITER))
+        ctx = "sparse-Laplace GLMM (crossed-mean nuisance)"
+        sd_ks = (pμ + 2):(pμ + 3)
+        disp_clamped = _clamp_active(θ̂, (pμ + 1,); lo = -disp_bound, hi = disp_bound)
+        fixed_sd = _clamped_logsd_coords(θ̂, sd_ks)
+        if !isempty(fixed_sd) && !disp_clamped
+            # #1190: a log SD at its clamp is held fixed there. The objective is flat in that
+            # coordinate but the analytic gradient of every other coordinate is exact at the
+            # clamped value, so the gradient-difference Hessian of the remaining coordinates
+            # stays valid (and far less noisy than the value stencil). Falls back to the value
+            # stencil if a stencil inner solve fails.
+            free = setdiff(eachindex(θ̂), fixed_sd)
             _SE_MODE_TOL_USED[] = NaN
-            se_grad! = _se_grad((θ, tol) -> _crossed_mean_laplace_nuisance_fg(
-                kind, aux_from, n, Xμ, gidx, G, hidx, Hh, θ; grad = true,
-                b0 = zeros(G + Hh), mode_tol = tol, mode_maxiter = _SE_MODE_MAXITER))
-            Hgrad = _finite_hessian_from_gradient(se_grad!, θ̂;
-                context = "sparse-Laplace GLMM (crossed-mean nuisance)")
-            _warn_se_mode_fallback("sparse-Laplace GLMM (crossed-mean nuisance)",
-                                   _SE_MODE_TOL_USED[])
-            Hgrad
+            Hfree = _finite_hessian_from_gradient(se_tight, θ̂; context = ctx, coords = free)
+            _warn_se_mode_fallback(ctx, _SE_MODE_TOL_USED[])
+            if !all(isfinite, Hfree)
+                Hfree = _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))[free, free]
+            end
+            _vcov_with_fixed_coords(Hfree, length(θ̂), free, fixed_sd; context = ctx)
+        else
+            Hθ = if _se_hessian_path(θ̂; disp = (pμ + 1,), sd = sd_ks,
+                                     disp_bound = disp_bound) === :value
+                _warn_value_hessian(ctx)
+                _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+            else
+                # Tolerance ladder (ported from J3e, #1073): at log-dispersion in (3, 4) the
+                # counts are heavy-tailed and the cold 1e-12 solve stalls on its rounding floor.
+                _SE_MODE_TOL_USED[] = NaN
+                Hgrad = _finite_hessian_from_gradient(se_tight, θ̂; context = ctx)
+                _warn_se_mode_fallback(ctx, _SE_MODE_TOL_USED[])
+                Hgrad
+            end
+            _vcov_with_clamped_logsd_fixed(Hθ, θ̂, sd_ks; context = ctx)
         end
-        _vcov_from_fd_hessian(Hθ; context = "sparse-Laplace GLMM (crossed-mean nuisance)")
     else
         fill(NaN, length(θ̂), length(θ̂))
     end
