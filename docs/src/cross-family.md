@@ -70,8 +70,9 @@ is a plain L-BFGS optimisation with forward-mode autodiff. For identifiability,
     [`rho12`](tutorials/bivariate-coscale.md) model. In that case the two
     loadings are not separately identified (a flat `λ₁` ridge), but the marginal
     covariance — hence the log-likelihood and `ρ` — is. For Gaussian ×
-    non-Gaussian (no free residual variance on the non-Gaussian axis), all
-    parameters are identified.
+    non-Gaussian fits, identification depends on the family pair, its
+    parameterisation, and the data. Do not assume every loading and dispersion
+    is separately identified; inspect the estimates and likelihood curvature.
 
 ## The latent-scale correlation
 

@@ -78,6 +78,24 @@ def assert_recent_capability_corrections(markdown):
     assert "does not establish interval coverage" in scale
 
 
+def assert_mixed_margin_identification_is_qualified(overview, guide):
+    """Keep mixed-family identifiability conditional on the route and data."""
+    mixed = overview.split("For Gaussian ×", 1)[1].split("## The latent-scale correlation", 1)[0]
+    normalized = re.sub(r"\s+", " ", mixed).lower()
+    if "all parameters are identified" in normalized:
+        raise AssertionError("Mixed-family identifiability must not be stated categorically")
+    for phrase in (
+        "family pair",
+        "parameterisation",
+        "data",
+        "do not assume every loading and dispersion is separately identified",
+    ):
+        if phrase not in normalized:
+            raise AssertionError(f"Mixed-family identification qualification is missing: {phrase}")
+    if "depends on the family pair, its parameterisation, and the data" not in " ".join(guide.split()).lower():
+        raise AssertionError("The methods guide and overview must agree on identification scope")
+
+
 class DocumentationSemantics(unittest.TestCase):
     def text(self, path):
         return (ROOT / path).read_text()
@@ -94,6 +112,11 @@ class DocumentationSemantics(unittest.TestCase):
             self.assertIn(old, text)
             with self.assertRaises(AssertionError):
                 assert_recent_capability_corrections(text.replace(old, new))
+    def test_mixed_margin_identification_is_conditional(self):
+        assert_mixed_margin_identification_is_qualified(
+            self.text("docs/src/cross-family.md"),
+            self.text("docs/src/model-guides/cross-family-methods.md"),
+        )
     def test_family_map_lists_all_public_constructors(self):
         exports = self.text("src/DRModels.jl")
         names = {"Gaussian", "Student", "LogNormal", "Gamma", "Tweedie", "Poisson", "NegBinomial2", "TruncatedNegBinomial2", "TruncatedPoisson", "Beta", "BetaBinomial", "Binomial", "ZeroOneBeta", "CumulativeLogit", "SkewNormal"}
