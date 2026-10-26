@@ -216,6 +216,12 @@ function Base.show(io::IO, ::MIME"text/plain", fit::DrmFit)
         "but convergence_status is ", status, " -- see `convergence_status`)")
     _wald_withheld(fit) && println(io, "  Wald SEs withheld (homogeneous Toeplitz, as drmTMB): `sigma` is the " *
         "TOTAL within-series SD; use profile intervals for mean coefficients.")
+    # #1193: no Wald SEs from an unconverged fit or a non-PD Hessian.
+    if !_wald_withheld(fit)
+        why = _wald_unreliable(fit)
+        why === nothing || println(io, "  Wald SEs withheld: ", why, ".\n",
+            "  Std.Error, z and p are NaN; `stderror(fit)` keeps the Hessian values.")
+    end
 
     # Residual SD on the RESPONSE scale + residual dof (issue #752). An R user
     # looks for these first: lm() prints both and drmTMB prints sigma. The value
@@ -316,6 +322,11 @@ under each block heading). To test a variance component against 0 use a
 boundary-corrected likelihood-ratio test (`lrt_boundary`), not the `:resd`
 row. A boundary / singular direction (non-finite SE) reports `NaN` z / p rather
 than a spurious `z = 0, p = 1`.
+
+When the fit is not converged ([`is_converged`](@ref) is `false`) or its Hessian
+is not positive definite, the Std.Error, z, p and interval columns are all `NaN`
+(#1193), as drmTMB refuses `vcov()` there; `show(fit)` prints the reason.
+[`stderror`](@ref) and `vcov` still return the Hessian-based values.
 """
 function coeftable(fit::DrmFit; level::Real = 0.95)
     level = _validate_ci_level(level; what="coeftable")
