@@ -1,0 +1,1 @@
+The capabilities page now retains the R-bridge qualification inside its table cell and distinguishes numerical testing from a complete worked analysis. REML and interval statements retain their route-specific evidence limits.
