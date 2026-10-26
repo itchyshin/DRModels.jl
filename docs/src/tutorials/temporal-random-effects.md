@@ -262,9 +262,9 @@ expect profile limits to agree less tightly than the Wald limits; the
 differences on this page are measured, not asserted.
 
 No coverage is claimed for AR1 intervals of either kind. drmTMB's first AR1
-calibration pilot found a residual-SD boundary in a primary short-series case,
-so its AR1 profile and Wald intervals carry no coverage claim, and DRModels.jl
-makes none either.
+calibration pilot found a primary short-series fit with false convergence,
+a non-positive-definite Hessian, and unavailable coefficient intervals.
+That result provides no coverage evidence for either package.
 
 drmTMB refuses every interval for `sigma`, the variance components and the
 persistence or decay: Wald, profile and bootstrap. DRModels.jl returns them as

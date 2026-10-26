@@ -155,21 +155,21 @@ evaluated with the numerically stable ``\operatorname{logsumexp}`` (subtract the
 per-observation maximum, exponentiate, sum, re-log). The default node count is
 ``K = 32``.
 
-### Why quadrature, not Laplace
+### One-dimensional quadrature
 
-For this model the integrand is genuinely one-dimensional, so a ``K``-node
-Gauss–Hermite rule is both cheap (``O(nK)`` per likelihood evaluation) and far
-more accurate than a single mode-plus-curvature Laplace match — it captures
-skewed and heavy-tailed conditional posteriors that Laplace cannot see (the
-shape/dispersion bias documented in
-[Laplace vs variational marginals](marginal-la-vs-va.md)). The summand is a
+For this model the integral is one-dimensional. The Gauss–Hermite rule
+uses ``K`` evaluations per observation, or ``O(nK)`` scalar evaluations per
+likelihood call. It evaluates the integrand at multiple nodes; Laplace uses
+its local mode and curvature. Their accuracy depends on the integrand, and
+neither description establishes a general accuracy ranking. See the bounded
+comparisons in [Laplace vs variational marginals](marginal-la-vs-va.md). The summand is a
 smooth, deterministic function of ``\boldsymbol{\theta}`` (the nodes are
 constants), so the objective is differentiable by forward-mode automatic
 differentiation and is optimised with L-BFGS. A finite-penalty guard maps any
 non-finite objective value (e.g. an overflow from a large Poisson loading
 mid-line-search) to a large finite number of the same dual type, so the
-optimiser backtracks rather than aborting; the well-conditioned path — hence
-every converged estimate and interval — is untouched.
+optimiser can backtrack rather than aborting. The guard leaves finite
+objective values unchanged.
 
 ## 4. Link-residual standardisation
 

@@ -113,18 +113,17 @@ stayed within about 5e-4 of it. A later Poisson `(1 | g)` comparison
   keyword is not accepted by every family. Crossed and structured
   non-Gaussian routes generally use Laplace by default, with exact Gaussian
   calculations for the delegated LogNormal routes.
-- **On the adaptive-quadrature cells, `:Laplace` is for parity, not a better
-  default.** The Laplace approximation is adaptive quadrature with a single
-  node, so the default's extra nodes usually make it the more accurate integral
-  of the same model, as on the datasets above. Laplace loses accuracy when
-  groups are small or counts sit near zero (binary data above all), where each
-  group's posterior is far from Gaussian. Gaussian `sigma ~ 1 + (1 | g)` is the
-  exception: its fixed grid loses accuracy as groups grow, so for large groups
-  `:Laplace` (or `:AGHQ`) is the more accurate choice; see the scale-axis row
-  of [What is tested](capabilities.md).
-- **Compare like with like.** Log-likelihoods, likelihood-ratio tests, AIC and
-  BIC are comparable only between fits that use the same approximation, and
-  across the two packages only when both use the Laplace approximation.
+- **Match the integration rule for the comparison.** On the named adaptive-
+  quadrature test cells, the default was closer to the 61-node reference.
+  Extra nodes alone do not guarantee greater accuracy. Small groups and counts
+  near zero can produce non-Gaussian group posteriors, so inspect sensitivity
+  to the integration rule. Gaussian `sigma ~ 1 + (1 | g)` uses a fixed grid;
+  its recorded large-group comparisons favoured `:Laplace` or `:AGHQ`. See
+  the scale-axis row of [What is tested](capabilities.md).
+- **Compare like with like.** Use the same likelihood convention and
+  approximation when comparing log-likelihoods, likelihood-ratio tests, AIC
+  and BIC across these engines. For the random-effect cells discussed here,
+  match the integration rule before making a cross-package comparison.
   `fit.marginal` records the option (`:LA`, `:Laplace`, `:AGHQ` or `:VA`; the
   default Gaussian fit with `(1 | g)` on both the mean and `sigma` is tagged
   `:Laplace`). `lrtest` and `anova` refuse a pair whose tags differ (a fit with

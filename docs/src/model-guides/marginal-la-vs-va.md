@@ -59,8 +59,10 @@ seven Poisson, Beta, NegBinomial2, Gamma and Student test datasets their
 log-likelihoods differed by 0.01 to 0.24 units, with drmTMB's always the one
 further from a 61-node quadrature reference (a later Poisson comparison showed
 a gap of about 0.0014); with `marginal = :Laplace` their log-likelihoods agree
-to within about 1e-8 and their estimates to about 5e-8 (relative). The default is usually the more accurate integral, so use
-`:Laplace` for parity with drmTMB, not as a better default.
+to within about 1e-8 and their estimates to about 5e-8 (relative). In these
+comparisons, the adaptive default was closer to the 61-node reference. This
+does not establish a general accuracy ranking. Use `:Laplace` when matching
+drmTMB's integration rule.
 
 The gap used to be larger. Before version 0.7.2, `:LA` integrated an ordinary
 `(1 | g)` on a fixed 32-node grid on the prior scale. On ten test datasets with a
@@ -173,8 +175,8 @@ needs:
   expectations of `η` and of `e^{η}` (a log-normal moment) are both analytic.
 - **One-dimensional Gauss–Hermite quadrature** for everything else —
   **Binomial**, **negative binomial**, and **Beta** — where the expectation
-  reduces to a single integral over the scalar `η`, cheaply and accurately
-  evaluated with a handful of GH nodes.
+  reduces to a single integral over the scalar `η`, approximated with the
+  configured Gauss–Hermite nodes.
 
 Because `q` carries a *variance* `v`, not just a location, it represents tail and
 spread directly, so the shape and dispersion parameters are no longer estimated

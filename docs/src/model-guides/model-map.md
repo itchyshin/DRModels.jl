@@ -88,7 +88,7 @@ are listed below; SkewNormal is an advanced fixed-effect route:
 | [`Gamma`](@ref) | positive, continuous | log | CV → shape `α = 1/σ²` |
 | [`Tweedie`](@ref) | positive **with exact zeros** | log | √dispersion `σ` + power `nu` ∈ (1,2) |
 | [`Poisson`](@ref) | counts (var ≈ mean) | log | — (`+ zi` / `+ hu`) |
-| [`TruncatedPoisson`](@ref) | positive counts (≥ 1) | log (untruncated rate) | — |
+| [`TruncatedPoisson`](@ref) | positive counts (≥ 1) | log (untruncated rate) | None |
 | [`NegBinomial2`](@ref) | overdispersed counts (NB2) | log | dispersion `θ` (`+ zi` / `+ hu`) |
 | [`TruncatedNegBinomial2`](@ref) | positive counts (≥ 1) | log | dispersion `θ` |
 | [`Beta`](@ref) | proportions in (0,1) | logit | precision `φ = 1/σ²` |
