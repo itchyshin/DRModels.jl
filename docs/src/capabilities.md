@@ -282,6 +282,9 @@ above, and it does so by delegation rather than by a second engine.
 | **χ̄² (chi-bar-square) boundary inference** (Self–Liang / Stram–Lee mixture) | **Tested** |
 | REML on q=4 Laplace and Location–Scale–Scale models | **Tested** |
 
+!!! warning "Percentile bootstrap intervals for `sigma` terms in mixed models"
+    `bootstrap_ci` returns plain percentile intervals, and for a `sigma` coefficient in a mixed model (a model with random effects) they are too narrow. In a simulated Gaussian location-scale model with a mean random intercept (95% intervals, `B = 199`, four cells of groups and random-intercept SD), the percentile interval for the `sigma` intercept covered 83 to 90% of the time, one-sidedly, while profile intervals for the same target covered 92 to 94% (#1119). The intervals are kept as they are and `bootstrap_ci` now warns when it returns them. For `sigma` terms in a mixed model, prefer `confint(fit, method = :profile)`.
+
 !!! warning "REML scope"
     `method=:REML` is opt-in. **ML is the default** (REML likelihoods are not
     comparable across fixed-effect structures). Supported models are: the fixed-effect
