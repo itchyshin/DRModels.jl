@@ -123,7 +123,7 @@ fit = drm(
 | predict **every** distributional parameter at new data | `predict_parameters(fit, newdata; type = :response)` |
 | in-sample fitted per-observation parameters | `marginal_parameters(fit)` |
 | build a covariate grid for prediction | `prediction_grid(reference; predictor = values, …)` |
-| `simulate(fit)` (fresh random effects, `re.form = NA`) | `simulate(fit; data)` (fresh random effects, `re = :marginal`; `re = :zero` sets them to zero; `data` is needed only for a random-effect fit) |
+| `simulate(fit)` (fresh random effects, `re.form = NA`) | `simulate(fit; data)` (fresh random effects, `re = :marginal`; `re = :zero` sets them to zero; random-effect fits need `data`, except temporal fits can simulate their full marginal chain without it) |
 | `summary(fit)` | `summary(fit)` (prints the Wald coefficient table) |
 | `weights(fit)` | `weights(fit)`: the prior weights from `drm(...; weights = w)`, or `nothing` (fixed-effect ML routes only; other routes refuse `weights =`) |
 | `drm_control(maxit =, start =, multi_start =, se =)` | `control = DRMControl(maxit =, start =, multi_start =, se =)`; `maxit` / `start` / `multi_start` on fixed-effect routes, `se = false` on every route (`control_info(fit)` reports what it did) |

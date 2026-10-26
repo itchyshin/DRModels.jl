@@ -145,7 +145,7 @@ the family draw. This matches drmTMB's default `simulate(fit)`
 (`re.form = NA`, for which `~0` is a synonym). It is the simulator the
 parametric bootstrap already used (#459, #462).
 
-The two packages differ in three ways:
+The packages differ in these additional ways:
 
 - **DRModels.jl needs `data`.** A fit does not keep its grouping columns, so a
   random-effect fit takes `data =`, the table it was fitted to (plus `tree`,
@@ -159,8 +159,10 @@ The two packages differ in three ways:
 - **drmTMB's `re.form = NULL` has no DRModels.jl counterpart.** It draws
   conditional on the fitted random-effect modes.
 
-`simulate(fit; newdata)` stays population level (random effects at zero) in
-DRModels.jl, whatever `re` says.
+For non-temporal fits, `simulate(fit; newdata)` stays population level (random
+effects at zero) in DRModels.jl, whatever `re` says. This `newdata` simulation
+route is Julia-only; drmTMB does not accept `newdata` for simulation. Temporal
+fits in DRModels.jl reject `newdata`.
 
 ## Performance
 

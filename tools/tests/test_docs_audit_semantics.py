@@ -142,6 +142,21 @@ class DocumentationSemantics(unittest.TestCase):
         ):
             self.assertIn(documented, doc)
             self.assertIn(implemented, method)
+    def test_simulate_parity_scopes_newdata_and_temporal_refusal(self):
+        text = " ".join(self.text("docs/src/drmtmb-parity.md").split())
+        self.assertIn("For non-temporal fits, `simulate(fit; newdata)` stays population level", text)
+        self.assertIn("drmTMB does not accept `newdata` for simulation", text)
+        self.assertIn("Temporal fits in DRModels.jl reject `newdata`", text)
+        self.assertNotIn("differ in three ways", text)
+    def test_offset_table_separates_random_effect_and_zi_hu_routes(self):
+        text = " ".join(self.text("docs/src/reference/model-specification.md").split())
+        self.assertIn("Fixed-effects `NegBinomial2()` routes with `zi` or `hu` also support offsets", text)
+        self.assertIn("they cannot be combined with a random effect", text)
+        self.assertIn("`Gamma()` and `Beta()` with one `(1 | g)` under `marginal = :Laplace`", text)
+    def test_rosetta_simulate_data_note_names_temporal_exception(self):
+        text = self.text("docs/src/rosetta.md")
+        row = next(line for line in text.splitlines() if "`simulate(fit)`" in line)
+        self.assertIn("temporal fits can simulate their full marginal chain without it", row)
     def test_temporal_experimental_scope(self):
         text = self.text("docs/src/api-stability.md").split("## What is still experimental")[1].split("## Engine functions")[0]
         for term in ("AR1", "OU", "Toeplitz", "intercept-only", "maximum likelihood"):
