@@ -197,6 +197,26 @@ end
                   data = dat, K = Matrix(1.0I, 20, 20)) isa DrmFit
     end
 
+    @testset "#1010: profile_ci with no sigma phylo(1 | g) term is refused" begin
+        rng = MersenneTwister(1)
+        x = randn(rng, 160); y = 1 .+ 0.5x .+ randn(rng, 160); g = repeat(1:20, inner = 8)
+        dat = (y = y, x = x, g = g)
+        # Fixed-effect, `(1 | g)` and mu-phylo-only models have no precomputed
+        # profile intervals to build; the flag used to be dropped silently.
+        for f in (bf(@formula(y ~ x), @formula(sigma ~ 1)),
+                  bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)),
+                  bf(@formula(y ~ x), @formula(sigma ~ 1 + (1 | g))))
+            msg = _j3_msg(() -> drm(f, Gaussian(); data = dat, profile_ci = true))
+            @test occursin("`profile_ci = true`", msg)
+            @test occursin("phylo(1 | g)", msg)
+        end
+        @test_throws ArgumentError drm(bf(@formula(y ~ x), @formula(sigma ~ 1 + (1 | g))), Gaussian();
+                                       data = dat, marginal = :Laplace, profile_ci = true)
+        # the default (`false`) is untouched
+        @test drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), Gaussian(); data = dat,
+                  profile_ci = false) isa DrmFit
+    end
+
     @testset "#966: cross-family formula route refuses missing responses and checks the sentinel" begin
         rng = MersenneTwister(31)
         n = 120; x = randn(rng, n); z = randn(rng, n)
