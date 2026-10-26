@@ -55,6 +55,31 @@ using Test, Random, Logging
     @test !any(r -> occursin("the fit failed", string(r.message)), qlogger.logs)
 end
 
+@testset "#1142: the committed Julia 1.10 seed-3 Beta draws end on the sentinel and warn" begin
+    # Frozen Julia 1.10.12 draws of `gen_beta_runoff(3, 300)` (test/parity/gen_1088_nb2_runoff_data.jl).
+    # MersenneTwister draws differ from Julia 1.12, whose draws (fixture beta_runoff_s3_n300) run
+    # off and are recovered. Here the start point is already the failed-inner-solve sentinel:
+    # nothing runs past a clamp, the box re-fit does not fire, log sigma stays at its start value.
+    lines = readlines(joinpath(@__DIR__, "fixtures", "j3_se", "beta_runoff_s3_n300_jl110", "data.csv"))
+    rows = [split(l, ',') for l in lines[2:end]]
+    d = (; y = [parse(Float64, r[1]) for r in rows], x = [parse(Float64, r[2]) for r in rows],
+         g = String[r[3] for r in rows], h = String[r[4] for r in rows])
+    DRModels._CROSSED_NUISANCE_BOX_REFITS[] = 0
+    logger = Test.TestLogger(min_level = Logging.Warn)
+    fit = Logging.with_logger(logger) do
+        drm(bf(@formula(y ~ 1 + x + (1 | g) + (1 | h)), @formula(sigma ~ 1)), DRModels.Beta(); data = d)
+    end
+    msgs = [string(r.message) for r in logger.logs]
+    @test length(d.y) == 300
+    @test loglik(fit) == -1.0e18
+    @test !is_converged(fit)
+    @test fit.theta[3] ≈ 0.34657359027997264 atol = 1e-9   # log of the Method-of-Moments cap: never moved
+    @test DRModels._CROSSED_NUISANCE_BOX_REFITS[] == 0
+    @test count(m -> occursin("the fit failed", m) && occursin("sentinel", m), msgs) == 1
+    @test !any(m -> occursin("ended past an upper clamp", m), msgs)
+    @test any(m -> occursin("NaN vcov", m), msgs)
+end
+
 @testset "#1142: a healthy crossed Beta fit does not emit the failed-fit warning" begin
     rng = MersenneTwister(11)
     G, H, n = 8, 6, 200

@@ -435,7 +435,7 @@ using Test, Random, LinearAlgebra
         "gaussian", dat_sd)
     fam_sd = DRModels._bridge_family("gaussian")
     opts_sd = DRModels._bridge_options(Dict{String,Any}())
-    opts_sd[:profile_ci] = true   # `drm_bridge_inference` sets this for the SD path
+    # no `profile_ci`: the bridge requests it only for a sigma-phylo formula (#1010)
     tree_sd = DRModels._bridge_tree(phy)
     fit_sd = DRModels._bridge_fit(bundle_sd, fam_sd, dat_sd; tree = tree_sd, K = nothing,
                              A = nothing, coords = nothing, options = opts_sd)

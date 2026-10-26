@@ -983,7 +983,7 @@ calling `ranef` on such a fit throws an `ArgumentError` instead of silently
 returning an empty `Dict`.
 """
 function ranef(fit::DrmFit)
-    if fit.ranef === nothing
+    if fit.ranef === nothing || fit.ranef isa PhyloTipVariance   # tip variances only, no modes
         has_re_block = any(p -> first(p) in (:resd, :recov, :sd, :sd_phylo), fit.blocks)
         has_re_block && throw(ArgumentError("ranef: this fit has a random-effect block " *
             "but no stored conditional modes -- the non-Gaussian GLMM marginal route " *
@@ -1666,9 +1666,9 @@ function _gaussian_laplace_validate(f::DrmFormula, fam::Gaussian, data, algorith
     method === :ML || rej("`method = :$method`")
     penalty === nothing || rej("`penalty`")
     algorithm === :auto || rej("`algorithm = :$algorithm`")
-    # `profile_ci` is not checked: it only precomputes the sigma-phylo location-scale
-    # CIs, so it is ignored on this route exactly as on the default (:LA) route, and
-    # `drm_bridge_inference(method = "profile")` sets it for every univariate fit.
+    # `profile_ci` needs no check here: `_require_profile_ci_used` (input_validation.jl)
+    # already refused it for any formula with no sigma `phylo(1 | g)` term, and this
+    # route has none, so `profile_ci = true` never reaches this point.
     phylo_coupled && rej("`phylo_coupled = true`")
     (sparse === nothing || sparse === false) || rej("`sparse = $sparse`")
     return nothing

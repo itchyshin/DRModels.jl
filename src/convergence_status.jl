@@ -55,6 +55,23 @@ function _twin_inflated_se(se::AbstractVector)
                     s >= _TWIN_INFLATED_SE_RATIO * median_se, se)
 end
 
+# #1190: the sparse-Laplace routes clamp every random-effect log SD to [-8, 3] and, at the
+# floor, report that coordinate with NaN variance and covariances (the Hessian of the other
+# parameters is inverted, `_vcov_with_clamped_logsd_fixed`). drmTMB has no floor: the same
+# collapsed SD runs on to ~1e-28 and is `:boundary` by rule 8. The Julia floor e^-8 = 3.4e-4
+# can never fall under the 1e-4 cut, so a log SD within 1e-3 of the floor counts as at the
+# boundary instead, and rules 3 to 5 read the covariance of the remaining coordinates.
+# Returns the coordinates in a `:resd` block that sit at the floor with an all-NaN
+# covariance row and column.
+function _twin_floor_fixed_coords(fit::DrmFit)
+    V = fit.vcov
+    (size(V, 1) == size(V, 2) == length(fit.theta)) || return Int[]
+    any(p -> first(p) === :resd, fit.blocks) || return Int[]
+    return [k for k in _block_range(fit, :resd)
+            if fit.theta[k] <= -8.0 + _CLAMP_ACTIVE_TOL &&
+               all(isnan, @view(V[k, :])) && all(isnan, @view(V[:, k]))]
+end
+
 # The values drmTMB reads for a Julia-engine fit: `sdpars` is the exponentiated
 # `resd_*` block (plus the decoded `recov` pair), which is `re_sd(fit)`, and the
 # residual rho12 is `corpairs`. A fit `re_sd` refuses (an `sd(g) ~ x` model)
@@ -94,7 +111,11 @@ numeric rules as drmTMB's `convergence_status()` (FX3b; drmTMB
    times the median of the standard errors below 50 (the smallest standard
    error when none is below 50): a near-flat, weakly identified direction.
 6. `:boundary` when a fitted residual correlation has `|rho12| > 0.98`, or a
-   fitted random-effect SD ([`re_sd`](@ref)) is below `1e-4`.
+   fitted random-effect SD ([`re_sd`](@ref)) is below `1e-4`. A random-effect log SD
+   within `1e-3` of the sparse-Laplace floor of `-8` also counts (the floor
+   `e^-8 = 3.4e-4` never falls under `1e-4`). Its standard error is `NaN` (the Hessian
+   of the other coordinates is inverted, #1190), and rules 3 to 5 then read the
+   covariance of the remaining coordinates.
 7. `:converged` otherwise.
 
 Rules 3 to 5 are skipped when standard errors were turned off (`se = false`, or
@@ -110,14 +131,17 @@ function convergence_status(fit::DrmFit)
         return :degenerate
     end
     (fit.geometry === :ok && _nondegenerate_fit(fit)) || return :degenerate
+    floor_fixed = fit.uncertainty === :skipped ? Int[] : _twin_floor_fixed_coords(fit)
     if fit.uncertainty !== :skipped
-        se = _twin_standard_errors(fit.vcov)
-        if !_twin_vcov_positive_definite(fit.vcov) || isempty(se) ||
+        keep = setdiff(axes(fit.vcov, 1), floor_fixed)
+        V = isempty(floor_fixed) ? fit.vcov : fit.vcov[keep, keep]
+        se = _twin_standard_errors(V)
+        if !_twin_vcov_positive_definite(V) || isempty(se) ||
            !all(isfinite, se) || _twin_inflated_se(se)
             return :degenerate
         end
     end
-    at_boundary =
+    at_boundary = !isempty(floor_fixed) ||
         any(s -> isfinite(s) && s < _TWIN_RE_SD_BOUNDARY, _twin_re_sd_values(fit)) ||
         any(r -> isfinite(r) && abs(r) > _TWIN_RHO12_BOUNDARY, _twin_rho12_values(fit))
     return at_boundary ? :boundary : :converged
