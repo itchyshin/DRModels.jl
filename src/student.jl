@@ -76,6 +76,9 @@ function _drm_student_fit(f::DrmFormula, fam::Student; data, g_tol::Real = 1e-8,
     _lss_only_gaussian_guard(f, fam)   # #544: refuse, never silently drop, sd() parts
     rhs = Dict(f.forms)
     fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
+    fixed_mu, offset_term = _extract_offset(fixed_mu)   # #938: offset(z), coefficient fixed at 1
+    offset_term === nothing || (isempty(re) && mv === nothing && st === nothing) ||
+        _refuse_offset_route(fam, "a random, structured or `meta_V` term on the mean")
     (mv === nothing && st === nothing) ||
         error("Student() does not support meta_V / structured markers")
     for (pname, r) in f.forms          # only the mean may carry a random effect
@@ -126,7 +129,7 @@ function _drm_student_fit(f::DrmFormula, fam::Student; data, g_tol::Real = 1e-8,
             error("Student() supports `(1 | g)` or `(1 + x | g)` random effects on the mean")
         end
     end
-    return _withformula(_fit_student(fam, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol), f)
+    return _withformula(_fit_student(fam, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol; offset = _offset_for_fit(fam, offset_term, data, size(Xμ, 1))), f)
 end
 
 # Student-t GLMM with a random intercept (1|g) on the mean μ (identity link).
@@ -211,13 +214,13 @@ function _fit_student_corr_ranef(fam::Student, y, Xμ, Xσ, Xν, xs, gidx, G, nm
         Optim.iterations(res))
 end
 
-function _fit_student(fam::Student, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol)
+function _fit_student(fam::Student, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol; offset = nothing)
     n = length(y)
     pμ, pσ, pν = size(Xμ, 2), size(Xσ, 2), size(Xν, 2)
     w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]; βν = θ[pμ+pσ+1:pμ+pσ+pν]
-        ημ = Xμ * βμ; ησ = Xσ * βσ; ην = Xν * βν
+        ημ = _eta_with_offset(Xμ, βμ, offset); ησ = Xσ * βσ; ην = Xν * βν
         s = zero(eltype(θ))
         @inbounds for i in 1:n
             z = (y[i] - ημ[i]) * exp(-ησ[i])
@@ -225,29 +228,34 @@ function _fit_student(fam::Student, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol)
         end
         return s
     end
-    βμ0 = Xμ \ y
+    yo = _add_offset(y, offset === nothing ? nothing : -offset)   # #938: start from y - offset
+    βμ0 = Xμ \ yo
     θ0 = zeros(pμ + pσ + pν)
     θ0[1:pμ] .= βμ0
-    θ0[pμ+1] = log(std(y - Xμ * βμ0) + eps())       # σ init
+    θ0[pμ+1] = log(std(yo - Xμ * βμ0) + eps())       # σ init
     θ0[pμ+pσ+1] = log(10.0)                          # ν init (mildly heavy-tailed)
     res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
                        θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
     θ̂ = Optim.minimizer(res)
     # #961: a non-finite Hessian on finite data is a degenerate fit, not a crash.
-    hess_finite = true
+    # The Hessian is always formed: the unit-free converged flag needs it even when
+    # control says `se = false` and the stored covariance is left as NaN (#1050).
+    H = ForwardDiff.hessian(nll, θ̂)
+    Vh, hess_finite = _vcov_from_hessian_checked(H, _all_finite(y, Xμ, Xσ, Xν); context = "Student")
     V = _ctl_se(θ̂) do
-        Vh, hf = _vcov_from_hessian_checked(ForwardDiff.hessian(nll, θ̂),
-                                            _all_finite(y, Xμ, Xσ, Xν); context = "Student")
-        hess_finite = hf
         Vh
     end
+    # x/f/g OR, not the iteration cap, and the Newton step in SE units (#1050).
+    # `g_converged` is the absolute 1e-8 check and is not part of this flag.
+    converged = hess_finite && Optim.converged(res) && !Optim.iteration_limit_reached(res) &&
+        _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :nu => (pμ+pσ+1):(pμ+pσ+pν)]
     names = [:mu => nmμ, :sigma => nmσ, :nu => nmν]
-    means = Dict(:mu => Xμ * θ̂[1:pμ]); obs = Dict(:mu => Vector{Float64}(y))
+    means = Dict(:mu => _eta_with_offset(Xμ, θ̂[1:pμ], offset)); obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]),
                   :nu => 2 .+ exp.(Xν * θ̂[(pμ+pσ+1):(pμ+pσ+pν)]))
     return _withiterations(
-        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res) && hess_finite, means, obs, scales), nll),
+        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, converged, means, obs, scales), nll),
         Optim.iterations(res))
 end
 

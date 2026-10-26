@@ -85,6 +85,9 @@ struct LogNormal end
     _lss_only_gaussian_guard(f, fam)   # #544: refuse, never silently drop, sd() parts
     rhs = Dict(f.forms)
     fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
+    fixed_mu, offset_term = _extract_offset(fixed_mu)   # #938: offset(z), coefficient fixed at 1
+    offset_term === nothing || (isempty(re) && mv === nothing && st === nothing) ||
+        _refuse_offset_route(fam, "a random, structured or `meta_V` term on the mean")
     mv === nothing ||
         error("LogNormal() does not support meta_V markers")
     for (pname, r) in f.forms          # only the mean may carry a random effect
@@ -126,7 +129,7 @@ struct LogNormal end
             error("LogNormal() supports `(1 | g)` or `(1 + x | g)` on the mean")
         end
     end
-    return _withformula(_fit_lognormal(fam, y, Xμ, Xσ, nmμ, nmσ, g_tol), f)
+    return _withformula(_fit_lognormal(fam, y, Xμ, Xσ, nmμ, nmσ, g_tol; offset = _offset_for_fit(fam, offset_term, data, size(Xμ, 1))), f)
 end
 
 # LogNormal GLMM with a random intercept (1|g) on the log-mean μ (the mean of
@@ -207,14 +210,14 @@ function _fit_lognormal_corr_ranef(fam::LogNormal, y, Xμ, Xσ, xs, gidx, G, nm�
         Optim.iterations(res))
 end
 
-function _fit_lognormal(fam::LogNormal, y, Xμ, Xσ, nmμ, nmσ, g_tol)
+function _fit_lognormal(fam::LogNormal, y, Xμ, Xσ, nmμ, nmσ, g_tol; offset = nothing)
     n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
     ly = log.(y); sumlogy = sum(w .* ly)             # Σ wᵢ log yᵢ = the (weighted) Jacobian offset
     sw = sum(w)                                      # == n exactly when unweighted
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
-        ημ = Xμ * βμ; ησ = Xσ * βσ                   # ησ = log σ
+        ημ = _eta_with_offset(Xμ, βμ, offset); ησ = Xσ * βσ                   # ησ = log σ
         s = zero(eltype(θ))
         @inbounds for i in 1:n
             r = ly[i] - ημ[i]
@@ -222,16 +225,17 @@ function _fit_lognormal(fam::LogNormal, y, Xμ, Xσ, nmμ, nmσ, g_tol)
         end
         return s + 0.5 * sw * log(2π) + sumlogy        # Gaussian-on-log-y nll + Σ log y
     end
-    βμ0 = Xμ \ ly
+    lyo = _add_offset(ly, offset === nothing ? nothing : -offset)   # #938: start from log y - offset
+    βμ0 = Xμ \ lyo
     θ0 = zeros(pμ + pσ)
     θ0[1:pμ] .= βμ0
-    θ0[pμ+1] = log(std(ly - Xμ * βμ0) + eps())
+    θ0[pμ+1] = log(std(lyo - Xμ * βμ0) + eps())
     res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
                        θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
     θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ)]
     names = [:mu => nmμ, :sigma => nmσ]
-    means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))  # response-scale median
+    means = Dict(:mu => exp.(_eta_with_offset(Xμ, θ̂[1:pμ], offset))); obs = Dict(:mu => Vector{Float64}(y))  # response-scale median
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),

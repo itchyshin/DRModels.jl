@@ -1,0 +1,1 @@
+- **`lrt_boundary` now documents that the chi-bar p-value for the Gaussian `(1 | g)` test is conservative with few groups (#1118).** In 500 null replicates (25 groups of 12) it rejected about 3.4% of the time at nominal 5% (the naive `lrtest` χ² gave 1.2%); statistics match `drmTMB` to about 1e-8. The mixture weights are unchanged; this is a docs-only change.

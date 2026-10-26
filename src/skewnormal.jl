@@ -69,10 +69,11 @@ struct SkewNormal end
     end
     # #1089: drop rows with a missing predictor or response (R's na.omit), with a count.
     data = _drop_missing_response_rows(f, _drop_missing_predictor_rows(f, data))
-    y, Xμ, nmμ = _design(f.response, rhs[:mu], data)
+    mu_fixed, offset_term = _extract_offset(rhs[:mu])   # #938: offset(z), coefficient fixed at 1
+    y, Xμ, nmμ = _design(f.response, mu_fixed, data)
     _, Xσ, nmσ = _design(f.response, get(rhs, :sigma, ConstantTerm(1)), data)
     _, Xν, nmν = _design(f.response, get(rhs, :nu, ConstantTerm(1)), data)
-    return _withformula(_fit_skewnormal(fam, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol), f)
+    return _withformula(_fit_skewnormal(fam, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol; offset = _offset_for_fit(fam, offset_term, data, size(Xμ, 1))), f)
 end
 
 # Skew-normal location–scale–shape fit by maximum likelihood. θ = [βμ; βσ; βν]:
@@ -82,14 +83,14 @@ end
 # − log ω. Stable in the tail via Distributions' logpdf/logcdf on Normal().
 # O(n) per eval, fully ForwardDiff-differentiable. Mirrors the Student/LogNormal
 # fixed fitters.
-function _fit_skewnormal(fam::SkewNormal, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol)
+function _fit_skewnormal(fam::SkewNormal, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol; offset = nothing)
     n = length(y)
     pμ, pσ, pν = size(Xμ, 2), size(Xσ, 2), size(Xν, 2)
     rt2_π = sqrt(2.0 / π)
     w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]; βν = θ[pμ+pσ+1:pμ+pσ+pν]
-        ημ = Xμ * βμ; ησ = Xσ * βσ; ην = Xν * βν      # ημ = mean, ησ = log σ, ην = slant α
+        ημ = _eta_with_offset(Xμ, βμ, offset); ησ = Xσ * βσ; ην = Xν * βν      # ημ = mean, ησ = log σ, ην = slant α
         s = zero(eltype(θ))
         @inbounds for i in 1:n
             μ = ημ[i]; σ = exp(ησ[i]); α = ην[i]
@@ -103,8 +104,9 @@ function _fit_skewnormal(fam::SkewNormal, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_
         end
         return s
     end
-    βμ0 = Xμ \ y
-    resid = y - Xμ * βμ0
+    yo = _add_offset(y, offset === nothing ? nothing : -offset)   # #938: start from y - offset
+    βμ0 = Xμ \ yo
+    resid = yo - Xμ * βμ0
     sd0 = std(resid) + eps()
     # Seed the slant from the sample-skewness sign so the α=0 symmetry is broken.
     γ1 = sum(((resid ./ sd0) .^ 3)) / n               # moment skewness estimate
@@ -118,7 +120,7 @@ function _fit_skewnormal(fam::SkewNormal, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_
     θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :nu => (pμ+pσ+1):(pμ+pσ+pν)]
     names = [:mu => nmμ, :sigma => nmσ, :nu => nmν]
-    means = Dict(:mu => Xμ * θ̂[1:pμ]); obs = Dict(:mu => Vector{Float64}(y))   # μ = response-scale mean
+    means = Dict(:mu => _eta_with_offset(Xμ, θ̂[1:pμ], offset)); obs = Dict(:mu => Vector{Float64}(y))   # μ = response-scale mean
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]),
                   :nu => Xν * θ̂[(pμ+pσ+1):(pμ+pσ+pν)])
     return _withiterations(

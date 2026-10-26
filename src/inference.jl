@@ -31,7 +31,21 @@ stderror(fit::DrmFit) = _wald_withheld(fit) ? _homtoep_refuse_wald("stderror") :
 # Internal: the Hessian-based SEs regardless of the public Wald scope (profile
 # step sizes, plots); `_display_se` is what `coeftable` / `show` print.
 _stderror(fit::DrmFit) = _boundary_se.(diag(fit.vcov))
-_display_se(fit::DrmFit) = _wald_withheld(fit) ? fill(NaN, length(fit.theta)) : _stderror(fit)
+_display_se(fit::DrmFit) = (_wald_withheld(fit) || _wald_unreliable(fit) !== nothing) ?
+    fill(NaN, length(fit.theta)) : _stderror(fit)
+
+# #1193 (from #1127 Part B): `show` and `coeftable` do not print Wald SEs when the
+# fit is not converged (`is_converged` false) or its Hessian is not positive
+# definite; drmTMB refuses `vcov()` there. Returns the reason `show` prints, or
+# `nothing` when the printed SEs stand. `stderror()` / `vcov()` are unchanged.
+function _wald_unreliable(fit::DrmFit)
+    if fit.uncertainty !== :skipped && !_twin_vcov_positive_definite(fit.vcov)
+        return "the Hessian is not positive definite"
+    end
+    status = convergence_status(fit)
+    status === :converged && return nothing
+    return string("the fit is not converged (convergence_status = ", status, ")")
+end
 
 # √v where the variance is identified (finite, positive); Inf otherwise. Keeps a
 # non-PD boundary direction from poisoning the whole SE vector with NaN.
@@ -2090,7 +2104,8 @@ end
 
 # --- Marginal parametric bootstrap simulation (#459) -------------------------
 #
-# `simulate(fit)` is a CONDITIONAL simulator: for a Gaussian fit it returns
+# `simulate(fit; re = :zero)` (before #1092 the only `simulate`) is a CONDITIONAL
+# simulator: for a Gaussian fit it returns
 # `fit.means[:mu] .+ fit.scales[:sigma] .* randn(n)`, and `fit.means[:mu]` ALREADY
 # CONTAINS the fitted BLUPs. Bootstrapping a fixed effect that way is defensible.
 # Bootstrapping a VARIANCE COMPONENT that way is not: every replicate re-uses the
@@ -2565,8 +2580,10 @@ function _bootstrap_result(
         rr = Random.MersenneTwister(seeds[b])
         try
             # Marginal draw when the fit has random effects (#459); the plain
-            # `simulate` is conditional and collapses a variance-component CI.
-            ysim = simulate_fn === nothing ? simulate(fit0; rng=rr) : simulate_fn(rr)
+            # `simulate(fit0; re = :zero)` is conditional and collapses a variance-component CI.
+            # `re = :zero` keeps the fallback's previous draw (#1092 changed the
+            # `simulate` default; this path is reached only without a simulator).
+            ysim = simulate_fn === nothing ? simulate(fit0; rng=rr, re=:zero) : simulate_fn(rr)
             datab = _bootstrap_data(formula, data, ysim)
             fitb = _without_boundary_warnings(() -> refit(datab))
             # Not the raw `.converged` field: this gate also rejects a degenerate

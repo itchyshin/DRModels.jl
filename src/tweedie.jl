@@ -132,6 +132,9 @@ _logit12(η) = 1 + 1 / (1 + exp(-η))            # (1,2) link for the power p
     _lss_only_gaussian_guard(f, fam)   # #544: refuse, never silently drop, sd() parts
     rhs = Dict(f.forms)
     fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
+    fixed_mu, offset_term = _extract_offset(fixed_mu)   # #938: offset(z), coefficient fixed at 1
+    offset_term === nothing || (isempty(re) && mv === nothing && st === nothing) ||
+        _refuse_offset_route(fam, "a random, structured or `meta_V` term on the mean")
     mv === nothing || error("Tweedie() does not support meta_V markers")
     for (pname, r) in f.forms          # only the mean may carry a random effect (#563)
         pname === :mu && continue
@@ -187,16 +190,16 @@ _logit12(η) = 1 + 1 / (1 + exp(-η))            # (1,2) link for the power p
                   "implemented in this slice\")")
         end
     end
-    return _withformula(_fit_tweedie(fam, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol), f)
+    return _withformula(_fit_tweedie(fam, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol; offset = _offset_for_fit(fam, offset_term, data, size(Xμ, 1))), f)
 end
 
-function _fit_tweedie(fam::Tweedie, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol)
+function _fit_tweedie(fam::Tweedie, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol; offset = nothing)
     n = length(y); pμ, pσ, pν = size(Xμ, 2), size(Xσ, 2), size(Xν, 2)
     i1 = pμ + pσ; i2 = i1 + pν
     w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:i1]; βν = θ[i1+1:i2]
-        ημ = clamp.(Xμ * βμ, -30.0, 30.0); ησ = clamp.(Xσ * βσ, -15.0, 15.0)
+        ημ = clamp.(_eta_with_offset(Xμ, βμ, offset), -30.0, 30.0); ησ = clamp.(Xσ * βσ, -15.0, 15.0)
         ην = clamp.(Xν * βν, -12.0, 12.0)        # keep p strictly inside (1,2) — avoids the boundary singularities
         s = zero(eltype(θ))
         @inbounds for i in 1:n
@@ -210,12 +213,13 @@ function _fit_tweedie(fam::Tweedie, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol)
     θ0[1] = log(ȳ + eps())            # log mean
     θ0[pμ+1] = 0.0                     # σ = 1 (φ = 1)
     θ0[i1+1] = 0.0                     # p = 1.5
+    θ0[1:pμ] .= _offset_start(θ0[1:pμ], Xμ, offset)   # #938
     res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
                        θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
     θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):i1, :nu => (i1+1):i2]
     names = [:mu => nmμ, :sigma => nmσ, :nu => nmν]
-    means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))   # response-scale μ̂
+    means = Dict(:mu => exp.(_eta_with_offset(Xμ, θ̂[1:pμ], offset))); obs = Dict(:mu => Vector{Float64}(y))   # response-scale μ̂
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):i1]),
                   :nu => _logit12.(Xν * θ̂[(i1+1):i2]))
     _warn_at_clamp("Tweedie", ["log sigma" => (Xσ * θ̂[(pμ+1):i1], -15.0, 15.0),   # #959

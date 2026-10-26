@@ -91,12 +91,12 @@ function _drm_ordinary_laplace(f::DrmFormula, fam; data, tree = nothing,
         end
     end
     fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
-    # #941: `offset(...)` (coefficient fixed at 1) is admitted on the Poisson mean
-    # only, as on the default route; any other family refuses it here rather than
-    # letting `_design` turn it into a free regressor.
+    # #941 / #938: `offset(...)` (coefficient fixed at 1) is applied for Poisson and
+    # for the scale families of `_fit_scale_ordinary_laplace` (NegBinomial2, Gamma,
+    # Beta); Binomial refuses it here rather than letting `_design` build it.
     fixed_mu, offset_term = _extract_offset(fixed_mu)
-    offset_term === nothing || fam isa Poisson ||
-        _ordinary_laplace_reject(fam, "an `offset(...)` term (offsets are Poisson-only)")
+    offset_term === nothing || !(fam isa Binomial) ||
+        _refuse_offset_route(fam, "`marginal = :Laplace`")
     mv === nothing || _ordinary_laplace_reject(fam, "a `meta_V` marker")
     st === nothing || _ordinary_laplace_reject(fam, "a phylogenetic/structured random effect")
     length(re) == 1 || _ordinary_laplace_reject(fam,
@@ -128,7 +128,8 @@ function _drm_ordinary_laplace(f::DrmFormula, fam; data, tree = nothing,
             _, Xσ, nmσ = _design(f.response, get(rhs, :sigma, ConstantTerm(1)), data)
             (size(Xσ, 2) == 1 && all(==(1.0), @view Xσ[:, 1])) ||
                 _ordinary_laplace_reject(fam, "a non-constant `sigma` formula")
-            fit = _fit_scale_ordinary_laplace(fam, y, Xμ, gidx, G, nmμ, nmσ, grp, g_tol; se = se)
+            fit = _fit_scale_ordinary_laplace(fam, y, Xμ, gidx, G, nmμ, nmσ, grp, g_tol; se = se,
+                                              offset = _offset_for_fit(fam, offset_term, data, length(y)))
         end
     end
     return _withformula(_withmarginal(fit, :Laplace), f)
@@ -428,15 +429,15 @@ _ordinary_laplace_check_response(::Beta, y) =
 const _ORDINARY_LAPLACE_PLATEAU_LOGSIGMA = -8.0
 
 function _fit_scale_ordinary_laplace(fam, y, Xμ, gidx, G, nmμ, nmσ, grp, g_tol;
-                                     se::Bool = true)
+                                     se::Bool = true, offset = nothing)
     _ordinary_laplace_check_response(fam, y)
     n = length(y); pμ = size(Xμ, 2)
     Q = _ordinary_laplace_Q(G)
     kind, aux_from, θβ0, θσ0 = _ordinary_laplace_scale_setup(fam, y, Xμ)
     fg = (θ, b0, grad) -> _phylo_mean_laplace_nuisance_fg(
         kind, aux_from, n, Xμ, gidx, Q, 0.0, θ; grad = grad, b0 = b0, raw_scales = true,
-        newton_tol = _ORDINARY_LAPLACE_NEWTON_TOL)
-    θ0 = vcat(θβ0, θσ0, log(0.4))
+        newton_tol = _ORDINARY_LAPLACE_NEWTON_TOL, offset = offset)   # #938
+    θ0 = vcat(_offset_start(θβ0, Xμ, offset), θσ0, log(0.4))
     ctx = "ordinary Laplace $(nameof(typeof(fam))) (1 | $grp)"
     # Both stages run with se = false: the covariance is computed once, below,
     # for the fit the guard keeps. A discarded plateau fit's Hessian is singular
@@ -460,7 +461,8 @@ function _fit_scale_ordinary_laplace(fam, y, Xμ, gidx, G, nmμ, nmσ, grp, g_to
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+1), :resd => (pμ+2):(pμ+2)]
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
     auxhat = aux_from(θ̂[pμ+1])
-    means = Dict(:mu => [_laplace_mean(kind, dot(@view(Xμ[i, :]), θ̂[1:pμ])) for i in 1:n])
+    offv = offset === nothing ? zeros(n) : offset         # #938: offset at coefficient 1
+    means = Dict(:mu => [_laplace_mean(kind, dot(@view(Xμ[i, :]), θ̂[1:pμ]) + offv[i]) for i in 1:n])
     obs = Dict(:mu => [_laplace_obs(kind, auxhat, i) for i in 1:n])
     scales = Dict(:sigma => fill(exp(θ̂[pμ+1]), n))
     fit = DrmFit(fam, blocks, names, θ̂, V, -nllhat, n, conv, means, obs, scales)

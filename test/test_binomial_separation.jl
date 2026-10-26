@@ -66,8 +66,9 @@ function _sep_capture(f)
 end
 _sep_fit(y, x) = _sep_capture(() -> drm(bf(@formula(y ~ 1 + x)), Binomial(); data = (; y = y, x = x)))
 
-# A flagged coefficient: Inf variance, NaN covariances, SE Inf, and the Wald
-# interval and coeftable row agree on (-Inf, Inf).
+# A flagged coefficient: Inf variance, NaN covariances, SE Inf, and a Wald
+# interval of (-Inf, Inf). A separated fit is `:degenerate`, so `coeftable`
+# withholds its printed Wald columns as NaN (#1193).
 function _sep_check_flagged(fit, j)
     V = vcov(fit)
     @test V[j, j] == Inf
@@ -76,7 +77,7 @@ function _sep_check_flagged(fit, j)
     ci = confint(fit)[j]
     @test ci.lower == -Inf && ci.upper == Inf
     ct = coeftable(fit)
-    @test ct.cols[5][j] == -Inf && ct.cols[6][j] == Inf
+    @test isnan(ct.cols[2][j]) && isnan(ct.cols[5][j]) && isnan(ct.cols[6][j])
 end
 
 @testset "binomial separation: detect and warn (#731/#728)" begin

@@ -124,6 +124,24 @@ class DocumentationSemantics(unittest.TestCase):
         text = self.text("docs/src/model-guides/marginal-la-vs-va.md")
         self.assertIn("LogNormal", text)
         self.assertIn("single mode-centred Gauss–Hermite node", text)
+    def test_simulate_docstring_matches_current_keyword_defaults(self):
+        source = self.text("src/gaussian_core.jl")
+        doc = source.split('    simulate(fit;', 1)[1].split('"""', 1)[0]
+        method_start = source.index('function simulate(fit::DrmFit;')
+        method_end = source.index('\n    nsim >=', method_start)
+        method = source[method_start:method_end]
+        for documented, implemented in (
+            ("nsim = 1", "nsim::Integer = 1"),
+            ("newdata = nothing", "newdata = nothing"),
+            ("re = :marginal", "re::Symbol = :marginal"),
+            ("data = nothing", "data = nothing"),
+            ("K = nothing", "K = nothing"),
+            ("A = nothing", "A = nothing"),
+            ("tree = nothing", "tree = nothing"),
+            ("coords = nothing", "coords = nothing"),
+        ):
+            self.assertIn(documented, doc)
+            self.assertIn(implemented, method)
     def test_temporal_experimental_scope(self):
         text = self.text("docs/src/api-stability.md").split("## What is still experimental")[1].split("## Engine functions")[0]
         for term in ("AR1", "OU", "Toeplitz", "intercept-only", "maximum likelihood"):

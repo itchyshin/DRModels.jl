@@ -497,6 +497,15 @@ end
 # at unobserved response positions.
 function _design(response::Symbol, rhs, data; schema_cache = nothing, schema_key = nothing,
                  store_schema::Bool = true)
+    # #938 backstop: a route that applies an offset strips it (`_extract_offset`)
+    # before it builds a design. One that still reaches here was not held at
+    # coefficient 1 (for example `x * offset(z)`), so refuse it rather than
+    # estimate it as an ordinary column.
+    _has_offset_term(rhs) &&
+        throw(ArgumentError("drm: `offset(...)` in `$(response) ~ $(rhs)` cannot be held " *
+            "fixed at coefficient 1 on this route, so it is refused rather than estimated as " *
+            "an ordinary covariate. Use one top-level `offset(z)` term in the mean formula. " *
+            "See issue #938."))
     raw_response = _table_column(data, response)
     y_response, observed = _coerce_response_column(raw_response; name=String(response))
     # Predict reuses the training schema and names a missing column, a `missing`
@@ -814,9 +823,69 @@ them.
             "for the bivariate Gaussian route only, `bf(mu1 = …, mu2 = …, …)` with " *
             "`meta_vcov_bivariate`. For a univariate model, known diagonal sampling variances " *
             "go in the formula as `meta_V(v)`; a dense univariate `V` is not implemented yet."))
+    # #938: `offset(z)` on the identity-link mean is a known additive constant, so
+    # the fit of `y ~ x + offset(z)` is exactly the fit of `y - z ~ x` (the same
+    # likelihood and the same estimates). Fit the shifted response, then put the
+    # offset back into the fitted means and the observed response.
+    f_fit, kw_fit, off = _gaussian_offset_shift(f, fam, kwargs)
     # The residual-variance / structured-variance BOUNDARY advisory (#724, #697) is
     # attached here, once, rather than in each of the fitter's return paths.
-    return _apply_design_rank(_warn_variance_boundary(_drm_gaussian_fit(f, fam; kwargs...)))
+    fit = _apply_design_rank(_warn_variance_boundary(_drm_gaussian_fit(f_fit, fam; kw_fit...)))
+    return off === nothing ? fit : _gaussian_offset_restore(fit, f, off)
+end
+
+# #938: strip a top-level `offset(...)` from the Gaussian mean and subtract it from
+# the response. Returns `(formula, kwargs, offset)`, the inputs unchanged (and
+# `nothing`) without an offset. Only the fixed-effects mean is covered: a random,
+# structured or `meta_V` term, an `sd()` part, a joint `mi()` model, missing
+# responses or a non-default `marginal` refuse it by name.
+function _gaussian_offset_shift(f::DrmFormula, fam, kwargs)
+    mu_rhs = nothing
+    for (p, r) in f.forms
+        p === :mu && (mu_rhs = r)
+    end
+    (mu_rhs !== nothing && _has_offset_term(mu_rhs)) || return f, kwargs, nothing
+    haskey(kwargs, :data) || return f, kwargs, nothing     # the missing-`data` error is raised downstream
+    _has_joint_mi(f) && _refuse_offset_route(fam, "a joint `mi()` missing-predictor model")
+    _, re, mv, st = _split_ranef(mu_rhs; allow_phylo_slope = true, allow_temporal = true)
+    (isempty(re) && mv === nothing && st === nothing) ||
+        _refuse_offset_route(fam, "a random, structured or `meta_V` term on the mean")
+    for (p, r) in f.forms
+        p === :mu && continue
+        _, re2, mv2, st2 = _split_ranef(r; allow_phylo_slope = true, allow_temporal = true)
+        (isempty(re2) && mv2 === nothing && st2 === nothing) ||
+            _refuse_offset_route(fam, "a random or structured term on `$p`")
+    end
+    isempty(_sd_parts(f)) || _refuse_offset_route(fam, "an `sd()` variance part")
+    get(kwargs, :marginal, :LA) === :LA ||
+        _refuse_offset_route(fam, "`marginal = :$(kwargs[:marginal])`")
+    rhs_fixed, offset_term = _extract_offset(mu_rhs)
+    offset_term === nothing && return f, kwargs, nothing  # nested only: the `_design` backstop refuses it
+    data = kwargs[:data]
+    raw = _table_column(data, f.response)
+    (any(ismissing, raw) || any(v -> v isa Real && isnan(v), raw)) &&
+        _refuse_offset_route(fam, "missing or `NaN` responses (drop those rows first)")
+    off = _offset_for_fit(fam, offset_term, data, length(raw))
+    forms = Pair{Symbol,Any}[p => (p === :mu ? rhs_fixed : r) for (p, r) in f.forms]
+    f_shift = DrmFormula(f.response, forms, f.response2, f.schema_cache)
+    data_shift = _replace_table_column(data, f.response, Float64.(raw) .- off)
+    # The shifted fit belongs to the caller's control / weights scope, which is
+    # keyed to the formula object (`_drm_run_controlled`).
+    scope = _active_control_scope()
+    scope !== nothing && scope.formula === f && (scope.formula = f_shift)
+    return f_shift, merge((; kwargs...), (; data = data_shift)), off
+end
+
+# #938: undo the response shift on the fit: the fitted means and the observed
+# response gain the offset back, and the fit keeps the user's formula, so
+# `predict(fit, newdata)` strips the offset and adds it from `newdata`.
+function _gaussian_offset_restore(fit::DrmFit, f_orig::DrmFormula, off::Vector{Float64})
+    (length(fit.means[:mu]) == length(off) && length(fit.obs[:mu]) == length(off)) ||
+        error("Gaussian(): internal error restoring `offset(...)` (#938): the fitted means " *
+              "are not one per observation")
+    fit.means[:mu] = fit.means[:mu] .+ off
+    fit.obs[:mu] = fit.obs[:mu] .+ off
+    return _withformula(fit, f_orig)
 end
 
 function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree = nothing, coords = nothing, g_tol::Real = 1e-8, algorithm::Symbol = :auto, method::Symbol = :ML, profile_ci::Bool = false, phylo_coupled::Bool = false, penalty = nothing, sparse = nothing, impute = nothing, missing = nothing, marginal::Symbol = :LA, ids = nothing)
@@ -2588,13 +2657,35 @@ function marginal_parameters(fit::DrmFit)
 end
 
 """
-    simulate(fit; nsim = 1, rng = default_rng(), newdata = nothing)
+    simulate(fit; nsim = 1, rng = default_rng(), newdata = nothing,
+             re = :marginal, data = nothing, K = nothing, A = nothing,
+             tree = nothing, coords = nothing)
 
-Draw parametric (residual-level) replicate response(s) from the fitted model —
-the building block of a parametric bootstrap and posterior-predictive checks.
-Each draw uses the fitted per-observation mean μ̂ and the fitted dispersion /
-scale parameters for the family; for random-effect models the draw is
-conditional on the random effects being zero (population level).
+Draw parametric replicate response(s) from the fitted model, the building
+block of a parametric bootstrap and posterior-predictive checks. Each draw uses
+the fitted fixed-effect mean and the fitted dispersion / scale parameters for
+the family.
+
+Random effects (`re`, #1092):
+- `re = :marginal` (the default) draws FRESH random effects for every
+  replicate from their fitted distribution, `u* ~ N(0, sd^2 K)`, adds them to
+  the fixed-effect linear predictor and then draws the response. This is the
+  same marginal simulator the parametric bootstrap uses (#459, #462), and it
+  matches drmTMB's default `simulate(fit)` (`re.form = NA`). A random-effect
+  fit needs `data =`, the table it was fitted to (and `tree` / `K` / `A` /
+  `coords` for a structured term, as in [`bootstrap_ci`](@ref)), because the
+  fit does not keep the grouping columns. Without `data`, or for a
+  random-effect structure the marginal simulator does not cover, `simulate`
+  throws an `ArgumentError` rather than fall back to `b = 0`.
+- `re = :zero` draws with every random effect set to zero (population level),
+  which was the only behaviour before #1092. It needs no `data`. drmTMB has no
+  such mode; its `re.form = NULL` (conditional on the fitted modes) has no
+  counterpart here. Do not use `re = :zero` draws for a parametric bootstrap or
+  a posterior-predictive check of random-effect variation: they carry no
+  between-group signal.
+
+A fit without random effects ignores `re` and `data`. A `temporal()` fit
+always draws the full marginal model (a fresh chain per series), as before.
 
 Return value (univariate / random-effect / meta models):
 - `nsim == 1` → a length-`nobs` response `Vector` (back-compatible).
@@ -2619,30 +2710,79 @@ ys  = simulate(fit; newdata = (x = [0.0, 1.0],))  # one row per newdata row
 ```
 
 `newdata` (optional) is a NamedTuple / column table. Draws are population-level
-(random / structured effects set to zero), one row per `newdata` row, using
-[`predict_parameters`](@ref) for the distributional parameters. Omit it to draw
-for the training design (back-compatible). Temporal fits refuse `newdata`.
+(random / structured effects set to zero, whatever `re` says), one row per
+`newdata` row, using [`predict_parameters`](@ref) for the distributional
+parameters. Omit it to draw for the training design. Temporal fits refuse
+`newdata`.
 """
-function simulate(fit::DrmFit; nsim::Integer = 1, rng = default_rng(), newdata = nothing)
+function simulate(fit::DrmFit; nsim::Integer = 1, rng = default_rng(), newdata = nothing,
+                  re::Symbol = :marginal, data = nothing, K = nothing, A = nothing,
+                  tree = nothing, coords = nothing)
     nsim >= 1 || throw(ArgumentError("simulate requires nsim >= 1, got $nsim"))
+    re in (:marginal, :zero) || throw(ArgumentError(
+        "simulate: `re` must be :marginal (fresh random effects, the default) or " *
+        ":zero (random effects set to zero), got :$re"))
     src = newdata === nothing ? fit : _fit_for_simulate_newdata(fit, newdata)
-    nsim == 1 && return _simulate_once(src, rng)
-    first_draw = _simulate_once(src, rng)
+    draw = if newdata === nothing && re === :marginal && _simulate_needs_marginal(fit)
+        _simulate_marginal_draw(fit, data; K, A, tree, coords)
+    else
+        r -> _simulate_once(src, r)
+    end
+    nsim == 1 && return draw(rng)
+    first_draw = draw(rng)
     if first_draw isa AbstractVector       # univariate: stack columns into a Matrix
         out = Matrix{eltype(first_draw)}(undef, length(first_draw), nsim)
         out[:, 1] = first_draw
         for s in 2:nsim
-            out[:, s] = _simulate_once(src, rng)
+            out[:, s] = draw(rng)
         end
         return out
     else                                   # bivariate Dict: collect replicates
         reps = Vector{typeof(first_draw)}(undef, nsim)
         reps[1] = first_draw
         for s in 2:nsim
-            reps[s] = _simulate_once(src, rng)
+            reps[s] = draw(rng)
         end
         return reps
     end
+end
+
+# Does `simulate(fit)` (default `re = :marginal`) need the marginal simulator?
+# True when any distributional formula carries a random or structured effect
+# (`(… | g)`, `phylo` / `relmat` / `animal` / `spatial`, or an `sd(g) ~ …`
+# part). `temporal()` fits already draw the full marginal model inside
+# `_simulate_once`, so they are excluded. Read off the formula alone, because
+# the fit does not keep the data (#1092).
+function _simulate_needs_marginal(fit::DrmFit)
+    _is_temporal_fit(fit) && return false
+    f = fit.formula
+    (f isa DrmFormula || f isa BivariateDrmFormula) || return false
+    markers = (|, relmat, animal, phylo, spatial)
+    for (k, rhs) in f.forms
+        (startswith(String(k), "sd_") || startswith(String(k), "sdphy_")) && return true
+        terms = rhs isa Tuple ? rhs : (rhs,)
+        any(t -> t isa FunctionTerm && any(m -> t.f === m, markers), terms) && return true
+    end
+    return false
+end
+
+# The default random-effect draw: the bootstrap's marginal simulator (#459,
+# #462). Refuse rather than draw at b = 0 when it cannot be built (#1092).
+function _simulate_marginal_draw(fit::DrmFit, data; K = nothing, A = nothing,
+                                 tree = nothing, coords = nothing)
+    data === nothing && throw(ArgumentError(
+        "simulate: this fit has random effects, and the default `re = :marginal` " *
+        "draws fresh ones for every replicate, which needs the data the model was " *
+        "fitted to: pass `data = ...` (and `tree` / `K` / `A` / `coords` for a " *
+        "structured term), or pass `re = :zero` to draw with the random effects " *
+        "set to zero"))
+    sim = _marginal_simulator(fit, data; K, A, tree, coords)
+    sim === nothing && throw(ArgumentError(
+        "simulate: no marginal (fresh random effect) simulator is available for this " *
+        "random-effect structure, or `data` does not match the fit; pass the fitting " *
+        "`data` (and `tree` / `K` / `A` / `coords`), or `re = :zero` to draw with the " *
+        "random effects set to zero"))
+    return sim
 end
 
 # Population-level (RE = 0) parameter table for `simulate(...; newdata)`. Rebuilds

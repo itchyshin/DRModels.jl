@@ -120,3 +120,15 @@ using Distributions: Chisq, ccdf
         @test frac_atom >= 0.30
     end
 end
+
+# The lrt_boundary docstring records the finite-sample caveat for Poisson vs
+# NegBinomial2 (#1116): the 50:50 chi-bar test is conservative there. The figures
+# are the 500-replicate sweep-oct16 t10 result; this guards the doc against drifting
+# away from them silently.
+@testset "lrt_boundary docs: Poisson vs NegBinomial2 is conservative (#1116)" begin
+    d = string(@doc lrt_boundary)
+    @test occursin("Finite-sample behaviour: Poisson vs NegBinomial2", d)
+    @test occursin("conservative", d)
+    @test occursin("15/500", d)
+    @test occursin("9/500", d)
+end

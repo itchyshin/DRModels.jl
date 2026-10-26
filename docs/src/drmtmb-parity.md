@@ -136,6 +136,32 @@ stayed within about 5e-4 of it. A later Poisson `(1 | g)` comparison
 The [Laplace vs variational marginals](model-guides/marginal-la-vs-va.md) guide
 covers the approximations in more depth.
 
+## `simulate` and random effects
+
+On a random-effect fit, `simulate(fit; data)` draws fresh random effects for
+every replicate by default (`re = :marginal`, #1092): `u* ~ N(0, sd^2 K)` at the
+fitted variance components, added to the fixed-effect linear predictor before
+the family draw. This matches drmTMB's default `simulate(fit)`
+(`re.form = NA`, for which `~0` is a synonym). It is the simulator the
+parametric bootstrap already used (#459, #462).
+
+The two packages differ in three ways:
+
+- **DRModels.jl needs `data`.** A fit does not keep its grouping columns, so a
+  random-effect fit takes `data =`, the table it was fitted to (plus `tree`,
+  `K`, `A` or `coords` for a structured term, as in `bootstrap_ci`). Without
+  it, or for a structure the marginal simulator does not cover, `simulate`
+  throws an `ArgumentError`; it never falls back to `b = 0` silently.
+- **`re = :zero` has no drmTMB counterpart.** It draws with every random
+  effect set to zero, which was DRModels.jl's only behaviour before #1092.
+  Its draws carry no between-group variation, so they do not suit a
+  parametric bootstrap or a posterior-predictive check of the random effects.
+- **drmTMB's `re.form = NULL` has no DRModels.jl counterpart.** It draws
+  conditional on the fitted random-effect modes.
+
+`simulate(fit; newdata)` stays population level (random effects at zero) in
+DRModels.jl, whatever `re` says.
+
 ## Performance
 
 - **Retained single-fit comparison:** on the real q4_p100 dataset, using the

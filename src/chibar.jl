@@ -119,10 +119,32 @@ Same as [`chibar_pvalue`](@ref): the `q` dropped parameters are variances tested
 at `0`; for `q = 2` they are independent; all other parameters are interior; ML
 fits. A negative statistic clamps to the boundary p-value.
 
+# Finite-sample behaviour: Gaussian `(1 | g)` with few groups
+The 50:50 mixture is the asymptotic null law, and it is accepted as is for the
+Gaussian random-intercept test `lrt_boundary(full, reduced; q = 1)` (dropping
+`(1 | g)`). With few groups it is **conservative**: in 500 null replicates
+(`sd_b = 0`, 25 groups of 12, `y = 0.4 - 0.5 x + 0.7 ε`, nominal α = 0.05) the
+chi-bar p-value rejected in about 3.4% of replicates (17/500), against 1.2% (6/500)
+for the naive `lrtest` χ²₁ p-value; 58.6% of the statistics sat on the χ²(0) atom.
+The statistics match `drmTMB` on the same data to about 1e-8, so this is the
+behaviour of the reference distribution, not of the fit. A `pvalue` just above
+0.05 is therefore weak evidence for dropping the random effect, and no mixture
+weights are changed.
+
 The same refusals as [`lrtest`](@ref) apply before the statistic is formed:
 REML fits whose fixed structure differs, a sentinel log-likelihood, different
 marginal approximations, a penalized MAP fit, and fits on different
 observation rows (not only a different `nobs`).
+
+# Finite-sample behaviour: Poisson vs NegBinomial2
+The 50:50 mixture is the asymptotic null law, and it is accepted as is for the
+family nest `lrt_boundary(nb, pois; q = 1)` (`Poisson` ⊂ `NegBinomial2`, where the
+extra dispersion `sigma` sits on the boundary). In finite samples it is
+**conservative** for this pair: in 500 Poisson-null replicates (n = 250, `y ~
+Poisson(exp(0.4 + 0.3 x))`, nominal α = 0.05) the 50:50 p-value rejected in about
+3% of replicates (15/500), against 1.8% (9/500) for the naive `lrtest` χ²₁ p-value.
+So a `pvalue` just above 0.05 here is not evidence for the Poisson model, and the
+test is somewhat low-powered near the boundary; no mixture weights are changed.
 
 # Example
 ```julia
