@@ -976,7 +976,7 @@ function _phylo_mean_laplace_nuisance_fg(kind, aux_from, n::Int, Xμ, leaf_node,
                                          Q, logdetQ, θ; grad::Bool = false,
                                          b0 = nothing, newton_tol::Real = 1e-10,
                                          newton_maxiter::Int = 60,
-                                         raw_scales::Bool = false)
+                                         raw_scales::Bool = false, offset = nothing)
     pμ = length(θ) - 2
     βμ = θ[1:pμ]
     # `raw_scales = true`: no clamp on the dispersion or the RE log-SD (see
@@ -984,7 +984,7 @@ function _phylo_mean_laplace_nuisance_fg(kind, aux_from, n::Int, Xμ, leaf_node,
     θσ = raw_scales ? θ[pμ+1] : clamp(θ[pμ+1], -8.0, 8.0)
     logσ = raw_scales ? θ[pμ+2] : clamp(θ[pμ+2], -8.0, 3.0)
     aux = aux_from(θσ)
-    η0 = Xμ * βμ
+    η0 = _eta_with_offset(Xμ, βμ, offset)       # #938: a known offset shifts η only
     b, ch, _, ok = _phylo_mean_mode(kind, aux, η0, leaf_node, Q, logσ; b0 = b0,
                                     tol = newton_tol, maxiter = newton_maxiter)
     if !ok

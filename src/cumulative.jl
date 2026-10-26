@@ -150,6 +150,9 @@ function _drm_cumulative_fit(f::DrmFormula, fam::CumulativeLogit; data, tree = n
     _lss_only_gaussian_guard(f, fam)   # #544: refuse, never silently drop, sd() parts
     rhs = Dict(f.forms)
     fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
+    fixed_mu, offset_term = _extract_offset(fixed_mu)   # #938: offset(z), coefficient fixed at 1
+    offset_term === nothing || (isempty(re) && mv === nothing && st === nothing) ||
+        _refuse_offset_route(fam, "a random, structured or `meta_V` term on the mean")
     mv === nothing ||
         error("CumulativeLogit() does not support meta_V markers")
     if st !== nothing
@@ -212,16 +215,16 @@ function _drm_cumulative_fit(f::DrmFormula, fam::CumulativeLogit; data, tree = n
                   "are implemented in this slice\")")
         end
     end
-    return _withformula(_fit_cumulative(fam, yi, Xμ, K, nmμ, g_tol), f)
+    return _withformula(_fit_cumulative(fam, yi, Xμ, K, nmμ, g_tol; offset = _offset_for_fit(fam, offset_term, data, size(Xμ, 1))), f)
 end
 
-function _fit_cumulative(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, nmμ, g_tol)
+function _fit_cumulative(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, nmμ, g_tol; offset = nothing)
     n = length(y); pμ = size(Xμ, 2); nc = K - 1
     w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
     function nll(θ)
         β = θ[1:pμ]; δ = θ[pμ+1:pμ+nc]
         cuts = _cumulative_cuts(δ)
-        η = pμ == 0 ? zeros(eltype(θ), n) : Xμ * β
+        η = _add_offset(pμ == 0 ? zeros(eltype(θ), n) : Xμ * β, offset)   # #938
         s = zero(eltype(θ))
         @inbounds for i in 1:n
             s -= w[i] * (_cumulative_loglik(y[i], η[i], cuts, K, nc))
@@ -241,7 +244,7 @@ function _fit_cumulative(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, nmμ, g_t
     # `cuts`, and sharing the name here would make it one boxed variable shared
     # with a closure that threaded profile CIs call concurrently.
     cuts_hat = _cumulative_cuts(δ̂)
-    η̂ = pμ == 0 ? zeros(n) : Xμ * β̂
+    η̂ = _add_offset(pμ == 0 ? zeros(n) : Xμ * β̂, offset)   # #938
     score = _cumulative_score(η̂, cuts_hat, K)
     means = Dict(:mu => score); obs = Dict(:mu => Float64.(y))
     scales = Dict(:ordinal_eta => η̂, :ordinal_cuts => Float64.(cuts_hat))

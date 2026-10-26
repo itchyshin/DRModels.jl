@@ -79,6 +79,9 @@ function _drm_betabinomial_fit(f::DrmFormula, fam::BetaBinomial; data, tree = no
     _lss_only_gaussian_guard(f, fam)   # #544: refuse, never silently drop, sd() parts
     rhs = Dict(f.forms)
     fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
+    fixed_mu, offset_term = _extract_offset(fixed_mu)   # #938: offset(z), coefficient fixed at 1
+    offset_term === nothing || (isempty(re) && mv === nothing && st === nothing) ||
+        _refuse_offset_route(fam, "a random, structured or `meta_V` term on the mean")
     isaghq && !(length(re) > 1 && st === nothing) &&
         _aghq_reject(fam, "this model (BetaBinomial `marginal = :AGHQ` covers crossed random " *
                           "intercepts `(1 | g) + (1 | h)` only, #761)")
@@ -137,7 +140,7 @@ function _drm_betabinomial_fit(f::DrmFormula, fam::BetaBinomial; data, tree = no
             error("BetaBinomial() supports `(1 | g)` or `(1 + x | g)` random effects on the mean")
         end
     end
-    return _withformula(_fit_betabinomial(fam, s, ntr, Xμ, Xσ, nmμ, nmσ, g_tol), f)
+    return _withformula(_fit_betabinomial(fam, s, ntr, Xμ, Xσ, nmμ, nmσ, g_tol; offset = _offset_for_fit(fam, offset_term, data, size(Xμ, 1))), f)
 end
 
 # Beta-binomial GLMM with a random intercept (1|g) on the logit mean. b_g ~ N(0,σ_b²)
@@ -212,13 +215,13 @@ function _fit_betabinomial_corr_ranef(fam::BetaBinomial, s, ntr, Xμ, Xσ, xs, g
         Optim.iterations(res))
 end
 
-function _fit_betabinomial(fam::BetaBinomial, s, ntr, Xμ, Xσ, nmμ, nmσ, g_tol)
+function _fit_betabinomial(fam::BetaBinomial, s, ntr, Xμ, Xσ, nmμ, nmσ, g_tol; offset = nothing)
     n = length(s); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     sint = round.(Int, s); nint = round.(Int, ntr)
     w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
-        ημ = Xμ * βμ                             # unclamped: see `_betabinomial_logit_ll`
+        ημ = _eta_with_offset(Xμ, βμ, offset)                             # unclamped: see `_betabinomial_logit_ll`
         ησ = clamp.(Xσ * βσ, -15.0, 15.0)        # φ = exp(-2ησ) > 0 finite
         v = zero(eltype(θ))
         @inbounds for i in 1:n
@@ -230,12 +233,13 @@ function _fit_betabinomial(fam::BetaBinomial, s, ntr, Xμ, Xσ, nmμ, nmσ, g_to
     θ0 = zeros(pμ + pσ)
     θ0[1] = log(p̄ / (1 - p̄))                                # logit p̄
     θ0[pμ+1] = -0.5 * log(10.0)                             # moderate precision init (φ ≈ 10)
+    θ0[1:pμ] .= _offset_start(θ0[1:pμ], Xμ, offset)   # #938
     res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
                        θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
     θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ)]
     names = [:mu => nmμ, :sigma => nmσ]
-    means = Dict(:mu => _logistic.(Xμ * θ̂[1:pμ]))           # fitted mean success probability
+    means = Dict(:mu => _logistic.(_eta_with_offset(Xμ, θ̂[1:pμ], offset)))           # fitted mean success probability
     obs = Dict(:mu => s ./ ntr)                             # observed proportion (for residuals)
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]), :trials => Float64.(nint))
     return _withiterations(

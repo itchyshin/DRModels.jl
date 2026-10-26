@@ -984,18 +984,17 @@ end
 # now lives at the call site, where it can name the specific unsupported form.
 const _BRIDGE_REJECT_CALLS = Dict{Symbol,String}(
     :^ => "R crossing `(...)^k` is unsupported via engine=\"julia\" for this shape (need a literal positive integer power over a `+`-only expression, with no `*` inside); expand it explicitly (e.g. `a + b + a&b`).",
-    # These four have no Julia definition in scope, so left unhandled they
+    # These three have no Julia definition in scope, so left unhandled they
     # reach `@formula`/the model frame and fail with a bare `UndefVarError`
     # (or, for `C`, a confusing failure from the generic scalar-label
     # renderer choking on a contrast argument like `contr.sum`) that never
     # names the actual construct (#467 sweep). None can be faked faithfully
     # here: `cut()`/`interaction()` need R's own binning/level-crossing
-    # algorithm, `offset()` needs a fixed (non-estimated) coefficient the
-    # engine does not expose through formula translation, and `C()` sets a
-    # non-default contrast scheme. Refuse all four by name instead.
+    # algorithm, and `C()` sets a non-default contrast scheme. Refuse all
+    # three by name instead. (`offset()` was refused here too until #938; it
+    # now passes through to DRModels' own `offset` marker, see `_bridge_xlate`.)
     :cut => "R's `cut(...)` binning is unsupported via engine=\"julia\"; precompute the factor column in R and pass it as a covariate.",
     :interaction => "R's `interaction(...)` is unsupported via engine=\"julia\"; precompute the combined factor column in R and pass it as a covariate.",
-    :offset => "R's `offset(...)` is unsupported via engine=\"julia\"; it needs a fixed (non-estimated) coefficient that formula translation cannot express here.",
     :C => "R's `C(..., contrast)` contrast override is unsupported via engine=\"julia\" (only R's default `contr.treatment` coding is reproduced); precompute the coded design columns in R and pass them as covariates.",
 )
 
@@ -1279,7 +1278,7 @@ function _bridge_register_source_labels!(ctx::_BridgeXlateCtx, part::AbstractStr
                 # message (e.g. "cannot render numeric literal `.`" from the
                 # `.` in `contr.sum`) instead of naming the actual construct.
                 # Let the `_bridge_xlate` rejection below fire cleanly instead.
-                if !(f in _BRIDGE_DSL_CALLS || f in _BRIDGE_TERM_OPS || f in (:scale, :factor, :poly) ||
+                if !(f in _BRIDGE_DSL_CALLS || f in _BRIDGE_TERM_OPS || f in (:scale, :factor, :poly, :offset) ||
                      haskey(_BRIDGE_REJECT_CALLS, f)) &&
                    !_bridge_contains_poly(parsed)
                     # The established xlate guard gives `poly()` under a
@@ -1642,6 +1641,17 @@ function _bridge_xlate(e::Expr, ctx::_BridgeXlateCtx;
             "factor($(_bridge_r_label(arg)))")
     elseif f === :temporal
         return _bridge_temporal_expr(e)
+    elseif f === :offset
+        # #938: R's `offset(z)` is DRModels' own `offset` marker: the fitter adds
+        # it to the mean's linear predictor with its coefficient fixed at 1 (or
+        # refuses it by name on a route or formula part that cannot). The
+        # argument is a column or a scalar transform such as `log(exposure)`.
+        length(e.args) == 2 || throw(ArgumentError(
+            "drmTMB(engine=\"julia\"): `offset(...)` takes exactly one expression."))
+        arg = e.args[2]
+        inner = arg isa Symbol ? arg :
+            _bridge_xlate(arg, ctx; scalar_context = true, atom_scope = atom_scope)
+        return Expr(:call, :offset, inner)
     elseif !(f isa Symbol)
         throw(ArgumentError("drmTMB(engine=\"julia\"): unsupported formula function `$(f)`; precompute it as a covariate column."))
     elseif haskey(_BRIDGE_REJECT_CALLS, f)
@@ -2033,6 +2043,8 @@ function _bridge_rendered_regression_blocks(fit, labels::_BridgeFormulaLabels)
         if fit isa DrmFit && fit.nll isa LocScaleObjective && param in (:mu, :sigma)
             rhs = first(_ls_parse_coupled(rhs))
         end
+        # #938: an `offset(...)` term is held at coefficient 1, so it is no column.
+        rhs = first(_extract_offset(rhs))
         rendered = _bridge_render_formula_block(form, param, rhs, labels)
         rendered === nothing && continue
         raw, public = rendered

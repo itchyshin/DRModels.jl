@@ -77,6 +77,7 @@ function _drm_gamma_fit(f::DrmFormula, fam::Gamma; data, tree = nothing, K = not
     # formulas → one 2×2 group-level covariance fit by the augmented-state engine.
     lc = _ls_coupled_re(rhs[:mu], get(rhs, :sigma, ConstantTerm(1)))
     if lc !== nothing
+        _has_offset_term(rhs[:mu]) && _refuse_offset_route(fam, "a coupled location–scale random effect")
         isva && _va_reject(fam, "a coupled location–scale random effect")
         isaghq && _aghq_reject(fam, "a coupled location–scale random effect")
         return _withformula(_fit_locscale_frontend(Val(:gamma), fam, f, rhs, lc, data;
@@ -85,6 +86,9 @@ function _drm_gamma_fit(f::DrmFormula, fam::Gamma; data, tree = nothing, K = not
                                                     coords = coords), f)
     end
     fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
+    fixed_mu, offset_term = _extract_offset(fixed_mu)   # #938: offset(z), coefficient fixed at 1
+    offset_term === nothing || (isempty(re) && mv === nothing && st === nothing) ||
+        _refuse_offset_route(fam, "a random, structured or `meta_V` term on the mean")
     indep_slopes = st === nothing && length(re) > 1 && _has_indep_slopes(re)
     isaghq && indep_slopes &&
         _aghq_reject(fam, "independent random slopes `(0 + x | g)` (Laplace only, #960)")
@@ -162,7 +166,7 @@ function _drm_gamma_fit(f::DrmFormula, fam::Gamma; data, tree = nothing, K = not
         end
     end
     isva && _va_reject(fam, "no random intercept (fixed-effects-only)")
-    return _withformula(_fit_gamma(fam, y, Xμ, Xσ, nmμ, nmσ, g_tol), f)
+    return _withformula(_fit_gamma(fam, y, Xμ, Xσ, nmμ, nmσ, g_tol; offset = _offset_for_fit(fam, offset_term, data, size(Xμ, 1))), f)
 end
 
 # Gamma GLMM with a random intercept (1|g) on the log mean. b_g ~ N(0,σ_b²)
@@ -235,7 +239,7 @@ function _fit_gamma_corr_ranef(fam::Gamma, y, Xμ, Xσ, xs, gidx, G, nmμ, nmσ,
         Optim.iterations(res))
 end
 
-function _fit_gamma(fam::Gamma, y, Xμ, Xσ, nmμ, nmσ, g_tol)
+function _fit_gamma(fam::Gamma, y, Xμ, Xσ, nmμ, nmσ, g_tol; offset = nothing)
     n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
     function nll(θ)
@@ -243,7 +247,7 @@ function _fit_gamma(fam::Gamma, y, Xμ, Xσ, nmμ, nmσ, g_tol)
         # Soft guards (see `_softclamp` in negbinomial.jl): identity across the
         # original hard band so no legitimate fit is distorted, smooth beyond so
         # the gradient stays live — restoring agreement with drmTMB's smooth guard.
-        ημ = _softclamp.(Xμ * βμ, -30.0, 30.0, 3.0)   # μ > 0 finite
+        ημ = _softclamp.(_eta_with_offset(Xμ, βμ, offset), -30.0, 30.0, 3.0)   # μ > 0 finite
         ησ = _softclamp.(Xσ * βσ, -15.0, 15.0, 3.0)   # α = exp(-2ησ) > 0 finite
         s = zero(eltype(θ))
         @inbounds for i in 1:n
@@ -257,12 +261,13 @@ function _fit_gamma(fam::Gamma, y, Xμ, Xσ, nmμ, nmσ, g_tol)
     θ0 = zeros(pμ + pσ)
     θ0[1] = log(ȳ + eps())                        # log mean
     θ0[pμ+1] = -0.5 * log(α0)                      # σ = 1/√α ⇒ log σ = -½ log α
+    θ0[1:pμ] .= _offset_start(θ0[1:pμ], Xμ, offset)   # #938
     res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
                        θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
     θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ)]
     names = [:mu => nmμ, :sigma => nmσ]
-    means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))  # response-scale μ̂
+    means = Dict(:mu => exp.(_eta_with_offset(Xμ, θ̂[1:pμ], offset))); obs = Dict(:mu => Vector{Float64}(y))  # response-scale μ̂
     scales = Dict(:sigma => _reported_sigma(Xσ * θ̂[(pμ+1):(pμ+pσ)], -15.0, 15.0, 3.0))
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),

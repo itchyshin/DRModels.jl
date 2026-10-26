@@ -104,7 +104,6 @@ end
             ("y ~ splines::ns(x, 3)", "pkg::fn", "package-qualified"),
             ("y ~ cut(x, 3)", "cut", "cut"),
             ("y ~ interaction(f, g)", "interaction", "interaction"),
-            ("y ~ offset(x) + x", "offset", "offset"),
             ("y ~ C(g, contr.sum)", "C", "contrast"),
         ]
         for (formula, slug, needle) in cases

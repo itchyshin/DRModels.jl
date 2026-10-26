@@ -171,6 +171,9 @@ function _drm_binomial_fit(f::DrmFormula, fam::Binomial; data, tree = nothing, K
     _lss_only_gaussian_guard(f, fam)   # #544: refuse, never silently drop, sd() parts
     rhs = Dict(f.forms)
     fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
+    fixed_mu, offset_term = _extract_offset(fixed_mu)   # #938: offset(z), coefficient fixed at 1
+    offset_term === nothing || (isempty(re) && mv === nothing && st === nothing) ||
+        _refuse_offset_route(fam, "a random, structured or `meta_V` term on the mean")
     isaghq && !(length(re) > 1 && st === nothing) &&
         _aghq_reject(fam, "this model (Binomial `marginal = :AGHQ` covers crossed random intercepts `(1 | g) + (1 | h)` only, #761)")
     mv === nothing ||
@@ -223,7 +226,7 @@ function _drm_binomial_fit(f::DrmFormula, fam::Binomial; data, tree = nothing, K
         end
     end
     isva && _va_reject(fam, "no random intercept (fixed-effects-only)")
-    return _withformula(_fit_binomial(fam, s, ntr, Xμ, nmμ, g_tol), f)
+    return _withformula(_fit_binomial(fam, s, ntr, Xμ, nmμ, g_tol; offset = _offset_for_fit(fam, offset_term, data, size(Xμ, 1))), f)
 end
 
 # Successes and trials from a 0/1 Bernoulli response or `cbind(successes, failures)`.
@@ -248,13 +251,13 @@ function _binomial_response(f::DrmFormula, data)
     return s, ntr
 end
 
-function _fit_binomial(fam::Binomial, s, ntr, Xμ, nmμ, g_tol)
+function _fit_binomial(fam::Binomial, s, ntr, Xμ, nmμ, g_tol; offset = nothing)
     n = length(s); pμ = size(Xμ, 2)
     sint = round.(Int, s); nint = round.(Int, ntr)
     lc = [_logchoose(nint[i], sint[i]) for i in 1:n]
     w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
     function nll(θ)
-        ημ = Xμ * θ                                       # unclamped: see `_binomial_logit_ll`
+        ημ = _eta_with_offset(Xμ, θ, offset)          # unclamped: see `_binomial_logit_ll`
         v = zero(eltype(θ))
         @inbounds for i in 1:n
             v -= w[i] * (_binomial_logit_ll(nint[i], sint[i], ημ[i], lc[i]))
@@ -263,11 +266,12 @@ function _fit_binomial(fam::Binomial, s, ntr, Xμ, nmμ, g_tol)
     end
     p̄ = clamp(sum(s) / max(sum(ntr), 1), 1e-3, 1 - 1e-3)   # overall success rate
     θ0 = zeros(pμ); θ0[1] = log(p̄ / (1 - p̄))               # logit p̄
+    θ0[1:pμ] .= _offset_start(θ0[1:pμ], Xμ, offset)   # #938
     res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
                        θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
     θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ]; names = [:mu => nmμ]
-    means = Dict(:mu => _logistic.(Xμ * θ̂))                # fitted success probability
+    means = Dict(:mu => _logistic.(_eta_with_offset(Xμ, θ̂, offset)))                # fitted success probability
     V, separated = _separation_check(Xμ, s, ntr, θ̂, V, means[:mu], nmμ)   # #731: detect + warn, SE → Inf
     obs = Dict(:mu => s ./ ntr)                            # observed proportion (for residuals)
     scales = Dict(:trials => Float64.(nint))
