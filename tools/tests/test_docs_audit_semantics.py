@@ -225,5 +225,9 @@ class DocumentationSemantics(unittest.TestCase):
         self.assertNotIn("295 to 501 units", text)
         self.assertNotIn("3.2 to 20 times", text)
         self.assertNotRegex(text, r"depend on the optimiser, the OS, or the BLAS")
+        self.assertIn("Random.seed!(1)", text)
+        self.assertIn("using DRModels, Distributions, Random", text)
+        self.assertIn("data = (; y, x, g)", text)
+        self.assertNotIn("data = dat", text)
 if __name__ == "__main__":
     unittest.main()

@@ -78,9 +78,18 @@ integration rule.
 To reproduce drmTMB's numbers, request the Laplace approximation explicitly:
 
 ```julia
-using DRModels
+using DRModels, Distributions, Random
+Random.seed!(1)
+n_group = 20
+g = repeat(1:n_group, inner = 10)
+x = randn(length(g))
+b = 0.3 .* randn(n_group)
+mu = exp.(0.3 .+ 0.25 .* x .+ b[g])
+size_nb = 4.0
+p = size_nb ./ (size_nb .+ mu)
+y = rand.(NegativeBinomial.(size_nb, p))
 fit = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), NegBinomial2();
-          data = dat, marginal = :Laplace)
+          data = (; y, x, g), marginal = :Laplace)
 fit.marginal   # :Laplace
 ```
 
