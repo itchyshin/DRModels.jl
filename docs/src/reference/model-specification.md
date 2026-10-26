@@ -74,7 +74,7 @@ cbind
 
 !!! warning "Experimental"
     Exported for evaluation, not yet stable. API and numerics may
-    change. This route is not available through the R bridge.
+    change. The bounded R bridge workflow is shown below.
 
 For a Gaussian response, `mi(x)` marks an additive predictor whose missing
 values are integrated out under a joint model. Observed predictor values inform

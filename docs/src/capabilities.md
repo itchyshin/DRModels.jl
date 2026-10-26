@@ -162,9 +162,9 @@ verified sparse augmented-state Laplace engine.
 ## Location–scale with a phylogenetic random effect on the scale (q=2 route)
 
 A shared random effect on **both** the mean and log-dispersion axes uses a q=2
-augmented Laplace calculation and exact O(p) outer gradient. The full fit,
-gradient, Wald summaries, and profile-likelihood intervals have regular
-package-test coverage.
+augmented Laplace calculation with an exact derivative of its Laplace
+objective. The full fit, gradient, Wald summaries, and profile-likelihood
+intervals have regular package-test coverage.
 
 | Capability | Status |
 |---|---|

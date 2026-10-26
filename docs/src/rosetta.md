@@ -181,9 +181,10 @@ distributional parameters:
   drmTMB's `fitted` is the unconditional response mean, while DRModels.jl's is
   the inverse-link location (for LogNormal, the median `exp(Xβ̂)`).
 
-drmTMB's exact R spelling for per-parameter prediction is not asserted here
-(only the capability is); the response-scale `predict` row is the verified parity
-point.
+drmTMB's exact R spelling for per-parameter prediction is not asserted here.
+The response-scale `predict` calls name the intended comparable operation; parity
+is established only for the specific outputs and fixtures listed in the
+[parity evidence](drmtmb-parity.md), not for every family or prediction type.
 
 ## Deliberate difference — the log-scale numerical guard
 

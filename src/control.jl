@@ -32,7 +32,7 @@ drmTMB's `drm_control()`.
 | Field | Meaning |
 |:--|:--|
 | `maxit` | Iteration cap of the outer optimiser (`nothing` = the route's default cap). |
-| `start` | Starting values: a vector on the internal parameter scale, in `coef(fit)` order (see [`coefnames`](@ref) of a default fit). `nothing` = the route's own start. |
+| `start` | Starting values: a vector on the internal parameter scale, in `coef(fit)` order of a default fit. `fit.coefnames` groups its labels by parameter block. `nothing` = the route's own start. |
 | `multi_start` | Number of starts. `1` = a single start. With `k > 1`, the first start is `start` (or the route's own start), and starts `2:k` add reproducible perturbations to it. The fit with the lowest objective is kept. |
 | `se` | `false` skips the standard errors. `vcov(fit)` is then all `NaN`. |
 | `seed` | Seed of the perturbations for `multi_start` (a DRModels.jl extension). |
@@ -399,7 +399,7 @@ function _ctl_optimize(run::Function, θ0::AbstractVector; g_tol::Real)
         length(c.start) == length(x0) ||
             throw(ArgumentError("DRMControl: `start` has $(length(c.start)) values but this " *
                 "model has $(length(x0)) parameters (in `coef(fit)` order; see " *
-                "`coefnames(fit)` of a default fit)"))
+                "`fit.coefnames` of a default fit)"))
         x0 = copy(c.start)
     end
     opts = c.maxit === nothing ? Optim.Options(g_tol = g_tol) :

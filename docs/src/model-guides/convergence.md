@@ -3,11 +3,9 @@
 !!! note "Status — Stable"
     Mirrors drmTMB's [Improving convergence](https://itchyshin.github.io/drmTMB/articles/convergence.html). A practical guide to checking and improving a fit in **DRModels.jl**, built around the [`check_drm`](@ref) diagnostic.
 
-A distributional regression fits by maximum likelihood: most `drm` routes run
-an LBFGS optimiser (with a robust mode-finder for the phylogenetic engine) and store
-whether it converged. Most models converge without intervention. This page is
-for the ones that don't — and how to tell the difference between a real problem
-and a model that is simply sitting at the edge of its parameter space.
+The optimiser and stopping tests depend on the fitted route. Use this page
+when a fit reports a numerical problem, and to distinguish an early stop from
+a model sitting at the edge of its parameter space.
 
 ## Step 1 — check the fit
 
@@ -23,9 +21,9 @@ check_drm(fit)
 
 The report is a `NamedTuple`:
 
-- `converged` — did the optimiser report success, and (for Gaussian fits) is the
-  fit non-degenerate, as [`is_converged`](@ref) decides? This is still a
-  stopping rule, not proof of a maximum (see below).
+- `convergence_status` reports `:converged`, `:boundary`, or `:degenerate`.
+  `converged` is `true` exactly when this status is `:converged`, matching
+  [`is_converged`](@ref). The raw optimiser flag is `fit.converged`.
 - `max_abs_grad` — `max|∇nll|` at the solution, the largest slope of the
   negative log-likelihood. Near a clean interior optimum this is ≈ 0; a large
   value means the optimiser stopped early.
@@ -38,23 +36,21 @@ The report is a `NamedTuple`:
 - `min_eigval` / `cond` — the smallest eigenvalue and the condition number of the
   covariance. A near-zero `min_eigval` flags a direction the data barely
   constrain (a variance pinned near zero, two confounded coefficients).
-- `ok` — `true` when converged, the gradient is small, and the covariance is PD.
-  When `grad_source` is `:none` or `:unavailable`, `ok = true` means only
-  "converged and PD": the gradient test was skipped.
+- `ok` combines the raw convergence/nondegeneracy check, a small available
+  gradient, a positive-definite covariance, and no fixed-effect rank deficiency.
+  The gradient condition is skipped when unavailable or for penalised MAP fits.
+  This summary differs from `is_converged`: `ok` can be `true` at a variance
+  boundary or when the status flags inflated standard errors. Read both fields.
 
-!!! warning "What a `true` flag does not tell you"
-    `converged = true` (and `is_converged(fit) = true`) means the optimiser
-    stopped by its own rules. It does not prove the estimates are at a
-    well-defined maximum. A fit can stop with a parameter at its limit and
-    still report `true`: a variance estimated at zero, a Student-t `nu` that
-    runs towards infinity (the data look Gaussian), or a `ZeroOneBeta`
-    one-inflation part with no exact ones in the data.
-    `is_converged` adds a check for a collapsed residual SD, but only for
-    Gaussian fits. So read `max_abs_grad` and `grad_source` as well, and look
-    at estimates that are very large on the link scale. Work to make the flag
-    stricter is tracked in
-    [DRModels.jl#969](https://github.com/itchyshin/DRModels.jl/issues/969) and
-    [DRModels.jl#949](https://github.com/itchyshin/DRModels.jl/issues/949).
+!!! warning "Read the status as well as the raw flag"
+    `fit.converged = true` says the optimiser's stopping rule was met. It does
+    not prove an interior, identified maximum. `is_converged(fit)` additionally
+    checks the public convergence status and returns `false` at `:boundary`
+    or `:degenerate`, including detected variance/correlation boundaries and
+    non-finite or inflated standard errors when uncertainty was computed.
+    These checks are numerical diagnostics, not a model-adequacy test. Read
+    `max_abs_grad`, `grad_source`, the covariance checks, and the fitted
+    parameter values together.
 
 ## Step 2 — read the failure mode
 
@@ -64,21 +60,21 @@ A non-`ok` report is information, not necessarily an error.
 
 If a random-effect SD or a scale parameter is estimated near zero, the
 likelihood flattens in that direction: `min_eigval` is tiny and the gradient may
-not reach zero. This is often the *correct* MLE — the data carry little of that
-variance component. The Wald standard errors of the other parameters can
-usually still be used; the boundary direction itself has no meaningful Wald
-standard error. Prefer [`confint`](@ref)`(fit; method = :profile)` there: the
-profile interval does not rely on the quadratic Wald approximation, which
-breaks down at a boundary. Its likelihood-ratio calibration is still
-asymptotic, so it is not exact either.
+not reach zero. This can be the MLE when the data provide little information
+about that variance component. Do not assume the other parameters' Wald
+standard errors remain reliable; inspect their own identification and
+covariance diagnostics. A profile interval avoids the quadratic Wald
+approximation, but its likelihood-ratio calibration is still asymptotic and
+boundary likelihood-ratio limits can be nonstandard [Self and Liang
+(1987)](https://doi.org/10.1080/01621459.1987.10478472).
 
-This applies to variance components estimated at zero. A *shape* parameter at
-its limit behaves differently: for Student-t `nu` running towards infinity,
-the fit can report a standard error of 0 and a zero-width Wald interval for
-`nu` instead of an undefined one
-([DRModels.jl#969](https://github.com/itchyshin/DRModels.jl/issues/969)). Do
-not use that interval; a large `nu` means the data look Gaussian, and a
-profile or bootstrap interval, or a Gaussian refit, is the better check.
+This advice applies to variance components estimated at zero. A Student-t
+shape parameter near its infinite-`nu` Gaussian limit is a different
+identification problem: the data may weakly distinguish large values of `nu`.
+If its standard error is zero or non-finite, do not interpret the Wald
+interval; the optimizer flag alone does not make that uncertainty reliable.
+Compare with a Gaussian fit when it answers the same question, and use a
+profile or bootstrap interval only when the target and evidence support it.
 
 ### Confounded predictors
 
@@ -127,11 +123,11 @@ base = drm(f, Gaussian(); data = dat)
 x0 = coef(base)
 lb = drm(f, Gaussian(); data = dat,
          control = DRMControl(optimizer = :lbfgs, start = x0))
-bf = drm(f, Gaussian(); data = dat,
+bfgs_fit = drm(f, Gaussian(); data = dat,
          control = DRMControl(optimizer = :bfgs, start = x0))
-control_info(bf).requested_optimizer   # :bfgs
-control_info(bf).actual_optimizer      # :bfgs
-control_info(bf).optimizer_runs        # every attempted start and native stopping result
+control_info(bfgs_fit).requested_optimizer   # :bfgs
+control_info(bfgs_fit).actual_optimizer      # :bfgs
+control_info(bfgs_fit).optimizer_runs        # every attempted start and native stopping result
 ```
 
 `optimizer = :default` retains the route's current method and restart policy.
@@ -197,7 +193,7 @@ the comparison is not available for those models.
 ## The phylogenetic engine
 
 The verified q=4 phylogenetic location–scale engine has its own mode-finder
-(sparse augmented-state Laplace with an exact O(p) gradient). Two notes specific
+(sparse augmented-state Laplace with an exact sparse gradient). Two notes specific
 to it:
 
 - **Off-diagonal initialisation.** Starting the cross-covariance Cholesky away

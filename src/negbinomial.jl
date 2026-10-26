@@ -75,8 +75,8 @@ per-observation size θ = 1/σ²), while the crossed-intercept route still
 requires `sigma ~ 1`.
 
 ```julia
-fit = drm(bf(y ~ x, sigma ~ 1), NegBinomial2(); data = dat)
-fit = drm(bf(y ~ x + (1 | g) + (1 | h), sigma ~ 1), NegBinomial2(); data = dat)
+fit = drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), NegBinomial2(); data = dat)
+fit = drm(bf(@formula(y ~ x + (1 | g) + (1 | h)), @formula(sigma ~ 1)), NegBinomial2(); data = dat)
 fit_phy = drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ 1)),
               NegBinomial2(); data = dat, tree = tr, se = false)
 fit_disp = drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ x)),
@@ -511,7 +511,7 @@ but conditioned on `y ≥ 1`: `P(k) = NB(k) / (1 − NB(0))`. Mirrors `drmTMB`'s
 `truncated_nbinom2`.
 
 ```julia
-fit = drm(bf(y ~ x, sigma ~ 1), TruncatedNegBinomial2(); data = dat)
+fit = drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), TruncatedNegBinomial2(); data = dat)
 ```
 
 Adding an `hu` part fits the HURDLE NB2 instead: `P(0) = logistic(X_huᵀβ)` and the
@@ -522,7 +522,7 @@ response. This is `drmTMB`'s spelling of the hurdle model — it has no
 returned fit reports `NegBinomial2` as its family).
 
 ```julia
-fit = drm(bf(y ~ x, sigma ~ 1, hu ~ w), TruncatedNegBinomial2(); data = dat)
+fit = drm(bf(@formula(y ~ x), @formula(sigma ~ 1), @formula(hu ~ w)), TruncatedNegBinomial2(); data = dat)
 ```
 """
 struct TruncatedNegBinomial2 end

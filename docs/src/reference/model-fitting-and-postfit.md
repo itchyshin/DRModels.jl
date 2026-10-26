@@ -1,6 +1,6 @@
 # Model fitting and post-fit tools
 
-!!! note "Status — Reference"
+!!! note "Status: Reference"
     Mirrors drmTMB's [Model fitting and post-fit tools](https://itchyshin.github.io/drmTMB/reference/index.html) (23 in drmTMB). The fitting verb is [`drm`](@ref); the post-fit accessors below cover coefficients, fitted scale / correlation, random-effect estimates, predictions, simulation, inference, and convergence diagnostics.
 
 ## Fitting
@@ -8,6 +8,18 @@
 ```@docs
 drm
 DrmFit
+```
+
+## Optimization controls
+
+`DRMControl` selects fitting controls; `control_info` reports what the fit used.
+The returned `DRMControlReport` is an Experimental interface, as defined in
+[API stability](../api-stability.md).
+
+```@docs
+DRMControl
+control_info
+DRMControlReport
 ```
 
 ## Coefficients and (co)variance
@@ -60,14 +72,20 @@ residuals
     `exp(η + b)` over a non-degenerate random effect `b`. Interpret the result as
     a fixed-effect prediction.
 
-[`predict`](@ref) with `type = :response` returns `invlink(Xβ)` with random
-effects set to 0. A distributional regression also models the scale and,
-bivariately, the correlation. Use [`predict_parameters`](@ref) to obtain the
-population-level value of **every** distributional parameter the model carries
-(`:mu`, `:sigma`, plus any family extras) at new covariate values, also with
-random / structured effects set to zero. That is the same inverse-link of the
-fixed-effect linear predictor, not response-scale integration over the
-random-effect distribution. [`marginal_parameters`](@ref) is the cheap in-sample accessor that reads the
+[`predict`](@ref) with `type = :response` returns `invlink(Xβ)` for the
+mean or location parameter, with random and structured effects set to zero.
+Its interpretation depends on the family: LogNormal returns a response-scale
+median; truncated Poisson and NB2 return the untruncated base rate or mean,
+rather than the expected positive count. ZeroOneBeta returns the interior
+beta-component mean, and CumulativeLogit returns the location predictor rather
+than an expected category score. A distributional regression also models scale
+and, for bivariate responses, correlation. Use
+[`predict_parameters`](@ref) to obtain the population-level value of **every**
+distributional parameter the model carries (`:mu`, `:sigma`, plus any family
+extras) at new covariate values, also with random / structured effects set to
+zero. These values apply each parameter's inverse link to its fixed-effect
+linear predictor; they do not integrate over the random-effect distribution.
+[`marginal_parameters`](@ref) is the cheap in-sample accessor that reads the
 fitted per-observation parameters straight off the fit. [`prediction_grid`](@ref)
 builds the new-data table to sweep over (varying chosen predictors, holding the
 rest at a reference value).
@@ -100,7 +118,8 @@ marginal_parameters(fit)            # == predict_parameters(fit, data) in-sample
 
 !!! warning "Experimental"
     Exported for evaluation, not yet stable. API and numerics may
-    change. This route is not available through the R bridge.
+    change. The R bridge accepts the bounded inputs shown in the
+    [joint missing-predictor guide](model-specification.md#joint-predictor-formula).
 
 For one ordinal or categorical missing predictor in the bounded Gaussian joint
 route, construct the predictor model with `impute_model`; use
@@ -114,6 +133,50 @@ DRModels.CategoricalLogit
 DRModels.JointFiniteDrmFit
 DRModels.cutpoints
 ```
+
+### Prepared-model fitting
+
+The low-level Experimental `fit_prepared_joint` overloads accept
+`PreparedJointModel`, `PreparedFiniteJointModel`, and
+`PreparedTwoJointGaussianModel`. Each uses
+`initial = prepared_joint_initial(model)` and `g_tol = 1e-8` by default.
+The initial vector must have the model's parameter length and finite entries;
+`g_tol` must be finite and positive. These overloads use L-BFGS with forward
+automatic differentiation. They return `PreparedJointFit`,
+`PreparedFiniteJointFit`, and `PreparedTwoJointGaussianFit`, respectively,
+with convergence and covariance status retained in their metadata.
+See the [`fit_prepared_joint`](@ref)
+for the lower-level interface; these overloads do not expand the formula or
+R-bridge admission boundaries above.
+
+```@docs
+DRModels.fit_prepared_joint
+```
+
+### Prepared-model summaries and finite-state imputations
+
+`joint_missing_summary(fit)` returns a NamedTuple whose fields depend on the
+prepared route. Finite-state fits return `predictor`, `variable`, `levels`,
+`original_row`, `observed_y`, `observed_x`, `conditional_probabilities`,
+`conditional_mean`, `conditional_variance`, `conditional_status`, `all_rows`,
+`predictor_only_rows`, `uncertainty_status`, `optimizer_status`, and
+`covariance_status`. A `JointFiniteDrmFit` forwards to this same summary.
+Two-predictor Gaussian fits return `predictor_variables`, `original_row`,
+`observed_y`, `observed_x` (a pair of masks), `conditional_mean`,
+`conditional_covariance`, `conditional_status`, `all_rows`,
+`predictor_only_rows`, `uncertainty_status`, `optimizer_status`, and
+`covariance_status`. Returned arrays are copies of the retained metadata.
+
+For a missing finite-state predictor, `imputed(fit)` reports an ordinal
+conditional expected score or a categorical modal state index in `estimate`.
+The states are numbered `1:length(levels)`; `levels` supplies their labels.
+The `source` column distinguishes `conditional_expected_score` from
+`conditional_modal_category`. With `se = true` and usable retained covariance,
+an ordinal `std_error` is the conditional state-score SD; it does not include
+parameter-estimation uncertainty. Categorical `std_error` is unavailable.
+Check `uncertainty_status`, and use the summary's `conditional_probabilities`
+for state probabilities. Observed rows keep their observed state index when
+`rows = :all`; the default `rows = :missing` selects missing predictor rows.
 
 ## Inference
 
@@ -142,6 +205,7 @@ bootstrap_result
 
 ```@docs
 loglik
+loglikelihood
 ml_loglik
 reml_loglik
 estimation_method

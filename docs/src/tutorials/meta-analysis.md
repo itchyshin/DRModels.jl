@@ -20,8 +20,8 @@ y_i \sim \mathcal{N}(x_i^\top\beta,\; v_i + \tau^2).
 
 Flag the known-variance column with `meta_V(v)` in the mean formula; the residual
 heterogeneity τ is the `σ` parameter (`sigma ~ 1` for a single heterogeneity).
-`meta_V(v)` is the current marker — the older `meta_known_V` is **deprecated** and
-kept only as a parity stub.
+Use `meta_V(v)` in Julia. The older drmTMB spelling `meta_known_V` is not
+available in DRModels.jl.
 
 ## Random-effects meta-analysis (intercept only)
 

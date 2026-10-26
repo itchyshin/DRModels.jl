@@ -87,9 +87,12 @@ Bernoulli × NB2 exception.
 The margins are **frozen**: `fit_1` and `fit_2` are used as fitted and are never
 re-estimated. Reported uncertainty is therefore conditional on them.
 
-Implemented pair class: **gaussian × binomial** (`gaussian_bernoulli`). The other
-four reviewed classes need a rectangle probability and are not implemented yet;
-they error rather than silently approximating.
+Implemented pair classes are Gaussian × Bernoulli, Gaussian × NB2,
+Bernoulli × Bernoulli, Bernoulli × NB2, and NB2 × NB2. A Binomial margin must
+represent Bernoulli observations on these routes. The accepted classes have
+class-specific continuous/discrete likelihood calculations; other family
+pairs are refused. These implementation routes do not imply general interval
+calibration, and the margins remain frozen as described above.
 
 ```julia
 fg = drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), Gaussian(); data = d)

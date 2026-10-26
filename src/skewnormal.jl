@@ -28,7 +28,7 @@ the location–scale–slant `(ξ, ω, α)` of the density
 skews left.
 
 ```julia
-fit = drm(bf(y ~ x, sigma ~ 1, nu ~ 1), SkewNormal(); data = dat)
+fit = drm(bf(@formula(y ~ x), @formula(sigma ~ 1), @formula(nu ~ 1)), SkewNormal(); data = dat)
 coef(fit, :mu)[1]           # mean of y (identity)
 exp(coef(fit, :sigma)[1])   # SD of y
 coef(fit, :nu)[1]           # estimated slant α (identity)

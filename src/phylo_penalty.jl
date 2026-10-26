@@ -111,7 +111,7 @@ penalized fits with `aic` / `lrtest` (both refuse).
 # Example
 ```julia
 pen = drm_phylo_penalty(sd_u = 0.5, sd_alpha = 0.05)
-fit = drm(bf(mu = @formula(y ~ x + phylo(1 | species)), sigma = @formula(~1)),
+fit = drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ 1)),
           Gaussian(); data = dat, tree = tree, penalty = pen)
 fit.phylo_penalty        # the penalty at the optimum
 loglik(fit)              # UNPENALIZED data log-likelihood
@@ -261,8 +261,8 @@ Extra `kwargs...` are forwarded to [`drm`](@ref) (`tree`, `g_tol`, …).
 # Example
 ```julia
 sw = drm_phylo_penalty_sweep(
-        bf(mu = @formula(y ~ x + phylo(1 | species)),
-           sigma = @formula(~ 1 + phylo(1 | species))),
+        bf(@formula(y ~ x + phylo(1 | species)),
+            @formula(sigma ~ 1 + phylo(1 | species))),
         Gaussian(); data = dat, tree = tree, cor_sd = [0.25, 0.5, 1.0])
 sw.summary          # one row per cor_sd
 ```
