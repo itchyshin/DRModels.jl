@@ -529,6 +529,24 @@ function _poisson_phylo_setup(tree, labels)
     return Q, leaf_node, phy
 end
 
+# #996: the non-Gaussian phylo(1 | g) Laplace routes fit `b ~ N(0, σ_b² Q⁻¹)` on the
+# raw branch-length tree, so tip i has prior variance σ_b² · C_ii with
+# C_ii = (Q⁻¹)_ii, not σ_b². `fit.means` on these routes is the population-level
+# mean `g⁻¹(Xβ̂)` (no BLUPs), so the quantile residual needs only this diagonal.
+# `DrmFit` has no slot for it, so it rides on `fit.ranef` as this carrier (as the
+# Gaussian routes' `LocOnlyRanef` does). It holds no conditional modes: `ranef(fit)`
+# treats it like `nothing`.
+struct PhyloTipVariance
+    tipvar::Vector{Float64}     # C_ii for each data row, raw branch-length scale
+end
+
+# The diagonal lies in the Cholesky pattern, so the Takahashi selected inverse
+# gives it exactly in O(nnz(L)) (the idiom of `_loconly_row_tip_variance`).
+function _with_phylo_tipvar(fit::DrmFit, Q, leaf_node)
+    d = takahashi_diag(cholesky(Symmetric(Q)))
+    return _withranef(fit, PhyloTipVariance(d[leaf_node]))
+end
+
 function _sparse_trace_product(A, B)
     rows = rowvals(B)
     vals = nonzeros(B)
@@ -727,9 +745,10 @@ function _fit_poisson_phylo_laplace(fam::Poisson, y, Xμ, labels, tree, nmμ, gr
                                     polish_iterations::Int = 15,
                                     reml::Bool = false)
     Q, leaf_node, _ = _poisson_phylo_setup(tree, labels)
-    return _fit_poisson_general_laplace(fam, y, Xμ, Q, leaf_node, nmμ, grp, g_tol;
-                                        se = se, polish_iterations = polish_iterations,
-                                        reml = reml)
+    fit = _fit_poisson_general_laplace(fam, y, Xμ, Q, leaf_node, nmμ, grp, g_tol;
+                                       se = se, polish_iterations = polish_iterations,
+                                       reml = reml)
+    return _with_phylo_tipvar(fit, Q, leaf_node)
 end
 
 """
@@ -1061,12 +1080,13 @@ function _fit_phylo_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, labe
                                           polish_iterations::Int = 0,
                                           extra_scales = Dict{Symbol,Vector{Float64}}())
     Q, leaf_node, _ = _poisson_phylo_setup(tree, labels)
-    return _fit_general_mean_laplace_nuisance(
+    fit = _fit_general_mean_laplace_nuisance(
         fam, kind, aux_from, n, Xμ, Q, leaf_node, nmμ, nmσ, grp, g_tol;
         θβ0 = θβ0, θσ0 = θσ0, sigma_scale = sigma_scale, se = se,
         polish_iterations = polish_iterations, extra_scales = extra_scales,
         prec_error = "phylo(1 | $grp) tree precision is not positive definite after root conditioning"
     )
+    return _with_phylo_tipvar(fit, Q, leaf_node)
 end
 
 # Q-generic core for a nuisance-parameter family (NB2/Gamma/Beta) with a single
@@ -1386,7 +1406,7 @@ function _fit_phylo_mean_laplace_hetero(fam, kind, aux_from, n::Int, Xμ, Xσ,
     scales = Dict(:sigma => [sigma_scale(ησ̂[i]) for i in 1:n])
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
     _warn_laplace_clamp(fit; logsigma = Xσ * θ̂[pμ+1:pμ+pσ])   # #959: say when a clamp is active
-    return _withnll(fit, nll, grad!)
+    return _with_phylo_tipvar(_withnll(fit, nll, grad!), Q, leaf_node)
 end
 
 function _phylo_mean_laplace_fg(kind, aux, n::Int, Xμ, leaf_node, Q, logdetQ, θ;
@@ -1545,7 +1565,7 @@ function _fit_phylo_mean_laplace(fam, kind, aux, n::Int, Xμ, labels, tree, nmμ
     obs = Dict(:mu => [_laplace_obs(kind, aux, i) for i in 1:n])
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
     _warn_laplace_clamp(fit)   # #959: say when a clamp is active
-    return _withnll(fit, nll, grad!)
+    return _with_phylo_tipvar(_withnll(fit, nll, grad!), Q, leaf_node)
 end
 
 # Shared NB2 setup for the sparse-Laplace nuisance routes (phylo + general-cov):
