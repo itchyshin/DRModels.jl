@@ -272,7 +272,7 @@ function drm_bridge_q2_phylo(; Y, X, species, tree, options = Dict{String,Any}()
     phy = _bridge_tree(tree)
     all(1 .<= sp .<= phy.n_leaves) ||
         throw(ArgumentError("drm_bridge_q2_phylo: `species` must contain 1-based tip indices"))
-    opts = _bridge_options(options)
+    opts = _bridge_q2_check_option_keys("drm_bridge_q2_phylo", _bridge_options(options))
     prob, Q_cond = make_coevo_problem(phy, y, x; species = sp)
     fit = fit_coevolution(
         prob,
@@ -317,7 +317,7 @@ function drm_bridge_q2_known_precision(; Y, X, group, Q,
         throw(ArgumentError("drm_bridge_q2_known_precision: `X` and `Y` must have the same number of rows"))
     length(g) == size(y, 1) ||
         throw(ArgumentError("drm_bridge_q2_known_precision: `group` length must match the number of rows in `Y`"))
-    opts = _bridge_options(options)
+    opts = _bridge_q2_check_option_keys("drm_bridge_q2_known_precision", _bridge_options(options))
     prob, Q_cond = make_coevo_problem_from_precision(qmat, y, x; group = g)
     fit = fit_coevolution_q2_residual(
         prob,
@@ -425,11 +425,7 @@ function drm_bridge_inference(; formula, family::AbstractString, data,
         # A genuinely UNBOUNDED profile (the likelihood never crosses the LR
         # threshold in the searched range) keeps status "profile" and is unaffected.
         outcome.status == "profile_failed" && throw(ArgumentError(
-            "drm_bridge_inference: profile endpoint search did not converge for " *
-            "`$(row.param):$(row.coef)` — $(outcome.message). A non-converged " *
-            "endpoint is NOT a confidence limit, so it is refused here rather " *
-            "than returned as an infinite bound. Use `method = \"wald\"` or " *
-            "`method = \"bootstrap\"` for this target."))
+            _bridge_profile_failure_message(row.param, row.coef, outcome.message)))
         return _bridge_inference_flatten(
             row;
             method = "profile",
@@ -705,6 +701,30 @@ function _bridge_options(options)
         return Dict{Symbol,Any}(Symbol(String(k)) => v for (k, v) in pairs(options))
     end
     throw(ArgumentError("drm_bridge: `options` must be a dictionary or named tuple"))
+end
+
+# The refusal text for a failed profile endpoint search (#631). It may only
+# recommend a method `drm_bridge_inference` accepts: its dispatch has `"profile"`
+# and `"bootstrap"`, and refuses `"wald"` (#1011).
+function _bridge_profile_failure_message(param, coef, message)
+    return "drm_bridge_inference: profile endpoint search did not converge for " *
+        "`$(param):$(coef)` — $(message). A non-converged " *
+        "endpoint is NOT a confidence limit, so it is refused here rather " *
+        "than returned as an infinite bound. Use `method = \"bootstrap\"` " *
+        "for this target."
+end
+
+# Option keys read by the two q2 point-export entry points (#1011).
+const _BRIDGE_Q2_KNOWN_OPTION_KEYS = Set((:iterations, :g_tol, :fd_h))
+
+# Fail closed on an unknown option key, as `_bridge_fit` does: a misspelled key
+# must error and name itself, not be dropped while the default is used.
+function _bridge_q2_check_option_keys(caller::AbstractString, opts)
+    unknown = setdiff(keys(opts), _BRIDGE_Q2_KNOWN_OPTION_KEYS)
+    isempty(unknown) || throw(ArgumentError(
+        "$caller: unknown option key(s) `$(join(sort(String.(unknown)), "`, `"))`; " *
+        "known keys are: $(join(sort(String.(collect(_BRIDGE_Q2_KNOWN_OPTION_KEYS))), ", "))."))
+    return opts
 end
 
 function _bridge_data(data)
