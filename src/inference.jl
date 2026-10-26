@@ -31,7 +31,21 @@ stderror(fit::DrmFit) = _wald_withheld(fit) ? _homtoep_refuse_wald("stderror") :
 # Internal: the Hessian-based SEs regardless of the public Wald scope (profile
 # step sizes, plots); `_display_se` is what `coeftable` / `show` print.
 _stderror(fit::DrmFit) = _boundary_se.(diag(fit.vcov))
-_display_se(fit::DrmFit) = _wald_withheld(fit) ? fill(NaN, length(fit.theta)) : _stderror(fit)
+_display_se(fit::DrmFit) = (_wald_withheld(fit) || _wald_unreliable(fit) !== nothing) ?
+    fill(NaN, length(fit.theta)) : _stderror(fit)
+
+# #1193 (from #1127 Part B): `show` and `coeftable` do not print Wald SEs when the
+# fit is not converged (`is_converged` false) or its Hessian is not positive
+# definite; drmTMB refuses `vcov()` there. Returns the reason `show` prints, or
+# `nothing` when the printed SEs stand. `stderror()` / `vcov()` are unchanged.
+function _wald_unreliable(fit::DrmFit)
+    if fit.uncertainty !== :skipped && !_twin_vcov_positive_definite(fit.vcov)
+        return "the Hessian is not positive definite"
+    end
+    status = convergence_status(fit)
+    status === :converged && return nothing
+    return string("the fit is not converged (convergence_status = ", status, ")")
+end
 
 # √v where the variance is identified (finite, positive); Inf otherwise. Keeps a
 # non-PD boundary direction from poisoning the whole SE vector with NaN.
