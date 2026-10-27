@@ -31,7 +31,7 @@ run separately.
 
 | Family | Mean-axis random effects | Status and boundary |
 |---|---|---|
-| Gaussian | intercepts, slopes, correlated, crossed, and structured effects | **Tested**; crossed fits are fast at moderate sizes but still slower than drmTMB at tens of thousands of rows (see [Working with large data](model-guides/large-data.md)) |
+| Gaussian | intercepts, slopes, correlated, crossed, and structured effects | **Tested**; one retained synthetic crossed-intercept benchmark is summarized in [Working with large data](model-guides/large-data.md) |
 | Student-t | intercepts and slopes | **Tested** |
 | SkewNormal | — | **Tested** fixed effects; random effects are refused |
 | Poisson | intercepts, slopes, crossed, and phylogenetic effects | **Tested** |
@@ -113,7 +113,7 @@ random effect: `sd(group) ~ z` or `sd(species, phylogenetic) ~ z`.
 | Gaussian random intercept `(1\|g)` | **Tested** |
 | Gaussian random slope `(x\|g)` | **Tested** |
 | Correlated intercept and slope | **Tested** |
-| Multiple, crossed, or nested grouping factors | **Tested**; Gaussian crossed factors fit in about 0.3 s at 2,000 rows and 45 s at 20,000 rows on one synthetic design, still slower than drmTMB at tens of thousands of rows (see [Working with large data](model-guides/large-data.md)) |
+| Multiple, crossed, or nested grouping factors | **Tested**; timing values from one retained synthetic design are reported in [Working with large data](model-guides/large-data.md) |
 | Poisson crossed random effects | **Tested** with sparse Laplace integration |
 
 ### Structured random effects with a known relatedness matrix (closed-form Gaussian)

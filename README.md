@@ -131,11 +131,11 @@ The same `bf(...)` grammar covers:
 
 Support differs by family and structure. The
 [capabilities page](https://itchyshin.github.io/DRModels.jl/dev/capabilities) lists, row by row, what is tested
-and what is refused. One limit to know: Gaussian models with **crossed**
-random intercepts are now fast at moderate sizes (about 0.3 s at 2,000 rows
-and 45 s at 20,000 rows on a synthetic design of that shape,
-[#977](https://github.com/itchyshin/DRModels.jl/issues/977)), but they are
-still slower than drmTMB or glmmTMB at tens of thousands of rows.
+and what is refused. A retained synthetic benchmark of Gaussian models with
+**crossed** random intercepts recorded Julia runtimes of about 0.3 s at 2,000
+rows and 45 s at 20,000 rows ([#977](https://github.com/itchyshin/DRModels.jl/issues/977)).
+These are results from that benchmark only; they do not establish performance
+relative to other packages.
 
 **Inference.** When a usable covariance estimate is available, fits report
 Wald standard errors and intervals. Check convergence and warnings before

@@ -102,16 +102,14 @@ that has been benchmarked to scale.
 !!! note "Gaussian crossed random effects"
     Gaussian models with crossed random intercepts, such as
     `y ~ x + (1 | rater) + (1 | item)`, use a sparse factorisation of the
-    random-effect system, so time grows far more slowly with the number of rows
-    than it did before
-    [DRModels.jl#977](https://github.com/itchyshin/DRModels.jl/issues/977) was
-    fixed (earlier, 2,000 rows took over five minutes). On a synthetic design
-    shaped like the `lme4::InstEval` ratings, one machine and one thread, a fit
-    took about 0.3 s at 2,000 rows, 45 s at 20,000 rows and 28 s at 100,000
-    rows. drmTMB is still faster at 20,000 rows, because the optimiser needs
-    many steps on weakly identified crossed designs, not because each step is
-    slow. For very large crossed data sets, compare timings with drmTMB or
-    glmmTMB before committing.
+    random-effect system. In the retained InstEval-shaped synthetic benchmark
+    ([DRModels.jl#977](https://github.com/itchyshin/DRModels.jl/issues/977)),
+    one Julia run on one machine and one thread recorded about 0.3 s at 2,000
+    rows, 45 s at 20,000 rows and 28 s at 100,000 rows. These are run-specific
+    timings. The retained report also lists drmTMB reporter timings at 2,000
+    and 20,000 rows, but says that comparator was not rerun. It contains no
+    glmmTMB measurement, so these results do not establish a general speed
+    comparison between packages.
 
 ## Related software
 
