@@ -26,7 +26,7 @@ vocabulary (`bf(...)`, `sigma`, `rho12`, `meta_V`). Documentation:
 <https://itchyshin.github.io/DRModels.jl/dev/> (built from the current `main`
 branch).
 
-> **Status: experimental, version 0.7.1.** Install it from GitHub (it is not
+> **Status: experimental, version 0.7.2.** Install it from GitHub (it is not
 > yet in the Julia General registry). The public API may still change across
 > the 0.x series. Before choosing a model, check
 > [what is tested](https://itchyshin.github.io/DRModels.jl/dev/capabilities).
