@@ -47,7 +47,7 @@ native-vs-native agreement, not R-vs-Julia parity in the ordinary sense.
 | `gaussian_phylo_mean` | Gaussian phylo random intercept on the mean | ✅ | ✅ | 🔨 | ✅ phylo-SD agreement + measured mean-block coverage; sigma-axis solver defect open |
 | `gaussian_response_mask` | Missing Gaussian response, `response="include"` | ✅ | ✅ | ✅ supported | ✅ include==drop equality, cross-engine `\|Δlogℓik\| = 4e-10` |
 | `biv_q4_phylo_reml` | q4 bivariate phylo location-scale, REML | ✅ | ✅ | 🔨 experimental | ✅ coef parity; measured coverage argues **against** promotion (off-diagonal phylocov under/over-covers) |
-| `phylo_count_large_p` | Poisson/NB2 with large-p sparse phylo RE | ✅ | ✅ | 🔨 | ✅ SE parity to p=3000 (199–295×); p=10,000 is DRModels.jl-only, no native comparator attempted |
+| `phylo_count_large_p` | Poisson/NB2 with large-p sparse phylo RE | ✅ | ✅ | 🔨 | ✅ SE parity to p=3000 (199–295×); the p=10,000 count fit is Julia-only. A separate q=4 Gaussian scaling grid has a paired p=10,000 timing; it is a different model, not a count-route comparator. |
 | `phylo_gamma_beta_binomial` | Gamma/Beta/Binomial with phylo RE | ✅ | ✅ | 🔨 | ✅ native-vs-native coef/SE/logLik parity, one fixture |
 | `general_covariance_structured` | `relmat()` / relatedness K, Gaussian/Poisson/NB2/Gamma | ✅ | ✅ | 🔨 | ✅ SE parity to 1e-7–1e-6, one seed/family |
 | `cross_family_latent` | Shared-latent mixed-family (e.g. Gaussian × Poisson) | ⬜ **no native comparator** | ✅ | 🔨 (via drmTMB's own xfam bridge, not DRModels.jl's `bridge.jl`) | ⚡ simulation recovery only; a parity claim is structurally impossible here |

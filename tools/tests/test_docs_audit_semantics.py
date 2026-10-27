@@ -238,5 +238,18 @@ class DocumentationSemantics(unittest.TestCase):
         self.assertIn("bootstrap_result(fit::DrmFit; data, B = 300", text)
         self.assertIn("algorithm = :auto, g_tol = 1e-8, method = :ML", text)
         self.assertIn("algorithm` and `g_tol` are accepted on the Gaussian routes only", text)
+
+    def test_large_count_and_gaussian_comparisons_are_not_conflated(self):
+        text = " ".join(self.text("docs/src/drmtmb-parity.md").split())
+        self.assertIn("the p=10,000 count fit is Julia-only", text)
+        self.assertIn("paired p=10,000 timing", text)
+        self.assertIn("it is a different model, not a count-route comparator", text)
+
+    def test_small_sample_records_keep_their_distinct_denominators(self):
+        text = " ".join(self.text("docs/src/diagnostics-and-validation/small-sample-behaviour.md").split())
+        self.assertIn("coverage report lists `−1.852` and 986 intervals", text)
+        self.assertIn("965 converged fits out of 1000", text)
+        self.assertIn("N-ladder TSV reports `−1.8178` from 291 converged fits", text)
+        self.assertIn("do not combine their counts", text)
 if __name__ == "__main__":
     unittest.main()
