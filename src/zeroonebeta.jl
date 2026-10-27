@@ -39,8 +39,8 @@ and the Beta interior likelihood on the mean uses the same verified
 `:beta_fixed`-derived phylo/relmat spine as `Beta()`.
 
 ```julia
-fit = drm(bf(y ~ x, sigma ~ 1, zoi ~ 1, coi ~ 1), ZeroOneBeta(); data = dat)
-fit = drm(bf(y ~ x + (1 | g), sigma ~ 1, zoi ~ 1, coi ~ 1), ZeroOneBeta(); data = dat)
+fit = drm(bf(@formula(y ~ x), @formula(sigma ~ 1), @formula(zoi ~ 1), @formula(coi ~ 1)), ZeroOneBeta(); data = dat)
+fit = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1), @formula(zoi ~ 1), @formula(coi ~ 1)), ZeroOneBeta(); data = dat)
 fit_phy = drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ 1),
                  @formula(zoi ~ 1), @formula(coi ~ 1)),
               ZeroOneBeta(); data = dat, tree = tr, se = false)

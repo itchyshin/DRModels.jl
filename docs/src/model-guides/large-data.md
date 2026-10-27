@@ -4,11 +4,13 @@
     Mirrors drmTMB's [Working with large data](https://itchyshin.github.io/drmTMB/articles/large-data.html). How DRModels.jl stays fast as the number of units grows, and what to reach for when a model is large.
 
 The selling-point model — the q=4 phylogenetic bivariate location–scale fit — is
-built to scale. The marginal likelihood is a **sparse augmented-state Laplace
-approximation with an exact O(p) gradient**: it never forms the dense p×p
-phylogenetic covariance, and it gets the gradient from a Takahashi selected
-inverse rather than by differentiating a dense factorisation. The practical
-consequence is near-linear scaling in the number of tips.
+built for sparse tree structure. The marginal likelihood uses a sparse
+augmented-state Laplace approximation, with an exact sparse outer gradient at
+a converged inner mode. It never forms the dense p×p phylogenetic covariance;
+the gradient uses a Takahashi selected inverse rather than differentiating a
+dense factorisation. The selected-inverse cost depends on Cholesky fill; the
+measured near-linear scaling below applies to the stated tree shapes and
+settings.
 
 ## What the timing evidence shows
 
@@ -40,10 +42,12 @@ extrapolated “N× faster” claim is retired.
   is sparse (3N − 2 stored non-zeros for a tree with N nodes, about 6p for
   a binary tree with p tips). The engine factorises that sparse
   matrix with CHOLMOD; it never materialises the dense Σ.
-- **Exact O(p) gradient.** The implicit-function gradient reuses a Takahashi
-  selected inverse — the entries of the inverse that the sparse Cholesky already
-  touches — instead of an O(p²) or O(p³) dense differentiation. This is the
-  difference that keeps the iteration cost near-linear in the number of tips.
+- **Exact sparse outer gradient.** At the converged inner mode, the
+  implicit-function gradient reuses the selected inverse entries needed by the
+  sparse Cholesky factor. Its cost
+  depends on factor fill, so the exact gradient does not imply a universal
+  O(p) runtime bound. The timing study above measures near-linear growth for
+  its balanced and caterpillar tree designs.
 - **A precision sampler for uncertainty.** A latent-state draw uses the same
   sparse precision (`Cov(û) ≈ P⁻¹`) rather than a dense covariance. Total
   bootstrap time still depends on the number of refits and their convergence.
@@ -98,16 +102,14 @@ that has been benchmarked to scale.
 !!! note "Gaussian crossed random effects"
     Gaussian models with crossed random intercepts, such as
     `y ~ x + (1 | rater) + (1 | item)`, use a sparse factorisation of the
-    random-effect system, so time grows far more slowly with the number of rows
-    than it did before
-    [DRModels.jl#977](https://github.com/itchyshin/DRModels.jl/issues/977) was
-    fixed (earlier, 2,000 rows took over five minutes). On a synthetic design
-    shaped like the `lme4::InstEval` ratings, one machine and one thread, a fit
-    took about 0.3 s at 2,000 rows, 45 s at 20,000 rows and 28 s at 100,000
-    rows. drmTMB is still faster at 20,000 rows, because the optimiser needs
-    many steps on weakly identified crossed designs, not because each step is
-    slow. For very large crossed data sets, compare timings with drmTMB or
-    glmmTMB before committing.
+    random-effect system. In the retained InstEval-shaped synthetic benchmark
+    ([DRModels.jl#977](https://github.com/itchyshin/DRModels.jl/issues/977)),
+    one Julia run on one machine and one thread recorded about 0.3 s at 2,000
+    rows, 45 s at 20,000 rows and 28 s at 100,000 rows. These are run-specific
+    timings. The retained report also lists drmTMB reporter timings at 2,000
+    and 20,000 rows, but says that comparator was not rerun. It contains no
+    glmmTMB measurement, so these results do not establish a general speed
+    comparison between packages.
 
 ## Related software
 

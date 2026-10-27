@@ -31,7 +31,7 @@ run separately.
 
 | Family | Mean-axis random effects | Status and boundary |
 |---|---|---|
-| Gaussian | intercepts, slopes, correlated, crossed, and structured effects | **Tested**; crossed fits are fast at moderate sizes but still slower than drmTMB at tens of thousands of rows (see [Working with large data](model-guides/large-data.md)) |
+| Gaussian | intercepts, slopes, correlated, crossed, and structured effects | **Tested**; one retained synthetic crossed-intercept benchmark is summarized in [Working with large data](model-guides/large-data.md) |
 | Student-t | intercepts and slopes | **Tested** |
 | SkewNormal | — | **Tested** fixed effects; random effects are refused |
 | Poisson | intercepts, slopes, crossed, and phylogenetic effects | **Tested** |
@@ -113,7 +113,7 @@ random effect: `sd(group) ~ z` or `sd(species, phylogenetic) ~ z`.
 | Gaussian random intercept `(1\|g)` | **Tested** |
 | Gaussian random slope `(x\|g)` | **Tested** |
 | Correlated intercept and slope | **Tested** |
-| Multiple, crossed, or nested grouping factors | **Tested**; Gaussian crossed factors fit in about 0.3 s at 2,000 rows and 45 s at 20,000 rows on one synthetic design, still slower than drmTMB at tens of thousands of rows (see [Working with large data](model-guides/large-data.md)) |
+| Multiple, crossed, or nested grouping factors | **Tested**; timing values from one retained synthetic design are reported in [Working with large data](model-guides/large-data.md) |
 | Poisson crossed random effects | **Tested** with sparse Laplace integration |
 
 ### Structured random effects with a known relatedness matrix (closed-form Gaussian)
@@ -162,9 +162,9 @@ verified sparse augmented-state Laplace engine.
 ## Location–scale with a phylogenetic random effect on the scale (q=2 route)
 
 A shared random effect on **both** the mean and log-dispersion axes uses a q=2
-augmented Laplace calculation and exact O(p) outer gradient. The full fit,
-gradient, Wald summaries, and profile-likelihood intervals have regular
-package-test coverage.
+augmented Laplace calculation with an exact derivative of its Laplace
+objective. The full fit, gradient, Wald summaries, and profile-likelihood
+intervals have regular package-test coverage.
 
 | Capability | Status |
 |---|---|
@@ -208,8 +208,11 @@ package-test coverage.
     zero is reported as converged, with no Wald covariance. On the scale-only
     and separate blocks, `profile_ci = true` gives its `[0, upper]` interval.
     The coupled block computes no profile interval, under ML or REML, and
-    ignores `profile_ci = true` without a warning. A non-Gaussian scale-axis-only intercept is not part of
-    the public formula grammar.
+    currently ignores `profile_ci = true`. For other Gaussian formulas, passing
+    `profile_ci = true` is refused unless the `sigma` formula contains
+    `phylo(1 | g)`; to profile a fitted model outside these routes, use
+    `confint(fit, method = :profile)` after fitting. A non-Gaussian scale-axis-only
+    intercept is not part of the public formula grammar.
 
 ## Coevolution: q=4 phylogenetic bivariate location–scale model (PLSM)
 

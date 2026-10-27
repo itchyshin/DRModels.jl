@@ -53,11 +53,11 @@ Correlated slopes `(1 + x | g)` and `relmat`/`animal`/`spatial` structured
 markers are not implemented.
 
 ```julia
-fit = drm(bf(y ~ x), CumulativeLogit(); data = dat)          # y coded 1..K
-fit_re = drm(bf(y ~ x + (1 | g)), CumulativeLogit(); data = dat)
-fit_slope = drm(bf(y ~ x + (0 + x | g)), CumulativeLogit(); data = dat)
-fit_phylo = drm(bf(y ~ x + phylo(1 | species)), CumulativeLogit(); data = dat, tree = tr)
-fit_crossed = drm(bf(y ~ x + (1 | g) + (1 | h)), CumulativeLogit(); data = dat)
+fit = drm(bf(@formula(y ~ x)), CumulativeLogit(); data = dat)          # y coded 1..K
+fit_re = drm(bf(@formula(y ~ x + (1 | g))), CumulativeLogit(); data = dat)
+fit_slope = drm(bf(@formula(y ~ x + (0 + x | g))), CumulativeLogit(); data = dat)
+fit_phylo = drm(bf(@formula(y ~ x + phylo(1 | species))), CumulativeLogit(); data = dat, tree = tr)
+fit_crossed = drm(bf(@formula(y ~ x + (1 | g) + (1 | h))), CumulativeLogit(); data = dat)
 re_sd(fit_crossed)                                            # Dict(:g => ..., :h => ...)
 ```
 """

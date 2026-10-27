@@ -82,13 +82,13 @@ DRModels.jl keeps the inference you are entitled to:
   hidden. A shape parameter at its limit (above) can still pass these checks
   with `converged = true`, so look at its estimate as well.
 
-This is a **measured** advantage, not a hope. On the verified q=4 PLSM fit the
-observed information had a single negative eigenvalue — the singular variance
-direction — and DRModels.jl still returned valid Wald SEs for the identified
-parameters where drmTMB's `sdreport` was all-`NaN`; a parametric bootstrap
-returned a finite interval for every replicate it was run on — no refit failed
-at the boundary. The counts and the run
-conditions are in `report/comparison-grid.md`.
+A retained q=4 PLSM fixture had one negative observed-information eigenvalue.
+The floored-inverse calculation returned finite Wald SEs for 16 of 17
+parameters where drmTMB's `sdreport` returned all `NaN`, and 60 bootstrap refits
+completed. These results describe computation on one boundary fixture; they
+do not establish parameter identification or Wald/bootstrap interval coverage.
+The counts and run conditions are in the
+[historical comparison receipt](https://github.com/itchyshin/DRModels.jl/blob/2643768080803cdb00e10993ae6fcf6e40bfc726/report/comparison-grid.md).
 
 !!! note "An undefined CI is information, not a failure"
     `(-Inf, Inf)` and `Inf` are deliberate: they say "this direction is not

@@ -15,7 +15,8 @@ Random.seed!(5)
 n = 1500
 x = randn(n)
 y = 0.4 .+ 0.7 .* x .+ exp.(-0.2 .+ 0.3 .* x) .* randn(n)
-fit = drm(bf(@formula(y ~ x), @formula(sigma ~ x)), Gaussian(); data = (; y, x))
+dat = (; y, x)
+fit = drm(bf(@formula(y ~ x), @formula(sigma ~ x)), Gaussian(); data = dat)
 
 coef(fit, :mu)        # mean coefficients
 stderror(fit)         # Wald standard errors (all coefficients)

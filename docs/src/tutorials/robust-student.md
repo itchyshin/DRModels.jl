@@ -43,13 +43,12 @@ exp(coef(fit, :sigma)[1])       # residual scale
 2 + exp(coef(fit, :nu)[1])      # degrees of freedom, ν = 2 + exp(η)  (≈ 5 ⇒ heavy tails)
 ```
 
-A small `ν` (say < 10) is the signal that robustness is earning its keep; a large
-`ν` says the data are effectively Gaussian and you could simplify. When `ν` is
-very large (a `nu` coefficient above about 10, that is ν above about 20,000), the fit can
-still report `converged = true`, but the standard error and Wald interval for
-`nu` are not usable: they can show 0 and a zero-width interval
-([DRModels.jl#969](https://github.com/itchyshin/DRModels.jl/issues/969)). Refit
-with `Gaussian()` and compare the two with `aic`, or use a profile interval.
+As `ν` grows, the Student-t likelihood approaches its Gaussian limit, so very
+large values can be weakly identified. If the reported standard error for `nu`
+is zero or non-finite, treat its Wald interval as unreliable even if the
+optimizer reports convergence. Compare with a Gaussian fit when that simpler
+model answers the same question. A profile interval is useful only when the
+target is available and its evidence supports the intended interpretation.
 
 !!! tip "Scale, not variance"
     For the t the residual *variance* is `σ² · ν/(ν−2)` (and is undefined for

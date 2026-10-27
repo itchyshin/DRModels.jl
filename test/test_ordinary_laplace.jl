@@ -421,7 +421,7 @@ const _OL_FAMS = (:poisson, :nb2, :binomial, :gamma, :beta)
             # message names the integrators rather than blaming an ELBO
             err = @test_throws ArgumentError lrtest(fitLA, fitL)
             msg = sprint(showerror, err.value)
-            @test occursin("GHQ-32", msg) && occursin("`:Laplace`", msg)
+            @test occursin("route-specific default integrator", msg) && occursin("`:Laplace`", msg)
             @test !occursin("ELBO", msg)
         end
         # a VA ELBO is still never compared with a log-likelihood, even an exact one
