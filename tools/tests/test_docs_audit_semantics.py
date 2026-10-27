@@ -229,5 +229,14 @@ class DocumentationSemantics(unittest.TestCase):
         self.assertIn("using DRModels, Distributions, Random", text)
         self.assertIn("data = (; y, x, g)", text)
         self.assertNotIn("data = dat", text)
+
+    def test_bootstrap_result_documents_route_specific_keywords(self):
+        text = " ".join(self.text("docs/src/reference/model-fitting-and-postfit.md").split())
+        self.assertIn("bootstrap_result(formula, family::Gaussian; data, B = 300", text)
+        self.assertIn("bootstrap_result(formula, family; data, B = 300", text)
+        self.assertIn("bootstrap_result(fit::DrmFit{<:Gaussian}; data, B = 300", text)
+        self.assertIn("bootstrap_result(fit::DrmFit; data, B = 300", text)
+        self.assertIn("algorithm = :auto, g_tol = 1e-8, method = :ML", text)
+        self.assertIn("algorithm` and `g_tol` are accepted on the Gaussian routes only", text)
 if __name__ == "__main__":
     unittest.main()

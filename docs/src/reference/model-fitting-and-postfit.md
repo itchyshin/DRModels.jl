@@ -197,6 +197,41 @@ for state probabilities. Observed rows keep their observed state index when
 
 ## Inference
 
+### `bootstrap_result` routes
+
+The bootstrap keywords depend on whether the call starts from a formula or a
+fit, and whether the model is Gaussian. The current routes are:
+
+```julia
+bootstrap_result(formula, family::Gaussian; data, B = 300, level = 0.95,
+    rng = default_rng(), K = nothing, A = nothing, tree = nothing,
+    coords = nothing, threads = false, failures = :error,
+    check_converged = true, algorithm = :auto, g_tol = 1e-8,
+    method = :ML, marginal = :LA, penalty = nothing)
+
+bootstrap_result(formula, family; data, B = 300, level = 0.95,
+    rng = default_rng(), K = nothing, A = nothing, tree = nothing,
+    coords = nothing, threads = false, failures = :error,
+    check_converged = true, method = :ML, marginal = :LA,
+    penalty = nothing)
+
+bootstrap_result(fit::DrmFit{<:Gaussian}; data, B = 300, level = 0.95,
+    rng = default_rng(), K = nothing, A = nothing, tree = nothing,
+    coords = nothing, threads = false, failures = :error,
+    check_converged = true, algorithm = :auto, g_tol = 1e-8)
+
+bootstrap_result(fit::DrmFit; data, B = 300, level = 0.95,
+    rng = default_rng(), K = nothing, A = nothing, tree = nothing,
+    coords = nothing, threads = false, failures = :error,
+    check_converged = true)
+```
+
+All four routes require `data`. Formula calls can select the seed estimator
+with `method`, `marginal`, and `penalty`; fit calls preserve the fitted
+estimator. `algorithm` and `g_tol` are accepted on the Gaussian routes only.
+The fit-based Gaussian route also accepts a bivariate Gaussian fit and dispatches
+the q=4 phylogenetic case to `bootstrap_sigma_a`.
+
 Check the status as well as the bounds of a profile interval. A signed infinite
 bound can mean that no crossing was found within the searched range, or that an
 endpoint solve failed. `profile_result` distinguishes these outcomes in `stats`
