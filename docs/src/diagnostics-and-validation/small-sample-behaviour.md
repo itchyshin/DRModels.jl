@@ -28,8 +28,8 @@ reports 965 converged fits out of 1000. A separate N-ladder TSV reports `−1.81
 from 291 converged fits at `ntip = 16`, `N = 128`. These are distinct summaries;
 do not combine their counts or treat either bias as a single fully reconciled
 estimate. The records agree on the direction of the `L44` bias, but not its exact
-magnitude or denominator. See the [coverage report](https://github.com/itchyshin/DRModels.jl/blob/64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716/docs/dev-log/evidence/2026-08-25-coverage-campaign-results.md)
-and [N-ladder table](https://github.com/itchyshin/DRModels.jl/blob/64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716/docs/dev-log/evidence/2026-08-25-scale-axis-bias-ladder.tsv).
+magnitude or denominator. The coverage report and N-ladder table are retained
+with the package’s reproducibility records.
 
 All four are biased **downward** — variance components are under-estimated on small trees.
 
