@@ -50,3 +50,23 @@ end
         end
     end
 end
+
+# #985 (owner decision, 25 Oct 2026): the engine-internal exports are documented in
+# reference/engine-internals.md. Each needs a docstring and an `@docs` entry.
+@testset "#985 engine-internal exports carry a docstring and an @docs entry" begin
+    if !isdir(_REF_DIR)
+        @info "docs/src/reference not found; skipping #985 engine-internals check"
+    else
+        listed = _reference_docs_names()
+        for nm in (:AugProblem, :aug_prior_grad!, :build_Huu, :coevo_marginal,
+                   :coevo_theta_len, :estep_mode, :fit_q4_sparse_tmb,
+                   :fz_correlations, :fz_phi_to_lc, :joint_grad, :joint_nll,
+                   :lc_to_Λ, :make_problem, :prepared_joint_nll,
+                   :prior_precision, :Λ_to_lc)
+            @testset "$nm" begin
+                @test (string(nm) in listed) || ("DRModels." * string(nm) in listed)
+                @test _has_docstring(nm)
+            end
+        end
+    end
+end
