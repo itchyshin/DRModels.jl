@@ -1,13 +1,13 @@
-# #1052: a thrown bootstrap refit is recorded under the default, not aborted.
-# Decision 18 (11 Oct 2026): default `failures = :skip`, matching drmTMB.
-# `failures = :error` still aborts. `used == 0` still errors and names the cause.
+# #1052: a thrown bootstrap refit is recorded. The public default remains
+# `failures = :error` (abort). Pass `failures = :skip` to keep successful
+# draws. `used == 0` still errors and names the first failure.
 module Test1052BootstrapFailuresSkip
 
 using DRModels
 using Test
 using Random
 
-@testset "#1052 default failures=:skip records a thrown refit" begin
+@testset "#1052 thrown refit recorded; default stays :error" begin
     rng = MersenneTwister(20261030)
     n = 40
     x = randn(rng, n)
@@ -23,10 +23,8 @@ using Random
         return drm(form, Gaussian(); data = datab)
     end
 
-    # No `failures` keyword: the public default must record the thrown
-    # replicate and return bootstrap_incomplete. On main this still throws.
     res = @test_logs (:warn, r"bootstrap_incomplete") match_mode = :any DRModels._bootstrap_result(
-        fit0, form, data, 4, 0.95, MersenneTwister(3), false, flaky)
+        fit0, form, data, 4, 0.95, MersenneTwister(3), false, flaky; failures = :skip)
     @test res.attempted == 4
     @test res.used == 3
     @test res.failed == 1
@@ -34,12 +32,24 @@ using Random
     @test occursin("forced refit failure", res.failures[1].message)
 
     calls[] = 0
+    default_err = try
+        DRModels._bootstrap_result(
+            fit0, form, data, 4, 0.95, MersenneTwister(3), false, flaky)
+        nothing
+    catch err
+        err
+    end
+    @test default_err isa ErrorException
+    @test occursin("bootstrap failed in 1 of 4 replicates", default_err.msg)
+    @test occursin("forced refit failure", default_err.msg)
+
+    calls[] = 0
     @test_throws ErrorException DRModels._bootstrap_result(
         fit0, form, data, 4, 0.95, MersenneTwister(3), false, flaky; failures = :error)
 
     allfail = try
         DRModels._bootstrap_result(fit0, form, data, 2, 0.95, MersenneTwister(3), false,
-                                   _ -> error("always fails here"))
+                                   _ -> error("always fails here"); failures = :skip)
         nothing
     catch err
         err

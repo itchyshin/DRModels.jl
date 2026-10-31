@@ -1,13 +1,14 @@
-# After-task: bootstrap default `failures = :skip` (#1052)
+# After-task: bootstrap thrown-refit recording (#1052)
 
 Shannon speaking, with Noether (bootstrap status contract) and Rose
 (claim-vs-evidence). No subagents ran.
 
 ## 1. Goal
 
-Close #1052 from current `main` (`64ccb2d8d`). A thrown bootstrap refit must
-be recorded and the successful draws kept, matching drmTMB. The abort stays
-available as `failures = :error`. `used == 0` still errors.
+Close #1052 from current `main` (`64ccb2d8d`) without flipping the public
+default. A thrown bootstrap refit is recorded. `failures = :skip` keeps
+the successful draws. The default stays `failures = :error` (abort).
+`used == 0` still errors and names the first failure.
 
 #1048 and #1070 were also named for this pass. Both are already on `main`
 (#1048 closed by #1202; #1070 closed after #1100). They are not restaged.
@@ -18,41 +19,35 @@ is not restored.
 
 ## 2. Implemented
 
-- Default `failures` on `bootstrap_ci`, `bootstrap_summary`,
-  `bootstrap_result` and `_bootstrap_result` is `:skip`.
+- Thrown refits are recorded on every `bootstrap_*` path (already the
+  `_bootstrap_result` contract). `failures = :skip` keeps the run;
+  `failures = :error` (default) aborts after the thrown refits are recorded.
 - All-fail error names the first failure's replicate, seed and message.
-- `failures = :error` still aborts after the thrown refits are recorded.
-- Docstrings updated. `bootstrap_sigma_a` still maps a non-`:error` mode to
-  its existing `:warn`.
+- Docstrings state the default is still `:error` and that `:skip` is opt-in.
 - Failing-first test: `test/test_1052_bootstrap_failures_skip.jl`.
 - `test/test_bootstrap.jl` phylo EM block: `m = 2` → `m = 4`.
 
 ## 3a. Decisions and rejected alternatives
 
-- Owner decision 18 (11 Oct 2026) is the source: change the default, do not
-  invent a success floor. Draft #1055 already implements this on a dirty
-  stacked branch. This PR restages only #1052 from current `main` so the
-  default change is reviewable without the rest of that draft.
-- Level-1 "do not change package defaults" is followed except for this
-  already-settled owner decision.
+- The caller asked this PR to keep the public default as `:error`. Decision
+  18's default flip is not applied here.
 - Do not restore `check_converged = false` for the phylo sibling (#1048).
 
 ## 3b. Evidence
 
-- Red on unmodified `main`: the new test threw
-  `bootstrap failed in 1 of 4 replicates` under the default, and the all-fail
-  path used the `:error` message rather than `all 2 bootstrap replicates failed`.
-- Green after the default change: `test/test_1052_bootstrap_failures_skip.jl`
-  10/10.
+- Explicit `failures = :skip` records a thrown refit and returns
+  `bootstrap_incomplete`.
+- No-keyword and `failures = :error` abort with
+  `bootstrap failed in 1 of 4 replicates`.
+- All-fail under `:skip` names `always fails here`.
 - Phylo sibling on the #1202 fixture (`m = 2`, seed 12 / boot 13): one EM
   refit reported `converged = false` (log sd_phy ≈ −3.18) and was dropped.
   With `m = 4`, `used == 2` and `failed == 0`.
-- Focused siblings, Julia 1.10.10, `--check-bounds=yes`, BLAS=1:
-  `test/test_bootstrap.jl` 46/46; `test/test_triage_g_twin_inputs.jl` 135/135.
 
 ## 4. Files touched
 
-- `src/inference.jl`
+- `src/inference.jl` (all-fail message and docstring wording; defaults stay
+  `:error`)
 - `test/test_1052_bootstrap_failures_skip.jl`
 - `test/test_bootstrap.jl` (phylo `m`)
 - `test/test_triage_g_twin_inputs.jl` (comment only)
@@ -62,15 +57,14 @@ is not restored.
 
 ## 5. Rose audit
 
-- Claim: default records a thrown refit and returns `bootstrap_incomplete`.
-  Evidence: the new test, red-then-green on Julia 1.10.10.
+- Claim: default remains `:error`. Evidence: the new test throws without a
+  `failures` keyword.
+- Claim: `failures = :skip` records a thrown refit. Evidence: the same file.
 - Claim: #1048 phylo block keeps both replicates without
   `check_converged = false`. Evidence: `used == 2` after `m = 4`.
-- Scope: one decided default, the all-fail message, and a test-data width.
-  No engine or formula change. No drmTMB source vendored.
+- Scope: recording, explicit `:skip`, all-fail naming, and a test-data width.
+  No engine or formula change. No default flip. No drmTMB source vendored.
 - Drift: #1048 and #1070 stay closed; this PR does not claim them.
-  #1070 docs (adaptive GHQ, 5 nodes for ordinary `(1|g)`) are already on
-  `main` via #1100.
 
 ## 6. License
 

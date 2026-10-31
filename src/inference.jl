@@ -1556,9 +1556,10 @@ shape as [`confint`](@ref). Set `threads = true` to refit bootstrap replicates
 in parallel. Pass through the structured-provider keywords (`K` / `A` / `tree` /
 `coords`)
 and, for Gaussian fits, the solver controls (`algorithm` / `g_tol`) exactly as
-to [`drm`](@ref). A thrown refit is recorded and dropped by default
-(`failures = :skip`); set `failures = :error` to abort. Use `bootstrap_result`
-when you need attempted/used/failed counts and per-replicate failure messages.
+to [`drm`](@ref). Use `bootstrap_result` when you need attempted/used/failed
+counts and per-replicate failure messages. A thrown refit is recorded; the
+default `failures = :error` then aborts. Pass `failures = :skip` to keep the
+successful draws.
 If you already have
 `fit = drm(...)`, pass the fit directly to avoid refitting the base model before
 the bootstrap replicates. A homogeneous Toeplitz `temporal()` fit returns the
@@ -1585,7 +1586,7 @@ function bootstrap_ci(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:skip,
+    failures::Symbol=:error,
     check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
@@ -1628,7 +1629,7 @@ function bootstrap_ci(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:skip,
+    failures::Symbol=:error,
     check_converged::Bool=true,
 )
     rows = bootstrap_summary(
@@ -1650,7 +1651,7 @@ function bootstrap_ci(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:skip,
+    failures::Symbol=:error,
     check_converged::Bool=true,
 )
     _refuse_selected_optimizer_refit(fit, "bootstrap_ci")
@@ -1672,7 +1673,7 @@ function bootstrap_ci(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:skip,
+    failures::Symbol=:error,
     check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
@@ -1706,10 +1707,10 @@ Parametric bootstrap coefficient summaries in one pass: point estimate,
 bootstrap standard error, and percentile confidence interval. This is the
 bootstrap analogue of using `stderror(fit)` plus `confint(fit)`, avoiding a
 second bootstrap run when both SEs and intervals are needed. Row fields are
-`(param, coef, estimate, std_error, lower, upper)`. By default (`failures = :skip`) a thrown refit is recorded and dropped,
-matching drmTMB, and summaries use the successful replicates. Set
-`failures = :error` to abort after thrown refits are recorded. Call `bootstrap_result`
-to inspect skipped failures. A homogeneous Toeplitz `temporal()` fit returns
+`(param, coef, estimate, std_error, lower, upper)`. By default, a thrown refit
+is recorded and then aborts (`failures = :error`). Set `failures = :skip` to
+compute summaries from successful replicates; call `bootstrap_result` to
+inspect the skipped failures. A homogeneous Toeplitz `temporal()` fit returns
 the mean-coefficient rows only, as [`bootstrap_ci`](@ref).
 The fit-based form refuses a fit with an explicit `DRMControl.optimizer`
 before any bootstrap refit.
@@ -1726,7 +1727,7 @@ function bootstrap_summary(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:skip,
+    failures::Symbol=:error,
     check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
@@ -1766,7 +1767,7 @@ function bootstrap_summary(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:skip,
+    failures::Symbol=:error,
     check_converged::Bool=true,
 )
     result = bootstrap_result(
@@ -1787,7 +1788,7 @@ function bootstrap_summary(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:skip,
+    failures::Symbol=:error,
     check_converged::Bool=true,
 )
     _refuse_selected_optimizer_refit(fit, "bootstrap_summary")
@@ -1808,7 +1809,7 @@ function bootstrap_summary(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:skip,
+    failures::Symbol=:error,
     check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
@@ -1834,8 +1835,8 @@ function bootstrap_summary(
 end
 
 """
-    bootstrap_result(formula, family; data, B = 300, level = 0.95, rng = default_rng(), threads = false, failures = :skip, check_converged = true, K =, A =, tree =, coords =, algorithm = :auto, g_tol = 1e-8, method = :ML, marginal = :LA, penalty = nothing)
-    bootstrap_result(fit; data, B = 300, level = 0.95, rng = default_rng(), threads = false, failures = :skip, check_converged = true, K =, A =, tree =, coords =, algorithm = :auto, g_tol = 1e-8)
+    bootstrap_result(formula, family; data, B = 300, level = 0.95, rng = default_rng(), threads = false, failures = :error, check_converged = true, K =, A =, tree =, coords =, algorithm = :auto, g_tol = 1e-8, method = :ML, marginal = :LA, penalty = nothing)
+    bootstrap_result(fit; data, B = 300, level = 0.95, rng = default_rng(), threads = false, failures = :error, check_converged = true, K =, A =, tree =, coords =, algorithm = :auto, g_tol = 1e-8)
 
 Auditable parametric bootstrap. Returns a `NamedTuple` with:
 
@@ -1857,9 +1858,9 @@ Auditable parametric bootstrap. Returns a `NamedTuple` with:
 - `worker_threads`, `julia_threads`, `blas_threads`, `blas_oversubscribed`,
   `elapsed` — CPU context and wall-clock time for the simulated-refit phase.
 
-`failures = :skip` (default) records a thrown refit in `failures`, drops it,
-and returns `status = "bootstrap_incomplete"` with a warning, matching drmTMB.
-`failures = :error` still aborts when a refit throws. A refit that does
+`failures = :error` (default) records a thrown refit and then aborts. Pass
+`failures = :skip` to keep the successful draws and return
+`status = "bootstrap_incomplete"` with a warning. A refit that does
 not converge, or that lands on a degenerate optimum, is not that kind of
 error: with `check_converged = true` (the default) it is dropped, `status` is
 `"bootstrap_incomplete"` (or `"bootstrap_at_boundary"` when the retained draws
@@ -1894,7 +1895,7 @@ function bootstrap_result(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:skip,
+    failures::Symbol=:error,
     check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
@@ -1924,7 +1925,7 @@ function bootstrap_result(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:skip,
+    failures::Symbol=:error,
     check_converged::Bool=true,
     algorithm::Symbol=:auto,
     g_tol::Real=1e-8,
@@ -1986,7 +1987,7 @@ function bootstrap_result(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:skip,
+    failures::Symbol=:error,
     check_converged::Bool=true,
     method::Symbol=:ML,
     marginal::Symbol=:LA,
@@ -2035,7 +2036,7 @@ function bootstrap_result(
     tree=nothing,
     coords=nothing,
     threads::Bool=false,
-    failures::Symbol=:skip,
+    failures::Symbol=:error,
     check_converged::Bool=true,
 )
     _refuse_selected_optimizer_refit(fit, "bootstrap_result")
@@ -2553,7 +2554,7 @@ function _bootstrap_result(
     rng,
     threads::Bool,
     refit;
-    failures::Symbol=:skip,  # Decision 18 (Shinichi, 11 Oct 2026): match drmTMB
+    failures::Symbol=:error,
     check_converged::Bool=true,
     simulate_fn=nothing,
 )
@@ -2567,9 +2568,9 @@ function _bootstrap_result(
     # silently lose a successful replicate. Byte-addressable flags are independent.
     ok = fill(false, B)
     messages = Vector{Union{Nothing,String}}(nothing, B)
-    # A thrown refit is recorded. The default `failures = :skip` keeps the
-    # successful draws and sets `bootstrap_incomplete`. `failures = :error`
-    # still aborts after every replicate is recorded. A non-converged refit
+    # A thrown refit is recorded. The default `failures = :error` then aborts
+    # after every replicate is recorded. `failures = :skip` keeps the
+    # successful draws and sets `bootstrap_incomplete`. A non-converged refit
     # is always a drop: it warns and does not abort under `failures = :error`.
     # `Vector{Bool}` is bit-packed, so parallel writes can drop a flag.
     refit_error = zeros(UInt8, B)
