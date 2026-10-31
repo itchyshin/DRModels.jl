@@ -6,6 +6,8 @@ human-readable changelog.
 
 ## Development
 
+- **Docs: quantile-residual accuracy limit for the 32-node random-effect mixture (#1103).** `docs/src/diagnostics-and-validation/prediction-and-postfit.md` now states where the Gauss–Hermite route loses accuracy as σ̂_b/σ̂ grows, and the Φ⁻¹(Φ(z)) upper-tail cap. Documentation only; no behaviour change.
+
 - **`lrtest(Poisson, NegBinomial2)` now warns that the extra `sigma` is a boundary null (#1115).** The packaged p-value stays the naive χ² (the existing "do not silently swap" contract from #304). Use `lrt_boundary(nb, pois; q = 1)` for the Self–Liang / Stram–Lee 50:50 chi-bar p-value, which is what drmTMB `anova()` now reports for the same pair. Sibling family nests are unchanged. This does not put finite-sample type-I at 5% (#1116, #1118).
 
 - **`sigma(fit)` reports the scale the likelihood scored, on every NB2 / Gamma / Beta
