@@ -57,7 +57,7 @@ import Distributions
             # Before the fix: this threw `MethodError: no keyword argument tree` --
             # the formula-based non-Gaussian method declared no K/A/tree at all.
             res = bootstrap_result(form, Poisson(); data = dat, tree = phy, B = 12,
-                                    rng = MersenneTwister(seed + 1),
+                                    rng = StableRNG(seed + 1),
                                     failures = :skip, check_converged = false)
             @test res.attempted == 12
             @test res.used >= 9   # allow a few genuinely hard resampled refits
@@ -78,7 +78,7 @@ import Distributions
     end
 
     @testset "Poisson relmat -- K threaded through bootstrap_ci/summary/result" begin
-        rng = MersenneTwister(20260940)
+        rng = StableRNG(20260940)
         G = 24
         m = 4
         pos = rand(rng, G, 2) .* 6.0
@@ -99,13 +99,13 @@ import Distributions
 
         # Before the fix: raised a bare MethodError, not a domain message.
         rows_ci = bootstrap_ci(form, Poisson(); data = dat, K = Matrix(C), B = 12,
-                                rng = MersenneTwister(20260941), failures = :skip,
+                                rng = StableRNG(20260941), failures = :skip,
                                 check_converged = false)
         rows_sum = bootstrap_summary(form, Poisson(); data = dat, K = Matrix(C), B = 12,
-                                      rng = MersenneTwister(20260941), failures = :skip,
+                                      rng = StableRNG(20260941), failures = :skip,
                                       check_converged = false)
         res = bootstrap_result(form, Poisson(); data = dat, K = Matrix(C), B = 12,
-                                rng = MersenneTwister(20260941), failures = :skip,
+                                rng = StableRNG(20260941), failures = :skip,
                                 check_converged = false)
         @test res.attempted == 12
         @test res.used >= 9
@@ -121,7 +121,7 @@ import Distributions
         # and build the same marginal simulator.
         fit = drm(form, Poisson(); data = dat, K = Matrix(C), se = false)
         res_fit = bootstrap_result(fit; data = dat, K = Matrix(C), B = 12,
-                                    rng = MersenneTwister(20260941), failures = :skip,
+                                    rng = StableRNG(20260941), failures = :skip,
                                     check_converged = false)
         @test res_fit.seeds == res.seeds
     end
@@ -142,7 +142,7 @@ import Distributions
 
         err = nothing
         try
-            bootstrap_result(form, Poisson(); data = dat, B = 3, rng = MersenneTwister(1))
+            bootstrap_result(form, Poisson(); data = dat, B = 3, rng = StableRNG(1))
         catch e
             err = e
         end
@@ -166,7 +166,7 @@ import Distributions
         form = bf(@formula(yln ~ x), @formula(sigma ~ 1))
         dat = (; yln, x)
         res = bootstrap_result(form, LogNormal(); data = dat, B = 8,
-                                rng = MersenneTwister(1))
+                                rng = StableRNG(1))
         @test res.attempted == res.used == 8
         xr = first(r for r in res.summary if r.param === :mu && r.coef == "x")
         @test xr.lower < xr.estimate < xr.upper
