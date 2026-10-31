@@ -84,12 +84,16 @@ using Test, Random, LinearAlgebra
     Random.seed!(12)
     G = 16
     phy = random_balanced_tree(G; branch_length = 0.2)
-    m = 2
+    m = 4
     species = repeat(1:G, inner = m)
     x_phy = randn(G * m)
     # A genuine phylogenetic signal (sd 0.8 on the tip-correlation scale) keeps
     # the variance component off its boundary, so the EM refits stop on their
     # own relative-loglik rule instead of crawling to sigma_phy = 0 (#1048).
+    # Four rows per species, not two: with m = 2 about 1.4% of marginal
+    # bootstrap draws still land sigma_phy on its boundary, and Julia 1.10's
+    # MersenneTwister seeding drew one of them (#1224). At m = 4 none of 1000
+    # draws did.
     u_phy = 0.8 .* (cholesky(Symmetric(DRModels._phylo_correlation(phy))).L * randn(G))
     y_phy = 0.2 .+ 0.5 .* x_phy .+ u_phy[species] .+ 0.3 .* randn(G * m)
     phy_form = bf(@formula(y_phy ~ x_phy + phylo(1 | species)),
