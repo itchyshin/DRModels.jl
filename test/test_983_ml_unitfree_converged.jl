@@ -59,11 +59,12 @@ end
     @test !DRModels._unitfree_converged(Hs, [1.0, 1.0])
     # A saddle is not a minimum.
     @test !DRModels._unitfree_converged([1.0 0.0; 0.0 -1.0], [0.0, 0.0])
-    # A non-finite (or all-zero, flat-plateau) Hessian falls back to the absolute
-    # gradient rule, so the helper alone does not reject it. The routes AND a
-    # finite-Hessian check, and the DrmFit constructor clears `converged` on a
-    # failed-objective sentinel (nll = 1e18, so loglik = -1e18).
-    @test DRModels._unitfree_converged([NaN 0.0; 0.0 1.0], [0.0, 0.0])
+    # A non-finite Hessian is not converged for any caller, even at a zero
+    # gradient (#1114, #983 review). An all-zero (flat-plateau) Hessian still
+    # falls back to the absolute gradient rule, and the DrmFit constructor clears
+    # `converged` on a failed-objective sentinel (nll = 1e18, so loglik = -1e18).
+    @test !DRModels._unitfree_converged([NaN 0.0; 0.0 1.0], [0.0, 0.0])
+    @test !DRModels._unitfree_converged([Inf 0.0; 0.0 1.0], [0.0, 0.0])
     @test !DRModels._unitfree_converged([NaN 0.0; 0.0 1.0], [1.0, 0.0])
     @test DRModels._unitfree_converged(zeros(2, 2), zeros(2))
     @test !DRModels._report_converged(true, -1e18, [0.0, 0.0])
@@ -85,3 +86,4 @@ end
     @test !is_converged(fit)
     @test convergence_status(fit) === :boundary
 end
+

@@ -227,9 +227,9 @@ function _fit_ranef_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, nmμ, 
     # Absolute `g_tol` is not unit-free: a scaled predictor stalls just above 1e-8.
     # Neither `g_converged` (absolute 1e-8) nor the x/f/g OR `Optim.converged`
     # is part of this flag (#983). Stopping on the iteration cap is not a minimum.
-    # A non-finite Hessian is not converged either: `_unitfree_converged` falls
-    # back to the absolute gradient rule there (#1114, #983).
-    converged = all(isfinite, H) && !Optim.iteration_limit_reached(res) &&
+    # A non-finite Hessian is not converged: `_unitfree_converged` returns false
+    # there (#1114, #983).
+    converged = !Optim.iteration_limit_reached(res) &&
         _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
 
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :sd => (pμ+pσ+1):(pμ+pσ+psd)]
@@ -503,7 +503,7 @@ function _fit_structured_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, K
     # Same flag as the scalar route: not the iteration cap, and the Newton step
     # in SE units. `g_converged` and the x/f/g OR stay out (#983). A non-finite
     # Hessian is not converged (#1114).
-    converged = all(isfinite, H) && !Optim.iteration_limit_reached(res) &&
+    converged = !Optim.iteration_limit_reached(res) &&
         _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
 
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), block => (pμ+pσ+1):(pμ+pσ+psd)]
@@ -668,7 +668,7 @@ function _fit_gaussian_lss_multi(fam::Gaussian, y, Xμ, Xσ, comps::Vector{_LssC
     # Same flag as the scalar route: not the iteration cap, and the Newton step
     # in SE units. `g_converged` and the x/f/g OR stay out (#983). A non-finite
     # Hessian is not converged (#1114).
-    converged = all(isfinite, H) && !Optim.iteration_limit_reached(res) &&
+    converged = !Optim.iteration_limit_reached(res) &&
         _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
 
     iid = [ci for (ci, c) in enumerate(comps) if c.K === nothing]

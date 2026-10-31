@@ -118,8 +118,8 @@ import LinearAlgebra
 #
 #     max_i | (H⁻¹ g)_i | / SE_i  ≤  1e-3
 #
-# with `SE_i = sqrt((H⁻¹)_ii)`. A Hessian that is non-finite, singular, or not
-# positive definite is not usable for that ratio. A saddle (a negative
+# with `SE_i = sqrt((H⁻¹)_ii)`. A non-finite Hessian returns false. A Hessian
+# that is singular or not positive definite is not usable for that ratio. A saddle (a negative
 # eigenvalue) is not a minimum. A singular Hessian falls back to the absolute
 # rule `max |g| ≤ 1e-3`, which still rejects a runaway and accepts a stall
 # that only missed the absolute 1e-8 bar.
@@ -130,7 +130,8 @@ function _unitfree_converged(H::AbstractMatrix, g::AbstractVector)
     length(g) == size(H, 1) == size(H, 2) || return false
     all(isfinite, g) || return false
     abs_ok = maximum(abs, g) <= _UNITFREE_ABS_TOL
-    all(isfinite, H) || return abs_ok
+    # A non-finite Hessian is not converged for any caller (#1114, #983).
+    all(isfinite, H) || return false
     Hs = Matrix{Float64}(H)
     Hs = (Hs .+ Hs') ./ 2
     gs = collect(Float64, g)
