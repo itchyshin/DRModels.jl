@@ -218,6 +218,8 @@ dependence-related fields are:
 | `rho_ci_wald`     | Fisher-z Wald interval `(lo, hi)` for `ρ` (or `(NaN, NaN)`). |
 | `rho_ci_profile`  | Profile-likelihood interval (recommended); `(NaN, NaN)` unless `profile = true`. |
 | `rho_ci_boot`     | Parametric-bootstrap interval; `(NaN, NaN)` unless `B > 0`. |
+| `boot_status`     | `"none"` (`B = 0`), `"bootstrap"` (every refit kept), `"bootstrap_incomplete"` (some refits dropped; also warns) or `"bootstrap_unavailable"` (too few draws for an interval). |
+| `n_boot_kept`, `n_boot_failed` | Refits kept in / dropped from the percentile interval. |
 
 The fit also returns the fixed effects `β1`/`β2`, the loadings `λ1`/`λ2`, the
 Gaussian residual SDs `σ1`/`σ2` (`NaN` on non-Gaussian axes), the link-scale

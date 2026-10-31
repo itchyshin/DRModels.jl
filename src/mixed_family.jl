@@ -230,6 +230,16 @@ function _mf_boot_ci(fits, B, level)
     return (NaN, NaN), length(ρs)
 end
 
+# Completion status for the cross-family bootstrap (#1051), on the same rules as
+# `_finish_bootstrap_status` (src/ci_args.jl): any dropped refit is
+# `bootstrap_incomplete` (and warns). The retained-draw floor is the one
+# `_mf_boot_ci` already applies (it returns a NaN interval below it); no new
+# minimum-success threshold is introduced here.
+function _mf_boot_status(attempted::Integer, kept::Integer)
+    kept >= max(10, attempted ÷ 2) || return "bootstrap_unavailable"
+    return _finish_bootstrap_status(kept, attempted - kept, ())
+end
+
 """
     fit_mixed_family(; y1, X1, fam1, y2, X2, fam2,
                        trials1=ones(n), trials2=ones(n),
@@ -468,6 +478,7 @@ function fit_mixed_family(; y1, X1, fam1, y2, X2, fam2,
     # local-naming note — so the resampled data is clean and the refits converge.)
     rho_ci_boot = (NaN, NaN)
     n_boot_kept = 0
+    boot_status = "none"
     if B > 0
         η1f = X1 * β1; η2f = X2 * β2
         # Per-observation natural dispersion at θ̂ (constant = σ1/σ2 under the default
@@ -491,11 +502,13 @@ function fit_mixed_family(; y1, X1, fam1, y2, X2, fam2,
             push!(fits, fb)
         end
         rho_ci_boot, n_boot_kept = _mf_boot_ci(fits, B, level)
+        boot_status = _mf_boot_status(length(fits), n_boot_kept)
     end
 
     return (; β1, β2, λ1, λ2, σ1, σ2, βσ1, βσ2, v1, v2, rho_latent = ρ,
             rho_ci_wald = rho_ci_wald, rho_ci_profile = rho_ci_profile,
             rho_ci_boot = rho_ci_boot, n_boot_kept = n_boot_kept,
+            n_boot_failed = B > 0 ? B - n_boot_kept : 0, boot_status = boot_status,
             loglik = -objfn(θ̂), converged = drm_optim_converged(res),
             iterations = res.iterations,
             fam1 = fam1, fam2 = fam2)   # carried for post-fit accessors (mf_fitted)
