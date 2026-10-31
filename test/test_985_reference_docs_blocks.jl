@@ -4,6 +4,7 @@
 # otherwise the `@docs` block breaks the docs build ("no docs found").
 using DRModels
 using Test
+using LinearAlgebra: I
 
 const _REF_DIR = joinpath(@__DIR__, "..", "docs", "src", "reference")
 
@@ -69,4 +70,14 @@ end
             end
         end
     end
+end
+
+# #985: pin two documented return types so the docstrings cannot drift from the code.
+@testset "#985 documented return types" begin
+    lc = DRModels.Λ_to_lc(Matrix(1.0I, 4, 4))   # documented `-> Vector{Float64}`
+    @test lc isa Vector{Float64}
+    @test length(lc) == 10
+    r = DRModels.fz_correlations(zeros(10))      # documented `-> NTuple{6}`
+    @test r isa NTuple{6}
+    @test all(x -> -1 <= x <= 1, r)
 end
