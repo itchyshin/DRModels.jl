@@ -5,21 +5,25 @@
 # raw-eigenvalue singularity test inside `_unitfree_converged` (a Hessian whose
 # blocks differ by 1e8 only because of the units of y).
 using DRModels
-using Test, Random, LinearAlgebra, Logging
+using Test, Random, LinearAlgebra, Logging, StableRNGs
 
 function _gen_983(rep, sd; n = 100)
-    Random.seed!(20260927 + 15000 + rep)
-    x = randn(n)
-    return (; y = 1 .+ 0.5 .* x .+ sd .* randn(n), x)
+    # StableRNG, so the data are identical on every Julia version and platform.
+    rng = StableRNG(20260927 + 15000 + rep)
+    x = randn(rng, n)
+    return (; y = 1 .+ 0.5 .* x .+ sd .* randn(rng, n), x)
 end
 
 @testset "#983 ML Gaussian unit-free converged flag" begin
     f = bf(@formula(y ~ x), @formula(sigma ~ 1))
 
     # Every rep of the filed cell is at the optimum, and the verdict does not move
-    # when y is rescaled. The cap still fails the flag (kept as in #1170): on these
-    # seeds 48 of 50 converge and the other two stop on the 1000-iteration cap
-    # (Julia 1.12.6, macOS). Main gave 19 of 50.
+    # when y is rescaled. The cap still fails the flag (kept as in #1170); the
+    # misses stop on the 1000-iteration cap. The data come from StableRNG, so they
+    # are identical everywhere, but the optimiser path still differs by Julia
+    # version. Counts with this PR (macOS aarch64): 50 of 50 on Julia 1.10.12,
+    # 48 on 1.12.6 and 1.13.0. Main on the same data: 20, 16 and 16. The floor
+    # leaves room for platform drift and still separates this PR from main.
     nconv = 0
     for rep in 1:50
         d = _gen_983(rep, exp(-9.2))
@@ -32,7 +36,8 @@ end
             @test fit.converged == fit4.converged
         end
     end
-    @test nconv >= 47
+    println("  #983 panel: $nconv of 50 converged")
+    @test nconv >= 45
 
     # A truncated fit still reports unconverged: `g_tol = 1e6` stops the
     # optimiser at its starting point, far from the ML optimum of log sigma.
@@ -66,6 +71,9 @@ end
     @test !DRModels._unitfree_converged([NaN 0.0; 0.0 1.0], [0.0, 0.0])
     @test !DRModels._unitfree_converged([Inf 0.0; 0.0 1.0], [0.0, 0.0])
     @test !DRModels._unitfree_converged([NaN 0.0; 0.0 1.0], [1.0, 0.0])
+    # A near-zero (subnormal) diagonal overflows the correlation scaling, so the
+    # scaled Hessian is not finite: not converged, even at a zero gradient.
+    @test !DRModels._unitfree_converged([1e-320 0.0; 0.0 1.0], [0.0, 0.0])
     @test DRModels._unitfree_converged(zeros(2, 2), zeros(2))
     @test !DRModels._report_converged(true, -1e18, [0.0, 0.0])
 end

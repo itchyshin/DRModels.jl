@@ -145,9 +145,12 @@ function _unitfree_converged(H::AbstractMatrix, g::AbstractVector)
         Hs = Hs .* (D * D')
         gs = gs .* D
     end
+    # A near-zero diagonal makes D overflow, so the scaled Hessian is not
+    # finite. That is not a usable minimum, so it is not converged.
+    all(isfinite, Hs) || return false
     Hs = LinearAlgebra.Symmetric(Hs)
     ev = LinearAlgebra.eigvals(Hs)
-    all(isfinite, ev) || return abs_ok
+    all(isfinite, ev) || return false
     scale = maximum(abs, ev)
     scale == 0 && return abs_ok
     # A negative eigenvalue is a saddle, not a minimum (same bar as the vcov guard).
