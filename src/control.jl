@@ -291,7 +291,10 @@ function _ctl_preflight(scope::_ControlScope, f, fam)
                               "a bivariate or multi-response model"
     throw(ArgumentError("drm: " * join(what, " and ") * " is supported only on the " *
         "fixed-effect routes of univariate families for now (#948, #994, #931). This is " *
-        kind * " ($(typeof(fam))). `control = DRMControl(se = false)` works on every route."))
+        kind * " ($(typeof(fam))), so the fit was refused before it started, not run " *
+        "with the field ignored. drmTMB's `drm_control(multi_start =)` does accept these " *
+        "fields on mixed models; the gap here is tracked in #1219. " *
+        "`control = DRMControl(se = false)` works on every route."))
 end
 
 # Run a `drm` method body under the control scope. Called by `@drm_entry`.
