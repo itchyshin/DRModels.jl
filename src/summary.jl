@@ -284,6 +284,12 @@ function Base.show(io::IO, ::MIME"text/plain", fit::DrmFit)
         for note in _block_null_note(p)
             println(io, "  ", note)
         end
+        # #969: flag the Student ν Gaussian-limit boundary under the `nu` block.
+        if p === :nu && _student_nu_boundary(fit) !== nothing
+            println(io, "  boundary (limit): 1/ν < ", _STUDENT_NU_BOUNDARY_INV,
+                    " (Gaussian limit); these Std.Error / z / p values are not valid,")
+            println(io, "  a Std.Error of 0 means 'not computable'. Compare with Gaussian() by a 0.5χ²₀ + 0.5χ²₁ LRT.")
+        end
         # Build the rows for this block.
         labels = String[]; c1 = String[]; c2 = String[]; c3 = String[]; c4 = String[]
         for (j, idx) in enumerate(r)

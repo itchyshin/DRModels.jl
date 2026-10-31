@@ -218,6 +218,49 @@ function _drm_cumulative_fit(f::DrmFormula, fam::CumulativeLogit; data, tree = n
     return _withformula(_fit_cumulative(fam, yi, Xμ, K, nmμ, g_tol; offset = _offset_for_fit(fam, offset_term, data, size(Xμ, 1))), f)
 end
 
+# #1221: separation message for the fixed-effect CumulativeLogit fit, as the Binomial
+# route has (`separation.jl`). With cutpoints θ_1 < … < θ_{K-1} and linear predictor
+# η, the log-likelihood is non-decreasing along (d, δ) iff δ_{y_i - 1} <= x_i·d <= δ_{y_i}
+# for every row, i.e. iff the stacked binary problem (row (i, k): response 1{y_i > k},
+# design [x_i, e_k], k = 1..K-1) has a (quasi-)complete separating direction. The
+# existing exact screen is reused on that stacked design. WARN ONLY: the estimates,
+# SEs, `converged` and `convergence_status` are left exactly as before (whether this
+# route should also set Inf SEs / a degenerate geometry, as Binomial does, is an
+# owner decision; see #1221). Quiet inside bootstrap / profile refits.
+function _cumulative_separation_warn(Xμ, y, K, nmμ)
+    pμ = size(Xμ, 2); n = length(y); nc = K - 1
+    (pμ == 0 || n == 0 || nc < 1) && return String[]
+    Xs = zeros(n * nc, pμ + nc); s = zeros(n * nc)
+    r = 0
+    for k in 1:nc, i in 1:n
+        r += 1
+        Xs[r, 1:pμ] .= view(Xμ, i, :)
+        Xs[r, pμ + k] = 1.0
+        s[r] = y[i] > k ? 1.0 : 0.0
+    end
+    det = try
+        _detect_separation(Xs, s, ones(length(s)))
+    catch err
+        _boundary_diagnostic_failed("CumulativeLogit separation", err)
+        return String[]
+    end
+    flagged = [string(nmμ[j]) for j in det.flagged if j <= pμ]
+    (det.separated && !isempty(flagged)) || return String[]
+    get(task_local_storage(), :drm_quiet_boundary, false) === true && return flagged
+    partial = det.conclusive ? "" :
+        "\nThe separation check ran out of its iteration budget, so this list may be incomplete."
+    @warn """
+          CumulativeLogit fixed-effect fit shows (quasi-)complete separation. The
+          maximum-likelihood estimate does not exist (or is not finite): the affected
+          coefficients can grow without bound at little or no cost in likelihood, and
+          their reported estimates are an arbitrary stopping point of the optimiser.
+          Any standard errors printed for this fit (large but finite, or 0) are not
+          meaningful, and `converged` / `convergence_status` do NOT reflect this.
+          Consider removing or collapsing the offending predictor, or a penalised fit.$partial
+          """ separation = :complete_or_quasi flagged_coefficients = flagged
+    return flagged
+end
+
 function _fit_cumulative(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, nmμ, g_tol; offset = nothing)
     n = length(y); pμ = size(Xμ, 2); nc = K - 1
     w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
@@ -236,6 +279,7 @@ function _fit_cumulative(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, nmμ, g_t
     res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
                        θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
     θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
+    _cumulative_separation_warn(Xμ, y, K, nmμ)   # #1221: warn only
     blocks = [:mu => 1:pμ, :cutpoints => (pμ+1):(pμ+nc)]
     names = [:mu => nmμ, :cutpoints => ["theta$k" for k in 1:nc]]
     # fitted = expected category score Σ_k k·P(y=k)
