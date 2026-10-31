@@ -23,6 +23,7 @@
 # through. Both "Gaussian-only" comments are deleted.
 using DRModels
 using Test, Random, LinearAlgebra
+using StableRNGs
 import Distributions
 
 @testset "#480 formula-based non-Gaussian bootstrap threads K/A/tree" begin
@@ -33,19 +34,23 @@ import Distributions
         # correlation matrix is INVISIBLE on a height-1 tree, so round-trip
         # across several heights.
         for (seed, branch_length) in ((20260930, 0.2), (20260931, 1.0), (20260932, 3.0))
-            Random.seed!(seed)
+            # StableRNG, not the global RNG, so the simulated data are identical
+            # on every Julia version. With the global RNG, Julia 1.13 drew a
+            # height-0.2 dataset whose sd_phylo estimate sat on its lower clamp,
+            # below the percentile interval, failing the interior check below.
+            drng = StableRNG(seed)
             p = 16
             m = 4
             phy = random_balanced_tree(p; branch_length = branch_length)
             species = repeat(1:p, inner = m)
             n = length(species)
-            x = randn(n)
+            x = randn(drng, n)
             β = [0.15, 0.35]
             σphy = 0.45
             C = sigma_phy_dense(phy; σ²_phy = σphy^2)
-            u = cholesky(Symmetric(C)).L * randn(p)
+            u = cholesky(Symmetric(C)).L * randn(drng, p)
             λ = exp.(β[1] .+ β[2] .* x .+ u[species])
-            y = Float64.([rand(Distributions.Poisson(λi)) for λi in λ])
+            y = Float64.([rand(drng, Distributions.Poisson(λi)) for λi in λ])
             dat = (; y, x, species)
             form = bf(@formula(y ~ x + phylo(1 | species)))
 
