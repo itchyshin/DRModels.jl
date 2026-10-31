@@ -245,9 +245,9 @@ function _fit_student(fam::Student, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol; o
     V = _ctl_se(θ̂) do
         Vh
     end
-    # x/f/g OR, not the iteration cap, and the Newton step in SE units (#1050).
-    # `g_converged` is the absolute 1e-8 check and is not part of this flag.
-    converged = hess_finite && Optim.converged(res) && !Optim.iteration_limit_reached(res) &&
+    # Not the iteration cap, and the Newton step in SE units (#1050). Neither
+    # `g_converged` (absolute 1e-8) nor the x/f/g OR is part of this flag (#983).
+    converged = hess_finite && !Optim.iteration_limit_reached(res) &&
         _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :nu => (pμ+pσ+1):(pμ+pσ+pν)]
     names = [:mu => nmμ, :sigma => nmσ, :nu => nmν]

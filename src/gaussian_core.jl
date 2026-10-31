@@ -1616,9 +1616,10 @@ function _fit_fixed_gaussian(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, g_tol)
     V = _ctl_se(θ̂) do
         Vh
     end
-    # x/f/g OR, not the iteration cap, and the Newton step in SE units.
-    # `g_converged` is the absolute 1e-8 check and is not part of this flag.
-    converged = hess_finite && Optim.converged(res) && !Optim.iteration_limit_reached(res) &&
+    # Not the iteration cap, and the Newton step in SE units. Neither `g_converged`
+    # (absolute 1e-8) nor the x/f/g OR `Optim.converged` is part of this flag: at
+    # residual SD 1e-4 a line-search stall at the optimum fails both (#983).
+    converged = hess_finite && !Optim.iteration_limit_reached(res) &&
         _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ)]
     names = [:mu => nmμ, :sigma => nmσ]
@@ -1952,9 +1953,9 @@ function _fit_fixed_gaussian_reml(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, g_tol)
         return s + const_2pi
     end
     # #1170: unit-free converged flag, as on the ML route (#983). The Newton step of the
-    # restricted objective in SE units replaces the absolute `g_tol` gradient test, and the
-    # iteration cap still fails the flag. Only this route; the other sites are #1050.
-    converged = all(isfinite, Hσ) && Optim.converged(res) && !Optim.iteration_limit_reached(res) &&
+    # restricted objective in SE units replaces the absolute `g_tol` gradient test and the
+    # x/f/g OR (#983), and the iteration cap still fails the flag. The other sites are #1050.
+    converged = all(isfinite, Hσ) && !Optim.iteration_limit_reached(res) &&
         _unitfree_converged(Hσ, ForwardDiff.gradient(nll_reml, βσ̂))
     fit = DrmFit(fam, blocks, names, θ̂, V, reml_ll, n,
                  converged && !_scale_runoff(scales), means, obs, scales)

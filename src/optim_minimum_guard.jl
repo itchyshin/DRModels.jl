@@ -132,7 +132,19 @@ function _unitfree_converged(H::AbstractMatrix, g::AbstractVector)
     abs_ok = maximum(abs, g) <= _UNITFREE_ABS_TOL
     all(isfinite, H) || return abs_ok
     Hs = Matrix{Float64}(H)
-    Hs = LinearAlgebra.Symmetric((Hs .+ Hs') ./ 2)
+    Hs = (Hs .+ Hs') ./ 2
+    gs = collect(Float64, g)
+    # #983: judge singularity on the correlation form D H D, D = diag(H)^(-1/2).
+    # The raw eigenvalue ratio moves with the units of each parameter (a mean
+    # coefficient at residual SD 1e-4 has curvature 1e8 times that of log σ).
+    # The Newton step in SE units is unchanged by this rescaling.
+    dH = LinearAlgebra.diag(Hs)
+    if all(>(0), dH)
+        D = 1 ./ sqrt.(dH)
+        Hs = Hs .* (D * D')
+        gs = gs .* D
+    end
+    Hs = LinearAlgebra.Symmetric(Hs)
     ev = LinearAlgebra.eigvals(Hs)
     all(isfinite, ev) || return abs_ok
     scale = maximum(abs, ev)
@@ -142,7 +154,7 @@ function _unitfree_converged(H::AbstractMatrix, g::AbstractVector)
     minimum(abs, ev) <= _VCOV_RTOL * scale && return abs_ok
     C = LinearAlgebra.cholesky(Hs; check = false)
     LinearAlgebra.issuccess(C) || return abs_ok
-    δ = C \ collect(Float64, g)
+    δ = C \ gs
     n = length(g)
     se2 = LinearAlgebra.diag(C \ Matrix{Float64}(LinearAlgebra.I, n, n))
     worst = 0.0
