@@ -1,0 +1,7 @@
+drmtmb_version = "0.7.0"
+drmtmb_source = "CRAN release drmTMB 0.7.0 (pinned; no git commit hash available: github.com/itchyshin/drmTMB unreachable from the generating sandbox)"
+generated_on = "2026-10-31"
+r_call = "drmTMB(drm_formula(y ~ x + (1 | g), sigma ~ x), family = gaussian(), data = d)"
+seed = 20261031
+note = "Generated outputs only; no drmTMB source vendored (MIT-clean). Simulated: G=40, n_g=8, beta_mu=(1,0.5), sd_u=0.7, log sigma=-0.3+0.4x. vcov is the fixed-effect (mu, sigma) block; sd_mu_(1 | g) is the natural-scale RE SD."
+R_version = "R version 4.3.3 (2024-02-29)"
