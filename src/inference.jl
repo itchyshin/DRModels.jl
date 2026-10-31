@@ -1557,7 +1557,10 @@ in parallel. Pass through the structured-provider keywords (`K` / `A` / `tree` /
 `coords`)
 and, for Gaussian fits, the solver controls (`algorithm` / `g_tol`) exactly as
 to [`drm`](@ref). Use `bootstrap_result` when you need attempted/used/failed
-counts and per-replicate failure messages. If you already have
+counts and per-replicate failure messages. A thrown refit is recorded; the
+default `failures = :error` then aborts. Pass `failures = :skip` to keep the
+successful draws.
+If you already have
 `fit = drm(...)`, pass the fit directly to avoid refitting the base model before
 the bootstrap replicates. A homogeneous Toeplitz `temporal()` fit returns the
 mean-coefficient rows only (drmTMB refuses the temporal bootstrap and defers
@@ -1704,8 +1707,8 @@ Parametric bootstrap coefficient summaries in one pass: point estimate,
 bootstrap standard error, and percentile confidence interval. This is the
 bootstrap analogue of using `stderror(fit)` plus `confint(fit)`, avoiding a
 second bootstrap run when both SEs and intervals are needed. Row fields are
-`(param, coef, estimate, std_error, lower, upper)`. By default, any failed
-replicate errors after all failures are recorded. Set `failures = :skip` to
+`(param, coef, estimate, std_error, lower, upper)`. By default, a thrown refit
+is recorded and then aborts (`failures = :error`). Set `failures = :skip` to
 compute summaries from successful replicates; call `bootstrap_result` to
 inspect the skipped failures. A homogeneous Toeplitz `temporal()` fit returns
 the mean-coefficient rows only, as [`bootstrap_ci`](@ref).
@@ -1855,12 +1858,13 @@ Auditable parametric bootstrap. Returns a `NamedTuple` with:
 - `worker_threads`, `julia_threads`, `blas_threads`, `blas_oversubscribed`,
   `elapsed` — CPU context and wall-clock time for the simulated-refit phase.
 
-`failures = :error` (default) aborts when a refit throws. A refit that does
+`failures = :error` (default) records a thrown refit and then aborts. Pass
+`failures = :skip` to keep the successful draws and return
+`status = "bootstrap_incomplete"` with a warning. A refit that does
 not converge, or that lands on a degenerate optimum, is not that kind of
 error: with `check_converged = true` (the default) it is dropped, `status` is
 `"bootstrap_incomplete"` (or `"bootstrap_at_boundary"` when the retained draws
-also sit on a bound), and a warning names that status. `failures = :skip`
-does the same for thrown refits instead of aborting. A refit at a variance
+also sit on a bound), and a warning names that status. A refit at a variance
 boundary is kept: [`convergence_status`](@ref) calls it `:boundary`, but it is a
 real draw. Set `check_converged = false` only to reproduce the old behaviour that counted
 unconverged refits in the interval. Passing an existing `DrmFit`
@@ -2564,8 +2568,10 @@ function _bootstrap_result(
     # silently lose a successful replicate. Byte-addressable flags are independent.
     ok = fill(false, B)
     messages = Vector{Union{Nothing,String}}(nothing, B)
-    # A thrown refit is an error. A non-converged refit is a drop: it warns and
-    # sets `bootstrap_incomplete`, and it does not abort under `failures = :error`.
+    # A thrown refit is recorded. The default `failures = :error` then aborts
+    # after every replicate is recorded. `failures = :skip` keeps the
+    # successful draws and sets `bootstrap_incomplete`. A non-converged refit
+    # is always a drop: it warns and does not abort under `failures = :error`.
     # `Vector{Bool}` is bit-packed, so parallel writes can drop a flag.
     refit_error = zeros(UInt8, B)
     refit_estimator = fill((:unknown, :unknown), B)
@@ -2629,7 +2635,12 @@ function _bootstrap_result(
         )
     end
     used = count(ok)
-    used > 0 || throw(ErrorException("all $B bootstrap replicates failed"))
+    if used == 0
+        first_fail = isempty(failure_rows) ? nothing : failure_rows[1]
+        extra = first_fail === nothing ? "" :
+            "; first failure replicate $(first_fail.replicate), seed $(first_fail.seed): $(first_fail.message)"
+        throw(ErrorException("all $B bootstrap replicates failed$extra"))
+    end
     kept = draws[ok, :]
     summary = _homtoep_bootstrap_rows(fit0, _bootstrap_summary_rows(fit0, kept, est, level))
     boundary_params = _bootstrap_boundary_params(fit0, kept)
