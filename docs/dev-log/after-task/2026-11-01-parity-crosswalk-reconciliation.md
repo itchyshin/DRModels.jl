@@ -759,3 +759,12 @@ does not report a check of current main `b535bfbcce2a9039d869c2e34fe9da476394bf6
 or of #1662's current head. GitHub returned HTTP 410 for the old macOS job
 logs, so this refresh does not independently attribute that failure. No PR
 was merged or otherwise changed.
+
+### CI progress update (2026-11-01 23:16 UTC)
+
+The PR head and base are unchanged. Run `41357071138` remains active; the
+change-classification job passed, scaling-sweep was skipped, and Julia shard
+4/4 has now passed. Shards 1/4, 2/4, and 3/4 remain in progress. This is a
+material change from the 23:12 poll, not a terminal result. The local
+documentation commit remains unpushed so it does not cancel the running
+workflow. No other PR, source, or remote state changed.
