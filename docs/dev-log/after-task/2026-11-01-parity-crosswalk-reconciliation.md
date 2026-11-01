@@ -24,8 +24,8 @@ Assumptions without asking: current `main` is the baseline for crosswalk
 claims; if an owner admits a different source pair, rerun the ledger against
 that pair. I did not promote a candidate change based on its PR status or
 green checks. I left the broader SD work out because it remains in an
-unmerged lane. I recorded the PR checks for #1435 and #1653 as owner-reported
-because the workflow API did not return their jobs.
+unmerged lane. I recorded the PR-comment-reported checks for #1435 and #1653
+as unverified because direct workflow lookup did not return their jobs.
 
 ## 4. Files Touched
 
@@ -698,3 +698,64 @@ needed. **Gates:** science = pass for the stated CI-only scope; facts = pass
 against current GitHub PR/run records; references = not applicable, no
 literature claims. **Provenance:** self-review of this 22:23 UTC draft update;
 no held-out examples or controls.
+
+### Exact-head refresh (2026-11-01 23:01 UTC)
+
+Read-only audit confirmed that PR #1245 is still open, non-draft, and
+mergeable at exact head `10e28c250c12931d92efc9e07dbfdeceafa05e60`, based on
+Julia main `1d6ef3fe53a64ca680c034f3d297709b36cf1729`. Test run
+[`41357071138`](https://github.com/itchyshin/DRModels.jl/actions/runs/41357071138)
+was still running with all four Julia shards active. Documenter run
+[`41357071224`](https://github.com/itchyshin/DRModels.jl/actions/runs/41357071224)
+passed the docs build and preview; deployment was skipped. The earlier 22:23
+status remains a historical snapshot for head `0a338a0…` and run `41343324208`.
+
+The current PR contains five commits across 30 paths, including the capability
+ledger, parity-ledger source pinning and tests, the evidence crosswalk, the
+checksum-bound Hurdle NB2 receipt, and a test-label change. No production
+source files are in the PR diff. The latest pushed commit is only the CI-status
+documentation refresh. Its local worktree remains dirty in files outside this
+crosswalk. Do not stage those files.
+
+The #1216 merge at `1d6ef3f…` includes the `m = 4` bootstrap fixture. PR #1226
+remains an open draft and is now non-mergeable; its duplicate fixture edit is
+already present on main through #1216, though no direct owner handoff on #1226
+was verified. Checks cited in PR comments for drmTMB #1435 and #1653 remain
+unverified because direct Actions lookup returned 404; label them
+PR-comment-reported, not CI-verified. PR #1627 and #1663 exact-head checks
+remain failed. PR #1662 exact-head checks remain green, with its OS matrix
+limited to `FULL=false`.
+
+**Next check:** refresh #1245 no earlier than 23:12 UTC, retaining the exact
+head and run IDs. If the checks are terminal, append that result. If the head
+has moved, stop and reconcile with the owner before editing further. No PR
+metadata, source code, merge, or deployment action was performed here.
+
+### Scope count correction (2026-11-01 23:08 UTC)
+
+GitHub's compare API for base `1d6ef3fe53a64ca680c034f3d297709b36cf1729` and
+head `10e28c250c12931d92efc9e07dbfdeceafa05e60` confirms five commits ahead,
+three commits behind, and 30 changed paths. This replaces the earlier
+33-path count. The PR remains based on the recorded main SHA; its branch is
+not yet up to date with that base.
+
+### CI poll (2026-11-01 23:12 UTC)
+
+PR #1245 still points to head `10e28c250c12931d92efc9e07dbfdeceafa05e60`
+over base `1d6ef3fe53a64ca680c034f3d297709b36cf1729`. Run `41357071138`
+remains in progress: the change-classification job passed, scaling-sweep was
+skipped, and all four Julia test shards were still running. Documenter
+`41357071224` remains green from the earlier exact-head read. No new head has
+been pushed.
+
+The drmTMB #1662 run `41350326046` is now terminal and successful at exact head
+`01a2c2a49a1450cc79e9d35a138028ec1a27c720`: source-tree tests, the OS-matrix
+job, and all four Ubuntu release shards passed. The OS-matrix selector used
+`FULL=false`; this does not constitute a full macOS R CMD check. The latest
+main-branch R CMD-check run returned by GitHub is older run `40375071745` at
+`02095c67d7e70bbb648f45d2bbdd5aa0b1ea7be5`; its macOS release job failed while
+source-tree, Ubuntu, Windows, and OS-matrix jobs passed. Thus the red badge
+does not report a check of current main `b535bfbcce2a9039d869c2e34fe9da476394bf62`
+or of #1662's current head. GitHub returned HTTP 410 for the old macOS job
+logs, so this refresh does not independently attribute that failure. No PR
+was merged or otherwise changed.
