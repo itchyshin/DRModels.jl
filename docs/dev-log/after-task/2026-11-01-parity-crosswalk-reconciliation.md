@@ -653,11 +653,9 @@ the current-main hurdle-NB2 bridge test boundary and measured fixed-effects
 output mismatch observed during this review. It also records the already-merged
 state of #1600/#1167 and the pushed R test-only branch, with their evidence
 limits.
-It also records the live CI refresh on Julia #1245 and drmTMB #1662, including
-the completed exact-head R run and Julia's remaining active shard at the 21:40
-UTC poll, plus the 22:04 active-shard checkpoint. It records
-the current-main `meta_V` guide mismatch and the unresolved ownership evidence
-for the four refs that change that guide.
+It also records terminal exact-head CI for Julia #1245 and drmTMB #1662 as of
+22:23 UTC, and the current failed checks for drmTMB #1663. The `meta_V` guide
+mismatch and unresolved ownership of its four editing refs remain open.
 
 Does NOT cover: implementation or merge of any PR, package-wide R or Julia
 acceptance, a current-main CI `R CMD check` result, deployed documentation,
@@ -670,3 +668,33 @@ public-page or release-metadata edit was made. Independent diff review found
 #1659 source-attributed with narrow point-estimate/SE parity scope; #1236 has
 one missing assertion for its conditional Wald refusal text and an unresolved
 broader wording decision.
+
+### Final PR and CI status (2026-11-01 22:23 UTC)
+
+Julia #1245 remains open, non-draft, and mergeable at exact head
+`0a338a0bc6f1532e7b48c029c82cfcd4b463b30c`. Run `41343324208` completed with
+all four Julia test shards and the `ci-ok` gate successful. Documenter preview
+`41343324175` passed; stable deployment was skipped. The remote branch still
+points at the tested head. Local commit `3c56b6dc32fccee253c8ff53aec780a5e049bdf3`
+contains only the two crosswalk files and is one commit ahead; unrelated dirty
+worktree changes remain unstaged.
+
+drmTMB #1662 remains open at `01a2c2a49a1450cc79e9d35a138028ec1a27c720`.
+Exact-head run `41350326046` completed successfully, including the source-tree
+tests and all four Ubuntu release shards. Its Mac evidence remains the focused
+affected test, not a full Mac `R CMD check`.
+
+drmTMB #1663 remains open at `7309d3cd813f9c0f42da9974470c23d87da5bcf4`.
+Exact-head run `41354826786` failed in the source-tree test and at generated
+capability-ledger validation in all four Ubuntu shards, before package checks;
+the OS matrix passed. The PR has no requested reviewers, submitted reviews,
+review threads, or comments. Its broad source changes remain with its owner.
+No PR was merged, no source from #1663 was edited, and no model, parity, or
+interval-calibration claim follows from these check results.
+
+**Style assessment:** 3/10, medium confidence; short technical status addendum.
+“All four Julia test shards” gives a concrete scope; no wording change is
+needed. **Gates:** science = pass for the stated CI-only scope; facts = pass
+against current GitHub PR/run records; references = not applicable, no
+literature claims. **Provenance:** self-review of this 22:23 UTC draft update;
+no held-out examples or controls.
