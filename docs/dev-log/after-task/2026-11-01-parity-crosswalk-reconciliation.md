@@ -39,6 +39,10 @@ because the workflow API did not return their jobs.
 
 The test-only edit changes labels and comments, not assertions or runtime code. No test suite was run for that wording-only change. The targeted file was clean before editing; its preflight-reported rename-branch blob was byte-identical to the current file.
 
+The raw `test.log` contains trailing whitespace emitted by testthat. It is kept
+byte-for-byte and passes its SHA-256 receipt; `git diff --check` applies to the
+report, check-log, and label-only test edit, excluding raw `.log` artifacts.
+
 
 `python3 tools/parity_ledger.py --drmtmb '/Users/z3437171/Dropbox/Github Local/drmTMB' --ref origin/main --julia-ref origin/main` exited 0. It read R 0.7.1 at `b535bfbcce2a9039d869c2e34fe9da476394bf62` and Julia 0.7.2 at `64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716`; found 73 versus 197 exports, zero unaccounted R export gaps, 15 documented raw name mismatches, 40 Julia-only exports, and closure PASS for 37 route rows plus 18 refusal gates. This is name and ledger accounting, not behavioral parity.
 
@@ -396,6 +400,148 @@ R `R CMD check` meter entry has been retired.
 
 No PR state was changed and no external message was sent in this follow-up.
 
+### Live-state follow-up (2026-11-01 21:15 UTC)
+
+- Julia #1245 remains open at exact head
+  `0a338a0bc6f1532e7b48c029c82cfcd4b463b30c`. Run `41343324208` has the
+  change-classification check and Julia shards 1/4, 3/4, and 4/4 passing;
+  shard 2/4 is still running, and the scaling sweep was skipped. Documenter
+  run `41343324175` passed the docs build and preview; stable deployment was
+  skipped. Its PR description was refreshed at 21:08 UTC while preserving the
+  19:08 historical snapshot.
+- drmTMB #1662 remains open at exact head
+  `01a2c2a49a1450cc79e9d35a138028ec1a27c720`. After review identified that the
+  expected-status calculation repeated production predicates, the test gained
+  a direct assertion that optimizer code 1 yields `degenerate`. The focused
+  test passed locally in about 7 seconds. Run `41350326046` has a passing
+  OS-matrix and source-tree test; all four Ubuntu release shards were still
+  running at this refresh. Its PR description now distinguishes the previous
+  green head from this pending exact-head run.
+- Both PR descriptions were re-read after update and match their live heads.
+  No PR was merged, and no stable documentation deployment was run. These are
+  test and point-fit evidence only; they do not validate interval coverage or
+  establish broad R–Julia parity.
+
+### meta_V guide and overlapping PR ownership refresh (2026-11-01 21:30 UTC)
+
+The current cached Julia main is `1d6ef3fe53a64ca680c034f3d297709b36cf1729`,
+after PR #1216 merged. Its public meta-analysis guide still says
+`sigma(fit)` is the heterogeneity SD, while `src/gaussian_meta.jl` stores
+`sqrt(v + tau^2)` in `fit.scales[:sigma]`. The guide claim therefore remains
+stale on current main. PR #1245 records the mismatch in its capability ledger,
+but does not change the public guide.
+
+Path preflight for `docs/src/model-guides/meta-analysis.md` found four refs
+with edits absent from this checkout, including `rename/drmodels-20260917`,
+`claude/docs-backlog-20260905`, and `cursor/pr423-ci-tol`. The working tree
+still reports 31 live lanes and the 2026-10-04 handover to Cursor. I did not
+edit the guide or infer an owner from branch or PR authorship.
+
+The latest PR metadata shows #1106 open, draft, conflicting, with a failed
+Documenter preview and no assignee or review; #1055 open, draft, conflicting,
+with passing checks and no assignee or review; #1236 open, non-draft and
+mergeable, with passing checks and no assignee or review; and #1232 open,
+draft and mergeable, with Julia shards passing, its Documenter preview
+cancelled, and no assignee or review. The latest #1055 comment says the #1052
+change was restaged in #1216. These PR states do not establish ownership of
+the dirty `meta_V` source. The earlier hunk audit found the `src/bridge.jl`
+and `src/summary.jl` changes disjoint from those PRs, but the ownership
+question remains open.
+
+Independent reviews found no blocking issue in the scoped #1662 test change
+and no false promotion in the reviewed #1245 ledger claims. At this refresh,
+Julia run `41343324208` still has shard 2/4 active and drmTMB run
+`41350326046` still has all four release shards active, on the same exact
+heads recorded above. No PR, public guide, or source file was changed.
+
+### Bootstrap fixture PR disposition refresh (2026-11-01 21:34 UTC)
+
+PR #1216 merged at 2026-11-01 19:17:25 UTC as
+`1d6ef3fe53a64ca680c034f3d297709b36cf1729`. Current `origin/main` contains
+the four-observation phylogenetic bootstrap fixture (`m = 4`) in
+`test/test_bootstrap.jl`. Diff review confirms #1226 changes the same fixture
+from `m = 2` to `m = 4`; it remains open and draft at
+`26087694a72ea645aa3191752dbd32f0fc0ae758`, with merge state `CONFLICTING`.
+Its listed Julia checks and Documenter preview pass on that head, but no
+assignee or submitted review is recorded. #1226 also adds its own explanatory
+news note; that remaining documentation is not enough to infer a disposition
+or owner. No PR or source was changed.
+
+### Exact-head CI completion refresh (2026-11-01 21:40 UTC)
+
+The exact-head drmTMB #1662 run `41350326046` completed successfully. Its OS
+matrix, source-tree tests, and all four Ubuntu release shards passed. This is
+current-head package CI evidence for the test-only change; the focused Mac test
+remains narrower than a full macOS `R CMD check`. No merge was performed.
+
+Julia #1245 remains open at exact head
+`0a338a0bc6f1532e7b48c029c82cfcd4b463b30c`. In run `41343324208`, shards 1/4,
+3/4, and 4/4 and the change-classification check passed, while shard 2/4 was
+still running at the 21:40 UTC poll; the scaling sweep was skipped. Documenter
+run `41343324175` passed its preview, with stable deployment skipped. No PR
+metadata or source was changed. The Julia run still needs a final status check
+before the local crosswalk commit can be pushed.
+
+### Long-running Julia shard checkpoint (2026-11-01 22:04 UTC)
+
+Julia shard 2/4 remains active in run `41343324208`, on exact PR head
+`0a338a0bc6f1532e7b48c029c82cfcd4b463b30c`. GitHub reports its `Pkg.test`
+step active since 19:46:17 UTC and does not make logs available while the job
+is running. No failure or terminal result is reported. The local crosswalk
+commit is `fd005581c679de5e8c4da013c77c38099048dbf9`, one commit ahead of the
+remote PR branch; pushing now would replace the tested head and restart CI, so
+the push remains pending. The scoped lease is released. All other dirty files
+in this worktree belong outside this commit and remain untouched.
+
+### Owner and PR-state refresh (2026-11-01 22:07 UTC)
+
+Read-only GitHub API checks and independent PR-status reviews found no
+assignees, submitted reviews, or open review threads for drmTMB #1659/#1662 or
+DRModels.jl #1106/#1055/#1236/#1232. PR authorship and branch names are
+provenance, not proof of current lane ownership.
+
+- drmTMB #1659 is open, non-draft, mergeable at
+  `1539b2b52df017aec9159e4d6ce288626e8f0b8b`; its exact-head R-CMD-check run
+  `41248855941` passed. Its author reports a historical full check with one
+  error and one warning, with the error reproduced on main; that attribution
+  was not independently rerun in this refresh. The parity fixture checks point
+  estimates and Wald SEs, not interval coverage; six default-integrator
+  comparisons are skipped as expected approximation differences.
+- drmTMB #1662 is open, non-draft, mergeable at
+  `01a2c2a49a1450cc79e9d35a138028ec1a27c720`; its OS matrix, source-tree tests,
+  and four Ubuntu release shards passed in `41350326046`. The local Mac result
+  is the focused test, not a full Mac `R CMD check`.
+- DRModels.jl #1106 is draft and marked “do not merge”; CI and the docs build
+  passed, but its Documenter preview failed. #1055 is draft and marked “do not
+  merge before #1044”; its CI and docs passed, but the stack dependency and
+  owner decisions remain unresolved. Neither has a submitted review or owner
+  assignment.
+- DRModels.jl #1236 is open, ready for review, mergeable, and green on CI and
+  Documenter. Its PR body records an unresolved choice about recommending
+  Wald intervals in bridge errors. #1232 is open draft and green on Julia CI;
+  its docs preview was cancelled and its body leaves behavior decisions open.
+
+No merge, PR update, or owner assignment was made. Green CI alone does not
+clear these PRs for merge.
+
+Independent exact-head diff review adds two readiness distinctions:
+
+- #1659 is source-attributed to Shinichi and its seven-family test design is
+  internally consistent. It covers fixed effects and `mu` random intercepts
+  for univariate log likelihood, working-scale coefficients, and Wald SEs.
+  Six default-integrator comparisons are retained as explicit expected
+  mismatch skips; they are not counted as parity passes. The live Julia layer
+  covers eight bridge-admitted cases and can skip when its optional checkout
+  or dependencies are unavailable. No bivariate, wider-structure, or interval
+  coverage claim follows.
+- #1236 changes `_bridge_fit` to convert recognized unsupported-keyword
+  `MethodError`s into named `ArgumentError`s; it leaves fit defaults and
+  estimates unchanged. Its new error test does not assert the conditional
+  “wald is not served” clause. It leaves the #1011 profile-failure message
+  invariant untouched. The broader choice about recommending R-side Wald
+  intervals remains unowned, but need not block this narrow implementation if
+  the current wording is retained. No tests were rerun in this review.
+
 ## 11. Team Learning
 
 Memory receipt: `route.py` returned no LOAD-FIRST manifest for this worktree.
@@ -429,19 +575,98 @@ Golden Set: not run. The Julia testset-name edit changes labels only; no
 assertions or runtime code changed. The focused R test result is historical
 and is recorded separately above.
 
+### Naturalness assessment: 21:15 UTC follow-up
+
+Style: 3/10, medium confidence. Genre and coverage: short technical status
+addendum and its check-log row. The two bullets tie each PR to an exact head,
+workflow, and pending state, so readers can distinguish passed checks from
+active ones. No change needed. Gates: science = not applicable because this
+update makes no model-validity claim; facts = pass against live PR metadata,
+workflow jobs, and the local focused-test result; references = pass for the
+linked PR/run records. Provenance: self-review of saved report v6 on
+2026-11-01; the same status facts were checked against live GitHub. No held-out
+examples or controls were used.
+
+### Naturalness assessment: 21:30 UTC ownership follow-up
+
+Style: 3/10, medium confidence. Genre and coverage: short technical status
+addendum. It names the exact current-main commit and stored scale, identifies
+the four unresolved guide refs, and records PR states without assigning lane
+ownership. The current source, GitHub metadata, and file-level preflight were
+checked directly. It makes no model-validation or public-readiness claim. No
+held-out examples or controls were used.
+
+### Naturalness assessment: 21:34 UTC bootstrap disposition follow-up
+
+Style: 3/10, medium confidence. Genre and coverage: short PR-state addendum.
+It names the merge commit, the exact remaining PR head, the shared fixture
+change, and the conflict state. It separates passing checks from mergeability
+and does not infer an owner or recommend closing the PR. Facts were checked
+against GitHub metadata and current cached main. No held-out examples or
+controls were used.
+
+### Naturalness assessment: 21:40 UTC exact-head CI follow-up
+
+Style: 3/10, medium confidence. Genre and coverage: technical status addendum.
+It separates the completed drmTMB run from Julia's still-active shard, names
+exact workflow and source identities, and retains the no-merge and no-deploy
+limits. Facts were checked against the exact-head job records; no model
+validity or interval-coverage claim is made. No held-out examples or controls
+were used.
+
+### Naturalness assessment: 22:04 UTC CI checkpoint
+
+Style: 3/10, medium confidence. Genre and coverage: handoff status addendum.
+It gives the exact run, job, head, and local commit, explains why the push is
+pending, and says unrelated changes remain untouched. GitHub confirms the job
+is active and that logs are unavailable before completion. No test or
+calibration claim is inferred from the active run. No held-out examples or
+controls were used.
+
+### Naturalness assessment: 22:07 UTC PR ownership refresh
+
+Style: 3/10, medium confidence. Genre and coverage: short technical PR-state
+addendum. It ties each candidate to its exact source and checks, separates
+author-reported full-check evidence from live Actions results, and records
+missing owner/review signals without assigning ownership from authorship. No
+merge or scientific validation claim is made. Facts were checked against
+GitHub PR, review, comment, and Actions APIs. No held-out examples or controls
+were used.
+
+### Naturalness assessment: 22:11 UTC diff-review follow-up
+
+Style: 3/10, medium confidence. Genre and coverage: technical PR-readiness
+addendum. It narrows #1659 to the seven-family point-estimate/SE matrix and
+states its explicit skipped comparisons; it describes #1236's behavior change
+and leaves the wider Wald choice with the owner. No tests or merges are
+claimed. The two PR diffs, tests, exact-head checks, and owner metadata were
+reviewed directly. No held-out examples or controls were used.
+
 ## 12. Cross-Product Coverage
 
 Covers: the exact-main Julia capability snapshot, the R-to-Julia `fixef`
 dispatch caveat, export-name accounting, the observed current-main Julia
-bootstrap test failure, the two overlapping unmerged fixture candidates, and
-the public Julia `meta_V`, README, and drmTMB release-description drift, plus
+bootstrap fixture failure and its disposition (#1216 merged; #1226 remains a
+conflicting draft), and the public Julia `meta_V`, README, and drmTMB
+release-description drift, plus
 the current-main hurdle-NB2 bridge test boundary and measured fixed-effects
 output mismatch observed during this review. It also records the already-merged
 state of #1600/#1167 and the pushed R test-only branch, with their evidence
 limits.
+It also records the live CI refresh on Julia #1245 and drmTMB #1662, including
+the completed exact-head R run and Julia's remaining active shard at the 21:40
+UTC poll, plus the 22:04 active-shard checkpoint. It records
+the current-main `meta_V` guide mismatch and the unresolved ownership evidence
+for the four refs that change that guide.
 
 Does NOT cover: implementation or merge of any PR, package-wide R or Julia
 acceptance, a current-main CI `R CMD check` result, deployed documentation,
 runtime R-to-Julia behavior after a future merge, parity beyond the one
 fixed-effects hurdle-NB2 cell, random-effect routes, or interval calibration
-and coverage. No public-page or release-metadata edit was made.
+and coverage. The four refs carrying changes to the public `meta_V` guide were
+not reconciled by owner. PR author/branch metadata for #1659/#1662 and
+#1106/#1055/#1236/#1232 did not establish current lane ownership. No
+public-page or release-metadata edit was made. Independent diff review found
+#1659 source-attributed with narrow point-estimate/SE parity scope; #1236 has
+one missing assertion for its conditional Wald refusal text and an unresolved
+broader wording decision.
