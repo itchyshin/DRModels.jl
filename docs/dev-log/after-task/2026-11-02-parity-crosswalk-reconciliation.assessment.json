@@ -1,18 +1,18 @@
 {
   "assessment_performed": true,
-  "draft_sha256": "43d21f4075f5bd50582338d13efbf6603284235b808909910fc1916c46bae088",
-  "draft_version": "v37",
+  "draft_sha256": "40898a874c525252cecdf77d246dfc5d715ec9d2618f272761a53f35b89fcf8c",
+  "draft_version": "v39",
   "requested_mode": "independent",
   "assessor_type": "self",
   "reviewer": "Codex self-review",
-  "method": "Manual review of live PR metadata, exact-head workflow runs and job logs, combined statuses, formal review records, live main refs, the R/Julia meta_V source and tests, exact-path ownership preflight and granted lease, one fixed-seed R accessor fit, the #1237 exact-head Julia 1.10.10 focused test, and the #1659 exact-head R stored-fixture test, each with a checksum-bound log; then structure, closeout, prose, JSON, and diff checks.",
+  "method": "Manual review of live PR metadata, exact-head workflow runs and job logs, combined statuses, formal review records, live main refs, the R/Julia meta_V source and tests, exact-path ownership preflight and granted lease, one fixed-seed R accessor fit, the #1237 exact-head Julia 1.10.10 focused test, and the #1659 exact-head R stored-fixture test, each with a checksum-bound log; then structure, closeout, prose, JSON, and diff checks. The #1240 provenance follow-up also checked the current-contrib source archive SHA-256, its DESCRIPTION and NEWS, the local v0.7.0 release tag, the interrupted isolated install, and the observed Totoro load; no owner-held fixture or PR was edited.",
   "genre": "technical after-task report",
-  "coverage": "Whole report by continuity from v36; added exact-head #1237 Julia and #1659 R focused test results and retained the #1659 raw output in-repository while preserving the limits on full-suite, live-bridge, review, parity, and interval-calibration claims.",
+  "coverage": "Whole report by continuity from v36; added exact-head #1237 Julia and #1659 R focused test results and retained the #1659 raw output in-repository while preserving the limits on full-suite, live-bridge, review, parity, and interval-calibration claims. Added the source-provenance discrepancy for #1240 and kept the exact generating build unresolved.",
   "score": 2,
   "style_status": "scored",
   "score_reason": "The report uses exact files, SHAs, run IDs, and explicit limits. Some technical sentences are dense, but the PR status is separated into short bullets.",
   "confidence": "high",
-  "confidence_reason": "Current GitHub PR metadata, workflow/job logs, combined statuses, review records, live git ls-remote refs, exact-path lane preflight/lease, the Totoro source SHA/runtime/test result/clean checkout/raw-log checksum, and the isolated R worktree SHA/runtime/test result/raw-log checksum were checked. No current-pair parity or interval calibration is inferred.",
+  "confidence_reason": "Current GitHub PR metadata, workflow/job logs, combined statuses, review records, live git ls-remote refs, exact-path lane preflight/lease, the Totoro source SHA/runtime/test result/clean checkout/raw-log checksum, and the isolated R worktree SHA/runtime/test result/raw-log checksum were checked. No current-pair parity or interval calibration is inferred. The #1240 follow-up verified the downloaded source archive checksum and its package metadata, but did not install it or claim it matches the R 4.3.3 fixture generator.",
   "examples": [
     {
       "location": "Section 10, approved #1662 merge, baseline check bullet",
@@ -64,7 +64,7 @@
     },
     {
       "location": "Section 10, owner-attributed route map",
-      "cue": "The table separates each route\u2019s stored comparator, exact candidate evidence, and owner-held next gate.",
+      "cue": "The table separates each route’s stored comparator, exact candidate evidence, and owner-held next gate.",
       "impact": "Readers can see why green checks do not imply current-source parity and can identify who must act next.",
       "repair": "no change needed",
       "line": 182,
@@ -93,15 +93,23 @@
       "repair": "no change needed",
       "line": 216,
       "quote": "This refresh supersedes conflicting status statements in the 12:23 UTC snapshot where noted."
+    },
+    {
+      "location": "Section 10, #1240 comparator-source provenance audit",
+      "cue": "The report distinguishes a versioned package candidate from the exact R 4.3.3 build used for fixture generation.",
+      "impact": "It prevents a source archive or tag from being used as a guessed code fingerprint.",
+      "repair": "no change needed",
+      "line": 247,
+      "quote": "its release note also says the tag was not submitted to CRAN."
     }
   ],
   "evidence_none_reason": null,
   "science_gate": "not_applicable",
   "science_gate_reason": "This report records a documentation reconciliation, not a new scientific result.",
   "facts_gate": "pass",
-  "facts_gate_reason": "Exact heads, bases, review/check conclusions, and #1233/#1228 patch content were checked live. Both focused exact-head test logs were checked and their runtimes and skip boundaries are recorded; the report does not turn them into current-pair parity, full-suite, or interval-calibration claims.",
+  "facts_gate_reason": "Exact heads, bases, review/check conclusions, and #1233/#1228 patch content were checked live. Both focused exact-head test logs were checked and their runtimes and skip boundaries are recorded; the report does not turn them into current-pair parity, full-suite, or interval-calibration claims. The current-contrib archive and local release tag both identify an unaccepted/not-submitted 0.7.0 candidate; the report does not treat either as the exact fixture-generating build.",
   "references_gate": "pass",
-  "references_gate_reason": "The linked PRs and workflow runs refer to the exact items checked during this refresh; no unsupported external scientific references were added.",
+  "references_gate_reason": "The linked PRs and workflow runs refer to the exact items checked during this refresh; no unsupported external scientific references were added. The report links the exact source archive URL and records its checksum; no literature claims were added.",
   "date": "2026-11-02",
   "calibration_status": "No style controls were used; this is an uncalibrated editorial judgment.",
   "interpretation": "perceived_style_not_authorship"

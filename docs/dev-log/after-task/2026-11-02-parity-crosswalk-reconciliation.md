@@ -24,6 +24,10 @@ Assumption made without asking: current `origin/main` is the comparison target f
 
 `python3 tools/check_capability_citations.py` passed: 3 citations verified and 17 skipped as not precisely resolvable. `git diff --check` and the after-task structure check passed. A status-table count that handles escaped pipes confirmed 51 rows: 45 implemented, 2 rejected, 1 planned, 2 experimental, and 1 missing. Exact-draft assessment checks recorded both prose reviews; `slop_check.py` returned zero findings for each edited prose file. A later fresh run of `Rscript -e 'devtools::test(filter = "phylo-temporal-ou-methods", reporter = "summary")'` passed on the exact drmTMB #1662 head under R 4.6.0 on macOS arm64. No Julia tests or Documenter build were run on this documentation candidate.
 
+The #1240 source-provenance follow-up downloaded the current-contrib source archive from the URL named below (SHA-256 recorded in Section 10) and inspected its package metadata and NEWS. The downloaded archive was not installed. A separate install attempt from the local `v0.7.0` Git tag was stopped during TMB C++ compilation because the Mac was already running concurrent R builds; Totoro's observed load average was 294.
+
+After this addition, `closeout.py check` and `check-after-task.R` passed; the report SHA matched assessment v39, the JSON parsed, `git diff --check` passed, and prose lint reported zero findings for the report and check log.
+
 ## 6. Tests of the Tests
 
 The citation checker validates only resolvable source locations. The two added rows were checked against `src/ordinary_laplace.jl`, `src/locscale_frontend.jl`, `test/test_ordinary_laplace.jl`, and `test/test_locscale_frontend.jl` in current `origin/main` (`47a081ba035f9bf3fd7e42d3841ae8a288bf2a14`); those source and test files are byte-identical to the candidate branch. This supports route existence and the stated implementation-test scope, not calibration.
@@ -237,6 +241,12 @@ An initial direct invocation under the package's root environment stopped before
 In isolated detached worktree `/private/tmp/drmtmb-pr1659-check-20261102`, exact PR head `1539b2b52df017aec9159e4d6ce288626e8f0b8b`, `Rscript -e 'Sys.unsetenv("DRM_JL_PATH"); devtools::test(filter = "drmjl-parity-fixtures", reporter = "summary")'` passed with **146 expectations and 0 failures**, and skipped 7 expectations. Six skips are the documented default-GHQ versus Laplace differences; the seventh skips the live Julia engine because neither Julia path variable was set. Runtime was R 4.6.0 on aarch64 macOS. The retained test output is `docs/dev-log/evidence/parity-2026-11-02/pr1659-test-output.txt`, SHA-256 `b425ae500e0b5c89c8b184b7e4aea29fa7ac98f225df0df8b9b7a79c70c0cc8a`.
 
 The run compares drmTMB estimates with stored values pinned to DRModels.jl `64ccb2d`; it did not call current Julia source through the bridge. It does not establish current-pair parity, recovery, interval calibration, or full-package health. PR #1659 remains open with no recorded GitHub workflow or formal review at its exact head. The run changed no owner branch or source file.
+
+### #1240 comparator-source provenance audit: 2026-11-02 13:34 UTC
+
+The PR records “drmTMB 0.7.0 from CRAN” and R 4.3.3 but has no source commit or installed-code fingerprint. A read-only download from `https://cran.r-project.org/src/contrib/drmTMB_0.7.0.tar.gz` returned HTTP 200; the 5.5 MB archive had SHA-256 `4b1f483235706cc9cb9705ffec30d6bedb9815b08b8192b5606d19ad4807f2c0`. Its `DESCRIPTION` says version 0.7.0, while its `NEWS.md` calls it a CRAN-targeted release candidate and says it was not yet accepted or available on CRAN. The local R repository's `v0.7.0` tag resolves to `d7eb81fe7f422af7563aa2199c34f62c96b35ffd`; its release note also says the tag was not submitted to CRAN.
+
+This makes a version string alone insufficient to identify the #1240 comparator. It does not establish that the downloaded candidate archive was the R 4.3.3 build used to generate the fixture, so its installed-code hash must not be substituted. The source install was stopped during TMB C++ compilation on the Mac while other R jobs were active; Totoro's load average was 294 at the follow-up check, so no remote build was started. No PR metadata, fixture, owner branch, or package source was changed. The owner needs to identify the exact generating source/build or choose the test's explicit unknown-provenance fallback before #1240 can pass the fixture provenance gate.
 
 ## 11. Team Learning
 
