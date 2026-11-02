@@ -56,7 +56,15 @@ using Distributions: MvNormal, Normal, logpdf
             # very fast decay (near-independent states) and very slow decay
             for ψ in (4.0, -5.0)
                 θ = copy(fit.theta); θ[end] = ψ
-                @test abs(fit.nll(θ) - dense_nll(θ, d.y, X, d.id, d.elapsed; ordinary)) < 1e-10
+                dn = dense_nll(θ, d.y, X, d.id, d.elapsed; ordinary)
+                # Absolute 1e-10 plus 1e-12 relative to the nll's scale: at ψ = -5
+                # (λ ≈ 0.007, near-perfectly-correlated states) the DENSE oracle's V is
+                # ill-conditioned, so its own rounding error scales with |nll|. Measured
+                # |filter - dense| for the one worst cell (rep 1, ordinary, |nll| = 2349.8;
+                # every other cell is ≤ 6e-14): 5.9e-12 (Mac arm64), 8.0e-11 (Totoro
+                # x86_64 znver5, Julia 1.13.1 and 1.13.3 alike), 1.71e-10 (GitHub runner,
+                # Julia 1.13.3) — a platform spread, not a Julia-version change.
+                @test abs(fit.nll(θ) - dn) < 1e-10 + 1e-12 * abs(dn)
             end
             # decay → 0 (λ = e^-20): a precision-matrix evaluation measured a negative
             # 1ᵀV⁻¹1 here during a line search; the filter must match the dense oracle
