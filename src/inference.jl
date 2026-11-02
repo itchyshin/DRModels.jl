@@ -3108,7 +3108,7 @@ function _beta_animal_sd_marginal_simulator(fit::DrmFit, data, matrix)
     d = sqrt.(diag(C))
     all(x -> isfinite(x) && x > 0, d) || throw(ArgumentError(
         "bootstrap: Beta animal covariance matrix must have a positive finite diagonal"))
-    R = Symmetric(C ./ (d * d'))
+    R = Symmetric(C)   # A enters RAW, as in the fit
     factor = cholesky(R; check = false)
     issuccess(factor) || throw(ArgumentError(
         "bootstrap: Beta animal covariance matrix must be positive definite"))

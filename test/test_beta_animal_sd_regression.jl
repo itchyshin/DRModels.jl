@@ -7,9 +7,8 @@ function _beta_animal_sd_dense_laplace(theta, data, Xmu)
     beta = theta[1:size(Xmu, 2)]
     sigma = theta[size(Xmu, 2) + 1]
     alpha = theta[(size(Xmu, 2) + 2):end]
-    d = sqrt.(diag(data.A))
-    R = Matrix(Symmetric(data.A ./ (d * d')))
-    Q = Matrix(inv(Symmetric(R)))
+    # A enters RAW (as native drmTMB), so the prior precision is inv(A).
+    Q = Matrix(inv(Symmetric(data.A)))
     group_sd = exp.(hcat(ones(G), data.z_group) * alpha)
     phi = exp(-2sigma)
     function conditional(u)
@@ -36,8 +35,8 @@ end
 function _beta_animal_sd_fixture(alpha; G = 24, m = 24, seed = 20261024)
     rng = MersenneTwister(seed)
     labels = ["id$(j)" for j in 1:G]
-    # A is intentionally not a correlation matrix. The existing Beta animal
-    # route normalizes it to R before fitting; the DGP uses that same R.
+    # A is intentionally not a correlation matrix. The Beta animal route uses A
+    # RAW (as native drmTMB); the DGP draws the latent field from that same A.
     R = [0.58^abs(i - j) for i in 1:G, j in 1:G]
     scale = collect(range(0.7, 1.5; length = G))
     A = Diagonal(scale) * R * Diagonal(scale)
@@ -46,7 +45,7 @@ function _beta_animal_sd_fixture(alpha; G = 24, m = 24, seed = 20261024)
     z_group = repeat([-1.0, 1.0], G ÷ 2)
     z = repeat(z_group; inner = m)
     x = randn(rng, G * m)
-    u = cholesky(Symmetric(R)).L * randn(rng, G)
+    u = cholesky(Symmetric(A)).L * randn(rng, G)
     animal_sd = exp.(alpha[1] .+ alpha[2] .* z_group)
     eta = 0.15 .+ 0.25 .* x .+ (animal_sd .* u)[group_index]
     mu = 1 ./ (1 .+ exp.(-eta))
@@ -200,9 +199,7 @@ end
     rng_sim = MersenneTwister(20261027)
     draw = simulator(rng_sim)
     rng_oracle = MersenneTwister(20261027)
-    scale = sqrt.(diag(data.A))
-    R = data.A ./ (scale * scale')
-    factor = cholesky(Symmetric(R)).L
+    factor = cholesky(Symmetric(data.A)).L
     Wsd = hcat(ones(length(data.z_group)), data.z_group)
     group_sd = exp.(Wsd * coef(fit, :sd))
     eta = predict(fit, fit_data; type = :link)

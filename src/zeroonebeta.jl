@@ -94,7 +94,8 @@ function drm(f::DrmFormula, fam::ZeroOneBeta; data, tree = nothing, K = nothing,
         elseif kind === :relmat || kind === :animal || kind === :spatial
             C = _poisson_structured_cov(kind, grp, K, A, coords)
             return _withformula(
-                _fit_zeroonebeta_relmat_laplace(fam, y, Xμ, nmμ, nmσ, nmz, nmc, C, labels, grp, g_tol; se = se), f)
+                _fit_zeroonebeta_relmat_laplace(fam, y, Xμ, nmμ, nmσ, nmz, nmc, C, labels, grp, g_tol; se = se,
+                    normalize = kind === :spatial), f)
         else
             error("ZeroOneBeta() supports phylo/relmat/animal/spatial(1 | group) among structured markers")
         end
@@ -502,10 +503,11 @@ end
 """
 function _fit_zeroonebeta_relmat_laplace(fam, y, Xμ, nmμ, nmσ, nmz, nmc, C,
                                          labels, grp, g_tol; se::Bool = true,
-                                         polish_iterations::Int = 0)
+                                         polish_iterations::Int = 0,
+                                         normalize::Bool = false)
     n = length(y)
     nb = sum((Float64.(y) .== 0) .| (Float64.(y) .== 1))
-    Q, leaf_node = _general_cov_setup(C, labels)
+    Q, leaf_node = _general_cov_setup(C, labels; normalize)
     aux_from, θβ0, θσ0, zoi, coi = _zeroonebeta_laplace_setup(y, Xμ)
     fit = _fit_general_mean_laplace_nuisance(
         fam, Val(:zeroonebeta_fixed), aux_from, n, Xμ, Q, leaf_node, nmμ, nmσ,

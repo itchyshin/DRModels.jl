@@ -18,13 +18,14 @@ supports a predictor-dependent SD through `sd(group) ~ predictors`. A slope
 targets its coefficient SD with `sd(group, coef(x)) ~ predictor`; the slope
 loading is applied at each row. A supplied-A animal random intercept also
 supports `sd(group, animal) ~ predictors` with `sigma ~ 1`; the animal covariance
-is normalized as in the existing constant-SD Beta animal route. These SD routes
+is used as supplied (raw), as native drmTMB does. These SD routes
 require complete responses and fixed `sigma ~ 1`. Correlated SD blocks,
 phylogenetic SDs, and calibrated interval coverage remain unsupported.
 Crossed random intercepts on the mean, such as `(1 | g) + (1 | h)`, use the
 sparse-Laplace engine when `sigma ~ 1`. A phylogenetic random intercept on the
 mean, `phylo(1 | species)`, also uses the sparse-Laplace engine, as do general
-user-supplied PD-covariance intercepts — `relmat(1 | id)` with `K = C`, the
+user-supplied PD-covariance intercepts (used as supplied, not rescaled; the precomputed
+`spatial` kernel keeps its rescaling) — `relmat(1 | id)` with `K = C`, the
 `animal(1 | id)` (`A = C`) and `spatial(1 | id)` (`K = C`) aliases.
 
 !!! note
@@ -110,7 +111,8 @@ function drm(f::DrmFormula, fam::Beta; data, tree = nothing, K = nothing,
             # precision a fixed nuisance. Reuses the phylo nuisance Laplace spine
             # with the tree precision swapped for C⁻¹ (#167).
             C = _poisson_structured_cov(kind, grp, K, A, coords)
-            return _withformula(_fit_beta_relmat_laplace(fam, y, Xμ, Xσ, C, labels, nmμ, nmσ, grp, g_tol; se = se), f)
+            return _withformula(_fit_beta_relmat_laplace(fam, y, Xμ, Xσ, C, labels, nmμ, nmσ, grp, g_tol; se = se,
+                normalize = kind === :spatial), f)
         else
             error("Beta() supports phylo/relmat/animal/spatial(1 | group) among structured markers")
         end
@@ -240,9 +242,9 @@ function _drm_beta_sd_regression(f::DrmFormula, fam::Beta; data,
 end
 
 # Dense structured Beta animal-intercept Laplace objective used by the
-# `sd(group, animal) ~ ...` route. The supplied A is normalized by
-# `_general_cov_setup`, matching the existing constant-SD Beta animal route.
-# The latent coordinate is u ~ N(0, R), while b = diag(exp(W*alpha)) * u;
+# `sd(group, animal) ~ ...` route. The supplied A enters RAW (as native drmTMB
+# does), matching the constant-SD Beta animal and relmat routes.
+# The latent coordinate is u ~ N(0, A), while b = diag(exp(W*alpha)) * u;
 # because integration stays in u-space, there is no separate Jacobian term.
 function _beta_animal_sd_mode(y, eta0, loading, gidx, Q, aux; b0 = nothing,
                              maxiter::Int = 500, tol::Real = 1e-8)
@@ -290,7 +292,7 @@ function _beta_animal_sd_laplace_nll(theta, y, Xmu, Wsd, gidx, A; b0 = nothing)
         "Beta animal SD parameter vector must contain mu, sigma, and SD coefficients."))
     length(gidx) == length(y) == size(Xmu, 1) || throw(ArgumentError(
         "Beta animal SD data, design, and group indices must have matching rows."))
-    Q, leaf_node = _general_cov_setup(A, gidx)
+    Q, leaf_node = _general_cov_setup(A, gidx; normalize = false)
     size(Wsd, 1) == size(Q, 1) || throw(ArgumentError(
         "Beta animal SD design must have one row per animal level."))
     qchol = cholesky(Symmetric(Q); check = false)

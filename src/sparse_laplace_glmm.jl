@@ -1924,15 +1924,18 @@ Beta sparse-Laplace fit with a general user-supplied PD covariance `C` on the me
 (logit) random intercept (`relmat`/`animal`/`spatial(1 | grp)`), with the precision
 `φ` (via the `sigma` slot, σ = 1/√φ) a fixed nuisance parameter. Reuses the verified
 phylo nuisance spine via [`_general_cov_setup`](@ref); only the prior precision
-differs (`C⁻¹` vs the tree topology). Exact O(p) gradient carries over (#167).
+differs (`C⁻¹` vs the tree topology). `C` is used as supplied (raw, as native
+drmTMB does); `normalize = true` rescales it to a correlation matrix (used only for
+the precomputed spatial route). Exact O(p) gradient carries over (#167).
 """
 function _fit_beta_relmat_laplace(fam, y, Xμ, Xσ, C, labels, nmμ, nmσ, grp,
                                   g_tol; se::Bool = true,
-                                  polish_iterations::Int = 0)
+                                  polish_iterations::Int = 0,
+                                  normalize::Bool = false)
     size(Xσ, 2) == 1 || error("drm(Beta()): a `relmat`/`animal`/`spatial` random effect requires `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
     all(x -> x == 1.0, @view Xσ[:, 1]) ||
         error("drm(Beta()): a `relmat`/`animal`/`spatial` random effect requires `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
-    Q, leaf_node = _general_cov_setup(C, labels)
+    Q, leaf_node = _general_cov_setup(C, labels; normalize)
     aux_from, θβ0, θσ0 = _beta_laplace_setup(y, Xμ)
     return _fit_general_mean_laplace_nuisance(
         fam, Val(:beta_fixed), aux_from, length(y), Xμ, Q, leaf_node, nmμ, nmσ,
