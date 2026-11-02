@@ -1,18 +1,18 @@
 {
   "assessment_performed": true,
-  "draft_sha256": "66e7ed2c78c76510f13ab84728e374467f83cb13c20f3a72a43f1ee7b5b8a1ff",
-  "draft_version": "v6",
+  "draft_sha256": "2dda3b802dcf74ce69cf55f228be4d8f8267fd33486b26bfda9c575696e52789",
+  "draft_version": "v8",
   "requested_mode": "independent",
   "assessor_type": "self",
   "reviewer": "Codex self-review",
   "method": "Manual review under writing-naturalness.md, checked against live GitHub PR metadata and job records, bounded read-only worktree inventories, the fresh R focused-test output, and the local branch state; followed by exact-draft assessment-check, slop_check.py, and check-after-task.R.",
   "genre": "technical after-task report",
-  "coverage": "Whole report, sections 1 through 12, including the live PR and CI refreshes and R and Julia worktree inventories through 2026-11-02 10:00 UTC.",
+  "coverage": "Whole report, sections 1 through 12, including the live PR and CI refreshes and R and Julia worktree inventories through 2026-11-02 10:18 UTC.",
   "score": 2,
   "style_status": "scored",
   "score_reason": "The report uses exact files, SHAs, run IDs, and explicit limits. Some technical sentences are dense, but the PR status is separated into short bullets.",
   "confidence": "medium",
-  "confidence_reason": "PR heads, review states, workflow jobs, the focused local R test, and bounded worktree counts were checked against live connector records and local command output. The R scan covered open-PR branches; the Julia scan covered registered worktrees but included unreadable entries. Julia shard 2 remained in progress at 10:00 UTC. The style judgment is a self-review and is not calibrated.",
+  "confidence_reason": "PR heads, review states, workflow jobs, the R focused test, targeted failure excerpts from the latest recorded main CI runs, and bounded worktree counts were checked against live GitHub and local command output. Julia main CI remains unverified at its current head, and shard 2 of the exact #1245 head remains in progress at 10:18 UTC. The style judgment is a self-review and is not calibrated.",
   "examples": [
     {
       "location": "Known Residuals, first paragraph",
@@ -53,13 +53,21 @@
       "repair": "no change needed",
       "line": 98,
       "quote": "A fresh local run of `Rscript -e 'devtools::test(filter = \"phylo-temporal-ou-methods\", reporter = \"summary\")'` passed on R 4.6.0, macOS arm64, from the exact PR worktree."
+    },
+    {
+      "location": "Known Residuals, current-main CI and PR evidence, drmTMB bullet",
+      "cue": "The bullet distinguishes the old main failure from the green exact-head PR check and states what the changed test does.",
+      "impact": "Readers can see why the CMD-check fix is promising without treating PR checks as a current-main result or merge authorization.",
+      "repair": "no change needed",
+      "line": 105,
+      "quote": "PR #1662 removes that brittle expectation and classifies code 1 as degenerate; its exact-head R-CMD-check run `41350326046` passed all six jobs."
     }
   ],
   "evidence_none_reason": null,
   "science_gate": "not_applicable",
   "science_gate_reason": "This report records a documentation reconciliation, not a new scientific result.",
   "facts_gate": "pass",
-  "facts_gate_reason": "The PR heads, review states, workflow-job states, focused local R test, failure excerpts, and bounded R and Julia worktree counts were compared with live connector and local command results at the stated UTC time.",
+  "facts_gate_reason": "The exact PR heads, current main refs, workflow job outcomes, targeted failure excerpts, focused local R test, and main ancestry for the merged cleanup PRs were compared with current GitHub and local command results at 10:18 UTC. The Julia main failures are explicitly limited to an older head.",
   "references_gate": "pass",
   "references_gate_reason": "Local source/test files and cited PR/workflow records were checked; unresolved historical capability citations are stated as a residual.",
   "date": "2026-11-02",
