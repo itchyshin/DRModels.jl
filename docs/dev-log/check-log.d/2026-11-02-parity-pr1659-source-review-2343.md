@@ -1,0 +1,1 @@
+| 2026-11-02 | drmTMB #1659 source review | Exact GitHub diff, head/base, reviews and check metadata; `git diff --check`; prose check | Confirmed useful stored parity fixtures and conditional live bridge route; identified tracked-only dirty-state check in reference generator. No PR changes or tests | Reported, owner disposition needed |

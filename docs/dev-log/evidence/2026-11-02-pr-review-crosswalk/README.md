@@ -491,3 +491,32 @@ This refresh used GitHub metadata and local ref/worktree evidence only. It did
 not change a source branch or PR, contact a lane owner, or infer ownership from
 authorship or branch naming. No candidate is promoted to merge-ready by this
 refresh.
+
+## Focused source review: drmTMB #1659, 2026-11-02 23:43 UTC
+
+The exact PR head is `e2d617b54b9a94b8b8e2758db9a6c80fa4bcab87`, with base
+`71ceee671aac0e4c8bedf265b3b735b1ad633390`. GitHub reports all six listed
+checks successful, `mergeable = MERGEABLE`, and zero formal reviews. Current
+drmTMB main is `e5cd86667c97d1b34f0ead22017a675377f46930`; the green result is
+exact-head evidence on the submitted base, not a rerun on current main.
+
+The added R tests compare seven families across fixed-effect and `mu` random-
+intercept fits with stored DRModels.jl reference values. The source generator
+calls `DRModels.drm_bridge` and records commit `64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716`.
+The live `engine = "julia"` comparison is conditional on JuliaCall and an
+available DRModels.jl checkout; it covers eight bridge-admitted cases, while
+non-Gaussian random-intercept bridge routes remain excluded. These are useful
+parity fixtures, with a historical Julia source pin and a conditional live
+bridge check.
+
+**Source-review finding:** `tools/drmjl-parity/make-reference.jl` calculates
+`drmjl_dirty` with `git status --porcelain --untracked-files=no`. That check
+ignores untracked files. The test asserts that the stored field equals
+`"false"`; it does not establish that the full Julia checkout was clean when
+the reference was generated. This narrows the meaning of the provenance claim
+and should be clarified or strengthened by the PR owner. It does not invalidate
+the stored numerical comparisons by itself.
+
+This was a read-only diff review. No tests were rerun, no public review or
+comment was submitted, and no source or PR metadata was changed. The current
+owner of the PR branch remains unconfirmed.
