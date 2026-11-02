@@ -409,8 +409,8 @@ end
 # cannot see the inner solves. When a group is not, `loglik` is below the profiled
 # ELBO and the gradient the optimiser used was not the profile's gradient, so warn
 # too (quiet inside bootstrap refits, `_without_boundary_warnings`, like the
-# sparse-Laplace clamp warning `_warn_at_clamp`; the `:VA` clamp warning in
-# `_va_scored_sigma` is not quieted).
+# sparse-Laplace clamp warning `_warn_at_clamp`;
+# `_va_scored_sigma`'s clamp warning honours the same guard, #1246).
 function _va_inner_converged(ρ::AbstractVector{<:Real}, route::AbstractString)
     bad = count(d -> !(d <= 1), ρ)
     bad == 0 && return true
@@ -764,7 +764,7 @@ _va_constant_column(X::AbstractMatrix) = size(X, 2) == 1 && all(==(X[1, 1]), vie
 # the likelihood used.
 function _va_scored_sigma(Xσ, βσ, b::Float64, route::AbstractString)
     η = Xσ * βσ
-    if any(e -> abs(e) > b, η)
+    if any(e -> abs(e) > b, η) && get(task_local_storage(), :drm_quiet_boundary, false) !== true   # #1246: quiet in bootstrap refits
         @warn "$route: the `sigma` linear predictor ended at $(round(maximum(abs, η); sigdigits = 4)) " *
               "in absolute value, past the ±$b clamp inside the variational objective. The " *
               "objective is flat there, so `coef(fit, :sigma)` is not identified by the data; " *
