@@ -1,0 +1,1 @@
+| 2026-11-02 | Targeted exact-head CI refresh, 22:06 UTC | GitHub PR diagnostics for #1249, #1657, #1659 | Recorded new #1657 run progress and unchanged #1249/#1659 states; no package checks or computation | Codex |
