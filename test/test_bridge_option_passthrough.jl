@@ -103,3 +103,30 @@ using Test, Random, LinearAlgebra
     @test !haskey(plain_bridged, "gradient")
     @test !haskey(plain_bridged, "gradient_names")
 end
+
+@testset "drm_bridge names an option the target fitter does not accept" begin
+    Random.seed!(20261031)
+    n = 60
+    x = randn(n)
+    data = (; y = rand(1:5, n), x = x)
+    err = try
+        drm_bridge(; formula = "y ~ x", family = "poisson", data = data,
+                   options = Dict(:sparse => true))
+        nothing
+    catch e
+        e
+    end
+    @test err isa ArgumentError
+    @test occursin("`sparse`", sprint(showerror, err))
+    # `wald` is not served by drm_bridge_inference; the text says so and lists accepted methods.
+    err2 = try
+        drm_bridge_inference(; formula = "y ~ x", family = "gaussian",
+                             data = (; y = randn(n), x = x), method = "wald")
+        nothing
+    catch e
+        e
+    end
+    @test err2 isa ArgumentError
+    @test occursin("\"profile\"", sprint(showerror, err2))
+    @test occursin("\"bootstrap\"", sprint(showerror, err2))
+end
