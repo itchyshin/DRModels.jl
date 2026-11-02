@@ -391,3 +391,22 @@ No Totoro/DRAC compute was appropriate for this API, CI-log, and worktree
 review. The next useful refresh event is completion of #1657 run 41522911628
 or #1249 run 41519305510; otherwise wait for an owner handoff rather than
 rechecking unchanged queued or running work.
+
+## #1657 terminal CI refresh, 2026-11-02 23:12 UTC
+
+Run [41522911628](https://github.com/itchyshin/drmTMB/actions/runs/41522911628)
+is now terminal and all five listed jobs passed at exact head
+`21f769d0f80f4651592dac9d80d7a7ee3dc8a049`: source-tree tests, OS matrix, and
+Ubuntu, macOS, and Windows release checks. PR #1657 remains open and
+non-draft, with no formal reviews, no registered exact-head worktree, and
+GitHub still reports `mergeable = false`. The comparison from current main
+`129c09c8c8d56fa91bb09146f02dff24e65e6e7b` to the PR head reports six commits
+ahead, zero behind, and current main as the merge base. The reason for the
+PR API's non-mergeable status is not established; do not infer a text conflict
+or merge readiness from these fields alone.
+
+DRModels.jl #1249 remains open at head
+`e01e0fadb1ba7773a41f08d8a0802a2c0b018970`; its last observed state at 23:09
+UTC was three Julia 1 shards successful and shard 3 still running, with
+Documenter passed. No new poll was needed for this update. No branch or PR
+metadata was changed, and no Totoro/DRAC compute was used.
