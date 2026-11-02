@@ -1,18 +1,18 @@
 {
   "assessment_performed": true,
-  "draft_sha256": "378af934dcc8e2399421e4c508f918c92f3c9344612005130cd2e30169a130a5",
-  "draft_version": "v17",
+  "draft_sha256": "ac8333d93d8e011cc462da1ab2fcac089c6b37b7bfbe1eec4d9a77a88a8b002b",
+  "draft_version": "v18",
   "requested_mode": "independent",
   "assessor_type": "self",
   "reviewer": "Codex self-review",
-  "method": "Manual review of live exact-head GitHub status checks and open state for the named parity PRs, plus R and Julia lane-preflight output for ownership boundaries; followed by closeout, after-task structure, prose lint, JSON, and diff checks.",
+  "method": "Manual review of live exact-head GitHub check results, PR file lists and patches, stored fixture provenance, and lane-preflight output; followed by closeout, after-task structure, prose lint, JSON, and diff checks.",
   "genre": "technical after-task report",
-  "coverage": "Whole report by continuity from v16; reread the 2026-11-02 12:04 UTC parity PR status section and its exact-head checks and lane census.",
+  "coverage": "Whole report by continuity from v17; reread the 2026-11-02 12:04 UTC status refresh and 12:06 UTC parity-test diff review.",
   "score": 2,
   "style_status": "scored",
   "score_reason": "The report uses exact files, SHAs, run IDs, and explicit limits. Some technical sentences are dense, but the PR status is separated into short bullets.",
   "confidence": "high",
-  "confidence_reason": "GitHub supplied exact-head check conclusions for each named PR and lane preflight reported the active ownership census. This is a status snapshot only; source-level parity, reviewer approval, and overall qualification were not assessed.",
+  "confidence_reason": "Exact PR heads, bases, check results, changed-file lists, and relevant patches were queried live from GitHub; the R and Julia lane censuses confirmed ownership boundaries. No fixture generator or model was run, so the review does not establish parity results beyond the existing stored test evidence.",
   "examples": [
     {
       "location": "Section 10, approved #1662 merge, baseline check bullet",
@@ -45,13 +45,21 @@
       "repair": "no change needed",
       "line": 160,
       "quote": "They are still unmerged test branches, not proof of overall parity or interval calibration."
+    },
+    {
+      "location": "Section 10, parity test diff review, Student/Gamma paragraph",
+      "cue": "The paragraph separates CI success from successful parity assertions and identifies the missing Gamma fixture.",
+      "impact": "It prevents a green test workflow from being read as evidence that the Student and Gamma comparisons passed.",
+      "repair": "no change needed",
+      "line": 169,
+      "quote": "Green CI therefore confirms the expected guards run, not parity for these two fits."
     }
   ],
   "evidence_none_reason": null,
   "science_gate": "not_applicable",
   "science_gate_reason": "This report records a documentation reconciliation, not a new scientific result.",
   "facts_gate": "pass",
-  "facts_gate_reason": "Exact-head checks, PR states, and current lane preflight were queried live. The report distinguishes green PR checks from merged or qualified parity and preserves owner-held boundaries. No model code, PR, CI configuration, or owner assignment was changed.",
+  "facts_gate_reason": "Live PR metadata and patches show route-specific test coverage, expected integrator differences, known broken assertions, a skipped Gamma fixture, and older source pins. The report limits claims to this evidence and states that no fits or fixture generators were run.",
   "references_gate": "pass",
   "references_gate_reason": "The linked PRs and workflow runs refer to the exact items checked during this refresh; no unsupported external scientific references were added.",
   "date": "2026-11-02",
