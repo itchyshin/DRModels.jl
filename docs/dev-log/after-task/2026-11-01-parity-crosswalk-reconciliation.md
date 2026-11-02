@@ -141,6 +141,25 @@ suite was launched here. Julia #1245 run `41370506532` was still active at
 01:52 UTC with shards 2/4 and 3/4 in progress. No crosswalk commit was pushed
 because that would cancel the in-flight run.
 
+At 02:03 UTC, #1663 advanced to `87a6ae94073e029d4900bcffb9928862d1a1dde7`
+with a change to `inst/extdata/env-skip-census.tsv`. New exact-head run
+`41375664200` started; its OS matrix passed while the source-tree job and all
+four Ubuntu release shards were still running. The commit message reports a
+Totoro R CMD check for earlier source `53504dd39` with 5 failures and 35,914
+passes, but the raw receipt was not reviewed here. That result is historical
+for the named source and does not qualify the current head. The current PR
+remains open with no assignee, submitted review, or issue comment. The previous
+head's red result remains historical for that head; the new run has no
+terminal conclusion.
+
+Run `41375664200` completed failed at 02:11 UTC on head
+`87a6ae94073e029d4900bcffb9928862d1a1dde7`. All four Ubuntu release shards
+repeated the C17 model-15 fingerprint mismatch and stopped before package
+checks. The source-tree suite also repeated the same two reader-vignette
+contract failures, with 26,508 passes, 2 failures, 14 warnings, and 6 skips.
+The OS matrix passed. The census-only commit did not resolve either issue, and
+the current exact head has no full `R CMD check` result.
+
 ## 6. Tests of the Tests
 
 No tests were added or altered in this lane. The parity ledger printed its
@@ -301,6 +320,13 @@ The source-tree run had 26,508 passes, 2 failures, 14 warnings, and 6 skips.
 The OS matrix passed. No package-check result was produced. PR #1663 remains
 open with no assignee, submitted review, or issue comment; no owner response
 or source change was made in this crosswalk lane.
+
+The new #1663 head `87a6ae94073e029d4900bcffb9928862d1a1dde7` changes only the
+environmental skip census. Exact-head run `41375664200` confirms the same four
+release-shard failures at the model-15 C17 guard and the same two source-tree
+reader-vignette failures; the OS matrix passes. No `R CMD check` result exists
+for this head. Its compatibility runner still needs the required metric
+comparison before the C17 receipt can be refreshed.
 
 ## 8. Consistency Audit
 
