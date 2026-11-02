@@ -875,3 +875,40 @@ older than current main, so that reproduction is historical. There is no
 assignee, formal review, or inline review thread. The branch is a good human
 review candidate, but exact-head checks need to be rerun or made retrievable
 before it is treated as merge-ready. No source or PR state changed.
+
+### drmTMB #1651 source-pin documentation PR review (2026-11-02 01:44 UTC)
+
+Exact head `d228429a28633b0657e569630128c66b578f255c` is an open draft over
+current main `b535bfbcce2a9039d869c2e34fe9da476394bf62`. This docs/source-pin
+change updates R documentation, NEWS, generated Rd, and a semantics test, with
+a C17 receipt/check-log recertification; it does not change likelihoods,
+defaults, or the API. The body reports four live family round-trips using
+Julia `19e5e2fe` and drmTMB `02095c67`; those are not current-main pins.
+
+A bot comment reports six passing checks in run `41135048434`, but current
+workflow lookup returns no run and the exact head has no combined status.
+There is no formal review or assignee. The prior owner handoff says to keep the
+PR draft unless Shinichi asks to mark it ready. No correctness blocker was
+found; retain the draft and require retrievable exact-head checks before
+calling it merge-ready. No PR state changed.
+
+### drmTMB #1658 stable prior-kernel PR review (2026-11-02)
+
+PR #1658 is open, non-draft, and mergeable at exact head
+`2db6b25ccc909748b56695ccf8375c838c723b59`, based on current main
+`b535bfbcce2a9039d869c2e34fe9da476394bf62`. The reviewed Beta/Gamma `mi()`
+substitutions reuse the existing stable response-density kernels with matching
+parameters. The beta-binomial rewrite uses an equivalent gamma-ratio identity.
+Tests cover high-shape references, ordinary-shape agreement, and a gradient
+check. No likelihood defect was found.
+
+Two gates remain. First, #1658 requires #1529 to merge, but #1529 is
+non-mergeable and based on older main; its Beta/Gamma prior changes overlap the
+stable-density replacements and C17 receipt entries in #1658. The owners must
+resolve the overlap on a rebased combined tree and recertify C17. Second, the
+body reports four passing Linux shards, but current workflow and commit-status
+queries return no records. The C17 receipt pins `a6131fc`, three commits before
+this PR head. Although the intervening commits do not change the receipt's
+listed source files, the combined candidate still needs fresh exact-tree CI and
+C17 verification. Do not treat #1658 as merge-ready until those gates close.
+No source or PR state changed.
