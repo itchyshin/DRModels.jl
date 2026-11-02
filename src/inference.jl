@@ -1882,6 +1882,17 @@ uses them for the seed fit and the replicates alike (DRModels.jl#1025). A joint
 `mi(x)` fit (`impute`/`missing` controls) is not bootstrapped: there is no
 `bootstrap_result` method for `JointDrmFit`, and the call raises a `MethodError`
 rather than refitting with default settings.
+
+!!! warning "Silent conditional fallback (#997)"
+    When the marginal simulator cannot be built, `bootstrap_result` draws replicates
+    from the CONDITIONAL `simulate(fit)` (random effects held at `b = 0`), which
+    collapses variance-component intervals (#459), and it does so **without a
+    warning**. Known cases, kept as `@test_broken` in
+    `test/test_marginal_simulator_fallback_997.jl`: crossed ordinary bars
+    `(1 | g1) + (1 | g2)` on the mean, a mean grouping column missing from `data`,
+    and a correlated slope `(1 + x | g)`. Only a `meta_V(...)` + random-effect fit
+    throws. Pass the same `data` (and `tree` / `K` / `A`) used to fit, and treat
+    variance-component intervals from these fits as unreliable.
 """
 function bootstrap_result(
     formula::DrmFormula,
