@@ -410,3 +410,43 @@ DRModels.jl #1249 remains open at head
 UTC was three Julia 1 shards successful and shard 3 still running, with
 Documenter passed. No new poll was needed for this update. No branch or PR
 metadata was changed, and no Totoro/DRAC compute was used.
+
+## Current-main and R-CMD-check correction, 2026-11-02 23:18 UTC
+
+Live GitHub state supersedes the R main pin in the earlier 23:12 note. drmTMB
+main advanced to `e5cd86667c97d1b34f0ead22017a675377f46930` when #1663 merged
+at 22:50:56 UTC. The latest R-CMD-check run returned by the main-branch
+workflow query is
+[40375071745](https://github.com/itchyshin/drmTMB/actions/runs/40375071745),
+created October 26 at commit
+`02095c67d7e70bbb648f45d2bbdd5aa0b1ea7be5`; its macOS release job failed,
+while the source-tree, Ubuntu, Windows, and OS-matrix jobs passed. This is not
+a check of current main. Its macOS job log now returns HTTP 410, so this
+refresh cannot attribute the failure to a particular test. No later
+R-CMD-check run appears in the 50 most recent main workflow runs. The latest
+main run is receipt-staleness run
+[41540682271](https://github.com/itchyshin/drmTMB/actions/runs/41540682271),
+queued on `e5cd866`; it is not an R-CMD-check.
+
+drmTMB #1657 remains open at head
+`21f769d0f80f4651592dac9d80d7a7ee3dc8a049`, with its five-job exact-head run
+`41522911628` green. However, its API base remains the old main
+`129c09c8c8d56fa91bb09146f02dff24e65e6e7b`. The live compare from new main
+`e5cd866` to the PR head is `diverged`, six commits ahead and 47 behind, with
+`129c09c` as merge base. GitHub reports `mergeable = false` and
+`mergeable_state = dirty`; no formal review or requested reviewer is recorded.
+Treat the green run as exact-head evidence only, not current-main validation
+or merge readiness. Leave rebasing and new CI to the owning lane.
+
+DRModels.jl #1249 remains open at head
+`e01e0fadb1ba7773a41f08d8a0802a2c0b018970` on current main
+`973bbb675dc6a10b436acf86175e089e38ec467e`. In run
+[41519305510](https://github.com/itchyshin/DRModels.jl/actions/runs/41519305510),
+shards 1, 2, and 4 passed and shard 3 remained in progress at 23:18 UTC;
+GitHub reports the PR mergeable but blocked. No formal review was recorded.
+
+Shinichi confirmed Totoro and DRAC are available again. Neither was used for
+this metadata-only refresh. Route future CPU validation to Totoro within the
+150-core cap; reserve DRAC for queued, multi-node, or larger-than-150-core
+work, with an estimate and required pre-run approval for campaigns over three
+hours.
