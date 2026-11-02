@@ -1,0 +1,1 @@
+| 2026-11-02 | **Active PR CI refresh** | Exact-head GitHub PR metadata and checks for #1249, #1657, #1659 | Updated head/base and job conclusions; kept running, cancelled, and passed checks distinct. No source or PR changes. | Codex |
