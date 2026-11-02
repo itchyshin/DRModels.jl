@@ -1,18 +1,18 @@
 {
   "assessment_performed": true,
-  "draft_sha256": "021b94e0474f1e5c6a1c0632349d91780610882d68024c44194ebee7448488ad",
-  "draft_version": "v30",
+  "draft_sha256": "9e221b9758f113da2dd1600d507487426dd4445ee91109b470087d1d7b844bb3",
+  "draft_version": "v34",
   "requested_mode": "independent",
   "assessor_type": "self",
   "reviewer": "Codex self-review",
-  "method": "Manual review of live PRs, R/Julia meta_V source and tests, completed lane/file ownership preflights, one fixed-seed R accessor fit, and current-main Julia source/tests; followed by report structure, closeout, prose, JSON, and diff checks.",
+  "method": "Manual review of live PR metadata, exact-head workflow runs and job logs, combined statuses, formal review records, live main refs, the R/Julia meta_V source and tests, exact-path ownership preflight and granted lease, one fixed-seed R accessor fit, then structure, closeout, prose, JSON, and diff checks.",
   "genre": "technical after-task report",
-  "coverage": "Whole report by continuity from v29; verified the R accessor returns tau in one current-main-source-equivalent fit and confirmed the Julia public accessor/bridge mismatch directly on cached main 47a081ba.",
+  "coverage": "Whole report by continuity from v33; retained exact #1240 and #1663 CI failure details and corrected the worktree boundary after the delayed exact-path lease claim succeeded.",
   "score": 2,
   "style_status": "scored",
   "score_reason": "The report uses exact files, SHAs, run IDs, and explicit limits. Some technical sentences are dense, but the PR status is separated into short bullets.",
   "confidence": "high",
-  "confidence_reason": "Live GitHub metadata and patches plus local worktree inventories and lane preflight were reviewed. The #1233 behavior is described from its test assertions and is not represented as a resolved model comparison.",
+  "confidence_reason": "Current GitHub PR metadata, workflow/job logs, combined statuses, review records, live git ls-remote refs, and exact-path lane preflight/lease were checked. Failure causes are stated from exact-head logs; no route parity or calibration is inferred.",
   "examples": [
     {
       "location": "Section 10, approved #1662 merge, baseline check bullet",
@@ -85,6 +85,14 @@
       "repair": "no change needed",
       "line": 193,
       "quote": "Adjacent but not route tests:"
+    },
+    {
+      "location": "Section 10, 12:39 UTC live PR and CI refresh",
+      "cue": "Exact PR heads and failure logs are recorded, and the report states why this dated update remains local rather than claiming it was pushed.",
+      "impact": "Readers can distinguish what is now merged or green from owner-held and failing work, and avoid treating passing documentation or focused assertions as broad parity evidence.",
+      "repair": "no change needed",
+      "line": 216,
+      "quote": "This refresh supersedes conflicting status statements in the 12:23 UTC snapshot where noted."
     }
   ],
   "evidence_none_reason": null,
