@@ -1051,3 +1051,39 @@ this PR head. Although the intervening commits do not change the receipt's
 listed source files, the combined candidate still needs fresh exact-tree CI and
 C17 verification. Do not treat #1658 as merge-ready until those gates close.
 No source or PR state changed.
+
+### Exact-head parity cleanup refresh (2026-11-02)
+
+DRModels.jl #1245 remains open at exact head
+`7f6e335fd46c479b874d10525ad4cf3d74b59948`, based on
+`1d6ef3fe53a64ca680c034f3d297709b36cf1729`. Run `41384356534` passed all four
+Julia shards, `ci-ok`, the documentation build, and the PR documentation
+preview. The scaling sweep was skipped; stable documentation deployment was
+also skipped. The preview is available at
+<https://itchyshin.github.io/DRModels.jl/previews/PR1245/>. The PR has no
+submitted review and has not been merged.
+
+drmTMB #1662 remains open at exact head
+`01a2c2a49a1450cc79e9d35a138028ec1a27c720`, based on
+`b535bfbcce2a9039d869c2e34fe9da476394bf62`. Run `41350326046` passed all four
+Ubuntu release shards, the OS matrix, and the source-tree test job. The PR has
+no submitted review or inline thread. These checks support this test-only
+change at its exact head; they do not establish a full macOS R CMD check.
+
+drmTMB #1663 remains open at exact head
+`3cfc6c2eb743c2f86f0bdedcb706274952563b57`, based on the same drmTMB main.
+Run `41395513326` failed in all four Ubuntu release shards and the source-tree
+test job; the OS matrix passed. The release shards stopped before R CMD check
+because model-15 fingerprint `4b0b3af78d4e0d7d4b63f3cb7fd0b216c0817b904bbe35aae133ba1e06b70a53`
+differs from current fingerprint
+`a316f14ef0d476e07be3359c3731bfb3ab7c7c5b5de1688ffb398d729b710955`. The
+guard directs the lane owner to run
+`R_PROFILE_USER=/dev/null Rscript --no-init-file tools/run-lane-c-c17c1-c14-model15-compatibility.R`,
+compare `mean_tau_relative_error` with the prior receipt, and refresh the
+receipt only if the result is unchanged. Separately,
+`test-reader-vignette-contracts.R` failed two assertions: the expected reader
+manifest omits the live `predictor-dependent-random-sd.Rmd`, and the contract
+linter returns two findings. The file-level lane preflight identifies three
+other refs with work on that test; this refresh makes no ownership claim and
+does not change it. The PR has no submitted review or issue comment. No current
+head R CMD check has run.
