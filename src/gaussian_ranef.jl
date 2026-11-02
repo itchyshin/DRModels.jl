@@ -673,14 +673,26 @@ function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ,
     H = ForwardDiff.hessian(nll, θ̂)
     # #1114 (#968 convention): sigma running off to 0 overflows the Hessian; withhold
     # the vcov and report converged = false instead of the LAPACK ArgumentError.
+    scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))   # residual σ (RE excluded)
     V, hess_finite = _vcov_from_hessian_checked(H, _all_finite(y, Xμ, Xσ, w);
                                                 context = "Gaussian (1 | g) location-scale")
+    # #1114: whether a collapsing residual sigma overflows the Hessian is a floating-point
+    # accident (it differs by Julia version and BLAS), so the collapse is also detected on
+    # the fitted scales and handled the same way: warn, withhold the vcov, converged = false.
+    # Unit-free: some residual SD below 1e-8 of the response SD is a collapse, not a fit.
+    # (Deliberately NOT `_scale_runoff`: its 10^4-fold spread rule also fires on the
+    # legitimate wide-spread `sigma ~ x` panel in test_ranef_varying_scale_convergence.jl.)
+    if hess_finite && _all_finite(y, Xμ, Xσ, w) && minimum(scales[:sigma]) < 1e-8 * std(y)
+        @warn "The fitted residual scale has collapsed towards 0 for some observations (e.g. " *
+              "all-singleton groups with `sigma ~ z`). Wald standard errors are withheld and " *
+              "the fit is reported as not converged." context = "Gaussian (1 | g) location-scale"
+        V = fill(NaN, size(H)); hess_finite = false
+    end
 
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :resd => (pμ+pσ+1):(pμ+pσ+1)]
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
     means = Dict(:mu => Xμ * θ̂[1:pμ])
     obs = Dict(:mu => Vector{Float64}(y))
-    scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))   # residual σ (RE excluded)
     # Conditional RE estimates (BLUPs): b̂_k = C_k / M_k, the per-group posterior
     # mean of the random intercept at θ̂. M_k = 1/σ_b² + Σ w_i²/D_i, C_k = Σ w_i r_i/D_i.
     blup = let
