@@ -1,0 +1,1 @@
+| 2026-11-02 | DRAC R CMD-check readiness preflight | Rorqual R 4.6.1, package library inventory, exact-head PR jobs #1249/#1500 | Imports/LinkingTo dependencies absent; no check submitted; refreshed CI evidence only | Codex |

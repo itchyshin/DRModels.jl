@@ -520,3 +520,41 @@ the stored numerical comparisons by itself.
 This was a read-only diff review. No tests were rerun, no public review or
 comment was submitted, and no source or PR metadata was changed. The current
 owner of the PR branch remains unconfirmed.
+
+## Compute and active-check refresh, 2026-11-02 23:48 UTC
+
+The Rorqual SSH ControlMaster is reachable and the user's Slurm queue is empty.
+This establishes DRAC access, not a ready R check environment. Totoro is also
+reachable, but its measured load average was about 303 across 384 cores, so no
+work was sent there.
+
+On Rorqual, R 4.6.1 loaded with the existing read-only library
+`/home/snakagaw/R/g4g5-lib` and the system site library. The library exposes 30
+installed packages. It is missing three of eight `Imports` packages
+(`cli`, `lifecycle`, and `TMB`) and both `LinkingTo` packages (`TMB` and
+`RcppEigen`); 27 of 29 `Suggests` packages are also missing. `pak` is not
+installed. The installed drmTMB tree was not changed. No R CMD check or Slurm
+job was started. A full check therefore needs a separately staged library;
+its installation time and package-build feasibility have not yet been
+measured.
+
+The exact-head state was refreshed at 23:47 UTC. DRModels.jl #1249 remains at
+head `e01e0fadb1ba7773a41f08d8a0802a2c0b018970` on current main. Julia 1
+shards 1, 2, and 4 passed, while shard 3 remains in progress in run
+[41519305510](https://github.com/itchyshin/DRModels.jl/actions/runs/41519305510).
+The run has not updated since 21:30 UTC, and its active log endpoint returned
+404. No formal review is recorded. Do not call the run failed or restart it
+based only on missing logs.
+
+drmTMB #1500 remains an open draft at head
+`7630b6a4653d4ee7ffbd69ee5e6be87d330d8890` on current main. In run
+[41542189558](https://github.com/itchyshin/drmTMB/actions/runs/41542189558),
+the source-tree and OS-matrix jobs passed and all four Ubuntu release shards
+remain in progress. The run was updated at 23:23 UTC. No formal review is
+recorded. The PR and its branch were not changed.
+
+This refresh is environment and CI evidence only. It does not validate model
+parity, resolve package-check failures, establish PR ownership, or authorize
+an install, merge, release, or deployment. The next useful step is a bounded
+preflight for an isolated R package library on `/project`, followed by an
+installation-time estimate before any full check is submitted.
