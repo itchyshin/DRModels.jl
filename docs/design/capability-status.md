@@ -846,6 +846,10 @@ it is a proposed next gate, not work run or approved in this reconciliation.
 
 ### Live crosswalk refresh (2026-11-02)
 
+The PR and CI rows below are dated evidence snapshots, not live status. The
+canonical rolling status and owner-safe next steps are in the
+[parity PR review crosswalk](../dev-log/evidence/2026-11-02-pr-review-crosswalk/README.md).
+
 The reviewed cached main pair is drmTMB `129c09c8c8d56fa91bb09146f02dff24e65e6e7b`
 and DRModels.jl `973bbb675dc6a10b436acf86175e089e38ec467e`. Targeted diffs
 show that the R files backing the route table (`R/methods.R`, `R/family.R`,

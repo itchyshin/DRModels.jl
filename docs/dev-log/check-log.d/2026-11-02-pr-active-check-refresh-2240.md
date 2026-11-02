@@ -1,0 +1,1 @@
+| 2026-11-02 | **Parity PR check refresh and crosswalk link** | GitHub exact-head metadata/checks; `git diff --check`; after-task and prose checks | Refreshed #1249, #1657, #1659, and #1664; no package tests or compute run | Codex |

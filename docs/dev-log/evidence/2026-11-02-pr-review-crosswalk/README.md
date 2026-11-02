@@ -115,3 +115,49 @@ Refreshed PR metadata and exact-head diagnostics after the prior five-minute bac
 - drmTMB #1659 remains at head `e2d617b54b9a94b8b8e2758db9a6c80fa4bcab87`, based on stale main `71ceee671aac0e4c8bedf265b3b735b1ad633390`. Ubuntu and macOS passed; Windows remains cancelled in run `41512891602`.
 
 The refresh changes no owner or source attribution. #1249 and #1657 still have live runners, while #1659 needs an owner-led base refresh and successful Windows job. The current evidence does not support merging any of these PRs.
+
+## Active PR check refresh, 2026-11-02 22:40 UTC
+
+Refreshed PR metadata and exact-head check runs from GitHub. The head SHAs and
+bases are unchanged from the preceding snapshots.
+
+- DRModels.jl [#1249](https://github.com/itchyshin/DRModels.jl/pull/1249)
+  remains at head `e01e0fadb1ba7773a41f08d8a0802a2c0b018970` on current main
+  `973bbb675dc6a10b436acf86175e089e38ec467e`. In run
+  [41519305510](https://github.com/itchyshin/DRModels.jl/actions/runs/41519305510),
+  Julia 1 shards 1, 2, and 4 passed; shard 3 is still running. Docs and preview
+  passed in run 41519305443; scaling and stable docs deployment were skipped.
+  No formal review or review thread is recorded. Wait for shard 3, then
+  classify the full exact-head result.
+- drmTMB [#1657](https://github.com/itchyshin/drmTMB/pull/1657) remains at
+  head `21f769d0f80f4651592dac9d80d7a7ee3dc8a049` on current main
+  `129c09c8c8d56fa91bb09146f02dff24e65e6e7b`. In current run
+  [41522911628](https://github.com/itchyshin/drmTMB/actions/runs/41522911628),
+  source-tree and OS-matrix checks passed; Windows, macOS, and Ubuntu release
+  jobs remain in progress. All four Ubuntu shards passed on the same head in
+  run 41518765724. No formal review or review thread is recorded. Wait for the
+  current platform jobs before reviewing the exact-head check set.
+- drmTMB [#1659](https://github.com/itchyshin/drmTMB/pull/1659) remains at
+  head `e2d617b54b9a94b8b8e2758db9a6c80fa4bcab87` on stale base
+  `71ceee671aac0e4c8bedf265b3b735b1ad633390`. Its latest run
+  [41512891602](https://github.com/itchyshin/drmTMB/actions/runs/41512891602)
+  has successful Ubuntu, macOS, OS-matrix, and source-tree checks, but the
+  Windows release job is cancelled. The successful inner package-check step
+  documented above does not change the parent job's cancelled result. No
+  formal review or review thread is recorded. A base refresh and successful
+  Windows job remain owner actions.
+- drmTMB [#1664](https://github.com/itchyshin/drmTMB/pull/1664) is at head
+  `015c0e1fac9cad68e82f2711eeebad4b1b6fcd69` on current main
+  `129c09c8c8d56fa91bb09146f02dff24e65e6e7b`. Its four Ubuntu shards,
+  OS-matrix, and source-tree checks passed in run
+  [41513019278](https://github.com/itchyshin/drmTMB/actions/runs/41513019278).
+  GitHub reports it open and mergeable; no formal review or review thread is
+  recorded. The read-only code review found no blocker, so it is ready for
+  maintainer review, not merged.
+
+DRModels.jl #1240 remains open and draft at head
+`03b93e680266369dff10e63eb4c846826a102ec4` on stale base
+`64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716`. The provenance failure still
+precedes the new parity test, so that exact-head CI supplies no numerical
+parity result. No PR was changed, reviewed on GitHub, or merged during this
+refresh. No compute was needed for this metadata work.
