@@ -3270,7 +3270,9 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing,
     allow_gamma_animal_slope = fit.family isa Gamma &&
         !isempty(_sd_target_parts(fit.formula))
     allow_gamma_animal_intercept_slope = allow_gamma_animal_slope
-    allow_poisson_animal_slope = fit.family isa Poisson
+    allow_poisson_animal_slope = fit.family isa Poisson ||
+        (fit.family isa NegBinomial2 &&
+         any(item -> item.target.level === :animal, _sd_target_parts(fit.formula)))
     _, re, metav_ms, structured, structured_slope, _, animal_slope =
         _split_ranef(rhs[:mu]; allow_phylo_slope = true,
                      allow_phylo_slope_only = allow_binomial_phylo_slope_only,
@@ -3320,6 +3322,24 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing,
             structured, phylo_slope = structured_slope, animal_slope,
             spatial_slope = structured !== nothing && first(structured) === :spatial ? animal_slope : nothing,
             K, A, Ainv, tree, coords)
+    end
+    # NB2 animal slope-only SD (`animal(0 + x | g)`): the family-generic structured
+    # simulator draws u = sd_group .* (chol(A).L * z) on the RAW A (as the NB2 fit
+    # uses), then eta = eta_fixed + x * u[g], y ~ NB2(exp(eta), sigma).
+    if fit.family isa NegBinomial2 && animal_slope !== nothing &&
+       structured !== nothing && first(structured) === :animal &&
+       any(item -> item.target.level === :animal, _sd_target_parts(fit.formula))
+        matrix = if Ainv !== nothing
+            A === nothing || throw(ArgumentError(
+                "bootstrap: supply only one of `A` and `Ainv` for NB2 animal simulation"))
+            group = last(structured)
+            Q, _ = _nb2_animal_precision_setup(Ainv, _table_column(data, group), group)
+            Matrix(inv(Symmetric(Matrix(Q))))
+        else
+            A
+        end
+        return _poisson_structured_sd_marginal_simulator(
+            fit, data, matrix; provider = :animal, animal_slope)
     end
     if fit.family isa NegBinomial2 && Ainv !== nothing &&
        any(item -> item.target.level === :animal, _sd_target_parts(fit.formula))
