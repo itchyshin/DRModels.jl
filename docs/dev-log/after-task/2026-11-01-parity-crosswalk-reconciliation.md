@@ -816,3 +816,17 @@ For drmTMB #1659, the live PR still points to `1539b2b52df017aec9159e4d6ce288626
 The latest check of #1245 at 01:35 UTC still showed all four Julia shards running at unchanged head `b1abfab8b9f2d6e483051edf7ac772090c067be7`. The local branch now has seven committed crosswalk updates ahead of that remote head; `git diff --name-only b1abfab8b9f2d6e483051edf7ac772090c067be7..HEAD` contains only this report and its paired check-log file, and the diff passes `git diff --check`.
 
 The handoff gate at 01:37 UTC did not pass: this Julia worktree has 70 uncommitted paths, seven local commits ahead on the current branch, and 197 unpushed commits on other branches. The remaining dirty paths and branches belong to concurrent or unverified lanes and are protected. No unrelated files were staged or changed. Carry this branch forward; after run `41370506532` reaches a terminal result, recheck PR #1245's head, push only the seven crosswalk commits if the head is unchanged, and verify checks on the resulting head. Do not merge or publish.
+
+### Previously authorized PR merge verification (2026-11-02 01:39 UTC)
+
+The live GitHub API confirms drmTMB #1600 is closed and merged at
+`88e4c7c1b8812e1bec10e191b1b81b89d9bd6bfa` from exact head
+`80c8cad31ca178ac2b9103b830d3265f7d976f64`. DRModels.jl #1167 is closed and
+merged at `6b39b8cf20efba09987a6fa68667160a04ba8f00` from exact head
+`ee16f8f4ad1b26edfb46ce9b486cc57112aec7ba`. Both merge commits are ancestors
+of the current main refs, drmTMB `b535bfbcce2a9039d869c2e34fe9da476394bf62`
+and DRModels.jl `1d6ef3fe53a64ca680c034f3d297709b36cf1729`. Their historical
+run records show successful required package test shards; #1167's docs preview
+was cancelled and deployment skipped. This confirms the prior merges and main
+lineage, not live documentation deployment or broader calibration. No PR was
+changed in this verification.
