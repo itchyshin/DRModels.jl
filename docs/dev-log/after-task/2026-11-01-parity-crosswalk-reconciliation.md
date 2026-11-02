@@ -841,3 +841,37 @@ uses a concurrency group based on workflow and branch, with
 active run and start checks on the new head. Keep the local crosswalk commits
 unpushed until this run is terminal; then verify the PR head, push the scoped
 branch, and wait for checks on that new head.
+
+### drmTMB #1656 process-log PR review (2026-11-02 01:42 UTC)
+
+Exact head `2e9556282c914d37fce3196cce7da62b07e2dabe` is open, non-draft, and
+mergeable over current main `b535bfbcce2a9039d869c2e34fe9da476394bf62`. The
+diff freezes historical `check-log.md`, directs new entries to
+`check-log.d/`, and adds a five-assertion process-contract test with census
+updates. It does not change model likelihoods or defaults. A Cursor bot comment
+reports six successful checks in run `41144231647`, but current run lookup
+returns 404 and the commit has no retrievable check runs or statuses. Treat
+that pass as historical reported evidence. No submitted review, open review
+thread, or assignee is present; the bot's request for merge approval is not
+human review. This bounded PR is not yet merge-ready: it needs retrievable
+exact-head checks and owner or human review. No PR state was changed.
+
+### drmTMB #1657 bridge-order PR review (2026-11-02 01:42 UTC)
+
+Exact head `6d21c804afa392d0b77c370631daecdc220b5f98` is open, non-draft, and
+mergeable over current main `b535bfbcce2a9039d869c2e34fe9da476394bf62`. Its
+changes preserve row names for labelled Julia spatial coordinates and add an
+offline permuted-payload test plus a live TMB-versus-Julia relmat K-order
+check. They do not change the likelihood or model defaults. The final commit
+adds the row-order assertion requested in a maintainer issue comment. No P0/P1
+correctness issue was found; the offline fixture's unseeded `rnorm(4)` is a
+minor clarity issue because the generated values do not affect the payload
+oracle.
+
+The PR body cites CI run `41235399713`, but the run lookup returns 404; current
+commit workflow and status queries return no checks for the final head. The
+issue reproduction cites DRModels.jl `64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716`,
+older than current main, so that reproduction is historical. There is no
+assignee, formal review, or inline review thread. The branch is a good human
+review candidate, but exact-head checks need to be rerun or made retrievable
+before it is treated as merge-ready. No source or PR state changed.
