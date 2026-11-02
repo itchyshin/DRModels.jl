@@ -22,7 +22,7 @@ Assumption made without asking: current `origin/main` is the comparison target f
 
 ## 5. Checks Run
 
-`python3 tools/check_capability_citations.py` passed: 3 citations verified and 17 skipped as not precisely resolvable. `git diff --check` and the after-task structure check passed. A status-table count that handles escaped pipes confirmed 51 rows: 45 implemented, 2 rejected, 1 planned, 2 experimental, and 1 missing. Exact-draft assessment checks recorded both prose reviews; `slop_check.py` returned zero findings for each edited prose file. No Julia tests or Documenter build were run because this slice changes only design documentation.
+`python3 tools/check_capability_citations.py` passed: 3 citations verified and 17 skipped as not precisely resolvable. `git diff --check` and the after-task structure check passed. A status-table count that handles escaped pipes confirmed 51 rows: 45 implemented, 2 rejected, 1 planned, 2 experimental, and 1 missing. Exact-draft assessment checks recorded both prose reviews; `slop_check.py` returned zero findings for each edited prose file. A later fresh run of `Rscript -e 'devtools::test(filter = "phylo-temporal-ou-methods", reporter = "summary")'` passed on the exact drmTMB #1662 head under R 4.6.0 on macOS arm64. No Julia tests or Documenter build were run on this documentation candidate.
 
 ## 6. Tests of the Tests
 
@@ -89,9 +89,16 @@ A read-only inventory matched current open drmTMB PR branches against registered
 
 A read-only inventory counted 87 registered DRModels.jl worktrees: 75 readable and 12 missing or prunable. Among readable entries, 52 are dirty, 48 have no upstream, and 8 are ahead and 8 behind an upstream (4 are both). Lane preflight reports 33 live lanes. These counts include historical work and do not identify abandoned ownership. No worktree was pruned.
 
-- Current open PRs with exact-head registered worktrees are #1245 (dirty) and #1215 (clean, owned documentation work). #1091 has a matching local branch but no worktree. #1210 and #1074 have stale local worktrees relative to their PR heads. The other recent parity PR heads have no registered worktree at their exact head.
+- Current open PRs with exact-head registered worktrees are #1245 (dirty) and #1215 (clean draft, owned documentation work). #1091 has a matching local branch but no worktree. #1210 and #1074 have stale local worktrees relative to their PR heads. The other recent parity PR heads have no registered worktree at their exact head.
 - Other dirty work that must remain with its owners includes `known-covariance-parity` (10 tracked changes, 386 untracked files), `parity-provenance-docs` (19, 554), `drm-finish-crosswalk` (31 untracked files), and the nested `general-sd-julia` lane (12, 312). `sd-truncated-poisson-drmodels` has 3 tracked and 4 untracked changes and is 299 commits behind its upstream.
-- This cleanup branch is clean at `695bcc73a90c12bdc141eb3a3c6720027d909c52`, matches its remote at 0/0, and has no PR. It is the only clean contribution from this cleanup lane. The worktree audit found no clearly owner-free implementation slice; leave other lanes untouched until their owners release them.
+- Before this refresh, the cleanup branch was clean at `94ba35e84a6c11829583904dc9b4ad0916d45ea5`, matched its remote at 0/0, and had no PR. The worktree audit found no clearly owner-free implementation slice; leave other lanes untouched until their owners release them.
+
+### Cross-repository cleanup refresh at 2026-11-02 10:00 UTC
+
+- **drmTMB #1662** remains open at `01a2c2a49a1450cc79e9d35a138028ec1a27c720`. Exact-head R-CMD-check run `41350326046` has six successful jobs. A fresh local run of `Rscript -e 'devtools::test(filter = "phylo-temporal-ou-methods", reporter = "summary")'` passed on R 4.6.0, macOS arm64, from the exact PR worktree. GitHub reports the PR mergeable and no formal review; no merge was made. The local test run did not exercise the live Julia bridge, and the hosted checks are not a full macOS R CMD check.
+- **DRModels.jl #1245** remains open at `0dde1f977f6c70495230b705a7d0f13daf74dfde`. At 10:00 UTC, Julia shard 2 was still running; shards 1, 3, and 4 and the changes job had passed, scaling was skipped, and Documenter run `41406599136` had passed. Its registered worktree is still dirty, and the shared capability page remains untouched.
+- **DRModels.jl #1215** is still a draft at `abda662cce362dc6108349dda96ba40ed2844142`. Its exact-head Julia test shards, `ci-ok`, docs preview, and Documenter checks passed; scaling and deployment were skipped. Keep it with its documentation lane until that owner marks it ready.
+- The refresh found no new owner-free implementation slice. The crosswalk branch remains separate from #1245; no PR, source file, or other lane was changed.
 
 ## 11. Team Learning
 

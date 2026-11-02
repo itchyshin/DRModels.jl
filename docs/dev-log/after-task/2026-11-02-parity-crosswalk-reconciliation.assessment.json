@@ -1,18 +1,18 @@
 {
   "assessment_performed": true,
-  "draft_sha256": "6492845b012d067ef28dce8e4fa1495e2501d0b9180dc69818c770744bcd2361",
-  "draft_version": "v4",
+  "draft_sha256": "66e7ed2c78c76510f13ab84728e374467f83cb13c20f3a72a43f1ee7b5b8a1ff",
+  "draft_version": "v6",
   "requested_mode": "independent",
   "assessor_type": "self",
   "reviewer": "Codex self-review",
-  "method": "Manual review under writing-naturalness.md, checked against live GitHub PR metadata and job logs, bounded read-only worktree inventories, and the local branch state, then absolute-path slop_check.py and check-after-task.R.",
+  "method": "Manual review under writing-naturalness.md, checked against live GitHub PR metadata and job records, bounded read-only worktree inventories, the fresh R focused-test output, and the local branch state; followed by exact-draft assessment-check, slop_check.py, and check-after-task.R.",
   "genre": "technical after-task report",
-  "coverage": "Whole report, sections 1 through 12, including the live PR and CI refreshes and R and Julia worktree inventories through 2026-11-02 09:46 UTC.",
+  "coverage": "Whole report, sections 1 through 12, including the live PR and CI refreshes and R and Julia worktree inventories through 2026-11-02 10:00 UTC.",
   "score": 2,
   "style_status": "scored",
   "score_reason": "The report uses exact files, SHAs, run IDs, and explicit limits. Some technical sentences are dense, but the PR status is separated into short bullets.",
   "confidence": "medium",
-  "confidence_reason": "PR heads, review states, workflow jobs, failure excerpts, and worktree counts were checked against live connector records and bounded read-only inventories. The R scan covered open-PR branches; the Julia scan covered registered worktrees but included unreadable entries. Julia shard 2 remains in progress at the stated observation time. The style judgment is a self-review and is not calibrated.",
+  "confidence_reason": "PR heads, review states, workflow jobs, the focused local R test, and bounded worktree counts were checked against live connector records and local command output. The R scan covered open-PR branches; the Julia scan covered registered worktrees but included unreadable entries. Julia shard 2 remained in progress at 10:00 UTC. The style judgment is a self-review and is not calibrated.",
   "examples": [
     {
       "location": "Known Residuals, first paragraph",
@@ -45,13 +45,21 @@
       "repair": "no change needed",
       "line": 90,
       "quote": "No worktree was pruned."
+    },
+    {
+      "location": "Known Residuals, cross-repository cleanup refresh, #1662 bullet",
+      "cue": "The sentence records the exact local test result and limits what it establishes.",
+      "impact": "Readers can distinguish a Mac focused-test pass from full Mac CMD-check or live bridge evidence.",
+      "repair": "no change needed",
+      "line": 98,
+      "quote": "A fresh local run of `Rscript -e 'devtools::test(filter = \"phylo-temporal-ou-methods\", reporter = \"summary\")'` passed on R 4.6.0, macOS arm64, from the exact PR worktree."
     }
   ],
   "evidence_none_reason": null,
   "science_gate": "not_applicable",
   "science_gate_reason": "This report records a documentation reconciliation, not a new scientific result.",
   "facts_gate": "pass",
-  "facts_gate_reason": "The PR heads, review states, workflow-job states, failure excerpts, and bounded R and Julia worktree counts were compared with live connector and local inventory results at the stated UTC time.",
+  "facts_gate_reason": "The PR heads, review states, workflow-job states, focused local R test, failure excerpts, and bounded R and Julia worktree counts were compared with live connector and local command results at the stated UTC time.",
   "references_gate": "pass",
   "references_gate_reason": "Local source/test files and cited PR/workflow records were checked; unresolved historical capability citations are stated as a residual.",
   "date": "2026-11-02",
