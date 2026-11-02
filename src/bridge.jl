@@ -2073,13 +2073,16 @@ function _bridge_rendered_regression_blocks(fit, labels::_BridgeFormulaLabels)
             (fit.family isa Gamma || binomial_animal_q2)
         binomial_phylo_sd_slope_only = fit.family isa Binomial &&
             !isempty(_sdphylo_parts(fit.formula))
-        binomial_relmat_sd_slope_only = fit.family isa Union{Binomial,Poisson} &&
+        binomial_relmat_sd_slope_only = fit.family isa Union{Binomial,Poisson,Gaussian} &&
             any(item.target.level === :relmat for item in sd_targets_here)
+        gaussian_spatial_sd_slope_only = fit.family isa Gaussian &&
+            any(item.target.level === :spatial for item in sd_targets_here)
         rendered = _bridge_render_formula_block(
             form, param, rhs, labels; allow_animal_slope = animal_sd_slope,
             allow_animal_intercept_slope = animal_sd_intercept_slope,
             allow_phylo_slope_only = binomial_phylo_sd_slope_only,
-            allow_relmat_slope = binomial_relmat_sd_slope_only
+            allow_relmat_slope = binomial_relmat_sd_slope_only,
+            allow_spatial_slope = gaussian_spatial_sd_slope_only
         )
         rendered === nothing && continue
         raw, public = rendered
@@ -2292,7 +2295,8 @@ function _bridge_render_formula_block(form, param::Symbol, rhs,
         allow_animal_slope::Bool = false,
         allow_animal_intercept_slope::Bool = false,
         allow_phylo_slope_only::Bool = false,
-        allow_relmat_slope::Bool = false)
+        allow_relmat_slope::Bool = false,
+        allow_spatial_slope::Bool = false)
     response = if form isa DrmFormula
         form.response
     elseif form isa BivariateDrmFormula
@@ -2308,7 +2312,8 @@ function _bridge_render_formula_block(form, param::Symbol, rhs,
                            allow_animal_intercept_slope =
                                allow_animal_intercept_slope,
                            allow_phylo_slope_only = allow_phylo_slope_only,
-                           allow_relmat_slope = allow_relmat_slope))
+                           allow_relmat_slope = allow_relmat_slope,
+                           allow_spatial_slope = allow_spatial_slope))
     catch
         rhs
     end
