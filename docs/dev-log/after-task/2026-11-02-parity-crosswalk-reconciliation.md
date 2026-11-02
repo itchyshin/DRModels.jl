@@ -271,6 +271,18 @@ Live GitHub PR searches returned 34 open drmTMB PRs and 29 open DRModels.jl PRs.
 - **Other drmTMB parity candidates:** #1659 remains at `1539b2b52df017aec9159e4d6ce288626e8f0b8b` with no recorded Actions run or formal review. Its focused pure-R stored-fixture run passed 146 expectations and skipped 7, including the live Julia bridge. #1651 remains a draft at `d228429a28633b0657e569630128c66b578f255c` without current-head checks. #1642 and #1443 are parity-adjacent drafts without current-head checks.
 - **Owner boundary:** the six reviewed DRModels.jl parity candidates still have no formal review; #1245 remains on the owner's dirty worktree and shared capability page. No reviewed parity PR has an explicit current-head owner release with all stated gates satisfied. No PR, worktree, source file, review, or PR description was changed.
 
+### Exact-head CI refresh at 2026-11-02 14:57 UTC
+
+I rechecked PR metadata, exact-head workflow runs and jobs, and formal review records. The six PRs below still have no formal review submissions.
+
+- **DRModels.jl #1245:** current head `0dde1f977f6c70495230b705a7d0f13daf74dfde` has passing Julia CI run `41406599132` (all four Julia shards and `ci-ok`) and passing Documenter run `41406599136`. This supersedes the earlier report that the branch update was not in the PR head. The page is still shared with other capability-status refs; green checks do not resolve page ownership or establish broad parity.
+- **DRModels.jl #1237:** at `503b3797acdf44dba38af1096ebce7fc338f6e9b`, CI run `41401878711` has two failing and six passing Julia 1/1.10 shards. The two failures remain outside the PR's one-file diff; no cause was attributed. Formal review is absent.
+- **DRModels.jl #1240:** at `03b93e680266369dff10e63eb4c846826a102ec4`, CI run `41248908491` fails Julia shard 2 and aggregate `ci-ok`; Documenter run `41248908497` passes. The failure is the missing `drmtmb_code_hash` fixture provenance field; 17/17 focused Gaussian location-scale assertions pass on another shard. Formal review is absent.
+- **drmTMB #1663:** the PR head advanced from `be4acebae910ed17025658891468f28b52b01c54` to `991aa6ab258794bf9000118c041d6f504f0f894a`. The earlier run `41465554896` was cancelled. A new exact-head run `41466710037` was queued at refresh time; its result is not yet known. Formal review is absent, and the PR body continues to exclude Julia parity and calibrated intervals.
+- **drmTMB #1657 and #1659:** exact-head workflow lookup returned no PR-triggered runs for `6d21c804afa392d0b77c370631daecdc220b5f98` and `1539b2b52df017aec9159e4d6ce288626e8f0b8b`, respectively. The prior bounded local results remain limited to the offline #1657 test (live Julia skipped) and #1659 stored fixtures (live bridge skipped). Formal reviews are absent.
+
+No PR metadata, owner branch, review, or source file was changed. Before this report refresh, the crosswalk branch had no local changes; exact-head preflight found no other ref carrying changes to the report, assessment, or check-log shard. The Julia capability page itself remains under overlapping edits and is not changed by this refresh.
+
 The current PR and lane inventories confirm that cleanup and broad parity remain separate tasks. The stored-fit comparisons do not establish current-source route parity, parameter recovery, or interval calibration. The CJS package split and its deferred interval-calibration work remain outside this DRM-core inventory.
 
 ## 11. Team Learning
