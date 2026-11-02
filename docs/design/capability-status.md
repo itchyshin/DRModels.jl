@@ -318,6 +318,21 @@ The maintainer-selected contract for both packages is `sigma(fit) = τ` on
 below, but not with DRModels.jl exact main; candidate behavior is not yet a
 merged parity claim.
 
+Exact-main recheck on 2026-11-02 confirms this gap persists at drmTMB
+`129c09c8c8d56fa91bb09146f02dff24e65e6e7b` and DRModels.jl
+`973bbb675dc6a10b436acf86175e089e38ec467e`. R's current `sigma.drmTMB`
+documentation defines the `meta_V` value as residual heterogeneity, and the
+method delegates to the `sigma` distributional predictor
+(`R/methods.R:4317-4350`). Julia's current likelihood stores
+`sqrt(v + tau^2)` in `fit.scales[:sigma]` (`src/gaussian_meta.jl`), and the
+public accessor returns that vector unchanged (`src/gaussian_core.jl:2143-2159`).
+The Julia meta-analysis guide says the accessor is `tau`
+(`docs/src/model-guides/meta-analysis.md:36`), so that sentence does not match
+current main. `test/test_meta.jl:17-21` checks recovery of the sigma coefficient,
+not `sigma(fit)`. This source review confirms a documentation and accessor
+parity gap; it does not rerun the retained dirty-candidate tests or authorize
+editing the overlapping Julia source.
+
 The dirty candidate in this worktree retains `tau` separately as
 `fit.scales[:meta_tau]`, reports it from `sigma(fit)` and bridge output, and
 keeps `sqrt(v + tau^2)` internally for simulation. Its retained Oct. 28
@@ -527,10 +542,11 @@ and loaded-package dispatch is verified.
 
 ## Open cross-language parity PR evidence (reviewed 2026-11-01)
 
-Current main remains DRModels.jl `64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716`
-and drmTMB `b535bfbcce2a9039d869c2e34fe9da476394bf62`. The following open
-PRs add candidate parity evidence; none changes the main-source status above
-until it is merged and the resulting source is checked. GitHub showed no
+At this 2026-11-01 review, cached main was DRModels.jl
+`64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716` and drmTMB
+`b535bfbcce2a9039d869c2e34fe9da476394bf62`. The following open PRs add
+candidate parity evidence; none changes the main-source status above until it
+is merged and the resulting source is checked. GitHub showed no
 assignees, review decisions, or review comments on these PRs at this review.
 The later lane-comment refresh below is separate from submitted reviews and
 inline review threads.
@@ -827,3 +843,186 @@ it is a proposed next gate, not work run or approved in this reconciliation.
   q=4 REML, and chi-bar-square boundary inference, matching the source-backed
   statuses above. It summarizes tested support; it does not replace the
   route-specific limits in this ledger.
+
+### Live crosswalk refresh (2026-11-02)
+
+The reviewed cached main pair is drmTMB `129c09c8c8d56fa91bb09146f02dff24e65e6e7b`
+and DRModels.jl `973bbb675dc6a10b436acf86175e089e38ec467e`. Targeted diffs
+show that the R files backing the route table (`R/methods.R`, `R/family.R`,
+`R/drmTMB.R`, and `inst/extdata/julia-capabilities.tsv`) are unchanged since
+the previous R pin. Between Julia `87a8ed4e` and this main pin, model source is
+unchanged; the only relevant tree change is `test/test_summary_zp_suppress.jl`.
+This supports carrying forward the route inventory as a source review, not as
+a full end-to-end parity run. A bounded live bridge smoke was run on Totoro
+against this exact source pair: drmTMB `129c09c8c8d56fa91bb09146f02dff24e65e6e7b`
+and DRModels.jl `973bbb675dc6a10b436acf86175e089e38ec467e`. The filtered R
+`julia-structured` tests completed with no failures and report one live Julia
+bridge test; seven matrix-order warnings were emitted for unlabelled
+`relmat()` or `animal()` inputs. Runtime was R 4.6.1, Julia 1.12.6,
+JuliaCall 0.17.6, with one thread and Julia's bundled `libunwind` preloaded;
+`JULIA_PROJECT` was unset for the R process. The archived source bundles and
+full log are under `~/sim-archive/drm-parity/crosswalk-smoke-2026-11-02-2036/`
+on Totoro. The R source archive SHA-256 is
+`49ff87ce28da6cc96b4f302b4df19f952aa9cde2daf234fb570258f33cc26f00`; the
+Julia source archive SHA-256 is
+`48565e446632a6086182f08770827ea5e980839d42ccdb92f64385b16d9aa86d`; and
+`logs/run-v4.log` SHA-256 is
+`c663d0169d581c2aa761dadfe93704a5c6e52ab5fd1f8dbe33cb04ae79af4f98`.
+This verifies Julia startup and one route. It does not compare numerical outputs,
+qualify other model routes, or establish parameter recovery or interval
+calibration. Earlier setup attempts without the host workaround are retained
+separately in the same log directory; they ended before a model test ran.
+
+R [PR #1666](https://github.com/itchyshin/drmTMB/pull/1666) is merged at the
+current R pin; its exact-head source-tree, platform-matrix, and four Ubuntu
+checks passed. Julia [PR #1245](https://github.com/itchyshin/DRModels.jl/pull/1245)
+is merged at the current Julia pin; its four Julia shards, aggregate `ci-ok`,
+[documentation build](https://github.com/itchyshin/DRModels.jl/actions/runs/41406599132),
+and [preview](https://github.com/itchyshin/DRModels.jl/actions/runs/41406599136)
+passed. Stable documentation deployment and the scaling run were skipped.
+Current PR metadata identifies head `0dde1f977f6c70495230b705a7d0f13daf74dfde`
+as merged at `973bbb675`; its description incorrectly says that this head was
+outside the PR and untested. That description is an earlier snapshot and no
+longer matches the live metadata and checks.
+
+The following parity candidates remain open at the reviewed heads:
+
+| Candidate | Current observed state | Evidence boundary |
+|---|---|---|
+| drmTMB [#1663](https://github.com/itchyshin/drmTMB/pull/1663), seven-family SD predictors | Current head `83bfcf3c369eace9cf8d1363440f9e11953c758f`; no checks or statuses are recorded for this exact head. No formal review; GitHub reports the PR is not mergeable. | Its base remains `b535bfbc`, behind current drmTMB main `129c09c8`; its 3,825-file diff reflects a large main merge and is not a reviewable SD-only patch. The owner worktree is extremely dirty; preserve it and resolve source ownership before any cleanup. The PR body limits the claim to native TMB, says intervals are uncalibrated, and does not claim Julia parity. |
+| drmTMB [#1657](https://github.com/itchyshin/drmTMB/pull/1657), structured-matrix ordering | Current head `21f769d0f80f4651592dac9d80d7a7ee3dc8a049`, based on current R main `129c09c8`; [run 41518765724](https://github.com/itchyshin/drmTMB/actions/runs/41518765724) source-tree and OS-matrix checks remain queued. No formal review. | The PR body still points to prior-head CI and a “ready” note for head `6d21c804`. Its live reproducer pins DRModels.jl `64ccb2d8`, not current Julia main `973bbb675`; it is not current-pair parity evidence. No registered worktree for this current head was found. |
+| drmTMB [#1659](https://github.com/itchyshin/drmTMB/pull/1659), seven-family stored-reference tests | Head `e2d617b54b9a94b8b8e2758db9a6c80fa4bcab87`; [run 41512891602](https://github.com/itchyshin/drmTMB/actions/runs/41512891602) source-tree and OS-matrix checks passed; macOS checks are in progress, Ubuntu is queued, and Windows is in progress. Earlier Ubuntu shards passed, and an earlier Windows job was cancelled. No formal review. | Its base `71ceee67` and fixture pin `64ccb2d8` predate current main. Its listed audit worktree is absent. Stored point estimates and Wald SEs are compared; six default GHQ-versus-Laplace cells are skipped. No recovery or interval-calibration claim. |
+| DRModels.jl [#1237](https://github.com/itchyshin/DRModels.jl/pull/1237), structured bootstrap fixture | Head `503b3797acdf44dba38af1096ebce7fc338f6e9b`; [run 41401878711](https://github.com/itchyshin/DRModels.jl/actions/runs/41401878711) has Julia 1.10 shards 1/4 and 2/4 plus aggregate `ci-ok` failed; the other Julia 1.10 shards, all Julia 1.13 shards, scaling, and docs passed. No formal review. | The PR is based on Julia `64ccb2d8`, not current main. Shard 1 fails a separate J3a covariance/Hessian assertion at `test/test_j3a_gradient_hessian_vcov.jl:158`; shard 2 fails bootstrap assertions at `test/test_bootstrap.jl:105–106` (`1 == 2`, `1 == 0`), explicitly identified in the PR body as the separate #1224 failure. Neither failure is the PR's StableRNG fixture. Current-main reproduction and attribution remain open; no registered worktree was found. |
+| DRModels.jl [#1240](https://github.com/itchyshin/DRModels.jl/pull/1240), Gaussian location-scale reference fixture | Draft head `03b93e680266369dff10e63eb4c846826a102ec4`; [run 41248908491](https://github.com/itchyshin/DRModels.jl/actions/runs/41248908491) has shard 2/4 and aggregate `ci-ok` failed; other Julia shards and docs preview passed. No formal review. | The failure is missing `drmtmb_code_hash` fixture provenance, before parity assertions. Its base is Julia `64ccb2d8`, not current main; this is not evidence of model mismatch. No registered worktree was found. |
+
+The PR metadata, formal-review records, and exact-head check records above
+were read from GitHub on 2026-11-02 at 20:53 UTC; the bounded smoke finished
+at 20:47 UTC. PR author metadata is
+available, but a live owner checkout was not located for #1657, #1659, #1237,
+or #1240; no lane ownership is inferred from branch names. These states can
+change; a queued or missing check is not a pass. No owner message, paired
+numerical fit comparison, full package test, or interval-calibration study was
+performed.
+
+### Current-main CI attribution follow-up (2026-11-02)
+
+After the 20:53 UTC PR refresh above, four files associated with separate
+Julia 1 CI concerns were run against an isolated archive of current main
+`973bbb675dc6a10b436acf86175e089e38ec467e` on Totoro. With Julia 1.10.10,
+`JULIA_NUM_THREADS=1`, and `OPENBLAS_NUM_THREADS=1`,
+`test/test_gaussian_ranef.jl` passed all 12 assertions, including the
+all-singleton Hessian case, and `test/test_tnb2_nan.jl` passed all 12 assertions,
+including the relative timing guard. With Julia 1.13.1, `test/test_tnb2_nan.jl`,
+`test/test_temporal_ou.jl`, and `test/test_ls_inv2x2_chol.jl` passed all 185
+assertions. The latter run had one thread and Totoro load was about 299 at the
+start. This is focused current-main evidence from one Linux host, not a full
+suite or a reproduction of every CI version.
+
+These tests do not include the J3a failure in DRModels.jl #1247
+(`test/test_j3a_gradient_hessian_vcov.jl:158`); that case remains untested here.
+The Gaussian all-singleton test is a separate #1114 case, and the TNB2 timing
+test is among the platform-sensitive cases discussed in #1249. Neither run
+establishes why the earlier CI failures occurred.
+
+The source archive SHA-256 is
+`4b4808c6acef38087e06c8779a563755bc5d2ae8855e3c401165d39bafd1ffb4`. Logs,
+manifest snapshots, and their hashes are in
+`docs/dev-log/evidence/2026-11-02-totoro-main-ci-attribution/`. The input
+manifest copied from the earlier Julia 1.10.10 environment had SHA-256
+`4464382d80dc77ea2935314475ab58c79c4065224b7392fb2b28798dbb493533`; after
+`Pkg.develop` rewrote the package path to the exact-main archive, the manifest
+used by the Julia 1.13.1 run had SHA-256
+`24dcd114b002e5e79488fe427ee8fc92bad6601b166b01622a651e8320c387e4`. Julia
+1.13.1 warned that the manifest was created with Julia 1.10.10. Its JET
+precompile emitted an error, but the focused test sets completed and the
+command exited zero. The full test-file and artifact hash list is in the
+evidence README. In Julia 1.10.10, the focused files were
+`test/test_gaussian_ranef.jl`
+(`d789688423c0dfa2df5ec1113ef0d21639f987029f5c69545b8b7afd3dd2a3fa`) and
+`test/test_tnb2_nan.jl`
+(`7c48dc928fb6629ad2c51169dc8c286fa85de2bc2c9eeac872ee5b17bc150530`). The
+additional Julia 1.13.1 files were `test/test_temporal_ou.jl` and
+`test/test_ls_inv2x2_chol.jl`. These runs do not establish the complete Julia 1
+matrix.
+
+At a GitHub refresh on 2026-11-02 at 21:15 UTC, DRModels.jl #1247 still had
+four failing Julia 1 shards and failed aggregate `ci-ok`, while docs passed.
+Its named J3a failure remains distinct from these focused files. #1249
+targeted current main `973bbb675`; its four Julia shards remained queued while
+the docs build and preview passed. The focused Totoro results do not clear
+either PR's exact-head checks. No PR was changed or merged.
+
+At the same refresh, R #1657's source-tree and OS-matrix checks passed, with
+three Ubuntu shards queued and one running. R #1659's source-tree and
+OS-matrix checks passed, macOS passed, and Ubuntu and Windows remained in
+progress. R #1663 still had no exact-head check or status records and remained
+unmergeable. These are status snapshots, not acceptance of those PRs.
+
+The latest diagnostic read at 21:20 UTC found #1247 unchanged: four Julia 1
+shards and `ci-ok` failed, while docs passed. #1249 now had Julia shard 3/4 in
+progress and shards 1/4, 2/4, and 4/4 queued; docs and preview passed. R #1657
+had source-tree and OS-matrix success, shard 4/4 running, and shards 1/4
+through 3/4 queued. R #1659 had source-tree/OS-matrix success and macOS
+success, with current Ubuntu and Windows jobs in progress. R #1663 remained
+without exact-head checks. These states are exact-head status snapshots, not
+completed package checks or approval to merge.
+
+At 21:27 UTC, the focused Bernoulli association test from drmTMB current main
+`129c09c8c8d56fa91bb09146f02dff24e65e6e7b` passed all 36 expectations on
+Totoro with R 4.6.1 Linux x86_64. The source and test file match the current
+main pin, and the test file is byte-identical to the older baseline named in
+PR #1659. The historical macOS arm64 tolerance failure therefore does not
+reproduce on this Linux run. It remains possible that the difference is
+platform-dependent; no cause is established. This was a focused `devtools::test`
+run, not a current-main full `R CMD check`; no live Julia tests ran. Raw output
+and archive/test hashes are in
+`docs/dev-log/evidence/2026-11-02-totoro-drmTMB-main-associate-pairs/`.
+
+The 21:27 UTC CI snapshot had R #1657's source-tree and OS-matrix checks passed,
+Ubuntu shard 4/4 running, and shards 1/4 through 3/4 queued. R #1659's
+source-tree and OS-matrix checks passed, macOS passed, and current Ubuntu and
+Windows jobs were running; previous Ubuntu shards had passed. R #1663 still
+had no exact-head checks. Julia #1247 still had four failed Julia 1 shards and
+failed `ci-ok`, with docs passing. Julia #1249 had shards 1/4 and 3/4 running,
+shards 2/4 and 4/4 queued, and passing docs and preview. No PR was changed or
+merged.
+
+At 21:29 UTC, a connected GitHub refresh found R #1659's exact-head
+`R-CMD-check` run 41491340175 completed successfully. R #1657's exact-head
+run 41518765724 was queued. Julia #1247's CI run 41493253608 completed with
+failure while its Documenter run 41493253627 succeeded; this is consistent
+with its reported Julia 1.10 shard failure. Julia #1249's CI run 41519305510
+was queued and its Documenter run 41519305443 succeeded. The PR metadata
+reported both Julia PRs mergeable. The connected status tool returned no
+workflow records for R #1663. These are live snapshots; no PR was changed or
+merged. Totoro was reachable at this refresh but reported load averages of
+196, 257, and 280, so no additional compute was dispatched.
+
+### Additional documentation-PR review (2026-11-02)
+
+DRModels.jl #1228 is a docs-only PR at head
+`fe064dce02087cc69c9500f678967f6d258f848a`, based on stale main
+`64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716`. Its four Julia shards passed in
+run [41245284485](https://github.com/itchyshin/DRModels.jl/actions/runs/41245284485)
+and its Documenter build and rendered-page audit passed in run
+[41245284449](https://github.com/itchyshin/DRModels.jl/actions/runs/41245284449);
+the preview was cancelled. The read-only review found claims to narrow before
+those docs are treated as current: the NB2 hurdle receipt supports agreement
+for component predictions and log likelihood, but reports a maximum fitted
+mean/residual difference of 1.24 and predates current main; BetaBinomial's
+structured support is `phylo(1 | group)` with constant `sigma`, not every
+structured marker; and its drmTMB refusal claims need current R source pins.
+No owner or PR was changed.
+
+Further diagnostics of DRModels.jl #1247's failed CI run
+41493253608 show four distinct Julia 1.13.3 shard failures: shard 1 failed the
+NB2 timing bound (`0.1165 < 0.1054` was false); shard 2 exceeded the temporal
+dense-oracle bound (`1.71e-10` versus `1e-10`); shard 3 failed the Gaussian
+all-singleton Hessian expectations; shard 4 exceeded the location-scale theta
+tolerance (`1e-8`, maximum difference about `1.82e-8`). The associated docs
+run passed. These failures explain the aggregate status and are related to
+separate current-main test issues, including the cases targeted by #1249 and
+#1114. They do not show that #1247's StableRNG correction is wrong, and the
+J3a test itself was not isolated in this diagnostic. #1247 is based on
+`87a8ed4e`, behind current main `973bbb675`; rebase and exact-head checks remain
+for its owner.
