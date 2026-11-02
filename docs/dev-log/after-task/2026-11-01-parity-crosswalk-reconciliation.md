@@ -18,6 +18,10 @@ current-source validation holds without promoting historical calibration
 results. Corrected three stale source-line citations. Existing route-status
 counts and unrelated dirty files remain intact. After reviewing the current source and test, corrected the sigma and random-effect Wald test labels that still said z/p were blanked although the assertions require finite values. Added the live Julia `meta_V` guide mismatch, stale Julia README version, and drmTMB GitHub release-description conflict with the live CRAN record to the crosswalk. These notes separate published wording, exact-main behavior, the unmerged candidate, and tag/release/registry records; no external text or page was changed. A Totoro exact-main paired hurdle-NB2 diagnostic measured a 1.2416 maximum fitted/residual gap while dpars and log likelihood agreed closely. The ordinary R bridge test file still errors before its output assertions because `fixef()` dispatch fails; the diagnostic avoided that extractor without changing package source. Curie's read-only debt review identified a paired q4 phylogenetic REML admission and current-source replay as a separate next validation proposal; no such run was launched or approved here.
 
+Added a read-only exact-head review of drmTMB #1663's terminal run and a
+timestamped refresh of Julia #1245's still-running shards. No source, model, or
+interval claim changed.
+
 ## 3a. Decisions and Rejected Alternatives
 
 Assumptions without asking: current `main` is the baseline for crosswalk
@@ -125,6 +129,17 @@ values agreed with the R hurdle formula reconstructed from Julia dpars to
 The diagnostic bypassed the failing extractor but did not alter source, test
 assertions, formula, or estimator. The receipt and logs are under
 `docs/dev-log/evidence/cross-repo-parity/hurdle-nb2-20261101/`.
+
+For this refresh, all four Ubuntu release logs and the source-tree log for
+drmTMB #1663 were read at exact head
+`b6629f435b0511b089148fc2ae60c9df30f54c3c`. Run `41373879622` failed at the
+C17 model-15 receipt guard in each release shard, while the OS matrix passed.
+The source-tree suite reported 26,508 passes, 2 reader-vignette contract
+failures, 14 warnings, and 6 skips. The failure requires a compatibility-runner
+comparison before receipt recertification, so neither the runner nor the full
+suite was launched here. Julia #1245 run `41370506532` was still active at
+01:52 UTC with shards 2/4 and 3/4 in progress. No crosswalk commit was pushed
+because that would cancel the in-flight run.
 
 ## 6. Tests of the Tests
 
@@ -267,6 +282,25 @@ Preflight finds two refs touching the test file, neither a current fix: the
 J3d ref addresses a separate #1073 Hessian path, and the J3a red-test ref is
 explicitly throwaway. No source owner or corrective PR was found; no assertion
 or engine change was made.
+
+The refreshed drmTMB #1663 head is `b6629f435b0511b089148fc2ae60c9df30f54c3c`
+over main `b535bfbcce2a9039d869c2e34fe9da476394bf62`. Exact-head run
+`41373879622` ended failed. All four Ubuntu release shards stopped at the
+`mc-0568` model-15 receipt guard before `R CMD check`: the recorded source
+fingerprint is `4b0b3af78d4e0d7d4b63f3cb7fd0b216c0817b904bbe35aae133ba1e06b70a53`
+and the current fingerprint is
+`51b603a18868823e81c050a605b3632fa7410f33cdcd3f610f03dbb7ed7106ea`.
+The guard names the compatibility runner and requires comparing
+`mean_tau_relative_error` with the prior receipt. This is a changed model-15
+surface, not a fingerprint-only mismatch; the receipt must not be refreshed
+until that comparison is reviewed. The independent source-tree job also ended
+failed with two `test-reader-vignette-contracts.R` expectations: its immutable
+manifest and linter are out of sync with the current vignette corpus, and
+`predictor-dependent-random-sd.Rmd` is absent from the expected manifest.
+The source-tree run had 26,508 passes, 2 failures, 14 warnings, and 6 skips.
+The OS matrix passed. No package-check result was produced. PR #1663 remains
+open with no assignee, submitted review, or issue comment; no owner response
+or source change was made in this crosswalk lane.
 
 ## 8. Consistency Audit
 
