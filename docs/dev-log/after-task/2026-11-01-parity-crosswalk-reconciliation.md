@@ -892,6 +892,29 @@ PR draft unless Shinichi asks to mark it ready. No correctness blocker was
 found; retain the draft and require retrievable exact-head checks before
 calling it merge-ready. No PR state changed.
 
+### drmTMB #1655 and #1653 narrow test/docs PR review (2026-11-02 01:46 UTC)
+
+PR #1655 is an open draft at exact head
+`063279f44f3f343239e90d9ad4c070779fe2ac47`, based on current main
+`b535bfbcce2a9039d869c2e34fe9da476394bf62`. It changes only
+`tests/testthat/test-cran-lane-filter.R`. The test mocks the CRAN lane
+predicate only in interactive sessions, where production intentionally
+permits use; non-interactive sessions still exercise the setup guard. No
+correctness or scope issue was found. The bot reports six passing checks, but
+the run is no longer retrievable and current commit status is empty. Keep the
+draft until exact-head checks and the owner's readiness decision are clear.
+
+PR #1653 is an open draft at exact head
+`181ae21ed00f5a85682509b6c7397eda15f3339a`, also based on current main. It adds
+explicit roxygen usage for `update.drm_pair_association()` and a regression
+check that regenerated help is stable with Matrix attached. The patch leaves
+generated Rd and NAMESPACE unchanged and adds skip-census entries; no model or
+public behavior changes. No correctness issue was found. Its six passing
+checks are bot-reported in run `41133418965`, but current lookup returns 404
+and the head has no statuses. Neither draft has a formal review or assignee.
+Both are suitable for human review after exact-head checks can be verified;
+neither is merge-ready now. No PR metadata changed.
+
 ### drmTMB #1658 stable prior-kernel PR review (2026-11-02)
 
 PR #1658 is open, non-draft, and mergeable at exact head
