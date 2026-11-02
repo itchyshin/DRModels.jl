@@ -38,7 +38,7 @@ The shared `closeout.py new` helper initially wrote its skeleton under the brain
 
 ## 10. Known Residuals
 
-The citation checker still skips 17 items it cannot resolve precisely. The Julia test suite and Documenter site were not run. This ledger reconciliation does not establish full R–Julia parity, interval availability, calibration, release readiness, or deployment. A live PR scan after pushing found PR #1245 also edits `docs/design/capability-status.md` and contains a broader evidence update. This branch has no PR; keep it separate until the page changes are compared with that lane to avoid a conflicting or scope-losing submission.
+The citation checker still skips 17 items it cannot resolve precisely. The Julia test suite and Documenter site were not run. This ledger reconciliation does not establish full R–Julia parity, interval availability, calibration, release readiness, or deployment. A live PR scan found PR #1245 also edits `docs/design/capability-status.md` and contains a broader evidence update. At the check on 2026-11-02, its head was `7f6e335fd46c479b874d10525ad4cf3d74b59948` and its Julia shards, Documenter build, and preview were green; no formal review was recorded. The related local worktree `/Users/z3437171/.codex/worktrees/parity-ledger-aliases/DRM.jl` was on a different branch head (`0dde1f977`) with 22 modified tracked files and 54 untracked entries. Three other local worktrees also had capability-page edits: `capability-status-reconcile`, `cross-family-interval-language`, and `drm-finish-crosswalk`. This branch has no PR; keep it separate until its citation corrections are compared with the active work, to avoid a conflicting or scope-losing submission.
 
 ## 11. Team Learning
 
