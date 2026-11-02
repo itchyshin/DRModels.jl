@@ -435,6 +435,25 @@ generate_gamma <- function() {
   )
 }
 
+generate_gamma_locscale <- function() {
+  seed <- 20261031
+  set.seed(seed)
+  n <- 200
+  x <- rnorm(n)
+  mu <- exp(0.1 + 0.3 * x)
+  cv <- exp(-0.7 + 0.35 * x)          # sigma = CV, shape = 1 / cv^2
+  y <- rgamma(n, shape = 1 / cv^2, scale = mu * cv^2)
+  dat <- data.frame(y = y, x = x)
+  fit <- drmTMB(drm_formula(y ~ x, sigma ~ x),
+                family = Gamma(link = "log"), data = dat)
+  write_case(
+    "positive-gamma-locscale", seed, dat, "y ~ x; sigma ~ x", "gamma",
+    "drmTMB(drm_formula(y ~ x, sigma ~ x), family = Gamma(link = \"log\"), data = dat)",
+    fit,
+    "Gamma location-scale: log(mu), log(sigma) with sigma = CV; covariate-dependent scale (refs #969/#937 parity task)."
+  )
+}
+
 generate_binomial <- function() {
   seed <- 20260805
   set.seed(seed)
@@ -489,6 +508,7 @@ generate_lognormal <- function() {
 .run_parity("nbinom2-dispersion", generate_nbinom2_dispersion)
 .run_parity("count-poisson", generate_poisson)
 .run_parity("positive-gamma", generate_gamma)
+.run_parity("positive-gamma-locscale", generate_gamma_locscale)
 .run_parity("binomial-trials", generate_binomial)
 .run_parity("positive-lognormal", generate_lognormal)
 
