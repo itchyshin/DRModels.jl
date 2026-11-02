@@ -489,7 +489,9 @@ function drm_bridge_inference(; formula, family::AbstractString, data,
             message = "$(result.used)/$(result.attempted) successful refits",
         )
     end
-    throw(ArgumentError("drm_bridge_inference: unsupported method `$method`"))
+    throw(ArgumentError("drm_bridge_inference: unsupported method `$method`; " *
+        "accepted methods are \"profile\" (default) and \"bootstrap\"" *
+        (bridge_method == "wald" ? " (`wald` is not served by this entry point)" : "")))
 end
 
 # Parse the R bridge's `"fixef:<dpar>:<coef>"` target string (e.g. `"fixef:mu:x"`)
@@ -636,7 +638,29 @@ function _bridge_fit(bundle, fam, data; tree, K, A, coords, options)
     if haskey(options, :q4_vcov)
         kwargs[:q4_vcov] = Bool(options[:q4_vcov])
     end
-    return drm(bundle, fam; data = data, kwargs...)
+    # Error text only (nothing is added, dropped or defaulted): `drm` hands its kwargs
+    # on to a family-specific fitter, so an option that fitter does not accept
+    # surfaces as a bare MethodError. Name the offending option(s) instead, using
+    # `hasmethod` on the method that actually rejected the call.
+    try
+        return drm(bundle, fam; data = data, kwargs...)
+    catch err
+        unsupported = _bridge_unsupported_kwargs(err, kwargs)
+        isempty(unsupported) && rethrow()
+        throw(ArgumentError(
+            "drm_bridge: the option(s)/input(s) `$(join(unsupported, "`, `"))` are not " *
+            "supported for $(nameof(typeof(fam)))() with this formula type " *
+            "($(nameof(typeof(bundle)))); omit them, or call `drm(...)` directly."))
+    end
+end
+
+# Keys of `kwargs` that the function behind a keyword-call `MethodError` has no
+# method for (empty when `err` is not that shape, so the caller rethrows it).
+function _bridge_unsupported_kwargs(err, kwargs)
+    (err isa MethodError && err.f === Core.kwcall && length(err.args) >= 2) || return Symbol[]
+    f = err.args[2]
+    pos = Tuple{map(typeof, err.args[3:end])...}
+    return sort!([k for k in keys(kwargs) if !hasmethod(f, pos, (:data, k))])
 end
 
 # `profile_ci` is accepted only where it is consumed, a Gaussian formula with
