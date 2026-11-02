@@ -930,6 +930,33 @@ the interval methods as statistically calibrated. Resolve the package
 destination independently before any integration or publication action. No PR
 state changed.
 
+### CJS package extraction verified (2026-11-02)
+
+GitHub now has two separate public repositories on main: `itchyshin/CJSModels`
+at `ca7adb6dd3aaee456283b844ab22f4064a14a290` and
+`itchyshin/CJSModels.jl` at `80b74c8e7a57eea6fd38c23d59fb90a448ada0d3`. Their
+READMEs describe standalone packages; the R package does not depend on drmTMB,
+and the Julia package is independent of R, TMB, and DRModels.jl. This resolves
+the destination question for extraction and supersedes the earlier note that
+the package destination still needed to be established.
+
+The current README claims experimental inherited fixed-effect, persistent
+individual-effect, and shared-effect routes, not scientific validation. The
+current readiness files preserve an October 24 checkpoint with R `R CMD
+check` Status OK and 2,280 assertions, Julia `Pkg.test()` with 864 assertions,
+and a 44-history fixed-effects bridge comparison. Those records are tied to
+their named older source checkpoints and are not current-main reruns. The same
+readiness files explicitly defer extraction-specific route coverage, recovery,
+interval calibration, performance, and cross-platform release checks; random
+effect and selection Julia bridges remain unsupported. No release or registry
+submission is claimed.
+
+The separate packages make drmTMB PR #1612's proposal to add CJS directly to
+drmTMB inconsistent with the now-existing project boundary. Do not merge that
+PR into drmTMB as part of this parity cleanup. Preserve it as a disposition
+item for the CJS package owners; interval methods remain distinct from interval
+calibration.
+
 ### drmTMB #1658 stable prior-kernel PR review (2026-11-02)
 
 PR #1658 is open, non-draft, and mergeable at exact head
