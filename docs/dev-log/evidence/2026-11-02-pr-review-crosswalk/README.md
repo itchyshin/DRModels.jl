@@ -76,3 +76,16 @@ GitHub reports drmTMB #1662 merged at `2026-11-02T11:30:13Z` by merge commit `71
 ## R lane ownership check, 2026-11-02 22:12 UTC
 
 R-repository lane preflight on the primary checkout listed #1659's branch `test/drmjl-parity-fixtures-snak` among 31 live lanes. It reported no live lease; a read-only `git worktree list` filter found no local checkout for that branch. This identifies the branch as active in the lane census but does not identify a human task owner. No source files or PR metadata were changed. Preserve the branch and wait for a clear handoff before taking code action.
+
+## Additional DRModels.jl PRs, 2026-11-02 22:14 UTC
+
+Live main is `973bbb675dc6a10b436acf86175e089e38ec467e`. Exact-head PR metadata and diagnostics show:
+
+| PR | Head / base | Current exact-head evidence | Owner-safe next step |
+|---|---|---|---|
+| #1228 | `fe064dce02087cc69c9500f678967f6d258f848a` / `64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716` | Four Julia shards and `ci-ok` passed; docs build passed; docs preview was cancelled. The base is stale. The reviewed BetaBinomial wording still needs to say phylogenetic intercept only with constant `sigma`; the hurdle-Poisson distinction is supported. | Keep draft. Owner should narrow the BetaBinomial claim, rebase, and obtain a fresh preview. |
+| #1237 | `503b3797acdf44dba38af1096ebce7fc338f6e9b` / `64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716` | Latest run `41401878711` failed on Julia 1.10 shards 1 and 2; its four Julia 1 shards passed. A previous run `41249874224` passed. The base is stale. | Owner should rebase and diagnose the Julia 1.10 failures before another full claim. Stable test data alone did not make the latest workflow green. |
+| #1240 | `03b93e680266369dff10e63eb4c846826a102ec4` / `64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716` | Julia 1 shard 2 failed in run `41248908491`; the other three shards, docs, and preview passed. The base is stale. The PR remains a draft. | Keep draft until its owner diagnoses shard 2, rebases, and reruns. |
+| #1247 | `822f9b04c2d25862007141fb12d8ebde0c3bc084` / `87a8ed4e57a9f5a4b61ca66673ca02d48515b8ee` | All four Julia 1 shards failed in run `41493253608`; docs and preview passed. The base is stale. | Wait for current-main #1249, which targets three unrelated Julia 1 failures reported in this run. Then the owner can rebase and rerun #1247; the separate all-singleton Hessian failure still needs attribution. |
+
+For context, #1249 is based on current main `973bbb675dc6a10b436acf86175e089e38ec467e`. At the last exact-head check at 22:11:46 UTC, all four Julia shards remained active and docs/preview had passed. These findings are from GitHub metadata and diagnostics, not new local test runs. Branch authorship does not establish active task ownership; no PR branches or metadata were changed.

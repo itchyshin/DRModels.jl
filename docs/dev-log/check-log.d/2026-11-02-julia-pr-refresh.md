@@ -1,0 +1,1 @@
+| 2026-11-02 | DRModels.jl PR refresh, #1228/#1237/#1240/#1247 | GitHub exact-head metadata and check diagnostics | Recorded stale bases, preview state, and failed shards with owner-safe next actions | Codex |
