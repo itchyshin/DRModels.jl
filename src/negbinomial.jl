@@ -265,7 +265,8 @@ function _drm_negbin2_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
      descriptor.block === nothing) || throw(ArgumentError(
         "NegBinomial2 SD regression currently targets one ordinary, animal or relmat mean random-effect coefficient."))
     rhs = Dict(f.forms)
-    fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
+    fixed_mu, re, mv, st, _, _, animal_slope = _split_ranef(
+        rhs[:mu]; allow_animal_slope = descriptor.level === :animal)
     mv === nothing || throw(ArgumentError("NegBinomial2 `sd($sgrp)` cannot use meta_V()."))
     structured_animal = st !== nothing
     if structured_animal
@@ -289,7 +290,7 @@ function _drm_negbin2_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
             "nAGQ is not used by the sparse-Laplace $kind SD route; omit it."))
         descriptor.level === kind || throw(ArgumentError(
             "$kind($grp) requires a $kind-level SD target."))
-        slope = nothing
+        slope = animal_slope
     else
         (A === nothing && Ainv === nothing) || throw(ArgumentError(
             "NegBinomial2 `A` and `Ainv` are supported only for animal random-effect SD regression."))
@@ -307,7 +308,8 @@ function _drm_negbin2_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
     nodes = nAGQ === nothing ? _RANEF1D_AGHQ_K : nAGQ
     grp === sgrp || throw(ArgumentError(
         "NegBinomial2 `sd($sgrp)` must name the random-effect grouping variable `$grp`."))
-    member = kind === :intercept ? :intercept : slope
+    member = structured_animal ? (slope === nothing ? :intercept : slope) :
+             kind === :intercept ? :intercept : slope
     descriptor.member in (nothing, member) || throw(ArgumentError(
         "NegBinomial2 SD target `coef($(descriptor.member))` does not match the fitted random-effect coefficient `$member`."))
     sigma_rhs = get(rhs, :sigma, nothing)
@@ -375,7 +377,10 @@ function _drm_negbin2_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
                                 schema_cache = f.schema_cache, schema_key = :sd)
     size(Zg, 2) <= G && rank(Zg) == size(Zg, 2) || throw(ArgumentError(
         "NegBinomial2 `sd($grp)` group-level design is rank deficient; use predictors that vary independently across groups."))
-    w = if structured_animal || kind === :intercept
+    w = if structured_animal && slope !== nothing
+        _poisson_animal_slope_loading(data, slope, length(y);
+                                      label = "NegBinomial2 animal")
+    elseif structured_animal || kind === :intercept
         ones(length(y))
     else
         hasproperty(data, slope) || throw(ArgumentError(
@@ -391,7 +396,7 @@ function _drm_negbin2_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
         C = Ainv === nothing ? _poisson_structured_cov(kind, grp, K, A, coords) : nothing
         fit = _fit_nb2_animal_sd_laplace(fam, y, Xmu, Xsigma, Zg, gidx,
             C, getproperty(data, grp), nmmu, nmsigma, nmsd, grp, g_tol; se, Ainv,
-            normalize = kind !== :animal)
+            normalize = kind !== :animal, weight = w)
     else
         fit = _fit_negbin2_sd_regression(fam, y, Xmu, Xsigma, Zg,
             gidx, G, nmmu, nmsigma, nmsd, grp, g_tol; K = nodes, se, w)
@@ -717,8 +722,10 @@ end
 function _fit_nb2_animal_sd_laplace(fam::NegBinomial2, y, Xmu, Xsigma, Zg,
         gidx, C, labels, nmmu, nmsigma, nmsd, grp, g_tol;
         se::Bool = true, maxiter::Int = 250, Ainv = nothing,
-        normalize::Bool = true)
+        normalize::Bool = true, weight = ones(length(y)))
     n = length(y)
+    length(weight) == n || throw(ArgumentError(
+        "NB2 animal random-effect loading must have one value per response."))
     pmu, psd = size(Xmu, 2), size(Zg, 2)
     Q, group_index = Ainv === nothing ? _general_cov_setup(C, labels; normalize) :
         _nb2_animal_precision_setup(Ainv, labels, grp)
@@ -740,7 +747,7 @@ function _fit_nb2_animal_sd_laplace(fam::NegBinomial2, y, Xmu, Xsigma, Zg,
         function joint(uu)
             value = 0.5 * dot(uu, Q * uu)
             @inbounds for i in 1:n
-                eta = eta0[i] + loading[gidx[i]] * uu[gidx[i]]
+                eta = eta0[i] + weight[i] * loading[gidx[i]] * uu[gidx[i]]
                 value += _laplace_v123(Val(:nb2_fixed), aux, i, eta)[1]
             end
             return value
@@ -750,10 +757,11 @@ function _fit_nb2_animal_sd_laplace(fam::NegBinomial2, y, Xmu, Xsigma, Zg,
             curvature = zeros(Float64, size(Q, 1))
             @inbounds for i in 1:n
                 gi = gidx[i]
-                eta = eta0[i] + loading[gi] * u[gi]
+                li = weight[i] * loading[gi]
+                eta = eta0[i] + li * u[gi]
                 _, d1, d2, _ = _laplace_v123(Val(:nb2_fixed), aux, i, eta)
-                grad[gi] += loading[gi] * d1
-                curvature[gi] += loading[gi]^2 * d2
+                grad[gi] += li * d1
+                curvature[gi] += li^2 * d2
             end
             H = Q + spdiagm(0 => curvature)
             ch = cholesky(Symmetric(H); check = false)
@@ -796,7 +804,7 @@ function _fit_nb2_animal_sd_laplace(fam::NegBinomial2, y, Xmu, Xsigma, Zg,
         eta0 = Xmu * beta
         value = 0.5 * dot(u, Q * u)
         @inbounds for i in 1:n
-            eta = eta0[i] + loading[gidx[i]] * u[gidx[i]]
+            eta = eta0[i] + weight[i] * loading[gidx[i]] * u[gidx[i]]
             value += _laplace_v123(Val(:nb2_fixed), aux, i, eta)[1]
         end
         return value - 0.5 * logdetQ + 0.5 * logdet(ch), u, true

@@ -1827,7 +1827,7 @@ function predict(fit::DrmFit, newdata; type::Symbol = :response, se::Bool = fals
         # must still yield its fixed design here; the flag only relaxes parsing.
         allow_sd_animal_slope = fit.family isa Union{Binomial,Gamma} &&
             any(item.target.level === :animal for item in _sd_target_parts(f))
-        allow_sd_animal_slope |= fit.family isa Poisson &&
+        allow_sd_animal_slope |= fit.family isa Union{Poisson,NegBinomial2} &&
             any(item.target.level === :animal for item in _sd_target_parts(f))
         allow_sd_relmat_slope = fit.family isa Union{Binomial,Poisson} &&
             any(item.target.level === :relmat for item in _sd_target_parts(f))
@@ -2204,7 +2204,7 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
         resp = bivar ? (p === :mu2 ? f.response2 : f.response1) : f.response
         allow_sd_animal_slope = fit.family isa Union{Binomial,Gamma} && f isa DrmFormula &&
             any(item.target.level === :animal for item in _sd_target_parts(f))
-        allow_sd_animal_slope |= fit.family isa Poisson && f isa DrmFormula &&
+        allow_sd_animal_slope |= fit.family isa Union{Poisson,NegBinomial2} && f isa DrmFormula &&
             any(item.target.level === :animal for item in _sd_target_parts(f))
         allow_gamma_animal_intercept_slope = fit.family isa Gamma &&
             _animal_intercept_slope(forms[p]) !== nothing
