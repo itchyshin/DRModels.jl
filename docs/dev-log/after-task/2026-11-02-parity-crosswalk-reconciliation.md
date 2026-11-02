@@ -38,7 +38,7 @@ The shared `closeout.py new` helper initially wrote its skeleton under the brain
 
 ## 10. Known Residuals
 
-The citation checker still skips 17 items it cannot resolve precisely. The Julia test suite and Documenter site were not run. This ledger reconciliation does not establish full R–Julia parity, interval availability, calibration, release readiness, or deployment.
+The citation checker still skips 17 items it cannot resolve precisely. The Julia test suite and Documenter site were not run. This ledger reconciliation does not establish full R–Julia parity, interval availability, calibration, release readiness, or deployment. A live PR scan after pushing found PR #1245 also edits `docs/design/capability-status.md` and contains a broader evidence update. This branch has no PR; keep it separate until the page changes are compared with that lane to avoid a conflicting or scope-losing submission.
 
 ## 11. Team Learning
 
