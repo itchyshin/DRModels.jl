@@ -1,18 +1,18 @@
 {
   "assessment_performed": true,
-  "draft_sha256": "79bd90a5e2534af6bd398e1775e0f689459bc66120e4cca1cbc9b82526612862",
-  "draft_version": "v19",
+  "draft_sha256": "7397cf2886b1053b28e1b1bcc1dfb8f90c0d69978fe646af1c641234e0d24591",
+  "draft_version": "v21",
   "requested_mode": "independent",
   "assessor_type": "self",
   "reviewer": "Codex self-review",
-  "method": "Manual review of live PR metadata and patches plus the exact-head failing CI log, including the target parity test summary and fixture provenance assertion; followed by closeout, after-task structure, prose lint, JSON, and diff checks.",
+  "method": "Manual review of live GitHub exact PR heads, base comparisons, check conclusions, review status, patch contents, and worktree/lane inventories; followed by closeout, after-task structure, prose lint, JSON, and diff checks.",
   "genre": "technical after-task report",
-  "coverage": "Whole report by continuity from v18; reread the 2026-11-02 12:10 UTC attribution of DRModels.jl #1240 CI and its route-specific test result.",
+  "coverage": "Whole report by continuity from v19; reread the 2026-11-02 12:12 UTC owner-attributed route map and current base-to-main comparisons.",
   "score": 2,
   "style_status": "scored",
   "score_reason": "The report uses exact files, SHAs, run IDs, and explicit limits. Some technical sentences are dense, but the PR status is separated into short bullets.",
   "confidence": "high",
-  "confidence_reason": "The target test summary, failing assertion, expected metadata fields, exact PR patch, and stored reference identity were read from the exact-head GitHub run and PR. No model or fixture was regenerated.",
+  "confidence_reason": "GitHub exposed current PR metadata and check runs; compare endpoints confirmed the five-commit Julia and four-commit R main advances; local worktree lists and preflight exposed the detached R #1659 checkout and active owner lanes. No code or model fits were run.",
   "examples": [
     {
       "location": "Section 10, approved #1662 merge, baseline check bullet",
@@ -61,13 +61,21 @@
       "repair": "no change needed",
       "line": 175,
       "quote": "The full workflow log for run `41248908491` shows the targeted Gaussian location-scale random-intercept parity test passed **17/17** on Julia shard 4."
+    },
+    {
+      "location": "Section 10, owner-attributed route map",
+      "cue": "The table separates each route’s stored comparator, exact candidate evidence, and owner-held next gate.",
+      "impact": "Readers can see why green checks do not imply current-source parity and can identify who must act next.",
+      "repair": "no change needed",
+      "line": 182,
+      "quote": "| Comparison and PR | Candidate / reference | Evidence at the exact candidate | Readiness and owner boundary |"
     }
   ],
   "evidence_none_reason": null,
   "science_gate": "not_applicable",
   "science_gate_reason": "This report records a documentation reconciliation, not a new scientific result.",
   "facts_gate": "pass",
-  "facts_gate_reason": "The exact run log records 17/17 passes for #1240 Gaussian location-scale random-intercept parity on shard 4 and a separate shard 2 provenance failure due to the missing drmtmb_code_hash field. The report distinguishes this narrow stored-reference test from current-main parity.",
+  "facts_gate_reason": "Exact PR source heads and bases, current main SHAs, ahead counts, check outcomes, patch-level test details, and the detached clean R fixture worktree were verified from GitHub and local Git inventories. The route map labels historical or conditional evidence and states owner holds and missing gates.",
   "references_gate": "pass",
   "references_gate_reason": "The linked PRs and workflow runs refer to the exact items checked during this refresh; no unsupported external scientific references were added.",
   "date": "2026-11-02",
