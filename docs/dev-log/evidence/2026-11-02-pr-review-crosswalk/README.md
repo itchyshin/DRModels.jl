@@ -245,3 +245,99 @@ three platform checks running; #1647 has only Windows active. DRModels.jl
 queued. The full census identifies #1664 as the clearest low-risk review
 candidate, not an automatic merge. CMR #1612 remains separate from core DRM;
 its deferred interval-calibration work is not promoted by this PR inventory.
+
+## Live PR and owner refresh, 2026-11-02 23:00 UTC
+
+GitHub metadata, exact-head workflow jobs, and local worktree/coordination
+records were rechecked. The default-branch pins remain drmTMB
+`129c09c8c8d56fa91bb09146f02dff24e65e6e7b` and DRModels.jl
+`973bbb675dc6a10b436acf86175e089e38ec467e`. The latest open-PR search
+returned 34 drmTMB PRs and 24 DRModels.jl PRs. The earlier full inventory is
+a 22:50 snapshot; this section supersedes only the rows below. No PR was
+changed, merged, or reviewed on GitHub by this refresh.
+
+### drmTMB
+
+- **#1663 is merged**, not open. GitHub records merge time
+  `2026-11-02T22:50:57Z`, exact head
+  `993905ff6aa53d70304b988f73be397422dcf274`, merge commit
+  `e5cd86667c97d1b34f0ead22017a675377f46930`, and successful exact-head run
+  [41532211007](https://github.com/itchyshin/drmTMB/actions/runs/41532211007).
+  Its registered worktree
+  `/Users/z3437171/Dropbox/Github Local/drmTMB/.worktrees/general-sd-regression`
+  remains at that head with modified lane/vignette files and extensive
+  untracked evidence. The active-lane ledger assigns cross-engine SD work to
+  Shinichi in that lane. The merged PR is not evidence that the additional
+  dirty work has landed; preserve that checkout and its files.
+- **#1659 remains open** at the same head as the 22:50 census,
+  `e2d617b54b9a94b8b8e2758db9a6c80fa4bcab87`, on stale base
+  `71ceee671aac0e4c8bedf265b3b735b1ad633390`. Exact-head run
+  [41491340175](https://github.com/itchyshin/drmTMB/actions/runs/41491340175)
+  completed successfully for source-tree tests, OS matrix, and all four
+  Ubuntu release shards. GitHub reports it mergeable. Its registered audit
+  worktree is prunable and absent, so no live owner checkout was verified.
+  The PR's 14 stored-reference cells are one-dataset point-estimate and SE
+  comparisons at the older Julia pin `64ccb2d8`; the six default
+  GHQ-versus-Laplace comparisons are skipped. This does not establish
+  recovery, interval calibration, or current-pair parity.
+- **#1664** remains open at exact head
+  `015c0e1fac9cad68e82f2711eeebad4b1b6fcd69` on current main. All six checks
+  in run [41513019278](https://github.com/itchyshin/drmTMB/actions/runs/41513019278)
+  passed, but GitHub currently reports the PR non-mergeable. It has no
+  submitted formal review in the refreshed R candidate set. Keep it as a
+  small review candidate, not a merge-ready change, until mergeability and
+  review are resolved.
+- **#1657, #1647, #1646, and #1623** have successful exact-head checks in
+  runs `41518765724`, `41522127422`, `41522870646`, and `41521376664`,
+  respectively. GitHub reports each non-mergeable. **#1435** has successful
+  run `41497210984`, but remains on stale base
+  `71ceee671aac0e4c8bedf265b3b735b1ad633390` and is also reported
+  non-mergeable. These checks do not resolve source conflicts or identify a
+  current lane owner. The eight R candidates inspected in this refresh had
+  no formal review submissions.
+
+### DRModels.jl
+
+- **#1242, #1239, and #1234 are merged** at exact heads `c56ecfb3`,
+  `e8a6c20a`, and `0b85b7cf`; all recorded CI and Documenter runs succeeded.
+  Their merge commits are ancestors of the locally cached `origin/main`
+  `973bbb675dc6a10b436acf86175e089e38ec467e`. The tests retain important
+  limits: #1242 has nine default-integrator mismatches marked broken while
+  fixed effects and explicit `:Laplace` agree; #1239 has three broken
+  marginal log-likelihood comparisons with gaps 0.12, 0.06, and 0.19; #1234
+  retains four Student Gaussian-limit mismatches and skips Gamma because its
+  reference fixture has not been generated. Merging these tests does not
+  make the broken or skipped cells pass.
+- **#1240 remains an open draft** at head
+  `03b93e680266369dff10e63eb4c846826a102ec4` on stale base
+  `64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716`. CI run
+  [41248908491](https://github.com/itchyshin/DRModels.jl/actions/runs/41248908491)
+  fails fixture-provenance validation because `expected.meta.toml` lacks
+  `drmtmb_code_hash`, before the new numerical fixture test runs. Documenter
+  run `41248908497` passed. This is a provenance failure, not a measured
+  model mismatch or parity result. Current review lookup found no formal
+  review submission.
+- **#1249** remains active at current-main head
+  `e01e0fadb1ba7773a41f08d8a0802a2c0b018970`: docs passed, while Julia 1
+  shard 3 was still running in
+  [41519305510](https://github.com/itchyshin/DRModels.jl/actions/runs/41519305510)
+  at 23:00 UTC. #1248 had its test run queued and docs passed; #1247's four
+  Julia 1 shards failed while docs passed; #1237's recorded CI and docs
+  passed. #1215's jobs were queued, #1214's changes job was queued and docs
+  job active, and #1210's older-base CI/docs passed. #1214 and #1210 still
+  overlap across 55 files, so keep the canonical patch decision with their
+  owner.
+- A separate detached worktree at
+  `/Users/z3437171/.codex/worktrees/capability-status-reconcile/DRM.jl`
+  contains uncommitted changes to `docs/design/capability-status.md` and
+  untracked after-task/check-log records. Its ownership was not identified
+  in the coordination board or live lease list. This refresh reviewed the
+  diff and preserves it; it does not overwrite or consolidate that page.
+
+The read-only R owner refresh and Julia owner refresh were performed in
+parallel. The R refresh found 33 live lanes in its repo census and verified
+the assigned owner record for #1663's dirty SD lane. The Julia refresh found
+no authoritative owner for the detached capability-page edit. PR authorship,
+branch names, green CI, and a merged PR were not treated as proof that adjacent
+uncommitted work had been completed or released. Totoro and DRAC were not used:
+this was metadata, source, and worktree reconciliation, not a compute task.

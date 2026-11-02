@@ -1,0 +1,1 @@
+| 2026-11-02 | **Live DRM parity PR refresh** | GitHub exact-head metadata/check runs, worktree and lane-ledger review, `git diff --check`, after-task and prose checks | Updated owner-attributed status for selected R and Julia PRs; no package tests, compute, branch edits, PR changes, or merges | Codex |

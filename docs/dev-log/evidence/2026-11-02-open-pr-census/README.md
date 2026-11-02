@@ -133,3 +133,18 @@ No PR, branch, review, comment, or checkout was modified for this census. No
 package tests, simulation, benchmark, or compute-server job was run. Raw
 workflow evidence remains on GitHub at the linked run URLs. CMR PR #1612 stays
 separate from the DRM core, with interval calibration still deferred.
+
+## Post-census state, 2026-11-02 23:00 UTC
+
+The open-PR search now returns 34 drmTMB PRs and 24 DRModels.jl PRs. drmTMB
+#1663 merged at 22:50:57 UTC at the exact head recorded above. Its dirty
+`general-sd-regression` worktree remains active and protected. drmTMB #1659
+has successful exact-head source-tree, OS-matrix, and four Ubuntu checks in
+run `41491340175`; its base remains stale and its registered audit worktree
+is prunable/missing. DRModels.jl #1242, #1239, and #1234 merged with their
+recorded CI and Documenter checks successful; their known broken/skipped
+parity cells remain documented in the rolling crosswalk. Selected R and
+Julia check updates and owner evidence are recorded in the
+[rolling parity PR crosswalk](../2026-11-02-pr-review-crosswalk/README.md).
+All other table rows remain the 22:50 snapshot and must be refreshed before
+action.
