@@ -341,3 +341,53 @@ no authoritative owner for the detached capability-page edit. PR authorship,
 branch names, green CI, and a merged PR were not treated as proof that adjacent
 uncommitted work had been completed or released. Totoro and DRAC were not used:
 this was metadata, source, and worktree reconciliation, not a compute task.
+
+## Owner-safe follow-up, 2026-11-02 23:10 UTC
+
+The current exact-head checks and registered worktrees were rechecked after the
+23:00 snapshot. No candidate met both conditions for safe advancement: a
+current exact-head checkout with a demonstrably live owner, and no overlapping
+lane. PR authorship and an earlier “ready” comment did not satisfy that owner
+check. No source branch or PR was changed.
+
+- **drmTMB #1657** remains at head
+  `21f769d0f80f4651592dac9d80d7a7ee3dc8a049`, based on current main. Run
+  [41522911628](https://github.com/itchyshin/drmTMB/actions/runs/41522911628)
+  has source-tree, OS-matrix, macOS, and Windows jobs successful; its Ubuntu
+  release check is still running at 23:09 UTC. The PR is reported
+  non-mergeable, has no formal review, and no registered exact-head worktree
+  was found. Keep it with its current lane pending a terminal check and owner
+  handoff.
+- **DRModels.jl #1249** remains at head
+  `e01e0fadb1ba7773a41f08d8a0802a2c0b018970` on current main. Run
+  [41519305510](https://github.com/itchyshin/DRModels.jl/actions/runs/41519305510)
+  has Julia 1 shards 1, 2, and 4 successful; shard 3 is still running at
+  23:09 UTC. Documenter passed. No formal review or exact-head checkout was
+  found, so keep it waiting for its current lane and final shard.
+- **DRModels.jl #1248** remains open at head
+  `1d7eeff21145b1ecdf598a97257db5cbb14702f9`, based on stale base
+  `87a8ed4e57a9f5a4b61ca66673ca02d48515b8ee`. CI run
+  [41511040751](https://github.com/itchyshin/DRModels.jl/actions/runs/41511040751)
+  fails on three Julia 1 shards. The inspected logs show distinct failures:
+  the temporal OU dense-oracle gap is `1.7098500393e-10` against a `1e-10`
+  bound; the coupled NB2 location-scale fixture misses its `1e-8` parameter
+  tolerance; and the all-singleton Gaussian test expects a warning,
+  non-convergence, and NaN covariance but receives a converged fit with finite
+  covariance. These are exact-head failures; the cause and relation to #1248
+  remain unattributed. Documenter passed. Do not call this a #1248 regression
+  without a current-base or owner-led reproduction.
+- Julia #1214 and #1215 remain draft documentation PRs. Their latest recorded
+  checks were queued, and neither has an exact-head checkout. #1214 overlaps
+  #1210 across 55 files. The smallest file count does not make either branch
+  safe to take.
+- In R, #1664 has six green exact-head jobs but is non-mergeable, has no formal
+  review, and lacks an exact-head checkout; #1647 overlaps its methods file.
+  #1646 overlaps the active #1529 Gamma-mixture lane. #1659 is green and
+  reported mergeable but has a stale base and no registered owner checkout.
+  The other inspected green R candidates also lack a collision-free
+  owner-and-checkout path. Leave them untouched pending lane-owner disposition.
+
+No Totoro/DRAC compute was appropriate for this API, CI-log, and worktree
+review. The next useful refresh event is completion of #1657 run 41522911628
+or #1249 run 41519305510; otherwise wait for an owner handoff rather than
+rechecking unchanged queued or running work.
