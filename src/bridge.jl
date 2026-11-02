@@ -2073,7 +2073,7 @@ function _bridge_rendered_regression_blocks(fit, labels::_BridgeFormulaLabels)
             (fit.family isa Gamma || binomial_animal_q2)
         binomial_phylo_sd_slope_only = fit.family isa Binomial &&
             !isempty(_sdphylo_parts(fit.formula))
-        binomial_relmat_sd_slope_only = fit.family isa Binomial &&
+        binomial_relmat_sd_slope_only = fit.family isa Union{Binomial,Poisson} &&
             any(item.target.level === :relmat for item in sd_targets_here)
         rendered = _bridge_render_formula_block(
             form, param, rhs, labels; allow_animal_slope = animal_sd_slope,
