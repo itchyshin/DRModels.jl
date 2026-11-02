@@ -450,3 +450,44 @@ this metadata-only refresh. Route future CPU validation to Totoro within the
 150-core cap; reserve DRAC for queued, multi-node, or larger-than-150-core
 work, with an estimate and required pre-run approval for campaigns over three
 hours.
+
+## Live CI and ownership refresh, 2026-11-02 23:36 UTC
+
+The live default-branch pins remain drmTMB `e5cd86667c97d1b34f0ead22017a675377f46930`
+and DRModels.jl `973bbb675dc6a10b436acf86175e089e38ec467e`.
+
+- **DRModels.jl #1249** remains at head
+  `e01e0fadb1ba7773a41f08d8a0802a2c0b018970`, based on current main. In run
+  [41519305510](https://github.com/itchyshin/DRModels.jl/actions/runs/41519305510),
+  Julia 1 shards 1, 2, and 4 passed; shard 3 was still running at 23:36 UTC,
+  having started at 21:19 UTC. GitHub did not provide the active job log. The
+  PR is mergeable at the graph level but remains blocked, with no formal review.
+  A fresh local worktree census found only the remote branch, not an exact-head
+  checkout. The lane owner is therefore still unconfirmed; the branch prefix is
+  not owner evidence.
+- **drmTMB #1500** is at head
+  `7630b6a4653d4ee7ffbd69ee5e6be87d330d8890` on current main. Run
+  [41542189558](https://github.com/itchyshin/drmTMB/actions/runs/41542189558)
+  had its source-tree and OS-matrix jobs pass, with all four Ubuntu test shards
+  still running. No formal review is recorded. Its `cursor/` branch name does
+  not establish the current lane owner.
+- **drmTMB #1563** is at head
+  `7881fabcccf64607b63873820a5287f8f74bb148`, with stale base
+  `129c09c8c8d56fa91bb09146f02dff24e65e6e7b`. Its exact-head run
+  [41540482150](https://github.com/itchyshin/drmTMB/actions/runs/41540482150)
+  passed the source-tree, OS-matrix, and all four Ubuntu shards. The PR remains
+  dirty against current main `e5cd866`; it has no formal review. Green exact-head
+  checks do not establish current-main validation or merge readiness.
+- **drmTMB #1659** remains green at exact head
+  `e2d617b54b9a94b8b8e2758db9a6c80fa4bcab87`, but its base
+  `71ceee671aac0e4c8bedf265b3b735b1ad633390` predates current main. It has no
+  formal review. Treat its green checks as exact-head evidence only.
+- The latest `R-CMD-check` workflow run on drmTMB `main` is still the
+  26 October failure [40375071745](https://github.com/itchyshin/drmTMB/actions/runs/40375071745)
+  at stale source `02095c67d7e70bbb648f45d2bbdd5aa0b1ea7be5`. The newer R-CMD
+  runs above are PR runs, not current-main checks.
+
+This refresh used GitHub metadata and local ref/worktree evidence only. It did
+not change a source branch or PR, contact a lane owner, or infer ownership from
+authorship or branch naming. No candidate is promoted to merge-ready by this
+refresh.
