@@ -1,18 +1,18 @@
 {
   "assessment_performed": true,
-  "draft_sha256": "7397cf2886b1053b28e1b1bcc1dfb8f90c0d69978fe646af1c641234e0d24591",
-  "draft_version": "v21",
+  "draft_sha256": "22cd4ab2e12722d4eee835cb9d66e204167ee6e527520c21da772e6537d55131",
+  "draft_version": "v23",
   "requested_mode": "independent",
   "assessor_type": "self",
   "reviewer": "Codex self-review",
-  "method": "Manual review of live GitHub exact PR heads, base comparisons, check conclusions, review status, patch contents, and worktree/lane inventories; followed by closeout, after-task structure, prose lint, JSON, and diff checks.",
+  "method": "Manual refresh of GitHub PR state and patches for adjacent parity guard/docs PRs, lane preflight and exact worktree inventory; followed by closeout, after-task structure, prose lint, JSON, and diff checks.",
   "genre": "technical after-task report",
-  "coverage": "Whole report by continuity from v19; reread the 2026-11-02 12:12 UTC owner-attributed route map and current base-to-main comparisons.",
+  "coverage": "Whole report by continuity from v22; reread the adjacent #1233/#1228 lane findings and the 31 R / 32 Julia lane census.",
   "score": 2,
   "style_status": "scored",
   "score_reason": "The report uses exact files, SHAs, run IDs, and explicit limits. Some technical sentences are dense, but the PR status is separated into short bullets.",
   "confidence": "high",
-  "confidence_reason": "GitHub exposed current PR metadata and check runs; compare endpoints confirmed the five-commit Julia and four-commit R main advances; local worktree lists and preflight exposed the detached R #1659 checkout and active owner lanes. No code or model fits were run.",
+  "confidence_reason": "Live GitHub metadata and patches plus local worktree inventories and lane preflight were reviewed. The #1233 behavior is described from its test assertions and is not represented as a resolved model comparison.",
   "examples": [
     {
       "location": "Section 10, approved #1662 merge, baseline check bullet",
@@ -69,13 +69,29 @@
       "repair": "no change needed",
       "line": 182,
       "quote": "| Comparison and PR | Candidate / reference | Evidence at the exact candidate | Readiness and owner boundary |"
+    },
+    {
+      "location": "Section 10, owner-attributed route map introduction",
+      "cue": "The table-wide statistical scope is stated before the individual route outcomes.",
+      "impact": "This keeps implementation parity tests separate from parameter-recovery and interval-calibration claims.",
+      "repair": "no change needed",
+      "line": 182,
+      "quote": "These PRs compare fitted outputs on fixed fixtures."
+    },
+    {
+      "location": "Section 10, adjacent parity PRs and owner census",
+      "cue": "The note distinguishes a guard that currently returns nothing from its expected-broken refusal assertion and separates documentation from route tests.",
+      "impact": "This prevents green CI on adjacent PRs from implying that an unresolved comparison guard or docs-only note closes model parity.",
+      "repair": "no change needed",
+      "line": 193,
+      "quote": "Adjacent but not route tests:"
     }
   ],
   "evidence_none_reason": null,
   "science_gate": "not_applicable",
   "science_gate_reason": "This report records a documentation reconciliation, not a new scientific result.",
   "facts_gate": "pass",
-  "facts_gate_reason": "Exact PR source heads and bases, current main SHAs, ahead counts, check outcomes, patch-level test details, and the detached clean R fixture worktree were verified from GitHub and local Git inventories. The route map labels historical or conditional evidence and states owner holds and missing gates.",
+  "facts_gate_reason": "Exact heads, bases, review/check conclusions, and #1233/#1228 patch content were checked live. The report identifies the unresolved expected-broken both-:VA guard, labels #1228 as documentation-only, and records unknown runtime and owner identity limits.",
   "references_gate": "pass",
   "references_gate_reason": "The linked PRs and workflow runs refer to the exact items checked during this refresh; no unsupported external scientific references were added.",
   "date": "2026-11-02",
