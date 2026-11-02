@@ -1,0 +1,36 @@
+{
+  "assessment_performed": true,
+  "draft_sha256": "b9bb0cc3246473452ebde143860c566d26e560821fbf2e34a5a18177a43644dd",
+  "draft_version": "v1",
+  "requested_mode": "independent",
+  "assessor_type": "self",
+  "reviewer": "Codex self-review",
+  "method": "Manual review under writing-naturalness.md, source and test comparison, and slop_check.py.",
+  "genre": "Julia capability-status design document",
+  "coverage": "Changed capability rows, explanatory paragraphs, status counts, and adjacent bivariate scope; older historical sections were not fully re-audited.",
+  "score": 3,
+  "style_status": "scored",
+  "score_reason": "The edited passages name the route, formula, files, and limits. The surrounding ledger remains dense because it records implementation evidence.",
+  "confidence": "medium",
+  "confidence_reason": "The new rows and totals were checked against source and tests, but the style judgment is a single self-review and older page text was not fully refreshed.",
+  "examples": [
+    {
+      "location": "Random-effect structure, ordinary Laplace row",
+      "cue": "The paragraph gives family, formula, estimator, and limitations.",
+      "impact": "A developer can identify the admitted route and avoid reading it as a coverage or broad parity claim.",
+      "repair": "no change needed",
+      "line": 88,
+      "quote": "`Non-Gaussian ordinary random intercept with marginal = :Laplace` is limited"
+    }
+  ],
+  "evidence_none_reason": null,
+  "science_gate": "pass",
+  "science_gate_reason": "The new language separates implementation evidence from interval calibration and parity claims.",
+  "facts_gate": "pass",
+  "facts_gate_reason": "Route scope and tests were checked at origin/main 47a081ba035f9bf3fd7e42d3841ae8a288bf2a14, and the status count was parsed with escaped pipes handled.",
+  "references_gate": "pass",
+  "references_gate_reason": "The cited new source and test files were checked; the citation checker still reports 17 older citations as unresolved, outside this edit's coverage.",
+  "date": "2026-11-02",
+  "calibration_status": "No style controls were used; this is an uncalibrated editorial judgment.",
+  "interpretation": "perceived_style_not_authorship"
+}

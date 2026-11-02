@@ -81,11 +81,31 @@ rows; each has a `test/test_*.jl` file cited in `docs/src/capabilities.md`'s
 | Gaussian relmat random intercept (mean) | implemented |
 | Non-Gaussian phylogenetic random intercept (mean) | implemented |
 | Non-Gaussian phylogenetic location-scale (μ + log σ) | implemented |
+| Non-Gaussian ordinary random intercept with `marginal = :Laplace` | implemented |
+| Coupled NB2 ordinary location-scale random intercept | implemented |
 | Tweedie random intercept (mean) | implemented |
+
+`Non-Gaussian ordinary random intercept with marginal = :Laplace` is limited
+to Poisson, Binomial, NegBinomial2, Gamma, and Beta with one ordinary
+`(1 | g)` term on `mu`; scale families require `sigma ~ 1`, and the route is
+maximum-likelihood only. It is an explicit TMB-convention Laplace route;
+the default `:LA` route remains distinct. `src/ordinary_laplace.jl` implements
+the route, and `test/test_ordinary_laplace.jl` checks its objective against an
+independent per-group calculation and pins unsupported cases. These checks do
+not establish interval calibration or general R–Julia parity.
+
+`Coupled NB2 ordinary location-scale random intercept` is limited to the same
+tagged `(1 | p | g)` term in the `mu` and `sigma` formulas. The route fits a
+joint two-dimensional random-effect covariance for iid groups (`Q = I`), with
+matching tag and group required across formulas. `src/locscale_frontend.jl`
+implements this public `NegBinomial2` route, and
+`test/test_locscale_frontend.jl` checks the public fit against the engine,
+including coefficients, covariance, summary, and Wald output. That test is an
+implementation check; it does not establish coverage or R–Julia parity.
 
 `Gaussian phylogenetic random intercept + slope, two SDs (mean)` is
 `implemented` (#620; was `refused` by #621 at the previous pin):
-`phylo(1 + x | species)` on the Gaussian mean fits drmTMB's model — two
+`phylo(1 + x | species)` on the Gaussian mean fits drmTMB's model with two
 independent phylogenetic fields (intercept `a ~ N(0, σₐ² C)`, slope
 `b ~ N(0, σ_b² C)`, no correlation). In `src/drmTMB.cpp` that is
 `model_type == 1` + `has_phylo_mu` with `q_phylo == 2` and both fields on `mu`,
@@ -110,7 +130,7 @@ is a different construct from the one refused here; drmTMB refuses this formula
 outright on Gamma ("intercept-only in this q=1 route"). DRModels.jl still refuses
 every non-Gaussian family on this route, for the accurate reason: it is the
 EXACT closed-form Gaussian marginal, which does not extend to a non-Gaussian
-likelihood — the count families need a two-field Laplace route that does not
+likelihood. The count families need a two-field Laplace route, which does not
 exist yet. The prior wording named a target difference that measurement does
 not support; the refusal itself is unchanged. `phylo(0 + x | g)`, multi-slope
 forms, a second structured component, ordinary and `sigma`-side random effects, a
@@ -131,13 +151,13 @@ gap: drmTMB reports this row `scope-limited` (mixed rejected/scope-limited
 across families).
 
 `cumulative_logit()`'s unlabelled, intercept-only `phylo(1 | species)` on `mu`
-(#563 S8 follow-on) reuses the same sparse-Laplace engine — the ordinal
+(#563 S8 follow-on) reuses the same sparse-Laplace engine. The ordinal
 likelihood's cutpoints are the one genuinely new piece, generalising the
 scalar/`Xσ`-chained nuisance-parameter IFT gradient (`_phylo_mean_laplace_hetero_fg`,
 #164) from a scalar dispersion to the `K-1` cutpoint increments. Same-target
 vs drmTMB 0.7.0 (`test/test_cumlogit_phylo.jl`, 60-tip `ape::rcoal` tree,
 Brownian phylo intercept): measured gaps of 2.7e-7 (β), 9.6e-7 (cutpoints),
-1.6e-6 relative (phylo SD, correlation-scale), 3.8e-5 (logLik) — both engines
+1.6e-6 relative (phylo SD, correlation-scale), and 3.8e-5 (logLik). Both engines
 land on essentially the same optimum, tighter than the iid slice's GHQ-vs-TMB
 comparison because both sides run a Laplace approximation of the same model
 here. Cannot be combined with an ordinary `(1 | g)`/`(0 + x | g)` random
@@ -192,7 +212,7 @@ stay `rejected` in both packages (drmTMB's `validate_tweedie_mu_random_terms()`
 `q4_p100` vs `fit_q4_sparse_tmb` −256.51 (same class as plain block-coordinate
 EM). Brief: `docs/dev-log/plans/2026-08-01-natgrad-decision-gate.md`. The
 reusable Fisher metric was extracted as `lc_metric` (`src/lc_metric.jl`,
-`test/test_lc_metric.jl`) — infrastructure for AI-REML / #11/#165, **not** a
+`test/test_lc_metric.jl`) provides infrastructure for AI-REML / #11/#165; it is **not** a
 public solver.
 
 `REML with ordinary random effects (Gaussian mean)` is `implemented` (#439):
@@ -220,13 +240,13 @@ trail behind that summary.
 different ways and a scanning reader will take the wrong one.
 
 - It is **not** Akaike / model weights. Neither DRModels.jl nor drmTMB computes those,
-  despite `weights` sitting in a list next to `AICc` — which is precisely the
-  reading the row name invites. There is no `akaike_weights` in either package.
+  despite `weights` sitting in a list next to `AICc`. That ordering invites a
+  mistaken reading. There is no `akaike_weights` in either package.
 - It is `StatsAPI.weights`: **prior, per-observation** weights. `src/comparison.jl`
   returns `ones(nobs(fit))` unconditionally, because DRModels.jl fits do not store prior
   weights at all. Its docstring says so plainly.
 - drmTMB's `weights.drmTMB` returns a real stored vector (`object$model$weights`,
-  `R/methods.R`), which it genuinely uses — its bootstrap reads it
+  `R/methods.R`), which it genuinely uses. Its bootstrap reads it
   (`R/profile.R`) and `associate_pairs()` guards on `any(weights != 1)`.
 
 So the accessor is at parity in *name* and not in *substance*, and the gap is
@@ -236,7 +256,7 @@ slot". Passing `weights = ...` through `engine = "julia"` is refused.
 
 Kept `implemented` because every named member exists and is exported, which is this
 file's stated bar. Flagged because a row can meet the bar and still leave a reader
-believing something false — and the fix for that is prose, not a status change.
+believing something false. The fix belongs in the prose; the status itself is correct.
 
 `Chi-bar-square boundary LRT p-value` is `implemented`: `src/chibar.jl` is
 included (`src/DRModels.jl:160`), exports `chibar_pvalue`/`lrt_boundary`
@@ -247,7 +267,8 @@ boundary inference as tested.
 `AGHQ adaptive-quadrature marginal estimator` is `implemented` (2026-08-24
 audit, PR #449 / commit `93c3db6b`, merged 2026-08-18): `src/aghq_1d.jl` is
 included at `src/DRModels.jl:91` and wires a public front end on `drm()`
-(`marginal = :AGHQ`, Poisson `(1 | g)` only — `src/poisson.jl:43-48,310-325`).
+(`marginal = :AGHQ`, available only for Poisson `(1 | g)`;
+`src/poisson.jl:43-48,310-325`).
 `test/test_aghq_1d.jl` is in the default suite (`test/runtests.jl`) and
 exercises the quadrature kernel, the public fit path, and the fail-loud
 guards on every unsupported structure (phylo, crossed, correlated slope,
@@ -255,19 +276,17 @@ other families, `:REML`, `associate_pairs`). This corrects the prior
 `missing` cell: the same PR that landed the code also wrote the `missing`
 row and its "not ADEMP-certified" rationale, but by this file's own ladder
 (source + a registered test) that is source-and-test evidence for
-`implemented`, not for `missing`. Scope stays exactly what #448 shipped —
+`implemented`, not for `missing`. Scope stays exactly what #448 shipped:
 Poisson `(1 | g)` only, `:REML` not wired to `:AGHQ`, tensor/multi-d AGHQ on
-phylo Laplace out of scope — this flip changes the status word only, not the
+phylo Laplace out of scope. This flip changes only the status word; it does not change the
 scope.
 
-`Variational (VA/ELBO) marginal estimator` stays `planned` here, but the
-citation needs correcting: `test/test_variational.jl` is not plumbing-only
-(anchors exercise real ELBO fits), and the public `marginal = :VA` front end
-works — not just the generic `_fit_va` stub — for Poisson / Binomial /
-NegBinomial2 / Gamma / Beta `(1 | g)` (`src/poisson.jl:320-321`,
-`src/binomial.jl:214-216`, `src/negbinomial.jl:220-224`,
-`src/gamma.jl:154-158`, `src/beta.jl:129-133`), each with its own registered test
-(`test/test_va_poisson_elbo.jl`, `test/test_va_frontend_families.jl`,
+`Variational (VA/ELBO) marginal estimator` stays `planned` here. The public
+`marginal = :VA` front end is wired for Poisson, Binomial, NegBinomial2, Gamma,
+and Beta `(1 | g)` (`src/poisson.jl:320-321`, `src/binomial.jl:214-216`,
+`src/negbinomial.jl:220-224`, `src/gamma.jl:154-158`, `src/beta.jl:129-133`).
+Each family has a registered test (`test/test_va_poisson_elbo.jl`,
+`test/test_va_frontend_families.jl`,
 `test/test_variational_binomial.jl`, `test/test_variational_nb2.jl`,
 `test/test_variational_gamma.jl`; `test/runtests.jl`). Per
 `docs/dev-log/check-log.d/2026-08-09-136-va-rung2-3.md`, the project's own
@@ -369,9 +388,9 @@ at `src/DRModels.jl:161` and its exported `drm_bridge`/
 `drm_bridge_inference` are exported. `test/test_bridge.jl` asserts that bridge
 output equals native `drm` output.
 
-## Snapshot (2026-11-02)
+## Snapshot (2026-11-02; reconciled against `origin/main` at `47a081b`)
 
-- The current table has 49 capabilities: 43 `implemented`, 2 `rejected`
+- The current table has 51 capabilities: 45 `implemented`, 2 `rejected`
   (`:natgrad` and ordinary correlated random effects for bivariate Gaussian),
   1 `planned`, 2 `experimental` (missing-predictor imputation and cross-family
   bivariate), and 1 `missing` (native missing-response handling).

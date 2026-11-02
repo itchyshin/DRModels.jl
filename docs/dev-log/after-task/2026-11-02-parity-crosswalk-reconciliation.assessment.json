@@ -1,0 +1,36 @@
+{
+  "assessment_performed": true,
+  "draft_sha256": "36308dea789442e867912af63643a765b5148f5ab76c1a45cf33bfe89c634720",
+  "draft_version": "v1",
+  "requested_mode": "independent",
+  "assessor_type": "self",
+  "reviewer": "Codex self-review",
+  "method": "Manual review under writing-naturalness.md, checked against local source, GitHub PR metadata and workflow-run records, then slop_check.py.",
+  "genre": "technical after-task report",
+  "coverage": "Whole report, sections 1 through 12.",
+  "score": 2,
+  "style_status": "scored",
+  "score_reason": "The report uses exact files, SHAs, run IDs, and explicit limits. Some technical sentences are dense, but the PR status is separated into short bullets.",
+  "confidence": "medium",
+  "confidence_reason": "The factual statements were checked in local source or current PR and run records. The style judgment is a self-review and is not calibrated.",
+  "examples": [
+    {
+      "location": "Known Residuals, first paragraph",
+      "cue": "The paragraph names what remains unverified and what the edit does not establish.",
+      "impact": "Readers can separate the documentation check from parity, calibration, and release claims.",
+      "repair": "no change needed",
+      "line": 45,
+      "quote": "The citation checker still skips 17 items it cannot resolve precisely."
+    }
+  ],
+  "evidence_none_reason": null,
+  "science_gate": "not_applicable",
+  "science_gate_reason": "This report records a documentation reconciliation, not a new scientific result.",
+  "facts_gate": "pass",
+  "facts_gate_reason": "The new route descriptions, status counts, PR head, and exact workflow status were compared with their source records.",
+  "references_gate": "pass",
+  "references_gate_reason": "Local source/test files and cited PR/workflow records were checked; unresolved historical capability citations are stated as a residual.",
+  "date": "2026-11-02",
+  "calibration_status": "No style controls were used; this is an uncalibrated editorial judgment.",
+  "interpretation": "perceived_style_not_authorship"
+}
