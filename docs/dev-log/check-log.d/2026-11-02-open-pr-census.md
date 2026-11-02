@@ -1,0 +1,1 @@
+| 2026-11-02 | **Open PR census across R and Julia** | GitHub exact-head metadata/checks and registered-worktree inventories; `git diff --check`; after-task and prose checks | Catalogued 59 open PRs and conflict/ownership evidence; no source tests or compute run | Codex |

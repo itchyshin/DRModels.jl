@@ -228,3 +228,20 @@ checkouts, not human ownership.
 These PR checks are metadata evidence, not source review or permission to
 change an owner-held branch. No review, message, PR change, merge, or compute
 run occurred in this census.
+
+## Full open-PR inventory, 2026-11-02 22:50 UTC
+
+The complete read-only census contains 35 open drmTMB PRs and 24 open
+DRModels.jl PRs. None had a formal review or review thread. Exact head/base
+SHAs, current check counts, registered worktree evidence, and file-overlap
+groups are recorded in the [full open-PR census](../2026-11-02-open-pr-census/README.md).
+
+Since the 22:45 snapshot, drmTMB #1663 completed all six exact-head checks
+successfully at head `993905ff6aa53d70304b988f73be397422dcf274`; its exact-head
+worktree remains heavily dirty, so it stays owner-held. DRModels.jl #1249
+still has Julia 1 shard 3 running its test step. drmTMB #1657 still has its
+three platform checks running; #1647 has only Windows active. DRModels.jl
+#1215 remains queued, while #1214 has its docs build active and changes check
+queued. The full census identifies #1664 as the clearest low-risk review
+candidate, not an automatic merge. CMR #1612 remains separate from core DRM;
+its deferred interval-calibration work is not promoted by this PR inventory.
