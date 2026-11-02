@@ -1,18 +1,18 @@
 {
   "assessment_performed": true,
-  "draft_sha256": "8299a5e926379e9f85b79218d9ec9be7b0cd0af2ef19fd32617b98005decd227",
-  "draft_version": "v12",
+  "draft_sha256": "fc4df4fc1e762a94b69e3fcf5b3aabcdd9aa667a0b7d876b24112729328b3efa",
+  "draft_version": "v13",
   "requested_mode": "independent",
   "assessor_type": "self",
   "reviewer": "Codex self-review",
-  "method": "Manual review of live exact-head GitHub merge and workflow metadata, exact PR diff, retained local R CMD check output and artifact hash, and local repository state; followed by closeout, after-task, exact-draft, and slop checks.",
+  "method": "Manual review of live exact-head GitHub merge and workflow metadata, exact PR diffs, retained local R CMD check output and artifact hash, and current DRModels.jl PR/check state; followed by closeout, after-task, exact-draft, and slop checks.",
   "genre": "technical after-task report",
-  "coverage": "Whole report by continuity from v11; reread the new approved-merge section (lines 134-140) and its linked merge/workflow records through 2026-11-02 11:43 UTC.",
+  "coverage": "Whole report by continuity from v12; reread the approved #1662 merge and post-merge check (lines 134-140), plus the completed #1245 CI refresh appended after it.",
   "score": 2,
   "style_status": "scored",
   "score_reason": "The report uses exact files, SHAs, run IDs, and explicit limits. Some technical sentences are dense, but the PR status is separated into short bullets.",
   "confidence": "high",
-  "confidence_reason": "The merged PR head, base, merge commit and time were read live from GitHub. The post-merge workflow result and failed-step log were read directly; local R CMD check log and artifact SHA-256 were retained from the exact PR worktree. The cause attribution for receipt drift is explicitly identified as inference. Style assessment remains a self-review and is not calibrated.",
+  "confidence_reason": "The merge commit, timestamp, post-merge failed workflow, and #1245 exact-head check state were read live from GitHub. The local R CMD check log and artifact SHA-256 were retained from the exact PR worktree. Receipt drift attribution remains explicitly an inference. Style assessment remains a self-review and is not calibrated.",
   "examples": [
     {
       "location": "Section 10, approved #1662 merge, bullet 1",
@@ -31,19 +31,19 @@
       "quote": "Baseline reproduction has not been run, so attribution remains an inference."
     },
     {
-      "location": "Section 10, approved #1662 merge, bullet 4",
-      "cue": "The report keeps the prior Julia shard observation time-bounded.",
-      "impact": "It avoids implying a current #1245 status without a new check.",
+      "location": "Section 10, #1245 completion refresh, bullet 1",
+      "cue": "The exact source head and every completed validation lane are named.",
+      "impact": "Readers can see that the old pending-shard status is superseded by a completed run.",
       "repair": "no change needed",
-      "line": 139,
-      "quote": "its present status is not asserted here."
+      "line": 144,
+      "quote": "all four shards and aggregate `ci-ok` in run [41406599132](https://github.com/itchyshin/DRModels.jl/actions/runs/41406599132) passed."
     }
   ],
   "evidence_none_reason": null,
   "science_gate": "not_applicable",
   "science_gate_reason": "This report records a documentation reconciliation, not a new scientific result.",
   "facts_gate": "pass",
-  "facts_gate_reason": "The merge commit and timestamp were verified with live GitHub PR metadata. The sole post-merge workflow failure was inspected at job and log level. The local as-CRAN run reported status 0 with one missing-checkbashisms warning, and the tarball hash and size were read from the retained artifact. No Julia PR, receipt, model source, or owner worktree was altered.",
+  "facts_gate_reason": "The merge commit and timestamp, post-merge failure, and final #1245 exact-head checks were verified from live GitHub records. The local as-CRAN run reported status 0 with one missing-checkbashisms warning, and the tarball hash and size were read from the retained artifact. No Julia PR, receipt, model source, or owner worktree was altered.",
   "references_gate": "pass",
   "references_gate_reason": "The new PR and workflow links point to the records checked during this refresh; prior unresolved capability citations remain explicitly listed as residuals.",
   "date": "2026-11-02",

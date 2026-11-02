@@ -139,6 +139,11 @@ A read-only inventory counted 87 registered DRModels.jl worktrees: 75 readable a
 - The 10:53 UTC status above is historical and superseded for #1662 by this merge record. No Julia PR, owner-held worktree, capability page, receipt, release or publication state was changed. #1245 was last observed with shard 2/4 still running at 10:50 UTC; its present status is not asserted here.
 - The Mac check meter was retired after completion. No child check process remains active.
 
+### DRModels.jl #1245 check completion at 2026-11-02 11:43 UTC
+
+- PR #1245 remains open at exact head `0dde1f977f6c70495230b705a7d0f13daf74dfde` on base `1d6ef3fe53a64ca680c034f3d297709b36cf1729`. Its final Julia shard completed successfully at 11:18:27 UTC; all four shards and aggregate `ci-ok` in run [41406599132](https://github.com/itchyshin/DRModels.jl/actions/runs/41406599132) passed. Documenter and preview checks in run [41406599136](https://github.com/itchyshin/DRModels.jl/actions/runs/41406599136) passed. Scaling and deployment were skipped.
+- GitHub currently reports the PR as open and mergeable, with no formal review decision. The preflight and worktree inventory still identify this as an owner-held lane, and the PR changes the shared capability page. The green checks close the long-running CI gate; they do not transfer ownership or approve a merge. Leave the PR and page with its owner for review and base reconciliation.
+
 ## 11. Team Learning
 
 Memory receipt: relevant parity decision D-203 and the project route were checked. The route script produced no `LOAD-FIRST` manifest. Repository instructions and four page diffs were reviewed; other refs and worktrees were left untouched.
