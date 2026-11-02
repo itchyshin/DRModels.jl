@@ -1,39 +1,39 @@
 {
   "assessment_performed": true,
-  "draft_sha256": "6662f0ff408ccba788f36744e1dbb4c48c316a0c8511d7d83d462c3616d14b91",
-  "draft_version": "v15",
+  "draft_sha256": "69143f77b3efbf60af7e84494dd1309591ebe9e15ef326157d1c74db2b47af1c",
+  "draft_version": "v16",
   "requested_mode": "independent",
   "assessor_type": "self",
   "reviewer": "Codex self-review",
-  "method": "Manual review of live exact-head GitHub merge and workflow metadata, exact PR diffs, retained local R CMD check output and artifact hash, current DRModels.jl PR/check/owner-comment state and the exact-head Julia version from its raw CI log, plus fresh lane inventories; followed by closeout and prose validators.",
+  "method": "Manual review of live exact-head GitHub merge and workflow metadata, exact PR diffs, current DRModels.jl PR/check/owner-comment state and raw CI versions, plus read-only SHA-256 comparison of the receipt against exact pre-merge and merge R source trees; followed by closeout and prose validators.",
   "genre": "technical after-task report",
-  "coverage": "Whole report by continuity from v14; reread the next-candidate scan, including the exact Julia 1.13.3 version printed in run 41249874224, through 2026-11-02 11:52 UTC.",
+  "coverage": "Whole report by continuity from v15; reread the #1662 receipt baseline attribution section (latest dated section) and its exact commit/tree comparison evidence through 2026-11-02 12:02 UTC.",
   "score": 2,
   "style_status": "scored",
   "score_reason": "The report uses exact files, SHAs, run IDs, and explicit limits. Some technical sentences are dense, but the PR status is separated into short bullets.",
   "confidence": "high",
-  "confidence_reason": "Merge metadata, post-merge workflow failure, #1245 final checks, and #1237 exact-head CI/Documenter results were read live from GitHub. The Julia version was taken from the raw #1237 run log, which reports 1.13.3; the owner condition and PR body were read directly. Lane inventories were refreshed independently for both repositories. The local R CMD check log and artifact hash were retained. Style assessment remains a self-review and is not calibrated.",
+  "confidence_reason": "Merge metadata and workflow logs were read live. The receipt hash comparison used archived R trees at exact base and merge commits, and confirmed the receipt JSON is identical between them. The #1237 exact-head Julia version came from its raw workflow log. Other receipt refs and lane ownership were read with preflight; style review remains self-assessed and uncalibrated.",
   "examples": [
     {
-      "location": "Section 10, approved #1662 merge, bullet 1",
-      "cue": "The report binds the merge to user approval, exact PR scope, and merge commit.",
-      "impact": "Readers can distinguish the completed test-only merge from the remaining receipt failure.",
-      "repair": "no change needed",
-      "line": 136,
-      "quote": "GitHub records merge commit `71ceee671aac0e4c8bedf265b3b735b1ad633390` at 11:30:13 UTC."
-    },
-    {
-      "location": "Section 10, approved #1662 merge, bullet 3",
-      "cue": "The post-merge failure names the affected receipt and identifies attribution as an inference.",
-      "impact": "The stale receipt is not silently attributed to the unrelated OU test change.",
+      "location": "Section 10, approved #1662 merge, baseline check bullet",
+      "cue": "The report identifies exact base/merge source trees and records the result of their R hash comparison.",
+      "impact": "Readers can distinguish the pre-existing receipt failure from a regression caused by the merged test edit.",
       "repair": "no change needed",
       "line": 138,
-      "quote": "Baseline reproduction has not been run, so attribution remains an inference."
+      "quote": "A read-only SHA-256 comparison found the same R receipt drift on the pre-merge base `b535bfbc` and merged commit `71ceee6`: 22 of 58 recorded R files differ and 3 R files are unrecorded on each."
+    },
+    {
+      "location": "Section 10, baseline attribution section",
+      "cue": "The verification limit is stated alongside the positive source-level finding.",
+      "impact": "The hash check is not presented as a rerun of the receipt workflow or its Julia backend.",
+      "repair": "no change needed",
+      "line": 155,
+      "quote": "Both trees have the same result: 22 mismatches among 58 recorded `R/` files, plus three R files absent from the receipt."
     },
     {
       "location": "Section 10, next-candidate scan, #1237 bullet",
-      "cue": "The report compares the owner's exact ship condition with current exact-head workflow evidence.",
-      "impact": "It explains why passing Julia 1 and docs checks do not satisfy the stated Julia 1.10 condition.",
+      "cue": "The report compares the owner's exact ship condition with the current exact-head workflow evidence.",
+      "impact": "It explains why the current CI run does not satisfy the stated Julia 1.10 condition.",
       "repair": "no change needed",
       "line": 150,
       "quote": "The exact-head CI log identifies its Julia 1 shards as Julia 1.13.3; there is no Julia 1.10 job."
@@ -43,7 +43,7 @@
   "science_gate": "not_applicable",
   "science_gate_reason": "This report records a documentation reconciliation, not a new scientific result.",
   "facts_gate": "pass",
-  "facts_gate_reason": "The merge commit and timestamp, post-merge failure, #1245 final checks, and #1237 exact-head checks were verified from live GitHub records. The raw #1237 run log reports Julia 1.13.3 and has no Julia 1.10 job; its owner comment and branch base were read directly. Both repository lane inventories were refreshed. The local as-CRAN run reported status 0 with one missing-checkbashisms warning; the tarball hash and size came from the retained artifact. No PR, receipt, source, or owner worktree was changed.",
+  "facts_gate_reason": "The merge commit and timestamp, post-merge workflow, #1245 and #1237 exact-head checks, and #1237 raw Julia version log were verified from live GitHub. Read-only SHA-256 comparison of archived R trees at the exact PR base and merge commits yielded identical mismatch and unrecorded-file counts; the receipt JSON is byte-identical across those commits. Lane preflight found 12 other refs with receipt edits. No PR, source, or receipt was altered.",
   "references_gate": "pass",
   "references_gate_reason": "The new PR and workflow links point to the records checked during this refresh; prior unresolved capability citations remain explicitly listed as residuals.",
   "date": "2026-11-02",
