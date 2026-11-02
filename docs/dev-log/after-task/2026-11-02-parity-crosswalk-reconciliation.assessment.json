@@ -1,83 +1,51 @@
 {
   "assessment_performed": true,
-  "draft_sha256": "ce487bcb8e329d0b896b7cf9ea27c9bfa208eed61a81a2977b17f5d1afcda692",
-  "draft_version": "v9",
+  "draft_sha256": "fdfe0c5696deefb3b108c7d95f5dfbf168875355d95545128a643ca27874d207",
+  "draft_version": "v10",
   "requested_mode": "independent",
   "assessor_type": "self",
   "reviewer": "Codex self-review",
-  "method": "Manual review under writing-naturalness.md, checked against live GitHub PR metadata and job records, bounded read-only worktree inventories, the fresh R focused-test output, and the local branch state; followed by exact-draft assessment-check, slop_check.py, and check-after-task.R.",
+  "method": "Manual review under protocols/writing-naturalness.md, checked against exact-head GitHub PR metadata, the failed Actions logs, lane preflight, and local Git state; followed by slop_check.py, closeout.py check, check-after-task.R, and exact-draft assessment-check.",
   "genre": "technical after-task report",
-  "coverage": "Whole report, sections 1 through 12, including the live PR and CI refreshes and R and Julia worktree inventories through 2026-11-02 10:27 UTC.",
+  "coverage": "Whole report by continuity from v9; reread the updated current PR and ownership refresh in section 10 (lines 118-124) and its surrounding status entries, through 2026-11-02 10:42 UTC.",
   "score": 2,
   "style_status": "scored",
   "score_reason": "The report uses exact files, SHAs, run IDs, and explicit limits. Some technical sentences are dense, but the PR status is separated into short bullets.",
   "confidence": "medium",
-  "confidence_reason": "Exact PR heads, merge commits, workflow job results, targeted failure excerpts, current main refs, and registered worktree status counts were checked against live GitHub and local command output. PR #1245 shard 2 remains in progress at the stated observation time. The style judgment is a self-review and is not calibrated.",
+  "confidence_reason": "The updated PR heads, exact workflow results and failure excerpts, current crosswalk branch ref, and lane census were checked against live GitHub and local command output. PR #1245 shard 2 remained in progress at 10:42 UTC. The style judgment is a self-review and is not calibrated.",
   "examples": [
     {
-      "location": "Known Residuals, first paragraph",
-      "cue": "The paragraph names what remains unverified and what the edit does not establish.",
-      "impact": "Readers can separate the documentation check from parity, calibration, and release claims.",
+      "location": "Section 10, current PR refresh, #1663 bullet",
+      "cue": "The paragraph ties failed checks to the exact updated head and preserves the receipt gate.",
+      "impact": "Readers can see which owner action would produce evidence, without mistaking a fingerprint failure for a test of model behavior.",
       "repair": "no change needed",
-      "line": 45,
-      "quote": "The citation checker still skips 17 items it cannot resolve precisely."
+      "line": 120,
+      "quote": "The PR is unstable, its lane remains dirty and owner-held, and no worktree or PR state was changed here."
     },
     {
-      "location": "Known Residuals, live PR and CI refresh, first bullet",
-      "cue": "The bullet distinguishes the live PR head and partial CI result from the stale PR-body text.",
-      "impact": "Readers can see why this branch is not ready for a merge decision yet.",
+      "location": "Section 10, current PR refresh, #1662 bullet",
+      "cue": "The paragraph separates passing exact-head checks from formal review and merge status.",
+      "impact": "Readers are not led to treat green checks as merge authorization.",
       "repair": "no change needed",
-      "line": 73,
-      "quote": "There is no formal review."
+      "line": 121,
+      "quote": "GitHub still records no formal review."
     },
     {
-      "location": "Known Residuals, R worktree and CI refresh, #1663 CI bullet",
-      "cue": "The bullet identifies the failed source checks and explicitly withholds receipt recertification.",
-      "impact": "Readers can distinguish a detected fingerprint change from evidence that the behavior remains compatible.",
+      "location": "Section 10, current PR refresh, #1245 bullet",
+      "cue": "The paragraph names the single live shard and warns against restarting it.",
+      "impact": "Readers can resume monitoring without duplicating a long run or disturbing its owner-held worktree.",
       "repair": "no change needed",
-      "line": 84,
-      "quote": "No recertification is claimed."
-    },
-    {
-      "location": "Known Residuals, Julia worktree inventory",
-      "cue": "The inventory makes clear that missing worktree records did not lead to pruning.",
-      "impact": "Readers can separate measured status from any assumption that old paths are abandoned.",
-      "repair": "no change needed",
-      "line": 90,
-      "quote": "No worktree was pruned."
-    },
-    {
-      "location": "Known Residuals, cross-repository cleanup refresh, #1662 bullet",
-      "cue": "The sentence records the exact local test result and limits what it establishes.",
-      "impact": "Readers can distinguish a Mac focused-test pass from full Mac CMD-check or live bridge evidence.",
-      "repair": "no change needed",
-      "line": 98,
-      "quote": "A fresh local run of `Rscript -e 'devtools::test(filter = \"phylo-temporal-ou-methods\", reporter = \"summary\")'` passed on R 4.6.0, macOS arm64, from the exact PR worktree."
-    },
-    {
-      "location": "Known Residuals, current-main CI and PR evidence, drmTMB bullet",
-      "cue": "The bullet distinguishes the old main failure from the green exact-head PR check and states what the changed test does.",
-      "impact": "Readers can see why the CMD-check fix is promising without treating PR checks as a current-main result or merge authorization.",
-      "repair": "no change needed",
-      "line": 105,
-      "quote": "PR #1662 removes that brittle expectation and classifies code 1 as degenerate; its exact-head R-CMD-check run `41350326046` passed all six jobs."
-    },
-    {
-      "location": "Known Residuals, Julia PR and current-main refresh, #1245 bullet",
-      "cue": "The bullet distinguishes the pending exact-head CI job from the completed checks and records the stale PR-body detail.",
-      "impact": "Readers can see why the PR remains blocked and why its owner must reconcile the description after the running job settles.",
-      "repair": "no change needed",
-      "line": 114,
-      "quote": "Run `41406599132` remains in progress only on Julia shard 2; shards 1, 3, and 4 and the changes job passed."
+      "line": 122,
+      "quote": "Do not restart the live shard or edit the shared capability page."
     }
   ],
   "evidence_none_reason": null,
   "science_gate": "not_applicable",
   "science_gate_reason": "This report records a documentation reconciliation, not a new scientific result.",
   "facts_gate": "pass",
-  "facts_gate_reason": "The exact PR heads, current main ref, merged PR ancestry, workflow job outcomes, targeted failure excerpts, focused local R test, and current worktree status counts were compared with live GitHub and local command results at 10:27 UTC.",
+  "facts_gate_reason": "The updated PR heads, run 41428592479 logs, run 41406599132 job state, base-versus-main comparison, branch/upstream equality, and lane inventory were checked directly at 10:42 UTC. No tests were rerun in this report refresh.",
   "references_gate": "pass",
-  "references_gate_reason": "Local source/test files and cited PR/workflow records were checked; unresolved historical capability citations are stated as a residual.",
+  "references_gate_reason": "The linked GitHub PR and workflow records support the updated claims; earlier unresolved capability citations remain explicitly listed as residuals.",
   "date": "2026-11-02",
   "calibration_status": "No style controls were used; this is an uncalibrated editorial judgment.",
   "interpretation": "perceived_style_not_authorship"
