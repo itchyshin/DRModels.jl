@@ -1,0 +1,1 @@
+| 2026-11-02 | **Active PR CI refresh 22:24 UTC** | Exact-head GitHub metadata and diagnostics for #1249, #1657, #1659 | Updated completion state; preserved current blockers and exact bases. No owner-held branches changed. | Codex |
