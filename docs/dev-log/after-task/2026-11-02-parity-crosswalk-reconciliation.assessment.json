@@ -1,7 +1,7 @@
 {
   "assessment_performed": true,
-  "draft_sha256": "0ebe0538d3be7e7d480b795ce513a0bbfa8919bc2727328e886bbabd95110d25",
-  "draft_version": "v43",
+  "draft_sha256": "47f0012e62c22890c3d13f8d11a2e39ba32f0d16b12507f096a1743e91bc2d55",
+  "draft_version": "v44",
   "requested_mode": "independent",
   "assessor_type": "self",
   "reviewer": "Codex self-review",
@@ -109,13 +109,21 @@
       "repair": "no change needed",
       "line": 265,
       "quote": "The PR changes only `test/test_bootstrap_formula_structured.jl`, so the failures are in files outside its diff; their relationship to the older base has not been tested."
+    },
+    {
+      "location": "Section 10, cross-repository parity PR and ownership refresh, drmTMB #1657",
+      "cue": "The local focused pass is bounded to the offline payload assertion and explicitly records skipped live Julia fits.",
+      "impact": "Readers can credit the test-only change without treating it as current bridge parity evidence.",
+      "repair": "no change needed",
+      "line": 267,
+      "quote": "This verifies the offline test change only."
     }
   ],
   "evidence_none_reason": null,
   "science_gate": "not_applicable",
   "science_gate_reason": "This report records a documentation reconciliation, not a new scientific result.",
   "facts_gate": "pass",
-  "facts_gate_reason": "Exact heads, bases, review/check conclusions, and #1233/#1228 patch content were checked live. Both focused exact-head test logs were checked and their runtimes and skip boundaries are recorded; the report does not turn them into current-pair parity, full-suite, or interval-calibration claims. The current-contrib archive and local release tag both identify an unaccepted/not-submitted 0.7.0 candidate; the report does not treat either as the exact fixture-generating build. The 14:34 UTC refresh was checked against live PR metadata, workflow and job logs, changed-file lists, and lane preflight. PR #1237 run 41401878711 fails in two files outside its one-file diff; no cause was assigned. Open-PR results are recorded as search counts, not completeness or parity measures.",
+  "facts_gate_reason": "Exact heads, bases, review/check conclusions, and #1233/#1228 patch content were checked live. Both focused exact-head test logs were checked and their runtimes and skip boundaries are recorded; the report does not turn them into current-pair parity, full-suite, or interval-calibration claims. The current-contrib archive and local release tag both identify an unaccepted/not-submitted 0.7.0 candidate; the report does not treat either as the exact fixture-generating build. The 14:34 UTC refresh was checked against live PR metadata, workflow and job logs, changed-file lists, and lane preflight. PR #1237 run 41401878711 fails in two files outside its one-file diff; no cause was assigned. Open-PR results are recorded as search counts, not completeness or parity measures. The focused #1657 exact-head archive test was run directly and exited 0 on R 4.6.0/macOS arm64; the new offline assertion ran, while both live Julia fit tests skipped. The process output was not retained as a raw file and this limit is recorded.",
   "references_gate": "pass",
   "references_gate_reason": "The linked PRs and workflow runs refer to the exact items checked during this refresh; no unsupported external scientific references were added. The report links the exact source archive URL and records its checksum; no literature claims were added.",
   "date": "2026-11-02",
