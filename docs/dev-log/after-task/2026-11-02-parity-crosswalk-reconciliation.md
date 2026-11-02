@@ -158,7 +158,7 @@ A read-only inventory counted 87 registered DRModels.jl worktrees: 75 readable a
 ### Parity PR state refresh at 2026-11-02 12:04 UTC
 
 - **DRModels.jl #1242, #1239, and #1234:** their exact heads remain open, with all four Julia shards, aggregate `ci-ok`, Documenter, and preview checks green. Scaling and stable deployment were skipped. GitHub has no formal review decision on these PRs. They provide route-specific parity test evidence for Poisson/NB2, Beta/Binomial/BetaBinomial, and Student/Gamma location-scale respectively; they are still unmerged test branches, not proof of overall parity or interval calibration.
-- **DRModels.jl #1240:** the exact-head docs and preview checks passed, but Julia shard 2/4 and aggregate `ci-ok` failed. Do not count Gaussian location-scale random-intercept parity as passing from this PR.
+- **DRModels.jl #1240:** the exact-head docs and preview checks passed, but Julia shard 2/4 and aggregate `ci-ok` failed. At this status-only pass, the reason for that shard failure and the route-test result had not yet been inspected.
 - **drmTMB #1659:** the stored-reference parity test PR remains open with no reported checks. Its corresponding Julia parity PR #1242 has green checks, but cross-PR presence does not establish that the R fixture runner passes or that the source pins match. #1657 also has no reported checks. Both remain owner-held; the R lane census still reports 31 live lanes.
 - These are status observations only. No PR branch, check, review, source file, or owner assignment was changed. The previously reported #1245 and #1237 owner gates remain: #1245 is green but unreviewed and owner-held; #1237 still lacks the owner's requested exact-head Julia 1.10 workflow evidence.
 
@@ -169,6 +169,11 @@ A read-only inventory counted 87 registered DRModels.jl worktrees: 75 readable a
 - **Student/Gamma location-scale, #1234:** the Student fixture pins drmTMB commit `0eb0467851cc2902556764bdca5441b7bc053be6` and R 4.6.0. The Julia fit is documented at the Gaussian limit with log-likelihood 4.4 below that reference; four matching checks are `@test_broken`, while the test requires the fit not to report convergence. The Gamma scale-predictor comparison is skipped because its reference fixture is absent. Green CI therefore confirms the expected guards run, not parity for these two fits.
 - **R stored-reference tests, #1659:** the fixture provenance pins DRModels.jl `64ccb2d8d87b329e5a43b2358fd5cb4a36cf1729`, Julia 1.10.12, and the bridge generator. The R test compares seven families, fixed and random-intercept cases; live bridge checks are conditional on a Julia checkout and JuliaCall. The PR base predates the merged #1662 main head, and no exact-head checks are reported. Source-level regeneration and current-main comparison remain open.
 - All five PRs target or build from older bases than the current Julia or R main heads. Before treating these tests as paired current-source parity, owners need to rebase or record why the older candidate is the intended comparator, then rerun and retain both-side source/build identities. The present review was limited to PR patches and metadata; it did not execute any fixture generator or model fit.
+
+### #1240 exact-head failure attribution at 2026-11-02 12:10 UTC
+
+- The full workflow log for run `41248908491` shows the targeted Gaussian location-scale random-intercept parity test passed **17/17** on Julia shard 4. The overall CI remains blocked because shard 2 failed `test_fixture_provenance.jl`: the newly added `fixtures_re/gaussian-locscale-re/expected.meta.toml` lacks the required `drmtmb_code_hash` field. Its metadata records a CRAN drmTMB 0.7.0 reference and says no git hash was available in the generating sandbox.
+- Therefore #1240 has a passing narrow test against its stored drmTMB 0.7.0 reference on that PR head, but its aggregate package CI is not green. It does not establish parity against current drmTMB main or a current paired source build. The missing provenance remains with the PR owner; no fixture or test was edited here.
 
 ## 11. Team Learning
 
