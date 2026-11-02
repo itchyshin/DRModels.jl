@@ -226,6 +226,12 @@ This refresh supersedes conflicting status statements in the 12:23 UTC snapshot 
 
 The read-only exact-head refresh changed no PR, branch, model source, test, or owner worktree. It confirms one completed cleanup item (#1662), one now-green docs-and-CI candidate with an inaccurate PR-body status (#1245), and multiple still-fenced candidates. Crosswalk work does not establish broad R–Julia parity or interval calibration.
 
+### Julia 1.10 exact-head follow-up for #1237: 2026-11-02 13:01 UTC
+
+The previously missing Julia 1.10 check was run on Totoro against exact PR head `503b3797acdf44dba38af1096ebce7fc338f6e9b`, in a new detached checkout at `~/hsq_work/drmodels-pr1237-julia110-20261102`. The host used Julia 1.10.10, `JULIA_NUM_THREADS=1`, `OPENBLAS_NUM_THREADS=1`, and an owned writable depot overlay before the existing read-through depot. The test environment developed the local checkout and instantiated its declared test dependencies; then `julia --project=test test/test_bootstrap_formula_structured.jl` passed **33/33** in 1m12.4s. The raw test log is `~/hsq_work/drmodels-pr1237-julia110-20261102/julia-1.10.10-test-env.log`, SHA-256 `a2a1bf8341a2dd3e08ab198dd4297cf0d50147dc5a0fd58190b3b24981ed2190`. The source checkout remained clean at the exact PR head.
+
+An initial direct invocation under the package's root environment stopped before tests because `StableRNGs` is declared in the test environment; the corrected test-project invocation above is the passing run. The pass includes expected warnings for boundary fits and tree-height scale conventions. It is a focused runtime check, not interval calibration or a full Julia suite. The owner-held PR remains open, based on an older main, and without formal review; this run supplies the missing local Julia 1.10 evidence but does not authorize rebasing, PR edits, or merging.
+
 ## 11. Team Learning
 
 Memory receipt: relevant parity decision D-203 and the project route were checked. The route script produced no `LOAD-FIRST` manifest. Repository instructions and four page diffs were reviewed; other refs and worktrees were left untouched.
@@ -234,6 +240,6 @@ Golden Set: not applicable to a documentation-only reconciliation.
 
 ## 12. Cross-Product Coverage
 
-Covers: current-main Julia capability-status wording, two narrowly scoped native routes, source/test citations, and documented parity limits.
+Covers: current-main Julia capability-status wording, two narrowly scoped native routes, source/test citations, the #1237 exact-head Julia 1.10 focused run, and documented parity limits.
 
 Does NOT cover: model tests, the full Julia suite, rendered-site visual review, R–Julia parity, interval calibration, PR creation/updates, merges, releases, or publication.
