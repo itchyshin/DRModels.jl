@@ -161,3 +161,70 @@ DRModels.jl #1240 remains open and draft at head
 precedes the new parity test, so that exact-head CI supplies no numerical
 parity result. No PR was changed, reviewed on GitHub, or merged during this
 refresh. No compute was needed for this metadata work.
+
+## Additional parity-related PR census, 2026-11-02 22:45 UTC
+
+The following exact-head states were refreshed from GitHub after the previous
+snapshot. Worktree observations came from the local lane census; they identify
+checkouts, not human ownership.
+
+- drmTMB [#1663](https://github.com/itchyshin/drmTMB/pull/1663) advanced to
+  head `993905ff6aa53d70304b988f73be397422dcf274` on current main
+  `129c09c8c8d56fa91bb09146f02dff24e65e6e7b`. In run
+  [41532211007](https://github.com/itchyshin/drmTMB/actions/runs/41532211007),
+  source-tree and OS-matrix checks passed, Ubuntu shards 1-3 passed, and shard
+  4 is still running. GitHub reports the open PR mergeable, with no formal
+  review or requested reviewer. Its exact-head local worktree is heavily
+  modified and contains substantial untracked evidence. Preserve it. The PR
+  claims native TMB support only; it does not claim Julia parity or calibrated
+  intervals.
+- drmTMB [#1647](https://github.com/itchyshin/drmTMB/pull/1647) remains at
+  head `b55083409ffd87ea0750d2ab7731f4b967b83cf0` on current main
+  `129c09c8c8d56fa91bb09146f02dff24e65e6e7b`. Current run
+  [41522917395](https://github.com/itchyshin/drmTMB/actions/runs/41522917395)
+  has Ubuntu, macOS, OS-matrix, and source-tree checks passed; Windows remains
+  active. All four Ubuntu shards passed on the same head in run
+  [41522127422](https://github.com/itchyshin/drmTMB/actions/runs/41522127422).
+  No formal review is recorded.
+- drmTMB [#1435](https://github.com/itchyshin/drmTMB/pull/1435) is a small
+  `fixef()` dispatch change at head
+  `3f4a82f361d777f79a6bf1121af748791017d224`. Its Ubuntu, macOS, Windows,
+  OS-matrix, and source-tree checks passed in run
+  [41497247921](https://github.com/itchyshin/drmTMB/actions/runs/41497247921),
+  but its base `71ceee671aac0e4c8bedf265b3b735b1ad633390` is stale relative to
+  current main `129c09c8c8d56fa91bb09146f02dff24e65e6e7b`. A prior PR comment
+  says it was ready for a maintainer merge decision on the then-current base;
+  that is not fresh-base validation or proof of present ownership. No matching
+  current-head worktree, formal review, or review thread was found. Do not
+  rebase or merge it without resolving ownership and refreshing checks.
+- DRModels.jl [#1215](https://github.com/itchyshin/DRModels.jl/pull/1215) is a
+  one-file roadmap wording change at head
+  `1ee71530ebcd31bb62cce2fba6601ffced4f65ea` on current main
+  `973bbb675dc6a10b436acf86175e089e38ec467e`. It is a draft; the changes job
+  and docs job are queued in runs
+  [41539026157](https://github.com/itchyshin/DRModels.jl/actions/runs/41539026157)
+  and
+  [41539026225](https://github.com/itchyshin/DRModels.jl/actions/runs/41539026225).
+  The local
+  checkout is at an older commit, so wait for checks and reconcile its owner
+  before advancing it.
+- DRModels.jl [#1214](https://github.com/itchyshin/DRModels.jl/pull/1214) and
+  [#1210](https://github.com/itchyshin/DRModels.jl/pull/1210) overlap across
+  55 files. #1214 is a 55-file draft at current-main head
+  `5ba76b1cc0fdda189732011fecc4b9dc220c52b1`; its changes and docs jobs are
+  queued in runs
+  [41539113997](https://github.com/itchyshin/DRModels.jl/actions/runs/41539113997)
+  and
+  [41539114018](https://github.com/itchyshin/DRModels.jl/actions/runs/41539114018).
+  #1210 is a 57-file draft at stale-base head
+  `88b0a3d1d930528bffee292cf1c1d14d2f34c913`, with older passing CI in runs
+  [40355893345](https://github.com/itchyshin/DRModels.jl/actions/runs/40355893345)
+  and
+  [40355893421](https://github.com/itchyshin/DRModels.jl/actions/runs/40355893421).
+  Neither has formal review, and neither current head has a matching local
+  checkout. A single owner decision is needed to choose the canonical
+  overlapping patch before either proceeds.
+
+These PR checks are metadata evidence, not source review or permission to
+change an owner-held branch. No review, message, PR change, merge, or compute
+run occurred in this census.

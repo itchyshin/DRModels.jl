@@ -1,0 +1,1 @@
+| 2026-11-02 | **Additional parity PR census** | GitHub exact-head checks and local worktree census; `git diff --check`; after-task and prose checks | Added six PR status rows; no source tests or compute run | Codex |
