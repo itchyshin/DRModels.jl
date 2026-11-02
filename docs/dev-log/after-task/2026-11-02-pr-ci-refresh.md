@@ -4,7 +4,7 @@ Refresh exact-head pull-request and CI evidence for the drmTMB and DRModels.jl p
 
 ## 2. Implemented
 
-- Added exact-time PR/CI snapshots to `docs/dev-log/evidence/2026-11-02-pr-review-crosswalk/README.md` at 21:45 UTC and a targeted 21:50 UTC recheck of the three running heads.
+- Added exact-time PR/CI snapshots to `docs/dev-log/evidence/2026-11-02-pr-review-crosswalk/README.md` at 21:45 UTC and targeted rechecks at 21:50 and 21:55 UTC. The 21:53 UTC review-metadata check found no assignees or formal reviews for the three running PRs.
 - Refreshed eight PRs against the current default-branch SHAs and recorded head/base SHAs, branch refs, relevant check-run IDs, current outcomes, and next actions.
 - Committed the evidence update as `e2aff439ca05cb9bc7dabe33d2acc4b2f748401d` and pushed it to `origin/codex/current-main-parity-crosswalk-20261102`; the remote head was verified to match.
 - Confirmed Totoro and DRAC are available from Shinichi's message. No compute was needed for this read-only status review.
@@ -29,7 +29,7 @@ The modified Python bytecode file in the worktree was pre-existing/incidental to
 - `lane_preflight.sh "$PWD" --file docs/dev-log/evidence/2026-11-02-pr-review-crosswalk/README.md`: no missing competing-ref work on the evidence README.
 - GitHub REST API reads for both current `main` refs, eight PR records, and their exact-head check runs. The three running heads were rechecked after the five-minute backoff; results and run IDs are recorded in the evidence README.
 - `Rscript ~/shinichi-brain/tools/check-after-task.R "$PWD/docs/dev-log/after-task/2026-11-02-pr-ci-refresh.md"`: passed from the package worktree.
-- `python3 ~/shinichi-brain/tools/slop_check.py "$PWD/docs/dev-log/after-task/2026-11-02-pr-ci-refresh.md"`: 0 findings; 1115 words, 0 em dashes.
+- `python3 ~/shinichi-brain/tools/slop_check.py "$PWD/docs/dev-log/after-task/2026-11-02-pr-ci-refresh.md"`: 0 findings; 1141 words, 0 em dashes.
 - Required-section and whitespace check: all 12 sections present; no trailing whitespace.
 - `git diff --check -- docs/dev-log/evidence/2026-11-02-pr-review-crosswalk/README.md`: passed.
 - `closeout.py check` did not pass: its helper runs the brain repository's acceptance-ledger context, which is not this package worktree. The direct structure checker above passed; no claim is made that the brain-root evidence gate passed.
@@ -60,7 +60,7 @@ The repository context router found no LOAD-FIRST manifest for this nested workt
 
 ## 10. Known Residuals
 
-- At 21:50 UTC, checks still running: all four DRModels.jl #1249 shards; drmTMB #1657 shards 1–3; and drmTMB #1659 Ubuntu and Windows jobs. #1657 shard 4 completed successfully.
+- At 21:55 UTC, checks still running: all four DRModels.jl #1249 shards; drmTMB #1657 Ubuntu shards 1–2; and drmTMB #1659 Windows. #1657 shards 3–4 and #1659 Ubuntu completed successfully; macOS and source-tree/OS-matrix checks were successful as recorded in the evidence note.
 - The documentation branch is pushed, but has no PR. The connected GitHub integration's earlier 403 remains the blocker for creating one; the branch remains directly reviewable.
 - #1228, #1237, #1247, #1240, and #1659 have stale bases relative to the current branch refs. #1663 has a stale base, no returned check runs, and remains owner-held.
 - Owners of the other PR lanes were not confirmed; attribution there is limited to submitted branch names and lane-preflight evidence.

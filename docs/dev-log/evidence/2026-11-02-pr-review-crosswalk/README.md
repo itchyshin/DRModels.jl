@@ -52,3 +52,7 @@ Queued jobs were intentionally not polled repeatedly in this snapshot. Next refr
 ## Targeted recheck, 2026-11-02 21:50 UTC
 
 After the five-minute backoff, the same exact heads were refreshed. DRModels.jl #1249 (`e01e0fadb1ba7773a41f08d8a0802a2c0b018970`, run `41519305510`) still had all four Julia 1 shards in progress. drmTMB #1659 (`e2d617b54b9a94b8b8e2758db9a6c80fa4bcab87`, run `41512891602`) still had Ubuntu and Windows in progress; macOS, OS matrix, and source-tree checks remained successful. drmTMB #1657 (`21f769d0f80f4651592dac9d80d7a7ee3dc8a049`, run `41518765724`) had advanced: Ubuntu shard 4 completed successfully while shards 1–3 remained in progress; source-tree and OS-matrix checks remained successful. Heads and bases were unchanged, so the previous base/ownership assessment still applies. No new detailed-log fetch was needed because no failure appeared in these jobs.
+
+## Targeted recheck, 2026-11-02 21:55 UTC
+
+The exact heads and bases remained unchanged. DRModels.jl #1249, run `41519305510`, still had all four Julia 1 shards in progress. drmTMB #1657, run `41518765724`, now had Ubuntu shards 3 and 4 successful and shards 1 and 2 in progress; source-tree and OS-matrix checks were successful. drmTMB #1659, run `41512891602`, now had Ubuntu and macOS successful, with Windows still in progress; source-tree and OS-matrix checks were successful. At 21:53 UTC the review API showed all three PRs authored by `itchyshin`, with no assignees, requested reviewers, or submitted reviews. This records formal review status, not live lane ownership.
