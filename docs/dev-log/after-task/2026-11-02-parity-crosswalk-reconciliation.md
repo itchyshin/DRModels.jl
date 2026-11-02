@@ -295,6 +295,12 @@ The vignette manifest and reader-contract checks remain with the active SD lane 
 
 After the update, the close-out compiler and after-task structure check passed; the prose checker reported zero findings; the assessment JSON matched the report SHA-256; and `git diff --check` passed.
 
+### Exact-head #1663 rerun transition at 2026-11-02 15:22 UTC
+
+The SD lane advanced PR #1663 from `991aa6ab258794bf9000118c041d6f504f0f894a` to `b718863e7319af143896614e823d44e488be0653`. Run `41466710037` is now terminal with conclusion `cancelled`; its source-tree failure remains evidence about the superseded `991aa6ab` head, while its four Ubuntu package-check shards were cancelled before a final package result. The new exact-head run `41470627997` is queued on `b718863e`. Its source-tree and OS-matrix jobs were also queued at observation; no new test outcome is known.
+
+GitHub reports the PR open and mergeable, with no formal review. The PR now contains 36 commits and reports 3,411 changed files after its 559-commit merge from main. Mergeability does not establish review completion or validate the wide diff. The owner branch remains with the SD lane. No model, test, manifest, PR metadata, or owner worktree was changed here.
+
 ## 11. Team Learning
 
 Memory receipt: relevant parity decision D-203 and the project route were checked. The route script produced no `LOAD-FIRST` manifest. Repository instructions and four page diffs were reviewed; other refs and worktrees were left untouched. A first lease claim hit a busy registry lock and was stopped without editing; a later scoped claim was confirmed live before this report refresh.
