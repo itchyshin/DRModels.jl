@@ -248,6 +248,20 @@ The PR records “drmTMB 0.7.0 from CRAN” and R 4.3.3 but has no source commit
 
 This makes a version string alone insufficient to identify the #1240 comparator. It does not establish that the downloaded candidate archive was the R 4.3.3 build used to generate the fixture, so its installed-code hash must not be substituted. The source install was stopped during TMB C++ compilation on the Mac while other R jobs were active; Totoro's load average was 294 at the follow-up check, so no remote build was started. No PR metadata, fixture, owner branch, or package source was changed. The owner needs to identify the exact generating source/build or choose the test's explicit unknown-provenance fallback before #1240 can pass the fixture provenance gate.
 
+### Exact-head drmTMB #1663 CI refresh at 2026-11-02 14:13 UTC
+
+The PR is open at head `7fd8acec38a3466cab97a543abdf13f8a634a9d9`; no formal review is recorded. Exact-head workflow `41456451998` failed. `os-matrix` passed, but all four Ubuntu release shards and the source-tree test job failed.
+
+- Source-tree job `125314236320` ended `FAIL 2 | WARN 14 | SKIP 6 | PASS 26508`. At `tests/testthat/test-reader-vignette-contracts.R:336`, the immutable manifest omits `predictor-dependent-random-sd.Rmd`. At line 337, the reader-contract linter returns two findings. The job also reports that the Julia bridge live engine was not exercised.
+- Ubuntu shard 1 job `125314269587` fails before package checking at the generated capability-ledger guard: `mc-0568` recorded model-15 fingerprint `4b0b3af78d4e0d7d4b63f3cb7fd0b216c0817b904bbe35aae133ba1e06b70a53`, while the current fingerprint is `4f17edf7992a5fe96fb1cebcc2614519d9f2ffb344ffe5071eab48fbe002a8d7`. The guard directs the owner to rerun `tools/run-lane-c-c17c1-c14-model15-compatibility.R` and compare `mean_tau_relative_error` before changing the receipt. `R CMD check` did not run.
+- The same shard summary applies to all four Ubuntu release shards. These failures do not establish whether the fingerprint change is caused by this PR. The receipt and vignette manifest remain with the active SD lane owner; neither was edited here.
+
+Run: [drmTMB #1663 workflow 41456451998](https://github.com/itchyshin/drmTMB/actions/runs/41456451998). Check diagnostics were read at exact head `7fd8acec`; the PR head was re-read after the earlier `e9c72ab` run was superseded.
+
+### drmTMB #1435 overlap check at 2026-11-02 14:13 UTC
+
+PR #1435 remains open at `d012cc28593691168167e07c3f8e0ff9122ccc61`, with no GitHub checks or formal reviews reported. It changes `R/zzz.R`, `NEWS.md`, and its after-task/check-log entries. File-scoped preflight found four refs carrying changes to `R/zzz.R`, including the PR branch and two cross-family lanes; it found 213 refs with work on `NEWS.md`, one ref with the PR's after-task file, and one ref with its check-log shard. The census was stopped after those overlaps were established, before the final `check-log.md` path completed. No branch or file was changed. This is not an owner-released cleanup candidate.
+
 ## 11. Team Learning
 
 Memory receipt: relevant parity decision D-203 and the project route were checked. The route script produced no `LOAD-FIRST` manifest. Repository instructions and four page diffs were reviewed; other refs and worktrees were left untouched.

@@ -1,18 +1,18 @@
 {
   "assessment_performed": true,
-  "draft_sha256": "40898a874c525252cecdf77d246dfc5d715ec9d2618f272761a53f35b89fcf8c",
-  "draft_version": "v39",
+  "draft_sha256": "0ff9c559cd1f4c800a832a87feea4af2b39b632cc4a99bb7d649ed4dc71440d0",
+  "draft_version": "v40",
   "requested_mode": "independent",
   "assessor_type": "self",
   "reviewer": "Codex self-review",
-  "method": "Manual review of live PR metadata, exact-head workflow runs and job logs, combined statuses, formal review records, live main refs, the R/Julia meta_V source and tests, exact-path ownership preflight and granted lease, one fixed-seed R accessor fit, the #1237 exact-head Julia 1.10.10 focused test, and the #1659 exact-head R stored-fixture test, each with a checksum-bound log; then structure, closeout, prose, JSON, and diff checks. The #1240 provenance follow-up also checked the current-contrib source archive SHA-256, its DESCRIPTION and NEWS, the local v0.7.0 release tag, the interrupted isolated install, and the observed Totoro load; no owner-held fixture or PR was edited.",
+  "method": "Manual review of live PR metadata, exact-head workflow runs and job logs, combined statuses, formal review records, live main refs, the R/Julia meta_V source and tests, exact-path ownership preflight and granted lease, one fixed-seed R accessor fit, the #1237 exact-head Julia 1.10.10 focused test, and the #1659 exact-head R stored-fixture test, each with a checksum-bound log; then structure, closeout, prose, JSON, and diff checks. The #1240 provenance follow-up also checked the current-contrib source archive SHA-256, its DESCRIPTION and NEWS, the local v0.7.0 release tag, the interrupted isolated install, and the observed Totoro load; no owner-held fixture or PR was edited. Added a fresh exact-head GitHub diagnostics review for drmTMB #1663 at 7fd8acec38a3466cab97a543abdf13f8a634a9d9 (workflow 41456451998 and both failing job logs), then checked PR #1435 metadata, review/check records, and its partial file-scoped preflight. Updated the crosswalk report, check-log and checksum-bound assessment; no owner source or PR was changed.",
   "genre": "technical after-task report",
-  "coverage": "Whole report by continuity from v36; added exact-head #1237 Julia and #1659 R focused test results and retained the #1659 raw output in-repository while preserving the limits on full-suite, live-bridge, review, parity, and interval-calibration claims. Added the source-provenance discrepancy for #1240 and kept the exact generating build unresolved.",
+  "coverage": "Whole report by continuity from v36; added exact-head #1237 Julia and #1659 R focused test results and retained the #1659 raw output in-repository while preserving the limits on full-suite, live-bridge, review, parity, and interval-calibration claims. Added the source-provenance discrepancy for #1240 and kept the exact generating build unresolved. Added the superseding #1663 head and exact failure causes, plus #1435 overlap evidence; retained the distinction between CI failures, owner-held work, and parity/coverage claims.",
   "score": 2,
   "style_status": "scored",
   "score_reason": "The report uses exact files, SHAs, run IDs, and explicit limits. Some technical sentences are dense, but the PR status is separated into short bullets.",
   "confidence": "high",
-  "confidence_reason": "Current GitHub PR metadata, workflow/job logs, combined statuses, review records, live git ls-remote refs, exact-path lane preflight/lease, the Totoro source SHA/runtime/test result/clean checkout/raw-log checksum, and the isolated R worktree SHA/runtime/test result/raw-log checksum were checked. No current-pair parity or interval calibration is inferred. The #1240 follow-up verified the downloaded source archive checksum and its package metadata, but did not install it or claim it matches the R 4.3.3 fixture generator.",
+  "confidence_reason": "Current GitHub PR metadata, workflow/job logs, combined statuses, review records, live git ls-remote refs, exact-path lane preflight/lease, the Totoro source SHA/runtime/test result/clean checkout/raw-log checksum, and the isolated R worktree SHA/runtime/test result/raw-log checksum were checked. No current-pair parity or interval calibration is inferred. The #1240 follow-up verified the downloaded source archive checksum and its package metadata, but did not install it or claim it matches the R 4.3.3 fixture generator. The new #1663 details come from GitHub diagnostics requested at the exact current head after the earlier head moved; #1435 open state, head, absent checks/reviews, and returned path conflicts were rechecked directly. The #1435 census was interrupted before the final check-log.md path and is explicitly reported as partial.",
   "examples": [
     {
       "location": "Section 10, approved #1662 merge, baseline check bullet",
@@ -112,5 +112,5 @@
   "references_gate_reason": "The linked PRs and workflow runs refer to the exact items checked during this refresh; no unsupported external scientific references were added. The report links the exact source archive URL and records its checksum; no literature claims were added.",
   "date": "2026-11-02",
   "calibration_status": "No style controls were used; this is an uncalibrated editorial judgment.",
-  "interpretation": "perceived_style_not_authorship"
+  "interpretation": "perceived_style_not_authorship The new CI failures are owner-held and not attributed to this agent; #1435 is not considered safe to take over."
 }
