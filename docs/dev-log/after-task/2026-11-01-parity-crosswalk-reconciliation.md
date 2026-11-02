@@ -957,6 +957,20 @@ PR into drmTMB as part of this parity cleanup. Preserve it as a disposition
 item for the CJS package owners; interval methods remain distinct from interval
 calibration.
 
+### drmTMB main R-CMD-check badge refresh (2026-11-02 01:49 UTC)
+
+Current drmTMB main remains `b535bfbcce2a9039d869c2e34fe9da476394bf62`. The
+latest main-branch Actions listing contains no `R-CMD-check` run on that SHA.
+The newest R-CMD-check returned is run `40375071745`, a workflow dispatch on
+older commit `02095c67d7e70bbb648f45d2bbdd5aa0b1ea7be5` from October 26. Its
+macOS release job failed; source-tree, Ubuntu, Windows, and OS-matrix jobs
+passed. The run therefore does not establish a current-main failure. The
+scheduled pkgdown run `41329710630` passed on current main but is a different
+workflow. The #1662 R-CMD-check passed on its PR head with `FULL=false`, so it
+also does not replace a full current-main check. Treat the visible failing
+badge as historical evidence; current-main R-CMD-check status remains
+unverified.
+
 ### drmTMB #1658 stable prior-kernel PR review (2026-11-02)
 
 PR #1658 is open, non-draft, and mergeable at exact head
