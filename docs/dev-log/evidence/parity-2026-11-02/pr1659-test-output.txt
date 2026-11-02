@@ -1,0 +1,20 @@
+ℹ Testing drmTMB
+drmjl-parity-fixtures: ..................................................................................................................................................SSSSSSS
+
+══ Skipped ═════════════════════════════════════════════════════════════════════
+1. drmTMB vs DRModels.jl default integrator: poisson_re_default ('test-drmjl-parity-fixtures.R:176:7') - Reason: DRModels.jl default integrator (GHQ-32) differs from drmTMB Laplace by design (DRModels.jl#1071)
+
+2. drmTMB vs DRModels.jl default integrator: nbinom2_re_default ('test-drmjl-parity-fixtures.R:176:7') - Reason: DRModels.jl default integrator (GHQ-32) differs from drmTMB Laplace by design (DRModels.jl#1071)
+
+3. drmTMB vs DRModels.jl default integrator: beta_re_default ('test-drmjl-parity-fixtures.R:176:7') - Reason: DRModels.jl default integrator (GHQ-32) differs from drmTMB Laplace by design (DRModels.jl#1071)
+
+4. drmTMB vs DRModels.jl default integrator: binomial_re_default ('test-drmjl-parity-fixtures.R:176:7') - Reason: DRModels.jl default integrator (GHQ-32) differs from drmTMB Laplace by design (DRModels.jl#1071)
+
+5. drmTMB vs DRModels.jl default integrator: student_re_default ('test-drmjl-parity-fixtures.R:176:7') - Reason: DRModels.jl default integrator (GHQ-32) differs from drmTMB Laplace by design (DRModels.jl#1071)
+
+6. drmTMB vs DRModels.jl default integrator: gamma_re_default ('test-drmjl-parity-fixtures.R:176:7') - Reason: DRModels.jl default integrator (GHQ-32) differs from drmTMB Laplace by design (DRModels.jl#1071)
+
+7. engine = 'julia' reproduces the stored DRModels.jl reference values ('test-drmjl-parity-fixtures.R:191:3') - Reason: DRModels.jl / DRM.jl engine not available (set DRMODELS_JL_PATH or DRM_JL_PATH)
+
+══ DONE ════════════════════════════════════════════════════════════════════════
+Julia bridge: 0 live tests ran, 1 skipped; the LIVE ENGINE was not exercised in this configuration (mock-driven marshalling tests are counted by CI's 'Julia bridge glue executes (mock-driven, no Julia)' step).
