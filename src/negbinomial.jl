@@ -78,17 +78,15 @@ fit_lap = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), NegBinomial2()
 # Predictor-dependent SDs are available for ordinary intercepts and
 # independent numeric slopes, and for an animal-model mean intercept with a
 # supplied covariance matrix `A` or precision matrix `Ainv`. The animal route
-# uses sparse Laplace and requires `sigma ~ 1`; `A` follows the existing NB2
-# animal convention and is rescaled to a correlation matrix before the SD
-# multipliers are applied. `Ainv` must be the precision of that unit-diagonal
-# correlation matrix.
+# uses sparse Laplace and requires `sigma ~ 1`. `A` and `Ainv` are used as
+# supplied (raw kernel, as in native drmTMB and the Poisson and Gamma animal
+# routes); only a `relmat` `K` is rescaled to a correlation matrix.
 fit_animal_sd = drm(bf(@formula(y ~ x + animal(1 | id)),
                        @formula(sigma ~ 1),
                        @formula(sd(id, animal) ~ habitat)),
                     NegBinomial2(); data = dat, A = A, se = false)
 # `coef(fit_animal_sd, :sd)` models the log SD multiplier by habitat. The
-# reported `:sd_group` values are on the fitted, correlation-scaled animal
-# effect. Interval coverage for predictor-dependent SDs is not yet calibrated.
+# reported `:sd_group` values multiply the raw supplied `A` kernel. Interval coverage for predictor-dependent SDs is not yet calibrated.
 
 # A predictor-dependent SD can also describe one ordinary random coefficient
 # on the log-`sigma` predictor. The mean is fixed-effect-only, and the `sd`
@@ -184,7 +182,8 @@ function drm(f::DrmFormula, fam::NegBinomial2; data, tree = nothing, K = nothing
             # dispersion a fixed nuisance. Reuses the phylo nuisance Laplace spine
             # with the tree precision swapped for C⁻¹ (#167).
             C = _poisson_structured_cov(kind, grp, K, A, coords)
-            return _withformula(_fit_nb2_relmat_laplace(fam, y, Xμ, Xσ, C, labels, nmμ, nmσ, grp, g_tol; se = se), f)
+            return _withformula(_fit_nb2_relmat_laplace(fam, y, Xμ, Xσ, C, labels, nmμ, nmσ, grp, g_tol;
+                                                          se = se, normalize = kind !== :animal), f)
         else
             error("NegBinomial2() supports phylo/relmat/animal/spatial(1 | group) among structured markers")
         end
@@ -391,7 +390,8 @@ function _drm_negbin2_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
     if structured_animal
         C = Ainv === nothing ? _poisson_structured_cov(kind, grp, K, A, coords) : nothing
         fit = _fit_nb2_animal_sd_laplace(fam, y, Xmu, Xsigma, Zg, gidx,
-            C, getproperty(data, grp), nmmu, nmsigma, nmsd, grp, g_tol; se, Ainv)
+            C, getproperty(data, grp), nmmu, nmsigma, nmsd, grp, g_tol; se, Ainv,
+            normalize = kind !== :animal)
     else
         fit = _fit_negbin2_sd_regression(fam, y, Xmu, Xsigma, Zg,
             gidx, G, nmmu, nmsigma, nmsd, grp, g_tol; K = nodes, se, w)
@@ -716,10 +716,11 @@ end
 
 function _fit_nb2_animal_sd_laplace(fam::NegBinomial2, y, Xmu, Xsigma, Zg,
         gidx, C, labels, nmmu, nmsigma, nmsd, grp, g_tol;
-        se::Bool = true, maxiter::Int = 250, Ainv = nothing)
+        se::Bool = true, maxiter::Int = 250, Ainv = nothing,
+        normalize::Bool = true)
     n = length(y)
     pmu, psd = size(Xmu, 2), size(Zg, 2)
-    Q, group_index = Ainv === nothing ? _general_cov_setup(C, labels) :
+    Q, group_index = Ainv === nothing ? _general_cov_setup(C, labels; normalize) :
         _nb2_animal_precision_setup(Ainv, labels, grp)
     group_index == gidx || throw(ArgumentError(
         "animal covariance labels do not match the fitted observation group order."))

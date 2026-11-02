@@ -71,3 +71,70 @@ end
                       @formula(sigma ~ 1)), NegBinomial2(); data, A, se = false)
     @test constant_fit.loglik ≈ base_fit.loglik atol = 1e-4
 end
+
+# Dense Laplace objective with a RAW (not correlation-rescaled) animal kernel.
+function _nb2_animal_raw_dense_laplace(theta, y, Xmu, gidx, zobs, A)
+    Q = inv(Symmetric(A))
+    pmu = size(Xmu, 2)
+    beta = theta[1:pmu]
+    r = 1 / exp(theta[pmu + 1])^2
+    alpha = theta[(pmu + 2):end]
+    eta0 = Xmu * beta
+    loading = exp.(hcat(ones(length(y)), zobs) * alpha)
+    function joint(b)
+        value = 0.5 * dot(b, Q * b)
+        for i in eachindex(y)
+            mu = exp(eta0[i] + loading[i] * b[gidx[i]])
+            value -= Distributions.logpdf(
+                Distributions.NegativeBinomial(r, r / (r + mu)), round(Int, y[i]))
+        end
+        value
+    end
+    res = DRModels.Optim.optimize(joint, zeros(size(A, 1)),
+        DRModels.Optim.LBFGS(), DRModels.Optim.Options(g_tol = 1e-10, iterations = 400);
+        autodiff = :forward)
+    mode = DRModels.Optim.minimizer(res)
+    H = DRModels.ForwardDiff.hessian(joint, mode)
+    return joint(mode) + 0.5 * logdet(Symmetric(H)) - 0.5 * logdet(Symmetric(Q))
+end
+
+@testset "NB2 animal SD regression uses the raw A kernel" begin
+    data, R, zgroup, fit_levels, alpha = _nb2_animal_sd_fixture([-0.65, 0.4])
+    # Non-unit diagonal: a correlation-rescaled fit would NOT match this oracle.
+    scale = collect(range(0.7, 1.8; length = length(zgroup)))
+    A = Diagonal(scale) * R * Diagonal(scale)
+    formula = bf(@formula(y ~ x + animal(1 | g)),
+                 @formula(sigma ~ 1),
+                 @formula(sd(g, animal) ~ z))
+    fit = drm(formula, NegBinomial2(); data, A, se = false)
+    @test fit.converged
+
+    gidx = [findfirst(==(id), fit_levels) for id in data.g]
+    Xmu = hcat(ones(length(data.y)), data.x)
+    theta = vcat(coef(fit, :mu), coef(fit, :sigma), coef(fit, :sd))
+    raw_nll = _nb2_animal_raw_dense_laplace(theta, data.y, Xmu, gidx, data.z, A)
+    corr_nll = _nb2_animal_raw_dense_laplace(theta, data.y, Xmu, gidx, data.z, R)
+    @test fit.nll(theta) ≈ raw_nll atol = 2e-3
+    @test abs(raw_nll - corr_nll) > 0.5     # the two conventions are distinguishable
+
+    # The raw kernel and its inverse give the same fit; the correlation-scaled
+    # kernel is a different model.
+    precision_fit = drm(formula, NegBinomial2(); data, Ainv = inv(A), se = false)
+    @test coef(precision_fit, :sd) ≈ coef(fit, :sd) atol = 1e-4
+    @test precision_fit.loglik ≈ fit.loglik atol = 1e-4
+    corr_fit = drm(formula, NegBinomial2(); data, A = R, se = false)
+    @test abs(corr_fit.loglik - fit.loglik) > 1e-3
+
+    # Non-SD animal route also uses raw A (constant SD formula == plain fit).
+    constant_fit = drm(bf(@formula(y ~ x + animal(1 | g)), @formula(sigma ~ 1),
+                          @formula(sd(g, animal) ~ 1)), NegBinomial2(); data, A, se = false)
+    base_fit = drm(bf(@formula(y ~ x + animal(1 | g)), @formula(sigma ~ 1)),
+                   NegBinomial2(); data, A, se = false)
+    @test constant_fit.loglik ≈ base_fit.loglik atol = 1e-4
+
+    # Bootstrap simulator draws the raw A kernel (as given), both A and Ainv.
+    sim = DRModels._marginal_simulator_build(fit, data; A)
+    @test sim isa Function
+    sim_prec = DRModels._marginal_simulator_build(fit, data; Ainv = inv(A))
+    @test sim_prec isa Function
+end
