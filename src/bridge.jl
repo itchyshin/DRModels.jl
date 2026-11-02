@@ -2071,11 +2071,11 @@ function _bridge_rendered_regression_blocks(fit, labels::_BridgeFormulaLabels)
                 Set((:intercept, animal_block.slope))
         animal_sd_intercept_slope = animal_block !== nothing &&
             (fit.family isa Gamma || binomial_animal_q2)
-        binomial_phylo_sd_slope_only = fit.family isa Binomial &&
+        binomial_phylo_sd_slope_only = fit.family isa Union{Binomial,Gamma} &&
             !isempty(_sdphylo_parts(fit.formula))
-        binomial_relmat_sd_slope_only = fit.family isa Union{Binomial,Poisson,Gaussian} &&
+        binomial_relmat_sd_slope_only = fit.family isa Union{Binomial,Poisson,Gaussian,Gamma,NegBinomial2} &&
             any(item.target.level === :relmat for item in sd_targets_here)
-        gaussian_spatial_sd_slope_only = fit.family isa Gaussian &&
+        gaussian_spatial_sd_slope_only = fit.family isa Union{Gaussian,Gamma} &&
             any(item.target.level === :spatial for item in sd_targets_here)
         rendered = _bridge_render_formula_block(
             form, param, rhs, labels; allow_animal_slope = animal_sd_slope,

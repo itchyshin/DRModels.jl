@@ -1847,13 +1847,13 @@ function predict(fit::DrmFit, newdata; type::Symbol = :response, se::Bool = fals
             any(item.target.level === :animal for item in _sd_target_parts(f))
         allow_sd_animal_slope |= fit.family isa Union{Poisson,NegBinomial2,Gaussian} &&
             any(item.target.level === :animal for item in _sd_target_parts(f))
-        allow_sd_relmat_slope = fit.family isa Union{Binomial,Poisson,Gaussian} &&
+        allow_sd_relmat_slope = fit.family isa Union{Binomial,Poisson,Gaussian,Gamma,NegBinomial2} &&
             any(item.target.level === :relmat for item in _sd_target_parts(f))
-        allow_sd_spatial_slope = fit.family isa Union{Binomial,Gaussian} &&
+        allow_sd_spatial_slope = fit.family isa Union{Binomial,Gaussian,Gamma} &&
             any(item.target.level === :spatial for item in _sd_target_parts(f))
         allow_gamma_animal_intercept_slope = fit.family isa Gamma &&
             _animal_intercept_slope(Dict(f.forms)[:mu]) !== nothing
-        allow_binomial_phylo_slope_only = fit.family isa Binomial &&
+        allow_binomial_phylo_slope_only = fit.family isa Union{Binomial,Gamma} &&
             !isempty(_sdphylo_parts(f))
         mean_rhs = Dict(f.forms)[:mu]
         if fit.family isa Binomial
@@ -2226,12 +2226,12 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
             any(item.target.level === :animal for item in _sd_target_parts(f))
         allow_gamma_animal_intercept_slope = fit.family isa Gamma &&
             _animal_intercept_slope(forms[p]) !== nothing
-        allow_binomial_phylo_slope_only = fit.family isa Binomial &&
+        allow_binomial_phylo_slope_only = fit.family isa Union{Binomial,Gamma} &&
             f isa DrmFormula && !isempty(_sdphylo_parts(f))
-        allow_binomial_relmat_slope = fit.family isa Union{Binomial,Poisson,Gaussian} &&
+        allow_binomial_relmat_slope = fit.family isa Union{Binomial,Poisson,Gaussian,Gamma,NegBinomial2} &&
             f isa DrmFormula && any(
                 item.target.level === :relmat for item in _sd_target_parts(f))
-        allow_binomial_spatial_slope = fit.family isa Union{Binomial,Gaussian} &&
+        allow_binomial_spatial_slope = fit.family isa Union{Binomial,Gaussian,Gamma} &&
             f isa DrmFormula && any(
                 item.target.level === :spatial for item in _sd_target_parts(f))
         parameter_rhs = forms[p]

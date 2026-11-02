@@ -594,6 +594,16 @@ function _drm_gamma_structured_sd_regression(f::DrmFormula, fam::Gamma; data,
     structured_kind = phylogenetic ? :phylo : provider
     matrix = provider === :animal ? A : provider === :spatial ? nothing : K
     matrix_name = provider === :animal ? "A" : provider === :spatial ? "coords" : "K"
+    # Slope-only `phylo/relmat/spatial(0 + x | g)` is admitted with its matching
+    # `sd(g, level) ~ …` target. The slope variable is returned in the 5th slot for
+    # phylo and in the 7th slot for animal/relmat/spatial.
+    fixed_mu, re, metav, structured, phylo_slope, _, animal_slope =
+        _split_ranef(rhs[:mu]; allow_animal_slope = provider === :animal,
+                     allow_animal_intercept_slope = provider === :animal,
+                     allow_relmat_slope = provider === :relmat,
+                     allow_spatial_slope = provider === :spatial,
+                     allow_phylo_slope_only = phylogenetic)
+    phylo_slope === nothing || (animal_slope = phylo_slope)
     if phylogenetic
         (K === nothing && A === nothing && coords === nothing) || throw(ArgumentError(
             "Gamma phylogenetic SD regression uses `tree = …` only; do not also supply `K`, `A`, or `coords`."))
@@ -602,7 +612,16 @@ function _drm_gamma_structured_sd_regression(f::DrmFormula, fam::Gamma; data,
     elseif provider === :spatial
         (tree === nothing && A === nothing) || throw(ArgumentError(
             "Gamma spatial SD regression does not use `tree = …` or `A = …`."))
-        if coords === nothing
+        if animal_slope !== nothing
+            # Slope-only spatial: the native fixed kernel exp(-d / median distance)
+            # + 1e-6 I enters RAW (not correlation-rescaled), as in native drmTMB.
+            coords === nothing && throw(ArgumentError(
+                "spatial(0 + $animal_slope | $(descriptor.group)) needs `coords = …`"))
+            K === nothing || throw(ArgumentError(
+                "Gamma spatial slope SD regression uses `coords = …` only, not a precomputed `K = …`."))
+            _, Gs = _group_index(getproperty(data, descriptor.group))
+            matrix = _gaussian_spatial_sd_kernel(coords, Gs, descriptor.group)
+        elseif coords === nothing
             matrix = _poisson_structured_cov(:spatial, descriptor.group, K, A, nothing)
         else
             K === nothing || throw(ArgumentError(
@@ -618,14 +637,9 @@ function _drm_gamma_structured_sd_regression(f::DrmFormula, fam::Gamma; data,
             "$(provider)(1 | $(descriptor.group)) needs the covariance matrix `$matrix_name = …`"))
     end
 
-    fixed_mu, re, metav, structured, _, _, animal_slope =
-        _split_ranef(rhs[:mu]; allow_animal_slope = provider === :animal,
-                     allow_animal_intercept_slope = provider === :animal)
     metav === nothing || throw(ArgumentError("Gamma structured SD regression cannot use meta_V()."))
     structured == (structured_kind, descriptor.group) || throw(ArgumentError(
         "Gamma `sd($(descriptor.group), $(provider))` requires the matching structured mean effect."))
-    phylogenetic && animal_slope !== nothing && throw(ArgumentError(
-        "Gamma phylogenetic SD regression currently supports one intercept coefficient."))
     if animal_slope === nothing
         descriptor.member in (nothing, :intercept) || throw(ArgumentError(
             "Gamma animal SD target does not match the fitted intercept coefficient."))
@@ -681,8 +695,9 @@ function _drm_gamma_structured_sd_regression(f::DrmFormula, fam::Gamma; data,
         sd_block = :sd_phylo
         scale_key = :sd_phylo
     else
+        # Slope-only relmat/spatial enter RAW (native drmTMB does not rescale K).
         Q, gidx = _general_cov_setup(matrix, labels;
-            normalize = provider !== :animal)
+            normalize = provider !== :animal && animal_slope === nothing)
         G = size(Q, 1)
         Zg, nmsd = _sd_group_design(f.response, target.rhs, data, gidx, G, group;
             schema_cache = f.schema_cache, schema_key = target.key)
