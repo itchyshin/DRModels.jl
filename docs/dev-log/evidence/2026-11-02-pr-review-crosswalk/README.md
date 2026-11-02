@@ -72,3 +72,7 @@ Fetched steps for job `125531174791` in run `41512891602`, pinned to head `e2d61
 ## #1662 merge closeout, 2026-11-02 22:10 UTC
 
 GitHub reports drmTMB #1662 merged at `2026-11-02T11:30:13Z` by merge commit `71ceee671aac0e4c8bedf265b3b735b1ad633390`. The live `main` ref is `129c09c8c8d56fa91bb09146f02dff24e65e6e7b`; GitHub's compare API reports that ref is four commits ahead of the merge commit and zero behind, confirming the merge commit is in current main. The PR body reports exact-head CI run `41350326046` passed its listed checks. Current check diagnostics return no records for that PR head, and a direct job-list lookup for the cited run returns 404, so the CI result remains owner-reported/historical rather than freshly inspectable. Post-merge main check status was not established in this lookup.
+
+## R lane ownership check, 2026-11-02 22:12 UTC
+
+R-repository lane preflight on the primary checkout listed #1659's branch `test/drmjl-parity-fixtures-snak` among 31 live lanes. It reported no live lease; a read-only `git worktree list` filter found no local checkout for that branch. This identifies the branch as active in the lane census but does not identify a human task owner. No source files or PR metadata were changed. Preserve the branch and wait for a clear handoff before taking code action.
