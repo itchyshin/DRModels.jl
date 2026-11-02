@@ -830,3 +830,14 @@ run records show successful required package test shards; #1167's docs preview
 was cancelled and deployment skipped. This confirms the prior merges and main
 lineage, not live documentation deployment or broader calibration. No PR was
 changed in this verification.
+
+### Why the #1245 push remains gated (2026-11-02 01:40 UTC)
+
+At 01:39 UTC, PR #1245 remained at `b1abfab8b9f2d6e483051edf7ac772090c067be7`
+and its four Julia shards were active. The exact-base workflow
+`.github/workflows/CI.yml` at `1d6ef3fe53a64ca680c034f3d297709b36cf1729`
+uses a concurrency group based on workflow and branch, with
+`cancel-in-progress: true`. Pushing to this PR branch now would cancel its
+active run and start checks on the new head. Keep the local crosswalk commits
+unpushed until this run is terminal; then verify the PR head, push the scoped
+branch, and wait for checks on that new head.
