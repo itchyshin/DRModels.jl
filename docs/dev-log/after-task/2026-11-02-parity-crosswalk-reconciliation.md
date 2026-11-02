@@ -155,6 +155,13 @@ A read-only inventory counted 87 registered DRModels.jl worktrees: 75 readable a
 - To distinguish a new #1662 regression from pre-existing source drift, I compared the receipt's recorded `source_after` SHA-256 values with R file trees extracted read-only from the exact PR base and merge commits. Both trees have the same result: 22 mismatches among 58 recorded `R/` files, plus three R files absent from the receipt. The receipt JSON itself is byte-identical across the two commits. This confirms source-level staleness on the base before merge; it does not reproduce the full workflow or validate the Julia backend entries.
 - The current workflow reports 15 changed recorded files and 2 new unrecorded files on the runner's call path; the other changed/unrecorded paths are informational. The same receipt is present in 12 other refs according to lane preflight. No receipt, source file, PR, or owner lane was modified during this diagnosis.
 
+### Parity PR state refresh at 2026-11-02 12:04 UTC
+
+- **DRModels.jl #1242, #1239, and #1234:** their exact heads remain open, with all four Julia shards, aggregate `ci-ok`, Documenter, and preview checks green. Scaling and stable deployment were skipped. GitHub has no formal review decision on these PRs. They provide route-specific parity test evidence for Poisson/NB2, Beta/Binomial/BetaBinomial, and Student/Gamma location-scale respectively; they are still unmerged test branches, not proof of overall parity or interval calibration.
+- **DRModels.jl #1240:** the exact-head docs and preview checks passed, but Julia shard 2/4 and aggregate `ci-ok` failed. Do not count Gaussian location-scale random-intercept parity as passing from this PR.
+- **drmTMB #1659:** the stored-reference parity test PR remains open with no reported checks. Its corresponding Julia parity PR #1242 has green checks, but cross-PR presence does not establish that the R fixture runner passes or that the source pins match. #1657 also has no reported checks. Both remain owner-held; the R lane census still reports 31 live lanes.
+- These are status observations only. No PR branch, check, review, source file, or owner assignment was changed. The previously reported #1245 and #1237 owner gates remain: #1245 is green but unreviewed and owner-held; #1237 still lacks the owner's requested exact-head Julia 1.10 workflow evidence.
+
 ## 11. Team Learning
 
 Memory receipt: relevant parity decision D-203 and the project route were checked. The route script produced no `LOAD-FIRST` manifest. Repository instructions and four page diffs were reviewed; other refs and worktrees were left untouched.

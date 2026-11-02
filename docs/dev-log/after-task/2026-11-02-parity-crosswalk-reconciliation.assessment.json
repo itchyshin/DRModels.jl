@@ -1,18 +1,18 @@
 {
   "assessment_performed": true,
-  "draft_sha256": "69143f77b3efbf60af7e84494dd1309591ebe9e15ef326157d1c74db2b47af1c",
-  "draft_version": "v16",
+  "draft_sha256": "378af934dcc8e2399421e4c508f918c92f3c9344612005130cd2e30169a130a5",
+  "draft_version": "v17",
   "requested_mode": "independent",
   "assessor_type": "self",
   "reviewer": "Codex self-review",
-  "method": "Manual review of live exact-head GitHub merge and workflow metadata, exact PR diffs, current DRModels.jl PR/check/owner-comment state and raw CI versions, plus read-only SHA-256 comparison of the receipt against exact pre-merge and merge R source trees; followed by closeout and prose validators.",
+  "method": "Manual review of live exact-head GitHub status checks and open state for the named parity PRs, plus R and Julia lane-preflight output for ownership boundaries; followed by closeout, after-task structure, prose lint, JSON, and diff checks.",
   "genre": "technical after-task report",
-  "coverage": "Whole report by continuity from v15; reread the #1662 receipt baseline attribution section (latest dated section) and its exact commit/tree comparison evidence through 2026-11-02 12:02 UTC.",
+  "coverage": "Whole report by continuity from v16; reread the 2026-11-02 12:04 UTC parity PR status section and its exact-head checks and lane census.",
   "score": 2,
   "style_status": "scored",
   "score_reason": "The report uses exact files, SHAs, run IDs, and explicit limits. Some technical sentences are dense, but the PR status is separated into short bullets.",
   "confidence": "high",
-  "confidence_reason": "Merge metadata and workflow logs were read live. The receipt hash comparison used archived R trees at exact base and merge commits, and confirmed the receipt JSON is identical between them. The #1237 exact-head Julia version came from its raw workflow log. Other receipt refs and lane ownership were read with preflight; style review remains self-assessed and uncalibrated.",
+  "confidence_reason": "GitHub supplied exact-head check conclusions for each named PR and lane preflight reported the active ownership census. This is a status snapshot only; source-level parity, reviewer approval, and overall qualification were not assessed.",
   "examples": [
     {
       "location": "Section 10, approved #1662 merge, baseline check bullet",
@@ -37,15 +37,23 @@
       "repair": "no change needed",
       "line": 150,
       "quote": "The exact-head CI log identifies its Julia 1 shards as Julia 1.13.3; there is no Julia 1.10 job."
+    },
+    {
+      "location": "Section 10, parity PR state refresh",
+      "cue": "The update groups three green parity test PRs and distinguishes their results from the failed Gaussian location-scale PR.",
+      "impact": "Readers can see which route-specific test branches have green CI without treating them as merged or as general parity validation.",
+      "repair": "no change needed",
+      "line": 160,
+      "quote": "They are still unmerged test branches, not proof of overall parity or interval calibration."
     }
   ],
   "evidence_none_reason": null,
   "science_gate": "not_applicable",
   "science_gate_reason": "This report records a documentation reconciliation, not a new scientific result.",
   "facts_gate": "pass",
-  "facts_gate_reason": "The merge commit and timestamp, post-merge workflow, #1245 and #1237 exact-head checks, and #1237 raw Julia version log were verified from live GitHub. Read-only SHA-256 comparison of archived R trees at the exact PR base and merge commits yielded identical mismatch and unrecorded-file counts; the receipt JSON is byte-identical across those commits. Lane preflight found 12 other refs with receipt edits. No PR, source, or receipt was altered.",
+  "facts_gate_reason": "Exact-head checks, PR states, and current lane preflight were queried live. The report distinguishes green PR checks from merged or qualified parity and preserves owner-held boundaries. No model code, PR, CI configuration, or owner assignment was changed.",
   "references_gate": "pass",
-  "references_gate_reason": "The new PR and workflow links point to the records checked during this refresh; prior unresolved capability citations remain explicitly listed as residuals.",
+  "references_gate_reason": "The linked PRs and workflow runs refer to the exact items checked during this refresh; no unsupported external scientific references were added.",
   "date": "2026-11-02",
   "calibration_status": "No style controls were used; this is an uncalibrated editorial judgment.",
   "interpretation": "perceived_style_not_authorship"
