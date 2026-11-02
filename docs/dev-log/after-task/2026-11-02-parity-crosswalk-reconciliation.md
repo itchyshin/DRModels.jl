@@ -336,3 +336,11 @@ Golden Set: not applicable to a documentation-only reconciliation.
 Covers: current-main Julia capability-status wording, two narrowly scoped native routes, source/test citations, focused exact-head verification for #1237 and #1659, and documented parity limits.
 
 Does NOT cover: model tests, the full Julia suite, rendered-site visual review, R–Julia parity, interval calibration, PR creation/updates, merges, releases, or publication.
+
+### Exact-head parity PR and #1663 job-stage refresh at 16:10 UTC
+
+I refreshed the current #1663 workflow jobs and exact PR heads for the parity-adjacent Julia candidates. On drmTMB #1663, head `42bbd67c25f33ea8884fa9108e13fee3c0ec0995`, run `41472011312` remains active. Its OS matrix passed, and source-tree job `125367770297` failed the two reader-vignette contract assertions. All four Ubuntu release shards have reached `R CMD check`; none has a terminal result yet. Their earlier generated-ledger, profile-fence, evidence-citation, and mock bridge steps passed. The reader-contract findings remain unspecified in the available log. The manifest omission for the candidate vignette is already attributed above and remains with the SD lane owner.
+
+DRModels.jl #1245 remains at head `0dde1f977f6c70495230b705a7d0f13daf74dfde`. Its exact-head CI and Documenter preview pass, with stable docs deployment skipped; the formal-review list is empty. The current PR description says GitHub metadata and `refs/pull/1245/head` still point to `7f6e335fd46c479b874d10525ad4cf3d74b59948`, but live PR metadata reports `0dde1f977f6c70495230b705a7d0f13daf74dfde`. This is stale PR-body text, not evidence that the new head has passed beyond the observed exact-head checks. The PR remains owner-held; I did not edit its body or branch.
+
+DRModels.jl #1237 remains at `503b3797acdf44dba38af1096ebce7fc338f6e9b`, with two failing Julia 1.10 shards in run `41401878711`; its formal-review list is empty. #1240 remains at `03b93e680266369dff10e63eb4c846826a102ec4`, with its Julia shard and aggregate CI failing at the recorded missing `drmtmb_code_hash` provenance assertion; its formal-review list is empty. Their passing Documenter builds do not clear those failures. All four PRs remain open. I made no owner-source, PR-body, or branch changes.
