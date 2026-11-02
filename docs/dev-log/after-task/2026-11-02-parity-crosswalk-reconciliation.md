@@ -28,6 +28,8 @@ The #1240 source-provenance follow-up downloaded the current-contrib source arch
 
 After this addition, `closeout.py check` and `check-after-task.R` passed; the report SHA matched assessment v39, the JSON parsed, `git diff --check` passed, and prose lint reported zero findings for the report and check log.
 
+For the 15:36 UTC refresh, `closeout.py check` and `check-after-task.R` passed, `slop_check.py` reported zero findings, the v51 assessment SHA-256 matched this report, and `git diff --check` passed. No package tests were run for this evidence-only update.
+
 ## 6. Tests of the Tests
 
 The citation checker validates only resolvable source locations. The two added rows were checked against `src/ordinary_laplace.jl`, `src/locscale_frontend.jl`, `test/test_ordinary_laplace.jl`, and `test/test_locscale_frontend.jl` in current `origin/main` (`47a081ba035f9bf3fd7e42d3841ae8a288bf2a14`); those source and test files are byte-identical to the candidate branch. This supports route existence and the stated implementation-test scope, not calibration.
@@ -43,6 +45,8 @@ Compared the added rows with current-main source, tests, and the public capabili
 ## 9. What Did Not Go Smoothly
 
 The route script returned no `LOAD-FIRST` manifest for this worktree, and the `graft` command and checked-in graph index were unavailable. I used exact source and test paths from the reviewed diffs instead. The after-task validator is an R script and must be run with `Rscript`. The required path-specific preflight found no competing edits on these three report files. Initial lease attempts exceeded 40 seconds; tracing showed the helper was slowly scanning the shared registry, and a later exact-path claim succeeded after about 50 seconds. No model source or owner worktree was touched.
+
+The later lane census found other active repository work, but the report, assessment, and check-log paths remain under this lane's live scoped lease. I left shared capability and model files untouched.
 
 ## 10. Known Residuals
 
@@ -300,6 +304,16 @@ After the update, the close-out compiler and after-task structure check passed; 
 The SD lane advanced PR #1663 from `991aa6ab258794bf9000118c041d6f504f0f894a` to `b718863e7319af143896614e823d44e488be0653`. Run `41466710037` is now terminal with conclusion `cancelled`; its source-tree failure remains evidence about the superseded `991aa6ab` head, while its four Ubuntu package-check shards were cancelled before a final package result. The new exact-head run `41470627997` is queued on `b718863e`. Its source-tree and OS-matrix jobs were also queued at observation; no new test outcome is known.
 
 GitHub reports the PR open and mergeable, with no formal review. The PR now contains 36 commits and reports 3,411 changed files after its 559-commit merge from main. Mergeability does not establish review completion or validate the wide diff. The owner branch remains with the SD lane. No model, test, manifest, PR metadata, or owner worktree was changed here.
+
+### Exact-head PR refresh at 2026-11-02 15:36 UTC
+
+The SD owner advanced drmTMB #1663 again, from `b718863e` to `42bbd67c25f33ea8884fa9108e13fee3c0ec0995`. Exact-head run [41472011312](https://github.com/itchyshin/drmTMB/actions/runs/41472011312) is still queued overall. Its OS matrix passed; the source-tree job and all four Ubuntu release shards were queued at the 15:36 UTC observation. No result is available yet for the reader-vignette checks or package checks. GitHub reports the PR open and mergeable, with 37 commits and 3,642 changed files after the 559-commit main merge. The exact-head review query returned no formal reviews. The owner retains this branch; the earlier failed and cancelled runs do not certify this head.
+
+The already-authorized drmTMB #1662 test-only PR is now merged as `71ceee671aac0e4c8bedf265b3b735b1ad633390`. Its exact-head run [41350326046](https://github.com/itchyshin/drmTMB/actions/runs/41350326046) passed the source-tree tests, OS matrix, and all four Ubuntu release shards. This does not include a full macOS R CMD check.
+
+For DRModels.jl, PR #1245 remains open at `0dde1f977f6c70495230b705a7d0f13daf74dfde`. Exact-head CI run [41406599132](https://github.com/itchyshin/DRModels.jl/actions/runs/41406599132) passed all four Julia shards and `ci-ok`; Documenter run [41406599136](https://github.com/itchyshin/DRModels.jl/actions/runs/41406599136) passed. The review query returned no formal reviews. PR #1237 remains open at `503b3797acdf44dba38af1096ebce7fc338f6e9b`; its later run [41401878711](https://github.com/itchyshin/DRModels.jl/actions/runs/41401878711) failed Julia 1.10 shards 1 and 2, despite an older successful run on the same SHA. PR #1240 remains open at `03b93e680266369dff10e63eb4c846826a102ec4`; CI run `41248908491` fails at the missing `drmtmb_code_hash` fixture-provenance assertion, while Documenter run `41248908497` passes. None of these three PRs has a formal review.
+
+The status change does not authorize merging #1245 or #1663. No owner source, test, branch, or PR metadata was edited. CJS remains a separate package effort, and its deferred interval-calibration work is not included in these DRM-core checks.
 
 ## 11. Team Learning
 
