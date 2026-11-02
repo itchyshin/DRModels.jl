@@ -6,13 +6,14 @@ Refresh exact-head pull-request and CI evidence for the drmTMB and DRModels.jl p
 
 - Added exact-time PR/CI snapshots to `docs/dev-log/evidence/2026-11-02-pr-review-crosswalk/README.md` at 21:45 UTC and a targeted 21:50 UTC recheck of the three running heads.
 - Refreshed eight PRs against the current default-branch SHAs and recorded head/base SHAs, branch refs, relevant check-run IDs, current outcomes, and next actions.
+- Committed the evidence update as `e2aff439ca05cb9bc7dabe33d2acc4b2f748401d` and pushed it to `origin/codex/current-main-parity-crosswalk-20261102`; the remote head was verified to match.
 - Confirmed Totoro and DRAC are available from Shinichi's message. No compute was needed for this read-only status review.
 - Confirmed the bootstrap test remains touched by five refs and did not edit it. The issue report leaves model behavior versus seeded-test fragility unresolved.
 
 ## 3a. Decisions and Rejected Alternatives
 
 - Kept queued CI jobs in their current state and recorded the workflow run IDs. Repeated polling would add no evidence; refresh after a relevant completion or the agreed backoff.
-- Did not edit PR branches, update PR metadata, contact lane owners, create a PR, or merge anything. Current API branch and check evidence does not establish live process ownership or authorize those external actions.
+- Did not edit the reviewed PR branches or metadata, contact their owners, create a PR, or merge anything. The current chat's worktree attachment and exact-path lease confirm ownership of this documentation slice. GitHub currently returns no PR for this branch; the earlier PR-creation attempt through the connected integration returned 403, and no shell credential workaround was used.
 - Did not use Totoro or DRAC because this status review needed no model computation.
 - Assumption: a timestamped addendum to the existing evidence README is the right review artifact. If the project wants a separate crosswalk file, this table can be moved after the file owner confirms the destination.
 
@@ -28,11 +29,11 @@ The modified Python bytecode file in the worktree was pre-existing/incidental to
 - `lane_preflight.sh "$PWD" --file docs/dev-log/evidence/2026-11-02-pr-review-crosswalk/README.md`: no missing competing-ref work on the evidence README.
 - GitHub REST API reads for both current `main` refs, eight PR records, and their exact-head check runs. The three running heads were rechecked after the five-minute backoff; results and run IDs are recorded in the evidence README.
 - `Rscript ~/shinichi-brain/tools/check-after-task.R "$PWD/docs/dev-log/after-task/2026-11-02-pr-ci-refresh.md"`: passed from the package worktree.
-- `python3 ~/shinichi-brain/tools/slop_check.py "$PWD/docs/dev-log/after-task/2026-11-02-pr-ci-refresh.md"`: 0 findings; 925 words, 0 em dashes.
+- `python3 ~/shinichi-brain/tools/slop_check.py "$PWD/docs/dev-log/after-task/2026-11-02-pr-ci-refresh.md"`: 0 findings; 1115 words, 0 em dashes.
 - Required-section and whitespace check: all 12 sections present; no trailing whitespace.
 - `git diff --check -- docs/dev-log/evidence/2026-11-02-pr-review-crosswalk/README.md`: passed.
 - `closeout.py check` did not pass: its helper runs the brain repository's acceptance-ledger context, which is not this package worktree. The direct structure checker above passed; no claim is made that the brain-root evidence gate passed.
-- No package tests, simulations, model fits, commits, pushes, PR edits, or merges were run.
+- No package tests, simulations, model fits, PR metadata edits, or merges were run. The documentation commit and push are recorded above.
 
 ## 6. Tests of the Tests
 
@@ -49,7 +50,7 @@ Not applicable. This slice changes only review documentation; no test code or mo
 - Cross-checked PR bases against current GitHub default branch refs: DRModels.jl `973bbb675dc6a10b436acf86175e089e38ec467e`; drmTMB `129c09c8c8d56fa91bb09146f02dff24e65e6e7b`.
 - Marked PR bases stale when they differ from those refs; kept head SHAs distinct from merge-ref CI evidence.
 - Preserved the existing distinction between point-estimate parity, successful fit/check status, interval availability, and interval calibration.
-- The current worktree is attached to active Codex chat `01a17419-03d5-7751-869e-60adce9b647a`. With that `CODEX_TASK_ID`, lane preflight recognizes Codex and confirms no missing competing-ref work on the evidence README. It still reports 28 live lanes, two other Codex lanes, and an old Cursor handover; source files owned by those lanes were left untouched.
+- The current worktree is attached to active Codex chat `01a17419-03d5-7751-869e-60adce9b647a`. With that `CODEX_TASK_ID`, lane preflight recognizes Codex; the exact paths had no missing ref work and were leased to this status-refresh lane. It still reports 28 live lanes, other Codex lanes, and an old Cursor handover; source files owned by those lanes were left untouched.
 
 ## 9. What Did Not Go Smoothly
 
@@ -60,8 +61,9 @@ The repository context router found no LOAD-FIRST manifest for this nested workt
 ## 10. Known Residuals
 
 - At 21:50 UTC, checks still running: all four DRModels.jl #1249 shards; drmTMB #1657 shards 1–3; and drmTMB #1659 Ubuntu and Windows jobs. #1657 shard 4 completed successfully.
+- The documentation branch is pushed, but has no PR. The connected GitHub integration's earlier 403 remains the blocker for creating one; the branch remains directly reviewable.
 - #1228, #1237, #1247, #1240, and #1659 have stale bases relative to the current branch refs. #1663 has a stale base, no returned check runs, and remains owner-held.
-- The branch refs do not identify the current lane operator. No owners were contacted, so ownership attribution is limited to the submitted branch names and lane-preflight evidence.
+- Owners of the other PR lanes were not confirmed; attribution there is limited to submitted branch names and lane-preflight evidence.
 - This does not resolve the full parity backlog, test failures, interval validation, release readiness, or the CMR workstream.
 
 ## 11. Team Learning
@@ -74,7 +76,7 @@ Reusable lesson: log one exact observation time and the workflow run IDs, then w
 
 ## 12. Cross-Product Coverage
 
-Covers: live metadata and check status for eight drmTMB/DRModels.jl PRs, current default branch pins, the existing parity review notes, and the availability of Totoro/DRAC as compute options.
+Covers: live metadata and check status for eight drmTMB/DRModels.jl PRs, current default branch pins, the existing parity review notes, the pushed documentation slice, and the availability of Totoro/DRAC as compute options.
 
 Does NOT cover: PR owner confirmation, full test logs for newly changed jobs, model parity or recovery, interval availability/calibration, full package checks, CMR, merging, release, publication, or deployment.
 
