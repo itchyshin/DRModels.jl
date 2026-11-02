@@ -241,6 +241,57 @@ function _drm_beta_sd_regression(f::DrmFormula, fam::Beta; data,
         gidx, G, nmmu, nmsigma, nmsd, grp, g_tol; K = nAGQ, se, w), f)
 end
 
+# LBFGS can stop on its relative-objective test while the mode gradient is still
+# about 1e-6, which then fails the mode check below and turns one finite-difference
+# stencil point of the outer optimizer into the 1e18 sentinel; the outer gradient
+# is then ~1e21 and the outer search stops after a step or two while reporting
+# convergence. The Hessian of the joint objective in u is exactly
+# Q + diag(sum loading^2 * d2), so a few damped Newton steps are cheap. At this
+# gradient size the objective decrease (~g^2/lambda) is at the floating-point
+# resolution of the summed objective, so a step is accepted when the objective
+# does not increase beyond that resolution AND the gradient norm falls. The
+# mode tolerance used by the caller is unchanged.
+function _beta_animal_sd_newton_polish(joint, mode, y, eta0, loading, gidx, Q,
+                                       aux; tol::Real = 1e-8,
+                                       maxiter::Int = 25)
+    q = length(mode)
+    u = copy(mode)
+    fu = joint(u)
+    isfinite(fu) || return mode
+    grad = ForwardDiff.gradient(joint, u)
+    for _ in 1:maxiter
+        gnorm = norm(grad)
+        gnorm <= tol && break
+        diag_h = zeros(Float64, q)
+        @inbounds for i in eachindex(y)
+            gi = gidx[i]
+            eta = eta0[i] + loading[i] * u[gi]
+            abs(eta) < 30.0 || return u
+            diag_h[gi] += loading[i]^2 * _laplace_d2(Val(:beta_fixed), aux, i, eta)
+        end
+        ch = cholesky(Symmetric(Q + spdiagm(0 => diag_h)); check = false)
+        issuccess(ch) || break
+        step = ch \ grad
+        all(isfinite, step) || break
+        accepted = false
+        t = 1.0
+        for _ in 1:30
+            cand = u .- t .* step
+            fc = joint(cand)
+            if isfinite(fc) && fc <= fu + 1e-12 * (1 + abs(fu))
+                gc = ForwardDiff.gradient(joint, cand)
+                if norm(gc) < gnorm
+                    u, fu, grad, accepted = cand, fc, gc, true
+                    break
+                end
+            end
+            t /= 2
+        end
+        accepted || break
+    end
+    return u
+end
+
 # Dense structured Beta animal-intercept Laplace objective used by the
 # `sd(group, animal) ~ ...` route. The supplied A enters RAW (as native drmTMB
 # does), matching the constant-SD Beta animal and relmat routes.
@@ -264,6 +315,8 @@ function _beta_animal_sd_mode(y, eta0, loading, gidx, Q, aux; b0 = nothing,
     mode = Optim.minimizer(fit)
     all(isfinite, mode) && isfinite(Optim.minimum(fit)) ||
         return mode, nothing, false
+    mode = _beta_animal_sd_newton_polish(joint, mode, y, eta0, loading, gidx, Q,
+                                         aux; tol)
     grad = ForwardDiff.gradient(joint, mode)
     # Optim's LBFGS termination can leave a small AD-gradient floor for the
     # dense animal objective. Keep the requested optimizer tolerance, but avoid
