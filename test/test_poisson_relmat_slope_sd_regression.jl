@@ -9,8 +9,8 @@ function _poisson_relmat_slope_sd_fixture(; G = 40, m = 24, seed = 20261101)
     order_group = randperm(rng, G)
     labels = ["id_$(i)" for i in order_group]
     R = 0.4 .^ abs.(reshape(1:G, :, 1) .- reshape(1:G, 1, :))
-    # The relmat route works on the unit-diagonal correlation of the supplied
-    # covariance, so K deliberately has a non-unit diagonal.
+    # The relmat route uses the supplied K AS SUPPLIED (raw, as native drmTMB does),
+    # so K deliberately has a non-unit diagonal and the latent field is drawn from K.
     kernel_scale = collect(range(0.7, 1.6; length = G))
     K = Diagonal(kernel_scale) * R * Diagonal(kernel_scale)
     zgroup = repeat([-1.0, 1.0], inner = G ÷ 2)
@@ -19,7 +19,7 @@ function _poisson_relmat_slope_sd_fixture(; G = 40, m = 24, seed = 20261101)
     group_index = repeat(1:G, inner = m)
     x = repeat(xwithin, outer = G)
     alpha = [-0.55, 0.35]
-    latent_effect = cholesky(Symmetric(R)).L * randn(rng, G)
+    latent_effect = cholesky(Symmetric(K)).L * randn(rng, G)
     slope = exp.(alpha[1] .+ alpha[2] .* zgroup) .* latent_effect
     eta = 0.15 .+ 0.25 .* x .+ x .* slope[group_index]
     y = Float64[rand(rng, Distributions.Poisson(value)) for value in exp.(eta)]
@@ -34,7 +34,8 @@ function _poisson_relmat_slope_sd_fixture(; G = 40, m = 24, seed = 20261101)
             z = zgroup[original_index][fitted_group_index],
             g = group[row_order])
     return (; data, K = K[original_index, original_index],
-            R = R[original_index, original_index], group_index = fitted_group_index,
+            R = K[original_index, original_index],  # R = raw K (oracle covariance)
+            group_index = fitted_group_index,
             zgroup = zgroup[original_index], alpha)
 end
 
@@ -85,7 +86,7 @@ end
     @test fit.scales[:sd] ≈ fit.scales[:sd_group][fixture.group_index]
 
     # The fitted marginal likelihood equals an independent dense Laplace
-    # evaluation of the same slope model on the correlation matrix R.
+    # evaluation of the same slope model on the raw K (fixture.R holds raw K).
     Xmu = hcat(ones(length(data.y)), data.x)
     Zobs = hcat(ones(length(data.y)), data.z)
     theta = [0.15, 0.25, fixture.alpha...]
@@ -93,8 +94,8 @@ end
         theta, data.y, Xmu, data.x, Zobs, fixture.group_index, fixture.R)
     @test fit.nll(theta) ≈ dense_nll atol = 4e-3
 
-    # The relmat route standardises K to its correlation, so it must coincide
-    # with the animal route fed that correlation matrix as `A` (no scaling).
+    # The relmat route uses K raw, so it must coincide with the animal route fed
+    # the same matrix as `A` (no scaling on either).
     animal_formula = bf(@formula(y ~ x + animal(0 + x | g)),
                         @formula(sd(g, animal) ~ z))
     animal_fit = drm(animal_formula, Poisson(); data, A = fixture.R, se = false)
@@ -120,7 +121,7 @@ end
     # Read side: predict_parameters, link prediction and the marginal
     # simulator must accept the fitted relmat slope. The simulator is checked
     # against an independent oracle: u = sd_group .* (chol(R).L * z) with R the
-    # correlation form of K, y ~ Poisson(exp(eta + x u[g])).
+    # raw K, y ~ Poisson(exp(eta + x u[g])).
     @test predict_parameters(fit, data; se = false)[:sd] ≈ fit.scales[:sd]
     eta_fixed = predict(fit, data; type = :link)
     @test length(eta_fixed) == length(data.y)

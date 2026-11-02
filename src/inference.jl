@@ -2755,8 +2755,7 @@ function _poisson_structured_sd_marginal_simulator(
     C = Matrix{Float64}(matrix)
     size(C) == (G, G) || throw(ArgumentError(
         "bootstrap: Poisson $(matrix_name) covariance matrix must match the number of observed group levels in first-seen order"))
-    factor = _poisson_structured_sd_factor(C, G, matrix_name;
-        normalize = matrix_name !== "animal")
+    factor = _poisson_structured_sd_factor(C, G, matrix_name; normalize = false)
     Zg, names = _sd_group_design(f.response, target.rhs, data, gidx, G, group;
         schema_cache = f.schema_cache, schema_key = target.key, store_schema = false)
     names == _block_coefnames(fit, :sd) || throw(ArgumentError(
@@ -2775,7 +2774,7 @@ function _poisson_structured_sd_marginal_simulator(
 end
 
 function _poisson_structured_sd_factor(matrix, G::Int, provider::AbstractString;
-                                        normalize::Bool = true)
+                                        normalize::Bool = false)
     C = Matrix{Float64}(matrix)
     size(C) == (G, G) || throw(ArgumentError(
         "bootstrap: Poisson $(provider) covariance matrix must match first-seen group order"))
@@ -2856,7 +2855,7 @@ function _gamma_structured_sd_marginal_simulator(fit::DrmFit, data, matrix;
     d = sqrt.(diag(C))
     all(x -> isfinite(x) && x > 0, d) || throw(ArgumentError(
         "bootstrap: Gamma structured covariance matrix must have a positive finite diagonal"))
-    covariance = provider === :animal ? Symmetric(C) : Symmetric(C ./ (d * d'))
+    covariance = Symmetric(C)   # K and A enter RAW, as in the fit
     factor = cholesky(covariance; check = false)
     issuccess(factor) || throw(ArgumentError(
         "bootstrap: Gamma structured covariance matrix must be positive definite"))

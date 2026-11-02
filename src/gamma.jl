@@ -144,7 +144,7 @@ function drm(f::DrmFormula, fam::Gamma; data, tree = nothing, K = nothing,
             end
             return _withformula(_fit_gamma_relmat_laplace(
                 fam, y, Xμ, Xσ, C, labels, nmμ, nmσ, grp, g_tol;
-                se = se, normalize = kind !== :animal), f)
+                se = se, normalize = kind === :spatial), f)
         else
             error("Gamma() supports phylo/relmat/animal/spatial(1 | group) among structured markers")
         end
@@ -695,9 +695,8 @@ function _drm_gamma_structured_sd_regression(f::DrmFormula, fam::Gamma; data,
         sd_block = :sd_phylo
         scale_key = :sd_phylo
     else
-        # Slope-only relmat/spatial enter RAW (native drmTMB does not rescale K).
-        Q, gidx = _general_cov_setup(matrix, labels;
-            normalize = provider !== :animal && animal_slope === nothing)
+        # relmat/animal/spatial K enters RAW (native drmTMB never rescales K).
+        Q, gidx = _general_cov_setup(matrix, labels; normalize = false)
         G = size(Q, 1)
         Zg, nmsd = _sd_group_design(f.response, target.rhs, data, gidx, G, group;
             schema_cache = f.schema_cache, schema_key = target.key)

@@ -14,13 +14,13 @@ function _gamma_relmat_sd_fixture(; G = 32, m = 16, seed = 20261022)
     z = zgroup[gidx]
     x = randn(rng, G * m)
     alpha = [-0.65, 0.4]
-    Rlatent = cholesky(Symmetric(K ./ (scale * scale'))).L * randn(rng, G)
+    Rlatent = cholesky(Symmetric(K)).L * randn(rng, G)   # raw K, as the fit uses
     eta = 0.25 .+ 0.2 .* x .+
           exp.(alpha[1] .+ alpha[2] .* zgroup)[gidx] .* Rlatent[gidx]
     sigma = 0.32
     shape = 1 / sigma^2
     y = [rand(rng, Distributions.Gamma(shape, exp(v) / shape)) for v in eta]
-    return (; data = (; y = Float64.(y), x, z, g = group), K, R, gidx,
+    return (; data = (; y = Float64.(y), x, z, g = group), K, R = K, gidx,  # R = raw K
             zgroup, alpha, sigma)
 end
 

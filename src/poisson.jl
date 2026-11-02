@@ -241,7 +241,7 @@ function drm(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
             C = _poisson_structured_cov(kind, grp, K, A, coords)
             fit = _fit_poisson_animal_slope_laplace(
                 fam, y, Xslope_mu, slope_loading, C, labels, nmslope_mu,
-                grp, g_tol; se, reml, normalize = kind !== :animal)
+                grp, g_tol; se, reml, normalize = false)
             return _withformula(fit, f)
         end
         if kind === :phylo
@@ -263,7 +263,7 @@ function drm(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
             C = _poisson_structured_cov(kind, grp, K, A, coords)
             return _withformula(_fit_poisson_relmat_laplace(fam, y, Xμ, C, labels, nmμ, grp, g_tol;
                                                            se = se, reml = reml,
-                                                           normalize = kind !== :animal), f)
+                                                           normalize = kind === :spatial), f)
         else
             error("Poisson() supports phylo/relmat/animal/spatial(1 | group) among structured markers")
         end
@@ -497,7 +497,8 @@ function _drm_poisson_relmat_sd_regression(f::DrmFormula, fam::Poisson; data,
         "Poisson() requires non-negative integer counts as the response"))
     group = descriptor.group
     labels = getproperty(data, group)
-    Q, gidx = _general_cov_setup(K, labels)
+    # relmat K enters RAW (native drmTMB never rescales K).
+    Q, gidx = _general_cov_setup(K, labels; normalize = false)
     G = size(Q, 1)
     Zg, nmsd = _sd_group_design(f.response, target.rhs, data, gidx, G, group;
         schema_cache = f.schema_cache, schema_key = target.key)
@@ -884,7 +885,7 @@ end
 function _fit_poisson_animal_slope_laplace(fam::Poisson, y, Xmu, weight, C,
                                             labels, nmmu, grp, g_tol;
                                             se::Bool = true, reml::Bool = false,
-                                            normalize::Bool = true)
+                                            normalize::Bool = false)
     reml && _reject_reml_route(fam, "an animal random slope `(0 + x | group)`")
     Q, gidx = _general_cov_setup(C, labels; normalize)
     qchol = cholesky(Symmetric(Q); check = false)

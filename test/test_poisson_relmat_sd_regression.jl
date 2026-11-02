@@ -7,8 +7,8 @@ function _poisson_relmat_sd_fixture(; G = 40, m = 16)
     order = randperm(rng, G)
     ids = ["id_$(i)" for i in order]
     R = 0.55 .^ abs.(reshape(1:G, :, 1) .- reshape(1:G, 1, :))
-    # The Poisson structured route defines its coefficient SD against the
-    # unit-diagonal correlation represented by a supplied covariance matrix.
+    # The Poisson relmat route now uses the supplied K AS SUPPLIED (raw, as native
+    # drmTMB does), so the latent field and the dense oracle below use K itself.
     scale = collect(range(0.7, 1.8; length = G))
     K = Diagonal(scale) * R * Diagonal(scale)
     group_id = repeat(ids, inner = m)
@@ -17,10 +17,10 @@ function _poisson_relmat_sd_fixture(; G = 40, m = 16)
     z = zgroup[gidx]
     x = randn(rng, G * m)
     alpha = [-0.5, 0.35]
-    latent = cholesky(Symmetric(R)).L * randn(rng, G)
+    latent = cholesky(Symmetric(K)).L * randn(rng, G)
     eta = 0.35 .+ 0.2 .* x .+ exp.(alpha[1] .+ alpha[2] .* zgroup)[gidx] .* latent[gidx]
     y = Float64[rand(rng, Distributions.Poisson(exp(v))) for v in eta]
-    return (; data = (; y, x, z, g = group_id), K, R, gidx, zgroup, alpha)
+    return (; data = (; y, x, z, g = group_id), K, R = K, gidx, zgroup, alpha)  # R = raw K
 end
 
 function _poisson_relmat_sd_dense_laplace(theta, y, Xmu, Zobs, gidx, R)

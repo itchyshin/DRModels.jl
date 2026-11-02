@@ -500,10 +500,10 @@ end
 
 Resolve a user-supplied per-group covariance/relatedness matrix `C` (G×G, SPD)
 to the `(precision Q, leaf_node)` pair the sparse-Laplace spine consumes. `C` is
-checked as a positive-definite covariance matrix. By default it is rescaled to a
-unit-diagonal correlation `R` (so the recovered `:resd` block is the random-effect
-SD `σ_b`, with prior `b ~ N(0, σ_b² R)`). Set `normalize = false` to preserve the
-supplied covariance scale, giving prior covariance `σ_b² C`. The helper returns
+checked as a positive-definite covariance matrix. This helper's own default
+rescales it to a unit-diagonal correlation `R` (prior `b ~ N(0, σ_b² R)`); the
+Poisson, NB2 and Gamma relmat/animal routes pass `normalize = false` so `C` enters
+as supplied, giving prior covariance `σ_b² C` as in native drmTMB. The helper returns
 the matching precision `Q` in either case. `leaf_node` maps each observation to
 its group level via [`_group_index`](@ref). Mathematically identical to the phylo
 path with the tree precision swapped for an arbitrary PD precision.
@@ -534,7 +534,7 @@ unchanged.
 """
 function _fit_poisson_relmat_laplace(fam::Poisson, y, Xμ, C, labels, nmμ, grp,
                                      g_tol; se::Bool = true,
-                                     normalize::Bool = true,
+                                     normalize::Bool = false,
                                      polish_iterations::Int = 15,
                                      reml::Bool = false)
     Q, leaf_node = _general_cov_setup(C, labels; normalize)
@@ -1321,7 +1321,7 @@ O(p) gradient and Takahashi log-det derivatives carry over unchanged (#167).
 function _fit_nb2_relmat_laplace(fam, y, Xμ, Xσ, C, labels, nmμ, nmσ, grp,
                                  g_tol; se::Bool = true,
                                  polish_iterations::Int = 0,
-                                 normalize::Bool = true)
+                                 normalize::Bool = false)
     size(Xσ, 2) == 1 || error("drm(NegBinomial2()): a `relmat`/`animal`/`spatial` random effect requires `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
     all(x -> x == 1.0, @view Xσ[:, 1]) ||
         error("drm(NegBinomial2()): a `relmat`/`animal`/`spatial` random effect requires `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
@@ -1841,12 +1841,12 @@ Gamma sparse-Laplace fit with a general user-supplied PD covariance `C` on the
 mean random intercept (`relmat`/`animal`/`spatial(1 | grp)`), with the shape `α`
 (via the `sigma` slot, σ = 1/√α) a fixed nuisance parameter. Reuses the verified
 phylo nuisance spine via [`_general_cov_setup`](@ref); only the prior precision
-differs (`C⁻¹` vs the tree topology). By default, `C` is normalized to a
-correlation matrix; `normalize = false` preserves its supplied covariance
-scale for Gamma animal models. Exact O(p) gradient carries over (#167).
+differs (`C⁻¹` vs the tree topology). By default `C` is used as supplied
+(raw, as native drmTMB does); `normalize = true` rescales it to a correlation
+matrix (used only for the precomputed spatial route). Exact O(p) gradient carries over (#167).
 """
 function _fit_gamma_relmat_laplace(fam, y, Xμ, Xσ, C, labels, nmμ, nmσ, grp,
-                                   g_tol; se::Bool = true, normalize::Bool = true,
+                                   g_tol; se::Bool = true, normalize::Bool = false,
                                    polish_iterations::Int = 5)
     size(Xσ, 2) == 1 || error("drm(Gamma()): a `relmat`/`animal`/`spatial` random effect requires `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
     all(x -> x == 1.0, @view Xσ[:, 1]) ||

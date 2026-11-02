@@ -26,7 +26,7 @@ function _nb2_relmat_sd_fixture(alpha; G = 40, m = 24, seed = 20261101)
             fit_levels, alpha)
 end
 
-# Dense Laplace oracle with the same unit-diagonal-correlation convention.
+# Dense Laplace oracle for a prior covariance R (raw K, or a correlation matrix).
 function _nb2_relmat_sd_dense_laplace(theta, y, Xmu, gidx, zobs, R)
     Q = inv(Symmetric(R))
     pmu = size(Xmu, 2)
@@ -60,8 +60,8 @@ end
     formula = bf(@formula(y ~ x + relmat(1 | g)),
                  @formula(sigma ~ 1),
                  @formula(sd(g, relmat) ~ z))
-    # Non-unit-diagonal covariance: the SD is defined against the implied
-    # correlation, so the scaled K must reproduce the correlation-matrix fit.
+    # Non-unit-diagonal covariance: K now enters RAW (as native drmTMB does), so the
+    # scaled-K fit is a different model from the correlation-matrix fit.
     scale = collect(range(0.7, 1.8; length = length(zgroup)))
     K = Diagonal(scale) * R * Diagonal(scale)
     fit = drm(formula, NegBinomial2(); data, K, se = false)
@@ -76,10 +76,17 @@ end
     @test length(fit.scales[:sd]) == length(data.y)
     @test predict_parameters(fit, data)[:sd] ≈ fit.scales[:sd]
 
-    # Scaling invariance and agreement with the animal route on the same kernel.
+    # Raw K: the scaled-K fit differs from the correlation-matrix fit (this used to
+    # assert scaling invariance, which held only while K was rescaled), and agrees
+    # with a dense Laplace oracle built from the raw K. Agreement with the animal
+    # route on the same kernel is unchanged.
     corr_fit = drm(formula, NegBinomial2(); data, K = R, se = false)
-    @test coef(corr_fit, :sd) ≈ coef(fit, :sd) atol = 1e-4
-    @test corr_fit.loglik ≈ fit.loglik atol = 1e-4
+    @test abs(corr_fit.loglik - fit.loglik) > 0.5
+    gidx_raw = [findfirst(==(id), unique(data.g)) for id in data.g]
+    theta_raw = vcat(coef(fit, :mu), coef(fit, :sigma), coef(fit, :sd))
+    dense_raw = _nb2_relmat_sd_dense_laplace(
+        theta_raw, data.y, hcat(ones(length(data.y)), data.x), gidx_raw, data.z, K)
+    @test fit.nll(theta_raw) ≈ dense_raw atol = 2e-3
     animal_formula = bf(@formula(y ~ x + animal(1 | g)),
                         @formula(sigma ~ 1),
                         @formula(sd(g, animal) ~ z))
