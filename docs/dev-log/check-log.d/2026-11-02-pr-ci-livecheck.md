@@ -1,0 +1,1 @@
+| 2026-11-02 | Exact-head PR CI refresh for drmTMB and DRModels.jl | GitHub PR diagnostics, exact heads #1249/#1657/#1659 | Recorded running and cancelled jobs, stale base, and next actions; no package tests or model runs | Codex |
