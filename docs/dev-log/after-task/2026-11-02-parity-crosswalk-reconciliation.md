@@ -179,6 +179,8 @@ A read-only inventory counted 87 registered DRModels.jl worktrees: 75 readable a
 
 Current main heads were `47a081ba035f9bf3fd7e42d3841ae8a288bf2a14` for DRModels.jl and `71ceee671aac0e4c8bedf265b3b735b1ad633390` for drmTMB. The Julia parity PRs below use base `64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716`, five commits before current Julia main. The R parity PRs use base `b535bfbcce2a9039d869c2e34fe9da476394bf62`, four commits before current R main. These are exact candidate checks, not paired current-main certification.
 
+The intervening R commits change only `tests/testthat/test-phylo-temporal-ou-methods.R`. The Julia commits change docs/tests and bootstrap failure handling in `src/inference.jl`; no likelihood or fitter source files changed in that delta. The old merge bases therefore do not by themselves imply changed model-fit implementations. The PR checks still ran on their recorded heads, and they do not verify post-merge interactions or a paired current-source build.
+
 These PRs compare fitted outputs on fixed fixtures. None measures parameter recovery or interval calibration, and the stored cross-package values are not independent statistical oracles.
 
 | Comparison and PR | Candidate / reference | Evidence at the exact candidate | Readiness and owner boundary |
