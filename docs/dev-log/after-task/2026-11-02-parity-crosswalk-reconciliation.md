@@ -66,6 +66,14 @@ The approved `meta_V` accessor target is heterogeneity SD `tau`, but current sou
 
 The crosswalk candidate remains on `codex/drm-parity-crosswalk-20261102`, separate from #1245. This branch now contains the capability edit and this dated status refresh; no PR was merged or modified during the refresh.
 
+### Live PR and CI refresh at 2026-11-02 09:36 UTC
+
+GitHub metadata and workflow records were checked again through the GitHub connector:
+
+- DRModels.jl #1245 remains open and non-draft. Its live head is `0dde1f977f6c70495230b705a7d0f13daf74dfde`, and its base is `1d6ef3fe53a64ca680c034f3d297709b36cf1729`. CI run `41406599132` is attached to that head and still has Julia shard 2 in progress; shards 1, 3, and 4 and the changes job passed. The scaling job was skipped. Documenter run `41406599136` passed. There is no formal review. The PR body remains stale: it says GitHub still points to `7f6e335fd46c479b874d10525ad4cf3d74b59948` and says no checks exist, which conflicts with the live metadata and workflow record. No PR-body edit was made.
+- drmTMB #1662 remains open and non-draft at `01a2c2a49a1450cc79e9d35a138028ec1a27c720`. Exact-head R-CMD-check run `41350326046` passed all six jobs. GitHub records no formal review. The run is not a full macOS R CMD check, and the PR was not merged.
+- This crosswalk branch remains pushed at `7d059263d776ffa9d5e1d99fb94d6f29ffa21875` with no PR. Its `docs/design/capability-status.md` still overlaps #1245, so it remains untouched pending owner reconciliation. The refresh changed only this after-task report; no source, capability page, PR, or other lane was modified.
+
 ## 11. Team Learning
 
 Memory receipt: relevant parity decision D-203 and the project route were checked. The route script produced no `LOAD-FIRST` manifest. Repository instructions and four page diffs were reviewed; other refs and worktrees were left untouched.

@@ -1,18 +1,18 @@
 {
   "assessment_performed": true,
-  "draft_sha256": "acb2b39ea04ae686b70cd824522d067050c2ddc113905699979b1a3b86ae110f",
-  "draft_version": "v1",
+  "draft_sha256": "ebf3dd2c7b4bd69190b7a01176b75d2bdc7b2153d2f961290b4d9f38a2c8917e",
+  "draft_version": "v2",
   "requested_mode": "independent",
   "assessor_type": "self",
   "reviewer": "Codex self-review",
-  "method": "Manual review under writing-naturalness.md, checked against local source, GitHub PR metadata and workflow-run records, then slop_check.py.",
+  "method": "Manual review under writing-naturalness.md, checked against live GitHub PR metadata and workflow-job records plus the local branch state, then absolute-path slop_check.py and check-after-task.R.",
   "genre": "technical after-task report",
-  "coverage": "Whole report, sections 1 through 12.",
+  "coverage": "Whole report, sections 1 through 12, including the live PR and CI refresh added at 2026-11-02 09:36 UTC.",
   "score": 2,
   "style_status": "scored",
   "score_reason": "The report uses exact files, SHAs, run IDs, and explicit limits. Some technical sentences are dense, but the PR status is separated into short bullets.",
   "confidence": "medium",
-  "confidence_reason": "The factual statements were checked in local source or current PR and run records. The style judgment is a self-review and is not calibrated.",
+  "confidence_reason": "The new PR status statements were checked against current PR metadata and workflow-job records. One Julia shard remains in progress at the stated observation time. The style judgment is a self-review and is not calibrated.",
   "examples": [
     {
       "location": "Known Residuals, first paragraph",
@@ -21,13 +21,21 @@
       "repair": "no change needed",
       "line": 45,
       "quote": "The citation checker still skips 17 items it cannot resolve precisely."
+    },
+    {
+      "location": "Known Residuals, live PR and CI refresh, first bullet",
+      "cue": "The bullet distinguishes the live PR head and partial CI result from the stale PR-body text.",
+      "impact": "Readers can see why this branch is not ready for a merge decision yet.",
+      "repair": "no change needed",
+      "line": 73,
+      "quote": "There is no formal review."
     }
   ],
   "evidence_none_reason": null,
   "science_gate": "not_applicable",
   "science_gate_reason": "This report records a documentation reconciliation, not a new scientific result.",
   "facts_gate": "pass",
-  "facts_gate_reason": "The new route descriptions, status counts, PR head, and exact workflow status were compared with their source records.",
+  "facts_gate_reason": "The new PR head, base, review state, and individual workflow-job states were compared with current GitHub connector records at the stated UTC time.",
   "references_gate": "pass",
   "references_gate_reason": "Local source/test files and cited PR/workflow records were checked; unresolved historical capability citations are stated as a residual.",
   "date": "2026-11-02",
