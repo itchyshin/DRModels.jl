@@ -198,6 +198,13 @@ At this refresh, the lane census reports 31 live R lanes and 32 live Julia lanes
 
 This table covers the present PR candidates. The broader parity goal still needs a route inventory across both packages, source-pinned reruns on the chosen current pair, and closure or explicit exclusion of each mismatch and skipped test.
 
+### Live PR and CI refresh at 2026-11-02 12:23 UTC
+
+- **DRModels.jl #1245:** exact head `0dde1f977f6c70495230b705a7d0f13daf74dfde` remains open on base `1d6ef3fe53a64ca680c034f3d297709b36cf1729`; current main is `47a081ba035f9bf3fd7e42d3841ae8a288bf2a14`. All four Julia shards, aggregate `ci-ok`, changes, docs and Documenter preview checks now pass on that exact head. Scaling and stable-site deployment were skipped. GitHub reports `mergeStateStatus=CLEAN`, but no formal review is recorded. The PR description still claims the older `7f6e335` head is current and says the newer evidence commit is absent from PR metadata; that conflicts with live metadata and checks. The exact-head worktree remains owner-held and dirty. Keep the shared capability page with its owner until the description and review are reconciled.
+- **drmTMB #1663:** exact PR head `427a9a40198d588409a350843ef7fe8c788454a9` is open and `UNSTABLE`. The latest checks in run `41428592479` fail the source-tree test gate (2 immutable-manifest expectations at `test-reader-vignette-contracts.R:336-337`, alongside 26,508 passes, 14 warnings and 6 skips) and all four Ubuntu shards (each reports `mc-0568` model-15 fingerprint mismatch). The OS-matrix check passes. The cause remains undiagnosed; this records current failure evidence only. Leave the dirty SD-regression lane with its owner.
+- **Parity candidates still fenced:** #1240 has a failed Julia shard and aggregate; #1237's exact-head tests and docs pass but do not include the owner's requested Julia 1.10 run; #1657 and #1659 report no checks. The latest PR inventory shows no formal review on these candidates. Do not infer route parity or a safe merge from a clean merge-state label.
+- **Current main refs:** DRModels.jl `47a081ba035f9bf3fd7e42d3841ae8a288bf2a14`; drmTMB `71ceee671aac0e4c8bedf265b3b735b1ad633390`. This refresh changed only this crosswalk's report, assessment and check-log. No owner branch, PR metadata, model source or test was changed.
+
 ## 11. Team Learning
 
 Memory receipt: relevant parity decision D-203 and the project route were checked. The route script produced no `LOAD-FIRST` manifest. Repository instructions and four page diffs were reviewed; other refs and worktrees were left untouched.
