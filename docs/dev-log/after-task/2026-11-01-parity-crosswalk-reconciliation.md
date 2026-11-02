@@ -915,6 +915,21 @@ and the head has no statuses. Neither draft has a formal review or assignee.
 Both are suitable for human review after exact-head checks can be verified;
 neither is merge-ready now. No PR metadata changed.
 
+### CMR package-separation boundary (2026-11-02 01:47 UTC)
+
+drmTMB PR #1612 remains open, non-draft, and mergeable at head
+`0b0f4aa7d73835cc4acfd0ca48234f71c2453f72` over current drmTMB main
+`b535bfbcce2a9039d869c2e34fe9da476394bf62`. Its scope adds first-capture CJS
+models and the article directly to the drmTMB package. The PR body reports a
+main-based Totoro source-package check and says repeated-sample interval
+availability and coverage are not established. Current commit workflow lookup
+returns no runs; there are no submitted reviews or comments in the current PR
+timeline. This proposal is outside the DRM parity cleanup and must remain
+separate from core DRM readiness. Per the active goal, do not merge or describe
+the interval methods as statistically calibrated. Resolve the package
+destination independently before any integration or publication action. No PR
+state changed.
+
 ### drmTMB #1658 stable prior-kernel PR review (2026-11-02)
 
 PR #1658 is open, non-draft, and mergeable at exact head
