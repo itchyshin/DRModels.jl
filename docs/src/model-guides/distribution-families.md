@@ -22,13 +22,15 @@ parameters a formula with `bf`.
 | Counts with extra zeros | + `zi ~ …` modifier | logit on `π` | (on `Poisson` / `NegBinomial2`) |
 | Proportions in (0,1) | `Beta()` | logit | precision `φ = 1/σ²` |
 | Successes out of trials | `BetaBinomial()` | logit | overdispersion `φ = 1/σ²` (`cbind(s,f)`) |
-| Proportions on `[0,1]` incl. 0 and 1 | `ZeroOneBeta()` | logit | `φ = 1/σ²` + `zoi` / `coi` |
+| Proportions on `[0,1]` incl. 0 and 1 (`coi` needs both exact 0s and 1s) | `ZeroOneBeta()` | logit | `φ = 1/σ²` + `zoi` / `coi` |
 | Ordered categories `1..K` | `CumulativeLogit()` | logit (cutpoints) | K−1 ordered cutpoints |
 
 Each family's `sigma` slot is its natural dispersion handle — the same
 `sigma ~ …` formula machinery, with a family-specific link/mapping.
 
 ## Example: a Gamma model for positive data
+
+The code below also loads the `Distributions` package to simulate data. If you have not added it to your Julia environment, run `using Pkg; Pkg.add("Distributions")` once first.
 
 `Gamma()` suits durations, sizes, and concentrations — strictly positive and
 right-skewed. The mean uses a log link; the `sigma` slot is the **coefficient of

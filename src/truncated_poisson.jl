@@ -29,7 +29,8 @@ fit = drm(bf(y ~ x, hu ~ w), TruncatedPoisson(); data = dat)
 """
 struct TruncatedPoisson end
 
-function drm(f::DrmFormula, fam::TruncatedPoisson; data, g_tol::Real = 1e-8)
+@drm_entry function drm(f::DrmFormula, fam::TruncatedPoisson; data, g_tol::Real = 1e-8)
+    _drm_entry_guard(f, fam, data)   # #1027 #1022
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
         drm(f, fam; data = data_observed, g_tol = g_tol)
     end
@@ -58,31 +59,35 @@ function drm(f::DrmFormula, fam::TruncatedPoisson; data, g_tol::Real = 1e-8)
     # logistic(X_huᵀβ), positive counts zero-truncated Poisson); delegate rather
     # than duplicate it. The fit reports `Poisson` as its family.
     haskey(rhs, :hu) && return drm(f, Poisson(); data = data, g_tol = g_tol)
-    y, Xμ, nmμ = _design(f.response, rhs[:mu], data)
+    mu_fixed, offset_term = _extract_offset(rhs[:mu])   # #938: offset(z), coefficient fixed at 1
+    y, Xμ, nmμ = _design(f.response, mu_fixed, data)
     all(yi -> yi ≥ 1 && isinteger(yi), y) ||
         error("TruncatedPoisson() requires positive integer counts (≥ 1) as the response")
-    return _withformula(_fit_truncated_poisson(fam, y, Xμ, nmμ, g_tol), f)
+    return _withformula(_fit_truncated_poisson(fam, y, Xμ, nmμ, g_tol; offset = _offset_for_fit(fam, offset_term, data, size(Xμ, 1))), f)
 end
 
-function _fit_truncated_poisson(fam::TruncatedPoisson, y, Xμ, nmμ, g_tol)
+function _fit_truncated_poisson(fam::TruncatedPoisson, y, Xμ, nmμ, g_tol; offset = nothing)
     n = length(y); pμ = size(Xμ, 2)
     lf = [_logfactorial(round(Int, yi)) for yi in y]
+    w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
     function nll(θ)
-        ημ = clamp.(Xμ * θ, -30.0, 30.0)
+        ημ = clamp.(_eta_with_offset(Xμ, θ, offset), -30.0, 30.0)
         s = zero(eltype(θ))
         @inbounds for i in 1:n
             λ = exp(ημ[i])
-            s -= (y[i] * ημ[i] - λ - lf[i]) - _log1mexp(-λ)   # divide out P(0): zero-truncated
+            s -= w[i] * ((y[i] * ημ[i] - λ - lf[i]) - _log1mexp(-λ))   # divide out P(0): zero-truncated
         end
         return s
     end
     θ0 = zeros(pμ)
     θ0[1] = log(sum(y) / n + eps())
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    θ0[1:pμ] .= _offset_start(θ0[1:pμ], Xμ, offset)   # #938
+    res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
+                       θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
+    θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ]
     names = [:mu => nmμ]
-    means = Dict(:mu => exp.(Xμ * θ̂)); obs = Dict(:mu => Vector{Float64}(y))   # untruncated Poisson mean λ̂
+    means = Dict(:mu => exp.(_eta_with_offset(Xμ, θ̂, offset))); obs = Dict(:mu => Vector{Float64}(y))   # untruncated Poisson mean λ̂
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, Dict{Symbol,Vector{Float64}}()), nll),
         Optim.iterations(res))

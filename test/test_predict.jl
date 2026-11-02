@@ -1,5 +1,5 @@
-# Prediction on new data: population-level Xβ̂ (random/structured effects
-# integrated out). Deterministic checks.
+# Prediction on new data: population-level Xβ̂ (random/structured effects set
+# to zero; see test_predict_random_effects.jl). Deterministic checks.
 using DRModels
 using Test, Random
 

@@ -82,6 +82,11 @@ function fit_phylo_interaction(y::AbstractVector, X::AbstractMatrix,
                                munames::Vector{String} = ["(Intercept)"],
                                group::Symbol = :interaction,
                                g_tol::Real = 1e-8)
+    _require_finite_inputs(; response=(y, "y"), response_allow_missing=false,
+                           context="fit_phylo_interaction")
+    _require_finite_array(X, "X"; context="fit_phylo_interaction")
+    _require_finite_array(C_A, "C_A"; context="fit_phylo_interaction")
+    _require_finite_array(C_B, "C_B"; context="fit_phylo_interaction")
     nA = size(C_A, 1); nB = size(C_B, 1)
     n = nA * nB
     length(y) == n ||

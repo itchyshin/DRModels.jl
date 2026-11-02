@@ -33,6 +33,14 @@ relmat(x) = x   # marker; intercepted during formula parsing
 Animal-model structured random intercept. Supply the additive-relatedness matrix
 over the levels of `id` via `drm(...; A = A)`. Reuses the closed-form
 structured-Gaussian engine (same as [`relmat`](@ref)).
+
+`A` is matched to the data **by label**, so its rows may be in any order:
+pass it as a table whose column names are the animal labels, or as a plain
+matrix together with `ids = [label of each row]`. Rows of `A` for labels that
+are not in the data are dropped; a level of `id` with no row in `A` is an
+`ArgumentError`. A plain matrix without `ids` is taken to be in order of first
+appearance of `id` in the data, and warns once per session. `ids` is accepted by
+the Gaussian, Poisson, NegBinomial2, Gamma, Beta and ZeroOneBeta `drm` methods.
 """
 animal(x) = x
 
@@ -61,7 +69,11 @@ end
 
 Coordinate-spatial structured random intercept on the Gaussian mean. Pass site
 coordinates via `drm(...; coords = coords)` (a `G×2` matrix, one row per `site`
-level in first-seen order). The spatial correlation `K(ρ) = exp(-d / ρ)` is built
+level). `coords` is matched to the data **by site label**: pass it as a plain
+matrix together with `ids = [site label of each row]`, or as a `Dict` keyed by site
+label. Coordinates for sites not in the data are dropped; a level of `site` with no
+coordinates is an `ArgumentError`. A plain matrix without `ids` is taken to be in order
+of first appearance of `site` in the data, and warns once per session. The spatial correlation `K(ρ) = exp(-d / ρ)` is built
 from pairwise distances and the range `ρ` is estimated jointly. Closed-form
 Gaussian marginal (K is rebuilt each evaluation since it depends on `ρ`).
 """
@@ -207,10 +219,10 @@ end
 function _resolve_structured_matrix(kind::Symbol, grp::Symbol, G::Int; K, A, tree, coords)
     Cmat = if kind === :relmat
         K === nothing && error("relmat(1 | $grp) needs `K = …`")
-        Matrix{Float64}(K)
+        _finite_user_matrix(K, "K")
     elseif kind === :animal
         A === nothing && error("animal(1 | $grp) needs the relatedness matrix `A = …`")
-        Matrix{Float64}(A)
+        _finite_user_matrix(A, "A")
     elseif kind === :phylo
         tree === nothing && error("phylo(1 | $grp) needs `tree = …`")
         _phylo_correlation(tree)
@@ -520,8 +532,9 @@ function _drm_gaussian_structured_plus_ranef(fam::Gaussian, structured, re, meta
             throw(ArgumentError("drm: a correlated `(1 + $(var) | $(g))` block cannot be combined " *
                 "with `$(marker)` on this route; independent `(1 | $(g)) + (0 + $(var) | $(g))` " *
                 "terms can."))
+        re_kind === :intercept || _require_finite_data_column(data, var)
         w = re_kind === :intercept ? ones(n) : Float64.(getproperty(data, var))
-        gidx, G = _group_index(getproperty(data, g))
+        gidx, G = _group_index(getproperty(data, g); col = g)
         label = re_kind === :intercept ? (g === sgrp ? "$(g)_iid" : String(g)) : "$(g):$(var)"
         any(c -> c[5] == label, comps) &&
             throw(ArgumentError("drm: the random-effect term for `$(label)` appears twice in the " *
@@ -535,7 +548,7 @@ function _drm_gaussian_structured_plus_ranef(fam::Gaussian, structured, re, meta
         gidx = _phylo_mean_leaf_index(phy, getproperty(data, sgrp))
         push!(comps, (ones(n), gidx, phy.n_leaves, _phylo_correlation(phy), String(sgrp)))
     else  # :relmat / :animal — K over the levels in first-seen order
-        gidx, G = _group_index(getproperty(data, sgrp))
+        gidx, G = _group_index(getproperty(data, sgrp); col = sgrp)
         Kmat = _resolve_structured_matrix(kind, sgrp, G; K = K, A = A, tree = nothing, coords = nothing)
         push!(comps, (ones(n), gidx, G, Kmat, String(sgrp)))
     end
@@ -547,6 +560,7 @@ end
 # so it is rebuilt each evaluation; otherwise the closed-form marginal is as in
 # `_fit_structured_gaussian`.
 function _fit_spatial_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, coords, nmμ, nmσ, grp, g_tol)
+    _require_finite_inputs(; coords=coords)
     n = length(y)
     pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     # The spatial range is only identified with ≥2 distinct sites; a single level
@@ -982,10 +996,10 @@ function _sparse_struct_comp(kind::Symbol, grp::Symbol, G::Int, gidx;
         return _phylo_aug_comp(gidx, G, tree, grp)
     elseif kind === :relmat
         K === nothing && error("relmat(1 | $grp) needs `K = …`")
-        return _dense_comp(gidx, G, Matrix{Float64}(K), grp)
+        return _dense_comp(gidx, G, _finite_user_matrix(K, "K"), grp)
     elseif kind === :animal
         A === nothing && error("animal(1 | $grp) needs the relatedness matrix `A = …`")
-        return _dense_comp(gidx, G, Matrix{Float64}(A), grp)
+        return _dense_comp(gidx, G, _finite_user_matrix(A, "A"), grp)
     else
         error("the sparse two-structured path supports phylo / relmat / animal " *
               "components (got $kind for `$grp`)")

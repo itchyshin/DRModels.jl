@@ -7,6 +7,15 @@
     range `ρ` is estimated jointly. Closed-form GLS (coordinate-direct;
     mesh/SPDE is planned).
 
+!!! warning "Not the same model as drmTMB's `spatial()`"
+    The same `spatial(1 | site)` term means different things in the two
+    packages. DRModels.jl **estimates** the range `ρ`. drmTMB **fixes** the
+    range at the median positive pairwise distance between sites and estimates
+    only the spatial SD. On the same data and formula the two packages
+    therefore report different log-likelihoods and spatial SDs; the
+    DRModels.jl fit has one more parameter. Compare the two only after
+    accounting for this.
+
 Nearby sites tend to be similar. `spatial(1 | site)` adds a random intercept
 with a distance-based correlation built from the site coordinates,
 `u ~ N(0, σ_s² K(ρ))`, and estimates the spatial **range** `ρ` along with the

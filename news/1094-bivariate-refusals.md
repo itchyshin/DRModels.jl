@@ -1,0 +1,1 @@
+- **Bivariate Gaussian `drm()` now refuses an ordinary `(1 | p | g)` random effect with an `ArgumentError` that names drmTMB (which fits it), and refuses `marginal = :Laplace` (or any value other than the default `:LA`) with an `ArgumentError` instead of a bare `MethodError`.** The capability table lists the unsupported cell (#1094).

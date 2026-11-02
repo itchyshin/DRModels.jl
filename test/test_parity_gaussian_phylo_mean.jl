@@ -30,12 +30,13 @@
 # expected.meta.toml [identifiability]) — real curvature, not a flat
 # plateau.
 #
-# THE SCALE TRAP (kept from the retired cell, unchanged): DRModels.jl's
-# `re_sd(fit)[:species]` is on the RAW branch-length scale (tip variance =
-# tree height h); drmTMB's is on the CORRELATION scale (`ape::vcv(tree, corr
-# = TRUE)`, tip variance 1 regardless of h). The two agree only when h == 1.
-# This fixture's primary tree has h ≈ 2.474, so the raw comparison would
-# silently be wrong by sqrt(h) ≈ 1.573 without the conversion applied below.
+# THE SCALE TRAP (kept from the retired cell): DRModels.jl's sparse route used to
+# report `re_sd(fit)[:species]` on the RAW branch-length scale (tip variance =
+# tree height h) while drmTMB's is on the CORRELATION scale (`ape::vcv(tree, corr
+# = TRUE)`, tip variance 1 regardless of h). #979 moved this route onto the
+# correlation scale (it fits an ultrametric tree at unit height), so the two now
+# agree at every height with no conversion. This fixture's primary tree has
+# h ≈ 2.474, so a regression to the raw scale would be off by sqrt(h) ≈ 1.573.
 #
 # MULTI-HEIGHT ROUND TRIP (#483: kept, now on an identifiable cell — this is
 # the only thing that catches the sqrt(height) scale error, and it is
@@ -44,8 +45,8 @@
 # rescaled to three absolute heights; heights.toml records drmTMB's native
 # refit at each. drmTMB's sd_phylo_corr is height-invariant there (the
 # correlation-scale objective is bit-identical regardless of raw height); the
-# test below checks that DRModels.jl's raw re_sd, after x sqrt(measured height),
-# lands on that same invariant value at all three heights.
+# test below checks that DRModels.jl's re_sd lands on that same invariant value
+# at all three heights.
 
 # #476: wrapped in a module so this file's FIXTURE/_load_data/_coef_named/
 # _within cannot collide with the same names in another parity test file
@@ -94,15 +95,17 @@ end
 
 _within(a, b, rtol, atol) = abs(a - b) <= max(atol, rtol * max(abs(a), abs(b)))
 
-## drmTMB's sd_phylo (correlation scale) from a fitted DRModels.jl model + its own
-## tree-height reading: species_corr_scale == re_sd(fit)[:species] * sqrt(h).
+## drmTMB's sd_phylo (correlation scale) from a fitted DRModels.jl model. Since #979
+## the sparse sigma ~ 1 route fits the ultrametric tree at unit height, so
+## re_sd(fit)[:species] IS the correlation-scale SD (no sqrt(h) factor); the tree
+## height is still read so the fixture's height bookkeeping stays checked.
 function _sd_phylo_corr_scale(fit, tree_newick::AbstractString)
     phy = augmented_phy(tree_newick)
     h = phylo_tree_height(phy)
+    @test fit.phylo_scale === :correlation
     sds = re_sd(fit)
     @test haskey(sds, :species)
-    sd_raw = Float64(sds[:species])
-    return sd_raw * sqrt(h), h
+    return Float64(sds[:species]), h
 end
 
 @testset "gaussian_phylo_mean same-target fixture" begin
@@ -156,8 +159,7 @@ end
     end
 
     # The row's DEFINING quantity: the fitted phylogenetic SD (see the SCALE
-    # TRAP note above the testset). Compare on drmTMB's CORRELATION scale by
-    # multiplying DRModels.jl's RAW-scale re_sd by sqrt(tree_height).
+    # TRAP note above the testset). `re_sd` is on drmTMB's CORRELATION scale (#979).
     @test haskey(expected, "re_sd")
     @test haskey(expected["re_sd"], "species_corr_scale")
     @test haskey(meta, "tree_height")

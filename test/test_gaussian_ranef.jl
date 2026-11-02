@@ -46,3 +46,18 @@ end
     @test re_sd(fit)[:g] ≈ σb atol = 0.15                      # random-slope SD
     @test isfinite(loglik(fit))
 end
+
+# #1114: all-singleton groups + `sigma ~ z` let the residual sigma run off to 0, so the
+# ForwardDiff Hessian overflows to NaN. The (1 | g) route must follow the #968 convention
+# (warn, all-NaN vcov, converged = false) instead of the bare LAPACK ArgumentError.
+@testset "Gaussian (1|g) + sigma ~ z, all-singleton groups: non-finite Hessian (#1114)" begin
+    Random.seed!(20261016100 + 87)   # rep 87 of this t2-style cell throws on main
+    n = 50
+    x = randn(n); z = randn(n); eps = randn(n); u = 0.5 .* randn(n)
+    y = 1 .+ 0.5 .* x .+ u .+ exp.(-0.5 .+ 0.4 .* z) .* eps
+    data = (; y, x, z, g = string.(1:n))
+    fit = @test_logs (:warn,) match_mode = :any drm(
+        bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ z)), Gaussian(); data = data)
+    @test !is_converged(fit)
+    @test all(isnan, vcov(fit))
+end

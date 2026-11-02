@@ -81,15 +81,17 @@ coef(fit)      # mu1/mu2 on the log scale
 corpairs(fit)  # log-residual rho12
 ```
 """
-function drm(f::BivariateDrmFormula, fam::LogNormal; data, tree = nothing,
+@drm_entry function drm(f::BivariateDrmFormula, fam::LogNormal; data, tree = nothing,
              K = nothing, A = nothing, coords = nothing, spatial_range = nothing,
              g_tol::Real = 1e-8, q4_g_tol::Real = 1e-3, q4_iterations::Int = 300,
              q4_n_newton::Int = 40, q4_vcov::Bool = true, method::Symbol = :ML)
+    _require_formula_column_lengths(f, data)   # #1022: no ragged columns under @inbounds
     method === :ML ||
         throw(ArgumentError("drm: the bivariate lognormal route implements ML only " *
             "(got method = :$method). drmTMB's `biv_lognormal()` first slice has no " *
             "random effects to integrate out, and REML for the structured (phylo/" *
             "relmat/animal/spatial) cells is a later slice."))
+    data = _drop_missing_predictor_rows(f, data)   # #1089: R's na.omit, with a count
     cols = NamedTuple(pairs(data))
     y1 = Vector{Float64}(getproperty(cols, f.response1))
     y2 = Vector{Float64}(getproperty(cols, f.response2))
@@ -145,7 +147,8 @@ function _lognormal_jacobian_shift(fam::LogNormal, gfit::DrmFit, y1, y2, obs1, o
                  Dict(:mu1 => Vector{Float64}(y1), :mu2 => Vector{Float64}(y2)),
                  gfit.scales, gfit.formula, lnll, gfit.nllgrad, gfit.ranef,
                  gfit.estim_method, reml_ll, gfit.ml_loglik - jac, gfit.marginal,
-                 gfit.phylo_penalty, gfit.penalty, gfit.iterations, gfit.phylo_scale)
+                 gfit.phylo_penalty, gfit.penalty, gfit.iterations, gfit.phylo_scale,
+                 gfit.uncertainty, gfit.geometry)
 end
 
 # Strictly-positive check on the observed cells of a bivariate lognormal response.

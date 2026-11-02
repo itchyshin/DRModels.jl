@@ -19,7 +19,8 @@ const _BRIDGE_TREE_CACHE_MAX = 4
 """
     drm_bridge(; formula, family, data, tree = nothing, K = nothing,
                A = nothing, coords = nothing, newdata = nothing,
-               options = Dict())
+               options = Dict(), K_labels = nothing, A_labels = nothing,
+               structured_group = nothing)
 
 Fit a DRModels.jl model through a marshalling-friendly boundary for R callers.
 `formula` may be a semicolon-separated string such as
@@ -38,6 +39,13 @@ are rejected rather than approximated. These materialised columns are NOT
 (yet) reconstructed for `newdata` — a formula using them combined with `newdata`
 fails with a missing-column error.
 
+`K` / `A` are matched to the levels of the grouping variable by position
+(first appearance in `data`). To match by name instead, pass `K_labels` /
+`A_labels` (the matrix's row/column names) together with `structured_group`
+(the grouping column, as a string): the matrix is reordered to first-appearance
+order, and a duplicated label or a missing group level throws `ArgumentError`
+rather than fitting against the wrong rows.
+
 The return value is a `Dict{String,Any}` made of primitive R-reconstructable
 pieces: named coefficients, covariance matrix, likelihood summaries, fitted
 values, residuals, scales, and residual correlations when present.
@@ -50,8 +58,14 @@ what `fitted_distribution(object, newdata = ...)` needs.
 """
 function drm_bridge(; formula, family::AbstractString, data, tree = nothing,
         K = nothing, A = nothing, coords = nothing, newdata = nothing,
-        options = Dict{String,Any}())
+        options = Dict{String,Any}(), K_labels = nothing, A_labels = nothing,
+        structured_group = nothing)
     dat = _bridge_data(data)
+    # Labelled K / A (drmTMB#1512): the engine pairs row i of K / A with the i-th
+    # group in first-appearance order and never looks at names. When the caller
+    # supplies the matrix's row/column labels, align by name first, or refuse.
+    K = _bridge_align_labelled(K, K_labels, dat, structured_group, "K")
+    A = _bridge_align_labelled(A, A_labels, dat, structured_group, "A")
     bundle, dat, labels = _bridge_formula(formula, family, dat; labels = true)
     fam = _bridge_family(family)
     opts = _bridge_options(options)
@@ -60,6 +74,64 @@ function drm_bridge(; formula, family::AbstractString, data, tree = nothing,
                       coords = coords, options = opts)
     return _bridge_flatten(fit; family = String(family), newdata = newdata,
                            labels = labels, coef_labels = coef_labels)
+end
+
+# Align a labelled structured matrix to the first-appearance order of the data's
+# grouping variable (the order every DRModels.jl structured route assumes).
+# `labels === nothing` leaves the matrix untouched (positional contract).
+function _bridge_align_labelled(M, labels, dat, group, what::AbstractString)
+    labels === nothing && return M
+    M === nothing && throw(ArgumentError(
+        "drm_bridge: `$(what)_labels` was supplied without `$(what)`"))
+    group === nothing && throw(ArgumentError(
+        "drm_bridge: `$(what)_labels` needs `structured_group` (the grouping " *
+        "variable the matrix is indexed by)"))
+    gsym = Symbol(group)
+    hasproperty(dat, gsym) || throw(ArgumentError(
+        "drm_bridge: `structured_group = \"$(group)\"` is not a column of `data`"))
+    return _align_labelled_matrix(M, labels, getproperty(dat, gsym), what)
+end
+
+# The string a group id is matched by. R sends numeric ids as Float64, so the
+# id 1 is `1.0` here but "1" in R's row names; integer-valued floats are written
+# as plain integers ("1", "100000") to agree with drmTMB's `drm_julia_group_key`.
+function _group_label(v)
+    if v isa AbstractFloat && isfinite(v) && isinteger(v) && abs(v) < 1e15
+        return string(Int64(v))
+    end
+    return String(string(v))
+end
+
+# Reorder the rows and columns of the square matrix `M` (row/column names
+# `labels`) to the first-appearance order of `values`. Refuses, with an
+# ArgumentError, a matrix whose labels are duplicated or miss a group level.
+# Labels beyond the data's levels are dropped (the matrix may cover more
+# individuals than the data).
+function _align_labelled_matrix(M, labels, values, what::AbstractString)
+    # A length-1 character vector can arrive from R unboxed as a bare String.
+    lab = _group_label.(labels isa AbstractString ? [labels] : collect(labels))
+    size(M, 1) == size(M, 2) == length(lab) || throw(ArgumentError(
+        "drm_bridge: `$(what)` is $(size(M, 1))×$(size(M, 2)) but `$(what)_labels` " *
+        "has $(length(lab)) entries"))
+    pos = Dict{String,Int}()
+    for (i, l) in enumerate(lab)
+        haskey(pos, l) && throw(ArgumentError(
+            "drm_bridge: `$(what)_labels` has duplicated label \"$(l)\""))
+        pos[l] = i
+    end
+    lv = String[]
+    seen = Set{String}()
+    for v in values
+        s = _group_label(v)
+        s in seen || (push!(seen, s); push!(lv, s))
+    end
+    missing_lv = [l for l in lv if !haskey(pos, l)]
+    isempty(missing_lv) || throw(ArgumentError(
+        "drm_bridge: `$(what)_labels` does not cover every group level; missing " *
+        join(("\"" * l * "\"" for l in first(missing_lv, 5)), ", ") *
+        (length(missing_lv) > 5 ? ", …" : "")))
+    idx = [pos[l] for l in lv]
+    return Matrix{Float64}(M)[idx, idx]
 end
 
 """
@@ -188,6 +260,8 @@ shape consumed by the row-contract tests.
 function drm_bridge_q2_phylo(; Y, X, species, tree, options = Dict{String,Any}())
     y = Matrix{Float64}(Y)
     x = Matrix{Float64}(X)
+    _require_finite_array(y, "Y"; context="drm_bridge_q2_phylo")
+    _require_finite_array(x, "X"; context="drm_bridge_q2_phylo")
     sp = Int.(vec(species))
     size(y, 2) == 2 ||
         throw(ArgumentError("drm_bridge_q2_phylo: `Y` must have exactly two columns"))
@@ -198,7 +272,7 @@ function drm_bridge_q2_phylo(; Y, X, species, tree, options = Dict{String,Any}()
     phy = _bridge_tree(tree)
     all(1 .<= sp .<= phy.n_leaves) ||
         throw(ArgumentError("drm_bridge_q2_phylo: `species` must contain 1-based tip indices"))
-    opts = _bridge_options(options)
+    opts = _bridge_q2_check_option_keys("drm_bridge_q2_phylo", _bridge_options(options))
     prob, Q_cond = make_coevo_problem(phy, y, x; species = sp)
     fit = fit_coevolution(
         prob,
@@ -232,6 +306,9 @@ function drm_bridge_q2_known_precision(; Y, X, group, Q,
     x = Matrix{Float64}(X)
     g = Int.(vec(group))
     qmat = Matrix{Float64}(Q)
+    _require_finite_array(y, "Y"; context="drm_bridge_q2_known_precision")
+    _require_finite_array(x, "X"; context="drm_bridge_q2_known_precision")
+    _require_finite_array(qmat, "Q"; context="drm_bridge_q2_known_precision")
     st, source = _bridge_q2_known_precision_provider(structured_type,
                                                      precision_source)
     size(y, 2) == 2 ||
@@ -240,7 +317,7 @@ function drm_bridge_q2_known_precision(; Y, X, group, Q,
         throw(ArgumentError("drm_bridge_q2_known_precision: `X` and `Y` must have the same number of rows"))
     length(g) == size(y, 1) ||
         throw(ArgumentError("drm_bridge_q2_known_precision: `group` length must match the number of rows in `Y`"))
-    opts = _bridge_options(options)
+    opts = _bridge_q2_check_option_keys("drm_bridge_q2_known_precision", _bridge_options(options))
     prob, Q_cond = make_coevo_problem_from_precision(qmat, y, x; group = g)
     fit = fit_coevolution_q2_residual(
         prob,
@@ -310,7 +387,8 @@ function drm_bridge_inference(; formula, family::AbstractString, data,
     # `parm` target profiles the fit's own re-optimisable objective and never reads
     # that precomputed stash, so it is skipped there too — matching the R bridge's
     # previous qualified-internal call, which never set this option either.
-    (!is_biv && (target === nothing || target.kind === :sd) && bridge_method == "profile") &&
+    (!is_biv && (target === nothing || target.kind === :sd) && bridge_method == "profile" &&
+     _bridge_has_sigma_phylo(bundle, fam)) &&
         (opts[:profile_ci] = true)
     tree_obj = tree === nothing ? nothing : _bridge_tree(tree)
     fit = _bridge_fit(bundle, fam, dat; tree = tree_obj, K = K,
@@ -347,11 +425,7 @@ function drm_bridge_inference(; formula, family::AbstractString, data,
         # A genuinely UNBOUNDED profile (the likelihood never crosses the LR
         # threshold in the searched range) keeps status "profile" and is unaffected.
         outcome.status == "profile_failed" && throw(ArgumentError(
-            "drm_bridge_inference: profile endpoint search did not converge for " *
-            "`$(row.param):$(row.coef)` — $(outcome.message). A non-converged " *
-            "endpoint is NOT a confidence limit, so it is refused here rather " *
-            "than returned as an infinite bound. Use `method = \"wald\"` or " *
-            "`method = \"bootstrap\"` for this target."))
+            _bridge_profile_failure_message(row.param, row.coef, outcome.message)))
         return _bridge_inference_flatten(
             row;
             method = "profile",
@@ -403,7 +477,7 @@ function drm_bridge_inference(; formula, family::AbstractString, data,
         return _bridge_inference_flatten(
             row;
             method = "bootstrap",
-            status = result.used >= 2 ? "bootstrap" : "bootstrap_unavailable",
+            status = _bridge_bootstrap_status(result, row.param, row.coef),
             attempted = result.attempted,
             used = result.used,
             failed = result.failed,
@@ -415,7 +489,9 @@ function drm_bridge_inference(; formula, family::AbstractString, data,
             message = "$(result.used)/$(result.attempted) successful refits",
         )
     end
-    throw(ArgumentError("drm_bridge_inference: unsupported method `$method`"))
+    throw(ArgumentError("drm_bridge_inference: unsupported method `$method`; " *
+        "accepted methods are \"profile\" (default) and \"bootstrap\"" *
+        (bridge_method == "wald" ? " (`wald` is not served by this entry point)" : "")))
 end
 
 # Parse the R bridge's `"fixef:<dpar>:<coef>"` target string (e.g. `"fixef:mu:x"`)
@@ -562,8 +638,38 @@ function _bridge_fit(bundle, fam, data; tree, K, A, coords, options)
     if haskey(options, :q4_vcov)
         kwargs[:q4_vcov] = Bool(options[:q4_vcov])
     end
-    return drm(bundle, fam; data = data, kwargs...)
+    # Error text only (nothing is added, dropped or defaulted): `drm` hands its kwargs
+    # on to a family-specific fitter, so an option that fitter does not accept
+    # surfaces as a bare MethodError. Name the offending option(s) instead, using
+    # `hasmethod` on the method that actually rejected the call.
+    try
+        return drm(bundle, fam; data = data, kwargs...)
+    catch err
+        unsupported = _bridge_unsupported_kwargs(err, kwargs)
+        isempty(unsupported) && rethrow()
+        throw(ArgumentError(
+            "drm_bridge: the option(s)/input(s) `$(join(unsupported, "`, `"))` are not " *
+            "supported for $(nameof(typeof(fam)))() with this formula type " *
+            "($(nameof(typeof(bundle)))); omit them, or call `drm(...)` directly."))
+    end
 end
+
+# Keys of `kwargs` that the function behind a keyword-call `MethodError` has no
+# method for (empty when `err` is not that shape, so the caller rethrows it).
+function _bridge_unsupported_kwargs(err, kwargs)
+    (err isa MethodError && err.f === Core.kwcall && length(err.args) >= 2) || return Symbol[]
+    f = err.args[2]
+    pos = Tuple{map(typeof, err.args[3:end])...}
+    return sort!([k for k in keys(kwargs) if !hasmethod(f, pos, (:data, k))])
+end
+
+# `profile_ci` is accepted only where it is consumed, a Gaussian formula with
+# `phylo(1 | g)` on `sigma` (#1010); other univariate fits are profiled after
+# fitting, so the bridge must not request it for them.
+_bridge_has_sigma_phylo(bundle, fam) =
+    bundle isa DrmFormula && fam isa Gaussian &&
+    haskey(Dict(bundle.forms), :sigma) &&
+    (s = _split_ranef(Dict(bundle.forms)[:sigma])[4]; s !== nothing && s[1] === :phylo)
 
 function _bridge_is_bivariate_phylo_q4(bundle, fam, tree)
     return bundle isa BivariateDrmFormula && fam isa Gaussian && tree !== nothing
@@ -619,6 +725,30 @@ function _bridge_options(options)
         return Dict{Symbol,Any}(Symbol(String(k)) => v for (k, v) in pairs(options))
     end
     throw(ArgumentError("drm_bridge: `options` must be a dictionary or named tuple"))
+end
+
+# The refusal text for a failed profile endpoint search (#631). It may only
+# recommend a method `drm_bridge_inference` accepts: its dispatch has `"profile"`
+# and `"bootstrap"`, and refuses `"wald"` (#1011).
+function _bridge_profile_failure_message(param, coef, message)
+    return "drm_bridge_inference: profile endpoint search did not converge for " *
+        "`$(param):$(coef)` — $(message). A non-converged " *
+        "endpoint is NOT a confidence limit, so it is refused here rather " *
+        "than returned as an infinite bound. Use `method = \"bootstrap\"` " *
+        "for this target."
+end
+
+# Option keys read by the two q2 point-export entry points (#1011).
+const _BRIDGE_Q2_KNOWN_OPTION_KEYS = Set((:iterations, :g_tol, :fd_h))
+
+# Fail closed on an unknown option key, as `_bridge_fit` does: a misspelled key
+# must error and name itself, not be dropped while the default is used.
+function _bridge_q2_check_option_keys(caller::AbstractString, opts)
+    unknown = setdiff(keys(opts), _BRIDGE_Q2_KNOWN_OPTION_KEYS)
+    isempty(unknown) || throw(ArgumentError(
+        "$caller: unknown option key(s) `$(join(sort(String.(unknown)), "`, `"))`; " *
+        "known keys are: $(join(sort(String.(collect(_BRIDGE_Q2_KNOWN_OPTION_KEYS))), ", "))."))
+    return opts
 end
 
 function _bridge_data(data)
@@ -907,18 +1037,17 @@ end
 # now lives at the call site, where it can name the specific unsupported form.
 const _BRIDGE_REJECT_CALLS = Dict{Symbol,String}(
     :^ => "R crossing `(...)^k` is unsupported via engine=\"julia\" for this shape (need a literal positive integer power over a `+`-only expression, with no `*` inside); expand it explicitly (e.g. `a + b + a&b`).",
-    # These four have no Julia definition in scope, so left unhandled they
+    # These three have no Julia definition in scope, so left unhandled they
     # reach `@formula`/the model frame and fail with a bare `UndefVarError`
     # (or, for `C`, a confusing failure from the generic scalar-label
     # renderer choking on a contrast argument like `contr.sum`) that never
     # names the actual construct (#467 sweep). None can be faked faithfully
     # here: `cut()`/`interaction()` need R's own binning/level-crossing
-    # algorithm, `offset()` needs a fixed (non-estimated) coefficient the
-    # engine does not expose through formula translation, and `C()` sets a
-    # non-default contrast scheme. Refuse all four by name instead.
+    # algorithm, and `C()` sets a non-default contrast scheme. Refuse all
+    # three by name instead. (`offset()` was refused here too until #938; it
+    # now passes through to DRModels' own `offset` marker, see `_bridge_xlate`.)
     :cut => "R's `cut(...)` binning is unsupported via engine=\"julia\"; precompute the factor column in R and pass it as a covariate.",
     :interaction => "R's `interaction(...)` is unsupported via engine=\"julia\"; precompute the combined factor column in R and pass it as a covariate.",
-    :offset => "R's `offset(...)` is unsupported via engine=\"julia\"; it needs a fixed (non-estimated) coefficient that formula translation cannot express here.",
     :C => "R's `C(..., contrast)` contrast override is unsupported via engine=\"julia\" (only R's default `contr.treatment` coding is reproduced); precompute the coded design columns in R and pass them as covariates.",
 )
 
@@ -1202,7 +1331,7 @@ function _bridge_register_source_labels!(ctx::_BridgeXlateCtx, part::AbstractStr
                 # message (e.g. "cannot render numeric literal `.`" from the
                 # `.` in `contr.sum`) instead of naming the actual construct.
                 # Let the `_bridge_xlate` rejection below fire cleanly instead.
-                if !(f in _BRIDGE_DSL_CALLS || f in _BRIDGE_TERM_OPS || f in (:scale, :factor, :poly) ||
+                if !(f in _BRIDGE_DSL_CALLS || f in _BRIDGE_TERM_OPS || f in (:scale, :factor, :poly, :offset) ||
                      haskey(_BRIDGE_REJECT_CALLS, f)) &&
                    !_bridge_contains_poly(parsed)
                     # The established xlate guard gives `poly()` under a
@@ -1565,6 +1694,17 @@ function _bridge_xlate(e::Expr, ctx::_BridgeXlateCtx;
             "factor($(_bridge_r_label(arg)))")
     elseif f === :temporal
         return _bridge_temporal_expr(e)
+    elseif f === :offset
+        # #938: R's `offset(z)` is DRModels' own `offset` marker: the fitter adds
+        # it to the mean's linear predictor with its coefficient fixed at 1 (or
+        # refuses it by name on a route or formula part that cannot). The
+        # argument is a column or a scalar transform such as `log(exposure)`.
+        length(e.args) == 2 || throw(ArgumentError(
+            "drmTMB(engine=\"julia\"): `offset(...)` takes exactly one expression."))
+        arg = e.args[2]
+        inner = arg isa Symbol ? arg :
+            _bridge_xlate(arg, ctx; scalar_context = true, atom_scope = atom_scope)
+        return Expr(:call, :offset, inner)
     elseif !(f isa Symbol)
         throw(ArgumentError("drmTMB(engine=\"julia\"): unsupported formula function `$(f)`; precompute it as a covariate column."))
     elseif haskey(_BRIDGE_REJECT_CALLS, f)
@@ -1641,7 +1781,14 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
         "bic" => bic(fit),
         "df" => dof(fit),
         "nobs" => nobs(fit),
-        "converged" => is_converged(fit),
+        # The optimiser-degeneracy-and-geometry gate, NOT `is_converged` (FX3b):
+        # drmTMB's Julia-engine twin reads this key as its step-1 optimiser flag
+        # and then classifies the fit itself, so a `:boundary` fit must still send
+        # `true`. A Poisson / NB2 fit whose MLE does not exist
+        # (`geometry === :count_mle_nonexistent`) sends `false`. The Julia
+        # classification travels as `convergence_status`.
+        "converged" => fit.geometry === :ok && _converged_nondegenerate(fit),
+        "convergence_status" => String(convergence_status(fit)),
         # estim_method / ml_loglik / infocrit_basis are unconditional (#624): every
         # DrmFit carries `estim_method` and an always-set `ml_loglik` (the plain ML
         # log-likelihood, equal to `loglik` for an ML fit). Before this, an R caller
@@ -1949,6 +2096,8 @@ function _bridge_rendered_regression_blocks(fit, labels::_BridgeFormulaLabels)
         if fit isa DrmFit && fit.nll isa LocScaleObjective && param in (:mu, :sigma)
             rhs = first(_ls_parse_coupled(rhs))
         end
+        # #938: an `offset(...)` term is held at coefficient 1, so it is no column.
+        rhs = first(_extract_offset(rhs))
         rendered = _bridge_render_formula_block(form, param, rhs, labels)
         rendered === nothing && continue
         raw, public = rendered
@@ -2413,7 +2562,7 @@ function _bridge_q2_point_export(fit; family::AbstractString = "biv_gaussian",
             "residual_sd" => residual_sd,
             "residual_correlation" => Float64(first(fit.scales[:rho12])),
             "loglik" => Float64(loglik(fit)),
-            "converged" => Bool(is_converged(fit)),
+            "converged" => fit.geometry === :ok && _converged_nondegenerate(fit),   # as the top-level key (FX3b)
             "claim_boundary" => boundary,
         )
     end
@@ -3115,12 +3264,15 @@ function _bridge_bivariate_inference(fit, dat, method::AbstractString;
     if method == "bootstrap"
         rng = seed === nothing ? Random.default_rng() :
               Random.MersenneTwister(Int(seed))
+        # #962 / #459: the same rule as the univariate bridge. Unconverged
+        # refits must not enter the percentile. `failures = :warn` still drops
+        # them; the result status says `bootstrap_incomplete` when any were dropped.
         result = bootstrap_result(fit; data = dat, B = Int(B), level = level,
-                                  rng = rng, failures = :warn, check_converged = false)
+                                  rng = rng, failures = :warn, check_converged = true)
         return _bridge_inference_flatten_multi(
             result.summary;
             method = "bootstrap",
-            status = result.used >= 2 ? "bootstrap" : "bootstrap_unavailable",
+            status = _bridge_bootstrap_status(result),
             attempted = result.attempted, used = result.used, failed = result.failed,
             elapsed = result.elapsed,
             message = "$(result.used)/$(result.attempted) successful refits")

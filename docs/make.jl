@@ -42,6 +42,7 @@ makedocs(
             "model-guides/distribution-families.md",
             "families.md",
             "model-guides/model-workflow.md",
+            "model-guides/missing-data.md",
             "model-guides/model-selection.md",
             "model-guides/convergence.md",
             "model-guides/marginal-la-vs-va.md",

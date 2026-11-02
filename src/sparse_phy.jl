@@ -274,6 +274,17 @@ function _phy_branch_length(value, label::AbstractString)
     return length
 end
 
+# Assembled lengths, after `_phy_branch_length` has accepted each edge. Kept
+# in this file so a standalone `include("sparse_phy.jl")` (the experimental
+# location-only loader) does not depend on `finite_inputs.jl`.
+function _phy_require_finite_lengths(branch_lengths)
+    for (i, v) in pairs(branch_lengths)
+        isfinite(v) || throw(ArgumentError(
+            "tree branch length contains a non-finite value ($v) at edge $i."))
+    end
+    return nothing
+end
+
 function _phy_validate_leaf_names(names::AbstractVector{<:AbstractString}, p::Int)
     length(names) == p || throw(ArgumentError(
         "leaf_names must contain exactly $p names"))
@@ -438,6 +449,7 @@ function augmented_phy(newick::AbstractString)
     Q, branch_lengths = _phy_topology_precision(edges, n_total)
     length(branch_lengths) == n_total - 1 ||
         throw(ArgumentError("expected $(n_total - 1) edges, got $(length(branch_lengths))"))
+    _phy_require_finite_lengths(branch_lengths)
 
     leaf_idx_new = collect(1:p)           # by construction
     leaf_names_new = leaf_names           # already in encounter order
@@ -525,6 +537,7 @@ function make_phy(edges::AbstractVector, n_leaves::Integer;
     Q, branch_lengths = _phy_topology_precision(normalized, n_total)
     length(normalized) == n_total - 1 || throw(ArgumentError(
         "phylogenetic tree must have $(n_total - 1) edges, got $(length(normalized))"))
+    _phy_require_finite_lengths(branch_lengths)
     return AugmentedPhy{Float64}(Int(n_leaves), n_total, Q, collect(1:n_leaves), names,
                                  branch_lengths, root)
 end
@@ -651,10 +664,12 @@ O(p): a breadth-first walk over the sparse topology, where an edge's length is
 recovered as `-1/Q_topology[i, j]`. `sigma_phy_dense` would give the same number
 but inverts a dense matrix, so it is unusable as a routine check.
 
-**Why this matters.** DRModels.jl builds its phylogenetic covariance from the branch
-lengths **as supplied**. On an ultrametric tree of height `h`, the fitted
+**Why this matters.** Most DRModels.jl phylogenetic routes build the covariance from
+the branch lengths **as supplied**. On an ultrametric tree of height `h`, their fitted
 `sd_phylo` carries a factor `sqrt(h)` relative to unit-tip-variance correlation
-scale. R's drmTMB instead standardises via `ape::vcv(tree, corr = TRUE)`, whose
+scale. (The Gaussian `phylo(1 | g)` mean route with a constant `sigma` is the
+exception on an ultrametric tree: it fits at unit height and reports the correlation
+scale, #979.) R's drmTMB instead standardises via `ape::vcv(tree, corr = TRUE)`, whose
 tips always have variance 1. A non-ultrametric conversion is tip-wise, not one
 scalar. See [`drm_phylo_penalty`](@ref), where these choices change what `sd_u`
 *means*.
@@ -665,6 +680,11 @@ needs the tip-wise standardization `D^{-1/2} Σ D^{-1/2}`, not one scalar branch
 rescaling; this raw-branch constructor deliberately performs neither transform.
 """
 function phylo_tree_height(phy::AugmentedPhy)
+    return maximum(_phylo_tip_depths(phy))
+end
+
+# Root-to-tip path length of every leaf, in leaf order (`1:phy.n_leaves`).
+function _phylo_tip_depths(phy::AugmentedPhy)
     Q = phy.Q_topology
     n = phy.n_total
     depth = fill(-1.0, n)
@@ -687,12 +707,30 @@ function phylo_tree_height(phy::AugmentedPhy)
             end
         end
     end
-    h = 0.0
-    @inbounds for t in 1:phy.n_leaves
-        d = depth[phy.leaf_indices[t]]
-        d > h && (h = d)
-    end
-    return h
+    return [depth[phy.leaf_indices[t]] for t in 1:phy.n_leaves]
+end
+
+# Are all tips the same distance from the root? Same 1e-6 relative tolerance as
+# the unit-height test in `_warn_if_tree_not_unit_height`.
+function _phylo_tree_is_ultrametric(phy::AugmentedPhy)
+    d = _phylo_tip_depths(phy)
+    h = maximum(d)
+    return isfinite(h) && h > 0 && all(x -> isapprox(x, h; rtol = 1e-6), d)
+end
+
+# #979: put a tree on the tip-CORRELATION scale drmTMB reports (`ape::vcv(tree,
+# corr = TRUE)`). For an ultrametric tree of height h the correlation is the raw
+# covariance divided by h, which is the same model as the tree with every branch
+# length divided by h (Q is homogeneous of degree -1 in the lengths, so Q -> h Q).
+# Returns `(tree, scale)` with `scale = :correlation` and the rescaled tree, or, for a
+# tree this scalar map cannot standardise (non-ultrametric: the correlation is
+# tip-wise, `D^{-1/2} C D^{-1/2}`), the tree unchanged with `scale = :covariance`.
+function _phylo_mean_correlation_tree(phy::AugmentedPhy)
+    _phylo_tree_is_ultrametric(phy) || return phy, :covariance
+    h = phylo_tree_height(phy)
+    isapprox(h, 1.0; rtol = 1e-6) && return phy, :correlation
+    return AugmentedPhy(phy.n_leaves, phy.n_total, phy.Q_topology .* h, phy.leaf_indices,
+                        phy.leaf_names, phy.branch_lengths ./ h, phy.root_index), :correlation
 end
 
 # One warning per tree per session: the scale is a REPORTING convention, not an

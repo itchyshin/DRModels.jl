@@ -1,0 +1,1 @@
+- Tests: Beta / Binomial / BetaBinomial parity vs drmTMB 0.7.0 (fixed effects and `(1 | g)`), with four new fixtures and a generator; the `(1 | g)` logLik gap (Laplace vs adaptive GHQ) is recorded as `@test_broken` (Refs #563).

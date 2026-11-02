@@ -61,6 +61,12 @@
 
 ## Bootstrap pipeline (measured, q4_p100) — the genuine win
 
+> **Correction (2026-10-11).** The drmTMB side below is drmTMB with
+> `parallel = "none"` (single-fit time × 199). drmTMB's profile and bootstrap
+> also support `parallel = "multicore"`, which was not measured, so the "~31×"
+> figure compares threaded DRModels.jl with serial drmTMB, not with drmTMB's
+> parallel mode. See the header of `bench/threaded_bootstrap_demo.jl`.
+
 `threaded_bootstrap_demo.jl` (julia --threads=16):
 - per-refit **~0.18–0.29 s serial** (warm-started from the point estimate)
   vs drmTMB's 2.585 s cold fit → ~10–14× per-refit (warm-starting + sparse).

@@ -1,0 +1,17 @@
+route = "nb2_runoff_s7_n800"
+issue = 1088
+drmTMB_version = "0.7.1"
+drmTMB_commit = "ca3ddefa5ea11bbfd3b765615dfbb89305d2485a"
+R_version = "4.4.3"
+TMB_version = "1.9.23"
+opt_convergence = 1
+opt_message = "singular convergence (7)"
+pd_hess = true
+comparable = false
+point_comparable = false
+tmb_names = ["beta_mu", "beta_mu", "beta_sigma", "log_sd_mu", "log_sd_mu"]
+loglik = -198.29518660821398
+max_grad = 1.381303e-04
+log_dispersion =  3.140200835031278
+theta = [4.4320283866823429, 2.1774379010852112,  3.140200835031278, -113.5118475980528, -8.0984662312721554]
+se = [nan, nan, nan, nan, nan]

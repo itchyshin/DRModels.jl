@@ -113,7 +113,7 @@ function bias_correct(θ̂::AbstractVector, V::AbstractMatrix, g::Function;
 end
 
 function _bias_correct(g, θ̂::AbstractVector, V::AbstractMatrix; level::Real)
-    0 < level < 1 || throw(ArgumentError("level must be in (0, 1), got $level"))
+    level = _validate_ci_level(level; what="bias_correct")
     θ = collect(float.(θ̂))
     n = length(θ)
     size(V) == (n, n) ||

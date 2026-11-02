@@ -1,0 +1,110 @@
+From 5fea1f634073ae162bbbe78ae5e1a053fb77b1ac Mon Sep 17 00:00:00 2001
+From: Cursor Agent <cursoragent@cursor.com>
+Date: Fri, 16 Oct 2026 22:42:49 +0000
+Subject: [PATCH] Document t9 profile coverage: G=30 slope is not a
+ construction bug
+
+Wald and profile miss the same 29/300 sigma-slope reps at G=30,
+sd_g=0.5 (both 90.3%). sd_g overcover at 0.1 is the intended
+[0, u] boundary. Methods options recorded; R/ and src/ unchanged.
+
+Refs #1562.
+---
+ .../2026-10-16-1562-t9-profile-coverage.md    | 85 +++++++++++++++++++
+ 1 file changed, 85 insertions(+)
+ create mode 100644 docs/dev-log/after-task/2026-10-16-1562-t9-profile-coverage.md
+
+diff --git a/docs/dev-log/after-task/2026-10-16-1562-t9-profile-coverage.md b/docs/dev-log/after-task/2026-10-16-1562-t9-profile-coverage.md
+new file mode 100644
+index 00000000..067cb76c
+--- /dev/null
++++ b/docs/dev-log/after-task/2026-10-16-1562-t9-profile-coverage.md
+@@ -0,0 +1,85 @@
++# After-task: t9 profile coverage, G=30 sigma slope and sd_g=0.1 (#1562)
++
++Shannon / Fisher. No code change to `R/` or `src/`. No C17 recertify.
++No subagents.
++
++## 1. Goal
++
++Lane t9 (receipt `sweep-oct16/t9`, pin `ca3ddefa`) reported two profile
++cells outside the [93%, 97%] bar. The task was to investigate the G=30
++sigma-slope miss and fix it **if it is a bug**.
++
++## 2. Finding: not a profile-construction bug
++
++### Sigma slope at G=30, sd_g=0.5 — 90.3%
++
++From `sweep-oct16/t9/results/coverage_summary.tsv` (300 reps):
++
++| engine | method | n_cover / n_attempt | coverage |
++| --- | --- | --- | --- |
++| drmTMB | profile `fixef:sigma:x` | 271 / 300 | 0.9033 |
++| drmTMB | Wald `fixef:sigma:x` | 271 / 300 | 0.9033 |
++| drmTMB | bootstrap `fixef:sigma:x` | 90 / 100 | 0.9000 |
++| DRModels.jl | profile `sigma_slope` | 280 / 300 | 0.9333 (in bar) |
++| DRModels.jl | Wald `sigma_slope` | 280 / 300 | 0.9333 |
++
++Wald and profile miss **exactly the same 29/300** on drmTMB. That is the
++signature of a finite-sample MLE location, not a broken LR root-finder:
++the profile is tracking the same likelihood as the Hessian. The issue's
++example seed `20261017814` has profile interval ≈ `[0.379, 0.669]`
++entirely above the true slope 0.3 — an upward-biased point, not an
++asymmetric or truncated profile.
++
++Julia on the same DGP is inside the pass bar (93.3%). The 3 pp R–Julia
++gap is an estimator difference (TMB ML vs Woodbury), not evidence that
++`profile_endpoint_crossing` dropped a root.
++
++MCSE of a 90.3% binomial at n=300 is 1.7 pp; 90.3% sits about 2.7
++nominal SE below 95%. That is a real small-sample miss, shared with
++Wald.
++
++### sd_g overcover at true sd_g=0.1
++
++| cell | G | coverage | `profile.boundary` |
++| --- | --- | --- | --- |
++| 1 | 10 | 0.9733 | 287 / 300 |
++| 3 | 30 | 0.9833 | 282 / 300 |
++
++This is the intended Self–Liang / `[0, u]` behaviour
++(`allow_lower_boundary = TRUE` for `exp` targets in
++`profile_endpoint_crossing`). A one-sided interval that includes 0
++covers a small positive truth more often than 95%. Not a bug. The twin
++Julia defect (throw / `(-Inf, Inf)` instead of `[0, u]`) is DRModels.jl
++#1117.
++
++Wald `sd:mu:(1 | g)` at the same cells (0.36 / 0.42 with many Inf) is
++already opened as Refs #1558. Bootstrap sigma-intercept undercover
++(0.87–0.91 in 3/4 cells) is Refs #1315.
++
++## 3a. Options if the slope miss must be closed (not chosen)
++
++1. **Document only.** `?confint.drmTMB` already warns that profile
++   coverage at a variance boundary is not calibrated. A sentence that
++   the *sigma slope* at G≈30 with a non-negligible mean RE can run ~5 pp
++   low, matching Wald, would match the t9 number without changing the
++   interval.
++2. **Small-sample df for scale coefficients.** #1558 / #680 machinery
++   currently does not reach `fixef:sigma:*`. Extending `small_sample_df`
++   to the residual-scale slope is a methods choice (which df?).
++3. **Bias-correct the sigma-slope MLE** (Firth / JE). Out of scope; the
++   profile is not the broken piece.
++4. **Do nothing.** Julia's 93.3% on the same DGP is in bar; the R miss
++   is the TMB point, not the CI constructor.
++
++FX5 rules: stop on a methods choice. No `R/profile.R` edit.
++
++## 4. Files touched
++
++This note only. `R/`, `src/`, and `tests/` are unchanged, so C17 is not
++re-run.
++
++## 5. Checks
++
++Coverage arithmetic is from the committed t9 summary (300 + 300 + 100
++reps, zero silent NaN). No new simulation was run. The example seed was
++not re-fit in this session (R/TMB not installed in the agent image).
+-- 
+2.43.0
+

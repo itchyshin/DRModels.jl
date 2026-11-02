@@ -1,0 +1,1 @@
+**`drm(…, SkewNormal())` with a missing/NaN response now goes through the same observed-rows wrapper as every other univariate family:** it warns, fits on the observed rows, and rebuilds the full input rows, so `fit.scales` / `predict` have one entry per input row (previously only the observed rows were kept). (#1123)

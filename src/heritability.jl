@@ -168,8 +168,11 @@ function _ratio_delta(fit::DrmFit, focal::Int, denom::Vector{Int}; level::Real,
                       resid::Int = 0, omega::Vector{Int} = Int[])
     g = _ratio_closure(focal, denom; resid = resid, omega = omega)
     bc = bias_correct(fit, g; level = level)
+    # #1007: a non-finite SE means "no uncertainty estimate". Clamping its (-Inf, Inf)
+    # interval would report a finite, valid-looking (0, 1), so the interval is NaN.
+    ci = isfinite(bc.se) ? _clamp01_ci(bc.ci) : (lower = NaN, upper = NaN)
     return (estimate = bc.estimate, corrected = bc.corrected, bias = bc.bias,
-            se = bc.se, ci = _clamp01_ci(bc.ci), level = bc.level)
+            se = bc.se, ci = ci, level = bc.level)
 end
 
 # ---------------------------------------------------------------------------
@@ -349,13 +352,15 @@ Returns a `NamedTuple`:
 - `corrected` — the bias-corrected estimate `g(θ̂) + ½·tr(H_g·V)` (delta only);
 - `se`        — the delta-method standard error (delta only);
 - `ci`        — the `(lower, upper)` CI, **clamped to `[0, 1]`** (when the
-  delta-method SE is not finite the bounds are `(NaN, NaN)` when the covariance
-  is all-NaN (a saddle) or the clamped `(0, 1)` when it is finite but gives a
-  negative variance: read `status`, which is then `:vcov_unavailable`);
+  delta-method SE is not finite the bounds are `(NaN, NaN)` (an all-NaN covariance
+  or a finite but non-positive-definite one that gives a negative variance); read
+  `status`, which is then `:vcov_unavailable`);
 - `level`     — the confidence level;
 - `method`    — the method used;
 - `status`    — `:ok`, or the first applicable caveat: `:not_converged`
-  ([`is_converged`](@ref) is false, which includes a sentinel log-likelihood),
+  (the optimiser did not stop normally, or the optimum is degenerate, which
+  includes a sentinel log-likelihood; a variance component on its boundary,
+  [`convergence_status`](@ref) `:boundary`, is not flagged here),
   `:penalized_map` (a MAP fit, whose variance components are deliberately
   shrunk), `:vcov_unavailable` (delta SE not finite), `:profile_edge` (a profile
   bound is the `0`/`1` edge, i.e. one-sided, not a likelihood-ratio crossing) or
@@ -390,6 +395,7 @@ marginal residual variance `E[σ²]`; see [`repeatability`](@ref).
 """
 function heritability(fit::DrmFit; component::Union{Symbol,Nothing} = nothing,
                       level::Real = 0.95, method::Symbol = :delta)
+    level = _validate_ci_level(level; what="heritability")
     return _signal_ratio(fit; component = component, level = level, method = method,
                          what = "heritability")
 end
@@ -417,6 +423,7 @@ marginal residual variance `E[σ²]`; see [`repeatability`](@ref).
 """
 function icc(fit::DrmFit; component::Union{Symbol,Nothing} = nothing,
              level::Real = 0.95, method::Symbol = :delta)
+    level = _validate_ci_level(level; what="icc")
     comps, resid_idx, omega = _variance_component_indices(fit)
     focal = _resolve_component(comps, component, "icc")
     denom = [focal, resid_idx]
@@ -495,7 +502,7 @@ repeatability(fit::DrmFit; component::Union{Symbol,Nothing} = nothing,
 # block :sd_phylo, ratio = phylogenetic h²(z)). logit R(z) = 2(η_sd − η_σ) is linear in
 # the coefficients, so the Wald SE on that scale is c'Vc with c = (2 x_sd, −2 x_σ).
 function _conditional_ratio(fit::DrmFit, newdata; kind::Symbol, level::Real, what::String)
-    0 < level < 1 || throw(ArgumentError("$what: `level` must be in (0, 1), got $level"))
+    level = _validate_ci_level(level; what=what)
     f = fit.formula
     f isa DrmFormula || error("$what: this fit did not retain its formula")
     numblk = kind === :iid ? :sd : :sd_phylo
@@ -514,7 +521,7 @@ function _conditional_ratio(fit::DrmFit, newdata; kind::Symbol, level::Real, wha
               "two-component ratio")
     nd = NamedTuple(pairs(newdata))
     nrows = length(first(values(nd)))
-    ndr = merge(nd, NamedTuple{(f.response,)}((zeros(nrows),)))
+    ndr = _predict_data(nd, f.response)
     _, Xsd, _ = _design(f.response, last(parts[1]), ndr)
     fixed_sigma, _, _, _ = _split_ranef(Dict(f.forms)[:sigma])
     _, Xσ, _ = _design(f.response, fixed_sigma, ndr; schema_cache = f.schema_cache, schema_key = :sigma)
@@ -602,15 +609,15 @@ end
 # degenerate or penalized fit returned a ratio that looked like any other. Fit-level
 # caveats take precedence over interval-level ones; every caveat warns once.
 function _ratio_status(fit::DrmFit, ci_status::Symbol)
-    st = !is_converged(fit) ? :not_converged :
+    st = !_converged_nondegenerate(fit) ? :not_converged :
          fit.estim_method === :MAP ? :penalized_map : ci_status
     st === :not_converged && @warn "variance ratio: the fit is not converged (or is " *
-        "degenerate / at the failed-objective sentinel; see `is_converged`), so the ratio " *
+        "degenerate / at the failed-objective sentinel; see `convergence_status`), so the ratio " *
         "and its interval are not trustworthy." status = st
     st === :penalized_map && @warn "variance ratio: penalized (MAP) fit -- the variance " *
         "components are deliberately shrunk, so this is not a likelihood-based ratio." status = st
     st === :vcov_unavailable && @warn "variance ratio: the delta-method standard error is " *
-        "not finite (no usable covariance), so the interval is NaN or the uninformative [0, 1]. " *
+        "not finite (no usable covariance), so the interval is NaN. " *
         "Use `method = :profile`." status = st
     st === :profile_edge && @warn "variance ratio: a profile bound is the 0/1 edge, not a " *
         "likelihood-ratio crossing (one-sided interval)." status = st

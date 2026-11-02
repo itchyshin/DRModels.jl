@@ -111,8 +111,8 @@ also has `(1 | id)`, the stable intercept SD (`re_sd(fit)[:id_iid]`).
 
 Post-fit conventions (some differ from drmTMB):
 
-- `fitted(fit)` and `predict(fit, newdata)` are POPULATION-level, `Xβ̂` (the
-  DRModels convention for every structured term); drmTMB's `fitted()` adds the
+- `fitted(fit)` and `predict(fit, newdata)` are POPULATION-level, `Xβ̂` (as on
+  most structured routes; see [`fitted`](@ref)); drmTMB's `fitted()` adds the
   conditional temporal effects. Those are in `ranef(fit)[:id]`, data-row order
   (and `ranef(fit)[:id_iid]` per series for the ordinary intercept).
 - `simulate(fit)` draws from the fitted marginal model: a fresh stationary
@@ -1174,7 +1174,7 @@ end
 # σ̂ / sd(y) < 1e-3; OU decay × longest within-series span < 1e-4 (correlation
 # > 0.9999 at every observed lag) or decay × shortest positive gap > 30
 # (correlation < 1e-13 at every observed lag); |φ̂| > 0.999. drmTMB then reports
-# `convergence_status() == "boundary"` (still `is_converged`); DRModels.jl
+# `convergence_status() == "boundary"` (`is_converged` false since FX3b); DRModels.jl
 # warns at fit time and reports the findings in `check_drm(fit).temporal_boundary`.
 # drmTMB's `drm_inference_at_boundary` also counts its random-effect SD rule
 # (`check_random_effect_sd_boundary`, sd_boundary = 1e-4: the smallest fitted
