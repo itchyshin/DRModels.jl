@@ -104,17 +104,17 @@ structured (phylo/relmat/animal/spatial) markers on `mu` are not implemented
 independent intercepts and slopes.
 
 ```julia
-fit = drm(bf(y ~ x, sigma ~ 1, nu ~ 1), Tweedie(); data = dat)
+fit = drm(bf(@formula(y ~ x), @formula(sigma ~ 1), @formula(nu ~ 1)), Tweedie(); data = dat)
 exp(2 * coef(fit, :sigma)[1])               # dispersion φ
 1 + 1 / (1 + exp(-coef(fit, :nu)[1]))       # power p ∈ (1,2)
 
-fit_re = drm(bf(y ~ x + (1 | g), nu ~ 1), Tweedie(); data = dat)
+fit_re = drm(bf(@formula(y ~ x + (1 | g)), @formula(nu ~ 1)), Tweedie(); data = dat)
 exp(coef(fit_re, :resd)[1])                 # random-intercept SD
 
-fit_slope = drm(bf(y ~ x + (0 + x | g), nu ~ 1), Tweedie(); data = dat)
+fit_slope = drm(bf(@formula(y ~ x + (0 + x | g)), @formula(nu ~ 1)), Tweedie(); data = dat)
 exp(coef(fit_slope, :resd)[1])              # random-slope SD
 
-fit_crossed = drm(bf(y ~ x + (1 | g) + (1 | h)), Tweedie(); data = dat)
+fit_crossed = drm(bf(@formula(y ~ x + (1 | g) + (1 | h))), Tweedie(); data = dat)
 re_sd(fit_crossed)                          # Dict(:g => ..., :h => ...)
 ```
 """

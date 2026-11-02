@@ -11,7 +11,9 @@ a guard.
 
 ## What was measured
 
-1000 replicates, `N = 128`, true `Σ_a` diagonal in 0.16–0.25, reported as log-Cholesky entries `Lij`.
+The retained 2026-08-25 coverage report summarizes a batch of 1000 simulations at
+`N = 128`, with true `Σ_a` diagonal in 0.16–0.25, reported as log-Cholesky
+entries `Lij`:
 
 | entry | axis | Cholesky depth | bias |
 |---|---|---|---|
@@ -20,11 +22,20 @@ a guard.
 | `L33` | σ₁×σ₁ | 2 | −0.899 |
 | `L44` | σ₂×σ₂ | 3 | −1.852 |
 
+The retained records do not give one reconciled denominator for this estimate.
+The coverage report lists `−1.852` and 986 intervals, while its campaign summary
+reports 965 converged fits out of 1000. A separate N-ladder TSV reports `−1.8178`
+from 291 converged fits at `ntip = 16`, `N = 128`. These are distinct summaries;
+do not combine their counts or treat either bias as a single fully reconciled
+estimate. The records agree on the direction of the `L44` bias, but not its exact
+magnitude or denominator. The coverage report and N-ladder table are retained
+with the package’s reproducibility records.
+
 All four are biased **downward** — variance components are under-estimated on small trees.
 
 ### It is small-sample, not structural
 
-Bias × N is near-constant across an N-ladder (233 / 247 / 193 for `L44` at N = 128 / 256 / 512),
+In the separate N-ladder TSV, bias × N is near-constant (233 / 247 / 193 for `L44` at N = 128 / 256 / 512),
 i.e. bias ≈ O(1/N). It shrinks with more tips; it does not run away.
 
 ### The pattern follows Cholesky depth, not "mean vs scale"
@@ -34,13 +45,12 @@ numbers say. `L22` is a **mean** axis and already jumps 3×, comparable to the m
 diagonal entry is `Var(axis k | axes 1..k−1)`, so it absorbs the compounding error of every axis
 conditioned before it. Depth explains more of the escalation than the mean/scale distinction.
 
-### Three contributors, measured separately
+### Contributors to the observed pattern
 
 - **Cholesky-depth compounding** — affects every axis, mean and scale alike. Dominant.
-- **The exp() link on scale axes** — real and correctly signed. The likelihood is exactly quadratic in
-  a mean-axis latent (Laplace is *exact* there, to machine precision) but not in a scale-axis latent.
-  On its own this accounts for only ~0.02 in log-SD at N = 128 — an order of magnitude too small to
-  explain the observed −1.85.
+- **The exp() link on scale axes** changes the likelihood geometry. Mean-axis latent terms enter
+  quadratically, while scale-axis latent terms do not. This distinction does not quantify how much
+  of the observed bias it explains.
 - **Phylogenetic tip correlation** — an amplifier, roughly 2× for scale axes at `ntip = 16`. On a star
   topology the scale-axis bias roughly halves. Notably the `L44`/`L33` ratio (≈1.85) is *unchanged* by
   tree correlation, confirming that part is structural to the fixed axis ordering.

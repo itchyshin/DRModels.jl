@@ -58,9 +58,10 @@ diagnostics = check_drm(fit)
 
 Read the fields together:
 
-- `converged` says whether the optimiser reported success under its own
-  stopping rules. It is not proof of a maximum: a fit with a variance at zero
-  can also report `true`, so read it together with the next two fields.
+- `converged` is `true` when `convergence_status(fit) === :converged`,
+  matching `is_converged(fit)`. A detected variance boundary makes it `false`.
+  The raw optimiser flag is `fit.converged`; read the public status together
+  with the gradient and covariance checks.
 - `max_abs_grad` measures how close the fit is to a stationary point. Values
   close to zero are reassuring; also inspect `grad_source` because some model
   types cannot provide this check.

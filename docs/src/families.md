@@ -280,14 +280,44 @@ fito = drm(bf(@formula(y ~ x)), CumulativeLogit(); data = (; y = Float64.(yo), x
 coef(fito, :mu)[1]      # slope ≈ 0.8
 ```
 
+The two random-effect examples use separate grouped ordinal datasets. The first
+has a group-level effect; the second has a clade-aligned species signal and the
+matching tree. Their setup is shown here:
+
+```@example fam
+Random.seed!(13)
+n_ord = 600
+group = repeat(1:30, outer = n_ord ÷ 30)
+species_index = repeat(1:4, inner = n_ord ÷ 4)
+species = ["sp1", "sp2", "sp3", "sp4"][species_index]
+xord = randn(n_ord)
+cutpoints_ord = [-1.0, 0.0, 1.2]
+function draw_ordinal(eta, cutpoints)
+    u = rand()
+    for (k, cutpoint) in enumerate(cutpoints)
+        u < 1 / (1 + exp(-(cutpoint - eta))) && return Float64(k)
+    end
+    Float64(length(cutpoints) + 1)
+end
+eta_re = 0.8 .* xord .+ 0.8 .* randn(30)[group]
+y_re = draw_ordinal.(eta_re, Ref(cutpoints_ord))
+dat_re = (; y = y_re, x = xord, g = group, species)
+phylo_effect = [1.5, 1.5, -1.5, -1.5] # fixed clade-aligned signal for illustration
+eta_phylo = 0.8 .* xord .+ phylo_effect[species_index]
+y_phylo = draw_ordinal.(eta_phylo, Ref(cutpoints_ord))
+dat_phylo = (; y = y_phylo, x = xord, g = group, species)
+tr = "((sp1:1.0,sp2:1.0):1.0,(sp3:1.0,sp4:1.0):1.0);"
+(groups = length(unique(group)), species = length(unique(species)))
+```
+
 An ordinary random intercept `(1 | g)` or an independent random slope
 `(0 + x | g)` on `mu` is integrated out by per-group adaptive Gauss–Hermite
 quadrature with 41 nodes (the same scheme as the Poisson/Gamma/Tweedie GLMM
 routes, with more nodes because ordinal group posteriors can be far from
 normal); the correlated form `(1 + x | g)` is not implemented.
 
-```julia
-fit_re = drm(bf(y ~ x + (1 | g)), CumulativeLogit(); data = dat)
+```@example fam
+fit_re = drm(bf(@formula(y ~ x + (1 | g))), CumulativeLogit(); data = dat_re)
 exp(coef(fit_re, :resd)[1])   # random-intercept SD
 ```
 
@@ -297,8 +327,8 @@ engine as the Poisson/Gamma/Binomial/Beta `phylo(1 | g)` cells), matching
 drmTMB 0.7.0's `validate_ordinal_phylo_mu_structured_term()`. It cannot be
 combined with an ordinary `(1 | g)`/`(0 + x | g)` random effect on `mu`.
 
-```julia
-fit_phylo = drm(bf(y ~ x + phylo(1 | species)), CumulativeLogit(); data = dat, tree = tr)
+```@example fam
+fit_phylo = drm(bf(@formula(y ~ x + phylo(1 | species))), CumulativeLogit(); data = dat_phylo, tree = tr)
 re_sd(fit_phylo)[:species]   # phylogenetic SD, raw branch-length scale
 ```
 
