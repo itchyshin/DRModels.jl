@@ -248,9 +248,10 @@ function _drm_negbin2_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
                                     nAGQ::Union{Nothing,Int} = nothing)
     marginal === :LA || throw(ArgumentError(
         "NegBinomial2 `sd(group) ~ …` currently supports `marginal = :LA` only."))
-    (tree === nothing && coords === nothing) ||
+    spatial_sd_target = any(t.target.level === :spatial for t in _sd_target_parts(f))
+    (tree === nothing && (coords === nothing || spatial_sd_target)) ||
         throw(ArgumentError("NegBinomial2 `sd(group) ~ …` supports ordinary effects, " *
-            "an animal intercept with `A` or `Ainv`, or a relmat intercept with `K`; other structured covariance routes are not implemented."))
+            "an animal intercept with `A` or `Ainv`, a relmat intercept with `K`, or a coordinate `spatial(0 + x | g)` slope with `coords`; other structured covariance routes are not implemented."))
     isempty(_sdphylo_parts(f)) || throw(ArgumentError(
         "NegBinomial2 `sd(group, phylogenetic) ~ …` is not implemented by the ordinary random-intercept route."))
     targets = _sd_target_parts(f)
@@ -261,19 +262,22 @@ function _drm_negbin2_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
     descriptor.dpar === :sigma && return _drm_negbin2_sigma_sd_regression(
         f, fam, target; data, tree, K, A, Ainv, coords, g_tol, se, marginal,
         nAGQ)
-    (descriptor.level in (:iid, :animal, :relmat) && descriptor.dpar === :mu &&
+    (descriptor.level in (:iid, :animal, :relmat, :spatial) && descriptor.dpar === :mu &&
      descriptor.block === nothing) || throw(ArgumentError(
-        "NegBinomial2 SD regression currently targets one ordinary, animal or relmat mean random-effect coefficient."))
+        "NegBinomial2 SD regression currently targets one ordinary, animal, relmat or coordinate-spatial slope mean random-effect coefficient."))
     rhs = Dict(f.forms)
     fixed_mu, re, mv, st, _, _, animal_slope = _split_ranef(
         rhs[:mu]; allow_animal_slope = descriptor.level === :animal,
-        allow_relmat_slope = descriptor.level === :relmat)
+        allow_relmat_slope = descriptor.level === :relmat,
+        allow_spatial_slope = descriptor.level === :spatial)
     mv === nothing || throw(ArgumentError("NegBinomial2 `sd($sgrp)` cannot use meta_V()."))
     structured_animal = st !== nothing
     if structured_animal
         kind, grp = st
-        kind in (:animal, :relmat) || throw(ArgumentError(
-            "NegBinomial2 predictor-dependent SD currently supports only an animal or relmat intercept among structured effects."))
+        kind in (:animal, :relmat, :spatial) || throw(ArgumentError(
+            "NegBinomial2 predictor-dependent SD currently supports only an animal or relmat intercept, or a coordinate spatial slope, among structured effects."))
+        kind === :spatial && animal_slope === nothing && throw(ArgumentError(
+            "NegBinomial2 spatial SD regression supports only the slope-only `spatial(0 + x | $grp)` term with `coords = …`."))
         isempty(re) || throw(ArgumentError(
             "NegBinomial2 $kind SD regression cannot yet be combined with ordinary random effects."))
         if kind === :animal
@@ -281,6 +285,11 @@ function _drm_negbin2_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
                 "NegBinomial2 animal SD regression uses `A` or `Ainv`, not `K`."))
             (A === nothing) == (Ainv === nothing) && throw(ArgumentError(
                 "animal(1 | $grp) with predictor-dependent SD requires exactly one of `A` or `Ainv`."))
+        elseif kind === :spatial
+            (A === nothing && Ainv === nothing && K === nothing) || throw(ArgumentError(
+                "NegBinomial2 spatial slope SD regression uses `coords = …` only, not `K`, `A` or `Ainv`."))
+            coords === nothing && throw(ArgumentError(
+                "spatial(0 + $animal_slope | $grp) needs `coords = …`"))
         else
             (A === nothing && Ainv === nothing) || throw(ArgumentError(
                 "NegBinomial2 relmat SD regression uses `K = …` only; do not also supply `A` or `Ainv`."))
@@ -394,7 +403,14 @@ function _drm_negbin2_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
         Float64.(raw)
     end
     if structured_animal
-        C = Ainv === nothing ? _poisson_structured_cov(kind, grp, K, A, coords) : nothing
+        C = if Ainv !== nothing
+            nothing
+        elseif kind === :spatial
+            # Native fixed kernel exp(-d / median positive distance) + 1e-6 I, RAW.
+            _gaussian_spatial_sd_kernel(coords, _group_index(getproperty(data, grp))[2], grp)
+        else
+            _poisson_structured_cov(kind, grp, K, A, coords)
+        end
         fit = _fit_nb2_animal_sd_laplace(fam, y, Xmu, Xsigma, Zg, gidx,
             C, getproperty(data, grp), nmmu, nmsigma, nmsd, grp, g_tol; se, Ainv,
             # Animal A and slope-only relmat K enter RAW (native drmTMB does not

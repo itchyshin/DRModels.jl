@@ -1849,7 +1849,7 @@ function predict(fit::DrmFit, newdata; type::Symbol = :response, se::Bool = fals
             any(item.target.level === :animal for item in _sd_target_parts(f))
         allow_sd_relmat_slope = fit.family isa Union{Binomial,Poisson,Gaussian,Gamma,NegBinomial2} &&
             any(item.target.level === :relmat for item in _sd_target_parts(f))
-        allow_sd_spatial_slope = fit.family isa Union{Binomial,Gaussian,Gamma} &&
+        allow_sd_spatial_slope = fit.family isa Union{Binomial,Gaussian,Gamma,NegBinomial2} &&
             any(item.target.level === :spatial for item in _sd_target_parts(f))
         allow_gamma_animal_intercept_slope = fit.family isa Gamma &&
             _animal_intercept_slope(Dict(f.forms)[:mu]) !== nothing
@@ -2231,7 +2231,7 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
         allow_binomial_relmat_slope = fit.family isa Union{Binomial,Poisson,Gaussian,Gamma,NegBinomial2} &&
             f isa DrmFormula && any(
                 item.target.level === :relmat for item in _sd_target_parts(f))
-        allow_binomial_spatial_slope = fit.family isa Union{Binomial,Gaussian,Gamma} &&
+        allow_binomial_spatial_slope = fit.family isa Union{Binomial,Gaussian,Gamma,NegBinomial2} &&
             f isa DrmFormula && any(
                 item.target.level === :spatial for item in _sd_target_parts(f))
         parameter_rhs = forms[p]
