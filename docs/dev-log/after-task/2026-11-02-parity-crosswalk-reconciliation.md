@@ -30,6 +30,8 @@ After this addition, `closeout.py check` and `check-after-task.R` passed; the re
 
 For the 15:36 UTC refresh, `closeout.py check` and `check-after-task.R` passed, `slop_check.py` reported zero findings, the v51 assessment SHA-256 matched this report, and `git diff --check` passed. No package tests were run for this evidence-only update.
 
+For the 15:55 UTC CI follow-up, I queried current #1663 metadata and review records, retrieved the exact source-tree job log, and compared the new vignette and manifest at the PR head and current main. I did not rerun the package tests locally; the four Ubuntu CI shards were still running.
+
 ## 6. Tests of the Tests
 
 The citation checker validates only resolvable source locations. The two added rows were checked against `src/ordinary_laplace.jl`, `src/locscale_frontend.jl`, `test/test_ordinary_laplace.jl`, and `test/test_locscale_frontend.jl` in current `origin/main` (`47a081ba035f9bf3fd7e42d3841ae8a288bf2a14`); those source and test files are byte-identical to the candidate branch. This supports route existence and the stated implementation-test scope, not calibration.
@@ -314,6 +316,14 @@ The already-authorized drmTMB #1662 test-only PR is now merged as `71ceee671aac0
 For DRModels.jl, PR #1245 remains open at `0dde1f977f6c70495230b705a7d0f13daf74dfde`. Exact-head CI run [41406599132](https://github.com/itchyshin/DRModels.jl/actions/runs/41406599132) passed all four Julia shards and `ci-ok`; Documenter run [41406599136](https://github.com/itchyshin/DRModels.jl/actions/runs/41406599136) passed. The review query returned no formal reviews. PR #1237 remains open at `503b3797acdf44dba38af1096ebce7fc338f6e9b`; its later run [41401878711](https://github.com/itchyshin/DRModels.jl/actions/runs/41401878711) failed Julia 1.10 shards 1 and 2, despite an older successful run on the same SHA. PR #1240 remains open at `03b93e680266369dff10e63eb4c846826a102ec4`; CI run `41248908491` fails at the missing `drmtmb_code_hash` fixture-provenance assertion, while Documenter run `41248908497` passes. None of these three PRs has a formal review.
 
 The status change does not authorize merging #1245 or #1663. No owner source, test, branch, or PR metadata was edited. CJS remains a separate package effort, and its deferred interval-calibration work is not included in these DRM-core checks.
+
+### Exact-head source-tree failure at 2026-11-02 15:55 UTC
+
+On the same #1663 head, `42bbd67c25f33ea8884fa9108e13fee3c0ec0995`, source-tree job `125367770297` in run [41472011312](https://github.com/itchyshin/drmTMB/actions/runs/41472011312) completed with 2 failures, 14 warnings, 6 skips, and 26,508 passes. The failing assertions at `test-reader-vignette-contracts.R:336-337` require the immutable manifest to match all source vignettes and `reader_contract_lint()` to return no findings. The log does not print the linter findings.
+
+I compared the exact PR head with current main `71ceee671aac0e4c8bedf265b3b735b1ad633390`. The PR head contains `vignettes/predictor-dependent-random-sd.Rmd` (blob `0d11bb68ed473193ecbb648d744276ac77f6f591`), which is absent from current main. Its `inst/reader-contracts/vignette-manifest.csv` has 40 rows (blob `7954fb0e8a2da1c4375100f05e9a160a1f5c8904`) and does not list that new vignette. This attributes the manifest-equality failure to a candidate-added vignette without a manifest entry. The `Source-tree test manifest is current` workflow step passed, but it did not satisfy the separate live-corpus assertion. The second assertion's specific linter findings remain unknown.
+
+At 15:55 UTC, PR #1663 remained open at this head with 37 commits and 3,642 changed files; the formal-review query returned zero reviews. Its OS matrix passed. All four Ubuntu release shards were still running, so no package-check outcome is recorded. The owner retains the source, vignette, and manifest; I made no model or test changes.
 
 ## 11. Team Learning
 
