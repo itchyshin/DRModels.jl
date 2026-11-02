@@ -508,7 +508,9 @@ function _conditional_ratio(fit::DrmFit, newdata; kind::Symbol, level::Real, wha
               (kind === :iid ? "sd(group) ~ …" : "sd(group, phylogenetic) ~ …") *
               "` submodel, so repeatability is a single number — call `$what(fit)` instead")
     pre = kind === :iid ? "sd_" : "sdphy_"
-    parts = [k => r for (k, r) in f.forms if startswith(String(k), pre)]
+    parts = kind === :iid ?
+        [item.key => item.rhs for item in _sd_target_parts(f)] :
+        [k => r for (k, r) in f.forms if startswith(String(k), pre)]
     length(parts) == 1 ||
         error("$what(fit, newdata): found $(length(parts)) `sd()` submodels of this kind; " *
               "the conditional ratio is implemented for exactly one")

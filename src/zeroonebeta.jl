@@ -54,11 +54,16 @@ function drm(f::DrmFormula, fam::ZeroOneBeta; data, tree = nothing, K = nothing,
     end
     missing_fit !== nothing && return missing_fit
 
-    _lss_only_gaussian_guard(f, fam)   # #544: refuse, never silently drop, sd() parts
     rhs = Dict(f.forms)
     fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
     mv === nothing ||
         error("ZeroOneBeta() does not support meta_V markers")
+    sd_targets = _sd_target_parts(f)
+    if !isempty(sd_targets)
+        return _drm_zeroonebeta_sd_regression(f, fam; data, tree, K, A,
+            coords, g_tol, se, rhs, fixed_mu, re, mv, st)
+    end
+    _lss_only_gaussian_guard(f, fam)   # #544: refuse, never silently drop, sd() parts
     for (pname, r) in f.forms          # only the mean may carry a random effect
         pname === :mu && continue
         _, re2, mv2, st2 = _split_ranef(r)
@@ -105,6 +110,72 @@ function drm(f::DrmFormula, fam::ZeroOneBeta; data, tree = nothing, K = nothing,
             _fit_zeroonebeta_ranef(fam, y, Xμ, Xσ, Xz, Xc, gidx, G, nmμ, nmσ, nmz, nmc, grp, g_tol), f)
     end
     return _withformula(_fit_zeroonebeta(fam, y, Xμ, Xσ, Xz, Xc, nmμ, nmσ, nmz, nmc, g_tol), f)
+end
+
+function _drm_zeroonebeta_sd_regression(f::DrmFormula, fam::ZeroOneBeta;
+                                        data, tree, K, A, coords, g_tol, se,
+                                        rhs, fixed_mu, re, mv, st)
+    (tree === nothing && K === nothing && A === nothing && coords === nothing) ||
+        throw(ArgumentError("ZeroOneBeta `sd(group) ~ …` currently supports one ordinary mean random intercept; structured covariance inputs are not used."))
+    mv === nothing || throw(ArgumentError("ZeroOneBeta SD regression cannot use meta_V()."))
+    st === nothing || throw(ArgumentError("ZeroOneBeta SD regression does not support structured random effects."))
+    targets = _sd_target_parts(f)
+    length(targets) == 1 || throw(ArgumentError(
+        "ZeroOneBeta random-effect SD regression requires exactly one `sd(group) ~ …` formula."))
+    target = only(targets)
+    descriptor = target.target
+    (descriptor.level === :iid && descriptor.dpar === :mu &&
+     descriptor.block === nothing) || throw(ArgumentError(
+        "ZeroOneBeta SD regression targets one ordinary mean random intercept or independent numeric slope."))
+    length(re) == 1 || throw(ArgumentError(
+        "ZeroOneBeta `sd($(descriptor.group))` requires exactly one ordinary random-effect coefficient."))
+    kind, slope = _re_kind(only(re)[1])
+    member = kind === :intercept ? :intercept : kind === :slope ? slope : nothing
+    kind in (:intercept, :slope) || throw(ArgumentError(
+        "ZeroOneBeta `sd($(descriptor.group))` supports `(1 | $(descriptor.group))` or one independent numeric slope `(0 + x | $(descriptor.group))`; correlated blocks are not implemented on this route."))
+    descriptor.member in (nothing, member) || throw(ArgumentError(
+        "ZeroOneBeta SD target `coef($(descriptor.member))` does not match the fitted random-effect coefficient `$(member)`."))
+    grp = only(re)[2]
+    grp === descriptor.group || throw(ArgumentError(
+        "ZeroOneBeta `sd($(descriptor.group))` must name the random-effect grouping variable `$grp`."))
+    for pname in (:sigma, :zoi, :coi)
+        dpar_rhs = get(rhs, pname, ConstantTerm(1))
+        dpar_rhs isa ConstantTerm && dpar_rhs == ConstantTerm(1) ||
+            throw(ArgumentError("ZeroOneBeta `sd($grp)` currently requires fixed `$(pname) ~ 1`."))
+    end
+    for (pname, _) in f.forms
+        (pname in (:mu, :sigma, :zoi, :coi, target.key) ||
+         haskey(f.sd_targets, pname)) && continue
+        throw(ArgumentError(
+            "ZeroOneBeta `sd($grp)` supports only `mu`, fixed `sigma ~ 1`, `zoi ~ 1`, `coi ~ 1`, and one `sd($grp)` formula."))
+    end
+    all(_formula_response_observed_mask(f, data)) || throw(ArgumentError(
+        "ZeroOneBeta random-effect SD regression requires observed responses; remove incomplete rows before fitting."))
+    y, Xμ, nmμ = _design(f.response, fixed_mu, data)
+    _, Xσ, nmσ = _design(f.response, get(rhs, :sigma, ConstantTerm(1)), data)
+    _, Xz, nmz = _design(f.response, get(rhs, :zoi, ConstantTerm(1)), data)
+    _, Xc, nmc = _design(f.response, get(rhs, :coi, ConstantTerm(1)), data)
+    all(yi -> 0 <= yi <= 1, y) || throw(ArgumentError(
+        "ZeroOneBeta() requires responses in the closed interval [0, 1]"))
+    gidx, G = _group_index(getproperty(data, grp))
+    Zg, nmsd = _sd_group_design(f.response, target.rhs, data, gidx, G, grp;
+        schema_cache = f.schema_cache, schema_key = target.key)
+    size(Zg, 2) <= G && rank(Zg) == size(Zg, 2) || throw(ArgumentError(
+        "ZeroOneBeta `sd($grp)` group-level design is rank deficient; use predictors that vary independently across groups."))
+    re_design = if kind === :intercept
+        ones(length(y))
+    else
+        hasproperty(data, slope) || throw(ArgumentError(
+            "ZeroOneBeta random-slope predictor `$slope` is absent from data."))
+        raw = getproperty(data, slope)
+        raw isa AbstractVector{<:Real} && length(raw) == length(y) && all(isfinite, raw) ||
+            throw(ArgumentError(
+                "ZeroOneBeta random-slope predictor `$slope` must contain one finite numeric value per response."))
+        Float64.(raw)
+    end
+    return _withformula(_fit_zeroonebeta_sd_regression(fam, y, Xμ, Xσ, Xz, Xc,
+        Zg, re_design, kind === :intercept, gidx, G, nmμ, nmσ, nmz, nmc,
+        nmsd, grp, g_tol; se), f)
 end
 
 function _fit_zeroonebeta(fam::ZeroOneBeta, y, Xμ, Xσ, Xz, Xc, nmμ, nmσ, nmz, nmc, g_tol)
@@ -154,6 +225,115 @@ function _fit_zeroonebeta(fam::ZeroOneBeta, y, Xμ, Xσ, Xz, Xc, nmμ, nmσ, nmz
     _warn_at_clamp("zero-one beta", ["log sigma" => (Xσ * θ̂[(pμ+1):i1], -15.0, 15.0)])   # #959
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
+        Optim.iterations(res))
+end
+
+# Predictor-dependent SD for one ordinary mean random coefficient. Intercept
+# and independent numeric-slope loadings multiply the same group-specific SD.
+function _fit_zeroonebeta_sd_regression(fam::ZeroOneBeta, y, Xμ, Xσ, Xz, Xc,
+        Zg, re_design, is_intercept::Bool, gidx, G, nmμ, nmσ, nmz, nmc, nmsd, grp, g_tol;
+        se::Bool = true, K::Int = 11)
+    n = length(y)
+    pμ, pσ, pz, pc, psd = size(Xμ, 2), size(Xσ, 2), size(Xz, 2),
+                              size(Xc, 2), size(Zg, 2)
+    i1 = pμ + pσ; i2 = i1 + pz; i3 = i2 + pc
+    members = [Int[] for _ in 1:G]
+    for i in 1:n
+        push!(members[gidx[i]], i)
+    end
+    rule = _AGHQRule(1, K)
+    Zre = reshape(Float64.(re_design), n, 1)
+    bcache = zeros(1, G)
+    z, w = _gauss_hermite(32)
+    logw = log.(w); rt2 = sqrt(2.0); lπ = log(π)
+    function nll(θ)
+        βμ = @view θ[1:pμ]
+        βσ = @view θ[(pμ+1):i1]
+        βz = @view θ[(i1+1):i2]
+        βc = @view θ[(i2+1):i3]
+        α = @view θ[(i3+1):(i3+psd)]
+        η0 = Xμ * βμ
+        ησ = clamp.(Xσ * βσ, -15.0, 15.0)
+        ηz = clamp.(Xz * βz, -30.0, 30.0)
+        ηc = clamp.(Xc * βc, -30.0, 30.0)
+        τgroup = exp.(Zg * α)
+        ll = function (i, η)
+            lzoi = _log_logistic(ηz[i])
+            if y[i] == 0
+                return lzoi + _log1m_logistic(ηc[i])
+            elseif y[i] == 1
+                return lzoi + _log_logistic(ηc[i])
+            end
+            μ = _logistic(clamp(η, -30.0, 30.0))
+            φ = exp(-2 * ησ[i])
+            return _log1m_logistic(ηz[i]) +
+                Distributions.logpdf(Distributions.Beta(μ * φ,
+                    (1 - μ) * φ), y[i])
+        end
+        total = zero(eltype(θ))
+        for (gi, idx) in enumerate(members)
+            isempty(idx) && continue
+            L = reshape([τgroup[gi]], 1, 1)
+            if is_intercept
+                terms = Vector{eltype(θ)}(undef, length(z))
+                for k in eachindex(z)
+                    gll = logw[k]
+                    for i in idx
+                        gll += ll(i, η0[i] + rt2 * τgroup[gi] * z[k])
+                    end
+                    terms[k] = gll
+                end
+                mx = maximum(terms)
+                total += -0.5 * lπ + mx + log(sum(exp.(terms .- mx)))
+            else
+                logint, bhat = _aghq_group_logint(ll, idx, η0, Zre, L, rule,
+                    @view(bcache[:, gi]))
+                if all(isfinite, bhat)
+                    bcache[:, gi] .= bhat
+                else
+                    bcache[:, gi] .= 0.0
+                end
+                total += logint
+            end
+        end
+        return -total
+    end
+    isb = (y .== 0) .| (y .== 1)
+    cont = y[.!isb]
+    p̄ = isempty(cont) ? 0.5 : clamp(sum(cont) / length(cont), 1e-3, 1 - 1e-3)
+    fb = clamp(sum(isb) / n, 1e-3, 1 - 1e-3)
+    nb = sum(isb)
+    co0 = nb == 0 ? 0.5 : clamp(sum(y .== 1) / nb, 1e-3, 1 - 1e-3)
+    θ0 = zeros(i3 + psd)
+    θ0[1] = log(p̄ / (1 - p̄))
+    θ0[pμ+1] = -0.5 * log(10.0)
+    θ0[i1+1] = log(fb / (1 - fb))
+    θ0[i2+1] = log(co0 / (1 - co0))
+    θ0[(i3+1):end] .= Zg \ fill(log(0.5), G)
+    res = Optim.optimize(nll, θ0, Optim.LBFGS(),
+                         Optim.Options(g_tol = g_tol); autodiff = :forward)
+    θ̂ = Optim.minimizer(res)
+    V = se ? _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)) :
+             fill(NaN, length(θ̂), length(θ̂))
+    blocks = [:mu => 1:pμ, :sigma => (pμ+1):i1, :zoi => (i1+1):i2,
+              :coi => (i2+1):i3, :sd => (i3+1):(i3+psd)]
+    names = [:mu => nmμ, :sigma => nmσ, :zoi => nmz, :coi => nmc,
+             :sd => nmsd]
+    μ̂ = _logistic.(Xμ * θ̂[1:pμ])
+    zoî = _logistic.(Xz * θ̂[(i1+1):i2])
+    coî = _logistic.(Xc * θ̂[(i2+1):i3])
+    τgroup = exp.(Zg * θ̂[(i3+1):(i3+psd)])
+    means = Dict(:mu => (1 .- zoî) .* μ̂ .+ zoî .* coî)
+    obs = Dict(:mu => Vector{Float64}(y))
+    scales = Dict(:beta_mu => μ̂,
+                  :sigma => exp.(Xσ * θ̂[(pμ+1):i1]),
+                  :zoi => zoî, :coi => coî,
+                  :sd_group => τgroup, :sd => τgroup[gidx],
+                  :sd_group_index => Float64.(gidx))
+    _warn_at_clamp("zero-one beta", ["log sigma" =>
+        (Xσ * θ̂[(pμ+1):i1], -15.0, 15.0)])
+    return _withiterations(_withnll(DrmFit(fam, blocks, names, θ̂, V,
+        -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
 end
 

@@ -76,7 +76,7 @@ const API_EXPERIMENTAL = [
     "sd", "sd_phylo",
     # temporal AR1/OU on the Gaussian mean, wave 1 (D-310): the Julia spelling
     # is positional because `@formula` cannot carry drmTMB's keyword arguments
-    "temporal", "temporal_parameters",
+    "temporal", "temporal_parameters", "phylo_interaction",
     # prepared joint missing-predictor surface (post-v0.7 experimental)
     "PreparedJointModel", "PreparedJointFit",
     "PreparedFiniteJointModel", "PreparedFiniteJointFit",

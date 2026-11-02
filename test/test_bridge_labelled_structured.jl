@@ -1,0 +1,57 @@
+# test_bridge_labelled_structured.jl — drmTMB#1512: a labelled K / A in another
+# row order must give the same fit as the first-appearance order, and an
+# unalignable one must be refused, not fitted against the wrong rows.
+using DRModels
+using Test
+using Random
+using LinearAlgebra
+
+@testset "drm_bridge labelled relmat K / animal A (drmTMB#1512)" begin
+    rng = MersenneTwister(1512)
+    G, nrep = 12, 4
+    ids = ["id$(lpad(i, 2, '0'))" for i in 1:G]
+    # first-appearance order is deliberately NOT sorted
+    appear = ids[randperm(rng, G)]
+    B = randn(rng, G, G)
+    Kfull = Symmetric(B * B' / G + I)           # SPD, rows/cols ordered as `ids`
+    ord = [findfirst(==(l), ids) for l in appear]
+    Kappear = Matrix(Kfull)[ord, ord]           # first-appearance order
+    u = cholesky(Symmetric(Kappear)).L * randn(rng, G)
+    grp = repeat(appear, inner = nrep)
+    x = randn(rng, G * nrep)
+    y = 0.5 .+ 0.3 .* x .+ repeat(u, inner = nrep) .+ 0.7 .* randn(rng, G * nrep)
+    dat = (; y, x, id = grp)
+    ksorted = Matrix(Kfull)                     # sorted-id order (labels = ids)
+
+    fit(; kw...) = drm_bridge(; formula = "y ~ x + relmat(1 | id); sigma ~ 1",
+                              family = "gaussian", data = dat, kw...)
+    ref = fit(K = Kappear)
+    # The bug: sorted order without labels pairs the wrong rows.
+    @test abs(fit(K = ksorted)["loglik"] - ref["loglik"]) > 1e-3
+    # The fix: same matrix, labelled -> identical fit to first-appearance order.
+    al = fit(K = ksorted, K_labels = ids, structured_group = "id")
+    @test al["loglik"] ≈ ref["loglik"] atol = 1e-8
+    # Shuffled labelled input agrees too.
+    p = randperm(rng, G)
+    sh = fit(K = ksorted[p, p], K_labels = ids[p], structured_group = "id")
+    @test sh["loglik"] ≈ ref["loglik"] atol = 1e-8
+
+    # animal(): same contract through `A`.
+    fa = drm_bridge(; formula = "y ~ x + animal(1 | id); sigma ~ 1",
+                    family = "gaussian", data = dat, A = ksorted,
+                    A_labels = ids, structured_group = "id")
+    fa_ref = drm_bridge(; formula = "y ~ x + animal(1 | id); sigma ~ 1",
+                        family = "gaussian", data = dat, A = Kappear)
+    @test fa["loglik"] ≈ fa_ref["loglik"] atol = 1e-8
+
+    # Refusals.
+    @test_throws ArgumentError fit(K = ksorted[1:G-1, 1:G-1], K_labels = ids[1:G-1],
+                                   structured_group = "id")      # missing level
+    @test_throws ArgumentError fit(K = ksorted, K_labels = vcat(ids[1:G-1], ids[1]),
+                                   structured_group = "id")      # duplicate label
+    @test_throws ArgumentError fit(K = ksorted, K_labels = ids[1:G-1],
+                                   structured_group = "id")      # length mismatch
+    @test_throws ArgumentError fit(K = ksorted, K_labels = ids)  # no group
+    @test_throws ArgumentError fit(K_labels = ids, structured_group = "id")
+    @test_throws ArgumentError fit(K = ksorted, K_labels = ids, structured_group = "nope")
+end

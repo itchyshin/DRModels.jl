@@ -99,9 +99,21 @@ routes; `sigma ~ 1` and `nu ~ 1` are REQUIRED (not just default) on the
 crossed route, and `p` is found by an outer 1-D profile search over the one
 dispersion-like nuisance slot the shared engine does not also give to `p`.
 The CORRELATED random slope `(1 + x | g)`, random effects on `sigma`/`nu`, and
-structured (phylo/relmat/animal/spatial) markers on `mu` are not implemented
-— matches `drmTMB` 0.7.0, which also restricts Tweedie mean random effects to
-independent intercepts and slopes.
+phylogenetic, animal, or spatial markers on `mu` are not implemented. The
+related-matrix intercept is supported only on the predictor-dependent SD route
+described below; this does not establish general structured-effect support.
+
+Predictor-dependent SD regression is available for one ordinary mean random
+intercept or one independent numeric mean slope with a group-constant SD
+design, for example `sd(group) ~ z` or
+`sd(group, coef(x)) ~ z`. A single related-matrix mean intercept is also
+available with `relmat(1 | group)`, `sd(group, relmat) ~ z`, and `K = K`.
+For ordinary effects, the mean, dispersion, and power retain their existing
+submodels. The related-matrix route currently requires `sigma ~ 1` and
+`nu ~ 1`. Ordinary effects use adaptive Gauss–Hermite quadrature; the
+related-matrix route uses a Laplace approximation. Correlated ordinary blocks
+and other structured providers are not implemented, and interval coverage is
+not calibrated.
 
 ```julia
 fit = drm(bf(y ~ x, sigma ~ 1, nu ~ 1), Tweedie(); data = dat)
@@ -122,12 +134,26 @@ struct Tweedie end
 
 _logit12(η) = 1 + 1 / (1 + exp(-η))            # (1,2) link for the power p
 
-function drm(f::DrmFormula, fam::Tweedie; data, g_tol::Real = 1e-8)
-    missing_fit = _fit_observed_response_rows(f, data) do data_observed
-        drm(f, fam; data = data_observed, g_tol = g_tol)
+function drm(f::DrmFormula, fam::Tweedie; data, g_tol::Real = 1e-8,
+                         tree = nothing, K = nothing, A = nothing,
+                         coords = nothing)
+    if isempty(_sd_parts(f)) &&
+       (tree !== nothing || K !== nothing || A !== nothing || coords !== nothing)
+        throw(ArgumentError(
+            "Tweedie structured covariance inputs (`tree`, `K`, `A`, `coords`) are only used by supported structured SD routes; this formula has no random-effect SD target."))
     end
-    missing_fit !== nothing && return missing_fit
+    missing_fit = _fit_observed_response_rows(f, data) do data_observed
+        _tweedie_validate_observed_relmat_sd_design(f, data, data_observed)
+        K_observed = _tweedie_observed_relmat_K(f, data, data_observed, K)
+        drm(f, fam; data = data_observed, g_tol, tree, K = K_observed, A, coords)
+    end
+    missing_fit !== nothing &&
+        return _tweedie_restore_full_relmat_sd_outputs!(missing_fit, f, data, K)
 
+    if !isempty(_sd_parts(f))
+        return _withformula(_drm_tweedie_sd_regression(
+            f, fam; data, g_tol, tree, K, A, coords), f)
+    end
     _lss_only_gaussian_guard(f, fam)   # #544: refuse, never silently drop, sd() parts
     rhs = Dict(f.forms)
     fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
@@ -187,6 +213,603 @@ function drm(f::DrmFormula, fam::Tweedie; data, g_tol::Real = 1e-8)
         end
     end
     return _withformula(_fit_tweedie(fam, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol), f)
+end
+
+# Predictor-dependent SD for one ordinary IID mean random intercept or
+# independent slope. The Tweedie dispersion and power retain their existing
+# submodels.
+function _drm_tweedie_sd_regression(f::DrmFormula, fam::Tweedie; data,
+                                    g_tol::Real = 1e-8, se::Bool = true,
+                                    tree = nothing, K = nothing, A = nothing,
+                                    coords = nothing,
+                                    nAGQ::Int = _TWEEDIE_RANEF_AGHQ_K)
+    targets = _sd_target_parts(f)
+    length(targets) == 1 || throw(ArgumentError(
+        "Tweedie random-effect SD regression requires exactly one `sd(group) ~ …` formula."))
+    target = only(targets)
+    descriptor = target.target
+    (descriptor.level in (:iid, :relmat) && descriptor.dpar === :mu &&
+     descriptor.block === nothing) || throw(ArgumentError(
+        "Tweedie SD regression targets one ordinary mean coefficient or one related-matrix mean intercept."))
+    if descriptor.level === :relmat
+        return _drm_tweedie_relmat_sd_regression(f, fam; data, target, g_tol,
+                                                  tree, K, A, coords, se)
+    end
+    (tree === nothing && K === nothing && A === nothing && coords === nothing) ||
+        throw(ArgumentError("Tweedie ordinary SD regression does not use `tree`, `K`, `A`, or `coords`."))
+    isempty(_sdphylo_parts(f)) || throw(ArgumentError(
+        "Tweedie SD regression does not support structured random-effect SD formulas."))
+    grp, sd_rhs = descriptor.group, target.rhs
+    rhs = Dict(f.forms)
+    fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
+    mv === nothing || throw(ArgumentError("Tweedie SD regression cannot use meta_V()."))
+    st === nothing || throw(ArgumentError("Tweedie SD regression does not support structured random effects."))
+    (length(re) == 1) || throw(ArgumentError(
+        "Tweedie SD regression requires exactly one ordinary mean random-effect term."))
+    kind, slope = _re_kind(only(re)[1])
+    kind in (:intercept, :slope) || throw(ArgumentError(
+        "Tweedie SD regression supports one ordinary intercept or one independent numeric slope; correlated and structured effects are not implemented."))
+    member = kind === :intercept ? :intercept : slope
+    descriptor.member in (nothing, member) || throw(ArgumentError(
+        "Tweedie SD target `coef($(descriptor.member))` does not match random-effect coefficient `$(member)`."))
+    (kind === :intercept || descriptor.member === member) || throw(ArgumentError(
+        "Tweedie random slopes require an explicit `coef($slope)` SD target."))
+    only(re)[2] === grp || throw(ArgumentError(
+        "Tweedie `sd($grp)` must name the random-effect grouping variable `$(only(re)[2])`."))
+    for (pname, form_rhs) in f.forms
+        (pname in (:mu, :sigma, :nu) || pname === target.key) && continue
+        throw(ArgumentError(
+            "Tweedie SD regression supports only `mu`, `sigma`, `nu`, and one `sd($grp)` formula."))
+    end
+    for pname in (:sigma, :nu)
+        haskey(rhs, pname) || continue
+        _, re_p, mv_p, st_p = _split_ranef(rhs[pname])
+        (isempty(re_p) && mv_p === nothing && st_p === nothing) || throw(ArgumentError(
+            "Tweedie() random effects are not implemented for `$pname`; only a mean random-effect coefficient is supported."))
+    end
+    all(_formula_response_observed_mask(f, data)) || throw(ArgumentError(
+        "Tweedie random-effect SD regression requires observed responses; remove incomplete rows before fitting."))
+    y, Xmu, nmmu = _design(f.response, fixed_mu, data)
+    _, Xsigma, nmsigma = _design(f.response, get(rhs, :sigma, ConstantTerm(1)), data)
+    _, Xnu, nmnu = _design(f.response, get(rhs, :nu, ConstantTerm(1)), data)
+    all(yi -> isfinite(yi) && yi >= 0, y) || throw(ArgumentError(
+        "Tweedie() requires finite non-negative responses (zeros allowed)"))
+    gidx, G = _group_index(getproperty(data, grp))
+    loading = if kind === :intercept
+        ones(Float64, length(y))
+    else
+        hasproperty(data, slope) || throw(ArgumentError(
+            "Tweedie random-slope predictor `$slope` is absent from data."))
+        raw = getproperty(data, slope)
+        raw isa AbstractVector{<:Real} && length(raw) == length(y) &&
+            all(isfinite, raw) || throw(ArgumentError(
+            "Tweedie random-slope predictor `$slope` must contain one finite numeric value per response."))
+        any(x -> !iszero(x), raw) || throw(ArgumentError(
+            "Tweedie random-slope predictor `$slope` must contain at least one nonzero value."))
+        Float64.(raw)
+    end
+    Wsd, nmsd = _sd_group_design(f.response, sd_rhs, data, gidx, G, grp;
+                                 schema_cache = f.schema_cache,
+                                 schema_key = target.key)
+    size(Wsd, 2) <= G && rank(Wsd) == size(Wsd, 2) || throw(ArgumentError(
+        "Tweedie `sd($grp)` group-level design is rank deficient; use predictors that vary independently across groups."))
+    return _fit_tweedie_sd_regression(fam, y, Xmu, Xsigma, Xnu, loading, Wsd, gidx,
+        G, nmmu, nmsigma, nmnu, nmsd, grp, g_tol; K = nAGQ, se)
+end
+
+function _drm_tweedie_relmat_sd_regression(f::DrmFormula, fam::Tweedie;
+        data, target, g_tol::Real, tree, K, A, coords, se::Bool)
+    descriptor = target.target
+    grp = descriptor.group
+    descriptor.member in (nothing, :intercept) || throw(ArgumentError(
+        "Tweedie related-matrix SD regression currently supports one mean intercept."))
+    (tree === nothing && A === nothing && coords === nothing) || throw(ArgumentError(
+        "Tweedie relmat SD regression uses `K = …` only; do not also supply `tree`, `A`, or `coords`."))
+    K === nothing && throw(ArgumentError(
+        "relmat(1 | $grp) with predictor-dependent SD requires `K = …`."))
+
+    rhs = Dict(f.forms)
+    fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
+    mv === nothing || throw(ArgumentError("Tweedie relmat SD regression cannot use meta_V()."))
+    st == (:relmat, grp) || throw(ArgumentError(
+        "Tweedie `sd($grp, relmat)` requires the matching `relmat(1 | $grp)` mean term."))
+    structured = _collect_structured(rhs[:mu])
+    length(structured) == 1 && only(structured) == (:relmat, grp) ||
+        throw(ArgumentError(
+            "Tweedie relmat SD regression requires exactly one `relmat(1 | $grp)` term."))
+    isempty(re) || throw(ArgumentError(
+        "Tweedie relmat SD regression currently requires one structured intercept without ordinary random effects."))
+    for (pname, _) in f.forms
+        (pname === :mu || pname === :sigma || pname === :nu || pname === target.key) && continue
+        throw(ArgumentError("Tweedie relmat SD regression supports only `mu`, fixed `sigma ~ 1`, fixed `nu ~ 1`, and one related-matrix SD formula."))
+    end
+    for pname in (:sigma, :nu)
+        haskey(rhs, pname) || continue
+        rhs[pname] == ConstantTerm(1) || throw(ArgumentError(
+            "Tweedie relmat SD regression requires fixed `$(pname) ~ 1`; predictor-dependent `sigma` and `nu` are not supported on this route."))
+        _, re_p, mv_p, st_p = _split_ranef(rhs[pname])
+        (isempty(re_p) && mv_p === nothing && st_p === nothing) || throw(ArgumentError(
+            "Tweedie related-matrix random effects are supported only for `mu`."))
+    end
+    all(_formula_response_observed_mask(f, data)) || throw(ArgumentError(
+        "Tweedie related-matrix SD regression requires observed responses; remove incomplete rows before fitting."))
+    y, Xmu, nmmu = _design(f.response, fixed_mu, data)
+    _, Xsigma, nmsigma = _design(f.response, get(rhs, :sigma, ConstantTerm(1)), data)
+    _, Xnu, nmnu = _design(f.response, get(rhs, :nu, ConstantTerm(1)), data)
+    size(Xsigma, 2) == 1 && size(Xnu, 2) == 1 || throw(ArgumentError(
+        "Tweedie related-matrix SD regression requires fixed `sigma ~ 1` and `nu ~ 1`."))
+    all(yi -> isfinite(yi) && yi >= 0, y) || throw(ArgumentError(
+        "Tweedie() requires finite non-negative responses (zeros allowed)"))
+    labels = getproperty(data, grp)
+    Q, gidx, kernel_variance = _tweedie_relmat_cov_setup(K, labels)
+    G = size(Q, 1)
+    Zg, nmsd = _sd_group_design(f.response, target.rhs, data, gidx, G, grp;
+        schema_cache = f.schema_cache, schema_key = target.key)
+    size(Zg, 2) <= G && rank(Zg) == size(Zg, 2) || throw(ArgumentError(
+        "Tweedie `sd($grp, relmat)` design is rank deficient; use predictors that vary independently across groups."))
+    return _fit_tweedie_relmat_sd_laplace(fam, y, Xmu, Xsigma, Xnu,
+        Zg, gidx, Q, kernel_variance, nmmu, nmsigma, nmnu, nmsd, grp, g_tol; se)
+end
+
+# The shared missing-response wrapper rebuilds rowwise predictions over the
+# original design, but retains these structured-effect summaries from the
+# observed-row fit. Rebuild them in the original group order as well, including
+# groups with no observed response, using the original kernel scale.
+function _tweedie_restore_full_relmat_sd_outputs!(fit::DrmFit{Tweedie},
+        f::DrmFormula, data, K)
+    targets = _sd_target_parts(f)
+    length(targets) == 1 || return fit
+    target = only(targets)
+    target.target.level === :relmat || return fit
+    K === nothing && return fit
+
+    group = target.target.group
+    labels = getproperty(data, group)
+    _, group_index, kernel_variance = _tweedie_relmat_cov_setup(K, labels)
+    sd_rows = predict_parameters(fit, data)[:sd]
+    sd_group = Float64[
+        sd_rows[findfirst(==(g), group_index)] for g in 1:length(kernel_variance)
+    ]
+    marginal_sd_group = sd_group .* sqrt.(kernel_variance)
+    fit.scales[:sd_group] = sd_group
+    fit.scales[:sd] = sd_rows
+    fit.scales[:sd_group_index] = Float64.(group_index)
+    fit.scales[:marginal_sd_group] = marginal_sd_group
+    fit.scales[:marginal_sd] = marginal_sd_group[group_index]
+    return fit
+end
+
+function _tweedie_observed_relmat_K(f::DrmFormula, data, data_observed, K)
+    K === nothing && return nothing
+    targets = _sd_target_parts(f)
+    length(targets) == 1 || return K
+    descriptor = only(targets).target
+    descriptor.level === :relmat || return K
+    group = descriptor.group
+    original_levels = unique(getproperty(data, group))
+    retained_levels = unique(getproperty(data_observed, group))
+    length(original_levels) == size(K, 1) == size(K, 2) || throw(ArgumentError(
+        "Tweedie relmat covariance matrix must match the original first-seen levels of `$(group)`."))
+    keep = [findfirst(==(level), original_levels) for level in retained_levels]
+    any(isnothing, keep) && throw(ArgumentError(
+        "Observed `$(group)` levels must be a subset of the original levels."))
+    keep_index = Int[index for index in keep]
+    return K[keep_index, keep_index]
+end
+
+function _tweedie_validate_observed_relmat_sd_design(f::DrmFormula, data,
+                                                       data_observed)
+    targets = _sd_target_parts(f)
+    length(targets) == 1 || return nothing
+    target = only(targets)
+    descriptor = target.target
+    descriptor.level === :relmat || return nothing
+
+    group = descriptor.group
+    full_index, full_groups = _group_index(getproperty(data, group))
+    _, full_names = _sd_group_design(f.response, target.rhs, data, full_index,
+        full_groups, group; schema_cache = f.schema_cache,
+        schema_key = target.key)
+
+    observed_index, observed_groups =
+        _group_index(getproperty(data_observed, group))
+    observed_design, observed_names = _sd_group_design(f.response, target.rhs,
+        data_observed, observed_index, observed_groups, group;
+        schema_cache = f.schema_cache, schema_key = target.key)
+    observed_names == full_names || throw(ArgumentError(
+        "Tweedie `sd($group)` design changed after missing-response rows were removed."))
+
+    unsupported = [full_names[j] for j in axes(observed_design, 2)
+                   if all(iszero, @view observed_design[:, j])]
+    isempty(unsupported) || throw(ArgumentError(
+        "Tweedie `sd($group)` design coefficient(s) `$(join(unsupported, ", "))` " *
+        "occur only in groups with no observed responses and cannot be estimated. " *
+        "Remove those levels or provide observed responses for them."))
+    return nothing
+end
+
+function _tweedie_relmat_covariance(C, labels)
+    group_index, G = _group_index(labels)
+    size(C) == (G, G) || throw(ArgumentError(
+        "Tweedie relmat covariance matrix must be $(G)×$(G) in first-seen group order."))
+    Cfloat = Matrix{Float64}(C)
+    all(isfinite, Cfloat) || throw(ArgumentError(
+        "Tweedie relmat covariance matrix must contain only finite values."))
+    isapprox(Cfloat, Cfloat'; rtol = 1e-10, atol = 1e-12) || throw(ArgumentError(
+        "Tweedie relmat covariance matrix must be symmetric."))
+    Csym = Symmetric((Cfloat + Cfloat') / 2)
+    Cchol = cholesky(Csym; check = false)
+    issuccess(Cchol) || throw(ArgumentError(
+        "Tweedie relmat covariance matrix must be positive definite."))
+    return Csym, group_index, diag(Csym)
+end
+
+function _tweedie_relmat_cov_setup(C, labels)
+    Csym, group_index, kernel_variance =
+        _tweedie_relmat_covariance(C, labels)
+    return sparse(Symmetric(inv(cholesky(Csym)))), group_index, kernel_variance
+end
+
+function _tweedie_relmat_scaled_precision(Q, log_sd)
+    inv_sd = exp.(-log_sd)
+    return Symmetric(Diagonal(inv_sd) * Q * Diagonal(inv_sd))
+end
+
+function _tweedie_relmat_polish_mode(objective, initial; g_tol::Real,
+                                     maxiter::Int = 8)
+    mode = Float64.(initial)
+    all(isfinite, mode) || return nothing
+    function certified_mode()
+        isfinite(objective(mode)) || return nothing
+        gradient = ForwardDiff.gradient(objective, mode)
+        all(isfinite, gradient) && norm(gradient, Inf) <= g_tol || return nothing
+        hessian = ForwardDiff.hessian(objective, mode)
+        all(isfinite, hessian) || return nothing
+        issuccess(cholesky(Symmetric(hessian); check = false)) || return nothing
+        return mode
+    end
+    for _ in 1:maxiter
+        gradient = ForwardDiff.gradient(objective, mode)
+        all(isfinite, gradient) || return nothing
+        gradient_norm = norm(gradient, Inf)
+        gradient_norm <= g_tol && return certified_mode()
+
+        hessian = ForwardDiff.hessian(objective, mode)
+        all(isfinite, hessian) || return nothing
+        hchol = cholesky(Symmetric(hessian); check = false)
+        issuccess(hchol) || return nothing
+        step = hchol \ gradient
+        all(isfinite, step) || return nothing
+
+        value = objective(mode)
+        roundoff = 64eps(Float64) * max(1.0, abs(value))
+        polished = false
+        for fraction in (1.0, 0.5, 0.25, 0.125, 0.0625)
+            candidate = mode .- fraction .* step
+            candidate_value = objective(candidate)
+            if isfinite(candidate_value) && candidate_value <= value + roundoff
+                candidate_gradient = ForwardDiff.gradient(objective, candidate)
+                if all(isfinite, candidate_gradient) &&
+                   norm(candidate_gradient, Inf) < gradient_norm
+                    mode = candidate
+                    polished = true
+                    break
+                end
+            end
+        end
+        polished || return nothing
+    end
+    return certified_mode()
+end
+
+function _tweedie_relmat_inner_mode(objective, initial; g_tol::Real = 1e-7,
+                                    maxiter::Int = 150)
+    result = Optim.optimize(objective, initial,
+        Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking()),
+        Optim.Options(g_tol = g_tol, iterations = maxiter); autodiff = :forward)
+    mode = Optim.minimizer(result)
+    all(isfinite, mode) || return nothing
+    drm_optim_converged(result) && return mode
+    # LBFGS can stop on a floating-point objective plateau just above g_tol.
+    # Accept a mode only after a positive-definite Newton polish produces a
+    # fresh gradient certificate at the same tolerance.
+    return _tweedie_relmat_polish_mode(objective, mode; g_tol)
+end
+
+function _fit_tweedie_relmat_sd_laplace(fam, y, Xmu, Xsigma, Xnu, Zg,
+        gidx, Q, kernel_variance, nmmu, nmsigma, nmnu, nmsd, grp, g_tol; se::Bool = true,
+        maxiter::Int = 250)
+    n, G = length(y), size(Q, 1)
+    pmu, psigma, pnu, psd = size(Xmu, 2), size(Xsigma, 2), size(Xnu, 2), size(Zg, 2)
+    psigma == 1 && pnu == 1 || throw(ArgumentError(
+        "Tweedie related-matrix SD regression requires fixed `sigma ~ 1` and `nu ~ 1`."))
+    Qdense = Matrix(Symmetric(Matrix(Q)))
+    qchol = cholesky(Symmetric(Qdense); check = false)
+    issuccess(qchol) || throw(ArgumentError("Tweedie related-matrix precision must be positive definite."))
+    logdetQ = logdet(qchol)
+    # Keep the outer objective deterministic.  A warm-start cache makes the
+    # selected inner mode depend on the order in which Optim and its finite-
+    # difference gradient probe theta, so the outer optimizer would not see a
+    # single well-defined Laplace objective.
+    mode_start = zeros(G)
+
+    function nll_from_start(theta, initial_b)
+        beta_mu = @view theta[1:pmu]
+        eta_sigma = clamp(theta[pmu + 1], -15.0, 15.0)
+        eta_nu = clamp(theta[pmu + 2], -12.0, 12.0)
+        alpha = @view theta[(pmu + 3):end]
+        eta0 = clamp.(Xmu * beta_mu, -30.0, 30.0)
+        phi, power = exp(2eta_sigma), _logit12(eta_nu)
+        log_sd = Zg * alpha
+        Qsd = _tweedie_relmat_scaled_precision(Qdense, log_sd)
+        logdetQsd = logdetQ - 2sum(log_sd)
+
+        function joint(b)
+            value = 0.5 * dot(b, Qsd * b)
+            @inbounds for i in eachindex(y)
+                eta = clamp(eta0[i] + b[gidx[i]], -30.0, 30.0)
+                value -= _logpdf_tweedie(y[i], exp(eta), phi, power)
+            end
+            return value
+        end
+
+        b0 = all(isfinite, initial_b) ? copy(initial_b) : zeros(G)
+        b_hat = _tweedie_relmat_inner_mode(joint, b0; g_tol = 5e-7, maxiter = 150)
+        b_hat === nothing &&
+            (b_hat = _tweedie_relmat_inner_mode(joint, zeros(G);
+                                                g_tol = 5e-7, maxiter = 300))
+        b_hat === nothing && return 1e18, nothing
+        H = ForwardDiff.hessian(joint, b_hat)
+        hchol = cholesky(Symmetric(H); check = false)
+        issuccess(hchol) || return 1e18, nothing
+        value = joint(b_hat) - 0.5 * logdetQsd + 0.5 * logdet(hchol)
+        return value, b_hat
+    end
+
+    function nll(theta)
+        return first(nll_from_start(theta, mode_start))
+    end
+
+    function grad_at!(gradient, theta, objective)
+        for j in eachindex(theta)
+            h = 2e-4 * (1 + abs(theta[j]))
+            direction = zeros(length(theta)); direction[j] = h
+            gradient[j] = (objective(theta .+ direction) -
+                           objective(theta .- direction)) / (2h)
+        end
+        return gradient
+    end
+
+    grad!(gradient, theta) = grad_at!(gradient, theta, nll)
+
+    theta0 = zeros(pmu + psigma + pnu + psd)
+    theta0[1] = log(sum(y) / n + eps())
+    theta0[pmu + 1] = 0.0
+    theta0[pmu + 2] = 0.0
+    theta0[(pmu + 3):end] .= Zg \ fill(log(0.4), G)
+    # A fixed start at zero for every outer evaluation is deterministic but
+    # can be far from the fitted conditional mode.  Seed the immutable start
+    # once at the deterministic initial outer parameters, then use that same
+    # mode for every subsequent evaluation.
+    _, initial_mode = nll_from_start(theta0, mode_start)
+    initial_mode === nothing && throw(ErrorException(
+        "Tweedie related-matrix SD regression could not initialize the latent mode"))
+    mode_start .= initial_mode
+    od = Optim.OnceDifferentiable(nll, grad!, theta0)
+    # Match the ordinary Tweedie SD route: a unit first step can move the
+    # power predictor close to 2, where the exact density series becomes much
+    # wider. A scaled initial step avoids that unnecessary excursion.
+    optimizer = Optim.LBFGS(alphaguess = Optim.LineSearches.InitialStatic(
+        alpha = 0.05, scaled = true))
+    result = Optim.optimize(od, theta0, optimizer,
+        Optim.Options(g_tol = g_tol, iterations = maxiter))
+    theta_hat = Optim.minimizer(result)
+    value, final_b = nll_from_start(theta_hat, mode_start)
+    final_b === nothing && throw(ErrorException(
+        "Tweedie related-matrix SD regression could not recover a final latent mode"))
+    # Refit derivatives and the retained likelihood from the same immutable
+    # start used by every outer objective evaluation.
+    nll_final(theta) = first(nll_from_start(theta, mode_start))
+    final_gradient = zeros(length(theta_hat))
+    grad_at!(final_gradient, theta_hat, nll_final)
+    converged = _laplace_outer_converged(result, value, final_gradient,
+                                          theta_hat, n, g_tol)
+    V = se ? _vcov_from_fd_hessian(
+        _finite_hessian(nll_final, theta_hat; h = _fd_hessian_step(n));
+        context = "sparse-Laplace Tweedie related-matrix SD regression") :
+        fill(NaN, length(theta_hat), length(theta_hat))
+    sd_group = exp.(Zg * theta_hat[(pmu + psigma + pnu + 1):end])
+    marginal_sd_group = sd_group .* sqrt.(kernel_variance)
+    means = Dict(:mu => exp.(Xmu * theta_hat[1:pmu]))
+    observed = Dict(:mu => Vector{Float64}(y))
+    scales = Dict(:sigma => fill(exp(theta_hat[pmu + 1]), n),
+        :nu => fill(_logit12(theta_hat[pmu + 2]), n),
+        :sd_group => sd_group, :sd => sd_group[gidx],
+        :marginal_sd_group => marginal_sd_group,
+        :marginal_sd => marginal_sd_group[gidx],
+        :sd_group_index => Float64.(gidx))
+    _warn_at_clamp("Tweedie", ["log sigma" => ([theta_hat[pmu + 1]], -15.0, 15.0),
+        "power (logit scale)" => ([theta_hat[pmu + 2]], -12.0, 12.0)])
+    blocks = Pair{Symbol,UnitRange{Int}}[:mu => 1:pmu,
+        :sigma => (pmu + 1):(pmu + 1), :nu => (pmu + 2):(pmu + 2),
+        :sd => (pmu + 3):length(theta_hat)]
+    names = Pair{Symbol,Vector{String}}[:mu => nmmu, :sigma => nmsigma,
+        :nu => nmnu, :sd => nmsd]
+    fit = DrmFit(fam, blocks, names, theta_hat, Matrix(V), -nll_final(theta_hat), n,
+        converged, means, observed, scales)
+    fit = _withranef(fit, Dict(grp => Float64.(final_b)))
+    return _withiterations(_withnll(fit, nll_final), Optim.iterations(result))
+end
+
+"""
+    predict_parameters(fit::DrmFit{Tweedie}, newdata;
+                       type = :response, se = false, K = nothing)
+
+Predict fitted distributional parameters for new observations. For a
+related-matrix SD target, `:sd` is the multiplier of the supplied kernel. Pass
+`K` to also return `:marginal_sd`, using the covariance matrix ordered by the
+first-seen group labels in `newdata`. With `se = true`, both entries include
+delta-method standard errors. Without `K`, only the SD multiplier is returned.
+"""
+function predict_parameters(fit::DrmFit{Tweedie}, newdata;
+                            type::Symbol = :response, se::Bool = false,
+                            K = nothing)
+    f = fit.formula
+    f === nothing && throw(ArgumentError(
+        "predict_parameters: this fit did not retain its formula"))
+    type in (:response, :link) || throw(ArgumentError(
+        "predict_parameters: `type` must be :response or :link"))
+    forms = Dict(f.forms)
+    if K !== nothing
+        targets = _sd_target_parts(f)
+        length(targets) == 1 && only(targets).target.level === :relmat ||
+            throw(ArgumentError(
+                "predict_parameters: `K` is used only for one Tweedie related-matrix SD target"))
+    end
+    nd = NamedTuple(pairs(newdata))
+    nrows = length(first(values(nd)))
+    ytrain = get(fit.obs, :mu, Float64[])
+    response_placeholder = isempty(ytrain) ? 0.0 : first(ytrain)
+    ndr = merge(nd, NamedTuple{(f.response,)}((fill(response_placeholder, nrows),)))
+    V = se ? vcov(fit) : nothing
+    out = se ? Dict{Symbol,NamedTuple}() : Dict{Symbol,Vector{Float64}}()
+
+    for (p, r) in fit.blocks
+        # The fitted SD block is named `:sd`, while the public formula stores
+        # its target under a group-specific key such as `:sd_group`. Resolve
+        # SD targets from the retained formula below instead of silently
+        # skipping them at this generic parameter-presence check.
+        (p === :sd || haskey(forms, p)) || continue
+        if p === :sd
+            targets = _sd_target_parts(f)
+            length(targets) == 1 || throw(ArgumentError(
+                "predict_parameters: Tweedie SD prediction requires one random-effect target"))
+            target = only(targets)
+            grp = target.target.group
+            hasproperty(nd, grp) || throw(ArgumentError(
+                "predict_parameters: newdata must contain the random-effect grouping column `$grp`"))
+            gidx, G = _group_index(getproperty(nd, grp))
+            Zg, nmsd = _sd_group_design(f.response, target.rhs, ndr, gidx, G, grp;
+                schema_cache = f.schema_cache, schema_key = target.key,
+                store_schema = false)
+            nmsd == _block_coefnames(fit, p) || throw(ArgumentError(
+                "predict_parameters: the SD design columns do not match the fitted coefficient schema"))
+            eta = Zg * coef(fit, p)
+            link_value = eta[gidx]
+            value = type === :link ? link_value : exp.(link_value)
+            if se
+                Zrow = Zg[gidx, :]
+                Vsd = view(V, r, r)
+                var_eta = vec(sum((Zrow * Vsd) .* Zrow; dims = 2))
+                se_value = sqrt.(max.(var_eta, 0.0))
+                type === :response && (se_value .*= value)
+                out[p] = (; value, se = se_value)
+            else
+                out[p] = value
+            end
+            if K !== nothing
+                labels = getproperty(nd, grp)
+                _, kernel_group_index, kernel_variance =
+                    _tweedie_relmat_covariance(K, labels)
+                kernel_group_index == gidx || throw(ArgumentError(
+                    "predict_parameters: `K` must follow the first-seen group order in newdata"))
+                marginal_link = eta[gidx] .+
+                    0.5 .* log.(kernel_variance[gidx])
+                marginal_value = type === :link ? marginal_link : exp.(marginal_link)
+                if se
+                    marginal_se = sqrt.(max.(var_eta, 0.0))
+                    type === :response && (marginal_se .*= marginal_value)
+                    out[:marginal_sd] = (; value = marginal_value, se = marginal_se)
+                else
+                    out[:marginal_sd] = marginal_value
+                end
+            end
+            continue
+        end
+
+        fixed, _, _, _ = _split_ranef(forms[p]; allow_phylo_slope = true)
+        Xp, eta = _predict_design(fit, f.response, fixed, ndr, p,
+                                  f.schema_cache, nothing)
+        value = type === :link ? eta : _param_response(fit.family, p, eta)
+        if se
+            se_value = _delta_se(Xp, view(V, r, r), eta, type, fit.family, p)
+            out[p] = (; value, se = se_value)
+        else
+            out[p] = value
+        end
+    end
+    return out
+end
+
+function _fit_tweedie_sd_regression(fam::Tweedie, y, Xmu, Xsigma, Xnu, loading, Wsd,
+                                    gidx, G, nmmu, nmsigma, nmnu, nmsd, grp,
+                                    g_tol; K::Int = _TWEEDIE_RANEF_AGHQ_K,
+                                    se::Bool = true)
+    n = length(y)
+    pmu, psigma, pnu, psd = size(Xmu, 2), size(Xsigma, 2), size(Xnu, 2), size(Wsd, 2)
+    i1, i2 = pmu + psigma, pmu + psigma + pnu
+    members = [Int[] for _ in 1:G]
+    for i in 1:n
+        push!(members[gidx[i]], i)
+    end
+    rule = _AGHQRule(1, K)
+    Zre = reshape(Float64.(loading), n, 1)
+    bcache = zeros(1, G)
+    function nll(theta)
+        beta_mu = @view theta[1:pmu]
+        beta_sigma = @view theta[(pmu+1):i1]
+        beta_nu = @view theta[(i1+1):i2]
+        alpha = @view theta[(i2+1):(i2+psd)]
+        eta_mu = clamp.(Xmu * beta_mu, -30.0, 30.0)
+        eta_sigma = clamp.(Xsigma * beta_sigma, -15.0, 15.0)
+        eta_nu = clamp.(Xnu * beta_nu, -12.0, 12.0)
+        sd_group = exp.(Wsd * alpha)
+        ll = (i, eta) -> (mu = exp(clamp(eta, -30.0, 30.0));
+                           phi = exp(2 * eta_sigma[i]);
+                           power = _logit12(eta_nu[i]);
+                           _logpdf_tweedie(y[i], mu, phi, power))
+        total = zero(eltype(theta))
+        for gi in 1:G
+            Lg = reshape([sd_group[gi]], 1, 1)
+            value, bhat = _aghq_group_logint(ll, members[gi], eta_mu,
+                Zre, Lg, rule, @view(bcache[:, gi]))
+            bcache[1, gi] = isfinite(bhat[1]) ? bhat[1] : 0.0
+            total += value
+        end
+        return -total
+    end
+    theta0 = zeros(i2 + psd)
+    theta0[1] = log(sum(y) / n + eps())
+    theta0[pmu+1] = 0.0
+    theta0[i1+1] = 0.0
+    theta0[(i2+1):end] .= Wsd \ fill(log(0.5), G)
+    # The default unit initial step can send the power predictor from its
+    # midpoint to p ≈ 2 in one line-search trial. The exact Tweedie series is
+    # valid there, but its summation window becomes very wide. Scale the first
+    # step by the direction norm so line search explores this boundary
+    # gradually without imposing a parameter bound.
+    optimizer = Optim.LBFGS(alphaguess = Optim.LineSearches.InitialStatic(
+        alpha = 0.05, scaled = true))
+    result = Optim.optimize(nll, theta0, optimizer,
+        Optim.Options(g_tol = g_tol); autodiff = :forward)
+    theta_hat = Optim.minimizer(result)
+    V = se ? _vcov_from_hessian(ForwardDiff.hessian(nll, theta_hat)) :
+        fill(NaN, length(theta_hat), length(theta_hat))
+    blocks = [:mu => 1:pmu, :sigma => (pmu+1):i1, :nu => (i1+1):i2,
+              :sd => (i2+1):(i2+psd)]
+    names = [:mu => nmmu, :sigma => nmsigma, :nu => nmnu, :sd => nmsd]
+    sd_group = exp.(Wsd * theta_hat[(i2+1):(i2+psd)])
+    means = Dict(:mu => exp.(Xmu * theta_hat[1:pmu]))
+    observed = Dict(:mu => Vector{Float64}(y))
+    scales = Dict(:sigma => exp.(Xsigma * theta_hat[(pmu+1):i1]),
+                  :nu => _logit12.(Xnu * theta_hat[(i1+1):i2]),
+                  :sd_group => sd_group, :sd => sd_group[gidx],
+                  :sd_group_index => Float64.(gidx), :aghq_nodes => [Float64(K)])
+    _warn_at_clamp("Tweedie", ["log sigma" => (Xsigma * theta_hat[(pmu+1):i1], -15.0, 15.0),
+                               "power (logit scale)" => (Xnu * theta_hat[(i1+1):i2], -12.0, 12.0)])
+    return _withiterations(_withnll(DrmFit(fam, blocks, names, theta_hat, V,
+        -nll(theta_hat), n, drm_optim_converged(result), means, observed, scales), nll),
+        Optim.iterations(result))
 end
 
 function _fit_tweedie(fam::Tweedie, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol)

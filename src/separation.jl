@@ -258,7 +258,8 @@ end
 # flagged coefficients' rows/columns set to NaN and their variances to Inf
 # (`stderror` → Inf, Wald `confint` → (-Inf, Inf)), and warns. Internal refits
 # (bootstrap replicates, run under `_without_boundary_warnings`) stay quiet.
-function _separation_guard(X, s, ntr, θ̂, V, μ̂, names; maxiter = nothing)
+function _separation_guard(X, s, ntr, θ̂, V, μ̂, names; maxiter = nothing,
+                          near_logit::Bool = true)
     det = _detect_separation(X, s, ntr; maxiter = maxiter)
     kind = :none
     flagged = det.flagged
@@ -272,7 +273,7 @@ function _separation_guard(X, s, ntr, θ̂, V, μ̂, names; maxiter = nothing)
         # made a null slope look near-separated).
         se = [_boundary_se(V[j, j]) for j in 1:length(θ̂)]
         xrange = [maximum(view(X, :, j)) - minimum(view(X, :, j)) for j in 1:size(X, 2)]
-        fl = _near_separation(μ̂, θ̂, se, xrange)
+        fl = near_logit ? _near_separation(μ̂, θ̂, se, xrange) : Int[]
         if !isempty(fl)
             kind = :near; flagged = fl
         else

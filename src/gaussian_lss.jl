@@ -19,6 +19,7 @@ side of a `bf` component formula,
 ```julia
 bf(y ~ x + (1 | g),              sigma ~ x, sd(g) ~ z)                  # iid RE SD
 bf(y ~ x + phylo(1 | species),   sigma ~ x, sd(species, phylogenetic) ~ z)  # phylo SD
+bf(cbind(s, f) ~ x, sigma ~ 1 + (1 | g), sd(g, sigma) ~ z)              # BetaBinomial sigma RE SD
 ```
 
 to put a linear predictor on the **log standard deviation of a random
@@ -27,8 +28,10 @@ effect**. Plain `sd(g)` targets the iid `(1 | g)` intercept
 targets the per-species phylogenetic SD (drmTMB:
 `sd(group, level = "phylogenetic")`; `@formula` cannot parse keyword
 arguments, so the level is a bare symbol). Predictors must be constant
-within each group level. Univariate Gaussian only; coefficients appear as
-the `:sd` (iid) or `:sd_phylo` (phylogenetic) block.
+within each group level. The positional `sd(g, sigma)` selector targets an
+ordinary random intercept on the BetaBinomial `sigma` predictor; only this
+family route currently supports a non-mean target. Coefficients appear in the
+`:sd` (iid) or `:sd_phylo` (phylogenetic) block.
 
 ## Capabilities
 
@@ -45,18 +48,51 @@ the `:sd` (iid) or `:sd_phylo` (phylogenetic) block.
 """
 sd(x) = x
 
-# Extract `sd(g) ~ rhs` parts stashed by `bf` as `Symbol("sd_", g) => rhs`.
+# SD formulas use private unique keys so multiple coefficients on one group can
+# coexist. Retain a fallback for formula objects built by older constructors.
+function _sd_target_parts(f::DrmFormula)
+    out = NamedTuple[]
+    for p in f.forms
+        key = first(p)
+        if haskey(f.sd_targets, key)
+            push!(out, (; key, target = f.sd_targets[key], rhs = last(p)))
+        elseif startswith(String(key), "sd_") && !startswith(String(key), "sdphy_")
+            grp = Symbol(String(key)[(length("sd_")+1):end])
+            push!(out, (; key, target = (group=grp, level=:iid, member=nothing,
+                                         dpar=:mu, block=nothing), rhs=last(p)))
+        end
+    end
+    out
+end
+
 _sd_parts(f::DrmFormula) = Pair{Symbol,Any}[
-    Symbol(String(first(p))[(length("sd_")+1):end]) => last(p)
-    for p in f.forms if startswith(String(first(p)), "sd_")]
+    item.target.group => item.rhs for item in _sd_target_parts(f)
+]
+
+# Parameter block names for coefficient-selected SD targets are derived from
+# the complete target descriptor, not formula order or a shared group prefix.
+function _sd_target_block(target::NamedTuple; disambiguate::Bool = false)
+    target.member === nothing && !disambiguate && return :sd
+    block = target.block === nothing ? "none" : String(target.block)
+    member = target.member === nothing ? "none" : String(target.member)
+    identity = join((String(target.group), String(target.level), String(target.dpar),
+                     member, block), "|")
+    Symbol("sdtarget_", bytes2hex(codeunits(identity)))
+end
+
+_sd_target_blocks(targets) = [
+    _sd_target_block(item.target; disambiguate = length(targets) > 1)
+    for item in targets
+]
 
 # One-line guard for family routes that do not support sd(): every family
 # consumer reads `Dict(f.forms)` by known keys, so an unguarded sd() part would
 # be DROPPED SILENTLY — the exact bug class of issue #2 (silent σ-phylo drop).
 function _lss_only_gaussian_guard(f::DrmFormula, fam)
     (isempty(_sd_parts(f)) && isempty(_sdphylo_parts(f))) ||
-        throw(ArgumentError("drm: `sd(group) ~ …` location-scale-scale formulas are " *
-            "supported for the univariate Gaussian family only (got $(nameof(typeof(fam))))."))
+        throw(ArgumentError("drm: random-effect `sd(group) ~ …` formulas are currently " *
+            "supported for Gaussian LSS models and narrow ordinary IID routes in " *
+            "Binomial, Poisson, NegBinomial2, and Gamma (got $(nameof(typeof(fam))))."))
     return nothing
 end
 
@@ -65,8 +101,10 @@ end
 # the same way), and compress to one row per group in the supplied `gidx` order.
 # IID callers use `_group_index`'s first-seen order; phylogenetic callers supply
 # the tree-tip order through `_lss_phylo_group_index` below.
-function _sd_group_design(response::Symbol, rhs, data, gidx::Vector{Int}, G::Int, grp::Symbol)
-    _, Zfull, nm = _design(response, rhs, data)
+function _sd_group_design(response::Symbol, rhs, data, gidx::Vector{Int}, G::Int, grp::Symbol;
+                          schema_cache = nothing, schema_key = nothing,
+                          store_schema::Bool = true)
+    _, Zfull, nm = _design(response, rhs, data; schema_cache, schema_key, store_schema)
     q = size(Zfull, 2)
     Zg = fill(NaN, G, q)
     for i in eachindex(gidx)
@@ -94,6 +132,13 @@ function _drm_gaussian_lss(f::DrmFormula, fam::Gaussian, sdp, re, re_kinds, stru
     length(sdp) == 1 ||
         throw(ArgumentError("drm: one `sd(group) ~ …` formula per model (got $(length(sdp)))."))
     sgrp, srhs = sdp[1]
+    sdtargets = _sd_target_parts(f)
+    length(sdtargets) == 1 || throw(ArgumentError(
+        "drm: Gaussian LSS requires exactly one resolved random-effect SD target."))
+    descriptor = only(sdtargets).target
+    (descriptor.level === :iid && descriptor.dpar === :mu &&
+     descriptor.block === nothing && descriptor.group === sgrp) ||
+        throw(ArgumentError("drm: Gaussian `sd($sgrp)` must target one ordinary mean random-effect coefficient."))
     (structured === nothing && structured_sigma === nothing) ||
         throw(ArgumentError("drm: `sd($sgrp)` with structured effects (phylo/relmat/animal/" *
             "spatial) is not yet supported — the climate-dependent phylogenetic SD " *
@@ -103,17 +148,36 @@ function _drm_gaussian_lss(f::DrmFormula, fam::Gaussian, sdp, re, re_kinds, stru
     isempty(sigma_re) ||
         throw(ArgumentError("drm: `sd($sgrp)` cannot be combined with a random effect on `sigma`."))
     length(re) == 1 ||
-        throw(ArgumentError("drm: `sd($sgrp)` requires exactly one `(1 | $sgrp)` random " *
-            "intercept on the mean (got $(length(re)) random-effect terms)."))
-    (kind, _) = re_kinds[1]
-    kind === :intercept ||
-        throw(ArgumentError("drm: `sd($sgrp)` supports a random INTERCEPT `(1 | $sgrp)` only."))
+        throw(ArgumentError("drm: `sd($sgrp)` requires exactly one ordinary mean random-effect term " *
+            "(got $(length(re)) random-effect terms)."))
+    (kind, slope) = re_kinds[1]
+    kind in (:intercept, :slope) ||
+        throw(ArgumentError("drm: Gaussian `sd($sgrp)` supports one ordinary intercept or one independent numeric slope."))
+    member = kind === :intercept ? :intercept : slope
+    descriptor.member in (nothing, member) ||
+        throw(ArgumentError("drm: Gaussian SD target `coef($(descriptor.member))` does not match mean coefficient `$(member)`."))
+    (kind === :intercept || descriptor.member === member) ||
+        throw(ArgumentError("drm: Gaussian random slopes require an explicit `coef($slope)` SD target."))
     (_, grp) = re[1]
     grp === sgrp ||
         throw(ArgumentError("drm: `sd($sgrp)` must name the grouping of the random effect — " *
             "the mean formula has `(1 | $grp)`."))
     gidx, G = _group_index(getproperty(data, grp))
-    Zg, nmsd = _sd_group_design(f.response, srhs, data, gidx, G, grp)
+    target_key = only(sdtargets).key
+    Zg, nmsd = _sd_group_design(f.response, srhs, data, gidx, G, grp;
+                                schema_cache = f.schema_cache, schema_key = target_key)
+    loading = if kind === :intercept
+        ones(Float64, length(y))
+    else
+        hasproperty(data, slope) || throw(ArgumentError(
+            "drm: Gaussian random-slope predictor `$slope` is absent from data."))
+        raw = getproperty(data, slope)
+        raw isa AbstractVector{<:Real} && length(raw) == length(y) && all(isfinite, raw) ||
+            throw(ArgumentError("drm: Gaussian random-slope predictor `$slope` must be finite numeric values, one per response."))
+        any(x -> !iszero(x), raw) || throw(ArgumentError(
+            "drm: Gaussian random-slope predictor `$slope` must contain at least one nonzero value."))
+        Float64.(raw)
+    end
     if has_missing_response
         observed = _observed_response_mask(y)
         n_obs = count(observed)
@@ -133,19 +197,21 @@ function _drm_gaussian_lss(f::DrmFormula, fam::Gaussian, sdp, re, re_kinds, stru
         Xμ = Matrix{Float64}(Xμ[observed, :])
         Xσ = Matrix{Float64}(Xσ[observed, :])
         gidx = gidx[observed]
+        loading = loading[observed]
     end
     return _fit_ranef_gaussian_lss(fam, y, Xμ, Xσ, Zg, gidx, G, nmμ, nmσ, nmsd, grp, g_tol;
-                                   reml = method === :REML)
+                                   reml = method === :REML, w = loading)
 end
 
 # Gaussian location–scale–scale with one mean random intercept (1 | g) whose
 # per-group SD carries a linear predictor: θ = [β_μ; β_σ (log σ); α (log σ_b)].
 # Same exact Woodbury/Patterson–Thompson marginal as `_fit_ranef_gaussian`
-# (which is left byte-for-byte untouched), with σ_b² per group. Convergence
+# (which is left byte-for-byte untouched), with σ_b² per group and optional
+# observation-level coefficient loadings for independent random slopes. Convergence
 # reasoning (exact marginal, no inner-solve noise floor) carries over from that
 # function's header note.
 function _fit_ranef_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, nmμ, nmσ, nmsd,
-                                 grp, g_tol; reml::Bool = false)
+                                 grp, g_tol; reml::Bool = false, w = nothing)
     n = length(y)
     pμ, pσ, psd = size(Xμ, 2), size(Xσ, 2), size(Zg, 2)
     const_2pi = 0.5 * n * log(2π)
@@ -164,8 +230,9 @@ function _fit_ranef_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, nmμ, 
             r = y[i] - ημ[i]
             rv[i] = r; invDv[i] = invD
             k = gidx[i]
-            S[k] += invD
-            C[k] += r * invD
+            wi = w === nothing ? one(T) : w[i]
+            S[k] += wi * wi * invD
+            C[k] += wi * r * invD
             logdetD += 2 * ησ[i]
         end
         logdetCap = zero(T)
@@ -174,7 +241,7 @@ function _fit_ranef_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, nmμ, 
             logdetCap += log(1 + σb² * S[k])
         end
         # Cancellation-free r′V⁻¹r (#746/#747; see `_re_quad_stable`).
-        quad = _re_quad_stable(rv, invDv, nothing, gidx, exp.(-2 .* ησb), S, C)
+        quad = _re_quad_stable(rv, invDv, w, gidx, exp.(-2 .* ησb), S, C)
         return 0.5 * (logdetD + logdetCap + quad) + const_2pi
     end
 
@@ -188,13 +255,14 @@ function _fit_ranef_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, nmμ, 
         @inbounds for i in 1:n
             invD = exp(-2 * ησ[i])
             invDv[i] = invD
-            S[gidx[i]] += invD
+            wi = w === nothing ? one(T) : w[i]
+            S[gidx[i]] += wi * wi * invD
         end
         # PSD penalised-SS form of Xμ′V⁻¹Xμ. The Woodbury subtraction it replaces
         # returned exactly-singular garbage (8e110 vs a true 1e-7) at an LBFGS
         # probe with log σ_i ≈ -105; see `_re_xtvinvx_stable` and
         # test/test_lss_reml_falseconv.jl.
-        XtVinvX = _re_xtvinvx_stable(Xμ, invDv, nothing, gidx, exp.(-2 .* ησb), S)
+        XtVinvX = _re_xtvinvx_stable(Xμ, invDv, w, gidx, exp.(-2 .* ησb), S)
         # ML part via the cancellation-free `nll_ml` (#746/#747).
         nll_ml_θ = nll_ml(θ)
         # Same Woodbury-subtraction PSD hazard as `_fit_ranef_gaussian.nll_reml`
@@ -228,15 +296,18 @@ function _fit_ranef_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, nmμ, 
     names = [:mu => nmμ, :sigma => nmσ, :sd => nmsd]
     means = Dict(:mu => Xμ * θ̂[1:pμ])
     obs = Dict(:mu => Vector{Float64}(y))
-    scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
+    sd_group = exp.(Zg * θ̂[(pμ+pσ+1):(pμ+pσ+psd)])
+    scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]),
+                  :sd_group => sd_group, :sd => sd_group[gidx])
     blup = let
         βμ = θ̂[1:pμ]; βσ = θ̂[pμ+1:pμ+pσ]; α = θ̂[pμ+pσ+1:end]
         ημ = Xμ * βμ; ησ = Xσ * βσ; ησb = Zg * α
         S = zeros(G); C = zeros(G)
         @inbounds for i in 1:n
             invD = exp(-2 * ησ[i]); k = gidx[i]
-            S[k] += invD
-            C[k] += (y[i] - ημ[i]) * invD
+            wi = w === nothing ? 1.0 : w[i]
+            S[k] += wi * wi * invD
+            C[k] += wi * (y[i] - ημ[i]) * invD
         end
         [C[k] / (1 / exp(2 * ησb[k]) + S[k]) for k in 1:G]
     end

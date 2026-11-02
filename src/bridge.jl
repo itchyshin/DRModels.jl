@@ -18,8 +18,9 @@ const _BRIDGE_TREE_CACHE_MAX = 4
 
 """
     drm_bridge(; formula, family, data, tree = nothing, K = nothing,
-               A = nothing, coords = nothing, newdata = nothing,
-               options = Dict())
+               A = nothing, Ainv = nothing, coords = nothing, newdata = nothing,
+               options = Dict(), K_labels = nothing, A_labels = nothing,
+               structured_group = nothing)
 
 Fit a DRModels.jl model through a marshalling-friendly boundary for R callers.
 `formula` may be a semicolon-separated string such as
@@ -38,6 +39,13 @@ are rejected rather than approximated. These materialised columns are NOT
 (yet) reconstructed for `newdata` — a formula using them combined with `newdata`
 fails with a missing-column error.
 
+`K` / `A` are matched to the levels of the grouping variable by position
+(first appearance in `data`). To match by name instead, pass `K_labels` /
+`A_labels` (the matrix's row/column names) together with `structured_group`
+(the grouping column, as a string): the matrix is reordered to first-appearance
+order, and a duplicated label or a missing group level throws `ArgumentError`
+rather than fitting against the wrong rows.
+
 The return value is a `Dict{String,Any}` made of primitive R-reconstructable
 pieces: named coefficients, covariance matrix, likelihood summaries, fitted
 values, residuals, scales, and residual correlations when present.
@@ -47,19 +55,76 @@ per-observation distributional parameters on the response scale keyed by dpar
 name, plus `"trials"` for binomial-type families. Pass `newdata` (a column
 table) to add `"dpars_newdata"`, the same parameters evaluated on fresh rows —
 what `fitted_distribution(object, newdata = ...)` needs.
+
+For animal models, `Ainv` supplies a precision matrix directly. It is passed to
+the family fitter without covariance normalization; only routes that explicitly
+accept animal precision matrices can use it.
 """
 function drm_bridge(; formula, family::AbstractString, data, tree = nothing,
-        K = nothing, A = nothing, coords = nothing, newdata = nothing,
-        options = Dict{String,Any}())
+        K = nothing, A = nothing, Ainv = nothing, coords = nothing, newdata = nothing,
+        options = Dict{String,Any}(), K_labels = nothing, A_labels = nothing,
+        structured_group = nothing)
     dat = _bridge_data(data)
+    # Labelled K / A (drmTMB#1512): the engine pairs row i of K / A with the i-th
+    # group in first-appearance order and never looks at names. When the caller
+    # supplies the matrix's row/column labels, align by name first, or refuse.
+    K = _bridge_align_labelled(K, K_labels, dat, structured_group, "K")
+    A = _bridge_align_labelled(A, A_labels, dat, structured_group, "A")
     bundle, dat, labels = _bridge_formula(formula, family, dat; labels = true)
     fam = _bridge_family(family)
     opts = _bridge_options(options)
     coef_labels = get(opts, :coef_labels, nothing)
     fit = _bridge_fit(bundle, fam, dat; tree = tree, K = K, A = A,
-                      coords = coords, options = opts)
+                      Ainv = Ainv, coords = coords, options = opts)
     return _bridge_flatten(fit; family = String(family), newdata = newdata,
                            labels = labels, coef_labels = coef_labels)
+end
+
+# Align a labelled structured matrix to the first-appearance order of the data's
+# grouping variable (the order every DRModels.jl structured route assumes).
+# `labels === nothing` leaves the matrix untouched (positional contract).
+function _bridge_align_labelled(M, labels, dat, group, what::AbstractString)
+    labels === nothing && return M
+    M === nothing && throw(ArgumentError(
+        "drm_bridge: `$(what)_labels` was supplied without `$(what)`"))
+    group === nothing && throw(ArgumentError(
+        "drm_bridge: `$(what)_labels` needs `structured_group` (the grouping " *
+        "variable the matrix is indexed by)"))
+    gsym = Symbol(group)
+    hasproperty(dat, gsym) || throw(ArgumentError(
+        "drm_bridge: `structured_group = \"$(group)\"` is not a column of `data`"))
+    return _align_labelled_matrix(M, labels, getproperty(dat, gsym), what)
+end
+
+# Reorder the rows and columns of the square matrix `M` (row/column names
+# `labels`) to the first-appearance order of `values`. Refuses, with an
+# ArgumentError, a matrix whose labels are duplicated or miss a group level.
+# Labels beyond the data's levels are dropped (the matrix may cover more
+# individuals than the data).
+function _align_labelled_matrix(M, labels, values, what::AbstractString)
+    lab = String.(collect(labels))
+    size(M, 1) == size(M, 2) == length(lab) || throw(ArgumentError(
+        "drm_bridge: `$(what)` is $(size(M, 1))×$(size(M, 2)) but `$(what)_labels` " *
+        "has $(length(lab)) entries"))
+    pos = Dict{String,Int}()
+    for (i, l) in enumerate(lab)
+        haskey(pos, l) && throw(ArgumentError(
+            "drm_bridge: `$(what)_labels` has duplicated label \"$(l)\""))
+        pos[l] = i
+    end
+    lv = String[]
+    seen = Set{String}()
+    for v in values
+        s = String(string(v))
+        s in seen || (push!(seen, s); push!(lv, s))
+    end
+    missing_lv = [l for l in lv if !haskey(pos, l)]
+    isempty(missing_lv) || throw(ArgumentError(
+        "drm_bridge: `$(what)_labels` does not cover every group level; missing " *
+        join(("\"" * l * "\"" for l in first(missing_lv, 5)), ", ") *
+        (length(missing_lv) > 5 ? ", …" : "")))
+    idx = [pos[l] for l in lv]
+    return Matrix{Float64}(M)[idx, idx]
 end
 
 """
@@ -481,7 +546,8 @@ const _BRIDGE_KNOWN_OPTION_KEYS = Set((
     :q4_g_tol, :q4_iterations, :q4_n_newton, :q4_vcov, :coef_labels,
 ))
 
-function _bridge_fit(bundle, fam, data; tree, K, A, coords, options)
+function _bridge_fit(bundle, fam, data; tree, K, A, Ainv = nothing,
+        coords, options)
     # Fail closed on an unknown option key (#527-adjacent): a typo'd or
     # not-yet-wired key must error loudly and NAME the key, rather than being
     # silently dropped and the caller left believing it took effect.
@@ -493,6 +559,7 @@ function _bridge_fit(bundle, fam, data; tree, K, A, coords, options)
     tree !== nothing && (kwargs[:tree] = _bridge_tree(tree))
     K !== nothing && (kwargs[:K] = K)
     A !== nothing && (kwargs[:A] = A)
+    Ainv !== nothing && (kwargs[:Ainv] = Ainv)
     coords !== nothing && (kwargs[:coords] = coords)
     if haskey(options, :g_tol)
         kwargs[:g_tol] = Float64(options[:g_tol])
@@ -652,6 +719,8 @@ function _bridge_family(family::AbstractString)
     fam == "beta" && return Beta()
     fam in ("beta_binomial", "betabinomial") && return BetaBinomial()
     fam == "binomial" && return Binomial()
+    fam == "binomial_probit" && return Binomial(link = :probit)
+    fam == "binomial_cloglog" && return Binomial(link = :cloglog)
     fam == "gamma" && return Gamma()
     fam == "lognormal" && return LogNormal()
     # drmTMB's `biv_lognormal()`. Bivariate-ness is a property of the FORMULA in
@@ -787,7 +856,7 @@ function _bridge_formula(formula, family::AbstractString, data; labels::Bool = f
     for (param, _) in bundle.forms
         if haskey(keyed_labels, param)
             by_param[param] = keyed_labels[param]
-        elseif _bridge_lss_form_key(param) !== nothing
+        elseif _bridge_lss_form_key(param, bundle) !== nothing
             if lss_i <= length(lss_labels)
                 by_param[param] = lss_labels[lss_i]
                 lss_i += 1
@@ -822,7 +891,19 @@ end
 # parser cannot see through. So pass the value straight through: it is already
 # the positional spelling `bf` understands.
 function _bridge_keyed_part(k::AbstractString, v)
-    occursin(r"^sd(_phylo)?\([^()]+\)$", k) && return String(v)
+    # `coef(term)` is a nested selector in an SD target, so a no-parentheses
+    # regex mistakes this marker key for a Julia short-form function definition.
+    # The key is generated by the R bridge from a parsed SD LHS, and the value
+    # already contains the complete positional formula understood by `bf`.
+    marker = try
+        Meta.parse(String(k))
+    catch
+        nothing
+    end
+    if marker isa Expr && marker.head === :call &&
+       marker.args[1] in (:sd, :sd_phylo)
+        return String(v)
+    end
     return "$k = $v"
 end
 
@@ -1319,7 +1400,7 @@ end
 # flatten `+` themselves before doing term algebra.
 const _BRIDGE_TERM_OPS = (:+, :&, :*, :~)
 const _BRIDGE_DSL_CALLS = Set((:phylo, :relmat, :animal, :spatial, :temporal, :sd,
-    :sd_phylo, :meta_V, :cbind, :corpair, :|))
+    :sd_phylo, :coef, :meta_V, :cbind, :corpair, :|))
 
 # drmTMB's `temporal(1 | id, time = occ, structure = "ar1")` -> the positional
 # Julia spelling `temporal(1 | id, occ, ar1)` that `@formula` can parse (it
@@ -1794,6 +1875,7 @@ function _bridge_coef_vector(fit; labels::Union{Nothing,_BridgeFormulaLabels} = 
     length(unique(raw_names)) == length(raw_names) ||
         error("drm_bridge: raw coefficient labels are not unique")
     if coef_labels !== nothing
+        coef_labels = _bridge_single_sd_coef_label_alias(fit, coef_labels)
         names = _bridge_echo_coef_labels(coef_labels, block_ranges, raw_names)
         length(unique(names)) == length(names) ||
             error("drm_bridge: echoed coef_labels public names are not unique")
@@ -1819,6 +1901,27 @@ function _bridge_coef_vector(fit; labels::Union{Nothing,_BridgeFormulaLabels} = 
     Set(values(public_to_raw)) == Set(raw_names) ||
         error("drm_bridge: public coefficient map does not cover every raw coordinate")
     return names, vals, raw_names, public_to_raw
+end
+
+function _bridge_single_sd_coef_label_alias(fit, coef_labels)
+    fit.formula isa DrmFormula || return coef_labels
+    has_sd_block = any(pair -> first(pair) === :sd, fit.blocks)
+    has_sd_block || return coef_labels
+    targets = _sd_target_parts(fit.formula)
+    length(targets) == 1 || return coef_labels
+    target_dpar = String(_sd_target_block(only(targets).target))
+    source_key = findfirst(key -> String(key) == target_dpar, collect(keys(coef_labels)))
+    source_key === nothing && return coef_labels
+    source_key = collect(keys(coef_labels))[source_key]
+    String(source_key) == "sd" && return coef_labels
+    any(key -> String(key) == "sd", keys(coef_labels)) && error(
+        "drm_bridge: coef_labels supplies both the selected SD target and its single-target `sd` alias")
+    out = copy(coef_labels)
+    value = out[source_key]
+    delete!(out, source_key)
+    alias_key = source_key isa Symbol ? :sd : "sd"
+    out[alias_key] = value
+    return out
 end
 
 # Echo an R-supplied `options["coef_labels"] :: Dict{String,Vector{String}}`
@@ -1940,7 +2043,7 @@ function _bridge_rendered_regression_blocks(fit, labels::_BridgeFormulaLabels)
     forms = hasproperty(form, :forms) ? form.forms : Pair{Symbol,Any}[]
     block_names = Dict(p => ns for (p, ns) in fit.coefnames)
     for (param, rhs) in forms
-        _bridge_lss_form_key(param) === nothing || continue
+        _bridge_lss_form_key(param, form) === nothing || continue
         haskey(block_names, param) || continue
         # Coupled location-scale fits build their fixed columns after removing
         # `(1 | tag | group)`. The ordinary random-effect splitter does not
@@ -1949,7 +2052,35 @@ function _bridge_rendered_regression_blocks(fit, labels::_BridgeFormulaLabels)
         if fit isa DrmFit && fit.nll isa LocScaleObjective && param in (:mu, :sigma)
             rhs = first(_ls_parse_coupled(rhs))
         end
-        rendered = _bridge_render_formula_block(form, param, rhs, labels)
+        # Fitting has already admitted this family-specific animal SD route.
+        # Label reconstruction only needs the matching animal-slope parser;
+        # keeping this permission Binomial-specific breaks other fitted routes
+        # such as Gamma animal-slope SD regression after optimization succeeds.
+        sd_targets_here = fit.formula isa DrmFormula ?
+            _sd_target_parts(fit.formula) : Any[]
+        animal_sd_slope = any(item -> item.target.level === :animal,
+                              sd_targets_here)
+        animal_block = param === :mu ? _animal_intercept_slope(rhs) : nothing
+        animal_sd_targets = filter(item -> item.target.level === :animal,
+                                   sd_targets_here)
+        binomial_animal_q2 = fit.family isa Binomial &&
+            animal_block !== nothing && length(animal_sd_targets) == 2 &&
+            all(item -> item.target.group === animal_block.group,
+                animal_sd_targets) &&
+            Set(item.target.member for item in animal_sd_targets) ==
+                Set((:intercept, animal_block.slope))
+        animal_sd_intercept_slope = animal_block !== nothing &&
+            (fit.family isa Gamma || binomial_animal_q2)
+        binomial_phylo_sd_slope_only = fit.family isa Binomial &&
+            !isempty(_sdphylo_parts(fit.formula))
+        binomial_relmat_sd_slope_only = fit.family isa Binomial &&
+            any(item.target.level === :relmat for item in sd_targets_here)
+        rendered = _bridge_render_formula_block(
+            form, param, rhs, labels; allow_animal_slope = animal_sd_slope,
+            allow_animal_intercept_slope = animal_sd_intercept_slope,
+            allow_phylo_slope_only = binomial_phylo_sd_slope_only,
+            allow_relmat_slope = binomial_relmat_sd_slope_only
+        )
         rendered === nothing && continue
         raw, public = rendered
         vouched = !(public === raw)
@@ -2044,7 +2175,7 @@ function _bridge_check_lss_coef_labels_fidelity(fit, labels::_BridgeFormulaLabel
     block_names = Dict(p => ns for (p, ns) in fit.coefnames)
     position = Dict(name => i for (i, name) in enumerate(raw_names))
     for (key, rhs) in forms
-        block = _bridge_lss_form_key(key)
+        block = _bridge_lss_form_key(key, form)
         block === nothing && continue
         haskey(block_names, block) || continue
         rendered = _bridge_render_formula_block(form, block, rhs, labels; label_scope = key)
@@ -2070,7 +2201,7 @@ function _bridge_check_lss_coef_labels_fidelity(fit, labels::_BridgeFormulaLabel
         aligned || continue
         supplied == public || error(
             "drm_bridge: coef_labels[\"$block\"] does not match the design DRModels.jl built " *
-            "for the `$key` formula: R supplied $(supplied) but DRModels.jl renders $(public) " *
+            "for the `$(haskey(form.sd_targets, key) ? "sd_" * String(form.sd_targets[key].group) : String(key))` formula: R supplied $(supplied) but DRModels.jl renders $(public) " *
             "from its own model matrix (Julia raw columns: $(raw)). The two engines " *
             "disagree on the design columns of a group-level SD formula -- usually a " *
             "factor or character column whose level order differs between the R data and " *
@@ -2107,16 +2238,29 @@ function _bridge_public_to_raw_coef_map(fit, labels::_BridgeFormulaLabels,
     return public_to_raw
 end
 
-_bridge_lss_form_key(param::Symbol) = startswith(String(param), "sdphy_") ? :sd_phylo :
-                                      startswith(String(param), "sd_") ? :sd : nothing
+function _bridge_lss_form_key(param::Symbol, form = nothing)
+    name = String(param)
+    startswith(name, "sdphy_") && return :sd_phylo
+    startswith(name, "sd_") && return :sd
+    if form isa DrmFormula && haskey(form.sd_targets, param)
+        # An unselected, unique target resolves to `:sd` itself. Explicit
+        # coefficient selectors retain their hashed fitted block even when
+        # there is only one formula, so bridge label mapping must use the same
+        # target identity as fitting and prediction.
+        return _sd_target_block(form.sd_targets[param];
+                                disambiguate = length(_sd_target_parts(form)) > 1)
+    end
+    return nothing
+end
 
 function _bridge_lss_public_to_raw!(raw_to_public, form, block_names,
         labels::_BridgeFormulaLabels)
     for (key, rhs) in form.forms
-        block = _bridge_lss_form_key(key)
+        block = _bridge_lss_form_key(key, form)
         block === nothing && continue
         haskey(block_names, block) || continue
-        group = String(key)[block === :sd ? length("sd_") + 1 : length("sdphy_") + 1:end]
+        group = haskey(form.sd_targets, key) ? String(form.sd_targets[key].group) :
+            String(key)[block === :sd ? length("sd_") + 1 : length("sdphy_") + 1:end]
         rendered = _bridge_render_formula_block(form, block, rhs, labels; label_scope = key)
         rendered === nothing && continue
         raw, public = rendered
@@ -2144,7 +2288,11 @@ function _bridge_lss_public_to_raw!(raw_to_public, form, block_names,
 end
 
 function _bridge_render_formula_block(form, param::Symbol, rhs,
-        labels::_BridgeFormulaLabels; label_scope::Symbol = param)
+        labels::_BridgeFormulaLabels; label_scope::Symbol = param,
+        allow_animal_slope::Bool = false,
+        allow_animal_intercept_slope::Bool = false,
+        allow_phylo_slope_only::Bool = false,
+        allow_relmat_slope::Bool = false)
     response = if form isa DrmFormula
         form.response
     elseif form isa BivariateDrmFormula
@@ -2155,7 +2303,12 @@ function _bridge_render_formula_block(form, param::Symbol, rhs,
     # Random/structured pieces never become ordinary coefficient columns.  The
     # fixed part is what `_design` used for their associated fixed-effect block.
     fixed_rhs = try
-        first(_split_ranef(rhs; allow_phylo_slope = true, allow_temporal = true))   # #620: a Gaussian slope formula still labels
+        first(_split_ranef(rhs; allow_phylo_slope = true, allow_temporal = true,
+                           allow_animal_slope = allow_animal_slope,
+                           allow_animal_intercept_slope =
+                               allow_animal_intercept_slope,
+                           allow_phylo_slope_only = allow_phylo_slope_only,
+                           allow_relmat_slope = allow_relmat_slope))
     catch
         rhs
     end
@@ -2507,7 +2660,12 @@ function _bridge_dpars(fit::DrmFit)
     for (k, v) in pairs(fit.means)
         out[String(k)] = collect(float.(v))
     end
+    # `scales` also stores simulation context and implementation diagnostics.
+    # Those are not response-distribution parameters and must not cross the
+    # R bridge as fictitious dpars.
     for (k, v) in pairs(fit.scales)
+        (k in (:trials, :sd, :sd_group, :sd_group_index, :aghq_nodes) ||
+         startswith(String(k), "sdtarget_")) && continue
         out[String(k)] = collect(float.(v))
     end
     if fit.family isa ZeroOneBeta && haskey(out, "beta_mu")
@@ -2657,7 +2815,10 @@ override needed).
 function _bridge_dpars_newdata(fit::DrmFit, newdata)
     nd = _bridge_data(newdata)
     pred = predict_parameters(fit, nd; type = :response)
-    return Dict(String(k) => collect(float.(v)) for (k, v) in pairs(pred))
+    # Match `_bridge_dpars`: random-effect SD predictions are model-level
+    # outputs, not response-distribution parameters consumed by the R bridge.
+    return Dict(String(k) => collect(float.(v)) for (k, v) in pairs(pred)
+        if !(k in (:sd, :sd_group) || startswith(String(k), "sdtarget_")))
 end
 
 _bridge_plain(x::AbstractVector) = collect(x)

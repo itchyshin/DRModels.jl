@@ -85,7 +85,7 @@ end
         ntr = fill(8.0, n)
         s = Float64.([rand(rng, Distributions.Binomial(round(Int, ntr[i]), logistic(η[i]))) for i in 1:n])
 
-        fit = @test_logs (:warn, r"Hessian.*not (positive definite|trustworthy)"i) match_mode = :any DRModels._fit_binomial_crossed_laplace(
+        fit = @test_logs (:warn, r"(?s)Hessian.*not (positive definite|trustworthy)"i) match_mode = :any DRModels._fit_binomial_crossed_laplace(
             DRModels.Binomial(), s, ntr, X, comps, ["(Intercept)", "x"], 1e-7)
 
         se = stderror(fit)

@@ -1,6 +1,7 @@
 # poisson.jl — Poisson family for count responses. Log link on the mean
-# (λ = exp(Xμβ)); no dispersion parameter (see the negative-binomial family for
-# overdispersed counts). Fixed effects, maximum likelihood. Mirrors drmTMB's
+# (λ = exp(Xμβ)); no residual dispersion parameter (see the negative-binomial
+# family for overdispersed counts). Fixed and random effects, maximum likelihood.
+# Mirrors drmTMB's
 # `poisson`. The log-pmf is written out explicitly (y·log λ − λ − log y!) so the
 # fit needs no `Distributions.Poisson` — that name is left to Distributions.
 
@@ -8,7 +9,7 @@
     Poisson()
 
 Poisson response family for counts: log link on the mean `μ` (so `μ` coefficients
-act on `log λ`). No scale parameter. Mirrors `drmTMB`'s `poisson` family.
+act on `log λ`). No residual scale parameter. Mirrors `drmTMB`'s `poisson` family.
 
 !!! note
     `DRModels.Poisson` shadows `Distributions.Poisson`; if you need the distribution
@@ -18,12 +19,26 @@ act on `log λ`). No scale parameter. Mirrors `drmTMB`'s `poisson` family.
 fit = drm(bf(y ~ x), Poisson(); data = dat)
 fitted(fit)        # fitted counts λ = exp(Xβ̂), on the response scale
 
+# Regress the SD of an ordinary Poisson random intercept on a group-level
+# predictor. Each value of z must be constant within its group g.
+fit_sd = drm(bf(@formula(y ~ x + (1 | g)), @formula(sd(g) ~ z)),
+             Poisson(); data = dat)
+length(predict_parameters(fit_sd, dat)[:sd])  # one value per observation
+
 # A known-exposure offset (#727, drmTMB twin gap): `offset(log_exposure)`'s
 # coefficient is fixed at 1, so λ = exposure · exp(Xβ̂). Fixed-effects-only mean.
 fit_off = drm(bf(y ~ x + offset(log_exposure)), Poisson(); data = dat)
 
 fit_phy = drm(bf(@formula(y ~ x + phylo(1 | species))), Poisson();
               data = dat, tree = tr, se = false)
+
+# A predictor-dependent SD for one animal slope-only mean coefficient.
+# `sd(animal, animal) ~ habitat` models the coefficient SD by animal;
+# the row-level random contribution is `x * b_animal`.
+fit_animal_sd = drm(
+    bf(@formula(y ~ x + animal(0 + x | animal)),
+       @formula(sd(animal, animal) ~ habitat)),
+    Poisson(); data = dat, A = A)
 
 # Experimental: Poisson random-intercept variational (ELBO) marginal.
 # Default remains `marginal = :LA` (GHQ-32 on an ordinary `(1 | g)`). `loglik` on a VA fit is an ELBO.
@@ -46,6 +61,26 @@ fit_aghq.marginal   # :AGHQ
 fit_phy_reml = drm(bf(@formula(y ~ x + phylo(1 | species))), Poisson();
                    data = dat, tree = tr, se = false, method = :REML)
 ```
+
+For an ordinary random-intercept route, the group SD follows
+log(s_g) = Z_g α and uses adaptive Gauss–Hermite quadrature. One independent
+numeric random slope is also supported. Sparse-Laplace routes support a
+predictor-dependent SD for one phylogenetic or related-matrix mean intercept,
+and an animal mean intercept or slope-only coefficient. For an animal slope,
+`sd(animal, animal) ~ z` models the SD of the coefficient multiplying `x`;
+each row contributes `xᵢ b_g` to the log mean. The SD predictors must be
+constant within animal. The animal SD multiplies the supplied covariance `A`:
+the marginal animal effect covariance is `D A D`, so non-unit diagonal values
+in `A` affect the marginal SD. Ordinary IID intercept and slope SD routes,
+and structured phylogenetic, related-matrix, and animal SD routes, accept a
+fixed `offset(...)` in the mean formula. For an animal intercept, callers may instead
+supply a positive-definite precision matrix with `Ainv`; Julia uses it directly
+as `Q` in the latent covariance `D Q⁻¹ D`. Its rows and columns must follow the
+first-seen animal order. The non-SD Poisson animal-slope route uses the same
+covariance scaling. Correlated blocks, zero-inflation/hurdle terms, and REML
+for animal slopes are not supported with these routes. Profile and
+bootstrap methods are available as fit-level plumbing; their interval coverage
+has not been calibrated.
 
 # Restricted (Cox–Reid) estimation
 
@@ -129,7 +164,8 @@ function _offset_vector(offset_term, data)
 end
 
 function drm(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
-             A = nothing, coords = nothing, g_tol::Real = 1e-8, se::Bool = true,
+             A = nothing, Ainv = nothing, coords = nothing,
+             g_tol::Real = 1e-8, se::Bool = true,
              marginal::Symbol = :LA, method = nothing, nAGQ::Int = 5)
     # `method` is the ML/REML selector. LA/VA/AGHQ is `marginal` (Q1 / #136 / #448).
     # `:REML` is the opt-in Cox–Reid restricted objective, admitted on Poisson
@@ -139,6 +175,12 @@ function drm(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
     # than ignoring the request.
     meth = _reject_method_as_marginal(fam, method; allow_reml = true)
     reml = meth === :REML
+    if !isempty(_sd_parts(f)) || !isempty(_sdphylo_parts(f))
+        return _drm_poisson_sd_regression(f, fam; data, tree, K, A, Ainv, coords,
+            g_tol, se, marginal, reml, nAGQ)
+    end
+    Ainv === nothing || throw(ArgumentError(
+        "Poisson `Ainv` is currently supported for predictor-dependent animal SD regression only."))
     _scalar_laplace_requested(marginal) &&     # Arc 2: TMB-convention Laplace, ordinary (1 | g)
         return _drm_ordinary_laplace(f, fam; data = data, tree = tree, K = K, A = A,
                                      coords = coords, g_tol = g_tol, se = se, method = method)
@@ -155,7 +197,8 @@ function drm(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
     isaghq = marg isa AGHQ
     _lss_only_gaussian_guard(f, fam)   # #544: refuse, never silently drop, sd() parts
     rhs = Dict(f.forms)
-    fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
+    fixed_mu, re, mv, st, _, _, animal_slope =
+        _split_ranef(rhs[:mu]; allow_animal_slope = true)
     mv === nothing ||
         error("Poisson() does not support meta_V markers")
     fixed_mu, offset_term = _extract_offset(fixed_mu)     # #727: offset(log_exposure), coefficient fixed at 1
@@ -183,6 +226,24 @@ function drm(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
             error("Poisson() structured effects cannot be combined with `zi`/`hu` yet")
         kind, grp = st
         labels = getproperty(data, grp)
+        if animal_slope !== nothing
+            kind === :animal || throw(ArgumentError(
+                "Poisson() supports a structured random slope only for `animal(0 + x | group)`."))
+            isempty(re) || throw(ArgumentError(
+                "Poisson() animal random slopes cannot yet be combined with ordinary random effects."))
+            (haskey(rhs, :zi) || haskey(rhs, :hu)) && throw(ArgumentError(
+                "Poisson() animal random slopes cannot yet be combined with `zi` or `hu`."))
+            fixed_mu, slope_offset = _extract_offset(fixed_mu)
+            slope_offset === nothing || throw(ArgumentError(
+                "Poisson() animal random slopes do not yet support `offset(...)`."))
+            _, Xslope_mu, nmslope_mu = _design(f.response, fixed_mu, data)
+            slope_loading = _poisson_animal_slope_loading(data, animal_slope, length(y))
+            C = _poisson_structured_cov(kind, grp, K, A, coords)
+            fit = _fit_poisson_animal_slope_laplace(
+                fam, y, Xslope_mu, slope_loading, C, labels, nmslope_mu,
+                grp, g_tol; se, reml, normalize = kind !== :animal)
+            return _withformula(fit, f)
+        end
         if kind === :phylo
             tree === nothing && error("phylo(1 | $grp) needs `tree = …`")
             return _withformula(_fit_poisson_phylo_laplace(fam, y, Xμ, labels, tree, nmμ, grp, g_tol;
@@ -201,7 +262,8 @@ function drm(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
             # sparse-Laplace spine with the tree precision swapped for C⁻¹ (#167).
             C = _poisson_structured_cov(kind, grp, K, A, coords)
             return _withformula(_fit_poisson_relmat_laplace(fam, y, Xμ, C, labels, nmμ, grp, g_tol;
-                                                           se = se, reml = reml), f)
+                                                           se = se, reml = reml,
+                                                           normalize = kind !== :animal), f)
         else
             error("Poisson() supports phylo/relmat/animal/spatial(1 | group) among structured markers")
         end
@@ -266,6 +328,711 @@ function drm(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
         return _withformula(_fit_poisson_hu(fam, y, Xμ, Xhu, nmμ, nmhu, g_tol), f)
     end
     return _withformula(_fit_poisson(fam, y, Xμ, nmμ, g_tol; offset = off), f)
+end
+
+# Poisson random-effect SD regression. For group g,
+#   log(λ_i) = X_i β + w_i b_g,  b_g ~ Normal(0, exp(2 Z_g α)),
+# where w_i is 1 for an intercept or the numeric slope predictor.
+# The fixed-effect SD design is evaluated once per group, as in the Binomial
+# route. This Poisson slice admits one ordinary iid intercept or independent slope;
+# structured and correlated-block routes must not fall through to this fitter.
+function _drm_poisson_sd_regression(f::DrmFormula, fam::Poisson; data,
+                                    tree = nothing, K = nothing, A = nothing,
+                                    Ainv = nothing, coords = nothing,
+                                    g_tol::Real = 1e-8,
+                                    se::Bool = true, marginal::Symbol = :LA,
+                                    reml::Bool = false, nAGQ::Int = 5)
+    reml && throw(ArgumentError(
+        "Poisson `sd(group) ~ …` currently supports maximum likelihood only; " *
+        "the Cox–Reid correction is not implemented for SD-regression coefficients."))
+    marginal === :LA || throw(ArgumentError(
+        "Poisson `sd(group) ~ …` currently supports `marginal = :LA` only."))
+    nAGQ >= 1 || throw(ArgumentError("nAGQ must be ≥ 1; got $nAGQ"))
+    targets = _sd_target_parts(f)
+    if any(item -> item.target.level === :relmat, targets)
+        Ainv === nothing || throw(ArgumentError(
+            "Poisson related-matrix SD regression uses `K = …`, not animal precision `Ainv = …`."))
+        return _drm_poisson_relmat_sd_regression(
+            f, fam; data, tree, K, A, coords, g_tol, se)
+    end
+    if any(item -> item.target.level === :animal, targets)
+        return _drm_poisson_animal_sd_regression(
+            f, fam; data, tree, K, A, Ainv, coords, g_tol, se)
+    end
+    Ainv === nothing || throw(ArgumentError(
+        "Poisson `Ainv` is currently supported for predictor-dependent animal SD regression only."))
+    !isempty(_sdphylo_parts(f)) && return _drm_poisson_phylo_sd_regression(
+        f, fam; data, tree, K, A, coords, g_tol, se)
+    length(targets) == 1 || throw(ArgumentError(
+        "Poisson random-effect SD regression requires exactly one SD target."))
+    target = only(targets)
+    (target.target.level === :iid && target.target.dpar === :mu &&
+     target.target.block === nothing) || throw(ArgumentError(
+        "Poisson SD regression currently targets one ordinary mean random-effect coefficient."))
+    (tree === nothing && K === nothing && A === nothing && Ainv === nothing && coords === nothing) ||
+        throw(ArgumentError("Poisson `sd(group) ~ …` currently supports one ordinary " *
+            "independent random intercept or numeric slope; structured covariance inputs are not used."))
+    isempty(_sdphylo_parts(f)) || throw(ArgumentError(
+        "Poisson `sd(group, phylogenetic) ~ …` is not implemented by the ordinary random-intercept route."))
+    sgrp, srhs = target.target.group, target.rhs
+    rhs = Dict(f.forms)
+    fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
+    mv === nothing || throw(ArgumentError("Poisson `sd($sgrp)` cannot use meta_V()."))
+    st === nothing || throw(ArgumentError(
+        "Poisson `sd($sgrp)` currently requires one ordinary `(1 | $sgrp)` or `(0 + x | $sgrp)` effect."))
+    length(re) == 1 || throw(ArgumentError(
+        "Poisson `sd($sgrp)` currently requires exactly one ordinary independent random effect."))
+    kind, slope = _re_kind(re[1][1])
+    kind in (:intercept, :slope) || throw(ArgumentError(
+        "Poisson `sd($sgrp)` supports `(1 | $sgrp)` or one independent numeric slope `(0 + x | $sgrp)`; correlated blocks are not implemented on this route."))
+    member = kind === :intercept ? :intercept : slope
+    target.target.member in (nothing, member) || throw(ArgumentError(
+        "Poisson SD target `coef($(target.target.member))` does not match fitted coefficient `$(member)`."))
+    grp = re[1][2]
+    grp === sgrp || throw(ArgumentError(
+        "Poisson `sd($sgrp)` must name the random-effect grouping variable `$grp`."))
+    haskey(rhs, :hu) && throw(ArgumentError(
+        "Poisson random-effect SD regression cannot yet be combined with `hu`."))
+    fixed_mu, offset_term = _extract_offset(fixed_mu)
+    for (pname, r) in f.forms
+        (pname in (:mu, Symbol("sd_", sgrp)) || haskey(f.sd_targets, pname) ||
+         (pname === :zi && haskey(rhs, :zi))) && continue
+        pname === :sigma && r === ConstantTerm(1) && continue
+        throw(ArgumentError("Poisson `sd($sgrp)` is a mean-only model with no residual sigma formula."))
+    end
+    all(_formula_response_observed_mask(f, data)) || throw(ArgumentError(
+        "Poisson random-effect SD regression does not yet support missing responses; " *
+        "drop incomplete rows before fitting so the group SD design remains aligned."))
+
+    y, Xmu, nmmu = _design(f.response, fixed_mu, data)
+    off = offset_term === nothing ? zeros(Float64, length(y)) :
+          _offset_vector(offset_term, data)
+    length(off) == length(y) || throw(ArgumentError(
+        "Poisson `offset(...)` must have one value per observation."))
+    all(yi -> yi >= 0 && isinteger(yi), y) || throw(ArgumentError(
+        "Poisson() requires non-negative integer counts as the response"))
+    gidx, G = _group_index(getproperty(data, grp))
+    Zg, nmsd = _sd_group_design(f.response, srhs, data, gidx, G, grp;
+                                schema_cache = f.schema_cache, schema_key = :sd)
+    size(Zg, 2) <= G && rank(Zg) == size(Zg, 2) || throw(ArgumentError(
+        "Poisson `sd($grp)` group-level design is rank deficient; use predictors that vary independently across groups."))
+    w = if kind === :intercept
+        ones(length(y))
+    else
+        hasproperty(data, slope) || throw(ArgumentError(
+            "Poisson random-slope predictor `$slope` is absent from data."))
+        raw = getproperty(data, slope)
+        raw isa AbstractVector{<:Real} || throw(ArgumentError(
+            "Poisson random-slope predictor `$slope` must be numeric."))
+        all(isfinite, raw) || throw(ArgumentError(
+            "Poisson random-slope predictor `$slope` must contain finite values."))
+        Float64.(raw)
+    end
+    fit = if haskey(rhs, :zi)
+        offset_term === nothing || throw(ArgumentError(
+            "Poisson ZIP SD regression does not yet support `offset(...)`."))
+        kind === :slope && target.target.member !== member && throw(ArgumentError(
+            "Poisson ZIP random-slope SD regression requires an explicit `coef($slope)` selector, for example `sd($grp, coef($slope)) ~ predictors`."))
+        kind === :slope && !any(!iszero, w) && throw(ArgumentError(
+            "Poisson ZIP random-slope predictor `$slope` must contain at least one non-zero value."))
+        _, Xzi, nmzi = _design(f.response, rhs[:zi], data)
+        _fit_poisson_zi_sd_regression(fam, y, Xmu, Xzi, Zg, w, gidx, G,
+            nmmu, nmzi, nmsd, grp, g_tol; nAGQ = nAGQ, se = se)
+    else
+        _fit_poisson_sd_regression(fam, y, Xmu, Zg, gidx, G,
+            nmmu, nmsd, grp, g_tol; nAGQ = nAGQ, se = se, w = w, offset = off)
+    end
+    return _withformula(fit, f)
+end
+
+function _drm_poisson_relmat_sd_regression(f::DrmFormula, fam::Poisson; data,
+                                           tree = nothing, K = nothing, A = nothing,
+                                           coords = nothing, g_tol::Real = 1e-8,
+                                           se::Bool = true)
+    targets = _sd_target_parts(f)
+    length(targets) == 1 || throw(ArgumentError(
+        "Poisson relmat SD regression requires exactly one random-effect SD formula."))
+    target = only(targets)
+    descriptor = target.target
+    (descriptor.level === :relmat && descriptor.dpar === :mu &&
+     descriptor.block === nothing) ||
+        throw(ArgumentError(
+            "Poisson relmat SD regression targets the sole structured mean coefficient."))
+    tree === nothing && A === nothing && coords === nothing || throw(ArgumentError(
+        "Poisson relmat SD regression uses `K = …` only; do not also supply `tree`, `A`, or `coords`."))
+    K === nothing && throw(ArgumentError(
+        "relmat(1 | $(descriptor.group)) needs the relatedness/covariance matrix `K = …`"))
+
+    rhs = Dict(f.forms)
+    # `relmat(0 + x | g)` is a slope-only coefficient: the SD formula models the
+    # SD of the coefficient multiplying `x`, exactly as for the animal route.
+    fixed_mu, re, metav, structured, _, _, relmat_slope =
+        _split_ranef(rhs[:mu]; allow_relmat_slope = true)
+    metav === nothing || throw(ArgumentError("Poisson relmat SD regression cannot use meta_V()."))
+    structured !== nothing && first(structured) === :relmat || throw(ArgumentError(
+        "Poisson `sd($(descriptor.group), relmat)` requires `relmat(1 | $(descriptor.group))` " *
+        "or the slope-only `relmat(0 + x | $(descriptor.group))`."))
+    isempty(re) || throw(ArgumentError(
+        "Poisson relmat SD regression currently requires one structured coefficient without additional random effects."))
+    expected_member = relmat_slope === nothing ? :intercept : relmat_slope
+    descriptor.member in (nothing, expected_member) || throw(ArgumentError(
+        "Poisson relmat SD target does not match fitted coefficient `$(expected_member)`."))
+    last(structured) === descriptor.group || throw(ArgumentError(
+        "Poisson relmat SD target must match the group in `relmat(1 | $(last(structured)))`."))
+    (haskey(rhs, :zi) || haskey(rhs, :hu)) && throw(ArgumentError(
+        "Poisson relmat SD regression cannot yet be combined with `zi` or `hu`."))
+    fixed_mu, offset_term = _extract_offset(fixed_mu)
+    for (pname, form) in f.forms
+        (pname === :mu || pname === target.key) && continue
+        pname === :sigma && form === ConstantTerm(1) && continue
+        throw(ArgumentError(
+            "Poisson relmat SD regression supports only `mu` and one related-matrix SD formula."))
+    end
+    all(_formula_response_observed_mask(f, data)) || throw(ArgumentError(
+        "Poisson relmat SD regression requires observed responses; remove incomplete rows before fitting."))
+
+    y, Xmu, nmmu = _design(f.response, fixed_mu, data)
+    off = _poisson_sd_offset(offset_term, data, length(y))
+    all(yi -> yi >= 0 && isinteger(yi), y) || throw(ArgumentError(
+        "Poisson() requires non-negative integer counts as the response"))
+    group = descriptor.group
+    labels = getproperty(data, group)
+    Q, gidx = _general_cov_setup(K, labels)
+    G = size(Q, 1)
+    Zg, nmsd = _sd_group_design(f.response, target.rhs, data, gidx, G, group;
+        schema_cache = f.schema_cache, schema_key = target.key)
+    size(Zg, 2) <= G && rank(Zg) == size(Zg, 2) || throw(ArgumentError(
+        "Poisson relmat SD target has a rank-deficient group-level design."))
+    Zobs = Zg[gidx, :]
+    loading = relmat_slope === nothing ? ones(Float64, length(y)) :
+        _poisson_animal_slope_loading(data, relmat_slope, length(y); label = "relmat")
+    fit = _fit_poisson_covariance_sd_laplace(
+        fam, y, Xmu, Zobs, Zg, gidx, Q, nmmu, nmsd, group, g_tol;
+        se, weight = loading, offset = off,
+        context = "sparse-Laplace Poisson relmat SD regression")
+    return _withformula(fit, f)
+end
+
+function _drm_poisson_animal_sd_regression(f::DrmFormula, fam::Poisson; data,
+                                           tree = nothing, K = nothing, A = nothing,
+                                           Ainv = nothing, coords = nothing,
+                                           g_tol::Real = 1e-8,
+                                           se::Bool = true)
+    targets = _sd_target_parts(f)
+    length(targets) == 1 || throw(ArgumentError(
+        "Poisson animal SD regression requires exactly one random-effect SD formula."))
+    target = only(targets)
+    descriptor = target.target
+    (descriptor.level === :animal && descriptor.dpar === :mu &&
+     descriptor.block === nothing) ||
+        throw(ArgumentError(
+            "Poisson animal SD regression targets one structured mean coefficient."))
+    tree === nothing && K === nothing && coords === nothing || throw(ArgumentError(
+        "Poisson animal SD regression uses `A = …` or `Ainv = …`; do not also supply `tree`, `K`, or `coords`."))
+    (A === nothing) == (Ainv === nothing) && throw(ArgumentError(
+        "Poisson animal SD regression requires exactly one of `A = …` or `Ainv = …`."))
+
+    rhs = Dict(f.forms)
+    fixed_mu, re, metav, structured, _, _, animal_slope =
+        _split_ranef(rhs[:mu]; allow_animal_slope = true)
+    metav === nothing || throw(ArgumentError("Poisson animal SD regression cannot use meta_V()."))
+    structured !== nothing && first(structured) === :animal || throw(ArgumentError(
+        "Poisson `sd($(descriptor.group), animal)` requires an animal random effect for `$(descriptor.group)`."))
+    isempty(re) || throw(ArgumentError(
+        "Poisson animal SD regression currently requires one structured coefficient without additional random effects."))
+    expected_member = animal_slope === nothing ? :intercept : animal_slope
+    descriptor.member in (nothing, expected_member) || throw(ArgumentError(
+        "Poisson animal SD target does not match fitted coefficient `$(expected_member)`."))
+    last(structured) === descriptor.group || throw(ArgumentError(
+        "Poisson animal SD target must match the group in `animal(... | $(last(structured)))`."))
+    (haskey(rhs, :zi) || haskey(rhs, :hu)) && throw(ArgumentError(
+        "Poisson animal SD regression cannot yet be combined with `zi` or `hu`."))
+    fixed_mu, offset_term = _extract_offset(fixed_mu)
+    for (pname, form) in f.forms
+        (pname === :mu || pname === target.key) && continue
+        pname === :sigma && form === ConstantTerm(1) && continue
+        throw(ArgumentError(
+            "Poisson animal SD regression supports only `mu` and one animal SD formula."))
+    end
+    all(_formula_response_observed_mask(f, data)) || throw(ArgumentError(
+        "Poisson animal SD regression requires observed responses; remove incomplete rows before fitting."))
+
+    y, Xmu, nmmu = _design(f.response, fixed_mu, data)
+    off = _poisson_sd_offset(offset_term, data, length(y))
+    all(yi -> yi >= 0 && isinteger(yi), y) || throw(ArgumentError(
+        "Poisson() requires non-negative integer counts as the response"))
+    group = descriptor.group
+    labels = getproperty(data, group)
+    Q, gidx = Ainv === nothing ? _general_cov_setup(A, labels; normalize = false) :
+        _poisson_animal_precision_setup(Ainv, labels, group)
+    G = size(Q, 1)
+    Zg, nmsd = _sd_group_design(f.response, target.rhs, data, gidx, G, group;
+        schema_cache = f.schema_cache, schema_key = target.key)
+    size(Zg, 2) <= G && rank(Zg) == size(Zg, 2) || throw(ArgumentError(
+        "Poisson animal SD target has a rank-deficient group-level design."))
+    Zobs = Zg[gidx, :]
+    loading = animal_slope === nothing ? ones(Float64, length(y)) :
+        _poisson_animal_slope_loading(data, animal_slope, length(y))
+    fit = _fit_poisson_covariance_sd_laplace(
+        fam, y, Xmu, Zobs, Zg, gidx, Q, nmmu, nmsd, group, g_tol;
+        se, weight = loading, offset = off,
+        context = "sparse-Laplace Poisson animal SD regression")
+    return _withformula(fit, f)
+end
+
+function _poisson_animal_precision_setup(Ainv::AbstractMatrix, labels, group::Symbol)
+    gidx, G = _group_index(labels)
+    size(Ainv, 1) == size(Ainv, 2) == G || throw(ArgumentError(
+        "animal `Ainv` must be a $(G)×$(G) precision matrix ordered by the first-seen levels of `$(group)`."))
+    Q = sparse(Float64.(Ainv))
+    all(isfinite, nonzeros(Q)) || throw(ArgumentError(
+        "animal `Ainv` must contain only finite values."))
+    asymmetry = norm(Q - transpose(Q), Inf)
+    scale = max(norm(Q, Inf), 1.0)
+    asymmetry <= 1e-10 * scale || throw(ArgumentError(
+        "animal `Ainv` must be symmetric."))
+    Q = sparse(Symmetric((Q + transpose(Q)) / 2))
+    qchol = cholesky(Symmetric(Q); check = false)
+    issuccess(qchol) || throw(ArgumentError(
+        "animal `Ainv` must be positive definite."))
+    return Q, gidx
+end
+
+function _drm_poisson_phylo_sd_regression(f::DrmFormula, fam::Poisson; data,
+                                          tree, K = nothing, A = nothing,
+                                          coords = nothing, g_tol::Real = 1e-8,
+                                          se::Bool = true)
+    (K === nothing && A === nothing && coords === nothing) || throw(ArgumentError(
+        "Poisson phylogenetic SD regression takes its covariance from `tree`; do not also supply `K`, `A`, or `coords`."))
+    sdpp = _sdphylo_parts(f)
+    length(sdpp) == 1 || throw(ArgumentError(
+        "Poisson phylogenetic SD regression requires exactly one `sd(group, phylogenetic) ~ …` formula."))
+    isempty(_sd_parts(f)) || throw(ArgumentError(
+        "Poisson phylogenetic SD regression cannot yet be combined with ordinary `sd(group)` formulas."))
+    sgrp, srhs = only(sdpp)
+    rhs = Dict(f.forms)
+    fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
+    mv === nothing || throw(ArgumentError("Poisson phylogenetic SD regression cannot use meta_V()."))
+    st !== nothing && first(st) === :phylo || throw(ArgumentError(
+        "Poisson `sd($sgrp, phylogenetic)` requires `phylo(1 | $sgrp)` in the location formula."))
+    tree === nothing && throw(ArgumentError("phylo(1 | $sgrp) needs `tree = …`"))
+    isempty(re) || throw(ArgumentError(
+        "Poisson `sd($sgrp, phylogenetic)` currently requires a phylogenetic random intercept without additional random effects."))
+    last(st) === sgrp || throw(ArgumentError(
+        "Poisson `sd($sgrp, phylogenetic)` must name the group in `phylo(1 | $(last(st)))`."))
+    (haskey(rhs, :zi) || haskey(rhs, :hu)) && throw(ArgumentError(
+        "Poisson phylogenetic SD regression cannot yet be combined with `zi` or `hu`."))
+    fixed_mu, offset_term = _extract_offset(fixed_mu)
+    for (pname, r) in f.forms
+        (pname === :mu || pname === Symbol("sdphy_", sgrp)) && continue
+        pname === :sigma && r === ConstantTerm(1) && continue
+        throw(ArgumentError(
+            "Poisson phylogenetic SD regression supports only `mu` and one phylogenetic SD formula."))
+    end
+    all(_formula_response_observed_mask(f, data)) || throw(ArgumentError(
+        "Poisson phylogenetic SD regression requires observed responses; remove incomplete rows before fitting."))
+
+    y, Xmu, nmmu = _design(f.response, fixed_mu, data)
+    off = _poisson_sd_offset(offset_term, data, length(y))
+    all(yi -> yi >= 0 && isinteger(yi), y) || throw(ArgumentError(
+        "Poisson() requires non-negative integer counts as the response"))
+    labels = getproperty(data, sgrp)
+    _, tip_index, G = _lss_phylo_group_index(tree, labels, sgrp)
+    group_index, Gdata = _group_index(labels)
+    Gdata == G || error("phylogenetic group indexing changed unexpectedly")
+    Zg, nmsd = _sd_group_design(f.response, srhs, data, group_index, Gdata, sgrp;
+                                schema_cache = f.schema_cache,
+                                schema_key = :sd_phylo)
+    tip_group = zeros(Int, G)
+    @inbounds for i in eachindex(tip_index)
+        ti, gi = tip_index[i], group_index[i]
+        tip_group[ti] == 0 || tip_group[ti] == gi || throw(ArgumentError(
+            "Poisson phylogenetic SD predictors must be constant within each tree tip."))
+        tip_group[ti] = gi
+    end
+    all(!iszero, tip_group) || throw(ArgumentError(
+        "Poisson phylogenetic SD regression requires SD predictors for every tree tip."))
+    Ztip = Matrix{Float64}(Zg[tip_group, :])
+    Zobs = Ztip[tip_index, :]
+    return _withformula(_fit_poisson_phylo_sd_laplace(
+        fam, y, Xmu, Zobs, labels, tree, nmmu, nmsd, sgrp, g_tol;
+        se, offset = off), f)
+end
+
+function _poisson_sd_offset(offset_term, data, n::Int)
+    off = offset_term === nothing ? zeros(Float64, n) :
+          _offset_vector(offset_term, data)
+    length(off) == n || throw(ArgumentError(
+        "Poisson `offset(...)` must have one value per observation."))
+    return off
+end
+
+function _poisson_phylo_sd_mode(y, Xmu, Zobs, leaf_node, Q, beta, alpha;
+                                offset = zeros(length(y)),
+                                weight = ones(length(y)),
+                                b0 = nothing, maxiter::Int = 60,
+                                tol::Real = 1e-10)
+    q = size(Q, 1)
+    b = b0 === nothing ? zeros(q) : copy(b0)
+    length(offset) == length(y) || throw(ArgumentError(
+        "Poisson `offset(...)` must have one value per observation."))
+    eta0 = Xmu * beta .+ offset
+    length(weight) == length(y) || throw(ArgumentError(
+        "Poisson structured random-effect loading must have one value per response."))
+    all(isfinite, weight) || throw(ArgumentError(
+        "Poisson structured random-effect loading must contain only finite values."))
+    loading = Float64.(weight) .* exp.(Zobs * alpha)
+    all(isfinite, loading) || return b, nothing, false
+    function joint(bb)
+        total = 0.5 * dot(bb, Q * bb)
+        @inbounds for i in eachindex(eta0)
+            eta = eta0[i] + loading[i] * bb[leaf_node[i]]
+            total += exp(eta) - y[i] * eta + _logfactorial(round(Int, y[i]))
+        end
+        total
+    end
+    for _ in 1:maxiter
+        grad = Q * b
+        diagH = zeros(Float64, q)
+        @inbounds for i in eachindex(eta0)
+            li = leaf_node[i]
+            eta = eta0[i] + loading[i] * b[li]
+            mu = exp(eta)
+            grad[li] += loading[i] * (mu - y[i])
+            diagH[li] += loading[i]^2 * mu
+        end
+        H = Q + spdiagm(0 => diagH)
+        ch = cholesky(Symmetric(H); check = false)
+        issuccess(ch) || return b, ch, false
+        step = ch \ grad
+        norm(step) <= tol * (1 + norm(b)) && return b, ch, true
+        if norm(step) <= 1e-3 * (1 + norm(b))
+            b .-= step
+            continue
+        end
+        f0 = joint(b)
+        a = 1.0
+        accepted = false
+        while a >= 1e-5
+            trial = b .- a .* step
+            if joint(trial) <= f0
+                b = trial
+                accepted = true
+                break
+            end
+            a *= 0.5
+        end
+        accepted || return b, ch, false
+    end
+    return b, nothing, false
+end
+
+function _poisson_phylo_sd_laplace(y, Xmu, Zobs, leaf_node, Q, logdetQ,
+                                   theta; offset = zeros(length(y)),
+                                   weight = ones(length(y)), b0 = nothing)
+    pmu = size(Xmu, 2)
+    beta = @view theta[1:pmu]
+    alpha = @view theta[pmu+1:end]
+    b, ch, ok = _poisson_phylo_sd_mode(y, Xmu, Zobs, leaf_node, Q,
+                                        beta, alpha; offset, weight, b0 = b0)
+    ok || return 1e18, b, false
+    length(weight) == length(y) || throw(ArgumentError(
+        "Poisson structured random-effect loading must have one value per response."))
+    all(isfinite, weight) || throw(ArgumentError(
+        "Poisson structured random-effect loading must contain only finite values."))
+    loading = Float64.(weight) .* exp.(Zobs * alpha)
+    length(offset) == length(y) || throw(ArgumentError(
+        "Poisson `offset(...)` must have one value per observation."))
+    eta0 = Xmu * beta .+ offset
+    total = 0.5 * dot(b, Q * b)
+    @inbounds for i in eachindex(y)
+        eta = eta0[i] + loading[i] * b[leaf_node[i]]
+        total += exp(eta) - y[i] * eta + _logfactorial(round(Int, y[i]))
+    end
+    return total - 0.5 * logdetQ + 0.5 * logdet(ch), b, true
+end
+
+function _fit_poisson_phylo_sd_laplace(fam, y, Xmu, Zobs, labels, tree,
+                                       nmmu, nmsd, grp, g_tol;
+                                       se::Bool = true, maxiter::Int = 250,
+                                       offset = zeros(length(y)))
+    Q, leaf_node, _ = _poisson_phylo_setup(tree, labels)
+    size(Zobs, 1) == length(y) || throw(ArgumentError(
+        "phylogenetic SD design must have one row per response"))
+    size(Zobs, 2) == length(nmsd) || throw(ArgumentError(
+        "phylogenetic SD names do not match its design"))
+    qchol = cholesky(Symmetric(Q); check = false)
+    issuccess(qchol) || error(
+        "phylo(1 | $grp) tree precision is not positive definite after root conditioning")
+    logdetQ = logdet(qchol)
+    tip_index = _lss_phylo_group_index(tree, labels, grp)[2]
+    return _fit_poisson_structured_sd_laplace(
+        fam, y, Xmu, Zobs, leaf_node, Q, logdetQ, nmmu, nmsd, grp, g_tol;
+        se, maxiter, sd_block = :sd_phylo, scale_key = :sd_phylo,
+        extra_scales = Dict(:tree_tip_index => Float64.(tip_index)),
+        offset,
+        context = "sparse-Laplace Poisson phylogenetic SD regression")
+end
+
+function _fit_poisson_covariance_sd_laplace(fam, y, Xmu, Zobs, Zg, gidx, Q,
+                                            nmmu, nmsd, grp, g_tol;
+                                            se::Bool = true, maxiter::Int = 250,
+                                            weight = ones(length(y)),
+                                            offset = zeros(length(y)),
+                                            context::String)
+    qchol = cholesky(Symmetric(Q); check = false)
+    issuccess(qchol) || throw(ArgumentError(
+        "relmat(1 | $grp) covariance must be positive definite"))
+    return _fit_poisson_structured_sd_laplace(
+        fam, y, Xmu, Zobs, gidx, Q, logdet(qchol), nmmu, nmsd, grp, g_tol;
+        se, maxiter, sd_block = :sd, scale_key = :sd,
+        group_design = Zg, group_index = gidx,
+        weight, offset,
+        context)
+end
+
+function _fit_poisson_structured_sd_laplace(fam, y, Xmu, Zobs, leaf_node, Q,
+                                            logdetQ, nmmu, nmsd, grp, g_tol;
+                                            se::Bool, maxiter::Int,
+                                            sd_block::Symbol, scale_key::Symbol,
+                                            group_design = nothing,
+                                            group_index = nothing,
+                                            extra_scales = Dict{Symbol,Vector{Float64}}(),
+                                            weight = ones(length(y)),
+                                            offset = zeros(length(y)),
+                                            report_scale::Bool = true,
+                                            context::String)
+    n = length(y)
+    length(offset) == n || throw(ArgumentError(
+        "Poisson `offset(...)` must have one value per observation."))
+    off = Float64.(offset)
+    pmu, psd = size(Xmu, 2), size(Zobs, 2)
+    last_b = zeros(size(Q, 1))
+    function nll(theta)
+        value, b, ok = _poisson_phylo_sd_laplace(
+            y, Xmu, Zobs, leaf_node, Q, logdetQ, theta;
+            offset = off, weight, b0 = last_b)
+        if !ok
+            value, b, ok = _poisson_phylo_sd_laplace(
+                y, Xmu, Zobs, leaf_node, Q, logdetQ, theta;
+                offset = off, weight, b0 = zeros(length(last_b)))
+        end
+        ok || return 1e18
+        last_b .= b
+        return value
+    end
+    function grad!(g, theta)
+        for j in eachindex(theta)
+            h = 2e-4 * (1 + abs(theta[j]))
+            e = zeros(length(theta)); e[j] = h
+            g[j] = (nll(theta .+ e) - nll(theta .- e)) / (2h)
+        end
+        return g
+    end
+    theta0 = zeros(pmu + psd)
+    theta0[1:pmu] .= _poisson_fixed_start(y, Xmu)
+    theta0[pmu+1] = log(0.4)
+    od = Optim.OnceDifferentiable(nll, grad!, theta0)
+    res = Optim.optimize(od, theta0,
+        Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking()),
+        Optim.Options(g_tol = g_tol, iterations = maxiter))
+    theta_hat = Optim.minimizer(res)
+    value = nll(theta_hat)
+    gfinal = zeros(length(theta_hat)); grad!(gfinal, theta_hat)
+    converged = _laplace_outer_converged(res, value, gfinal, theta_hat, n, g_tol)
+    V = se ? _vcov_from_fd_hessian(
+        _finite_hessian(nll, theta_hat; h = _fd_hessian_step(n));
+        context = context) :
+        fill(NaN, length(theta_hat), length(theta_hat))
+    blocks = Pair{Symbol,UnitRange{Int}}[
+        :mu => (1:pmu), sd_block => (pmu+1:pmu+psd)]
+    names = Pair{Symbol,Vector{String}}[
+        :mu => nmmu, sd_block => nmsd]
+    means = Dict(:mu => exp.(Xmu * theta_hat[1:pmu] .+ off))
+    obs = Dict(:mu => Vector{Float64}(y))
+    sdobs = exp.(Zobs * theta_hat[pmu+1:end])
+    scales = Dict{Symbol,Vector{Float64}}()
+    report_scale && (scales[scale_key] = sdobs)
+    if group_design !== nothing
+        group_index === nothing && throw(ArgumentError(
+            "structured SD group indices are required with a group-level design"))
+        sdgroup = exp.(group_design * theta_hat[pmu+1:end])
+        scales[:sd_group] = sdgroup
+        scales[:sd] = sdgroup[group_index]
+        scales[:sd_group_index] = Float64.(group_index)
+    end
+    merge!(scales, extra_scales)
+    fit = DrmFit(fam, blocks, names, theta_hat, Matrix(V), -value, n,
+                 converged, means, obs, scales)
+    return _withiterations(_withnll(fit, nll), Optim.iterations(res))
+end
+
+function _poisson_animal_slope_loading(data, slope::Symbol, n::Int;
+                                       label::AbstractString = "animal")
+    hasproperty(data, slope) || throw(ArgumentError(
+        "Poisson $label random-slope predictor `$slope` is absent from data."))
+    raw = getproperty(data, slope)
+    raw isa AbstractVector{<:Real} && length(raw) == n && all(isfinite, raw) ||
+        throw(ArgumentError(
+            "Poisson $label random-slope predictor `$slope` must be finite numeric values, one per response."))
+    loading = Float64.(raw)
+    any(!iszero, loading) || throw(ArgumentError(
+        "Poisson $label random-slope predictor `$slope` is zero for every observation, so its SD is not identifiable."))
+    return loading
+end
+
+function _fit_poisson_animal_slope_laplace(fam::Poisson, y, Xmu, weight, C,
+                                            labels, nmmu, grp, g_tol;
+                                            se::Bool = true, reml::Bool = false,
+                                            normalize::Bool = true)
+    reml && _reject_reml_route(fam, "an animal random slope `(0 + x | group)`")
+    Q, gidx = _general_cov_setup(C, labels; normalize)
+    qchol = cholesky(Symmetric(Q); check = false)
+    issuccess(qchol) || throw(ArgumentError(
+        "animal(0 + x | $grp) covariance must be positive definite"))
+    return _fit_poisson_structured_sd_laplace(
+        fam, y, Xmu, ones(Float64, length(y), 1), gidx, Q, logdet(qchol),
+        nmmu, [String(grp)], grp, g_tol; se, maxiter = 250,
+        sd_block = :resd, scale_key = :resd, weight,
+        report_scale = false,
+        context = "sparse-Laplace Poisson animal random-slope fit")
+end
+
+function _fit_poisson_sd_regression(fam::Poisson, y, Xmu, Zg, gidx, G,
+                                     nmmu, nmsd, grp, g_tol; nAGQ::Int = 5,
+                                     se::Bool = true,
+                                     w::AbstractVector{<:Real} = ones(length(y)),
+                                     offset::AbstractVector{<:Real} = zeros(length(y)))
+    nAGQ >= 1 || throw(ArgumentError("nAGQ must be ≥ 1; got $nAGQ"))
+    n = length(y); pmu = size(Xmu, 2); psd = size(Zg, 2)
+    members = [Int[] for _ in 1:G]
+    for i in 1:n
+        push!(members[gidx[i]], i)
+    end
+    lf = [_logfactorial(round(Int, yi)) for yi in y]
+    rule = _AGHQRule(1, nAGQ)
+    length(w) == n || throw(ArgumentError(
+        "Poisson random-effect loading must have one value per observation."))
+    length(offset) == n || throw(ArgumentError(
+        "Poisson offset must have one value per observation."))
+    Zre = reshape(Float64.(w), n, 1)
+    off = Float64.(offset)
+    bcache = zeros(1, G)
+    function nll(theta)
+        beta = @view theta[1:pmu]
+        alpha = @view theta[(pmu+1):(pmu+psd)]
+        eta0 = Xmu * beta .+ off
+        sdgroup = exp.(Zg * alpha)
+        ll = (i, eta) -> begin
+            etac = clamp(eta, -30.0, 30.0)
+            y[i] * etac - exp(etac) - lf[i]
+        end
+        total = zero(eltype(theta))
+        for gi in 1:G
+            Lg = reshape([sdgroup[gi]], 1, 1)
+            value, bhat = _aghq_group_logint(ll, members[gi], eta0, Zre, Lg,
+                                               rule, @view(bcache[:, gi]))
+            bcache[1, gi] = isfinite(bhat[1]) ? bhat[1] : 0.0
+            total += value
+        end
+        return -total
+    end
+    theta0 = zeros(pmu + psd)
+    theta0[1] = log(sum(y) / n + eps())
+    theta0[(pmu+1):end] .= Zg \ fill(log(0.5), G)
+    res = Optim.optimize(nll, theta0, Optim.LBFGS(),
+                         Optim.Options(g_tol = g_tol); autodiff = :forward)
+    thetahat = Optim.minimizer(res)
+    V = se ? _vcov_from_hessian(ForwardDiff.hessian(nll, thetahat)) :
+             fill(NaN, length(thetahat), length(thetahat))
+    blocks = [:mu => 1:pmu, :sd => (pmu+1):(pmu+psd)]
+    names = [:mu => nmmu, :sd => nmsd]
+    sdgroup = exp.(Zg * thetahat[(pmu+1):end])
+    means = Dict(:mu => exp.(Xmu * thetahat[1:pmu] .+ off))
+    obs = Dict(:mu => Vector{Float64}(y))
+    scales = Dict(:sd_group => sdgroup, :sd => sdgroup[gidx],
+                  :sd_group_index => Float64.(gidx),
+                  :aghq_nodes => [Float64(nAGQ)])
+    return _withiterations(
+        _withnll(DrmFit(fam, blocks, names, thetahat, V, -nll(thetahat), n,
+                        drm_optim_converged(res), means, obs, scales), nll),
+        Optim.iterations(res))
+end
+
+# Zero-inflated Poisson with a predictor-dependent SD on one ordinary mean
+# random intercept. The `zi` linear predictor is fixed-effect-only; for each
+# group, AGHQ integrates the product of the ZIP observation likelihoods over
+# b_g ~ Normal(0, exp(2 * (Zg * alpha)[g])).
+function _fit_poisson_zi_sd_regression(fam::Poisson, y, Xmu, Xzi, Zg, w,
+                                       gidx, G,
+                                       nmmu, nmzi, nmsd, grp, g_tol;
+                                       nAGQ::Int = 5, se::Bool = true)
+    nAGQ >= 1 || throw(ArgumentError("nAGQ must be ≥ 1; got $nAGQ"))
+    n = length(y); pmu = size(Xmu, 2); pzi = size(Xzi, 2); psd = size(Zg, 2)
+    members = [Int[] for _ in 1:G]
+    for i in 1:n
+        push!(members[gidx[i]], i)
+    end
+    lf = [_logfactorial(round(Int, yi)) for yi in y]
+    iszero_y = y .== 0
+    rule = _AGHQRule(1, nAGQ)
+    length(w) == n || throw(ArgumentError(
+        "Poisson ZIP random-effect loading must have one value per observation."))
+    all(isfinite, w) || throw(ArgumentError(
+        "Poisson ZIP random-effect loading must contain finite values."))
+    Zre = reshape(Float64.(w), n, 1)
+    bcache = zeros(1, G)
+    function nll(theta)
+        beta_mu = @view theta[1:pmu]
+        beta_zi = @view theta[(pmu+1):(pmu+pzi)]
+        alpha = @view theta[(pmu+pzi+1):(pmu+pzi+psd)]
+        eta_mu = Xmu * beta_mu
+        eta_zi = clamp.(Xzi * beta_zi, -30.0, 30.0)
+        sd_group = exp.(Zg * alpha)
+        ll = (i, eta) -> begin
+            eta_clamped = clamp(eta, -30.0, 30.0)
+            lambda = exp(eta_clamped)
+            log_pi = _log_logistic(eta_zi[i])
+            log_one_minus_pi = _log1m_logistic(eta_zi[i])
+            if iszero_y[i]
+                _logaddexp(log_pi, log_one_minus_pi - lambda)
+            else
+                log_one_minus_pi + y[i] * eta_clamped - lambda - lf[i]
+            end
+        end
+        total = zero(eltype(theta))
+        for gi in 1:G
+            Lg = reshape([sd_group[gi]], 1, 1)
+            value, bhat = _aghq_group_logint(ll, members[gi], eta_mu, Zre, Lg,
+                                               rule, @view(bcache[:, gi]))
+            bcache[1, gi] = isfinite(bhat[1]) ? bhat[1] : 0.0
+            total += value
+        end
+        return -total
+    end
+    theta0 = zeros(pmu + pzi + psd)
+    theta0[1] = log(sum(y) / n + eps())
+    theta0[pmu+1] = -1.5
+    theta0[(pmu+pzi+1):end] .= Zg \ fill(log(0.5), G)
+    res = Optim.optimize(nll, theta0, Optim.LBFGS(),
+                         Optim.Options(g_tol = g_tol); autodiff = :forward)
+    theta_hat = Optim.minimizer(res)
+    V = se ? _vcov_from_hessian(ForwardDiff.hessian(nll, theta_hat)) :
+             fill(NaN, length(theta_hat), length(theta_hat))
+    sd_range = (pmu+pzi+1):(pmu+pzi+psd)
+    blocks = [:mu => 1:pmu, :zi => (pmu+1):(pmu+pzi), :sd => sd_range]
+    names = [:mu => nmmu, :zi => nmzi, :sd => nmsd]
+    sd_group = exp.(Zg * theta_hat[sd_range])
+    means = Dict(:mu => exp.(Xmu * theta_hat[1:pmu]))
+    obs = Dict(:mu => Vector{Float64}(y))
+    scales = Dict(:zi => _logistic.(Xzi * theta_hat[(pmu+1):(pmu+pzi)]),
+                  :sd_group => sd_group, :sd => sd_group[gidx],
+                  :sd_group_index => Float64.(gidx),
+                  :aghq_nodes => [Float64(nAGQ)])
+    return _withiterations(
+        _withnll(DrmFit(fam, blocks, names, theta_hat, V, -nll(theta_hat), n,
+                        drm_optim_converged(res), means, obs, scales), nll),
+        Optim.iterations(res))
 end
 
 # Resolve a structured marker (relmat/animal/spatial) for a count family to its
