@@ -388,3 +388,9 @@ I attempted to send each owner the exact test-log comparison and correction requ
 ### #1658 dependency and #1529 status at 16:55 UTC
 
 PR #1658's merge plan explicitly requires #1529 to merge first. Current metadata for #1529 reports it open, non-draft, and non-mergeable at head `bde443a14652323f269c0f6e75ee62f879e2b7db` on base `e17921e9b65bd418405107ed3b7954dedb0d88ac`, with six commits and 29 changed files. The review list is empty, and exact-head check diagnostics return no checks or statuses. Its PR description contains both a current rebase note and an older stacked-on-#1504 narrative; that body inconsistency remains owner-held. Thus #1658's platform checks, even if they pass, do not make it integration-ready until #1529 is resolved and the dependency order is reconciled. No branch or PR was changed.
+
+### Running-check refresh and Julia #1237 base drift at 17:00 UTC
+
+The exact heads did not move. On #1663 run `41479348968`, source-tree and OS-matrix jobs pass; Ubuntu shards 2/4 and 3/4 are running while 1/4 and 4/4 are queued. On #1657 run `41475132021`, Ubuntu and Windows remain in progress while the known macOS temporal OU test failure remains. On #1658 run `41475124244`, all three platform jobs remain in progress. On #1659 run `41475116703`, Ubuntu has passed, Windows remains in progress, and macOS has the same inherited temporal OU failure described above.
+
+Julia main is now `87a8ed4e57a9f5a4b61ca66673ca02d48515b8ee`, while #1237 still targets base `64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716`. Its failed J3a test file is byte-identical on the PR head and current main, but the PR branch predates eight later merges. I found no current-main package-test run; the listed main-branch Actions runs are TagBot jobs. Therefore the two #1237 failures cannot yet be labelled either current-main baseline failures or PR-caused regressions. An owner rebase and exact-head rerun is needed before attribution. No Julia branch or fixture was changed.
