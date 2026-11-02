@@ -1,18 +1,18 @@
 {
   "assessment_performed": true,
-  "draft_sha256": "ebf3dd2c7b4bd69190b7a01176b75d2bdc7b2153d2f961290b4d9f38a2c8917e",
-  "draft_version": "v2",
+  "draft_sha256": "6492845b012d067ef28dce8e4fa1495e2501d0b9180dc69818c770744bcd2361",
+  "draft_version": "v4",
   "requested_mode": "independent",
   "assessor_type": "self",
   "reviewer": "Codex self-review",
-  "method": "Manual review under writing-naturalness.md, checked against live GitHub PR metadata and workflow-job records plus the local branch state, then absolute-path slop_check.py and check-after-task.R.",
+  "method": "Manual review under writing-naturalness.md, checked against live GitHub PR metadata and job logs, bounded read-only worktree inventories, and the local branch state, then absolute-path slop_check.py and check-after-task.R.",
   "genre": "technical after-task report",
-  "coverage": "Whole report, sections 1 through 12, including the live PR and CI refresh added at 2026-11-02 09:36 UTC.",
+  "coverage": "Whole report, sections 1 through 12, including the live PR and CI refreshes and R and Julia worktree inventories through 2026-11-02 09:46 UTC.",
   "score": 2,
   "style_status": "scored",
   "score_reason": "The report uses exact files, SHAs, run IDs, and explicit limits. Some technical sentences are dense, but the PR status is separated into short bullets.",
   "confidence": "medium",
-  "confidence_reason": "The new PR status statements were checked against current PR metadata and workflow-job records. One Julia shard remains in progress at the stated observation time. The style judgment is a self-review and is not calibrated.",
+  "confidence_reason": "PR heads, review states, workflow jobs, failure excerpts, and worktree counts were checked against live connector records and bounded read-only inventories. The R scan covered open-PR branches; the Julia scan covered registered worktrees but included unreadable entries. Julia shard 2 remains in progress at the stated observation time. The style judgment is a self-review and is not calibrated.",
   "examples": [
     {
       "location": "Known Residuals, first paragraph",
@@ -29,13 +29,29 @@
       "repair": "no change needed",
       "line": 73,
       "quote": "There is no formal review."
+    },
+    {
+      "location": "Known Residuals, R worktree and CI refresh, #1663 CI bullet",
+      "cue": "The bullet identifies the failed source checks and explicitly withholds receipt recertification.",
+      "impact": "Readers can distinguish a detected fingerprint change from evidence that the behavior remains compatible.",
+      "repair": "no change needed",
+      "line": 84,
+      "quote": "No recertification is claimed."
+    },
+    {
+      "location": "Known Residuals, Julia worktree inventory",
+      "cue": "The inventory makes clear that missing worktree records did not lead to pruning.",
+      "impact": "Readers can separate measured status from any assumption that old paths are abandoned.",
+      "repair": "no change needed",
+      "line": 90,
+      "quote": "No worktree was pruned."
     }
   ],
   "evidence_none_reason": null,
   "science_gate": "not_applicable",
   "science_gate_reason": "This report records a documentation reconciliation, not a new scientific result.",
   "facts_gate": "pass",
-  "facts_gate_reason": "The new PR head, base, review state, and individual workflow-job states were compared with current GitHub connector records at the stated UTC time.",
+  "facts_gate_reason": "The PR heads, review states, workflow-job states, failure excerpts, and bounded R and Julia worktree counts were compared with live connector and local inventory results at the stated UTC time.",
   "references_gate": "pass",
   "references_gate_reason": "Local source/test files and cited PR/workflow records were checked; unresolved historical capability citations are stated as a residual.",
   "date": "2026-11-02",

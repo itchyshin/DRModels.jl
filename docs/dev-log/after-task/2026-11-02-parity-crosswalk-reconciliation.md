@@ -74,6 +74,25 @@ GitHub metadata and workflow records were checked again through the GitHub conne
 - drmTMB #1662 remains open and non-draft at `01a2c2a49a1450cc79e9d35a138028ec1a27c720`. Exact-head R-CMD-check run `41350326046` passed all six jobs. GitHub records no formal review. The run is not a full macOS R CMD check, and the PR was not merged.
 - This crosswalk branch remains pushed at `7d059263d776ffa9d5e1d99fb94d6f29ffa21875` with no PR. Its `docs/design/capability-status.md` still overlaps #1245, so it remains untouched pending owner reconciliation. The refresh changed only this after-task report; no source, capability page, PR, or other lane was modified.
 
+### R worktree and CI refresh at 2026-11-02 09:42 UTC
+
+A read-only inventory matched current open drmTMB PR branches against registered worktrees and their exact GitHub heads. It found 95 registered worktrees overall; seven worktrees correspond to current open PR branches, and two are dirty. The scan covered current PR branches; it provides no status results for all 95 worktrees.
+
+- **#1662** is the only clean, exact-head worktree in this subset: `/Users/z3437171/.codex/worktrees/drmtmb-temporal-ou-cmdcheck-20261101/drmTMB`, head `01a2c2a49a1450cc79e9d35a138028ec1a27c720`, with zero ahead/behind its upstream. Exact-head R-CMD-check passed all six jobs. The PR remains open with no formal review.
+- **#1663** is at its exact PR head `fe12743c8f03dc331304cc8bca97fcf68497e2c0`, but its worktree has 3 tracked changes and 52,477 untracked entries and is 30 commits ahead of `origin/main`. Preserve the active work. Workflow `41415406779` failed on merge commit `8eb9f448e45011cb41f62dc30fa95f8d2f674ab7`.
+- The #1663 source-tree test reported two failures in `test-reader-vignette-contracts.R:336-337`: the vignette manifest omits `predictor-dependent-random-sd.Rmd`, and the reader-contract linter returns two findings.
+- All four #1663 Ubuntu release shards stopped at the C14 receipt-equivalence check because the authenticated model-15 fingerprint changed from `4b0b3af78d4e0d7d4b63f3cb7fd0b216c0817b904bbe35aae133ba1e06b70a53` to `4f17edf7992a5fe96fb1cebcc2614519d9f2ffb344ffe5071eab48fbe002a8d7`. The workflow did not reach `R CMD check`; the runner says to rerun the committed model-15 compatibility runner and compare its measured output before updating the receipt. No recertification is claimed.
+- **#1655, #1651, and #1652** have registered worktrees that are behind their upstreams and do not match the current GitHub PR heads. **#1653** has no registered worktree; its local branch also differs from the PR head. **#1563 and #1612** are clean but hundreds of commits behind their upstreams and do not match their PR heads. Leave these with their owners. Of the 35 current open PR branch names, 28 have no registered worktree; 26 also have no matching local branch. No branch or PR was changed during this scan.
+- **#1245** was checked again at 09:42 UTC. Julia shard 2 remained in progress; shards 1, 3, and 4 and the changes job had passed, scaling was skipped, and Documenter had passed. Its body still contradicts the live head and run metadata. No formal review is recorded, and its registered worktree remains dirty. Keep its shared capability page untouched pending owner reconciliation.
+
+### Julia worktree inventory at 2026-11-02 09:46 UTC
+
+A read-only inventory counted 87 registered DRModels.jl worktrees: 75 readable and 12 missing or prunable. Among readable entries, 52 are dirty, 48 have no upstream, and 8 are ahead and 8 behind an upstream (4 are both). Lane preflight reports 33 live lanes. These counts include historical work and do not identify abandoned ownership. No worktree was pruned.
+
+- Current open PRs with exact-head registered worktrees are #1245 (dirty) and #1215 (clean, owned documentation work). #1091 has a matching local branch but no worktree. #1210 and #1074 have stale local worktrees relative to their PR heads. The other recent parity PR heads have no registered worktree at their exact head.
+- Other dirty work that must remain with its owners includes `known-covariance-parity` (10 tracked changes, 386 untracked files), `parity-provenance-docs` (19, 554), `drm-finish-crosswalk` (31 untracked files), and the nested `general-sd-julia` lane (12, 312). `sd-truncated-poisson-drmodels` has 3 tracked and 4 untracked changes and is 299 commits behind its upstream.
+- This cleanup branch is clean at `695bcc73a90c12bdc141eb3a3c6720027d909c52`, matches its remote at 0/0, and has no PR. It is the only clean contribution from this cleanup lane. The worktree audit found no clearly owner-free implementation slice; leave other lanes untouched until their owners release them.
+
 ## 11. Team Learning
 
 Memory receipt: relevant parity decision D-203 and the project route were checked. The route script produced no `LOAD-FIRST` manifest. Repository instructions and four page diffs were reviewed; other refs and worktrees were left untouched.
