@@ -64,3 +64,7 @@ Fetched diagnostics pinned to the same exact PR heads. DRModels.jl #1249 (`e01e0
 ## Targeted recheck, 2026-11-02 22:06 UTC
 
 Diagnostics were pinned to the same exact heads. #1249 remains unchanged with all four Julia shards running in `41519305510`. For #1657, run `41522911628` advanced: the OS matrix passed, and its Windows, macOS, Ubuntu, and source-tree jobs are now running. The earlier run `41518765724` still reports Ubuntu shard 2 in progress, with the other three shards and source-tree/OS checks successful. #1659 remains unchanged: Windows was cancelled and its base is stale. No merge action is supported by this status; no lane owner was contacted and no compute was started.
+
+## #1659 Windows job detail, 2026-11-02 22:08 UTC
+
+Fetched steps for job `125531174791` in run `41512891602`, pinned to head `e2d617b54b9a94b8b8e2758db9a6c80fa4bcab87`. The `Run r-lib/actions/check-r-package@v2` step finished successfully, and the returned step list shows setup, cleanup, and job completion steps as successful. The parent Windows job still has conclusion `cancelled`. Therefore the log supports a successful package-check step on this Windows runner, but the overall required job is not green. Keep #1659's Windows status as cancelled until a terminal successful job-level check appears.
