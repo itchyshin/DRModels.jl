@@ -266,7 +266,8 @@ function _drm_negbin2_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
         "NegBinomial2 SD regression currently targets one ordinary, animal or relmat mean random-effect coefficient."))
     rhs = Dict(f.forms)
     fixed_mu, re, mv, st, _, _, animal_slope = _split_ranef(
-        rhs[:mu]; allow_animal_slope = descriptor.level === :animal)
+        rhs[:mu]; allow_animal_slope = descriptor.level === :animal,
+        allow_relmat_slope = descriptor.level === :relmat)
     mv === nothing || throw(ArgumentError("NegBinomial2 `sd($sgrp)` cannot use meta_V()."))
     structured_animal = st !== nothing
     if structured_animal
@@ -379,7 +380,7 @@ function _drm_negbin2_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
         "NegBinomial2 `sd($grp)` group-level design is rank deficient; use predictors that vary independently across groups."))
     w = if structured_animal && slope !== nothing
         _poisson_animal_slope_loading(data, slope, length(y);
-                                      label = "NegBinomial2 animal")
+                                      label = "NegBinomial2 $kind")
     elseif structured_animal || kind === :intercept
         ones(length(y))
     else
@@ -396,7 +397,9 @@ function _drm_negbin2_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
         C = Ainv === nothing ? _poisson_structured_cov(kind, grp, K, A, coords) : nothing
         fit = _fit_nb2_animal_sd_laplace(fam, y, Xmu, Xsigma, Zg, gidx,
             C, getproperty(data, grp), nmmu, nmsigma, nmsd, grp, g_tol; se, Ainv,
-            normalize = kind !== :animal, weight = w)
+            # Animal A and slope-only relmat K enter RAW (native drmTMB does not
+            # rescale them); the relmat intercept route keeps its normalised K.
+            normalize = kind !== :animal && slope === nothing, weight = w)
     else
         fit = _fit_negbin2_sd_regression(fam, y, Xmu, Xsigma, Zg,
             gidx, G, nmmu, nmsigma, nmsd, grp, g_tol; K = nodes, se, w)
