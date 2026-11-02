@@ -285,9 +285,19 @@ No PR metadata, owner branch, review, or source file was changed. Before this re
 
 The current PR and lane inventories confirm that cleanup and broad parity remain separate tasks. The stored-fit comparisons do not establish current-source route parity, parameter recovery, or interval calibration. The CJS package split and its deferred interval-calibration work remain outside this DRM-core inventory.
 
+### Exact-head #1663 CI follow-up at 2026-11-02 15:14 UTC
+
+PR #1663 remains open at head `991aa6ab258794bf9000118c041d6f504f0f894a`; GitHub reports it mergeable, but no formal review is recorded. Run `41466710037` is for this exact head. The OS matrix passed. Source-tree job `125349408002` failed with 2 failures, 14 warnings, 6 skips, and 26,508 passes. Its two failures are in `tests/testthat/test-reader-vignette-contracts.R`: the immutable manifest does not include `predictor-dependent-random-sd.Rmd`, and `reader_contract_lint()` returns two findings. The available log does not identify those two findings individually.
+
+The four Ubuntu release shards had passed the generated-ledger, profile-fence, evidence-citation, and mock bridge steps. At the 15:14 UTC observation, shards 1, 3, and 4 were in `R CMD check`; shard 2 was still in the profile-fence step. Thus the full package checks had not reached a terminal result. This follow-up supersedes the earlier note that run `41466710037` was queued. It does not resolve the separate source-tree failure or establish broad R–Julia parity.
+
+The vignette manifest and reader-contract checks remain with the active SD lane owner. I did not edit the owner branch or this crosswalk during the earlier review because the report lease could not be confirmed in that session. The present refresh was made only after a fresh exact-path preflight and a live scoped lease. The Julia capability page remains under overlapping edits and is untouched.
+
+After the update, the close-out compiler and after-task structure check passed; the prose checker reported zero findings; the assessment JSON matched the report SHA-256; and `git diff --check` passed.
+
 ## 11. Team Learning
 
-Memory receipt: relevant parity decision D-203 and the project route were checked. The route script produced no `LOAD-FIRST` manifest. Repository instructions and four page diffs were reviewed; other refs and worktrees were left untouched.
+Memory receipt: relevant parity decision D-203 and the project route were checked. The route script produced no `LOAD-FIRST` manifest. Repository instructions and four page diffs were reviewed; other refs and worktrees were left untouched. A first lease claim hit a busy registry lock and was stopped without editing; a later scoped claim was confirmed live before this report refresh.
 
 Golden Set: not applicable to a documentation-only reconciliation.
 
