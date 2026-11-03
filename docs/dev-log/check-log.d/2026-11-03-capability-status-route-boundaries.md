@@ -1,0 +1,1 @@
+| 2026-11-03 | **Capability-status route boundaries** | `python3 tools/check_capability_citations.py`; `git diff --check` | Clarified that ordinary `:Laplace` differs from default `:LA`, and recorded matching tag/group/structure and iid `Q = I` limits for coupled NB2. No parity or calibration claim added. | Ada |

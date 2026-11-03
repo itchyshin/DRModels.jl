@@ -93,16 +93,22 @@ with one unstructured `(1 | g)` term on `mu`; scale families require
 `src/DRModels.jl`; `test/test_ordinary_laplace.jl` exercises the public route
 and its refusals and is picked up by the default test discovery. This row does
 not imply support for correlated slopes, structured effects, REML, or
-calibrated uncertainty.
+calibrated uncertainty. The opt-in `:Laplace` route is distinct from default
+`:LA`, which uses adaptive quadrature; they fit the same model with different
+approximations. The test compares the fitted objective with an independently
+calculated per-group Laplace objective. This does not establish general
+R–Julia parity or interval calibration.
 
 `Coupled NB2 ordinary location-scale random intercept` is `implemented` for
-the shared correlated `(1 | p | group)` term on both `mu` and `sigma`. The
-public NegBinomial2 method routes that formula through
-`src/locscale_frontend.jl` to the joint two-dimensional Laplace marginal;
+the same tagged `(1 | p | group)` term on both `mu` and `sigma`; the tag,
+group, and structure must match across the formulas. The public NegBinomial2
+method routes that formula through `src/locscale_frontend.jl` to the joint
+two-dimensional Laplace marginal for ordinary iid groups (`Q = I`);
 `test/test_locscale_frontend.jl` checks the public fit against the engine,
 including coefficients, covariance, standard errors, summary, and Wald
-interval output. This is the ordinary iid group route (`Q = I`), distinct
-from the structured phylogenetic location-scale row above.
+interval output. This is distinct from the structured phylogenetic
+location-scale row above. Those tests establish implementation behavior, not
+interval calibration or R–Julia parity.
 
 `Gaussian phylogenetic random intercept + slope, two SDs (mean)` is
 `implemented` (#620; was `refused` by #621 at the previous pin):
