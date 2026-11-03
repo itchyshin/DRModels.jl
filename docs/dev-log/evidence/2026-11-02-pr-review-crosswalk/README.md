@@ -688,3 +688,20 @@ hosts and returned no job rows; Killarney's login lacked `squeue` and `sacct`,
 so its queue status is unknown. No install, test, fit, simulation, or Slurm job
 was started. This snapshot records operational reachability, not spare capacity
 or a ready package-check environment.
+
+## Additional Julia PR triage, 2026-11-03 00:15 UTC
+
+Current remote `main` is `973bbb675dc6a10b436acf86175e089e38ec467e`. Both PRs
+below target the older base `64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716`.
+Their remote branch refs match the PR heads, but no matching local worktree was
+found. The GitHub author is `itchyshin`; that does not establish which active
+task lane currently owns either branch.
+
+| PR | Exact head | Checks | Review and disposition |
+|---|---|---|---|
+| DRModels.jl #1218 | `2fc48d03972f4b7ca0677c354250916f7bbb947d` | CI `41245197960` successful; Documenter `41245197961` cancelled | The PR discussion contains a conditional “ship” comment, but no submitted review. The comment leaves an explicit maintainer decision open: whether the iteration-cap veto remains when the SE-scaled step is below `1e-3`. This changes convergence flags across several fit routes. Keep draft and do not close #983 until the decision and a current-base check are resolved. |
+| DRModels.jl #1223 | `64940f742395b19e22e2936697b6f5ccb23c2b4c` | CI `41240893500` successful; Documenter `41240893497` successful | Read-only diff review found the guard and separated-data test narrowly targeted, with no clear implementation blocker. The public message generalizes that point estimates are “not meaningful” for every non-finite Hessian, while the test demonstrates separation specifically. Ask the owner to narrow or justify that broad interpretation. No formal review is recorded. Require a rebase and exact-head checks on current main before disposition. |
+
+These green runs are historical evidence on the stale base. No local Julia
+tests were run, no review or comment was submitted, and no branch or PR state
+was changed.
