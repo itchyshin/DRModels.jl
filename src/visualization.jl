@@ -46,7 +46,7 @@ function profile_curve(
     _homtoep_refuse_nonmean_index(fit, "profile_curve", k)
     npoints >= 3 || throw(ArgumentError("npoints must be at least 3"))
     θ̂ = copy(fit.theta)
-    nll = fit.nll
+    nll = _fit_objective(fit, "profile_curve")
     nllgrad = fit.nllgrad
     nllhat = nll(θ̂)
     isfinite(nllhat) || throw(ArgumentError("profile_curve: fitted objective is non-finite"))
@@ -125,7 +125,7 @@ function parameter_surface(fit::DrmFit, k1::Int, k2::Int; npoints::Int=25, span:
         throw(ArgumentError("k1, k2 must be distinct indices in 1:$p"))
     _homtoep_refuse_nonmean_index(fit, "parameter_surface", k1, k2)
     npoints >= 2 || throw(ArgumentError("npoints must be at least 2"))
-    nll = fit.nll
+    nll = _fit_objective(fit, "parameter_surface")
     nllgrad = fit.nllgrad
     θ̂ = copy(fit.theta)
     nllhat = nll(θ̂)

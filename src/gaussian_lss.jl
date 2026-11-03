@@ -277,6 +277,8 @@ function _fit_ranef_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, nmμ, 
     end
 
     nll = reml ? nll_reml : nll_ml
+    # `fit.nll` is the objective actually minimised: restricted on a REML fit, so
+    # `fit.loglik == -fit.nll(fit.theta)`, `gradient(fit)` is ~0 and `check_drm` is honest.
 
     βμ0 = Xμ \ y
     res0 = y - Xμ * βμ0
@@ -319,7 +321,7 @@ function _fit_ranef_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, nmμ, 
     end
     re = Dict(Symbol(grp) => blup)
     fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n,
-                                     converged, means, obs, scales), nll_ml), re)
+                                     converged, means, obs, scales), nll), re)
     if reml
         return _withreml(fit, -nll_reml(θ̂), -nll_ml(θ̂))
     end
@@ -557,6 +559,8 @@ function _fit_structured_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, K
     end
 
     nll = reml ? nll_reml : nll_ml
+    # `fit.nll` is the objective actually minimised: restricted on a REML fit, so
+    # `fit.loglik == -fit.nll(fit.theta)`, `gradient(fit)` is ~0 and `check_drm` is honest.
 
     βμ0 = Xμ \ y; res0 = y - Xμ * βμ0
     θ0 = zeros(pμ + pσ + psd)
@@ -623,7 +627,7 @@ function _fit_structured_gaussian_lss(fam::Gaussian, y, Xμ, Xσ, Zg, gidx, G, K
     report_sd && !reml && _attach_conditional_structured!(
         scales, w .* blup[gidx], blup ./ exp.(Zg * θ̂[(pμ+pσ+1):end]))
     fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n,
-                                     converged, means, obs, scales), nll_ml), re)
+                                     converged, means, obs, scales), nll), re)
     if reml
         return _withreml(fit, -nll_reml(θ̂), -nll_ml(θ̂))
     end
@@ -835,6 +839,8 @@ function _fit_gaussian_lss_multi(fam::Gaussian, y, Xμ, Xσ, comps::Vector{_LssC
     end
 
     nll = reml ? nll_reml : nll_ml
+    # `fit.nll` is the objective actually minimised: restricted on a REML fit, so
+    # `fit.loglik == -fit.nll(fit.theta)`, `gradient(fit)` is ~0 and `check_drm` is honest.
 
     βμ0 = Xμ \ y; res0 = y - Xμ * βμ0
     m = length(comps)
@@ -877,7 +883,7 @@ function _fit_gaussian_lss_multi(fam::Gaussian, y, Xμ, Xσ, comps::Vector{_LssC
     obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
     fit = _withnll(DrmFit(fam, blocks, names, θ̂, Vcov, -nll(θ̂), n,
-                          converged, means, obs, scales), nll_ml)
+                          converged, means, obs, scales), nll)
     if reml
         return _withreml(fit, -nll_reml(θ̂), -nll_ml(θ̂))
     end

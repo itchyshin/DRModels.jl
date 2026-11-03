@@ -603,11 +603,17 @@ function _fit_bivariate_residual_reml(f::BivariateDrmFormula, fam::Gaussian, dat
                   :sigma2 => exp.(Xs2 * θ̂[rng(4)]),
                   :rho12 => RHO_GUARD .* tanh.(Xr * θ̂[rng(5)]))
 
-    # Full-theta PLAIN ML objective for profile intervals, in the same theta
-    # layout the ML fitter uses (so downstream inference code sees one layout).
+    # Full-theta RESTRICTED objective, in the same theta layout the ML fitter
+    # uses (so downstream inference code sees one layout). The restriction term
+    # depends on phi only, so at the fitted theta this equals `nll_reml(φ̂)` and
+    # `fit.loglik == -fit.nll(fit.theta)` holds; its gradient there is the REML
+    # gradient (the beta score of the ML part vanishes at the GLS beta-hat).
+    # Storing the plain ML objective here made `gradient(fit)` / `check_drm`
+    # report a converged REML fit as non-stationary (the ML score at a REML
+    # optimum is O(1)) and gave profile intervals an off-centre target.
     function nll_full(θ)
-        a, b, c, logdetS = _weights(θ[(pβ+1):(pβ+pφ)])
-        return _ml_nll(θ[1:pβ], a, b, c, logdetS)
+        _, a, b, c, logdetS, H = _profile(θ[(pβ+1):(pβ+pφ)])
+        return _ml_nll(θ[1:pβ], a, b, c, logdetS) + 0.5 * logdet(H) - 0.5 * pβ * log(2π)
     end
 
     fit = DrmFit(fam, blocks, names, θ̂, V, reml_ll, n_like, Optim.converged(res), means, obs, scales)

@@ -37,6 +37,11 @@ g' * (H \\ g)                      # scaled Newton decrement
 function gradient(fit::DrmFit)
     nll = _fit_objective(fit, "gradient")
     θ = Vector{Float64}(fit.theta)
+    if fit.nll isa LocScaleObjective
+        # exact analytic outer gradient, mapped back to `coef(fit)` order
+        perm = _ls_recov_perm(fit.nll)
+        return Vector{Float64}(_ls_objective_gradient(fit.nll, θ[perm])[perm])
+    end
     if fit.nllgrad !== nothing
         g = zeros(length(θ))
         out = fit.nllgrad(g, θ)
@@ -80,11 +85,20 @@ function hessian(fit::DrmFit)
     nll = _fit_objective(fit, "hessian")
     θ = Vector{Float64}(fit.theta)
     H = try
+        # the location-scale inner mode-solve is Float64-only: difference its
+        # exact analytic gradient instead of forward-mode through it
+        fit.nll isa LocScaleObjective && throw(MethodError(ForwardDiff.hessian, (nll, θ)))
         ForwardDiff.hessian(nll, θ)
     catch e
         e isa InterruptException && rethrow()
-        gfun = fit.nllgrad === nothing ? (x -> _fd_gradient(nll, x)) :
-                                         (x -> (g = zeros(length(x)); o = fit.nllgrad(g, x); o === nothing ? g : o))
+        gfun = if fit.nll isa LocScaleObjective
+            perm = _ls_recov_perm(fit.nll)
+            x -> Vector{Float64}(_ls_objective_gradient(fit.nll, x[perm])[perm])
+        elseif fit.nllgrad === nothing
+            x -> _fd_gradient(nll, x)
+        else
+            x -> (g = zeros(length(x)); o = fit.nllgrad(g, x); o === nothing ? g : o)
+        end
         _fd_jacobian(gfun, θ)
     end
     return Matrix{Float64}((H + H') / 2)
@@ -94,7 +108,24 @@ function _fit_objective(fit::DrmFit, what::AbstractString)
     fit.nll === nothing && throw(ArgumentError(
         "$what(fit): this route did not store its objective (`fit.nll`), so the " *
         "$what cannot be evaluated"))
+    # A coupled location-scale fit stores a `LocScaleObjective` in the ENGINE
+    # packing [βμ; βψ; log L11, L21, log L22], but `fit.theta` is in `:recov` order
+    # [..; log L11, log L22, L21]. Hand back an objective in `coef(fit)` order so
+    # `nll(fit.theta)` is the fitted value (evaluating the raw objective at
+    # `fit.theta` returns a different point's value, or the 1e18 barrier).
+    if fit.nll isa LocScaleObjective
+        o = fit.nll
+        perm = _ls_recov_perm(o)
+        return θ -> o(θ[perm])
+    end
     return fit.nll
+end
+
+# Permutation between `:recov` and engine packing of a `LocScaleObjective` (an
+# involution: it swaps the last two covariance entries).
+function _ls_recov_perm(o::LocScaleObjective)
+    base = size(o.Xμ, 2) + size(o.Xψ, 2)
+    return vcat(collect(1:base), [base + 1, base + 3, base + 2])
 end
 
 function _fd_gradient(f, θ::Vector{Float64})

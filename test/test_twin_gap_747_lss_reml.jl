@@ -68,10 +68,12 @@ using LinearAlgebra: cholesky, Symmetric, logdet, issuccess
     @test fit_reml.converged
 
     # Self-consistency: recompute the REML objective (mirrors `nll_reml` in
-    # src/gaussian_lss.jl) at the fitted `theta`, reusing `fit_reml.nll` (the
-    # ML nll closure, which already contains the #746/#747 cancellation-free
-    # quadratic form and the #835 0*Inf guard) plus the Woodbury profiling
-    # correction for the mean block. If the reported `ll` disagreed with this
+    # src/gaussian_lss.jl) at the fitted `theta`, reusing the fit's own ML
+    # negative log-likelihood at theta-hat, `-ml_loglik(fit_reml)` (it already
+    # contains the #746/#747 cancellation-free quadratic form and the #835 0*Inf
+    # guard; `fit_reml.nll` is now the restricted objective itself, so it cannot
+    # supply the ML piece), plus the Woodbury profiling correction for the mean
+    # block recomputed here from scratch. If the reported `ll` disagreed with this
     # from-scratch recomputation -- as it would under the historical bug,
     # which sent the objective to +1e44 .. +1e133 (see header) via 0*Inf/
     # cancellation garbage -- this catches it at essentially machine
@@ -109,10 +111,13 @@ using LinearAlgebra: cholesky, Symmetric, logdet, issuccess
             end
         end
         chol = cholesky(Symmetric(XtVinvX); check = false)
-        issuccess(chol) || return fit_reml.nll(theta) + 1e8
-        return fit_reml.nll(theta) + 0.5 * logdet(chol) - 0.5 * pmu * log(2π)
+        ml_nll = -ml_loglik(fit_reml)   # valid at theta-hat only (the sole call below)
+        issuccess(chol) || return ml_nll + 1e8
+        return ml_nll + 0.5 * logdet(chol) - 0.5 * pmu * log(2π)
     end
     @test isapprox(-reml_obj_at(fit_reml.theta), ll; atol = 1e-6, rtol = 0)
+    # the stored objective is the restricted one: loglik == -fit.nll(theta-hat)
+    @test isapprox(-fit_reml.nll(fit_reml.theta), ll; atol = 1e-6, rtol = 0)
 
     # Sanity band, not a platform-specific pin: wide enough to hold both the
     # Julia-1.10 answer (ll = -412.3006010571017) and the Julia-1.13 answer
