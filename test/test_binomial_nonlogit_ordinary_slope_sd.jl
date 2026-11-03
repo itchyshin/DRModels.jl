@@ -1,4 +1,4 @@
-using DRModels, StatsModels, Test, Random
+using DRModels, Test, Random
 import Distributions
 
 @testset "Binomial probit/cloglog ordinary random-slope SD" begin

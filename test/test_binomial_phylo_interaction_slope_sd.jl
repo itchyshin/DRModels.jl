@@ -1,4 +1,4 @@
-using DRModels, StatsModels, Test, Random, LinearAlgebra
+using DRModels, Test, Random, LinearAlgebra
 import Distributions
 
 function _binomial_phylo_interaction_slope_tree(prefix; depth = 3, height = 1.0)

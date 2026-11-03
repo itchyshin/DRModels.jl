@@ -1,4 +1,5 @@
-using DRModels, StatsModels, Test, Random, StableRNGs, LinearAlgebra
+using DRModels, Test, Random, StableRNGs, LinearAlgebra
+import StatsModels
 const _SLOW_phylo_int = get(ENV, "DRM_SLOW_TESTS", "0") == "1"
 import Distributions
 
