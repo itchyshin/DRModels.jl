@@ -1,0 +1,1 @@
+| 2026-11-03 | **Parity PR and compute follow-up** (#1214, #1215, #1249, #1500, #1667) | Exact-head workflow refresh; read-only Totoro/DRAC status | Current check states recorded; no duplicate jobs launched because owner checks remain active and Totoro load is high | Codex |

@@ -667,3 +667,24 @@ base. The #1214 exact-head checkout was not found; the #1210 local branch is at
 Reconcile the overlapping documentation lanes with their owners before
 considering #1215 for closure. No PR state was changed, and no merge is
 recommended from this lane.
+
+## Exact-head and resource follow-up, 2026-11-03 00:11 UTC
+
+Rechecked the same PR heads and workflow run IDs after the five-minute status
+backoff. No head or run changed, and the pending jobs remain live:
+
+| PR | Exact-head run state at 00:11 UTC | Disposition |
+|---|---|---|
+| DRModels.jl #1214, `5ba76b1cc0fdda189732011fecc4b9dc220c52b1` | CI `41539113997` in progress; Documenter `41539114018` successful | Wait for CI; docs success does not complete package checks. |
+| DRModels.jl #1215, `1ee71530ebcd31bb62cce2fba6601ffced4f65ea` | CI `41539026157` queued; Documenter `41539026225` cancelled | Keep with the overlapping documentation lanes; do not treat the earlier preview as current deployment evidence. |
+| DRModels.jl #1249, `b959b185d2e6940ad2c3db8e2eb4b04e889338dd` | CI `41548951015` queued; Documenter `41548951145` pending | Do not duplicate the owner's exact-head checks. The source-review follow-ups remain open. |
+| drmTMB #1667, `c133edb86992a092b4ccaebd5606746da831d5e1` | R-CMD-check `41548315716` in progress | Wait for the exact-head check; preserve the warning-visibility review note. |
+| drmTMB #1500, `7630b6a4653d4ee7ffbd69ee5e6be87d330d8890` | R-CMD-check `41542189558` successful | Candidate for maintainer review after its owner resolves draft state; not a merge authorization. |
+
+Resource access was checked through existing ControlMaster sockets only. Totoro
+responded, with a measured load average of about 301 across 384 CPUs, so no
+compute was sent there. The fixed DRAC status wrapper connected to most listed
+hosts and returned no job rows; Killarney's login lacked `squeue` and `sacct`,
+so its queue status is unknown. No install, test, fit, simulation, or Slurm job
+was started. This snapshot records operational reachability, not spare capacity
+or a ready package-check environment.
