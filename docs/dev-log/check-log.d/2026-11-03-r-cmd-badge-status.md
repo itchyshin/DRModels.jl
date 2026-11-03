@@ -1,0 +1,1 @@
+| 2026-11-03 | **drmTMB R-CMD-check badge status** | Live branch metadata, Actions run list, and job summaries | Red badge reflects run `40375071745` on older head `02095c6`; macOS failed while other listed jobs passed. Current main has no listed R-CMD-check run. Cause of old failure remains unavailable because logs expired. | Ada |

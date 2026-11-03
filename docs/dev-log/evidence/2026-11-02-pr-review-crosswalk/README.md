@@ -904,3 +904,23 @@ preflight still reports multiple live lanes, so lease absence does not establish
 that this work is owner-free. I left all four files untouched. Before integrating
 or superseding them, identify the lane owner and compare its PR evidence with the
 newer exact-head refreshes above. No owner message was sent.
+
+## drmTMB main-branch R-CMD-check badge, 2026-11-03 00:49 UTC
+
+The current drmTMB main head is `e5cd86667c97d1b34f0ead22017a675377f46930`.
+The README badge points to the `R-CMD-check` workflow, but the latest R-CMD-check
+run listed for `main` is
+[run 40375071745](https://github.com/itchyshin/drmTMB/actions/runs/40375071745),
+workflow-dispatch on older head `02095c67d7e70bbb648f45d2bbdd5aa0b1ea7be5`.
+Its macOS release job failed; the source-tree check, Ubuntu release job,
+OS-matrix job, and Windows release job passed. The run's overall status is
+failure, which explains the red workflow badge.
+
+The current `e5cd866` main head has no R-CMD-check run in the current Actions
+run listing. Its push-triggered `receipt-staleness` run `41540682271` failed,
+but that is a separate workflow. The R-CMD-check badge therefore reports an
+older failure, not a check of current main. The old job log endpoint now returns
+HTTP 410, and the rendered run page requires sign-in to view logs, so the
+macOS failure cause is not attributed here. No current-main R-CMD check was
+started. This remains an open verification item before describing the package
+check as green.
