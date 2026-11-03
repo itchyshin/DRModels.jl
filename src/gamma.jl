@@ -971,7 +971,7 @@ function _fit_gamma_sd_regression(fam::Gamma, y, Xmu, Xsigma, Zg, gidx, G,
     end
     rule = _AGHQRule(1, K)
     Zre = reshape(Float64.(w), n, 1)
-    bcache = [zeros(1, G) for _ in 1:Threads.nthreads()]
+    bcache = [zeros(1, G) for _ in 1:Threads.maxthreadid()]
     function nll(theta)
         beta_mu = @view theta[1:pmu]
         beta_sigma = @view theta[(pmu+1):(pmu+psigma)]
@@ -1035,7 +1035,7 @@ function _fit_gamma_sigma_sd_regression(fam::Gamma, y, Xmu, Xsigma, Wsd,
     end
     rule = _AGHQRule(1, K)
     Zre = reshape(Float64.(re_design), n, 1)
-    mode_cache = [zeros(1, G) for _ in 1:Threads.nthreads()]
+    mode_cache = [zeros(1, G) for _ in 1:Threads.maxthreadid()]
     function evaluate(theta; return_modes::Bool = false)
         beta_mu = @view theta[1:pmu]
         beta_sigma = @view theta[(pmu+1):(pmu+psigma)]

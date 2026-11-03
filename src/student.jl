@@ -244,7 +244,7 @@ function _fit_student_sd_regression(fam::Student, y, Xmu, Xsigma, Xnu, Zre, Zg,
     rule = _AGHQRule(1, K)
     size(Zre) == (n, 1) || throw(ArgumentError(
         "Student SD regression currently requires exactly one scalar random-effect coefficient."))
-    bcache = [zeros(1, G) for _ in 1:Threads.nthreads()]
+    bcache = [zeros(1, G) for _ in 1:Threads.maxthreadid()]
     function nll(theta)
         beta_mu = @view theta[1:pmu]
         beta_sigma = @view theta[(pmu+1):(pmu+psigma)]

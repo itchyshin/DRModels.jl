@@ -453,7 +453,7 @@ function _fit_beta_sd_regression(fam::Beta, y, Xmu, Xsigma, Zg, gidx, G,
     length(w) == n || throw(ArgumentError(
         "Beta random-effect loading must have one value per observation."))
     Zre = reshape(Float64.(w), n, 1)
-    bcache = [zeros(1, G) for _ in 1:Threads.nthreads()]
+    bcache = [zeros(1, G) for _ in 1:Threads.maxthreadid()]
     function nll(theta)
         beta_mu = @view theta[1:pmu]
         beta_sigma = @view theta[(pmu+1):(pmu+psigma)]

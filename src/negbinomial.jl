@@ -588,7 +588,7 @@ function _fit_negbin2_sigma_sd_regression(fam::NegBinomial2, y, Xmu,
     end
     rule = _AGHQRule(1, K)
     Zre = reshape(Float64.(loading), n, 1)
-    bcache = [zeros(1, G) for _ in 1:Threads.nthreads()]
+    bcache = [zeros(1, G) for _ in 1:Threads.maxthreadid()]
     function nll(theta)
         beta_mu = @view theta[1:pmu]
         beta_sigma = @view theta[(pmu+1):(pmu+psigma)]
@@ -701,7 +701,7 @@ function _fit_negbin2_hu_sd_regression(fam::NegBinomial2, y, Xmu, Xsigma,
     end
     rule = _AGHQRule(1, K)
     Zre = reshape(Float64.(w), n, 1)
-    bcache = [zeros(1, G) for _ in 1:Threads.nthreads()]
+    bcache = [zeros(1, G) for _ in 1:Threads.maxthreadid()]
     function nll(theta)
         beta_mu = @view theta[1:pmu]
         beta_sigma = @view theta[(pmu+1):(pmu+psigma)]
@@ -988,7 +988,7 @@ function _fit_negbin2_sd_regression(fam::NegBinomial2, y, Xmu, Xsigma, Zg,
     # A profile/bootstrap caller may evaluate the stored objective concurrently.
     # Each Julia thread therefore gets its own warm-start cache; the cache affects
     # convergence speed only, not the objective value.
-    bcache = [zeros(1, G) for _ in 1:Threads.nthreads()]
+    bcache = [zeros(1, G) for _ in 1:Threads.maxthreadid()]
     function nll(theta)
         beta_mu = @view theta[1:pmu]
         beta_sigma = @view theta[(pmu+1):(pmu+psigma)]
@@ -1486,7 +1486,7 @@ function _fit_truncated_negbin2_sd_regression(fam::TruncatedNegBinomial2,
     end
     rule = _AGHQRule(1, nAGQ)
     Zre = reshape(Float64.(w), n, 1)
-    bcache = [zeros(1, G) for _ in 1:Threads.nthreads()]
+    bcache = [zeros(1, G) for _ in 1:Threads.maxthreadid()]
     function nll(theta)
         beta_mu = @view theta[1:pmu]
         beta_sigma = @view theta[(pmu+1):(pmu+psigma)]

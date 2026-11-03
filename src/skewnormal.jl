@@ -190,7 +190,7 @@ function _fit_skewnormal_sd_regression(fam::SkewNormal, y, Xmu, Xsigma, Xnu,
     rule = _AGHQRule(1, nAGQ)
     # Intercepts use one; an independent slope uses its numeric x_i.
     Zre = reshape(Float64.(re_design), n, 1)
-    bcache = [zeros(1, G) for _ in 1:Threads.nthreads()]
+    bcache = [zeros(1, G) for _ in 1:Threads.maxthreadid()]
     function nll(theta)
         i_sigma = pmu + psigma
         i_nu = i_sigma + pnu
