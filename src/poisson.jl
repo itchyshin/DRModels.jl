@@ -26,8 +26,12 @@ fit_sd = drm(bf(@formula(y ~ x + (1 | g)), @formula(sd(g) ~ z)),
 length(predict_parameters(fit_sd, dat)[:sd])  # one value per observation
 
 # A known-exposure offset (#727, drmTMB twin gap): `offset(log_exposure)`'s
-# coefficient is fixed at 1, so λ = exposure · exp(Xβ̂). Fixed-effects-only mean.
+# coefficient is fixed at 1, so λ = exposure · exp(Xβ̂). Fixed-effects-only mean, or
+# (#941) with one ordinary random intercept — the standard rate GLMM:
 fit_off = drm(bf(y ~ x + offset(log_exposure)), Poisson(); data = dat)
+fit_rate = drm(bf(@formula(y ~ x + offset(log_exposure) + (1 | g))), Poisson(); data = dat)
+fit_rate_tmb = drm(bf(@formula(y ~ x + offset(log_exposure) + (1 | g))), Poisson();
+                   data = dat, marginal = :Laplace)   # drmTMB's Laplace objective
 
 fit_phy = drm(bf(@formula(y ~ x + phylo(1 | species))), Poisson();
               data = dat, tree = tr, se = false)
@@ -41,7 +45,7 @@ fit_animal_sd = drm(
     Poisson(); data = dat, A = A)
 
 # Experimental: Poisson random-intercept variational (ELBO) marginal.
-# Default remains `marginal = :LA` (GHQ-32 on an ordinary `(1 | g)`). `loglik` on a VA fit is an ELBO.
+# Default remains `marginal = :LA` (adaptive GHQ, 5 nodes per group, on an ordinary `(1 | g)`). `loglik` on a VA fit is an ELBO.
 fit_va = drm(bf(@formula(y ~ x + (1 | g))), Poisson(); data = dat, marginal = :VA)
 
 # TMB-convention Laplace on an ordinary `(1 | g)`, as native drmTMB fits it (ML only).
@@ -51,9 +55,9 @@ fit_lap = drm(bf(@formula(y ~ x + (1 | g))), Poisson(); data = dat, marginal = :
 fit_reml = drm(bf(@formula(y ~ x + (1 | g))), Poisson(); data = dat, method = :REML)
 estimation_method(fit_reml)   # :REML
 
-# Opt-in 1-D Liu–Pierce AGHQ for `(1 | g)` only. Default `:LA` stays
-# non-adaptive GHQ-32. k=1 ≡ 1-point Laplace; this identity does not establish
-# parameter recovery. `:REML` is not available with `:AGHQ`.
+# Opt-in 1-D Liu–Pierce AGHQ for `(1 | g)` only, with `nAGQ` nodes. The default
+# `:LA` is already per-group adaptive GHQ with 5 nodes. k=1 ≡ 1-point Laplace; this
+# identity does not establish parameter recovery. `:REML` is not available with `:AGHQ`.
 fit_aghq = drm(bf(@formula(y ~ x + (1 | g))), Poisson();
                data = dat, marginal = :AGHQ, nAGQ = 5)
 fit_aghq.marginal   # :AGHQ
@@ -87,7 +91,7 @@ has not been calibrated.
 `method = :REML` is **opt-in — ML remains the default**. It maximises the Cox–Reid
 adjusted profile likelihood `ℓ_ML − ½·log|I_ββ|` on two Poisson routes:
 
-- a scalar random intercept `(1 | g)` integrated by GHQ-32
+- a scalar random intercept `(1 | g)` integrated by per-group adaptive GHQ (5 nodes)
 - phylogenetic / `relmat` / `animal` / precomputed-spatial Laplace
   (`_fit_poisson_general_laplace`)
 
@@ -124,6 +128,23 @@ _logfactorial(k::Integer) = sum(log, 2:k; init = 0.0)   # log k!  (0 for k = 0, 
 # `_extract_offset` (below) intercepts it before the mean design matrix is
 # built, so it never becomes an ordinary estimated covariate. Its coefficient
 # is fixed at 1 (an offset, not a regressor): `η = Xμβ + offset`.
+"""
+    offset(x)
+
+Formula marker for a known offset in the mean formula, for example
+`y ~ x + offset(log_exposure)`. The term enters the mean's linear predictor with
+its coefficient fixed at 1 (`η = Xμβ + offset`); it is not estimated, as in
+drmTMB. Every univariate family applies it on the fixed-effects mean (for
+`Gaussian()` that is exactly the fit of `y - offset`). Some families also apply it
+with random effects: `Poisson()` with one ordinary `(1 | g)` (`marginal = :LA`,
+`:AGHQ` or `:Laplace`); `NegBinomial2()` with `zi`/`hu` and with one ordinary
+`(1 | g)` (`:LA` or `:Laplace`); `Gamma()` and `Beta()` with one `(1 | g)` under
+`marginal = :Laplace`. Every other route raises an `ArgumentError` that names
+it. An offset in any formula other than the mean (`sigma`, `nu`, `zi`, ...) is
+refused, as drmTMB refuses it. At most one `offset(...)` term is allowed.
+`predict(fit, newdata)` needs the offset column in `newdata`. Outside a formula,
+`offset(x)` returns `x` unchanged.
+"""
 offset(x) = x
 
 # Split an `offset(...)` marker off a (already `_split_ranef`-stripped) rhs,
@@ -136,9 +157,9 @@ function _extract_offset(rhs)
     for t in terms
         if t isa FunctionTerm && t.f === offset
             offset_term === nothing ||
-                error("Poisson(): only one `offset(...)` term is supported")
+                error("drm: only one `offset(...)` term is supported")
             length(t.args) == 1 ||
-                error("Poisson(): `offset(...)` takes exactly one term, e.g. `offset(log_exposure)`")
+                error("drm: `offset(...)` takes exactly one term, e.g. `offset(log_exposure)`")
             offset_term = t.args[1]
         else
             push!(fixed, t)
@@ -159,15 +180,64 @@ function _offset_vector(offset_term, data)
     v = modelcols(t, data)
     v isa AbstractMatrix && size(v, 2) == 1 && (v = vec(v))
     v isa AbstractVector ||
-        error("Poisson(): `offset(...)` must resolve to a single numeric column")
+        error("drm: `offset(...)` must resolve to a single numeric column")
+    _require_finite_inputs(; offset=v)
     return Float64.(v)
 end
 
-function drm(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
+# #938: linear predictor with an optional known offset (coefficient fixed at 1).
+# `nothing` is the offset-free path, the same arithmetic as before (`X * β`).
+_eta_with_offset(X, β, ::Nothing) = X * β
+_eta_with_offset(X, β, offset) = X * β .+ offset
+_add_offset(η, ::Nothing) = η
+_add_offset(η, offset) = η .+ offset
+
+# #938: move an intercept start value by the mean offset, so a fit with a large
+# offset (a log exposure of 5, say) does not start far from its optimum. Only a
+# start value: the objective is unchanged. Applied only when column 1 of `X` is
+# an intercept.
+function _offset_start(θβ0, X, offset)
+    θ = collect(Float64, θβ0)
+    if offset !== nothing && !isempty(θ) && size(X, 2) ≥ 1 && all(==(1.0), @view X[:, 1])
+        θ[1] -= sum(offset) / length(offset)
+    end
+    return θ
+end
+
+# #938: the offset vector of a route that applies one (`nothing` without an
+# offset), with the one-value-per-row and finiteness checks.
+function _offset_for_fit(fam, offset_term, data, n::Integer)
+    offset_term === nothing && return nothing
+    off = _offset_vector(offset_term, data)
+    length(off) == n ||
+        throw(ArgumentError("$(_family_label(fam)): `offset(...)` must have one value per observation"))
+    return off
+end
+
+# #938: a route that cannot hold the offset at coefficient 1 refuses it by name,
+# instead of letting `_design` build it as an estimated column.
+_refuse_offset_route(fam, route) = throw(ArgumentError(
+    "$(_family_label(fam)): `offset(...)` in the mean formula is not supported with $route; " *
+    "the offset (coefficient fixed at 1) is applied on the fixed-effects mean" *
+    (fam isa NegBinomial2 ? ", with `zi`/`hu`, and with one ordinary `(1 | g)` " *
+                            "(`marginal = :LA` or `:Laplace`)" :
+     (fam isa Gamma || fam isa Beta) ? " and with one ordinary `(1 | g)` under " *
+                                       "`marginal = :Laplace`" : "") *
+    ". Fit without the offset, or add the term as an ordinary covariate if a free " *
+    "slope is intended. See issue #938."))
+
+# FX3b: `se = false` is recorded on the fit (`DrmFit.uncertainty`), so
+# `convergence_status` does not read the skipped (NaN) covariance as a failure.
+@drm_entry function drm(f::DrmFormula, fam::Poisson; se::Bool = true, kwargs...)
+    return _withuncertainty(_drm_poisson_fit(f, fam; se = se, kwargs...), se)
+end
+
+function _drm_poisson_fit(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
              A = nothing, Ainv = nothing, coords = nothing,
              g_tol::Real = 1e-8, se::Bool = true,
              marginal::Symbol = :LA, method = nothing,
-             nAGQ::Union{Nothing,Int} = nothing)
+             nAGQ::Union{Nothing,Int} = nothing, ids = nothing)
+    _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, Ainv = Ainv, coords = coords)   # #1027 #1022 #1010 #938
     # `method` is the ML/REML selector. LA/VA/AGHQ is `marginal` (Q1 / #136 / #448).
     # `:REML` is the opt-in Cox–Reid restricted objective, admitted on Poisson
     # `(1 | g)` GHQ under `:LA` (#443) and on `_fit_poisson_general_laplace`
@@ -192,9 +262,11 @@ function drm(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
         drm(f, fam; data = data_observed, tree = tree, K = K, A = A,
             coords = coords, g_tol = g_tol, se = se, marginal = marginal,
-            method = method, nAGQ = nAGQ)
+            method = method, nAGQ = nAGQ, ids = ids)
     end
     missing_fit !== nothing && return missing_fit
+    A = _resolve_relatedness_labels(f, data, A, ids; coords = coords)   # #957: match `A` by label
+    coords = _resolve_coords_labels(f, data, coords, ids)   # #957: match `coords` by site label
 
     marg = _marginal_method(marginal)                     # :LA (default), :VA (#136), :AGHQ (#448)
     isva = marg isa Variational
@@ -212,9 +284,19 @@ function drm(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
         error("Poisson(): `offset(...)` must have one value per observation")
     all(yi -> yi ≥ 0 && isinteger(yi), y) ||
         error("Poisson() requires non-negative integer counts as the response")
-    if offset_term !== nothing && (st !== nothing || !isempty(re) || haskey(rhs, :zi) || haskey(rhs, :hu))
-        error("Poisson(): `offset(...)` is currently only supported on the fixed-effects-only " *
-              "mean (no random effect, structured marker, `zi`, or `hu`)")
+    # #941: an offset is admitted on the fixed-effects-only mean (#727) and on ONE
+    # ordinary random intercept `(1 | g)` under `:LA` (GHQ), `:AGHQ` and `:Laplace`
+    # (the standard rate model, drmTMB `poisson()` + offset + `(1 | g)`). Every other
+    # route still refuses it rather than dropping it or estimating its coefficient.
+    if offset_term !== nothing
+        offset_re_ok = st === nothing && length(re) == 1 &&
+                       _re_kind(re[1][1])[1] === :intercept && !isva
+        if st !== nothing || haskey(rhs, :zi) || haskey(rhs, :hu) || (!isempty(re) && !offset_re_ok)
+            error("Poisson(): `offset(...)` is currently supported on the fixed-effects-only " *
+                  "mean and with a single ordinary random intercept `(1 | g)` " *
+                  "(`marginal = :LA`, `:AGHQ` or `:Laplace`); not with a structured marker, " *
+                  "a random slope, crossed/multiple random effects, `zi`, `hu`, or `marginal = :VA`")
+        end
     end
     if st !== nothing
         isva && _va_reject(fam, "a phylogenetic/structured random effect")
@@ -253,6 +335,7 @@ function drm(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
             return _withformula(_fit_poisson_phylo_laplace(fam, y, Xμ, labels, tree, nmμ, grp, g_tol;
                                                           se = se, reml = reml), f)
         elseif kind === :spatial && K === nothing && coords !== nothing
+            _require_finite_inputs(; coords=coords)
             # Coordinate-based exponential-kernel spatial covariance with the range
             # ρ ESTIMATED JOINTLY (#270): C(ρ) = exp(-d/ρ) from the site distances,
             # ρ enters the outer parameter vector, and its gradient flows through
@@ -283,13 +366,13 @@ function drm(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
             all(_re_kind(r[1])[1] === :intercept for r in re) ||
                 error("Poisson() supports multiple random effects only as crossed/nested intercepts, e.g. `(1 | g) + (1 | h)`")
             comps = map(re) do r
-                grp = r[2]; gidx, G = _group_index(getproperty(data, grp))
+                grp = r[2]; gidx, G = _group_index(getproperty(data, grp); col = grp)
                 (ones(length(y)), gidx, G, String(grp))
             end
             isaghq && return _withformula(_fit_poisson_crossed_aghq(fam, y, Xμ, comps, nmμ, g_tol; se = se), f)   # #761
             return _withformula(_fit_poisson_crossed_laplace(fam, y, Xμ, comps, nmμ, g_tol; se = se), f)
         end
-        (rk, var) = _re_kind(re[1][1]); grp = re[1][2]; gidx, G = _group_index(getproperty(data, grp))
+        (rk, var) = _re_kind(re[1][1]); grp = re[1][2]; gidx, G = _group_index(getproperty(data, grp); col = grp)
         if rk === :intercept                              # (1 | g) → GHQ-32 :LA, VA (#136), or 1-D AGHQ (#448)
             # The one route where `method = :REML` punches through (#443). VA is an ELBO,
             # not a likelihood, so a restricted correction of it is not defined.
@@ -303,9 +386,10 @@ function drm(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
             isva && return _withformula(_withmarginal(
                 _fit_poisson_ranef_va(fam, y, Xμ, gidx, G, nmμ, grp, g_tol), :VA), f)
             isaghq && return _withformula(_withmarginal(
-                _fit_poisson_ranef_aghq(fam, y, Xμ, gidx, G, nmμ, grp, g_tol; nAGQ = nAGQ), :AGHQ), f)
+                _fit_poisson_ranef_aghq(fam, y, Xμ, gidx, G, nmμ, grp, g_tol; nAGQ = nAGQ,
+                                        offset = off), :AGHQ), f)
             return _withformula(
-                _fit_poisson_ranef(fam, y, Xμ, gidx, G, nmμ, grp, g_tol; reml = reml), f)
+                _fit_poisson_ranef(fam, y, Xμ, gidx, G, nmμ, grp, g_tol; reml = reml, offset = off), f)
         elseif rk === :corr                               # (1 + x | g) → 2-D GHQ (NOT AGHQ)
             isva && _va_reject(fam, "a correlated random slope `(1 + x | g)`")
             isaghq && _aghq_reject(fam, "a correlated random slope `(1 + x | g)` (12² tensor GHQ is not AGHQ)")
@@ -1068,12 +1152,12 @@ end
 function _poisson_structured_cov(kind::Symbol, grp::Symbol, K, A, coords)
     if kind === :relmat
         K === nothing && error("relmat(1 | $grp) needs `K = …` (the relatedness/covariance matrix)")
-        return Matrix{Float64}(K)
+        return _finite_user_matrix(K, "K")
     elseif kind === :animal
         A === nothing && error("animal(1 | $grp) needs the relatedness matrix `A = …`")
-        return Matrix{Float64}(A)
+        return _finite_user_matrix(A, "A")
     else  # :spatial
-        K !== nothing && return Matrix{Float64}(K)
+        K !== nothing && return _finite_user_matrix(K, "K")
         error("spatial(1 | $grp) for counts needs either a precomputed spatial covariance " *
               "via `K = …`, or site `coords = …` (a G×2 coordinate matrix) for coordinate-based " *
               "exponential-kernel covariance with the range estimated jointly")
@@ -1099,8 +1183,10 @@ end
 #
 # ML stays the default: Cox–Reid OVER-corrects once clusters are plentiful (+4.38% at
 # G=40 against −12.37% for ML at G=10).
-function _fit_poisson_ranef(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol; reml::Bool = false, K::Int = _RANEF1D_AGHQ_K)
+function _fit_poisson_ranef(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol; reml::Bool = false, K::Int = _RANEF1D_AGHQ_K,
+                           offset::AbstractVector{<:Real} = zeros(length(y)))
     n = length(y); pμ = size(Xμ, 2)
+    off = Float64.(offset)                               # #941: offset() coefficient fixed at 1
     members = [Int[] for _ in 1:G]
     for i in 1:n
         push!(members[gidx[i]], i)
@@ -1109,13 +1195,13 @@ function _fit_poisson_ranef(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol; rem
     rule = _AGHQRule(1, K); Zre = ones(n, 1); bcache = zeros(1, G)   # #719: per-group AGHQ
     function nll(θ)
         βμ = θ[1:pμ]; σb = exp(θ[pμ+1])
-        η0 = Xμ * βμ
+        η0 = Xμ * βμ .+ off
         ll = (i, η) -> (ηc = clamp(η, -30.0, 30.0); y[i] * ηc - exp(ηc) - lf[i])
         L = reshape([σb], 1, 1)
         return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache)
     end
     θ0 = zeros(pμ + 1)
-    θ0[1] = log(sum(y) / n + eps())
+    θ0[1] = log(sum(y) / n + eps()) - sum(off) / n
     θ0[pμ+1] = log(0.5)
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res); conv = drm_optim_converged(res)
@@ -1130,12 +1216,12 @@ function _fit_poisson_ranef(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol; rem
         # Wald vcov under a restricted objective must be the inverse Hessian OF THAT
         # objective (#310), not the ML observed information.
         V = _glsp_reml_vcov(grad_fn, θ̂, pμ)
-        means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
+        means = Dict(:mu => exp.(Xμ * θ̂[1:pμ] .+ off)); obs = Dict(:mu => Vector{Float64}(y))
         fit = _withnll(DrmFit(fam, blocks, names, θ̂, V, -ml_nll, n, conv, means, obs, scales), nll)
         return _withreml(fit, -reml_nll, -ml_nll)
     end
     V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
-    means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))   # population λ (b=0)
+    means = Dict(:mu => exp.(Xμ * θ̂[1:pμ] .+ off)); obs = Dict(:mu => Vector{Float64}(y))   # population λ (b=0), × exposure
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, conv, means, obs, scales), nll),
         Optim.iterations(res))
@@ -1146,9 +1232,11 @@ end
 # the group posterior mode (`_poisson_group_aghq_logint`) instead of
 # prior-scaled GHQ-32. Default `:LA` is unchanged. `nAGQ=1` is 1-point Laplace
 # plumbing, not a recovery claim. `:REML` is rejected upstream.
-function _fit_poisson_ranef_aghq(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol; nAGQ::Int = 5)
+function _fit_poisson_ranef_aghq(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol; nAGQ::Int = 5,
+                                 offset::AbstractVector{<:Real} = zeros(length(y)))
     nAGQ >= 1 || throw(ArgumentError("nAGQ must be ≥ 1; got $nAGQ"))
     n = length(y); pμ = size(Xμ, 2)
+    off = Float64.(offset)                               # #941: offset() coefficient fixed at 1
     members = [Int[] for _ in 1:G]
     for i in 1:n
         push!(members[gidx[i]], i)
@@ -1156,7 +1244,7 @@ function _fit_poisson_ranef_aghq(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol
     lf = [_logfactorial(round(Int, yi)) for yi in y]
     function nll(θ)
         βμ = θ[1:pμ]; σb = exp(θ[pμ+1])
-        η0 = Xμ * βμ
+        η0 = Xμ * βμ .+ off
         s = zero(eltype(θ))
         for idx in members
             isempty(idx) && continue
@@ -1165,7 +1253,7 @@ function _fit_poisson_ranef_aghq(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol
         return s
     end
     θ0 = zeros(pμ + 1)
-    θ0[1] = log(sum(y) / n + eps())
+    θ0[1] = log(sum(y) / n + eps()) - sum(off) / n
     θ0[pμ+1] = log(0.5)
     res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
     θ̂ = Optim.minimizer(res); conv = drm_optim_converged(res)
@@ -1180,7 +1268,7 @@ function _fit_poisson_ranef_aghq(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol
     names = [:mu => nmμ, :resd => [String(grp)]]
     scales = Dict{Symbol,Vector{Float64}}()
     V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
-    means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
+    means = Dict(:mu => exp.(Xμ * θ̂[1:pμ] .+ off)); obs = Dict(:mu => Vector{Float64}(y))
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, conv, means, obs, scales), nll),
         Optim.iterations(res))
@@ -1233,6 +1321,7 @@ function _fit_poisson_zi(fam::Poisson, y, Xμ, Xzi, nmμ, nmzi, g_tol)
     n = length(y); pμ, pz = size(Xμ, 2), size(Xzi, 2)
     lf = [_logfactorial(round(Int, yi)) for yi in y]
     iszero_y = y .== 0
+    w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
     function nll(θ)
         βμ = θ[1:pμ]; βz = θ[pμ+1:pμ+pz]
         ημ = clamp.(Xμ * βμ, -30.0, 30.0); ηz = clamp.(Xzi * βz, -30.0, 30.0)
@@ -1240,9 +1329,9 @@ function _fit_poisson_zi(fam::Poisson, y, Xμ, Xzi, nmμ, nmzi, g_tol)
         @inbounds for i in 1:n
             λ = exp(ημ[i]); lπ = _log_logistic(ηz[i]); l1mπ = _log1m_logistic(ηz[i])
             if iszero_y[i]
-                s -= _logaddexp(lπ, l1mπ - λ)              # log(π + (1-π)e^{-λ})
+                s -= w[i] * (_logaddexp(lπ, l1mπ - λ))              # log(π + (1-π)e^{-λ})
             else
-                s -= l1mπ + (y[i] * ημ[i] - λ - lf[i])
+                s -= w[i] * (l1mπ + (y[i] * ημ[i] - λ - lf[i]))
             end
         end
         return s
@@ -1250,8 +1339,9 @@ function _fit_poisson_zi(fam::Poisson, y, Xμ, Xzi, nmμ, nmzi, g_tol)
     pos = y[y.>0]
     θ0 = zeros(pμ + pz)
     θ0[1] = log((isempty(pos) ? sum(y) / n : sum(pos) / length(pos)) + eps())   # λ from non-zeros
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
+                       θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
+    θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ, :zi => (pμ+1):(pμ+pz)]
     names = [:mu => nmμ, :zi => nmzi]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
@@ -1268,6 +1358,7 @@ function _fit_poisson_hu(fam::Poisson, y, Xμ, Xhu, nmμ, nmhu, g_tol)
     n = length(y); pμ, ph = size(Xμ, 2), size(Xhu, 2)
     lf = [_logfactorial(round(Int, yi)) for yi in y]
     iszero_y = y .== 0
+    w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
     function nll(θ)
         βμ = θ[1:pμ]; βh = θ[pμ+1:pμ+ph]
         ημ = clamp.(Xμ * βμ, -30.0, 30.0); ηh = clamp.(Xhu * βh, -30.0, 30.0)
@@ -1275,11 +1366,11 @@ function _fit_poisson_hu(fam::Poisson, y, Xμ, Xhu, nmμ, nmhu, g_tol)
         @inbounds for i in 1:n
             lπ = _log_logistic(ηh[i]); l1mπ = _log1m_logistic(ηh[i])
             if iszero_y[i]
-                s -= lπ                                        # log π
+                s -= w[i] * (lπ)                                        # log π
             else
                 λ = exp(ημ[i])
                 lpos = y[i] * ημ[i] - λ - lf[i]                # log Poisson(k; λ)
-                s -= l1mπ + lpos - _log1mexp(-λ)               # − log(1 − e^{-λ})
+                s -= w[i] * (l1mπ + lpos - _log1mexp(-λ))               # − log(1 − e^{-λ})
             end
         end
         return s
@@ -1287,8 +1378,9 @@ function _fit_poisson_hu(fam::Poisson, y, Xμ, Xhu, nmμ, nmhu, g_tol)
     pos = y[y.>0]
     θ0 = zeros(pμ + ph)
     θ0[1] = log((isempty(pos) ? sum(y) / n : sum(pos) / length(pos)) + eps())   # λ from non-zeros
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
+                       θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
+    θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ, :hu => (pμ+1):(pμ+ph)]
     names = [:mu => nmμ, :hu => nmhu]
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
@@ -1302,23 +1394,27 @@ function _fit_poisson(fam::Poisson, y, Xμ, nmμ, g_tol; offset::AbstractVector{
     n = length(y); pμ = size(Xμ, 2)
     lf = [_logfactorial(round(Int, yi)) for yi in y]    # constant log y! term
     off = Float64.(offset)
+    w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
     function nll(θ)
         ημ = Xμ * θ .+ off                              # log λ; offset() coefficient fixed at 1
         s = zero(eltype(θ))
         @inbounds for i in 1:n
-            s -= y[i] * ημ[i] - exp(ημ[i]) - lf[i]
+            s -= w[i] * (y[i] * ημ[i] - exp(ημ[i]) - lf[i])
         end
         return s
     end
     θ0 = zeros(pμ); θ0[1] = log(sum(y) / n + eps()) - (isempty(off) ? 0.0 : sum(off) / n)
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
+                       θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
+    θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ]; names = [:mu => nmμ]
     means = Dict(:mu => exp.(Xμ * θ̂ .+ off)); obs = Dict(:mu => Vector{Float64}(y))   # response-scale λ
+    V, nonexistent = _count_mle_existence_guard(Xμ, y, V, nmμ)   # #1109: detect + warn, SE → Inf
     scales = Dict{Symbol,Vector{Float64}}()
-    return _withiterations(
+    fit = _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
+    return nonexistent ? _withgeometry(fit, :count_mle_nonexistent) : fit
 end
 
 # ===========================================================================
@@ -1466,6 +1562,7 @@ supplies the exact outer gradient and the covariance Hessian. Recovered blocks:
 """
 function _fit_poisson_spatial_coord(fam::Poisson, y, Xμ, labels, coords, nmμ, grp,
                                     g_tol; se::Bool = true)
+    _require_finite_inputs(; coords=coords)
     n = length(y)
     pμ = size(Xμ, 2)
     gidx, G = _group_index(labels)

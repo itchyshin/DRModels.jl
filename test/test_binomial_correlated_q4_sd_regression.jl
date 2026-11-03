@@ -117,7 +117,7 @@ using Statistics
         "g:atanh_partial_rho_42_given_1",
         "g:atanh_partial_rho_43_given_1_2",
     ]
-    simulated = simulate(fit; rng = MersenneTwister(2026102742))
+    simulated = simulate(fit; re = :zero, rng = MersenneTwister(2026102742))
     @test length(simulated) == length(y)
     @test all(value -> value == 0.0 || value == 1.0, simulated)
 end

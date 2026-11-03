@@ -43,7 +43,7 @@ fit_animal_sd = drm(bf(@formula(y ~ x + animal(1 | id)),
 exp(-2 * coef(fit, :sigma)[1])     # estimated precision φ
 
 # Experimental: Beta random-intercept variational (ELBO) marginal.
-# Requires `sigma ~ 1`. Default remains `marginal = :LA` (GHQ-32 on an ordinary `(1 | g)`).
+# Requires `sigma ~ 1`. Default remains `marginal = :LA` (adaptive GHQ, 5 nodes per group, on an ordinary `(1 | g)`).
 fit_va = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), Beta();
              data = dat, marginal = :VA)
 
@@ -57,9 +57,16 @@ struct Beta end
 
 _logistic(η) = 1 / (1 + exp(-η))
 
-function drm(f::DrmFormula, fam::Beta; data, tree = nothing, K = nothing,
+# FX3b: `se = false` is recorded on the fit (`DrmFit.uncertainty`), so
+# `convergence_status` does not read the skipped (NaN) covariance as a failure.
+@drm_entry function drm(f::DrmFormula, fam::Beta; se::Bool = true, kwargs...)
+    return _withuncertainty(_drm_beta_fit(f, fam; se = se, kwargs...), se)
+end
+
+function _drm_beta_fit(f::DrmFormula, fam::Beta; data, tree = nothing, K = nothing,
              A = nothing, coords = nothing, g_tol::Real = 1e-8, se::Bool = true,
-             marginal::Symbol = :LA, method = nothing)
+             marginal::Symbol = :LA, method = nothing, ids = nothing)
+    _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, coords = coords)   # #1027 #1022 #1010
     _reject_method_as_marginal(fam, method)
     !isempty(_sd_parts(f)) &&
         return _drm_beta_sd_regression(f, fam; data, tree, K, A, coords,
@@ -69,9 +76,11 @@ function drm(f::DrmFormula, fam::Beta; data, tree = nothing, K = nothing,
                                      coords = coords, g_tol = g_tol, se = se, method = method)
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
         drm(f, fam; data = data_observed, tree = tree, K = K, A = A,
-            coords = coords, g_tol = g_tol, se = se, marginal = marginal, method = method)
+            coords = coords, g_tol = g_tol, se = se, marginal = marginal, method = method, ids = ids)
     end
     missing_fit !== nothing && return missing_fit
+    A = _resolve_relatedness_labels(f, data, A, ids; coords = coords)   # #957: match `A` by label
+    coords = _resolve_coords_labels(f, data, coords, ids)   # #957: match `coords` by site label
 
     marg = _marginal_method(marginal)                     # :LA (default), :VA (#136), or :AGHQ (#761)
     isaghq = marg isa AGHQ
@@ -79,6 +88,9 @@ function drm(f::DrmFormula, fam::Beta; data, tree = nothing, K = nothing,
     _lss_only_gaussian_guard(f, fam)   # #544: refuse, never silently drop, sd() parts
     rhs = Dict(f.forms)
     fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
+    fixed_mu, offset_term = _extract_offset(fixed_mu)   # #938: offset(z), coefficient fixed at 1
+    offset_term === nothing || (isempty(re) && mv === nothing && st === nothing) ||
+        _refuse_offset_route(fam, "a random, structured or `meta_V` term on the mean")
     isaghq && !(length(re) > 1 && st === nothing) &&
         _aghq_reject(fam, "this model (Beta `marginal = :AGHQ` covers crossed random " *
                           "intercepts `(1 | g) + (1 | h)` only, #761)")
@@ -123,14 +135,14 @@ function drm(f::DrmFormula, fam::Beta; data, tree = nothing, K = nothing,
             all(_re_kind(r[1])[1] === :intercept for r in re) ||
                 error("Beta() supports multiple random effects only as crossed/nested intercepts, e.g. `(1 | g) + (1 | h)`")
             comps = map(re) do r
-                grp = r[2]; gidx, G = _group_index(getproperty(data, grp))
+                grp = r[2]; gidx, G = _group_index(getproperty(data, grp); col = grp)
                 (ones(length(y)), gidx, G, String(grp))
             end
             isaghq && return _withformula(_fit_beta_crossed_aghq(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol; se = se), f)   # #761
             return _withformula(_fit_beta_crossed_laplace(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol; se = se), f)
         end
         (rk, var) = _re_kind(re[1][1]); grp = re[1][2]
-        gidx, G = _group_index(getproperty(data, grp))
+        gidx, G = _group_index(getproperty(data, grp); col = grp)
         if rk === :intercept            # (1 | g) → 1-D Gauss–Hermite (Laplace) or VA (#136)
             if isva
                 size(Xσ, 2) == 1 || _va_reject(fam, "a non-constant `sigma` formula (VA kernels require `sigma ~ 1`)")
@@ -140,13 +152,14 @@ function drm(f::DrmFormula, fam::Beta; data, tree = nothing, K = nothing,
             return _withformula(_fit_beta_ranef(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol), f)
         elseif rk === :corr             # (1 + x | g) → 2-D Gauss–Hermite marginal
             isva && _va_reject(fam, "a correlated random slope `(1 + x | g)`")
+            _require_finite_data_column(data, var)
             return _withformula(_fit_beta_corr_ranef(fam, y, Xμ, Xσ, Float64.(getproperty(data, var)), gidx, G, nmμ, nmσ, grp, g_tol), f)
         else
             error("Beta() supports `(1 | g)` or `(1 + x | g)` on the mean, not `(0 + x | g)`")
         end
     end
     isva && _va_reject(fam, "no random intercept (fixed-effects-only)")
-    return _withformula(_fit_beta(fam, y, Xμ, Xσ, nmμ, nmσ, g_tol), f)
+    return _withformula(_fit_beta(fam, y, Xμ, Xσ, nmμ, nmσ, g_tol; offset = _offset_for_fit(fam, offset_term, data, size(Xμ, 1))), f)
 end
 
 function _drm_beta_sd_regression(f::DrmFormula, fam::Beta; data,
@@ -520,7 +533,7 @@ function _fit_beta_ranef(fam::Beta, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :resd => (pμ+pσ+1):(pμ+pσ+1)]
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
     means = Dict(:mu => _logistic.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
-    scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
+    scales = Dict(:sigma => _reported_sigma(Xσ * θ̂[(pμ+1):(pμ+pσ)], -15.0, 15.0))
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
         Optim.iterations(res))
@@ -558,25 +571,55 @@ function _fit_beta_corr_ranef(fam::Beta, y, Xμ, Xσ, xs, gidx, G, nmμ, nmσ, g
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :recov => (pμ+pσ+1):(pμ+pσ+3)]
     names = [:mu => nmμ, :sigma => nmσ, :recov => ["$(grp):L11", "$(grp):L22", "$(grp):L21"]]
     means = Dict(:mu => _logistic.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))
-    scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
+    scales = Dict(:sigma => _reported_sigma(Xσ * θ̂[(pμ+1):(pμ+pσ)], -15.0, 15.0))
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
         Optim.iterations(res))
 end
 
-function _fit_beta(fam::Beta, y, Xμ, Xσ, nmμ, nmσ, g_tol)
+# Newton polish for the fixed-effect Beta location-scale fit (#1127). LBFGS on a raw
+# design (e.g. `temp` near 300 beside a factor `sigma` block with 2-4 rows per level)
+# can exhaust its iterations, or stop on a plateau, with the gradient still far above
+# `g_tol`. From that stop point, Newton with the ForwardDiff gradient and Hessian
+# converges in a few steps. The polished run is kept ONLY if the objective is finite and
+# no worse AND it reaches `g_tol`, so a fit that already met `g_tol` is returned untouched
+# and nothing can get worse. Skipped when the user took control of the optimiser (`maxit` / `start` /
+# `multi_start` / `optimizer`), so a requested cap or start is honoured.
+function _beta_newton_polish(res, nll, g_tol)
+    s = _active_control_scope()
+    (s !== nothing && _ctl_optim_requested(s.control)) && return res
+    Optim.g_residual(res) <= g_tol && return res
+    θ = Optim.minimizer(res)
+    all(isfinite, θ) || return res
+    pol = try
+        Optim.optimize(nll, θ, Optim.Newton(), Optim.Options(g_tol = g_tol, iterations = 200);
+                       autodiff = :forward)
+    catch e
+        e isa InterruptException && rethrow()
+        return res
+    end
+    v = Optim.minimum(pol)
+    # Accept only a genuine stationary point: with 2 rows per level the scale can run off
+    # to a boundary where Newton keeps "improving" nll at a huge gradient. Such a fit is
+    # left exactly as the primary run reported it.
+    return (isfinite(v) && v <= Optim.minimum(res) && all(isfinite, Optim.minimizer(pol)) &&
+            Optim.g_residual(pol) <= g_tol) ? pol : res
+end
+
+function _fit_beta(fam::Beta, y, Xμ, Xσ, nmμ, nmσ, g_tol; offset = nothing)
     n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
+    w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
         # Soft guards (see `_softclamp` in negbinomial.jl): identity across the
         # original hard band so no legitimate fit is distorted, smooth beyond so
         # the gradient stays live — restoring agreement with drmTMB's smooth guard.
-        ημ = _softclamp.(Xμ * βμ, -30.0, 30.0, 3.0)   # μ ∈ (0,1) strictly
+        ημ = _softclamp.(_eta_with_offset(Xμ, βμ, offset), -30.0, 30.0, 3.0)   # μ ∈ (0,1) strictly
         ησ = _softclamp.(Xσ * βσ, -15.0, 15.0, 3.0)   # φ = exp(-2ησ) finite & > 0
         s = zero(eltype(θ))
         @inbounds for i in 1:n
             μ = _logistic(ημ[i]); φ = exp(-2 * ησ[i])
-            s -= Distributions.logpdf(Distributions.Beta(μ * φ, (1 - μ) * φ), y[i])
+            s -= w[i] * (Distributions.logpdf(Distributions.Beta(μ * φ, (1 - μ) * φ), y[i]))
         end
         return s
     end
@@ -585,12 +628,15 @@ function _fit_beta(fam::Beta, y, Xμ, Xσ, nmμ, nmσ, g_tol)
     θ0 = zeros(pμ + pσ)
     θ0[1] = log(ȳ / (1 - ȳ))                          # logit mean
     θ0[pμ+1] = -0.5 * log(φ0)                          # σ = 1/√φ ⇒ log σ = -½ log φ
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    θ0[1:pμ] .= _offset_start(θ0[1:pμ], Xμ, offset)   # #938
+    res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
+                       θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
+    res = _beta_newton_polish(res, nll, g_tol)         # #1127
+    θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ)]
     names = [:mu => nmμ, :sigma => nmσ]
-    means = Dict(:mu => _logistic.(Xμ * θ̂[1:pμ])); obs = Dict(:mu => Vector{Float64}(y))  # response-scale μ̂
-    scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
+    means = Dict(:mu => _logistic.(_eta_with_offset(Xμ, θ̂[1:pμ], offset))); obs = Dict(:mu => Vector{Float64}(y))  # response-scale μ̂
+    scales = Dict(:sigma => _reported_sigma(Xσ * θ̂[(pμ+1):(pμ+pσ)], -15.0, 15.0, 3.0))
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
         Optim.iterations(res))

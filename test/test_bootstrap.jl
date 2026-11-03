@@ -1,7 +1,7 @@
 # Parametric bootstrap confidence intervals: simulate B replicates from the
 # fitted model, refit each, take percentile intervals. Reuses simulate + drm.
 using DRModels
-using Test, Random
+using Test, Random, LinearAlgebra
 
 @testset "Parametric bootstrap CI" begin
     Random.seed!(11)
@@ -84,15 +84,25 @@ using Test, Random
     Random.seed!(12)
     G = 16
     phy = random_balanced_tree(G; branch_length = 0.2)
-    m = 2
+    # Four observations per tip. Two (the #1202 fixture) still let one EM
+    # refit crawl sigma_phy to the boundary on Julia 1.10.10 and report
+    # `converged = false`, so the default `check_converged = true` dropped
+    # it. Do not restore `check_converged = false` (#1048).
+    m = 4
     species = repeat(1:G, inner = m)
     x_phy = randn(G * m)
-    y_phy = 0.2 .+ 0.5 .* x_phy .+ 0.3 .* randn(G * m)
+    # A genuine phylogenetic signal (sd 0.8 on the tip-correlation scale) keeps
+    # the variance component off its boundary, so the EM refits stop on their
+    # own relative-loglik rule instead of crawling to sigma_phy = 0 (#1048).
+    u_phy = 0.8 .* (cholesky(Symmetric(DRModels._phylo_correlation(phy))).L * randn(G))
+    y_phy = 0.2 .+ 0.5 .* x_phy .+ u_phy[species] .+ 0.3 .* randn(G * m)
     phy_form = bf(@formula(y_phy ~ x_phy + phylo(1 | species)),
                   @formula(sigma ~ 1))
     phy_data = (; y_phy, x_phy, species)
     phy_fit = drm(phy_form, Gaussian(); data = phy_data, tree = phy,
         algorithm = :em, g_tol = 1e-4)
+    # The EM stop reports convergence from its own relative-loglik criterion
+    # (#1047), so the default `check_converged = true` keeps both replicates.
     br_phy = bootstrap_result(phy_fit; data = phy_data, tree = phy, B = 2,
         rng = MersenneTwister(13), algorithm = :em, g_tol = 1e-4)
     @test br_phy.attempted == 2

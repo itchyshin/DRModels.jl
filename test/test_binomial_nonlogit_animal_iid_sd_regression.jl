@@ -55,7 +55,7 @@ import Distributions
             @test all(isfinite, predicted[iid_block])
             @test length(predicted[animal_block]) == length(y)
             @test length(predicted[iid_block]) == length(y)
-            simulated = simulate(fit; rng = MersenneTwister(20261029))
+            simulated = simulate(fit; re = :zero, rng = MersenneTwister(20261029))
             @test length(simulated) == length(y)
             @test all(in((0.0, 1.0)), simulated)
         end
@@ -119,7 +119,7 @@ end
             @test all(isfinite, predicted[iid_block])
             @test predicted[animal_block] ≈ fit.scales[animal_block]
             @test predicted[iid_block] ≈ fit.scales[iid_block]
-            simulated = simulate(fit; rng = MersenneTwister(20261103))
+            simulated = simulate(fit; re = :zero, rng = MersenneTwister(20261103))
             @test length(simulated) == length(fixture.data.y)
             @test all(in((0.0, 1.0)), simulated)
         end

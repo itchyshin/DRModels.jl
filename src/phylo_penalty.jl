@@ -91,6 +91,10 @@ penalized fits with `aic` / `lrtest` (both refuse).
     `h` and the fitted SD carries a factor `sqrt(h)`. drmTMB instead standardises
     via `ape::vcv(tree, corr = TRUE)`, whose tips always have variance 1.
 
+    (The Gaussian `phylo(1 | g)` mean route with a constant `sigma` on an ultrametric
+    tree is the exception: it fits at unit height and reports the correlation scale, so
+    `sd_u` is already on drmTMB's scale there, #979.)
+
     So the same `sd_u` is the **same prior on both sides only when the tree has
     unit height**. Copying `sd_u = 1` from an R script onto a raw tree of height
     2 gives a prior roughly `sqrt(2)` tighter than intended. Rescale first:

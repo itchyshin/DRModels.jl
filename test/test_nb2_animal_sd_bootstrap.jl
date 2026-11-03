@@ -31,7 +31,8 @@ import Distributions
     @test all(value -> isfinite(value) && value >= 0 && isinteger(value), simulated)
 
     boot = bootstrap_result(fit; data, Ainv = Q, B = 1,
-                            rng = MersenneTwister(2026102614), failures = :skip)
+                            rng = MersenneTwister(2026102614), failures = :skip,
+                            check_converged = false)
     @test boot.attempted == 1
     @test boot.used == 1
     @test boot.failed == 0

@@ -113,12 +113,14 @@ fit = drm(f, Student(); data = dat)
 2 + exp(coef(fit, :nu)[1])   # estimated shared degrees of freedom
 ```
 """
-function drm(f::BivariateDrmFormula, fam::Student; data, g_tol::Real = 1e-8,
+@drm_entry function drm(f::BivariateDrmFormula, fam::Student; data, g_tol::Real = 1e-8,
              method::Symbol = :ML)
+    _require_formula_column_lengths(f, data)   # #1022: no ragged columns under @inbounds
     method === :ML ||
         throw(ArgumentError("drm: the bivariate Student-t route implements ML only " *
             "(got method = :$method). drmTMB's `biv_student()` first slice has no " *
             "random effects, so there is nothing for REML to integrate out."))
+    data = _drop_missing_predictor_rows(f, data)   # #1089: R's na.omit, with a count
     rhs = Dict(f.forms)
     _, structured_marker = _bivariate_q4_marker(rhs)
     structured_marker === nothing ||
@@ -138,12 +140,12 @@ end
 
 function _fit_bivariate_residual(f::BivariateDrmFormula, fam::Student, data, rhs,
                                  g_tol::Real)
-    y1, X1, nm1 = _design(f.response1, rhs[:mu1], data)
-    y2, X2, nm2 = _design(f.response2, rhs[:mu2], data)
-    _, Xs1, nms1 = _design(f.response1, rhs[:sigma1], data)
-    _, Xs2, nms2 = _design(f.response1, rhs[:sigma2], data)
-    _, Xν, nmν = _design(f.response1, get(rhs, :nu, ConstantTerm(1)), data)
-    _, Xr, nmr = _design(f.response1, rhs[:rho12], data)
+    y1, X1, nm1 = _biv_design(f, f.response1, rhs[:mu1], data, :mu1)
+    y2, X2, nm2 = _biv_design(f, f.response2, rhs[:mu2], data, :mu2)
+    _, Xs1, nms1 = _biv_design(f, f.response1, rhs[:sigma1], data, :sigma1)
+    _, Xs2, nms2 = _biv_design(f, f.response1, rhs[:sigma2], data, :sigma2)
+    _, Xν, nmν = _biv_design(f, f.response1, get(rhs, :nu, ConstantTerm(1)), data, :nu)
+    _, Xr, nmr = _biv_design(f, f.response1, rhs[:rho12], data, :rho12)
 
     n = length(y1)
     obs1 = _observed_response_mask(y1)

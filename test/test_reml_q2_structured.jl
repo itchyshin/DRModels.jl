@@ -10,6 +10,48 @@
 using DRModels
 using Test, LinearAlgebra, Random, Statistics, SparseArrays
 
+@testset "q2 ML: inadmissible covariance and failed final likelihood" begin
+    # No random draws or optimizer trajectory: these states are fixed regressions
+    # for the covariance boundary reached by the phylogenetic ML fit on CI.
+    X = ones(4, 1)
+    Y = [0.1 0.4; -0.2 0.3; 0.3 -0.1; -0.4 -0.2]
+    prob, Q = DRModels.make_coevo_problem_from_covariance(
+        Matrix{Float64}(I, 4, 4), Y, X; group = collect(1:4))
+    β = zeros(1, 2)
+    D = Matrix{Float64}(I, 2, 2)
+    for lc in ([-25.0, 1.0, -25.0], [-35.0, 0.0, 0.0])
+        Λ = DRModels.lc_to_cov(lc, 2)
+        @test !DRModels._q2_lambda_admissible(Λ)
+        @test first(DRModels.coevo_marginal_cov(prob, Q, β, Λ, D)) == -Inf
+    end
+
+    # An unsuccessful factorization already returns -Inf, without throwing.
+    # A stationary barrier (zero finite-difference gradient) must never turn
+    # that failed final evaluation into a converged fit.
+    badQ = sparse(-100.0 * I(4))
+    failed = DRModels.fit_coevolution_q2_residual(
+        prob, badQ; β0 = β, Λ0 = D, σ0 = ones(2), iterations = 0)
+    @test !isfinite(failed.loglik)
+    @test !failed.converged
+
+    # The ML driver already retains its log-Cholesky coordinates. Re-factorizing
+    # their rounded covariance during front-end packing can throw even when the
+    # failed fit should simply be returned as nonconverged.
+    θ = [0.0, 0.0, -400.0, 1.0, -400.0, 0.0, 0.0, 0.0]
+    βbad, Λbad, Dbad, σbad, ρbad = DRModels.coevo_q2_residual_unpack(prob, θ)
+    @test !isposdef(Symmetric(Λbad))
+    badfit = (; β = βbad, Λ = Λbad, σ_res = σbad, rho12 = ρbad, θ)
+    packed = DRModels._q2_structured_theta(badfit, 1, :ML)
+    @test packed == θ[[1, 2, 6, 7, 8, 3, 4, 5]]
+
+    # Healthy ML and REML fits retain the existing public parameter order.
+    Λhealthy = [0.3 0.02; 0.02 0.2]
+    θhealthy = DRModels.coevo_q2_residual_pack(β, Λhealthy, [0.5, 0.7], 0.2)
+    healthy = (; β, Λ = Λhealthy, σ_res = [0.5, 0.7], rho12 = 0.2, θ = θhealthy)
+    @test DRModels._q2_structured_theta(healthy, 1, :ML) ≈
+          DRModels._q2_structured_theta(healthy, 1, :REML)
+end
+
 function _q2_reml_known_cov_fixture(K, β, Λ, residual_cov; nrep, rng)
     G = size(K, 1)
     Q = sparse(Matrix(inv(cholesky(Symmetric(K)))))

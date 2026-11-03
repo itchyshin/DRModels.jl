@@ -7,14 +7,16 @@ For Gaussian meta-analysis with supplied sampling variances, start with
 [Mean effects and residual heterogeneity](tutorials/meta-analysis.md).
 
 This is the detailed map of what `DRModels.jl` can fit today. It is deliberately
-conservative: “tested” means the route has a worked example and routine checks
-for the listed use; “implemented, untested” means it is not yet a recommended
-analysis route; and “not available” means the request cannot currently be fit
-with DRModels.jl.
+conservative: “tested” means the route has numerical checks for the listed
+use. It does not imply a complete worked analysis for every route or calibrated
+interval coverage; the rows identify those limits. “Implemented, untested”
+means it is not yet a recommended analysis route; “not available” means the
+request cannot currently be fit with DRModels.jl.
 
 Status legend:
 
-- **Tested** — suitable for the listed use after your routine model checks.
+- **Tested**: numerical checks exist for the listed use; read the row's
+  worked-analysis and inference limits before reporting results.
 - **Impl, untested** — not yet a recommended analysis route.
 - **Not available** — this request cannot currently be fit with DRModels.jl.
 
@@ -29,27 +31,50 @@ run separately.
 
 | Family | Mean-axis random effects | Status and boundary |
 |---|---|---|
-| Gaussian | intercepts, slopes, correlated, crossed, and structured effects | **Tested** |
+| Gaussian | intercepts, slopes, correlated, crossed, and structured effects | **Tested**; crossed fits are fast at moderate sizes but still slower than drmTMB at tens of thousands of rows (see [Working with large data](model-guides/large-data.md)) |
 | Student-t | intercepts and slopes | **Tested** |
 | SkewNormal | — | **Tested** fixed effects; random effects are refused |
 | Poisson | intercepts, slopes, crossed, and phylogenetic effects | **Tested** |
-| NegBinomial2 | intercepts, slopes, crossed, and phylogenetic effects | **Tested** |
+| NegBinomial2 | intercepts, slopes, crossed, and phylogenetic effects | **Tested**; dispersion cap on crossed and structured routes (see the note below the table) |
 | TruncatedNegBinomial2 | — | **Tested** fixed effects |
 | TruncatedPoisson | — | **Tested** fixed effects |
-| Beta | intercepts, slopes, crossed, and phylogenetic effects | **Tested**; crossed random effects have numerical tests but no complete worked analysis |
-| BetaBinomial | intercepts, slopes, crossed, and phylogenetic effects | **Tested**; constant `sigma` only |
-| Binomial | intercepts, crossed, and phylogenetic effects | **Tested**; slope random effects are refused |
-| Gamma | intercepts, slopes, crossed, and phylogenetic effects | **Tested**; crossed random effects have numerical tests but no complete worked analysis |
+| Beta | intercepts, slopes, crossed, and phylogenetic effects | **Tested**; crossed random effects have numerical tests but no complete worked analysis; precision cap on crossed and structured routes (see the note below the table) |
+| BetaBinomial | intercepts, slopes, crossed, and phylogenetic effects | **Tested**; constant `sigma` only; precision cap on crossed and structured routes (see the note below the table) |
+| Binomial | intercepts, correlated slopes, crossed, and phylogenetic effects | **Tested**; correlated `(1 + x \| g)` is admitted; independent `(0 + x \| g)` is refused |
+| Gamma | intercepts, slopes, crossed, and phylogenetic effects | **Tested**; crossed random effects have numerical tests but no complete worked analysis; shape cap on crossed and structured routes (see the note below the table) |
 | LogNormal | intercepts, slopes, phylogenetic, and known-matrix effects | **Tested**; `animal` and coordinate-spatial effects are refused |
-| ZeroOneBeta | — | **Tested** fixed effects |
+| ZeroOneBeta | mean (`mu`) random intercepts, `(1 \| g)` | **Tested**; `sigma`, `zoi` and `coi` stay fixed-effects-only; `coi` is not identified unless the data have both exact 0s and exact 1s |
 | Tweedie | intercepts and independent slopes | **Tested** |
 | CumulativeLogit (ordinal) | intercepts, independent slopes, and phylogenetic effects | **Tested** |
+| Underdispersed counts (variance below the mean) | — | **Not available**: no Conway–Maxwell–Poisson or generalised Poisson family. Use glmmTMB's `compois()` or `genpois()` families |
+| Censored responses (left-, right- or interval-censored values) | — | **Not available** in any family; detection limits or censored survival times cannot be modelled here. Use a package with censored likelihoods, such as brms (`y \| cens(censored) ~ …`) or the survival package |
+
+!!! warning "Dispersion cap on crossed and structured routes"
+    With crossed random effects or a structured effect (`phylo`, `relmat`) on
+    the mean, NegBinomial2, Gamma, Beta and BetaBinomial fits cap the
+    precision-type parameter (NB2 size, Gamma shape, Beta precision) at
+    `exp(8)` ≈ 2981. On the `sigma` scale this is a floor of `exp(-4)` ≈ 0.018.
+    Data that need a smaller `sigma` can stop at the cap: Gamma data with a
+    coefficient of variation below about 1.8%, very tightly concentrated
+    proportions, or nearly Poisson counts with large means. The raw optimiser
+    flag can still be true at the cap; this is not evidence that the optimum
+    lies inside the permitted range. The fit warns when it ends at a
+    likelihood clamp. If you see that warning, or your
+    fitted `sigma` is at 0.018, treat the dispersion estimate as a bound, not
+    an estimate, and compare with the same model without the random effect or
+    with drmTMB, which uses a wider cap. The cap itself is unchanged; see
+    [DRModels.jl#959](https://github.com/itchyshin/DRModels.jl/issues/959).
+    Ordinary `(1 | g)` random intercepts and fixed-effect fits do not use this
+    cap.
 
 **Count modifiers** `zi` (zero-inflation) and `hu` (hurdle): implemented in the
 Poisson/NB2 paths; **Tested**.
 
 **Beta boundary modifiers** `zoi` / `coi` (zero-/one-inflation): the
-`ZeroOneBeta()` family handles the boundary mass; **Tested**.
+`ZeroOneBeta()` family handles the boundary mass; **Tested** when the data
+contain both exact zeros and exact ones. With only one kind, `coi` sits at its
+boundary while the fit still reports convergence; an ordered-beta family is not
+available ([DRModels.jl#975](https://github.com/itchyshin/DRModels.jl/issues/975)).
 
 ## Distributional (location–scale) sub-models
 
@@ -62,7 +87,7 @@ their own formulas.
 | Gaussian mean μ and scale σ formulas | **Tested**; both intercepts and slopes are recovered. |
 | Non-Gaussian `sigma` or dispersion formula | **Tested** for families with a dispersion model. |
 | Student-t `nu` (degrees of freedom) formula | **Tested**. |
-| Random effect on the Gaussian scale axis, `sigma ~ (1\|g)` | **Tested**. By default each group's effect is integrated by 32-node Gauss–Hermite quadrature. That is close to exact for small groups but loses accuracy as groups grow. In our checks with 150 to 400 rows per group, a default fit's log-likelihood differed from drmTMB's by up to about 4 units, sometimes above and sometimes below, and in two of those checks its random-effect SD estimate was about twice drmTMB's. Pass `marginal = :Laplace` to use the Laplace approximation that drmTMB uses; it then gives the same log-likelihood, estimates and standard errors as drmTMB, and stays within 0.01 units of the exact value at those group sizes. Use it for large groups or when you compare results with drmTMB. `:Laplace` needs a fixed-effect mean and maximum likelihood; other models refuse it. `lrtest` accepts a `:Laplace` fit against the fixed-effect model `sigma ~ 1`, but refuses to compare it with a default-integrator fit of a random-effect model. Parametric bootstrap intervals for the random-effect SD are not valid on this route yet, under either integrator, because the replicates do not redraw the random effect on `sigma`; use profile or Wald intervals for that SD. |
+| Random effect on the Gaussian scale axis, `sigma ~ (1\|g)` | **Tested**. By default each group's effect is integrated by 32-node Gauss–Hermite quadrature. That is close to exact for small groups but loses accuracy as groups grow. In our checks with 150 to 400 rows per group, a default fit's log-likelihood differed from drmTMB's by up to about 4 units, sometimes above and sometimes below, and in two of those checks its random-effect SD estimate was about twice drmTMB's. Pass `marginal = :Laplace` to use the Laplace approximation that drmTMB uses; it then gives the same log-likelihood, estimates and standard errors as drmTMB, and stays within 0.01 units of the exact value at those group sizes. Use it for large groups or when you compare results with drmTMB. `:Laplace` needs a fixed-effect mean and maximum likelihood; other models refuse it. `lrtest` accepts a `:Laplace` fit against the fixed-effect model `sigma ~ 1`, but refuses to compare it with a default-integrator fit of a random-effect model. Parametric bootstrap now redraws the Gaussian scale-axis random intercept, including when a mean random effect is also present. This repairs the replicate generator; it does not establish interval coverage for the random-effect SD. Inspect refit diagnostics and keep inference claims within directly checked model cells. |
 | `sigma(fit)` and `corpairs(fit)` | **Tested** post-fit accessors. |
 
 ## Location–scale–scale models (LSS, `sd()`)
@@ -88,7 +113,7 @@ random effect: `sd(group) ~ z` or `sd(species, phylogenetic) ~ z`.
 | Gaussian random intercept `(1\|g)` | **Tested** |
 | Gaussian random slope `(x\|g)` | **Tested** |
 | Correlated intercept and slope | **Tested** |
-| Multiple, crossed, or nested grouping factors | **Tested** |
+| Multiple, crossed, or nested grouping factors | **Tested**; Gaussian crossed factors fit in about 0.3 s at 2,000 rows and 45 s at 20,000 rows on one synthetic design, still slower than drmTMB at tens of thousands of rows (see [Working with large data](model-guides/large-data.md)) |
 | Poisson crossed random effects | **Tested** with sparse Laplace integration |
 
 ### Structured random effects with a known relatedness matrix (closed-form Gaussian)
@@ -101,16 +126,23 @@ Gaussian and is fit in closed form (PGLS / matrix-determinant lemma).
 | `relmat(1\|id)` | user matrix `K` | **Tested** |
 | `animal(1\|id)` | additive-relatedness `A` | **Tested** |
 | `phylo(1\|species)` on the **mean** | tree (`AugmentedPhy` or Newick) | **Tested** |
-| `spatial(1\|site)` | coordinates; `K(ρ)=exp(-d/ρ)`, with ρ estimated | **Tested** |
-| `temporal(1\|id, time, ar1)` / `temporal(1\|id, time, ou)` on the **mean** (drmTMB `temporal(1 \| id, time = …, structure = "ar1"/"ou")`) | an integer occasion (AR1) or numeric elapsed-time (OU) column | **Tested** (`test/test_temporal_ar1.jl`, `test/test_temporal_ou.jl`): dense-oracle likelihood to 1e-10, recovery, and a GLLVModels.jl logLik cross-check to 1e-13. ML, `sigma ~ 1`, optional same-id `(1\|id)` only; other families, `sigma` terms, slopes, REML and other structured terms are refused by name. `fitted`/`predict` are population-level (drmTMB's `fitted` is conditional; conditional effects are in `ranef`); `simulate`/`bootstrap_ci` draw a fresh temporal chain. Wald SEs and intervals are reported for every coordinate (drmTMB: AR1 mean coefficients only; OU Wald refused), and `bootstrap_ci` covers every coordinate (drmTMB refuses the temporal bootstrap); these are extensions with no interval calibration claimed. drmTMB parity: 8 cells (AR1 and OU, with and without `(1\|id)`, including the drmTMB article's two datasets) matched logLik to ≤ 1e-11 and every estimate to ≤ 1e-8 relative in the measured run (Julia 1.12.6, Linux, Totoro); the tests enforce 1e-8 absolute (logLik) and 1e-6 relative (`test/test_parity_temporal.jl`; worked example: [Temporal AR1, OU and Toeplitz effects](tutorials/temporal-random-effects.md)). |
-| `phylo(1\|species) + temporal(1\|species, elapsed, ou)` on the **mean**, `drm(...; tree)` (drmTMB `phylo(1 \| species, tree = tree) + temporal(1 \| species, time = elapsed, structure = "ou")`) | an **ultrametric** Newick tree (or `AugmentedPhy`) whose tips are exactly the observed species; zero-length branches allowed; numeric elapsed time | **Tested** (`test/test_temporal_phylo_ou.jl`): additive phylogenetic stable intercept (tip-correlation scale, as drmTMB) + independent OU path per species + noise; dense-oracle likelihood ≤ 9.2e-13 (random θ, decay and stable-SD extremes), zero-length branches and the pruning pass on non-ultrametric trees exact to 1e-10, dense-oracle modes, recovery smoke, full-model `simulate` (Julia 1.10.12). drmTMB's rules are refused by name (OU only, same grouping, no `(1\|species)`, ≥ 3 species with ≥ 2 times, ≥ 3 lags, tips = species, ultrametric tree). drmTMB parity: 2 cells (the drmTMB commit is recorded in each cell's `expected.meta.toml`) — logLik ≤ 5.5e-12, estimates ≤ 2.1e-11 relative, conditional fitted ≤ 2.3e-12 (Julia 1.10.12). No interval claim: profile `confint` warns that the intervals are uncalibrated, as drmTMB's does. drmTMB refuses Wald and bootstrap intervals for this fit; DRModels.jl returns them as an extension, without a calibration claim, and does not warn that they are uncalibrated. Temporal boundary diagnostic in `check_drm(fit).temporal_boundary`. Worked example: [Temporal AR1, OU and Toeplitz effects](tutorials/temporal-random-effects.md). |
-| `temporal(1\|id, occ, homtoep)` on the **mean** (drmTMB `temporal(1 \| id, time = occ, structure = "homtoep")`) | a complete panel: every `id` observed at the same 3–12 equally spaced integer occasions, at least as many ids as occasions (missing responses dropped first, as drmTMB) | **Tested** (`test/test_temporal_homtoep.jl`): within-series covariance σ²R, R a free positive-definite Toeplitz correlation matrix parameterised by partial autocorrelations (Durbin–Levinson); σ is the TOTAL SD and, as in drmTMB, no process SD, residual SD or `(1\|id)` (not identified). BigFloat dense-oracle likelihood ≤ 4e-15 relative (partial autocorrelations up to ±0.995) and a 2048-bit Yule–Walker reference ≤ 3e-14 at atanh PACs up to ±40, dense Schur check of the parameterisation, recovery, `simulate` lag covariances, whitened residuals (`type = :quantile`) against a dense Cholesky (Julia 1.10.12). drmTMB's panel rules refused by name. **Inference scope:** as drmTMB, mean-coefficient profile intervals; `vcov`, `stderror`, Wald `confint`, `predict(se = true)` and profiles of σ or the lag correlations are refused (`confint` and `profile_curve`, as drmTMB's `profile()`; `parameter_surface` too, which has no drmTMB counterpart); `coeftable` shows `NaN` SEs. As an extension (drmTMB refuses the temporal bootstrap), `bootstrap_ci` / `bootstrap_summary` / `bootstrap_result` give mean-coefficient percentile intervals, without a calibration claim. drmTMB parity: 3 cells (the drmTMB commit is recorded in each cell's `expected.meta.toml`) — logLik ≤ 9.6e-12, lag correlations ≤ 4.9e-10, Pearson residuals ≤ 1e-6, profile endpoints ≤ 6.6e-6 (Julia 1.10.12). No calibration claim of its own. Worked example: [Temporal AR1, OU and Toeplitz effects](tutorials/temporal-random-effects.md). |
-| One `phylo`/`relmat`/`animal` marker **plus** ordinary `(1\|h)` or `(0 + x\|h)` bars on the mean | tree / `K` / `A` | **Tested**, ML only; matches drmTMB `engine = "tmb"` on nine test datasets. Independent blocks; the marker SD is on the correlation scale. REML, `(1 + x\|h)`, range-estimated `spatial()`, `penalty` and sparse algorithms are refused by name. With `meta_V(v)` added, the `meta_V` row below fits it. |
+| `spatial(1\|site)` | coordinates; `K(ρ)=exp(-d/ρ)`, with ρ estimated | **Tested**; drmTMB's `spatial()` fixes ρ at the median pairwise distance instead, so the two packages fit different models from the same formula |
+| `temporal(1\|id, time, ar1)` / `temporal(1\|id, time, ou)` on the **mean** (drmTMB development version: `temporal(1 \| id, time = …, structure = "ar1"/"ou")`, not yet released) | an integer occasion (AR1) or numeric elapsed-time (OU) column | **Tested** (`test/test_temporal_ar1.jl`, `test/test_temporal_ou.jl`): dense-oracle likelihood to 1e-10, recovery, and a GLLVModels.jl logLik cross-check to 1e-13. ML, `sigma ~ 1`, optional same-id `(1\|id)` only; other families, `sigma` terms, slopes, REML and other structured terms are refused by name. `fitted`/`predict` are population-level (drmTMB's `fitted` is conditional; conditional effects are in `ranef`); `simulate`/`bootstrap_ci` draw a fresh temporal chain. Wald SEs and intervals are reported for every coordinate (drmTMB: AR1 mean coefficients only; OU Wald refused), and `bootstrap_ci` covers every coordinate (drmTMB refuses the temporal bootstrap); these are extensions with no interval calibration claimed. drmTMB parity: 8 cells (AR1 and OU, with and without `(1\|id)`, including the drmTMB article's two datasets) matched logLik to ≤ 1e-11 and every estimate to ≤ 1e-8 relative in the measured run (Julia 1.12.6, Linux, Totoro); the tests enforce 1e-8 absolute (logLik) and 1e-6 relative (`test/test_parity_temporal.jl`; worked example: [Temporal AR1, OU and Toeplitz effects](tutorials/temporal-random-effects.md)). |
+| `phylo(1\|species) + temporal(1\|species, elapsed, ou)` on the **mean**, `drm(...; tree)` (drmTMB development version: `phylo(1 \| species, tree = tree) + temporal(1 \| species, time = elapsed, structure = "ou")`, not yet released) | an **ultrametric** Newick tree (or `AugmentedPhy`) whose tips are exactly the observed species; zero-length branches allowed; numeric elapsed time | **Tested** (`test/test_temporal_phylo_ou.jl`): additive phylogenetic stable intercept (tip-correlation scale, as drmTMB) + independent OU path per species + noise; dense-oracle likelihood ≤ 9.2e-13 (random θ, decay and stable-SD extremes), zero-length branches and the pruning pass on non-ultrametric trees exact to 1e-10, dense-oracle modes, recovery smoke, full-model `simulate` (Julia 1.10.12). drmTMB's rules are refused by name (OU only, same grouping, no `(1\|species)`, ≥ 3 species with ≥ 2 times, ≥ 3 lags, tips = species, ultrametric tree). drmTMB parity: 2 cells (the drmTMB commit is recorded in each cell's `expected.meta.toml`) — logLik ≤ 5.5e-12, estimates ≤ 2.1e-11 relative, conditional fitted ≤ 2.3e-12 (Julia 1.10.12). No interval claim: profile `confint` warns that the intervals are uncalibrated, as drmTMB's does. drmTMB refuses Wald and bootstrap intervals for this fit; DRModels.jl returns them as an extension, without a calibration claim, and does not warn that they are uncalibrated. Temporal boundary diagnostic in `check_drm(fit).temporal_boundary`. Worked example: [Temporal AR1, OU and Toeplitz effects](tutorials/temporal-random-effects.md). |
+| `temporal(1\|id, occ, homtoep)` on the **mean** (drmTMB development version: `temporal(1 \| id, time = occ, structure = "homtoep")`, not yet released) | a complete panel: every `id` observed at the same 3–12 equally spaced integer occasions, at least as many ids as occasions (missing responses dropped first, as drmTMB) | **Tested** (`test/test_temporal_homtoep.jl`): within-series covariance σ²R, R a free positive-definite Toeplitz correlation matrix parameterised by partial autocorrelations (Durbin–Levinson); σ is the TOTAL SD and, as in drmTMB, no process SD, residual SD or `(1\|id)` (not identified). BigFloat dense-oracle likelihood ≤ 4e-15 relative (partial autocorrelations up to ±0.995) and a 2048-bit Yule–Walker reference ≤ 3e-14 at atanh PACs up to ±40, dense Schur check of the parameterisation, recovery, `simulate` lag covariances, whitened residuals (`type = :quantile`) against a dense Cholesky (Julia 1.10.12). drmTMB's panel rules refused by name. **Inference scope:** as drmTMB, mean-coefficient profile intervals; `vcov`, `stderror`, Wald `confint`, `predict(se = true)` and profiles of σ or the lag correlations are refused (`confint` and `profile_curve`, as drmTMB's `profile()`; `parameter_surface` too, which has no drmTMB counterpart); `coeftable` shows `NaN` SEs. As an extension (drmTMB refuses the temporal bootstrap), `bootstrap_ci` / `bootstrap_summary` / `bootstrap_result` give mean-coefficient percentile intervals, without a calibration claim. drmTMB parity: 3 cells (the drmTMB commit is recorded in each cell's `expected.meta.toml`) — logLik ≤ 9.6e-12, lag correlations ≤ 4.9e-10, Pearson residuals ≤ 1e-6, profile endpoints ≤ 6.6e-6 (Julia 1.10.12). No calibration claim of its own. Worked example: [Temporal AR1, OU and Toeplitz effects](tutorials/temporal-random-effects.md). |
+| One `phylo`/`relmat`/`animal` marker **plus** ordinary `(1\|h)` or `(0 + x\|h)` bars on the mean | tree / `K` / `A` | **Tested**, ML only; matches drmTMB `engine = "tmb"` on nine test datasets. Independent blocks; the marker SD is on the correlation scale. (Other routes for the same `phylo` marker can report the raw branch-length scale; see the `meta_V` row below and [DRModels.jl#979](https://github.com/itchyshin/DRModels.jl/issues/979).) REML, `(1 + x\|h)`, range-estimated `spatial()`, `penalty` and sparse algorithms are refused by name. With `meta_V(v)` added, the `meta_V` row below fits it. |
 
 The Gaussian table above describes the simple intercept route. It does not rule
 out the supported non-Gaussian phylogenetic mean models or the more specific
 phylogenetic location--scale routes below; those routes have their own family
 and inference boundaries.
+
+For a Beta `relmat()` comparison with native drmTMB, use a unit-diagonal
+`K`. Julia's Beta route rescales a supplied covariance matrix to its
+correlation matrix; native drmTMB retains the supplied covariance scale.
+The same non-unit-diagonal input therefore specifies different latent
+covariance models. This differs from Julia's closed-form Gaussian route
+above, which retains the supplied `K`.
 
 ### Non-Gaussian phylogenetic random intercept on the mean (sparse Laplace)
 
@@ -183,25 +215,26 @@ package-test coverage.
 
 The selling-point model: a shared phylogenetic random effect on all four axes
 `(μ1, μ2, log σ1, log σ2)` with a 4×4 between-species covariance `Σ_a`, plus a
-residual correlation ρ12. The sparse-Laplace fit, exact O(p) gradient, and
+residual correlation ρ12. The sparse-Laplace fit, exact sparse gradient, and
 public formula route are **tested**.
 
 | Capability | Status |
 |---|---|
 | `bf(mu1=…, mu2=…, sigma1=…, sigma2=…, rho12=…)` with phylogeny | **Tested**; recovers fixed effects and `Σ_a` |
-| `relmat`, `animal`, and fixed-range `spatial` structured providers | **Tested**; spatial range is fixed (default: mean pairwise distance) |
+| `relmat`, `animal`, and fixed-range `spatial` structured providers | **Tested**; spatial range is fixed (default: mean pairwise distance; drmTMB's default is the median, so set `spatial_range` when comparing) |
 | `vc(fit)`, `ranef(fit)`, and `coevolution_cor` summaries | **Tested**; `fit.ranef.Sigma_a` is ordered `mu1, mu2, sigma1, sigma2` |
 | Fixed-effect covariance and Wald standard errors (`q4_vcov=true`) | **Tested** |
 | Bootstrap intervals for coevolution correlations | **Tested for tree-based phylogeny**; non-tree structured providers return point summaries only |
 
 ## Structured q=2 bivariate Gaussian (mu1/mu2 only)
 
-This is a complete-response exact-Gaussian ML model with matching
-structured random intercepts on `mu1` and `mu2`. It requires the same fixed-effect
+This is a complete-response exact-Gaussian model with matching
+structured random intercepts on `mu1` and `mu2`. ML is the default; the public
+route also accepts opt-in `method = :REML`. It requires the same fixed-effect
 design on both mean formulas and intercept-only `sigma1`, `sigma2`, and `rho12`
 formulas. Current support covers point estimates and exported summaries only.
-It does not cover q2 REML, calibrated intervals, non-Gaussian q2 models, or the
-full R bridge.
+It does not establish calibrated intervals, non-Gaussian q2 support, or a
+full R bridge workflow.
 
 | Capability | Status |
 |---|---|
@@ -231,9 +264,10 @@ above, and it does so by delegation rather than by a second engine.
 | Capability | Status |
 |---|---|
 | `gaussian()` + `meta_V(v)` with **known diagonal** sampling variances; τ on the σ intercept | **Tested** |
-| `meta_V(v)` plus random intercepts on the mean: `(1 \| study)`, `phylo(1 \| sp)`, `relmat(1 \| id)`, `animal(1 \| id)`, and sums of these with distinct grouping columns; `sigma ~ x` allowed | **Tested** (ML). Fits the same model as drmTMB `engine = "tmb"`: on seven comparison fits the log-likelihoods agree within 3e-10 and the estimates within 3e-9 (relative). A phylo SD is on the raw branch-length scale (× √height = drmTMB's). Not available: REML, random slopes, `spatial()`, a `sigma` random effect, `sd(g) ~ …`, two fields on one grouping column, missing responses; bootstrap with more than one field refuses. |
+| `meta_V(v)` plus random intercepts on the mean: `(1 \| study)`, `phylo(1 \| sp)`, `relmat(1 \| id)`, `animal(1 \| id)`, and sums of these with distinct grouping columns; `sigma ~ x` allowed | **Tested** (ML). Fits the same model as drmTMB `engine = "tmb"`: on seven comparison fits the log-likelihoods agree within 3e-10 and the estimates within 3e-9 (relative). A phylo SD is on the raw branch-length scale (× √height = drmTMB's). Which scale a phylo SD is reported on depends on the route: Gaussian `phylo` on the mean reports the correlation scale for every `sigma` formula on an ultrametric tree ([DRModels.jl#979](https://github.com/itchyshin/DRModels.jl/issues/979)), but this `meta_V` route reports the raw scale. Not available: REML, random slopes, `spatial()`, a `sigma` random effect, `sd(g) ~ …`, two fields on one grouping column, missing responses; bootstrap with more than one field refuses. |
 | Bivariate known sampling covariance (`meta_vcov_bivariate`) | **Tested** |
-| Deprecated `meta_known_V` parity stub | — | **Not available**; use `meta_V` instead. |
+| Dense known sampling covariance `V = V` on the **univariate** Gaussian route (drmTMB's `meta_V(V = V)`) | **Not available**, by design (#974). `drm(f, Gaussian(); V = V)` throws an `ArgumentError`. Use the bivariate `meta_vcov_bivariate` route (wide `mu1`/`mu2` form), or `meta_V(vi)` for known diagonal sampling variances. |
+| R’s deprecated `meta_known_V` alias | **Not available** in Julia; use `meta_V` for known diagonal sampling variances. |
 
 ## Inference
 
@@ -242,22 +276,33 @@ above, and it does so by delegation rather than by a second engine.
 | Wald SEs + CIs (observed information) | **Tested** |
 | Profile-likelihood CIs (`profile_result`, `confint(:profile)`) | **Tested** |
 | Parametric bootstrap (`bootstrap_ci`/`_summary`/`_result`, serial + threaded) | **Tested** |
-| REML for fixed-effect Gaussian location–scale and Gaussian mean `(1 \| g)` | **Tested** |
+| REML for fixed-effect Gaussian location–scale and Gaussian mean `(1 \| g)` or one correlated intercept/slope `(1 + x \| g)` | **Tested**; the correlated-slope cell is a single restricted route |
 | `reml_loglik` / `ml_loglik` / `estimation_method` accessors | **Tested** |
 | Epsilon-method bias correction (`bias_correct`) | **Tested** |
 | **χ̄² (chi-bar-square) boundary inference** (Self–Liang / Stram–Lee mixture) | **Tested** |
 | REML on q=4 Laplace and Location–Scale–Scale models | **Tested** |
 
+!!! warning "Percentile bootstrap intervals for `sigma` terms in mixed models"
+    `bootstrap_ci` returns plain percentile intervals, and for a `sigma` coefficient in a mixed model (a model with random effects) they are too narrow. In a simulated Gaussian location-scale model with a mean random intercept (95% intervals, `B = 199`, four cells of groups and random-intercept SD), the percentile interval for the `sigma` intercept covered 83 to 90% of the time, one-sidedly, while profile intervals for the same target covered 92 to 94% (#1119). The intervals are kept as they are and `bootstrap_ci` now warns when it returns them. For `sigma` terms in a mixed model, prefer `confint(fit, method = :profile)`.
+
 !!! warning "REML scope"
     `method=:REML` is opt-in. **ML is the default** (REML likelihoods are not
-    comparable across fixed-effect structures). Supported models are the fixed-effect
-    Gaussian location–scale model; a single Gaussian mean intercept `(1 | g)`;
-    Location–Scale–Scale models (`sd(g) ~ z`,
-    `sd(species, phylogenetic) ~ z`, and multi-component LSS); and the
-    bivariate q=4 location–scale engine; and the Gaussian `phylo(1 | g)`-on-`sigma`
-    location–scale blocks (scale-only, separate, coupled), where both the `mu`
-    and `sigma` fixed effects are integrated out with the phylogenetic effects.
-    Ordinary σ-RE, random slopes, and non-Gaussian REML stay rejected. This is not AI-REML.
+    comparable across fixed-effect structures). Supported models are: the fixed-effect
+    Gaussian location–scale model; a single Gaussian mean intercept `(1 | g)`; one
+    correlated Gaussian mean intercept/slope `(1 + x | g)` with no `sigma` random
+    effect, structured term, `meta_V()`, crossed term, or additional random-effect
+    term; Location–Scale–Scale models (`sd(g) ~ z`, `sd(species, phylogenetic) ~ z`,
+    and multi-component LSS); the bivariate q=4 location–scale engine; and the
+    Gaussian `phylo(1 | g)`-on-`sigma` location–scale blocks (scale-only, separate,
+    coupled), where both the `mu` and `sigma` fixed effects are integrated out with
+    the phylogenetic effects.
+    Ordinary σ-RE, independent slopes such as `(0 + x | g)`, other random-slope
+    structures remain refused on the Gaussian routes listed here. Separate
+    opt-in Poisson Cox–Reid routes are described under [`Poisson`](@ref); their
+    recovery evidence is limited and does not establish general non-Gaussian
+    REML support. This is not AI-REML. The retained
+    correlated-slope comparison covers one Gaussian `sleepstudy` point fit against
+    lme4 and drmTMB; it does not establish route-wide recovery or interval coverage.
 
     **Normalisation convention:** every REML route in DRModels.jl reports a
     **normalised** restricted log-likelihood, including the `(n_β/2)·log(2π)`
@@ -281,7 +326,9 @@ above, and it does so by delegation rather than by a second engine.
 
 | Capability | Status |
 |---|---|
-| `lrtest`, `anova`, `aicc`, `weights`, `update` | **Tested** |
+| `lrtest`, `anova`, `aicc`, `update` | **Tested** |
+| `weights(fit)` and `drm(...; weights = w)` | **Tested** on the fixed-effect ML routes of the univariate families (integer weights reproduce row duplication on all 16 routes, `test/test_lane_n3_drmcontrol.jl`); `weights(fit)` is `nothing` when none were given. Random-effect, structured, bivariate and REML routes refuse `weights =` by name (#931 tracks the rollout) |
+| `drm(...; control = DRMControl(maxit, start, multi_start, se, optimizer))`, `gradient(fit)`, `hessian(fit)`, `control_info(fit)` | **Tested**: `se = false` on every route; `maxit` / `start` / `multi_start` on fixed-effect univariate ML routes; direct `optimizer = :lbfgs` / `:bfgs` on those routes and Gaussian ML with one mean random intercept. Other random, structured, bivariate and REML routes refuse an explicit method; fit-based profile/bootstrap entrypoints refuse explicitly selected fits before refitting. |
 | `aic` / `bic` / `dof` / `nobs` / `deviance` / `dof_residual` | **Tested** |
 | `coef` / `vcov` / `confint` / `stderror` / `coeftable` | **Tested** |
 | `fixef` / `re_sd` / `vc` / `ranef` / `sigma` / `corpairs` | **Tested** |
@@ -308,19 +355,20 @@ data into a form that Julia can fit, then converts the result back to R.
 |---|---|
 | `drm_bridge` (string/dict/named-tuple formula → fit → flattened `Dict`); univariate, bivariate, phylo-mean, and narrow q2 structured Gaussian examples | **Tested** for the listed model configurations |
 | q2/q4 direct-export helpers (`q2_point_export`, `q4_point_export`) | **Tested** for point summaries only; broader bridge behaviour and interval calibration have not been established |
-| `drm_bridge_inference` (profile + bootstrap), limited to the Gaussian phylo SD block (`param=:resd`) | **Tested** |
+| `drm_bridge_inference` (profile + bootstrap) | **Tested** for the named Gaussian cases in Current evidence boundaries below; these tests do not establish general bridge interval coverage. |
 | Newick tree string parsing + small LRU cache | **Tested** |
-| Full R-side glue / `engine="julia"` round-trip in drmTMB | (R repo) | **Not available here** — the Julia primitive is tested; the R package glue lives in the drmTMB repository |
+| Full R-side glue / `engine="julia"` round-trip in drmTMB | (R repo) **Not available here**: the Julia primitive is tested; the R package glue lives in the drmTMB repository |
 
 ## Marginal method selection (VA/ELBO)
 
 | Capability | Status |
 |---|---|
-| `marginal=:LA`, the default integrator: GHQ-32 on an ordinary `(1\|g)` and on Gaussian `sigma ~ (1\|g)`, per-group adaptive GHQ (5 nodes per axis, #834) on non-Gaussian `(1 + x\|g)`, Laplace on most other random-effect structures | **Tested** |
+| `marginal=:LA`, the default integrator: per-group adaptive GHQ on an ordinary `(1\|g)` on a non-Gaussian mean other than ZeroOneBeta (5 nodes per group; 21 for Tweedie, 41 for CumulativeLogit; a single node for LogNormal, where it is exact) and on non-Gaussian `(1 + x\|g)` (5 nodes per axis, #834); a fixed 32-node grid (GHQ-32) on Gaussian `sigma ~ (1\|g)` and ZeroOneBeta `(1\|g)`; Laplace on most other random-effect structures | **Tested** |
 | `marginal=:VA` Poisson `(1\|g)` public path | **Experimental**; it uses an ELBO approximation, labels the fit `:VA`, and refuses mixed LA/VA AIC or likelihood-ratio comparisons |
 | `marginal=:VA` Binomial / NB2 / Gamma / Beta `(1\|g)` | **Experimental**; scale families require `sigma ~ 1` |
-| `marginal=:Laplace` Poisson / Binomial / NB2 / Gamma / Beta `(1\|g)` on the mean | **Tested**; the TMB-convention Laplace approximation (the default `:LA` on this cell is per-group adaptive Gauss–Hermite quadrature, 5 nodes per group). Same log-likelihood as native drmTMB to ≤ 4e-10 on ten test datasets. Scale families require `sigma ~ 1`; ML only. `(1 + x\|g)`, crossed terms, `sigma` covariates or random effects, `zi`/`hu` and REML are refused. `lrtest` against the fixed-effects model works; against a `:LA` random-effect fit it is refused. Prefer `:Laplace` when the family `sigma` is small (about 0.01 or less; failures shown at 0.003 to 0.012), where the default GHQ-32 can miss the optimum |
-| `marginal=:Laplace` Gaussian `sigma ~ 1 + (1\|g)` (random intercept on the scale axis, fixed-effect mean) | **Tested**; the Laplace approximation native drmTMB uses (the default `:LA` is GHQ-32 on this cell). Same log-likelihood, estimates and standard errors as drmTMB on the test datasets; ML only. See the scale-axis row above for accuracy and for the bootstrap limitation on the random-effect SD |
+| `marginal=:Laplace` Poisson / Binomial / NB2 / Gamma / Beta `(1\|g)` on the mean | **Tested**; the TMB-convention Laplace approximation (the default `:LA` on this cell is per-group adaptive Gauss–Hermite quadrature, 5 nodes per group). Same log-likelihood as native drmTMB to ≤ 4e-10 on ten test datasets. Scale families require `sigma ~ 1`; ML only. `(1 + x\|g)`, crossed terms, `sigma` covariates or random effects, `zi`/`hu` and REML are refused. `lrtest` against the fixed-effects model works; against a `:LA` random-effect fit it is refused. The failures at a small family `sigma` (0.003 to 0.012) that made `:Laplace` the safer choice were measured under the fixed 32-node grid used before version 0.7.2 and have not been re-run against the adaptive default; with a family `sigma` that small, compare the two fits. Otherwise `:Laplace` is for parity with drmTMB, not a better default. With covariates in `sigma` (NB2, Gamma, Beta), `:Laplace` is refused and the default `:LA` log-likelihood is **not comparable** with drmTMB's Laplace log-likelihood (differences of 0.04 to 1.25 units on three real data sets, [DRModels.jl#943](https://github.com/itchyshin/DRModels.jl/issues/943)); compare estimates rather than log-likelihoods there |
+| `marginal=:Laplace` Student `(1\|g)` on the mean | **Tested**; the TMB-convention Laplace approximation drmTMB uses (the default `:LA` on this cell is per-group adaptive Gauss–Hermite quadrature, 5 nodes per group). `sigma` and `nu` may carry fixed-effect formulas; ML only. A fixed-effects-only model, `(1 + x\|g)` and crossed terms (already fitted by Laplace by default) are refused |
+| `marginal=:Laplace` Gaussian `sigma ~ 1 + (1\|g)` (random intercept on the scale axis, fixed-effect mean) | **Tested**; the Laplace approximation native drmTMB uses (the default `:LA` is GHQ-32 on this cell). Same log-likelihood, estimates and standard errors as drmTMB on the test datasets; ML only. See the scale-axis row above for accuracy and for the remaining interval-coverage limit for the random-effect SD |
 | `method=:VA` on non-Gaussian `drm()` | **Rejected** — choose `marginal=:VA`; `method` is ML/REML |
 
 ## Absent / out-of-scope (explicit)
@@ -332,8 +380,12 @@ To avoid overclaiming, note these boundaries:
   `JointFiniteDrmFit`, `imputed`, and `miss_control`) are exported for evaluation,
   but their API and numerics may change and they are not covered by R-parity
   evidence. Gaussian observed-response masking and missing-response handling for
-  Location–Scale–Scale `sd()` models are available. General multiple imputation
-  outside the joint-model routes and an `na.action`-style option are absent.
+  Location–Scale–Scale `sd()` models are available. `drm` drops rows with a
+  `missing` predictor, and rows with a missing response on the Gaussian `(1|g)`
+  and `meta_V` routes, with a warning that gives the count (R's `na.omit`, as
+  drmTMB does; #1089). General multiple imputation outside the joint-model
+  routes and an `na.action` option to choose another behaviour are absent.
+  See [Handling missing data](model-guides/missing-data.md) for what to do now.
 - **VA/ELBO:** experimental random-intercept VA is limited to `(1|g)` for
   Poisson, Binomial, NB2, Gamma, and Beta (`sigma ~ 1` where applicable).
   Phylogenetic, crossed, correlated-slope, and zero-inflated/hurdle variants are
@@ -344,9 +396,11 @@ To avoid overclaiming, note these boundaries:
 
 ## Current evidence boundaries
 
-- `drm_bridge_inference` is tested only for the Gaussian phylogenetic standard
-  deviation block (`param=:resd`); other bridge inference parameters are not yet
-  supported claims.
+- Retained `drm_bridge_inference` tests cover the Gaussian phylogenetic SD
+  block (`param=:resd`), a fixed-effect coefficient profile/bootstrap,
+  bivariate q4 phylogenetic SD intervals, and the sigma-phylogenetic SD
+  (`resd_sigma`) route. These are named test cases, not a claim that every
+  bridge parameter or model has qualified intervals.
 - Coupled q=2 location–scale fitting is public and tested for NB2 and Gamma.
   Beta and beta-binomial cannot currently be requested through `drm()` and
   `bf()` for this model. Poisson and LogNormal versions are implemented but have

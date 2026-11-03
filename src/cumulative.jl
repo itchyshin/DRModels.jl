@@ -133,8 +133,15 @@ function _cumulative_cut_init(y, K, n)
     return δ0
 end
 
-function drm(f::DrmFormula, fam::CumulativeLogit; data, tree = nothing, g_tol::Real = 1e-8,
+# FX3b: `se = false` is recorded on the fit (`DrmFit.uncertainty`), so
+# `convergence_status` does not read the skipped (NaN) covariance as a failure.
+@drm_entry function drm(f::DrmFormula, fam::CumulativeLogit; se::Bool = true, kwargs...)
+    return _withuncertainty(_drm_cumulative_fit(f, fam; se = se, kwargs...), se)
+end
+
+function _drm_cumulative_fit(f::DrmFormula, fam::CumulativeLogit; data, tree = nothing, g_tol::Real = 1e-8,
              se::Bool = true)
+    _drm_entry_guard(f, fam, data; tree = tree)   # #1027 #1022 #1010
     # The response-mask wrapper rebuilds full-design outputs and does not yet
     # preserve this route's group-specific scale design. Refuse incomplete data
     # until that mapping is implemented rather than silently fitting a changed
@@ -152,6 +159,9 @@ function drm(f::DrmFormula, fam::CumulativeLogit; data, tree = nothing, g_tol::R
         "CumulativeLogit() does not yet support predictor-dependent `sd_phylo()` formulas."))
     rhs = Dict(f.forms)
     fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
+    fixed_mu, offset_term = _extract_offset(fixed_mu)   # #938: offset(z), coefficient fixed at 1
+    offset_term === nothing || (isempty(re) && mv === nothing && st === nothing) ||
+        _refuse_offset_route(fam, "a random, structured or `meta_V` term on the mean")
     mv === nothing ||
         error("CumulativeLogit() does not support meta_V markers")
     if st !== nothing
@@ -216,7 +226,7 @@ function drm(f::DrmFormula, fam::CumulativeLogit; data, tree = nothing, g_tol::R
                 error("CumulativeLogit() supports multiple random effects only as " *
                       "crossed/nested intercepts, e.g. `(1 | g) + (1 | h)`")
             comps = map(re) do r
-                grp = r[2]; gidx, G = _group_index(getproperty(data, grp))
+                grp = r[2]; gidx, G = _group_index(getproperty(data, grp); col = grp)
                 (ones(length(yi)), gidx, G, String(grp))
             end
             return _withformula(_fit_cumulative_crossed_laplace(fam, yi, Xμ, K, comps, nmμ, g_tol), f)
@@ -226,7 +236,7 @@ function drm(f::DrmFormula, fam::CumulativeLogit; data, tree = nothing, g_tol::R
                   "`(0 + x | g)` random slope on `mu`; crossed/multiple random effects are " *
                   "not implemented in this slice")
         (rk, var) = _re_kind(re[1][1]); grp = re[1][2]
-        gidx, G = _group_index(getproperty(data, grp))
+        gidx, G = _group_index(getproperty(data, grp); col = grp)
         if rk === :intercept
             if !isempty(sd_parts)
                 target = only(_sd_target_parts(f))
@@ -240,6 +250,7 @@ function drm(f::DrmFormula, fam::CumulativeLogit; data, tree = nothing, g_tol::R
             end
             return _withformula(_fit_cumulative_ranef(fam, yi, Xμ, K, gidx, G, nmμ, grp, g_tol), f)
         elseif rk === :slope
+            _require_finite_data_column(data, var)
             raw_slope = getproperty(data, var)
             raw_slope isa AbstractVector{<:Real} && length(raw_slope) == length(yi) &&
                 all(isfinite, raw_slope) || throw(ArgumentError(
@@ -265,7 +276,7 @@ function drm(f::DrmFormula, fam::CumulativeLogit; data, tree = nothing, g_tol::R
                   "are implemented in this slice\")")
         end
     end
-    return _withformula(_fit_cumulative(fam, yi, Xμ, K, nmμ, g_tol), f)
+    return _withformula(_fit_cumulative(fam, yi, Xμ, K, nmμ, g_tol; offset = _offset_for_fit(fam, offset_term, data, size(Xμ, 1))), f)
 end
 
 # Cumulative-logit ordinal GLMM with a group-specific SD for one ordinary
@@ -336,22 +347,24 @@ function _simulate_once(fit::DrmFit{CumulativeLogit}, rng; mu = nothing, sigma =
     return Float64[_rand_cumulative_logit(rng, eta[i], cuts) for i in eachindex(eta)]
 end
 
-function _fit_cumulative(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, nmμ, g_tol)
+function _fit_cumulative(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, nmμ, g_tol; offset = nothing)
     n = length(y); pμ = size(Xμ, 2); nc = K - 1
+    w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
     function nll(θ)
         β = θ[1:pμ]; δ = θ[pμ+1:pμ+nc]
         cuts = _cumulative_cuts(δ)
-        η = pμ == 0 ? zeros(eltype(θ), n) : Xμ * β
+        η = _add_offset(pμ == 0 ? zeros(eltype(θ), n) : Xμ * β, offset)   # #938
         s = zero(eltype(θ))
         @inbounds for i in 1:n
-            s -= _cumulative_loglik(y[i], η[i], cuts, K, nc)
+            s -= w[i] * (_cumulative_loglik(y[i], η[i], cuts, K, nc))
         end
         return s
     end
     θ0 = zeros(pμ + nc)
     θ0[(pμ+1):(pμ+nc)] = _cumulative_cut_init(y, K, n)
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
+                       θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
+    θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ, :cutpoints => (pμ+1):(pμ+nc)]
     names = [:mu => nmμ, :cutpoints => ["theta$k" for k in 1:nc]]
     # fitted = expected category score Σ_k k·P(y=k)
@@ -360,7 +373,7 @@ function _fit_cumulative(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, nmμ, g_t
     # `cuts`, and sharing the name here would make it one boxed variable shared
     # with a closure that threaded profile CIs call concurrently.
     cuts_hat = _cumulative_cuts(δ̂)
-    η̂ = pμ == 0 ? zeros(n) : Xμ * β̂
+    η̂ = _add_offset(pμ == 0 ? zeros(n) : Xμ * β̂, offset)   # #938
     score = _cumulative_score(η̂, cuts_hat, K)
     means = Dict(:mu => score); obs = Dict(:mu => Float64.(y))
     scales = Dict(:ordinal_eta => η̂, :ordinal_cuts => Float64.(cuts_hat))
@@ -740,7 +753,16 @@ function _fit_cumulative_phylo_laplace(fam::CumulativeLogit, y::Vector{Int}, Xμ
     grad!(gfinal, θ̂)
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
     V = if se
-        Hθ = _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        Hθ = if _se_hessian_path(θ̂; sd = (pμ + nc + 1):(pμ + nc + 1), sd_lo = _SE_LOGSD_LO) === :value
+            _warn_value_hessian("sparse-Laplace CumulativeLogit (phylo-mean)")
+            _finite_hessian(nll, θ̂; h = _fd_hessian_step(n))
+        else
+            _finite_hessian_from_gradient(
+                _se_grad((θ, tol) -> _cumulative_phylo_laplace_fg(
+                    y, K, nc, n, Xμ, leaf_node, Q, logdetQ, θ; grad = true, b0 = zeros(q),
+                    newton_tol = tol, newton_maxiter = _SE_MODE_MAXITER)),
+                θ̂; context = "sparse-Laplace CumulativeLogit (phylo-mean)")
+        end
         _vcov_from_fd_hessian(Hθ; context = "sparse-Laplace CumulativeLogit (phylo-mean)")
     else
         fill(NaN, length(θ̂), length(θ̂))

@@ -11,13 +11,22 @@
     BivariateDrmFormula
 
 Two-response formula bundle (μ1, μ2, σ1, σ2, ρ12), built by the keyword form of
-[`bf`](@ref).
+[`bf`](@ref). The `schema_cache` field holds the training-data factor schema
+written at fit time, so [`predict`](@ref) / [`predict_parameters`](@ref) keep
+the fitted contrasts when `newdata` is a level subset (#1000).
 """
 struct BivariateDrmFormula
     response1::Symbol
     response2::Symbol
     forms::Vector{Pair{Symbol,Any}}
+    # Same training-schema cache as `DrmFormula` (#1000 / #609). Fit-time
+    # `_design` writes one entry per parameter; `predict` / `predict_parameters`
+    # reuse it so a factor in `newdata` keeps the fitted contrasts.
+    schema_cache::Base.RefValue{Dict{Symbol,Any}}
 end
+
+BivariateDrmFormula(response1::Symbol, response2::Symbol, forms::Vector{Pair{Symbol,Any}}) =
+    BivariateDrmFormula(response1, response2, forms, Ref(Dict{Symbol,Any}()))
 
 _rhs_or_intercept(f) = f === nothing ? ConstantTerm(1) : f.rhs
 
@@ -148,12 +157,20 @@ fit = drm(
 )
 ```
 """
-function drm(f::BivariateDrmFormula, fam::Gaussian; data, tree = nothing,
+@drm_entry function drm(f::BivariateDrmFormula, fam::Gaussian; data, tree = nothing,
              K = nothing, A = nothing, coords = nothing,
              spatial_range = nothing,
              g_tol::Real = 1e-8, q4_g_tol::Real = 1e-3,
              q4_iterations::Int = 300, q4_n_newton::Int = 40,
-             q4_vcov::Bool = true, method::Symbol = :ML, V = nothing)
+             q4_vcov::Bool = true, method::Symbol = :ML, V = nothing,
+             marginal::Union{Nothing,Symbol} = nothing)
+    # #1094: this route has no `marginal` integrator choice. Refuse it by name
+    # rather than with a bare MethodError; the default `:LA` is a no-op.
+    (marginal === nothing || marginal === :LA) ||
+        throw(ArgumentError("drm: `marginal = :$marginal` is not supported for the bivariate " *
+            "Gaussian route (it has no `marginal` choice; the default `:LA` is the only value accepted)."))
+    _require_formula_column_lengths(f, data)   # #1022: no ragged columns under @inbounds
+    data = _drop_missing_predictor_rows(f, data)   # #1089: R's na.omit, with a count
     method in (:ML, :REML) ||
         throw(ArgumentError("drm: `method` must be :ML (default) or :REML (got :$method)"))
     rhs = Dict(f.forms)
@@ -178,17 +195,19 @@ function drm(f::BivariateDrmFormula, fam::Gaussian; data, tree = nothing,
             "package: it is accepted only on the bivariate residual-correlation route, which " *
             "marginalises no random effect and so has nothing for a restricted likelihood to " *
             "correct — use method = :ML."))
+    # FX3b: `q4_vcov = false` is recorded on the fit (`DrmFit.uncertainty`), so
+    # `convergence_status` does not read the skipped (NaN) covariance as a failure.
     if structured_marker !== nothing && structured_marker[1] === :phylo_q4
-        return _fit_bivariate_q4_phylo(
+        return _withuncertainty(_fit_bivariate_q4_phylo(
             f, fam, data, fixed, structured_marker, tree;
             q4_g_tol = q4_g_tol,
             q4_iterations = q4_iterations,
             q4_n_newton = q4_n_newton,
             q4_vcov = q4_vcov,
             method = method,
-        )
+        ), q4_vcov)
     elseif structured_marker !== nothing && structured_marker[1] === :structured_q4
-        return _fit_bivariate_q4_structured(
+        return _withuncertainty(_fit_bivariate_q4_structured(
             f, fam, data, fixed, structured_marker, tree, K, A, coords;
             spatial_range = spatial_range,
             q4_g_tol = q4_g_tol,
@@ -196,7 +215,7 @@ function drm(f::BivariateDrmFormula, fam::Gaussian; data, tree = nothing,
             q4_n_newton = q4_n_newton,
             q4_vcov = q4_vcov,
             method = method,
-        )
+        ), q4_vcov)
     elseif structured_marker !== nothing && structured_marker[1] === :structured_q2
         # No route-wide `coords` guard here: each provider branch below refuses
         # when ITS OWN input is missing (relmat needs `K`, animal needs `A`,
@@ -239,12 +258,15 @@ end
 # residual-only bivariate Gaussian route's ML fitter and its REML fitter
 # (#624 / drmTMB #1142). Moved out of `_fit_bivariate_residual` unchanged so the
 # two estimators build ONE design and ONE parameter layout, not two that drift.
+_biv_design(f::BivariateDrmFormula, response::Symbol, rhs, data, key::Symbol) =
+    _design(response, rhs, data; schema_cache = f.schema_cache, schema_key = key)
+
 function _biv_residual_designs(f::BivariateDrmFormula, rhs, data)
-    y1, X1, nm1 = _design(f.response1, rhs[:mu1], data)
-    y2, X2, nm2 = _design(f.response2, rhs[:mu2], data)
-    _, Xs1, nms1 = _design(f.response1, rhs[:sigma1], data)   # reuse a real LHS;
-    _, Xs2, nms2 = _design(f.response1, rhs[:sigma2], data)   # only the matrix is kept
-    _, Xr, nmr = _design(f.response1, rhs[:rho12], data)
+    y1, X1, nm1 = _biv_design(f, f.response1, rhs[:mu1], data, :mu1)
+    y2, X2, nm2 = _biv_design(f, f.response2, rhs[:mu2], data, :mu2)
+    _, Xs1, nms1 = _biv_design(f, f.response1, rhs[:sigma1], data, :sigma1)
+    _, Xs2, nms2 = _biv_design(f, f.response1, rhs[:sigma2], data, :sigma2)
+    _, Xr, nmr = _biv_design(f, f.response1, rhs[:rho12], data, :rho12)
 
     n = length(y1)
     obs1 = _observed_response_mask(y1)
@@ -678,7 +700,9 @@ function _split_bivariate_q4_rhs(rhs, param::Symbol)
     structured = nothing
     for t in terms
         if t isa FunctionTerm && t.f === (|)
-            error("bivariate q=4 structured fits support only `phylo`/`relmat`/`animal`/`spatial(1 | group)` markers, not ordinary random effects")
+            throw(ArgumentError("bivariate q=4 structured fits support only `phylo`/`relmat`/`animal`/`spatial(1 | group)` markers, not ordinary random effects " *
+                "(`(1 | g)` or `(1 | p | g)` on `$param`). A bivariate Gaussian with ordinary correlated random effects is not supported in DRModels.jl; " *
+                "drmTMB fits it (`drmTMB(bf(mu1 = y1 ~ x + (1|p|g), mu2 = y2 ~ x + (1|p|g), ...), family = biv_gaussian())`)."))
         elseif t isa FunctionTerm && t.f === meta_V
             error("bivariate q=4 structured fits do not support `meta_V` markers")
         elseif t isa FunctionTerm && (t.f === relmat || t.f === animal || t.f === phylo || t.f === spatial)
@@ -733,6 +757,19 @@ function _structured_marker_kind(t)
     error("unsupported structured marker")
 end
 
+# Reorder the ML driver's retained coordinates instead of re-factorizing Λ:
+# rounding can make an extreme log-Cholesky covariance numerically non-PD.
+# Even a failed fit must remain packable so its nonconvergence can be reported.
+function _q2_structured_theta(fit_q2, k::Int, method::Symbol)
+    if method === :ML
+        θ = fit_q2.θ
+        return vcat(θ[1:(2k)], θ[(2k + 4):(2k + 6)], θ[(2k + 1):(2k + 3)])
+    end
+    return vcat(fit_q2.β[:, 1], fit_q2.β[:, 2],
+                log.(fit_q2.σ_res), atanh(fit_q2.rho12 / RHO_GUARD),
+                cov_to_lc(fit_q2.Λ))
+end
+
 function _fit_bivariate_q2_structured(f::BivariateDrmFormula, fam::Gaussian, data,
                                       fixed, marker, tree, K, A, coords;
                                       spatial_range = nothing,
@@ -740,11 +777,11 @@ function _fit_bivariate_q2_structured(f::BivariateDrmFormula, fam::Gaussian, dat
     marker[1] === :structured_q2 || error("internal error: expected q2 structured marker")
     kind = marker[2]
     grp = marker[3]
-    y1, X1, nm1 = _design(f.response1, fixed[:mu1], data)
-    y2, X2, nm2 = _design(f.response2, fixed[:mu2], data)
-    _, Xs1, nms1 = _design(f.response1, fixed[:sigma1], data)
-    _, Xs2, nms2 = _design(f.response1, fixed[:sigma2], data)
-    _, Xr, nmr = _design(f.response1, fixed[:rho12], data)
+    y1, X1, nm1 = _biv_design(f, f.response1, fixed[:mu1], data, :mu1)
+    y2, X2, nm2 = _biv_design(f, f.response2, fixed[:mu2], data, :mu2)
+    _, Xs1, nms1 = _biv_design(f, f.response1, fixed[:sigma1], data, :sigma1)
+    _, Xs2, nms2 = _biv_design(f, f.response1, fixed[:sigma2], data, :sigma2)
+    _, Xr, nmr = _biv_design(f, f.response1, fixed[:rho12], data, :rho12)
     all(isfinite, y1) && all(isfinite, y2) ||
         throw(ArgumentError("drm: bivariate q=2 structured Julia route currently requires complete responses"))
     size(Xs1, 2) == 1 && size(Xs2, 2) == 1 && size(Xr, 2) == 1 ||
@@ -767,12 +804,12 @@ function _fit_bivariate_q2_structured(f::BivariateDrmFormula, fam::Gaussian, dat
         make_coevo_problem(phy_obj, Y, Matrix{Float64}(X1); species = sp)
     elseif kind === :relmat
         K === nothing && error("relmat(1 | $grp) needs `K = …`")
-        C = Matrix{Float64}(K)
+        C = _finite_user_matrix(K, "K")
         size(C) == (G, G) || error("relmat structured matrix must be $(G)×$(G) (the number of `$grp` levels)")
         make_coevo_problem_from_covariance(C, Y, Matrix{Float64}(X1); group = gidx)
     elseif kind === :animal
         A === nothing && error("animal(1 | $grp) needs `A = …`")
-        C = Matrix{Float64}(A)
+        C = _finite_user_matrix(A, "A")
         size(C) == (G, G) || error("animal relatedness matrix must be $(G)×$(G) (the number of `$grp` levels)")
         make_coevo_problem_from_covariance(C, Y, Matrix{Float64}(X1); group = gidx)
     elseif kind === :spatial
@@ -836,14 +873,7 @@ function _fit_bivariate_q2_structured(f::BivariateDrmFormula, fam::Gaussian, dat
         :rho12 => nmr,
         :phylocov => _q2_phylocov_names(),
     ]
-    θ̂ = vcat(
-        fit_q2.β[:, 1],
-        fit_q2.β[:, 2],
-        log(fit_q2.σ_res[1]),
-        log(fit_q2.σ_res[2]),
-        atanh(fit_q2.rho12 / RHO_GUARD),
-        cov_to_lc(fit_q2.Λ),
-    )
+    θ̂ = _q2_structured_theta(fit_q2, k, method)
     nll = function (θ)
         β = hcat(θ[blocks[1].second], θ[blocks[2].second])
         # Build the Λ factor straight from θ (never `L L'`): #857 site K
@@ -884,9 +914,15 @@ function _fit_bivariate_q2_structured(f::BivariateDrmFormula, fam::Gaussian, dat
     # is wrong. The route-naming `context` below reaches the user through the
     # singularity warning; correcting the helper's prefix needs a shared file that
     # is out of scope for this change.
-    V = _vcov_from_fd_hessian(_finite_hessian(nll, θ̂; h = _fd_hessian_step(2 * length(y1)));
+    V = if isfinite(fit_q2.loglik)
+        _vcov_from_fd_hessian(_finite_hessian(nll, θ̂; h = _fd_hessian_step(2 * length(y1)));
                            context = "bivariate Gaussian q=2 structured ($kind) " *
                                      "finite-difference Hessian")
+    else
+        # No curvature exists at a rejected final state. Preserve the failed
+        # fit and its convergence flag without attempting an Inf/NaN Hessian.
+        fill(NaN, length(θ̂), length(θ̂))
+    end
     means = Dict(:mu1 => X1 * fit_q2.β[:, 1], :mu2 => X2 * fit_q2.β[:, 2])
     obs = Dict(:mu1 => Vector{Float64}(y1), :mu2 => Vector{Float64}(y2))
     scales = Dict(
@@ -945,6 +981,7 @@ end
 # kernel each evaluation. Here rho is fixed, so the two are different models.
 function _spatial_covariance_from_coords(grp::Symbol, G::Int, coords, spatial_range)
     coords === nothing && error("spatial(1 | $grp) needs `coords = …`")
+    _require_finite_inputs(; coords=coords)
     G >= 2 || error("spatial(1 | $grp) needs at least 2 distinct sites; got G=$G")
     # A 1-D transect is naturally written as a plain Vector (`coords = [0.0, 1.0, 2.0]`),
     # but `Matrix{Float64}(::Vector)` has no method and raised a bare MethodError. Accept it
@@ -986,14 +1023,16 @@ function _q4_structured_precision(kind::Symbol, grp::Symbol, G::Int;
                                   K, A, coords, spatial_range)
     if kind === :relmat
         K === nothing && error("relmat(1 | $grp) needs `K = …`")
-        C = Matrix{Float64}(K)
+        C = _finite_user_matrix(K, "K")
         size(C) == (G, G) || error("relmat structured matrix must be $(G)×$(G) (the number of `$grp` levels)")
+        C = _require_symmetric_finite_covariance(C, "`K` for `relmat(1 | $grp)`")   # #1020
         isposdef(Symmetric(C)) || error("relmat K must be positive definite")
         return Matrix(inv(cholesky(Symmetric(C))))
     elseif kind === :animal
         A === nothing && error("animal(1 | $grp) needs `A = …`")
-        C = Matrix{Float64}(A)
+        C = _finite_user_matrix(A, "A")
         size(C) == (G, G) || error("animal relatedness matrix must be $(G)×$(G) (the number of `$grp` levels)")
+        C = _require_symmetric_finite_covariance(C, "`A` for `animal(1 | $grp)`")   # #1020
         isposdef(Symmetric(C)) || error("animal A must be positive definite")
         return Matrix(inv(cholesky(Symmetric(C))))
     elseif kind === :spatial
@@ -1024,11 +1063,11 @@ function _fit_bivariate_q4_structured(f::BivariateDrmFormula, fam::Gaussian, dat
     grp = marker[3]
     lc_zero = length(marker) >= 4 ? marker[4] : Int[]
     _ = tree   # unused for non-phylo providers; accepted for API symmetry
-    y1, X1, nm1 = _design(f.response1, fixed[:mu1], data)
-    y2, X2, nm2 = _design(f.response2, fixed[:mu2], data)
-    _, Xs1, nms1 = _design(f.response1, fixed[:sigma1], data)
-    _, Xs2, nms2 = _design(f.response1, fixed[:sigma2], data)
-    _, Xr, nmr = _design(f.response1, fixed[:rho12], data)
+    y1, X1, nm1 = _biv_design(f, f.response1, fixed[:mu1], data, :mu1)
+    y2, X2, nm2 = _biv_design(f, f.response2, fixed[:mu2], data, :mu2)
+    _, Xs1, nms1 = _biv_design(f, f.response1, fixed[:sigma1], data, :sigma1)
+    _, Xs2, nms2 = _biv_design(f, f.response1, fixed[:sigma2], data, :sigma2)
+    _, Xr, nmr = _biv_design(f, f.response1, fixed[:rho12], data, :rho12)
     obs1 = _observed_response_mask(y1)
     obs2 = _observed_response_mask(y2)
     (count(obs1) >= size(X1, 2) && count(obs2) >= size(X2, 2)) ||
@@ -1162,6 +1201,7 @@ function _fit_bivariate_q4_structured(f::BivariateDrmFormula, fam::Gaussian, dat
 end
 
 function _q4_default_spatial_range(coords, G::Int)
+    _require_finite_inputs(; coords=coords)
     Cmat = Matrix{Float64}(coords)
     Ddist = [sqrt(sum(abs2, Cmat[k, :] .- Cmat[l, :])) for k in 1:G, l in 1:G]
     return sum(Ddist) / (G^2 - G)
@@ -1176,11 +1216,11 @@ function _fit_bivariate_q4_phylo(f::BivariateDrmFormula, fam::Gaussian, data, fi
     tree === nothing && error("phylo(1 | $grp) needs `tree = …`")
     phy = _as_augmented_phy(tree)
 
-    y1, X1, nm1 = _design(f.response1, fixed[:mu1], data)
-    y2, X2, nm2 = _design(f.response2, fixed[:mu2], data)
-    _, Xs1, nms1 = _design(f.response1, fixed[:sigma1], data)
-    _, Xs2, nms2 = _design(f.response1, fixed[:sigma2], data)
-    _, Xr, nmr = _design(f.response1, fixed[:rho12], data)
+    y1, X1, nm1 = _biv_design(f, f.response1, fixed[:mu1], data, :mu1)
+    y2, X2, nm2 = _biv_design(f, f.response2, fixed[:mu2], data, :mu2)
+    _, Xs1, nms1 = _biv_design(f, f.response1, fixed[:sigma1], data, :sigma1)
+    _, Xs2, nms2 = _biv_design(f, f.response1, fixed[:sigma2], data, :sigma2)
+    _, Xr, nmr = _biv_design(f, f.response1, fixed[:rho12], data, :rho12)
     # #19: missing responses are supported via a per-cell observed mask — observed
     # cells enter the likelihood, the full tree is kept. make_problem records the mask
     # (NaN ⇒ missing) and zeroes the missing values; here we only guard identifiability

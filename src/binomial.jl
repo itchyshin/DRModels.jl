@@ -222,6 +222,12 @@ end
     return ll
 end
 
+# FX3b: `se = false` is recorded on the fit (`DrmFit.uncertainty`), so
+# `convergence_status` does not read the skipped (NaN) covariance as a failure.
+@drm_entry function drm(f::DrmFormula, fam::Binomial; se::Bool = true, kwargs...)
+    return _withuncertainty(_drm_binomial_fit(f, fam; se = se, kwargs...), se)
+end
+
 # Outside SD-regression routes, Binomial admits `phylo` alone among the
 # structured markers. `relmat` is currently supported for the structured SD
 # regression route below, not for a general Binomial random-effect fit. Without
@@ -230,12 +236,13 @@ end
 #     MethodError: no method matching drm(::DrmFormula, ::Binomial; K=…)
 # — a dispatch failure instead of the explanation this method already carries a
 # few lines below. Taking the arguments lets that refusal actually be reached.
-function drm(f::DrmFormula, fam::Binomial; data, tree = nothing,
+function _drm_binomial_fit(f::DrmFormula, fam::Binomial; data, tree = nothing,
              tree1 = nothing, tree2 = nothing, K = nothing,
              A = nothing, Ainv = nothing, coords = nothing, mesh = nothing,
              g_tol::Real = 1e-8,
              se::Bool = true, marginal::Symbol = :LA, method = nothing,
              nq::Int = _BINOMIAL_RANEF_AGHQ_K)
+    _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, Ainv = Ainv, coords = coords)   # #1027 #1022 #1010
     _reject_method_as_marginal(fam, method)
     nq >= 1 || throw(ArgumentError("Binomial `nq` must be ≥ 1; got $nq"))
     fam.link !== :logit && marginal === :VA && throw(ArgumentError(
@@ -267,6 +274,9 @@ function drm(f::DrmFormula, fam::Binomial; data, tree = nothing,
     _lss_only_gaussian_guard(f, fam)   # #544: refuse, never silently drop, sd() parts
     rhs = Dict(f.forms)
     fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
+    fixed_mu, offset_term = _extract_offset(fixed_mu)   # #938: offset(z), coefficient fixed at 1
+    offset_term === nothing || (isempty(re) && mv === nothing && st === nothing) ||
+        _refuse_offset_route(fam, "a random, structured or `meta_V` term on the mean")
     isaghq && !(length(re) > 1 && st === nothing) &&
         _aghq_reject(fam, "this model (Binomial `marginal = :AGHQ` covers crossed random intercepts `(1 | g) + (1 | h)` only, #761)")
     mv === nothing ||
@@ -300,13 +310,13 @@ function drm(f::DrmFormula, fam::Binomial; data, tree = nothing,
             all(_re_kind(r[1])[1] === :intercept for r in re) ||
                 error("Binomial() supports multiple random effects only as crossed/nested intercepts, e.g. `(1 | g) + (1 | h)`")
             comps = map(re) do r
-                grp = r[2]; gidx, G = _group_index(getproperty(data, grp))
+                grp = r[2]; gidx, G = _group_index(getproperty(data, grp); col = grp)
                 (ones(length(s)), gidx, G, String(grp))
             end
             isaghq && return _withformula(_fit_binomial_crossed_aghq(fam, s, ntr, Xμ, comps, nmμ, g_tol; se = se), f)   # #761
             return _withformula(_fit_binomial_crossed_laplace(fam, s, ntr, Xμ, comps, nmμ, g_tol), f)
         end
-        (rk, var) = _re_kind(re[1][1]); grp = re[1][2]; gidx, G = _group_index(getproperty(data, grp))
+        (rk, var) = _re_kind(re[1][1]); grp = re[1][2]; gidx, G = _group_index(getproperty(data, grp); col = grp)
         if rk === :intercept                              # (1 | g) → 1-D GHQ (Laplace) or VA (#136)
             isva && return _withformula(_withmarginal(
                 _fit_binomial_ranef_va(fam, s, ntr, Xμ, gidx, G, nmμ, grp, g_tol), :VA), f)
@@ -314,6 +324,7 @@ function drm(f::DrmFormula, fam::Binomial; data, tree = nothing,
                 fam, s, ntr, Xμ, gidx, G, nmμ, grp, g_tol; nq = nq), f)
         elseif rk === :corr                                # (1 + x | g) → 2-D GHQ tensor (#753)
             isva && _va_reject(fam, "a correlated random slope `(1 + x | g)`")
+            _require_finite_data_column(data, var)
             xs = Float64.(getproperty(data, var))
             _binomial_check_slope_identifiable(xs, gidx, G, grp)
             return _withformula(_fit_binomial_corr_ranef(
@@ -324,7 +335,7 @@ function drm(f::DrmFormula, fam::Binomial; data, tree = nothing,
         end
     end
     isva && _va_reject(fam, "no random intercept (fixed-effects-only)")
-    return _withformula(_fit_binomial(fam, s, ntr, Xμ, nmμ, g_tol), f)
+    return _withformula(_fit_binomial(fam, s, ntr, Xμ, nmμ, g_tol; offset = _offset_for_fit(fam, offset_term, data, size(Xμ, 1))), f)
 end
 
 # Successes and trials from a 0/1 Bernoulli response or `cbind(successes, failures)`.
@@ -336,6 +347,10 @@ function _binomial_response(f::DrmFormula, data)
             error("Binomial() with a single-column response requires a 0/1 (Bernoulli) vector; use cbind(successes, failures) for trial counts")
         ntr = ones(length(s))
     else                                                  # cbind(successes, failures): n = s + f
+        _require_finite_inputs(; response=(_table_column(data, f.response), string(f.response)),
+                               response_allow_missing=false)
+        _require_finite_inputs(; response=(_table_column(data, f.response2), string(f.response2)),
+                               response_allow_missing=false)
         s = Float64.(getproperty(data, f.response))       # successes
         fl = Float64.(getproperty(data, f.response2))     # failures
         (all(si -> si ≥ 0 && isinteger(si), s) && all(fi -> fi ≥ 0 && isinteger(fi), fl)) ||
@@ -345,31 +360,35 @@ function _binomial_response(f::DrmFormula, data)
     return s, ntr
 end
 
-function _fit_binomial(fam::Binomial, s, ntr, Xμ, nmμ, g_tol)
+function _fit_binomial(fam::Binomial, s, ntr, Xμ, nmμ, g_tol; offset = nothing)
     n = length(s); pμ = size(Xμ, 2)
     sint = round.(Int, s); nint = round.(Int, ntr)
     lc = [_logchoose(nint[i], sint[i]) for i in 1:n]
+    w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
     function nll(θ)
-        ημ = Xμ * θ                                       # unclamped: see `_binomial_logit_ll`
+        ημ = _eta_with_offset(Xμ, θ, offset)          # unclamped: see `_binomial_logit_ll`
         v = zero(eltype(θ))
         @inbounds for i in 1:n
-            v -= _binomial_link_ll(fam, nint[i], sint[i], ημ[i], lc[i])
+            v -= w[i] * (_binomial_link_ll(fam, nint[i], sint[i], ημ[i], lc[i]))
         end
         return v
     end
     p̄ = clamp(sum(s) / max(sum(ntr), 1), 1e-3, 1 - 1e-3)   # overall success rate
     θ0 = zeros(pμ); θ0[1] = _binomial_start(fam, p̄)
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    θ0[1:pμ] .= _offset_start(θ0[1:pμ], Xμ, offset)   # #938
+    res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
+                       θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
+    θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ]; names = [:mu => nmμ]
-    means = Dict(:mu => _binomial_mean.(Ref(fam), Xμ * θ̂))
-    V = _separation_guard(Xμ, s, ntr, θ̂, V, means[:mu], nmμ;
-                          near_logit = fam.link === :logit)   # exact test for all links; near rule is logit-specific
+    means = Dict(:mu => _binomial_mean.(Ref(fam), _eta_with_offset(Xμ, θ̂, offset)))                # fitted success probability
+    V, separated = _separation_check(Xμ, s, ntr, θ̂, V, means[:mu], nmμ;
+                                     near_logit = fam.link === :logit)   # #731: detect + warn, SE → Inf; exact test for all links, near rule is logit-specific
     obs = Dict(:mu => s ./ ntr)                            # observed proportion (for residuals)
     scales = Dict(:trials => Float64.(nint))
-    return _withiterations(
+    fit = _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
+    return separated ? _withgeometry(fit, :binomial_separation) : fit   # #1186: as drmTMB `binomial_separation`
 end
 
 # Default nodes for the Binomial 1-D `(1 | g)` route (#712/#713 grouped-trial

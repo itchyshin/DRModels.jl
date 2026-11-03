@@ -1,0 +1,121 @@
+"""Lexical smoke guards for reviewed documentation wording, not runtime proof.
+
+Source review and the runtime/example receipts establish implementation behavior.
+These tests only prevent the specifically corrected prose omissions recurring.
+"""
+from pathlib import Path
+import re
+import unittest
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def markdown_table_cells(line):
+    """Split a Markdown table row on unescaped pipes, preserving escaped pipes."""
+    cells = []
+    current = []
+    i = 0
+    while i < len(line):
+        char = line[i]
+        if char == "\\" and i + 1 < len(line) and line[i + 1] == "|":
+            current.append("|")
+            i += 2
+            continue
+        if char == "|":
+            cells.append("".join(current).strip())
+            current = []
+        else:
+            current.append(char)
+        i += 1
+    cells.append("".join(current).strip())
+    if cells and cells[0] == "":
+        cells.pop(0)
+    if cells and cells[-1] == "":
+        cells.pop()
+    return cells
+
+
+def assert_markdown_table_arity(markdown):
+    """Reject a table body row whose number of cells differs from its header."""
+    lines = markdown.splitlines()
+    for i, header in enumerate(lines[:-1]):
+        if "|" not in header or not re.fullmatch(r"\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*", lines[i + 1]):
+            continue
+        expected = len(markdown_table_cells(header))
+        j = i + 2
+        while j < len(lines) and "|" in lines[j] and lines[j].strip():
+            actual = len(markdown_table_cells(lines[j]))
+            if actual != expected:
+                raise AssertionError(f"table row {j + 1} has {actual} cells; expected {expected}: {lines[j]}")
+            j += 1
+
+
+def assert_tested_definition_scope(markdown):
+    """Keep numerical-check status distinct from worked-analysis/coverage claims."""
+    intro = re.sub(r"\s+", " ", markdown.split("## Response families", 1)[0])
+    if "numerical checks for the listed" not in intro:
+        raise AssertionError("Tested definition must be based on numerical checks for the listed use")
+    if not re.search(r"does not imply (?:that every route has a complete worked analysis|a complete worked analysis for every route)", intro):
+        raise AssertionError("Tested definition must not imply every route has a complete worked analysis")
+    if "calibrated interval coverage" not in intro:
+        raise AssertionError("Tested definition must distinguish numerical checks from calibrated coverage")
+    for family in ("Beta", "Gamma"):
+        row = next((line for line in markdown.splitlines() if line.startswith(f"| {family} |")), "")
+        if "numerical tests but no complete worked analysis" not in row:
+            raise AssertionError(f"{family} crossed-route worked-analysis qualification was lost")
+
+
+def assert_recent_capability_corrections(markdown):
+    """Reject stale handoff copies that erase already merged route corrections."""
+    rows = markdown.splitlines()
+    zero_one = next(line for line in rows if line.startswith("| ZeroOneBeta |"))
+    assert "mean (`mu`) random intercepts" in zero_one
+    default = next(line for line in rows if line.startswith("| `marginal=:LA`, the default integrator"))
+    assert "a single node for LogNormal, where it is exact" in default
+    meta = next(line for line in rows if line.startswith("| `meta_V(v)` plus random intercepts"))
+    assert "correlation scale for every `sigma` formula" in meta
+    scale = next(line for line in rows if line.startswith("| Random effect on the Gaussian scale axis"))
+    assert "Parametric bootstrap now redraws" in scale
+    assert "does not establish interval coverage" in scale
+
+
+class DocumentationSemantics(unittest.TestCase):
+    def text(self, path):
+        return (ROOT / path).read_text()
+    def test_preserves_recently_merged_capability_corrections(self):
+        assert_recent_capability_corrections(self.text("docs/src/capabilities.md"))
+    def test_rejects_stale_handoff_route_regressions(self):
+        text = self.text("docs/src/capabilities.md")
+        for old, new in [
+            ("mean (`mu`) random intercepts", "fixed effects only"),
+            ("a single node for LogNormal, where it is exact", "five nodes for every family"),
+            ("correlation scale for every `sigma` formula", "raw scale with constant sigma"),
+            ("Parametric bootstrap now redraws", "Parametric bootstrap never redraws"),
+        ]:
+            self.assertIn(old, text)
+            with self.assertRaises(AssertionError):
+                assert_recent_capability_corrections(text.replace(old, new))
+    def test_capabilities_markdown_table_arity_and_escaped_pipes(self):
+        text = self.text("docs/src/capabilities.md")
+        section = text.split('## R → Julia bridge (engine = "julia")', 1)[1].split("## ", 1)[0]
+        assert_markdown_table_arity(section)
+        self.assertEqual(markdown_table_cells(r"| `phylo(1\|g)` | **Tested** |"), ["`phylo(1|g)`", "**Tested**"])
+    def test_capabilities_tested_definition_scope(self):
+        assert_tested_definition_scope(self.text("docs/src/capabilities.md"))
+    def test_capabilities_r_bridge_row_keeps_two_cell_scope_qualification(self):
+        text = self.text("docs/src/capabilities.md")
+        section = text.split('## R → Julia bridge (engine = "julia")', 1)[1].split("## ", 1)[0]
+        row = next((line for line in section.splitlines() if "Full R-side glue" in line), "")
+        cells = markdown_table_cells(row)
+        self.assertEqual(len(cells), 2, f"R bridge row should have two table cells, got {len(cells)}")
+        status = cells[1]
+        self.assertIn("Not available here", status)
+        self.assertIn("Julia primitive is tested", status)
+        self.assertIn("R package glue lives in the drmTMB repository", status)
+    def test_semantic_guards_reject_malformed_row_and_old_tested_definition(self):
+        with self.assertRaisesRegex(AssertionError, "has 3 cells; expected 2"):
+            assert_markdown_table_arity("| Capability | Status |\n|---|---|\n| R bridge | scope | Not available |")
+        old = "This is deliberately conservative: ‘tested’ means the route has a worked example and routine checks for the listed use."
+        with self.assertRaisesRegex(AssertionError, "numerical checks"):
+            assert_tested_definition_scope(old)
+if __name__ == "__main__":
+    unittest.main()

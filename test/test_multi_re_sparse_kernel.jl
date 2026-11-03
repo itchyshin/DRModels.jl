@@ -7,7 +7,7 @@
 # 1e-8 on several fixtures (crossed, three components, a varying-σ design, a
 # weighted (0 + x | h) component, and q > the dense-Hessian threshold).
 using DRModels, Test, LinearAlgebra, Random, SparseArrays, Statistics, ForwardDiff
-const Optim = DRModels.Optim
+using DRModels: Optim   # import form: safe after any other `using DRModels: Optim` in the same shard
 
 const _SK = DRModels
 

@@ -135,7 +135,7 @@ end
     reloaded = open(deserialize, path)
     @test predict_parameters(reloaded, data)[:sd] ≈ fit.scales[:sd]
     boot = bootstrap_result(fit; data, K, B = 1,
-        rng = MersenneTwister(20261023), failures = :skip)
+        rng = MersenneTwister(20261023), failures = :skip, check_converged = false)
     @test boot.attempted == boot.used == 1
     @test boot.failed == 0
 end

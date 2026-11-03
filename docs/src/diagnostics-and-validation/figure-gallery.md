@@ -10,6 +10,11 @@
 Every figure below is rendered at build time from a real `drm` fit — nothing is
 mocked.
 
+To run this code yourself you also need the `CairoMakie` package (and
+`AlgebraOfGraphics` for the grammar-of-graphics figures). If you have not
+added them to your Julia environment, run
+`using Pkg; Pkg.add(["CairoMakie", "AlgebraOfGraphics"])` once first.
+
 ```@example gallery
 using DRModels, CairoMakie, Random
 CairoMakie.activate!(type = "png")   # render-proof raster output

@@ -1,4 +1,5 @@
-using DRModels, Test, Optim, LinearAlgebra, Random
+using DRModels, Test, LinearAlgebra, Random
+using DRModels: Optim
 import Distributions
 
 function _tweedie_relmat_validation_fixture()

@@ -250,11 +250,9 @@ _srl_design(d, sigx) = (hcat(ones(length(d.y)), d.x),
     end
 
     @testset "drm_bridge_inference profiles a :Laplace fit" begin
-        # The bridge sets `profile_ci = true` for every univariate profile call.
-        # That flag only feeds the sigma-phylo route, so :Laplace accepts and
-        # ignores it, as the default route does.
-        @test loglik(drm(f, Gaussian(); data = d, marginal = :Laplace, profile_ci = true)) ==
-              loglik(fitL)
+        # `profile_ci` only feeds the sigma-phylo route, so :Laplace refuses it (#1010);
+        # the bridge requests it for sigma-phylo formulas only.
+        @test_throws ArgumentError drm(f, Gaussian(); data = d, marginal = :Laplace, profile_ci = true)
         # Fixture p1 (G = 15, m = 10): both routes have finite profile endpoints.
         dp1 = _srl_readfix(joinpath(_SRL_DIR, "p1_G15_m10_sdb040.csv"))
         fitP = drm(f, Gaussian(); data = dp1, marginal = :Laplace)

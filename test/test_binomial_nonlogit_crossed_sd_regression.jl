@@ -51,7 +51,7 @@ import Distributions
             @test length(predictions[targets[2]]) == length(y)
             @test all(isfinite, predictions[targets[1]])
             @test all(isfinite, predictions[targets[2]])
-            simulated = simulate(fit; rng = MersenneTwister(20261030 + seed_offset))
+            simulated = simulate(fit; re = :zero, rng = MersenneTwister(20261030 + seed_offset))
             @test length(simulated) == length(y)
             @test all(value -> value == 0.0 || value == 1.0, simulated)
         end

@@ -2,48 +2,39 @@
 
 [![Build Status](https://github.com/itchyshin/DRModels.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/itchyshin/DRModels.jl/actions/workflows/CI.yml)
 
-Fast **distributional regression models** in Julia — the Julia twin of
-the R package [drmTMB](https://github.com/itchyshin/drmTMB).
+DRModels.jl fits **distributional regression** models in Julia. In an ordinary
+regression (`lm`, `lmer`, `glmmTMB`) a predictor changes only the *average*
+response. In a distributional regression the average **and** the variability
+each get their own formula, so you can ask whether, say, temperature changes
+mean body size, how much individuals differ, or both.
 
-> **Early v0.7.1 release.** This repo migrates a *verified proof-of-concept*
-> engine; the public API and module layout are still expected to evolve across
-> the 0.x series, with breaking changes requiring a minor-version bump.
-> **Package users:** start with the [Documenter site](https://itchyshin.github.io/DRModels.jl/)
-> and its capability matrix. **Contributors:** see [HANDOVER.md](HANDOVER.md) for
-> engineering provenance, [ROADMAP.md](ROADMAP.md) for the development plan, and
-> [AGENTS.md](AGENTS.md) for team responsibilities.
+Each parameter of the response distribution has a Greek letter in the
+statistics and a keyword in the code:
 
-## Why
-
-drmTMB fits univariate and bivariate **distributional** regressions — each
-distributional parameter (mean μ, scale σ, correlation ρ) gets its own formula —
-including the **q=4 phylogenetic bivariate location–scale model (PLSM)**, where a
-shared phylogenetic random effect acts on `(μ1, μ2, log σ1, log σ2)`. Because the
-scale depends nonlinearly on a random effect, there is no closed-form marginal:
-it needs a **Laplace approximation**. brms/Stan needs ~122 h on this model;
-drmTMB (R/TMB) fits it in ~2.5 s at p=100 species.
-
-`DRModels.jl` is a Julia engine for that model class, built on a **sparse
-augmented-state precision** (`kron(Q_topology, Λ⁻¹)`, O(p) non-zeros) with an
-**exact O(p) marginal gradient** (implicit-function / TMB-style, via Takahashi
-selected inversion — it never forms a dense p×p phylogenetic covariance) and a
-fast-path-then-robust Laplace mode-finder.
-
-## Verified results (proof-of-concept)
-
-Same model, same real `q4_p100` data, same Laplace ML marginal as drmTMB
-(reproduced in this repo's `bench/run_sparse_tmb_nd.jl`):
-
-| | drmTMB | DRModels.jl |
+| Parameter | Symbol | Keyword in formulas and `coef(fit, …)` |
 |---|---|---|
-| single fit (p=100) | 2.48 s, false-conv | **1.14 s, converged → 2.18× faster** |
-| logLik | −256.52 | −256.51 (matches) |
-| O(p) scaling to p=10,000 | not attempted at that scale (measured O(p^1.27) to p=3000) | **~113 s, k≈1.08 (near-linear)** |
-| Wald SEs at the variance boundary | all-NaN (non-PD Hessian) | **valid for 16/17 params** |
+| mean (location) | μ | `mu` (the response formula, `y ~ …`) |
+| residual standard deviation (scale) | σ | `sigma` |
+| residual correlation between two responses | ρ₁₂ | `rho12` |
 
-Full grid and honest caveats: [report/comparison-grid.md](report/comparison-grid.md).
+If you know glmmTMB, the `sigma` formula plays the role of `dispformula`.
+
+DRModels.jl is a standalone Julia package; no R installation is needed. It is
+the Julia companion of the R package
+[drmTMB](https://github.com/itchyshin/drmTMB) and uses the same model
+vocabulary (`bf(...)`, `sigma`, `rho12`, `meta_V`). Documentation:
+<https://itchyshin.github.io/DRModels.jl/dev/> (built from the current `main`
+branch).
+
+> **Status: experimental, version 0.7.1.** Install it from GitHub (it is not
+> yet in the Julia General registry). The public API may still change across
+> the 0.x series. Before choosing a model, check
+> [what is tested](https://itchyshin.github.io/DRModels.jl/dev/capabilities).
 
 ## Install
+
+You need **Julia 1.10 or later** ([download Julia](https://julialang.org/downloads/)).
+Then, at the Julia prompt:
 
 ```julia
 using Pkg
@@ -51,19 +42,19 @@ Pkg.add(url = "https://github.com/itchyshin/DRModels.jl")
 using DRModels
 ```
 
-If you are developing DRModels.jl from a local clone
-(`git clone https://github.com/itchyshin/DRModels.jl`), use
-`Pkg.develop(path = "/absolute/path/to/DRModels.jl")` instead.
+Some documentation examples also use `Distributions` (to simulate data) or
+`CairoMakie` and `AlgebraOfGraphics` (for figures). Add them the same way if a
+page uses them, for example `Pkg.add("Distributions")`.
 
-## Worked example — a Gaussian location–scale regression
+## A first model: average and variability
 
-The first example tells the same ecology story as drmTMB's
+The example tells the same ecology story as drmTMB's
 [first-model article](https://itchyshin.github.io/drmTMB/articles/drmTMB.html):
 growth of 120 individuals sampled in forest and grassland, where habitat and
 temperature shift mean growth and habitat also changes residual variation.
 The true values and `n` match the R article. The printed estimates will not
 match it, because Julia and R generate different random numbers even from the
-same seed. This runs as-is (verified).
+same seed.
 
 ```julia
 using DRModels, Random
@@ -71,20 +62,34 @@ Random.seed!(1)
 
 n = 120
 habitat = repeat(["forest", "grassland"]; inner = n ÷ 2)
-temperature = randn(n)
-grass = habitat .== "grassland"
-# true values: μ = 1 + 0.6·grassland + 0.4·temperature,  log σ = −0.5 + 0.45·grassland
+temperature = randn(n)                 # n draws from a standard normal
+grass = habitat .== "grassland"        # a dot (.==, .+, .*, exp.) applies an
+                                       # operation to every element, like R's
+                                       # vectorised arithmetic
+# true values: mean = 1 + 0.6*grassland + 0.4*temperature
+#              log(sigma) = -0.5 + 0.45*grassland
 growth = (1 .+ 0.6 .* grass .+ 0.4 .* temperature) .+
          exp.(-0.5 .+ 0.45 .* grass) .* randn(n)
 
-fit = drm(bf(@formula(growth ~ 1 + habitat + temperature),   # mean μ
-             @formula(sigma ~ 1 + habitat)),                 # log scale σ
+fit = drm(bf(@formula(growth ~ 1 + habitat + temperature),   # mean (mu)
+             @formula(sigma ~ 1 + habitat)),                 # log residual SD
           Gaussian(); data = (; growth, habitat, temperature))
 
 coef(fit, :mu)      # true values: [1.00, 0.60, 0.40]
 coef(fit, :sigma)   # true values: [-0.50, 0.45]
 coeftable(fit)      # Wald SEs, z, p, 95% CIs for every coefficient
 ```
+
+`@formula(...)` writes a model formula, as `~` does in R.
+`(; growth, habitat, temperature)` bundles the three vectors into a named
+table. A `DataFrame` (for example one read from a CSV file with CSV.jl) works
+the same way: `data = df`.
+
+In R, the same model is
+`drmTMB(bf(growth ~ habitat + temperature, sigma ~ habitat), family = gaussian(), data = d)`,
+or `glmmTMB(growth ~ habitat + temperature, dispformula = ~ habitat, data = d)`.
+For a Gaussian response, glmmTMB's dispersion coefficients are on the same
+log-SD scale as `sigma` here.
 
 ```
 ──────────────────────────────────────────────────────────────────────────────────────
@@ -102,103 +107,137 @@ Every 95% interval covers its true value. The `sigma` habitat coefficient is a
 log residual-SD contrast: `exp(0.503) ≈ 1.65`, so residual SD in grassland is
 about 1.65 times that in forest (true ratio `exp(0.45) ≈ 1.57`).
 
-The same `bf(...)` grammar carries the full audited surface — 15 families, random
-effects on the mean **and** scale, structured (`relmat` / `animal` / `phylo` /
-`spatial`) effects, `meta_V` meta-analysis, the bivariate `rho12` model, and the
-q=4 phylogenetic location–scale (PLSM) route — see
-[Capabilities](docs/src/capabilities.md) for the precise, test-cited matrix.
+Next: the [Getting started](https://itchyshin.github.io/DRModels.jl/dev/getting-started) page explains each
+step, how to read intervals, and what to check before you report a fit.
 
-Run the head-to-head and the O(p) scaling curve:
+## What you can fit
+
+The same `bf(...)` grammar covers:
+
+- **15 response families**: Gaussian, Student-t, SkewNormal, Poisson,
+  NegBinomial2, TruncatedNegBinomial2, TruncatedPoisson, Beta, BetaBinomial,
+  Binomial, Gamma, LogNormal, ZeroOneBeta, Tweedie and CumulativeLogit
+  (ordinal), plus zero-inflation (`zi`) and hurdle (`hu`) parts for counts.
+- **Random effects** on the mean, such as `(1 | site)`, random slopes, and
+  crossed or nested groups; for Gaussian models also on the scale,
+  `sigma ~ 1 + (1 | site)`.
+- **Structured random effects** from a known relatedness matrix (`relmat`), a
+  pedigree (`animal`), a phylogeny (`phylo`) or coordinates (`spatial`).
+- **Meta-analysis** with known sampling variances (`gaussian()` + `meta_V`).
+- **Two responses at once** with a residual correlation `rho12`, including a
+  bivariate phylogenetic location-scale model.
+
+Support differs by family and structure. The
+[capabilities page](https://itchyshin.github.io/DRModels.jl/dev/capabilities) lists, row by row, what is tested
+and what is refused. One limit to know: Gaussian models with **crossed**
+random intercepts are now fast at moderate sizes (about 0.3 s at 2,000 rows
+and 45 s at 20,000 rows on a synthetic design of that shape,
+[#977](https://github.com/itchyshin/DRModels.jl/issues/977)), but they are
+still slower than drmTMB or glmmTMB at tens of thousands of rows.
+
+**Inference.** Every fit gives Wald standard errors and intervals.
+Profile-likelihood intervals, parametric bootstrap intervals, likelihood-ratio
+tests (`lrtest`), and AIC/BIC are available. Maximum likelihood (ML) is the
+default; restricted ML (`method = :REML`) is available for a listed set of
+Gaussian models. An interval being available is not a coverage guarantee: no
+route claims calibrated coverage. See the
+[capabilities page](https://itchyshin.github.io/DRModels.jl/dev/capabilities#inference) for the exact scope.
+
+**From R.** An optional `engine = "julia"` route in drmTMB can call
+DRModels.jl from R. That route is experimental; see
+[Coming from R](https://itchyshin.github.io/DRModels.jl/dev/coming-from-r).
+
+## Speed on a large phylogenetic model
+
+The package's engine was first built for one demanding model: two traits
+measured across `p` species, where a phylogenetic random effect is shared by
+four linear predictors: the two means and the two log residual SDs
+(written q = 4). Because a random effect enters the SD non-linearly, the
+likelihood has no closed form and is approximated with a **Laplace
+approximation** (the method glmmTMB and drmTMB also use). On this model,
+brms/Stan needs about 122 h and drmTMB about 2.5 s at p = 100 species.
+Same model, same `q4_p100` data, same Laplace ML likelihood as drmTMB
+(reproduced by `bench/run_sparse_tmb_nd.jl` in this repository):
+
+| | drmTMB | DRModels.jl |
+|---|---|---|
+| one fit, 100 species | 2.48 s, optimiser reported false convergence | **1.14 s, converged (2.18× faster)** |
+| log-likelihood | −256.52 | −256.51 (matches) |
+| time as species increase, up to 10,000 species | not attempted at that scale (time grew as p^1.27 up to 3,000 species) | **about 113 s; time grows about linearly in p (p^1.08)** |
+| Wald SEs when a variance is estimated at zero | all `NaN` (Hessian not positive definite) | **finite for 16 of 17 parameters** |
+
+These numbers are for this one model; they are not a claim about every
+family or structure. Full grid and caveats:
+[report/comparison-grid.md](report/comparison-grid.md); per-family timings:
+[report/speed-per-family.md](report/speed-per-family.md).
+
+To reproduce them from a clone of this repository:
 
 ```bash
 julia --project=. bench/run_sparse_tmb_nd.jl     # 2.18× vs drmTMB, p=100
-julia --project=. bench/run_scaling.jl           # O(p) curve to p=10,000
+julia --project=. bench/run_scaling.jl           # time vs number of species, to p=10,000
 ```
 
-## Repository layout (mirrors GLLVModels.jl)
+## Choosing an optimizer
 
+For supported fixed-effect maximum-likelihood fits, you can request either
+`:bfgs` or `:lbfgs`. Here `dat` is a data frame or named tuple with numeric
+columns `y` and `x`; `:default` keeps the route's current optimizer and restart
+policy.
+
+```julia
+using DRModels
+
+form = bf(@formula(y ~ 1 + x), @formula(sigma ~ 1))
+fit_bfgs = drm(form, Gaussian(); data = dat,
+               control = DRMControl(optimizer = :bfgs))
+fit_lbfgs = drm(form, Gaussian(); data = dat,
+                control = DRMControl(optimizer = :lbfgs))
+
+control_info(fit_bfgs).requested_optimizer  # :bfgs
+control_info(fit_bfgs).actual_optimizer     # optimizer used by the fit
 ```
-src/                core engine (verified): sparse_phy, takahashi_selinv,
-                    sparse_aug_plsm (robust mode-finder), sparse_em_fit,
-                    fit_ml_q4, fit_q4_sparse_tmb; DRModels.jl module
-src/experimental/   leftover prototypes NOT wired into the public API
-                    (SQUAREM / natgrad EM [parked negative result], E-step variants,
-                    dense oracle, leftover location_only copy). Public surfaces
-                    in src/: method=:REML, algorithm=:em, lc_metric (Fisher infra).
-bench/              runnable benchmarks + the q4_p100 fixtures + R fixture gen
-test/               runtests.jl + migrated correctness checks
-report/             53 design/provenance/benchmark reports (the full poc record)
-docs/               Documenter site (reader-first menus; many pages link a drmTMB twin article); CONTRACT.md
-AGENTS.md ROADMAP.md   the 12-persona team + the phase plan
-.claude/workflows/  10 scripted workflows (W0/Q/A/B/D/F/G/H/S/R)
-```
 
-## Status — honest (v0.7.x)
+Optimizer selection is limited to the primary ML routes described in the
+[convergence guide](docs/src/model-guides/convergence.md), which also documents
+restarts, unsupported routes, and inference refits.
 
-This rename branch retains version **`0.7.1`**. The existing **`v0.7.1`** tag
-predates the package rename and names `DRM`; it is historical rather than a
-DRModels release tag. **Julia General stays out** until readiness
-(catch up with drmTMB + both working well; drmTMB likely R/CRAN first).
-MIT via GitHub (`Pkg.add(url = ...)`) until then. Do not treat
-`v0.7.1` as General registration; do not chase Registrator.
+## Engine details
 
-**Current transition:** R–Julia support remains experimental. Deeper parity work
-continues; it is **not** Julia General registration.
+For readers who want the numerical method behind the speed numbers above. The
+bivariate phylogenetic location-scale model (PLSM) is fitted on a sparse
+"augmented-state" precision matrix (`kron(Q_topology, Λ⁻¹)`), whose number of
+non-zero entries grows linearly with the number of species `p` (written O(p)).
+Its gradient is exact and also costs O(p): the needed parts of the inverse
+come from Takahashi selected inversion, so the dense p×p phylogenetic
+covariance is never formed. A fast mode-finder is tried first, and a more
+robust one takes over when it fails.
 
-**Public `drm()` / `bf()` front end** — recovery-tested, drmTMB-mirroring syntax:
+## For contributors
 
-- **Gaussian** — location–scale, bivariate `rho12`, random effects on the mean
-  (intercept / slope / correlated / crossed-nested) **and the scale**
-  (`sigma ~ (1|g)`, Gauss–Hermite), structured effects (`relmat` / `animal` /
-  `phylo` / `spatial`), `meta_V`, and the bivariate q=4 phylogenetic
-  location-scale route with `Σ_a` stored on the fit; Wald + profile + bootstrap
-  intervals; `predict` / `simulate`.
-- **15 families** — Gaussian, Student-t, SkewNormal, Poisson, NegBinomial2,
-  TruncatedNegBinomial2, TruncatedPoisson, Beta, BetaBinomial, Binomial, Gamma, LogNormal,
-  ZeroOneBeta, Tweedie, and CumulativeLogit — plus `zi` / `hu` count modifiers
-  and beta boundary modifiers `zoi` / `coi`.
-- **Docs** — a DocumenterVitepress site (the docs.makie.org look) with CairoMakie
-  figures (incl. the Confidence Eye), executed examples, honest per-page tags.
-
-Families are validated by **simulation parameter recovery**; the numerical
-drmTMB-parity gate (RCall vs. fixture outputs generated with drmTMB v0.7.0)
-lives under opt-in
-`DRM_PARITY_TESTS=1`. Formula grammar separately retains drmTMB v0.1.3 spelling.
-
-**Verified engine (foundation):** the q=4 ML location-scale single fit — 2.18×
-over drmTMB, O(p) to p=10,000, valid CIs where drmTMB's Hessian is singular.
-**Interval claims are capability parity, not coverage** — the R↔Julia ledger's
-`coverage_claimed` fences are permanent documented boundaries. Some routes have
-measured coverage studies, but no route claims calibrated intervals as a
-supported guarantee.
-Per-family engine-vs-engine timings, with their caveats stated, are
-consolidated in [report/speed-per-family.md](report/speed-per-family.md); the
-R↔Julia capability status is maintained with drmTMB; a route is promoted only
-after measured evidence.
-
-**Inference:** Wald + profile + parametric bootstrap; opt-in **REML**
-(`method = :REML`, with the model-selection guard) across the fixed-effect
-Gaussian location–scale fit, a single Gaussian mean intercept `(1|g)`,
-the σ-phylo route, the bivariate q=4 all-axes route (`reml_q4.jl`), and
-the bivariate q=2 structured route (`reml_q2.jl`); epsilon-method bias
-correction; `heritability` /
-`repeatability` / `icc` with delta + profile CIs. Julia-side R↔Julia helpers
-(`drm_bridge` / `drm_bridge_inference`) are in-tree and remain experimental,
-not a CRAN / "supported" promotion.
-
-**Not fully wired / still open:** `src/experimental/` holds only classified
-material — a recorded negative result, unwired variants whose earlier descent
-proved an artefact, superseded predecessors, and
-oracles; see [src/experimental/README.md](src/experimental/README.md) for the
-per-file verdicts (public `method = :REML`, `algorithm = :em`, and `lc_metric`
-Fisher infra are already in `src/`);
-**χ̄² boundary inference** where not yet exported; the **variational (VA/ELBO)**
-marginal track (deferred). See
-[Capabilities](docs/src/capabilities.md),
-[capability-status](docs/design/capability-status.md),
-[HANDOVER.md](HANDOVER.md), and [ROADMAP.md](ROADMAP.md) for the
-test-cited breakdown — prefer those over any shorter summary here.
+- [HANDOVER.md](HANDOVER.md) records engineering provenance,
+  [ROADMAP.md](ROADMAP.md) the development plan, and [AGENTS.md](AGENTS.md)
+  the review roles and the Definition of Done.
+- `src/` is the engine and public API; `src/experimental/` holds unwired
+  prototypes and recorded negative results (per-file verdicts in
+  [src/experimental/README.md](src/experimental/README.md)); `bench/` holds
+  the runnable benchmarks and fixtures; `test/` the test suite; `report/` the
+  design, provenance and benchmark reports; `docs/` the Documenter site
+  (DocumenterVitepress) and its [CONTRACT.md](docs/CONTRACT.md).
+- **Versions and registration.** The `v0.7.1` git tag predates the rename
+  from `DRM` to `DRModels` and names the old package, so it is not a DRModels
+  release tag. Registration in the Julia General registry is deferred until
+  both DRModels.jl and drmTMB are ready; until then install via
+  `Pkg.add(url = ...)`.
+- The drmTMB comparison tests run only when `DRM_PARITY_TESTS=1` is set
+  (RCall against fixtures generated with drmTMB v0.7.0); families are
+  otherwise checked by simulation-based parameter recovery.
+- To develop from a local clone
+  (`git clone https://github.com/itchyshin/DRModels.jl`), use
+  `Pkg.develop(path = "/absolute/path/to/DRModels.jl")` instead of `Pkg.add`.
 
 ## License
 
-MIT © 2026 Shinichi Nakagawa. A sister package to drmTMB and GLLVModels.jl.
+MIT © 2026 Shinichi Nakagawa. A sister package to drmTMB and
+[GLLVModels.jl](https://itchyshin.github.io/GLLVModels.jl) (models of many
+responses together).

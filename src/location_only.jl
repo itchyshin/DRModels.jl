@@ -110,6 +110,51 @@ function make_loc_problem(phy::AugmentedPhy, y, X; species=1:(phy.n_leaves))
     )
 end
 
+# #995 / #996: what the quantile residual of a Gaussian `phylo(1 | g)` fit needs
+# beyond the BLUPs. `fit.means[:mu]` on these routes is CONDITIONAL
+# (`Xβ̂ + S û`), so the population-level PIT must be centred on the fixed-effect
+# mean `Xβ̂` instead, and a tip's prior variance on the raw branch-length scale
+# is `σ_phy² · C_ii`, not `σ_phy²`. `DrmFit` has no slot for either, and both
+# `fit.means` and `fit.scales` are enumerated by public accessors (`sigma()`,
+# the bridge dpars), so they ride on `fit.ranef`. It is an `AbstractDict` over
+# the same `group => BLUPs` entries the plain `Dict` held, so
+# `get(fit.ranef, name, nothing)` and `fit.ranef isa AbstractDict` are unchanged,
+# and `ranef(fit)` unwraps it to that `Dict`.
+struct LocOnlyRanef <: AbstractDict{Symbol,Vector{Float64}}
+    effects::Dict{Symbol,Vector{Float64}}   # group => per-tip BLUPs (tree leaf order)
+    mu_fixed::Vector{Float64}               # Xμ β̂ (population-level mean), one per row
+    prob::LocOnlyProblem                    # rows -> tips, and the tip covariance
+    tipvar::Base.RefValue{Union{Nothing,Vector{Float64}}}   # lazy per-row C_ii cache
+end
+LocOnlyRanef(effects, mu_fixed, prob) =
+    LocOnlyRanef(effects, mu_fixed, prob, Ref{Union{Nothing,Vector{Float64}}}(nothing))
+Base.length(r::LocOnlyRanef) = length(r.effects)
+Base.iterate(r::LocOnlyRanef, st...) = iterate(r.effects, st...)
+Base.getindex(r::LocOnlyRanef, k) = r.effects[k]
+Base.get(r::LocOnlyRanef, k, default) = get(r.effects, k, default)
+Base.haskey(r::LocOnlyRanef, k) = haskey(r.effects, k)
+
+# C_ii for each data row: the diagonal of the raw branch-length tip covariance
+# `Q_cond⁻¹` at the row's tip (Cov(u) = σ_phy² Q_cond⁻¹, see `build_M`). The
+# diagonal always lies in the Cholesky pattern, so the Takahashi selected
+# inverse returns it exactly in O(nnz(L)), which is O(p) on a tree precision
+# (the leaf-variance idiom of `gaussian_sparse_lss.jl`). One solve per tip
+# would be O(p²). `_loconly_row_tip_variance(::LocOnlyRanef)` below caches the
+# result so repeated `residuals(type = :quantile)` calls on one fit pay it once.
+function _loconly_row_tip_variance(prob::LocOnlyProblem)
+    d = takahashi_diag(cholesky(Symmetric(prob.Q_cond)))
+    return d[prob.leaf_pos[prob.species]]
+end
+
+function _loconly_row_tip_variance(r::LocOnlyRanef)
+    tv = r.tipvar[]
+    if tv === nothing
+        tv = _loconly_row_tip_variance(r.prob)
+        r.tipvar[] = tv
+    end
+    return tv
+end
+
 """
     _phylo_mean_leaf_index(phy::AugmentedPhy, labels) -> Vector{Int}
 
@@ -126,10 +171,12 @@ routes, most to least specific:
      the prior with no likelihood term" (`gaussian_core.jl`, the σ-phylo
      missing-response block).
   2. integer tip index `1:phy.n_leaves`.
-  3. positional (`_group_index`, first-seen order) — the only tier with no
-     name information to anchor to, so it requires `labels` to visit every
-     tip exactly once (`G == phy.n_leaves`); this is the pre-#482 behaviour,
-     kept as a last-resort fallback.
+  3. positional (`_group_index`, first-seen order) — for purely NUMERIC labels
+     only (codes outside `1:phy.n_leaves`), which carry no name to anchor to;
+     it requires `labels` to visit every tip exactly once
+     (`G == phy.n_leaves`). Labels that carry names (strings, symbols,
+     categorical levels) but are not all tip names are refused instead of
+     being matched by order of appearance (#1026).
 
 Throws an `ArgumentError` naming the mismatch if none of the three tiers
 apply (e.g. group labels that are neither tree tip names nor valid integer
@@ -153,7 +200,7 @@ function _phylo_mean_leaf_index(phy::AugmentedPhy, labels)
     numeric_labels = true
     @inbounds for i in eachindex(labels)
         li = labels[i]
-        if li isa Integer && 1 <= Int(li) <= phy.n_leaves
+        if li isa Real && isinteger(li) && 1 <= Int(li) <= phy.n_leaves   # Float64 codes from R too (#1026)
             leaf[i] = Int(li)
         else
             numeric_labels = false
@@ -162,6 +209,9 @@ function _phylo_mean_leaf_index(phy::AugmentedPhy, labels)
     end
     numeric_labels && return leaf
 
+    # #1026: name-bearing labels are matched by name only (never by position).
+    _refuse_unmatched_tip_labels(labels, phy.leaf_names;
+                                 context = "drm (Gaussian phylo mean)")
     gidx, G = _group_index(labels)
     G == phy.n_leaves ||
         throw(ArgumentError("drm (Gaussian phylo mean): the group column has $(G) distinct " *
@@ -3396,7 +3446,9 @@ function _fit_structured_gaussian_em(
     # #1047: the EM's own stopping rule, not `iterations < max_iter` (which
     # misreads a stop that lands exactly on the cap).
     converged = r.converged
-    return DrmFit(fam, blocks, names, θ̂, V, r.loglik, n, converged, means, obs, scales)
+    fit = DrmFit(fam, blocks, names, θ̂, V, r.loglik, n, converged, means, obs, scales)
+    return _withranef(fit, LocOnlyRanef(
+        Dict{Symbol,Vector{Float64}}(Symbol(grp) => r.u[prob.leaf_pos]), Xμ * r.β, prob))
 end
 
 # Central finite-difference Jacobian dβ̂/dv of the profiled GLS solution
@@ -3594,7 +3646,8 @@ function _fit_structured_gaussian_sparse_lbfgs(
     end
     fit = _withranef(
         reml ? _withnll(fit, reml_full_nll) : _withnll(fit, loc_obj, nllgrad!),
-        Dict(Symbol(grp) => u_post[prob.leaf_pos])
+        LocOnlyRanef(
+            Dict{Symbol,Vector{Float64}}(Symbol(grp) => u_post[prob.leaf_pos]), Xμ * β̂, prob)
     )
     if penalty !== nothing
         fit = _withmap(fit, _phylo_pen_apply_single!(nothing, penalty, v̂, 2), penalty)

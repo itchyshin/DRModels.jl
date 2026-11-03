@@ -1,0 +1,1 @@
+- **Gaussian `(1 | g)` quantile residuals are now evaluated in closed form (#1103).** The residual is `Φ⁻¹(Φ((y − Xβ̂) / √(σ̂² + σ̂_b²)))`, replacing the 32-node Gauss–Hermite mixture, which was off by 6e-3 at σ̂_b/σ̂ = 4 and by 0.12 at 10. Structured (phylo / relmat / spatial) effects are unchanged.

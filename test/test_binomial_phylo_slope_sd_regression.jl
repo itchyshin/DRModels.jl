@@ -55,7 +55,7 @@ end
     seekstart(serialized)
     restored = Serialization.deserialize(serialized)
     @test predict_parameters(restored, data)[:sd_phylo] ≈ sd_group[tip_index]
-    simulated = simulate(fit; rng = MersenneTwister(2026102731))
+    simulated = simulate(fit; re = :zero, rng = MersenneTwister(2026102731))
     @test length(simulated) == length(successes)
     @test all(value -> value == 0.0 || value == 1.0, simulated)
 

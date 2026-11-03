@@ -98,7 +98,9 @@ function _vcov_from_hessian(H::AbstractMatrix; context::AbstractString = "")
         d = abs.(diag(Hs))
         dmax = maximum(d)
         flat = dmax == 0 ? collect(eachindex(d)) : findall(<=(_VCOV_RTOL * dmax), d)
-        @warn """
+        # #1110: an aliased design column explains the singularity and was already
+        # warned about by name; do not also blame a variance boundary.
+        _design_rank_pending() || @warn """
               Hessian is numerically singular at the optimum — using a pseudo-inverse.
               The fit is at a variance/dispersion boundary, so standard errors for the
               flagged coordinates are NOT trustworthy. Prefer `confint(fit, method = :profile)`

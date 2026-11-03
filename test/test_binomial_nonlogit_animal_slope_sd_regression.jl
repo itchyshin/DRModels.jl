@@ -69,7 +69,7 @@ end
             @test fitted(fit) ≈ expected_mean
 
             sim_seed = 20261032 + (link === :cloglog)
-            observed_simulation = simulate(fit; rng = MersenneTwister(sim_seed))
+            observed_simulation = simulate(fit; re = :zero, rng = MersenneTwister(sim_seed))
             expected_rng = MersenneTwister(sim_seed)
             expected_simulation = Float64[rand(expected_rng,
                 Distributions.Binomial(1, clamp(expected_mean[i], eps(), 1 - eps())))

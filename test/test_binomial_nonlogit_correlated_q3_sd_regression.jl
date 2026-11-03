@@ -60,7 +60,7 @@ using Statistics
               exp.(coef(fit, target_blocks[2])[1] .+ coef(fit, target_blocks[2])[2] .* w1)
         @test fit.scales[target_blocks[3]][1:m:end] ≈
               exp.(coef(fit, target_blocks[3])[1] .+ coef(fit, target_blocks[3])[2] .* w2)
-        simulated = simulate(fit; rng = MersenneTwister(seed + 1))
+        simulated = simulate(fit; re = :zero, rng = MersenneTwister(seed + 1))
         @test length(simulated) == length(y)
         @test all(value -> value == 0.0 || value == 1.0, simulated)
     end

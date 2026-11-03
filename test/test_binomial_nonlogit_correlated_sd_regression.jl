@@ -111,7 +111,7 @@ end
                                                      coef(fit, targets[2])[2] .* w1)
     @test fit.scales[targets[3]][1:m:end] ≈ exp.(coef(fit, targets[3])[1] .+
                                                      coef(fit, targets[3])[2] .* w2)
-    simulated = simulate(fit; rng = MersenneTwister(2026102633))
+    simulated = simulate(fit; re = :zero, rng = MersenneTwister(2026102633))
     @test length(simulated) == length(y)
     @test all(value -> value == 0.0 || value == 1.0, simulated)
 end
@@ -160,7 +160,7 @@ end
         @test fit.scales[target_blocks[2]][1:m:end] ≈ exp.(sd1[1] .+ sd1[2] .* z1_group)
         eta_hat = predict(fit, data; type = :link)
         @test predict(fit, data) ≈ DRModels._binomial_mean.(Ref(fit.family), eta_hat)
-        simulated = simulate(fit; rng = MersenneTwister(seed + 1))
+        simulated = simulate(fit; re = :zero, rng = MersenneTwister(seed + 1))
         @test length(simulated) == length(y)
         @test all(value -> value == 0.0 || value == 1.0, simulated)
 

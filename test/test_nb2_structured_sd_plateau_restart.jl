@@ -10,7 +10,8 @@
 # a separate Optim run and the Hessian by ForwardDiff.
 # Candidate-level evidence: a few fixtures, no calibration claim.
 using DRModels, Test, Random, LinearAlgebra
-import Distributions, ForwardDiff, Optim
+import Distributions, ForwardDiff
+using DRModels: Optim
 using SpecialFunctions: loggamma
 
 function _nb2p_fixture(seed; G = 40, m = 16)

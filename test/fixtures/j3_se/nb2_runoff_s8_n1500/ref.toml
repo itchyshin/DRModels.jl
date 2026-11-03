@@ -1,0 +1,17 @@
+route = "nb2_runoff_s8_n1500"
+issue = 1088
+drmTMB_version = "0.7.1"
+drmTMB_commit = "ca3ddefa5ea11bbfd3b765615dfbb89305d2485a"
+R_version = "4.4.3"
+TMB_version = "1.9.23"
+opt_convergence = 0
+opt_message = "converged (Newton polish; max |gradient| = 2.31e-10)"
+pd_hess = true
+comparable = true
+point_comparable = true
+tmb_names = ["beta_mu", "beta_mu", "beta_sigma", "log_sd_mu", "log_sd_mu"]
+loglik = -384.07414170671888
+max_grad = 2.305021e-10
+log_dispersion = 2.9662978375644378
+theta = [2.4335993114175944, -1.7526738860818041, 2.9662978375644378, -13.857470557116287, 1.1307270677245267]
+se = [1.1433610054196954, 0.95188523531654501, 0.10496305852919299,    1671996.4361151, 0.27561219285968697]

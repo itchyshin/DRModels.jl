@@ -66,7 +66,7 @@ function _block_title(p::Symbol)
     p === :sd_phylo && return "Phylo SD model sd_phylo(group) (log σ_a)"
     p === :resid   && return "Residual scale (log σ)"
     p === :recov   && return "Random-effect covariance (Cholesky)"
-    p === :phylocov && return "Group-level covariance Σ_a (log-Cholesky; see vc/coevolution)"
+    p === :phylocov && return "Group-level covariance Σ_a (log-Cholesky; Wald intervals uncalibrated)"
     return String(p)
 end
 
@@ -126,31 +126,11 @@ function rho12(fit::DrmFit)
     return fit.scales[:rho12]
 end
 
-"""
-    is_converged(fit::DrmFit) -> Bool
+# `is_converged`, `converged` and `convergence_status` live in convergence_status.jl
+# (the FX3b twin contract with drmTMB).
 
-Whether this fit may be trusted: the optimiser reported convergence **and** the
-optimum is not degenerate. A `false` here means the reported estimates / standard
-errors should not be trusted.
-
-This is deliberately STRICTER than the raw `fit.converged` flag. The Gaussian
-log-likelihood is unbounded as the residual scale goes to zero: with one row per
-group a structured random effect can interpolate the data, so `sigma` collapses and
-the objective runs away to `+Inf`. `Optim.converged` only asks whether the gradient
-test was met, and at such a point it returns `true`.
-
-For example, a one-row-per-species phylogenetic fit produced
-`sd_phylo = 22980`, `sigma = 7.5e-15`, `loglik = 6.8e13`, `converged = true` — and
-25% of parametric-bootstrap replicates in that example reached such a point.
-Including these invalid fits among successful refits can distort a percentile
-interval.
-
-Use this accessor to check both convergence and degeneracy. `fit.converged`
-exposes only the raw optimiser flag.
-"""
-is_converged(fit::DrmFit) = fit.converged && _nondegenerate_fit(fit)
-
-# The degeneracy test behind `is_converged`. GAUSSIAN ONLY: for NB2/Beta/Gamma the
+# The degeneracy test behind `convergence_status`'s geometry step (and
+# `_converged_nondegenerate`). GAUSSIAN ONLY: for NB2/Beta/Gamma the
 # `:sigma` slot holds a dispersion or shape, where a genuinely small value is
 # legitimate, so applying a residual-scale test there would reject good fits.
 #
@@ -160,11 +140,21 @@ is_converged(fit::DrmFit) = fit.converged && _nondegenerate_fit(fit)
 # nll >= 1e17 on the nll scale; loglik <= -1e15 is the same bar taken a couple of
 # decades more conservatively on the loglik scale, so no genuine fit is caught
 # (a real loglik of -1e15 would need ~1e14 observations at O(10) nats each).
-_sentinel_loglik(fit::DrmFit) = !isfinite(fit.loglik) || fit.loglik <= -1e15
+_sentinel_loglik(fit::DrmFit) = _loglik_is_sentinel(fit.loglik)
 
 function _nondegenerate_fit(fit::DrmFit)
     _sentinel_loglik(fit) && return false
+    # Same coefficient rule as `_report_converged`, so `is_converged` and
+    # `fit.converged` agree when a coefficient is non-finite.
+    _coefficients_finite(fit.theta) || return false
+    _design_rank_deficient(fit) && return false   # #1110: aliased fixed-effect column
     fit.family isa Gaussian || return true
+    # A temporal Gaussian puts the response variance in the AR/OU term. A
+    # residual SD near 0 is that split (`sigma_ratio` in `_temporal_boundary`),
+    # which the optimiser can report as converged. It is not the saturated-mean
+    # collapse this bar rejects (#461). Treating it as degeneracy drops every
+    # bootstrap replicate of a boundary temporal fit.
+    _is_temporal_fit(fit) && return true
     haskey(fit.scales, :sigma) || return true
     s = fit.scales[:sigma]
     smax = maximum(abs, s)
@@ -195,9 +185,14 @@ end
     deviance(fit::DrmFit) -> Float64
 
 Deviance of the fitted model, `-2 · loglik(fit)` — drmTMB's `deviance()`.
+`NaN` (with a warning) on a fit stranded on the failed-objective sentinel.
 Extends `StatsAPI.deviance`.
 """
-deviance(fit::DrmFit) = -2 * loglik(fit)
+function deviance(fit::DrmFit)
+    # A fit stranded on the failed-objective sentinel has no deviance (#1093).
+    _sentinel_infocrit_nan(fit, "deviance") && return NaN
+    return -2 * loglik(fit)
+end
 
 """
     dof_residual(fit::DrmFit) -> Int
@@ -207,18 +202,49 @@ Extends `StatsAPI.dof_residual`.
 """
 dof_residual(fit::DrmFit) = nobs(fit) - dof(fit)
 
+# #1071: name the integrator behind the printed logLik. `:LA` (the default) and
+# `:Laplace` give different logLik values for the same random-effect model: the
+# default is the more accurate, `:Laplace` is the one-point approximation drmTMB
+# reports. A cross-engine or cross-approximation AIC / LRT is only valid between
+# like approximations. The quadrature node count is deliberately not printed: it
+# differs by route, so a fixed "GHQ-32" would sometimes be false. Not printed for a
+# random-effect-free fit (exact logLik, nothing to name) or a Gaussian `:LA` fit
+# (the Gaussian marginal is exact), so those outputs are unchanged. The "has a
+# random effect" test is `_fit_is_re_free` (comparison.jl), not
+# `fit.ranef === nothing`: Poisson / Binomial `(1|g)` never store BLUPs.
+function _marginal_note(fit::DrmFit)
+    m = fit.marginal
+    (_fit_is_re_free(fit) || (m === :LA && fit.family isa Gaussian)) && return nothing
+    desc = m === :LA      ? "default integrator, not the one-point Laplace drmTMB reports; " *
+                            "`marginal = :Laplace` matches drmTMB" :
+           m === :Laplace ? "one-point Laplace approximation, as drmTMB" :
+           m === :VA      ? "variational ELBO, not a log-likelihood" :
+           m === :AGHQ    ? "adaptive Gauss-Hermite quadrature" : "integrator"
+    return "logLik (marginal :" * String(m) * ", " * desc * ")"
+end
+
 function Base.show(io::IO, ::MIME"text/plain", fit::DrmFit)
     se = _display_se(fit)
     fam = _family_name(fit.family)
     println(io, "Distributional regression fit (", fam, ")")
+    status = convergence_status(fit)
     println(io, "  nobs = ", fit.nobs,
                 "   logLik = ", @sprintf("%.4f", fit.loglik),
-                "   converged = ", is_converged(fit))
+                "   convergence_status = ", status,
+                "   converged = ", status === :converged)
+    mnote = _marginal_note(fit)
+    mnote === nothing || println(io, "  ", mnote)
     # #949: show the trusted accessor; say so when the raw optimiser flag disagrees.
-    (fit.converged && !is_converged(fit)) && println(io, "  (the optimiser stopped normally, " *
-        "but the fit is degenerate -- see `is_converged`)")
+    (fit.converged && status !== :converged) && println(io, "  (the optimiser stopped normally, " *
+        "but convergence_status is ", status, " -- see `convergence_status`)")
     _wald_withheld(fit) && println(io, "  Wald SEs withheld (homogeneous Toeplitz, as drmTMB): `sigma` is the " *
         "TOTAL within-series SD; use profile intervals for mean coefficients.")
+    # #1193: no Wald SEs from an unconverged fit or a non-PD Hessian.
+    if !_wald_withheld(fit)
+        why = _wald_unreliable(fit)
+        why === nothing || println(io, "  Wald SEs withheld: ", why, ".\n",
+            "  Std.Error, z and p are NaN; `stderror(fit)` keeps the Hessian values.")
+    end
 
     # Residual SD on the RESPONSE scale + residual dof (issue #752). An R user
     # looks for these first: lm() prints both and drmTMB prints sigma. The value
@@ -319,8 +345,14 @@ under each block heading). To test a variance component against 0 use a
 boundary-corrected likelihood-ratio test (`lrt_boundary`), not the `:resd`
 row. A boundary / singular direction (non-finite SE) reports `NaN` z / p rather
 than a spurious `z = 0, p = 1`.
+
+When the fit is not converged ([`is_converged`](@ref) is `false`) or its Hessian
+is not positive definite, the Std.Error, z, p and interval columns are all `NaN`
+(#1193), as drmTMB refuses `vcov()` there; `show(fit)` prints the reason.
+[`stderror`](@ref) and `vcov` still return the Hessian-based values.
 """
 function coeftable(fit::DrmFit; level::Real = 0.95)
+    level = _validate_ci_level(level; what="coeftable")
     se = _display_se(fit)
     z = quantile(Normal(), 1 - (1 - level) / 2)
     est = Float64[]; ses = Float64[]; zs = Float64[]; ps = Float64[]

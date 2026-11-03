@@ -20,7 +20,9 @@ Zero-one-inflated beta family for proportions on the closed interval `[0,1]`
 interior), `sigma` (log; precision `φ = 1/σ²`), `zoi` (logit; probability the
 value is a boundary 0/1), `coi` (logit; probability of 1 given a boundary).
 Mirrors `drmTMB`'s `zero_one_beta`. `fitted` returns the unconditional mean
-`(1-zoi)·μ + zoi·coi`.
+`(1-zoi)·μ + zoi·coi`. `predict` / `predict_parameters(..., type = :response)[:mu]`
+return the interior beta mean `logistic(Xβ̂)` (the same quantity drmTMB
+returns for the `mu` dpar), not the mixture mean.
 
 A random intercept on the mean, `(1 | g)`, is admitted the same way `Beta()`
 admits it: `b_g ~ N(0, σ_b²)` on the logit mean is integrated out per group by
@@ -46,17 +48,28 @@ fit_phy = drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ 1),
 """
 struct ZeroOneBeta end
 
-function drm(f::DrmFormula, fam::ZeroOneBeta; data, tree = nothing, K = nothing,
-             A = nothing, coords = nothing, g_tol::Real = 1e-8, se::Bool = true,
+# FX3b: `se = false` is recorded on the fit (`DrmFit.uncertainty`), so
+# `convergence_status` does not read the skipped (NaN) covariance as a failure.
+@drm_entry function drm(f::DrmFormula, fam::ZeroOneBeta; se::Bool = true, kwargs...)
+    return _withuncertainty(_drm_zeroonebeta_fit(f, fam; se = se, kwargs...), se)
+end
+
+function _drm_zeroonebeta_fit(f::DrmFormula, fam::ZeroOneBeta; data, tree = nothing, K = nothing,
+             A = nothing, coords = nothing, g_tol::Real = 1e-8, se::Bool = true, ids = nothing,
              nAGQ::Union{Nothing,Int} = nothing)
+    _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, coords = coords)   # #1027 #1022 #1010
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
         drm(f, fam; data = data_observed, tree = tree, K = K, A = A,
-            coords = coords, g_tol = g_tol, se = se, nAGQ = nAGQ)
+            coords = coords, g_tol = g_tol, se = se, nAGQ = nAGQ, ids = ids)
     end
     missing_fit !== nothing && return missing_fit
+    A = _resolve_relatedness_labels(f, data, A, ids)   # #957: match `A` by label
 
     rhs = Dict(f.forms)
     fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
+    fixed_mu, offset_term = _extract_offset(fixed_mu)   # #938: offset(z), coefficient fixed at 1
+    offset_term === nothing || (isempty(re) && mv === nothing && st === nothing) ||
+        _refuse_offset_route(fam, "a random, structured or `meta_V` term on the mean")
     mv === nothing ||
         error("ZeroOneBeta() does not support meta_V markers")
     sd_targets = _sd_target_parts(f)
@@ -111,11 +124,11 @@ function drm(f::DrmFormula, fam::ZeroOneBeta; data, tree = nothing, K = nothing,
         (rk, _) = _re_kind(re[1][1]); grp = re[1][2]
         rk === :intercept ||
             error("ZeroOneBeta() supports `(1 | g)` on the mean, not `(0 + x | g)` or `(1 + x | g)`")
-        gidx, G = _group_index(getproperty(data, grp))
+        gidx, G = _group_index(getproperty(data, grp); col = grp)
         return _withformula(
             _fit_zeroonebeta_ranef(fam, y, Xμ, Xσ, Xz, Xc, gidx, G, nmμ, nmσ, nmz, nmc, grp, g_tol), f)
     end
-    return _withformula(_fit_zeroonebeta(fam, y, Xμ, Xσ, Xz, Xc, nmμ, nmσ, nmz, nmc, g_tol), f)
+    return _withformula(_fit_zeroonebeta(fam, y, Xμ, Xσ, Xz, Xc, nmμ, nmσ, nmz, nmc, g_tol; offset = _offset_for_fit(fam, offset_term, data, size(Xμ, 1))), f)
 end
 
 function _drm_zeroonebeta_sd_regression(f::DrmFormula, fam::ZeroOneBeta;
@@ -185,24 +198,25 @@ function _drm_zeroonebeta_sd_regression(f::DrmFormula, fam::ZeroOneBeta;
         nmsd, grp, g_tol; se, K = nAGQ), f)
 end
 
-function _fit_zeroonebeta(fam::ZeroOneBeta, y, Xμ, Xσ, Xz, Xc, nmμ, nmσ, nmz, nmc, g_tol)
+function _fit_zeroonebeta(fam::ZeroOneBeta, y, Xμ, Xσ, Xz, Xc, nmμ, nmσ, nmz, nmc, g_tol; offset = nothing)
     n = length(y)
     pμ, pσ, pz, pc = size(Xμ, 2), size(Xσ, 2), size(Xz, 2), size(Xc, 2)
     i1 = pμ + pσ; i2 = i1 + pz; i3 = i2 + pc
+    w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:i1]; βz = θ[i1+1:i2]; βc = θ[i2+1:i3]
-        ημ = clamp.(Xμ * βμ, -30.0, 30.0); ησ = clamp.(Xσ * βσ, -15.0, 15.0)
+        ημ = clamp.(_eta_with_offset(Xμ, βμ, offset), -30.0, 30.0); ησ = clamp.(Xσ * βσ, -15.0, 15.0)
         ηz = clamp.(Xz * βz, -30.0, 30.0); ηc = clamp.(Xc * βc, -30.0, 30.0)
         s = zero(eltype(θ))
         @inbounds for i in 1:n
             lzoi = _log_logistic(ηz[i]); l1mzoi = _log1m_logistic(ηz[i])
             if y[i] == 0
-                s -= lzoi + _log1m_logistic(ηc[i])      # log zoi + log(1-coi)
+                s -= w[i] * (lzoi + _log1m_logistic(ηc[i]))      # log zoi + log(1-coi)
             elseif y[i] == 1
-                s -= lzoi + _log_logistic(ηc[i])        # log zoi + log coi
+                s -= w[i] * (lzoi + _log_logistic(ηc[i]))        # log zoi + log coi
             else
                 μ = _logistic(ημ[i]); φ = exp(-2 * ησ[i])
-                s -= l1mzoi + Distributions.logpdf(Distributions.Beta(μ * φ, (1 - μ) * φ), y[i])
+                s -= w[i] * (l1mzoi + Distributions.logpdf(Distributions.Beta(μ * φ, (1 - μ) * φ), y[i]))
             end
         end
         return s
@@ -217,11 +231,13 @@ function _fit_zeroonebeta(fam::ZeroOneBeta, y, Xμ, Xσ, Xz, Xc, nmμ, nmσ, nmz
     θ0[pμ+1] = -0.5 * log(10.0)               # σ (φ ≈ 10)
     θ0[i1+1] = log(fb / (1 - fb))             # logit zoi
     θ0[i2+1] = log(co0 / (1 - co0))           # logit coi
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
-    θ̂ = Optim.minimizer(res); V = _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂))
+    θ0[1:pμ] .= _offset_start(θ0[1:pμ], Xμ, offset)   # #938
+    res = _ctl_optimize((x0, opts, method) -> Optim.optimize(nll, x0, method, opts; autodiff = :forward),
+                       θ0; g_tol = g_tol)   # control: maxit / start / multi_start (#948 #994)
+    θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):i1, :zoi => (i1+1):i2, :coi => (i2+1):i3]
     names = [:mu => nmμ, :sigma => nmσ, :zoi => nmz, :coi => nmc]
-    μ̂ = _logistic.(Xμ * θ̂[1:pμ])
+    μ̂ = _logistic.(_eta_with_offset(Xμ, θ̂[1:pμ], offset))
     zoî = _logistic.(Xz * θ̂[(i1+1):i2]); coî = _logistic.(Xc * θ̂[(i2+1):i3])
     means = Dict(:mu => (1 .- zoî) .* μ̂ .+ zoî .* coî)   # unconditional mean (drmTMB fitted)
     obs = Dict(:mu => Vector{Float64}(y))
@@ -447,7 +463,8 @@ function _augment_zeroonebeta_fit(fit::DrmFit, zoi, coi, nmz, nmc, y, n, nb)
     return DrmFit(fit.family, blocks, names, θ̂, V, fit.loglik, fit.nobs, fit.converged,
                   means, obs, scales, fit.formula, fit.nll, fit.nllgrad, fit.ranef,
                   fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal,
-                  fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale)
+                  fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale,
+                  fit.uncertainty, fit.geometry)
 end
 
 """

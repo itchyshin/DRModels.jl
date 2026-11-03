@@ -1,0 +1,96 @@
+POIS_OFFSET_RE logLik -560.6653865 conv 0 
+mu.(Intercept)           mu.x 
+     0.6571966      0.2382218 
+$mu
+  (1 | g) 
+0.5257528 
+
+GAUSS_RS_SIGRI logLik -275.8933672 conv 0 
+   mu.(Intercept)           mu.time         mu.dietd2 sigma.(Intercept) 
+     41.459124997      59.934138016       4.158096646       1.101150437 
+       sigma.time 
+      0.003325529 
+<summary.drmTMB>
+estimator: ML
+                      estimate std_error
+mu:(Intercept)    41.459124997 1.2011969
+mu:time           59.934138016 1.4197078
+mu:dietd2          4.158096646 1.4983130
+sigma:(Intercept)  1.101150437 0.2000005
+sigma:time         0.003325529 0.2529524
+Distributional, random-effect, scale, and correlation parameters:
+                                                 component  dpar
+sd:mu:(1 + time | g):(Intercept)          random-effect-sd    mu
+sd:mu:(1 + time | g):time                 random-effect-sd    mu
+sd:sigma:(1 | g)                          random-effect-sd sigma
+cor:mu:cor((Intercept),time | g) random-effect-correlation    mu
+fitted:sigma                          distributional-scale sigma
+                                                       term   estimate
+sd:mu:(1 + time | g):(Intercept) (1 + time | g):(Intercept)  2.2539585
+sd:mu:(1 + time | g):time               (1 + time | g):time  4.2699147
+sd:sigma:(1 | g)                                    (1 | g)  0.3677230
+cor:mu:cor((Intercept),time | g)  cor((Intercept),time | g) -0.3522631
+fitted:sigma                                   fitted range  2.8324825
+                                 std_error  minimum  maximum    scale
+sd:mu:(1 + time | g):(Intercept) 1.1117494       NA       NA response
+sd:mu:(1 + time | g):time        1.1766137       NA       NA response
+sd:sigma:(1 | g)                 0.1451012       NA       NA response
+cor:mu:cor((Intercept),time | g) 0.4071576       NA       NA response
+fitted:sigma                            NA 1.408154 5.581107 response
+Random-effect covariance summaries:
+  level group block from_dpar to_dpar      class correlation  from_sd    to_sd
+1 group     g  <NA>        mu      mu mean-slope  -0.3522631 2.253958 4.269915
+  covariance
+1  -3.390255
+Derived summaries: This fit has a sigma predictor, a non-log link, or a
+known-dispersion override, so a single scalar residual variance is not defined.
+Random-effect SD estimates remain available in $sdpars.
+logLik: -275.9
+convergence: 0
+GAMMA_INDEP logLik -417.3726088 conv 0 
+   mu.(Intercept)           mu.time         mu.dietd2 sigma.(Intercept) 
+        3.5533184         0.9624262         0.3409130        -1.5540223 
+<summary.drmTMB>
+estimator: ML
+                    estimate  std_error
+mu:(Intercept)     3.5533184 0.07094359
+mu:time            0.9624262 0.05690315
+mu:dietd2          0.3409130 0.09401447
+sigma:(Intercept) -1.5540223 0.07926440
+Distributional, random-effect, scale, and correlation parameters:
+                                component  dpar           term   estimate
+sigma                distributional-scale sigma     (constant) 0.21139596
+sd:mu:(1 | g)            random-effect-sd    mu        (1 | g) 0.13641605
+sd:mu:(0 + time | g)     random-effect-sd    mu (0 + time | g) 0.06364372
+                      std_error    scale
+sigma                0.01675617 response
+sd:mu:(1 | g)        0.04114165 response
+sd:mu:(0 + time | g) 0.10606526 response
+logLik: -417.4
+convergence: 0
+STUDENT_INDEP logLik -264.4638655 conv 0 
+   mu.(Intercept)           mu.time         mu.dietd2 sigma.(Intercept) 
+        40.912908         59.708592          5.413951          0.952695 
+   nu.(Intercept) 
+         1.851630 
+<summary.drmTMB>
+estimator: ML
+                   estimate std_error
+mu:(Intercept)    40.912908 1.0913654
+mu:time           59.708592 1.2065962
+mu:dietd2          5.413951 1.4518950
+sigma:(Intercept)  0.952695 0.1636597
+nu:(Intercept)     1.851630 1.5027013
+Distributional, random-effect, scale, and correlation parameters:
+                                component  dpar           term estimate
+sigma                distributional-scale sigma     (constant) 2.592688
+sd:mu:(1 | g)            random-effect-sd    mu        (1 | g) 2.050145
+sd:mu:(0 + time | g)     random-effect-sd    mu (0 + time | g) 3.499140
+fitted:nu                           shape    nu   fitted range 8.370193
+                     std_error    scale
+sigma                0.4243186 response
+sd:mu:(1 | g)        0.7237898 response
+sd:mu:(0 + time | g) 0.9541616 response
+fitted:nu                   NA response
+logLik: -264.5
+convergence: 0

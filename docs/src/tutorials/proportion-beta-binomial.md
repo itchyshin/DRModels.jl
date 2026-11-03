@@ -13,6 +13,8 @@ mean on the logit scale and a precision separately.
 
 ## A beta regression
 
+The code below also loads the `Distributions` package to simulate data. If you have not added it to your Julia environment, run `using Pkg; Pkg.add("Distributions")` once first.
+
 The mean uses a logit link; the `sigma` slot carries the dispersion, mapped to
 the beta **precision** `φ = 1/σ²` (drmTMB's convention) — larger `φ` means tighter
 spread around the mean:

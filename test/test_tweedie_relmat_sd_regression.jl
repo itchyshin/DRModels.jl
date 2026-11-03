@@ -1,5 +1,6 @@
 # Predictor-dependent SD regression for a Tweedie relmat mean intercept.
-using DRModels, Test, Random, LinearAlgebra, Serialization, Optim
+using DRModels, Test, Random, LinearAlgebra, Serialization
+using DRModels: Optim
 import Distributions
 import ForwardDiff
 

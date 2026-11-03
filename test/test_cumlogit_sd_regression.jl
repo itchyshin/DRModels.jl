@@ -99,7 +99,7 @@ end
     @test sd_link_se.value ≈ sd_link
     @test length(sd_link_se.se) == G * m
     @test all(isfinite, sd_link_se.se)
-    conditional_draw = simulate(fit_selected; rng = MersenneTwister(20431))
+    conditional_draw = simulate(fit_selected; re = :zero, rng = MersenneTwister(20431))
     @test length(conditional_draw) == G * m
     @test all(y -> y in 1:4, conditional_draw)
     cuts_hat = fit.scales[:ordinal_cuts]

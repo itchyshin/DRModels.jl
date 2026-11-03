@@ -28,7 +28,8 @@
 # file, `_fit_student_ordinary_laplace`; #714).
 #
 # Scope (everything else is refused, never silently rerouted to `:LA`):
-#   * exactly one ordinary `(1 | g)` on `mu`; no `(1 + x | g)`, `(0 + x | g)`,
+#   * exactly one ordinary `(1 | g)` on `mu` (Poisson may add one `offset(...)`,
+#     #941); no `(1 + x | g)`, `(0 + x | g)`,
 #     crossed/multiple terms, structured markers, `meta_V`, `zi`/`hu`;
 #   * NegBinomial2 / Gamma / Beta with `sigma ~ 1` (no random effect on sigma,
 #     no coupled location–scale `(1 | p | g)`);
@@ -90,6 +91,12 @@ function _drm_ordinary_laplace(f::DrmFormula, fam; data, tree = nothing,
         end
     end
     fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
+    # #941 / #938: `offset(...)` (coefficient fixed at 1) is applied for Poisson and
+    # for the scale families of `_fit_scale_ordinary_laplace` (NegBinomial2, Gamma,
+    # Beta); Binomial refuses it here rather than letting `_design` build it.
+    fixed_mu, offset_term = _extract_offset(fixed_mu)
+    offset_term === nothing || !(fam isa Binomial) ||
+        _refuse_offset_route(fam, "`marginal = :Laplace`")
     mv === nothing || _ordinary_laplace_reject(fam, "a `meta_V` marker")
     st === nothing || _ordinary_laplace_reject(fam, "a phylogenetic/structured random effect")
     length(re) == 1 || _ordinary_laplace_reject(fam,
@@ -101,7 +108,7 @@ function _drm_ordinary_laplace(f::DrmFormula, fam; data, tree = nothing,
     lhs isa ConstantTerm && lhs.n == 1 ||
         _ordinary_laplace_reject(fam, "`($lhs_text | $(re[1][2]))` (only `(1 | g)` is covered)")
     grp = re[1][2]
-    gidx, G = _group_index(getproperty(data, grp))
+    gidx, G = _group_index(getproperty(data, grp); col = grp)
 
     if fam isa Binomial
         s, ntr = _binomial_response(f, data)
@@ -112,12 +119,17 @@ function _drm_ordinary_laplace(f::DrmFormula, fam; data, tree = nothing,
         if fam isa Poisson
             all(yi -> yi ≥ 0 && isinteger(yi), y) ||
                 error("Poisson() requires non-negative integer counts as the response")
-            fit = _fit_poisson_ordinary_laplace(fam, y, Xμ, gidx, G, nmμ, grp, g_tol; se = se)
+            off = offset_term === nothing ? zeros(length(y)) : _offset_vector(offset_term, data)
+            length(off) == length(y) ||
+                error("Poisson(): `offset(...)` must have one value per observation")
+            fit = _fit_poisson_ordinary_laplace(fam, y, Xμ, gidx, G, nmμ, grp, g_tol;
+                                                se = se, offset = off)
         else
             _, Xσ, nmσ = _design(f.response, get(rhs, :sigma, ConstantTerm(1)), data)
             (size(Xσ, 2) == 1 && all(==(1.0), @view Xσ[:, 1])) ||
                 _ordinary_laplace_reject(fam, "a non-constant `sigma` formula")
-            fit = _fit_scale_ordinary_laplace(fam, y, Xμ, gidx, G, nmμ, nmσ, grp, g_tol; se = se)
+            fit = _fit_scale_ordinary_laplace(fam, y, Xμ, gidx, G, nmμ, nmσ, grp, g_tol; se = se,
+                                              offset = _offset_for_fit(fam, offset_term, data, length(y)))
         end
     end
     return _withformula(_withmarginal(fit, :Laplace), f)
@@ -138,7 +150,7 @@ function _ordinary_laplace_optimize(fg, θ0, n::Int, q::Int, g_tol; se::Bool,
         ok = out[end]
         ok || (out = fg(θ, zeros(q), grad); ok = out[end])
         if !ok
-            return grad ? (1e18, zeros(length(θ))) : 1e18
+            return grad ? (1e18, fill(NaN, length(θ))) : 1e18
         end
         last_b .= out[end-1]
         return grad ? (out[1], out[2]) : out[1]
@@ -264,19 +276,25 @@ _ordinary_laplace_Q(G::Int) = spdiagm(0 => ones(Float64, G))
 const _ORDINARY_LAPLACE_NEWTON_TOL = 1e-13
 
 function _fit_poisson_ordinary_laplace(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol;
-                                       se::Bool = true)
+                                       se::Bool = true,
+                                       offset::AbstractVector{<:Real} = zeros(length(y)))
     n = length(y); pμ = size(Xμ, 2)
     Q = _ordinary_laplace_Q(G)
     lf = [_logfactorial(round(Int, yi)) for yi in y]
+    off = Float64.(offset)                               # #941: offset() coefficient fixed at 1
+    has_off = any(!iszero, off)
     fg = (θ, b0, grad) -> _poisson_phylo_laplace_fg(y, Xμ, gidx, Q, 0.0, lf, θ;
                                                     grad = grad, b0 = b0, raw_scales = true,
-                                                    newton_tol = _ORDINARY_LAPLACE_NEWTON_TOL)
-    θ0 = vcat(_poisson_fixed_start(y, Xμ), log(0.4))
+                                                    newton_tol = _ORDINARY_LAPLACE_NEWTON_TOL,
+                                                    offset = has_off ? off : nothing)
+    β0 = _poisson_fixed_start(y, Xμ)
+    has_off && (β0[1] -= sum(off) / n)
+    θ0 = vcat(β0, log(0.4))
     θ̂, nllhat, conv, V, nll, grad! = _ordinary_laplace_optimize(
         fg, θ0, n, G, g_tol; se = se, context = "ordinary Laplace Poisson (1 | $grp)")
     blocks = [:mu => 1:pμ, :resd => (pμ+1):(pμ+1)]
     names = [:mu => nmμ, :resd => [String(grp)]]
-    means = Dict(:mu => exp.(Xμ * θ̂[1:pμ]))
+    means = Dict(:mu => exp.(Xμ * θ̂[1:pμ] .+ off))
     obs = Dict(:mu => Vector{Float64}(y))
     fit = DrmFit(fam, blocks, names, θ̂, V, -nllhat, n, conv, means, obs,
                  Dict{Symbol,Vector{Float64}}())
@@ -411,15 +429,15 @@ _ordinary_laplace_check_response(::Beta, y) =
 const _ORDINARY_LAPLACE_PLATEAU_LOGSIGMA = -8.0
 
 function _fit_scale_ordinary_laplace(fam, y, Xμ, gidx, G, nmμ, nmσ, grp, g_tol;
-                                     se::Bool = true)
+                                     se::Bool = true, offset = nothing)
     _ordinary_laplace_check_response(fam, y)
     n = length(y); pμ = size(Xμ, 2)
     Q = _ordinary_laplace_Q(G)
     kind, aux_from, θβ0, θσ0 = _ordinary_laplace_scale_setup(fam, y, Xμ)
     fg = (θ, b0, grad) -> _phylo_mean_laplace_nuisance_fg(
         kind, aux_from, n, Xμ, gidx, Q, 0.0, θ; grad = grad, b0 = b0, raw_scales = true,
-        newton_tol = _ORDINARY_LAPLACE_NEWTON_TOL)
-    θ0 = vcat(θβ0, θσ0, log(0.4))
+        newton_tol = _ORDINARY_LAPLACE_NEWTON_TOL, offset = offset)   # #938
+    θ0 = vcat(_offset_start(θβ0, Xμ, offset), θσ0, log(0.4))
     ctx = "ordinary Laplace $(nameof(typeof(fam))) (1 | $grp)"
     # Both stages run with se = false: the covariance is computed once, below,
     # for the fit the guard keeps. A discarded plateau fit's Hessian is singular
@@ -443,7 +461,8 @@ function _fit_scale_ordinary_laplace(fam, y, Xμ, gidx, G, nmμ, nmσ, grp, g_to
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+1), :resd => (pμ+2):(pμ+2)]
     names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
     auxhat = aux_from(θ̂[pμ+1])
-    means = Dict(:mu => [_laplace_mean(kind, dot(@view(Xμ[i, :]), θ̂[1:pμ])) for i in 1:n])
+    offv = offset === nothing ? zeros(n) : offset         # #938: offset at coefficient 1
+    means = Dict(:mu => [_laplace_mean(kind, dot(@view(Xμ[i, :]), θ̂[1:pμ]) + offv[i]) for i in 1:n])
     obs = Dict(:mu => [_laplace_obs(kind, auxhat, i) for i in 1:n])
     scales = Dict(:sigma => fill(exp(θ̂[pμ+1]), n))
     fit = DrmFit(fam, blocks, names, θ̂, V, -nllhat, n, conv, means, obs, scales)
