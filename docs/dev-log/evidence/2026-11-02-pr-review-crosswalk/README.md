@@ -863,3 +863,24 @@ No PR state, remote branch, test source, or compute host was changed. Refresh
 the same exact heads after run `41548951015` and #1214 shard 3 become terminal;
 then compare the candidate's results and review the source guard before
 recommending an owner disposition.
+
+## Cross-repository candidate refresh, 2026-11-03 00:42 UTC
+
+Refreshed the exact PR heads, bases, workflow jobs, and discussion timelines for
+three drmTMB candidates and DRModels.jl #1215. All PRs remain open. No
+discussion comments or submitted reviews were returned for these four PRs.
+
+| PR | Exact head and base | Current check evidence | Disposition |
+|---|---|---|---|
+| drmTMB [#1500](https://github.com/itchyshin/drmTMB/pull/1500) | `7630b6a4653d4ee7ffbd69ee5e6be87d330d8890`; base `e5cd86667c97d1b34f0ead22017a675377f46930` | Run `41542189558`: source-tree check, OS matrix, and all four Ubuntu shards passed. | Remains draft and changes 50 files. Prior read-only review found no P0-P2 issue and one P3 test-coverage suggestion. Current owner disposition is unknown; seek owner review before advancing it. |
+| drmTMB [#1667](https://github.com/itchyshin/drmTMB/pull/1667) | `c133edb86992a092b4ccaebd5606746da831d5e1`; base `e5cd86667c97d1b34f0ead22017a675377f46930` | Run `41548315716`: source-tree check and OS matrix passed; Ubuntu shards 1 and 4 passed, shards 2 and 3 remain in progress. | Keep open while exact-head tests finish. Prior review identified a warning-visibility concern. No owner disposition is recorded here. |
+| drmTMB [#1659](https://github.com/itchyshin/drmTMB/pull/1659) | `e2d617b54b9a94b8b8e2758db9a6c80fa4bcab87`; stale base `71ceee671aac0e4c8bedf265b3b735b1ad633390` | Run `41491340175`: source-tree check, OS matrix, and all four Ubuntu shards passed on this exact head. | Needs owner-led base refresh and exact-head checks on current main before disposition. Its parity evidence is limited to the tested point-estimate/SE fixtures. |
+| DRModels.jl [#1215](https://github.com/itchyshin/DRModels.jl/pull/1215) | `1ee71530ebcd31bb62cce2fba6601ffced4f65ea`; base `973bbb675dc6a10b436acf86175e089e38ec467e` | CI run `41539026157` passed as a workflow, but all Julia shards used the prose-only fast path and skipped Julia setup, build, and tests. Documenter run `41539026225` built and audited docs successfully; preview was cancelled and deploy skipped. | Remains draft and overlaps `ROADMAP.md` in #1210 and #1214. Keep with the documentation owner until the overlap and preview disposition are resolved. |
+
+The refresh confirms that #1500 is fully green on its current base and #1659 is
+fully green on a stale base. #1667 still has active test shards. #1215 has docs
+build evidence and a successful workflow status, with no Julia test execution
+or preview. GitHub author and branch names do not establish active lane owner;
+the available records leave disposition with the current owners. No PR state,
+branch, or source was changed. No Totoro or DRAC job was needed for these
+workflow-status checks.
