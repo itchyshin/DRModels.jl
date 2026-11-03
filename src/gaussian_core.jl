@@ -3501,10 +3501,22 @@ required. `scale = :drmtmb` on a fit with no random effects returns the empty
 `Dict`. `scale = :native` (the default) is unchanged from before this option
 existed.
 """
+# A predictor-dependent random-effect SD block: `:sd` / `:sd_phylo` (Gaussian and the
+# location-scale routes), `:sd_g` / `:sd_h` (two-group Binomial), or a typed target
+# `:sdtarget_<id>` (structured and correlated-block SD regressions). Such fits have no
+# single SD per grouping, and their `:recov` block (if any) holds correlation
+# parameters only, not the Cholesky triple `re_sd` / `vc` decode.
+function _has_sd_regression_block(fit)
+    return any(fit.blocks) do (p, _)
+        s = String(p)
+        p === :sd || p === :sd_phylo || startswith(s, "sd_") || startswith(s, "sdtarget_")
+    end
+end
+
 function re_sd(fit::DrmFit; scale::Symbol = :native, tree = nothing)
     # Location–scale–scale fits (#544) model the RE SD with covariates, so a
     # single per-grouping SD is ill-defined — refuse rather than misreport.
-    any(p -> first(p) in (:sd, :sd_phylo), fit.blocks) &&
+    _has_sd_regression_block(fit) &&
         throw(ArgumentError("re_sd: this fit models the random-effect SD with covariates " *
             "(`sd(group) ~ …`), so a single SD per grouping is not defined. Use " *
             "`coef(fit, :sd)` for the log-SD coefficients."))

@@ -1105,7 +1105,7 @@ Random-effect covariance summary per grouping factor.
 function vc(fit::DrmFit)
     # Location-scale-scale fits (#544): the RE variance varies by group-level
     # covariates, so a single component matrix is ill-defined -- refuse.
-    any(p -> first(p) in (:sd, :sd_phylo), fit.blocks) &&
+    _has_sd_regression_block(fit) &&
         throw(ArgumentError("vc: this fit models the random-effect SD with covariates " *
             "(`sd(group) ~ ...`); use `coef(fit, :sd)` for the log-SD coefficients."))
     d = Dict{Symbol,Matrix{Float64}}()
