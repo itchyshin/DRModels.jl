@@ -1,0 +1,1 @@
+| 2026-11-03 | **Post-merge and owner-state refresh** | GitHub PR state, exact-head checks, merge commit, post-merge workflow, local worktree status | #1667 merged and receipt-staleness passed; #1214/#1249 remain active with no formal review or owner handoff found. | Ada |

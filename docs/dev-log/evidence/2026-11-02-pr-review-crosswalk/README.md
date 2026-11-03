@@ -952,6 +952,36 @@ pending shards before deciding whether a focused local or server reproduction is
 needed. This update does not resolve PR ownership, review, draft state, or merge
 readiness.
 
+## Post-merge and owner-state refresh, 2026-11-03 00:55 UTC
+
+GitHub now reports drmTMB [#1667](https://github.com/itchyshin/drmTMB/pull/1667)
+as merged by Shinichi at 00:52:19 UTC. Merge commit
+`abb1be417edd909df1c0c2d629096ad77d9f0536` is current `drmTMB` main. Its
+post-merge `receipt-staleness` workflow `41555918340` passed. The only workflow
+listed for that merge commit was `receipt-staleness`; this does not clear the
+older red R-CMD-check badge or establish a fresh R-CMD-check result.
+
+The two relevant Julia PRs remain unchanged at their checked heads and current
+main base. #1214 is open, draft, and blocked; #1249 is open, not draft, and
+blocked. Both PRs list Shinichi as author, but neither has formal reviews or
+conversation comments. Author identity and a remote branch name do not establish
+which active lane currently owns the work. No handoff or new owner reply was
+found in the checked local records.
+
+Registered worktree readback found the #1214 branch is not checked out in the
+primary clone. The #1249 branch is also absent from that clone's worktree list.
+The older #1210 documentation worktree is clean at `af4c0f4d5`, while its PR
+head is `88b0a3d1d`; the #1215 worktree is clean at `abda662cc`, while its PR
+head is `1ee71530e`. The #1667 refresh worktree is clean at `240488d1e`, behind
+the merged head. I left all these worktrees untouched. Their stale or missing
+local checkouts are not evidence that an active lane has released ownership.
+
+The exact-head diagnostics still show #1214 shard 3 running and all four #1249
+shards running. Review submissions, inline review threads, and conversation
+comments are empty for #1214 and #1249. No owner message was sent. Keep the
+crosswalk lane on status reconciliation only; any source or PR changes require
+an explicit owner handoff.
+
 ## Runner-step refresh, 2026-11-03 00:53 UTC
 
 The drmTMB #1667 exact-head run `41548315716` is now fully green on
