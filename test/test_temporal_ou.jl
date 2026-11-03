@@ -39,7 +39,11 @@ using Distributions: MvNormal, Normal, logpdf
     fOU = bf(@formula(y ~ x + temporal(1 | id, elapsed, ou)), @formula(sigma ~ 1))
     fOUi = bf(@formula(y ~ x + (1 | id) + temporal(1 | id, elapsed, ou)), @formula(sigma ~ 1))
 
-    @testset "dense oracle to 1e-10 (irregular times, ± ordinary intercept)" begin
+    # Tolerance is 1e-9, not 1e-10: on the x86-64 GitHub runner (Julia 1.13) the filter and
+    # the dense oracle differ by 1.7e-10 at one random theta (same value on main's own CI);
+    # this is floating-point summation order, not a model difference (a wrong filter
+    # moves the objective by far more). loglik checks at fit.theta keep 1e-10.
+    @testset "dense oracle to 1e-9 (irregular times, ± ordinary intercept)" begin
         rng = StableRNG(21)
         for rep in 1:3, ordinary in (false, true)
             d = sim_data(rng; S = 8 + 3rep, sb = ordinary ? 0.4 : 0.0)
@@ -51,12 +55,12 @@ using Distributions: MvNormal, Normal, logpdf
             @test np == (ordinary ? 6 : 5)
             for _ in 1:4
                 θ = [randn(rng); randn(rng); 0.5randn(rng); 0.5 .* randn(rng, np - 4); 1.5randn(rng)]
-                @test abs(fit.nll(θ) - dense_nll(θ, d.y, X, d.id, d.elapsed; ordinary)) < 1e-10
+                @test abs(fit.nll(θ) - dense_nll(θ, d.y, X, d.id, d.elapsed; ordinary)) < 1e-9
             end
             # very fast decay (near-independent states) and very slow decay
             for ψ in (4.0, -5.0)
                 θ = copy(fit.theta); θ[end] = ψ
-                @test abs(fit.nll(θ) - dense_nll(θ, d.y, X, d.id, d.elapsed; ordinary)) < 1e-10
+                @test abs(fit.nll(θ) - dense_nll(θ, d.y, X, d.id, d.elapsed; ordinary)) < 1e-9
             end
             # decay → 0 (λ = e^-20): a precision-matrix evaluation measured a negative
             # 1ᵀV⁻¹1 here during a line search; the filter must match the dense oracle
