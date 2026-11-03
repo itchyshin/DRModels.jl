@@ -1,0 +1,1 @@
+| 2026-11-03 | **Exact-head CI checkpoint** | GitHub diagnostics for #1214, #1249, and #1667 | Refreshed per-shard outcomes; several checks remain active and #1214 has two failed shards. No package code or PR state changed. | Ada |

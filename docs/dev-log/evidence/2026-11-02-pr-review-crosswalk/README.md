@@ -924,3 +924,30 @@ HTTP 410, and the rendered run page requires sign-in to view logs, so the
 macOS failure cause is not attributed here. No current-main R-CMD check was
 started. This remains an open verification item before describing the package
 check as green.
+
+## Exact-head CI follow-up, 2026-11-03 00:51 UTC
+
+Re-read the current exact-head checks after the prior refresh. DRModels.jl
+[#1214](https://github.com/itchyshin/DRModels.jl/pull/1214) remains at
+`5ba76b1cc0fdda189732011fecc4b9dc220c52b1`: Julia shard 1 and shard 4 failed,
+shard 2 passed, and shard 3 is still running. Its docs preview passed. The two
+failed shards reproduce the previously recorded all-singleton covariance-status
+expectations and a small stored-vector comparison outside its 1e-8 tolerance.
+
+DRModels.jl [#1249](https://github.com/itchyshin/DRModels.jl/pull/1249) remains
+at `b959b185d2e6940ad2c3db8e2eb4b04e889338dd`. All four Julia shards were still
+running; the Documenter build and preview passed. Do not treat the fixes as
+validated until this exact-head suite is terminal.
+
+drmTMB [#1667](https://github.com/itchyshin/drmTMB/pull/1667) remains at
+`c133edb86992a092b4ccaebd5606746da831d5e1`: source-tree checks, OS matrix, and
+Ubuntu shards 1, 2, and 4 passed; shard 3 is still running. drmTMB #1500
+remains green on its exact head. drmTMB #1659 remains green on its recorded head
+but has a stale base. DRModels.jl #1215's Julia shards passed, while its docs
+preview was cancelled; the earlier docs build passed.
+
+Totoro and DRAC are available, but no compute is called for: these are hosted CI
+states, and the relevant tests are already running on GitHub. Refresh the three
+pending shards before deciding whether a focused local or server reproduction is
+needed. This update does not resolve PR ownership, review, draft state, or merge
+readiness.
