@@ -45,7 +45,7 @@ only `loglik` (and everything derived from it: aic/bic/deviance) shifts.
 than the mean.
 
 ```julia
-fit = drm(bf(y ~ x, sigma ~ 1), LogNormal(); data = dat)
+fit = drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), LogNormal(); data = dat)
 coef(fit, :mu)                 # on the log scale
 exp(coef(fit, :sigma)[1])      # SD of log y
 
@@ -133,11 +133,10 @@ struct LogNormal end
 end
 
 # LogNormal GLMM with a random intercept (1|g) on the log-mean μ (the mean of
-# log y). b_g ~ N(0,σ_b²) integrated out per group by 32-node Gauss–Hermite
-# quadrature; σ = SD of log y (log link) is a fixed effect. Same scheme as the
-# Gamma random intercept, with the per-observation contribution the Gaussian
-# log-density of log y. (A closed-form Gaussian-LMM marginal on log y exists; GHQ
-# is used here for consistency with the other non-Gaussian families.) The constant
+# log y). b_g ~ N(0,σ_b²) is integrated per group by a single mode-centred
+# Gauss–Hermite node, exact for this linear-Gaussian log-response model.
+# σ = SD of log y (log link) is a fixed effect. Each observation contributes
+# the Gaussian log-density of log y. The constant
 # −Σ log y change-of-variables Jacobian is added to the reported loglik so it
 # matches the fixed fitter's convention.
 function _fit_lognormal_ranef(fam::LogNormal, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol)

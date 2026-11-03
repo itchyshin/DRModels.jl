@@ -23,8 +23,8 @@ user-supplied PD-covariance intercepts — `relmat(1 | id)` with `K = C`, the
     `DRModels.Beta` shadows `Distributions.Beta`; qualify the latter if you need it.
 
 ```julia
-fit = drm(bf(y ~ x, sigma ~ 1), Beta(); data = dat)
-fit = drm(bf(y ~ x + (1 | g) + (1 | h), sigma ~ 1), Beta(); data = dat)
+fit = drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), Beta(); data = dat)
+fit = drm(bf(@formula(y ~ x + (1 | g) + (1 | h)), @formula(sigma ~ 1)), Beta(); data = dat)
 fit_phy = drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ 1)),
               Beta(); data = dat, tree = tr, se = false)
 exp(-2 * coef(fit, :sigma)[1])     # estimated precision φ

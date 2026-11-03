@@ -701,7 +701,7 @@ Fit a distributional regression model by maximum likelihood. A formula bundle
 has one linear predictor per distributional parameter:
 
 ```julia
-fit = drm(bf(y ~ x1, sigma ~ x1), Gaussian(); data = dat)
+fit = drm(bf(@formula(y ~ x1), @formula(sigma ~ x1)), Gaussian(); data = dat)
 ```
 
 Univariate Gaussian fits support fixed effects plus the structured-effect
@@ -744,7 +744,7 @@ Likewise `ids = …` labels the rows of `coords` of a `spatial(1 | site)` term (
   phylogenetic LSS or two-structured Gaussian models).
 
 ```julia
-fit = drm(bf(y ~ x + phylo(1 | sp), sigma ~ 1), Gaussian();
+fit = drm(bf(@formula(y ~ x + phylo(1 | sp)), @formula(sigma ~ 1)), Gaussian();
           data = dat, tree = tree)
 ```
 
@@ -2464,15 +2464,17 @@ distributional parameter the model carries — always `:mu` and (when the family
 uses it) `:sigma`, plus any family extras present (`:nu`, `:zi`, `:hu`, `:zoi`,
 `:coi`).
 
-`type = :response` (default) applies each parameter's inverse link, with current
-exceptions: `nu` uses `exp` for every family but Tweedie (so a Student `nu` comes
-back as `ν − 2` and a SkewNormal `nu` as `exp` of the slant), and the ZeroOneBeta
-mean is left on the link scale. In-sample it reproduces
-[`marginal_parameters`](@ref) (i.e. `fit.means[:mu]`, `fit.scales[...]`) for the
-mean and `sigma` of the GLM-type families and for LogNormal's own routes, but not
-for those `nu` parameters, a `meta_V` `sigma` (stored as `√(v + σ²)`), or the
-[`fitted`](@ref) means stored conditionally or on another scale. `type = :link`
-returns the linear predictor `Xβ̂` per parameter (the working scale).
+`type = :response` (default) applies each parameter's inverse link. Student
+`nu` returns the full degrees of freedom `2 + exp(η)`; SkewNormal `nu` returns
+the slant on its identity link; Tweedie `nu` returns `1 + logistic(η)`.
+ZeroOneBeta `mu` uses the logistic link and returns the interior beta-component
+mean, rather than the zero/one-inflated mixture mean. Do not assume in-sample
+equality with [`marginal_parameters`](@ref) or [`fitted`](@ref): stored values
+can include conditional random effects, a mixture mean, or another scale.
+This includes LogNormal routes delegated to Gaussian fits that store
+conditional means, and a `meta_V` `sigma` stored as `√(v + σ²)`.
+`type = :link` returns the linear predictor `Xβ̂` per parameter (the working
+scale).
 
 For a univariate fit the parameters are `:mu`, (`:sigma`) plus family extras; for
 a bivariate fit they are `:mu1, :mu2, :sigma1, :sigma2, :rho12` (each from its own
@@ -2626,12 +2628,13 @@ the stored fit — a cheap accessor with no recomputation. Returns the mean(s) f
 scale / correlation parameter from `fit.scales` (e.g. `:sigma`, `:nu`, `:zi`,
 `:hu`, `:zoi`, `:coi`; `:sigma1`/`:sigma2`/`:rho12` for a bivariate fit).
 
-Despite the name, nothing is averaged over the random effects: on a random-effect
-fit these are the stored population-level values, with the random effects at zero
-(see [`fitted`](@ref) for the routes that store conditional means or another
-scale). In-sample they equal `predict_parameters(fit, data)` (response scale) for
-the mean and `sigma` of the GLM-type families; [`predict_parameters`](@ref) lists
-the parameters for which they do not.
+Despite the name, this accessor does not integrate over random effects or
+recompute predictions. Stored values depend on the fitted route: some include
+conditional random effects or use a mixture mean or another scale (see
+[`fitted`](@ref)). In particular, Gaussian sparse phylogenetic routes and
+LogNormal routes delegated to them can store conditional means. Use
+[`predict_parameters`](@ref) for fixed-effect predictions with random and
+structured effects set to zero; do not assume in-sample equality on every route.
 
 # Example
 ```julia
@@ -2654,7 +2657,9 @@ function marginal_parameters(fit::DrmFit)
 end
 
 """
-    simulate(fit; nsim = 1, rng = default_rng(), data, re = :marginal)
+    simulate(fit; nsim = 1, rng = default_rng(), newdata = nothing,
+             re = :marginal, data = nothing, K = nothing, A = nothing,
+             tree = nothing, coords = nothing)
 
 Draw parametric replicate response(s) from the fitted model, the building
 block of a parametric bootstrap and posterior-predictive checks. Each draw uses

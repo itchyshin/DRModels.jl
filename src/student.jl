@@ -38,7 +38,7 @@ the scale, not the standard deviation: for `ν > 2`, `SD[y] = σ·sqrt(ν/(ν �
 outliers, and `ν → ∞` tends to Gaussian. Mirrors `drmTMB`'s `student` family.
 
 ```julia
-fit = drm(bf(y ~ x, sigma ~ 1, nu ~ 1), Student(); data = dat)
+fit = drm(bf(@formula(y ~ x), @formula(sigma ~ 1), @formula(nu ~ 1)), Student(); data = dat)
 2 + exp(coef(fit, :nu)[1])  # estimated degrees of freedom (ν = 2 + exp(η))
 predict_parameters(fit, dat)[:nu]   # same quantity (response-scale ν, not exp(η))
 

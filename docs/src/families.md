@@ -287,7 +287,7 @@ routes, with more nodes because ordinal group posteriors can be far from
 normal); the correlated form `(1 + x | g)` is not implemented.
 
 ```julia
-fit_re = drm(bf(y ~ x + (1 | g)), CumulativeLogit(); data = dat)
+fit_re = drm(bf(@formula(y ~ x + (1 | g))), CumulativeLogit(); data = dat)
 exp(coef(fit_re, :resd)[1])   # random-intercept SD
 ```
 
@@ -298,7 +298,7 @@ drmTMB 0.7.0's `validate_ordinal_phylo_mu_structured_term()`. It cannot be
 combined with an ordinary `(1 | g)`/`(0 + x | g)` random effect on `mu`.
 
 ```julia
-fit_phylo = drm(bf(y ~ x + phylo(1 | species)), CumulativeLogit(); data = dat, tree = tr)
+fit_phylo = drm(bf(@formula(y ~ x + phylo(1 | species))), CumulativeLogit(); data = dat, tree = tr)
 re_sd(fit_phylo)[:species]   # phylogenetic SD, raw branch-length scale
 ```
 

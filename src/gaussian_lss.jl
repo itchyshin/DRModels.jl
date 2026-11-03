@@ -17,8 +17,8 @@ Formula marker for a location–scale–scale model. Used only on the left-hand
 side of a `bf` component formula,
 
 ```julia
-bf(y ~ x + (1 | g),              sigma ~ x, sd(g) ~ z)                  # iid RE SD
-bf(y ~ x + phylo(1 | species),   sigma ~ x, sd(species, phylogenetic) ~ z)  # phylo SD
+bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ x), @formula(sd(g) ~ z))                  # iid RE SD
+bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ x), @formula(sd(species, phylogenetic) ~ z))  # phylo SD
 ```
 
 to put a linear predictor on the **log standard deviation of a random

@@ -22,8 +22,8 @@ mean, `phylo(1 | species)`, also uses the sparse-Laplace engine.
     `DRModels.Gamma` shadows `Distributions.Gamma`; qualify the latter if you need it.
 
 ```julia
-fit = drm(bf(y ~ x, sigma ~ 1), Gamma(); data = dat)
-fit = drm(bf(y ~ x + (1 | g) + (1 | h), sigma ~ 1), Gamma(); data = dat)
+fit = drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), Gamma(); data = dat)
+fit = drm(bf(@formula(y ~ x + (1 | g) + (1 | h)), @formula(sigma ~ 1)), Gamma(); data = dat)
 fit_phy = drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ 1)),
               Gamma(); data = dat, tree = tr, se = false)
 exp(-2 * coef(fit, :sigma)[1])     # estimated shape α
