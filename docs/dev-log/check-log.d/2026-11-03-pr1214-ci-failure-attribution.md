@@ -1,0 +1,1 @@
+| 2026-11-03 | **#1214 CI failure attribution** | GitHub exact-head job logs for run `41539113997`; cross-check against #1249 diff and live checks | Identified two unrelated test failures; #1249 targets both, but its full run remains active. No code or PR state changed. | Ada |

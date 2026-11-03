@@ -780,3 +780,36 @@ differing patches with #1210's owner. Separately review whether the two extra
 #1210 files contain changes that must be retained. #1215 remains dependent on
 the same `ROADMAP.md` owner decision. The exact-head PR metadata still records
 no formal reviews or comments for these three PRs.
+
+## #1214 failure attribution and related #1249 candidate, 2026-11-03 00:32 UTC
+
+The exact-head #1214 CI run `41539113997` is still in progress at head
+`5ba76b1cc0fdda189732011fecc4b9dc220c52b1` on current main
+`973bbb675dc6a10b436acf86175e089e38ec467e`. I fetched logs for the two
+finished failing Julia 1.13.3 jobs:
+
+- Shard 1 failed one assertion in `test/test_ls_inv2x2_chol.jl:123`. The fitted
+  parameter vector differs from its stored reference by up to about
+  `1.82e-8`, exceeding the test's `1e-8` absolute tolerance.
+- Shard 4 failed all three assertions in the all-singleton Gaussian
+  location-scale boundary test at `test/test_gaussian_ranef.jl:59-62`: the
+  expected warning was absent, `is_converged(fit)` was true, and `vcov(fit)`
+  was finite.
+
+Open PR #1249, head `b959b185d2e6940ad2c3db8e2eb4b04e889338dd` on the same
+current-main base, edits both relevant areas: its source change adds a
+collapsed-scale guard for Gaussian random-effects location-scale fits, and its
+test change relaxes the stored-parameter comparison to `1e-7`. This is a
+candidate response to the observed failures, not proof they are fixed. At
+00:32 UTC, #1249's docs build had passed, its docs preview was running, and its
+four Julia shards were queued or running; no complete exact-head result was
+available. The other two #1214 Julia shards were also still running. Therefore
+the #1214 run is not yet a terminal full-suite result, and no failure is
+attributed to its documentation edits.
+
+The PR metadata for #1214 and #1249 shows no submitted review or comments.
+The authorship and branch names do not identify current task ownership, so no
+owner disposition is inferred. No PR branch, PR metadata, source, or compute
+host was changed or used. Recheck both exact heads after the active runs finish;
+then compare the failures with #1249's exact-head outcomes before updating the
+owner disposition.
