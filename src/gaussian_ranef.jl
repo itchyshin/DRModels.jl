@@ -679,10 +679,12 @@ function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ,
     # #1114: whether a collapsing residual sigma overflows the Hessian is a floating-point
     # accident (it differs by Julia version and BLAS), so the collapse is also detected on
     # the fitted scales and handled the same way: warn, withhold the vcov, converged = false.
-    # Unit-free: some residual SD below 1e-8 of the response SD is a collapse, not a fit.
+    # Unit-free: some residual SD below 1e-12 of the response SD is a collapse, not a fit.
+    # (Measured: the #1114 collapse sits at ~1e-108; the legitimate `sigma ~ x` runaway panel
+    # of test_twin_gap_747_starts.jl reaches ~2e-9 and must stay converged.)
     # (Deliberately NOT `_scale_runoff`: its 10^4-fold spread rule also fires on the
     # legitimate wide-spread `sigma ~ x` panel in test_ranef_varying_scale_convergence.jl.)
-    if hess_finite && _all_finite(y, Xμ, Xσ, w) && minimum(scales[:sigma]) < 1e-8 * std(y)
+    if hess_finite && _all_finite(y, Xμ, Xσ, w) && minimum(scales[:sigma]) < 1e-12 * std(y)
         @warn "The fitted residual scale has collapsed towards 0 for some observations (e.g. " *
               "all-singleton groups with `sigma ~ z`). Wald standard errors are withheld and " *
               "the fit is reported as not converged." context = "Gaussian (1 | g) location-scale"
