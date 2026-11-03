@@ -608,7 +608,7 @@ function _fit_tweedie_relmat_sd_laplace(fam, y, Xmu, Xsigma, Xnu, Zg,
     result = Optim.optimize(od, theta0, optimizer,
         Optim.Options(g_tol = g_tol, iterations = maxiter))
     theta_hat = Optim.minimizer(result)
-    value, final_b = nll_from_start(theta_hat, mode_start)
+    nll_hat, final_b = nll_from_start(theta_hat, mode_start)
     final_b === nothing && throw(ErrorException(
         "Tweedie related-matrix SD regression could not recover a final latent mode"))
     # Refit derivatives and the retained likelihood from the same immutable
@@ -616,7 +616,7 @@ function _fit_tweedie_relmat_sd_laplace(fam, y, Xmu, Xsigma, Xnu, Zg,
     nll_final(theta) = first(nll_from_start(theta, mode_start))
     final_gradient = zeros(length(theta_hat))
     grad_at!(final_gradient, theta_hat, nll_final)
-    converged = _laplace_outer_converged(result, value, final_gradient,
+    converged = _laplace_outer_converged(result, nll_hat, final_gradient,
                                           theta_hat, n, g_tol)
     V = se ? _vcov_from_fd_hessian(
         _finite_hessian(nll_final, theta_hat; h = _fd_hessian_step(n));

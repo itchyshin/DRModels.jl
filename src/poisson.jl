@@ -931,9 +931,9 @@ function _fit_poisson_structured_sd_laplace(fam, y, Xmu, Zobs, leaf_node, Q,
         Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking()),
         Optim.Options(g_tol = g_tol, iterations = maxiter))
     theta_hat = Optim.minimizer(res)
-    value = nll(theta_hat)
+    nll_hat = nll(theta_hat)
     gfinal = zeros(length(theta_hat)); grad!(gfinal, theta_hat)
-    converged = _laplace_outer_converged(res, value, gfinal, theta_hat, n, g_tol)
+    converged = _laplace_outer_converged(res, nll_hat, gfinal, theta_hat, n, g_tol)
     V = se ? _vcov_from_fd_hessian(
         _finite_hessian(nll, theta_hat; h = _fd_hessian_step(n));
         context = context) :
@@ -971,9 +971,9 @@ function _fit_poisson_structured_sd_laplace(fam, y, Xmu, Zobs, leaf_node, Q,
             scales[:cond_failed] = 1.0
         end
     end
-    fit = DrmFit(fam, blocks, names, theta_hat, Matrix(V), -value, n,
+    fit = DrmFit(fam, blocks, names, theta_hat, Matrix(V), -nll_hat, n,
                  converged, means, obs, scales)
-    return _withiterations(_withnll(fit, nll), Optim.iterations(res))
+    return _withiterations(_withnll(fit, _nll_pinned(nll, theta_hat, nll_hat)), Optim.iterations(res))
 end
 
 function _poisson_animal_slope_loading(data, slope::Symbol, n::Int;

@@ -934,16 +934,19 @@ function _fit_nb2_animal_sd_laplace(fam::NegBinomial2, y, Xmu, Xsigma, Zg,
             result, theta_hat, fmin = result2, theta2, fmin2
         end
     end
-    # b34: conditional field at theta_hat (fresh inner solve). Taken before the
-    # objective is stored on purpose: `laplace` assigns the boxed `value` shared
-    # with this function, and a call placed just before `DrmFit(...)` moved the
-    # stored log-likelihood by 28 (the finite-difference `nll` calls above
-    # already leave `value` at a stencil point near theta_hat, as before).
+    # b34: conditional field at theta_hat (fresh inner solve).
+    # `nll_hat` is the objective at theta_hat and is the stored log-likelihood. It
+    # must not be named `value`: `laplace`, `mode` and `nll` above all assign a
+    # local `value`, and a name assigned both in a closure and in the enclosing
+    # function is one shared (boxed) variable, so every later finite-difference
+    # `nll` call (the gradient and Hessian below) overwrote it with the objective
+    # at a stencil point, moving the stored log-likelihood by 1e-6 to 1e-5 (28 when
+    # the conditional-field solve above was placed just before `DrmFit`).
     _, u_hat, ok_hat = laplace(theta_hat; u0 = zeros(size(Q, 1)))
-    value = nll(theta_hat)
+    nll_hat = nll(theta_hat)
     final_gradient = zeros(length(theta_hat)); grad!(final_gradient, theta_hat)
     converged = _laplace_outer_converged(
-        result, value, final_gradient, theta_hat, n, g_tol)
+        result, nll_hat, final_gradient, theta_hat, n, g_tol)
     V = se ? _vcov_from_fd_hessian(
         _finite_hessian(nll, theta_hat; h = _fd_hessian_step(n));
         context = "sparse-Laplace NB2 animal SD regression") :
@@ -963,10 +966,10 @@ function _fit_nb2_animal_sd_laplace(fam::NegBinomial2, y, Xmu, Xsigma, Zg,
     blocks = [:mu => (1:pmu), :sigma => ((pmu + 1):(pmu + 1)),
               :sd => sd_range]
     names = [:mu => nmmu, :sigma => nmsigma, :sd => nmsd]
-    fit = DrmFit(fam, blocks, names, theta_hat, Matrix(V), -value, n,
+    fit = DrmFit(fam, blocks, names, theta_hat, Matrix(V), -nll_hat, n,
         converged, Dict(:mu => exp.(Xmu * theta_hat[1:pmu])),
         Dict(:mu => Vector{Float64}(y)), scales)
-    return _withiterations(_withnll(fit, nll), Optim.iterations(result))
+    return _withiterations(_withnll(fit, _nll_pinned(nll, theta_hat, nll_hat)), Optim.iterations(result))
 end
 
 function _fit_negbin2_sd_regression(fam::NegBinomial2, y, Xmu, Xsigma, Zg,

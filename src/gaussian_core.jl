@@ -376,6 +376,21 @@ _withnll(fit::DrmFit, nll, nllgrad = nothing) = DrmFit(fit.family, fit.blocks, f
     fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale,
     fit.uncertainty, fit.geometry)
 
+# `nll` closures of the Laplace fitters warm-start their inner mode solve from the
+# previous call, so two calls at the same theta agree only to about 1e-10 (the
+# log-determinant term is not stationary in the mode). `_nll_pinned` returns the
+# value already stored as the fit's log-likelihood when called at exactly the
+# fitted theta, so `fit.loglik == -fit.nll(fit.theta)` holds exactly. At any other
+# theta (and for non-Float64 inputs such as ForwardDiff duals) it is `nll`.
+function _nll_pinned(nll, theta_hat::AbstractVector{<:Real}, nll_hat::Real)
+    pinned = Float64.(theta_hat)
+    value = Float64(nll_hat)
+    return function (theta)
+        theta isa AbstractVector{Float64} && theta == pinned && return value
+        return nll(theta)
+    end
+end
+
 # Attach per-group conditional random-effect estimates (BLUPs). `re` is a
 # Dict{Symbol,...} keyed by grouping factor; see ranef(fit) for the public accessor.
 _withranef(fit::DrmFit, re) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,

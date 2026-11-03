@@ -1784,9 +1784,9 @@ function _fit_binomial_phylo_sd_laplace(fam, s, ntr, Xμ, Zobs, labels, tree,
         Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking()),
         Optim.Options(g_tol = g_tol, iterations = maxiter))
     θhat = Optim.minimizer(res0)
-    value = nll(θhat)
+    nll_hat = nll(θhat)
     gfinal = zeros(length(θhat)); grad!(gfinal, θhat)
-    converged = _laplace_outer_converged(res0, value, gfinal, θhat, n, g_tol)
+    converged = _laplace_outer_converged(res0, nll_hat, gfinal, θhat, n, g_tol)
     V = se ? _vcov_from_fd_hessian(
         _finite_hessian(nll, θhat; h = _fd_hessian_step(n));
         context = "sparse-Laplace Binomial phylogenetic SD regression") :
@@ -1798,9 +1798,9 @@ function _fit_binomial_phylo_sd_laplace(fam, s, ntr, Xμ, Zobs, labels, tree,
     sdobs = _binomial_sd_scale(Zobs * θhat[pμ+1:end])
     scales = Dict(:trials => Float64.(nint), :sd_phylo => sdobs,
                   :tree_tip_index => Float64.(_lss_phylo_group_index(tree, labels, grp)[2]))
-    fit = DrmFit(fam, blocks, names, θhat, Matrix(V), -value, n,
+    fit = DrmFit(fam, blocks, names, θhat, Matrix(V), -nll_hat, n,
                  converged, means, obs, scales)
-    return _withiterations(_withnll(fit, nll), Optim.iterations(res0))
+    return _withiterations(_withnll(fit, _nll_pinned(nll, θhat, nll_hat)), Optim.iterations(res0))
 end
 
 # Validate and align the observation-to-mesh projection. The projection rows
@@ -1961,9 +1961,9 @@ function _fit_binomial_mesh_sd_laplace(fam, s, ntr, Xμ, Zobs, Zg,
         Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking()),
         Optim.Options(g_tol = g_tol, iterations = maxiter))
     theta_hat = Optim.minimizer(result)
-    value = nll(theta_hat)
+    nll_hat = nll(theta_hat)
     grad_final = zeros(length(theta_hat)); grad!(grad_final, theta_hat)
-    converged = _laplace_outer_converged(result, value, grad_final, theta_hat, n, g_tol)
+    converged = _laplace_outer_converged(result, nll_hat, grad_final, theta_hat, n, g_tol)
     V = se ? _vcov_from_fd_hessian(
         _finite_hessian(nll, theta_hat; h = _fd_hessian_step(n));
         context = "sparse-Laplace Binomial mesh SD regression") :
@@ -1976,11 +1976,11 @@ function _fit_binomial_mesh_sd_laplace(fam, s, ntr, Xμ, Zobs, Zg,
     scales = Dict(:trials => Float64.(nint),
         :sd_group_index => Float64.(group_index), :sd_group => sd_group,
         :sd => sd_group[group_index])
-    fit = DrmFit(fam, blocks, names, theta_hat, Matrix(V), -value, n,
+    fit = DrmFit(fam, blocks, names, theta_hat, Matrix(V), -nll_hat, n,
         converged, means, obs, scales)
     mesh_metadata = (; projection, precision = Q, alignment_ids,
                      group_index, group = grp)
-    return _withranef(_withiterations(_withnll(fit, nll), Optim.iterations(result)),
+    return _withranef(_withiterations(_withnll(fit, _nll_pinned(nll, theta_hat, nll_hat)), Optim.iterations(result)),
                       (; effects = Dict{Symbol,Vector{Float64}}(), mesh = mesh_metadata))
 end
 
@@ -2060,9 +2060,9 @@ function _fit_binomial_related_sd_laplace(fam, s, ntr, Xμ, Zobs, Zg, labels,
         Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking()),
         Optim.Options(g_tol = g_tol, iterations = maxiter))
     θhat = Optim.minimizer(res0)
-    value = nll(θhat)
+    nll_hat = nll(θhat)
     gfinal = zeros(length(θhat)); grad!(gfinal, θhat)
-    converged = _laplace_outer_converged(res0, value, gfinal, θhat, n, g_tol)
+    converged = _laplace_outer_converged(res0, nll_hat, gfinal, θhat, n, g_tol)
     V = se ? _vcov_from_fd_hessian(
         _finite_hessian(nll, θhat; h = _fd_hessian_step(n));
         context = "sparse-Laplace Binomial $level SD regression") :
@@ -2086,9 +2086,9 @@ function _fit_binomial_related_sd_laplace(fam, s, ntr, Xμ, Zobs, Zg, labels,
     else
         scales[:cond_failed] = 1.0
     end
-    fit = DrmFit(fam, blocks, names, θhat, Matrix(V), -value, n,
+    fit = DrmFit(fam, blocks, names, θhat, Matrix(V), -nll_hat, n,
                  converged, means, obs, scales)
-    return _withiterations(_withnll(fit, nll), Optim.iterations(res0))
+    return _withiterations(_withnll(fit, _nll_pinned(nll, θhat, nll_hat)), Optim.iterations(res0))
 end
 
 function _fit_binomial_phylo_laplace(fam, s, ntr, Xμ, labels, tree, nmμ, grp,

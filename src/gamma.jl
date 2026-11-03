@@ -428,7 +428,7 @@ function _fit_gamma_animal_intercept_slope_laplace(fam, y, Xmu, Xsigma,
         Optim.Fminbox(Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking())),
         Optim.Options(g_tol = g_tol, iterations = maxiter))
     theta = Optim.minimizer(result)
-    value = nll(theta)
+    nll_hat = nll(theta)
     gf = zeros(length(theta)); grad!(gf, theta)
     near_bound = abs(theta[pmu + 1]) >= 4 -
         _fd_hessian_step(length(y)) * (1 + abs(theta[pmu + 1]))
@@ -450,11 +450,11 @@ function _fit_gamma_animal_intercept_slope_laplace(fam, y, Xmu, Xsigma,
     scales[blocks[2]] = sd1[gidx]
     scales[Symbol(string(blocks[1]), "_group")] = sd0
     scales[Symbol(string(blocks[2]), "_group")] = sd1
-    fit = DrmFit(fam, block_list, name_list, theta, Matrix(V), -value,
-        length(y), _laplace_outer_converged(result, value, gf, theta,
+    fit = DrmFit(fam, block_list, name_list, theta, Matrix(V), -nll_hat,
+        length(y), _laplace_outer_converged(result, nll_hat, gf, theta,
         length(y), g_tol), Dict(:mu => exp.(Xmu * theta[1:pmu])),
         Dict(:mu => Vector{Float64}(y)), scales)
-    return _withiterations(_withnll(fit, nll), Optim.iterations(result))
+    return _withiterations(_withnll(fit, _nll_pinned(nll, theta, nll_hat)), Optim.iterations(result))
 end
 
 function _drm_gamma_sd_regression(f::DrmFormula, fam::Gamma; data,
@@ -877,7 +877,7 @@ function _fit_gamma_structured_sd_laplace(fam, y, Xmu, Xsigma, Zobs, Zg, gidx,
         Optim.Fminbox(Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking())),
         Optim.Options(g_tol = g_tol, iterations = maxiter))
     theta_hat = Optim.minimizer(result)
-    value = nll(theta_hat)
+    nll_hat = nll(theta_hat)
     gfinal = zeros(length(theta_hat)); grad!(gfinal, theta_hat)
     sigma_index = pmu + 1
     sigma_bound_tol = 1e-6
@@ -887,7 +887,7 @@ function _fit_gamma_structured_sd_laplace(fam, y, Xmu, Xsigma, Zobs, Zg, gidx,
     at_lower_sigma_bound && gcheck[sigma_index] > 0 && (gcheck[sigma_index] = 0.0)
     at_upper_sigma_bound && gcheck[sigma_index] < 0 && (gcheck[sigma_index] = 0.0)
     converged = _laplace_outer_converged(
-        result, value, gcheck, theta_hat, length(y), g_tol)
+        result, nll_hat, gcheck, theta_hat, length(y), g_tol)
     h_sigma = _fd_hessian_step(length(y)) * (1 + abs(theta_hat[sigma_index]))
     near_sigma_bound = abs(theta_hat[sigma_index]) >= 4 - h_sigma
     se && near_sigma_bound && @warn(
@@ -925,9 +925,9 @@ function _fit_gamma_structured_sd_laplace(fam, y, Xmu, Xsigma, Zobs, Zg, gidx,
             scales[:cond_failed] = 1.0
         end
     end
-    fit = DrmFit(fam, blocks, names, theta_hat, Matrix(V), -value, length(y),
+    fit = DrmFit(fam, blocks, names, theta_hat, Matrix(V), -nll_hat, length(y),
                  converged, means, obs, scales)
-    return _withiterations(_withnll(fit, nll), Optim.iterations(result))
+    return _withiterations(_withnll(fit, _nll_pinned(nll, theta_hat, nll_hat)), Optim.iterations(result))
 end
 
 function _fit_gamma_animal_slope_laplace(fam, y, Xmu, Xsigma, weight, A,

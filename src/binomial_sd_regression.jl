@@ -423,8 +423,8 @@ function _fit_binomial_crossed_sd_laplace(fam::Binomial, s, ntr, Xmu, Zg, nmsg,
     theta_hat = Optim.minimizer(res)
     final_grad = zeros(length(theta_hat))
     grad!(final_grad, theta_hat)
-    value = nll(theta_hat)
-    converged = _laplace_outer_converged(res, value, final_grad, theta_hat, n, g_tol)
+    nll_hat = nll(theta_hat)
+    converged = _laplace_outer_converged(res, nll_hat, final_grad, theta_hat, n, g_tol)
     V = if se
         hstep = _fd_hessian_step(n)
         Htheta = _finite_hessian(nll, theta_hat; h = hstep)
@@ -449,14 +449,14 @@ function _fit_binomial_crossed_sd_laplace(fam::Binomial, s, ntr, Xmu, Zg, nmsg,
         target_blocks[1] => sd_g[gidx],
         target_blocks[2] => sd_h[hidx],
     )
-    fit = DrmFit(fam, blocks, names, theta_hat, Matrix(V), -value, n,
+    fit = DrmFit(fam, blocks, names, theta_hat, Matrix(V), -nll_hat, n,
         converged, means, obs, scales)
     for (label, eta_sd) in ((groups[1], Zg[1] * theta_hat[group_ranges[1]]),
                             (groups[2], Zg[2] * theta_hat[group_ranges[2]]))
         _warn_at_clamp("Binomial SD regression",
             ["$label random-effect log SD" => (collect(Float64, eta_sd), -12.0, 12.0)])
     end
-    return _withiterations(_withnll(fit, nll, grad!), Optim.iterations(res))
+    return _withiterations(_withnll(fit, _nll_pinned(nll, theta_hat, nll_hat), grad!), Optim.iterations(res))
 end
 
 function _binomial_phylo_sd_slope_name(lhs, group::Symbol)
@@ -599,9 +599,9 @@ function _fit_binomial_phylo_interaction_sd_laplace(fam, s, ntr, Xμ, Zobs,
         Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking()),
         Optim.Options(g_tol = g_tol, iterations = maxiter))
     θhat = Optim.minimizer(res)
-    value = nll(θhat)
+    nll_hat = nll(θhat)
     gfinal = zeros(length(θhat)); grad!(gfinal, θhat)
-    converged = _laplace_outer_converged(res, value, gfinal, θhat, n, g_tol)
+    converged = _laplace_outer_converged(res, nll_hat, gfinal, θhat, n, g_tol)
     V = se ? _vcov_from_fd_hessian(
         _finite_hessian(nll, θhat; h = _fd_hessian_step(n));
         context = "sparse-Laplace Binomial phylogenetic-interaction SD regression") :
@@ -612,12 +612,12 @@ function _fit_binomial_phylo_interaction_sd_laplace(fam, s, ntr, Xμ, Zobs,
     obs = Dict(:mu => s ./ ntr)
     sdobs = _binomial_sd_scale(Zobs * θhat[pμ+1:end])
     scales = Dict(:trials => Float64.(nint), :sd => sdobs, block => sdobs)
-    fit = DrmFit(fam, blocks, names, θhat, Matrix(V), -value, n,
+    fit = DrmFit(fam, blocks, names, θhat, Matrix(V), -nll_hat, n,
                  converged, means, obs, scales)
     _warn_at_clamp("Binomial phylogenetic-interaction SD regression",
         ["$(block) random-effect log SD" =>
             (collect(Float64, Zobs * θhat[pμ+1:end]), -12.0, 12.0)])
-    return _withiterations(_withnll(fit, nll), Optim.iterations(res))
+    return _withiterations(_withnll(fit, _nll_pinned(nll, θhat, nll_hat)), Optim.iterations(res))
 end
 
 function _drm_binomial_phylo_interaction_sd_regression(f::DrmFormula,
@@ -851,9 +851,9 @@ function _fit_binomial_animal_q2_laplace(fam, s, ntr, Xmu, Xsd0,
         Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking()),
         Optim.Options(g_tol = g_tol, iterations = maxiter))
     theta = Optim.minimizer(result)
-    value = nll(theta)
+    nll_hat = nll(theta)
     gf = zeros(length(theta)); grad!(gf, theta)
-    converged = _laplace_outer_converged(result, value, gf, theta,
+    converged = _laplace_outer_converged(result, nll_hat, gf, theta,
         length(s), g_tol)
     V = se ? _vcov_from_fd_hessian(
         _finite_hessian(nll, theta; h = _fd_hessian_step(length(s)));
@@ -886,11 +886,11 @@ function _fit_binomial_animal_q2_laplace(fam, s, ntr, Xmu, Xsd0,
     else
         scales[:cond_failed] = 1.0
     end
-    fit = DrmFit(fam, block_list, name_list, theta, Matrix(V), -value,
+    fit = DrmFit(fam, block_list, name_list, theta, Matrix(V), -nll_hat,
         length(s), converged,
         Dict(:mu => _binomial_mean.(Ref(fam), Xmu * theta[1:pmu])),
         Dict(:mu => s ./ ntr), scales)
-    return _withiterations(_withnll(fit, nll, grad!), Optim.iterations(result))
+    return _withiterations(_withnll(fit, _nll_pinned(nll, theta, nll_hat), grad!), Optim.iterations(result))
 end
 
 function _drm_binomial_animal_q2_sd_regression(f::DrmFormula, fam::Binomial;
@@ -1456,9 +1456,9 @@ function _drm_binomial_animal_iid_sd_regression(f::DrmFormula, fam::Binomial;
     res = Optim.optimize(od, theta0, Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking()),
                          Optim.Options(g_tol = g_tol, iterations = 300))
     theta_hat = Optim.minimizer(res)
-    value = nll(theta_hat)
+    nll_hat = nll(theta_hat)
     gfinal = zeros(length(theta_hat)); grad!(gfinal, theta_hat)
-    converged = _laplace_outer_converged(res, value, gfinal, theta_hat, length(s), g_tol)
+    converged = _laplace_outer_converged(res, nll_hat, gfinal, theta_hat, length(s), g_tol)
     V = se ? _vcov_from_fd_hessian(
         _finite_hessian(nll, theta_hat; h = _fd_hessian_step(length(s)));
         context = "joint sparse-Laplace Binomial animal and IID SD regression") :
@@ -1482,7 +1482,7 @@ function _drm_binomial_animal_iid_sd_regression(f::DrmFormula, fam::Binomial;
         animal_block => sd_animal[animal_index],
         iid_block => sd_iid[iid_index],
     )
-    fit = DrmFit(fam, blocks, names, theta_hat, Matrix(V), -value, length(s),
+    fit = DrmFit(fam, blocks, names, theta_hat, Matrix(V), -nll_hat, length(s),
                  converged, means, obs, scales)
     _warn_at_clamp("Binomial SD regression", [
         "$(animal_target.target.group) random-effect log SD" =>
@@ -1490,7 +1490,7 @@ function _drm_binomial_animal_iid_sd_regression(f::DrmFormula, fam::Binomial;
         "$iid_group random-effect log SD" =>
             (collect(Float64, Wiid * theta_hat[iid_range]), -12.0, 12.0),
     ])
-    return _withformula(_withiterations(_withnll(fit, nll, grad!),
+    return _withformula(_withiterations(_withnll(fit, _nll_pinned(nll, theta_hat, nll_hat), grad!),
                                         Optim.iterations(res)), f)
 end
 
@@ -1609,9 +1609,9 @@ function _drm_binomial_relmat_iid_sd_regression(f::DrmFormula, fam::Binomial;
     res = Optim.optimize(od, theta0, Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking()),
                          Optim.Options(g_tol = g_tol, iterations = 300))
     theta_hat = Optim.minimizer(res)
-    value = nll(theta_hat)
+    nll_hat = nll(theta_hat)
     gfinal = zeros(length(theta_hat)); grad!(gfinal, theta_hat)
-    converged = _laplace_outer_converged(res, value, gfinal, theta_hat, length(s), g_tol)
+    converged = _laplace_outer_converged(res, nll_hat, gfinal, theta_hat, length(s), g_tol)
     V = se ? _vcov_from_fd_hessian(
         _finite_hessian(nll, theta_hat; h = _fd_hessian_step(length(s)));
         context = "joint sparse-Laplace Binomial related-matrix and IID SD regression") :
@@ -1632,9 +1632,9 @@ function _drm_binomial_relmat_iid_sd_regression(f::DrmFormula, fam::Binomial;
         rel_block => _binomial_sd_scale(Wrel * theta_hat[rel_range])[rel_index],
         iid_block => _binomial_sd_scale(Wiid * theta_hat[iid_range])[iid_index],
     )
-    fit = DrmFit(fam, blocks, names, theta_hat, Matrix(V), -value, length(s),
+    fit = DrmFit(fam, blocks, names, theta_hat, Matrix(V), -nll_hat, length(s),
                  converged, means, obs, scales)
-    return _withformula(_withiterations(_withnll(fit, nll, grad!),
+    return _withformula(_withiterations(_withnll(fit, _nll_pinned(nll, theta_hat, nll_hat), grad!),
                                         Optim.iterations(res)), f)
 end
 
