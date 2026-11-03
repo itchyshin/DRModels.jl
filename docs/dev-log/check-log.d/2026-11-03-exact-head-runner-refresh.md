@@ -1,0 +1,1 @@
+| 2026-11-03 | **Exact-head Julia runner refresh** | GitHub PR metadata, workflow jobs, and raw logs for #1214/#1249 | At #1214 head `5ba76b1`, two failures are attributed to a `1e-8` parameter tolerance and a Gaussian scale-collapse expectation; #1249's exact-head suite is still running, so its changes remain unverified. No duplicate compute launched. | Ada |

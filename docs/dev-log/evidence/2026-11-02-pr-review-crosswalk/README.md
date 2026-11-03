@@ -823,3 +823,43 @@ the docs preview and all four Julia shards remained in progress at 00:34 UTC.
 No completed #1249 Julia result is available to confirm whether its changes
 resolve the two #1214 failures. No owner response, formal review, or PR comment
 was present in the refreshed metadata.
+
+## Exact-head runner and failure-log refresh, 2026-11-03 00:39 UTC
+
+The PR heads and current-main base remained unchanged at refresh. #1214 remains
+open and draft at `5ba76b1cc0fdda189732011fecc4b9dc220c52b1`; its current-main
+base is `973bbb675dc6a10b436acf86175e089e38ec467e`. The docs build remains
+successful. CI run `41539113997` has shard 2 passed, shards 1 and 4 failed, and
+shard 3 still running. The retrieved logs give these exact failure causes:
+
+- Shard 1 (`test/test_ls_inv2x2_chol.jl:123`) compares a seven-element fitted
+  parameter vector with a stored reference at absolute tolerance `1e-8`. The
+  maximum observed difference is approximately `1.82e-8`; the objective still
+  agrees to approximately `3e-16`. The recorded gap is small and near the
+  optimizer's stopping scale, while the check remains failed at its stated
+  tolerance.
+- Shard 4 (`test/test_gaussian_ranef.jl:59-62`) expects a warning, a
+  non-converged fit, and an all-`NaN` covariance for an all-singleton Gaussian
+  location-scale case. On this runner the fit was marked converged and returned
+  a finite covariance, so all three expectations failed.
+
+PR #1249 remains open, non-draft, at `b959b185d2e6940ad2c3db8e2eb4b04e889338dd`
+on the same base. Its Documenter run `41548951145` succeeded. CI run `41548951015`
+has all four Julia shards still running at this refresh. Its diff changes the
+fitted-scale boundary handling in `src/gaussian_ranef.jl` and relaxes the stored
+parameter-vector tolerance in the named test. Validation of those changes by
+the candidate's exact-head suite remains pending. #1249 also changes unrelated
+tests, so its full run remains relevant.
+
+Shinichi reports Totoro and DRAC are available again. No job was started because
+the candidate's exact-head suite is already testing the proposed changes. If it
+finishes with an unresolved failure, route a focused reproduction to a suitable
+host after checking the active lane and compute requirements. The current
+crosswalk branch remains separate from another dirty crosswalk worktree; no
+files in that worktree were changed, and no owner handoff is inferred from
+branch names.
+
+No PR state, remote branch, test source, or compute host was changed. Refresh
+the same exact heads after run `41548951015` and #1214 shard 3 become terminal;
+then compare the candidate's results and review the source guard before
+recommending an owner disposition.
