@@ -1747,7 +1747,10 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
         # mean -- see `_bridge_fitted_marginal`. They are not drmTMB's values in
         # general. In particular, for ordinary random-effect, phylogenetic,
         # covariance-block and AR1 / OU `temporal()` fits drmTMB's `fitted()`
-        # adds the fitted modes and this payload does not.
+        # adds the fitted modes and this payload does not. The structured
+        # relmat / animal / spatial routes that record their conditional field
+        # also ship it as `conditional_structured` (below); drmTMB adds it to
+        # these slots on its side (b34).
         "fitted" => _bridge_plain(fitted_vals),
         "residuals" => _bridge_plain(residual_vals),
         "sigma" => _bridge_plain(sigma(fit)),
@@ -1836,6 +1839,16 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
         out["V_known"] = meta.v_known
     end
     newdata === nothing || (out["dpars_newdata"] = _bridge_dpars_newdata(fit, newdata))
+    # b34: conditional structured-field export. R rebuilds the conditional mean
+    # (fitted(), residuals()) as linkinv(linkfun(population mean) + eta_re).
+    cond = structured_conditional(fit)
+    if cond !== nothing
+        out["conditional_structured"] = Dict{String,Any}(
+            "kind" => "structured_eta_re_v1",
+            "eta_re" => collect(Float64, cond.eta_re),
+            "modes" => [collect(Float64, m) for m in cond.modes],
+        )
+    end
     q4_point_export = _bridge_q4_point_export(fit; family = family)
     if !isempty(q4_point_export)
         out["q4_point_export"] = q4_point_export
@@ -2670,7 +2683,7 @@ function _bridge_dpars(fit::DrmFit)
     # R bridge as fictitious dpars.
     for (k, v) in pairs(fit.scales)
         (k in (:trials, :sd, :sd_group, :sd_group_index, :aghq_nodes) ||
-         startswith(String(k), "sdtarget_")) && continue
+         startswith(String(k), "sdtarget_") || startswith(String(k), "cond_")) && continue
         out[String(k)] = collect(float.(v))
     end
     if fit.family isa ZeroOneBeta && haskey(out, "beta_mu")
@@ -2699,7 +2712,11 @@ random or structured effect: ordinary random effects, phylogenetic and
 covariance-block effects, and AR1 / OU `temporal()` paths (drmTMB 07d1612ea,
 `predict.drmTMB`, `R/methods.R:2955-2986`). For those fits the payload ships
 `Xβ̂` and `y − Xβ̂`, not drmTMB's conditional values. Making it conditional
-would change what R callers receive, so it is not done here.
+would change what R callers receive, so it is not done here. The structured
+relmat / animal / spatial routes that record their conditional field are the
+exception only in what else the payload carries: it also holds
+`conditional_structured` (`_attach_conditional_structured!`), from which drmTMB
+rebuilds the conditional mean; these two slots stay population level.
 
 DRModels.jl's `fitted(fit)` is `means[:mu]`, and for a zero-inflated Poisson or NB2
 fit that slot deliberately holds the COUNT-COMPONENT mean `exp(Xmu*betahat)`,

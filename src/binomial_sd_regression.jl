@@ -874,6 +874,16 @@ function _fit_binomial_animal_q2_laplace(fam, s, ntr, Xmu, Xsd0,
         Symbol(string(blocks[2]), "_group") => sd1,
         :correlation => [tanh(theta[rc])],
     )
+    # b34: record the conditional correlated field at theta-hat (fresh inner
+    # solve; `last_b` was moved by the finite-difference stencils above). The
+    # joint mode interleaves the intercept and slope blocks per group.
+    _, b_hat, ok_hat = _binomial_animal_q2_laplace(aux, s, ntr, Xmu, Xsd0, Xsd1,
+        gidx, Q, logdetQ, x, theta; b0 = zeros(2G))
+    if ok_hat
+        _attach_conditional_structured!(scales,
+            sd0[gidx] .* b_hat[2 .* gidx .- 1] .+ x .* sd1[gidx] .* b_hat[2 .* gidx],
+            b_hat[1:2:end], b_hat[2:2:end])
+    end
     fit = DrmFit(fam, block_list, name_list, theta, Matrix(V), -value,
         length(s), converged,
         Dict(:mu => _binomial_mean.(Ref(fam), Xmu * theta[1:pmu])),

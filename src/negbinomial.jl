@@ -880,6 +880,12 @@ function _fit_nb2_animal_sd_laplace(fam::NegBinomial2, y, Xmu, Xsigma, Zg,
             result, theta_hat, fmin = result2, theta2, fmin2
         end
     end
+    # b34: conditional field at theta_hat (fresh inner solve). Taken before the
+    # objective is stored on purpose: `laplace` assigns the boxed `value` shared
+    # with this function, and a call placed just before `DrmFit(...)` moved the
+    # stored log-likelihood by 28 (the finite-difference `nll` calls above
+    # already leave `value` at a stencil point near theta_hat, as before).
+    _, u_hat, ok_hat = laplace(theta_hat; u0 = zeros(size(Q, 1)))
     value = nll(theta_hat)
     final_gradient = zeros(length(theta_hat)); grad!(final_gradient, theta_hat)
     converged = _laplace_outer_converged(
@@ -894,6 +900,10 @@ function _fit_nb2_animal_sd_laplace(fam::NegBinomial2, y, Xmu, Xsigma, Zg,
     scales = Dict{Symbol,Vector{Float64}}(:sigma => sigma,
                   :sd_group => sd_group, :sd => sd_group[gidx],
                   :sd_group_index => Float64.(gidx))
+    if ok_hat
+        _attach_conditional_structured!(
+            scales, Float64.(weight) .* sd_group[gidx] .* u_hat[gidx], u_hat)
+    end
     blocks = [:mu => (1:pmu), :sigma => ((pmu + 1):(pmu + 1)),
               :sd => sd_range]
     names = [:mu => nmmu, :sigma => nmsigma, :sd => nmsd]

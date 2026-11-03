@@ -1757,6 +1757,15 @@ function _fit_binomial_related_sd_laplace(fam, s, ntr, Xμ, Zobs, Zg, labels,
     sd_obs = sd_group[group_index]
     scales = Dict(:trials => Float64.(nint), :sd_group_index => Float64.(group_index),
                   :sd_group => sd_group, :sd => sd_obs)
+    # b34: record the conditional field at theta_hat (fresh inner solve; `last_b`
+    # was moved by the finite-difference stencils above).
+    _, b_hat, ok_hat = _binomial_phylo_sd_laplace(aux, n, Xμ, Zobs,
+        group_index, Q, logdetQ, θhat; b0 = zeros(G), re_design = re_design)
+    if ok_hat
+        loading_hat = re_design .* _binomial_sd_scale(Zobs * θhat[pμ+1:end])
+        _attach_conditional_structured!(
+            scales, loading_hat .* b_hat[group_index], b_hat)
+    end
     fit = DrmFit(fam, blocks, names, θhat, Matrix(V), -value, n,
                  converged, means, obs, scales)
     return _withiterations(_withnll(fit, nll), Optim.iterations(res0))

@@ -870,6 +870,19 @@ function _fit_poisson_structured_sd_laplace(fam, y, Xmu, Zobs, leaf_node, Q,
         scales[:sd_group_index] = Float64.(group_index)
     end
     merge!(scales, extra_scales)
+    # b34: record the conditional field at theta_hat (fresh inner solve; `last_b`
+    # was moved by the finite-difference stencils above). Phylogenetic fields are
+    # not exported (only relmat / animal / spatial are covered and tested).
+    if sd_block !== :sd_phylo
+        _, b_hat, ok_hat = _poisson_phylo_sd_laplace(
+            y, Xmu, Zobs, leaf_node, Q, logdetQ, theta_hat;
+            offset = off, weight, b0 = zeros(length(last_b)))
+        if ok_hat
+            loading_hat = Float64.(weight) .* sdobs
+            _attach_conditional_structured!(
+                scales, loading_hat .* b_hat[leaf_node], b_hat)
+        end
+    end
     fit = DrmFit(fam, blocks, names, theta_hat, Matrix(V), -value, n,
                  converged, means, obs, scales)
     return _withiterations(_withnll(fit, nll), Optim.iterations(res))

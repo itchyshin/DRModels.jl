@@ -877,6 +877,19 @@ function _fit_gamma_structured_sd_laplace(fam, y, Xmu, Xsigma, Zobs, Zg, gidx,
                   group_key => sdgroup, scale_key => sdgroup[sd_group_index],
                   index_key => Float64.(sd_group_index))
     scale_key === :sd_phylo && (scales[:tree_tip_index] = Float64.(sd_group_index))
+    # b34: record the conditional field at theta_hat (fresh inner solve; `last_b`
+    # was moved by the finite-difference stencils above). Phylogenetic fields are
+    # not exported.
+    if scale_key !== :sd_phylo
+        _, b_hat, ok_hat = _gamma_structured_sd_laplace(
+            y, Xmu, Zobs, gidx, Q, logdetQ, theta_hat, aux_from;
+            weight, b0 = zeros(length(last_b)))
+        if ok_hat
+            loading_hat = Float64.(weight) .* exp.(Zobs * theta_hat[(pmu + 2):end])
+            _attach_conditional_structured!(
+                scales, loading_hat .* b_hat[gidx], b_hat)
+        end
+    end
     fit = DrmFit(fam, blocks, names, theta_hat, Matrix(V), -value, length(y),
                  converged, means, obs, scales)
     return _withiterations(_withnll(fit, nll), Optim.iterations(result))

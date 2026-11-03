@@ -296,6 +296,42 @@ _withranef(fit::DrmFit, re) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.
     fit.vcov, fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula, fit.nll, fit.nllgrad, re,
     fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal, fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale)
 
+# Conditional structured-field export for the R bridge (b34). A structured
+# `relmat()` / `animal()` / `spatial()` fitter records, at the converged theta,
+#   * `scales[:cond_eta_re]`: the per-row link-scale contribution of the field,
+#     loading_i * mode[g(i)], in DATA row order, and
+#   * `scales[:cond_mode_1]`, `[:cond_mode_2]`, ...: the inner Laplace mode of each
+#     field component in first-seen group-index order (the order `_group_index`
+#     returns, which is the row order of the K / A / Q matrix the bridge sends).
+# DRModels.jl's own `fitted()` stays population level; only the bridge payload
+# reads these keys (`_bridge_dpars` skips every `cond_*` key).
+function _attach_conditional_structured!(scales::AbstractDict, eta_re::AbstractVector,
+                                         modes::AbstractVector...)
+    all(isfinite, eta_re) || return scales
+    all(m -> all(isfinite, m), modes) || return scales
+    scales[:cond_eta_re] = collect(Float64, eta_re)
+    for (k, m) in enumerate(modes)
+        scales[Symbol("cond_mode_", k)] = collect(Float64, m)
+    end
+    return scales
+end
+
+"""
+    structured_conditional(fit) -> NamedTuple or nothing
+
+The conditional structured-field contribution a structured fitter recorded:
+`(eta_re, modes)`, where `eta_re` is the per-row link-scale contribution of the
+field (data row order) and `modes` holds the inner Laplace mode of each field
+component. `nothing` when the route records none.
+"""
+function structured_conditional(fit::DrmFit)
+    haskey(fit.scales, :cond_eta_re) || return nothing
+    keys_modes = sort!([k for k in keys(fit.scales) if startswith(String(k), "cond_mode_")];
+                       by = String)
+    return (eta_re = fit.scales[:cond_eta_re],
+            modes = [fit.scales[k] for k in keys_modes])
+end
+
 # Mark the fit as REML-estimated, recording both the REML and ML log-likelihoods.
 # The public `loglik` slot is set to the REML value (with the documented
 # cross-structure caveat); `ml_loglik` stays available for ML-style comparison.
