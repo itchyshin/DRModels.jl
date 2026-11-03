@@ -21,7 +21,7 @@ Refresh the parity crosswalk with the current exact-head check states for five P
 - `docs/dev-log/after-task/2026-11-03-pr-followup-0011-utc.md`
 - `docs/dev-log/check-log.d/2026-11-03-pr-followup-0011-utc.md`
 
-The pre-existing modified Python bytecode file remains untouched.
+The pre-existing modified Python bytecode file stayed unstaged and uncommitted. Its content was not compared with a pre-task copy.
 
 ## 5. Checks Run
 
