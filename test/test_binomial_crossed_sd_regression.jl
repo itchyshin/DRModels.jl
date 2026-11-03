@@ -38,7 +38,13 @@ function crossed_binomial_sd_laplace_oracle(y, X, gidx, hidx, tau_g, tau_h)
                 end
                 rate *= 0.5
             end
-            rate > 1e-8 || error("independent crossed Binomial oracle mode did not converge")
+            # No descent step at machine precision: accept the mode only if the
+            # gradient is already negligible (rounding stall near the optimum,
+            # seen on x86-64 Julia 1.13.3); otherwise the oracle has failed.
+            if rate <= 1e-8
+                norm(grad, Inf) < 1e-8 && break
+                error("independent crossed Binomial oracle mode did not converge")
+            end
         end
         eta = eta_fixed + A * u
         p = 1.0 ./ (1.0 .+ exp.(-eta))
