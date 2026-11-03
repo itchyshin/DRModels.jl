@@ -651,11 +651,19 @@ previous observation; the source reviews remain read-only.
   docs-preview remained pending and deployment was skipped. The Julia shard
   jobs reported success through the prose-only fast path, which skipped Julia
   setup, build, and tests; the aggregate `ci-ok` job was still queued. The
-  matching local branch is at
-  `abda662cce362dc6108349dda96ba40ed2844142`, not the PR head, so it is not a
-  current exact-head checkout. No formal review or current owner was found.
+  matching local branch is checked out at
+  `abda662cce362dc6108349dda96ba40ed2844142`, which differs from the PR head.
+  No formal review or current owner was found.
 
 **Next disposition:** #1500 is the closest current-main candidate for maintainer
-review after its owner resolves the draft state. #1215 is the smallest code-free
-candidate, but its owner and preview are unresolved. No PR state was changed,
-and no merge is recommended from this lane.
+review after its owner resolves the draft state. #1215 is a small code-free
+change, but it is not independent: its `ROADMAP.md` change overlaps both #1214
+and #1210. Their current file lists overlap on 55 paths, including `ROADMAP.md`;
+#1214 targets current main while #1210 targets stale base
+`64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716`. PR #1214 has a successful docs
+build and active CI. #1210 has older successful CI and docs runs on its stale
+base. The #1214 exact-head checkout was not found; the #1210 local branch is at
+`af4c0f4d527f3e41d4dc3cac1e1fafb891996aab`, which differs from its PR head.
+Reconcile the overlapping documentation lanes with their owners before
+considering #1215 for closure. No PR state was changed, and no merge is
+recommended from this lane.
