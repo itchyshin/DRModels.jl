@@ -1,0 +1,1 @@
+| 2026-11-03 | **Parity PR follow-up review** (#1215, #1249, #1500, #1667) | Exact-head checks, source review, documentation link verification | #1500 CI green; #1215 docs green with preview pending; #1249/#1667 still active | Codex |

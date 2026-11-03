@@ -616,3 +616,46 @@ useful evidence.
 This refresh does not establish numerical R-Julia parity, interval calibration,
 owner identity, merge readiness, or release readiness. The two P2 findings are
 owner follow-ups, not changes made by this lane.
+
+## Exact-head follow-up, 2026-11-03 00:03 UTC
+
+The latest PR heads are unchanged. Workflow jobs were refreshed after the
+previous observation; the source reviews remain read-only.
+
+- **drmTMB #1500** (`7630b6a4653d4ee7ffbd69ee5e6be87d330d8890`, base
+  `e5cd86667c97d1b34f0ead22017a675377f46930`) now has all four Ubuntu shards,
+  the source-tree check, and the OS-matrix check passed in run
+  [41542189558](https://github.com/itchyshin/drmTMB/actions/runs/41542189558).
+  A read-only source review found no P0, P1, or P2 correctness blocker; it
+  suggested adding tests for other named `update()` replacements as P3 follow-up.
+  The PR remains a draft and has no formal review. No exact-head local worktree
+  was found, so branch ownership remains unconfirmed.
+- **drmTMB #1667** (`c133edb86992a092b4ccaebd5606746da831d5e1`, current base)
+  has its source-tree and OS-matrix jobs passed in run
+  [41548315716](https://github.com/itchyshin/drmTMB/actions/runs/41548315716).
+  All four Ubuntu shards were still running at 00:03 UTC. The review concern
+  about warning suppression remains an owner follow-up. The exact-head checkout
+  exists, but no ownership handoff or formal review is recorded.
+- **DRModels.jl #1249** (`b959b185d2e6940ad2c3db8e2eb4b04e889338dd`, current
+  base) has CI run [41548951015](https://github.com/itchyshin/DRModels.jl/actions/runs/41548951015)
+  queued at the changes job. Documenter run
+  [41548951145](https://github.com/itchyshin/DRModels.jl/actions/runs/41548951145)
+  was building documentation at 00:03 UTC. The review's two P2 follow-ups remain
+  unresolved. No exact-head checkout or formal review was found.
+- **DRModels.jl #1215** (`1ee71530ebcd31bb62cce2fba6601ffced4f65ea`, current
+  base) is an open one-file draft that labels the old roadmap phase snapshot as
+  historical and links to the current capabilities and API stability pages.
+  Both link targets exist on the exact base. The Documentation build and
+  rendered-doc audit passed in run
+  [41539026225](https://github.com/itchyshin/DRModels.jl/actions/runs/41539026225);
+  docs-preview remained pending and deployment was skipped. The Julia shard
+  jobs reported success through the prose-only fast path, which skipped Julia
+  setup, build, and tests; the aggregate `ci-ok` job was still queued. The
+  matching local branch is at
+  `abda662cce362dc6108349dda96ba40ed2844142`, not the PR head, so it is not a
+  current exact-head checkout. No formal review or current owner was found.
+
+**Next disposition:** #1500 is the closest current-main candidate for maintainer
+review after its owner resolves the draft state. #1215 is the smallest code-free
+candidate, but its owner and preview are unresolved. No PR state was changed,
+and no merge is recommended from this lane.
