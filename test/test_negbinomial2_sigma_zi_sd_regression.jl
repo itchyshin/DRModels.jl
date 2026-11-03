@@ -1,10 +1,10 @@
-using DRModels, Random, Test, LinearAlgebra, QuadGK
+using StableRNGs, DRModels, Random, Test, LinearAlgebra, QuadGK
 import Distributions
 
 _nb2_test_logaddexp(a, b) = max(a, b) + log1p(exp(-abs(a - b)))
 
 function _nb2_zi_sigma_sd_fixture(; G = 64, m = 22, seed = 20261031)
-    rng = MersenneTwister(seed)
+    rng = StableRNG(seed)
     group = repeat(1:G, inner = m)
     wgroup = collect(range(-1.0, 1.0; length = G))
     w = wgroup[group]

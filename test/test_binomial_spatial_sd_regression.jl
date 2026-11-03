@@ -1,4 +1,6 @@
-using DRModels, Test, Random, Distributions, LinearAlgebra
+using DRModels, Test, Random, LinearAlgebra
+import Distributions
+using Distributions: Normal, cdf
 
 @testset "Binomial spatial SD regression" begin
     G, n_each = 48, 32

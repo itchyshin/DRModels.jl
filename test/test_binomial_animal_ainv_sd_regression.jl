@@ -39,10 +39,12 @@ end
     @test predict_parameters(precision_fit, data)[:sd] ≈
           predict_parameters(covariance_fit, data)[:sd] atol = 5e-3
 
+    # 24000 draws put the 0.08 tolerance near four Monte Carlo standard
+    # errors for the largest variance (2.25); 1500 draws left it near one.
     oracle_rng = MersenneTwister(20261024)
     qchol = cholesky(Symmetric(sparse(Ainv)))
     latent_draws = hcat((DRModels._binomial_animal_precision_draw(
-        oracle_rng, qchol, size(Ainv, 1)) for _ in 1:1500)...)
+        oracle_rng, qchol, size(Ainv, 1)) for _ in 1:24000)...)
     latent_draws .-= sum(latent_draws; dims = 2) ./ size(latent_draws, 2)
     sample_cov = latent_draws * latent_draws' / size(latent_draws, 2)
     diag_probe = [1, size(A, 1) ÷ 2, size(A, 1)]

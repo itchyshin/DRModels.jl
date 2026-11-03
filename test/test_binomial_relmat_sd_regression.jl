@@ -1,7 +1,10 @@
-using DRModels, Test, Random, Distributions, LinearAlgebra
+using DRModels, Test, Random, LinearAlgebra
+import Distributions
+using Distributions: Normal
+using StableRNGs
 
 @testset "Binomial related-matrix SD regression" begin
-    rng = MersenneTwister(20261021)
+    rng = StableRNG(20261021)
     G, n_each = 24, 24
     order = vcat(collect(5:G), 1:4) # matrix order is deliberately not sorted label order
     group_index = repeat(1:G; inner = n_each)
@@ -109,7 +112,7 @@ end
 
 @testset "Binomial probit and cloglog related-matrix SD regression" begin
     for (link, seed_offset) in ((:probit, 0), (:cloglog, 1))
-        rng = MersenneTwister(20261040 + seed_offset)
+        rng = StableRNG(20261040 + seed_offset)
         G, n_each = 64, 32
         matrix_order = vcat(collect(7:G), 1:6)
         group_index = repeat(1:G; inner = n_each)

@@ -1,8 +1,8 @@
-using DRModels, Test, Random, QuadGK, LinearAlgebra
+using DRModels, Test, Random, QuadGK, LinearAlgebra, StableRNGs
 import Distributions
 
 function _poisson_zi_sd_fixture(; G = 80, m = 16)
-    rng = MersenneTwister(20261024)
+    rng = StableRNG(20261024)
     g = repeat(1:G, inner = m)
     z_group = repeat([0.0, 1.0], inner = G ÷ 2)
     z = z_group[g]
@@ -17,7 +17,7 @@ function _poisson_zi_sd_fixture(; G = 80, m = 16)
 end
 
 function _poisson_zi_sd_slope_fixture(; G = 80, m = 16)
-    rng = MersenneTwister(20261025)
+    rng = StableRNG(20261025)
     g = repeat(1:G, inner = m)
     z_group = repeat([0.0, 1.0], inner = G ÷ 2)
     z = z_group[g]

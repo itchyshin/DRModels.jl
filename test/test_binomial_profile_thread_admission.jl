@@ -1,8 +1,9 @@
 using DRModels, Test, Random
+using StableRNGs
 import Distributions
 
 @testset "Binomial SD profile threading admits independent quadrature routes" begin
-    rng = MersenneTwister(20261022)
+    rng = StableRNG(20261022)
     G, m = 32, 14
     group = repeat(1:G, inner = m)
     z_group = repeat([-1.0, 1.0], inner = G ÷ 2)
@@ -24,7 +25,7 @@ import Distributions
 end
 
 @testset "Binomial correlated SD profile threading uses ordinary quadrature" begin
-    rng = MersenneTwister(20261023)
+    rng = StableRNG(20261023)
     G, m = 64, 18
     group = repeat(1:G, inner = m)
     z_group = repeat([-1.0, 1.0], inner = G ÷ 2)

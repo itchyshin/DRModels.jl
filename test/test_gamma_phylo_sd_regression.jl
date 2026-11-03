@@ -1,4 +1,6 @@
-using DRModels, Test, Random, LinearAlgebra, Distributions, Serialization
+using DRModels, Test, Random, LinearAlgebra, Serialization
+import Distributions
+using Statistics: cov, var
 
 function _gamma_phylo_sd_fixture(; seed = 20261022, p = 16, m = 20)
     rng = MersenneTwister(seed)

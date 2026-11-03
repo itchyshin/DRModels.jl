@@ -117,8 +117,8 @@ end
     route(formula; kwargs...) = drm(formula, TruncatedNegBinomial2(); data, kwargs...)
     @test_throws ArgumentError route(bf(@formula(y ~ x + (1 + x | g)),
         @formula(sigma ~ 1), @formula(sd(g) ~ z)))
-    @test_throws ArgumentError route(bf(@formula(y ~ x + (1 | g)),
-        @formula(sigma ~ 1), @formula(sd(g) ~ z), @formula(hu ~ 1)))
+    # A keyed `hu ~ ...` is not refused: the route hands it to the shared
+    # NegBinomial2 hurdle fitter (src/negbinomial.jl, `haskey(rhs, :hu)`).
     varying = merge(data, (; z = copy(data.z)))
     varying.z[1] = -varying.z[1]
     @test_throws ArgumentError drm(bf(@formula(y ~ x + (1 | g)),

@@ -741,6 +741,11 @@ end
 function _missing_column_lookup(e)::Bool
     e isa KeyError && return true
     e isa ArgumentError && return true
+    # Julia 1.12+ throws `FieldError` (not `ErrorException`) for a missing
+    # NamedTuple field.
+    @static if isdefined(Base, :FieldError)
+        e isa Base.FieldError && return true
+    end
     if e isa ErrorException
         return occursin("not found", e.msg) || occursin("no field", e.msg)
     end

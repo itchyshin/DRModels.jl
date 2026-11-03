@@ -1,4 +1,6 @@
-using DRModels, Test, Random, Distributions, LinearAlgebra
+using DRModels, Test, Random, LinearAlgebra
+import Distributions
+using Distributions: Normal
 import Serialization
 
 @testset "Binomial related-matrix random-slope SD regression" begin

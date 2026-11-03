@@ -38,11 +38,11 @@ function crossed_binomial_sd_laplace_oracle(y, X, gidx, hidx, tau_g, tau_h)
                 end
                 rate *= 0.5
             end
-            # No descent step at machine precision: accept the mode only if the
-            # gradient is already negligible (rounding stall near the optimum,
-            # seen on x86-64 Julia 1.13.3); otherwise the oracle has failed.
+            # No descent step: a rounding stall at the optimum (seen on x86-64
+            # Julia 1.13.3) is accepted only when the Newton decrement, which
+            # bounds the remaining objective gap, is negligible.
             if rate <= 1e-8
-                norm(grad, Inf) < 1e-8 && break
+                dot(grad, step) < 1e-9 && break
                 error("independent crossed Binomial oracle mode did not converge")
             end
         end

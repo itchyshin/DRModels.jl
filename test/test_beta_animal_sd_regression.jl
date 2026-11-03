@@ -1,4 +1,5 @@
-using DRModels, Test, Random, LinearAlgebra, Distributions
+using DRModels, Test, Random, LinearAlgebra
+import Distributions
 using SpecialFunctions: loggamma
 using Serialization
 

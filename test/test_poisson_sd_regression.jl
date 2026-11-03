@@ -1,9 +1,9 @@
 # Poisson random-intercept SD regression on the Julia engine.
-using DRModels, Test, Random, QuadGK, LinearAlgebra
+using DRModels, Test, Random, QuadGK, LinearAlgebra, StableRNGs
 import Distributions
 
 function _poisson_sd_fixture(; G = 32, m = 16)
-    rng = MersenneTwister(20261018)
+    rng = StableRNG(20261018)
     g = repeat(1:G, inner = m)
     zgroup = repeat([0.0, 1.0], inner = G ÷ 2)
     z = zgroup[g]
@@ -16,7 +16,7 @@ function _poisson_sd_fixture(; G = 32, m = 16)
 end
 
 function _poisson_sd_slope_fixture(; G = 48, m = 24)
-    rng = MersenneTwister(20261019)
+    rng = StableRNG(20261019)
     g = repeat(1:G, inner = m)
     zgroup = repeat([0.0, 1.0], inner = G ÷ 2)
     z = zgroup[g]
@@ -68,7 +68,10 @@ function _poisson_phylo_sd_dense_laplace(theta, y, Xmu, Zobs, leaf_node, Q)
         H = Qdense + Diagonal(hdiag)
         ch = cholesky(Symmetric(H))
         step = ch \ grad
-        if norm(step) <= 1e-12 * (1 + norm(b))
+        # Newton converges quadratically, so a 1e-10 relative step leaves a
+        # mode error far below the objective tolerances; a tighter cut-off sits
+        # at the gradient round-off floor (~1e-11 here) and never triggers.
+        if norm(step) <= 1e-10 * (1 + norm(b))
             return joint(b) + 0.5 * logdet(ch) -
                 0.5 * logdet(Symmetric(Qdense))
         end
@@ -210,7 +213,7 @@ end
 end
 
 @testset "Poisson SD regression includes a fixed exposure offset" begin
-    rng = MersenneTwister(20261023)
+    rng = StableRNG(20261023)
     G, m = 64, 18
     group = repeat(1:G, inner = m)
     z_group = repeat([0.0, 1.0], inner = G ÷ 2)
@@ -277,7 +280,7 @@ end
 end
 
 @testset "Poisson phylogenetic SD Laplace objective matches dense oracle" begin
-    rng = MersenneTwister(20261019)
+    rng = StableRNG(20261019)
     tree = _poisson_phylo_sd_test_newick(2)
     phy = DRModels.augmented_phy(tree)
     m = 6

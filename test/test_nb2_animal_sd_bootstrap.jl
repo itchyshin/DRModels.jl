@@ -1,9 +1,16 @@
-using DRModels, Test, Random, LinearAlgebra
+using StableRNGs, DRModels, Test, Random, LinearAlgebra
 import Distributions
 
+# Fixture scan (1.13.2, seeds 2026102612:2026102619; fit converged,
+# bootstrap used 1/0, profile failed 0 with a finite 80% CI all required):
+#   G = 12, m = 12, SD intercept -0.8 (previous): 3/8 (two collapsed SD fits)
+#   G = 12, m = 12, intercept -0.2: 6/8;  intercept 0.0: 7/8
+#   G = 12, m = 24, intercept  0.0: 8/8
+#   G = 24, m = 12, intercept  0.3: 8/8
+#   G = 24, m = 12, intercept  0.0 (used): 10/10 (seeds ...612:...621)
 @testset "NB2 animal SD bootstrap accepts sparse precision input" begin
-    rng = MersenneTwister(2026102612)
-    G, m = 12, 12
+    rng = StableRNG(2026102612)
+    G, m = 24, 12
     g = repeat(1:G, inner = m)
     z_group = repeat([-1.0, 1.0], inner = G ÷ 2)
     z = z_group[g]
@@ -11,7 +18,7 @@ import Distributions
     rho = 0.35
     A = [rho^abs(i - j) for i in 1:G, j in 1:G]
     A_factor = cholesky(Symmetric(A))
-    b = exp.(-0.8 .+ 0.3 .* z_group) .* (A_factor.L * randn(rng, G))
+    b = exp.(0.0 .+ 0.3 .* z_group) .* (A_factor.L * randn(rng, G))
     mu = exp.(0.25 .+ 0.2 .* x .+ b[g])
     sigma = 0.42
     size = inv(sigma^2)

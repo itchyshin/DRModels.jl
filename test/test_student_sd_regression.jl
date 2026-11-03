@@ -1,8 +1,8 @@
-using DRModels, Random, Test, QuadGK
+using DRModels, Random, Test, QuadGK, StableRNGs
 import Distributions
 
 function _student_sd_fixture(; G = 32, m = 20, alpha = [-0.65, 0.45], seed = 202610182)
-    rng = MersenneTwister(seed)
+    rng = StableRNG(seed)
     group = repeat(1:G, inner = m)
     z_group = repeat([-1.0, 1.0], inner = G ÷ 2)
     z = z_group[group]
@@ -13,7 +13,7 @@ function _student_sd_fixture(; G = 32, m = 20, alpha = [-0.65, 0.45], seed = 202
 end
 
 function _student_slope_sd_fixture(; G = 60, m = 16, alpha = [-0.65, 0.45], seed = 202610186)
-    rng = MersenneTwister(seed)
+    rng = StableRNG(seed)
     group = repeat(1:G, inner = m)
     z_group = repeat([-1.0, 1.0], inner = G ÷ 2)
     z = z_group[group]

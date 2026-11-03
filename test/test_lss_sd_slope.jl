@@ -1,10 +1,11 @@
 using DRModels
 using Test
 using Random
+using StableRNGs
 using LinearAlgebra: cholesky, Diagonal, I, logdet, Symmetric, dot
 
 function _gaussian_sd_slope_fixture(; seed = 20261022, G = 80, m = 8)
-    rng = MersenneTwister(seed)
+    rng = StableRNG(seed)
     z_group = repeat([0.0, 1.0], inner = G ÷ 2)
     g = repeat(1:G, inner = m)
     z = z_group[g]

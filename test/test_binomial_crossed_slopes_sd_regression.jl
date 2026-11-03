@@ -38,7 +38,13 @@ function crossed_binomial_slope_laplace_oracle(y, X, gidx, hidx, loading_g, load
                 end
                 rate *= 0.5
             end
-            rate > 1e-8 || error("independent crossed Binomial oracle mode did not converge")
+            # No descent step: a rounding stall at the optimum (seen on x86-64
+            # Julia 1.13.3) is accepted only when the Newton decrement, which
+            # bounds the remaining objective gap, is negligible.
+            if rate <= 1e-8
+                dot(grad, step) < 1e-9 && break
+                error("independent crossed Binomial oracle mode did not converge")
+            end
         end
         return -(joint(u) + 0.5 * logdet(Symmetric(
             Matrix{Float64}(I, G + H, G + H) +

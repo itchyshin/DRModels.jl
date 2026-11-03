@@ -18,7 +18,7 @@
 #
 # Threshold: |Δ log-likelihood| < 1e-4 for every route, seed and point.
 
-using DRModels, Random, Test, QuadGK
+using DRModels, Random, Test, QuadGK, StableRNGs
 import Distributions
 const D = Distributions
 
@@ -66,7 +66,7 @@ end
 const _SPECS = Dict{String,NamedTuple}()
 
 function _iid_fixture(fam::String, kind::Symbol, seed::Int; G = 100, m = 5, a0 = log(0.3))
-    rng = MersenneTwister(seed)
+    rng = StableRNG(seed)
     g = repeat(1:G, inner = m)
     n = G * m
     zg = randperm(rng, G) |> p -> range(-1, 1; length = G)[p]

@@ -2,6 +2,7 @@
 # cloglog links. This is recovery evidence for this exact family/block slice,
 # not interval-coverage validation.
 using DRModels, Test, Random
+using StableRNGs
 import Distributions
 using LinearAlgebra, Statistics
 
@@ -53,7 +54,7 @@ function _binomial_correlated_q2_prior_gh_loglik(
 end
 
 @testset "Binomial correlated q3 SD regression" begin
-    rng = MersenneTwister(2026102632)
+    rng = StableRNG(2026102632)
     G, m = 128, 40
     g = repeat(1:G, inner = m)
     x = randn(rng, G * m)
@@ -118,7 +119,7 @@ end
 
 @testset "Binomial non-logit correlated-block SD regression" begin
     for (link, seed) in ((:probit, 202610251), (:cloglog, 202610252))
-        rng = MersenneTwister(seed)
+        rng = StableRNG(seed)
         G, m = 160, 32
         g = repeat(1:G, inner = m)
         z0_group = repeat([-1.0, 1.0], inner = G ÷ 2)

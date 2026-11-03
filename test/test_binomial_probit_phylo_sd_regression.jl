@@ -1,4 +1,5 @@
 using DRModels, Test, Random, LinearAlgebra
+using StableRNGs
 import Distributions
 
 function _binomial_probit_phylo_test_newick(depth)
@@ -68,7 +69,7 @@ function _binomial_probit_dense_laplace(theta, successes, trials, X, ztip,
 end
 
 @testset "Binomial probit phylogenetic SD regression" begin
-    rng = MersenneTwister(20261025)
+    rng = StableRNG(20261025)
     tree = _binomial_probit_phylo_test_newick(4)
     phy = DRModels.augmented_phy(tree)
     G = phy.n_leaves

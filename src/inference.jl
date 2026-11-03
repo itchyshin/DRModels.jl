@@ -2449,7 +2449,9 @@ function _binomial_mesh_sd_marginal_simulator(fit::DrmFit, data, mesh_metadata)
     length(eta_fixed) == length(row_sd) || throw(ArgumentError(
         "bootstrap: mesh fixed predictions and SD rows do not align."))
     return function (rng)
-        field = qchol.U \ randn(rng, size(precision, 1))
+        # `.UP` undoes CHOLMOD's fill-reducing permutation, so the field
+        # has covariance precision^-1; `.U` alone would not.
+        field = qchol.UP \ randn(rng, size(precision, 1))
         eta = eta_fixed + row_sd .* (projection * field)
         return _simulate_once(fit, rng; mu = _binomial_mean.(Ref(fit.family), eta))
     end
@@ -2980,7 +2982,7 @@ function _binomial_phylo_interaction_sd_marginal_simulator(fit::DrmFit, data,
         Float64.(raw_slope)
     end
     return function (rng)
-        latent = factor.U \ randn(rng, size(Q, 1))
+        latent = factor.UP \ randn(rng, size(Q, 1))
         eta = eta_fixed .+ sd_pair[pair_index] .* latent[leaf_node] .* re_design
         return _simulate_once(fit, rng; mu = _mean_response(fit.family, eta))
     end
