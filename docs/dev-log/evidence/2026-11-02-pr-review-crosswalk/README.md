@@ -705,3 +705,20 @@ task lane currently owns either branch.
 These green runs are historical evidence on the stale base. No local Julia
 tests were run, no review or comment was submitted, and no branch or PR state
 was changed.
+
+## #1215 terminal-check follow-up, 2026-11-03 00:16 UTC
+
+At the same head (`1ee71530ebcd31bb62cce2fba6601ffced4f65ea`) and current base
+`973bbb675dc6a10b436acf86175e089e38ec467e`, CI run `41539026157` is now
+complete and successful. Its `ci-ok` job passed, but all four Julia shards
+skipped Julia setup, package build, and tests through the prose-only fast path;
+the scaling sweep was also skipped. The workflow confirms a successful
+documentation-change check; Julia tests did not execute.
+
+Documenter run `41539026225` completed the `docs` job successfully, including
+the site build, rendered-page audit, and artifact upload. The `docs-preview`
+job was cancelled and `docs-deploy` was skipped. Thus the PR has a successful
+build and audit but no preview or deployment evidence. Its PR remains a draft,
+and the `ROADMAP.md` overlap with #1214 and #1210 remains unresolved. No owner
+handoff or formal review appeared in the refreshed metadata. Other tracked PR
+heads and run states were unchanged in this refresh.

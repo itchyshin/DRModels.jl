@@ -1,0 +1,1 @@
+| 2026-11-03 | **#1215 terminal check review** (DRModels.jl) | Exact-head CI and Documenter job-step inspection | Aggregate CI and docs build passed; Julia tests skipped, preview cancelled, deployment skipped | Codex |
