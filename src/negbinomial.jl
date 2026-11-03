@@ -150,6 +150,8 @@ function _drm_negbinomial2_fit(f::DrmFormula, fam::NegBinomial2; data, tree = no
     if !isempty(_sd_parts(f)) || !isempty(_sdphylo_parts(f))
         nAGQ === nothing || nAGQ >= 1 || throw(ArgumentError(
             "nAGQ must be ≥ 1; got $nAGQ"))
+        A = _resolve_relatedness_labels(f, data, A, ids; coords = coords)   # #957: match `A` by label (SD routes too)
+        coords = _resolve_coords_labels(f, data, coords, ids)   # #957
         return _drm_negbin2_sd_regression(f, fam; data, tree, K, A, Ainv,
                                            coords, g_tol, se, marginal, nAGQ)
     end

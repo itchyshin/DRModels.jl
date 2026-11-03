@@ -68,9 +68,12 @@ function _drm_beta_fit(f::DrmFormula, fam::Beta; data, tree = nothing, K = nothi
              marginal::Symbol = :LA, method = nothing, ids = nothing)
     _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, coords = coords)   # #1027 #1022 #1010
     _reject_method_as_marginal(fam, method)
-    !isempty(_sd_parts(f)) &&
+    if !isempty(_sd_parts(f))
+        A = _resolve_relatedness_labels(f, data, A, ids; coords = coords)   # #957: match `A` by label (SD routes too)
+        coords = _resolve_coords_labels(f, data, coords, ids)   # #957
         return _drm_beta_sd_regression(f, fam; data, tree, K, A, coords,
                                        g_tol, se, marginal)
+    end
     _scalar_laplace_requested(marginal) &&     # Arc 2: TMB-convention Laplace, ordinary (1 | g)
         return _drm_ordinary_laplace(f, fam; data = data, tree = tree, K = K, A = A,
                                      coords = coords, g_tol = g_tol, se = se, method = method)

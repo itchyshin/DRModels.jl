@@ -74,6 +74,8 @@ function _drm_gamma_fit(f::DrmFormula, fam::Gamma; data, tree = nothing, K = not
     _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, coords = coords)   # #1027 #1022 #1010
     _reject_method_as_marginal(fam, method)
     if !isempty(_sd_parts(f)) || !isempty(_sdphylo_parts(f))
+        A = _resolve_relatedness_labels(f, data, A, ids; coords = coords)   # #957: match `A` by label (SD routes too)
+        coords = _resolve_coords_labels(f, data, coords, ids)   # #957
         return _drm_gamma_sd_regression(f, fam; data, tree, K, A, coords,
                                         g_tol, se, marginal)
     end

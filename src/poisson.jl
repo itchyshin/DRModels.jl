@@ -247,6 +247,8 @@ function _drm_poisson_fit(f::DrmFormula, fam::Poisson; data, tree = nothing, K =
     meth = _reject_method_as_marginal(fam, method; allow_reml = true)
     reml = meth === :REML
     if !isempty(_sd_parts(f)) || !isempty(_sdphylo_parts(f))
+        A = _resolve_relatedness_labels(f, data, A, ids; coords = coords)   # #957: match `A` by label (SD routes too)
+        coords = _resolve_coords_labels(f, data, coords, ids)   # #957
         return _drm_poisson_sd_regression(f, fam; data, tree, K, A, Ainv, coords,
             g_tol, se, marginal, reml, nAGQ)   # `nothing` -> route default
     end
