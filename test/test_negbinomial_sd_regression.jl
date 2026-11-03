@@ -46,7 +46,7 @@ end
     Zg = hcat(ones(40), repeat([-1.0, 1.0], inner = 20))
     @test fit.scales[:sd_group] ≈ exp.(Zg * coef(fit, :sd))
     @test Int.(fit.scales[:sd_group_index]) == data.g
-    @test only(fit.scales[:aghq_nodes]) == DRModels._RANEF1D_AGHQ_K
+    @test only(fit.scales[:aghq_nodes]) == DRModels._SD_IID_AGHQ_K
     @test predict_parameters(fit, data)[:sd] ≈ fit.scales[:sd]
     @test predict_parameters(fit, data; type = :link)[:sd] ≈ log.(fit.scales[:sd])
     pred_sd = predict_parameters(fit, data; se = true)[:sd]
@@ -62,7 +62,8 @@ end
 
     constant = bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1),
                   @formula(sd(g) ~ 1))
-    f_sd = drm(constant, NegBinomial2(); data)
+    # Same node count as the plain `(1 | g)` route, so only the likelihood assembly is compared.
+    f_sd = drm(constant, NegBinomial2(); data, nAGQ = DRModels._RANEF1D_AGHQ_K)
     f_old = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)),
                 NegBinomial2(); data)
     @test f_sd.converged && f_old.converged

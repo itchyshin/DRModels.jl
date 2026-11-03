@@ -633,59 +633,64 @@ function _gaussian_spatial_sd_kernel(coords, G::Int, grp::Symbol)
     return exp.(-Dd ./ rng) + 1e-6 * I
 end
 
-# Router leg: Gaussian slope-only structured SD regression,
-#   y_i = X_i β + x_i u_{g(i)} + ε_i,  u = D b,  b ~ N(0, C),
+# Router leg: Gaussian structured SD regression with ONE structured coefficient,
+#   y_i = X_i β + w_i u_{g(i)} + ε_i,  u = D b,  b ~ N(0, C),
 #   D = diag(exp(Z α)),  log σ_i = Xσ βσ,
-# for `animal(0 + x | g, A)`, `relmat(0 + x | g, K)` and coordinate
-# `spatial(0 + x | g, coords)` with `sd(g, animal|relmat|spatial) ~ z`.
+# where w_i = x_i for the slope-only marker `animal|relmat(0 + x | g)` and
+# coordinate `spatial(0 + x | g, coords)` (`slope::Symbol`), and w_i = 1 for the
+# intercept marker `animal|relmat(1 | g)` / `spatial(1 | g, coords)`
+# (`slope === nothing`), each with `sd(g, animal|relmat|spatial) ~ z`.
 # Scale choice (matches native drmTMB): `A` and `K` enter RAW — the diagonal is
 # not normalised to 1, so exp(Z α) multiplies a latent effect whose marginal SD
 # is exp(Z α) sqrt(C_gg). (Poisson/Gamma relmat in Julia normalise K; Gaussian
 # does not.) The marginal likelihood is exact (dense n×n Cholesky).
 function _drm_gaussian_structured_sd_slope(f::DrmFormula, fam::Gaussian, structured,
-                                           slope::Symbol, re, sigma_re, metav,
+                                           slope::Union{Symbol,Nothing}, re, sigma_re, metav,
                                            structured_sigma, has_missing_response,
                                            y, Xμ, Xσ, nmμ, nmσ, data, K, A, coords,
                                            g_tol, method, algorithm)
     kind, grp = structured
+    term = slope === nothing ? "$kind(1 | $grp)" : "$kind(0 + $slope | $grp)"
+    what = slope === nothing ? "intercept" : "slope"
     targets = _sd_target_parts(f)
     length(targets) == 1 || throw(ArgumentError(
-        "drm: Gaussian `$kind(0 + $slope | $grp)` SD regression requires exactly one `sd($grp, $kind) ~ …` formula."))
+        "drm: Gaussian `$term` SD regression requires exactly one `sd($grp, $kind) ~ …` formula."))
     target = only(targets)
     d = target.target
     (d.level === kind && d.dpar === :mu && d.block === nothing && d.group === grp) ||
-        throw(ArgumentError("drm: Gaussian `$kind(0 + $slope | $grp)` takes `sd($grp, $kind) ~ …` " *
+        throw(ArgumentError("drm: Gaussian `$term` takes `sd($grp, $kind) ~ …` " *
             "targeting the structured mean coefficient (got level `$(d.level)`, group `$(d.group)`)."))
-    d.member in (nothing, slope) || throw(ArgumentError(
-        "drm: Gaussian SD target `coef($(d.member))` does not match the structured slope `$slope`."))
+    member = slope === nothing ? :intercept : slope
+    d.member in (nothing, member) || throw(ArgumentError(
+        "drm: Gaussian SD target `coef($(d.member))` does not match the structured $what `$member`."))
     isempty(re) && isempty(sigma_re) && metav === nothing && structured_sigma === nothing ||
-        throw(ArgumentError("drm: Gaussian structured slope SD regression takes one structured " *
+        throw(ArgumentError("drm: Gaussian structured $what SD regression takes one structured " *
             "coefficient with fixed-effect `sigma` only (no ordinary or sigma random effects, `meta_V`, or structured `sigma`)."))
     has_missing_response && throw(ArgumentError(
-        "drm: Gaussian structured slope SD regression requires observed responses; remove incomplete rows first."))
+        "drm: Gaussian structured $what SD regression requires observed responses; remove incomplete rows first."))
     method === :REML && throw(ArgumentError(
-        "drm: Gaussian structured slope SD regression supports maximum likelihood only."))
+        "drm: Gaussian structured $what SD regression supports maximum likelihood only."))
     algorithm === :auto || throw(ArgumentError(
-        "drm: `algorithm = :$algorithm` is not implemented for Gaussian structured slope SD regression."))
+        "drm: `algorithm = :$algorithm` is not implemented for Gaussian structured $what SD regression."))
     for (pname, _) in f.forms
         (pname === :mu || pname === :sigma || pname === target.key) && continue
-        throw(ArgumentError("drm: Gaussian structured slope SD regression supports only `mu`, `sigma` and one SD formula."))
+        throw(ArgumentError("drm: Gaussian structured $what SD regression supports only `mu`, `sigma` and one SD formula."))
     end
     gidx, G = _group_index(getproperty(data, grp))
     Cmat = if kind === :relmat
         (A === nothing && coords === nothing) || throw(ArgumentError(
             "drm: Gaussian relmat SD regression uses `K = …` only."))
-        K === nothing && throw(ArgumentError("relmat(0 + $slope | $grp) needs the covariance matrix `K = …`"))
+        K === nothing && throw(ArgumentError("$term needs the covariance matrix `K = …`"))
         Matrix{Float64}(K)
     elseif kind === :animal
         (K === nothing && coords === nothing) || throw(ArgumentError(
             "drm: Gaussian animal SD regression uses `A = …` only."))
-        A === nothing && throw(ArgumentError("animal(0 + $slope | $grp) needs the relatedness matrix `A = …`"))
+        A === nothing && throw(ArgumentError("$term needs the relatedness matrix `A = …`"))
         Matrix{Float64}(A)
     else  # :spatial
         (K === nothing && A === nothing) || throw(ArgumentError(
             "drm: Gaussian spatial SD regression uses `coords = …` only."))
-        coords === nothing && throw(ArgumentError("spatial(0 + $slope | $grp) needs `coords = …`"))
+        coords === nothing && throw(ArgumentError("$term needs `coords = …`"))
         _gaussian_spatial_sd_kernel(coords, G, grp)
     end
     size(Cmat) == (G, G) || throw(ArgumentError(
@@ -695,7 +700,8 @@ function _drm_gaussian_structured_sd_slope(f::DrmFormula, fam::Gaussian, structu
                                 schema_cache = f.schema_cache, schema_key = target.key)
     size(Zg, 2) <= G && rank(Zg) == size(Zg, 2) || throw(ArgumentError(
         "drm: Gaussian structured SD target has a rank-deficient group-level design."))
-    loading = _poisson_animal_slope_loading(data, slope, length(y); label = "Gaussian $kind")
+    loading = slope === nothing ? nothing :
+        _poisson_animal_slope_loading(data, slope, length(y); label = "Gaussian $kind")
     return _fit_structured_gaussian_lss(fam, y, Xμ, Xσ, Zg, gidx, G, Cmat, nmμ, nmσ, nmsd,
                                         grp, g_tol; block = :sd, loading, report_sd = true)
 end

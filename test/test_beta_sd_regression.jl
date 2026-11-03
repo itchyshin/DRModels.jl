@@ -74,7 +74,9 @@ end
 
     constant = bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1),
                   @formula(sd(g) ~ 1))
-    fit_sd_constant = drm(constant, Beta(); data)
+    # Same node count as the plain `(1 | g)` route, so only the likelihood assembly is compared.
+    fit_sd_constant = DRModels._drm_beta_sd_regression(constant, Beta(); data,
+                                                      nAGQ = DRModels._RANEF1D_AGHQ_K)
     fit_legacy = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)),
                      Beta(); data)
     @test fit_sd_constant.loglik ≈ fit_legacy.loglik atol = 1e-5

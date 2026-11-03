@@ -154,7 +154,8 @@ end
     @test all(isnan, no_se.vcov)
 
     constant = bf(@formula(y ~ x + (1 | g)), @formula(sd(g) ~ 1))
-    f_sd = drm(constant, Poisson(); data = data)
+    # Same node count as the plain `(1 | g)` route, so only the likelihood assembly is compared.
+    f_sd = drm(constant, Poisson(); data = data, nAGQ = 5)
     f_old = drm(bf(@formula(y ~ x + (1 | g))), Poisson(); data = data)
     @test f_sd.converged && f_old.converged
     @test isapprox(f_sd.loglik, f_old.loglik; atol = 1e-5)

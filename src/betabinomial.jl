@@ -312,7 +312,7 @@ end
 function _drm_betabinomial_sd_regression(f::DrmFormula, fam::BetaBinomial; data,
                                          g_tol::Real = 1e-8, se::Bool = true,
                                          marginal::Symbol = :LA,
-                                         nAGQ::Int = _RANEF1D_AGHQ_K)
+                                         nAGQ::Int = _SD_IID_AGHQ_K)
     marginal === :LA || throw(ArgumentError(
         "BetaBinomial `sd(group) ~ …` currently supports `marginal = :LA` only."))
     nAGQ >= 1 || throw(ArgumentError("nAGQ must be ≥ 1; got $nAGQ"))
@@ -392,7 +392,7 @@ end
 function _fit_betabinomial_sd_regression(fam::BetaBinomial, successes, trials,
                                          Xmu, Xsigma, Zre, Wsd, gidx, G,
                                          nmmu, nmsigma, nmsd, grp, g_tol;
-                                         nAGQ::Int = _RANEF1D_AGHQ_K,
+                                         nAGQ::Int = _SD_IID_AGHQ_K,
                                          se::Bool = true)
     n = length(successes)
     pmu, psigma, psd = size(Xmu, 2), size(Xsigma, 2), size(Wsd, 2)

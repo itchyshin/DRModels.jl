@@ -110,7 +110,10 @@ end
     # The intercept-only SD route must match the existing constant-SD route.
     constant = bf(@formula(cbind(successes, failures) ~ x + (1 | g)),
                   @formula(sigma ~ 1), @formula(sd(g) ~ 1))
-    fit_sd_constant = drm(constant, BetaBinomial(); data, se = false)
+    # Same node count as the plain `(1 | g)` route, so only the likelihood assembly is compared.
+    fit_sd_constant = DRModels._drm_betabinomial_sd_regression(constant, BetaBinomial(); data,
+                                                           se = false,
+                                                           nAGQ = DRModels._RANEF1D_AGHQ_K)
     fit_legacy = drm(bf(@formula(cbind(successes, failures) ~ x + (1 | g)),
                         @formula(sigma ~ 1)), BetaBinomial(); data, se = false)
     @test fit_sd_constant.loglik ≈ fit_legacy.loglik atol = 1e-5

@@ -760,6 +760,17 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
                 structured_sd_slope, re, sigma_re, metav, structured_sigma, has_missing_response,
                 y, Xμ, Xσ, nmμ, nmσ, data, K, A, coords, g_tol, method, algorithm), f)
         end
+        # Gaussian structured INTERCEPT with its matching direct SD formula:
+        # `animal|relmat(1 | g)` / `spatial(1 | g, coords)` + `sd(g, <level>) ~ …`,
+        # exact dense ML, no ordinary or phylogenetic component. Every other
+        # combination keeps its existing route (and refusals) below.
+        if structured_sd_slope === nothing && isempty(sdpp) && length(sdp) == 1 &&
+           structured !== nothing && structured[1] in (:animal, :relmat, :spatial) &&
+           isempty(re) && only(_sd_target_parts(f)).target.level === structured[1]
+            return _withformula(_drm_gaussian_structured_sd_slope(f, fam, structured,
+                nothing, re, sigma_re, metav, structured_sigma, has_missing_response,
+                y, Xμ, Xσ, nmμ, nmσ, data, K, A, coords, g_tol, method, algorithm), f)
+        end
         # The two verified single-component engines keep their exact routes
         # (#544 Woodbury with REML; #545 dense phylo); every COMBINATION —
         # several iid REs, iid + phylo, an RE without its own sd() part —

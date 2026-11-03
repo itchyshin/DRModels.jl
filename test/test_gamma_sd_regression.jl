@@ -113,7 +113,9 @@ end
 
     constant = bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1),
                   @formula(sd(g) ~ 1))
-    f_sd = drm(constant, Gamma(); data)
+    # Same node count as the plain `(1 | g)` route, so only the likelihood assembly is compared.
+    f_sd = DRModels._drm_gamma_sd_regression(constant, Gamma(); data,
+                                                nAGQ = DRModels._RANEF1D_AGHQ_K)
     f_old = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), Gamma(); data)
     @test f_sd.loglik ≈ f_old.loglik atol = 1e-5
     @test coef(f_sd, :mu) ≈ coef(f_old, :mu) atol = 1e-4
@@ -168,7 +170,7 @@ end
     formula = bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1),
                  @formula(sd(g) ~ z))
     fit = drm(formula, Gamma(); data)
-    @test only(fit.scales[:aghq_nodes]) == DRModels._RANEF1D_AGHQ_K
+    @test only(fit.scales[:aghq_nodes]) == DRModels._SD_IID_AGHQ_K
     @test !haskey(DRModels._bootstrap_refit_kwargs(fit), :nAGQ)
     boot = bootstrap_result(fit; data, B = 1, rng = MersenneTwister(202610183),
                             failures = :skip)

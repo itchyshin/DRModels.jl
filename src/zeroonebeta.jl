@@ -47,10 +47,11 @@ fit_phy = drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ 1),
 struct ZeroOneBeta end
 
 function drm(f::DrmFormula, fam::ZeroOneBeta; data, tree = nothing, K = nothing,
-             A = nothing, coords = nothing, g_tol::Real = 1e-8, se::Bool = true)
+             A = nothing, coords = nothing, g_tol::Real = 1e-8, se::Bool = true,
+             nAGQ::Union{Nothing,Int} = nothing)
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
         drm(f, fam; data = data_observed, tree = tree, K = K, A = A,
-            coords = coords, g_tol = g_tol, se = se)
+            coords = coords, g_tol = g_tol, se = se, nAGQ = nAGQ)
     end
     missing_fit !== nothing && return missing_fit
 
@@ -60,9 +61,13 @@ function drm(f::DrmFormula, fam::ZeroOneBeta; data, tree = nothing, K = nothing,
         error("ZeroOneBeta() does not support meta_V markers")
     sd_targets = _sd_target_parts(f)
     if !isempty(sd_targets)
+        nodes = nAGQ === nothing ? _SD_IID_AGHQ_K : nAGQ
+        nodes >= 1 || throw(ArgumentError("nAGQ must be ≥ 1; got $nodes"))
         return _drm_zeroonebeta_sd_regression(f, fam; data, tree, K, A,
-            coords, g_tol, se, rhs, fixed_mu, re, mv, st)
+            coords, g_tol, se, rhs, fixed_mu, re, mv, st, nAGQ = nodes)
     end
+    nAGQ === nothing || throw(ArgumentError(
+        "nAGQ is currently supported for ZeroOneBeta random-effect SD regression only."))
     _lss_only_gaussian_guard(f, fam)   # #544: refuse, never silently drop, sd() parts
     for (pname, r) in f.forms          # only the mean may carry a random effect
         pname === :mu && continue
@@ -115,7 +120,8 @@ end
 
 function _drm_zeroonebeta_sd_regression(f::DrmFormula, fam::ZeroOneBeta;
                                         data, tree, K, A, coords, g_tol, se,
-                                        rhs, fixed_mu, re, mv, st)
+                                        rhs, fixed_mu, re, mv, st,
+                                        nAGQ::Int = _SD_IID_AGHQ_K)
     (tree === nothing && K === nothing && A === nothing && coords === nothing) ||
         throw(ArgumentError("ZeroOneBeta `sd(group) ~ …` currently supports one ordinary mean random intercept; structured covariance inputs are not used."))
     mv === nothing || throw(ArgumentError("ZeroOneBeta SD regression cannot use meta_V()."))
@@ -176,7 +182,7 @@ function _drm_zeroonebeta_sd_regression(f::DrmFormula, fam::ZeroOneBeta;
     end
     return _withformula(_fit_zeroonebeta_sd_regression(fam, y, Xμ, Xσ, Xz, Xc,
         Zg, re_design, kind === :intercept, gidx, G, nmμ, nmσ, nmz, nmc,
-        nmsd, grp, g_tol; se), f)
+        nmsd, grp, g_tol; se, K = nAGQ), f)
 end
 
 function _fit_zeroonebeta(fam::ZeroOneBeta, y, Xμ, Xσ, Xz, Xc, nmμ, nmσ, nmz, nmc, g_tol)
@@ -233,7 +239,7 @@ end
 # and independent numeric-slope loadings multiply the same group-specific SD.
 function _fit_zeroonebeta_sd_regression(fam::ZeroOneBeta, y, Xμ, Xσ, Xz, Xc,
         Zg, re_design, is_intercept::Bool, gidx, G, nmμ, nmσ, nmz, nmc, nmsd, grp, g_tol;
-        se::Bool = true, K::Int = 11)
+        se::Bool = true, K::Int = _SD_IID_AGHQ_K)
     n = length(y)
     pμ, pσ, pz, pc, psd = size(Xμ, 2), size(Xσ, 2), size(Xz, 2),
                               size(Xc, 2), size(Zg, 2)
@@ -245,8 +251,6 @@ function _fit_zeroonebeta_sd_regression(fam::ZeroOneBeta, y, Xμ, Xσ, Xz, Xc,
     rule = _AGHQRule(1, K)
     Zre = reshape(Float64.(re_design), n, 1)
     bcache = zeros(1, G)
-    z, w = _gauss_hermite(32)
-    logw = log.(w); rt2 = sqrt(2.0); lπ = log(π)
     function nll(θ)
         βμ = @view θ[1:pμ]
         βσ = @view θ[(pμ+1):i1]
@@ -275,27 +279,14 @@ function _fit_zeroonebeta_sd_regression(fam::ZeroOneBeta, y, Xμ, Xσ, Xz, Xc,
         for (gi, idx) in enumerate(members)
             isempty(idx) && continue
             L = reshape([τgroup[gi]], 1, 1)
-            if is_intercept
-                terms = Vector{eltype(θ)}(undef, length(z))
-                for k in eachindex(z)
-                    gll = logw[k]
-                    for i in idx
-                        gll += ll(i, η0[i] + rt2 * τgroup[gi] * z[k])
-                    end
-                    terms[k] = gll
-                end
-                mx = maximum(terms)
-                total += -0.5 * lπ + mx + log(sum(exp.(terms .- mx)))
+            logint, bhat = _aghq_group_logint(ll, idx, η0, Zre, L, rule,
+                @view(bcache[:, gi]))
+            if all(isfinite, bhat)
+                bcache[:, gi] .= bhat
             else
-                logint, bhat = _aghq_group_logint(ll, idx, η0, Zre, L, rule,
-                    @view(bcache[:, gi]))
-                if all(isfinite, bhat)
-                    bcache[:, gi] .= bhat
-                else
-                    bcache[:, gi] .= 0.0
-                end
-                total += logint
+                bcache[:, gi] .= 0.0
             end
+            total += logint
         end
         return -total
     end
@@ -330,7 +321,8 @@ function _fit_zeroonebeta_sd_regression(fam::ZeroOneBeta, y, Xμ, Xσ, Xz, Xc,
                   :sigma => exp.(Xσ * θ̂[(pμ+1):i1]),
                   :zoi => zoî, :coi => coî,
                   :sd_group => τgroup, :sd => τgroup[gidx],
-                  :sd_group_index => Float64.(gidx))
+                  :sd_group_index => Float64.(gidx),
+                  :aghq_nodes => [Float64(K)])
     _warn_at_clamp("zero-one beta", ["log sigma" =>
         (Xσ * θ̂[(pμ+1):i1], -15.0, 15.0)])
     return _withiterations(_withnll(DrmFit(fam, blocks, names, θ̂, V,
@@ -340,11 +332,14 @@ end
 
 # ZeroOneBeta with a random intercept (1|g) on the logit mean (#723). Mirrors
 # `_fit_beta_ranef` (beta.jl): b_g ~ N(0,σ_b²) integrated out per group by
-# 32-node Gauss–Hermite quadrature; sigma/zoi/coi stay fixed effects (they do
+# adaptive Gauss–Hermite quadrature at each group's conditional mode
+# (`_SD_IID_AGHQ_K` nodes; the earlier non-adaptive prior-scale 32-node grid was
+# up to 0.34 nat off the exact marginal); sigma/zoi/coi stay fixed effects (they do
 # not depend on the group random effect, so only the Beta-interior term inside
 # the quadrature sum changes with δ = √2·σ_b·z_k — the atom log-probabilities
 # (log zoi + log(1-coi) / log zoi + log coi) are added at every node unchanged).
-function _fit_zeroonebeta_ranef(fam::ZeroOneBeta, y, Xμ, Xσ, Xz, Xc, gidx, G, nmμ, nmσ, nmz, nmc, grp, g_tol)
+function _fit_zeroonebeta_ranef(fam::ZeroOneBeta, y, Xμ, Xσ, Xz, Xc, gidx, G, nmμ, nmσ, nmz, nmc, grp, g_tol;
+                                nq::Int = _SD_IID_AGHQ_K)
     n = length(y)
     pμ, pσ, pz, pc = size(Xμ, 2), size(Xσ, 2), size(Xz, 2), size(Xc, 2)
     i1 = pμ + pσ; i2 = i1 + pz; i3 = i2 + pc
@@ -352,35 +347,21 @@ function _fit_zeroonebeta_ranef(fam::ZeroOneBeta, y, Xμ, Xσ, Xz, Xc, gidx, G, 
     for i in 1:n
         push!(members[gidx[i]], i)
     end
-    z, w = _gauss_hermite(32); logw = log.(w); K = length(z); rt2 = sqrt(2.0); lπ = log(π)
+    rule = _AGHQRule(1, nq); Zre = ones(n, 1); bcache = zeros(1, G)   # per-group AGHQ
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:i1]; βz = θ[i1+1:i2]; βc = θ[i2+1:i3]
         σb = exp(θ[i3+1])
         η0 = Xμ * βμ; ησ = clamp.(Xσ * βσ, -15.0, 15.0)
         ηz = clamp.(Xz * βz, -30.0, 30.0); ηc = clamp.(Xc * βc, -30.0, 30.0)
-        s = zero(eltype(θ))
-        for idx in members
-            isempty(idx) && continue
-            terms = Vector{eltype(θ)}(undef, K)
-            for k in 1:K
-                δ = rt2 * σb * z[k]; gll = logw[k]
-                for i in idx
-                    lzoi = _log_logistic(ηz[i]); l1mzoi = _log1m_logistic(ηz[i])
-                    if y[i] == 0
-                        gll += lzoi + _log1m_logistic(ηc[i])
-                    elseif y[i] == 1
-                        gll += lzoi + _log_logistic(ηc[i])
-                    else
-                        μ = _logistic(clamp(η0[i] + δ, -30.0, 30.0)); φ = exp(-2 * ησ[i])
-                        gll += l1mzoi + Distributions.logpdf(Distributions.Beta(μ * φ, (1 - μ) * φ), y[i])
-                    end
-                end
-                terms[k] = gll
-            end
-            mx = maximum(terms)
-            s -= (-0.5 * lπ + mx + log(sum(exp.(terms .- mx))))
+        ll = function (i, η)
+            lzoi = _log_logistic(ηz[i])
+            y[i] == 0 && return lzoi + _log1m_logistic(ηc[i])
+            y[i] == 1 && return lzoi + _log_logistic(ηc[i])
+            μ = _logistic(clamp(η, -30.0, 30.0)); φ = exp(-2 * ησ[i])
+            return _log1m_logistic(ηz[i]) +
+                Distributions.logpdf(Distributions.Beta(μ * φ, (1 - μ) * φ), y[i])
         end
-        return s
+        return -_aghq_marginal_loglik(ll, members, η0, Zre, reshape([σb], 1, 1), rule, bcache)
     end
     # initialisations from the empirical mixture (as in `_fit_zeroonebeta`), plus a
     # moderate random-intercept SD start.

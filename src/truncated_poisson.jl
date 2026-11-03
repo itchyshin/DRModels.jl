@@ -57,7 +57,7 @@ function drm(f::DrmFormula, fam::TruncatedPoisson; data, g_tol::Real = 1e-8,
     missing_fit !== nothing && return missing_fit
 
     if !isempty(_sd_parts(f)) || !isempty(_sdphylo_parts(f))
-        nodes = nAGQ === nothing ? _RANEF1D_AGHQ_K : nAGQ
+        nodes = nAGQ === nothing ? _SD_IID_AGHQ_K : nAGQ
         nodes >= 1 || throw(ArgumentError("nAGQ must be ≥ 1; got $nodes"))
         return _drm_truncated_poisson_sd_regression(f, fam; data, g_tol, se,
                                                     nAGQ = nodes)
@@ -102,7 +102,7 @@ function _drm_truncated_poisson_sd_regression(f::DrmFormula,
                                                fam::TruncatedPoisson;
                                                data, g_tol::Real = 1e-8,
                                                se::Bool = true,
-                                               nAGQ::Int = _RANEF1D_AGHQ_K)
+                                               nAGQ::Int = _SD_IID_AGHQ_K)
     targets = _sd_target_parts(f)
     length(targets) == 1 || throw(ArgumentError(
         "TruncatedPoisson random-effect SD regression requires exactly one `sd(group) ~ …` formula."))
@@ -167,7 +167,7 @@ end
 
 function _fit_truncated_poisson_sd_regression(fam::TruncatedPoisson, y, Xmu,
         Zg, loading, gidx, G, nmmu, nmsd, grp, g_tol; se::Bool = true,
-        nAGQ::Int = _RANEF1D_AGHQ_K)
+        nAGQ::Int = _SD_IID_AGHQ_K)
     nAGQ >= 1 || throw(ArgumentError("nAGQ must be ≥ 1; got $nAGQ"))
     n = length(y); pmu, psd = size(Xmu, 2), size(Zg, 2)
     members = [Int[] for _ in 1:G]

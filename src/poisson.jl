@@ -166,7 +166,8 @@ end
 function drm(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
              A = nothing, Ainv = nothing, coords = nothing,
              g_tol::Real = 1e-8, se::Bool = true,
-             marginal::Symbol = :LA, method = nothing, nAGQ::Int = 5)
+             marginal::Symbol = :LA, method = nothing,
+             nAGQ::Union{Nothing,Int} = nothing)
     # `method` is the ML/REML selector. LA/VA/AGHQ is `marginal` (Q1 / #136 / #448).
     # `:REML` is the opt-in Cox–Reid restricted objective, admitted on Poisson
     # `(1 | g)` GHQ under `:LA` (#443) and on `_fit_poisson_general_laplace`
@@ -177,8 +178,11 @@ function drm(f::DrmFormula, fam::Poisson; data, tree = nothing, K = nothing,
     reml = meth === :REML
     if !isempty(_sd_parts(f)) || !isempty(_sdphylo_parts(f))
         return _drm_poisson_sd_regression(f, fam; data, tree, K, A, Ainv, coords,
-            g_tol, se, marginal, reml, nAGQ)
+            g_tol, se, marginal, reml, nAGQ)   # `nothing` -> route default
     end
+    # `nAGQ = nothing` resolves to 5 nodes on the plain `(1 | g)` routes; the
+    # predictor-dependent-SD routes above choose their own default.
+    nAGQ = nAGQ === nothing ? 5 : nAGQ
     Ainv === nothing || throw(ArgumentError(
         "Poisson `Ainv` is currently supported for predictor-dependent animal SD regression only."))
     _scalar_laplace_requested(marginal) &&     # Arc 2: TMB-convention Laplace, ordinary (1 | g)
@@ -341,13 +345,14 @@ function _drm_poisson_sd_regression(f::DrmFormula, fam::Poisson; data,
                                     Ainv = nothing, coords = nothing,
                                     g_tol::Real = 1e-8,
                                     se::Bool = true, marginal::Symbol = :LA,
-                                    reml::Bool = false, nAGQ::Int = 5)
+                                    reml::Bool = false,
+                                    nAGQ::Union{Nothing,Int} = nothing)
     reml && throw(ArgumentError(
         "Poisson `sd(group) ~ …` currently supports maximum likelihood only; " *
         "the Cox–Reid correction is not implemented for SD-regression coefficients."))
     marginal === :LA || throw(ArgumentError(
         "Poisson `sd(group) ~ …` currently supports `marginal = :LA` only."))
-    nAGQ >= 1 || throw(ArgumentError("nAGQ must be ≥ 1; got $nAGQ"))
+    nAGQ === nothing || nAGQ >= 1 || throw(ArgumentError("nAGQ must be ≥ 1; got $nAGQ"))
     targets = _sd_target_parts(f)
     if any(item -> item.target.level === :relmat, targets)
         Ainv === nothing || throw(ArgumentError(
@@ -437,10 +442,12 @@ function _drm_poisson_sd_regression(f::DrmFormula, fam::Poisson; data,
             "Poisson ZIP random-slope predictor `$slope` must contain at least one non-zero value."))
         _, Xzi, nmzi = _design(f.response, rhs[:zi], data)
         _fit_poisson_zi_sd_regression(fam, y, Xmu, Xzi, Zg, w, gidx, G,
-            nmmu, nmzi, nmsd, grp, g_tol; nAGQ = nAGQ, se = se)
+            nmmu, nmzi, nmsd, grp, g_tol;
+            nAGQ = nAGQ === nothing ? _ZIP_SD_AGHQ_K : nAGQ, se = se)
     else
         _fit_poisson_sd_regression(fam, y, Xmu, Zg, gidx, G,
-            nmmu, nmsd, grp, g_tol; nAGQ = nAGQ, se = se, w = w, offset = off)
+            nmmu, nmsd, grp, g_tol;
+            nAGQ = nAGQ === nothing ? _SD_IID_AGHQ_K : nAGQ, se = se, w = w, offset = off)
     end
     return _withformula(fit, f)
 end
@@ -900,7 +907,7 @@ function _fit_poisson_animal_slope_laplace(fam::Poisson, y, Xmu, weight, C,
 end
 
 function _fit_poisson_sd_regression(fam::Poisson, y, Xmu, Zg, gidx, G,
-                                     nmmu, nmsd, grp, g_tol; nAGQ::Int = 5,
+                                     nmmu, nmsd, grp, g_tol; nAGQ::Int = _SD_IID_AGHQ_K,
                                      se::Bool = true,
                                      w::AbstractVector{<:Real} = ones(length(y)),
                                      offset::AbstractVector{<:Real} = zeros(length(y)))
@@ -967,7 +974,7 @@ end
 function _fit_poisson_zi_sd_regression(fam::Poisson, y, Xmu, Xzi, Zg, w,
                                        gidx, G,
                                        nmmu, nmzi, nmsd, grp, g_tol;
-                                       nAGQ::Int = 5, se::Bool = true)
+                                       nAGQ::Int = _ZIP_SD_AGHQ_K, se::Bool = true)
     nAGQ >= 1 || throw(ArgumentError("nAGQ must be ≥ 1; got $nAGQ"))
     n = length(y); pmu = size(Xmu, 2); pzi = size(Xzi, 2); psd = size(Zg, 2)
     members = [Int[] for _ in 1:G]

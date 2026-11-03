@@ -153,7 +153,7 @@ function _drm_beta_sd_regression(f::DrmFormula, fam::Beta; data,
                                 tree = nothing, K = nothing, A = nothing,
                                 coords = nothing, g_tol::Real = 1e-8,
                                 se::Bool = true, marginal::Symbol = :LA,
-                                nAGQ::Int = _RANEF1D_AGHQ_K)
+                                nAGQ::Int = _SD_IID_AGHQ_K)
     marginal === :LA || throw(ArgumentError(
         "Beta `sd(group) ~ …` currently supports `marginal = :LA` only."))
     (tree === nothing && K === nothing && coords === nothing) ||
@@ -425,7 +425,7 @@ end
 
 function _fit_beta_sd_regression(fam::Beta, y, Xmu, Xsigma, Zg, gidx, G,
                                  nmmu, nmsigma, nmsd, grp, g_tol;
-                                 K::Int = _RANEF1D_AGHQ_K, se::Bool = true,
+                                 K::Int = _SD_IID_AGHQ_K, se::Bool = true,
                                  w::AbstractVector{<:Real} = ones(length(y)))
     K >= 1 || throw(ArgumentError("nAGQ must be ≥ 1; got $K"))
     n = length(y); pmu, psigma, psd = size(Xmu, 2), size(Xsigma, 2), size(Zg, 2)

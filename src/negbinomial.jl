@@ -315,7 +315,7 @@ function _drm_negbin2_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
         descriptor.level === :iid || throw(ArgumentError(
             "ordinary NegBinomial2 random effects require an ordinary SD target."))
     end
-    nodes = nAGQ === nothing ? _RANEF1D_AGHQ_K : nAGQ
+    nodes = nAGQ === nothing ? _SD_IID_AGHQ_K : nAGQ
     grp === sgrp || throw(ArgumentError(
         "NegBinomial2 `sd($sgrp)` must name the random-effect grouping variable `$grp`."))
     member = structured_animal ? (slope === nothing ? :intercept : slope) :
@@ -633,7 +633,7 @@ end
 # hurdle likelihood alone.
 function _fit_negbin2_hu_sd_regression(fam::NegBinomial2, y, Xmu, Xsigma,
         Xhu, Zg, gidx, G, nmmu, nmsigma, nmhu, nmsd, grp, g_tol;
-        K::Int = _RANEF1D_AGHQ_K, se::Bool = true,
+        K::Int = _SD_IID_AGHQ_K, se::Bool = true,
         w::AbstractVector{<:Real} = ones(length(y)))
     n = length(y)
     length(w) == n || throw(ArgumentError(
@@ -737,6 +737,9 @@ function _nb2_animal_precision_setup(Ainv::AbstractMatrix, labels, group::Symbol
         "animal `Ainv` must be positive definite."))
     return Q, gidx
 end
+
+# log sigma below which the clamped NB2 size (exp(8)) makes the likelihood flat.
+const _NB2_SIGMA_PLATEAU_LOGSIGMA = -3.5
 
 function _fit_nb2_animal_sd_laplace(fam::NegBinomial2, y, Xmu, Xsigma, Zg,
         gidx, C, labels, nmmu, nmsigma, nmsd, grp, g_tol;
@@ -851,11 +854,32 @@ function _fit_nb2_animal_sd_laplace(fam::NegBinomial2, y, Xmu, Xsigma, Zg,
     theta0[1:pmu] .= beta_start
     theta0[pmu + 1] = sigma_start
     theta0[(pmu + 2):end] .= Zg \ fill(log(0.4), size(Zg, 1))
-    od = Optim.OnceDifferentiable(nll, grad!, theta0)
-    result = Optim.optimize(od, theta0,
-        Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking()),
-        Optim.Options(g_tol = g_tol, iterations = maxiter))
-    theta_hat = Optim.minimizer(result)
+    function run_lbfgs(start)
+        od = Optim.OnceDifferentiable(nll, grad!, start)
+        res = Optim.optimize(od, start,
+            Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking()),
+            Optim.Options(g_tol = g_tol, iterations = maxiter))
+        return res, Optim.minimizer(res), Optim.minimum(res)
+    end
+    # NB: the objective is read from the optimiser result, never from a variable
+    # named `value`: the closure `nll` above assigns `value`, so that name is one
+    # shared box and every later `nll` call would overwrite it.
+    result, theta_hat, fmin = run_lbfgs(theta0)
+    # `_nb2_laplace_setup` clamps the NB2 size at exp(8), so the likelihood is
+    # exactly flat in log sigma below -4. A first line-search step can overshoot
+    # onto that plateau, where the gradient is zero and LBFGS reports
+    # convergence tens of log-likelihood units below the interior optimum
+    # (reproduced by test_nb2_structured_sd_plateau_restart.jl, seeds 2 and 6). Retry once
+    # from a mid-range dispersion start and keep the better optimum.
+    if theta_hat[pmu + 1] < _NB2_SIGMA_PLATEAU_LOGSIGMA
+        restart = copy(theta0)
+        restart[pmu + 1] = log(0.5)
+        last_u .= 0
+        result2, theta2, fmin2 = run_lbfgs(restart)
+        if fmin2 < fmin
+            result, theta_hat, fmin = result2, theta2, fmin2
+        end
+    end
     value = nll(theta_hat)
     final_gradient = zeros(length(theta_hat)); grad!(final_gradient, theta_hat)
     converged = _laplace_outer_converged(
@@ -881,7 +905,7 @@ end
 
 function _fit_negbin2_sd_regression(fam::NegBinomial2, y, Xmu, Xsigma, Zg,
                                      gidx, G, nmmu, nmsigma, nmsd, grp, g_tol;
-                                     K::Int = _RANEF1D_AGHQ_K, se::Bool = true,
+                                     K::Int = _SD_IID_AGHQ_K, se::Bool = true,
                                      w::AbstractVector{<:Real} = ones(length(y)))
     n = length(y); pmu, psigma, psd = size(Xmu, 2), size(Xsigma, 2), size(Zg, 2)
     length(w) == n || throw(ArgumentError("NB2 random-effect loading must have one value per observation."))
@@ -1247,7 +1271,7 @@ function drm(f::DrmFormula, fam::TruncatedNegBinomial2; data,
              g_tol::Real = 1e-8, se::Bool = true,
              nAGQ::Union{Nothing,Int} = nothing)
     if !isempty(_sd_parts(f)) || !isempty(_sdphylo_parts(f))
-        nodes = nAGQ === nothing ? _RANEF1D_AGHQ_K : nAGQ
+        nodes = nAGQ === nothing ? _SD_IID_AGHQ_K : nAGQ
         nodes >= 1 || throw(ArgumentError("nAGQ must be ≥ 1; got $nodes"))
         return _drm_truncated_negbin2_sd_regression(f, fam; data, g_tol, se,
                                                     nAGQ = nodes)
@@ -1303,7 +1327,7 @@ function _drm_truncated_negbin2_sd_regression(f::DrmFormula,
                                                fam::TruncatedNegBinomial2;
                                                data, g_tol::Real = 1e-8,
                                                se::Bool = true,
-                                               nAGQ::Int = _RANEF1D_AGHQ_K)
+                                               nAGQ::Int = _SD_IID_AGHQ_K)
     targets = _sd_target_parts(f)
     length(targets) == 1 || throw(ArgumentError(
         "TruncatedNegBinomial2 random-effect SD regression requires exactly one `sd(group) ~ …` formula."))
@@ -1368,7 +1392,7 @@ end
 
 function _fit_truncated_negbin2_sd_regression(fam::TruncatedNegBinomial2,
         y, Xmu, Xsigma, Zg, gidx, G, nmmu, nmsigma, nmsd, grp, g_tol;
-        nAGQ::Int = _RANEF1D_AGHQ_K, se::Bool = true,
+        nAGQ::Int = _SD_IID_AGHQ_K, se::Bool = true,
         w::AbstractVector{<:Real} = ones(length(y)))
     n = length(y); pmu, psigma, psd = size(Xmu, 2), size(Xsigma, 2), size(Zg, 2)
     length(w) == n || throw(DimensionMismatch(
