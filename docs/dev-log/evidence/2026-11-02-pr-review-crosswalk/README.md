@@ -951,3 +951,17 @@ states, and the relevant tests are already running on GitHub. Refresh the three
 pending shards before deciding whether a focused local or server reproduction is
 needed. This update does not resolve PR ownership, review, draft state, or merge
 readiness.
+
+## Runner-step refresh, 2026-11-03 00:53 UTC
+
+The drmTMB #1667 exact-head run `41548315716` is now fully green on
+`c133edb86992a092b4ccaebd5606746da831d5e1`: all four Ubuntu shards, the
+source-tree check, and the OS matrix succeeded. This resolves the pending-check
+item above, but does not resolve the PR's warning-visibility review comment or
+owner disposition.
+
+For DRModels.jl #1214 run `41539113997`, shard 3 is still executing
+`julia-runtest`; shards 1 and 4 remain failed and shard 2 passed. For #1249 run
+`41548951015`, all four shards are still executing `julia-runtest`. These are
+live test steps, not stale queued jobs. No rerun on Totoro or DRAC is needed
+while the exact-head tests continue.

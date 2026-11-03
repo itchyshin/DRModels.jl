@@ -1,0 +1,1 @@
+| 2026-11-03 | **Live PR runner-step refresh** | Exact-head GitHub check diagnostics and job-step records | #1667 completed green; #1214 and #1249 are still running Julia tests. No duplicate compute or PR-state change. | Ada |
