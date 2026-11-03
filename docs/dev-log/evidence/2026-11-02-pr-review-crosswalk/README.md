@@ -722,3 +722,61 @@ build and audit but no preview or deployment evidence. Its PR remains a draft,
 and the `ROADMAP.md` overlap with #1214 and #1210 remains unresolved. No owner
 handoff or formal review appeared in the refreshed metadata. Other tracked PR
 heads and run states were unchanged in this refresh.
+
+## Exact-head follow-up, 2026-11-03 00:21 UTC
+
+Live PR and Actions metadata was refreshed against remote `main`
+`973bbb675dc6a10b436acf86175e089e38ec467e`:
+
+- **DRModels.jl #1215** remains at `1ee71530ebcd31bb62cce2fba6601ffced4f65ea`
+  and its exact-head CI run `41539026157` is now successful. The four Julia
+  shards completed successfully as jobs, but their `setup-julia`, package
+  build, and test steps were explicitly skipped by the prose-only fast path;
+  this is not Julia test evidence. Documenter run `41539026225` passed the docs
+  build and audit, while `docs-preview` was cancelled and deploy was skipped.
+  The PR remains draft and has no submitted review or comments.
+- **DRModels.jl #1214** remains at `5ba76b1cc0fdda189732011fecc4b9dc220c52b1`
+  on current main. Documenter build and preview passed. CI run `41539113997`
+  is still in progress: Julia shards 1/4 and 4/4 failed; shards 2/4 and 3/4
+  were still running at this refresh. The job annotation only reports exit
+  code 1; run logs were not yet available, so the cause is not attributed.
+  The PR remains draft with no submitted review or comments.
+- **DRModels.jl #1210** remains open at `88b0a3d1d930528bffee292cf1c1d14d2f34c913`
+  on stale base `64ccb2d8d87b329e5a43b2358fd5cb4a36cd9716`. Its CI, docs, and
+  preview checks passed on that historical candidate. No submitted review or
+  comments are present. Its local worktree is far behind the PR head, so it
+  does not establish a current owner checkout.
+
+The remote PR author is not evidence of the active lane owner. The Codex worktree
+inventory still has no #1214 exact-head checkout; the #1210 and #1215 local
+branches remain stale. No current owner handoff was found. Keep the three PRs
+unchanged until the lane owner and overlap disposition are explicit. No local
+Julia tests, edits to those PR branches or metadata, comments, review submissions,
+merges, or deployments were made in this refresh.
+
+## Documentation-PR file-overlap audit, 2026-11-03 00:23 UTC
+
+The current GitHub file lists show #1210 changes 57 paths and #1214 changes 55;
+all 55 #1214 paths are also changed by #1210. The two additional #1210 paths
+are `src/inference.jl` and `test/test_bootstrap_api_docstrings.jl`. #1215 changes
+only `ROADMAP.md`, which is in both larger PRs. This confirms #1210 and #1214
+are competing versions of the same 55-path documentation patch, not independent
+documentation slices. #1210 also contains two extra non-documentation changes.
+
+Patch comparison shows 44 of the 55 shared file patches are byte-identical; the
+other 11 differ: `README.md`, `docs/src/capabilities.md`,
+`docs/src/cross-family.md`, `docs/src/diagnostics-and-validation/small-sample-behaviour.md`,
+`docs/src/drmtmb-parity.md`, `docs/src/families.md`,
+`docs/src/model-guides/large-data.md`,
+`docs/src/model-guides/marginal-la-vs-va.md`,
+`docs/src/reference/model-fitting-and-postfit.md`,
+`docs/src/reference/model-specification.md`, and
+`tools/tests/test_docs_audit_semantics.py`. Therefore #1214 is not simply a
+clean rebase of #1210; owner review must reconcile these differing versions.
+
+Do not merge or close either PR based on this comparison alone. Evaluate the
+current-main-based #1214 candidate after its CI finishes, but reconcile the 11
+differing patches with #1210's owner. Separately review whether the two extra
+#1210 files contain changes that must be retained. #1215 remains dependent on
+the same `ROADMAP.md` owner decision. The exact-head PR metadata still records
+no formal reviews or comments for these three PRs.
