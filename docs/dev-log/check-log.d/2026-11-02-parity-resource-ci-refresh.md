@@ -1,0 +1,1 @@
+| 2026-11-02 | **Parity review and resource refresh** (#1249, #1500, #1667) | Live exact-head PR/run review; read-only Totoro/DRAC readiness | Review findings recorded; exact CI remains active; no compute duplicated or launched | Codex |

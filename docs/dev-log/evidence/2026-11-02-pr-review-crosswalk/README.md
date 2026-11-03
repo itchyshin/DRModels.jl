@@ -558,3 +558,61 @@ parity, resolve package-check failures, establish PR ownership, or authorize
 an install, merge, release, or deployment. The next useful step is a bounded
 preflight for an isolated R package library on `/project`, followed by an
 installation-time estimate before any full check is submitted.
+
+## Live review, CI, and compute refresh, 2026-11-02 23:58 UTC
+
+Exact-head PR metadata and Actions jobs were refreshed after Shinichi reported
+that Totoro and DRAC were available. Two independent read-only source reviews
+also completed. No package tests, simulations, installs, or Slurm jobs were
+started.
+
+- **DRModels.jl #1249** is open, non-draft, and based on current main
+  `973bbb675dc6a10b436acf86175e089e38ec467e`. Current head is
+  `b959b185d2e6940ad2c3db8e2eb4b04e889338dd`. CI run
+  [41548951015](https://github.com/itchyshin/DRModels.jl/actions/runs/41548951015)
+  is pending; Documenter run
+  [41548951145](https://github.com/itchyshin/DRModels.jl/actions/runs/41548951145)
+  is queued. A source review found no P0/P1 issue. It raised two P2 items for
+  the added Gaussian scale-collapse guard: test a valid high-variation fit and
+  constant or near-constant responses, and add the required changelog/check-log
+  record for the user-visible warning and convergence change. No GitHub review
+  was submitted.
+- **drmTMB #1667** is open, non-draft, and based on current main
+  `e5cd86667c97d1b34f0ead22017a675377f46930`. Head is
+  `c133edb86992a092b4ccaebd5606746da831d5e1`. In run
+  [41548315716](https://github.com/itchyshin/drmTMB/actions/runs/41548315716),
+  the source-tree test job is still running and the OS matrix is queued. A
+  read-only review found no P0/P1 blocker. It noted that the new regression
+  test suppresses all warnings around the bridge fit and uses one fixture per
+  family at one tree height. This is targeted regression evidence, not broad
+  parity or interval validation. No GitHub review was submitted.
+- **drmTMB #1500** remains an open draft at head
+  `7630b6a4653d4ee7ffbd69ee5e6be87d330d8890`, based on current main. Run
+  [41542189558](https://github.com/itchyshin/drmTMB/actions/runs/41542189558)
+  has source-tree and OS-matrix checks plus Ubuntu shards 1, 2, and 4 passed;
+  shard 3 remains in progress. Its check run is already doing the package work,
+  so a duplicate cluster check would add no current evidence.
+
+### Resource readiness
+
+- Totoro answered through its existing socket, but load average was about 296
+  on 384 cores. No work was sent there.
+- The existing Rorqual socket returned an MFA-required authentication error.
+  No fresh login was opened. Existing sockets to Fir, Narval, Nibi, Tamia,
+  Trillium, Vulcan, and Killarney answered read-only status requests. Fir's
+  load average was about 11 and the user's Slurm queue count was zero.
+- Fir provides R 4.6.1 as a module. In its base module library, `cli`,
+  `lifecycle`, `TMB`, `RcppEigen`, `testthat`, and `pkgdown` are absent. Its
+  quota response showed 46.88 GB user and 31.51 GB group `/project` use, with
+  no explicit byte limit reported. No package library was created and no
+  install or Slurm job was started.
+
+**Routing decision:** do not duplicate #1500's active CI. Keep Totoro idle for
+this task while its load is high. Fir is a possible later R-check target only
+after a bounded dependency plan; it is not yet a ready R CMD check environment.
+The pending exact-head checks and independent review findings are the current
+useful evidence.
+
+This refresh does not establish numerical R-Julia parity, interval calibration,
+owner identity, merge readiness, or release readiness. The two P2 findings are
+owner follow-ups, not changes made by this lane.
