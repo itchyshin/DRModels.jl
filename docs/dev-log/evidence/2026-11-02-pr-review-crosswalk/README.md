@@ -813,3 +813,13 @@ owner disposition is inferred. No PR branch, PR metadata, source, or compute
 host was changed or used. Recheck both exact heads after the active runs finish;
 then compare the failures with #1249's exact-head outcomes before updating the
 owner disposition.
+
+## Exact-head runner refresh, 2026-11-03 00:34 UTC
+
+The two PR heads and base remained unchanged. #1214 shard 2/4 completed
+successfully at 00:32:21 UTC; shard 3/4 is still running. Shards 1/4 and 4/4
+remain failed with the causes above. For #1249, the docs build passed, while
+the docs preview and all four Julia shards remained in progress at 00:34 UTC.
+No completed #1249 Julia result is available to confirm whether its changes
+resolve the two #1214 failures. No owner response, formal review, or PR comment
+was present in the refreshed metadata.

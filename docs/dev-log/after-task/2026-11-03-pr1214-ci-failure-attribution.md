@@ -25,6 +25,7 @@ Added a timestamped crosswalk entry with the two failing assertions, relevant #1
 - `gh pr view` and `gh run view` checked current PR heads, base, and job states.
 - GitHub job-log retrieval for #1214 jobs `125614277806` and `125614277774` identified failures in `test/test_ls_inv2x2_chol.jl:123` and `test/test_gaussian_ranef.jl:59-62`.
 - Compared the failure sites with the current #1249 patch. It changes `src/gaussian_ranef.jl` and the tolerance assertion in `test/test_ls_inv2x2_chol.jl`.
+- Refreshed the same runs at 00:34 UTC: #1214 shard 2 passed and shard 3 was still running; all four #1249 Julia shards were still running.
 - `git diff --check`: passed.
 - No tests, simulations, fits, or compute-host jobs were run.
 
@@ -48,7 +49,7 @@ Checked the #1214 and #1249 exact heads and common base against the remote PR re
 
 ## 10. Known Residuals
 
-- #1214 shards 2 and 3 were still running at 00:32 UTC on 2026-11-03.
+- #1214 shard 2 passed at 00:32 UTC; shard 3 was still running at the 00:34 UTC refresh.
 - #1249's docs preview and Julia shards were queued or running at that observation. Its exact-head suite needs a fresh check after completion.
 - The broader R–Julia parity goal still needs a route-by-route acceptance table and cannot be estimated from these documentation PR checks.
 - No owner disposition or merge recommendation is established.
