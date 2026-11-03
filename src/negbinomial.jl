@@ -903,6 +903,8 @@ function _fit_nb2_animal_sd_laplace(fam::NegBinomial2, y, Xmu, Xsigma, Zg,
     if ok_hat
         _attach_conditional_structured!(
             scales, Float64.(weight) .* sd_group[gidx] .* u_hat[gidx], u_hat)
+    else
+        scales[:cond_failed] = 1.0
     end
     blocks = [:mu => (1:pmu), :sigma => ((pmu + 1):(pmu + 1)),
               :sd => sd_range]

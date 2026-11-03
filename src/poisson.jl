@@ -881,6 +881,8 @@ function _fit_poisson_structured_sd_laplace(fam, y, Xmu, Zobs, leaf_node, Q,
             loading_hat = Float64.(weight) .* sdobs
             _attach_conditional_structured!(
                 scales, loading_hat .* b_hat[leaf_node], b_hat)
+        else
+            scales[:cond_failed] = 1.0
         end
     end
     fit = DrmFit(fam, blocks, names, theta_hat, Matrix(V), -value, n,

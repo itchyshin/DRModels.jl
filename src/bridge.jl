@@ -1848,6 +1848,11 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
             "eta_re" => collect(Float64, cond.eta_re),
             "modes" => [collect(Float64, m) for m in cond.modes],
         )
+    elseif haskey(fit.scales, :cond_failed)
+        # The route exports the field, but the conditional mode solve failed or
+        # was non-finite at the converged parameters.
+        out["conditional_structured"] = Dict{String,Any}(
+            "kind" => "structured_eta_re_v1_failed")
     end
     q4_point_export = _bridge_q4_point_export(fit; family = family)
     if !isempty(q4_point_export)

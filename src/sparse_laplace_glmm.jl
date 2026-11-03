@@ -1765,6 +1765,8 @@ function _fit_binomial_related_sd_laplace(fam, s, ntr, Xμ, Zobs, Zg, labels,
         loading_hat = re_design .* _binomial_sd_scale(Zobs * θhat[pμ+1:end])
         _attach_conditional_structured!(
             scales, loading_hat .* b_hat[group_index], b_hat)
+    else
+        scales[:cond_failed] = 1.0
     end
     fit = DrmFit(fam, blocks, names, θhat, Matrix(V), -value, n,
                  converged, means, obs, scales)

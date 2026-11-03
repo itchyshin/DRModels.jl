@@ -307,8 +307,12 @@ _withranef(fit::DrmFit, re) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.
 # reads these keys (`_bridge_dpars` skips every `cond_*` key).
 function _attach_conditional_structured!(scales::AbstractDict, eta_re::AbstractVector,
                                          modes::AbstractVector...)
-    all(isfinite, eta_re) || return scales
-    all(m -> all(isfinite, m), modes) || return scales
+    # A non-finite mode is recorded as a failed export (`:cond_failed`), so the R
+    # bridge can warn instead of silently keeping the population-level value.
+    if !all(isfinite, eta_re) || !all(m -> all(isfinite, m), modes)
+        scales[:cond_failed] = 1.0
+        return scales
+    end
     scales[:cond_eta_re] = collect(Float64, eta_re)
     for (k, m) in enumerate(modes)
         scales[Symbol("cond_mode_", k)] = collect(Float64, m)

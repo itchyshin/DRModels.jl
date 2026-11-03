@@ -169,3 +169,14 @@ end
     plain = drm_bridge(; formula = "y ~ x", family = "poisson", data)
     @test !haskey(plain, "conditional_structured")
 end
+
+@testset "a non-finite conditional field is marked as a failed export" begin
+    scales = Dict{Symbol,Any}()
+    DRModels._attach_conditional_structured!(scales, [0.1, NaN], [0.2])
+    @test get(scales, :cond_failed, 0.0) == 1.0
+    @test !haskey(scales, :cond_eta_re)
+    ok = Dict{Symbol,Any}()
+    DRModels._attach_conditional_structured!(ok, [0.1, 0.3], [0.2])
+    @test !haskey(ok, :cond_failed)
+    @test ok[:cond_eta_re] == [0.1, 0.3]
+end
