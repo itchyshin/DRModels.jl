@@ -884,3 +884,23 @@ or preview. GitHub author and branch names do not establish active lane owner;
 the available records leave disposition with the current owners. No PR state,
 branch, or source was changed. No Totoro or DRAC job was needed for these
 workflow-status checks.
+
+## Parallel crosswalk worktree inventory, 2026-11-03 00:45 UTC
+
+Read-only inspection found a second crosswalk worktree at
+`/Users/z3437171/.codex/worktrees/drm-parity-crosswalk-20261102/DRM.jl` on
+branch `codex/drm-parity-crosswalk-20261102`, head
+`347a81122f87257a221b3d30617c52b509d55877`. Its local head matches its cached
+remote branch. It has three modified tracked files and one untracked status
+receipt:
+
+- `docs/dev-log/after-task/2026-11-02-parity-crosswalk-reconciliation.assessment.json`
+- `docs/dev-log/after-task/2026-11-02-parity-crosswalk-reconciliation.md`
+- `docs/dev-log/check-log.d/2026-11-02-parity-crosswalk-reconciliation.md`
+- `docs/dev-log/evidence/parity-2026-11-02/pr-status-refresh-2026-11-02T1740Z.md`
+
+The worktree's lane lease is absent from the current lease list. The repository
+preflight still reports multiple live lanes, so lease absence does not establish
+that this work is owner-free. I left all four files untouched. Before integrating
+or superseding them, identify the lane owner and compare its PR evidence with the
+newer exact-head refreshes above. No owner message was sent.

@@ -1,0 +1,1 @@
+| 2026-11-03 | **Parallel crosswalk worktree inventory** | Read-only `git status` and exact local/remote refs; scoped lease in this branch | Identified a separate dirty worktree at `codex/drm-parity-crosswalk-20261102` with three modified reports and one untracked receipt. Preserved all files; current owner remains unknown. | Ada |
