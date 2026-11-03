@@ -120,6 +120,10 @@ end
 
     @test all(isfinite, fit.θ)
     @test isapprox(fit.nll, nll_pre870; atol = 1e-8)
-    @test isapprox(fit.θ, theta_pre870; atol = 1e-8)
+    # θ is compared at 1e-6, not 1e-8: the fit stops at g_tol = 1e-8, and the
+    # objective is flat enough that θ differs from the reference by up to ~2e-8
+    # (x86-64 CI and Totoro, Julia 1.13) while nll and Λ still agree to 1e-8.
+    # A wrong inverse moves θ by orders of magnitude more than 1e-6.
+    @test isapprox(fit.θ, theta_pre870; atol = 1e-6)
     @test isapprox(fit.Lambda, Lambda_pre870; atol = 1e-8)
 end
