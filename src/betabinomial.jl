@@ -62,8 +62,8 @@ SD predictors must be constant within groups. This models between-group
 variation in log overdispersion separately from variation in the logit mean.
 
 ```julia
-fit = drm(bf(cbind(successes, failures) ~ x, sigma ~ 1), BetaBinomial(); data = dat)
-fit = drm(bf(cbind(successes, failures) ~ x + (1 | g) + (1 | h), sigma ~ 1), BetaBinomial(); data = dat)
+fit = drm(bf(@formula(cbind(successes, failures) ~ x), @formula(sigma ~ 1)), BetaBinomial(); data = dat)
+fit = drm(bf(@formula(cbind(successes, failures) ~ x + (1 | g) + (1 | h)), @formula(sigma ~ 1)), BetaBinomial(); data = dat)
 fit_phy = drm(bf(@formula(cbind(successes, failures) ~ x + phylo(1 | species)), @formula(sigma ~ 1)),
               BetaBinomial(); data = dat, tree = tr, se = false)
 fit_sd = drm(bf(@formula(cbind(successes, failures) ~ x + (1 | g)),

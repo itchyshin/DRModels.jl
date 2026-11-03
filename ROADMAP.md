@@ -5,7 +5,12 @@
 > the [Milestones page](https://github.com/itchyshin/DRModels.jl/milestones).
 > Owner: **Ada**. Source of truth for the engine: [`HANDOVER.md`](HANDOVER.md).
 
-## Where we are
+> This is a historical phase snapshot. The counts, status labels, and benchmarks below
+> describe the earlier phase plan. For current supported routes and evidence
+> limits, use the [capabilities page](docs/src/capabilities.md) and
+> [API stability guide](docs/src/api-stability.md).
+
+## Historical phase status
 
 **Phase 2 (families) effectively complete; Phase 3 (articles) complete-with-carveouts.**
 Phase 0 (team/workflows/ledger/docs shell) is done; the `bf()` / `drm()` front

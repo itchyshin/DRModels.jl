@@ -16,7 +16,7 @@ act on `log λ`). No residual scale parameter. Mirrors `drmTMB`'s `poisson` fami
     too (e.g. to simulate), qualify it as `Distributions.Poisson`.
 
 ```julia
-fit = drm(bf(y ~ x), Poisson(); data = dat)
+fit = drm(bf(@formula(y ~ x)), Poisson(); data = dat)
 fitted(fit)        # fitted counts λ = exp(Xβ̂), on the response scale
 
 # Regress the SD of an ordinary Poisson random intercept on a group-level
@@ -28,7 +28,7 @@ length(predict_parameters(fit_sd, dat)[:sd])  # one value per observation
 # A known-exposure offset (#727, drmTMB twin gap): `offset(log_exposure)`'s
 # coefficient is fixed at 1, so λ = exposure · exp(Xβ̂). Fixed-effects-only mean, or
 # (#941) with one ordinary random intercept — the standard rate GLMM:
-fit_off = drm(bf(y ~ x + offset(log_exposure)), Poisson(); data = dat)
+fit_off = drm(bf(@formula(y ~ x + offset(log_exposure))), Poisson(); data = dat)
 fit_rate = drm(bf(@formula(y ~ x + offset(log_exposure) + (1 | g))), Poisson(); data = dat)
 fit_rate_tmb = drm(bf(@formula(y ~ x + offset(log_exposure) + (1 | g))), Poisson();
                    data = dat, marginal = :Laplace)   # drmTMB's Laplace objective

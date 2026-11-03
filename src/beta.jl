@@ -32,8 +32,8 @@ user-supplied PD-covariance intercepts (used as supplied, not rescaled; the prec
     `DRModels.Beta` shadows `Distributions.Beta`; qualify the latter if you need it.
 
 ```julia
-fit = drm(bf(y ~ x, sigma ~ 1), Beta(); data = dat)
-fit = drm(bf(y ~ x + (1 | g) + (1 | h), sigma ~ 1), Beta(); data = dat)
+fit = drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), Beta(); data = dat)
+fit = drm(bf(@formula(y ~ x + (1 | g) + (1 | h)), @formula(sigma ~ 1)), Beta(); data = dat)
 fit_phy = drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ 1)),
               Beta(); data = dat, tree = tr, se = false)
 fit_animal_sd = drm(bf(@formula(y ~ x + animal(1 | id)),

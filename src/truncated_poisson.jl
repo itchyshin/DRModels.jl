@@ -13,7 +13,7 @@ conditioned on `y ≥ 1`: `P(k) = Poisson(k; λ) / (1 − e^{-λ})`. Mirrors
 `drmTMB`'s `truncated_poisson()`.
 
 ```julia
-fit = drm(bf(y ~ x), TruncatedPoisson(); data = dat)
+fit = drm(bf(@formula(y ~ x)), TruncatedPoisson(); data = dat)
 ```
 
 For one ordinary random intercept or independent numeric mean slope,
@@ -44,7 +44,7 @@ what the call delegates to (so the returned fit reports `Poisson` as its family)
 `Poisson()` + `hu` keeps working.
 
 ```julia
-fit = drm(bf(y ~ x, hu ~ w), TruncatedPoisson(); data = dat)
+fit = drm(bf(@formula(y ~ x), @formula(hu ~ w)), TruncatedPoisson(); data = dat)
 ```
 """
 struct TruncatedPoisson end

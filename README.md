@@ -88,8 +88,8 @@ the same way: `data = df`.
 In R, the same model is
 `drmTMB(bf(growth ~ habitat + temperature, sigma ~ habitat), family = gaussian(), data = d)`,
 or `glmmTMB(growth ~ habitat + temperature, dispformula = ~ habitat, data = d)`.
-For a Gaussian response, glmmTMB's dispersion coefficients are on the same
-log-SD scale as `sigma` here.
+For a Gaussian response, [glmmTMB 1.1.9 and later](https://glmmtmb.github.io/glmmTMB/news/index.html)
+uses the same log-SD scale for its dispersion coefficients as `sigma` here.
 
 ```
 ──────────────────────────────────────────────────────────────────────────────────────
@@ -103,7 +103,9 @@ sigma: habitat: grassland   0.503322  0.129232    3.89    <1e-04   0.250032   0.
 ──────────────────────────────────────────────────────────────────────────────────────
 ```
 
-Every 95% interval covers its true value. The `sigma` habitat coefficient is a
+In this simulated fit, the displayed 95% intervals include their generating
+values. Assessing interval coverage requires repeated simulations. The `sigma`
+habitat coefficient is a
 log residual-SD contrast: `exp(0.503) ≈ 1.65`, so residual SD in grassland is
 about 1.65 times that in forest (true ratio `exp(0.45) ≈ 1.57`).
 
@@ -135,7 +137,9 @@ and 45 s at 20,000 rows on a synthetic design of that shape,
 [#977](https://github.com/itchyshin/DRModels.jl/issues/977)), but they are
 still slower than drmTMB or glmmTMB at tens of thousands of rows.
 
-**Inference.** Every fit gives Wald standard errors and intervals.
+**Inference.** When a usable covariance estimate is available, fits report
+Wald standard errors and intervals. Check convergence and warnings before
+using them.
 Profile-likelihood intervals, parametric bootstrap intervals, likelihood-ratio
 tests (`lrtest`), and AIC/BIC are available. Maximum likelihood (ML) is the
 default; restricted ML (`method = :REML`) is available for a listed set of
@@ -154,27 +158,32 @@ measured across `p` species, where a phylogenetic random effect is shared by
 four linear predictors: the two means and the two log residual SDs
 (written q = 4). Because a random effect enters the SD non-linearly, the
 likelihood has no closed form and is approximated with a **Laplace
-approximation** (the method glmmTMB and drmTMB also use). On this model,
-brms/Stan needs about 122 h and drmTMB about 2.5 s at p = 100 species.
-Same model, same `q4_p100` data, same Laplace ML likelihood as drmTMB
-(reproduced by `bench/run_sparse_tmb_nd.jl` in this repository):
+approximation** (the method glmmTMB and drmTMB also use). The retained
+`q4_p100` comparison used the same data and Laplace ML objective in the two
+packages. Its recorded results are shown below; timings depend on hardware,
+package versions, and optimizer settings.
 
 | | drmTMB | DRModels.jl |
 |---|---|---|
-| one fit, 100 species | 2.48 s, optimiser reported false convergence | **1.14 s, converged (2.18× faster)** |
-| log-likelihood | −256.52 | −256.51 (matches) |
-| time as species increase, up to 10,000 species | not attempted at that scale (time grew as p^1.27 up to 3,000 species) | **about 113 s; time grows about linearly in p (p^1.08)** |
+| one fit, 100 species | 2.48 s, optimiser reported false convergence | **1.14 s, converged** |
+| recorded log-likelihood | −256.52 | −256.51 |
 | Wald SEs when a variance is estimated at zero | all `NaN` (Hessian not positive definite) | **finite for 16 of 17 parameters** |
 
-These numbers are for this one model; they are not a claim about every
-family or structure. Full grid and caveats:
+The R run reported false convergence, which limits interpretation of the
+timing ratio. Finite standard errors at a variance boundary do not establish
+reliable interval coverage.
+
+Separate synthetic scaling results in the retained grid reached 10,000
+species for both packages. Under that protocol, drmTMB 0.6.0 was comparable
+or faster at 1,000 species and above. These historical results concern the
+recorded fixtures and environments. Full grid and caveats:
 [report/comparison-grid.md](report/comparison-grid.md); per-family timings:
 [report/speed-per-family.md](report/speed-per-family.md).
 
-To reproduce them from a clone of this repository:
+Run the benchmark fixtures from a clone of this repository:
 
 ```bash
-julia --project=. bench/run_sparse_tmb_nd.jl     # 2.18× vs drmTMB, p=100
+julia --project=. bench/run_sparse_tmb_nd.jl     # retained q4_p100 fixture
 julia --project=. bench/run_scaling.jl           # time vs number of species, to p=10,000
 ```
 
@@ -208,9 +217,9 @@ For readers who want the numerical method behind the speed numbers above. The
 bivariate phylogenetic location-scale model (PLSM) is fitted on a sparse
 "augmented-state" precision matrix (`kron(Q_topology, Λ⁻¹)`), whose number of
 non-zero entries grows linearly with the number of species `p` (written O(p)).
-Its gradient is exact and also costs O(p): the needed parts of the inverse
-come from Takahashi selected inversion, so the dense p×p phylogenetic
-covariance is never formed. A fast mode-finder is tried first, and a more
+The gradient uses Takahashi selected inversion to obtain the needed inverse
+entries without forming the dense p×p phylogenetic covariance. Sparse
+factorization cost depends on the graph and fill. A fast mode-finder is tried first, and a more
 robust one takes over when it fails.
 
 ## For contributors

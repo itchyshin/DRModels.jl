@@ -1,33 +1,29 @@
 """
     DRModels
 
-`DRModels.jl` — a Julia engine for distributional regression models, the Julia
-twin of the R package **drmTMB**. Mirrors the gllvmTMB → GLLVModels.jl move.
+`DRModels.jl` fits distributional regression models for continuous, count,
+proportion, and ordered responses. It provides univariate routes and selected
+bivariate routes. Random effects and dependence from phylogenies, spatial
+coordinates, pedigrees, and supplied matrices are available on the combinations
+listed in the capability guide.
+The R package **drmTMB** can call selected routes through its optional Julia
+engine; DRModels.jl can also be used directly without R.
 
-The package covers univariate and bivariate distributional regression across
-some twenty response families, with random, phylogenetic, spatial, pedigree and
-supplied-matrix structure. Its origin is the **q=4 phylogenetic bivariate
-location–scale model (PLSM)** — the selling-point model of drmTMB (Nakagawa et
-al. 2025 MEE, Model 5). That marginal is a sparse **augmented-state Laplace
-approximation** with an **exact O(p) gradient** (implicit-function / TMB-style,
-via Takahashi selected inverse — never forms a dense p×p Σ_phy), optimised by
-LBFGS with a fast-path-then-robust mode-finder.
+The q=4 phylogenetic bivariate location-scale model has random effects on two
+mean and two log-scale axes. Its engine uses an augmented-state Laplace
+approximation with an exact sparse gradient. Sparse factorisation cost depends
+on the model structure; this is not a package-wide linear-time guarantee.
 
-For what is implemented and how far each route is tested, see the capability
-matrix in the documentation. Measured comparisons against drmTMB include their
-run conditions in `report/comparison-grid.md`; they are specific to the model
-and data measured and are deliberately not quoted as package-wide figures here.
+Maximum likelihood is the default. Opt-in `method = :REML` is available on
+documented model-specific routes. The Gaussian phylogenetic-mean solver also
+supports `algorithm = :em`. Wald, profile, and parametric-bootstrap inference
+have route-specific restrictions; a computed interval does not establish its
+coverage.
 
-The engine retains the proof-of-concept's script-style organisation. Inference
-provides Wald, profile, and parametric-bootstrap intervals. **Public:** opt-in
-REML (`drm(method = :REML)`; its restricted correction covers all four
-among-axis axes) and the conjugate-EM Gaussian phylo-mean solver
-(`algorithm = :em`). A natural-gradient EM implementation failed the required
-likelihood-parity check on `q4_p100`, so `algorithm = :natgrad` is not exposed;
-the reusable Fisher metric is retained as engine infrastructure. **Experimental
-prototypes are not wired:** SQUAREM EM, trust-region and line-search E-steps,
-dense q=4 EM, and warm-start variants. Do not treat them as the public REML or
-`:em` surface.
+See the model guides and capability matrix for runnable syntax, accepted
+combinations, and evidence limits. Measured comparisons with drmTMB retain their
+run conditions in `report/comparison-grid.md`; those results apply to the models
+and data measured, rather than every package workflow.
 """
 module DRModels
 

@@ -151,10 +151,10 @@ native TMB parity and interval-coverage calibration have not been established.
     distribution too (e.g. to simulate), qualify it as `Distributions.Binomial`.
 
 ```julia
-fit = drm(bf(cbind(successes, failures) ~ x), Binomial(); data = dat)   # Binomial regression (logit default)
-fit = drm(bf(y ~ x + (1 | g)), Binomial(); data = dat)                  # 0/1 Binomial GLMM (logit default)
-fit = drm(bf(cbind(successes, failures) ~ x + (1 | g) + (1 | h)), Binomial(); data = dat)
-fit_q = drm(bf(cbind(successes, failures) ~ x + (1 | g) + (1 | h)), Binomial();
+fit = drm(bf(@formula(cbind(successes, failures) ~ x)), Binomial(); data = dat)   # logistic regression
+fit = drm(bf(@formula(y ~ x + (1 | g))), Binomial(); data = dat)                  # 0/1 logistic GLMM
+fit = drm(bf(@formula(cbind(successes, failures) ~ x + (1 | g) + (1 | h))), Binomial(); data = dat)
+fit_q = drm(bf(@formula(cbind(successes, failures) ~ x + (1 | g) + (1 | h))), Binomial();
             data = dat, marginal = :AGHQ)                   # accurate crossed integral, h ≤ 8 levels
 fit_phy = drm(bf(@formula(cbind(successes, failures) ~ x + phylo(1 | species))),
               Binomial(); data = dat, tree = tr, se = false)

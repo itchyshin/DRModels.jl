@@ -41,13 +41,14 @@ quadrature with 5 nodes: each group's nodes are centred and scaled at that
 group's posterior mode. Tweedie uses the same scheme with 21 nodes and
 CumulativeLogit with 41. A Gaussian random intercept on `sigma`,
 `sigma ~ 1 + (1 | g)`, instead uses fixed, non-adaptive 32-node quadrature
-placed on the prior scale. A Laplace approximation
-in general replaces the integrand with a Gaussian centred at the posterior mode of `z`,
-matched in curvature (the Hessian) at that mode. It is exact only when the
-responses are Gaussian, a Gaussian random effect enters the mean linearly, and
-the residual variance is independent of that random effect; then the integrand
-is Gaussian. A mean random intercept in that Gaussian model needs no
-approximation.
+placed on the prior scale. A Laplace approximation replaces the integrand with
+a Gaussian centred at the posterior mode of `z`, matched in curvature (the
+Hessian) at that mode. For a Gaussian response with a Gaussian random effect
+entering the mean linearly and residual variance independent of that effect,
+the integrand is Gaussian and Laplace is guaranteed to be exact. A mean random
+intercept in that model needs no approximation. In other models, Laplace is an
+approximation and can incur error; accidental equality of a particular
+integral is not ruled out.
 
 ### Matching drmTMB: `marginal = :Laplace`
 
@@ -58,8 +59,10 @@ seven Poisson, Beta, NegBinomial2, Gamma and Student test datasets their
 log-likelihoods differed by 0.01 to 0.24 units, with drmTMB's always the one
 further from a 61-node quadrature reference (a later Poisson comparison showed
 a gap of about 0.0014); with `marginal = :Laplace` their log-likelihoods agree
-to within about 1e-8 and their estimates to about 5e-8 (relative). The default is usually the more accurate integral, so use
-`:Laplace` for parity with drmTMB, not as a better default.
+to within about 1e-8 and their estimates to about 5e-8 (relative). In these
+comparisons, the adaptive default was closer to the 61-node reference. This
+does not establish a general accuracy ranking. Use `:Laplace` when matching
+drmTMB's integration rule.
 
 The gap used to be larger. Before version 0.7.2, `:LA` integrated an ordinary
 `(1 | g)` on a fixed 32-node grid on the prior scale. On ten test datasets with a
@@ -86,10 +89,13 @@ fit.marginal   # :Laplace
 On these five families (Poisson, Binomial, NegBinomial2, Gamma and Beta),
 `:Laplace` covers one ordinary `(1 | g)` on the mean (`sigma ~ 1` for the scale
 families), by maximum likelihood. `Student()` accepts it too for one ordinary
-`(1 | g)` on the mean (`sigma` and `nu` may carry fixed-effect formulas). The only other model that accepts it is a
+`(1 | g)` on the mean (`sigma` and `nu` may carry fixed-effect formulas). A
 Gaussian random intercept on `sigma`, `sigma ~ 1 + (1 | g)`, with a fixed-effect
-mean. Any other model with `marginal = :Laplace` is refused; nothing is
-silently fitted by another integrator under that label.
+mean also accepts it. `LogNormal()` accepts the selector for one ordinary mean
+random intercept: this uses the same single mode-centred Gauss–Hermite node
+as its default route and records the requested `:Laplace` label. The integral
+is exact because `log(y)` is Gaussian given the random intercept. Other models with
+`marginal = :Laplace` are refused.
 
 !!! warning "A `sigma` formula with covariates breaks log-likelihood comparisons with drmTMB"
     For NegBinomial2, Gamma and Beta models with a random intercept and
@@ -127,21 +133,18 @@ The trouble starts when the integrand is **not** close to Gaussian:
 Related latent-variable models in GLLVModels.jl illustrate two geometries in
 which a one-mode curvature approximation can be unreliable:
 
-- **Two-part Gamma shape.** In a two-part (hurdle) Gamma model, the Gamma shape
-  parameter `α` was recovered roughly **7× too low** under Laplace. The mean was
-  fine; the shape — which is read off the curvature of a skewed positive density
-  — was badly biased.
-- **ZINB multimodality.** In a zero-inflated negative binomial model the
-  zero-inflation probability `π` and the low-count-mean intercept `βc` trade off:
-  a zero can be "structural" (`π`) or "a Poisson/NB zero from a small mean"
-  (`βc`). That gives the marginal **two modes**, and the sign of the count
-  intercept was observed to **flip across OS / BLAS** — a hallmark of LA picking
-  different modes on different platforms.
+- **Two-part Gamma shape.** A Gamma shape parameter can be sensitive to how a
+  single-mode approximation represents a skewed positive density. The available
+  DRModels.jl VA route does not fit two-part Gamma models, so this page does not
+  claim that VA corrects their shape estimates.
+- **ZINB multimodality.** In some zero-inflated negative-binomial data, the
+  zero-inflation probability `π` and a low count mean can trade off: observed
+  zeros can arise from either component, and the marginal likelihood may have
+  multiple modes. This does not establish that every such model is multimodal
+  or that DRModels.jl VA fixes the issue; these VA models are not supported here.
 
-Neither failure is a bug in the optimiser; both are the geometry the Laplace
-approximation cannot see. They motivate checking the marginal approximation,
-but they do not show that DRModels.jl's experimental VA route fixes those
-specific models.
+These are reasons to check the marginal approximation, not evidence that
+DRModels.jl's experimental VA route fixes those specific models.
 
 ## The variational (VA / ELBO) alternative
 
@@ -172,8 +175,8 @@ needs:
   expectations of `η` and of `e^{η}` (a log-normal moment) are both analytic.
 - **One-dimensional Gauss–Hermite quadrature** for everything else —
   **Binomial**, **negative binomial**, and **Beta** — where the expectation
-  reduces to a single integral over the scalar `η`, cheaply and accurately
-  evaluated with a handful of GH nodes.
+  reduces to a single integral over the scalar `η`, approximated with the
+  configured Gauss–Hermite nodes.
 
 Because `q` carries a *variance* `v`, not just a location, it represents tail and
 spread directly, so the shape and dispersion parameters are no longer estimated
@@ -238,7 +241,7 @@ fitted parameters every group's solve must be stationary: its squared Newton
 decrement, twice the ELBO gain still on offer, must be at most `1e-14`, or below
 the rounding error of the group ELBO when the solve cannot go further. If one is
 not, the reported ELBO is below the profiled ELBO and the optimiser did not follow
-its gradient, so the fit is marked `converged = false` with a warning (#965).
+its gradient, so the fit is marked `converged = false` with a warning.
 For example, in this small Poisson fit one group is all zeros:
 
 ```julia
@@ -247,10 +250,6 @@ fit = drm(bf(@formula(y ~ 1 + (1 | g))), Poisson(); data = (; y, g), marginal = 
 fit.converged   # true, with every group's inner solve stationary
 coef(fit)       # ≈ [2.837, 1.430]; ELBO ≈ -24.88
 ```
-
-Before #965 this fit stopped at `coef(fit) ≈ [37.60, 3.67]`, with an ELBO of
-−32.37 that was 7.5 nats below the variational optimum, and still reported
-`converged = true`.
 
 On Gamma `(1 | g)`, the evaluated comparison finds LA ≈ VA on shape `α` and LA is
 much faster. VA beyond random
