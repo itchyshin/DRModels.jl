@@ -18,7 +18,7 @@ Did not weaken convergence criteria or change the engine. Assumption: the public
 
 ## 5. Checks Run
 
-At base `f4fa3aed451636b6ffa442ce2632515513d23b1f`, the final test file was copied to a temporary `git archive` source snapshot and run with Julia 1.13.3 on macOS, `OPENBLAS_NUM_THREADS=1`, `JULIA_NUM_THREADS=4`. It passed 44/44 in 1m23.8s. The temporary manifest, copied from a matching project, has SHA-256 `1cb43b464b4e795d37658982b5df8d56f102bb8dcce902099de2ea33eaa72616`; its dependency versions need not match Linux CI. Test file SHA-256: `0dfb5d52dc7b83952c96c50fe5acbf90690e5d04474c1fb3712119ab5c47bc9d`. Command: `julia +1.13.3 --project=/tmp/drmodels-1252-repro-snapshot /tmp/drmodels-1252-repro-snapshot/test/test_binomial_sd_public.jl` with the thread settings above. `git diff --check` passed. The full suite has not been run.
+At base `f4fa3aed451636b6ffa442ce2632515513d23b1f`, the final test file was copied to a temporary `git archive` source snapshot and run with Julia 1.13.3 on macOS, `OPENBLAS_NUM_THREADS=1`, `JULIA_NUM_THREADS=4`. It passed 44/44 in 1m23.8s. The temporary manifest, copied from a matching project, has SHA-256 `1cb43b464b4e795d37658982b5df8d56f102bb8dcce902099de2ea33eaa72616`; its dependency versions need not match Linux CI. Test file SHA-256: `0dfb5d52dc7b83952c96c50fe5acbf90690e5d04474c1fb3712119ab5c47bc9d`. Command: `julia +1.13.3 --project=/tmp/drmodels-1252-repro-snapshot /tmp/drmodels-1252-repro-snapshot/test/test_binomial_sd_public.jl` with the thread settings above. `git diff --check` passed. On Totoro, a snapshot of commit `c1ec6c05fc88cfe6c86071da547c0a1ed898a457` passed the same test 44/44 in 1m40.8s on Linux with Julia 1.13.2 and the same thread caps. The source archive SHA-256 is `30e5fbb5f6616adee7a2efdac78bf862d3735ba5ab1feac252801bcdcae8b45a`; its generated Linux manifest is `bff4cf3fe2c4e8cdd5174b72afe388fae5a05f5e7564347d96fd5d2ea05aad3a`, and `focused.log` is `0e02dac61d5783e412748c57556ec988fa9bf62680446b5f38db829e77526a41`. The source and log are at `~/hsq_work/drm-slope-fixture-c1ec6c05/` on Totoro. The full suite has not been run.
 
 ## 6. Tests of the Tests
 
@@ -38,7 +38,7 @@ The original worktree had no resolved Julia manifest and could not load ForwardD
 
 ## 10. Known Residuals
 
-Only the focused test was run on the final candidate. Linux CI and the full package suite remain outstanding. The local fixture comparison does not establish that the original boundary fit is incorrect. The full R–Julia parity goal, D-342, disclosed tolerance changes, and G5 calibration remain open.
+Only the focused test was run on the final candidate, on macOS and Linux. Linux CI and the full package suite remain outstanding. The local fixture comparison does not establish that the original boundary fit is incorrect. The full R–Julia parity goal, D-342, disclosed tolerance changes, and G5 calibration remain open.
 
 ## 11. Team Learning
 
