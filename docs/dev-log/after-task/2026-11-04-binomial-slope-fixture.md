@@ -26,7 +26,7 @@ The original fitted slope model on data generated with random intercepts reprodu
 
 ## 7a. Issue Ledger
 
-PR #1252 remains blocked by its failed CI; this branch proposes an independent test-fixture correction. No issue was closed. The original boundary behavior remains a separate diagnostic question. The 2026-11-04 open-PR title/body search for binomial slope found no other PR proposing this fixture change; the search is not a full review of every PR diff.
+PR #1252 remains blocked by its failed CI; this branch proposes an independent test-fixture correction. No issue was closed. The original boundary behavior remains a separate diagnostic question. On 2026-11-04, GitHub file lists for all 23 open Julia PRs contained no changes to `test/test_binomial_sd_public.jl`; this checks file overlap, not the substance of every PR.
 
 ## 8. Consistency Audit
 
