@@ -21,11 +21,11 @@ For one ordinary random intercept or independent numeric mean slope,
 the random-slope coefficient explicitly with `coef(x)`:
 
 ```julia
-fit = drm(bf(y ~ x + (1 | site), sd(site) ~ habitat),
+fit = drm(bf(@formula(y ~ x + (1 | site)), @formula(sd(site) ~ habitat)),
           TruncatedPoisson(); data = dat)
 
-fit_slope = drm(bf(y ~ x + (0 + x | site),
-                   sd(site, coef(x)) ~ habitat),
+fit_slope = drm(bf(@formula(y ~ x + (0 + x | site)),
+                   @formula(sd(site, coef(x)) ~ habitat)),
                 TruncatedPoisson(); data = dat)
 ```
 

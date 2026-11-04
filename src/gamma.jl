@@ -37,10 +37,10 @@ fit = drm(bf(@formula(y ~ x + (1 | g) + (1 | h)), @formula(sigma ~ 1)), Gamma();
 fit_phy = drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ 1)),
               Gamma(); data = dat, tree = tr, se = false)
 exp(-2 * coef(fit, :sigma)[1])     # estimated shape α
-fit_sigma_sd = drm(bf(y ~ x, sigma ~ 1 + (1 | g), sd(g, sigma) ~ z),
+fit_sigma_sd = drm(bf(@formula(y ~ x), @formula(sigma ~ 1 + (1 | g)), @formula(sd(g, sigma) ~ z)),
                    Gamma(); data = dat)
 fit_sigma_slope_sd = drm(
-    bf(y ~ x, sigma ~ 1 + (0 + x | g), sd(g, sigma, coef(x)) ~ z),
+    bf(@formula(y ~ x), @formula(sigma ~ 1 + (0 + x | g)), @formula(sd(g, sigma, coef(x)) ~ z)),
     Gamma(); data = dat)
 
 # Experimental: Gamma random-intercept variational (ELBO) marginal.
