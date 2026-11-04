@@ -321,12 +321,18 @@ For generic thread-safe objectives, set `threads = true` to parallelise
 independent profile coefficients; when one coefficient is profiled, its endpoint
 arms may run in parallel. Canonical location–scale profile jobs use only the
 coefficient-level policy: each job owns its nuisance state, while its lower and
-upper endpoint chains remain serial.
-A fit with an explicit `DRMControl.optimizer` is refused before profiling.
+upper endpoint chains remain serial. A fit with an explicit `DRMControl.optimizer`
+is refused before profiling. Threaded profiling is refused for
+structured Binomial random-effect SD fits because their Laplace objectives use
+mutable shared warm-start state; ordinary independent Binomial quadrature routes
+are not subject to that restriction.
 """
 function profile_result(fit::DrmFit; level::Real=0.95, threads::Bool=false, parm=nothing)
     level = _validate_ci_level(level; what="profile_result")
     _refuse_selected_optimizer_refit(fit, "profile_result")
+    threads && _binomial_sd_threaded_profile_unsupported(fit) &&
+        throw(ArgumentError("profile_result: threaded profiling is not supported for structured Binomial random-effect SD fits; " *
+                            "use `threads = false`."))
     _wald_withheld(fit) && (parm = _homtoep_profile_parm(fit, parm))
     fit.nll isa LocScaleObjective && return _ls_profile_result(
         fit; level=level, threads=threads, parm=parm
@@ -1044,6 +1050,15 @@ function _profile_attempt(obj, u0, method::Symbol, autodiff::Symbol;
                 Optim.optimize(
                     obj, u0, Optim.NelderMead(), Optim.Options(; iterations, x_abstol=1e-8),
                 )
+        elseif method === :lbfgs_finite_backtracking
+            ls = Optim.LineSearches.BackTracking(; iterations=20)
+            iterations === nothing ?
+                Optim.optimize(obj, u0, Optim.LBFGS(; linesearch=ls); autodiff) :
+                Optim.optimize(
+                    obj, u0, Optim.LBFGS(; linesearch=ls),
+                    Optim.Options(; iterations, g_tol=1e-6, x_abstol=1e-8);
+                    autodiff,
+                )
         else
             # The pre-slice forward/finite path intentionally used Optim's
             # defaults (rather than the capped stored-gradient budget). Keep
@@ -1114,6 +1129,17 @@ function _profile_optimize_result(obj, u0::Vector{Float64}, autodiff::Symbol;
         )
         continuation.accepted && return continuation
         return continuation
+    end
+
+    # A finite-difference LBFGS endpoint can return a usable candidate without
+    # converging, especially when its default line search stalls. Retry that
+    # candidate with bounded BackTracking; only Optim convergence is accepted.
+    if grad! === nothing && autodiff === :finite && primary.reason === :not_converged &&
+       isfinite(primary.value) && all(isfinite, primary.minimizer)
+        return _profile_attempt(
+            obj, primary.minimizer, :lbfgs_finite_backtracking, :finite;
+            iterations=something(primary_iterations, 3000), fallback=true,
+        )
     end
 
     # Preserve the remaining fallback policy. A stored-gradient construction
@@ -1439,8 +1465,22 @@ function _profile_row(job, nll, nllgrad, θ̂, nllhat, half, se, autodiff)
     return row
 end
 
+function _binomial_sd_threaded_profile_unsupported(fit::DrmFit)
+    fit.family isa Binomial || return false
+    has_sd_block = any(block -> begin
+        name = String(first(block))
+        name == "sd" || startswith(name, "sd_") ||
+            startswith(name, "sdtarget_")
+    end, fit.blocks)
+    has_sd_block || return false
+    targets = _sd_target_parts(fit.formula)
+    any(item -> item.target.level !== :iid, targets) && return true
+    return !isempty(_sdphylo_parts(fit.formula))
+end
+
 function _profile_row_result(
-    job, nll, nllgrad, θ̂, nllhat, half, se, autodiff; endpoint_threads::Bool=false
+    job, nll, nllgrad, θ̂, nllhat, half, se, autodiff;
+    endpoint_threads::Bool=false,
 )
     k = job.k
     est = θ̂[k]
@@ -1556,7 +1596,7 @@ replicate responses, refit each, and take percentile intervals per coefficient.
 Univariate-response models (fixed / random-effect / meta / structured). Same row
 shape as [`confint`](@ref). Set `threads = true` to refit bootstrap replicates
 in parallel. Pass through the structured-provider keywords (`K` / `A` / `tree` /
-`coords`)
+`tree1` / `tree2` / `coords`)
 and, for Gaussian fits, the solver controls (`algorithm` / `g_tol`) exactly as
 to [`drm`](@ref). Use `bootstrap_result` when you need attempted/used/failed
 counts and per-replicate failure messages. A thrown refit is recorded; the
@@ -1566,7 +1606,8 @@ If you already have
 `fit = drm(...)`, pass the fit directly to avoid refitting the base model before
 the bootstrap replicates. A homogeneous Toeplitz `temporal()` fit returns the
 mean-coefficient rows only (drmTMB refuses the temporal bootstrap and defers
-σ and lag-correlation intervals).
+σ and lag-correlation intervals). `tree1` and `tree2` are used by the direct
+Julia Binomial `phylo_interaction()` SD route.
 The fit-based form refuses a fit with an explicit `DRMControl.optimizer`
 before any bootstrap refit; the formula-based form keeps its default solver.
 
@@ -1629,13 +1670,15 @@ function bootstrap_ci(
     K=nothing,
     A=nothing,
     tree=nothing,
+    tree1=nothing,
+    tree2=nothing,
     coords=nothing,
     threads::Bool=false,
     failures::Symbol=:error,
     check_converged::Bool=true,
 )
     rows = bootstrap_summary(
-        formula, family; data, B, level, rng, K, A, tree, coords, threads, failures,
+        formula, family; data, B, level, rng, K, A, tree, tree1, tree2, coords, threads, failures,
         check_converged
     )
     _warn_bootstrap_sigma_percentile(formula, rows)
@@ -1651,6 +1694,8 @@ function bootstrap_ci(
     K=nothing,
     A=nothing,
     tree=nothing,
+    tree1=nothing,
+    tree2=nothing,
     coords=nothing,
     threads::Bool=false,
     failures::Symbol=:error,
@@ -1658,7 +1703,7 @@ function bootstrap_ci(
 )
     _refuse_selected_optimizer_refit(fit, "bootstrap_ci")
     rows = bootstrap_summary(
-        fit; data, B, level, rng, K, A, tree, coords, threads, failures, check_converged
+        fit; data, B, level, rng, K, A, tree, tree1, tree2, coords, threads, failures, check_converged
     )
     _warn_bootstrap_sigma_percentile(fit.formula, rows)
     return _bootstrap_ci_rows(rows)
@@ -1715,7 +1760,9 @@ second bootstrap run when both SEs and intervals are needed. Row fields are
 is recorded and then aborts (`failures = :error`). Set `failures = :skip` to
 compute summaries from successful replicates; call `bootstrap_result` to
 inspect the skipped failures. A homogeneous Toeplitz `temporal()` fit returns
-the mean-coefficient rows only, as [`bootstrap_ci`](@ref).
+the mean-coefficient rows only, as [`bootstrap_ci`](@ref). For the direct Julia
+Binomial `phylo_interaction()` SD route, supply `tree1` and `tree2` to preserve
+the fitted pair field during refits.
 The fit-based form refuses a fit with an explicit `DRMControl.optimizer`
 before any bootstrap refit.
 """
@@ -1769,13 +1816,15 @@ function bootstrap_summary(
     K=nothing,
     A=nothing,
     tree=nothing,
+    tree1=nothing,
+    tree2=nothing,
     coords=nothing,
     threads::Bool=false,
     failures::Symbol=:error,
     check_converged::Bool=true,
 )
     result = bootstrap_result(
-        formula, family; data, B, level, rng, K, A, tree, coords, threads, failures,
+        formula, family; data, B, level, rng, K, A, tree, tree1, tree2, coords, threads, failures,
         check_converged
     )
     return result.summary
@@ -1790,6 +1839,8 @@ function bootstrap_summary(
     K=nothing,
     A=nothing,
     tree=nothing,
+    tree1=nothing,
+    tree2=nothing,
     coords=nothing,
     threads::Bool=false,
     failures::Symbol=:error,
@@ -1797,7 +1848,7 @@ function bootstrap_summary(
 )
     _refuse_selected_optimizer_refit(fit, "bootstrap_summary")
     result = bootstrap_result(
-        fit; data, B, level, rng, K, A, tree, coords, threads, failures, check_converged
+        fit; data, B, level, rng, K, A, tree, tree1, tree2, coords, threads, failures, check_converged
     )
     return result.summary
 end
@@ -1876,11 +1927,17 @@ boundary is kept: [`convergence_status`](@ref) calls it `:boundary`, but it is a
 real draw. Set `check_converged = false` only to reproduce the old behaviour that counted
 unconverged refits in the interval. Passing an existing `DrmFit`
 reuses that point estimate as the bootstrap seed fit and starts directly with
-the `B` simulated refits. Gaussian bootstrap refits pass `algorithm` and
-`g_tol` through to `drm(...)`; this is useful for large structured models where
-`:auto` selects a sparse route and the tolerance is part of the benchmarked
-workflow. For a homogeneous Toeplitz `temporal()` fit, `summary` holds the
-mean-coefficient rows only, as [`bootstrap_ci`](@ref).
+the `B` simulated refits. `g_tol` controls the optimizer tolerance for the seed
+fit and refits when a formula is supplied, and for refits when an existing fit
+is supplied. The q4 Gaussian phylogenetic shortcut delegates to
+`bootstrap_sigma_a` and does not use this `g_tol` argument; call that function
+directly with `q4_g_tol` to change its optimizer tolerance. Other Gaussian
+bootstrap refits also pass `algorithm`
+through to `drm(...)`; this is useful for large structured models where `:auto`
+selects a sparse route. For a homogeneous Toeplitz `temporal()` fit, `summary`
+holds the mean-coefficient rows only, as [`bootstrap_ci`](@ref). For the direct
+Julia Binomial `phylo_interaction()` SD route, pass the same `tree1` and `tree2`
+to preserve the fitted product field in simulation and refits.
 The fit-based form refuses a fit with an explicit `DRMControl.optimizer`
 before any bootstrap refit. The fit-based form repeats the seed fit's REML,
 marginal (`:Laplace`, `:VA`, `:AGHQ`) and MAP penalty in every replicate. The
@@ -2004,11 +2061,15 @@ function bootstrap_result(
     rng=default_rng(),
     K=nothing,
     A=nothing,
+    Ainv=nothing,
     tree=nothing,
+    tree1=nothing,
+    tree2=nothing,
     coords=nothing,
     threads::Bool=false,
     failures::Symbol=:error,
     check_converged::Bool=true,
+    g_tol::Real=1e-8,
     method::Symbol=:ML,
     marginal::Symbol=:LA,
     penalty=nothing,
@@ -2026,19 +2087,24 @@ function bootstrap_result(
     # loudly instead of silently refitting an unstructured model.
     extra = Dict{Symbol,Any}()
     tree !== nothing && (extra[:tree] = tree)
+    tree1 !== nothing && (extra[:tree1] = tree1)
+    tree2 !== nothing && (extra[:tree2] = tree2)
     K !== nothing && (extra[:K] = K)
     A !== nothing && (extra[:A] = A)
+    Ainv !== nothing && (extra[:Ainv] = Ainv)
     coords !== nothing && (extra[:coords] = coords)
     # #1025: only a non-default estimator is forwarded, as `drm` for some
     # families does not declare `method`, `marginal` or `penalty`.
     for (k, v) in pairs(_bootstrap_formula_options(method, marginal, penalty))
         extra[k] = v
     end
-    fit0 = drm(formula, family; data, extra...)
-    refit = datab -> drm(formula, family; data=datab, extra...)
+    fit0 = drm(formula, family; data, extra..., g_tol)
+    refit = datab -> drm(formula, family; data=datab, extra..., g_tol)
     # #459/#479: redraw the random effects rather than conditioning on the
     # fitted BLUPs, so a variance-component bootstrap CI is not degenerate.
-    simulate_fn = _marginal_simulator(fit0, data; K=K, A=A, tree=tree, coords=coords)
+    simulate_fn = _marginal_simulator(fit0, data; K=K, A=A, Ainv=Ainv,
+                                      tree=tree, tree1=tree1, tree2=tree2,
+                                      coords=coords)
     return _bootstrap_result(
         fit0, formula, data, B, level, rng, threads, refit;
         failures, check_converged, simulate_fn
@@ -2053,11 +2119,15 @@ function bootstrap_result(
     rng=default_rng(),
     K=nothing,
     A=nothing,
+    Ainv=nothing,
     tree=nothing,
+    tree1=nothing,
+    tree2=nothing,
     coords=nothing,
     threads::Bool=false,
     failures::Symbol=:error,
     check_converged::Bool=true,
+    g_tol::Real=1e-8,
 )
     _refuse_selected_optimizer_refit(fit, "bootstrap_result")
     # Bivariate q=4 phylogenetic fit: there is no scalar SD block to refit-and-
@@ -2082,6 +2152,8 @@ function bootstrap_result(
     # refitting an unstructured model.
     extra = Dict{Symbol,Any}()
     tree !== nothing && (extra[:tree] = tree)
+    tree1 !== nothing && (extra[:tree1] = tree1)
+    tree2 !== nothing && (extra[:tree2] = tree2)
     K !== nothing && (extra[:K] = K)
     A !== nothing && (extra[:A] = A)
     coords !== nothing && (extra[:coords] = coords)
@@ -2090,9 +2162,21 @@ function bootstrap_result(
     for (k, v) in pairs(_bootstrap_refit_kwargs(fit))
         extra[k] = v
     end
-    refit = datab -> drm(formula, fit.family; data=datab, extra...)
-    simulate_fn = _marginal_simulator(fit, data; K=K, A=A, tree=tree,
-                                      coords=coords)   # #459 / #479
+    binomial_nq = pop!(extra, :nq, nothing)
+    if fit.family isa Binomial && binomial_nq !== nothing
+        # Binomial SD fits expose their quadrature order only through the
+        # internal fit route. Preserve it on bootstrap refits rather than
+        # silently switching to the public route's default order.
+        refit = datab -> _drm_binomial_sd_regression(
+            formula, fit.family; data=datab, K, A, Ainv, tree, tree1, tree2, coords,
+            marginal=fit.marginal, nq=binomial_nq, g_tol,
+        )
+    else
+        Ainv !== nothing && (extra[:Ainv] = Ainv)
+        refit = datab -> drm(formula, fit.family; data=datab, extra..., g_tol)
+    end
+    simulate_fn = _marginal_simulator(fit, data; K=K, A=A, Ainv=Ainv, tree=tree,
+                                      tree1=tree1, tree2=tree2, coords=coords)   # #459 / #479
     return _bootstrap_result(
         fit, formula, data, B, level, rng, threads, refit;
         failures, check_converged, simulate_fn
@@ -2168,6 +2252,21 @@ function _bootstrap_refit_kwargs(fit::DrmFit)
             "bootstrap refit: this fit is :MAP but stores no penalty, so the " *
             "replicate cannot repeat the penalized estimator"))
     end
+    # SD-regression routes with explicit public `nAGQ` support accept that
+    # setting on bootstrap refits (currently Poisson, NB2, zero-truncated NB2,
+    # and SkewNormal).
+    # Binomial also records its private quadrature count, but its public `drm`
+    # method does not accept that keyword, so passing it would break refits.
+    if (fit.family isa Poisson || fit.family isa TruncatedPoisson ||
+        fit.family isa NegBinomial2 ||
+        fit.family isa TruncatedNegBinomial2 || fit.family isa SkewNormal) &&
+       haskey(fit.scales, :sd_group) && haskey(fit.scales, :aghq_nodes)
+        push!(kw, :nAGQ => round(Int, only(fit.scales[:aghq_nodes])))
+    end
+    if fit.family isa Binomial && haskey(fit.scales, :sd_group) &&
+       haskey(fit.scales, :aghq_nodes)
+        push!(kw, :nq => round(Int, only(fit.scales[:aghq_nodes])))
+    end
     fit.penalty === nothing || push!(kw, :penalty => fit.penalty)
     fit.marginal === :LA || push!(kw, :marginal => fit.marginal)
     weights(fit) === nothing || push!(kw, :weights => weights(fit))   # #931: same weighted likelihood
@@ -2211,9 +2310,13 @@ function _lss_marginal_simulator(fit::DrmFit, data; tree=nothing)
     fixed_mu, re, metav, structured = _split_ranef(rhs[:mu])
     fixed_sigma, sigma_re, _, structured_sigma = _split_ranef(rhs[:sigma])
     (metav === nothing && isempty(sigma_re) && structured_sigma === nothing) ||
-        throw(ArgumentError("LSS bootstrap requires mean random intercepts and fixed residual-scale predictors"))
-    all(r -> first(_re_kind(r[1])) === :intercept, re) ||
-        throw(ArgumentError("LSS bootstrap supports random intercepts only"))
+        throw(ArgumentError("LSS bootstrap requires ordinary mean effects and fixed residual-scale predictors"))
+    re_kinds = [_re_kind(r[1]) for r in re]
+    all(item -> first(item) in (:intercept, :slope), re_kinds) ||
+        throw(ArgumentError("LSS bootstrap supports ordinary intercepts and independent numeric slopes only"))
+    has_slope = any(item -> first(item) === :slope, re_kinds)
+    has_slope && !(length(re) == 1 && structured === nothing) &&
+        throw(ArgumentError("LSS bootstrap supports an independent random slope only as the sole ordinary mean effect"))
     raw_y = _table_column(data, f.response)
     _, observed = _coerce_response_column(raw_y)
     count(observed) == fit.nobs ||
@@ -2236,10 +2339,21 @@ function _lss_marginal_simulator(fit::DrmFit, data; tree=nothing)
     aiid = isempty(re) ? Float64[] : coef(fit, :sd)
     offset = 0
     expected_names = String[]
-    for (_, grp) in re
+    for (j, (_, grp)) in enumerate(re)
         labels = _table_column(data, grp)
         any(ismissing, labels) && throw(ArgumentError("LSS bootstrap grouping `$grp` contains missing labels"))
         gidx, G = _group_index(labels)
+        kind, slope = re_kinds[j]
+        loading = if kind === :intercept
+            ones(Float64, length(gidx))
+        else
+            hasproperty(data, slope) || throw(ArgumentError(
+                "LSS bootstrap data are missing random-slope predictor `$slope`"))
+            raw = getproperty(data, slope)
+            raw isa AbstractVector{<:Real} && length(raw) == length(gidx) && all(isfinite, raw) ||
+                throw(ArgumentError("LSS bootstrap random-slope predictor `$slope` must be finite numeric values, one per response"))
+            Float64.(raw)
+        end
         Zg, nm = haskey(sdmap, grp) ?
             _sd_group_design(f.response, sdmap[grp], data, gidx, G, grp) :
             (ones(G, 1), ["(Intercept)"])
@@ -2247,7 +2361,7 @@ function _lss_marginal_simulator(fit::DrmFit, data; tree=nothing)
         offset + width <= length(aiid) ||
             throw(ArgumentError("LSS bootstrap iid SD coefficients do not match the group designs"))
         scale = exp.(Zg * aiid[offset+1:offset+width])
-        push!(components, (; gidx, G, scale, factor=nothing))
+        push!(components, (; gidx, G, scale, factor=nothing, loading))
         append!(expected_names, length(re)>1 ? string.(grp, ": ", nm) : nm)
         offset += width
     end
@@ -2274,7 +2388,7 @@ function _lss_marginal_simulator(fit::DrmFit, data; tree=nothing)
         # Every LSS phylogenetic route defines its SD against correlation,
         # including a scalar phylogenetic component in a multi-component fit.
         factor = cholesky(Symmetric(_phylo_correlation(phy))).L
-        push!(components, (; gidx, G, scale, factor))
+        push!(components, (; gidx, G, scale, factor, loading=ones(Float64, length(gidx))))
     elseif !isempty(sdphy)
         throw(ArgumentError("LSS bootstrap phylogenetic SD needs a phylogenetic mean effect"))
     end
@@ -2286,7 +2400,7 @@ function _lss_marginal_simulator(fit::DrmFit, data; tree=nothing)
         for c in components
             noise = randn(rng, c.G)
             u = c.scale .* (c.factor === nothing ? noise : c.factor * noise)
-            out .+= u[c.gidx]
+            out .+= c.loading .* u[c.gidx]
         end
         out .+= sigma .* randn(rng, length(out))
         all(isfinite, out) || throw(ArgumentError("LSS bootstrap produced a nonfinite response"))
@@ -2296,8 +2410,9 @@ function _lss_marginal_simulator(fit::DrmFit, data; tree=nothing)
 end
 
 function _marginal_simulator(fit::DrmFit, data; K=nothing, A=nothing, tree=nothing,
-                             coords=nothing)
-    sim = _marginal_simulator_build(fit, data; K, A, tree, coords)
+                             tree1=nothing, tree2=nothing,
+                             Ainv=nothing, coords=nothing)
+    sim = _marginal_simulator_build(fit, data; K, A, Ainv, tree, tree1, tree2, coords)
     # `nothing` sends `bootstrap` to the CONDITIONAL `simulate`. On the Gaussian
     # `meta_V(...)` + random-effect route (`_fit_meta_gaussian_re`) that fallback
     # is a different model: `means[:mu]` is Xβ and `scales[:sigma]` is √(v + σ²),
@@ -2316,6 +2431,1076 @@ function _is_meta_gaussian_re(fit::DrmFit)
     haskey(rhs, :mu) || return false
     _, re, metav, structured, _ = _split_ranef(rhs[:mu]; allow_phylo_slope = true)
     return metav !== nothing && (!isempty(re) || structured !== nothing)
+end
+
+function _binomial_mesh_sd_marginal_simulator(fit::DrmFit, data, mesh_metadata)
+    f = fit.formula
+    f isa DrmFormula || throw(ArgumentError(
+        "bootstrap: Binomial mesh SD simulation requires the fitted formula."))
+    group = mesh_metadata.group
+    hasproperty(data, group) || throw(ArgumentError(
+        "bootstrap: data are missing mesh spatial group `$group`."))
+    projection, precision, row_ids = _binomial_mesh_inputs(
+        mesh_metadata, data, f.response)
+    fitted_ids = mesh_metadata.alignment_ids
+    length(fitted_ids) == length(fit.scales[:sd]) || throw(ArgumentError(
+        "bootstrap: fitted mesh SD values and alignment IDs do not match."))
+    sd_by_id = Dict(id => value for (id, value) in zip(fitted_ids, fit.scales[:sd]))
+    all(id -> haskey(sd_by_id, id), row_ids) || throw(ArgumentError(
+        "bootstrap: mesh simulation rows do not match the fitted SD rows."))
+    row_sd = Float64[sd_by_id[id] for id in row_ids]
+    length(row_sd) == fit.nobs || throw(ArgumentError(
+        "bootstrap: mesh simulation requires the fitted observation rows."))
+    qchol = cholesky(Symmetric(precision); check = false)
+    issuccess(qchol) || throw(ArgumentError(
+        "bootstrap: stored mesh precision is not positive definite."))
+    eta_fixed = predict(fit, data; type = :link)
+    length(eta_fixed) == length(row_sd) || throw(ArgumentError(
+        "bootstrap: mesh fixed predictions and SD rows do not align."))
+    return function (rng)
+        # `.UP` undoes CHOLMOD's fill-reducing permutation, so the field
+        # has covariance precision^-1; `.U` alone would not.
+        field = qchol.UP \ randn(rng, size(precision, 1))
+        eta = eta_fixed + row_sd .* (projection * field)
+        return _simulate_once(fit, rng; mu = _binomial_mean.(Ref(fit.family), eta))
+    end
+end
+
+function _binomial_sd_marginal_simulator(fit::DrmFit, data, re;
+                                         structured = nothing,
+                                         phylo_slope = nothing,
+                                         animal_slope = nothing,
+                                         spatial_slope = nothing,
+                                         K = nothing,
+                                         A = nothing,
+                                         Ainv = nothing,
+                                         tree = nothing,
+                                         coords = nothing)
+    if fit.ranef isa NamedTuple && haskey(fit.ranef, :mesh)
+        return _binomial_mesh_sd_marginal_simulator(fit, data, fit.ranef.mesh)
+    end
+    f = fit.formula
+    targets = _sd_target_parts(f)
+    related_targets = filter(item -> item.target.level in (:animal, :relmat, :spatial), targets)
+    animal_targets = filter(item -> item.target.level === :animal, targets)
+    iid_targets = filter(item -> item.target.level === :iid, targets)
+    if length(animal_targets) == 1 && length(iid_targets) == 1 && length(targets) == 2
+        target = only(animal_targets)
+        descriptor = target.target
+        group = descriptor.group
+        descriptor.dpar === :mu && descriptor.member === nothing &&
+            descriptor.block === nothing || throw(ArgumentError(
+                "bootstrap: Binomial animal-plus-IID simulation requires an animal mean-intercept SD target"))
+        structured == (:animal, group) || throw(ArgumentError(
+            "bootstrap: Binomial animal-plus-IID simulation requires one matching animal effect"))
+        length(re) == 1 && first(_re_kind(only(re)[1])) === :intercept ||
+            throw(ArgumentError("bootstrap: Binomial animal-plus-IID simulation requires one IID random intercept"))
+        iid_group = only(iid_targets).target.group
+        last(only(re)) === iid_group || throw(ArgumentError(
+            "bootstrap: the IID SD target must match random-intercept group `$iid_group`"))
+        animal_loading = if animal_slope === nothing
+            ones(Float64, fit.nobs)
+        else
+            hasproperty(data, animal_slope) || throw(ArgumentError(
+                "bootstrap: data are missing animal slope predictor `$animal_slope`"))
+            raw = getproperty(data, animal_slope)
+            raw isa AbstractVector{<:Real} && length(raw) == fit.nobs &&
+                all(isfinite, raw) || throw(ArgumentError(
+                "bootstrap: animal slope predictor `$animal_slope` must be numeric, finite, and have one value per response"))
+            Float64.(raw)
+        end
+        Ainv !== nothing && A !== nothing && throw(ArgumentError(
+            "bootstrap: supply only one of `A` and `Ainv` for Binomial animal simulation"))
+        matrix = Ainv === nothing ? A : Ainv
+        matrix === nothing && throw(ArgumentError(
+            "bootstrap: supply the same animal covariance `A` or precision `Ainv` used to fit the model"))
+        hasproperty(data, group) && hasproperty(data, iid_group) || throw(ArgumentError(
+            "bootstrap: data are missing an animal or IID grouping column"))
+        animal_index, G = _group_index(getproperty(data, group))
+        iid_index, H = _group_index(getproperty(data, iid_group))
+        length(animal_index) == length(iid_index) == fit.nobs || throw(ArgumentError(
+            "bootstrap: animal/IID group indexes do not match fitted response rows"))
+        C = Matrix{Float64}(matrix)
+        size(C) == (G, G) || throw(ArgumentError(
+            "bootstrap: animal matrix must match first-seen animal group order"))
+        factor = if Ainv === nothing
+            _checked_relmat_chol(C, group)
+        else
+            Q = sparse(C)
+            all(isfinite, nonzeros(Q)) || throw(ArgumentError(
+                "bootstrap: animal `Ainv` must be finite"))
+            norm(Q - transpose(Q), Inf) <= 1e-10 * max(norm(Q, Inf), 1.0) ||
+                throw(ArgumentError("bootstrap: animal `Ainv` must be symmetric"))
+            Q = sparse(Symmetric((Q + transpose(Q)) / 2))
+            qchol = cholesky(Symmetric(Q); check = false)
+            issuccess(qchol) || throw(ArgumentError(
+                "bootstrap: animal `Ainv` must be positive definite"))
+            qchol
+        end
+        iid_target = only(iid_targets)
+        Wa, names_a = _sd_group_design(f.response, target.rhs, data,
+            animal_index, G, group; schema_cache = f.schema_cache,
+            schema_key = target.key, store_schema = false)
+        Wi, names_i = _sd_group_design(f.response, iid_target.rhs, data,
+            iid_index, H, iid_group; schema_cache = f.schema_cache,
+            schema_key = iid_target.key, store_schema = false)
+        blocks = _sd_target_blocks(targets)
+        animal_block = _sd_target_block(target.target; disambiguate = true)
+        iid_block = _sd_target_block(iid_target.target; disambiguate = true)
+        names_a == _block_coefnames(fit, animal_block) || throw(ArgumentError(
+            "bootstrap: animal SD design does not match fitted block `$animal_block`"))
+        names_i == _block_coefnames(fit, iid_block) || throw(ArgumentError(
+            "bootstrap: IID SD design does not match fitted block `$iid_block`"))
+        animal_block in blocks && iid_block in blocks || throw(ArgumentError(
+            "bootstrap: fitted SD target identities do not match the animal/IID formulas"))
+        sd_animal = _binomial_sd_scale(Wa * coef(fit, animal_block))
+        sd_iid = _binomial_sd_scale(Wi * coef(fit, iid_block))
+        eta_fixed = Vector{Float64}(predict(fit, data; type = :link))
+        length(eta_fixed) == fit.nobs || throw(ArgumentError(
+            "bootstrap: fixed Binomial predictions do not match fitted response rows"))
+        return function (rng)
+            animal_noise = Ainv === nothing ? factor.L * randn(rng, G) :
+                _binomial_animal_precision_draw(rng, factor, G)
+            iid_noise = randn(rng, H)
+            eta = eta_fixed .+ animal_loading .* sd_animal[animal_index] .*
+                  animal_noise[animal_index] .+
+                  sd_iid[iid_index] .* iid_noise[iid_index]
+            return _simulate_once(fit, rng; mu = _mean_response(fit.family, eta))
+        end
+    end
+    relmat_targets = filter(item -> item.target.level === :relmat, targets)
+    if length(relmat_targets) == 1 && length(iid_targets) == 1 && length(targets) == 2
+        target, iid_target = only(relmat_targets), only(iid_targets)
+        descriptor = target.target
+        group, iid_group = descriptor.group, only(iid_targets).target.group
+        descriptor.dpar === :mu && descriptor.member === nothing &&
+            descriptor.block === nothing || throw(ArgumentError(
+                "bootstrap: Binomial related-matrix-plus-IID simulation requires a related-matrix mean-intercept SD target"))
+        structured == (:relmat, group) || throw(ArgumentError(
+            "bootstrap: related-matrix-plus-IID simulation requires one matching relmat effect"))
+        length(re) == 1 && first(_re_kind(only(re)[1])) === :intercept &&
+            last(only(re)) === iid_group || throw(ArgumentError(
+                "bootstrap: related-matrix-plus-IID simulation requires one matching IID random intercept"))
+        A === nothing && Ainv === nothing || throw(ArgumentError(
+            "bootstrap: related-matrix-plus-IID simulation uses `K`, not `A` or `Ainv`"))
+        K === nothing && throw(ArgumentError(
+            "bootstrap: supply the same related-matrix covariance `K` used to fit the model"))
+        hasproperty(data, group) && hasproperty(data, iid_group) || throw(ArgumentError(
+            "bootstrap: data are missing a related-matrix or IID grouping column"))
+        rel_index, G = _group_index(getproperty(data, group))
+        iid_index, H = _group_index(getproperty(data, iid_group))
+        length(rel_index) == length(iid_index) == fit.nobs || throw(ArgumentError(
+            "bootstrap: related-matrix/IID group indexes do not match fitted response rows"))
+        C = Matrix{Float64}(K)
+        size(C) == (G, G) || throw(ArgumentError(
+            "bootstrap: related-matrix covariance must match first-seen levels of `$group`"))
+        factor = _checked_relmat_chol(C, group)
+        Wr, names_r = _sd_group_design(f.response, target.rhs, data,
+            rel_index, G, group; schema_cache = f.schema_cache,
+            schema_key = target.key, store_schema = false)
+        Wi, names_i = _sd_group_design(f.response, iid_target.rhs, data,
+            iid_index, H, iid_group; schema_cache = f.schema_cache,
+            schema_key = iid_target.key, store_schema = false)
+        rel_block = _sd_target_block(target.target; disambiguate = true)
+        iid_block = _sd_target_block(iid_target.target; disambiguate = true)
+        names_r == _block_coefnames(fit, rel_block) || throw(ArgumentError(
+            "bootstrap: related-matrix SD design does not match fitted block `$rel_block`"))
+        names_i == _block_coefnames(fit, iid_block) || throw(ArgumentError(
+            "bootstrap: IID SD design does not match fitted block `$iid_block`"))
+        sd_rel = _binomial_sd_scale(Wr * coef(fit, rel_block))
+        sd_iid = _binomial_sd_scale(Wi * coef(fit, iid_block))
+        eta_fixed = Vector{Float64}(predict(fit, data; type = :link))
+        length(eta_fixed) == fit.nobs || throw(ArgumentError(
+            "bootstrap: fixed Binomial predictions do not match fitted response rows"))
+        return function (rng)
+            rel_noise = factor.L * randn(rng, G)
+            iid_noise = randn(rng, H)
+            eta = eta_fixed .+ sd_rel[rel_index] .* rel_noise[rel_index] .+
+                  sd_iid[iid_index] .* iid_noise[iid_index]
+            return _simulate_once(fit, rng; mu = _mean_response(fit.family, eta))
+        end
+    end
+    if !isempty(related_targets)
+        length(related_targets) == 1 && length(targets) == 1 || throw(ArgumentError(
+            "bootstrap: Binomial structured SD simulation requires one structured SD target"))
+        target = only(related_targets)
+        descriptor = target.target
+        provider = descriptor.level
+        descriptor.dpar === :mu && descriptor.member === nothing &&
+            descriptor.block === nothing || throw(ArgumentError(
+                "bootstrap: Binomial structured SD simulation requires the sole structured mean coefficient"))
+        isempty(re) && structured == (provider, descriptor.group) ||
+            throw(ArgumentError("bootstrap: Binomial structured SD simulation requires one `$provider` effect and no other random effects"))
+        matrix = provider === :animal ? A : provider === :spatial ? nothing : K
+        matrix_name = provider === :animal && Ainv !== nothing ? "Ainv" : provider === :animal ? "A" : provider === :spatial ? "coords" : "K"
+        provider === :animal && Ainv !== nothing && A !== nothing && throw(ArgumentError(
+            "bootstrap: supply only one of `A` and `Ainv` for Binomial animal SD simulation"))
+        provider === :animal && Ainv !== nothing && (matrix = Ainv)
+        group = descriptor.group
+        hasproperty(data, group) || throw(ArgumentError(
+            "bootstrap: data are missing structured grouping column `$group`"))
+        gidx, G = _group_index(getproperty(data, group))
+        provider === :spatial && (matrix = _spatial_covariance_from_coords(
+            group, G, coords, nothing))
+        matrix === nothing && throw(ArgumentError(
+            "bootstrap: supply the same structured covariance `$matrix_name` used to fit the Binomial $provider SD model"))
+        C = Matrix{Float64}(matrix)
+        size(C) == (G, G) || throw(ArgumentError(
+            "bootstrap: Binomial $provider matrix must match the number of observed group levels in first-seen order"))
+        factor = if provider === :animal && Ainv !== nothing
+            Q = sparse(C)
+            all(isfinite, nonzeros(Q)) || throw(ArgumentError(
+                "bootstrap: animal `Ainv` must contain only finite values"))
+            asymmetry = norm(Q - transpose(Q), Inf)
+            scale = max(norm(Q, Inf), 1.0)
+            asymmetry <= 1e-10 * scale || throw(ArgumentError(
+                "bootstrap: animal `Ainv` must be symmetric"))
+            Q = sparse(Symmetric((Q + transpose(Q)) / 2))
+            qchol = cholesky(Symmetric(Q); check = false)
+            issuccess(qchol) || throw(ArgumentError(
+                "bootstrap: animal `Ainv` must be positive definite"))
+            qchol
+        else
+            _checked_relmat_chol(C, group)
+        end
+        slope = provider === :spatial ? spatial_slope : animal_slope
+        re_design = if slope === nothing
+            ones(Float64, length(gidx))
+        else
+            hasproperty(data, slope) || throw(ArgumentError(
+                "bootstrap: data are missing $provider slope predictor `$slope`"))
+            raw = getproperty(data, slope)
+            raw isa AbstractVector{<:Real} && length(raw) == length(gidx) &&
+                all(isfinite, raw) || throw(ArgumentError(
+                "bootstrap: $provider slope predictor `$slope` must be numeric, finite, and have one value per response"))
+            Float64.(raw)
+        end
+        Zg, names = _sd_group_design(f.response, target.rhs, data, gidx, G, group;
+            schema_cache = f.schema_cache, schema_key = target.key, store_schema = false)
+        names == _block_coefnames(fit, :sd) || throw(ArgumentError(
+            "bootstrap: the structured SD design columns do not match fitted block `:sd`"))
+        group_sd = _binomial_structured_sd_group_scale(Zg, coef(fit, :sd))
+        eta_fixed = Vector{Float64}(predict(fit, data; type = :link))
+        length(eta_fixed) == length(gidx) == fit.nobs || throw(ArgumentError(
+            "bootstrap: Binomial structured prediction, grouping, and fitted response lengths do not match"))
+        return function (rng)
+            noise = provider === :animal && Ainv !== nothing ?
+                _binomial_animal_precision_draw(rng, factor, G) :
+                (factor.L * randn(rng, G))
+            b = group_sd .* noise
+            mu_star = _mean_response(fit.family, eta_fixed .+ re_design .* b[gidx])
+            return _simulate_once(fit, rng; mu = mu_star)
+        end
+    end
+    iid_targets = filter(item -> item.target.level === :iid, targets)
+    phylo_targets = _sdphylo_parts(f)
+    structured_sim = nothing
+    if structured !== nothing
+        first(structured) === :phylo || throw(ArgumentError(
+            "bootstrap: marginal simulation for Binomial SD regression supports the phylogenetic structured provider only"))
+        length(phylo_targets) == 1 && first(only(phylo_targets)) === last(structured) ||
+            throw(ArgumentError("bootstrap: a Binomial phylogenetic effect needs one matching `sd(group, phylogenetic)` target"))
+        phylo = tree isa AbstractString ? augmented_phy(tree) : tree
+        phylo === nothing && throw(ArgumentError(
+            "bootstrap: supply the same phylogenetic tree used to fit the Binomial SD model"))
+        group = last(structured)
+        hasproperty(data, group) || throw(ArgumentError(
+            "bootstrap: data are missing phylogenetic grouping column `$group`"))
+        labels = getproperty(data, group)
+        row_tip = _phylo_mean_leaf_index(phylo, labels)
+        group_index, n_group = _group_index(labels)
+        n_group == phylo.n_leaves || throw(ArgumentError(
+            "bootstrap: Binomial phylogenetic SD simulation requires data for every tree tip"))
+        _, sd_rhs = only(phylo_targets)
+        Zgroup, names = _sd_group_design(f.response, sd_rhs, data,
+            group_index, n_group, group; schema_cache = f.schema_cache,
+            schema_key = :sd_phylo, store_schema = false)
+        names == _block_coefnames(fit, :sd_phylo) || throw(ArgumentError(
+            "bootstrap: the phylogenetic SD design columns do not match fitted block `:sd_phylo`"))
+        tip_group = zeros(Int, phylo.n_leaves)
+        @inbounds for i in eachindex(row_tip)
+            tip_group[row_tip[i]] = group_index[i]
+        end
+        all(!iszero, tip_group) || throw(ArgumentError(
+            "bootstrap: Binomial phylogenetic SD simulation requires SD predictors for every tree tip"))
+        Ztip = Zgroup[tip_group, :]
+        covariance = fit.phylo_scale === :correlation ? _phylo_correlation(phylo) :
+            sigma_phy_dense(phylo; σ²_phy = 1.0)
+        Lphy = cholesky(Symmetric(Matrix{Float64}(covariance))).L
+        phy_sd = _binomial_sd_scale(Ztip * coef(fit, :sd_phylo))
+        re_design = if phylo_slope === nothing
+            ones(Float64, fit.nobs)
+        else
+            hasproperty(data, phylo_slope) || throw(ArgumentError(
+                "bootstrap: data are missing phylogenetic slope predictor `$phylo_slope`"))
+            raw = getproperty(data, phylo_slope)
+            raw isa AbstractVector{<:Real} && length(raw) == fit.nobs &&
+                all(isfinite, raw) || throw(ArgumentError(
+                "bootstrap: phylogenetic slope predictor `$phylo_slope` must be numeric, finite, and have one value per response"))
+            any(!iszero, raw) || throw(ArgumentError(
+                "bootstrap: phylogenetic slope predictor `$phylo_slope` is zero for every observation"))
+            Float64.(raw)
+        end
+        structured_sim = (; row_tip, Lphy, phy_sd, re_design,
+                          n_group = phylo.n_leaves)
+    elseif !isempty(phylo_targets)
+        throw(ArgumentError(
+            "bootstrap: a Binomial phylogenetic SD target requires its matching phylogenetic mean effect"))
+    end
+    correlated_members(term) = if term isa FunctionTerm && term.f === (+) &&
+                                  any(t -> t isa ConstantTerm && t.n == 1, term.args)
+        vars = filter(t -> t isa Term, term.args)
+        [:intercept; getproperty.(vars, :sym)]
+    else
+        nothing
+    end
+    correlated = length(re) == 1 && correlated_members(re[1][1]) !== nothing
+    effects = if correlated
+        members = correlated_members(only(re)[1])
+        1 <= length(iid_targets) <= length(members) <= 3 || throw(ArgumentError(
+            "bootstrap: correlated Binomial SD simulation supports blocks of up to three coefficients and needs at least one SD target"))
+        term, group = only(re)
+        map(members) do member
+            kind = member === :intercept ? :intercept : :slope
+            slope = kind === :slope ? member : nothing
+            (; group, member, kind, slope)
+        end
+    else
+        length(re) == length(iid_targets) || throw(ArgumentError(
+            "bootstrap: cannot align every Binomial random-effect coefficient with one SD target"))
+        map(re) do (term, group)
+            kind, slope = _re_kind(term)
+            member = kind === :intercept ? :intercept : kind === :slope ? slope : nothing
+            member === nothing && throw(ArgumentError(
+                "bootstrap: Binomial SD regression marginal simulation supports independent effects or one correlated intercept-slope block"))
+            (; group, member, kind, slope)
+        end
+    end
+    group_indices = map(effects) do effect
+        group = effect.group
+        hasproperty(data, group) || throw(ArgumentError(
+            "bootstrap: data are missing the Binomial random-effect grouping column `$group`"))
+        gidx, G = _group_index(getproperty(data, group))
+        length(gidx) == fit.nobs || throw(ArgumentError(
+            "bootstrap: grouping column `$group` does not match the fitted response rows"))
+        (gidx, G)
+    end
+    correlated && length(unique(effect.group for effect in effects)) != 1 &&
+        throw(ArgumentError(
+            "bootstrap: correlated Binomial random-effect coefficients must share one grouping variable"))
+    n = fit.nobs
+    (!correlated && length(iid_targets) != length(effects)) && throw(ArgumentError(
+        "bootstrap: each Binomial random-effect coefficient needs one SD target"))
+
+    loadings = Vector{Vector{Float64}}(undef, length(effects))
+    group_sds = Vector{Vector{Float64}}(undef, length(effects))
+    used = Set{Symbol}()
+    for (j, effect) in enumerate(effects)
+        group = effect.group
+        gidx, G = group_indices[j]
+        matches = filter(iid_targets) do item
+            t = item.target
+            t.group === effect.group && t.level === :iid && t.dpar === :mu &&
+                (t.member === nothing || t.member === effect.member)
+        end
+        length(matches) <= 1 || throw(ArgumentError(
+            "bootstrap: Binomial SD target does not uniquely identify `$(effect.group)` coefficient `$(effect.member)`"))
+        if isempty(matches)
+            correlated || throw(ArgumentError(
+                "bootstrap: a Binomial independent random effect is missing its SD target"))
+            recov = findfirst(pair -> first(pair) === :recov, fit.blocks)
+            recov === nothing && throw(ArgumentError(
+                "bootstrap: omitted correlated coefficient SD is missing from the covariance block"))
+            recov_range = last(recov)
+            recov_names = _block_coefnames(fit, :recov)
+            constant_index = findfirst(name -> endswith(name, ":log_sd_$(effect.member)"), recov_names)
+            constant_index === nothing && throw(ArgumentError(
+                "bootstrap: constant SD for correlated coefficient `$(effect.member)` is missing"))
+            group_sds[j] = fill(
+                _binomial_sd_scale(fit.theta[first(recov_range) + constant_index - 1]), G)
+            if effect.kind === :intercept
+                loadings[j] = ones(n)
+            else
+                hasproperty(data, effect.slope) || throw(ArgumentError(
+                    "bootstrap: data are missing random-slope predictor `$(effect.slope)`"))
+                raw = getproperty(data, effect.slope)
+                raw isa AbstractVector{<:Real} && length(raw) == n &&
+                    all(isfinite, raw) || throw(ArgumentError(
+                    "bootstrap: random-slope predictor `$(effect.slope)` must be numeric, finite, and have one value per response"))
+                loadings[j] = Float64.(raw)
+            end
+            continue
+        end
+        target = only(matches)
+        target.key in used && throw(ArgumentError(
+            "bootstrap: a Binomial SD target maps to more than one random-effect coefficient"))
+        push!(used, target.key)
+        loadings[j] = if effect.kind === :intercept
+            ones(n)
+        else
+            hasproperty(data, effect.slope) || throw(ArgumentError(
+                "bootstrap: data are missing random-slope predictor `$(effect.slope)`"))
+            raw = getproperty(data, effect.slope)
+            raw isa AbstractVector{<:Real} && length(raw) == n && all(isfinite, raw) ||
+                throw(ArgumentError(
+                    "bootstrap: random-slope predictor `$(effect.slope)` must be numeric, finite, and have one value per response"))
+            Float64.(raw)
+        end
+        block = _sd_target_block(target.target; disambiguate = length(targets) > 1)
+        Zg, names = _sd_group_design(f.response, target.rhs, data, gidx, G, group;
+            schema_cache = f.schema_cache, schema_key = target.key, store_schema = false)
+        names == _block_coefnames(fit, block) || throw(ArgumentError(
+            "bootstrap: the SD design columns do not match fitted block `$block`"))
+        group_sds[j] = _binomial_sd_scale(Zg * coef(fit, block))
+    end
+
+    eta_fixed = try
+        Vector{Float64}(predict(fit, data; type = :link))
+    catch err
+        throw(ArgumentError("bootstrap: cannot build the fixed Binomial link prediction: $(sprint(showerror, err))"))
+    end
+    length(eta_fixed) == n == fit.nobs || throw(ArgumentError(
+        "bootstrap: Binomial prediction, grouping, and fitted response lengths do not match"))
+    recov_range = nothing
+    correlation_eta = Float64[]
+    correlation_names = String[]
+    if correlated
+        recov = findfirst(pair -> first(pair) === :recov, fit.blocks)
+        recov === nothing && throw(ArgumentError(
+            "bootstrap: correlated Binomial SD fit is missing its covariance parameter block"))
+        recov_range = last(recov)
+        recov_names = _block_coefnames(fit, :recov)
+        correlation_names = if length(effects) == 2
+            ["$(first(effects).group):atanh_rho"]
+        elseif length(effects) == 3
+            ["$(first(effects).group):atanh_partial_rho_21",
+             "$(first(effects).group):atanh_partial_rho_31",
+             "$(first(effects).group):atanh_partial_rho_32_given_1"]
+        else
+            throw(ArgumentError(
+                "bootstrap: correlated Binomial simulation requires two or three coefficients"))
+        end
+        correlation_indices = map(correlation_names) do name
+            findfirst(==(name), recov_names)
+        end
+        all(!isnothing, correlation_indices) || throw(ArgumentError(
+            "bootstrap: correlated Binomial SD fit is missing its named correlation parameters"))
+        correlation_eta = Float64[fit.theta[first(recov_range) + i - 1]
+                                  for i in correlation_indices]
+    end
+    return function (rng)
+        eta = copy(eta_fixed)
+        if correlated
+            gidx, G = group_indices[1]
+            q = length(effects)
+            u = randn(rng, q, G)
+            if q == 2
+                rho = tanh(only(correlation_eta))
+                innovation = _binomial_stable_sech(only(correlation_eta))
+                b0 = group_sds[1] .* u[1, :]
+                b1 = group_sds[2] .* (rho .* u[1, :] .+ innovation .* u[2, :])
+                eta .+= b0[gidx] .+ loadings[2] .* b1[gidx]
+            else
+                partials = tanh.(correlation_eta)
+                innovations = _binomial_stable_sech.(correlation_eta)
+                p21, p31, p32 = partials
+                s21, s31, s32 = innovations
+                b0 = group_sds[1] .* u[1, :]
+                b1 = group_sds[2] .* (p21 .* u[1, :] .+ s21 .* u[2, :])
+                b2 = group_sds[3] .* (p31 .* u[1, :] .+ s31 .* p32 .* u[2, :] .+
+                                       s31 .* s32 .* u[3, :])
+                eta .+= b0[gidx] .+ loadings[2] .* b1[gidx] .+
+                        loadings[3] .* b2[gidx]
+            end
+        else
+            for (j, (gidx, G)) in enumerate(group_indices)
+                random_coefficients = group_sds[j] .* randn(rng, G)
+                eta .+= loadings[j] .* random_coefficients[gidx]
+            end
+        end
+        if structured_sim !== nothing
+            phy_effect = structured_sim.phy_sd .* (
+                structured_sim.Lphy * randn(rng, structured_sim.n_group))
+            eta .+= structured_sim.re_design .* phy_effect[structured_sim.row_tip]
+        end
+        mu_star = _mean_response(fit.family, eta)
+        return _simulate_once(fit, rng; mu = mu_star)
+    end
+end
+
+function _binomial_phylo_interaction_sd_marginal_simulator(fit::DrmFit, data,
+                                                            tree1, tree2)
+    tree1 === nothing && throw(ArgumentError(
+        "bootstrap: supply the same `tree1` used to fit the phylogenetic-interaction model"))
+    tree2 === nothing && throw(ArgumentError(
+        "bootstrap: supply the same `tree2` used to fit the phylogenetic-interaction model"))
+    f = fit.formula
+    target = only(filter(item ->
+        item.target.level === :phylogenetic_interaction, _sd_target_parts(f)))
+    marker = _binomial_phylo_interaction_parts(Dict(f.forms)[:mu])
+    marker === nothing && throw(ArgumentError(
+        "bootstrap: fitted interaction SD formula has no phylo_interaction() marker"))
+    host = getproperty(data, marker.group1)
+    pollinator = getproperty(data, marker.group2)
+    pair = getproperty(data, target.target.group)
+    length(host) == length(pollinator) == length(pair) == fit.nobs ||
+        throw(ArgumentError("bootstrap: host, pollinator, pair, and fitted rows do not align"))
+    (any(ismissing, host) || any(ismissing, pollinator) || any(ismissing, pair)) &&
+        throw(ArgumentError("bootstrap: interaction grouping columns cannot contain missing values"))
+    pair_index, Gpair = _group_index(pair)
+    pair_to_combo = Dict{Int,Tuple{String,String}}()
+    combo_to_pair = Dict{Tuple{String,String},Int}()
+    for i in eachindex(pair_index)
+        combo = (string(host[i]), string(pollinator[i]))
+        group = pair_index[i]
+        haskey(pair_to_combo, group) && pair_to_combo[group] != combo &&
+            throw(ArgumentError("bootstrap: each pair ID must identify one host-pollinator combination"))
+        haskey(combo_to_pair, combo) && combo_to_pair[combo] != group &&
+            throw(ArgumentError("bootstrap: each host-pollinator combination must have one pair ID"))
+        pair_to_combo[group] = combo
+        combo_to_pair[combo] = group
+    end
+    Q1, node1, _ = _poisson_phylo_setup(tree1, host)
+    Q2, node2, _ = _poisson_phylo_setup(tree2, pollinator)
+    Q = kron(Q2, Q1)
+    leaf_node = (node2 .- 1) .* size(Q1, 1) .+ node1
+    factor = cholesky(Symmetric(Q); check = false)
+    issuccess(factor) || throw(ArgumentError(
+        "bootstrap: the supplied tree pair gives a non-positive-definite interaction precision"))
+    ndr = merge(NamedTuple(pairs(data)),
+                NamedTuple{(f.response,)}((zeros(fit.nobs),)))
+    Zpair, names = _sd_group_design(f.response, target.rhs, data,
+        pair_index, Gpair, target.target.group; schema_cache = f.schema_cache,
+        schema_key = target.key, store_schema = false)
+    block = _sd_target_block(target.target; disambiguate = false)
+    names == _block_coefnames(fit, block) || throw(ArgumentError(
+        "bootstrap: phylogenetic-interaction SD design differs from the fitted coefficient schema"))
+    sd_pair = _binomial_sd_scale(Zpair * coef(fit, block))
+    eta_fixed = Vector{Float64}(predict(fit, data; type = :link))
+    length(eta_fixed) == fit.nobs || throw(ArgumentError(
+        "bootstrap: fixed Binomial predictions do not match fitted responses"))
+    re_design = if marker.slope === nothing
+        ones(Float64, fit.nobs)
+    else
+        hasproperty(data, marker.slope) || throw(ArgumentError(
+            "bootstrap: phylogenetic-interaction slope predictor `$(marker.slope)` is missing from data"))
+        raw_slope = getproperty(data, marker.slope)
+        raw_slope isa AbstractVector{<:Real} && length(raw_slope) == fit.nobs &&
+            all(isfinite, raw_slope) || throw(ArgumentError(
+            "bootstrap: phylogenetic-interaction slope predictor `$(marker.slope)` must be numeric, finite, and have one value per fitted response"))
+        Float64.(raw_slope)
+    end
+    return function (rng)
+        latent = factor.UP \ randn(rng, size(Q, 1))
+        eta = eta_fixed .+ sd_pair[pair_index] .* latent[leaf_node] .* re_design
+        return _simulate_once(fit, rng; mu = _mean_response(fit.family, eta))
+    end
+end
+
+function _poisson_structured_sd_marginal_simulator(
+    fit::DrmFit, data, matrix; provider::Symbol, animal_slope = nothing)
+    f = fit.formula
+    targets = _sd_target_parts(f)
+    length(targets) == 1 || throw(ArgumentError(
+        "bootstrap: Poisson structured SD simulation requires one covariance SD target"))
+    target = only(targets)
+    descriptor = target.target
+    (descriptor.level === provider && provider in (:relmat, :animal) &&
+     descriptor.dpar === :mu && descriptor.block === nothing) ||
+        throw(ArgumentError("bootstrap: Poisson structured SD simulation requires one mean structured target"))
+    rhs = Dict(f.forms)
+    _, re, metav, structured, _, _, fitted_animal_slope = _split_ranef(
+        rhs[:mu]; allow_animal_slope = provider === :animal,
+        allow_relmat_slope = provider === :relmat)
+    expected_member = fitted_animal_slope === nothing ? :intercept : fitted_animal_slope
+    descriptor.member in (nothing, expected_member) || throw(ArgumentError(
+        "bootstrap: Poisson structured SD target does not match coefficient `$(expected_member)`."))
+    metav === nothing && isempty(re) && structured == (provider, descriptor.group) ||
+        throw(ArgumentError("bootstrap: Poisson structured SD simulation requires one matching structured mean coefficient and no other random effects"))
+    fitted_animal_slope == animal_slope || throw(ArgumentError(
+        "bootstrap: Poisson animal SD simulator slope does not match the fitted mean effect"))
+    matrix === nothing && throw(ArgumentError(
+        "bootstrap: supply the same covariance matrix used to fit the Poisson $(provider) SD model"))
+    matrix_name = provider === :animal ? "animal" : "relmat"
+    group = descriptor.group
+    hasproperty(data, group) || throw(ArgumentError(
+        "bootstrap: data are missing Poisson $(matrix_name) grouping column `$group`"))
+    gidx, G = _group_index(getproperty(data, group))
+    C = Matrix{Float64}(matrix)
+    size(C) == (G, G) || throw(ArgumentError(
+        "bootstrap: Poisson $(matrix_name) covariance matrix must match the number of observed group levels in first-seen order"))
+    factor = _poisson_structured_sd_factor(C, G, matrix_name; normalize = false)
+    Zg, names = _sd_group_design(f.response, target.rhs, data, gidx, G, group;
+        schema_cache = f.schema_cache, schema_key = target.key, store_schema = false)
+    names == _block_coefnames(fit, :sd) || throw(ArgumentError(
+        "bootstrap: Poisson $(matrix_name) SD design columns do not match fitted block `:sd`"))
+    sd_group = exp.(Zg * coef(fit, :sd))
+    loading = fitted_animal_slope === nothing ? ones(Float64, length(gidx)) :
+        _poisson_animal_slope_loading(data, fitted_animal_slope, length(gidx))
+    eta_fixed = Vector{Float64}(predict(fit, data; type = :link))
+    length(eta_fixed) == fit.nobs == length(gidx) || throw(ArgumentError(
+        "bootstrap: Poisson $(matrix_name) prediction, grouping, and fitted response lengths do not match"))
+    return function (rng)
+        u = sd_group .* (factor.L * randn(rng, G))
+        mu_star = _mean_response(fit.family, eta_fixed .+ loading .* u[gidx])
+        return _simulate_once(fit, rng; mu = mu_star)
+    end
+end
+
+function _poisson_structured_sd_factor(matrix, G::Int, provider::AbstractString;
+                                        normalize::Bool = false)
+    C = Matrix{Float64}(matrix)
+    size(C) == (G, G) || throw(ArgumentError(
+        "bootstrap: Poisson $(provider) covariance matrix must match first-seen group order"))
+    d = sqrt.(diag(C))
+    all(x -> isfinite(x) && x > 0, d) || throw(ArgumentError(
+        "bootstrap: Poisson $(provider) covariance matrix must have a positive finite diagonal"))
+    covariance = normalize ? C ./ (d * d') : C
+    factor = cholesky(Symmetric(covariance); check = false)
+    issuccess(factor) || throw(ArgumentError(
+        "bootstrap: Poisson $(provider) covariance matrix must be positive definite"))
+    return factor
+end
+
+function _poisson_animal_slope_marginal_simulator(fit::DrmFit, data, matrix,
+                                                  slope::Symbol)
+    f = fit.formula
+    rhs = Dict(f.forms)
+    fixed_mu, re, metav, structured, _, _, fitted_slope = _split_ranef(
+        rhs[:mu]; allow_animal_slope = true)
+    metav === nothing && isempty(re) && structured !== nothing &&
+        first(structured) === :animal && fitted_slope === slope || throw(ArgumentError(
+        "bootstrap: Poisson animal-slope simulation requires one matching animal mean slope"))
+    fixed_mu, off = _extract_offset(fixed_mu)
+    off === nothing || throw(ArgumentError(
+        "bootstrap: Poisson animal-slope simulation does not support `offset(...)`"))
+    group = last(structured)
+    hasproperty(data, group) || throw(ArgumentError(
+        "bootstrap: data are missing Poisson animal grouping column `$group`"))
+    gidx, G = _group_index(getproperty(data, group))
+    matrix === nothing && throw(ArgumentError(
+        "bootstrap: supply the same covariance matrix used to fit the Poisson animal model"))
+    factor = _poisson_structured_sd_factor(matrix, G, "animal"; normalize = false)
+    loading = _poisson_animal_slope_loading(data, slope, length(gidx))
+    _, Xmu, _ = _design(f.response, fixed_mu, data)
+    eta_fixed = Xmu * coef(fit, :mu)
+    sd_group = fill(exp(only(coef(fit, :resd))), G)
+    return function (rng)
+        u = sd_group .* (factor.L * randn(rng, G))
+        mu_star = _mean_response(fit.family, eta_fixed .+ loading .* u[gidx])
+        return _simulate_once(fit, rng; mu = mu_star)
+    end
+end
+
+function _gamma_structured_sd_marginal_simulator(fit::DrmFit, data, matrix;
+                                                 provider::Symbol,
+                                                 animal_slope = nothing)
+    f = fit.formula
+    targets = _sd_target_parts(f)
+    length(targets) == 1 || throw(ArgumentError(
+        "bootstrap: Gamma structured SD simulation requires one structured SD target"))
+    target = only(targets)
+    descriptor = target.target
+    descriptor.level === provider && provider in (:relmat, :animal) &&
+        descriptor.dpar === :mu && descriptor.block === nothing ||
+        throw(ArgumentError(
+            "bootstrap: Gamma structured SD simulation requires one mean structured target"))
+    rhs = Dict(f.forms)
+    _, re, metav, structured, _, _, fitted_animal_slope = _split_ranef(
+        rhs[:mu]; allow_animal_slope = provider === :animal)
+    expected_member = fitted_animal_slope === nothing ? :intercept : fitted_animal_slope
+    descriptor.member in (nothing, expected_member) ||
+        throw(ArgumentError(
+            "bootstrap: Gamma structured SD target does not match its fitted coefficient"))
+    metav === nothing && isempty(re) && structured == (provider, descriptor.group) ||
+        throw(ArgumentError(
+            "bootstrap: Gamma structured SD simulation requires one matching mean effect and no other random effects"))
+    fitted_animal_slope == animal_slope || throw(ArgumentError(
+        "bootstrap: Gamma animal SD simulator slope does not match the fitted mean effect"))
+    matrix === nothing && throw(ArgumentError(
+        "bootstrap: supply the same covariance matrix used to fit the Gamma $provider SD model"))
+    group = descriptor.group
+    hasproperty(data, group) || throw(ArgumentError(
+        "bootstrap: data are missing Gamma structured grouping column `$group`"))
+    gidx, G = _group_index(getproperty(data, group))
+    C = Matrix{Float64}(matrix)
+    size(C) == (G, G) || throw(ArgumentError(
+        "bootstrap: Gamma structured covariance matrix must match first-seen group order"))
+    d = sqrt.(diag(C))
+    all(x -> isfinite(x) && x > 0, d) || throw(ArgumentError(
+        "bootstrap: Gamma structured covariance matrix must have a positive finite diagonal"))
+    covariance = Symmetric(C)   # K and A enter RAW, as in the fit
+    factor = cholesky(covariance; check = false)
+    issuccess(factor) || throw(ArgumentError(
+        "bootstrap: Gamma structured covariance matrix must be positive definite"))
+    Zg, names = _sd_group_design(f.response, target.rhs, data, gidx, G, group;
+        schema_cache = f.schema_cache, schema_key = target.key, store_schema = false)
+    names == _block_coefnames(fit, :sd) || throw(ArgumentError(
+        "bootstrap: Gamma structured SD design columns do not match fitted block `:sd`"))
+    sd_group = exp.(Zg * coef(fit, :sd))
+    loading = if animal_slope === nothing
+        ones(Float64, length(gidx))
+    else
+        hasproperty(data, animal_slope) || throw(ArgumentError(
+            "bootstrap: data are missing Gamma animal slope predictor `$animal_slope`"))
+        raw = getproperty(data, animal_slope)
+        raw isa AbstractVector{<:Real} && length(raw) == length(gidx) &&
+            all(isfinite, raw) || throw(ArgumentError(
+                "bootstrap: Gamma animal slope predictor `$animal_slope` must be finite numeric values with one value per response"))
+        Float64.(raw)
+    end
+    eta_fixed = Vector{Float64}(predict(fit, data; type = :link))
+    length(eta_fixed) == fit.nobs == length(gidx) || throw(ArgumentError(
+        "bootstrap: Gamma structured prediction, grouping, and fitted response lengths do not match"))
+    return function (rng)
+        u = sd_group .* (factor.L * randn(rng, G))
+        mu_star = _mean_response(fit.family, eta_fixed .+ loading .* u[gidx])
+        return _simulate_once(fit, rng; mu = mu_star)
+    end
+end
+
+function _gamma_animal_intercept_slope_sd_marginal_simulator(fit::DrmFit,
+        data, matrix; animal_block)
+    f = fit.formula
+    targets = _sd_target_parts(f)
+    length(targets) == 2 || throw(ArgumentError(
+        "bootstrap: Gamma animal intercept-and-slope simulation needs two SD targets"))
+    group, slope = animal_block.group, animal_block.slope
+    rhs = Dict(f.forms)
+    parsed = _animal_intercept_slope(rhs[:mu])
+    parsed == animal_block || throw(ArgumentError(
+        "bootstrap: Gamma animal intercept-and-slope simulator does not match the fitted mean effect"))
+    matrix === nothing && throw(ArgumentError(
+        "bootstrap: supply the same relatedness matrix `A` used to fit the Gamma animal model"))
+    hasproperty(data, group) && hasproperty(data, slope) || throw(ArgumentError(
+        "bootstrap: data are missing Gamma animal grouping or slope columns"))
+    gidx, G = _group_index(getproperty(data, group))
+    C = Matrix{Float64}(matrix)
+    size(C) == (G, G) || throw(ArgumentError(
+        "bootstrap: Gamma animal covariance matrix must match first-seen group order"))
+    d = sqrt.(diag(C))
+    all(x -> isfinite(x) && x > 0, d) || throw(ArgumentError(
+        "bootstrap: Gamma animal covariance matrix must have a positive finite diagonal"))
+    factor = cholesky(Symmetric(C); check = false)
+    issuccess(factor) || throw(ArgumentError(
+        "bootstrap: Gamma animal covariance matrix must be positive definite"))
+    ordered = [only(filter(item -> item.target.member === member, targets))
+               for member in (:intercept, slope)]
+    scales = Vector{Vector{Float64}}(undef, 2)
+    blocks = Vector{Symbol}(undef, 2)
+    for j in 1:2
+        target = ordered[j]
+        blocks[j] = _sd_target_block(target.target; disambiguate = true)
+        Zg, names = _sd_group_design(f.response, target.rhs, data, gidx, G, group;
+            schema_cache = f.schema_cache, schema_key = target.key,
+            store_schema = false)
+        names == _block_coefnames(fit, blocks[j]) || throw(ArgumentError(
+            "bootstrap: Gamma animal SD design does not match fitted block `$(blocks[j])`"))
+        scales[j] = exp.(Zg * coef(fit, blocks[j]))
+    end
+    x = getproperty(data, slope)
+    x isa AbstractVector{<:Real} && length(x) == fit.nobs && all(isfinite, x) ||
+        throw(ArgumentError("bootstrap: Gamma animal slope must be finite numeric values with one value per response"))
+    eta_fixed = Vector{Float64}(predict(fit, data; type = :link))
+    return function (rng)
+        b0 = scales[1] .* (factor.L * randn(rng, G))
+        b1 = scales[2] .* (factor.L * randn(rng, G))
+        mu_star = _mean_response(fit.family,
+            eta_fixed .+ b0[gidx] .+ Float64.(x) .* b1[gidx])
+        _simulate_once(fit, rng; mu = mu_star)
+    end
+end
+
+function _draw_phylo_raw_field(rng::Random.AbstractRNG, phy::AugmentedPhy)
+    field = zeros(Float64, phy.n_total)
+    seen = falses(phy.n_total)
+    seen[phy.root_index] = true
+    queue = [phy.root_index]
+    Q = phy.Q_topology
+    row_index = rowvals(Q)
+    values = nonzeros(Q)
+    cursor = 1
+    while cursor <= length(queue)
+        parent = queue[cursor]
+        cursor += 1
+        for k in nzrange(Q, parent)
+            child = row_index[k]
+            child == parent && continue
+            seen[child] && continue
+            edge_precision = -values[k]
+            isfinite(edge_precision) && edge_precision > 0 || throw(ArgumentError(
+                "bootstrap: phylogenetic tree has a non-positive or non-finite branch precision"))
+            field[child] = field[parent] + randn(rng) / sqrt(edge_precision)
+            seen[child] = true
+            push!(queue, child)
+        end
+    end
+    all(seen) || throw(ArgumentError(
+        "bootstrap: phylogenetic tree topology is disconnected"))
+    return field
+end
+
+function _draw_scaled_phylo_tip_field(rng::Random.AbstractRNG, phy::AugmentedPhy,
+                                      tip_sd::AbstractVector{<:Real})
+    length(tip_sd) == length(phy.leaf_indices) || throw(DimensionMismatch(
+        "phylogenetic tip SDs must match the tree leaves"))
+    raw_field = _draw_phylo_raw_field(rng, phy)
+    return Float64.(tip_sd) .* raw_field[phy.leaf_indices]
+end
+
+function _gamma_phylo_sd_marginal_simulator(fit::DrmFit, data, tree)
+    f = fit.formula
+    targets = _gamma_sd_targets(f)
+    length(targets) == 1 || throw(ArgumentError(
+        "bootstrap: Gamma phylogenetic SD simulation requires one SD target"))
+    target = only(targets)
+    descriptor = target.target
+    descriptor.level === :phylogenetic && descriptor.dpar === :mu &&
+        descriptor.member === nothing && descriptor.block === nothing ||
+        throw(ArgumentError(
+            "bootstrap: Gamma phylogenetic SD simulation requires one mean intercept target"))
+    rhs = Dict(f.forms)
+    _, re, metav, structured, structured_slope =
+        _split_ranef(rhs[:mu]; allow_phylo_slope = true)
+    isempty(re) && metav === nothing && structured == (:phylo, descriptor.group) &&
+        structured_slope === nothing || throw(ArgumentError(
+            "bootstrap: Gamma phylogenetic SD simulation requires one matching phylogenetic intercept and no other random effects"))
+    hasproperty(data, descriptor.group) || throw(ArgumentError(
+        "bootstrap: data are missing phylogenetic grouping column `$(descriptor.group)`"))
+    tree === nothing && throw(ArgumentError(
+        "bootstrap: supply the same phylogenetic tree used to fit the Gamma SD model"))
+    phy, row_tip, n_tip = _lss_phylo_group_index(
+        tree, _table_column(data, descriptor.group), descriptor.group)
+    length(phy.leaf_indices) == n_tip ||
+        error("Gamma phylogenetic tip map changed unexpectedly")
+    group_index, n_group = _group_index(_table_column(data, descriptor.group))
+    tip_group = zeros(Int, n_tip)
+    @inbounds for i in eachindex(row_tip)
+        ti, gi = row_tip[i], group_index[i]
+        tip_group[ti] == 0 || tip_group[ti] == gi || throw(ArgumentError(
+            "bootstrap: Gamma phylogenetic SD predictors must be constant within each tree tip"))
+        tip_group[ti] = gi
+    end
+    all(!iszero, tip_group) || throw(ArgumentError(
+        "bootstrap: Gamma phylogenetic SD simulation requires SD predictors for every tree tip"))
+    Zgroup, names = _sd_group_design(f.response, target.rhs, data,
+        group_index, n_group, descriptor.group; schema_cache = f.schema_cache,
+        schema_key = target.key, store_schema = false)
+    names == _block_coefnames(fit, :sd_phylo) || throw(ArgumentError(
+        "bootstrap: Gamma phylogenetic SD columns do not match fitted block `:sd_phylo`"))
+    size(Zgroup, 1) == n_group || throw(ArgumentError(
+        "bootstrap: Gamma phylogenetic SD design does not match observed groups"))
+    Ztip = Zgroup[tip_group, :]
+    tip_sd = exp.(Ztip * coef(fit, :sd_phylo))
+    eta_fixed = Vector{Float64}(predict(fit, data; type = :link))
+    length(eta_fixed) == fit.nobs == length(row_tip) || throw(ArgumentError(
+        "bootstrap: Gamma phylogenetic prediction, grouping, and fitted response lengths do not match"))
+    return function (rng)
+        scaled_tip_field = _draw_scaled_phylo_tip_field(rng, phy, tip_sd)
+        eta = eta_fixed .+ scaled_tip_field[row_tip]
+        mu_star = _mean_response(fit.family, eta)
+        return _simulate_once(fit, rng; mu = mu_star)
+    end
+end
+
+function _negbin2_hu_sd_marginal_simulator(fit::DrmFit, data, re)
+    f = fit.formula
+    targets = _sd_target_parts(f)
+    length(targets) == 1 || throw(ArgumentError(
+        "bootstrap: hurdle NB2 SD simulation requires exactly one mean SD target"))
+    target = only(targets)
+    descriptor = target.target
+    descriptor.level === :iid && descriptor.dpar === :mu && descriptor.block === nothing ||
+        throw(ArgumentError("bootstrap: hurdle NB2 SD simulation supports one ordinary mean coefficient target"))
+    length(re) == 1 || throw(ArgumentError(
+        "bootstrap: hurdle NB2 SD simulation supports one ordinary mean coefficient"))
+    term, re_group = only(re)
+    kind, slope = _re_kind(term)
+    kind in (:intercept, :slope) || throw(ArgumentError(
+        "bootstrap: hurdle NB2 SD simulation supports an intercept or independent numeric slope"))
+    member = kind === :intercept ? :intercept : slope
+    descriptor.member in (nothing, member) || throw(ArgumentError(
+        "bootstrap: hurdle NB2 SD target does not match random-effect coefficient `$member`"))
+    group = descriptor.group
+    re_group === group || throw(ArgumentError(
+        "bootstrap: hurdle NB2 SD target does not match the fitted mean grouping variable `$re_group`"))
+    only(re)[2] === group || throw(ArgumentError(
+        "bootstrap: hurdle NB2 SD target does not match the fitted mean grouping variable"))
+    hasproperty(data, group) || throw(ArgumentError(
+        "bootstrap: data are missing hurdle NB2 random-effect grouping column `$group`"))
+    gidx, G = _group_index(getproperty(data, group))
+    Zg, names = _sd_group_design(f.response, target.rhs, data, gidx, G, group;
+        schema_cache = f.schema_cache, schema_key = target.key, store_schema = false)
+    names == _block_coefnames(fit, :sd) || throw(ArgumentError(
+        "bootstrap: hurdle NB2 SD design columns do not match the fitted coefficient block"))
+    sdgroup = exp.(Zg * coef(fit, :sd))
+    loading = if kind === :intercept
+        ones(Float64, length(gidx))
+    else
+        hasproperty(data, slope) || throw(ArgumentError(
+            "bootstrap: data are missing hurdle NB2 random-slope predictor `$slope`"))
+        raw = getproperty(data, slope)
+        raw isa AbstractVector{<:Real} && length(raw) == length(gidx) &&
+            all(isfinite, raw) || throw(ArgumentError(
+                "bootstrap: hurdle NB2 random-slope predictor `$slope` must be finite numeric values with one value per response"))
+        Float64.(raw)
+    end
+    eta_fixed = Vector{Float64}(predict(fit, data; type = :link))
+    length(eta_fixed) == length(gidx) == fit.nobs || throw(ArgumentError(
+        "bootstrap: hurdle NB2 prediction, grouping, and fitted response lengths do not match"))
+    return function (rng)
+        eta = eta_fixed .+ loading .* (sdgroup .* randn(rng, G))[gidx]
+        mu_star = _mean_response(fit.family, eta)
+        return _simulate_once(fit, rng; mu = mu_star)
+    end
+end
+
+function _beta_animal_sd_marginal_simulator(fit::DrmFit, data, matrix)
+    f = fit.formula
+    targets = _sd_target_parts(f)
+    length(targets) == 1 || throw(ArgumentError(
+        "bootstrap: Beta animal SD simulation requires exactly one SD target"))
+    target = only(targets)
+    descriptor = target.target
+    descriptor.level === :animal && descriptor.dpar === :mu &&
+        descriptor.block === nothing && descriptor.member in (nothing, :intercept) ||
+        throw(ArgumentError("bootstrap: Beta animal SD simulation requires one animal mean-intercept target"))
+    rhs = Dict(f.forms)
+    _, re, metav, structured = _split_ranef(rhs[:mu])
+    metav === nothing && isempty(re) &&
+        _collect_structured(rhs[:mu]) == [(:animal, descriptor.group)] ||
+        throw(ArgumentError("bootstrap: Beta animal SD simulation requires exactly one matching animal mean intercept"))
+    group = descriptor.group
+    hasproperty(data, group) || throw(ArgumentError(
+        "bootstrap: data are missing Beta animal group column `$group`"))
+    gidx, G = _group_index(getproperty(data, group))
+    matrix === nothing && throw(ArgumentError(
+        "bootstrap: supply the same covariance matrix used to fit the Beta animal model"))
+    size(matrix) == (G, G) || throw(ArgumentError(
+        "bootstrap: Beta animal covariance matrix must match first-seen group order"))
+    C = Matrix{Float64}(matrix)
+    d = sqrt.(diag(C))
+    all(x -> isfinite(x) && x > 0, d) || throw(ArgumentError(
+        "bootstrap: Beta animal covariance matrix must have a positive finite diagonal"))
+    R = Symmetric(C)   # A enters RAW, as in the fit
+    factor = cholesky(R; check = false)
+    issuccess(factor) || throw(ArgumentError(
+        "bootstrap: Beta animal covariance matrix must be positive definite"))
+    Wsd, names = _sd_group_design(f.response, target.rhs, data, gidx, G, group;
+        schema_cache = f.schema_cache, schema_key = target.key)
+    get(Dict(fit.coefnames), :sd, String[]) == names || throw(ArgumentError(
+        "bootstrap: Beta animal SD design does not match the fitted SD block"))
+    size(Wsd, 1) == G || throw(ArgumentError(
+        "bootstrap: Beta animal SD design must have one row per animal group"))
+    sd_group = exp.(Wsd * coef(fit, :sd))
+    eta_fixed = Vector{Float64}(predict(fit, data; type = :link))
+    return function (rng)
+        u = sd_group .* (factor.L * randn(rng, G))
+        mu_star = 1 ./ (1 .+ exp.(-clamp.(eta_fixed .+ u[gidx], -30.0, 30.0)))
+        return _simulate_once(fit, rng; mu = mu_star)
+    end
+end
+
+function _negbin2_animal_sd_precision_marginal_simulator(fit::DrmFit, data, Ainv)
+    f = fit.formula
+    targets = filter(item -> item.target.level === :animal, _sd_target_parts(f))
+    length(targets) == 1 || throw(ArgumentError(
+        "bootstrap: NB2 animal precision simulation requires exactly one animal SD target"))
+    target = only(targets)
+    descriptor = target.target
+    descriptor.dpar === :mu && descriptor.block === nothing &&
+        descriptor.member in (nothing, :intercept) || throw(ArgumentError(
+        "bootstrap: NB2 animal precision simulation requires one animal mean-intercept SD target"))
+    group = descriptor.group
+    hasproperty(data, group) || throw(ArgumentError(
+        "bootstrap: data are missing NB2 animal grouping column `$group`"))
+    rhs = Dict(f.forms)
+    _, re, metav, structured, structured_slope, _, _ =
+        _split_ranef(rhs[:mu]; allow_phylo_slope = true)
+    isempty(re) && metav === nothing && structured == (:animal, group) &&
+        structured_slope === nothing || throw(ArgumentError(
+        "bootstrap: NB2 animal precision simulation requires one animal random intercept and no other random effects"))
+    Ainv === nothing && throw(ArgumentError(
+        "bootstrap: supply the same animal precision `Ainv` used to fit the NB2 model"))
+    labels = _table_column(data, group)
+    gidx, G = _group_index(labels)
+    Q, precision_index = _nb2_animal_precision_setup(Ainv, labels, group)
+    precision_index == gidx || throw(ArgumentError(
+        "bootstrap: NB2 animal precision labels do not match the fitted group order"))
+    factor = cholesky(Symmetric(Q); check = false)
+    issuccess(factor) || throw(ArgumentError(
+        "bootstrap: NB2 animal precision must be positive definite"))
+    Wsd, names = _sd_group_design(f.response, target.rhs, data, gidx, G, group;
+        schema_cache = f.schema_cache, schema_key = target.key, store_schema = false)
+    names == _block_coefnames(fit, :sd) || throw(ArgumentError(
+        "bootstrap: NB2 animal SD design columns do not match the fitted `:sd` block"))
+    size(Wsd, 1) == G || throw(ArgumentError(
+        "bootstrap: NB2 animal SD design must have one row per animal group"))
+    sd_group = exp.(Wsd * coef(fit, :sd))
+    eta_fixed = Vector{Float64}(predict(fit, data; type = :link))
+    length(eta_fixed) == fit.nobs == length(gidx) || throw(ArgumentError(
+        "bootstrap: NB2 fitted prediction and animal grouping lengths do not match"))
+    return function (rng)
+        animal_field = factor.UP \ randn(rng, G)
+        eta = eta_fixed .+ (sd_group .* animal_field)[gidx]
+        return _simulate_once(fit, rng; mu = _mean_response(fit.family, eta))
+    end
+end
+
+_binomial_animal_precision_draw(rng::Random.AbstractRNG, factor, n::Int) =
+    factor.UP \ randn(rng, n)
+
+function _betabinomial_sigma_sd_marginal_simulator(fit::DrmFit, data)
+    f = fit.formula
+    targets = filter(item -> item.target.dpar === :sigma, _sd_target_parts(f))
+    length(targets) == 1 || throw(ArgumentError(
+        "bootstrap: BetaBinomial sigma SD simulation requires exactly one sigma target"))
+    target = only(targets)
+    descriptor = target.target
+    (descriptor.level === :iid && descriptor.block === nothing) ||
+        throw(ArgumentError(
+            "bootstrap: BetaBinomial sigma SD simulation requires one ordinary sigma coefficient"))
+    rhs = Dict(f.forms)
+    fixed_sigma, re, mv, st = _split_ranef(rhs[:sigma])
+    valid_re = !isempty(re) && length(re) == 1 && mv === nothing && st === nothing
+    kind, slope = valid_re ? _re_kind(re[1][1]) : (:none, nothing)
+    member = kind === :intercept ? nothing : kind === :slope ? slope : :unsupported
+    valid_re && kind in (:intercept, :slope) && re[1][2] === descriptor.group &&
+        descriptor.member === member ||
+        throw(ArgumentError(
+            "bootstrap: BetaBinomial sigma SD simulation requires one matching sigma random coefficient"))
+    hasproperty(data, descriptor.group) || throw(ArgumentError(
+        "bootstrap: data are missing sigma random-effect group `$(descriptor.group)`"))
+    gidx, G = _group_index(getproperty(data, descriptor.group))
+    _, Xsigma, nmsigma = _design(f.response, fixed_sigma, data;
+        schema_cache = f.schema_cache, schema_key = :sigma, store_schema = false)
+    nmsigma == _block_coefnames(fit, :sigma) || throw(ArgumentError(
+        "bootstrap: BetaBinomial sigma design does not match the fitted coefficient schema"))
+    Wsd, nmsd = _sd_group_design(f.response, target.rhs, data, gidx, G,
+        descriptor.group; schema_cache = f.schema_cache, schema_key = target.key,
+        store_schema = false)
+    nmsd == _block_coefnames(fit, :sd) || throw(ArgumentError(
+        "bootstrap: BetaBinomial sigma SD design does not match the fitted coefficient schema"))
+    eta_fixed = Xsigma * coef(fit, :sigma)
+    sd_group = exp.(Wsd * coef(fit, :sd))
+    re_design = if kind === :intercept
+        ones(length(gidx))
+    else
+        hasproperty(data, slope) || throw(ArgumentError(
+            "bootstrap: data are missing sigma random-slope predictor `$slope`"))
+        raw = getproperty(data, slope)
+        raw isa AbstractVector{<:Real} && length(raw) == length(gidx) &&
+            all(isfinite, raw) || throw(ArgumentError(
+                "bootstrap: sigma random-slope predictor `$slope` must be a finite numeric vector with one value per response"))
+        Float64.(raw)
+    end
+    length(gidx) == length(eta_fixed) == fit.nobs || throw(ArgumentError(
+        "bootstrap: BetaBinomial sigma predictions, groups, and fitted responses do not align"))
+    return function (rng)
+        eta_sigma = eta_fixed .+ re_design .* sd_group[gidx] .* randn(rng, G)[gidx]
+        sigma_star = exp.(clamp.(eta_sigma, -15.0, 15.0))
+        return _simulate_once(fit, rng; sigma = sigma_star)
+    end
 end
 
 # A Gaussian `sigma ~ 1 + (1 | g)` (and the same term next to a mean RE)
@@ -2359,8 +3544,9 @@ function _sigma_only_marginal_simulator(fit::DrmFit, data)
     end
 end
 
-function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing, tree=nothing,
-                                   coords=nothing)
+function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing,
+                                   Ainv=nothing, tree=nothing, tree1=nothing,
+                                   tree2=nothing, coords=nothing)
     # temporal(): `simulate` already draws the full marginal model (a fresh chain
     # per series and a fresh `(1 | id)` intercept), so it IS the marginal simulator.
     _is_temporal_fit(fit) && return rng -> _temporal_simulate(fit, rng)
@@ -2373,7 +3559,44 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing, tree
     (fit.family isa Gaussian && !haskey(fit.scales, :sigma)) && return nothing
     rhs = Dict(fit.formula.forms)
     haskey(rhs, :mu) || return nothing
-    _, re, metav_ms, structured, structured_slope = _split_ranef(rhs[:mu]; allow_phylo_slope = true)
+    if fit.family isa Binomial && any(item ->
+        item.target.level === :phylogenetic_interaction,
+        _sd_target_parts(fit.formula))
+        return _binomial_phylo_interaction_sd_marginal_simulator(
+            fit, data, tree1, tree2)
+    end
+    if fit.family isa BetaBinomial && any(
+        item -> item.target.dpar === :sigma, _sd_target_parts(fit.formula))
+        return _betabinomial_sigma_sd_marginal_simulator(fit, data)
+    end
+    if fit.family isa Beta && !isempty(_sd_target_parts(fit.formula)) &&
+       any(item -> item.target.level === :animal, _sd_target_parts(fit.formula))
+        return _beta_animal_sd_marginal_simulator(fit, data, A)
+    end
+    allow_binomial_animal_slope = fit.family isa Binomial &&
+        !isempty(_sd_target_parts(fit.formula))
+    allow_binomial_phylo_slope_only = fit.family isa Binomial &&
+        !isempty(_sdphylo_parts(fit.formula))
+    allow_binomial_relmat_slope = fit.family isa Union{Binomial,Poisson} &&
+        any(item.target.level === :relmat for item in _sd_target_parts(fit.formula))
+    allow_binomial_spatial_slope = fit.family isa Binomial &&
+        any(item.target.level === :spatial for item in _sd_target_parts(fit.formula))
+    allow_gamma_animal_slope = fit.family isa Gamma &&
+        !isempty(_sd_target_parts(fit.formula))
+    allow_gamma_animal_intercept_slope = allow_gamma_animal_slope
+    allow_poisson_animal_slope = fit.family isa Poisson ||
+        (fit.family isa NegBinomial2 &&
+         any(item -> item.target.level === :animal, _sd_target_parts(fit.formula)))
+    _, re, metav_ms, structured, structured_slope, _, animal_slope =
+        _split_ranef(rhs[:mu]; allow_phylo_slope = true,
+                     allow_phylo_slope_only = allow_binomial_phylo_slope_only,
+                     allow_animal_slope = allow_binomial_animal_slope ||
+                                           allow_gamma_animal_slope ||
+                                           allow_poisson_animal_slope,
+                     allow_relmat_slope = allow_binomial_relmat_slope,
+                     allow_spatial_slope = allow_binomial_spatial_slope,
+                     allow_animal_intercept_slope =
+                         allow_gamma_animal_intercept_slope)
     # A Gaussian fit with SEVERAL random fields on the mean where at least one is
     # structured or the fit has `meta_V(...)` (Arc 2: `_fit_meta_gaussian_re`, e.g.
     # `phylo(1 | sp) + (1 | study)`, and the two-structured route, e.g.
@@ -2393,7 +3616,7 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing, tree
     # A Gaussian `phylo(1 + x | g)` fit (#620) carries TWO phylogenetic fields;
     # the simulator below draws a single structured intercept, so building it
     # would silently bootstrap the wrong (intercept-only) model. Refuse.
-    structured_slope === nothing ||
+    !(fit.family isa Gaussian && structured_slope !== nothing) ||
         throw(ArgumentError("bootstrap: the marginal simulator for the Gaussian " *
             "`phylo(1 + $(structured_slope) | $(structured[2]))` two-SD random-slope fit is " *
             "not implemented (#620); use `profile` intervals or the Wald `vcov`"))
@@ -2403,9 +3626,98 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing, tree
     if isempty(re) && structured === nothing
         return _sigma_only_marginal_simulator(fit, data)
     end
+    if fit.family isa Poisson && structured !== nothing &&
+       first(structured) === :animal && animal_slope !== nothing &&
+       isempty(_sd_target_parts(fit.formula))
+        return _poisson_animal_slope_marginal_simulator(
+            fit, data, A, animal_slope)
+    end
+    if fit.family isa Binomial &&
+       (!isempty(_sd_target_parts(fit.formula)) ||
+        !isempty(_sdphylo_parts(fit.formula)))
+        return _binomial_sd_marginal_simulator(fit, data, re;
+            structured, phylo_slope = structured_slope, animal_slope,
+            spatial_slope = structured !== nothing && first(structured) === :spatial ? animal_slope : nothing,
+            K, A, Ainv, tree, coords)
+    end
+    # NB2 animal slope-only SD (`animal(0 + x | g)`): the family-generic structured
+    # simulator draws u = sd_group .* (chol(A).L * z) on the RAW A (as the NB2 fit
+    # uses), then eta = eta_fixed + x * u[g], y ~ NB2(exp(eta), sigma).
+    if fit.family isa NegBinomial2 && animal_slope !== nothing &&
+       structured !== nothing && first(structured) === :animal &&
+       any(item -> item.target.level === :animal, _sd_target_parts(fit.formula))
+        matrix = if Ainv !== nothing
+            A === nothing || throw(ArgumentError(
+                "bootstrap: supply only one of `A` and `Ainv` for NB2 animal simulation"))
+            group = last(structured)
+            Q, _ = _nb2_animal_precision_setup(Ainv, _table_column(data, group), group)
+            Matrix(inv(Symmetric(Matrix(Q))))
+        else
+            A
+        end
+        return _poisson_structured_sd_marginal_simulator(
+            fit, data, matrix; provider = :animal, animal_slope)
+    end
+    if fit.family isa NegBinomial2 && Ainv !== nothing &&
+       any(item -> item.target.level === :animal, _sd_target_parts(fit.formula))
+        A === nothing || throw(ArgumentError(
+            "bootstrap: supply only one of `A` and `Ainv` for NB2 animal simulation"))
+        return _negbin2_animal_sd_precision_marginal_simulator(fit, data, Ainv)
+    end
+    if fit.family isa Poisson && any(
+        item -> item.target.level in (:relmat, :animal), _sd_target_parts(fit.formula))
+        matching = filter(
+            item -> item.target.level in (:relmat, :animal),
+            _sd_target_parts(fit.formula))
+        length(matching) == 1 || throw(ArgumentError(
+            "bootstrap: Poisson structured SD simulation requires exactly one structured target"))
+        provider = only(matching).target.level
+        matrix = if provider === :animal && Ainv !== nothing
+            A === nothing || throw(ArgumentError(
+                "bootstrap: supply only one of `A` and `Ainv` for Poisson animal SD simulation"))
+            group = only(matching).target.group
+            labels = _table_column(data, group)
+            Q, _ = _poisson_animal_precision_setup(Ainv, labels, group)
+            Matrix(inv(Symmetric(Matrix(Q))))
+        else
+            provider === :animal ? A : K
+        end
+        return _poisson_structured_sd_marginal_simulator(
+            fit, data, matrix; provider,
+            animal_slope = animal_slope)
+    end
+    if fit.family isa Gamma && any(
+        item -> item.target.level in (:relmat, :animal), _sd_target_parts(fit.formula))
+        matching = filter(
+            item -> item.target.level in (:relmat, :animal),
+            _sd_target_parts(fit.formula))
+        animal_block = _animal_intercept_slope(rhs[:mu])
+        if animal_block !== nothing && length(matching) == 2 &&
+           all(item -> item.target.level === :animal &&
+                       item.target.group === animal_block.group, matching)
+            return _gamma_animal_intercept_slope_sd_marginal_simulator(
+                fit, data, A; animal_block)
+        end
+        length(matching) == 1 || throw(ArgumentError(
+            "bootstrap: Gamma structured SD simulation requires exactly one structured target"))
+        descriptor = only(matching).target
+        provider = descriptor.level
+        matrix = provider === :animal ? A : K
+        return _gamma_structured_sd_marginal_simulator(
+            fit, data, matrix; provider,
+            animal_slope = provider === :animal ? animal_slope : nothing)
+    end
+    if fit.family isa Gamma && !isempty(_sdphylo_parts(fit.formula))
+        return _gamma_phylo_sd_marginal_simulator(fit, data, tree)
+    end
+    if fit.family isa NegBinomial2 && haskey(fit.scales, :hu) &&
+       !isempty(_sd_target_parts(fit.formula))
+        return _negbin2_hu_sd_marginal_simulator(fit, data, re)
+    end
 
     # Which grouping factor, and what covariance does its random effect have?
     phylo_leaf = nothing   # row → tree-leaf index, set for a phylo field
+    re_weight = ones(Float64, fit.nobs)
     grp, Kg = if structured !== nothing
         g = structured[2]
         hasproperty(data, g) || return nothing
@@ -2458,10 +3770,20 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing, tree
                                            K=K, A=A, tree=tree, coords=coords))
         end
     else
-        # Ordinary `(1 | g)`: independent random intercepts, so the covariance is I.
+        # Ordinary independent scalar effect. A slope uses the supplied numeric
+        # covariate as its observation-level loading on the group coefficient.
         length(re) == 1 || return nothing
+        re_kind, re_slope = _re_kind(re[1][1])
+        re_kind in (:intercept, :slope) || return nothing
         g = re[1][2]
         hasproperty(data, g) || return nothing
+        if re_kind === :slope
+            hasproperty(data, re_slope) || return nothing
+            raw_weight = getproperty(data, re_slope)
+            raw_weight isa AbstractVector{<:Real} || return nothing
+            all(isfinite, raw_weight) || return nothing
+            re_weight = Float64.(raw_weight)
+        end
         _, G0 = _group_index(getproperty(data, g); col = g)
         (g, Matrix{Float64}(LinearAlgebra.I, G0, G0))
     end
@@ -2529,7 +3851,7 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing, tree
         return function (rng)
             u = sd_g .* (L * randn(rng, G))
             σ = sig === nothing ? sigma : sigma .* exp.(sig.τ .* randn(rng, sig.G)[sig.gidx])
-            return mu_fixed .+ u[gidx] .+ σ .* randn(rng, n)
+            return mu_fixed .+ re_weight .* u[gidx] .+ σ .* randn(rng, n)
         end
     end
 
@@ -2560,7 +3882,21 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing, tree
     length(eta_fixed) == fit.nobs || return nothing
     return function (rng)
         u = sd_g .* (L * randn(rng, G))
-        mu_star = _mean_response(fit.family, eta_fixed .+ u[gidx])
+        eta_star = eta_fixed .+ re_weight .* u[gidx]
+        if fit.family isa ZeroOneBeta
+            # The beta component has its own mean parameter. `_simulate_once`
+            # normally reads that fitted mean from the fit, so passing `mu_star`
+            # through its generic `mu` keyword would discard the newly drawn
+            # random effect. Draw the mixture directly using the updated mean.
+            mu_beta = _logistic.(clamp.(eta_star, -30.0, 30.0))
+            sigma = _scale_vector(fit, :sigma)
+            phi = @. 1 / (sigma * sigma)
+            zoi = _scale_vector(fit, :zoi)
+            coi = _scale_vector(fit, :coi)
+            return Float64[_rand_zeroonebeta(rng, mu_beta[i], phi[i], zoi[i], coi[i])
+                           for i in eachindex(mu_beta)]
+        end
+        mu_star = _mean_response(fit.family, eta_star)
         return _simulate_once(fit, rng; mu = mu_star)
     end
 end

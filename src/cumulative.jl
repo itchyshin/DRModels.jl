@@ -142,12 +142,21 @@ end
 function _drm_cumulative_fit(f::DrmFormula, fam::CumulativeLogit; data, tree = nothing, g_tol::Real = 1e-8,
              se::Bool = true)
     _drm_entry_guard(f, fam, data; tree = tree)   # #1027 #1022 #1010
+    # The response-mask wrapper rebuilds full-design outputs and does not yet
+    # preserve this route's group-specific scale design. Refuse incomplete data
+    # until that mapping is implemented rather than silently fitting a changed
+    # SD model.
+    if !isempty(_sd_parts(f)) && !all(_formula_response_observed_mask(f, data))
+        throw(ArgumentError("CumulativeLogit random-effect SD regression requires observed responses; remove incomplete rows before fitting."))
+    end
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
         drm(f, fam; data = data_observed, tree = tree, g_tol = g_tol, se = se)
     end
     missing_fit !== nothing && return missing_fit
 
-    _lss_only_gaussian_guard(f, fam)   # #544: refuse, never silently drop, sd() parts
+    sd_parts = _sd_parts(f)
+    isempty(_sdphylo_parts(f)) || throw(ArgumentError(
+        "CumulativeLogit() does not yet support predictor-dependent `sd_phylo()` formulas."))
     rhs = Dict(f.forms)
     fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
     fixed_mu, offset_term = _extract_offset(fixed_mu)   # #938: offset(z), coefficient fixed at 1
@@ -166,6 +175,34 @@ function _drm_cumulative_fit(f::DrmFormula, fam::CumulativeLogit; data, tree = n
         isempty(re) ||
             error("CumulativeLogit() phylo(1 | $grp) cannot be combined with an ordinary " *
                   "random effect on `mu` yet")
+    end
+    if !isempty(sd_parts)
+        length(sd_parts) == 1 || throw(ArgumentError(
+            "CumulativeLogit() SD regression currently requires one ordinary `sd(group) ~ …` formula."))
+        target = only(_sd_target_parts(f))
+        descriptor = target.target
+        (descriptor.level === :iid && descriptor.dpar === :mu &&
+         descriptor.block === nothing) || throw(ArgumentError(
+            "CumulativeLogit SD regression targets one ordinary mean intercept or independent numeric slope."))
+        sgrp, srhs = descriptor.group, target.rhs
+        st === nothing || throw(ArgumentError(
+            "CumulativeLogit() SD regression currently supports one ordinary random intercept or independent slope; structured effects are not admitted."))
+        length(re) == 1 || throw(ArgumentError(
+            "CumulativeLogit() SD regression currently supports one ordinary random-effect coefficient."))
+        rk, slope = _re_kind(re[1][1])
+        member = rk === :intercept ? :intercept : rk === :slope ? slope : nothing
+        rk in (:intercept, :slope) || throw(ArgumentError(
+            "CumulativeLogit() SD regression supports `(1 | group)` or one independent numeric `(0 + x | group)` slope; correlated blocks are not admitted."))
+        member === nothing && throw(ArgumentError(
+            "CumulativeLogit() SD regression requires an ordinary intercept or independent numeric slope."))
+        descriptor.member in (nothing, member) || throw(ArgumentError(
+            "CumulativeLogit SD target `coef($(descriptor.member))` does not match random-effect coefficient `$member`."))
+        re[1][2] === sgrp || throw(ArgumentError(
+            "CumulativeLogit() `sd($sgrp)` must target the grouping variable in the `mu` random effect."))
+        sd_keys = Set(item.key for item in _sd_target_parts(f))
+        any(!(p === :mu || p in sd_keys ||
+              (p === :sigma && r == ConstantTerm(1))) for (p, r) in f.forms) &&
+            throw(ArgumentError("CumulativeLogit() SD regression supports only `mu` and one ordinary `sd(group)` formula."))
     end
     y, Xμ, nmμ = _design(f.response, fixed_mu, data)
     ic = findfirst(==("(Intercept)"), nmμ)               # drop the location intercept
@@ -201,10 +238,34 @@ function _drm_cumulative_fit(f::DrmFormula, fam::CumulativeLogit; data, tree = n
         (rk, var) = _re_kind(re[1][1]); grp = re[1][2]
         gidx, G = _group_index(getproperty(data, grp); col = grp)
         if rk === :intercept
+            if !isempty(sd_parts)
+                target = only(_sd_target_parts(f))
+                Zg, nmsd = _sd_group_design(f.response, target.rhs, data, gidx, G, grp;
+                                            schema_cache = f.schema_cache, schema_key = target.key)
+                size(Zg, 2) <= G && rank(Zg) == size(Zg, 2) || throw(ArgumentError(
+                    "CumulativeLogit() `sd($grp)` group-level design is rank deficient; use predictors that vary independently across groups."))
+                return _withformula(_fit_cumulative_sd_regression(
+                    fam, yi, Xμ, K, ones(length(yi), 1), Zg, gidx, G,
+                    nmμ, nmsd, grp, g_tol; se = se), f)
+            end
             return _withformula(_fit_cumulative_ranef(fam, yi, Xμ, K, gidx, G, nmμ, grp, g_tol), f)
         elseif rk === :slope
             _require_finite_data_column(data, var)
-            xs = Float64.(getproperty(data, var))
+            raw_slope = getproperty(data, var)
+            raw_slope isa AbstractVector{<:Real} && length(raw_slope) == length(yi) &&
+                all(isfinite, raw_slope) || throw(ArgumentError(
+                    "CumulativeLogit random-slope predictor `$var` must contain one finite numeric value per response."))
+            xs = Float64.(raw_slope)
+            if !isempty(sd_parts)
+                target = only(_sd_target_parts(f))
+                Zg, nmsd = _sd_group_design(f.response, target.rhs, data, gidx, G, grp;
+                                            schema_cache = f.schema_cache, schema_key = target.key)
+                size(Zg, 2) <= G && rank(Zg) == size(Zg, 2) || throw(ArgumentError(
+                    "CumulativeLogit() `sd($grp)` group-level design is rank deficient; use predictors that vary independently across groups."))
+                return _withformula(_fit_cumulative_sd_regression(
+                    fam, yi, Xμ, K, reshape(xs, :, 1), Zg, gidx, G,
+                    nmμ, nmsd, grp, g_tol; se = se), f)
+            end
             return _withformula(
                 _fit_cumulative_slope_ranef(fam, yi, Xμ, K, xs, gidx, G, nmμ, grp, g_tol), f)
         else
@@ -216,6 +277,74 @@ function _drm_cumulative_fit(f::DrmFormula, fam::CumulativeLogit; data, tree = n
         end
     end
     return _withformula(_fit_cumulative(fam, yi, Xμ, K, nmμ, g_tol; offset = _offset_for_fit(fam, offset_term, data, size(Xμ, 1))), f)
+end
+
+# Cumulative-logit ordinal GLMM with a group-specific SD for one ordinary
+# location random coefficient. `Zre` is the observation-level loading (ones for
+# an intercept or the numeric covariate for an independent slope); the scale
+# design is constant within group. Each group's scalar effect is integrated by
+# the same 41-node adaptive Gauss-Hermite approximation as the constant-SD fit.
+function _fit_cumulative_sd_regression(fam::CumulativeLogit, y::Vector{Int}, Xμ, K,
+                                       Zre, Zg, gidx, G, nmμ, nmsd, grp, g_tol;
+                                       nq::Int = _CUMLOGIT_AGHQ_K, se::Bool = true)
+    n = length(y); pμ = size(Xμ, 2); nc = K - 1; psd = size(Zg, 2)
+    members = [Int[] for _ in 1:G]
+    for i in 1:n
+        push!(members[gidx[i]], i)
+    end
+    rule = _AGHQRule(1, nq); bcache = zeros(1, G)
+    function nll(θ)
+        β = @view θ[1:pμ]
+        δ = @view θ[(pμ+1):(pμ+nc)]
+        α = @view θ[(pμ+nc+1):(pμ+nc+psd)]
+        cuts = _cumulative_cuts(δ)
+        η0 = pμ == 0 ? zeros(eltype(θ), n) : Xμ * β
+        sd_group = exp.(Zg * α)
+        ll = (i, η) -> _cumulative_loglik(y[i], η, cuts, K, nc)
+        total = zero(eltype(θ))
+        for gi in 1:G
+            Lg = reshape([sd_group[gi]], 1, 1)
+            value, bhat = _aghq_group_logint(ll, members[gi], η0, Zre, Lg,
+                                              rule, @view(bcache[:, gi]))
+            bcache[1, gi] = isfinite(bhat[1]) ? bhat[1] : 0.0
+            total += value
+        end
+        return -total
+    end
+    θ0 = zeros(pμ + nc + psd)
+    θ0[(pμ+1):(pμ+nc)] = _cumulative_cut_init(y, K, n)
+    θ0[(pμ+nc+1):end] .= Zg \ fill(log(0.5), G)
+    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    θ̂ = Optim.minimizer(res)
+    V = se ? _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)) :
+             fill(NaN, length(θ̂), length(θ̂))
+    sd_range = (pμ + nc + 1):(pμ + nc + psd)
+    blocks = [:mu => 1:pμ, :cutpoints => (pμ+1):(pμ+nc), :sd => sd_range]
+    names = [:mu => nmμ, :cutpoints => ["theta$k" for k in 1:nc], :sd => nmsd]
+    β̂ = θ̂[1:pμ]; cuts_hat = _cumulative_cuts(θ̂[pμ+1:pμ+nc])
+    η̂ = pμ == 0 ? zeros(n) : Xμ * β̂
+    score = _cumulative_score(η̂, cuts_hat, K)
+    sd_group = exp.(Zg * θ̂[sd_range])
+    means = Dict(:mu => score); obs = Dict(:mu => Float64.(y))
+    scales = Dict(:ordinal_eta => η̂, :ordinal_cuts => Float64.(cuts_hat),
+                  :sd_group => sd_group, :sd => sd_group[gidx],
+                  :sd_group_index => Float64.(gidx), :aghq_nodes => [Float64(nq)])
+    return _withiterations(
+        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n,
+                        drm_optim_converged(res), means, obs, scales), nll),
+        Optim.iterations(res))
+end
+
+# A marginal bootstrap draw must apply its freshly sampled random effect before
+# converting the new linear predictor into ordered categories. The generic
+# simulator's fitted `ordinal_eta` is correct for ordinary simulation but must
+# not override the explicit `mu` supplied by the marginal simulator.
+function _simulate_once(fit::DrmFit{CumulativeLogit}, rng; mu = nothing, sigma = nothing)
+    eta = mu === nothing ? _scale_vector(fit, :ordinal_eta) : Float64.(mu)
+    cuts = _scale_vector(fit, :ordinal_cuts)
+    length(eta) == length(fit.means[:mu]) || throw(ArgumentError(
+        "CumulativeLogit simulation predictor length does not match the fitted design"))
+    return Float64[_rand_cumulative_logit(rng, eta[i], cuts) for i in eachindex(eta)]
 end
 
 function _fit_cumulative(fam::CumulativeLogit, y::Vector{Int}, Xμ, K, nmμ, g_tol; offset = nothing)

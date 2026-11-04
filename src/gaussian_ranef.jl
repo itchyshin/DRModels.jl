@@ -42,7 +42,8 @@ _structured_re_lhs_text(lhs) = if lhs isa ConstantTerm
 # `nothing` for the intercept form `phylo(1 | g)`. Every other lhs — and the
 # slope form on any route that did not opt in — throws, so no route can silently
 # fit the intercept-only model in place of what the formula says.
-function _check_phylo_re_lhs(lhs, grp::Symbol; allow_slope::Bool = false)
+function _check_phylo_re_lhs(lhs, grp::Symbol; allow_slope::Bool = false,
+                             allow_slope_only::Bool = false)
     (lhs isa ConstantTerm && lhs.n == 1) && return nothing
     lhs_text = _structured_re_lhs_text(lhs)
     if lhs isa FunctionTerm && lhs.f === (+)
@@ -67,6 +68,9 @@ function _check_phylo_re_lhs(lhs, grp::Symbol; allow_slope::Bool = false)
                 "this formula too (\"intercept-only in this q=1 route\"), so `engine = \"tmb\"` " *
                 "is a route for Gaussian/Poisson/NegBinomial2 but not for Gamma (#620)"))
         end
+        is_slope_only = length(lhs.args) == 2 && length(consts) == 1 &&
+            consts[1].n == 0 && length(vars) == 1
+        is_slope_only && allow_slope_only && return vars[1].sym
     end
     throw(ArgumentError("drm: `phylo($lhs_text | $grp)` is not implemented on the " *
         "univariate routes — only `phylo(1 | $grp)` (intercept) is, plus the one-slope " *
@@ -74,14 +78,68 @@ function _check_phylo_re_lhs(lhs, grp::Symbol; allow_slope::Bool = false)
         "and multi-slope forms are not implemented"))
 end
 
-# relmat/animal/spatial share the identical parser gap but, unlike phylo, have
-# no verified drmTMB two-SD slope route to name as a follow-up — say only that
-# the construct is unimplemented (#620).
-function _check_structured_re_lhs(kind::Symbol, lhs, grp::Symbol)
+# relmat and spatial structured slopes are explicit opt-ins: their family
+# routes must provide the coefficient loading and matching covariance. Animal
+# has a separate checker because it also supports intercept-plus-slope blocks.
+function _check_structured_re_lhs(kind::Symbol, lhs, grp::Symbol;
+                                  allow_slope::Bool = false)
     (lhs isa ConstantTerm && lhs.n == 1) && return nothing
+    if kind in (:relmat, :spatial) && allow_slope &&
+       lhs isa FunctionTerm && lhs.f === (+)
+        constants = filter(t -> t isa ConstantTerm, lhs.args)
+        variables = filter(t -> t isa Term, lhs.args)
+        is_slope_only = length(lhs.args) == 2 && length(constants) == 1 &&
+            constants[1].n == 0 && length(variables) == 1
+        is_slope_only && return variables[1].sym
+    end
     lhs_text = _structured_re_lhs_text(lhs)
+    allowed = kind === :spatial && allow_slope ?
+        "only the intercept or one slope-only `0 + x` form is admitted on this route" :
+        "only the intercept form is admitted on this route"
     throw(ArgumentError("drm: `$kind($lhs_text | $grp)` is not implemented on the " *
-        "univariate routes; only the intercept form is"))
+        "univariate routes; $allowed"))
+end
+
+# Family-specific animal-SD routes may admit a slope-only `0 + x`, or the
+# independent intercept-plus-slope fields in `animal(1 + x | g)`. Keep these
+# opt-ins separate from relmat/spatial and from callers that require a single
+# structured intercept.
+function _check_animal_re_lhs(lhs, grp::Symbol; allow_slope::Bool = false,
+                              allow_intercept_slope::Bool = false)
+    (lhs isa ConstantTerm && lhs.n == 1) && return nothing
+    if lhs isa FunctionTerm && lhs.f === (+)
+        consts = filter(t -> t isa ConstantTerm, lhs.args)
+        vars = filter(t -> t isa Term, lhs.args)
+        is_slope_only = length(lhs.args) == 2 && length(consts) == 1 &&
+            consts[1].n == 0 && length(vars) == 1
+        is_slope_only && allow_slope && return vars[1].sym
+        is_intercept_slope = length(lhs.args) == 2 && length(consts) == 1 &&
+            consts[1].n == 1 && length(vars) == 1
+        is_intercept_slope && allow_intercept_slope && return vars[1].sym
+    end
+    lhs_text = _structured_re_lhs_text(lhs)
+    throw(ArgumentError("drm: `animal($lhs_text | $grp)` is not implemented on the " *
+        "univariate routes; only the intercept form is generally available, and " *
+        "a slope-only or independent intercept-and-slope animal term is available " *
+        "only on an explicitly supported family-specific SD route"))
+end
+
+# Return the explicitly independent animal intercept-plus-slope member from a
+# structured marker. The current public Gamma route uses this to map two SD
+# formulas to the coefficient fields; unrelated animal routes remain unchanged.
+function _animal_intercept_slope(rhs)
+    terms = rhs isa Tuple ? rhs : (rhs,)
+    for term in terms
+        term isa FunctionTerm && term.f === animal || continue
+        lhs = term.args[1].args[1]
+        lhs isa FunctionTerm && lhs.f === (+) || continue
+        consts = filter(x -> x isa ConstantTerm, lhs.args)
+        vars = filter(x -> x isa Term, lhs.args)
+        length(lhs.args) == 2 && length(consts) == 1 && consts[1].n == 1 &&
+            length(vars) == 1 || continue
+        return (; group = term.args[1].args[2].sym, slope = vars[1].sym)
+    end
+    return nothing
 end
 
 # Split a μ right-hand side into its fixed part and any `(lhs | g)` terms.
@@ -89,7 +147,8 @@ end
 # backward compatibility; use `_collect_structured` to retrieve the full list
 # (the Gaussian router supports two structured components in one fit).
 #
-# Returns a 5-tuple `(fixed_rhs, re, metav, structured, structured_slope)`. The
+# Returns `(fixed_rhs, re, metav, structured, structured_slope, temporal_term,
+# animal_slope)`. The
 # fifth slot is the slope variable of a `phylo(1 + x | g)` marker (#620) and is
 # `nothing` otherwise; it is only ever non-`nothing` when the caller opted in
 # with `allow_phylo_slope = true` (the Gaussian mean route and the read-only
@@ -118,13 +177,20 @@ end
 # consumers of an already-fitted Gaussian formula). Every other caller gets a
 # refusal naming the scope, so no route can treat the marker as a fixed-effect
 # term or silently drop it.
-function _split_ranef(rhs; allow_phylo_slope::Bool = false, allow_temporal::Bool = false)
+function _split_ranef(rhs; allow_phylo_slope::Bool = false,
+                      allow_phylo_slope_only::Bool = false,
+                      allow_animal_slope::Bool = false,
+                      allow_animal_intercept_slope::Bool = false,
+                      allow_relmat_slope::Bool = false,
+                      allow_spatial_slope::Bool = false,
+                      allow_temporal::Bool = false)
     terms = rhs isa Tuple ? collect(rhs) : Any[rhs]
     fixed = Any[]
     re = Tuple{Any,Symbol}[]
     metav = nothing                                   # meta_V(v) known-variance column
     structured = nothing                              # (:relmat, grouping) — known K
     structured_slope = nothing                        # `x` of phylo(1 + x | g), Gaussian mean only
+    animal_slope = nothing                            # optional structured provider slope loading
     temporal_term = nothing                           # (group, time, structure), Gaussian mean only
     for t in terms
         if t isa FunctionTerm && t.f === temporal
@@ -139,14 +205,30 @@ function _split_ranef(rhs; allow_phylo_slope::Bool = false, allow_temporal::Bool
         elseif t isa FunctionTerm && t.f === meta_V
             metav = t.args[1].sym
         elseif t isa FunctionTerm && t.f === relmat
-            _check_structured_re_lhs(:relmat, t.args[1].args[1], t.args[1].args[2].sym)
-            structured === nothing && (structured = (:relmat, t.args[1].args[2].sym))   # inner (1 | grp)
+            slope = _check_structured_re_lhs(:relmat, t.args[1].args[1],
+                t.args[1].args[2].sym; allow_slope = allow_relmat_slope)
+            if structured === nothing
+                structured = (:relmat, t.args[1].args[2].sym)
+                animal_slope = slope
+            elseif slope !== nothing
+                throw(ArgumentError("drm: `relmat(0 + $(slope) | $(t.args[1].args[2].sym))` must be " *
+                    "the only structured marker on this route"))
+            end
         elseif t isa FunctionTerm && t.f === animal
-            _check_structured_re_lhs(:animal, t.args[1].args[1], t.args[1].args[2].sym)
-            structured === nothing && (structured = (:animal, t.args[1].args[2].sym))
+            slope = _check_animal_re_lhs(t.args[1].args[1], t.args[1].args[2].sym;
+                allow_slope = allow_animal_slope,
+                allow_intercept_slope = allow_animal_intercept_slope)
+            if structured === nothing
+                structured = (:animal, t.args[1].args[2].sym)
+                animal_slope = slope
+            elseif slope !== nothing
+                throw(ArgumentError("drm: `animal(0 + $(slope) | $(t.args[1].args[2].sym))` must be " *
+                    "the only structured marker on this route"))
+            end
         elseif t isa FunctionTerm && t.f === phylo
             slope = _check_phylo_re_lhs(t.args[1].args[1], t.args[1].args[2].sym;
-                                        allow_slope = allow_phylo_slope)
+                                        allow_slope = allow_phylo_slope,
+                                        allow_slope_only = allow_phylo_slope_only)
             if structured === nothing
                 structured = (:phylo, t.args[1].args[2].sym)
                 structured_slope = slope
@@ -156,15 +238,22 @@ function _split_ranef(rhs; allow_phylo_slope::Bool = false, allow_temporal::Bool
                     "alongside the phylogenetic random slope is not implemented (#620)"))
             end
         elseif t isa FunctionTerm && t.f === spatial
-            _check_structured_re_lhs(:spatial, t.args[1].args[1], t.args[1].args[2].sym)
-            structured === nothing && (structured = (:spatial, t.args[1].args[2].sym))
+            slope = _check_structured_re_lhs(:spatial, t.args[1].args[1],
+                t.args[1].args[2].sym; allow_slope = allow_spatial_slope)
+            if structured === nothing
+                structured = (:spatial, t.args[1].args[2].sym)
+                animal_slope = slope
+            elseif slope !== nothing
+                throw(ArgumentError("drm: `spatial(0 + $(slope) | $(t.args[1].args[2].sym))` must be " *
+                    "the only structured marker on this route"))
+            end
         else
             push!(fixed, t)
         end
     end
     fixed_rhs = isempty(fixed) ? ConstantTerm(1) :
                 length(fixed) == 1 ? fixed[1] : Tuple(fixed)
-    return fixed_rhs, re, metav, structured, structured_slope, temporal_term
+    return fixed_rhs, re, metav, structured, structured_slope, temporal_term, animal_slope
 end
 
 # Collect EVERY structured marker on a right-hand side, in source order, as a
@@ -988,21 +1077,21 @@ components — drmTMB's `ranef()`.
 - Multiple components `(1 | g) + (1 | h)`: one entry per factor.
 
 Populated for the Gaussian closed-form RE paths (exact GLS conditional means)
-and the structured (phylo/relmat/animal) routes. Returns an empty `Dict` for a
-fit with **no** random-effect block at all. A non-Gaussian GLMM fitted by the
-Gauss–Hermite/Laplace marginal routes (e.g. `Binomial`/`Poisson` with `(1|g)`)
-never computes conditional modes — those routes integrate the random effect
-out of the marginal likelihood without ever forming a posterior mode — so
-calling `ranef` on such a fit throws an `ArgumentError` instead of silently
-returning an empty `Dict`.
+and structured routes that retain conditional modes. Returns an empty `Dict`
+for a fit with **no** random-effect block at all. Most non-Gaussian
+Gauss–Hermite/Laplace marginal routes (for example, ordinary Binomial or
+Poisson `(1 | g)` fits) integrate random effects without retaining conditional
+modes, so `ranef()` throws for those fits. The Tweedie related-matrix
+mean-intercept SD route is an exception: its sparse Laplace calculation retains
+the fitted conditional mode.
 """
 function ranef(fit::DrmFit)
     if fit.ranef === nothing || fit.ranef isa PhyloTipVariance   # tip variances only, no modes
         has_re_block = any(p -> first(p) in (:resd, :recov, :sd, :sd_phylo), fit.blocks)
         has_re_block && throw(ArgumentError("ranef: this fit has a random-effect block " *
             "but no stored conditional modes -- the non-Gaussian GLMM marginal route " *
-            "(Gauss-Hermite quadrature / Laplace) integrates the random effect out of " *
-            "the likelihood and never computes a posterior mode. Use `re_sd(fit)` / " *
+            "(Gauss-Hermite quadrature / Laplace) does not retain a posterior mode. " *
+            "Use `re_sd(fit)` / " *
             "`vc(fit)` for the fitted variance components."))
         return Dict{Symbol,Vector{Float64}}()
     end
@@ -1030,7 +1119,7 @@ Random-effect covariance summary per grouping factor.
 function vc(fit::DrmFit)
     # Location-scale-scale fits (#544): the RE variance varies by group-level
     # covariates, so a single component matrix is ill-defined -- refuse.
-    any(p -> first(p) in (:sd, :sd_phylo), fit.blocks) &&
+    _has_sd_regression_block(fit) &&
         throw(ArgumentError("vc: this fit models the random-effect SD with covariates " *
             "(`sd(group) ~ ...`); use `coef(fit, :sd)` for the log-SD coefficients."))
     d = Dict{Symbol,Matrix{Float64}}()
