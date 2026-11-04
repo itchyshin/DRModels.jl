@@ -106,6 +106,20 @@ Julia lane context: the 15:34 preflight showed 23 live lanes and no pre-existing
 - This report claims only its unique dated evidence directory and check-log/after-task files. It does not edit the existing crosswalk README, any source, any PR branch, or another lane's worktree.
 - A scoped lane lease for those report paths was granted under `codex:open-pr-census-refresh-20261104`; release it when the report slice is complete.
 
+### Registered worktree inventory, 2026-11-04
+
+Separate read-only scans covered every registered worktree in both repositories. drmTMB had 83 accessible registrations: 48 dirty, 35 clean, one with an unresolved merge conflict, 44 behind-only, 38 diverged from live main, and one at main. No worktree matched an open PR's exact head. Five worktrees matched PR branch names while their local SHAs differed from the PR heads. The primary drmTMB checkout itself was 1 commit ahead and 698 behind live main, with 77 tracked and 101 untracked status entries.
+
+DRModels.jl had 90 registered worktrees: 78 accessible and scanned, and 12 whose gitdir paths were missing. Their contents and dirty state remain unknown, so they were left untouched. Across local branch refs, 729 distinct commits were not reachable from live main; this includes historical and owner-held branches and is not a count of uncommitted tasks. The primary Julia checkout was 569 commits behind live main and had tracked and untracked edits.
+
+The scans found no explicit current owner release for dirty or diverged lanes. Six Julia lease records and the drmTMB lease records were expired; preflight showed 23 live Julia lanes and 32 live R lanes. The top-level coordination records were stale relative to the current PR set. Branch names and absent leases do not establish permission to adopt or archive work.
+
+Several high-risk groups remain separate: parallel detached drmTMB SD edits overlap in `R/drmTMB.R`; the CMR worktrees retain large uncommitted source and recovery evidence; Julia covariance and parity worktrees contain hundreds of untracked evidence files; one historical drmTMB verification worktree has 7,571 tracked deletions; and Julia has 12 missing registrations with unknown content. No cleanup or consolidation was attempted. The CMR inventory stays separate from the DRM-core parity work.
+
+The original dirty crosswalk README and after-task report were compared with #1252's exact head. Every local line is present in the PR version; the PR version has 11 additional README lines and 14 additional after-task lines. The old worktree, including its unrelated pycache edit, remains intact.
+
+Exact checks during this follow-up: #1252 remains at head `466a801484d6a3b5ba49402b1b401d430aa91387`; shard 3 failed and shard 4 was still running at 16:11 UTC. Log download for shard 4 reported that logs will be available after completion. #1253 was created after the original 22-PR Julia snapshot, so the live Julia count rose to 23; its checks were queued at 16:11 UTC on head `5169619d66ea736b880a8b3804198e5f2d0ffce1`. These are dated observations and must be refreshed before any PR action.
+
 ## What this snapshot does not establish
 
 This is not a source-level review of all 55 PRs, a full package test, a fresh R-CMD-check on current main, R–Julia numerical parity, parameter recovery, interval calibration, approval to edit another lane, or approval to merge, release, publish, or deploy. The CMR work stays separate; its interval-calibration G5 remains deferred. The broader R–Julia parity goal remains open. Preserve the known D-342 decision, tolerance adjustments, and numerical/export limitations in their existing records.

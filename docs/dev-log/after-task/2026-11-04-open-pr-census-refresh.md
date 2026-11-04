@@ -4,7 +4,7 @@ Refresh the full open-PR inventory for drmTMB and DRModels.jl from current GitHu
 
 ## 2. Implemented
 
-Added a dated evidence census with exact head/base SHAs for 33 open drmTMB PRs and 22 open DRModels.jl PRs. Recorded current check states, draft/conflict status, known branch-only or exact worktree matches, owner uncertainty, and the current-main workflow boundary. Confirmed that the SD-regression merges are complete and that G5 calibration remains deferred.
+Added a dated evidence census with exact head/base SHAs for 33 open drmTMB PRs and 22 open DRModels.jl PRs at the captured search time. Added read-only inventories of all 83 drmTMB and 90 DRModels.jl worktree registrations, including dirty/diverged clusters, stale branch-only PR matches, and owner uncertainty. Twelve Julia worktree paths were unavailable, so their status remains unknown. Confirmed that the SD-regression merges are complete and that G5 calibration remains deferred.
 
 ## 3a. Decisions and Rejected Alternatives
 
@@ -26,6 +26,9 @@ Added a dated evidence census with exact head/base SHAs for 33 open drmTMB PRs a
 - Rechecked both current main branch SHAs at 15:43 UTC.
 - Rechecked DRModels.jl #1252 exact-head diagnostics at 15:43 UTC, including the still-running Julia shard 4.
 - Inspected the original crosswalk worktree and the clean #1252 worktree; left both untouched.
+- Scanned all registered worktrees in both repositories. No source, ref, worktree, lease, or PR state was changed.
+- Compared the dirty crosswalk README and local after-task report with #1252's exact tree. The PR contains every local line plus additional text; the old worktree remains intact, including an unrelated pycache edit.
+- Refreshed #1252 and #1253 status at 16:11 UTC. #1252 shard 3 had failed and shard 4 was still running; #1253 checks were queued on its recorded head.
 - Package tests, fits, simulations, site builds, and R-CMD-check were not run by this documentation-only slice.
 
 ## 6. Tests of the Tests
@@ -46,12 +49,14 @@ The evidence distinguishes current main from PR base, exact-head checks from his
 
 ## 9. What Did Not Go Smoothly
 
-The available lane census reports 32 live R lanes and 23 live Julia lanes. Many PRs have stale or stacked bases, no exact-head checks, conflicts, failed checks, or owners whose release is unconfirmed. This prevented a safe source or PR takeover. The full inventory is now recorded without touching those lanes.
+The lane census reports 32 live R lanes and 23 live Julia lanes. Many PRs have stale or stacked bases, missing exact-head checks, conflicts, failed checks, or unconfirmed owners. The worktree inventory found no current owner release for dirty or diverged work. No source or PR takeover was made.
 
 ## 10. Known Residuals
 
-- The open #1252 shard 4 remains running; shard 3 failed on the current PR head. Refresh after CI completes using the same run.
-- This census records status metadata for all open PRs. Review source diffs and refresh changed heads and checks before taking action.
+- At 16:11 UTC, #1252 shard 4 remained running while shard 3 had failed on the current PR head. Refresh the same run after completion.
+- This census records PR metadata and worktree state. Review source diffs and refresh changed heads and checks before taking action.
+- The 12 missing Julia worktree registrations remain unknown. Preserve the CMR, SD, covariance, and parity bundles until their owners release them.
+- Julia's live open-PR count is now 23 because #1253 opened after the 22-PR metadata snapshot.
 - No current-main R-CMD-check receipt exists for drmTMB.
 - The broader R–Julia parity goal remains open. CMR calibration G5, D-342, two disclosed tolerance adjustments, and known numerical/export limits remain unresolved.
 - The original crosswalk branch and its dirty files remain preserved. The existing #1252 crosswalk lane owns its README.
@@ -66,4 +71,4 @@ The report uses concrete repository states and limits each claim to its timestam
 
 ## 12. Cross-Product Coverage
 
-Covers current GitHub open-PR counts and metadata, exact-head status summaries, main refs, selected lane/worktree evidence, merged SD receipt closeout, and the separate CMR boundary. Does not cover all PR source diffs, a full package suite, current-main R-CMD-check, R–Julia numerical parity, recovery, interval calibration, or authorization to merge or publish.
+Covers timestamped GitHub PR metadata, registered-worktree counts and ownership limits, main refs, selected lane evidence, merged SD receipt closeout, and the separate CMR boundary. It does not cover all PR source diffs, a full package suite, current-main R-CMD-check, R–Julia numerical parity, recovery, interval calibration, or authorization to merge or publish.
