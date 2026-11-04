@@ -1,2 +1,4 @@
 <!-- slop-ok: news/README.md specifies a short bold lead for news fragments. -->
 - **Explain predictor-dependent random-effect SD for a Gamma model.** The new tutorial pairs public Julia formulas and predictions with the drmTMB article using shared synthetic data and a supplied relatedness matrix. It distinguishes response coefficient of variation, latent SD multiplier and marginal latent SD, and explains direct Julia zero-random-effect predictions versus conditional stored predictions through the R bridge. The checked point example does not establish interval coverage or broader family/provider support.
+
+- **Keep quadrature tests independent of shared aliases.** The accuracy fixture now uses explicit Distributions module references, preventing a constant-name collision with another test on Julia 1.10. Numerical assertions, seeds and tolerances are unchanged.

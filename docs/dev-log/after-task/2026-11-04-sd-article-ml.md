@@ -4,7 +4,7 @@
 
 Give an applied ecologist a runnable Julia counterpart to the ML-first drmTMB article. Explain predictor-dependent latent-effect SD with one supplied-matrix Gamma example, while keeping source admission, point validation, interval calibration and integration status separate.
 
-Local example and documentation validation is complete for the scope below. Pull-request checks, remote asset availability, merging and post-merge main checks remain pending at this report's source state.
+Original premerge snapshot at c037268c7; the integration update below supersedes its test and asset status. Local example and documentation validation is complete for the scope below. Pull-request checks, remote asset availability, merging and post-merge main checks remain pending at this report's source state.
 
 ## 2. Implemented
 
@@ -87,3 +87,13 @@ Keep interface-specific prediction labels beside the example. Direct Julia zero-
 This slice covers one ML Gamma model with a log mean, one scalar relmat mean intercept, a supplied raw K, a group-constant fixed-predictor SD submodel and one estimated constant response CV. It covers the displayed direct Julia public calls, their point quantities, generated assets, navigation and local rendered page. The paired R numerical comparison is confined to the same generated fixture.
 
 It does NOT cover other families, providers, precision-input matrices, missing responses, random slopes, correlated or crossed fields, residual-scale SD regression, conditional prediction for new groups, profile/bootstrap workflows, uncertainty coverage, G5 calibration, D-342 REML policy, release readiness or whole-programme completion. Direct Julia `fitted` and `predict` on this example use RE=0; the R bridge's checked stored structured outputs condition on its retained field. Their output contracts remain separate.
+
+## Integration update: isolate quadrature-test imports
+
+The latest main CI run 41859055610 was already failing before this article PR. Its Julia 1.10 shard 1 reported an invalid redefinition of Main.D at test_iid_sd_quadrature_accuracy.jl:23: another test uses D for DRModels, while this file used D for Distributions. The repair removes that alias and qualifies its 29 module references explicitly. The remaining three global constant names are unique in the test tree. No engine source, seed, formula, likelihood calculation, assertion or numerical tolerance changes. The header now describes the existing 1e-4 fitted/nearby and 1e-2 far-stress thresholds accurately.
+
+An isolated Julia 1.10.12 environment reproduces the exact CI error before repair. With the repaired file, the namespace smoke passes three assertions on both Julia 1.10.12 and 1.13.0. It uses the existing DRM_QUAD_EXPLORE guard to load helpers without executing the fit study; these passes do not qualify the full quadrature grid. A separate three-assertion AST comparison verifies equivalence after module qualification and detects a deliberately changed tolerance. Both environments are external to the checkout; its engine source and package project files are unchanged. Setup failures from a Julia 1.13 manifest under 1.10 and initially missing test-only dependencies remain in the external logs.
+
+The current PR's stable-Julia shard 3 passed the Binomial fixture that failed in the earlier main run. That single pass does not diagnose the historical nonconvergence. Another active lane owns test_binomial_sd_public.jl; this repair does not alter it. Earlier main-run Gaussian-warning and temporal-oracle failures, and measured Tweedie test latency, are retained as historical diagnostics rather than counted as current reproduced product defects.
+
+Source, scripts, before/after checks and targeted CI logs are retained under /Users/z3437171/Documents/Codex/2026-11-04-sd-article-plan/execution/. Full new-head PR checks and post-merge main checks remain pending. G5 and D-342 remain deferred.
