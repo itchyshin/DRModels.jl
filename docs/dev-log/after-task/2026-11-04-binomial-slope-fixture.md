@@ -26,11 +26,11 @@ The original fitted slope model on data generated with random intercepts reprodu
 
 ## 7a. Issue Ledger
 
-PR #1252 remains blocked by its failed CI; this branch proposes an independent test-fixture correction. No issue was closed. The original boundary behavior remains a separate diagnostic question.
+PR #1252 remains blocked by its failed CI; this branch proposes an independent test-fixture correction. No issue was closed. The original boundary behavior remains a separate diagnostic question. The 2026-11-04 open-PR title/body search for binomial slope found no other PR proposing this fixture change; the search is not a full review of every PR diff.
 
 ## 8. Consistency Audit
 
-Checked all slope uses in the modified test: the same new data are passed to the fit, prediction, bridge, and bootstrap. The unrelated malformed-loading and intercept checks retain the original data. The routed DRM.jl manifest requires preserving source identity and matching scientific claims to evidence; these shaped the source snapshot and limited claims. Golden Set was not run; no hub guard or cross-repository policy was changed.
+Checked all slope uses in the modified test: the same new data are passed to the fit, prediction, bridge, and bootstrap. The unrelated malformed-loading and intercept checks retain the original data. Codex claim review found that the test data, response proportions, and predicted inputs are consistent, and the original convergence assertion is retained. No independent reviewer has yet reviewed this branch. The routed DRM.jl manifest requires preserving source identity and matching scientific claims to evidence; these shaped the source snapshot and limited claims. Golden Set was not run; no hub guard or cross-repository policy was changed.
 
 ## 9. What Did Not Go Smoothly
 
