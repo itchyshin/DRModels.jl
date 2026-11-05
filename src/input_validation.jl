@@ -51,6 +51,7 @@ function _require_family_dpars(f::DrmFormula, fam)
         # (`_lss_only_gaussian_guard`) and the Gaussian LSS router own them.
         sp = String(p)
         (startswith(sp, "sd_") || startswith(sp, "sdphy_")) && continue
+        haskey(f.sd_targets, p) && continue   # typed sd(g, ...) targets (`__sd_target_k`)
         p in allowed && continue
         p === :sigma && rhs isa ConstantTerm && continue
         has = isempty(allowed) ? "only the mean `mu`" :
@@ -201,6 +202,11 @@ function _structured_marker_kinds(f::DrmFormula)
         startswith(String(p), "sdphy_") && push!(kinds, :phylo)   # sd(g, phylogenetic) ~ …
         _structured_marker_kinds!(kinds, rhs)
     end
+    # sd(g, animal|relmat|spatial) ~ … reads A / K / coords without a marker term.
+    for item in _sd_target_parts(f)
+        lvl = item.target.level
+        lvl in (:animal, :relmat, :spatial, :phylo) && push!(kinds, lvl)
+    end
     return kinds
 end
 
@@ -213,8 +219,9 @@ it; otherwise the fitter drops it and returns the unstructured model (#1010).
 `spatial(1 | g)` as a precomputed spatial covariance.
 """
 function _require_structured_keywords_used(f::DrmFormula, fam; tree = nothing, K = nothing,
-                                           A = nothing, coords = nothing)
-    (tree === nothing && K === nothing && A === nothing && coords === nothing) && return nothing
+                                           A = nothing, Ainv = nothing, coords = nothing)
+    (tree === nothing && K === nothing && A === nothing && Ainv === nothing &&
+     coords === nothing) && return nothing
     kinds = _structured_marker_kinds(f)
     unused(kw, marker) = throw(ArgumentError("drm: `$kw = …` was supplied but the formula " *
         "has no $marker term, so `$kw` would be ignored and an unstructured model fitted. " *
@@ -227,6 +234,7 @@ function _require_structured_keywords_used(f::DrmFormula, fam; tree = nothing, K
                             "`relmat(1 | g)` or `spatial(1 | g)`")
     end
     A === nothing || :animal in kinds || unused("A", "`animal(1 | g)`")
+    Ainv === nothing || :animal in kinds || unused("Ainv", "`animal(1 | g)`")
     coords === nothing || :spatial in kinds || unused("coords", "`spatial(1 | g)`")
     return nothing
 end
@@ -259,11 +267,11 @@ first: family parameters (#1027), `offset(...)` placement (#938), formula
 column lengths (#1022) and unused structured keywords (#1010).
 """
 function _drm_entry_guard(f::DrmFormula, fam, data; tree = nothing, K = nothing,
-                          A = nothing, coords = nothing)
+                          A = nothing, Ainv = nothing, coords = nothing)
     _require_family_dpars(f, fam)
     _require_offset_supported(f, fam)
     _require_formula_column_lengths(f, data)
-    _require_structured_keywords_used(f, fam; tree = tree, K = K, A = A, coords = coords)
+    _require_structured_keywords_used(f, fam; tree = tree, K = K, A = A, Ainv = Ainv, coords = coords)
     return nothing
 end
 

@@ -13,7 +13,7 @@
 # The issue thread does not record TMB's max |gradient| itself, so the "< 1e-6 at the SE
 # point" check is also done on the Julia side (the Julia and R optima agree to 1e-8).
 using DRModels
-using Test, LinearAlgebra, Random, Logging
+using Test, LinearAlgebra, Random, Logging, StableRNGs
 import Distributions, TOML
 
 @testset "J3a: _finite_hessian_from_gradient (helper)" begin
@@ -143,7 +143,11 @@ end
     # still return a vcov of the right shape (never throw). Since #1190 the clamped log SD is held
     # fixed and the SEs of the other coordinates come from the Hessian of the remaining ones, so
     # the value-based fallback is not taken.
-    rng = MersenneTwister(1073)
+    # StableRNG, not MersenneTwister: `rand(rng, 1:k)` draws a different stream on Julia 1.10 than on
+    # 1.11+, so the MersenneTwister(1073) data were a different data set on 1.10 (sum(y) 440 vs 463),
+    # one whose fit does not converge and whose second RE SD stops at -6.4 (not clamped) with a
+    # non-PD Hessian, so every SE is NaN by design. StableRNG gives one data set on every version.
+    rng = StableRNG(1073)
     n = 300
     a = ["a$(rand(rng, 1:30))" for _ in 1:n]; b = ["b$(rand(rng, 1:20))" for _ in 1:n]
     x = randn(rng, n)
