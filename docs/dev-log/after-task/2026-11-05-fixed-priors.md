@@ -29,7 +29,9 @@ regularization. Assumptions made without asking: none beyond the approved plan.
 `src/summary.jl`, `src/visualization.jl`, `src/bias_correct.jl`,
 `test/test_fixed_priors.jl`, `test/test_api_stability.jl`, `docs/src/priors.md`,
 `docs/make.jl`, `news/fixed-priors.md`, this report and the matching check-log
-fragment. No source was copied from the GPL R implementation.
+fragment, plus exact-draft assessment records beside the report and check-log
+and `docs/dev-log/after-task/2026-11-05-prior-guide-assessment.json`. No source
+was copied from the GPL R implementation.
 
 ## 5. Checks Run
 
@@ -46,8 +48,12 @@ visualization, bias-correction and API test files passed (exit 0), in
 1397202 and 1456256; both exit 143, no remaining group members); their partial
 logs are retained and they are not passes. The final source aggregate is
 `a30e347285f925af2e128ed6350fafe4d6b9035668444606bfa2fcea13e26653`;
-its full suite is running. Earlier-source results cannot establish a full-suite
-pass on the final source. The final focused suite passed 82/82 and the 14-file
+its full suite stopped at the 90-minute cap (exit 124); its verdict is
+incomplete. Process group 1473203 has no remaining members. The
+partial `evidence/julia/pkg-test-final2.log` has SHA-256
+`47122a57595bc6aa70f8e70b87b9e532cbd8978696851bb2ef75b91a435851d5`;
+its last printed test summaries passed, but it does not cover the remaining
+suite. The final focused suite passed 82/82 and the 14-file
 affected suite exited 0; see `evidence/julia/focused-final2.log` and
 `evidence/julia/affected-final2.log`. Exact source and test hash manifests are
 `evidence/julia/source-a30e3472.sha256` and
@@ -70,7 +76,7 @@ Formal mutation checks are not yet run.
 No external issue was created or changed. Integration and mathematical review
 found inference-table leaks, non-unit weights, zero-ridge geometry and update
 switching; prior-specific changes and tests address them. Final independent
-review and the full-suite result remain open.
+review was scoped; the full suite remains incomplete.
 
 ## 8. Consistency Audit
 
@@ -91,21 +97,22 @@ retry disabled remote links in the disposable copy only, then failed the
 convergence assertion in `docs/src/reference/model-specification.md:166`.
 The exact example also failed on clean `24ac6ca` with Julia 1.10.10 and the
 same docs manifest (SHA-256 `fb61aa4a8fdd46ef3c84709839ec707493e3441c395cdd56a48d398697143641`).
-This is a matched example-level baseline, not a full clean-main site build.
+The clean-main comparison covers this example only; it did not rebuild the site.
 
 ## 10. Known Residuals
 
-The final source has not passed a full package suite. The predecessor-source
+The final source did not complete a full package suite within the 90-minute
+limit. The predecessor-source
 Documenter retry failed as above; the final full documentation build remains
 unverified despite the successful new-page check.
 Broader R–Julia parity, interval calibration, random-effect SD priors,
 and sampling are not established. The exact partial-prior binomial existence
-problem is not generally solved. Source is uncommitted, unpushed and unmerged.
+problem is not generally solved. Source is locally committed, unpushed and unmerged.
 
 ## 11. Team Learning
 
 Memory receipt: the DRM.jl load-first manifest, project instructions and
-validation-harness shaped source isolation, independent oracles and the
+validation-harness required source isolation, independent oracles and the
 likelihood-scale checks. Golden Set: not run in this bounded implementation;
 no durable brain write was made. A penalty added to the objective also changes
 every inference and rebuilding surface, so those surfaces need an explicit
