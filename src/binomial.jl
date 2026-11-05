@@ -241,8 +241,18 @@ function _drm_binomial_fit(f::DrmFormula, fam::Binomial; data, tree = nothing,
              A = nothing, Ainv = nothing, coords = nothing, mesh = nothing,
              g_tol::Real = 1e-8,
              se::Bool = true, marginal::Symbol = :LA, method = nothing,
-             nq::Int = _BINOMIAL_RANEF_AGHQ_K)
+             nq::Int = _BINOMIAL_RANEF_AGHQ_K, priors = nothing)
     _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, Ainv = Ainv, coords = coords)   # #1027 #1022 #1010
+    if priors !== nothing
+        fam.link === :logit && marginal === :LA && method === nothing || throw(ArgumentError("fixed-effect priors require ordinary binomial logit ML"))
+        isempty(_sd_parts(f)) && isempty(_sdphylo_parts(f)) || throw(ArgumentError("fixed-effect priors do not support SD formulas"))
+        for response in _formula_responses(f)
+            response === nothing && continue
+            all(_observed_response_mask(_table_column(data, response))) || throw(ArgumentError("fixed-effect priors require complete responses"))
+        end
+        _, re0, mv0, st0 = _split_ranef(Dict(f.forms)[:mu])
+        isempty(re0) && mv0 === nothing && st0 === nothing || throw(ArgumentError("fixed-effect priors do not support random or structured effects"))
+    end
     _reject_method_as_marginal(fam, method)
     nq >= 1 || throw(ArgumentError("Binomial `nq` must be ≥ 1; got $nq"))
     fam.link !== :logit && marginal === :VA && throw(ArgumentError(
@@ -288,7 +298,14 @@ function _drm_binomial_fit(f::DrmFormula, fam::Binomial; data, tree = nothing,
             error("Binomial() is mean-only; no sigma/dispersion parameter")
     end
     s, ntr = _binomial_response(f, data)
-    y, Xμ, nmμ = _design(f.response, fixed_mu, data)      # successes column is a dummy LHS
+    prior_cache = priors === nothing ? nothing : Ref(Dict{Symbol,Any}())
+    y, Xμ, nmμ = _design(f.response, fixed_mu, data; schema_cache=prior_cache, schema_key=:mu)      # successes column is a dummy LHS
+    if priors !== nothing
+        all(==(1), _ctl_weights(length(s))) || throw(ArgumentError("fixed-effect priors currently require unit weights"))
+        rank(Xμ) == size(Xμ, 2) || throw(ArgumentError("fixed-effect priors require full-rank design matrices"))
+        rows = _resolve_fixed_priors(priors, [:mu => nmμ], Dict(:mu => _fixed_intercept_index(f, :mu, fixed_mu, nmμ; cache=prior_cache)))
+        return _withformula(_fit_binomial(fam, s, ntr, Xμ, nmμ, g_tol; offset=_offset_for_fit(fam, offset_term, data, size(Xμ, 1)), prior_rows=rows), f)
+    end
     if st !== nothing
         fam.link === :logit || throw(ArgumentError(
             "Binomial links other than :logit are not available for structured random effects."))
@@ -360,12 +377,17 @@ function _binomial_response(f::DrmFormula, data)
     return s, ntr
 end
 
-function _fit_binomial(fam::Binomial, s, ntr, Xμ, nmμ, g_tol; offset = nothing)
+function _fit_binomial(fam::Binomial, s, ntr, Xμ, nmμ, g_tol; offset = nothing, prior_rows = nothing)
     n = length(s); pμ = size(Xμ, 2)
+    active_prior = prior_rows !== nothing && !all(r -> r.kind === :ridge && r.precision == 0, prior_rows)
+    if active_prior
+        penalized = Set(r.index for r in prior_rows if r.precision > 0)
+        length(penalized) < pμ && @warn "Binomial prior leaves some coefficients unpenalized; a finite optimum requires every separating direction to be regularized. Check convergence and sensitivity."
+    end
     sint = round.(Int, s); nint = round.(Int, ntr)
     lc = [_logchoose(nint[i], sint[i]) for i in 1:n]
     w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
-    function nll(θ)
+    function data_nll(θ)
         ημ = _eta_with_offset(Xμ, θ, offset)          # unclamped: see `_binomial_logit_ll`
         v = zero(eltype(θ))
         @inbounds for i in 1:n
@@ -373,6 +395,7 @@ function _fit_binomial(fam::Binomial, s, ntr, Xμ, nmμ, g_tol; offset = nothing
         end
         return v
     end
+    nll = prior_rows === nothing ? data_nll : θ -> data_nll(θ) + _fixed_prior_value(prior_rows, θ)
     p̄ = clamp(sum(s) / max(sum(ntr), 1), 1e-3, 1 - 1e-3)   # overall success rate
     θ0 = zeros(pμ); θ0[1] = _binomial_start(fam, p̄)
     θ0[1:pμ] .= _offset_start(θ0[1:pμ], Xμ, offset)   # #938
@@ -381,14 +404,18 @@ function _fit_binomial(fam::Binomial, s, ntr, Xμ, nmμ, g_tol; offset = nothing
     θ̂ = Optim.minimizer(res); V = _ctl_se(() -> _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂)), θ̂)
     blocks = [:mu => 1:pμ]; names = [:mu => nmμ]
     means = Dict(:mu => _binomial_mean.(Ref(fam), _eta_with_offset(Xμ, θ̂, offset)))                # fitted success probability
-    V, separated = _separation_check(Xμ, s, ntr, θ̂, V, means[:mu], nmμ;
-                                     near_logit = fam.link === :logit)   # #731: detect + warn, SE → Inf; exact test for all links, near rule is logit-specific
+    separated = false
+    if !active_prior
+        V, separated = _separation_check(Xμ, s, ntr, θ̂, V, means[:mu], nmμ;
+                                         near_logit = fam.link === :logit)
+    end
     obs = Dict(:mu => s ./ ntr)                            # observed proportion (for residuals)
     scales = Dict(:trials => Float64.(nint))
     fit = _withiterations(
-        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
+        _withnll(DrmFit(fam, blocks, names, θ̂, V, -data_nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
-    return separated ? _withgeometry(fit, :binomial_separation) : fit   # #1186: as drmTMB `binomial_separation`
+    fit = separated ? _withgeometry(fit, :binomial_separation) : fit
+    return prior_rows === nothing ? fit : _with_fixed_priors(fit, prior_rows, data_nll)
 end
 
 # Default nodes for the Binomial 1-D `(1 | g)` route (#712/#713 grouped-trial

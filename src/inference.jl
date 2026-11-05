@@ -223,6 +223,7 @@ Mirrors drmTMB's `confint(fit, method = "wald" | "profile")`.
 function confint(
     fit::DrmFit; level::Real=0.95, method::Symbol=:wald, threads::Bool=false, parm=nothing
 )
+    _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("confint: intervals are not qualified for fixed-prior MAP fits; covariance is local penalized curvature"))
     level = _validate_ci_level(level; what="confint")
     method === :wald && _wald_withheld(fit) && throw(ArgumentError("confint: Homogeneous Toeplitz " *
         "mean-coefficient Wald intervals are not yet qualified; mean-coefficient likelihood " *
@@ -328,6 +329,7 @@ mutable shared warm-start state; ordinary independent Binomial quadrature routes
 are not subject to that restriction.
 """
 function profile_result(fit::DrmFit; level::Real=0.95, threads::Bool=false, parm=nothing)
+    _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("profile_result: likelihood profiles are not qualified for fixed-prior fits"))
     level = _validate_ci_level(level; what="profile_result")
     _refuse_selected_optimizer_refit(fit, "profile_result")
     threads && _binomial_sd_threaded_profile_unsupported(fit) &&
@@ -2239,6 +2241,7 @@ end
 # repeated by forwarding the stored `penalty` (the fitter does not take
 # `method = :MAP`).
 function _bootstrap_refit_kwargs(fit::DrmFit)
+    _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("bootstrap: fixed-prior refits are not yet qualified"))
     kw = Pair{Symbol,Any}[]
     if _is_gaussian_lss(fit)
         method = estimation_method(fit)
@@ -2267,7 +2270,11 @@ function _bootstrap_refit_kwargs(fit::DrmFit)
        haskey(fit.scales, :aghq_nodes)
         push!(kw, :nq => round(Int, only(fit.scales[:aghq_nodes])))
     end
-    fit.penalty === nothing || push!(kw, :penalty => fit.penalty)
+    if _is_fixed_prior_fit(fit)
+        push!(kw, :priors => fit.penalty.specs)
+    elseif fit.penalty !== nothing
+        push!(kw, :penalty => fit.penalty)
+    end
     fit.marginal === :LA || push!(kw, :marginal => fit.marginal)
     weights(fit) === nothing || push!(kw, :weights => weights(fit))   # #931: same weighted likelihood
     return NamedTuple(kw)
@@ -4325,10 +4332,9 @@ Returns a `NamedTuple` and logs a short report:
 - `min_eigval` / `cond` — smallest eigenvalue and condition number of the
   covariance; a near-zero `min_eigval` flags a singular / weakly identified
   direction (e.g. a variance pinned at the boundary).
-- `penalized_map` — whether this is a penalized (MAP) fit
-  (`penalty = drm_phylo_penalty(...)`). Such a fit reports standard errors from
-  the *penalized* curvature, which are credible-interval-shaped rather than
-  frequentist, and `loglik` is the *unpenalized* data log-likelihood.
+- `penalized_map` — whether this is a penalized (MAP) fit, using a phylogenetic
+  penalty or fixed-effect priors. Standard errors describe local penalized
+  curvature, and `loglik` is the unpenalized data log-likelihood.
 - `variance_boundary` — `nothing` unless the fit is Gaussian with a grouped / structured
   random effect and a homoscedastic residual (`sigma ~ 1`); then the NamedTuple of
   `_variance_boundary(fit)` (`residual_at_boundary`, `residual_ratio`,
@@ -4360,9 +4366,9 @@ Returns a `NamedTuple` and logs a short report:
   `convergence_status`, which is reported in its own field: a `:boundary` fit, or
   one the twin rules call `:degenerate` for an inflated standard error, can still
   be `ok`.
-  On a penalized fit the gradient criterion is **dropped**: the stored objective
-  is unpenalized, so its gradient is non-zero at the MAP optimum by construction
-  and scoring it would report a correct fit as broken. It is also dropped
+  On a phylogenetic-penalty fit the gradient criterion is **dropped** because
+  its stored objective is the unpenalized likelihood. Fixed-prior fits retain
+  the penalized objective and its gradient is checked. The criterion is also dropped
   whenever `max_abs_grad` is `NaN`, so read `grad_source` before reading `ok`:
   `ok = true` alongside `:none` or `:unavailable` means *converged and PD only*,
   with stationarity untested.
@@ -4392,11 +4398,8 @@ function check_drm(fit::DrmFit; grad_tol::Real=1e-3)
     else
         (false, NaN, Inf)
     end
-    # A4c: on a penalized (MAP) fit the stored objective is the UNPENALIZED
-    # likelihood, whose gradient is deliberately NON-ZERO at the MAP optimum — the
-    # penalty's gradient is what cancels it. Scoring that as non-convergence would
-    # report a correct fit as broken, so the gradient criterion is dropped for MAP
-    # fits and `max_abs_grad` is reported for information only.
+    # Phylogenetic-penalty fits retain the data objective; fixed-prior fits retain
+    # the penalized objective and can be checked for stationarity directly.
     penalized = fit.estim_method === :MAP
     # #1003: a failed diagnostic warns instead of reading as "not that kind of fit".
     vb = try _variance_boundary(fit) catch err; _boundary_diagnostic_failed("variance-boundary", err) end
@@ -4405,7 +4408,8 @@ function check_drm(fit::DrmFit; grad_tol::Real=1e-3)
     snw = _skew_normal_nu_wald(fit)   # #1060: `nothing` unless SkewNormal
     frd = _fixed_effect_rank_deficiency(fit)   # #1110: `nothing` unless a design is aliased
     conv = status === :converged       # is_converged(fit)
-    ok = _converged_nondegenerate(fit) && (penalized || isnan(mag) || mag <= grad_tol) && pd && frd === nothing
+    fixed_prior = _is_fixed_prior_fit(fit) && penalized
+    ok = _converged_nondegenerate(fit) && ((penalized && !fixed_prior) || isnan(mag) || mag <= grad_tol) && pd && frd === nothing
     report = (
         convergence_status=status,
         converged=conv,
@@ -4452,7 +4456,8 @@ function check_drm(fit::DrmFit; grad_tol::Real=1e-3)
     (snw === nothing || !snw.near_zero) || @warn "check_drm: " * _skew_normal_nu_wald_message(snw)
     frd === nothing || @warn "check_drm: " * _design_rank_message(frd.blocks)
     # drmTMB emits the equivalent advisory from `check_penalized_fit()`.
-    penalized && @warn "check_drm: penalized (MAP) fit — standard errors come from the penalized " *
+    fixed_prior && @warn "check_drm: fixed-prior MAP fit — standard errors describe local penalized curvature; data log-likelihood and prior contribution are separate."
+    penalized && !fixed_prior && @warn "check_drm: penalized (MAP) fit — standard errors come from the penalized " *
         "curvature and are credible-interval-shaped, not frequentist. `loglik` is the UNPENALIZED " *
         "data log-likelihood; the penalty is `fit.phylo_penalty`. `lrtest`/`anova` across " *
         "penalized fits are refused."

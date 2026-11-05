@@ -73,6 +73,7 @@ const API_EXPERIMENTAL = [
     "associate_pairs", "latent_normal", "association", "PairAssociation",
     "integration_diagnostics",
     # penalized MAP (A4c)
+    "drm_priors", "drm_prior_normal", "drm_prior_ridge", "resolve_priors",
     "drm_phylo_penalty", "drm_phylo_penalty_sweep",
     "PhyloPenalty", "PhyloCorPenaltyNeedsTwoSD",
     # bivariate meta

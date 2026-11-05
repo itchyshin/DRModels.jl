@@ -470,6 +470,10 @@ function update(fit::DrmFit, formula, args...; data, kwargs...)
             haskey(stored, :penalty) && !haskey(kwargs, :penalty)
         stored = Base.structdiff(stored, NamedTuple{(:penalty,)})
     end
+    if caller_method !== nothing && caller_method != fit.estim_method &&
+            haskey(stored, :priors) && !haskey(kwargs, :priors)
+        stored = Base.structdiff(stored, NamedTuple{(:priors,)})
+    end
     merged = merge(stored, NamedTuple(kwargs))
     return drm(formula, fit.family; data = data, merged...)
 end
@@ -489,7 +493,11 @@ function _update_stored_options(fit::DrmFit)
         throw(ArgumentError(
             "update: unsupported estim_method :$(fit.estim_method)"))
     end
-    fit.penalty === nothing || push!(kw, :penalty => fit.penalty)
+    if _is_fixed_prior_fit(fit)
+        push!(kw, :priors => fit.penalty.specs)
+    elseif fit.penalty !== nothing
+        push!(kw, :penalty => fit.penalty)
+    end
     fit.marginal === :LA || push!(kw, :marginal => fit.marginal)
     return NamedTuple(kw)
 end

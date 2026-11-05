@@ -454,6 +454,20 @@ _withmap(fit::DrmFit, pen_value::Real, spec) = DrmFit(fit.family, fit.blocks, fi
     :MAP, fit.reml_loglik, fit.ml_loglik, fit.marginal, Float64(pen_value), spec, fit.iterations, fit.phylo_scale,
     fit.uncertainty, fit.geometry)
 
+_is_fixed_prior_fit(fit::DrmFit) = fit.penalty isa NamedTuple && haskey(fit.penalty, :kind) && fit.penalty.kind === :fixed_priors
+
+function _with_fixed_priors(fit::DrmFit, rows, data_nll)
+    active = !all(r -> r.kind === :ridge && r.precision == 0, rows)
+    specs = [FixedPrior(r.kind, r.dpar, r.coef, nothing, r.mean, r.precision, r.constant) for r in rows]
+    meta = (kind=:fixed_priors, rows=rows, data_nll=data_nll, specs=specs)
+    grad! = (g, theta) -> (g .= ForwardDiff.gradient(fit.nll, theta))
+    DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta, fit.vcov, fit.loglik,
+        fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula,
+        fit.nll, grad!, fit.ranef, active ? :MAP : :ML, fit.reml_loglik,
+        fit.ml_loglik, fit.marginal, NaN, meta, fit.iterations, fit.phylo_scale,
+        fit.uncertainty, fit.geometry)
+end
+
 # Tag the integral approximation (`:LA` default, `:Laplace`, `:VA` ELBO, `:AGHQ`). Does not
 # change `loglik`; the caller is responsible for putting an ELBO in that slot.
 _withmarginal(fit::DrmFit, m::Symbol) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta,
@@ -994,7 +1008,7 @@ function _gaussian_offset_restore(fit::DrmFit, f_orig::DrmFormula, off::Vector{F
     return _withformula(fit, f_orig)
 end
 
-function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree = nothing, coords = nothing, g_tol::Real = 1e-8, algorithm::Symbol = :auto, method::Symbol = :ML, profile_ci::Bool = false, phylo_coupled::Bool = false, penalty = nothing, sparse = nothing, impute = nothing, missing = nothing, marginal::Symbol = :LA, ids = nothing)
+function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree = nothing, coords = nothing, g_tol::Real = 1e-8, algorithm::Symbol = :auto, method::Symbol = :ML, profile_ci::Bool = false, phylo_coupled::Bool = false, penalty = nothing, sparse = nothing, impute = nothing, missing = nothing, marginal::Symbol = :LA, ids = nothing, priors = nothing)
     _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, coords = coords)   # #1027 #1022 #1010
     A = _resolve_relatedness_labels(f, data, A, ids; coords = coords)   # #957: match `A` by label
     coords = _resolve_coords_labels(f, data, coords, ids)   # #957: match `coords` by site label
@@ -1016,6 +1030,9 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
          !profile_ci && !phylo_coupled) ||
             throw(ArgumentError("drm: `control.optimizer` requires the ordinary Gaussian ML route (`algorithm = :auto`, no alternate integration, imputation or profiling)"))
     end
+    if priors !== nothing && (_has_joint_mi(f) || method !== :ML || penalty !== nothing || algorithm !== :auto || marginal !== :LA || profile_ci || phylo_coupled || sparse !== nothing || impute !== nothing || missing !== nothing)
+        throw(ArgumentError("fixed-effect priors currently require ordinary fixed-effect Gaussian ML"))
+    end
     if _has_joint_mi(f)
         return _fit_joint_formula(f, data; impute=impute,
             missing=missing === nothing ? miss_control() : missing,
@@ -1025,7 +1042,10 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     end
     (impute === nothing && missing === nothing) ||
         throw(ArgumentError("drm: `impute` and `missing` controls currently require an additive mi(x) joint-model formula; they are not ignored on other routes"))
+    original_rows = priors === nothing ? 0 : length(_table_column(data, f.response))
     data = _drop_missing_predictor_rows(f, data)   # #1089: R's na.omit, with a count
+    priors !== nothing && length(_table_column(data, f.response)) != original_rows &&
+        throw(ArgumentError("fixed-effect priors currently require complete predictors"))
     rhs = Dict(f.forms)
     # `allow_phylo_slope = true`: the Gaussian mean is the one route that fits
     # `phylo(1 + x | g)` (#620, two independent phylogenetic fields); the slope
@@ -1043,6 +1063,9 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     structured_sd_slope === nothing || temporal_term === nothing ||
         throw(ArgumentError("drm: a structured slope-only effect cannot be combined with `temporal(...)`."))
     fixed_sigma, sigma_re, _, structured_sigma = _split_ranef(rhs[:sigma])  # (1|g)→GHQ; structured_sigma = phylo(1|g) on σ
+    if priors !== nothing && !(isempty(re) && isempty(sigma_re) && metav === nothing && structured === nothing && structured_sigma === nothing && temporal_term === nothing && isempty(_sd_parts(f)) && isempty(_sdphylo_parts(f)))
+        throw(ArgumentError("fixed-effect priors currently do not support random or structured effects"))
+    end
     _require_profile_ci_used(profile_ci, structured_sigma)   # #1010
     # Penalized MAP (A4c). Validated here, once, so that a `penalty` handed to a
     # route that cannot honour it ERRORS instead of being silently dropped —
@@ -1077,6 +1100,15 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     _check_fixed_design_rank((:mu, Xμ, nmμ), (:sigma, Xσ, nmσ))   # #1110
     response_observed = _observed_response_mask(y)
     has_missing_response = !all(response_observed)
+    if priors !== nothing
+        has_missing_response && throw(ArgumentError("fixed-effect priors currently require complete responses"))
+        all(==(1), _ctl_weights(length(y))) || throw(ArgumentError("fixed-effect priors currently require unit weights"))
+        rank(Xμ) == size(Xμ, 2) && rank(Xσ) == size(Xσ, 2) || throw(ArgumentError("fixed-effect priors require full-rank design matrices"))
+        names = [:mu => nmμ, :sigma => nmσ]
+        intercepts = Dict(:mu => _fixed_intercept_index(f, :mu, fixed_mu, nmμ), :sigma => _fixed_intercept_index(f, :sigma, fixed_sigma, nmσ))
+        rows = _resolve_fixed_priors(priors, names, intercepts)
+        return _withformula(_fit_fixed_gaussian(fam, y, Xμ, Xσ, nmμ, nmσ, g_tol; prior_rows=rows), f)
+    end
     all_structured = _collect_structured(rhs[:mu])
     # D-310 temporal(1 | id, time, ar1|ou): dispatched FIRST, before every route
     # that could otherwise claim (and silently mis-fit) the formula. The router
@@ -1720,12 +1752,12 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
 end
 
 # univariate Gaussian location–scale, fixed effects only (closed form, ML)
-function _fit_fixed_gaussian(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, g_tol)
+function _fit_fixed_gaussian(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, g_tol; prior_rows=nothing)
     n = length(y)
     pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     w = _ctl_weights(n)                  # prior weights: row log-lik multipliers (#931)
     sw = sum(w)                          # == n exactly when unweighted
-    function nll(θ)
+    function data_nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
         ημ = Xμ * βμ; ησ = Xσ * βσ                 # log σ
         s = zero(eltype(θ))
@@ -1735,6 +1767,7 @@ function _fit_fixed_gaussian(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, g_tol)
         end
         return s + 0.5 * sw * log(2π)
     end
+    nll = prior_rows === nothing ? data_nll : θ -> data_nll(θ) + _fixed_prior_value(prior_rows, θ)
     βμ0 = Xμ \ y
     θ0 = zeros(pμ + pσ)
     θ0[1:pμ] .= βμ0
@@ -1760,10 +1793,12 @@ function _fit_fixed_gaussian(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, g_tol)
     means = Dict(:mu => Xμ * θ̂[1:pμ])
     obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
-    return _withiterations(
-        _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, converged && !_scale_runoff(scales),
+    fit = _withiterations(
+        _withnll(DrmFit(fam, blocks, names, θ̂, V, -data_nll(θ̂), n, converged && !_scale_runoff(scales),
                         means, obs, scales), nll),
         Optim.iterations(res))
+    prior_rows === nothing && return fit
+    return _with_fixed_priors(fit, prior_rows, data_nll)
 end
 
 # Rebuilders for the missing-response routes: refit rows are the OBSERVED ones,
@@ -2390,6 +2425,7 @@ function _predict_data(nd::NamedTuple, responses::Symbol...)
 end
 
 function predict(fit::DrmFit, newdata; type::Symbol = :response, se::Bool = false)
+    se && _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("predict: standard errors are not qualified for fixed-prior fits"))
     f = fit.formula
     f === nothing && error("predict: this fit did not retain its formula")
     type in (:response, :link) || error("predict: `type` must be :response or :link")
@@ -2692,6 +2728,7 @@ predict_parameters(fit, data; type = :link)[:mu]   # == Xβ̂ (predict link scal
 """
 function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
                             se::Bool = false)
+    se && _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("predict_parameters: standard errors are not qualified for fixed-prior fits"))
     f = fit.formula
     f === nothing && error("predict_parameters: this fit did not retain its formula")
     type in (:response, :link) || error("predict_parameters: `type` must be :response or :link")
@@ -3015,6 +3052,7 @@ parameters. Omit it to draw for the training design. Temporal fits refuse
 function simulate(fit::DrmFit; nsim::Integer = 1, rng = default_rng(), newdata = nothing,
                   re::Symbol = :marginal, data = nothing, K = nothing, A = nothing,
                   tree = nothing, coords = nothing)
+    _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("simulate: simulation from a fixed-prior fit is not yet qualified"))
     nsim >= 1 || throw(ArgumentError("simulate requires nsim >= 1, got $nsim"))
     re in (:marginal, :zero) || throw(ArgumentError(
         "simulate: `re` must be :marginal (fresh random effects, the default) or " *
@@ -3446,6 +3484,7 @@ comparing models that differ in **variance structure only** (same mean structure
 a one-time warning is emitted. Use ML for cross-mean-structure selection.
 """
 function aic(fit::DrmFit)
+    _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("aic is unavailable for fixed-prior MAP fits"))
     _va_infocrit_guard(fit, "aic")
     _reml_infocrit_warn(fit, "aic")
     _sentinel_infocrit_nan(fit, "aic") && return NaN
@@ -3461,6 +3500,7 @@ On a **REML** fit this carries the same variance-only-comparison caveat as
 [`aic`](@ref) and emits a one-time warning.
 """
 function bic(fit::DrmFit)
+    _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("bic is unavailable for fixed-prior MAP fits"))
     _va_infocrit_guard(fit, "bic")
     _reml_infocrit_warn(fit, "bic")
     _sentinel_infocrit_nan(fit, "bic") && return NaN
@@ -3571,7 +3611,7 @@ fixef(fit::DrmFit) =
 function Base.show(io::IO, fit::DrmFit)
     print(io, "DrmFit (", _family_name(fit.family), ", ", fit.nobs, " obs, ",
         fit.converged ? "converged" : "NOT converged",
-        "; logLik = ", round(fit.loglik, digits = 2), ")")
+        _is_fixed_prior_fit(fit) && fit.estim_method === :MAP ? "; MAP; data logLik = " : "; logLik = ", round(fit.loglik, digits = 2), ")")
     for (p, _) in fit.blocks
         print(io, "\n  ", p, ": ", join(string.(round.(coef(fit, p), digits = 3)), ", "))
     end
