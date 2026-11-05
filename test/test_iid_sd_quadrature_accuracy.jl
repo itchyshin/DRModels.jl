@@ -16,11 +16,11 @@
 # boundary-heavy responses (old non-adaptive 32-node rule on the intercept
 # route) and the zero-inflated Poisson slope at the default SD.
 #
-# Threshold: |Δ log-likelihood| < 1e-4 for every route, seed and point.
+# Thresholds: |Δ log-likelihood| < 1e-4 at the fitted SD and intercept shifts
+# of +/-0.8; < 1e-2 at the +2.0 stress shift, for every route and seed.
 
 using DRModels, Random, Test, QuadGK, StableRNGs
 import Distributions
-const D = Distributions
 
 # ---- exact per-group integral ------------------------------------------------
 
@@ -83,32 +83,32 @@ function _iid_fixture(fam::String, kind::Symbol, seed::Int; G = 100, m = 5, a0 =
     lhs = kind
     data = nothing; formula = nothing; family = nothing
     if fam == "beta"
-        mu = D.logistic.(eta); phi = 1 / 0.3^2
-        y = [rand(rng, D.Beta(mu[i] * phi, (1 - mu[i]) * phi)) for i in 1:n]
+        mu = Distributions.logistic.(eta); phi = 1 / 0.3^2
+        y = [rand(rng, Distributions.Beta(mu[i] * phi, (1 - mu[i]) * phi)) for i in 1:n]
         data = (; y, x, z, g = gid)
         family = Beta()
     elseif fam == "gamma"
         mu = exp.(eta); sh = 1 / 0.4^2
-        y = [rand(rng, D.Gamma(sh, mu[i] / sh)) for i in 1:n]
+        y = [rand(rng, Distributions.Gamma(sh, mu[i] / sh)) for i in 1:n]
         data = (; y, x, z, g = gid); family = Gamma()
     elseif fam == "beta_binomial"
-        mu = D.logistic.(eta); phi = 1 / 0.25^2
-        p = [rand(rng, D.Beta(mu[i] * phi, (1 - mu[i]) * phi)) for i in 1:n]
-        s = [rand(rng, D.Binomial(10, p[i])) for i in 1:n]
+        mu = Distributions.logistic.(eta); phi = 1 / 0.25^2
+        p = [rand(rng, Distributions.Beta(mu[i] * phi, (1 - mu[i]) * phi)) for i in 1:n]
+        s = [rand(rng, Distributions.Binomial(10, p[i])) for i in 1:n]
         data = (; successes = Float64.(s), failures = Float64.(10 .- s), x, z, g = gid)
         family = BetaBinomial()
     elseif fam == "cumulative_logit"
-        lat = eta .+ [rand(rng, D.Logistic()) for _ in 1:n]
+        lat = eta .+ [rand(rng, Distributions.Logistic()) for _ in 1:n]
         y = Float64.(1 .+ (lat .> -0.7) .+ (lat .> 0.7))
         data = (; y, x, z, g = gid); family = CumulativeLogit()
     elseif fam in ("hurdle_nbinom2", "truncated_nbinom2")
         mu = exp.(0.3 .+ 0.4 .* x .+ re); size = 1 / 0.55^2
         y = zeros(n)
         for i in 1:n
-            nb = D.NegativeBinomial(size, size / (size + mu[i]))
-            p0 = D.pdf(nb, 0)
+            nb = Distributions.NegativeBinomial(size, size / (size + mu[i]))
+            p0 = Distributions.pdf(nb, 0)
             pp = max(p0 + rand(rng) * (1 - p0), p0 + 1e-12)
-            y[i] = D.quantile(nb, pp)
+            y[i] = Distributions.quantile(nb, pp)
         end
         if fam == "hurdle_nbinom2"
             for i in 1:n
@@ -118,21 +118,21 @@ function _iid_fixture(fam::String, kind::Symbol, seed::Int; G = 100, m = 5, a0 =
         data = (; y, x, z, g = gid)
         family = fam == "hurdle_nbinom2" ? NegBinomial2() : TruncatedNegBinomial2()
     elseif fam == "tweedie"
-        mu = exp.(eta); phi = 0.8^2; p = 1 + D.logistic(0.2)
+        mu = exp.(eta); phi = 0.8^2; p = 1 + Distributions.logistic(0.2)
         lam = mu .^ (2 - p) ./ (phi * (2 - p)); al = (2 - p) / (p - 1)
         th = phi * (p - 1) .* mu .^ (p - 1)
         y = zeros(n)
         for i in 1:n
-            N = rand(rng, D.Poisson(lam[i]))
-            y[i] = N == 0 ? 0.0 : rand(rng, D.Gamma(N * al, th[i]))
+            N = rand(rng, Distributions.Poisson(lam[i]))
+            y[i] = N == 0 ? 0.0 : rand(rng, Distributions.Gamma(N * al, th[i]))
         end
         data = (; y, x, z, g = gid); family = Tweedie()
     elseif fam == "zero_one_beta" || fam == "zero_one_beta_edge"
         # `_edge`: low precision (sigma 0.8) and a near-boundary clamp, so many
         # interior responses sit within 1e-4 of 0 or 1.
         edge = fam == "zero_one_beta_edge"
-        mu = D.logistic.(eta); phi = 1 / (edge ? 0.8 : 0.3)^2
-        y = [rand(rng, D.Beta(mu[i] * phi, (1 - mu[i]) * phi)) for i in 1:n]
+        mu = Distributions.logistic.(eta); phi = 1 / (edge ? 0.8 : 0.3)^2
+        y = [rand(rng, Distributions.Beta(mu[i] * phi, (1 - mu[i]) * phi)) for i in 1:n]
         for i in 1:n
             if rand(rng) < 0.15
                 y[i] = rand(rng) < 0.4 ? 1.0 : 0.0
@@ -144,7 +144,7 @@ function _iid_fixture(fam::String, kind::Symbol, seed::Int; G = 100, m = 5, a0 =
         data = (; y, x, z, g = gid); family = ZeroOneBeta()
     elseif fam == "zi_poisson"
         lam = exp.(0.3 .+ 0.4 .* x .+ re)
-        y = Float64[rand(rng, D.Poisson(lam[i])) for i in 1:n]
+        y = Float64[rand(rng, Distributions.Poisson(lam[i])) for i in 1:n]
         for i in 1:n
             rand(rng) < 0.25 && (y[i] = 0.0)
         end
@@ -197,14 +197,14 @@ function _density(fam::String, fit, fx, θ)
     s(name) = θ[_blk(fit, name)][1]
     if fam == "beta"
         φ = exp(-2 * s(:sigma))
-        return (i, η) -> (μ = _logistic(η); D.logpdf(D.Beta(μ * φ, (1 - μ) * φ), d.y[i])), η0
+        return (i, η) -> (μ = _logistic(η); Distributions.logpdf(Distributions.Beta(μ * φ, (1 - μ) * φ), d.y[i])), η0
     elseif fam == "gamma"
         sh = exp(-2 * s(:sigma))
-        return (i, η) -> D.logpdf(D.Gamma(sh, exp(η) / sh), d.y[i]), η0
+        return (i, η) -> Distributions.logpdf(Distributions.Gamma(sh, exp(η) / sh), d.y[i]), η0
     elseif fam == "beta_binomial"
         φ = exp(-2 * s(:sigma))
         return (i, η) -> (μ = _logistic(η);
-            D.logpdf(D.BetaBinomial(10, μ * φ, (1 - μ) * φ), round(Int, d.successes[i]))), η0
+            Distributions.logpdf(Distributions.BetaBinomial(10, μ * φ, (1 - μ) * φ), round(Int, d.successes[i]))), η0
     elseif fam == "cumulative_logit"
         cuts = DRModels._cumulative_cuts(θ[_blk(fit, :cutpoints)])
         K = 3
@@ -214,11 +214,11 @@ function _density(fam::String, fit, fx, θ)
         pz = fam == "hurdle_nbinom2" ? _logistic(s(:hu)) : 0.0
         return (i, η) -> begin
             μ = exp(η)
-            nb = D.NegativeBinomial(size, size / (size + μ))
+            nb = Distributions.NegativeBinomial(size, size / (size + μ))
             if fam == "hurdle_nbinom2" && d.y[i] == 0
                 return log(pz)
             end
-            lp = D.logpdf(nb, round(Int, d.y[i])) - log1p(-D.pdf(nb, 0))
+            lp = Distributions.logpdf(nb, round(Int, d.y[i])) - log1p(-Distributions.pdf(nb, 0))
             return fam == "hurdle_nbinom2" ? log1p(-pz) + lp : lp
         end, η0
     elseif fam == "tweedie"
@@ -231,14 +231,14 @@ function _density(fam::String, fit, fx, θ)
             y == 0 && return log(zoi) + log1p(-coi)
             y == 1 && return log(zoi) + log(coi)
             μ = _logistic(η)
-            return log1p(-zoi) + D.logpdf(D.Beta(μ * φ, (1 - μ) * φ), y)
+            return log1p(-zoi) + Distributions.logpdf(Distributions.Beta(μ * φ, (1 - μ) * φ), y)
         end, η0
     elseif fam == "zi_poisson"
         zi = _logistic(s(:zi))
         return (i, η) -> begin
             λ = exp(η)
             d.y[i] == 0 ? log(zi + (1 - zi) * exp(-λ)) :
-                log1p(-zi) + D.logpdf(D.Poisson(λ), round(Int, d.y[i]))
+                log1p(-zi) + Distributions.logpdf(Distributions.Poisson(λ), round(Int, d.y[i]))
         end, η0
     end
     error("unknown family")
