@@ -34,13 +34,12 @@ numbers say. `L22` is a **mean** axis and already jumps 3×, comparable to the m
 diagonal entry is `Var(axis k | axes 1..k−1)`, so it absorbs the compounding error of every axis
 conditioned before it. Depth explains more of the escalation than the mean/scale distinction.
 
-### Three contributors, measured separately
+### Contributors to the observed pattern
 
 - **Cholesky-depth compounding** — affects every axis, mean and scale alike. Dominant.
-- **The exp() link on scale axes** — real and correctly signed. The likelihood is exactly quadratic in
-  a mean-axis latent (Laplace is *exact* there, to machine precision) but not in a scale-axis latent.
-  On its own this accounts for only ~0.02 in log-SD at N = 128 — an order of magnitude too small to
-  explain the observed −1.85.
+- **The exp() link on scale axes** changes the likelihood geometry. Mean-axis latent terms enter
+  quadratically, while scale-axis latent terms do not. This distinction does not quantify how much
+  of the observed bias it explains.
 - **Phylogenetic tip correlation** — an amplifier, roughly 2× for scale axes at `ntip = 16`. On a star
   topology the scale-axis bias roughly halves. Notably the `L44`/`L33` ratio (≈1.85) is *unchanged* by
   tree correlation, confirming that part is structural to the fixed axis ordering.

@@ -38,7 +38,7 @@ the scale, not the standard deviation: for `ν > 2`, `SD[y] = σ·sqrt(ν/(ν �
 outliers, and `ν → ∞` tends to Gaussian. Mirrors `drmTMB`'s `student` family.
 
 ```julia
-fit = drm(bf(y ~ x, sigma ~ 1, nu ~ 1), Student(); data = dat)
+fit = drm(bf(@formula(y ~ x), @formula(sigma ~ 1), @formula(nu ~ 1)), Student(); data = dat)
 2 + exp(coef(fit, :nu)[1])  # estimated degrees of freedom (ν = 2 + exp(η))
 predict_parameters(fit, dat)[:nu]   # same quantity (response-scale ν, not exp(η))
 
@@ -46,10 +46,29 @@ predict_parameters(fit, dat)[:nu]   # same quantity (response-scale ν, not exp(
 fit_lap = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), Student(); data = dat,
               marginal = :Laplace)
 
+# A group-level covariate can model an ordinary mean intercept's SD:
+# `dat` must include numeric `z` values that are constant within each `g` group.
+fit_sd = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1),
+                   @formula(nu ~ 1), @formula(sd(g) ~ z)), Student(); data = dat)
+# It can also model the coefficient SD of one independent numeric mean slope:
+fit_slope_sd = drm(bf(@formula(y ~ x + (0 + x | g)), @formula(sigma ~ 1),
+                           @formula(nu ~ 1), @formula(sd(g, coef(x)) ~ z)),
+                       Student(); data = dat)
+
 # Independent random intercept and slope on one factor (#960, as drmTMB fits it; Laplace):
 fit_ind = drm(bf(@formula(y ~ x + (1 | g) + (0 + x | g)), @formula(sigma ~ 1)), Student(); data = dat)
 exp.(coef(fit_ind, :resd))         # SDs of the intercept and slope effects
 ```
+
+Student-t SD regression currently supports one ordinary mean intercept or one
+independent numeric mean slope, after the family's existing observed-response
+filtering, with predictors that are constant within each retained group. For
+multiple possible coefficients, use the matching `coef(intercept)` or
+`coef(x)` selector. A slope formula models the SD of its random coefficient;
+the observation-level contribution also depends on the slope predictor. This
+route requires fixed `sigma ~ 1` and `nu ~ 1` submodels. It uses adaptive
+Gauss–Hermite quadrature (`marginal = :LA`); correlated blocks, structured
+effects, and `marginal = :Laplace` are not admitted on this route yet.
 """
 struct Student end
 
@@ -108,6 +127,9 @@ function _drm_student_fit(f::DrmFormula, fam::Student; data, g_tol::Real = 1e-8,
     end
     missing_fit !== nothing && return missing_fit
 
+    if !isempty(_sd_target_parts(f)) || !isempty(_sdphylo_parts(f))
+        return _drm_student_sd_regression(f, fam; data, g_tol, se, marginal)
+    end
     _lss_only_gaussian_guard(f, fam)   # #544: refuse, never silently drop, sd() parts
     rhs = Dict(f.forms)
     fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
@@ -165,6 +187,149 @@ function _drm_student_fit(f::DrmFormula, fam::Student; data, g_tol::Real = 1e-8,
         end
     end
     return _withformula(_fit_student(fam, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol; offset = _offset_for_fit(fam, offset_term, data, size(Xμ, 1))), f)
+end
+
+# Student SD regression: one ordinary intercept or one independent numeric
+# slope on μ, with a group-constant fixed-effect design for log(SD). The groupwise AGHQ integral
+# uses the same Student scale σ and ν = 2 + exp(η) parameterizations as the
+# ordinary Student random-effect fit. Correlated and structured effects remain
+# explicit refusals until their Student likelihoods are reviewed.
+function _drm_student_sd_regression(f::DrmFormula, fam::Student; data,
+                                    g_tol::Real, se::Bool, marginal::Symbol)
+    marginal === :LA || throw(ArgumentError(
+        "Student `sd(group) ~ …` currently supports `marginal = :LA` only."))
+    isempty(_sdphylo_parts(f)) || throw(ArgumentError(
+        "Student `sd(group, phylogenetic) ~ …` is not implemented by the ordinary random-intercept route."))
+    targets = _sd_target_parts(f)
+    length(targets) == 1 || throw(ArgumentError(
+        "Student random-effect SD regression currently requires exactly one `sd(group) ~ …` formula."))
+    target = only(targets)
+    (target.target.level === :iid && target.target.dpar === :mu &&
+     target.target.block === nothing) ||
+        throw(ArgumentError("Student random-effect SD regression currently targets only an ordinary mean intercept or independent slope on `mu`."))
+    rhs = Dict(f.forms)
+    fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
+    (mv === nothing && st === nothing) || throw(ArgumentError(
+        "Student `sd($(target.target.group))` currently supports one ordinary intercept or independent numeric slope only."))
+    length(re) == 1 || throw(ArgumentError(
+        "Student random-effect SD regression currently supports exactly one ordinary random-effect coefficient."))
+    effect_kind, effect_term = _re_kind(re[1][1])
+    effect_member = if effect_kind === :intercept
+        :intercept
+    elseif effect_kind === :slope
+        effect_term
+    else
+        throw(ArgumentError(
+            "Student SD regression supports `(1 | group)` or one independent numeric `(0 + x | group)` term; correlated blocks are not admitted."))
+    end
+    target.target.member in (nothing, effect_member) || throw(ArgumentError(
+        "Student SD target `coef($(target.target.member))` does not match the fitted random-effect coefficient `$(effect_member)`."))
+    grp = re[1][2]
+    target.target.group === grp || throw(ArgumentError(
+        "Student `sd($(target.target.group))` must name the random-effect grouping variable `$grp`."))
+    sigma_rhs = get(rhs, :sigma, ConstantTerm(1))
+    sigma_rhs isa ConstantTerm && sigma_rhs == ConstantTerm(1) || throw(ArgumentError(
+        "Student `sd($grp)` currently requires a fixed `sigma ~ 1` submodel."))
+    nu_rhs = get(rhs, :nu, ConstantTerm(1))
+    nu_rhs isa ConstantTerm && nu_rhs == ConstantTerm(1) || throw(ArgumentError(
+        "Student `sd($grp)` currently requires a fixed `nu ~ 1` submodel."))
+    for (pname, form) in f.forms
+        pname == target.key && continue
+        pname === :mu && continue
+        _, re2, mv2, st2 = _split_ranef(form)
+        (isempty(re2) && mv2 === nothing && st2 === nothing) || throw(ArgumentError(
+            "Student(): only the mean formula may carry a random effect."))
+        pname in (:sigma, :nu) || throw(ArgumentError(
+            "Student `sd($grp)` supports only `mu`, `sigma`, `nu`, and one `sd($grp)` formula."))
+    end
+    y, Xmu, nmmu = _design(f.response, fixed_mu, data)
+    _, Xsigma, nmsigma = _design(f.response, sigma_rhs, data)
+    _, Xnu, nmnu = _design(f.response, nu_rhs, data)
+    gidx, G = _group_index(getproperty(data, grp))
+    Zre = if effect_kind === :intercept
+        ones(length(y), 1)
+    else
+        hasproperty(data, effect_term) || throw(ArgumentError(
+            "Student random-slope predictor `$(effect_term)` is absent from data."))
+        values = getproperty(data, effect_term)
+        values isa AbstractVector{<:Real} || throw(ArgumentError(
+            "Student random-slope predictor `$(effect_term)` must be numeric."))
+        length(values) == length(y) && all(isfinite, values) || throw(ArgumentError(
+            "Student random-slope predictor `$(effect_term)` must contain one finite value per retained response."))
+        reshape(Float64.(values), :, 1)
+    end
+    Zg, nmsd = _sd_group_design(f.response, target.rhs, data, gidx, G, grp;
+                                schema_cache = f.schema_cache, schema_key = target.key)
+    size(Zg, 2) <= G && rank(Zg) == size(Zg, 2) || throw(ArgumentError(
+        "Student `sd($grp)` group-level design is rank deficient; use predictors that vary independently across groups."))
+    return _withformula(_fit_student_sd_regression(fam, y, Xmu, Xsigma, Xnu, Zre, Zg,
+        gidx, G, nmmu, nmsigma, nmnu, nmsd, grp, g_tol; se), f)
+end
+
+function _fit_student_sd_regression(fam::Student, y, Xmu, Xsigma, Xnu, Zre, Zg,
+                                    gidx, G, nmmu, nmsigma, nmnu, nmsd,
+                                    grp, g_tol; se::Bool = true,
+                                    K::Int = _RANEF1D_AGHQ_K)
+    K >= 1 || throw(ArgumentError("nAGQ must be ≥ 1; got $K"))
+    n = length(y); pmu, psigma, pnu, psd = size(Xmu, 2), size(Xsigma, 2), size(Xnu, 2), size(Zg, 2)
+    members = [Int[] for _ in 1:G]
+    for i in 1:n
+        push!(members[gidx[i]], i)
+    end
+    rule = _AGHQRule(1, K)
+    size(Zre) == (n, 1) || throw(ArgumentError(
+        "Student SD regression currently requires exactly one scalar random-effect coefficient."))
+    bcache = [zeros(1, G) for _ in 1:Threads.maxthreadid()]
+    function nll(theta)
+        beta_mu = @view theta[1:pmu]
+        beta_sigma = @view theta[(pmu+1):(pmu+psigma)]
+        beta_nu = @view theta[(pmu+psigma+1):(pmu+psigma+pnu)]
+        alpha = @view theta[(pmu+psigma+pnu+1):(pmu+psigma+pnu+psd)]
+        eta_mu = Xmu * beta_mu
+        eta_sigma = Xsigma * beta_sigma
+        eta_nu = Xnu * beta_nu
+        sdgroup = exp.(Zg * alpha)
+        cache = bcache[Threads.threadid()]
+        ll = (i, eta) -> begin
+            z = (y[i] - eta) * exp(-eta_sigma[i])
+            _student_logpdf_std(z, eta_nu[i]) - eta_sigma[i]
+        end
+        total = zero(eltype(theta))
+        for gi in 1:G
+            Lg = reshape([sdgroup[gi]], 1, 1)
+            value, bhat = _aghq_group_logint(ll, members[gi], eta_mu, Zre,
+                                               Lg, rule, @view(cache[:, gi]))
+            cache[1, gi] = isfinite(bhat[1]) ? bhat[1] : 0.0
+            total += value
+        end
+        return -total
+    end
+    beta_mu0 = Xmu \ Float64.(y)
+    theta0 = zeros(pmu + psigma + pnu + psd)
+    theta0[1:pmu] .= beta_mu0
+    theta0[pmu+1] = log(std(y - Xmu * beta_mu0) + eps())
+    theta0[pmu+psigma+1] = log(10.0)
+    theta0[(pmu+psigma+pnu+1):end] .= Zg \ fill(log(0.5), G)
+    res = Optim.optimize(nll, theta0, Optim.LBFGS(),
+                         Optim.Options(g_tol = g_tol); autodiff = :forward)
+    theta_hat = Optim.minimizer(res)
+    V, hess_finite = _vcov_from_hessian_checked(ForwardDiff.hessian(nll, theta_hat),
+        _all_finite(y, Xmu, Xsigma, Xnu, Zg); context = "Student SD regression")
+    blocks = [:mu => 1:pmu, :sigma => (pmu+1):(pmu+psigma),
+              :nu => (pmu+psigma+1):(pmu+psigma+pnu),
+              :sd => (pmu+psigma+pnu+1):(pmu+psigma+pnu+psd)]
+    names = [:mu => nmmu, :sigma => nmsigma, :nu => nmnu, :sd => nmsd]
+    sdgroup = exp.(Zg * theta_hat[(pmu+psigma+pnu+1):end])
+    means = Dict(:mu => Xmu * theta_hat[1:pmu])
+    obs = Dict(:mu => Vector{Float64}(y))
+    scales = Dict(:sigma => exp.(Xsigma * theta_hat[(pmu+1):(pmu+psigma)]),
+                  :nu => 2 .+ exp.(Xnu * theta_hat[(pmu+psigma+1):(pmu+psigma+pnu)]),
+                  :sd_group => sdgroup, :sd => sdgroup[gidx],
+                  :sd_group_index => Float64.(gidx), :aghq_nodes => [Float64(K)])
+    return _withiterations(
+        _withnll(DrmFit(fam, blocks, names, theta_hat, V, -nll(theta_hat), n,
+                        drm_optim_converged(res) && hess_finite,
+                        means, obs, scales), nll), Optim.iterations(res))
 end
 
 # Student-t GLMM with a random intercept (1|g) on the mean μ (identity link).
@@ -280,9 +445,9 @@ function _fit_student(fam::Student, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol; o
     V = _ctl_se(θ̂) do
         Vh
     end
-    # x/f/g OR, not the iteration cap, and the Newton step in SE units (#1050).
-    # `g_converged` is the absolute 1e-8 check and is not part of this flag.
-    converged = hess_finite && Optim.converged(res) && !Optim.iteration_limit_reached(res) &&
+    # Not the iteration cap, and the Newton step in SE units (#1050). Neither
+    # `g_converged` (absolute 1e-8) nor the x/f/g OR is part of this flag (#983).
+    converged = hess_finite && !Optim.iteration_limit_reached(res) &&
         _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
     blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ), :nu => (pμ+pσ+1):(pμ+pσ+pν)]
     names = [:mu => nmμ, :sigma => nmσ, :nu => nmν]

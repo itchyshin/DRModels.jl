@@ -390,7 +390,7 @@ import StatsAPI: StatisticalModel
     lssform, _, lssplan = DRModels._bridge_formula(
         "y ~ 1 + (1 | g); sigma ~ 1; sd(g) ~ I(x^2)", "gaussian", lssdata;
         labels = true)
-    lssrhs = only(last(p) for p in lssform.forms if first(p) == :sd_g)
+    lssrhs = only(item.rhs for item in DRModels._sd_target_parts(lssform))
     lssgroupdesign, lssgroupnames = DRModels._sd_group_design(
         :y, lssrhs, lssplan.data, [1, 1, 2, 2], 2, :g)
     @test lssgroupnames == ["(Intercept)", "__bridge_I_1"]
@@ -407,7 +407,7 @@ import StatsAPI: StatisticalModel
     lssfactor, _, lssfactorplan = DRModels._bridge_formula(
         "y ~ 1 + (1 | g); sigma ~ 1; sd(g) ~ g", "gaussian", lssdata;
         labels = true)
-    lssfactorrhs = only(last(p) for p in lssfactor.forms if first(p) == :sd_g)
+    lssfactorrhs = only(item.rhs for item in DRModels._sd_target_parts(lssfactor))
     factorraw, factorpublic = DRModels._bridge_render_formula_block(
         lssfactor, :sd, lssfactorrhs, lssfactorplan)
     lssfactormap = Dict("sd_" * name => "sd_" * name for name in factorraw)

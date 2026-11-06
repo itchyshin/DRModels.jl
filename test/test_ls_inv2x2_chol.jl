@@ -120,6 +120,16 @@ end
 
     @test all(isfinite, fit.θ)
     @test isapprox(fit.nll, nll_pre870; atol = 1e-8)
-    @test isapprox(fit.θ, theta_pre870; atol = 1e-8)
+    # θ is only determined to the optimiser's stopping accuracy: NewtonTrustRegion
+    # stops at ‖∇‖∞ ≤ g_tol = 1e-8, and the observed-information inverse has
+    # λmax(V) = 0.576 (λmin(V) = 0.0045), so the stopping point can sit up to about
+    # λmax·√7·g_tol ≈ 1.5e-8 from the optimum in each fit, i.e. ~3e-8 between two
+    # fits. Measured max |θ - θ_pre870|: 1.8e-11 (Mac arm64, Julia 1.13.3) and 1.82e-8
+    # (Linux x86_64, Julia 1.13.1 AND 1.13.3 identically; the GitHub runner gave the
+    # same θ₇ = -1.2925712901668833). At that Linux point nll agrees to 15 digits
+    # (the objective differs by ~3e-16, below its rounding scale) and Λ to 1.1e-9,
+    # so this is a different last-digit optimiser path, not a changed fit. 1e-7 is
+    # ~3x the optimiser-accuracy bound and still ~1e-6 of the smallest SE (0.067).
+    @test isapprox(fit.θ, theta_pre870; atol = 1e-7)
     @test isapprox(fit.Lambda, Lambda_pre870; atol = 1e-8)
 end

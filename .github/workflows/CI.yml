@@ -14,6 +14,11 @@ on:
         description: "Include p=10000 in the multi-shape scaling sweep (#16, minutes-scale)"
         required: false
         default: "false"
+      release_platforms:
+        description: "Run targeted macOS and Windows release checks"
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -133,6 +138,33 @@ jobs:
         run: |
           echo "aggregate result of the test matrix: ${{ needs.test.result }}"
           test "${{ needs.test.result }}" = "success"
+
+  # Release-only platform coverage. Manual dispatch also retains the existing
+  # Linux matrix and scaling-sweep behaviour; this job does not alter ci-ok.
+  release-platform:
+    name: Release platform - ${{ matrix.os }}
+    if: github.event_name == 'workflow_dispatch' && inputs.release_platforms
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    env:
+      JULIA_NUM_THREADS: '4'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      JULIA_PKG_PRECOMPILE_AUTO: '0'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: '1'
+      - uses: julia-actions/cache@v2
+      - name: Run targeted release checks
+        shell: bash
+        run: |
+          julia --project=test -e 'using Pkg; Pkg.develop(path=pwd()); Pkg.instantiate(); using DRModels, Test, Random, LinearAlgebra, StatsModels; BLAS.set_num_threads(1); for f in ["test/test_fixed_priors.jl", "test/test_va_followups_1246.jl", "test/test_bootstrap_formula_structured.jl", "test/test_poisson.jl", "test/test_binomial.jl", "test/test_bridge.jl"]; println("RUN ", f); flush(stdout); include(f); end'
 
   # Engine-quality Q-gate #16: multi-shape (balanced + caterpillar) O(p) scaling
   # sweep. NOT per-PR (the p=10k cell is minutes-scale) — manual dispatch only.

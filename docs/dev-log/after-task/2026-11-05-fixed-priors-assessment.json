@@ -1,0 +1,36 @@
+{
+  "assessment_performed": true,
+  "draft_sha256": "5fef0cfcb2293e36e53bc1516972b6a0c90da1af5a202542b6a098b3b98d8f0a",
+  "draft_version": "v1",
+  "requested_mode": "independent",
+  "assessor_type": "self",
+  "reviewer": "Codex",
+  "method": "separate post-draft review against source, logs, process receipt and mechanical slop check",
+  "genre": "after-task report",
+  "coverage": "whole draft",
+  "score": 2,
+  "style_status": "scored",
+  "score_reason": "Concrete scope and numerical evidence with explicit unresolved limits. One mechanical flag is the required skill name validation-harness; it is not filler.",
+  "confidence": "medium",
+  "confidence_reason": "Self-review and bounded evidence; not independent validation.",
+  "examples": [
+    {
+      "location": "line 52",
+      "cue": "The explicit incomplete status and process cleanup give the reader the actual limit.",
+      "impact": "The reader can distinguish measured outcomes from unfinished checks.",
+      "repair": "no change needed",
+      "line": 52,
+      "quote": "incomplete. Process group 1473203 has no remaining members. The"
+    }
+  ],
+  "evidence_none_reason": null,
+  "science_gate": "pass",
+  "science_gate_reason": "Penalty and inferential descriptions were checked against the approved equations and focused tests.",
+  "facts_gate": "pass",
+  "facts_gate_reason": "Counts, process exit, log hash and source digest were checked against the recorded commands and logs.",
+  "references_gate": "not_applicable",
+  "references_gate_reason": "The document has no bibliographic citations.",
+  "date": "2026-11-05",
+  "calibration_status": "No calibration examples were consulted during this review.",
+  "interpretation": "perceived_style_not_authorship"
+}

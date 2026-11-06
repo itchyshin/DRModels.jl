@@ -100,6 +100,13 @@ function _fz_Λ_to_lc(Λ::AbstractMatrix{T}) where {T}
 end
 
 # φ_a → engine 10-vector lc (so the UNTOUCHED engine consumes it natively).
+"""
+    fz_phi_to_lc(φa) -> Vector
+
+Convert the Fisher-z / spherical parameters `φa = [d (4 log-SDs); θ_R (6
+angle-reals)]` to the engine's length-10 log-Cholesky vector, so the unchanged
+engine can consume them. Automatic-differentiation safe.
+"""
 fz_phi_to_lc(φa::AbstractVector) = _fz_Λ_to_lc(fz_DRD(φa))
 
 # ---------------------------------------------------------------------------
@@ -108,6 +115,13 @@ fz_phi_to_lc(φa::AbstractVector) = _fz_Λ_to_lc(fz_DRD(φa))
 # Axes are (mu1, mu2, sigma1, sigma2): so e.g. (3,2)=cor(sigma1,mu2),
 # (4,3)=cor(sigma2,sigma1).
 # ---------------------------------------------------------------------------
+"""
+    fz_correlations(φa) -> NTuple{6}
+
+The six among-axis correlations implied by `φa`, in the column-major order
+(2,1), (3,1), (4,1), (3,2), (4,2), (4,3) over the axes
+(mu1, mu2, sigma1, sigma2).
+"""
 function fz_correlations(φa::AbstractVector)
     Σ = fz_DRD(φa)
     s = sqrt.(diag(Σ))

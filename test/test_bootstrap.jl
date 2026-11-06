@@ -84,7 +84,11 @@ using Test, Random, LinearAlgebra
     Random.seed!(12)
     G = 16
     phy = random_balanced_tree(G; branch_length = 0.2)
-    m = 2
+    # Four observations per tip. Two (the #1202 fixture) still let one EM
+    # refit crawl sigma_phy to the boundary on Julia 1.10.10 and report
+    # `converged = false`, so the default `check_converged = true` dropped
+    # it. Do not restore `check_converged = false` (#1048).
+    m = 4
     species = repeat(1:G, inner = m)
     x_phy = randn(G * m)
     # A genuine phylogenetic signal (sd 0.8 on the tip-correlation scale) keeps

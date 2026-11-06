@@ -73,6 +73,7 @@ const API_EXPERIMENTAL = [
     "associate_pairs", "latent_normal", "association", "PairAssociation",
     "integration_diagnostics",
     # penalized MAP (A4c)
+    "drm_priors", "drm_prior_normal", "drm_prior_ridge", "resolve_priors",
     "drm_phylo_penalty", "drm_phylo_penalty_sweep",
     "PhyloPenalty", "PhyloCorPenaltyNeedsTwoSD",
     # bivariate meta
@@ -81,7 +82,7 @@ const API_EXPERIMENTAL = [
     "sd", "sd_phylo",
     # temporal AR1/OU on the Gaussian mean, wave 1 (D-310): the Julia spelling
     # is positional because `@formula` cannot carry drmTMB's keyword arguments
-    "temporal", "temporal_parameters",
+    "temporal", "temporal_parameters", "phylo_interaction",
     # prepared joint missing-predictor surface (post-v0.7 experimental)
     "PreparedJointModel", "PreparedJointFit",
     "PreparedFiniteJointModel", "PreparedFiniteJointFit",

@@ -34,6 +34,14 @@ import Statistics
     fit = drm(form, Gaussian(); data = dat, tree = phy)
     @test is_converged(fit)
 
+    # #1004: with the default `failures = :warn`, dropped refits are not silent. A tight
+    # iteration cap makes some replicates fail to converge; the result carries them in
+    # `failures` and a warning (from `_finish_bootstrap_status`) names the drop.
+    brw = @test_logs (:warn, r"after dropping \d+ of 16 refits") match_mode = :any bootstrap_sigma_a(
+        fit; data = dat, B = 16, rng = MersenneTwister(1), q4_iterations = 40)
+    @test brw.failed > 0 && brw.used > 0 && length(brw.failures) == brw.failed
+    @test brw.status == "bootstrap_incomplete"
+
     sd_fit = sqrt.(max.(diag(vc(fit)[:species]), 0.0))
     br = bootstrap_sigma_a(fit; data = dat, B = 16, rng = MersenneTwister(1))
 

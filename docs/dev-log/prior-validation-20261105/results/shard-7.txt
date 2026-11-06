@@ -1,0 +1,141 @@
+PRIOR_TEST_START	1.793916855046626e9	test_1052_bootstrap_failures_skip.jl
+PRIOR_TEST_DONE	1.793916874539962e9	test_1052_bootstrap_failures_skip.jl	19.471720999
+PRIOR_TEST_START	1.793916874540068e9	test_1112_missing_group_label.jl
+PRIOR_TEST_DONE	1.793916890764929e9	test_1112_missing_group_label.jl	16.224837383
+PRIOR_TEST_START	1.793916890765052e9	test_164_mean_re_covariate_sigma.jl
+PRIOR_TEST_DONE	1.793916898566495e9	test_164_mean_re_covariate_sigma.jl	7.801424584
+PRIOR_TEST_START	1.793916898566613e9	test_974_dense_v_refusal.jl
+PRIOR_TEST_DONE	1.793916901122584e9	test_974_dense_v_refusal.jl	2.555948478
+PRIOR_TEST_START	1.793916901122681e9	test_aghq_1d.jl
+PRIOR_TEST_DONE	1.793916925475777e9	test_aghq_1d.jl	24.353073228
+PRIOR_TEST_START	1.79391692547589e9	test_beta_animal_sd_regression.jl
+PRIOR_TEST_DONE	1.793916958173574e9	test_beta_animal_sd_regression.jl	32.697663823
+PRIOR_TEST_START	1.793916958173694e9	test_betabinomial_phylo_laplace.jl
+PRIOR_TEST_DONE	1.793916962523072e9	test_betabinomial_phylo_laplace.jl	4.3493554
+PRIOR_TEST_START	1.793916962523175e9	test_bf_grammar.jl
+PRIOR_TEST_DONE	1.793916962784249e9	test_bf_grammar.jl	0.261054757
+PRIOR_TEST_START	1.793916962784325e9	test_binomial_animal_slope_iid_sd_regression.jl
+PRIOR_TEST_DONE	1.793916981764762e9	test_binomial_animal_slope_iid_sd_regression.jl	18.980416679
+PRIOR_TEST_START	1.793916981764883e9	test_binomial_default_nodes.jl
+PRIOR_TEST_DONE	1.793916990325412e9	test_binomial_default_nodes.jl	8.560508843
+PRIOR_TEST_START	1.793916990325513e9	test_binomial_nonlogit_nested_sd_regression.jl
+PRIOR_TEST_DONE	1.793916994176927e9	test_binomial_nonlogit_nested_sd_regression.jl	3.851395475
+PRIOR_TEST_START	1.793916994177029e9	test_binomial_probit_phylo_sd_regression.jl
+PRIOR_TEST_DONE	1.793916998273381e9	test_binomial_probit_phylo_sd_regression.jl	4.096331023
+PRIOR_TEST_START	1.793916998273461e9	test_binomial_sd_public.jl
+PRIOR_TEST_DONE	1.793917044217572e9	test_binomial_sd_public.jl	45.94404678
+PRIOR_TEST_START	1.793917044217735e9	test_bivariate_schema_cache_1000.jl
+PRIOR_TEST_DONE	1.793917062914574e9	test_bivariate_schema_cache_1000.jl	18.696798901
+PRIOR_TEST_START	1.793917062914775e9	test_bootstrap_marginal.jl
+PRIOR_TEST_DONE	1.793917096228284e9	test_bootstrap_marginal.jl	33.313473384
+PRIOR_TEST_START	1.793917096228501e9	test_bridge.jl
+PRIOR_TEST_DONE	1.79391719584135e9	test_bridge.jl	99.612808338
+PRIOR_TEST_START	1.793917195841537e9	test_bridge_formula_translation.jl
+PRIOR_TEST_DONE	1.793917252700868e9	test_bridge_formula_translation.jl	56.85928825
+PRIOR_TEST_START	1.793917252701104e9	test_bridge_option_passthrough.jl
+PRIOR_TEST_DONE	1.79391727056366e9	test_bridge_option_passthrough.jl	17.862506245
+PRIOR_TEST_START	1.793917270563857e9	test_bridge_silent_sweep.jl
+PRIOR_TEST_DONE	1.79391727878903e9	test_bridge_silent_sweep.jl	8.225140329
+PRIOR_TEST_START	1.793917278789204e9	test_coevo_q6.jl
+PRIOR_TEST_DONE	1.79391732093906e9	test_coevo_q6.jl	42.149817359
+PRIOR_TEST_START	1.793917320939275e9	test_coverage_accessors.jl
+PRIOR_TEST_DONE	1.793917323629705e9	test_coverage_accessors.jl	2.690383516
+PRIOR_TEST_START	1.793917323629867e9	test_crossed_cumulative.jl
+PRIOR_TEST_DONE	1.793917338972656e9	test_crossed_cumulative.jl	15.342754597
+PRIOR_TEST_START	1.793917338972818e9	test_cumlogit_phylo.jl
+PRIOR_TEST_DONE	1.793917343828266e9	test_cumlogit_phylo.jl	4.85541773
+PRIOR_TEST_START	1.793917343828452e9	test_experimental_optimizer.jl
+PRIOR_TEST_DONE	1.79391735095302e9	test_experimental_optimizer.jl	7.124535249
+PRIOR_TEST_START	1.793917350953182e9	test_fixed_priors.jl
+PRIOR_TEST_DONE	1.793917370941321e9	test_fixed_priors.jl	19.988080348
+PRIOR_TEST_START	1.793917370941478e9	test_gamma_beta_contract.jl
+PRIOR_TEST_DONE	1.793917380982076e9	test_gamma_beta_contract.jl	10.040568413
+PRIOR_TEST_START	1.793917380982258e9	test_gamma_spatial_sd_regression.jl
+PRIOR_TEST_DONE	1.793917387229942e9	test_gamma_spatial_sd_regression.jl	6.247652317
+PRIOR_TEST_START	1.793917387230128e9	test_gaussian_phylo_mean_missing_response.jl
+PRIOR_TEST_DONE	1.793917393973921e9	test_gaussian_phylo_mean_missing_response.jl	6.743766273
+PRIOR_TEST_START	1.793917393974096e9	test_hurdle.jl
+PRIOR_TEST_DONE	1.79391740589992e9	test_hurdle.jl	11.925796432
+PRIOR_TEST_START	1.793917405900057e9	test_j2_convergence_vcov.jl
+PRIOR_TEST_DONE	1.793917413682477e9	test_j2_convergence_vcov.jl	7.782393545
+PRIOR_TEST_START	1.793917413682609e9	test_joint_missing_finite_frontend.jl
+PRIOR_TEST_DONE	1.793917442183629e9	test_joint_missing_finite_frontend.jl	28.500993608
+PRIOR_TEST_START	1.793917442183786e9	test_lambda_direction.jl
+PRIOR_TEST_DONE	1.793917443998929e9	test_lambda_direction.jl	1.815117595
+PRIOR_TEST_START	1.793917443999027e9	test_lme4_twins.jl
+PRIOR_TEST_DONE	1.793917469933052e9	test_lme4_twins.jl	25.933999375
+PRIOR_TEST_START	1.793917469933185e9	test_locscale_grad.jl
+PRIOR_TEST_DONE	1.793917473386184e9	test_locscale_grad.jl	3.452976617
+PRIOR_TEST_START	1.793917473386317e9	test_locscale_profile.jl
+PRIOR_TEST_DONE	1.793917473427839e9	test_locscale_profile.jl	0.041496153
+PRIOR_TEST_START	1.79391747342793e9	test_lognormal.jl
+PRIOR_TEST_DONE	1.793917476037933e9	test_lognormal.jl	2.609981114
+PRIOR_TEST_START	1.793917476038022e9	test_lrt_boundary_guards_1002.jl
+PRIOR_TEST_DONE	1.793917476440378e9	test_lrt_boundary_guards_1002.jl	0.402335889
+PRIOR_TEST_START	1.79391747644049e9	test_lss_reml.jl
+PRIOR_TEST_DONE	1.793917515380697e9	test_lss_reml.jl	38.940183395
+PRIOR_TEST_START	1.793917515380817e9	test_lss_sparse_multi_reml.jl
+PRIOR_TEST_DONE	1.793917518986601e9	test_lss_sparse_multi_reml.jl	3.60576039
+PRIOR_TEST_START	1.793917518986727e9	test_meta_vcov_bivariate.jl
+PRIOR_TEST_DONE	1.79391752310522e9	test_meta_vcov_bivariate.jl	4.11846549
+PRIOR_TEST_START	1.793917523105311e9	test_mixed_family_postfit_edges.jl
+PRIOR_TEST_DONE	1.793917525561611e9	test_mixed_family_postfit_edges.jl	2.456279712
+PRIOR_TEST_START	1.793917525561713e9	test_nb2_hurdle_nan.jl
+PRIOR_TEST_DONE	1.793917526261941e9	test_nb2_hurdle_nan.jl	0.700208203
+PRIOR_TEST_START	1.793917526262054e9	test_nbinom2_slope_re.jl
+PRIOR_TEST_DONE	1.793917537264346e9	test_nbinom2_slope_re.jl	11.002271147
+PRIOR_TEST_START	1.793917537264453e9	test_numerical_guards.jl
+PRIOR_TEST_DONE	1.793917542049958e9	test_numerical_guards.jl	4.785483124
+PRIOR_TEST_START	1.793917542050084e9	test_ordinary_laplace.jl
+PRIOR_TEST_DONE	1.793917628350088e9	test_ordinary_laplace.jl	86.299977611
+PRIOR_TEST_START	1.793917628350212e9	test_parity_temporal.jl
+PRIOR_TEST_DONE	1.793917658590553e9	test_parity_temporal.jl	30.24033
+PRIOR_TEST_START	1.79391765859065e9	test_phylo_polytomy_kernels.jl
+PRIOR_TEST_DONE	1.793917662892212e9	test_phylo_polytomy_kernels.jl	4.301542616
+PRIOR_TEST_START	1.793917662892335e9	test_poisson_crossed_laplace.jl
+PRIOR_TEST_DONE	1.793917663871114e9	test_poisson_crossed_laplace.jl	0.97875961
+PRIOR_TEST_START	1.793917663871201e9	test_poisson_slope_re.jl
+PRIOR_TEST_DONE	1.793917669874487e9	test_poisson_slope_re.jl	6.003267249
+PRIOR_TEST_START	1.793917669874594e9	test_predict_se.jl
+PRIOR_TEST_DONE	1.793917670415104e9	test_predict_se.jl	0.540481226
+PRIOR_TEST_START	1.793917670415184e9	test_q2_structured_vcov.jl
+PRIOR_TEST_DONE	1.79391768079238e9	test_q2_structured_vcov.jl	10.377144247
+PRIOR_TEST_START	1.793917680792506e9	test_qres_trunc_nan.jl
+PRIOR_TEST_DONE	1.793917685575506e9	test_qres_trunc_nan.jl	4.782970205
+PRIOR_TEST_START	1.793917685575609e9	test_relmat_counts_beta.jl
+PRIOR_TEST_DONE	1.793917687774055e9	test_relmat_counts_beta.jl	2.198424407
+PRIOR_TEST_START	1.793917687774173e9	test_reml_prior_precision_collapse.jl
+PRIOR_TEST_DONE	1.793917688385691e9	test_reml_prior_precision_collapse.jl	0.611472818
+PRIOR_TEST_START	1.793917688385774e9	test_reml_sigma_phylo_joint.jl
+PRIOR_TEST_DONE	1.793917786714403e9	test_reml_sigma_phylo_joint.jl	98.328604057
+PRIOR_TEST_START	1.793917786714564e9	test_sd_ids_labels.jl
+PRIOR_TEST_DONE	1.793917795290012e9	test_sd_ids_labels.jl	8.575417492
+PRIOR_TEST_START	1.793917795290121e9	test_sigma_axis_re.jl
+PRIOR_TEST_DONE	1.793917796602773e9	test_sigma_axis_re.jl	1.312607197
+PRIOR_TEST_START	1.793917796602861e9	test_skewnormal.jl
+PRIOR_TEST_DONE	1.793917799749013e9	test_skewnormal.jl	3.146132858
+PRIOR_TEST_START	1.793917799749117e9	test_stored_loglik_at_optimum.jl
+PRIOR_TEST_DONE	1.793917822639451e9	test_stored_loglik_at_optimum.jl	22.890312604
+PRIOR_TEST_START	1.793917822639586e9	test_student_re.jl
+PRIOR_TEST_DONE	1.793917833675309e9	test_student_re.jl	11.035699586
+PRIOR_TEST_START	1.793917833675415e9	test_sweep_blocked_972.jl
+PRIOR_TEST_DONE	1.793917833707904e9	test_sweep_blocked_972.jl	0.032443732
+PRIOR_TEST_START	1.793917833707988e9	test_temporal_residuals.jl
+PRIOR_TEST_DONE	1.793917837871852e9	test_temporal_residuals.jl	4.163843178
+PRIOR_TEST_START	1.793917837871951e9	test_truncated_poisson_sd_slope.jl
+PRIOR_TEST_DONE	1.793917848082734e9	test_truncated_poisson_sd_slope.jl	10.210762304
+PRIOR_TEST_START	1.793917848082833e9	test_tweedie_sd_regression.jl
+PRIOR_TEST_DONE	1.793918301665706e9	test_tweedie_sd_regression.jl	453.582847733
+PRIOR_TEST_START	1.79391830166583e9	test_twin_gap_609.jl
+PRIOR_TEST_DONE	1.793918302515336e9	test_twin_gap_609.jl	0.84948343
+PRIOR_TEST_START	1.793918302515418e9	test_twin_gap_747_lss_reml.jl
+PRIOR_TEST_DONE	1.793918303521222e9	test_twin_gap_747_lss_reml.jl	1.00578631
+PRIOR_TEST_START	1.793918303521305e9	test_two_structured_gaussian_sparse.jl
+PRIOR_TEST_DONE	1.793918312079303e9	test_two_structured_gaussian_sparse.jl	8.557980148
+PRIOR_TEST_START	1.793918312079422e9	test_variational_gamma.jl
+PRIOR_TEST_DONE	1.793918366259185e9	test_variational_gamma.jl	54.179742482
+PRIOR_TEST_START	1.793918366259319e9	test_zeroonebeta_sd_regression.jl
+PRIOR_TEST_DONE	1.793918410308512e9	test_zeroonebeta_sd_regression.jl	44.049169124
+[ Info: R-parity suite skipped (set DRM_PARITY_TESTS=1 to run)
+Q-gate: JET type-stability (lc_to_Λ / Λ_to_lc) |    2      2  2.9s
+     Testing DRModels tests passed

@@ -19,7 +19,7 @@ using SparseArrays: SparseArrays, SparseMatrixCSC, sparse, nonzeros, rowvals,
 Structured random-intercept marker with a user-supplied relatedness matrix:
 
 ```julia
-drm(bf(y ~ x + relmat(1 | id), sigma ~ 1), Gaussian(); data, K = K)
+drm(bf(@formula(y ~ x + relmat(1 | id)), @formula(sigma ~ 1)), Gaussian(); data, K = K)
 ```
 
 `K` is the correlation/relatedness matrix over the levels of `id`, ordered as
