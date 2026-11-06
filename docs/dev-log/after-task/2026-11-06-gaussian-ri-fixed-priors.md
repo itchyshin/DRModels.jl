@@ -37,3 +37,5 @@ The `:LA` Gaussian mean-intercept route is exact; explicit `:Laplace` denotes a 
 
 ## 12. Cross-Product Coverage
 Covers Gaussian ML fixed-coefficient priors with one iid mean random intercept and Julia bridge coordinate handling. Does NOT cover random slopes, multiple or structured effects, random-effect SD priors, REML, missingness, non-unit weights, other mixed-model families, interval calibration or arbitrary-point bridge Hessians.
+
+Native factor follow-up: the current RI test file passed its existing 43 checks and five additional real-factor checks on Totoro Julia 1.10.12, four Julia threads and one BLAS thread. The exact `f: b` selector and its matrix column were checked with a successful fit and likelihood/prior decomposition. R-to-Julia validation of explicitly numeric indicator columns does not establish raw-factor bridge support; its existing refusal is retained.

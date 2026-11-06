@@ -76,3 +76,20 @@ using Test, DRModels, ForwardDiff, LinearAlgebra
     q = [0.7, 0.4, -0.2, 0.1, -0.5]
     @test sf.nll(q) ≈ su.nll(q) + prior_value(q) + 0.25*q[4]^2 atol=1e-10
 end
+
+@testset "native factor selector with a Gaussian random intercept" begin
+    dat = (y=[1.0, 1.7, 2.2, 2.9, 0.9, 1.8, 2.7, 3.6],
+           f=repeat(["a", "b"], 4), id=repeat(1:4, inner=2))
+    form = bf(@formula(y ~ f + (1 | id)))
+    priors = drm_priors(drm_prior_normal(dpar="mu", coef="f: b", mean=0.3, sd=1.5))
+    rows = resolve_priors(form, Gaussian(); data=dat, priors=priors)
+    @test length(rows) == 1
+    @test (rows[1].dpar, rows[1].coef, rows[1].matrix_column, rows[1].index) == (:mu, "f: b", 2, 2)
+    fit = drm(form, Gaussian(); data=dat, priors=priors)
+    plain = drm(form, Gaussian(); data=dat)
+    point = [1.2, 0.6, -0.4, -0.1]
+    prior_nll = 0.5*((point[2]-0.3)/1.5)^2 + log(1.5) + 0.5log(2π)
+    @test fit.estim_method === :MAP
+    @test fit.nll(point) ≈ plain.nll(point) + prior_nll atol=1e-10
+    @test fit.loglik ≈ -plain.nll(fit.theta) atol=1e-10
+end
