@@ -1,0 +1,1 @@
+- **`:VA` follow-ups (#1246, items 4 and 6).** `_va_scored_sigma`'s clamp warning is now quiet inside bootstrap refits (`:drm_quiet_boundary`), like the inner-stationarity warning; `_logfactorial` uses `loggamma` (O(1)) instead of an O(k) sum. Items 1, 2, 3 and 5 remain open.
