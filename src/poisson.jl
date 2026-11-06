@@ -120,7 +120,9 @@ do not use them for model selection over `μ`.
 """
 struct Poisson end
 
-_logfactorial(k::Integer) = sum(log, 2:k; init = 0.0)   # log k!  (0 for k = 0, 1)
+using SpecialFunctions: loggamma
+
+_logfactorial(k::Integer) = k < 2 ? 0.0 : loggamma(Float64(k) + 1.0)   # log k!, O(1) (#1246); 0 for k = 0, 1
 
 # ---- offset() on the Poisson mean (#727, drmTMB twin gap) ------------------
 # `offset(x)` is a marker function, exactly like `phylo`/`relmat`/`meta_V`: the
