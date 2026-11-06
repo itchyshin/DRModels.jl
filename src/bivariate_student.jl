@@ -81,7 +81,8 @@ rather than mirroring the established one, on exactly the family (correlated
 structured scale) this project has already gotten a scale convention silently
 wrong once. drmTMB has the same limit, and that is the load-bearing half of this
 rejection, so it is written down reproducibly rather than asserted.
-**Re-verified live 2026-08-25** against the installed drmTMB 0.7.0:
+In native drmTMB, the fixed-effect fit below is accepted and adding the
+structured marker is refused:
 
 ```r
 library(drmTMB); library(ape)
@@ -93,7 +94,8 @@ d <- data.frame(y1 = rnorm(40), y2 = rnorm(40), x = rnorm(40),
 drmTMB(bf(mu1 = y1 ~ x, mu2 = y2 ~ x, sigma1 = ~1, sigma2 = ~1,
           nu = ~1, rho12 = ~1), family = biv_student(), data = d)
 # add a structured marker -> REFUSED
-drmTMB(bf(mu1 = y1 ~ x + phylo(1 | sp, tree = tr), mu2 = y2 ~ x, ...),
+drmTMB(bf(mu1 = y1 ~ x + phylo(1 | sp, tree = tr), mu2 = y2 ~ x,
+          sigma1 = ~1, sigma2 = ~1, nu = ~1, rho12 = ~1),
        family = biv_student(), data = d)
 #> `biv_student()` currently allows fixed-effect formulas only; random and
 #>  structured effects are deferred.

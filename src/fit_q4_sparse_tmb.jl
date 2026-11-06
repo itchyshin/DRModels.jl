@@ -491,6 +491,17 @@ end
 # Fit driver: Optim only_fg! + LBFGS(BackTracking), warm-started inner Newton.
 # -----------------------------------------------------------------------------
 
+"""
+    fit_q4_sparse_tmb(prob, Q_cond; θ0, β0, Λ0, g_tol = 1e-3, iterations = 200,
+                      n_newton = 40, show_trace = false, lc_zero = Int[],
+                      linesearch = MoreThuente()) -> NamedTuple
+
+Maximum-likelihood fit of the q=4 sparse Laplace engine by L-BFGS on the exact
+gradient. Supply `θ0` or `(β0, Λ0)`; `lc_zero` pins log-Cholesky indices (1..10)
+to zero for a constrained among-axis covariance. Returns `θ`, `β`, `Λ`, `nll`,
+`loglik`, `converged`, `iterations`, `g_residual`, `f_calls` and `g_calls`.
+Public fitting goes through `drm`; this is the engine entry point.
+"""
 function fit_q4_sparse_tmb(prob::AugProblem, Q_cond::SparseMatrixCSC;
                            θ0 = nothing, β0 = nothing, Λ0 = nothing,
                            g_tol::Float64 = 1e-3, iterations::Int = 200,

@@ -321,7 +321,7 @@ end
 
 # Mixed-marginal guard (#136 Arc 0): fits whose random-effect integrals were
 # approximated differently are not comparable in lrtest / anova. A VA `loglik` is
-# an ELBO, not a log-likelihood; `:LA` (GHQ-32 on an ordinary `(1 | g)`) and
+# an ELBO, not a log-likelihood; `:LA` (the route-specific default integrator) and
 # `:Laplace` (one-point Laplace) differ by integration error. The one safe mixed
 # pair is a random-effect-free fit (exact log-likelihood) against a non-VA fit,
 # e.g. the fixed-effects model against a `marginal = :Laplace` random intercept.
@@ -333,7 +333,7 @@ function _marginal_compare_guard(a::DrmFit, b::DrmFit, verb::AbstractString)
         "the VA objective is an ELBO, not a log-likelihood (#136)"
     else
         detail = Set((a.marginal, b.marginal)) == Set((:LA, :Laplace)) ?
-            " (`:LA` is GHQ-32 on an ordinary `(1 | g)`; `:Laplace` is the one-point Laplace approximation)" : ""
+            " (`:LA` uses the route-specific default integrator; `:Laplace` is the one-point Laplace approximation)" : ""
         "the two approximate the random-effect integral differently$detail, so their " *
         "log-likelihood difference would mix model fit with integration error"
     end
@@ -470,6 +470,10 @@ function update(fit::DrmFit, formula, args...; data, kwargs...)
             haskey(stored, :penalty) && !haskey(kwargs, :penalty)
         stored = Base.structdiff(stored, NamedTuple{(:penalty,)})
     end
+    if caller_method !== nothing && caller_method != fit.estim_method &&
+            haskey(stored, :priors) && !haskey(kwargs, :priors)
+        stored = Base.structdiff(stored, NamedTuple{(:priors,)})
+    end
     merged = merge(stored, NamedTuple(kwargs))
     return drm(formula, fit.family; data = data, merged...)
 end
@@ -489,7 +493,11 @@ function _update_stored_options(fit::DrmFit)
         throw(ArgumentError(
             "update: unsupported estim_method :$(fit.estim_method)"))
     end
-    fit.penalty === nothing || push!(kw, :penalty => fit.penalty)
+    if _is_fixed_prior_fit(fit)
+        push!(kw, :priors => fit.penalty.specs)
+    elseif fit.penalty !== nothing
+        push!(kw, :penalty => fit.penalty)
+    end
     fit.marginal === :LA || push!(kw, :marginal => fit.marginal)
     return NamedTuple(kw)
 end

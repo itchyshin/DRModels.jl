@@ -1,0 +1,98 @@
+[
+  {
+    "shard": 1,
+    "exit": 0,
+    "started_utc": "2026-11-05T22:13:56Z",
+    "ended_utc": "2026-11-05T22:32:11Z",
+    "raw_log_path": "/home/snakagaw/hsq_work/drm-priors-20261105-01a1ad0b/evidence/validation8/shard-1.log",
+    "raw_log_sha256": "6d55f8e772c4af0c17525bdeddd77a2d335b3fd264eca7f954cfc1a9953909c5",
+    "raw_bytes": 86205,
+    "transcript": "shard-1.txt",
+    "transcript_sha256": "44c5dea5f9ab04d12d677ffab8aa1927bbeaabb38002430e81c2ee7ed0e587b8",
+    "filter": "include markers, package verdict, JET/parity status and failure labels; trailing horizontal whitespace trimmed; raw log retained separately"
+  },
+  {
+    "shard": 2,
+    "exit": 0,
+    "started_utc": "2026-11-05T22:13:56Z",
+    "ended_utc": "2026-11-05T22:37:19Z",
+    "raw_log_path": "/home/snakagaw/hsq_work/drm-priors-20261105-01a1ad0b/evidence/validation8/shard-2.log",
+    "raw_log_sha256": "2fbdcb8d0883fcc56bc0245ed932ec9772a00c4175f1985133940631b86160ff",
+    "raw_bytes": 490136,
+    "transcript": "shard-2.txt",
+    "transcript_sha256": "8c8b876b3f68d16a2727559477a0cb35fbd8db876c04bfd89e45f78a14d18aa8",
+    "filter": "include markers, package verdict, JET/parity status and failure labels; trailing horizontal whitespace trimmed; raw log retained separately"
+  },
+  {
+    "shard": 3,
+    "exit": 0,
+    "started_utc": "2026-11-05T22:13:56Z",
+    "ended_utc": "2026-11-05T22:27:35Z",
+    "raw_log_path": "/home/snakagaw/hsq_work/drm-priors-20261105-01a1ad0b/evidence/validation8/shard-3.log",
+    "raw_log_sha256": "e2a9be39d51ab73969214d0a7b34bccdcab8ad11ddd46feed7fc4b82f99db42c",
+    "raw_bytes": 55857,
+    "transcript": "shard-3.txt",
+    "transcript_sha256": "4a51b4593f48a5d7300921e915b7f90d8a601eca7de994341a70fad092f4df40",
+    "filter": "include markers, package verdict, JET/parity status and failure labels; trailing horizontal whitespace trimmed; raw log retained separately"
+  },
+  {
+    "shard": 4,
+    "exit": 0,
+    "started_utc": "2026-11-05T22:13:56Z",
+    "ended_utc": "2026-11-06T00:25:27Z",
+    "raw_log_path": "/home/snakagaw/hsq_work/drm-priors-20261105-01a1ad0b/evidence/validation8/shard-4.log",
+    "raw_log_sha256": "01f0f68c783d8a050b2d5ec3810c2fe7301ae4b0799a95021756025e860d4bb7",
+    "raw_bytes": 118531,
+    "transcript": "shard-4.txt",
+    "transcript_sha256": "b3024ea335d3e87ee29705f9cff35dc3a651ef688f0ea59040c4600f41baf878",
+    "filter": "include markers, package verdict, JET/parity status and failure labels; trailing horizontal whitespace trimmed; raw log retained separately"
+  },
+  {
+    "shard": 5,
+    "exit": 0,
+    "started_utc": "2026-11-05T22:13:56Z",
+    "ended_utc": "2026-11-05T22:33:54Z",
+    "raw_log_path": "/home/snakagaw/hsq_work/drm-priors-20261105-01a1ad0b/evidence/validation8/shard-5.log",
+    "raw_log_sha256": "915aef7ca295ccd131acc4fbfa277b104564ff709c727c39b1f25fdf36dfc039",
+    "raw_bytes": 79085,
+    "transcript": "shard-5.txt",
+    "transcript_sha256": "f5a8df4efd8962ca77b051523e7d29fd3ace49074559a017fafe3d750d216167",
+    "filter": "include markers, package verdict, JET/parity status and failure labels; trailing horizontal whitespace trimmed; raw log retained separately"
+  },
+  {
+    "shard": 6,
+    "exit": 0,
+    "started_utc": "2026-11-05T22:13:56Z",
+    "ended_utc": "2026-11-05T22:32:23Z",
+    "raw_log_path": "/home/snakagaw/hsq_work/drm-priors-20261105-01a1ad0b/evidence/validation8/shard-6.log",
+    "raw_log_sha256": "d494082763226f5356bdeb6824efacb3ead6c337474f2394435577e97f93935b",
+    "raw_bytes": 97486,
+    "transcript": "shard-6.txt",
+    "transcript_sha256": "77d293d11320d1278017595e07fbd6a0f3ed79fc13d9d71179428ddd3f4851ac",
+    "filter": "include markers, package verdict, JET/parity status and failure labels; trailing horizontal whitespace trimmed; raw log retained separately"
+  },
+  {
+    "shard": 7,
+    "exit": 0,
+    "started_utc": "2026-11-05T22:13:56Z",
+    "ended_utc": "2026-11-05T22:40:10Z",
+    "raw_log_path": "/home/snakagaw/hsq_work/drm-priors-20261105-01a1ad0b/evidence/validation8/shard-7.log",
+    "raw_log_sha256": "5e53d871368cf29ab7db6d75eb630a135b4ca367f5e466835039c39c9df88b03",
+    "raw_bytes": 79570,
+    "transcript": "shard-7.txt",
+    "transcript_sha256": "6fa7d32aecc49f05f23060e34672a70ac4d07f5f33f9c96e3b6db64f297e4041",
+    "filter": "include markers, package verdict, JET/parity status and failure labels; trailing horizontal whitespace trimmed; raw log retained separately"
+  },
+  {
+    "shard": 8,
+    "exit": 0,
+    "started_utc": "2026-11-05T22:13:56Z",
+    "ended_utc": "2026-11-05T22:36:51Z",
+    "raw_log_path": "/home/snakagaw/hsq_work/drm-priors-20261105-01a1ad0b/evidence/validation8/shard-8.log",
+    "raw_log_sha256": "9f4f775f7058df19e1ac5d440f725c95254851f84134fd64cbef28a6be7df854",
+    "raw_bytes": 67328,
+    "transcript": "shard-8.txt",
+    "transcript_sha256": "b3692a84f5dea5d418ea4688eaec756e2c2c1e856dec0090ca4a5c63e00c4a35",
+    "filter": "include markers, package verdict, JET/parity status and failure labels; trailing horizontal whitespace trimmed; raw log retained separately"
+  }
+]

@@ -47,13 +47,32 @@ response via [`cbind`](@ref). Mirrors `drmTMB`'s `beta_binomial`.
 Crossed random intercepts on the mean, such as `(1 | g) + (1 | h)`, use the
 sparse-Laplace engine when `sigma ~ 1`. A phylogenetic random intercept on the
 mean, `phylo(1 | species)`, also uses the sparse-Laplace engine; both
-routes require constant σ (overdispersion).
+routes require constant σ (overdispersion). One ordinary mean random intercept
+or one independent numeric mean slope also supports a predictor-dependent SD
+with `sd(g) ~ predictors`, provided `sigma ~ 1`; the SD predictors must be
+constant within groups. For a random slope, the SD is the coefficient SD and
+the observation-level slope predictor multiplies that coefficient in the mean
+linear predictor. These routes use adaptive Gauss–Hermite quadrature and do
+not add a free Bernoulli-style residual scale.
+
+One ordinary random intercept on `sigma` also supports a predictor-dependent
+SD with `sd(group, sigma) ~ predictors`. Here the second selector names the
+distributional parameter. The mean formula must be fixed-effect only, and the
+SD predictors must be constant within groups. This models between-group
+variation in log overdispersion separately from variation in the logit mean.
 
 ```julia
-fit = drm(bf(cbind(successes, failures) ~ x, sigma ~ 1), BetaBinomial(); data = dat)
-fit = drm(bf(cbind(successes, failures) ~ x + (1 | g) + (1 | h), sigma ~ 1), BetaBinomial(); data = dat)
+fit = drm(bf(@formula(cbind(successes, failures) ~ x), @formula(sigma ~ 1)), BetaBinomial(); data = dat)
+fit = drm(bf(@formula(cbind(successes, failures) ~ x + (1 | g) + (1 | h)), @formula(sigma ~ 1)), BetaBinomial(); data = dat)
 fit_phy = drm(bf(@formula(cbind(successes, failures) ~ x + phylo(1 | species)), @formula(sigma ~ 1)),
               BetaBinomial(); data = dat, tree = tr, se = false)
+fit_sd = drm(bf(@formula(cbind(successes, failures) ~ x + (1 | g)),
+                @formula(sigma ~ 1), @formula(sd(g) ~ treatment)),
+              BetaBinomial(); data = dat)
+fit_sigma_sd = drm(bf(@formula(cbind(successes, failures) ~ x),
+                      @formula(sigma ~ 1 + (1 | g)),
+                      @formula(sd(g, sigma) ~ treatment)),
+                   BetaBinomial(); data = dat)
 ```
 """
 struct BetaBinomial end
@@ -67,6 +86,11 @@ end
 function _drm_betabinomial_fit(f::DrmFormula, fam::BetaBinomial; data, tree = nothing, g_tol::Real = 1e-8,
              se::Bool = true, marginal::Symbol = :LA)
     _drm_entry_guard(f, fam, data; tree = tree)   # #1027 #1022 #1010
+    sd_targets = _sd_target_parts(f)
+    any(item -> item.target.dpar === :sigma, sd_targets) &&
+        return _drm_betabinomial_sigma_sd_regression(f, fam; data, g_tol, se, marginal)
+    !isempty(sd_targets) &&
+        return _drm_betabinomial_sd_regression(f, fam; data, g_tol, se, marginal)
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
         drm(f, fam; data = data_observed, tree = tree, g_tol = g_tol, se = se, marginal = marginal)
     end
@@ -141,6 +165,301 @@ function _drm_betabinomial_fit(f::DrmFormula, fam::BetaBinomial; data, tree = no
         end
     end
     return _withformula(_fit_betabinomial(fam, s, ntr, Xμ, Xσ, nmμ, nmσ, g_tol; offset = _offset_for_fit(fam, offset_term, data, size(Xμ, 1))), f)
+end
+
+# Predictor-dependent SD for one ordinary random coefficient on the log-sigma
+# (beta-binomial overdispersion) predictor. The mean remains fixed-effect only.
+function _drm_betabinomial_sigma_sd_regression(f::DrmFormula, fam::BetaBinomial; data,
+                                               g_tol::Real = 1e-8, se::Bool = true,
+                                               marginal::Symbol = :LA,
+                                               nAGQ::Int = 11)
+    marginal === :LA || throw(ArgumentError(
+        "BetaBinomial sigma SD regression currently supports `marginal = :LA` only."))
+    nAGQ >= 1 || throw(ArgumentError("nAGQ must be ≥ 1; got $nAGQ"))
+    f.response2 === nothing && throw(ArgumentError(
+        "BetaBinomial() needs a two-column response: bf(cbind(successes, failures) ~ …)"))
+    targets = _sd_target_parts(f)
+    length(targets) == 1 || throw(ArgumentError(
+        "BetaBinomial sigma SD regression requires exactly one `sd(group, sigma) ~ …` formula."))
+    target = only(targets)
+    descriptor = target.target
+    (descriptor.level === :iid && descriptor.dpar === :sigma &&
+     descriptor.block === nothing) ||
+        throw(ArgumentError(
+            "BetaBinomial sigma SD regression targets one ordinary sigma random coefficient."))
+    grp, sd_rhs = descriptor.group, target.rhs
+    rhs = Dict(f.forms)
+    fixed_mu, re_mu, mv, st = _split_ranef(rhs[:mu])
+    mv === nothing && isempty(re_mu) && st === nothing || throw(ArgumentError(
+        "BetaBinomial sigma SD regression requires a fixed-effect-only `mu` formula."))
+    sigma_rhs = get(rhs, :sigma, nothing)
+    sigma_rhs === nothing && throw(ArgumentError("BetaBinomial sigma SD regression requires `sigma`."))
+    fixed_sigma, re_sigma, mv_sigma, st_sigma = _split_ranef(sigma_rhs)
+    mv_sigma === nothing && st_sigma === nothing && length(re_sigma) == 1 ||
+        throw(ArgumentError(
+            "BetaBinomial sigma SD regression currently supports one ordinary sigma intercept or independent numeric slope."))
+    kind, slope = _re_kind(re_sigma[1][1])
+    kind in (:intercept, :slope) || throw(ArgumentError(
+        "BetaBinomial sigma SD regression supports one independent sigma intercept or numeric slope."))
+    member = kind === :intercept ? nothing : slope
+    descriptor.member === member || throw(ArgumentError(
+        "BetaBinomial sigma SD target coefficient `$(descriptor.member)` does not match the fitted sigma coefficient `$member`."))
+    sigma_group = re_sigma[1][2]
+    sigma_group === grp || throw(ArgumentError(
+            "`sd($grp, sigma)` must target the sigma random-effect group `$sigma_group`."))
+    allowed = Set((:mu, :sigma, target.key))
+    all(p -> first(p) in allowed, f.forms) || throw(ArgumentError(
+        "BetaBinomial sigma SD regression supports fixed `mu`, one sigma random coefficient, and one sigma-targeted SD formula."))
+
+    all(_formula_response_observed_mask(f, data)) || throw(ArgumentError(
+        "BetaBinomial sigma SD regression requires observed responses; remove incomplete rows before fitting."))
+    successes = Float64.(getproperty(data, f.response))
+    failures = Float64.(getproperty(data, f.response2))
+    (all(isfinite, successes) && all(isfinite, failures) &&
+     all(x -> x >= 0 && isinteger(x), successes) &&
+     all(x -> x >= 0 && isinteger(x), failures)) || throw(ArgumentError(
+        "BetaBinomial() requires finite non-negative integer successes and failures"))
+    trials = successes .+ failures
+    all(>(0), trials) || throw(ArgumentError(
+        "BetaBinomial sigma SD regression requires positive trial counts"))
+
+    _, Xmu, nmmu = _design(f.response, fixed_mu, data)
+    _, Xsigma, nmsigma = _design(f.response, fixed_sigma, data)
+    re_design = if kind === :intercept
+        ones(length(successes))
+    else
+        hasproperty(data, slope) || throw(ArgumentError(
+            "BetaBinomial sigma random-slope predictor `$slope` is absent from data."))
+        raw = getproperty(data, slope)
+        raw isa AbstractVector{<:Real} && length(raw) == length(successes) &&
+            all(isfinite, raw) || throw(ArgumentError(
+                "BetaBinomial sigma random-slope predictor `$slope` must be a finite numeric vector with one value per response."))
+        Float64.(raw)
+    end
+    gidx, G = _group_index(getproperty(data, grp))
+    Wsd, nmsd = _sd_group_design(f.response, sd_rhs, data, gidx, G, grp;
+                                 schema_cache = f.schema_cache, schema_key = target.key)
+    size(Wsd, 2) <= G && rank(Wsd) == size(Wsd, 2) || throw(ArgumentError(
+        "BetaBinomial `sd($grp, sigma)` group-level design is rank deficient; use predictors that vary independently across groups."))
+    return _withformula(_fit_betabinomial_sigma_sd_regression(
+        fam, successes, trials, Xmu, Xsigma, Wsd, re_design, gidx, G,
+        nmmu, nmsigma, nmsd, grp, g_tol; nAGQ, se,
+        ranef_name = kind === :intercept ? Symbol(grp, "_logsigma") :
+            Symbol(grp, "_", slope, "_logsigma")), f)
+end
+
+function _fit_betabinomial_sigma_sd_regression(fam::BetaBinomial, successes, trials,
+                                               Xmu, Xsigma, Wsd, re_design, gidx, G,
+                                               nmmu, nmsigma, nmsd, grp, g_tol;
+                                               nAGQ::Int = 11,
+                                               se::Bool = true,
+                                               ranef_name::Symbol = Symbol(grp, "_logsigma"))
+    n = length(successes)
+    length(re_design) == n || throw(DimensionMismatch(
+        "BetaBinomial sigma random-effect loading must have one value per response."))
+    pmu, psigma, psd = size(Xmu, 2), size(Xsigma, 2), size(Wsd, 2)
+    sint, nint = round.(Int, successes), round.(Int, trials)
+    members = [Int[] for _ in 1:G]
+    for i in 1:n
+        push!(members[gidx[i]], i)
+    end
+    rule = _AGHQRule(1, nAGQ)
+    Zre = reshape(Float64.(re_design), n, 1)
+
+    function evaluate(theta; return_modes::Bool = false)
+        beta_mu = @view theta[1:pmu]
+        beta_sigma = @view theta[(pmu+1):(pmu+psigma)]
+        alpha = @view theta[(pmu+psigma+1):(pmu+psigma+psd)]
+        eta_mu = Xmu * beta_mu
+        eta_sigma = clamp.(Xsigma * beta_sigma, -15.0, 15.0)
+        sd_group = exp.(Wsd * alpha)
+        bcache = zeros(1, G) # local to each evaluation; profile workers cannot race
+        ll = (i, eta) -> _betabinomial_logit_ll(
+            nint[i], sint[i], eta_mu[i], exp(-2 * clamp(eta, -15.0, 15.0)))
+        total = zero(eltype(theta))
+        for gi in 1:G
+            Lg = reshape([sd_group[gi]], 1, 1)
+            value, bhat = _aghq_group_logint(ll, members[gi], eta_sigma,
+                Zre, Lg, rule, @view(bcache[:, gi]))
+            bcache[1, gi] = isfinite(_aghq_primal(bhat[1])) ? bhat[1] : 0.0
+            total += value
+        end
+        return return_modes ? (total, vec(bcache)) : total
+    end
+    nll(theta) = -first(evaluate(theta))
+    pbar = clamp(sum(successes) / max(sum(trials), 1), 1e-3, 1 - 1e-3)
+    theta0 = zeros(pmu + psigma + psd)
+    theta0[1] = log(pbar / (1 - pbar))
+    theta0[pmu+1] = log(0.4)
+    theta0[(pmu+psigma+1):end] .= Wsd \ fill(log(0.3), G)
+    result = Optim.optimize(nll, theta0, Optim.LBFGS(),
+        Optim.Options(g_tol = g_tol); autodiff = :forward)
+    theta_hat = Optim.minimizer(result)
+    V = se ? _vcov_from_hessian(ForwardDiff.hessian(nll, theta_hat)) :
+             fill(NaN, length(theta_hat), length(theta_hat))
+    _, mode_group = evaluate(theta_hat; return_modes = true)
+    blocks = [:mu => 1:pmu, :sigma => (pmu+1):(pmu+psigma),
+              :sd => (pmu+psigma+1):(pmu+psigma+psd)]
+    names = [:mu => nmmu, :sigma => nmsigma, :sd => nmsd]
+    eta_mu = Xmu * theta_hat[1:pmu]
+    eta_sigma_fixed = Xsigma * theta_hat[(pmu+1):(pmu+psigma)]
+    eta_sigma = eta_sigma_fixed .+ Zre[:, 1] .* mode_group[gidx]
+    sd_group = exp.(Wsd * theta_hat[(pmu+psigma+1):end])
+    means = Dict(:mu => _logistic.(eta_mu))
+    observed = Dict(:mu => successes ./ trials)
+    scales = Dict(:sigma => exp.(eta_sigma),
+                  :sigma_fixed => exp.(eta_sigma_fixed),
+                  :sigma_random_effect => mode_group,
+                  :sigma_group_index => Float64.(gidx), :sd_group => sd_group,
+                  :sd => sd_group[gidx], :sd_group_index => Float64.(gidx),
+                  :trials => Float64.(nint), :aghq_nodes => [Float64(nAGQ)])
+    fit = _withiterations(_withnll(DrmFit(fam, blocks, names, theta_hat, V,
+        -nll(theta_hat), n, Optim.converged(result), means, observed, scales), nll),
+        Optim.iterations(result))
+    # The quadrature evaluation already returns the conditional modes for the
+    # sigma-axis random coefficient. Expose its modes through the usual ranef() API,
+    # with the suffix matching the existing log-sigma random-effect naming.
+    return _withranef(fit, Dict(ranef_name => mode_group))
+end
+
+# Predictor-dependent SD for one ordinary IID mean intercept or independent
+# numeric slope on the logit scale. BetaBinomial overdispersion remains fixed.
+function _drm_betabinomial_sd_regression(f::DrmFormula, fam::BetaBinomial; data,
+                                         g_tol::Real = 1e-8, se::Bool = true,
+                                         marginal::Symbol = :LA,
+                                         nAGQ::Int = _SD_IID_AGHQ_K)
+    marginal === :LA || throw(ArgumentError(
+        "BetaBinomial `sd(group) ~ …` currently supports `marginal = :LA` only."))
+    nAGQ >= 1 || throw(ArgumentError("nAGQ must be ≥ 1; got $nAGQ"))
+    f.response2 === nothing && throw(ArgumentError(
+        "BetaBinomial() needs a two-column response: bf(cbind(successes, failures) ~ …)"))
+    targets = _sd_target_parts(f)
+    length(targets) == 1 || throw(ArgumentError(
+        "BetaBinomial random-effect SD regression requires exactly one `sd(group) ~ …` formula."))
+    target = only(targets)
+    descriptor = target.target
+    (descriptor.level === :iid && descriptor.dpar === :mu &&
+     descriptor.block === nothing) || throw(ArgumentError(
+        "BetaBinomial SD regression targets only one ordinary mean intercept or independent numeric slope."))
+    grp, sd_rhs = descriptor.group, target.rhs
+    rhs = Dict(f.forms)
+    fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
+    mv === nothing || throw(ArgumentError("BetaBinomial `sd($grp)` cannot use meta_V()."))
+    st === nothing || throw(ArgumentError(
+        "BetaBinomial `sd($grp)` currently requires one ordinary `(1 | $grp)` effect."))
+    length(re) == 1 || throw(ArgumentError(
+        "BetaBinomial `sd($grp)` currently requires exactly one ordinary random-effect coefficient."))
+    kind, slope = _re_kind(re[1][1])
+    member = kind === :intercept ? :intercept : kind === :slope ? slope : nothing
+    kind in (:intercept, :slope) || throw(ArgumentError(
+        "BetaBinomial `sd($grp)` supports `(1 | $grp)` or one independent numeric `(0 + x | $grp)` term; correlated blocks are not implemented."))
+    descriptor.member in (nothing, member) || throw(ArgumentError(
+        "BetaBinomial SD target `coef($(descriptor.member))` does not match the fitted random-effect coefficient `$(member)`."))
+    regrp = re[1][2]
+    regrp === grp || throw(ArgumentError(
+        "BetaBinomial `sd($grp)` must name the random-effect grouping variable `$regrp`."))
+    sigma_rhs = get(rhs, :sigma, nothing)
+    sigma_rhs isa ConstantTerm && sigma_rhs == ConstantTerm(1) || throw(ArgumentError(
+        "BetaBinomial `sd($grp)` requires a fixed `sigma ~ 1` overdispersion submodel."))
+    for (pname, _) in f.forms
+        (pname in (:mu, :sigma, Symbol("sd_", grp)) ||
+         haskey(f.sd_targets, pname)) && continue
+        throw(ArgumentError(
+            "BetaBinomial `sd($grp)` supports only `mu`, fixed `sigma ~ 1`, and one `sd($grp)` formula."))
+    end
+    all(_formula_response_observed_mask(f, data)) || throw(ArgumentError(
+        "BetaBinomial random-effect SD regression requires observed responses; remove incomplete rows before fitting."))
+
+    successes = Float64.(getproperty(data, f.response))
+    failures = Float64.(getproperty(data, f.response2))
+    (all(isfinite, successes) && all(isfinite, failures) &&
+     all(x -> x >= 0 && isinteger(x), successes) &&
+     all(x -> x >= 0 && isinteger(x), failures)) || throw(ArgumentError(
+        "BetaBinomial() requires finite non-negative integer successes and failures"))
+    trials = successes .+ failures
+    all(>(0), trials) || throw(ArgumentError(
+        "BetaBinomial random-effect SD regression requires positive trial counts"))
+    _, Xmu, nmmu = _design(f.response, fixed_mu, data)
+    _, Xsigma, nmsigma = _design(f.response, sigma_rhs, data)
+    gidx, G = _group_index(getproperty(data, grp))
+    Wsd, nmsd = _sd_group_design(f.response, sd_rhs, data, gidx, G, grp;
+                                 schema_cache = f.schema_cache,
+                                 schema_key = target.key)
+    size(Wsd, 2) <= G && rank(Wsd) == size(Wsd, 2) || throw(ArgumentError(
+        "BetaBinomial `sd($grp)` group-level design is rank deficient; use predictors that vary independently across groups."))
+    Zre = if kind === :intercept
+        ones(length(successes), 1)
+    else
+        hasproperty(data, slope) || throw(ArgumentError(
+            "BetaBinomial random-slope predictor `$slope` is absent from data."))
+        values = getproperty(data, slope)
+        values isa AbstractVector{<:Real} || throw(ArgumentError(
+            "BetaBinomial random-slope predictor `$slope` must be numeric."))
+        length(values) == length(successes) && all(isfinite, values) || throw(ArgumentError(
+            "BetaBinomial random-slope predictor `$slope` must contain one finite value per response."))
+        reshape(Float64.(values), :, 1)
+    end
+    return _withformula(_fit_betabinomial_sd_regression(fam, successes, trials,
+        Xmu, Xsigma, Zre, Wsd, gidx, G, nmmu, nmsigma, nmsd, grp, g_tol;
+        nAGQ, se), f)
+end
+
+function _fit_betabinomial_sd_regression(fam::BetaBinomial, successes, trials,
+                                         Xmu, Xsigma, Zre, Wsd, gidx, G,
+                                         nmmu, nmsigma, nmsd, grp, g_tol;
+                                         nAGQ::Int = _SD_IID_AGHQ_K,
+                                         se::Bool = true)
+    n = length(successes)
+    pmu, psigma, psd = size(Xmu, 2), size(Xsigma, 2), size(Wsd, 2)
+    sint, nint = round.(Int, successes), round.(Int, trials)
+    members = [Int[] for _ in 1:G]
+    for i in 1:n
+        push!(members[gidx[i]], i)
+    end
+    rule = _AGHQRule(1, nAGQ)
+    bcache = zeros(1, G)
+    function nll(theta)
+        beta_mu = @view theta[1:pmu]
+        beta_sigma = @view theta[(pmu+1):(pmu+psigma)]
+        alpha = @view theta[(pmu+psigma+1):(pmu+psigma+psd)]
+        eta_mu = Xmu * beta_mu
+        eta_sigma = clamp.(Xsigma * beta_sigma, -15.0, 15.0)
+        sd_group = exp.(Wsd * alpha)
+        ll = (i, eta) -> _betabinomial_logit_ll(
+            nint[i], sint[i], eta, exp(-2 * eta_sigma[i]))
+        total = zero(eltype(theta))
+        for gi in 1:G
+            Lg = reshape([sd_group[gi]], 1, 1)
+            value, bhat = _aghq_group_logint(ll, members[gi], eta_mu,
+                Zre, Lg, rule, @view(bcache[:, gi]))
+            bcache[1, gi] = isfinite(bhat[1]) ? bhat[1] : 0.0
+            total += value
+        end
+        return -total
+    end
+    pbar = clamp(sum(successes) / max(sum(trials), 1), 1e-3, 1 - 1e-3)
+    theta0 = zeros(pmu + psigma + psd)
+    theta0[1] = log(pbar / (1 - pbar))
+    theta0[pmu+1] = -0.5 * log(10.0)
+    theta0[(pmu+psigma+1):end] .= Wsd \ fill(log(0.5), G)
+    result = Optim.optimize(nll, theta0, Optim.LBFGS(),
+        Optim.Options(g_tol = g_tol); autodiff = :forward)
+    theta_hat = Optim.minimizer(result)
+    V = se ? _vcov_from_hessian(ForwardDiff.hessian(nll, theta_hat)) :
+             fill(NaN, length(theta_hat), length(theta_hat))
+    blocks = [:mu => 1:pmu, :sigma => (pmu+1):(pmu+psigma),
+              :sd => (pmu+psigma+1):(pmu+psigma+psd)]
+    names = [:mu => nmmu, :sigma => nmsigma, :sd => nmsd]
+    sd_group = exp.(Wsd * theta_hat[(pmu+psigma+1):end])
+    means = Dict(:mu => _logistic.(Xmu * theta_hat[1:pmu]))
+    observed = Dict(:mu => successes ./ trials)
+    scales = Dict(:sigma => exp.(Xsigma * theta_hat[(pmu+1):(pmu+psigma)]),
+                  :sd_group => sd_group, :sd => sd_group[gidx],
+                  :sd_group_index => Float64.(gidx), :trials => Float64.(nint),
+                  :aghq_nodes => [Float64(nAGQ)])
+    return _withiterations(_withnll(DrmFit(fam, blocks, names, theta_hat, V,
+        -nll(theta_hat), n, Optim.converged(result), means, observed, scales), nll),
+        Optim.iterations(result))
 end
 
 # Beta-binomial GLMM with a random intercept (1|g) on the logit mean. b_g ~ N(0,σ_b²)

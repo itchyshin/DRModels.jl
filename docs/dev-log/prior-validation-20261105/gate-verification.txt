@@ -1,0 +1,11 @@
+APPROVAL REQUIRED GATES:G3
+    CHECK: python3 tools/prior-validation-20261105/verify.py docs/dev-log/prior-validation-20261105/results docs/dev-log/prior-validation-20261105/expected-partition.json
+    EXPECT: FULL_DEFAULT_SUITE_PASS
+    CWD: /Users/z3437171/.codex/worktrees/drmodels-fixed-priors-20261105/DRM.jl
+    SHELL: /bin/sh
+    PATH: /Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/z3437171/.antigravity-ide/antigravity-ide/bin:/Users/z3437171/.antigravity/antigravity/bin:/Users/z3437171/.pyenv/shims:/Users/z3437171/.juliaup/bin:/opt/local/bin:/opt/local/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:/Library/Frameworks/Python.framework/Versions/3.13/bin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/opt/X11/bin:/Library/Apple/usr/bin:/Library/TeX/texbin:/usr/local/share/dotnet:~/.dotnet/tools:/Users/z3437171/.codex/tmp/arg0-macos/co...
+    APPROVED: /Users/z3437171/.unlazy/approved/137308f2b3fc9d58501eb490dfe183ab55fba4dab501d55d6d44c87d1d3e2a6c.json
+  PASS GATES:G3: all eight default-suite shards finish, with every selected file accounted for and no unclassified failure
+       exit=0; EXPECT=matched; output=NEGATIVE_CONTROLS_PASS 6/6; scientific-notation timestamps accepted | FULL_DEFAULT_SUITE_PASS 8/8 shards; 554/554 selected files; JET executed; opt-in parity off
+GATES.md: 6 gates
+ALL MET (6 met, reran: 1, previously met reverified: 1)

@@ -1,0 +1,6 @@
+{
+  "original_sha256": "03079f0370b02d6e25faca249160c8d36a5fe8a3cf210302f260eb8b5b42f813",
+  "instrumented_sha256": "21e499925807382fa4c8549fe6d7bec917fe18f5256919ed4c8df21370bb792e",
+  "replacement_count": 1,
+  "changes": "stderr start/end markers and @elapsed around the existing include(path); assertion bytes and selection logic unchanged"
+}

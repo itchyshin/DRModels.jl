@@ -136,6 +136,11 @@ REML fits whose fixed structure differs, a sentinel log-likelihood, different
 marginal approximations, a penalized MAP fit, and fits on different
 observation rows (not only a different `nobs`).
 
+These guards are the same set `lrtest` runs (#1002; pinned in
+`test/test_lrt_boundary_guards_1002.jl`). They do not read `converged`, and
+`lrt_boundary` does not check the family or that `fit_reduced` is truly nested in
+`fit_full`; a non-converged fit that is not a sentinel still gets a p-value.
+
 # Finite-sample behaviour: Poisson vs NegBinomial2
 The 50:50 mixture is the asymptotic null law, and it is accepted as is for the
 family nest `lrt_boundary(nb, pois; q = 1)` (`Poisson` ⊂ `NegBinomial2`, where the
