@@ -81,12 +81,13 @@ end
     resolve_priors(formula, family; data, priors)
 
 Preview the exact fitted columns and prior precision without optimizing. The
-initial route covers complete-response fixed-effect Gaussian and binomial logit
-models. Priors refer to predictor coefficients and depend on units and coding.
+route covers complete-response Gaussian models with fixed effects and at most one
+mean random intercept, and fixed-effect binomial logit models. Priors refer to
+predictor coefficients and depend on units and coding.
 """
 function resolve_priors(f, fam; data, priors)
     f isa DrmFormula && (fam isa Gaussian || (fam isa Binomial && fam.link === :logit)) ||
-        throw(ArgumentError("resolve_priors supports fixed-effect Gaussian and binomial logit models"))
+        throw(ArgumentError("resolve_priors supports Gaussian and fixed-effect binomial logit models"))
     _has_joint_mi(f) && throw(ArgumentError("resolve_priors does not support missing-predictor models"))
     isempty(_sd_parts(f)) && isempty(_sdphylo_parts(f)) || throw(ArgumentError("resolve_priors does not support SD formulas"))
     for response in _formula_responses(f)
@@ -100,8 +101,13 @@ function resolve_priors(f, fam; data, priors)
     names = Pair{Symbol,Vector{String}}[]; intercepts = Dict{Symbol,Union{Nothing,Int}}()
     cache = Ref(Dict{Symbol,Any}())
     for d in dpars
-        rhs, re, meta, structured = _split_ranef(forms[d])
-        isempty(re) && meta === nothing && structured === nothing || throw(ArgumentError("resolve_priors does not support random or structured effects"))
+        rhs, re, meta, structured, structured_slope, temporal_term, structured_sd_slope = _split_ranef(forms[d]; allow_temporal=true)
+        allowed_re = fam isa Gaussian && d === :mu && length(re) == 1 && _re_kind(first(re)[1])[1] === :intercept
+        (isempty(re) || allowed_re) && meta === nothing && structured === nothing && structured_slope === nothing && temporal_term === nothing && structured_sd_slope === nothing || throw(ArgumentError("resolve_priors supports only one Gaussian mean random intercept"))
+        if allowed_re
+            grp = first(re)[2]
+            _group_index(_table_column(dat, grp); col=grp)
+        end
         rhs, _ = _extract_offset(rhs)
         _, X, nms = _design(f.response, rhs, dat; schema_cache=cache, schema_key=d)
         rank(X) == size(X, 2) || throw(ArgumentError("resolve_priors requires full-rank design matrices"))

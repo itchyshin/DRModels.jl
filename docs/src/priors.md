@@ -2,7 +2,7 @@
 
 This interface is experimental while its supported routes are being validated.
 
-Use coefficient priors to regularize a fixed-effect model when estimates are
+Use coefficient priors to regularize fixed effects when estimates are
 weakly determined. A prior applies to a coefficient on the linear-predictor
 scale. Gaussian `mu` uses the identity link, Gaussian `sigma` uses the log link,
 and binomial `mu` uses the logit link. Predictor units and factor coding change
@@ -39,9 +39,29 @@ and contributes `lambda * beta^2 / 2` per selected coefficient. Lambda zero is
 unpenalized. A normal prior with mean zero and standard deviation two has the
 same quadratic term, but includes its density constant.
 
-The first implementation accepts fixed-effect Gaussian `mu` and `sigma` and
-binomial-logit `mu` only. Random effects, REML, existing phylogenetic penalties,
-missing responses or predictors, non-unit weights, and other families are refused. For separated binomial data,
+Gaussian models may also contain one independent random intercept in the mean
+formula, for example `bf(@formula(y ~ x + (1 | site)))`. Priors still apply
+only to the fixed coefficients of `mu` and `sigma`; the random-intercept SD is
+estimated without a prior. The default `:LA` Gaussian route integrates the
+intercept exactly and adds the fixed-effect priors once to the marginal
+negative log-likelihood. Explicit `marginal = :Laplace` is not supported for
+a mean random intercept.
+
+```julia
+grouped = (y = [1., 1.4, 2.0, 2.7, 1.2, 1.9, 3.2, 3.4],
+           x = [0., 1., 0., 1., 0., 1., 0., 1.],
+           site = repeat(1:4, inner = 2))
+group_form = bf(@formula(y ~ x + (1 | site)))
+group_priors = drm_priors(drm_prior_normal(dpar = "mu", coef = "x", mean = 0, sd = 2))
+resolve_priors(group_form, Gaussian(); data = grouped, priors = group_priors)
+group_fit = drm(group_form, Gaussian(); data = grouped, priors = group_priors)
+```
+
+The supported routes are Gaussian `mu` and `sigma` (with at most that one mean
+random intercept) and fixed-effect binomial-logit `mu`. Random slopes, multiple
+or structured random effects, random-effect SD formulas, REML, existing
+phylogenetic penalties, missing responses or predictors, non-unit weights, and
+other families are refused. For separated binomial data,
 a finite optimum requires all separating directions to be regularized; a prior
 on just one coefficient does not guarantee this.
 

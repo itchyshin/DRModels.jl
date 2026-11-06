@@ -1,0 +1,1 @@
+| 2026-11-06 | Gaussian mean random-intercept fixed priors (#1257) | Focused Julia tests and four independent oracle preflight fixtures on Totoro | 43/43 new and 21/21 introspection tests passed; 82/82 prior tests and four oracle preflights passed on earlier source; final grid, full suite and independent review pending | Codex |
