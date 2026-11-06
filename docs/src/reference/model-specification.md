@@ -27,9 +27,11 @@ These exported names have no separate entry below:
   `@formula(y ~ x + offset(log_exposure))`; at most one offset term is allowed.
   Every univariate family applies it on the fixed-effects mean. With random
   effects it is applied for `Poisson()` with one ordinary `(1 | g)`, for
-  `NegBinomial2()` with one ordinary `(1 | g)` (`:LA` or `:Laplace`) and with
-  `zi`/`hu`, and for `Gamma()` and `Beta()` with one `(1 | g)` under
-  `marginal = :Laplace`; other routes refuse it by name (see [`offset`](@ref)).
+  `NegBinomial2()` with one ordinary `(1 | g)` (`:LA` or `:Laplace`), and for
+  `Gamma()` and `Beta()` with one `(1 | g)` under `marginal = :Laplace`.
+  Fixed-effects `NegBinomial2()` routes with `zi` or `hu` also support offsets;
+  they cannot be combined with a random effect. Other routes refuse offsets by
+  name (see [`offset`](@ref)).
   An offset in `sigma` or any other non-mean formula is refused, as in drmTMB.
 
 ## Response families
@@ -79,7 +81,7 @@ cbind
 
 !!! warning "Experimental"
     Exported for evaluation, not yet stable. API and numerics may
-    change. This route is not available through the R bridge.
+    change. The bounded R bridge workflow is shown below.
 
 For a Gaussian response, `mi(x)` marks an additive predictor whose missing
 values are integrated out under a joint model. Observed predictor values inform

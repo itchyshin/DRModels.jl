@@ -35,12 +35,14 @@ include:
   `latent_normal`, `association`, `PairAssociation`, and
   `integration_diagnostics`);
 - penalised phylogenetic fits, bivariate meta-analysis, and the variational
-  approximation selected by `marginal = :VA`; and
+  approximation selected by `marginal = :VA`;
 - joint models for missing predictors, including `mi()` and the prepared-model
   helpers; and
-- temporal AR1 and OU random effects on the Gaussian mean (`temporal()` and
-  `temporal_parameters()`), whose first release covers one intercept-only term
-  with `sigma ~ 1` and maximum likelihood.
+- temporal AR1, OU, and homogeneous Toeplitz (`:homtoep`) random effects on
+  the Gaussian mean (`temporal()` and `temporal_parameters()`), limited to one
+  intercept-only term with `sigma ~ 1` and maximum likelihood. Read the
+  [temporal tutorial](tutorials/temporal-random-effects.md) for each structure's
+  time-grid and grouping restrictions.
 
 If you use one of these in an analysis that must be reproducible for several
 years, record the DRModels.jl version and read its release notes before updating.
@@ -58,9 +60,9 @@ are not part of the stable analysis interface. Most readers should use `bf()`,
 ## What the promise covers
 
 The stability promise covers function names, argument meanings, and documented
-return conventions. It does not require every optimiser to follow the same
-numerical path: improvements to tolerances or algorithms may move estimates
-within the model's documented numerical accuracy.
+return conventions. It does not freeze optimiser paths or tolerance choices;
+algorithm updates can change fitted values. Record the package version and
+check the numerical diagnostics for the fitted route.
 
 It also does not turn the existence of a confidence-interval function into a
 general interval-coverage claim. Coverage depends on the model, sample size,

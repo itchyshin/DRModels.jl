@@ -761,22 +761,23 @@ end
 
 Resolve a user-supplied per-group covariance/relatedness matrix `C` (G×G, SPD)
 to the `(precision Q, leaf_node)` pair the sparse-Laplace spine consumes. `C` is
-first rescaled to a unit-diagonal correlation `R` (so the recovered `:resd` block
-is the random-effect SD `σ_b`, with prior `b ~ N(0, σ_b² R)`, matching the phylo
-convention), then `Q = R⁻¹`. `leaf_node` maps each observation to its group level
-via [`_group_index`](@ref) — the relatedness/animal-model/spatial analogue of the
-tree's leaf-to-node map. Mathematically identical to the phylo path with the tree
-precision swapped for an arbitrary PD precision.
+checked as a positive-definite covariance matrix. This helper's own default
+rescales it to a unit-diagonal correlation `R` (prior `b ~ N(0, σ_b² R)`); the
+Poisson, NB2 and Gamma relmat/animal routes pass `normalize = false` so `C` enters
+as supplied, giving prior covariance `σ_b² C` as in native drmTMB. The helper returns
+the matching precision `Q` in either case. `leaf_node` maps each observation to
+its group level via [`_group_index`](@ref). Mathematically identical to the phylo
+path with the tree precision swapped for an arbitrary PD precision.
 """
-function _general_cov_setup(C::AbstractMatrix, labels)
+function _general_cov_setup(C::AbstractMatrix, labels; normalize::Bool = true)
     gidx, G = _group_index(labels)
     size(C, 1) == size(C, 2) == G ||
         error("covariance matrix must be $(G)×$(G) (the number of `$(length(labels))`-row group levels = $G)")
     Cf = Matrix{Float64}(C)
     d = sqrt.(diag(Cf))
     all(>(0), d) || error("covariance matrix must have a strictly positive diagonal")
-    R = Symmetric(Cf ./ (d * d'))                       # unit-diagonal correlation
-    Rchol = cholesky(R; check = false)
+    covariance = normalize ? Symmetric(Cf ./ (d * d')) : Symmetric(Cf)
+    Rchol = cholesky(covariance; check = false)
     issuccess(Rchol) || error("covariance matrix is not positive definite")
     Q = sparse(Symmetric(inv(Rchol)))                   # dense precision, sparse-wrapped
     return Q, gidx
@@ -794,9 +795,10 @@ unchanged.
 """
 function _fit_poisson_relmat_laplace(fam::Poisson, y, Xμ, C, labels, nmμ, grp,
                                      g_tol; se::Bool = true,
+                                     normalize::Bool = false,
                                      polish_iterations::Int = 15,
                                      reml::Bool = false)
-    Q, leaf_node = _general_cov_setup(C, labels)
+    Q, leaf_node = _general_cov_setup(C, labels; normalize)
     return _fit_poisson_general_laplace(fam, y, Xμ, Q, leaf_node, nmμ, grp, g_tol;
                                         se = se, polish_iterations = polish_iterations,
                                         reml = reml)
@@ -1636,17 +1638,457 @@ O(p) gradient and Takahashi log-det derivatives carry over unchanged (#167).
 """
 function _fit_nb2_relmat_laplace(fam, y, Xμ, Xσ, C, labels, nmμ, nmσ, grp,
                                  g_tol; se::Bool = true,
-                                 polish_iterations::Int = 0)
+                                 polish_iterations::Int = 0,
+                                 normalize::Bool = false)
     size(Xσ, 2) == 1 || error("drm(NegBinomial2()): a `relmat`/`animal`/`spatial` random effect requires `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
     all(x -> x == 1.0, @view Xσ[:, 1]) ||
         error("drm(NegBinomial2()): a `relmat`/`animal`/`spatial` random effect requires `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
-    Q, leaf_node = _general_cov_setup(C, labels)
+    Q, leaf_node = _general_cov_setup(C, labels; normalize)
     aux_from, θβ0, θσ0 = _nb2_laplace_setup(y, Xμ)
     return _fit_general_mean_laplace_nuisance(
         fam, Val(:nb2_fixed), aux_from, length(y), Xμ, Q, leaf_node, nmμ, nmσ,
         grp, g_tol; θβ0 = θβ0, θσ0 = θσ0,
         sigma_scale = exp, se = se, polish_iterations = polish_iterations
     )
+end
+
+# With latent tree state u ~ N(0, Q⁻¹), the observed phylogenetic effect is
+# _binomial_sd_scale(Z_i α) * u_leaf(i), giving tip covariance D K D without
+# changing the tree's existing branch-length scaling. The scale coefficients are few, but
+# the sparse factorization is not dual-number generic, so the outer score below
+# uses central differences of the converged Laplace objective.
+function _binomial_phylo_sd_mode(aux, n::Int, Xμ, Zobs, leaf_node, Q,
+                                 beta, alpha; b0 = nothing,
+                                 re_design = ones(Float64, n),
+                                 maxiter::Int = 60, tol::Real = 1e-10)
+    q = size(Q, 1)
+    b = b0 === nothing ? zeros(q) : copy(b0)
+    eta0 = Xμ * beta
+    length(re_design) == n || throw(ArgumentError(
+        "structured Binomial random-effect design must have one value per response"))
+    loading = re_design .* _binomial_sd_scale(Zobs * alpha)
+    all(isfinite, loading) || return b, nothing, false
+    function joint(bb)
+        total = 0.5 * dot(bb, Q * bb)
+        @inbounds for i in eachindex(eta0)
+            total += _laplace_value(Val(:binomial), aux, i,
+                                    eta0[i] + loading[i] * bb[leaf_node[i]])
+        end
+        total
+    end
+    for _ in 1:maxiter
+        grad = Q * b
+        diagH = zeros(Float64, q)
+        all_w_nonneg = true
+        @inbounds for i in eachindex(eta0)
+            li = leaf_node[i]
+            _, r, w, _ = _laplace_v123(Val(:binomial), aux, i,
+                                        eta0[i] + loading[i] * b[li])
+            grad[li] += loading[i] * r
+            diagH[li] += loading[i]^2 * w
+            w < 0 && (all_w_nonneg = false)
+        end
+        H = Q + spdiagm(0 => diagH)
+        ch = cholesky(Symmetric(H); check = false)
+        issuccess(ch) || return b, ch, false
+        step = ch \ grad
+        norm(step) <= tol * (1 + norm(b)) && return b, ch, true
+        if all_w_nonneg && norm(step) <= 1e-3 * (1 + norm(b))
+            b .-= step
+            continue
+        end
+        f0 = joint(b)
+        a = 1.0
+        accepted = false
+        while a >= 1e-5
+            trial = b .- a .* step
+            if joint(trial) <= f0
+                b = trial
+                accepted = true
+                break
+            end
+            a *= 0.5
+        end
+        accepted || return b, ch, false
+    end
+    return b, nothing, false
+end
+
+function _binomial_phylo_sd_laplace(aux, n::Int, Xμ, Zobs, leaf_node, Q,
+                                    logdetQ, θ; b0 = nothing,
+                                    re_design = ones(Float64, n))
+    pμ = size(Xμ, 2)
+    beta = @view θ[1:pμ]
+    alpha = @view θ[pμ+1:end]
+    b, ch, ok = _binomial_phylo_sd_mode(aux, n, Xμ, Zobs, leaf_node, Q,
+                                        beta, alpha; b0 = b0,
+                                        re_design = re_design)
+    ok || return 1e18, b, false
+    loading = re_design .* _binomial_sd_scale(Zobs * alpha)
+    eta0 = Xμ * beta
+    total = 0.5 * dot(b, Q * b)
+    @inbounds for i in 1:n
+        total += _laplace_value(Val(:binomial), aux, i,
+                                eta0[i] + loading[i] * b[leaf_node[i]])
+    end
+    return total - 0.5 * logdetQ + 0.5 * logdet(ch), b, true
+end
+
+function _fit_binomial_phylo_sd_laplace(fam, s, ntr, Xμ, Zobs, labels, tree,
+                                        nmμ, nmsd, grp, g_tol;
+                                        se::Bool = true, maxiter::Int = 250,
+                                        re_design = ones(Float64, length(s)))
+    n = length(s)
+    sint, nint = round.(Int, s), round.(Int, ntr)
+    logchoose = [_logfactorial(nint[i]) - _logfactorial(sint[i]) -
+                 _logfactorial(nint[i] - sint[i]) for i in eachindex(sint)]
+    aux = if fam.link in (:probit, :cloglog)
+        (s = sint, ntr = nint, logchoose = logchoose, link = fam.link)
+    else
+        (s = sint, ntr = nint, logchoose = logchoose)
+    end
+    Q, leaf_node, phy = _poisson_phylo_setup(tree, labels)
+    size(Zobs, 1) == n || throw(ArgumentError("phylogenetic SD design must have one row per response"))
+    size(Zobs, 2) == length(nmsd) || throw(ArgumentError("phylogenetic SD names do not match its design"))
+    qchol = cholesky(Symmetric(Q); check = false)
+    issuccess(qchol) || error("phylo(1 | $grp) tree precision is not positive definite after root conditioning")
+    logdetQ = logdet(qchol)
+    pμ, psd = size(Xμ, 2), size(Zobs, 2)
+    last_b = zeros(size(Q, 1))
+    function nll(θ)
+        value, b, ok = _binomial_phylo_sd_laplace(aux, n, Xμ, Zobs,
+            leaf_node, Q, logdetQ, θ; b0 = last_b, re_design)
+        if !ok
+            value, b, ok = _binomial_phylo_sd_laplace(aux, n, Xμ, Zobs,
+                leaf_node, Q, logdetQ, θ; b0 = zeros(length(last_b)),
+                re_design)
+        end
+        ok || return 1e18
+        last_b .= b
+        return value
+    end
+    function grad!(g, θ)
+        for j in eachindex(θ)
+            h = 2e-4 * (1 + abs(θ[j]))
+            e = zeros(length(θ)); e[j] = h
+            g[j] = (nll(θ .+ e) - nll(θ .- e)) / (2h)
+        end
+        return g
+    end
+    pbar = clamp(sum(s) / max(sum(ntr), 1), 1e-4, 1 - 1e-4)
+    θ0 = zeros(pμ + psd)
+    θ0[1] = _binomial_start(fam, pbar)
+    θ0[pμ+1] = log(0.4)
+    od = Optim.OnceDifferentiable(nll, grad!, θ0)
+    res0 = Optim.optimize(od, θ0,
+        Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking()),
+        Optim.Options(g_tol = g_tol, iterations = maxiter))
+    θhat = Optim.minimizer(res0)
+    nll_hat = nll(θhat)
+    gfinal = zeros(length(θhat)); grad!(gfinal, θhat)
+    converged = _laplace_outer_converged(res0, nll_hat, gfinal, θhat, n, g_tol)
+    V = se ? _vcov_from_fd_hessian(
+        _finite_hessian(nll, θhat; h = _fd_hessian_step(n));
+        context = "sparse-Laplace Binomial phylogenetic SD regression") :
+        fill(NaN, length(θhat), length(θhat))
+    blocks = Pair{Symbol,UnitRange{Int}}[:mu => (1:pμ), :sd_phylo => (pμ+1:pμ+psd)]
+    names = Pair{Symbol,Vector{String}}[:mu => nmμ, :sd_phylo => nmsd]
+    means = Dict(:mu => _binomial_mean.(Ref(fam), Xμ * θhat[1:pμ]))
+    obs = Dict(:mu => s ./ ntr)
+    sdobs = _binomial_sd_scale(Zobs * θhat[pμ+1:end])
+    scales = Dict(:trials => Float64.(nint), :sd_phylo => sdobs,
+                  :tree_tip_index => Float64.(_lss_phylo_group_index(tree, labels, grp)[2]))
+    fit = DrmFit(fam, blocks, names, θhat, Matrix(V), -nll_hat, n,
+                 converged, means, obs, scales)
+    return _withiterations(_withnll(fit, _nll_pinned(nll, θhat, nll_hat)), Optim.iterations(res0))
+end
+
+# Validate and align the observation-to-mesh projection. The projection rows
+# are keyed by `alignment_ids`; when `data.row_id` is present, reorder them to
+# match the retained response rows instead of relying on incidental row order.
+function _binomial_mesh_inputs(mesh, data, response)
+    all(k -> hasproperty(mesh, k), (:projection, :precision)) ||
+        throw(ArgumentError("Binomial `mesh` must provide `projection` and `precision` matrices."))
+    projection = sparse(Float64.(getproperty(mesh, :projection)))
+    precision = sparse(Float64.(getproperty(mesh, :precision)))
+    size(projection, 1) > 0 && size(projection, 2) > 0 || throw(ArgumentError(
+        "Binomial mesh projection must have at least one row and one mesh vertex."))
+    size(precision) == (size(projection, 2), size(projection, 2)) ||
+        throw(ArgumentError("Binomial mesh precision must be square with one row per projection column."))
+    all(isfinite, nonzeros(projection)) || throw(ArgumentError(
+        "Binomial mesh projection must contain only finite values."))
+    all(isfinite, nonzeros(precision)) || throw(ArgumentError(
+        "Binomial mesh precision must contain only finite values."))
+    asymmetry = norm(precision - transpose(precision), Inf)
+    asymmetry <= 1e-10 * max(norm(precision, Inf), 1.0) || throw(ArgumentError(
+        "Binomial mesh precision must be symmetric."))
+    precision = sparse(Symmetric((precision + transpose(precision)) / 2))
+    qchol = cholesky(Symmetric(precision); check = false)
+    issuccess(qchol) || throw(ArgumentError(
+        "Binomial mesh precision must be positive definite."))
+    rowsums = vec(sum(projection; dims = 2))
+    all(x -> isfinite(x) && x > 0 && abs(x - 1) <= 1e-8, rowsums) ||
+        throw(ArgumentError("Each Binomial mesh projection row must sum to one."))
+    all(x -> x >= -1e-12, nonzeros(projection)) || throw(ArgumentError(
+        "Binomial mesh projection weights must be non-negative."))
+
+    n = length(getproperty(data, response))
+    source_ids = if hasproperty(mesh, :alignment_ids)
+        collect(getproperty(mesh, :alignment_ids))
+    else
+        collect(1:size(projection, 1))
+    end
+    length(source_ids) == size(projection, 1) && length(unique(source_ids)) == length(source_ids) ||
+        throw(ArgumentError("Binomial mesh `alignment_ids` must be unique and have one value per projection row."))
+    target_ids = hasproperty(data, :row_id) ? collect(getproperty(data, :row_id)) : collect(1:n)
+    length(target_ids) == n && length(unique(target_ids)) == n &&
+        all(!ismissing, target_ids) || throw(ArgumentError(
+        "Binomial mesh alignment requires one unique `row_id` per response."))
+    all(!ismissing, source_ids) && length(source_ids) == n &&
+        Set(source_ids) == Set(target_ids) || throw(ArgumentError(
+        "Binomial mesh alignment IDs must match the response rows; provide `data.row_id` to align reordered rows."))
+    source_index = Dict(id => i for (i, id) in enumerate(source_ids))
+    projection = projection[[source_index[id] for id in target_ids], :]
+    return projection, precision, target_ids
+end
+
+function _binomial_mesh_sd_mode(aux, n::Int, Xμ, Zobs, projection, Q,
+                                beta, alpha; b0 = nothing,
+                                maxiter::Int = 60, tol::Real = 1e-10)
+    q = size(Q, 1)
+    b = b0 === nothing ? zeros(q) : copy(b0)
+    eta0 = Xμ * beta
+    loading = _binomial_sd_scale(Zobs * alpha)
+    all(isfinite, loading) || return b, nothing, false
+    function joint(bb)
+        eta = eta0 + loading .* (projection * bb)
+        return 0.5 * dot(bb, Q * bb) +
+               sum(_laplace_value(Val(:binomial), aux, i, eta[i]) for i in 1:n)
+    end
+    for _ in 1:maxiter
+        eta = eta0 + loading .* (projection * b)
+        grad = Q * b
+        curvature = zeros(Float64, n)
+        score = zeros(Float64, n)
+        @inbounds for i in 1:n
+            _, r, w, _ = _laplace_v123(Val(:binomial), aux, i, eta[i])
+            score[i] = loading[i] * r
+            curvature[i] = loading[i]^2 * w
+        end
+        grad .+= transpose(projection) * score
+        H = Q + transpose(projection) * spdiagm(0 => curvature) * projection
+        H = sparse(Symmetric((H + transpose(H)) / 2))
+        ch = cholesky(Symmetric(H); check = false)
+        issuccess(ch) || return b, ch, false
+        step = ch \ grad
+        norm(step) <= tol * (1 + norm(b)) && return b, ch, true
+        f0 = joint(b)
+        a, accepted = 1.0, false
+        while a >= 1e-5
+            trial = b .- a .* step
+            if joint(trial) <= f0
+                b = trial
+                accepted = true
+                break
+            end
+            a *= 0.5
+        end
+        accepted || return b, ch, false
+    end
+    return b, nothing, false
+end
+
+function _binomial_mesh_sd_laplace(aux, n::Int, Xμ, Zobs, projection, Q,
+                                   logdetQ, theta; b0 = nothing)
+    pμ = size(Xμ, 2)
+    beta, alpha = @view(theta[1:pμ]), @view(theta[pμ+1:end])
+    b, ch, ok = _binomial_mesh_sd_mode(aux, n, Xμ, Zobs, projection, Q,
+                                       beta, alpha; b0)
+    ok || return 1e18, b, false
+    loading = _binomial_sd_scale(Zobs * alpha)
+    eta = Xμ * beta + loading .* (projection * b)
+    total = 0.5 * dot(b, Q * b)
+    @inbounds for i in 1:n
+        total += _laplace_value(Val(:binomial), aux, i, eta[i])
+    end
+    return total - 0.5 * logdetQ + 0.5 * logdet(ch), b, true
+end
+
+function _fit_binomial_mesh_sd_laplace(fam, s, ntr, Xμ, Zobs, Zg,
+        projection, Q, group_index, nmμ, nmsd, grp, alignment_ids, g_tol;
+        se::Bool = true, maxiter::Int = 250)
+    n = length(s)
+    size(projection, 1) == n || throw(ArgumentError(
+        "Binomial mesh projection must have one row per response."))
+    size(Q) == (size(projection, 2), size(projection, 2)) || throw(ArgumentError(
+        "Binomial mesh precision and projection dimensions do not agree."))
+    sint, nint = round.(Int, s), round.(Int, ntr)
+    logchoose = [_logfactorial(nint[i]) - _logfactorial(sint[i]) -
+                 _logfactorial(nint[i] - sint[i]) for i in eachindex(sint)]
+    aux = fam.link in (:probit, :cloglog) ?
+        (s = sint, ntr = nint, logchoose = logchoose, link = fam.link) :
+        (s = sint, ntr = nint, logchoose = logchoose)
+    qchol = cholesky(Symmetric(Q); check = false)
+    issuccess(qchol) || throw(ArgumentError("Binomial mesh precision must be positive definite."))
+    logdetQ = logdet(qchol)
+    pμ, psd = size(Xμ, 2), size(Zobs, 2)
+    last_b = zeros(size(Q, 1))
+    function nll(theta)
+        value, b, ok = _binomial_mesh_sd_laplace(aux, n, Xμ, Zobs,
+            projection, Q, logdetQ, theta; b0 = last_b)
+        if !ok
+            value, b, ok = _binomial_mesh_sd_laplace(aux, n, Xμ, Zobs,
+                projection, Q, logdetQ, theta; b0 = zeros(length(last_b)))
+        end
+        ok || return 1e18
+        last_b .= b
+        return value
+    end
+    function grad!(gradient, theta)
+        for j in eachindex(theta)
+            h = 1e-5 * (1 + abs(theta[j]))
+            e = zeros(length(theta)); e[j] = h
+            gradient[j] = (nll(theta .+ e) - nll(theta .- e)) / (2h)
+        end
+        return gradient
+    end
+    pbar = clamp(sum(s) / max(sum(ntr), 1), 1e-4, 1 - 1e-4)
+    theta0 = zeros(pμ + psd)
+    theta0[1] = _binomial_start(fam, pbar)
+    theta0[pμ+1] = log(0.4)
+    od = Optim.OnceDifferentiable(nll, grad!, theta0)
+    result = Optim.optimize(od, theta0,
+        Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking()),
+        Optim.Options(g_tol = g_tol, iterations = maxiter))
+    theta_hat = Optim.minimizer(result)
+    nll_hat = nll(theta_hat)
+    grad_final = zeros(length(theta_hat)); grad!(grad_final, theta_hat)
+    converged = _laplace_outer_converged(result, nll_hat, grad_final, theta_hat, n, g_tol)
+    V = se ? _vcov_from_fd_hessian(
+        _finite_hessian(nll, theta_hat; h = _fd_hessian_step(n));
+        context = "sparse-Laplace Binomial mesh SD regression") :
+        fill(NaN, length(theta_hat), length(theta_hat))
+    blocks = Pair{Symbol,UnitRange{Int}}[:mu => (1:pμ), :sd => (pμ+1:pμ+psd)]
+    names = Pair{Symbol,Vector{String}}[:mu => nmμ, :sd => nmsd]
+    means = Dict(:mu => _binomial_mean.(Ref(fam), Xμ * theta_hat[1:pμ]))
+    obs = Dict(:mu => s ./ ntr)
+    sd_group = _binomial_sd_scale(Zg * theta_hat[pμ+1:end])
+    scales = Dict(:trials => Float64.(nint),
+        :sd_group_index => Float64.(group_index), :sd_group => sd_group,
+        :sd => sd_group[group_index])
+    fit = DrmFit(fam, blocks, names, theta_hat, Matrix(V), -nll_hat, n,
+        converged, means, obs, scales)
+    mesh_metadata = (; projection, precision = Q, alignment_ids,
+                     group_index, group = grp)
+    return _withranef(_withiterations(_withnll(fit, _nll_pinned(nll, theta_hat, nll_hat)), Optim.iterations(result)),
+                      (; effects = Dict{Symbol,Vector{Float64}}(), mesh = mesh_metadata))
+end
+
+# Binomial animal and related-matrix SD regression share sparse-Laplace mode
+# equations. Preserve the supplied covariance scale, giving latent covariance
+# D*C*D for either an intercept or slope.
+function _fit_binomial_related_sd_laplace(fam, s, ntr, Xμ, Zobs, Zg, labels,
+                                         C, group_index, nmμ, nmsd, grp, level,
+                                         g_tol; se::Bool = true,
+                                         re_design = ones(Float64, length(s)),
+                                         Ainv = nothing,
+                                         maxiter::Int = 250)
+    n = length(s)
+    G = Ainv === nothing ? size(C, 1) : size(Ainv, 1)
+    length(group_index) == n || throw(ArgumentError(
+        "$level group index must have one value per response"))
+    size(Zobs, 1) == n || throw(ArgumentError(
+        "$level SD design must have one row per response"))
+    size(Zg, 1) == G || throw(ArgumentError(
+        "$level SD group design must have one row per relatedness-matrix level"))
+    size(Zobs, 2) == length(nmsd) || throw(ArgumentError(
+        "$level SD names do not match its design"))
+    if Ainv === nothing
+        C_chol = _checked_relmat_chol(C, grp)
+        Q = sparse(Symmetric(inv(C_chol)))
+        logdetQ = -logdet(C_chol)
+    else
+        Q = sparse(Float64.(Ainv))
+        all(isfinite, nonzeros(Q)) || throw(ArgumentError(
+            "animal `Ainv` must contain only finite values."))
+        asymmetry = norm(Q - transpose(Q), Inf)
+        scale = max(norm(Q, Inf), 1.0)
+        asymmetry <= 1e-10 * scale || throw(ArgumentError(
+            "animal `Ainv` must be symmetric."))
+        Q = sparse(Symmetric((Q + transpose(Q)) / 2))
+        qchol = cholesky(Symmetric(Q); check = false)
+        issuccess(qchol) || throw(ArgumentError(
+            "animal `Ainv` must be positive definite."))
+        logdetQ = logdet(qchol)
+    end
+
+    sint, nint = round.(Int, s), round.(Int, ntr)
+    logchoose = [_logfactorial(nint[i]) - _logfactorial(sint[i]) -
+                 _logfactorial(nint[i] - sint[i]) for i in eachindex(sint)]
+    aux = fam.link === :logit ?
+        (s = sint, ntr = nint, logchoose = logchoose) :
+        (s = sint, ntr = nint, logchoose = logchoose, link = fam.link)
+    pμ, psd = size(Xμ, 2), size(Zobs, 2)
+    last_b = zeros(G)
+    function nll(θ)
+        value, b, ok = _binomial_phylo_sd_laplace(aux, n, Xμ, Zobs,
+            group_index, Q, logdetQ, θ; b0 = last_b,
+            re_design = re_design)
+        if !ok
+            value, b, ok = _binomial_phylo_sd_laplace(aux, n, Xμ, Zobs,
+                group_index, Q, logdetQ, θ; b0 = zeros(G),
+                re_design = re_design)
+        end
+        ok || return 1e18
+        last_b .= b
+        return value
+    end
+    function grad!(g, θ)
+        for j in eachindex(θ)
+            h = 2e-4 * (1 + abs(θ[j]))
+            e = zeros(length(θ)); e[j] = h
+            g[j] = (nll(θ .+ e) - nll(θ .- e)) / (2h)
+        end
+        return g
+    end
+    pbar = clamp(sum(s) / max(sum(ntr), 1), 1e-4, 1 - 1e-4)
+    θ0 = zeros(pμ + psd)
+    θ0[1] = _binomial_start(fam, pbar)
+    θ0[pμ+1] = log(0.4)
+    od = Optim.OnceDifferentiable(nll, grad!, θ0)
+    res0 = Optim.optimize(od, θ0,
+        Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking()),
+        Optim.Options(g_tol = g_tol, iterations = maxiter))
+    θhat = Optim.minimizer(res0)
+    nll_hat = nll(θhat)
+    gfinal = zeros(length(θhat)); grad!(gfinal, θhat)
+    converged = _laplace_outer_converged(res0, nll_hat, gfinal, θhat, n, g_tol)
+    V = se ? _vcov_from_fd_hessian(
+        _finite_hessian(nll, θhat; h = _fd_hessian_step(n));
+        context = "sparse-Laplace Binomial $level SD regression") :
+        fill(NaN, length(θhat), length(θhat))
+    blocks = Pair{Symbol,UnitRange{Int}}[:mu => (1:pμ), :sd => (pμ+1:pμ+psd)]
+    names = Pair{Symbol,Vector{String}}[:mu => nmμ, :sd => nmsd]
+    means = Dict(:mu => _binomial_mean.(Ref(fam), Xμ * θhat[1:pμ]))
+    obs = Dict(:mu => s ./ ntr)
+    sd_group = _binomial_structured_sd_group_scale(Zg, θhat[pμ+1:end])
+    sd_obs = sd_group[group_index]
+    scales = Dict(:trials => Float64.(nint), :sd_group_index => Float64.(group_index),
+                  :sd_group => sd_group, :sd => sd_obs)
+    # b34: record the conditional field at theta_hat (fresh inner solve; `last_b`
+    # was moved by the finite-difference stencils above).
+    _, b_hat, ok_hat = _binomial_phylo_sd_laplace(aux, n, Xμ, Zobs,
+        group_index, Q, logdetQ, θhat; b0 = zeros(G), re_design = re_design)
+    if ok_hat
+        loading_hat = re_design .* _binomial_sd_scale(Zobs * θhat[pμ+1:end])
+        _attach_conditional_structured!(
+            scales, loading_hat .* b_hat[group_index], b_hat)
+    else
+        scales[:cond_failed] = 1.0
+    end
+    fit = DrmFit(fam, blocks, names, θhat, Matrix(V), -nll_hat, n,
+                 converged, means, obs, scales)
+    return _withiterations(_withnll(fit, _nll_pinned(nll, θhat, nll_hat)), Optim.iterations(res0))
 end
 
 function _fit_binomial_phylo_laplace(fam, s, ntr, Xμ, labels, tree, nmμ, grp,
@@ -1722,21 +2164,23 @@ function _fit_gamma_phylo_laplace(fam, y, Xμ, Xσ, labels, tree, nmμ, nmσ, gr
 end
 
 """
-    _fit_gamma_relmat_laplace(fam, y, Xμ, Xσ, C, labels, nmμ, nmσ, grp, g_tol; se)
+    _fit_gamma_relmat_laplace(fam, y, Xμ, Xσ, C, labels, nmμ, nmσ, grp, g_tol; se, normalize)
 
 Gamma sparse-Laplace fit with a general user-supplied PD covariance `C` on the
 mean random intercept (`relmat`/`animal`/`spatial(1 | grp)`), with the shape `α`
 (via the `sigma` slot, σ = 1/√α) a fixed nuisance parameter. Reuses the verified
 phylo nuisance spine via [`_general_cov_setup`](@ref); only the prior precision
-differs (`C⁻¹` vs the tree topology). Exact O(p) gradient carries over (#167).
+differs (`C⁻¹` vs the tree topology). By default `C` is used as supplied
+(raw, as native drmTMB does); `normalize = true` rescales it to a correlation
+matrix (used only for the precomputed spatial route). Exact O(p) gradient carries over (#167).
 """
 function _fit_gamma_relmat_laplace(fam, y, Xμ, Xσ, C, labels, nmμ, nmσ, grp,
-                                   g_tol; se::Bool = true,
+                                   g_tol; se::Bool = true, normalize::Bool = false,
                                    polish_iterations::Int = 5)
     size(Xσ, 2) == 1 || error("drm(Gamma()): a `relmat`/`animal`/`spatial` random effect requires `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
     all(x -> x == 1.0, @view Xσ[:, 1]) ||
         error("drm(Gamma()): a `relmat`/`animal`/`spatial` random effect requires `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
-    Q, leaf_node = _general_cov_setup(C, labels)
+    Q, leaf_node = _general_cov_setup(C, labels; normalize)
     aux_from, θβ0, θσ0 = _gamma_laplace_setup(y, Xμ)
     return _fit_general_mean_laplace_nuisance(
         fam, Val(:gamma_fixed), aux_from, length(y), Xμ, Q, leaf_node, nmμ, nmσ,
@@ -1809,15 +2253,18 @@ Beta sparse-Laplace fit with a general user-supplied PD covariance `C` on the me
 (logit) random intercept (`relmat`/`animal`/`spatial(1 | grp)`), with the precision
 `φ` (via the `sigma` slot, σ = 1/√φ) a fixed nuisance parameter. Reuses the verified
 phylo nuisance spine via [`_general_cov_setup`](@ref); only the prior precision
-differs (`C⁻¹` vs the tree topology). Exact O(p) gradient carries over (#167).
+differs (`C⁻¹` vs the tree topology). `C` is used as supplied (raw, as native
+drmTMB does); `normalize = true` rescales it to a correlation matrix (used only for
+the precomputed spatial route). Exact O(p) gradient carries over (#167).
 """
 function _fit_beta_relmat_laplace(fam, y, Xμ, Xσ, C, labels, nmμ, nmσ, grp,
                                   g_tol; se::Bool = true,
-                                  polish_iterations::Int = 0)
+                                  polish_iterations::Int = 0,
+                                  normalize::Bool = false)
     size(Xσ, 2) == 1 || error("drm(Beta()): a `relmat`/`animal`/`spatial` random effect requires `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
     all(x -> x == 1.0, @view Xσ[:, 1]) ||
         error("drm(Beta()): a `relmat`/`animal`/`spatial` random effect requires `sigma ~ 1`; a covariate `sigma` formula is not implemented on this route. Refit with `sigma ~ 1` (#945).")
-    Q, leaf_node = _general_cov_setup(C, labels)
+    Q, leaf_node = _general_cov_setup(C, labels; normalize)
     aux_from, θβ0, θσ0 = _beta_laplace_setup(y, Xμ)
     return _fit_general_mean_laplace_nuisance(
         fam, Val(:beta_fixed), aux_from, length(y), Xμ, Q, leaf_node, nmμ, nmσ,
@@ -2390,31 +2837,29 @@ function _fit_poisson_crossed_laplace(fam::Poisson, y, Xμ, comps, nmμ, g_tol; 
     return _withnll(fit, nll, grad!)
 end
 
-_laplace_logistic(η) = 1 / (1 + exp(-η))
+_laplace_logistic(η) = η >= 0 ? 1 / (1 + exp(-η)) : exp(η) / (1 + exp(η))
 
 function _laplace_value(::Val{:binomial}, aux, i, η)
-    p = _laplace_logistic(clamp(η, -30.0, 30.0))
     s = aux.s[i]
     n = aux.ntr[i]
-    return -(aux.logchoose[i] + s * log(p) + (n - s) * log1p(-p))
+    return n * _log1pexp(η) - s * η - aux.logchoose[i]
 end
 
 function _laplace_d1(::Val{:binomial}, aux, i, η)
-    p = _laplace_logistic(clamp(η, -30.0, 30.0))
-    return aux.ntr[i] * p - aux.s[i]
+    return aux.ntr[i] * _laplace_logistic(η) - aux.s[i]
 end
 
 function _laplace_d2(::Val{:binomial}, aux, i, η)
-    p = _laplace_logistic(clamp(η, -30.0, 30.0))
+    p = _laplace_logistic(η)
     return aux.ntr[i] * p * (1 - p)
 end
 
 function _laplace_d3(::Val{:binomial}, aux, i, η)
-    p = _laplace_logistic(clamp(η, -30.0, 30.0))
+    p = _laplace_logistic(η)
     return aux.ntr[i] * p * (1 - p) * (1 - 2p)
 end
 
-_laplace_mean(::Val{:binomial}, η) = _laplace_logistic(clamp(η, -30.0, 30.0))
+_laplace_mean(::Val{:binomial}, η) = _laplace_logistic(η)
 _laplace_obs(::Val{:binomial}, aux, i) = aux.s[i] / aux.ntr[i]
 
 function _laplace_value(::Val{:nb2_fixed}, aux, i, η)
@@ -2951,18 +3396,16 @@ function _laplace_v123_nuisance(kind, aux, i, η)
 end
 
 function _laplace_d12(::Val{:binomial}, aux, i, η)
-    p = _laplace_logistic(clamp(η, -30.0, 30.0))
+    p = _laplace_logistic(η)
     w = aux.ntr[i] * p * (1 - p)
     return aux.ntr[i] * p - aux.s[i], w
 end
 
 function _laplace_v123(::Val{:binomial}, aux, i, η)
-    p = _laplace_logistic(clamp(η, -30.0, 30.0))
-    s = aux.s[i]
-    n = aux.ntr[i]
-    v = -(aux.logchoose[i] + s * log(p) + (n - s) * log1p(-p))
-    w = n * p * (1 - p)
-    return v, n * p - s, w, w * (1 - 2p)
+    return (_laplace_value(Val(:binomial), aux, i, η),
+            _laplace_d1(Val(:binomial), aux, i, η),
+            _laplace_d2(Val(:binomial), aux, i, η),
+            _laplace_d3(Val(:binomial), aux, i, η))
 end
 
 function _laplace_d12(::Val{:nb2_fixed}, aux, i, η)

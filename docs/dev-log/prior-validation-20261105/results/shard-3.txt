@@ -1,0 +1,141 @@
+PRIOR_TEST_START	1.793916855465301e9	test_load_contract.jl
+PRIOR_TEST_DONE	1.793916856144167e9	test_load_contract.jl	0.65979881
+PRIOR_TEST_START	1.793916859270051e9	test_1093_beta_laplace_sentinel.jl
+PRIOR_TEST_DONE	1.793916889553646e9	test_1093_beta_laplace_sentinel.jl	30.283480519
+PRIOR_TEST_START	1.793916889553768e9	test_1170_reml_unitfree_converged.jl
+PRIOR_TEST_DONE	1.793916905648336e9	test_1170_reml_unitfree_converged.jl	16.094541438
+PRIOR_TEST_START	1.793916905648438e9	test_609_varying_scale.jl
+PRIOR_TEST_DONE	1.79391691161982e9	test_609_varying_scale.jl	5.971360107
+PRIOR_TEST_START	1.793916911619921e9	test_995_tip_variance_linear.jl
+PRIOR_TEST_DONE	1.793916917303017e9	test_995_tip_variance_linear.jl	5.683073713
+PRIOR_TEST_START	1.793916917303135e9	test_api_stability.jl
+PRIOR_TEST_DONE	1.793916917411058e9	test_api_stability.jl	0.107901822
+PRIOR_TEST_START	1.793916917411159e9	test_beta_slope_re.jl
+PRIOR_TEST_DONE	1.793916931288949e9	test_beta_slope_re.jl	13.877767295
+PRIOR_TEST_START	1.793916931289043e9	test_betabinomial_sigma_sd_regression.jl
+PRIOR_TEST_DONE	1.793916950334236e9	test_betabinomial_sigma_sd_regression.jl	19.045171947
+PRIOR_TEST_START	1.793916950334333e9	test_binomial_animal_ainv_sd_regression.jl
+PRIOR_TEST_DONE	1.793916962292731e9	test_binomial_animal_ainv_sd_regression.jl	11.958375412
+PRIOR_TEST_START	1.793916962292841e9	test_binomial_contract.jl
+PRIOR_TEST_DONE	1.793916975638483e9	test_binomial_contract.jl	13.345620341
+PRIOR_TEST_START	1.793916975638576e9	test_binomial_nonlogit_animal_slope_sd_regression.jl
+PRIOR_TEST_DONE	1.793916979512073e9	test_binomial_nonlogit_animal_slope_sd_regression.jl	3.873480022
+PRIOR_TEST_START	1.793916979512176e9	test_binomial_phylo_laplace.jl
+PRIOR_TEST_DONE	1.793916984199405e9	test_binomial_phylo_laplace.jl	4.687209575
+PRIOR_TEST_START	1.793916984199528e9	test_binomial_relmat_sd_regression.jl
+PRIOR_TEST_DONE	1.793916998591359e9	test_binomial_relmat_sd_regression.jl	14.39181051
+PRIOR_TEST_START	1.793916998591457e9	test_binomial_spatial_sd_regression.jl
+PRIOR_TEST_DONE	1.793917001162395e9	test_binomial_spatial_sd_regression.jl	2.570918422
+PRIOR_TEST_START	1.793917001162484e9	test_bootstrap_api_docstrings.jl
+PRIOR_TEST_DONE	1.79391700127231e9	test_bootstrap_api_docstrings.jl	0.109804913
+PRIOR_TEST_START	1.793917001272386e9	test_bootstrap_sigma_a.jl
+PRIOR_TEST_DONE	1.793917028563935e9	test_bootstrap_sigma_a.jl	27.291501893
+PRIOR_TEST_START	1.793917028564038e9	test_bridge_bootstrap_tree.jl
+Q-gate: JET type-stability (lc_to_Λ / Λ_to_lc) |    2      2  3.0s
+PRIOR_TEST_DONE	1.793917055999899e9	test_bridge_bootstrap_tree.jl	27.435830135
+PRIOR_TEST_START	1.793917055999949e9	test_bridge_lss_labels.jl
+PRIOR_TEST_DONE	1.793917063091464e9	test_bridge_lss_labels.jl	7.091481833
+PRIOR_TEST_START	1.793917063091612e9	test_bridge_q2_direct_export.jl
+PRIOR_TEST_DONE	1.793917082905215e9	test_bridge_q2_direct_export.jl	19.81356641
+PRIOR_TEST_START	1.793917082905368e9	test_check_drm.jl
+PRIOR_TEST_DONE	1.793917107561892e9	test_check_drm.jl	24.656485284
+PRIOR_TEST_START	1.793917107562071e9	test_corpairs.jl
+PRIOR_TEST_DONE	1.793917115372584e9	test_corpairs.jl	7.810477132
+PRIOR_TEST_START	1.793917115372768e9	test_cox_reid_poisson_ranef.jl
+PRIOR_TEST_DONE	1.793917136918314e9	test_cox_reid_poisson_ranef.jl	21.545514026
+PRIOR_TEST_START	1.793917136918488e9	test_crossed_selected_inverse.jl
+PRIOR_TEST_DONE	1.793917137481313e9	test_crossed_selected_inverse.jl	0.562783484
+PRIOR_TEST_START	1.793917137481443e9	test_cumulativelogit_contract.jl
+PRIOR_TEST_DONE	1.793917148706142e9	test_cumulativelogit_contract.jl	11.22466977
+PRIOR_TEST_START	1.793917148706307e9	test_fdhess_sweep2.jl
+PRIOR_TEST_DONE	1.793917151686987e9	test_fdhess_sweep2.jl	2.980642324
+PRIOR_TEST_START	1.793917151687145e9	test_gamma.jl
+PRIOR_TEST_DONE	1.793917154668011e9	test_gamma.jl	2.980827805
+PRIOR_TEST_START	1.793917154668173e9	test_gamma_relmat_sd_regression.jl
+PRIOR_TEST_DONE	1.793917169774044e9	test_gamma_relmat_sd_regression.jl	15.105846573
+PRIOR_TEST_START	1.793917169774227e9	test_gaussian_bivariate_q4_structured.jl
+PRIOR_TEST_DONE	1.793917176281251e9	test_gaussian_bivariate_q4_structured.jl	6.506989142
+PRIOR_TEST_START	1.793917176281434e9	test_gaussian_structured_sd_intercept.jl
+PRIOR_TEST_DONE	1.793917197345546e9	test_gaussian_structured_sd_intercept.jl	21.064082804
+PRIOR_TEST_START	1.793917197345753e9	test_implicit_re_intercept.jl
+PRIOR_TEST_DONE	1.793917219444559e9	test_implicit_re_intercept.jl	22.098768061
+PRIOR_TEST_START	1.793917219444774e9	test_joint_missing_bridge.jl
+PRIOR_TEST_DONE	1.793917242461048e9	test_joint_missing_bridge.jl	23.016243599
+PRIOR_TEST_START	1.793917242461214e9	test_joint_missing_two_bridge.jl
+PRIOR_TEST_DONE	1.793917261977794e9	test_joint_missing_two_bridge.jl	19.516546383
+PRIOR_TEST_START	1.793917261977962e9	test_lane_n3_drmcontrol.jl
+PRIOR_TEST_DONE	1.793917324633788e9	test_lane_n3_drmcontrol.jl	62.655780696
+PRIOR_TEST_START	1.793917324633971e9	test_locscale_compensated_gradient.jl
+PRIOR_TEST_DONE	1.793917328454698e9	test_locscale_compensated_gradient.jl	3.820644787
+PRIOR_TEST_START	1.793917328454829e9	test_locscale_kernels.jl
+PRIOR_TEST_DONE	1.793917330511051e9	test_locscale_kernels.jl	2.056182951
+PRIOR_TEST_START	1.793917330511232e9	test_locscale_raw_k_regression.jl
+PRIOR_TEST_DONE	1.793917342901424e9	test_locscale_raw_k_regression.jl	12.390155478
+PRIOR_TEST_START	1.79391734290158e9	test_lognormal_sd_slope.jl
+PRIOR_TEST_DONE	1.793917348613982e9	test_lognormal_sd_slope.jl	5.712365545
+PRIOR_TEST_START	1.793917348614186e9	test_lss_conditional_repeatability_694.jl
+PRIOR_TEST_DONE	1.793917365116301e9	test_lss_conditional_repeatability_694.jl	16.502082579
+PRIOR_TEST_START	1.793917365116468e9	test_lss_sparse_gradient_scaling.jl
+PRIOR_TEST_DONE	1.793917371165901e9	test_lss_sparse_gradient_scaling.jl	6.049396021
+PRIOR_TEST_START	1.793917371166071e9	test_marginal_simulator_fallback_997.jl
+PRIOR_TEST_DONE	1.793917383213852e9	test_marginal_simulator_fallback_997.jl	12.047749973
+PRIOR_TEST_START	1.793917383214018e9	test_missing_response_nongaussian.jl
+PRIOR_TEST_DONE	1.793917416364564e9	test_missing_response_nongaussian.jl	33.150511788
+PRIOR_TEST_START	1.793917416364722e9	test_nb2_animal_sd_regression.jl
+PRIOR_TEST_DONE	1.79391742638472e9	test_nb2_animal_sd_regression.jl	10.019965365
+PRIOR_TEST_START	1.793917426384841e9	test_nb2_spatial_slope_sd_regression.jl
+PRIOR_TEST_DONE	1.79391743329946e9	test_nb2_spatial_slope_sd_regression.jl	6.914597564
+PRIOR_TEST_START	1.793917433299565e9	test_niterations.jl
+PRIOR_TEST_DONE	1.79391744092208e9	test_niterations.jl	7.622492829
+PRIOR_TEST_START	1.793917440922201e9	test_optim_minimum_contract.jl
+PRIOR_TEST_DONE	1.793917441078674e9	test_optim_minimum_contract.jl	0.156447605
+PRIOR_TEST_START	1.793917441078786e9	test_parity_count_poisson_nb2.jl
+PRIOR_TEST_DONE	1.793917454292875e9	test_parity_count_poisson_nb2.jl	13.214068512
+PRIOR_TEST_START	1.793917454292984e9	test_phylo_labels.jl
+PRIOR_TEST_DONE	1.793917454800907e9	test_phylo_labels.jl	0.507896033
+PRIOR_TEST_START	1.793917454801012e9	test_poisson.jl
+PRIOR_TEST_DONE	1.793917454841647e9	test_poisson.jl	0.040608848
+PRIOR_TEST_START	1.793917454841753e9	test_poisson_re.jl
+PRIOR_TEST_DONE	1.793917455009137e9	test_poisson_re.jl	0.167358128
+PRIOR_TEST_START	1.793917455009271e9	test_predict.jl
+PRIOR_TEST_DONE	1.793917455335183e9	test_predict.jl	0.325888355
+PRIOR_TEST_START	1.793917455335272e9	test_profile_infinite_bound.jl
+PRIOR_TEST_DONE	1.793917467256232e9	test_profile_infinite_bound.jl	11.920936215
+PRIOR_TEST_START	1.793917467256348e9	test_q4_reml_vcov.jl
+PRIOR_TEST_DONE	1.793917497985743e9	test_q4_reml_vcov.jl	30.729367859
+PRIOR_TEST_START	1.79391749798617e9	test_r2_constant_sigma.jl
+PRIOR_TEST_DONE	1.793917502186741e9	test_r2_constant_sigma.jl	4.200544726
+PRIOR_TEST_START	1.793917502186835e9	test_reml_baseline_ladder.jl
+PRIOR_TEST_DONE	1.793917502583649e9	test_reml_baseline_ladder.jl	0.396789588
+PRIOR_TEST_START	1.793917502583737e9	test_reml_q4_missing_response.jl
+PRIOR_TEST_DONE	1.793917511748981e9	test_reml_q4_missing_response.jl	9.165221337
+PRIOR_TEST_START	1.793917511749083e9	test_report_clamped_sigma.jl
+PRIOR_TEST_DONE	1.793917523403549e9	test_report_clamped_sigma.jl	11.654438193
+PRIOR_TEST_START	1.793917523403684e9	test_sentinel_glsp_profile.jl
+PRIOR_TEST_DONE	1.793917580772891e9	test_sentinel_glsp_profile.jl	57.369185518
+PRIOR_TEST_START	1.793917580773041e9	test_sigma_re_bootstrap_926.jl
+PRIOR_TEST_DONE	1.793917586847623e9	test_sigma_re_bootstrap_926.jl	6.074561851
+PRIOR_TEST_START	1.793917586847733e9	test_sparse_lss_reml_hessian_guard.jl
+PRIOR_TEST_DONE	1.793917587104212e9	test_sparse_lss_reml_hessian_guard.jl	0.256455811
+PRIOR_TEST_START	1.793917587104304e9	test_student_721.jl
+PRIOR_TEST_DONE	1.793917588389361e9	test_student_721.jl	1.284996861
+PRIOR_TEST_START	1.793917588389476e9	test_summary_marginal_label.jl
+PRIOR_TEST_DONE	1.793917588525269e9	test_summary_marginal_label.jl	0.135770241
+PRIOR_TEST_START	1.793917588525354e9	test_temporal_boundary.jl
+PRIOR_TEST_DONE	1.793917594919008e9	test_temporal_boundary.jl	6.393621124
+PRIOR_TEST_START	1.793917594919124e9	test_truncated_nb.jl
+PRIOR_TEST_DONE	1.793917595054381e9	test_truncated_nb.jl	0.135233096
+PRIOR_TEST_START	1.793917595054508e9	test_tweedie_contract.jl
+PRIOR_TEST_DONE	1.793917597965515e9	test_tweedie_contract.jl	2.910985347
+PRIOR_TEST_START	1.793917597965617e9	test_twin_display_758.jl
+PRIOR_TEST_DONE	1.79391759979745e9	test_twin_display_758.jl	1.83180997
+PRIOR_TEST_START	1.793917599797542e9	test_twin_gap_732.jl
+PRIOR_TEST_DONE	1.793917608674791e9	test_twin_gap_732.jl	8.877226632
+PRIOR_TEST_START	1.793917608674916e9	test_twin_gap_762.jl
+PRIOR_TEST_DONE	1.793917611093745e9	test_twin_gap_762.jl	2.418806418
+PRIOR_TEST_START	1.793917611093865e9	test_va_poisson_elbo.jl
+PRIOR_TEST_DONE	1.79391761333994e9	test_va_poisson_elbo.jl	2.246053297
+PRIOR_TEST_START	1.793917613340029e9	test_xfam_external_validation.jl
+PRIOR_TEST_DONE	1.793917654911468e9	test_xfam_external_validation.jl	41.571411559
+[ Info: R-parity suite skipped (set DRM_PARITY_TESTS=1 to run)
+     Testing DRModels tests passed

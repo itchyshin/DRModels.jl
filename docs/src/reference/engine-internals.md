@@ -32,7 +32,15 @@ DRModels._ProfileNuisanceResult
 
 ```@docs
 DRModels.AugmentedPhy
+DRModels.AugProblem
 DRModels.Vinv_mul
+DRModels.aug_prior_grad!
+DRModels.build_Huu
+DRModels.estep_mode
+DRModels.joint_grad
+DRModels.joint_nll
+DRModels.make_problem
+DRModels.prior_precision
 DRModels.build_M
 DRModels.exact_traces
 DRModels.logdetV_val
@@ -75,6 +83,7 @@ correlation map is spherical/LKJ, not Fisher-z. The warning on
 DRModels.beta_widths
 DRModels.fit_q4_reml
 DRModels.fit_q4_sparse_fisherz
+DRModels.fit_q4_sparse_tmb
 DRModels.fz_DRD
 DRModels.fz_R
 DRModels.fz_R_chol
@@ -83,15 +92,21 @@ DRModels.fz_marginal_and_grad
 DRModels.fz_marginal_nll
 DRModels.fz_psi_len
 DRModels.fz_psi_to_theta
+DRModels.fz_correlations
+DRModels.fz_phi_to_lc
 DRModels.fz_unpack_psi
+DRModels.lc_to_Λ
 DRModels.marginal_and_exact_grad
+DRModels.Λ_to_lc
 ```
 
 ## Coevolution and phylogenetic interaction kernels
 
 ```@docs
+DRModels.coevo_marginal
 DRModels.coevo_marginal_cov
 DRModels.coevo_pack
+DRModels.coevo_theta_len
 DRModels.coevo_unpack
 DRModels.cov_to_lc
 DRModels.fit_coevolution
@@ -489,3 +504,7 @@ DRModels.drm_bridge_joint
 `prepared_joint_nll(model, theta)` returns the negative sum of row
 log-likelihoods, retaining predictor-only observations and the exact zero
 contribution of rows where both response and predictor are missing.
+
+```@docs
+DRModels.prepared_joint_nll
+```

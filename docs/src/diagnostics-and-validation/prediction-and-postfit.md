@@ -125,6 +125,27 @@ rq = residuals(fit; type = :quantile)
     out, or the fitted temporal path), so what "≈ N(0, 1)" means changes;
     [`residuals`](@ref) lists what each kind of fit returns.
 
+!!! note "Quantile residuals with a structured mean: DRModels.jl vs drmTMB"
+    For a fit whose mean has a `phylo()`, `relmat()` or `animal()` random
+    intercept, the two packages do not return the same numbers, although the
+    fits agree (same log-likelihood to about 6e-8 on the checked Gaussian
+    `phylo(1 | species)` model).
+
+    | Convention | Residual | Who returns it |
+    |---|---|---|
+    | marginal | `(y − Xβ̂) / √(σ̂² + σ̂_b² C_ii)` | DRModels.jl (default Gaussian `phylo(1 \| g)` route) |
+    | conditional | `(y − Xβ̂ − û) / σ̂` | drmTMB's `residuals(type = "quantile")` code |
+    | fixed-effect only | `(y − Xβ̂) / σ̂` | what drmTMB's residual help text describes |
+
+    On that model the two engines agree to within 3.5e-9 under either
+    convention, so the gap is the convention, not the fit. Marginal residuals
+    stay near N(0, 1) for each row, but rows that share ancestry are
+    correlated, so read the whole set (a QQ plot, the SD) and do not hold each
+    row to N(0, 1). Do not compare the two packages' quantile residuals number by number for
+    these fits. [`residuals`](@ref) lists the convention for every other kind
+    of fit. Which convention drmTMB should use is an open drmTMB-side decision
+    ([#1101](https://github.com/itchyshin/DRModels.jl/issues/1101)).
+
 ## Does the extra structure earn its keep?
 
 Fit a simpler model with a **constant** scale and compare. [`lrtest`](@ref)

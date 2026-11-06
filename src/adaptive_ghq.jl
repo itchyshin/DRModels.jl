@@ -83,6 +83,22 @@ const _CORR_RANEF_AGHQ_K = 5
 # b_g, so AGHQ is exact there for any K (K=1 included) — see `_fit_lognormal_ranef`.
 const _RANEF1D_AGHQ_K = 5
 
+# Default nodes for the scalar iid predictor-dependent-SD routes
+# (`sd(g) ~ z` on one ordinary mean intercept `(1 | g)` or independent slope
+# `(0 + x | g)`; Beta, Gamma, BetaBinomial, Poisson, zero-inflated Poisson,
+# truncated Poisson, NB2, hurdle and truncated NB2, Tweedie, ZeroOneBeta). With
+# the 5 nodes used for the plain `(1 | g)` routes these routes sat 1e-3 to 1e-2
+# nat below the exact per-group integral (up to 3 nat for ZeroOneBeta, whose
+# intercept route used a non-adaptive prior-scale 32-node grid, and 0.12 nat for
+# the zero-inflated Poisson slope). Swept against an exact QuadGK integral on
+# the fixtures of test/test_iid_sd_quadrature_accuracy.jl; see that file.
+const _SD_IID_AGHQ_K = 41
+
+# The zero-inflated Poisson group posterior is a two-component mixture in b for
+# groups with zeros, and converges more slowly: at the fitted SD the worst slope
+# draw is 1.1e-5 nat off at 41 nodes, 5.9e-6 at 61 and 4.8e-7 at 81.
+const _ZIP_SD_AGHQ_K = 81
+
 _aghq_primal(x::ForwardDiff.Dual) = _aghq_primal(ForwardDiff.value(x))
 _aghq_primal(x::Real) = Float64(x)
 

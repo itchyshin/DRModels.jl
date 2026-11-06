@@ -3,7 +3,7 @@
 # (no Laplace). Recovery test (Curie/Fisher): recover the fixed effects, the
 # residual σ, and the random-intercept SD σ_b.
 using DRModels
-using Test, Random
+using Test, Random, StableRNGs
 
 @testset "Gaussian random intercept (1|g) — recovery" begin
     Random.seed!(20260601)
@@ -51,13 +51,20 @@ end
 # ForwardDiff Hessian overflows to NaN. The (1 | g) route must follow the #968 convention
 # (warn, all-NaN vcov, converged = false) instead of the bare LAPACK ArgumentError.
 @testset "Gaussian (1|g) + sigma ~ z, all-singleton groups: non-finite Hessian (#1114)" begin
-    Random.seed!(20261016100 + 87)   # rep 87 of this t2-style cell throws on main
+    # The original pinned draw (`Random.seed!(20261016100 + 87)`) no longer reaches the
+    # non-converged path on CI (it converges), and global-seed streams differ across
+    # Julia versions. StableRNG seed 1 gives the same outcome on 1.10 and 1.13: the
+    # (1|g) route warns and reports converged = false instead of throwing a bare
+    # LAPACK ArgumentError (15 of 24 stable seeds do). That outcome is what is asserted;
+    # whether this draw overflows the Hessian itself is not.
+    rng = StableRNG(1)
     n = 50
-    x = randn(n); z = randn(n); eps = randn(n); u = 0.5 .* randn(n)
+    x = randn(rng, n); z = randn(rng, n); eps = randn(rng, n); u = 0.5 .* randn(rng, n)
     y = 1 .+ 0.5 .* x .+ u .+ exp.(-0.5 .+ 0.4 .* z) .* eps
     data = (; y, x, z, g = string.(1:n))
     fit = @test_logs (:warn,) match_mode = :any drm(
         bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ z)), Gaussian(); data = data)
     @test !is_converged(fit)
-    @test all(isnan, vcov(fit))
+    # #1193: `vcov`/`stderror` keep the Hessian values; the printed SE column is withheld.
+    @test all(isnan, coeftable(fit).cols[2])
 end
