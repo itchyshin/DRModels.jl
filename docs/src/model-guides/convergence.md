@@ -114,7 +114,10 @@ control_info(fit5).starts_agree      # false (and a warning) if they disagree
 ```
 
 `maxit`, `start` and `multi_start` work on the fixed-effect routes of the
-univariate families. You can request `:lbfgs` or `:bfgs` directly on those
+univariate families. On a model with a random, structured or `meta_V` term
+(and on bivariate models) they are refused with an `ArgumentError` before
+fitting, so there is no multi-start check for a `(1 | g)` fit yet, although
+drmTMB's `drm_control(multi_start =)` accepts it there (#1219). You can request `:lbfgs` or `:bfgs` directly on those
 primary ML fits. Hold the model, data and internal-scale start fixed when
 comparing methods:
 

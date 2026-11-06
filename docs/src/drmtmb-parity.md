@@ -65,6 +65,15 @@ route entry does not make every bridge input stable or supported.
 A mixed-family pair without a native R comparator cannot establish ordinary
 R-versus-Julia parity through simulation recovery alone.
 
+## Where DRModels.jl admits a model drmTMB refuses
+
+- **`Beta()` and `Binomial()` with `relmat` / `K =`.** DRModels.jl fits these
+  (Laplace approximation). drmTMB currently refuses `relmat` on `beta()` and
+  `binomial()` (listed there as planned), so there is no drmTMB fit to compare
+  with, and parity for these two cells is not claimed. `Beta` and `Binomial`
+  with `phylo` are admitted by both and are covered by the phylo row above
+  (#741, #742).
+
 ## Default marginal approximation
 
 drmTMB's native engine integrates every random effect with TMB's Laplace
