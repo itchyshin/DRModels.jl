@@ -1,0 +1,52 @@
+{
+  "assessment_performed": true,
+  "draft_sha256": "dae881401f817d0becaf41deb21d3ea9ecbc33d10c7caf98fab5983d9ff0ace4",
+  "draft_version": "validation-final-v1",
+  "requested_mode": "independent",
+  "assessor_type": "self",
+  "reviewer": "Codex parent",
+  "method": "Whole-draft self-review against source-pinned receipts; an independent integration reviewer verified the result and corrected stale report wording.",
+  "genre": "Technical validation report, check log or recovery record",
+  "coverage": "Whole /Users/z3437171/.codex/worktrees/drmodels-fixed-priors-20261105/DRM.jl/docs/dev-log/after-task/2026-11-05-prior-timeout-validation.md",
+  "score": 3,
+  "style_status": "assessed",
+  "score_reason": "Concrete measurements and limitations; audit structure and source identifiers add necessary density.",
+  "confidence": "medium",
+  "confidence_reason": "Self-assessment with independent fact review; no held-out prose calibration or human authorship assessment.",
+  "examples": [
+    {
+      "location": "Line 3",
+      "line": 3,
+      "quote": "Status: PASS for the pinned Julia 1.10.10 default suite. All eight shards exited 0; all 554 selected files completed. No merge or release.",
+      "cue": "Concrete purpose, measurement or scope statement",
+      "impact": "Separates validated results from broader untested claims",
+      "repair": "no change needed"
+    },
+    {
+      "location": "Line 7",
+      "line": 7,
+      "quote": "Finish Julia validation for the fixed-effect prior slice after the earlier",
+      "cue": "Concrete purpose, measurement or scope statement",
+      "impact": "Separates validated results from broader untested claims",
+      "repair": "no change needed"
+    },
+    {
+      "location": "Line 14",
+      "line": 14,
+      "quote": "Added task-specific timing, collection and verification tools outside package",
+      "cue": "Concrete purpose, measurement or scope statement",
+      "impact": "Separates validated results from broader untested claims",
+      "repair": "no change needed"
+    }
+  ],
+  "evidence_none_reason": null,
+  "science_gate": "pass",
+  "science_gate_reason": "No new estimator or calibration claim; default-suite checks are distinguished from parity, intervals and release readiness.",
+  "facts_gate": "pass",
+  "facts_gate_reason": "All eight exits,554ordered file completions,raw/transcript hashes and source/runtime checks pass; old90minute run remains historical and incomplete.",
+  "references_gate": "not_applicable",
+  "references_gate_reason": "No literature claim; primary operational run evidence was verified separately.",
+  "date": "2026-11-05",
+  "calibration_status": "No held-out calibration examples used.",
+  "interpretation": "perceived_style_not_authorship"
+}

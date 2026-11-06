@@ -19,6 +19,7 @@
     "conclusion": "success",
     "test_step_seconds": 10872,
     "crossed_tweedie_testset_seconds": 7351.1,
-    "interpretation": "The old 90-minute budget for the entire unsharded suite was shorter than this unchanged testset on the completed baseline CI host. It does not measure candidate runtime on Totoro or establish a new performance regression."
+    "interpretation": "The old 90-minute budget for the entire unsharded suite was shorter than this unchanged testset on the completed baseline CI host. It does not measure candidate runtime on Totoro or establish a new performance regression.",
+    "julia_version": "1.10.13"
   }
 }

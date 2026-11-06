@@ -1,3 +1,8 @@
+> Follow-up: the same final source passed the default Julia 1.10.10 suite in
+> eight native shards, 554/554 selected files, on 5 November 2026. See the
+> [timeout-validation report](2026-11-05-prior-timeout-validation.md). The
+> original 90-minute run below remains an incomplete historical receipt.
+
 ## 1. Goal
 
 Implement and check the approved first fixed-effect normal-prior and ridge
@@ -75,8 +80,9 @@ Formal mutation checks are not yet run.
 
 No external issue was created or changed. Integration and mathematical review
 found inference-table leaks, non-unit weights, zero-ridge geometry and update
-switching; prior-specific changes and tests address them. Final independent
-review was scoped; the full suite remains incomplete.
+switching; prior-specific changes and tests address them. The original independent
+review was scoped; the original 90-minute run remained incomplete. The later
+eight-shard default-suite pass is recorded in the follow-up report above.
 
 ## 8. Consistency Audit
 
@@ -101,8 +107,9 @@ The clean-main comparison covers this example only; it did not rebuild the site.
 
 ## 10. Known Residuals
 
-The final source did not complete a full package suite within the 90-minute
-limit. The predecessor-source
+The original 90-minute run did not complete the suite. The same source later
+passed all 554 selected files in eight default-suite shards; see the follow-up
+report above. The predecessor-source
 Documenter retry failed as above; the final full documentation build remains
 unverified despite the successful new-page check.
 Broader R–Julia parity, interval calibration, random-effect SD priors,
