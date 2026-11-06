@@ -1,1 +1,0 @@
-Fix: REML Gaussian fixed-effect route (`method = :REML`) now sets `converged` from the unit-free Newton step in SE units, as the ML route does, instead of the absolute `g_tol` gradient test; a fit at the optimum is no longer flagged unconverged, a truncated fit still is (#1170).
