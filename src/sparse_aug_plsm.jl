@@ -82,6 +82,18 @@ function cap_newton_step(step::AbstractVector, trust::Real = BETA_NEWTON_TRUST)
 end
 
 # --- problem container -------------------------------------------------------
+"""
+    AugProblem
+
+Data container for the bivariate q=4 phylogenetic location-scale engine on an
+augmented tree (leaves plus internal nodes, root conditioned out). Fields:
+`phy` (the [`AugmentedPhy`](@ref)), `n_total` (augmented nodes), `p` (leaves),
+`leaf_node` (data row → node index; more than one row per leaf is allowed),
+responses `y1`, `y2`, designs `X1`, `X2` (means), `Xs1`, `Xs2` (log scales),
+`Xr` (correlation), and the per-row observed-response masks `obs1`, `obs2`.
+The 11-argument constructor without masks treats every response as observed.
+Usually built by [`make_problem`](@ref) or `make_problem_from_Q`, not by hand.
+"""
 struct AugProblem
     phy::AugmentedPhy{Float64}
     n_total::Int                 # 2p-1
@@ -126,6 +138,14 @@ AugProblem(phy, n_total, p, leaf_node, y1, y2, X1, X2, Xs1, Xs2, Xr) =
 # bit-identical pattern and values from both builders on the q4 fixture, nnz
 # 1376 at a diagonal and at a fitted Λ — and collapsed (#563 follow-up); the
 # REML path now calls this function directly.
+"""
+    prior_precision(Q, Λinv) -> SparseMatrixCSC
+
+Sparse prior precision `kron(Q, Λinv)` of the stacked latent effects, with the
+`q × q` axis block stored in full so that exact zeros (for example a diagonal
+`Λinv`) do not drop entries that the selected-inverse traces need. `Q` is the
+conditioned tree-topology precision and `Λinv` the inverse among-axis covariance.
+"""
 function prior_precision(Q::SparseMatrixCSC, Λinv::AbstractMatrix)
     q = LinearAlgebra.checksquare(Λinv)
     rows = [a for _ in 1:q for a in 1:q]
@@ -140,6 +160,13 @@ function leaf_etas(prob::AugProblem, β)
 end
 
 # Assemble H_uu = P + blockdiag(leaf 4×4 data Hessians) at a given u (sparse).
+"""
+    build_Huu(prob, P, u, β) -> SparseMatrixCSC
+
+Joint Hessian of the negative log-density in the latent effects `u`: the prior
+precision `P` plus the 4×4 leaf data Hessian added at each data row's node.
+`β` is the named coefficient tuple (`mu1`, `mu2`, `s1`, `s2`, `rho`).
+"""
 function build_Huu(prob::AugProblem, P::SparseMatrixCSC, u::Vector{Float64}, β)
     η1, η2, ηs1, ηs2, ηr = leaf_etas(prob, β)
     H = copy(P)
@@ -160,12 +187,25 @@ end
 # repeats every iteration; the engine-quality gate (#15) asserts it allocates
 # nothing and stays flat across p (the CHOLMOD factor/solve is excluded from that
 # gate as out-of-Julia-control). `g` must be a length-4·n_total preallocated buffer.
+"""
+    aug_prior_grad!(g, P, u) -> g
+
+Overwrite the preallocated buffer `g` (length `4 * n_total`) with the prior part
+of the joint gradient, `P * u`, using an in-place sparse matrix-vector product
+that allocates nothing. [`joint_grad`](@ref) adds the leaf data gradients to it.
+"""
 @inline function aug_prior_grad!(g::Vector{Float64}, P::SparseMatrixCSC, u::Vector{Float64})
     mul!(g, P, u)
     return g
 end
 
 # Gradient of the joint nll wrt u at u: P*u + leaf data gradients (at leaves).
+"""
+    joint_grad(prob, P, u, β) -> Vector{Float64}
+
+Gradient of the joint negative log-density with respect to the latent effects
+`u`: `P * u` plus the leaf data gradients, matching [`joint_nll`](@ref).
+"""
 function joint_grad(prob::AugProblem, P::SparseMatrixCSC, u::Vector{Float64}, β)
     η1, η2, ηs1, ηs2, ηr = leaf_etas(prob, β)
     g = similar(u)
@@ -183,6 +223,13 @@ function joint_grad(prob::AugProblem, P::SparseMatrixCSC, u::Vector{Float64}, β
 end
 
 # joint nll value at u (data at leaves + 0.5 u'Pu).
+"""
+    joint_nll(prob, P, u, β) -> Float64
+
+Joint negative log-density at latent effects `u`: `0.5 * u' * P * u` plus the
+leaf data negative log-likelihood. This is the objective the inner mode-finder
+minimises over `u`.
+"""
 function joint_nll(prob::AugProblem, P::SparseMatrixCSC, u::Vector{Float64}, β)
     η1, η2, ηs1, ηs2, ηr = leaf_etas(prob, β)
     val = 0.5 * dot(u, P * u)
@@ -697,6 +744,16 @@ end
 # existing caller (fit_ml_q4.jl, reml_q4.jl, sparse_em_fit.jl, src/experimental/*
 # all call estep_mode without it). Only fit_q4_sparse_tmb's ML fg! loop passes a
 # CholPatternCache, created once per fit (S5 change (b)).
+"""
+    estep_mode(prob, P, β; u0 = nothing, n_newton = 40, tol = 1e-8, trust = 5.0,
+               gswitch = 1.0, chol_ref = nothing) -> (û, factor, H)
+
+Inner (E-step) mode of the latent effects `u` given `β` and a prior `P` (sparse
+precision or whitened prior). With a warm start `u0` it tries a cheap Newton
+path first and falls back to the robust Levenberg-Marquardt mode-finder; with
+`u0 = nothing` it uses the robust path directly. Returns the mode `û`, the
+CHOLMOD factor of the observed Hessian at `û`, and that Hessian `H`.
+"""
 function estep_mode(prob::AugProblem, P::Union{SparseMatrixCSC,WhitenedPrior}, β;
                     u0=nothing, n_newton=40, tol=1e-8, trust=5.0, gswitch=1.0,
                     chol_ref::Union{Nothing,CholPatternCache} = nothing)
