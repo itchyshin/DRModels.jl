@@ -61,10 +61,10 @@ end
         tight = drm(f, Student(); data = heavy, se = false)
         @test convergence_status(tight) === :converged
         @test norm(gradient(tight), Inf) / n <= 1e-6
-        # A loose optimiser tolerance satisfies Optim's own test (`fit.converged`)
-        # with a gradient far above the bar.
+        # A loose optimiser tolerance stops with a gradient far above the bar. Since
+        # #1218 the raw `fit.converged` flag is unit-free too, so it is already false
+        # here; the status must be :degenerate either way.
         loose = drm(f, Student(); data = heavy, se = false, g_tol = 1.0)
-        @test loose.converged
         @test norm(gradient(loose), Inf) / n > 1e-6
         @test convergence_status(loose) === :degenerate
         @test !is_converged(loose)
