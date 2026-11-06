@@ -73,6 +73,12 @@ function drm_bridge(; formula, family::AbstractString, data, tree = nothing,
     bundle, dat, labels = _bridge_formula(formula, family, dat; labels = true)
     fam = _bridge_family(family)
     opts = _bridge_options(options)
+    if haskey(opts, :priors)
+        haskey(opts, :prior_expected) || throw(ArgumentError("drm_bridge: priors require prior_expected"))
+        opts[:priors] = _bridge_prepare_fixed_priors(bundle, fam, labels, opts[:priors], opts[:prior_expected])
+    elseif haskey(opts, :prior_expected)
+        throw(ArgumentError("drm_bridge: prior_expected requires priors"))
+    end
     coef_labels = get(opts, :coef_labels, nothing)
     fit = _bridge_fit(bundle, fam, dat; tree = tree, K = K, A = A,
                       Ainv = Ainv, coords = coords, options = opts)
@@ -558,7 +564,7 @@ end
 # than depending on which branches happened to fire for a given fit.
 const _BRIDGE_KNOWN_OPTION_KEYS = Set((
     :g_tol, :algorithm, :method, :marginal, :se, :profile_ci, :phylo_coupled, :sparse,
-    :q4_g_tol, :q4_iterations, :q4_n_newton, :q4_vcov, :coef_labels,
+    :q4_g_tol, :q4_iterations, :q4_n_newton, :q4_vcov, :coef_labels, :priors, :prior_expected,
 ))
 
 function _bridge_fit(bundle, fam, data; tree, K, A, Ainv = nothing,
@@ -571,6 +577,7 @@ function _bridge_fit(bundle, fam, data; tree, K, A, Ainv = nothing,
         "drm_bridge: unknown option key(s) `$(join(sort(String.(unknown)), "`, `"))`; " *
         "known keys are: $(join(sort(String.(collect(_BRIDGE_KNOWN_OPTION_KEYS))), ", "))."))
     kwargs = Dict{Symbol,Any}()
+    haskey(options, :priors) && (kwargs[:priors] = options[:priors])
     tree !== nothing && (kwargs[:tree] = _bridge_tree(tree))
     K !== nothing && (kwargs[:K] = K)
     A !== nothing && (kwargs[:A] = A)
@@ -731,6 +738,56 @@ function _bridge_options(options)
         return Dict{Symbol,Any}(Symbol(String(k)) => v for (k, v) in pairs(options))
     end
     throw(ArgumentError("drm_bridge: `options` must be a dictionary or named tuple"))
+end
+
+function _bridge_prepare_fixed_priors(form, fam, labels, prior_input, expected_input)
+    form isa DrmFormula && (fam isa Gaussian || (fam isa Binomial && fam.link === :logit)) ||
+        throw(ArgumentError("drm_bridge: fixed priors require univariate Gaussian or binomial logit"))
+    prior_input isa AbstractVector && expected_input isa AbstractVector ||
+        throw(ArgumentError("drm_bridge: priors and prior_expected must be vectors of rows"))
+    forms = Dict(form.forms)
+    dpars = fam isa Gaussian ? (:mu, :sigma) : (:mu,)
+    names = Pair{Symbol,Vector{String}}[]; intercepts = Dict{Symbol,Union{Nothing,Int}}()
+    public_names = Dict{Symbol,Vector{String}}()
+    for d in dpars
+        rhs = first(_extract_offset(forms[d]))
+        raw, public = _bridge_render_formula_block(form, d, rhs, labels)
+        length(unique(public)) == length(public) || throw(ArgumentError("drm_bridge: ambiguous public coefficient names"))
+        push!(names, d => raw); public_names[d] = public
+        schema_data = _bridge_label_schema_data(form.response, labels.data)
+        ft = FormulaTerm(Term(form.response), rhs)
+        applied = apply_schema(ft, schema(ft, schema_data), StatisticalModel)
+        intercepts[d] = StatsModels.hasintercept(applied) ? findfirst(==("(Intercept)"), raw) : nothing
+        StatsModels.hasintercept(applied) && intercepts[d] === nothing && throw(ArgumentError("drm_bridge: cannot identify intercept"))
+    end
+    priors = FixedPrior[]
+    for item in prior_input
+        p = _bridge_options(item)
+        all(k -> haskey(p, k), (:kind, :dpar, :coef)) || throw(ArgumentError("drm_bridge: incomplete prior row"))
+        d = Symbol(p[:dpar]); haskey(public_names, d) || throw(ArgumentError("drm_bridge: unknown prior dpar $d"))
+        c = String(p[:coef]); inc = get(p, :intercept, nothing)
+        if c != "all"
+            idx = findall(==(c), public_names[d])
+            length(idx) == 1 || throw(ArgumentError("drm_bridge: prior coefficient $d:$c did not uniquely match"))
+            c = Dict(names)[d][only(idx)]
+        end
+        kind = String(p[:kind])
+        if kind == "normal"
+            haskey(p, :sd) || throw(ArgumentError("drm_bridge: normal prior requires sd"))
+            push!(priors, drm_prior_normal(dpar=d, coef=c, intercept=inc, mean=get(p, :mean, 0), sd=p[:sd]))
+        elseif kind == "ridge"
+            haskey(p, :lambda) || throw(ArgumentError("drm_bridge: ridge prior requires lambda"))
+            push!(priors, drm_prior_ridge(dpar=d, coef=c, intercept=inc, lambda=p[:lambda]))
+        else
+            throw(ArgumentError("drm_bridge: unknown prior kind $kind"))
+        end
+    end
+    rows = _resolve_fixed_priors(priors, names, intercepts)
+    raw_names = Dict(names)
+    actual = [(String(r.dpar), public_names[r.dpar][findfirst(==(r.coef), raw_names[r.dpar])]) for r in rows]
+    expected = [(String(_bridge_options(x)[:dpar]), String(_bridge_options(x)[:coef])) for x in expected_input]
+    actual == expected || throw(ArgumentError("drm_bridge: R and Julia resolved prior coordinates differ"))
+    return priors
 end
 
 # The refusal text for a failed profile endpoint search (#631). It may only
@@ -1797,8 +1854,8 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
         "vcov" => V,
         "vcov_names" => cnames,
         "loglik" => loglik(fit),
-        "aic" => aic(fit),
-        "bic" => bic(fit),
+        "aic" => _is_fixed_prior_fit(fit) && fit.estim_method === :MAP ? NaN : aic(fit),
+        "bic" => _is_fixed_prior_fit(fit) && fit.estim_method === :MAP ? NaN : bic(fit),
         "df" => dof(fit),
         "nobs" => nobs(fit),
         # The optimiser-degeneracy-and-geometry gate, NOT `is_converged` (FX3b):
@@ -1817,7 +1874,7 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
         # Julia-side `@warn` that never crosses the boundary.
         "estim_method" => String(fit.estim_method),
         "ml_loglik" => fit.ml_loglik,
-        "infocrit_basis" => fit.estim_method === :REML ? "reml" : "ml",
+        "infocrit_basis" => _is_fixed_prior_fit(fit) && fit.estim_method === :MAP ? "unavailable" : fit.estim_method === :REML ? "reml" : "ml",
         # Optimiser iterations actually taken. -1 means the fitter does not record
         # it yet, which the R side must read as "unknown" -- NOT as zero. Before
         # 2026-08-24 this key did not exist at all, so `fit$bridge$iterations` was
@@ -1843,6 +1900,17 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
         "corpairs" => _bridge_plain(corpairs(fit)),
         "dpars" => _bridge_dpars(fit),
     )
+    if _is_fixed_prior_fit(fit)
+        rows = fit.penalty.rows
+        out["fixed_prior_contract"] = "fixed_effect_priors_v1"
+        publicmap = Dict(raw => public for (public, raw) in public_to_raw)
+        out["resolved_priors"] = [Dict("dpar"=>String(r.dpar), "coef"=>get(publicmap, "$(r.dpar)_$(r.coef)", "$(r.dpar)_$(r.coef)")[length(String(r.dpar))+2:end], "index"=>r.index, "matrix_column"=>r.matrix_column, "mean"=>r.mean, "sd"=>r.sd, "precision"=>r.precision, "kind"=>String(r.kind), "reason"=>String(r.reason)) for r in rows]
+        out["fixed_prior_penalty"] = _fixed_prior_value(rows, fit.theta)
+        out["likelihood_gradient"] = ForwardDiff.gradient(fit.penalty.data_nll, fit.theta)
+        out["prior_gradient"] = ForwardDiff.gradient(t -> _fixed_prior_value(rows, t), fit.theta)
+        out["penalized_gradient"] = ForwardDiff.gradient(fit.nll, fit.theta)
+        out["penalized_objective"] = fit.nll(fit.theta)
+    end
     # `reml_loglik` is omitted rather than reported as NaN for an ML fit (matches
     # `trials`/`meta`/`q4_point_export` below: absent, not a sentinel, when the
     # fit genuinely does not carry it). When it IS present, also echo the same
