@@ -23,9 +23,16 @@ These exported names have no separate entry below:
 - `drm_formula` is another name for [`bf`](@ref) (drmTMB's spelling); the two
   are the same function.
 - `offset(x)` inside the mean formula adds `x` to the linear predictor with its
-  coefficient fixed at 1, as in R. It is currently supported for `Poisson()`
-  only, for example `@formula(y ~ x + offset(log_exposure))`; at most one
-  offset term is allowed.
+  coefficient fixed at 1, as in R, for example
+  `@formula(y ~ x + offset(log_exposure))`; at most one offset term is allowed.
+  Every univariate family applies it on the fixed-effects mean. With random
+  effects it is applied for `Poisson()` with one ordinary `(1 | g)`, for
+  `NegBinomial2()` with one ordinary `(1 | g)` (`:LA` or `:Laplace`), and for
+  `Gamma()` and `Beta()` with one `(1 | g)` under `marginal = :Laplace`.
+  Fixed-effects `NegBinomial2()` routes with `zi` or `hu` also support offsets;
+  they cannot be combined with a random effect. Other routes refuse offsets by
+  name (see [`offset`](@ref)).
+  An offset in `sigma` or any other non-mean formula is refused, as in drmTMB.
 
 ## Response families
 
@@ -74,7 +81,7 @@ cbind
 
 !!! warning "Experimental"
     Exported for evaluation, not yet stable. API and numerics may
-    change. This route is not available through the R bridge.
+    change. The bounded R bridge workflow is shown below.
 
 For a Gaussian response, `mi(x)` marks an additive predictor whose missing
 values are integrated out under a joint model. Observed predictor values inform

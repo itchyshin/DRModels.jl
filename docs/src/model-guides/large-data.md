@@ -4,11 +4,13 @@
     Mirrors drmTMB's [Working with large data](https://itchyshin.github.io/drmTMB/articles/large-data.html). How DRModels.jl stays fast as the number of units grows, and what to reach for when a model is large.
 
 The selling-point model — the q=4 phylogenetic bivariate location–scale fit — is
-built to scale. The marginal likelihood is a **sparse augmented-state Laplace
-approximation with an exact O(p) gradient**: it never forms the dense p×p
-phylogenetic covariance, and it gets the gradient from a Takahashi selected
-inverse rather than by differentiating a dense factorisation. The practical
-consequence is near-linear scaling in the number of tips.
+built for sparse tree structure. The marginal likelihood uses a sparse
+augmented-state Laplace approximation, with an exact sparse outer gradient at
+a converged inner mode. It never forms the dense p×p phylogenetic covariance;
+the gradient uses a Takahashi selected inverse rather than differentiating a
+dense factorisation. The selected-inverse cost depends on Cholesky fill; the
+measured near-linear scaling below applies to the stated tree shapes and
+settings.
 
 ## What the timing evidence shows
 
@@ -40,10 +42,12 @@ extrapolated “N× faster” claim is retired.
   is sparse (3N − 2 stored non-zeros for a tree with N nodes, about 6p for
   a binary tree with p tips). The engine factorises that sparse
   matrix with CHOLMOD; it never materialises the dense Σ.
-- **Exact O(p) gradient.** The implicit-function gradient reuses a Takahashi
-  selected inverse — the entries of the inverse that the sparse Cholesky already
-  touches — instead of an O(p²) or O(p³) dense differentiation. This is the
-  difference that keeps the iteration cost near-linear in the number of tips.
+- **Exact sparse outer gradient.** At the converged inner mode, the
+  implicit-function gradient reuses the selected inverse entries needed by the
+  sparse Cholesky factor. Its cost
+  depends on factor fill, so the exact gradient does not imply a universal
+  O(p) runtime bound. The timing study above measures near-linear growth for
+  its balanced and caterpillar tree designs.
 - **A precision sampler for uncertainty.** A latent-state draw uses the same
   sparse precision (`Cov(û) ≈ P⁻¹`) rather than a dense covariance. Total
   bootstrap time still depends on the number of refits and their convergence.

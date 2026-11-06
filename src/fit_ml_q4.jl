@@ -8,11 +8,25 @@ using LinearAlgebra, SparseArrays, ForwardDiff, Random, Statistics, Printf
 include(joinpath(@__DIR__, "sparse_em_fit.jl"))
 
 # log-Cholesky 4×4 <-> 10-vector
+"""
+    lc_to_Λ(v) -> Matrix
+
+Map a length-10 log-Cholesky vector to the 4×4 positive-definite covariance
+`Λ = C C'`, where `C` is lower triangular filled column-major with `exp` on the
+diagonal. Inverse of [`Λ_to_lc`](@ref).
+"""
 function lc_to_Λ(v)
     C=zeros(eltype(v),4,4);k=0
     for j in 1:4,i in j:4; k+=1; C[i,j]= i==j ? exp(v[k]) : v[k]; end
     return C*C'
 end
+"""
+    Λ_to_lc(Λ) -> Vector{Float64}
+
+Map a 4×4 positive-definite covariance to its length-10 log-Cholesky vector
+(column-major lower triangle of the Cholesky factor, `log` on the diagonal).
+Inverse of [`lc_to_Λ`](@ref).
+"""
 function Λ_to_lc(Λ)
     C=cholesky(Symmetric(Λ)).L;v=Float64[]
     for j in 1:4,i in j:4; push!(v, i==j ? log(C[i,j]) : C[i,j]); end; return v

@@ -235,7 +235,8 @@ end
 # #995 / #996 / #981: the σ_b-marginal PIT is exact for an ordinary `(1 | g)`.
 # For a structured effect it is calibrated only when (i) `fitted(fit)` is the
 # population-level mean and (ii) every unit's random-effect variance is σ_b².
-# Gaussian sparse / EM `phylo(1 | g)` fits (`LocOnlyRanef`) are handled exactly
+# Gaussian sparse / EM `phylo(1 | g)` fits (`LocOnlyRanef`) and non-Gaussian
+# `phylo(1 | g)` Laplace fits (`PhyloTipVariance`, #996) are handled exactly
 # in `_ranef_marginal_mix` (fixed-effect centre, per-tip σ_b² C_ii) and never
 # reach this warning. Every other structured route still may violate (i) or
 # (ii) — a raw-branch-length tree gives tip variance σ_b²·C_ii (σ_b²·h on an
@@ -294,12 +295,23 @@ function _ranef_marginal_mix(fit::DrmFit, fam, μ)
     if fam isa Gaussian && !_structured_mean_re(fit)
         return (axis = :mu_gaussian, eta0 = μ, vb = fill(σb^2, length(μ)))
     end
-    _structured_mean_re(fit) && !_dense_gls_phylo_pit_exact(fit) && _warn_structured_pit()
     link, invlink = linkpair
     eta0 = [link(μ[i]) for i in eachindex(μ)]
+    # #996: a non-Gaussian `phylo(1 | g)` Laplace fit stores the population-level
+    # mean and the tree diagonal, so tip i's random effect is N(0, σ_b² C_ii) and
+    # the mixture is exact: no warning. `rt2σb` is then per row.
+    if fit.ranef isa PhyloTipVariance
+        return (axis = :mu, invlink = invlink, eta0 = eta0,
+                rt2σb = sqrt(2.0) * σb .* sqrt.(fit.ranef.tipvar), z = z, wk = w ./ sqrt(π))
+    end
+    _structured_mean_re(fit) && !_dense_gls_phylo_pit_exact(fit) && _warn_structured_pit()
     return (axis = :mu, invlink = invlink, eta0 = eta0, rt2σb = sqrt(2.0) * σb,
             z = z, wk = w ./ sqrt(π))
 end
+
+# `rt2σb` is a scalar (ordinary random intercept) or one value per row (the tree
+# diagonal of a non-Gaussian phylo fit, #996).
+_mix_rt2σb(mix, i) = mix.rt2σb isa Real ? mix.rt2σb : mix.rt2σb[i]
 
 # CDF at `yval` for observation `i`: the plain per-family conditional
 # distribution (`mix === nothing`), or the mixture over the random intercept's
@@ -329,7 +341,7 @@ function _cdf_value(fam, i, yval; μ, scales, obs, gsis, mix)
         return acc
     end
     @inbounds for k in eachindex(mix.z)
-        μk = mix.invlink(mix.eta0[i] + mix.rt2σb * mix.z[k])
+        μk = mix.invlink(mix.eta0[i] + _mix_rt2σb(mix, i) * mix.z[k])
         d = _conditional_dist(fam, 1; μ = [μk], scales = scales_i, obs = obs_i, gamma_sigma_is_shape = gsis)
         acc += mix.wk[k] * Distributions.cdf(d, yval)
     end
@@ -562,7 +574,7 @@ function _quantile_residuals_zeroonebeta(fit::DrmFit, rng, lo, hi)
             else
                 Fc = 0.0
                 @inbounds for k in eachindex(mix.z)
-                    m = clamp(mix.invlink(mix.eta0[i] + mix.rt2σb * mix.z[k]), eps(), 1 - eps())
+                    m = clamp(mix.invlink(mix.eta0[i] + _mix_rt2σb(mix, i) * mix.z[k]), eps(), 1 - eps())
                     Fc += mix.wk[k] * Distributions.cdf(Distributions.Beta(m * φ, (1 - m) * φ), y[i])
                 end
             end

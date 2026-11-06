@@ -344,13 +344,17 @@ end
 # Convenience: derive (Q, gidx, G) for a general user-supplied PD covariance `C`
 # (relatedness / animal model / precomputed spatial), the non-tree analogue of
 # `_locscale_phylo_setup`. Identical engine contract: the tree precision is
-# swapped for C⁻¹ (rescaled to a unit-diagonal correlation), exactly the swap the
-# mean-only `_fit_*_relmat_laplace` routes already make. `G = size(Q,1)` = the
+# swapped for C⁻¹, exactly the swap the mean-only `_fit_*_relmat_laplace` routes
+# already make. `normalize = false` (relmat/animal) enters `C` AS SUPPLIED, prior
+# covariance σ² C, as native drmTMB does (R/phylo-utils.R
+# `drm_covariance_to_known_precision`: chol2inv(chol(K)), no rescaling);
+# `normalize = true` rescales to a unit-diagonal correlation (precomputed spatial
+# covariance only). `G = size(Q,1)` = the
 # number of distinct group levels and `gidx` hits every level (data at every
 # node, unlike the tree where G > #leaves) — both handled identically by the
 # `_ls_joint*` block assembly.
-function _locscale_relmat_setup(C, labels)
-    Q, gidx = _general_cov_setup(C, labels)
+function _locscale_relmat_setup(C, labels; normalize::Bool = false)
+    Q, gidx = _general_cov_setup(C, labels; normalize)
     return Q, gidx, size(Q, 1)
 end
 
@@ -368,6 +372,6 @@ function _locscale_structured_q(struct_kind::Symbol, grp_sym::Symbol, labels,
         return _locscale_phylo_setup(tree, labels)     # (Q, gidx, G)
     else
         C = _poisson_structured_cov(struct_kind, grp_sym, K, A, nothing)
-        return _locscale_relmat_setup(C, labels)       # (Q, gidx, G)
+        return _locscale_relmat_setup(C, labels; normalize = struct_kind === :spatial)  # (Q, gidx, G)
     end
 end

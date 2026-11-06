@@ -1,0 +1,33 @@
+ℹ `engine = "julia"` is experimental: it fits only the families and routes
+  listed in `vignette("julia-engine", package = "drmTMB")`, and it is not a
+  drop-in replacement for the default `engine = "tmb"`.
+ℹ This notice is shown once per R session.
+ℹ Starting Julia (first call in a session takes ~30-60 s; later calls are
+  fast)...
+Julia version 1.10.12 at location /home/snakagaw/.julia/juliaup/julia-1.10.12+0.x64.linux.gnu/bin will be used.
+Loading setup script for JuliaCall...
+Finish loading setup script for JuliaCall.
+  Activating project at `~/hsq_work/DRModels-ci-64ccb2d8`
+Julia exit.
+R_version=4.6.1
+fixture_seed=20260623
+fixture_n=1800
+zeros=492
+positive=1308
+convergence_r=TRUE
+convergence_j=TRUE
+n=1800
+zeros=492
+positive=1308
+max_abs_dpar_rj=9.768574837920596e-13
+max_abs_r_mean_vs_reconstructed=7.667200208061331e-13
+max_abs_j_mean_vs_mu=4.440892098500626e-16
+max_abs_fitted_rj=1.241592632021761
+max_abs_residual_rj=1.241592632021761
+max_abs_residual_r_yminusfit=0
+max_abs_residual_j_yminusfit=0
+logLik_r=-2996.364475110835
+logLik_j=-2996.364475110861
+real 25.92
+user 25.15
+sys 0.84

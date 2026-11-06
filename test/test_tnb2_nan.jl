@@ -90,7 +90,13 @@ end
     fsmall() = drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), TruncatedNegBinomial2(); data = dat_small)
     fsmall()  # warm up / compile
     f()
-    t_small = @elapsed fsmall()
-    t_large = @elapsed f()
+    # Minimum over 7 repetitions each: the O(n) regression this guards makes EVERY
+    # large-regime fit ~110x slower, so it survives a min; a single scheduler/GC
+    # stall on a shared runner does not. Measured steady-state min/min ratio ~0.85
+    # (Mac arm64 and Totoro x86_64, Julia 1.13.1 and 1.13.3: fits take ~2-3 ms each);
+    # CI run 41489429586 saw one large-regime fit take 0.1165 s (~40x its steady
+    # state) against t_small = 0.0053 s, i.e. a one-off stall, not a regression.
+    t_small = minimum(@elapsed(fsmall()) for _ in 1:7)
+    t_large = minimum(@elapsed(f()) for _ in 1:7)
     @test t_large < 20 * max(t_small, 1e-6)   # generous margin; pre-fix was ~110x
 end

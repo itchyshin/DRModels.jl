@@ -197,6 +197,26 @@ end
                   data = dat, K = Matrix(1.0I, 20, 20)) isa DrmFit
     end
 
+    @testset "#1010: profile_ci with no sigma phylo(1 | g) term is refused" begin
+        rng = MersenneTwister(1)
+        x = randn(rng, 160); y = 1 .+ 0.5x .+ randn(rng, 160); g = repeat(1:20, inner = 8)
+        dat = (y = y, x = x, g = g)
+        # Fixed-effect, `(1 | g)` and mu-phylo-only models have no precomputed
+        # profile intervals to build; the flag used to be dropped silently.
+        for f in (bf(@formula(y ~ x), @formula(sigma ~ 1)),
+                  bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)),
+                  bf(@formula(y ~ x), @formula(sigma ~ 1 + (1 | g))))
+            msg = _j3_msg(() -> drm(f, Gaussian(); data = dat, profile_ci = true))
+            @test occursin("`profile_ci = true`", msg)
+            @test occursin("phylo(1 | g)", msg)
+        end
+        @test_throws ArgumentError drm(bf(@formula(y ~ x), @formula(sigma ~ 1 + (1 | g))), Gaussian();
+                                       data = dat, marginal = :Laplace, profile_ci = true)
+        # the default (`false`) is untouched
+        @test drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), Gaussian(); data = dat,
+                  profile_ci = false) isa DrmFit
+    end
+
     @testset "#966: cross-family formula route refuses missing responses and checks the sentinel" begin
         rng = MersenneTwister(31)
         n = 120; x = randn(rng, n); z = randn(rng, n)
@@ -239,19 +259,25 @@ end
         @test r ≈ ols atol = 1e-6
     end
 
-    @testset "#938: offset() outside the Poisson mean is refused, not freed" begin
+    @testset "#938: offset() in the mean is applied at coefficient 1, refused elsewhere" begin
         rng = MersenneTwister(938)
         n = 150; x = randn(rng, n); logb = 0.3 .* randn(rng, n); g = repeat(1:15, inner = 10)
         c = Float64[_j3_rpois(rng, exp(0.2 + 0.3x[i] + logb[i])) for i in 1:n]
         d = (c = c, x = x, logb = logb, g = g)
+        # owner decision of 25 Oct 2026: the mean offset is applied for NegBinomial2 and
+        # the other families too (test_offset_fixed_coef_938.jl has the full sweep)
         fnb = bf(@formula(c ~ x + offset(logb)), @formula(sigma ~ 1))
-        @test_throws ArgumentError drm(fnb, NegBinomial2(); data = d, se = false)
-        @test occursin("offset(...)", _j3_msg(() -> drm(fnb, NegBinomial2(); data = d, se = false)))
-        @test_throws ArgumentError drm(bf(@formula(c ~ x + offset(logb) + (1 | g)), @formula(sigma ~ 1)),
-                                       NegBinomial2(); data = d, se = false)
+        @test length(coef(drm(fnb, NegBinomial2(); data = d, se = false), :mu)) == 2
+        @test length(coef(drm(bf(@formula(c ~ x + offset(logb) + (1 | g)), @formula(sigma ~ 1)),
+                              NegBinomial2(); data = d, se = false), :mu)) == 2
         y = 1 .+ 0.5x .+ logb .+ randn(rng, n)
-        @test_throws ArgumentError drm(bf(@formula(y ~ x + offset(logb)), @formula(sigma ~ 1)),
-                                       Gaussian(); data = merge(d, (y = y,)))
+        @test length(coef(drm(bf(@formula(y ~ x + offset(logb)), @formula(sigma ~ 1)),
+                              Gaussian(); data = merge(d, (y = y,))), :mu)) == 2
+        # ... but never in `sigma`, as drmTMB refuses it there
+        @test_throws ArgumentError drm(bf(@formula(c ~ x), @formula(sigma ~ 1 + offset(logb))),
+                                       NegBinomial2(); data = d, se = false)
+        @test occursin("offset(...)", _j3_msg(() -> drm(bf(@formula(c ~ x), @formula(sigma ~ 1 + offset(logb))),
+                                                        NegBinomial2(); data = d, se = false)))
         # an offset in a non-mean Poisson formula is refused too
         @test_throws ArgumentError drm(bf(@formula(c ~ x), @formula(zi ~ offset(logb))),
                                        DRModels.Poisson(); data = d, se = false)
@@ -294,14 +320,15 @@ end
         @test_throws ArgumentError drm(bf(@formula(c ~ x + offset(logb) + (1 | g)),
                                           @formula(zi ~ offset(logb))), P;
                                        data = d, marginal = :Laplace, se = false)          # zi
-        # an offset on a non-Poisson family is refused on :Laplace as well, never freed
-        @test_throws ArgumentError drm(bf(@formula(c ~ x + offset(logb) + (1 | g)), @formula(sigma ~ 1)),
-                                       NegBinomial2(); data = d, marginal = :Laplace, se = false)
+        # #938: NegBinomial2 applies it on :Laplace too; Binomial refuses it, never frees it
+        nbl = drm(bf(@formula(c ~ x + offset(logb) + (1 | g)), @formula(sigma ~ 1)),
+                  NegBinomial2(); data = d, marginal = :Laplace, se = false)
+        @test length(coef(nbl, :mu)) == 2
         @test_throws ArgumentError drm(bf(@formula(c ~ x + offset(logb) + (1 | g))),
                                        Binomial(); data = d, marginal = :Laplace, se = false)
         @test occursin("offset(...)", _j3_msg(() -> drm(
-            bf(@formula(c ~ x + offset(logb) + (1 | g)), @formula(sigma ~ 1)),
-            NegBinomial2(); data = d, marginal = :Laplace, se = false)))
+            bf(@formula(c ~ x + offset(logb) + (1 | g))),
+            Binomial(); data = d, marginal = :Laplace, se = false)))
     end
 
     @testset "#939: CumulativeLogit refuses a sigma formula with covariates" begin

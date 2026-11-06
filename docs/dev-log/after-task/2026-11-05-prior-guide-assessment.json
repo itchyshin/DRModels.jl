@@ -1,0 +1,36 @@
+{
+  "assessment_performed": true,
+  "draft_sha256": "75a956092b95dc9040ba8fb9a93956c882ec0b9e6c1dc22efac885af91440a49",
+  "draft_version": "v1",
+  "requested_mode": "independent",
+  "assessor_type": "self",
+  "reviewer": "Codex",
+  "method": "post-draft review against implementation and bounded test evidence",
+  "genre": "Julia package guide",
+  "coverage": "whole guide",
+  "score": 2,
+  "style_status": "scored",
+  "score_reason": "Concrete model, units, selector examples and bounded inference claims; some reference-style phrasing remains.",
+  "confidence": "medium",
+  "confidence_reason": "Editorial self-review, not independent stylistic validation.",
+  "examples": [
+    {
+      "location": "paragraph 2",
+      "cue": "The growth-and-age question gives the coefficients a concrete meaning.",
+      "impact": "Connects the syntax to a biological question.",
+      "repair": "no change needed",
+      "line": 11,
+      "quote": "For example, an ecologist could ask whether average growth changes with age."
+    }
+  ],
+  "evidence_none_reason": null,
+  "science_gate": "pass",
+  "science_gate_reason": "The link-scale and penalty descriptions match the approved equations and focused objective checks.",
+  "facts_gate": "unknown",
+  "facts_gate_reason": "Focused route and example tests passed, but the final full suite remains pending.",
+  "references_gate": "not_applicable",
+  "references_gate_reason": "The guide makes no bibliographic citation.",
+  "date": "2026-11-05",
+  "calibration_status": "No calibration examples were consulted during this review.",
+  "interpretation": "perceived_style_not_authorship"
+}

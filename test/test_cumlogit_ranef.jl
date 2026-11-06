@@ -9,7 +9,8 @@
 # explicitly rejected ("Only independent `cumulative_logit()` `mu` random
 # intercepts and slopes are implemented in this slice."). Random-effect scale
 # formulae (`sd(id) ~ 1`) are rejected outright, matching drmTMB's own
-# "Random-effect scale formulae are not implemented" guard. drmTMB *does* admit
+# Predictor-dependent random-intercept SD formulas are covered in
+# `test_cumlogit_sd_regression.jl`. drmTMB *does* admit
 # an unlabelled, intercept-only `phylo(1 | species)` structured effect on `mu`
 # (`validate_ordinal_phylo_mu_structured_term()`) — that route IS now
 # implemented (#563 S8 follow-on, test_cumlogit_phylo.jl) via the sparse
@@ -136,9 +137,10 @@ end
             bf(@formula(y ~ x + relmat(1 | id))), CumulativeLogit(); data = data)
     end
 
-    @testset "random-effect scale formula — refused" begin
+    @testset "SD formula with a mismatched group — refused" begin
         @test_throws Exception drm(
-            bf(@formula(y ~ x), @formula(sd(id) ~ 1)), CumulativeLogit(); data = data)
+            bf(@formula(y ~ x + (1 | id)), @formula(sd(other) ~ 1)),
+            CumulativeLogit(); data = merge(data, (; other = data.id)))
     end
 end
 

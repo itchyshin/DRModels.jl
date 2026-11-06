@@ -5,6 +5,28 @@ using DRModels
 using Test, Random
 import Distributions
 
+@testset "fit-based non-Gaussian bootstrap accepts g_tol" begin
+    rng = MersenneTwister(20261029)
+    n = 40
+    x = collect(range(-1.0, 1.0; length = n))
+    mu = exp.(0.2 .+ 0.3 .* x)
+    y = [rand(rng, Distributions.Gamma(8.0, mu[i] / 8.0)) for i in eachindex(mu)]
+    data = (; y, x)
+    fit = drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), Gamma(); data)
+    boot = bootstrap_result(fit; data, B = 1, g_tol = 1e-5,
+                            rng = MersenneTwister(20261030))
+    @test boot.attempted == 1
+    @test boot.used == 1
+    @test boot.failed == 0
+
+    formula = bf(@formula(y ~ x), @formula(sigma ~ 1))
+    boot_from_formula = bootstrap_result(formula, Gamma(); data, B = 1,
+        g_tol = 1e-5, rng = MersenneTwister(20261031))
+    @test boot_from_formula.attempted == 1
+    @test boot_from_formula.used == 1
+    @test boot_from_formula.failed == 0
+end
+
 @testset "Parametric bootstrap — non-Gaussian families" begin
     @testset "Poisson bootstrap brackets β and covers truth" begin
         Random.seed!(20260801)
