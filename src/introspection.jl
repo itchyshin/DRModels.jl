@@ -42,7 +42,9 @@ function profile_targets(fit::DrmFit; ready_only::Bool = false)
 
     # Mirror `profile_result`'s dispatch exactly — if the readiness rule and the
     # dispatch rule ever disagree, this inventory becomes a liar.
-    route, note = if fit.nll isa LocScaleObjective
+    route, note = if _is_fixed_prior_fit(fit) && fit.estim_method === :MAP
+        (:none, "likelihood profiles are not qualified for fixed-prior MAP fits")
+    elseif fit.nll isa LocScaleObjective
         (:locscale, "")
     elseif fit.nll isa LocOnlyObjective && !isempty(jobs) && all(j -> j.param === :resd, jobs)
         (:loconly, "")

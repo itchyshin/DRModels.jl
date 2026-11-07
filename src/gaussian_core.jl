@@ -1063,8 +1063,12 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     structured_sd_slope === nothing || temporal_term === nothing ||
         throw(ArgumentError("drm: a structured slope-only effect cannot be combined with `temporal(...)`."))
     fixed_sigma, sigma_re, _, structured_sigma = _split_ranef(rhs[:sigma])  # (1|g)→GHQ; structured_sigma = phylo(1|g) on σ
-    if priors !== nothing && !(isempty(re) && isempty(sigma_re) && metav === nothing && structured === nothing && structured_sigma === nothing && temporal_term === nothing && isempty(_sd_parts(f)) && isempty(_sdphylo_parts(f)))
+    prior_ri = priors !== nothing && length(re) == 1 && _re_kind(first(re)[1])[1] === :intercept
+    if priors !== nothing && !((isempty(re) || prior_ri) && isempty(sigma_re) && metav === nothing && structured === nothing && structured_sigma === nothing && temporal_term === nothing && structured_slope === nothing && structured_sd_slope === nothing && isempty(_sd_parts(f)) && isempty(_sdphylo_parts(f)))
         throw(ArgumentError("fixed-effect priors currently do not support random or structured effects"))
+    end
+    if priors !== nothing && !all(_observed_response_mask(_table_column(data, f.response)))
+        throw(ArgumentError("fixed-effect priors currently require complete responses"))
     end
     _require_profile_ci_used(profile_ci, structured_sigma)   # #1010
     # Penalized MAP (A4c). Validated here, once, so that a `penalty` handed to a
@@ -1107,6 +1111,11 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         names = [:mu => nmμ, :sigma => nmσ]
         intercepts = Dict(:mu => _fixed_intercept_index(f, :mu, fixed_mu, nmμ), :sigma => _fixed_intercept_index(f, :sigma, fixed_sigma, nmσ))
         rows = _resolve_fixed_priors(priors, names, intercepts)
+        if prior_ri
+            (_, grp) = only(re)
+            gidx, G = _group_index(getproperty(data, grp); col=grp)
+            return _withformula(_fit_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, ones(length(y)), nmμ, nmσ, grp, g_tol; prior_rows=rows), f)
+        end
         return _withformula(_fit_fixed_gaussian(fam, y, Xμ, Xσ, nmμ, nmσ, g_tol; prior_rows=rows), f)
     end
     all_structured = _collect_structured(rhs[:mu])

@@ -346,6 +346,9 @@ intervals; the default sparse all-node phylogenetic route stores only partial
 covariance information in this slice, so profile intervals are the safer
 uncertainty path there.
 
+For an active fixed-effect prior fit, variance-ratio intervals are not qualified;
+`heritability`, `icc`, and `repeatability` refuse both interval methods.
+
 Returns a `NamedTuple`:
 
 - `estimate`  — the plug-in ratio `g(θ̂)` (exactly in `[0, 1]`);
@@ -589,6 +592,8 @@ end
 # Dispatch to the requested CI method and assemble the public NamedTuple.
 function _emit_ratio(fit::DrmFit, focal::Int, denom::Vector{Int}; level, method,
                      resid::Int = 0, omega::Vector{Int} = Int[])
+    _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError(
+        "variance-ratio intervals are not qualified for fixed-prior MAP fits; covariance is local curvature"))
     if method === :delta
         r = _ratio_delta(fit, focal, denom; level = level, resid = resid, omega = omega)
         st = _ratio_status(fit, isfinite(r.se) ? :ok : :vcov_unavailable)
