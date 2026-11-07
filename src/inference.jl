@@ -3218,6 +3218,65 @@ function _gamma_animal_intercept_slope_sd_marginal_simulator(fit::DrmFit,
     end
 end
 
+# Independent two-field structured intercept-plus-slope (`animal(1 + x | g)` or
+# `relmat(1 + x | g)`) with one SD formula per coefficient, on the Poisson, NB2
+# and Gaussian routes. Draws b0, b1 ~ N(0, C) independently (C = A or K, RAW as
+# in the fit), then eta = eta_fixed + sd0[g] * b0[g] + x * sd1[g] * b1[g] and
+# y from the family at the fitted dispersion (Gaussian: fitted sigma).
+function _structured_q2_sd_marginal_simulator(fit::DrmFit, data, matrix;
+                                              provider::Symbol, block)
+    f = fit.formula
+    label = provider === :animal ? "animal" : "relmat"
+    targets = filter(item -> item.target.level === provider, _sd_target_parts(f))
+    length(targets) == 2 || throw(ArgumentError(
+        "bootstrap: $(label) intercept-and-slope simulation needs two SD targets"))
+    group, slope = block.group, block.slope
+    ordered = [only(filter(item -> item.target.member === member, targets))
+               for member in (:intercept, slope)]
+    matrix === nothing && throw(ArgumentError(
+        "bootstrap: supply the same covariance matrix (`" *
+        (provider === :animal ? "A` or `Ainv" : "K") *
+        "`) used to fit the $(label) intercept-and-slope model"))
+    hasproperty(data, group) && hasproperty(data, slope) || throw(ArgumentError(
+        "bootstrap: data are missing the $(label) grouping or slope column"))
+    gidx, G = _group_index(getproperty(data, group))
+    C = Matrix{Float64}(matrix)
+    size(C) == (G, G) || throw(ArgumentError(
+        "bootstrap: $(label) covariance matrix must match first-seen group order"))
+    all(x -> isfinite(x) && x > 0, diag(C)) || throw(ArgumentError(
+        "bootstrap: $(label) covariance matrix must have a positive finite diagonal"))
+    factor = cholesky(Symmetric(C); check = false)
+    issuccess(factor) || throw(ArgumentError(
+        "bootstrap: $(label) covariance matrix must be positive definite"))
+    scales = Vector{Vector{Float64}}(undef, 2)
+    for j in 1:2
+        target = ordered[j]
+        blk = _sd_target_block(target.target; disambiguate = true)
+        Zg, names = _sd_group_design(f.response, target.rhs, data, gidx, G, group;
+            schema_cache = f.schema_cache, schema_key = target.key,
+            store_schema = false)
+        names == _block_coefnames(fit, blk) || throw(ArgumentError(
+            "bootstrap: $(label) SD design does not match fitted block `$(blk)`"))
+        scales[j] = exp.(Zg * coef(fit, blk))
+    end
+    x = getproperty(data, slope)
+    x isa AbstractVector{<:Real} && all(isfinite, x) || throw(ArgumentError(
+        "bootstrap: $(label) slope must be finite numeric values with one value per response"))
+    eta_fixed = Vector{Float64}(predict(fit, data; type = :link))
+    length(eta_fixed) == length(gidx) == length(x) || throw(ArgumentError(
+        "bootstrap: $(label) prediction, grouping and slope lengths do not match"))
+    xf = Float64.(x)
+    return function (rng)
+        b0 = scales[1] .* (factor.L * randn(rng, G))
+        b1 = scales[2] .* (factor.L * randn(rng, G))
+        eta = eta_fixed .+ b0[gidx] .+ xf .* b1[gidx]
+        if fit.family isa Gaussian
+            return eta .+ fit.scales[:sigma] .* randn(rng, length(eta))
+        end
+        return _simulate_once(fit, rng; mu = _mean_response(fit.family, eta))
+    end
+end
+
 function _draw_phylo_raw_field(rng::Random.AbstractRNG, phy::AugmentedPhy)
     field = zeros(Float64, phy.n_total)
     seen = falses(phy.n_total)
@@ -3559,6 +3618,30 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing,
     _is_temporal_fit(fit) && return rng -> _temporal_simulate(fit, rng)
     fit.nll isa LocScaleObjective &&
         return _ls_marginal_simulator(fit, data; K, A, tree, coords)
+    if fit isa DrmFit && fit.formula isa DrmFormula &&
+       fit.family isa Union{Poisson,NegBinomial2,Gaussian} &&
+       haskey(Dict(fit.formula.forms), :mu) &&
+       length(_sd_target_parts(fit.formula)) == 2
+        for (provider, block) in ((:animal, _animal_intercept_slope(Dict(fit.formula.forms)[:mu])),
+                                  (:relmat, _relmat_intercept_slope(Dict(fit.formula.forms)[:mu])))
+            block === nothing && continue
+            matrix = if provider === :relmat
+                K
+            elseif Ainv !== nothing
+                A === nothing || throw(ArgumentError(
+                    "bootstrap: supply only one of `A` and `Ainv` for animal intercept-and-slope simulation"))
+                labels = _table_column(data, block.group)
+                Q, _ = fit.family isa NegBinomial2 ?
+                    _nb2_animal_precision_setup(Ainv, labels, block.group) :
+                    _poisson_animal_precision_setup(Ainv, labels, block.group)
+                Matrix(inv(Symmetric(Matrix(Q))))
+            else
+                A
+            end
+            return _structured_q2_sd_marginal_simulator(
+                fit, data, matrix; provider, block)
+        end
+    end
     _is_gaussian_lss(fit) && return _lss_marginal_simulator(fit, data; tree)
     fit.formula isa DrmFormula || return nothing
     # Gaussian needs a residual scale; other families carry their dispersion in the
