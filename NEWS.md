@@ -6,6 +6,7 @@ human-readable changelog.
 
 ## Development
 
+- **Docs: quantile-residual accuracy limit for the 32-node random-effect mixture (#1103).** `docs/src/diagnostics-and-validation/prediction-and-postfit.md` now states where the Gauss–Hermite route loses accuracy as σ̂_b/σ̂ grows, and the Φ⁻¹(Φ(z)) upper-tail cap. Documentation only; no behaviour change.
 ## v0.8.0
 
 - **Bivariate `predict` reuses the training factor schema (#1000).** `BivariateDrmFormula` now carries the same `schema_cache` as the univariate formula. A `newdata` table that holds a subset of the fitted factor levels predicts those rows instead of rebuilding contrasts (or throwing a raw StatsModels error). `predict_parameters` uses the same cache.
