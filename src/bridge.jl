@@ -2244,7 +2244,8 @@ function _bridge_rendered_regression_blocks(fit, labels::_BridgeFormulaLabels)
             Set(item.target.member for item in animal_sd_targets) ==
                 Set((:intercept, animal_block.slope))
         animal_sd_intercept_slope = animal_block !== nothing &&
-            (fit.family isa Gamma || binomial_animal_q2)
+            (fit.family isa Gamma || binomial_animal_q2 ||
+             (fit.family isa Poisson && length(animal_sd_targets) == 2))
         binomial_phylo_sd_slope_only = fit.family isa Union{Binomial,Gamma} &&
             !isempty(_sdphylo_parts(fit.formula))
         binomial_relmat_sd_slope_only = fit.family isa Union{Binomial,Poisson,Gaussian,Gamma,NegBinomial2} &&
