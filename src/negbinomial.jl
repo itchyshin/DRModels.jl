@@ -315,6 +315,12 @@ function _drm_negbin2_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
             f, fam, targets, animal_block; data, tree, K, A, Ainv, coords,
             g_tol, se, nAGQ)
     end
+    relmat_block = _relmat_intercept_slope(get(Dict(f.forms), :mu, nothing))
+    if relmat_block !== nothing
+        return _drm_negbin2_relmat_intercept_slope_sd(
+            f, fam, targets, relmat_block; data, tree, K, A, Ainv, coords,
+            g_tol, se, nAGQ)
+    end
     length(targets) == 1 || throw(ArgumentError(
         "NegBinomial2 random-effect SD regression requires exactly one `sd(group) ~ …` formula."))
     target = only(targets)
@@ -1652,6 +1658,81 @@ function _drm_negbin2_animal_intercept_slope_sd(f::DrmFormula, fam::NegBinomial2
     if all(==(first(x)), x) && isequal(Zgs[1], Zgs[2])
         throw(ArgumentError(
             "NegBinomial2 animal intercept-and-slope SD regression cannot separate the intercept and slope variances when `$slope` is constant and both SD formulas have identical group-level designs."))
+    end
+    blocks = Symbol[_sd_target_block(item.target; disambiguate = true)
+                    for item in ordered]
+    return _withformula(_fit_nb2_animal_intercept_slope_laplace(
+        fam, y, Xmu, Xsigma, Zgs, gidx, Q, nmmu, nmsigma, nmsds, blocks,
+        group, x, g_tol; se), f)
+end
+
+# Independent relmat intercept-and-slope q2 block, `relmat(1 + x | g)` with one
+# SD formula per coefficient and `sigma ~ 1`. Thin driver over the animal fit
+# helper; K enters RAW (normalize = false), as in the Poisson relmat route.
+function _drm_negbin2_relmat_intercept_slope_sd(f::DrmFormula, fam::NegBinomial2,
+        targets, relmat_block; data, tree, K, A, Ainv, coords, g_tol, se, nAGQ)
+    length(targets) == 2 || throw(ArgumentError(
+        "NegBinomial2 `relmat(1 + x | group)` SD regression needs one SD formula for the intercept and one for the slope."))
+    group, slope = relmat_block.group, relmat_block.slope
+    all(item -> item.target.level === :relmat && item.target.group === group &&
+        item.target.dpar === :mu && item.target.block === nothing, targets) ||
+        throw(ArgumentError("NegBinomial2 independent relmat intercept-and-slope SD regression requires two matching `relmat` mean targets."))
+    Set(item.target.member for item in targets) == Set((:intercept, slope)) ||
+        throw(ArgumentError(
+            "NegBinomial2 relmat SD formulas must select `coef(intercept)` and `coef($slope)` exactly once."))
+    (tree === nothing && A === nothing && Ainv === nothing && coords === nothing) ||
+        throw(ArgumentError(
+            "NegBinomial2 relmat SD regression uses `K = …` only; do not also supply `tree`, `A`, `Ainv`, or `coords`."))
+    K === nothing && throw(ArgumentError(
+        "relmat(1 + $slope | $group) needs the relatedness/covariance matrix `K = …`"))
+    nAGQ === nothing || throw(ArgumentError(
+        "nAGQ is not used by the sparse-Laplace relmat SD route; omit it."))
+    rhs = Dict(f.forms)
+    fixed_mu, re, metav, structured, _, _, parsed_slope = _split_ranef(
+        rhs[:mu]; allow_relmat_intercept_slope = true)
+    metav === nothing && isempty(re) && structured == (:relmat, group) &&
+        parsed_slope === slope || throw(ArgumentError(
+        "NegBinomial2 relmat SD regression requires one matching independent `relmat(1 + $slope | $group)` term."))
+    _collect_structured(rhs[:mu]) == [(:relmat, group)] || throw(ArgumentError(
+        "NegBinomial2 relmat intercept-and-slope SD regression requires exactly one structured term, with no additional structured effects."))
+    sigma_rhs = get(rhs, :sigma, nothing)
+    sigma_rhs isa ConstantTerm && sigma_rhs == ConstantTerm(1) || throw(ArgumentError(
+        "NegBinomial2 relmat SD regression requires a fixed `sigma ~ 1` submodel."))
+    (haskey(rhs, :zi) || haskey(rhs, :hu)) && throw(ArgumentError(
+        "NegBinomial2 relmat SD regression cannot yet be combined with `zi` or `hu`."))
+    fixed_mu, offset_term = _extract_offset(fixed_mu)
+    offset_term === nothing || throw(ArgumentError(
+        "NegBinomial2 random-effect SD regression does not yet support `offset(...)`."))
+    allowed = Set(vcat([:mu, :sigma], [item.key for item in targets]))
+    all(first(pair) in allowed for pair in f.forms) || throw(ArgumentError(
+        "NegBinomial2 relmat intercept-and-slope SD regression supports only `mu`, fixed `sigma ~ 1`, and its two SD formulas."))
+    all(_formula_response_observed_mask(f, data)) || throw(ArgumentError(
+        "NegBinomial2 relmat SD regression requires observed responses; remove incomplete rows before fitting."))
+    y, Xmu, nmmu = _design(f.response, fixed_mu, data)
+    _, Xsigma, nmsigma = _design(f.response, sigma_rhs, data)
+    all(yi -> isfinite(yi) && yi >= 0 && isinteger(yi), y) || throw(ArgumentError(
+        "NegBinomial2() requires non-negative integer counts as the response"))
+    labels = getproperty(data, group)
+    Q, gidx = _general_cov_setup(K, labels; normalize = false)
+    G = size(Q, 1)
+    ordered = map((:intercept, slope)) do member
+        only(filter(item -> item.target.member === member, targets))
+    end
+    Zgs = Matrix{Float64}[]
+    nmsds = Vector{String}[]
+    for item in ordered
+        Zg, names = _sd_group_design(f.response, item.rhs, data, gidx, G, group;
+            schema_cache = f.schema_cache, schema_key = item.key)
+        size(Zg, 2) <= G && rank(Zg) == size(Zg, 2) || throw(ArgumentError(
+            "NegBinomial2 relmat SD target `coef($(item.target.member))` has a rank-deficient group-level design."))
+        push!(Zgs, Matrix{Float64}(Zg))
+        push!(nmsds, names)
+    end
+    x = _poisson_animal_slope_loading(data, slope, length(y);
+        label = "NegBinomial2 relmat")
+    if all(==(first(x)), x) && isequal(Zgs[1], Zgs[2])
+        throw(ArgumentError(
+            "NegBinomial2 relmat intercept-and-slope SD regression cannot separate the intercept and slope variances when `$slope` is constant and both SD formulas have identical group-level designs."))
     end
     blocks = Symbol[_sd_target_block(item.target; disambiguate = true)
                     for item in ordered]

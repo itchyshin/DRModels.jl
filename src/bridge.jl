@@ -2248,7 +2248,7 @@ function _bridge_rendered_regression_blocks(fit, labels::_BridgeFormulaLabels)
              (fit.family isa Union{Poisson,NegBinomial2} && length(animal_sd_targets) == 2))
         binomial_phylo_sd_slope_only = fit.family isa Union{Binomial,Gamma} &&
             !isempty(_sdphylo_parts(fit.formula))
-        relmat_sd_q2 = param === :mu && fit.family isa Union{Poisson,Gaussian} &&
+        relmat_sd_q2 = param === :mu && fit.family isa Union{Poisson,Gaussian,NegBinomial2} &&
             _relmat_intercept_slope(rhs) !== nothing
         binomial_relmat_sd_slope_only = fit.family isa Union{Binomial,Poisson,Gaussian,Gamma,NegBinomial2} &&
             any(item.target.level === :relmat for item in sd_targets_here)
