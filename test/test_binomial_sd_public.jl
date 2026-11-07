@@ -86,16 +86,27 @@ import Distributions
     @test_throws ArgumentError drm(bf(@formula(cbind(successes, failures) ~ x + (1 | g)),
                                       @formula(sd(g) ~ zfactor)), Binomial(); data = masked_data)
 
+    # Generate slope data under the model exercised below, preserving the
+    # original intercept fixture for the intercept and Beta checks above.
+    slope_rng = MersenneTwister(2026101717)
+    slope_x = randn(slope_rng, length(g))
+    slope_b = exp.(-0.5 .+ 0.5 .* zgroup) .* randn(slope_rng, G)
+    slope_p = 1.0 ./ (1.0 .+ exp.(-(0.1 .+ 0.4 .* slope_x .+ slope_b[g] .* slope_x)))
+    slope_successes = [rand(slope_rng, Distributions.Binomial(trials, pi)) for pi in slope_p]
+    slope_test_data = merge(data, (; x = slope_x, successes = Float64.(slope_successes),
+                                  failures = Float64.(trials .- slope_successes),
+                                  y = Float64.(slope_successes ./ trials)))
+
     selected_slope = bf(@formula(cbind(successes, failures) ~ x + (0 + x | g)),
                         @formula(sd(g, coef(x)) ~ z))
-    slope_fit = drm(selected_slope, Binomial(); data)
+    slope_fit = drm(selected_slope, Binomial(); data = slope_test_data)
     @test slope_fit.converged
     selected_slope_target = only(DRModels._sd_target_parts(selected_slope))
     selected_slope_block = DRModels._sd_target_block(selected_slope_target.target)
-    @test all(isfinite, predict_parameters(slope_fit, data)[selected_slope_block])
+    @test all(isfinite, predict_parameters(slope_fit, slope_test_data)[selected_slope_block])
     @test marginal_parameters(slope_fit)[selected_slope_block] ≈
-          predict_parameters(slope_fit, data)[selected_slope_block]
-    slope_simulator = DRModels._marginal_simulator_build(slope_fit, data)
+          predict_parameters(slope_fit, slope_test_data)[selected_slope_block]
+    slope_simulator = DRModels._marginal_simulator_build(slope_fit, slope_test_data)
     @test slope_simulator !== nothing
     # A malformed random-slope loading must be rejected before a bootstrap
     # simulator is returned, even when it is not part of the fixed predictor.
@@ -108,7 +119,7 @@ import Distributions
         w_slope_fit, malformed_slope_data)
     slope_bridge = drm_bridge(; formula =
         "cbind(successes, failures) ~ x + (0 + x | g); sd(g, coef(x)) ~ z",
-        family = "binomial", data)
+        family = "binomial", data = slope_test_data)
     @test slope_bridge["coef_label_contract"] == "bridge_formula_labels_v1"
     @test Set(keys(slope_bridge["dpars"])) == Set(["mu"])
     selected_formula = bf(@formula(cbind(successes, failures) ~ x + (0 + x | g)),
@@ -116,7 +127,7 @@ import Distributions
     selected_target = only(DRModels._sd_target_parts(selected_formula))
     selected_block = DRModels._sd_target_block(selected_target.target)
     @test DRModels._bridge_lss_form_key(selected_target.key, selected_formula) === selected_block
-    slope_boot = bootstrap_result(slope_fit; data, B = 1,
+    slope_boot = bootstrap_result(slope_fit; data = slope_test_data, B = 1,
                                   rng = MersenneTwister(2026101720), failures = :skip)
     @test slope_boot.attempted == 1
     @test slope_boot.used == 1
