@@ -1,0 +1,1 @@
+- Tests only: R/Julia parity for Gaussian location-scale `y ~ x + (1 | g)`, `sigma ~ x` vs drmTMB 0.7.0 (CRAN, pinned) — coefficients, RE SD, Wald SEs, fixed-effect vcov, logLik all agree (static fixtures under `test/parity/fixtures_re/`).
