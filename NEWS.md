@@ -6,7 +6,18 @@ human-readable changelog.
 
 ## Development
 
+## v0.8.1
+
+- **Separation message for `CumulativeLogit()` and a boundary flag for Student `nu` (#1221, #969).** A fixed-effect `CumulativeLogit()` fit with (quasi-)complete separation now warns and names the affected coefficients, as `Binomial()` does. A `Student()` fit whose fitted `nu` reaches the Gaussian limit (1/nu < 1e-3) now warns at fit time and prints a `boundary (limit)` note under the `nu` block of `show`. Both are messages only: estimates, `vcov`, `stderror`, `converged` and `convergence_status` are unchanged.
+
+- Normal and ridge fixed-effect priors now work with one independent Gaussian mean random intercept. Priors can target mean and residual log-SD coefficients; the group SD remains unpenalized. Other random-effect structures and inference restrictions remain unchanged.
+
+- Fix: Gaussian fits with a response on a tiny scale (residual SD about 1e-4) are no longer flagged unconverged at the optimum. Every route that already used the unit-free Newton-step check (Gaussian ML and REML fixed effects, Gaussian random effects, Gaussian `sd ~` models, Student) now sets `converged` from that check without also requiring `Optim.converged`, which fails a line-search stall at the optimum. The unit-free check also judges a singular Hessian on its correlation form, so the verdict no longer moves with the units of y. Stopping on the iteration cap still fails the flag, and the Gaussian `sd ~` routes now also report a non-finite Hessian as not converged, as the other routes already did (#983).
+
+- **Engine-internal exports now have docstrings and `@docs` entries (#985, partial).** `AugProblem`, `make_problem`, `prior_precision`, `build_Huu`, `joint_nll`, `joint_grad`, `aug_prior_grad!`, `estep_mode`, `fit_q4_sparse_tmb`, `lc_to_Λ`, `Λ_to_lc`, `fz_phi_to_lc`, `fz_correlations`, `coevo_marginal`, `coevo_theta_len` and `prepared_joint_nll` are documented in `reference/engine-internals.md`. Documentation only: no behaviour change. That page is still not in the published navigation, and `checkdocs` is unchanged, pending an owner decision recorded in the pull request.
+
 - **Docs: quantile-residual accuracy limit for the 32-node random-effect mixture (#1103).** `docs/src/diagnostics-and-validation/prediction-and-postfit.md` now states where the Gauss–Hermite route loses accuracy as σ̂_b/σ̂ grows, and the Φ⁻¹(Φ(z)) upper-tail cap. Documentation only; no behaviour change.
+
 ## v0.8.0
 
 - **Bivariate `predict` reuses the training factor schema (#1000).** `BivariateDrmFormula` now carries the same `schema_cache` as the univariate formula. A `newdata` table that holds a subset of the fitted factor levels predicts those rows instead of rebuilding contrasts (or throwing a raw StatsModels error). `predict_parameters` uses the same cache.
