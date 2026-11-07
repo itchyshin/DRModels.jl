@@ -82,8 +82,16 @@ end
 # routes must provide the coefficient loading and matching covariance. Animal
 # has a separate checker because it also supports intercept-plus-slope blocks.
 function _check_structured_re_lhs(kind::Symbol, lhs, grp::Symbol;
-                                  allow_slope::Bool = false)
+                                  allow_slope::Bool = false,
+                                  allow_intercept_slope::Bool = false)
     (lhs isa ConstantTerm && lhs.n == 1) && return nothing
+    if kind === :relmat && allow_intercept_slope &&
+       lhs isa FunctionTerm && lhs.f === (+)
+        constants = filter(t -> t isa ConstantTerm, lhs.args)
+        variables = filter(t -> t isa Term, lhs.args)
+        length(lhs.args) == 2 && length(constants) == 1 &&
+            constants[1].n == 1 && length(variables) == 1 && return variables[1].sym
+    end
     if kind in (:relmat, :spatial) && allow_slope &&
        lhs isa FunctionTerm && lhs.f === (+)
         constants = filter(t -> t isa ConstantTerm, lhs.args)
@@ -142,6 +150,23 @@ function _animal_intercept_slope(rhs)
     return nothing
 end
 
+# relmat analogue of `_animal_intercept_slope`: the independent intercept-plus-slope
+# `relmat(1 + x | g)` member, used by the Poisson relmat q2 SD route.
+function _relmat_intercept_slope(rhs)
+    terms = rhs isa Tuple ? rhs : (rhs,)
+    for term in terms
+        term isa FunctionTerm && term.f === relmat || continue
+        lhs = term.args[1].args[1]
+        lhs isa FunctionTerm && lhs.f === (+) || continue
+        consts = filter(x -> x isa ConstantTerm, lhs.args)
+        vars = filter(x -> x isa Term, lhs.args)
+        length(lhs.args) == 2 && length(consts) == 1 && consts[1].n == 1 &&
+            length(vars) == 1 || continue
+        return (; group = term.args[1].args[2].sym, slope = vars[1].sym)
+    end
+    return nothing
+end
+
 # Split a μ right-hand side into its fixed part and any `(lhs | g)` terms.
 # `structured` is the FIRST structured marker (relmat/animal/phylo/spatial) for
 # backward compatibility; use `_collect_structured` to retrieve the full list
@@ -182,6 +207,7 @@ function _split_ranef(rhs; allow_phylo_slope::Bool = false,
                       allow_animal_slope::Bool = false,
                       allow_animal_intercept_slope::Bool = false,
                       allow_relmat_slope::Bool = false,
+                      allow_relmat_intercept_slope::Bool = false,
                       allow_spatial_slope::Bool = false,
                       allow_temporal::Bool = false)
     terms = rhs isa Tuple ? collect(rhs) : Any[rhs]
@@ -206,7 +232,8 @@ function _split_ranef(rhs; allow_phylo_slope::Bool = false,
             metav = t.args[1].sym
         elseif t isa FunctionTerm && t.f === relmat
             slope = _check_structured_re_lhs(:relmat, t.args[1].args[1],
-                t.args[1].args[2].sym; allow_slope = allow_relmat_slope)
+                t.args[1].args[2].sym; allow_slope = allow_relmat_slope,
+                allow_intercept_slope = allow_relmat_intercept_slope)
             if structured === nothing
                 structured = (:relmat, t.args[1].args[2].sym)
                 animal_slope = slope

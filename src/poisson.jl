@@ -545,6 +545,9 @@ function _drm_poisson_relmat_sd_regression(f::DrmFormula, fam::Poisson; data,
                                            coords = nothing, g_tol::Real = 1e-8,
                                            se::Bool = true)
     targets = _sd_target_parts(f)
+    relmat_block = _relmat_intercept_slope(get(Dict(f.forms), :mu, nothing))
+    relmat_block !== nothing && return _drm_poisson_relmat_intercept_slope_sd(
+        f, fam, targets, relmat_block; data, tree, K, A, coords, g_tol, se)
     length(targets) == 1 || throw(ArgumentError(
         "Poisson relmat SD regression requires exactly one random-effect SD formula."))
     target = only(targets)
@@ -1830,4 +1833,70 @@ function _fit_poisson_animal_intercept_slope_laplace(fam, y, Xmu, Zgs, gidx, Q,
         length(y), g_tol), Dict(:mu => exp.(Xmu * theta[1:pmu] .+ off)),
         Dict(:mu => Vector{Float64}(y)), scales)
     return _withiterations(_withnll(fit, _nll_pinned(nll, theta, nll_hat)), Optim.iterations(result))
+end
+
+# Independent relmat intercept-and-slope q2 block, `relmat(1 + x | g)` with one SD
+# formula per coefficient. Same fit helper as the animal route; K enters RAW
+# (as in `_drm_poisson_relmat_sd_regression`).
+function _drm_poisson_relmat_intercept_slope_sd(f::DrmFormula, fam::Poisson,
+        targets, relmat_block; data, tree, K, A, coords, g_tol, se)
+    length(targets) == 2 || throw(ArgumentError(
+        "Poisson `relmat(1 + x | group)` SD regression needs one SD formula for the intercept and one for the slope."))
+    group, slope = relmat_block.group, relmat_block.slope
+    all(item -> item.target.level === :relmat && item.target.group === group &&
+        item.target.dpar === :mu && item.target.block === nothing, targets) ||
+        throw(ArgumentError("Poisson independent relmat intercept-and-slope SD regression requires two matching `relmat` mean targets."))
+    Set(item.target.member for item in targets) == Set((:intercept, slope)) ||
+        throw(ArgumentError(
+            "Poisson relmat SD formulas must select `coef(intercept)` and `coef($slope)` exactly once."))
+    (tree === nothing && A === nothing && coords === nothing) || throw(ArgumentError(
+        "Poisson relmat SD regression uses `K = …` only; do not also supply `tree`, `A`, or `coords`."))
+    K === nothing && throw(ArgumentError(
+        "relmat(1 + $slope | $group) needs the relatedness/covariance matrix `K = …`"))
+    rhs = Dict(f.forms)
+    fixed_mu, re, metav, structured, _, _, parsed_slope = _split_ranef(
+        rhs[:mu]; allow_relmat_intercept_slope = true)
+    metav === nothing && isempty(re) && structured == (:relmat, group) &&
+        parsed_slope === slope || throw(ArgumentError(
+        "Poisson relmat SD regression requires one matching independent `relmat(1 + $slope | $group)` term."))
+    _collect_structured(rhs[:mu]) == [(:relmat, group)] || throw(ArgumentError(
+        "Poisson relmat intercept-and-slope SD regression requires exactly one structured term, with no additional structured effects."))
+    (haskey(rhs, :zi) || haskey(rhs, :hu)) && throw(ArgumentError(
+        "Poisson relmat SD regression cannot yet be combined with `zi` or `hu`."))
+    fixed_mu, offset_term = _extract_offset(fixed_mu)
+    allowed = Set(vcat([:mu, :sigma], [item.key for item in targets]))
+    all(first(pair) in allowed for pair in f.forms) || throw(ArgumentError(
+        "Poisson relmat intercept-and-slope SD regression supports only `mu` and its two SD formulas."))
+    all(_formula_response_observed_mask(f, data)) || throw(ArgumentError(
+        "Poisson relmat SD regression requires observed responses; remove incomplete rows before fitting."))
+    y, Xmu, nmmu = _design(f.response, fixed_mu, data)
+    off = _poisson_sd_offset(offset_term, data, length(y))
+    all(yi -> yi >= 0 && isinteger(yi), y) || throw(ArgumentError(
+        "Poisson() requires non-negative integer counts as the response"))
+    labels = getproperty(data, group)
+    Q, gidx = _general_cov_setup(K, labels; normalize = false)
+    G = size(Q, 1)
+    ordered = map((:intercept, slope)) do member
+        only(filter(item -> item.target.member === member, targets))
+    end
+    Zgs = Matrix{Float64}[]
+    nmsds = Vector{String}[]
+    for item in ordered
+        Zg, names = _sd_group_design(f.response, item.rhs, data, gidx, G, group;
+            schema_cache = f.schema_cache, schema_key = item.key)
+        size(Zg, 2) <= G && rank(Zg) == size(Zg, 2) || throw(ArgumentError(
+            "Poisson relmat SD target `coef($(item.target.member))` has a rank-deficient group-level design."))
+        push!(Zgs, Matrix{Float64}(Zg))
+        push!(nmsds, names)
+    end
+    x = _poisson_animal_slope_loading(data, slope, length(y); label = "relmat")
+    if all(==(first(x)), x) && isequal(Zgs[1], Zgs[2])
+        throw(ArgumentError(
+            "Poisson relmat intercept-and-slope SD regression cannot separate the intercept and slope variances when `$slope` is constant and both SD formulas have identical group-level designs."))
+    end
+    blocks = Symbol[_sd_target_block(item.target; disambiguate = true)
+                    for item in ordered]
+    return _withformula(_fit_poisson_animal_intercept_slope_laplace(
+        fam, y, Xmu, Zgs, gidx, Q, nmmu, nmsds, blocks, group, x, off,
+        g_tol; se), f)
 end
