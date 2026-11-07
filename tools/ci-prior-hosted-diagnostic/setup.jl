@@ -20,4 +20,12 @@ for label in ("baseline", "candidate")
     @assert actual["deps"] == manifest["deps"] "Dependency manifest changed"
     Pkg.status(; mode = Pkg.PKGMODE_MANIFEST)
     println("ENVIRONMENT_LOCKED ", label, " ", bytes2hex(sha256(read(joinpath(env, "Manifest.toml")))))
+    flush(stdout)
+    println(stderr, "DIAGNOSTIC_WARMUP_START ", label)
+    flush(stderr)
+    package_path = joinpath(root, label)
+    warmup_code = "using DRModels, JET, Aqua, StableRNGs; println(\"WARMUP_LOADED_PATH=\",pathof(DRModels)); flush(stdout)"
+    warmup_seconds = @elapsed run(`$(Base.julia_cmd()) --startup-file=no --threads=1 --check-bounds=yes --compiled-modules=yes --depwarn=yes --warn-overwrite=yes --inline=yes --track-allocation=none --code-coverage=@$package_path --project=$env -e $warmup_code`)
+    println(stderr, "DIAGNOSTIC_WARMUP_COMPLETE ", label, " seconds=", warmup_seconds)
+    flush(stderr)
 end

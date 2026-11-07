@@ -6,12 +6,13 @@ permissions:
 jobs:
   paired-diagnostic:
     runs-on: ubuntu-latest
-    timeout-minutes: 110
+    timeout-minutes: 70
     env:
       JULIA_NUM_THREADS: '1'
       OPENBLAS_NUM_THREADS: '1'
       OMP_NUM_THREADS: '1'
       JULIA_PKG_PRECOMPILE_AUTO: '0'
+      JULIA_NUM_PRECOMPILE_TASKS: '2'
     steps:
       - uses: actions/checkout@v6
         timeout-minutes: 1
@@ -44,8 +45,8 @@ jobs:
       - name: Instantiate frozen paired environments
         timeout-minutes: 15
         run: julia --startup-file=no diagnostic/tools/ci-prior-hosted-diagnostic/setup.jl "$GITHUB_WORKSPACE"
-      - name: Run all four diagnostics and retain failures
-        timeout-minutes: 82
+      - name: Run paired prefix diagnostics and retain failures
+        timeout-minutes: 42
         run: python3 diagnostic/tools/ci-prior-hosted-diagnostic/run.py "$GITHUB_WORKSPACE"
       - name: Upload diagnostic evidence
         timeout-minutes: 5

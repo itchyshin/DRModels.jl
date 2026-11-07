@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import signal
 from pathlib import Path
 import subprocess
 import sys
@@ -11,7 +12,7 @@ out = root / "diagnostic-results"
 out.mkdir(exist_ok=True)
 script = Path(__file__).with_name("run.jl")
 records = []
-for mode in ("standalone", "prefix"):
+for mode in ("prefix",):
     for label in ("baseline", "candidate"):
         route = root / label
         victim = route / "test" / "test_binomial_sd_public.jl"
@@ -22,8 +23,9 @@ for mode in ("standalone", "prefix"):
         env = os.environ.copy()
         env.update(DRM_TEST_SHARD="3/4", DRM_PARITY_TESTS="0")
         cmd = ["julia", "--startup-file=no", "--threads=1", "--check-bounds=yes",
-               "--depwarn=yes", "--compiled-modules=yes", "--code-coverage=user",
-               "--color=no", f"--project={root / (label + '-env')}",
+               "--depwarn=yes", "--compiled-modules=yes", f"--code-coverage=@{route}",
+               "--color=yes", "--warn-overwrite=yes", "--inline=yes",
+               "--track-allocation=none", f"--project={root / (label + '-env')}",
                str(script), str(root), label, mode]
         logfile = out / f"{label}-{mode}.log"
         started = time.time()
@@ -31,9 +33,23 @@ for mode in ("standalone", "prefix"):
         try:
             with logfile.open("w") as stream:
                 try:
-                    code = subprocess.run(cmd, env=env, cwd=route, stdout=stream,
-                                          stderr=subprocess.STDOUT, timeout=1200).returncode
+                    process = subprocess.Popen(cmd, env=env, cwd=route, stdout=stream,
+                                               stderr=subprocess.STDOUT, start_new_session=True)
+                    code = process.wait(timeout=1170)
                 except subprocess.TimeoutExpired:
+                    try:
+                        os.killpg(process.pid, signal.SIGINT)
+                    except ProcessLookupError:
+                        pass
+                    try:
+                        process.wait(timeout=15)
+                    except subprocess.TimeoutExpired:
+                        pass
+                    try:
+                        os.killpg(process.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    process.wait()
                     code = 124
         finally:
             victim.write_bytes(pristine)
@@ -41,6 +57,8 @@ for mode in ("standalone", "prefix"):
         elapsed = time.time() - started
         record = dict(label=label, mode=mode, source=source, command=cmd,
                       exit_code=code, elapsed_seconds=elapsed,
+                      process_exit_code=process.returncode,
+                      timeout_policy="SIGINT process group at1170s,15s grace, then SIGKILL group",
                       log_sha256=hashlib.sha256(logfile.read_bytes()).hexdigest())
         records.append(record)
         (out / "results.json").write_text(json.dumps(records, indent=2) + "\n")

@@ -1,0 +1,38 @@
+{
+  "recorded_before_replay_dispatch": "2026-11-07T03:53:11.239104+00:00",
+  "purpose": "Discriminate source differences from test-prefix/runtime effects using package-restricted coverage matching original CI scope",
+  "prior_evidence": {
+    "run": 42331688804,
+    "standalone": "baseline and candidate44/44 with eight identical recorded fit fields",
+    "prefix": "both1200s timeouts with emptylogs; no evaluation outcome"
+  },
+  "replay": {
+    "sources": {
+      "baseline": "86ee1c2a38cd79c55dbbd71afd7374a3095aad3c",
+      "candidate": "385fde27d369270afb2353ddf1fbd9f301f2b4ce"
+    },
+    "attempts": [
+      "baseline prefix",
+      "candidate prefix"
+    ],
+    "coverage": "Each source root only; no dependency-wide user coverage",
+    "frozen_environment": true,
+    "threads": {
+      "Julia": 1,
+      "BLAS": 1,
+      "OMP": 1,
+      "precompile_tasks": 2
+    },
+    "diagnostic_only": true,
+    "per_attempt_timeout": "1170s then SIGINT group,15s grace, SIGKILL group and reap",
+    "overall_job_cap_minutes": 70,
+    "progress": "Flushed stderr before imports, after load, and before/after each included file; warmup receipts before paired attempts"
+  },
+  "acceptance": "Inspect original victim assertions and fit diagnostics only after loaded path, manifest and progress checks. No full-suite claim from a prefix pass. Preserve failures, errors and timeouts.",
+  "invariants": [
+    "No production code edits",
+    "No original assertion or convergence threshold changes",
+    "No prior applied to unpenalized binomial fixture",
+    "No merge or release"
+  ]
+}
