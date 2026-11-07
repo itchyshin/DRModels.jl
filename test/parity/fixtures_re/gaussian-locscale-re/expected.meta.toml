@@ -1,4 +1,5 @@
 drmtmb_version = "0.7.0"
+drmtmb_code_hash = "unknown (CRAN 0.7.0 release; no git commit recorded)"
 drmtmb_source = "CRAN release drmTMB 0.7.0 (pinned; no git commit hash available: github.com/itchyshin/drmTMB unreachable from the generating sandbox)"
 generated_on = "2026-10-31"
 r_call = "drmTMB(drm_formula(y ~ x + (1 | g), sigma ~ x), family = gaussian(), data = d)"
