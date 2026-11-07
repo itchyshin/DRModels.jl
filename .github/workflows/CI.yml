@@ -1,193 +1,56 @@
-name: CI
-# Cost-disciplined: PR + manual only, Linux only. Add macOS/Windows + a `push`
-# trigger to `main` only right before a tagged release / CRAN-equivalent.
+name: Prior hosted convergence diagnostic
 on:
-  pull_request:
-    branches: [main]
-  schedule:
-    # Nightly full matrix (Julia 1.10 and 1) on main, so 1.10 stays covered
-    # although pull requests run Julia 1 only.
-    - cron: '23 7 * * *'
   workflow_dispatch:
-    inputs:
-      run_p10k:
-        description: "Include p=10000 in the multi-shape scaling sweep (#16, minutes-scale)"
-        required: false
-        default: "false"
-      release_platforms:
-        description: "Run targeted macOS and Windows release checks"
-        required: false
-        type: boolean
-        default: false
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
+permissions:
+  contents: read
 jobs:
-  # Is there anything in this PR that the Julia suite could possibly affect?
-  # The suite's checks are REQUIRED on `main` (today by matrix-leg name; after
-  # the ci-ok aggregator below, by `ci-ok`), so this must NOT be done with
-  # `paths-ignore`: a required check that never reports leaves the PR pending
-  # forever. The jobs below therefore always RUN and always report -- they just
-  # do no work when only prose changed.
-  changes:
+  paired-diagnostic:
     runs-on: ubuntu-latest
-    outputs:
-      code: ${{ steps.filter.outputs.code }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-      - id: filter
-        run: |
-          if [ "${{ github.event_name }}" != "pull_request" ]; then
-            echo "code=true" >> "$GITHUB_OUTPUT"   # manual dispatch: always run
-            exit 0
-          fi
-          base='${{ github.event.pull_request.base.sha }}'
-          # Anything OUTSIDE this prose allow-list means run the suite.
-          # docs/src and docs/make.jl are deliberately NOT here: Documenter
-          # doctests execute code, so a change there still deserves the suite.
-          if git diff --name-only "$base" HEAD \
-               | grep -qvE '^(docs/dev-log/|docs/design/|LOOP/|\.github/ISSUE_TEMPLATE/|[^/]+\.md$)'; then
-            echo "code=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "code=false" >> "$GITHUB_OUTPUT"
-          fi
-      - name: Say which way it went
-        run: echo "code=${{ steps.filter.outputs.code }}"
-
-      # If we are about to skip the suite, the diff that skips it must at least be
-      # clean. Ported from gllvmTMB's "Fast pass for ignored-source/process change",
-      # which has had this gate all along -- and which caught a real defect on
-      # 2026-09-04 that this repo's version would have waved through: two restored
-      # documents carrying 17 lines of trailing whitespace.
-      - name: Fast-path validation (a prose-only diff must still be clean)
-        if: steps.filter.outputs.code != 'true'
-        run: |
-          set -euo pipefail
-          base='${{ github.event.pull_request.base.sha }}'
-          # non-zero on trailing whitespace or a conflict marker in ADDED lines
-          git diff --check "$base" HEAD
-          {
-            echo "### Fast-path validation"
-            echo
-            echo "Julia suite skipped: prose-only change."
-            echo
-            echo "Validation run:"
-            echo "- \`git diff --check\` over the changed-file range"
-            echo "  (trailing whitespace, conflict markers)"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-  test:
-    name: Julia ${{ matrix.version }} - shard ${{ matrix.shard }}/4
-    needs: changes
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        # Shard the suite 4 ways via DRM_TEST_SHARD (see test/runtests.jl), so
-        # 2 versions x 4 shards = 8 jobs each covering ~1/4 of the top-level
-        # test files instead of one multi-hour job. Measured 2026-09-03 on this
-        # repo's own run history: CI runs took 161 and 175 min, the longest of
-        # any repo here. Parallel jobs are free on a public repo.
-        # Pull requests run the current stable Julia only; LTS (1.10) runs in
-        # the nightly scheduled run on main and on manual dispatch. This halves
-        # the runner queue that held PRs for hours (Shinichi, 24 Oct 2026).
-        version: ${{ fromJSON(github.event_name == 'pull_request' && '["1"]' || '["1.10", "1"]') }}
-        shard: [1, 2, 3, 4]
-    steps:
-      - uses: actions/checkout@v6
-      - if: needs.changes.outputs.code == 'true'
-        uses: julia-actions/setup-julia@v3
-        with:
-          version: ${{ matrix.version }}
-      - if: needs.changes.outputs.code == 'true'
-        uses: julia-actions/cache@v2
-      - if: needs.changes.outputs.code == 'true'
-        uses: julia-actions/julia-buildpkg@v1
-      - if: needs.changes.outputs.code == 'true'
-        uses: julia-actions/julia-runtest@v1
-        env:
-          # test/runtests.jl treats an unset/empty value as "run everything", so
-          # a local `julia test/runtests.jl` and Pkg.test() are unchanged.
-          DRM_TEST_SHARD: ${{ format('{0}/4', matrix.shard) }}
-      - if: needs.changes.outputs.code != 'true'
-        run: echo "Prose-only change -- Julia suite skipped, this check still reports."
-
-  # ONE stable required check for branch protection. Protection on main used to
-  # require the matrix legs by name (`test (1.10)`, `test (1)`); sharding renamed
-  # them and #626 sat fully green and BLOCKED forever. Requiring only `ci-ok`
-  # makes the rule independent of how the matrix is shaped -- and it composes
-  # with the `changes` prose-skip above: a skipped suite still SUCCEEDS its legs
-  # (they echo and report), so ci-ok passes on a docs-only PR exactly as the
-  # comment on `changes` intends.
-  #
-  # `if: always()` is load-bearing: without it a failed or cancelled shard makes
-  # this job SKIP, and GitHub counts a skipped required check as PASSING.
-  # `needs.test.result` is the aggregate over every matrix leg -- "success" only
-  # when all eight succeeded; "failure" / "cancelled" / "skipped" otherwise.
-  ci-ok:
-    name: ci-ok
-    needs: [test]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Every shard must have succeeded
-        run: |
-          echo "aggregate result of the test matrix: ${{ needs.test.result }}"
-          test "${{ needs.test.result }}" = "success"
-
-  # Release-only platform coverage. Manual dispatch also retains the existing
-  # Linux matrix and scaling-sweep behaviour; this job does not alter ci-ok.
-  release-platform:
-    name: Release platform - ${{ matrix.os }}
-    if: github.event_name == 'workflow_dispatch' && inputs.release_platforms
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, windows-latest]
+    timeout-minutes: 110
     env:
-      JULIA_NUM_THREADS: '4'
+      JULIA_NUM_THREADS: '1'
       OPENBLAS_NUM_THREADS: '1'
       OMP_NUM_THREADS: '1'
       JULIA_PKG_PRECOMPILE_AUTO: '0'
     steps:
       - uses: actions/checkout@v6
-      - uses: julia-actions/setup-julia@v3
+        timeout-minutes: 1
         with:
-          version: '1'
-      - uses: julia-actions/cache@v2
-      - name: Run targeted release checks
-        shell: bash
-        run: |
-          julia --project=test -e 'using Pkg; Pkg.develop(path=pwd()); Pkg.instantiate(); using DRModels, Test, Random, LinearAlgebra, StatsModels; BLAS.set_num_threads(1); for f in ["test/test_fixed_priors.jl", "test/test_va_followups_1246.jl", "test/test_bootstrap_formula_structured.jl", "test/test_poisson.jl", "test/test_binomial.jl", "test/test_bridge.jl"]; println("RUN ", f); flush(stdout); include(f); end'
-
-  # Engine-quality Q-gate #16: multi-shape (balanced + caterpillar) O(p) scaling
-  # sweep. NOT per-PR (the p=10k cell is minutes-scale) — manual dispatch only.
-  # Default grid is {100, 1000}; set run_p10k=true to add the p=10k cell.
-  scaling-sweep:
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    steps:
+          path: diagnostic
+          persist-credentials: false
       - uses: actions/checkout@v6
+        timeout-minutes: 1
+        with:
+          ref: 86ee1c2a38cd79c55dbbd71afd7374a3095aad3c
+          path: baseline
+          persist-credentials: false
+      - uses: actions/checkout@v6
+        timeout-minutes: 1
+        with:
+          ref: 385fde27d369270afb2353ddf1fbd9f301f2b4ce
+          path: candidate
+          persist-credentials: false
       - uses: julia-actions/setup-julia@v3
+        timeout-minutes: 2
         with:
-          version: '1'
-      - uses: julia-actions/cache@v2
-      - uses: julia-actions/julia-buildpkg@v1
-      - name: Run multi-shape scaling gate (#16)
-        env:
-          DRM_QGATE_PS: ${{ github.event.inputs.run_p10k == 'true' && '100,1000,10000' || '100,1000' }}
-          DRM_QGATE_SHAPES: balanced,caterpillar
-          DRM_QGATE_NREP: '4'
-        run: julia --project=. bench/run_scaling.jl
-      - name: Upload scaling report
+          version: '1.13.3'
+      - name: Record machine
+        timeout-minutes: 1
+        run: |
+          mkdir -p diagnostic-results
+          lscpu > diagnostic-results/lscpu.txt
+          uname -a > diagnostic-results/uname.txt
+          julia --startup-file=no -e 'using InteractiveUtils, LinearAlgebra; versioninfo(verbose=true); println(BLAS.get_config())' > diagnostic-results/julia-runtime.txt
+      - name: Instantiate frozen paired environments
+        timeout-minutes: 15
+        run: julia --startup-file=no diagnostic/tools/ci-prior-hosted-diagnostic/setup.jl "$GITHUB_WORKSPACE"
+      - name: Run all four diagnostics and retain failures
+        timeout-minutes: 82
+        run: python3 diagnostic/tools/ci-prior-hosted-diagnostic/run.py "$GITHUB_WORKSPACE"
+      - name: Upload diagnostic evidence
+        timeout-minutes: 5
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
-          name: qgate-multishape-scaling
-          path: report/qgate-multishape-scaling.md
+          name: prior-hosted-paired-diagnostic
+          path: diagnostic-results/
