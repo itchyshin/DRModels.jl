@@ -7,12 +7,13 @@
 # Evaluated per group by the q×q Woodbury form: no n×n matrix.
 
 # `(1 + x + z | g)` lhs → [:x, :z]; nothing when the lhs is not an
-# intercept-plus-two-or-more-numeric-variable block. `_re_kind` stays q ≤ 2.
+# intercept-plus-one-or-more-numeric-variable block (q = 2 is the ordinary
+# `(1 + x | g)` case: the same machinery with q = 2). `_re_kind` stays q ≤ 2.
 function _re_multi_corr_vars(lhs)
     (lhs isa FunctionTerm && lhs.f === (+)) || return nothing
     consts = filter(t -> t isa ConstantTerm, lhs.args)
     vars = filter(t -> t isa Term, lhs.args)
-    (length(consts) == 1 && only(consts).n == 1 && length(vars) ≥ 2 &&
+    (length(consts) == 1 && only(consts).n == 1 && length(vars) ≥ 1 &&
      length(vars) + 1 == length(lhs.args)) || return nothing
     return Symbol[v.sym for v in vars]
 end
@@ -50,8 +51,8 @@ function _drm_gaussian_ordinary_q34_sd(f::DrmFormula, fam::Gaussian, sdpp, re, m
     (_, grp) = re[1]
     vars = multi[1]
     q = 1 + length(vars)
-    q in (3, 4) || throw(ArgumentError(
-        "drm: Gaussian `sd()` regression on a correlated block supports 3 or 4 coefficients " *
+    q in (2, 3, 4) || throw(ArgumentError(
+        "drm: Gaussian `sd()` regression on a correlated block supports 2 to 4 coefficients " *
         "(got $q); use independent terms or a smaller block."))
     length(unique(vars)) == length(vars) || throw(ArgumentError(
         "drm: repeated coefficient in `(1 + $(join(vars, " + ")) | $grp)`."))
