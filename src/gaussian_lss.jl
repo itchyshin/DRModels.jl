@@ -727,6 +727,146 @@ function _drm_gaussian_structured_sd_slope(f::DrmFormula, fam::Gaussian, structu
                                         grp, g_tol; block = :sd, loading, report_sd = true)
 end
 
+# Independent two-field structured intercept-plus-slope with one SD formula per
+# coefficient: `y ~ x + animal|relmat(1 + x | g)`, `sd(g, <level>, coef(intercept)) ~ z0`,
+# `sd(g, <level>, coef(x)) ~ z1`. Model (rho fixed at 0):
+#   y_i = X_i b + s0_{g(i)} f0_{g(i)} + x_i s1_{g(i)} f1_{g(i)} + e_i,
+#   f0, f1 ~ iid N(0, C) (C RAW, not normalised), s_k = exp(Z_k alpha_k).
+# Exact marginal: y ~ N(X b, sigma_i^2 I + sum_k (w_k w_k') o (D_k C D_k)[g, g]),
+# w_0 = 1, w_1 = x. Dense n x n Cholesky, ForwardDiff, ML only, n <= 5000.
+function _drm_gaussian_structured_q2_sd(f::DrmFormula, fam::Gaussian, kind::Symbol,
+                                        structured, re, sigma_re, metav, structured_sigma,
+                                        has_missing_response, y, Xμ, Xσ, nmμ, nmσ, data,
+                                        K, A, coords, g_tol, method, algorithm)
+    fn = kind === :animal ? animal : relmat
+    block = _animal_intercept_slope(Dict(f.forms)[:mu]; kind = fn)
+    grp, slope = block.group, block.slope
+    term = "$kind(1 + $slope | $grp)"
+    structured == (kind, grp) || throw(ArgumentError(
+        "drm: Gaussian `$term` SD regression requires it to be the only structured term."))
+    _collect_structured(Dict(f.forms)[:mu]) == [(kind, grp)] || throw(ArgumentError(
+        "drm: Gaussian `$term` SD regression requires exactly one structured term."))
+    targets = _sd_target_parts(f)
+    length(targets) == 2 || throw(ArgumentError(
+        "drm: Gaussian `$term` needs one SD formula for the intercept and one for the slope " *
+        "(`sd($grp, $kind, coef(intercept)) ~ …` and `sd($grp, $kind, coef($slope)) ~ …`)."))
+    all(item -> item.target.level === kind && item.target.group === grp &&
+        item.target.dpar === :mu && item.target.block === nothing, targets) ||
+        throw(ArgumentError("drm: Gaussian `$term` SD regression requires two matching `$kind` mean targets."))
+    Set(item.target.member for item in targets) == Set((:intercept, slope)) ||
+        throw(ArgumentError("drm: Gaussian `$term` SD formulas must select " *
+            "`coef(intercept)` and `coef($slope)` exactly once."))
+    isempty(re) && isempty(sigma_re) && metav === nothing && structured_sigma === nothing ||
+        throw(ArgumentError("drm: Gaussian `$term` SD regression takes fixed-effect `sigma` only " *
+            "(no ordinary or sigma random effects, `meta_V`, or structured `sigma`)."))
+    has_missing_response && throw(ArgumentError(
+        "drm: Gaussian `$term` SD regression requires observed responses; remove incomplete rows first."))
+    method === :REML && throw(ArgumentError(
+        "drm: Gaussian `$term` SD regression supports maximum likelihood only."))
+    algorithm === :auto || throw(ArgumentError(
+        "drm: `algorithm = :$algorithm` is not implemented for Gaussian `$term` SD regression."))
+    allowed = Set(vcat([:mu, :sigma], [item.key for item in targets]))
+    all(first(pair) in allowed for pair in f.forms) || throw(ArgumentError(
+        "drm: Gaussian `$term` SD regression supports only `mu`, `sigma` and its two SD formulas."))
+    gidx, G = _group_index(getproperty(data, grp))
+    Cmat = if kind === :relmat
+        (A === nothing && coords === nothing) || throw(ArgumentError(
+            "drm: Gaussian relmat SD regression uses `K = …` only."))
+        K === nothing && throw(ArgumentError("$term needs the covariance matrix `K = …`"))
+        Matrix{Float64}(K)
+    else
+        (K === nothing && coords === nothing) || throw(ArgumentError(
+            "drm: Gaussian animal SD regression uses `A = …` only."))
+        A === nothing && throw(ArgumentError("$term needs the relatedness matrix `A = …`"))
+        Matrix{Float64}(A)
+    end
+    size(Cmat) == (G, G) || throw(ArgumentError(
+        "structured matrix must be $(G)×$(G) (the number of `$grp` levels)"))
+    all(isfinite, Cmat) || throw(ArgumentError("structured matrix must be finite"))
+    ordered = map((:intercept, slope)) do member
+        only(filter(item -> item.target.member === member, targets))
+    end
+    Zgs = Matrix{Float64}[]
+    nmsds = Vector{String}[]
+    for item in ordered
+        Zg, names = _sd_group_design(f.response, item.rhs, data, gidx, G, grp;
+                                     schema_cache = f.schema_cache, schema_key = item.key)
+        size(Zg, 2) <= G && rank(Zg) == size(Zg, 2) || throw(ArgumentError(
+            "drm: Gaussian `$term` SD target `coef($(item.target.member))` has a rank-deficient group-level design."))
+        push!(Zgs, Matrix{Float64}(Zg)); push!(nmsds, names)
+    end
+    x = _poisson_animal_slope_loading(data, slope, length(y); label = "Gaussian $kind")
+    if all(==(first(x)), x) && isequal(Zgs[1], Zgs[2])
+        throw(ArgumentError("drm: Gaussian `$term` SD regression cannot separate the intercept and " *
+            "slope variances when `$slope` is constant and both SD formulas have identical group-level designs."))
+    end
+    blocks = Symbol[_sd_target_block(item.target; disambiguate = true) for item in ordered]
+    return _fit_structured_gaussian_q2_sd(fam, y, Xμ, Xσ, Zgs, gidx, G, Cmat, x,
+                                          nmμ, nmσ, nmsds, blocks, grp, g_tol)
+end
+
+function _fit_structured_gaussian_q2_sd(fam::Gaussian, y, Xμ, Xσ, Zgs, gidx, G, C, x,
+                                        nmμ, nmσ, nmsds, blocks, grp, g_tol)
+    n = length(y)
+    n ≤ 5000 || throw(ArgumentError("drm: the Gaussian structured intercept-and-slope SD route " *
+        "assembles a $(n)×$(n) marginal covariance and is limited to 5000 rows."))
+    pμ, pσ = size(Xμ, 2), size(Xσ, 2)
+    ps = size.(Zgs, 2)
+    r0 = (pμ + pσ + 1):(pμ + pσ + ps[1])
+    r1 = (pμ + pσ + ps[1] + 1):(pμ + pσ + ps[1] + ps[2])
+    Csym = Symmetric(_finite_user_matrix(C, "C"))
+    const_2pi = 0.5 * n * log(2π)
+    function nll(θ)
+        βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
+        ημ = Xμ * βμ; ησ = Xσ * βσ
+        T = eltype(θ)
+        s0 = exp.(Zgs[1] * θ[r0]); s1 = exp.(Zgs[2] * θ[r1])
+        Σ0 = (s0 * s0') .* Csym; Σ1 = (s1 * s1') .* Csym
+        Vm = Matrix{T}(undef, n, n)
+        @inbounds for j in 1:n, i in 1:n
+            gi, gj = gidx[i], gidx[j]
+            Vm[i, j] = Σ0[gi, gj] + x[i] * x[j] * Σ1[gi, gj]
+        end
+        @inbounds for i in 1:n
+            Vm[i, i] += exp(2 * ησ[i])
+        end
+        Vfac = cholesky(Symmetric(Vm); check = false)
+        issuccess(Vfac) || return convert(T, 1e18)
+        r = y .- ημ
+        return 0.5 * (logdet(Vfac) + dot(r, Vfac \ r)) + const_2pi
+    end
+    βμ0 = Xμ \ y; res0 = y - Xμ * βμ0
+    θ0 = zeros(pμ + pσ + sum(ps))
+    θ0[1:pμ] .= βμ0
+    θ0[pμ+1] = log(std(res0) / sqrt(2) + eps())
+    s_int = std(res0) / sqrt(2)
+    s_slp = s_int / max(sqrt(sum(abs2, x) / n), eps())
+    θ0[r0] .= Zgs[1] \ fill(log(s_int + eps()), G)
+    θ0[r1] .= Zgs[2] \ fill(log(s_slp + eps()), G)
+    res = Optim.optimize(nll, θ0, Optim.LBFGS(),
+                         Optim.Options(g_tol = g_tol, x_abstol = NaN, x_reltol = NaN,
+                                       f_abstol = NaN, f_reltol = NaN);
+                         autodiff = :forward)
+    θ̂ = Optim.minimizer(res)
+    H = ForwardDiff.hessian(nll, θ̂)
+    V = _vcov_from_hessian(H)
+    converged = !Optim.iteration_limit_reached(res) &&
+        _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
+    block_list = Pair{Symbol,UnitRange{Int}}[:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ),
+                                             blocks[1] => r0, blocks[2] => r1]
+    name_list = Pair{Symbol,Vector{String}}[:mu => nmμ, :sigma => nmσ,
+                                            blocks[1] => nmsds[1], blocks[2] => nmsds[2]]
+    sd0 = exp.(Zgs[1] * θ̂[r0]); sd1 = exp.(Zgs[2] * θ̂[r1])
+    scales = Dict{Symbol,Vector{Float64}}(
+        :sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]),
+        blocks[1] => sd0[gidx], blocks[2] => sd1[gidx],
+        Symbol(string(blocks[1]), "_group") => sd0,
+        Symbol(string(blocks[2]), "_group") => sd1)
+    fit = DrmFit(fam, block_list, name_list, θ̂, V, -nll(θ̂), n, converged,
+                 Dict(:mu => Xμ * θ̂[1:pμ]), Dict(:mu => Vector{Float64}(y)), scales)
+    return _withiterations(_withnll(fit, nll), Optim.iterations(res))
+end
+
 # ---------------------------------------------------------------------------
 # #555 — location-scale-scale-SCALE: several random effects, each with its own
 # SD submodel, in one fit. drmTMB accepts e.g.
