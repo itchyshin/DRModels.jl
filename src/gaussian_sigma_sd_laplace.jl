@@ -1,0 +1,396 @@
+# Gaussian sigma-side random effects WITH an SD formula, fitted by a dense
+# Laplace approximation (twin of drmTMB `test-gaussian-mu-sigma-joint-sd.R` and
+# `test-gaussian-sigma-structured-sd.R`). See `DESIGN-joint-sigma.md`.
+#
+# Model (standardised latent v, effects = scale * v):
+#
+#   y_i ~ N(mu_i + c_i va[ga_i],  exp(2 eta_i)),   eta_i = Xσ βσ + d_i vb[gb_i]
+#   c_i = exp(Za αa)[ga_i]                   (mean intercept, optional)
+#   d_i = loading_i * exp(Zb αb)[gb_i]       (sigma intercept/slope or structured)
+#   va ~ N(0, I),   vb ~ N(0, K)   (K = I for an ordinary effect; raw animal/relmat K)
+#
+# No mean/sigma cross-correlation (independent latent fields, as drmTMB). The
+# marginal is not Gaussian, so the objective is the Laplace value TMB reports,
+#   nll(θ) = F(v̂) + ½ log det H(v̂) + ½ log det K,
+# with F the joint negative log density in v (the ½ m log 2π of the prior and of
+# the Laplace expansion cancel). Gradient: exact forward-mode AD of the Laplace
+# value in which v̂ is replaced by ONE Newton step from the converged Float64
+# mode; because the inner gradient is zero there, that step has exactly the
+# implicit derivative dv̂/dθ = -H⁻¹ ∂g/∂θ, so the first derivative is exact.
+# The outer loop, boundary polish, convergence rule and Wald covariance are the
+# shared `_ordinary_laplace_optimize`.
+
+const _GSL_MAX_LATENT = 600     # dense H: refuse beyond this many latent coordinates
+
+# Joint negative log density F and (optionally) gradient / dense Hessian in v.
+# `T` is the promoted element type of θ-derived quantities and v.
+function _gsl_joint(ymu, eta0, ga, c, gb, d, Pb, va, vb, Ga::Int, Gb::Int; deriv::Bool)
+    T = promote_type(eltype(ymu), eltype(eta0), eltype(c), eltype(d), eltype(va), eltype(vb))
+    n = length(ymu)
+    m = Ga + Gb
+    F = zero(T)
+    g = deriv ? zeros(T, m) : nothing
+    H = deriv ? zeros(T, m, m) : nothing
+    @inbounds for i in 1:n
+        A = Ga > 0 ? c[i] * va[ga[i]] : zero(T)
+        eta = eta0[i] + d[i] * vb[gb[i]]
+        r = ymu[i] - A
+        ie = exp(-2 * eta)
+        F += eta + 0.5 * r * r * ie
+        if deriv
+            gA = -r * ie                   # dF/dA
+            gE = 1 - r * r * ie            # dF/deta
+            if Ga > 0
+                ia = ga[i]
+                g[ia] += c[i] * gA
+                H[ia, ia] += c[i] * c[i] * ie
+            end
+            ib = Ga + gb[i]
+            g[ib] += d[i] * gE
+            H[ib, ib] += d[i] * d[i] * 2 * r * r * ie
+            if Ga > 0
+                x = c[i] * d[i] * 2 * r * ie
+                H[ga[i], ib] += x
+                H[ib, ga[i]] += x
+            end
+        end
+    end
+    F += 0.5 * sum(abs2, va)
+    Pv = Pb === nothing ? vb : Pb * vb
+    F += 0.5 * sum(vb .* Pv)
+    if deriv
+        @inbounds for k in 1:Ga
+            g[k] += va[k]
+            H[k, k] += 1
+        end
+        @inbounds for j in 1:Gb
+            g[Ga + j] += Pv[j]
+        end
+        if Pb === nothing
+            @inbounds for j in 1:Gb
+                H[Ga + j, Ga + j] += 1
+            end
+        else
+            @inbounds for j in 1:Gb, k in 1:Gb
+                H[Ga + k, Ga + j] += Pb[k, j]
+            end
+        end
+    end
+    return F, g, H
+end
+
+# Damped Newton for the inner mode (Float64). The joint density is not convex in
+# (A, eta), so a non-PD Hessian is regularised and every step is backtracked.
+function _gsl_mode(joint, v0::Vector{Float64}; tol::Float64 = 1e-10, maxit::Int = 80)
+    v = copy(v0)
+    F, g, H = joint(v, true)
+    for _ in 1:maxit
+        maximum(abs, g) < tol && return v, true
+        C = cholesky(Symmetric(H); check = false)
+        step = if issuccess(C)
+            C \ g
+        else
+            lam = 1e-3 * (sum(abs, diag(H)) / size(H, 1) + 1.0)
+            local s
+            while true
+                C2 = cholesky(Symmetric(H + lam * I); check = false)
+                if issuccess(C2)
+                    s = C2 \ g
+                    break
+                end
+                lam *= 10
+                lam > 1e12 && return v, false
+            end
+            s
+        end
+        # Inside the quadratic basin (PD Hessian, small gradient) take the full
+        # Newton step: the objective decrease there is below F's roundoff, so an
+        # Armijo test on F would reject good steps and stall near 1e-8.
+        if issuccess(C) && maximum(abs, g) < 1e-4
+            v = v .- step
+            F, g, H = joint(v, true)
+            continue
+        end
+        slope = dot(g, step)
+        t = 1.0
+        accepted = false
+        while t > 1e-12
+            vn = v .- t .* step
+            Fn, _, _ = joint(vn, false)
+            if isfinite(Fn) && Fn <= F - 1e-4 * t * slope
+                v = vn
+                accepted = true
+                break
+            end
+            t *= 0.5
+        end
+        accepted || return v, maximum(abs, g) < 1e-8
+        F, g, H = joint(v, true)
+    end
+    return v, maximum(abs, g) < 1e-9
+end
+
+# `mean_re` is `nothing` or (gidx, G, Zg, nmsd, grp, block); `sigma_re` is
+# (gidx, G, Zg, nmsd, grp, loading, Kmat-or-nothing, block, kind).
+function _fit_gaussian_sigma_sd_laplace(fam::Gaussian, y, Xμ, Xσ, mean_re, sigma_re,
+                                        nmμ, nmσ, g_tol; se::Bool = true)
+    n = length(y)
+    pμ, pσ = size(Xμ, 2), size(Xσ, 2)
+    has_a = mean_re !== nothing
+    ga, Ga, Za, nma, grpa, blocka = has_a ? mean_re : (Int[], 0, zeros(0, 0), String[], :none, :none)
+    gb, Gb, Zb, nmb, grpb, loading, Kmat, blockb, _ = sigma_re
+    pa = has_a ? size(Za, 2) : 0
+    pb = size(Zb, 2)
+    m = Ga + Gb
+    m <= _GSL_MAX_LATENT || throw(ArgumentError(
+        "drm: Gaussian sigma random effect with an SD formula uses a dense Laplace " *
+        "engine limited to $(_GSL_MAX_LATENT) latent coordinates (got $m)."))
+    Pb = nothing
+    logdetK = 0.0
+    if Kmat !== nothing
+        Ck = cholesky(Symmetric(Matrix{Float64}(Kmat)); check = false)
+        issuccess(Ck) || throw(ArgumentError(
+            "drm: the structured sigma matrix must be symmetric positive definite."))
+        Pb = Matrix(inv(Ck))
+        Pb = (Pb .+ Pb') ./ 2
+        logdetK = logdet(Ck)
+    end
+    ra = pμ + pσ + 1
+    ia = ra:(ra + pa - 1)
+    ib = (ra + pa):(ra + pa + pb - 1)
+    ntheta = pμ + pσ + pa + pb
+    const_obs = 0.5 * n * log(2π)
+
+    function pieces(θ)
+        βμ = θ[1:pμ]; βσ = θ[(pμ+1):(pμ+pσ)]
+        ymu = y .- Xμ * βμ
+        eta0 = Xσ * βσ
+        c = has_a ? exp.(Za * θ[ia])[ga] : eltype(θ)[]
+        d = loading .* exp.(Zb * θ[ib])[gb]
+        return ymu, eta0, c, d
+    end
+    joint_at(θ) = begin
+        ymu, eta0, c, d = pieces(θ)
+        (vv, deriv) -> begin
+            vaa = @view vv[1:Ga]; vbb = @view vv[(Ga+1):m]
+            _gsl_joint(ymu, eta0, ga, c, gb, d, Pb, vaa, vbb, Ga, Gb; deriv = deriv)
+        end
+    end
+
+    # Laplace value; for a Dual θ, v̂ is advanced one Newton step (see header).
+    function laplace(θ::AbstractVector{T}, vhat::Vector{Float64}) where {T}
+        joint = joint_at(θ)
+        v = convert(Vector{T}, vhat)
+        if T <: ForwardDiff.Dual
+            _, g, H = joint(vhat, true)
+            C = cholesky(Symmetric(H))
+            v = vhat .- (C \ g)
+        end
+        F, _, H = joint(v, true)
+        C = cholesky(Symmetric(H); check = false)
+        issuccess(C) || return T(REML_NONPD_PENALTY)
+        return F + 0.5 * logdet(C) + 0.5 * logdetK + const_obs
+    end
+
+    fg = function (θ, b0, grad)
+        θf = Vector{Float64}(θ)
+        joint = joint_at(θf)
+        v, ok = _gsl_mode(joint, Vector{Float64}(b0))
+        ok || ((v, ok) = _gsl_mode(joint, zeros(m)))
+        ok || return grad ? (1e18, fill(NaN, ntheta), zeros(m), false) : (1e18, zeros(m), false)
+        _, _, H = joint(v, true)
+        issuccess(cholesky(Symmetric(H); check = false)) ||
+            return grad ? (1e18, fill(NaN, ntheta), v, false) : (1e18, v, false)
+        val = laplace(θf, v)
+        grad || return (val, v, true)
+        gθ = ForwardDiff.gradient(t -> laplace(t, v), θf)
+        return (val, gθ, v, all(isfinite, gθ))
+    end
+
+    β0 = Xμ \ y
+    res0 = y - Xμ * β0
+    sd0 = std(res0) + eps()
+    θ0 = zeros(ntheta)
+    θ0[1:pμ] .= β0
+    θ0[pμ+1] = log(0.7 * sd0)
+    has_a && (θ0[ia] .= Za \ fill(log(0.5 * sd0), Ga))
+    θ0[ib] .= Zb \ fill(log(0.3), Gb)
+
+    θ̂, nllhat, conv, V, nll, grad! = _ordinary_laplace_optimize(
+        fg, θ0, n, m, g_tol; se = false,
+        context = "Gaussian sigma random effect with an SD formula")
+    # Wald covariance from central differences of the analytic gradient (the
+    # value-difference Hessian of the shared helper is noisier than the inner-mode
+    # tolerance allows at this size).
+    if se
+        Hθ = _finite_hessian_from_gradient(grad!, θ̂;
+            context = "Gaussian sigma random effect with an SD formula")
+        V = all(isfinite, Hθ) ? Matrix(_vcov_from_hessian(Hθ)) : fill(NaN, ntheta, ntheta)
+    end
+
+    # Conditional modes and fitted scales at θ̂.
+    vhat, _ = _gsl_mode(joint_at(θ̂), zeros(m))
+    βμ = θ̂[1:pμ]; βσ = θ̂[(pμ+1):(pμ+pσ)]
+    sd_a = has_a ? exp.(Za * θ̂[ia]) : Float64[]
+    sd_b = exp.(Zb * θ̂[ib])
+    ab = has_a ? sd_a .* vhat[1:Ga] : Float64[]                 # raw mean effects
+    vb = vhat[(Ga+1):m]
+    bb = sd_b .* vb                                              # raw sigma effects (log scale)
+    eta_fixed = Xσ * βσ
+    mean_fixed = Xμ * βμ
+    means = Dict(:mu => has_a ? mean_fixed .+ ab[ga] : mean_fixed)
+    obs = Dict(:mu => Vector{Float64}(y))
+    scales = Dict{Symbol,Vector{Float64}}(
+        :sigma => exp.(eta_fixed .+ loading .* bb[gb]),
+        :sigma_fixed => exp.(eta_fixed),
+        :sigma_random_effect => bb,
+        :sigma_group_index => Float64.(gb),
+        :sd_group => has_a ? sd_a : sd_b,
+        :sd => has_a ? sd_a[ga] : sd_b[gb])
+    has_a && (scales[:sd_group_index] = Float64.(ga))
+    blocks = Pair{Symbol,UnitRange{Int}}[:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ)]
+    names = Pair{Symbol,Vector{String}}[:mu => nmμ, :sigma => nmσ]
+    has_a && (push!(blocks, blocka => ia); push!(names, blocka => nma))
+    push!(blocks, blockb => ib); push!(names, blockb => nmb)
+    ranef = Dict{Symbol,Any}()
+    has_a && (ranef[Symbol(grpa)] = ab)
+    ranef[Symbol(grpb, "_logsigma")] = bb
+    fit = DrmFit(fam, blocks, names, θ̂, V, -nllhat, n, conv, means, obs, scales)
+    return _withranef(_withmarginal(_withnll(fit, nll, grad!), :Laplace), ranef)
+end
+
+# Router leg, called from the Gaussian sd() dispatch when any SD target has
+# `dpar = "sigma"`. Every shape outside the two supported ones is refused by name.
+function _drm_gaussian_sigma_sd_laplace(f::DrmFormula, fam::Gaussian, sdp, sdpp, re, structured,
+                                        structured_sigma, sigma_re, metav, has_missing_response,
+                                        y, Xμ, Xσ, nmμ, nmσ, data, K, A, coords, g_tol, method,
+                                        algorithm)
+    what = "Gaussian `sd(g, sigma)`"
+    isempty(sdpp) || throw(ArgumentError("drm: $what cannot be combined with `sd(g, phylogenetic)`."))
+    metav === nothing || throw(ArgumentError("drm: $what cannot be combined with `meta_V(...)`."))
+    method === :REML && throw(ArgumentError("drm: $what supports maximum likelihood only (the marginal is a Laplace approximation)."))
+    algorithm === :auto || throw(ArgumentError("drm: `algorithm = :$algorithm` is not implemented for $what."))
+    has_missing_response && throw(ArgumentError(
+        "drm: $what requires observed responses; remove incomplete rows first (`drm_listwise`)."))
+    structured === nothing || throw(ArgumentError(
+        "drm: $what cannot be combined with a structured mean effect (phylo/relmat/animal/spatial)."))
+    targets = _sd_target_parts(f)
+    allowed = Set((:mu, :sigma))
+    for item in targets
+        push!(allowed, item.key)
+    end
+    all(p -> first(p) in allowed, f.forms) || throw(ArgumentError(
+        "drm: $what supports only `mu`, `sigma` and `sd(...)` formulas."))
+    sig_targets = filter(item -> item.target.dpar === :sigma, targets)
+    mu_targets = filter(item -> item.target.dpar === :mu, targets)
+    length(sig_targets) == 1 || throw(ArgumentError(
+        "drm: $what takes exactly one sigma-side SD formula (got $(length(sig_targets)))."))
+    sig_t = only(sig_targets)
+    sd_ = sig_t.target
+    sd_.block === nothing && sd_.level in (:iid, :animal, :relmat) || throw(ArgumentError(
+        "drm: $what is implemented for an ordinary sigma random effect and for animal/relmat " *
+        "structured sigma effects; `$(sd_.level)` is not (phylogenetic sigma effects are also " *
+        "refused by native drmTMB; spatial is not yet ported)."))
+    nblocks = length(targets)
+    block_of(item) = _sd_target_block(item.target; disambiguate = nblocks > 1)
+
+    n = length(y)
+    structured_route = structured_sigma !== nothing
+    local sigma_spec
+    if structured_route
+        # 6b: sigma ~ 1 + animal|relmat(1 | g), sd(g, level, sigma) ~ z; mean fixed.
+        kind, grp = structured_sigma
+        kind in (:animal, :relmat) || throw(ArgumentError(
+            "drm: $what with `$kind(1 | $grp)` on sigma is not supported; use animal or relmat."))
+        sd_.level === kind || throw(ArgumentError(
+            "drm: `sd($grp, $(sd_.level), dpar = sigma)` does not match the sigma-side `$kind(1 | $grp)`."))
+        isempty(sigma_re) && isempty(re) && isempty(mu_targets) || throw(ArgumentError(
+            "drm: structured sigma SD regression takes a fixed-effect mean and one structured " *
+            "sigma intercept only (no ordinary mean or sigma random effects)."))
+        sd_.group === grp || throw(ArgumentError(
+            "drm: `sd($(sd_.group), …, dpar = sigma)` must name the sigma-side grouping `$grp`."))
+        sd_.member in (nothing, :intercept) || throw(ArgumentError(
+            "drm: structured sigma SD targets the intercept; `coef($(sd_.member))` is not supported."))
+        gidx, G = _group_index(getproperty(data, grp); col = grp)
+        Cmat = if kind === :relmat
+            (A === nothing && coords === nothing) || throw(ArgumentError("drm: relmat sigma SD regression uses `K = …` only."))
+            K === nothing && throw(ArgumentError("relmat(1 | $grp) on sigma needs the covariance matrix `K = …`"))
+            Matrix{Float64}(K)
+        else
+            (K === nothing && coords === nothing) || throw(ArgumentError("drm: animal sigma SD regression uses `A = …` only."))
+            A === nothing && throw(ArgumentError("animal(1 | $grp) on sigma needs the relatedness matrix `A = …`"))
+            Matrix{Float64}(A)
+        end
+        size(Cmat) == (G, G) || throw(ArgumentError(
+            "structured matrix must be $(G)×$(G) (the number of `$grp` levels)"))
+        all(isfinite, Cmat) || throw(ArgumentError("structured matrix must be finite"))
+        Zb, nmb = _sd_group_design(f.response, sig_t.rhs, data, gidx, G, grp;
+                                   schema_cache = f.schema_cache, schema_key = sig_t.key)
+        size(Zb, 2) <= G && rank(Zb) == size(Zb, 2) || throw(ArgumentError(
+            "drm: $what group-level design is rank deficient."))
+        sigma_spec = (gidx, G, Zb, nmb, grp, ones(n), Cmat, block_of(sig_t), :structured)
+        mean_spec = nothing
+    else
+        # 6a: ordinary sigma random intercept/slope (+ optional mean intercept), each with SD.
+        (K === nothing && A === nothing && coords === nothing) || throw(ArgumentError(
+            "drm: $what with ordinary random effects does not use `K`, `A` or `coords`."))
+        length(sigma_re) == 1 || throw(ArgumentError(
+            "drm: $what needs exactly one ordinary `sigma` random-effect term (got $(length(sigma_re)))."))
+        skind, sslope = _re_kind(sigma_re[1][1])
+        skind in (:intercept, :slope) || throw(ArgumentError(
+            "drm: $what supports one sigma intercept `(1 | g)` or one independent slope `(0 + x | g)`."))
+        sgrp = sigma_re[1][2]
+        sd_.group === sgrp || throw(ArgumentError(
+            "drm: `sd($(sd_.group), dpar = sigma)` must name the sigma random-effect group `$sgrp`."))
+        smember = skind === :intercept ? :intercept : sslope
+        (skind === :intercept ? sd_.member in (nothing, :intercept) : sd_.member === sslope) ||
+            throw(ArgumentError(skind === :intercept ?
+                "drm: the sigma intercept SD target must not carry a `coef(...)` selector." :
+                "drm: a sigma random slope needs an explicit `coef($sslope)` SD target."))
+        gb, Gb = _group_index(getproperty(data, sgrp); col = sgrp)
+        loading = if skind === :intercept
+            ones(n)
+        else
+            hasproperty(data, sslope) || throw(ArgumentError(
+                "drm: sigma random-slope predictor `$sslope` is absent from data."))
+            raw = getproperty(data, sslope)
+            raw isa AbstractVector{<:Real} && length(raw) == n && all(isfinite, raw) || throw(ArgumentError(
+                "drm: sigma random-slope predictor `$sslope` must be finite numeric values, one per response."))
+            any(!iszero, raw) || throw(ArgumentError(
+                "drm: sigma random-slope predictor `$sslope` must contain at least one nonzero value."))
+            Float64.(raw)
+        end
+        Zb, nmb = _sd_group_design(f.response, sig_t.rhs, data, gb, Gb, sgrp;
+                                   schema_cache = f.schema_cache, schema_key = sig_t.key)
+        size(Zb, 2) <= Gb && rank(Zb) == size(Zb, 2) || throw(ArgumentError(
+            "drm: $what group-level design is rank deficient."))
+        sigma_spec = (gb, Gb, Zb, nmb, sgrp, loading, nothing, block_of(sig_t), skind)
+        mean_spec = nothing
+        if !isempty(re)
+            length(re) == 1 || throw(ArgumentError(
+                "drm: $what allows at most one ordinary mean random-effect term (got $(length(re)))."))
+            mkind, _ = _re_kind(re[1][1])
+            mkind === :intercept || throw(ArgumentError(
+                "drm: $what supports a mean random INTERCEPT `(1 | g)` only (no mean random slopes)."))
+            length(mu_targets) == 1 || throw(ArgumentError(
+                "drm: $what with a mean random intercept needs its own `sd(g) ~ …` formula; " *
+                "a mean random effect without an SD formula is not supported here."))
+            mu_t = only(mu_targets)
+            md = mu_t.target
+            mgrp = re[1][2]
+            (md.level === :iid && md.group === mgrp && md.block === nothing &&
+             md.member in (nothing, :intercept)) || throw(ArgumentError(
+                "drm: the mean-side `sd(...)` must target the mean random intercept `(1 | $mgrp)`."))
+            ga, Ga = _group_index(getproperty(data, mgrp); col = mgrp)
+            Za, nma = _sd_group_design(f.response, mu_t.rhs, data, ga, Ga, mgrp;
+                                       schema_cache = f.schema_cache, schema_key = mu_t.key)
+            size(Za, 2) <= Ga && rank(Za) == size(Za, 2) || throw(ArgumentError(
+                "drm: $what mean group-level design is rank deficient."))
+            mean_spec = (ga, Ga, Za, nma, mgrp, block_of(mu_t))
+        else
+            isempty(mu_targets) || throw(ArgumentError(
+                "drm: a mean-side `sd(g) ~ …` needs a mean random intercept `(1 | g)`."))
+        end
+    end
+    return _fit_gaussian_sigma_sd_laplace(fam, y, Xμ, Xσ, mean_spec, sigma_spec, nmμ, nmσ, g_tol)
+end
