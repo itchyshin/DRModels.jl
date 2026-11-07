@@ -135,10 +135,10 @@ end
 # Return the explicitly independent animal intercept-plus-slope member from a
 # structured marker. The current public Gamma route uses this to map two SD
 # formulas to the coefficient fields; unrelated animal routes remain unchanged.
-function _animal_intercept_slope(rhs)
+function _animal_intercept_slope(rhs; kind = animal)
     terms = rhs isa Tuple ? rhs : (rhs,)
     for term in terms
-        term isa FunctionTerm && term.f === animal || continue
+        term isa FunctionTerm && term.f === kind || continue
         lhs = term.args[1].args[1]
         lhs isa FunctionTerm && lhs.f === (+) || continue
         consts = filter(x -> x isa ConstantTerm, lhs.args)
