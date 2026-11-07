@@ -1204,6 +1204,15 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     sdpp = _sdphylo_parts(f)
     sdp = _sd_parts(f)
     if !isempty(sdpp) || !isempty(sdp)
+        # Sigma-side SD targets (`sd(g, sigma) ~ …`): dense-Laplace engine for a
+        # sigma random effect (alone or beside a mean intercept) and for animal /
+        # relmat structured sigma intercepts. Dispatched before the shared refusals
+        # below, which forbid every sigma random effect on the mean-SD routes.
+        if any(item -> item.target.dpar === :sigma, _sd_target_parts(f))
+            return _withformula(_drm_gaussian_sigma_sd_laplace(f, fam, sdp, sdpp, re,
+                structured, structured_sigma, sigma_re, metav, has_missing_response,
+                y, Xμ, Xσ, nmμ, nmσ, data, K, A, coords, g_tol, method, algorithm), f)
+        end
         # Shared refusals for every sd() route (single or multi component).
         length(sdpp) ≤ 1 ||
             throw(ArgumentError("drm: one `sd(group, phylogenetic) ~ …` formula per model."))

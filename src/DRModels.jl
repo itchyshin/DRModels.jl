@@ -147,6 +147,7 @@ include("profile_q4_phylo.jl")   # Ayumi #2: profile-likelihood CIs for the q=4 
 include("bootstrap_q4_phylo.jl") # Ayumi #2: parametric bootstrap of the q=4 among-axis SDs (boundary-honest CIs)
 include("variational.jl")
 include("ordinary_laplace.jl")      # Arc 2: marginal = :Laplace on ordinary (1 | g) (TMB convention)
+include("gaussian_sigma_sd_laplace.jl")  # Gaussian sd(g, sigma): joint mu+sigma ordinary RE and structured sigma intercept, dense Laplace
 include("convergence_status.jl")  # FX3b: the three-valued twin status shared with drmTMB
 include("indep_slopes_laplace.jl")   # #960: Gamma/Student (1 | g) + (0 + x | g), TMB-convention Laplace
 include("summary.jl")
