@@ -309,6 +309,12 @@ function _drm_negbin2_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
     isempty(_sdphylo_parts(f)) || throw(ArgumentError(
         "NegBinomial2 `sd(group, phylogenetic) ~ …` is not implemented by the ordinary random-intercept route."))
     targets = _sd_target_parts(f)
+    animal_block = _animal_intercept_slope(get(Dict(f.forms), :mu, nothing))
+    if animal_block !== nothing
+        return _drm_negbin2_animal_intercept_slope_sd(
+            f, fam, targets, animal_block; data, tree, K, A, Ainv, coords,
+            g_tol, se, nAGQ)
+    end
     length(targets) == 1 || throw(ArgumentError(
         "NegBinomial2 random-effect SD regression requires exactly one `sd(group) ~ …` formula."))
     target = only(targets)
@@ -1572,4 +1578,251 @@ function _fit_truncated_negbin2(fam::TruncatedNegBinomial2, y, Xμ, Xσ, nmμ, n
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, Optim.converged(res), means, obs, scales), nll),
         Optim.iterations(res))
+end
+
+
+# Independent animal intercept-and-slope q2 block with one SD formula per
+# coefficient: `y ~ x + animal(1 + x | g)`, `sigma ~ 1`,
+# `sd(g, animal, coef(intercept)) ~ z0`, `sd(g, animal, coef(x)) ~ z1`.
+# Mirrors the Poisson and Gamma routes. The NB2 dispersion keeps the
+# parameterisation of `_fit_nb2_animal_sd_laplace` (log sigma, size
+# exp(-2 log sigma) clamped inside `_nb2_laplace_setup`), so
+# theta = (beta, log sigma, alpha0, alpha1).
+function _drm_negbin2_animal_intercept_slope_sd(f::DrmFormula, fam::NegBinomial2,
+        targets, animal_block; data, tree, K, A, Ainv, coords, g_tol, se, nAGQ)
+    length(targets) == 2 || throw(ArgumentError(
+        "NegBinomial2 `animal(1 + x | group)` SD regression needs one SD formula for the intercept and one for the slope."))
+    group, slope = animal_block.group, animal_block.slope
+    all(item -> item.target.level === :animal && item.target.group === group &&
+        item.target.dpar === :mu && item.target.block === nothing, targets) ||
+        throw(ArgumentError("NegBinomial2 independent animal intercept-and-slope SD regression requires two matching `animal` mean targets."))
+    Set(item.target.member for item in targets) == Set((:intercept, slope)) ||
+        throw(ArgumentError(
+            "NegBinomial2 animal SD formulas must select `coef(intercept)` and `coef($slope)` exactly once."))
+    (tree === nothing && K === nothing && coords === nothing) || throw(ArgumentError(
+        "NegBinomial2 animal SD regression uses `A = …` or `Ainv = …`; do not also supply `tree`, `K`, or `coords`."))
+    (A === nothing) == (Ainv === nothing) && throw(ArgumentError(
+        "NegBinomial2 animal SD regression requires exactly one of `A = …` or `Ainv = …`."))
+    nAGQ === nothing || throw(ArgumentError(
+        "nAGQ is not used by the sparse-Laplace animal SD route; omit it."))
+    rhs = Dict(f.forms)
+    fixed_mu, re, metav, structured, _, _, parsed_slope = _split_ranef(
+        rhs[:mu]; allow_animal_intercept_slope = true)
+    metav === nothing && isempty(re) && structured == (:animal, group) &&
+        parsed_slope === slope || throw(ArgumentError(
+        "NegBinomial2 animal SD regression requires one matching independent `animal(1 + $slope | $group)` term."))
+    _collect_structured(rhs[:mu]) == [(:animal, group)] || throw(ArgumentError(
+        "NegBinomial2 animal intercept-and-slope SD regression requires exactly one structured term, with no additional structured effects."))
+    sigma_rhs = get(rhs, :sigma, nothing)
+    sigma_rhs isa ConstantTerm && sigma_rhs == ConstantTerm(1) || throw(ArgumentError(
+        "NegBinomial2 animal SD regression requires a fixed `sigma ~ 1` submodel."))
+    (haskey(rhs, :zi) || haskey(rhs, :hu)) && throw(ArgumentError(
+        "NegBinomial2 animal SD regression cannot yet be combined with `zi` or `hu`."))
+    fixed_mu, offset_term = _extract_offset(fixed_mu)
+    offset_term === nothing || throw(ArgumentError(
+        "NegBinomial2 random-effect SD regression does not yet support `offset(...)`."))
+    allowed = Set(vcat([:mu, :sigma], [item.key for item in targets]))
+    all(first(pair) in allowed for pair in f.forms) || throw(ArgumentError(
+        "NegBinomial2 animal intercept-and-slope SD regression supports only `mu`, fixed `sigma ~ 1`, and its two SD formulas."))
+    all(_formula_response_observed_mask(f, data)) || throw(ArgumentError(
+        "NegBinomial2 animal SD regression requires observed responses; remove incomplete rows before fitting."))
+    y, Xmu, nmmu = _design(f.response, fixed_mu, data)
+    _, Xsigma, nmsigma = _design(f.response, sigma_rhs, data)
+    all(yi -> isfinite(yi) && yi >= 0 && isinteger(yi), y) || throw(ArgumentError(
+        "NegBinomial2() requires non-negative integer counts as the response"))
+    labels = getproperty(data, group)
+    Q, gidx = Ainv === nothing ? _general_cov_setup(A, labels; normalize = false) :
+        _nb2_animal_precision_setup(Ainv, labels, group)
+    G = size(Q, 1)
+    ordered = map((:intercept, slope)) do member
+        only(filter(item -> item.target.member === member, targets))
+    end
+    Zgs = Matrix{Float64}[]
+    nmsds = Vector{String}[]
+    for item in ordered
+        Zg, names = _sd_group_design(f.response, item.rhs, data, gidx, G, group;
+            schema_cache = f.schema_cache, schema_key = item.key)
+        size(Zg, 2) <= G && rank(Zg) == size(Zg, 2) || throw(ArgumentError(
+            "NegBinomial2 animal SD target `coef($(item.target.member))` has a rank-deficient group-level design."))
+        push!(Zgs, Matrix{Float64}(Zg))
+        push!(nmsds, names)
+    end
+    x = _poisson_animal_slope_loading(data, slope, length(y);
+        label = "NegBinomial2 animal")
+    if all(==(first(x)), x) && isequal(Zgs[1], Zgs[2])
+        throw(ArgumentError(
+            "NegBinomial2 animal intercept-and-slope SD regression cannot separate the intercept and slope variances when `$slope` is constant and both SD formulas have identical group-level designs."))
+    end
+    blocks = Symbol[_sd_target_block(item.target; disambiguate = true)
+                    for item in ordered]
+    return _withformula(_fit_nb2_animal_intercept_slope_laplace(
+        fam, y, Xmu, Xsigma, Zgs, gidx, Q, nmmu, nmsigma, nmsds, blocks,
+        group, x, g_tol; se), f)
+end
+
+function _nb2_animal_intercept_slope_mode(y, eta0, load0, load1, gidx, Q, aux;
+                                          b0 = nothing, maxiter::Int = 80,
+                                          tol::Real = 1e-10)
+    G = size(Q, 1)
+    Qjoint = [Q spzeros(G, G); spzeros(G, G) Q]
+    b = b0 === nothing ? zeros(2G) : copy(b0)
+    function joint(bb)
+        b0v, b1v = @view(bb[1:G]), @view(bb[(G + 1):(2G)])
+        value = 0.5 * dot(b0v, Q * b0v) + 0.5 * dot(b1v, Q * b1v)
+        @inbounds for i in eachindex(y)
+            eta = eta0[i] + load0[i] * b0v[gidx[i]] + load1[i] * b1v[gidx[i]]
+            value += first(_laplace_v123(Val(:nb2_fixed), aux, i, eta))
+        end
+        value
+    end
+    for _ in 1:maxiter
+        b0v, b1v = @view(b[1:G]), @view(b[(G + 1):(2G)])
+        grad = Qjoint * b
+        h00, h11, h01 = zeros(G), zeros(G), zeros(G)
+        @inbounds for i in eachindex(y)
+            gi = gidx[i]
+            eta = eta0[i] + load0[i] * b0v[gi] + load1[i] * b1v[gi]
+            _, d1, d2, _ = _laplace_v123(Val(:nb2_fixed), aux, i, eta)
+            grad[gi] += load0[i] * d1
+            grad[G + gi] += load1[i] * d1
+            h00[gi] += load0[i]^2 * d2
+            h11[gi] += load1[i]^2 * d2
+            h01[gi] += load0[i] * load1[i] * d2
+        end
+        hessian = Qjoint + [spdiagm(0 => h00) spdiagm(0 => h01);
+                            spdiagm(0 => h01) spdiagm(0 => h11)]
+        ch = cholesky(Symmetric(hessian); check = false)
+        issuccess(ch) || return b, ch, false
+        step = ch \ grad
+        norm(step) <= tol * (1 + norm(b)) && return b, ch, true
+        if norm(step) <= 1e-3 * (1 + norm(b))
+            b .-= step
+            continue
+        end
+        f0 = joint(b)
+        amount, accepted = 1.0, false
+        while amount >= 1e-5
+            trial = b .- amount .* step
+            if joint(trial) <= f0
+                b = trial
+                accepted = true
+                break
+            end
+            amount *= 0.5
+        end
+        accepted || return b, ch, false
+    end
+    return b, nothing, false
+end
+
+function _nb2_animal_intercept_slope_laplace(y, Xmu, Z0, Z1, gidx, Q, logdetQ,
+        theta, aux_from, x; b0 = nothing)
+    pmu = size(Xmu, 2)
+    p0, p1 = size(Z0, 2), size(Z1, 2)
+    beta = @view theta[1:pmu]
+    aux = aux_from(theta[pmu + 1])
+    a0 = @view theta[(pmu + 2):(pmu + 1 + p0)]
+    a1 = @view theta[(pmu + 2 + p0):end]
+    eta0 = Xmu * beta
+    load0 = exp.(Z0[gidx, :] * a0)
+    load1 = x .* exp.(Z1[gidx, :] * a1)
+    (all(isfinite, load0) && all(isfinite, load1)) ||
+        return 1e18, zeros(2 * size(Q, 1)), false
+    b, ch, ok = _nb2_animal_intercept_slope_mode(
+        y, eta0, load0, load1, gidx, Q, aux; b0)
+    ok || return 1e18, b, false
+    G = size(Q, 1)
+    b0v, b1v = @view(b[1:G]), @view(b[(G + 1):(2G)])
+    value = 0.5 * dot(b0v, Q * b0v) + 0.5 * dot(b1v, Q * b1v)
+    @inbounds for i in eachindex(y)
+        eta = eta0[i] + load0[i] * b0v[gidx[i]] + load1[i] * b1v[gidx[i]]
+        value += first(_laplace_v123(Val(:nb2_fixed), aux, i, eta))
+    end
+    return value - logdetQ + 0.5 * logdet(ch), b, true
+end
+
+function _fit_nb2_animal_intercept_slope_laplace(fam, y, Xmu, Xsigma, Zgs, gidx,
+        Q, nmmu, nmsigma, nmsds, blocks, group, x, g_tol;
+        se::Bool = true, maxiter::Int = 250)
+    length(Zgs) == 2 || throw(ArgumentError("expected two NegBinomial2 animal SD designs"))
+    size(Xsigma, 2) == 1 || throw(ArgumentError(
+        "NegBinomial2 animal SD regression requires `sigma ~ 1`."))
+    qchol = cholesky(Symmetric(Q); check = false)
+    issuccess(qchol) || throw(ArgumentError(
+        "NegBinomial2 animal covariance matrix must be positive definite"))
+    logdetQ = logdet(qchol)
+    aux_from, beta0, logsigma0 = _nb2_laplace_setup(y, Xmu)
+    pmu = size(Xmu, 2)
+    psd = size.(Zgs, 2)
+    ranges = (pmu + 2):(pmu + 1 + psd[1]), (pmu + 2 + psd[1]):(pmu + 1 + sum(psd))
+    theta0 = zeros(pmu + 1 + sum(psd))
+    theta0[1:pmu] .= beta0
+    theta0[pmu + 1] = logsigma0
+    theta0[ranges[1]] .= Zgs[1] \ fill(log(0.4), size(Zgs[1], 1))
+    theta0[ranges[2]] .= Zgs[2] \ fill(log(0.25), size(Zgs[2], 1))
+    last_b = zeros(2 * size(Q, 1))
+    function nll(theta)
+        value, b, ok = _nb2_animal_intercept_slope_laplace(
+            y, Xmu, Zgs[1], Zgs[2], gidx, Q, logdetQ, theta, aux_from, x;
+            b0 = last_b)
+        if !ok
+            value, b, ok = _nb2_animal_intercept_slope_laplace(
+                y, Xmu, Zgs[1], Zgs[2], gidx, Q, logdetQ, theta, aux_from, x;
+                b0 = zeros(length(last_b)))
+        end
+        ok || return 1e18
+        last_b .= b
+        value
+    end
+    function grad!(g, theta)
+        for j in eachindex(theta)
+            h = 2e-4 * (1 + abs(theta[j]))
+            e = zeros(length(theta)); e[j] = h
+            g[j] = (nll(theta .+ e) - nll(theta .- e)) / (2h)
+        end
+        return g
+    end
+    function run_lbfgs(start)
+        od = Optim.OnceDifferentiable(nll, grad!, start)
+        res = Optim.optimize(od, start,
+            Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking()),
+            Optim.Options(g_tol = g_tol, iterations = maxiter))
+        return res, Optim.minimizer(res), Optim.minimum(res)
+    end
+    result, theta, fmin = run_lbfgs(theta0)
+    # Same plateau guard as `_fit_nb2_animal_sd_laplace`: the clamped NB2 size
+    # makes the likelihood flat in log sigma below about -3.5.
+    if theta[pmu + 1] < _NB2_SIGMA_PLATEAU_LOGSIGMA
+        restart = copy(theta0)
+        restart[pmu + 1] = log(0.5)
+        last_b .= 0
+        result2, theta2, fmin2 = run_lbfgs(restart)
+        if fmin2 < fmin
+            result, theta, fmin = result2, theta2, fmin2
+        end
+    end
+    nll_hat = nll(theta)
+    gf = zeros(length(theta)); grad!(gf, theta)
+    V = se ? _vcov_from_fd_hessian(
+        _finite_hessian(nll, theta; h = _fd_hessian_step(length(y)));
+        context = "NegBinomial2 independent animal intercept-and-slope SD regression") :
+        fill(NaN, length(theta), length(theta))
+    block_list = Pair{Symbol,UnitRange{Int}}[
+        :mu => 1:pmu, :sigma => (pmu + 1):(pmu + 1),
+        blocks[1] => ranges[1], blocks[2] => ranges[2]]
+    name_list = Pair{Symbol,Vector{String}}[
+        :mu => nmmu, :sigma => nmsigma,
+        blocks[1] => nmsds[1], blocks[2] => nmsds[2]]
+    sd0 = exp.(Zgs[1] * theta[ranges[1]])
+    sd1 = exp.(Zgs[2] * theta[ranges[2]])
+    scales = Dict{Symbol,Vector{Float64}}(:sigma => fill(exp(theta[pmu + 1]), length(y)))
+    scales[blocks[1]] = sd0[gidx]
+    scales[blocks[2]] = sd1[gidx]
+    scales[Symbol(string(blocks[1]), "_group")] = sd0
+    scales[Symbol(string(blocks[2]), "_group")] = sd1
+    fit = DrmFit(fam, block_list, name_list, theta, Matrix(V), -nll_hat,
+        length(y), _laplace_outer_converged(result, nll_hat, gf, theta,
+        length(y), g_tol), Dict(:mu => exp.(Xmu * theta[1:pmu])),
+        Dict(:mu => Vector{Float64}(y)), scales)
+    return _withiterations(_withnll(fit, _nll_pinned(nll, theta, nll_hat)), Optim.iterations(result))
 end
