@@ -128,3 +128,34 @@ _gq2_kw(kind, fx) = kind === :animal ? (; A = fx.C) : (; K = fx.C)
     @test_throws ArgumentError drm(_gq2_formula(:relmat), Gaussian(); data = fx.data,
                                    A = fx.C)
 end
+
+# Prediction on new data is population-level (X beta, random effects at zero),
+# for both providers; agrees with fitted() and with drm_bridge(newdata = ...).
+@testset "Gaussian structured q2: predict / predict_parameters / bridge newdata" begin
+    for kind in (:animal, :relmat)
+        fx = _gq2_fixture()
+        data, kw = fx.data, _gq2_kw(kind, fx)
+        fit = drm(_gq2_formula(kind), Gaussian(); data, kw...)
+        n = length(data.x)
+        beta = coef(fit, :mu)
+        @test predict(fit, data) ≈ fitted(fit) atol = 1e-10
+        @test predict(fit, data; type = :link) ≈ hcat(ones(n), data.x) * beta atol = 1e-10
+        nd = (; x = [-0.7, 0.0, 0.5, 1.1], g = fill("never_seen", 4),
+              z0 = zeros(4), z1 = zeros(4))
+        Xnd = hcat(ones(4), nd.x)
+        @test predict(fit, nd) ≈ Xnd * beta atol = 1e-10
+        @test predict(fit, merge(nd, (; g = fill(first(data.g), 4)))) ≈ Xnd * beta atol = 1e-10
+        sel = predict(fit, nd; type = :link, se = true)
+        @test sel.se ≈ sqrt.(diag(Xnd * vcov(fit)[1:2, 1:2] * Xnd')) atol = 1e-8
+        @test predict_parameters(fit, nd)[:mu] ≈ Xnd * beta atol = 1e-10
+        @test predict_parameters(fit, nd)[:sigma] ≈ fill(exp(coef(fit, :sigma)[1]), 4) atol = 1e-10
+        sd = kind === :animal ? "animal" : "relmat"
+        br = drm_bridge(; formula = "y ~ x + $sd(1 + x | g); sigma ~ 1; " *
+                        "sd(g, $sd, coef(intercept)) ~ z0; sd(g, $sd, coef(x)) ~ z1",
+                        family = "gaussian", data, kw..., newdata = nd)
+        @test br["converged"]
+        @test br["coefficients"] ≈ coef(fit) atol = 1e-6
+        @test length(unique(br["coef_names"])) == length(br["coef_names"])
+        @test br["dpars_newdata"]["mu"] ≈ Xnd * beta atol = 1e-6
+    end
+end
