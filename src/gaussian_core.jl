@@ -1217,6 +1217,18 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
                 "on `sigma`."))
         penalty === nothing ||
             throw(ArgumentError("drm: `penalty` is not wired for sd() submodel routes."))
+        # q3/q4 ordinary correlated block with per-coefficient sd() formulas.
+        multi_corr = [_re_multi_corr_vars(rl) for (rl, _) in re]
+        # q = 2 `(1 + x | g)` joins only when it carries `coef()` SD targets and stands
+        # alone (native R admits one SD formula per coefficient); every other q2
+        # shape keeps its existing route and refusals.
+        q2_alone = length(re) == 1 && structured === nothing &&
+            !isempty(_sd_target_parts(f))
+        if any(v -> v !== nothing && (length(v) ≥ 2 || q2_alone), multi_corr)
+            return _withformula(_drm_gaussian_ordinary_q34_sd(f, fam, sdpp, re, multi_corr,
+                structured, structured_sigma, sigma_re, metav, has_missing_response,
+                y, Xμ, Xσ, nmμ, nmσ, data, g_tol, method, algorithm), f)
+        end
         re_kinds_sd = [_re_kind(rl) for (rl, _) in re]
         if q2_kind !== nothing
             return _withformula(_drm_gaussian_structured_q2_sd(f, fam, q2_kind, structured,
