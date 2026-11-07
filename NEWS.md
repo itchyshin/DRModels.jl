@@ -8,6 +8,8 @@ human-readable changelog.
 
 ## v0.8.1
 
+- **Separation message for `CumulativeLogit()` and a boundary flag for Student `nu` (#1221, #969).** A fixed-effect `CumulativeLogit()` fit with (quasi-)complete separation now warns and names the affected coefficients, as `Binomial()` does. A `Student()` fit whose fitted `nu` reaches the Gaussian limit (1/nu < 1e-3) now warns at fit time and prints a `boundary (limit)` note under the `nu` block of `show`. Both are messages only: estimates, `vcov`, `stderror`, `converged` and `convergence_status` are unchanged.
+
 - Normal and ridge fixed-effect priors now work with one independent Gaussian mean random intercept. Priors can target mean and residual log-SD coefficients; the group SD remains unpenalized. Other random-effect structures and inference restrictions remain unchanged.
 
 - Fix: Gaussian fits with a response on a tiny scale (residual SD about 1e-4) are no longer flagged unconverged at the optimum. Every route that already used the unit-free Newton-step check (Gaussian ML and REML fixed effects, Gaussian random effects, Gaussian `sd ~` models, Student) now sets `converged` from that check without also requiring `Optim.converged`, which fails a line-search stall at the optimum. The unit-free check also judges a singular Hessian on its correlation form, so the verdict no longer moves with the units of y. Stopping on the iteration cap still fails the flag, and the Gaussian `sd ~` routes now also report a non-finite Hessian as not converged, as the other routes already did (#983).
