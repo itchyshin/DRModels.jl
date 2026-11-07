@@ -75,7 +75,42 @@ struct Student end
 # FX3b: `se = false` is recorded on the fit (`DrmFit.uncertainty`), so
 # `convergence_status` does not read the skipped (NaN) covariance as a failure.
 @drm_entry function drm(f::DrmFormula, fam::Student; se::Bool = true, kwargs...)
-    return _withuncertainty(_drm_student_fit(f, fam; se = se, kwargs...), se)
+    return _warn_student_nu_boundary(_withuncertainty(_drm_student_fit(f, fam; se = se, kwargs...), se))
+end
+
+# #969: Student ν at the Gaussian limit. When the data have no heavy tails the ML
+# estimate runs to ν → ∞ (1/ν → 0): the likelihood is flat in the ν linear predictor,
+# the Hessian is singular there, and the pseudo-inverse can hand back a variance of
+# ~0, which prints as SE(ν) = 0 and a zero-width Wald interval. FLAG ONLY: `vcov`,
+# `stderror`, `converged` and `convergence_status` are NOT changed (how the ν SE
+# should be reported, and whether such a fit counts as `:boundary`, is an owner
+# decision; see #969). `1/ν < 1e-3` is the cut the issue's harness uses.
+const _STUDENT_NU_BOUNDARY_INV = 1e-3
+
+# Largest fitted ν over the rows, or `nothing` if the fit has no finite ν.
+function _student_nu_boundary(fit::DrmFit)
+    fit.family isa Student || return nothing
+    nu = get(fit.scales, :nu, nothing)
+    nu === nothing && return nothing
+    v = filter(isfinite, collect(Float64, nu))
+    isempty(v) && return nothing
+    νmax = maximum(v)
+    return 1 / νmax < _STUDENT_NU_BOUNDARY_INV ? νmax : nothing
+end
+
+function _warn_student_nu_boundary(fit)
+    fit isa DrmFit || return fit
+    νmax = _student_nu_boundary(fit)
+    νmax === nothing && return fit
+    get(task_local_storage(), :drm_quiet_boundary, false) === true && return fit
+    @warn "drm: Student() degrees of freedom ν reached the Gaussian limit (fitted ν up to " *
+          "$(round(νmax; sigdigits = 3)), 1/ν < $(_STUDENT_NU_BOUNDARY_INV)): boundary (limit). " *
+          "The likelihood is flat in the `nu` coefficients, so their estimates are an arbitrary " *
+          "optimiser stop and their Wald SE / interval are NOT valid (a reported SE of 0 means " *
+          "'not computable', not 'precise'). The Gaussian family is the appropriate model; " *
+          "compare it by likelihood ratio with a 0.5χ²₀ + 0.5χ²₁ boundary mixture (DRModels.jl #969). " *
+          "`stderror`, `vcov` and `convergence_status` are unchanged."
+    return fit
 end
 
 function _drm_student_fit(f::DrmFormula, fam::Student; data, g_tol::Real = 1e-8,
