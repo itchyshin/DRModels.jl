@@ -750,7 +750,7 @@ function _bridge_prepare_fixed_priors(form, fam, labels, prior_input, expected_i
     names = Pair{Symbol,Vector{String}}[]; intercepts = Dict{Symbol,Union{Nothing,Int}}()
     public_names = Dict{Symbol,Vector{String}}()
     for d in dpars
-        rhs = first(_extract_offset(forms[d]))
+        rhs = first(_extract_offset(first(_split_ranef(forms[d]))))
         raw, public = _bridge_render_formula_block(form, d, rhs, labels)
         length(unique(public)) == length(public) || throw(ArgumentError("drm_bridge: ambiguous public coefficient names"))
         push!(names, d => raw); public_names[d] = public

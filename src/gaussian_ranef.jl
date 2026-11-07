@@ -620,7 +620,7 @@ a single intercept only — σ-RE, slopes, and multi-ranef stay rejected.
 Worked example: `test/test_reml_ordinary_ranef.jl` (not in the default suite yet).
 """
 function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ, grp, g_tol;
-                             reml::Bool = false)
+                             reml::Bool = false, prior_rows = nothing)
     n = length(y)
     pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     const_2pi = 0.5 * n * log(2π)
@@ -695,7 +695,7 @@ function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ,
         return nll_ml_θ + 0.5 * ldX - const_pμ
     end
 
-    nll = reml ? nll_reml : nll_ml
+    nll = prior_rows === nothing ? (reml ? nll_reml : nll_ml) : θ -> nll_ml(θ) + _fixed_prior_value(prior_rows, θ)
 
     βμ0 = Xμ \ y
     res0 = y - Xμ * βμ0
@@ -829,7 +829,8 @@ function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ,
     converged = hess_finite && !Optim.iteration_limit_reached(res) &&
         _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
     # Profile intervals reuse the ML Woodbury nll (same convention as FE REML).
-    fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, converged, means, obs, scales), nll_ml), re)
+    fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -(prior_rows === nothing ? nll(θ̂) : nll_ml(θ̂)), n, converged, means, obs, scales), prior_rows === nothing ? nll_ml : nll), re)
+    prior_rows === nothing || (fit = _with_fixed_priors(fit, prior_rows, nll_ml))
     if reml
         return _withreml(fit, -nll_reml(θ̂), -nll_ml(θ̂))
     end

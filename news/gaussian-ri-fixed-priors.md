@@ -1,0 +1,1 @@
+- Normal and ridge fixed-effect priors now work with one independent Gaussian mean random intercept. Priors can target mean and residual log-SD coefficients; the group SD remains unpenalized. Other random-effect structures and inference restrictions remain unchanged.
