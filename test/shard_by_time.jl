@@ -104,6 +104,9 @@ function _main(args)
         foreach(f -> println("  ", f), files)
         return
     end
+    # Some test files read fixtures relative to the working directory after an
+    # include_string (where @__DIR__ is lost); runtests.jl runs with cwd = test/.
+    cd(_TESTDIR)
     @eval Main begin
         using DRModels
         using Test, LinearAlgebra, SparseArrays, Random
