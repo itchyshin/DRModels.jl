@@ -111,7 +111,9 @@ _gq2_kw(kind, fx) = kind === :animal ? (; A = fx.C) : (; K = fx.C)
             @test_throws ArgumentError drm(formula, Gaussian();
                 data = merge(data, (; x = zeros(length(data.x)))), kw...)
             @test_throws Exception drm(formula, Gaussian(); data)          # no kernel
-            @test_throws ArgumentError drm(formula, Gaussian(); data, kw..., method = :REML)
+            # REML is admitted for this unlabelled, `sigma ~ 1` cell (oracle-checked in
+            # test_gaussian_structured_q2_reml.jl); it no longer refuses.
+            @test drm(formula, Gaussian(); data, kw..., method = :REML).estim_method === :REML
         end
     end
     fx = _gq2_fixture()
