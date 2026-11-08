@@ -221,6 +221,24 @@ function _fit_twofield_sd_laplace(fam::Union{Gamma,NegBinomial2}, y, Xmu, Xsigma
         result2, theta2, fmin2 = run(restart)
         fmin2 < fmin && ((result, theta, fmin) = (result2, theta2, fmin2))
     end
+    # Gamma coordinate-SD (`sd-z`) fits: the likelihood in the SD coefficients has a
+    # second interior mode, and the single default start can stop at the lower one
+    # (see `_q2_boundary_restarts`, run unconditionally here). `info` records the outcome.
+    restart_info = Ref{Any}(nothing)
+    if isgamma && any(fk -> size(fk.Zg, 2) > 1, fields)
+        n_obs = length(y)
+        restarted = _q2_boundary_restarts(
+            start -> first(run(start)), last_u, result,
+            (sd0, sd1, het) -> _q2_alt_theta(theta0, ranges, [fields[1].Zg, fields[2].Zg], sd0, sd1, het),
+            th -> min(minimum(exp.(fields[1].Zg * th[ranges[1]])), minimum(exp.(fields[2].Zg * th[ranges[2]]))),
+            r -> begin
+                th = Optim.minimizer(r); g = zeros(length(th)); grad!(g, th)
+                _laplace_outer_converged(r, Optim.minimum(r), g, th, n_obs, g_tol)
+            end; info = restart_info, force = true)
+        if restarted !== result
+            result, theta, fmin = restarted, Optim.minimizer(restarted), Optim.minimum(restarted)
+        end
+    end
     nll_hat = nll(theta)
     gf = zeros(length(theta)); grad!(gf, theta)
     near_bound = isgamma && abs(theta[pmu + 1]) >= 4 -
@@ -240,6 +258,8 @@ function _fit_twofield_sd_laplace(fam::Union{Gamma,NegBinomial2}, y, Xmu, Xsigma
     end
     scales = Dict{Symbol,Vector{Float64}}(:sigma => fill(exp(theta[pmu + 1]), length(y)))
     correlated && (scales[:correlation] = [tanh(theta[end])])
+    ri = restart_info[]
+    ri === nothing || (scales[:q2_restarts] = [ri.ran ? 1.0 : 0.0, Float64(ri.winner), Float64(ri.gain), ri.flipped ? 1.0 : 0.0])
     for k in 1:2
         sdk = exp.(fields[k].Zg * theta[ranges[k]])
         scales[blocks[k]] = sdk[fields[k].gidx]
