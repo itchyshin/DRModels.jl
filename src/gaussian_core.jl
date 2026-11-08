@@ -1071,7 +1071,7 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     q2_labelled = false
     for kind_q2 in (:animal, :relmat, :phylo, :spatial)
         blk_q2 = _animal_intercept_slope(rhs[:mu]; kind = _q2_marker(kind_q2),
-                                         allow_label = kind_q2 in (:animal, :relmat))
+                                         allow_label = true)
         blk_q2 !== nothing &&
             any(item.target.level === _q2_target_level(kind_q2) for item in _sd_target_parts(f)) &&
             (q2_kind = kind_q2; q2_labelled = blk_q2.label !== nothing)

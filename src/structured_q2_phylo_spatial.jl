@@ -56,7 +56,7 @@ function _phylo_spatial_q2_block(f::DrmFormula)
     rhs === nothing && return nothing
     targets = _sd_target_parts(f)
     for kind in (:phylo, :spatial)
-        block = _animal_intercept_slope(rhs; kind = _q2_marker(kind))
+        block = _animal_intercept_slope(rhs; kind = _q2_marker(kind), allow_label = true)
         block === nothing && continue
         any(item -> item.target.level === _q2_target_level(kind), targets) &&
             return (kind, block)
@@ -71,7 +71,8 @@ function _drm_count_phylo_spatial_q2_sd(f::DrmFormula, fam::Union{Poisson,NegBin
     fname = fam isa Poisson ? "Poisson" : "NegBinomial2"
     level = _q2_target_level(kind)
     group, slope = block.group, block.slope
-    term = "$kind(1 + $slope | $group)"
+    correlated = block.label !== nothing
+    term = correlated ? "$kind(1 + $slope | $(block.label) | $group)" : "$kind(1 + $slope | $group)"
     who = "$fname `$term` SD regression"
     targets = _sd_target_parts(f)
     length(targets) == 2 || throw(ArgumentError(
@@ -89,7 +90,8 @@ function _drm_count_phylo_spatial_q2_sd(f::DrmFormula, fam::Union{Poisson,NegBin
     rhs = Dict(f.forms)
     fixed_mu, re, metav, structured, phylo_slope, _, other_slope = _split_ranef(rhs[:mu];
         allow_phylo_slope = kind === :phylo,
-        allow_spatial_intercept_slope = kind === :spatial)
+        allow_spatial_intercept_slope = kind === :spatial,
+        allow_labelled_intercept_slope = correlated)
     parsed_slope = kind === :phylo ? phylo_slope : other_slope
     metav === nothing && isempty(re) && structured == (kind, group) &&
         parsed_slope === slope || throw(ArgumentError(
@@ -144,11 +146,11 @@ function _drm_count_phylo_spatial_q2_sd(f::DrmFormula, fam::Union{Poisson,NegBin
     fit = if fam isa Poisson
         off = _poisson_sd_offset(offset_term, data, length(y))
         _fit_poisson_animal_intercept_slope_laplace(fam, y, Xmu, Zgs, gidx, Q, nmmu,
-            nmsds, blocks, group, x, off, g_tol; se)
+            nmsds, blocks, group, x, off, g_tol; se, correlated)
     else
         _, Xsigma, nmsigma = _design(f.response, sigma_rhs, data)
         _fit_nb2_animal_intercept_slope_laplace(fam, y, Xmu, Xsigma, Zgs, gidx, Q,
-            nmmu, nmsigma, nmsds, blocks, group, x, g_tol; se)
+            nmmu, nmsigma, nmsds, blocks, group, x, g_tol; se, correlated)
     end
     return _withformula(fit, f)
 end

@@ -43,7 +43,15 @@ _structured_re_lhs_text(lhs) = if lhs isa ConstantTerm
 # slope form on any route that did not opt in — throws, so no route can silently
 # fit the intercept-only model in place of what the formula says.
 function _check_phylo_re_lhs(lhs, grp::Symbol; allow_slope::Bool = false,
-                             allow_slope_only::Bool = false)
+                             allow_slope_only::Bool = false,
+                             allow_labelled_intercept_slope::Bool = false)
+    labelled = _structured_lhs_label(lhs)
+    if labelled !== nothing && allow_slope && allow_labelled_intercept_slope
+        lhs = labelled.inner
+        lhs isa FunctionTerm && lhs.f === (+) || throw(ArgumentError(
+            "drm: a labelled `phylo(... | $(labelled.label) | $grp)` term is only implemented as `phylo(1 + x | $(labelled.label) | $grp)`"))
+        allow_slope_only = false
+    end
     (lhs isa ConstantTerm && lhs.n == 1) && return nothing
     lhs_text = _structured_re_lhs_text(lhs)
     if lhs isa FunctionTerm && lhs.f === (+)
@@ -95,11 +103,11 @@ function _check_structured_re_lhs(kind::Symbol, lhs, grp::Symbol;
                                   allow_intercept_slope::Bool = false,
                                   allow_labelled_intercept_slope::Bool = false)
     labelled = _structured_lhs_label(lhs)
-    if kind === :relmat && labelled !== nothing && allow_intercept_slope &&
+    if kind in (:relmat, :spatial) && labelled !== nothing && allow_intercept_slope &&
        allow_labelled_intercept_slope
         lhs = labelled.inner
         lhs isa FunctionTerm && lhs.f === (+) || throw(ArgumentError(
-            "drm: a labelled `relmat(... | $(labelled.label) | $grp)` term is only implemented as `relmat(1 + x | $(labelled.label) | $grp)`"))
+            "drm: a labelled `$kind(... | $(labelled.label) | $grp)` term is only implemented as `relmat(1 + x | $(labelled.label) | $grp)`"))
     end
     (lhs isa ConstantTerm && lhs.n == 1) && return nothing
     if kind in (:relmat, :spatial) && allow_intercept_slope &&
@@ -319,7 +327,8 @@ function _split_ranef(rhs; allow_phylo_slope::Bool = false,
         elseif t isa FunctionTerm && t.f === phylo
             slope = _check_phylo_re_lhs(t.args[1].args[1], t.args[1].args[2].sym;
                                         allow_slope = allow_phylo_slope,
-                                        allow_slope_only = allow_phylo_slope_only)
+                                        allow_slope_only = allow_phylo_slope_only,
+                                        allow_labelled_intercept_slope)
             if structured === nothing
                 structured = (:phylo, t.args[1].args[2].sym)
                 structured_slope = slope
@@ -331,7 +340,8 @@ function _split_ranef(rhs; allow_phylo_slope::Bool = false,
         elseif t isa FunctionTerm && t.f === spatial
             slope = _check_structured_re_lhs(:spatial, t.args[1].args[1],
                 t.args[1].args[2].sym; allow_slope = allow_spatial_slope,
-                allow_intercept_slope = allow_spatial_intercept_slope)
+                allow_intercept_slope = allow_spatial_intercept_slope,
+                allow_labelled_intercept_slope)
             if structured === nothing
                 structured = (:spatial, t.args[1].args[2].sym)
                 animal_slope = slope

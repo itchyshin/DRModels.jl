@@ -742,7 +742,7 @@ function _drm_gaussian_structured_q2_sd(f::DrmFormula, fam::Gaussian, kind::Symb
     fn = _q2_marker(kind)
     level = _q2_target_level(kind)
     block = _animal_intercept_slope(Dict(f.forms)[:mu]; kind = fn,
-                                    allow_label = kind in (:animal, :relmat))
+                                    allow_label = true)
     grp, slope = block.group, block.slope
     correlated = block.label !== nothing
     term = correlated ? "$kind(1 + $slope | $(block.label) | $grp)" : "$kind(1 + $slope | $grp)"
