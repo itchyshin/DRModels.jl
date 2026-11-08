@@ -455,6 +455,8 @@ function _resolve_relatedness_labels(f::DrmFormula, data, A, ids; coords = nothi
     grp = _animal_group(f)
     grp === nothing && return M      # no animal() term: the #1010 guard has already refused `A`
     if labels_A === nothing
+        # once per bootstrap_ci / profile call: its refits run under `_without_boundary_warnings`
+        get(task_local_storage(), :drm_quiet_boundary, false) === true && return M
         @warn "drm: `A` has no labels, so its rows and columns are taken to be the levels " *
               "of `$grp` in order of first appearance in the data. Pass `ids = …` (the " *
               "label of each row of `A`), or `A` as a table whose column names are the " *
@@ -493,6 +495,7 @@ end
 # `animal()` term, otherwise `coords`.
 
 function _warn_unlabelled_coords(grp)
+    get(task_local_storage(), :drm_quiet_boundary, false) === true && return nothing
     @warn "drm: `coords` has no labels, so its rows are taken to be the levels of `$grp` " *
           "in order of first appearance in the data. Pass `ids = …` (the site label of each " *
           "row of `coords`), or `coords` as a Dict keyed by site label, to match `coords` " *

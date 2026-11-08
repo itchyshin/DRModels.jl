@@ -25,3 +25,25 @@ _quiet6(f) = Logging.with_logger(f, Logging.NullLogger())
     @test_throws ArgumentError lrt_boundary(fq, ok2)
     @test_throws ArgumentError lrtest(fq, ok2)
 end
+
+@testset "(b) unlabelled A / coords warning: once per bootstrap_ci call, every ordinary drm() call" begin
+    G, m = 6, 5
+    rng = StableRNG(11)
+    g = repeat(["a$i" for i in 1:G], inner = m)
+    x = randn(rng, G * m)
+    y = 1 .+ 0.4 .* x .+ repeat(randn(rng, G), inner = m) .+ 0.5 .* randn(rng, G * m)
+    d = (; y, x, g)
+    R0 = [0.4^abs(i - j) for i in 1:G, j in 1:G]
+    f = bf(@formula(y ~ x + animal(1 | g)), @formula(sigma ~ 1))
+    nlab(logs) = count(l -> occursin("has no labels", l.message), logs)
+    # ordinary calls: one warning each
+    for _ in 1:2
+        logs, _ = Test.collect_test_logs(() -> drm(f, Gaussian(); data = d, A = R0))
+        @test nlab(logs) == 1
+    end
+    # bootstrap_ci: the base fit warns once, the B refits stay quiet
+    B = 4
+    logs, _ = Test.collect_test_logs(() -> bootstrap_ci(f, Gaussian(); data = d, A = R0, B,
+                                                      rng = StableRNG(3), failures = :skip, check_converged = false))
+    @test nlab(logs) == 1
+end
