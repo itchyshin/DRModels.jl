@@ -340,20 +340,47 @@ function _kw_advice(key::Symbol, fam, accepted = Symbol[])
                "this model. Drop `coords` and the `spatial(...)` term, or use a family with a " *
                "spatial route." * _kw_r_note(key, fam)
     end
+    if key === :se
+        return "`se` is not a keyword of this route. Use `control = DRMControl(se = false)`, " *
+               "which works on every route."
+    end
     return "check the spelling, or drop it."
 end
 
-# Whether drmTMB 0.8.1 fits any such model (refusal-gap map, native R). Student `spatial`
-# and Binomial `animal` are the only structured routes of these families that R fits.
+# What the refusal-gap map says drmTMB 0.8.1 does for a structured term of these families:
+# (family, structured kind) => (cells drmTMB fitted, cells run). The 50 cells per entry are the
+# random-effect SD-regression grid of docs/dev-log/parity-crosswalk-evidence-20261107/fuzz-gap-map/
+# gap_map.tsv; the grid does NOT cover every model (drmTMB fits a Student `nu ~ phylo(1 | id,
+# tree = tree)`, which no cell exercises), so a refusal outside it is "not verified against drmTMB".
+const _KW_R_GRID = Dict{Tuple{Symbol,Symbol},Tuple{Int,Int}}(
+    (:Student, :phylo) => (0, 50), (:Student, :relmat) => (0, 50),
+    (:Student, :animal) => (0, 50), (:Student, :spatial) => (2, 50),
+    (:LogNormal, :phylo) => (1, 50), (:LogNormal, :relmat) => (1, 50),
+    (:LogNormal, :animal) => (0, 50), (:LogNormal, :spatial) => (0, 50),
+    (:Tweedie, :phylo) => (3, 50), (:Tweedie, :relmat) => (3, 50),
+    (:Tweedie, :animal) => (0, 50), (:Tweedie, :spatial) => (0, 50),
+    (:Binomial, :phylo) => (8, 50), (:Binomial, :relmat) => (6, 50),
+    (:Binomial, :animal) => (7, 50), (:Binomial, :spatial) => (6, 50),
+)
+
+_kw_structured_kind(key::Symbol) =
+    key === :tree ? :phylo : key === :K ? :relmat :
+    key in (:A, :Ainv, :ids) ? :animal : key === :coords ? :spatial : nothing
+
+# Only claim what the grid shows; anything else says "not verified against drmTMB".
 function _kw_r_note(key::Symbol, fam)
-    if fam isa Student && key === :coords
-        return " drmTMB 0.8.1 fits some `spatial(1 | g)` Student models, so this is a gap on the Julia side."
-    elseif fam isa Binomial && key in (:A, :Ainv, :ids)
-        return " drmTMB 0.8.1 fits some `animal(1 | g)` Binomial models, so this is a gap on the Julia side."
-    elseif fam isa Union{LogNormal,Student,Tweedie,Binomial}
-        return " drmTMB 0.8.1 refuses this model too."
-    end
-    return ""
+    kind = _kw_structured_kind(key)
+    fn = nameof(typeof(fam))
+    (kind === nothing || !haskey(_KW_R_GRID, (fn, kind))) &&
+        return " Not verified against drmTMB for this model."
+    fits, cells = _KW_R_GRID[(fn, kind)]
+    what = "`$(kind)(...)` $(fn) cells of the refusal-gap map (a random-effect SD-regression grid)"
+    return fits == 0 ?
+        " drmTMB 0.8.1 refused all $cells $what; the grid does not cover every model " *
+        "(drmTMB does fit a Student `nu ~ phylo(1 | id, tree = tree)`), so for other models " *
+        "this is not verified against drmTMB." :
+        " drmTMB 0.8.1 fitted $fits of the $cells $what, so for those models this is a gap " *
+        "on the Julia side; for other models it is not verified against drmTMB."
 end
 
 function _refuse_unsupported_kwargs(unknown, f, fam, accepted)
@@ -375,6 +402,13 @@ function _accepted_kwargs(fn, f, fam)
     for m in methods(fn, Tuple{typeof(f),typeof(fam)})
         for k in Base.kwarg_decl(m)
             endswith(string(k), "...") || push!(ks, k)
+        end
+    end
+    # `control` and `weights` are inserted into every public `drm` method by `@drm_entry`;
+    # an inner fitter's own signature does not list them, so read them off the public method.
+    for m in methods(drm, Tuple{typeof(f),typeof(fam)})
+        for k in Base.kwarg_decl(m)
+            k in (:control, :weights) && push!(ks, k)
         end
     end
     return unique!(ks)

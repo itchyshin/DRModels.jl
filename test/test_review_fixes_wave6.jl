@@ -47,3 +47,58 @@ end
                                                       rng = StableRNG(3), failures = :skip, check_converged = false))
     @test nlab(logs) == 1
 end
+
+function _refusal6(f, fam, d; kw...)
+    try
+        drm(f, fam; data = d, kw...)
+    catch e
+        e isa ArgumentError && return e.msg
+        rethrow()
+    end
+    return ""
+end
+
+@testset "(c) the drmTMB note only claims what the refusal-gap map shows" begin
+    rng = StableRNG(21)
+    n = 60
+    g = repeat(["a$i" for i in 1:6], inner = 10)
+    x = randn(rng, n)
+    y = randn(rng, n)
+    d = (; y, x, g)
+    f = bf(@formula(y ~ x + (1 | g)))
+    msg = _refusal6(f, Student(), d; tree = 1)
+    @test occursin("does not accept the keyword `tree`", msg)
+    @test !occursin("refuses this model too", msg)              # the old, over-broad claim
+    @test occursin("refused all 50", msg)                       # what the grid shows
+    @test occursin("nu ~ phylo(1 | id, tree = tree)", msg)      # drmTMB does fit this Student model
+    @test occursin("not verified against drmTMB", msg)
+    # a family with R fits in the grid says so, with the count
+    mlog = _refusal6(bf(@formula(y ~ x + (1 | g))), DRModels.LogNormal(), d; coords = 1)
+    @test occursin("refused all 50", mlog)
+    @test occursin("fitted 3 of the 50", DRModels._kw_r_note(:tree, DRModels.Tweedie()))
+    @test occursin("fitted 2 of the 50", DRModels._kw_r_note(:coords, Student()))
+    # a family/keyword outside the grid makes no claim about drmTMB
+    @test DRModels._kw_r_note(:tree, Gaussian()) == " Not verified against drmTMB for this model."
+end
+
+@testset "(d) se= refusal names control = DRMControl(se = false); accepted lists carry control and weights" begin
+    rng = StableRNG(22)
+    n = 60
+    g = repeat(["a$i" for i in 1:6], inner = 10)
+    x = randn(rng, n)
+    y = randn(rng, n)
+    d = (; y, x, g)
+    msg = _refusal6(bf(@formula(y ~ x + (1 | g))), Gaussian(), d; se = false)
+    @test occursin("does not accept the keyword `se`", msg)
+    @test occursin("control = DRMControl(se = false)", msg)
+    @test occursin("works on every route", msg)
+    acc = last(split(msg, "Keywords this route accepts: "))
+    @test occursin("`control`", acc) && occursin("`weights`", acc)
+    # derived from the signatures: a splat route and a fixed-effect route agree
+    msg2 = _refusal6(bf(@formula(y ~ x + (1 | g))), Student(), d; tree = 1)
+    acc2 = last(split(msg2, "Keywords this route accepts: "))
+    @test occursin("`control`", acc2) && occursin("`weights`", acc2)
+    # the advice is true: control = DRMControl(se = false) fits where `se = false` was refused
+    fit = _quiet6(() -> drm(bf(@formula(y ~ x + (1 | g))), Gaussian(); data = d, control = DRMControl(se = false)))
+    @test fit isa DRModels.DrmFit
+end
