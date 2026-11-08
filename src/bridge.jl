@@ -1837,6 +1837,17 @@ function _bridge_formula_from_expr(expr, ctx::_BridgeXlateCtx)
     return eval(Expr(:macrocall, Symbol("@formula"), LineNumberNode(0), expr))
 end
 
+# A failed fit must be visible across the R boundary: the stored sentinel (-1e18), a non-finite
+# value, or a runaway |ll| >= 1e15 on a non-converged fit is sent as NaN (R's `as.numeric(NaN)` is
+# `NaN`), the same rule as `loglik()` / `_loglik_is_failed`. A good fit round-trips unchanged.
+_bridge_loglik(loglik, converged) =
+    _loglik_is_failed(loglik, converged) ? NaN : loglik
+
+const _BRIDGE_FIT_FAILED_MESSAGE =
+    "DRM.jl reported a failed fit: the objective hit its failure sentinel, was non-finite, " *
+    "or ran away (|logLik| >= 1e15) without converging. The log-likelihood is withheld (NaN); " *
+    "do not use this fit."
+
 function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
         labels::Union{Nothing,_BridgeFormulaLabels} = nothing, coef_labels = nothing)
     cnames, cvals, raw_cnames, public_to_raw =
@@ -1853,7 +1864,11 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
         "coef" => Dict(cnames .=> cvals),
         "vcov" => V,
         "vcov_names" => cnames,
-        "loglik" => fit.loglik,   # raw stored value: the R bridge keeps its pre-NaN contract
+        # NaN (not the -1e18 sentinel) for a failed fit; the raw value stays on the DrmFit.
+        "loglik" => _bridge_loglik(fit.loglik, fit.converged),
+        "fit_failed" => _loglik_is_failed(fit.loglik, fit.converged),
+        "fit_failed_message" => _loglik_is_failed(fit.loglik, fit.converged) ?
+            _BRIDGE_FIT_FAILED_MESSAGE : "",
         "aic" => _is_fixed_prior_fit(fit) && fit.estim_method === :MAP ? NaN : aic(fit),
         "bic" => _is_fixed_prior_fit(fit) && fit.estim_method === :MAP ? NaN : bic(fit),
         "df" => dof(fit),
@@ -1873,7 +1888,7 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
         # fit had no signal that these were REML-restricted values — only a
         # Julia-side `@warn` that never crosses the boundary.
         "estim_method" => String(fit.estim_method),
-        "ml_loglik" => fit.ml_loglik,
+        "ml_loglik" => _loglik_is_failed(fit.loglik, fit.converged) ? NaN : fit.ml_loglik,
         "infocrit_basis" => _is_fixed_prior_fit(fit) && fit.estim_method === :MAP ? "unavailable" : fit.estim_method === :REML ? "reml" : "ml",
         # Optimiser iterations actually taken. -1 means the fitter does not record
         # it yet, which the R side must read as "unknown" -- NOT as zero. Before
@@ -2762,7 +2777,7 @@ function _bridge_q2_point_export(fit; family::AbstractString = "biv_gaussian",
             "correlation" => R,
             "residual_sd" => residual_sd,
             "residual_correlation" => Float64(first(fit.scales[:rho12])),
-            "loglik" => Float64(fit.loglik),
+            "loglik" => _bridge_loglik(Float64(fit.loglik), fit.converged),
             "converged" => fit.geometry === :ok && _converged_nondegenerate(fit),   # as the top-level key (FX3b)
             "claim_boundary" => boundary,
         )
@@ -2809,7 +2824,8 @@ function _bridge_q2_point_export(fit; family::AbstractString = "biv_gaussian",
         out["residual_correlation"] = Float64(fit.rho12)
     end
     if haskey(fit, :loglik)
-        out["loglik"] = Float64(fit.loglik)
+        out["loglik"] = _bridge_loglik(Float64(fit.loglik),
+            haskey(fit, :converged) ? Bool(fit.converged) : nothing)
     end
     return out
 end
