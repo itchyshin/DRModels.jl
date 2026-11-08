@@ -928,7 +928,12 @@ function _fit_structured_gaussian_q2_sd(fam::Gaussian, y, Xμ, Xσ, Zgs, gidx, G
         # zero-step LBFGS (the gradient in β_μ vanishes at the GLS value).
         Optim.optimize(nll, vcat(β̂, φ̂), Optim.LBFGS(), opts; autodiff = :forward)
     else
-        Optim.optimize(nll, θ0, Optim.LBFGS(), opts; autodiff = :forward)
+        # Same unguarded-probe hazard as the ordinary q2/q3/q4 route (see
+        # `_fit_gaussian_ordinary_q34_sd`): the first L-BFGS step is the raw gradient, so a
+        # probe can overflow `exp(2 eta_sigma)` or the SD scales, the objective or its AD
+        # gradient is NaN, and HagerZhang asserts. Sentinel + BackTracking retry, optimiser
+        # only; the reported value, Hessian and gradient check use the raw `nll`.
+        _optimize_with_fallback(nll, θ0, g_tol; opts = opts)
     end
     θ̂ = Optim.minimizer(res)
     H = ForwardDiff.hessian(nll, θ̂)

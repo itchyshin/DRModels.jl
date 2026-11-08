@@ -146,7 +146,8 @@ function _drm_count_phylo_spatial_q2_sd(f::DrmFormula, fam::Union{Poisson,NegBin
     fit = if fam isa Poisson
         off = _poisson_sd_offset(offset_term, data, length(y))
         _fit_poisson_animal_intercept_slope_laplace(fam, y, Xmu, Zgs, gidx, Q, nmmu,
-            nmsds, blocks, group, x, off, g_tol; se, correlated)
+            nmsds, blocks, group, x, off, g_tol; se, correlated,
+            second_start = kind === :spatial)
     else
         _, Xsigma, nmsigma = _design(f.response, sigma_rhs, data)
         _fit_nb2_animal_intercept_slope_laplace(fam, y, Xmu, Xsigma, Zgs, gidx, Q,

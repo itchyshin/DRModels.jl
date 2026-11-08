@@ -167,10 +167,21 @@ function _fit_gaussian_ordinary_q34_sd(fam::Gaussian, y, Xμ, Xσ, U, Zgs, gidx,
         scale_k = s0 / max(sqrt(sum(abs2, @view U[:, k]) / n), eps())
         θ0[rg[k]] .= Zgs[k] \ fill(log(scale_k + eps()), G)
     end
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(),
-                         Optim.Options(g_tol = g_tol, x_abstol = NaN, x_reltol = NaN,
-                                       f_abstol = NaN, f_reltol = NaN);
-                         autodiff = :forward)
+    # The first L-BFGS step is the raw gradient (`InitialStatic`, length ~ 1e2-1e3 here,
+    # because the objective is a sum over n rows), so the line search probes points with
+    # `sigma` or the SD coefficients of order 1e2: `exp(-2 eta_sigma)` and the group
+    # information matrix overflow, the Cholesky of an Inf/NaN matrix "succeeds", and the
+    # objective or its AD gradient is NaN. HagerZhang then asserts
+    # `isfinite(phi_c) && isfinite(dphi_c)` and the fit is lost (36/300 seeds of the
+    # scale-300 campaign on Linux/x86; the same data fit on macOS/aarch64 only because the
+    # probe happened to hit the non-PD sentinel instead). Map non-finite probes to the 1e18
+    # sentinel inside the optimiser only (probes with a finite value and gradient are
+    # untouched, so fits that already succeeded follow the identical path), and retry with
+    # BackTracking if the default line search still asserts. The reported value, Hessian
+    # and gradient check below use the raw `nll`.
+    res = _optimize_with_fallback(nll, θ0, g_tol;
+        opts = Optim.Options(g_tol = g_tol, x_abstol = NaN, x_reltol = NaN,
+                             f_abstol = NaN, f_reltol = NaN))
     θ̂ = Optim.minimizer(res)
     H = ForwardDiff.hessian(nll, θ̂)
     V = _vcov_from_hessian(H)

@@ -35,9 +35,9 @@ _safe_objective(f) = θ -> _finite_or_sentinel(f(θ))
 # on pathological brackets near a runaway optimum and throws, losing the fit. Retry
 # from the start with BackTracking (no such assertions) and report whatever it
 # reaches; `converged` stays honest (false if the gradient tolerance is not met).
-function _optimize_with_fallback(nll, θ0, g_tol)
+function _optimize_with_fallback(nll, θ0, g_tol;
+                                 opts = Optim.Options(g_tol = g_tol))
     f = _safe_objective(nll)
-    opts = Optim.Options(g_tol = g_tol)
     try
         return Optim.optimize(f, θ0, Optim.LBFGS(), opts; autodiff = :forward)
     catch e
