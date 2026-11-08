@@ -764,7 +764,18 @@ function _binomial_animal_q2_mode(aux, s, ntr, Xmu, x, gidx, Qjoint,
             end
             amount *= 0.5
         end
-        accepted || return b, ch, false
+        if !accepted
+            # Noise floor: with a near-singular joint precision (correlation near
+            # +-1 once the slope SD has collapsed) the Newton step is only accurate
+            # to roughly cond * eps, so no trial can lower `joint` although the
+            # mode is already pinned down. The predicted gain of the full step,
+            # 0.5 * grad' * step, bounds the remaining objective error; when it is
+            # at the rounding level the mode is converged. Before this the solve
+            # returned failure here and the 1e18 sentinel leaked into the
+            # finite-difference gradient (weak-optimum case c).
+            0.5 * dot(grad, step) <= 1e-9 * (1 + abs(f0)) && return b, ch, true
+            return b, ch, false
+        end
     end
     return b, nothing, false
 end
@@ -867,6 +878,17 @@ function _fit_binomial_animal_q2_laplace(fam, s, ntr, Xmu, Xsd0,
             last_b .= b_first
         end
     end
+    # Boundary restarts (see `_q2_boundary_restarts`): a fit that ends with a
+    # collapsed slope SD (and rho running to +-1) sits on a flat, noisy ridge, and
+    # the default start can stop there unconverged or short of the interior optimum.
+    result = _q2_boundary_restarts(run_from, last_b, result,
+        (sd0, sd1, het) -> _q2_alt_theta(theta0, ranges, (Xsd0, Xsd1), sd0, sd1, het),
+        th -> min(minimum(_binomial_sd_scale(Xsd0 * th[ranges[1]])),
+                  minimum(_binomial_sd_scale(Xsd1 * th[ranges[2]]))),
+        r -> begin
+            th = Optim.minimizer(r); g = zeros(length(th)); grad!(g, th)
+            _laplace_outer_converged(r, Optim.minimum(r), g, th, length(s), g_tol)
+        end)
     theta = Optim.minimizer(result)
     nll_hat = nll(theta)
     gf = zeros(length(theta)); grad!(gf, theta)

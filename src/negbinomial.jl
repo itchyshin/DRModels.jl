@@ -1931,6 +1931,20 @@ function _fit_nb2_animal_intercept_slope_laplace(fam, y, Xmu, Xsigma, Zgs, gidx,
             result, theta, fmin = result2, theta2, fmin2
         end
     end
+    # Boundary restarts (see `_q2_boundary_restarts`): NB2 phylo seed 55 of the
+    # scale-extension study stopped on the slope-SD ridge at the boundary.
+    n_obs = length(y)
+    restarted = _q2_boundary_restarts(
+        start -> first(run_lbfgs(start)), last_b, result,
+        (sd0, sd1, het) -> _q2_alt_theta(theta0, ranges, Zgs, sd0, sd1, het),
+        th -> min(minimum(exp.(Zgs[1] * th[ranges[1]])), minimum(exp.(Zgs[2] * th[ranges[2]]))),
+        r -> begin
+            th = Optim.minimizer(r); g = zeros(length(th)); grad!(g, th)
+            _laplace_outer_converged(r, Optim.minimum(r), g, th, n_obs, g_tol)
+        end)
+    if restarted !== result
+        result, theta, fmin = restarted, Optim.minimizer(restarted), Optim.minimum(restarted)
+    end
     nll_hat = nll(theta)
     gf = zeros(length(theta)); grad!(gf, theta)
     V = se ? _vcov_from_fd_hessian(

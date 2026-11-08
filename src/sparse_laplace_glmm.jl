@@ -465,6 +465,78 @@ function _laplace_outer_converged(res, nllhat, gfinal, θ, n::Int, g_tol)
     return norm(gfinal, Inf) / max(n, 1) <= _LAPLACE_OUTER_RELTOL
 end
 
+# Boundary restarts for the structured intercept-and-slope (q2) Laplace fitters.
+#
+# When a coefficient SD is weakly identified the Laplace likelihood in its SD
+# coefficients has a flat ridge running to the boundary (SD -> 0) and more than
+# one stationary point. L-BFGS from the single default start slides down the ridge
+# and stops at the boundary point, which is a genuine stationary point and so
+# reports convergence, although a better interior point exists. Examples (drmTMB
+# reaches the interior point from its own start, and the objective at its estimate
+# evaluated by Julia equals its log-likelihood to 1e-8): NB2 phylo seed 55 of the
+# scale-extension study, -1637.42187 against -1637.42077; Binomial phylo seed 5 and
+# spatial seed 28 of the weak-probe family, 0.015 and 0.008 below. The interior
+# optima have a slope SD that varies strongly across groups (|z1 coefficient| near
+# 2); every start with a constant slope SD (z1 coefficient 0) ends on the ridge.
+# Remedy: only when the first fit ends near the boundary (a fitted group SD below
+# `_Q2_BOUNDARY_SD`) or has not met the outer gradient test, run L-BFGS again from
+# the alternative starts in `_Q2_ALT_STARTS` (constant SDs, and slope SDs that rise
+# or fall by a factor e^2 across the range of each slope-SD predictor) and keep an
+# alternative only if (same convergence status) its objective is lower by more than
+# 1e-5; (alternative converged, incumbent not) its objective is no more than 1e-5
+# higher, the objective being noisy at that level near rho = +-1; (alternative
+# unconverged, incumbent converged) its objective is lower by more than 1e-3, so a
+# converged fit is not exchanged for a marginally lower unconverged point. A fit
+# whose first optimum is kept is returned with the warm-start buffer `last_b`
+# exactly as the first run left it, so it is bit-identical to a single-start fit.
+#   run_from(theta0) -> Optim result      start_from(sd0, sd1, het) -> theta0
+#   sd_min(theta)    -> smallest fitted group SD      converged(result) -> Bool
+const _Q2_BOUNDARY_SD = 0.05
+const _Q2_ALT_STARTS = ((0.2, 0.1, 0), (0.7, 0.7, 0),
+                        (0.4, 0.22, -1), (0.4, 0.22, 1), (0.4, 0.05, -1), (0.4, 0.05, 1))
+const _Q2_RESTART_GAIN = 1e-5
+const _Q2_RESTART_BIG_GAIN = 1e-3   # what an unconverged alternative must gain over a converged fit
+
+# Alternative start: constant SDs `sd0`, `sd1` (log scale intercepts of the two SD
+# blocks); with `het = +-1` the non-intercept coefficients of the slope-SD block are
+# set to het * 2 / max|column|, so the slope SD varies by e^4 over the predictor range.
+# `Zs` are the group-level SD designs, `ranges` the theta ranges of the two blocks.
+function _q2_alt_theta(theta0, ranges, Zs, sd0, sd1, het)
+    th = copy(theta0)
+    th[ranges[1]] .= Zs[1] \ fill(log(sd0), size(Zs[1], 1))
+    th[ranges[2]] .= Zs[2] \ fill(log(sd1), size(Zs[2], 1))
+    if het != 0
+        for j in 2:size(Zs[2], 2)
+            th[ranges[2][j]] = het * 2 / max(maximum(abs, view(Zs[2], :, j)), eps())
+        end
+    end
+    return th
+end
+
+function _q2_boundary_restarts(run_from, last_b, result, start_from, sd_min, converged)
+    snapshot = copy(last_b)
+    first_ok = converged(result)
+    if first_ok && sd_min(Optim.minimizer(result)) >= _Q2_BOUNDARY_SD
+        last_b .= snapshot
+        return result
+    end
+    best, best_f, best_ok, best_b = result, Optim.minimum(result), first_ok, snapshot
+    for (sd0, sd1, het) in _Q2_ALT_STARTS
+        last_b .= 0
+        r = run_from(start_from(sd0, sd1, het))
+        f = Optim.minimum(r)
+        ok = converged(r)
+        gain = best_f - f
+        accept = ok == best_ok ? gain > _Q2_RESTART_GAIN :
+                 ok ? gain > -_Q2_RESTART_GAIN : gain > _Q2_RESTART_BIG_GAIN
+        if accept
+            best, best_f, best_ok, best_b = r, f, ok, copy(last_b)
+        end
+    end
+    last_b .= best_b
+    return best
+end
+
 function _poisson_fixed_start(y, X)
     p = size(X, 2)
     β = zeros(p)
