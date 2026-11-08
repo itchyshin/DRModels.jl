@@ -154,3 +154,62 @@ end
     @test_throws ArgumentError drm(bf(@formula(y ~ x + (1 | id)), @formula(sigma ~ 1 + (1 | g)),
                                       @formula(sd(id) ~ x), @formula(sd(g, sigma) ~ z)), NegBinomial2(); data = d)
 end
+
+# Gaussian correlated mean + sigma intercepts on one group, `(1 | p | id)` in both
+# (native drmTMB fits it; no SD formula). Oracle: per-group 2-D Laplace over raw
+# (b_g, delta_g) ~ N(0, Sigma) with Sigma from the fitted SDs and rho = tanh(eta),
+# ForwardDiff derivatives, own Newton. Same tolerances as above.
+function _jsw_corr_fixture(; seed = 2026110706, G = 40, n = 800, rho = 0.5)
+    rng = MersenneTwister(seed)
+    gi = vcat(1:G, rand(rng, 1:G, n - G))
+    S = [0.6^2 rho*0.6*0.3; rho*0.6*0.3 0.3^2]
+    L = cholesky(Symmetric(S)).L
+    u = L * randn(rng, 2, G)
+    x = randn(rng, n)
+    y = 0.2 .+ 0.5 .* x .+ u[1, gi] .+ exp.(-0.7 .+ u[2, gi]) .* randn(rng, n)
+    return (; data = (; y, x, id = string.("g", gi)), gi, G)
+end
+
+@testset "joint sigma wave 2: Gaussian correlated (1 | p | id) mu + sigma matches oracle" begin
+    fx = _jsw_corr_fixture()
+    fit = drm(bf(@formula(y ~ x + (1 | p | id)), @formula(sigma ~ 1 + (1 | p | id))), Gaussian();
+              data = fx.data)
+    @test fit.converged
+    @test all(isfinite, stderror(fit))
+    bm = coef(fit, :mu); s0 = coef(fit, :sigma)[1]; lsd = coef(fit, :resd); rho = tanh(coef(fit, :cor)[1])
+    @test -1 < rho < 1
+    S = [exp(2lsd[1]) rho*exp(lsd[1] + lsd[2]); rho*exp(lsd[1] + lsd[2]) exp(2lsd[2])]
+    Sinv = inv(S); ldS = logdet(S)
+    # first-seen group order, as DRModels' _group_index; the oracle does not care
+    labs = unique(fx.data.id); gidx = [findfirst(==(l), labs) for l in fx.data.id]
+    mu = bm[1] .+ bm[2] .* fx.data.x
+    total = 0.0; worst_g = 0.0; min_eig = Inf
+    for g in 1:length(labs)
+        idx = findall(==(g), gidx)
+        nj(u) = -sum(logpdf(Normal(mu[i] + u[1], exp(s0 + u[2])), fx.data.y[i]) for i in idx) +
+                0.5 * dot(u, Sinv * u) + 0.5 * ldS + log(2π)
+        u = zeros(2)
+        for _ in 1:100
+            gr = ForwardDiff.gradient(nj, u); maximum(abs, gr) < 1e-12 && break
+            H = ForwardDiff.hessian(nj, u)
+            C = cholesky(Symmetric(H); check = false); lam = 1e-3
+            while !issuccess(C); C = cholesky(Symmetric(H + lam * I); check = false); lam *= 10; end
+            st = C \ gr; t = 1.0; f0 = nj(u)
+            while t > 1e-12 && nj(u .- t .* st) > f0 - 1e-4 * t * dot(gr, st); t /= 2; end
+            u .-= (t > 1e-12 ? t : 1.0) .* st
+        end
+        H = ForwardDiff.hessian(nj, u)
+        total += -nj(u) + log(2π) - 0.5 * logdet(H)
+        worst_g = max(worst_g, maximum(abs, ForwardDiff.gradient(nj, u)))
+        min_eig = min(min_eig, minimum(eigvals(Symmetric(H))))
+    end
+    @test worst_g < 1e-6
+    @test min_eig > 0
+    @test abs(loglik(fit) - total) < 1e-5
+    # an SD formula with the labelled pair is refused, as in drmTMB
+    @test_throws Exception drm(bf(@formula(y ~ x + (1 | p | id)), @formula(sigma ~ 1 + (1 | p | id)),
+                                  @formula(sd(id) ~ 1), @formula(sd(id, sigma) ~ 1)), Gaussian(); data = fx.data)
+    # label mismatch
+    @test_throws ArgumentError drm(bf(@formula(y ~ x + (1 | p | id)), @formula(sigma ~ 1 + (1 | q | id))),
+                                   Gaussian(); data = fx.data)
+end

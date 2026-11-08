@@ -59,8 +59,12 @@ end
 
 # Joint negative log density F and (optionally) gradient / dense Hessian in v.
 # `T` is the promoted element type of θ-derived quantities and v.
-function _gsl_joint(fam, y, mu0, eta0, ga, c, gb, d, Pb, va, vb, Ga::Int, Gb::Int; deriv::Bool)
-    T = promote_type(eltype(mu0), eltype(eta0), eltype(c), eltype(d), eltype(va), eltype(vb))
+# `rho` (optional): correlation between va[g] and vb[g] on ONE shared grouping
+# factor (Ga == Gb, same level indices), i.e. (va[g], vb[g]) ~ N(0, [1 rho; rho 1]).
+function _gsl_joint(fam, y, mu0, eta0, ga, c, gb, d, Pb, va, vb, Ga::Int, Gb::Int; deriv::Bool,
+                    rho = nothing)
+    T = promote_type(eltype(mu0), eltype(eta0), eltype(c), eltype(d), eltype(va), eltype(vb),
+                     rho === nothing ? Float64 : typeof(rho))
     n = length(y)
     m = Ga + Gb
     F = zero(T)
@@ -86,6 +90,21 @@ function _gsl_joint(fam, y, mu0, eta0, ga, c, gb, d, Pb, va, vb, Ga::Int, Gb::In
                 H[ib, ga[i]] += x
             end
         end
+    end
+    if rho !== nothing
+        sr = 1 / (1 - rho * rho)
+        F += 0.5 * sr * (sum(abs2, va) - 2 * rho * dot(va, vb) + sum(abs2, vb))
+        if deriv
+            @inbounds for k in 1:Ga
+                g[k] += sr * (va[k] - rho * vb[k])
+                g[Ga + k] += sr * (vb[k] - rho * va[k])
+                H[k, k] += sr
+                H[Ga + k, Ga + k] += sr
+                H[k, Ga + k] -= rho * sr
+                H[Ga + k, k] -= rho * sr
+            end
+        end
+        return F, g, H
     end
     F += 0.5 * sum(abs2, va)
     Pv = Pb === nothing ? vb : Pb * vb
@@ -165,7 +184,7 @@ end
 # `mean_re` is `nothing` or (gidx, G, Zg, nmsd, grp, block); `sigma_re` is
 # (gidx, G, Zg, nmsd, grp, loading, Kmat-or-nothing, block, kind).
 function _fit_gaussian_sigma_sd_laplace(fam::Union{Gaussian,NegBinomial2,Gamma}, y, Xμ, Xσ, mean_re, sigma_re,
-                                        nmμ, nmσ, g_tol; se::Bool = true)
+                                        nmμ, nmσ, g_tol; se::Bool = true, corr::Bool = false)
     n = length(y)
     pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     has_a = mean_re !== nothing
@@ -190,7 +209,10 @@ function _fit_gaussian_sigma_sd_laplace(fam::Union{Gaussian,NegBinomial2,Gamma},
     ra = pμ + pσ + 1
     ia = ra:(ra + pa - 1)
     ib = (ra + pa):(ra + pa + pb - 1)
-    ntheta = pμ + pσ + pa + pb
+    ntheta = pμ + pσ + pa + pb + (corr ? 1 : 0)
+    ic = ntheta                       # correlation parameter (eta; rho = tanh(eta)) when `corr`
+    corr && !(has_a && Ga == Gb && ga == gb && Kmat === nothing) && throw(ArgumentError(
+        "drm: a mean-sigma correlation needs both random intercepts on one grouping factor."))
 
     function pieces(θ)
         βμ = θ[1:pμ]; βσ = θ[(pμ+1):(pμ+pσ)]
@@ -204,7 +226,8 @@ function _fit_gaussian_sigma_sd_laplace(fam::Union{Gaussian,NegBinomial2,Gamma},
         mu0, eta0, c, d = pieces(θ)
         (vv, deriv) -> begin
             vaa = @view vv[1:Ga]; vbb = @view vv[(Ga+1):m]
-            _gsl_joint(fam, y, mu0, eta0, ga, c, gb, d, Pb, vaa, vbb, Ga, Gb; deriv = deriv)
+            _gsl_joint(fam, y, mu0, eta0, ga, c, gb, d, Pb, vaa, vbb, Ga, Gb; deriv = deriv,
+                       rho = corr ? tanh(θ[ic]) : nothing)
         end
     end
 
@@ -220,7 +243,8 @@ function _fit_gaussian_sigma_sd_laplace(fam::Union{Gaussian,NegBinomial2,Gamma},
         F, _, H = joint(v, true)
         C = cholesky(Symmetric(H); check = false)
         issuccess(C) || return T(REML_NONPD_PENALTY)
-        return F + 0.5 * logdet(C) + 0.5 * logdetK
+        ldR = corr ? 0.5 * Ga * log(1 - tanh(θ[ic])^2) : zero(T)
+        return F + 0.5 * logdet(C) + 0.5 * logdetK + ldR
     end
 
     fg = function (θ, b0, grad)
@@ -313,8 +337,15 @@ function _fit_gaussian_sigma_sd_laplace(fam::Union{Gaussian,NegBinomial2,Gamma},
     has_a && (scales[:sd_group_index] = Float64.(ga))
     blocks = Pair{Symbol,UnitRange{Int}}[:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ)]
     names = Pair{Symbol,Vector{String}}[:mu => nmμ, :sigma => nmσ]
-    has_a && (push!(blocks, blocka => ia); push!(names, blocka => nma))
-    push!(blocks, blockb => ib); push!(names, blockb => nmb)
+    if corr
+        # Same names as the independent same-group route (`:resd`), plus `:cor`
+        # holding eta with rho = tanh(eta) (drmTMB `eta_cor_mu_sigma`).
+        push!(blocks, :resd => first(ia):last(ib)); push!(names, :resd => [String(grpa), "$(grpb)_logsigma"])
+        push!(blocks, :cor => ic:ic); push!(names, :cor => ["cor(mu, sigma | $(grpa))"])
+    else
+        has_a && (push!(blocks, blocka => ia); push!(names, blocka => nma))
+        push!(blocks, blockb => ib); push!(names, blockb => nmb)
+    end
     ranef = Dict{Symbol,Any}()
     has_a && (ranef[Symbol(grpa)] = ab)
     ranef[Symbol(grpb, "_logsigma")] = bb
@@ -551,4 +582,43 @@ function _drm_joint_sigma_sd_laplace(f::DrmFormula, fam::Union{NegBinomial2,Gamm
                                                 data, length(y), block_of; allow_slope = false)
     return _withformula(_fit_gaussian_sigma_sd_laplace(fam, y, Xμ, Xσ, mean_spec, sigma_spec,
                                                        nmμ, nmσ, g_tol; se = se), f)
+end
+
+# `(1 | p | g)` parses as `((1 | p) | g)`: return (label, inner lhs) or nothing.
+function _gsl_re_label(lhs)
+    (lhs isa FunctionTerm && lhs.f === (|) && length(lhs.args) == 2 && lhs.args[2] isa Term) ||
+        return nothing
+    return (lhs.args[2].sym, lhs.args[1])
+end
+
+# Gaussian correlated mean + sigma random intercepts on one grouping factor
+# (drmTMB `bf(y ~ x + (1 | p | g), sigma ~ 1 + (1 | p | g))`, no SD formulas):
+#   (b_g, delta_g) ~ N(0, [s_mu^2, rho s_mu s_sigma; rho s_mu s_sigma, s_sigma^2]),
+# fitted by the same dense Laplace engine with a correlated standardised prior.
+# θ = [β_μ; β_σ; log s_mu; log s_sigma; eta], rho = tanh(eta) (drmTMB `eta_cor_mu_sigma`).
+# Native drmTMB refuses this shape with SD formulas, so it is refused here too.
+function _drm_gaussian_musigma_corr(fam::Gaussian, f::DrmFormula, re, sigma_re, y, Xμ, Xσ,
+                                    nmμ, nmσ, data, g_tol)
+    what = "Gaussian correlated mean + sigma random intercepts `(1 | p | g)`"
+    isempty(_sd_target_parts(f)) && isempty(_sdphylo_parts(f)) || throw(ArgumentError(
+        "drm: $what cannot take `sd(...)` formulas (native drmTMB refuses this combination)."))
+    (length(re) == 1 && length(sigma_re) == 1) || throw(ArgumentError(
+        "drm: $what takes exactly one labelled term in `mu` and one in `sigma`."))
+    lm = _gsl_re_label(re[1][1]); ls = _gsl_re_label(sigma_re[1][1])
+    (lm !== nothing && ls !== nothing) || throw(ArgumentError(
+        "drm: $what needs the same label in `mu` and `sigma`, e.g. `(1 | p | g)` in each."))
+    lm[1] === ls[1] || throw(ArgumentError(
+        "drm: $what: labels differ (`$(lm[1])` in mu, `$(ls[1])` in sigma)."))
+    isint(t) = t isa ConstantTerm && t.n == 1
+    (isint(lm[2]) && isint(ls[2])) || throw(ArgumentError(
+        "drm: $what supports random intercepts `(1 | p | g)` only."))
+    mgrp = re[1][2]; sgrp = sigma_re[1][2]
+    mgrp === sgrp || throw(ArgumentError(
+        "drm: $what needs one grouping factor (got `$mgrp` in mu and `$sgrp` in sigma)."))
+    gidx, G = _group_index(getproperty(data, mgrp); col = mgrp)
+    Z1 = ones(G, 1)
+    mean_spec = (gidx, G, Z1, ["(Intercept)"], mgrp, :resd)
+    sigma_spec = (gidx, G, Z1, ["(Intercept)"], mgrp, ones(length(y)), nothing, :resd, :intercept)
+    return _fit_gaussian_sigma_sd_laplace(fam, y, Xμ, Xσ, mean_spec, sigma_spec, nmμ, nmσ, g_tol;
+                                          corr = true)
 end

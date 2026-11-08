@@ -1547,6 +1547,11 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
             error("drm (Gaussian): a random effect on `sigma` combined with a mean random " *
                   "effect does not support a structured (phylo/relmat/animal/spatial) mean " *
                   "marker or `meta_V(...)` yet (#745 covers the plain `(1 | g)` + `(1 | g)` cell)")
+        # Labelled `(1 | p | g)` in both mu and sigma: correlated intercept pair.
+        if any(t -> _gsl_re_label(t[1]) !== nothing, vcat(re, sigma_re))
+            return _withformula(_drm_gaussian_musigma_corr(fam, f, re, sigma_re, y, Xμ, Xσ,
+                                                           nmμ, nmσ, data, g_tol), f)
+        end
         mean_kind = length(re) == 1 ? _re_kind(re[1][1]) : (:multiple, nothing)
         mean_kind[1] in (:intercept, :corr) ||
             error("drm (Gaussian): simultaneous mean + `sigma` random effects support a " *
