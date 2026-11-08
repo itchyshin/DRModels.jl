@@ -170,12 +170,7 @@ end
     one_sd = bf(@formula(yp ~ x + animal(1 + x | p | g)),
                 @formula(sd(g, animal, coef(intercept)) ~ z0))
     @test_throws ArgumentError drm(one_sd, Poisson(); data, A = fx.A, se = false)
-    # Families without a labelled q2 route keep refusing the labelled form.
-    gdata = merge(data, (; yq = exp.(data.yg)))
-    gam = bf(@formula(yq ~ x + animal(1 + x | p | g)), @formula(sigma ~ 1),
-             @formula(sd(g, animal, coef(intercept)) ~ z0),
-             @formula(sd(g, animal, coef(x)) ~ z1))
-    @test_throws ArgumentError drm(gam, Gamma(); data = gdata, A = fx.A)
+    # Gamma now has a labelled q2 route (test_gamma_nb2_twofield_sd.jl); Binomial still refuses.
     # A labelled intercept-only structured term is not a q2 block.
     lab_int = bf(@formula(yp ~ x + animal(1 | p | g)),
                  @formula(sd(g, animal) ~ z0))

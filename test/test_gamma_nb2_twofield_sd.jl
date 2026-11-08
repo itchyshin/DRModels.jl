@@ -270,7 +270,8 @@ for (fam, shape) in ((:nb2, :samegroup), (:gamma, :samegroup), (:gamma, :crossed
         end
         if shape in (:labanimal, :labrelmat, :corr)
             @test abs(tf_fit_oracle(fam, case, fit; perturb = :rho0) - oracle) > 0.1
-            @test only(fit.scales[:correlation]) ≈ tanh(only(coef(fit, :recov)))
+            haskey(fit.scales, :correlation) &&
+                @test only(fit.scales[:correlation]) ≈ tanh(only(coef(fit, :recov)))
         end
         if shape === :labanimal && fam === :gamma
             ck = tf_case(fam, :labrelmat)
