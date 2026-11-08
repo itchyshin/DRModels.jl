@@ -55,7 +55,9 @@ Consequently there is no R twin for the requested headline shape.
 
 Gamma shape A (R refuses; nothing to compare, and no stated need); sigma slope with an SD formula;
 mean random/structured effect together with a structured sigma effect; labelled correlated
-`(1 + x | p | g)` on sigma; `Ainv`; REML; `zi`/`hu`; missing responses; spatial range estimation
+`(1 + x | p | g)` on sigma; REML; `zi`/`hu`; missing responses; spatial range estimation
 (the kernel is the native fixed one); coefficient-selected SD (`coef(...)`) on shape B.
 `simulate(fit; re = :zero)` draws at the fitted conditional sigma (`scales[:sigma]`), the existing
 convention of the Gaussian and joint-sigma fits, not at sigma_fixed.
+`Ainv` (animal precision) is accepted on shapes A and B for NB2 and on shape B for Gamma: it is converted to the labelled covariance `A = inv(Ainv)` (`_ainv_as_labelled_A`), so the fit and the bootstrap simulator are those of `A`.
+`simulate(fit; newdata = …)` is population level (no random effects); the per-group and training-length bookkeeping in `scales` is not recycled.

@@ -6,7 +6,9 @@
   `:recov`, `"g:atanh_rho"`) to the unlabelled q2 routes. Kernels are the
   native ones (`ape::vcv(tree, corr = TRUE)`; `exp(-d / median d) + 1e-6 I`).
   Prediction, the bridge and the marginal simulator accept the labelled form.
-  Checked against dense Laplace / MvNormal oracles and, where native drmTMB
-  0.8.1 fits the same shape, against it at the optimum. Native drmTMB 0.8.1
-  refuses SD formulas on labelled Poisson phylo and any labelled NB2 spatial
-  term; those two cells are validated against the oracle only.
+  Checked in this repository against dense Laplace / MvNormal oracles. Where
+  native drmTMB 0.8.1 fits the same shape, the comparison at the optimum was
+  run on the R side and its numbers are not stored here; the evidence is in
+  itchyshin/drmTMB PR 1684, folder `wave3-labelled-phylo-spatial`. Native
+  drmTMB 0.8.1 refuses SD formulas on labelled Poisson phylo and any labelled
+  NB2 spatial term; those two cells are validated against the oracle only.

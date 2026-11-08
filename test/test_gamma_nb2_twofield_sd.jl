@@ -306,3 +306,21 @@ end
     c2 = tf_case(:gamma, :ordanimal)
     @test_throws ArgumentError drm(c2.formula, DRModels.Gamma(); data = c2.data, K = c2.kw.A)
 end
+
+@testset "two-field simulator and bootstrap accept the animal Ainv the Gamma fit accepted (NB2 two-field refuses Ainv at fit time)" for fam in (:gamma,)
+    case = tf_case(fam, :ordanimal)
+    C = Matrix(case.kw.A)
+    Ainv = Matrix(Symmetric(inv(Symmetric(C))))
+    fit_A = drm(case.formula, TF_FAMS[fam]; data = case.data, A = C)
+    fit_I = drm(case.formula, TF_FAMS[fam]; data = case.data, Ainv)
+    @test abs(loglikelihood(fit_A) - loglikelihood(fit_I)) < 1e-6
+    sim_A = DRModels._marginal_simulator_build(fit_A, case.data; A = C)
+    sim_I = DRModels._marginal_simulator_build(fit_I, case.data; Ainv)
+    @test sim_I(MersenneTwister(3)) ≈ sim_A(MersenneTwister(3)) rtol = 1e-6
+    # both A and Ainv is an error, not a silent pick
+    @test_throws ArgumentError DRModels._marginal_simulator_build(fit_I, case.data; A = C, Ainv)
+    # end-to-end parametric bootstrap with Ainv
+    boot = bootstrap_result(case.formula, TF_FAMS[fam]; data = case.data, B = 1, Ainv,
+                            rng = MersenneTwister(5), g_tol = 1e-5)
+    @test boot !== nothing
+end

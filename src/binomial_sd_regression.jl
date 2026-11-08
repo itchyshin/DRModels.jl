@@ -884,7 +884,7 @@ function _fit_binomial_animal_q2_laplace(fam, s, ntr, Xmu, Xsd0,
             sd0[gidx] .* b_hat[2 .* gidx .- 1] .+ x .* sd1[gidx] .* b_hat[2 .* gidx],
             b_hat[1:2:end], b_hat[2:2:end])
     else
-        scales[:cond_failed] = 1.0
+        _mark_cond_failed!(scales)
     end
     fit = DrmFit(fam, block_list, name_list, theta, Matrix(V), -nll_hat,
         length(s), converged,

@@ -173,10 +173,18 @@ end
 @testset "a non-finite conditional field is marked as a failed export" begin
     scales = Dict{Symbol,Any}()
     DRModels._attach_conditional_structured!(scales, [0.1, NaN], [0.2])
-    @test get(scales, :cond_failed, 0.0) == 1.0
+    @test get(scales, :cond_failed, [0.0]) == [1.0]
     @test !haskey(scales, :cond_eta_re)
     ok = Dict{Symbol,Any}()
     DRModels._attach_conditional_structured!(ok, [0.1, 0.3], [0.2])
     @test !haskey(ok, :cond_failed)
     @test ok[:cond_eta_re] == [0.1, 0.3]
+    # DrmFit.scales is Dict{Symbol,Vector{Float64}}: a scalar flag used to throw a
+    # MethodError and discard a converged fit. The typed dict must accept the flag.
+    typed = Dict{Symbol,Vector{Float64}}(:sigma => [1.0, 1.0])
+    DRModels._attach_conditional_structured!(typed, [0.1, Inf], [0.2])
+    @test typed[:cond_failed] == [1.0]
+    typed2 = Dict{Symbol,Vector{Float64}}()
+    @test DRModels._mark_cond_failed!(typed2) === typed2
+    @test typed2[:cond_failed] == [1.0]
 end

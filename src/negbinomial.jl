@@ -145,12 +145,21 @@ function _drm_negbinomial2_fit(f::DrmFormula, fam::NegBinomial2; data, tree = no
              g_tol::Real = 1e-8, se::Bool = true,
              marginal::Symbol = :LA, method = nothing,
              nAGQ::Union{Nothing,Int} = nothing, ids = nothing)
+    ssq = _sigma_struct_q2_block(f)
+    if Ainv !== nothing && (ssq !== nothing || _ss_has_sigma_structured_sd(f))
+        # Structured-sigma routes (shapes A and B) take the covariance `A`; an animal
+        # precision `Ainv` is converted exactly as the Gamma route does (A = inv(Ainv),
+        # labelled by the first-seen levels), so both give the same fit.
+        A, ids = _ainv_as_labelled_A(f, data, A, Ainv, ids)
+        Ainv = nothing
+    end
     _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, Ainv = Ainv, coords = coords)   # #1027 #1022 #1010
     _reject_method_as_marginal(fam, method)
-    ssq = _sigma_struct_q2_block(f)
     if ssq !== nothing        # NB2 structured sigma intercept + slope, fixed SDs (native drmTMB fits it)
-        Ainv === nothing && nAGQ === nothing || throw(ArgumentError(
-            "NegBinomial2 structured sigma `$(ssq[1])(1 + $(ssq[2].slope) | $(ssq[2].group))` does not use `Ainv` or `nAGQ`."))
+        marginal === :LA || throw(ArgumentError(
+            "NegBinomial2 structured sigma `$(ssq[1])(1 + $(ssq[2].slope) | $(ssq[2].group))` supports `marginal = :LA` only."))
+        nAGQ === nothing || throw(ArgumentError(
+            "NegBinomial2 structured sigma `$(ssq[1])(1 + $(ssq[2].slope) | $(ssq[2].group))` does not use `nAGQ`."))
         A = _resolve_relatedness_labels(f, data, A, ids; coords = coords)
         coords = _resolve_coords_labels(f, data, coords, ids)
         return _drm_sigma_struct_q2_laplace(f, fam, ssq...; data, tree, K, A, coords, g_tol, se, method)
@@ -1006,7 +1015,7 @@ function _fit_nb2_animal_sd_laplace(fam::NegBinomial2, y, Xmu, Xsigma, Zg,
         _attach_conditional_structured!(
             scales, Float64.(weight) .* sd_group[gidx] .* u_hat[gidx], u_hat)
     else
-        scales[:cond_failed] = 1.0
+        _mark_cond_failed!(scales)
     end
     blocks = [:mu => (1:pmu), :sigma => ((pmu + 1):(pmu + 1)),
               :sd => sd_range]
@@ -1955,7 +1964,7 @@ function _fit_nb2_animal_intercept_slope_laplace(fam, y, Xmu, Xsigma, Zgs, gidx,
                  (x .* exp.(Zgs[2][gidx, :] * theta[ranges[2]]) .* bhat[(Gq + 1):(2Gq)][gidx])
         _attach_conditional_structured!(scales, eta_re, bhat[1:Gq], bhat[(Gq + 1):(2Gq)])
     else
-        scales[:cond_failed] = 1.0
+        _mark_cond_failed!(scales)
     end
     fit = DrmFit(fam, block_list, name_list, theta, Matrix(V), -nll_hat,
         length(y), _laplace_outer_converged(result, nll_hat, gf, theta,

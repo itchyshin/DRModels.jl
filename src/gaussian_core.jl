@@ -416,12 +416,16 @@ _withranef(fit::DrmFit, re) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.
 #     returns, which is the row order of the K / A / Q matrix the bridge sends).
 # DRModels.jl's own `fitted()` stays population level; only the bridge payload
 # reads these keys (`_bridge_dpars` skips every `cond_*` key).
+# `DrmFit.scales` is `Dict{Symbol,Vector{Float64}}`: the flag must be a vector,
+# or assigning a scalar throws and discards an otherwise converged fit.
+_mark_cond_failed!(scales::AbstractDict) = (scales[:cond_failed] = [1.0]; scales)
+
 function _attach_conditional_structured!(scales::AbstractDict, eta_re::AbstractVector,
                                          modes::AbstractVector...)
     # A non-finite mode is recorded as a failed export (`:cond_failed`), so the R
     # bridge can warn instead of silently keeping the population-level value.
     if !all(isfinite, eta_re) || !all(m -> all(isfinite, m), modes)
-        scales[:cond_failed] = 1.0
+        _mark_cond_failed!(scales)
         return scales
     end
     scales[:cond_eta_re] = collect(Float64, eta_re)
@@ -3220,6 +3224,16 @@ end
 # Population-level (RE = 0) parameter table for `simulate(...; newdata)`. Rebuilds
 # a shallow `DrmFit` whose `means` / `scales` have one row per `newdata` row so
 # `_simulate_once` can reuse every family branch unchanged.
+# Bookkeeping of the random-effect SD / sigma-field routes: training-length vectors
+# (`:sd`, `:sigma_fixed`, group indices) and per-group vectors (`:sd_group`, modes,
+# `sdtarget_*_group`). They describe the training data, have no per-row value for new
+# rows, and `_simulate_once` reads none of them (it draws from `:sigma` / `:zi` / ...),
+# so newdata simulation is population level, as for every other fit.
+_simulate_newdata_bookkeeping_key(k::Symbol) =
+    k in (:sd, :sd_group, :sd_group_index, :sigma_fixed, :sigma_random_effect,
+          :sigma_random_effect_slope, :sigma_group_index) ||
+    startswith(String(k), "sdtarget_")
+
 function _fit_for_simulate_newdata(fit::DrmFit, newdata)
     _is_temporal_fit(fit) && throw(ArgumentError(
         "simulate: `newdata` is not supported for temporal() fits"))
@@ -3239,6 +3253,7 @@ function _fit_for_simulate_newdata(fit::DrmFit, newdata)
     for k in keys(fit.scales)
         haskey(scales, k) && continue
         startswith(String(k), "cond_") && continue   # conditional-mode record: population-level newdata has none
+        _simulate_newdata_bookkeeping_key(k) && continue   # per-group / training-row records; the draw never reads them
         if k === :beta_mu
             haskey(pp, :mu) || throw(ArgumentError("simulate: ZeroOneBeta `newdata` needs a :mu prediction"))
             scales[k] = pp[:mu]

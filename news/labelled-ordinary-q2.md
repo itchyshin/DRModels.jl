@@ -7,3 +7,6 @@
   helpers. Prediction, the bridge and the marginal simulator accept the form.
   Native drmTMB 0.8.1 refuses the labelled ordinary form and fits only the
   unlabelled `(1 + x | g)` (the same model).
+  Validated here against a dense Laplace oracle only; the native 0.8.1 behaviour
+  quoted above is from the R side (itchyshin/drmTMB PR 1684, folder
+  `wave3-labelled-ordinary`), not stored in this repository.

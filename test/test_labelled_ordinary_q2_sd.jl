@@ -176,3 +176,15 @@ end
         @test_throws ArgumentError drm(extra, Poisson(); data, se = false)
     end
 end
+
+
+@testset "labelled ordinary q2: simulate(newdata) is population level ($resp)" for
+        (resp, fam) in ((:yp, Poisson()), (:yn, NegBinomial2()))
+    fx = _lord_fixture()
+    fit = drm(_lord_formula(resp, fam), fam; data = fx.data)
+    nd = (; x = [-0.5, 0.0], z0 = [1.0, -1.0], z1 = [0.3, 0.2], g = ["site_1", "site_2"])
+    S = simulate(fit; newdata = nd, nsim = 4000, rng = MersenneTwister(1))
+    @test size(S) == (2, 4000)
+    b = coef(fit, :mu)
+    @test vec(mean(S; dims = 2)) ≈ exp.(b[1] .+ b[2] .* nd.x) rtol = 0.1
+end

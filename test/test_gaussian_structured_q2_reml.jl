@@ -1,6 +1,8 @@
 # REML for the Gaussian structured q2 SD-regression routes
 #   y ~ x + KIND(1 + x | id),  sd(id, LEVEL, coef(intercept)) ~ z0,  sd(id, LEVEL, coef(x)) ~ z1,
-# KIND in phylo, spatial, animal, relmat. Native drmTMB (REML = TRUE) admits exactly:
+# KIND in phylo, spatial, animal, relmat. Native drmTMB 0.8.1 (REML = TRUE) is recorded as admitting
+# exactly the cells below (R-side evidence: itchyshin/drmTMB PR 1684, folder wave4-reml; this
+# file holds no R numbers, only the dense oracle):
 #   phylo (labelled or not, fixed-effect sigma of any shape), and spatial / animal /
 #   relmat UNLABELLED with sigma ~ 1. Everything else must keep refusing.
 #
@@ -9,7 +11,7 @@
 # (+ the rho cross term for the labelled block) by hand, computes the GLS mean b-hat, and the
 # restricted log-likelihood
 #   l_R = log N(y | X b-hat, V) + (p/2) log(2 pi) - (1/2) log|X' V^-1 X|
-# (beta_mu integrated out of exp(l_ML); this is the constant native drmTMB reports, because
+# (beta_mu integrated out of exp(l_ML); this is the constant native drmTMB is expected to report (R-side comparison in wave4-reml, not stored here), because
 # TMB's Laplace step over beta_mu is exact for a Gaussian). Checks:
 #   reml_loglik(fit) == l_R, ml_loglik(fit) == the dense ML value at the same theta,
 #   the fitted mean coefficients are the GLS ones, and l_R at theta-hat is not beaten by

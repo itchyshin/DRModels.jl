@@ -383,3 +383,45 @@ end
     # latent cap
     @test DRModels._GSL_MAX_LATENT == 600
 end
+
+@testset "structured sigma: marginal other than :LA is refused on shape A as on shape B" begin
+    fx = _nss_fixture(:nb2, :animal, :A; seed = 2026110812, n_g = 12, n_each = 8)
+    inp = _nss_inputs(fx, :animal)
+    for m in (:VA, :AGHQ)
+        @test_throws ArgumentError drm(_nss_form(:animal, :A), NegBinomial2(); data = fx.data, inp..., marginal = m)
+    end
+    fxb = _nss_fixture(:nb2, :animal, :B; seed = 2026110813, n_g = 12, n_each = 8)
+    @test_throws ArgumentError drm(_nss_form(:animal, :B), NegBinomial2(); data = fxb.data,
+                                   _nss_inputs(fxb, :animal)..., marginal = :VA)
+    @test_throws ArgumentError drm(_nss_form(:animal, :B), DRModels.Gamma(); data = fxb.data,
+                                   _nss_inputs(fxb, :animal)..., marginal = :VA)
+end
+
+@testset "structured sigma: animal Ainv gives the fit A = inv(Ainv) gives ($fam $shape)" for
+        (fam, shape) in ((:nb2, :B), (:gamma, :B), (:nb2, :A))
+    fx = _nss_fixture(fam, :animal, shape; seed = _NSS_SEEDS[(fam, :animal)] + (shape === :A ? 100 : 0))
+    Ainv = Matrix(Symmetric(inv(Symmetric(fx.K))))
+    fA = drm(_nss_form(:animal, shape), _NSS_FAM[fam]; data = fx.data, A = fx.K)
+    fI = drm(_nss_form(:animal, shape), _NSS_FAM[fam]; data = fx.data, Ainv)
+    @test abs(loglik(fA) - loglik(fI)) < 1e-6
+    @test fA.theta ≈ fI.theta atol = 1e-4
+    # supplying both is refused
+    @test_throws ArgumentError drm(_nss_form(:animal, shape), _NSS_FAM[fam]; data = fx.data, A = fx.K, Ainv)
+    # bootstrap simulator gets the same kernel from Ainv as from A
+    sA = DRModels._marginal_simulator_build(fA, fx.data; A = fx.K)
+    sI = DRModels._marginal_simulator_build(fI, fx.data; Ainv)
+    @test sI(MersenneTwister(9)) ≈ sA(MersenneTwister(9)) rtol = 1e-6
+end
+
+@testset "structured sigma: simulate(newdata) is population level ($fam $prov $shape)" for
+        (fam, prov, shape) in ((:nb2, :animal, :B), (:gamma, :relmat, :B), (:nb2, :animal, :A))
+    fx = _nss_fixture(fam, prov, shape; seed = _NSS_SEEDS[(fam, prov)] + (shape === :A ? 100 : 0))
+    fit = drm(_nss_form(prov, shape), _NSS_FAM[fam]; data = fx.data, _nss_inputs(fx, prov)...)
+    nd = shape === :B ? (; x = [-0.5, 0.0], id = ["s01", "s02"], z = [fx.z[1], fx.z[2]]) : (; x = [-0.5, 0.0])
+    S = simulate(fit; newdata = nd, nsim = 4000, rng = MersenneTwister(1))
+    @test size(S) == (2, 4000)
+    b = coef(fit, :mu)
+    mu = exp.(b[1] .+ b[2] .* nd.x)
+    @test vec(mean(S; dims = 2)) ≈ mu rtol = 0.1          # no random effects in a newdata draw
+    @test size(simulate(fit; newdata = nd, nsim = 3, rng = MersenneTwister(1), re = :zero)) == (2, 3)
+end

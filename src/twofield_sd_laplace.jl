@@ -261,7 +261,7 @@ function _fit_twofield_sd_laplace(fam::Union{Gamma,NegBinomial2}, y, Xmu, Xsigma
             _attach_conditional_structured!(scales, eta_re,
                 [uhat[(offs[k] + 1):(offs[k] + Gs[k])] for k in 1:2]...)
         else
-            scales[:cond_failed] = 1.0
+            _mark_cond_failed!(scales)
         end
     end
     fit = DrmFit(fam, block_list, name_list, theta, Matrix(V), -nll_hat,

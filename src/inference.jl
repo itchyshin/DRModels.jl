@@ -3620,6 +3620,16 @@ function _sigma_only_marginal_simulator(fit::DrmFit, data)
     end
 end
 
+# `Ainv` -> covariance `A` for the simulators of routes whose fitter converts the
+# precision at entry (same helper, so the simulated kernel is the fitted one).
+function _simulate_ainv_to_A(fit::DrmFit, data, A, Ainv)
+    Ainv === nothing && return A
+    A === nothing || throw(ArgumentError(
+        "bootstrap: supply only one of `A` and `Ainv`"))
+    Acov, _ = _ainv_as_labelled_A(fit.formula, data, nothing, Ainv, nothing)
+    return Acov
+end
+
 function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing,
                                    Ainv=nothing, tree=nothing, tree1=nothing,
                                    tree2=nothing, coords=nothing)
@@ -3631,6 +3641,9 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing,
     # NB2/Gamma structured sigma fields (src/sigma_structured_laplace.jl)
     if fit isa DrmFit && fit.formula isa DrmFormula && fit.family isa Union{NegBinomial2,Gamma} &&
        (haskey(fit.scales, :sigma_random_effect_slope) || _ss_has_sigma_structured_sd(fit.formula))
+        # Gamma and NB2 take an animal precision `Ainv` at fit time by converting it to
+        # the labelled covariance `A = inv(Ainv)`; the simulator needs that same `A`.
+        A = _simulate_ainv_to_A(fit, data, A, Ainv)
         return _sigma_struct_marginal_simulator(fit, data; K, A, tree, coords)
     end
     if fit isa DrmFit && fit.formula isa DrmFormula &&
@@ -3694,6 +3707,7 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing,
        fit.family isa Union{Gamma,NegBinomial2} &&
        count(item -> item.target.dpar === :mu, _sd_target_parts(fit.formula)) == 2 &&
        length(_sd_target_parts(fit.formula)) == 2
+        A = _simulate_ainv_to_A(fit, data, A, Ainv)   # Gamma fit-time `Ainv` -> `A`
         sim = _twofield_sd_marginal_simulator(fit, data; K, A)
         sim === nothing || return sim
     end
