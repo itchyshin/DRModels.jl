@@ -493,18 +493,21 @@ end
 
 """
     fit_q4_sparse_tmb(prob, Q_cond; θ0, β0, Λ0, g_tol = 1e-3, iterations = 200,
-                      n_newton = 40, show_trace = false, lc_zero = Int[],
+                      f_reltol = 1e-7, n_newton = 40, show_trace = false, lc_zero = Int[],
                       linesearch = MoreThuente()) -> NamedTuple
 
 Maximum-likelihood fit of the q=4 sparse Laplace engine by L-BFGS on the exact
 gradient. Supply `θ0` or `(β0, Λ0)`; `lc_zero` pins log-Cholesky indices (1..10)
 to zero for a constrained among-axis covariance. Returns `θ`, `β`, `Λ`, `nll`,
 `loglik`, `converged`, `iterations`, `g_residual`, `f_calls` and `g_calls`.
+`f_reltol` is the relative objective change that stops L-BFGS (default `1e-7`, which can stop up
+to about `1e-3` in log-likelihood short of the optimum on flat ridges; `1e-12` converges tightly).
 Public fitting goes through `drm`; this is the engine entry point.
 """
 function fit_q4_sparse_tmb(prob::AugProblem, Q_cond::SparseMatrixCSC;
                            θ0 = nothing, β0 = nothing, Λ0 = nothing,
                            g_tol::Float64 = 1e-3, iterations::Int = 200,
+                           f_reltol::Float64 = 1e-7,
                            n_newton::Int = 40, show_trace::Bool = false,
                            # `lc_zero`: log-Cholesky indices (1..10) pinned to 0 so
                            # the optimiser never moves them — an OUTER constraint on
@@ -589,7 +592,7 @@ function fit_q4_sparse_tmb(prob::AugProblem, Q_cond::SparseMatrixCSC;
         # this engine and drmTMB hit it (drmTMB: "false convergence (8)"). The
         # correct criterion is RELATIVE OBJECTIVE CHANGE (info-geometry-scout.md,
         # pain #3). Require 2 successive sub-tol steps to avoid a premature stop.
-        Optim.Options(g_tol = g_tol, f_reltol = 1e-7, successive_f_tol = 3,
+        Optim.Options(g_tol = g_tol, f_reltol = f_reltol, successive_f_tol = 3,
                       iterations = iterations,
                       show_trace = show_trace, show_every = 1),
     )
