@@ -989,24 +989,28 @@ function _drm_binomial_animal_q2_sd_regression(f::DrmFormula, fam::Binomial;
     return _withformula(fit, f)
 end
 
-# Binomial phylo / coordinate-spatial independent intercept-plus-slope q2:
+# Binomial phylo / coordinate-spatial intercept-plus-slope q2:
 #   y ~ x + phylo(1 + x | g)   with sd(g, phylogenetic, coef(intercept)) ~ z0,
 #                                   sd(g, phylogenetic, coef(x)) ~ z1
-# (and the `spatial(1 + x | g)` analogue). Two independent fields, rho fixed 0, with the
-# same kernels as the Poisson/NB2 route (`_structured_q2_kernel`) and the animal q2
-# Laplace code above (`correlated = false`). Scope matches native drmTMB 0.8.1, which
-# fits only the logit link with an unweighted 0/1 response here; probit, cloglog,
-# cbind() trials, the labelled `(1 + x | p | g)` form and `mesh` are refused.
+# (and the `spatial(1 + x | g)` analogue). Unlabelled: two independent fields, rho fixed 0.
+# Labelled `phylo(1 + x | p | g)`: one free cross-coefficient correlation (stored as the
+# `:recov` block, `atanh_rho`), as the Poisson/NB2 labelled route. Same kernels as the
+# Poisson/NB2 route (`_structured_q2_kernel`) and the animal q2 Laplace code above.
+# Scope matches native drmTMB 0.8.1 (R/binomial-q2-sd.R): logit link and an unweighted
+# 0/1 response; probit, cloglog, cbind() trials, the labelled SPATIAL form and `mesh` are
+# refused (native admits labelled Binomial for animal and for logit phylo only).
 function _drm_binomial_phylo_spatial_q2_sd(f::DrmFormula, fam::Binomial,
         kind::Symbol, block; data, tree, K, A, Ainv, coords, mesh, g_tol, se)
     level = _q2_target_level(kind)
     group, slope = block.group, block.slope
-    term = "$kind(1 + $slope | $group)"
+    correlated = block.label !== nothing
+    term = correlated ? "$kind(1 + $slope | $(block.label) | $group)" : "$kind(1 + $slope | $group)"
     who = "Binomial `$term` SD regression"
-    block.label === nothing || throw(ArgumentError(
-        "$who: the labelled correlated form `$kind(1 + $slope | $(block.label) | $group)` " *
-        "is not supported (native drmTMB 0.8.1 does not fit it for Binomial either); " *
-        "use the unlabelled independent-field form."))
+    correlated && kind === :spatial && throw(ArgumentError(
+        "$who: the labelled correlated spatial form is not supported " *
+        "(native drmTMB 0.8.1 admits labelled Binomial intercept-and-slope blocks only for " *
+        "`animal` and for logit `phylo`); use the unlabelled independent-field " *
+        "`spatial(1 + $slope | $group)` form."))
     fam.link === :logit || throw(ArgumentError(
         "$who supports the logit link only (native drmTMB 0.8.1 refuses `probit` and " *
         "`cloglog` for structured intercept-and-slope Binomial models)."))
@@ -1030,11 +1034,12 @@ function _drm_binomial_phylo_spatial_q2_sd(f::DrmFormula, fam::Binomial,
     rhs = Dict(f.forms)
     fixed_mu, re, metav, structured, phylo_slope, _, other_slope = _split_ranef(rhs[:mu];
         allow_phylo_slope = kind === :phylo,
-        allow_spatial_intercept_slope = kind === :spatial)
+        allow_spatial_intercept_slope = kind === :spatial,
+        allow_labelled_intercept_slope = correlated)
     parsed_slope = kind === :phylo ? phylo_slope : other_slope
     metav === nothing && isempty(re) && structured == (kind, group) &&
         parsed_slope === slope || throw(ArgumentError(
-        "$who requires one matching independent `$term` term and no ordinary random effects or `meta_V`."))
+        "$who requires one matching `$term` term and no ordinary random effects or `meta_V`."))
     _collect_structured(rhs[:mu]) == [(kind, group)] || throw(ArgumentError(
         "$who requires exactly one structured term, with no additional structured effects."))
     allowed = Set(vcat([:mu], [item.key for item in targets]))
@@ -1083,7 +1088,7 @@ function _drm_binomial_phylo_spatial_q2_sd(f::DrmFormula, fam::Binomial,
     blocks = Symbol[_sd_target_block(item.target; disambiguate = true) for item in ordered]
     fit = _fit_binomial_animal_q2_laplace(fam, s, ntr, Xmu, Zgs[1], Zgs[2], gidx, Q,
         Float64.(x), nmmu, nmsds[1], nmsds[2], blocks, group, g_tol; se,
-        correlated = false, second_start = kind === :spatial,
+        correlated, second_start = kind === :spatial,
         # The inner Newton solve stops at a relative step of 1e-7 (it cannot go lower: the
         # line search then stalls at the floating-point floor), so the Laplace objective
         # carries noise that the default finite-difference step (~5e-4) amplifies in the
@@ -1324,8 +1329,18 @@ function _marginal_simulator_build(fit::DrmFit{Binomial}, data; K = nothing,
     q2ps = fit.formula isa DrmFormula ? _phylo_spatial_q2_block(fit.formula) : nothing
     if q2ps !== nothing
         kind, block = q2ps
+        tree1 === nothing && tree2 === nothing && K === nothing && A === nothing &&
+            Ainv === nothing || throw(ArgumentError(
+            "bootstrap/simulate: the Binomial `$(kind)(1 + $(block.slope) | $(block.group))` " *
+            "route uses `tree = …` (phylo) or `coords = …` (spatial) only; " *
+            "`tree1`, `tree2`, `K`, `A` and `Ainv` are not used and are refused rather than ignored."))
         hasproperty(data, block.group) || throw(ArgumentError(
             "bootstrap: data are missing the $(kind) grouping column `$(block.group)`"))
+        length(getproperty(data, block.group)) == fit.nobs || throw(ArgumentError(
+            "bootstrap/simulate: the Binomial `$(kind)(1 + $(block.slope) | $(block.group))` " *
+            "marginal simulator redraws the fitted rows (its 0/1 trials vector is tied to the " *
+            "$(fit.nobs) training rows); `data` has $(length(getproperty(data, block.group))) " *
+            "rows. Pass the fitting data, or use `newdata = …` with `re = :zero`."))
         kcoords = kind === :spatial ?
             _resolve_coords_labels(fit.formula, data, coords, nothing) : nothing
         kernel = _structured_q2_kernel(kind, block.group, getproperty(data, block.group);
@@ -1983,6 +1998,10 @@ function _drm_binomial_sd_regression(f::DrmFormula, fam::Binomial; data,
                                      se::Bool = true, marginal::Symbol = :LA,
                                      method = nothing, nq::Int = _BINOMIAL_RANEF_AGHQ_K)
     _reject_method_as_marginal(fam, method)
+    marginal === :LA || throw(ArgumentError(
+        "Binomial `sd(group) ~ …` currently supports `marginal = :LA` " *
+            "only: one ordinary grouping variable uses adaptive Gauss-Hermite quadrature, " *
+            "while crossed independent intercepts or numeric slopes use a Laplace approximation."))
     q2ps = _phylo_spatial_q2_block(f)
     q2ps === nothing || return _drm_binomial_phylo_spatial_q2_sd(f, fam, q2ps...;
         data, tree, K, A, Ainv, coords, mesh, g_tol, se)
@@ -2027,10 +2046,6 @@ function _drm_binomial_sd_regression(f::DrmFormula, fam::Binomial; data,
                 "and :probit and :cloglog are additionally supported for one phylogenetic SD target or one mixed ordinary-intercept and phylogenetic-intercept target; :probit and " *
                 ":cloglog also support one animal, related-matrix, or spatial SD target and the animal q2 SD block."))
     end
-    marginal === :LA || throw(ArgumentError(
-        "Binomial `sd(group) ~ …` currently supports `marginal = :LA` " *
-            "only: one ordinary grouping variable uses adaptive Gauss-Hermite quadrature, " *
-            "while crossed independent intercepts or numeric slopes use a Laplace approximation."))
     targets = _sd_target_parts(f)
     if any(item -> item.target.level === :phylogenetic_interaction, targets)
         return _drm_binomial_phylo_interaction_sd_regression(

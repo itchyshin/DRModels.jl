@@ -1,9 +1,11 @@
 # Binomial (Bernoulli, logit) phylo and coordinate-spatial independent intercept-plus-slope q2:
 #   y ~ x + phylo|spatial(1 + x | g),  sd(g, phylogenetic|spatial, coef(intercept)) ~ z0,
-#   sd(g, phylogenetic|spatial, coef(x)) ~ z1,   two independent unit fields, rho fixed 0.
+#   sd(g, phylogenetic|spatial, coef(x)) ~ z1,   two independent unit fields, rho fixed 0;
+#   and the labelled phylo form phylo(1 + x | p | g) with one free rho (atanh_rho, :recov).
 # Scope = native drmTMB 0.8.1: logit link and an unweighted 0/1 response only. R refuses
 # probit/cloglog ("currently support only an intercept-only q1 term"), cbind() trials
-# ("requires unweighted 0/1 Bernoulli responses") and, for spatial, the labelled form.
+# ("requires unweighted 0/1 Bernoulli responses") and, for spatial, the labelled form;
+# it admits labelled Binomial for animal and logit phylo (R/binomial-q2-sd.R).
 # Kernels: phylo = tip correlation of the tree (ape::vcv(tree, corr = TRUE)); spatial =
 # exp(-d / median d) + 1e-6 I. The oracle shares no fitter code: kernels built by hand,
 # logit likelihood written out, dense ForwardDiff Laplace in the standardised latent
@@ -15,7 +17,7 @@
 using DRModels, Test, LinearAlgebra, StableRNGs
 import Distributions, ForwardDiff
 using Random: randperm, MersenneTwister
-using Statistics: mean
+using Statistics: mean, cov, cor
 
 const _BPSQ2_BITS = 5                       # 32 tips, balanced binary tree
 
@@ -39,14 +41,15 @@ function _bpsq2_grid(G)
 end
 
 # Regeneration only (not run by the tests).
-function _bpsq2_generate(C, ids; m = 24, seed = 20261108)
+function _bpsq2_generate(C, ids; m = 24, seed = 20261108, rho = 0.0)
     rng = StableRNG(seed)
     G = length(ids)
     z0 = repeat([-1.0, 1.0], G ÷ 2)
     z1 = collect(range(-1.0, 1.0; length = G))[randperm(rng, G)]
     L = cholesky(Symmetric(C)).L
-    u0 = exp.(log(0.9) .+ 0.3 .* z0) .* (L * randn(rng, G))
-    u1 = exp.(log(0.8) .- 0.3 .* z1) .* (L * randn(rng, G))
+    e0, e1 = L * randn(rng, G), L * randn(rng, G)
+    u0 = exp.(log(0.9) .+ 0.3 .* z0) .* e0
+    u1 = exp.(log(0.8) .- 0.3 .* z1) .* (rho .* e0 .+ sqrt(1 - rho^2) .* e1)
     gi = repeat(1:G, inner = m)
     x = repeat(collect(range(-1.2, 1.2; length = m)), G)
     eta = 0.3 .+ 0.5 .* x .+ u0[gi] .+ x .* u1[gi]
@@ -66,8 +69,8 @@ function _bpsq2_write(path, fx, tag)
     end
 end
 
-function _bpsq2_fixture(kind, ids)
-    lines = readlines(joinpath(@__DIR__, "fixtures", "binomial_phylo_spatial_q2", "binq2_$(kind).tsv"))
+function _bpsq2_fixture(kind, ids; file = "binq2_$(kind).tsv")
+    lines = readlines(joinpath(@__DIR__, "fixtures", "binomial_phylo_spatial_q2", file))
     rows = [split(l, '\t') for l in lines[3:end]]
     col(j, T) = T === String ? String[r[j] for r in rows] : parse.(T, [r[j] for r in rows])
     data = (; y = col(1, Float64), x = col(2, Float64), z0 = col(3, Float64),
@@ -77,7 +80,10 @@ function _bpsq2_fixture(kind, ids)
     return (; data, gi, z0 = repeat([-1.0, 1.0], length(ids) ÷ 2), z1 = z1g)
 end
 
-function _bpsq2_formula(kind)
+function _bpsq2_formula(kind; labelled = false)
+    labelled && return bf(@formula(y ~ x + phylo(1 + x | p | id)),
+        @formula(sd(id, phylogenetic, coef(intercept)) ~ z0),
+        @formula(sd(id, phylogenetic, coef(x)) ~ z1))
     kind === :phylo ?
         bf(@formula(y ~ x + phylo(1 + x | id)),
            @formula(sd(id, phylogenetic, coef(intercept)) ~ z0),
@@ -88,15 +94,17 @@ function _bpsq2_formula(kind)
 end
 
 # Dense Laplace log-likelihood at theta = (beta0, beta1, a0 (2), a1 (2)).
-function _bpsq2_oracle(theta, fx, C)
+function _bpsq2_oracle(theta, fx, C; rho = 0.0)
     d = fx.data; gi = fx.gi; G = size(C, 1)
     beta = theta[1:2]; a0 = theta[3:4]; a1 = theta[5:6]
     s0 = exp.(a0[1] .+ a0[2] .* fx.z0); s1 = exp.(a1[1] .+ a1[2] .* fx.z1)
     Ci = inv(Symmetric(C))
+    # prior b = (b0, b1) ~ N(0, R (x) C), R = [1 rho; rho 1]; rho = 0 is the independent case
+    P = kron(inv([1.0 rho; rho 1.0]), Ci)
     function joint(b)
         eta = beta[1] .+ beta[2] .* d.x .+ s0[gi] .* b[gi] .+ d.x .* s1[gi] .* b[G .+ gi]
         lp = sum(d.y .* eta .- log1p.(exp.(eta)))
-        return lp - 0.5 * (dot(b[1:G], Ci * b[1:G]) + dot(b[G+1:end], Ci * b[G+1:end]))
+        return lp - 0.5 * dot(b, P * b)
     end
     b = zeros(2G)
     for _ in 1:100
@@ -105,7 +113,36 @@ function _bpsq2_oracle(theta, fx, C)
         maximum(abs, step) < 1e-12 && break
     end
     H = -ForwardDiff.hessian(joint, b)
-    return joint(b) - logdet(C) - 0.5 * logdet(Symmetric(H))
+    return joint(b) - 0.5 * (G * logdet(Symmetric([1.0 rho; rho 1.0])) + 2 * logdet(C)) -
+           0.5 * logdet(Symmetric(H))
+end
+
+# Correlation between the off-diagonal between-tip covariances of tip-mean responses drawn by
+# the marginal simulator built with kernel `Ck` and the hand-rolled reference `tipmu`
+# (G x R tip-mean probabilities; Bernoulli noise is independent across tips, so the
+# off-diagonal covariances of tip-mean responses equal those of tip-mean probabilities).
+# `identity_kernel = false` uses the fit's own kernel; `true` is the broken-simulator negative control.
+function _bpsq2_offdiag_r(fit, data, fx, kw, identity_kernel::Bool, tipmu, kind; nsim = 6000)
+    blk = DRModels._phylo_spatial_q2_block(fit.formula)[2]
+    kcoords = kind === :spatial ? DRModels._resolve_coords_labels(fit.formula, data, kw.coords, nothing) : nothing
+    (Cfit, gidx, G) = DRModels._structured_q2_kernel(kind, blk.group, data.id;
+        tree = kind === :phylo ? kw.tree : nothing, K = nothing, A = nothing,
+        coords = kcoords, who = "test")
+    draw = DRModels._structured_q2_sd_marginal_simulator(fit, data, nothing;
+        provider = kind, block = blk,
+        kernel = (identity_kernel ? Matrix(1.0I, G, G) : Cfit, gidx, G))   # Cfit = the fit's own kernel and row order
+    rng = StableRNG(77)
+    # tip-mean responses indexed by the kernel's tip order t01..tNN (= `tipmu` order)
+    rows = [findall(==(id), data.id) for id in sort(unique(data.id))]
+    ybar = zeros(G, nsim)
+    for r in 1:nsim
+        y = draw(rng)
+        for g in 1:G
+            ybar[g, r] = mean(y[rows[g]])
+        end
+    end
+    off(M) = [cov(M[i, :], M[j, :]) for i in 1:G for j in i+1:G]
+    return cor(off(ybar), off(tipmu))
 end
 
 if get(ENV, "BPSQ2_REGENERATE", "") == "1"
@@ -113,6 +150,8 @@ if get(ENV, "BPSQ2_REGENERATE", "") == "1"
     dir = joinpath(@__DIR__, "fixtures", "binomial_phylo_spatial_q2")
     _bpsq2_write(joinpath(dir, "binq2_phylo.tsv"), _bpsq2_generate(Cp0, ids0), "phylo")
     _bpsq2_write(joinpath(dir, "binq2_spatial.tsv"), _bpsq2_generate(Cs0, ids0), "spatial")
+    # labelled phylo fixture: true rho = 0.6 (same seed; first and only draw)
+    _bpsq2_write(joinpath(dir, "binq2_phylo_rho.tsv"), _bpsq2_generate(Cp0, ids0; rho = 0.6), "phylo rho=0.6")
 end
 
 @testset "Binomial phylo/spatial (1 + x | g) q2 with coefficient SD formulas" begin
@@ -156,20 +195,30 @@ end
             @test pp[ordered[1]] ≈ fit.scales[ordered[1]]
             @test pp[ordered[2]] ≈ fit.scales[ordered[2]]
 
-            # The marginal simulator draws the same two independent fields: its mean
-            # response matches a hand-rolled Monte Carlo of the fitted model.
+            # The marginal simulator draws the same two independent fields. Mean response
+            # alone cannot detect a wrong kernel (it depends on the kernel diagonal only),
+            # so check (i) the mean and (ii) the between-tip covariance of tip-mean
+            # responses, which is the kernel's off-diagonal structure, against a
+            # hand-rolled Monte Carlo of the fitted model (independent code).
             Y = simulate(fit; nsim = 400, rng = MersenneTwister(11), data, kw...)
             @test size(Y) == (length(data.y), 400)
             @test all(v -> v == 0.0 || v == 1.0, Y)
             L = cholesky(Symmetric(C)).L
             s0 = exp.(a0[1] .+ a0[2] .* fx.z0); s1 = exp.(a1[1] .+ a1[2] .* fx.z1)
-            mc = StableRNG(5); acc = zeros(length(data.y)); R = 1500
-            for _ in 1:R
-                b0 = s0 .* (L * randn(mc, length(ids))); b1 = s1 .* (L * randn(mc, length(ids)))
+            G = length(ids)
+            R = 6000
+            mc = StableRNG(5); acc = zeros(length(data.y)); tipmu = zeros(G, R)
+            for r in 1:R
+                b0 = s0 .* (L * randn(mc, G)); b1 = s1 .* (L * randn(mc, G))
                 eta = beta[1] .+ beta[2] .* data.x .+ b0[fx.gi] .+ data.x .* b1[fx.gi]
-                acc .+= 1 ./ (1 .+ exp.(-eta))
+                mu = 1 ./ (1 .+ exp.(-eta)); acc .+= mu
+                for g in 1:G
+                    tipmu[g, r] = mean(mu[fx.gi .== g])
+                end
             end
             @test abs(mean(Y) - mean(acc ./ R)) < 0.02          # Monte-Carlo noise ~ 0.005
+            @test _bpsq2_offdiag_r(fit, data, fx, kw, false, tipmu, kind) > 0.7
+            @test _bpsq2_offdiag_r(fit, data, fx, kw, true, tipmu, kind) < 0.4   # negative control
 
             # Bridge: the R-shaped formula string reaches the same fit.
             lvl = kind === :phylo ? "phylogenetic" : "spatial"
@@ -196,10 +245,14 @@ end
                  @formula(sd(id, phylogenetic, coef(intercept)) ~ z0),
                  @formula(sd(id, phylogenetic, coef(x)) ~ z1))
         @test_throws r"unweighted 0/1" drm(fcb, Binomial(); data = cb, tree = nwk, se = false)
-        lab = bf(@formula(y ~ x + phylo(1 + x | p | id)),
-                 @formula(sd(id, phylogenetic, coef(intercept)) ~ z0),
-                 @formula(sd(id, phylogenetic, coef(x)) ~ z1))
-        @test_throws r"labelled correlated form" drm(lab, Binomial(); data = fx.data, tree = nwk, se = false)
+        labs = bf(@formula(y ~ x + spatial(1 + x | p | id)),
+                  @formula(sd(id, spatial, coef(intercept)) ~ z0),
+                  @formula(sd(id, spatial, coef(x)) ~ z1))
+        @test_throws r"labelled correlated spatial form is not supported" drm(labs, Binomial(); data = fxs.data, coords, se = false)
+        labp = _bpsq2_formula(:phylo; labelled = true)
+        for link in (:probit, :cloglog)
+            @test_throws r"logit link only" drm(labp, Binomial(link = link); data = fx.data, tree = nwk, se = false)
+        end
         one = bf(@formula(y ~ x + phylo(1 + x | id)), @formula(sd(id, phylogenetic, coef(x)) ~ z1))
         @test_throws r"one SD formula for the intercept" drm(one, Binomial(); data = fx.data, tree = nwk, se = false)
         bad = replace(nwk, "t01:1.5" => "t01:2.5")
@@ -211,4 +264,69 @@ end
         @test_throws ErrorException drm(f, Binomial(); data = merge(fx.data, (; y = 2.0 .* fx.data.y)),
                                        tree = nwk, se = false)
     end
+end
+
+@testset "Binomial labelled phylo(1 + x | p | g): free rho, R 0.8.1 admits it" begin
+    nwk, ids, Cphy = _bpsq2_tree()
+    fx = _bpsq2_fixture(:phylo, ids; file = "binq2_phylo_rho.tsv")
+    data = fx.data
+    f = _bpsq2_formula(:phylo; labelled = true)
+    fit = drm(f, Binomial(); data, tree = nwk)
+    @test fit.converged
+    @test length(fit.theta) == 7
+    @test all(isfinite, stderror(fit))
+    rc = only(b for b in fit.blocks if first(b) === :recov)
+    @test DRModels._block_coefnames(fit, :recov) == ["id:atanh_rho"]
+    rho = tanh(fit.theta[last(last(rc))])
+    @test fit.scales[:correlation] ≈ [rho]
+    @test abs(rho) < 1
+    # likelihood at the fitted theta, including the fitted rho, against the dense oracle
+    @test loglikelihood(fit) ≈ _bpsq2_oracle(fit.theta[1:6], fx, Cphy; rho) atol = 1e-5
+    # the correlation is free: the labelled fit is at least as good as the independent fit
+    ind = drm(_bpsq2_formula(:phylo), Binomial(); data, tree = nwk, se = false)
+    @test loglikelihood(fit) >= loglikelihood(ind) - 1e-6
+    # simulator uses the fitted rho: mean response matches a hand-rolled correlated MC
+    ordered = map((:intercept, :x)) do member
+        item = only(filter(i -> i.target.member === member, DRModels._sd_target_parts(f)))
+        DRModels._sd_target_block(item.target; disambiguate = true)
+    end
+    a0, a1 = coef(fit, ordered[1]), coef(fit, ordered[2]); beta = coef(fit, :mu)
+    s0 = exp.(a0[1] .+ a0[2] .* fx.z0); s1 = exp.(a1[1] .+ a1[2] .* fx.z1)
+    L = cholesky(Symmetric(Cphy)).L; G = length(ids)
+    mc = StableRNG(9); acc = zeros(length(data.y)); R = 1500
+    for _ in 1:R
+        e0, e1 = L * randn(mc, G), L * randn(mc, G)
+        b0 = s0 .* e0; b1 = s1 .* (rho .* e0 .+ sqrt(1 - rho^2) .* e1)
+        eta = beta[1] .+ beta[2] .* data.x .+ b0[fx.gi] .+ data.x .* b1[fx.gi]
+        acc .+= 1 ./ (1 .+ exp.(-eta))
+    end
+    Y = simulate(fit; nsim = 400, rng = MersenneTwister(3), data, tree = nwk)
+    @test abs(mean(Y) - mean(acc ./ R)) < 0.02
+    # bridge reaches the same fit
+    nd = (; x = [0.0], id = [first(data.id)], z0 = [0.0], z1 = [0.0])
+    br = drm_bridge(; formula = "y ~ x + phylo(1 + x | p | id); " *
+        "sd(id, phylogenetic, coef(intercept)) ~ z0; sd(id, phylogenetic, coef(x)) ~ z1",
+        family = "binomial", data, tree = nwk, newdata = nd)
+    @test br["converged"]
+    @test br["coefficients"] ≈ coef(fit) atol = 1e-6
+end
+
+@testset "Binomial phylo/spatial q2: marginal= and simulate guards" begin
+    nwk, ids, _ = _bpsq2_tree()
+    xy, _ = _bpsq2_grid(length(ids))
+    coords = Dict(ids[k] => [xy[k]...] for k in eachindex(ids))
+    fx = _bpsq2_fixture(:phylo, ids); fxs = _bpsq2_fixture(:spatial, ids)
+    fl = _bpsq2_formula(:phylo; labelled = true)
+    for m in (:VA, :AGHQ, :Laplace)
+        @test_throws r"marginal = :LA" drm(_bpsq2_formula(:phylo), Binomial(); data = fx.data, tree = nwk, marginal = m, se = false)
+        @test_throws r"marginal = :LA" drm(_bpsq2_formula(:spatial), Binomial(); data = fxs.data, coords, marginal = m, se = false)
+        @test_throws r"marginal = :LA" drm(fl, Binomial(); data = fx.data, tree = nwk, marginal = m, se = false)
+    end
+    fit = drm(_bpsq2_formula(:phylo), Binomial(); data = fx.data, tree = nwk, se = false)
+    big = map(v -> vcat(v, v), fx.data)
+    @test_throws r"tied to the 768 training rows" simulate(fit; data = big, tree = nwk)
+    @test_throws r"refused rather than ignored" DRModels._marginal_simulator(fit, fx.data; tree = nwk, tree1 = nwk)
+    @test_throws r"refused rather than ignored" DRModels._marginal_simulator(fit, fx.data; tree = nwk, tree2 = nwk)
+    @test_throws r"refused rather than ignored" DRModels._marginal_simulator(fit, fx.data; tree = nwk, K = Matrix(1.0I, 32, 32))
+    @test DRModels._marginal_simulator(fit, fx.data; tree = nwk) isa Function
 end
