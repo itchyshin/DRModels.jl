@@ -79,7 +79,7 @@ the sparse-Laplace engine. A phylogenetic random intercept on the mean,
 intercept + slope `(1 + x | g)` is fit by the same per-group adaptive
 quadrature helper, `nq` nodes per axis (the same scheme as
 [`BetaBinomial`](@ref)); it needs within-group variation in `x` — a slope
-predictor that is constant within any level of `g` leaves the slope SD and
+predictor that is constant within every level of `g` leaves the slope SD and
 group-level correlation unidentified, and is refused with an informative
 error (mirrors drmTMB's `drm_validate_q2_slope_variation`). An independent
 random slope `(0 + x | g)` and `marginal = :VA` on `(1 + x | g)` remain out of
@@ -228,6 +228,32 @@ end
     return _withuncertainty(_drm_binomial_fit(f, fam; se = se, kwargs...), se)
 end
 
+# `ids = …` labels the rows of `A` (animal term) or of `coords` (spatial term), as on
+# the Gaussian, Poisson, NegBinomial2 and Gamma routes. The Binomial fitter used to have
+# no `ids` keyword, so the advice in the unlabelled-`A` warning ended in a MethodError.
+# `A` is reordered to the first-seen group order the routes read; `coords` becomes a
+# label => coordinate Dict, which the spatial routes already resolve.
+function _binomial_label_inputs(f::DrmFormula, data, A, Ainv, coords, ids)
+    ids === nothing && return A, coords
+    Ainv === nothing || throw(ArgumentError("drm: `ids = …` labels the rows of `A`; the rows of " *
+        "`Ainv` follow the order of first appearance of the group in the data, so pass " *
+        "`A` with `ids`, or `Ainv` without `ids`."))
+    if _animal_group(f) !== nothing
+        return _resolve_relatedness_labels(f, data, A, ids; coords = coords), coords
+    end
+    A === nothing && coords === nothing && throw(ArgumentError(
+        "drm: `ids = …` labels the rows of the relatedness matrix `A` or of the site " *
+        "coordinates `coords`, but neither was supplied."))
+    if coords !== nothing && !(coords isa AbstractDict)
+        n = coords isa AbstractVector ? length(coords) : size(coords, 1)
+        n == length(ids) || throw(ArgumentError("drm: `coords` has $n row(s) but `ids` has " *
+            "$(length(ids)) label(s); give one label per row."))
+        coords = Dict(string(l) => (coords isa AbstractVector ? [Float64(coords[i])] :
+                                    Float64.(coords[i, :])) for (i, l) in enumerate(ids))
+    end
+    return A, coords
+end
+
 # Outside SD-regression routes, Binomial admits `phylo` alone among the
 # structured markers. `relmat` is currently supported for the structured SD
 # regression route below, not for a general Binomial random-effect fit. Without
@@ -241,8 +267,9 @@ function _drm_binomial_fit(f::DrmFormula, fam::Binomial; data, tree = nothing,
              A = nothing, Ainv = nothing, coords = nothing, mesh = nothing,
              g_tol::Real = 1e-8,
              se::Bool = true, marginal::Symbol = :LA, method = nothing,
-             nq::Int = _BINOMIAL_RANEF_AGHQ_K, priors = nothing)
+             nq::Int = _BINOMIAL_RANEF_AGHQ_K, priors = nothing, ids = nothing)
     _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, Ainv = Ainv, coords = coords)   # #1027 #1022 #1010
+    A, coords = _binomial_label_inputs(f, data, A, Ainv, coords, ids)   # red team: `ids = …` as on the other families
     if priors !== nothing
         fam.link === :logit && marginal === :LA && method === nothing || throw(ArgumentError("fixed-effect priors require ordinary binomial logit ML"))
         isempty(_sd_parts(f)) && isempty(_sdphylo_parts(f)) || throw(ArgumentError("fixed-effect priors do not support SD formulas"))
@@ -468,17 +495,20 @@ end
 
 # Identifiability guard for the correlated random slope (1 + x | g) (#753): the
 # slope RE variance and the group-level (intercept, slope) correlation are
-# unidentified when `xs` is constant within any level of `grp` — mirrors
+# unidentified when `xs` is constant within EVERY level of `grp` — mirrors
 # drmTMB's `drm_validate_q2_slope_variation` (R/mspl-estimator.R), reimplemented
-# here (never vendored: drmTMB is GPL, DRModels.jl is MIT).
+# here (never vendored: drmTMB is GPL, DRModels.jl is MIT). One level with a single
+# observation (or a constant slope predictor) among others with variation is fine: the
+# other levels identify the slope SD and correlation. The check used to refuse the
+# data when ANY level was constant, which drmTMB fits (red team, 2026-11-08).
 function _binomial_check_slope_identifiable(xs, gidx, G, grp)
     seen = [Set{Float64}() for _ in 1:G]
     for i in eachindex(xs)
         push!(seen[gidx[i]], xs[i])
     end
-    all(length(s) ≥ 2 for s in seen) ||
+    any(length(s) ≥ 2 for s in seen) ||
         error("Binomial() correlated random slope `(1 + x | g)` needs within-group variation in the " *
-              "slope predictor — it is constant within at least one level of `$grp`, so the slope SD " *
+              "slope predictor — it is constant within every level of `$grp`, so the slope SD " *
               "and the group-level intercept–slope correlation are unidentified. " *
               "Use a predictor that varies within `$grp`.")
 end
