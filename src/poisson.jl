@@ -239,6 +239,7 @@ function _drm_poisson_fit(f::DrmFormula, fam::Poisson; data, tree = nothing, K =
              g_tol::Real = 1e-8, se::Bool = true,
              marginal::Symbol = :LA, method = nothing,
              nAGQ::Union{Nothing,Int} = nothing, ids = nothing)
+    f = _default_structured_q2_sd(f, fam)   # bare structured (1 + x | g): default `sd(…, coef(·)) ~ 1`
     _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, Ainv = Ainv, coords = coords)   # #1027 #1022 #1010 #938
     # `method` is the ML/REML selector. LA/VA/AGHQ is `marginal` (Q1 / #136 / #448).
     # `:REML` is the opt-in Cox–Reid restricted objective, admitted on Poisson
