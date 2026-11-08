@@ -135,6 +135,33 @@ function _structured_effects_forms(f)
     return fs
 end
 
+const _BRIDGE_OPTIMIZER_LABEL = Dict(
+    :lbfgs => "Optim.LBFGS",
+    :bfgs => "Optim.BFGS",
+    :newton => "Optim.Newton",
+)
+
+# Recorded selected-stage identity when `control_info` has one; otherwise the
+# default LBFGS label only for a counted non-Beta run. A nonnegative count is
+# not itself evidence of LBFGS: qualified BFGS stores `:bfgs`, and an accepted
+# Beta Newton polish can replace the counted result without updating the report.
+function _bridge_optimizer_label(fit::DrmFit)
+    info = fit.control_info
+    if info isa DRMControlReport
+        actual = info.actual_optimizer
+        actual === :unrecorded && return missing
+        # Polish is skipped only when the user took optimiser control; otherwise
+        # the stored `:lbfgs` may describe a superseded primary stage.
+        if fit.family isa Beta && actual === :lbfgs && !_ctl_optim_requested(info.control)
+            return missing
+        end
+        return get(_BRIDGE_OPTIMIZER_LABEL, actual, missing)
+    end
+    niterations(fit) < 0 && return missing
+    fit.family isa Beta && return missing
+    return "Optim.LBFGS"
+end
+
 """
     bridge_diagnostics(fit::DrmFit) -> NamedTuple
 
@@ -159,15 +186,23 @@ fabricated zero or `NaN` standing in for it:
   reports `"none"`); the honest, ungeneralised answer to "which internal
   objective fitted this model".
 - `integrator` — `fit.marginal` (`:LA`, `:Laplace`, `:VA`, `:AGHQ`).
-- `optimizer` — `"Optim.LBFGS"` when [`niterations`](@ref) recorded an achieved
-  iteration count (see its docstring for exactly which routes that covers);
-  `missing` on a route with no single outer optimiser call to attribute one to.
+- `optimizer` — a recorded Optim.jl method label, never inferred as LBFGS
+  merely because [`niterations`](@ref) is nonnegative. When
+  [`control_info`](@ref) stored `:lbfgs`, `:bfgs`, or `:newton` for the
+  selected stage, the label is `"Optim.LBFGS"` / `"Optim.BFGS"` /
+  `"Optim.Newton"`. When no report is attached, a nonnegative count still
+  labels the default LBFGS run except on `Beta`, where an unrecorded Newton
+  polish may have replaced it and the label is `missing` (explicitly unknown).
+  `:unrecorded` reports stay `missing`. A `-1` count stays `missing` only when
+  no method was recorded; a recorded BFGS/LBFGS/Newton label is independent of
+  the count.
 - `converged` — the optimiser flag AND the degeneracy bar, the same value as
   the top-level bridge `converged` (#949). Since FX3b this is not
   [`is_converged`](@ref), which is also `false` at a `:boundary` optimum; the
   bridge sends [`convergence_status`](@ref) as its own key.
-- `iterations` — `niterations(fit)`; `missing` when unrecorded (`niterations`
-  returns `-1`).
+- `iterations` — `niterations(fit)` (accepted final stage, not total work
+  across preceding stages); `missing` when unrecorded (`niterations` returns
+  `-1`).
 - `max_abs_grad`, `grad_source` — the same `(magnitude, source)` pair
   `check_drm` reports as `max_abs_grad`/`grad_source` (`_check_max_abs_grad`);
   `max_abs_grad` is `missing` (not `NaN`) when `grad_source` is `:none` or
@@ -211,7 +246,7 @@ function bridge_diagnostics(fit::DrmFit)
     return (
         route = fit.nll === nothing ? "none" : String(nameof(typeof(fit.nll))),
         integrator = fit.marginal,
-        optimizer = iters >= 0 ? "Optim.LBFGS" : missing,
+        optimizer = _bridge_optimizer_label(fit),
         converged = _converged_nondegenerate(fit),
         iterations = iters >= 0 ? iters : missing,
         max_abs_grad = no_gradient ? missing : grad.magnitude,
