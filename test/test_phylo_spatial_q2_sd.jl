@@ -36,7 +36,7 @@ function _psq2_grid(G)
 end
 
 # Rows are shuffled, so data order differs from both tree and coordinate order.
-function _psq2_fixture(C, ids; family, m = 10, seed = 20261107)
+function _psq2_fixture_generate(C, ids; family, m = 10, seed = 20261107)
     rng = MersenneTwister(seed)
     G = length(ids)
     z0 = repeat([-1.0, 1.0], G ÷ 2)
@@ -55,6 +55,25 @@ function _psq2_fixture(C, ids; family, m = 10, seed = 20261107)
     ord = randperm(rng, length(y))
     data = (; y = y[ord], x = x[ord], z0 = z0[gi][ord], z1 = z1[gi][ord], id = ids[gi][ord])
     return (; data, gi = gi[ord], z0, z1)
+end
+
+# The committed datasets (test/fixtures/q2_stable/psq2_*.tsv) are what the tests
+# fit. They were produced by `_psq2_fixture_generate` on Julia 1.10.12. Julia 1.11
+# changed the MersenneTwister seeding, so the same seed gives a DIFFERENT dataset on
+# 1.12, and several draws of this 32-tip design sit on a weakly identified optimum
+# (non-PD Hessian, rho at the boundary). Committing the data makes the fixture
+# identical on every Julia version; the generator is kept for regeneration only.
+# The phylo and spatial kernels differ, so the file is chosen by sum(C).
+function _psq2_fixture(C, ids; family, kw...)
+    kind = Dict(75.789 => "phylo", 428.265 => "spatial")[round(sum(C); digits = 3)]
+    lines = readlines(joinpath(@__DIR__, "fixtures", "q2_stable", "psq2_$(family)_$(kind).tsv"))
+    rows = [split(l, '\t') for l in lines[3:end]]
+    col(j, T) = T === String ? String[r[j] for r in rows] : parse.(T, [r[j] for r in rows])
+    data = (; y = col(1, Float64), x = col(2, Float64), z0 = col(3, Float64),
+              z1 = col(4, Float64), id = col(5, String))
+    gi = col(6, Int)
+    z1g = zeros(length(ids)); z1g[gi] .= data.z1
+    return (; data, gi, z0 = repeat([-1.0, 1.0], length(ids) ÷ 2), z1 = z1g)
 end
 
 function _psq2_formula(kind, fam)

@@ -931,7 +931,7 @@ function _fit_gamma_structured_sd_laplace(fam, y, Xmu, Xsigma, Zobs, Zg, gidx,
             _attach_conditional_structured!(
                 scales, loading_hat .* b_hat[gidx], b_hat)
         else
-            scales[:cond_failed] = 1.0
+            _mark_cond_failed!(scales)
         end
     end
     fit = DrmFit(fam, blocks, names, theta_hat, Matrix(V), -nll_hat, length(y),

@@ -40,7 +40,7 @@ _lps_rho(eta) = 0.999999 * tanh(eta)
 # the rho -> 1 boundary and did not converge (32 smooth-kernel sites identify rho
 # weakly; a boundary optimum is a property of that draw, not a fitter fault).
 # Seeds 1-3 all converge in the interior, with rho_hat between 0.19 and 0.71.
-function _lps_fixture(C, ids; m = 12, seed = 1, rho = 0.5, sigma_nb = 0.45, sigma_g = 0.5)
+function _lps_fixture_generate(C, ids; m = 12, seed = 1, rho = 0.5, sigma_nb = 0.45, sigma_g = 0.5)
     rng = MersenneTwister(seed)
     G = length(ids)
     z0 = repeat([-1.0, 1.0], G ÷ 2)
@@ -62,6 +62,21 @@ function _lps_fixture(C, ids; m = 12, seed = 1, rho = 0.5, sigma_nb = 0.45, sigm
     data = (; yp = yp[ord], yn = yn[ord], yg = yg[ord], x = x[ord],
             z0 = z0[gi][ord], z1 = z1[gi][ord], id = ids[gi][ord])
     return (; data, gi = gi[ord])
+end
+
+# The committed datasets (test/fixtures/q2_stable/lps_*.tsv) are what the tests
+# fit: `_lps_fixture_generate(C, ids)` (seed 1) as run on Julia 1.10.12. The same
+# MersenneTwister seed gives a different dataset on Julia >= 1.11, and rho is weakly
+# identified from 32 sites (many draws put rho_hat at the boundary), so the data are
+# committed rather than regenerated. The kernel is chosen by sum(C).
+function _lps_fixture(C, ids; kw...)
+    kind = Dict(75.789 => "phylo", 428.265 => "spatial")[round(sum(C); digits = 3)]
+    lines = readlines(joinpath(@__DIR__, "fixtures", "q2_stable", "lps_$(kind).tsv"))
+    rows = [split(l, '\t') for l in lines[3:end]]
+    f(j) = parse.(Float64, [r[j] for r in rows])
+    data = (; yp = f(1), yn = f(2), yg = f(3), x = f(4), z0 = f(5), z1 = f(6),
+            id = String[r[7] for r in rows])
+    return (; data, gi = parse.(Int, [r[8] for r in rows]))
 end
 
 function _lps_formula(resp::Symbol, kind::Symbol, family; labelled = true)

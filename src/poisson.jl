@@ -987,7 +987,7 @@ function _fit_poisson_structured_sd_laplace(fam, y, Xmu, Zobs, leaf_node, Q,
             _attach_conditional_structured!(
                 scales, loading_hat .* b_hat[leaf_node], b_hat)
         else
-            scales[:cond_failed] = 1.0
+            _mark_cond_failed!(scales)
         end
     end
     fit = DrmFit(fam, blocks, names, theta_hat, Matrix(V), -nll_hat, n,
@@ -1890,7 +1890,7 @@ function _fit_poisson_animal_intercept_slope_laplace(fam, y, Xmu, Zgs, gidx, Q,
                  (x .* exp.(Zgs[2][gidx, :] * theta[ranges[2]]) .* bhat[(Gq + 1):(2Gq)][gidx])
         _attach_conditional_structured!(scales, eta_re, bhat[1:Gq], bhat[(Gq + 1):(2Gq)])
     else
-        scales[:cond_failed] = 1.0
+        _mark_cond_failed!(scales)
     end
     fit = DrmFit(fam, block_list, name_list, theta, Matrix(V), -nll_hat,
         length(y), _laplace_outer_converged(result, nll_hat, gf, theta,

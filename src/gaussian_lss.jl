@@ -971,7 +971,7 @@ function _fit_structured_gaussian_q2_sd(fam::Gaussian, y, Xμ, Xσ, Zgs, gidx, G
             Cz1 = Cm[:, gidx] .* (x .* s1 .+ ρ .* s0)'     # Cov(z1_g, y_i)
             _attach_conditional_structured!(scales, eta_re, Cz0 * w, Cz1 * w)
         else
-            scales[:cond_failed] = 1.0
+            _mark_cond_failed!(scales)
         end
     end
     fit = DrmFit(fam, block_list, name_list, θ̂, V, -nll(θ̂), n, converged,
