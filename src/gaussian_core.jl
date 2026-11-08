@@ -417,11 +417,10 @@ _withranef(fit::DrmFit, re) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.
 # DRModels.jl's own `fitted()` stays population level; only the bridge payload
 # reads these keys (`_bridge_dpars` skips every `cond_*` key).
 # Marks the conditional export as failed. `DrmFit.scales` is a
-# `Dict{Symbol,Vector{Float64}}`, so the marker is a length-one vector there; an
-# untyped dict (unit tests) keeps the scalar. Only `haskey(scales, :cond_failed)`
+# `Dict{Symbol,Vector{Float64}}`, so the flag must be a vector: assigning a scalar
+# throws and discards an otherwise converged fit. Only `haskey(scales, :cond_failed)`
 # is read downstream.
-_mark_cond_failed!(scales::AbstractDict) =
-    (scales[:cond_failed] = valtype(scales) <: AbstractVector ? [1.0] : 1.0; scales)
+_mark_cond_failed!(scales::AbstractDict) = (scales[:cond_failed] = [1.0]; scales)
 
 function _attach_conditional_structured!(scales::AbstractDict, eta_re::AbstractVector,
                                          modes::AbstractVector...)
