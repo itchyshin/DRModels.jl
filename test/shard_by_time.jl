@@ -1,0 +1,139 @@
+# shard_by_time.jl -- time-balanced shard driver for the DRModels test suite.
+#
+# This is a STANDALONE driver; it does not replace or alter runtests.jl (whose
+# `DRM_TEST_SHARD="k/N"` modulo split stays the CI default). Use it to run one
+# shard of a precomputed, time-balanced assignment, for example on a cluster:
+#
+#   julia --project=test test/shard_by_time.jl ASSIGN_FILE K [options]
+#
+#   ASSIGN_FILE  one line per shard: `k file1.jl file2.jl ...` (whitespace
+#                separated; blank lines and `#` comments ignored). The number of
+#                lines is the shard count N.
+#   K            this shard, 1..N.
+#
+# Options
+#   --slow-list FILE   file of slow-tier test names (one per line, `#` comments).
+#                      Default: test/slow_tier.txt when it exists.
+#   --skip-slow        drop slow-tier files from this shard (fast tier).
+#   --only-slow        keep only slow-tier files from this shard (slow tier).
+#   --list             print the shard's file list and exit (no loading/running).
+#
+# Files in test/ that match test_*.jl but are absent from ASSIGN_FILE (new files
+# added after the assignment was computed) are NOT dropped: they are spread by
+# modulo, in sorted order, over the N shards, so every file runs in exactly one
+# shard. Files named in assignment but missing on disk are reported and skipped.
+# Files runtests.jl itself excludes (`_TEST_EXCLUDE`) are excluded here too.
+
+const _TESTDIR = @__DIR__
+
+function _read_names(path)
+    out = String[]
+    for line in eachline(path)
+        s = strip(first(split(line, '#'; limit = 2)))
+        isempty(s) || append!(out, split(s))
+    end
+    return out
+end
+
+# `_TEST_EXCLUDE` as defined in runtests.jl, parsed so the two cannot drift.
+function _runtests_excludes()
+    txt = read(joinpath(_TESTDIR, "runtests.jl"), String)
+    m = match(r"const _TEST_EXCLUDE = \[(.*?)\n\]"s, txt)
+    m === nothing && return String[]
+    return [x.captures[1] for x in eachmatch(r"\"(test_[^\"]+\.jl)\"", m.captures[1])]
+end
+
+"""
+    shard_files(assign_path, k; slow = String[], mode = :all) -> Vector{String}
+
+Files for shard `k` of the assignment in `assign_path`, with modulo fallback for
+unassigned files. `mode` is `:all`, `:skip_slow` or `:only_slow`.
+"""
+function shard_files(assign_path::AbstractString, k::Integer; slow = String[], mode::Symbol = :all)
+    assign = Dict{Int,Vector{String}}()
+    for line in eachline(assign_path)
+        s = strip(first(split(line, '#'; limit = 2)))
+        isempty(s) && continue
+        toks = split(s)
+        kk = tryparse(Int, toks[1])
+        kk === nothing && error("assignment line must start with a shard number: $(repr(line))")
+        append!(get!(assign, kk, String[]), toks[2:end])
+    end
+    N = length(assign)
+    sort(collect(keys(assign))) == collect(1:N) ||
+        error("assignment shard numbers must be 1..N without gaps; got $(sort(collect(keys(assign))))")
+    1 <= k <= N || error("shard k=$k outside 1:$N")
+    excl = Set(_runtests_excludes())
+    ondisk = sort(filter(f -> occursin(r"^test_.*\.jl$", f) && !(f in excl), readdir(_TESTDIR)))
+    ondisk_set = Set(ondisk)
+    assigned = Set(vcat(values(assign)...))
+    unknown = filter(f -> !(f in assigned), ondisk)
+    mine = [f for f in assign[k] if f in ondisk_set]
+    for f in assign[k]
+        f in ondisk_set || @warn "assigned file not found (or excluded), skipped" f
+    end
+    append!(mine, [f for (i, f) in enumerate(unknown) if (i - 1) % N == k - 1])
+    slowset = Set(slow)
+    mode === :skip_slow && filter!(f -> !(f in slowset), mine)
+    mode === :only_slow && filter!(f -> f in slowset, mine)
+    return mine
+end
+
+function _main(args)
+    pos = String[]; slow_path = nothing; mode = :all; list_only = false
+    i = 1
+    while i <= length(args)
+        a = args[i]
+        if a == "--slow-list"; slow_path = args[i += 1]
+        elseif a == "--skip-slow"; mode = :skip_slow
+        elseif a == "--only-slow"; mode = :only_slow
+        elseif a == "--list"; list_only = true
+        elseif startswith(a, "--"); error("unknown option $a")
+        else push!(pos, a)
+        end
+        i += 1
+    end
+    length(pos) == 2 || error("usage: shard_by_time.jl ASSIGN_FILE K [--slow-list F] [--skip-slow|--only-slow] [--list]")
+    slow_path === nothing && isfile(joinpath(_TESTDIR, "slow_tier.txt")) &&
+        (slow_path = joinpath(_TESTDIR, "slow_tier.txt"))
+    slow = slow_path === nothing ? String[] : _read_names(slow_path)
+    k = parse(Int, pos[2])
+    files = shard_files(pos[1], k; slow = slow, mode = mode)
+    println("shard_by_time: shard $k, $(length(files)) files, mode=$mode, slow-list=$(length(slow)) names")
+    if list_only
+        foreach(f -> println("  ", f), files)
+        return
+    end
+    @eval Main begin
+        using DRModels
+        using Test, LinearAlgebra, SparseArrays, Random
+    end
+    # Same BLAS pin as runtests.jl: the suite's numerical pins assume 1 thread.
+    Base.invokelatest(LinearAlgebraBLASPin)
+    t0 = time()
+    times = Pair{String,Float64}[]
+    Base.invokelatest(_run_files, files, times)
+    println("shard_by_time: DONE shard $k, files=$(length(files)), total=$(round(time() - t0; digits = 0)) s")
+    for (f, t) in sort(times; by = last, rev = true)
+        println("  TIME ", rpad(f, 60), round(t; digits = 1), " s")
+    end
+end
+
+LinearAlgebraBLASPin() = Main.LinearAlgebra.BLAS.set_num_threads(1)
+
+function _run_files(files, times)
+    Test = Main.Test
+    @eval Main begin
+        Test.@testset "DRModels time-sharded run" begin
+            for f in $files
+                t = @elapsed include(joinpath($_TESTDIR, f))
+                push!($times, f => t)
+                println("SHARD ", f, " ", round(t; digits = 1), " s"); flush(stdout)
+            end
+        end
+    end
+end
+
+if abspath(PROGRAM_FILE) == @__FILE__
+    _main(ARGS)
+end

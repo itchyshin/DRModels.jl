@@ -3960,7 +3960,9 @@ function _fit_crossed_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, gi
                                             se::Bool = false,
                                             polish_iterations::Int = 0,
                                             recover_runoff::Bool = true,
-                                            extra_scales = Dict{Symbol,Vector{Float64}}())
+                                            extra_scales = Dict{Symbol,Vector{Float64}}(),
+                                            logsd0 = (log(0.4), log(0.4)),
+                                            alphaguess = nothing)
     pμ = size(Xμ, 2)
     last_b = zeros(G + Hh)
 
@@ -4004,10 +4006,12 @@ function _fit_crossed_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, gi
     θ0 = zeros(pμ + 3)
     θ0[1:pμ] .= θβ0
     θ0[pμ+1] = θσ0
-    θ0[pμ+2] = log(0.4)
-    θ0[pμ+3] = log(0.4)
+    θ0[pμ+2] = logsd0[1]
+    θ0[pμ+3] = logsd0[2]
     od = Optim.OnceDifferentiable(nll, grad!, θ0)
-    method = Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking())
+    method = alphaguess === nothing ?
+        Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking()) :
+        Optim.LBFGS(alphaguess = alphaguess, linesearch = Optim.LineSearches.BackTracking())
     res_fast = Optim.optimize(od, θ0, method, Optim.Options(g_tol = g_tol, iterations = 250))
     res = if polish_iterations > 0
         try
