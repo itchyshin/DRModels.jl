@@ -108,14 +108,19 @@ end
 """
     drm(formula::BivariateDrmFormula, Gaussian(); data, tree = nothing,
         K = nothing, A = nothing, coords = nothing, g_tol = 1e-8,
-        q4_g_tol = 1e-3, q4_iterations = 300, q4_n_newton = 40,
-        q4_vcov = true, method = :ML) -> DrmFit
+        q4_g_tol = 1e-3, q4_f_reltol = 1e-7, q4_iterations = 300,
+        q4_n_newton = 40, q4_vcov = true, method = :ML) -> DrmFit
 
 Fit a bivariate Gaussian distributional regression model.
 
 With no structured-effect marker, this is the residual-correlation model:
 `mu1`, `mu2`, `sigma1`, `sigma2`, and residual `rho12` each have their own fixed
 effect formula.
+
+`q4_f_reltol` (default `1e-7`) is the relative objective change at which the q=4 ML
+optimiser stops (it ignores `q4_g_tol` near a flat ridge). The default can stop up to
+about `1e-3` in log-likelihood short of the optimum on flat q=4 ridges; use
+`q4_f_reltol = 1e-12` to converge tightly, at a higher run time. REML q=4 ignores it.
 
 With matching structured markers on `mu1` and `mu2` only, this routes to the
 q=2 exact-Gaussian point-fit cell, `method = :ML` (default) or `method =
@@ -161,7 +166,7 @@ fit = drm(
              K = nothing, A = nothing, coords = nothing,
              spatial_range = nothing,
              g_tol::Real = 1e-8, q4_g_tol::Real = 1e-3,
-             q4_iterations::Int = 300, q4_n_newton::Int = 40,
+             q4_f_reltol::Real = 1e-7, q4_iterations::Int = 300, q4_n_newton::Int = 40,
              q4_vcov::Bool = true, method::Symbol = :ML, V = nothing,
              marginal::Union{Nothing,Symbol} = nothing)
     # #1094: this route has no `marginal` integrator choice. Refuse it by name
@@ -200,7 +205,7 @@ fit = drm(
     if structured_marker !== nothing && structured_marker[1] === :phylo_q4
         return _withuncertainty(_fit_bivariate_q4_phylo(
             f, fam, data, fixed, structured_marker, tree;
-            q4_g_tol = q4_g_tol,
+            q4_g_tol = q4_g_tol, q4_f_reltol = q4_f_reltol,
             q4_iterations = q4_iterations,
             q4_n_newton = q4_n_newton,
             q4_vcov = q4_vcov,
@@ -210,7 +215,7 @@ fit = drm(
         return _withuncertainty(_fit_bivariate_q4_structured(
             f, fam, data, fixed, structured_marker, tree, K, A, coords;
             spatial_range = spatial_range,
-            q4_g_tol = q4_g_tol,
+            q4_g_tol = q4_g_tol, q4_f_reltol = q4_f_reltol,
             q4_iterations = q4_iterations,
             q4_n_newton = q4_n_newton,
             q4_vcov = q4_vcov,
@@ -1065,7 +1070,7 @@ Non-tree `bootstrap_sigma_a` is deliberately unsupported.
 function _fit_bivariate_q4_structured(f::BivariateDrmFormula, fam::Gaussian, data, fixed, marker,
                                       tree, K, A, coords;
                                       spatial_range = nothing,
-                                      q4_g_tol::Real, q4_iterations::Int,
+                                      q4_g_tol::Real, q4_iterations::Int, q4_f_reltol::Real = 1e-7,
                                       q4_n_newton::Int, q4_vcov::Bool, method::Symbol = :ML)
     marker[1] === :structured_q4 || error("internal error: expected q4 structured marker")
     kind = marker[2]
@@ -1137,6 +1142,7 @@ function _fit_bivariate_q4_structured(f::BivariateDrmFormula, fam::Gaussian, dat
             β0 = β0,
             Λ0 = Λ0,
             g_tol = Float64(q4_g_tol),
+            f_reltol = Float64(q4_f_reltol),
             iterations = q4_iterations,
             n_newton = q4_n_newton,
             lc_zero = lc_zero,
@@ -1222,7 +1228,7 @@ function _q4_default_spatial_range(coords, G::Int)
 end
 
 function _fit_bivariate_q4_phylo(f::BivariateDrmFormula, fam::Gaussian, data, fixed, marker, tree;
-                                 q4_g_tol::Real, q4_iterations::Int,
+                                 q4_g_tol::Real, q4_iterations::Int, q4_f_reltol::Real = 1e-7,
                                  q4_n_newton::Int, q4_vcov::Bool, method::Symbol = :ML)
     marker[1] === :phylo_q4 || error("internal error: expected q4 phylo marker")
     grp = marker[2]
@@ -1303,6 +1309,7 @@ function _fit_bivariate_q4_phylo(f::BivariateDrmFormula, fam::Gaussian, data, fi
             β0 = β0,
             Λ0 = Λ0,
             g_tol = Float64(q4_g_tol),
+            f_reltol = Float64(q4_f_reltol),
             iterations = q4_iterations,
             n_newton = q4_n_newton,
             lc_zero = lc_zero,

@@ -41,8 +41,9 @@ _ska_form(q4::Bool) = q4 ?
        sigma1 = @formula(sigma1 ~ 1), sigma2 = @formula(sigma2 ~ 1), rho12 = @formula(rho12 ~ 1))
 
 # Fit with DIRECT `coords` input; return the quantities R reports, in R's order.
-function _ska_fit(fx, q4::Bool; spatial_range = nothing)
+function _ska_fit(fx, q4::Bool; spatial_range = nothing, q4_f_reltol = nothing)
     kw = spatial_range === nothing ? (;) : (; spatial_range)
+    q4_f_reltol === nothing || (kw = merge(kw, (; q4_f_reltol)))
     fit = q4 ?
         drm(_ska_form(true), Gaussian(); data = fx.data, coords = fx.coords, q4_g_tol = 1e-6,
             q4_iterations = 2000, q4_n_newton = 40, q4_vcov = false, kw...) :
@@ -105,19 +106,25 @@ end
 end
 
 @testset "spatial kernel audit: bivariate q=4 spatial agrees with drmTMB at the optimum" begin
-    # q=4 is weakly identified at this size; R's own optimiser stops short of the exact
-    # optimum, so the absolute bound is looser than q=2 (observed 1.8e-3 to 4.7e-3, versus
-    # 1.6e-2 to 1.8e-1 and 0.12 to 1.34 R-SE units under the old mean-distance kernel).
+    # R/drmTMB is already at its optimum (r_tight_ll.txt: re-optimising with tolerances of 1e-15
+    # moves its loglik by <= 3e-7). The Julia DEFAULT stops on a relative objective change of 1e-7
+    # and so can sit up to ~1.2e-3 below the optimum on these flat ridges (1.10.12: 1.18e-3 on q4c,
+    # which broke an earlier 1e-3 bound). With `q4_f_reltol = 1e-12` it reaches R to <= 4e-5.
     for tag in ("q4a", "q4b", "q4c")
         fx = _ska_load(tag); @test fx.r_conv == "0"
-        r = _ska_fit(fx, true); @test r.fit.converged
+        r_tight = parse(Float64, strip(read(joinpath(_SKA_DIR, tag, "r_tight_ll.txt"), String)))
+        G = size(fx.coords, 1)
+        med = median([norm(fx.coords[k, :] - fx.coords[l, :]) for k in 1:G for l in (k+1):G])
+        r = _ska_fit(fx, true; q4_f_reltol = 1e-12); @test r.fit.converged
         c = _ska_compare(fx, r)
         @test c.se_units <= 0.01
         @test c.abs <= 1e-2
         @test c.cor <= 5e-3
-        @test c.ll <= 1e-3
-        G = size(fx.coords, 1)
-        @test r.fit.ranef.spatial_range == median([norm(fx.coords[k, :] - fx.coords[l, :])
-                                                  for k in 1:G for l in (k+1):G])
+        @test abs(r.ll - r_tight) <= 1e-4
+        @test r.fit.ranef.spatial_range == med
+        # Default tolerance stays covered, with the documented looser loglik bound.
+        r0 = _ska_fit(fx, true); @test r0.fit.converged
+        @test abs(r0.ll - fx.r_ll) <= 3e-3
+        @test _ska_compare(fx, r0).se_units <= 0.01
     end
 end

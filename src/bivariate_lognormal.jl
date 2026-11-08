@@ -32,8 +32,8 @@
 """
     drm(f::BivariateDrmFormula, ::LogNormal; data, tree = nothing, K = nothing,
         A = nothing, coords = nothing, spatial_range = nothing, g_tol = 1e-8,
-        q4_g_tol = 1e-3, q4_iterations = 300, q4_n_newton = 40, q4_vcov = true,
-        method = :ML)
+        q4_g_tol = 1e-3, q4_f_reltol = 1e-7, q4_iterations = 300, q4_n_newton = 40,
+        q4_vcov = true, method = :ML)
 
 Fit a bivariate **lognormal** residual-correlation model — drmTMB's
 `biv_lognormal()`.
@@ -84,7 +84,8 @@ corpairs(fit)  # log-residual rho12
 """
 @drm_entry function drm(f::BivariateDrmFormula, fam::LogNormal; data, tree = nothing,
              K = nothing, A = nothing, coords = nothing, spatial_range = nothing,
-             g_tol::Real = 1e-8, q4_g_tol::Real = 1e-3, q4_iterations::Int = 300,
+             g_tol::Real = 1e-8, q4_g_tol::Real = 1e-3, q4_f_reltol::Real = 1e-7,
+             q4_iterations::Int = 300,
              q4_n_newton::Int = 40, q4_vcov::Bool = true, method::Symbol = :ML)
     _require_formula_column_lengths(f, data)   # #1022: no ragged columns under @inbounds
     method === :ML ||
@@ -114,7 +115,7 @@ corpairs(fit)  # log-residual rho12
     # exactly the parallel design this family's delegation was built to avoid.
     gfit = drm(f, Gaussian(); data = logdata, tree = tree, K = K, A = A,
                coords = coords, spatial_range = spatial_range, g_tol = g_tol,
-               q4_g_tol = q4_g_tol, q4_iterations = q4_iterations,
+               q4_g_tol = q4_g_tol, q4_f_reltol = q4_f_reltol, q4_iterations = q4_iterations,
                q4_n_newton = q4_n_newton, q4_vcov = q4_vcov, method = method)
     return _lognormal_jacobian_shift(fam, gfit, y1, y2, obs1, obs2)
 end
