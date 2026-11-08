@@ -34,7 +34,13 @@ function dense_binomial_animal_slope_iid_laplace(y, X, animal_index, iid_index,
         rate = 1.0
         while rate > 1e-8
             trial = u .- rate .* step
-            if joint(trial) <= old
+            # `joint` is a 4320-term sum of magnitude ~2.6e3, so its rounding noise
+            # is ~1e-11. Near the mode a Newton step of ~1e-8 changes it by ~1e-16, far
+            # below that noise, so a strict `<= old` test accepts or rejects the full step
+            # by last-ulp luck (it stalled at step ~1e-8 on macOS arm64 / Julia 1.10).
+            # Allow 1e-9 of slack: large steps still need a real decrease, and the
+            # resulting mode error moves the Laplace loglik by far less than the 2e-5 pin.
+            if joint(trial) <= old + 1e-9
                 u = trial
                 break
             end
