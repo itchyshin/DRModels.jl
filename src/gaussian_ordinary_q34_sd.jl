@@ -185,6 +185,36 @@ function _fit_gaussian_ordinary_q34_sd(fam::Gaussian, y, Xμ, Xσ, U, Zgs, gidx,
         scales[blocks[k]] = sdk[gidx]
         scales[Symbol(string(blocks[k]), "_group")] = sdk
     end
+    # Conditional modes at θ̂ (closed form: the model is Gaussian). Group g has
+    # b_g = L z, z ~ N(0, I), L = diag(sd_g) Lc, so E[z | y_g] = M⁻¹ L'(U' diag(1/σ²) r)
+    # with M = I + L' A L, and the row contribution is U_i' L ẑ_g. Recorded as the
+    # per-coefficient unit-scale effects (Lc ẑ_g)_k (effect = sd_k[g] · mode_k[g], mode ~ N(0, R)).
+    let μhat = Xμ * θ̂[1:pμ], σhat = exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]),
+        Lc = _q34_corr_chol(θ̂[rθ], q), sdg = [exp.(Zgs[k] * θ̂[rg[k]]) for k in 1:q]
+        eta_re = zeros(n); modes = [zeros(G) for _ in 1:q]
+        for g in 1:G
+            A = zeros(q, q); b = zeros(q)
+            for i in rows[g]
+                si = 1 / σhat[i]^2; ri = y[i] - μhat[i]
+                for a in 1:q
+                    b[a] += U[i, a] * si * ri
+                    for c in 1:q
+                        A[a, c] += U[i, a] * si * U[i, c]
+                    end
+                end
+            end
+            L = [sdg[a][g] * Lc[a, c] for a in 1:q, c in 1:q]
+            zhat = (I + L' * A * L) \ (L' * b)
+            bg = L * zhat
+            for a in 1:q
+                modes[a][g] = (Lc * zhat)[a]
+            end
+            for i in rows[g]
+                eta_re[i] = dot(view(U, i, :), bg)
+            end
+        end
+        _attach_conditional_structured!(scales, eta_re, modes...)
+    end
     names_θ = String[]
     for i in 1:q, j in 1:(i-1)
         push!(names_θ, "theta($(members[i]), $(members[j]))")

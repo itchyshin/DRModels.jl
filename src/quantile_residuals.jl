@@ -164,16 +164,18 @@ _pit_obs(::Any, i; obs, scales)          = obs[:mu][i]
 # `predict(dpar = "sigma")` adds them); DRModels.jl keeps the population-level
 # reference it uses for the mean intercept.
 #
-# KNOWN LIMITATION: random-effect SD-regression fits (`sdtarget_*` blocks: the
-# predictor-dependent SD routes, including the q2 intercept-plus-slope and the
-# Gamma/NB2 two-field routes) store no `:resd` block, so they are NOT
-# marginalised either: their quantile residuals use the fixed-effect-only
-# reference `fitted(fit) = g^{-1}(X beta)` and are over-dispersed whenever the
-# random-effect SDs are non-negligible (sd of the residuals ~1.3-2.5 on the
-# wave-2 test fixtures). The per-row marginal would need the SD formulas, the
-# loadings (1 or x) and, for labelled fits, the cross-field correlation; until
-# that is implemented, use `simulate(fit; data, …)` (marginal draws) for
-# calibration checks on these fits.
+# Random-effect SD-regression fits (`sdtarget_*` blocks: the predictor-dependent
+# SD routes, including the q2 intercept-plus-slope, q3/q4, phylo / spatial q2, the
+# Gamma/NB2 two-field routes and the joint mean + sigma routes) store no `:resd`
+# block, so they are not σ_b-marginalised. Their residuals condition on the
+# Laplace modes at θ̂, as drmTMB's do: each route records the per-row link-scale
+# mode contribution `scales[:cond_eta_re]` (see `_attach_conditional_structured!`)
+# and `_conditional_mean_at_modes` shifts the mean by it. The joint mean + sigma
+# routes store the conditional mean and conditional `sigma` directly in
+# `fit.means[:mu]` / `fit.scales[:sigma]`. `fitted(fit)` stays population level
+# (except the joint routes). Conditional residuals are not marginally N(0, 1): their
+# SD is below 1 (about 0.8-1 on the test fixtures), as for any residual evaluated at
+# posterior modes.
 _ranef_link(::Poisson) = (μ -> log(max(μ, eps())), exp)
 _ranef_link(::NegBinomial2) = (μ -> log(max(μ, eps())), exp)
 _ranef_link(::TruncatedNegBinomial2) = (μ -> log(max(μ, eps())), exp)
@@ -440,6 +442,20 @@ function _zi_hurdle_pit_interval(fit::DrmFit, fam, i, yi; μ, gsis, mix)
     return p0 + (1 - p0) * at, p0 + (1 - p0) * bt
 end
 
+# μ shifted to the conditional mean at the recorded Laplace modes (see
+# `_attach_conditional_structured!`): g⁻¹(g(μ_pop) + η_re). Unchanged when the fit
+# recorded none, when a σ_b-marginal mixture applies, or when the family has no
+# verified link pair.
+function _conditional_mean_at_modes(fit::DrmFit, fam, μ, mix)
+    mix === nothing || return μ
+    haskey(fit.scales, :cond_eta_re) || return μ
+    lk = _ranef_link(fam)
+    lk === nothing && return μ
+    ηre = fit.scales[:cond_eta_re]
+    length(ηre) == length(μ) || return μ
+    return [lk[2](lk[1](μ[i]) + ηre[i]) for i in eachindex(μ)]
+end
+
 # Randomized quantile residuals r_i = Φ⁻¹(u_i) (Dunn & Smyth; DHARMa / glmmTMB).
 # Continuous families use u = F(y); discrete families randomize within the jump
 # interval [F(y⁻), F(y)]; ZeroOneBeta / CumulativeLogit use the atomic / ordinal
@@ -486,6 +502,13 @@ function _quantile_residuals(fit::DrmFit, rng)
     # fixed-effects-only fit (unchanged behaviour) or a random-effect
     # shape/family this does not cover.
     mix = _ranef_marginal_mix(fit, fam, μ)
+    # Fits that recorded their conditional random-effect contribution at θ̂
+    # (`scales[:cond_eta_re]`, the Laplace modes: the SD-regression q2 / two-field
+    # / structured routes) are judged against the distribution CONDITIONAL on
+    # those modes, as drmTMB's `drm_quantile_residuals()` is (it evaluates F at
+    # `predict()`'s fitted-row parameters, which include the modes). The σ_b-marginal
+    # `mix` above has priority and is unchanged for fits that have one.
+    μ = _conditional_mean_at_modes(fit, fam, μ, mix)
     u = Vector{Float64}(undef, n)
     # #1103: N(η, σ² + v_b) is closed form. Returning z = (y − η) / √(σ² + v_b)
     # (or the log-y form for LogNormal) avoids Φ⁻¹(clamp(Φ(z), eps, 1−eps)).

@@ -245,6 +245,25 @@ function _fit_twofield_sd_laplace(fam::Union{Gamma,NegBinomial2}, y, Xmu, Xsigma
         scales[blocks[k]] = sdk[fields[k].gidx]
         scales[Symbol(string(blocks[k]), "_group")] = sdk
     end
+    # Conditional modes at theta_hat (fresh inner solve), recorded so
+    # `residuals(type = :quantile)` conditions on them as drmTMB's does.
+    let (Ph, logdetPh) = prior(theta)
+        _, uhat, okhat = _twofield_laplace(kind, y, Xmu, fields, Ph, logdetPh, theta,
+                                           aux_from; clamp_logsigma = isgamma)
+        if okhat
+            loads = _twofield_loadings(fields, theta, pmu)
+            Gs = [size(fk.Q, 1) for fk in fields]
+            offs = cumsum([0; Gs[1:end-1]])
+            eta_re = zeros(length(y))
+            for (k, fk) in enumerate(fields), i in eachindex(y)
+                eta_re[i] += loads[k][i] * uhat[offs[k] + fk.gidx[i]]
+            end
+            _attach_conditional_structured!(scales, eta_re,
+                [uhat[(offs[k] + 1):(offs[k] + Gs[k])] for k in 1:2]...)
+        else
+            scales[:cond_failed] = 1.0
+        end
+    end
     fit = DrmFit(fam, block_list, name_list, theta, Matrix(V), -nll_hat,
         length(y), _laplace_outer_converged(result, nll_hat, gf, theta,
         length(y), g_tol), Dict(:mu => exp.(Xmu * theta[1:pmu])),

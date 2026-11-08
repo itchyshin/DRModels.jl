@@ -1945,6 +1945,18 @@ function _fit_nb2_animal_intercept_slope_laplace(fam, y, Xmu, Xsigma, Zgs, gidx,
     scales[blocks[2]] = sd1[gidx]
     scales[Symbol(string(blocks[1]), "_group")] = sd0
     scales[Symbol(string(blocks[2]), "_group")] = sd1
+    # Conditional modes at theta_hat (fresh inner solve); see the Poisson twin.
+    _, bhat, okhat = _nb2_animal_intercept_slope_laplace(
+        y, Xmu, Zgs[1], Zgs[2], gidx, Q, logdetQ, theta, aux_from, x;
+        b0 = zeros(2 * size(Q, 1)), correlated)
+    if okhat
+        Gq = size(Q, 1)
+        eta_re = (exp.(Zgs[1][gidx, :] * theta[ranges[1]]) .* bhat[1:Gq][gidx]) .+
+                 (x .* exp.(Zgs[2][gidx, :] * theta[ranges[2]]) .* bhat[(Gq + 1):(2Gq)][gidx])
+        _attach_conditional_structured!(scales, eta_re, bhat[1:Gq], bhat[(Gq + 1):(2Gq)])
+    else
+        scales[:cond_failed] = 1.0
+    end
     fit = DrmFit(fam, block_list, name_list, theta, Matrix(V), -nll_hat,
         length(y), _laplace_outer_converged(result, nll_hat, gf, theta,
         length(y), g_tol), Dict(:mu => exp.(Xmu * theta[1:pmu])),
