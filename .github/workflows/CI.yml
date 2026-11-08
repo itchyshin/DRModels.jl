@@ -109,10 +109,45 @@ jobs:
         uses: julia-actions/julia-buildpkg@v1
       - if: needs.changes.outputs.code == 'true'
         uses: julia-actions/julia-runtest@v1
+        with:
+          # Coverage files are collected on the current-stable Julia 1 legs
+          # only. Nightly also runs Julia 1.10; uploading both versions of
+          # the same src/ lines would double-count on Codecov. PRs already
+          # run Julia 1 only. julia-runtest's default is coverage=true.
+          coverage: ${{ matrix.version == '1' }}
         env:
           # test/runtests.jl treats an unset/empty value as "run everything", so
           # a local `julia test/runtests.jl` and Pkg.test() are unchanged.
           DRM_TEST_SHARD: ${{ format('{0}/4', matrix.shard) }}
+      - if: needs.changes.outputs.code == 'true' && matrix.version == '1'
+        uses: julia-actions/julia-processcoverage@v1
+      - name: Summarise shard lcov
+        if: needs.changes.outputs.code == 'true' && matrix.version == '1'
+        run: |
+          set -euo pipefail
+          test -f lcov.info
+          awk '
+            /^DA:/ {
+              split($0, a, /[:,]/)
+              total++
+              if (a[3] + 0 > 0) hit++
+            }
+            END {
+              if (total == 0) { print "lcov.info has no DA: lines"; exit 1 }
+              printf "shard %s Julia 1: %d/%d lines hit = %.2f%%\n",
+                     ENVIRON["SHARD"], hit, total, 100.0 * hit / total
+            }
+          ' lcov.info
+        env:
+          SHARD: ${{ matrix.shard }}
+      - name: Upload shard lcov artefact
+        if: needs.changes.outputs.code == 'true' && matrix.version == '1'
+        uses: actions/upload-artifact@v6
+        with:
+          name: coverage-lcov-julia1-shard${{ matrix.shard }}
+          path: lcov.info
+          if-no-files-found: error
+          retention-days: 1
       - if: needs.changes.outputs.code != 'true'
         run: echo "Prose-only change -- Julia suite skipped, this check still reports."
 
@@ -138,6 +173,70 @@ jobs:
         run: |
           echo "aggregate result of the test matrix: ${{ needs.test.result }}"
           test "${{ needs.test.result }}" = "success"
+
+  # Codecov upload is a separate, NON-required job. Do not add `codecov` to
+  # branch protection: an OIDC/auth miss must not block `ci-ok`. One upload
+  # combines the four Julia-1 Linux shard lcov files so shards are merged
+  # rather than treated as duplicate reports. macOS/Windows release-platform
+  # jobs and Julia 1.10 nightly legs do not upload.
+  codecov:
+    name: codecov
+    needs: [changes, test]
+    if: >-
+      needs.changes.outputs.code == 'true' &&
+      (github.event_name != 'pull_request' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+      - name: Download Julia 1 shard lcov artefacts
+        uses: actions/download-artifact@v7
+        with:
+          pattern: coverage-lcov-julia1-shard*
+          path: coverage-shards
+          merge-multiple: false
+      - name: Combined lcov line counts
+        run: |
+          set -euo pipefail
+          files=(
+            coverage-shards/coverage-lcov-julia1-shard1/lcov.info
+            coverage-shards/coverage-lcov-julia1-shard2/lcov.info
+            coverage-shards/coverage-lcov-julia1-shard3/lcov.info
+            coverage-shards/coverage-lcov-julia1-shard4/lcov.info
+          )
+          for f in "${files[@]}"; do
+            test -f "$f" || { echo "::error::$f missing"; ls -la coverage-shards || true; exit 1; }
+          done
+          awk '
+            /^SF:/ { src = substr($0, 4) }
+            /^DA:/ {
+              split($0, a, /[:,]/)
+              key = src SUBSEP a[2]
+              hits[key] += a[3] + 0
+              present[key] = 1
+            }
+            END {
+              n = 0; h = 0
+              for (k in present) { n++; if (hits[k] > 0) h++ }
+              printf "combined unique src lines across 4 shards: %d/%d hit = %.2f%%\n",
+                     h, n, (n ? 100.0 * h / n : 0)
+            }
+          ' "${files[@]}"
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: >-
+            coverage-shards/coverage-lcov-julia1-shard1/lcov.info,coverage-shards/coverage-lcov-julia1-shard2/lcov.info,coverage-shards/coverage-lcov-julia1-shard3/lcov.info,coverage-shards/coverage-lcov-julia1-shard4/lcov.info
+          disable_search: true
+          flags: julia-linux-1
+          name: julia-linux-1
+          use_oidc: true
+          fail_ci_if_error: true
+          verbose: true
 
   # Release-only platform coverage. Manual dispatch also retains the existing
   # Linux matrix and scaling-sweep behaviour; this job does not alter ci-ok.
