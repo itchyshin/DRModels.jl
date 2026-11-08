@@ -92,7 +92,7 @@ function _lss_only_gaussian_guard(f::DrmFormula, fam)
     (isempty(_sd_parts(f)) && isempty(_sdphylo_parts(f))) ||
         throw(ArgumentError("drm: random-effect `sd(group) ~ …` formulas are currently " *
             "supported for Gaussian LSS models and narrow ordinary IID routes in " *
-            "Binomial, Poisson, NegBinomial2, and Gamma (got $(nameof(typeof(fam))))."))
+            "Binomial, Poisson, NegBinomial2, Gamma, and Beta (got $(nameof(typeof(fam))))."))
     return nothing
 end
 
