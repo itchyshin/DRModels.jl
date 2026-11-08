@@ -107,6 +107,7 @@ include("separation.jl")
 include("binomial.jl")
 include("binomial_sd_regression.jl")
 include("gamma.jl")
+include("twofield_sd_laplace.jl")  # Gamma/NB2 two mean fields, one SD formula each (same-group, crossed, ordinary+structured, relmat q2)
 include("lognormal.jl")
 include("bivariate_student.jl")  # drmTMB `biv_student()`: exact bivariate-t density,
                                  # ONE shared nu (logm2 link). Needs student.jl + gaussian_bivariate.jl.
