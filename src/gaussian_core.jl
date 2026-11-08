@@ -190,8 +190,13 @@ function bf(mu::FormulaTerm, dpars::FormulaTerm...)
             is_phylo && member !== nothing && throw(ArgumentError(
                 "bf: `coef()` selectors are not supported with the deprecated `sd_phylo()` spelling; " *
                 "use `sd(g, phylogenetic, coef(term)) ~ …`."))
-            is_phylo && target_dpar !== :mu && throw(ArgumentError(
+            is_phylo && target_dpar !== :mu && flhs.f === sd_phylo && throw(ArgumentError(
                 "bf: distributional-parameter selectors for structured SD targets are not implemented."))
+            # `sd(g, phylogenetic, sigma) ~ z` (drmTMB `sd(g, level = "phylogenetic",
+            # dpar = "sigma")`): a sigma-side phylogenetic SD target. It is stored as a
+            # generic sd target (level :phylogenetic, dpar :sigma), not as the mean-side
+            # `sdphy_` key, and is routed to the Gaussian sigma-SD Laplace engine.
+            is_phylo && target_dpar === :sigma && (is_phylo = false)
             key = if is_phylo
                 Symbol("sdphy_", grpsym)
             else
@@ -1224,7 +1229,8 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         if any(item -> item.target.dpar === :sigma, _sd_target_parts(f))
             return _withformula(_drm_gaussian_sigma_sd_laplace(f, fam, sdp, sdpp, re,
                 structured, structured_sigma, sigma_re, metav, has_missing_response,
-                y, Xμ, Xσ, nmμ, nmσ, data, K, A, coords, g_tol, method, algorithm), f)
+                y, Xμ, Xσ, nmμ, nmσ, data, K, A, coords, g_tol, method, algorithm;
+                tree = tree), f)
         end
         # Shared refusals for every sd() route (single or multi component).
         length(sdpp) ≤ 1 ||
@@ -1555,6 +1561,11 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
             error("drm (Gaussian): a random effect on `sigma` combined with a mean random " *
                   "effect does not support a structured (phylo/relmat/animal/spatial) mean " *
                   "marker or `meta_V(...)` yet (#745 covers the plain `(1 | g)` + `(1 | g)` cell)")
+        # Labelled `(1 | p | g)` in both mu and sigma: correlated intercept pair.
+        if any(t -> _gsl_re_label(t[1]) !== nothing, vcat(re, sigma_re))
+            return _withformula(_drm_gaussian_musigma_corr(fam, f, re, sigma_re, y, Xμ, Xσ,
+                                                           nmμ, nmσ, data, g_tol), f)
+        end
         mean_kind = length(re) == 1 ? _re_kind(re[1][1]) : (:multiple, nothing)
         mean_kind[1] in (:intercept, :corr) ||
             error("drm (Gaussian): simultaneous mean + `sigma` random effects support a " *
