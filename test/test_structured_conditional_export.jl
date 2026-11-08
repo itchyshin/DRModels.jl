@@ -188,3 +188,17 @@ end
     @test DRModels._mark_cond_failed!(typed2) === typed2
     @test typed2[:cond_failed] == [1.0]
 end
+
+# DrmFit.scales is a Dict{Symbol,Vector{Float64}}: the failed-export marker must
+# be storable there. (Previously `scales[:cond_failed] = 1.0` threw a MethodError
+# the first time a conditional-mode inner solve failed on a real fit.)
+@testset "failed-export marker is storable in a typed DrmFit scales dict" begin
+    scales = Dict{Symbol,Vector{Float64}}(:sigma => [1.0])
+    DRModels._attach_conditional_structured!(scales, [0.1, NaN], [0.2])
+    @test haskey(scales, :cond_failed)
+    @test scales[:cond_failed] == [1.0]
+    @test !haskey(scales, :cond_eta_re)
+    marked = Dict{Symbol,Vector{Float64}}()
+    DRModels._mark_cond_failed!(marked)
+    @test haskey(marked, :cond_failed)
+end
