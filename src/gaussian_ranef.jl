@@ -12,6 +12,24 @@
 # barrier — not Inf — because LBFGS's HagerZhang line search asserts isfinite.
 const REML_NONPD_PENALTY = 1e8
 
+# Cholesky for a step that is NOT inside an optimiser objective (a post-fit summary such
+# as BLUPs, a user-supplied covariance checked at set-up, a simulator's prior factor).
+# A bare `cholesky` there throws a raw `PosDefException` ("matrix is not positive
+# definite; Cholesky factorization failed") that names neither the matrix nor the
+# remedy; this refuses with a message that does. Objective-side calls use
+# `cholesky(...; check = false)` + `issuccess` and return `REML_NONPD_PENALTY` instead.
+# Identical to `cholesky(Symmetric(A))` whenever that succeeds.
+function _pd_chol_or_throw(A::AbstractMatrix, what::AbstractString)
+    all(isfinite, A) ||
+        throw(ArgumentError("$what contains non-finite values, so it cannot be factorised."))
+    C = cholesky(Symmetric(A); check = false)
+    issuccess(C) ||
+        throw(ArgumentError("$what is not numerically positive definite (singular or " *
+            "near-singular, e.g. coincident levels, a collapsed variance component, or a " *
+            "non-PSD user matrix); check the matrix or drop the offending term."))
+    return C
+end
+
 # A structured marker's (`phylo`/`relmat`/`animal`/`spatial`) random-effect
 # left-hand side must be the literal intercept `1` on every univariate route:
 # `_split_ranef` (below) — the shared RHS splitter for every univariate family

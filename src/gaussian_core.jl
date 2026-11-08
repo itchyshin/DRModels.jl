@@ -1664,7 +1664,7 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
                 throw(ArgumentError("drm: `$(kind)(1 | $grp)` is not implemented alongside " *
                     "`meta_V(...)`; phylo, relmat and animal are."))
             end
-            push!(comps, (gidx, G, Matrix(cholesky(Symmetric(Cmat)).L), String(grp)))
+            push!(comps, (gidx, G, Matrix(_pd_chol_or_throw(Cmat, "the `$(kind)(1 | $grp)` covariance alongside `meta_V(...)`").L), String(grp)))
         end
         grps = [c[4] for c in comps]
         allunique(grps) ||

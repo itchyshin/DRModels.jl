@@ -924,7 +924,7 @@ function _fit_structured_gaussian_q2_sd(fam::Gaussian, y, Xμ, Xσ, Zgs, gidx, G
         nll_prof(φ) = nll_full(vcat(zeros(eltype(φ), pμ), φ), true; profile = true)
         rφ = Optim.optimize(nll_prof, θ0[(pμ+1):end], Optim.LBFGS(), opts; autodiff = :forward)
         φ̂ = Optim.minimizer(rφ)
-        Vfaĉ = cholesky(Symmetric(build_V(vcat(zeros(pμ), φ̂))))
+        Vfaĉ = _pd_chol_or_throw(build_V(vcat(zeros(pμ), φ̂)), "the REML-optimum covariance V (GLS step)")
         β̂ = Symmetric(Xμ' * (Vfaĉ \ Xμ)) \ (Xμ' * (Vfaĉ \ y))
         # Same return shape as the unrestricted route: the full vector, finished by a
         # zero-step LBFGS (the gradient in β_μ vanishes at the GLS value).

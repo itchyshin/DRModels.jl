@@ -1037,6 +1037,8 @@ function _q4_structured_precision(kind::Symbol, grp::Symbol, G::Int;
         return Matrix(inv(cholesky(Symmetric(C))))
     elseif kind === :spatial
         Ksp = _spatial_covariance_from_coords(grp, G, coords, spatial_range)
+        isposdef(Symmetric(Matrix{Float64}(Ksp))) ||
+            error("spatial(1 | $grp) kernel is not positive definite (coincident or near-coincident site coordinates?)")
         return Matrix(inv(cholesky(Symmetric(Matrix{Float64}(Ksp)))))
     else
         error("internal error: unsupported q4 structured kind `$kind`")
