@@ -35,6 +35,7 @@ end
 
 _twofield_kind(::Gamma) = Val(:gamma_fixed)
 _twofield_kind(::NegBinomial2) = Val(:nb2_fixed)
+_twofield_kind(::Beta) = Val(:beta_fixed)
 
 function _twofield_loadings(fields, theta, pmu)
     off = pmu + 1
@@ -144,7 +145,7 @@ Fit two independent latent mean fields (see the file header) with one SD
 formula each. `fields` is a 2-vector of `_TwoField`; `blocks` / `nmsds` name
 the two SD-coefficient blocks. `sigma ~ 1` only.
 """
-function _fit_twofield_sd_laplace(fam::Union{Gamma,NegBinomial2}, y, Xmu, Xsigma,
+function _fit_twofield_sd_laplace(fam::Union{Gamma,NegBinomial2,Beta}, y, Xmu, Xsigma,
                                   fields::Vector{_TwoField}, nmmu, nmsigma, nmsds,
                                   blocks, g_tol; se::Bool = true, maxiter::Int = 300,
                                   correlated::Bool = false,
@@ -153,7 +154,7 @@ function _fit_twofield_sd_laplace(fam::Union{Gamma,NegBinomial2}, y, Xmu, Xsigma
     length(fields) == 2 || throw(ArgumentError("expected two latent SD fields"))
     size(Xsigma, 2) == 1 || throw(ArgumentError("$context requires `sigma ~ 1`."))
     kind = _twofield_kind(fam)
-    isgamma = fam isa Gamma
+    isgamma = fam isa Union{Gamma,Beta}   # bounded log-dispersion (Gamma, Beta)
     if correlated
         (fields[1].gidx == fields[2].gidx && fields[1].Q == fields[2].Q) || throw(ArgumentError(
             "$context: a correlated pair needs one grouping factor and one kernel."))
@@ -167,8 +168,9 @@ function _fit_twofield_sd_laplace(fam::Union{Gamma,NegBinomial2}, y, Xmu, Xsigma
         Rinv = sparse([1.0 -rho; -rho 1.0] ./ (1 - rho^2))
         return kron(Rinv, fields[1].Q), 2 * fields[1].logdetQ - Gc * log1p(-rho^2)
     end
-    aux_from, beta0, logsigma0 = isgamma ? _gamma_laplace_setup(y, Xmu) :
-                                           _nb2_laplace_setup(y, Xmu)
+    aux_from, beta0, logsigma0 = fam isa Gamma ? _gamma_laplace_setup(y, Xmu) :
+                                 fam isa Beta ? _beta_laplace_setup(y, Xmu) :
+                                                _nb2_laplace_setup(y, Xmu)
     pmu = size(Xmu, 2)
     psd = [size(fk.Zg, 2) for fk in fields]
     ranges = (pmu + 2):(pmu + 1 + psd[1]), (pmu + 2 + psd[1]):(pmu + 1 + sum(psd))
@@ -266,7 +268,8 @@ function _fit_twofield_sd_laplace(fam::Union{Gamma,NegBinomial2}, y, Xmu, Xsigma
     end
     fit = DrmFit(fam, block_list, name_list, theta, Matrix(V), -nll_hat,
         length(y), _laplace_outer_converged(result, nll_hat, gf, theta,
-        length(y), g_tol), Dict(:mu => exp.(Xmu * theta[1:pmu])),
+        length(y), g_tol),
+        Dict(:mu => fam isa Beta ? _logistic.(Xmu * theta[1:pmu]) : exp.(Xmu * theta[1:pmu])),
         Dict(:mu => Vector{Float64}(y)), scales)
     return _withiterations(_withnll(fit, _nll_pinned(nll, theta, nll_hat)),
                            Optim.iterations(result))
@@ -280,6 +283,7 @@ end
 
 _twofield_famname(::Gamma) = "Gamma"
 _twofield_famname(::NegBinomial2) = "NegBinomial2"
+_twofield_famname(::Beta) = "Beta"
 
 function _twofield_numeric(data, v::Symbol, n::Int, famname)
     hasproperty(data, v) || throw(ArgumentError(
@@ -292,7 +296,7 @@ function _twofield_numeric(data, v::Symbol, n::Int, famname)
     return Float64.(raw)
 end
 
-function _drm_twofield_sd_route(f::DrmFormula, fam::Union{Gamma,NegBinomial2};
+function _drm_twofield_sd_route(f::DrmFormula, fam::Union{Gamma,NegBinomial2,Beta};
                                 data, tree = nothing, K = nothing, A = nothing,
                                 Ainv = nothing, coords = nothing,
                                 g_tol::Real = 1e-8, se::Bool = true)
@@ -311,7 +315,7 @@ end
 # same fields (row-to-level maps, kernels, loadings, SD designs). Returns
 # `nothing` for formulas that are not two-field shapes. `store_schema = false`
 # (post-fit) reads the fitted SD-design schema without overwriting it.
-function _twofield_build(f::DrmFormula, fam::Union{Gamma,NegBinomial2};
+function _twofield_build(f::DrmFormula, fam::Union{Gamma,NegBinomial2,Beta};
                          data, tree = nothing, K = nothing, A = nothing,
                          Ainv = nothing, coords = nothing, store_schema::Bool = true)
     famname = _twofield_famname(fam)
@@ -319,7 +323,7 @@ function _twofield_build(f::DrmFormula, fam::Union{Gamma,NegBinomial2};
     length(targets) == 2 || return nothing
     all(t -> t.target.dpar === :mu && t.target.block === nothing &&
         t.target.level in (:iid, :animal, :relmat) ||
-        (fam isa Gamma && t.target.level in (:phylogenetic, :spatial)), targets) || return nothing
+        (fam isa Union{Gamma,Beta} && t.target.level in (:phylogenetic, :spatial)), targets) || return nothing
     rhs = Dict(f.forms)
     haskey(rhs, :mu) || return nothing
     correlated = false
@@ -340,12 +344,17 @@ function _twofield_build(f::DrmFormula, fam::Union{Gamma,NegBinomial2};
     else
         fixed_mu, re, metav, st, phylo_sslope, _, sslope = _split_ranef(rhs[:mu];
             allow_relmat_intercept_slope = true, allow_animal_intercept_slope = true,
-            allow_phylo_slope = fam isa Gamma, allow_spatial_intercept_slope = fam isa Gamma)
+            allow_phylo_slope = fam isa Union{Gamma,Beta},
+            allow_spatial_intercept_slope = fam isa Union{Gamma,Beta})
         phylo_sslope === nothing || (sslope = phylo_sslope)
     end
     metav === nothing || return nothing
     labelled === nothing && (structured = _collect_structured(rhs[:mu]))
     length(structured) <= 1 || return nothing
+    # Beta uses this engine for the independent structured `kind(1 + x | g)` shapes only
+    # (the ordinary, crossed and labelled shapes keep their own routes and refusals).
+    fam isa Beta && !(labelled === nothing && length(structured) == 1 && isempty(re) &&
+                      sslope !== nothing) && return nothing
     # Identify the shape and the two (term, target) pairs.
     specs = nothing   # Vector of (; kind, group, slope, provider, target)
     levels = Set(t.target.level for t in targets)
@@ -421,17 +430,19 @@ function _twofield_build(f::DrmFormula, fam::Union{Gamma,NegBinomial2};
         specs = [(; group = g, slope = nothing, provider = :iid, target = only(tg)),
                  (; group = pgrp, slope = nothing, provider = prov, target = only(tp))]
     elseif length(structured) == 1 && isempty(re) && sslope !== nothing &&
-           first(only(structured)) === :relmat && fam isa Gamma
-        # Independent relmat(1 + x | p) q2 (Gamma; the NB2 relmat q2 route exists).
-        _, pgrp = only(structured)
-        levels == Set([:relmat]) || return nothing
+           ((first(only(structured)) === :relmat && fam isa Union{Gamma,Beta}) ||
+            (first(only(structured)) === :animal && fam isa Beta))
+        # Independent relmat(1 + x | p) q2 (Gamma, Beta; the NB2 relmat q2 route exists)
+        # and animal(1 + x | p) q2 (Beta).
+        prov, pgrp = only(structured)
+        levels == Set([prov]) || return nothing
         all(t -> t.target.group === pgrp, targets) || return nothing
         Set(t.target.member for t in targets) == Set([:intercept, sslope]) || throw(ArgumentError(
-            "$famname relmat SD formulas must select `coef(intercept)` and `coef($sslope)` exactly once."))
-        specs = [(; group = pgrp, slope = m === :intercept ? nothing : m, provider = :relmat,
+            "$famname $prov SD formulas must select `coef(intercept)` and `coef($sslope)` exactly once."))
+        specs = [(; group = pgrp, slope = m === :intercept ? nothing : m, provider = prov,
                    target = only(filter(t -> t.target.member === m, targets)))
                  for m in (:intercept, sslope)]
-    elseif length(structured) == 1 && isempty(re) && sslope !== nothing && fam isa Gamma &&
+    elseif length(structured) == 1 && isempty(re) && sslope !== nothing && fam isa Union{Gamma,Beta} &&
            first(only(structured)) in (:phylo, :spatial)
         # Independent phylo(1 + x | p) / spatial(1 + x | p) q2 (Gamma): the same two
         # fields with the tip-correlation / coordinate kernel of the Poisson and NB2
@@ -494,6 +505,9 @@ function _twofield_build(f::DrmFormula, fam::Union{Gamma,NegBinomial2};
     if fam isa Gamma
         all(yi -> isfinite(yi) && yi > 0, y) || throw(ArgumentError(
             "Gamma() requires strictly positive responses"))
+    elseif fam isa Beta
+        all(yi -> 0 < yi < 1, y) || throw(ArgumentError(
+            "Beta() requires responses strictly in the open interval (0, 1)"))
     else
         all(yi -> isfinite(yi) && yi >= 0 && isinteger(yi), y) || throw(ArgumentError(
             "NegBinomial2() requires non-negative integer counts as the response"))
@@ -578,7 +592,9 @@ function _twofield_sd_marginal_simulator(fit::DrmFit, data; K = nothing, A = not
         u2 = b.correlated ? rho .* z1 .+ sqrt(1 - rho^2) .* z2 : z2
         eta = eta_fixed .+ loads[1] .* z1[b.fields[1].gidx] .+
               loads[2] .* u2[b.fields[2].gidx]
-        return _simulate_once(fit, rng; mu = exp.(eta), sigma)
+        return fam isa Beta ?
+               _simulate_once(fit, rng; mu = _logistic.(clamp.(eta, -30.0, 30.0))) :
+               _simulate_once(fit, rng; mu = exp.(eta), sigma)
     end
 end
 
