@@ -237,8 +237,11 @@ function _fit_gaussian_sigma_sd_laplace(fam::Union{Gaussian,NegBinomial2,Gamma},
         v = convert(Vector{T}, vhat)
         if T <: ForwardDiff.Dual
             _, g, H = joint(vhat, true)
-            C = cholesky(Symmetric(H))
-            v = vhat .- (C \ g)
+            # A non-PD Hessian here used to raise PosDefException out of `drm()`; return the same
+            # non-PD penalty as the line below (the fit is reported with converged = false).
+            Cn = cholesky(Symmetric(H); check = false)
+            issuccess(Cn) || return T(REML_NONPD_PENALTY)
+            v = vhat .- (Cn \ g)
         end
         F, _, H = joint(v, true)
         C = cholesky(Symmetric(H); check = false)
