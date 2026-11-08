@@ -99,19 +99,27 @@ routes; `sigma ~ 1` and `nu ~ 1` are REQUIRED (not just default) on the
 crossed route, and `p` is found by an outer 1-D profile search over the one
 dispersion-like nuisance slot the shared engine does not also give to `p`.
 The CORRELATED random slope `(1 + x | g)`, random effects on `sigma`/`nu`, and
-phylogenetic, animal, or spatial markers on `mu` are not implemented. The
-related-matrix intercept is supported only on the predictor-dependent SD route
-described below; this does not establish general structured-effect support.
+animal or spatial markers, structured slopes, and structured terms combined with
+other random effects on `mu` are not implemented. A single phylogenetic
+intercept `phylo(1 | g)` (with `tree = …`) or related-matrix intercept
+`relmat(1 | g)` (with `K = …`) is supported, with fixed `sigma ~ 1` and
+`nu ~ 1`; the bare term is the `sd(g, …) ~ 1` model. The phylogenetic scale is
+the tip correlation of an ultrametric tree and `K` enters raw, as in drmTMB.
+Both use a Laplace approximation over the group-level vector, the same
+approximation drmTMB uses, so estimates (not log-likelihoods across engines)
+can be compared at the optimum.
 
 Predictor-dependent SD regression is available for one ordinary mean random
 intercept or one independent numeric mean slope with a group-constant SD
 design, for example `sd(group) ~ z` or
 `sd(group, coef(x)) ~ z`. A single related-matrix mean intercept is also
-available with `relmat(1 | group)`, `sd(group, relmat) ~ z`, and `K = K`.
+available with `relmat(1 | group)`, `sd(group, relmat) ~ z`, and `K = K`, and a
+single phylogenetic mean intercept with `phylo(1 | group)`,
+`sd(group, phylogenetic) ~ z`, and `tree = tree` (`z` constant within a group).
 For ordinary effects, the mean, dispersion, and power retain their existing
-submodels. The related-matrix route currently requires `sigma ~ 1` and
+submodels. The structured routes currently require `sigma ~ 1` and
 `nu ~ 1`. Ordinary effects use adaptive Gauss–Hermite quadrature; the
-related-matrix route uses a Laplace approximation. Correlated ordinary blocks
+related-matrix and phylogenetic routes use a Laplace approximation. Correlated ordinary blocks
 and other structured providers are not implemented, and interval coverage is
 not calibrated.
 
@@ -138,10 +146,13 @@ _logit12(η) = 1 + 1 / (1 + exp(-η))            # (1,2) link for the power p
                          tree = nothing, K = nothing, A = nothing,
                          coords = nothing)
     _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, coords = coords)   # #1027 #1022
-    if isempty(_sd_parts(f)) &&
+    f = _default_tweedie_structured_sd(f)   # bare phylo/relmat(1 | g): default `sd(g, …) ~ 1`
+    if isempty(_sd_parts(f)) && isempty(_sdphylo_parts(f)) &&
        (tree !== nothing || K !== nothing || A !== nothing || coords !== nothing)
         throw(ArgumentError(
-            "Tweedie structured covariance inputs (`tree`, `K`, `A`, `coords`) are only used by supported structured SD routes; this formula has no random-effect SD target."))
+            "Tweedie uses `tree` only for one `phylo(1 | g)` mean intercept and `K` only for one `relmat(1 | g)` mean intercept " *
+            "(each alone on `mu`, with fixed `sigma ~ 1` and `nu ~ 1`, optionally with `sd(g, …) ~ …`); this formula has no such term, so `tree`, `K`, `A` or `coords` would be ignored. " *
+            "Structured slopes, animal and spatial terms, and structured terms combined with ordinary random effects are not implemented; drmTMB 0.8.1 refuses structured Tweedie slopes as well."))
     end
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
         _tweedie_validate_observed_relmat_sd_design(f, data, data_observed)
@@ -151,7 +162,7 @@ _logit12(η) = 1 + 1 / (1 + exp(-η))            # (1,2) link for the power p
     missing_fit !== nothing &&
         return _tweedie_restore_full_relmat_sd_outputs!(missing_fit, f, data, K)
 
-    if !isempty(_sd_parts(f))
+    if !isempty(_sd_parts(f)) || !isempty(_sdphylo_parts(f))
         return _withformula(_drm_tweedie_sd_regression(
             f, fam; data, g_tol, tree, K, A, coords), f)
     end
@@ -176,8 +187,9 @@ _logit12(η) = 1 + 1 / (1 + exp(-η))            # (1,2) link for the power p
     all(yi -> yi >= 0, y) || error("Tweedie() requires non-negative responses (zeros allowed)")
 
     st === nothing ||
-        error("Tweedie() structured (phylo/relmat/animal/spatial) random effects on `mu` " *
-              "are not implemented (matches drmTMB, which has no structured route for tweedie())")
+        error("Tweedie() supports a structured effect on `mu` only as one `phylo(1 | g, tree = …)` or " *
+              "`relmat(1 | g, K = …)` intercept; animal and spatial terms are not implemented " *
+              "(drmTMB 0.8.1 refuses them for tweedie() too)")
     if !isempty(re)                    # random intercept/slope on mu → GHQ marginal (#563 S8)
         if length(re) > 1               # crossed/multiple intercepts (#737)
             all(_re_kind(r[1])[1] === :intercept for r in re) ||
@@ -227,17 +239,17 @@ function _drm_tweedie_sd_regression(f::DrmFormula, fam::Tweedie; data,
                                     tree = nothing, K = nothing, A = nothing,
                                     coords = nothing,
                                     nAGQ::Int = _TWEEDIE_RANEF_AGHQ_K)
-    targets = _sd_target_parts(f)
+    targets = _gamma_sd_targets(f)   # also lifts `sd(g, phylogenetic) ~ …` to a phylogenetic target
     length(targets) == 1 || throw(ArgumentError(
         "Tweedie random-effect SD regression requires exactly one `sd(group) ~ …` formula."))
     target = only(targets)
     descriptor = target.target
-    (descriptor.level in (:iid, :relmat) && descriptor.dpar === :mu &&
+    (descriptor.level in (:iid, :relmat, :phylogenetic) && descriptor.dpar === :mu &&
      descriptor.block === nothing) || throw(ArgumentError(
-        "Tweedie SD regression targets one ordinary mean coefficient or one related-matrix mean intercept."))
-    if descriptor.level === :relmat
-        return _drm_tweedie_relmat_sd_regression(f, fam; data, target, g_tol,
-                                                  tree, K, A, coords, se)
+        "Tweedie SD regression targets one ordinary mean coefficient, one related-matrix mean intercept, or one phylogenetic mean intercept."))
+    if descriptor.level in (:relmat, :phylogenetic)
+        return _drm_tweedie_structured_sd_regression(f, fam; data, target, g_tol,
+                                                      tree, K, A, coords, se)
     end
     (tree === nothing && K === nothing && A === nothing && coords === nothing) ||
         throw(ArgumentError("Tweedie ordinary SD regression does not use `tree`, `K`, `A`, or `coords`."))
@@ -301,56 +313,69 @@ function _drm_tweedie_sd_regression(f::DrmFormula, fam::Tweedie; data,
         G, nmmu, nmsigma, nmnu, nmsd, grp, g_tol; K = nAGQ, se)
 end
 
-function _drm_tweedie_relmat_sd_regression(f::DrmFormula, fam::Tweedie;
+# One Laplace route for a single structured mean intercept: `relmat(1 | g)` with
+# the raw covariance `K`, or `phylo(1 | g)` with the tip correlation of `tree`
+# (the scale native drmTMB uses). Both share `_fit_tweedie_relmat_sd_laplace`.
+function _drm_tweedie_structured_sd_regression(f::DrmFormula, fam::Tweedie;
         data, target, g_tol::Real, tree, K, A, coords, se::Bool)
     descriptor = target.target
     grp = descriptor.group
+    phylogenetic = descriptor.level === :phylogenetic
+    kind = phylogenetic ? :phylo : :relmat
     descriptor.member in (nothing, :intercept) || throw(ArgumentError(
-        "Tweedie related-matrix SD regression currently supports one mean intercept."))
-    (tree === nothing && A === nothing && coords === nothing) || throw(ArgumentError(
-        "Tweedie relmat SD regression uses `K = …` only; do not also supply `tree`, `A`, or `coords`."))
-    K === nothing && throw(ArgumentError(
-        "relmat(1 | $grp) with predictor-dependent SD requires `K = …`."))
+        "Tweedie structured SD regression currently supports one mean intercept."))
+    if phylogenetic
+        (K === nothing && A === nothing && coords === nothing) || throw(ArgumentError(
+            "Tweedie phylo SD regression uses `tree = …` only; do not also supply `K`, `A`, or `coords`."))
+        tree === nothing && throw(ArgumentError("phylo(1 | $grp) needs `tree = …`."))
+    else
+        (tree === nothing && A === nothing && coords === nothing) || throw(ArgumentError(
+            "Tweedie relmat SD regression uses `K = …` only; do not also supply `tree`, `A`, or `coords`."))
+        K === nothing && throw(ArgumentError(
+            "relmat(1 | $grp) with predictor-dependent SD requires `K = …`."))
+    end
 
     rhs = Dict(f.forms)
     fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
-    mv === nothing || throw(ArgumentError("Tweedie relmat SD regression cannot use meta_V()."))
-    st == (:relmat, grp) || throw(ArgumentError(
-        "Tweedie `sd($grp, relmat)` requires the matching `relmat(1 | $grp)` mean term."))
+    mv === nothing || throw(ArgumentError("Tweedie $kind SD regression cannot use meta_V()."))
+    st == (kind, grp) || throw(ArgumentError(
+        "Tweedie `sd($grp, $(phylogenetic ? "phylogenetic" : "relmat"))` requires the matching `$kind(1 | $grp)` mean term."))
     structured = _collect_structured(rhs[:mu])
-    length(structured) == 1 && only(structured) == (:relmat, grp) ||
+    length(structured) == 1 && only(structured) == (kind, grp) ||
         throw(ArgumentError(
-            "Tweedie relmat SD regression requires exactly one `relmat(1 | $grp)` term."))
+            "Tweedie $kind SD regression requires exactly one `$kind(1 | $grp)` term."))
     isempty(re) || throw(ArgumentError(
-        "Tweedie relmat SD regression currently requires one structured intercept without ordinary random effects."))
+        "Tweedie $kind SD regression currently requires one structured intercept without ordinary random effects."))
     for (pname, _) in f.forms
         (pname === :mu || pname === :sigma || pname === :nu || pname === target.key) && continue
-        throw(ArgumentError("Tweedie relmat SD regression supports only `mu`, fixed `sigma ~ 1`, fixed `nu ~ 1`, and one related-matrix SD formula."))
+        throw(ArgumentError("Tweedie $kind SD regression supports only `mu`, fixed `sigma ~ 1`, fixed `nu ~ 1`, and one $(phylogenetic ? "phylogenetic" : "related-matrix") SD formula."))
     end
     for pname in (:sigma, :nu)
         haskey(rhs, pname) || continue
         rhs[pname] == ConstantTerm(1) || throw(ArgumentError(
-            "Tweedie relmat SD regression requires fixed `$(pname) ~ 1`; predictor-dependent `sigma` and `nu` are not supported on this route."))
+            "Tweedie $kind SD regression requires fixed `$(pname) ~ 1`; predictor-dependent `sigma` and `nu` are not supported on this route."))
         _, re_p, mv_p, st_p = _split_ranef(rhs[pname])
         (isempty(re_p) && mv_p === nothing && st_p === nothing) || throw(ArgumentError(
-            "Tweedie related-matrix random effects are supported only for `mu`."))
+            "Tweedie $kind random effects are supported only for `mu`."))
     end
     all(_formula_response_observed_mask(f, data)) || throw(ArgumentError(
-        "Tweedie related-matrix SD regression requires observed responses; remove incomplete rows before fitting."))
+        "Tweedie $kind SD regression requires observed responses; remove incomplete rows before fitting."))
     y, Xmu, nmmu = _design(f.response, fixed_mu, data)
     _, Xsigma, nmsigma = _design(f.response, get(rhs, :sigma, ConstantTerm(1)), data)
     _, Xnu, nmnu = _design(f.response, get(rhs, :nu, ConstantTerm(1)), data)
     size(Xsigma, 2) == 1 && size(Xnu, 2) == 1 || throw(ArgumentError(
-        "Tweedie related-matrix SD regression requires fixed `sigma ~ 1` and `nu ~ 1`."))
+        "Tweedie $kind SD regression requires fixed `sigma ~ 1` and `nu ~ 1`."))
     all(yi -> isfinite(yi) && yi >= 0, y) || throw(ArgumentError(
         "Tweedie() requires finite non-negative responses (zeros allowed)"))
     labels = getproperty(data, grp)
-    Q, gidx, kernel_variance = _tweedie_relmat_cov_setup(K, labels)
+    Q, gidx, kernel_variance = phylogenetic ?
+        _tweedie_phylo_cov_setup(tree, labels, grp) :
+        _tweedie_relmat_cov_setup(K, labels)
     G = size(Q, 1)
     Zg, nmsd = _sd_group_design(f.response, target.rhs, data, gidx, G, grp;
         schema_cache = f.schema_cache, schema_key = target.key)
     size(Zg, 2) <= G && rank(Zg) == size(Zg, 2) || throw(ArgumentError(
-        "Tweedie `sd($grp, relmat)` design is rank deficient; use predictors that vary independently across groups."))
+        "Tweedie `sd($grp, $(phylogenetic ? "phylogenetic" : "relmat"))` design is rank deficient; use predictors that vary independently across groups."))
     return _fit_tweedie_relmat_sd_laplace(fam, y, Xmu, Xsigma, Xnu,
         Zg, gidx, Q, kernel_variance, nmmu, nmsigma, nmnu, nmsd, grp, g_tol; se)
 end
@@ -454,6 +479,40 @@ function _tweedie_relmat_cov_setup(C, labels)
     return sparse(Symmetric(inv(cholesky(Csym)))), group_index, kernel_variance
 end
 
+# Tip correlation of `tree` (ultrametric, every tip observed) as a precision, with
+# rows indexed by tree leaf as in the phylo q2 routes.
+function _tweedie_phylo_cov_setup(tree, labels, grp)
+    C, gidx, _ = _structured_q2_kernel(:phylo, grp, labels; tree, K = nothing,
+        A = nothing, coords = nothing, who = "Tweedie phylo SD regression")
+    Csym = Symmetric(Matrix{Float64}(C))
+    return sparse(Symmetric(inv(cholesky(Csym)))), gidx, diag(Csym)
+end
+
+# A bare `phylo(1 | g)` or `relmat(1 | g)` mean intercept is the SD route with
+# `sd(g, …) ~ 1`, as the Gamma and count q2 routes do for bare structured blocks.
+function _default_tweedie_structured_sd(f::DrmFormula)
+    (isempty(f.sd_targets) && isempty(_sd_target_parts(f)) &&
+     isempty(_sdphylo_parts(f))) || return f
+    rhs = Dict(f.forms)
+    mu = get(rhs, :mu, nothing)
+    mu === nothing && return f
+    st = try
+        _, re, metav, structured = _split_ranef(mu)
+        isempty(re) && metav === nothing ? structured : nothing
+    catch
+        nothing
+    end
+    (st isa Tuple && first(st) in (:phylo, :relmat)) || return f
+    forms = copy(f.forms)
+    targets = copy(f.sd_targets)
+    key = Symbol("__sd_target_1")
+    push!(forms, key => ConstantTerm(1))
+    targets[key] = (group = last(st),
+                    level = first(st) === :phylo ? :phylogenetic : :relmat,
+                    member = nothing, dpar = :mu, block = nothing)
+    return DrmFormula(f.response, forms, f.response2, f.schema_cache, targets)
+end
+
 function _tweedie_relmat_scaled_precision(Q, log_sd)
     inv_sd = exp.(-log_sd)
     return Symmetric(Diagonal(inv_sd) * Q * Diagonal(inv_sd))
@@ -520,6 +579,46 @@ function _tweedie_relmat_inner_mode(objective, initial; g_tol::Real = 1e-7,
     return _tweedie_relmat_polish_mode(objective, mode; g_tol)
 end
 
+# d/deta and d^2/deta^2 of the Tweedie negative log-density at log-mean `eta`.
+function _tweedie_eta_derivs(y, eta, phi, power)
+    nll(e) = -_logpdf_tweedie(y, exp(e), phi, power)
+    dnll(e) = ForwardDiff.derivative(nll, e)
+    return dnll(eta), ForwardDiff.derivative(dnll, eta)
+end
+
+# Damped Newton for the latent mode of the structured Laplace objective, using
+# the exact structured gradient and Hessian. Returns `nothing` unless the
+# gradient certificate `g_tol` holds, so the caller can fall back to LBFGS.
+function _tweedie_structured_newton_mode(objective, grad_hess, initial;
+                                          g_tol::Real = 5e-7, maxiter::Int = 60)
+    b = Float64.(initial)
+    all(isfinite, b) || return nothing
+    value = objective(b)
+    isfinite(value) || return nothing
+    for _ in 1:maxiter
+        gradient, H = grad_hess(b)
+        all(isfinite, gradient) || return nothing
+        norm(gradient, Inf) <= g_tol && return b
+        hchol = cholesky(Symmetric(H); check = false)
+        step = issuccess(hchol) ? hchol \ gradient : gradient
+        slope = dot(gradient, step)
+        t, accepted = 1.0, false
+        while t > 1e-10
+            candidate = b .- t .* step
+            cv = objective(candidate)
+            # a roundoff allowance keeps the search alive near the optimum,
+            # where the true decrease is below the objective's floating-point noise
+            if isfinite(cv) && cv <= value - 1e-4 * t * slope + 1e-12 * (1 + abs(value))
+                b, value, accepted = candidate, cv, true
+                break
+            end
+            t /= 2
+        end
+        accepted || return nothing
+    end
+    return nothing
+end
+
 function _fit_tweedie_relmat_sd_laplace(fam, y, Xmu, Xsigma, Xnu, Zg,
         gidx, Q, kernel_variance, nmmu, nmsigma, nmnu, nmsd, grp, g_tol; se::Bool = true,
         maxiter::Int = 250)
@@ -557,13 +656,33 @@ function _fit_tweedie_relmat_sd_laplace(fam, y, Xmu, Xsigma, Xnu, Zg,
             return value
         end
 
+        # Observation i depends on b only through b[gidx[i]], so the exact
+        # gradient and Hessian are Qsd * b plus per-observation scalar eta
+        # derivatives; no G-dimensional ForwardDiff pass is needed.
+        function grad_hess(b)
+            gradient = Qsd * b
+            H = Matrix(Qsd)
+            @inbounds for i in eachindex(y)
+                k = gidx[i]
+                eta_raw = eta0[i] + b[k]
+                (-30.0 < eta_raw < 30.0) || continue
+                d1, d2 = _tweedie_eta_derivs(y[i], eta_raw, phi, power)
+                gradient[k] += d1
+                H[k, k] += d2
+            end
+            return gradient, H
+        end
         b0 = all(isfinite, initial_b) ? copy(initial_b) : zeros(G)
-        b_hat = _tweedie_relmat_inner_mode(joint, b0; g_tol = 5e-7, maxiter = 150)
+        b_hat = _tweedie_structured_newton_mode(joint, grad_hess, b0)
+        b_hat === nothing &&
+            (b_hat = _tweedie_structured_newton_mode(joint, grad_hess, zeros(G)))
+        b_hat === nothing &&
+            (b_hat = _tweedie_relmat_inner_mode(joint, b0; g_tol = 5e-7, maxiter = 150))
         b_hat === nothing &&
             (b_hat = _tweedie_relmat_inner_mode(joint, zeros(G);
                                                 g_tol = 5e-7, maxiter = 300))
         b_hat === nothing && return 1e18, nothing
-        H = ForwardDiff.hessian(joint, b_hat)
+        H = last(grad_hess(b_hat))
         hchol = cholesky(Symmetric(H); check = false)
         issuccess(hchol) || return 1e18, nothing
         value = joint(b_hat) - 0.5 * logdetQsd + 0.5 * logdet(hchol)
@@ -665,7 +784,7 @@ function predict_parameters(fit::DrmFit{Tweedie}, newdata;
         "predict_parameters: `type` must be :response or :link"))
     forms = Dict(f.forms)
     if K !== nothing
-        targets = _sd_target_parts(f)
+        targets = _gamma_sd_targets(f)
         length(targets) == 1 && only(targets).target.level === :relmat ||
             throw(ArgumentError(
                 "predict_parameters: `K` is used only for one Tweedie related-matrix SD target"))
@@ -685,7 +804,7 @@ function predict_parameters(fit::DrmFit{Tweedie}, newdata;
         # skipping them at this generic parameter-presence check.
         (p === :sd || haskey(forms, p)) || continue
         if p === :sd
-            targets = _sd_target_parts(f)
+            targets = _gamma_sd_targets(f)
             length(targets) == 1 || throw(ArgumentError(
                 "predict_parameters: Tweedie SD prediction requires one random-effect target"))
             target = only(targets)
