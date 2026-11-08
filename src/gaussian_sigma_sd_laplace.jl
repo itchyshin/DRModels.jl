@@ -327,7 +327,7 @@ end
 function _drm_gaussian_sigma_sd_laplace(f::DrmFormula, fam::Gaussian, sdp, sdpp, re, structured,
                                         structured_sigma, sigma_re, metav, has_missing_response,
                                         y, Xμ, Xσ, nmμ, nmσ, data, K, A, coords, g_tol, method,
-                                        algorithm)
+                                        algorithm; tree = nothing)
     what = "Gaussian `sd(g, sigma)`"
     isempty(sdpp) || throw(ArgumentError("drm: $what cannot be combined with `sd(g, phylogenetic)`."))
     metav === nothing || throw(ArgumentError("drm: $what cannot be combined with `meta_V(...)`."))
@@ -350,10 +350,10 @@ function _drm_gaussian_sigma_sd_laplace(f::DrmFormula, fam::Gaussian, sdp, sdpp,
         "drm: $what takes exactly one sigma-side SD formula (got $(length(sig_targets)))."))
     sig_t = only(sig_targets)
     sd_ = sig_t.target
-    sd_.block === nothing && sd_.level in (:iid, :animal, :relmat) || throw(ArgumentError(
-        "drm: $what is implemented for an ordinary sigma random effect and for animal/relmat " *
-        "structured sigma effects; `$(sd_.level)` is not (phylogenetic sigma effects are also " *
-        "refused by native drmTMB; spatial is not yet ported)."))
+    sd_.block === nothing && sd_.level in (:iid, :animal, :relmat, :phylogenetic, :spatial) ||
+        throw(ArgumentError(
+        "drm: $what is implemented for an ordinary sigma random effect and for animal, relmat, " *
+        "phylo and spatial structured sigma intercepts; `$(sd_.level)` is not."))
     nblocks = length(targets)
     block_of(item) = _sd_target_block(item.target; disambiguate = nblocks > 1)
 
@@ -361,11 +361,16 @@ function _drm_gaussian_sigma_sd_laplace(f::DrmFormula, fam::Gaussian, sdp, sdpp,
     structured_route = structured_sigma !== nothing
     local sigma_spec
     if structured_route
-        # 6b: sigma ~ 1 + animal|relmat(1 | g), sd(g, level, sigma) ~ z; mean fixed.
+        # 6b: sigma ~ 1 + animal|relmat|phylo|spatial(1 | g), sd(g, level, sigma) ~ z;
+        # mean fixed. K enters raw for animal/relmat; phylo is the tree's correlation
+        # matrix (ape::vcv(tree, corr = TRUE)); spatial is the native FIXED kernel
+        # exp(-d / median positive distance) + 1e-6 I (`drm_spatial_coords_precision`).
         kind, grp = structured_sigma
-        kind in (:animal, :relmat) || throw(ArgumentError(
-            "drm: $what with `$kind(1 | $grp)` on sigma is not supported; use animal or relmat."))
-        sd_.level === kind || throw(ArgumentError(
+        kind in (:animal, :relmat, :phylo, :spatial) || throw(ArgumentError(
+            "drm: $what with `$kind(1 | $grp)` on sigma is not supported."))
+        level_of = Dict(:animal => :animal, :relmat => :relmat, :phylo => :phylogenetic,
+                        :spatial => :spatial)
+        sd_.level === level_of[kind] || throw(ArgumentError(
             "drm: `sd($grp, $(sd_.level), dpar = sigma)` does not match the sigma-side `$kind(1 | $grp)`."))
         isempty(sigma_re) && isempty(re) && isempty(mu_targets) || throw(ArgumentError(
             "drm: structured sigma SD regression takes a fixed-effect mean and one structured " *
@@ -374,15 +379,33 @@ function _drm_gaussian_sigma_sd_laplace(f::DrmFormula, fam::Gaussian, sdp, sdpp,
             "drm: `sd($(sd_.group), …, dpar = sigma)` must name the sigma-side grouping `$grp`."))
         sd_.member in (nothing, :intercept) || throw(ArgumentError(
             "drm: structured sigma SD targets the intercept; `coef($(sd_.member))` is not supported."))
-        gidx, G = _group_index(getproperty(data, grp); col = grp)
-        Cmat = if kind === :relmat
-            (A === nothing && coords === nothing) || throw(ArgumentError("drm: relmat sigma SD regression uses `K = …` only."))
-            K === nothing && throw(ArgumentError("relmat(1 | $grp) on sigma needs the covariance matrix `K = …`"))
-            Matrix{Float64}(K)
+        local gidx, G, Cmat
+        if kind === :phylo
+            (K === nothing && A === nothing && coords === nothing) || throw(ArgumentError(
+                "drm: phylo sigma SD regression uses `tree = …` only."))
+            tree === nothing && throw(ArgumentError("phylo(1 | $grp) on sigma needs `tree = …`"))
+            phy = tree isa AbstractString ? augmented_phy(tree) : tree
+            gidx = _phylo_mean_leaf_index(phy, getproperty(data, grp))   # rows -> leaves by name
+            G = phy.n_leaves
+            Cmat = _phylo_correlation(phy)
+        elseif kind === :spatial
+            (K === nothing && A === nothing && tree === nothing) || throw(ArgumentError(
+                "drm: spatial sigma SD regression uses `coords = …` only."))
+            coords === nothing && throw(ArgumentError("spatial(1 | $grp) on sigma needs `coords = …`"))
+            gidx, G = _group_index(getproperty(data, grp); col = grp)
+            Cmat = _gaussian_spatial_sd_kernel(coords, G, grp)
         else
-            (K === nothing && coords === nothing) || throw(ArgumentError("drm: animal sigma SD regression uses `A = …` only."))
-            A === nothing && throw(ArgumentError("animal(1 | $grp) on sigma needs the relatedness matrix `A = …`"))
-            Matrix{Float64}(A)
+            tree === nothing || throw(ArgumentError("drm: $kind sigma SD regression does not use `tree`."))
+            gidx, G = _group_index(getproperty(data, grp); col = grp)
+            Cmat = if kind === :relmat
+                (A === nothing && coords === nothing) || throw(ArgumentError("drm: relmat sigma SD regression uses `K = …` only."))
+                K === nothing && throw(ArgumentError("relmat(1 | $grp) on sigma needs the covariance matrix `K = …`"))
+                Matrix{Float64}(K)
+            else
+                (K === nothing && coords === nothing) || throw(ArgumentError("drm: animal sigma SD regression uses `A = …` only."))
+                A === nothing && throw(ArgumentError("animal(1 | $grp) on sigma needs the relatedness matrix `A = …`"))
+                Matrix{Float64}(A)
+            end
         end
         size(Cmat) == (G, G) || throw(ArgumentError(
             "structured matrix must be $(G)×$(G) (the number of `$grp` levels)"))

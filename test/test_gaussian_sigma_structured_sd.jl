@@ -134,11 +134,12 @@ end
 @testset "Gaussian sigma structured SD: refusals" begin
     fx = _gss_fixture(; seed = 2026110106, n_g = 12, n_each = 8)
     d = fx.data; K = fx.K
-    # Phylogenetic and spatial sigma effects are not supported.
+    # Phylo and spatial sigma effects are fitted (test_gaussian_sigma_phylo_spatial_sd.jl)
+    # but need their own inputs: a tree, coordinates.
     @test_throws ArgumentError drm(bf(@formula(y ~ x), @formula(sigma ~ 1 + phylo(1 | id)),
         @formula(sd(id, phylogenetic, sigma) ~ z)), Gaussian(); data = d)
     @test_throws ArgumentError drm(bf(@formula(y ~ x), @formula(sigma ~ 1 + spatial(1 | id)),
-        @formula(sd(id, spatial, sigma) ~ z)), Gaussian(); data = d, coords = rand(12, 2))
+        @formula(sd(id, spatial, sigma) ~ z)), Gaussian(); data = d)
     # Level / provider mismatch, missing matrix, REML, missing response.
     @test_throws ArgumentError drm(bf(@formula(y ~ x), @formula(sigma ~ 1 + relmat(1 | id)),
         @formula(sd(id, animal, sigma) ~ z)), Gaussian(); data = d, K = K)
