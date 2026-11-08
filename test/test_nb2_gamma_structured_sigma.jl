@@ -80,6 +80,22 @@ _nss_logpdf(fam, y, lin, ls) = begin
                    logpdf(Distributions.Gamma(k, exp(lin) / k), y)
 end
 
+# Julia 1.11 changed the MersenneTwister seeding, so a seed draws a DIFFERENT dataset on
+# 1.12 than on 1.10. NB2 spatial shape A (seed 2026110804 + 100) draws one on 1.12 whose
+# fit does not converge (sigma_sd_x at the boundary, non-finite SEs); the 1.10.12 draw
+# fits cleanly. Gamma phylo shape B (seed 2026110807) draws one on 1.12 whose latent
+# sigma effects are so small that the post-fit "wrong-answer variant" check cannot
+# separate the correct reference from the no-random-effect one (0.039 vs 0.046).
+# Those (y, x) (and, for phylo, the tree and K drawn from the same stream) are therefore
+# committed (test/fixtures/rng_stable), so the fixtures are identical on every Julia
+# version. No tolerance changed.
+const _NSS_FROZEN = Set([(:nb2, :spatial, :A), (:gamma, :phylo, :B)])
+function _nss_frozen_yx(fam, provider, shape)
+    lines = readlines(joinpath(@__DIR__, "fixtures", "rng_stable", "$(fam)_$(provider)_$(shape).tsv"))
+    rows = [split(l, '\t') for l in lines[3:end]]
+    return parse.(Float64, [r[1] for r in rows]), parse.(Float64, [r[2] for r in rows])
+end
+
 # shape :A  two independent fields (intercept, x-slope) with fixed SDs;
 # shape :B  one field with an SD formula in z.
 function _nss_fixture(fam, provider, shape; seed, n_g = 24, n_each = 10)
@@ -107,6 +123,14 @@ function _nss_fixture(fam, provider, shape; seed, n_g = 24, n_each = 10)
                        rand(rng, Distributions.Gamma(k, exp(lin[i]) / k))
     end
     id = ids[gi]
+    if (fam, provider, shape) in _NSS_FROZEN
+        y, x = _nss_frozen_yx(fam, provider, shape); @assert length(y) == n
+        if provider === :phylo   # the tree (and so K) is drawn from the same stream
+            stem = joinpath(@__DIR__, "fixtures", "rng_stable", "$(fam)_$(provider)_$(shape)")
+            tree = strip(read(stem * "_tree.txt", String))
+            K = reduce(vcat, [parse.(Float64, split(l, '\t'))' for l in readlines(stem * "_K.tsv")])
+        end
+    end
     return (; data = (; y, x, id, z = z[gi]), K, tree, coords, z, gi, ids, n_g)
 end
 

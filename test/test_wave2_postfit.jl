@@ -36,13 +36,14 @@ using SpecialFunctions: loggamma
 
 # Reuse the fixture builders (not the fits) of the two route test files.
 if !isdefined(Main, :tf_case)
-    let src = read(joinpath(@__DIR__, "test_gamma_nb2_twofield_sd.jl"), String)
-        include_string(Main, src[1:first(findfirst("for (fam, shape) in", src)) - 1])
+    let f = joinpath(@__DIR__, "test_gamma_nb2_twofield_sd.jl"), src = read(f, String)
+        include_string(Main, src[1:first(findfirst("for (fam, shape) in", src)) - 1], f)
     end
 end
 if !isdefined(Main, :_psq2_fixture)
-    let src = read(joinpath(@__DIR__, "test_phylo_spatial_q2_sd.jl"), String)
-        include_string(Main, src[1:first(findfirst("@testset", src)) - 1])
+    let f = joinpath(@__DIR__, "test_phylo_spatial_q2_sd.jl"), src = read(f, String)
+        # file name passed so @__DIR__ in the fixture reader is test/, not the cwd
+        include_string(Main, src[1:first(findfirst("@testset", src)) - 1], f)
     end
 end
 
