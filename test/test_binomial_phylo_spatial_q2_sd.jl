@@ -129,6 +129,10 @@ end
             @test fit.converged
             @test length(fit.theta) == 6
             @test all(isfinite, stderror(fit))
+            # SEs are stable in the finite-difference step (the default 5e-4 step is
+            # noise-amplified on this route; the fit uses 3e-3): within 3% of a 1e-2 step.
+            H2 = DRModels._finite_hessian(fit.nll, fit.theta; h = 1e-2)
+            @test maximum(abs.(stderror(fit) ./ sqrt.(diag(inv(Symmetric(H2)))) .- 1)) < 0.03
             @test !any(first(b) === :recov for b in fit.blocks)     # rho fixed at 0
             @test !haskey(fit.scales, :correlation)
             @test loglikelihood(fit) ≈ _bpsq2_oracle(fit.theta, fx, C) atol = 1e-5

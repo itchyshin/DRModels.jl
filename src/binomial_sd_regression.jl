@@ -808,7 +808,7 @@ end
 function _fit_binomial_animal_q2_laplace(fam, s, ntr, Xmu, Xsd0,
         Xsd1, gidx, Q, x, nmμ, nmsd0, nmsd1, blocks, group, g_tol;
         se::Bool = true, maxiter::Int = 250, correlated::Bool = true,
-        second_start::Bool = false)
+        second_start::Bool = false, hessian_step::Union{Nothing,Real} = nothing)
     G = size(Q, 1)
     qchol = cholesky(Symmetric(Q); check = false)
     issuccess(qchol) || throw(ArgumentError(
@@ -873,7 +873,8 @@ function _fit_binomial_animal_q2_laplace(fam, s, ntr, Xmu, Xsd0,
     converged = _laplace_outer_converged(result, nll_hat, gf, theta,
         length(s), g_tol)
     V = se ? _vcov_from_fd_hessian(
-        _finite_hessian(nll, theta; h = _fd_hessian_step(length(s)));
+        _finite_hessian(nll, theta;
+            h = hessian_step === nothing ? _fd_hessian_step(length(s)) : hessian_step);
         context = "sparse-Laplace Binomial animal q2 SD regression") :
         fill(NaN, length(theta), length(theta))
     block_list = Pair{Symbol,UnitRange{Int}}[
@@ -1082,7 +1083,13 @@ function _drm_binomial_phylo_spatial_q2_sd(f::DrmFormula, fam::Binomial,
     blocks = Symbol[_sd_target_block(item.target; disambiguate = true) for item in ordered]
     fit = _fit_binomial_animal_q2_laplace(fam, s, ntr, Xmu, Zgs[1], Zgs[2], gidx, Q,
         Float64.(x), nmmu, nmsds[1], nmsds[2], blocks, group, g_tol; se,
-        correlated = false, second_start = kind === :spatial)
+        correlated = false, second_start = kind === :spatial,
+        # The inner Newton solve stops at a relative step of 1e-7 (it cannot go lower: the
+        # line search then stalls at the floating-point floor), so the Laplace objective
+        # carries noise that the default finite-difference step (~5e-4) amplifies in the
+        # weakly identified slope-SD coefficients (SEs up to 19% below native drmTMB in
+        # the wave-6 study). Steps of 3e-3 to 3e-2 reproduce R's SEs to 3 digits.
+        hessian_step = 3e-3)
     return _withformula(fit, f)
 end
 
