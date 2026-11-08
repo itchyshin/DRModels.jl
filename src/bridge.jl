@@ -2230,6 +2230,7 @@ function _bridge_rendered_regression_blocks(fit, labels::_BridgeFormulaLabels)
         # `kind(1 + x | p | g)` with its two coefficient SD targets) adds no
         # mean columns; drop it so the label `p` is never read as data.
         param === :mu && (rhs = _strip_fitted_q2_terms(fit, rhs))
+        param === :sigma && (rhs = _strip_sigma_struct_q2_terms(fit, rhs))   # NB2 structured sigma 1 + x term
         # Fitting has already admitted this family-specific animal SD route.
         # Label reconstruction only needs the matching animal-slope parser;
         # keeping this permission Binomial-specific breaks other fitted routes

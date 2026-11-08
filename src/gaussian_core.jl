@@ -2919,7 +2919,8 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
         allow_binomial_spatial_slope = fit.family isa Union{Binomial,Gaussian,Gamma,NegBinomial2} &&
             f isa DrmFormula && any(
                 item.target.level === :spatial for item in _sd_target_parts(f))
-        parameter_rhs = p === :mu ? _strip_fitted_q2_terms(fit, forms[p]) : forms[p]
+        parameter_rhs = p === :mu ? _strip_fitted_q2_terms(fit, forms[p]) :
+                        p === :sigma ? _strip_sigma_struct_q2_terms(fit, forms[p]) : forms[p]
         if p === :mu && fit.family isa Binomial
             interaction = _binomial_phylo_interaction_parts(parameter_rhs)
             interaction === nothing || (parameter_rhs = interaction.fixed_rhs)

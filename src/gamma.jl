@@ -465,6 +465,8 @@ function _drm_gamma_sd_regression(f::DrmFormula, fam::Gamma; data,
     marginal === :LA || throw(ArgumentError(
         "Gamma `sd(group) ~ …` currently supports `marginal = :LA` only."))
     nAGQ >= 1 || throw(ArgumentError("nAGQ must be ≥ 1; got $nAGQ"))
+    _ss_has_sigma_structured_sd(f) &&
+        return _drm_structured_sigma_sd_laplace(f, fam; data, tree, K, A, coords, g_tol, se)
     targets = _gamma_sd_targets(f)
     twofield = _drm_twofield_sd_route(f, fam; data, tree, K, A, coords, g_tol, se)
     twofield === nothing || return twofield

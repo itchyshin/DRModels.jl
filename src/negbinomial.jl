@@ -147,6 +147,14 @@ function _drm_negbinomial2_fit(f::DrmFormula, fam::NegBinomial2; data, tree = no
              nAGQ::Union{Nothing,Int} = nothing, ids = nothing)
     _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, Ainv = Ainv, coords = coords)   # #1027 #1022 #1010
     _reject_method_as_marginal(fam, method)
+    ssq = _sigma_struct_q2_block(f)
+    if ssq !== nothing        # NB2 structured sigma intercept + slope, fixed SDs (native drmTMB fits it)
+        Ainv === nothing && nAGQ === nothing || throw(ArgumentError(
+            "NegBinomial2 structured sigma `$(ssq[1])(1 + $(ssq[2].slope) | $(ssq[2].group))` does not use `Ainv` or `nAGQ`."))
+        A = _resolve_relatedness_labels(f, data, A, ids; coords = coords)
+        coords = _resolve_coords_labels(f, data, coords, ids)
+        return _drm_sigma_struct_q2_laplace(f, fam, ssq...; data, tree, K, A, coords, g_tol, se, method)
+    end
     if !isempty(_sd_parts(f)) || !isempty(_sdphylo_parts(f))
         nAGQ === nothing || nAGQ >= 1 || throw(ArgumentError(
             "nAGQ must be ≥ 1; got $nAGQ"))
@@ -302,6 +310,13 @@ function _drm_negbin2_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
                                     nAGQ::Union{Nothing,Int} = nothing)
     marginal === :LA || throw(ArgumentError(
         "NegBinomial2 `sd(group) ~ …` currently supports `marginal = :LA` only."))
+    if _ss_has_sigma_structured_sd(f)
+        nAGQ === nothing || throw(ArgumentError(
+            "nAGQ is not used by the structured-sigma Laplace route; omit it."))
+        Ainv === nothing || throw(ArgumentError(
+            "NegBinomial2 structured sigma SD regression does not use `Ainv`."))
+        return _drm_structured_sigma_sd_laplace(f, fam; data, tree, K, A, coords, g_tol, se)
+    end
     q2ps = _phylo_spatial_q2_block(f)
     q2ps === nothing || return _drm_count_phylo_spatial_q2_sd(f, fam, q2ps...;
         data, tree, K, A, Ainv, coords, g_tol, se, nAGQ)

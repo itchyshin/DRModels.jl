@@ -353,6 +353,62 @@ function _fit_gaussian_sigma_sd_laplace(fam::Union{Gaussian,NegBinomial2,Gamma},
     return _withranef(_withmarginal(_withnll(fit, nll, grad!), :Laplace), ranef)
 end
 
+# Structured sigma-intercept spec shared by the Gaussian, NB2 and Gamma routers:
+#   sigma ~ 1 + animal|relmat|phylo|spatial(1 | g),  sd(g, level, sigma) ~ z; mean fixed.
+# K enters raw for animal/relmat; phylo is the tree's correlation matrix
+# (ape::vcv(tree, corr = TRUE)); spatial is the native FIXED kernel
+# exp(-d / median positive distance) + 1e-6 I (`drm_spatial_coords_precision`).
+function _gsl_structured_sigma_spec(f::DrmFormula, what, sd_, sig_t, structured_sigma, data, n::Int,
+                                    K, A, coords, tree, block_of)
+    kind, grp = structured_sigma
+    kind in (:animal, :relmat, :phylo, :spatial) || throw(ArgumentError(
+        "drm: $what with `$kind(1 | $grp)` on sigma is not supported."))
+    level_of = Dict(:animal => :animal, :relmat => :relmat, :phylo => :phylogenetic,
+                    :spatial => :spatial)
+    sd_.level === level_of[kind] || throw(ArgumentError(
+        "drm: `sd($grp, $(sd_.level), dpar = sigma)` does not match the sigma-side `$kind(1 | $grp)`."))
+    sd_.group === grp || throw(ArgumentError(
+        "drm: `sd($(sd_.group), …, dpar = sigma)` must name the sigma-side grouping `$grp`."))
+    sd_.member in (nothing, :intercept) || throw(ArgumentError(
+        "drm: structured sigma SD targets the intercept; `coef($(sd_.member))` is not supported."))
+    local gidx, G, Cmat
+    if kind === :phylo
+        (K === nothing && A === nothing && coords === nothing) || throw(ArgumentError(
+            "drm: phylo sigma SD regression uses `tree = …` only."))
+        tree === nothing && throw(ArgumentError("phylo(1 | $grp) on sigma needs `tree = …`"))
+        phy = tree isa AbstractString ? augmented_phy(tree) : tree
+        gidx = _phylo_mean_leaf_index(phy, getproperty(data, grp))   # rows -> leaves by name
+        G = phy.n_leaves
+        Cmat = _phylo_correlation(phy)
+    elseif kind === :spatial
+        (K === nothing && A === nothing && tree === nothing) || throw(ArgumentError(
+            "drm: spatial sigma SD regression uses `coords = …` only."))
+        coords === nothing && throw(ArgumentError("spatial(1 | $grp) on sigma needs `coords = …`"))
+        gidx, G = _group_index(getproperty(data, grp); col = grp)
+        Cmat = _gaussian_spatial_sd_kernel(coords, G, grp)
+    else
+        tree === nothing || throw(ArgumentError("drm: $kind sigma SD regression does not use `tree`."))
+        gidx, G = _group_index(getproperty(data, grp); col = grp)
+        Cmat = if kind === :relmat
+            (A === nothing && coords === nothing) || throw(ArgumentError("drm: relmat sigma SD regression uses `K = …` only."))
+            K === nothing && throw(ArgumentError("relmat(1 | $grp) on sigma needs the covariance matrix `K = …`"))
+            Matrix{Float64}(K)
+        else
+            (K === nothing && coords === nothing) || throw(ArgumentError("drm: animal sigma SD regression uses `A = …` only."))
+            A === nothing && throw(ArgumentError("animal(1 | $grp) on sigma needs the relatedness matrix `A = …`"))
+            Matrix{Float64}(A)
+        end
+    end
+    size(Cmat) == (G, G) || throw(ArgumentError(
+        "structured matrix must be $(G)×$(G) (the number of `$grp` levels)"))
+    all(isfinite, Cmat) || throw(ArgumentError("structured matrix must be finite"))
+    Zb, nmb = _sd_group_design(f.response, sig_t.rhs, data, gidx, G, grp;
+                               schema_cache = f.schema_cache, schema_key = sig_t.key)
+    size(Zb, 2) <= G && rank(Zb) == size(Zb, 2) || throw(ArgumentError(
+        "drm: $what group-level design is rank deficient."))
+    return (gidx, G, Zb, nmb, grp, ones(n), Cmat, block_of(sig_t), :structured)
+end
+
 # Router leg, called from the Gaussian sd() dispatch when any SD target has
 # `dpar = "sigma"`. Every shape outside the two supported ones is refused by name.
 function _drm_gaussian_sigma_sd_laplace(f::DrmFormula, fam::Gaussian, sdp, sdpp, re, structured,
@@ -396,56 +452,11 @@ function _drm_gaussian_sigma_sd_laplace(f::DrmFormula, fam::Gaussian, sdp, sdpp,
         # mean fixed. K enters raw for animal/relmat; phylo is the tree's correlation
         # matrix (ape::vcv(tree, corr = TRUE)); spatial is the native FIXED kernel
         # exp(-d / median positive distance) + 1e-6 I (`drm_spatial_coords_precision`).
-        kind, grp = structured_sigma
-        kind in (:animal, :relmat, :phylo, :spatial) || throw(ArgumentError(
-            "drm: $what with `$kind(1 | $grp)` on sigma is not supported."))
-        level_of = Dict(:animal => :animal, :relmat => :relmat, :phylo => :phylogenetic,
-                        :spatial => :spatial)
-        sd_.level === level_of[kind] || throw(ArgumentError(
-            "drm: `sd($grp, $(sd_.level), dpar = sigma)` does not match the sigma-side `$kind(1 | $grp)`."))
         isempty(sigma_re) && isempty(re) && isempty(mu_targets) || throw(ArgumentError(
             "drm: structured sigma SD regression takes a fixed-effect mean and one structured " *
             "sigma intercept only (no ordinary mean or sigma random effects)."))
-        sd_.group === grp || throw(ArgumentError(
-            "drm: `sd($(sd_.group), …, dpar = sigma)` must name the sigma-side grouping `$grp`."))
-        sd_.member in (nothing, :intercept) || throw(ArgumentError(
-            "drm: structured sigma SD targets the intercept; `coef($(sd_.member))` is not supported."))
-        local gidx, G, Cmat
-        if kind === :phylo
-            (K === nothing && A === nothing && coords === nothing) || throw(ArgumentError(
-                "drm: phylo sigma SD regression uses `tree = …` only."))
-            tree === nothing && throw(ArgumentError("phylo(1 | $grp) on sigma needs `tree = …`"))
-            phy = tree isa AbstractString ? augmented_phy(tree) : tree
-            gidx = _phylo_mean_leaf_index(phy, getproperty(data, grp))   # rows -> leaves by name
-            G = phy.n_leaves
-            Cmat = _phylo_correlation(phy)
-        elseif kind === :spatial
-            (K === nothing && A === nothing && tree === nothing) || throw(ArgumentError(
-                "drm: spatial sigma SD regression uses `coords = …` only."))
-            coords === nothing && throw(ArgumentError("spatial(1 | $grp) on sigma needs `coords = …`"))
-            gidx, G = _group_index(getproperty(data, grp); col = grp)
-            Cmat = _gaussian_spatial_sd_kernel(coords, G, grp)
-        else
-            tree === nothing || throw(ArgumentError("drm: $kind sigma SD regression does not use `tree`."))
-            gidx, G = _group_index(getproperty(data, grp); col = grp)
-            Cmat = if kind === :relmat
-                (A === nothing && coords === nothing) || throw(ArgumentError("drm: relmat sigma SD regression uses `K = …` only."))
-                K === nothing && throw(ArgumentError("relmat(1 | $grp) on sigma needs the covariance matrix `K = …`"))
-                Matrix{Float64}(K)
-            else
-                (K === nothing && coords === nothing) || throw(ArgumentError("drm: animal sigma SD regression uses `A = …` only."))
-                A === nothing && throw(ArgumentError("animal(1 | $grp) on sigma needs the relatedness matrix `A = …`"))
-                Matrix{Float64}(A)
-            end
-        end
-        size(Cmat) == (G, G) || throw(ArgumentError(
-            "structured matrix must be $(G)×$(G) (the number of `$grp` levels)"))
-        all(isfinite, Cmat) || throw(ArgumentError("structured matrix must be finite"))
-        Zb, nmb = _sd_group_design(f.response, sig_t.rhs, data, gidx, G, grp;
-                                   schema_cache = f.schema_cache, schema_key = sig_t.key)
-        size(Zb, 2) <= G && rank(Zb) == size(Zb, 2) || throw(ArgumentError(
-            "drm: $what group-level design is rank deficient."))
-        sigma_spec = (gidx, G, Zb, nmb, grp, ones(n), Cmat, block_of(sig_t), :structured)
+        sigma_spec = _gsl_structured_sigma_spec(f, what, sd_, sig_t, structured_sigma, data, n,
+                                                K, A, coords, tree, block_of)
         mean_spec = nothing
     else
         # 6a: ordinary sigma random intercept/slope (+ optional mean intercept), each with SD.

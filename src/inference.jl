@@ -3628,6 +3628,11 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing,
     _is_temporal_fit(fit) && return rng -> _temporal_simulate(fit, rng)
     fit.nll isa LocScaleObjective &&
         return _ls_marginal_simulator(fit, data; K, A, tree, coords)
+    # NB2/Gamma structured sigma fields (src/sigma_structured_laplace.jl)
+    if fit isa DrmFit && fit.formula isa DrmFormula && fit.family isa Union{NegBinomial2,Gamma} &&
+       (haskey(fit.scales, :sigma_random_effect_slope) || _ss_has_sigma_structured_sd(fit.formula))
+        return _sigma_struct_marginal_simulator(fit, data; K, A, tree, coords)
+    end
     if fit isa DrmFit && fit.formula isa DrmFormula &&
        fit.family isa Union{Poisson,NegBinomial2,Gaussian} &&
        haskey(Dict(fit.formula.forms), :mu) &&
