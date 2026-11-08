@@ -13,7 +13,10 @@
 # gradient bar was relaxed to 1e-6 after the first run (Gamma same-group oracle
 # stalled at 8.5e-8 in Float64 roundoff; a gradient g moves the Laplace value by
 # about g^2 / min eigenvalue, far below the 1e-5 logLik bar).
-using DRModels, Random, Test, LinearAlgebra, ForwardDiff, Distributions
+using DRModels, Random, Test, LinearAlgebra, ForwardDiff
+import Distributions
+using Distributions: Normal, NegativeBinomial, logpdf
+using Statistics: median
 
 function _jsw_fixture(fam::Symbol; seed, n_id = 30, n_g = 24, n = 600, same = false,
                       alpha_mu = [log(0.45), 0.5], alpha_sg = [log(0.35), -0.6])

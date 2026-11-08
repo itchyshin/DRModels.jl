@@ -11,7 +11,10 @@
 # Tolerances fixed before the first run: |logLik - oracle| < 1e-5; oracle mode
 # |grad|_inf < 1e-6, Hessian PD; constant-SD fit equals the oracle with a
 # constant SD to 1e-5.
-using DRModels, Random, Test, LinearAlgebra, ForwardDiff, Distributions
+using DRModels, Random, Test, LinearAlgebra, ForwardDiff
+import Distributions
+using Distributions: Normal, NegativeBinomial, logpdf
+using Statistics: median
 
 # Random ultrametric tree on `ntip` labelled tips: Newick string plus the
 # shared-path (MRCA depth) covariance C, from the recursion itself.
