@@ -164,7 +164,7 @@ function _drm_gamma_fit(f::DrmFormula, fam::Gamma; data, tree = nothing, K = not
                 (K === nothing && A === nothing) || throw(ArgumentError(
                     "Gamma spatial effects use either `coords = …` or a precomputed `K = …`, not both."))
                 _, G = _group_index(labels)
-                _spatial_covariance_from_coords(grp, G, coords, nothing)
+                _gaussian_spatial_sd_kernel(_gamma_coords_matrix(coords), G, grp)   # shared native kernel, as the SD route
             else
                 _poisson_structured_cov(kind, grp, K, A, coords)
             end
@@ -459,6 +459,9 @@ function _fit_gamma_animal_intercept_slope_laplace(fam, y, Xmu, Xsigma,
     return _withiterations(_withnll(fit, _nll_pinned(nll, theta, nll_hat)), Optim.iterations(result))
 end
 
+# A 1-D transect may be given as a plain vector; the shared kernel wants an n-by-1 matrix.
+_gamma_coords_matrix(coords) = coords isa AbstractVector{<:Real} ? reshape(Float64.(coords), :, 1) : coords
+
 function _drm_gamma_sd_regression(f::DrmFormula, fam::Gamma; data,
                                  tree = nothing, K = nothing, A = nothing,
                                  coords = nothing, g_tol::Real = 1e-8,
@@ -663,14 +666,16 @@ function _drm_gamma_structured_sd_regression(f::DrmFormula, fam::Gamma; data,
             K === nothing || throw(ArgumentError(
                 "Gamma spatial slope SD regression uses `coords = …` only, not a precomputed `K = …`."))
             _, Gs = _group_index(getproperty(data, descriptor.group))
-            matrix = _gaussian_spatial_sd_kernel(coords, Gs, descriptor.group)
+            matrix = _gaussian_spatial_sd_kernel(_gamma_coords_matrix(coords), Gs, descriptor.group)
         elseif coords === nothing
             matrix = _poisson_structured_cov(:spatial, descriptor.group, K, A, nothing)
         else
             K === nothing || throw(ArgumentError(
                 "Gamma spatial SD regression uses either `coords = …` or a precomputed `K = …`, not both."))
+            # Same fixed native kernel as the slope branch and the q2 routes
+            # (`_structured_q2_kernel`): exp(-d / median positive distance) + 1e-6 I.
             _, G = _group_index(getproperty(data, descriptor.group))
-            matrix = _spatial_covariance_from_coords(descriptor.group, G, coords, nothing)
+            matrix = _gaussian_spatial_sd_kernel(_gamma_coords_matrix(coords), G, descriptor.group)
         end
     else
         tree === nothing && coords === nothing &&

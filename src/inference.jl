@@ -3108,13 +3108,14 @@ function _gamma_structured_sd_marginal_simulator(fit::DrmFit, data, matrix;
         "bootstrap: Gamma structured SD simulation requires one structured SD target"))
     target = only(targets)
     descriptor = target.target
-    descriptor.level === provider && provider in (:relmat, :animal) &&
+    descriptor.level === provider && provider in (:relmat, :animal, :spatial) &&
         descriptor.dpar === :mu && descriptor.block === nothing ||
         throw(ArgumentError(
             "bootstrap: Gamma structured SD simulation requires one mean structured target"))
     rhs = Dict(f.forms)
     _, re, metav, structured, _, _, fitted_animal_slope = _split_ranef(
-        rhs[:mu]; allow_animal_slope = provider === :animal)
+        rhs[:mu]; allow_animal_slope = provider === :animal,
+        allow_spatial_slope = provider === :spatial)
     expected_member = fitted_animal_slope === nothing ? :intercept : fitted_animal_slope
     descriptor.member in (nothing, expected_member) ||
         throw(ArgumentError(
@@ -3740,7 +3741,7 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing,
         !isempty(_sdphylo_parts(fit.formula))
     allow_binomial_relmat_slope = fit.family isa Union{Binomial,Poisson} &&
         any(item.target.level === :relmat for item in _sd_target_parts(fit.formula))
-    allow_binomial_spatial_slope = fit.family isa Binomial &&
+    allow_binomial_spatial_slope = fit.family isa Union{Binomial,Gamma} &&
         any(item.target.level === :spatial for item in _sd_target_parts(fit.formula))
     allow_gamma_animal_slope = fit.family isa Gamma &&
         !isempty(_sd_target_parts(fit.formula))
@@ -3846,6 +3847,22 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing,
         return _poisson_structured_sd_marginal_simulator(
             fit, data, matrix; provider,
             animal_slope = animal_slope)
+    end
+    if fit.family isa Gamma && any(
+        item -> item.target.level === :spatial, _sd_target_parts(fit.formula))
+        length(_sd_target_parts(fit.formula)) == 1 || throw(ArgumentError(
+            "bootstrap: Gamma structured SD simulation requires exactly one structured target"))
+        group = only(_sd_target_parts(fit.formula)).target.group
+        hasproperty(data, group) || throw(ArgumentError(
+            "bootstrap: data are missing Gamma structured grouping column `$group`"))
+        coords === nothing && throw(ArgumentError(
+            "bootstrap: supply the same `coords` used to fit the Gamma spatial SD model"))
+        # Same label resolution and the same shared kernel as the fit (`_drm_gamma_sd_regression`).
+        kcoords = _gamma_coords_matrix(_resolve_coords_labels(fit.formula, data, coords, nothing))
+        _, G = _group_index(getproperty(data, group))
+        return _gamma_structured_sd_marginal_simulator(
+            fit, data, _gaussian_spatial_sd_kernel(kcoords, G, group);
+            provider = :spatial, animal_slope)
     end
     if fit.family isa Gamma && any(
         item -> item.target.level in (:relmat, :animal), _sd_target_parts(fit.formula))
