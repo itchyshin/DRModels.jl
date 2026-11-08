@@ -7,36 +7,66 @@ using DRModels
 using Test, Random
 import Distributions
 
-function _fit1260(fam; iterations::Int = -1)
+function _fit1260(fam; iterations::Int = -1,
+                  blocks = [:mu => 1:1],
+                  coefnames = [:mu => ["(Intercept)"]])
     return DRModels._withiterations(
-        DrmFit(fam, [:mu => 1:1], [:mu => ["(Intercept)"]], [0.0], fill(1.0, 1, 1),
+        DrmFit(fam, blocks, coefnames, [0.0], fill(1.0, 1, 1),
                0.0, 1, true, Dict{Symbol,Vector{Float64}}(),
                Dict{Symbol,Vector{Float64}}(), Dict{Symbol,Vector{Float64}}()),
         iterations)
 end
 
 function _report1260(; optimizer::Symbol = :default, actual::Symbol,
-                     stage::Symbol = :primary)
+                     stage::Symbol = :primary, kept::Int = 0, runs = ())
     c = DRMControl(optimizer = optimizer)
-    return DRMControlReport(c, Float64[], 0, true, :computed, nothing,
-                            c.optimizer, actual, (), stage,
+    return DRMControlReport(c, Float64[], kept, true, :computed, nothing,
+                            c.optimizer, actual, runs, stage,
                             DRModels._ctl_native_controls(c))
 end
 
 function _labeled1260(fam; iterations::Int = 4, optimizer::Symbol = :default,
-                      actual::Symbol, stage::Symbol = :primary)
+                      actual::Symbol, stage::Symbol = :primary,
+                      kept::Int = 0, runs = ())
     fit = _fit1260(fam; iterations = iterations)
     return DRModels._withcontrolinfo(fit, fit.vcov,
-                                    _report1260(; optimizer, actual, stage))
+                                    _report1260(; optimizer, actual, stage, kept, runs))
+end
+
+function _indep_slopes1260(fam; iterations::Int = 8)
+    return DRModels._withmarginal(
+        _fit1260(fam; iterations,
+                 blocks = [:mu => 1:1, :resd => 1:1],
+                 coefnames = [:mu => ["(Intercept)"], :resd => ["g", "g:x"]]),
+        :Laplace)
+end
+
+function _rs_sigma1260(; iterations::Int = 8)
+    return DRModels._withmarginal(
+        _fit1260(Gaussian(); iterations,
+                 blocks = [:mu => 1:1, :recov => 1:1, :resd => 1:1],
+                 coefnames = [:mu => ["(Intercept)"],
+                              :recov => ["L11"],
+                              :resd => ["g_logsigma"]]),
+        :Laplace)
 end
 
 @testset "#1260 optimizer label vs recorded method" begin
-    @testset "synthetic: default LBFGS from a counted non-Beta fit" begin
+    @testset "synthetic: default LBFGS from a known-LBFGS counted fingerprint" begin
+        # Gaussian FE, no mixed-method markers — not "any nonnegative count".
         fit = _fit1260(Gaussian(); iterations = 5)
         d = bridge_diagnostics(fit)
         @test niterations(fit) == 5
         @test d.optimizer == "Optim.LBFGS"
         @test d.iterations == 5
+        # Student ordinary (1 | g) Laplace: counted LBFGS, resd has no colon.
+        student_ri = DRModels._withmarginal(
+            _fit1260(Student(); iterations = 6,
+                     blocks = [:mu => 1:1, :resd => 1:1],
+                     coefnames = [:mu => ["(Intercept)"], :resd => ["g"]]),
+            :Laplace)
+        @test bridge_diagnostics(student_ri).optimizer == "Optim.LBFGS"
+        @test !DRModels._unrecorded_mixed_method_route(student_ri)
     end
 
     @testset "synthetic: unsupported count stays missing" begin
@@ -96,6 +126,33 @@ end
         d_lbfgs = bridge_diagnostics(_labeled1260(Beta(); optimizer = :lbfgs,
                                                   actual = :lbfgs, iterations = 2))
         @test d_lbfgs.optimizer == "Optim.LBFGS"
+    end
+
+    @testset "synthetic: counted BFGS-first sibling routes stay unknown" begin
+        for fam in (Gamma(), Student())
+            fit = _indep_slopes1260(fam)
+            @test DRModels._unrecorded_mixed_method_route(fit)
+            @test niterations(fit) == 8
+            @test isnothing(fit.control_info)
+            @test ismissing(bridge_diagnostics(fit).optimizer)
+            @test bridge_diagnostics(fit).iterations == 8
+        end
+        rs = _rs_sigma1260()
+        @test DRModels._unrecorded_mixed_method_route(rs)
+        @test niterations(rs) == 8
+        @test ismissing(bridge_diagnostics(rs).optimizer)
+        @test bridge_diagnostics(rs).iterations == 8
+    end
+
+    @testset "synthetic: multi_start kept method, not last optimizer_runs entry" begin
+        runs = ((method = :lbfgs, stage = :start, start_index = 1),
+                (method = :bfgs, stage = :start, start_index = 2))
+        fit = _labeled1260(Gaussian(); actual = :lbfgs, kept = 1, runs = runs)
+        info = control_info(fit)
+        @test info.actual_optimizer === :lbfgs
+        @test info.kept_start == 1
+        @test last(info.optimizer_runs).method === :bfgs
+        @test bridge_diagnostics(fit).optimizer == "Optim.LBFGS"
     end
 end
 
@@ -162,6 +219,40 @@ end
     @test bridge_diagnostics(fre_bfgs).optimizer == "Optim.BFGS"
     @test ismissing(bridge_diagnostics(fre_bfgs).iterations)
     @test isfinite(loglik(fre_bfgs))
+end
+
+# Live B1 fingerprints: unrecorded counted BFGS-first Laplace routes. No
+# `control=` — a report would take the `:unrecorded` branch instead of the
+# no-report mixed-method exclusion. Skip R-parity / fixtures.
+@testset "#1260 B1 live mixed-method counted routes (no parity fixtures)" begin
+    Random.seed!(12602)
+    G, m = 8, 6
+    n = G * m
+    g = repeat(1:G, inner = m)
+    x = randn(n)
+    b0 = 0.25 .* randn(G)
+    b1 = 0.15 .* randn(G)
+
+    η = 0.35 .+ 0.2 .* x .+ b0[g] .+ b1[g] .* x
+    yg = exp.(η .+ 0.12 .* randn(n))
+    fg = drm(bf(@formula(y ~ 1 + x + (1 | g) + (0 + x | g)), @formula(sigma ~ 1)),
+             Gamma(); data = (; y = yg, x, g))
+    @test fg.marginal === :Laplace
+    @test DRModels._unrecorded_mixed_method_route(fg)
+    @test niterations(fg) >= 0
+    @test isnothing(fg.control_info)
+    @test ismissing(bridge_diagnostics(fg).optimizer)
+    @test isfinite(loglik(fg))
+
+    y = 0.3 .+ 0.4 .* x .+ b0[g] .+ b1[g] .* x .+ 0.35 .* randn(n)
+    fr = drm(bf(@formula(y ~ 1 + x + (1 + x | g)), @formula(sigma ~ 1 + (1 | g))),
+             Gaussian(); data = (; y, x, g))
+    @test fr.marginal === :Laplace
+    @test DRModels._unrecorded_mixed_method_route(fr)
+    @test niterations(fr) >= 0
+    @test isnothing(fr.control_info)
+    @test ismissing(bridge_diagnostics(fr).optimizer)
+    @test isfinite(loglik(fr))
 end
 
 println("ISSUE_1260_OPTIMIZER_DIAGNOSTICS")

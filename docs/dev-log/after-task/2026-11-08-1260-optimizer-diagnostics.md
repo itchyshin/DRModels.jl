@@ -10,16 +10,18 @@ Stop `bridge_diagnostics` from labelling every nonnegative `niterations` count `
 
 ## 2. Implemented
 
-- `src/introspection.jl`: `_bridge_optimizer_label` uses `control_info.actual_optimizer` when recorded (`:lbfgs` / `:bfgs` / `:newton`). Unrecorded reports stay `missing`. Counted default non-Beta fits with no report remain `Optim.LBFGS`. Unrecorded Beta Newton polish is `missing` (explicitly unknown) rather than inferred LBFGS. A recorded method is independent of whether `niterations` is `-1`.
-- `src/gaussian_core.jl`: `niterations` docstring states final-stage vs total-stage semantics, BFGS selection, Beta Newton polish, and that Gaussian mean `(1 | g)` does not attach a count.
-- `test/test_1260_optimizer_diagnostics.jl`: synthetic recorded-method cases plus small live sibling routes (default Gaussian LBFGS, qualified BFGS, Beta unknown, Poisson Laplace `-1`, Gaussian RI BFGS with `-1` count).
+- `src/introspection.jl`: `_bridge_optimizer_label` uses `control_info.actual_optimizer` when recorded (`:lbfgs` / `:bfgs` / `:newton`) via a function, not a mutable `Dict`. Unrecorded reports stay `missing`. Unrecorded Beta Newton polish is `missing`. Counted BFGS-first Laplace fingerprints (`indep_slopes_laplace` Gamma/Student colon-resd; `gaussian_rs_sigma_ranef` recov + `*_logsigma`) stay `missing` and are **not** labelled LBFGS. Remaining unrecorded counted non-Beta fits (Gaussian FE, Student ordinary RI Laplace, …) stay `Optim.LBFGS` by known-LBFGS proof, not by a nonnegative count. `Fminbox(LBFGS)` is still reported as `Optim.LBFGS` (doc note only). Multi-start uses the kept `actual_optimizer`, not `last(optimizer_runs)`.
+- `src/gaussian_core.jl`: `niterations` docstring states final-stage vs total-stage semantics, BFGS selection, Beta Newton polish, the two BFGS-first counted routes, `Fminbox(LBFGS)` counts, and that Gaussian mean `(1 | g)` does not attach a count.
+- `test/test_1260_optimizer_diagnostics.jl`: synthetic recorded-method / B1-fingerprint / kept-≠-last cases plus small live sibling routes (default Gaussian LBFGS, qualified BFGS, Beta unknown, Poisson Laplace `-1`, Gaussian RI BFGS with `-1` count, live Gamma independent slopes, live Gaussian rs-sigma).
 - News / check-log fragments (this report). No `NEWS.md` edit.
 
-Not edited (protected overlap): `src/beta.jl`, `src/control.jl`, `src/gaussian_ranef.jl`, `src/bridge.jl`, PR #1261 / #1214 / #1106 branches.
+Not edited (protected overlap): `src/beta.jl`, `src/control.jl`, `src/gaussian_ranef.jl`, `src/bridge.jl`, `src/indep_slopes_laplace.jl`, `src/gaussian_rs_sigma_ranef.jl` (no algorithm instrumentation), PR #1261 / #1214 / #1106 branches.
 
 ## 3a. Decisions and rejected alternatives
 
 Recording Newton polish on `control_info` would be a public-report behaviour change and would touch `src/beta.jl` (open PRs #1214 and #1106). The issue allows "Newton or explicitly unknown"; unknown was chosen. Always opening a control scope so default fits record a method would make `control_info` non-`nothing` without `control=` (API change); stopped. No guessed new `DrmFit` field.
+
+Independent review at `0b803be4` showed the remaining unrecorded-count → LBFGS fallback falsely labelled the two BFGS-first counted routes. Rejected: instrument those fitters (would change recorded algorithm/public report). Rejected: leave them as LBFGS. Chosen: exclude the two source-confirmed fingerprints, then LBFGS only for remaining known-LBFGS unrecorded counted non-Beta fits. `Fminbox` stays labelled `Optim.LBFGS` (inner method) with a docstring note rather than a new public token.
 
 ## 4. Files touched
 
@@ -39,7 +41,7 @@ Sibling files intended if Julia is present: `test/test_twin_gap_569.jl`, `test/t
 
 ## 6. Tests of the tests
 
-Synthetic cases fail if the helper still infers LBFGS from a nonnegative count, if BFGS is unlabeled, if unrecorded counts become LBFGS, or if unrecorded Beta polish is labelled LBFGS. Live cases fail if default Gaussian is not LBFGS, if `DRMControl(optimizer=:bfgs)` is not `Optim.BFGS`, if Poisson Laplace fabricates a count, or if Gaussian RI BFGS is unlabeled because `niterations == -1`. They do not prove Newton polish fired on the live Beta draw.
+Synthetic cases fail if the helper still infers LBFGS from a nonnegative count, if BFGS is unlabeled, if an `:unrecorded` report becomes LBFGS, if unrecorded Beta polish is labelled LBFGS, if Gamma/Student independent-slopes or Gaussian rs-sigma fingerprints are labelled LBFGS, or if a multi_start report uses the last run instead of `actual_optimizer`. Default LBFGS is proved by a Gaussian FE fingerprint **and** a Student ordinary RI Laplace fingerprint (no colon), not by "any count". Live cases fail if default Gaussian is not LBFGS, if `DRMControl(optimizer=:bfgs)` is not `Optim.BFGS`, if Poisson Laplace fabricates a count, if Gaussian RI BFGS is unlabeled because `niterations == -1`, or if live B1 drm() routes label LBFGS. They do not prove Newton polish fired on the live Beta draw, and they were **not run** in this environment.
 
 ## 7a. Issue ledger
 
@@ -47,7 +49,7 @@ Synthetic cases fail if the helper still infers LBFGS from a nonnegative count, 
 
 ## 8. Consistency audit / Rose
 
-Claim: diagnostics/docs only. Evidence: no fitter, control selector, or default `DRMControl().optimizer` change. Remaining honesty: live Beta still does not *record* Newton, so the label is unknown even when polish was not accepted. Gaussian `(1 | g)` count stays `-1` (pre-existing; documented, not wired).
+Claim: diagnostics/docs only. Evidence: no fitter, control selector, or default `DRMControl().optimizer` change; B1 files not edited. Remaining honesty: live Beta still does not *record* Newton, so the label is unknown even when polish was not accepted. Gaussian `(1 | g)` count stays `-1` (pre-existing; documented, not wired). B1 unrecorded counts are `missing`, not a fabricated BFGS or LBFGS. `Fminbox(LBFGS)` is still the string `Optim.LBFGS`. Docs no longer claim "never inferred from count" while inferring from count on B1 routes.
 
 License: no drmTMB GPL source.
 
@@ -61,7 +63,7 @@ Pin: `ed9185e953c5377f1de3b370ffffb02dbfe8192d`. No extra numerical fits.
 
 ## 10. Residuals
 
-Runtime tests unrun in this environment. Independent review required; no self-approval. Review-only PR; do not merge from this agent.
+Runtime tests unrun in this environment (`JULIA_ABSENT`). Exact-head live B1 / Fminbox / Beta polish / kept≠last plus `test_niterations.jl` / `test_optimizer_selection.jl` / `test_twin_gap_569.jl` / full `Pkg.test()` remain **BLOCKED** until a legitimate Julia runtime. Independent review required; no self-approval. Review-only PR; do not merge from this agent. No second repro launch.
 
 ## 11. Pin / branch
 

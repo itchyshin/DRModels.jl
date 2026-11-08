@@ -135,16 +135,42 @@ function _structured_effects_forms(f)
     return fs
 end
 
-const _BRIDGE_OPTIMIZER_LABEL = Dict(
-    :lbfgs => "Optim.LBFGS",
-    :bfgs => "Optim.BFGS",
-    :newton => "Optim.Newton",
-)
+function _bridge_optimizer_string(actual::Symbol)
+    actual === :lbfgs && return "Optim.LBFGS"
+    actual === :bfgs && return "Optim.BFGS"
+    actual === :newton && return "Optim.Newton"
+    return missing
+end
 
-# Recorded selected-stage identity when `control_info` has one; otherwise the
-# default LBFGS label only for a counted non-Beta run. A nonnegative count is
-# not itself evidence of LBFGS: qualified BFGS stores `:bfgs`, and an accepted
-# Beta Newton polish can replace the counted result without updating the report.
+function _block_names(fit::DrmFit, p::Symbol)
+    for (q, ns) in fit.coefnames
+        q === p && return ns
+    end
+    return String[]
+end
+
+# Counted fitters that start at BFGS (and may restart on LBFGS) and never
+# record a method. Independently confirmed: `indep_slopes_laplace.jl` (Gamma /
+# Student `(1 | g) + (0 + x | g)`) and `gaussian_rs_sigma_ranef.jl` (Gaussian
+# `(1 + x | g)` mean + `sigma ~ (1 | g)`). A nonnegative `niterations` on these
+# routes is not LBFGS-origin.
+function _unrecorded_mixed_method_route(fit::DrmFit)
+    nms = _block_names(fit, :resd)
+    if fit.family isa Gaussian && fit.marginal === :Laplace &&
+            any(p -> first(p) === :recov, fit.blocks) &&
+            any(n -> endswith(n, "_logsigma"), nms)
+        return true
+    end
+    if fit.family isa Union{Gamma, Student} && fit.marginal === :Laplace &&
+            any(n -> occursin(':', n), nms)
+        return true
+    end
+    return false
+end
+
+# Recorded selected-stage identity when `control_info` has one. Unrecorded
+# counted LBFGS is labelled only after excluding Beta (unrecorded Newton polish)
+# and the BFGS-first counted routes above — not from a nonnegative count alone.
 function _bridge_optimizer_label(fit::DrmFit)
     info = fit.control_info
     if info isa DRMControlReport
@@ -155,10 +181,11 @@ function _bridge_optimizer_label(fit::DrmFit)
         if fit.family isa Beta && actual === :lbfgs && !_ctl_optim_requested(info.control)
             return missing
         end
-        return get(_BRIDGE_OPTIMIZER_LABEL, actual, missing)
+        return _bridge_optimizer_string(actual)
     end
     niterations(fit) < 0 && return missing
     fit.family isa Beta && return missing
+    _unrecorded_mixed_method_route(fit) && return missing
     return "Optim.LBFGS"
 end
 
@@ -189,13 +216,14 @@ fabricated zero or `NaN` standing in for it:
 - `optimizer` — a recorded Optim.jl method label, never inferred as LBFGS
   merely because [`niterations`](@ref) is nonnegative. When
   [`control_info`](@ref) stored `:lbfgs`, `:bfgs`, or `:newton` for the
-  selected stage, the label is `"Optim.LBFGS"` / `"Optim.BFGS"` /
-  `"Optim.Newton"`. When no report is attached, a nonnegative count still
-  labels the default LBFGS run except on `Beta`, where an unrecorded Newton
-  polish may have replaced it and the label is `missing` (explicitly unknown).
+  **kept** selected stage (`actual_optimizer`, not the last `optimizer_runs`
+  entry), the label is `"Optim.LBFGS"` / `"Optim.BFGS"` / `"Optim.Newton"`.
   `:unrecorded` reports stay `missing`. A `-1` count stays `missing` only when
-  no method was recorded; a recorded BFGS/LBFGS/Newton label is independent of
-  the count.
+  no method was recorded. With no report, a nonnegative count labels default
+  LBFGS only on fitters known to run LBFGS (or `Fminbox(LBFGS)`, reported as
+  `"Optim.LBFGS"`) when unrecorded. It stays `missing` on `Beta` (unrecorded
+  Newton polish) and on counted BFGS-first routes: Gamma/Student independent
+  slopes Laplace and Gaussian random-slope mean plus sigma random intercept.
 - `converged` — the optimiser flag AND the degeneracy bar, the same value as
   the top-level bridge `converged` (#949). Since FX3b this is not
   [`is_converged`](@ref), which is also `false` at a `:boundary` optimum; the

@@ -530,10 +530,15 @@ fixed-effects fit), `Student`, `SkewNormal`, `Poisson`, `NegBinomial2`,
 fit and, where the family has one *and the fitter attaches a count*, its scalar
 `(1 | g)` random-intercept, correlated `(1 + x | g)`, zero-inflated (`zi`),
 hurdle (`hu`), and (Poisson only) AGHQ / coordinate-spatial-range variants.
-The default method on those counted routes is LBFGS. It is not the only method:
-`DRMControl(optimizer = :bfgs)` selects BFGS on qualified routes (#1136), and
-the fixed-effect `Beta` route may replace the initial result with an accepted
-Newton polish; `niterations` then reports that Newton stage only. The bivariate
+The default method on counted `_ctl_optimize` routes is LBFGS. It is not the
+only method: `DRMControl(optimizer = :bfgs)` selects BFGS on qualified routes
+(#1136); the fixed-effect `Beta` route may replace the initial result with an
+accepted Newton polish; and two counted Laplace fitters start at BFGS and may
+restart on LBFGS (Gamma/Student independent slopes, Gaussian random-slope mean
+plus sigma random intercept). `niterations` reports the accepted final stage
+only, which is not LBFGS-origin on those last two routes. Some structured
+Gamma/Beta/sparse-Laplace SD routes wrap LBFGS in `Fminbox`; the attached
+count is still that box-constrained run. The bivariate
 residual routes (`Gaussian`/`Gaussian`, `Student`/`Student`,
 `LogNormal`/`LogNormal`) report counts the same way; `LogNormal`'s bivariate
 fit borrows the Gaussian-on-log-y optimiser run wholesale (only the reported
