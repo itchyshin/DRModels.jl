@@ -13,6 +13,14 @@
 #   ordinary+structured (1 | g) + relmat/animal(1 | p)  sd(g), sd(p, level)
 #   structured q2       relmat(1 + x | p)            sd(p, relmat, coef(intercept)), sd(p, relmat, coef(x))
 #
+# and, with one cross-field correlation rho = tanh(eta_cor) (native drmTMB's
+# `eta_cor_*` is the same atanh scale), the correlated same-group shapes
+#
+#   labelled structured q2   animal/relmat(1 + x | p | g)   (Gamma, NB2)
+#   ordinary correlated q2   (1 + x | g)                    (NB2; native drmTMB refuses Gamma)
+#
+# whose prior precision is kron(R(rho)^{-1}, Q): logdet P = 2 logdet Q - G log(1 - rho^2).
+#
 # The Laplace marginal is  sum_i v_i(eta*) + 0.5 u*' P u* - 0.5 logdet P + 0.5 logdet H,
 # P = blockdiag(Q_1, Q_2), H = P + L' diag(d2) L, L the n x (G_1 + G_2) loading
 # matrix. The 2*pi constants of the prior and of the Laplace normaliser cancel.
@@ -139,26 +147,40 @@ the two SD-coefficient blocks. `sigma ~ 1` only.
 function _fit_twofield_sd_laplace(fam::Union{Gamma,NegBinomial2}, y, Xmu, Xsigma,
                                   fields::Vector{_TwoField}, nmmu, nmsigma, nmsds,
                                   blocks, g_tol; se::Bool = true, maxiter::Int = 300,
+                                  correlated::Bool = false,
                                   context::AbstractString = "two-field SD regression")
     length(fields) == 2 || throw(ArgumentError("expected two latent SD fields"))
     size(Xsigma, 2) == 1 || throw(ArgumentError("$context requires `sigma ~ 1`."))
     kind = _twofield_kind(fam)
     isgamma = fam isa Gamma
-    P = blockdiag(fields[1].Q, fields[2].Q)
-    logdetP = fields[1].logdetQ + fields[2].logdetQ
+    if correlated
+        (fields[1].gidx == fields[2].gidx && fields[1].Q == fields[2].Q) || throw(ArgumentError(
+            "$context: a correlated pair needs one grouping factor and one kernel."))
+    end
+    P0 = blockdiag(fields[1].Q, fields[2].Q)
+    logdetP0 = fields[1].logdetQ + fields[2].logdetQ
+    Gc = size(fields[1].Q, 1)
+    function prior(theta)
+        correlated || return P0, logdetP0
+        rho = tanh(theta[end])
+        Rinv = sparse([1.0 -rho; -rho 1.0] ./ (1 - rho^2))
+        return kron(Rinv, fields[1].Q), 2 * fields[1].logdetQ - Gc * log1p(-rho^2)
+    end
     aux_from, beta0, logsigma0 = isgamma ? _gamma_laplace_setup(y, Xmu) :
                                            _nb2_laplace_setup(y, Xmu)
     pmu = size(Xmu, 2)
     psd = [size(fk.Zg, 2) for fk in fields]
     ranges = (pmu + 2):(pmu + 1 + psd[1]), (pmu + 2 + psd[1]):(pmu + 1 + sum(psd))
-    theta0 = zeros(pmu + 1 + sum(psd))
+    theta0 = zeros(pmu + 1 + sum(psd) + correlated)
     theta0[1:pmu] .= beta0
     theta0[pmu + 1] = isgamma ? clamp(logsigma0, -3.9, 3.9) : logsigma0
     theta0[ranges[1]] .= fields[1].Zg \ fill(log(0.4), size(fields[1].Zg, 1))
     theta0[ranges[2]] .= fields[2].Zg \ fill(log(0.3), size(fields[2].Zg, 1))
-    Gt = size(P, 1)
+    Gt = size(P0, 1)
     last_u = zeros(Gt)
     function nll(theta)
+        correlated && abs(theta[end]) > 15 && return 1e18
+        P, logdetP = prior(theta)
         value, u, ok = _twofield_laplace(kind, y, Xmu, fields, P, logdetP, theta,
                                          aux_from; b0 = last_u, clamp_logsigma = isgamma)
         if !ok
@@ -211,7 +233,12 @@ function _fit_twofield_sd_laplace(fam::Union{Gamma,NegBinomial2}, y, Xmu, Xsigma
     name_list = Pair{Symbol,Vector{String}}[
         :mu => nmmu, :sigma => nmsigma,
         blocks[1] => nmsds[1], blocks[2] => nmsds[2]]
+    if correlated
+        push!(block_list, :recov => length(theta):length(theta))
+        push!(name_list, :recov => ["atanh_rho"])
+    end
     scales = Dict{Symbol,Vector{Float64}}(:sigma => fill(exp(theta[pmu + 1]), length(y)))
+    correlated && (scales[:correlation] = [tanh(theta[end])])
     for k in 1:2
         sdk = exp.(fields[k].Zg * theta[ranges[k]])
         scales[blocks[k]] = sdk[fields[k].gidx]
@@ -256,15 +283,54 @@ function _drm_twofield_sd_route(f::DrmFormula, fam::Union{Gamma,NegBinomial2};
         t.target.level in (:iid, :animal, :relmat), targets) || return nothing
     rhs = Dict(f.forms)
     haskey(rhs, :mu) || return nothing
-    fixed_mu, re, metav, st, _, _, sslope = _split_ranef(rhs[:mu];
-        allow_relmat_intercept_slope = true, allow_animal_intercept_slope = true)
+    correlated = false
+    labelled = _twofield_labelled_q2(rhs[:mu])
+    if labelled !== nothing
+        # Rebuild the mean without the labelled term so _split_ranef sees only the
+        # fixed part and any other (refused) random terms.
+        terms = rhs[:mu] isa Tuple ? collect(rhs[:mu]) : Any[rhs[:mu]]
+        rest = [t for t in terms if t !== labelled.term]
+        rest_rhs = isempty(rest) ? ConstantTerm(1) : length(rest) == 1 ? rest[1] : Tuple(rest)
+        fixed_mu, re, metav, st = _split_ranef(rest_rhs)
+        (isempty(re) && metav === nothing && st === nothing) || throw(ArgumentError(
+            "$famname labelled `$(labelled.provider)(1 + $(labelled.slope) | $(labelled.label) | $(labelled.group))` " *
+            "must be the only random-effect term."))
+        structured = [(labelled.provider, labelled.group)]
+        sslope = labelled.slope
+        correlated = true
+    else
+        fixed_mu, re, metav, st, _, _, sslope = _split_ranef(rhs[:mu];
+            allow_relmat_intercept_slope = true, allow_animal_intercept_slope = true)
+    end
     metav === nothing || return nothing
-    structured = _collect_structured(rhs[:mu])
+    labelled === nothing && (structured = _collect_structured(rhs[:mu]))
     length(structured) <= 1 || return nothing
     # Identify the shape and the two (term, target) pairs.
     specs = nothing   # Vector of (; kind, group, slope, provider, target)
     levels = Set(t.target.level for t in targets)
-    if isempty(structured) && levels == Set([:iid]) && length(re) == 2
+    if labelled !== nothing
+        prov, pgrp = only(structured)
+        levels == Set([prov]) || throw(ArgumentError(
+            "$famname labelled $prov q2 needs two `sd($pgrp, $prov, coef(…))` formulas."))
+        all(t -> t.target.group === pgrp, targets) || return nothing
+        Set(t.target.member for t in targets) == Set([:intercept, sslope]) || throw(ArgumentError(
+            "$famname $prov SD formulas must select `coef(intercept)` and `coef($sslope)` exactly once."))
+        specs = [(; group = pgrp, slope = m === :intercept ? nothing : m, provider = prov,
+                   target = only(filter(t -> t.target.member === m, targets)))
+                 for m in (:intercept, sslope)]
+    elseif isempty(structured) && levels == Set([:iid]) && length(re) == 1 &&
+           first(_re_kind(re[1][1])) === :corr && fam isa NegBinomial2
+        # Ordinary correlated (1 + x | g) with coef-selected SDs (NB2 only; native
+        # drmTMB refuses this shape for Gamma).
+        g = re[1][2]; slope = _re_kind(re[1][1])[2]
+        all(t -> t.target.group === g, targets) || return nothing
+        Set(t.target.member for t in targets) == Set([:intercept, slope]) || throw(ArgumentError(
+            "$famname `(1 + $slope | $g)` SD regression needs `sd($g, coef(intercept))` and `sd($g, coef($slope))` exactly once each."))
+        specs = [(; group = g, slope = m === :intercept ? nothing : m, provider = :iid,
+                   target = only(filter(t -> t.target.member === m, targets)))
+                 for m in (:intercept, slope)]
+        correlated = true
+    elseif isempty(structured) && levels == Set([:iid]) && length(re) == 2
         kinds = [_re_kind(r[1]) for r in re]
         grps = [r[2] for r in re]
         if grps[1] == grps[2]
@@ -398,6 +464,33 @@ function _drm_twofield_sd_route(f::DrmFormula, fam::Union{Gamma,NegBinomial2};
         throw(ArgumentError("$famname cannot separate the intercept and slope SDs when the slope predictor is constant and both SD formulas are identical."))
     end
     fit = _fit_twofield_sd_laplace(fam, y, Xmu, Xsigma, fields, nmmu, nmsigma,
-        nmsds, blocks, g_tol; se, context = "$famname two-field SD regression")
+        nmsds, blocks, g_tol; se, correlated, context = "$famname two-field SD regression")
     return _withformula(fit, f)
+end
+
+# A labelled structured q2 term `animal(1 + x | p | g)` / `relmat(1 + x | p | g)`:
+# StatsModels parses the bar left-associatively, `((1 + x) | p) | g`.
+function _twofield_labelled_q2(rhs)
+    terms = rhs isa Tuple ? collect(rhs) : Any[rhs]
+    found = nothing
+    for t in terms
+        (t isa FunctionTerm && (t.f === animal || t.f === relmat)) || continue
+        bar = t.args[1]
+        (bar isa FunctionTerm && bar.f === (|)) || continue
+        inner = bar.args[1]
+        (inner isa FunctionTerm && inner.f === (|)) || continue
+        lhs, lab = inner.args[1], inner.args[2]
+        lab isa Term && bar.args[2] isa Term || continue
+        lhs isa FunctionTerm && lhs.f === (+) || continue
+        consts = filter(x -> x isa ConstantTerm, lhs.args)
+        vars = filter(x -> x isa Term, lhs.args)
+        (length(lhs.args) == 2 && length(consts) == 1 && consts[1].n == 1 &&
+         length(vars) == 1) || throw(ArgumentError(
+            "drm: a labelled `$(nameof(t.f))(… | $(lab.sym) | $(bar.args[2].sym))` term is implemented " *
+            "for the intercept-plus-one-slope form `1 + x` only."))
+        found === nothing || throw(ArgumentError("drm: only one labelled structured term is implemented."))
+        found = (; term = t, provider = t.f === animal ? :animal : :relmat,
+                 group = bar.args[2].sym, label = lab.sym, slope = vars[1].sym)
+    end
+    return found
 end

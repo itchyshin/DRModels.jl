@@ -9,6 +9,8 @@ using SpecialFunctions: loggamma
 #   crossed     (1 | g) + (1 | h)            sd(g), sd(h)
 #   ord+struct  (1 | g) + relmat/animal(1 | p)  sd(g), sd(p, relmat|animal)
 #   relmat q2   relmat(1 + x | p)  (Gamma)   sd(p, relmat, coef(intercept)), sd(p, relmat, coef(x))
+#   labelled    animal/relmat(1 + x | p | g)  correlated fields, rho = tanh(atanh_rho)
+#   correlated  (1 + x | g)  (NB2)            correlated fields, Q = I
 #
 # Oracle: an independent dense Laplace marginal written without DRModels
 # internals: b ~ N(0, blockdiag(D1 C1 D1, D2 C2 D2)) on the ORIGINAL latent
@@ -77,7 +79,7 @@ end
 function tf_case(fam::Symbol, shape::Symbol; seed = TF_RNG_SEED)
     # ordanimal reuses the ordrelmat draw, so A and K must give the same fit.
     offset = Dict(:samegroup => 1, :crossed => 2, :ordrelmat => 3, :ordanimal => 3,
-                  :relmatq2 => 5)[shape]
+                  :relmatq2 => 5, :labanimal => 6, :labrelmat => 6, :corr => 8)[shape]
     rng = MersenneTwister(seed + offset)
     sigma = 0.45
     a1, a2 = [log(0.5), 0.6], [log(0.35), -0.6]
@@ -167,6 +169,40 @@ function tf_case(fam::Symbol, shape::Symbol; seed = TF_RNG_SEED)
         fields = [(g, lev, C, ones(length(y)), z1), (g, lev, C, x, z2)]
         return (; data, formula, kw = (; K = C), fields)
     end
+    if shape in (:labanimal, :labrelmat, :corr)
+        G, m = 40, 14
+        lev = ["u$(i)" for i in 1:G]
+        gi = repeat(1:G, inner = m)
+        x = randn(rng, G * m)
+        z1 = collect(range(-1.5, 1.5; length = G))[randperm(rng, G)]
+        z2 = collect(range(-1.5, 1.5; length = G))[randperm(rng, G)]
+        C = shape === :corr ? Matrix(1.0I, G, G) : tf_kernel(G)
+        Lc = cholesky(Symmetric(C)).L
+        rho = 0.5
+        f0 = Lc * randn(rng, G); f1 = rho .* f0 .+ sqrt(1 - rho^2) .* (Lc * randn(rng, G))
+        b1 = exp.(a1[1] .+ a1[2] .* z1) .* f0
+        b2 = exp.(a2[1] .+ a2[2] .* z2) .* f1
+        eta = 0.4 .+ 0.3 .* x .+ b1[gi] .+ x .* b2[gi]
+        y = tf_draw(fam, rng, eta, sigma)
+        g = lev[gi]
+        data = (; y, x, g, w1 = z1[gi], w2 = z2[gi])
+        fields = [(g, lev, C, ones(length(y)), z1), (g, lev, C, x, z2)]
+        if shape === :corr
+            formula = bf(@formula(y ~ x + (1 + x | g)), @formula(sigma ~ 1),
+                         @formula(sd(g, coef(intercept)) ~ w1), @formula(sd(g, coef(x)) ~ w2))
+            return (; data, formula, kw = (;), fields)
+        elseif shape === :labanimal
+            formula = bf(@formula(y ~ x + animal(1 + x | p | g)), @formula(sigma ~ 1),
+                         @formula(sd(g, animal, coef(intercept)) ~ w1),
+                         @formula(sd(g, animal, coef(x)) ~ w2))
+            return (; data, formula, kw = (; A = C), fields)
+        else
+            formula = bf(@formula(y ~ x + relmat(1 + x | p | g)), @formula(sigma ~ 1),
+                         @formula(sd(g, relmat, coef(intercept)) ~ w1),
+                         @formula(sd(g, relmat, coef(x)) ~ w2))
+            return (; data, formula, kw = (; K = C), fields)
+        end
+    end
     error("unknown shape")
 end
 
@@ -189,6 +225,17 @@ function tf_fit_oracle(fam, case, fit; perturb = :none)
     q1, q2 = size(Sig[1], 1), size(Sig[2], 1)
     Sigma = zeros(q1 + q2, q1 + q2)
     Sigma[1:q1, 1:q1] = Sig[1]; Sigma[(q1+1):end, (q1+1):end] = Sig[2]
+    if any(p -> p.first === :recov, fit.blocks)
+        rho = tanh(only(coef(fit, :recov)))
+        perturb === :rho0 && (rho = 0.0)
+        S1 = sqrt.(diag(Sig[1])); S2 = sqrt.(diag(Sig[2]))   # tau_k * sqrt(diag C)
+        C = case.fields[1][3]
+        pm = randperm(MersenneTwister(7), size(C, 1))
+        perturb === :kernelpos && (C = C[pm, pm])
+        t1 = S1 ./ sqrt.(diag(C)); t2 = S2 ./ sqrt.(diag(C))
+        X12 = rho .* (Diagonal(t1) * C * Diagonal(t2))
+        Sigma[1:q1, (q1+1):end] = X12; Sigma[(q1+1):end, 1:q1] = X12'
+    end
     return tf_oracle(fam, case.data.y, eta0, hcat(Zs...), Sigma, sigma)
 end
 
@@ -196,7 +243,8 @@ const TF_FAMS = Dict(:gamma => DRModels.Gamma(), :nb2 => NegBinomial2())
 
 for (fam, shape) in ((:nb2, :samegroup), (:gamma, :samegroup), (:gamma, :crossed),
                      (:gamma, :ordrelmat), (:gamma, :ordanimal), (:gamma, :relmatq2),
-                     (:nb2, :crossed), (:nb2, :ordrelmat))
+                     (:nb2, :crossed), (:nb2, :ordrelmat), (:gamma, :labanimal),
+                     (:gamma, :labrelmat), (:nb2, :labanimal), (:nb2, :corr))
     @testset "$fam $shape two-field SD regression: dense Laplace oracle" begin
         case = tf_case(fam, shape)
         fit = drm(case.formula, TF_FAMS[fam]; data = case.data, case.kw...)
@@ -218,6 +266,15 @@ for (fam, shape) in ((:nb2, :samegroup), (:gamma, :samegroup), (:gamma, :crossed
             fk = drm(bf(@formula(y ~ x + (1 | g) + relmat(1 | p)), @formula(sigma ~ 1),
                         @formula(sd(g) ~ w1), @formula(sd(p, relmat) ~ w2)),
                      TF_FAMS[fam]; data = ck.data, K = ck.kw.K)
+            @test abs(loglikelihood(fk) - loglikelihood(fit)) < 1e-6
+        end
+        if shape in (:labanimal, :labrelmat, :corr)
+            @test abs(tf_fit_oracle(fam, case, fit; perturb = :rho0) - oracle) > 0.1
+            @test only(fit.scales[:correlation]) ≈ tanh(only(coef(fit, :recov)))
+        end
+        if shape === :labanimal && fam === :gamma
+            ck = tf_case(fam, :labrelmat)
+            fk = drm(ck.formula, TF_FAMS[fam]; data = ck.data, ck.kw...)
             @test abs(loglikelihood(fk) - loglikelihood(fit)) < 1e-6
         end
         # group-level SD scales follow the fitted SD formulas
