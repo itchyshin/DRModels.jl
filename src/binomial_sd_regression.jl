@@ -1203,7 +1203,8 @@ function _drm_binomial_related_sd_regression(f::DrmFormula, fam::Binomial;
     gidx, G = _group_index(labels)
     C = if level === :spatial
         coords isa AbstractDict && (coords = _resolve_coords_labels(f, data, coords, nothing))   # red team: label => coordinate Dict, as on the other families
-        _spatial_covariance_from_coords(descriptor.group, G, coords, nothing)
+        _spatial_covariance_from_coords(descriptor.group, G, coords, nothing;
+                                        legacy_mean_range = true)   # no drmTMB binomial spatial: see docs/dev-log/spatial-kernel-audit
     else
         covariance === nothing ? nothing : Matrix{Float64}(covariance)
     end

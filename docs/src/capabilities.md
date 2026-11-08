@@ -224,7 +224,7 @@ public formula route are **tested**.
 | Capability | Status |
 |---|---|
 | `bf(mu1=…, mu2=…, sigma1=…, sigma2=…, rho12=…)` with phylogeny | **Tested**; recovers fixed effects and `Σ_a` |
-| `relmat`, `animal`, and fixed-range `spatial` structured providers | **Tested**; spatial range is fixed (default: mean pairwise distance; drmTMB's default is the median, so set `spatial_range` when comparing) |
+| `relmat`, `animal`, and fixed-range `spatial` structured providers | **Tested**; spatial range is fixed (default: median positive pairwise distance with a 1e-6 ridge, drmTMB's native kernel; `spatial_range` overrides it) |
 | `vc(fit)`, `ranef(fit)`, and `coevolution_cor` summaries | **Tested**; `fit.ranef.Sigma_a` is ordered `mu1, mu2, sigma1, sigma2` |
 | Fixed-effect covariance and Wald standard errors (`q4_vcov=true`) | **Tested** |
 | Bootstrap intervals for coevolution correlations | **Tested for tree-based phylogeny**; non-tree structured providers return point summaries only |

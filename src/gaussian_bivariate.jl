@@ -126,8 +126,8 @@ q=2 exact-Gaussian point-fit cell, `method = :ML` (default) or `method =
 mean fixed-effect designs, and intercept-only `sigma1`, `sigma2`, and `rho12`.
 `spatial(1 | group)` supplies a covariance exactly as `relmat`/`animal` do: the
 exponential kernel `exp(-d / rho)` at a FIXED range `rho` (keyword
-`spatial_range`, else the mean off-diagonal pairwise distance), the same rule
-the q=4 structured route uses. It does NOT estimate the range jointly the way
+`spatial_range`, else drmTMB's native kernel: the median positive pairwise
+distance with a 1e-6 diagonal ridge), the same rule the q=4 structured route uses. It does NOT estimate the range jointly the way
 the univariate spatial route (`_fit_spatial_gaussian`) does, so the two are not
 the same model and must not be compared as one. The range in force is recorded
 as `fit.ranef.spatial_range`.
@@ -971,15 +971,18 @@ end
 # Shared by the q=2 and q=4 bivariate structured routes so both cells build the
 # same G-by-G matrix from the same coordinates, and so every fail-closed check on
 # `coords` is stated exactly once. The range is `spatial_range` when supplied,
-# else the mean off-diagonal pairwise distance; the 1e-8 ridge keeps the kernel
-# positive definite at near-coincident sites. Row k of `coords` is the k-th
+# else drmTMB's native kernel (median positive pairwise distance, 1e-6 ridge, as
+# `_gaussian_spatial_sd_kernel`). An explicit `spatial_range`, and the retired
+# mean-distance rule behind `legacy_mean_range = true` (Binomial only), use a 1e-8
+# ridge to keep the kernel positive definite at near-coincident sites. Row k of `coords` is the k-th
 # level of `grp` in `_group_index` order (stable FIRST-SEEN order in the data),
 # which is the same contract the q=4 route has always had.
 #
 # This is NOT the univariate spatial route: `_fit_spatial_gaussian`
 # (gaussian_structured.jl) carries log rho as a free parameter and rebuilds the
 # kernel each evaluation. Here rho is fixed, so the two are different models.
-function _spatial_covariance_from_coords(grp::Symbol, G::Int, coords, spatial_range)
+function _spatial_covariance_from_coords(grp::Symbol, G::Int, coords, spatial_range;
+                                         legacy_mean_range::Bool = false)
     coords === nothing && error("spatial(1 | $grp) needs `coords = …`")
     _require_finite_inputs(; coords=coords)
     G >= 2 || error("spatial(1 | $grp) needs at least 2 distinct sites; got G=$G")
@@ -1007,6 +1010,12 @@ function _spatial_covariance_from_coords(grp::Symbol, G::Int, coords, spatial_ra
     Ddist = [sqrt(sum(abs2, Cmat[k, :] .- Cmat[l, :])) for k in 1:G, l in 1:G]
     any(Ddist .> 0) ||
         error("spatial(1 | $grp): all site coordinates coincide; the spatial range is not identified")
+    if spatial_range === nothing && !legacy_mean_range
+        # Default = drmTMB's native kernel: exp(-d / median positive distance) + 1e-6 I
+        # (`drm_spatial_coords_precision`). The old default was the MEAN pairwise
+        # distance with 1e-8 jitter, which is a different fixed-range model.
+        return Matrix{Float64}(_gaussian_spatial_sd_kernel(Cmat, G, grp))
+    end
     rho = if spatial_range === nothing
         sum(Ddist) / (G^2 - G)
     else
@@ -1017,8 +1026,8 @@ function _spatial_covariance_from_coords(grp::Symbol, G::Int, coords, spatial_ra
 end
 
 # Build a G×G SPD precision for level-indexed q=4 structured providers (#189).
-# Spatial uses a *fixed* range (keyword `spatial_range`, else mean pairwise
-# distance) — joint ρ estimation is deferred.
+# Spatial uses a *fixed* range (keyword `spatial_range`, else the native median
+# positive pairwise distance) — joint ρ estimation is deferred.
 function _q4_structured_precision(kind::Symbol, grp::Symbol, G::Int;
                                   K, A, coords, spatial_range)
     if kind === :relmat
@@ -1050,7 +1059,7 @@ q=4 PLSM front end for level-indexed structured providers (`relmat` / `animal` /
 `spatial`) — issue #189. Reuses [`fit_q4_sparse_tmb`](@ref) via
 [`make_problem_from_Q`](@ref); does not rewrite the verified Laplace engine.
 
-Spatial uses a fixed range (`spatial_range`, default = mean pairwise distance).
+Spatial uses a fixed range (`spatial_range`, default = median positive pairwise distance, as drmTMB).
 Non-tree `bootstrap_sigma_a` is deliberately unsupported.
 """
 function _fit_bivariate_q4_structured(f::BivariateDrmFormula, fam::Gaussian, data, fixed, marker,
@@ -1202,9 +1211,14 @@ end
 
 function _q4_default_spatial_range(coords, G::Int)
     _require_finite_inputs(; coords=coords)
-    Cmat = Matrix{Float64}(coords)
+    Cmat = coords isa AbstractVector{<:Real} ? reshape(Float64.(coords), :, 1) :
+           Matrix{Float64}(coords)
     Ddist = [sqrt(sum(abs2, Cmat[k, :] .- Cmat[l, :])) for k in 1:G, l in 1:G]
-    return sum(Ddist) / (G^2 - G)
+    # Same rule as `_gaussian_spatial_sd_kernel` / drmTMB: median positive distance
+    # (maximum if that is not positive).
+    pos = [Ddist[k, l] for k in 1:G for l in (k+1):G if Ddist[k, l] > 0]
+    rng = median(pos)
+    return (isfinite(rng) && rng > 0) ? rng : maximum(pos)
 end
 
 function _fit_bivariate_q4_phylo(f::BivariateDrmFormula, fam::Gaussian, data, fixed, marker, tree;

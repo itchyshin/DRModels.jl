@@ -642,7 +642,9 @@ end
 # The range is FIXED, unlike the intercept-only `_fit_spatial_gaussian`, which
 # estimates it. Rows of `coords` follow the first-seen levels of the group.
 function _gaussian_spatial_sd_kernel(coords, G::Int, grp::Symbol)
-    cmat = Matrix{Float64}(coords)
+    # A 1-D transect may be a plain vector: read it as the G-by-1 column it means.
+    cmat = coords isa AbstractVector{<:Real} ? reshape(Float64.(coords), :, 1) :
+           Matrix{Float64}(coords)
     size(cmat, 1) == G ||
         throw(ArgumentError("coords must have $G rows (one per `$grp` level)"))
     all(isfinite, cmat) || throw(ArgumentError("coords must be finite"))

@@ -8,7 +8,10 @@ using Distributions: Normal, cdf
     group = ["s$j" for j in group_index]
     coords = hcat(collect(range(0.0, 1.0; length = G)),
                   sin.(collect(range(0.0, 2pi; length = G))))
-    C = DRModels._spatial_covariance_from_coords(:site, G, coords, nothing)
+    # The Binomial spatial routes keep the legacy mean-range kernel (drmTMB has no binomial
+    # spatial counterpart); the default of the shared builder is now drmTMB's native kernel.
+    C = DRModels._spatial_covariance_from_coords(:site, G, coords, nothing;
+                                                 legacy_mean_range = true)
     z_group = vcat(fill(-1.0, G ÷ 2), fill(1.0, G ÷ 2))
     z = repeat(z_group; inner = n_each)
     alpha = [log(0.55), 0.4]
@@ -81,7 +84,10 @@ end
     group = ["s$j" for j in group_index]
     axis = collect(range(0.0, 1.0; length = G))
     coords = hcat(axis, sin.(2pi .* axis))
-    C = DRModels._spatial_covariance_from_coords(:site, G, coords, nothing)
+    # The Binomial spatial routes keep the legacy mean-range kernel (drmTMB has no binomial
+    # spatial counterpart); the default of the shared builder is now drmTMB's native kernel.
+    C = DRModels._spatial_covariance_from_coords(:site, G, coords, nothing;
+                                                 legacy_mean_range = true)
     z_group = vcat(fill(-1.0, G ÷ 2), fill(1.0, G ÷ 2))
     alpha = [log(0.6), 0.4]
     formula = bf(
