@@ -768,8 +768,27 @@ function _drm_gaussian_structured_q2_sd(f::DrmFormula, fam::Gaussian, kind::Symb
             "(no ordinary or sigma random effects, `meta_V`, or structured `sigma`)."))
     has_missing_response && throw(ArgumentError(
         "drm: Gaussian `$term` SD regression requires observed responses; remove incomplete rows first."))
-    method === :REML && throw(ArgumentError(
-        "drm: Gaussian `$term` SD regression supports maximum likelihood only."))
+    reml = method === :REML
+    if reml
+        # Native drmTMB admits REML for the structured q2 SD cells it has validated:
+        # `phylo` (labelled or not, any fixed-effect `sigma`), and `animal` / `relmat` /
+        # `spatial` only UNLABELLED with a constant residual scale (`sigma ~ 1`).
+        # The gate mirrors that exactly (drmTMB `drm_validate_reml_spec`,
+        # `drm_reml_admits_mean_structured_provider`); everything else stays refused
+        # rather than being relabelled ML.
+        if kind !== :phylo
+            correlated && throw(ArgumentError(
+                "drm: Gaussian `$term` SD regression: method = :REML is not implemented for the " *
+                "labelled (correlated) `$kind` block; native drmTMB refuses it too. Use the " *
+                "unlabelled `$kind(1 + $slope | $grp)` or method = :ML."))
+            size(Xσ, 2) == 1 || throw(ArgumentError(
+                "drm: Gaussian `$term` SD regression: method = :REML requires a constant residual " *
+                "scale (`sigma ~ 1`) for `$kind`; native drmTMB refuses heteroscedastic sigma here " *
+                "too. Use `sigma ~ 1` or method = :ML."))
+        end
+        rank(Xμ) == size(Xμ, 2) || throw(ArgumentError(
+            "drm: method = :REML requires a full-rank `mu` fixed-effect design."))
+    end
     algorithm === :auto || throw(ArgumentError(
         "drm: `algorithm = :$algorithm` is not implemented for Gaussian `$term` SD regression."))
     allowed = Set(vcat([:mu, :sigma], [item.key for item in targets]))
@@ -813,7 +832,7 @@ function _drm_gaussian_structured_q2_sd(f::DrmFormula, fam::Gaussian, kind::Symb
     end
     blocks = Symbol[_sd_target_block(item.target; disambiguate = true) for item in ordered]
     return _fit_structured_gaussian_q2_sd(fam, y, Xμ, Xσ, Zgs, gidx, G, Cmat, x,
-                                          nmμ, nmσ, nmsds, blocks, grp, g_tol; correlated)
+                                          nmμ, nmσ, nmsds, blocks, grp, g_tol; correlated, reml)
 end
 
 # `correlated = true` (labelled `kind(1 + x | p | g)`) adds drmTMB's
@@ -822,7 +841,7 @@ end
 #   rho (s0_g s1_h x_j + x_i s1_g s0_h) C[g(i), g(j)].
 function _fit_structured_gaussian_q2_sd(fam::Gaussian, y, Xμ, Xσ, Zgs, gidx, G, C, x,
                                         nmμ, nmσ, nmsds, blocks, grp, g_tol;
-                                        correlated::Bool = false)
+                                        correlated::Bool = false, reml::Bool = false)
     n = length(y)
     n ≤ 5000 || throw(ArgumentError("drm: the Gaussian structured intercept-and-slope SD route " *
         "assembles a $(n)×$(n) marginal covariance and is limited to 5000 rows."))
@@ -832,9 +851,16 @@ function _fit_structured_gaussian_q2_sd(fam::Gaussian, y, Xμ, Xσ, Zgs, gidx, G
     r1 = (pμ + pσ + ps[1] + 1):(pμ + pσ + ps[1] + ps[2])
     Csym = Symmetric(_finite_user_matrix(C, "C"))
     const_2pi = 0.5 * n * log(2π)
-    function nll(θ)
-        βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
-        ημ = Xμ * βμ; ησ = Xσ * βσ
+    const_pμ = 0.5 * pμ * log(2π)
+    # One objective for ML and REML. REML (Patterson-Thompson, the restriction native
+    # drmTMB gets by moving `beta_mu` into the Laplace block, exact here because the
+    # likelihood is quadratic in beta_mu) adds `0.5 logdet(Xμ' V^-1 Xμ) - 0.5 pμ log 2π`
+    # to the ML negative log-likelihood; the optimiser still carries βμ in θ, and at the
+    # optimum it equals the GLS estimate because the added term does not depend on βμ.
+    # Marginal covariance V(θ) = diag(σ²) + the structured field(s) (β_μ plays no part).
+    function build_V(θ)
+        βσ = θ[pμ+1:pμ+pσ]
+        ησ = Xσ * βσ
         T = eltype(θ)
         s0 = exp.(Zgs[1] * θ[r0]); s1 = exp.(Zgs[2] * θ[r1])
         Σ0 = (s0 * s0') .* Csym; Σ1 = (s1 * s1') .* Csym
@@ -854,11 +880,30 @@ function _fit_structured_gaussian_q2_sd(fam::Gaussian, y, Xμ, Xσ, Zgs, gidx, G
         @inbounds for i in 1:n
             Vm[i, i] += exp(2 * ησ[i])
         end
-        Vfac = cholesky(Symmetric(Vm); check = false)
-        issuccess(Vfac) || return convert(T, 1e18)
-        r = y .- ημ
-        return 0.5 * (logdet(Vfac) + dot(r, Vfac \ r)) + const_2pi
+        return Vm
     end
+    # ML (`restricted = false`) or REML negative log-likelihood. REML (Patterson-Thompson, the
+    # restriction native drmTMB gets by moving `beta_mu` into the Laplace block, exact here
+    # because the likelihood is quadratic in beta_mu) adds `0.5 logdet(Xμ' V^-1 Xμ) -
+    # 0.5 pμ log 2π` to the ML value. With `profile = true` the mean is the GLS estimate at
+    # θ (the first pμ entries of θ are ignored): the restricted likelihood as a function of
+    # the variance parameters alone, which is what TMB optimises once beta_mu is integrated.
+    function nll_full(θ, restricted::Bool; profile::Bool = false)
+        T = eltype(θ)
+        Vfac = cholesky(Symmetric(build_V(θ)); check = false)
+        issuccess(Vfac) || return convert(T, 1e18)
+        XtVinvX = Xμ' * (Vfac \ Xμ)
+        chX = cholesky(Symmetric(XtVinvX); check = false)
+        βμ = profile ? (chX \ (Xμ' * (Vfac \ y))) : θ[1:pμ]
+        r = y .- Xμ * βμ
+        nll_ml_θ = 0.5 * (logdet(Vfac) + dot(r, Vfac \ r)) + const_2pi
+        restricted || return nll_ml_θ
+        issuccess(chX) || return nll_ml_θ + convert(T, REML_NONPD_PENALTY)
+        return nll_ml_θ + 0.5 * logdet(chX) - const_pμ
+    end
+    nll_ml(θ) = nll_full(θ, false)
+    nll_reml(θ) = nll_full(θ, true)
+    nll = reml ? nll_reml : nll_ml
     βμ0 = Xμ \ y; res0 = y - Xμ * βμ0
     θ0 = zeros(pμ + pσ + sum(ps) + (correlated ? 1 : 0))
     θ0[1:pμ] .= βμ0
@@ -867,10 +912,24 @@ function _fit_structured_gaussian_q2_sd(fam::Gaussian, y, Xμ, Xσ, Zgs, gidx, G
     s_slp = s_int / max(sqrt(sum(abs2, x) / n), eps())
     θ0[r0] .= Zgs[1] \ fill(log(s_int + eps()), G)
     θ0[r1] .= Zgs[2] \ fill(log(s_slp + eps()), G)
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(),
-                         Optim.Options(g_tol = g_tol, x_abstol = NaN, x_reltol = NaN,
-                                       f_abstol = NaN, f_reltol = NaN);
-                         autodiff = :forward)
+    opts = Optim.Options(g_tol = g_tol, x_abstol = NaN, x_reltol = NaN,
+                         f_abstol = NaN, f_reltol = NaN)
+    res = if reml
+        # Optimise the restricted likelihood over the variance parameters only, with β_μ
+        # profiled out by GLS (as TMB does after integrating it). Carrying β_μ as a free
+        # coordinate made the fit stop in a poorer basin than native drmTMB's on a relmat
+        # fixture (5 log-lik units short); the profile has no such coordinate.
+        nll_prof(φ) = nll_full(vcat(zeros(eltype(φ), pμ), φ), true; profile = true)
+        rφ = Optim.optimize(nll_prof, θ0[(pμ+1):end], Optim.LBFGS(), opts; autodiff = :forward)
+        φ̂ = Optim.minimizer(rφ)
+        Vfaĉ = cholesky(Symmetric(build_V(vcat(zeros(pμ), φ̂))))
+        β̂ = Symmetric(Xμ' * (Vfaĉ \ Xμ)) \ (Xμ' * (Vfaĉ \ y))
+        # Same return shape as the unrestricted route: the full vector, finished by a
+        # zero-step LBFGS (the gradient in β_μ vanishes at the GLS value).
+        Optim.optimize(nll, vcat(β̂, φ̂), Optim.LBFGS(), opts; autodiff = :forward)
+    else
+        Optim.optimize(nll, θ0, Optim.LBFGS(), opts; autodiff = :forward)
+    end
     θ̂ = Optim.minimizer(res)
     H = ForwardDiff.hessian(nll, θ̂)
     V = _vcov_from_hessian(H)
@@ -892,7 +951,9 @@ function _fit_structured_gaussian_q2_sd(fam::Gaussian, y, Xμ, Xσ, Zgs, gidx, G
         Symbol(string(blocks[2]), "_group") => sd1)
     fit = DrmFit(fam, block_list, name_list, θ̂, V, -nll(θ̂), n, converged,
                  Dict(:mu => Xμ * θ̂[1:pμ]), Dict(:mu => Vector{Float64}(y)), scales)
-    return _withiterations(_withnll(fit, nll), Optim.iterations(res))
+    fit = _withiterations(_withnll(fit, nll), Optim.iterations(res))
+    reml && return _withreml(fit, -nll_reml(θ̂), -nll_ml(θ̂))
+    return fit
 end
 
 # ---------------------------------------------------------------------------

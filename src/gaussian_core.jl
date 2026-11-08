@@ -894,7 +894,12 @@ implemented for:
 (e) the Gaussian `phylo(1 | g)`-on-`sigma` location–scale routes (scale-only,
     separate, and `phylo_coupled = true`), where one joint Laplace approximation
     integrates the phylo effects and BOTH the mean and scale fixed effects — the
-    restricted likelihood native drmTMB maximises.
+    restricted likelihood native drmTMB maximises, and
+(f) the Gaussian structured q2 SD routes `kind(1 + x | g)` with one `sd(g, level,
+    coef(...))` formula per coefficient: `phylo` (labelled or not, fixed-effect `sigma`
+    of any shape) and unlabelled `animal` / `relmat` / `spatial` with `sigma ~ 1` — exactly
+    the cells native drmTMB admits. `β_μ` is integrated out exactly (GLS profile plus
+    `0.5·logdet(Xμ′V⁻¹Xμ) − 0.5·pμ·log 2π`).
 
 Ordinary σ-RE, random slopes, and non-Gaussian REML stay rejected. REML likelihoods are
 not comparable across fixed-effect structures.
