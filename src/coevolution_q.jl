@@ -636,8 +636,10 @@ function simulate_coevolution(phy, β::AbstractMatrix, Λ::AbstractMatrix,
                               rng = Random.default_rng())
     q = size(Λ, 1)
     Q_cond, leaf_pos, N = augmented_tree_precision(phy)
+    isposdef(Symmetric(Matrix{Float64}(Λ))) ||
+        throw(ArgumentError("simulate_coevolution: Λ must be positive definite"))
     P = prior_precision(Q_cond, inv(Λ))
-    F = cholesky(Symmetric(P))
+    F = _pd_chol_or_throw(P, "the tip-RE prior precision kron(Q_cond, Λ⁻¹)")
     u_aug = F.UP \ randn(rng, size(P, 1))         # vec(B) ~ N(0, P⁻¹), axis-inner
     p = phy.n_leaves
     species = repeat(1:p, inner = nrep)
