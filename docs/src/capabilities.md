@@ -38,13 +38,13 @@ run separately.
 | NegBinomial2 | intercepts, slopes, crossed, and phylogenetic effects | **Tested**; dispersion cap on crossed and structured routes (see the note below the table) |
 | TruncatedNegBinomial2 | — | **Tested** fixed effects |
 | TruncatedPoisson | — | **Tested** fixed effects |
-| Beta | intercepts, slopes, crossed, and phylogenetic effects | **Tested**; crossed random effects have numerical tests but no complete worked analysis; precision cap on crossed and structured routes (see the note below the table) |
+| Beta | intercepts, slopes, crossed, and phylogenetic effects | **Tested**; crossed random effects have numerical tests but no complete worked analysis; `sd(g, level) ~ z` is available on `phylo`, `relmat`, `animal` and `spatial` intercepts (`sigma ~ 1`) and on independent `(1 + x \| g)` blocks with one `sd(g, level, coef(·))` formula per coefficient (seven datasets checked against drmTMB 0.8.0; the phylo q1 dataset has the intercept SD at its lower bound, so its SD estimates are not compared); precision cap on crossed and structured routes (see the note below the table) |
 | BetaBinomial | intercepts, slopes, crossed, and phylogenetic effects | **Tested**; constant `sigma` only; precision cap on crossed and structured routes (see the note below the table) |
 | Binomial | intercepts, correlated slopes, crossed, and phylogenetic effects | **Tested**; correlated `(1 + x \| g)` is admitted; independent `(0 + x \| g)` is refused |
 | Gamma | intercepts, slopes, crossed, and phylogenetic effects | **Tested**; crossed random effects have numerical tests but no complete worked analysis; shape cap on crossed and structured routes (see the note below the table) |
 | LogNormal | intercepts, slopes, phylogenetic, and known-matrix effects | **Tested**; `animal` and coordinate-spatial effects are refused |
 | ZeroOneBeta | mean (`mu`) random intercepts, `(1 \| g)` | **Tested**; `sigma`, `zoi` and `coi` stay fixed-effects-only; `coi` is not identified unless the data have both exact 0s and exact 1s |
-| Tweedie | intercepts and independent slopes | **Tested** |
+| Tweedie | intercepts, independent slopes, and a single `phylo(1 \| g)` or `relmat(1 \| g)` mean intercept (optionally with `sd(g, level) ~ z`) | **Tested**; structured slopes and structured `q >= 2` blocks are refused, as in drmTMB 0.8.1 |
 | CumulativeLogit (ordinal) | intercepts, independent slopes, and phylogenetic effects | **Tested** |
 | Underdispersed counts (variance below the mean) | — | **Not available**: no Conway–Maxwell–Poisson or generalised Poisson family. Use glmmTMB's `compois()` or `genpois()` families |
 | Censored responses (left-, right- or interval-censored values) | — | **Not available** in any family; detection limits or censored survival times cannot be modelled here. Use a package with censored likelihoods, such as brms (`y \| cens(censored) ~ …`) or the survival package |

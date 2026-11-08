@@ -19,8 +19,11 @@ targets its coefficient SD with `sd(group, coef(x)) ~ predictor`; the slope
 loading is applied at each row. A supplied-A animal random intercept also
 supports `sd(group, animal) ~ predictors` with `sigma ~ 1`; the animal covariance
 is used as supplied (raw), as native drmTMB does. These SD routes
-require complete responses and fixed `sigma ~ 1`. Correlated SD blocks,
-phylogenetic SDs, and calibrated interval coverage remain unsupported.
+require complete responses and fixed `sigma ~ 1`. `sd(group, phylogenetic|relmat|spatial) ~ predictors`
+is also supported on the matching structured intercept, and an independent
+`animal|relmat|phylo|spatial(1 + x | group)` block takes one `sd(group, level, coef(·))`
+formula per coefficient. Correlated (labelled) SD blocks and calibrated interval coverage
+remain unsupported.
 Crossed random intercepts on the mean, such as `(1 | g) + (1 | h)`, use the
 sparse-Laplace engine when `sigma ~ 1`. A phylogenetic random intercept on the
 mean, `phylo(1 | species)`, also uses the sparse-Laplace engine, as do general
