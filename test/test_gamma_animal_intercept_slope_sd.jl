@@ -112,12 +112,13 @@ end
                                    A = fixture.A, se = false)
     binary_loading = repeat([0.0, 1.0], inner = 12, outer = 48)
     binary_loading_data = merge(data, (; x = binary_loading))
+    # labelled A: an unlabelled one now warns on every call (robust-entry), which @test_nowarn would catch
     @test_nowarn drm(formula, Gamma(); data = binary_loading_data,
-                     A = fixture.A, se = false)
+                     A = fixture.A, ids = unique(data.g), se = false)
     group_constant_x = repeat(collect(range(-1.2, 1.2; length = 48)), inner = 24)
     group_constant_x_data = merge(data, (; x = group_constant_x))
     @test_nowarn drm(formula, Gamma(); data = group_constant_x_data,
-                     A = fixture.A, se = false)
+                     A = fixture.A, ids = unique(data.g), se = false)
 
     extra_structured_formula = bf(@formula(y ~ x + animal(1 + x | g) + animal(1 | h)),
         @formula(sigma ~ 1),
