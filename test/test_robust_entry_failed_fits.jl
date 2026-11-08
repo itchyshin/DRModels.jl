@@ -154,3 +154,31 @@ end
         @test_logs (:warn, r"coords") match_mode = :any drm(fc, Gaussian(); data = d, coords = xy)
     end
 end
+
+# The R bridge must not ship the sentinel: a failed fit crosses as NaN plus an explicit flag, a good
+# fit crosses unchanged (R reads `loglik` with as.numeric(); NaN and the extra keys are safe).
+@testset "bridge: failed fit round-trips as NaN + fit_failed; good fit unchanged" begin
+    rng = StableRNG(7)
+    x = randn(rng, 60)
+    d = (; y = 1 .+ 0.5 .* x .+ randn(rng, 60), x)
+    good = drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), Gaussian(); data = d)
+    flat(f) = _quiet(() -> DRModels._bridge_flatten(f; family = "gaussian"))
+    g = flat(good)
+    @test g["loglik"] == good.loglik
+    @test g["ml_loglik"] == good.ml_loglik
+    @test g["fit_failed"] === false
+    @test g["fit_failed_message"] == ""
+    for bad_ll in (-1e18, -floatmax(Float64), -Inf, NaN)
+        b = flat(_failed_copy(good, bad_ll))
+        @test isnan(b["loglik"])
+        @test isnan(b["ml_loglik"])
+        @test b["fit_failed"] === true
+        @test occursin("failed fit", b["fit_failed_message"])
+        @test isfinite(b["coefficients"][1])        # estimates still ship; only the loglik is withheld
+    end
+    # runaway positive value on a non-converged fit
+    @test isnan(flat(_failed_copy(good, 3.6e76))["loglik"])
+    # non-converged but plausible loglik: not failed, value unchanged
+    p = flat(_failed_copy(good, good.loglik; converged = false))
+    @test p["loglik"] == good.loglik && p["fit_failed"] === false
+end
