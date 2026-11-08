@@ -102,3 +102,71 @@ end
     fit = _quiet6(() -> drm(bf(@formula(y ~ x + (1 | g))), Gaussian(); data = d, control = DRMControl(se = false)))
     @test fit isa DRModels.DrmFit
 end
+
+using SparseArrays
+
+# (e1) noise floor of the Binomial animal q2 inner mode solve. Synthetic near-singular joint
+# precision (gamma = atanh(rho) = 10, the cap): without the noise-floor acceptance the Newton
+# line search cannot lower `joint` and the solve reports failure; with it the mode is accepted.
+function _nf_mode(seed, G, gamma, sd1, trials)
+    rng = StableRNG(seed)
+    m = 6; n = G * m
+    gidx = repeat(1:G, inner = m); x = randn(rng, n)
+    ntr = fill(trials, n); s = [rand(rng, 0:trials) for _ in 1:n]
+    Xmu = hcat(ones(n), randn(rng, n))
+    Q = sparse(1.0I, G, G) + spdiagm(1 => fill(-0.3, G - 1), -1 => fill(-0.3, G - 1))
+    rho = tanh(gamma); sech = DRModels._binomial_stable_sech(gamma)
+    Qj = kron(Q, sparse([1.0 -rho; -rho 1.0] ./ sech^2))
+    aux = (s = s, ntr = ntr, logchoose = zeros(n))
+    return DRModels._binomial_animal_q2_mode(aux, Float64.(s), Float64.(ntr), Xmu, x, gidx, Qj,
+        fill(0.5, G), x .* sd1, [0.1, 0.2])
+end
+
+@testset "(e1) _binomial_animal_q2_mode accepts the mode at the rounding noise floor" begin
+    # (seed, G, gamma, sd1, trials): each reported ok = false with the noise-floor line removed
+    for (seed, G, gamma, sd1, trials) in ((2, 25, 10.0, 0.001, 1), (3, 25, 10.0, 0.05, 1),
+                                          (4, 25, 10.0, 0.05, 1), (5, 25, 10.0, 0.001, 10),
+                                          (6, 25, 10.0, 0.05, 1), (7, 10, 10.0, 0.001, 1),
+                                          (7, 10, 10.0, 0.001, 10))
+        b, ch, ok = _nf_mode(seed, G, gamma, sd1, trials)
+        @test ok
+        @test all(isfinite, b)
+    end
+end
+
+@testset "(e2) restart bookkeeping: info record, fit.scales[:q2_restarts], skipped by simulate" begin
+    Optim = DRModels.Optim
+    f(th) = th[1] < -2 ? 1.0 + 0.05 * (th[1] + 6)^2 : 0.5 + 0.1 * (th[1] - 2)^2 + (th[1] < 0.5 ? 0.6 : 0.0)
+    run_from(th0) = Optim.optimize(th -> f(th), th0, Optim.NelderMead(), Optim.Options(iterations = 200))
+    first = run_from([-5.0])
+    start_from(sd0, sd1, het) = [sd1 > 0.5 ? 3.0 : -5.0]
+    sd_min(th) = th[1] < -2 ? 1e-4 : 1.0
+    info = Ref{Any}()
+    best = DRModels._q2_boundary_restarts(run_from, [0.0], first, start_from, sd_min, r -> true; info)
+    @test info[].ran
+    @test 1 <= info[].winner <= length(DRModels._Q2_ALT_STARTS)
+    @test info[].gain > 0.4 && info[].gain ≈ Optim.minimum(first) - Optim.minimum(best)
+    @test !info[].flipped
+    # an interior first fit runs nothing and says so
+    interior = run_from([3.0])
+    DRModels._q2_boundary_restarts(run_from, [0.0], interior, start_from, sd_min, r -> true; info)
+    @test info[] == (ran = false, winner = 0, gain = 0.0, flipped = false)
+    # a real fit records it, and simulate / predict ignore the key
+    wd = joinpath(@__DIR__, "fixtures", "weak_optimum")
+    m, h = readdlm(joinpath(wd, "binomial_animal_q2_boundary.tsv"), '\t', Any; header = true, comments = true)
+    cols = Dict(String(h[j]) => m[:, j] for j in eachindex(h))
+    A = readdlm(joinpath(wd, "binomial_animal_q2_boundary_A.tsv"), '\t', Float64; comments = true)
+    data = (; y = Float64.(cols["y"]), x = Float64.(cols["x"]), z0 = Float64.(cols["z0"]),
+            z1 = Float64.(cols["z1"]), group = String.(cols["group"]))
+    fm = bf(@formula(y ~ x + animal(1 + x | group)),
+            @formula(sd(group, animal, coef(intercept)) ~ z0), @formula(sd(group, animal, coef(x)) ~ z1))
+    fit = _quiet6(() -> drm(fm, DRModels.Binomial(); data, A, se = false))
+    rec = fit.scales[:q2_restarts]
+    @test length(rec) == 4 && all(isfinite, rec)
+    @test rec[1] == 1.0                                   # the boundary fixture does restart
+    @test 0.0 <= rec[2] <= length(DRModels._Q2_ALT_STARTS)
+    @test _quiet6(() -> length(simulate(fit; rng = StableRNG(5), re = :zero))) == length(data.y)
+    nd = (; x = data.x[1:5], z0 = data.z0[1:5], z1 = data.z1[1:5], group = data.group[1:5])
+    @test _quiet6(() -> length(simulate(fit; rng = StableRNG(5), newdata = nd))) == 5
+    @test !haskey(DRModels._bridge_dpars(fit), "q2_restarts")
+end

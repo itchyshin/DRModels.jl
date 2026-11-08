@@ -3233,7 +3233,7 @@ end
 # rows, and `_simulate_once` reads none of them (it draws from `:sigma` / `:zi` / ...),
 # so newdata simulation is population level, as for every other fit.
 _simulate_newdata_bookkeeping_key(k::Symbol) =
-    k in (:sd, :sd_group, :sd_group_index, :sigma_fixed, :sigma_random_effect,
+    k in (:q2_restarts, :sd, :sd_group, :sd_group_index, :sigma_fixed, :sigma_random_effect,
           :sigma_random_effect_slope, :sigma_group_index) ||
     startswith(String(k), "sdtarget_")
 

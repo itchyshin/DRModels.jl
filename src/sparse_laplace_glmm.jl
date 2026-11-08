@@ -488,7 +488,13 @@ end
 # unconverged, incumbent converged) its objective is lower by more than 1e-3, so a
 # converged fit is not exchanged for a marginally lower unconverged point. A fit
 # whose first optimum is kept is returned with the warm-start buffer `last_b`
-# exactly as the first run left it, so it is bit-identical to a single-start fit.
+# exactly as the first run left it: THIS helper never alters a fit it keeps. That is
+# not a claim about a whole route versus an earlier release: the separate noise-floor
+# acceptance in `_binomial_animal_q2_mode` changes the inner solve itself, and moved
+# Binomial "weak" coefficients by up to 0.28 on fits that never restart.
+# With `info = Ref{Any}()` the helper records what it did (`ran`, `winner`: 0 = the
+# default start, k = k-th entry of `_Q2_ALT_STARTS`, `gain` = objective decrease over
+# the first run, `flipped` = convergence status changed); it never affects the choice.
 #   run_from(theta0) -> Optim result      start_from(sd0, sd1, het) -> theta0
 #   sd_min(theta)    -> smallest fitted group SD      converged(result) -> Bool
 const _Q2_BOUNDARY_SD = 0.05
@@ -513,15 +519,17 @@ function _q2_alt_theta(theta0, ranges, Zs, sd0, sd1, het)
     return th
 end
 
-function _q2_boundary_restarts(run_from, last_b, result, start_from, sd_min, converged)
+function _q2_boundary_restarts(run_from, last_b, result, start_from, sd_min, converged; info = nothing)
     snapshot = copy(last_b)
     first_ok = converged(result)
     if first_ok && sd_min(Optim.minimizer(result)) >= _Q2_BOUNDARY_SD
         last_b .= snapshot
+        info === nothing || (info[] = (ran = false, winner = 0, gain = 0.0, flipped = false))
         return result
     end
     best, best_f, best_ok, best_b = result, Optim.minimum(result), first_ok, snapshot
-    for (sd0, sd1, het) in _Q2_ALT_STARTS
+    first_f, winner = best_f, 0
+    for (k, (sd0, sd1, het)) in enumerate(_Q2_ALT_STARTS)
         last_b .= 0
         r = run_from(start_from(sd0, sd1, het))
         f = Optim.minimum(r)
@@ -531,9 +539,12 @@ function _q2_boundary_restarts(run_from, last_b, result, start_from, sd_min, con
                  ok ? gain > -_Q2_RESTART_GAIN : gain > _Q2_RESTART_BIG_GAIN
         if accept
             best, best_f, best_ok, best_b = r, f, ok, copy(last_b)
+            winner = k
         end
     end
     last_b .= best_b
+    info === nothing || (info[] = (ran = true, winner = winner, gain = first_f - best_f,
+                                   flipped = best_ok != first_ok))
     return best
 end
 

@@ -774,7 +774,9 @@ function _binomial_animal_q2_mode(aux, s, ntr, Xmu, x, gidx, Qjoint,
             # 0.5 * grad' * step, bounds the remaining objective error; when it is
             # at the rounding level the mode is converged. Before this the solve
             # returned failure here and the 1e18 sentinel leaked into the
-            # finite-difference gradient (weak-optimum case c).
+            # finite-difference gradient (weak-optimum case c). Changes the inner
+            # solve itself (not only restarts): Binomial "weak" coefficients moved
+            # by up to 0.28 on fits that never restart.
             0.5 * dot(grad, step) <= 1e-9 * (1 + abs(f0)) && return b, ch, true
             return b, ch, false
         end
@@ -888,6 +890,7 @@ function _fit_binomial_animal_q2_laplace(fam, s, ntr, Xmu, Xsd0,
     # Boundary restarts (see `_q2_boundary_restarts`): a fit that ends with a
     # collapsed slope SD (and rho running to +-1) sits on a flat, noisy ridge, and
     # the default start can stop there unconverged or short of the interior optimum.
+    restart_info = Ref{Any}((ran = false, winner = 0, gain = 0.0, flipped = false))
     result = _q2_boundary_restarts(run_from, last_b, result,
         (sd0, sd1, het) -> _q2_alt_theta(theta0, ranges, (Xsd0, Xsd1), sd0, sd1, het),
         th -> min(minimum(_binomial_sd_scale(Xsd0 * th[ranges[1]])),
@@ -895,7 +898,13 @@ function _fit_binomial_animal_q2_laplace(fam, s, ntr, Xmu, Xsd0,
         r -> begin
             th = Optim.minimizer(r); g = zeros(length(th)); grad!(g, th)
             _laplace_outer_converged(r, Optim.minimum(r), g, th, length(s), g_tol)
-        end)
+        end; info = restart_info)
+    ri = restart_info[]
+    (ri.gain > _Q2_RESTART_GAIN || ri.flipped) &&
+        @info "drm: Binomial animal q2 boundary restart changed the accepted optimum " *
+              "(objective gain $(round(ri.gain; sigdigits = 3)), converged flipped = $(ri.flipped), " *
+              "winning start $(ri.winner) of $(length(_Q2_ALT_STARTS)); 0 = default start). " *
+              "See `fit.scales[:q2_restarts]`."
     theta = Optim.minimizer(result)
     nll_hat = nll(theta)
     gf = zeros(length(theta)); grad!(gf, theta)
@@ -923,6 +932,10 @@ function _fit_binomial_animal_q2_laplace(fam, s, ntr, Xmu, Xsd0,
         Symbol(string(blocks[2]), "_group") => sd1,
     )
     correlated && (scales[:correlation] = [tanh(theta[rc])])
+    # Restart bookkeeping (skipped by simulate/predict/the bridge, like the other
+    # bookkeeping keys): [ran restarts (0/1), winning start (0 = default start, k = k-th
+    # alternative of `_Q2_ALT_STARTS`), objective gain over the first run, converged flipped (0/1)].
+    scales[:q2_restarts] = [ri.ran ? 1.0 : 0.0, Float64(ri.winner), Float64(ri.gain), ri.flipped ? 1.0 : 0.0]
     # b34: record the conditional correlated field at theta-hat (fresh inner
     # solve; `last_b` was moved by the finite-difference stencils above). The
     # joint mode interleaves the intercept and slope blocks per group.
