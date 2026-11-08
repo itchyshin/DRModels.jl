@@ -92,3 +92,48 @@ end
     @test coef(fit, :mu) ≈ coef(rfit, :mu) atol = 1e-5
     @test coef(fit, :sd) ≈ coef(rfit, :sd) atol = 1e-5
 end
+
+# 1-D transects: a plain vector of coordinates means the n-by-1 matrix, on both the
+# SD-regression and the plain Gamma spatial routes (same committed data, first column).
+@testset "Gamma spatial q=1 accepts 1-D vector coords" begin
+    dir = joinpath(@__DIR__, "data", "gamma_spatial_sd_r_parity")
+    d, _ = DelimitedFiles.readdlm(joinpath(dir, "data.csv"), ','; header = true)
+    c, _ = DelimitedFiles.readdlm(joinpath(dir, "coords.csv"), ','; header = true)
+    data = (; y = Float64.(d[:, 1]), x = Float64.(d[:, 2]), g = String.(d[:, 3]))
+    cvec = Float64.(c[:, 2])
+    cmat = reshape(cvec, :, 1)
+    f_sd = bf(@formula(y ~ x + spatial(1 | g)), @formula(sigma ~ 1), @formula(sd(g, spatial) ~ 1))
+    f_plain = bf(@formula(y ~ x + spatial(1 | g)), @formula(sigma ~ 1))
+    for f in (f_sd, f_plain)
+        fv = drm(f, Gamma(); data, coords = cvec, se = false)
+        fm = drm(f, Gamma(); data, coords = cmat, se = false)
+        @test fv.converged
+        @test fv.loglik ≈ fm.loglik atol = 1e-8
+        @test coef(fv, :mu) ≈ coef(fm, :mu) atol = 1e-6
+    end
+end
+
+# Simulation must draw from the fitted kernel: the marginal simulator behind
+# `bootstrap` has to use exactly the K the fit used (shared native kernel), not
+# fall back to the Gaussian estimated-range branch (which errors for Gamma).
+@testset "Gamma spatial SD simulator uses the fitted kernel" begin
+    dir = joinpath(@__DIR__, "data", "gamma_spatial_sd_r_parity")
+    d, _ = DelimitedFiles.readdlm(joinpath(dir, "data.csv"), ','; header = true)
+    c, _ = DelimitedFiles.readdlm(joinpath(dir, "coords.csv"), ','; header = true)
+    data = (; y = Float64.(d[:, 1]), x = Float64.(d[:, 2]), g = String.(d[:, 3]))
+    coords = Matrix{Float64}(c[:, 2:3])
+    fit = drm(bf(@formula(y ~ x + spatial(1 | g)), @formula(sigma ~ 1),
+                 @formula(sd(g, spatial) ~ 1)), Gamma(); data, coords, se = false)
+    sim = DRModels._marginal_simulator_build(fit, data; coords)
+    @test sim isa Function
+    Dm = [hypot(coords[i, 1] - coords[j, 1], coords[i, 2] - coords[j, 2])
+          for i in axes(coords, 1), j in axes(coords, 1)]
+    pos = [Dm[i, j] for i in axes(Dm, 1) for j in (i + 1):size(Dm, 2)]
+    K = exp.(-Dm ./ Statistics.median(pos)) + 1e-6 * LinearAlgebra.I
+    L = getfield(sim, :factor).L
+    @test Matrix(L * L') ≈ K atol = 1e-10
+    y1 = sim(Random.MersenneTwister(1))
+    @test length(y1) == length(data.y) && all(>(0), y1)
+    # coords are required: a clear error rather than a wrong kernel
+    @test_throws ArgumentError DRModels._marginal_simulator_build(fit, data)
+end
