@@ -11,7 +11,25 @@ const _FX = joinpath(@__DIR__, "fixtures", "entry_robust")
 
 _quiet(f) = Logging.with_logger(f, Logging.NullLogger())
 
-@testset "NB2 structured sigma animal: no PosDefException, a fit with converged = false" begin
+# The user-facing contract for a failed or degenerate fit, independent of which local optimum (or
+# non-optimum) an optimiser reaches on a given platform / Julia version / BLAS: `drm()` returns a
+# DrmFit, and `loglik(fit)` is either a finite, plausible number or NaN. A failed-objective
+# sentinel (|ll| >= 1e15, or NaN raw) never reaches the user. A converged fit has a finite loglik.
+function _check_loglik_contract(fit)
+    @test fit isa DRModels.DrmFit
+    @test fit.converged isa Bool
+    ll_user = _quiet(() -> loglik(fit))
+    @test isnan(ll_user) || abs(ll_user) < 1e15                  # no sentinel / runaway value leaks
+    @test isnan(_quiet(() -> loglikelihood(fit))) == isnan(ll_user)
+    fit.converged && @test isfinite(ll_user)                      # converged => finite
+    if !fit.converged && !(isfinite(fit.loglik) && abs(fit.loglik) < 1e15)
+        @test isnan(ll_user)                                      # failed raw value => NaN for the user
+    end
+    @test isnan(ll_user) || ll_user == fit.loglik                 # never altered, only withheld
+    return ll_user
+end
+
+@testset "NB2 structured sigma animal: no PosDefException, loglik contract on every platform" begin
     raw = readdlm(joinpath(_FX, "nb2_sigma_animal_data.csv"), ','; header = true)[1]
     data = (; y = Float64.(raw[:, 1]), x = Float64.(raw[:, 2]), v = Float64.(raw[:, 3]),
             w0 = Float64.(raw[:, 4]), id = string.(raw[:, 5]))
@@ -19,19 +37,14 @@ _quiet(f) = Logging.with_logger(f, Logging.NullLogger())
     ids = unique(data.id)
     f = bf(@formula(y ~ x + v), @formula(sigma ~ 1 + animal(1 | id)), @formula(sd(id, animal, sigma) ~ w0))
     fit_at(d) = drm(f, NegBinomial2(); data = d, A, ids, se = false)
-    # the reproducer: rescaling the SD-formula covariate is a pure reparametrisation
-    rescaled = merge(data, (; w0 = 2.5 .* data.w0))
-    fit = _quiet(() -> fit_at(rescaled))
-    @test fit isa DRModels.DrmFit
-    @test fit.converged == false
-    @test !DRModels.is_converged(fit)
-    ll_user = _quiet(() -> loglikelihood(fit))
-    @test isnan(ll_user) || ll_user > -1e15                    # never a sentinel
-    # the as-generated data still return the same (non-converged, finite) fit as before the change
-    fit0 = _quiet(() -> fit_at(data))
-    @test fit0 isa DRModels.DrmFit
-    @test fit0.converged == false
-    @test isapprox(fit0.loglik, -354.53365584985033; atol = 1e-6)
+    # as-generated data, and the reproducer (rescaling the SD-formula covariate is a pure
+    # reparametrisation). Both are degenerate: whether the optimiser stops at a finite non-optimum
+    # (Mac, Julia 1.10.0: -354.5337) or stores NaN (Linux, Julia 1.10.12 and 1.12.7) is platform
+    # numerics, so only the contract is asserted. The point of the fix is that nothing throws.
+    for d in (data, merge(data, (; w0 = 2.5 .* data.w0)))
+        fit = _quiet(() -> fit_at(d))
+        _check_loglik_contract(fit)
+    end
 end
 
 function _failed_copy(f, ll; converged = false)
@@ -86,13 +99,26 @@ end
     data = (; y = c[:y], x = c[:x], z = c[:z], g = c[:g])
     cc, _ = readdlm(joinpath(_FX, "binomial_spatial_dupcoords_coords.csv"), ','; header = true)
     coords = Dict(String(strip(String(cc[k, 1]), '"')) => [Float64(cc[k, 2]), Float64(cc[k, 3])] for k in 1:size(cc, 1))
-    fit = _quiet(() -> drm(bf(@formula(y ~ x + spatial(1 | g)), @formula(sd(g, spatial) ~ z)), Binomial(); data, coords))
-    @test fit.converged == false
-    @test fit.loglik <= -1e15                                   # the internal sentinel is still stored ...
-    v = @test_logs (:warn, r"NaN") match_mode = :any loglikelihood(fit)
-    @test isnan(v)                                              # ... but is never what the user reads
-    @test isnan(_quiet(() -> loglik(fit)))
-    @test isnan(_quiet(() -> aic(fit)))
+    # 24 coordinate rows but only 21 distinct points: a singular spatial kernel. Either a clear
+    # ArgumentError, or a fit that obeys the loglik contract. Which local outcome the optimiser reaches
+    # is platform numerics (Mac: sentinel -1e18; Linux: finite non-converged -139.55 on 1.10.12,
+    # -132.45 on 1.12.7), so only the contract is asserted, never a particular value.
+    res = try
+        _quiet(() -> drm(bf(@formula(y ~ x + spatial(1 | g)), @formula(sd(g, spatial) ~ z)), Binomial(); data, coords))
+    catch e
+        e
+    end
+    if res isa Exception
+        @test res isa ArgumentError
+        @test !isempty(sprint(showerror, res))
+    else
+        _check_loglik_contract(res)
+        @test isnan(_quiet(() -> aic(res))) == isnan(_quiet(() -> loglik(res)))
+        if !res.converged && res.loglik <= -1e15               # the internal sentinel is stored ...
+            v = @test_logs (:warn, r"NaN") match_mode = :any loglikelihood(res)
+            @test isnan(v)                                     # ... but is never what the user reads
+        end
+    end
 
     g = _read(joinpath(_FX, "gaussian_q2_x1e6_data.csv"))
     dq = (; y = g[:y], x = g[:x], z0 = g[:z0], z1 = g[:z1], g = g[:g])
