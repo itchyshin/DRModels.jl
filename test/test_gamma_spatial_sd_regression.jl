@@ -1,5 +1,6 @@
 using DRModels, Test, Random, LinearAlgebra, Statistics
 import Distributions
+import DelimitedFiles
 
 function _gamma_spatial_sd_fixture(; G = 48, m = 12, seed = 20261022)
     rng = MersenneTwister(seed)
@@ -49,4 +50,45 @@ end
     @test constant_fit.loglik ≈ base_fit.loglik atol = 3e-5
     @test coef(constant_fit, :mu) ≈ coef(base_fit, :mu) atol = 1e-4
     @test coef(constant_fit, :sigma) ≈ coef(base_fit, :sigma) atol = 1e-4
+end
+
+# Kernel contract: the Gamma coordinate-spatial SD route must use the shared fixed
+# native kernel exp(-d / median positive distance) + 1e-6 I, entered RAW, exactly as
+# R/drmTMB does (`drm_spatial_coords_precision`). drmTMB 0.7.1 has no Gamma
+# `spatial()` or `sd(site, spatial)` route, so the R reference is the equivalent
+# `relmat(1 | site, K = K)` fit with that same K:
+#   drmTMB(bf(y ~ x + relmat(1 | site, K = K), sigma ~ 1), family = Gamma(link = "log"))
+# on test/data/gamma_spatial_sd_r_parity (committed data: set.seed(33), 30 sites x 15,
+# jittered 6-wide grid, gamma shape 1/0.25^2). Reference numbers are R's, to 12 digits.
+@testset "Gamma spatial SD route uses the shared R/drmTMB kernel" begin
+    dir = joinpath(@__DIR__, "data", "gamma_spatial_sd_r_parity")
+    d, _ = DelimitedFiles.readdlm(joinpath(dir, "data.csv"), ','; header = true)
+    c, _ = DelimitedFiles.readdlm(joinpath(dir, "coords.csv"), ','; header = true)
+    site = String.(d[:, 3])
+    @test unique(site) == String.(c[:, 1])           # coords rows = first-seen site order
+    coords = Matrix{Float64}(c[:, 2:3])
+    data = (; y = Float64.(d[:, 1]), x = Float64.(d[:, 2]), g = site)
+
+    fit = drm(bf(@formula(y ~ x + spatial(1 | g)), @formula(sigma ~ 1),
+                 @formula(sd(g, spatial) ~ 1)), Gamma(); data, coords, se = false)
+    @test fit.converged
+    # R/drmTMB estimates at the optimum. The previous mean-distance / 1e-8 kernel
+    # missed log-SD by 4.7e-3 on this data, so atol = 1e-4 separates the two kernels.
+    @test coef(fit, :mu)[1]    ≈  0.637212904204 atol = 1e-4
+    @test coef(fit, :mu)[2]    ≈  0.269266420157 atol = 1e-4
+    @test coef(fit, :sigma)[1] ≈ -1.402274459947 atol = 1e-4
+    @test coef(fit, :sd)[1]    ≈ log(0.445063656138) atol = 1e-4
+    @test fit.loglik           ≈ -332.148261236 atol = 1e-4
+
+    # Independent kernel identity: build the native K in the test and fit it as a
+    # user-supplied relmat; the two routes must be the same model.
+    D = [hypot(coords[i, 1] - coords[j, 1], coords[i, 2] - coords[j, 2])
+         for i in axes(coords, 1), j in axes(coords, 1)]
+    pos = [D[i, j] for i in axes(D, 1) for j in (i + 1):size(D, 2)]
+    K = exp.(-D ./ Statistics.median(pos)) + 1e-6 * LinearAlgebra.I
+    rfit = drm(bf(@formula(y ~ x + relmat(1 | g)), @formula(sigma ~ 1),
+                  @formula(sd(g, relmat) ~ 1)), Gamma(); data, K, se = false)
+    @test fit.loglik ≈ rfit.loglik atol = 1e-6
+    @test coef(fit, :mu) ≈ coef(rfit, :mu) atol = 1e-5
+    @test coef(fit, :sd) ≈ coef(rfit, :sd) atol = 1e-5
 end

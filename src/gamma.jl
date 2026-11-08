@@ -164,7 +164,7 @@ function _drm_gamma_fit(f::DrmFormula, fam::Gamma; data, tree = nothing, K = not
                 (K === nothing && A === nothing) || throw(ArgumentError(
                     "Gamma spatial effects use either `coords = …` or a precomputed `K = …`, not both."))
                 _, G = _group_index(labels)
-                _spatial_covariance_from_coords(grp, G, coords, nothing)
+                _gaussian_spatial_sd_kernel(coords, G, grp)   # shared native kernel, as the SD route
             else
                 _poisson_structured_cov(kind, grp, K, A, coords)
             end
@@ -669,8 +669,10 @@ function _drm_gamma_structured_sd_regression(f::DrmFormula, fam::Gamma; data,
         else
             K === nothing || throw(ArgumentError(
                 "Gamma spatial SD regression uses either `coords = …` or a precomputed `K = …`, not both."))
+            # Same fixed native kernel as the slope branch and the q2 routes
+            # (`_structured_q2_kernel`): exp(-d / median positive distance) + 1e-6 I.
             _, G = _group_index(getproperty(data, descriptor.group))
-            matrix = _spatial_covariance_from_coords(descriptor.group, G, coords, nothing)
+            matrix = _gaussian_spatial_sd_kernel(coords, G, descriptor.group)
         end
     else
         tree === nothing && coords === nothing &&
