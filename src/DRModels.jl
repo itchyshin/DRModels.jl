@@ -99,6 +99,7 @@ include("skewnormal.jl")
 include("poisson.jl")
 include("sparse_laplace_glmm.jl")
 include("negbinomial.jl")
+include("ordinary_q2_sd.jl")   # ordinary labelled (1 + x | p | g) Poisson/NB2 q2 with coef() SD formulas
 include("structured_q2_phylo_spatial.jl")   # phylo/spatial (1 + x | g) q2 with coef() SD formulas
 include("truncated_poisson.jl")   # zero-truncated Poisson + shared hurdle-Poisson spelling
 include("beta.jl")

@@ -445,6 +445,9 @@ function _drm_poisson_sd_regression(f::DrmFormula, fam::Poisson; data,
     q2ps = _phylo_spatial_q2_block(f)
     q2ps === nothing || return _drm_count_phylo_spatial_q2_sd(f, fam, q2ps...;
         data, tree, K, A, Ainv, coords, g_tol, se, nAGQ)
+    ordq2 = _ordinary_q2_sd_block(f, fam)
+    ordq2 === nothing || return _drm_count_ordinary_q2_sd(f, fam, ordq2;
+        data, tree, K, A, Ainv, coords, g_tol, se, nAGQ)
     if any(item -> item.target.level === :relmat, targets)
         Ainv === nothing || throw(ArgumentError(
             "Poisson related-matrix SD regression uses `K = …`, not animal precision `Ainv = …`."))

@@ -3670,6 +3670,21 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing,
                 fit, data, nothing; provider = kind, block, kernel)
         end
     end
+    # Ordinary correlated `(1 + x | g)` / labelled `(1 + x | p | g)` q2 (Poisson, NB2):
+    # the structured q2 simulator with the identity kernel and the fitted rho.
+    if fit isa DrmFit && fit.formula isa DrmFormula && fit.family isa Union{Poisson,NegBinomial2} &&
+       length(_sd_target_parts(fit.formula)) == 2
+        ob = _ordinary_q2_sd_block(fit.formula, fit.family)
+        if ob !== nothing
+            hasproperty(data, ob.group) || throw(ArgumentError(
+                "bootstrap: data are missing the grouping column `$(ob.group)`"))
+            gidx, G = _group_index(getproperty(data, ob.group))
+            return _structured_q2_sd_marginal_simulator(fit, data, nothing;
+                provider = :iid, block = (; group = ob.group, slope = ob.slope,
+                    label = something(ob.label, :correlated)),
+                kernel = (Matrix{Float64}(I, G, G), gidx, G))
+        end
+    end
     if fit isa DrmFit && fit.formula isa DrmFormula &&
        fit.family isa Union{Gamma,NegBinomial2} &&
        count(item -> item.target.dpar === :mu, _sd_target_parts(fit.formula)) == 2 &&
