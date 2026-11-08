@@ -564,7 +564,7 @@ end
 # than depending on which branches happened to fire for a given fit.
 const _BRIDGE_KNOWN_OPTION_KEYS = Set((
     :g_tol, :algorithm, :method, :marginal, :se, :profile_ci, :phylo_coupled, :sparse,
-    :q4_g_tol, :q4_iterations, :q4_n_newton, :q4_vcov, :coef_labels, :priors, :prior_expected,
+    :q4_g_tol, :q4_f_reltol, :q4_iterations, :q4_n_newton, :q4_vcov, :coef_labels, :priors, :prior_expected,
 ))
 
 function _bridge_fit(bundle, fam, data; tree, K, A, Ainv = nothing,
@@ -641,6 +641,9 @@ function _bridge_fit(bundle, fam, data; tree, K, A, Ainv = nothing,
     end
     if haskey(options, :q4_g_tol)
         kwargs[:q4_g_tol] = Float64(options[:q4_g_tol])
+    end
+    if haskey(options, :q4_f_reltol)
+        kwargs[:q4_f_reltol] = Float64(options[:q4_f_reltol])
     end
     if haskey(options, :q4_iterations)
         kwargs[:q4_iterations] = Int(options[:q4_iterations])

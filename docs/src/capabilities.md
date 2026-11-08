@@ -137,12 +137,11 @@ out the supported non-Gaussian phylogenetic mean models or the more specific
 phylogenetic location--scale routes below; those routes have their own family
 and inference boundaries.
 
-For a Beta `relmat()` comparison with native drmTMB, use a unit-diagonal
-`K`. Julia's Beta route rescales a supplied covariance matrix to its
-correlation matrix; native drmTMB retains the supplied covariance scale.
-The same non-unit-diagonal input therefore specifies different latent
-covariance models. This differs from Julia's closed-form Gaussian route
-above, which retains the supplied `K`.
+A Beta `relmat()` intercept uses the supplied `K` as given, as native drmTMB
+does and as Julia's closed-form Gaussian route above does: it is not rescaled to a
+correlation matrix. Fitting the same data with `K` and `2K` gives identical fixed
+effects and log-likelihood, and the random-effect SD shifts by `log(sqrt(2))`, as
+a raw covariance scale requires.
 
 ### Non-Gaussian phylogenetic random intercept on the mean (sparse Laplace)
 

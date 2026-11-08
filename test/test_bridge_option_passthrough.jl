@@ -130,3 +130,28 @@ end
     @test occursin("\"profile\"", sprint(showerror, err2))
     @test occursin("\"bootstrap\"", sprint(showerror, err2))
 end
+
+@testset "drm_bridge forwards q4_f_reltol to the q=4 L-BFGS stopping rule" begin
+    Random.seed!(20261108)
+    p, m = 12, 3
+    phy = random_balanced_tree(p; branch_length = 0.3)
+    LC = cholesky(Symmetric(sigma_phy_dense(phy; σ²_phy = 1.0))).L
+    species = repeat(1:p, inner = m)
+    n = length(species)
+    x = randn(n)
+    U = LC * randn(p, 4) .* 0.4
+    dat = (; y1 = 0.3 .* x .+ U[species, 1] .+ 0.5 .* randn(n),
+           y2 = 0.2 .* x .+ U[species, 2] .+ 0.5 .* randn(n), x, species)
+    fml = Dict(:mu1 => "y1 ~ x + phylo(1 | species)", :mu2 => "y2 ~ x + phylo(1 | species)",
+               :sigma1 => "sigma1 ~ 1 + phylo(1 | species)", :sigma2 => "sigma2 ~ 1 + phylo(1 | species)",
+               :rho12 => "rho12 ~ 1")
+    fitq(extra) = DRModels.drm_bridge(; formula = fml, family = "biv_gaussian", data = dat, tree = phy,
+                                      options = merge(Dict(:q4_iterations => 300, :q4_vcov => false), extra))
+    default = fitq(Dict())
+    tight = fitq(Dict(:q4_f_reltol => 1e-12))
+    loose = fitq(Dict(:q4_f_reltol => 1e-1))
+    # A tight tolerance reproduces the default optimum; a very loose one stops the optimiser
+    # measurably earlier, which proves the key reaches `fit_q4_sparse_tmb`.
+    @test tight["loglik"] ≈ default["loglik"] atol = 1e-6
+    @test loose["loglik"] < default["loglik"] - 1.0
+end

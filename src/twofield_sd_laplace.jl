@@ -227,7 +227,7 @@ function _fit_twofield_sd_laplace(fam::Union{Gamma,NegBinomial2,Beta}, y, Xmu, X
     # second interior mode, and the single default start can stop at the lower one
     # (see `_q2_boundary_restarts`, run unconditionally here). `info` records the outcome.
     restart_info = Ref{Any}(nothing)
-    if isgamma && any(fk -> size(fk.Zg, 2) > 1, fields)
+    if fam isa Gamma && any(fk -> size(fk.Zg, 2) > 1, fields)   # Gamma only: `isgamma` also covers Beta
         n_obs = length(y)
         restarted = _q2_boundary_restarts(
             start -> first(run(start)), last_u, result,
