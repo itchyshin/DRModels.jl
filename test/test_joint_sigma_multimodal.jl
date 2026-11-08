@@ -20,6 +20,15 @@ function _jsm_fixture(; seed = 20261110, n_id = 200, n_site = 200, n_each = 12)
     x = randn(rng, n)
     z = ones(n)
     y = 0.2 .+ 0.5 .* x .+ a[gi] .+ exp.(log(0.5) .+ b[gs] .* z) .* randn(rng, n)
+    # Julia 1.11 changed the MersenneTwister seeding, so this seed draws a DIFFERENT
+    # dataset on 1.12, one with a unique mode (no warning, converged). The case is only
+    # a stress case on the 1.10.12 draw, so that draw is committed and read back.
+    # Regeneration: run the generator above on Julia 1.10 and write (y, x).
+    if (seed, n_id, n_site, n_each) == (20261110, 200, 200, 12)
+        rows = [split(l, '\t') for l in readlines(joinpath(@__DIR__, "fixtures", "rng_stable", "jsm_6a.tsv"))[3:end]]
+        y = parse.(Float64, [r[1] for r in rows]); x = parse.(Float64, [r[2] for r in rows])
+        @assert length(y) == n
+    end
     return (; y, x, id = string.("id", gi), site = string.("s", gs), w = w_id[gi], v = v_site[gs])
 end
 
