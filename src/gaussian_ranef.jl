@@ -191,6 +191,42 @@ function _relmat_intercept_slope(rhs; allow_label::Bool = false)
     return _animal_intercept_slope(rhs; kind = relmat, allow_label)
 end
 
+# Post-fit only (predict, predict_parameters, bridge label rendering, marginal
+# simulators): drop a structured intercept-plus-slope term
+# `animal|relmat|phylo|spatial(1 + x | g)` or its labelled form
+# `kind(1 + x | p | g)` when the fit carries the two matching coefficient SD
+# targets, i.e. when a fitted q2 SD route has already admitted it. The
+# population-level design is the remaining fixed part, so no family-specific
+# parser permission is needed (the label is a pure label, never a column).
+# Fitting code must keep using `_split_ranef` with explicit opt-ins.
+_postfit_q2_markers() = ((animal, :animal), (relmat, :relmat),
+                         (phylo, :phylogenetic), (spatial, :spatial))
+
+function _strip_fitted_q2_terms(fit, rhs)
+    f = hasproperty(fit, :formula) ? fit.formula : nothing
+    f isa DrmFormula || return rhs
+    targets = _sd_target_parts(f)
+    length(targets) >= 2 || return rhs
+    terms = rhs isa Tuple ? collect(rhs) : Any[rhs]
+    keep = Any[]
+    for t in terms
+        drop = false
+        for (marker, level) in _postfit_q2_markers()
+            t isa FunctionTerm && t.f === marker || continue
+            blk = _animal_intercept_slope(t; kind = marker, allow_label = true)
+            blk === nothing && continue
+            members = Set(item.target.member for item in targets
+                          if item.target.level === level && item.target.group === blk.group &&
+                             item.target.dpar === :mu)
+            drop = members == Set((:intercept, blk.slope))
+        end
+        drop || push!(keep, t)
+    end
+    length(keep) == length(terms) && return rhs
+    isempty(keep) && return ConstantTerm(1)
+    return length(keep) == 1 ? keep[1] : Tuple(keep)
+end
+
 # Split a μ right-hand side into its fixed part and any `(lhs | g)` terms.
 # `structured` is the FIRST structured marker (relmat/animal/phylo/spatial) for
 # backward compatibility; use `_collect_structured` to retrieve the full list
@@ -1145,7 +1181,11 @@ the fitted conditional mode.
 """
 function ranef(fit::DrmFit)
     if fit.ranef === nothing || fit.ranef isa PhyloTipVariance   # tip variances only, no modes
-        has_re_block = any(p -> first(p) in (:resd, :recov, :sd, :sd_phylo), fit.blocks)
+        # `sdtarget_*` blocks are the coefficient-specific SD-regression random
+        # effects; without stored modes they refuse exactly like `:sd` (#759),
+        # rather than returning an empty Dict that reads as "no random effects".
+        has_re_block = any(p -> first(p) in (:resd, :recov, :sd, :sd_phylo) ||
+                                startswith(String(first(p)), "sdtarget_"), fit.blocks)
         has_re_block && throw(ArgumentError("ranef: this fit has a random-effect block " *
             "but no stored conditional modes -- the non-Gaussian GLMM marginal route " *
             "(Gauss-Hermite quadrature / Laplace) does not retain a posterior mode. " *

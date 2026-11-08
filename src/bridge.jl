@@ -2226,6 +2226,10 @@ function _bridge_rendered_regression_blocks(fit, labels::_BridgeFormulaLabels)
         end
         # #938: an `offset(...)` term is held at coefficient 1, so it is no column.
         rhs = first(_extract_offset(rhs))
+        # A fitted structured q2 term (`kind(1 + x | g)` or labelled
+        # `kind(1 + x | p | g)` with its two coefficient SD targets) adds no
+        # mean columns; drop it so the label `p` is never read as data.
+        param === :mu && (rhs = _strip_fitted_q2_terms(fit, rhs))
         # Fitting has already admitted this family-specific animal SD route.
         # Label reconstruction only needs the matching animal-slope parser;
         # keeping this permission Binomial-specific breaks other fitted routes

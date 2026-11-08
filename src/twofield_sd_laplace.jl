@@ -148,6 +148,7 @@ function _fit_twofield_sd_laplace(fam::Union{Gamma,NegBinomial2}, y, Xmu, Xsigma
                                   fields::Vector{_TwoField}, nmmu, nmsigma, nmsds,
                                   blocks, g_tol; se::Bool = true, maxiter::Int = 300,
                                   correlated::Bool = false,
+                                  rho_name::AbstractString = "atanh_rho",
                                   context::AbstractString = "two-field SD regression")
     length(fields) == 2 || throw(ArgumentError("expected two latent SD fields"))
     size(Xsigma, 2) == 1 || throw(ArgumentError("$context requires `sigma ~ 1`."))
@@ -235,7 +236,7 @@ function _fit_twofield_sd_laplace(fam::Union{Gamma,NegBinomial2}, y, Xmu, Xsigma
         blocks[1] => nmsds[1], blocks[2] => nmsds[2]]
     if correlated
         push!(block_list, :recov => length(theta):length(theta))
-        push!(name_list, :recov => ["atanh_rho"])
+        push!(name_list, :recov => [String(rho_name)])
     end
     scales = Dict{Symbol,Vector{Float64}}(:sigma => fill(exp(theta[pmu + 1]), length(y)))
     correlated && (scales[:correlation] = [tanh(theta[end])])
@@ -276,6 +277,24 @@ function _drm_twofield_sd_route(f::DrmFormula, fam::Union{Gamma,NegBinomial2};
                                 data, tree = nothing, K = nothing, A = nothing,
                                 Ainv = nothing, coords = nothing,
                                 g_tol::Real = 1e-8, se::Bool = true)
+    b = _twofield_build(f, fam; data, tree, K, A, Ainv, coords)
+    b === nothing && return nothing
+    famname = _twofield_famname(fam)
+    fit = _fit_twofield_sd_laplace(fam, b.y, b.Xmu, b.Xsigma, b.fields, b.nmmu, b.nmsigma,
+        b.nmsds, b.blocks, g_tol; se, correlated = b.correlated,
+        rho_name = "$(b.group):atanh_rho",   # as the other labelled q2 routes
+        context = "$famname two-field SD regression")
+    return _withformula(fit, f)
+end
+
+# Recognise the shape and build the response, designs and the two `_TwoField`s.
+# Shared by the fitter and by the post-fit marginal simulator, so both see the
+# same fields (row-to-level maps, kernels, loadings, SD designs). Returns
+# `nothing` for formulas that are not two-field shapes. `store_schema = false`
+# (post-fit) reads the fitted SD-design schema without overwriting it.
+function _twofield_build(f::DrmFormula, fam::Union{Gamma,NegBinomial2};
+                         data, tree = nothing, K = nothing, A = nothing,
+                         Ainv = nothing, coords = nothing, store_schema::Bool = true)
     famname = _twofield_famname(fam)
     targets = _sd_target_parts(f)
     length(targets) == 2 || return nothing
@@ -449,7 +468,7 @@ function _drm_twofield_sd_route(f::DrmFormula, fam::Union{Gamma,NegBinomial2};
             ldq = logdet(qc)
         end
         Zg, nm = _sd_group_design(f.response, s.target.rhs, data, gidx, G, s.group;
-            schema_cache = f.schema_cache, schema_key = s.target.key)
+            schema_cache = f.schema_cache, schema_key = s.target.key, store_schema)
         size(Zg, 2) <= G && rank(Zg) == size(Zg, 2) || throw(ArgumentError(
             "$famname SD formula for `$(s.group)` has a rank-deficient group-level design."))
         w = s.slope === nothing ? ones(n) : _twofield_numeric(data, s.slope, n, famname)
@@ -463,9 +482,47 @@ function _drm_twofield_sd_route(f::DrmFormula, fam::Union{Gamma,NegBinomial2};
        isequal(fields[1].Zg, fields[2].Zg)
         throw(ArgumentError("$famname cannot separate the intercept and slope SDs when the slope predictor is constant and both SD formulas are identical."))
     end
-    fit = _fit_twofield_sd_laplace(fam, y, Xmu, Xsigma, fields, nmmu, nmsigma,
-        nmsds, blocks, g_tol; se, correlated, context = "$famname two-field SD regression")
-    return _withformula(fit, f)
+    return (; y, Xmu, Xsigma, nmmu, nmsigma, fields, nmsds, blocks, correlated,
+            group = specs[1].group)
+end
+
+# Post-fit marginal simulator for the two-field shapes (`simulate(fit; data, …)`
+# with the default `re = :marginal`, and `bootstrap_result`). Rebuilds the fields
+# from `data` (and `K` / `A`), draws fresh latent fields u_k ~ N(0, Q_k^{-1})
+# (correlated pair: cov kron(R(rho), C), rho = tanh(atanh_rho) as in the fit),
+# eta = X beta + sum_k w_k * sd_k[g_k] * u_k[g_k], and y from the family at the
+# fitted sigma. Returns `nothing` when the formula is not a two-field shape.
+function _twofield_sd_marginal_simulator(fit::DrmFit, data; K = nothing, A = nothing)
+    fam = fit.family
+    b = _twofield_build(fit.formula, fam; data, K, A, store_schema = false)
+    b === nothing && return nothing
+    b.nmmu == _block_coefnames(fit, :mu) || throw(ArgumentError(
+        "bootstrap: two-field mean design does not match the fitted `mu` block"))
+    for k in 1:2
+        b.nmsds[k] == _block_coefnames(fit, b.blocks[k]) || throw(ArgumentError(
+            "bootstrap: two-field SD design does not match fitted block `$(b.blocks[k])`"))
+    end
+    eta_fixed = b.Xmu * coef(fit, :mu)
+    loads = [b.fields[k].w .* exp.(b.fields[k].Zg * coef(fit, b.blocks[k]))[b.fields[k].gidx]
+             for k in 1:2]
+    # Q_k is the prior precision (I or C^{-1}); draw u_k = U_k \ z with Q_k = U_k'U_k.
+    facs = map(b.fields) do fk
+        ch = cholesky(Symmetric(Matrix(fk.Q)); check = false)
+        issuccess(ch) || throw(ArgumentError(
+            "bootstrap: two-field prior precision is not positive definite"))
+        ch
+    end
+    rho = b.correlated ? tanh(only(coef(fit, :recov))) : 0.0
+    sigma = fill(exp(only(coef(fit, :sigma))), length(b.y))
+    G = [size(fk.Q, 1) for fk in b.fields]
+    return function (rng)
+        z1 = facs[1].U \ randn(rng, G[1])
+        z2 = facs[2].U \ randn(rng, G[2])
+        u2 = b.correlated ? rho .* z1 .+ sqrt(1 - rho^2) .* z2 : z2
+        eta = eta_fixed .+ loads[1] .* z1[b.fields[1].gidx] .+
+              loads[2] .* u2[b.fields[2].gidx]
+        return _simulate_once(fit, rng; mu = exp.(eta), sigma)
+    end
 end
 
 # A labelled structured q2 term `animal(1 + x | p | g)` / `relmat(1 + x | p | g)`:

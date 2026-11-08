@@ -163,6 +163,17 @@ _pit_obs(::Any, i; obs, scales)          = obs[:mu][i]
 # for this model conditions on the fitted log-σ modes instead (its
 # `predict(dpar = "sigma")` adds them); DRModels.jl keeps the population-level
 # reference it uses for the mean intercept.
+#
+# KNOWN LIMITATION: random-effect SD-regression fits (`sdtarget_*` blocks: the
+# predictor-dependent SD routes, including the q2 intercept-plus-slope and the
+# Gamma/NB2 two-field routes) store no `:resd` block, so they are NOT
+# marginalised either: their quantile residuals use the fixed-effect-only
+# reference `fitted(fit) = g^{-1}(X beta)` and are over-dispersed whenever the
+# random-effect SDs are non-negligible (sd of the residuals ~1.3-2.5 on the
+# wave-2 test fixtures). The per-row marginal would need the SD formulas, the
+# loadings (1 or x) and, for labelled fits, the cross-field correlation; until
+# that is implemented, use `simulate(fit; data, …)` (marginal draws) for
+# calibration checks on these fits.
 _ranef_link(::Poisson) = (μ -> log(max(μ, eps())), exp)
 _ranef_link(::NegBinomial2) = (μ -> log(max(μ, eps())), exp)
 _ranef_link(::TruncatedNegBinomial2) = (μ -> log(max(μ, eps())), exp)

@@ -2519,7 +2519,7 @@ function predict(fit::DrmFit, newdata; type::Symbol = :response, se::Bool = fals
             _animal_intercept_slope(Dict(f.forms)[:mu]; allow_label = q2_label_ok) !== nothing
         allow_binomial_phylo_slope_only = fit.family isa Union{Binomial,Gamma} &&
             !isempty(_sdphylo_parts(f))
-        mean_rhs = Dict(f.forms)[:mu]
+        mean_rhs = _strip_fitted_q2_terms(fit, Dict(f.forms)[:mu])
         if fit.family isa Binomial
             interaction = _binomial_phylo_interaction_parts(mean_rhs)
             interaction === nothing || (mean_rhs = interaction.fixed_rhs)
@@ -2919,7 +2919,7 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
         allow_binomial_spatial_slope = fit.family isa Union{Binomial,Gaussian,Gamma,NegBinomial2} &&
             f isa DrmFormula && any(
                 item.target.level === :spatial for item in _sd_target_parts(f))
-        parameter_rhs = forms[p]
+        parameter_rhs = p === :mu ? _strip_fitted_q2_terms(fit, forms[p]) : forms[p]
         if p === :mu && fit.family isa Binomial
             interaction = _binomial_phylo_interaction_parts(parameter_rhs)
             interaction === nothing || (parameter_rhs = interaction.fixed_rhs)
