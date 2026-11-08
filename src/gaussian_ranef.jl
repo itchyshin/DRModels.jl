@@ -102,7 +102,7 @@ function _check_structured_re_lhs(kind::Symbol, lhs, grp::Symbol;
             "drm: a labelled `relmat(... | $(labelled.label) | $grp)` term is only implemented as `relmat(1 + x | $(labelled.label) | $grp)`"))
     end
     (lhs isa ConstantTerm && lhs.n == 1) && return nothing
-    if kind === :relmat && allow_intercept_slope &&
+    if kind in (:relmat, :spatial) && allow_intercept_slope &&
        lhs isa FunctionTerm && lhs.f === (+)
         constants = filter(t -> t isa ConstantTerm, lhs.args)
         variables = filter(t -> t isa Term, lhs.args)
@@ -233,6 +233,7 @@ function _split_ranef(rhs; allow_phylo_slope::Bool = false,
                       allow_relmat_slope::Bool = false,
                       allow_relmat_intercept_slope::Bool = false,
                       allow_spatial_slope::Bool = false,
+                      allow_spatial_intercept_slope::Bool = false,
                       allow_temporal::Bool = false,
                       allow_labelled_intercept_slope::Bool = false)
     terms = rhs isa Tuple ? collect(rhs) : Any[rhs]
@@ -293,7 +294,8 @@ function _split_ranef(rhs; allow_phylo_slope::Bool = false,
             end
         elseif t isa FunctionTerm && t.f === spatial
             slope = _check_structured_re_lhs(:spatial, t.args[1].args[1],
-                t.args[1].args[2].sym; allow_slope = allow_spatial_slope)
+                t.args[1].args[2].sym; allow_slope = allow_spatial_slope,
+                allow_intercept_slope = allow_spatial_intercept_slope)
             if structured === nothing
                 structured = (:spatial, t.args[1].args[2].sym)
                 animal_slope = slope

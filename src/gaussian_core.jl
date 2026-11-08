@@ -182,10 +182,14 @@ function bf(mu::FormulaTerm, dpars::FormulaTerm...)
                              "(drmTMB: `sd(g, level = \"phylogenetic\")`).", :sd_phylo)
                 true
             else
-                target_level === :phylogenetic
+                # `sd(g, phylogenetic, coef(term)) ~ …` is a coefficient-specific
+                # target (phylo(1 + x | g) q2 routes); the intercept-only legacy
+                # `sdphy_` key is kept for the selector-free spelling.
+                target_level === :phylogenetic && member === nothing
             end
             is_phylo && member !== nothing && throw(ArgumentError(
-                "bf: `coef()` selectors are not currently supported for phylogenetic SD targets."))
+                "bf: `coef()` selectors are not supported with the deprecated `sd_phylo()` spelling; " *
+                "use `sd(g, phylogenetic, coef(term)) ~ …`."))
             is_phylo && target_dpar !== :mu && throw(ArgumentError(
                 "bf: distributional-parameter selectors for structured SD targets are not implemented."))
             key = if is_phylo
@@ -1060,10 +1064,11 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     # The labelled `animal|relmat(1 + x | p | g)` form adds a free correlation.
     q2_kind = nothing
     q2_labelled = false
-    for (kind_q2, fn_q2) in ((:animal, animal), (:relmat, relmat))
-        blk_q2 = _animal_intercept_slope(rhs[:mu]; kind = fn_q2, allow_label = true)
+    for kind_q2 in (:animal, :relmat, :phylo, :spatial)
+        blk_q2 = _animal_intercept_slope(rhs[:mu]; kind = _q2_marker(kind_q2),
+                                         allow_label = kind_q2 in (:animal, :relmat))
         blk_q2 !== nothing &&
-            any(item.target.level === kind_q2 for item in _sd_target_parts(f)) &&
+            any(item.target.level === _q2_target_level(kind_q2) for item in _sd_target_parts(f)) &&
             (q2_kind = kind_q2; q2_labelled = blk_q2.label !== nothing)
     end
     fixed_mu, re, metav, structured, structured_slope, temporal_term, structured_sd_slope =
@@ -1073,7 +1078,8 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
                      allow_relmat_intercept_slope = q2_kind === :relmat,
                      allow_labelled_intercept_slope = q2_labelled,
                      allow_relmat_slope = allow_sd_structured_slope,
-                     allow_spatial_slope = allow_sd_structured_slope)   # (1|g), meta_V(v), relmat/animal/phylo/spatial(1|g), temporal(...)
+                     allow_spatial_slope = allow_sd_structured_slope,
+                     allow_spatial_intercept_slope = q2_kind === :spatial)   # (1|g), meta_V(v), relmat/animal/phylo/spatial(1|g), temporal(...)
     structured_sd_slope === nothing || temporal_term === nothing ||
         throw(ArgumentError("drm: a structured slope-only effect cannot be combined with `temporal(...)`."))
     fixed_sigma, sigma_re, _, structured_sigma = _split_ranef(rhs[:sigma])  # (1|g)→GHQ; structured_sigma = phylo(1|g) on σ
@@ -1169,7 +1175,10 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     # engine ever receives this formula and quietly fits the intercept-only
     # `phylo(1 | g)` model instead. The fit itself is dispatched further down,
     # once the routes that do not apply have been passed.
-    if structured_slope !== nothing
+    # `phylo(1 + x | g)` WITH coefficient-specific sd() targets is the q2 SD route,
+    # validated in `_drm_gaussian_structured_q2_sd`; the checks below guard the
+    # plain two-SD route (#620) and its sd()-free cell.
+    if structured_slope !== nothing && q2_kind !== :phylo
         kind, slope_grp = structured
         kind === :phylo || error("drm: internal — structured_slope set for a non-phylo marker")
         _slope_term = "phylo(1 + $(structured_slope) | $(slope_grp))"
@@ -1246,7 +1255,8 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         if q2_kind !== nothing
             return _withformula(_drm_gaussian_structured_q2_sd(f, fam, q2_kind, structured,
                 re, sigma_re, metav, structured_sigma, has_missing_response,
-                y, Xμ, Xσ, nmμ, nmσ, data, K, A, coords, g_tol, method, algorithm), f)
+                y, Xμ, Xσ, nmμ, nmσ, data, K, A, coords, g_tol, method, algorithm;
+                tree = tree), f)
         end
         if structured_sd_slope !== nothing
             isempty(sdpp) && length(sdp) == 1 && structured[1] in (:animal, :relmat, :spatial) ||

@@ -302,6 +302,9 @@ function _drm_negbin2_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
                                     nAGQ::Union{Nothing,Int} = nothing)
     marginal === :LA || throw(ArgumentError(
         "NegBinomial2 `sd(group) ~ …` currently supports `marginal = :LA` only."))
+    q2ps = _phylo_spatial_q2_block(f)
+    q2ps === nothing || return _drm_count_phylo_spatial_q2_sd(f, fam, q2ps...;
+        data, tree, K, A, Ainv, coords, g_tol, se, nAGQ)
     spatial_sd_target = any(t.target.level === :spatial for t in _sd_target_parts(f))
     (tree === nothing && (coords === nothing || spatial_sd_target)) ||
         throw(ArgumentError("NegBinomial2 `sd(group) ~ …` supports ordinary effects, " *
