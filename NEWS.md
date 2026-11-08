@@ -6,6 +6,8 @@ human-readable changelog.
 
 ## Development
 
+- **Fix: NB2 `sigma ~ 1 + (1 | g)` / `(0 + x | g)` with `sd(g, sigma)` no longer throws `AssertionError: B > A`.** The default HagerZhang line search asserted on the near-flat plateau created by the hard shape clamp on a few percent of extreme draws (3 of 160 fuzz seeds on Julia 1.12). The fit now retries with BackTracking, as the Binomial/BetaBinomial/Gaussian routes already do; `converged` stays honest. Test: `test/test_nb2_sigma_sd_line_search.jl` (three committed datasets).
+
 - **REML for the Gaussian structured q2 SD routes.** `drm(...; method = :REML)` now fits `kind(1 + x | g)` with one `sd(g, level, coef(...))` formula per coefficient for `phylo` (labelled or unlabelled, any fixed-effect `sigma`) and for unlabelled `animal` / `relmat` / `spatial` with `sigma ~ 1`, the cells native drmTMB admits under `REML = TRUE`. The mean coefficients are integrated out (restricted log-likelihood `ml + (p/2) log 2π − ½ log|X'V⁻¹X|`, the constant native drmTMB reports). Labelled `animal` / `relmat` / `spatial` and heteroscedastic `sigma` with those providers still refuse, as in native drmTMB. Ordinary `sd()` q2/q3/q4 and `sd(g, sigma)` routes stay maximum-likelihood only because native drmTMB refuses REML there too.
 
 ## v0.8.1
