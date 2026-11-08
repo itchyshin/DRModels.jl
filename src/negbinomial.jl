@@ -321,6 +321,12 @@ function _drm_negbin2_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
             f, fam, targets, relmat_block; data, tree, K, A, Ainv, coords,
             g_tol, se, nAGQ)
     end
+    if length(targets) == 2 && count(item -> item.target.dpar === :sigma, targets) == 1
+        # Joint mean + sigma ordinary intercepts, each with an SD formula (dense Laplace).
+        (Ainv === nothing) || throw(ArgumentError(
+            "drm: NegBinomial2 joint `mu` + `sigma` SD regression does not use `Ainv`."))
+        return _drm_joint_sigma_sd_laplace(f, fam; data, tree, K, A, coords, g_tol, se)
+    end
     length(targets) == 1 || throw(ArgumentError(
         "NegBinomial2 random-effect SD regression requires exactly one `sd(group) ~ …` formula."))
     target = only(targets)

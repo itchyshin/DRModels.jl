@@ -470,6 +470,10 @@ function _drm_gamma_sd_regression(f::DrmFormula, fam::Gamma; data,
         return _drm_gamma_structured_sd_regression(f, fam; data, tree, K, A,
                                                 coords, g_tol, se)
     end
+    if length(targets) == 2 && count(item -> item.target.dpar === :sigma, targets) == 1
+        # Joint mean + sigma ordinary intercepts, each with an SD formula (dense Laplace).
+        return _drm_joint_sigma_sd_laplace(f, fam; data, tree, K, A, coords, g_tol, se)
+    end
     length(targets) == 1 || throw(ArgumentError(
         "Gamma random-effect SD regression requires exactly one SD target."))
     target = only(targets)
