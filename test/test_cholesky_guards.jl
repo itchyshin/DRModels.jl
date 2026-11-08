@@ -132,3 +132,12 @@ end
     @test !(err isa PosDefException)
     @test err isa ArgumentError || occursin("positive definite", sprint(showerror, err))
 end
+
+@testset "_blup_vinv_r: PD identical, non-PD gives NaN BLUPs plus a warning, not a throw" begin
+    A = [4.0 1.0; 1.0 3.0]; r = [1.0, 2.0]
+    @test D._blup_vinv_r(A, r) == cholesky(Symmetric(A)) \ r                  # bit-identical
+    S = [1.0 1.0; 1.0 1.0]
+    v = @test_logs (:warn, r"BLUPs\) are NaN") match_mode = :any D._blup_vinv_r(S, r)
+    @test length(v) == 2 && all(isnan, v)
+    @test all(isnan, D._blup_vinv_r([1.0 NaN; NaN 1.0], r))                   # no throw on non-finite V
+end

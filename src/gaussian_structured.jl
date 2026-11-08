@@ -308,7 +308,7 @@ function _fit_two_structured_gaussian(fam::Gaussian, y, Xμ, gidx1, G1, C1, gidx
     blup = let
         βμ = θ̂[1:pμ]; σ1² = exp(2 * θ̂[pμ+2]); σ2² = exp(2 * θ̂[pμ+3])
         Vh = exp(2 * θ̂[pμ+1]) .* Iₙ .+ σ1² .* ZC1Zt .+ σ2² .* ZC2Zt
-        Vinvr = _pd_chol_or_throw(Vh, "the fitted marginal covariance V at θ̂ (BLUP step)") \ (y .- Xμ * βμ)
+        Vinvr = _blup_vinv_r(Vh, y .- Xμ * βμ)
         a1 = σ1² .* (C1 * (Z1' * Vinvr))
         a2 = σ2² .* (C2 * (Z2' * Vinvr))
         Dict(Symbol(grp1) => a1, Symbol(grp2) => a2)
@@ -388,7 +388,7 @@ function _fit_phylo_slope_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, C, xs, n
         @inbounds for i in 1:n
             Vh[i, i] += ση²[i]
         end
-        Vinvr = _pd_chol_or_throw(Vh, "the fitted marginal covariance V at θ̂ (BLUP step)") \ (y .- Xμ * βμ)
+        Vinvr = _blup_vinv_r(Vh, y .- Xμ * βμ)
         a = σa² .* (C * (Z' * Vinvr))
         b = σb² .* (C * (Zx' * Vinvr))
         Dict(Symbol(grp) => a, Symbol("$(grp):$(var)") => b)
@@ -481,7 +481,7 @@ function _fit_structured_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ,
         @inbounds for i in 1:n
             Vh[i, i] += ση²[i]
         end
-        Vinvr = _pd_chol_or_throw(Vh, "the fitted marginal covariance V at θ̂ (BLUP step)") \ (y .- Xμ * βμ)
+        Vinvr = _blup_vinv_r(Vh, y .- Xμ * βμ)
         out = Dict{Symbol,Vector{Float64}}()
         for k in 1:m
             σk² = exp(2 * θ̂[pμ+pσ+k])

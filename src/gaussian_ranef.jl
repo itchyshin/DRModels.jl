@@ -30,6 +30,20 @@ function _pd_chol_or_throw(A::AbstractMatrix, what::AbstractString)
     return C
 end
 
+# Post-fit BLUP step: V⁻¹ r from the fitted marginal covariance V at θ̂. The fit has
+# already converged, so a non-PD / non-finite V must not abort it: return a NaN vector
+# (every BLUP built from it is NaN, i.e. unavailable) and warn once per session.
+function _blup_vinv_r(Vh::AbstractMatrix, r::AbstractVector)
+    C = all(isfinite, Vh) ? cholesky(Symmetric(Vh); check = false) : nothing
+    if C === nothing || !issuccess(C)
+        @warn "The fitted marginal covariance V at θ̂ is not numerically positive definite " *
+              "(singular or near-singular, e.g. a collapsed variance component); the fit is " *
+              "returned but its random-effect estimates (BLUPs) are NaN (unavailable)." maxlog = 1
+        return fill(NaN, length(r))
+    end
+    return C \ r
+end
+
 # A structured marker's (`phylo`/`relmat`/`animal`/`spatial`) random-effect
 # left-hand side must be the literal intercept `1` on every univariate route:
 # `_split_ranef` (below) — the shared RHS splitter for every univariate family
