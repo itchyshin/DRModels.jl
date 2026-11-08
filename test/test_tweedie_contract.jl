@@ -60,7 +60,7 @@ end
         for (lab, f) in (
                 "animal" => bf(@formula(y ~ x + animal(1 | id))),
                 "spatial" => bf(@formula(y ~ x + spatial(1 | site))))
-            @test_throws r"structured \(phylo/relmat/animal/spatial\) random effects on `mu` are not implemented" drm(
+            @test_throws r"animal and spatial terms are not implemented" drm(
                 f, Tweedie(); data = data)
         end
 
