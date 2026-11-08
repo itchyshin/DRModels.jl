@@ -356,6 +356,213 @@ function _fit_gaussian_sigma_sd_laplace(fam::Union{Gaussian,NegBinomial2,Gamma},
     return _withranef(_withmarginal(_withnll(fit, nll, grad!), :Laplace), ranef)
 end
 
+# ---------------------------------------------------------------------------------------------
+# REML for the structured sigma intercept (fixed-effect mean). Native drmTMB (`REML = TRUE`)
+# does not restrict the likelihood by a closed form here: it moves beta_mu AND beta_sigma into
+# TMB's random block, so the reported objective is ONE Laplace approximation over
+# w = (v, beta_mu, beta_sigma) with flat priors on both coefficient blocks,
+#
+#   nll_R(alpha) = F(w^) + 1/2 log det H(w^) + 1/2 log det K - (p/2) log 2pi,   p = p_mu + p_sigma,
+#
+# where F is the ML joint negative log density in v (as above) as a function of w, H = d2F/dw2
+# over ALL of w, and w^ the joint inner mode. The -(p/2) log 2pi is the Laplace constant of the
+# p flat coordinates (TMB's -(m_random/2) log 2pi; the v-block's cancels against the prior as in
+# ML). Only the SD-formula coefficients alpha stay outer parameters. Because the sigma integral is
+# a Laplace one (the density is not Gaussian in beta_sigma) this is an APPROXIMATE restricted
+# likelihood, the same one native reports (`estimator_exact = FALSE`); the beta_mu integral alone
+# would be exact at fixed sigma. The reported coefficients are the joint-mode beta^(alpha^); their
+# covariance is TMB's sdreport form  H^-1 (beta block) + J V_alpha J' with J = d w^ / d alpha
+# (implicit-function Jacobian, exact at the mode via one Newton step under ForwardDiff).
+# ---------------------------------------------------------------------------------------------
+function _gsl_joint_reml(fam, y, Xμ, Xσ, gb, d, Pb, w, Gb::Int; deriv::Bool)
+    n = length(y); pμ = size(Xμ, 2); pσ = size(Xσ, 2)
+    T = promote_type(eltype(d), eltype(w))
+    v = w[1:Gb]
+    lin = Xμ * w[(Gb+1):(Gb+pμ)]
+    eta = Xσ * w[(Gb+pμ+1):(Gb+pμ+pσ)] .+ d .* v[gb]
+    ker = [_gsl_kernel(fam, y[i], lin[i], eta[i]) for i in 1:n]
+    F = sum(k -> k[1], ker)
+    Pv = Pb === nothing ? v : Pb * v
+    F += 0.5 * dot(v, Pv)
+    deriv || return F, nothing, nothing
+    fa = T[k[2] for k in ker]; fe = T[k[3] for k in ker]
+    faa = T[k[4] for k in ker]; fae = T[k[5] for k in ker]; fee = T[k[6] for k in ker]
+    m = Gb + pμ + pσ
+    rμ = (Gb+1):(Gb+pμ); rσ = (Gb+pμ+1):m
+    g = zeros(T, m); H = zeros(T, m, m)
+    @inbounds for i in 1:n
+        ib = gb[i]
+        g[ib] += d[i] * fe[i]
+        H[ib, ib] += d[i]^2 * fee[i]
+    end
+    g[1:Gb] .+= Pv
+    if Pb === nothing
+        @inbounds for j in 1:Gb; H[j, j] += 1; end
+    else
+        H[1:Gb, 1:Gb] .+= Pb
+    end
+    g[rμ] .= Xμ' * fa
+    g[rσ] .= Xσ' * fe
+    # beta-beta blocks
+    H[rμ, rμ] .= Xμ' * (faa .* Xμ)
+    H[rσ, rσ] .= Xσ' * (fee .* Xσ)
+    Hμσ = Xμ' * (fae .* Xσ)
+    H[rμ, rσ] .= Hμσ
+    H[rσ, rμ] .= Hμσ'
+    # v-beta blocks: d/dv_j of the beta gradients
+    @inbounds for i in 1:n
+        ib = gb[i]
+        for a in 1:pμ
+            x = d[i] * fae[i] * Xμ[i, a]
+            H[ib, Gb + a] += x; H[Gb + a, ib] += x
+        end
+        for a in 1:pσ
+            x = d[i] * fee[i] * Xσ[i, a]
+            H[ib, Gb + pμ + a] += x; H[Gb + pμ + a, ib] += x
+        end
+    end
+    return F, g, H
+end
+
+function _fit_gaussian_sigma_sd_laplace_reml(fam::Gaussian, y, Xμ, Xσ, sigma_re, nmμ, nmσ, g_tol;
+                                             se::Bool = true)
+    n = length(y)
+    pμ, pσ = size(Xμ, 2), size(Xσ, 2)
+    p = pμ + pσ
+    gb, Gb, Zb, nmb, grpb, loading, Kmat, blockb, _ = sigma_re
+    pb = size(Zb, 2)
+    m = Gb
+    q = m + p
+    q <= _GSL_MAX_LATENT || throw(ArgumentError(
+        "drm: Gaussian sigma random effect with an SD formula uses a dense Laplace " *
+        "engine limited to $(_GSL_MAX_LATENT) latent coordinates (got $q under REML)."))
+    Kmat === nothing && throw(ArgumentError("drm: internal: structured sigma REML needs K."))
+    Ck = cholesky(Symmetric(Matrix{Float64}(Kmat)); check = false)
+    issuccess(Ck) || throw(ArgumentError("drm: the structured sigma matrix must be symmetric positive definite."))
+    Pb = Matrix(inv(Ck)); Pb = (Pb .+ Pb') ./ 2
+    logdetK = logdet(Ck)
+    rμ = (m+1):(m+pμ); rσ = (m+pμ+1):q
+
+    joint_at(α) = begin
+        d = loading .* exp.(Zb * α)[gb]
+        (w, deriv) -> _gsl_joint_reml(fam, y, Xμ, Xσ, gb, d, Pb, w, Gb; deriv = deriv)
+    end
+    # Warm start of the inner mode: v = 0, beta_mu = OLS, beta_sigma = (log 0.7 sd, 0, ...).
+    w0 = zeros(q)
+    β0 = Xμ \ y
+    sd0 = std(y - Xμ * β0) + eps()
+    w0[rμ] .= β0
+    w0[m + pμ + 1] = log(0.7 * sd0)
+
+    function laplace(α::AbstractVector{T}, what::Vector{Float64}) where {T}
+        joint = joint_at(α)
+        w = convert(Vector{T}, what)
+        if T <: ForwardDiff.Dual
+            _, g, H = joint(what, true)
+            Cn = cholesky(Symmetric(H); check = false)
+            issuccess(Cn) || return T(REML_NONPD_PENALTY)
+            w = what .- (Cn \ g)
+        end
+        F, _, H = joint(w, true)
+        C = cholesky(Symmetric(H); check = false)
+        issuccess(C) || return T(REML_NONPD_PENALTY)
+        return F + 0.5 * logdet(C) + 0.5 * logdetK - 0.5 * p * log(2π)
+    end
+
+    fg = function (α, b0, grad)
+        αf = Vector{Float64}(α)
+        joint = joint_at(αf)
+        start = iszero(b0) ? w0 : Vector{Float64}(b0)
+        w, ok = _gsl_mode(joint, start)
+        ok || ((w, ok) = _gsl_mode(joint, w0))
+        ok || return grad ? (1e18, fill(NaN, pb), zeros(q), false) : (1e18, zeros(q), false)
+        _, _, H = joint(w, true)
+        issuccess(cholesky(Symmetric(H); check = false)) ||
+            return grad ? (1e18, fill(NaN, pb), w, false) : (1e18, w, false)
+        val = laplace(αf, w)
+        grad || return (val, w, true)
+        gα = ForwardDiff.gradient(t -> laplace(t, w), αf)
+        return (val, gα, w, all(isfinite, gα))
+    end
+
+    α0 = Zb \ fill(log(0.3), Gb)
+    what = "Gaussian structured sigma random effect with an SD formula (REML)"
+    α̂, nllhat, conv, _, nll, grad! = _ordinary_laplace_optimize(
+        fg, α0, n, q, g_tol; se = false, context = what)
+    joint̂ = joint_at(α̂)
+    ŵ, okw = _gsl_mode(joint̂, w0)
+    okw || (conv = false)
+    _, _, Ĥ = joint̂(ŵ, true)
+    Cĥ = cholesky(Symmetric(Ĥ); check = false)
+    issuccess(Cĥ) || (conv = false)
+    # Multimodality guard, as in ML: a second positive-definite mode from the prior start.
+    let (w2, ok2) = _gsl_mode(joint̂, vcat(zeros(m), ŵ[(m+1):q]))
+        if ok2 && issuccess(cholesky(Symmetric(joint̂(w2, true)[3]); check = false))
+            nll2 = laplace(α̂, w2)
+            if isfinite(nllhat) && abs(nll2 - nllhat) > 1e-6 * max(1.0, abs(nllhat))
+                @warn "drm: $what: the joint mode is not unique at the estimate; the fit is marked not converged."
+                conv = false
+            end
+        end
+    end
+    βμ = ŵ[rμ]; βσ = ŵ[rσ]
+    θ̂ = vcat(βμ, βσ, α̂)
+    ntheta = p + pb
+    V = fill(NaN, ntheta, ntheta)
+    if se && issuccess(Cĥ)
+        Hα = _finite_hessian_from_gradient(grad!, α̂; context = what)
+        if all(isfinite, Hα)
+            Vα = Matrix(_vcov_from_hessian(Hα))
+            # J = d w^ / d alpha: one Newton step from the converged mode, differentiated.
+            J = ForwardDiff.jacobian(α̂) do t
+                dd = loading .* exp.(Zb * t)[gb]
+                _, g, H = _gsl_joint_reml(fam, y, Xμ, Xσ, gb, dd, Pb, ŵ, Gb; deriv = true)
+                ŵ .- (cholesky(Symmetric(H)) \ g)
+            end
+            Hinv = Matrix(inv(Cĥ))
+            Jβ = J[(m+1):q, :]
+            Cββ = Hinv[(m+1):q, (m+1):q] + Jβ * Vα * Jβ'
+            Cβα = Jβ * Vα
+            V = [Cββ Cβα; Cβα' Vα]
+            V = (V .+ V') ./ 2
+        end
+    end
+    # ML Laplace value at the REML estimate (reference, comparable across models only under ML).
+    ml_nll = let dd = loading .* exp.(Zb * α̂)[gb]
+        vml, okm = _gsl_mode((v, deriv) -> _gsl_joint(fam, y, Xμ * βμ, Xσ * βσ, Int[], Float64[], gb, dd, Pb,
+                                                       Float64[], v, 0, Gb; deriv = deriv), zeros(m))
+        if okm
+            Fm, _, Hm = _gsl_joint(fam, y, Xμ * βμ, Xσ * βσ, Int[], Float64[], gb, dd, Pb,
+                                   Float64[], vml, 0, Gb; deriv = true)
+            Cm = cholesky(Symmetric(Hm); check = false)
+            issuccess(Cm) ? Fm + 0.5 * logdet(Cm) + 0.5 * logdetK : NaN
+        else
+            NaN
+        end
+    end
+    # Conditional modes and fitted scales.
+    sd_b = exp.(Zb * α̂)
+    vb = ŵ[1:m]
+    bb = sd_b .* vb
+    eta_fixed = Xσ * βσ
+    mean_fixed = Xμ * βμ
+    means = Dict(:mu => mean_fixed)
+    obs = Dict(:mu => Vector{Float64}(y))
+    scales = Dict{Symbol,Vector{Float64}}(
+        :sigma => exp.(eta_fixed .+ loading .* bb[gb]),
+        :sigma_fixed => exp.(eta_fixed),
+        :sigma_random_effect => bb,
+        :sigma_group_index => Float64.(gb),
+        :sd_group => sd_b,
+        :sd => sd_b[gb])
+    blocks = Pair{Symbol,UnitRange{Int}}[:mu => 1:pμ, :sigma => (pμ+1):p, blockb => (p+1):(p+pb)]
+    names = Pair{Symbol,Vector{String}}[:mu => nmμ, :sigma => nmσ, blockb => nmb]
+    ranef = Dict{Symbol,Any}(Symbol(grpb, "_logsigma") => bb)
+    fit = DrmFit(fam, blocks, names, θ̂, V, -nllhat, n, conv, means, obs, scales)
+    fit = _withmarginal(_withranef(fit, ranef), :Laplace)
+    return _withreml(fit, -nllhat, -ml_nll)
+end
+
 # Structured sigma-intercept spec shared by the Gaussian, NB2 and Gamma routers:
 #   sigma ~ 1 + animal|relmat|phylo|spatial(1 | g),  sd(g, level, sigma) ~ z; mean fixed.
 # K enters raw for animal/relmat; phylo is the tree's correlation matrix
@@ -421,7 +628,12 @@ function _drm_gaussian_sigma_sd_laplace(f::DrmFormula, fam::Gaussian, sdp, sdpp,
     what = "Gaussian `sd(g, sigma)`"
     isempty(sdpp) || throw(ArgumentError("drm: $what cannot be combined with `sd(g, phylogenetic)`."))
     metav === nothing || throw(ArgumentError("drm: $what cannot be combined with `meta_V(...)`."))
-    method === :REML && throw(ArgumentError("drm: $what supports maximum likelihood only (the marginal is a Laplace approximation)."))
+    # REML is admitted only for the structured sigma intercept below (fixed-effect mean, one
+    # animal/relmat/phylo/spatial sigma field); every other shape here stays ML-only.
+    reml = method === :REML
+    reml && structured_sigma === nothing && throw(ArgumentError(
+        "drm: $what with an ordinary random effect supports maximum likelihood only " *
+        "(REML is available for a structured sigma intercept: animal/relmat/phylo/spatial)."))
     algorithm === :auto || throw(ArgumentError("drm: `algorithm = :$algorithm` is not implemented for $what."))
     has_missing_response && throw(ArgumentError(
         "drm: $what requires observed responses; remove incomplete rows first (`drm_listwise`)."))
@@ -468,6 +680,7 @@ function _drm_gaussian_sigma_sd_laplace(f::DrmFormula, fam::Gaussian, sdp, sdpp,
         mean_spec, sigma_spec = _gsl_ordinary_specs(f, what, sd_, sig_t, mu_targets, sigma_re, re,
                                                     data, n, block_of)
     end
+    reml && return _fit_gaussian_sigma_sd_laplace_reml(fam, y, Xμ, Xσ, sigma_spec, nmμ, nmσ, g_tol)
     return _fit_gaussian_sigma_sd_laplace(fam, y, Xμ, Xσ, mean_spec, sigma_spec, nmμ, nmσ, g_tol)
 end
 

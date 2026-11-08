@@ -143,6 +143,4 @@ end
                                    data = fx.data, tree = fx.tree)                       # level mismatch
     fs = _gps_fixture(:spatial; seed = 2026110712)
     @test_throws ArgumentError drm(_gps_formula(:spatial, :z), Gaussian(); data = fs.data)  # no coords
-    @test_throws ArgumentError drm(_gps_formula(:spatial, :z), Gaussian(); data = fs.data,
-                                   coords = fs.coords, method = :REML)
 end
