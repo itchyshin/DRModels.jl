@@ -321,6 +321,10 @@ function _drm_negbin2_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
             f, fam, targets, relmat_block; data, tree, K, A, Ainv, coords,
             g_tol, se, nAGQ)
     end
+    if nAGQ === nothing
+        twofield = _drm_twofield_sd_route(f, fam; data, tree, K, A, Ainv, coords, g_tol, se)
+        twofield === nothing || return twofield
+    end
     length(targets) == 1 || throw(ArgumentError(
         "NegBinomial2 random-effect SD regression requires exactly one `sd(group) ~ …` formula."))
     target = only(targets)
