@@ -1051,6 +1051,14 @@ function _fit_tweedie_crossed_laplace(fam::Tweedie, y, Xμ, comps, nmμ, nmσ, n
     θβ0 = zeros(size(Xμ, 2))
     θβ0[1] = log(ȳ + eps())
 
+    # The default first LBFGS trial step is the full, unscaled -gradient. From the
+    # cold start the gradient is O(100-300) in the dispersion and log-SD
+    # coordinates, so the first line-search probes land at wild parameters
+    # (dispersion ~e^16, SDs at their clamps) where the Dunn-Smyth window runs to
+    # ~1e5 terms and the inner Laplace mode solve burns its 60 iterations and
+    # fails (~65 s each when measured). Every one of the ~25-40 Brent evaluations
+    # repeated this. Capping the trial step norm at 1 removes the blow-up and
+    # leaves the optimum unchanged (same LBFGS, same tolerance, same objective).
     function inner_fit(p::Real; polish_iterations::Int = 0)
         aux_from(logsigma) = (y = yv, p = p, logsigma = logsigma)
         return _fit_crossed_mean_laplace_nuisance(
@@ -1058,6 +1066,7 @@ function _fit_tweedie_crossed_laplace(fam::Tweedie, y, Xμ, comps, nmμ, nmσ, n
             comps[1][2], comps[1][3], comps[2][2], comps[2][3], nmμ, nmσ,
             [comps[1][4], comps[2][4]], g_tol;
             θβ0 = θβ0, θσ0 = 0.0, sigma_scale = exp, se = false,
+            alphaguess = Optim.LineSearches.InitialStatic(alpha = 1.0, scaled = true),
             polish_iterations = polish_iterations)
     end
 
