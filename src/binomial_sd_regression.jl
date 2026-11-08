@@ -711,6 +711,8 @@ function _drm_binomial_phylo_interaction_sd_regression(f::DrmFormula,
     return _withformula(fit, f)
 end
 
+const _BINOMIAL_Q2_GAMMA_CAP = 10.0
+
 function _binomial_animal_q2_mode(aux, s, ntr, Xmu, x, gidx, Qjoint,
         load0, load1, theta; b0 = nothing, maxiter::Int = 80,
         tol::Real = 1e-10)
@@ -788,7 +790,12 @@ function _binomial_animal_q2_laplace(aux, s, ntr, Xmu, Xsd0, Xsd1,
     r1 = (last(r0) + 1):(last(r0) + p1)
     rc = last(r1) + 1
     # `correlated = false`: two independent fields (rho fixed 0, no atanh-rho parameter).
-    gamma = correlated ? theta[rc] : 0.0
+    # The objective is held constant beyond |gamma| = `_BINOMIAL_Q2_GAMMA_CAP`
+    # (rho = 1 - 4e-9): there the joint precision has condition number ~ e^(2|gamma|),
+    # the Laplace value is rounding noise of order 1e-3 that depends on the BLAS/LAPACK
+    # build (Julia 1.10 vs 1.12), and a finite-difference L-BFGS run exploits that noise
+    # and reports a spuriously lower objective (weak-optimum case c on Julia 1.12).
+    gamma = correlated ? clamp(theta[rc], -_BINOMIAL_Q2_GAMMA_CAP, _BINOMIAL_Q2_GAMMA_CAP) : 0.0
     rho = tanh(gamma)
     sech = _binomial_stable_sech(gamma)
     den = sech^2
