@@ -1017,7 +1017,8 @@ function _gaussian_offset_restore(fit::DrmFit, f_orig::DrmFormula, off::Vector{F
     return _withformula(fit, f_orig)
 end
 
-function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, tree = nothing, coords = nothing, g_tol::Real = 1e-8, algorithm::Symbol = :auto, method::Symbol = :ML, profile_ci::Bool = false, phylo_coupled::Bool = false, penalty = nothing, sparse = nothing, impute = nothing, missing = nothing, marginal::Symbol = :LA, ids = nothing, priors = nothing)
+function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, Ainv = nothing, tree = nothing, coords = nothing, g_tol::Real = 1e-8, algorithm::Symbol = :auto, method::Symbol = :ML, profile_ci::Bool = false, phylo_coupled::Bool = false, penalty = nothing, sparse = nothing, impute = nothing, missing = nothing, marginal::Symbol = :LA, ids = nothing, priors = nothing)
+    A, ids = _ainv_as_labelled_A(f, data, A, Ainv, ids)   # `Ainv` (precision) -> labelled covariance `A`
     _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, coords = coords)   # #1027 #1022 #1010
     A = _resolve_relatedness_labels(f, data, A, ids; coords = coords)   # #957: match `A` by label
     coords = _resolve_coords_labels(f, data, coords, ids)   # #957: match `coords` by site label
@@ -2302,6 +2303,15 @@ What a correct model implies depends on the route:
   log-σ intercept on a fixed prior-scale grid that loses accuracy as the SD
   grows; refitting with `marginal = :AGHQ` is the check. drmTMB's quantile
   residuals for these fits condition on the fitted modes instead;
+- **random-effect SD regression** (`sd(g, …) ~ …` with a slope or correlated block:
+  ordinary q2 / q3 / q4, relmat / animal / phylo / spatial q2, labelled
+  `(1 + x | p | g)`, the Gamma / NB2 two-field routes, and the joint mean + `sigma`
+  routes): `F_i` is the fitted distribution at the Laplace modes of the random
+  effects at the fitted parameters, as in drmTMB (whose `fitted_distribution()` uses
+  the fitted-row parameters, modes included). The residuals are therefore not
+  marginally standard normal: their SD is below 1 (about 0.8-1 on the test
+  fixtures). `fitted(fit)` stays population level on these routes (the joint mean
+  + `sigma` routes store the conditional mean);
 - **other random-effect shapes** (crossed, correlated slopes, a mean and a
   `sigma` intercept together) and CumulativeLogit fits: judged with the
   random effects set to 0. The group-level variation then stays in the
@@ -3222,6 +3232,7 @@ function _fit_for_simulate_newdata(fit::DrmFit, newdata)
     end
     for k in keys(fit.scales)
         haskey(scales, k) && continue
+        startswith(String(k), "cond_") && continue   # conditional-mode record: population-level newdata has none
         if k === :beta_mu
             haskey(pp, :mu) || throw(ArgumentError("simulate: ZeroOneBeta `newdata` needs a :mu prediction"))
             scales[k] = pp[:mu]

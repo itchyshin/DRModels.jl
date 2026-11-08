@@ -368,6 +368,44 @@ function _animal_group_term(t, marker = animal)
 end
 
 """
+    _ainv_as_labelled_A(f, data, A, Ainv, ids) -> (A, ids)
+
+Gaussian and Gamma animal routes read the relatedness matrix `A` (covariance), not
+a precision. For `Ainv = …` (drmTMB's `animal(…, Ainv = Ainv)`; rows in the order
+of first appearance of the animal group in `data`, as for Poisson / NB2 / Binomial)
+return the covariance `A = Ainv⁻¹` with `ids` set to those first-seen levels, so
+the fitted model is exactly the one `A = inv(Ainv)` would give and no
+"unlabelled `A`" warning fires. `Ainv` is validated like the Poisson route:
+square, finite, symmetric, positive definite, one row per level. Without `Ainv`
+the inputs are returned unchanged.
+"""
+function _ainv_as_labelled_A(f::DrmFormula, data, A, Ainv, ids)
+    Ainv === nothing && return A, ids
+    A === nothing || throw(ArgumentError(
+        "drm: supply the animal relatedness as `A = …` or as the precision `Ainv = …`, not both."))
+    ids === nothing || throw(ArgumentError(
+        "drm: `ids = …` labels the rows of `A`; the rows of `Ainv` follow the order of " *
+        "first appearance of the animal group in the data."))
+    grp = _animal_group(f)
+    grp === nothing && throw(ArgumentError(
+        "drm: `Ainv = …` was supplied but the formula has no `animal(…)` term, so `Ainv` " *
+        "would be ignored. Add the marker to the formula or drop the `Ainv` argument."))
+    Ainv isa AbstractMatrix || throw(ArgumentError("drm: `Ainv` must be a numeric matrix."))
+    levels = unique(collect(_table_column(data, grp)))
+    G = length(levels)
+    size(Ainv) == (G, G) || throw(ArgumentError(
+        "drm: animal `Ainv` must be a $(G)×$(G) precision matrix ordered by the first-seen levels of `$(grp)`."))
+    M = Matrix{Float64}(Ainv)
+    all(isfinite, M) || throw(ArgumentError("drm: animal `Ainv` must contain only finite values."))
+    isapprox(M, M'; atol = 1e-8 * max(1.0, maximum(abs, M))) || throw(ArgumentError(
+        "drm: animal `Ainv` must be symmetric."))
+    ch = cholesky(Symmetric((M .+ M') ./ 2); check = false)
+    issuccess(ch) || throw(ArgumentError("drm: animal `Ainv` must be positive definite."))
+    Acov = Matrix(inv(ch))
+    return Matrix(Symmetric((Acov .+ Acov') ./ 2)), levels
+end
+
+"""
     _resolve_relatedness_labels(f, data, A, ids) -> A′
 
 Return `A` with its rows and columns in the order the fitters expect (the

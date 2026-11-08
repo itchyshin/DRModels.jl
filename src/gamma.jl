@@ -69,8 +69,9 @@ struct Gamma end
 end
 
 function _drm_gamma_fit(f::DrmFormula, fam::Gamma; data, tree = nothing, K = nothing,
-             A = nothing, coords = nothing, g_tol::Real = 1e-8, se::Bool = true,
+             A = nothing, Ainv = nothing, coords = nothing, g_tol::Real = 1e-8, se::Bool = true,
              marginal::Symbol = :LA, method = nothing, ids = nothing)
+    A, ids = _ainv_as_labelled_A(f, data, A, Ainv, ids)   # `Ainv` (precision) -> labelled covariance `A`
     _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, coords = coords)   # #1027 #1022 #1010
     _reject_method_as_marginal(fam, method)
     if !isempty(_sd_parts(f)) || !isempty(_sdphylo_parts(f))

@@ -832,9 +832,8 @@ function _fit_structured_gaussian_q2_sd(fam::Gaussian, y, Xμ, Xσ, Zgs, gidx, G
     r1 = (pμ + pσ + ps[1] + 1):(pμ + pσ + ps[1] + ps[2])
     Csym = Symmetric(_finite_user_matrix(C, "C"))
     const_2pi = 0.5 * n * log(2π)
-    function nll(θ)
-        βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
-        ημ = Xμ * βμ; ησ = Xσ * βσ
+    # Marginal covariance of y (without the residual diagonal exp(2 ησ)).
+    function random_cov(θ)
         T = eltype(θ)
         s0 = exp.(Zgs[1] * θ[r0]); s1 = exp.(Zgs[2] * θ[r1])
         Σ0 = (s0 * s0') .* Csym; Σ1 = (s1 * s1') .* Csym
@@ -851,6 +850,13 @@ function _fit_structured_gaussian_q2_sd(fam::Gaussian, y, Xμ, Xσ, Zgs, gidx, G
                 Vm[i, j] += ρ * (x[j] * Σ01[gi, gj] + x[i] * Σ01[gj, gi])
             end
         end
+        return Vm
+    end
+    function nll(θ)
+        βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
+        ημ = Xμ * βμ; ησ = Xσ * βσ
+        T = eltype(θ)
+        Vm = random_cov(θ)
         @inbounds for i in 1:n
             Vm[i, i] += exp(2 * ησ[i])
         end
@@ -890,6 +896,25 @@ function _fit_structured_gaussian_q2_sd(fam::Gaussian, y, Xμ, Xσ, Zgs, gidx, G
         blocks[1] => sd0[gidx], blocks[2] => sd1[gidx],
         Symbol(string(blocks[1]), "_group") => sd0,
         Symbol(string(blocks[2]), "_group") => sd1)
+    # Conditional modes at θ̂ (closed form: the model is Gaussian). With V = Σ_re + D,
+    # D = diag(σ²), E[random part | y] = Σ_re V⁻¹ r = r − D V⁻¹ r, and the unit-scale
+    # field modes are E[z_k | y] = Cov(z_k, y) V⁻¹ r (z0, z1 ~ N(0, C), Cov(z0, z1) = ρ C).
+    let Vre = random_cov(θ̂), σ2 = exp.(2 .* (Xσ * θ̂[(pμ+1):(pμ+pσ)])),
+        r = y .- Xμ * θ̂[1:pμ]
+        Vfac = cholesky(Symmetric(Vre + Diagonal(σ2)); check = false)
+        if issuccess(Vfac)
+            w = Vfac \ r
+            eta_re = r .- σ2 .* w
+            ρ = correlated ? _Q2_RHO_BOUND * tanh(θ̂[end]) : 0.0
+            Cm = Matrix(Csym)
+            s0, s1 = sd0[gidx], sd1[gidx]
+            Cz0 = Cm[:, gidx] .* (s0 .+ ρ .* x .* s1)'     # Cov(z0_g, y_i)
+            Cz1 = Cm[:, gidx] .* (x .* s1 .+ ρ .* s0)'     # Cov(z1_g, y_i)
+            _attach_conditional_structured!(scales, eta_re, Cz0 * w, Cz1 * w)
+        else
+            scales[:cond_failed] = 1.0
+        end
+    end
     fit = DrmFit(fam, block_list, name_list, θ̂, V, -nll(θ̂), n, converged,
                  Dict(:mu => Xμ * θ̂[1:pμ]), Dict(:mu => Vector{Float64}(y)), scales)
     return _withiterations(_withnll(fit, nll), Optim.iterations(res))
