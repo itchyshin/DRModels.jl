@@ -176,6 +176,19 @@ function _loglik_is_sentinel(loglik)::Bool
     return !isfinite(ll) || ll <= -1e15
 end
 
+# A log-likelihood that must not reach the user: a sentinel or non-finite value, or a
+# runaway magnitude (>= 1e15 in either sign) on a fit that did not converge (a Gaussian
+# q2 fit with a covariate scaled by 1e6 stored +3.6e76). A converged fit with a large
+# positive log-likelihood is left alone.
+function _loglik_is_failed(loglik, converged)::Bool
+    _loglik_is_sentinel(loglik) && return true
+    return converged === false && abs(Float64(loglik)) >= 1e15
+end
+
+# The value `show` and `summary` print: NaN, not the sentinel, for a failed fit (no warning:
+# printing a fit must not spam).
+_display_loglik(fit) = _loglik_is_failed(fit.loglik, fit.converged) ? NaN : fit.loglik
+
 function _coefficients_finite(theta)::Bool
     for x in theta
         isfinite(x) || return false

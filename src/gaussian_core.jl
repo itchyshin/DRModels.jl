@@ -3491,8 +3491,23 @@ across different fixed-effect (mean) structures** — the error-contrast basis
 differs — so do not use them for model selection across mean structures; the
 `aic`/`bic`/`lrtest` guard enforces this. Use [`ml_loglik`](@ref) (the plain ML
 log-likelihood at the REML estimate) when an ML-comparable value is needed.
+
+A **failed** fit never returns its internal failed-objective sentinel (`-1e18`) or a
+runaway value: when the stored log-likelihood is non-finite, `≤ -1e15`, or `≥ 1e15` in
+magnitude on a fit with `converged = false`, `loglik` returns `NaN` and warns. The raw
+stored number stays available as `fit.loglik`. A converged fit is returned unchanged.
 """
-loglik(fit::DrmFit) = fit.loglik
+function loglik(fit::DrmFit)
+    ll = fit.loglik
+    _loglik_is_failed(ll, fit.converged) || return ll
+    get(task_local_storage(), :drm_quiet_boundary, false) === true && return NaN
+    @warn "drm: loglik(fit) is NaN because the fit failed (the stored value is $(ll), " *
+          "the optimiser's failed-objective sentinel or a runaway value, and converged = " *
+          "$(fit.converged)). The estimates are not an optimum, so no log-likelihood, AIC or " *
+          "BIC is reported. Rescale the data, simplify the model, or check `convergence_status(fit)`. " *
+          "The raw stored value is `fit.loglik`."
+    return NaN
+end
 
 """
     loglikelihood(fit) -> Float64
@@ -3726,7 +3741,7 @@ fixef(fit::DrmFit) =
 function Base.show(io::IO, fit::DrmFit)
     print(io, "DrmFit (", _family_name(fit.family), ", ", fit.nobs, " obs, ",
         fit.converged ? "converged" : "NOT converged",
-        _is_fixed_prior_fit(fit) && fit.estim_method === :MAP ? "; MAP; data logLik = " : "; logLik = ", round(fit.loglik, digits = 2), ")")
+        _is_fixed_prior_fit(fit) && fit.estim_method === :MAP ? "; MAP; data logLik = " : "; logLik = ", round(_display_loglik(fit), digits = 2), ")")
     for (p, _) in fit.blocks
         print(io, "\n  ", p, ": ", join(string.(round.(coef(fit, p), digits = 3)), ", "))
     end

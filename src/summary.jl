@@ -231,7 +231,7 @@ function Base.show(io::IO, ::MIME"text/plain", fit::DrmFit)
     fixed_map && println(io, "  MAP fit; standard errors are local penalized curvature, and z/p values are withheld.")
     status = convergence_status(fit)
     println(io, "  nobs = ", fit.nobs,
-                "   logLik = ", @sprintf("%.4f", fit.loglik),
+                "   logLik = ", @sprintf("%.4f", _display_loglik(fit)),
                 "   convergence_status = ", status,
                 "   converged = ", status === :converged)
     mnote = _marginal_note(fit)

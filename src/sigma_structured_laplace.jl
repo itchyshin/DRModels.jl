@@ -104,7 +104,11 @@ function _fit_sigma_fields_laplace(fam::Union{NegBinomial2,Gamma}, y, Xμ, Xσ, 
         v = convert(Vector{T}, vhat)
         if T <: ForwardDiff.Dual
             _, g, H = joint(vhat, true)
-            v = vhat .- (cholesky(Symmetric(H)) \ g)
+            # A Hessian that is not positive definite here used to raise PosDefException
+            # out of `drm()`; it is the same non-PD penalty the line below applies.
+            Cn = cholesky(Symmetric(H); check = false)
+            issuccess(Cn) || return T(REML_NONPD_PENALTY)
+            v = vhat .- (Cn \ g)
         end
         F, _, H = joint(v, true)
         C = cholesky(Symmetric(H); check = false)

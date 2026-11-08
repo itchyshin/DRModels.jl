@@ -1853,7 +1853,7 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
         "coef" => Dict(cnames .=> cvals),
         "vcov" => V,
         "vcov_names" => cnames,
-        "loglik" => loglik(fit),
+        "loglik" => fit.loglik,   # raw stored value: the R bridge keeps its pre-NaN contract
         "aic" => _is_fixed_prior_fit(fit) && fit.estim_method === :MAP ? NaN : aic(fit),
         "bic" => _is_fixed_prior_fit(fit) && fit.estim_method === :MAP ? NaN : bic(fit),
         "df" => dof(fit),
@@ -2762,7 +2762,7 @@ function _bridge_q2_point_export(fit; family::AbstractString = "biv_gaussian",
             "correlation" => R,
             "residual_sd" => residual_sd,
             "residual_correlation" => Float64(first(fit.scales[:rho12])),
-            "loglik" => Float64(loglik(fit)),
+            "loglik" => Float64(fit.loglik),
             "converged" => fit.geometry === :ok && _converged_nondegenerate(fit),   # as the top-level key (FX3b)
             "claim_boundary" => boundary,
         )

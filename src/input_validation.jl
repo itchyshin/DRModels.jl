@@ -358,7 +358,8 @@ end
 # different, silently wrong fit. `A` is now matched by label when labels are
 # given, either as a table whose column names are the labels or as a plain
 # matrix plus `ids = …` (the label of each row). An unlabelled matrix keeps the
-# old first-appearance convention and warns once per session.
+# old first-appearance convention and warns on every call (a second call with a
+# differently ordered matrix must not be silent).
 
 _animal_group(f::DrmFormula) = _marker_group(f, animal)
 
@@ -457,7 +458,7 @@ function _resolve_relatedness_labels(f::DrmFormula, data, A, ids; coords = nothi
         @warn "drm: `A` has no labels, so its rows and columns are taken to be the levels " *
               "of `$grp` in order of first appearance in the data. Pass `ids = …` (the " *
               "label of each row of `A`), or `A` as a table whose column names are the " *
-              "labels, to match `A` by label instead." maxlog = 1
+              "labels, to match `A` by label instead."
         return M
     end
     n = length(labels_A)
@@ -488,14 +489,10 @@ end
 # gave a different likelihood and a collapsed range with `converged = true`.
 # Same contract as `A`: labels come from `ids = …` (one per row of `coords`) or
 # from a Dict keyed by site label; an unlabelled matrix keeps the old convention
-# and warns once per session. `ids` labels `A` when the formula has an
+# and warns on every call. `ids` labels `A` when the formula has an
 # `animal()` term, otherwise `coords`.
 
-const _COORDS_WARNED = Ref(false)
-
 function _warn_unlabelled_coords(grp)
-    _COORDS_WARNED[] && return nothing
-    _COORDS_WARNED[] = true
     @warn "drm: `coords` has no labels, so its rows are taken to be the levels of `$grp` " *
           "in order of first appearance in the data. Pass `ids = …` (the site label of each " *
           "row of `coords`), or `coords` as a Dict keyed by site label, to match `coords` " *
