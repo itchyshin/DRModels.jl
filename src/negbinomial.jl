@@ -145,6 +145,7 @@ function _drm_negbinomial2_fit(f::DrmFormula, fam::NegBinomial2; data, tree = no
              g_tol::Real = 1e-8, se::Bool = true,
              marginal::Symbol = :LA, method = nothing,
              nAGQ::Union{Nothing,Int} = nothing, ids = nothing)
+    f = _default_structured_q2_sd(f, fam)   # bare structured (1 + x | g): default `sd(…, coef(·)) ~ 1`
     ssq = _sigma_struct_q2_block(f)
     if Ainv !== nothing && (ssq !== nothing || _ss_has_sigma_structured_sd(f))
         # Structured-sigma routes (shapes A and B) take the covariance `A`; an animal

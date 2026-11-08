@@ -3708,7 +3708,9 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing,
        count(item -> item.target.dpar === :mu, _sd_target_parts(fit.formula)) == 2 &&
        length(_sd_target_parts(fit.formula)) == 2
         A = _simulate_ainv_to_A(fit, data, A, Ainv)   # Gamma fit-time `Ainv` -> `A`
-        sim = _twofield_sd_marginal_simulator(fit, data; K, A)
+        kc = fit.family isa Gamma && any(item -> item.target.level === :spatial, _sd_target_parts(fit.formula)) ?
+            _resolve_coords_labels(fit.formula, data, coords, nothing) : coords
+        sim = _twofield_sd_marginal_simulator(fit, data; K, A, tree, coords = kc)
         sim === nothing || return sim
     end
     _is_gaussian_lss(fit) && return _lss_marginal_simulator(fit, data; tree)

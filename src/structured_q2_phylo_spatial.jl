@@ -155,3 +155,68 @@ function _drm_count_phylo_spatial_q2_sd(f::DrmFormula, fam::Union{Poisson,NegBin
     end
     return _withformula(fit, f)
 end
+
+# ---------------------------------------------------------------------------
+# Default coefficient SDs for a bare structured `(1 + x | g)` block.
+#
+# In native drmTMB a structured intercept-plus-slope term with no `sd()`
+# formula is the independent two-SD model (labelled `(1 + x | p | g)`: the
+# correlated one), the same model as `sd(g, kind, coef(intercept)) ~ 1` plus
+# `sd(g, kind, coef(x)) ~ 1`. The q2 routes here need both coefficient SD
+# formulas, so a formula that carries no SD formula at all is completed with
+# the two intercept-only ones. Measured: where DRModels fits the explicit
+# `~ 1` form, its log-likelihood equals drmTMB 0.8.1's for the bare form to
+# 1e-8 (docs/dev-log, fuzz-gap-map).
+#
+# Only the shapes whose explicit `~ 1` form is a supported route are completed,
+# so no refusal can ever talk about SD formulas the user did not write: one
+# structured term and nothing else random, `sigma ~ 1`, ML, no other SD
+# formula. The labelled (correlated) form is completed for Poisson only, the
+# one family where drmTMB 0.8.1 fits it without an SD formula.
+_default_q2_sd_families() = Dict{Symbol,Tuple}(   # a function: the family types load after this file
+    :animal  => (Gaussian, Poisson, NegBinomial2, Gamma),
+    :relmat  => (Gaussian, Poisson, NegBinomial2, Gamma),
+    :spatial => (Gaussian, Poisson, NegBinomial2, Binomial, Gamma),
+    :phylo   => (Poisson, NegBinomial2, Binomial, Gamma),
+)
+
+function _default_structured_q2_sd(f::DrmFormula, fam; method = nothing)
+    method === :REML && return f
+    fam isa Binomial && fam.link !== :logit && return f
+    (isempty(f.sd_targets) && isempty(_sd_target_parts(f)) && isempty(_sdphylo_parts(f))) || return f
+    all(p -> first(p) in (:mu, :sigma), f.forms) || return f
+    rhs = Dict(f.forms)
+    mu = get(rhs, :mu, nothing)
+    mu === nothing && return f
+    sig = get(rhs, :sigma, nothing)
+    (sig === nothing || sig == ConstantTerm(1)) || return f
+    terms = mu isa Tuple ? collect(mu) : Any[mu]
+    structured = [t for t in terms if t isa FunctionTerm && t.f in (animal, relmat, phylo, spatial)]
+    length(structured) == 1 || return f
+    term = only(structured)
+    kind = term.f === phylo ? :phylo : term.f === spatial ? :spatial :
+           term.f === animal ? :animal : :relmat
+    any(T -> fam isa T, get(_default_q2_sd_families(), kind, ())) || return f
+    block = _animal_intercept_slope(term; kind = _q2_marker(kind), allow_label = true)
+    block === nothing && return f
+    block.label === nothing || fam isa Poisson || return f
+    # Nothing else random on the mean (ordinary terms, meta_V, a second marker).
+    rest = [t for t in terms if t !== term]
+    rest_rhs = isempty(rest) ? ConstantTerm(1) : length(rest) == 1 ? rest[1] : Tuple(rest)
+    clean = try
+        _, re, metav, st = _split_ranef(rest_rhs)
+        isempty(re) && metav === nothing && st === nothing
+    catch
+        false
+    end
+    clean || return f
+    forms = copy(f.forms)
+    targets = copy(f.sd_targets)
+    for member in (:intercept, block.slope)
+        key = Symbol("__sd_target_", length(targets) + 1)
+        push!(forms, key => ConstantTerm(1))
+        targets[key] = (group = block.group, level = _q2_target_level(kind),
+                        member = member, dpar = :mu, block = nothing)
+    end
+    return DrmFormula(f.response, forms, f.response2, f.schema_cache, targets)
+end

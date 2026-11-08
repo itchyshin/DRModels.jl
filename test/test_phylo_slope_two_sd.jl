@@ -166,15 +166,12 @@ end
         # and on Poisson/NegBinomial2 it fits a CORRELATED intercept-slope model
         # (`has_phylo_mu_q2_covariance`) — a different model, so DRModels.jl fails closed.
         yp = Float64.(round.(Int, exp.(0.2 .+ 0.3 .* x)))
-        err = try
-            drm(bf(@formula(yp ~ x + phylo(1 + x | species))), Poisson();
-                data = (; yp, x, species), tree = phy, se = false)
-            nothing
-        catch e
-            e
-        end
-        @test err isa ArgumentError
-        @test occursin("phylo(1 + x | species)", err.msg) && occursin("not implemented", err.msg)
+        # Poisson bare phylo(1 + x | species) used to be refused; since the gap-close wave it completes the
+        # two default coefficient SDs (the independent two-SD model) and fits.
+        fpois = drm(bf(@formula(yp ~ x + phylo(1 + x | species))), Poisson();
+                    data = (; yp, x, species), tree = phy, se = false)
+        @test isfinite(fpois.loglik)
+        @test length(fpois.formula.sd_targets) == 2
         # REML: the structured mean marker is refused on the generic route (unchanged)
         @test_throws ArgumentError drm(bf(@formula(y ~ x + phylo(1 + x | species))), Gaussian();
                                        data = data, tree = phy, method = :REML)

@@ -318,11 +318,12 @@ function _twofield_build(f::DrmFormula, fam::Union{Gamma,NegBinomial2};
     targets = _sd_target_parts(f)
     length(targets) == 2 || return nothing
     all(t -> t.target.dpar === :mu && t.target.block === nothing &&
-        t.target.level in (:iid, :animal, :relmat), targets) || return nothing
+        t.target.level in (:iid, :animal, :relmat) ||
+        (fam isa Gamma && t.target.level in (:phylogenetic, :spatial)), targets) || return nothing
     rhs = Dict(f.forms)
     haskey(rhs, :mu) || return nothing
     correlated = false
-    labelled = _twofield_labelled_q2(rhs[:mu])
+    labelled = _twofield_labelled_q2(rhs[:mu], fam)
     if labelled !== nothing
         # Rebuild the mean without the labelled term so _split_ranef sees only the
         # fixed part and any other (refused) random terms.
@@ -337,8 +338,10 @@ function _twofield_build(f::DrmFormula, fam::Union{Gamma,NegBinomial2};
         sslope = labelled.slope
         correlated = true
     else
-        fixed_mu, re, metav, st, _, _, sslope = _split_ranef(rhs[:mu];
-            allow_relmat_intercept_slope = true, allow_animal_intercept_slope = true)
+        fixed_mu, re, metav, st, phylo_sslope, _, sslope = _split_ranef(rhs[:mu];
+            allow_relmat_intercept_slope = true, allow_animal_intercept_slope = true,
+            allow_phylo_slope = fam isa Gamma, allow_spatial_intercept_slope = fam isa Gamma)
+        phylo_sslope === nothing || (sslope = phylo_sslope)
     end
     metav === nothing || return nothing
     labelled === nothing && (structured = _collect_structured(rhs[:mu]))
@@ -428,6 +431,20 @@ function _twofield_build(f::DrmFormula, fam::Union{Gamma,NegBinomial2};
         specs = [(; group = pgrp, slope = m === :intercept ? nothing : m, provider = :relmat,
                    target = only(filter(t -> t.target.member === m, targets)))
                  for m in (:intercept, sslope)]
+    elseif length(structured) == 1 && isempty(re) && sslope !== nothing && fam isa Gamma &&
+           first(only(structured)) in (:phylo, :spatial)
+        # Independent phylo(1 + x | p) / spatial(1 + x | p) q2 (Gamma): the same two
+        # fields with the tip-correlation / coordinate kernel of the Poisson and NB2
+        # phylo/spatial q2 routes (`_structured_q2_kernel`).
+        kind, pgrp = only(structured)
+        prov = kind === :phylo ? :phylogenetic : :spatial
+        levels == Set([prov]) || return nothing
+        all(t -> t.target.group === pgrp, targets) || return nothing
+        Set(t.target.member for t in targets) == Set([:intercept, sslope]) || throw(ArgumentError(
+            "$famname $kind SD formulas must select `coef(intercept)` and `coef($sslope)` exactly once."))
+        specs = [(; group = pgrp, slope = m === :intercept ? nothing : m, provider = prov,
+                   target = only(filter(t -> t.target.member === m, targets)))
+                 for m in (:intercept, sslope)]
     else
         return nothing
     end
@@ -446,9 +463,21 @@ function _twofield_build(f::DrmFormula, fam::Union{Gamma,NegBinomial2};
     all(_formula_response_observed_mask(f, data)) || throw(ArgumentError(
         "$famname two-field SD regression requires observed responses; remove incomplete rows before fitting."))
     providers = Set(s.provider for s in specs)
-    tree === nothing && coords === nothing || throw(ArgumentError(
-        "$famname two-field SD regression does not use `tree` or `coords`."))
-    if :relmat in providers
+    if :phylogenetic in providers
+        (K === nothing && A === nothing && Ainv === nothing && coords === nothing) || throw(ArgumentError(
+            "$famname phylogenetic SD regression uses `tree = …` only; do not also supply `K`, `A`, or `coords`."))
+        tree === nothing && throw(ArgumentError("phylo(1 + x | g) needs `tree = …`"))
+    elseif :spatial in providers
+        (K === nothing && A === nothing && Ainv === nothing && tree === nothing) || throw(ArgumentError(
+            "$famname spatial SD regression uses `coords = …` only; do not also supply `K`, `A`, or `tree`."))
+        coords === nothing && throw(ArgumentError("spatial(1 + x | g) needs `coords = …`"))
+    else
+        tree === nothing && coords === nothing || throw(ArgumentError(
+            "$famname two-field SD regression does not use `tree` or `coords`."))
+    end
+    if :phylogenetic in providers || :spatial in providers
+        # kernel supplied by `_structured_q2_kernel` below
+    elseif :relmat in providers
         (A === nothing && Ainv === nothing) || throw(ArgumentError(
             "$famname relmat SD regression uses `K = …` only."))
         K === nothing && throw(ArgumentError("relmat(…) needs the covariance matrix `K = …`."))
@@ -478,6 +507,14 @@ function _twofield_build(f::DrmFormula, fam::Union{Gamma,NegBinomial2};
         if s.provider === :iid
             gidx, G = _group_index(labels; col = s.group)
             Q = sparse(1.0I, G, G); ldq = 0.0
+        elseif s.provider in (:phylogenetic, :spatial)
+            kind = s.provider === :phylogenetic ? :phylo : :spatial
+            C, gidx, G = _structured_q2_kernel(kind, s.group, labels; tree, K = nothing,
+                A = nothing, coords, who = "$famname $kind SD regression")
+            qc = cholesky(Symmetric(C); check = false)
+            issuccess(qc) || throw(ArgumentError("$famname $kind kernel is not positive definite."))
+            Q = sparse(Symmetric(inv(qc)))
+            ldq = -logdet(qc)
         else
             C = s.provider === :relmat ? K : A
             Q, gidx = _general_cov_setup(C, labels; normalize = false)
@@ -511,9 +548,10 @@ end
 # (correlated pair: cov kron(R(rho), C), rho = tanh(atanh_rho) as in the fit),
 # eta = X beta + sum_k w_k * sd_k[g_k] * u_k[g_k], and y from the family at the
 # fitted sigma. Returns `nothing` when the formula is not a two-field shape.
-function _twofield_sd_marginal_simulator(fit::DrmFit, data; K = nothing, A = nothing)
+function _twofield_sd_marginal_simulator(fit::DrmFit, data; K = nothing, A = nothing,
+                                         tree = nothing, coords = nothing)
     fam = fit.family
-    b = _twofield_build(fit.formula, fam; data, K, A, store_schema = false)
+    b = _twofield_build(fit.formula, fam; data, K, A, tree, coords, store_schema = false)
     b === nothing && return nothing
     b.nmmu == _block_coefnames(fit, :mu) || throw(ArgumentError(
         "bootstrap: two-field mean design does not match the fitted `mu` block"))
@@ -546,11 +584,12 @@ end
 
 # A labelled structured q2 term `animal(1 + x | p | g)` / `relmat(1 + x | p | g)`:
 # StatsModels parses the bar left-associatively, `((1 + x) | p) | g`.
-function _twofield_labelled_q2(rhs)
+function _twofield_labelled_q2(rhs, fam = nothing)
     terms = rhs isa Tuple ? collect(rhs) : Any[rhs]
     found = nothing
     for t in terms
-        (t isa FunctionTerm && (t.f === animal || t.f === relmat)) || continue
+        (t isa FunctionTerm && (t.f === animal || t.f === relmat ||
+                                (fam isa Gamma && t.f === phylo))) || continue   # labelled spatial: drmTMB 0.8.1 refuses it
         bar = t.args[1]
         (bar isa FunctionTerm && bar.f === (|)) || continue
         inner = bar.args[1]
@@ -565,7 +604,8 @@ function _twofield_labelled_q2(rhs)
             "drm: a labelled `$(nameof(t.f))(… | $(lab.sym) | $(bar.args[2].sym))` term is implemented " *
             "for the intercept-plus-one-slope form `1 + x` only."))
         found === nothing || throw(ArgumentError("drm: only one labelled structured term is implemented."))
-        found = (; term = t, provider = t.f === animal ? :animal : :relmat,
+        found = (; term = t, provider = t.f === animal ? :animal : t.f === relmat ? :relmat :
+                                        t.f === phylo ? :phylogenetic : :spatial,
                  group = bar.args[2].sym, label = lab.sym, slope = vars[1].sym)
     end
     return found
