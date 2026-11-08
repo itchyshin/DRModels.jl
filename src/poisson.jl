@@ -442,6 +442,9 @@ function _drm_poisson_sd_regression(f::DrmFormula, fam::Poisson; data,
         "Poisson `sd(group) ~ …` currently supports `marginal = :LA` only."))
     nAGQ === nothing || nAGQ >= 1 || throw(ArgumentError("nAGQ must be ≥ 1; got $nAGQ"))
     targets = _sd_target_parts(f)
+    q2ps = _phylo_spatial_q2_block(f)
+    q2ps === nothing || return _drm_count_phylo_spatial_q2_sd(f, fam, q2ps...;
+        data, tree, K, A, Ainv, coords, g_tol, se, nAGQ)
     if any(item -> item.target.level === :relmat, targets)
         Ainv === nothing || throw(ArgumentError(
             "Poisson related-matrix SD regression uses `K = …`, not animal precision `Ainv = …`."))

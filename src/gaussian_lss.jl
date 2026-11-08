@@ -737,8 +737,10 @@ end
 function _drm_gaussian_structured_q2_sd(f::DrmFormula, fam::Gaussian, kind::Symbol,
                                         structured, re, sigma_re, metav, structured_sigma,
                                         has_missing_response, y, Xμ, Xσ, nmμ, nmσ, data,
-                                        K, A, coords, g_tol, method, algorithm)
-    fn = kind === :animal ? animal : relmat
+                                        K, A, coords, g_tol, method, algorithm;
+                                        tree = nothing)
+    fn = _q2_marker(kind)
+    level = _q2_target_level(kind)
     block = _animal_intercept_slope(Dict(f.forms)[:mu]; kind = fn)
     grp, slope = block.group, block.slope
     term = "$kind(1 + $slope | $grp)"
@@ -749,10 +751,13 @@ function _drm_gaussian_structured_q2_sd(f::DrmFormula, fam::Gaussian, kind::Symb
     targets = _sd_target_parts(f)
     length(targets) == 2 || throw(ArgumentError(
         "drm: Gaussian `$term` needs one SD formula for the intercept and one for the slope " *
-        "(`sd($grp, $kind, coef(intercept)) ~ …` and `sd($grp, $kind, coef($slope)) ~ …`)."))
-    all(item -> item.target.level === kind && item.target.group === grp &&
+        "(`sd($grp, $level, coef(intercept)) ~ …` and `sd($grp, $level, coef($slope)) ~ …`)."))
+    all(item -> item.target.level === level && item.target.group === grp &&
         item.target.dpar === :mu && item.target.block === nothing, targets) ||
-        throw(ArgumentError("drm: Gaussian `$term` SD regression requires two matching `$kind` mean targets."))
+        throw(ArgumentError("drm: Gaussian `$term` SD regression requires two matching `$level` mean targets."))
+    isempty(_sdphylo_parts(f)) || throw(ArgumentError(
+        "drm: Gaussian `$term` SD regression cannot be combined with an intercept-only " *
+        "`sd($grp, phylogenetic) ~ …` formula."))
     Set(item.target.member for item in targets) == Set((:intercept, slope)) ||
         throw(ArgumentError("drm: Gaussian `$term` SD formulas must select " *
             "`coef(intercept)` and `coef($slope)` exactly once."))
@@ -768,14 +773,18 @@ function _drm_gaussian_structured_q2_sd(f::DrmFormula, fam::Gaussian, kind::Symb
     allowed = Set(vcat([:mu, :sigma], [item.key for item in targets]))
     all(first(pair) in allowed for pair in f.forms) || throw(ArgumentError(
         "drm: Gaussian `$term` SD regression supports only `mu`, `sigma` and its two SD formulas."))
-    gidx, G = _group_index(getproperty(data, grp))
-    Cmat = if kind === :relmat
-        (A === nothing && coords === nothing) || throw(ArgumentError(
+    gidx, G = kind in (:phylo, :spatial) ? (Int[], 0) : _group_index(getproperty(data, grp))
+    Cmat = if kind in (:phylo, :spatial)
+        Ck, gidx, G = _structured_q2_kernel(kind, grp, getproperty(data, grp);
+            tree, K, A, coords, who = "drm: Gaussian `$term` SD regression")
+        Ck
+    elseif kind === :relmat
+        (A === nothing && coords === nothing && tree === nothing) || throw(ArgumentError(
             "drm: Gaussian relmat SD regression uses `K = …` only."))
         K === nothing && throw(ArgumentError("$term needs the covariance matrix `K = …`"))
         Matrix{Float64}(K)
     else
-        (K === nothing && coords === nothing) || throw(ArgumentError(
+        (K === nothing && coords === nothing && tree === nothing) || throw(ArgumentError(
             "drm: Gaussian animal SD regression uses `A = …` only."))
         A === nothing && throw(ArgumentError("$term needs the relatedness matrix `A = …`"))
         Matrix{Float64}(A)

@@ -84,8 +84,11 @@ end
     @test Set(item.target.member for item in DRModels._sd_target_parts(bridged)) ==
         Set((:intercept, :x))
     @test length(bridged_data.y) == length(data.y)
-    @test_throws ArgumentError bf(@formula(y ~ phylo(1 | g)),
+    # `coef()` on a phylogenetic SD target is now a coefficient-specific target
+    # (phylo(1 + x | g) q2 routes); it no longer fails at formula construction.
+    phylo_coef = bf(@formula(y ~ phylo(1 | g)),
         @formula(sd(g, phylogenetic, coef(intercept)) ~ z0))
+    @test only(DRModels._sd_target_parts(phylo_coef)).target.level === :phylogenetic
 
     fit = drm(formula, Gamma(); data, A = fixture.A)
     @test fit.converged
