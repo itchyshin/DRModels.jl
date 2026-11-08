@@ -778,7 +778,9 @@ function _general_cov_setup(C::AbstractMatrix, labels; normalize::Bool = true)
     all(>(0), d) || error("covariance matrix must have a strictly positive diagonal")
     covariance = normalize ? Symmetric(Cf ./ (d * d')) : Symmetric(Cf)
     Rchol = cholesky(covariance; check = false)
-    issuccess(Rchol) || error("covariance matrix is not positive definite")
+    issuccess(Rchol) || error("covariance matrix is not positive definite (identical rows and columns, " *
+        "e.g. duplicated individuals, make it singular); merge or remove the duplicated individuals, " *
+        "or supply a positive-definite matrix")
     Q = sparse(Symmetric(inv(Rchol)))                   # dense precision, sparse-wrapped
     return Q, gidx
 end

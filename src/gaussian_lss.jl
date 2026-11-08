@@ -398,7 +398,9 @@ function _lss_phylo_group_index(tree, labels, grp::Symbol)
     present[gidx] .= true
     if !all(present)
         absent = join(phy.leaf_names[findall(.!present)], ", ")
-        throw(ArgumentError("drm: phylo LSS full input for `$grp` must contain all tree tips; absent: $absent"))
+        throw(ArgumentError("drm: phylo LSS full input for `$grp` must contain all tree tips; absent: $absent. " *
+            "The tree has tips with no row in the data; prune the tree to the species in the data " *
+            "(for example `ape::keep.tip(tree, observed_species)` in R) before fitting."))
     end
     return phy, gidx, p
 end

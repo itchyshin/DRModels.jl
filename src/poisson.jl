@@ -895,7 +895,9 @@ function _fit_poisson_covariance_sd_laplace(fam, y, Xmu, Zobs, Zg, gidx, Q,
                                             context::String)
     qchol = cholesky(Symmetric(Q); check = false)
     issuccess(qchol) || throw(ArgumentError(
-        "relmat(1 | $grp) covariance must be positive definite"))
+        "$context: the covariance matrix for `$grp` is not positive definite (identical " *
+        "rows and columns, e.g. duplicated individuals, make it singular). Merge or remove " *
+        "the duplicated individuals, or supply a positive-definite matrix."))
     return _fit_poisson_structured_sd_laplace(
         fam, y, Xmu, Zobs, gidx, Q, logdet(qchol), nmmu, nmsd, grp, g_tol;
         se, maxiter, sd_block = :sd, scale_key = :sd,

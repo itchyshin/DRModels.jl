@@ -271,7 +271,30 @@ function _drm_entry_guard(f::DrmFormula, fam, data; tree = nothing, K = nothing,
     _require_family_dpars(f, fam)
     _require_offset_supported(f, fam)
     _require_formula_column_lengths(f, data)
+    _require_sd_group_levels(f, data)
     _require_structured_keywords_used(f, fam; tree = tree, K = K, A = A, Ainv = Ainv, coords = coords)
+    return nothing
+end
+
+# ── red team (2026-11-08): `sd(g) ~ …` needs at least two groups ──────────────
+#
+# One group gives no between-group variation, so a random-effect SD cannot be
+# estimated. The Gaussian ordinary route used to fit this anyway (boundary
+# estimates +-8 on the log-SD scale, a singular-Hessian warning only) while
+# drmTMB refuses it, and the other families failed later with "group-level design
+# is rank deficient", which does not name the cause.
+function _require_sd_group_levels(f::DrmFormula, data)
+    for item in _sd_target_parts(f)
+        grp = item.target.group
+        col = _maybe_table_column(data, grp)
+        col isa AbstractVector || continue
+        nlev = length(unique(skipmissing(col)))
+        nlev >= 2 && continue
+        throw(ArgumentError("drm: `sd($grp) ~ …` models the SD of the random effects over the levels of " *
+            "`$grp`, but `$grp` has $(nlev == 0 ? "no observed level" : "only one level") in the data. " *
+            "At least two groups are needed to estimate a random-effect SD; check the grouping column, " *
+            "or drop the `sd()` formula and the random effect."))
+    end
     return nothing
 end
 
