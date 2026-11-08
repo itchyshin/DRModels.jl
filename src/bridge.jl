@@ -2234,7 +2234,9 @@ function _bridge_rendered_regression_blocks(fit, labels::_BridgeFormulaLabels)
             _sd_target_parts(fit.formula) : Any[]
         animal_sd_slope = any(item -> item.target.level === :animal,
                               sd_targets_here)
-        animal_block = param === :mu ? _animal_intercept_slope(rhs) : nothing
+        q2_label_ok = fit.family isa Union{Gaussian,Poisson,NegBinomial2}
+        animal_block = param === :mu ?
+            _animal_intercept_slope(rhs; allow_label = q2_label_ok) : nothing
         animal_sd_targets = filter(item -> item.target.level === :animal,
                                    sd_targets_here)
         binomial_animal_q2 = fit.family isa Binomial &&
@@ -2249,7 +2251,7 @@ function _bridge_rendered_regression_blocks(fit, labels::_BridgeFormulaLabels)
         binomial_phylo_sd_slope_only = fit.family isa Union{Binomial,Gamma} &&
             !isempty(_sdphylo_parts(fit.formula))
         relmat_sd_q2 = param === :mu && fit.family isa Union{Poisson,Gaussian,NegBinomial2} &&
-            _relmat_intercept_slope(rhs) !== nothing
+            _relmat_intercept_slope(rhs; allow_label = true) !== nothing
         binomial_relmat_sd_slope_only = fit.family isa Union{Binomial,Poisson,Gaussian,Gamma,NegBinomial2} &&
             any(item.target.level === :relmat for item in sd_targets_here)
         gaussian_spatial_sd_slope_only = fit.family isa Union{Gaussian,Gamma,NegBinomial2} &&
@@ -2260,7 +2262,8 @@ function _bridge_rendered_regression_blocks(fit, labels::_BridgeFormulaLabels)
             allow_phylo_slope_only = binomial_phylo_sd_slope_only,
             allow_relmat_slope = binomial_relmat_sd_slope_only,
             allow_relmat_intercept_slope = relmat_sd_q2,
-            allow_spatial_slope = gaussian_spatial_sd_slope_only
+            allow_spatial_slope = gaussian_spatial_sd_slope_only,
+            allow_labelled_intercept_slope = q2_label_ok
         )
         rendered === nothing && continue
         raw, public = rendered
@@ -2475,7 +2478,8 @@ function _bridge_render_formula_block(form, param::Symbol, rhs,
         allow_phylo_slope_only::Bool = false,
         allow_relmat_slope::Bool = false,
         allow_relmat_intercept_slope::Bool = false,
-        allow_spatial_slope::Bool = false)
+        allow_spatial_slope::Bool = false,
+        allow_labelled_intercept_slope::Bool = false)
     response = if form isa DrmFormula
         form.response
     elseif form isa BivariateDrmFormula
@@ -2494,7 +2498,9 @@ function _bridge_render_formula_block(form, param::Symbol, rhs,
                            allow_relmat_slope = allow_relmat_slope,
                            allow_relmat_intercept_slope =
                                allow_relmat_intercept_slope,
-                           allow_spatial_slope = allow_spatial_slope))
+                           allow_spatial_slope = allow_spatial_slope,
+                           allow_labelled_intercept_slope =
+                               allow_labelled_intercept_slope))
     catch
         rhs
     end

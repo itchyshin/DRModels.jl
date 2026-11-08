@@ -1057,17 +1057,21 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
                                     for item in _sd_target_parts(f))
     # Independent two-field `animal|relmat(1 + x | g)` with two coefficient-specific
     # `sd(g, <level>, coef(·)) ~ …` targets is admitted only with those targets.
+    # The labelled `animal|relmat(1 + x | p | g)` form adds a free correlation.
     q2_kind = nothing
+    q2_labelled = false
     for (kind_q2, fn_q2) in ((:animal, animal), (:relmat, relmat))
-        _animal_intercept_slope(rhs[:mu]; kind = fn_q2) !== nothing &&
+        blk_q2 = _animal_intercept_slope(rhs[:mu]; kind = fn_q2, allow_label = true)
+        blk_q2 !== nothing &&
             any(item.target.level === kind_q2 for item in _sd_target_parts(f)) &&
-            (q2_kind = kind_q2)
+            (q2_kind = kind_q2; q2_labelled = blk_q2.label !== nothing)
     end
     fixed_mu, re, metav, structured, structured_slope, temporal_term, structured_sd_slope =
         _split_ranef(rhs[:mu]; allow_phylo_slope = true, allow_temporal = true,
                      allow_animal_slope = allow_sd_structured_slope,
                      allow_animal_intercept_slope = q2_kind === :animal,
                      allow_relmat_intercept_slope = q2_kind === :relmat,
+                     allow_labelled_intercept_slope = q2_labelled,
                      allow_relmat_slope = allow_sd_structured_slope,
                      allow_spatial_slope = allow_sd_structured_slope)   # (1|g), meta_V(v), relmat/animal/phylo/spatial(1|g), temporal(...)
     structured_sd_slope === nothing || temporal_term === nothing ||
@@ -2489,8 +2493,9 @@ function predict(fit::DrmFit, newdata; type::Symbol = :response, se::Bool = fals
             any(item.target.level === :relmat for item in _sd_target_parts(f))
         allow_sd_spatial_slope = fit.family isa Union{Binomial,Gaussian,Gamma,NegBinomial2} &&
             any(item.target.level === :spatial for item in _sd_target_parts(f))
+        q2_label_ok = fit.family isa Union{Gaussian,Poisson,NegBinomial2}
         allow_gamma_animal_intercept_slope = fit.family isa Union{Gamma,Gaussian,Poisson,NegBinomial2} &&
-            _animal_intercept_slope(Dict(f.forms)[:mu]) !== nothing
+            _animal_intercept_slope(Dict(f.forms)[:mu]; allow_label = q2_label_ok) !== nothing
         allow_binomial_phylo_slope_only = fit.family isa Union{Binomial,Gamma} &&
             !isempty(_sdphylo_parts(f))
         mean_rhs = Dict(f.forms)[:mu]
@@ -2502,7 +2507,9 @@ function predict(fit::DrmFit, newdata; type::Symbol = :response, se::Bool = fals
                                          allow_animal_slope = allow_sd_animal_slope,
                                          allow_relmat_slope = allow_sd_relmat_slope,
                                          allow_relmat_intercept_slope = fit.family isa Union{Gaussian,Poisson,NegBinomial2} &&
-                                             _animal_intercept_slope(Dict(f.forms)[:mu]; kind = relmat) !== nothing,
+                                             _animal_intercept_slope(Dict(f.forms)[:mu]; kind = relmat,
+                                                                     allow_label = q2_label_ok) !== nothing,
+                                         allow_labelled_intercept_slope = q2_label_ok,
                                          allow_spatial_slope = allow_sd_spatial_slope,
                                          allow_phylo_slope_only = allow_binomial_phylo_slope_only,
                                          allow_animal_intercept_slope =
@@ -2880,8 +2887,9 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
             any(item.target.level === :animal for item in _sd_target_parts(f))
         allow_sd_animal_slope |= fit.family isa Union{Poisson,NegBinomial2,Gaussian} && f isa DrmFormula &&
             any(item.target.level === :animal for item in _sd_target_parts(f))
+        q2_label_ok = fit.family isa Union{Gaussian,Poisson,NegBinomial2}
         allow_gamma_animal_intercept_slope = fit.family isa Union{Gamma,Gaussian,Poisson,NegBinomial2} &&
-            _animal_intercept_slope(forms[p]) !== nothing
+            _animal_intercept_slope(forms[p]; allow_label = q2_label_ok) !== nothing
         allow_binomial_phylo_slope_only = fit.family isa Union{Binomial,Gamma} &&
             f isa DrmFormula && !isempty(_sdphylo_parts(f))
         allow_binomial_relmat_slope = fit.family isa Union{Binomial,Poisson,Gaussian,Gamma,NegBinomial2} &&
@@ -2899,7 +2907,9 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
                                        allow_animal_slope = allow_sd_animal_slope,
                                        allow_relmat_slope = allow_binomial_relmat_slope,
                                        allow_relmat_intercept_slope = fit.family isa Union{Gaussian,Poisson,NegBinomial2} &&
-                                           _animal_intercept_slope(forms[p]; kind = relmat) !== nothing,
+                                           _animal_intercept_slope(forms[p]; kind = relmat,
+                                                                   allow_label = q2_label_ok) !== nothing,
+                                       allow_labelled_intercept_slope = q2_label_ok,
                                        allow_spatial_slope = allow_binomial_spatial_slope,
                                        allow_phylo_slope_only = allow_binomial_phylo_slope_only,
                                        allow_animal_intercept_slope =

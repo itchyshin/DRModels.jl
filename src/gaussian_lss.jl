@@ -739,9 +739,10 @@ function _drm_gaussian_structured_q2_sd(f::DrmFormula, fam::Gaussian, kind::Symb
                                         has_missing_response, y, Xμ, Xσ, nmμ, nmσ, data,
                                         K, A, coords, g_tol, method, algorithm)
     fn = kind === :animal ? animal : relmat
-    block = _animal_intercept_slope(Dict(f.forms)[:mu]; kind = fn)
+    block = _animal_intercept_slope(Dict(f.forms)[:mu]; kind = fn, allow_label = true)
     grp, slope = block.group, block.slope
-    term = "$kind(1 + $slope | $grp)"
+    correlated = block.label !== nothing
+    term = correlated ? "$kind(1 + $slope | $(block.label) | $grp)" : "$kind(1 + $slope | $grp)"
     structured == (kind, grp) || throw(ArgumentError(
         "drm: Gaussian `$term` SD regression requires it to be the only structured term."))
     _collect_structured(Dict(f.forms)[:mu]) == [(kind, grp)] || throw(ArgumentError(
@@ -802,11 +803,16 @@ function _drm_gaussian_structured_q2_sd(f::DrmFormula, fam::Gaussian, kind::Symb
     end
     blocks = Symbol[_sd_target_block(item.target; disambiguate = true) for item in ordered]
     return _fit_structured_gaussian_q2_sd(fam, y, Xμ, Xσ, Zgs, gidx, G, Cmat, x,
-                                          nmμ, nmσ, nmsds, blocks, grp, g_tol)
+                                          nmμ, nmσ, nmsds, blocks, grp, g_tol; correlated)
 end
 
+# `correlated = true` (labelled `kind(1 + x | p | g)`) adds drmTMB's
+# `eta_cor_phylo` as the last parameter: rho = 0.999999 tanh(eta) and
+# Cov(b0_g, b1_h) = rho s0_g s1_h C[g, h], so the marginal gains
+#   rho (s0_g s1_h x_j + x_i s1_g s0_h) C[g(i), g(j)].
 function _fit_structured_gaussian_q2_sd(fam::Gaussian, y, Xμ, Xσ, Zgs, gidx, G, C, x,
-                                        nmμ, nmσ, nmsds, blocks, grp, g_tol)
+                                        nmμ, nmσ, nmsds, blocks, grp, g_tol;
+                                        correlated::Bool = false)
     n = length(y)
     n ≤ 5000 || throw(ArgumentError("drm: the Gaussian structured intercept-and-slope SD route " *
         "assembles a $(n)×$(n) marginal covariance and is limited to 5000 rows."))
@@ -827,6 +833,14 @@ function _fit_structured_gaussian_q2_sd(fam::Gaussian, y, Xμ, Xσ, Zgs, gidx, G
             gi, gj = gidx[i], gidx[j]
             Vm[i, j] = Σ0[gi, gj] + x[i] * x[j] * Σ1[gi, gj]
         end
+        if correlated
+            ρ = _Q2_RHO_BOUND * tanh(θ[end])
+            Σ01 = (s0 * s1') .* Csym          # Cov(b0_g, b1_h) / ρ
+            @inbounds for j in 1:n, i in 1:n
+                gi, gj = gidx[i], gidx[j]
+                Vm[i, j] += ρ * (x[j] * Σ01[gi, gj] + x[i] * Σ01[gj, gi])
+            end
+        end
         @inbounds for i in 1:n
             Vm[i, i] += exp(2 * ησ[i])
         end
@@ -836,7 +850,7 @@ function _fit_structured_gaussian_q2_sd(fam::Gaussian, y, Xμ, Xσ, Zgs, gidx, G
         return 0.5 * (logdet(Vfac) + dot(r, Vfac \ r)) + const_2pi
     end
     βμ0 = Xμ \ y; res0 = y - Xμ * βμ0
-    θ0 = zeros(pμ + pσ + sum(ps))
+    θ0 = zeros(pμ + pσ + sum(ps) + (correlated ? 1 : 0))
     θ0[1:pμ] .= βμ0
     θ0[pμ+1] = log(std(res0) / sqrt(2) + eps())
     s_int = std(res0) / sqrt(2)
@@ -856,6 +870,10 @@ function _fit_structured_gaussian_q2_sd(fam::Gaussian, y, Xμ, Xσ, Zgs, gidx, G
                                              blocks[1] => r0, blocks[2] => r1]
     name_list = Pair{Symbol,Vector{String}}[:mu => nmμ, :sigma => nmσ,
                                             blocks[1] => nmsds[1], blocks[2] => nmsds[2]]
+    if correlated
+        push!(block_list, :recov => length(θ̂):length(θ̂))
+        push!(name_list, :recov => ["$(grp):atanh_rho"])
+    end
     sd0 = exp.(Zgs[1] * θ̂[r0]); sd1 = exp.(Zgs[2] * θ̂[r1])
     scales = Dict{Symbol,Vector{Float64}}(
         :sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]),

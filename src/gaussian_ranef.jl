@@ -78,12 +78,29 @@ function _check_phylo_re_lhs(lhs, grp::Symbol; allow_slope::Bool = false,
         "and multi-slope forms are not implemented"))
 end
 
+# Labelled (correlated) structured intercept-plus-slope `kind(1 + x | p | g)`.
+# Julia parses `1 + x | p | g` left-associatively, so the structured term's lhs
+# is `|(1 + x, p)`. Returns `(inner, label)` for that shape, else `nothing`.
+function _structured_lhs_label(lhs)
+    lhs isa FunctionTerm && lhs.f === (|) && length(lhs.args) == 2 &&
+        lhs.args[2] isa Term || return nothing
+    return (; inner = lhs.args[1], label = lhs.args[2].sym)
+end
+
 # relmat and spatial structured slopes are explicit opt-ins: their family
 # routes must provide the coefficient loading and matching covariance. Animal
 # has a separate checker because it also supports intercept-plus-slope blocks.
 function _check_structured_re_lhs(kind::Symbol, lhs, grp::Symbol;
                                   allow_slope::Bool = false,
-                                  allow_intercept_slope::Bool = false)
+                                  allow_intercept_slope::Bool = false,
+                                  allow_labelled_intercept_slope::Bool = false)
+    labelled = _structured_lhs_label(lhs)
+    if kind === :relmat && labelled !== nothing && allow_intercept_slope &&
+       allow_labelled_intercept_slope
+        lhs = labelled.inner
+        lhs isa FunctionTerm && lhs.f === (+) || throw(ArgumentError(
+            "drm: a labelled `relmat(... | $(labelled.label) | $grp)` term is only implemented as `relmat(1 + x | $(labelled.label) | $grp)`"))
+    end
     (lhs isa ConstantTerm && lhs.n == 1) && return nothing
     if kind === :relmat && allow_intercept_slope &&
        lhs isa FunctionTerm && lhs.f === (+)
@@ -113,7 +130,15 @@ end
 # opt-ins separate from relmat/spatial and from callers that require a single
 # structured intercept.
 function _check_animal_re_lhs(lhs, grp::Symbol; allow_slope::Bool = false,
-                              allow_intercept_slope::Bool = false)
+                              allow_intercept_slope::Bool = false,
+                              allow_labelled_intercept_slope::Bool = false)
+    labelled = _structured_lhs_label(lhs)
+    if labelled !== nothing && allow_intercept_slope && allow_labelled_intercept_slope
+        lhs = labelled.inner
+        lhs isa FunctionTerm && lhs.f === (+) || throw(ArgumentError(
+            "drm: a labelled `animal(... | $(labelled.label) | $grp)` term is only implemented as `animal(1 + x | $(labelled.label) | $grp)`"))
+        allow_slope = false
+    end
     (lhs isa ConstantTerm && lhs.n == 1) && return nothing
     if lhs isa FunctionTerm && lhs.f === (+)
         consts = filter(t -> t isa ConstantTerm, lhs.args)
@@ -135,36 +160,35 @@ end
 # Return the explicitly independent animal intercept-plus-slope member from a
 # structured marker. The current public Gamma route uses this to map two SD
 # formulas to the coefficient fields; unrelated animal routes remain unchanged.
-function _animal_intercept_slope(rhs; kind = animal)
+#
+# `allow_label = true` (opt-in, Poisson/NB2/Gaussian q2 SD routes only) also
+# recognises the labelled correlated form `kind(1 + x | p | g)`; the returned
+# `label` is the correlation label (`nothing` for the independent form).
+function _animal_intercept_slope(rhs; kind = animal, allow_label::Bool = false)
     terms = rhs isa Tuple ? rhs : (rhs,)
     for term in terms
         term isa FunctionTerm && term.f === kind || continue
         lhs = term.args[1].args[1]
+        labelled = _structured_lhs_label(lhs)
+        label = nothing
+        if labelled !== nothing
+            allow_label || continue
+            lhs, label = labelled.inner, labelled.label
+        end
         lhs isa FunctionTerm && lhs.f === (+) || continue
         consts = filter(x -> x isa ConstantTerm, lhs.args)
         vars = filter(x -> x isa Term, lhs.args)
         length(lhs.args) == 2 && length(consts) == 1 && consts[1].n == 1 &&
             length(vars) == 1 || continue
-        return (; group = term.args[1].args[2].sym, slope = vars[1].sym)
+        return (; group = term.args[1].args[2].sym, slope = vars[1].sym, label)
     end
     return nothing
 end
 
 # relmat analogue of `_animal_intercept_slope`: the independent intercept-plus-slope
 # `relmat(1 + x | g)` member, used by the Poisson relmat q2 SD route.
-function _relmat_intercept_slope(rhs)
-    terms = rhs isa Tuple ? rhs : (rhs,)
-    for term in terms
-        term isa FunctionTerm && term.f === relmat || continue
-        lhs = term.args[1].args[1]
-        lhs isa FunctionTerm && lhs.f === (+) || continue
-        consts = filter(x -> x isa ConstantTerm, lhs.args)
-        vars = filter(x -> x isa Term, lhs.args)
-        length(lhs.args) == 2 && length(consts) == 1 && consts[1].n == 1 &&
-            length(vars) == 1 || continue
-        return (; group = term.args[1].args[2].sym, slope = vars[1].sym)
-    end
-    return nothing
+function _relmat_intercept_slope(rhs; allow_label::Bool = false)
+    return _animal_intercept_slope(rhs; kind = relmat, allow_label)
 end
 
 # Split a μ right-hand side into its fixed part and any `(lhs | g)` terms.
@@ -209,7 +233,8 @@ function _split_ranef(rhs; allow_phylo_slope::Bool = false,
                       allow_relmat_slope::Bool = false,
                       allow_relmat_intercept_slope::Bool = false,
                       allow_spatial_slope::Bool = false,
-                      allow_temporal::Bool = false)
+                      allow_temporal::Bool = false,
+                      allow_labelled_intercept_slope::Bool = false)
     terms = rhs isa Tuple ? collect(rhs) : Any[rhs]
     fixed = Any[]
     re = Tuple{Any,Symbol}[]
@@ -233,7 +258,8 @@ function _split_ranef(rhs; allow_phylo_slope::Bool = false,
         elseif t isa FunctionTerm && t.f === relmat
             slope = _check_structured_re_lhs(:relmat, t.args[1].args[1],
                 t.args[1].args[2].sym; allow_slope = allow_relmat_slope,
-                allow_intercept_slope = allow_relmat_intercept_slope)
+                allow_intercept_slope = allow_relmat_intercept_slope,
+                allow_labelled_intercept_slope)
             if structured === nothing
                 structured = (:relmat, t.args[1].args[2].sym)
                 animal_slope = slope
@@ -244,7 +270,8 @@ function _split_ranef(rhs; allow_phylo_slope::Bool = false,
         elseif t isa FunctionTerm && t.f === animal
             slope = _check_animal_re_lhs(t.args[1].args[1], t.args[1].args[2].sym;
                 allow_slope = allow_animal_slope,
-                allow_intercept_slope = allow_animal_intercept_slope)
+                allow_intercept_slope = allow_animal_intercept_slope,
+                allow_labelled_intercept_slope)
             if structured === nothing
                 structured = (:animal, t.args[1].args[2].sym)
                 animal_slope = slope

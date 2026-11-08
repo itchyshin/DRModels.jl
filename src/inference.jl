@@ -3266,9 +3266,14 @@ function _structured_q2_sd_marginal_simulator(fit::DrmFit, data, matrix;
     length(eta_fixed) == length(gidx) == length(x) || throw(ArgumentError(
         "bootstrap: $(label) prediction, grouping and slope lengths do not match"))
     xf = Float64.(x)
+    # Labelled `(1 + x | p | g)`: unit fields correlated with the fitted rho.
+    rho = hasproperty(block, :label) && block.label !== nothing ?
+        _Q2_RHO_BOUND * tanh(only(coef(fit, :recov))) : 0.0
     return function (rng)
-        b0 = scales[1] .* (factor.L * randn(rng, G))
-        b1 = scales[2] .* (factor.L * randn(rng, G))
+        z0 = factor.L * randn(rng, G)
+        z1 = factor.L * randn(rng, G)
+        b0 = scales[1] .* z0
+        b1 = scales[2] .* (rho .* z0 .+ sqrt(1 - rho^2) .* z1)
         eta = eta_fixed .+ b0[gidx] .+ xf .* b1[gidx]
         if fit.family isa Gaussian
             return eta .+ fit.scales[:sigma] .* randn(rng, length(eta))
@@ -3622,8 +3627,10 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing,
        fit.family isa Union{Poisson,NegBinomial2,Gaussian} &&
        haskey(Dict(fit.formula.forms), :mu) &&
        length(_sd_target_parts(fit.formula)) == 2
-        for (provider, block) in ((:animal, _animal_intercept_slope(Dict(fit.formula.forms)[:mu])),
-                                  (:relmat, _relmat_intercept_slope(Dict(fit.formula.forms)[:mu])))
+        for (provider, block) in ((:animal, _animal_intercept_slope(Dict(fit.formula.forms)[:mu];
+                                                                    allow_label = true)),
+                                  (:relmat, _relmat_intercept_slope(Dict(fit.formula.forms)[:mu];
+                                                                    allow_label = true)))
             block === nothing && continue
             matrix = if provider === :relmat
                 K
