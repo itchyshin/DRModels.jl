@@ -3497,6 +3497,16 @@ runaway value: when the stored log-likelihood is non-finite, `≤ -1e15`, or `�
 magnitude on a fit with `converged = false`, `loglik` returns `NaN` and warns. The raw
 stored number stays available as `fit.loglik`. A converged fit is returned unchanged.
 """
+# Shared NaN guard for the user-facing ml_loglik / reml_loglik accessors (same rule as `loglik`).
+function _guard_loglik_field(ll::Float64, fit::DrmFit, accessor::AbstractString)
+    _loglik_is_failed(ll, fit.converged) || return ll
+    get(task_local_storage(), :drm_quiet_boundary, false) === true && return NaN
+    @warn "drm: $(accessor)(fit) is NaN because the fit failed (the stored value is $(ll), " *
+          "a failed-objective sentinel or a runaway value, and converged = $(fit.converged)). " *
+          "Check `convergence_status(fit)`. The raw stored value is `fit.$(accessor)`."
+    return NaN
+end
+
 function loglik(fit::DrmFit)
     ll = fit.loglik
     _loglik_is_failed(ll, fit.converged) || return ll
@@ -3553,7 +3563,11 @@ Every REML route in DRModels.jl uses this normalised form, matching lme4,
 glmmTMB, TMB and drmTMB. See the `fit_q4_reml` docstring for the derivation and
 the limits of the cross-engine comparison.
 """
-reml_loglik(fit::DrmFit) = fit.reml_loglik
+function reml_loglik(fit::DrmFit)
+    ll = fit.reml_loglik
+    isnan(ll) && return ll          # NaN is the documented value for an ML fit: no warning
+    return _guard_loglik_field(ll, fit, "reml_loglik")
+end
 
 """
     ml_loglik(fit) -> Float64
@@ -3562,8 +3576,12 @@ The plain (unrestricted) maximum-likelihood log-likelihood. For an ML fit this
 equals [`loglik`](@ref); for a REML fit it is the ML log-likelihood evaluated at
 the REML parameter estimate — the value to use when an ML-comparable log-likelihood
 is needed (e.g. across different mean structures).
+
+Like [`loglik`](@ref), a failed fit (`converged = false` with a sentinel, non-finite or
+runaway stored value) returns `NaN` with a warning; the raw number stays in `fit.ml_loglik`.
+(`reml_loglik` follows the same rule.)
 """
-ml_loglik(fit::DrmFit) = fit.ml_loglik
+ml_loglik(fit::DrmFit) = _guard_loglik_field(fit.ml_loglik, fit, "ml_loglik")
 
 """
     dof(fit) -> Int
