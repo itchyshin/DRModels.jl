@@ -1796,7 +1796,8 @@ const _Q2_RHO_BOUND = 0.999999
 
 function _fit_poisson_animal_intercept_slope_laplace(fam, y, Xmu, Zgs, gidx, Q,
         nmmu, nmsds, blocks, group, x, off, g_tol;
-        se::Bool = true, maxiter::Int = 250, correlated::Bool = false)
+        se::Bool = true, maxiter::Int = 250, correlated::Bool = false,
+        second_start::Bool = false)
     length(Zgs) == 2 || throw(ArgumentError("expected two Poisson animal SD designs"))
     qchol = cholesky(Symmetric(Q); check = false)
     issuccess(qchol) || throw(ArgumentError(
@@ -1832,10 +1833,30 @@ function _fit_poisson_animal_intercept_slope_laplace(fam, y, Xmu, Zgs, gidx, Q,
         end
         return g
     end
-    od = Optim.OnceDifferentiable(nll, grad!, theta0)
-    result = Optim.optimize(od, theta0,
+    run_from(th0) = Optim.optimize(Optim.OnceDifferentiable(nll, grad!, th0), th0,
         Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking()),
         Optim.Options(g_tol = g_tol, iterations = maxiter))
+    result = run_from(theta0)
+    if second_start
+        # Opt-in second start for routes whose likelihood is multimodal in the slope
+        # fixed effect (coordinate-spatial kernel: scale-300 campaign seed 147 stopped at
+        # a stationary point 1.02 log-lik below the best, found from a larger SD start).
+        # Keep the first optimum unless the second is better by more than 1e-6 in the
+        # objective, so fits whose first start was already the best are unchanged.
+        theta_first = Optim.minimizer(result)
+        nll_first = nll(theta_first)
+        b_first = copy(last_b)
+        theta1 = copy(theta0)
+        theta1[ranges[1]] .= Zgs[1] \ fill(log(0.7), size(Zgs[1], 1))
+        theta1[ranges[2]] .= Zgs[2] \ fill(log(0.7), size(Zgs[2], 1))
+        result2 = run_from(theta1)
+        nll_second = nll(Optim.minimizer(result2))
+        if nll_second < nll_first - 1e-6
+            result = result2
+        else
+            last_b .= b_first
+        end
+    end
     theta = Optim.minimizer(result)
     nll_hat = nll(theta)
     gf = zeros(length(theta)); grad!(gf, theta)

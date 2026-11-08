@@ -867,10 +867,14 @@ function _fit_structured_gaussian_q2_sd(fam::Gaussian, y, Xμ, Xσ, Zgs, gidx, G
     s_slp = s_int / max(sqrt(sum(abs2, x) / n), eps())
     θ0[r0] .= Zgs[1] \ fill(log(s_int + eps()), G)
     θ0[r1] .= Zgs[2] \ fill(log(s_slp + eps()), G)
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(),
-                         Optim.Options(g_tol = g_tol, x_abstol = NaN, x_reltol = NaN,
-                                       f_abstol = NaN, f_reltol = NaN);
-                         autodiff = :forward)
+    # Same unguarded-probe hazard as the ordinary q2/q3/q4 route (see
+    # `_fit_gaussian_ordinary_q34_sd`): the first L-BFGS step is the raw gradient, so a
+    # probe can overflow `exp(2 eta_sigma)` or the SD scales, the objective or its AD
+    # gradient is NaN, and HagerZhang asserts. Sentinel + BackTracking retry, optimiser
+    # only; the reported value, Hessian and gradient check use the raw `nll`.
+    res = _optimize_with_fallback(nll, θ0, g_tol;
+        opts = Optim.Options(g_tol = g_tol, x_abstol = NaN, x_reltol = NaN,
+                             f_abstol = NaN, f_reltol = NaN))
     θ̂ = Optim.minimizer(res)
     H = ForwardDiff.hessian(nll, θ̂)
     V = _vcov_from_hessian(H)
