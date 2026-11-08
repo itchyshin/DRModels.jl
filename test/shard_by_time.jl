@@ -128,11 +128,20 @@ function _run_files(files, times)
     Test = Main.Test
     @eval Main begin
         Test.@testset "DRModels time-sharded run" begin
+            # A failing file must not abort the rest of the shard: record it, keep
+            # going, and exit non-zero at the end.
+            failed = String[]
             for f in $files
-                t = @elapsed include(joinpath($_TESTDIR, f))
+                t = @elapsed try
+                    include(joinpath($_TESTDIR, f))
+                catch err
+                    push!(failed, f)
+                    println("SHARDFAIL ", f, ": ", first(split(sprint(showerror, err), '\n'))); flush(stdout)
+                end
                 push!($times, f => t)
                 println("SHARD ", f, " ", round(t; digits = 1), " s"); flush(stdout)
             end
+            isempty(failed) || (println("shard_by_time: FAILED FILES: ", join(failed, " ")); flush(stdout))
         end
     end
 end
