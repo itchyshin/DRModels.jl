@@ -175,11 +175,13 @@ end
         g_plain = drm(bf(@formula(y ~ x + phylo(1 | id)), @formula(sigma ~ 1),
             @formula(sd(id, phylogenetic) ~ z0)), Gamma(); data = gdat, tree = nwk)
         @test loglikelihood(g_coef) ≈ loglikelihood(g_plain) atol = 1e-8
-        # Families without this route still refuse (no silent fallback).
+        # Routes that are not implemented still refuse (no silent fallback). Binomial logit
+        # now has this route (test_binomial_phylo_spatial_q2_sd.jl); the probit link,
+        # which native drmTMB also refuses here, does not.
         yb = Float64.(fx.data.y .> 0.3)
         @test_throws ArgumentError drm(bf(@formula(y ~ x + phylo(1 + x | id)),
             @formula(sd(id, phylogenetic, coef(intercept)) ~ z0),
-            @formula(sd(id, phylogenetic, coef(x)) ~ z1)), Binomial();
+            @formula(sd(id, phylogenetic, coef(x)) ~ z1)), Binomial(link = :probit);
             data = merge(fx.data, (; y = yb)), tree = nwk)
     end
 end
