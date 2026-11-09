@@ -1504,8 +1504,8 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         reml_phylo_slope = reml_gauss_ok && structured !== nothing && structured[1] === :phylo &&
             structured_slope !== nothing && length(all_structured) == 1 && isempty(re)
         length(re) >= 2 && any(k -> k === :corr, re_kinds_reml) &&
-            throw(ArgumentError("drm: method = :REML with a correlated `(1 + x | g)` block beside " *
-                "another random-effect term is not implemented: this shape fits by maximum " *
+            throw(ArgumentError("drm: method = :REML is not implemented for a correlated `(1 + x | g)` " *
+                "block beside another random-effect term: this shape fits by maximum " *
                 "likelihood only (`method = :ML`), and no restricted objective is built for it. " *
                 "Use independent terms `(1 | g) + (0 + x | g)` or a single correlated block."))
         structured !== nothing && structured[1] === :spatial && isempty(re) && reml_gauss_ok &&

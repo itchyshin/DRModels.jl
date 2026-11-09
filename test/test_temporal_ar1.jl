@@ -230,9 +230,14 @@ using Distributions: MvNormal, Normal, logpdf
         miss = merge(d, (y = Union{Missing,Float64}[i == 1 ? missing : v for (i, v) in enumerate(d.y)],))
         @test_throws ae drm(fAR, Gaussian(); data = miss)                               # missing response
         @test_throws ae drm(fAR, Gaussian(); data = merge(d, (occ = string.(d.occ),)))  # non-numeric time
-        # labelled / correlated ordinary bars beside temporal(): named refusal
-        @test_throws ae drm(bf(@formula(y ~ x + (1 | p | id) + temporal(1 | id, occ, ar1)),
+        # a correlated ordinary bar beside temporal(): named refusal
+        @test_throws ae drm(bf(@formula(y ~ x + (1 + x | id) + temporal(1 | id, occ, ar1)),
                                @formula(sigma ~ 1)), Gaussian(); data = d)
+        # a label on a single intercept `(1 | p | id)` is just `(1 | id)` (it fits since the
+        # Gaussian SD-gap wave); it must give the identical fit, not a different model.
+        fl = g(bf(@formula(y ~ x + (1 | p | id) + temporal(1 | id, occ, ar1)), @formula(sigma ~ 1)))
+        fp = g(bf(@formula(y ~ x + (1 | id) + temporal(1 | id, occ, ar1)), @formula(sigma ~ 1)))
+        @test loglik(fl) ≈ loglik(fp) atol = 1e-8
         # bivariate: refused at `bf` by name
         @test_throws ae bf(mu1 = @formula(y ~ x + temporal(1 | id, occ, ar1)), mu2 = @formula(x ~ 1))
         # occasions beyond 2^53 cannot be exact integers
