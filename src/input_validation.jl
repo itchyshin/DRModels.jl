@@ -269,10 +269,56 @@ column lengths (#1022) and unused structured keywords (#1010).
 function _drm_entry_guard(f::DrmFormula, fam, data; tree = nothing, K = nothing,
                           A = nothing, Ainv = nothing, coords = nothing)
     _require_family_dpars(f, fam)
+    _require_supported_random_terms(f, data)
     _require_offset_supported(f, fam)
     _require_formula_column_lengths(f, data)
     _require_sd_group_levels(f, data)
     _require_structured_keywords_used(f, fam; tree = tree, K = K, A = A, Ainv = Ainv, coords = coords)
+    return nothing
+end
+
+# ── gap map v2 (2026-11-09): random-effect terms that R refuses ──────────────
+#
+# Two shapes reached formula handling and failed with a bare `MethodError`
+# instead of a refusal. Both are refused by drmTMB, with the same intent here.
+#   * a factor (string / symbol) as a random slope, `(f | g)`, `(1 + f | g)`,
+#     `(0 + f | g)`: the slope column was converted with `Float64(::String)`;
+#   * a random effect inside the `zi` / `hu` formula: `|` reached `modelcols`.
+_rhs_terms(rhs) = rhs isa Union{Tuple,AbstractVector} ? collect(Any, rhs) : Any[rhs]
+
+# Columns named on the left of a random-effect bar, looking through `+` and a
+# `(lhs | label | g)` label wrapper.
+function _bar_lhs_symbols(lhs, out::Vector{Symbol} = Symbol[])
+    if lhs isa Term
+        push!(out, lhs.sym)
+    elseif lhs isa FunctionTerm && (lhs.f === (+) || lhs.f === (|))
+        for a in (lhs.f === (|) ? lhs.args[1:1] : lhs.args)
+            _bar_lhs_symbols(a, out)
+        end
+    end
+    return out
+end
+
+function _require_supported_random_terms(f::DrmFormula, data)
+    for (p, rhs) in f.forms
+        for t in _rhs_terms(rhs)
+            (t isa FunctionTerm && t.f === (|)) || continue
+            if p === :zi || p === :hu
+                throw(ArgumentError("drm: random effects in the `$p` formula are not implemented " *
+                    "(drmTMB refuses them too). Put the random effect on `mu`, e.g. " *
+                    "`y ~ x + (1 | g)`, or remove it from the `$p` formula."))
+            end
+            for v in _bar_lhs_symbols(t.args[1])
+                col = _maybe_table_column(data, v)
+                col isa AbstractVector || continue
+                all(x -> ismissing(x) || x isa Real, col) && continue
+                throw(ArgumentError("drm: random-slope variable `$v` must be numeric, but it is " *
+                    "a factor (element type $(nonmissingtype(eltype(col)))). drmTMB refuses this " *
+                    "too. Use a numeric 0/1 indicator column for one level, e.g. `(0 + $(v)_b | g)`, " *
+                    "or put the factor in the fixed effects and keep `(1 | g)`."))
+            end
+        end
+    end
     return nothing
 end
 

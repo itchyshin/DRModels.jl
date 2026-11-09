@@ -301,6 +301,8 @@ _n3_quiet(f) = redirect_stderr(devnull) do; f(); end
         fit = _n3_quiet(() -> drm(f, Gamma(); data = d, control = DRMControl(se = false, maxit = 500)))
         @test all(isnan, vcov(fit))
         @test control_info(fit).se === :skipped
-        @test_throws DimensionMismatch _n3_quiet(() -> drm(f, Gamma(); data = d, weights = ones(_N3_N)))
+        # weights follow their rows (R's `na.omit`): one weight per row of `data` fits on the observed rows
+        @test isfinite(loglikelihood(_n3_quiet(() -> drm(f, Gamma(); data = d, weights = ones(_N3_N)))))
+        @test_throws DimensionMismatch _n3_quiet(() -> drm(f, Gamma(); data = d, weights = ones(_N3_N - 2)))
     end
 end

@@ -625,8 +625,7 @@ function _ctl_weights(n::Integer; supported::Bool = true, route::AbstractString 
     supported || throw(ArgumentError("drm: prior `weights` are not supported on $route (#931)"))
     w = s.weights
     length(w) == n || throw(DimensionMismatch("drm: `weights` has $(length(w)) entries but " *
-        "the model uses $n rows. Give one weight per row of `data`; rows with a missing " *
-        "response are not yet supported together with `weights`."))
+        "the model uses $n rows. Give one weight per row of `data`."))
     s.used_weights = true
     return w
 end
