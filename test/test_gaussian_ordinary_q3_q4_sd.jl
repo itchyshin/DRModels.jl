@@ -135,12 +135,12 @@ end
         err_reml = try
             drm(base(sdI, sdx), Gaussian(); data = d, method = :REML); nothing
         catch e; e; end
-        @test err_reml isa ArgumentError && occursin("REML", err_reml.msg)
+        @test err_reml isa ArgumentError && occursin("method = :REML is not implemented", err_reml.msg)
         # the unstructured q3 block without sd() formulas names REML too
         err_q3 = try
             drm(bf(@formula(y ~ x + z + (1 + x + z | id)), @formula(sigma ~ 1)), Gaussian(); data = d, method = :REML); nothing
         catch e; e; end
-        @test err_q3 isa ArgumentError && occursin("method = :REML is not implemented", err_q3.msg)
+        @test err_q3 isa ErrorException && occursin("method = :REML is not implemented", err_q3.msg)
         # q5 block
         d5 = merge(d, (u = randn(length(d.y)), v = randn(length(d.y))))
         @test_throws ArgumentError drm(bf(@formula(y ~ x + z + (1 + x + z + u + v | id)),

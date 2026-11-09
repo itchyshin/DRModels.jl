@@ -465,7 +465,7 @@ function _re_kind(re_lhs)
         length(vars) == 1 || error("DRModels.jl supports `(1 | g)`, `(0 + x | g)`, `(1 + x | g)` and " *
                                    "the correlated blocks `(1 + x + z [+ w] | g)` (an intercept plus 2 to 3 slopes), which are " *
                                    "fitted by maximum likelihood only and with no random effect on `sigma` " *
-                                   "(so `method = :REML` is not implemented for the q3/q4 blocks)")
+                                   "(so method = :REML is not implemented for the q3/q4 blocks)")
         v = vars[1].sym
         any(c -> c.n == 0, consts) && return (:slope, v)      # 0 + x  → slope only
         any(c -> c.n == 1, consts) && return (:corr, v)       # 1 + x  → correlated intercept+slope
