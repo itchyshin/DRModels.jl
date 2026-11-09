@@ -106,7 +106,8 @@ end
     @test d2 ≈ _d2(e -> _beta_nll(y, e, log(φ)), η) atol = _ATOL rtol = _RTOL
     @test d3 ≈ _d3(e -> _beta_nll(y, e, log(φ)), η) atol = 1e-6 rtol = 1e-6
     @test DRModels._laplace_value(Val(:beta_fixed), aux, 1, η) ≈ v atol = _ATOL
-    @test DRModels._laplace_d3(Val(:beta_fixed), aux, 1, η) ≈ d3 atol = 1e-6 rtol = 1e-6
+    @test DRModels._laplace_d3(Val(:beta_fixed), aux, 1, η) ≈
+        _d3(e -> _beta_nll(y, e, log(φ)), η) atol = 1e-6 rtol = 1e-6
 end
 
 @testset "fixed crossed Laplace refuses a component count other than two" begin

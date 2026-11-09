@@ -27,12 +27,17 @@ end
     @test DRModels._table_column(Dict(:y => [5.0]), :y) == [5.0]
     @test DRModels._table_column(Dict("y" => [6.0]), :y) == [6.0]
     holder = (z = 7.0,)
-    # A NamedTuple miss falls through to `getproperty` and throws `FieldError`.
+    # A NamedTuple miss falls through to `getproperty`. Julia 1.12+ raises
+    # `FieldError`; 1.10 raises an `ErrorException` (see `_missing_column_lookup`).
     @test try
         DRModels._table_column(holder, :missing_col)
         false
     catch err
-        err isa FieldError && err.field === :missing_col && err.type == typeof(holder)
+        if isdefined(Base, :FieldError)
+            err isa Base.FieldError && err.field === :missing_col && err.type == typeof(holder)
+        else
+            err isa ErrorException && occursin("no field", sprint(showerror, err))
+        end
     end
     @test DRModels._table_column(_DJ1Cols(4), :y) == 4
 
@@ -47,7 +52,12 @@ end
     catch e
         e
     end
-    @test field_err isa Base.FieldError
+    if isdefined(Base, :FieldError)
+        @test field_err isa Base.FieldError
+    else
+        @test field_err isa ErrorException
+        @test occursin("no field", sprint(showerror, field_err))
+    end
     @test DRModels._missing_column_lookup(field_err)
 end
 
