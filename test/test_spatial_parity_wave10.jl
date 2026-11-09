@@ -37,7 +37,8 @@ end
     @test all(abs.(fit.theta[1:4] .- ref[1:4]) .<= 1e-3 .* se)
     @test abs(fit.theta[5] - ref[5]) <= 5e-3
     # the bootstrap simulator draws from the kernel the fit used (no `:range` block to read)
-    sim = DRModels._marginal_simulator(fit, d; coords = _SP_COORDS)
+    Mxy = reduce(vcat, [permutedims(_SP_COORDS[l]) for l in unique(d.g)])   # rows in first-seen order
+    sim = DRModels._marginal_simulator(fit, d; coords = Mxy)
     ysim = sim(MersenneTwister(1))
     @test length(ysim) == length(d.y) && all(>=(0), ysim)
 end
@@ -51,4 +52,16 @@ end
     @test loglikelihood(fit) ≈ -554.0242 atol = 1e-4        # drmTMB 0.8.1 with multi_start = 8
     # the lower mode the single default start used to stop at
     @test loglikelihood(fit) > -554.2127 + 0.1
+end
+
+@testset "Poisson spatial q2 sd-z (labelled): the sign-flipped mode is found" begin
+    # simulated cell (G = 40 sites, 400 rows, seed 91015 of the wave-10 spatial-parity study):
+    # the default and second starts stopped at -651.5954; a tilted start of the two SD blocks
+    # reaches -651.4527
+    d = _sp_data(_SP_DIR, "data_poisson_spatial_q2_sdz_seed91015.csv")
+    f = bf(@formula(y ~ x1 + x2 + x3 + spatial(1 + x1 | p | g)),
+           @formula(sd(g, spatial, coef(intercept)) ~ z), @formula(sd(g, spatial, coef(x1)) ~ z))
+    fit = drm(f, Poisson(); data = d, coords = _SP_COORDS, se = false)
+    @test fit.converged
+    @test loglikelihood(fit) > -651.5954 + 0.1
 end
