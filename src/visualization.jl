@@ -35,7 +35,7 @@ On a homogeneous Toeplitz `temporal()` fit, `k` must be a mean coefficient: the
 function profile_curve(
     fit::DrmFit, k::Int; npoints::Int=41, span::Real=3.0, level::Real=0.95
 )
-    _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("profile_curve: likelihood profiles are not qualified for fixed-prior MAP fits"))
+    _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("profile_curve: likelihood profiles are not qualified for $(_prior_kind_label(fit)) MAP fits"))
     level = _validate_ci_level(level; what="profile_curve")
     fit.nll === nothing && throw(
         ArgumentError(
@@ -116,7 +116,7 @@ On a homogeneous Toeplitz `temporal()` fit, both indices must be mean
 coefficients, the scope of its profile intervals.
 """
 function parameter_surface(fit::DrmFit, k1::Int, k2::Int; npoints::Int=25, span::Real=3.0)
-    _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("parameter_surface: likelihood profiles are not qualified for fixed-prior MAP fits"))
+    _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("parameter_surface: likelihood profiles are not qualified for $(_prior_kind_label(fit)) MAP fits"))
     fit.nll === nothing && throw(
         ArgumentError(
             "parameter_surface requires the fitted objective; this model was not built with one",
