@@ -1459,7 +1459,41 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         corr_mean_slope = length(re) == 1 && _re_kind(re[1][1])[1] === :corr &&
             isempty(sigma_re) && structured === nothing && metav === nothing &&
             length(_collect_structured(rhs[:mu])) == 0
+        # (e) Gaussian-linear mean random effects with a constant residual scale, where the
+        # restriction `½ logdet(Xμ′V⁻¹Xμ) − ½ pμ log(2π)` is exact (R drmTMB puts β_μ in TMB's
+        # random block with a flat prior, so its Laplace step is exact too). Each shape below
+        # has a ML fitter that already agrees with R, and the REML term rides on that fitter:
+        #   slope only `(0 + x | g)`; several independent scalar terms `(1 | g) + (0 + x | h)`;
+        #   one `relmat(1 | g)` / `animal(1 | g)`; one `phylo(1 + x | g)` (two SDs).
+        # `spatial(1 | g)` (its ML logLik differs from R's) and a correlated `(1 + x | g)` block
+        # beside another term (the ML fitter refuses it) stay refused, with their own messages.
+        # No sigma predictor, sigma random effect, meta_V, or missing response (untested).
+        reml_gauss_ok = isempty(sigma_re) && metav === nothing && size(Xσ, 2) == 1 &&
+            !has_missing_response
+        re_kinds_reml = [_re_kind(rl)[1] for (rl, _) in re]
+        reml_scalar_slope = reml_gauss_ok && length(re) == 1 && re_kinds_reml[1] === :slope &&
+            structured === nothing && length(_collect_structured(rhs[:mu])) == 0
+        reml_multi_scalar = reml_gauss_ok && length(re) >= 2 &&
+            all(k -> k in (:intercept, :slope), re_kinds_reml) &&
+            structured === nothing && length(_collect_structured(rhs[:mu])) == 0
+        reml_dense_structured = reml_gauss_ok && structured !== nothing &&
+            structured[1] in (:relmat, :animal) && structured_slope === nothing &&
+            length(all_structured) == 1 && isempty(re)
+        reml_phylo_slope = reml_gauss_ok && structured !== nothing && structured[1] === :phylo &&
+            structured_slope !== nothing && length(all_structured) == 1 && isempty(re)
+        length(re) >= 2 && any(k -> k === :corr, re_kinds_reml) &&
+            throw(ArgumentError("drm: method = :REML with a correlated `(1 + x | g)` block beside " *
+                "another random-effect term is not implemented: the ML fitter refuses that " *
+                "combination too (a correlated block must be the only random-effect term), so " *
+                "there is no ML objective to restrict. Use independent terms " *
+                "`(1 | g) + (0 + x | g)` or a single correlated block."))
+        structured !== nothing && structured[1] === :spatial && isempty(re) && reml_gauss_ok &&
+            throw(ArgumentError("drm: method = :REML is not implemented for `spatial(1 | g)`: the " *
+                "ML fit of this route does not yet reproduce drmTMB's maximum likelihood on the " *
+                "reference data (logLik differs by about 0.9), so a restricted likelihood built on " *
+                "it would not agree with drmTMB(REML = TRUE) either. Use method = :ML."))
         (ordinary_mean_intercept || corr_mean_slope || phylo_mean_only ||
+         reml_scalar_slope || reml_multi_scalar || reml_dense_structured || reml_phylo_slope ||
          (isempty(re) && isempty(sigma_re) && structured === nothing &&
           metav === nothing && length(_collect_structured(rhs[:mu])) == 0)) ||
             throw(ArgumentError("drm: method = :REML is not implemented for this model on the " *
@@ -1467,7 +1501,9 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
                 "a structured mean marker — phylo/relmat/animal/spatial — without a matching " *
                 "sd() submodel, and meta_V() all land here). REML IS available for: the " *
                 "fixed-effect Gaussian location–scale model; a single Gaussian mean random " *
-                "intercept `(1 | g)` or correlated slope `(1 + x | g)`; every sd() LSS route (`sd(g)`, `sd_phylo` dense and " *
+                "intercept `(1 | g)`, slope `(0 + x | g)` or correlated slope `(1 + x | g)`, several independent " *
+                "scalar terms, `relmat(1 | g)` / `animal(1 | g)`, `phylo(1 + x | g)` (each with a constant " *
+                "residual scale); every sd() LSS route (`sd(g)`, `sd_phylo` dense and " *
                 "sparse, and the multi-component sd() router); the bivariate structured " *
                 "routes (q=2 and q=4, both native and via drm_bridge); and Poisson `(1 | g)` " *
                 "and Poisson `phylo(1 | species)`. Use method = :ML (the default) for this " *
@@ -1494,7 +1530,7 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         _require_finite_data_column(data, structured_slope)
         xs = Float64.(getproperty(data, structured_slope))
         return _withformula(_fit_phylo_slope_gaussian(fam, y, Xμ, Xσ, gidx_phy, phy.n_leaves,
-            Cphy, xs, nmμ, nmσ, grp, structured_slope, g_tol), f)
+            Cphy, xs, nmμ, nmσ, grp, structured_slope, g_tol; reml = method === :REML), f)
     end
     if algorithm in (:em, :sparse_lbfgs)
         # The all-node sparse routes fit only the supported cell: a single
@@ -1788,7 +1824,8 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
             ((gidx, G) = _structured_group_index(kind, grp, getproperty(data, grp), tree))
         size(Kmat) == (G, G) || error("structured matrix must be $(G)×$(G) (the number of `$grp` levels)")
         return _withphyloscale(_withformula(
-            _fit_structured_gaussian(fam, y, Xμ, Xσ, gidx, G, Kmat, nmμ, nmσ, grp, g_tol), f), :correlation)
+            _fit_structured_gaussian(fam, y, Xμ, Xσ, gidx, G, Kmat, nmμ, nmσ, grp, g_tol;
+                                     reml = method === :REML), f), :correlation)
     end
     if metav !== nothing
         _require_finite_data_column(data, metav; label="meta_V($(metav))")
@@ -1821,7 +1858,7 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         gidx, G = _group_index(getproperty(data, grp); col = grp)
         kind === :intercept || _require_finite_data_column(data, var)
         w = kind === :intercept ? ones(length(y)) : Float64.(getproperty(data, var))
-        reml_here = method === :REML && kind === :intercept
+        reml_here = method === :REML
         return _withformula(_fit_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ, grp, g_tol;
                                                reml = reml_here), f)
     end
@@ -1831,7 +1868,8 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         gidx, Gk = _group_index(getproperty(data, grp); col = grp)
         (w, gidx, Gk, String(grp))
     end
-    return _withformula(_fit_multi_ranef_gaussian(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol), f)
+    return _withformula(_fit_multi_ranef_gaussian(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
+                                                 reml = method === :REML), f)
 end
 
 # univariate Gaussian location–scale, fixed effects only (closed form, ML)

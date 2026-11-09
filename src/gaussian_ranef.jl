@@ -1331,7 +1331,35 @@ function _multi_re_qr(Z̃::AbstractMatrix, sdinv::AbstractVector, r::AbstractVec
     return R, bhat, logdetM
 end
 
-function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol)
+# Patterson–Thompson restriction matrix X′V⁻¹X for V = D + Z̃Z̃′ from ONE stacked
+# least-squares problem (#1270 follow-up, Gaussian REML on the generic routes). With
+# A = [D^{-1/2}Z̃; I] and Xs = [D^{-1/2}X; 0], the residual E = Xs − A(A \ Xs) of
+# regressing Xs on A satisfies E′E = X′D⁻¹X − X′D⁻¹Z̃(I + Z̃′D⁻¹Z̃)⁻¹Z̃′D⁻¹X = X′V⁻¹X
+# exactly, and is PSD by construction (no Woodbury subtraction, so no cancellation as
+# σ_e → 0; the same reasoning as `_multi_re_qr`). Generic in the element type, so it
+# runs under ForwardDiff.
+function _reml_xtvinvx_qr(Z̃::AbstractMatrix, sdinv::AbstractVector, X::AbstractMatrix)
+    T = promote_type(eltype(Z̃), eltype(sdinv), eltype(X))
+    q = size(Z̃, 2)
+    A = [sdinv .* Z̃; Matrix{T}(I, q, q)]
+    Xs = [sdinv .* X; zeros(T, q, size(X, 2))]
+    E = Xs - A * (qr(A) \ Xs)
+    return Symmetric(E' * E)
+end
+
+# REML objective from an ML nll value and the restriction matrix: nll_ML + ½ logdet(X′V⁻¹X)
+# − ½ p log(2π). A non-PD or non-finite restriction gets the same large FINITE barrier as the
+# intercept route (HagerZhang asserts a finite objective).
+function _reml_add_restriction(nll_ml_val, XtVinvX, p::Int)
+    cholX = cholesky(XtVinvX; check = false)
+    issuccess(cholX) || return oftype(nll_ml_val, nll_ml_val + REML_NONPD_PENALTY)
+    ldX = logdet(cholX)
+    isfinite(ldX) || return oftype(nll_ml_val, nll_ml_val + REML_NONPD_PENALTY)
+    return nll_ml_val + 0.5 * ldX - 0.5 * p * log(2π)
+end
+
+function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
+                                   reml::Bool = false)
     n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     K = length(comps)
     # #977: Z is kept sparse (one nonzero per component per row) and the Float64
@@ -1409,7 +1437,28 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
     for k in 1:K
         θ0[pμ+pσ+k] = log(s0 + eps())
     end
-    od = Optim.OnceDifferentiable(nll, grad!, θ0)
+    # REML (Gaussian, exact): nll_ML + ½ logdet(Xμ′V⁻¹Xμ) − ½ pμ log(2π), the restriction
+    # from the stacked QR of the same whitened design (`_reml_xtvinvx_qr`). Dense Z̃ and a
+    # ForwardDiff gradient: O((n + q)q²) per Dual probe, so REML refuses q above the dense
+    # Hessian cap rather than silently slowing down.
+    function nll_reml(θ)
+        val = nll(θ)
+        βσ = θ[pμ+1:pμ+pσ]
+        ησ = clamp.(Xσ * βσ, -30.0, 30.0)
+        σk = [exp(clamp(θ[pμ+pσ+k], -30.0, 30.0)) for k in 1:K]
+        Z̃ = _zdense() .* [σk[colcomp[c]] for c in 1:q]'
+        return _reml_add_restriction(val, _reml_xtvinvx_qr(Z̃, exp.(-ησ), Xμ), pμ)
+    end
+    if reml
+        q <= _MULTI_RE_DENSE_HESSIAN_MAXQ ||
+            throw(ArgumentError("drm: method = :REML on several random-effect terms supports at most " *
+                "$(_MULTI_RE_DENSE_HESSIAN_MAXQ) random-effect columns in total (got $q); use method = :ML."))
+        nll_opt = nll_reml
+        od = Optim.OnceDifferentiable(nll_reml, θ0; autodiff = :forward)
+    else
+        nll_opt = nll
+        od = Optim.OnceDifferentiable(nll, grad!, θ0)
+    end
     res = Optim.optimize(od, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol))
     θ̂ = Optim.minimizer(res)
     # vcov from the AD Hessian of `nll`. `nll` returns a flat 1e18 penalty when
@@ -1423,9 +1472,9 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
     # difference of the exact sparse analytic gradient (same guards below).
     V = let
         pen = oftype(sum(θ̂), 1e18)
-        Hθ = q <= _MULTI_RE_DENSE_HESSIAN_MAXQ ? ForwardDiff.hessian(nll, θ̂) :
+        Hθ = q <= _MULTI_RE_DENSE_HESSIAN_MAXQ ? ForwardDiff.hessian(nll_opt, θ̂) :
              _multi_re_fd_hessian(grad!, θ̂)
-        if nll(θ̂) >= pen || !all(isfinite, Hθ) || !isposdef(Symmetric(Hθ))
+        if nll_opt(θ̂) >= pen || !all(isfinite, Hθ) || !isposdef(Symmetric(Hθ))
             @warn "multi-RE Gaussian vcov: Hessian is not usable (near-singular " *
                   "capacitance or penalty leak); returning NaN standard errors."
             fill(NaN, length(θ̂), length(θ̂))
@@ -1464,7 +1513,10 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
         end
         d
     end
-    return _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll, grad!), blup)
+    fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll, grad!), blup)
+    # Profile intervals reuse the ML nll (same convention as the `(1 | g)` REML route).
+    reml && return _withreml(fit, -nll_reml(θ̂), -nll(θ̂))
+    return fit
 end
 
 # Gauss–Hermite nodes/weights (Golub–Welsch) for ∫ h(x) e^{-x²} dx ≈ Σ wₖ h(xₖ).
