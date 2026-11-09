@@ -322,7 +322,8 @@ function _split_ranef(rhs; allow_phylo_slope::Bool = false,
                       allow_spatial_slope::Bool = false,
                       allow_spatial_intercept_slope::Bool = false,
                       allow_temporal::Bool = false,
-                      allow_labelled_intercept_slope::Bool = false)
+                      allow_labelled_intercept_slope::Bool = false,
+                      unwrap_label::Bool = false)
     terms = rhs isa Tuple ? collect(rhs) : Any[rhs]
     fixed = Any[]
     re = Tuple{Any,Symbol}[]
@@ -340,7 +341,24 @@ function _split_ranef(rhs; allow_phylo_slope::Bool = false,
                     _TEMPORAL_SPELLING))
             temporal_term = tt
         elseif t isa FunctionTerm && t.f === (|)
-            push!(re, (_implicit_re_intercept(t.args[1]), t.args[2].sym))     # (re-lhs, grouping symbol)
+            lhs_t = t.args[1]
+            # `(lhs | p | g)`: a label on a block that is the only term carrying it
+            # ties nothing, so it is the unlabelled `(lhs | g)`. A label shared by
+            # several terms would tie their correlations; that is refused, not dropped.
+            if unwrap_label && lhs_t isa FunctionTerm && lhs_t.f === (|) &&
+               length(lhs_t.args) == 2 && lhs_t.args[2] isa Term
+                lab = lhs_t.args[2].sym
+                nlab = count(terms) do u
+                    u isa FunctionTerm && u.f === (|) && u.args[1] isa FunctionTerm &&
+                        u.args[1].f === (|) && length(u.args[1].args) == 2 &&
+                        u.args[1].args[2] isa Term && u.args[1].args[2].sym === lab
+                end
+                nlab == 1 || throw(ArgumentError("drm: the label `$lab` in `(… | $lab | g)` is " *
+                    "shared by $nlab random-effect terms; a shared label ties their " *
+                    "correlations and is not implemented on this route. Use one labelled block."))
+                lhs_t = lhs_t.args[1]
+            end
+            push!(re, (_implicit_re_intercept(lhs_t), t.args[2].sym))     # (re-lhs, grouping symbol)
         elseif t isa FunctionTerm && t.f === meta_V
             metav = t.args[1].sym
         elseif t isa FunctionTerm && t.f === relmat
@@ -434,11 +452,16 @@ function _re_kind(re_lhs)
     elseif re_lhs isa FunctionTerm && re_lhs.f === (+)
         consts = filter(t -> t isa ConstantTerm, re_lhs.args)
         vars = filter(t -> t isa Term, re_lhs.args)
-        length(vars) == 1 || error("DRModels.jl supports `(1 | g)`, `(0 + x | g)`, `(1 + x | g)`")
+        length(vars) == 1 || error("DRModels.jl supports `(1 | g)`, `(0 + x | g)`, `(1 + x | g)` and " *
+                                   "the correlated blocks `(1 + x + z [+ w] | g)` (an intercept plus 2 to 3 slopes), which are " *
+                                   "fitted by maximum likelihood only and with no random effect on `sigma`")
         v = vars[1].sym
         any(c -> c.n == 0, consts) && return (:slope, v)      # 0 + x  → slope only
         any(c -> c.n == 1, consts) && return (:corr, v)       # 1 + x  → correlated intercept+slope
     end
+    re_lhs isa FunctionTerm && re_lhs.f === (|) &&
+        error("unsupported random-effect term: `($re_lhs | …)`. A label `(… | p | g)` is accepted " *
+              "only when one term carries it and `sigma` has no random effect")
     error("unsupported random-effect term: `($re_lhs | …)`")
 end
 

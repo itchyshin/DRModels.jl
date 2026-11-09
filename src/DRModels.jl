@@ -86,6 +86,7 @@ include("gaussian_ranef.jl")
 include("gaussian_rs_sigma_ranef.jl")  # #960: (1 + x | g) mean + sigma (1 | g), per-group 3-D Laplace
 include("gaussian_lss.jl")   # #544: location-scale-scale sd(g) ~ x on the (1|g) SD
 include("gaussian_ordinary_q34_sd.jl")  # q3/q4 ordinary correlated block + coef-specific sd()
+include("gaussian_corr_crossed_sd.jl")  # correlated block + extra intercepts; independent slopes with sd()
 include("aghq_1d.jl")            # #448: 1-D Liu–Pierce AGHQ around `_gauss_hermite`
 include("adaptive_ghq.jl")       # #834: per-group q-dim AGHQ for the (1 + x | g) routes
 include("gaussian_meta.jl")
