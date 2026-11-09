@@ -30,13 +30,13 @@ end
 @testset "REML refusals keep accurate wording" begin
     d = (; y = randn(40), x1 = randn(40), g = repeat(string.('a':'j'), inner = 4),
          g2 = repeat(string.('p':'t'), outer = 8))
-    # a correlated block beside another term: the ML fitter refuses it too
+    # a correlated block beside another term: ML only, no restricted objective
     err = try
         drm(bf(DRModels.@formula(y ~ x1 + (1 + x1 | g) + (1 | g2)), DRModels.@formula(sigma ~ 1)),
             Gaussian(); data = d, method = :REML); nothing
     catch e; e; end
     @test err isa ArgumentError
-    @test occursin("correlated", err.msg) && occursin("ML fitter refuses", err.msg)
+    @test occursin("correlated", err.msg) && occursin("maximum likelihood only", err.msg)
     # a heteroscedastic sigma on a multi-term route is not admitted
     err2 = try
         drm(bf(DRModels.@formula(y ~ x1 + (1 | g) + (1 | g2)), DRModels.@formula(sigma ~ x1)),

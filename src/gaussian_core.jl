@@ -1488,7 +1488,7 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         #   slope only `(0 + x | g)`; several independent scalar terms `(1 | g) + (0 + x | h)`;
         #   one `relmat(1 | g)` / `animal(1 | g)`; one `phylo(1 + x | g)` (two SDs).
         # `spatial(1 | g)` (its ML logLik differs from R's) and a correlated `(1 + x | g)` block
-        # beside another term (the ML fitter refuses it) stay refused, with their own messages.
+        # beside another term (fits by ML only since wave 9; no restricted objective) stay refused, with their own messages.
         # No sigma predictor, sigma random effect, meta_V, or missing response (untested).
         reml_gauss_ok = isempty(sigma_re) && metav === nothing && size(Xσ, 2) == 1 &&
             !has_missing_response
@@ -1505,10 +1505,9 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
             structured_slope !== nothing && length(all_structured) == 1 && isempty(re)
         length(re) >= 2 && any(k -> k === :corr, re_kinds_reml) &&
             throw(ArgumentError("drm: method = :REML with a correlated `(1 + x | g)` block beside " *
-                "another random-effect term is not implemented: the ML fitter refuses that " *
-                "combination too (a correlated block must be the only random-effect term), so " *
-                "there is no ML objective to restrict. Use independent terms " *
-                "`(1 | g) + (0 + x | g)` or a single correlated block."))
+                "another random-effect term is not implemented: this shape fits by maximum " *
+                "likelihood only (`method = :ML`), and no restricted objective is built for it. " *
+                "Use independent terms `(1 | g) + (0 + x | g)` or a single correlated block."))
         structured !== nothing && structured[1] === :spatial && isempty(re) && reml_gauss_ok &&
             throw(ArgumentError("drm: method = :REML is not implemented for `spatial(1 | g)`: the " *
                 "ML fit of this route does not yet reproduce drmTMB's maximum likelihood on the " *

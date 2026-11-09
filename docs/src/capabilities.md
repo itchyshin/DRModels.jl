@@ -295,7 +295,7 @@ above, and it does so by delegation rather than by a second engine.
 | Wald SEs + CIs (observed information) | **Tested** |
 | Profile-likelihood CIs (`profile_result`, `confint(:profile)`) | **Tested** |
 | Parametric bootstrap (`bootstrap_ci`/`_summary`/`_result`, serial + threaded) | **Tested** |
-| REML for fixed-effect Gaussian location–scale and Gaussian mean `(1 \| g)` or one correlated intercept/slope `(1 + x \| g)` | **Tested**; the correlated-slope cell is a single restricted route |
+| REML for fixed-effect Gaussian location–scale and Gaussian mean `(1 \| g)`, slope-only `(0 + x \| g)`, one correlated intercept/slope `(1 + x \| g)`, several independent scalar terms (including crossed `(1 \| g) + (1 \| g2)`), `relmat(1 \| g)` / `animal(1 \| g)` and `phylo(1 + x \| g)` (constant `sigma`) | **Tested**; the new routes agree with drmTMB 0.8.1 `REML = TRUE` on three simulated datasets per route (logLik to 1e-4); the correlated-slope cell is a single restricted route |
 | `reml_loglik` / `ml_loglik` / `estimation_method` accessors | **Tested** |
 | Epsilon-method bias correction (`bias_correct`) | **Tested** |
 | **χ̄² (chi-bar-square) boundary inference** (Self–Liang / Stram–Lee mixture) | **Tested** |
@@ -310,7 +310,12 @@ above, and it does so by delegation rather than by a second engine.
     Gaussian location–scale model; a single Gaussian mean intercept `(1 | g)`; one
     correlated Gaussian mean intercept/slope `(1 + x | g)` with no `sigma` random
     effect, structured term, `meta_V()`, crossed term, or additional random-effect
-    term; Location–Scale–Scale models (`sd(g) ~ z`, `sd(species, phylogenetic) ~ z`,
+    term; and, with a constant `sigma` and no `sigma` random effect, `meta_V()` or
+    missing response: slope-only `(0 + x | g)`, several independent scalar terms
+    (`(1 | g) + (0 + x | g)`, crossed `(1 | g) + (1 | g2)`; at most 200 random-effect
+    columns in total), one `relmat(1 | g)` or `animal(1 | g)`, and `phylo(1 + x | g)`
+    with two SDs (exact restricted likelihood; agrees with drmTMB 0.8.1 `REML = TRUE`
+    to 1e-4 on three simulated datasets per route); Location–Scale–Scale models (`sd(g) ~ z`, `sd(species, phylogenetic) ~ z`,
     and multi-component LSS); the bivariate q=4 location–scale engine; and the
     Gaussian `phylo(1 | g)`-on-`sigma` location–scale blocks (scale-only, separate,
     coupled), where both the `mu` and `sigma` fixed effects are integrated out with
@@ -322,10 +327,16 @@ above, and it does so by delegation rather than by a second engine.
     and `beta_sigma` are integrated out in one joint Laplace approximation) also
     admit REML, as native drmTMB does. Labelled `animal` / `relmat` / `spatial`
     q2 blocks and heteroscedastic `sigma` with those providers still refuse REML. Ordinary `sd()` q2/q3/q4 routes stay ML only
-    (native refuses REML there too).
-    Ordinary σ-RE (including ordinary `sd(g, sigma)`, which native drmTMB admits
-    under REML), independent slopes such as `(0 + x | g)`, and other random-slope
-    structures remain refused on the Gaussian routes listed here. Separate
+    (native refuses REML there too), as do the Gaussian shapes that fit by ML in
+    wave 9 (an unstructured q3/q4 block, a labelled block, a correlated block beside
+    random intercepts, and independent intercept and slope terms with `sd()`
+    formulas): each refuses `method = :REML` by name.
+    Still refused under REML on the Gaussian mean routes: `spatial(1 | g)` (its ML
+    logLik differs from drmTMB's on the reference data, so no restricted objective
+    is built), a correlated `(1 + x | g)` block beside any other random-effect term,
+    ordinary σ-RE (including ordinary `sd(g, sigma)`, which native drmTMB admits
+    under REML), a `sigma` predictor with a multi-term mean, `meta_V()`, missing
+    responses on the new routes, and other random-slope structures. Separate
     opt-in Poisson Cox–Reid routes are described under [`Poisson`](@ref); their
     recovery evidence is limited and does not establish general non-Gaussian
     REML support. This is not AI-REML. The retained
