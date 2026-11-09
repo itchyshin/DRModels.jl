@@ -473,6 +473,22 @@ To avoid overclaiming, note these boundaries:
   `bf()` for this model. Poisson and LogNormal versions are implemented but have
   not yet been tested as complete analyses.
 
+## Formula shapes that differ from R
+
+These came out of the second R-Julia gap map (2026-11-09,
+`docs/dev-log/2026-11-09-julia-crashes.md`). Each row was run against drmTMB 0.8.1.
+
+| R spelling | Julia | Status |
+| --- | --- | --- |
+| `(f \| g)`, `(1 + f \| g)`, `(0 + f \| g)` with a factor `f` | Refused with an `ArgumentError` (drmTMB refuses too). Use a numeric 0/1 column for one level. | **Tested** |
+| `zi ~ 1 + (1 \| g)`, `hu ~ … + (1 \| g)` | Refused with an `ArgumentError` (drmTMB refuses too). Put the random effect on `mu`. | **Tested** |
+| `(1 + x \|\| g)` (double bar) | `@formula` cannot parse `\|\|`. Write `(1 \| g) + (0 + x \| g)`: same log-likelihood as drmTMB on the committed fixture. | **Tested** (spelling) |
+| `poly(x, 2)` | `@formula` has no `poly`. Write a function term such as `x + sq(x)` (same ML log-likelihood, different coefficients); the string route `engine = "julia"` reproduces R's orthogonal basis. | **Tested** (spelling) |
+| Ordinal response as labels (`"o1"`…`"o4"`) | `CumulativeLogit()` codes string or symbol labels 1..K in sorted label order, like R's `factor()`; pass integer codes for another order. | **Tested** |
+| Rows with a missing grouping label | Refused (#1112); `drm_listwise(formula, data)` drops them and then agrees with drmTMB, which drops those rows. | **Tested** |
+| `weights` with a missing response | Weights follow their rows; one weight per row of `data`. | **Tested** |
+| Cross-family pair containing `LogNormal()` | Refused with the list of supported families (drmTMB refuses too). | **Tested** |
+
 ---
 
 *“Tested” supports the listed use, not a package-wide performance or

@@ -2120,6 +2120,7 @@ function _fit_fixed_gaussian_missing_response(fam::Gaussian, y, Xμ, Xσ, nmμ, 
           "response and were dropped (observed-rows fit, like glmmTMB's default na.action). " *
           "Use `drm_listwise` to preprocess explicitly, or supply complete responses, to silence this."
 
+    _drop_scope_weight_rows!(observed)   # weights follow their rows, as in R's `na.omit`
     y_obs = Vector{Float64}(y[observed])
     Xμ_obs = Matrix{Float64}(Xμ[observed, :])
     Xσ_obs = Matrix{Float64}(Xσ[observed, :])
@@ -2164,6 +2165,7 @@ function _fit_observed_response_rows(fitfun::Function, f::DrmFormula, data)
     @warn "drm: $(ndrop) of $(length(observed)) rows have a missing/NaN response and were " *
           "dropped (observed-rows fit, like glmmTMB's default na.action). Use `drm_listwise` " *
           "to preprocess explicitly, or supply complete responses, to silence this."
+    _drop_scope_weight_rows!(observed)   # weights follow their rows, as in R's `na.omit`
     fit_observed = fitfun(_subset_table_rows(data, observed))
     return _with_full_response_rows(fit_observed, f, data)
 end
@@ -2330,7 +2332,11 @@ function _fit_fixed_gaussian_reml(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, g_tol)
         XtWy = Xμ' * (w .* y)
         βμ = XtW \ XtWy
         r = y .- Xμ * βμ
-        return βμ, r, ησ, logdet(XtW)
+        # A line-search trial with a huge β_σ makes Xμ' W Xμ numerically indefinite and
+        # `logdet` throws a DomainError. Report an infinite objective instead, so the
+        # line search backs off (gap map v2: `y ~ f * x1`, `sigma ~ x1 + f`).
+        ld, sgn = logabsdet(XtW)
+        return βμ, r, ησ, sgn > 0 ? ld : oftype(ld, Inf)
     end
 
     # Restricted NEGATIVE log-likelihood over β_σ alone (β_μ profiled out).
