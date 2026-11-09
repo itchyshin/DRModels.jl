@@ -56,7 +56,7 @@ for (s in 1:3) {
       est <- f$sdpars$mu[[nm]]
       add(ds, m, paste0("sd:", nm), est, se_nat / est)
     }
-    if (!is.null(f$corpars$re_cov)) for (nm in names(f$corpars$re_cov)) add(ds, m, paste0("cor:", nm), f$corpars$re_cov[[nm]])
+    for (cp in names(f$corpars)) for (nm in names(f$corpars[[cp]])) add(ds, m, paste0("cor:", nm), f$corpars[[cp]][[nm]])
   }
 }
 res <- do.call(rbind, rows)
