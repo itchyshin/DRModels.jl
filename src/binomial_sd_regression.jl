@@ -2428,7 +2428,7 @@ function _fit_binomial_sd_regression(fam::Binomial, s, ntr, Xmu, Zgs, nmsds,
     # SD coefficients: the single default start can stop at a smooth interior point,
     # converged and with every SD well above the boundary, that lies 1 to 6 nats below
     # a point the same objective scores higher (G12 of the wave-8 disagreement map;
-    # drmTMB reaches the higher one). The boundary trigger never fires there, so such
+    # drmTMB reports a higher value, on an objective that differs by about 0.3 nats there). The boundary trigger never fires there, so such
     # fits restart unconditionally, as the Gamma sd-z two-field route does; intercept-only
     # SD formulas keep the usual trigger (fit near the boundary or not converged).
     # An alternative is accepted only on a clear objective gain, so a fit whose first
