@@ -215,10 +215,10 @@ end
         # REML is completed for the Gaussian structured q2 cells (docs/dev-log/2026-11-09-gaussian-reml-routes2.md).
         @test drm(_gc_bf(Gaussian(), :spatial, false, :none), Gaussian(); data = gdat, coords,
                   method = :REML).estim_method === :REML
-        # Labelled and bare is fitted for Poisson only (drmTMB 0.8.1 refuses it elsewhere).
-        fp = _gc_fixture(:phylo, ids, :poisson)
-        @test_throws ArgumentError drm(_gc_bf(NegBinomial2(), :phylo, true, :none), NegBinomial2();
+        # Labelled and bare is fitted for Poisson and, on phylo, NegBinomial2 (drmTMB 0.8.1 fits both; residual-refusals).
+        nbfit = drm(_gc_bf(NegBinomial2(), :phylo, true, :none), NegBinomial2();
             data = _gc_fixture(:phylo, ids, :nb2).data, tree = nwk)
+        @test isfinite(loglikelihood(nbfit))
         # An extra random term, or an sd() formula for something else, keeps the original route.
         extra = bf(@formula(y ~ x + spatial(1 + x | id) + (1 | z0)), @formula(sigma ~ 1))
         @test_throws ArgumentError drm(extra, Gaussian(); data = gdat, coords)
