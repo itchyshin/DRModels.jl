@@ -455,6 +455,10 @@ function _drm_poisson_sd_regression(f::DrmFormula, fam::Poisson; data,
         return _drm_poisson_relmat_sd_regression(
             f, fam; data, tree, K, A, coords, g_tol, se)
     end
+    if any(item -> item.target.level === :spatial, targets)
+        return _drm_poisson_spatial_sd_regression(
+            f, fam; data, tree, K, A, Ainv, coords, g_tol, se)
+    end
     if any(item -> item.target.level === :animal, targets)
         return _drm_poisson_animal_sd_regression(
             f, fam; data, tree, K, A, Ainv, coords, g_tol, se)
@@ -617,6 +621,63 @@ function _drm_poisson_relmat_sd_regression(f::DrmFormula, fam::Poisson; data,
         fam, y, Xmu, Zobs, Zg, gidx, Q, nmmu, nmsd, group, g_tol;
         se, weight = loading, offset = off,
         context = "sparse-Laplace Poisson relmat SD regression")
+    return _withformula(fit, f)
+end
+
+# Poisson intercept SD regression on a coordinate spatial covariance:
+# `y ~ … + spatial(1 | g)` with `sd(g, spatial) ~ z` and `coords = …`. The covariance is
+# the native fixed kernel exp(-d / median positive distance) + 1e-6 I (RAW, no
+# rescaling), then the relmat SD Laplace objective is reused unchanged.
+function _drm_poisson_spatial_sd_regression(f::DrmFormula, fam::Poisson; data,
+                                            tree = nothing, K = nothing, A = nothing,
+                                            Ainv = nothing, coords = nothing,
+                                            g_tol::Real = 1e-8, se::Bool = true)
+    who = "Poisson spatial SD regression"
+    targets = _sd_target_parts(f)
+    length(targets) == 1 || throw(ArgumentError(
+        "$who requires exactly one random-effect SD formula."))
+    target = only(targets)
+    descriptor = target.target
+    (descriptor.level === :spatial && descriptor.dpar === :mu &&
+     descriptor.block === nothing && descriptor.member in (nothing, :intercept)) ||
+        throw(ArgumentError("$who targets the structured mean intercept only."))
+    (tree === nothing && K === nothing && A === nothing && Ainv === nothing) || throw(ArgumentError(
+        "$who uses `coords = …` only; do not also supply `tree`, `K`, `A` or `Ainv`."))
+    group = descriptor.group
+    coords === nothing && throw(ArgumentError("spatial(1 | $group) needs `coords = …`"))
+    rhs = Dict(f.forms)
+    fixed_mu, re, metav, structured = _split_ranef(rhs[:mu])
+    metav === nothing || throw(ArgumentError("$who cannot use meta_V()."))
+    structured !== nothing && first(structured) === :spatial && last(structured) === group ||
+        throw(ArgumentError("Poisson `sd($group, spatial)` requires `spatial(1 | $group)` in the location formula."))
+    isempty(re) || throw(ArgumentError(
+        "$who currently requires one spatial intercept without additional random effects."))
+    (haskey(rhs, :zi) || haskey(rhs, :hu)) && throw(ArgumentError(
+        "$who cannot yet be combined with `zi` or `hu`."))
+    fixed_mu, offset_term = _extract_offset(fixed_mu)
+    for (pname, form) in f.forms
+        (pname === :mu || pname === target.key) && continue
+        pname === :sigma && form === ConstantTerm(1) && continue
+        throw(ArgumentError("$who supports only `mu` and one spatial SD formula."))
+    end
+    all(_formula_response_observed_mask(f, data)) || throw(ArgumentError(
+        "$who requires observed responses; remove incomplete rows before fitting."))
+    y, Xmu, nmmu = _design(f.response, fixed_mu, data)
+    off = _poisson_sd_offset(offset_term, data, length(y))
+    all(yi -> yi >= 0 && isinteger(yi), y) || throw(ArgumentError(
+        "Poisson() requires non-negative integer counts as the response"))
+    labels = getproperty(data, group)
+    gidx0, G0 = _group_index(labels)
+    C = _gaussian_spatial_sd_kernel(coords, G0, group)
+    Q, gidx = _general_cov_setup(C, labels; normalize = false)
+    G = size(Q, 1)
+    Zg, nmsd = _sd_group_design(f.response, target.rhs, data, gidx, G, group;
+        schema_cache = f.schema_cache, schema_key = target.key)
+    size(Zg, 2) <= G && rank(Zg) == size(Zg, 2) || throw(ArgumentError(
+        "$who: the SD group-level design is rank deficient; use predictors that vary independently across groups."))
+    fit = _fit_poisson_covariance_sd_laplace(
+        fam, y, Xmu, Zg[gidx, :], Zg, gidx, Q, nmmu, nmsd, group, g_tol;
+        se, offset = off, context = "sparse-Laplace Poisson spatial SD regression")
     return _withformula(fit, f)
 end
 

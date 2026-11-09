@@ -288,9 +288,17 @@ end
 @testset "two-field SD regression: neighbouring shapes stay refused" begin
     case = tf_case(:gamma, :samegroup)
     d = case.data
-    # only one SD formula on a same-group pair: no silent constant SD route
-    @test_throws ArgumentError drm(bf(@formula(y ~ x + (1 | g) + (0 + x | g)), @formula(sigma ~ 1),
+    # one SD formula on a same-group pair: drmTMB 0.8.1 fits it, the other coefficient keeping an
+    # estimated constant SD (the default `sd(g, coef(.)) ~ 1`), so Gamma now takes the same shape
+    # (agreement with R: test_struct_sd_counts.jl). Here: two SD blocks, the unselected one constant.
+    fit1 = drm(bf(@formula(y ~ x + (1 | g) + (0 + x | g)), @formula(sigma ~ 1),
         @formula(sd(g, coef(x)) ~ w2)), DRModels.Gamma(); data = d)
+    @test fit1.converged === true
+    @test count(p -> startswith(String(first(p)), "sdtarget_"), fit1.blocks) == 2
+    @test sort([length(last(p)) for p in fit1.coefnames if startswith(String(first(p)), "sdtarget_")]) == [1, 2]
+    # a coefficient that is not in the pair stays refused
+    @test_throws ArgumentError drm(bf(@formula(y ~ x + (1 | g) + (0 + x | g)), @formula(sigma ~ 1),
+        @formula(sd(g, coef(w1)) ~ w2)), DRModels.Gamma(); data = d)
     # Gamma ordinary correlated (1 + x | g) with SDs (native drmTMB refuses it too)
     @test_throws ArgumentError drm(bf(@formula(y ~ x + (1 + x | g)), @formula(sigma ~ 1),
         @formula(sd(g, coef(intercept)) ~ w1), @formula(sd(g, coef(x)) ~ w2)),

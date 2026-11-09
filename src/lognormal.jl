@@ -87,8 +87,11 @@ struct LogNormal end
     end
 
     if !isempty(sd_targets)
-        length(sd_targets) == 1 || throw(ArgumentError(
-            "LogNormal SD regression currently requires one ordinary mean-effect `sd(group) ~ …` formula."))
+        # More than one SD formula (crossed `(1 | g) + (1 | h)` with `sd(g)` and `sd(h)`, or the
+        # labelled coefficient pair): log y is exactly Gaussian, so the whole fit is delegated
+        # to the public Gaussian dispatcher on log(y), which refuses what it does not cover.
+        length(sd_targets) == 1 || return _withformula(
+            _fit_lognormal_multi_sd(fam, f, data, g_tol), f)
         return _withformula(_drm_lognormal_sd_regression(f, fam, data, g_tol, only(sd_targets)), f)
     end
     _lss_only_gaussian_guard(f, fam)   # #544: refuse, never silently drop, sd() parts
@@ -364,6 +367,16 @@ function _fit_lognormal_crossed(fam::LogNormal, f::DrmFormula, data, g_tol)
     cols = NamedTuple(pairs(data))
     y = Vector{Float64}(getproperty(cols, f.response))
     all(yi -> yi > 0, y) || error("LogNormal() requires strictly positive responses")
+    logdata = merge(cols, NamedTuple{(f.response,)}((log.(y),)))
+    gfit = drm(f, Gaussian(); data = logdata, g_tol = g_tol)
+    return _lognormal_jacobian_shift(fam, gfit, y)
+end
+
+function _fit_lognormal_multi_sd(fam::LogNormal, f::DrmFormula, data, g_tol)
+    cols = NamedTuple(pairs(data))
+    y = Vector{Float64}(getproperty(cols, f.response))
+    all(yi -> isfinite(yi) && yi > 0, y) || throw(ArgumentError(
+        "LogNormal() requires finite, strictly positive responses"))
     logdata = merge(cols, NamedTuple{(f.response,)}((log.(y),)))
     gfit = drm(f, Gaussian(); data = logdata, g_tol = g_tol)
     return _lognormal_jacobian_shift(fam, gfit, y)
