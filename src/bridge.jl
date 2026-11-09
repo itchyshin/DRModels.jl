@@ -644,6 +644,8 @@ function _bridge_fit(bundle, fam, data; tree, K, A, Ainv = nothing,
     end
     if haskey(options, :q4_f_reltol)
         kwargs[:q4_f_reltol] = Float64(options[:q4_f_reltol])
+        _bridge_check_q4_f_reltol_route(bundle, fam, kwargs[:q4_f_reltol],
+            Symbol(get(options, :method, :ML)))
     end
     if haskey(options, :q4_iterations)
         kwargs[:q4_iterations] = Int(options[:q4_iterations])
@@ -686,6 +688,27 @@ _bridge_has_sigma_phylo(bundle, fam) =
     bundle isa DrmFormula && fam isa Gaussian &&
     haskey(Dict(bundle.forms), :sigma) &&
     (s = _split_ranef(Dict(bundle.forms)[:sigma])[4]; s !== nothing && s[1] === :phylo)
+
+# `q4_f_reltol` is the stopping rule of the q=4 ML L-BFGS fit only. The q=4 REML fit and the
+# q=2 / residual-only bivariate routes accept the keyword but never read it, so a non-default
+# value there would silently do nothing. Like an unknown option key, it is refused by name
+# (the bridge fails closed rather than warning). The default value is always accepted.
+function _bridge_check_q4_f_reltol_route(bundle, fam, value::Float64, method::Symbol)
+    value == 1e-7 && return nothing
+    (bundle isa BivariateDrmFormula && (fam isa Gaussian || fam isa LogNormal)) || return nothing
+    marker = try
+        _bivariate_q4_marker(Dict(bundle.forms))[2]
+    catch
+        return nothing                       # a malformed formula is refused by `drm` itself
+    end
+    route = marker === nothing ? "the residual-only route" :
+        marker[1] === :structured_q2 ? "the q=2 structured route" :
+        method === :REML ? "the q=4 REML route" : nothing
+    route === nothing && return nothing
+    throw(ArgumentError("drm_bridge: option `q4_f_reltol` has no effect on $route (it is the " *
+        "stopping rule of the q=4 ML fit only); omit it, or use a q=4 structured formula " *
+        "with `method = \"ML\"`."))
+end
 
 function _bridge_is_bivariate_phylo_q4(bundle, fam, tree)
     return bundle isa BivariateDrmFormula && fam isa Gaussian && tree !== nothing

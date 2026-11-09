@@ -155,3 +155,35 @@ end
     @test tight["loglik"] ≈ default["loglik"] atol = 1e-6
     @test loose["loglik"] < default["loglik"] - 1.0
 end
+
+@testset "drm_bridge refuses q4_f_reltol on routes that never read it" begin
+    Random.seed!(20261108)
+    p, m = 8, 2
+    phy = random_balanced_tree(p; branch_length = 0.3)
+    species = repeat(1:p, inner = m)
+    n = length(species)
+    x = randn(n)
+    dat = (; y1 = randn(n), y2 = randn(n), x, species)
+    q4 = Dict(:mu1 => "y1 ~ x + phylo(1 | species)", :mu2 => "y2 ~ x + phylo(1 | species)",
+              :sigma1 => "sigma1 ~ 1 + phylo(1 | species)", :sigma2 => "sigma2 ~ 1 + phylo(1 | species)",
+              :rho12 => "rho12 ~ 1")
+    q2 = Dict(:mu1 => "y1 ~ x + phylo(1 | species)", :mu2 => "y2 ~ x + phylo(1 | species)",
+              :sigma1 => "sigma1 ~ 1", :sigma2 => "sigma2 ~ 1", :rho12 => "rho12 ~ 1")
+    resid = Dict(:mu1 => "y1 ~ x", :mu2 => "y2 ~ x", :sigma1 => "sigma1 ~ 1",
+                 :sigma2 => "sigma2 ~ 1", :rho12 => "rho12 ~ 1")
+    refused(fml, opts) = try
+        DRModels.drm_bridge(; formula = fml, family = "biv_gaussian", data = dat, tree = phy, options = opts)
+        nothing
+    catch e
+        e
+    end
+    e1 = refused(q4, Dict(:q4_f_reltol => 1e-3, :method => "REML"))
+    @test e1 isa ArgumentError && occursin("q4_f_reltol", sprint(showerror, e1)) &&
+          occursin("q=4 REML route", sprint(showerror, e1))
+    e2 = refused(q2, Dict(:q4_f_reltol => 1e-3))
+    @test e2 isa ArgumentError && occursin("q=2 structured route", sprint(showerror, e2))
+    e3 = refused(resid, Dict(:q4_f_reltol => 1e-3))
+    @test e3 isa ArgumentError && occursin("residual-only route", sprint(showerror, e3))
+    # the default value is never refused
+    @test DRModels._bridge_check_q4_f_reltol_route(nothing, nothing, 1e-7, :ML) === nothing
+end
