@@ -1,0 +1,24 @@
+cell_id	r_ll	kind	q	lab	pat	j_msg_wave8
+gaussian|indep|lab0|q2|sd-first|cm0|ML	-464.1809865193	indep	2	0	first	ArgumentError: drm: sd() supports random INTERCEPT terms only.
+gaussian|indep|lab0|q2|sd-last|cm0|ML	-467.2466358089	indep	2	0	last	ArgumentError: drm: sd() supports random INTERCEPT terms only.
+gaussian|indep|lab0|q2|sd-z|cm0|ML	-462.4337272315	indep	2	0	z	ArgumentError: drm: sd() supports random INTERCEPT terms only.
+gaussian|indep|lab0|q3|sd-first|cm0|ML	-442.7917246679	indep	3	0	first	ArgumentError: drm: sd() supports random INTERCEPT terms only.
+gaussian|indep|lab0|q4|sd-first|cm0|ML	-420.2747030162	indep	4	0	first	ArgumentError: drm: sd() supports random INTERCEPT terms only.
+gaussian|crossed|lab0|q2|sd-first|cm0|ML	-484.4770839387	crossed	2	0	first	ArgumentError: drm: sd() supports random INTERCEPT terms only.
+gaussian|crossed|lab0|q2|sd-last|cm0|ML	-485.9625039753	crossed	2	0	last	ArgumentError: drm: sd() supports random INTERCEPT terms only.
+gaussian|crossed|lab0|q2|sd-one|cm0|ML	-486.2786670138	crossed	2	0	one	ArgumentError: drm: sd() supports random INTERCEPT terms only.
+gaussian|crossed|lab0|q2|sd-z|cm0|ML	-484.2029209931	crossed	2	0	z	ArgumentError: drm: sd() supports random INTERCEPT terms only.
+gaussian|indep|lab0|q2|sd-one|cm0|ML	-469.0881880643	indep	2	0	one	ArgumentError: drm: sd() supports random INTERCEPT terms only.
+gaussian|indep|lab0|q3|sd-z|cm0|ML	-440.0817309668	indep	3	0	z	ArgumentError: drm: sd() supports random INTERCEPT terms only.
+gaussian|indep|lab0|q4|sd-z|cm0|ML	-413.5991039516	indep	4	0	z	ArgumentError: drm: sd() supports random INTERCEPT terms only.
+gaussian|crossed|lab1|q2|sd-none|cm0|ML	-486.2786670138	crossed	2	1	none	unsupported random-effect term: `(:((1 + x1) | p) | …)`
+gaussian|crossed|lab1|q3|sd-none|cm0|ML	-474.6969946482	crossed	3	1	none	unsupported random-effect term: `(:((1 + x1 + x2) | p) | …)`
+gaussian|crossed|lab1|q4|sd-none|cm0|ML	-450.8852967770	crossed	4	1	none	unsupported random-effect term: `(:((1 + x1 + x2 + x3) | p) | …)`
+gaussian|ordinary|lab1|q3|sd-none|cm0|ML	-443.2823862453	ordinary	3	1	none	unsupported random-effect term: `(:((1 + x1 + x2) | p) | …)`
+gaussian|ordinary|lab1|q4|sd-none|cm0|ML	-416.9158729985	ordinary	4	1	none	unsupported random-effect term: `(:((1 + x1 + x2 + x3) | p) | …)`
+gaussian|ordinary|lab1|q2|sd-none|cm0|ML	-468.2769577077	ordinary	2	1	none	unsupported random-effect term: `(:((1 + x1) | p) | …)`
+gaussian|crossed|lab0|q3|sd-none|cm0|ML	-474.6969946482	crossed	3	0	none	DRModels.jl supports `(1 | g)`, `(0 + x | g)`, `(1 + x | g)`
+gaussian|crossed|lab0|q4|sd-none|cm0|ML	-450.8852967770	crossed	4	0	none	DRModels.jl supports `(1 | g)`, `(0 + x | g)`, `(1 + x | g)`
+gaussian|ordinary|lab0|q3|sd-none|cm0|ML	-443.2823862453	ordinary	3	0	none	DRModels.jl supports `(1 | g)`, `(0 + x | g)`, `(1 + x | g)`
+gaussian|ordinary|lab0|q4|sd-none|cm0|ML	-416.9158729985	ordinary	4	0	none	DRModels.jl supports `(1 | g)`, `(0 + x | g)`, `(1 + x | g)`
+gaussian|crossed|lab0|q2|sd-none|cm0|ML	-486.2786670138	crossed	2	0	none	a correlated `(1 + x | g)` block must be the only random-effect term
