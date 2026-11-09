@@ -47,9 +47,20 @@ end
 # negbinomial.jl's `r = exp(-2·ησ)` and the univariate fitter (#315/#316).
 function _mf_obs_ll(::NegBinomial2, η, y, trials, d)
     μ = exp(clamp(η, -30.0, 30.0)); θ = inv(clamp(d, 3.1e-7, 3.3e6)^2)   # θ = 1/σ²
-    return loggamma(y + θ) - loggamma(θ) - loggamma(y + 1) +
+    θ < _MF_NB2_STABLE_MIN && return loggamma(y + θ) - loggamma(θ) - loggamma(y + 1) +
            θ * (log(θ) - log(θ + μ)) + y * (log(μ) - log(θ + μ))
+    # Large size (σ below about 0.03): loggamma(y + θ) - loggamma(θ) subtracts two
+    # numbers of size θ·log θ (θ reaches 1e13 at the σ clamp) and loses about
+    # eps·θ·log θ, 0.05 nats per observation at the clamp, so the Poisson limit was
+    # scored wrongly. Same density with every θ-sized quantity entering through the
+    # Stirling-stable A(y, θ) = loggamma(y + θ) - loggamma(θ) - y·log θ
+    # (`_nb2_raw_lgamma_ratio`) and log1p(μ/θ):
+    #   log p = A − log y! + y·log μ − (y + θ)·log1p(μ/θ).
+    return _nb2_raw_lgamma_ratio(y, θ) - loggamma(y + 1) + y * log(μ) - (y + θ) * log1p(μ / θ)
 end
+# Below this size the direct loggamma form is kept verbatim (its error is under 1e-12
+# for θ < 1e3, bit-identical to earlier releases for log σ ≥ -3 where θ ≤ e⁶).
+const _MF_NB2_STABLE_MIN = 1.0e3
 # Beta (mean μ=logistic(η), precision φ=1/σ², σ=d): Beta(μφ, (1-μ)φ). The
 # existing beta.jl uses exactly this Distributions.logpdf path under ForwardDiff;
 # σ is clamped to beta.jl's range (ησ∈[-15,15]) to keep φ finite & positive.
