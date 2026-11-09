@@ -693,8 +693,23 @@ function _drm_gaussian_structured_sd_slope(f::DrmFormula, fam::Gaussian, structu
             "coefficient with fixed-effect `sigma` only (no ordinary or sigma random effects, `meta_V`, or structured `sigma`)."))
     has_missing_response && throw(ArgumentError(
         "drm: Gaussian structured $what SD regression requires observed responses; remove incomplete rows first."))
-    method === :REML && throw(ArgumentError(
-        "drm: Gaussian structured $what SD regression supports maximum likelihood only."))
+    reml = method === :REML
+    if reml
+        # REML is admitted for the structured INTERCEPT with its own `sd(g, <level>) ~ …` formula
+        # and a constant residual scale: exact (the marginal is Gaussian-linear in beta_mu) and
+        # the cells drmTMB 0.8.1 fits with REML = TRUE. The slope-only form and a `sigma`
+        # predictor have no R reference here, so they stay refused.
+        slope === nothing || throw(ArgumentError(
+            "drm: Gaussian structured $what SD regression supports maximum likelihood only for " *
+            "`$term`: method = :REML is validated for the structured intercept " *
+            "`$kind(1 | $grp)` with `sd($grp, $kind) ~ …` only."))
+        size(Xσ, 2) == 1 || throw(ArgumentError(
+            "drm: Gaussian `$term` SD regression: method = :REML requires a constant residual " *
+            "scale (`sigma ~ 1`); a `sigma` predictor is not validated against drmTMB there. " *
+            "Use `sigma ~ 1` or method = :ML."))
+        rank(Xμ) == size(Xμ, 2) || throw(ArgumentError(
+            "drm: method = :REML requires a full-rank `mu` fixed-effect design."))
+    end
     algorithm === :auto || throw(ArgumentError(
         "drm: `algorithm = :$algorithm` is not implemented for Gaussian structured $what SD regression."))
     for (pname, _) in f.forms
@@ -728,7 +743,7 @@ function _drm_gaussian_structured_sd_slope(f::DrmFormula, fam::Gaussian, structu
     loading = slope === nothing ? nothing :
         _poisson_animal_slope_loading(data, slope, length(y); label = "Gaussian $kind")
     return _fit_structured_gaussian_lss(fam, y, Xμ, Xσ, Zg, gidx, G, Cmat, nmμ, nmσ, nmsd,
-                                        grp, g_tol; block = :sd, loading, report_sd = true)
+                                        grp, g_tol; block = :sd, loading, report_sd = true, reml)
 end
 
 # Independent two-field structured intercept-plus-slope with one SD formula per
