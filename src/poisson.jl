@@ -457,6 +457,8 @@ function _drm_poisson_sd_regression(f::DrmFormula, fam::Poisson; data,
     reml && throw(ArgumentError(
         "Poisson `sd(group) ~ …` currently supports maximum likelihood only; " *
         "the Cox–Reid correction is not implemented for SD-regression coefficients."))
+    laplace_fit = _laplace_sd_route(f, fam, Val(:poisson), marginal; data, g_tol)
+    laplace_fit === nothing || return laplace_fit
     marginal === :LA || throw(ArgumentError(
         "Poisson `sd(group) ~ …` currently supports `marginal = :LA` only."))
     nAGQ === nothing || nAGQ >= 1 || throw(ArgumentError("nAGQ must be ≥ 1; got $nAGQ"))

@@ -2033,6 +2033,26 @@ function _drm_binomial_phylo_ordinary_sd_regression(f::DrmFormula, fam::Binomial
     return _withformula(_withiterations(_withnll(fit, nll), Optim.iterations(res)), f)
 end
 
+# One ordinary correlated block `(1 + x | g)` on the mean (no structured term) whose `sd()` targets
+# are all ordinary mean coefficients: the shape `marginal = :Laplace` takes as a one-node group integral.
+function _binomial_ordinary_corr_sd(f::DrmFormula)
+    rhs = Dict(f.forms)
+    haskey(rhs, :mu) || return false
+    split = try
+        _split_ranef(rhs[:mu])
+    catch err
+        err isa ArgumentError || rethrow()
+        return false
+    end
+    _, re, mv, st = split
+    (mv === nothing && st === nothing && length(re) == 1) || return false
+    _laplace_lhs_kind(re[1][1]) === :corr || return false
+    isempty(_sdphylo_parts(f)) || return false
+    targets = _sd_target_parts(f)
+    return !isempty(targets) && all(item -> item.target.level === :iid && item.target.dpar === :mu &&
+                                            item.target.block === nothing, targets)
+end
+
 function _drm_binomial_sd_regression(f::DrmFormula, fam::Binomial; data,
                                      tree = nothing, tree1 = nothing,
                                      tree2 = nothing, K = nothing, A = nothing,
@@ -2042,6 +2062,17 @@ function _drm_binomial_sd_regression(f::DrmFormula, fam::Binomial; data,
                                      se::Bool = true, marginal::Symbol = :LA,
                                      method = nothing, nq::Int = _BINOMIAL_RANEF_AGHQ_K)
     _reject_method_as_marginal(fam, method)
+    if _scalar_laplace_requested(marginal)
+        # Independent terms: the dense TMB-convention Laplace. One ordinary correlated block
+        # `(1 + x | g)` with SD formulas: the same group integral with a single adaptive node,
+        # which is the Laplace approximation (the node count is the only difference to the default).
+        laplace_fit = _laplace_sd_route(f, fam, Val(:binomial), marginal; data, g_tol,
+                                        fallback = _binomial_ordinary_corr_sd(f))
+        laplace_fit === nothing || return laplace_fit
+        return _withmarginal(_drm_binomial_sd_regression(f, fam; data, tree, tree1, tree2, K, A, Ainv,
+                                                         coords, mesh, g_tol, se, marginal = :LA,
+                                                         method, nq = 1), :Laplace)
+    end
     marginal === :LA || throw(ArgumentError(
         "Binomial `sd(group) ~ …` currently supports `marginal = :LA` " *
             "only: one ordinary grouping variable uses adaptive Gauss-Hermite quadrature, " *

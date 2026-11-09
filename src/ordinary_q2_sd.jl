@@ -51,7 +51,7 @@ function _ordinary_q2_sd_block(f::DrmFormula, fam::Union{Poisson,NegBinomial2})
 end
 
 function _drm_count_ordinary_q2_sd(f::DrmFormula, fam::Union{Poisson,NegBinomial2}, block;
-        data, tree, K, A, Ainv, coords, g_tol, se, nAGQ = nothing)
+        data, tree, K, A, Ainv, coords, g_tol, se, nAGQ = nothing, plain::Bool = false)
     fname = fam isa Poisson ? "Poisson" : "NegBinomial2"
     group, slope, label = block.group, block.slope, block.label
     term = label === nothing ? "(1 + $slope | $group)" : "(1 + $slope | $label | $group)"
@@ -60,14 +60,16 @@ function _drm_count_ordinary_q2_sd(f::DrmFormula, fam::Union{Poisson,NegBinomial
         throw(ArgumentError("$who is an ordinary (non-structured) route; do not supply `tree`, `K`, `A`, `Ainv` or `coords`."))
     nAGQ === nothing || throw(ArgumentError("nAGQ is not used by the Laplace ordinary q2 SD route; omit it."))
     targets = _sd_target_parts(f)
-    length(targets) == 2 || throw(ArgumentError(
-        "$who needs one SD formula for the intercept and one for the slope " *
-        "(`sd($group, coef(intercept)) ~ …` and `sd($group, coef($slope)) ~ …`)."))
-    all(item -> item.target.level === :iid && item.target.group === group &&
-        item.target.dpar === :mu && item.target.block === nothing, targets) ||
-        throw(ArgumentError("$who requires two ordinary `sd($group, coef(…))` mean targets."))
-    Set(item.target.member for item in targets) == Set((:intercept, slope)) ||
-        throw(ArgumentError("$who: SD formulas must select `coef(intercept)` and `coef($slope)` exactly once."))
+    if !plain      # `plain`: `marginal = :Laplace` on `(1 + x | g)` with no SD formulas (constant SDs)
+        length(targets) == 2 || throw(ArgumentError(
+            "$who needs one SD formula for the intercept and one for the slope " *
+            "(`sd($group, coef(intercept)) ~ …` and `sd($group, coef($slope)) ~ …`)."))
+        all(item -> item.target.level === :iid && item.target.group === group &&
+            item.target.dpar === :mu && item.target.block === nothing, targets) ||
+            throw(ArgumentError("$who requires two ordinary `sd($group, coef(…))` mean targets."))
+        Set(item.target.member for item in targets) == Set((:intercept, slope)) ||
+            throw(ArgumentError("$who: SD formulas must select `coef(intercept)` and `coef($slope)` exactly once."))
+    end
     isempty(_sdphylo_parts(f)) || throw(ArgumentError(
         "$who cannot be combined with an intercept-only `sd($group, phylogenetic) ~ …` formula."))
     rhs = Dict(f.forms)
@@ -102,7 +104,7 @@ function _drm_count_ordinary_q2_sd(f::DrmFormula, fam::Union{Poisson,NegBinomial
     hasproperty(data, group) || throw(ArgumentError("$who: grouping column `$group` is absent from data."))
     gidx, G = _group_index(getproperty(data, group); col = group)
     Q = sparse(1.0I, G, G)
-    ordered = map((:intercept, slope)) do member
+    ordered = plain ? [] : map((:intercept, slope)) do member
         only(filter(item -> item.target.member === member, targets))
     end
     Zgs = Matrix{Float64}[]
@@ -115,12 +117,17 @@ function _drm_count_ordinary_q2_sd(f::DrmFormula, fam::Union{Poisson,NegBinomial
         push!(Zgs, Matrix{Float64}(Zg))
         push!(nmsds, names)
     end
+    if plain          # constant SDs, the same model as `sd(.) ~ 1` on both coefficients
+        Zgs = [ones(G, 1), ones(G, 1)]
+        nmsds = [["$(group):log_sd_intercept"], ["$(group):log_sd_$(slope)"]]
+    end
     x = _poisson_animal_slope_loading(data, slope, length(y); label = "$fname ordinary")
     if all(==(first(x)), x) && isequal(Zgs[1], Zgs[2])
         throw(ArgumentError("$who cannot separate the intercept and slope SDs when " *
             "`$slope` is constant and both SD formulas have identical group-level designs."))
     end
-    blocks = Symbol[_sd_target_block(item.target; disambiguate = true) for item in ordered]
+    blocks = plain ? [:sd_intercept, :sd_slope] :
+             Symbol[_sd_target_block(item.target; disambiguate = true) for item in ordered]
     fit = if fam isa Poisson
         off = _poisson_sd_offset(offset_term, data, length(y))
         _fit_poisson_animal_intercept_slope_laplace(fam, y, Xmu, Zgs, gidx, Q, nmmu,

@@ -1,4 +1,4 @@
-# Laplace-parity reference: fit the single-term `ordinary` cells `(1 | g)` (and any other cell kind of
+# Laplace-parity reference: fit the single-term `ordinary` cells `(1 | g)` and the correlated `corr` blocks `(1 + x1 | g)` (and any other cell kind of
 # ../nongauss_indep/gen_ref.R) with R drmTMB (ML) on the committed gap-map data in ../nongauss_indep,
 # and write estimates, standard errors and logLik. drmTMB is only RUN, never vendored.
 # Usage (from this directory):  Rscript gen_ref.R r_reference.csv [cells.tsv]
@@ -22,6 +22,7 @@ build <- function(cl) {
   q <- cl$q; kind <- cl$kind
   re <- switch(kind,
     ordinary = "(1 | g)",
+    corr = paste0("(", paste(c("1", "x1", "x2", "x3")[seq_len(q)], collapse = " + "), " | g)"),
     crossed = "(1 | g) + (1 | g2)",
     slope = "(0 + x1 | g)",
     indep = paste0("(1 | g)", paste0(" + (0 + ", c("x1", "x2", "x3")[seq_len(q - 1)], " | g)", collapse = "")))
