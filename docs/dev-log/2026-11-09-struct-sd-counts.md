@@ -31,4 +31,36 @@ R references: drmTMB 0.8.1, library `~/drm_campaign_20261108/Rlib` on Totoro, on
 
 ## Step 2: results
 
-Filled in by the agreement test `test/test_struct_sd_counts.jl` (see the PR body for the table).
+Julia 1.10.12, Mac, `test/test_struct_sd_counts.jl` against `reference_drmtmb.csv` (drmTMB 0.8.1). All 12 cells pass T1, T2 and T3 by several orders of magnitude.
+
+| Cell (id prefix) | Verdict | dLL (Julia - R) | max abs coef diff | max diff in R-SE | SE ratio range |
+| --- | --- | --- | --- | --- | --- |
+| poisson spatial q1 sd-one | (a) fits, agrees | 2.0e-9 | 9.3e-9 | 7e-8 | 0.9999999 to 1.0000013 |
+| poisson spatial q1 sd-z | (a) | -7.8e-11 | 2.6e-8 | 1e-7 | 0.999996 to 1.0 |
+| nb2 spatial q1 sd-one | (a) | 3.5e-10 | 3.5e-8 | 3e-7 | 0.999992 to 1.0 |
+| nb2 spatial q1 sd-z | (a) | 4.3e-11 | 1.8e-7 | 7e-7 | 1.0 to 1.0000013 |
+| nb2 phylo q1 sd-one | (a) | -3.5e-11 | 2.8e-8 | 2e-7 | 0.999997 to 1.0 |
+| nb2 phylo q1 sd-z | (a) | 6.3e-11 | 8.2e-8 | 2e-7 | 1.0 to 1.000001 |
+| gamma indep q2 sd-first | (a) | 2.3e-10 | 2.9e-8 | 8e-7 | 0.999999 to 1.0 |
+| gamma indep q2 sd-last | (a) | 1.9e-9 | 5.8e-8 | 4e-7 | 0.999997 to 1.0 |
+| lognormal crossed q1 sd-one | (a) | -1.5e-11 | 8.6e-11 | 5e-10 | 1.0 to 1.0 |
+| lognormal crossed q1 sd-z | (a) | -2.4e-11 | 5.4e-12 | 1e-10 | 1.0 to 1.0 |
+| student crossed q1 sd-one | (a) | 6.1e-12 | 6.3e-11 | 2e-10 | 0.999999 to 1.0 |
+| student crossed q1 sd-z | (a) | -9.9e-12 | 4.9e-11 | 3e-10 | 0.999999 to 1.0 |
+| binomial relmat q2 sd-one, sd-z | (b) R not converged: recorded, stays refused | n/a | n/a | n/a | n/a |
+
+No cell fell in class (c) or (d). The Gamma one-target SEs include the constant-SD coefficient of the unselected term only on the Julia side; R omits it from its coefficient list, so the Gamma comparison is on the coefficients R reports (the optimiser has eight parameters in both).
+
+Side effect, not tested beyond logLik: LogNormal `ordinary` q2 `sd-one` and `sd-z` (correlated `(1 + x1 | g)` with two coefficient SDs) now fit through the same Gaussian delegation and match R's logLik (-550.8682164308, -549.4290610144, equal to R to 1e-10). They belong to the correlated-blocks lane; coefficient agreement was not checked.
+
+## Not done, and why
+
+- NB2 and Poisson `(1 | g) + (0 + x | g)` with one SD formula (`sd-first`, `sd-last`): same shape as the Gamma fix, but the independent-terms lane (`claude/nongauss-indep-20261109`) owns it; the Gamma gate is `fam isa Gamma` in `_twofield_complete_single_target`.
+- Bare `spatial(1 | g)` with `coords` and no SD formula for NB2 and Beta: separate route, rank 18 of the gap map.
+- Poisson spatial bare fit returns NaN: not touched (triage lane).
+- Binomial `relmat(1 + x | g)` SD: R does not converge (`is_converged()` FALSE; SD at -10.7 for the x1 coefficient with SE 8e3). Recorded only.
+- Poisson/NB2/LogNormal `ordinary` q2 `sd-first/last`, NB2 `indep` q3/q4 SD: correlated and independent lanes.
+
+## Verification
+
+See the PR body for the touched-file runs (Julia 1.10 and 1.12) and the full-suite runs.
