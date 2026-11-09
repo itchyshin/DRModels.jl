@@ -131,11 +131,13 @@ import ForwardDiff
         @test maximum(abs, gθ) ≤ 1e-6
     end
 
-    @testset "σ-RE and random slopes still rejected under REML" begin
+    @testset "σ-RE and a correlated block beside another term still rejected under REML" begin
         @test_throws ArgumentError drm(bf(@formula(y ~ 1 + x), @formula(sigma ~ 1 + (1 | g))),
                                        Gaussian(); data, method = :REML)
-        @test_throws ArgumentError drm(bf(@formula(y ~ 1 + x + (0 + x | g)), @formula(sigma ~ 1)),
-                                       Gaussian(); data, method = :REML)
+        # (slope-only `(0 + x | g)` REML is admitted: test/test_gaussian_reml_routes.jl)
+        dh = merge(data, (; h = repeat(1:4, outer = length(data.y) ÷ 4)))
+        @test_throws ArgumentError drm(bf(@formula(y ~ 1 + x + (1 + x | g) + (1 | h)), @formula(sigma ~ 1)),
+                                       Gaussian(); data = dh, method = :REML)
     end
 
     @testset "model-selection guard still refuses different mean structures" begin

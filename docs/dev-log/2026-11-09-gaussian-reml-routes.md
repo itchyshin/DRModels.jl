@@ -43,3 +43,7 @@ Per group, at least 3 datasets, R drmTMB 0.8.1 `REML = TRUE` (Totoro library, `e
 - Heteroscedastic `sigma` (pσ > 1) on these routes: the formula is still exact, but nothing here tests it, so it is refused under REML.
 - Missing responses, `meta_V`, a sigma random effect, penalties: unchanged refusals.
 - Groups E and F stay refused.
+
+## Result (2026-11-09)
+
+Groups A to D implemented; E and F refused. 24 fits (3 datasets x 8 designs, n = 200), R drmTMB 0.8.1 REML = TRUE as reference, all converged on both sides, no boundary cells. Maximum differences: logLik 4.7e-12, mean coefficients 4.6e-8 R-SE, SD relative 2.8e-10; every pre-registered threshold met by at least 7 orders of magnitude. Per-fit table: `docs/dev-log/evidence/2026-11-09-gaussian-reml-routes-agreement.tsv`; test: `test/test_gaussian_reml_routes.jl`; data and R reference: `test/fixtures/gaussian_reml_routes/` (`gen_ref.R` regenerates them).
