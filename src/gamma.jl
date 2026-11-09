@@ -208,8 +208,14 @@ function _drm_gamma_fit(f::DrmFormula, fam::Gamma; data, tree = nothing, K = not
             isva && _va_reject(fam, "a correlated random slope `(1 + x | g)`")
             _require_finite_data_column(data, var)
             return _withformula(_fit_gamma_corr_ranef(fam, y, Xμ, Xσ, Float64.(getproperty(data, var)), gidx, G, nmμ, nmσ, grp, g_tol), f)
+        elseif rk === :slope           # (0 + x | g) → TMB-convention Laplace (independent route)
+            isva && _va_reject(fam, "an independent random slope `(0 + x | g)`")
+            _require_finite_data_column(data, var)
+            return _withformula(_fit_indep_re_laplace(fam, Val(:gamma), y, Xμ, Xσ, nothing,
+                                                      _indep_slope_comps(re, data, length(y)),
+                                                      nmμ, nmσ, String[], g_tol), f)
         else
-            error("Gamma() supports `(1 | g)` or `(1 + x | g)` on the mean")
+            error("Gamma() supports `(1 | g)`, `(0 + x | g)` or `(1 + x | g)` on the mean")
         end
     end
     isva && _va_reject(fam, "no random intercept (fixed-effects-only)")
@@ -483,6 +489,9 @@ function _drm_gamma_sd_regression(f::DrmFormula, fam::Gamma; data,
         # Joint mean + sigma ordinary intercepts, each with an SD formula (dense Laplace).
         return _drm_joint_sigma_sd_laplace(f, fam; data, tree, K, A, coords, g_tol, se)
     end
+    indep_shape = _indep_sd_shape(f)
+    indep_shape === nothing ||
+        return _drm_indep_sd_laplace(f, fam, Val(:gamma), indep_shape; data, g_tol)
     length(targets) == 1 || throw(ArgumentError(
         "Gamma random-effect SD regression requires exactly one SD target."))
     target = only(targets)

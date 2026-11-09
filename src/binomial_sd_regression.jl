@@ -2172,8 +2172,14 @@ function _drm_binomial_sd_regression(f::DrmFormula, fam::Binomial; data,
         1 <= length(targets) <= length(corr_members(re[1][1])) || throw(ArgumentError(
             "Binomial correlated-block SD regression needs one SD formula per selected coefficient."))
     else
-        length(re) == length(targets) || throw(ArgumentError(
-            "Binomial SD regression requires one SD formula for each independent random-effect coefficient."))
+        if length(re) != length(targets)
+            # Some terms without a formula (constant SD): the shared independent-term Laplace route.
+            indep_shape = _indep_sd_shape(f)
+            indep_shape === nothing ||
+                return _drm_indep_sd_laplace(f, fam, Val(:binomial), indep_shape; data, g_tol)
+            throw(ArgumentError(
+                "Binomial SD regression requires one SD formula for each independent random-effect coefficient."))
+        end
     end
     all(_formula_response_observed_mask(f, data)) || throw(ArgumentError(
         "Binomial random-effect SD regression does not yet support missing responses; " *
