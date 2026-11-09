@@ -18,7 +18,7 @@ Native implementation: `src/DRModels.jl`, `src/fixed_priors.jl`, `src/gaussian_c
 
 In the isolated checkout based on `dd0d984b84144ef19580d15c3392beeba841062d`, with the native edits applied, the focused native test passed 203 assertions, existing fixed-prior files passed 153, and `test/test_phylo_penalty.jl` passed 73. The focused test compared objective, gradient and Hessian at 30 frozen independent oracle case/point combinations across two shape/rate pairs. The standalone example exited 0 and reported the resolved target, data likelihood and two penalties. Commands, log paths, exact source hashes, concurrent working-tree snapshots, timings, and warnings are in the task evidence receipt `JULIA-FINAL-RERUN.md`; the example log is `julia-native-worked-example.log` in the same task evidence directory. The checks used Julia threads capped at four and BLAS at one. `git diff --check` passed on the combined tree before these closeout files were added. The after-task structure validator passed when run from this checkout. The hub closeout compiler returned failure because it also scanned unrelated hub acceptance ledgers with unmet gates; it did not validate this slice's ledger to completion.
 
-The later local candidate `0692e82e8e8b0dd6a930fa04f57cf4611b691f8a` passed 312 focused API, bridge and refusal assertions, and 203 frozen-oracle assertions, on Totoro with Julia 1.13.2. It also passed seven live paired bridge tests with R commit `95c621349b8ed91ae4afec0a07722346b6ed5a62` on Julia 1.10.0. `julia-1132-focused.log`, `julia-1132-oracle.log` and `PAIRED-LIVE-FINAL.md` in the task evidence record the test commands and scope. The paired run recorded matching hashes for selected bridge and test files; it did not establish full-tree provenance.
+The later candidate `0692e82e8e8b0dd6a930fa04f57cf4611b691f8a` passed 312 focused API, bridge and refusal assertions, and 203 frozen-oracle assertions, on Totoro with Julia 1.13.2. It also passed seven live paired bridge tests with R commit `95c621349b8ed91ae4afec0a07722346b6ed5a62` on Julia 1.10.0. `julia-1132-focused.log`, `julia-1132-oracle.log` and `PAIRED-LIVE-FINAL.md` in the task evidence record the test commands and scope. The paired run recorded matching hashes for selected bridge and test files; it did not establish full-tree provenance.
 
 ## 6. Tests of the Tests
 
@@ -26,7 +26,7 @@ The initial test failed because the constructor was absent. Subsequent review te
 
 ## 7a. Issue Ledger
 
-No issue number was assigned to this isolated slice. Draft PR #1281 is open, and its head still precedes local commit `0692e82e8` while an earlier CI shard runs. Upstream PRs overlap Gaussian implementation files and require reconciliation before integration.
+No issue number was assigned to this isolated slice. Draft PR #1281 is open; exact-head CI remains required. Upstream PRs overlap Gaussian implementation files and require reconciliation before integration.
 
 ## 8. Consistency Audit
 
@@ -38,7 +38,7 @@ The initial clone needed a resolved Julia environment and a task-owned depot ove
 
 ## 10. Known Residuals
 
-The full package suite remains open. A run expected to exceed three hours requires separate approval; the longest historical CI shard took about 3 hours 47 minutes. StatsModels collapses repeated identical written random terms before `bf(::FormulaTerm)` receives them, so Julia cannot reject that spelling separately from a single term at the current API boundary; R rejects it. The string bridge has its own pre-fit guard. A pinned fixed-only bridge comparison matched 365 numeric values and other compared fields in four cases, but strict identity failed for compiler-generated `diagnostics.route` strings. This report does not establish optimizer global optimality, SD recovery, interval calibration, coverage, broad family support, release readiness, or parity on other model structures. The frozen fixture used three groups; its true-zero case is not an SD-recovery claim. Final acceptance-ledger re-verification remains open.
+The full package suite remains open. A run expected to exceed three hours requires separate approval; the longest historical CI shard took about 3 hours 47 minutes. StatsModels collapses repeated identical written random terms before `bf(::FormulaTerm)` receives them, so Julia cannot reject that spelling separately from a single term at the current API boundary; R rejects it. The maintainer selected the existing syntax with this documented exception for the first slice. The string bridge has its own pre-fit guard. A pinned fixed-only bridge comparison matched 365 numeric values and other compared fields in four cases, but strict identity failed for compiler-generated `diagnostics.route` strings. This report does not establish optimizer global optimality, SD recovery, interval calibration, coverage, broad family support, release readiness, or parity on other model structures. The frozen fixture used three groups; its true-zero case is not an SD-recovery claim. Final acceptance-ledger re-verification remains open.
 
 ## 11. Team Learning
 
