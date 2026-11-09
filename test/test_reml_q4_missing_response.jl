@@ -207,10 +207,13 @@ using Test, Random, LinearAlgebra, Statistics
                   sigma2 = @formula(sigma2 ~ 1 + phylo(1 | species)),
                   rho12  = @formula(rho12 ~ 1))
 
+        # The partly observed rows enter the likelihood only under
+        # `miss_control(response = "include")`; drmTMB's default (and now Julia's) drops them.
+        inc = miss_control(response = "include")
         fit_ml   = drm(form, Gaussian(); data = data, tree = phy,
-                       method = :ML, q4_vcov = false)
+                       method = :ML, q4_vcov = false, missing = inc)
         fit_reml = drm(form, Gaussian(); data = data, tree = phy,
-                       method = :REML, q4_vcov = false)
+                       method = :REML, q4_vcov = false, missing = inc)
 
         @test fit_ml.converged
         @test fit_reml.converged

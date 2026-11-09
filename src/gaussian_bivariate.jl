@@ -168,7 +168,7 @@ fit = drm(
              g_tol::Real = 1e-8, q4_g_tol::Real = 1e-3,
              q4_f_reltol::Real = 1e-7, q4_iterations::Int = 300, q4_n_newton::Int = 40,
              q4_vcov::Bool = true, method::Symbol = :ML, V = nothing,
-             marginal::Union{Nothing,Symbol} = nothing)
+             marginal::Union{Nothing,Symbol} = nothing, missing = nothing)
     # #1094: this route has no `marginal` integrator choice. Refuse it by name
     # rather than with a bare MethodError; the default `:LA` is a no-op.
     (marginal === nothing || marginal === :LA) ||
@@ -176,6 +176,7 @@ fit = drm(
             "Gaussian route (it has no `marginal` choice; the default `:LA` is the only value accepted)."))
     _require_formula_column_lengths(f, data)   # #1022: no ragged columns under @inbounds
     data = _drop_missing_predictor_rows(f, data)   # #1089: R's na.omit, with a count
+    data = _apply_bivariate_response_policy(f, data, missing)   # drmTMB's miss_control(response =): default "drop"
     method in (:ML, :REML) ||
         throw(ArgumentError("drm: `method` must be :ML (default) or :REML (got :$method)"))
     rhs = Dict(f.forms)

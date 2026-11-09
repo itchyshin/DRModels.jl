@@ -183,8 +183,16 @@ distributional parameters:
   for LogNormal and zero-inflated, hurdle or truncated counts both packages return
   the unconditional response mean `E[Y]` (`exp(μ + σ²/2)`, `(1 - π) μ`,
   `μ / (1 - P(0))`, `(1 - π) μ / (1 - P(0))`), and `predict(fit, newdata; type =
-  :mean)` is the same quantity at new rows. `fit.means[:mu]` keeps the component
-  mean.
+  :mean)` is the same quantity at new rows. A bivariate `LogNormal` fit follows the
+  same rule per response (`Dict(:mu1 => …, :mu2 => …)`; drmTMB returns an `n × 2`
+  matrix), and its `predict(type = :response)` is the log-scale location.
+  `fit.means[:mu]` keeps the component mean.
+- Missing responses in a bivariate fit: both packages drop a row with either
+  response missing by default (drmTMB `miss_control(response = "drop")`, silent;
+  DRModels.jl warns with the count). `missing = miss_control(response = "include")`
+  keeps partly observed rows and fits the marginal likelihood of the observed
+  response in both. Before this default was aligned, DRModels.jl kept those rows
+  unasked and its logLik differed from drmTMB's by 15 to 30 units on the same data.
 
 drmTMB's exact R spelling for per-parameter prediction is not asserted here.
 The response-scale `predict` calls name the intended comparable operation; parity

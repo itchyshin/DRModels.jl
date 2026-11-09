@@ -2454,7 +2454,7 @@ response mean, exactly as drmTMB does (the component `μ` stays available as
 
 | family | `fitted(fit)` | R `fitted()` |
 | --- | --- | --- |
-| `LogNormal` | `exp(μ + σ²/2)` (the arithmetic mean) | same (checked against an R fit) |
+| `LogNormal` | `exp(μ + σ²/2)` (the arithmetic mean) | same (checked against an R fit); bivariate: one such vector per response, as an `n × 2` matrix in drmTMB |
 | zero-inflated Poisson / NB2 (`zi`) | `(1 - π) μ` | same (checked against an R fit) |
 | zero-truncated NB2, truncated Poisson | `μ / (1 - P(0))` | same (checked against an R fit for NB2 only) |
 | hurdle Poisson / NB2 (`hu`) | `(1 - π) μ / (1 - P(0))` | same (checked against an R fit for NB2 only) |
@@ -2632,7 +2632,8 @@ subtracts its conditional `fitted()` instead.
 function residuals(fit::DrmFit; type::Symbol = :response, rng = Random.default_rng())
     if type === :response
         haskey(fit.means, :mu) && return fit.obs[:mu] .- _fitted_mean(fit)
-        return Dict(k => fit.obs[k] .- fit.means[k] for k in keys(fit.means))
+        fv = fitted(fit)
+        return Dict(k => fit.obs[k] .- fv[k] for k in keys(fit.means))
     elseif type === :quantile
         # homtoep: the observations of a series are jointly σ²R, so the
         # standardised residuals are the whitened L⁻¹ r (drmTMB's Pearson
@@ -2720,7 +2721,9 @@ convention was adopted).
 counts, the zero/one-inflated mixture mean for ZeroOneBeta, and `μ` for every
 family whose mean is `μ`. It takes no `se`, is univariate only, and is not
 defined for CumulativeLogit. `type = :median` is `exp(Xβ̂)` for `LogNormal`
-(the response-scale median that `type = :response` returned before).
+(the response-scale median that `type = :response` returned before), one vector
+per response for a bivariate fit. A bivariate `LogNormal` fit follows the same
+rule: `type = :response` is the log-scale `μ`, as in drmTMB.
 Grouping columns in `newdata` are not used, so a group level the model never saw
 is predicted exactly like a fitted one. Univariate returns a vector; bivariate
 returns `Dict(:mu1 => …, :mu2 => …)`. In-sample, `predict(fit, data) ≈ fitted(fit)`
@@ -2788,15 +2791,20 @@ function predict(fit::DrmFit, newdata; type::Symbol = :response, se::Bool = fals
         se && throw(ArgumentError("predict: standard errors are not available for `type = :mean`"))
         return _predict_mean(fit, newdata)
     elseif type === :median
-        fit.family isa LogNormal && f isa DrmFormula || throw(ArgumentError(
+        fit.family isa LogNormal || throw(ArgumentError(
             "predict: `type = :median` is defined for LogNormal fits only"))
         out = predict(fit, newdata; type = :link, se)
+        if f isa BivariateDrmFormula   # one vector per response (Dict)
+            se || return Dict(k => exp.(v) for (k, v) in out)
+            return (; prediction = Dict(k => exp.(v) for (k, v) in out.prediction),
+                      se = Dict(k => exp.(out.prediction[k]) .* out.se[k] for k in keys(out.se)))
+        end
         return se ? (; prediction = exp.(out.prediction), se = exp.(out.prediction) .* out.se) :
                     exp.(out)
     end
     # drmTMB's `predict(type = "response")` for lognormal is the log-scale `mu`
     # (the "response scale" of the location parameter), i.e. the link scale.
-    fit.family isa LogNormal && f isa DrmFormula && type === :response && (type = :link)
+    fit.family isa LogNormal && type === :response && (type = :link)
     nd = NamedTuple(pairs(newdata))
     nrows = length(first(values(nd)))
     V = se ? vcov(fit) : nothing

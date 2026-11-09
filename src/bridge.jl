@@ -656,6 +656,15 @@ function _bridge_fit(bundle, fam, data; tree, K, A, Ainv = nothing,
     if haskey(options, :q4_vcov)
         kwargs[:q4_vcov] = Bool(options[:q4_vcov])
     end
+    # The R wrapper applies drmTMB's `miss_control(response = "drop")` itself: with the
+    # default it removes incomplete rows before marshalling, so any row that arrives here
+    # with a missing response was kept on purpose (`response = "include"`). Native `drm`
+    # now defaults a bivariate fit to the same "drop", so the bridge asks for "include"
+    # to leave the rows R sent untouched.
+    if bundle isa BivariateDrmFormula && (fam isa Gaussian || fam isa LogNormal || fam isa Student) &&
+       !haskey(kwargs, :missing)
+        kwargs[:missing] = miss_control(response = "include")
+    end
     # Error text only (nothing is added, dropped or defaulted): `drm` hands its kwargs
     # on to a family-specific fitter, so an option that fitter does not accept
     # surfaces as a bare MethodError. Name the offending option(s) instead, using

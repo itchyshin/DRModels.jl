@@ -157,8 +157,8 @@ formula give the same covariance as native drmTMB.
 | Poisson | `coords`; range estimated on the Laplace route. With `sd(site, spatial) ~ z` the kernel is the fixed native `exp(-d / m) + 1e-6 I` instead | **Tested**; the SD fit agrees with drmTMB 0.8.1 (`test/test_struct_sd_counts.jl`). The bare Poisson `coords` fit can return NaN on some data (open, triaged elsewhere) |
 | Gamma | `coords` (native kernel, 1-D vector allowed) or a supplied `K`, not both; with or without `sd(site, spatial) ~ z` | **Tested**; a `coords` fit equals the same fit with the native kernel passed as `K` (log-likelihoods agree to 1e-12 on one simulated dataset) |
 | NegBinomial2 | a supplied `K` on `spatial(1 \| site)`; `coords` (native kernel) with `sd(site, spatial) ~ z` on `spatial(1 \| site)` or on a slope-only `spatial(0 + x \| site)` term | **Tested**; the intercept SD fit agrees with drmTMB 0.8.1. A bare `spatial(1 \| site)` with `coords` and no SD formula is still refused; a supplied `K` together with an `sd()` formula is refused, and that message calls the route a slope route even for `spatial(1 \| site)` |
-| Beta | a supplied `K` on `spatial(1 \| site)` (no SD formula); `coords` (native kernel) with `sd(site, spatial) ~ z` or the independent `spatial(1 + x \| site)` block with one `sd(site, spatial, coef(·))` formula per coefficient | **Tested**; `K` is refused when an SD formula is present, and `sigma ~ 1` is required |
-| Binomial | `coords` with an `sd(site, spatial)` formula only; a bare `spatial(1 \| site)` is refused | **Tested**; this route keeps the older fixed range (mean pairwise distance, 1e-8 ridge) because drmTMB has no Binomial spatial route |
+| Beta | a supplied `K` on `spatial(1 \| site)` (no SD formula); `coords` (native kernel) on a bare `spatial(1 \| site)` or `spatial(1 + x \| site)` (completed with constant coefficient SDs, as drmTMB 0.8.1 fits them) or with `sd(site, spatial) ~ z` or the independent `spatial(1 + x \| site)` block with one `sd(site, spatial, coef(·))` formula per coefficient | **Tested**; `K` is refused when an SD formula is present, and `sigma ~ 1` is required |
+| Binomial | `coords` with an `sd(site, spatial)` formula, or a bare `spatial(1 \| site)` (completed to `sd(site, spatial) ~ 1`, as drmTMB 0.8.1 fits it; drmTMB flags that fit as not converged on the gap-map data) | **Tested**; this route keeps the older fixed range (mean pairwise distance, 1e-8 ridge) because drmTMB has no Binomial spatial route |
 | LogNormal, Tweedie | not accepted | `spatial` is refused by name |
 
 ### Structured and positive-family SD cells added after the wave-10 gap map
@@ -450,7 +450,11 @@ To avoid overclaiming, note these boundaries:
   Location–Scale–Scale `sd()` models are available. `drm` drops rows with a
   `missing` predictor, and rows with a missing response on the Gaussian `(1|g)`
   and `meta_V` routes, with a warning that gives the count (R's `na.omit`, as
-  drmTMB does; #1089). General multiple imputation outside the joint-model
+  drmTMB does; #1089). A bivariate fit (Gaussian, `LogNormal`, `Student`) drops a row
+  when either response is missing, with a counted warning, as drmTMB's default
+  `miss_control(response = "drop")` does; `missing = miss_control(response = "include")`
+  keeps partly observed rows and fits their observed-response marginal likelihood
+  (drmTMB implements `"include"` for the bivariate Gaussian only). General multiple imputation outside the joint-model
   routes and an `na.action` option to choose another behaviour are absent.
   See [Handling missing data](model-guides/missing-data.md) for what to do now.
 - **VA/ELBO:** experimental random-intercept VA is limited to `(1|g)` for

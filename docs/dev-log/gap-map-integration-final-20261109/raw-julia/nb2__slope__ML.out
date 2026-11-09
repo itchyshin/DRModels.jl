@@ -1,0 +1,6 @@
+S	1	nb2|slope|lab0|q1|sd-none|cm0|ML
+R	1	nb2|slope|lab0|q1|sd-none|cm0|ML	FITS				-706.8045823485	true	se_finite=true;npar=6	23.93	
+S	2	nb2|slope|lab0|q1|sd-one|cm0|ML
+R	2	nb2|slope|lab0|q1|sd-one|cm0|ML	FITS				-706.7157430533	true	se_finite=true;npar=6	13.70	
+S	3	nb2|slope|lab0|q1|sd-z|cm0|ML
+R	3	nb2|slope|lab0|q1|sd-z|cm0|ML	FITS				-703.8490464787	true	se_finite=true;npar=7	16.76	

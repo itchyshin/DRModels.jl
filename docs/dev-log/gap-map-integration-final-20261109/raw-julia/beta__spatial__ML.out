@@ -1,0 +1,50 @@
+S	1	beta|spatial|lab0|q1|sd-none|cm0|ML
+R	1	beta|spatial|lab0|q1|sd-none|cm0|ML	ERROR	ErrorException	spatial(1 | g) for counts needs either a precomputed spatial covariance via `K = …`, or site `coords = …` (a G×2 coordinate matrix) for coordinate-based exponential-kernel covariance with the range estimated jointly	spatial(1 | g) for counts needs either a precomputed spatial covariance via `K = …`, or site `coords = …` (a G×2 coordinate matrix) for coordinate-based exponential-kernel covariance with the range estimated jointly			at=poisson.jl:1269	12.49	
+S	2	beta|spatial|lab0|q1|sd-one|cm0|ML
+R	2	beta|spatial|lab0|q1|sd-one|cm0|ML	FITS				130.6592767578	true	se_finite=true;npar=6	22.72	
+S	3	beta|spatial|lab0|q1|sd-z|cm0|ML
+R	3	beta|spatial|lab0|q1|sd-z|cm0|ML	FITS				135.7117844157	true	se_finite=true;npar=7	26.72	
+S	4	beta|spatial|lab0|q2|sd-none|cm0|ML
+R	4	beta|spatial|lab0|q2|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `spatial(1 + x1 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `spatial(1 + x1 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.15	
+S	5	beta|spatial|lab1|q2|sd-none|cm0|ML
+R	5	beta|spatial|lab1|q2|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `spatial(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `spatial(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.08	
+S	6	beta|spatial|lab0|q2|sd-one|cm0|ML
+R	6	beta|spatial|lab0|q2|sd-one|cm0|ML	FITS				130.6592767578	true	se_finite=true;npar=7	6.11	Hessian is numerically singular at the optimum — using a pseudo-inverse.
+S	7	beta|spatial|lab1|q2|sd-one|cm0|ML
+R	7	beta|spatial|lab1|q2|sd-one|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `spatial(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `spatial(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.00	
+S	8	beta|spatial|lab0|q2|sd-z|cm0|ML
+R	8	beta|spatial|lab0|q2|sd-z|cm0|ML	FITS				137.5342473213	true	se_finite=true;npar=9	2.24	
+S	9	beta|spatial|lab1|q2|sd-z|cm0|ML
+R	9	beta|spatial|lab1|q2|sd-z|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `spatial(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `spatial(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.00	
+S	10	beta|spatial|lab0|q2|sd-first|cm0|ML
+R	10	beta|spatial|lab0|q2|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `spatial(1 + x1 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `spatial(1 + x1 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.10	
+S	11	beta|spatial|lab1|q2|sd-first|cm0|ML
+R	11	beta|spatial|lab1|q2|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `spatial(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `spatial(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.00	
+S	12	beta|spatial|lab0|q2|sd-last|cm0|ML
+R	12	beta|spatial|lab0|q2|sd-last|cm0|ML	ERROR	ArgumentError	ArgumentError: Beta `sd(g, spatial)` SD regression targets the structured mean intercept only.	ArgumentError: Beta `sd(g, spatial)` SD regression targets the structured mean intercept only.				0.00	
+S	13	beta|spatial|lab1|q2|sd-last|cm0|ML
+R	13	beta|spatial|lab1|q2|sd-last|cm0|ML	ERROR	ArgumentError	ArgumentError: Beta `sd(g, spatial)` SD regression targets the structured mean intercept only.	ArgumentError: Beta `sd(g, spatial)` SD regression targets the structured mean intercept only.				0.00	
+S	14	beta|spatial|lab0|q3|sd-none|cm0|ML
+R	14	beta|spatial|lab0|q3|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `spatial(1 + x1 + x2 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `spatial(1 + x1 + x2 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.02	
+S	15	beta|spatial|lab1|q3|sd-none|cm0|ML
+R	15	beta|spatial|lab1|q3|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `spatial(:((1 + x1 + x2) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `spatial(:((1 + x1 + x2) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.00	
+S	16	beta|spatial|lab0|q3|sd-z|cm0|ML
+R	16	beta|spatial|lab0|q3|sd-z|cm0|ML	ERROR	ArgumentError	ArgumentError: Beta structured random-effect SD regression requires exactly one `sd(group, level) ~ …` formula.	ArgumentError: Beta structured random-effect SD regression requires exactly one `sd(group, level) ~ …` formula.				0.00	
+S	17	beta|spatial|lab1|q3|sd-z|cm0|ML
+R	17	beta|spatial|lab1|q3|sd-z|cm0|ML	ERROR	ArgumentError	ArgumentError: Beta structured random-effect SD regression requires exactly one `sd(group, level) ~ …` formula.	ArgumentError: Beta structured random-effect SD regression requires exactly one `sd(group, level) ~ …` formula.				0.00	
+S	18	beta|spatial|lab0|q3|sd-first|cm0|ML
+R	18	beta|spatial|lab0|q3|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `spatial(1 + x1 + x2 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `spatial(1 + x1 + x2 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.00	
+S	19	beta|spatial|lab1|q3|sd-first|cm0|ML
+R	19	beta|spatial|lab1|q3|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `spatial(:((1 + x1 + x2) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `spatial(:((1 + x1 + x2) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.00	
+S	20	beta|spatial|lab0|q4|sd-none|cm0|ML
+R	20	beta|spatial|lab0|q4|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `spatial(1 + x1 + x2 + x3 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `spatial(1 + x1 + x2 + x3 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.01	
+S	21	beta|spatial|lab1|q4|sd-none|cm0|ML
+R	21	beta|spatial|lab1|q4|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `spatial(:((1 + x1 + x2 + x3) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `spatial(:((1 + x1 + x2 + x3) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.00	
+S	22	beta|spatial|lab0|q4|sd-z|cm0|ML
+R	22	beta|spatial|lab0|q4|sd-z|cm0|ML	ERROR	ArgumentError	ArgumentError: Beta structured random-effect SD regression requires exactly one `sd(group, level) ~ …` formula.	ArgumentError: Beta structured random-effect SD regression requires exactly one `sd(group, level) ~ …` formula.				0.00	
+S	23	beta|spatial|lab1|q4|sd-z|cm0|ML
+R	23	beta|spatial|lab1|q4|sd-z|cm0|ML	ERROR	ArgumentError	ArgumentError: Beta structured random-effect SD regression requires exactly one `sd(group, level) ~ …` formula.	ArgumentError: Beta structured random-effect SD regression requires exactly one `sd(group, level) ~ …` formula.				0.00	
+S	24	beta|spatial|lab0|q4|sd-first|cm0|ML
+R	24	beta|spatial|lab0|q4|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `spatial(1 + x1 + x2 + x3 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `spatial(1 + x1 + x2 + x3 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.00	
+S	25	beta|spatial|lab1|q4|sd-first|cm0|ML
+R	25	beta|spatial|lab1|q4|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `spatial(:((1 + x1 + x2 + x3) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `spatial(:((1 + x1 + x2 + x3) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.00	
