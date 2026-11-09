@@ -12,12 +12,12 @@ using Test, DRModels
                  () -> confint(fit; method=:profile), () -> profile_result(fit),
                  () -> predict(fit, data; se=true), () -> predict_parameters(fit, data; se=true),
                  () -> aic(fit), () -> bic(fit), () -> lrt_boundary(fit, plain; q=1),
-                 () -> lrtest(plain, fit))
+                 () -> DRModels.lrtest(plain, fit))
         failure = try call(); nothing catch e; e end
         @test failure isa ArgumentError
         @test occursin(r"prior|MAP"i, sprint(showerror, failure))
     end
-    err = try lrtest(plain, fit); nothing catch e; e end
+    err = try DRModels.lrtest(plain, fit); nothing catch e; e end
     @test occursin("priors or penalties", sprint(showerror, err))
     table = coeftable(fit)
     @test all(col -> all(isnan, col), table.cols[3:6])
