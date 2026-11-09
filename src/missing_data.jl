@@ -155,6 +155,52 @@ function _drop_missing_response_rows(f::DrmFormula, data)
     return _subset_rows_narrowed(cols, observed)
 end
 
+# Bivariate response-missingness policy, drmTMB's `miss_control(response = ...)`.
+# drmTMB's default is `"drop"`: a row with either response missing is removed before
+# fitting (complete cases). `"include"` keeps the row and lets a partly observed row
+# contribute the marginal likelihood of its observed response. `nothing` (no `missing`
+# keyword) is the default, so `drm(bf(...), Gaussian(); data)` matches
+# `drmTMB(bf(...), family = biv_gaussian(), data = data)` on data with missing responses.
+function _bivariate_response_policy(missing_control)
+    missing_control === nothing && return :drop
+    missing_control isa JointMissingControl || throw(ArgumentError(
+        "drm: `missing` must be created with `miss_control(response = \"drop\" | \"include\")`"))
+    missing_control.predictor === :fail || throw(ArgumentError(
+        "drm: `miss_control(predictor = \"model\")` is not available for a bivariate response; " *
+        "missing predictor values are dropped row-wise, as in R's `na.omit`."))
+    return missing_control.response
+end
+
+# Apply the policy to `data`: return it unchanged for "include" (or when every response
+# is observed), refuse for "fail", and drop incomplete rows with a counted warning for
+# "drop". drmTMB's own default drop is silent; the warning here follows the other
+# Julia drops (`_drop_missing_predictor_rows`) and changes no number.
+function _apply_bivariate_response_policy(f::BivariateDrmFormula, data, missing_control)
+    policy = _bivariate_response_policy(missing_control)
+    policy === :include && return data
+    Tables.istable(data) || return data
+    _, obs1 = _coerce_response_column(_table_column(data, f.response1); name = String(f.response1))
+    _, obs2 = _coerce_response_column(_table_column(data, f.response2); name = String(f.response2))
+    length(obs1) == length(obs2) ||
+        throw(ArgumentError("drm: the two response columns have different lengths"))
+    observed = obs1 .& obs2
+    all(observed) && return data
+    n = length(observed)
+    ndrop = count(!, observed)
+    policy === :fail && throw(ArgumentError(
+        "drm: $ndrop of $n rows have a missing response and `miss_control(response = \"fail\")` " *
+        "was requested. Use `miss_control(response = \"drop\")` (the default, complete cases) or " *
+        "`miss_control(response = \"include\")` (partly observed rows keep their observed response)."))
+    ndrop < n || throw(ArgumentError("drm: every row has a missing response; there is nothing left to fit."))
+    cols = Tables.columntable(data)
+    _check_drop_keeps_levels(f, cols, observed)
+    @warn "drm: dropped $ndrop of $n rows with a missing `$(f.response1)` or `$(f.response2)` " *
+          "(complete cases, drmTMB's default `miss_control(response = \"drop\")`). Pass " *
+          "`missing = miss_control(response = \"include\")` to keep partly observed rows."
+    _drop_scope_weight_rows!(observed)
+    return _subset_rows_narrowed(cols, observed)
+end
+
 """
     drm_listwise(formula, data; verbose = true) -> NamedTuple
 

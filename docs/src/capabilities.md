@@ -450,7 +450,11 @@ To avoid overclaiming, note these boundaries:
   Location–Scale–Scale `sd()` models are available. `drm` drops rows with a
   `missing` predictor, and rows with a missing response on the Gaussian `(1|g)`
   and `meta_V` routes, with a warning that gives the count (R's `na.omit`, as
-  drmTMB does; #1089). General multiple imputation outside the joint-model
+  drmTMB does; #1089). A bivariate fit (Gaussian, `LogNormal`, `Student`) drops a row
+  when either response is missing, with a counted warning, as drmTMB's default
+  `miss_control(response = "drop")` does; `missing = miss_control(response = "include")`
+  keeps partly observed rows and fits their observed-response marginal likelihood
+  (drmTMB implements `"include"` for the bivariate Gaussian only). General multiple imputation outside the joint-model
   routes and an `na.action` option to choose another behaviour are absent.
   See [Handling missing data](model-guides/missing-data.md) for what to do now.
 - **VA/ELBO:** experimental random-intercept VA is limited to `(1|g)` for
