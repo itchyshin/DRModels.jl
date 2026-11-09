@@ -1129,7 +1129,7 @@ function _gaussian_offset_restore(fit::DrmFit, f_orig::DrmFormula, off::Vector{F
 end
 
 function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = nothing, Ainv = nothing, tree = nothing, coords = nothing, g_tol::Real = 1e-8, algorithm::Symbol = :auto, method::Symbol = :ML, profile_ci::Bool = false, phylo_coupled::Bool = false, penalty = nothing, sparse = nothing, impute = nothing, missing = nothing, marginal::Symbol = :LA, ids = nothing, priors = nothing)
-    f = _default_structured_q2_sd(f, fam; method)   # bare structured (1 + x | g): default `sd(…, coef(·)) ~ 1` (ML only)
+    f = _default_structured_q2_sd(f, fam; method)   # bare structured (1 + x | g): default `sd(…, coef(·)) ~ 1` (ML; REML for Gaussian animal, relmat, spatial)
     A, ids = _ainv_as_labelled_A(f, data, A, Ainv, ids)   # `Ainv` (precision) -> labelled covariance `A`
     _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, coords = coords)   # #1027 #1022 #1010
     A = _resolve_relatedness_labels(f, data, A, ids; coords = coords)   # #957: match `A` by label
@@ -2454,12 +2454,12 @@ response mean, exactly as drmTMB does (the component `μ` stays available as
 
 | family | `fitted(fit)` | R `fitted()` |
 | --- | --- | --- |
-| `LogNormal` | `exp(μ + σ²/2)` (the arithmetic mean); bivariate: one such vector per response, as an `n × 2` matrix in drmTMB | same |
-| zero-inflated Poisson / NB2 (`zi`) | `(1 - π) μ` | same |
-| zero-truncated NB2, truncated Poisson | `μ / (1 - P(0))` | same (NB2) |
-| hurdle Poisson / NB2 (`hu`) | `(1 - π) μ / (1 - P(0))` | same (NB2) |
-| `ZeroOneBeta` | `(1 - zoi) μ + zoi coi` | same |
-| `CumulativeLogit` | expected category score | same |
+| `LogNormal` | `exp(μ + σ²/2)` (the arithmetic mean) | same (checked against an R fit); bivariate: one such vector per response, as an `n × 2` matrix in drmTMB |
+| zero-inflated Poisson / NB2 (`zi`) | `(1 - π) μ` | same (checked against an R fit) |
+| zero-truncated NB2, truncated Poisson | `μ / (1 - P(0))` | same (checked against an R fit for NB2 only) |
+| hurdle Poisson / NB2 (`hu`) | `(1 - π) μ / (1 - P(0))` | same (checked against an R fit for NB2 only) |
+| `ZeroOneBeta` | `(1 - zoi) μ + zoi coi` | same formula (not checked against an R fit) |
+| `CumulativeLogit` | expected category score | same formula (not checked against an R fit) |
 
 with `μ` the count or location component, `σ` the log-scale SD for `LogNormal`, and
 `P(0)` the untruncated Poisson or NB2 probability of zero. Before this convention the

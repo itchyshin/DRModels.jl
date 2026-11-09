@@ -662,7 +662,7 @@ This route is **experimental** — see the `cross_family_latent` capability row.
         fam isa Union{Gaussian,Poisson,Binomial,NegBinomial2,Beta,Gamma} || throw(ArgumentError(
             "drm: the cross-family route supports Gaussian, Poisson, Binomial, NegBinomial2, " *
             "Beta and Gamma; $(nameof(typeof(fam)))() is not implemented here (drmTMB refuses " *
-            "it too). Fit the two responses separately, or choose one of those families."))
+            "mixed-response pairs altogether, so there is no R reference). Fit the two responses separately, or choose one of those families."))
     end
     _require_formula_column_lengths(f, data)   # #1022: no ragged columns under @inbounds
     data = _drop_missing_predictor_rows(f, data)   # #1089: R's na.omit, with a count

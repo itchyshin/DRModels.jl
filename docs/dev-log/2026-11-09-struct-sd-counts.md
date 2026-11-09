@@ -51,7 +51,7 @@ Julia 1.10.12, Mac, `test/test_struct_sd_counts.jl` against `reference_drmtmb.cs
 
 No cell fell in class (c) or (d). The Gamma one-target SEs include the constant-SD coefficient of the unselected term only on the Julia side; R omits it from its coefficient list, so the Gamma comparison is on the coefficients R reports (the optimiser has eight parameters in both).
 
-Side effect, not tested beyond logLik: LogNormal `ordinary` q2 `sd-one` and `sd-z` (correlated `(1 + x1 | g)` with two coefficient SDs) now fit through the same Gaussian delegation and match R's logLik (-550.8682164308, -549.4290610144, equal to R to 1e-10). They belong to the correlated-blocks lane; coefficient agreement was not checked.
+Side effect, not tested beyond logLik: LogNormal `ordinary` q2 `sd-one` and `sd-z` (correlated `(1 + x1 | g)` with two coefficient SDs) now fit through the same Gaussian delegation. A one-off run gave logLik -550.8682164308 and -549.4290610144, which were compared by hand with an R fit to 1e-10, but neither that run nor the R values are committed, and no reference cell or test covers these two shapes. Treat them as not checked against drmTMB. They belong to the correlated-blocks lane; coefficient agreement was not checked.
 
 ## Not done, and why
 

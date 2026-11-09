@@ -458,8 +458,9 @@ end
 # the likelihood VALUE (and everything derived from it: aic/bic/deviance)
 # shifts by the Jacobian — mirrors `_lognormal_jacobian_shift` in
 # src/bivariate_lognormal.jl for the univariate case. The Gaussian fit's `means`
-# are on the LOG scale; `fitted` / `simulate` / `residuals` expect the
-# response-scale median `exp(.)` like the plain LogNormal route (#1102).
+# are on the LOG scale; `simulate` expects the response-scale
+# median `exp(.)` like the plain LogNormal route (#1102); since #1282 `fitted` and
+# `residuals` use E[Y] = exp(mu + sigma^2 / 2) (`means[:mu]` still holds the median).
 function _lognormal_jacobian_shift(fam::LogNormal, gfit::DrmFit, y::Vector{Float64})
     jac = sum(log, y)
     gnll = gfit.nll

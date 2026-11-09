@@ -64,7 +64,7 @@ Julia-version note: the q = 3 Binomial fit reports `converged = true` on 1.10.12
 
 ## Behaviour changes and limits
 
-- Poisson labelled `(1 + x | p | g)` with one SD formula was refused and now fits (the labelled form is a Julia extension; drmTMB refuses it). `test/test_labelled_ordinary_q2_sd.jl` asserted the refusal and now asserts that the one-formula fit equals the explicit `~ 1` fit.
+- Poisson labelled `(1 + x | p | g)` with one SD formula was refused and now fits (the labelled form is a Julia extension; drmTMB refuses it). `test/test_labelled_ordinary_q2_sd.jl` asserted the refusal and now asserts that the one-formula fit equals the explicit `~ 1` fit. That is Julia against Julia through the same new code path (there is no R reference for the labelled form, since drmTMB refuses it), so it does not check the constant-SD mapping against R; the testset keeps its old name, 'refusals stay explicit', although it now holds this acceptance check.
 - `simulate` and the parametric bootstrap are refused (clear message) for the one-formula Poisson/NB2 fits, because the post-fit marginal simulator is guarded on two SD targets. `predict` and `summary` work. Not extended here.
 - LogNormal q = 3, 4 and Poisson/NB2 q = 3, 4 stay refused, as in drmTMB.
 - Binomial bare q = 3, 4 is logit only; other links keep the old refusal.

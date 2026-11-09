@@ -170,10 +170,10 @@ end
 #
 # Only the shapes whose explicit `~ 1` form is a supported route are completed,
 # so no refusal can ever talk about SD formulas the user did not write: one
-# structured term and nothing else random, `sigma ~ 1`, ML (or Gaussian animal/relmat REML), no other SD
+# structured term and nothing else random, `sigma ~ 1`, ML (or Gaussian animal/relmat/spatial REML), no other SD
 # formula. The labelled (correlated) form is completed for Poisson only, the
 # one family where drmTMB 0.8.1 fits it without an SD formula. REML is completed
-# for the Gaussian animal and relmat terms only.
+# for the Gaussian animal, relmat and spatial terms only.
 _default_q2_sd_families() = Dict{Symbol,Tuple}(   # a function: the family types load after this file
     :animal  => (Gaussian, Poisson, NegBinomial2, Gamma, Beta),
     :relmat  => (Gaussian, Poisson, NegBinomial2, Gamma, Beta),

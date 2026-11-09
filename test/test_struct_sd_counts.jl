@@ -145,7 +145,7 @@ end
     end
 end
 
-@testset "constant-SD Student crossed route unchanged by the per-level SD generalisation" begin
+@testset "constant-SD Student crossed route still fits (finiteness only; the unchanged numbers are pinned against drmTMB in test_student_725.jl)" begin
     d = _ssc_data("student_crossed")
     fit = drm(bf(@formula(y ~ x1 + x2 + x3 + (1 | g) + (1 | g2))), Student(); data = d)
     @test fit.converged === true
@@ -156,11 +156,11 @@ end
 @testset "records: refused cells stay refused with a clear message" begin
     d = _ssc_data("binomial_relmat")
     A = readdlm(joinpath(_SSC_DIR, "A.csv"), ',', Float64)
-    @test_throws ArgumentError drm(bf(@formula(y ~ x1 + x2 + x3 + relmat(1 + x1 | g)),
+    @test_throws r"Binomial relmat SD regression currently requires exactly one" drm(bf(@formula(y ~ x1 + x2 + x3 + relmat(1 + x1 | g)),
         @formula(sd(g, relmat, coef(intercept)) ~ 1), @formula(sd(g, relmat, coef(x1)) ~ 1)),
         Binomial(:logit); data = d, K = A)
     # Gamma: a one-target pair must name a coefficient of the pair.
     dg = _ssc_data("gamma_ordinary")
-    @test_throws ArgumentError drm(bf(@formula(y ~ x1 + x2 + x3 + (1 | g) + (0 + x1 | g)), @formula(sigma ~ 1),
+    @test_throws r"an `sd\(\)` target names a coefficient that is not a random-effect term" drm(bf(@formula(y ~ x1 + x2 + x3 + (1 | g) + (0 + x1 | g)), @formula(sigma ~ 1),
         @formula(sd(g, coef(x2)) ~ z)), DRModels.Gamma(); data = dg)
 end

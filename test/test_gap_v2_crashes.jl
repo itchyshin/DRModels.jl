@@ -99,7 +99,7 @@ const _GV2_G = Gaussian()
         @test err isa ArgumentError
         @test err isa ArgumentError && err.msg ==
             "drm: the cross-family route supports Gaussian, Poisson, Binomial, NegBinomial2, Beta " *
-            "and Gamma; LogNormal() is not implemented here (drmTMB refuses it too). Fit the two " *
+            "and Gamma; LogNormal() is not implemented here (drmTMB refuses mixed-response pairs altogether, so there is no R reference). Fit the two " *
             "responses separately, or choose one of those families."
         # the supported pairs still fit
         mf = drm(bf(mu1 = @formula(y_g ~ x1), mu2 = @formula(y_pois ~ x1), sigma1 = @formula(sigma1 ~ 1)),

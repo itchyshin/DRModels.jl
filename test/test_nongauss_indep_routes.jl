@@ -9,7 +9,8 @@ include(joinpath(@__DIR__, "nongauss_indep_helpers.jl"))
 # (docs/dev-log/2026-11-09-nongauss-indep-design.md): |dlogLik| <= 1e-4, fixed effects within 1e-3,
 # random-effect log SDs (or SD-formula coefficients) within 5e-3. A term whose SD sits on the
 # boundary in either fit (log SD < -6) is exempt from the SD criterion only; logLik and fixed
-# effects still have to agree.
+# effects still have to agree. That exemption was added AFTER the rule was fixed, and it applies
+# to every cell below, not only Binomial q4.
 
 const _NGI_REF = ngi_reference()
 
@@ -64,6 +65,13 @@ end
         @test c.dll <= 1e-4 && c.fe <= 1e-3
         @test c.boundary                         # a term sits at SD ~ 0 in at least one fit
         @test !_NGI_REF[id].clean                # drmTMB flags this cell itself
+        # the three SDs that are not at zero must still match R (the boundary term only waives its own SD)
+        sdb = [first(p) for p in fit.blocks if first(p) in (:sd, :resd) || startswith(String(first(p)), "sdtarget_")]
+        jsd = reduce(vcat, [coef(fit, b) for b in sdb])
+        rsd = ngi_ref_sdpar(id, _NGI_REF[id])
+        live = [i for i in eachindex(jsd) if jsd[i] > -6 && rsd[i] > -6]
+        @test length(live) == 3
+        @test maximum(abs.(jsd[live] .- rsd[live])) <= 5e-3
     end
 end
 
@@ -81,6 +89,6 @@ end
     # drmTMB 0.8.1 itself errors on these SD shapes, so they stay refused here
     for (fam, id) in (Beta() => "beta|indep|lab0|q2|sd-z|cm0|ML",
                       Tweedie() => "tweedie|indep|lab0|q2|sd-z|cm0|ML")
-        @test_throws ArgumentError drm(ngi_build(id), fam; data = ngi_data(split(id, '|')[1]))
+        @test_throws r"random-effect SD regression requires" drm(ngi_build(id), fam; data = ngi_data(split(id, '|')[1]))
     end
 end
