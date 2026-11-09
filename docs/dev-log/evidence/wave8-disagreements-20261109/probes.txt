@@ -1,0 +1,17 @@
+Probe outputs (Totoro, Julia 1.10.12, 2026-11-09)
+
+anim.jl
+binomial|animal|lab0|q2|sd-one|cm0|ML
+  Julia ll = -254.40813011125732  atanh_rho_hat = 1.82524094114045  (R estimate ll -255.8524611388)
+  Julia objective at R's estimate with rho = 0: -255.85246113881686
+  Julia objective at Julia's estimate with rho set to 0: -256.0523437393566
+binomial|animal|lab0|q2|sd-z|cm0|ML
+  Julia ll = -253.98079181798187  atanh_rho_hat = 0.9541053475297533  (R estimate ll -254.8852441418)
+  Julia objective at R's estimate with rho = 0: -254.88524414366242
+  Julia objective at Julia's estimate with rho set to 0: -255.1877934432465
+
+gsp.R / gsp.jl
+median distance (R fixed range): 3.256272
+data g order == ids order: TRUE
+Julia relmat with R's fixed-range kernel: ll = -393.1791601167806   (R spatial sd-none: -393.1791601168)
+Julia native spatial (estimated range): ll = -392.23825736014146 range theta = 0.09968228597059219 exp = 1.104819845543369
