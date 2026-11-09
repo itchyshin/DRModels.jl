@@ -1,0 +1,14 @@
+poisson|spatial|lab0|q1|sd-one|cm0|ML
+poisson|spatial|lab0|q1|sd-z|cm0|ML
+nb2|phylo|lab0|q1|sd-one|cm0|ML
+nb2|phylo|lab0|q1|sd-z|cm0|ML
+nb2|spatial|lab0|q1|sd-one|cm0|ML
+nb2|spatial|lab0|q1|sd-z|cm0|ML
+binomial|relmat|lab0|q2|sd-one|cm0|ML
+binomial|relmat|lab0|q2|sd-z|cm0|ML
+lognormal|crossed|lab0|q1|sd-one|cm0|ML
+lognormal|crossed|lab0|q1|sd-z|cm0|ML
+student|crossed|lab0|q1|sd-one|cm0|ML
+student|crossed|lab0|q1|sd-z|cm0|ML
+gamma|indep|lab0|q2|sd-first|cm0|ML
+gamma|indep|lab0|q2|sd-last|cm0|ML

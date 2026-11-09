@@ -154,12 +154,25 @@ formula give the same covariance as native drmTMB.
 
 | Family | Accepts | Status and boundary |
 |---|---|---|
-| Poisson | `coords`; range estimated on the Laplace route | **Tested** |
+| Poisson | `coords`; range estimated on the Laplace route. With `sd(site, spatial) ~ z` the kernel is the fixed native `exp(-d / m) + 1e-6 I` instead | **Tested**; the SD fit agrees with drmTMB 0.8.1 (`test/test_struct_sd_counts.jl`). The bare Poisson `coords` fit can return NaN on some data (open, triaged elsewhere) |
 | Gamma | `coords` (native kernel, 1-D vector allowed) or a supplied `K`, not both; with or without `sd(site, spatial) ~ z` | **Tested**; a `coords` fit equals the same fit with the native kernel passed as `K` (log-likelihoods agree to 1e-12 on one simulated dataset) |
-| NegBinomial2 | a supplied `K` on `spatial(1 \| site)`; `coords` only for a slope-only `spatial(0 + x \| site)` term with its `sd(...)` formula | **Tested**; `coords` on an intercept is refused |
+| NegBinomial2 | a supplied `K` on `spatial(1 \| site)`; `coords` (native kernel) with `sd(site, spatial) ~ z` on `spatial(1 \| site)` or on a slope-only `spatial(0 + x \| site)` term | **Tested**; the intercept SD fit agrees with drmTMB 0.8.1. A bare `spatial(1 \| site)` with `coords` and no SD formula is still refused |
 | Beta | a supplied `K` on `spatial(1 \| site)` (no SD formula); `coords` (native kernel) with `sd(site, spatial) ~ z` or the independent `spatial(1 + x \| site)` block with one `sd(site, spatial, coef(·))` formula per coefficient | **Tested**; `K` is refused when an SD formula is present, and `sigma ~ 1` is required |
 | Binomial | `coords` with an `sd(site, spatial)` formula only; a bare `spatial(1 \| site)` is refused | **Tested**; this route keeps the older fixed range (mean pairwise distance, 1e-8 ridge) because drmTMB has no Binomial spatial route |
 | LogNormal, Tweedie | not accepted | `spatial` is refused by name |
+
+### Structured and positive-family SD cells added after the wave-10 gap map
+
+Each row was compared with drmTMB 0.8.1 on the committed 400-row gap-map datasets
+(`test/test_struct_sd_counts.jl`; log-likelihood to 1e-4, every coefficient to 1e-3 and 0.02 R-SE, SEs to 1%).
+
+| Cell | Route | Status and boundary |
+|---|---|---|
+| NegBinomial2 `phylo(1 \| g)` with `sd(g, phylogenetic) ~ z` | tip correlation of an ultrametric `tree`, dense Laplace; `sigma ~ 1` required | **Tested** |
+| Gamma `(1 \| g) + (0 + x \| g)` with one `sd(g, coef(.)) ~ z` formula | the other coefficient keeps a constant SD (the default `~ 1`); the two-field engine | **Tested** for Gamma only; Poisson and NB2 pairs are not covered here |
+| LogNormal `(1 \| g) + (1 \| h)` with `sd(g)` and `sd(h)` | log y is Gaussian: the Gaussian route plus the Jacobian | **Tested**; the labelled `(1 + x \| g)` pair with two coefficient SDs is reached the same way but checked on log-likelihood only |
+| Student `(1 \| g) + (1 \| h)` with `sd(g)` and `sd(h)` | crossed sparse Laplace with a log-SD regression per factor; `sigma ~ 1`, `nu ~ 1` required | **Tested** |
+| Binomial `relmat(1 + x \| g)` with coefficient SDs | refused | R does not converge on these cells (`is_converged()` is FALSE, an SD at -10.7), so they stay refused |
 
 ### Non-Gaussian phylogenetic random intercept on the mean (sparse Laplace)
 

@@ -333,6 +333,8 @@ function _drm_negbin2_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
     ordq2 = _ordinary_q2_sd_block(f, fam)
     ordq2 === nothing || return _drm_count_ordinary_q2_sd(f, fam, ordq2;
         data, tree, K, A, Ainv, coords, g_tol, se, nAGQ)
+    isempty(_sdphylo_parts(f)) || return _drm_negbin2_phylo_sd_regression(
+        f, fam; data, tree, K, A, Ainv, coords, g_tol, se, nAGQ)
     spatial_sd_target = any(t.target.level === :spatial for t in _sd_target_parts(f))
     (tree === nothing && (coords === nothing || spatial_sd_target)) ||
         throw(ArgumentError("NegBinomial2 `sd(group) ~ …` supports ordinary effects, " *
@@ -385,8 +387,6 @@ function _drm_negbin2_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
         kind, grp = st
         kind in (:animal, :relmat, :spatial) || throw(ArgumentError(
             "NegBinomial2 predictor-dependent SD currently supports only an animal or relmat intercept, or a coordinate spatial slope, among structured effects."))
-        kind === :spatial && animal_slope === nothing && throw(ArgumentError(
-            "NegBinomial2 spatial SD regression supports only the slope-only `spatial(0 + x | $grp)` term with `coords = …`."))
         isempty(re) || throw(ArgumentError(
             "NegBinomial2 $kind SD regression cannot yet be combined with ordinary random effects."))
         if kind === :animal
@@ -398,7 +398,7 @@ function _drm_negbin2_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
             (A === nothing && Ainv === nothing && K === nothing) || throw(ArgumentError(
                 "NegBinomial2 spatial slope SD regression uses `coords = …` only, not `K`, `A` or `Ainv`."))
             coords === nothing && throw(ArgumentError(
-                "spatial(0 + $animal_slope | $grp) needs `coords = …`"))
+                "spatial($(animal_slope === nothing ? "1" : "0 + $animal_slope") | $grp) needs `coords = …`"))
         else
             (A === nothing && Ainv === nothing) || throw(ArgumentError(
                 "NegBinomial2 relmat SD regression uses `K = …` only; do not also supply `A` or `Ainv`."))
@@ -529,6 +529,72 @@ function _drm_negbin2_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
         fit = _fit_negbin2_sd_regression(fam, y, Xmu, Xsigma, Zg,
             gidx, G, nmmu, nmsigma, nmsd, grp, g_tol; K = nodes, se, w)
     end
+    return _withformula(fit, f)
+end
+
+# NB2 intercept SD regression on a phylogenetic covariance: `y ~ … + phylo(1 | g)` with
+# `sd(g, phylogenetic) ~ z`. The animal q1 Laplace objective is reused with the tip
+# correlation matrix (`_structured_q2_kernel`, the native correlation scale) as the
+# covariance, as the Beta structured route does. Kernel rows are re-ordered to the
+# first-seen order of the data groups, which `_general_cov_setup` assumes.
+function _drm_negbin2_phylo_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
+                                          tree, K = nothing, A = nothing,
+                                          Ainv = nothing, coords = nothing,
+                                          g_tol::Real = 1e-8, se::Bool = true,
+                                          nAGQ::Union{Nothing,Int} = nothing)
+    who = "NegBinomial2 `sd(group, phylogenetic)` SD regression"
+    (K === nothing && A === nothing && Ainv === nothing && coords === nothing) || throw(ArgumentError(
+        "$who takes its covariance from `tree`; do not also supply `K`, `A`, `Ainv` or `coords`."))
+    nAGQ === nothing || throw(ArgumentError("nAGQ is not used by the sparse-Laplace phylogenetic SD route; omit it."))
+    sdpp = _sdphylo_parts(f)
+    length(sdpp) == 1 || throw(ArgumentError(
+        "$who requires exactly one `sd(group, phylogenetic) ~ …` formula."))
+    isempty(_sd_parts(f)) && isempty(_sd_target_parts(f)) || throw(ArgumentError(
+        "$who cannot yet be combined with other `sd(group)` formulas."))
+    sgrp, srhs = only(sdpp)
+    rhs = Dict(f.forms)
+    fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
+    mv === nothing || throw(ArgumentError("$who cannot use meta_V()."))
+    st !== nothing && first(st) === :phylo || throw(ArgumentError(
+        "NegBinomial2 `sd($sgrp, phylogenetic)` requires `phylo(1 | $sgrp)` in the location formula."))
+    tree === nothing && throw(ArgumentError("phylo(1 | $sgrp) needs `tree = …`"))
+    isempty(re) || throw(ArgumentError(
+        "$who currently requires a phylogenetic random intercept without additional random effects."))
+    last(st) === sgrp || throw(ArgumentError(
+        "NegBinomial2 `sd($sgrp, phylogenetic)` must name the group in `phylo(1 | $(last(st)))`."))
+    sigma_rhs = get(rhs, :sigma, nothing)
+    sigma_rhs isa ConstantTerm && sigma_rhs == ConstantTerm(1) || throw(ArgumentError(
+        "$who requires a fixed `sigma ~ 1` submodel."))
+    (haskey(rhs, :zi) || haskey(rhs, :hu)) && throw(ArgumentError(
+        "$who cannot yet be combined with `zi` or `hu`."))
+    fixed_mu, offset_term = _extract_offset(fixed_mu)
+    offset_term === nothing || throw(ArgumentError("$who does not yet support `offset(...)`."))
+    for (pname, _) in f.forms
+        pname in (:mu, :sigma, Symbol("sdphy_", sgrp)) && continue
+        throw(ArgumentError("$who supports only `mu`, fixed `sigma ~ 1`, and one phylogenetic SD formula."))
+    end
+    all(_formula_response_observed_mask(f, data)) || throw(ArgumentError(
+        "$who requires observed responses; remove incomplete rows before fitting."))
+    y, Xmu, nmmu = _design(f.response, fixed_mu, data)
+    _, Xsigma, nmsigma = _design(f.response, sigma_rhs, data)
+    all(yi -> yi ≥ 0 && isinteger(yi), y) || throw(ArgumentError(
+        "NegBinomial2() requires non-negative integer counts as the response"))
+    labels = getproperty(data, sgrp)
+    C, leaf_index, _ = _structured_q2_kernel(:phylo, sgrp, labels; tree, K = nothing,
+        A = nothing, coords = nothing, who)
+    gidx, G = _group_index(labels)
+    tip_of = zeros(Int, G)
+    @inbounds for i in eachindex(gidx)
+        tip_of[gidx[i]] == 0 || tip_of[gidx[i]] == leaf_index[i] || error("phylogenetic group indexing changed unexpectedly")
+        tip_of[gidx[i]] = leaf_index[i]
+    end
+    Zg, nmsd = _sd_group_design(f.response, srhs, data, gidx, G, sgrp;
+                                schema_cache = f.schema_cache, schema_key = :sd_phylo)
+    size(Zg, 2) <= G && rank(Zg) == size(Zg, 2) || throw(ArgumentError(
+        "$who: the SD group-level design is rank deficient; use predictors that vary independently across groups."))
+    fit = _fit_nb2_animal_sd_laplace(fam, y, Xmu, Xsigma, Zg, gidx,
+        Matrix{Float64}(C)[tip_of, tip_of], labels, nmmu, nmsigma, nmsd, sgrp, g_tol;
+        se, normalize = false)
     return _withformula(fit, f)
 end
 

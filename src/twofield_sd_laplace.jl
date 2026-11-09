@@ -330,6 +330,32 @@ function _drm_twofield_sd_route(f::DrmFormula, fam::Union{Gamma,NegBinomial2,Bet
     return _withformula(fit, f)
 end
 
+# Same-group independent pair `(1 | g) + (0 + x | g)` with an SD formula on ONE of the two
+# coefficients (`sd(g, coef(intercept)) ~ z` or `sd(g, coef(x)) ~ z`): the other coefficient
+# keeps a constant SD, i.e. the default `sd(g, coef(.)) ~ 1`, so the pair is the two-field
+# shape with a synthesised intercept-only SD target. Returns `targets` unchanged otherwise.
+function _twofield_complete_single_target(f::DrmFormula, targets)
+    t = only(targets)
+    d = t.target
+    (d.level === :iid && d.dpar === :mu && d.block === nothing && d.member !== nothing) ||
+        return targets
+    rhs = Dict(f.forms)
+    haskey(rhs, :mu) || return targets
+    _, re, metav, st = _split_ranef(rhs[:mu])
+    (metav === nothing && st === nothing && length(re) == 2) || return targets
+    kinds = [_re_kind(r[1]) for r in re]
+    grps = [r[2] for r in re]
+    (grps[1] == grps[2] == d.group && Set(first.(kinds)) == Set([:intercept, :slope])) ||
+        return targets
+    slope = only(k[2] for k in kinds if k[1] === :slope)
+    d.member in (:intercept, slope) || return targets
+    other = d.member === :intercept ? slope : :intercept
+    extra = (; key = Symbol("sd_default_", d.group, "_", other),
+             target = (group = d.group, level = :iid, member = other, dpar = :mu, block = nothing),
+             rhs = ConstantTerm(1))
+    return d.member === :intercept ? [t, extra] : [extra, t]
+end
+
 # Recognise the shape and build the response, designs and the two `_TwoField`s.
 # Shared by the fitter and by the post-fit marginal simulator, so both see the
 # same fields (row-to-level maps, kernels, loadings, SD designs). Returns
@@ -340,6 +366,8 @@ function _twofield_build(f::DrmFormula, fam::Union{Gamma,NegBinomial2,Beta};
                          Ainv = nothing, coords = nothing, store_schema::Bool = true)
     famname = _twofield_famname(fam)
     targets = _sd_target_parts(f)
+    fam isa Gamma && length(targets) == 1 &&
+        (targets = _twofield_complete_single_target(f, targets))
     length(targets) == 2 || return nothing
     all(t -> t.target.dpar === :mu && t.target.block === nothing &&
         t.target.level in (:iid, :animal, :relmat) ||
