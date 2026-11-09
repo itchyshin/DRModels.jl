@@ -24,12 +24,29 @@
 #   simrefit  simulate (the package simulator, or the true generative process where `simulate` refuses),
 #             refit: median error over seeds within a stated tolerance, and the truth never beats the
 #             refit's optimum (nll(truth) - nll(fit) > -1e-3)
-# Tolerances (set before the first full run): |dlogLik| < 1e-5 and max |dtheta| < 1e-3. If the logLik agrees but a
+# Tolerances. First version (set before the first full run): |dlogLik| < 1e-5 and max |dtheta| < 1e-3 for every
+# property. Tightened on 2026-11-08 from the observed spread of the 185 default-subset checks (Julia 1.10, Mac):
+#   property class                    observed max |dlogLik|  observed max |dtheta|   now (dlogLik, dtheta)
+#   perm, relabel (row order, names)        3.2e-09               2.0e-07              1e-7,  1e-5
+#   shift_*, scale_*, flip_x (reparam.)     3.8e-07               9.5e-05              5e-6,  5e-4
+#   swap                                    0 (identical)         0 (identical)        1e-8,  1e-8
+#   (predict already asserts 1e-10 / 1e-12; REML was not run in the default subset and keeps 1e-5 / 1e-3)
+# Row order and level naming leave the likelihood unchanged up to float noise, so those two had ~3000x and ~5000x
+# headroom; the reparametrisation checks are exact in the maths but each refit stops at its own `g_tol`, so they keep
+# 13x (logLik) and 5x (theta) headroom over the observed worst case. The old bounds could not have caught a
+# likelihood that is wrong by 1e-6 to 1e-4; the new ones can. If the logLik agrees but a
 # coordinate does not (a correlation at its boundary is a flat direction) the status is FLAT, which counts as a
 # failure here; that is why three routes carry a fixed `seed` with an interior optimum. flip_x and scale_y compare
 # every coordinate except the correlation (its map is route-specific). simrefit: |median error| over 5 datasets
 # < 0.25 for fixed effects and < 1.0 for SD coefficients (per-route `sdtol` / `fixtol` overrides, set AFTER the
 # first full run for the routes whose responses identify SD-formula slopes poorly: NB2 and binary).
+# These statistical bounds stay as they were: five datasets cannot pin a median to better than the sampling error,
+# and they cannot detect a wrong likelihood (the invariances above do that). What simrefit
+# now asserts exactly: no failure at all (every simulate / fit / objective evaluation succeeds and is finite; the
+# failing seeds are listed), the only routes allowed to fall back from `simulate` to the generative process are the
+# two in `SIM_REFUSED` (observed: Gaussian ordinary q2 and Gaussian sigma-animal), and nll(truth) - nll(fit) > -1e-6
+# (the fit is a minimiser, so the truth cannot beat it beyond optimiser slop; the old bound was -1e-3, the smallest
+# observed gap is +1.1).
 # Data: StableRNG-generated (G = 24 groups) or the committed fixtures under test/fixtures (32 tips).
 #
 #   julia --project=test -e 'using DRModels, Test; include("test/test_metamorphic_sd_routes.jl")'
@@ -233,7 +250,10 @@ end
 maxabs(a, b) = maximum(abs.(a .- b))
 
 # ------------------------------------------------------------------ properties: each returns (status, detail)
-function cmpfit(b::Base0, fit2; tll = 1e-5, tth = 1e-3, expect = b.fit.theta, dll = 0.0, idx = eachindex(b.fit.theta))
+# Tolerance classes (see the header): float-noise invariances vs invariances through a re-parametrised refit.
+const TOL_EXACT = (; ll = 1e-7, th = 1e-5)
+const TOL_REPARAM = (; ll = 5e-6, th = 5e-4)
+function cmpfit(b::Base0, fit2; tll = TOL_REPARAM.ll, tth = TOL_REPARAM.th, expect = b.fit.theta, dll = 0.0, idx = eachindex(b.fit.theta))
     dl = abs(loglikelihood(fit2) - loglikelihood(b.fit) - dll)
     dt = maxabs(fit2.theta[idx], expect[idx])
     st = !(dl < tll) ? "FAIL" : (dt < tth && fit2.converged) ? "pass" : "FLAT"
@@ -245,13 +265,13 @@ nw(b::Base0) = length(sdblocks(b.fit, b.r))
 function p_perm(b::Base0)
     perm = randperm(StableRNG(11), length(b.fx.ord))
     data, kw = materialize(b.r, b.fx; perm = b.fx.ord[perm])
-    cmpfit(b, fitroute(b.r, b.f, data, kw))
+    cmpfit(b, fitroute(b.r, b.f, data, kw); tll = TOL_EXACT.ll, tth = TOL_EXACT.th)
 end
 function p_relabel(b::Base0)
     gp = randperm(StableRNG(12), b.fx.G)
     perm = vcat([findall(==(g), b.fx.gi) for g in gp]...)
     data, kw = materialize(b.r, b.fx; perm, relab = true)
-    cmpfit(b, fitroute(b.r, b.f, data, kw))
+    cmpfit(b, fitroute(b.r, b.f, data, kw); tll = TOL_EXACT.ll, tth = TOL_EXACT.th)
 end
 function p_shift_v(b::Base0; c = 1.7)
     bi = betaidx(b.fit); ex = copy(b.fit.theta); ex[bi["(Intercept)"]] -= b.fit.theta[bi["v"]] * c
@@ -294,7 +314,7 @@ function p_shift_x_const(b::Base0; c = 0.9)
     fb = fitroute(b.r, f0, merge(b.data, (; x = b.data.x .+ c)), b.kw)
     bi = betaidx(fa); ex = copy(fa.theta); ex[bi["(Intercept)"]] -= fa.theta[bi["x"]] * c
     dl = abs(loglikelihood(fb) - loglikelihood(fa)); dbeta = maxabs(fb.theta[1:length(bi)], ex[1:length(bi)])
-    (dl < 1e-5 && fb.converged ? "pass" : (dl < 1e-5 ? "FLAT" : "FAIL"),
+    (dl < TOL_EXACT.ll && fb.converged ? "pass" : (dl < TOL_EXACT.ll ? "FLAT" : "FAIL"),
      @sprintf("dll=%.2e dbeta=%.2e conv=%s/%s", dl, dbeta, fa.converged, fb.converged))
 end
 function p_scale_y(b::Base0; k = 3.0)
@@ -327,7 +347,7 @@ function p_swap(b::Base0)
     b.r.members == [:intercept, :x] && b.r.kind === :mean || return ("NA", "needs a q = 2 block")
     fit2 = fitroute(b.r, build_formula(b.r; swap = true), b.data, b.kw)
     dl = abs(loglikelihood(fit2) - loglikelihood(b.fit))
-    (dl < 1e-5 && maxabs(fit2.theta, b.fit.theta) < 1e-6 ? "pass" : "FAIL", @sprintf("dll=%.2e dtheta=%.2e", dl, maxabs(fit2.theta, b.fit.theta)))
+    (dl < 1e-8 && maxabs(fit2.theta, b.fit.theta) < 1e-8 ? "pass" : "FAIL", @sprintf("dll=%.2e dtheta=%.2e", dl, maxabs(fit2.theta, b.fit.theta)))
 end
 
 # REML (Gaussian structured q2): the criterion is invariant to a shift of a mean covariate (X -> X T, |det T| = 1)
@@ -357,35 +377,52 @@ function truth_theta(r::Route, fit)
     for i in sigidx(fit); th[i] = log(r.sigma); end
     return th
 end
+# Routes for which `simulate(fit; ...)` refuses (observed 2026-11-08); simrefit falls back to the generative
+# process for these and only these. Any other route that falls back is a swallowed failure and is reported as FAIL.
+const SIM_REFUSED = ("gauss_ord_q2", "gauss_sigma_animal")
 function p_simrefit(b::Base0; S = 5, simseed = 100)
-    fit = b.fit; r = b.r; datasets = Any[]; th0 = fit.theta; mode = :simulate
+    fit = b.fit; r = b.r; datasets = Any[]; th0 = fit.theta; mode = :simulate; seeds = collect(1:S)
+    simerr = nothing
     try
         Y = simulate(fit; nsim = S, rng = StableRNG(simseed), data = b.data, b.kw...)
         for s in 1:S; push!(datasets, (merge(b.data, (; y = Y[:, s])), b.kw)); end
-    catch
+    catch e
         isempty(r.fixture[1]) || rethrow()
-        mode = :truth; th0 = truth_theta(r, fit)
+        simerr = first(sprint(showerror, e), 120)
+        empty!(datasets); mode = :truth; th0 = truth_theta(r, fit); seeds = [5000 + s for s in 1:S]
         for s in 1:S
-            fxs = gen(r; seed = 5000 + s); push!(datasets, materialize(r, fxs))
+            fxs = gen(r; seed = seeds[s]); push!(datasets, materialize(r, fxs))
         end
     end
     est = fill(NaN, length(th0), S); gap = fill(NaN, S); conv = 0
+    failed = Tuple{Int,String}[]              # (seed index, reason): every failure is counted, none is swallowed
     for s in 1:S
         d, kw = datasets[s]
         try
             fs = fitroute(r, b.f, d, kw)
             est[:, s] = fs.theta; conv += fs.converged; gap[s] = fs.nll(th0) - fs.nll(fs.theta)
-        catch
+            isfinite(gap[s]) && all(isfinite, est[:, s]) || push!(failed, (seeds[s], "non-finite estimate or objective"))
+        catch e
+            push!(failed, (seeds[s], first(sprint(showerror, e), 80)))
         end
     end
     ok = .!isnan.(gap)
-    med = [abs(Statistics.median(est[i, ok] .- th0[i])) for i in eachindex(th0)]
+    nfail = length(failed)
+    fallback_ok = mode === :simulate || r.name in SIM_REFUSED
+    ok_any = any(ok)
+    med = ok_any ? [abs(Statistics.median(est[i, ok] .- th0[i])) for i in eachindex(th0)] : fill(Inf, length(th0))
     bfix = maximum(med[collect(values(betaidx(fit)))])
     bsd = maximum(med[reduce(vcat, collect.(sdblocks(fit, r)))])
-    mingap = minimum(gap[ok])
-    st = sum(ok) >= S - 1 && mingap > -1e-3 && bfix < r.fixtol && bsd < r.sdtol ? "pass" : (mingap <= -1e-3 ? "FAIL" : "WEAK")
-    (st, @sprintf("%s S=%d ok=%d conv=%d |median err| fixed=%.3f SD-coef=%.3f; min(nll(truth)-nll(fit))=%.2e",
-                  mode, S, sum(ok), conv, bfix, bsd, mingap))
+    mingap = ok_any ? minimum(gap[ok]) : -Inf
+    st = if nfail > 0 || !fallback_ok || mingap <= -1e-6
+        "FAIL"
+    else
+        bfix < r.fixtol && bsd < r.sdtol ? "pass" : "WEAK"
+    end
+    msg = nfail > 0 ? "; FAILED seeds " * join(["$(sd): $(why)" for (sd, why) in failed], ", ") : ""
+    simerr === nothing || (msg *= (fallback_ok ? "; simulate refused (documented): " : "; simulate refused unexpectedly: ") * simerr)
+    (st, @sprintf("%s S=%d failures=%d conv=%d |median err| fixed=%.3f SD-coef=%.3f; min(nll(truth)-nll(fit))=%.2e%s",
+                  mode, S, nfail, conv, bfix, bsd, mingap, msg))
 end
 
 const PROPS = [:perm => p_perm, :relabel => p_relabel, :shift_v => p_shift_v, :shift_w => p_shift_w,
