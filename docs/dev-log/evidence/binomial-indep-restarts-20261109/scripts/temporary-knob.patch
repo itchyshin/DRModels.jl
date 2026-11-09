@@ -1,0 +1,10 @@
+The measurement runs (results/runB_*.tsv, results/trig_g12.txt) used a temporary environment knob
+that is NOT in the committed code. Modes: off = no restarts (the code before this change),
+trigger = `_q2_boundary_restarts` with the usual trigger only (`force = false`),
+force = `force = true` (the committed rule, which applies it to every fit whose SD formulas
+contain a covariate; all measured cells are such fits). Equivalent patch to
+`_fit_binomial_sd_regression` (src/binomial_sd_regression.jl):
+
+    _mode = get(ENV, "DRM_BINOM_INDEP_MODE", "trigger")        # off | trigger | force
+    if !correlated && q >= 2 && _mode != "off"
+        res = _q2_boundary_restarts(...; force = _mode == "force")   # otherwise as committed
