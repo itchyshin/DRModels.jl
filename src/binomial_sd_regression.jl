@@ -2152,7 +2152,8 @@ function _drm_binomial_sd_regression(f::DrmFormula, fam::Binomial; data,
             "structured covariance inputs are not used."))
     isempty(_sdphylo_parts(f)) || throw(ArgumentError(
         "Binomial `sd(group, phylogenetic) ~ …` is not implemented by the ordinary random-effect route."))
-    isempty(targets) && throw(ArgumentError("Binomial SD regression needs at least one ordinary SD formula."))
+    bare_corr = isempty(targets) && _binomial_bare_corr_block(f, fam)
+    isempty(targets) && !bare_corr && throw(ArgumentError("Binomial SD regression needs at least one ordinary SD formula."))
     all(item -> item.target.level === :iid && item.target.dpar === :mu &&
                 item.target.block === nothing, targets) || throw(ArgumentError(
         "Binomial ordinary SD regression targets IID mean random-effect coefficients only."))
@@ -2169,7 +2170,7 @@ function _drm_binomial_sd_regression(f::DrmFormula, fam::Binomial; data,
     end
     correlated = length(re) == 1 && corr_members(re[1][1]) !== nothing
     if correlated
-        1 <= length(targets) <= length(corr_members(re[1][1])) || throw(ArgumentError(
+        (bare_corr ? 0 : 1) <= length(targets) <= length(corr_members(re[1][1])) || throw(ArgumentError(
             "Binomial correlated-block SD regression needs one SD formula per selected coefficient."))
     else
         if length(re) != length(targets)

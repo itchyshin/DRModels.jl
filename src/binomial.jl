@@ -254,6 +254,25 @@ function _binomial_label_inputs(f::DrmFormula, data, A, Ainv, coords, ids)
     return A, coords
 end
 
+# A bare correlated block of three or four coefficients, `(1 + x + z [+ w] | g)`, with no
+# `sd()` formula. drmTMB fits it as the correlated model with one constant SD per
+# coefficient, which is the SD-regression route with every coefficient SD left at its
+# default `~ 1`; the q = 2 block `(1 + x | g)` keeps its own two-dimensional route.
+function _binomial_bare_corr_block(f::DrmFormula, fam::Binomial)
+    fam.link === :logit || return false
+    all(p -> first(p) in (:mu, :sigma), f.forms) || return false
+    mu = get(Dict(f.forms), :mu, nothing)
+    mu === nothing && return false
+    try
+        _, re, mv, st = _split_ranef(mu)
+        mv === nothing && st === nothing && length(re) == 1 || return false
+        vars = _re_multi_corr_vars(re[1][1])
+        return vars !== nothing && length(vars) >= 2
+    catch
+        return false
+    end
+end
+
 # Outside SD-regression routes, Binomial admits `phylo` alone among the
 # structured markers. `relmat` is currently supported for the structured SD
 # regression route below, not for a general Binomial random-effect fit. Without
@@ -285,7 +304,8 @@ function _drm_binomial_fit(f::DrmFormula, fam::Binomial; data, tree = nothing,
     nq >= 1 || throw(ArgumentError("Binomial `nq` must be ≥ 1; got $nq"))
     fam.link !== :logit && marginal === :VA && throw(ArgumentError(
         "Binomial links other than :logit are not available with `marginal = :VA`."))
-    if !isempty(_sd_parts(f)) || !isempty(_sdphylo_parts(f))
+    if !isempty(_sd_parts(f)) || !isempty(_sdphylo_parts(f)) ||
+       (priors === nothing && marginal === :LA && _binomial_bare_corr_block(f, fam))
         return _drm_binomial_sd_regression(f, fam; data, tree, tree1, tree2,
             K, A, Ainv, coords, mesh, g_tol, se, marginal, method, nq)
     end

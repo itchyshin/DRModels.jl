@@ -87,6 +87,9 @@ struct LogNormal end
     end
 
     if !isempty(sd_targets)
+        corr_sd = _lognormal_corr_sd_block(f)
+        corr_sd === nothing || return _withformula(
+            _drm_lognormal_corr_sd(f, fam, data, g_tol, corr_sd), f)
         # More than one SD formula (crossed `(1 | g) + (1 | h)` with `sd(g)` and `sd(h)`, or the
         # labelled coefficient pair): log y is exactly Gaussian, so the whole fit is delegated
         # to the public Gaussian dispatcher on log(y), which refuses what it does not cover.
@@ -224,6 +227,50 @@ function _fit_lognormal_sd_regression(fam::LogNormal, y, Xμ, Xσ, Zg, w, gidx, 
         Dict(:mu => exp.(fit_gaussian.means[:mu])), Dict(:mu => Float64.(y)), scales)
     fit = _withnll(fit, θ -> fit_gaussian.nll(θ) + jacobian)
     return _withiterations(_withranef(fit, fit_gaussian.ranef), fit_gaussian.iterations)
+end
+
+# Ordinary correlated `(1 + x | g)` with `sd(g, coef(·)) ~ …` formulas on one or both
+# coefficients. log(y) is Gaussian given the random effects, so this is the Gaussian
+# correlated-block SD fit on log(y) plus the LogNormal Jacobian, as for the independent
+# routes above. Two coefficients only: drmTMB refuses the q = 3, 4 LogNormal blocks.
+function _lognormal_corr_sd_block(f::DrmFormula)
+    mu = get(Dict(f.forms), :mu, nothing)
+    mu === nothing && return nothing
+    try
+        _, re, mv, st = _split_ranef(mu)
+        (mv === nothing && st === nothing && length(re) == 1) || return nothing
+        vars = _re_multi_corr_vars(re[1][1])
+        (vars !== nothing && length(vars) == 1) || return nothing
+        return (; re, vars)
+    catch
+        return nothing
+    end
+end
+
+function _drm_lognormal_corr_sd(f::DrmFormula, fam::LogNormal, data, g_tol, block)
+    rhs = Dict(f.forms)
+    sigma_rhs = get(rhs, :sigma, nothing)
+    sigma_rhs isa ConstantTerm && sigma_rhs == ConstantTerm(1) || throw(ArgumentError(
+        "LogNormal correlated `(1 + x | g)` SD regression currently requires fixed `sigma ~ 1`."))
+    isempty(_sdphylo_parts(f)) || throw(ArgumentError(
+        "LogNormal SD regression does not support structured SD formulas."))
+    fixed_mu, _, _, _ = _split_ranef(rhs[:mu])
+    y, Xμ, nmμ = _design(f.response, fixed_mu, data)
+    _, Xσ, nmσ = _design(f.response, sigma_rhs, data)
+    all(yi -> isfinite(yi) && yi > 0, y) || throw(ArgumentError(
+        "LogNormal() requires finite, strictly positive responses"))
+    logy = log.(y)
+    fit_gaussian = _drm_gaussian_ordinary_q34_sd(f, Gaussian(), Pair{Symbol,Any}[], block.re,
+        [block.vars], nothing, nothing, Symbol[], nothing, false, logy, Xμ, Xσ, nmμ, nmσ,
+        data, g_tol, :ML, :auto)
+    jacobian = sum(logy)
+    fit = DrmFit(fam, fit_gaussian.blocks, fit_gaussian.coefnames,
+        fit_gaussian.theta, fit_gaussian.vcov, fit_gaussian.loglik - jacobian,
+        fit_gaussian.nobs, fit_gaussian.converged,
+        Dict(:mu => exp.(fit_gaussian.means[:mu])), Dict(:mu => Float64.(y)),
+        copy(fit_gaussian.scales))
+    return _withiterations(_withnll(fit, θ -> fit_gaussian.nll(θ) + jacobian),
+                           fit_gaussian.iterations)
 end
 
 # Independent random slope on log(y) is an exact Gaussian LMM with loading x.
