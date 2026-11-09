@@ -642,7 +642,14 @@ function _design(response::Symbol, rhs, data; schema_cache = nothing, schema_key
     # cell, or an unseen level before the generic non-finite check (#1015).
     # A fit still rejects those cells here, before the schema is built.
     reused_training_schema = schema_cache !== nothing && haskey(schema_cache[], schema_key)
-    reused_training_schema || _require_finite_predictor_columns(rhs, data, response; observed=observed)
+    # #predict-newdata: a fitter that never wrote `schema_key` leaves only the
+    # factor-level catalogue `drm` recorded before the fit. A read-only call
+    # (`store_schema = false`, the predict paths) then rebuilds the training
+    # contrasts from those levels instead of from the rows of `newdata`.
+    level_hints = (reused_training_schema || store_schema || schema_cache === nothing) ? nothing :
+        _catalogue_contrasts(schema_cache, rhs)
+    reused_training_schema || level_hints !== nothing ||
+        _require_finite_predictor_columns(rhs, data, response; observed=observed)
     # Only rows that stay in the fit. A missing/NaN response is dropped later
     # (`_fit_observed_response_rows`, `_fit_fixed_gaussian_missing_response`);
     # a NaN predictor on that same row is dropped with it.
@@ -662,8 +669,16 @@ function _design(response::Symbol, rhs, data; schema_cache = nothing, schema_key
     # cache but never writes to it, so a prediction on a fit whose fitter did not
     # populate the cache cannot plant a NEWDATA schema that later calls would
     #     mistake for the training one.
+    if level_hints !== nothing
+        # The same column, missing-value and unseen-level refusals as a cached
+        # schema, raised before StatsModels can fail on them.
+        _check_newdata_against_schema(rhs, nothing, design_data, response, schema_key)
+        _check_unseen_levels(level_hints, rhs, design_data, schema_key)
+    end
     sch = if reused_training_schema
         schema_cache[][schema_key]
+    elseif level_hints !== nothing
+        _catalogue_schema(ft, design_data, level_hints)
     else
         s = schema(ft, design_data)
         (store_schema && schema_cache !== nothing) && (schema_cache[][schema_key] = s)
@@ -673,11 +688,12 @@ function _design(response::Symbol, rhs, data; schema_cache = nothing, schema_key
     # the training schema never saw) before `modelcols`, instead of reporting
     # every `modelcols` failure as an unseen factor level.
     reused_training_schema && _check_newdata_against_schema(rhs, sch, design_data, response, schema_key)
+    predict_build = reused_training_schema || level_hints !== nothing
     ft = apply_schema(ft, sch, StatisticalModel)
     _, X = try
         modelcols(ft, design_data)
     catch e
-        reused_training_schema || rethrow(e)
+        predict_build || rethrow(e)
         throw(ArgumentError("predict: could not build the `$(schema_key)` design matrix " *
             "from `newdata`: " * sprint(showerror, e)))
     end
@@ -798,6 +814,84 @@ _has_table_column(data, name::Symbol) =
 # Pre-`modelcols` checks of `newdata` against a reused TRAINING schema (#1015).
 # Each failure gets its own message; anything these checks do not cover still
 # reaches `modelcols`, whose error is passed through under a neutral headline.
+# Reserved `schema_cache` key: the factor levels of the training data, by column.
+const _FACTOR_LEVELS_KEY = :__factor_levels__
+
+# Record, before a fit, the levels StatsModels would give every categorical
+# column the formula uses. Most non-Gaussian fitters build their designs without
+# the `schema_cache`, so this catalogue is all `predict` has to rebuild the
+# fitted contrasts from. It is written each fit, so a reused `bf` object follows
+# the latest data. Never throws: an unreadable table just records nothing.
+function _record_factor_levels!(f, data)
+    hasproperty(f, :schema_cache) && hasproperty(f, :forms) || return nothing
+    try
+        cols = Set{Symbol}()
+        for (_, rhs) in f.forms
+            c = _rhs_columns(rhs)
+            c === nothing || union!(cols, c)
+        end
+        tbl = Tables.columntable(data)
+        levs = Dict{Symbol,Vector{Any}}()
+        for c in cols
+            haskey(tbl, c) || continue
+            col = tbl[c]
+            col isa AbstractVector || continue
+            nonmissingtype(eltype(col)) <: Real && continue
+            term = StatsModels.concrete_term(Term(c), col, nothing)
+            term isa StatsModels.CategoricalTerm || continue
+            levs[c] = collect(Any, term.contrasts.levels)
+        end
+        f.schema_cache[][_FACTOR_LEVELS_KEY] = levs
+    catch
+    end
+    return nothing
+end
+
+# The fitted levels of every catalogued factor of `rhs`, or `nothing` when the
+# fit recorded none.
+function _catalogue_contrasts(schema_cache, rhs)
+    levs = get(schema_cache[], _FACTOR_LEVELS_KEY, nothing)
+    levs isa Dict || return nothing
+    cols = _rhs_columns(rhs)
+    cols === nothing && return nothing
+    hints = Dict{Symbol,Any}()
+    for c in cols
+        haskey(levs, c) && (hints[c] = levs[c])
+    end
+    return isempty(hints) ? nothing : hints
+end
+
+# A schema whose factors carry the fitted levels (dummy coding on the first
+# level, as at fit time) and whose other terms come from `data`. `schema(ft, data,
+# hints)` cannot do this: `ContrastsMatrix` insists the data hold every level.
+function _catalogue_schema(ft, data, levs)
+    dt = Tables.columntable(data)
+    none = Dict{Symbol,Any}()
+    entries = Pair{Term,StatsModels.AbstractTerm}[]
+    for t in filter(StatsModels.needs_schema, StatsModels.terms(ft))
+        push!(entries, t => (haskey(levs, t.sym) ?
+            StatsModels.CategoricalTerm(t.sym, StatsModels.ContrastsMatrix(StatsModels.DummyCoding(), levs[t.sym])) :
+            StatsModels.concrete_term(t, dt, none)))
+    end
+    return StatsModels.Schema(entries...)
+end
+
+# The unseen-level refusal of `_check_newdata_against_schema`, for the catalogue.
+function _check_unseen_levels(hints, rhs, data, key)
+    for (c, levs) in hints
+        _has_table_column(data, c) || continue
+        col = _table_column(data, c)
+        col isa AbstractVector || continue
+        unseen = unique(filter(v -> !any(l -> isequal(l, v) || l == v, levs), col))
+        isempty(unseen) ||
+            throw(ArgumentError("predict: `newdata` column `$c` contains level(s) " *
+                join(string.(unseen), ", ") * " not seen when the model was fitted (parameter " *
+                "`$key`; fitted levels: " * join(string.(levs), ", ") * "). Refit including " *
+                "that level, or drop the offending rows from `newdata`."))
+    end
+    return nothing
+end
+
 function _check_newdata_against_schema(rhs, sch, data, response::Symbol, key)
     cols = _rhs_columns(rhs)
     cols === nothing && return nothing
@@ -2581,6 +2675,11 @@ GLM-type families above the two packages' predictions compare like with like
 `type = :link`). Without `newdata`, drmTMB's `predict()`, and so its `fitted()`, add
 the fitted random-effect modes for the fitted rows; DRModels.jl's `predict` always
 takes `newdata`.
+
+A factor in `newdata` is coded with the levels and contrasts of the fitted data
+(`drm` records them), so `newdata` may hold any subset of the fitted levels, in
+any order, even one row. A level that was not fitted is an `ArgumentError` naming
+the column, the level and the fitted levels, as in drmTMB.
 
 `se = false` (default) is the point prediction above. `se = true` adds
 **delta-method standard errors** for the mean (the glmmTMB `se.fit` convention;
