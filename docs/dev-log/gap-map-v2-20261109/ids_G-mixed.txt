@@ -1,0 +1,7 @@
+G|mixed|gaussian+poisson
+G|mixed|gaussian+binomial
+G|mixed|gaussian+nb2
+G|mixed|lognormal+gamma
+G|mixed|poisson+binomial
+G|mixed|gaussian+beta
+G|mixed|gaussian+poisson|sigma1=x1|mu2=x1+f

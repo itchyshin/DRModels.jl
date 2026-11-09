@@ -1,0 +1,2 @@
+S	1	J|gamma|mu=(1|g)|sigma=x1
+R	1	J|gamma|mu=(1|g)|sigma=x1	FITS				-259.6308904562	true		20.04		aic=529.2617809;bic=544.63765;nobs=160;fit_n=160;fit_mean=2.630331354;fit_sd=0.7464945321;pred_mean=2.630331354;pred_new=2.445223599,5.257381832,3.414299793;pred_new_consistent=true;resid_sd=1.749930158;npar=5;se_finite=true;ncoef=5	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ERR:ArgumentError: simulate: this fit has random effects, and the default `re = :marginal` draws fresh ones for every replic;vcov=ok;coef=ok

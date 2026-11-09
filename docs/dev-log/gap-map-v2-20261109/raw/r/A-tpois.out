@@ -1,0 +1,4 @@
+S	1	A|tpois|mu=x1|sigma=1
+R	1	A|tpois|mu=x1|sigma=1	ERROR	base:simpleError	could not find function "truncated_poisson"	could not find function "truncated_poisson"				0.00			
+S	2	A|tpois|mu=x1+x2+f|sigma=1
+R	2	A|tpois|mu=x1+x2+f|sigma=1	ERROR	base:simpleError	could not find function "truncated_poisson"	could not find function "truncated_poisson"				0.00			

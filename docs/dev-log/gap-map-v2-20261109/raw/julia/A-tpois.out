@@ -1,0 +1,4 @@
+S	1	A|tpois|mu=x1|sigma=1
+R	1	A|tpois|mu=x1|sigma=1	FITS				-207.5465938065	true		9.12		aic=419.0931876;bic=425.2435352;nobs=160;fit_n=160;fit_mean=1.461793746;fit_sd=0.5023327541;pred_mean=1.461793746;pred_new=1.327861331,3.315097453,1.97895406;pred_new_consistent=true;resid_sd=1.181883964;sim_n=160;npar=2;se_finite=true;ncoef=2	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	2	A|tpois|mu=x1+x2+f|sigma=1
+R	2	A|tpois|mu=x1+x2+f|sigma=1	FITS				-207.0775835625	true		1.88		aic=424.1551671;bic=439.5310362;nobs=160;fit_n=160;fit_mean=1.460762047;fit_sd=0.5147626757;pred_mean=1.460762047;resid_sd=1.176915211;sim_n=160;npar=5;se_finite=true;ncoef=5	fitted=ok;predict=ok;predict_new=ERR:ArgumentError: predict: the `mu` design built from `newdata` has columns [(Intercept), x1, x2, f: b] but the fitted coef;resid=ok;simulate=ok;vcov=ok;coef=ok

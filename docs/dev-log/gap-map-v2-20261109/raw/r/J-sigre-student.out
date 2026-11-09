@@ -1,0 +1,2 @@
+S	1	J|student|sigma=x1+(1|g)
+R	1	J|student|sigma=x1+(1|g)	ERROR	abort:rlang_error	Non-Gaussian `sigma` random effects are not implemented for `student()`.	Non-Gaussian `sigma` random effects are not implemented for `student()`. ✖ Unsupported random-effect term: `(1 | g)`. ℹ This slice adds only ordinary Student-t `mu` random intercepts; residual-scale random effects need their own likelihood and recovery tests.				0.03			

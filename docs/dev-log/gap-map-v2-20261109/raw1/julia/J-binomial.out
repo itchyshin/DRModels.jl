@@ -1,0 +1,12 @@
+S	1	J|binomial|(1|g/h)
+R	1	J|binomial|(1|g/h)	ERROR	ErrorException	type FunctionTerm has no field sym	type FunctionTerm has no field sym			at=gaussian_ranef.jl:361	5.87			
+S	2	J|binomial|(1|g:f2)
+R	2	J|binomial|(1|g:f2)	ERROR	MethodError	MethodError: no method matching |(Int64, String)	MethodError: no method matching |(Int64, String)			at=terms.jl:500	2.14			
+S	3	J|binomial|(f|g)
+R	3	J|binomial|(f|g)	ERROR	MethodError	MethodError: no method matching Float64(String)	MethodError: no method matching Float64(String)			at=binomial.jl:373	0.76			
+S	4	J|binomial|(1+f|g)
+R	4	J|binomial|(1+f|g)	ERROR	MethodError	MethodError: no method matching Float64(String)	MethodError: no method matching Float64(String)			at=binomial.jl:373	0.05			
+S	5	J|binomial|(0+f|g)
+R	5	J|binomial|(0+f|g)	ERROR	ErrorException	Binomial() supports `(1 | g)` or `(1 + x | g)` on the mean	Binomial() supports `(1 | g)` or `(1 + x | g)` on the mean			at=binomial.jl:379	0.00			
+S	6	J|binomial|(1|g)+(1|g2)+(1|h)
+R	6	J|binomial|(1|g)+(1|g2)+(1|h)	ERROR	ErrorException	_fit_binomial_crossed_laplace requires two random-intercept components	_fit_binomial_crossed_laplace requires two random-intercept components			at=sparse_laplace_glmm.jl:4200	3.40			

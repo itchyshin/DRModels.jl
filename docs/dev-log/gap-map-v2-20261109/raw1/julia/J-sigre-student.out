@@ -1,0 +1,2 @@
+S	1	J|student|sigma=x1+(1|g)
+R	1	J|student|sigma=x1+(1|g)	ERROR	ErrorException	Student(): only the mean formula may carry a random effect	Student(): only the mean formula may carry a random effect			at=student.jl:144	3.75			

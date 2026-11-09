@@ -1,0 +1,28 @@
+S	1	F|student|mu=(1|g)
+R	1	F|student|mu=(1|g)	FITS				-221.2144060693	0	pdHess=TRUE;is_converged=FALSE	0.25		aic=452.4288121;bic=467.8046812;nobs=160;fit_n=160;fit_mean=1.142783187;fit_sd=0.3609371148;pred_mean=1.142783187;pred_new=1.095776775,2.108722989,1.537526329;pred_new_consistent=TRUE;resid_sd=1.010138661;sim_n=160;npar=4;se_finite=TRUE;ncoef=4	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	2	F|student|offset
+R	2	F|student|offset	FITS				-226.1379843260	0	pdHess=TRUE;is_converged=TRUE	0.03		aic=460.2759687;bic=472.5766639;nobs=160;fit_n=160;fit_mean=1.157623388;fit_sd=0.4724122029;pred_mean=1.157623388;pred_new=1.085618756,2.598143109,0.734285036;pred_new_consistent=TRUE;resid_sd=1.026930147;sim_n=160;npar=4;se_finite=TRUE;ncoef=4	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	3	F|student|f*x1|sigma=f
+R	3	F|student|f*x1|sigma=f	FITS				-213.7311877070	0	pdHess=TRUE;is_converged=TRUE	0.03		aic=447.4623754;bic=478.2141136;nobs=160;fit_n=160;fit_mean=1.149668737;fit_sd=0.4502466729;pred_mean=1.149668737;pred_new=1.400981093,1.952611577,1.378113589;pred_new_consistent=TRUE;resid_sd=0.9668115914;sim_n=160;npar=10;se_finite=TRUE;ncoef=10	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	4	F|student|REML
+R	4	F|student|REML	ERROR	abort:rlang_error	`REML` is implemented for univariate/bivariate Gaussian and binomial	`REML` is implemented for univariate/bivariate Gaussian and binomial models. ℹ Use `family = gaussian()`, `biv_gaussian()`, or `binomial()`, or set `REML = FALSE`.				0.02			
+S	5	F|skew|mu=(1|g)
+R	5	F|skew|mu=(1|g)	FITS				-189.6242536030	0	pdHess=TRUE;is_converged=FALSE	0.13		aic=389.2485072;bic=404.6243763;nobs=160;fit_n=160;fit_mean=1.308568287;fit_sd=0.3358716866;pred_mean=1.308568287;pred_new=1.264826255,2.207427997,1.675898327;pred_new_consistent=TRUE;resid_sd=0.7969494266;sim_n=160;npar=4;se_finite=TRUE;ncoef=4	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	6	F|skew|offset
+R	6	F|skew|offset	FITS				-203.0179830277	0	pdHess=TRUE;is_converged=TRUE	0.02		aic=414.0359661;bic=426.3366613;nobs=160;fit_n=160;fit_mean=1.308595661;fit_sd=0.4363754273;pred_mean=1.308595661;pred_new=1.24263033,2.625013133,0.8345414037;pred_new_consistent=TRUE;resid_sd=0.8718237379;sim_n=160;npar=4;se_finite=TRUE;ncoef=4	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	7	F|skew|f*x1|sigma=f
+R	7	F|skew|f*x1|sigma=f	FITS				-179.1417552315	0	pdHess=TRUE;is_converged=TRUE	0.03		aic=378.2835105;bic=409.0352486;nobs=160;fit_n=160;fit_mean=1.307321589;fit_sd=0.4093345859;pred_mean=1.307321589;pred_new=1.479506473,2.239482201,1.681826056;pred_new_consistent=TRUE;resid_sd=0.7623966942;sim_n=160;npar=10;se_finite=TRUE;ncoef=10	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	8	F|skew|REML
+R	8	F|skew|REML	ERROR	abort:rlang_error	`REML` is implemented for univariate/bivariate Gaussian and binomial	`REML` is implemented for univariate/bivariate Gaussian and binomial models. ℹ Use `family = gaussian()`, `biv_gaussian()`, or `binomial()`, or set `REML = FALSE`.				0.01			
+S	9	F|student|nu=x1+x2
+R	9	F|student|nu=x1+x2	FITS				-219.8702736906	0	pdHess=TRUE;is_converged=TRUE	0.03		aic=453.7405474;bic=475.2667641;nobs=160;fit_n=160;fit_mean=1.130031433;fit_sd=0.3706859962;pred_mean=1.130031433;pred_new=1.081755382,2.122061188,1.535436554;pred_new_consistent=TRUE;resid_sd=1.010098844;sim_n=160;npar=7;se_finite=TRUE;ncoef=7	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	10	F|student|response=y_g(light tails)
+R	10	F|student|response=y_g(light tails)	FITS				-241.1101022368	0	pdHess=TRUE;is_converged=TRUE	0.03		aic=494.2202045;bic=512.6712474;nobs=160;fit_n=160;fit_mean=1.093241167;fit_sd=0.4897493495;pred_mean=1.093241167;pred_new=1.029458977,2.403908234,1.628861332;pred_new_consistent=TRUE;resid_sd=1.115933675;sim_n=160;npar=6;se_finite=TRUE;ncoef=6	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	11	F|skew|response=y_g(symmetric)
+R	11	F|skew|response=y_g(symmetric)	FITS				-243.9303305893	0	pdHess=TRUE;is_converged=TRUE	0.02		aic=499.8606612;bic=518.3117041;nobs=160;fit_n=160;fit_mean=1.135979477;fit_sd=0.5142913785;pred_mean=1.135979477;pred_new=1.069001072,2.512325914,1.698440322;pred_new_consistent=TRUE;resid_sd=1.115888212;sim_n=160;npar=6;se_finite=TRUE;ncoef=6	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	12	F|gaussian|REML|sigma=x1|response=y_st
+R	12	F|gaussian|REML|sigma=x1|response=y_st	FITS				-230.9895766219	0	pdHess=TRUE;is_converged=TRUE	0.05		aic=469.9791532;bic=482.2798485;nobs=160;fit_n=160;fit_mean=1.17123874;fit_sd=0.3714320205;pred_mean=1.17123874;pred_new=1.122865531,2.165265005,1.577459759;pred_new_consistent=TRUE;resid_sd=1.010099672;sim_n=160;npar=4;se_finite=TRUE;ncoef=4	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	13	F|gaussian|REML|f*x1|sigma=x1+f
+R	13	F|gaussian|REML|f*x1|sigma=x1+f	FITS				-238.8999360892	0	pdHess=TRUE;is_converged=TRUE	0.05		aic=497.7998722;bic=528.5516103;nobs=160;fit_n=160;fit_mean=1.131892451;fit_sd=0.562700337;pred_mean=1.131892451;pred_new=1.424062657,2.142604744,1.44104148;pred_new_consistent=TRUE;resid_sd=1.063781089;sim_n=160;npar=10;se_finite=TRUE;ncoef=10	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	14	F|lognormal|REML|sigma=x1
+R	14	F|lognormal|REML|sigma=x1	ERROR	abort:rlang_error	`REML` is implemented for univariate/bivariate Gaussian and binomial	`REML` is implemented for univariate/bivariate Gaussian and binomial models. ℹ Use `family = gaussian()`, `biv_gaussian()`, or `binomial()`, or set `REML = FALSE`.				0.01			

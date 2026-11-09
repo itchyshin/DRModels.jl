@@ -1,0 +1,14 @@
+S	1	G|biv_lognormal|base
+R	1	G|biv_lognormal|base	FITS				-127.7408905498	0	pdHess=TRUE;is_converged=TRUE	0.04		aic=269.4817811;bic=291.0079978;nobs=160;fit_n=320;fit_mean=1.343145102;fit_sd=0.3905705072;pred_mean=0.3054604185;pred_new=0.2680798514,1.073597702,0.6193691366;pred_new_consistent=TRUE;sim_n=160;npar=7;se_finite=TRUE;ncoef=7	fitted=ok;predict=ok;predict_new=ok;resid=ERR:`residuals()` is not implemented for model type "biv_lognormal"; residual and adequacy claims are deferred.;simulate=ok;vcov=ok;coef=ok
+S	2	G|biv_lognormal|mu=x1+x2
+R	2	G|biv_lognormal|mu=x1+x2	FITS				-127.4334441381	0	pdHess=TRUE;is_converged=TRUE	0.03		aic=270.8668883;bic=295.4682788;nobs=160;fit_n=320;fit_mean=1.341823977;fit_sd=0.3863803229;pred_mean=0.3054604185;pred_new=0.2716782039,1.068149836,0.5737830712;pred_new_consistent=TRUE;sim_n=160;npar=8;se_finite=TRUE;ncoef=8	fitted=ok;predict=ok;predict_new=ok;resid=ERR:`residuals()` is not implemented for model type "biv_lognormal"; residual and adequacy claims are deferred.;simulate=ok;vcov=ok;coef=ok
+S	3	G|biv_lognormal|sigma1=x1
+R	3	G|biv_lognormal|sigma1=x1	ERROR	abort:rlang_error	`biv_lognormal()` currently allows fixed-effect `mu1`/`mu2` only, with	`biv_lognormal()` currently allows fixed-effect `mu1`/`mu2` only, with intercept-only `sigma1`, `sigma2`, and `rho12`. ℹ Random or structured effects, `meta_V()`, offsets, and sigma/rho predictors are deferred.				0.02			
+S	4	G|biv_lognormal|rho=x1
+R	4	G|biv_lognormal|rho=x1	ERROR	abort:rlang_error	`biv_lognormal()` currently allows fixed-effect `mu1`/`mu2` only, with	`biv_lognormal()` currently allows fixed-effect `mu1`/`mu2` only, with intercept-only `sigma1`, `sigma2`, and `rho12`. ℹ Random or structured effects, `meta_V()`, offsets, and sigma/rho predictors are deferred.				0.02			
+S	5	G|biv_lognormal|mu=f
+R	5	G|biv_lognormal|mu=f	FITS				-219.0498693281	0	pdHess=TRUE;is_converged=TRUE	0.03		aic=454.0997387;bic=478.7011292;nobs=160;fit_n=320;fit_mean=1.340109956;fit_sd=0.1364692585;pred_mean=0.3054604185;pred_new=0.308675849,0.2853276584,0.2853276584;pred_new_consistent=TRUE;sim_n=160;npar=8;se_finite=TRUE;ncoef=8	fitted=ok;predict=ok;predict_new=ok;resid=ERR:`residuals()` is not implemented for model type "biv_lognormal"; residual and adequacy claims are deferred.;simulate=ok;vcov=ok;coef=ok
+S	6	G|biv_lognormal|RE=(1|p|g)
+R	6	G|biv_lognormal|RE=(1|p|g)	ERROR	abort:rlang_error	`biv_lognormal()` currently allows fixed-effect formulas only; random	`biv_lognormal()` currently allows fixed-effect formulas only; random and structured effects are deferred.				0.01			
+S	7	G|biv_lognormal|weights
+R	7	G|biv_lognormal|weights	ERROR	abort:rlang_error	"biv_lognormal()" does not support a `weights` argument; implicit	"biv_lognormal()" does not support a `weights` argument; implicit likelihood weights are one.				0.01			

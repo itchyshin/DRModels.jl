@@ -1,0 +1,48 @@
+S	1	D|binomial01|link=logit
+R	1	D|binomial01|link=logit	FITS				-95.1733925758	true		11.65		aic=196.3467852;bic=205.5723066;nobs=160;fit_n=160;fit_mean=0.4125;fit_sd=0.1954672197;pred_mean=0.4125;pred_new=0.3947422561,0.8271674875,0.3154580081;pred_new_consistent=true;resid_sd=0.4556066884;sim_n=160;npar=3;se_finite=true;ncoef=3	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	2	D|binomial-cbind|link=logit
+R	2	D|binomial-cbind|link=logit	FITS				-328.0970245672	true		0.15		aic=662.1940491;bic=671.4195706;nobs=160;fit_n=160;fit_mean=0.4387591612;fit_sd=0.1804389648;pred_mean=0.4387591612;pred_new=0.4307204217,0.8009774839,0.3239580143;pred_new_consistent=true;resid_sd=0.190916246;sim_n=160;npar=3;se_finite=true;ncoef=3	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	3	D|binomial01|link=probit
+R	3	D|binomial01|link=probit	FITS				-94.9906834962	true		0.00		aic=195.981367;bic=205.2068884;nobs=160;fit_n=160;fit_mean=0.4108943594;fit_sd=0.1977293404;pred_mean=0.4108943594;pred_new=0.3958722498,0.8313160606,0.3123625707;pred_new_consistent=true;resid_sd=0.4553946832;sim_n=160;npar=3;se_finite=true;ncoef=3	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	4	D|binomial-cbind|link=probit
+R	4	D|binomial-cbind|link=probit	FITS				-328.7189049158	true		0.00		aic=663.4378098;bic=672.6633313;nobs=160;fit_n=160;fit_mean=0.4391951124;fit_sd=0.178883128;pred_mean=0.4391951124;pred_new=0.43297087,0.8013001323,0.3304273787;pred_new_consistent=true;resid_sd=0.1911709191;sim_n=160;npar=3;se_finite=true;ncoef=3	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	5	D|binomial01|link=cloglog
+R	5	D|binomial01|link=cloglog	FITS				-95.6446612856	true		0.00		aic=197.2893226;bic=206.514844;nobs=160;fit_n=160;fit_mean=0.4108724809;fit_sd=0.1893259957;pred_mean=0.4108724809;pred_new=0.3802548917,0.8751897526,0.3301139387;pred_new_consistent=true;resid_sd=0.456623929;sim_n=160;npar=3;se_finite=true;ncoef=3	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	6	D|binomial-cbind|link=cloglog
+R	6	D|binomial-cbind|link=cloglog	FITS				-328.3018204086	true		0.00		aic=662.6036408;bic=671.8291623;nobs=160;fit_n=160;fit_mean=0.4387444901;fit_sd=0.1793285433;pred_mean=0.4387444901;pred_new=0.418962862,0.8374956231,0.3189199756;pred_new_consistent=true;resid_sd=0.1910843486;sim_n=160;npar=3;se_finite=true;ncoef=3	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	7	D|binomial01|link=cauchit
+R	7	D|binomial01|link=cauchit	ERROR	ArgumentError	ArgumentError: Binomial link must be one of :logit, :probit, or :cloglog; got :cauchit.	ArgumentError: Binomial link must be one of :logit, :probit, or :cloglog; got :cauchit.				0.00			
+S	8	D|binomial-cbind|link=cauchit
+R	8	D|binomial-cbind|link=cauchit	ERROR	ArgumentError	ArgumentError: Binomial link must be one of :logit, :probit, or :cloglog; got :cauchit.	ArgumentError: Binomial link must be one of :logit, :probit, or :cloglog; got :cauchit.				0.00			
+S	9	D|binomial01|link=log
+R	9	D|binomial01|link=log	ERROR	ArgumentError	ArgumentError: Binomial link must be one of :logit, :probit, or :cloglog; got :log.	ArgumentError: Binomial link must be one of :logit, :probit, or :cloglog; got :log.				0.00			
+S	10	D|binomial01|link=identity
+R	10	D|binomial01|link=identity	ERROR	ArgumentError	ArgumentError: Binomial link must be one of :logit, :probit, or :cloglog; got :identity.	ArgumentError: Binomial link must be one of :logit, :probit, or :cloglog; got :identity.				0.00			
+S	11	D|binomial01|(1|g)|link=probit
+R	11	D|binomial01|(1|g)|link=probit	FITS				-95.0936596638	true		7.25		aic=196.1873193;bic=205.4128408;nobs=160;fit_n=160;fit_mean=0.4005078471;fit_sd=0.1889226856;pred_mean=0.4005078471;pred_new=0.3603376006,0.8839785747,0.6253522208;pred_new_consistent=true;resid_sd=0.465709;npar=3;se_finite=true;ncoef=3	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ERR:ArgumentError: simulate: this fit has random effects, and the default `re = :marginal` draws fresh ones for every replic;vcov=ok;coef=ok
+S	12	D|binomial-cbind|(1+x1|g)|link=probit
+R	12	D|binomial-cbind|(1+x1|g)|link=probit	FITS				-312.8130188027	true		10.16	Hessian is numerically singular at the optimum — using a pseudo-inverse.	aic=635.6260376;bic=651.0019067;nobs=160;fit_n=160;fit_mean=0.4248770714;fit_sd=0.1690838642;pred_mean=0.4248770714;pred_new=0.3936987864,0.8559474748,0.6221717297;pred_new_consistent=true;resid_sd=0.2188096952;npar=5;se_finite=true;ncoef=5	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ERR:ArgumentError: simulate: this fit has random effects, and the default `re = :marginal` draws fresh ones for every replic;vcov=ok;coef=ok
+S	13	D|binomial01|(1|g)|link=cloglog
+R	13	D|binomial01|(1|g)|link=cloglog	FITS				-95.1418057154	true		0.01		aic=196.2836114;bic=205.5091329;nobs=160;fit_n=160;fit_mean=0.391410404;fit_sd=0.1867103185;pred_mean=0.391410404;pred_new=0.3385582792,0.9382386033,0.6131438943;pred_new_consistent=true;resid_sd=0.4666892948;npar=3;se_finite=true;ncoef=3	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ERR:ArgumentError: simulate: this fit has random effects, and the default `re = :marginal` draws fresh ones for every replic;vcov=ok;coef=ok
+S	14	D|binomial-cbind|(1+x1|g)|link=cloglog
+R	14	D|binomial-cbind|(1+x1|g)|link=cloglog	FITS				-315.2612393137	true		0.09		aic=640.5224786;bic=655.8983477;nobs=160;fit_n=160;fit_mean=0.4174353211;fit_sd=0.1632999868;pred_mean=0.4174353211;pred_new=0.3770316505,0.8945510321,0.6070139398;pred_new_consistent=true;resid_sd=0.2177282263;npar=5;se_finite=true;ncoef=5	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ERR:ArgumentError: simulate: this fit has random effects, and the default `re = :marginal` draws fresh ones for every replic;vcov=ok;coef=ok
+S	15	D|gaussian|link=log
+R	15	D|gaussian|link=log	NOSYNTAX		Julia has no spelling for this request					0			
+S	16	D|gaussian|link=inverse
+R	16	D|gaussian|link=inverse	NOSYNTAX		Julia has no spelling for this request					0			
+S	17	D|poisson|link=identity
+R	17	D|poisson|link=identity	NOSYNTAX		Julia has no spelling for this request					0			
+S	18	D|poisson|link=sqrt
+R	18	D|poisson|link=sqrt	NOSYNTAX		Julia has no spelling for this request					0			
+S	19	D|gamma|link=inverse
+R	19	D|gamma|link=inverse	NOSYNTAX		Julia has no spelling for this request					0			
+S	20	D|gamma|link=identity
+R	20	D|gamma|link=identity	NOSYNTAX		Julia has no spelling for this request					0			
+S	21	D|lognormal|link=log
+R	21	D|lognormal|link=log	NOSYNTAX		Julia has no spelling for this request					0			
+S	22	D|nb2|link=identity
+R	22	D|nb2|link=identity	NOSYNTAX		Julia has no spelling for this request					0			
+S	23	D|beta|link=probit
+R	23	D|beta|link=probit	NOSYNTAX		Julia has no spelling for this request					0			
+S	24	D|beta|link=cloglog
+R	24	D|beta|link=cloglog	NOSYNTAX		Julia has no spelling for this request					0			

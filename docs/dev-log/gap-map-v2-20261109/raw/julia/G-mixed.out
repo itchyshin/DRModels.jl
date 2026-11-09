@@ -1,0 +1,14 @@
+S	1	G|mixed|gaussian+poisson
+R	1	G|mixed|gaussian+poisson	FITS				-510.3420677835	true		11.58		mixed_family_namedtuple=true	
+S	2	G|mixed|gaussian+binomial
+R	2	G|mixed|gaussian+binomial	FITS				-338.5121187234	true		3.05		mixed_family_namedtuple=true	
+S	3	G|mixed|gaussian+nb2
+R	3	G|mixed|gaussian+nb2	FITS				-531.9873013002	true		4.26		mixed_family_namedtuple=true	
+S	4	G|mixed|lognormal+gamma
+R	4	G|mixed|lognormal+gamma	ERROR	MethodError	MethodError: no method matching _mf_init(LogNormal, Matrix{Float64}, Vector{Float64})	MethodError: no method matching _mf_init(LogNormal, Matrix{Float64}, Vector{Float64})			at=mixed_family.jl:403	0.15			
+S	5	G|mixed|poisson+binomial
+R	5	G|mixed|poisson+binomial	FITS				-365.5675545289	true		3.13		mixed_family_namedtuple=true	
+S	6	G|mixed|gaussian+beta
+R	6	G|mixed|gaussian+beta	FITS				-191.8829158757	true		4.52		mixed_family_namedtuple=true	
+S	7	G|mixed|gaussian+poisson|sigma1=x1|mu2=x1+f
+R	7	G|mixed|gaussian+poisson|sigma1=x1|mu2=x1+f	FITS				-496.8540113157	true		5.65		mixed_family_namedtuple=true	

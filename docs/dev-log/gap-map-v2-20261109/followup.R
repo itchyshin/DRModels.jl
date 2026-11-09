@@ -1,0 +1,10 @@
+# Follow-up probes (R side): does gaussian(link = "log") change the fit? What does skew_normal estimate?
+.libPaths(c(Sys.getenv("DRMTMB_LIB"), .libPaths())); suppressPackageStartupMessages(library(drmTMB))
+d <- read.csv("data/data_v2.csv", stringsAsFactors = FALSE); for (v in c("g","g2","h","f","f2")) d[[v]] <- factor(d[[v]])
+a <- drmTMB(bf(y_g ~ x1, sigma ~ 1), family = gaussian(), data = d)
+b <- drmTMB(bf(y_g ~ x1, sigma ~ 1), family = gaussian(link = "log"), data = d)
+cat("identity vs link='log': ll", logLik(a), logLik(b), " coef equal:", isTRUE(all.equal(unlist(coef(a)), unlist(coef(b)))), "\n")
+print(gaussian(link = "log")$link)
+g <- drmTMB(bf(y_g ~ x1, sigma ~ 1), family = gaussian(link = "inverse"), data = d); cat("inverse ll", logLik(g), "\n")
+s <- drmTMB(bf(y_g ~ x1, sigma ~ x2, nu ~ x1), family = skew_normal(), data = d)
+print(round(unlist(coef(s)), 4)); cat("skew ll", logLik(s), "conv", s$opt$convergence, "\n")

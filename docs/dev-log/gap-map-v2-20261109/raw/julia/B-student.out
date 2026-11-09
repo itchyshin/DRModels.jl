@@ -1,0 +1,18 @@
+S	1	B|student|mu=f*x1
+R	1	B|student|mu=f*x1	FITS				-214.7994405372	true		11.09		aic=445.5988811;bic=470.2002716;nobs=160;fit_n=160;fit_mean=1.150089918;fit_sd=0.448298124;pred_mean=1.150089918;resid_sd=0.9671164073;sim_n=160;npar=8;se_finite=true;ncoef=8	fitted=ok;predict=ok;predict_new=ERR:ArgumentError: predict: the `mu` design built from `newdata` has columns [(Intercept), f: b, x1, f: b & x1] but the fitt;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	2	B|student|mu=f*f2
+R	2	B|student|mu=f*f2	FITS				-226.8627352119	true		0.21		aic=469.7254704;bic=494.3268609;nobs=160;fit_n=160;fit_mean=1.11946238;fit_sd=0.283131743;pred_mean=1.11946238;resid_sd=1.025582552;sim_n=160;npar=8;se_finite=true;ncoef=8	fitted=ok;predict=ok;predict_new=ERR:ArgumentError: predict: the `mu` design built from `newdata` has columns [(Intercept), f: b, f2: v, f: b & f2: v] but th;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	3	B|student|mu=f+f2+x1:f2
+R	3	B|student|mu=f+f2+x1:f2	FITS				-211.1504363127	true		0.23		aic=438.3008726;bic=462.9022631;nobs=160;fit_n=160;fit_mean=1.129921278;fit_sd=0.5005916691;pred_mean=1.129921278;resid_sd=0.95693956;sim_n=160;npar=8;se_finite=true;ncoef=8	fitted=ok;predict=ok;predict_new=ERR:ArgumentError: predict: the `mu` design built from `newdata` has columns [(Intercept), f: b, f2: v, x1 & f2: u, x1 & f2:;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	4	B|student|mu=x1*x2*f
+R	4	B|student|mu=x1*x2*f	FITS				-211.7388230930	true		2.91		aic=451.4776462;bic=494.5300796;nobs=160;fit_n=160;fit_mean=1.150414836;fit_sd=0.4735545446;pred_mean=1.150414836;resid_sd=0.9528750844;sim_n=160;npar=14;se_finite=true;ncoef=14	fitted=ok;predict=ok;predict_new=ERR:ArgumentError: predict: the `mu` design built from `newdata` has columns [(Intercept), x1, x2, f: b, x1 & x2, x1 & f: b,;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	5	B|student|mu=x1+x2+x1:x2
+R	5	B|student|mu=x1+x2+x1:x2	FITS				-219.7630730269	true		1.22		aic=451.5261461;bic=469.9771889;nobs=160;fit_n=160;fit_mean=1.1451763;fit_sd=0.375760622;pred_mean=1.1451763;pred_new=1.086197517,2.03124969,1.518719321;pred_new_consistent=true;resid_sd=1.001189771;sim_n=160;npar=6;se_finite=true;ncoef=6	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	6	B|student|mu=0+f+x1
+R	6	B|student|mu=0+f+x1	FITS				-215.0096683091	true		0.58		aic=442.0193366;bic=460.4703795;nobs=160;fit_n=160;fit_mean=1.15001173;fit_sd=0.4488639874;pred_mean=1.15001173;resid_sd=0.9689346311;sim_n=160;npar=6;se_finite=true;ncoef=6	fitted=ok;predict=ok;predict_new=ERR:ArgumentError: predict: the `mu` design built from `newdata` has columns [f: a, f: b, x1] but the fitted coefficients ar;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	7	B|student|mu=I(x1^2)+x2
+R	7	B|student|mu=I(x1^2)+x2	FITS				-232.0263634221	true		1.90		aic=474.0527268;bic=489.4285959;nobs=160;fit_n=160;fit_mean=1.130630216;fit_sd=0.1183853352;pred_mean=1.130630216;pred_new=1.114155078,1.137322626,1.431265566;pred_new_consistent=true;resid_sd=1.069548027;sim_n=160;npar=5;se_finite=true;ncoef=5	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	8	B|student|mu=poly(x1,2)
+R	8	B|student|mu=poly(x1,2)	ERROR	UndefVarError	UndefVarError: `poly` not defined	UndefVarError: `poly` not defined				0.00			
+S	9	B|student|mu=log(abs(x1)+1)+x2
+R	9	B|student|mu=log(abs(x1)+1)+x2	FITS				-231.7316026566	true		1.36		aic=473.4632053;bic=488.8390744;nobs=160;fit_n=160;fit_mean=1.126979683;fit_sd=0.1319863612;pred_mean=1.126979683;pred_new=1.180513774,1.035890316,1.387901533;pred_new_consistent=true;resid_sd=1.068212378;sim_n=160;npar=5;se_finite=true;ncoef=5	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok

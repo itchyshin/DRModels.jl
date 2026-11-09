@@ -1,0 +1,20 @@
+S	1	A|zob|mu=x1|sigma=1
+R	1	A|zob|mu=x1|sigma=1	FITS				-54.6557998557	true		9.50		aic=119.3115997;bic=134.6874688;nobs=160;fit_n=160;fit_mean=0.5302513872;fit_sd=0.1060233412;pred_mean=0.5064632457;pred_new=0.4890737605,0.8215451682,0.6550283992;pred_new_consistent=true;resid_sd=0.2772233623;sim_n=160;npar=5;se_finite=true;ncoef=5	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	2	A|zob|mu=x1+x2+f|sigma=1
+R	2	A|zob|mu=x1+x2+f|sigma=1	FITS				-54.5018498042	true		2.75		aic=125.0036996;bic=149.6050901;nobs=160;fit_n=160;fit_mean=0.5300264654;fit_sd=0.1059040901;pred_mean=0.506186419;resid_sd=0.2775188938;sim_n=160;npar=8;se_finite=true;ncoef=8	fitted=ok;predict=ok;predict_new=ERR:ArgumentError: predict: the `mu` design built from `newdata` has columns [(Intercept), x1, x2, f: b] but the fitted coef;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	3	A|zob|mu=x1|sigma=x1
+R	3	A|zob|mu=x1|sigma=x1	FITS				-53.3058715770	true		1.48		aic=118.6117432;bic=137.062786;nobs=160;fit_n=160;fit_mean=0.5336548122;fit_sd=0.1071219589;pred_mean=0.5106520765;pred_new=0.4933709416,0.8268356699,0.6607943012;pred_new_consistent=true;resid_sd=0.2772187144;sim_n=160;npar=6;se_finite=true;ncoef=6	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	4	A|zob|mu=x1|sigma=x1+x2
+R	4	A|zob|mu=x1|sigma=x1+x2	FITS				-53.2904987688	true		1.76		aic=120.5809975;bic=142.1072142;nobs=160;fit_n=160;fit_mean=0.5335861;fit_sd=0.1068680575;pred_mean=0.5105675077;pred_new=0.4933238811,0.8261885536,0.660329202;pred_new_consistent=true;resid_sd=0.2772171978;sim_n=160;npar=7;se_finite=true;ncoef=7	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	5	A|zob|mu=x1|sigma=f
+R	5	A|zob|mu=x1|sigma=f	FITS				-54.6343485061	true		0.15		aic=123.268697;bic=144.7949137;nobs=160;fit_n=160;fit_mean=0.5301846047;fit_sd=0.1058108816;pred_mean=0.506381052;pred_new=0.4890234532,0.8209870715,0.6546279632;pred_new_consistent=true;resid_sd=0.2772229313;sim_n=160;npar=7;se_finite=true;ncoef=7	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	6	A|zob|mu=x1|sigma=x1+f
+R	6	A|zob|mu=x1|sigma=x1+f	FITS				-53.2846085160	true		0.14		aic=122.569217;bic=147.1706076;nobs=160;fit_n=160;fit_mean=0.5337113992;fit_sd=0.1074568555;pred_mean=0.510721722;pred_new=0.4933881068,0.8276604211,0.6613668817;pred_new_consistent=true;resid_sd=0.2772211845;sim_n=160;npar=8;se_finite=true;ncoef=8	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	7	A|zob|mu=x1|zoi=x1
+R	7	A|zob|mu=x1|zoi=x1	FITS				-54.1601475637	true		0.09		aic=120.3202951;bic=138.771338;nobs=160;fit_n=160;fit_mean=0.5342330019;fit_sd=0.102113979;pred_mean=0.5064632457;pred_new=0.4890737605,0.8215451682,0.6550283992;pred_new_consistent=true;resid_sd=0.2774920836;sim_n=160;npar=6;se_finite=true;ncoef=6	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	8	A|zob|mu=x1|coi=x1
+R	8	A|zob|mu=x1|coi=x1	FITS				-54.6367171412	true		0.00		aic=121.2734343;bic=139.7244772;nobs=160;fit_n=160;fit_mean=0.5307813215;fit_sd=0.1092739709;pred_mean=0.5064632457;pred_new=0.4890737605,0.8215451682,0.6550283992;pred_new_consistent=true;resid_sd=0.2772355597;sim_n=160;npar=6;se_finite=true;ncoef=6	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	9	A|zob|mu=x1|sigma=x2|zoi=x1|coi=x1
+R	9	A|zob|mu=x1|sigma=x2|zoi=x1|coi=x1	FITS				-53.9954639054	true		0.02		aic=123.9909278;bic=148.5923183;nobs=160;fit_n=160;fit_mean=0.5342517286;fit_sd=0.1045144945;pred_mean=0.5065205789;pred_new=0.4892673711,0.819806526,0.6539621266;pred_new_consistent=true;resid_sd=0.2774231456;sim_n=160;npar=8;se_finite=true;ncoef=8	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	10	A|zob|mu=x1|zoi=f
+R	10	A|zob|mu=x1|zoi=f	FITS				-54.5048337392	true		0.00		aic=123.0096675;bic=144.5358842;nobs=160;fit_n=160;fit_mean=0.5300509112;fit_sd=0.1061435466;pred_mean=0.5064632457;pred_new=0.4890737605,0.8215451682,0.6550283992;pred_new_consistent=true;resid_sd=0.2770677183;sim_n=160;npar=7;se_finite=true;ncoef=7	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok

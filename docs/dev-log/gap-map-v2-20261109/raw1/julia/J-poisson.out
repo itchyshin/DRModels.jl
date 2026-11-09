@@ -1,0 +1,12 @@
+S	1	J|poisson|(1|g/h)
+R	1	J|poisson|(1|g/h)	ERROR	ErrorException	type FunctionTerm has no field sym	type FunctionTerm has no field sym			at=gaussian_ranef.jl:361	6.39			
+S	2	J|poisson|(1|g:f2)
+R	2	J|poisson|(1|g:f2)	ERROR	MethodError	MethodError: no method matching |(Int64, String)	MethodError: no method matching |(Int64, String)			at=terms.jl:500	1.99			
+S	3	J|poisson|(f|g)
+R	3	J|poisson|(f|g)	ERROR	MethodError	MethodError: no method matching Float64(String)	MethodError: no method matching Float64(String)			at=poisson.jl:403	0.71			
+S	4	J|poisson|(1+f|g)
+R	4	J|poisson|(1+f|g)	ERROR	MethodError	MethodError: no method matching Float64(String)	MethodError: no method matching Float64(String)			at=poisson.jl:403	0.05			
+S	5	J|poisson|(0+f|g)
+R	5	J|poisson|(0+f|g)	ERROR	ErrorException	Poisson() supports `(1 | g)` or `(1 + x | g)` random effects on the mean	Poisson() supports `(1 | g)` or `(1 + x | g)` random effects on the mean			at=poisson.jl:406	0.00			
+S	6	J|poisson|(1|g)+(1|g2)+(1|h)
+R	6	J|poisson|(1|g)+(1|g2)+(1|h)	FITS				-268.1577134048	true		7.48		aic=546.3154268;bic=561.6912959;nobs=160;fit_n=160;fit_mean=1.652441071;fit_sd=0.6023685843;pred_mean=1.652441071;pred_new=1.488255864,3.90964081,2.267802975;pred_new_consistent=true;resid_sd=1.508377428;npar=5;se_finite=true;ncoef=5	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ERR:ArgumentError: simulate: this fit has random effects, and the default `re = :marginal` draws fresh ones for every replic;vcov=ok;coef=ok

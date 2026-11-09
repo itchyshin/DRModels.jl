@@ -1,0 +1,2 @@
+S	1	J|gamma|sigma=x1+(1|g)
+R	1	J|gamma|sigma=x1+(1|g)	ERROR	ErrorException	Gamma(): only the mean formula may carry a random effect	Gamma(): only the mean formula may carry a random effect			at=gamma.jl:128	7.29			

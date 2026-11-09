@@ -1,0 +1,2 @@
+S	1	J|bb|sigma=x1+(1|g)
+R	1	J|bb|sigma=x1+(1|g)	FITS				-363.5674449364	0	pdHess=TRUE;is_converged=TRUE	0.46		aic=737.1348899;bic=752.5107589;nobs=160;fit_n=160;fit_mean=0.5288875232;fit_sd=0.1016757708;pred_mean=0.5288875232;pred_new=0.5164748799,0.7792638374,0.6427378361;pred_new_consistent=TRUE;resid_sd=0.3146955055;sim_n=160;npar=4;se_finite=TRUE;ncoef=4	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok

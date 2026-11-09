@@ -1,0 +1,2 @@
+S	1	J|student|mu=(1|g)|sigma=x1
+R	1	J|student|mu=(1|g)|sigma=x1	FITS				-220.6220029574	0	pdHess=TRUE;is_converged=FALSE	0.30		aic=453.2440059;bic=471.6950488;nobs=160;fit_n=160;fit_mean=1.144867722;fit_sd=0.3624087481;pred_mean=1.144867722;pred_new=1.097669653,2.114745908,1.541220333;pred_new_consistent=TRUE;resid_sd=1.010126621;sim_n=160;npar=5;se_finite=TRUE;ncoef=5	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok

@@ -1,0 +1,24 @@
+S	1	B|gaussian|mu=f*x1
+R	1	B|gaussian|mu=f*x1	FITS				-236.1369747049	true		18.57		aic=486.2739494;bic=507.8001661;nobs=160;fit_n=160;fit_mean=1.137984027;fit_sd=0.6095832398;pred_mean=1.137984027;pred_new=1.423193293,2.358123681,1.540051662;pred_new_consistent=true;resid_sd=1.061892151;sim_n=160;npar=7;se_finite=true;ncoef=7	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	2	B|gaussian|mu=f*f2
+R	2	B|gaussian|mu=f*f2	FITS				-253.4609562938	true		0.42		aic=520.9219126;bic=542.4481293;nobs=160;fit_n=160;fit_mean=1.137984027;fit_sd=0.3145655334;pred_mean=1.137984027;pred_new=1.527542543,0.7830491551,0.7830491551;pred_new_consistent=true;resid_sd=1.18332379;sim_n=160;npar=7;se_finite=true;ncoef=7	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	3	B|gaussian|mu=f+f2+x1:f2
+R	3	B|gaussian|mu=f+f2+x1:f2	ERROR	MethodError	MethodError: no method matching +(String, String)	MethodError: no method matching +(String, String)			at=terms.jl:500	1.19			
+S	4	B|gaussian|mu=x1*x2*f
+R	4	B|gaussian|mu=x1*x2*f	FITS				-226.0536785745	true		1.82		aic=478.1073571;bic=518.0846167;nobs=160;fit_n=160;fit_mean=1.137984027;fit_sd=0.710721853;pred_mean=1.137984027;pred_new=1.549424651,2.386956102,0.8492969293;pred_new_consistent=true;resid_sd=0.9970361652;sim_n=160;npar=13;se_finite=true;ncoef=13	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	5	B|gaussian|mu=x1+x2+x1:x2
+R	5	B|gaussian|mu=x1+x2+x1:x2	ERROR	MethodError	MethodError: no method matching convert(DataType, StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64})	MethodError: no method matching convert(DataType, StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64})			at=gaussian_core.jl:684	0.39			
+S	6	B|gaussian|mu=0+f+x1
+R	6	B|gaussian|mu=0+f+x1	FITS				-237.3911055410	true		1.45		aic=484.7822111;bic=500.1580802;nobs=160;fit_n=160;fit_mean=1.137984027;fit_sd=0.5947900734;pred_mean=1.137984027;pred_new=1.439770946,2.364167423,1.542648071;pred_new_consistent=true;resid_sd=1.070248306;sim_n=160;npar=5;se_finite=true;ncoef=5	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	7	B|gaussian|mu=I(x1^2)+x2
+R	7	B|gaussian|mu=I(x1^2)+x2	ERROR	MethodError	MethodError: no method matching UniformScaling{Bool}(true)(Float64)	MethodError: no method matching UniformScaling{Bool}(true)(Float64)			at=terms.jl:500	1.10			
+S	8	B|gaussian|mu=poly(x1,2)
+R	8	B|gaussian|mu=poly(x1,2)	ERROR	UndefVarError	UndefVarError: `poly` not defined	UndefVarError: `poly` not defined				0.00			
+S	9	B|gaussian|mu=log(abs(x1)+1)+x2
+R	9	B|gaussian|mu=log(abs(x1)+1)+x2	FITS				-254.7316720561	true		1.79		aic=517.4633441;bic=529.7640394;nobs=160;fit_n=160;fit_mean=1.137984027;fit_sd=0.2766447442;pred_mean=1.137984027;pred_new=1.090969636,1.205045331,0.5118564185;pred_new_consistent=true;resid_sd=1.192759134;sim_n=160;npar=4;se_finite=true;ncoef=4	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	10	B|gaussian|mu=x1|sigma=f*x1
+R	10	B|gaussian|mu=x1|sigma=f*x1	FITS				-238.3101104799	true		1.39		aic=492.620221;bic=517.2216115;nobs=160;fit_n=160;fit_mean=1.129568807;fit_sd=0.4856756007;pred_mean=1.129568807;pred_new=1.066317159,2.429333708,1.660733668;pred_new_consistent=true;resid_sd=1.115993452;sim_n=160;npar=8;se_finite=true;ncoef=8	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	11	B|gaussian|mu=x1|sigma=I(x1^2)
+R	11	B|gaussian|mu=x1|sigma=I(x1^2)	ERROR	MethodError	MethodError: no method matching UniformScaling{Bool}(true)(Float64)	MethodError: no method matching UniformScaling{Bool}(true)(Float64)			at=terms.jl:500	0.40			
+S	12	B|gaussian|mu=x1|sigma=0+f
+R	12	B|gaussian|mu=x1|sigma=0+f	FITS				-242.7904172885	true		0.46		aic=495.5808346;bic=510.9567037;nobs=160;fit_n=160;fit_mean=1.139101827;fit_sd=0.5192801473;pred_mean=1.139101827;pred_new=1.071473712,2.528799206,1.707018698;pred_new_consistent=true;resid_sd=1.11594498;sim_n=160;npar=5;se_finite=true;ncoef=5	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok

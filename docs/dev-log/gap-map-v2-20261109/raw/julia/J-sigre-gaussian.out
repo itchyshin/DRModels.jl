@@ -1,0 +1,10 @@
+S	1	J|gaussian|sigma=x1+(1|g)
+R	1	J|gaussian|sigma=x1+(1|g)	FITS				-239.6775345924	true		16.21		aic=489.3550692;bic=504.7309383;nobs=160;fit_n=160;fit_mean=1.131335644;fit_sd=0.4611258084;pred_mean=1.131335644;pred_new=1.071281223,2.365400398,1.635651335;pred_new_consistent=true;resid_sd=1.116668302;npar=5;se_finite=true;ncoef=5	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ERR:ArgumentError: simulate: this fit has random effects, and the default `re = :marginal` draws fresh ones for every replic;vcov=ok;coef=ok
+S	2	J|gaussian|sigma=x1+(0+x1|g)
+R	2	J|gaussian|sigma=x1+(0+x1|g)	ERROR	ErrorException	`sigma` random effects support a single random intercept `(1 | g)`	`sigma` random effects support a single random intercept `(1 | g)`			at=gaussian_core.jl:1671	0.16			
+S	3	J|gaussian|sigma=x1+(1+x1|g)
+R	3	J|gaussian|sigma=x1+(1+x1|g)	ERROR	ErrorException	`sigma` random effects support a single random intercept `(1 | g)`	`sigma` random effects support a single random intercept `(1 | g)`			at=gaussian_core.jl:1671	0.00			
+S	4	J|gaussian|sigma=x1+(1|g)+(1|g2)
+R	4	J|gaussian|sigma=x1+(1|g)+(1|g2)	ERROR	ErrorException	`sigma` random effects support a single random intercept `(1 | g)`	`sigma` random effects support a single random intercept `(1 | g)`			at=gaussian_core.jl:1671	0.14			
+S	5	J|gaussian|mu=(1|g)|sigma=(1|g2)
+R	5	J|gaussian|mu=(1|g)|sigma=(1|g2)	ERROR	ErrorException	drm (Gaussian): simultaneous mean + `sigma` random effects are implemented only when both share the SAME grouping factor (got `(1 | g)` on the mean and `(1 | g2)` on sigma) — the per-group 2×2 Laplace block this route uses requires one group per observation shared by both axes; different/crossed groups are not implemented (#745)	drm (Gaussian): simultaneous mean + `sigma` random effects are implemented only when both share the SAME grouping factor (got `(1 | g)` on the mean and `(1 | g2)` on sigma) — the per-group 2×2 Laplace block this route uses requires one group per observation shared by both axes; different/crossed groups are not implemented (#745)			at=gaussian_core.jl:1649	0.04			

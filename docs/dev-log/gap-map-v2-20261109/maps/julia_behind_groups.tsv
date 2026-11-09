@@ -1,0 +1,23 @@
+n_cells	julia_signature	areas	example_ids
+6	bivariate q=N structured fits support only `T`/`T`/`T`/`T` markers, not ordinary random effects (`T` or `T` on `T`). A bivariate Gaussian with ordinary correlated random	G	G|gauss|RE=(1|p|g) in mu1,mu2|rho=1 || G|gauss|RE=(1|p|g) in mu1,mu2|rho=x1 || G|gauss|RE=(1|p|g) in mu1,mu2|sigma1=x1
+3	drm: `T` is supported only on the fixed-effect routes of univariate families for now (#N, #N, #N). This is a model with random, structured, `T` or `T` terms (Gaussian), s	C,H	C|gaussian|(1|g)+weights || C|gaussian|(1|g)+weights+REML || H|meta|weights
+3	`T` random effects support a single random intercept `T`	J	J|gaussian|sigma=x1+(0+x1|g) || J|gaussian|sigma=x1+(1+x1|g) || J|gaussian|sigma=x1+(1|g)+(1|g2)
+2	NOSYNTAX	D	D|gaussian|link=log || D|gaussian|link=inverse
+2	TruncatedNegBinomialN() currently supports fixed effects only	E	E|hurdle-nb2|mu=(1|g)|hu=1 || E|tnb|mu=(1|g)
+2	SkewNormal() supports fixed effects only (no random effect on the mean)	F,J	F|skew|mu=(1|g) || J|skew|mu=(1|g)|sigma=x1
+2	drm: `T` is supported only on the fixed-effect routes of univariate families for now (#N, #N, #N). This is a bivariate or multi-response model (Gaussian), so the fit was	G	G|gauss|weights || G|gauss|RE=(1|p|g)|weights
+2	drm: method = :REML is not implemented for this model on the generic univariate Gaussian route (random slopes, a random effect on sigma, a structured mean marker — phylo/	H	H|meta|REML || H|meta|(1|g)|REML
+2	grouping column `T` contains missing or non-finite labels (`T`/`T`/`T`); they would be pooled into one extra group. Drop those rows first, e.g. `T`.	J	J|gaussian|group has NA labels || J|poisson|group has NA labels
+1	drm: only one `T` term is supported	C	C|poisson-family|two offsets
+1	Poisson(): `T` is currently supported on the fixed-effects-only mean and with a single ordinary random intercept `T` (`T`, `T` or `T`); not with a structured marker, a ra	C	C|poisson-family|zip mu offset
+1	drm: `T` is supported only on the fixed-effect routes of univariate families for now (#N, #N, #N). This is a model with random, structured, `T` or `T` terms (Poisson), so	C	C|poisson|(1|g)+weights
+1	Poisson() random effects cannot be combined with `T`/`T` yet	E	E|zip|mu=(1|g)|zi=1
+1	NegBinomialN() random effects cannot be combined with `T`/`T` yet	E	E|zinb|mu=(1|g)|zi=1
+1	Gaussian(): `T` in the mean formula is not supported with a random, structured or `T` term on the mean; the offset (coefficient fixed at N) is applied on the fixed-effect	H	H|meta|offset
+1	CumulativeLogit() supports multiple random effects only as crossed/nested intercepts, e.g. `T`	I	I|cumul|mu=x1+(1|g)+(0+x1|g)
+1	_fit_binomial_crossed_laplace requires two random-intercept components	J	J|binomial|(1|g)+(1|g2)+(1|h)
+1	LogNormal(): only the mean formula may carry a random effect	J	J|lognormal|sigma=x1+(1|g)
+1	Gamma(): only the mean formula may carry a random effect	J	J|gamma|sigma=x1+(1|g)
+1	NegBinomialN(): only the mean formula may carry a random effect	J	J|nb2|sigma=x1+(1|g)
+1	BetaBinomial(): only the mean formula may carry a random effect	J	J|bb|sigma=x1+(1|g)
+1	drm (Gaussian): simultaneous mean + `T` random effects are implemented only when both share the SAME grouping factor (got `T` on the mean and `T` on sigma) — the per-grou	J	J|gaussian|mu=(1|g)|sigma=(1|g2)

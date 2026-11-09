@@ -1,0 +1,18 @@
+S	1	B|lognormal|mu=f*x1
+R	1	B|lognormal|mu=f*x1	FITS				-213.8975974092	true		18.40		aic=441.7951948;bic=463.3214115;nobs=160;fit_n=160;fit_mean=1.443746239;fit_sd=0.427922646;pred_mean=1.443746239;resid_sd=1.034531249;sim_n=160;npar=7;se_finite=true;ncoef=7	fitted=ok;predict=ok;predict_new=ERR:ArgumentError: predict: the `mu` design built from `newdata` has columns [(Intercept), f: b, x1, f: b & x1] but the fitt;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	2	B|lognormal|mu=f*f2
+R	2	B|lognormal|mu=f*f2	FITS				-221.6287953030	true		0.21		aic=457.2575906;bic=478.7838073;nobs=160;fit_n=160;fit_mean=1.414532357;fit_sd=0.3242785544;pred_mean=1.414532357;resid_sd=1.082711362;sim_n=160;npar=7;se_finite=true;ncoef=7	fitted=ok;predict=ok;predict_new=ERR:ArgumentError: predict: the `mu` design built from `newdata` has columns [(Intercept), f: b, f2: v, f: b & f2: v] but th;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	3	B|lognormal|mu=f+f2+x1:f2
+R	3	B|lognormal|mu=f+f2+x1:f2	ERROR	MethodError	MethodError: no method matching +(String, String)	MethodError: no method matching +(String, String)			at=terms.jl:500	1.12			
+S	4	B|lognormal|mu=x1*x2*f
+R	4	B|lognormal|mu=x1*x2*f	FITS				-210.2331400109	true		1.77		aic=446.46628;bic=486.4435396;nobs=160;fit_n=160;fit_mean=1.456395405;fit_sd=0.4657451925;pred_mean=1.456395405;resid_sd=1.012919105;sim_n=160;npar=13;se_finite=true;ncoef=13	fitted=ok;predict=ok;predict_new=ERR:ArgumentError: predict: the `mu` design built from `newdata` has columns [(Intercept), x1, x2, f: b, x1 & x2, x1 & f: b,;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	5	B|lognormal|mu=x1+x2+x1:x2
+R	5	B|lognormal|mu=x1+x2+x1:x2	ERROR	MethodError	MethodError: no method matching convert(DataType, StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64})	MethodError: no method matching convert(DataType, StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64})			at=gaussian_core.jl:684	0.38			
+S	6	B|lognormal|mu=0+f+x1
+R	6	B|lognormal|mu=0+f+x1	FITS				-214.1697712309	true		1.33		aic=438.3395425;bic=453.7154115;nobs=160;fit_n=160;fit_mean=1.443149147;fit_sd=0.426864882;pred_mean=1.443149147;resid_sd=1.03269193;sim_n=160;npar=5;se_finite=true;ncoef=5	fitted=ok;predict=ok;predict_new=ERR:ArgumentError: predict: the `mu` design built from `newdata` has columns [f: a, f: b, x1] but the fitted coefficients ar;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	7	B|lognormal|mu=I(x1^2)+x2
+R	7	B|lognormal|mu=I(x1^2)+x2	ERROR	MethodError	MethodError: no method matching UniformScaling{Bool}(true)(Float64)	MethodError: no method matching UniformScaling{Bool}(true)(Float64)			at=terms.jl:500	1.03			
+S	8	B|lognormal|mu=poly(x1,2)
+R	8	B|lognormal|mu=poly(x1,2)	ERROR	UndefVarError	UndefVarError: `poly` not defined	UndefVarError: `poly` not defined				0.00			
+S	9	B|lognormal|mu=log(abs(x1)+1)+x2
+R	9	B|lognormal|mu=log(abs(x1)+1)+x2	FITS				-227.6951155352	true		1.71		aic=463.3902311;bic=475.6909263;nobs=160;fit_n=160;fit_mean=1.385433208;fit_sd=0.08669934032;pred_mean=1.385433208;pred_new=1.29491275,1.560352378,1.330232455;pred_new_consistent=true;resid_sd=1.118718595;sim_n=160;npar=4;se_finite=true;ncoef=4	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok

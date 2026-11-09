@@ -1,0 +1,2 @@
+S	1	J|skew|(1|g/h)
+R	1	J|skew|(1|g/h)	ERROR	ErrorException	type FunctionTerm has no field sym	type FunctionTerm has no field sym			at=gaussian_ranef.jl:361	2.51			

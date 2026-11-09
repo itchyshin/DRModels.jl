@@ -1,0 +1,4 @@
+S	1	A|cumul|mu=x1|sigma=1
+R	1	A|cumul|mu=x1|sigma=1	FITS				-209.6517812725	0	pdHess=TRUE;is_converged=TRUE	0.03		aic=427.3035625;bic=439.6042578;nobs=160;fit_n=160;fit_mean=2.317572445;fit_sd=0.3591663369;pred_mean=-0.008773293573;pred_new=-0.0860315789,1.578815501,0.6400143306;pred_new_consistent=TRUE;resid_sd=1.113019584;sim_n=160;npar=1;se_finite=TRUE;ncoef=1	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	2	A|cumul|mu=x1+x2+f|sigma=1
+R	2	A|cumul|mu=x1+x2+f|sigma=1	FITS				-206.1295551992	0	pdHess=TRUE;is_converged=TRUE	0.02		aic=426.2591104;bic=447.7853271;nobs=160;fit_n=160;fit_mean=2.320251335;fit_sd=0.430026474;pred_mean=0.4469843828;pred_new=0.776833465,1.537449048,0.342295124;pred_new_consistent=TRUE;resid_sd=1.089873587;sim_n=160;npar=4;se_finite=TRUE;ncoef=4	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok

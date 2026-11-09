@@ -1,0 +1,12 @@
+S	1	J|gaussian|(1|g/h)
+R	1	J|gaussian|(1|g/h)	ERROR	abort:rlang_error	Random-effect grouping terms must be simple variables.	Random-effect grouping terms must be simple variables. ✖ Use syntax like `(1 | id)`, `(0 + x | id)`, or `(1 + x | p | id)`.				0.02			
+S	2	J|gaussian|(1|g:f2)
+R	2	J|gaussian|(1|g:f2)	ERROR	abort:rlang_error	Random-effect grouping terms must be simple variables.	Random-effect grouping terms must be simple variables. ✖ Use syntax like `(1 | id)`, `(0 + x | id)`, or `(1 + x | p | id)`.				0.01			
+S	3	J|gaussian|(f|g)
+R	3	J|gaussian|(f|g)	ERROR	abort:rlang_error	Random-slope variable f must be numeric.	Random-slope variable f must be numeric. ✖ Factor and multi-column random slopes are planned for a later formula-grammar pass.				0.01			
+S	4	J|gaussian|(1+f|g)
+R	4	J|gaussian|(1+f|g)	ERROR	abort:rlang_error	Random-slope variable f must be numeric.	Random-slope variable f must be numeric. ✖ Factor and multi-column random slopes are planned for a later formula-grammar pass.				0.01			
+S	5	J|gaussian|(0+f|g)
+R	5	J|gaussian|(0+f|g)	ERROR	abort:rlang_error	Random-slope variable f must be numeric.	Random-slope variable f must be numeric. ✖ Factor and multi-column random slopes are planned for a later formula-grammar pass.				0.01			
+S	6	J|gaussian|(1|g)+(1|g2)+(1|h)
+R	6	J|gaussian|(1|g)+(1|g2)+(1|h)	FITS				-233.9306616186	0	pdHess=TRUE;is_converged=FALSE	0.10		aic=479.8613232;bic=498.3123661;nobs=160;fit_n=160;fit_mean=1.137984027;fit_sd=0.6944911349;pred_mean=1.137984027;pred_new=1.068982248,2.555908993,1.717436448;pred_new_consistent=FALSE;resid_sd=0.91648432;sim_n=160;npar=3;se_finite=TRUE;ncoef=3	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok

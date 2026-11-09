@@ -1,0 +1,2 @@
+S	1	J|skew|mu=(1|g)|sigma=x1
+R	1	J|skew|mu=(1|g)|sigma=x1	ERROR	ErrorException	SkewNormal() supports fixed effects only (no random effect on the mean)	SkewNormal() supports fixed effects only (no random effect on the mean)			at=skewnormal.jl:87	2.64			

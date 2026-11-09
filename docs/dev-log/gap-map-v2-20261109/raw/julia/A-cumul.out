@@ -1,0 +1,4 @@
+S	1	A|cumul|mu=x1|sigma=1
+R	1	A|cumul|mu=x1|sigma=1	FITS				-209.6517812725	true		9.75		aic=427.3035625;bic=439.6042578;nobs=160;fit_n=160;fit_mean=2.317572445;fit_sd=0.3591663369;pred_mean=-0.008773293574;pred_new=-0.0860315789,1.578815502,0.6400143306;pred_new_consistent=true;resid_sd=1.113019584;sim_n=160;npar=4;se_finite=true;ncoef=4	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	2	A|cumul|mu=x1+x2+f|sigma=1
+R	2	A|cumul|mu=x1+x2+f|sigma=1	FITS				-206.1295551992	true		2.09		aic=426.2591104;bic=447.7853271;nobs=160;fit_n=160;fit_mean=2.320251335;fit_sd=0.430026474;pred_mean=0.4469843828;resid_sd=1.089873587;sim_n=160;npar=7;se_finite=true;ncoef=7	fitted=ok;predict=ok;predict_new=ERR:ArgumentError: predict: the `mu` design built from `newdata` has columns [x1, x2, f: b] but the fitted coefficients are ;resid=ok;simulate=ok;vcov=ok;coef=ok

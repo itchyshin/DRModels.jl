@@ -1,0 +1,18 @@
+S	1	B|poisson|mu=f*x1
+R	1	B|poisson|mu=f*x1	FITS				-268.0237440035	0	pdHess=TRUE;is_converged=TRUE	0.04		aic=548.047488;bic=566.4985309;nobs=160;fit_n=160;fit_mean=1.7;fit_sd=0.6327743006;pred_mean=1.7;pred_new=1.701425467,3.729513613,2.229385033;pred_new_consistent=TRUE;resid_sd=1.486712676;sim_n=160;npar=6;se_finite=TRUE;ncoef=6	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	2	B|poisson|mu=f*f2
+R	2	B|poisson|mu=f*f2	FITS				-282.4467797267	0	pdHess=TRUE;is_converged=TRUE	0.01		aic=576.8935595;bic=595.3446023;nobs=160;fit_n=160;fit_mean=1.7;fit_sd=0.2485576223;pred_mean=1.7;pred_new=2,1.46875,1.46875;pred_new_consistent=TRUE;resid_sd=1.589622079;sim_n=160;npar=6;se_finite=TRUE;ncoef=6	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	3	B|poisson|mu=f+f2+x1:f2
+R	3	B|poisson|mu=f+f2+x1:f2	FITS				-265.5991867384	0	pdHess=TRUE;is_converged=TRUE	0.02		aic=543.1983735;bic=561.6494164;nobs=160;fit_n=160;fit_mean=1.7;fit_sd=0.6901698608;pred_mean=1.7;pred_new=1.908951779,3.02172624,1.911224524;pred_new_consistent=TRUE;resid_sd=1.470268641;sim_n=160;npar=6;se_finite=TRUE;ncoef=6	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	4	B|poisson|mu=x1*x2*f
+R	4	B|poisson|mu=x1*x2*f	FITS				-263.7888830428	0	pdHess=TRUE;is_converged=TRUE	0.01		aic=551.5777661;bic=588.4798519;nobs=160;fit_n=160;fit_mean=1.7;fit_sd=0.6943664358;pred_mean=1.7;pred_new=1.587325503,3.377498844,1.43699514;pred_new_consistent=TRUE;resid_sd=1.466801456;sim_n=160;npar=12;se_finite=TRUE;ncoef=12	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	5	B|poisson|mu=x1+x2+x1:x2
+R	5	B|poisson|mu=x1+x2+x1:x2	FITS				-268.2671553290	0	pdHess=TRUE;is_converged=TRUE	0.01		aic=544.5343107;bic=556.8350059;nobs=160;fit_n=160;fit_mean=1.7;fit_sd=0.6141435877;pred_mean=1.7;pred_new=1.5053463,3.574149937,1.993609703;pred_new_consistent=TRUE;resid_sd=1.497326586;sim_n=160;npar=4;se_finite=TRUE;ncoef=4	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	6	B|poisson|mu=0+f+x1
+R	6	B|poisson|mu=0+f+x1	FITS				-268.2780285216	0	pdHess=TRUE;is_converged=TRUE	0.01		aic=544.556057;bic=556.8567523;nobs=160;fit_n=160;fit_mean=1.7;fit_sd=0.6264015772;pred_mean=1.7;pred_new=1.742427741,3.871398127,2.255692117;pred_new_consistent=TRUE;resid_sd=1.488854986;sim_n=160;npar=4;se_finite=TRUE;ncoef=4	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	7	B|poisson|mu=I(x1^2)+x2
+R	7	B|poisson|mu=I(x1^2)+x2	FITS				-284.3506908457	0	pdHess=TRUE;is_converged=TRUE	0.02		aic=574.7013817;bic=583.9269031;nobs=160;fit_n=160;fit_mean=1.7;fit_sd=0.1564409078;pred_mean=1.7;pred_new=1.620117902,2.088847313,2.087969481;pred_new_consistent=TRUE;resid_sd=1.601921435;sim_n=160;npar=3;se_finite=TRUE;ncoef=3	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	8	B|poisson|mu=poly(x1,2)
+R	8	B|poisson|mu=poly(x1,2)	FITS				-269.9153244529	0	pdHess=TRUE;is_converged=TRUE	0.01		aic=545.8306489;bic=555.0561704;nobs=160;fit_n=160;fit_mean=1.7;fit_sd=0.5736934651;pred_mean=1.7;pred_new=1.588886942,3.26447296,2.358137334;pred_new_consistent=TRUE;resid_sd=1.503668035;sim_n=160;npar=3;se_finite=TRUE;ncoef=3	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	9	B|poisson|mu=log(abs(x1)+1)+x2
+R	9	B|poisson|mu=log(abs(x1)+1)+x2	FITS				-284.5759108310	0	pdHess=TRUE;is_converged=TRUE	0.01		aic=575.1518217;bic=584.3773431;nobs=160;fit_n=160;fit_mean=1.7;fit_sd=0.1396115811;pred_mean=1.7;pred_new=1.687146958,1.719131319,2.069843672;pred_new_consistent=TRUE;resid_sd=1.604202559;sim_n=160;npar=3;se_finite=TRUE;ncoef=3	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok

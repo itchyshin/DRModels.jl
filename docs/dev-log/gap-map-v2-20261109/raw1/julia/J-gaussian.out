@@ -1,0 +1,12 @@
+S	1	J|gaussian|(1|g/h)
+R	1	J|gaussian|(1|g/h)	ERROR	ErrorException	type FunctionTerm has no field sym	type FunctionTerm has no field sym			at=gaussian_ranef.jl:361	9.61			
+S	2	J|gaussian|(1|g:f2)
+R	2	J|gaussian|(1|g:f2)	ERROR	MethodError	MethodError: no method matching |(Int64, String)	MethodError: no method matching |(Int64, String)			at=terms.jl:500	2.10			
+S	3	J|gaussian|(f|g)
+R	3	J|gaussian|(f|g)	ERROR	MethodError	MethodError: no method matching Float64(String)	MethodError: no method matching Float64(String)			at=gaussian_core.jl:1885	1.62			
+S	4	J|gaussian|(1+f|g)
+R	4	J|gaussian|(1+f|g)	ERROR	MethodError	MethodError: no method matching Float64(String)	MethodError: no method matching Float64(String)			at=gaussian_core.jl:1885	0.06			
+S	5	J|gaussian|(0+f|g)
+R	5	J|gaussian|(0+f|g)	ERROR	MethodError	MethodError: no method matching Float64(String)	MethodError: no method matching Float64(String)			at=gaussian_core.jl:1895	0.02			
+S	6	J|gaussian|(1|g)+(1|g2)+(1|h)
+R	6	J|gaussian|(1|g)+(1|g2)+(1|h)	NONCONVERGED				-233.9306616173	false		12.33	Structured SD at its lower boundary for h: the grouped / phylogenetic variance is estimated as 0 relative to the residual, so its SE (and any heritability / repeatability built on it) is not meaningful.	aic=479.8613232;bic=498.3123661;nobs=160;fit_n=160;fit_mean=1.137984027;fit_sd=0.5298277858;pred_mean=1.137984027;pred_new=1.068982248,2.555908993,1.717436448;pred_new_consistent=true;resid_sd=1.116138406;npar=6;se_finite=true;ncoef=6	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ERR:ArgumentError: simulate: this fit has random effects, and the default `re = :marginal` draws fresh ones for every replic;vcov=ok;coef=ok

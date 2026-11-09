@@ -1,0 +1,2 @@
+S	1	J|tweedie|sigma=x1+(1|g)
+R	1	J|tweedie|sigma=x1+(1|g)	ERROR	ErrorException	Tweedie() random effects are not implemented for `sigma`/`nu`; only an ordinary `(1 | g)` random intercept on `mu` is supported (matches drmTMB, which rejects sigma/nu random effects for tweedie())	Tweedie() random effects are not implemented for `sigma`/`nu`; only an ordinary `(1 | g)` random intercept on `mu` is supported (matches drmTMB, which rejects sigma/nu random effects for tweedie())			at=tweedie.jl:179	4.53			

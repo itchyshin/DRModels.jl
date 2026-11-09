@@ -1,0 +1,4 @@
+S	1	A|poisson|mu=x1|sigma=1
+R	1	A|poisson|mu=x1|sigma=1	FITS				-270.4096327347	true		11.34		aic=544.8192655;bic=550.9696131;nobs=160;fit_n=160;fit_mean=1.7;fit_sd=0.5893050941;pred_mean=1.7;pred_new=1.542363748,3.879118351,2.306038124;pred_new_consistent=true;resid_sd=1.507569902;sim_n=160;npar=2;se_finite=true;ncoef=2	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	2	A|poisson|mu=x1+x2+f|sigma=1
+R	2	A|poisson|mu=x1+x2+f|sigma=1	FITS				-267.9831551693	true		1.70		aic=545.9663103;bic=561.3421794;nobs=160;fit_n=160;fit_mean=1.7;fit_sd=0.6318295849;pred_mean=1.7;resid_sd=1.489933158;sim_n=160;npar=5;se_finite=true;ncoef=5	fitted=ok;predict=ok;predict_new=ERR:ArgumentError: predict: the `mu` design built from `newdata` has columns [(Intercept), x1, x2, f: b] but the fitted coef;resid=ok;simulate=ok;vcov=ok;coef=ok

@@ -1,0 +1,2 @@
+S	1	J|tweedie|mu=(1|g)|sigma=x1
+R	1	J|tweedie|mu=(1|g)|sigma=x1	FITS				-290.0897576640	0	pdHess=TRUE;is_converged=FALSE	0.60		aic=592.1795153;bic=610.6305582;nobs=160;fit_n=160;fit_mean=1.817197506;fit_sd=0.4499747353;pred_mean=1.817197506;pred_new=1.711214464,3.353185591,2.294634404;pred_new_consistent=TRUE;resid_sd=1.863231285;sim_n=160;npar=5;se_finite=TRUE;ncoef=5	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok

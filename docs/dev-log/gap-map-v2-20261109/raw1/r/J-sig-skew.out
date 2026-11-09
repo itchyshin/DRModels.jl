@@ -1,0 +1,2 @@
+S	1	J|skew|mu=(1|g)|sigma=x1
+R	1	J|skew|mu=(1|g)|sigma=x1	FITS				-188.9887752235	0	pdHess=TRUE;is_converged=FALSE	0.21		aic=389.9775504;bic=408.4285933;nobs=160;fit_n=160;fit_mean=1.308784673;fit_sd=0.3488003377;pred_mean=1.308784673;pred_new=1.263358887,2.242244036,1.690254285;pred_new_consistent=TRUE;resid_sd=0.7968018486;sim_n=160;npar=5;se_finite=TRUE;ncoef=5	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok

@@ -1,0 +1,12 @@
+S	1	G|biv_student|base
+R	1	G|biv_student|base	FITS				-388.5920580965	0	pdHess=TRUE;is_converged=TRUE	0.05		aic=793.1841162;bic=817.7855067;nobs=160;fit_n=320;fit_mean=0.09508466981;fit_sd=0.5184261374;pred_mean=0.3754284698;pred_new=0.3085785501,1.749134645,0.9368103391;pred_new_consistent=TRUE;sim_n=160;npar=8;se_finite=TRUE;ncoef=8	fitted=ok;predict=ok;predict_new=ok;resid=ERR:`residuals()` is not implemented for model type "biv_student"; residual and adequacy claims are deferred.;simulate=ok;vcov=ok;coef=ok
+S	2	G|biv_student|sigma1=x1
+R	2	G|biv_student|sigma1=x1	ERROR	abort:rlang_error	`biv_student()` currently allows fixed-effect `mu1`/`mu2` only, with	`biv_student()` currently allows fixed-effect `mu1`/`mu2` only, with intercept-only `sigma1`, `sigma2`, shared `nu`, and `rho12`. ℹ Random or structured effects, `meta_V()`, offsets, and sigma/nu/rho predictors are deferred.				0.03			
+S	3	G|biv_student|rho=x1
+R	3	G|biv_student|rho=x1	ERROR	abort:rlang_error	`biv_student()` currently allows fixed-effect `mu1`/`mu2` only, with	`biv_student()` currently allows fixed-effect `mu1`/`mu2` only, with intercept-only `sigma1`, `sigma2`, shared `nu`, and `rho12`. ℹ Random or structured effects, `meta_V()`, offsets, and sigma/nu/rho predictors are deferred.				0.02			
+S	4	G|biv_student|nu=x1
+R	4	G|biv_student|nu=x1	ERROR	abort:rlang_error	`biv_student()` currently allows fixed-effect `mu1`/`mu2` only, with	`biv_student()` currently allows fixed-effect `mu1`/`mu2` only, with intercept-only `sigma1`, `sigma2`, shared `nu`, and `rho12`. ℹ Random or structured effects, `meta_V()`, offsets, and sigma/nu/rho predictors are deferred.				0.02			
+S	5	G|biv_student|mu=x1+x2
+R	5	G|biv_student|mu=x1+x2	FITS				-385.9667401866	0	pdHess=TRUE;is_converged=TRUE	0.03		aic=793.9334804;bic=827.7603923;nobs=160;fit_n=320;fit_mean=0.09739272039;fit_sd=0.5109602657;pred_mean=0.3778275003;pred_new=0.3238136527,1.722739204,0.7786946877;pred_new_consistent=TRUE;sim_n=160;npar=11;se_finite=TRUE;ncoef=11	fitted=ok;predict=ok;predict_new=ok;resid=ERR:`residuals()` is not implemented for model type "biv_student"; residual and adequacy claims are deferred.;simulate=ok;vcov=ok;coef=ok
+S	6	G|biv_student|RE=(1|p|g)
+R	6	G|biv_student|RE=(1|p|g)	ERROR	abort:rlang_error	`biv_student()` currently allows fixed-effect formulas only; random and	`biv_student()` currently allows fixed-effect formulas only; random and structured effects are deferred.				0.01			

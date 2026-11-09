@@ -1,0 +1,2 @@
+S	1	J|zob|mu=(1|g)|sigma=x1
+R	1	J|zob|mu=(1|g)|sigma=x1	FITS				-49.5630164531	0	pdHess=TRUE;is_converged=TRUE	0.64		aic=113.1260329;bic=134.6522496;nobs=160;fit_n=160;fit_mean=0.5336871764;fit_sd=0.118081755;pred_mean=0.5106919094;pred_new=0.4935962978,0.8300237002,0.6630969993;pred_new_consistent=FALSE;resid_sd=0.2667441845;sim_n=160;npar=6;se_finite=TRUE;ncoef=6	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok

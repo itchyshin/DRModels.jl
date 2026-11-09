@@ -1,0 +1,2 @@
+S	1	J|lognormal|sigma=x1+(1|g)
+R	1	J|lognormal|sigma=x1+(1|g)	ERROR	ErrorException	LogNormal(): only the mean formula may carry a random effect	LogNormal(): only the mean formula may carry a random effect			at=lognormal.jl:105	10.57			

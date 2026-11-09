@@ -1,0 +1,2 @@
+S	1	J|beta|sigma=x1+(1|g)
+R	1	J|beta|sigma=x1+(1|g)	ERROR	ErrorException	Beta(): only the mean formula may carry a random effect	Beta(): only the mean formula may carry a random effect			at=beta.jl:108	4.92			

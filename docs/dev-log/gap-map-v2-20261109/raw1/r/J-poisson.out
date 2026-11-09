@@ -1,0 +1,12 @@
+S	1	J|poisson|(1|g/h)
+R	1	J|poisson|(1|g/h)	ERROR	abort:rlang_error	Random-effect grouping terms must be simple variables.	Random-effect grouping terms must be simple variables. ✖ Use syntax like `(1 | id)`, `(0 + x | id)`, or `(1 + x | p | id)`.				0.02			
+S	2	J|poisson|(1|g:f2)
+R	2	J|poisson|(1|g:f2)	ERROR	abort:rlang_error	Random-effect grouping terms must be simple variables.	Random-effect grouping terms must be simple variables. ✖ Use syntax like `(1 | id)`, `(0 + x | id)`, or `(1 + x | p | id)`.				0.01			
+S	3	J|poisson|(f|g)
+R	3	J|poisson|(f|g)	ERROR	abort:rlang_error	Random-slope variable f must be numeric.	Random-slope variable f must be numeric. ✖ Factor and multi-column random slopes are planned for a later formula-grammar pass.				0.01			
+S	4	J|poisson|(1+f|g)
+R	4	J|poisson|(1+f|g)	ERROR	abort:rlang_error	Random-slope variable f must be numeric.	Random-slope variable f must be numeric. ✖ Factor and multi-column random slopes are planned for a later formula-grammar pass.				0.01			
+S	5	J|poisson|(0+f|g)
+R	5	J|poisson|(0+f|g)	ERROR	abort:rlang_error	Random-slope variable f must be numeric.	Random-slope variable f must be numeric. ✖ Factor and multi-column random slopes are planned for a later formula-grammar pass.				0.01			
+S	6	J|poisson|(1|g)+(1|g2)+(1|h)
+R	6	J|poisson|(1|g)+(1|g2)+(1|h)	FITS				-268.1577134061	0	pdHess=TRUE;is_converged=TRUE	0.07		aic=546.3154268;bic=561.6912959;nobs=160;fit_n=160;fit_mean=1.686064381;fit_sd=0.6558402637;pred_mean=1.686064381;pred_new=1.488255864,3.909640809,2.267802974;pred_new_consistent=FALSE;resid_sd=1.393474487;sim_n=160;npar=2;se_finite=TRUE;ncoef=2	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok

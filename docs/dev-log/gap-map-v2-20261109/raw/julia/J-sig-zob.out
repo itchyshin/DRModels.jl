@@ -1,0 +1,2 @@
+S	1	J|zob|mu=(1|g)|sigma=x1
+R	1	J|zob|mu=(1|g)|sigma=x1	FITS				-49.5111255389	true		21.41		aic=113.0222511;bic=134.5484678;nobs=160;fit_n=160;fit_mean=0.5339972188;fit_sd=0.1083713013;pred_mean=0.5110735001;pred_new=0.4936087143,0.8300046343,0.6630900916;pred_new_consistent=true;resid_sd=0.2772296337;npar=7;se_finite=true;ncoef=7	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ERR:ArgumentError: simulate: this fit has random effects, and the default `re = :marginal` draws fresh ones for every replic;vcov=ok;coef=ok

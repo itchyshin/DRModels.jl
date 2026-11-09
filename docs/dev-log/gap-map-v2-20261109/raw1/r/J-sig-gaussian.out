@@ -1,0 +1,2 @@
+S	1	J|gaussian|mu=(1|g)|sigma=x1
+R	1	J|gaussian|mu=(1|g)|sigma=x1	FITS				-236.9767959945	0	pdHess=TRUE;is_converged=TRUE	0.11		aic=483.953592;bic=499.3294611;nobs=160;fit_n=160;fit_mean=1.130334839;fit_sd=0.5277623423;pred_mean=1.130334839;pred_new=1.066999114,2.431827439,1.662205745;pred_new_consistent=FALSE;resid_sd=1.04258527;sim_n=160;npar=4;se_finite=TRUE;ncoef=4	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok

@@ -1,0 +1,20 @@
+H|meta|mu=1
+H|meta|mu=x1
+H|meta|mu=x1+f
+H|meta|mu=0+f
+H|meta|mu=x1*x2
+H|meta|sigma=x1
+H|meta|sigma=f
+H|meta|(1|g)
+H|meta|(1|g)+(1|g2)
+H|meta|REML
+H|meta|(1|g)|REML
+H|meta|meta_known_V alias
+H|meta|weights
+H|meta|offset
+H|meta|no sigma formula
+H|meta|family=lognormal
+H|meta|family=gamma
+H|meta|family=student
+H|meta|response with NA
+H|meta|proportional scale (R planned)

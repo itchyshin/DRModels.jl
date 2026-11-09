@@ -1,0 +1,24 @@
+S	1	B|nb2|mu=f*x1
+R	1	B|nb2|mu=f*x1	FITS				-289.5932607978	true		18.25		aic=593.1865216;bic=614.7127383;nobs=160;fit_n=160;fit_mean=1.852869032;fit_sd=0.4211420094;pred_mean=1.852869032;resid_sd=1.973652285;sim_n=160;npar=7;se_finite=true;ncoef=7	fitted=ok;predict=ok;predict_new=ERR:ArgumentError: predict: the `mu` design built from `newdata` has columns [(Intercept), f: b, x1, f: b & x1] but the fitt;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	2	B|nb2|mu=f*f2
+R	2	B|nb2|mu=f*f2	FITS				-290.5810445754	true		0.21		aic=595.1620892;bic=616.6883059;nobs=160;fit_n=160;fit_mean=1.85;fit_sd=0.3367071674;pred_mean=1.85;resid_sd=1.97845931;sim_n=160;npar=7;se_finite=true;ncoef=7	fitted=ok;predict=ok;predict_new=ERR:ArgumentError: predict: the `mu` design built from `newdata` has columns [(Intercept), f: b, f2: v, f: b & f2: v] but th;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	3	B|nb2|mu=f+f2+x1:f2
+R	3	B|nb2|mu=f+f2+x1:f2	ERROR	MethodError	MethodError: no method matching +(String, String)	MethodError: no method matching +(String, String)			at=terms.jl:500	1.24			
+S	4	B|nb2|mu=x1*x2*f
+R	4	B|nb2|mu=x1*x2*f	FITS				-286.8179348105	true		1.90		aic=599.6358696;bic=639.6131292;nobs=160;fit_n=160;fit_mean=1.852954096;fit_sd=0.5444989035;pred_mean=1.852954096;resid_sd=1.944293738;sim_n=160;npar=13;se_finite=true;ncoef=13	fitted=ok;predict=ok;predict_new=ERR:ArgumentError: predict: the `mu` design built from `newdata` has columns [(Intercept), x1, x2, f: b, x1 & x2, x1 & f: b,;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	5	B|nb2|mu=x1+x2+x1:x2
+R	5	B|nb2|mu=x1+x2+x1:x2	ERROR	MethodError	MethodError: no method matching convert(DataType, StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64})	MethodError: no method matching convert(DataType, StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64})			at=gaussian_core.jl:684	0.41			
+S	6	B|nb2|mu=0+f+x1
+R	6	B|nb2|mu=0+f+x1	FITS				-290.3665610762	true		1.85		aic=590.7331222;bic=606.1089912;nobs=160;fit_n=160;fit_mean=1.851428686;fit_sd=0.3631785075;pred_mean=1.851428686;resid_sd=1.980094512;sim_n=160;npar=5;se_finite=true;ncoef=5	fitted=ok;predict=ok;predict_new=ERR:ArgumentError: predict: the `mu` design built from `newdata` has columns [f: a, f: b, x1] but the fitted coefficients ar;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	7	B|nb2|mu=I(x1^2)+x2
+R	7	B|nb2|mu=I(x1^2)+x2	ERROR	MethodError	MethodError: no method matching UniformScaling{Bool}(true)(Float64)	MethodError: no method matching UniformScaling{Bool}(true)(Float64)			at=terms.jl:500	1.19			
+S	8	B|nb2|mu=poly(x1,2)
+R	8	B|nb2|mu=poly(x1,2)	ERROR	UndefVarError	UndefVarError: `poly` not defined	UndefVarError: `poly` not defined				0.00			
+S	9	B|nb2|mu=log(abs(x1)+1)+x2
+R	9	B|nb2|mu=log(abs(x1)+1)+x2	FITS				-290.8395629049	true		2.17		aic=589.6791258;bic=601.9798211;nobs=160;fit_n=160;fit_mean=1.847413373;fit_sd=0.295103687;pred_mean=1.847413373;pred_new=2.239869604,1.232661866,1.37368607;pred_new_consistent=true;resid_sd=1.974724045;sim_n=160;npar=4;se_finite=true;ncoef=4	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	10	B|nb2|mu=x1|sigma=f*x1
+R	10	B|nb2|mu=x1|sigma=f*x1	FITS				-287.9187882768	true		2.06		aic=591.8375766;bic=616.4389671;nobs=160;fit_n=160;fit_mean=1.79040832;fit_sd=0.2226873503;pred_mean=1.79040832;pred_new=1.748762282,2.468501365,2.032434822;pred_new_consistent=true;resid_sd=1.98743707;sim_n=160;npar=8;se_finite=true;ncoef=8	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	11	B|nb2|mu=x1|sigma=I(x1^2)
+R	11	B|nb2|mu=x1|sigma=I(x1^2)	ERROR	MethodError	MethodError: no method matching UniformScaling{Bool}(true)(Float64)	MethodError: no method matching UniformScaling{Bool}(true)(Float64)			at=terms.jl:500	0.40			
+S	12	B|nb2|mu=x1|sigma=0+f
+R	12	B|nb2|mu=x1|sigma=0+f	FITS				-288.9453714318	true		0.45		aic=587.8907429;bic=603.2666119;nobs=160;fit_n=160;fit_mean=1.801436268;fit_sd=0.2607180838;pred_mean=1.801436268;pred_new=1.750430861,2.611293078,2.084014877;pred_new_consistent=true;resid_sd=1.986937679;sim_n=160;npar=5;se_finite=true;ncoef=5	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok

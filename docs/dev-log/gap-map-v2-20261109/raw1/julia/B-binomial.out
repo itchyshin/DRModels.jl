@@ -1,0 +1,18 @@
+S	1	B|binomial|mu=f*x1
+R	1	B|binomial|mu=f*x1	FITS				-93.8998465839	true		14.02		aic=199.7996932;bic=218.2507361;nobs=160;fit_n=160;fit_mean=0.4125;fit_sd=0.2023725802;pred_mean=0.4125;resid_sd=0.4507001658;sim_n=160;npar=6;se_finite=true;ncoef=6	fitted=ok;predict=ok;predict_new=ERR:ArgumentError: predict: the `mu` design built from `newdata` has columns [(Intercept), f: b, x1, f: b & x1] but the fitt;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	2	B|binomial|mu=f*f2
+R	2	B|binomial|mu=f*f2	FITS				-103.2970851104	true		0.20		aic=218.5941702;bic=237.0452131;nobs=160;fit_n=160;fit_mean=0.4125;fit_sd=0.1241259986;pred_mean=0.4125;resid_sd=0.4779755862;sim_n=160;npar=6;se_finite=true;ncoef=6	fitted=ok;predict=ok;predict_new=ERR:ArgumentError: predict: the `mu` design built from `newdata` has columns [(Intercept), f: b, f2: v, f: b & f2: v] but th;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	3	B|binomial|mu=f+f2+x1:f2
+R	3	B|binomial|mu=f+f2+x1:f2	ERROR	MethodError	MethodError: no method matching +(String, String)	MethodError: no method matching +(String, String)			at=terms.jl:500	1.16			
+S	4	B|binomial|mu=x1*x2*f
+R	4	B|binomial|mu=x1*x2*f	FITS				-81.4931973419	true		4.57		aic=186.9863947;bic=223.8884805;nobs=160;fit_n=160;fit_mean=0.4125;fit_sd=0.2701233418;pred_mean=0.4125;resid_sd=0.4144187676;sim_n=160;npar=12;se_finite=true;ncoef=12	fitted=ok;predict=ok;predict_new=ERR:ArgumentError: predict: the `mu` design built from `newdata` has columns [(Intercept), x1, x2, f: b, x1 & x2, x1 & f: b,;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	5	B|binomial|mu=x1+x2+x1:x2
+R	5	B|binomial|mu=x1+x2+x1:x2	ERROR	MethodError	MethodError: no method matching convert(DataType, StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64})	MethodError: no method matching convert(DataType, StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64})			at=gaussian_core.jl:684	0.36			
+S	6	B|binomial|mu=0+f+x1
+R	6	B|binomial|mu=0+f+x1	FITS				-94.3573652349	true		1.45		aic=196.7147305;bic=209.0154257;nobs=160;fit_n=160;fit_mean=0.4125;fit_sd=0.2009770641;pred_mean=0.4125;resid_sd=0.4516427431;sim_n=160;npar=4;se_finite=true;ncoef=4	fitted=ok;predict=ok;predict_new=ERR:ArgumentError: predict: the `mu` design built from `newdata` has columns [f: a, f: b, x1] but the fitted coefficients ar;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	7	B|binomial|mu=I(x1^2)+x2
+R	7	B|binomial|mu=I(x1^2)+x2	ERROR	MethodError	MethodError: no method matching UniformScaling{Bool}(true)(Float64)	MethodError: no method matching UniformScaling{Bool}(true)(Float64)			at=terms.jl:500	1.02			
+S	8	B|binomial|mu=poly(x1,2)
+R	8	B|binomial|mu=poly(x1,2)	ERROR	UndefVarError	UndefVarError: `poly` not defined	UndefVarError: `poly` not defined				0.00			
+S	9	B|binomial|mu=log(abs(x1)+1)+x2
+R	9	B|binomial|mu=log(abs(x1)+1)+x2	FITS				-105.7747152485	true		1.78		aic=217.5494305;bic=226.7749519;nobs=160;fit_n=160;fit_mean=0.4125;fit_sd=0.08930403501;pred_mean=0.4125;pred_new=0.4161615602,0.3893968608,0.2112221619;pred_new_consistent=true;resid_sd=0.4861785048;sim_n=160;npar=3;se_finite=true;ncoef=3	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok

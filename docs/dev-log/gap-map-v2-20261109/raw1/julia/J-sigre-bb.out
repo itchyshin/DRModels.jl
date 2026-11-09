@@ -1,0 +1,2 @@
+S	1	J|bb|sigma=x1+(1|g)
+R	1	J|bb|sigma=x1+(1|g)	ERROR	ErrorException	BetaBinomial(): only the mean formula may carry a random effect	BetaBinomial(): only the mean formula may carry a random effect			at=betabinomial.jl:117	4.03			

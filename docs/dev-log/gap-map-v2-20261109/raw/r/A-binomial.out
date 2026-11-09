@@ -1,0 +1,4 @@
+S	1	A|binomial|mu=x1|sigma=1
+R	1	A|binomial|mu=x1|sigma=1	FITS				-99.0233246760	0	pdHess=TRUE;is_converged=TRUE	0.03		aic=202.0466494;bic=208.196997;nobs=160;fit_n=160;fit_mean=0.4125;fit_sd=0.1655297222;pred_mean=0.4125;pred_new=0.3785543016,0.8385661385,0.6080222201;pred_new_consistent=TRUE;resid_sd=0.4651371464;sim_n=160;npar=2;se_finite=TRUE;ncoef=2	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	2	A|binomial|mu=x1+x2+f|sigma=1
+R	2	A|binomial|mu=x1+x2+f|sigma=1	FITS				-89.2435315740	0	pdHess=TRUE;is_converged=TRUE	0.02		aic=188.4870631;bic=203.8629322;nobs=160;fit_n=160;fit_mean=0.4125;fit_sd=0.2317303893;pred_mean=0.4125;pred_new=0.574679507,0.7475851069,0.1686643369;pred_new_consistent=TRUE;resid_sd=0.43596055;sim_n=160;npar=5;se_finite=TRUE;ncoef=5	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok

@@ -1,0 +1,2 @@
+S	1	J|lognormal|(1|g/h)
+R	1	J|lognormal|(1|g/h)	ERROR	abort:rlang_error	Random-effect grouping terms must be simple variables.	Random-effect grouping terms must be simple variables. ✖ Use syntax like `(1 | id)`, `(0 + x | id)`, or `(1 + x | p | id)`.				0.02			

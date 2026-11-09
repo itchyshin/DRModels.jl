@@ -1,0 +1,77 @@
+class	n
+Julia-only	24
+R-only	35
+R-only-no-Julia-syntax	2
+both-fit:agree	216
+both-fit:both-differ	27
+both-fit:ll-agrees-fitted-differs	104
+both-fit:ll-differs-fitted-agrees	1
+both-refuse	55
+crash-Julia	22
+crash-R	1
+nonconverged	5
+
+area	class	n
+A	Julia-only	5
+A	both-fit:agree	72
+A	both-fit:both-differ	1
+A	both-fit:ll-agrees-fitted-differs	12
+B	both-fit:agree	65
+B	both-fit:ll-agrees-fitted-differs	8
+B	crash-Julia	8
+C	Julia-only	1
+C	R-only	5
+C	both-fit:agree	30
+C	both-fit:both-differ	2
+C	both-fit:ll-agrees-fitted-differs	4
+C	both-refuse	2
+D	R-only-no-Julia-syntax	2
+D	both-fit:agree	6
+D	both-fit:both-differ	4
+D	both-refuse	12
+E	Julia-only	2
+E	R-only	4
+E	both-fit:ll-agrees-fitted-differs	26
+E	both-refuse	3
+E	crash-Julia	1
+F	R-only	1
+F	both-fit:agree	7
+F	both-fit:both-differ	1
+F	both-refuse	3
+F	crash-Julia	1
+F	nonconverged	1
+G	Julia-only	12
+G	R-only	8
+G	both-fit:both-differ	6
+G	both-fit:ll-agrees-fitted-differs	34
+G	both-refuse	8
+G	crash-Julia	1
+G	nonconverged	1
+H	R-only	4
+H	both-fit:agree	10
+H	both-fit:ll-agrees-fitted-differs	2
+H	both-refuse	4
+I	Julia-only	1
+I	R-only	1
+I	both-fit:agree	7
+I	both-fit:both-differ	1
+I	both-fit:ll-agrees-fitted-differs	1
+I	both-refuse	4
+I	crash-Julia	1
+I	crash-R	1
+J	Julia-only	3
+J	R-only	12
+J	both-fit:agree	1
+J	both-fit:both-differ	8
+J	both-fit:ll-agrees-fitted-differs	7
+J	both-fit:ll-differs-fitted-agrees	1
+J	both-refuse	19
+J	crash-Julia	9
+J	nonconverged	3
+K	both-fit:agree	5
+K	both-fit:both-differ	1
+K	both-fit:ll-agrees-fitted-differs	4
+K	crash-Julia	1
+M	both-fit:agree	13
+M	both-fit:both-differ	3
+M	both-fit:ll-agrees-fitted-differs	6

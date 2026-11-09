@@ -1,0 +1,2 @@
+S	1	J|nb2|sigma=x1+(1|g)
+R	1	J|nb2|sigma=x1+(1|g)	ERROR	ErrorException	NegBinomial2(): only the mean formula may carry a random effect	NegBinomial2(): only the mean formula may carry a random effect			at=negbinomial.jl:218	7.43			

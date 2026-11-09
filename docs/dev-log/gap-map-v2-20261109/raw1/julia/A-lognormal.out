@@ -1,0 +1,12 @@
+S	1	A|lognormal|mu=x1|sigma=1
+R	1	A|lognormal|mu=x1|sigma=1	FITS				-218.9038943386	true		15.40		aic=443.8077887;bic=453.0333101;nobs=160;fit_n=160;fit_mean=1.42445765;fit_sd=0.3580483224;pred_mean=1.42445765;pred_new=1.33965182,2.650592197,1.80397986;pred_new_consistent=true;resid_sd=1.05606328;sim_n=160;npar=3;se_finite=true;ncoef=3	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	2	A|lognormal|mu=x1+x2+f|sigma=1
+R	2	A|lognormal|mu=x1+x2+f|sigma=1	FITS				-213.4704699707	true		1.96		aic=438.9409399;bic=457.3919828;nobs=160;fit_n=160;fit_mean=1.445969313;fit_sd=0.4381087123;pred_mean=1.445969313;resid_sd=1.032798003;sim_n=160;npar=6;se_finite=true;ncoef=6	fitted=ok;predict=ok;predict_new=ERR:ArgumentError: predict: the `mu` design built from `newdata` has columns [(Intercept), x1, x2, f: b] but the fitted coef;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	3	A|lognormal|mu=x1|sigma=x1
+R	3	A|lognormal|mu=x1|sigma=x1	FITS				-214.9689561968	true		0.61		aic=437.9379124;bic=450.2386077;nobs=160;fit_n=160;fit_mean=1.428511233;fit_sd=0.4109949427;pred_mean=1.428511233;pred_new=1.326066557,2.879520734,1.859624942;pred_new_consistent=true;resid_sd=1.055633506;sim_n=160;npar=4;se_finite=true;ncoef=4	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	4	A|lognormal|mu=x1|sigma=x1+x2
+R	4	A|lognormal|mu=x1|sigma=x1+x2	FITS				-214.1419117505	true		0.96		aic=438.2838235;bic=453.6596926;nobs=160;fit_n=160;fit_mean=1.438599324;fit_sd=0.4141379784;pred_mean=1.438599324;pred_new=1.335348419,2.900905365,1.872987647;pred_new_consistent=true;resid_sd=1.055716447;sim_n=160;npar=5;se_finite=true;ncoef=5	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	5	A|lognormal|mu=x1|sigma=f
+R	5	A|lognormal|mu=x1|sigma=f	FITS				-218.3699065221	true		0.13		aic=446.739813;bic=462.1156821;nobs=160;fit_n=160;fit_mean=1.448460665;fit_sd=0.3568049296;pred_mean=1.448460665;pred_new=1.364585433,2.665062112,1.827169957;pred_new_consistent=true;resid_sd=1.05616402;sim_n=160;npar=5;se_finite=true;ncoef=5	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
+S	6	A|lognormal|mu=x1|sigma=x1+f
+R	6	A|lognormal|mu=x1|sigma=x1+f	FITS				-214.5717994769	true		0.18		aic=441.143599;bic=459.5946418;nobs=160;fit_n=160;fit_mean=1.453138803;fit_sd=0.4124102212;pred_mean=1.453138803;pred_new=1.350873164,2.904490428,1.886251426;pred_new_consistent=true;resid_sd=1.055721412;sim_n=160;npar=6;se_finite=true;ncoef=6	fitted=ok;predict=ok;predict_new=ok;resid=ok;simulate=ok;vcov=ok;coef=ok
