@@ -1942,15 +1942,21 @@ function _fit_nb2_animal_intercept_slope_laplace(fam, y, Xmu, Xsigma, Zgs, gidx,
     # interior fit: the likelihood in the SD coefficients has a second interior mode and the
     # default start can stop at the lower one (wave-10 gap map, NB2 spatial `sd-z`).
     n_obs = length(y)
+    converged_at(r) = begin
+        th = Optim.minimizer(r); g = zeros(length(th)); grad!(g, th)
+        _laplace_outer_converged(r, Optim.minimum(r), g, th, n_obs, g_tol)
+    end
+    sd_floor(th) = min(minimum(exp.(Zgs[1] * th[ranges[1]])), minimum(exp.(Zgs[2] * th[ranges[2]])))
     restarted = _q2_boundary_restarts(
         start -> first(run_lbfgs(start)), last_b, result,
-        (sd0, sd1, het, het0 = 0) -> _q2_alt_theta(theta0, ranges, Zgs, sd0, sd1, het, het0),
-        th -> min(minimum(exp.(Zgs[1] * th[ranges[1]])), minimum(exp.(Zgs[2] * th[ranges[2]]))),
-        r -> begin
-            th = Optim.minimizer(r); g = zeros(length(th)); grad!(g, th)
-            _laplace_outer_converged(r, Optim.minimum(r), g, th, n_obs, g_tol)
-        end; force = force_restarts,
-        starts = force_restarts ? _NB2_SPATIAL_ALT_STARTS : _Q2_ALT_STARTS)
+        (sd0, sd1, het) -> _q2_alt_theta(theta0, ranges, Zgs, sd0, sd1, het),
+        sd_floor, converged_at)
+    if force_restarts   # spatial `sd-z`: also try the two-block tilts from an interior fit
+        restarted = _q2_boundary_restarts(
+            start -> first(run_lbfgs(start)), last_b, restarted,
+            (sd0, sd1, het1, het0) -> _q2_alt_theta(theta0, ranges, Zgs, sd0, sd1, het1, het0),
+            sd_floor, converged_at; force = true, starts = _NB2_SPATIAL_ALT_STARTS)
+    end
     if restarted !== result
         result, theta, fmin = restarted, Optim.minimizer(restarted), Optim.minimum(restarted)
     end

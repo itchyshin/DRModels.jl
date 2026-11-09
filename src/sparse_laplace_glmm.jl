@@ -502,8 +502,7 @@ const _Q2_ALT_STARTS = ((0.2, 0.1, 0), (0.7, 0.7, 0),
                         (0.4, 0.22, -1), (0.4, 0.22, 1), (0.4, 0.05, -1), (0.4, 0.05, 1))
 # NB2 spatial `sd-z`: the second interior mode differs from the default one by the sign of
 # the z coefficient of the INTERCEPT SD, so these starts tilt both SD blocks (sd0, sd1, het1, het0).
-const _NB2_SPATIAL_ALT_STARTS = Tuple(vcat(collect(_Q2_ALT_STARTS),
-    [(0.4, 0.22, h1, h0) for h1 in (-1, 1), h0 in (-1, 1)][:]))
+const _NB2_SPATIAL_ALT_STARTS = Tuple((0.4, 0.22, h1, h0) for h1 in (-1, 1) for h0 in (-1, 1))
 const _Q2_RESTART_GAIN = 1e-5
 const _Q2_RESTART_BIG_GAIN = 1e-3   # what an unconverged alternative must gain over a converged fit
 
