@@ -730,8 +730,9 @@ function _binomial_animal_q2_mode(aux, s, ntr, Xmu, x, gidx, Qjoint,
         end
         value
     end
-    for _ in 1:maxiter
-        grad = Qjoint * b
+    # Gradient and Hessian of the joint objective at `bb`.
+    function newton_parts(bb)
+        grad = Qjoint * bb
         I = Vector{Int}(undef, 4length(s))
         J = similar(I)
         V = Vector{Float64}(undef, length(I))
@@ -739,7 +740,7 @@ function _binomial_animal_q2_mode(aux, s, ntr, Xmu, x, gidx, Qjoint,
             gi = gidx[i]
             j0, j1 = 2gi - 1, 2gi
             l0, l1 = load0[gi], load1[i]
-            eta = eta0[i] + l0 * b[j0] + l1 * b[j1]
+            eta = eta0[i] + l0 * bb[j0] + l1 * bb[j1]
             _, d1, d2, _ = _laplace_v123(Val(:binomial), aux, i, eta)
             grad[j0] += l0 * d1
             grad[j1] += l1 * d1
@@ -749,12 +750,24 @@ function _binomial_animal_q2_mode(aux, s, ntr, Xmu, x, gidx, Qjoint,
             I[k+3], J[k+3], V[k+3] = j1, j0, d2 * l0 * l1
             I[k+4], J[k+4], V[k+4] = j1, j1, d2 * l1^2
         end
-        H = Qjoint + sparse(I, J, V, 2G, 2G)
+        return grad, Qjoint + sparse(I, J, V, 2G, 2G)
+    end
+    for _ in 1:maxiter
+        grad, H = newton_parts(b)
         ch = cholesky(Symmetric(H); check = false)
         issuccess(ch) || return b, ch, false
         step = ch \ grad
         norm(step) <= tol * (1 + norm(b)) && return b, ch, true
-        norm(step) <= 1e-7 * (1 + norm(b)) && return b, ch, true
+        if norm(step) <= 1e-7 * (1 + norm(b))
+            # The Laplace value is second order in the mode error but logdet(H)
+            # is first order, so returning `ch` at the un-stepped `b` left an
+            # error of about 1e-7 in the objective. Take the Newton step (its
+            # error is quadratic) and refactor at the stepped mode.
+            b = b .- step
+            _, H = newton_parts(b)
+            ch = cholesky(Symmetric(H); check = false)
+            return b, ch, issuccess(ch)
+        end
         f0 = joint(b)
         amount, accepted = 1.0, false
         while amount >= 1e-5
