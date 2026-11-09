@@ -12,7 +12,8 @@ using LinearAlgebra
     ctl = DRModels.miss_control(response = "include", predictor = "model")
     @test ctl.response === :include
     @test ctl.predictor === :model
-    @test_throws ArgumentError DRModels.miss_control(response = "drop")
+    @test DRModels.miss_control(response = "drop").response === :drop
+    @test_throws ArgumentError DRModels.miss_control(response = "bogus")
     @test_throws ArgumentError DRModels.miss_control(predictor = "impute")
     @test_throws ArgumentError mi(1)
 

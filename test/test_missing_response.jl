@@ -79,7 +79,8 @@ end
         sigma2 = @formula(sigma2 ~ x),
         rho12 = @formula(rho12 ~ x),
     )
-    fit = drm(f, Gaussian(); data = dat)
+    # drmTMB drops incomplete rows by default; this test covers the "include" path
+    fit = drm(f, Gaussian(); data = dat, missing = DRModels.miss_control(response = "include"))
 
     observed1 = .!ismissing.(y1_missing)
     observed2 = .!ismissing.(y2_missing)
