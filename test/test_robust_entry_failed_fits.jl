@@ -176,9 +176,52 @@ end
         @test occursin("failed fit", b["fit_failed_message"])
         @test isfinite(b["coefficients"][1])        # estimates still ship; only the loglik is withheld
     end
+    # a failed REML fit also ships NaN for `reml_loglik` (not the raw sentinel); a good one is unchanged
+    names = fieldnames(typeof(good))
+    as_reml(f, rl) = begin
+        vals = Any[getfield(f, k) for k in names]
+        vals[findfirst(==(:estim_method), names)] = :REML
+        vals[findfirst(==(:reml_loglik), names)] = rl
+        typeof(f).name.wrapper(vals...)
+    end
+    rg = flat(as_reml(good, good.loglik))
+    @test rg["reml_loglik"] == good.loglik
+    rb = flat(_failed_copy(as_reml(good, -1e18), -1e18))
+    @test haskey(rb, "reml_loglik") && isnan(rb["reml_loglik"])
+    @test rb["fit_failed"] === true
     # runaway positive value on a non-converged fit
     @test isnan(flat(_failed_copy(good, 3.6e76))["loglik"])
     # non-converged but plausible loglik: not failed, value unchanged
     p = flat(_failed_copy(good, good.loglik; converged = false))
     @test p["loglik"] == good.loglik && p["fit_failed"] === false
+end
+
+# Post-fit BLUP step: a non-PD V at the converged theta-hat gives NaN BLUPs (not a throw), and the
+# fit records it (`scales[:cond_blup_unavailable]`) so a later fit in a loop is detectable after the
+# one-time warning has fired.
+@testset "BLUP fallback: NaN vector, flag on the fit, quiet under :drm_quiet_boundary" begin
+    Vbad = [1.0 1.0; 1.0 1.0]                       # singular, not numerically PD
+    r = [0.3, -0.2]
+    @test all(isnan, _quiet(() -> DRModels._blup_vinv_r(Vbad, r)))
+    @test DRModels._blup_vinv_r([2.0 0.5; 0.5 1.0], r) ≈ [2.0 0.5; 0.5 1.0] \ r
+    # quiet flag suppresses the warning entirely
+    task_local_storage(:drm_quiet_boundary, true) do
+        @test_logs DRModels._blup_vinv_r(Vbad, r)
+    end
+    sc = Dict{Symbol,Vector{Float64}}(:sigma => [1.0, 1.0])
+    DRModels._flag_blup_unavailable!(sc, Dict(:g => [NaN, NaN]))
+    @test sc[:cond_blup_unavailable] == [1.0]
+    sc2 = Dict{Symbol,Vector{Float64}}(:sigma => [1.0, 1.0])
+    DRModels._flag_blup_unavailable!(sc2, Dict(:g => [0.1, -0.1]))
+    @test !haskey(sc2, :cond_blup_unavailable)
+    # a good structured fit carries no flag and sigma() still returns the plain vector
+    rng = StableRNG(11)
+    G = 6; n = 36
+    g = repeat(1:G, inner = n ÷ G)
+    K = Matrix(Symmetric(0.5 .* ones(G, G) + 0.5 .* I(G)))
+    d = (; y = randn(rng, n), x = randn(rng, n), g)
+    f = bf(@formula(y ~ x + animal(1 | g)), @formula(sigma ~ 1))
+    fit = _quiet(() -> drm(f, Gaussian(); data = d, A = K, ids = 1:G))
+    @test !haskey(fit.scales, :cond_blup_unavailable)
+    @test sigma(fit) isa AbstractVector
 end

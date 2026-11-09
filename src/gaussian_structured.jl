@@ -313,6 +313,7 @@ function _fit_two_structured_gaussian(fam::Gaussian, y, Xμ, gidx1, G1, C1, gidx
         a2 = σ2² .* (C2 * (Z2' * Vinvr))
         Dict(Symbol(grp1) => a1, Symbol(grp2) => a2)
     end
+    _flag_blup_unavailable!(scales, blup)
     return _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n,
         drm_optim_converged(res), means, obs, scales), nll), blup)
 end
@@ -393,6 +394,7 @@ function _fit_phylo_slope_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, C, xs, n
         b = σb² .* (C * (Zx' * Vinvr))
         Dict(Symbol(grp) => a, Symbol("$(grp):$(var)") => b)
     end
+    _flag_blup_unavailable!(scales, blup)
     fit = DrmFit(fam, blocks, names, θ̂, Vθ, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales)
     return _withranef(_withnll(fit, nll), blup)
 end
@@ -491,6 +493,7 @@ function _fit_structured_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ,
         end
         out
     end
+    _flag_blup_unavailable!(scales, blup)
     fit = DrmFit(fam, blocks, names, θ̂, Vθ, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales)
     return _withranef(_withnll(fit, nll), blup)
 end
