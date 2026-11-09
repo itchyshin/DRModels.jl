@@ -979,6 +979,12 @@ end
 # `nothing`) without an offset. Only the fixed-effects mean is covered: a random,
 # structured or `meta_V` term, an `sd()` part, a joint `mi()` model, missing
 # responses or a non-default `marginal` refuse it by name.
+# True when a right-hand side carries any `(… | g)` random-effect term.
+function _rhs_has_bar(rhs)
+    terms = rhs isa Tuple ? collect(rhs) : Any[rhs]
+    return any(t -> t isa FunctionTerm && t.f === (|), terms)
+end
+
 function _gaussian_offset_shift(f::DrmFormula, fam, kwargs)
     mu_rhs = nothing
     for (p, r) in f.forms
@@ -1097,7 +1103,8 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
                      allow_labelled_intercept_slope = q2_labelled,
                      allow_relmat_slope = allow_sd_structured_slope,
                      allow_spatial_slope = allow_sd_structured_slope,
-                     allow_spatial_intercept_slope = q2_kind === :spatial)   # (1|g), meta_V(v), relmat/animal/phylo/spatial(1|g), temporal(...)
+                     allow_spatial_intercept_slope = q2_kind === :spatial,
+                     unwrap_label = !_rhs_has_bar(rhs[:sigma]))   # (1|g), meta_V(v), relmat/animal/phylo/spatial(1|g), temporal(...)
     structured_sd_slope === nothing || temporal_term === nothing ||
         throw(ArgumentError("drm: a structured slope-only effect cannot be combined with `temporal(...)`."))
     fixed_sigma, sigma_re, _, structured_sigma = _split_ranef(rhs[:sigma])  # (1|g)→GHQ; structured_sigma = phylo(1|g) on σ
@@ -1260,6 +1267,12 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
             throw(ArgumentError("drm: `penalty` is not wired for sd() submodel routes."))
         # q3/q4 ordinary correlated block with per-coefficient sd() formulas.
         multi_corr = [_re_multi_corr_vars(rl) for (rl, _) in re]
+        cc_split = _corr_crossed_split(re)
+        if cc_split !== nothing
+            return _withformula(_drm_gaussian_corr_crossed(f, fam, cc_split, re, sdpp, sdp,
+                structured, structured_sigma, sigma_re, metav, has_missing_response,
+                y, Xμ, Xσ, nmμ, nmσ, data, g_tol, method, algorithm), f)
+        end
         # q = 2 `(1 + x | g)` joins only when it carries `coef()` SD targets and stands
         # alone (native R admits one SD formula per coefficient); every other q2
         # shape keeps its existing route and refusals.
@@ -1271,6 +1284,13 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
                 y, Xμ, Xσ, nmμ, nmσ, data, g_tol, method, algorithm), f)
         end
         re_kinds_sd = [_re_kind(rl) for (rl, _) in re]
+        if length(re) ≥ 2 && isempty(sdpp) && structured === nothing &&
+           all(k -> k[1] in (:intercept, :slope), re_kinds_sd) &&
+           any(k -> k[1] === :slope, re_kinds_sd)
+            return _withformula(_drm_gaussian_indep_sd(f, fam, re, re_kinds_sd, sdpp,
+                structured, structured_sigma, sigma_re, metav, has_missing_response,
+                y, Xμ, Xσ, nmμ, nmσ, data, g_tol, method, algorithm), f)
+        end
         if q2_kind !== nothing
             return _withformula(_drm_gaussian_structured_q2_sd(f, fam, q2_kind, structured,
                 re, sigma_re, metav, structured_sigma, has_missing_response,
@@ -1804,6 +1824,20 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
             return _withformula(_fit_fixed_gaussian_reml(fam, y, Xμ, Xσ, nmμ, nmσ, g_tol), f)
         end
         return _withformula(_fit_fixed_gaussian(fam, y, Xμ, Xσ, nmμ, nmσ, g_tol), f)
+    end
+    if isempty(sigma_re)
+        cc_split = _corr_crossed_split(re)
+        if cc_split !== nothing         # (1 + x | g) + (1 | h): dense correlated-block route
+            return _withformula(_drm_gaussian_corr_crossed(f, fam, cc_split, re, sdpp, sdp,
+                structured, structured_sigma, sigma_re, metav, has_missing_response,
+                y, Xμ, Xσ, nmμ, nmσ, data, g_tol, method, algorithm), f)
+        end
+        mc = length(re) == 1 ? _re_multi_corr_vars(re[1][1]) : nothing
+        if mc !== nothing && length(mc) ≥ 2         # (1 + x + z [+ w] | g), no sd()
+            return _withformula(_drm_gaussian_ordinary_q34_sd(f, fam, sdpp, re, [mc],
+                structured, structured_sigma, sigma_re, metav, has_missing_response,
+                y, Xμ, Xσ, nmμ, nmσ, data, g_tol, method, algorithm), f)
+        end
     end
     re_kinds = [_re_kind(rl) for (rl, _) in re]
     if length(re) == 1 && re_kinds[1][1] === :corr           # (1 + x | g)

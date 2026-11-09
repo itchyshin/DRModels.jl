@@ -1016,7 +1016,9 @@ struct _LssComp
     nm::Vector{String}
     K::Union{Nothing,Matrix{Float64},_LazyPhyloK}   # nothing = iid; matrix = phylo correlation; _LazyPhyloK = phylo, not yet materialised
     label::String
+    w::Union{Nothing,Vector{Float64}}                # per-row loading of an iid component (an independent slope `(0 + x | g)`); nothing = intercept
 end
+_LssComp(gidx, G, Zg, nm, K, label) = _LssComp(gidx, G, Zg, nm, K, label, nothing)
 
 function _fit_gaussian_lss_multi(fam::Gaussian, y, Xμ, Xσ, comps::Vector{_LssComp},
                                  nmμ, nmσ, g_tol; reml::Bool = false)
@@ -1041,7 +1043,7 @@ function _fit_gaussian_lss_multi(fam::Gaussian, y, Xμ, Xσ, comps::Vector{_LssC
                 # iid: Z Diagonal(σa²) Z' adds σa[g]² wherever rows share a group
                 @inbounds for j in 1:n, i in 1:n
                     if c.gidx[i] == c.gidx[j]
-                        Vm[i, j] += σa[c.gidx[i]]^2
+                        Vm[i, j] += σa[c.gidx[i]]^2 * (c.w === nothing ? 1.0 : c.w[i] * c.w[j])
                     end
                 end
             else
@@ -1071,7 +1073,7 @@ function _fit_gaussian_lss_multi(fam::Gaussian, y, Xμ, Xσ, comps::Vector{_LssC
             if c.K === nothing
                 @inbounds for j in 1:n, i in 1:n
                     if c.gidx[i] == c.gidx[j]
-                        Vm[i, j] += σa[c.gidx[i]]^2
+                        Vm[i, j] += σa[c.gidx[i]]^2 * (c.w === nothing ? 1.0 : c.w[i] * c.w[j])
                     end
                 end
             else
