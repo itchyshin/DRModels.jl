@@ -359,7 +359,15 @@ end
 function _indep_sd_shape(f::DrmFormula)
     rhs = Dict(f.forms)
     haskey(rhs, :mu) || return nothing
-    fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
+    # A structured term (`animal`, `relmat`, `spatial`, ...) with a slope makes `_split_ranef` throw its own
+    # message; that is not this route's shape, so leave the error to the route that owns the term.
+    split = try
+        _split_ranef(rhs[:mu])
+    catch err
+        err isa ArgumentError || rethrow()
+        return nothing
+    end
+    fixed_mu, re, mv, st = split
     (mv === nothing && st === nothing && length(re) >= 2) || return nothing
     kinds = [_re_kind(r[1]) for r in re]
     all(k -> k[1] in (:intercept, :slope), kinds) || return nothing
@@ -383,6 +391,8 @@ function _indep_sd_comps(f::DrmFormula, shape, data, famname::AbstractString)
     comps = Any[]
     for i in eachindex(re)
         grp = re[i][2]; m = mem[i]
+        hasproperty(data, grp) || throw(ArgumentError(
+            "drm ($famname): grouping variable `$grp` of the random-effect term is not a column of `data`."))
         gidx, G = _group_index(getproperty(data, grp); col = grp)
         hit = findall(targets) do item
             t = item.target
