@@ -368,8 +368,18 @@ function _drm_poisson_fit(f::DrmFormula, fam::Poisson; data, tree = nothing, K =
         if length(re) > 1                                 # (1|g)+(1|h)+… crossed/multiple intercepts → sparse Laplace
             isva && _va_reject(fam, "crossed/multiple random intercepts")
             reml && _reject_reml_route(fam, "crossed/multiple random intercepts")
+            # Independent intercepts + slopes `(1 | g) + (0 + x | g)`: TMB-convention Laplace
+            # (drmTMB's layout), the shared dense route of `indep_slopes_laplace.jl`.
+            if _has_indep_slopes(re)
+                isaghq && _aghq_reject(fam, "independent random slopes `(0 + x | g)` (Laplace only)")
+                return _withformula(_fit_indep_re_laplace(fam, Val(:poisson), y, Xμ, nothing, nothing,
+                                                          _indep_slope_comps(re, data, length(y)),
+                                                          nmμ, String[], String[], g_tol), f)
+            end
             all(_re_kind(r[1])[1] === :intercept for r in re) ||
-                error("Poisson() supports multiple random effects only as crossed/nested intercepts, e.g. `(1 | g) + (1 | h)`")
+                error("Poisson() supports multiple random effects only as crossed/nested intercepts " *
+                      "`(1 | g) + (1 | h)` or independent intercepts and slopes `(1 | g) + (0 + x | g)`; " *
+                      "a correlated `(1 + x | g)` must be the only random-effect term")
             comps = map(re) do r
                 grp = r[2]; gidx, G = _group_index(getproperty(data, grp); col = grp)
                 (ones(length(y)), gidx, G, String(grp))
@@ -402,8 +412,16 @@ function _drm_poisson_fit(f::DrmFormula, fam::Poisson; data, tree = nothing, K =
             reml && _reject_reml_route(fam, "a correlated random slope `(1 + x | g)`")
             xs = Float64.(getproperty(data, var))
             return _withformula(_fit_poisson_corr_ranef(fam, y, Xμ, xs, gidx, G, nmμ, grp, g_tol), f)
+        elseif rk === :slope                              # (0 + x | g) → TMB-convention Laplace (independent route)
+            isva && _va_reject(fam, "an independent random slope `(0 + x | g)`")
+            isaghq && _aghq_reject(fam, "an independent random slope `(0 + x | g)` (Laplace only)")
+            reml && _reject_reml_route(fam, "an independent random slope `(0 + x | g)`")
+            _require_finite_data_column(data, var)
+            return _withformula(_fit_indep_re_laplace(fam, Val(:poisson), y, Xμ, nothing, nothing,
+                                                      _indep_slope_comps(re, data, length(y)),
+                                                      nmμ, String[], String[], g_tol), f)
         else
-            error("Poisson() supports `(1 | g)` or `(1 + x | g)` random effects on the mean")
+            error("Poisson() supports `(1 | g)`, `(0 + x | g)` or `(1 + x | g)` random effects on the mean")
         end
     end
     isva && _va_reject(fam, "no random intercept (fixed-effects-only / zi / hu)")
@@ -467,6 +485,11 @@ function _drm_poisson_sd_regression(f::DrmFormula, fam::Poisson; data,
         "Poisson `Ainv` is currently supported for predictor-dependent animal SD regression only."))
     !isempty(_sdphylo_parts(f)) && return _drm_poisson_phylo_sd_regression(
         f, fam; data, tree, K, A, coords, g_tol, se)
+    # Independent terms / crossed intercepts with `sd()` formulas: TMB-convention Laplace with a
+    # group-level log-SD regression per term (`indep_slopes_laplace.jl`).
+    indep_shape = _indep_sd_shape(f)
+    indep_shape === nothing ||
+        return _drm_indep_sd_laplace(f, fam, Val(:poisson), indep_shape; data, g_tol)
     length(targets) == 1 || throw(ArgumentError(
         "Poisson random-effect SD regression requires exactly one SD target."))
     target = only(targets)

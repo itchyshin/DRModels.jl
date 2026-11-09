@@ -124,9 +124,13 @@ struct LogNormal end
     all(isfinite, y) || error("LogNormal() requires finite, strictly positive responses")
     if !isempty(re)                    # random effect on the log-mean μ → GHQ
         if length(re) > 1              # crossed/multiple intercepts (#736)
-            all(_re_kind(r[1])[1] === :intercept for r in re) ||
+            # Independent intercepts + slopes `(1 | g) + (0 + x | g)`: `log(y)` is Gaussian, so the
+            # exact Gaussian multi-component marginal applies (same delegation as crossed intercepts).
+            all(_re_kind(r[1])[1] in (:intercept, :slope) for r in re) ||
                 error("LogNormal() supports multiple random effects only as crossed/nested " *
-                      "intercepts, e.g. `(1 | g) + (1 | h)`")
+                      "intercepts `(1 | g) + (1 | h)` or independent intercepts and slopes " *
+                      "`(1 | g) + (0 + x | g)`; a correlated `(1 + x | g)` must be the only " *
+                      "random-effect term")
             return _withformula(_fit_lognormal_crossed(fam, f, data, g_tol), f)
         end
         length(re) == 1 ||

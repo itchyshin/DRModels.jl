@@ -192,9 +192,18 @@ _logit12(η) = 1 + 1 / (1 + exp(-η))            # (1,2) link for the power p
               "(drmTMB 0.8.1 refuses them for tweedie() too)")
     if !isempty(re)                    # random intercept/slope on mu → GHQ marginal (#563 S8)
         if length(re) > 1               # crossed/multiple intercepts (#737)
+            # Independent intercepts + slopes `(1 | g) + (0 + x | g)`: TMB-convention Laplace with the
+            # power `p` estimated jointly (drmTMB's layout), the shared dense route of
+            # `indep_slopes_laplace.jl`. Any `sigma` / `nu` formula is admitted.
+            _has_indep_slopes(re) &&
+                return _withformula(_fit_indep_re_laplace(fam, Val(:tweedie), y, Xμ, Xσ, Xν,
+                                                          _indep_slope_comps(re, data, length(y)),
+                                                          nmμ, nmσ, nmν, g_tol), f)
             all(_re_kind(r[1])[1] === :intercept for r in re) ||
                 error("Tweedie() supports multiple random effects only as crossed/nested " *
-                      "intercepts, e.g. `(1 | g) + (1 | h)`")
+                      "intercepts `(1 | g) + (1 | h)` or independent intercepts and slopes " *
+                      "`(1 | g) + (0 + x | g)`; a correlated `(1 + x | g)` must be the only " *
+                      "random-effect term")
             size(Xσ, 2) == 1 ||
                 error("Tweedie() crossed/multiple random intercepts currently require a " *
                       "constant `sigma` formula")
