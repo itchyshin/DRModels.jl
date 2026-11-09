@@ -112,6 +112,14 @@ rows take the #1291 text. #1292 (bivariate predict) conflicted only in the shard
 tip: the spatial-parity and Laplace-parity lanes and #1290 (its failures did not reproduce), and the
 Codex PR #1281.
 
+### Late folds: #1298 and #1299
+
+#1298 (review fixes, documentation and test assertions only) merged cleanly. #1299 (spatial parity)
+conflicted in `_q2_boundary_restarts`, which now takes both the `big_gain` argument from the wave-10
+base and the `starts` argument from #1299, and in the capabilities table (the Poisson spatial row and
+the NegBinomial2 labelled note were combined). The Poisson `coords` route now uses the fixed native
+range, which is a user-visible default change.
+
 ## User-visible default changes on this tip
 
 `fitted()` returns the response mean `E[Y]` for LogNormal, zero-inflated, hurdle and truncated fits,
