@@ -1,0 +1,1132 @@
+beta|crossed|lab0|q1|sd-none|cm0|ML	random-effect-sd|mu|(1 | g)	sd|g|1	0.52075046	0.52075046	0.074796577	0.074796562
+beta|crossed|lab0|q1|sd-none|cm0|ML	random-effect-sd|mu|(1 | g2)	sd|g2|1	0.24728481	0.2472848	0.060078464	0.060078449
+beta|phylo|lab0|q1|sd-none|cm0|ML	random-effect-sd|mu|phylo(1 | g)	sd|g|1	0.40302231	0.40302231	0.1089354	0.10893541
+beta|phylo|lab0|q2|sd-one|cm0|ML	random-effect-sd|mu|phylo(0 + x1 | g)		0.25877774	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g)|sd(g):g01		0.50324353	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g)|sd(g):g02		0.50324353	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g)|sd(g):g03		0.50324353	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g)|sd(g):g04		0.50324353	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g)|sd(g):g05		0.50324353	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g)|sd(g):g06		0.50324353	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g)|sd(g):g07		0.50324353	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g)|sd(g):g08		0.50324353	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g)|sd(g):g09		0.50324353	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g)|sd(g):g10		0.50324353	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g)|sd(g):g11		0.50324353	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g)|sd(g):g12		0.50324353	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g)|sd(g):g13		0.50324353	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g)|sd(g):g14		0.50324353	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g)|sd(g):g15		0.50324353	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g)|sd(g):g16		0.50324353	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g)|sd(g):g17		0.50324353	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g)|sd(g):g18		0.50324353	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g)|sd(g):g19		0.50324353	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g)|sd(g):g20		0.50324353	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g)|sd(g):g21		0.50324353	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g)|sd(g):g22		0.50324353	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g)|sd(g):g23		0.50324353	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g)|sd(g):g24		0.50324353	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g)|sd(g):g25		0.50324353	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g)|sd(g):g26		0.50324353	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g)|sd(g):g27		0.50324353	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g)|sd(g):g28		0.50324353	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g)|sd(g):g29		0.50324353	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g)|sd(g):g30		0.50324353	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g)|sd(g):g31		0.50324353	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g)|sd(g):g32		0.50324353	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g)|sd(g):g33		0.50324353	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g)|sd(g):g34		0.50324353	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g)|sd(g):g35		0.50324353	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g)|sd(g):g36		0.50324353	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g)|sd(g):g37		0.50324353	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g)|sd(g):g38		0.50324353	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g)|sd(g):g39		0.50324353	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g)|sd(g):g40		0.50324353	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g2)|sd(g2):h01		0.33620373	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g2)|sd(g2):h02		0.33620373	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g2)|sd(g2):h03		0.33620373	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g2)|sd(g2):h04		0.33620373	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g2)|sd(g2):h05		0.33620373	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g2)|sd(g2):h06		0.33620373	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g2)|sd(g2):h07		0.33620373	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g2)|sd(g2):h08		0.33620373	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g2)|sd(g2):h09		0.33620373	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g2)|sd(g2):h10		0.33620373	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g2)|sd(g2):h11		0.33620373	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g2)|sd(g2):h12		0.33620373	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g2)|sd(g2):h13		0.33620373	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g2)|sd(g2):h14		0.33620373	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g2)|sd(g2):h15		0.33620373	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g2)|sd(g2):h16		0.33620373	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g2)|sd(g2):h17		0.33620373	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g2)|sd(g2):h18		0.33620373	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g2)|sd(g2):h19		0.33620373	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g2)|sd(g2):h20		0.33620373	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g2)|sd(g2):h21		0.33620373	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g2)|sd(g2):h22		0.33620373	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g2)|sd(g2):h23		0.33620373	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g2)|sd(g2):h24		0.33620373	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g2)|sd(g2):h25		0.33620373	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g2)|sd(g2):h26		0.33620373	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g2)|sd(g2):h27		0.33620373	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g2)|sd(g2):h28		0.33620373	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g2)|sd(g2):h29		0.33620373	nan	nan	nan
+binomial|crossed|lab0|q1|sd-one|cm0|ML	random-effect-sd|sd(g2)|sd(g2):h30		0.33620373	nan	nan	nan
+binomial|phylo|lab0|q1|sd-none|cm0|ML	random-effect-sd|mu|phylo(1 | g)	sd|g|1	8.7588365e-06	0.00031262291	0.10572136	0.34333804
+binomial|phylo|lab1|q2|sd-one|cm0|ML	random-effect-sd|mu|phylo(0 + x1 | p | g)		1	nan	nan	nan
+binomial|spatial|lab0|q2|sd-none|cm0|ML	random-effect-sd|mu|spatial(1 | g)		4.4708466e-06	nan	0.10160414	nan
+binomial|spatial|lab0|q2|sd-none|cm0|ML	random-effect-sd|mu|spatial(0 + x1 | g)		2.0929715e-05	nan	0.16670112	nan
+gamma|crossed|lab0|q1|sd-none|cm0|ML	random-effect-sd|mu|(1 | g)	sd|g|1	0.5892208	0.5892208	0.08062385	0.080623838
+gamma|crossed|lab0|q1|sd-none|cm0|ML	random-effect-sd|mu|(1 | g2)	sd|g2|1	0.33375133	0.33375133	0.064465445	0.064465426
+gamma|indep|lab0|q4|sd-none|cm0|ML	random-effect-sd|mu|(1 | g)	sd|g|1	0.50434359	0.50434359	0.064351103	0.064351099
+gamma|indep|lab0|q4|sd-none|cm0|ML	random-effect-sd|mu|(0 + x1 | g)	sd|g:x1|1	0.35157354	0.35157354	0.050173599	0.050173588
+gamma|indep|lab0|q4|sd-none|cm0|ML	random-effect-sd|mu|(0 + x2 | g)	sd|g:x2|1	0.25647881	0.25647881	0.047267185	0.047267171
+gamma|indep|lab0|q4|sd-none|cm0|ML	random-effect-sd|mu|(0 + x3 | g)	sd|g:x3|1	0.25498007	0.25498007	0.045433771	0.04543376
+gamma|relmat|lab0|q2|sd-none|cm0|ML	random-effect-sd|mu|relmat(1 | g)		0.39271758	nan	0.057216732	nan
+gamma|relmat|lab0|q2|sd-none|cm0|ML	random-effect-sd|mu|relmat(0 + x1 | g)		0.26086722	nan	0.04849724	nan
+gamma|relmat|lab1|q2|sd-one|cm0|ML	random-effect-sd|mu|relmat(0 + x1 | p | g)		0.18604683	nan	nan	nan
+gamma|spatial|lab0|q2|sd-none|cm0|ML	random-effect-sd|mu|spatial(1 | g)		0.43787121	nan	0.083586004	nan
+gamma|spatial|lab0|q2|sd-none|cm0|ML	random-effect-sd|mu|spatial(0 + x1 | g)		0.20245548	nan	0.086621564	nan
+gaussian|animal|lab0|q1|sd-none|cm0|REML	random-effect-sd|mu|animal(1 | g)	sd|g|1	0.68377445	0.68377445	0.088714416	0.088714412
+gaussian|animal|lab0|q2|sd-z|cm0|REML	random-effect-sd|mu|animal(0 + x1 | g)		0.27278474	nan	nan	nan
+gaussian|animal|lab1|q2|sd-one|cm0|ML	random-effect-sd|mu|animal(0 + x1 | p | g)		0.27278474	nan	nan	nan
+gaussian|animal|lab1|q2|sd-z|cm0|ML	random-effect-sd|mu|animal(0 + x1 | p | g)		0.27278474	nan	nan	nan
+gaussian|crossed|lab0|q1|sd-none|cm0|REML	random-effect-sd|mu|(1 | g)	sd|g|1	0.5030761	0.5030761	0.070444061	0.070444046
+gaussian|crossed|lab0|q1|sd-none|cm0|REML	random-effect-sd|mu|(1 | g2)	sd|g2|1	0.3909475	0.3909475	0.066474405	0.066474388
+gaussian|crossed|lab1|q2|sd-none|cm0|ML	random-effect-sd|mu|(1 + x1 | p | g):(Intercept)		0.49191415	nan	0.066975507	nan
+gaussian|crossed|lab1|q2|sd-none|cm0|ML	random-effect-sd|mu|(1 + x1 | p | g):x1		0.33517268	nan	0.05452002	nan
+gaussian|crossed|lab1|q2|sd-none|cm0|ML	random-effect-sd|mu|(1 | g2)		0.39556173	nan	0.063573203	nan
+gaussian|crossed|lab1|q3|sd-none|cm0|ML	random-effect-sd|mu|(1 | g2)		0.39062481	nan	0.062022473	nan
+gaussian|crossed|lab1|q3|sd-none|cm0|ML	random-effect-sd|mu|(1 + x1 + x2 | p | g):(Intercept)		0.50329651	nan	0.066752252	nan
+gaussian|crossed|lab1|q3|sd-none|cm0|ML	random-effect-sd|mu|(1 + x1 + x2 | p | g):x1		0.33931301	nan	0.052349509	nan
+gaussian|crossed|lab1|q3|sd-none|cm0|ML	random-effect-sd|mu|(1 + x1 + x2 | p | g):x2		0.26798185	nan	0.05085735	nan
+gaussian|indep|lab0|q3|sd-none|cm0|ML	random-effect-sd|mu|(1 | g)		0.44182429	nan	0.060045131	nan
+gaussian|indep|lab0|q3|sd-none|cm0|ML	random-effect-sd|mu|(0 + x1 | g)		0.34471663	nan	0.058097435	nan
+gaussian|indep|lab0|q3|sd-none|cm0|ML	random-effect-sd|mu|(0 + x2 | g)		0.38249454	nan	0.060224367	nan
+gaussian|indep|lab0|q3|sd-none|cm0|ML		sd|g|1	nan	0.38249454	nan	0.060224349
+gaussian|indep|lab0|q3|sd-none|cm0|REML	random-effect-sd|mu|(1 | g)		0.44832304	nan	0.06143306	nan
+gaussian|indep|lab0|q3|sd-none|cm0|REML	random-effect-sd|mu|(0 + x1 | g)		0.35132415	nan	0.05930249	nan
+gaussian|indep|lab0|q3|sd-none|cm0|REML	random-effect-sd|mu|(0 + x2 | g)		0.38901178	nan	0.061512942	nan
+gaussian|indep|lab0|q3|sd-none|cm0|REML		sd|g|1	nan	0.38901178	nan	0.061512924
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g01		0.37766024	nan	nan	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g02		0.6982237	nan	nan	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g03		0.27775034	nan	nan	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g04		0.32387538	nan	nan	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g05		0.24752103	nan	nan	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g06		0.22921891	nan	nan	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g07		0.36342971	nan	nan	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g08		0.49415944	nan	nan	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g09		0.62223164	nan	nan	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g10		0.55451027	nan	nan	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g11		0.42378323	nan	nan	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g12		0.47553913	nan	nan	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g13		0.33655711	nan	nan	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g14		0.51350884	nan	nan	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g15		0.29992749	nan	nan	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g16		0.22058176	nan	nan	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g17		0.39244798	nan	nan	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g18		0.44037697	nan	nan	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g19		0.2672845	nan	nan	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g20		0.18916739	nan	nan	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g21		0.25721301	nan	nan	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g22		0.20427158	nan	nan	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g23		0.28862599	nan	nan	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g24		0.7539738	nan	nan	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g25		0.18203942	nan	nan	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g26		0.64659586	nan	nan	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g27		0.6719141	nan	nan	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g28		0.45762045	nan	nan	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g29		0.17518003	nan	nan	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g30		0.5336159	nan	nan	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g31		0.23819425	nan	nan	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g32		0.40781475	nan	nan	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g33		0.78349655	nan	nan	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g34		0.21227007	nan	nan	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g35		0.3497354	nan	nan	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g36		0.57622278	nan	nan	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g37		0.31167151	nan	nan	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g38		0.59878547	nan	nan	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g39		0.72556349	nan	nan	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g40		0.19657447	nan	nan	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|mu|(0 + x1 | g)		0.34736437	nan	0.054559784	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|mu|(0 + x2 | g)		0.38140442	nan	0.055710276	nan
+gaussian|indep|lab0|q4|sd-first|cm0|ML	random-effect-sd|mu|(0 + x3 | g)		0.34222392	nan	0.053245976	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g01		0.3838352	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g02		0.69852715	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g03		0.28452836	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g04		0.33047239	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g05		0.25431287	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g06		0.23597366	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g07		0.36973656	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g08		0.498783	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g09		0.62434706	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g10		0.55804453	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g11		0.42943953	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g12		0.48046221	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g13		0.34307382	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g14		0.51780238	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g15		0.3066411	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g16		0.22730612	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g17		0.39847145	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g18		0.44581474	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g19		0.27407735	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g20		0.19570481	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g21		0.26401022	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g22		0.21091444	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g23		0.29537787	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g24		0.75281472	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g25		0.18851638	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g26		0.64815441	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g27		0.67286957	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g28		0.46281436	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g29		0.18159199	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g30		0.53754701	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g31		0.24497171	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g32		0.4136658	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g33		0.78152074	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g34		0.21895694	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g35		0.35615577	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g36		0.57932366	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g37		0.31833381	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g38		0.60141419	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g39		0.7251631	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g40		0.20316734	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g01		0.32212617	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g02		0.54984349	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g03		0.24655821	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g04		0.28182061	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g05		0.22303834	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g06		0.20861853	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g07		0.3115392	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g08		0.40702326	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g09		0.49739239	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g10		0.44994475	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g11		0.35609507	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g12		0.39364607	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g13		0.29139766	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g14		0.42085506	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g15		0.26360043	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g16		0.20176209	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g17		0.33307292	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g18		0.36819618	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g19		0.23845485	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g20		0.1765169	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g21		0.23061781	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g22		0.18871783	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g23		0.25493695	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g24		0.58784892	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g25		0.17071551	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g26		0.51429518	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g27		0.53177237	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g28		0.38070852	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g29		0.16510479	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g30		0.43515689	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g31		0.21570798	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g32		0.34439168	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g33		0.60782567	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g34		0.19513099	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g35		0.30130017	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g36		0.46523513	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g37		0.27255831	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g38		0.48104513	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g39		0.56852872	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g40		0.18251544	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g01		0.37214705	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g02		0.47311233	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g03		0.3300576	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g04		0.35047106	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g05		0.31553164	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g06		0.3062046	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g07		0.3666055	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g08		0.41335559	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g09		0.45229049	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g10		0.43238502	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g11		0.38927938	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g12		0.40720042	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g13		0.35576872	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g14		0.41960381	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g15		0.34011121	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g16		0.30164498	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g17		0.37777237	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g18		0.39516366	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g19		0.32514279	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g20		0.28407543	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g21		0.32030117	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g22		0.29272842	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g23		0.3350467	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g24		0.48752342	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g25		0.27984534	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g26		0.45912724	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g27		0.46606733	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g28		0.4011369	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g29		0.27567823	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g30		0.42594648	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g31		0.31083314	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g32		0.38348271	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g33		0.49489275	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g34		0.29715326	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g35		0.36114647	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g36		0.43892088	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g37		0.34525228	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g38		0.44555554	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g39		0.48026383	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g40		0.28836947	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g01		0.30369162	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g02		0.60126391	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g03		0.2158324	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g04		0.25602049	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g05		0.18988824	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g06		0.17434883	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g07		0.2910002	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g08		0.40945808	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g09		0.52898892	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g10		0.46540175	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g11		0.34518456	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g12		0.39234663	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g13		0.26718633	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g14		0.42731582	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g15		0.23506917	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g16		0.16706271	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g17		0.31693655	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g18		0.36023913	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g19		0.20681266	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g20		0.14083851	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g21		0.19816986	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g22		0.15339121	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g23		0.22524552	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g24		0.65485354	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g25		0.1349528	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g26		0.55205977	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g27		0.5761368	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g28		0.37595028	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g29		0.12931306	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g30		0.44595239	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g31		0.18195272	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g32		0.33075913	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g33		0.68341373	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g34		0.16008107	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g35		0.27883916	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g36		0.48569936	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g37		0.24532127	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g38		0.50688222	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g39		0.62748689	nan	nan	nan
+gaussian|indep|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g40		0.14698092	nan	nan	nan
+gaussian|ordinary|lab0|q1|sd-none|cm0|REML	random-effect-sd|mu|(1 | g)	sd|g|1	0.49707555	0.49707555	0.069173142	0.069173128
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g01		0.3604464	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g02		0.74308881	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g03		0.2510387	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g04		0.30080891	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g05		0.21919376	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g06		0.20024108	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g07		0.34451108	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g08		0.49465592	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g09		0.64882596	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g10		0.56652061	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g11		0.41281284	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g12		0.47278719	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g13		0.31472279	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g14		0.51753617	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g15		0.27479934	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g16		0.19138843	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g17		0.37711881	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g18		0.43190746	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g19		0.23994029	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g20		0.15972234	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g21		0.22933254	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g22		0.17483995	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g23		0.26265047	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g24		0.81342164	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g25		0.15266102	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g26		0.67883733	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g27		0.71023688	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g28		0.45188529	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g29		0.14591188	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g30		0.54147475	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g31		0.20950321	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g32		0.3945624	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g33		0.85104637	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g34		0.18292715	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g35		0.32928026	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g36		0.59272496	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g37		0.28751015	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g38		0.62014139	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g39		0.7774603	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g40		0.16711028	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|mu|(1 + x1 + x2 | g):x1		0.35410815	nan	0.058951576	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-sd|mu|(1 + x1 + x2 | g):x2		0.36657109	nan	0.059124722	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g01		0.36090929	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g02		0.71435572	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g03		0.25653099	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g04		0.30427688	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g05		0.22570594	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g06		0.20724232	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g07		0.34583248	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g08		0.48654612	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g09		0.62851796	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g10		0.55299455	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g11		0.41019929	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g12		0.4662209	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g13		0.31754204	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g14		0.50775744	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g15		0.27938584	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g16		0.19858487	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g17		0.37664338	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g18		0.42808221	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g19		0.24581453	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g20		0.16742374	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g21		0.23554575	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g22		0.18233985	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g23		0.26771463	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g24		0.77799908	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g25		0.1604297	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g26		0.65591863	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g27		0.68451386	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g28		0.44674475	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g29		0.15372783	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g30		0.52989348	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g31		0.21627719	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g32		0.39306341	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g33		0.81191649	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g34		0.19028909	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g35		0.3313855	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g36		0.57710273	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g37		0.29156586	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g38		0.60226193	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g39		0.74549855	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g40		0.1747227	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|mu|(1 + x1 + x2 + x3 | g):x1		0.35845712	nan	0.055491428	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|mu|(1 + x1 + x2 + x3 | g):x2		0.37244086	nan	0.054930275	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-sd|mu|(1 + x1 + x2 + x3 | g):x3		0.34832799	nan	0.053741397	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g01		0.36706625	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g02		0.7850257	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g03		0.25100059	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g04		0.30353558	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g05		0.21765748	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g06		0.19792752	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g07		0.35003441	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g08		0.51189449	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g09		0.68074229	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g10		0.59031197	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g11		0.4232974	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g12		0.48814263	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g13		0.31830489	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g14		0.53680205	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g15		0.27602103	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g16		0.1887437	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g17		0.38492682	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g18		0.44389404	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g19		0.23935419	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g20		0.15607653	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g21		0.22824818	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g22		0.17163468	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g23		0.26321368	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g24		0.86327925	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g25		0.1488346	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g26		0.71386559	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g27		0.74860058	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g28		0.46549286	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g29		0.14192869	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g30		0.56292155	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g31		0.2075582	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g32		0.40365644	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g33		0.90528435	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g34		0.17998601	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g35		0.33379285	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g36		0.61903514	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g37		0.28945156	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g38		0.64915592	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g39		0.82322317	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g40		0.16367085	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g01		0.34102922	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g02		0.59449962	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g03		0.25829238	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g04		0.29679159	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g05		0.23273227	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g06		0.21711339	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g07		0.32938711	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g08		0.43489718	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g09		0.53566909	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g10		0.48266031	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g11		0.37848319	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g12		0.42005058	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g13		0.30728163	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g14		0.45026852	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g15		0.27687363	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g16		0.20970153	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g17		0.35308282	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g18		0.39186059	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g19		0.24947475	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g20		0.18249947	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g21		0.24095814	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g22		0.19562826	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g23		0.26742167	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g24		0.63726723	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g25		0.17626927	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g26		0.5546022	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g27		0.57420449	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g28		0.40571082	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g29		0.17025176	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g30		0.46618317	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g31		0.22478721	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g32		0.36556246	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g33		0.6597913	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g34		0.2025427	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g35		0.31814243	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g36		0.49971983	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g37		0.28665967	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g38		0.51738232	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g39		0.61551208	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g40		0.18894987	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g01		0.36726147	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g02		0.50457225	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g03		0.31332956	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g04		0.33922541	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g05		0.29521344	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g06		0.28372175	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g07		0.36004238	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g08		0.42201474	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g09		0.47539884	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g10		0.44791217	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g11		0.38979891	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g12		0.41371938	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g13		0.34602711	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g14		0.43047642	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g15		0.32602047	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g16		0.27814476	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g17		0.37462531	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g18		0.39761464	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g19		0.30717058	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g20		0.2569117	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g21		0.30113267	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g22		0.26731749	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g23		0.31961203	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g24		0.52500914	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g25		0.2518617	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g26		0.48493091	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g27		0.4946541	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g28		0.40558709	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g29		0.24691097	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g30		0.43910776	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g31		0.28941056	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g32		0.38213681	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g33		0.53553593	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g34		0.27267739	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g35		0.35296519	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g36		0.45689312	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g37		0.33255741	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g38		0.46605413	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g39		0.51468927	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x2")|sd(g, coef = "x2"):g40		0.26206295	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g01		0.3095473	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g02		0.61142937	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g03		0.22025074	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g04		0.26110922	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g05		0.19386025	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g06		0.1780477	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g07		0.29665441	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g08		0.41692742	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g09		0.53816777	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g10		0.47368438	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g11		0.35168645	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g12		0.39956206	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g13		0.27245727	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g14		0.43504748	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g15		0.23981138	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g16		0.17063187	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g17		0.32300052	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g18		0.36697108	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g19		0.21107713	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g20		0.14393133	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g21		0.2022856	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g22		0.15671398	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g23		0.22982305	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g24		0.66573089	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g25		0.13793648	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g26		0.56155705	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g27		0.58596286	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g28		0.38291999	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g29		0.13219132	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g30		0.45395506	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g31		0.18578582	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g32		0.33703843	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g33		0.69466419	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g34		0.16352492	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g35		0.28429853	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g36		0.49427116	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g37		0.25023381	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g38		0.51575266	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g39		0.63800268	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x3")|sd(g, coef = "x3"):g40		0.15018672	nan	nan	nan
+gaussian|ordinary|lab1|q3|sd-none|cm0|ML	random-effect-sd|mu|(1 + x1 + x2 | p | g):(Intercept)		0.44253432	nan	0.059978058	nan
+gaussian|ordinary|lab1|q3|sd-none|cm0|ML	random-effect-sd|mu|(1 + x1 + x2 | p | g):x1		0.34774367	nan	0.058523142	nan
+gaussian|ordinary|lab1|q3|sd-none|cm0|ML	random-effect-sd|mu|(1 + x1 + x2 | p | g):x2		0.37224469	nan	0.059707626	nan
+gaussian|phylo|lab0|q1|sd-none|cm0|ML	random-effect-sd|mu|phylo(1 | g)	sd|g|1	0.55328609	0.55328609	0.086231021	0.086231008
+gaussian|phylo|lab0|q1|sd-none|cm0|REML	random-effect-sd|mu|phylo(1 | g)	sd|g|1	0.56645239	0.56645239	0.088691018	0.088690996
+gaussian|phylo|lab0|q2|sd-none|cm0|ML	random-effect-sd|mu|phylo(1 | g)	sd|g|1	0.55018797	0.55018797	0.084847744	0.084847733
+gaussian|phylo|lab0|q2|sd-none|cm0|ML	random-effect-sd|mu|phylo(0 + x1 | g)	sd|g:x1|1	0.3227898	0.3227898	0.090075469	0.090075474
+gaussian|phylo|lab0|q2|sd-none|cm0|REML	random-effect-sd|mu|phylo(1 | g)	sd|g|1	0.56285254	0.56285254	0.087207182	0.08720717
+gaussian|phylo|lab0|q2|sd-none|cm0|REML	random-effect-sd|mu|phylo(0 + x1 | g)	sd|g:x1|1	0.34421357	0.34421357	0.091414326	0.091414327
+gaussian|phylo|lab0|q2|sd-one|cm0|REML	random-effect-sd|mu|phylo(0 + x1 | g)		0.2258181	nan	nan	nan
+gaussian|phylo|lab0|q2|sd-z|cm0|ML	random-effect-sd|mu|phylo(0 + x1 | g)		0.2258181	nan	nan	nan
+gaussian|phylo|lab1|q2|sd-z|cm0|ML	random-effect-sd|mu|phylo(0 + x1 | p | g)		0.2258181	nan	nan	nan
+gaussian|relmat|lab0|q1|sd-none|cm0|REML	random-effect-sd|mu|relmat(1 | g)	sd|g|1	0.4651722	0.4651722	0.0653238	0.06532379
+gaussian|relmat|lab0|q2|sd-none|cm0|ML	random-effect-sd|mu|relmat(1 | g)		0.4817475	nan	0.064061531	nan
+gaussian|relmat|lab0|q2|sd-none|cm0|ML	random-effect-sd|mu|relmat(0 + x1 | g)		0.29124451	nan	0.046462721	nan
+gaussian|relmat|lab0|q2|sd-z|cm0|ML	random-effect-sd|mu|relmat(0 + x1 | g)		0.24890298	nan	nan	nan
+gaussian|relmat|lab0|q2|sd-z|cm0|REML	random-effect-sd|mu|relmat(0 + x1 | g)		0.24890298	nan	nan	nan
+gaussian|slope|lab0|q1|sd-none|cm0|REML	random-effect-sd|mu|(0 + x1 | g)	sd|g|1	0.34276108	0.34276108	0.072674855	0.072674839
+gaussian|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g01		0.31520757	nan	nan	nan
+gaussian|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g02		0.49480631	nan	nan	nan
+gaussian|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g03		0.25158072	nan	nan	nan
+gaussian|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g04		0.28160282	nan	nan	nan
+gaussian|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g05		0.23118392	nan	nan	nan
+gaussian|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g06		0.21851326	nan	nan	nan
+gaussian|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g07		0.30644796	nan	nan	nan
+gaussian|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g08		0.3839512	nan	nan	nan
+gaussian|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g09		0.4546901	nan	nan	nan
+gaussian|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g10		0.41782629	nan	nan	nan
+gaussian|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g11		0.34301758	nan	nan	nan
+gaussian|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g12		0.3732812	nan	nan	nan
+gaussian|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g13		0.28965225	nan	nan	nan
+gaussian|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g14		0.39492619	nan	nan	nan
+gaussian|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g15		0.26616882	nan	nan	nan
+gaussian|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g16		0.21244078	nan	nan	nan
+gaussian|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g17		0.32421758	nan	nan	nan
+gaussian|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g18		0.35282252	nan	nan	nan
+gaussian|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g19		0.24458929	nan	nan	nan
+gaussian|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g20		0.18979214	nan	nan	nan
+gaussian|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g21		0.23779216	nan	nan	nan
+gaussian|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g22		0.20079739	nan	nan	nan
+gaussian|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g23		0.25877199	nan	nan	nan
+gaussian|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g24		0.52349804	nan	nan	nan
+gaussian|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g25		0.18451782	nan	nan	nan
+gaussian|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g26		0.46768712	nan	nan	nan
+gaussian|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g27		0.48105565	nan	nan	nan
+gaussian|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g28		0.36290772	nan	nan	nan
+gaussian|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g29		0.17939007	nan	nan	nan
+gaussian|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g30		0.4062149	nan	nan	nan
+gaussian|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g31		0.22475932	nan	nan	nan
+gaussian|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g32		0.33348513	nan	nan	nan
+gaussian|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g33		0.53846189	nan	nan	nan
+gaussian|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g34		0.20653705	nan	nan	nan
+gaussian|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g35		0.29793177	nan	nan	nan
+gaussian|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g36		0.42976958	nan	nan	nan
+gaussian|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g37		0.27377708	nan	nan	nan
+gaussian|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g38		0.44205427	nan	nan	nan
+gaussian|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g39		0.50895003	nan	nan	nan
+gaussian|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g40		0.19521723	nan	nan	nan
+gaussian|spatial|lab0|q2|sd-one|cm0|REML	random-effect-sd|mu|spatial(0 + x1 | g)		0.23375593	nan	nan	nan
+gaussian|spatial|lab0|q2|sd-z|cm0|REML	random-effect-sd|mu|spatial(0 + x1 | g)		0.23375593	nan	nan	nan
+lognormal|crossed|lab0|q1|sd-none|cm0|ML	random-effect-sd|mu|(1 | g)	sd|g|1	0.56596202	0.56596202	0.074253924	0.074253918
+lognormal|crossed|lab0|q1|sd-none|cm0|ML	random-effect-sd|mu|(1 | g2)	sd|g2|1	0.41708441	0.41708441	0.067144074	0.067144063
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g)|sd(g):g01		0.48563568	nan	nan	nan
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g)|sd(g):g02		0.7128272	nan	nan	nan
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g)|sd(g):g03		0.62722935	nan	nan	nan
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g)|sd(g):g04		0.82504758	nan	nan	nan
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g)|sd(g):g05		0.47684117	nan	nan	nan
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g)|sd(g):g06		0.43520065	nan	nan	nan
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g)|sd(g):g07		0.58301403	nan	nan	nan
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g)|sd(g):g08		0.45140173	nan	nan	nan
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g)|sd(g):g09		0.75299967	nan	nan	nan
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g)|sd(g):g10		0.53210188	nan	nan	nan
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g)|sd(g):g11		0.61587068	nan	nan	nan
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g)|sd(g):g12		0.59376671	nan	nan	nan
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g)|sd(g):g13		0.60471771	nan	nan	nan
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g)|sd(g):g14		0.49459239	nan	nan	nan
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g)|sd(g):g15		0.5620893	nan	nan	nan
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g)|sd(g):g16		0.76688744	nan	nan	nan
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g)|sd(g):g17		0.45972706	nan	nan	nan
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g)|sd(g):g18		0.67479792	nan	nan	nan
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g)|sd(g):g19		0.5224659	nan	nan	nan
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g)|sd(g):g20		0.81010656	nan	nan	nan
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g)|sd(g):g21		0.84026415	nan	nan	nan
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g)|sd(g):g22		0.79543612	nan	nan	nan
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g)|sd(g):g23		0.44322718	nan	nan	nan
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g)|sd(g):g24		0.72597406	nan	nan	nan
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g)|sd(g):g25		0.42731949	nan	nan	nan
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g)|sd(g):g26		0.65057902	nan	nan	nan
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g)|sd(g):g27		0.57245607	nan	nan	nan
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g)|sd(g):g28		0.46820592	nan	nan	nan
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g)|sd(g):g29		0.6387975	nan	nan	nan
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g)|sd(g):g30		0.54191558	nan	nan	nan
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g)|sd(g):g31		0.66257782	nan	nan	nan
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g)|sd(g):g32		0.51300443	nan	nan	nan
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g)|sd(g):g33		0.78103135	nan	nan	nan
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g)|sd(g):g34		0.69991841	nan	nan	nan
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g)|sd(g):g35		0.41958104	nan	nan	nan
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g)|sd(g):g36		0.55191027	nan	nan	nan
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g)|sd(g):g37		0.41198273	nan	nan	nan
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g)|sd(g):g38		0.50371429	nan	nan	nan
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g)|sd(g):g39		0.73936339	nan	nan	nan
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g)|sd(g):g40		0.6872434	nan	nan	nan
+lognormal|phylo|lab0|q1|sd-none|cm0|ML	random-effect-sd|mu|phylo(1 | g)	sd|g|1	0.58450193	0.58450193	0.086340765	0.086340752
+lognormal|relmat|lab0|q1|sd-none|cm0|ML	random-effect-sd|mu|relmat(1 | g)	sd|g|1	0.55593763	0.55593763	0.074636966	0.074636958
+lognormal|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g01		0.1534398	nan	nan	nan
+lognormal|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g02		0.35566322	nan	nan	nan
+lognormal|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g03		0.26874392	nan	nan	nan
+lognormal|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g04		0.48991984	nan	nan	nan
+lognormal|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g05		0.1474186	nan	nan	nan
+lognormal|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g06		0.12067671	nan	nan	nan
+lognormal|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g07		0.22897898	nan	nan	nan
+lognormal|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g08		0.13073594	nan	nan	nan
+lognormal|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g09		0.40104789	nan	nan	nan
+lognormal|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g10		0.18744196	nan	nan	nan
+lognormal|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g11		0.25819801	nan	nan	nan
+lognormal|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g12		0.23833146	nan	nan	nan
+lognormal|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g13		0.24806594	nan	nan	nan
+lognormal|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g14		0.15970694	nan	nan	nan
+lognormal|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g15		0.21136063	nan	nan	nan
+lognormal|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g16		0.4174284	nan	nan	nan
+lognormal|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g17		0.13607575	nan	nan	nan
+lognormal|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g18		0.31541452	nan	nan	nan
+lognormal|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g19		0.18008646	nan	nan	nan
+lognormal|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g20		0.47069466	nan	nan	nan
+lognormal|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g21		0.50993026	nan	nan	nan
+lognormal|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g22		0.4522239	nan	nan	nan
+lognormal|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g23		0.12560567	nan	nan	nan
+lognormal|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g24		0.37019003	nan	nan	nan
+lognormal|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g25		0.11594118	nan	nan	nan
+lognormal|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g26		0.29114556	nan	nan	nan
+lognormal|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g27		0.2199935	nan	nan	nan
+lognormal|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g28		0.14163367	nan	nan	nan
+lognormal|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g29		0.27972057	nan	nan	nan
+lognormal|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g30		0.19509789	nan	nan	nan
+lognormal|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g31		0.30303719	nan	nan	nan
+lognormal|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g32		0.1730196	nan	nan	nan
+lognormal|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g33		0.43447796	nan	nan	nan
+lognormal|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g34		0.34170647	nan	nan	nan
+lognormal|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g35		0.11139148	nan	nan	nan
+lognormal|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g36		0.20306653	nan	nan	nan
+lognormal|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g37		0.10702031	nan	nan	nan
+lognormal|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g38		0.16623005	nan	nan	nan
+lognormal|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g39		0.38531017	nan	nan	nan
+lognormal|slope|lab0|q1|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g40		0.3282974	nan	nan	nan
+nb2|animal|lab0|q2|sd-none|cm0|ML	random-effect-sd|mu|animal(1 | g)		0.60817199	nan	0.093062329	nan
+nb2|animal|lab0|q2|sd-none|cm0|ML	random-effect-sd|mu|animal(0 + x1 | g)		1.1653785e-05	nan	0.098499533	nan
+nb2|crossed|lab0|q1|sd-none|cm0|ML	random-effect-sd|mu|(1 | g)	sd|g|1	0.47678783	0.47678786	0.089824492	0.089824471
+nb2|crossed|lab0|q1|sd-none|cm0|ML	random-effect-sd|mu|(1 | g2)	sd|g2|1	0.28047714	0.28047711	0.086412774	0.086412771
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g01		0.16260756	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g02		0.85647931	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g03		0.12438198	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g04		0.65513926	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g05		0.38332498	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g06		0.40443038	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g07		0.2242852	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g08		0.69121042	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g09		0.45019128	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g10		0.24966285	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g11		0.95338909	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g12		0.23663407	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g13		0.62095049	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g14		0.30935741	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g15		0.50112997	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g16		0.26340898	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g17		0.81178351	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g18		0.34436089	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g19		0.42669782	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g20		0.17156053	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g21		0.47497825	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g22		0.76942019	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g23		0.21258077	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g24		0.11789105	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g25		0.72926761	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g26		0.55783232	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g27		0.18100644	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g28		0.32639025	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g29		0.19097243	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g30		0.36332098	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g31		0.1312303	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g32		0.13845568	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g33		0.52872157	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g34		0.14607888	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g35		0.20148714	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g36		0.29321344	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g37		0.58854588	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g38		0.90363601	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g39		0.27791195	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g40		0.1541218	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g01		0.14045749	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g02		0.63412615	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g03		0.11014361	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g04		0.49726748	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g05		0.30578688	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g06		0.32102287	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g07		0.18803887	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g08		0.52204409	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g09		0.35381009	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g10		0.20724396	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g11		0.69889174	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g12		0.19740801	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g13		0.47366679	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g14		0.25173892	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g15		0.38994599	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g16		0.21757	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g17		0.60403005	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g18		0.27744992	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g19		0.337018	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g20		0.14745586	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g21		0.37143886	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g22		0.57536233	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g23		0.17911441	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g24		0.10491611	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g25		0.5480552	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g26		0.42977257	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g27		0.15480292	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g28		0.26428194	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g29		0.16251606	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g30		0.29127401	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g31		0.11563157	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g32		0.12139297	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g33		0.40937524	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g34		0.12744144	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g35		0.1706135	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g36		0.2397912	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g37		0.45118621	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g38		0.66572181	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g39		0.22841053	nan	nan	nan
+nb2|indep|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g40		0.13379128	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g01		0.40819119	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g02		0.40819119	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g03		0.40819119	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g04		0.40819119	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g05		0.40819119	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g06		0.40819119	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g07		0.40819119	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g08		0.40819119	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g09		0.40819119	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g10		0.40819119	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g11		0.40819119	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g12		0.40819119	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g13		0.40819119	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g14		0.40819119	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g15		0.40819119	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g16		0.40819119	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g17		0.40819119	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g18		0.40819119	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g19		0.40819119	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g20		0.40819119	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g21		0.40819119	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g22		0.40819119	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g23		0.40819119	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g24		0.40819119	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g25		0.40819119	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g26		0.40819119	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g27		0.40819119	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g28		0.40819119	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g29		0.40819119	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g30		0.40819119	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g31		0.40819119	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g32		0.40819119	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g33		0.40819119	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g34		0.40819119	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g35		0.40819119	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g36		0.40819119	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g37		0.40819119	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g38		0.40819119	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g39		0.40819119	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g40		0.40819119	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g01		0.29005825	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g02		0.29005825	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g03		0.29005825	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g04		0.29005825	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g05		0.29005825	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g06		0.29005825	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g07		0.29005825	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g08		0.29005825	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g09		0.29005825	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g10		0.29005825	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g11		0.29005825	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g12		0.29005825	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g13		0.29005825	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g14		0.29005825	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g15		0.29005825	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g16		0.29005825	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g17		0.29005825	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g18		0.29005825	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g19		0.29005825	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g20		0.29005825	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g21		0.29005825	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g22		0.29005825	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g23		0.29005825	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g24		0.29005825	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g25		0.29005825	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g26		0.29005825	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g27		0.29005825	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g28		0.29005825	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g29		0.29005825	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g30		0.29005825	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g31		0.29005825	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g32		0.29005825	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g33		0.29005825	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g34		0.29005825	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g35		0.29005825	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g36		0.29005825	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g37		0.29005825	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g38		0.29005825	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g39		0.29005825	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g40		0.29005825	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g01		0.16351662	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g02		0.84612183	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g03		0.12543577	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g04		0.64907131	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g05		0.38195434	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g06		0.4027537	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g07		0.22476593	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g08		0.68441656	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g09		0.44781201	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g10		0.24991175	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g11		0.9407822	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g12		0.23700558	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g13		0.61555139	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g14		0.30895772	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g15		0.49791124	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g16		0.26352072	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g17		0.80242565	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g18		0.34352255	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g19		0.4246857	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g20		0.17242093	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g21		0.47219766	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g22		0.76098607	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g23		0.21315836	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g24		0.11895791	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g25		0.72168655	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g26		0.55361535	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g27		0.18181013	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g28		0.32578205	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g29		0.19171062	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g30		0.36222911	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g31		0.13226639	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g32		0.13946897	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g33		0.52502505	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g34		0.14706377	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g35		0.20215025	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g36		0.29300225	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g37		0.58376254	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g38		0.89219749	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g39		0.27787077	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g40		0.15507214	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g01		0.14114484	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g02		0.62979819	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g03		0.11089222	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g04		0.49480887	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g05		0.30542853	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g06		0.32052536	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g07		0.18853055	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g08		0.51926645	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g09		0.35299452	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g10		0.20762866	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g11		0.69359664	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g12		0.1978493	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g13		0.47150325	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g14		0.25182478	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g15		0.38875281	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g16		0.2178914	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g17		0.60013454	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g18		0.27733459	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g19		0.33636839	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g20		0.1481214	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g21		0.37044245	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g22		0.57186805	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g23		0.17965072	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g24		0.10566917	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g25		0.54493292	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g26		0.4281334	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g27		0.15544279	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g28		0.26427206	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g29		0.16312607	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g30		0.29104277	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g31		0.11637344	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g32		0.12212559	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g33		0.40796821	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g34		0.12816205	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g35		0.17118912	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g36		0.23996377	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g37		0.44929532	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g38		0.66092806	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g39		0.22866141	nan	nan	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g40		0.13449689	nan	nan	nan
+nb2|phylo|lab0|q2|sd-z|cm0|ML	random-effect-sd|mu|phylo(0 + x1 | g)		1.1789054	nan	nan	nan
+nb2|relmat|lab0|q2|sd-none|cm0|ML	random-effect-sd|mu|relmat(1 | g)		0.43845949	nan	0.081604533	nan
+nb2|relmat|lab0|q2|sd-none|cm0|ML	random-effect-sd|mu|relmat(0 + x1 | g)		0.41949351	nan	0.088601008	nan
+nb2|spatial|lab0|q2|sd-one|cm0|ML	random-effect-sd|mu|spatial(0 + x1 | g)		1.1865309	nan	nan	nan
+poisson|crossed|lab0|q1|sd-none|cm0|ML	random-effect-sd|mu|(1 | g)	sd|g|1	0.55503297	0.55503279	0.075788915	0.075788879
+poisson|crossed|lab0|q1|sd-none|cm0|ML	random-effect-sd|mu|(1 | g2)	sd|g2|1	0.40301592	0.4030159	0.063290707	0.063290698
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g01		0.48535529	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g02		0.48535529	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g03		0.48535529	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g04		0.48535529	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g05		0.48535529	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g06		0.48535529	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g07		0.48535529	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g08		0.48535529	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g09		0.48535529	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g10		0.48535529	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g11		0.48535529	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g12		0.48535529	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g13		0.48535529	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g14		0.48535529	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g15		0.48535529	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g16		0.48535529	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g17		0.48535529	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g18		0.48535529	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g19		0.48535529	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g20		0.48535529	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g21		0.48535529	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g22		0.48535529	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g23		0.48535529	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g24		0.48535529	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g25		0.48535529	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g26		0.48535529	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g27		0.48535529	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g28		0.48535529	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g29		0.48535529	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g30		0.48535529	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g31		0.48535529	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g32		0.48535529	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g33		0.48535529	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g34		0.48535529	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g35		0.48535529	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g36		0.48535529	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g37		0.48535529	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g38		0.48535529	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g39		0.48535529	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g40		0.48535529	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g01		0.4012744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g02		0.4012744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g03		0.4012744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g04		0.4012744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g05		0.4012744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g06		0.4012744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g07		0.4012744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g08		0.4012744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g09		0.4012744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g10		0.4012744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g11		0.4012744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g12		0.4012744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g13		0.4012744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g14		0.4012744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g15		0.4012744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g16		0.4012744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g17		0.4012744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g18		0.4012744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g19		0.4012744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g20		0.4012744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g21		0.4012744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g22		0.4012744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g23		0.4012744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g24		0.4012744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g25		0.4012744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g26		0.4012744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g27		0.4012744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g28		0.4012744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g29		0.4012744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g30		0.4012744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g31		0.4012744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g32		0.4012744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g33		0.4012744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g34		0.4012744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g35		0.4012744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g36		0.4012744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g37		0.4012744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g38		0.4012744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g39		0.4012744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g40		0.4012744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g01		0.47671219	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g02		0.45417954	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g03		0.49691356	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g04		0.47506628	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g05		0.51262443	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g06		0.46370295	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g07		0.51440046	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g08		0.49519791	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g09		0.4669216	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g10		0.47342606	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g11		0.49348818	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g12		0.4783638	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g13		0.48670808	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g14		0.4900864	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g15		0.48502766	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g16		0.517971	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g17		0.50383583	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g18		0.50558141	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g19		0.4717915	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g20		0.51085453	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g21		0.4816842	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g22		0.49863516	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g23		0.51976555	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g24		0.46853928	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g25		0.45891654	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g26		0.45575308	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g27		0.48335304	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g28		0.46210196	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g29		0.50036273	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g30		0.50209627	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g31		0.45733208	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g32		0.49178435	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g33		0.48002113	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g34		0.47016258	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g35		0.46530949	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g36		0.4605065	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g37		0.48839432	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g38		0.50909074	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g39		0.51618264	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "(Intercept)")|sd(g, coef = "(Intercept)"):g40		0.50733304	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g01		0.42689142	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g02		0.56192113	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g03		0.33729555	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g04		0.43535445	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g05		0.28267052	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g06		0.49948443	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g07		0.27717557	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g08		0.34398237	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g09		0.48025382	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g10		0.44398526	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g11		0.35080175	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g12		0.4185929	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g13		0.37945827	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g14		0.36484877	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g15		0.38698095	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g16		0.26650405	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g17		0.31182314	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g18		0.30576149	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g19		0.45278718	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g20		0.2882744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g21		0.40247668	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g22		0.33073873	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g23		0.26132337	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g24		0.47091796	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g25		0.52978378	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g26		0.55099771	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g27		0.39465277	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g28		0.50938661	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g29		0.32430936	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g30		0.31800497	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g31		0.54028664	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g32		0.35775632	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g33		0.4104557	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g34		0.46176359	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g35		0.48977475	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g36		0.5194851	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g37		0.37208182	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g38		0.29398938	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g39		0.27178744	nan	nan	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-sd|sd(g, coef = "x1")|sd(g, coef = "x1"):g40		0.29981766	nan	nan	nan
+poisson|phylo|lab0|q2|sd-one|cm0|ML	random-effect-sd|mu|phylo(0 + x1 | g)		1	nan	nan	nan
+poisson|phylo|lab1|q2|sd-none|cm0|ML	random-effect-sd|mu|phylo(1 | p | g)		0.38053292	nan	0.12478228	nan
+poisson|phylo|lab1|q2|sd-none|cm0|ML	random-effect-sd|mu|phylo(0 + x1 | p | g)		0.3340272	nan	0.11027916	nan
+poisson|relmat|lab0|q2|sd-none|cm0|ML	random-effect-sd|mu|relmat(1 | g)		0.68012685	nan	0.09212902	nan
+poisson|relmat|lab0|q2|sd-none|cm0|ML	random-effect-sd|mu|relmat(0 + x1 | g)		0.40083176	nan	0.070158873	nan
+poisson|relmat|lab0|q2|sd-z|cm0|ML	random-effect-sd|mu|relmat(0 + x1 | g)		1	nan	nan	nan
+poisson|relmat|lab1|q2|sd-none|cm0|ML	random-effect-sd|mu|relmat(1 | p | g)		0.67585375	nan	0.09273603	nan
+poisson|relmat|lab1|q2|sd-none|cm0|ML	random-effect-sd|mu|relmat(0 + x1 | p | g)		0.37766263	nan	0.06819504	nan
+poisson|spatial|lab0|q2|sd-none|cm0|ML	random-effect-sd|mu|spatial(1 | g)		0.52590056	nan	0.10852013	nan
+poisson|spatial|lab0|q2|sd-none|cm0|ML	random-effect-sd|mu|spatial(0 + x1 | g)		0.22555321	nan	0.096417553	nan
+student|crossed|lab0|q1|sd-none|cm0|ML	random-effect-sd|mu|(1 | g)	sd|g|1	0.37362948	0.37362948	0.060449192	0.060449171
+student|crossed|lab0|q1|sd-none|cm0|ML	random-effect-sd|mu|(1 | g2)	sd|g2|1	0.32492087	0.32492087	0.059683257	0.059683237
+student|indep|lab0|q2|sd-none|cm0|ML	random-effect-sd|mu|(1 | g)	sd|g|1	0.44584069	0.44584069	0.06385742	0.063857404
+student|indep|lab0|q2|sd-none|cm0|ML	random-effect-sd|mu|(0 + x1 | g)	sd|g:x1|1	0.37624788	0.37624788	0.05891463	0.058914615
+student|indep|lab0|q3|sd-none|cm0|ML	random-effect-sd|mu|(1 | g)	sd|g|1	0.43143942	0.43143942	0.061603739	0.061603724
+student|indep|lab0|q3|sd-none|cm0|ML	random-effect-sd|mu|(0 + x1 | g)	sd|g:x1|1	0.35270834	0.35270834	0.056432695	0.056432679
+student|indep|lab0|q3|sd-none|cm0|ML	random-effect-sd|mu|(0 + x2 | g)	sd|g:x2|1	0.29073796	0.29073796	0.055794238	0.055794222
+tweedie|crossed|lab0|q1|sd-none|cm0|ML	random-effect-sd|mu|(1 | g)	sd|g|1	0.61250618	0.61250632	0.10064551	nan
+tweedie|crossed|lab0|q1|sd-none|cm0|ML	random-effect-sd|mu|(1 | g2)	sd|g2|1	0.34555119	0.34555138	0.093499826	nan

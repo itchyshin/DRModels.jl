@@ -1,0 +1,50 @@
+/home/snakagaw/drm_ep_20261109/ep/runB/finished_profr.txt
+beta|crossed|lab0|q1|sd-none|cm0|ML	prof	fixef:mu:(Intercept)|link	0.03992144522	0.4501197634	profile profile
+beta|crossed|lab0|q1|sd-none|cm0|ML	prof	fixef:mu:x1|link	0.2109215959	0.3815828375	profile profile
+beta|crossed|lab0|q1|sd-none|cm0|ML	prof	fixef:mu:x2|link	0.2003652748	0.3737040201	profile profile
+beta|crossed|lab0|q1|sd-none|cm0|ML	prof	fixef:mu:x3|link	-0.2993210436	-0.1219849477	profile profile
+beta|crossed|lab0|q1|sd-none|cm0|ML	prof	fixef:sigma:(Intercept)|link	-0.9177137505	-0.772162884	profile profile
+beta|crossed|lab0|q1|sd-none|cm0|ML	prof	secs	268.4
+gamma|crossed|lab0|q1|sd-none|cm0|ML	prof	fixef:mu:(Intercept)|link	0.3303489045	0.8006021497	profile profile
+gamma|crossed|lab0|q1|sd-none|cm0|ML	prof	fixef:mu:x1|link	0.2048158596	0.3756554965	profile profile
+gamma|crossed|lab0|q1|sd-none|cm0|ML	prof	fixef:mu:x2|link	0.287020494	0.4523507041	profile profile
+gamma|crossed|lab0|q1|sd-none|cm0|ML	prof	fixef:mu:x3|link	-0.2058133727	-0.02737648386	profile profile
+gamma|crossed|lab0|q1|sd-none|cm0|ML	prof	fixef:sigma:(Intercept)|link	-0.3588597846	-0.2207331535	profile profile
+gamma|crossed|lab0|q1|sd-none|cm0|ML	prof	secs	52.0
+gaussian|crossed|lab0|q1|sd-none|cm0|REML	prof	ERROR	Profile target "fixef:mu:(Intercept)" is not ready for direct profiling. ℹ Inventory note: "missing_tmb_parameter".
+gaussian|crossed|lab0|q1|sd-none|cm0|REML	prof	secs	0.2
+gaussian|ordinary|lab0|q1|sd-none|cm0|REML	prof	ERROR	Profile target "fixef:mu:(Intercept)" is not ready for direct profiling. ℹ Inventory note: "missing_tmb_parameter".
+gaussian|ordinary|lab0|q1|sd-none|cm0|REML	prof	secs	0.1
+gaussian|slope|lab0|q1|sd-none|cm0|REML	prof	ERROR	Profile target "fixef:mu:(Intercept)" is not ready for direct profiling. ℹ Inventory note: "missing_tmb_parameter".
+gaussian|slope|lab0|q1|sd-none|cm0|REML	prof	secs	0.1
+lognormal|crossed|lab0|q1|sd-none|cm0|ML	prof	fixef:mu:(Intercept)|link	0.1001350442	0.5877195341	profile profile
+lognormal|crossed|lab0|q1|sd-none|cm0|ML	prof	fixef:mu:x1|link	0.300594067	0.4460200177	profile profile
+lognormal|crossed|lab0|q1|sd-none|cm0|ML	prof	fixef:mu:x2|link	0.2813377509	0.4250903386	profile profile
+lognormal|crossed|lab0|q1|sd-none|cm0|ML	prof	fixef:mu:x3|link	-0.2927716896	-0.1628426085	profile profile
+lognormal|crossed|lab0|q1|sd-none|cm0|ML	prof	fixef:sigma:(Intercept)|link	-0.4607468774	-0.3086946671	profile profile
+lognormal|crossed|lab0|q1|sd-none|cm0|ML	prof	secs	6.0
+nb2|crossed|lab0|q1|sd-none|cm0|ML	prof	fixef:mu:(Intercept)|link	0.1746209982	0.6234285278	profile profile
+nb2|crossed|lab0|q1|sd-none|cm0|ML	prof	fixef:mu:x1|link	0.3896414881	0.6467587544	profile profile
+nb2|crossed|lab0|q1|sd-none|cm0|ML	prof	fixef:mu:x2|link	0.1131917639	0.3527193871	profile profile
+nb2|crossed|lab0|q1|sd-none|cm0|ML	prof	fixef:mu:x3|link	-0.3554072436	-0.1146334653	profile profile
+nb2|crossed|lab0|q1|sd-none|cm0|ML	prof	fixef:sigma:(Intercept)|link	-0.4107213828	-0.0714792222	profile profile
+nb2|crossed|lab0|q1|sd-none|cm0|ML	prof	secs	30.0
+poisson|crossed|lab0|q1|sd-none|cm0|ML	prof	fixef:mu:(Intercept)|link	0.04083669289	0.5347722034	profile profile
+poisson|crossed|lab0|q1|sd-none|cm0|ML	prof	fixef:mu:x1|link	0.3552332112	0.5083490018	profile profile
+poisson|crossed|lab0|q1|sd-none|cm0|ML	prof	fixef:mu:x2|link	0.2516223341	0.4065284754	profile profile
+poisson|crossed|lab0|q1|sd-none|cm0|ML	prof	fixef:mu:x3|link	-0.359844111	-0.2024229412	profile profile
+poisson|crossed|lab0|q1|sd-none|cm0|ML	prof	secs	4.1
+student|crossed|lab0|q1|sd-none|cm0|ML	prof	fixef:mu:(Intercept)|link	0.09312422117	0.4614798496	profile profile
+student|crossed|lab0|q1|sd-none|cm0|ML	prof	fixef:mu:x1|link	0.2848983001	0.4510988391	profile profile
+student|crossed|lab0|q1|sd-none|cm0|ML	prof	fixef:mu:x2|link	0.314213973	0.4869905556	profile profile
+student|crossed|lab0|q1|sd-none|cm0|ML	prof	fixef:mu:x3|link	-0.323436552	-0.1567483492	profile profile
+student|crossed|lab0|q1|sd-none|cm0|ML	prof	fixef:sigma:(Intercept)|link	-0.5231073998	-0.2522722928	profile profile
+student|crossed|lab0|q1|sd-none|cm0|ML	prof	fixef:nu:(Intercept)|link	0.7225011369	3.2089762	profile profile
+student|crossed|lab0|q1|sd-none|cm0|ML	prof	secs	114.4
+student|indep|lab0|q2|sd-none|cm0|ML	prof	fixef:mu:(Intercept)|link	0.1363905321	0.4576488421	profile profile
+student|indep|lab0|q2|sd-none|cm0|ML	prof	fixef:mu:x1|link	0.07000354313	0.3634698403	profile profile
+student|indep|lab0|q2|sd-none|cm0|ML	prof	fixef:mu:x2|link	0.210416175	0.3760220794	profile profile
+student|indep|lab0|q2|sd-none|cm0|ML	prof	fixef:mu:x3|link	-0.2818707026	-0.1314885763	profile profile
+student|indep|lab0|q2|sd-none|cm0|ML	prof	fixef:sigma:(Intercept)|link	-0.5380945108	-0.284548791	profile profile
+student|indep|lab0|q2|sd-none|cm0|ML	prof	fixef:nu:(Intercept)|link	1.131736072	5.292447053	profile profile
+student|indep|lab0|q2|sd-none|cm0|ML	prof	secs	122.8

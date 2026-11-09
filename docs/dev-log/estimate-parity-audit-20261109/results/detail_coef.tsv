@@ -1,0 +1,566 @@
+beta|animal|lab0|q1|sd-one|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.16102504	0.16102504	0.14646488	0.14646482	1.973e-09	1.0000004
+beta|animal|lab0|q1|sd-one|cm0|ML	mu	mu:x1	mu:x1	0.42881769	0.42881769	0.042816627	0.042816621	1.721e-09	1.0000001
+beta|animal|lab0|q1|sd-one|cm0|ML	mu	mu:x2	mu:x2	0.32406707	0.32406708	0.042504908	0.042504902	4.523e-09	1.0000001
+beta|animal|lab0|q1|sd-one|cm0|ML	mu	mu:x3	mu:x3	-0.2598224	-0.2598224	0.043020344	0.043020336	1.048e-09	1.0000002
+beta|animal|lab0|q1|sd-one|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.94078379	-0.94078376	0.035688013	0.035688024	3.0599e-08	1.0000003
+beta|animal|lab0|q1|sd-one|cm0|ML	sd	sd_animal(g):(Intercept)	sd:(Intercept)	-0.51933182	-0.51933184	0.13964148	0.13964145	1.1502e-08	1.0000002
+beta|crossed|lab0|q1|sd-none|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.24433141	0.24433141	0.10244906	0.10244906	1.134e-09	1
+beta|crossed|lab0|q1|sd-none|cm0|ML	mu	mu:x1	mu:x1	0.29617388	0.29617388	0.043448291	0.043448282	0	1.0000002
+beta|crossed|lab0|q1|sd-none|cm0|ML	mu	mu:x2	mu:x2	0.28680933	0.28680933	0.044128441	0.044128433	8.6899998e-10	1.0000002
+beta|crossed|lab0|q1|sd-none|cm0|ML	mu	mu:x3	mu:x3	-0.2103973	-0.21039731	0.045139921	0.045139911	7.2e-10	1.0000002
+beta|crossed|lab0|q1|sd-none|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.84656953	-0.84656953	0.037119301	0.037119313	3.3299999e-09	1.0000003
+beta|phylo|lab0|q1|sd-none|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.52404703	0.52404701	0.23144438	0.23144439	1.5026e-08	1
+beta|phylo|lab0|q1|sd-none|cm0|ML	mu	mu:x1	mu:x1	0.30190789	0.30190789	0.037976263	0.037976255	2.6799996e-10	1.0000002
+beta|phylo|lab0|q1|sd-none|cm0|ML	mu	mu:x2	mu:x2	0.28719083	0.28719083	0.040625792	0.040625783	5.9999999e-10	1.0000002
+beta|phylo|lab0|q1|sd-none|cm0|ML	mu	mu:x3	mu:x3	-0.40370414	-0.40370414	0.03997293	0.039972922	2.015e-09	1.0000002
+beta|phylo|lab0|q1|sd-none|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.95661	-0.95661	0.035986214	0.035986224	1.156e-09	1.0000003
+beta|phylo|lab0|q1|sd-one|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.52404703	0.52404704	0.23144438	0.23141854	1.2721e-08	1.0001117
+beta|phylo|lab0|q1|sd-one|cm0|ML	mu	mu:x1	mu:x1	0.30190789	0.30190789	0.037976263	0.037976097	1.88e-09	1.0000044
+beta|phylo|lab0|q1|sd-one|cm0|ML	mu	mu:x2	mu:x2	0.28719083	0.28719083	0.040625792	0.040625554	6.8200001e-10	1.0000059
+beta|phylo|lab0|q1|sd-one|cm0|ML	mu	mu:x3	mu:x3	-0.40370414	-0.40370414	0.03997293	0.039972761	1.032e-09	1.0000042
+beta|phylo|lab0|q1|sd-one|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.95661	-0.95660996	0.035986214	0.035985915	4.236e-08	1.0000083
+beta|phylo|lab0|q1|sd-one|cm0|ML	sd	sd_phylo(g):(Intercept)	sd:(Intercept)	-0.90876337	-0.90876343	0.27029622	0.27026995	6.407e-08	1.0000972
+beta|phylo|lab0|q2|sd-one|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.53288789	0.53288791	0.26183664	0.26183656	1.2226e-08	1.0000003
+beta|phylo|lab0|q2|sd-one|cm0|ML	mu	mu:x1	mu:x1	0.47486558	0.47486558	0.22163498	0.2216349	1.098e-09	1.0000004
+beta|phylo|lab0|q2|sd-one|cm0|ML	mu	mu:x2	mu:x2	0.30052989	0.3005299	0.039500137	0.039500129	7.358e-09	1.0000002
+beta|phylo|lab0|q2|sd-one|cm0|ML	mu	mu:x3	mu:x3	-0.39335945	-0.39335945	0.038724053	0.038724047	6.286e-09	1.0000002
+beta|phylo|lab0|q2|sd-one|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-1.0258337	-1.0258337	0.038803322	0.038803331	2.407e-08	1.0000002
+beta|phylo|lab0|q2|sd-one|cm0|ML	sd	sd_phylo(g, dpar = "mu", coef = "(Intercept)"):(Intercept)	sdtarget_677c7068796c6f67656e657469637c6d757c696e746572636570747c6e6f6e65:(Intercept)	-0.77343361	-0.77343347	0.23129188	0.23129182	1.43559e-07	1.0000002
+beta|phylo|lab0|q2|sd-one|cm0|ML	sd	sd_phylo(g, dpar = "mu", coef = "x1"):(Intercept)	sdtarget_677c7068796c6f67656e657469637c6d757c78317c6e6f6e65:(Intercept)	-0.97755436	-0.97755433	0.26489227	0.2648922	2.1409e-08	1.0000002
+beta|relmat|lab0|q1|sd-one|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.36847045	0.36847046	0.11071167	0.11071165	6.782e-09	1.0000002
+beta|relmat|lab0|q1|sd-one|cm0|ML	mu	mu:x1	mu:x1	0.35332572	0.35332572	0.044582723	0.044582716	2.791e-09	1.0000002
+beta|relmat|lab0|q1|sd-one|cm0|ML	mu	mu:x2	mu:x2	0.35796354	0.35796354	0.04374507	0.043745062	1.144e-09	1.0000002
+beta|relmat|lab0|q1|sd-one|cm0|ML	mu	mu:x3	mu:x3	-0.099624451	-0.099624449	0.042010259	0.042010248	2.1412e-09	1.0000003
+beta|relmat|lab0|q1|sd-one|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.8389234	-0.83892337	0.035062368	0.035062379	2.7504e-08	1.0000003
+beta|relmat|lab0|q1|sd-one|cm0|ML	sd	sd_relmat(g):(Intercept)	sd:(Intercept)	-0.84036362	-0.84036366	0.16122879	0.16122874	3.3014e-08	1.0000003
+beta|relmat|lab0|q1|sd-z|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.38104004	0.38104003	0.094691389	0.094691407	6.858e-09	1.0000002
+beta|relmat|lab0|q1|sd-z|cm0|ML	mu	mu:x1	mu:x1	0.3522755	0.35227551	0.044386955	0.044386948	8.831e-09	1.0000002
+beta|relmat|lab0|q1|sd-z|cm0|ML	mu	mu:x2	mu:x2	0.35244359	0.35244359	0.043580902	0.043580911	4.025e-09	1.0000002
+beta|relmat|lab0|q1|sd-z|cm0|ML	mu	mu:x3	mu:x3	-0.10515237	-0.10515236	0.041798177	0.041798183	4.589e-09	1.0000002
+beta|relmat|lab0|q1|sd-z|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.84185909	-0.84185906	0.034905973	0.034905984	2.8812e-08	1.0000003
+beta|relmat|lab0|q1|sd-z|cm0|ML	sd	sd_relmat(g):(Intercept)	sd:(Intercept)	-0.9223028	-0.92230283	0.16994173	0.16994311	3.2157e-08	1.0000081
+beta|relmat|lab0|q1|sd-z|cm0|ML	sd	sd_relmat(g):z	sd:z	0.60195998	0.60196	0.28885487	0.28889792	2.5516e-08	1.000149
+beta|spatial|lab0|q1|sd-z|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.48198487	0.48198486	0.069855192	0.069855175	1.3196e-08	1.0000002
+beta|spatial|lab0|q1|sd-z|cm0|ML	mu	mu:x1	mu:x1	0.34906406	0.34906405	0.04419153	0.044191522	1.4235e-08	1.0000002
+beta|spatial|lab0|q1|sd-z|cm0|ML	mu	mu:x2	mu:x2	0.043002416	0.043002415	0.038403075	0.038403066	1.0281e-09	1.0000002
+beta|spatial|lab0|q1|sd-z|cm0|ML	mu	mu:x3	mu:x3	-0.22946319	-0.22946318	0.043526415	0.043526406	4.417e-09	1.0000002
+beta|spatial|lab0|q1|sd-z|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.8727105	-0.87271046	0.034070988	0.034070998	3.4223e-08	1.0000003
+beta|spatial|lab0|q1|sd-z|cm0|ML	sd	sd_spatial(g):(Intercept)	sd:(Intercept)	-1.6784448	-1.678445	0.53893095	0.53893056	1.9631e-07	1.0000007
+beta|spatial|lab0|q1|sd-z|cm0|ML	sd	sd_spatial(g):z	sd:z	1.5285904	1.5285906	0.76670241	0.76670168	1.4437e-07	1.000001
+binomial|animal|lab0|q1|sd-z|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.46683666	0.46683666	0.13243559	0.13243589	1.6000001e-10	1.0000023
+binomial|animal|lab0|q1|sd-z|cm0|ML	mu	mu:x1	mu:x1	0.45072298	0.45072298	0.12655123	0.12655149	4.945e-09	1.0000021
+binomial|animal|lab0|q1|sd-z|cm0|ML	mu	mu:x2	mu:x2	0.10856015	0.10856015	0.10296048	0.10295987	2.729e-09	1.0000059
+binomial|animal|lab0|q1|sd-z|cm0|ML	mu	mu:x3	mu:x3	-0.28711389	-0.28711389	0.10390418	0.10390411	1.672e-09	1.0000007
+binomial|animal|lab0|q1|sd-z|cm0|ML	sd	sd_animal(g):(Intercept)	sd:(Intercept)	-1.1877385	-1.1877386	0.5715583	0.57157178	1.301e-07	1.0000236
+binomial|animal|lab0|q1|sd-z|cm0|ML	sd	sd_animal(g):z	sd:z	0.53739405	0.5373941	0.69518938	0.69520978	5.8797e-08	1.0000293
+binomial|crossed|lab0|q1|sd-one|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.51775267	0.51775268	0.152181	0.15208895	6.775e-09	1.0006052
+binomial|crossed|lab0|q1|sd-one|cm0|ML	mu	mu:x1	mu:x1	0.48244013	0.4824401	0.12020169	0.1201491	2.2618e-08	1.0004378
+binomial|crossed|lab0|q1|sd-one|cm0|ML	mu	mu:x2	mu:x2	0.35437109	0.35437112	0.11723216	0.11719814	2.7013e-08	1.0002903
+binomial|crossed|lab0|q1|sd-one|cm0|ML	mu	mu:x3	mu:x3	-0.27597588	-0.27597588	0.12193233	0.12189037	7.408e-09	1.0003443
+binomial|crossed|lab0|q1|sd-one|cm0|ML	sd	sd(g):(Intercept)	sdtarget_677c6969647c6d757c6e6f6e657c6e6f6e65:(Intercept)	-0.68668107	-0.68668113	0.35656723	0.35595643	6.8456e-08	1.0017159
+binomial|crossed|lab0|q1|sd-one|cm0|ML	sd	sd(g2):(Intercept)	sdtarget_67327c6969647c6d757c6e6f6e657c6e6f6e65:(Intercept)	-1.090038	-1.090038	0.574214	0.57240716	2.7e-08	1.0031566
+binomial|phylo|lab0|q1|sd-none|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.50682013	0.50682028	0.10817444	0.10817468	1.5252e-07	1.0000021
+binomial|phylo|lab0|q1|sd-none|cm0|ML	mu	mu:x1	mu:x1	0.16143185	0.16143184	0.10306995	0.10306993	1.1074e-08	1.0000002
+binomial|phylo|lab0|q1|sd-none|cm0|ML	mu	mu:x2	mu:x2	0.43728538	0.43728538	0.10663531	0.10663528	5.679e-09	1.0000003
+binomial|phylo|lab0|q1|sd-none|cm0|ML	mu	mu:x3	mu:x3	-0.35683558	-0.35683557	0.10893625	0.10893621	6.079e-09	1.0000004
+binomial|phylo|lab0|q1|sd-one|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.50682013	0.50682014	0.10817444	0.10817444	4.287e-09	1.0000001
+binomial|phylo|lab0|q1|sd-one|cm0|ML	mu	mu:x1	mu:x1	0.16143185	0.16143185	0.10306995	0.10306993	1.909e-09	1.0000002
+binomial|phylo|lab0|q1|sd-one|cm0|ML	mu	mu:x2	mu:x2	0.43728538	0.43728539	0.10663531	0.10663529	7.145e-09	1.0000002
+binomial|phylo|lab0|q1|sd-one|cm0|ML	mu	mu:x3	mu:x3	-0.35683558	-0.35683558	0.10893625	0.10893624	5.182e-09	1.0000001
+binomial|phylo|lab0|q1|sd-one|cm0|ML	sd	sd_phylo(g):(Intercept)	sd_phylo:(Intercept)	-11.750332	-13.931483	13303.77	3615.7818	2.1811501	3.6793621
+binomial|phylo|lab0|q1|sd-z|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.50682013	0.50682014	0.10817444	0.10817444	4.221e-09	1
+binomial|phylo|lab0|q1|sd-z|cm0|ML	mu	mu:x1	mu:x1	0.16143185	0.16143185	0.10306995	0.10306992	1.852e-09	1.0000003
+binomial|phylo|lab0|q1|sd-z|cm0|ML	mu	mu:x2	mu:x2	0.43728538	0.43728539	0.10663531	0.1066353	7.102e-09	1.0000001
+binomial|phylo|lab0|q1|sd-z|cm0|ML	mu	mu:x3	mu:x3	-0.35683558	-0.35683558	0.10893625	0.10893623	5.218e-09	1.0000001
+binomial|phylo|lab0|q1|sd-z|cm0|ML	sd	sd_phylo(g):(Intercept)	sd_phylo:(Intercept)	-11.722032	-15.724483	13383.947	3684.3307	4.0024508	3.6326672
+binomial|phylo|lab0|q1|sd-z|cm0|ML	sd	sd_phylo(g):z	sd_phylo:z	-0.1563844	2.5291947	23972.562	1269.597	2.6855791	18.882025
+binomial|phylo|lab1|q2|sd-one|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.50682013	0.5068201	0.10817444	0.10817443	3.1409e-08	1.0000001
+binomial|phylo|lab1|q2|sd-one|cm0|ML	mu	mu:x1	mu:x1	0.16143185	0.16143187	0.10306995	0.10306999	1.8758e-08	1.0000004
+binomial|phylo|lab1|q2|sd-one|cm0|ML	mu	mu:x2	mu:x2	0.43728538	0.43728534	0.10663531	0.10663535	4.4369e-08	1.0000003
+binomial|phylo|lab1|q2|sd-one|cm0|ML	mu	mu:x3	mu:x3	-0.35683558	-0.35683556	0.10893625	0.10893628	2.1673e-08	1.0000003
+binomial|phylo|lab1|q2|sd-one|cm0|ML	sd	sd_phylo(g, dpar = "mu", coef = "(Intercept)"):(Intercept)	sdtarget_677c7068796c6f67656e657469637c6d757c696e746572636570747c6e6f6e65:(Intercept)	-11.716919	-18.337945	13292.799	inf	6.6210266	inf
+binomial|phylo|lab1|q2|sd-one|cm0|ML	sd	sd_phylo(g, dpar = "mu", coef = "x1"):(Intercept)	sdtarget_677c7068796c6f67656e657469637c6d757c78317c6e6f6e65:(Intercept)	-12.023081	-13.885965	16050.519	46759.51	1.8628836	2.913271
+binomial|relmat|lab0|q1|sd-one|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.42623571	0.4262357	0.16490757	0.16490753	7.5000001e-10	1.0000002
+binomial|relmat|lab0|q1|sd-one|cm0|ML	mu	mu:x1	mu:x1	0.42373177	0.42373178	0.11608554	0.11608553	2.644e-09	1.0000001
+binomial|relmat|lab0|q1|sd-one|cm0|ML	mu	mu:x2	mu:x2	0.20199273	0.20199273	0.11452951	0.11452947	1.77e-10	1.0000003
+binomial|relmat|lab0|q1|sd-one|cm0|ML	mu	mu:x3	mu:x3	-0.17538862	-0.17538862	0.11063867	0.11063864	1.719e-09	1.0000003
+binomial|relmat|lab0|q1|sd-one|cm0|ML	sd	sd_relmat(g):(Intercept)	sd:(Intercept)	-0.65262971	-0.65262975	0.34417283	0.34417288	4.3827e-08	1.0000001
+binomial|spatial|lab0|q1|sd-one|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.23840725	0.23840725	0.10520773	0.10520772	2.233e-09	1
+binomial|spatial|lab0|q1|sd-one|cm0|ML	mu	mu:x1	mu:x1	0.19919318	0.19919317	0.10557948	0.10557948	1.1753e-08	1
+binomial|spatial|lab0|q1|sd-one|cm0|ML	mu	mu:x2	mu:x2	0.43695253	0.43695254	0.10520405	0.10520404	8.796e-09	1.0000001
+binomial|spatial|lab0|q1|sd-one|cm0|ML	mu	mu:x3	mu:x3	-0.21674871	-0.21674872	0.1094317	0.10943168	4.448e-09	1.0000003
+binomial|spatial|lab0|q1|sd-one|cm0|ML	sd	sd_spatial(g):(Intercept)	sd:(Intercept)	-11.638124	-15.312799	11501.922	2.2964439e-10	3.6746745	5.0085796e+13
+binomial|spatial|lab0|q2|sd-none|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.23840725	0.23840731	0.10520773	0.10520773	5.8889e-08	1
+binomial|spatial|lab0|q2|sd-none|cm0|ML	mu	mu:x1	mu:x1	0.19919318	0.19919329	0.10557948	0.10557953	1.09277e-07	1.0000005
+binomial|spatial|lab0|q2|sd-none|cm0|ML	mu	mu:x2	mu:x2	0.43695253	0.43695257	0.10520405	0.10520409	4.5328e-08	1.0000003
+binomial|spatial|lab0|q2|sd-none|cm0|ML	mu	mu:x3	mu:x3	-0.21674871	-0.21674876	0.1094317	0.10943174	4.869e-08	1.0000003
+gamma|animal|lab0|q1|sd-one|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.2610552	0.2610552	0.12227648	0.12227642	2e-09	1.0000005
+gamma|animal|lab0|q1|sd-one|cm0|ML	mu	mu:x1	mu:x1	0.40329911	0.40329911	0.033951345	0.033951343	1.875e-09	1
+gamma|animal|lab0|q1|sd-one|cm0|ML	mu	mu:x2	mu:x2	0.17366551	0.17366551	0.033756817	0.033756815	1.509e-09	1.0000001
+gamma|animal|lab0|q1|sd-one|cm0|ML	mu	mu:x3	mu:x3	-0.136574	-0.136574	0.037100668	0.037100664	5.5900001e-10	1.0000001
+gamma|animal|lab0|q1|sd-one|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.37816015	-0.37816013	0.034371306	0.034371316	2.1567e-08	1.0000003
+gamma|animal|lab0|q1|sd-one|cm0|ML	sd	sd_animal(g):(Intercept)	sd:(Intercept)	-0.7069457	-0.70694568	0.13389993	0.13389985	1.1695e-08	1.0000006
+gamma|crossed|lab0|q1|sd-none|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.56606822	0.56606821	0.11786412	0.11786412	2.661e-09	1
+gamma|crossed|lab0|q1|sd-none|cm0|ML	mu	mu:x1	mu:x1	0.2900291	0.2900291	0.043482443	0.043482441	4.9499999e-10	1
+gamma|crossed|lab0|q1|sd-none|cm0|ML	mu	mu:x2	mu:x2	0.36960756	0.36960756	0.042083109	0.042083107	5.2599997e-10	1
+gamma|crossed|lab0|q1|sd-none|cm0|ML	mu	mu:x3	mu:x3	-0.11668463	-0.11668463	0.045412951	0.045412949	1.01e-10	1
+gamma|crossed|lab0|q1|sd-none|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.29113719	-0.29113719	0.035232423	0.035232434	4.8999971e-11	1.0000003
+gamma|indep|lab0|q4|sd-none|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.32670246	0.32670246	0.085177882	0.085177882	1.9999558e-12	1
+gamma|indep|lab0|q4|sd-none|cm0|ML	mu	mu:x1	mu:x1	0.34218172	0.34218172	0.064705057	0.064705057	7.0000117e-12	1
+gamma|indep|lab0|q4|sd-none|cm0|ML	mu	mu:x2	mu:x2	0.37855367	0.37855367	0.052077146	0.052077145	2.9999891e-12	1
+gamma|indep|lab0|q4|sd-none|cm0|ML	mu	mu:x3	mu:x3	-0.19924513	-0.19924513	0.051896073	0.051896073	2.0000113e-12	1
+gamma|indep|lab0|q4|sd-none|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.70222026	-0.70222026	0.042562103	0.042562116	5.0000004e-12	1.0000003
+gamma|phylo|lab0|q1|sd-one|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.8084355	0.80843557	0.37846138	0.37846149	6.7718e-08	1.0000003
+gamma|phylo|lab0|q1|sd-one|cm0|ML	mu	mu:x1	mu:x1	0.7551998	0.7551998	0.032016136	0.032016135	2.752e-09	1
+gamma|phylo|lab0|q1|sd-one|cm0|ML	mu	mu:x2	mu:x2	0.70905926	0.70905926	0.031899312	0.031899312	3.909e-09	1
+gamma|phylo|lab0|q1|sd-one|cm0|ML	mu	mu:x3	mu:x3	0.19831286	0.19831286	0.034938937	0.034938937	2.022e-09	1
+gamma|phylo|lab0|q1|sd-one|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.44043873	-0.44043871	0.034697552	0.034697566	2.3442e-08	1.0000004
+gamma|phylo|lab0|q1|sd-one|cm0|ML	sd	sd_phylo(g):(Intercept)	sd_phylo:(Intercept)	-0.37683524	-0.37683525	0.15108434	0.15108438	5.446e-09	1.0000002
+gamma|relmat|lab0|q1|sd-z|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.44109974	0.44109974	0.097230878	0.097230881	3.817e-09	1
+gamma|relmat|lab0|q1|sd-z|cm0|ML	mu	mu:x1	mu:x1	0.43419069	0.43419069	0.03353855	0.03353855	2.386e-09	1
+gamma|relmat|lab0|q1|sd-z|cm0|ML	mu	mu:x2	mu:x2	0.30395256	0.30395256	0.03158011	0.03158011	2.207e-09	1
+gamma|relmat|lab0|q1|sd-z|cm0|ML	mu	mu:x3	mu:x3	0.057053984	0.057053969	0.031038597	0.031038597	1.50122e-08	1
+gamma|relmat|lab0|q1|sd-z|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.52361123	-0.52361121	0.035217004	0.035217016	1.0752e-08	1.0000004
+gamma|relmat|lab0|q1|sd-z|cm0|ML	sd	sd_relmat(g):(Intercept)	sd:(Intercept)	-0.93407835	-0.93407833	0.15064166	0.15064162	2.0411e-08	1.0000003
+gamma|relmat|lab0|q1|sd-z|cm0|ML	sd	sd_relmat(g):z	sd:z	0.21272513	0.21272503	0.26846586	0.26846569	9.3604e-08	1.0000006
+gamma|relmat|lab0|q2|sd-none|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.41481975	0.41481976	0.097726361	0.097726353	7.827e-09	1.0000001
+gamma|relmat|lab0|q2|sd-none|cm0|ML	mu	mu:x1	mu:x1	0.42793127	0.42793127	0.069945867	0.069945852	1.539e-09	1.0000002
+gamma|relmat|lab0|q2|sd-none|cm0|ML	mu	mu:x2	mu:x2	0.3039637	0.3039637	0.029901575	0.029901574	3.294e-09	1
+gamma|relmat|lab0|q2|sd-none|cm0|ML	mu	mu:x3	mu:x3	0.048542834	0.048542832	0.029129164	0.029129163	1.345e-09	1
+gamma|relmat|lab0|q2|sd-none|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.60537658	-0.60537655	0.037253836	0.037253849	2.3467e-08	1.0000003
+gamma|relmat|lab1|q2|sd-one|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.41490936	0.41490936	0.097884736	0.097884735	1.983e-09	1
+gamma|relmat|lab1|q2|sd-one|cm0|ML	mu	mu:x1	mu:x1	0.42765829	0.42765829	0.069960256	0.069960245	3.5400005e-10	1.0000001
+gamma|relmat|lab1|q2|sd-one|cm0|ML	mu	mu:x2	mu:x2	0.30350203	0.30350202	0.030039989	0.030039987	7.688e-09	1.0000001
+gamma|relmat|lab1|q2|sd-one|cm0|ML	mu	mu:x3	mu:x3	0.048347154	0.048347142	0.029145234	0.029145232	1.2461e-08	1.0000001
+gamma|relmat|lab1|q2|sd-one|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.60548519	-0.60548517	0.037255145	0.037255156	2.2132e-08	1.0000003
+gamma|relmat|lab1|q2|sd-one|cm0|ML	sd	sd_relmat(g, dpar = "mu", coef = "(Intercept)"):(Intercept)	sdtarget_677c72656c6d61747c6d757c696e746572636570747c6e6f6e65:(Intercept)	-0.93290159	-0.93290161	0.14603944	0.14603942	2.1749e-08	1.0000001
+gamma|relmat|lab1|q2|sd-one|cm0|ML	sd	sd_relmat(g, dpar = "mu", coef = "x1"):(Intercept)	sdtarget_677c72656c6d61747c6d757c78317c6e6f6e65:(Intercept)	-1.3439181	-1.3439182	0.18604973	0.1860496	9.224e-08	1.0000007
+gamma|spatial|lab0|q1|sd-one|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.024298106	0.024298148	0.26340697	0.26340679	4.11758e-08	1.0000007
+gamma|spatial|lab0|q1|sd-one|cm0|ML	mu	mu:x1	mu:x1	0.21774869	0.21774869	0.033361812	0.033361811	9.389e-09	1
+gamma|spatial|lab0|q1|sd-one|cm0|ML	mu	mu:x2	mu:x2	0.21937092	0.21937092	0.032009874	0.032009874	1.77e-10	1
+gamma|spatial|lab0|q1|sd-one|cm0|ML	mu	mu:x3	mu:x3	-0.28209413	-0.28209412	0.031794199	0.031794196	2.354e-09	1.0000001
+gamma|spatial|lab0|q1|sd-one|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.50071972	-0.5007197	0.035197653	0.035197664	2.1969e-08	1.0000003
+gamma|spatial|lab0|q1|sd-one|cm0|ML	sd	sd_spatial(g):(Intercept)	sd:(Intercept)	-0.80961061	-0.80961063	0.19577649	0.19577637	2.5208e-08	1.0000006
+gamma|spatial|lab0|q2|sd-none|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.012644816	0.012644819	0.25914571	0.25914459	2.8941e-09	1.0000043
+gamma|spatial|lab0|q2|sd-none|cm0|ML	mu	mu:x1	mu:x1	0.27424479	0.27424486	0.12866807	0.12866799	7.6211e-08	1.0000007
+gamma|spatial|lab0|q2|sd-none|cm0|ML	mu	mu:x2	mu:x2	0.22589232	0.22589232	0.031590331	0.031590329	8.8900001e-10	1
+gamma|spatial|lab0|q2|sd-none|cm0|ML	mu	mu:x3	mu:x3	-0.28712626	-0.28712627	0.031735925	0.031735923	1.2536e-08	1.0000001
+gamma|spatial|lab0|q2|sd-none|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.52534154	-0.52534152	0.036885607	0.036885613	2.2944e-08	1.0000002
+gaussian|animal|lab0|q1|sd-none|cm0|REML	mu	mu:(Intercept)	mu:(Intercept)	0.23448075	0.23448075	0.16625494	0.16625494	2.0000113e-12	1
+gaussian|animal|lab0|q1|sd-none|cm0|REML	mu	mu:x1	mu:x1	0.30255127	0.30255127	0.037502674	0.037502674	2.0000113e-12	1
+gaussian|animal|lab0|q1|sd-none|cm0|REML	mu	mu:x2	mu:x2	0.40329536	0.40329536	0.037959758	0.037959758	2.9999891e-12	1
+gaussian|animal|lab0|q1|sd-none|cm0|REML	mu	mu:x3	mu:x3	-0.20814751	-0.20814751	0.034624226	0.034624226	3.0000169e-12	1
+gaussian|animal|lab0|q1|sd-none|cm0|REML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.36505941	-0.36505941	0.037438782	0.037438795	0	1.0000003
+gaussian|animal|lab0|q1|sd-z|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.23160466	0.23160466	0.13704944	0.13704944	0	1
+gaussian|animal|lab0|q1|sd-z|cm0|ML	mu	mu:x1	mu:x1	0.30327687	0.30327687	0.037280166	0.037280166	0	1
+gaussian|animal|lab0|q1|sd-z|cm0|ML	mu	mu:x2	mu:x2	0.40378009	0.40378009	0.037715204	0.037715204	9.9997788e-13	1
+gaussian|animal|lab0|q1|sd-z|cm0|ML	mu	mu:x3	mu:x3	-0.21274408	-0.21274408	0.0345095	0.0345095	1.0000056e-12	1
+gaussian|animal|lab0|q1|sd-z|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.3690929	-0.3690929	0.037278622	0.037278634	2.0000113e-12	1.0000003
+gaussian|animal|lab0|q1|sd-z|cm0|ML	sd	sd_animal(g):(Intercept)	sd:(Intercept)	-0.47184611	-0.47184611	0.13405455	0.13405454	7.0000117e-12	1.0000001
+gaussian|animal|lab0|q1|sd-z|cm0|ML	sd	sd_animal(g):z	sd:z	0.49873112	0.49873112	0.2394463	0.23944628	8.0000451e-12	1.0000001
+gaussian|animal|lab0|q2|sd-z|cm0|REML	mu	mu:(Intercept)	mu:(Intercept)	0.23148288	0.23148288	0.14145436	0.14145436	0	1
+gaussian|animal|lab0|q2|sd-z|cm0|REML	mu	mu:x1	mu:x1	0.30400897	0.30400897	0.068636995	0.068636995	0	1
+gaussian|animal|lab0|q2|sd-z|cm0|REML	mu	mu:x2	mu:x2	0.39494645	0.39494645	0.036970994	0.036970994	0	1
+gaussian|animal|lab0|q2|sd-z|cm0|REML	mu	mu:x3	mu:x3	-0.22076614	-0.22076614	0.033307692	0.033307692	0	1
+gaussian|animal|lab0|q2|sd-z|cm0|REML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.42548079	-0.42548079	0.039446301	0.039446314	0	1.0000003
+gaussian|animal|lab0|q2|sd-z|cm0|REML	sd	sd_animal(g, dpar = "mu", coef = "(Intercept)"):(Intercept)	sdtarget_677c616e696d616c7c6d757c696e746572636570747c6e6f6e65:(Intercept)	-0.45072827	-0.45072827	0.13321392	0.13321391	0	1.0000001
+gaussian|animal|lab0|q2|sd-z|cm0|REML	sd	sd_animal(g, dpar = "mu", coef = "(Intercept)"):z	sdtarget_677c616e696d616c7c6d757c696e746572636570747c6e6f6e65:z	0.45369209	0.45369209	0.23987453	0.23987451	0	1.0000001
+gaussian|animal|lab0|q2|sd-z|cm0|REML	sd	sd_animal(g, dpar = "mu", coef = "x1"):(Intercept)	sdtarget_677c616e696d616c7c6d757c78317c6e6f6e65:(Intercept)	-1.4038868	-1.4038868	0.23481749	0.23481746	0	1.0000001
+gaussian|animal|lab0|q2|sd-z|cm0|REML	sd	sd_animal(g, dpar = "mu", coef = "x1"):z	sdtarget_677c616e696d616c7c6d757c78317c6e6f6e65:z	0.25905074	0.25905074	0.34952539	0.34952535	0	1.0000001
+gaussian|animal|lab1|q2|sd-one|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.24120668	0.24120668	0.16262358	0.16262358	6.9999839e-12	1
+gaussian|animal|lab1|q2|sd-one|cm0|ML	mu	mu:x1	mu:x1	0.29984628	0.29984628	0.067680718	0.067680718	3.999967e-12	1
+gaussian|animal|lab1|q2|sd-one|cm0|ML	mu	mu:x2	mu:x2	0.38977002	0.38977002	0.037024596	0.037024596	8.0000451e-12	1
+gaussian|animal|lab1|q2|sd-one|cm0|ML	mu	mu:x3	mu:x3	-0.21547808	-0.21547808	0.033183733	0.033183733	2.9999891e-12	1
+gaussian|animal|lab1|q2|sd-one|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.4272746	-0.4272746	0.039364281	0.039364293	9.0000229e-12	1.0000003
+gaussian|animal|lab1|q2|sd-one|cm0|ML	sd	sd_animal(g, dpar = "mu", coef = "(Intercept)"):(Intercept)	sdtarget_677c616e696d616c7c6d757c696e746572636570747c6e6f6e65:(Intercept)	-0.40100885	-0.40100885	0.12733938	0.12733938	7.9999896e-12	1
+gaussian|animal|lab1|q2|sd-one|cm0|ML	sd	sd_animal(g, dpar = "mu", coef = "x1"):(Intercept)	sdtarget_677c616e696d616c7c6d757c78317c6e6f6e65:(Intercept)	-1.4275865	-1.4275865	0.23086176	0.23086172	3.0000002e-11	1.0000002
+gaussian|animal|lab1|q2|sd-z|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.23239406	0.23239406	0.13891627	0.13891627	1.1999984e-11	1
+gaussian|animal|lab1|q2|sd-z|cm0|ML	mu	mu:x1	mu:x1	0.30353819	0.30353819	0.065226257	0.065226257	2.8999969e-11	1
+gaussian|animal|lab1|q2|sd-z|cm0|ML	mu	mu:x2	mu:x2	0.3883502	0.3883502	0.03704281	0.03704281	1.0000334e-12	1
+gaussian|animal|lab1|q2|sd-z|cm0|ML	mu	mu:x3	mu:x3	-0.21835012	-0.21835012	0.033209981	0.033209981	2.9999891e-12	1
+gaussian|animal|lab1|q2|sd-z|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.4265926	-0.4265926	0.039446984	0.039446996	0	1.0000003
+gaussian|animal|lab1|q2|sd-z|cm0|ML	sd	sd_animal(g, dpar = "mu", coef = "(Intercept)"):(Intercept)	sdtarget_677c616e696d616c7c6d757c696e746572636570747c6e6f6e65:(Intercept)	-0.47092937	-0.47092937	0.13220406	0.13220405	9.0000229e-12	1.0000001
+gaussian|animal|lab1|q2|sd-z|cm0|ML	sd	sd_animal(g, dpar = "mu", coef = "(Intercept)"):z	sdtarget_677c616e696d616c7c6d757c696e746572636570747c6e6f6e65:z	0.45214804	0.45214804	0.23959727	0.23959725	1.2000012e-11	1.0000001
+gaussian|animal|lab1|q2|sd-z|cm0|ML	sd	sd_animal(g, dpar = "mu", coef = "x1"):(Intercept)	sdtarget_677c616e696d616c7c6d757c78317c6e6f6e65:(Intercept)	-1.4686559	-1.4686559	0.24854771	0.24854769	7.0000006e-11	1.0000001
+gaussian|animal|lab1|q2|sd-z|cm0|ML	sd	sd_animal(g, dpar = "mu", coef = "x1"):z	sdtarget_677c616e696d616c7c6d757c78317c6e6f6e65:z	0.28521693	0.28521693	0.37131032	0.37131029	3.4000025e-11	1.0000001
+gaussian|crossed|lab0|q1|sd-none|cm0|REML	mu	mu:(Intercept)	mu:(Intercept)	0.25563025	0.25563025	0.11354527	0.11354527	1.0000334e-12	1
+gaussian|crossed|lab0|q1|sd-none|cm0|REML	mu	mu:x1	mu:x1	0.40922432	0.40922432	0.039313995	0.039313995	9.9997788e-13	1
+gaussian|crossed|lab0|q1|sd-none|cm0|REML	mu	mu:x2	mu:x2	0.2580023	0.2580023	0.039279679	0.039279679	9.9997788e-13	1
+gaussian|crossed|lab0|q1|sd-none|cm0|REML	mu	mu:x3	mu:x3	-0.10039642	-0.10039642	0.041014245	0.041014245	9.9999176e-13	1
+gaussian|crossed|lab0|q1|sd-none|cm0|REML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.28078843	-0.28078843	0.038934573	0.038934586	1.9999558e-12	1.0000003
+gaussian|crossed|lab1|q2|sd-none|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.23360639	0.23360639	0.11180357	0.11180357	1.3000018e-11	1
+gaussian|crossed|lab1|q2|sd-none|cm0|ML	mu	mu:x1	mu:x1	0.39118187	0.39118187	0.065026421	0.065026421	9.0000229e-12	1
+gaussian|crossed|lab1|q2|sd-none|cm0|ML	mu	mu:x2	mu:x2	0.2877673	0.2877673	0.035848123	0.035848123	2.0000113e-12	1
+gaussian|crossed|lab1|q2|sd-none|cm0|ML	mu	mu:x3	mu:x3	-0.1326284	-0.1326284	0.038194156	0.038194156	1.9999835e-12	1
+gaussian|crossed|lab1|q2|sd-none|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.41103641	-0.41103641	0.040996248	0.040996261	7.0000117e-12	1.0000003
+gaussian|crossed|lab1|q3|sd-none|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.22735158	0.22735158	0.11198328	0.11198328	1.8000018e-11	1
+gaussian|crossed|lab1|q3|sd-none|cm0|ML	mu	mu:x1	mu:x1	0.39044854	0.39044854	0.064617302	0.064617301	2.0000113e-12	1
+gaussian|crossed|lab1|q3|sd-none|cm0|ML	mu	mu:x2	mu:x2	0.27930267	0.27930267	0.055016482	0.055016482	3.999967e-12	1
+gaussian|crossed|lab1|q3|sd-none|cm0|ML	mu	mu:x3	mu:x3	-0.1405735	-0.1405735	0.03646986	0.036469859	0	1
+gaussian|crossed|lab1|q3|sd-none|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.50467268	-0.50467268	0.043955167	0.043955181	3.0000447e-12	1.0000003
+gaussian|indep|lab0|q3|sd-none|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.27854777	0.27854777	0.077286306	0.077286306	0	1
+gaussian|indep|lab0|q3|sd-none|cm0|ML	mu	mu:x1	mu:x1	0.43064128	0.43064128	0.06569995	0.06569995	0	1
+gaussian|indep|lab0|q3|sd-none|cm0|ML	mu	mu:x2	mu:x2	0.24920368	0.24920368	0.071569098	0.071569098	0	1
+gaussian|indep|lab0|q3|sd-none|cm0|ML	mu	mu:x3	mu:x3	-0.13995007	-0.13995007	0.033203587	0.033203587	0	1
+gaussian|indep|lab0|q3|sd-none|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.52431553	-0.52431553	0.041812704	0.041812718	9.9997788e-13	1.0000003
+gaussian|indep|lab0|q3|sd-none|cm0|REML	mu	mu:(Intercept)	mu:(Intercept)	0.27858154	0.27858154	0.078255105	0.078255105	1.526e-09	1
+gaussian|indep|lab0|q3|sd-none|cm0|REML	mu	mu:x1	mu:x1	0.43063947	0.43063947	0.066632253	0.066632253	8.33e-10	1
+gaussian|indep|lab0|q3|sd-none|cm0|REML	mu	mu:x2	mu:x2	0.24957972	0.24957973	0.072513783	0.072513783	2.408e-09	1
+gaussian|indep|lab0|q3|sd-none|cm0|REML	mu	mu:x3	mu:x3	-0.14020399	-0.14020399	0.033288248	0.033288248	2.532e-09	1
+gaussian|indep|lab0|q3|sd-none|cm0|REML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.52260577	-0.52260577	0.041878878	0.041878892	0	1.0000003
+gaussian|indep|lab0|q4|sd-first|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.25742006	0.25742006	0.060528004	0.060528004	0	1
+gaussian|indep|lab0|q4|sd-first|cm0|ML	mu	mu:x1	mu:x1	0.42621196	0.42621196	0.063824242	0.063824242	4.0000225e-12	1
+gaussian|indep|lab0|q4|sd-first|cm0|ML	mu	mu:x2	mu:x2	0.24263664	0.24263664	0.069390814	0.069390814	8.9999952e-12	1
+gaussian|indep|lab0|q4|sd-first|cm0|ML	mu	mu:x3	mu:x3	-0.19217135	-0.19217135	0.062446169	0.062446169	1.8999996e-11	1
+gaussian|indep|lab0|q4|sd-first|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.69606175	-0.69606175	0.045042837	0.045042851	2.9999336e-12	1.0000003
+gaussian|indep|lab0|q4|sd-first|cm0|ML	sd	sd(g, coef = "(Intercept)"):(Intercept)	sd:g: (Intercept)	-0.99296485	-0.99296485	0.15133278	0.15133275	9.9997788e-13	1.0000002
+gaussian|indep|lab0|q4|sd-first|cm0|ML	sd	sd(g, coef = "(Intercept)"):z	sd:g: z	0.74897622	0.74897622	0.2516223	0.2516223	1.9999558e-12	1
+gaussian|indep|lab0|q4|sd-z|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.25684503	0.25684503	0.060740719	0.060740719	1.3999968e-11	1
+gaussian|indep|lab0|q4|sd-z|cm0|ML	mu	mu:x1	mu:x1	0.4110387	0.4110387	0.057317666	0.057317666	5.0000004e-12	1
+gaussian|indep|lab0|q4|sd-z|cm0|ML	mu	mu:x2	mu:x2	0.2639061	0.2639061	0.069065473	0.069065473	2.099998e-11	1
+gaussian|indep|lab0|q4|sd-z|cm0|ML	mu	mu:x3	mu:x3	-0.19329515	-0.19329515	0.052323506	0.052323506	2.0000002e-11	1
+gaussian|indep|lab0|q4|sd-z|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.70624541	-0.70624541	0.044276356	0.04427637	3.0000447e-12	1.0000003
+gaussian|indep|lab0|q4|sd-z|cm0|ML	sd	sd(g, coef = "(Intercept)"):(Intercept)	sd:g: (Intercept)	-0.97625326	-0.97625326	0.14758408	0.14758405	2.099998e-11	1.0000002
+gaussian|indep|lab0|q4|sd-z|cm0|ML	sd	sd(g, coef = "(Intercept)"):z	sd:g: z	0.72973967	0.72973967	0.2453935	0.24539349	1.1000001e-10	1
+gaussian|indep|lab0|q4|sd-z|cm0|ML	sd	sd(g, coef = "x1"):(Intercept)	sd:g x1: (Intercept)	-1.149521	-1.149521	0.16875678	0.16875674	5.0000004e-11	1.0000002
+gaussian|indep|lab0|q4|sd-z|cm0|ML	sd	sd(g, coef = "x1"):z	sd:g x1: z	0.65165389	0.65165389	0.32315086	0.32315084	2.0000002e-10	1.0000001
+gaussian|indep|lab0|q4|sd-z|cm0|ML	sd	sd(g, coef = "x2"):(Intercept)	sd:g x2: (Intercept)	-0.99596758	-0.99596758	0.14715068	0.14715065	9.0000229e-12	1.0000002
+gaussian|indep|lab0|q4|sd-z|cm0|ML	sd	sd(g, coef = "x2"):z	sd:g x2: z	0.29255336	0.29255336	0.26187496	0.26187493	2.6000002e-10	1.0000001
+gaussian|indep|lab0|q4|sd-z|cm0|ML	sd	sd(g, coef = "x3"):(Intercept)	sd:g x3: (Intercept)	-1.2130869	-1.2130869	0.16963395	0.16963392	1.9000002e-10	1.0000002
+gaussian|indep|lab0|q4|sd-z|cm0|ML	sd	sd(g, coef = "x3"):z	sd:g x3: z	0.83243208	0.83243208	0.31707125	0.31707123	2.6199998e-10	1
+gaussian|ordinary|lab0|q1|sd-none|cm0|REML	mu	mu:(Intercept)	mu:(Intercept)	0.28656438	0.28656438	0.087083912	0.087083912	1.7000013e-11	1
+gaussian|ordinary|lab0|q1|sd-none|cm0|REML	mu	mu:x1	mu:x1	0.43838999	0.43838999	0.040477774	0.040477774	2.4800001e-10	1
+gaussian|ordinary|lab0|q1|sd-none|cm0|REML	mu	mu:x2	mu:x2	0.23433351	0.2343335	0.041394986	0.041394986	2.5900002e-10	1
+gaussian|ordinary|lab0|q1|sd-none|cm0|REML	mu	mu:x3	mu:x3	-0.12943332	-0.12943332	0.038649915	0.038649915	1.9299998e-10	1
+gaussian|ordinary|lab0|q1|sd-none|cm0|REML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.29189781	-0.29189781	0.037420705	0.037420718	0	1.0000003
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.24641003	0.24641003	0.060160146	0.060160145	8.9999952e-12	1
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	mu	mu:x1	mu:x1	0.42049393	0.42049393	0.066936564	0.066936563	2.2999991e-11	1
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	mu	mu:x2	mu:x2	0.24665667	0.24665667	0.067372317	0.067372317	1.8999996e-11	1
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	mu	mu:x3	mu:x3	-0.13765395	-0.13765395	0.032655131	0.032655131	1.0000056e-12	1
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.52608335	-0.52608335	0.041489701	0.041489714	0	1.0000003
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	sd	sd(g, coef = "(Intercept)"):(Intercept)	sdtarget_677c6969647c6d757c696e746572636570747c6e6f6e65:(Intercept)	-1.0430205	-1.0430205	0.16714541	0.16714539	1.1000001e-10	1.0000001
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	sd	sd(g, coef = "(Intercept)"):z	sdtarget_677c6969647c6d757c696e746572636570747c6e6f6e65:z	0.88173186	0.88173186	0.27901624	0.27901625	7.4000028e-11	1
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.23797417	0.23797417	0.057550687	0.057550686	1.8999996e-11	1
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	mu	mu:x1	mu:x1	0.40929799	0.40929799	0.065216985	0.065216984	2.2000013e-11	1
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	mu	mu:x2	mu:x2	0.22332329	0.22332329	0.066201988	0.066201988	6.000006e-12	1
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	mu	mu:x3	mu:x3	-0.20129203	-0.20129203	0.062720303	0.062720303	4.0000225e-12	1
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.69615759	-0.69615759	0.044826433	0.044826447	1.5999979e-11	1.0000003
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	sd	sd(g, coef = "(Intercept)"):(Intercept)	sdtarget_677c6969647c6d757c696e746572636570747c6e6f6e65:(Intercept)	-1.0404647	-1.0404647	0.15740873	0.1574087	6.0000005e-11	1.0000001
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	sd	sd(g, coef = "(Intercept)"):z	sdtarget_677c6969647c6d757c696e746572636570747c6e6f6e65:z	0.83210691	0.83210691	0.24979504	0.24979504	1.5000001e-11	1
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.24436587	0.24436587	0.056869235	0.056869235	1.1999984e-11	1
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	mu	mu:x1	mu:x1	0.39455129	0.39455129	0.059113118	0.059113118	2.9999891e-12	1
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	mu	mu:x2	mu:x2	0.25246651	0.25246651	0.066350227	0.066350226	1.4000023e-11	1
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	mu	mu:x3	mu:x3	-0.19521351	-0.19521351	0.052619796	0.052619796	1.0000001e-11	1
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.7079584	-0.7079584	0.043980028	0.043980042	9.9997788e-13	1.0000003
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	sd	sd(g, coef = "(Intercept)"):(Intercept)	sdtarget_677c6969647c6d757c696e746572636570747c6e6f6e65:(Intercept)	-1.0259684	-1.0259684	0.1543771	0.15437708	1.0000001e-11	1.0000001
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	sd	sd(g, coef = "(Intercept)"):z	sdtarget_677c6969647c6d757c696e746572636570747c6e6f6e65:z	0.92646219	0.92646219	0.26592425	0.26592425	2.0899993e-10	1
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	sd	sd(g, coef = "x1"):(Intercept)	sdtarget_677c6969647c6d757c78317c6e6f6e65:(Intercept)	-1.0931544	-1.0931544	0.16253129	0.16253126	7.0000006e-11	1.0000002
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	sd	sd(g, coef = "x1"):z	sdtarget_677c6969647c6d757c78317c6e6f6e65:z	0.67732265	0.67732265	0.31590308	0.31590306	2.9399994e-10	1.0000001
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	sd	sd(g, coef = "x2"):(Intercept)	sdtarget_677c6969647c6d757c78327c6e6f6e65:(Intercept)	-1.0116074	-1.0116074	0.14758007	0.14758004	1.0000001e-11	1.0000002
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	sd	sd(g, coef = "x2"):z	sdtarget_677c6969647c6d757c78327c6e6f6e65:z	0.38712009	0.38712009	0.27531469	0.27531466	1.8900004e-10	1.0000001
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	sd	sd(g, coef = "x3"):(Intercept)	sdtarget_677c6969647c6d757c78337c6e6f6e65:(Intercept)	-1.1939159	-1.1939159	0.16828071	0.16828067	3.0000002e-11	1.0000002
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	sd	sd(g, coef = "x3"):z	sdtarget_677c6969647c6d757c78337c6e6f6e65:z	0.82958916	0.82958916	0.30717104	0.30717102	6.8999917e-11	1.0000001
+gaussian|ordinary|lab1|q3|sd-none|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.27912613	0.27912613	0.077348657	0.077348657	7.9999896e-12	1
+gaussian|ordinary|lab1|q3|sd-none|cm0|ML	mu	mu:x1	mu:x1	0.42277299	0.42277299	0.066206961	0.066206961	3.999967e-12	1
+gaussian|ordinary|lab1|q3|sd-none|cm0|ML	mu	mu:x2	mu:x2	0.24763972	0.24763972	0.070172265	0.070172265	2.1999985e-11	1
+gaussian|ordinary|lab1|q3|sd-none|cm0|ML	mu	mu:x3	mu:x3	-0.13895923	-0.13895923	0.032875951	0.032875951	2.9999891e-12	1
+gaussian|ordinary|lab1|q3|sd-none|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.52413866	-0.52413866	0.041775444	0.041775458	1.7000068e-11	1.0000003
+gaussian|phylo|lab0|q1|sd-none|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.67431929	0.67431929	0.30643148	0.30643148	3.099998e-11	1
+gaussian|phylo|lab0|q1|sd-none|cm0|ML	mu	mu:x1	mu:x1	0.10877181	0.10877181	0.031328202	0.031328202	4.9999865e-12	1
+gaussian|phylo|lab0|q1|sd-none|cm0|ML	mu	mu:x2	mu:x2	0.48709092	0.48709092	0.031681422	0.031681422	6.9999562e-12	1
+gaussian|phylo|lab0|q1|sd-none|cm0|ML	mu	mu:x3	mu:x3	-0.30125619	-0.30125619	0.030091374	0.030091374	1.299999e-11	1
+gaussian|phylo|lab0|q1|sd-none|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.53553322	-0.53553322	0.037030329	0.037030341	5.87e-10	1.0000003
+gaussian|phylo|lab0|q1|sd-none|cm0|REML	mu	mu:(Intercept)	mu:(Intercept)	0.67389176	0.67389176	0.31348526	0.31346602	4.0000003e-11	1.0000614
+gaussian|phylo|lab0|q1|sd-none|cm0|REML	mu	mu:x1	mu:x1	0.10883511	0.10883511	0.031456537	0.031452213	6.000006e-12	1.0001375
+gaussian|phylo|lab0|q1|sd-none|cm0|REML	mu	mu:x2	mu:x2	0.48699204	0.48699204	0.031809116	0.031798645	1.0000001e-11	1.0003293
+gaussian|phylo|lab0|q1|sd-none|cm0|REML	mu	mu:x3	mu:x3	-0.30144037	-0.30144037	0.03021008	0.030172869	1.799999e-11	1.0012333
+gaussian|phylo|lab0|q1|sd-none|cm0|REML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.53183769	-0.53183769	0.037157701	0.037157713	1.6500001e-10	1.0000003
+gaussian|phylo|lab0|q1|sd-one|cm0|REML	mu	mu:(Intercept)	mu:(Intercept)	0.67389176	0.67389176	0.31348526	0.31348526	9.9997788e-13	1
+gaussian|phylo|lab0|q1|sd-one|cm0|REML	mu	mu:x1	mu:x1	0.10883511	0.10883511	0.031456537	0.031456537	0	1
+gaussian|phylo|lab0|q1|sd-one|cm0|REML	mu	mu:x2	mu:x2	0.48699204	0.48699204	0.031809116	0.031809116	0	1
+gaussian|phylo|lab0|q1|sd-one|cm0|REML	mu	mu:x3	mu:x3	-0.30144037	-0.30144037	0.03021008	0.03021008	0	1
+gaussian|phylo|lab0|q1|sd-one|cm0|REML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.53183769	-0.53183769	0.037157701	0.037157713	0	1.0000003
+gaussian|phylo|lab0|q1|sd-one|cm0|REML	sd	sd_phylo(g):(Intercept)	sd_phylo:(Intercept)	-0.56836224	-0.56836224	0.15657277	0.15657274	1.0000889e-12	1.0000001
+gaussian|phylo|lab0|q2|sd-none|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.65611426	0.65611426	0.30446126	0.30446126	1.3000045e-11	1
+gaussian|phylo|lab0|q2|sd-none|cm0|ML	mu	mu:x1	mu:x1	0.2341701	0.2341701	0.19101067	0.19101067	3.0000169e-12	1
+gaussian|phylo|lab0|q2|sd-none|cm0|ML	mu	mu:x2	mu:x2	0.491015	0.491015	0.030981706	0.030981706	9.9997788e-13	1
+gaussian|phylo|lab0|q2|sd-none|cm0|ML	mu	mu:x3	mu:x3	-0.32114319	-0.32114319	0.029547096	0.029547096	9.9997788e-13	1
+gaussian|phylo|lab0|q2|sd-none|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.59109452	-0.59109452	0.039404979	0.039404991	9.9997788e-13	1.0000003
+gaussian|phylo|lab0|q2|sd-none|cm0|REML	mu	mu:(Intercept)	mu:(Intercept)	0.65537162	0.65537163	0.31122616	0.31122616	5.741e-09	1
+gaussian|phylo|lab0|q2|sd-none|cm0|REML	mu	mu:x1	mu:x1	0.23697419	0.23697419	0.20195143	0.20195143	2.994e-09	1
+gaussian|phylo|lab0|q2|sd-none|cm0|REML	mu	mu:x2	mu:x2	0.49063782	0.49063782	0.031070465	0.031070465	1.451e-09	1
+gaussian|phylo|lab0|q2|sd-none|cm0|REML	mu	mu:x3	mu:x3	-0.32188996	-0.32188996	0.029605363	0.029605363	3.158e-09	1
+gaussian|phylo|lab0|q2|sd-none|cm0|REML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.59031458	-0.59031458	0.039355914	0.039355926	1.9999558e-12	1.0000003
+gaussian|phylo|lab0|q2|sd-one|cm0|REML	mu	mu:(Intercept)	mu:(Intercept)	0.65537163	0.65537163	0.31122616	0.31122616	0	1
+gaussian|phylo|lab0|q2|sd-one|cm0|REML	mu	mu:x1	mu:x1	0.23697419	0.23697419	0.20195143	0.20195143	0	1
+gaussian|phylo|lab0|q2|sd-one|cm0|REML	mu	mu:x2	mu:x2	0.49063782	0.49063782	0.031070465	0.031070465	0	1
+gaussian|phylo|lab0|q2|sd-one|cm0|REML	mu	mu:x3	mu:x3	-0.32188996	-0.32188996	0.029605363	0.029605363	0	1
+gaussian|phylo|lab0|q2|sd-one|cm0|REML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.59031458	-0.59031458	0.039355914	0.039355926	0	1.0000003
+gaussian|phylo|lab0|q2|sd-one|cm0|REML	sd	sd_phylo(g, dpar = "mu", coef = "(Intercept)"):(Intercept)	sdtarget_677c7068796c6f67656e657469637c6d757c696e746572636570747c6e6f6e65:(Intercept)	-0.57473761	-0.57473761	0.15493788	0.15493786	0	1.0000001
+gaussian|phylo|lab0|q2|sd-one|cm0|REML	sd	sd_phylo(g, dpar = "mu", coef = "x1"):(Intercept)	sdtarget_677c7068796c6f67656e657469637c6d757c78317c6e6f6e65:(Intercept)	-1.066493	-1.066493	0.26557444	0.26557444	0	1
+gaussian|phylo|lab0|q2|sd-z|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.43416271	0.43416271	0.22497857	0.22497858	1.5000001e-11	1
+gaussian|phylo|lab0|q2|sd-z|cm0|ML	mu	mu:x1	mu:x1	0.28963177	0.28963177	0.10850702	0.10850709	6.0999983e-11	1.0000007
+gaussian|phylo|lab0|q2|sd-z|cm0|ML	mu	mu:x2	mu:x2	0.48201895	0.48201895	0.031012455	0.031012455	1.0000001e-11	1
+gaussian|phylo|lab0|q2|sd-z|cm0|ML	mu	mu:x3	mu:x3	-0.31132111	-0.31132111	0.030353323	0.030353326	9.0000229e-12	1.0000001
+gaussian|phylo|lab0|q2|sd-z|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.5924016	-0.5924016	0.040637692	0.040637709	1.9999558e-12	1.0000004
+gaussian|phylo|lab0|q2|sd-z|cm0|ML	sd	sd_phylo(g, dpar = "mu", coef = "(Intercept)"):(Intercept)	sdtarget_677c7068796c6f67656e657469637c6d757c696e746572636570747c6e6f6e65:(Intercept)	-0.61555883	-0.61555883	0.15129085	0.15129083	2.8000047e-11	1.0000001
+gaussian|phylo|lab0|q2|sd-z|cm0|ML	sd	sd_phylo(g, dpar = "mu", coef = "(Intercept)"):z	sdtarget_677c7068796c6f67656e657469637c6d757c696e746572636570747c6e6f6e65:z	0.27189803	0.27189803	0.15032273	0.15032271	2.9999947e-11	1.0000001
+gaussian|phylo|lab0|q2|sd-z|cm0|ML	sd	sd_phylo(g, dpar = "mu", coef = "x1"):(Intercept)	sdtarget_677c7068796c6f67656e657469637c6d757c78317c6e6f6e65:(Intercept)	-1.4927502	-1.4927502	0.66641157	0.66641239	4.3000004e-10	1.0000012
+gaussian|phylo|lab0|q2|sd-z|cm0|ML	sd	sd_phylo(g, dpar = "mu", coef = "x1"):z	sdtarget_677c7068796c6f67656e657469637c6d757c78317c6e6f6e65:z	0.80568934	0.80568934	0.71654322	0.71654404	4.0899995e-10	1.0000011
+gaussian|phylo|lab1|q2|sd-z|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.43072254	0.43072254	0.22035034	0.22035035	1.6699997e-10	1.0000001
+gaussian|phylo|lab1|q2|sd-z|cm0|ML	mu	mu:x1	mu:x1	0.21877279	0.21877279	0.06021283	0.060212828	1.2000012e-11	1
+gaussian|phylo|lab1|q2|sd-z|cm0|ML	mu	mu:x2	mu:x2	0.4807699	0.4807699	0.030970837	0.030970837	9.9997788e-13	1
+gaussian|phylo|lab1|q2|sd-z|cm0|ML	mu	mu:x3	mu:x3	-0.30464771	-0.30464771	0.029645464	0.029645464	4.0000225e-12	1
+gaussian|phylo|lab1|q2|sd-z|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.57804933	-0.57804933	0.038082576	0.038082588	5.9999783e-12	1.0000003
+gaussian|phylo|lab1|q2|sd-z|cm0|ML	sd	sd_phylo(g, dpar = "mu", coef = "(Intercept)"):(Intercept)	sdtarget_677c7068796c6f67656e657469637c6d757c696e746572636570747c6e6f6e65:(Intercept)	-0.60989354	-0.60989354	0.15120335	0.15120334	1.1299994e-10	1.0000001
+gaussian|phylo|lab1|q2|sd-z|cm0|ML	sd	sd_phylo(g, dpar = "mu", coef = "(Intercept)"):z	sdtarget_677c7068796c6f67656e657469637c6d757c696e746572636570747c6e6f6e65:z	0.27955322	0.27955322	0.15118305	0.15118303	3.7999992e-11	1.0000001
+gaussian|phylo|lab1|q2|sd-z|cm0|ML	sd	sd_phylo(g, dpar = "mu", coef = "x1"):(Intercept)	sdtarget_677c7068796c6f67656e657469637c6d757c78317c6e6f6e65:(Intercept)	-2.6925401	-2.6925401	1.1918368	1.1918369	0	1.0000001
+gaussian|phylo|lab1|q2|sd-z|cm0|ML	sd	sd_phylo(g, dpar = "mu", coef = "x1"):z	sdtarget_677c7068796c6f67656e657469637c6d757c78317c6e6f6e65:z	1.9811957	1.9811957	1.2265381	1.2265381	5.0000004e-11	1
+gaussian|relmat|lab0|q1|sd-none|cm0|REML	mu	mu:(Intercept)	mu:(Intercept)	0.3251931	0.3251931	0.11561582	0.11561582	7.0000006e-11	1
+gaussian|relmat|lab0|q1|sd-none|cm0|REML	mu	mu:x1	mu:x1	0.36945102	0.36945102	0.033188012	0.033188012	1.2000012e-11	1
+gaussian|relmat|lab0|q1|sd-none|cm0|REML	mu	mu:x2	mu:x2	0.36338455	0.36338455	0.035255939	0.035255939	3.8000048e-11	1
+gaussian|relmat|lab0|q1|sd-none|cm0|REML	mu	mu:x3	mu:x3	-0.15427067	-0.15427067	0.035461499	0.035461499	5.4999977e-11	1
+gaussian|relmat|lab0|q1|sd-none|cm0|REML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.40152703	-0.40152703	0.037306451	0.037306463	3.999967e-12	1.0000003
+gaussian|relmat|lab0|q2|sd-none|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.32853358	0.32853358	0.11846775	0.11846775	1.6000035e-11	1
+gaussian|relmat|lab0|q2|sd-none|cm0|ML	mu	mu:x1	mu:x1	0.38737762	0.38737762	0.07585347	0.07585347	5.0000004e-12	1
+gaussian|relmat|lab0|q2|sd-none|cm0|ML	mu	mu:x2	mu:x2	0.37735953	0.37735953	0.031670465	0.031670465	2.9999891e-12	1
+gaussian|relmat|lab0|q2|sd-none|cm0|ML	mu	mu:x3	mu:x3	-0.15433651	-0.15433651	0.03175077	0.03175077	5.0000004e-12	1
+gaussian|relmat|lab0|q2|sd-none|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.54421878	-0.54421878	0.039193482	0.039193495	1.3999912e-11	1.0000003
+gaussian|relmat|lab0|q2|sd-z|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.23752204	0.23752204	0.10267626	0.10267626	0	1
+gaussian|relmat|lab0|q2|sd-z|cm0|ML	mu	mu:x1	mu:x1	0.35695963	0.35695963	0.068659854	0.068659854	0	1
+gaussian|relmat|lab0|q2|sd-z|cm0|ML	mu	mu:x2	mu:x2	0.37838665	0.37838665	0.031447404	0.031447404	9.9997788e-13	1
+gaussian|relmat|lab0|q2|sd-z|cm0|ML	mu	mu:x3	mu:x3	-0.15384469	-0.15384469	0.031687597	0.031687597	0	1
+gaussian|relmat|lab0|q2|sd-z|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.54626625	-0.54626625	0.039104093	0.039104106	0	1.0000003
+gaussian|relmat|lab0|q2|sd-z|cm0|ML	sd	sd_relmat(g, dpar = "mu", coef = "(Intercept)"):(Intercept)	sdtarget_677c72656c6d61747c6d757c696e746572636570747c6e6f6e65:(Intercept)	-0.83083747	-0.83083747	0.14393502	0.143935	1.0000889e-12	1.0000001
+gaussian|relmat|lab0|q2|sd-z|cm0|ML	sd	sd_relmat(g, dpar = "mu", coef = "(Intercept)"):z	sdtarget_677c72656c6d61747c6d757c696e746572636570747c6e6f6e65:z	0.47675299	0.47675299	0.21625013	0.21625011	1.0000334e-12	1.0000001
+gaussian|relmat|lab0|q2|sd-z|cm0|ML	sd	sd_relmat(g, dpar = "mu", coef = "x1"):(Intercept)	sdtarget_677c72656c6d61747c6d757c78317c6e6f6e65:(Intercept)	-1.3016483	-1.3016483	0.16603416	0.16603412	0	1.0000002
+gaussian|relmat|lab0|q2|sd-z|cm0|ML	sd	sd_relmat(g, dpar = "mu", coef = "x1"):z	sdtarget_677c72656c6d61747c6d757c78317c6e6f6e65:z	0.49586462	0.49586462	0.26155597	0.26155594	2.0000113e-12	1.0000001
+gaussian|relmat|lab0|q2|sd-z|cm0|REML	mu	mu:(Intercept)	mu:(Intercept)	0.24032627	0.24032628	0.10534301	0.10534301	1.2646e-08	1
+gaussian|relmat|lab0|q2|sd-z|cm0|REML	mu	mu:x1	mu:x1	0.3578542	0.3578542	0.070260857	0.070260857	5.049e-09	1
+gaussian|relmat|lab0|q2|sd-z|cm0|REML	mu	mu:x2	mu:x2	0.37840653	0.37840653	0.031552839	0.031552839	9.0000002e-10	1
+gaussian|relmat|lab0|q2|sd-z|cm0|REML	mu	mu:x3	mu:x3	-0.15383611	-0.15383611	0.031788346	0.031788346	6.51e-10	1
+gaussian|relmat|lab0|q2|sd-z|cm0|REML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.5436618	-0.5436618	0.039187446	0.039187459	9.9997788e-13	1.0000003
+gaussian|relmat|lab0|q2|sd-z|cm0|REML	sd	sd_relmat(g, dpar = "mu", coef = "(Intercept)"):(Intercept)	sdtarget_677c72656c6d61747c6d757c696e746572636570747c6e6f6e65:(Intercept)	-0.81006701	-0.81006701	0.1444386	0.14443858	2.9999336e-12	1.0000001
+gaussian|relmat|lab0|q2|sd-z|cm0|REML	sd	sd_relmat(g, dpar = "mu", coef = "(Intercept)"):z	sdtarget_677c72656c6d61747c6d757c696e746572636570747c6e6f6e65:z	0.45562301	0.45562301	0.21391561	0.21391558	3.999967e-12	1.0000001
+gaussian|relmat|lab0|q2|sd-z|cm0|REML	sd	sd_relmat(g, dpar = "mu", coef = "x1"):(Intercept)	sdtarget_677c72656c6d61747c6d757c78317c6e6f6e65:(Intercept)	-1.2782216	-1.2782216	0.16607988	0.16607984	0	1.0000002
+gaussian|relmat|lab0|q2|sd-z|cm0|REML	sd	sd_relmat(g, dpar = "mu", coef = "x1"):z	sdtarget_677c72656c6d61747c6d757c78317c6e6f6e65:z	0.47426693	0.47426693	0.25831446	0.25831443	6.0000338e-12	1.0000001
+gaussian|slope|lab0|q1|sd-none|cm0|REML	mu	mu:(Intercept)	mu:(Intercept)	0.27399725	0.27399725	0.04322549	0.04322549	0	1
+gaussian|slope|lab0|q1|sd-none|cm0|REML	mu	mu:x1	mu:x1	0.41421496	0.41421496	0.071942986	0.071942986	0	1
+gaussian|slope|lab0|q1|sd-none|cm0|REML	mu	mu:x2	mu:x2	0.22313159	0.22313159	0.045065063	0.045065063	0	1
+gaussian|slope|lab0|q1|sd-none|cm0|REML	mu	mu:x3	mu:x3	-0.098358411	-0.098358411	0.043089691	0.043089691	0	1
+gaussian|slope|lab0|q1|sd-none|cm0|REML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.17250669	-0.17250669	0.037621757	0.037621769	0	1.0000003
+gaussian|slope|lab0|q1|sd-z|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.26992068	0.26992068	0.042965681	0.042965681	0	1
+gaussian|slope|lab0|q1|sd-z|cm0|ML	mu	mu:x1	mu:x1	0.42298211	0.42298211	0.068013147	0.068013147	9.9997788e-13	1
+gaussian|slope|lab0|q1|sd-z|cm0|ML	mu	mu:x2	mu:x2	0.22125051	0.22125051	0.044795817	0.044795817	0	1
+gaussian|slope|lab0|q1|sd-z|cm0|ML	mu	mu:x3	mu:x3	-0.10114468	-0.10114468	0.042834507	0.042834507	1.0000056e-12	1
+gaussian|slope|lab0|q1|sd-z|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.17784851	-0.17784851	0.037322627	0.037322639	2.0000113e-12	1.0000003
+gaussian|slope|lab0|q1|sd-z|cm0|ML	sd	sd(g, coef = "x1"):(Intercept)	sd:(Intercept)	-1.1686156	-1.1686156	0.23434553	0.2343455	1.0000001e-11	1.0000001
+gaussian|slope|lab0|q1|sd-z|cm0|ML	sd	sd(g, coef = "x1"):z	sd:z	0.54957705	0.54957705	0.39737648	0.39737647	5.9999783e-12	1
+gaussian|spatial|lab0|q1|sd-z|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.26139768	0.26139768	0.11160551	0.11160551	2.7000013e-11	1
+gaussian|spatial|lab0|q1|sd-z|cm0|ML	mu	mu:x1	mu:x1	0.32212172	0.32212172	0.031885553	0.031885553	1.0000334e-12	1
+gaussian|spatial|lab0|q1|sd-z|cm0|ML	mu	mu:x2	mu:x2	0.43734404	0.43734404	0.030576993	0.030576993	0	1
+gaussian|spatial|lab0|q1|sd-z|cm0|ML	mu	mu:x3	mu:x3	-0.24129512	-0.24129512	0.032048994	0.032048994	0	1
+gaussian|spatial|lab0|q1|sd-z|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.50371093	-0.50371093	0.036991865	0.036991877	5.0000004e-12	1.0000003
+gaussian|spatial|lab0|q1|sd-z|cm0|ML	sd	sd_spatial(g):(Intercept)	sd:(Intercept)	-0.86101263	-0.86101263	0.18480025	0.18480022	3.1999958e-11	1.0000002
+gaussian|spatial|lab0|q1|sd-z|cm0|ML	sd	sd_spatial(g):z	sd:z	0.69701669	0.69701669	0.28284727	0.28284727	1.3199997e-10	1
+gaussian|spatial|lab0|q2|sd-one|cm0|REML	mu	mu:(Intercept)	mu:(Intercept)	0.03861268	0.03861268	0.30138443	0.30138443	9.0000229e-13	1
+gaussian|spatial|lab0|q2|sd-one|cm0|REML	mu	mu:x1	mu:x1	0.41248241	0.41248241	0.15742879	0.15742879	7.0000117e-12	1
+gaussian|spatial|lab0|q2|sd-one|cm0|REML	mu	mu:x2	mu:x2	0.44595316	0.44595316	0.030183347	0.030183347	0	1
+gaussian|spatial|lab0|q2|sd-one|cm0|REML	mu	mu:x3	mu:x3	-0.25642661	-0.25642661	0.031627011	0.031627011	0	1
+gaussian|spatial|lab0|q2|sd-one|cm0|REML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.54041222	-0.54041222	0.039351352	0.039351364	1.0999979e-11	1.0000003
+gaussian|spatial|lab0|q2|sd-one|cm0|REML	sd	sd_spatial(g, dpar = "mu", coef = "(Intercept)"):(Intercept)	sdtarget_677c7370617469616c7c6d757c696e746572636570747c6e6f6e65:(Intercept)	-0.669147	-0.669147	0.17689769	0.17689766	2.3000046e-11	1.0000001
+gaussian|spatial|lab0|q2|sd-one|cm0|REML	sd	sd_spatial(g, dpar = "mu", coef = "x1"):(Intercept)	sdtarget_677c7370617469616c7c6d757c78317c6e6f6e65:(Intercept)	-1.3748973	-1.3748973	0.29107702	0.29107702	7.0000006e-11	1
+gaussian|spatial|lab0|q2|sd-z|cm0|REML	mu	mu:(Intercept)	mu:(Intercept)	0.26803231	0.26803231	0.11201867	0.11201867	9.9997788e-13	1
+gaussian|spatial|lab0|q2|sd-z|cm0|REML	mu	mu:x1	mu:x1	0.37673136	0.37673136	0.10725036	0.10725036	4.0000225e-12	1
+gaussian|spatial|lab0|q2|sd-z|cm0|REML	mu	mu:x2	mu:x2	0.44138306	0.44138306	0.029689661	0.029689661	0	1
+gaussian|spatial|lab0|q2|sd-z|cm0|REML	mu	mu:x3	mu:x3	-0.24301671	-0.24301671	0.031347389	0.031347389	0	1
+gaussian|spatial|lab0|q2|sd-z|cm0|REML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.55283961	-0.55283961	0.038685803	0.038685815	1.0000889e-12	1.0000003
+gaussian|spatial|lab0|q2|sd-z|cm0|REML	sd	sd_spatial(g, dpar = "mu", coef = "(Intercept)"):(Intercept)	sdtarget_677c7370617469616c7c6d757c696e746572636570747c6e6f6e65:(Intercept)	-0.79542365	-0.79542365	0.18087925	0.18087922	9.9997788e-13	1.0000002
+gaussian|spatial|lab0|q2|sd-z|cm0|REML	sd	sd_spatial(g, dpar = "mu", coef = "(Intercept)"):z	sdtarget_677c7370617469616c7c6d757c696e746572636570747c6e6f6e65:z	0.70947334	0.70947334	0.28546047	0.2854605	3.0000447e-12	1.0000001
+gaussian|spatial|lab0|q2|sd-z|cm0|REML	sd	sd_spatial(g, dpar = "mu", coef = "x1"):(Intercept)	sdtarget_677c7370617469616c7c6d757c78317c6e6f6e65:(Intercept)	-1.4006117	-1.4006117	0.28184782	0.28184783	4.0000003e-11	1
+gaussian|spatial|lab0|q2|sd-z|cm0|REML	sd	sd_spatial(g, dpar = "mu", coef = "x1"):z	sdtarget_677c7370617469616c7c6d757c78317c6e6f6e65:z	0.5034834	0.5034834	0.39413538	0.39413549	3.8000048e-11	1.0000003
+lognormal|crossed|lab0|q1|sd-none|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.34394322	0.34394322	0.12234225	0.12234225	5.8999972e-11	1
+lognormal|crossed|lab0|q1|sd-none|cm0|ML	mu	mu:x1	mu:x1	0.37341747	0.37341747	0.036999443	0.036999443	7.0000117e-12	1
+lognormal|crossed|lab0|q1|sd-none|cm0|ML	mu	mu:x2	mu:x2	0.35328089	0.35328089	0.036571034	0.036571034	5.0000004e-12	1
+lognormal|crossed|lab0|q1|sd-none|cm0|ML	mu	mu:x3	mu:x3	-0.22775915	-0.22775915	0.033057878	0.033057878	3.0000169e-12	1
+lognormal|crossed|lab0|q1|sd-none|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.38664835	-0.38664835	0.038766354	0.038766367	1.1000034e-11	1.0000003
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.2587321	0.2587321	0.096424879	0.096424879	5.8999972e-11	1
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	mu	mu:x1	mu:x1	0.2603367	0.2603367	0.03666873	0.03666873	1.0000334e-12	1
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	mu	mu:x2	mu:x2	0.21136884	0.21136884	0.037249998	0.037249998	1.0000056e-12	1
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	mu	mu:x3	mu:x3	-0.26124498	-0.26124498	0.03801547	0.03801547	9.9997788e-13	1
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.37355921	-0.37355921	0.037269245	0.037269258	9.0000229e-12	1.0000003
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	sd	sd(g):(Intercept)	sd:(Intercept)	-0.53040641	-0.53040641	0.12881792	0.12881791	4.2999937e-11	1.0000001
+lognormal|ordinary|lab0|q1|sd-z|cm0|ML	sd	sd(g):z	sd:z	0.35636743	0.35636743	0.22222232	0.22222231	4.7000015e-11	1
+lognormal|phylo|lab0|q1|sd-none|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.32729259	0.32729259	0.32291253	0.32291253	1.799999e-11	1
+lognormal|phylo|lab0|q1|sd-none|cm0|ML	mu	mu:x1	mu:x1	0.23709481	0.23709481	0.03305769	0.03305769	3.0000169e-12	1
+lognormal|phylo|lab0|q1|sd-none|cm0|ML	mu	mu:x2	mu:x2	0.67399986	0.67399986	0.030970143	0.030970143	5.0000004e-12	1
+lognormal|phylo|lab0|q1|sd-none|cm0|ML	mu	mu:x3	mu:x3	0.025005779	0.025005779	0.029161309	0.029161309	1.04e-11	1
+lognormal|phylo|lab0|q1|sd-none|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.53298037	-0.53298037	0.036947682	0.036947694	6.8200001e-10	1.0000003
+lognormal|relmat|lab0|q1|sd-none|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.17465532	0.17465532	0.13630224	0.13630224	1.799999e-11	1
+lognormal|relmat|lab0|q1|sd-none|cm0|ML	mu	mu:x1	mu:x1	0.30570008	0.30570008	0.035304753	0.035304753	5.0000004e-12	1
+lognormal|relmat|lab0|q1|sd-none|cm0|ML	mu	mu:x2	mu:x2	0.089748507	0.089748507	0.034061125	0.034061125	8.0000034e-12	1
+lognormal|relmat|lab0|q1|sd-none|cm0|ML	mu	mu:x3	mu:x3	-0.19641245	-0.19641245	0.034204137	0.034204137	2.0000113e-12	1
+lognormal|relmat|lab0|q1|sd-none|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.40976606	-0.40976606	0.037305664	0.037305676	5.0000004e-12	1.0000003
+lognormal|slope|lab0|q1|sd-z|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.24160897	0.24160897	0.04456984	0.04456984	0	1
+lognormal|slope|lab0|q1|sd-z|cm0|ML	mu	mu:x1	mu:x1	0.32909498	0.32909498	0.059429036	0.059429036	0	1
+lognormal|slope|lab0|q1|sd-z|cm0|ML	mu	mu:x2	mu:x2	0.21254939	0.21254939	0.046645716	0.046645716	0	1
+lognormal|slope|lab0|q1|sd-z|cm0|ML	mu	mu:x3	mu:x3	-0.24693096	-0.24693096	0.046685602	0.046685602	0	1
+lognormal|slope|lab0|q1|sd-z|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.14202978	-0.14202978	0.036581586	0.036581598	0	1.0000003
+lognormal|slope|lab0|q1|sd-z|cm0|ML	sd	sd(g, coef = "x1"):(Intercept)	sd:(Intercept)	-1.454109	-1.454109	0.29659172	0.29659173	1.0000001e-11	1
+lognormal|slope|lab0|q1|sd-z|cm0|ML	sd	sd(g, coef = "x1"):z	sd:z	0.78062768	0.78062768	0.54273065	0.54273073	9.9997788e-13	1.0000001
+nb2|animal|lab0|q2|sd-none|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.3318355	0.3318355	0.15750136	0.15750114	2.279e-09	1.0000014
+nb2|animal|lab0|q2|sd-none|cm0|ML	mu	mu:x1	mu:x1	0.48235582	0.48235582	0.062130855	0.062130847	1.696e-09	1.0000001
+nb2|animal|lab0|q2|sd-none|cm0|ML	mu	mu:x2	mu:x2	0.34127204	0.34127204	0.058224848	0.058224839	2.56e-09	1.0000002
+nb2|animal|lab0|q2|sd-none|cm0|ML	mu	mu:x3	mu:x3	-0.094520678	-0.094520674	0.057520112	0.057520097	4.1369e-09	1.0000002
+nb2|animal|lab0|q2|sd-none|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.3587821	-0.35878211	0.08639364	0.086393623	1.5919e-08	1.0000002
+nb2|crossed|lab0|q1|sd-none|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.40716091	0.40716086	0.11216577	0.11216578	4.6555e-08	1
+nb2|crossed|lab0|q1|sd-none|cm0|ML	mu	mu:x1	mu:x1	0.51679123	0.51679123	0.065321307	0.065321304	5.4000004e-10	1
+nb2|crossed|lab0|q1|sd-none|cm0|ML	mu	mu:x2	mu:x2	0.23173416	0.23173418	0.060818726	0.060818722	1.5222e-08	1.0000001
+nb2|crossed|lab0|q1|sd-none|cm0|ML	mu	mu:x3	mu:x3	-0.2343518	-0.23435179	0.061186467	0.061186463	1.173e-08	1.0000001
+nb2|crossed|lab0|q1|sd-none|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.23364538	-0.23364536	0.086073827	0.086073824	1.6421e-08	1
+nb2|indep|lab0|q2|sd-z|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.34190193	0.34190194	0.087130215	0.087130127	1.1862e-08	1.000001
+nb2|indep|lab0|q2|sd-z|cm0|ML	mu	mu:x1	mu:x1	0.4241681	0.42416811	0.077642391	0.077642366	5.322e-09	1.0000003
+nb2|indep|lab0|q2|sd-z|cm0|ML	mu	mu:x2	mu:x2	0.26367367	0.26367367	0.062767751	0.062767718	3.867e-09	1.0000005
+nb2|indep|lab0|q2|sd-z|cm0|ML	mu	mu:x3	mu:x3	-0.27598327	-0.27598327	0.063401821	0.063401794	4.569e-09	1.0000004
+nb2|indep|lab0|q2|sd-z|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.20440853	-0.20440853	0.086105285	0.086105197	4.277e-09	1.000001
+nb2|indep|lab0|q2|sd-z|cm0|ML	sd	sd(g, coef = "(Intercept)"):(Intercept)	sdtarget_677c6969647c6d757c696e746572636570747c6e6f6e65:(Intercept)	-1.0928633	-1.0928634	0.3525216	0.35251925	6.464e-08	1.0000067
+nb2|indep|lab0|q2|sd-z|cm0|ML	sd	sd(g, coef = "(Intercept)"):z	sdtarget_677c6969647c6d757c696e746572636570747c6e6f6e65:z	1.0451311	1.0451312	0.5245301	0.52452513	5.891e-08	1.0000095
+nb2|indep|lab0|q2|sd-z|cm0|ML	sd	sd(g, coef = "x1"):(Intercept)	sdtarget_677c6969647c6d757c78317c6e6f6e65:(Intercept)	-1.3064268	-1.3064269	0.4437622	0.44375954	1.1099e-07	1.000006
+nb2|indep|lab0|q2|sd-z|cm0|ML	sd	sd(g, coef = "x1"):z	sdtarget_677c6969647c6d757c78317c6e6f6e65:z	0.94816738	0.94816747	0.70579501	0.70578758	9.0332e-08	1.0000105
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.3363066	0.3363066	0.095272736	0.09527261	6.1200001e-10	1.0000013
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	mu	mu:x1	mu:x1	0.42050834	0.42050834	0.083091607	0.083091499	2.747e-09	1.0000013
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	mu	mu:x2	mu:x2	0.26535503	0.26535504	0.06370846	0.063708409	5.488e-09	1.0000008
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	mu	mu:x3	mu:x3	-0.30004569	-0.30004569	0.063015961	0.063015933	1.635e-09	1.0000004
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.18403453	-0.18403454	0.086290316	0.086290217	5.883e-09	1.0000012
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	sd	sd(g, coef = "(Intercept)"):(Intercept)	sdtarget_677c6969647c6d757c696e746572636570747c6e6f6e65:(Intercept)	-0.89601962	-0.89601971	0.23777381	0.23777311	9.3592e-08	1.0000029
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	sd	sd(g, coef = "x1"):(Intercept)	sdtarget_677c6969647c6d757c78317c6e6f6e65:(Intercept)	-1.2376735	-1.2376735	0.35069112	0.35069051	4.15e-08	1.0000017
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.34228346	0.34228347	0.086999423	0.086999338	5.463e-09	1.000001
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	mu	mu:x1	mu:x1	0.42241	0.42241	0.078577352	0.078577281	2.016e-09	1.0000009
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	mu	mu:x2	mu:x2	0.2645673	0.26456731	0.063016967	0.063016933	4.728e-09	1.0000005
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	mu	mu:x3	mu:x3	-0.27631807	-0.27631807	0.063425844	0.063425818	2.989e-09	1.0000004
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.20496563	-0.20496564	0.086064868	0.086064766	7.496e-09	1.0000012
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	sd	sd(g, coef = "(Intercept)"):(Intercept)	sdtarget_677c6969647c6d757c696e746572636570747c6e6f6e65:(Intercept)	-1.0950146	-1.0950147	0.34911203	0.34911064	6.057e-08	1.000004
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	sd	sd(g, coef = "(Intercept)"):z	sdtarget_677c6969647c6d757c696e746572636570747c6e6f6e65:z	1.033971	1.033971	0.52479384	0.52479095	6.436e-08	1.0000055
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	sd	sd(g, coef = "x1"):(Intercept)	sdtarget_677c6969647c6d757c78317c6e6f6e65:(Intercept)	-1.3066534	-1.3066535	0.43385019	0.43384521	7.596e-08	1.0000115
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	sd	sd(g, coef = "x1"):z	sdtarget_677c6969647c6d757c78317c6e6f6e65:z	0.9407887	0.94078881	0.69257517	0.69256383	1.0699e-07	1.0000164
+nb2|phylo|lab0|q2|sd-z|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.45810613	0.45810608	0.19180512	0.19180524	4.8538e-08	1.0000007
+nb2|phylo|lab0|q2|sd-z|cm0|ML	mu	mu:x1	mu:x1	0.50266713	0.50266721	0.0518354	0.05183539	7.4046e-08	1.0000002
+nb2|phylo|lab0|q2|sd-z|cm0|ML	mu	mu:x2	mu:x2	0.32080332	0.3208033	0.048326448	0.048326443	1.9618e-08	1.0000001
+nb2|phylo|lab0|q2|sd-z|cm0|ML	mu	mu:x3	mu:x3	-0.551707	-0.55170704	0.054506422	0.054506408	3.3862e-08	1.0000002
+nb2|phylo|lab0|q2|sd-z|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.39126182	-0.39126183	0.071708041	0.071708023	7.558e-09	1.0000002
+nb2|phylo|lab0|q2|sd-z|cm0|ML	sd	sd_phylo(g, dpar = "mu", coef = "(Intercept)"):(Intercept)	sdtarget_677c7068796c6f67656e657469637c6d757c696e746572636570747c6e6f6e65:(Intercept)	-0.87413154	-0.87413149	0.27389272	0.27389277	4.6833e-08	1.0000002
+nb2|phylo|lab0|q2|sd-z|cm0|ML	sd	sd_phylo(g, dpar = "mu", coef = "(Intercept)"):z	sdtarget_677c7068796c6f67656e657469637c6d757c696e746572636570747c6e6f6e65:z	0.60745001	0.60744997	0.30055929	0.30055962	4.8345e-08	1.0000011
+nb2|phylo|lab0|q2|sd-z|cm0|ML	sd	sd_phylo(g, dpar = "mu", coef = "x1"):(Intercept)	sdtarget_677c7068796c6f67656e657469637c6d757c78317c6e6f6e65:(Intercept)	-16.071829	-16.071776	14.127566	14.122959	5.22359e-05	1.0003262
+nb2|phylo|lab0|q2|sd-z|cm0|ML	sd	sd_phylo(g, dpar = "mu", coef = "x1"):z	sdtarget_677c7068796c6f67656e657469637c6d757c78317c6e6f6e65:z	-16.221676	-16.221624	14.745793	14.740982	5.25217e-05	1.0003264
+nb2|relmat|lab0|q2|sd-none|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.53758454	0.53758454	0.12027566	0.12027566	5.9600003e-10	1
+nb2|relmat|lab0|q2|sd-none|cm0|ML	mu	mu:x1	mu:x1	0.35301247	0.35301247	0.11392788	0.11392787	1.5000001e-11	1.0000001
+nb2|relmat|lab0|q2|sd-none|cm0|ML	mu	mu:x2	mu:x2	0.3367041	0.33670411	0.055544237	0.055544229	1.742e-09	1.0000001
+nb2|relmat|lab0|q2|sd-none|cm0|ML	mu	mu:x3	mu:x3	-0.048270967	-0.048270968	0.056281194	0.056281194	4.307e-10	1
+nb2|relmat|lab0|q2|sd-none|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.47385728	-0.4738573	0.089974884	0.089974882	2.3774e-08	1
+nb2|spatial|lab0|q2|sd-one|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.054740245	0.054740182	0.33006663	0.33006595	6.26764e-08	1.0000021
+nb2|spatial|lab0|q2|sd-one|cm0|ML	mu	mu:x1	mu:x1	0.68123518	0.68123525	0.25902366	0.25902358	6.338e-08	1.0000003
+nb2|spatial|lab0|q2|sd-one|cm0|ML	mu	mu:x2	mu:x2	0.5057966	0.50579662	0.059460011	0.059460004	1.9561e-08	1.0000001
+nb2|spatial|lab0|q2|sd-one|cm0|ML	mu	mu:x3	mu:x3	-0.32431028	-0.3243103	0.054328452	0.054328447	1.3376e-08	1.0000001
+nb2|spatial|lab0|q2|sd-one|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.71012656	-0.71012659	0.16169232	0.16169236	3.1126e-08	1.0000003
+nb2|spatial|lab0|q2|sd-one|cm0|ML	sd	sd_spatial(g, dpar = "mu", coef = "(Intercept)"):(Intercept)	sdtarget_677c7370617469616c7c6d757c696e746572636570747c6e6f6e65:(Intercept)	-0.60882001	-0.60882003	0.25623658	0.25623653	2.774e-08	1.0000002
+nb2|spatial|lab0|q2|sd-one|cm0|ML	sd	sd_spatial(g, dpar = "mu", coef = "x1"):(Intercept)	sdtarget_677c7370617469616c7c6d757c78317c6e6f6e65:(Intercept)	-0.88652376	-0.8865238	0.36220304	0.36220272	4.0547e-08	1.0000009
+poisson|animal|lab0|q1|sd-one|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.15015793	0.15015793	0.1699567	0.16995653	3.617e-09	1.000001
+poisson|animal|lab0|q1|sd-one|cm0|ML	mu	mu:x1	mu:x1	0.41668198	0.41668199	0.043234139	0.043234137	3.627e-09	1
+poisson|animal|lab0|q1|sd-one|cm0|ML	mu	mu:x2	mu:x2	0.45841532	0.45841532	0.040304924	0.040304921	3.181e-09	1.0000001
+poisson|animal|lab0|q1|sd-one|cm0|ML	mu	mu:x3	mu:x3	-0.24061816	-0.24061816	0.04300022	0.04300022	2.16e-10	1
+poisson|animal|lab0|q1|sd-one|cm0|ML	sd	sd_animal(g):(Intercept)	sd:(Intercept)	-0.3870754	-0.38707539	0.14206442	0.14206442	9.5929999e-09	1.0000001
+poisson|crossed|lab0|q1|sd-none|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.29201965	0.29202111	0.12413143	0.12413138	1.456408e-06	1.0000004
+poisson|crossed|lab0|q1|sd-none|cm0|ML	mu	mu:x1	mu:x1	0.43141617	0.43141611	0.039053642	0.039053638	5.9179e-08	1.0000001
+poisson|crossed|lab0|q1|sd-none|cm0|ML	mu	mu:x2	mu:x2	0.32891527	0.32891524	0.039508372	0.039508367	2.7328e-08	1.0000001
+poisson|crossed|lab0|q1|sd-none|cm0|ML	mu	mu:x3	mu:x3	-0.28087264	-0.28087254	0.040149866	0.040149861	9.9545e-08	1.0000001
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.43692357	0.43692357	0.089828829	0.089828802	2.1500002e-10	1.0000003
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	mu	mu:x1	mu:x1	0.31536961	0.31536961	0.079792512	0.079792494	1.021e-09	1.0000002
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	mu	mu:x2	mu:x2	0.29985108	0.29985108	0.039868979	0.039868977	2.534e-09	1.0000001
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	mu	mu:x3	mu:x3	-0.15501148	-0.15501148	0.039843527	0.039843522	1.175e-09	1.0000001
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	sd	sd(g, coef = "(Intercept)"):(Intercept)	sdtarget_677c6969647c6d757c696e746572636570747c6e6f6e65:(Intercept)	-0.72287409	-0.72287409	0.15125878	0.15125867	2.5199998e-10	1.0000007
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	sd	sd(g, coef = "x1"):(Intercept)	sdtarget_677c6969647c6d757c78317c6e6f6e65:(Intercept)	-0.9131098	-0.9131098	0.17167267	0.17167252	7.461e-09	1.0000009
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.44275744	0.44275748	0.089453451	0.089453435	3.8645e-08	1.0000002
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	mu	mu:x1	mu:x1	0.32663503	0.32663506	0.076408818	0.07640878	2.6094e-08	1.0000005
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	mu	mu:x2	mu:x2	0.30078762	0.30078763	0.040002808	0.040002806	4.215e-09	1.0000001
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	mu	mu:x3	mu:x3	-0.16139685	-0.16139685	0.040064653	0.040064649	6.31e-10	1.0000001
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	sd	sd(g, coef = "(Intercept)"):(Intercept)	sdtarget_677c6969647c6d757c696e746572636570747c6e6f6e65:(Intercept)	-0.72182006	-0.72182008	0.15175683	0.1517567	1.4553e-08	1.0000008
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	sd	sd(g, coef = "(Intercept)"):z	sdtarget_677c6969647c6d757c696e746572636570747c6e6f6e65:z	0.067442635	0.06744254	0.24498064	0.24498056	9.48711e-08	1.0000003
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	sd	sd(g, coef = "x1"):(Intercept)	sdtarget_677c6969647c6d757c78317c6e6f6e65:(Intercept)	-0.95919524	-0.95919531	0.17822769	0.17822745	6.8951e-08	1.0000013
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	sd	sd(g, coef = "x1"):z	sdtarget_677c6969647c6d757c78317c6e6f6e65:z	-0.38280145	-0.38280157	0.28755503	0.28755434	1.17942e-07	1.0000024
+poisson|phylo|lab0|q2|sd-one|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.21723987	0.21723987	0.22509917	0.2250991	3.347e-09	1.0000003
+poisson|phylo|lab0|q2|sd-one|cm0|ML	mu	mu:x1	mu:x1	0.16360442	0.16360442	0.19609454	0.1960946	6.781e-09	1.0000003
+poisson|phylo|lab0|q2|sd-one|cm0|ML	mu	mu:x2	mu:x2	0.084960542	0.084960543	0.049580329	0.049580327	6.9810001e-10	1
+poisson|phylo|lab0|q2|sd-one|cm0|ML	mu	mu:x3	mu:x3	-0.5118591	-0.51185911	0.050025288	0.050025288	4.281e-09	1
+poisson|phylo|lab0|q2|sd-one|cm0|ML	sd	sd_phylo(g, dpar = "mu", coef = "(Intercept)"):(Intercept)	sdtarget_677c7068796c6f67656e657469637c6d757c696e746572636570747c6e6f6e65:(Intercept)	-0.96456136	-0.96456142	0.3262853	0.3262854	6.0446e-08	1.0000003
+poisson|phylo|lab0|q2|sd-one|cm0|ML	sd	sd_phylo(g, dpar = "mu", coef = "x1"):(Intercept)	sdtarget_677c7068796c6f67656e657469637c6d757c78317c6e6f6e65:(Intercept)	-1.0921048	-1.0921048	0.32543446	0.32543465	3.162e-08	1.0000006
+poisson|phylo|lab1|q2|sd-none|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.21848008	0.21848011	0.22518948	0.22518933	3.0624e-08	1.0000007
+poisson|phylo|lab1|q2|sd-none|cm0|ML	mu	mu:x1	mu:x1	0.16517403	0.16517395	0.19613631	0.19613599	7.7206e-08	1.0000016
+poisson|phylo|lab1|q2|sd-none|cm0|ML	mu	mu:x2	mu:x2	0.084985233	0.084985237	0.049592245	0.049592234	4.4646e-09	1.0000002
+poisson|phylo|lab1|q2|sd-none|cm0|ML	mu	mu:x3	mu:x3	-0.51191402	-0.51191403	0.050030712	0.050030706	8.829e-09	1.0000001
+poisson|relmat|lab0|q2|sd-none|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.41292508	0.41292507	0.16883912	0.16883898	2.977e-09	1.0000008
+poisson|relmat|lab0|q2|sd-none|cm0|ML	mu	mu:x1	mu:x1	0.40381673	0.40381673	0.10509617	0.10509612	1.021e-09	1.0000004
+poisson|relmat|lab0|q2|sd-none|cm0|ML	mu	mu:x2	mu:x2	0.22306903	0.22306904	0.037217548	0.037217544	2.732e-09	1.0000001
+poisson|relmat|lab0|q2|sd-none|cm0|ML	mu	mu:x3	mu:x3	-0.1997476	-0.1997476	0.038819397	0.03881939	1.63e-10	1.0000002
+poisson|relmat|lab0|q2|sd-z|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.36625491	0.3662549	0.1760129	0.17601279	1.4951e-08	1.0000006
+poisson|relmat|lab0|q2|sd-z|cm0|ML	mu	mu:x1	mu:x1	0.42004423	0.42004424	0.10495982	0.10495979	6.297e-09	1.0000003
+poisson|relmat|lab0|q2|sd-z|cm0|ML	mu	mu:x2	mu:x2	0.22264108	0.22264109	0.037246011	0.037246007	1.947e-09	1.0000001
+poisson|relmat|lab0|q2|sd-z|cm0|ML	mu	mu:x3	mu:x3	-0.19922411	-0.19922412	0.038847887	0.038847879	2.003e-09	1.0000002
+poisson|relmat|lab0|q2|sd-z|cm0|ML	sd	sd_relmat(g, dpar = "mu", coef = "(Intercept)"):(Intercept)	sdtarget_677c72656c6d61747c6d757c696e746572636570747c6e6f6e65:(Intercept)	-0.40170744	-0.40170743	0.13860364	0.13860356	1.6084e-08	1.0000006
+poisson|relmat|lab0|q2|sd-z|cm0|ML	sd	sd_relmat(g, dpar = "mu", coef = "(Intercept)"):z	sdtarget_677c72656c6d61747c6d757c696e746572636570747c6e6f6e65:z	0.17047462	0.17047463	0.23045884	0.2304581	8.117e-09	1.0000032
+poisson|relmat|lab0|q2|sd-z|cm0|ML	sd	sd_relmat(g, dpar = "mu", coef = "x1"):(Intercept)	sdtarget_677c72656c6d61747c6d757c78317c6e6f6e65:(Intercept)	-0.91824433	-0.91824434	0.17515566	0.17515553	5.9130001e-09	1.0000007
+poisson|relmat|lab0|q2|sd-z|cm0|ML	sd	sd_relmat(g, dpar = "mu", coef = "x1"):z	sdtarget_677c72656c6d61747c6d757c78317c6e6f6e65:z	0.29516837	0.29516835	0.3391193	0.33911827	2.3938e-08	1.000003
+poisson|relmat|lab1|q2|sd-none|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.42024683	0.42024683	0.16783701	0.16783699	6.825e-09	1.0000001
+poisson|relmat|lab1|q2|sd-none|cm0|ML	mu	mu:x1	mu:x1	0.35669433	0.35669433	0.10096694	0.10096694	1.023e-09	1
+poisson|relmat|lab1|q2|sd-none|cm0|ML	mu	mu:x2	mu:x2	0.2209486	0.2209486	0.037106107	0.037106104	2.34e-09	1.0000001
+poisson|relmat|lab1|q2|sd-none|cm0|ML	mu	mu:x3	mu:x3	-0.20575249	-0.20575249	0.038503533	0.038503529	6.7999995e-11	1.0000001
+poisson|spatial|lab0|q2|sd-none|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.31709197	0.31709198	0.31337975	0.31337976	9.886e-09	1
+poisson|spatial|lab0|q2|sd-none|cm0|ML	mu	mu:x1	mu:x1	0.28138864	0.28138864	0.14443964	0.14443963	2.472e-09	1
+poisson|spatial|lab0|q2|sd-none|cm0|ML	mu	mu:x2	mu:x2	0.018138452	0.018138453	0.038781138	0.038781132	9.785e-10	1.0000002
+poisson|spatial|lab0|q2|sd-none|cm0|ML	mu	mu:x3	mu:x3	-0.57350026	-0.57350027	0.037575223	0.03757522	2.98e-09	1.0000001
+student|crossed|lab0|q1|sd-none|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.27764405	0.27764405	0.092102484	0.092102484	0	1
+student|crossed|lab0|q1|sd-none|cm0|ML	mu	mu:x1	mu:x1	0.36804188	0.36804188	0.042303877	0.042303872	1.0000334e-12	1.0000001
+student|crossed|lab0|q1|sd-none|cm0|ML	mu	mu:x2	mu:x2	0.40110449	0.40110449	0.04398745	0.043987444	2.9999891e-12	1.0000001
+student|crossed|lab0|q1|sd-none|cm0|ML	mu	mu:x3	mu:x3	-0.24069326	-0.24069326	0.042432347	0.04243234	1.9999835e-12	1.0000002
+student|crossed|lab0|q1|sd-none|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.38436117	-0.38436117	0.068952756	0.068952709	7.0000117e-12	1.0000007
+student|crossed|lab0|q1|sd-none|cm0|ML	nu	nu:(Intercept)	nu:(Intercept)	1.7301923	1.7301923	0.54969676	0.5496963	6.0000005e-11	1.0000008
+student|indep|lab0|q2|sd-none|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.29694488	0.29694488	0.0800229	0.0800229	1.0000334e-12	1
+student|indep|lab0|q2|sd-none|cm0|ML	mu	mu:x1	mu:x1	0.2161359	0.2161359	0.073261839	0.073261838	0	1
+student|indep|lab0|q2|sd-none|cm0|ML	mu	mu:x2	mu:x2	0.29325895	0.29325895	0.042143598	0.042143593	0	1.0000001
+student|indep|lab0|q2|sd-none|cm0|ML	mu	mu:x3	mu:x3	-0.20680118	-0.20680118	0.038265475	0.03826547	1.0000056e-12	1.0000001
+student|indep|lab0|q2|sd-none|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.40630874	-0.40630874	0.064206625	0.064206578	0	1.0000007
+student|indep|lab0|q2|sd-none|cm0|ML	nu	nu:(Intercept)	nu:(Intercept)	2.2532622	2.2532622	0.6751669	0.67516632	0	1.0000009
+student|indep|lab0|q3|sd-none|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.2939104	0.2939104	0.077321274	0.077321274	3.999967e-12	1
+student|indep|lab0|q3|sd-none|cm0|ML	mu	mu:x1	mu:x1	0.21629469	0.21629469	0.069081982	0.069081982	2.3000019e-11	1
+student|indep|lab0|q3|sd-none|cm0|ML	mu	mu:x2	mu:x2	0.27511363	0.27511363	0.061671481	0.06167148	0	1
+student|indep|lab0|q3|sd-none|cm0|ML	mu	mu:x3	mu:x3	-0.22606827	-0.22606827	0.036932511	0.036932505	0	1.0000002
+student|indep|lab0|q3|sd-none|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	-0.51234897	-0.51234897	0.07385307	0.073853005	1.0000001e-11	1.0000009
+student|indep|lab0|q3|sd-none|cm0|ML	nu	nu:(Intercept)	nu:(Intercept)	1.9253028	1.9253028	0.62672047	0.62671985	5.0000004e-11	1.000001
+tweedie|crossed|lab0|q1|sd-none|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.25961729	0.25961714	0.1313717	inf	1.52136e-07	inf
+tweedie|crossed|lab0|q1|sd-none|cm0|ML	mu	mu:x1	mu:x1	0.33633741	0.33633741	0.060883315	inf	1.9700003e-10	inf
+tweedie|crossed|lab0|q1|sd-none|cm0|ML	mu	mu:x2	mu:x2	0.31017621	0.31017626	0.060878263	inf	4.8541e-08	inf
+tweedie|crossed|lab0|q1|sd-none|cm0|ML	mu	mu:x3	mu:x3	-0.26236608	-0.26236611	0.057384925	inf	2.3752e-08	inf
+tweedie|crossed|lab0|q1|sd-none|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	0.17616102	0.17616038	0.034024451	inf	6.32775e-07	inf
+tweedie|crossed|lab0|q1|sd-none|cm0|ML	nu	nu:(Intercept)	nu:(Intercept)	0.1876571	0.18765353	0.098642842	inf	3.570482e-06	inf
+tweedie|phylo|lab0|q1|sd-one|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	-0.34645285	-0.34645284	0.45990318	0.45990382	3.589e-09	1.0000014
+tweedie|phylo|lab0|q1|sd-one|cm0|ML	mu	mu:x1	mu:x1	0.4014851	0.4014851	0.062447051	0.062447056	5.2099997e-10	1.0000001
+tweedie|phylo|lab0|q1|sd-one|cm0|ML	mu	mu:x2	mu:x2	0.3662834	0.3662834	0.063390731	0.063390736	1.2499995e-10	1.0000001
+tweedie|phylo|lab0|q1|sd-one|cm0|ML	mu	mu:x3	mu:x3	-0.031517502	-0.031517503	0.065789896	0.0657899	5.179e-10	1.0000001
+tweedie|phylo|lab0|q1|sd-one|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	0.082383263	0.082383282	0.040806484	0.040806486	1.91014e-08	1
+tweedie|phylo|lab0|q1|sd-one|cm0|ML	nu	nu:(Intercept)	nu:(Intercept)	0.23410074	0.23410078	0.095808279	0.095808268	3.4968e-08	1.0000001
+tweedie|phylo|lab0|q1|sd-one|cm0|ML	sd	sd_phylo(g):(Intercept)	sd:(Intercept)	-0.20216949	-0.20216952	0.2120558	0.21205584	2.335e-08	1.0000002
+tweedie|phylo|lab0|q1|sd-z|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	-0.22908907	-0.22908906	0.50837422	0.50837318	1.3622e-08	1.0000021
+tweedie|phylo|lab0|q1|sd-z|cm0|ML	mu	mu:x1	mu:x1	0.40333182	0.40333182	0.062678246	0.062678239	9.8699998e-10	1.0000001
+tweedie|phylo|lab0|q1|sd-z|cm0|ML	mu	mu:x2	mu:x2	0.3674008	0.3674008	0.063492684	0.063492681	3.7199999e-10	1.0000001
+tweedie|phylo|lab0|q1|sd-z|cm0|ML	mu	mu:x3	mu:x3	-0.032025124	-0.032025124	0.06583841	0.065838409	5.998e-10	1
+tweedie|phylo|lab0|q1|sd-z|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	0.083639566	0.083639585	0.041083095	0.041083095	1.94865e-08	1
+tweedie|phylo|lab0|q1|sd-z|cm0|ML	nu	nu:(Intercept)	nu:(Intercept)	0.2361542	0.23615424	0.096149255	0.096149244	3.5621e-08	1.0000001
+tweedie|phylo|lab0|q1|sd-z|cm0|ML	sd	sd_phylo(g):(Intercept)	sd:(Intercept)	-0.22681441	-0.22681444	0.23363563	0.2336352	3.0777e-08	1.0000019
+tweedie|phylo|lab0|q1|sd-z|cm0|ML	sd	sd_phylo(g):z	sd:z	0.089498147	0.089498164	0.27147228	0.27147131	1.65879e-08	1.0000035
+tweedie|relmat|lab0|q1|sd-z|cm0|ML	mu	mu:(Intercept)	mu:(Intercept)	0.50714083	0.50714083	0.098896095	0.098896068	4.3570001e-09	1.0000003
+tweedie|relmat|lab0|q1|sd-z|cm0|ML	mu	mu:x1	mu:x1	0.44089282	0.44089282	0.051576424	0.051576423	3.74e-10	1
+tweedie|relmat|lab0|q1|sd-z|cm0|ML	mu	mu:x2	mu:x2	0.34084631	0.34084631	0.054716479	0.054716481	1.012e-09	1
+tweedie|relmat|lab0|q1|sd-z|cm0|ML	mu	mu:x3	mu:x3	-0.089506987	-0.089506987	0.053204512	0.053204507	6.4739999e-10	1.0000001
+tweedie|relmat|lab0|q1|sd-z|cm0|ML	sigma	sigma:(Intercept)	sigma:(Intercept)	0.1463794	0.14637941	0.031331541	0.031331547	1.167e-08	1.0000002
+tweedie|relmat|lab0|q1|sd-z|cm0|ML	nu	nu:(Intercept)	nu:(Intercept)	0.32375829	0.32375831	0.10202185	0.10202186	1.768e-08	1
+tweedie|relmat|lab0|q1|sd-z|cm0|ML	sd	sd_relmat(g):(Intercept)	sd:(Intercept)	-1.0058948	-1.0058948	0.28246145	0.28246121	6.001e-08	1.0000008
+tweedie|relmat|lab0|q1|sd-z|cm0|ML	sd	sd_relmat(g):z	sd:z	0.64362907	0.64362913	0.47962621	0.47962589	5.6314e-08	1.0000007

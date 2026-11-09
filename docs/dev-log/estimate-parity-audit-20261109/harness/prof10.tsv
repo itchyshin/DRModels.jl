@@ -1,0 +1,11 @@
+cell_id
+beta|crossed|lab0|q1|sd-none|cm0|ML
+gamma|crossed|lab0|q1|sd-none|cm0|ML
+gaussian|crossed|lab0|q1|sd-none|cm0|REML
+gaussian|ordinary|lab0|q1|sd-none|cm0|REML
+gaussian|slope|lab0|q1|sd-none|cm0|REML
+lognormal|crossed|lab0|q1|sd-none|cm0|ML
+nb2|crossed|lab0|q1|sd-none|cm0|ML
+poisson|crossed|lab0|q1|sd-none|cm0|ML
+student|crossed|lab0|q1|sd-none|cm0|ML
+student|indep|lab0|q2|sd-none|cm0|ML

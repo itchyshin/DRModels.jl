@@ -1,0 +1,9 @@
+cell_id
+nb2|indep|lab0|q2|sd-z|cm0|ML
+nb2|ordinary|lab0|q2|sd-z|cm0|ML
+poisson|relmat|lab0|q2|sd-z|cm0|ML
+lognormal|slope|lab0|q1|sd-z|cm0|ML
+nb2|spatial|lab0|q2|sd-one|cm0|ML
+poisson|ordinary|lab0|q2|sd-z|cm0|ML
+gamma|relmat|lab1|q2|sd-one|cm0|ML
+poisson|ordinary|lab0|q2|sd-one|cm0|ML

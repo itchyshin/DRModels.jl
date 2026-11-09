@@ -1,0 +1,33 @@
+binomial|phylo|lab1|q2|sd-one|cm0|ML	random-effect-correlation|phylo|cor(mu:(Intercept),mu:x1 | p | g)		0.68631154	nan	48027.984	nan
+gamma|relmat|lab1|q2|sd-one|cm0|ML	random-effect-correlation|relmat|cor(mu:(Intercept),mu:x1 | p | g)		0.03768708	nan	0.23900624	nan
+gaussian|animal|lab1|q2|sd-one|cm0|ML	random-effect-correlation|animal|cor(mu:(Intercept),mu:x1 | p | g)		0.40841294	nan	0.2216419	nan
+gaussian|animal|lab1|q2|sd-z|cm0|ML	random-effect-correlation|animal|cor(mu:(Intercept),mu:x1 | p | g)		0.37939276	nan	0.2339181	nan
+gaussian|crossed|lab1|q2|sd-none|cm0|ML	random-effect-correlation|mu|cor((Intercept),x1 | p | g)		0.39278473	nan	0.19792348	nan
+gaussian|crossed|lab1|q3|sd-none|cm0|ML	random-effect-correlation|re_cov|cor((Intercept),x1 | p | g)		0.33074205	nan	nan	nan
+gaussian|crossed|lab1|q3|sd-none|cm0|ML	random-effect-correlation|re_cov|cor((Intercept),x2 | p | g)		0.39342546	nan	nan	nan
+gaussian|crossed|lab1|q3|sd-none|cm0|ML	random-effect-correlation|re_cov|cor(x1,x2 | p | g)		0.049084815	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-correlation|re_cov|cor((Intercept),x1 | g)		0.26738904	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-correlation|re_cov|cor((Intercept),x2 | g)		0.6320374	nan	nan	nan
+gaussian|ordinary|lab0|q3|sd-first|cm0|ML	random-effect-correlation|re_cov|cor(x1,x2 | g)		0.1657393	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-correlation|re_cov|cor((Intercept),x1 | g)		0.29915599	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-correlation|re_cov|cor((Intercept),x2 | g)		0.65374062	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-correlation|re_cov|cor((Intercept),x3 | g)		0.36862972	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-correlation|re_cov|cor(x1,x2 | g)		0.17802448	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-correlation|re_cov|cor(x1,x3 | g)		0.41140317	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-first|cm0|ML	random-effect-correlation|re_cov|cor(x2,x3 | g)		0.16033828	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-correlation|re_cov|cor((Intercept),x1 | g)		0.36500335	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-correlation|re_cov|cor((Intercept),x2 | g)		0.68251801	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-correlation|re_cov|cor((Intercept),x3 | g)		0.39357823	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-correlation|re_cov|cor(x1,x2 | g)		0.24936826	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-correlation|re_cov|cor(x1,x3 | g)		0.44813603	nan	nan	nan
+gaussian|ordinary|lab0|q4|sd-z|cm0|ML	random-effect-correlation|re_cov|cor(x2,x3 | g)		0.25156534	nan	nan	nan
+gaussian|ordinary|lab1|q3|sd-none|cm0|ML	random-effect-correlation|re_cov|cor((Intercept),x1 | p | g)		0.21431683	nan	nan	nan
+gaussian|ordinary|lab1|q3|sd-none|cm0|ML	random-effect-correlation|re_cov|cor((Intercept),x2 | p | g)		0.54833217	nan	nan	nan
+gaussian|ordinary|lab1|q3|sd-none|cm0|ML	random-effect-correlation|re_cov|cor(x1,x2 | p | g)		0.14652239	nan	nan	nan
+gaussian|phylo|lab1|q2|sd-z|cm0|ML	random-effect-correlation|phylo|cor(mu:(Intercept),mu:x1 | p | g)		-0.40078103	nan	0.38353388	nan
+nb2|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-correlation|mu|cor((Intercept),x1 | g)		0.34748063	nan	0.45536274	nan
+nb2|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-correlation|mu|cor((Intercept),x1 | g)		0.063354902	nan	0.4420867	nan
+poisson|ordinary|lab0|q2|sd-one|cm0|ML	random-effect-correlation|mu|cor((Intercept),x1 | g)		0.59203814	nan	0.16894718	nan
+poisson|ordinary|lab0|q2|sd-z|cm0|ML	random-effect-correlation|mu|cor((Intercept),x1 | g)		0.60575313	nan	0.17266496	nan
+poisson|phylo|lab1|q2|sd-none|cm0|ML	random-effect-correlation|phylo|cor(mu:(Intercept),mu:x1 | p | g)		-0.040138552	nan	0.46511914	nan
+poisson|relmat|lab1|q2|sd-none|cm0|ML	random-effect-correlation|relmat|cor(mu:(Intercept),mu:x1 | p | g)		0.57678782	nan	0.17254301	nan

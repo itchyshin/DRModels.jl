@@ -1,0 +1,13 @@
+--- a/src/gaussian_core.jl	2026-11-09 06:40:43
++++ b/src/gaussian_core.jl	2026-11-09 06:40:44
+@@ -1901,7 +1901,9 @@
+         kind === :intercept || _require_finite_data_column(data, var)
+         w = kind === :intercept ? ones(length(y)) : Float64.(getproperty(data, var))
+         gidx, Gk = _group_index(getproperty(data, grp); col = grp)
+-        (w, gidx, Gk, String(grp))
++        # label a slope term `g:x` so independent `(1 | g) + (0 + x | g)` terms do not share the label `g`
++        # (re_sd / vc key on the label), as the Student and Gamma independent-slope routes already do.
++        (w, gidx, Gk, kind === :intercept ? String(grp) : string(grp, ":", var))
+     end
+     return _withformula(_fit_multi_ranef_gaussian(fam, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
+                                                  reml = method === :REML), f)

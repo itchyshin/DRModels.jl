@@ -1,0 +1,47 @@
+beta|crossed|lab0|q1|sd-none|cm0|ML	prof	ERROR	ArgumentError: confint (method = :profile): the endpoint search did not converge for 1 of 7 coefficient(s) — sigma:(Intercept) — lower (nuisance solve: fallback_not_converged). A non-converged endpoint is NOT a confidence limit, so it is refused here
+beta|crossed|lab0|q1|sd-none|cm0|ML	prof	secs	4.1
+gamma|crossed|lab0|q1|sd-none|cm0|ML	prof	ERROR	ArgumentError: confint (method = :profile): the endpoint search did not converge for 3 of 7 coefficient(s) — mu:x2 — upper (nuisance solve: fallback_not_converged); sigma:(Intercept) — lower (nuisance solve: fallback_not_converged); resd:g2 — upper (
+gamma|crossed|lab0|q1|sd-none|cm0|ML	prof	secs	0.6
+gaussian|crossed|lab0|q1|sd-none|cm0|REML	prof	mu:(Intercept)	0.03072899971	0.4807245823	profile
+gaussian|crossed|lab0|q1|sd-none|cm0|REML	prof	mu:x1	0.3320748405	0.486384208	profile
+gaussian|crossed|lab0|q1|sd-none|cm0|REML	prof	mu:x2	0.1807537335	0.33493226	profile
+gaussian|crossed|lab0|q1|sd-none|cm0|REML	prof	mu:x3	-0.1810788963	-0.02008813352	profile
+gaussian|crossed|lab0|q1|sd-none|cm0|REML	prof	sigma:(Intercept)	-0.3593248285	-0.2067332292	profile
+gaussian|crossed|lab0|q1|sd-none|cm0|REML	prof	resd:g	-0.9674602969	-0.4159799247	profile
+gaussian|crossed|lab0|q1|sd-none|cm0|REML	prof	resd:g2	-1.285284008	-0.6122011143	profile
+gaussian|crossed|lab0|q1|sd-none|cm0|REML	prof	secs	1.1
+gaussian|ordinary|lab0|q1|sd-none|cm0|REML	prof	mu:(Intercept)	0.1134048505	0.4596781412	profile
+gaussian|ordinary|lab0|q1|sd-none|cm0|REML	prof	mu:x1	0.3587858688	0.5177435924	profile
+gaussian|ordinary|lab0|q1|sd-none|cm0|REML	prof	mu:x2	0.1529501149	0.3154723229	profile
+gaussian|ordinary|lab0|q1|sd-none|cm0|REML	prof	mu:x3	-0.2052239915	-0.05344812624	profile
+gaussian|ordinary|lab0|q1|sd-none|cm0|REML	prof	sigma:(Intercept)	-0.3675432855	-0.2208528477	profile
+gaussian|ordinary|lab0|q1|sd-none|cm0|REML	prof	resd:g	-0.9836662223	-0.4352244592	profile
+gaussian|ordinary|lab0|q1|sd-none|cm0|REML	prof	secs	0.9
+gaussian|slope|lab0|q1|sd-none|cm0|REML	prof	mu:(Intercept)	0.1893660458	0.3591834278	profile
+gaussian|slope|lab0|q1|sd-none|cm0|REML	prof	mu:x1	0.270326015	0.5570033426	profile
+gaussian|slope|lab0|q1|sd-none|cm0|REML	prof	mu:x2	0.1345084956	0.3114924834	profile
+gaussian|slope|lab0|q1|sd-none|cm0|REML	prof	mu:x3	-0.1833657007	-0.014080555	profile
+gaussian|slope|lab0|q1|sd-none|cm0|REML	prof	sigma:(Intercept)	-0.2483241209	-0.1006947607	profile
+gaussian|slope|lab0|q1|sd-none|cm0|REML	prof	resd:g	-1.613798233	-0.7101201466	profile
+gaussian|slope|lab0|q1|sd-none|cm0|REML	prof	secs	0.0
+lognormal|crossed|lab0|q1|sd-none|cm0|ML	prof	mu:(Intercept)	0.1001278426	0.587726453	profile
+lognormal|crossed|lab0|q1|sd-none|cm0|ML	prof	mu:x1	0.3005898899	0.4460242843	profile
+lognormal|crossed|lab0|q1|sd-none|cm0|ML	prof	mu:x2	0.2813372957	0.4250912723	profile
+lognormal|crossed|lab0|q1|sd-none|cm0|ML	prof	mu:x3	-0.2927757622	-0.1628381286	profile
+lognormal|crossed|lab0|q1|sd-none|cm0|ML	prof	sigma:(Intercept)	-0.4607512305	-0.3086920924	profile
+lognormal|crossed|lab0|q1|sd-none|cm0|ML	prof	resd:g	-0.818586857	-0.300637555	profile
+lognormal|crossed|lab0|q1|sd-none|cm0|ML	prof	resd:g2	-1.184547602	-0.5462558487	profile
+lognormal|crossed|lab0|q1|sd-none|cm0|ML	prof	secs	0.6
+nb2|crossed|lab0|q1|sd-none|cm0|ML	prof	ERROR	ArgumentError: confint (method = :profile): the endpoint search did not converge for 2 of 7 coefficient(s) — mu:x3 — upper (nuisance solve: fallback_not_converged); resd:g — upper (nuisance solve: fallback_not_converged). A non-converged endpoint is 
+nb2|crossed|lab0|q1|sd-none|cm0|ML	prof	secs	0.7
+poisson|crossed|lab0|q1|sd-none|cm0|ML	prof	mu:(Intercept)	0.04082335113	0.5347762194	profile
+poisson|crossed|lab0|q1|sd-none|cm0|ML	prof	mu:x1	0.3552294883	0.5083510369	profile
+poisson|crossed|lab0|q1|sd-none|cm0|ML	prof	mu:x2	0.251618456	0.4065324819	profile
+poisson|crossed|lab0|q1|sd-none|cm0|ML	prof	mu:x3	-0.3598480108	-0.2024215462	profile
+poisson|crossed|lab0|q1|sd-none|cm0|ML	prof	resd:g	-0.848863943	-0.3104287029	profile
+poisson|crossed|lab0|q1|sd-none|cm0|ML	prof	resd:g2	-1.206523824	-0.5861378003	profile
+poisson|crossed|lab0|q1|sd-none|cm0|ML	prof	secs	0.6
+student|crossed|lab0|q1|sd-none|cm0|ML	prof	ERROR	ArgumentError: confint (method = :profile): the endpoint search did not converge for 3 of 8 coefficient(s) — mu:(Intercept) — upper (nuisance solve: not_converged); mu:x2 — upper (nuisance solve: not_converged); mu:x3 — lower (nuisance solve: not_con
+student|crossed|lab0|q1|sd-none|cm0|ML	prof	secs	57.2
+student|indep|lab0|q2|sd-none|cm0|ML	prof	ERROR	ArgumentError: confint (method = :profile): the endpoint search did not converge for 4 of 8 coefficient(s) — mu:(Intercept) — lower (nuisance solve: not_converged), upper (nuisance solve: not_converged); mu:x1 — upper (nuisance solve: not_converged);
+student|indep|lab0|q2|sd-none|cm0|ML	prof	secs	243.3
