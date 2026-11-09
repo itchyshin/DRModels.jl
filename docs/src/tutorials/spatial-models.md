@@ -68,12 +68,27 @@ checks warn. The [Detailed capabilities & limits](../capabilities.md) page state
 what this Gaussian spatial route does and does not establish about uncertainty.
 
 !!! note "Spatial routes depend on the family"
-    This tutorial uses the exact Gaussian coordinate-spatial route. Poisson
-    also accepts `coords` and estimates the spatial range on its Laplace route.
-    NB2, Gamma, and Beta accept `spatial(1 | site)` with a supplied covariance
-    matrix `K`; they do not accept the coordinate workflow shown here.
-    Binomial does not accept the spatial marker. Check the family-specific
-    restrictions in [Detailed capabilities and limits](../capabilities.md).
+    This tutorial uses the exact Gaussian coordinate-spatial route, which
+    estimates the range. Poisson also accepts `coords` and estimates the
+    spatial range on its Laplace route. The other families that take `coords`
+    fix the range as drmTMB does: the kernel is `exp(-d / m) + 1e-6 I`, with
+    `m` the median positive pairwise distance between sites.
+
+    - **Gamma** accepts `spatial(1 | site)` with `coords` (native kernel) or
+      with a supplied `K`, not both. A 1-D vector of coordinates is accepted.
+    - **NB2** accepts `spatial(1 | site)` with a supplied `K`. With `coords` it
+      accepts only a slope-only `spatial(0 + x | site)` term with its
+      `sd(...)` formula.
+    - **Beta** accepts `spatial(1 | site)` with a supplied `K` when `sigma ~ 1`
+      and no SD formula is used. With `sd(site, spatial) ~ z` it takes
+      `coords` (native kernel) and refuses `K`.
+    - **Binomial** refuses a bare `spatial(1 | site)` on the mean. It accepts
+      `spatial` with an `sd(site, spatial)` formula and `coords`. That route
+      keeps the older fixed range (the mean pairwise distance, 1e-8 ridge)
+      because drmTMB has no Binomial spatial route to match.
+
+    Check the family-specific restrictions in
+    [Detailed capabilities and limits](../capabilities.md).
 
 ## See also
 

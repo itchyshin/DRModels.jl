@@ -143,6 +143,22 @@ correlation matrix. Fitting the same data with `K` and `2K` gives identical fixe
 effects and log-likelihood, and the random-effect SD shifts by `log(sqrt(2))`, as
 a raw covariance scale requires.
 
+### Coordinate-spatial `spatial(1|site)` on non-Gaussian means
+
+Only Poisson estimates the spatial range, as the Gaussian route does. The other
+routes below fix the kernel at drmTMB's native `exp(-d / m) + 1e-6 I`, with `m`
+the median positive pairwise distance between sites, so the same data and
+formula give the same covariance as native drmTMB.
+
+| Family | Accepts | Status and boundary |
+|---|---|---|
+| Poisson | `coords`; range estimated on the Laplace route | **Tested** |
+| Gamma | `coords` (native kernel, 1-D vector allowed) or a supplied `K`, not both; with or without `sd(site, spatial) ~ z` | **Tested**; a `coords` fit equals the same fit with the native kernel passed as `K` (log-likelihoods agree to 1e-12 on one simulated dataset) |
+| NegBinomial2 | a supplied `K` on `spatial(1 \| site)`; `coords` only for a slope-only `spatial(0 + x \| site)` term with its `sd(...)` formula | **Tested**; `coords` on an intercept is refused |
+| Beta | a supplied `K` on `spatial(1 \| site)` (no SD formula); `coords` (native kernel) with `sd(site, spatial) ~ z` or the independent `spatial(1 + x \| site)` block with one `sd(site, spatial, coef(·))` formula per coefficient | **Tested**; `K` is refused when an SD formula is present, and `sigma ~ 1` is required |
+| Binomial | `coords` with an `sd(site, spatial)` formula only; a bare `spatial(1 \| site)` is refused | **Tested**; this route keeps the older fixed range (mean pairwise distance, 1e-8 ridge) because drmTMB has no Binomial spatial route |
+| LogNormal, Tweedie | not accepted | `spatial` is refused by name |
+
 ### Non-Gaussian phylogenetic random intercept on the mean (sparse Laplace)
 
 A `phylo(1|species)` intercept on the mean for non-Gaussian families uses the
@@ -226,6 +242,7 @@ public formula route are **tested**.
 | `relmat`, `animal`, and fixed-range `spatial` structured providers | **Tested**; spatial range is fixed (default: median positive pairwise distance with a 1e-6 ridge, drmTMB's native kernel; `spatial_range` overrides it) |
 | `vc(fit)`, `ranef(fit)`, and `coevolution_cor` summaries | **Tested**; `fit.ranef.Sigma_a` is ordered `mu1, mu2, sigma1, sigma2` |
 | Fixed-effect covariance and Wald standard errors (`q4_vcov=true`) | **Tested** |
+| `q4_f_reltol` (default `1e-7`) | The relative objective change at which the q=4 ML optimiser stops. The default can end up to about `1e-3` in log-likelihood short of the optimum on flat q=4 ridges; `q4_f_reltol = 1e-12` converges tightly at a higher run time. REML q=4 ignores it. The R bridge forwards it. |
 | Bootstrap intervals for coevolution correlations | **Tested for tree-based phylogeny**; non-tree structured providers return point summaries only |
 
 ## Structured q=2 bivariate Gaussian (mu1/mu2 only)
@@ -242,7 +259,7 @@ full R bridge workflow.
 |---|---|
 | `phylo(1\|species)` on `mu1` and `mu2`, with residual `rho12` | **Tested** through `drm()` and direct export |
 | `relmat(1\|id)` and `animal(1\|id)` on `mu1` and `mu2`, using known `K` / `A` | **Tested** |
-| Fixed-covariance spatial q2 fit | Available only in the documented fixed-covariance example; the range-estimating `spatial(...)` formula route is rejected |
+| `spatial(1\|site)` on `mu1` and `mu2`, using `coords` | **Tested**; the range is fixed, never estimated: `spatial_range` if given, else drmTMB's native kernel (median positive pairwise distance, 1e-6 ridge). An explicit `spatial_range` uses a 1e-8 ridge. The range in force is `fit.ranef.spatial_range` |
 
 ## Bivariate and paired responses (residual correlation)
 
@@ -297,7 +314,16 @@ above, and it does so by delegation rather than by a second engine.
     and multi-component LSS); the bivariate q=4 location–scale engine; and the
     Gaussian `phylo(1 | g)`-on-`sigma` location–scale blocks (scale-only, separate,
     coupled), where both the `mu` and `sigma` fixed effects are integrated out with
-    the phylogenetic effects.
+    the phylogenetic effects; the Gaussian structured `sigma` intercept with an SD
+    formula (`sigma ~ 1 + KIND(1 | g)` with `sd(g, LEVEL, sigma) ~ z`, KIND =
+    `animal`, `relmat`, `phylo` or `spatial`, fixed-effect mean), where `beta_mu` and
+    `beta_sigma` are integrated out in one joint Laplace approximation; and the
+    structured q2 SD routes `kind(1 + x | g)` with one `sd(g, level, coef(·))`
+    formula per coefficient, for `phylo` (labelled or unlabelled, any fixed-effect
+    `sigma`) and for unlabelled `animal`, `relmat` and `spatial` with `sigma ~ 1`.
+    Labelled `animal`/`relmat`/`spatial` q2 blocks and heteroscedastic `sigma` with
+    those providers still refuse REML. So do `sd(g, sigma)` with an ordinary random
+    effect, and the ordinary correlated-block `sd()` routes (q=2 to 4).
     Ordinary σ-RE, independent slopes such as `(0 + x | g)`, other random-slope
     structures remain refused on the Gaussian routes listed here. Separate
     opt-in Poisson Cox–Reid routes are described under [`Poisson`](@ref); their
