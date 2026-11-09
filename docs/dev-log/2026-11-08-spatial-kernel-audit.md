@@ -32,7 +32,8 @@ distance, `1e-8` ridge, fixed range. "Estimated" = log range is a free parameter
 | 8 | **Bivariate Gaussian q=4** (`gaussian_bivariate.jl:1046` kernel; `:957`, `:1188` recorded range via `_q4_default_spatial_range`) | Legacy | Fixed native | **Changed to native** by default. The recorded `fit.ranef.spatial_range` is now the median rule, and the helper accepts a 1-D vector. |
 | 9 | Poisson q=1 `spatial(1 \| g, coords)` (`_fit_poisson_spatial_coord`, `poisson.jl:1587`) | Estimated range, unit-diagonal jitter kernel | Fixed native | Different model by design. Left alone. |
 | 10 | Poisson / NB2 / Gamma / Beta / ZOB / Tweedie `spatial(1 \| g)` with `K` (`_poisson_structured_cov`, `poisson.jl:1156`) | User matrix | n/a | Nothing to align: no coordinate kernel is built. |
-| 11 | Beta, ZOB, Tweedie, LogNormal, Student, beta-binomial, cumulative with `coords` | No Julia `coords` route (error, or `K` only) | drmTMB has some of these (Student, ZOB, positive-continuous `mu`) | Capability gap, not a kernel mismatch. Recorded; not addressed here. |
+| 11 | ZOB, Tweedie, LogNormal, Student, beta-binomial, cumulative with `coords` | No Julia `coords` route (error, or `K` only) | drmTMB has some of these (Student, ZOB, positive-continuous `mu`) | Capability gap, not a kernel mismatch. Recorded; not addressed here. |
+| 11a | **Beta** `spatial(1 \| g)` with `sd(g, spatial) ~ z`, and `spatial(1 + x \| g)` SD blocks (`beta.jl`, via `_structured_q2_kernel`, `structured_q2_phylo_spatial.jl:43`) | n/a (route added on this integration branch) | Fixed native | Takes `coords =` and builds the native kernel through `_gaussian_spatial_sd_kernel`; aligned by construction. Plain mean-only Beta `spatial(1 \| g)` with `coords` still goes through `_poisson_structured_cov` (as row 9) and is not part of this audit. |
 | 12 | **Binomial** q=1 intercept, SD regression and slope `spatial(0+x \| g)` (`binomial_sd_regression.jl:1206`; bootstrap `inference.jl:2650`) | Legacy | **None** (drmTMB: not implemented) | Left on the legacy kernel, now behind an explicit `legacy_mean_range = true`. See the Binomial note. |
 | 13 | Binomial mesh SD regression (`binomial_sd_regression.jl:2125`) | Mesh/SPDE | Mesh is Gaussian-only in drmTMB | Out of scope (not a coordinate kernel). |
 
@@ -97,10 +98,14 @@ q=4: error falls 26x to 200x in R-SE units (0.12 to 1.34 before, <= 0.0068 after
 difference falls from about 0.1 to <= 9e-4, but every q=4 dataset still misses the pre-registered
 ABSOLUTE bound of 1e-3 (1.8e-3 to 4.7e-3), although each meets the R-SE, loglik and correlation
 bounds. Tightening Julia's q=4 tolerance from 1e-6 to 1e-10 gives the identical loglik to 12 digits, so
-Julia is at its own optimum; Julia's loglik sits 2e-5 to 9e-4 BELOW R's, which would be consistent
-with R's optimiser stopping marginally short on a weakly identified likelihood, but I did not show
-that, so the residual is unexplained. The committed q=4 test therefore uses 1e-2 absolute (plus 0.01
-R-SE) and says so.
+the run had not been limited by `q4_g_tol`; Julia's loglik sits 2e-5 to 9e-4 BELOW R's. This was
+traced afterwards to Julia's default `f_reltol = 1e-7` stopping rule: the q=4 L-BFGS stops on a relative
+objective change of 1e-7, which on these flat ridges leaves it up to about 1.2e-3 short of the optimum,
+whatever `q4_g_tol` is. R is already at its optimum (re-optimising R with tolerances of 1e-15 moves its
+loglik by at most 3e-7). Passing `q4_f_reltol = 1e-12` brings Julia to R to 4e-5 in loglik
+(`test/test_spatial_kernel_audit.jl`). So the residual is Julia stopping early at the default tolerance,
+not R stopping short and not a kernel difference. The committed q=4 test keeps a looser bound for the
+default tolerance and tests the tight tolerance separately.
 
 
 ## Reproducing
