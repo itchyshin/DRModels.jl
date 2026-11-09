@@ -114,6 +114,7 @@ end
                    @formula(sd(g, coef(x2)) ~ 1)), Binomial(:logit); data = d)
     @test loglikelihood(fit3) ≈ loglikelihood(fit3b) atol = 1e-4   # observed 1e-5 on 1.12.6, <= 1e-6 on 1.10.12
     fit4 = drm(bf(@formula(y ~ x1 + x2 + x3 + (1 + x1 + x2 + x3 | g))), Binomial(:logit); data = d)
+    @test fit4.converged
     @test loglikelihood(fit4) ≈ -252.71318 atol = 1e-3
     # other links keep the old refusal
     @test_throws Exception drm(mu3, Binomial(:probit); data = d)
