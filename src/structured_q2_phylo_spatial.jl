@@ -242,7 +242,7 @@ _default_q1_sd_families() = Dict{Symbol,Tuple}(   # a function: the family types
     :spatial => (Binomial, Beta),
 )
 
-function _default_structured_q1_sd(f::DrmFormula, fam; method = nothing)
+function _default_structured_q1_sd(f::DrmFormula, fam; method = nothing, K = nothing, coords = nothing)
     method === nothing || return f
     fam isa Binomial && fam.link !== :logit && return f
     (isempty(f.sd_targets) && isempty(_sd_target_parts(f)) && isempty(_sdphylo_parts(f))) || return f
@@ -258,6 +258,9 @@ function _default_structured_q1_sd(f::DrmFormula, fam; method = nothing)
     term = only(structured)
     kind = term.f === spatial ? :spatial : term.f === animal ? :animal : :relmat
     any(T -> fam isa T, get(_default_q1_sd_families(), kind, ())) || return f
+    # The explicit `sd(g, spatial)` route reads `coords` and refuses a supplied `K`: a spatial term
+    # with `K` (or without `coords`) keeps its own route and message.
+    kind === :spatial && (coords === nothing || K !== nothing) && return f
     # `(1 | g)` only: a slope or a label belongs to the q2 completion.
     bar = term.args[1]
     (bar isa FunctionTerm && length(bar.args) == 2 && bar.args[1] isa ConstantTerm &&

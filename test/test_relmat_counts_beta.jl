@@ -164,9 +164,10 @@ end
                                     Beta(); data = (; y, x, id), se = false)
     @test_throws ErrorException drm(bf(@formula(y ~ x + animal(1 | id)), @formula(sigma ~ 1)),
                                     Beta(); data = (; y, x, id), se = false)
-    # coords-only spatial → error (coordinate-based range is Gaussian-only for now)
-    @test_throws ErrorException drm(bf(@formula(y ~ x + spatial(1 | id)), @formula(sigma ~ 1)),
-                                    Beta(); data = (; y, x, id), coords = rand(G, 2), se = false)
+    # coords-only spatial: fits now (completed to `sd(id, spatial) ~ 1`, as drmTMB 0.8.1 fits it)
+    fit_c = drm(bf(@formula(y ~ x + spatial(1 | id)), @formula(sigma ~ 1)),
+                Beta(); data = (; y, x, id), coords = rand(G, 2), se = false)
+    @test isfinite(loglikelihood(fit_c))
     # non-constant sigma with a structured RE → clear error (constant-sigma only)
     @test_throws ErrorException drm(bf(@formula(y ~ x + relmat(1 | id)), @formula(sigma ~ 0 + x)),
                                     Beta(); data = (; y, x, id), K = Cm, se = false)
