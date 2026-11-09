@@ -23,18 +23,21 @@
 #   reml      Gaussian structured q2 with method = :REML: perm, relabel and v-shift leave the REML logLik unchanged
 #   simrefit  simulate (the package simulator, or the true generative process where `simulate` refuses),
 #             refit: median error over seeds within a stated tolerance, and the truth never beats the
-#             refit's optimum (nll(truth) - nll(fit) > -1e-3)
+#             refit's optimum (nll(truth) - nll(fit) > -1e-6)
 # Tolerances. First version (set before the first full run): |dlogLik| < 1e-5 and max |dtheta| < 1e-3 for every
-# property. Tightened on 2026-11-08 from the observed spread of the 185 default-subset checks (Julia 1.10, Mac):
+# property. Tightened on 2026-11-08 from the observed spread of the 185 default-subset checks, worst case over three
+# runs (Mac Julia 1.10, Totoro Julia 1.10, Totoro Julia 1.12; the binomial phylo Laplace route sets every maximum):
 #   property class                    observed max |dlogLik|  observed max |dtheta|   now (dlogLik, dtheta)
-#   perm, relabel (row order, names)        3.2e-09               2.0e-07              1e-7,  1e-5
-#   shift_*, scale_*, flip_x (reparam.)     3.8e-07               9.5e-05              5e-6,  5e-4
+#   perm, relabel (row order, names)        1.3e-07 (1.12)        3.4e-07              1e-6,  1e-5
+#   shift_*, scale_*, flip_x (reparam.)     4.1e-07               9.5e-05              5e-6,  5e-4
 #   swap                                    0 (identical)         0 (identical)        1e-8,  1e-8
 #   (predict already asserts 1e-10 / 1e-12; REML was not run in the default subset and keeps 1e-5 / 1e-3)
-# Row order and level naming leave the likelihood unchanged up to float noise, so those two had ~3000x and ~5000x
-# headroom; the reparametrisation checks are exact in the maths but each refit stops at its own `g_tol`, so they keep
-# 13x (logLik) and 5x (theta) headroom over the observed worst case. The old bounds could not have caught a
-# likelihood that is wrong by 1e-6 to 1e-4; the new ones can. If the logLik agrees but a
+# A first attempt at 1e-7 for perm/relabel failed on Julia 1.12 (binom_phylo_q2 perm, dlogLik 1.27e-7, dtheta 3.9e-9):
+# summation order moves the Laplace logLik by ~1e-7 there while the estimates agree to 4e-9, so the bound follows the
+# worst version, not the best. Row order and level naming leave the likelihood unchanged up to that noise (8x
+# headroom now, was 79x); the reparametrisation checks are exact in the maths but each refit stops at its own
+# `g_tol` (12x headroom on logLik, 5x on theta, was 24x and 10x). A row permutation that moved the logLik by
+# 1e-6 to 1e-5 passed under the old bound; it fails now. If the logLik agrees but a
 # coordinate does not (a correlation at its boundary is a flat direction) the status is FLAT, which counts as a
 # failure here; that is why three routes carry a fixed `seed` with an interior optimum. flip_x and scale_y compare
 # every coordinate except the correlation (its map is route-specific). simrefit: |median error| over 5 datasets
@@ -251,7 +254,7 @@ maxabs(a, b) = maximum(abs.(a .- b))
 
 # ------------------------------------------------------------------ properties: each returns (status, detail)
 # Tolerance classes (see the header): float-noise invariances vs invariances through a re-parametrised refit.
-const TOL_EXACT = (; ll = 1e-7, th = 1e-5)
+const TOL_EXACT = (; ll = 1e-6, th = 1e-5)
 const TOL_REPARAM = (; ll = 5e-6, th = 5e-4)
 function cmpfit(b::Base0, fit2; tll = TOL_REPARAM.ll, tth = TOL_REPARAM.th, expect = b.fit.theta, dll = 0.0, idx = eachindex(b.fit.theta))
     dl = abs(loglikelihood(fit2) - loglikelihood(b.fit) - dll)
