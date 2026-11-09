@@ -184,7 +184,7 @@ end
 # `mean_re` is `nothing` or (gidx, G, Zg, nmsd, grp, block); `sigma_re` is
 # (gidx, G, Zg, nmsd, grp, loading, Kmat-or-nothing, block, kind).
 function _fit_gaussian_sigma_sd_laplace(fam::Union{Gaussian,NegBinomial2,Gamma}, y, Xμ, Xσ, mean_re, sigma_re,
-                                        nmμ, nmσ, g_tol; se::Bool = true, corr::Bool = false)
+                                        nmμ, nmσ, g_tol; se::Bool = true, corr::Bool = false, sdreg::Bool = false)
     n = length(y)
     pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     has_a = mean_re !== nothing
@@ -340,7 +340,13 @@ function _fit_gaussian_sigma_sd_laplace(fam::Union{Gaussian,NegBinomial2,Gamma},
     has_a && (scales[:sd_group_index] = Float64.(ga))
     blocks = Pair{Symbol,UnitRange{Int}}[:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ)]
     names = Pair{Symbol,Vector{String}}[:mu => nmμ, :sigma => nmσ]
-    if corr
+    if corr && sdreg
+        # Correlated pair with a mean SD formula: typed SD blocks (as the independent route),
+        # plus `:cor` holding eta with rho = tanh(eta).
+        push!(blocks, blocka => ia); push!(names, blocka => nma)
+        push!(blocks, blockb => ib); push!(names, blockb => nmb)
+        push!(blocks, :cor => ic:ic); push!(names, :cor => ["cor(mu, sigma | $(grpa))"])
+    elseif corr
         # Same names as the independent same-group route (`:resd`), plus `:cor`
         # holding eta with rho = tanh(eta) (drmTMB `eta_cor_mu_sigma`).
         push!(blocks, :resd => first(ia):last(ib)); push!(names, :resd => [String(grpa), "$(grpb)_logsigma"])
@@ -848,4 +854,77 @@ function _drm_gaussian_musigma_corr(fam::Gaussian, f::DrmFormula, re, sigma_re, 
     sigma_spec = (gidx, G, Z1, ["(Intercept)"], mgrp, ones(length(y)), nothing, :resd, :intercept)
     return _fit_gaussian_sigma_sd_laplace(fam, y, Xμ, Xσ, mean_spec, sigma_spec, nmμ, nmσ, g_tol;
                                           corr = true)
+end
+
+# Gaussian mean `sd(g) ~ …` beside a random intercept on `sigma` that has NO sd() formula of
+# its own (drmTMB `bf(y ~ x + (1 | g), sigma ~ 1 + (1 | h), sd(g) ~ z)`): independent mean and
+# sigma intercepts (the same or different groupings), or, with the label in both,
+# `(1 | p | g)` in `mu` and in `sigma`, the correlated pair on one grouping. The marginal is the
+# Laplace value of the dense engine of `sd(g, sigma)`: the sigma SD takes the constant design
+# `~ 1`. ML only; one mean intercept and one sigma intercept (no slopes), as the neighbouring
+# routes.
+function _drm_gaussian_mean_sd_sigma_re(f::DrmFormula, fam::Gaussian, sdp, sdpp, re, structured,
+                                        structured_sigma, sigma_re, metav, has_missing_response,
+                                        y, Xμ, Xσ, nmμ, nmσ, data, K, A, coords, g_tol, method,
+                                        algorithm, penalty)
+    what = "Gaussian mean `sd(g) ~ …` with a `sigma` random intercept"
+    isempty(sdpp) || throw(ArgumentError("drm: $what cannot be combined with `sd(g, phylogenetic)`."))
+    metav === nothing || throw(ArgumentError("drm: $what cannot be combined with `meta_V(...)`."))
+    structured === nothing && structured_sigma === nothing || throw(ArgumentError(
+        "drm: $what cannot be combined with a structured mean or sigma effect."))
+    (K === nothing && A === nothing && coords === nothing) || throw(ArgumentError(
+        "drm: $what uses ordinary random intercepts only; `K`, `A` and `coords` are not used."))
+    penalty === nothing || throw(ArgumentError("drm: `penalty` is not wired for sd() submodel routes."))
+    method === :REML && throw(ArgumentError(
+        "drm: $what supports maximum likelihood only (`method = :REML` is not implemented for this shape)."))
+    algorithm === :auto || throw(ArgumentError("drm: `algorithm = :$algorithm` is not implemented for $what."))
+    has_missing_response && throw(ArgumentError(
+        "drm: $what requires observed responses; remove incomplete rows first (`drm_listwise`)."))
+    targets = _sd_target_parts(f)
+    allowed = Set((:mu, :sigma))
+    for item in targets
+        push!(allowed, item.key)
+    end
+    all(p -> first(p) in allowed, f.forms) || throw(ArgumentError(
+        "drm: $what supports only `mu`, `sigma` and the mean `sd(g) ~ …` formula."))
+    (length(re) == 1 && length(sigma_re) == 1) || throw(ArgumentError(
+        "drm: $what takes exactly one mean random intercept and one `sigma` random intercept " *
+        "(got $(length(re)) and $(length(sigma_re)) terms)."))
+    length(targets) == 1 && only(targets).target.dpar === :mu || throw(ArgumentError(
+        "drm: $what takes exactly one mean-side `sd(g) ~ …` formula."))
+    mu_t = only(targets)
+    md = mu_t.target
+    isint(t) = t isa ConstantTerm && t.n == 1
+    lm = _gsl_re_label(re[1][1]); ls = _gsl_re_label(sigma_re[1][1])
+    corr = lm !== nothing || ls !== nothing
+    if corr
+        (lm !== nothing && ls !== nothing && lm[1] === ls[1]) || throw(ArgumentError(
+            "drm: $what needs the same label in `mu` and `sigma`, e.g. `(1 | p | g)` in each, " *
+            "or no label for independent effects."))
+        (isint(lm[2]) && isint(ls[2])) || throw(ArgumentError(
+            "drm: $what supports random intercepts `(1 | p | g)` only."))
+        re[1][2] === sigma_re[1][2] || throw(ArgumentError(
+            "drm: a labelled mean-sigma correlation needs one grouping factor (got " *
+            "`$(re[1][2])` in mu and `$(sigma_re[1][2])` in sigma)."))
+    else
+        isint(re[1][1]) && isint(sigma_re[1][1]) || throw(ArgumentError(
+            "drm: $what supports random intercepts `(1 | g)` only (no random slopes)."))
+    end
+    mgrp = re[1][2]; sgrp = sigma_re[1][2]
+    (md.level === :iid && md.group === mgrp && md.block === nothing &&
+     md.member in (nothing, :intercept)) || throw(ArgumentError(
+        "drm: the mean-side `sd(...)` must target the mean random intercept `(1 | $mgrp)`."))
+    n = length(y)
+    ga, Ga = _group_index(getproperty(data, mgrp); col = mgrp)
+    Za, nma = _sd_group_design(f.response, mu_t.rhs, data, ga, Ga, mgrp;
+                               schema_cache = f.schema_cache, schema_key = mu_t.key)
+    size(Za, 2) <= Ga && rank(Za) == size(Za, 2) || throw(ArgumentError(
+        "drm: $what mean group-level design is rank deficient."))
+    mean_spec = (ga, Ga, Za, nma, mgrp, _sd_target_block(md; disambiguate = true))
+    gb, Gb = _group_index(getproperty(data, sgrp); col = sgrp)
+    sigma_spec = (gb, Gb, ones(Gb, 1), ["(Intercept)"], sgrp, ones(n), nothing,
+                  _sd_target_block((group = sgrp, level = :iid, member = nothing, dpar = :sigma,
+                                    block = nothing); disambiguate = true), :intercept)
+    return _fit_gaussian_sigma_sd_laplace(fam, y, Xμ, Xσ, mean_spec, sigma_spec, nmμ, nmσ, g_tol;
+                                          corr = corr, sdreg = true)
 end

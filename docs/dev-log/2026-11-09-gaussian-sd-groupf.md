@@ -43,3 +43,49 @@ Quantities compared per fit, thresholds fixed now (the wave-9 thresholds, unchan
 | correlations (block, and mean-sigma `rho`) | maximum absolute difference at most 0.01 |
 
 Boundary flag, as in wave 9: any fitted SD below 1e-3 or any |correlation| above 0.99 on either side, or R `is_converged() = FALSE` or `pdHess = FALSE`, or Julia `converged = false`. Flagged fits are listed and excluded from the pass count. A shape counts as implemented only if every non-flagged fit on all three datasets passes (and at least two datasets are non-flagged). Anything else is refused again and reported. F-group fits are Laplace in both programs (the same objective), so the same thresholds apply; a failure there opens an argument, not a threshold change.
+
+## What was implemented
+
+| Shape | Route | Code |
+| --- | --- | --- |
+| G1 to G4. correlated `(1 + x \| g)` blocks (q = 2) beside independent intercepts and slopes on any grouping, two blocks on different groupings, optional `sd(·, coef(·)) ~ …` | `_corr_crossed_split` now returns the block positions and the independent-term positions (every non-block term an intercept or a `0 + x` slope); `_fit_gaussian_corr_crossed` takes a list of blocks and a list of independent terms, each independent term carrying an optional row loading `w` (a slope is an intercept component weighted by `x`, the wave-9 device of `_LssComp`). Marginal `V = diag(σ²) + Σ_blocks U Σ U' + Σ_terms s² (w w') ∘ (Z Z')`, dense exact ML, 5000-row cap. A single block beside intercepts is bit-identical to wave 9 (same parameter order, names and keys). The second and later blocks store their correlation under `:recov_<group>` | `src/gaussian_corr_crossed_sd.jl` |
+| F, F'. mean `sd(g) ~ …` with a `sigma` intercept, independent or `(1 \| p \| g)` in both | the sigma-side dense Laplace engine (`_fit_gaussian_sigma_sd_laplace`) already carried a mean SD design, a sigma SD design and a mean-sigma correlation; the router now builds the sigma SD design `~ 1` when no sigma-side `sd()` formula exists. The correlated fit stores typed SD blocks plus `:cor` (rho = tanh) instead of `:resd`, so `re_sd`/`vc` refuse by name as for every SD regression | `src/gaussian_sigma_sd_laplace.jl`, `src/gaussian_core.jl` |
+
+Refusals added or reworded (all by name): an `sd()` formula on a grouping that carries a block and another term (R's message is quoted); two blocks on one grouping; a coefficient that is both in a block and a separate term ("overlapping"); two blocks when either has more than two coefficients and a q = 3 or 4 block beside a slope term (not checked / R does not converge); an `sd()` formula naming no term; a shared label on one grouping (now says what R does); REML on all of the above.
+
+## Agreement with R at the optimum (30 fits: 10 models x 3 datasets)
+
+Julia 1.10.12 on Totoro, one thread per process, three processes at once, about 5 minutes wall (estimate 10 minutes; nothing left running). Per-fit rows: `2026-11-09-gaussian-sd-groupf-compare.tsv` (regenerate with `tools/gaussian_sd_groupf_compare.jl`).
+
+| Group | Fits | Flagged | Pass | median / max \|ΔlogLik\| | max fixed-effect gap (R SE) | max SD-formula gap (R SE) | max log-SD gap (R SE) | max \|Δcorrelation\| |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| G1 to G4, block beside slopes (7 models) | 21 | 0 | 21 | 3.2e-12 / 1.0e-11 | 1.3e-9 | 2.2e-9 | 1.2e-9 | 2.3e-10 |
+| F, F' mean `sd()` + sigma intercept (3 models) | 9 | 0 | 9 | 9.3e-11 / 4.7e-9 | 1.6e-8 | 2.0e-8 | 5.7e-9 | 5.8e-9 |
+
+Thresholds were 1e-4, 0.01, 0.01, 0.05, 0.01, so every gap is at least five orders of magnitude inside them. No fit was flagged (no SD below 1e-3, no |correlation| above 0.99, R converged with a positive-definite Hessian, Julia converged), and no key was unmatched in either direction. All shapes pass on all three datasets. Agreement this close is expected: both programs optimise the same objective (exact marginal for G, Laplace value for F), so the gaps are optimiser tolerance, not model differences.
+
+## Verdicts
+
+| Shape | Verdict | Outcome |
+| --- | --- | --- |
+| F: mean `(1 \| p \| g)` + sigma `(1 \| p \| g)` + `sd(g) ~ z` | (a) | fits; 3 of 3 datasets pass |
+| F': independent mean and sigma intercepts, same or different grouping, `sd(g) ~ z` | (a) | fits; 6 of 6 pass |
+| G1. block beside a slope on another grouping, with and without `sd(g2, coef) ~ …` | (a) | fits; 6 of 6 pass |
+| G2. block beside an independent slope on the same grouping, no SD | (a) | fits; 3 of 3 pass |
+| G3. two q = 2 blocks, with and without SD formulas | (a) | fits; 6 of 6 pass |
+| G4. block beside intercept and slope on another grouping, with and without SD formulas | (a) | fits; 6 of 6 pass |
+| G5. `sd()` formula on a grouping carrying a block and another term | (b) | R refuses (checked with `sd` on the block coefficient and on the extra slope, all three datasets); Julia refuses with R's reason |
+| G6. q = 3 or 4 block beside a slope | (b) | R returns a fit that did not converge on all three datasets; refused |
+| H. label shared by two terms on one grouping | (b) | R ignores the label (log-likelihood equals the independent pair); refused, message says so |
+| two blocks, either with q >= 3 | (c)-like | not compared with R (R fits two q = 2 blocks; larger pairs not tried); refused as unchecked. Estimate to close: one more reference run, no code change (the engine takes any q up to 4) |
+| REML for any of these | out of lane | refused by name; belongs to the Gaussian REML lane |
+| mean `sd()` with a `sigma` random SLOPE, or a mean slope, or two sigma terms | not tried | refused by name; R's behaviour not probed |
+
+## Not verified
+
+- Julia standard errors were not compared with R's. The reference stores R's standard errors; Julia's come from the Hessian of the same objective (dense route: ForwardDiff; F route: finite differences of the analytic gradient), but I did not diff them.
+- Accessors on the new fits: a smoke run on `gsf_s1` (Julia 1.10) shows `summary`, `coeftable`, `stderror`, `vcov`, `confint`, `fitted`, `residuals`, `aic` work; `ranef` works on the F routes and refuses by name on the dense routes (no stored conditional modes); `re_sd`, `vc` and `simulate` refuse by name (SD-regression fits; default `re = :marginal`). `predict` with `newdata`, bootstrap and the R bridge were not exercised.
+- Data: three simulated datasets, n = 300, 30 and 15 groups, one family of shapes per response. No near-boundary or small-group stress; no dataset has the g2 slope SD or the mean-sigma correlation near zero.
+- The F routes are Laplace in both programs. Agreement is at the Laplace value, not against the exact marginal; the Laplace error itself (small groups of 10 rows, non-Gaussian marginal in `sigma`) is common to both and not measured here.
+- Cost: dense fits at n = 300 took 1 to 34 s on Totoro (one thread, three jobs at once, compile included in the first). Not benchmarked beyond n = 300; the cap is 5000 rows but the route is slow well before that.
+- Time of the full test suite, and its result, are in the report that accompanies this branch, not in this note.
