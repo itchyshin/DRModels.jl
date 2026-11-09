@@ -41,12 +41,15 @@ end
 
 # Route test for the count SD fitters: an ordinary q2 block that carries iid
 # coefficient SD targets. Poisson takes the unlabelled and labelled forms; NB2
-# takes the labelled form only (its unlabelled form is the two-field route).
+# takes the labelled form, and the unlabelled form when only ONE coefficient
+# carries an SD formula (two SD formulas on the unlabelled form stay on the
+# two-field route).
 function _ordinary_q2_sd_block(f::DrmFormula, fam::Union{Poisson,NegBinomial2})
     block = _ordinary_q2_block(get(Dict(f.forms), :mu, nothing))
     block === nothing && return nothing
-    fam isa Poisson || block.label !== nothing || return nothing
-    any(t -> t.target.level === :iid, _sd_target_parts(f)) || return nothing
+    parts = _sd_target_parts(f)
+    fam isa Poisson || block.label !== nothing || length(parts) == 1 || return nothing
+    any(t -> t.target.level === :iid, parts) || return nothing
     return block
 end
 
@@ -60,14 +63,15 @@ function _drm_count_ordinary_q2_sd(f::DrmFormula, fam::Union{Poisson,NegBinomial
         throw(ArgumentError("$who is an ordinary (non-structured) route; do not supply `tree`, `K`, `A`, `Ainv` or `coords`."))
     nAGQ === nothing || throw(ArgumentError("nAGQ is not used by the Laplace ordinary q2 SD route; omit it."))
     targets = _sd_target_parts(f)
-    length(targets) == 2 || throw(ArgumentError(
-        "$who needs one SD formula for the intercept and one for the slope " *
+    length(targets) in (1, 2) || throw(ArgumentError(
+        "$who needs an SD formula for the intercept, for the slope, or for both " *
         "(`sd($group, coef(intercept)) ~ …` and `sd($group, coef($slope)) ~ …`)."))
     all(item -> item.target.level === :iid && item.target.group === group &&
         item.target.dpar === :mu && item.target.block === nothing, targets) ||
-        throw(ArgumentError("$who requires two ordinary `sd($group, coef(…))` mean targets."))
-    Set(item.target.member for item in targets) == Set((:intercept, slope)) ||
-        throw(ArgumentError("$who: SD formulas must select `coef(intercept)` and `coef($slope)` exactly once."))
+        throw(ArgumentError("$who requires ordinary `sd($group, coef(…))` mean targets."))
+    chosen = [item.target.member for item in targets]
+    (all(m -> m in (:intercept, slope), chosen) && length(unique(chosen)) == length(chosen)) ||
+        throw(ArgumentError("$who: SD formulas must select `coef(intercept)` and `coef($slope)`, each at most once."))
     isempty(_sdphylo_parts(f)) || throw(ArgumentError(
         "$who cannot be combined with an intercept-only `sd($group, phylogenetic) ~ …` formula."))
     rhs = Dict(f.forms)
@@ -102,25 +106,35 @@ function _drm_count_ordinary_q2_sd(f::DrmFormula, fam::Union{Poisson,NegBinomial
     hasproperty(data, group) || throw(ArgumentError("$who: grouping column `$group` is absent from data."))
     gidx, G = _group_index(getproperty(data, group); col = group)
     Q = sparse(1.0I, G, G)
+    # A coefficient with no SD formula keeps a constant SD (`sd(…, coef(·)) ~ 1`), as drmTMB does.
     ordered = map((:intercept, slope)) do member
-        only(filter(item -> item.target.member === member, targets))
+        hit = filter(item -> item.target.member === member, targets)
+        isempty(hit) ? member : only(hit)
     end
     Zgs = Matrix{Float64}[]
     nmsds = Vector{String}[]
+    blocks = Symbol[]
     for item in ordered
+        if item isa Symbol
+            push!(Zgs, ones(G, 1))
+            push!(nmsds, ["(Intercept)"])
+            push!(blocks, _sd_target_block((group = group, level = :iid, member = item,
+                                            dpar = :mu, block = nothing); disambiguate = true))
+            continue
+        end
         Zg, names = _sd_group_design(f.response, item.rhs, data, gidx, G, group;
             schema_cache = f.schema_cache, schema_key = item.key)
         size(Zg, 2) <= G && rank(Zg) == size(Zg, 2) || throw(ArgumentError(
             "$who: SD target `coef($(item.target.member))` has a rank-deficient group-level design."))
         push!(Zgs, Matrix{Float64}(Zg))
         push!(nmsds, names)
+        push!(blocks, _sd_target_block(item.target; disambiguate = true))
     end
     x = _poisson_animal_slope_loading(data, slope, length(y); label = "$fname ordinary")
     if all(==(first(x)), x) && isequal(Zgs[1], Zgs[2])
         throw(ArgumentError("$who cannot separate the intercept and slope SDs when " *
             "`$slope` is constant and both SD formulas have identical group-level designs."))
     end
-    blocks = Symbol[_sd_target_block(item.target; disambiguate = true) for item in ordered]
     fit = if fam isa Poisson
         off = _poisson_sd_offset(offset_term, data, length(y))
         _fit_poisson_animal_intercept_slope_laplace(fam, y, Xmu, Zgs, gidx, Q, nmmu,
