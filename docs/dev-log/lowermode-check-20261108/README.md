@@ -56,3 +56,36 @@ with one thread per fit.
 
 Reproduce: generate data with `gen_data.jl`, run `agree.jl` and `agree.R` on a jobs
 file with columns `route<TAB>fam|kind|lab0|qN|sd-z|cm0|ML<TAB>seed`.
+
+## Follow-up: do the forced Gamma restarts need to vary the first field's SD z-coefficients?
+
+A review of PR #1270 said `_q2_alt_theta` only makes the second (slope) field's SD
+z-coefficients vary (`het`), so a lower mode that differs only in the first field's
+SD slopes cannot be reached. Reading the code confirms the gap: the first block is
+always set to a constant SD by least squares (`Zs[1] \ fill(log(sd0), ...)`).
+
+I tested a fix (`candidate_field1_starts.patch`, not applied): `_q2_alt_theta` gets a
+`het0` argument, and the forced path (`force = true`, Gamma only) runs four extra
+starts `(sd0, sd1, het, het0) = (0.4, 0.22, 0, -1), (0.4, 0.22, 0, 1),
+(0.4, 0.22, -1, 1), (0.4, 0.22, 1, -1)`, accepted by the same clear-gain rule.
+
+Design, fixed before running: Gamma `phylo(1 + x1 | g)` and `spatial(1 + x1 | g)`,
+`sd ~ z` on both fields, seeds 0 to 24 (the 22-seed wave-9 set is seeds 0 to 10 of
+these two routes) plus fresh seeds 25 to 74; drmTMB 0.8.1 ML as reference; a seed
+counts as fixed if the after log-likelihood is more than 1e-3 above before.
+
+| Seeds | Route | Before lower than R | After lower than R | Seeds changed by extra starts | Cost after/before (median, max) |
+|---|---|---|---|---|---|
+| 0-24 | Gamma phylo q2 | 0 | 0 | 0 | 1.49, 1.87 |
+| 0-24 | Gamma spatial q2 | 0 | 0 | 0 | 1.52, 1.74 |
+| 25-74 | Gamma phylo q2 | 0 | 0 | 0 | 1.58, 1.77 |
+| 25-74 | Gamma spatial q2 | 0 | 0 | 0 | 1.59, 1.81 |
+
+At the current tip the forced restarts already put all 150 fits at or above R's
+log-likelihood (R is the lower one in 9), and the extra starts change no fit while
+adding about 50% to fit time. I did not ship the change: it costs time and no seed
+needs it. The gap is real in principle; if a seed ever shows a first-field-only lower
+mode, the patch is the candidate fix and that seed its failing-before test.
+
+Per-seed values: `gamma_q2_field1_seeds0-24.tsv`, `gamma_q2_field1_seeds25-74.tsv`.
+Not covered: 40 groups and the exp(0.3 z) SD design only; no other family.
