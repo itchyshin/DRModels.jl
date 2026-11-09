@@ -1,19 +1,19 @@
 S	1	beta|animal|lab0|q1|sd-none|cm0|ML
-R	1	beta|animal|lab0|q1|sd-none|cm0|ML	FITS				139.1880164846	true	se_finite=true;npar=6	19.40	
+R	1	beta|animal|lab0|q1|sd-none|cm0|ML	FITS				139.1880164846	true	se_finite=true;npar=6	18.40	
 S	2	beta|animal|lab0|q1|sd-one|cm0|ML
-R	2	beta|animal|lab0|q1|sd-one|cm0|ML	FITS				139.1880164847	true	se_finite=true;npar=6	10.82	
+R	2	beta|animal|lab0|q1|sd-one|cm0|ML	FITS				139.1880164847	true	se_finite=true;npar=6	10.16	
 S	3	beta|animal|lab0|q1|sd-z|cm0|ML
-R	3	beta|animal|lab0|q1|sd-z|cm0|ML	FITS				142.4423535235	true	se_finite=true;npar=7	17.40	
+R	3	beta|animal|lab0|q1|sd-z|cm0|ML	FITS				142.4423535235	true	se_finite=true;npar=7	17.81	
 S	4	beta|animal|lab0|q2|sd-none|cm0|ML
-R	4	beta|animal|lab0|q2|sd-none|cm0|ML	FITS				143.0657524500	true	se_finite=true;npar=7	3.66	
+R	4	beta|animal|lab0|q2|sd-none|cm0|ML	FITS				143.0657524500	true	se_finite=true;npar=7	3.85	
 S	5	beta|animal|lab1|q2|sd-none|cm0|ML
 R	5	beta|animal|lab1|q2|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `animal(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route	ArgumentError: drm: `animal(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route				0.09	
 S	6	beta|animal|lab0|q2|sd-one|cm0|ML
-R	6	beta|animal|lab0|q2|sd-one|cm0|ML	FITS				143.0657524500	true	se_finite=true;npar=7	1.36	
+R	6	beta|animal|lab0|q2|sd-one|cm0|ML	FITS				143.0657524500	true	se_finite=true;npar=7	1.43	
 S	7	beta|animal|lab1|q2|sd-one|cm0|ML
 R	7	beta|animal|lab1|q2|sd-one|cm0|ML	ERROR	ArgumentError	ArgumentError: Beta random-effect SD regression requires exactly one `sd(group) ~ …` formula (ordinary, `animal`, or `phylogenetic`/`relmat`/`spatial`), or two coefficient formulas `sd(group, level, coef(intercept)) ~ …` and `sd(group, level, coef(x)) ~ …` for an independent `animal`/`relmat`/`phylo`/`spatial(1 + x | group)` block; correlated (labelled), three-or-more-coefficient, ordinary q2 and 	ArgumentError: Beta random-effect SD regression requires exactly one `sd(group) ~ …` formula (ordinary, `animal`, or `phylogenetic`/`relmat`/`spatial`), or two coefficient formulas `sd(group, level, coef(intercept)) ~ …` and `sd(group, level, coef(x)) ~ …` for an independent `animal`/`relmat`/`phylo`/`spatial(1 + x | group)` block; correlated (labelled), three-or-more-coefficient, ordinary q2 and crossed SD shapes are not implemented.				0.07	
 S	8	beta|animal|lab0|q2|sd-z|cm0|ML
-R	8	beta|animal|lab0|q2|sd-z|cm0|ML	FITS				147.4257509131	true	se_finite=true;npar=9	2.67	
+R	8	beta|animal|lab0|q2|sd-z|cm0|ML	FITS				147.4257509131	true	se_finite=true;npar=9	2.78	
 S	9	beta|animal|lab1|q2|sd-z|cm0|ML
 R	9	beta|animal|lab1|q2|sd-z|cm0|ML	ERROR	ArgumentError	ArgumentError: Beta random-effect SD regression requires exactly one `sd(group) ~ …` formula (ordinary, `animal`, or `phylogenetic`/`relmat`/`spatial`), or two coefficient formulas `sd(group, level, coef(intercept)) ~ …` and `sd(group, level, coef(x)) ~ …` for an independent `animal`/`relmat`/`phylo`/`spatial(1 + x | group)` block; correlated (labelled), three-or-more-coefficient, ordinary q2 and 	ArgumentError: Beta random-effect SD regression requires exactly one `sd(group) ~ …` formula (ordinary, `animal`, or `phylogenetic`/`relmat`/`spatial`), or two coefficient formulas `sd(group, level, coef(intercept)) ~ …` and `sd(group, level, coef(x)) ~ …` for an independent `animal`/`relmat`/`phylo`/`spatial(1 + x | group)` block; correlated (labelled), three-or-more-coefficient, ordinary q2 and crossed SD shapes are not implemented.				0.01	
 S	10	beta|animal|lab0|q2|sd-first|cm0|ML
@@ -37,7 +37,7 @@ R	18	beta|animal|lab0|q3|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: drm:
 S	19	beta|animal|lab1|q3|sd-first|cm0|ML
 R	19	beta|animal|lab1|q3|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `animal(:((1 + x1 + x2) | p) | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route	ArgumentError: drm: `animal(:((1 + x1 + x2) | p) | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route				0.00	
 S	20	beta|animal|lab0|q4|sd-none|cm0|ML
-R	20	beta|animal|lab0|q4|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `animal(1 + x1 + x2 + x3 | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route	ArgumentError: drm: `animal(1 + x1 + x2 + x3 | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route				0.01	
+R	20	beta|animal|lab0|q4|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `animal(1 + x1 + x2 + x3 | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route	ArgumentError: drm: `animal(1 + x1 + x2 + x3 | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route				0.02	
 S	21	beta|animal|lab1|q4|sd-none|cm0|ML
 R	21	beta|animal|lab1|q4|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `animal(:((1 + x1 + x2 + x3) | p) | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route	ArgumentError: drm: `animal(:((1 + x1 + x2 + x3) | p) | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route				0.00	
 S	22	beta|animal|lab0|q4|sd-z|cm0|ML

@@ -1,19 +1,19 @@
 S	1	binomial|phylo|lab0|q1|sd-none|cm0|ML
-R	1	binomial|phylo|lab0|q1|sd-none|cm0|ML	FITS				-252.0106259196	true	se_finite=true;npar=5	19.08	sparse-Laplace GLMM (phylo-mean) vcov: a variance or dispersion coordinate sits at its clamp, so the gradient-difference Hessian is not defined; falling back to the value-based finite-difference Hessian. Its standard errors are known to be noisy (inner-solve noise / h^2); treat them with caution.
+R	1	binomial|phylo|lab0|q1|sd-none|cm0|ML	FITS				-252.0106259196	true	se_finite=true;npar=5	20.15	sparse-Laplace GLMM (phylo-mean) vcov: a variance or dispersion coordinate sits at its clamp, so the gradient-difference Hessian is not defined; falling back to the value-based finite-difference Hessian. Its standard errors are known to be noisy (inner-solve noise / h^2); treat them with caution.
 S	2	binomial|phylo|lab0|q1|sd-one|cm0|ML
-R	2	binomial|phylo|lab0|q1|sd-one|cm0|ML	FITS				-252.0106233641	true	se_finite=true;npar=5	2.91	Hessian is numerically singular at the optimum — using a pseudo-inverse.
+R	2	binomial|phylo|lab0|q1|sd-one|cm0|ML	FITS				-252.0106233641	true	se_finite=true;npar=5	3.17	Hessian is numerically singular at the optimum — using a pseudo-inverse.
 S	3	binomial|phylo|lab0|q1|sd-z|cm0|ML
 R	3	binomial|phylo|lab0|q1|sd-z|cm0|ML	FITS				-252.0106233641	true	se_finite=true;npar=6	0.51	Hessian is numerically singular at the optimum — using a pseudo-inverse.
 S	4	binomial|phylo|lab0|q2|sd-none|cm0|ML
-R	4	binomial|phylo|lab0|q2|sd-none|cm0|ML	FITS				-252.0106233641	true	se_finite=false;npar=6	5.18	sparse-Laplace vcov: finite-difference Hessian is not positive definite at the optimum; reported SEs are not trustworthy.
+R	4	binomial|phylo|lab0|q2|sd-none|cm0|ML	FITS				-252.0106233641	true	se_finite=false;npar=6	5.00	sparse-Laplace vcov: finite-difference Hessian is not positive definite at the optimum; reported SEs are not trustworthy.
 S	5	binomial|phylo|lab1|q2|sd-none|cm0|ML
-R	5	binomial|phylo|lab1|q2|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `phylo(:((1 + x1) | p) | g)` is not implemented on the univariate routes — only `phylo(1 | g)` (intercept) is, plus the one-slope `phylo(1 + x | g)` on the Gaussian mean (#620); slope-only `phylo(0 + x | g)` and multi-slope forms are not implemented	ArgumentError: drm: `phylo(:((1 + x1) | p) | g)` is not implemented on the univariate routes — only `phylo(1 | g)` (intercept) is, plus the one-slope `phylo(1 + x | g)` on the Gaussian mean (#620); slope-only `phylo(0 + x | g)` and multi-slope forms are not implemented				0.09	
+R	5	binomial|phylo|lab1|q2|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `phylo(:((1 + x1) | p) | g)` is not implemented on the univariate routes — only `phylo(1 | g)` (intercept) is, plus the one-slope `phylo(1 + x | g)` on the Gaussian mean (#620); slope-only `phylo(0 + x | g)` and multi-slope forms are not implemented	ArgumentError: drm: `phylo(:((1 + x1) | p) | g)` is not implemented on the univariate routes — only `phylo(1 | g)` (intercept) is, plus the one-slope `phylo(1 + x | g)` on the Gaussian mean (#620); slope-only `phylo(0 + x | g)` and multi-slope forms are not implemented				0.10	
 S	6	binomial|phylo|lab0|q2|sd-one|cm0|ML
-R	6	binomial|phylo|lab0|q2|sd-one|cm0|ML	FITS				-252.0106233641	true	se_finite=false;npar=6	2.50	sparse-Laplace vcov: finite-difference Hessian is not positive definite at the optimum; reported SEs are not trustworthy.
+R	6	binomial|phylo|lab0|q2|sd-one|cm0|ML	FITS				-252.0106233641	true	se_finite=false;npar=6	2.30	sparse-Laplace vcov: finite-difference Hessian is not positive definite at the optimum; reported SEs are not trustworthy.
 S	7	binomial|phylo|lab1|q2|sd-one|cm0|ML
-R	7	binomial|phylo|lab1|q2|sd-one|cm0|ML	FITS				-252.0106233641	true	se_finite=true;npar=7	3.01	Hessian is numerically singular at the optimum — using a pseudo-inverse.
+R	7	binomial|phylo|lab1|q2|sd-one|cm0|ML	FITS				-252.0106233641	true	se_finite=true;npar=7	2.95	Hessian is numerically singular at the optimum — using a pseudo-inverse.
 S	8	binomial|phylo|lab0|q2|sd-z|cm0|ML
-R	8	binomial|phylo|lab0|q2|sd-z|cm0|ML	FITS				-249.5251022146	true	se_finite=true;npar=8	4.50	Hessian is numerically singular at the optimum — using a pseudo-inverse.
+R	8	binomial|phylo|lab0|q2|sd-z|cm0|ML	FITS				-249.5251022146	true	se_finite=true;npar=8	4.36	Hessian is numerically singular at the optimum — using a pseudo-inverse.
 S	9	binomial|phylo|lab1|q2|sd-z|cm0|ML
 R	9	binomial|phylo|lab1|q2|sd-z|cm0|ML	FITS				-249.0109305428	true	se_finite=true;npar=9	6.49	
 S	10	binomial|phylo|lab0|q2|sd-first|cm0|ML

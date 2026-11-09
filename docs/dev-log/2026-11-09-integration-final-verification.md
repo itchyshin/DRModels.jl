@@ -3,20 +3,21 @@
 Branch `claude/integration-final-20261109`, built from the wave-10 base (0bfcde2bb) with the
 eleven stacked lane pull requests and the three main-based fixes merged in. How the conflicts
 were settled is in `2026-11-09-integration-decisions.md`. This note records what was run and what
-it showed. Source files were identical for all runs below (tip 76763f66f, which differs from the
-final commit only by documentation).
+it showed. The numbers below are for the final tip, bf566192c, which adds #1289, #1291 and #1292 to the first
+integrated tip (76763f66f). A first full run on 76763f66f gave the same picture (616 files, no failing
+file on either version; gap map agree 350, R-only 17); only the final-tip numbers are quoted.
 
 ## Full test suite
 
 Julia 1.10.12 and Julia 1.12.7 on Totoro, 16 time-balanced shards per version
 (`test/shard_by_time.jl` with `test/shard_assign_N16.txt`), one thread per process, 32 processes in
-all. The assignment lists 616 discoverable test files (every `test_*.jl` in `test/` except the four
-in `_TEST_EXCLUDE`), each exactly once; the runs executed 616 distinct files per version.
+all. The assignment lists 619 discoverable test files (every `test_*.jl` in `test/` except the four
+in `_TEST_EXCLUDE`), each exactly once; the runs executed 619 distinct files per version.
 
 | Julia | Files run | Failing files | Shard exit codes | Slowest shard |
 | --- | --- | --- | --- | --- |
-| 1.10.12 | 616 | 0 | 16 of 16 zero | 1047 s |
-| 1.12.7 | 616 | 0 | 16 of 16 zero | 1287 s |
+| 1.10.12 | 619 | 0 | 16 of 16 zero | about 1100 s |
+| 1.12.7 | 619 | 0 | 16 of 16 zero | about 1300 s |
 
 Failing files on the integrated tip: none, on either version. Because there are none, there is no
 list to compare against the wave-10 base. To check the five failures named at the start of the task,
@@ -39,19 +40,19 @@ rerun. "Before" is the wave-10 base map; "after" is the integrated tip. Files ar
 
 | Class | Before | After |
 | --- | --- | --- |
-| Both fit, logLik agrees (1e-4) | 260 | 350 |
+| Both fit, logLik agrees (1e-4) | 260 | 357 |
 | Both fit, logLik disagrees | 54 | 55 |
-| R fits, Julia refuses (R-only) | 107 | 17 |
+| R fits, Julia refuses (R-only) | 107 | 10 |
 | Julia fits, R refuses (Julia-only) | 43 | 83 |
 | Not converged | 5 | 4 |
 | Timeout | 1 | 1 |
 | Crashes (either side) | 0 | 0 |
 | Both refuse | 2538 | 2498 |
-| Julia fits (any) | 357 | 488 |
+| Julia fits (any) | 357 | 495 |
 
-Transitions: 86 R-only cells now agree with R, 2 R-only cells now fit but disagree, 2 R-only cells
+Transitions: 93 R-only cells now agree with R, 2 R-only cells now fit but disagree, 2 R-only cells
 now fit without converging; 2 non-converged cells now agree and 1 now fits but disagrees; 2
-disagreeing cells now agree; 40 cells that both sides refused are now fitted by Julia only; 2873
+disagreeing cells now agree; 40 cells that both sides refused are now fitted by Julia only; 2866
 others keep their class.
 
 Regressions under the pre-registered rules (a fitted cell that stops fitting, an agreeing cell that
@@ -66,9 +67,23 @@ Binomial ordinary q = 3 and q = 4 without SD formulas (Julia is 0.57 and 0.65 ab
 value, the adaptive Gauss-Hermite difference documented for the Binomial blocks), and one Poisson
 spatial cell that R did not converge on. Two disagreeing cells moved to agreement, so the net is one.
 
-Still open: 17 R-only cells (Binomial 8, Beta 3, Gaussian 2, NB2 2, Student 2), four non-converged
+Still open: 10 R-only cells (Binomial 5: REML on Binomial is ML-only by design for two, relmat slope forms for three; Student spatial 2; Gaussian spatial REML, which refuses by design because the bare `spatial(1 | g)` range differs from drmTMB's; NB2 spatial; Gaussian with a sigma-side correlated effect), four non-converged
 cells (NB2 animal q = 2, Binomial ordinary q = 3, Binomial indep q = 2 and q = 4), and one timeout
 (Binomial ordinary q = 4 with `sd-z`, which R also fails to converge on).
+
+## Ledger of every cell that does not agree with R (after: 3008 cells, 357 agree)
+
+| Group | Cells | Status |
+| --- | --- | --- |
+| Fixed since the wave-10 base | 97 R-only or non-converged cells now agree, 2 disagreements now agree | fixed |
+| R-only (Julia refuses, R fits) | 10 | open, reasons above (two are refusals by design) |
+| Julia-only (R refuses, Julia fits) | 83 | no R reference |
+| Both fit, logLik disagrees | 55 | open: mostly Binomial and count families on ordinary, indep and spatial shapes where Julia uses adaptive Gauss-Hermite and drmTMB uses Laplace (documented in the wave-8 attribution, not retested); 3 of the 55 are new fits |
+| Not converged (Julia) | 4 | open: NB2 animal q = 2, Binomial ordinary q = 3, Binomial indep q = 2 and q = 4 |
+| Timeout at 300 s | 1 | open: Binomial ordinary q = 4 `sd-z`; R does not converge either |
+
+The per-cell lists are `maps/gap_map.tsv` (columns `class` and `ll_flag`), `maps/julia_only_cells.tsv`,
+`maps/loglik_disagreements.tsv` and `compare/`.
 
 ## Not verified
 

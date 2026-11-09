@@ -1,31 +1,31 @@
 S	1	poisson|spatial|lab0|q1|sd-none|cm0|ML
-R	1	poisson|spatial|lab0|q1|sd-none|cm0|ML	FITS				-674.4649231295	true	se_finite=false;npar=6	26.19	
+R	1	poisson|spatial|lab0|q1|sd-none|cm0|ML	FITS				-674.4649231295	true	se_finite=false;npar=6	24.65	
 S	2	poisson|spatial|lab0|q1|sd-one|cm0|ML
-R	2	poisson|spatial|lab0|q1|sd-one|cm0|ML	FITS				-675.6946875058	true	se_finite=true;npar=5	6.76	
+R	2	poisson|spatial|lab0|q1|sd-one|cm0|ML	FITS				-675.6946875058	true	se_finite=true;npar=5	5.09	
 S	3	poisson|spatial|lab0|q1|sd-z|cm0|ML
-R	3	poisson|spatial|lab0|q1|sd-z|cm0|ML	FITS				-675.1082937049	true	se_finite=true;npar=6	0.78	
+R	3	poisson|spatial|lab0|q1|sd-z|cm0|ML	FITS				-675.1082937049	true	se_finite=true;npar=6	0.51	
 S	4	poisson|spatial|lab0|q2|sd-none|cm0|ML
-R	4	poisson|spatial|lab0|q2|sd-none|cm0|ML	FITS				-672.9646669454	true	se_finite=true;npar=6	3.52	
+R	4	poisson|spatial|lab0|q2|sd-none|cm0|ML	FITS				-672.9646669454	true	se_finite=true;npar=6	2.48	
 S	5	poisson|spatial|lab1|q2|sd-none|cm0|ML
-R	5	poisson|spatial|lab1|q2|sd-none|cm0|ML	FITS				-672.9646586180	true	se_finite=true;npar=7	1.35	
+R	5	poisson|spatial|lab1|q2|sd-none|cm0|ML	FITS				-672.9646586180	true	se_finite=true;npar=7	0.90	
 S	6	poisson|spatial|lab0|q2|sd-one|cm0|ML
-R	6	poisson|spatial|lab0|q2|sd-one|cm0|ML	FITS				-672.9646669454	true	se_finite=true;npar=6	0.72	
+R	6	poisson|spatial|lab0|q2|sd-one|cm0|ML	FITS				-672.9646669454	true	se_finite=true;npar=6	0.44	
 S	7	poisson|spatial|lab1|q2|sd-one|cm0|ML
-R	7	poisson|spatial|lab1|q2|sd-one|cm0|ML	FITS				-672.9646586180	true	se_finite=true;npar=7	1.30	
+R	7	poisson|spatial|lab1|q2|sd-one|cm0|ML	FITS				-672.9646586180	true	se_finite=true;npar=7	0.74	
 S	8	poisson|spatial|lab0|q2|sd-z|cm0|ML
-R	8	poisson|spatial|lab0|q2|sd-z|cm0|ML	FITS				-667.4872264304	true	se_finite=true;npar=8	1.18	
+R	8	poisson|spatial|lab0|q2|sd-z|cm0|ML	FITS				-667.4872264304	true	se_finite=true;npar=8	0.70	
 S	9	poisson|spatial|lab1|q2|sd-z|cm0|ML
-R	9	poisson|spatial|lab1|q2|sd-z|cm0|ML	FITS				-667.4725889498	true	se_finite=true;npar=9	2.07	
+R	9	poisson|spatial|lab1|q2|sd-z|cm0|ML	FITS				-667.4725889498	true	se_finite=true;npar=9	1.37	
 S	10	poisson|spatial|lab0|q2|sd-first|cm0|ML
 R	10	poisson|spatial|lab0|q2|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: Poisson `spatial(1 + x1 | g)` SD regression needs one SD formula for the intercept and one for the slope (`sd(g, spatial, coef(intercept)) ~ …` and `sd(g, spatial, coef(x1)) ~ …`).	ArgumentError: Poisson `spatial(1 + x1 | g)` SD regression needs one SD formula for the intercept and one for the slope (`sd(g, spatial, coef(intercept)) ~ …` and `sd(g, spatial, coef(x1)) ~ …`).				0.00	
 S	11	poisson|spatial|lab1|q2|sd-first|cm0|ML
-R	11	poisson|spatial|lab1|q2|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: Poisson `spatial(1 + x1 | p | g)` SD regression needs one SD formula for the intercept and one for the slope (`sd(g, spatial, coef(intercept)) ~ …` and `sd(g, spatial, coef(x1)) ~ …`).	ArgumentError: Poisson `spatial(1 + x1 | p | g)` SD regression needs one SD formula for the intercept and one for the slope (`sd(g, spatial, coef(intercept)) ~ …` and `sd(g, spatial, coef(x1)) ~ …`).				0.00	
+R	11	poisson|spatial|lab1|q2|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: Poisson `spatial(1 + x1 | p | g)` SD regression needs one SD formula for the intercept and one for the slope (`sd(g, spatial, coef(intercept)) ~ …` and `sd(g, spatial, coef(x1)) ~ …`).	ArgumentError: Poisson `spatial(1 + x1 | p | g)` SD regression needs one SD formula for the intercept and one for the slope (`sd(g, spatial, coef(intercept)) ~ …` and `sd(g, spatial, coef(x1)) ~ …`).				0.01	
 S	12	poisson|spatial|lab0|q2|sd-last|cm0|ML
 R	12	poisson|spatial|lab0|q2|sd-last|cm0|ML	ERROR	ArgumentError	ArgumentError: Poisson `spatial(1 + x1 | g)` SD regression needs one SD formula for the intercept and one for the slope (`sd(g, spatial, coef(intercept)) ~ …` and `sd(g, spatial, coef(x1)) ~ …`).	ArgumentError: Poisson `spatial(1 + x1 | g)` SD regression needs one SD formula for the intercept and one for the slope (`sd(g, spatial, coef(intercept)) ~ …` and `sd(g, spatial, coef(x1)) ~ …`).				0.00	
 S	13	poisson|spatial|lab1|q2|sd-last|cm0|ML
 R	13	poisson|spatial|lab1|q2|sd-last|cm0|ML	ERROR	ArgumentError	ArgumentError: Poisson `spatial(1 + x1 | p | g)` SD regression needs one SD formula for the intercept and one for the slope (`sd(g, spatial, coef(intercept)) ~ …` and `sd(g, spatial, coef(x1)) ~ …`).	ArgumentError: Poisson `spatial(1 + x1 | p | g)` SD regression needs one SD formula for the intercept and one for the slope (`sd(g, spatial, coef(intercept)) ~ …` and `sd(g, spatial, coef(x1)) ~ …`).				0.00	
 S	14	poisson|spatial|lab0|q3|sd-none|cm0|ML
-R	14	poisson|spatial|lab0|q3|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `spatial(1 + x1 + x2 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `spatial(1 + x1 + x2 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.05	
+R	14	poisson|spatial|lab0|q3|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `spatial(1 + x1 + x2 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `spatial(1 + x1 + x2 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.04	
 S	15	poisson|spatial|lab1|q3|sd-none|cm0|ML
 R	15	poisson|spatial|lab1|q3|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `spatial(:((1 + x1 + x2) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `spatial(:((1 + x1 + x2) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.02	
 S	16	poisson|spatial|lab0|q3|sd-z|cm0|ML
@@ -37,7 +37,7 @@ R	18	poisson|spatial|lab0|q3|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: 
 S	19	poisson|spatial|lab1|q3|sd-first|cm0|ML
 R	19	poisson|spatial|lab1|q3|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `spatial(:((1 + x1 + x2) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `spatial(:((1 + x1 + x2) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.00	
 S	20	poisson|spatial|lab0|q4|sd-none|cm0|ML
-R	20	poisson|spatial|lab0|q4|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `spatial(1 + x1 + x2 + x3 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `spatial(1 + x1 + x2 + x3 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.02	
+R	20	poisson|spatial|lab0|q4|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `spatial(1 + x1 + x2 + x3 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `spatial(1 + x1 + x2 + x3 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.01	
 S	21	poisson|spatial|lab1|q4|sd-none|cm0|ML
 R	21	poisson|spatial|lab1|q4|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `spatial(:((1 + x1 + x2 + x3) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `spatial(:((1 + x1 + x2 + x3) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.00	
 S	22	poisson|spatial|lab0|q4|sd-z|cm0|ML

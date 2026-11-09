@@ -1,31 +1,31 @@
 S	1	poisson|ordinary|lab0|q1|sd-none|cm0|ML
-R	1	poisson|ordinary|lab0|q1|sd-none|cm0|ML	FITS				-744.6198369754	true	se_finite=true;npar=5	32.13	
+R	1	poisson|ordinary|lab0|q1|sd-none|cm0|ML	FITS				-744.6198369754	true	se_finite=true;npar=5	24.40	
 S	2	poisson|ordinary|lab0|q1|sd-one|cm0|ML
-R	2	poisson|ordinary|lab0|q1|sd-one|cm0|ML	FITS				-744.6180810485	true	se_finite=true;npar=5	12.73	
+R	2	poisson|ordinary|lab0|q1|sd-one|cm0|ML	FITS				-744.6180810485	true	se_finite=true;npar=5	8.43	
 S	3	poisson|ordinary|lab0|q1|sd-z|cm0|ML
-R	3	poisson|ordinary|lab0|q1|sd-z|cm0|ML	FITS				-744.5755883503	true	se_finite=true;npar=6	13.50	
+R	3	poisson|ordinary|lab0|q1|sd-z|cm0|ML	FITS				-744.5755883503	true	se_finite=true;npar=6	8.58	
 S	4	poisson|ordinary|lab0|q2|sd-none|cm0|ML
-R	4	poisson|ordinary|lab0|q2|sd-none|cm0|ML	FITS				-712.4105644238	true	se_finite=true;npar=7	15.12	
+R	4	poisson|ordinary|lab0|q2|sd-none|cm0|ML	FITS				-712.4105644238	true	se_finite=true;npar=7	10.39	
 S	5	poisson|ordinary|lab1|q2|sd-none|cm0|ML
-R	5	poisson|ordinary|lab1|q2|sd-none|cm0|ML	ERROR	ErrorException	unsupported random-effect term: `(:((1 + x1) | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect	unsupported random-effect term: `(:((1 + x1) | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect			at=gaussian_ranef.jl:473	0.08	
+R	5	poisson|ordinary|lab1|q2|sd-none|cm0|ML	ERROR	ErrorException	unsupported random-effect term: `(:((1 + x1) | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect	unsupported random-effect term: `(:((1 + x1) | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect			at=gaussian_ranef.jl:473	0.06	
 S	6	poisson|ordinary|lab0|q2|sd-one|cm0|ML
-R	6	poisson|ordinary|lab0|q2|sd-one|cm0|ML	FITS				-712.4434040131	true	se_finite=true;npar=7	4.37	
+R	6	poisson|ordinary|lab0|q2|sd-one|cm0|ML	FITS				-712.4434040131	true	se_finite=true;npar=7	3.42	
 S	7	poisson|ordinary|lab1|q2|sd-one|cm0|ML
-R	7	poisson|ordinary|lab1|q2|sd-one|cm0|ML	FITS				-712.4434040131	true	se_finite=true;npar=7	0.31	
+R	7	poisson|ordinary|lab1|q2|sd-one|cm0|ML	FITS				-712.4434040131	true	se_finite=true;npar=7	0.21	
 S	8	poisson|ordinary|lab0|q2|sd-z|cm0|ML
-R	8	poisson|ordinary|lab0|q2|sd-z|cm0|ML	FITS				-711.3606511999	true	se_finite=true;npar=9	0.31	
+R	8	poisson|ordinary|lab0|q2|sd-z|cm0|ML	FITS				-711.3606511999	true	se_finite=true;npar=9	0.20	
 S	9	poisson|ordinary|lab1|q2|sd-z|cm0|ML
-R	9	poisson|ordinary|lab1|q2|sd-z|cm0|ML	FITS				-711.3606511999	true	se_finite=true;npar=9	0.18	
+R	9	poisson|ordinary|lab1|q2|sd-z|cm0|ML	FITS				-711.3606511999	true	se_finite=true;npar=9	0.12	
 S	10	poisson|ordinary|lab0|q2|sd-first|cm0|ML
-R	10	poisson|ordinary|lab0|q2|sd-first|cm0|ML	FITS				-712.3057715513	true	se_finite=true;npar=8	0.16	
+R	10	poisson|ordinary|lab0|q2|sd-first|cm0|ML	FITS				-712.3057715513	true	se_finite=true;npar=8	0.10	
 S	11	poisson|ordinary|lab1|q2|sd-first|cm0|ML
-R	11	poisson|ordinary|lab1|q2|sd-first|cm0|ML	FITS				-712.3057715513	true	se_finite=true;npar=8	0.16	
+R	11	poisson|ordinary|lab1|q2|sd-first|cm0|ML	FITS				-712.3057715513	true	se_finite=true;npar=8	0.11	
 S	12	poisson|ordinary|lab0|q2|sd-last|cm0|ML
-R	12	poisson|ordinary|lab0|q2|sd-last|cm0|ML	FITS				-711.3985694170	true	se_finite=true;npar=8	0.16	
+R	12	poisson|ordinary|lab0|q2|sd-last|cm0|ML	FITS				-711.3985694170	true	se_finite=true;npar=8	0.10	
 S	13	poisson|ordinary|lab1|q2|sd-last|cm0|ML
-R	13	poisson|ordinary|lab1|q2|sd-last|cm0|ML	FITS				-711.3985694170	true	se_finite=true;npar=8	0.14	
+R	13	poisson|ordinary|lab1|q2|sd-last|cm0|ML	FITS				-711.3985694170	true	se_finite=true;npar=8	0.09	
 S	14	poisson|ordinary|lab0|q3|sd-none|cm0|ML
-R	14	poisson|ordinary|lab0|q3|sd-none|cm0|ML	ERROR	ErrorException	DRModels.jl supports `(1 | g)`, `(0 + x | g)`, `(1 + x | g)` and the correlated blocks `(1 + x + z [+ w] | g)` (an intercept plus 2 to 3 slopes), which are fitted by maximum likelihood only and with no random effect on `sigma` (so method = :REML is not implemented for the q3/q4 blocks)	DRModels.jl supports `(1 | g)`, `(0 + x | g)`, `(1 + x | g)` and the correlated blocks `(1 + x + z [+ w] | g)` (an intercept plus 2 to 3 slopes), which are fitted by maximum likelihood only and with no random effect on `sigma` (so method = :REML is not implemented for the q3/q4 blocks)			at=gaussian_ranef.jl:465	0.02	
+R	14	poisson|ordinary|lab0|q3|sd-none|cm0|ML	ERROR	ErrorException	DRModels.jl supports `(1 | g)`, `(0 + x | g)`, `(1 + x | g)` and the correlated blocks `(1 + x + z [+ w] | g)` (an intercept plus 2 to 3 slopes), which are fitted by maximum likelihood only and with no random effect on `sigma` (so method = :REML is not implemented for the q3/q4 blocks)	DRModels.jl supports `(1 | g)`, `(0 + x | g)`, `(1 + x | g)` and the correlated blocks `(1 + x + z [+ w] | g)` (an intercept plus 2 to 3 slopes), which are fitted by maximum likelihood only and with no random effect on `sigma` (so method = :REML is not implemented for the q3/q4 blocks)			at=gaussian_ranef.jl:465	0.01	
 S	15	poisson|ordinary|lab1|q3|sd-none|cm0|ML
 R	15	poisson|ordinary|lab1|q3|sd-none|cm0|ML	ERROR	ErrorException	unsupported random-effect term: `(:((1 + x1 + x2) | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect	unsupported random-effect term: `(:((1 + x1 + x2) | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect			at=gaussian_ranef.jl:473	0.00	
 S	16	poisson|ordinary|lab0|q3|sd-z|cm0|ML
@@ -37,7 +37,7 @@ R	18	poisson|ordinary|lab0|q3|sd-first|cm0|ML	ERROR	ErrorException	DRModels.jl s
 S	19	poisson|ordinary|lab1|q3|sd-first|cm0|ML
 R	19	poisson|ordinary|lab1|q3|sd-first|cm0|ML	ERROR	ErrorException	unsupported random-effect term: `(:((1 + x1 + x2) | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect	unsupported random-effect term: `(:((1 + x1 + x2) | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect			at=gaussian_ranef.jl:473	0.00	
 S	20	poisson|ordinary|lab0|q4|sd-none|cm0|ML
-R	20	poisson|ordinary|lab0|q4|sd-none|cm0|ML	ERROR	ErrorException	DRModels.jl supports `(1 | g)`, `(0 + x | g)`, `(1 + x | g)` and the correlated blocks `(1 + x + z [+ w] | g)` (an intercept plus 2 to 3 slopes), which are fitted by maximum likelihood only and with no random effect on `sigma` (so method = :REML is not implemented for the q3/q4 blocks)	DRModels.jl supports `(1 | g)`, `(0 + x | g)`, `(1 + x | g)` and the correlated blocks `(1 + x + z [+ w] | g)` (an intercept plus 2 to 3 slopes), which are fitted by maximum likelihood only and with no random effect on `sigma` (so method = :REML is not implemented for the q3/q4 blocks)			at=gaussian_ranef.jl:465	0.03	
+R	20	poisson|ordinary|lab0|q4|sd-none|cm0|ML	ERROR	ErrorException	DRModels.jl supports `(1 | g)`, `(0 + x | g)`, `(1 + x | g)` and the correlated blocks `(1 + x + z [+ w] | g)` (an intercept plus 2 to 3 slopes), which are fitted by maximum likelihood only and with no random effect on `sigma` (so method = :REML is not implemented for the q3/q4 blocks)	DRModels.jl supports `(1 | g)`, `(0 + x | g)`, `(1 + x | g)` and the correlated blocks `(1 + x + z [+ w] | g)` (an intercept plus 2 to 3 slopes), which are fitted by maximum likelihood only and with no random effect on `sigma` (so method = :REML is not implemented for the q3/q4 blocks)			at=gaussian_ranef.jl:465	0.02	
 S	21	poisson|ordinary|lab1|q4|sd-none|cm0|ML
 R	21	poisson|ordinary|lab1|q4|sd-none|cm0|ML	ERROR	ErrorException	unsupported random-effect term: `(:((1 + x1 + x2 + x3) | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect	unsupported random-effect term: `(:((1 + x1 + x2 + x3) | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect			at=gaussian_ranef.jl:473	0.00	
 S	22	poisson|ordinary|lab0|q4|sd-z|cm0|ML

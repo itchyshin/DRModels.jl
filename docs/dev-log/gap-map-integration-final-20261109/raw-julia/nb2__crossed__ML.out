@@ -1,23 +1,23 @@
 S	1	nb2|crossed|lab0|q1|sd-none|cm0|ML
-R	1	nb2|crossed|lab0|q1|sd-none|cm0|ML	FITS				-725.0705756483	true	se_finite=true;npar=7	22.17	
+R	1	nb2|crossed|lab0|q1|sd-none|cm0|ML	FITS				-725.0705756483	true	se_finite=true;npar=7	23.27	
 S	2	nb2|crossed|lab0|q1|sd-one|cm0|ML
-R	2	nb2|crossed|lab0|q1|sd-one|cm0|ML	FITS				-725.0705756402	true	se_finite=true;npar=7	4.14	
+R	2	nb2|crossed|lab0|q1|sd-one|cm0|ML	FITS				-725.0705756402	true	se_finite=true;npar=7	4.36	
 S	3	nb2|crossed|lab0|q1|sd-z|cm0|ML
-R	3	nb2|crossed|lab0|q1|sd-z|cm0|ML	FITS				-724.8533236893	true	se_finite=true;npar=9	0.76	
+R	3	nb2|crossed|lab0|q1|sd-z|cm0|ML	FITS				-724.8533236893	true	se_finite=true;npar=9	0.78	
 S	4	nb2|crossed|lab0|q2|sd-none|cm0|ML
 R	4	nb2|crossed|lab0|q2|sd-none|cm0|ML	ERROR	ErrorException	NegBinomial2() supports multiple random effects only as crossed/nested intercepts `(1 | g) + (1 | h)` or independent intercepts and slopes `(1 | g) + (0 + x | g)`; a correlated `(1 + x | g)` must be the only random-effect term	NegBinomial2() supports multiple random effects only as crossed/nested intercepts `(1 | g) + (1 | h)` or independent intercepts and slopes `(1 | g) + (0 + x | g)`; a correlated `(1 + x | g)` must be the only random-effect term			at=negbinomial.jl:276	0.14	
 S	5	nb2|crossed|lab1|q2|sd-none|cm0|ML
 R	5	nb2|crossed|lab1|q2|sd-none|cm0|ML	ERROR	ErrorException	location–scale coupled random effect must be intercept-only: `(1 | tag | group)` (got `(:(1 + x1) | … | …)`)	location–scale coupled random effect must be intercept-only: `(1 | tag | group)` (got `(:(1 + x1) | … | …)`)			at=locscale_frontend.jl:56	0.05	
 S	6	nb2|crossed|lab0|q2|sd-one|cm0|ML
-R	6	nb2|crossed|lab0|q2|sd-one|cm0|ML	ERROR	ArgumentError	ArgumentError: NegBinomial2 random-effect SD regression requires exactly one `sd(group) ~ …` formula.	ArgumentError: NegBinomial2 random-effect SD regression requires exactly one `sd(group) ~ …` formula.				0.25	
+R	6	nb2|crossed|lab0|q2|sd-one|cm0|ML	ERROR	ArgumentError	ArgumentError: NegBinomial2 random-effect SD regression requires exactly one `sd(group) ~ …` formula.	ArgumentError: NegBinomial2 random-effect SD regression requires exactly one `sd(group) ~ …` formula.				0.23	
 S	7	nb2|crossed|lab1|q2|sd-one|cm0|ML
-R	7	nb2|crossed|lab1|q2|sd-one|cm0|ML	ERROR	ArgumentError	ArgumentError: NegBinomial2 `(1 + x1 | p | g)` SD regression needs an SD formula for the intercept, for the slope, or for both (`sd(g, coef(intercept)) ~ …` and `sd(g, coef(x1)) ~ …`).	ArgumentError: NegBinomial2 `(1 + x1 | p | g)` SD regression needs an SD formula for the intercept, for the slope, or for both (`sd(g, coef(intercept)) ~ …` and `sd(g, coef(x1)) ~ …`).				0.14	
+R	7	nb2|crossed|lab1|q2|sd-one|cm0|ML	ERROR	ArgumentError	ArgumentError: NegBinomial2 `(1 + x1 | p | g)` SD regression needs an SD formula for the intercept, for the slope, or for both (`sd(g, coef(intercept)) ~ …` and `sd(g, coef(x1)) ~ …`).	ArgumentError: NegBinomial2 `(1 + x1 | p | g)` SD regression needs an SD formula for the intercept, for the slope, or for both (`sd(g, coef(intercept)) ~ …` and `sd(g, coef(x1)) ~ …`).				0.15	
 S	8	nb2|crossed|lab0|q2|sd-z|cm0|ML
 R	8	nb2|crossed|lab0|q2|sd-z|cm0|ML	ERROR	ArgumentError	ArgumentError: NegBinomial2 random-effect SD regression requires exactly one `sd(group) ~ …` formula.	ArgumentError: NegBinomial2 random-effect SD regression requires exactly one `sd(group) ~ …` formula.				0.01	
 S	9	nb2|crossed|lab1|q2|sd-z|cm0|ML
 R	9	nb2|crossed|lab1|q2|sd-z|cm0|ML	ERROR	ArgumentError	ArgumentError: NegBinomial2 `(1 + x1 | p | g)` SD regression needs an SD formula for the intercept, for the slope, or for both (`sd(g, coef(intercept)) ~ …` and `sd(g, coef(x1)) ~ …`).	ArgumentError: NegBinomial2 `(1 + x1 | p | g)` SD regression needs an SD formula for the intercept, for the slope, or for both (`sd(g, coef(intercept)) ~ …` and `sd(g, coef(x1)) ~ …`).				0.00	
 S	10	nb2|crossed|lab0|q2|sd-first|cm0|ML
-R	10	nb2|crossed|lab0|q2|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: NegBinomial2 random-effect SD regression requires exactly one `sd(group) ~ …` formula.	ArgumentError: NegBinomial2 random-effect SD regression requires exactly one `sd(group) ~ …` formula.				0.05	
+R	10	nb2|crossed|lab0|q2|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: NegBinomial2 random-effect SD regression requires exactly one `sd(group) ~ …` formula.	ArgumentError: NegBinomial2 random-effect SD regression requires exactly one `sd(group) ~ …` formula.				0.04	
 S	11	nb2|crossed|lab1|q2|sd-first|cm0|ML
 R	11	nb2|crossed|lab1|q2|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: NegBinomial2 `(1 + x1 | p | g)` SD regression requires ordinary `sd(g, coef(…))` mean targets.	ArgumentError: NegBinomial2 `(1 + x1 | p | g)` SD regression requires ordinary `sd(g, coef(…))` mean targets.				0.01	
 S	12	nb2|crossed|lab0|q2|sd-last|cm0|ML

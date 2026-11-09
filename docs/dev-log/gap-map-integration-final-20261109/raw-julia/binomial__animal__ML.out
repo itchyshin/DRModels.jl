@@ -1,21 +1,21 @@
 S	1	binomial|animal|lab0|q1|sd-none|cm0|ML
-R	1	binomial|animal|lab0|q1|sd-none|cm0|ML	ERROR	ErrorException	Binomial() currently supports only phylo(1 | group) among structured markers	Binomial() currently supports only phylo(1 | group) among structured markers			at=binomial.jl:364	13.44	
+R	1	binomial|animal|lab0|q1|sd-none|cm0|ML	FITS				-256.6096283826	true	se_finite=true;npar=5	19.37	
 S	2	binomial|animal|lab0|q1|sd-one|cm0|ML
-R	2	binomial|animal|lab0|q1|sd-one|cm0|ML	FITS				-256.6096283826	true	se_finite=true;npar=5	7.20	
+R	2	binomial|animal|lab0|q1|sd-one|cm0|ML	FITS				-256.6096283826	true	se_finite=true;npar=5	0.19	
 S	3	binomial|animal|lab0|q1|sd-z|cm0|ML
 R	3	binomial|animal|lab0|q1|sd-z|cm0|ML	FITS				-256.3018433478	true	se_finite=true;npar=6	0.51	
 S	4	binomial|animal|lab0|q2|sd-none|cm0|ML
-R	4	binomial|animal|lab0|q2|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `animal(1 + x1 | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route	ArgumentError: drm: `animal(1 + x1 | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route				0.11	
+R	4	binomial|animal|lab0|q2|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `animal(1 + x1 | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route	ArgumentError: drm: `animal(1 + x1 | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route				0.51	
 S	5	binomial|animal|lab1|q2|sd-none|cm0|ML
-R	5	binomial|animal|lab1|q2|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `animal(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route	ArgumentError: drm: `animal(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route				0.08	
+R	5	binomial|animal|lab1|q2|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `animal(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route	ArgumentError: drm: `animal(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route				0.07	
 S	6	binomial|animal|lab0|q2|sd-one|cm0|ML
-R	6	binomial|animal|lab0|q2|sd-one|cm0|ML	FITS				-255.8524611388	true	se_finite=true;npar=6	2.05	
+R	6	binomial|animal|lab0|q2|sd-one|cm0|ML	FITS				-255.8524611388	true	se_finite=true;npar=6	2.06	
 S	7	binomial|animal|lab1|q2|sd-one|cm0|ML
 R	7	binomial|animal|lab1|q2|sd-one|cm0|ML	FITS				-254.4081301140	true	se_finite=true;npar=7	0.38	
 S	8	binomial|animal|lab0|q2|sd-z|cm0|ML
 R	8	binomial|animal|lab0|q2|sd-z|cm0|ML	FITS				-254.8852441418	true	se_finite=true;npar=8	0.44	
 S	9	binomial|animal|lab1|q2|sd-z|cm0|ML
-R	9	binomial|animal|lab1|q2|sd-z|cm0|ML	FITS				-253.9807918089	true	se_finite=true;npar=9	0.54	
+R	9	binomial|animal|lab1|q2|sd-z|cm0|ML	FITS				-253.9807918089	true	se_finite=true;npar=9	0.55	
 S	10	binomial|animal|lab0|q2|sd-first|cm0|ML
 R	10	binomial|animal|lab0|q2|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `animal(1 + x1 | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route	ArgumentError: drm: `animal(1 + x1 | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route				0.00	
 S	11	binomial|animal|lab1|q2|sd-first|cm0|ML

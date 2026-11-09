@@ -1,15 +1,15 @@
 S	1	gaussian|ordinary|lab0|q1|sd-none|cm0|REML
-R	1	gaussian|ordinary|lab0|q1|sd-none|cm0|REML	FITS				-491.0673072838	true	se_finite=true;npar=6	28.53	
+R	1	gaussian|ordinary|lab0|q1|sd-none|cm0|REML	FITS				-491.0673072838	true	se_finite=true;npar=6	26.64	
 S	2	gaussian|ordinary|lab0|q1|sd-one|cm0|REML
-R	2	gaussian|ordinary|lab0|q1|sd-one|cm0|REML	FITS				-491.0673072838	true	se_finite=true;npar=6	3.64	
+R	2	gaussian|ordinary|lab0|q1|sd-one|cm0|REML	FITS				-491.0673072838	true	se_finite=true;npar=6	3.62	
 S	3	gaussian|ordinary|lab0|q1|sd-z|cm0|REML
-R	3	gaussian|ordinary|lab0|q1|sd-z|cm0|REML	FITS				-487.0145642271	true	se_finite=true;npar=7	3.38	
+R	3	gaussian|ordinary|lab0|q1|sd-z|cm0|REML	FITS				-487.0145642271	true	se_finite=true;npar=7	3.42	
 S	4	gaussian|ordinary|lab0|q2|sd-none|cm0|REML
 R	4	gaussian|ordinary|lab0|q2|sd-none|cm0|REML	FITS				-476.3237699620	true	se_finite=true;npar=8	8.87	
 S	5	gaussian|ordinary|lab1|q2|sd-none|cm0|REML
 R	5	gaussian|ordinary|lab1|q2|sd-none|cm0|REML	FITS				-476.3237699620	true	se_finite=true;npar=8	0.10	
 S	6	gaussian|ordinary|lab0|q2|sd-one|cm0|REML
-R	6	gaussian|ordinary|lab0|q2|sd-one|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: method = :REML is not implemented for a Gaussian correlated block `(1 + … | g)` together with `sd()` formulas: drmTMB refuses this combination too, and no restricted objective is validated for it. Use method = :ML, or drop the `sd()` formulas for REML.	ArgumentError: drm: method = :REML is not implemented for a Gaussian correlated block `(1 + … | g)` together with `sd()` formulas: drmTMB refuses this combination too, and no restricted objective is validated for it. Use method = :ML, or drop the `sd()` formulas for REML.				2.96	
+R	6	gaussian|ordinary|lab0|q2|sd-one|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: method = :REML is not implemented for a Gaussian correlated block `(1 + … | g)` together with `sd()` formulas: drmTMB refuses this combination too, and no restricted objective is validated for it. Use method = :ML, or drop the `sd()` formulas for REML.	ArgumentError: drm: method = :REML is not implemented for a Gaussian correlated block `(1 + … | g)` together with `sd()` formulas: drmTMB refuses this combination too, and no restricted objective is validated for it. Use method = :ML, or drop the `sd()` formulas for REML.				2.56	
 S	7	gaussian|ordinary|lab1|q2|sd-one|cm0|REML
 R	7	gaussian|ordinary|lab1|q2|sd-one|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: method = :REML is not implemented for a Gaussian correlated block `(1 + … | g)` together with `sd()` formulas: drmTMB refuses this combination too, and no restricted objective is validated for it. Use method = :ML, or drop the `sd()` formulas for REML.	ArgumentError: drm: method = :REML is not implemented for a Gaussian correlated block `(1 + … | g)` together with `sd()` formulas: drmTMB refuses this combination too, and no restricted objective is validated for it. Use method = :ML, or drop the `sd()` formulas for REML.				0.00	
 S	8	gaussian|ordinary|lab0|q2|sd-z|cm0|REML
@@ -25,7 +25,7 @@ R	12	gaussian|ordinary|lab0|q2|sd-last|cm0|REML	ERROR	ArgumentError	ArgumentErro
 S	13	gaussian|ordinary|lab1|q2|sd-last|cm0|REML
 R	13	gaussian|ordinary|lab1|q2|sd-last|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: method = :REML is not implemented for a Gaussian correlated block `(1 + … | g)` together with `sd()` formulas: drmTMB refuses this combination too, and no restricted objective is validated for it. Use method = :ML, or drop the `sd()` formulas for REML.	ArgumentError: drm: method = :REML is not implemented for a Gaussian correlated block `(1 + … | g)` together with `sd()` formulas: drmTMB refuses this combination too, and no restricted objective is validated for it. Use method = :ML, or drop the `sd()` formulas for REML.				0.00	
 S	14	gaussian|ordinary|lab0|q3|sd-none|cm0|REML
-R	14	gaussian|ordinary|lab0|q3|sd-none|cm0|REML	FITS				-451.0539987541	true	se_finite=true;npar=11	58.53	
+R	14	gaussian|ordinary|lab0|q3|sd-none|cm0|REML	FITS				-451.0539987541	true	se_finite=true;npar=11	50.14	
 S	15	gaussian|ordinary|lab1|q3|sd-none|cm0|REML
 R	15	gaussian|ordinary|lab1|q3|sd-none|cm0|REML	FITS				-451.0539987541	true	se_finite=true;npar=11	0.08	
 S	16	gaussian|ordinary|lab0|q3|sd-z|cm0|REML
@@ -37,9 +37,9 @@ R	18	gaussian|ordinary|lab0|q3|sd-first|cm0|REML	ERROR	ArgumentError	ArgumentErr
 S	19	gaussian|ordinary|lab1|q3|sd-first|cm0|REML
 R	19	gaussian|ordinary|lab1|q3|sd-first|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: method = :REML is not implemented for a Gaussian correlated block `(1 + … | g)` together with `sd()` formulas: drmTMB refuses this combination too, and no restricted objective is validated for it. Use method = :ML, or drop the `sd()` formulas for REML.	ArgumentError: drm: method = :REML is not implemented for a Gaussian correlated block `(1 + … | g)` together with `sd()` formulas: drmTMB refuses this combination too, and no restricted objective is validated for it. Use method = :ML, or drop the `sd()` formulas for REML.				0.00	
 S	20	gaussian|ordinary|lab0|q4|sd-none|cm0|REML
-R	20	gaussian|ordinary|lab0|q4|sd-none|cm0|REML	FITS				-424.1982162830	true	se_finite=true;npar=15	28.30	
+R	20	gaussian|ordinary|lab0|q4|sd-none|cm0|REML	FITS				-424.1982162830	true	se_finite=true;npar=15	29.47	
 S	21	gaussian|ordinary|lab1|q4|sd-none|cm0|REML
-R	21	gaussian|ordinary|lab1|q4|sd-none|cm0|REML	FITS				-424.1982162830	true	se_finite=true;npar=15	0.21	
+R	21	gaussian|ordinary|lab1|q4|sd-none|cm0|REML	FITS				-424.1982162830	true	se_finite=true;npar=15	0.43	
 S	22	gaussian|ordinary|lab0|q4|sd-z|cm0|REML
 R	22	gaussian|ordinary|lab0|q4|sd-z|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: method = :REML is not implemented for a Gaussian correlated block `(1 + … | g)` together with `sd()` formulas: drmTMB refuses this combination too, and no restricted objective is validated for it. Use method = :ML, or drop the `sd()` formulas for REML.	ArgumentError: drm: method = :REML is not implemented for a Gaussian correlated block `(1 + … | g)` together with `sd()` formulas: drmTMB refuses this combination too, and no restricted objective is validated for it. Use method = :ML, or drop the `sd()` formulas for REML.				0.00	
 S	23	gaussian|ordinary|lab1|q4|sd-z|cm0|REML
@@ -49,9 +49,9 @@ R	24	gaussian|ordinary|lab0|q4|sd-first|cm0|REML	ERROR	ArgumentError	ArgumentErr
 S	25	gaussian|ordinary|lab1|q4|sd-first|cm0|REML
 R	25	gaussian|ordinary|lab1|q4|sd-first|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: method = :REML is not implemented for a Gaussian correlated block `(1 + … | g)` together with `sd()` formulas: drmTMB refuses this combination too, and no restricted objective is validated for it. Use method = :ML, or drop the `sd()` formulas for REML.	ArgumentError: drm: method = :REML is not implemented for a Gaussian correlated block `(1 + … | g)` together with `sd()` formulas: drmTMB refuses this combination too, and no restricted objective is validated for it. Use method = :ML, or drop the `sd()` formulas for REML.				0.00	
 S	26	gaussian|ordinary|lab0|q1|sd-none|cm1|REML
-R	26	gaussian|ordinary|lab0|q1|sd-none|cm1|REML	ERROR	ErrorException	unsupported random-effect term: `(:(1 | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect	unsupported random-effect term: `(:(1 | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect			at=gaussian_ranef.jl:473	0.32	
+R	26	gaussian|ordinary|lab0|q1|sd-none|cm1|REML	ERROR	ErrorException	unsupported random-effect term: `(:(1 | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect	unsupported random-effect term: `(:(1 | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect			at=gaussian_ranef.jl:473	0.33	
 S	27	gaussian|ordinary|lab0|q1|sd-z|cm1|REML
-R	27	gaussian|ordinary|lab0|q1|sd-z|cm1|REML	ERROR	ArgumentError	ArgumentError: drm: Gaussian mean `sd(g) ~ …` with a `sigma` random intercept supports maximum likelihood only (`method = :REML` is not implemented for this shape).	ArgumentError: drm: Gaussian mean `sd(g) ~ …` with a `sigma` random intercept supports maximum likelihood only (`method = :REML` is not implemented for this shape).				0.38	
+R	27	gaussian|ordinary|lab0|q1|sd-z|cm1|REML	ERROR	ArgumentError	ArgumentError: drm: Gaussian mean `sd(g) ~ …` with a `sigma` random intercept supports maximum likelihood only (`method = :REML` is not implemented for this shape).	ArgumentError: drm: Gaussian mean `sd(g) ~ …` with a `sigma` random intercept supports maximum likelihood only (`method = :REML` is not implemented for this shape).				0.40	
 S	28	gaussian|ordinary|lab0|q2|sd-none|cm1|REML
 R	28	gaussian|ordinary|lab0|q2|sd-none|cm1|REML	ERROR	ErrorException	unsupported random-effect term: `(:((1 + x1) | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect	unsupported random-effect term: `(:((1 + x1) | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect			at=gaussian_ranef.jl:473	0.00	
 S	29	gaussian|ordinary|lab0|q2|sd-z|cm1|REML

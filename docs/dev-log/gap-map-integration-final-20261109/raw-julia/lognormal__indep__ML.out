@@ -1,22 +1,22 @@
 S	1	lognormal|indep|lab0|q2|sd-none|cm0|ML
-R	1	lognormal|indep|lab0|q2|sd-none|cm0|ML	FITS				-551.1525957100	true	se_finite=true;npar=7	35.32	
+R	1	lognormal|indep|lab0|q2|sd-none|cm0|ML	FITS				-551.1525957100	true	se_finite=true;npar=7	38.02	
 S	2	lognormal|indep|lab0|q2|sd-one|cm0|ML
-R	2	lognormal|indep|lab0|q2|sd-one|cm0|ML	FITS				-551.1525957100	true	se_finite=true;npar=7	7.55	
+R	2	lognormal|indep|lab0|q2|sd-one|cm0|ML	FITS				-551.1525957100	true	se_finite=true;npar=7	7.73	
 S	3	lognormal|indep|lab0|q2|sd-z|cm0|ML
-R	3	lognormal|indep|lab0|q2|sd-z|cm0|ML	FITS				-549.5326518101	true	se_finite=true;npar=9	7.48	
+R	3	lognormal|indep|lab0|q2|sd-z|cm0|ML	FITS				-549.5326518101	true	se_finite=true;npar=9	8.00	
 S	4	lognormal|indep|lab0|q2|sd-first|cm0|ML
-R	4	lognormal|indep|lab0|q2|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: LogNormal `sd(g)` requires one ordinary random-effect coefficient on the mean.	ArgumentError: LogNormal `sd(g)` requires one ordinary random-effect coefficient on the mean.				0.09	
+R	4	lognormal|indep|lab0|q2|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: LogNormal `sd(g)` requires one ordinary random-effect coefficient on the mean.	ArgumentError: LogNormal `sd(g)` requires one ordinary random-effect coefficient on the mean.				0.10	
 S	5	lognormal|indep|lab0|q2|sd-last|cm0|ML
 R	5	lognormal|indep|lab0|q2|sd-last|cm0|ML	ERROR	ArgumentError	ArgumentError: LogNormal `sd(g)` requires one ordinary random-effect coefficient on the mean.	ArgumentError: LogNormal `sd(g)` requires one ordinary random-effect coefficient on the mean.				0.00	
 S	6	lognormal|indep|lab0|q3|sd-none|cm0|ML
-R	6	lognormal|indep|lab0|q3|sd-none|cm0|ML	FITS				-508.0634826157	true	se_finite=true;npar=8	8.75	
+R	6	lognormal|indep|lab0|q3|sd-none|cm0|ML	FITS				-508.0634826157	true	se_finite=true;npar=8	8.88	
 S	7	lognormal|indep|lab0|q3|sd-z|cm0|ML
-R	7	lognormal|indep|lab0|q3|sd-z|cm0|ML	FITS				-506.5559767843	true	se_finite=true;npar=11	11.25	
+R	7	lognormal|indep|lab0|q3|sd-z|cm0|ML	FITS				-506.5559767843	true	se_finite=true;npar=11	10.12	
 S	8	lognormal|indep|lab0|q3|sd-first|cm0|ML
 R	8	lognormal|indep|lab0|q3|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: LogNormal `sd(g)` requires one ordinary random-effect coefficient on the mean.	ArgumentError: LogNormal `sd(g)` requires one ordinary random-effect coefficient on the mean.				0.00	
 S	9	lognormal|indep|lab0|q4|sd-none|cm0|ML
-R	9	lognormal|indep|lab0|q4|sd-none|cm0|ML	FITS				-475.7998807040	true	se_finite=true;npar=9	15.48	
+R	9	lognormal|indep|lab0|q4|sd-none|cm0|ML	FITS				-475.7998807040	true	se_finite=true;npar=9	10.97	
 S	10	lognormal|indep|lab0|q4|sd-z|cm0|ML
-R	10	lognormal|indep|lab0|q4|sd-z|cm0|ML	FITS				-473.0640716741	true	se_finite=true;npar=13	7.85	
+R	10	lognormal|indep|lab0|q4|sd-z|cm0|ML	FITS				-473.0640716741	true	se_finite=true;npar=13	5.41	
 S	11	lognormal|indep|lab0|q4|sd-first|cm0|ML
 R	11	lognormal|indep|lab0|q4|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: LogNormal `sd(g)` requires one ordinary random-effect coefficient on the mean.	ArgumentError: LogNormal `sd(g)` requires one ordinary random-effect coefficient on the mean.				0.00	

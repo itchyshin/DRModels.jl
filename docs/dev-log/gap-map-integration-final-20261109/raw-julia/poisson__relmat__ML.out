@@ -1,21 +1,21 @@
 S	1	poisson|relmat|lab0|q1|sd-none|cm0|ML
-R	1	poisson|relmat|lab0|q1|sd-none|cm0|ML	FITS				-793.0104541560	true	se_finite=true;npar=5	19.03	
+R	1	poisson|relmat|lab0|q1|sd-none|cm0|ML	FITS				-793.0104541560	true	se_finite=true;npar=5	19.68	
 S	2	poisson|relmat|lab0|q1|sd-one|cm0|ML
-R	2	poisson|relmat|lab0|q1|sd-one|cm0|ML	FITS				-793.0104541567	true	se_finite=true;npar=5	2.08	
+R	2	poisson|relmat|lab0|q1|sd-one|cm0|ML	FITS				-793.0104541567	true	se_finite=true;npar=5	2.12	
 S	3	poisson|relmat|lab0|q1|sd-z|cm0|ML
-R	3	poisson|relmat|lab0|q1|sd-z|cm0|ML	FITS				-792.9832437465	true	se_finite=true;npar=6	0.57	
+R	3	poisson|relmat|lab0|q1|sd-z|cm0|ML	FITS				-792.9832437465	true	se_finite=true;npar=6	0.51	
 S	4	poisson|relmat|lab0|q2|sd-none|cm0|ML
-R	4	poisson|relmat|lab0|q2|sd-none|cm0|ML	FITS				-745.7613663297	true	se_finite=true;npar=6	2.50	
+R	4	poisson|relmat|lab0|q2|sd-none|cm0|ML	FITS				-745.7613663297	true	se_finite=true;npar=6	2.47	
 S	5	poisson|relmat|lab1|q2|sd-none|cm0|ML
-R	5	poisson|relmat|lab1|q2|sd-none|cm0|ML	FITS				-742.1667460661	true	se_finite=true;npar=7	0.53	
+R	5	poisson|relmat|lab1|q2|sd-none|cm0|ML	FITS				-742.1667460661	true	se_finite=true;npar=7	0.49	
 S	6	poisson|relmat|lab0|q2|sd-one|cm0|ML
-R	6	poisson|relmat|lab0|q2|sd-one|cm0|ML	FITS				-745.7613663297	true	se_finite=true;npar=6	0.38	
+R	6	poisson|relmat|lab0|q2|sd-one|cm0|ML	FITS				-745.7613663297	true	se_finite=true;npar=6	0.39	
 S	7	poisson|relmat|lab1|q2|sd-one|cm0|ML
-R	7	poisson|relmat|lab1|q2|sd-one|cm0|ML	FITS				-742.1667460661	true	se_finite=true;npar=7	0.36	
+R	7	poisson|relmat|lab1|q2|sd-one|cm0|ML	FITS				-742.1667460661	true	se_finite=true;npar=7	0.34	
 S	8	poisson|relmat|lab0|q2|sd-z|cm0|ML
-R	8	poisson|relmat|lab0|q2|sd-z|cm0|ML	FITS				-745.1554014723	true	se_finite=true;npar=8	0.44	
+R	8	poisson|relmat|lab0|q2|sd-z|cm0|ML	FITS				-745.1554014723	true	se_finite=true;npar=8	0.42	
 S	9	poisson|relmat|lab1|q2|sd-z|cm0|ML
-R	9	poisson|relmat|lab1|q2|sd-z|cm0|ML	FITS				-741.5304040940	true	se_finite=true;npar=9	0.57	
+R	9	poisson|relmat|lab1|q2|sd-z|cm0|ML	FITS				-741.5304040940	true	se_finite=true;npar=9	0.50	
 S	10	poisson|relmat|lab0|q2|sd-first|cm0|ML
 R	10	poisson|relmat|lab0|q2|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: Poisson `relmat(1 + x | group)` SD regression needs one SD formula for the intercept and one for the slope.	ArgumentError: Poisson `relmat(1 + x | group)` SD regression needs one SD formula for the intercept and one for the slope.				0.00	
 S	11	poisson|relmat|lab1|q2|sd-first|cm0|ML
@@ -37,7 +37,7 @@ R	18	poisson|relmat|lab0|q3|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: d
 S	19	poisson|relmat|lab1|q3|sd-first|cm0|ML
 R	19	poisson|relmat|lab1|q3|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `relmat(:((1 + x1 + x2) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(:((1 + x1 + x2) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.00	
 S	20	poisson|relmat|lab0|q4|sd-none|cm0|ML
-R	20	poisson|relmat|lab0|q4|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `relmat(1 + x1 + x2 + x3 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(1 + x1 + x2 + x3 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.02	
+R	20	poisson|relmat|lab0|q4|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `relmat(1 + x1 + x2 + x3 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(1 + x1 + x2 + x3 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.01	
 S	21	poisson|relmat|lab1|q4|sd-none|cm0|ML
 R	21	poisson|relmat|lab1|q4|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `relmat(:((1 + x1 + x2 + x3) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(:((1 + x1 + x2 + x3) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.00	
 S	22	poisson|relmat|lab0|q4|sd-z|cm0|ML

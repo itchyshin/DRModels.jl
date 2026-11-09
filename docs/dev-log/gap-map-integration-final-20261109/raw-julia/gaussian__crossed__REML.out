@@ -1,15 +1,15 @@
 S	1	gaussian|crossed|lab0|q1|sd-none|cm0|REML
-R	1	gaussian|crossed|lab0|q1|sd-none|cm0|REML	FITS				-516.5767178681	true	se_finite=true;npar=7	55.33	
+R	1	gaussian|crossed|lab0|q1|sd-none|cm0|REML	FITS				-516.5767178681	true	se_finite=true;npar=7	42.88	
 S	2	gaussian|crossed|lab0|q1|sd-one|cm0|REML
-R	2	gaussian|crossed|lab0|q1|sd-one|cm0|REML	FITS				-516.5767178681	true	se_finite=true;npar=7	18.96	
+R	2	gaussian|crossed|lab0|q1|sd-one|cm0|REML	FITS				-516.5767178681	true	se_finite=true;npar=7	14.13	
 S	3	gaussian|crossed|lab0|q1|sd-z|cm0|REML
-R	3	gaussian|crossed|lab0|q1|sd-z|cm0|REML	FITS				-514.9588950183	true	se_finite=true;npar=9	18.96	
+R	3	gaussian|crossed|lab0|q1|sd-z|cm0|REML	FITS				-514.9588950183	true	se_finite=true;npar=9	16.08	
 S	4	gaussian|crossed|lab0|q2|sd-none|cm0|REML
-R	4	gaussian|crossed|lab0|q2|sd-none|cm0|REML	FITS				-494.1426770381	true	se_finite=true;npar=9	30.56	
+R	4	gaussian|crossed|lab0|q2|sd-none|cm0|REML	FITS				-494.1426770381	true	se_finite=true;npar=9	30.50	
 S	5	gaussian|crossed|lab1|q2|sd-none|cm0|REML
-R	5	gaussian|crossed|lab1|q2|sd-none|cm0|REML	FITS				-494.1426770381	true	se_finite=true;npar=9	3.36	
+R	5	gaussian|crossed|lab1|q2|sd-none|cm0|REML	FITS				-494.1426770381	true	se_finite=true;npar=9	3.11	
 S	6	gaussian|crossed|lab0|q2|sd-one|cm0|REML
-R	6	gaussian|crossed|lab0|q2|sd-one|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: method = :REML is not implemented for a Gaussian correlated block beside other random intercepts together with `sd()` formulas: drmTMB refuses this combination too, and no restricted objective is validated for it. Use method = :ML, or drop the `sd()` formulas for REML.	ArgumentError: drm: method = :REML is not implemented for a Gaussian correlated block beside other random intercepts together with `sd()` formulas: drmTMB refuses this combination too, and no restricted objective is validated for it. Use method = :ML, or drop the `sd()` formulas for REML.				0.18	
+R	6	gaussian|crossed|lab0|q2|sd-one|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: method = :REML is not implemented for a Gaussian correlated block beside other random intercepts together with `sd()` formulas: drmTMB refuses this combination too, and no restricted objective is validated for it. Use method = :ML, or drop the `sd()` formulas for REML.	ArgumentError: drm: method = :REML is not implemented for a Gaussian correlated block beside other random intercepts together with `sd()` formulas: drmTMB refuses this combination too, and no restricted objective is validated for it. Use method = :ML, or drop the `sd()` formulas for REML.				0.19	
 S	7	gaussian|crossed|lab1|q2|sd-one|cm0|REML
 R	7	gaussian|crossed|lab1|q2|sd-one|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: method = :REML is not implemented for a Gaussian correlated block beside other random intercepts together with `sd()` formulas: drmTMB refuses this combination too, and no restricted objective is validated for it. Use method = :ML, or drop the `sd()` formulas for REML.	ArgumentError: drm: method = :REML is not implemented for a Gaussian correlated block beside other random intercepts together with `sd()` formulas: drmTMB refuses this combination too, and no restricted objective is validated for it. Use method = :ML, or drop the `sd()` formulas for REML.				0.00	
 S	8	gaussian|crossed|lab0|q2|sd-z|cm0|REML
@@ -25,9 +25,9 @@ R	12	gaussian|crossed|lab0|q2|sd-last|cm0|REML	ERROR	ArgumentError	ArgumentError
 S	13	gaussian|crossed|lab1|q2|sd-last|cm0|REML
 R	13	gaussian|crossed|lab1|q2|sd-last|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: method = :REML is not implemented for a Gaussian correlated block beside other random intercepts together with `sd()` formulas: drmTMB refuses this combination too, and no restricted objective is validated for it. Use method = :ML, or drop the `sd()` formulas for REML.	ArgumentError: drm: method = :REML is not implemented for a Gaussian correlated block beside other random intercepts together with `sd()` formulas: drmTMB refuses this combination too, and no restricted objective is validated for it. Use method = :ML, or drop the `sd()` formulas for REML.				0.00	
 S	14	gaussian|crossed|lab0|q3|sd-none|cm0|REML
-R	14	gaussian|crossed|lab0|q3|sd-none|cm0|REML	FITS				-482.2060013595	true	se_finite=true;npar=12	62.35	
+R	14	gaussian|crossed|lab0|q3|sd-none|cm0|REML	FITS				-482.2060013595	true	se_finite=true;npar=12	52.47	
 S	15	gaussian|crossed|lab1|q3|sd-none|cm0|REML
-R	15	gaussian|crossed|lab1|q3|sd-none|cm0|REML	FITS				-482.2060013595	true	se_finite=true;npar=12	6.52	
+R	15	gaussian|crossed|lab1|q3|sd-none|cm0|REML	FITS				-482.2060013595	true	se_finite=true;npar=12	6.39	
 S	16	gaussian|crossed|lab0|q3|sd-z|cm0|REML
 R	16	gaussian|crossed|lab0|q3|sd-z|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: method = :REML is not implemented for a Gaussian correlated block beside other random intercepts together with `sd()` formulas: drmTMB refuses this combination too, and no restricted objective is validated for it. Use method = :ML, or drop the `sd()` formulas for REML.	ArgumentError: drm: method = :REML is not implemented for a Gaussian correlated block beside other random intercepts together with `sd()` formulas: drmTMB refuses this combination too, and no restricted objective is validated for it. Use method = :ML, or drop the `sd()` formulas for REML.				0.00	
 S	17	gaussian|crossed|lab1|q3|sd-z|cm0|REML
@@ -37,9 +37,9 @@ R	18	gaussian|crossed|lab0|q3|sd-first|cm0|REML	ERROR	ArgumentError	ArgumentErro
 S	19	gaussian|crossed|lab1|q3|sd-first|cm0|REML
 R	19	gaussian|crossed|lab1|q3|sd-first|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: method = :REML is not implemented for a Gaussian correlated block beside other random intercepts together with `sd()` formulas: drmTMB refuses this combination too, and no restricted objective is validated for it. Use method = :ML, or drop the `sd()` formulas for REML.	ArgumentError: drm: method = :REML is not implemented for a Gaussian correlated block beside other random intercepts together with `sd()` formulas: drmTMB refuses this combination too, and no restricted objective is validated for it. Use method = :ML, or drop the `sd()` formulas for REML.				0.00	
 S	20	gaussian|crossed|lab0|q4|sd-none|cm0|REML
-R	20	gaussian|crossed|lab0|q4|sd-none|cm0|REML	FITS				-458.0360724871	true	se_finite=true;npar=16	28.19	
+R	20	gaussian|crossed|lab0|q4|sd-none|cm0|REML	FITS				-458.0360724871	true	se_finite=true;npar=16	28.77	
 S	21	gaussian|crossed|lab1|q4|sd-none|cm0|REML
-R	21	gaussian|crossed|lab1|q4|sd-none|cm0|REML	FITS				-458.0360724871	true	se_finite=true;npar=16	9.24	
+R	21	gaussian|crossed|lab1|q4|sd-none|cm0|REML	FITS				-458.0360724871	true	se_finite=true;npar=16	9.20	
 S	22	gaussian|crossed|lab0|q4|sd-z|cm0|REML
 R	22	gaussian|crossed|lab0|q4|sd-z|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: method = :REML is not implemented for a Gaussian correlated block beside other random intercepts together with `sd()` formulas: drmTMB refuses this combination too, and no restricted objective is validated for it. Use method = :ML, or drop the `sd()` formulas for REML.	ArgumentError: drm: method = :REML is not implemented for a Gaussian correlated block beside other random intercepts together with `sd()` formulas: drmTMB refuses this combination too, and no restricted objective is validated for it. Use method = :ML, or drop the `sd()` formulas for REML.				0.00	
 S	23	gaussian|crossed|lab1|q4|sd-z|cm0|REML

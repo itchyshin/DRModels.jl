@@ -1,19 +1,19 @@
 S	1	binomial|spatial|lab0|q1|sd-none|cm0|ML
-R	1	binomial|spatial|lab0|q1|sd-none|cm0|ML	ERROR	ErrorException	Binomial() currently supports only phylo(1 | group) among structured markers	Binomial() currently supports only phylo(1 | group) among structured markers			at=binomial.jl:364	13.10	
+R	1	binomial|spatial|lab0|q1|sd-none|cm0|ML	FITS				-263.3873012842	true	se_finite=true;npar=5	21.12	sparse-Laplace vcov: finite-difference Hessian is not positive definite at the optimum; reported SEs are not trustworthy.
 S	2	binomial|spatial|lab0|q1|sd-one|cm0|ML
-R	2	binomial|spatial|lab0|q1|sd-one|cm0|ML	FITS				-263.3873012842	true	se_finite=true;npar=5	7.84	sparse-Laplace vcov: finite-difference Hessian is not positive definite at the optimum; reported SEs are not trustworthy.
+R	2	binomial|spatial|lab0|q1|sd-one|cm0|ML	FITS				-263.3873012842	true	se_finite=true;npar=5	0.25	sparse-Laplace vcov: finite-difference Hessian is not positive definite at the optimum; reported SEs are not trustworthy.
 S	3	binomial|spatial|lab0|q1|sd-z|cm0|ML
-R	3	binomial|spatial|lab0|q1|sd-z|cm0|ML	FITS				-261.8484146072	true	se_finite=true;npar=6	0.75	
+R	3	binomial|spatial|lab0|q1|sd-z|cm0|ML	FITS				-261.8484146072	true	se_finite=true;npar=6	0.88	
 S	4	binomial|spatial|lab0|q2|sd-none|cm0|ML
-R	4	binomial|spatial|lab0|q2|sd-none|cm0|ML	FITS				-263.3873012842	true	se_finite=true;npar=6	4.56	sparse-Laplace vcov: finite-difference Hessian is not positive definite at the optimum; reported SEs are not trustworthy.
+R	4	binomial|spatial|lab0|q2|sd-none|cm0|ML	FITS				-263.3873012842	true	se_finite=true;npar=6	5.10	sparse-Laplace vcov: finite-difference Hessian is not positive definite at the optimum; reported SEs are not trustworthy.
 S	5	binomial|spatial|lab1|q2|sd-none|cm0|ML
-R	5	binomial|spatial|lab1|q2|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `spatial(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `spatial(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.09	
+R	5	binomial|spatial|lab1|q2|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `spatial(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `spatial(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.55	
 S	6	binomial|spatial|lab0|q2|sd-one|cm0|ML
-R	6	binomial|spatial|lab0|q2|sd-one|cm0|ML	FITS				-263.3873012842	true	se_finite=true;npar=6	2.35	sparse-Laplace vcov: finite-difference Hessian is not positive definite at the optimum; reported SEs are not trustworthy.
+R	6	binomial|spatial|lab0|q2|sd-one|cm0|ML	FITS				-263.3873012842	true	se_finite=true;npar=6	2.50	sparse-Laplace vcov: finite-difference Hessian is not positive definite at the optimum; reported SEs are not trustworthy.
 S	7	binomial|spatial|lab1|q2|sd-one|cm0|ML
 R	7	binomial|spatial|lab1|q2|sd-one|cm0|ML	ERROR	ArgumentError	ArgumentError: Binomial `spatial(1 + x1 | p | g)` SD regression: the labelled correlated spatial form is not supported (native drmTMB 0.8.1 admits labelled Binomial intercept-and-slope blocks only for `animal` and for logit `phylo`); use the unlabelled independent-field `spatial(1 + x1 | g)` form.	ArgumentError: Binomial `spatial(1 + x1 | p | g)` SD regression: the labelled correlated spatial form is not supported (native drmTMB 0.8.1 admits labelled Binomial intercept-and-slope blocks only for `animal` and for logit `phylo`); use the unlabelled independent-field `spatial(1 + x1 | g)` form.				0.13	
 S	8	binomial|spatial|lab0|q2|sd-z|cm0|ML
-R	8	binomial|spatial|lab0|q2|sd-z|cm0|ML	FITS				-261.5872090173	true	se_finite=true;npar=8	5.71	
+R	8	binomial|spatial|lab0|q2|sd-z|cm0|ML	FITS				-261.5872090173	true	se_finite=true;npar=8	6.04	
 S	9	binomial|spatial|lab1|q2|sd-z|cm0|ML
 R	9	binomial|spatial|lab1|q2|sd-z|cm0|ML	ERROR	ArgumentError	ArgumentError: Binomial `spatial(1 + x1 | p | g)` SD regression: the labelled correlated spatial form is not supported (native drmTMB 0.8.1 admits labelled Binomial intercept-and-slope blocks only for `animal` and for logit `phylo`); use the unlabelled independent-field `spatial(1 + x1 | g)` form.	ArgumentError: Binomial `spatial(1 + x1 | p | g)` SD regression: the labelled correlated spatial form is not supported (native drmTMB 0.8.1 admits labelled Binomial intercept-and-slope blocks only for `animal` and for logit `phylo`); use the unlabelled independent-field `spatial(1 + x1 | g)` form.				0.00	
 S	10	binomial|spatial|lab0|q2|sd-first|cm0|ML

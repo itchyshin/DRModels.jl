@@ -1,22 +1,22 @@
 S	1	nb2|indep|lab0|q2|sd-none|cm0|ML
-R	1	nb2|indep|lab0|q2|sd-none|cm0|ML	FITS				-700.1303781744	true	se_finite=true;npar=7	24.00	
+R	1	nb2|indep|lab0|q2|sd-none|cm0|ML	FITS				-700.1303781744	true	se_finite=true;npar=7	26.72	
 S	2	nb2|indep|lab0|q2|sd-one|cm0|ML
-R	2	nb2|indep|lab0|q2|sd-one|cm0|ML	FITS				-700.1303781744	true	se_finite=true;npar=7	5.28	
+R	2	nb2|indep|lab0|q2|sd-one|cm0|ML	FITS				-700.1303781744	true	se_finite=true;npar=7	5.79	
 S	3	nb2|indep|lab0|q2|sd-z|cm0|ML
-R	3	nb2|indep|lab0|q2|sd-z|cm0|ML	FITS				-694.8564120538	true	se_finite=true;npar=9	0.74	
+R	3	nb2|indep|lab0|q2|sd-z|cm0|ML	FITS				-694.8564120538	true	se_finite=true;npar=9	0.79	
 S	4	nb2|indep|lab0|q2|sd-first|cm0|ML
-R	4	nb2|indep|lab0|q2|sd-first|cm0|ML	FITS				-696.3223037308	true	se_finite=true;npar=8	5.87	
+R	4	nb2|indep|lab0|q2|sd-first|cm0|ML	FITS				-696.3223037308	true	se_finite=true;npar=8	6.63	
 S	5	nb2|indep|lab0|q2|sd-last|cm0|ML
-R	5	nb2|indep|lab0|q2|sd-last|cm0|ML	FITS				-698.3217699919	true	se_finite=true;npar=8	0.78	
+R	5	nb2|indep|lab0|q2|sd-last|cm0|ML	FITS				-698.3217699919	true	se_finite=true;npar=8	0.23	
 S	6	nb2|indep|lab0|q3|sd-none|cm0|ML
-R	6	nb2|indep|lab0|q3|sd-none|cm0|ML	FITS				-698.6880512580	true	se_finite=true;npar=8	0.51	
+R	6	nb2|indep|lab0|q3|sd-none|cm0|ML	FITS				-698.6880512580	true	se_finite=true;npar=8	0.57	
 S	7	nb2|indep|lab0|q3|sd-z|cm0|ML
-R	7	nb2|indep|lab0|q3|sd-z|cm0|ML	FITS				-693.3421397096	true	se_finite=true;npar=11	9.37	
+R	7	nb2|indep|lab0|q3|sd-z|cm0|ML	FITS				-693.3421397096	true	se_finite=true;npar=11	9.74	
 S	8	nb2|indep|lab0|q3|sd-first|cm0|ML
-R	8	nb2|indep|lab0|q3|sd-first|cm0|ML	FITS				-695.0098896407	true	se_finite=true;npar=9	7.02	
+R	8	nb2|indep|lab0|q3|sd-first|cm0|ML	FITS				-695.0098896407	true	se_finite=true;npar=9	7.00	
 S	9	nb2|indep|lab0|q4|sd-none|cm0|ML
-R	9	nb2|indep|lab0|q4|sd-none|cm0|ML	FITS				-690.1230821598	true	se_finite=true;npar=9	1.65	
+R	9	nb2|indep|lab0|q4|sd-none|cm0|ML	FITS				-690.1230821598	true	se_finite=true;npar=9	1.09	
 S	10	nb2|indep|lab0|q4|sd-z|cm0|ML
-R	10	nb2|indep|lab0|q4|sd-z|cm0|ML	FITS				-684.8385283417	true	se_finite=true;npar=13	1.65	
+R	10	nb2|indep|lab0|q4|sd-z|cm0|ML	FITS				-684.8385283417	true	se_finite=true;npar=13	1.33	
 S	11	nb2|indep|lab0|q4|sd-first|cm0|ML
-R	11	nb2|indep|lab0|q4|sd-first|cm0|ML	FITS				-685.6471499134	true	se_finite=true;npar=10	13.38	
+R	11	nb2|indep|lab0|q4|sd-first|cm0|ML	FITS				-685.6471499134	true	se_finite=true;npar=10	9.05	

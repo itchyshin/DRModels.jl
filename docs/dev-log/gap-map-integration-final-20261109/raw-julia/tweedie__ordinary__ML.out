@@ -1,15 +1,15 @@
 S	1	tweedie|ordinary|lab0|q1|sd-none|cm0|ML
-R	1	tweedie|ordinary|lab0|q1|sd-none|cm0|ML	FITS				-766.6476812942	true	se_finite=true;npar=7	46.97	
+R	1	tweedie|ordinary|lab0|q1|sd-none|cm0|ML	FITS				-766.6476812942	true	se_finite=true;npar=7	34.24	
 S	2	tweedie|ordinary|lab0|q1|sd-one|cm0|ML
-R	2	tweedie|ordinary|lab0|q1|sd-one|cm0|ML	FITS				-766.6476812942	true	se_finite=true;npar=7	28.77	
+R	2	tweedie|ordinary|lab0|q1|sd-one|cm0|ML	FITS				-766.6476812942	true	se_finite=true;npar=7	20.89	
 S	3	tweedie|ordinary|lab0|q1|sd-z|cm0|ML
-R	3	tweedie|ordinary|lab0|q1|sd-z|cm0|ML	FITS				-766.6166608731	true	se_finite=true;npar=8	33.64	
+R	3	tweedie|ordinary|lab0|q1|sd-z|cm0|ML	FITS				-766.6166608731	true	se_finite=true;npar=8	24.26	
 S	4	tweedie|ordinary|lab0|q2|sd-none|cm0|ML
-R	4	tweedie|ordinary|lab0|q2|sd-none|cm0|ML	ERROR	ErrorException	Tweedie() supports only an ordinary `(1 | g)` random intercept or an independent `(0 + x | g)` random slope on `mu`; correlated random slopes `(1 + x | g)` are not implemented (matches drmTMB 0.7.0: "Only independent tweedie() mu random intercepts and slopes are implemented in this slice")	Tweedie() supports only an ordinary `(1 | g)` random intercept or an independent `(0 + x | g)` random slope on `mu`; correlated random slopes `(1 + x | g)` are not implemented (matches drmTMB 0.7.0: "Only independent tweedie() mu random intercepts and slopes are implemented in this slice")			at=tweedie.jl:233	0.15	
+R	4	tweedie|ordinary|lab0|q2|sd-none|cm0|ML	ERROR	ErrorException	Tweedie() supports only an ordinary `(1 | g)` random intercept or an independent `(0 + x | g)` random slope on `mu`; correlated random slopes `(1 + x | g)` are not implemented (matches drmTMB 0.7.0: "Only independent tweedie() mu random intercepts and slopes are implemented in this slice")	Tweedie() supports only an ordinary `(1 | g)` random intercept or an independent `(0 + x | g)` random slope on `mu`; correlated random slopes `(1 + x | g)` are not implemented (matches drmTMB 0.7.0: "Only independent tweedie() mu random intercepts and slopes are implemented in this slice")			at=tweedie.jl:233	0.13	
 S	5	tweedie|ordinary|lab1|q2|sd-none|cm0|ML
 R	5	tweedie|ordinary|lab1|q2|sd-none|cm0|ML	ERROR	ErrorException	unsupported random-effect term: `(:((1 + x1) | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect	unsupported random-effect term: `(:((1 + x1) | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect			at=gaussian_ranef.jl:473	0.06	
 S	6	tweedie|ordinary|lab0|q2|sd-one|cm0|ML
-R	6	tweedie|ordinary|lab0|q2|sd-one|cm0|ML	ERROR	ArgumentError	ArgumentError: Tweedie random-effect SD regression requires exactly one `sd(group) ~ …` formula.	ArgumentError: Tweedie random-effect SD regression requires exactly one `sd(group) ~ …` formula.				0.11	
+R	6	tweedie|ordinary|lab0|q2|sd-one|cm0|ML	ERROR	ArgumentError	ArgumentError: Tweedie random-effect SD regression requires exactly one `sd(group) ~ …` formula.	ArgumentError: Tweedie random-effect SD regression requires exactly one `sd(group) ~ …` formula.				0.10	
 S	7	tweedie|ordinary|lab1|q2|sd-one|cm0|ML
 R	7	tweedie|ordinary|lab1|q2|sd-one|cm0|ML	ERROR	ArgumentError	ArgumentError: Tweedie random-effect SD regression requires exactly one `sd(group) ~ …` formula.	ArgumentError: Tweedie random-effect SD regression requires exactly one `sd(group) ~ …` formula.				0.00	
 S	8	tweedie|ordinary|lab0|q2|sd-z|cm0|ML
@@ -49,7 +49,7 @@ R	24	tweedie|ordinary|lab0|q4|sd-first|cm0|ML	ERROR	ErrorException	DRModels.jl s
 S	25	tweedie|ordinary|lab1|q4|sd-first|cm0|ML
 R	25	tweedie|ordinary|lab1|q4|sd-first|cm0|ML	ERROR	ErrorException	unsupported random-effect term: `(:((1 + x1 + x2 + x3) | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect	unsupported random-effect term: `(:((1 + x1 + x2 + x3) | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect			at=gaussian_ranef.jl:473	0.00	
 S	26	tweedie|ordinary|lab0|q1|sd-none|cm1|ML
-R	26	tweedie|ordinary|lab0|q1|sd-none|cm1|ML	ERROR	ErrorException	Tweedie() random effects are not implemented for `sigma`/`nu`; only an ordinary `(1 | g)` random intercept on `mu` is supported (matches drmTMB, which rejects sigma/nu random effects for tweedie())	Tweedie() random effects are not implemented for `sigma`/`nu`; only an ordinary `(1 | g)` random intercept on `mu` is supported (matches drmTMB, which rejects sigma/nu random effects for tweedie())			at=tweedie.jl:179	0.29	
+R	26	tweedie|ordinary|lab0|q1|sd-none|cm1|ML	ERROR	ErrorException	Tweedie() random effects are not implemented for `sigma`/`nu`; only an ordinary `(1 | g)` random intercept on `mu` is supported (matches drmTMB, which rejects sigma/nu random effects for tweedie())	Tweedie() random effects are not implemented for `sigma`/`nu`; only an ordinary `(1 | g)` random intercept on `mu` is supported (matches drmTMB, which rejects sigma/nu random effects for tweedie())			at=tweedie.jl:179	0.28	
 S	27	tweedie|ordinary|lab0|q1|sd-z|cm1|ML
 R	27	tweedie|ordinary|lab0|q1|sd-z|cm1|ML	ERROR	ErrorException	unsupported random-effect term: `(:(1 | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect	unsupported random-effect term: `(:(1 | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect			at=gaussian_ranef.jl:473	0.08	
 S	28	tweedie|ordinary|lab0|q2|sd-none|cm1|ML

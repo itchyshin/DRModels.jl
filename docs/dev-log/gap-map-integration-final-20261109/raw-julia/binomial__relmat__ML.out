@@ -1,15 +1,15 @@
 S	1	binomial|relmat|lab0|q1|sd-none|cm0|ML
-R	1	binomial|relmat|lab0|q1|sd-none|cm0|ML	ERROR	ErrorException	Binomial() currently supports only phylo(1 | group) among structured markers	Binomial() currently supports only phylo(1 | group) among structured markers			at=binomial.jl:364	13.41	
+R	1	binomial|relmat|lab0|q1|sd-none|cm0|ML	FITS				-257.9250760631	true	se_finite=true;npar=5	20.16	
 S	2	binomial|relmat|lab0|q1|sd-one|cm0|ML
-R	2	binomial|relmat|lab0|q1|sd-one|cm0|ML	FITS				-257.9250760631	true	se_finite=true;npar=5	7.36	
+R	2	binomial|relmat|lab0|q1|sd-one|cm0|ML	FITS				-257.9250760631	true	se_finite=true;npar=5	0.21	
 S	3	binomial|relmat|lab0|q1|sd-z|cm0|ML
-R	3	binomial|relmat|lab0|q1|sd-z|cm0|ML	FITS				-257.0561252899	true	se_finite=true;npar=6	0.52	
+R	3	binomial|relmat|lab0|q1|sd-z|cm0|ML	FITS				-257.0561252899	true	se_finite=true;npar=6	0.48	
 S	4	binomial|relmat|lab0|q2|sd-none|cm0|ML
-R	4	binomial|relmat|lab0|q2|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `relmat(1 + x1 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(1 + x1 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.14	
+R	4	binomial|relmat|lab0|q2|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `relmat(1 + x1 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(1 + x1 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.56	
 S	5	binomial|relmat|lab1|q2|sd-none|cm0|ML
-R	5	binomial|relmat|lab1|q2|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `relmat(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.09	
+R	5	binomial|relmat|lab1|q2|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `relmat(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.11	
 S	6	binomial|relmat|lab0|q2|sd-one|cm0|ML
-R	6	binomial|relmat|lab0|q2|sd-one|cm0|ML	ERROR	ArgumentError	ArgumentError: Binomial relmat SD regression currently requires exactly one `sd(group, relmat) ~ …` formula.	ArgumentError: Binomial relmat SD regression currently requires exactly one `sd(group, relmat) ~ …` formula.				0.19	
+R	6	binomial|relmat|lab0|q2|sd-one|cm0|ML	ERROR	ArgumentError	ArgumentError: Binomial relmat SD regression currently requires exactly one `sd(group, relmat) ~ …` formula.	ArgumentError: Binomial relmat SD regression currently requires exactly one `sd(group, relmat) ~ …` formula.				0.17	
 S	7	binomial|relmat|lab1|q2|sd-one|cm0|ML
 R	7	binomial|relmat|lab1|q2|sd-one|cm0|ML	ERROR	ArgumentError	ArgumentError: Binomial relmat SD regression currently requires exactly one `sd(group, relmat) ~ …` formula.	ArgumentError: Binomial relmat SD regression currently requires exactly one `sd(group, relmat) ~ …` formula.				0.00	
 S	8	binomial|relmat|lab0|q2|sd-z|cm0|ML

@@ -1,21 +1,21 @@
 S	1	gaussian|animal|lab0|q1|sd-none|cm0|ML
-R	1	gaussian|animal|lab0|q1|sd-none|cm0|ML	FITS				-464.1946927813	true	se_finite=true;npar=6	40.82	
+R	1	gaussian|animal|lab0|q1|sd-none|cm0|ML	FITS				-464.1946927813	true	se_finite=true;npar=6	27.59	
 S	2	gaussian|animal|lab0|q1|sd-one|cm0|ML
-R	2	gaussian|animal|lab0|q1|sd-one|cm0|ML	FITS				-464.1946927813	true	se_finite=true;npar=6	7.71	
+R	2	gaussian|animal|lab0|q1|sd-one|cm0|ML	FITS				-464.1946927813	true	se_finite=true;npar=6	5.15	
 S	3	gaussian|animal|lab0|q1|sd-z|cm0|ML
-R	3	gaussian|animal|lab0|q1|sd-z|cm0|ML	FITS				-461.9741536927	true	se_finite=true;npar=7	7.69	
+R	3	gaussian|animal|lab0|q1|sd-z|cm0|ML	FITS				-461.9741536927	true	se_finite=true;npar=7	5.25	
 S	4	gaussian|animal|lab0|q2|sd-none|cm0|ML
-R	4	gaussian|animal|lab0|q2|sd-none|cm0|ML	FITS				-457.1777929009	true	se_finite=true;npar=7	17.92	
+R	4	gaussian|animal|lab0|q2|sd-none|cm0|ML	FITS				-457.1777929009	true	se_finite=true;npar=7	13.31	
 S	5	gaussian|animal|lab1|q2|sd-none|cm0|ML
 R	5	gaussian|animal|lab1|q2|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `animal(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route	ArgumentError: drm: `animal(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route				0.09	
 S	6	gaussian|animal|lab0|q2|sd-one|cm0|ML
-R	6	gaussian|animal|lab0|q2|sd-one|cm0|ML	FITS				-457.1777929009	true	se_finite=true;npar=7	1.79	
+R	6	gaussian|animal|lab0|q2|sd-one|cm0|ML	FITS				-457.1777929009	true	se_finite=true;npar=7	1.26	
 S	7	gaussian|animal|lab1|q2|sd-one|cm0|ML
-R	7	gaussian|animal|lab1|q2|sd-one|cm0|ML	FITS				-455.7262161024	true	se_finite=true;npar=8	19.35	
+R	7	gaussian|animal|lab1|q2|sd-one|cm0|ML	FITS				-455.7262161024	true	se_finite=true;npar=8	13.92	
 S	8	gaussian|animal|lab0|q2|sd-z|cm0|ML
-R	8	gaussian|animal|lab0|q2|sd-z|cm0|ML	FITS				-454.8140903977	true	se_finite=true;npar=9	22.11	
+R	8	gaussian|animal|lab0|q2|sd-z|cm0|ML	FITS				-454.8140903977	true	se_finite=true;npar=9	17.89	
 S	9	gaussian|animal|lab1|q2|sd-z|cm0|ML
-R	9	gaussian|animal|lab1|q2|sd-z|cm0|ML	FITS				-453.6537000140	true	se_finite=true;npar=10	24.32	
+R	9	gaussian|animal|lab1|q2|sd-z|cm0|ML	FITS				-453.6537000140	true	se_finite=true;npar=10	23.49	
 S	10	gaussian|animal|lab0|q2|sd-first|cm0|ML
 R	10	gaussian|animal|lab0|q2|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: Gaussian `animal(1 + x1 | g)` needs one SD formula for the intercept and one for the slope (`sd(g, animal, coef(intercept)) ~ …` and `sd(g, animal, coef(x1)) ~ …`).	ArgumentError: drm: Gaussian `animal(1 + x1 | g)` needs one SD formula for the intercept and one for the slope (`sd(g, animal, coef(intercept)) ~ …` and `sd(g, animal, coef(x1)) ~ …`).				0.00	
 S	11	gaussian|animal|lab1|q2|sd-first|cm0|ML
@@ -37,7 +37,7 @@ R	18	gaussian|animal|lab0|q3|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: 
 S	19	gaussian|animal|lab1|q3|sd-first|cm0|ML
 R	19	gaussian|animal|lab1|q3|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `animal(:((1 + x1 + x2) | p) | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route	ArgumentError: drm: `animal(:((1 + x1 + x2) | p) | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route				0.00	
 S	20	gaussian|animal|lab0|q4|sd-none|cm0|ML
-R	20	gaussian|animal|lab0|q4|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `animal(1 + x1 + x2 + x3 | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route	ArgumentError: drm: `animal(1 + x1 + x2 + x3 | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route				0.02	
+R	20	gaussian|animal|lab0|q4|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `animal(1 + x1 + x2 + x3 | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route	ArgumentError: drm: `animal(1 + x1 + x2 + x3 | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route				0.01	
 S	21	gaussian|animal|lab1|q4|sd-none|cm0|ML
 R	21	gaussian|animal|lab1|q4|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `animal(:((1 + x1 + x2 + x3) | p) | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route	ArgumentError: drm: `animal(:((1 + x1 + x2 + x3) | p) | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route				0.00	
 S	22	gaussian|animal|lab0|q4|sd-z|cm0|ML

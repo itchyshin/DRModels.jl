@@ -1,27 +1,27 @@
 S	1	gamma|crossed|lab0|q1|sd-none|cm0|ML
-R	1	gamma|crossed|lab0|q1|sd-none|cm0|ML	FITS				-642.8543009386	true	se_finite=true;npar=7	20.33	
+R	1	gamma|crossed|lab0|q1|sd-none|cm0|ML	FITS				-642.8543009386	true	se_finite=true;npar=7	21.87	
 S	2	gamma|crossed|lab0|q1|sd-one|cm0|ML
-R	2	gamma|crossed|lab0|q1|sd-one|cm0|ML	FITS				-642.8543009456	true	se_finite=true;npar=7	5.07	
+R	2	gamma|crossed|lab0|q1|sd-one|cm0|ML	FITS				-642.8543009456	true	se_finite=true;npar=7	5.55	
 S	3	gamma|crossed|lab0|q1|sd-z|cm0|ML
-R	3	gamma|crossed|lab0|q1|sd-z|cm0|ML	FITS				-639.6514071740	true	se_finite=true;npar=9	3.28	
+R	3	gamma|crossed|lab0|q1|sd-z|cm0|ML	FITS				-639.6514071740	true	se_finite=true;npar=9	3.49	
 S	4	gamma|crossed|lab0|q2|sd-none|cm0|ML
-R	4	gamma|crossed|lab0|q2|sd-none|cm0|ML	ERROR	ErrorException	Gamma() supports multiple random effects only as crossed/nested intercepts `(1 | g) + (1 | h)` or independent intercepts and slopes `(1 | g) + (0 + x | g)`; a correlated `(1 + x | g)` must be the only random-effect term	Gamma() supports multiple random effects only as crossed/nested intercepts `(1 | g) + (1 | h)` or independent intercepts and slopes `(1 | g) + (0 + x | g)`; a correlated `(1 + x | g)` must be the only random-effect term			at=gamma.jl:187	0.13	
+R	4	gamma|crossed|lab0|q2|sd-none|cm0|ML	ERROR	ErrorException	Gamma() supports multiple random effects only as crossed/nested intercepts `(1 | g) + (1 | h)` or independent intercepts and slopes `(1 | g) + (0 + x | g)`; a correlated `(1 + x | g)` must be the only random-effect term	Gamma() supports multiple random effects only as crossed/nested intercepts `(1 | g) + (1 | h)` or independent intercepts and slopes `(1 | g) + (0 + x | g)`; a correlated `(1 + x | g)` must be the only random-effect term			at=gamma.jl:187	0.17	
 S	5	gamma|crossed|lab1|q2|sd-none|cm0|ML
-R	5	gamma|crossed|lab1|q2|sd-none|cm0|ML	ERROR	ErrorException	location–scale coupled random effect must be intercept-only: `(1 | tag | group)` (got `(:(1 + x1) | … | …)`)	location–scale coupled random effect must be intercept-only: `(1 | tag | group)` (got `(:(1 + x1) | … | …)`)			at=locscale_frontend.jl:56	0.05	
+R	5	gamma|crossed|lab1|q2|sd-none|cm0|ML	ERROR	ErrorException	location–scale coupled random effect must be intercept-only: `(1 | tag | group)` (got `(:(1 + x1) | … | …)`)	location–scale coupled random effect must be intercept-only: `(1 | tag | group)` (got `(:(1 + x1) | … | …)`)			at=locscale_frontend.jl:56	0.06	
 S	6	gamma|crossed|lab0|q2|sd-one|cm0|ML
-R	6	gamma|crossed|lab0|q2|sd-one|cm0|ML	ERROR	ArgumentError	ArgumentError: Gamma random-effect SD regression requires exactly one SD target.	ArgumentError: Gamma random-effect SD regression requires exactly one SD target.				0.21	
+R	6	gamma|crossed|lab0|q2|sd-one|cm0|ML	ERROR	ArgumentError	ArgumentError: Gamma random-effect SD regression requires exactly one SD target.	ArgumentError: Gamma random-effect SD regression requires exactly one SD target.				0.25	
 S	7	gamma|crossed|lab1|q2|sd-one|cm0|ML
 R	7	gamma|crossed|lab1|q2|sd-one|cm0|ML	ERROR	ErrorException	unsupported random-effect term: `(:((1 + x1) | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect	unsupported random-effect term: `(:((1 + x1) | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect			at=gaussian_ranef.jl:473	0.02	
 S	8	gamma|crossed|lab0|q2|sd-z|cm0|ML
-R	8	gamma|crossed|lab0|q2|sd-z|cm0|ML	ERROR	ArgumentError	ArgumentError: Gamma random-effect SD regression requires exactly one SD target.	ArgumentError: Gamma random-effect SD regression requires exactly one SD target.				0.01	
+R	8	gamma|crossed|lab0|q2|sd-z|cm0|ML	ERROR	ArgumentError	ArgumentError: Gamma random-effect SD regression requires exactly one SD target.	ArgumentError: Gamma random-effect SD regression requires exactly one SD target.				0.02	
 S	9	gamma|crossed|lab1|q2|sd-z|cm0|ML
 R	9	gamma|crossed|lab1|q2|sd-z|cm0|ML	ERROR	ErrorException	unsupported random-effect term: `(:((1 + x1) | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect	unsupported random-effect term: `(:((1 + x1) | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect			at=gaussian_ranef.jl:473	0.00	
 S	10	gamma|crossed|lab0|q2|sd-first|cm0|ML
-R	10	gamma|crossed|lab0|q2|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: Gamma random-effect SD regression requires exactly one SD target.	ArgumentError: Gamma random-effect SD regression requires exactly one SD target.				0.07	
+R	10	gamma|crossed|lab0|q2|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: Gamma random-effect SD regression requires exactly one SD target.	ArgumentError: Gamma random-effect SD regression requires exactly one SD target.				0.09	
 S	11	gamma|crossed|lab1|q2|sd-first|cm0|ML
 R	11	gamma|crossed|lab1|q2|sd-first|cm0|ML	ERROR	ErrorException	unsupported random-effect term: `(:((1 + x1) | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect	unsupported random-effect term: `(:((1 + x1) | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect			at=gaussian_ranef.jl:473	0.00	
 S	12	gamma|crossed|lab0|q2|sd-last|cm0|ML
-R	12	gamma|crossed|lab0|q2|sd-last|cm0|ML	ERROR	ArgumentError	ArgumentError: Gamma `sd(g)` currently requires exactly one ordinary independent random effect.	ArgumentError: Gamma `sd(g)` currently requires exactly one ordinary independent random effect.				0.08	
+R	12	gamma|crossed|lab0|q2|sd-last|cm0|ML	ERROR	ArgumentError	ArgumentError: Gamma `sd(g)` currently requires exactly one ordinary independent random effect.	ArgumentError: Gamma `sd(g)` currently requires exactly one ordinary independent random effect.				0.09	
 S	13	gamma|crossed|lab1|q2|sd-last|cm0|ML
 R	13	gamma|crossed|lab1|q2|sd-last|cm0|ML	ERROR	ErrorException	unsupported random-effect term: `(:((1 + x1) | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect	unsupported random-effect term: `(:((1 + x1) | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect			at=gaussian_ranef.jl:473	0.00	
 S	14	gamma|crossed|lab0|q3|sd-none|cm0|ML

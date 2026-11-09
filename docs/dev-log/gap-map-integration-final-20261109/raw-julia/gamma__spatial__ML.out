@@ -1,19 +1,19 @@
 S	1	gamma|spatial|lab0|q1|sd-none|cm0|ML
-R	1	gamma|spatial|lab0|q1|sd-none|cm0|ML	FITS				-406.1954700140	true	se_finite=true;npar=6	20.90	
+R	1	gamma|spatial|lab0|q1|sd-none|cm0|ML	FITS				-406.1954700140	true	se_finite=true;npar=6	22.85	
 S	2	gamma|spatial|lab0|q1|sd-one|cm0|ML
-R	2	gamma|spatial|lab0|q1|sd-one|cm0|ML	FITS				-406.1954700140	true	se_finite=true;npar=6	4.08	
+R	2	gamma|spatial|lab0|q1|sd-one|cm0|ML	FITS				-406.1954700140	true	se_finite=true;npar=6	4.29	
 S	3	gamma|spatial|lab0|q1|sd-z|cm0|ML
-R	3	gamma|spatial|lab0|q1|sd-z|cm0|ML	FITS				-404.2755360722	true	se_finite=true;npar=7	0.64	
+R	3	gamma|spatial|lab0|q1|sd-z|cm0|ML	FITS				-404.2755360722	true	se_finite=true;npar=7	0.68	
 S	4	gamma|spatial|lab0|q2|sd-none|cm0|ML
-R	4	gamma|spatial|lab0|q2|sd-none|cm0|ML	FITS				-403.6302358890	true	se_finite=true;npar=7	2.96	
+R	4	gamma|spatial|lab0|q2|sd-none|cm0|ML	FITS				-403.6302358890	true	se_finite=true;npar=7	3.11	
 S	5	gamma|spatial|lab1|q2|sd-none|cm0|ML
-R	5	gamma|spatial|lab1|q2|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `spatial(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `spatial(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.08	
+R	5	gamma|spatial|lab1|q2|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `spatial(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `spatial(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.10	
 S	6	gamma|spatial|lab0|q2|sd-one|cm0|ML
-R	6	gamma|spatial|lab0|q2|sd-one|cm0|ML	FITS				-403.6302358890	true	se_finite=true;npar=7	0.70	
+R	6	gamma|spatial|lab0|q2|sd-one|cm0|ML	FITS				-403.6302358890	true	se_finite=true;npar=7	0.76	
 S	7	gamma|spatial|lab1|q2|sd-one|cm0|ML
 R	7	gamma|spatial|lab1|q2|sd-one|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `spatial(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `spatial(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.00	
 S	8	gamma|spatial|lab0|q2|sd-z|cm0|ML
-R	8	gamma|spatial|lab0|q2|sd-z|cm0|ML	FITS				-397.4758828036	true	se_finite=true;npar=9	8.88	
+R	8	gamma|spatial|lab0|q2|sd-z|cm0|ML	FITS				-397.4758828036	true	se_finite=true;npar=9	9.40	
 S	9	gamma|spatial|lab1|q2|sd-z|cm0|ML
 R	9	gamma|spatial|lab1|q2|sd-z|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `spatial(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `spatial(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.00	
 S	10	gamma|spatial|lab0|q2|sd-first|cm0|ML

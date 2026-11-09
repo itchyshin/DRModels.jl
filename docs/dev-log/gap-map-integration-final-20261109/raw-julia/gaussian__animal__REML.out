@@ -1,19 +1,19 @@
 S	1	gaussian|animal|lab0|q1|sd-none|cm0|REML
-R	1	gaussian|animal|lab0|q1|sd-none|cm0|REML	FITS				-472.2473545732	true	se_finite=true;npar=6	52.86	
+R	1	gaussian|animal|lab0|q1|sd-none|cm0|REML	FITS				-472.2473545732	true	se_finite=true;npar=6	40.40	
 S	2	gaussian|animal|lab0|q1|sd-one|cm0|REML
-R	2	gaussian|animal|lab0|q1|sd-one|cm0|REML	FITS				-472.2473545732	true	se_finite=true;npar=6	12.16	
+R	2	gaussian|animal|lab0|q1|sd-one|cm0|REML	FITS				-472.2473545732	true	se_finite=true;npar=6	9.23	
 S	3	gaussian|animal|lab0|q1|sd-z|cm0|REML
-R	3	gaussian|animal|lab0|q1|sd-z|cm0|REML	FITS				-470.2074045030	true	se_finite=true;npar=7	14.46	
+R	3	gaussian|animal|lab0|q1|sd-z|cm0|REML	FITS				-470.2074045030	true	se_finite=true;npar=7	10.01	
 S	4	gaussian|animal|lab0|q2|sd-none|cm0|REML
-R	4	gaussian|animal|lab0|q2|sd-none|cm0|REML	FITS				-464.6771053456	true	se_finite=true;npar=7	17.74	
+R	4	gaussian|animal|lab0|q2|sd-none|cm0|REML	FITS				-464.6771053456	true	se_finite=true;npar=7	13.94	
 S	5	gaussian|animal|lab1|q2|sd-none|cm0|REML
-R	5	gaussian|animal|lab1|q2|sd-none|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: `animal(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route	ArgumentError: drm: `animal(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route				0.10	
+R	5	gaussian|animal|lab1|q2|sd-none|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: `animal(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route	ArgumentError: drm: `animal(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route				0.09	
 S	6	gaussian|animal|lab0|q2|sd-one|cm0|REML
-R	6	gaussian|animal|lab0|q2|sd-one|cm0|REML	FITS				-464.6771053456	true	se_finite=true;npar=7	1.46	
+R	6	gaussian|animal|lab0|q2|sd-one|cm0|REML	FITS				-464.6771053456	true	se_finite=true;npar=7	0.79	
 S	7	gaussian|animal|lab1|q2|sd-one|cm0|REML
 R	7	gaussian|animal|lab1|q2|sd-one|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: Gaussian `animal(1 + x1 | p | g)` SD regression: method = :REML is not implemented for the labelled (correlated) `animal` block; native drmTMB refuses it too. Use the unlabelled `animal(1 + x1 | g)` or method = :ML.	ArgumentError: drm: Gaussian `animal(1 + x1 | p | g)` SD regression: method = :REML is not implemented for the labelled (correlated) `animal` block; native drmTMB refuses it too. Use the unlabelled `animal(1 + x1 | g)` or method = :ML.				0.00	
 S	8	gaussian|animal|lab0|q2|sd-z|cm0|REML
-R	8	gaussian|animal|lab0|q2|sd-z|cm0|REML	FITS				-462.5142765978	true	se_finite=true;npar=9	17.94	
+R	8	gaussian|animal|lab0|q2|sd-z|cm0|REML	FITS				-462.5142765978	true	se_finite=true;npar=9	17.42	
 S	9	gaussian|animal|lab1|q2|sd-z|cm0|REML
 R	9	gaussian|animal|lab1|q2|sd-z|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: Gaussian `animal(1 + x1 | p | g)` SD regression: method = :REML is not implemented for the labelled (correlated) `animal` block; native drmTMB refuses it too. Use the unlabelled `animal(1 + x1 | g)` or method = :ML.	ArgumentError: drm: Gaussian `animal(1 + x1 | p | g)` SD regression: method = :REML is not implemented for the labelled (correlated) `animal` block; native drmTMB refuses it too. Use the unlabelled `animal(1 + x1 | g)` or method = :ML.				0.00	
 S	10	gaussian|animal|lab0|q2|sd-first|cm0|REML

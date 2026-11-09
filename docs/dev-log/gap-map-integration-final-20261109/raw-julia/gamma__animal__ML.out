@@ -1,21 +1,21 @@
 S	1	gamma|animal|lab0|q1|sd-none|cm0|ML
-R	1	gamma|animal|lab0|q1|sd-none|cm0|ML	FITS				-477.9538136685	true	se_finite=true;npar=6	20.39	
+R	1	gamma|animal|lab0|q1|sd-none|cm0|ML	FITS				-477.9538136685	true	se_finite=true;npar=6	20.36	
 S	2	gamma|animal|lab0|q1|sd-one|cm0|ML
-R	2	gamma|animal|lab0|q1|sd-one|cm0|ML	FITS				-477.9538136684	true	se_finite=true;npar=6	4.57	
+R	2	gamma|animal|lab0|q1|sd-one|cm0|ML	FITS				-477.9538136684	true	se_finite=true;npar=6	4.42	
 S	3	gamma|animal|lab0|q1|sd-z|cm0|ML
-R	3	gamma|animal|lab0|q1|sd-z|cm0|ML	FITS				-477.7885595588	true	se_finite=true;npar=7	0.55	
+R	3	gamma|animal|lab0|q1|sd-z|cm0|ML	FITS				-477.7885595588	true	se_finite=true;npar=7	0.64	
 S	4	gamma|animal|lab0|q2|sd-none|cm0|ML
-R	4	gamma|animal|lab0|q2|sd-none|cm0|ML	FITS				-450.4486143664	true	se_finite=true;npar=7	2.13	
+R	4	gamma|animal|lab0|q2|sd-none|cm0|ML	FITS				-450.4486143664	true	se_finite=true;npar=7	2.55	
 S	5	gamma|animal|lab1|q2|sd-none|cm0|ML
 R	5	gamma|animal|lab1|q2|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `animal(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route	ArgumentError: drm: `animal(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route				0.08	
 S	6	gamma|animal|lab0|q2|sd-one|cm0|ML
-R	6	gamma|animal|lab0|q2|sd-one|cm0|ML	FITS				-450.4486143664	true	se_finite=true;npar=7	0.55	
+R	6	gamma|animal|lab0|q2|sd-one|cm0|ML	FITS				-450.4486143664	true	se_finite=true;npar=7	0.59	
 S	7	gamma|animal|lab1|q2|sd-one|cm0|ML
-R	7	gamma|animal|lab1|q2|sd-one|cm0|ML	FITS				-450.1462242470	true	se_finite=true;npar=8	2.78	
+R	7	gamma|animal|lab1|q2|sd-one|cm0|ML	FITS				-450.1462242470	true	se_finite=true;npar=8	3.05	
 S	8	gamma|animal|lab0|q2|sd-z|cm0|ML
-R	8	gamma|animal|lab0|q2|sd-z|cm0|ML	FITS				-449.9411102730	true	se_finite=true;npar=9	0.56	
+R	8	gamma|animal|lab0|q2|sd-z|cm0|ML	FITS				-449.9411102730	true	se_finite=true;npar=9	0.63	
 S	9	gamma|animal|lab1|q2|sd-z|cm0|ML
-R	9	gamma|animal|lab1|q2|sd-z|cm0|ML	FITS				-449.6634278395	true	se_finite=true;npar=10	9.99	
+R	9	gamma|animal|lab1|q2|sd-z|cm0|ML	FITS				-449.6634278395	true	se_finite=true;npar=10	10.91	
 S	10	gamma|animal|lab0|q2|sd-first|cm0|ML
 R	10	gamma|animal|lab0|q2|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: Gamma `animal(1 + x | group)` SD regression needs one SD formula for the intercept and one for the slope.	ArgumentError: Gamma `animal(1 + x | group)` SD regression needs one SD formula for the intercept and one for the slope.				0.00	
 S	11	gamma|animal|lab1|q2|sd-first|cm0|ML
@@ -25,7 +25,7 @@ R	12	gamma|animal|lab0|q2|sd-last|cm0|ML	ERROR	ArgumentError	ArgumentError: Gamm
 S	13	gamma|animal|lab1|q2|sd-last|cm0|ML
 R	13	gamma|animal|lab1|q2|sd-last|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `animal(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route	ArgumentError: drm: `animal(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route				0.00	
 S	14	gamma|animal|lab0|q3|sd-none|cm0|ML
-R	14	gamma|animal|lab0|q3|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `animal(1 + x1 + x2 | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route	ArgumentError: drm: `animal(1 + x1 + x2 | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route				0.03	
+R	14	gamma|animal|lab0|q3|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `animal(1 + x1 + x2 | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route	ArgumentError: drm: `animal(1 + x1 + x2 | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route				0.04	
 S	15	gamma|animal|lab1|q3|sd-none|cm0|ML
 R	15	gamma|animal|lab1|q3|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `animal(:((1 + x1 + x2) | p) | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route	ArgumentError: drm: `animal(:((1 + x1 + x2) | p) | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route				0.00	
 S	16	gamma|animal|lab0|q3|sd-z|cm0|ML
@@ -37,7 +37,7 @@ R	18	gamma|animal|lab0|q3|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: drm
 S	19	gamma|animal|lab1|q3|sd-first|cm0|ML
 R	19	gamma|animal|lab1|q3|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `animal(:((1 + x1 + x2) | p) | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route	ArgumentError: drm: `animal(:((1 + x1 + x2) | p) | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route				0.00	
 S	20	gamma|animal|lab0|q4|sd-none|cm0|ML
-R	20	gamma|animal|lab0|q4|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `animal(1 + x1 + x2 + x3 | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route	ArgumentError: drm: `animal(1 + x1 + x2 + x3 | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route				0.01	
+R	20	gamma|animal|lab0|q4|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `animal(1 + x1 + x2 + x3 | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route	ArgumentError: drm: `animal(1 + x1 + x2 + x3 | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route				0.02	
 S	21	gamma|animal|lab1|q4|sd-none|cm0|ML
 R	21	gamma|animal|lab1|q4|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `animal(:((1 + x1 + x2 + x3) | p) | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route	ArgumentError: drm: `animal(:((1 + x1 + x2 + x3) | p) | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route				0.00	
 S	22	gamma|animal|lab0|q4|sd-z|cm0|ML

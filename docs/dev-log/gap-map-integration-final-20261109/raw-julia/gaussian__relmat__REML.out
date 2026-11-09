@@ -1,19 +1,19 @@
 S	1	gaussian|relmat|lab0|q1|sd-none|cm0|REML
-R	1	gaussian|relmat|lab0|q1|sd-none|cm0|REML	FITS				-446.5208194531	true	se_finite=true;npar=6	54.81	
+R	1	gaussian|relmat|lab0|q1|sd-none|cm0|REML	FITS				-446.5208194531	true	se_finite=true;npar=6	39.87	
 S	2	gaussian|relmat|lab0|q1|sd-one|cm0|REML
-R	2	gaussian|relmat|lab0|q1|sd-one|cm0|REML	FITS				-446.5208194531	true	se_finite=true;npar=6	10.43	
+R	2	gaussian|relmat|lab0|q1|sd-one|cm0|REML	FITS				-446.5208194531	true	se_finite=true;npar=6	9.27	
 S	3	gaussian|relmat|lab0|q1|sd-z|cm0|REML
-R	3	gaussian|relmat|lab0|q1|sd-z|cm0|REML	FITS				-444.0454326505	true	se_finite=true;npar=7	10.78	
+R	3	gaussian|relmat|lab0|q1|sd-z|cm0|REML	FITS				-444.0454326505	true	se_finite=true;npar=7	10.46	
 S	4	gaussian|relmat|lab0|q2|sd-none|cm0|REML
-R	4	gaussian|relmat|lab0|q2|sd-none|cm0|REML	FITS				-419.4355765760	true	se_finite=true;npar=7	14.63	
+R	4	gaussian|relmat|lab0|q2|sd-none|cm0|REML	FITS				-419.4355765760	true	se_finite=true;npar=7	14.18	
 S	5	gaussian|relmat|lab1|q2|sd-none|cm0|REML
-R	5	gaussian|relmat|lab1|q2|sd-none|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: `relmat(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.10	
+R	5	gaussian|relmat|lab1|q2|sd-none|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: `relmat(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.09	
 S	6	gaussian|relmat|lab0|q2|sd-one|cm0|REML
-R	6	gaussian|relmat|lab0|q2|sd-one|cm0|REML	FITS				-419.4355765760	true	se_finite=true;npar=7	1.23	
+R	6	gaussian|relmat|lab0|q2|sd-one|cm0|REML	FITS				-419.4355765760	true	se_finite=true;npar=7	0.77	
 S	7	gaussian|relmat|lab1|q2|sd-one|cm0|REML
 R	7	gaussian|relmat|lab1|q2|sd-one|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: Gaussian `relmat(1 + x1 | p | g)` SD regression: method = :REML is not implemented for the labelled (correlated) `relmat` block; native drmTMB refuses it too. Use the unlabelled `relmat(1 + x1 | g)` or method = :ML.	ArgumentError: drm: Gaussian `relmat(1 + x1 | p | g)` SD regression: method = :REML is not implemented for the labelled (correlated) `relmat` block; native drmTMB refuses it too. Use the unlabelled `relmat(1 + x1 | g)` or method = :ML.				0.00	
 S	8	gaussian|relmat|lab0|q2|sd-z|cm0|REML
-R	8	gaussian|relmat|lab0|q2|sd-z|cm0|REML	FITS				-415.2466001677	true	se_finite=true;npar=9	19.25	
+R	8	gaussian|relmat|lab0|q2|sd-z|cm0|REML	FITS				-415.2466001677	true	se_finite=true;npar=9	17.17	
 S	9	gaussian|relmat|lab1|q2|sd-z|cm0|REML
 R	9	gaussian|relmat|lab1|q2|sd-z|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: Gaussian `relmat(1 + x1 | p | g)` SD regression: method = :REML is not implemented for the labelled (correlated) `relmat` block; native drmTMB refuses it too. Use the unlabelled `relmat(1 + x1 | g)` or method = :ML.	ArgumentError: drm: Gaussian `relmat(1 + x1 | p | g)` SD regression: method = :REML is not implemented for the labelled (correlated) `relmat` block; native drmTMB refuses it too. Use the unlabelled `relmat(1 + x1 | g)` or method = :ML.				0.00	
 S	10	gaussian|relmat|lab0|q2|sd-first|cm0|REML

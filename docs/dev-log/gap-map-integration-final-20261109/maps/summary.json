@@ -1,10 +1,10 @@
 {
  "n_cells": 3008,
  "class_counts": {
-  "both-fit": 405,
+  "both-fit": 412,
   "Julia-only": 83,
   "both-refuse": 2498,
-  "R-only": 17,
+  "R-only": 10,
   "nonconverged": 4,
   "inconclusive": 1
  },
@@ -13,8 +13,8 @@
   "REFUSES": 2581
  },
  "j_outcomes": {
-  "FITS": 488,
-  "REFUSES": 2515,
+  "FITS": 495,
+  "REFUSES": 2508,
   "NONCONVERGED": 4,
   "TIMEOUT": 1
  },
@@ -22,7 +22,7 @@
   "none": 3008
  },
  "julia_behind": {
-  "refuses": 17,
+  "refuses": 10,
   "nonconverged": 4,
   "timeout": 1
  },
@@ -30,13 +30,13 @@
   "refuses": 83
  },
  "j_sub": {
-  "REFUSES/ArgumentError": 2303,
-  "REFUSES/ErrorException": 212
+  "REFUSES/ArgumentError": 2300,
+  "REFUSES/ErrorException": 208
  },
  "r_sub": {
   "REFUSES/cli_abort": 2581
  },
- "n_both_fit": 405,
+ "n_both_fit": 412,
  "n_ll_disagree": 55,
  "ll_diffs_sorted": [
   0.4011,

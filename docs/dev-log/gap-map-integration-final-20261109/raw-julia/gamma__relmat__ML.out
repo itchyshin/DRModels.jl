@@ -1,21 +1,21 @@
 S	1	gamma|relmat|lab0|q1|sd-none|cm0|ML
-R	1	gamma|relmat|lab0|q1|sd-none|cm0|ML	FITS				-518.3608733033	true	se_finite=true;npar=6	19.95	
+R	1	gamma|relmat|lab0|q1|sd-none|cm0|ML	FITS				-518.3608733033	true	se_finite=true;npar=6	20.57	
 S	2	gamma|relmat|lab0|q1|sd-one|cm0|ML
-R	2	gamma|relmat|lab0|q1|sd-one|cm0|ML	FITS				-518.3608733028	true	se_finite=true;npar=6	3.94	
+R	2	gamma|relmat|lab0|q1|sd-one|cm0|ML	FITS				-518.3608733028	true	se_finite=true;npar=6	4.51	
 S	3	gamma|relmat|lab0|q1|sd-z|cm0|ML
-R	3	gamma|relmat|lab0|q1|sd-z|cm0|ML	FITS				-518.0454208866	true	se_finite=true;npar=7	0.60	
+R	3	gamma|relmat|lab0|q1|sd-z|cm0|ML	FITS				-518.0454208866	true	se_finite=true;npar=7	0.70	
 S	4	gamma|relmat|lab0|q2|sd-none|cm0|ML
-R	4	gamma|relmat|lab0|q2|sd-none|cm0|ML	FITS				-503.2826433199	true	se_finite=true;npar=7	2.69	
+R	4	gamma|relmat|lab0|q2|sd-none|cm0|ML	FITS				-503.2826433199	true	se_finite=true;npar=7	3.05	
 S	5	gamma|relmat|lab1|q2|sd-none|cm0|ML
-R	5	gamma|relmat|lab1|q2|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `relmat(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.08	
+R	5	gamma|relmat|lab1|q2|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `relmat(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.09	
 S	6	gamma|relmat|lab0|q2|sd-one|cm0|ML
-R	6	gamma|relmat|lab0|q2|sd-one|cm0|ML	FITS				-503.2826433199	true	se_finite=true;npar=7	0.54	
+R	6	gamma|relmat|lab0|q2|sd-one|cm0|ML	FITS				-503.2826433199	true	se_finite=true;npar=7	0.59	
 S	7	gamma|relmat|lab1|q2|sd-one|cm0|ML
-R	7	gamma|relmat|lab1|q2|sd-one|cm0|ML	FITS				-503.2702395861	true	se_finite=true;npar=8	1.17	
+R	7	gamma|relmat|lab1|q2|sd-one|cm0|ML	FITS				-503.2702395861	true	se_finite=true;npar=8	1.30	
 S	8	gamma|relmat|lab0|q2|sd-z|cm0|ML
-R	8	gamma|relmat|lab0|q2|sd-z|cm0|ML	FITS				-501.0261060331	true	se_finite=true;npar=9	6.54	
+R	8	gamma|relmat|lab0|q2|sd-z|cm0|ML	FITS				-501.0261060331	true	se_finite=true;npar=9	7.18	
 S	9	gamma|relmat|lab1|q2|sd-z|cm0|ML
-R	9	gamma|relmat|lab1|q2|sd-z|cm0|ML	FITS				-501.0224053888	true	se_finite=true;npar=10	10.19	
+R	9	gamma|relmat|lab1|q2|sd-z|cm0|ML	FITS				-501.0224053888	true	se_finite=true;npar=10	11.25	
 S	10	gamma|relmat|lab0|q2|sd-first|cm0|ML
 R	10	gamma|relmat|lab0|q2|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `relmat(1 + x1 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(1 + x1 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.03	
 S	11	gamma|relmat|lab1|q2|sd-first|cm0|ML

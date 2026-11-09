@@ -29,15 +29,22 @@ nb2|ordinary|lab0|q2|sd-first|cm0|ML	R-only	both-fit-agree	REFUSES	FITS	FITS	-69
 nb2|ordinary|lab0|q2|sd-last|cm0|ML	R-only	both-fit-agree	REFUSES	FITS	FITS	-698.1310518253		-698.1310518253		0.000e+00	
 nb2|phylo|lab0|q1|sd-one|cm0|ML	R-only	both-fit-agree	REFUSES	FITS	FITS	-822.8483612217		-822.8483612217		0.000e+00	
 nb2|phylo|lab0|q1|sd-z|cm0|ML	R-only	both-fit-agree	REFUSES	FITS	FITS	-820.2901158261		-820.2901158261		0.000e+00	
+nb2|phylo|lab1|q2|sd-none|cm0|ML	R-only	both-fit-agree	REFUSES	FITS	FITS	-821.9400867858		-821.9400867858		0.000e+00	
 nb2|spatial|lab0|q1|sd-one|cm0|ML	R-only	both-fit-agree	REFUSES	FITS	FITS	-561.7146620428		-561.7146620425		3.000e-10	
 nb2|spatial|lab0|q1|sd-z|cm0|ML	R-only	both-fit-agree	REFUSES	FITS	FITS	-560.0602888346		-560.0602888346		0.000e+00	
 gamma|phylo|lab0|q1|sd-z|cm0|ML	nonconverged	both-fit-agree	NONCONVERGED	FITS	FITS	-621.4519749318	-621.4519749318	-621.4519749317		1.000e-10	
 binomial|ordinary|lab0|q3|sd-none|cm0|ML	R-only	both-fit-disagree	REFUSES	FITS	FITS	-253.5747241067		-253.0024434901		5.723e-01	
 binomial|ordinary|lab0|q4|sd-none|cm0|ML	R-only	both-fit-disagree	REFUSES	FITS	FITS	-253.3593431487		-252.7131759318		6.462e-01	
+binomial|animal|lab0|q1|sd-none|cm0|ML	R-only	both-fit-agree	REFUSES	FITS	FITS	-256.6096283826		-256.6096283826		0.000e+00	
 binomial|animal|lab1|q2|sd-one|cm0|ML	R-only	both-fit-agree	REFUSES	FITS	FITS	-254.4081301139		-254.4081301140		9.999e-11	
 binomial|animal|lab1|q2|sd-z|cm0|ML	R-only	both-fit-agree	REFUSES	FITS	FITS	-253.9807918089		-253.9807918089		0.000e+00	
+binomial|relmat|lab0|q1|sd-none|cm0|ML	R-only	both-fit-agree	REFUSES	FITS	FITS	-257.9250760631		-257.9250760631		0.000e+00	
+binomial|spatial|lab0|q1|sd-none|cm0|ML	R-only	both-fit-agree	REFUSES	FITS	FITS	-263.3873012870		-263.3873012842		2.800e-09	
 beta|animal|lab0|q2|sd-none|cm0|ML	R-only	both-fit-agree	REFUSES	FITS	FITS	143.0657524500		143.0657524500		0.000e+00	
 beta|relmat|lab0|q2|sd-none|cm0|ML	R-only	both-fit-agree	REFUSES	FITS	FITS	120.8833800786		120.8833800786		0.000e+00	
+beta|phylo|lab0|q2|sd-none|cm0|ML	R-only	both-fit-agree	REFUSES	FITS	FITS	178.1290676615		178.1290676615		0.000e+00	
+beta|spatial|lab0|q1|sd-none|cm0|ML	R-only	both-fit-agree	REFUSES	FITS	FITS	130.6592767578		130.6592767578		0.000e+00	
+beta|spatial|lab0|q2|sd-none|cm0|ML	R-only	both-fit-agree	REFUSES	FITS	FITS	130.6592767573		130.6592767578		5.000e-10	
 lognormal|ordinary|lab0|q2|sd-one|cm0|ML	R-only	both-fit-agree	REFUSES	FITS	FITS	-550.8682164308		-550.8682164308		0.000e+00	
 lognormal|ordinary|lab0|q2|sd-z|cm0|ML	R-only	both-fit-agree	REFUSES	FITS	FITS	-549.4290610144		-549.4290610144		0.000e+00	
 lognormal|ordinary|lab0|q2|sd-first|cm0|ML	R-only	both-fit-agree	REFUSES	FITS	FITS	-549.9083396264		-549.9083396264		0.000e+00	

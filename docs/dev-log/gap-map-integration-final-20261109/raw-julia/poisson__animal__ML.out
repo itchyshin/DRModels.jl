@@ -1,21 +1,21 @@
 S	1	poisson|animal|lab0|q1|sd-none|cm0|ML
-R	1	poisson|animal|lab0|q1|sd-none|cm0|ML	FITS				-668.9969251125	true	se_finite=true;npar=5	18.83	
+R	1	poisson|animal|lab0|q1|sd-none|cm0|ML	FITS				-668.9969251125	true	se_finite=true;npar=5	20.15	
 S	2	poisson|animal|lab0|q1|sd-one|cm0|ML
-R	2	poisson|animal|lab0|q1|sd-one|cm0|ML	FITS				-668.9969251123	true	se_finite=true;npar=5	1.95	
+R	2	poisson|animal|lab0|q1|sd-one|cm0|ML	FITS				-668.9969251123	true	se_finite=true;npar=5	2.15	
 S	3	poisson|animal|lab0|q1|sd-z|cm0|ML
-R	3	poisson|animal|lab0|q1|sd-z|cm0|ML	FITS				-666.9264020654	true	se_finite=true;npar=6	0.48	
+R	3	poisson|animal|lab0|q1|sd-z|cm0|ML	FITS				-666.9264020654	true	se_finite=true;npar=6	0.49	
 S	4	poisson|animal|lab0|q2|sd-none|cm0|ML
-R	4	poisson|animal|lab0|q2|sd-none|cm0|ML	FITS				-662.2494586675	true	se_finite=true;npar=6	2.23	
+R	4	poisson|animal|lab0|q2|sd-none|cm0|ML	FITS				-662.2494586675	true	se_finite=true;npar=6	2.26	
 S	5	poisson|animal|lab1|q2|sd-none|cm0|ML
-R	5	poisson|animal|lab1|q2|sd-none|cm0|ML	FITS				-660.2785000909	true	se_finite=true;npar=7	0.48	
+R	5	poisson|animal|lab1|q2|sd-none|cm0|ML	FITS				-660.2785000909	true	se_finite=true;npar=7	0.75	
 S	6	poisson|animal|lab0|q2|sd-one|cm0|ML
-R	6	poisson|animal|lab0|q2|sd-one|cm0|ML	FITS				-662.2494586675	true	se_finite=true;npar=6	0.31	
+R	6	poisson|animal|lab0|q2|sd-one|cm0|ML	FITS				-662.2494586675	true	se_finite=true;npar=6	0.46	
 S	7	poisson|animal|lab1|q2|sd-one|cm0|ML
-R	7	poisson|animal|lab1|q2|sd-one|cm0|ML	FITS				-660.2785000909	true	se_finite=true;npar=7	0.35	
+R	7	poisson|animal|lab1|q2|sd-one|cm0|ML	FITS				-660.2785000909	true	se_finite=true;npar=7	0.36	
 S	8	poisson|animal|lab0|q2|sd-z|cm0|ML
-R	8	poisson|animal|lab0|q2|sd-z|cm0|ML	FITS				-659.6546249683	true	se_finite=true;npar=8	0.37	
+R	8	poisson|animal|lab0|q2|sd-z|cm0|ML	FITS				-659.6546249683	true	se_finite=true;npar=8	0.39	
 S	9	poisson|animal|lab1|q2|sd-z|cm0|ML
-R	9	poisson|animal|lab1|q2|sd-z|cm0|ML	FITS				-657.6227612285	true	se_finite=true;npar=9	0.58	
+R	9	poisson|animal|lab1|q2|sd-z|cm0|ML	FITS				-657.6227612285	true	se_finite=true;npar=9	0.63	
 S	10	poisson|animal|lab0|q2|sd-first|cm0|ML
 R	10	poisson|animal|lab0|q2|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: Poisson `animal(1 + x | group)` SD regression needs one SD formula for the intercept and one for the slope.	ArgumentError: Poisson `animal(1 + x | group)` SD regression needs one SD formula for the intercept and one for the slope.				0.00	
 S	11	poisson|animal|lab1|q2|sd-first|cm0|ML
@@ -25,7 +25,7 @@ R	12	poisson|animal|lab0|q2|sd-last|cm0|ML	ERROR	ArgumentError	ArgumentError: Po
 S	13	poisson|animal|lab1|q2|sd-last|cm0|ML
 R	13	poisson|animal|lab1|q2|sd-last|cm0|ML	ERROR	ArgumentError	ArgumentError: Poisson `animal(1 + x | group)` SD regression needs one SD formula for the intercept and one for the slope.	ArgumentError: Poisson `animal(1 + x | group)` SD regression needs one SD formula for the intercept and one for the slope.				0.00	
 S	14	poisson|animal|lab0|q3|sd-none|cm0|ML
-R	14	poisson|animal|lab0|q3|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `animal(1 + x1 + x2 | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route	ArgumentError: drm: `animal(1 + x1 + x2 | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route				0.03	
+R	14	poisson|animal|lab0|q3|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `animal(1 + x1 + x2 | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route	ArgumentError: drm: `animal(1 + x1 + x2 | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route				0.04	
 S	15	poisson|animal|lab1|q3|sd-none|cm0|ML
 R	15	poisson|animal|lab1|q3|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `animal(:((1 + x1 + x2) | p) | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route	ArgumentError: drm: `animal(:((1 + x1 + x2) | p) | g)` is not implemented on the univariate routes; only the intercept form is generally available, and a slope-only or independent intercept-and-slope animal term is available only on an explicitly supported family-specific SD route				0.02	
 S	16	poisson|animal|lab0|q3|sd-z|cm0|ML
