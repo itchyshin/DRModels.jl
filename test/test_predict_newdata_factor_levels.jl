@@ -44,7 +44,8 @@ const _PN_CASES = [
     (:nb2, NegBinomial2(), (@formula(sigma ~ 1),), exp),
     (:beta, Beta(), (@formula(sigma ~ 1),), _logistic),
     (:student, Student(), (@formula(sigma ~ 1), @formula(nu ~ 1)), identity),
-    (:lognormal, LogNormal(), (@formula(sigma ~ 1),), exp),
+    # drmTMB's response-scale predict for LogNormal is the log-scale mu (#1282), so no inverse link
+    (:lognormal, LogNormal(), (@formula(sigma ~ 1),), identity),
 ]
 
 # η from the fitted `mu` coefficients; names are "(Intercept)", "x", "f: b", ...
