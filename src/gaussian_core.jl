@@ -2432,10 +2432,10 @@ function sigma(fit::DrmFit)
     # whole scale table, as before (e.g. `:zi`, `:nu`, `:sigma1`/`:sigma2`).
     sd_route = haskey(fit.scales, :sd_group) || haskey(fit.scales, :sd)
     ks = sort!(sd_route ? [k for k in keys(fit.scales) if k in (:sigma, :sigma1, :sigma2)] :
-                          collect(keys(fit.scales)))
+                          [k for k in keys(fit.scales) if k !== :cond_blup_unavailable])
     isempty(ks) && return Dict{Symbol,Vector{Float64}}()
     (length(ks) == 1 && ks[1] === :sigma) && return fit.scales[:sigma]
-    return sd_route ? Dict(k => fit.scales[k] for k in ks) : fit.scales
+    return (sd_route || haskey(fit.scales, :cond_blup_unavailable)) ? Dict(k => fit.scales[k] for k in ks) : fit.scales
 end
 
 """

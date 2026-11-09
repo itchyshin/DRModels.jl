@@ -195,3 +195,33 @@ end
     p = flat(_failed_copy(good, good.loglik; converged = false))
     @test p["loglik"] == good.loglik && p["fit_failed"] === false
 end
+
+# Post-fit BLUP step: a non-PD V at the converged theta-hat gives NaN BLUPs (not a throw), and the
+# fit records it (`scales[:cond_blup_unavailable]`) so a later fit in a loop is detectable after the
+# one-time warning has fired.
+@testset "BLUP fallback: NaN vector, flag on the fit, quiet under :drm_quiet_boundary" begin
+    Vbad = [1.0 1.0; 1.0 1.0]                       # singular, not numerically PD
+    r = [0.3, -0.2]
+    @test all(isnan, _quiet(() -> DRModels._blup_vinv_r(Vbad, r)))
+    @test DRModels._blup_vinv_r([2.0 0.5; 0.5 1.0], r) ≈ [2.0 0.5; 0.5 1.0] \ r
+    # quiet flag suppresses the warning entirely
+    task_local_storage(:drm_quiet_boundary, true) do
+        @test_logs DRModels._blup_vinv_r(Vbad, r)
+    end
+    sc = Dict{Symbol,Vector{Float64}}(:sigma => [1.0, 1.0])
+    DRModels._flag_blup_unavailable!(sc, Dict(:g => [NaN, NaN]))
+    @test sc[:cond_blup_unavailable] == [1.0]
+    sc2 = Dict{Symbol,Vector{Float64}}(:sigma => [1.0, 1.0])
+    DRModels._flag_blup_unavailable!(sc2, Dict(:g => [0.1, -0.1]))
+    @test !haskey(sc2, :cond_blup_unavailable)
+    # a good structured fit carries no flag and sigma() still returns the plain vector
+    rng = StableRNG(11)
+    G = 6; n = 36
+    g = repeat(1:G, inner = n ÷ G)
+    K = Matrix(Symmetric(0.5 .* ones(G, G) + 0.5 .* I(G)))
+    d = (; y = randn(rng, n), x = randn(rng, n), g)
+    f = bf(@formula(y ~ x + animal(1 | g)), @formula(sigma ~ 1))
+    fit = _quiet(() -> drm(f, Gaussian(); data = d, A = K, ids = 1:G))
+    @test !haskey(fit.scales, :cond_blup_unavailable)
+    @test sigma(fit) isa AbstractVector
+end

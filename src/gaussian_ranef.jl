@@ -36,12 +36,23 @@ end
 function _blup_vinv_r(Vh::AbstractMatrix, r::AbstractVector)
     C = all(isfinite, Vh) ? cholesky(Symmetric(Vh); check = false) : nothing
     if C === nothing || !issuccess(C)
-        @warn "The fitted marginal covariance V at θ̂ is not numerically positive definite " *
-              "(singular or near-singular, e.g. a collapsed variance component); the fit is " *
-              "returned but its random-effect estimates (BLUPs) are NaN (unavailable)." maxlog = 1
+        # The warning fires once per session, so the durable record is the flag
+        # `_flag_blup_unavailable!` sets on the returned fit (`fit.scales[:cond_blup_unavailable]`).
+        get(task_local_storage(), :drm_quiet_boundary, false) === true ||
+            @warn "The fitted marginal covariance V at θ̂ is not numerically positive definite " *
+                  "(singular or near-singular, e.g. a collapsed variance component); the fit is " *
+                  "returned but its random-effect estimates (BLUPs) are NaN (unavailable)." maxlog = 1
         return fill(NaN, length(r))
     end
     return C \ r
+end
+
+# Record on the fit's `scales` that the post-fit BLUP step fell back to NaN (a later fit in a
+# loop is otherwise indistinguishable once the one-time warning has fired). The `cond_` prefix
+# keeps the key out of the R-bridge dpars and `simulate(newdata)`, like `:cond_failed`.
+function _flag_blup_unavailable!(scales::AbstractDict, blup)
+    any(v -> any(isnan, v), values(blup)) && (scales[:cond_blup_unavailable] = [1.0])
+    return scales
 end
 
 # A structured marker's (`phylo`/`relmat`/`animal`/`spatial`) random-effect
