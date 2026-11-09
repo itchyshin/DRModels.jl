@@ -1258,7 +1258,10 @@ function _drm_gaussian_lss_multi(f::DrmFormula, fam::Gaussian, sdp, sdpp, re, re
                                  algorithm::Symbol = :auto, sparse = nothing)
     for (kind, _) in re_kinds
         kind === :intercept ||
-            throw(ArgumentError("drm: sd() supports random INTERCEPT terms only."))
+            throw(ArgumentError("drm: sd() with several random-effect terms supports random intercepts " *
+                "`(1 | g)` here. Independent slopes `(0 + x | g)` take `sd(g, coef(x)) ~ …` on ordinary " *
+                "groupings, and one correlated block `(1 + x | g)` beside random intercepts on other " *
+                "groupings is supported; this combination is not implemented."))
     end
     re_groups = Symbol[grp for (_, grp) in re]
     for (sgrp, _) in sdp

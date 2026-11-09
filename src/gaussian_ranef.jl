@@ -441,11 +441,16 @@ function _re_kind(re_lhs)
     elseif re_lhs isa FunctionTerm && re_lhs.f === (+)
         consts = filter(t -> t isa ConstantTerm, re_lhs.args)
         vars = filter(t -> t isa Term, re_lhs.args)
-        length(vars) == 1 || error("DRModels.jl supports `(1 | g)`, `(0 + x | g)`, `(1 + x | g)`")
+        length(vars) == 1 || error("DRModels.jl supports `(1 | g)`, `(0 + x | g)`, `(1 + x | g)` and " *
+                                   "the correlated blocks `(1 + x + z [+ w] | g)` (an intercept plus 2 to 3 slopes), which are " *
+                                   "fitted by maximum likelihood only and with no random effect on `sigma`")
         v = vars[1].sym
         any(c -> c.n == 0, consts) && return (:slope, v)      # 0 + x  → slope only
         any(c -> c.n == 1, consts) && return (:corr, v)       # 1 + x  → correlated intercept+slope
     end
+    re_lhs isa FunctionTerm && re_lhs.f === (|) &&
+        error("unsupported random-effect term: `($re_lhs | …)`. A label `(… | p | g)` is accepted " *
+              "only when one term carries it and `sigma` has no random effect")
     error("unsupported random-effect term: `($re_lhs | …)`")
 end
 

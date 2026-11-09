@@ -1262,7 +1262,9 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
             throw(ArgumentError("drm: sd() submodels cannot be combined with `meta_V(...)`."))
         isempty(sigma_re) ||
             throw(ArgumentError("drm: sd() submodels cannot be combined with a random effect " *
-                "on `sigma`."))
+                "on `sigma`. R drmTMB fits a mean `sd(g) ~ …` formula together with a " *
+                "`sigma ~ 1 + (1 | p | g)` random effect; that combined route is not " *
+                "implemented in DRModels.jl (use `sd(g, sigma) ~ …` for a sigma-side SD)."))
         penalty === nothing ||
             throw(ArgumentError("drm: `penalty` is not wired for sd() submodel routes."))
         # q3/q4 ordinary correlated block with per-coefficient sd() formulas.
@@ -1849,7 +1851,7 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
                                                           reml = method === :REML), f)
     end
     any(k -> k[1] === :corr, re_kinds) &&
-        error("a correlated `(1 + x | g)` block must be the only random-effect term")
+        error("a correlated `(1 + x | g)` block can only be combined with random intercepts `(1 | h)` on other groupings")
     if length(re) == 1                                        # single scalar component
         (_, grp) = re[1]; (kind, var) = re_kinds[1]
         gidx, G = _group_index(getproperty(data, grp); col = grp)
