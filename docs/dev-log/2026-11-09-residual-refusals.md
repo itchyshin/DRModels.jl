@@ -64,4 +64,24 @@ The limits are not to be widened after the results are read. A cell that misses 
 
 ## Results
 
-(filled in after the run)
+Reference: drmTMB 0.8.1 on Totoro, `reference.R`, committed with `reference.tsv`. Julia 1.10.12 on a Mac; the test passes on 1.10.12 and 1.12.6 (39 checks).
+
+| Cell | dLL | max fixed-effect gap | max log-SD gap | Julia converged / R converged | Verdict |
+|---|---|---|---|---|---|
+| Binomial animal `(1 \| g)` | 4.5e-13 | 5.0e-9 | 1.4e-7 | yes / yes | (a) agrees |
+| Binomial relmat `(1 \| g)` | 1.2e-11 | 8.3e-9 | 2.9e-8 | yes / yes | (a) agrees |
+| Binomial spatial `(1 \| g)` | 2.9e-9 | 7.8e-9 | 8.6 | yes / no | (b) agrees on log-likelihood and fixed effects; both fits put the SD on the zero boundary (R log SD -11.4, SE 9331), so the log-SD limit is not met and is not applicable. Flagged |
+| Beta spatial `(1 \| g)` | 7.7e-13 | 2.9e-8 | 1.4e-8 | yes / yes | (a) agrees |
+| Beta spatial `(1 + x1 \| g)` | 4.8e-10 | 3.0e-8 | 1.4 | yes / no | (b) agrees on log-likelihood and fixed effects; R is not converged and the slope SD is at its boundary. Flagged |
+| Beta phylo `(1 + x1 \| g)` | 5.6e-12 | 1.1e-8 | 8.9e-8 | yes / yes | (a) agrees |
+| NB2 phylo `(1 + x1 \| p \| g)` | 3.7e-11 | 5.0e-8 | 3.5e-7 | yes / yes | (a) agrees |
+
+Strict reading of the rule: 5 cells meet every criterion; 2 meet the log-likelihood and fixed-effect criteria and miss the log-SD one because the SD is on a boundary in R as well. They are counted as closed with a flag, not as clean agreements. Standard errors were not compared with R's (R's are unusable at the two boundary cells).
+
+The new test `test/test_residual_refusals.jl` fails on the base (6 errors, 2 passes: the two guard checks) and passes now. Items checked by it besides the seven cells: completing the Binomial animal term gives the same fit as the explicit `sd(g, animal) ~ 1` form to 1e-8, a second random term keeps its refusal, and `method = :REML` on Binomial stays refused.
+
+## Not verified here
+
+- Totoro was unreachable after the reference run (ssh refused, control socket gone), so the full suite on Totoro (16 shards per version) is not in this note; see the PR for what was run on the Mac.
+- The residual list is a subtraction by shape across unmerged PRs, not a combined rerun.
+- The 6 deferred cells are untouched; the 4 recorded cells have no drmTMB number to match.
