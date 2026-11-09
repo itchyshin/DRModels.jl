@@ -40,6 +40,18 @@ end
         badspec = copy(spec); badspec["rate"] = 1.0
         badrecord = copy(expected); badrecord["rate"] = true
         @test_throws ArgumentError prepare(form, DRModels.Gaussian(), dat, labels, [badspec], [badrecord])
+        # Reject unsupported selectors even when the expected row repeats the
+        # same invalid target, before any call to the fitting engine.
+        for (key, value) in (("block_kind", "correlated"), ("dpar", "sigma"),
+                             ("coef", "x"), ("measure", "log_sd"))
+            badspec = copy(spec); badspec[key] = value
+            badrecord = copy(expected); badrecord[key] = value
+            @test_throws ArgumentError prepare(form, DRModels.Gaussian(), dat, labels, [badspec], [badrecord])
+        end
+        @test_throws ArgumentError prepare(form, DRModels.Gaussian(), dat, labels, [spec], [])
+        @test_throws ArgumentError prepare(form, DRModels.Gaussian(), dat, labels, [spec], [expected, copy(expected)])
+        badrecord = copy(expected); delete!(badrecord, "coef")
+        @test_throws ArgumentError prepare(form, DRModels.Gaussian(), dat, labels, [spec], [badrecord])
     end
 end
 

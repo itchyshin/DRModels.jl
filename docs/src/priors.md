@@ -99,7 +99,13 @@ the estimator.
 
 This route requires complete observations, unit weights and a unique iid
 mean random intercept; random slopes, multiple or structured blocks and REML
-are outside this slice. Confidence intervals, likelihood comparisons, AIC,
+are outside this slice. Write the random intercept only once in the formula.
+Currently, Julia's `@formula` collapses repeated identical terms such as
+`(1 | site) + (1 | site)` before the prior target is checked. The resolver
+therefore cannot reject that spelling as a duplicate; drmTMB in R rejects it.
+This difference remains unresolved.
+
+Confidence intervals, likelihood comparisons, AIC,
 BIC and uncertainty-dependent prediction or simulation are refused for active
 priors. An unpenalized comparison requires unpenalized refits. Choosing the
 prior depends on the response units: changing units requires changing its rate.
