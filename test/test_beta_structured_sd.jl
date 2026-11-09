@@ -10,6 +10,19 @@
 # The oracle shares no fitter code: a dense ForwardDiff Laplace with the Beta density
 # written out, in the latent b ~ N(0, C) coordinates.
 # Tolerance (fixed before the first run): |loglik - oracle| < 1e-5; fit converged.
+# The oracle is evaluated at the fit's own theta, so it checks the Laplace value, not that the optimiser
+# stopped at the optimum. The R reference closes that gap: `fixtures/beta_structured_sd/r_reference.csv`
+# holds drmTMB 0.8.1 log-likelihoods, coefficients and SEs for the same seven committed datasets
+# (made by `r_make_reference.R`, which also says how to regenerate it).
+# Reference tolerances (fixed BEFORE reading any Julia-vs-R difference; see the 2026-11-08 review):
+#   |loglik_julia - loglik_R| <= 1e-4          (a stop short of the optimum by dtheta costs ~ dtheta' H dtheta / 2)
+#   |coef_julia - coef_R|     <= 1e-3          (every mu, sigma and SD coefficient; 1e-4 loglik corresponds to
+#                                               ~0.014 R-SE units, and 1e-3 is below 0.02 SE for every R SE here)
+#   |se_julia / se_R - 1|     <= 1e-2          (finite R SEs; Hessian of the same objective)
+#   max |gradient of the objective at theta_hat| <= 1e-3  (no analytic gradient is exposed, so a central
+#                                               difference, h = 1e-5, of `fit.nll`; skipped for phylo_q1, which is flat)
+# phylo_q1 is the boundary dataset: R's intercept SD is 1e-5 (coefficient -12.8, SE 1.5e4, R converged = false), so
+# only the log-likelihood is compared and the SD at z0 = -1 must sit at the lower bound (sd < 1e-3).
 # The committed datasets (test/fixtures/beta_structured_sd/*.tsv) are what the tests fit;
 # `_bss_generate` (StableRNG, Beta draws by quantile transform) regenerates them.
 using DRModels, Test, Random, LinearAlgebra
@@ -86,6 +99,29 @@ function _bss_fixture(name)
               z1 = col(4, Float64), id = col(5, String), gi = col(6, Int))
 end
 
+# R reference: shape -> (terms, estimate, se, loglik, converged) in drmTMB's coefficient order
+# (mu, sigma, then the SD blocks); `NA` SEs are read as NaN.
+function _bss_reference()
+    lines = readlines(joinpath(@__DIR__, "fixtures", "beta_structured_sd", "r_reference.csv"))
+    ref = Dict{String,Any}()
+    for l in lines[2:end]
+        f = split(l, ',')
+        num(x) = x == "NA" ? NaN : parse(Float64, x)
+        r = get!(ref, String(f[1]), (; terms = String[], est = Float64[], se = Float64[], ll = num(f[5]), conv = f[6] == "TRUE"))
+        push!(r.terms, String(f[2])); push!(r.est, num(f[3])); push!(r.se, num(f[4]))
+    end
+    return ref
+end
+
+# Coordinates of a fit in the R reference's order, plus the matching SEs and index set.
+function _bss_in_r_order(fit)
+    b = fit.blocks
+    idx = vcat([last(p) for p in b if first(p) === :mu]..., [last(p) for p in b if first(p) === :sigma]...,
+               [last(p) for p in b if first(p) !== :mu && first(p) !== :sigma]...)
+    idx = collect(Iterators.flatten(idx))
+    return fit.theta[idx], stderror(fit)[idx]
+end
+
 function _bss_pieces(fit)
     b = fit.blocks
     beta = fit.theta[last(b[findfirst(p -> first(p) === :mu, b)])]
@@ -155,6 +191,7 @@ end
 
 @testset "Beta structured SD regression (phylo / relmat / animal / spatial)" begin
     kn = _bss_kernels()
+    REF = _bss_reference()
     Cof = Dict(:relmat => kn.K, :animal => kn.A, :phylo => kn.Cphy, :spatial => kn.Csp)
     for (name, kind, q, level) in _BSS_SHAPES
         @testset "$name" begin
@@ -173,6 +210,27 @@ end
             zs = q == 1 ? [z0g] : [z0g, z1g]
             ws = q == 1 ? [ones(length(d.y))] : [ones(length(d.y)), d.x]
             @test loglikelihood(fit) ≈ _bss_oracle(fit, d, Cof[kind], zs, ws) atol = 1e-5
+            # R reference (drmTMB 0.8.1) on the same committed data.
+            ref = REF[name]
+            th, se = _bss_in_r_order(fit)
+            @test length(th) == length(ref.est)
+            @test abs(loglikelihood(fit) - ref.ll) <= 1e-4
+            if name == "phylo_q1"
+                # Boundary dataset: R's SD intercept is -12.8 (SE 1.5e4); compare only the SD at z0 = -1.
+                a, bz = th[4], th[5]
+                @test exp(a - bz) < 1e-3
+            else
+                @test maximum(abs, th .- ref.est) <= 1e-3
+                fin = isfinite.(ref.se)
+                @test all(fin)
+                @test maximum(abs, se[fin] ./ ref.se[fin] .- 1) <= 1e-2
+                # These fits expose no analytic gradient (`fit.nllgrad === nothing`), so take a central
+                # difference of the fit's own objective at theta_hat: the optimum must be a stationary point.
+                h = 1e-5
+                g = [(fit.nll(fit.theta .+ h .* (1:length(fit.theta) .== k)) -
+                      fit.nll(fit.theta .- h .* (1:length(fit.theta) .== k))) / 2h for k in eachindex(fit.theta)]
+                @test maximum(abs, g) <= 1e-3
+            end
         end
     end
 
