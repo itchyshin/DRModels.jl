@@ -103,6 +103,26 @@ behaviour was kept, because it is the one with an R reference, and the #1277 tes
 identity link for the LogNormal case. All the new-data checks of #1277 (single row, subset of
 levels, reordered levels) still apply to it.
 
+### Later folds: #1289, #1291, #1292
+
+#1289 (stable NB2 density at tiny sigma) merged cleanly. #1291 (residual refusals) conflicted in the
+capabilities table and in `test_gap_close_q2.jl`: the Gaussian spatial REML assertion from #1276 was
+kept, together with the new NegBinomial2 labelled phylo fit from #1291, and the Beta and Binomial spatial
+rows take the #1291 text. #1292 (bivariate predict) conflicted only in the shard file. Left out of this
+tip: the spatial-parity and Laplace-parity lanes and #1290 (its failures did not reproduce), and the
+Codex PR #1281.
+
+## User-visible default changes on this tip
+
+`fitted()` returns the response mean `E[Y]` for LogNormal, zero-inflated, hurdle and truncated fits,
+and `predict()` for LogNormal returns the log-scale mean by default (#1282). REML now fits for
+correlated blocks of 3 or 4 coefficients, a block beside random intercepts, structured intercepts with
+an `sd()` formula, and the bare structured slope term (#1276, #1286). The new independent-term fits
+for the non-Gaussian families (#1278) use the Laplace marginal and are tagged `marginal = :Laplace`,
+while the older single-term routes stay on quadrature. An unlabelled Binomial `animal(1 + x | g)` now
+means independent fields and a labelled one means correlated, consistent with the other families; this
+change in #1286 was approved by Shinichi.
+
 ## Shard assignment
 
 `test/shard_assign_N16.txt` conflicted in every merge, because each pull request appended its
