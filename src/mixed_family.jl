@@ -146,34 +146,75 @@ function _mf_rand(::Gamma, η, trials, d, rng)
     return rand(rng, Distributions.Gamma(α, μ / α))
 end
 
+# Far points tried (outermost first) to decide whether a profile arm crosses
+# the cutoff; see `_mf_profile_ci`.
+const _MF_PROFILE_FAR = (0.999, 0.95, 0.9, 0.8)
+
 # Profile-likelihood CI on ρ (extracted from `fit_mixed_family` so it can be
 # tested against a synthetic objective). `objfn` is the negative log-likelihood,
 # `rho_of` maps θ to ρ, `θ̂` the optimum and `ρ` its ρ.
 function _mf_profile_ci(objfn, rho_of, θ̂, ρ, level)
     nllhat = objfn(θ̂)
     q = Distributions.quantile(Distributions.Chisq(1), level)
+    warm = Tuple{Float64,Vector{Float64}}[]   # (ρ0, θ) of trusted solves
     prof_dev = function (ρ0)
         zr0 = atanh(clamp(ρ0, -0.999999, 0.999999))
         pobj(θ) = objfn(θ) + 1.0e4 * (atanh(clamp(rho_of(θ), -0.999999, 0.999999)) - zr0)^2
-        r = Optim.optimize(pobj, copy(θ̂), Optim.LBFGS(),
-                           Optim.Options(g_tol = 1e-9); autodiff = :forward)
-        # The 1e4 penalty makes this solve stiff. From a far start (the first
-        # bisection point, dev >> q) the default backtracking line search can
-        # stall within ~1e-9 of stationarity because trial objectives differ by
-        # less than the ~1e-12 noise floor at nll ~ 600, and whether it stalls is
-        # decided by last-ulp differences (start point, CPU, BLAS kernel). Such a
-        # stalled solve was reported NaN, which dropped a whole CI arm. Retry once
-        # from the stall point with a Hager-Zhang line search, then accept a solve
-        # that is stationary to 1e-6 (an objective change of ~1e-12 at the
-        # curvature here) as converged. Solves that already converged are
-        # untouched (bit-identical).
-        stalled(r) = !Optim.converged(r) && isfinite(Optim.minimum(r)) && Optim.minimum(r) < 1e9
-        if stalled(r)
-            r = Optim.optimize(pobj, copy(Optim.minimizer(r)),
-                               Optim.LBFGS(linesearch = Optim.LineSearches.HagerZhang()),
+        # An inner solve is trusted ("ok") only if it is finite, below the 1e10
+        # sentinel AND stationary to 1e-6. Optim's `converged` flag alone is not
+        # enough: a failed line search or a flat objective sets x_/f_converged
+        # with a gradient residual of 0.05 to 2 (measured on the NB2 x Gaussian
+        # fixture at rho0 = 0.829 and 0.8396), and that false "convergence"
+        # pointed the bisection the wrong way. A residual of 1e-6 is an
+        # objective change of ~1e-12 at the curvature here.
+        usable(r) = r !== nothing && isfinite(Optim.minimum(r)) && Optim.minimum(r) < 1e9
+        ok(r) = usable(r) && Optim.g_residual(r) <= 1e-6
+        # A throw from the inner solve (Hager-Zhang asserts a finite trial
+        # objective, which fails when a trial step lands on the 1e10 plateau) is
+        # an UNRESOLVED point, never an error that aborts the whole fit.
+        run = function (start, alg = Optim.LBFGS())
+            try
+                Optim.optimize(pobj, copy(start), alg,
                                Optim.Options(g_tol = 1e-9); autodiff = :forward)
+            catch
+                nothing
+            end
         end
-        inner_ok = Optim.converged(r) || (stalled(r) && Optim.g_residual(r) <= 1e-6)
+        better(r2, r1) = usable(r2) && (ok(r2) || !ok(r1)) &&
+                         Optim.g_residual(r2) <= Optim.g_residual(r1)
+        r = run(θ̂)
+        # The 1e4 penalty makes this solve stiff: from a far start (dev >> q)
+        # L-BFGS can stall at a gradient residual of 1e-9 .. 1e-3 because trial
+        # objectives differ by less than the ~1e-12 noise floor at nll ~ 600, or
+        # burn all 1000 iterations in a narrow valley. Measured: rho0 = 0.999 on
+        # the NB2 x Gaussian fixture stops after 252 iterations at residual
+        # 1.9e-4 (nll 1107.8, penalty 39.8); rho0 = -0.267 on the n = 200
+        # Gaussian x Poisson sentinel-test fit runs 1000 iterations to a residual
+        # of 4e-4 (dense BFGS reaches 1.6e-11 in 27 iterations). Whether L-BFGS
+        # stalls is decided by last-ulp differences (start point, CPU, BLAS
+        # kernel). Rescue ladder, each step only if the previous solve is not ok
+        # and keeping the more stationary result (an optimiser returns its last
+        # iterate, which can be worse than the point it started from):
+        #   1. dense BFGS from the original start (theta has ~10 entries, so the
+        #      inverse Hessian is cheap; from the L-BFGS stall point it stays
+        #      stuck in the same valley, from theta-hat it does not);
+        #   2. L-BFGS restart from the best point (resets the curvature memory);
+        #   3. L-BFGS warm start from the nearest rho0 whose solve was trusted.
+        # Solves that are ok on the first attempt are untouched (bit-identical).
+        if !ok(r) && usable(r)
+            r2 = run(θ̂, Optim.BFGS())
+            better(r2, r) && (r = r2)
+        end
+        if !ok(r) && usable(r)
+            r2 = run(Optim.minimizer(r))
+            better(r2, r) && (r = r2)
+        end
+        if !ok(r) && !isempty(warm)
+            _, iw = findmin(abs(ρ0 - w[1]) for w in warm)
+            r3 = run(warm[iw][2])
+            better(r3, r) && (r = r3)
+        end
+        inner_ok = ok(r)
         # A non-converged, non-finite or sentinel (>= 1e9) inner solve is
         # UNRESOLVED (NaN), never "crossed": the 1e10 plateau would read as a huge
         # deviance and pin the endpoint to the cliff edge.
@@ -186,6 +227,7 @@ function _mf_profile_ci(objfn, rho_of, θ̂, ρ, level)
         dev = 2 * (fmin - nllhat)
         met = abs(atanh(clamp(rho_of(θm), -0.999999, 0.999999)) - zr0) < 0.05
         (met || dev >= q) || return NaN
+        push!(warm, (ρ0, copy(θm)))
         return dev
     end
     endpoint = function (a, b)   # dev(a), dev(b) straddle q → bisect for dev = q
@@ -206,10 +248,45 @@ function _mf_profile_ci(objfn, rho_of, θ̂, ρ, level)
     end
     # An unresolved arm is reported NaN (the same "no interval" convention as
     # the Wald / bootstrap CIs); the other arm is unaffected.
-    dlo = prof_dev(-0.999)
-    dhi = prof_dev(0.999)
-    lobnd = isnan(dlo) ? NaN : dlo >= q ? endpoint(-0.999, ρ) : -0.999
-    hibnd = isnan(dhi) ? NaN : dhi >= q ? endpoint(ρ, 0.999) : 0.999
+    #
+    # The far point (±0.999) only decides whether the arm crosses the cutoff at
+    # all; the bisection never evaluates it. Its inner solve is the hardest in
+    # the run (the penalised objective is stiff near |ρ| = 1: measured for the
+    # NB2 x Gaussian fixture it stalls at a gradient residual of ~2e-4 after
+    # ~250 L-BFGS iterations, with dev ~1300), and discarding a whole arm
+    # because that one solve stalled threw away a resolvable bound (a NaN
+    # upper CI). So when the extreme point is unresolved, walk inward through
+    # nearer points (`_MF_PROFILE_FAR`) and take the first with a trusted solve:
+    #   dev >= q  -> the arm crosses q somewhere in (ρ̂, ρ_far), bisect as usual;
+    #   dev <  q  -> at ±0.999 the arm never crosses (bound = ±0.999); at an
+    #                interior point it only certifies "not crossed" up to ρ_far,
+    #                so the gap to the boundary stays unresolved: NaN (never a
+    #                guessed bound).
+    # A point is trusted only through `prof_dev`, i.e. every existing guard
+    # (converged or stationary-to-1e-6 inner solve, finite fmin, no 1e10
+    # sentinel, constraint met or dev >= q) applies unchanged. No trusted point
+    # on the arm -> NaN.
+    arm = function (sgn, bnd)   # sgn = +1 upper arm, -1 lower arm; bnd = ±0.999
+        for c in _MF_PROFILE_FAR
+            ρc = sgn * c
+            # An interior candidate must lie beyond ρ̂; the boundary point is
+            # always tried (ρ̂ may sit within 0.01 of it).
+            (ρc == bnd || sgn * (ρc - ρ) > 0.01) || continue
+            d = prof_dev(ρc)
+            isnan(d) && continue
+            if d >= q
+                b = endpoint(ρ, bnd)
+                # Fallback when a bisection midpoint beyond the crossing is
+                # itself unresolved: bisect inside the trusted bracket instead.
+                isnan(b) && ρc != bnd && (b = endpoint(ρ, ρc))
+                return b
+            end
+            return ρc == bnd ? bnd : NaN
+        end
+        return NaN
+    end
+    lobnd = arm(-1, -0.999)
+    hibnd = arm(+1, 0.999)
     return (lobnd, hibnd)
 end
 
