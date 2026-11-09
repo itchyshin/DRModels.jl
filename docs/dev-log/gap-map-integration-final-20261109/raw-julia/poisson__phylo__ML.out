@@ -1,0 +1,50 @@
+S	1	poisson|phylo|lab0|q1|sd-none|cm0|ML
+R	1	poisson|phylo|lab0|q1|sd-none|cm0|ML	FITS				-579.1812530641	true	se_finite=true;npar=5	21.03	
+S	2	poisson|phylo|lab0|q1|sd-one|cm0|ML
+R	2	poisson|phylo|lab0|q1|sd-one|cm0|ML	FITS				-579.1812530643	true	se_finite=true;npar=5	2.13	
+S	3	poisson|phylo|lab0|q1|sd-z|cm0|ML
+R	3	poisson|phylo|lab0|q1|sd-z|cm0|ML	FITS				-578.8271167280	true	se_finite=true;npar=6	0.51	
+S	4	poisson|phylo|lab0|q2|sd-none|cm0|ML
+R	4	poisson|phylo|lab0|q2|sd-none|cm0|ML	FITS				-574.5417157738	true	se_finite=true;npar=6	3.21	
+S	5	poisson|phylo|lab1|q2|sd-none|cm0|ML
+R	5	poisson|phylo|lab1|q2|sd-none|cm0|ML	FITS				-574.5379750026	true	se_finite=true;npar=7	0.93	
+S	6	poisson|phylo|lab0|q2|sd-one|cm0|ML
+R	6	poisson|phylo|lab0|q2|sd-one|cm0|ML	FITS				-574.5417157738	true	se_finite=true;npar=6	0.32	
+S	7	poisson|phylo|lab1|q2|sd-one|cm0|ML
+R	7	poisson|phylo|lab1|q2|sd-one|cm0|ML	FITS				-574.5379750026	true	se_finite=true;npar=7	0.30	
+S	8	poisson|phylo|lab0|q2|sd-z|cm0|ML
+R	8	poisson|phylo|lab0|q2|sd-z|cm0|ML	FITS				-573.5707369813	true	se_finite=true;npar=8	0.41	
+S	9	poisson|phylo|lab1|q2|sd-z|cm0|ML
+R	9	poisson|phylo|lab1|q2|sd-z|cm0|ML	FITS				-573.5518246595	true	se_finite=true;npar=9	0.53	
+S	10	poisson|phylo|lab0|q2|sd-first|cm0|ML
+R	10	poisson|phylo|lab0|q2|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: Poisson `phylo(1 + x1 | g)` SD regression needs one SD formula for the intercept and one for the slope (`sd(g, phylogenetic, coef(intercept)) ~ …` and `sd(g, phylogenetic, coef(x1)) ~ …`).	ArgumentError: Poisson `phylo(1 + x1 | g)` SD regression needs one SD formula for the intercept and one for the slope (`sd(g, phylogenetic, coef(intercept)) ~ …` and `sd(g, phylogenetic, coef(x1)) ~ …`).				0.00	
+S	11	poisson|phylo|lab1|q2|sd-first|cm0|ML
+R	11	poisson|phylo|lab1|q2|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: Poisson `phylo(1 + x1 | p | g)` SD regression needs one SD formula for the intercept and one for the slope (`sd(g, phylogenetic, coef(intercept)) ~ …` and `sd(g, phylogenetic, coef(x1)) ~ …`).	ArgumentError: Poisson `phylo(1 + x1 | p | g)` SD regression needs one SD formula for the intercept and one for the slope (`sd(g, phylogenetic, coef(intercept)) ~ …` and `sd(g, phylogenetic, coef(x1)) ~ …`).				0.00	
+S	12	poisson|phylo|lab0|q2|sd-last|cm0|ML
+R	12	poisson|phylo|lab0|q2|sd-last|cm0|ML	ERROR	ArgumentError	ArgumentError: Poisson `phylo(1 + x1 | g)` SD regression needs one SD formula for the intercept and one for the slope (`sd(g, phylogenetic, coef(intercept)) ~ …` and `sd(g, phylogenetic, coef(x1)) ~ …`).	ArgumentError: Poisson `phylo(1 + x1 | g)` SD regression needs one SD formula for the intercept and one for the slope (`sd(g, phylogenetic, coef(intercept)) ~ …` and `sd(g, phylogenetic, coef(x1)) ~ …`).				0.00	
+S	13	poisson|phylo|lab1|q2|sd-last|cm0|ML
+R	13	poisson|phylo|lab1|q2|sd-last|cm0|ML	ERROR	ArgumentError	ArgumentError: Poisson `phylo(1 + x1 | p | g)` SD regression needs one SD formula for the intercept and one for the slope (`sd(g, phylogenetic, coef(intercept)) ~ …` and `sd(g, phylogenetic, coef(x1)) ~ …`).	ArgumentError: Poisson `phylo(1 + x1 | p | g)` SD regression needs one SD formula for the intercept and one for the slope (`sd(g, phylogenetic, coef(intercept)) ~ …` and `sd(g, phylogenetic, coef(x1)) ~ …`).				0.00	
+S	14	poisson|phylo|lab0|q3|sd-none|cm0|ML
+R	14	poisson|phylo|lab0|q3|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `phylo(1 + x1 + x2 | g)` is not implemented on the univariate routes — only `phylo(1 | g)` (intercept) is, plus the one-slope `phylo(1 + x | g)` on the Gaussian mean (#620); slope-only `phylo(0 + x | g)` and multi-slope forms are not implemented	ArgumentError: drm: `phylo(1 + x1 + x2 | g)` is not implemented on the univariate routes — only `phylo(1 | g)` (intercept) is, plus the one-slope `phylo(1 + x | g)` on the Gaussian mean (#620); slope-only `phylo(0 + x | g)` and multi-slope forms are not implemented				0.02	
+S	15	poisson|phylo|lab1|q3|sd-none|cm0|ML
+R	15	poisson|phylo|lab1|q3|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `phylo(:((1 + x1 + x2) | p) | g)` is not implemented on the univariate routes — only `phylo(1 | g)` (intercept) is, plus the one-slope `phylo(1 + x | g)` on the Gaussian mean (#620); slope-only `phylo(0 + x | g)` and multi-slope forms are not implemented	ArgumentError: drm: `phylo(:((1 + x1 + x2) | p) | g)` is not implemented on the univariate routes — only `phylo(1 | g)` (intercept) is, plus the one-slope `phylo(1 + x | g)` on the Gaussian mean (#620); slope-only `phylo(0 + x | g)` and multi-slope forms are not implemented				0.02	
+S	16	poisson|phylo|lab0|q3|sd-z|cm0|ML
+R	16	poisson|phylo|lab0|q3|sd-z|cm0|ML	ERROR	ArgumentError	ArgumentError: Poisson random-effect SD regression requires exactly one SD target.	ArgumentError: Poisson random-effect SD regression requires exactly one SD target.				0.01	
+S	17	poisson|phylo|lab1|q3|sd-z|cm0|ML
+R	17	poisson|phylo|lab1|q3|sd-z|cm0|ML	ERROR	ArgumentError	ArgumentError: Poisson random-effect SD regression requires exactly one SD target.	ArgumentError: Poisson random-effect SD regression requires exactly one SD target.				0.00	
+S	18	poisson|phylo|lab0|q3|sd-first|cm0|ML
+R	18	poisson|phylo|lab0|q3|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: Poisson SD regression currently targets one ordinary mean random-effect coefficient.	ArgumentError: Poisson SD regression currently targets one ordinary mean random-effect coefficient.				0.00	
+S	19	poisson|phylo|lab1|q3|sd-first|cm0|ML
+R	19	poisson|phylo|lab1|q3|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: Poisson SD regression currently targets one ordinary mean random-effect coefficient.	ArgumentError: Poisson SD regression currently targets one ordinary mean random-effect coefficient.				0.00	
+S	20	poisson|phylo|lab0|q4|sd-none|cm0|ML
+R	20	poisson|phylo|lab0|q4|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `phylo(1 + x1 + x2 + x3 | g)` is not implemented on the univariate routes — only `phylo(1 | g)` (intercept) is, plus the one-slope `phylo(1 + x | g)` on the Gaussian mean (#620); slope-only `phylo(0 + x | g)` and multi-slope forms are not implemented	ArgumentError: drm: `phylo(1 + x1 + x2 + x3 | g)` is not implemented on the univariate routes — only `phylo(1 | g)` (intercept) is, plus the one-slope `phylo(1 + x | g)` on the Gaussian mean (#620); slope-only `phylo(0 + x | g)` and multi-slope forms are not implemented				0.02	
+S	21	poisson|phylo|lab1|q4|sd-none|cm0|ML
+R	21	poisson|phylo|lab1|q4|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `phylo(:((1 + x1 + x2 + x3) | p) | g)` is not implemented on the univariate routes — only `phylo(1 | g)` (intercept) is, plus the one-slope `phylo(1 + x | g)` on the Gaussian mean (#620); slope-only `phylo(0 + x | g)` and multi-slope forms are not implemented	ArgumentError: drm: `phylo(:((1 + x1 + x2 + x3) | p) | g)` is not implemented on the univariate routes — only `phylo(1 | g)` (intercept) is, plus the one-slope `phylo(1 + x | g)` on the Gaussian mean (#620); slope-only `phylo(0 + x | g)` and multi-slope forms are not implemented				0.00	
+S	22	poisson|phylo|lab0|q4|sd-z|cm0|ML
+R	22	poisson|phylo|lab0|q4|sd-z|cm0|ML	ERROR	ArgumentError	ArgumentError: Poisson random-effect SD regression requires exactly one SD target.	ArgumentError: Poisson random-effect SD regression requires exactly one SD target.				0.00	
+S	23	poisson|phylo|lab1|q4|sd-z|cm0|ML
+R	23	poisson|phylo|lab1|q4|sd-z|cm0|ML	ERROR	ArgumentError	ArgumentError: Poisson random-effect SD regression requires exactly one SD target.	ArgumentError: Poisson random-effect SD regression requires exactly one SD target.				0.00	
+S	24	poisson|phylo|lab0|q4|sd-first|cm0|ML
+R	24	poisson|phylo|lab0|q4|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: Poisson SD regression currently targets one ordinary mean random-effect coefficient.	ArgumentError: Poisson SD regression currently targets one ordinary mean random-effect coefficient.				0.00	
+S	25	poisson|phylo|lab1|q4|sd-first|cm0|ML
+R	25	poisson|phylo|lab1|q4|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: Poisson SD regression currently targets one ordinary mean random-effect coefficient.	ArgumentError: Poisson SD regression currently targets one ordinary mean random-effect coefficient.				0.00	

@@ -1,0 +1,15 @@
+w8_class	w10_class	cells
+both-refuse	both-refuse	2498
+both-fit-agree	both-fit-agree	260
+R-only	both-fit-agree	86
+both-fit-disagree	both-fit-disagree	52
+Julia-only	Julia-only	43
+both-refuse	Julia-only	40
+R-only	R-only	17
+nonconverged	nonconverged	2
+nonconverged	both-fit-agree	2
+R-only	both-fit-disagree	2
+both-fit-disagree	both-fit-agree	2
+R-only	nonconverged	2
+nonconverged	both-fit-disagree	1
+inconclusive	inconclusive	1

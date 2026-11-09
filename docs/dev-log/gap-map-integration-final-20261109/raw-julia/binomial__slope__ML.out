@@ -1,0 +1,6 @@
+S	1	binomial|slope|lab0|q1|sd-none|cm0|ML
+R	1	binomial|slope|lab0|q1|sd-none|cm0|ML	FITS				-257.0383939848	true	se_finite=true;npar=5	25.16	
+S	2	binomial|slope|lab0|q1|sd-one|cm0|ML
+R	2	binomial|slope|lab0|q1|sd-one|cm0|ML	FITS				-256.9347960478	true	se_finite=true;npar=5	14.68	
+S	3	binomial|slope|lab0|q1|sd-z|cm0|ML
+R	3	binomial|slope|lab0|q1|sd-z|cm0|ML	FITS				-256.9336716376	true	se_finite=true;npar=6	14.87	

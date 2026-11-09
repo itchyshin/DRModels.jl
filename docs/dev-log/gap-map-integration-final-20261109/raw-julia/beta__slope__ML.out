@@ -1,0 +1,6 @@
+S	1	beta|slope|lab0|q1|sd-none|cm0|ML
+R	1	beta|slope|lab0|q1|sd-none|cm0|ML	FITS				79.9158798245	true	se_finite=true;npar=6	25.94	
+S	2	beta|slope|lab0|q1|sd-one|cm0|ML
+R	2	beta|slope|lab0|q1|sd-one|cm0|ML	FITS				80.0340564294	true	se_finite=true;npar=6	15.82	
+S	3	beta|slope|lab0|q1|sd-z|cm0|ML
+R	3	beta|slope|lab0|q1|sd-z|cm0|ML	FITS				80.9157190593	true	se_finite=true;npar=7	15.19	

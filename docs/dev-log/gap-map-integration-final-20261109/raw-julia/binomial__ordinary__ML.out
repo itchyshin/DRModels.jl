@@ -1,0 +1,51 @@
+S	1	binomial|ordinary|lab0|q1|sd-none|cm0|ML
+R	1	binomial|ordinary|lab0|q1|sd-none|cm0|ML	FITS				-256.0589052811	true	se_finite=true;npar=5	38.32	
+S	2	binomial|ordinary|lab0|q1|sd-one|cm0|ML
+R	2	binomial|ordinary|lab0|q1|sd-one|cm0|ML	FITS				-256.0589052811	true	se_finite=true;npar=5	21.96	
+S	3	binomial|ordinary|lab0|q1|sd-z|cm0|ML
+R	3	binomial|ordinary|lab0|q1|sd-z|cm0|ML	FITS				-255.7898711107	true	se_finite=true;npar=6	19.86	
+S	4	binomial|ordinary|lab0|q2|sd-none|cm0|ML
+R	4	binomial|ordinary|lab0|q2|sd-none|cm0|ML	FITS				-254.8870098107	true	se_finite=true;npar=7	23.91	
+S	5	binomial|ordinary|lab1|q2|sd-none|cm0|ML
+R	5	binomial|ordinary|lab1|q2|sd-none|cm0|ML	ERROR	ErrorException	unsupported random-effect term: `(:((1 + x1) | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect	unsupported random-effect term: `(:((1 + x1) | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect			at=gaussian_ranef.jl:473	0.06	
+S	6	binomial|ordinary|lab0|q2|sd-one|cm0|ML
+R	6	binomial|ordinary|lab0|q2|sd-one|cm0|ML	FITS				-254.8870098107	true	se_finite=true;npar=7	23.38	
+S	7	binomial|ordinary|lab1|q2|sd-one|cm0|ML
+R	7	binomial|ordinary|lab1|q2|sd-one|cm0|ML	ERROR	ArgumentError	ArgumentError: Binomial SD regression requires one SD formula for each independent random-effect coefficient.	ArgumentError: Binomial SD regression requires one SD formula for each independent random-effect coefficient.				0.00	
+S	8	binomial|ordinary|lab0|q2|sd-z|cm0|ML
+R	8	binomial|ordinary|lab0|q2|sd-z|cm0|ML	FITS				-254.6981546628	true	se_finite=true;npar=9	32.15	
+S	9	binomial|ordinary|lab1|q2|sd-z|cm0|ML
+R	9	binomial|ordinary|lab1|q2|sd-z|cm0|ML	ERROR	ArgumentError	ArgumentError: Binomial SD regression requires one SD formula for each independent random-effect coefficient.	ArgumentError: Binomial SD regression requires one SD formula for each independent random-effect coefficient.				0.00	
+S	10	binomial|ordinary|lab0|q2|sd-first|cm0|ML
+R	10	binomial|ordinary|lab0|q2|sd-first|cm0|ML	FITS				-254.6982875324	true	se_finite=true;npar=8	25.70	
+S	11	binomial|ordinary|lab1|q2|sd-first|cm0|ML
+R	11	binomial|ordinary|lab1|q2|sd-first|cm0|ML	ERROR	ErrorException	unsupported random-effect term: `(:((1 + x1) | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect	unsupported random-effect term: `(:((1 + x1) | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect			at=gaussian_ranef.jl:473	0.01	
+S	12	binomial|ordinary|lab0|q2|sd-last|cm0|ML
+R	12	binomial|ordinary|lab0|q2|sd-last|cm0|ML	FITS				-254.8751256702	true	se_finite=true;npar=8	0.14	
+S	13	binomial|ordinary|lab1|q2|sd-last|cm0|ML
+R	13	binomial|ordinary|lab1|q2|sd-last|cm0|ML	ERROR	ErrorException	unsupported random-effect term: `(:((1 + x1) | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect	unsupported random-effect term: `(:((1 + x1) | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect			at=gaussian_ranef.jl:473	0.00	
+S	14	binomial|ordinary|lab0|q3|sd-none|cm0|ML
+R	14	binomial|ordinary|lab0|q3|sd-none|cm0|ML	FITS				-253.0024434901	true	se_finite=false;npar=10	76.84	Hessian is numerically singular at the optimum — using a pseudo-inverse.
+S	15	binomial|ordinary|lab1|q3|sd-none|cm0|ML
+R	15	binomial|ordinary|lab1|q3|sd-none|cm0|ML	ERROR	ErrorException	unsupported random-effect term: `(:((1 + x1 + x2) | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect	unsupported random-effect term: `(:((1 + x1 + x2) | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect			at=gaussian_ranef.jl:473	0.00	
+S	16	binomial|ordinary|lab0|q3|sd-z|cm0|ML
+R	16	binomial|ordinary|lab0|q3|sd-z|cm0|ML	NONCONVERGED				-248.6929318414	false	se_finite=false;npar=13	85.74	Hessian is not positive definite at the optimum. Wald standard errors are withheld.
+S	17	binomial|ordinary|lab1|q3|sd-z|cm0|ML
+R	17	binomial|ordinary|lab1|q3|sd-z|cm0|ML	ERROR	ArgumentError	ArgumentError: Binomial SD regression requires one SD formula for each independent random-effect coefficient.	ArgumentError: Binomial SD regression requires one SD formula for each independent random-effect coefficient.				0.00	
+S	18	binomial|ordinary|lab0|q3|sd-first|cm0|ML
+R	18	binomial|ordinary|lab0|q3|sd-first|cm0|ML	FITS				-252.9782217846	true	se_finite=false;npar=11	49.14	Hessian is numerically singular at the optimum — using a pseudo-inverse.
+S	19	binomial|ordinary|lab1|q3|sd-first|cm0|ML
+R	19	binomial|ordinary|lab1|q3|sd-first|cm0|ML	ERROR	ErrorException	unsupported random-effect term: `(:((1 + x1 + x2) | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect	unsupported random-effect term: `(:((1 + x1 + x2) | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect			at=gaussian_ranef.jl:473	0.00	
+S	20	binomial|ordinary|lab0|q4|sd-none|cm0|ML
+R	20	binomial|ordinary|lab0|q4|sd-none|cm0|ML	FITS				-252.7131759318	true	se_finite=true;npar=14	131.66	Hessian is numerically singular at the optimum — using a pseudo-inverse.
+S	21	binomial|ordinary|lab1|q4|sd-none|cm0|ML
+R	21	binomial|ordinary|lab1|q4|sd-none|cm0|ML	ERROR	ErrorException	unsupported random-effect term: `(:((1 + x1 + x2 + x3) | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect	unsupported random-effect term: `(:((1 + x1 + x2 + x3) | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect			at=gaussian_ranef.jl:473	0.00	
+S	22	binomial|ordinary|lab0|q4|sd-z|cm0|ML
+S	22	binomial|ordinary|lab0|q4|sd-z|cm0|ML
+R	22	binomial|ordinary|lab0|q4|sd-z|cm0|ML	TIMEOUT	watchdog	no result after 300s	no result after 300s					
+S	23	binomial|ordinary|lab1|q4|sd-z|cm0|ML
+R	23	binomial|ordinary|lab1|q4|sd-z|cm0|ML	ERROR	ArgumentError	ArgumentError: Binomial SD regression requires one SD formula for each independent random-effect coefficient.	ArgumentError: Binomial SD regression requires one SD formula for each independent random-effect coefficient.				11.43	
+S	24	binomial|ordinary|lab0|q4|sd-first|cm0|ML
+R	24	binomial|ordinary|lab0|q4|sd-first|cm0|ML	FITS				-252.6682979931	true	se_finite=true;npar=15	134.04	Hessian is numerically singular at the optimum — using a pseudo-inverse.
+S	25	binomial|ordinary|lab1|q4|sd-first|cm0|ML
+R	25	binomial|ordinary|lab1|q4|sd-first|cm0|ML	ERROR	ErrorException	unsupported random-effect term: `(:((1 + x1 + x2 + x3) | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect	unsupported random-effect term: `(:((1 + x1 + x2 + x3) | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect			at=gaussian_ranef.jl:473	0.01	
