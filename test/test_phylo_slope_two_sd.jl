@@ -72,6 +72,28 @@ function _a9c_dense_loglik(θ, y, X, Xσ, species, C)
     return Distributions.logpdf(Distributions.MvNormal(X * β, Symmetric(V)), y)
 end
 
+# Independent dense restricted log-likelihood (Patterson-Thompson) at the variance parameters in θ:
+#   -½[(n - p) log 2π + log|V| + log|X'V⁻¹X| + r'V⁻¹r],  r = y - Xβ̂_GLS(V).
+# β in θ is ignored, so this does not share the fitter's profiling.
+function _a9c_dense_reml_loglik(θ, y, X, Xσ, species, C)
+    n = length(y); p = size(X, 2); pσ = size(Xσ, 2)
+    σa = exp(θ[p+pσ+1]); σb = exp(θ[p+pσ+2]); ση = exp.(Xσ * θ[p+1:p+pσ])
+    V = zeros(n, n)
+    for i in 1:n, j in 1:n
+        cij = C[species[i], species[j]]
+        V[i, j] = σa^2 * cij + σb^2 * cij * X[i, 2] * X[j, 2]
+    end
+    for i in 1:n
+        V[i, i] += ση[i]^2
+    end
+    Vf = cholesky(Symmetric(V))
+    VX = Vf \ X
+    XtVX = Symmetric(X' * VX)
+    β = XtVX \ (X' * (Vf \ y))
+    r = y - X * β
+    return -0.5 * ((n - p) * log(2π) + logdet(Vf) + logdet(cholesky(XtVX)) + dot(r, Vf \ r))
+end
+
 @testset "Gaussian two-SD phylogenetic random slope phylo(1 + x | species) (#620)" begin
     data, phy = _a9c_fixture()
     y, x, species = data.y, data.x, data.species
@@ -177,9 +199,13 @@ end
         freml = drm(bf(@formula(y ~ x + phylo(1 + x | species))), Gaussian();
                     data = data, tree = phy, method = :REML)
         @test estimation_method(freml) === :REML && isfinite(reml_loglik(freml))
+        @test reml_loglik(freml) ≈ _a9c_dense_reml_loglik(freml.theta, y, [ones(n) x], ones(n, 1), species, C) atol = 1e-8
         # ... but a sigma predictor with it is still refused under REML
-        @test_throws ArgumentError drm(bf(@formula(y ~ x + phylo(1 + x | species)), @formula(sigma ~ x)),
-                                       Gaussian(); data = data, tree = phy, method = :REML)
+        err_ps = try
+            drm(bf(@formula(y ~ x + phylo(1 + x | species)), @formula(sigma ~ x)),
+                Gaussian(); data = data, tree = phy, method = :REML); nothing
+        catch e; e; end
+        @test err_ps isa ArgumentError && occursin("method = :REML is not implemented", err_ps.msg)
         # a second structured component, an ordinary RE, a sigma RE, sparse algorithms, missing y
         Kid = Matrix{Float64}(I, 16, 16)
         @test_throws ArgumentError drm(bf(@formula(y ~ x + phylo(1 + x | species) + relmat(1 | id))),

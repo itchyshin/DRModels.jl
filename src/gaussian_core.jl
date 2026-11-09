@@ -1520,12 +1520,14 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
          (isempty(re) && isempty(sigma_re) && structured === nothing &&
           metav === nothing && length(_collect_structured(rhs[:mu])) == 0)) ||
             throw(ArgumentError("drm: method = :REML is not implemented for this model on the " *
-                "generic univariate Gaussian route (random slopes, a random effect on sigma, " *
-                "a structured mean marker — phylo/relmat/animal/spatial — without a matching " *
-                "sd() submodel, and meta_V() all land here). REML IS available for: the " *
-                "fixed-effect Gaussian location–scale model; a single Gaussian mean random " *
-                "intercept `(1 | g)`, slope `(0 + x | g)` or correlated slope `(1 + x | g)`, several independent " *
-                "scalar terms, `relmat(1 | g)` / `animal(1 | g)`, `phylo(1 + x | g)` (each with a constant " *
+                "generic univariate Gaussian route (a random effect on sigma, a slope-only or " *
+                "multi-term mean with a `sigma` predictor, a structured mean marker — " *
+                "phylo/relmat/animal/spatial — without a matching sd() submodel beyond the cases " *
+                "below, a correlated block beside another term, and meta_V() all land here). REML " *
+                "IS available for: the fixed-effect Gaussian location–scale model; a single Gaussian " *
+                "mean random intercept `(1 | g)` or correlated slope `(1 + x | g)` (each also with a " *
+                "`sigma` predictor), slope-only `(0 + x | g)`, several independent scalar terms, " *
+                "`relmat(1 | g)` / `animal(1 | g)`, `phylo(1 + x | g)` (these last three with a constant " *
                 "residual scale); every sd() LSS route (`sd(g)`, `sd_phylo` dense and " *
                 "sparse, and the multi-component sd() router); the bivariate structured " *
                 "routes (q=2 and q=4, both native and via drm_bridge); and Poisson `(1 | g)` " *

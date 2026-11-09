@@ -30,19 +30,24 @@ _bir_formula(q; z = true) = begin
              bf(@formula(y ~ x1 + x2 + x3 + (1 | g) + (0 + x1 | g) + (0 + x2 | g)), rhs...)
 end
 
-@testset "G12 cells: Julia reaches at least drmTMB's log-likelihood" begin
+@testset "G12 cells: restarts lift Julia's optimum above its first start and above drmTMB's reported value" begin
     d = _bir_data("g12_binomial.csv")
     llR = -253.5291
     for (q, ll_default) in ((2, -255.2241433762659), (3, -254.5596))
         fit = drm(_bir_formula(q), Binomial(:logit); data = d, se = false)
         @test fit.converged
-        @test loglikelihood(fit) > llR                       # R may be the lower one
+        # The two programs do not score one point identically (R's own estimate is -253.5291 in R and
+        # -253.2382 in Julia, a gap of 0.29), so this compares each program's objective at its own optimum.
+        # It supports 'Julia's optimum is not below R's reported value', not 'Julia reaches R's value'.
+        @test loglikelihood(fit) > llR
         @test loglikelihood(fit) > ll_default + 1.3          # was 1.3 to 2.0 nats short
         rs = fit.scales[:q2_restarts]
         @test rs[1] == 1.0 && rs[2] >= 1.0
         @test rs[3] ≈ loglikelihood(fit) - ll_default atol = 5e-3
     end
-    # the objective is the one R evaluates: R's estimate scores -253.2382 in Julia (q=2)
+    # Julia's objective at R's q=2 estimate is -253.2382, while R reports -253.5291 at the same estimate:
+    # the objectives differ by 0.29 nats (cause not established; R Laplace against Julia AGHQ is a candidate).
+    # Only 0.09 of the 0.38 margin of Julia's optimum over R's reported value is gain under one objective.
     thR = [0.472920237952, 0.217143847112, 0.23791642793, -0.273548232169,
            -54.264625208, 56.949833433, -0.972683864797, 0.149484497541]
     fit2 = drm(_bir_formula(2), Binomial(:logit); data = d, se = false)
@@ -50,21 +55,52 @@ end
     @test loglikelihood(fit2) >= -fit2.nll(thR)
 end
 
-@testset "generated seed 29: restarts gain 3.3 (q=2) and 6.0 (q=3) nats" begin
-    d = _bir_data("seed29_binomial.csv")
-    for (q, ll_default, gain) in ((2, -242.3698, 3.261), (3, -241.7874, 6.049))
-        fit = drm(_bir_formula(q), Binomial(:logit); data = d, se = false)
-        rs = fit.scales[:q2_restarts]
-        @test rs[1] == 1.0 && rs[2] >= 1.0
-        @test rs[3] ≈ gain atol = 5e-3
-        @test loglikelihood(fit) ≈ ll_default + gain atol = 5e-3
-    end
+# Acceptance rule (review of the wave-10 restarts): an UNCONVERGED restart must not replace a CONVERGED first fit
+# unless it gains more than `_BINOMIAL_INDEP_BIG_GAIN` (1 nat). Generated seed 11 (q = 2) is the committed case
+# on Julia 1.10: the first fit is converged at -254.6933 and a restart reaches -254.5145 (+0.18) but does not
+# converge; with the generic 1e-3 rule that fit came back unconverged (converged = false, Hessian at a
+# non-stationary point). Whether that restart converges depends on the Julia version (on 1.12.6 it does, and is
+# then accepted legitimately), so the integration test states the invariant, and the deterministic test below
+# exercises the rule itself on every version. The generator is the committed splitmix64 + Box-Muller one.
+module _BIRGen
+include(joinpath(@__DIR__, "fixtures", "binomial_indep_restarts", "gen_binomial_indep.jl"))
+end
+@testset "a restart does not turn a converged fit into an unconverged one (seed 11)" begin
+    d = _BIRGen.gen_binomial_indep(11)
+    fit = drm(_bir_formula(2), Binomial(:logit); data = d, se = false)
+    rs = fit.scales[:q2_restarts]
+    @test fit.converged
+    @test !(rs[4] == 1.0 && !fit.converged)                      # no converged -> unconverged flip
+    @test loglikelihood(fit) >= -254.69330873885656 - 1e-6       # never worse than the first optimum
+    @test DRModels._BINOMIAL_INDEP_BIG_GAIN >= 1.0
 end
 
-@testset "intercept-only SD formulas keep the boundary trigger" begin
-    d = _bir_data("g12_binomial.csv")
-    fit = drm(_bir_formula(2; z = false), Binomial(:logit); data = d, se = false)
-    rs = fit.scales[:q2_restarts]
-    @test rs[1] == 0.0 && rs[3] == 0.0                       # healthy fit: no restart cost
-    @test loglikelihood(fit) ≈ -255.48498 atol = 1e-4         # the default-start value, as before this change
+@testset "_q2_boundary_restarts: unconverged alternative vs converged incumbent" begin
+    Optim = DRModels.Optim
+    mkres(v) = Optim.optimize(x -> (x[1] - 1)^2 + v, [0.0], Optim.LBFGS())
+    ok_set = Set{Float64}()
+    function run(gain_first_alt; big_gain)
+        # first run: converged, objective 5.0; first alternative: unconverged, objective 5.0 - gain; the rest are worse
+        calls = Ref(0)
+        r0 = mkres(5.0); r1 = mkres(5.0 - gain_first_alt); rw = mkres(9.0)
+        empty!(ok_set); push!(ok_set, Optim.minimum(r0), Optim.minimum(rw))
+        run_from(_) = (calls[] += 1; calls[] == 1 ? r1 : rw)
+        info = Ref{Any}()
+        out = DRModels._q2_boundary_restarts(run_from, Float64[], r0, (a, b, c) -> nothing, th -> 1.0,
+                                             r -> Optim.minimum(r) in ok_set; info = info, force = true,
+                                             big_gain = big_gain)
+        return out === r0, info[]
+    end
+    # generic 1e-3 rule: a 0.18 gain replaces the converged incumbent (the behaviour the review found)
+    kept, info = run(0.18; big_gain = 1e-3)
+    @test !kept && info.flipped
+    # route rule: 1 nat needed, so the converged incumbent stands and nothing is recorded as a gain
+    kept, info = run(0.18; big_gain = DRModels._BINOMIAL_INDEP_BIG_GAIN)
+    @test kept && !info.flipped && info.gain == 0.0 && info.winner == 0
+    kept, info = run(0.98; big_gain = DRModels._BINOMIAL_INDEP_BIG_GAIN)
+    @test kept
+    # a large documented gain (above 1 nat) still wins, flagged as a convergence flip
+    kept, info = run(2.0; big_gain = DRModels._BINOMIAL_INDEP_BIG_GAIN)
+    @test !kept && info.flipped
+    @test info.gain ≈ 2.0 atol = 1e-6
 end

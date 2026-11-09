@@ -60,7 +60,8 @@ function _drm_gaussian_ordinary_q34_sd(f::DrmFormula, fam::Gaussian, sdpp, re, m
     has_missing_response && throw(ArgumentError(
         "drm: Gaussian correlated-block SD regression requires observed responses; remove incomplete rows first."))
     method === :REML && throw(ArgumentError(
-        "drm: Gaussian correlated-block SD regression supports maximum likelihood only."))
+        "drm: Gaussian correlated-block SD regression supports maximum likelihood only " *
+        "(method = :REML is not implemented for it; use method = :ML)."))
     algorithm === :auto || throw(ArgumentError(
         "drm: `algorithm = :$algorithm` is not implemented for Gaussian correlated-block SD regression."))
     targets = _sd_target_parts(f)
