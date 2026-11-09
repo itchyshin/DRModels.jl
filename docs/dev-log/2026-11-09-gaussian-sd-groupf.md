@@ -88,4 +88,12 @@ Thresholds were 1e-4, 0.01, 0.01, 0.05, 0.01, so every gap is at least five orde
 - Data: three simulated datasets, n = 300, 30 and 15 groups, one family of shapes per response. No near-boundary or small-group stress; no dataset has the g2 slope SD or the mean-sigma correlation near zero.
 - The F routes are Laplace in both programs. Agreement is at the Laplace value, not against the exact marginal; the Laplace error itself (small groups of 10 rows, non-Gaussian marginal in `sigma`) is common to both and not measured here.
 - Cost: dense fits at n = 300 took 1 to 34 s on Totoro (one thread, three jobs at once, compile included in the first). Not benchmarked beyond n = 300; the cap is 5000 rows but the route is slow well before that.
-- Time of the full test suite, and its result, are in the report that accompanies this branch, not in this note.
+
+## Test results
+
+Touched-route tests plus every test file mentioning the changed refusal wording (29 files), Julia 1.10.12 and 1.12.7 on Totoro: all pass. Two files needed edits because a refusal became a fit: `test_gaussian_sd_gaps.jl` (the block-beside-slope and mean-`sd()`-plus-sigma-intercept refusal checks) and `test_gaussian_joint_mu_sigma_sd.jl` (mean `sd(id)` beside `sigma ~ 1 + (1 | site)` now fits; the refusal check uses a sigma slope instead).
+
+Full suite, every file once on each version (606 discovered files, 16 time-balanced shards per version plus `test_iid_sd_quadrature_accuracy.jl` run separately, wall 8 to 20 minutes per version, run at commit `7f59a007c`; a later commit changed one documentation file only):
+
+- Julia 1.10.12: all files pass.
+- Julia 1.12.7: five files fail, all of them the known pre-existing 1.12 failures: `test_stored_loglik_at_optimum.jl`, `test_binomial_spatial_sd_regression.jl`, `test_locscale_raw_k_regression.jl`, `test_relmat_raw_k_regression.jl`, `test_reml_q4_missing_response.jl`. No other failure, so none needed a rerun on the base tip.
