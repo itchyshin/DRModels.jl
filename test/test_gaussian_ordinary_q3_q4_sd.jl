@@ -140,9 +140,10 @@ end
         # SD predictor varying within group
         dv = merge(d, (w = randn(length(d.y)),))
         @test_throws ArgumentError drm(base(sdI, sdx), Gaussian(); data = dv)
-        # extra ordinary random effect
+        # an extra random INTERCEPT beside the block now fits (dense route, ML; agreement with R in
+        # test_gaussian_sd_gaps.jl); an extra independent slope beside the block is still refused
         de = merge(d, (site = repeat(["a", "b"], length(d.y) ÷ 2),))
-        @test_throws Exception drm(bf(@formula(y ~ x + z + (1 + x + z | id) + (1 | site)),
+        @test_throws Exception drm(bf(@formula(y ~ x + z + (1 + x + z | id) + (0 + x | site)),
             @formula(sigma ~ 1), sdI, sdx), Gaussian(); data = de)
     end
 end
