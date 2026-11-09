@@ -1547,6 +1547,15 @@ function _poisson_spatial_marginal(θ, y, Xμ, gidx, Ddist, lf, bref;
     Cinv = inv(Cchol)
     η0 = Xμ * βμ
     b, Hch, ok = _poisson_spatial_mode(y, η0, gidx, Cinv, invσ2, bref)
+    if !ok
+        # The warm start `bref` is the mode of the PREVIOUS evaluation. After an extreme
+        # trial point (the first L-BFGS step can be tens of units long) it can sit so far
+        # from this point's mode that the capped Newton loop fails, and every later
+        # evaluation then fails too, because `bref` is only refreshed on success: the fit
+        # stopped at its start with objective 1e18 (Poisson spatial, wave-10 gap map).
+        # Retry once from the cold start b = 0, as the Gamma structured route does.
+        b, Hch, ok = _poisson_spatial_mode(y, η0, gidx, Cinv, invσ2, zeros(G))
+    end
     ok || return convert(T, 1e18)
     bref .= ForwardDiff.value.(b)                           # warm start for the next outer eval
     data = zero(T)
