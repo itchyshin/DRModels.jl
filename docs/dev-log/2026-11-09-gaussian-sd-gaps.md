@@ -79,6 +79,8 @@ The same routes on the original fuzz grid: all 23 Gaussian ordinary, indep and c
 
 ## Refused, with reasons
 
+Update (2026-11-09, later): group F and the block-beside-a-slope row below now fit; see `2026-11-09-gaussian-sd-groupf.md` for the agreement numbers and what is still refused.
+
 | Cell | What now happens | Why it stays refused |
 | --- | --- | --- |
 | F. `gaussian|ordinary|lab0|q1|sd-z|cm1|ML`: mean `(1 \| p \| g)` with `sigma ~ 1 + (1 \| p \| g)` and `sd(g) ~ z` | `sd() submodels cannot be combined with a random effect on sigma. R drmTMB fits … ` | A mean SD formula together with the mean-sigma correlated intercept pair is a new marginal (two correlated effects, one with a covariate-dependent SD), not a reuse of the dense or Woodbury engines; the sigma-side Laplace route covers `sd(g, sigma)` only. Stop at this note |

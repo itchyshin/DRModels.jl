@@ -115,6 +115,8 @@ random effect: `sd(group) ~ z` or `sd(species, phylogenetic) ~ z`.
 | Correlated intercept and slope | **Tested** |
 | Multiple, crossed, or nested grouping factors | **Tested**; Gaussian crossed factors fit in about 0.3 s at 2,000 rows and 45 s at 20,000 rows on one synthetic design, still slower than drmTMB at tens of thousands of rows (see [Working with large data](model-guides/large-data.md)) |
 | Poisson crossed random effects | **Tested** with sparse Laplace integration |
+| Gaussian correlated 2-coefficient blocks beside random slope terms: `(1 + x \| g) + (0 + z \| h)`, two blocks `(1 + x \| g) + (1 + z \| h)`, a block beside `(1 \| h) + (0 + z \| h)`, with optional `sd(·, coef(·)) ~ …` formulas | **Tested** by exact dense maximum likelihood (ML only; 5,000-row cap) against drmTMB 0.8.1 at the optimum on 21 fits over three datasets; evidence in `docs/dev-log/2026-11-09-gaussian-sd-groupf.md`. Refused by name: an `sd()` formula on a grouping that carries a block and another term (drmTMB refuses it), a 3- or 4-coefficient block beside a slope term (drmTMB's own fit does not converge), two blocks when either has 3 or more coefficients (not checked), two blocks on one grouping, and a label shared by two terms (drmTMB ignores it). |
+| Gaussian mean `sd(g) ~ …` with a `sigma` random intercept: independent `(1 \| g)` in `mu` and `sigma ~ 1 + (1 \| h)`, or the labelled pair `(1 \| p \| g)` in both | **Tested** by dense Laplace against drmTMB 0.8.1 (9 fits over three datasets, log-likelihood within 5e-9). ML only; `sigma` random slopes and REML are refused by name. |
 
 ### Structured random effects with a known relatedness matrix (closed-form Gaussian)
 
@@ -330,7 +332,8 @@ above, and it does so by delegation rather than by a second engine.
     (native refuses REML there too), as do the Gaussian shapes that fit by ML in
     wave 9 (an unstructured q3/q4 block, a labelled block, a correlated block beside
     random intercepts, and independent intercept and slope terms with `sd()`
-    formulas): each refuses `method = :REML` by name.
+    formulas) and their wave-10 extensions (a block beside slope terms, two blocks,
+    a mean `sd(g)` formula with a `sigma` intercept): each refuses `method = :REML` by name.
     Still refused under REML on the Gaussian mean routes: `spatial(1 | g)` (its ML
     logLik differs from drmTMB's on the reference data, so no restricted objective
     is built), a correlated `(1 + x | g)` block beside any other random-effect term,

@@ -353,9 +353,19 @@ function _split_ranef(rhs; allow_phylo_slope::Bool = false,
                         u.args[1].f === (|) && length(u.args[1].args) == 2 &&
                         u.args[1].args[2] isa Term && u.args[1].args[2].sym === lab
                 end
-                nlab == 1 || throw(ArgumentError("drm: the label `$lab` in `(… | $lab | g)` is " *
-                    "shared by $nlab random-effect terms; a shared label ties their " *
-                    "correlations and is not implemented on this route. Use one labelled block."))
+                if nlab != 1
+                    grps = Symbol[u.args[2].sym for u in terms
+                                  if u isa FunctionTerm && u.f === (|) && u.args[1] isa FunctionTerm &&
+                                     u.args[1].f === (|) && length(u.args[1].args) == 2 &&
+                                     u.args[1].args[2] isa Term && u.args[1].args[2].sym === lab]
+                    hint = allequal(grps) ?
+                        " drmTMB ignores such a label on one grouping and fits independent terms; " *
+                        "write `(1 + x | $(first(grps)))` for a correlated pair or " *
+                        "`(1 | $(first(grps))) + (0 + x | $(first(grps)))` for independent terms." : ""
+                    throw(ArgumentError("drm: the label `$lab` in `(… | $lab | g)` is " *
+                        "shared by $nlab random-effect terms; a shared label ties their " *
+                        "correlations and is not implemented on this route. Use one labelled block." * hint))
+                end
                 lhs_t = lhs_t.args[1]
             end
             push!(re, (_implicit_re_intercept(lhs_t), t.args[2].sym))     # (re-lhs, grouping symbol)
