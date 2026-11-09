@@ -1877,7 +1877,8 @@ end
 
 function _fit_nb2_animal_intercept_slope_laplace(fam, y, Xmu, Xsigma, Zgs, gidx,
         Q, nmmu, nmsigma, nmsds, blocks, group, x, g_tol;
-        se::Bool = true, maxiter::Int = 250, correlated::Bool = false)
+        se::Bool = true, maxiter::Int = 250, correlated::Bool = false,
+        force_restarts::Bool = false)
     length(Zgs) == 2 || throw(ArgumentError("expected two NegBinomial2 animal SD designs"))
     size(Xsigma, 2) == 1 || throw(ArgumentError(
         "NegBinomial2 animal SD regression requires `sigma ~ 1`."))
@@ -1937,15 +1938,19 @@ function _fit_nb2_animal_intercept_slope_laplace(fam, y, Xmu, Xsigma, Zgs, gidx,
     end
     # Boundary restarts (see `_q2_boundary_restarts`): NB2 phylo seed 55 of the
     # scale-extension study stopped on the slope-SD ridge at the boundary.
+    # `force_restarts` (spatial routes) runs the alternative starts even from a converged,
+    # interior fit: the likelihood in the SD coefficients has a second interior mode and the
+    # default start can stop at the lower one (wave-10 gap map, NB2 spatial `sd-z`).
     n_obs = length(y)
     restarted = _q2_boundary_restarts(
         start -> first(run_lbfgs(start)), last_b, result,
-        (sd0, sd1, het) -> _q2_alt_theta(theta0, ranges, Zgs, sd0, sd1, het),
+        (sd0, sd1, het, het0 = 0) -> _q2_alt_theta(theta0, ranges, Zgs, sd0, sd1, het, het0),
         th -> min(minimum(exp.(Zgs[1] * th[ranges[1]])), minimum(exp.(Zgs[2] * th[ranges[2]]))),
         r -> begin
             th = Optim.minimizer(r); g = zeros(length(th)); grad!(g, th)
             _laplace_outer_converged(r, Optim.minimum(r), g, th, n_obs, g_tol)
-        end)
+        end; force = force_restarts,
+        starts = force_restarts ? _NB2_SPATIAL_ALT_STARTS : _Q2_ALT_STARTS)
     if restarted !== result
         result, theta, fmin = restarted, Optim.minimizer(restarted), Optim.minimum(restarted)
     end

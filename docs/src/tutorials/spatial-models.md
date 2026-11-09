@@ -69,9 +69,8 @@ what this Gaussian spatial route does and does not establish about uncertainty.
 
 !!! note "Spatial routes depend on the family"
     This tutorial uses the exact Gaussian coordinate-spatial route, which
-    estimates the range. Poisson also accepts `coords` and estimates the
-    spatial range on its Laplace route. The other families that take `coords`
-    fix the range as drmTMB does: the kernel is `exp(-d / m) + 1e-6 I`, with
+    estimates the range. The non-Gaussian families that take `coords`, Poisson
+    included, fix the range as drmTMB does: the kernel is `exp(-d / m) + 1e-6 I`, with
     `m` the median positive pairwise distance between sites.
 
     - **Gamma** accepts `spatial(1 | site)` with `coords` (native kernel) or

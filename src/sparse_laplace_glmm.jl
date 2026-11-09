@@ -500,6 +500,10 @@ end
 const _Q2_BOUNDARY_SD = 0.05
 const _Q2_ALT_STARTS = ((0.2, 0.1, 0), (0.7, 0.7, 0),
                         (0.4, 0.22, -1), (0.4, 0.22, 1), (0.4, 0.05, -1), (0.4, 0.05, 1))
+# NB2 spatial `sd-z`: the second interior mode differs from the default one by the sign of
+# the z coefficient of the INTERCEPT SD, so these starts tilt both SD blocks (sd0, sd1, het1, het0).
+const _NB2_SPATIAL_ALT_STARTS = Tuple(vcat(collect(_Q2_ALT_STARTS),
+    [(0.4, 0.22, h1, h0) for h1 in (-1, 1), h0 in (-1, 1)][:]))
 const _Q2_RESTART_GAIN = 1e-5
 const _Q2_RESTART_BIG_GAIN = 1e-3   # what an unconverged alternative must gain over a converged fit
 
@@ -507,10 +511,15 @@ const _Q2_RESTART_BIG_GAIN = 1e-3   # what an unconverged alternative must gain 
 # blocks); with `het = +-1` the non-intercept coefficients of the slope-SD block are
 # set to het * 2 / max|column|, so the slope SD varies by e^4 over the predictor range.
 # `Zs` are the group-level SD designs, `ranges` the theta ranges of the two blocks.
-function _q2_alt_theta(theta0, ranges, Zs, sd0, sd1, het)
+function _q2_alt_theta(theta0, ranges, Zs, sd0, sd1, het, het0 = 0)
     th = copy(theta0)
     th[ranges[1]] .= Zs[1] \ fill(log(sd0), size(Zs[1], 1))
     th[ranges[2]] .= Zs[2] \ fill(log(sd1), size(Zs[2], 1))
+    if het0 != 0   # the same tilt for the INTERCEPT-SD block (opt-in: NB2 spatial `sd-z`)
+        for j in 2:size(Zs[1], 2)
+            th[ranges[1][j]] = het0 * 2 / max(maximum(abs, view(Zs[1], :, j)), eps())
+        end
+    end
     if het != 0
         for j in 2:size(Zs[2], 2)
             th[ranges[2][j]] = het * 2 / max(maximum(abs, view(Zs[2], :, j)), eps())
@@ -520,7 +529,7 @@ function _q2_alt_theta(theta0, ranges, Zs, sd0, sd1, het)
 end
 
 function _q2_boundary_restarts(run_from, last_b, result, start_from, sd_min, converged; info = nothing,
-                               force::Bool = false)
+                               force::Bool = false, starts = _Q2_ALT_STARTS)
     snapshot = copy(last_b)
     first_ok = converged(result)
     if !force && first_ok && sd_min(Optim.minimizer(result)) >= _Q2_BOUNDARY_SD
@@ -530,9 +539,9 @@ function _q2_boundary_restarts(run_from, last_b, result, start_from, sd_min, con
     end
     best, best_f, best_ok, best_b = result, Optim.minimum(result), first_ok, snapshot
     first_f, winner = best_f, 0
-    for (k, (sd0, sd1, het)) in enumerate(_Q2_ALT_STARTS)
+    for (k, st) in enumerate(starts)
         last_b .= 0
-        r = run_from(start_from(sd0, sd1, het))
+        r = run_from(start_from(st...))
         f = Optim.minimum(r)
         ok = converged(r)
         gain = best_f - f

@@ -151,7 +151,8 @@ function _drm_count_phylo_spatial_q2_sd(f::DrmFormula, fam::Union{Poisson,NegBin
     else
         _, Xsigma, nmsigma = _design(f.response, sigma_rhs, data)
         _fit_nb2_animal_intercept_slope_laplace(fam, y, Xmu, Xsigma, Zgs, gidx, Q,
-            nmmu, nmsigma, nmsds, blocks, group, x, g_tol; se, correlated)
+            nmmu, nmsigma, nmsds, blocks, group, x, g_tol; se, correlated,
+            force_restarts = kind === :spatial && any(Z -> size(Z, 2) > 1, Zgs))
     end
     return _withformula(fit, f)
 end
