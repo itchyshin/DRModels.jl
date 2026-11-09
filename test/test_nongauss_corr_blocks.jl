@@ -64,7 +64,7 @@ end
     # an NB2 q = 3 block stays refused (drmTMB refuses it too)
     dn = _ngc_data("nb2")
     mu3 = @formula(y ~ x1 + x2 + x3 + (1 + x1 + x2 | g))
-    @test_throws Exception drm(bf(mu3, @formula(sigma ~ 1), @formula(sd(g, coef(intercept)) ~ z)),
+    @test_throws r"DRModels\.jl supports `\(1 \| g\)`, `\(0 \+ x \| g\)`, `\(1 \+ x \| g\)` and the correlated blocks" drm(bf(mu3, @formula(sigma ~ 1), @formula(sd(g, coef(intercept)) ~ z)),
                                NegBinomial2(); data = dn)
 end
 
@@ -88,7 +88,7 @@ end
     end
     # q = 3 stays refused: drmTMB refuses the LogNormal q = 3, 4 blocks
     mu3 = @formula(y ~ x1 + x2 + x3 + (1 + x1 + x2 | g))
-    @test_throws Exception drm(bf(mu3, @formula(sigma ~ 1), _NGC_SD[:first]), LogNormal(); data = d)
+    @test_throws r"DRModels\.jl supports `\(1 \| g\)`, `\(0 \+ x \| g\)`, `\(1 \+ x \| g\)` and the correlated blocks" drm(bf(mu3, @formula(sigma ~ 1), _NGC_SD[:first]), LogNormal(); data = d)
     # fixed `sigma ~ 1` only
     @test_throws ArgumentError drm(bf(_NGC_MU, @formula(sigma ~ x1), _NGC_SD[:first]), LogNormal(); data = d)
 end
@@ -116,6 +116,7 @@ end
     fit4 = drm(bf(@formula(y ~ x1 + x2 + x3 + (1 + x1 + x2 + x3 | g))), Binomial(:logit); data = d)
     @test fit4.converged
     @test loglikelihood(fit4) ≈ -252.71318 atol = 1e-3
-    # other links keep the old refusal
-    @test_throws Exception drm(mu3, Binomial(:probit); data = d)
+    # other links keep the old refusal (its text is the generic one, which talks about REML; the message
+    # does not name the probit link, a wording problem left unfixed here)
+    @test_throws r"DRModels\.jl supports `\(1 \| g\)`, `\(0 \+ x \| g\)`, `\(1 \+ x \| g\)` and the correlated blocks" drm(mu3, Binomial(:probit); data = d)
 end

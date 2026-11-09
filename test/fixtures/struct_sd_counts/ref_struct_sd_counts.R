@@ -71,7 +71,9 @@ for (id in idlist) {
   }
   # Model-based SEs from vcov(); where the optimiser has parameters the coefficient list omits
   # (the constant SD of the unselected term in a one-target independent pair) there is no
-  # one-to-one match and the SE is left NA.
+  # one-to-one match and the SE is left NA. (In the committed CSV every Gamma row has a finite
+  # R SE, so vcov() had as many entries as coefficients there; the Julia SEs come from its own
+  # Hessian, which has one more parameter, and agree with these to 1e-6.)
   se_v <- tryCatch(sqrt(diag(vcov(fit))), error = function(e) NULL)
   co <- unlist(lapply(names(fit$coefficients), function(b) {
     v <- fit$coefficients[[b]]; setNames(as.numeric(v), paste(b, names(v), sep = "::"))

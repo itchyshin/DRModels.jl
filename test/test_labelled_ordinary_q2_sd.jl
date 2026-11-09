@@ -154,7 +154,7 @@ end
         @test fl.theta ≈ fu.theta atol = 2e-3
     end
 
-    @testset "refusals stay explicit" begin
+    @testset "refusals stay explicit; one SD formula is accepted (Julia against Julia, no R reference)" begin
         one_sd = bf(@formula(yp ~ x + (1 + x | p | g)), @formula(sd(g, coef(intercept)) ~ z0))
         # One SD formula is accepted since the non-Gaussian correlated-block change: the other
         # coefficient keeps a constant SD (the explicit `~ 1` form is the same model).

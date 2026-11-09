@@ -19,15 +19,17 @@ Ranks 5 and 9 read as "L: new C++-equivalent code". Measured on the wave-10 tip,
 | gaussian relmat q2 sd-none REML | (a) |
 | binomial animal lab1 q2 sd-one, sd-z (ML) | (a) |
 | binomial animal lab0 q2 sd-one, sd-z (ML), previously disagreeing | (a) now agree |
-| binomial relmat q2 sd-none, sd-one, sd-z | (c) no Binomial relmat q2 route exists; R has `is_converged() = FALSE` on all three. Would reuse the animal Laplace fitter with a raw-K kernel (S to M), but there is no converged reference to hold it to. Left refused. |
-| beta spatial q2 sd-none | (b) R `is_converged() = FALSE`; needs a Beta spatial q2 route. Left refused. |
+| binomial relmat q2 sd-none, sd-one, sd-z | (c) no Binomial relmat q2 route exists; R has `is_converged() = FALSE` on all three (read from the gap-map probe; no relmat Binomial row is in the committed `reference.tsv`). Would reuse the animal Laplace fitter with a raw-K kernel (S to M), but there is no converged reference to hold it to. Left refused. |
+| beta spatial q2 sd-none | (b) R `is_converged() = FALSE` (from the probe; no Beta spatial row is committed); needs a Beta spatial q2 route. Left refused. |
 | gaussian spatial q2 REML | (c) Julia's spatial ML is 0.9 logLik from R (rank 39); fix ML first. Left refused. |
+
+Coverage notes: the committed `reference.tsv` holds only the 8 cells that fit; the Binomial relmat, Beta spatial and Gaussian spatial verdicts and the 200-cell label probe come from probe runs whose output is not committed, and the data files have no committed generator script. The post-fit checks for the unlabelled Binomial fit in `test/test_animal_slope_routes.jl` (`predict`, `simulate`) test length and range only, and the marginal simulator (`rho` taken as 0 when no correlation block exists) is covered only by a by-hand run of `_marginal_simulator` and `bootstrap_result`, not by a test.
 
 Left alone on purpose: Binomial animal bare (no SD formula) form, which R refuses; labelled bare forms except Poisson (R refuses); Binomial and Beta REML (ML-only by design).
 
 ## Pre-registered agreement thresholds
 
-Written before any coefficient or SE comparison; the logLik agreement had already been seen in the probe run (it is why the cells were chosen). Same as the Beta structured SD study:
+Written before any coefficient or SE comparison; the logLik agreement had already been seen in the probe run (it is why the cells were chosen). These are looser than the Beta structured SD study's rule (`test/test_beta_structured_sd.jl`: logLik 1e-4, coefficients 1e-3, SE ratio within 1%), by 10x, 5x and 5x. They were not widened after the results: the measured agreement is far tighter (largest logLik gap 3.8e-8, largest coefficient gap 4.7e-5), but one cell (`binom_animal_lab_one`) has a minimum SE ratio of 0.9884 and would fail the Beta study's 1% rule.
 
 - T1, logLik: |julia - R| <= 1e-3.
 - T2, coefficients (mu, sigma, SD blocks, atanh correlation): |diff| <= 5e-3.

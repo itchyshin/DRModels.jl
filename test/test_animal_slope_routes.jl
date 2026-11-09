@@ -76,7 +76,7 @@ end
                  data = dr, K = A)
         _asl_check(fr, REF["beta_relmat_bare"])
         # R refuses the bare labelled Beta form; so does Julia.
-        @test_throws ArgumentError drm(bf(@formula(y ~ x1 + x2 + x3 + animal(1 + x1 | p | g)), @formula(sigma ~ 1)),
+        @test_throws r"is not implemented on the univariate routes; only the intercept form is generally available" drm(bf(@formula(y ~ x1 + x2 + x3 + animal(1 + x1 | p | g)), @formula(sigma ~ 1)),
                                        Beta(); data = d, A = A, ids = ids)
     end
 
@@ -116,9 +116,9 @@ end
             @test length(ys) == length(d.y) && all(y -> y in (0, 1), ys)
         end
         # R refuses the bare Binomial animal forms (no SD formula); so does Julia.
-        @test_throws ArgumentError drm(bf(@formula(y ~ x1 + x2 + x3 + animal(1 + x1 | g))), Binomial(:logit); data = d, A = A, ids = ids)
-        @test_throws ArgumentError drm(bf(@formula(y ~ x1 + x2 + x3 + animal(1 + x1 | p | g))), Binomial(:logit); data = d, A = A, ids = ids)
+        @test_throws r"is not implemented on the univariate routes; only the intercept form is generally available" drm(bf(@formula(y ~ x1 + x2 + x3 + animal(1 + x1 | g))), Binomial(:logit); data = d, A = A, ids = ids)
+        @test_throws r"is not implemented on the univariate routes; only the intercept form is generally available" drm(bf(@formula(y ~ x1 + x2 + x3 + animal(1 + x1 | p | g))), Binomial(:logit); data = d, A = A, ids = ids)
         # Binomial relmat q2 has no route (R fits it but without convergence): refused, not mis-routed.
-        @test_throws ArgumentError drm(bf(@formula(y ~ x1 + x2 + x3 + relmat(1 + x1 | g))), Binomial(:logit); data = d, K = A)
+        @test_throws r"relmat\(1 \+ x1 \| g\)` is not implemented on the univariate routes" drm(bf(@formula(y ~ x1 + x2 + x3 + relmat(1 + x1 | g))), Binomial(:logit); data = d, K = A)
     end
 end

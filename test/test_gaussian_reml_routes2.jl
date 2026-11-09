@@ -65,7 +65,8 @@ end
         sprint(showerror, e)
     end
     @test occursin("estimates the exponential range", m4) && occursin("sd(g, spatial) ~ 1", m4)
-    # a labelled structured q2 block with REML: unchanged refusal (native drmTMB refuses it too)
+    # a labelled structured q2 block: refused by the structured-term check, which runs before the
+    # method is read, so this is the same refusal under ML and does not exercise a REML gate
     m5 = try
         drm(bf(DRModels.@formula(y ~ x1 + x2 + x3 + animal(1 + x1 | p | g)), s1), Gaussian(); data = spdata,
             A = Matrix{Float64}(readdlm(joinpath(dirname(@__FILE__), "fixtures", "gaussian_reml_routes2", "A.csv"), ',', Float64)),
@@ -74,5 +75,5 @@ end
     catch e
         sprint(showerror, e)
     end
-    @test m5 != ""
+    @test occursin("is not implemented on the univariate routes", m5)
 end

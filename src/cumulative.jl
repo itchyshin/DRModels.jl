@@ -133,8 +133,10 @@ function _cumulative_cut_init(y, K, n)
     return δ0
 end
 
-# R reads a character response as the levels of an ordered factor, sorted by label.
-# A string or symbol response is recoded the same way, to the integer codes 1..K the
+# drmTMB does not read a character response: it refuses a character response and an
+# unordered factor, and asks for an ordered factor or integer category scores. Here a
+# string or symbol response is a Julia-side convenience, recoded in sorted label order
+# to the integer codes 1..K the
 # route fits (gap map v2: `y ~ x1` with labels "o1".."o4" died with
 # `Float64(::String)`). Numeric codes pass through; any other element type is refused.
 function _cumulative_label_response(f::DrmFormula, data)

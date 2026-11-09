@@ -2933,7 +2933,7 @@ values unchanged for every fit except a zero-inflated count fit, whose mean is
 replaced by drmTMB's unconditional one (below).
 
 **Not drmTMB's values for every fit.** DRModels.jl's `fitted` is population
-level (`Xβ̂` on the response scale) for every model. drmTMB's `fitted()`, and
+level (`Xβ̂`, mapped to E[Y] since #1282) for every model. drmTMB's `fitted()`, and
 so its response residuals, adds the fitted modes whenever the mean has a
 random or structured effect: ordinary random effects, phylogenetic and
 covariance-block effects, and AR1 / OU `temporal()` paths (drmTMB 07d1612ea,
@@ -2945,7 +2945,8 @@ exception only in what else the payload carries: it also holds
 `conditional_structured` (`_attach_conditional_structured!`), from which drmTMB
 rebuilds the conditional mean; these two slots stay population level.
 
-DRModels.jl's `fitted(fit)` is `means[:mu]`, and for a zero-inflated Poisson or NB2
+DRModels.jl's `fit.means[:mu]` (which `fitted(fit)` returned before #1282; `fitted`
+now returns the mean E[Y], see below), and for a zero-inflated Poisson or NB2
 fit that slot deliberately holds the COUNT-COMPONENT mean `exp(Xmu*betahat)`,
 because `simulate`, `marginal_parameters` and [`_bridge_dpars`](@ref) all read
 the component mean from it. drmTMB's `fitted()` for `zi_poisson`/`zi_nbinom2`
@@ -2964,8 +2965,9 @@ bridge's `1.45376964, 1.21616037, 2.56362484` -- max absolute disagreement
 coefficient or likelihood check can see.
 
 Repaired HERE, on the bridge boundary, rather than in `means[:mu]`: DRModels.jl's
-own `fitted`, `residuals`, `simulate`, `marginal_parameters` and dpar table
-keep the component mean they are built on, and only drmTMB's contract surface
+`fit.means[:mu]`, `simulate`, `marginal_parameters` and dpar table keep the
+component mean they are built on (`fitted` and `residuals` are E[Y] and
+`y - E[Y]` since #1282, and the bridge reads `means[:mu]` directly), and only drmTMB's contract surface
 changes. Same shape as the `zero_one_beta` override in
 [`_bridge_dpars`](@ref).
 
