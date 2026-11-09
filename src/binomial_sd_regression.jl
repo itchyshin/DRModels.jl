@@ -2418,7 +2418,33 @@ function _fit_binomial_sd_regression(fam::Binomial, s, ntr, Xmu, Zgs, nmsds,
         end
     end
     correlated && (theta0[corr_range] .= 0.0)
-    res = _optimize_with_fallback(nll, theta0, g_tol)
+    run_from(th0) = _optimize_with_fallback(nll, th0, g_tol)
+    res = run_from(theta0)
+    # Restarts for independent random effects (see `_q2_boundary_restarts`). With a
+    # covariate in an SD formula (`sd(g, coef(.)) ~ z`) the objective is a ridge in the
+    # SD coefficients: the single default start can stop at a smooth interior point,
+    # converged and with every SD well above the boundary, that lies 1 to 6 nats below
+    # a point the same objective scores higher (G12 of the wave-8 disagreement map;
+    # drmTMB reaches the higher one). The boundary trigger never fires there, so such
+    # fits restart unconditionally, as the Gamma sd-z two-field route does; intercept-only
+    # SD formulas keep the usual trigger (fit near the boundary or not converged).
+    # An alternative is accepted only on a clear objective gain, so a fit whose first
+    # optimum stands is unchanged. Correlated blocks are not touched.
+    restart_info = Ref{Any}((ran = false, winner = 0, gain = 0.0, flipped = false))
+    if !correlated && q >= 2
+        res = _q2_boundary_restarts(run_from, Float64[], res,
+            (sd0, sd1, het) -> begin
+                th = copy(theta0)
+                for j in 2:q
+                    th = _q2_alt_theta(th, sd_ranges[[1, j]], (Zgs[1], Zgs[j]), sd0, sd1, het)
+                end
+                th
+            end,
+            th -> minimum(minimum(_binomial_sd_scale(Zgs[j] * th[sd_ranges[j]])) for j in 1:q),
+            drm_optim_converged; info = restart_info,
+            force = any(>(1), psd))
+    end
+    ri = restart_info[]
     thetahat = Optim.minimizer(res)
     V = _vcov_or_nan(ForwardDiff.hessian(nll, thetahat))
     blocks = Pair{Symbol,UnitRange{Int}}[:mu => 1:pmu]
@@ -2441,6 +2467,7 @@ function _fit_binomial_sd_regression(fam::Binomial, s, ntr, Xmu, Zgs, nmsds,
     scales = Dict(:trials => Float64.(nint),
                   :sd_group_index => Float64.(gidx),
                   :aghq_nodes => [Float64(nq)])
+    (correlated || q < 2) || (scales[:q2_restarts] = [ri.ran ? 1.0 : 0.0, Float64(ri.winner), Float64(ri.gain), ri.flipped ? 1.0 : 0.0])
     if correlated
         eta_corr = @view thetahat[corr_range]
         pairwise_corr = _binomial_pairwise_correlations(eta_corr, q)
