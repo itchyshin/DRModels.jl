@@ -27,8 +27,13 @@ end
     @test DRModels._table_column(Dict(:y => [5.0]), :y) == [5.0]
     @test DRModels._table_column(Dict("y" => [6.0]), :y) == [6.0]
     holder = (z = 7.0,)
-    # A NamedTuple miss falls through getproperty and throws; a Dict miss too.
-    @test_throws Exception DRModels._table_column(holder, :missing_col)
+    # A NamedTuple miss falls through to `getproperty` and throws `FieldError`.
+    @test try
+        DRModels._table_column(holder, :missing_col)
+        false
+    catch err
+        err isa FieldError && err.field === :missing_col && err.type == typeof(holder)
+    end
     @test DRModels._table_column(_DJ1Cols(4), :y) == 4
 
     @test DRModels._missing_column_lookup(KeyError(:y))

@@ -98,9 +98,6 @@ end
     y = 0.3
     η = 0.4
     φ = 6.0
-    μ = 1 / (1 + exp(-η))
-    a = μ * φ
-    b = (1 - μ) * φ
     aux = (y = [y], precision = φ, ylogit = [log(y) - log1p(-y)],
            lgammaφ = loggamma(φ))
     v, d1, d2, d3 = DRModels._laplace_v123(Val(:beta_fixed), aux, 1, η)
@@ -109,17 +106,35 @@ end
     @test d2 ≈ _d2(e -> _beta_nll(y, e, log(φ)), η) atol = _ATOL rtol = _RTOL
     @test d3 ≈ _d3(e -> _beta_nll(y, e, log(φ)), η) atol = 1e-6 rtol = 1e-6
     @test DRModels._laplace_value(Val(:beta_fixed), aux, 1, η) ≈ v atol = _ATOL
-    @test a + b ≈ φ
+    @test DRModels._laplace_d3(Val(:beta_fixed), aux, 1, η) ≈ d3 atol = 1e-6 rtol = 1e-6
 end
 
 @testset "fixed crossed Laplace refuses a component count other than two" begin
     y = [1.0, 2.0]
     X = ones(2, 1)
     one = [(ones(2, 1), [1, 1], 2, "g")]
-    @test_throws ErrorException DRModels._fit_nb2_fixed_crossed_laplace(
-        DRModels.NegBinomial2(), y, 1.5, X, one, ["(Intercept)"], 1e-4)
-    @test_throws ErrorException DRModels._fit_gamma_fixed_crossed_laplace(
-        DRModels.Gamma(), y, 1.5, X, one, ["(Intercept)"], 1e-4)
-    @test_throws ErrorException DRModels._fit_beta_fixed_crossed_laplace(
-        DRModels.Beta(), [0.2, 0.4], 4.0, X, one, ["(Intercept)"], 1e-4)
+    @test try
+        DRModels._fit_nb2_fixed_crossed_laplace(
+            DRModels.NegBinomial2(), y, 1.5, X, one, ["(Intercept)"], 1e-4)
+        false
+    catch err
+        err isa ErrorException &&
+            occursin("two random-intercept components", sprint(showerror, err))
+    end
+    @test try
+        DRModels._fit_gamma_fixed_crossed_laplace(
+            DRModels.Gamma(), y, 1.5, X, one, ["(Intercept)"], 1e-4)
+        false
+    catch err
+        err isa ErrorException &&
+            occursin("two random-intercept components", sprint(showerror, err))
+    end
+    @test try
+        DRModels._fit_beta_fixed_crossed_laplace(
+            DRModels.Beta(), [0.2, 0.4], 4.0, X, one, ["(Intercept)"], 1e-4)
+        false
+    catch err
+        err isa ErrorException &&
+            occursin("two random-intercept components", sprint(showerror, err))
+    end
 end
