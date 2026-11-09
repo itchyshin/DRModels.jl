@@ -89,7 +89,7 @@ function _ordinary_corr_laplace(f::DrmFormula, fam, fixed_mu, lhs, group::Symbol
     end
     block = _ordinary_q2_block(Dict(f.forms)[:mu])
     block === nothing && _ordinary_laplace_reject(fam, "`$lhs` (only the two-coefficient block `(1 + x | g)` is covered)")
-    return _drm_count_ordinary_q2_sd(f, fam, block; data, tree, K, A, Ainv = nothing, coords, g_tol, se, plain = true)
+    return _withmarginal(_drm_count_ordinary_q2_sd(f, fam, block; data, tree, K, A, Ainv = nothing, coords, g_tol, se, plain = true), :Laplace)
 end
 
 function _ordinary_laplace_reject(fam, what)

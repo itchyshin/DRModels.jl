@@ -506,7 +506,7 @@ function _laplace_sd_route(f::DrmFormula, fam, kind::Val, marginal; data, g_tol:
     shape === nothing && fallback && return nothing     # the caller owns this shape
     shape === nothing && throw(ArgumentError(
         "drm ($(_indep_famname(kind))): `marginal = :Laplace` with `sd()` formulas covers independent " *
-        "intercept and numeric-slope terms `(1 | g)` / `(0 + x | g)` on the mean only. Omit `marginal` " *
-        "(the default `:LA`) for structured, correlated, or distributional-parameter SD formulas."))
+        "intercept and numeric-slope terms `(1 | g)` / `(0 + x | g)` on the mean only. Use `marginal = :LA` " *
+        "(the default) for structured, correlated, or distributional-parameter SD formulas."))
     return _drm_indep_sd_laplace(f, fam, kind, shape; data, g_tol)
 end
