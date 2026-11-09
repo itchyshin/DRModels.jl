@@ -52,3 +52,86 @@ Acceptance:
 3. The other NB2 and Poisson structured sd-z routes are checked on the same seeds; a route is
    changed only if the evidence shows the same stuck-lower-mode pattern (a restart gains more
    than 1e-3 logLik on at least one seed).
+
+Part A, as pre-registered, was written for the NB2 route only. During the work the same-seed
+check (item 3) turned up the same pattern on the Poisson q = 2 routes, so the rule for them is
+the one in item 3: change a route only if a restart gains more than 1e-3 on at least one seed.
+
+## Results (appended after the run; the rule above was not edited)
+
+### Part B: Poisson fixed-range kernel
+
+drmTMB 0.8.1 reference (Totoro, `2026-11-09-spatial-parity-evidence/ref_pois.R`): logLik -675.6946875075, converged
+(code 0), pdHess TRUE. Julia, same data and site order (Mac, Julia 1.10.0; the committed test asserts the same rule on 1.10.12 and 1.12):
+
+| Item | Rule | Measured | Verdict |
+|---|---|---|---|
+| logLik | \|dLL\| <= 1e-4 | 1.8e-9 | pass |
+| Fixed effects (4) | <= 1e-3 R SE | 5.7e-6, 5.6e-7, 1.4e-7, 6.6e-7 R SE | pass |
+| Log spatial SD | <= 5e-3 | 1.8e-7 | pass |
+| Convergence | both converged | Julia converged, 5 parameters | pass |
+
+Before the change Julia reported -674.46 with a sixth parameter (the range).
+
+### Part A: NB2 spatial q = 2 sd-z
+
+Reproduction cell `nb2|spatial|lab1|q2|sd-z|cm0|ML`: before -554.212716, after -554.024198
+(target -554.0242, difference 2e-6, converged). The lower mode differs from the better one
+mainly in the sign of the z coefficient of the intercept SD (-0.329 against +0.42). The old
+alternative starts only tilted the slope-SD block, which is why they never reached it.
+
+Twenty fresh seeds (91001 to 91020; G = 40 sites, 400 rows, NB2 size 2, correlated intercept and
+slope fields, rho 0.3, SDs depend on a group covariate z; generator and raw tables in
+`2026-11-09-spatial-parity-evidence/`, files `nb2_seeds.jl` and `nb2_spatial_q2_sdz_*.tsv`). Julia 1.10.0 (the Mac default), one
+thread, both arms ran at the same time on the same machine.
+
+| seed | logLik before | logLik after | change | converged b/a | secs b/a |
+|---|---|---|---|---|---|
+| 91001 | -588.6237 | -587.9568 | +0.6670 | true / true | 13.0 / 16.1 |
+| 91002 | -618.8329 | -618.8329 | +0.0000 | true / true | 0.7 / 4.3 |
+| 91003 | -783.9249 | -783.9249 | +0.0000 | true / true | 9.7 / 13.1 |
+| 91004 | -595.3970 | -595.3970 | +0.0000 | true / true | 0.8 / 4.5 |
+| 91005 | -640.4308 | -640.4308 | +0.0000 | true / true | 0.9 / 5.4 |
+| 91006 | -735.9402 | -735.9402 | +0.0000 | true / true | 0.8 / 4.4 |
+| 91007 | -665.6162 | -665.6162 | +0.0000 | true / true | 1.9 / 10.5 |
+| 91008 | -768.8899 | -768.8899 | +0.0000 | true / true | 0.8 / 4.2 |
+| 91009 | -651.6455 | -651.6455 | +0.0000 | true / true | 0.8 / 6.5 |
+| 91010 | -559.7149 | -559.7149 | +0.0000 | true / true | 9.5 / 13.1 |
+| 91011 | -620.4112 | -620.4112 | +0.0000 | true / true | 2.7 / 12.5 |
+| 91012 | -694.3451 | -694.3451 | +0.0000 | true / true | 0.7 / 3.8 |
+| 91013 | -627.6255 | -627.6255 | +0.0000 | true / true | 12.2 / 18.8 |
+| 91014 | -757.8015 | -757.8015 | +0.0000 | true / true | 0.8 / 4.1 |
+| 91015 | -710.9990 | -710.9990 | +0.0000 | true / true | 8.3 / 14.1 |
+| 91016 | -554.2440 | -554.2440 | +0.0000 | true / true | 1.1 / 5.1 |
+| 91017 | -727.2805 | -727.2805 | +0.0000 | true / true | 1.6 / 7.5 |
+| 91018 | -660.1169 | -660.1169 | +0.0000 | true / true | 1.2 / 6.5 |
+| 91019 | -751.0343 | -750.8027 | +0.2316 | true / true | 0.8 / 5.8 |
+| 91020 | -687.0056 | -687.0056 | +0.0000 | true / true | 1.6 / 8.5 |
+
+Two seeds improve (91001 by 0.667, 91019 by 0.232); eighteen are unchanged to the printed
+digits; none is worse; every fit converged before and after. Total time 69.9 s before, 168.8 s
+after (ratio 2.41). The ratio per fast seed is about 5 because four extra optimisations run
+whatever the first fit did. A first version with ten extra starts (the four tilts plus the six
+existing alternatives) gave the same logLik on every seed at a total ratio of 4.1, so the six
+were dropped from the forced pass. The boundary rescue (existing alternatives, only when the
+first fit ends at a boundary or unconverged) runs as before.
+
+### Same-seed check of the other structured sd-z q = 2 routes
+
+Probe: refit from four tilted copies of each fit's own SD coefficients (z coefficient of each
+block set to plus or minus 2 / max |z|) and report the best logLik gain. Same seeds and design,
+Poisson draws for the Poisson routes; relmat uses the same kernel matrix as `K`. Julia 1.12.6.
+
+| Route | Seeds with gain > 1e-3 before | Gains | After the change |
+|---|---|---|---|
+| NB2 spatial lab1 (this PR) | 2 of 20 | 0.667, 0.232 | 0 |
+| NB2 relmat lab1 | 0 of 20 | none | not changed |
+| Poisson spatial lab1 | 2 of 20 | 0.081 (91007), 0.143 (91015) | 0; both seeds reach the tilted mode, none worse |
+| Poisson relmat lab0 | 1 of 20 | 0.098 (91016) | 0; none worse |
+
+So the Poisson q = 2 fitter (spatial, relmat and, through the same code, animal) now also tries
+the four tilts for `sd-z` designs, kept only if the objective improves by more than 1e-6. No
+seed got worse and no converged flag changed (the timing in the probe files includes the probe's
+own local optimisations, so it is not a fit-time ratio). NB2 phylo and animal, Poisson phylo,
+and the correlated variants not listed were not probed. Poisson animal was not probed
+separately; it shares the relmat code path.

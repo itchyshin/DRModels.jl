@@ -1,0 +1,10 @@
+.libPaths(c(path.expand("~/drm_campaign_20261108/Rlib"), .libPaths()))
+suppressPackageStartupMessages(library(drmTMB))
+cat("drmTMB", as.character(packageVersion("drmTMB")), "\n")
+d <- read.csv("data/data_poisson_spatial.csv"); d$g <- factor(d$g, levels = unique(d$g))
+cc <- read.csv("data/coords.csv"); coords <- as.matrix(cc[, c("easting","northing")]); rownames(coords) <- cc$id
+fit <- drmTMB(bf(y ~ x1 + x2 + x3 + spatial(1 | g, coords = coords)), family = poisson(), data = d)
+cat("logLik", sprintf("%.10f", as.numeric(logLik(fit))), "conv", fit$opt$convergence, "pdHess", fit$sdr$pdHess, "\n")
+print(fit$opt$par)
+s <- summary(fit$sdr, "fixed"); print(s)
+print(names(fit$opt$par))
