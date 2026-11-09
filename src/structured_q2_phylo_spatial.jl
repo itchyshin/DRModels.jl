@@ -174,18 +174,18 @@ end
 #
 # Only the shapes whose explicit `~ 1` form is a supported route are completed,
 # so no refusal can ever talk about SD formulas the user did not write: one
-# structured term and nothing else random, `sigma ~ 1`, ML, no other SD
+# structured term and nothing else random, `sigma ~ 1`, ML (or Gaussian animal/relmat REML), no other SD
 # formula. The labelled (correlated) form is completed for Poisson only, the
-# one family where drmTMB 0.8.1 fits it without an SD formula.
+# one family where drmTMB 0.8.1 fits it without an SD formula. REML is completed
+# for the Gaussian animal and relmat terms only.
 _default_q2_sd_families() = Dict{Symbol,Tuple}(   # a function: the family types load after this file
-    :animal  => (Gaussian, Poisson, NegBinomial2, Gamma),
-    :relmat  => (Gaussian, Poisson, NegBinomial2, Gamma),
+    :animal  => (Gaussian, Poisson, NegBinomial2, Gamma, Beta),
+    :relmat  => (Gaussian, Poisson, NegBinomial2, Gamma, Beta),
     :spatial => (Gaussian, Poisson, NegBinomial2, Binomial, Gamma),
     :phylo   => (Poisson, NegBinomial2, Binomial, Gamma),
 )
 
 function _default_structured_q2_sd(f::DrmFormula, fam; method = nothing)
-    method === :REML && return f
     fam isa Binomial && fam.link !== :logit && return f
     (isempty(f.sd_targets) && isempty(_sd_target_parts(f)) && isempty(_sdphylo_parts(f))) || return f
     all(p -> first(p) in (:mu, :sigma), f.forms) || return f
@@ -201,6 +201,10 @@ function _default_structured_q2_sd(f::DrmFormula, fam; method = nothing)
     kind = term.f === phylo ? :phylo : term.f === spatial ? :spatial :
            term.f === animal ? :animal : :relmat
     any(T -> fam isa T, get(_default_q2_sd_families(), kind, ())) || return f
+    # REML only where the explicit `~ 1` form has a REML route: the Gaussian
+    # animal and relmat intercept-and-slope SD routes (`method = :REML` is
+    # refused by every other family, whose own message then applies).
+    method === :REML && !(fam isa Gaussian && kind in (:animal, :relmat)) && return f
     block = _animal_intercept_slope(term; kind = _q2_marker(kind), allow_label = true)
     block === nothing && return f
     block.label === nothing || fam isa Poisson || return f

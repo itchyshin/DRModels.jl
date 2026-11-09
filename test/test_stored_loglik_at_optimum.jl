@@ -202,7 +202,7 @@ end
     eta = -0.1 .+ 0.25 .* f.x .+ (exp.(-0.6 .+ 0.5 .* f.z0) .* l0)[f.gidx] .+
           f.x .* (exp.(-0.75 .+ 0.6 .* f.z0) .* l1)[f.gidx]
     data = (; y = _sll_bern(f.rng, eta), x = f.x, z0 = f.z0[f.gidx], z1 = f.z0[f.gidx], group = f.group)
-    fit = drm(bf(@formula(y ~ x + animal(1 + x | group)),
+    fit = drm(bf(@formula(y ~ x + animal(1 + x | p | group)),
                  @formula(sd(group, animal, coef(intercept)) ~ z0),
                  @formula(sd(group, animal, coef(x)) ~ z1)),
               DRModels.Binomial(); data, A = f.A, se = false)

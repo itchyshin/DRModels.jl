@@ -962,8 +962,14 @@ function _drm_binomial_animal_q2_sd_regression(f::DrmFormula, fam::Binomial;
     length(targets) == 2 || throw(ArgumentError(
         "Binomial animal q2 SD regression requires one intercept and one slope SD formula."))
     rhs = Dict(f.forms)
+    # Unlabelled `animal(1 + x | g)`: two independent fields (rho fixed 0). Labelled
+    # `animal(1 + x | p | g)`: one free cross-coefficient correlation. Native drmTMB
+    # 0.8.1 fits the two as different models (logLik differs by 1.4 on the wave-8 data).
+    correlated = something(_animal_intercept_slope(rhs[:mu]; allow_label = true),
+                           (; label = nothing)).label !== nothing
     fixed_mu, re, mv, structured, _, _, slope = _split_ranef(
-        rhs[:mu]; allow_animal_intercept_slope = true)
+        rhs[:mu]; allow_animal_intercept_slope = true,
+        allow_labelled_intercept_slope = correlated)
     slope === nothing && throw(ArgumentError(
         "Binomial animal q2 SD regression requires `animal(1 + x | group)`."))
     group = first(targets).target.group
@@ -1027,7 +1033,10 @@ function _drm_binomial_animal_q2_sd_regression(f::DrmFormula, fam::Binomial;
               for item in ordered]
     fit = _fit_binomial_animal_q2_laplace(fam, s, ntr, Xmu, Zgs[1],
         Zgs[2], gidx, Q, Float64.(x), nmμ, nmsds[1], nmsds[2],
-        blocks, group, g_tol; se)
+        blocks, group, g_tol; se, correlated,
+        # Same finite-difference step as the phylo/spatial q2 route (see the comment there):
+        # the inner-solve noise is amplified by the default step in the weak correlation SE.
+        hessian_step = 3e-3)
     return _withformula(fit, f)
 end
 
@@ -1276,7 +1285,7 @@ function _binomial_animal_q2_sd_marginal_simulator(fit::DrmFit{Binomial}, data,
         "bootstrap: Binomial animal q2 simulation is missing its intercept SD target"))
     rhs = Dict(f.forms)[:mu]
     fixed_mu, re, mv, structured, _, _, slope = _split_ranef(
-        rhs; allow_animal_intercept_slope = true)
+        rhs; allow_animal_intercept_slope = true, allow_labelled_intercept_slope = true)
     group = first(targets).target.group
     slope !== nothing && isempty(re) && mv === nothing &&
         structured == (:animal, group) || throw(ArgumentError(
@@ -1323,7 +1332,7 @@ function _binomial_animal_q2_sd_marginal_simulator(fit::DrmFit{Binomial}, data,
         throw(ArgumentError(
             "bootstrap: animal slope predictor `$slope` must be finite and have one value per response"))
     loading = Float64.(raw_loading)
-    rho = tanh(only(coef(fit, :recov)))
+    rho = haskey(fit.scales, :correlation) ? only(fit.scales[:correlation]) : 0.0   # unlabelled: independent fields
     eta_fixed = Vector{Float64}(predict(fit, data; type = :link))
     length(eta_fixed) == fit.nobs || throw(ArgumentError(
         "bootstrap: Binomial fixed predictions do not match fitted response rows"))
@@ -1409,7 +1418,7 @@ function _binomial_animal_q2_prediction_fit(fit::DrmFit{Binomial})
     length(targets) == 2 || return fit
     rhs = Dict(f.forms)[:mu]
     fixed_mu, re, mv, structured, _, _, slope = _split_ranef(
-        rhs; allow_animal_intercept_slope = true)
+        rhs; allow_animal_intercept_slope = true, allow_labelled_intercept_slope = true)
     slope === nothing && return fit
     group = first(targets).target.group
     structured == (:animal, group) && isempty(re) && mv === nothing ||
