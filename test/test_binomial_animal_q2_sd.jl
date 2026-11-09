@@ -28,7 +28,7 @@ using Test, LinearAlgebra, Random, SparseArrays, Serialization, StableRNGs
     )))
     data = (; y, x, z0, z1, group)
     formula = bf(
-        @formula(y ~ x + animal(1 + x | group)),
+        @formula(y ~ x + animal(1 + x | p | group)),
         @formula(sd(group, animal, coef(intercept)) ~ z0),
         @formula(sd(group, animal, coef(x)) ~ z1),
     )
@@ -156,7 +156,7 @@ end
 
 @testset "Non-logit Bernoulli animal q2 SD regression" begin
     formula = bf(
-        @formula(y ~ x + animal(1 + x | group)),
+        @formula(y ~ x + animal(1 + x | p | group)),
         @formula(sd(group, animal, coef(intercept)) ~ z0),
         @formula(sd(group, animal, coef(x)) ~ z1),
     )

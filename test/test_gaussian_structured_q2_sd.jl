@@ -123,14 +123,17 @@ _gq2_kw(kind, fx) = kind === :animal ? (; A = fx.C) : (; K = fx.C)
     @test_throws ArgumentError drm(one, Gaussian(); data = fx.data, A = fx.C)
     # No SD formulas (wave 9): the bare term is the native independent two-SD model, completed
     # with `sd(g, animal, coef(·)) ~ 1` for both coefficients -- same fit as the explicit form.
-    # REML is not completed and keeps the old refusal.
+    # REML is completed for Gaussian animal and relmat too (animal-slope routes, 2026-11-09).
     bare = drm(bf(@formula(y ~ x + animal(1 + x | g))), Gaussian(); data = fx.data, A = fx.C)
     expl = drm(bf(@formula(y ~ x + animal(1 + x | g)), @formula(sigma ~ 1),
                   @formula(sd(g, animal, coef(intercept)) ~ 1), @formula(sd(g, animal, coef(x)) ~ 1)),
                Gaussian(); data = fx.data, A = fx.C)
     @test loglik(bare) == loglik(expl)
-    @test_throws ArgumentError drm(bf(@formula(y ~ x + animal(1 + x | g))), Gaussian();
-                                   data = fx.data, A = fx.C, method = :REML)
+    bare_reml = drm(bf(@formula(y ~ x + animal(1 + x | g))), Gaussian(); data = fx.data, A = fx.C, method = :REML)
+    expl_reml = drm(bf(@formula(y ~ x + animal(1 + x | g)), @formula(sigma ~ 1),
+                       @formula(sd(g, animal, coef(intercept)) ~ 1), @formula(sd(g, animal, coef(x)) ~ 1)),
+                    Gaussian(); data = fx.data, A = fx.C, method = :REML)
+    @test loglik(bare_reml) == loglik(expl_reml)
     # Wrong provider input.
     @test_throws ArgumentError drm(_gq2_formula(:animal), Gaussian(); data = fx.data,
                                    K = fx.C)
