@@ -312,8 +312,8 @@ above, and it does so by delegation rather than by a second engine.
     Gaussian location–scale model; a single Gaussian mean intercept `(1 | g)`; one
     correlated Gaussian mean intercept/slope `(1 + x | g)` with no `sigma` random
     effect, structured term, `meta_V()`, crossed term, or additional random-effect
-    term; and, with a constant `sigma` and no `sigma` random effect, `meta_V()` or
-    missing response: slope-only `(0 + x | g)`, several independent scalar terms
+    term; and, with a constant `sigma` and no `sigma` random effect or `meta_V()`:
+    slope-only `(0 + x | g)`, several independent scalar terms
     (`(1 | g) + (0 + x | g)`, crossed `(1 | g) + (1 | g2)`; at most 200 random-effect
     columns in total), one `relmat(1 | g)` or `animal(1 | g)`, and `phylo(1 + x | g)`
     with two SDs (exact restricted likelihood; agrees with drmTMB 0.8.1 `REML = TRUE`
@@ -330,10 +330,13 @@ above, and it does so by delegation rather than by a second engine.
     admit REML, as native drmTMB does. Labelled `animal` / `relmat` / `spatial`
     q2 blocks and heteroscedastic `sigma` with those providers still refuse REML. Ordinary `sd()` q2/q3/q4 routes stay ML only
     (native refuses REML there too), as do the Gaussian shapes that fit by ML in
-    wave 9 (an unstructured q3/q4 block, a labelled block, a correlated block beside
+    wave 9 (an unstructured q3/q4 block, a labelled q3/q4 block, a correlated block beside
     random intercepts, and independent intercept and slope terms with `sd()`
     formulas) and their wave-10 extensions (a block beside slope terms, two blocks,
-    a mean `sd(g)` formula with a `sigma` intercept): each refuses `method = :REML` by name.
+    a mean `sd(g)` formula with a `sigma` intercept) refuse `method = :REML` with a
+    message that says REML is not implemented. A single labelled q2 block
+    `(1 + x | p | g)` is the ordinary correlated block once the label is removed, so
+    it fits under REML like `(1 + x | g)`; no R comparison was run for that shape.
     Still refused under REML on the Gaussian mean routes: `spatial(1 | g)` (its ML
     logLik differs from drmTMB's on the reference data, so no restricted objective
     is built), a correlated `(1 + x | g)` block beside any other random-effect term,

@@ -485,7 +485,8 @@ end
 # alternative only if (same convergence status) its objective is lower by more than
 # 1e-5; (alternative converged, incumbent not) its objective is no more than 1e-5
 # higher, the objective being noisy at that level near rho = +-1; (alternative
-# unconverged, incumbent converged) its objective is lower by more than 1e-3, so a
+# unconverged, incumbent converged) its objective is lower by more than `big_gain` (default 1e-3;
+# the Binomial independent-term route passes 1.0, see `_BINOMIAL_INDEP_BIG_GAIN`), so a
 # converged fit is not exchanged for a marginally lower unconverged point. A fit
 # whose first optimum is kept is returned with the warm-start buffer `last_b`
 # exactly as the first run left it: THIS helper never alters a fit it keeps. That is
@@ -520,7 +521,7 @@ function _q2_alt_theta(theta0, ranges, Zs, sd0, sd1, het)
 end
 
 function _q2_boundary_restarts(run_from, last_b, result, start_from, sd_min, converged; info = nothing,
-                               force::Bool = false)
+                               force::Bool = false, big_gain::Real = _Q2_RESTART_BIG_GAIN)
     snapshot = copy(last_b)
     first_ok = converged(result)
     if !force && first_ok && sd_min(Optim.minimizer(result)) >= _Q2_BOUNDARY_SD
@@ -537,7 +538,7 @@ function _q2_boundary_restarts(run_from, last_b, result, start_from, sd_min, con
         ok = converged(r)
         gain = best_f - f
         accept = ok == best_ok ? gain > _Q2_RESTART_GAIN :
-                 ok ? gain > -_Q2_RESTART_GAIN : gain > _Q2_RESTART_BIG_GAIN
+                 ok ? gain > -_Q2_RESTART_GAIN : gain > big_gain
         if accept
             best, best_f, best_ok, best_b = r, f, ok, copy(last_b)
             winner = k

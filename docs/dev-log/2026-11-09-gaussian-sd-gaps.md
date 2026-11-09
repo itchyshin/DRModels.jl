@@ -4,14 +4,14 @@ Reader: whoever owns R-Julia parity of the Gaussian mean routes. Purpose: say wh
 
 ## The cells
 
-All are Gaussian, ML, `sigma ~ 1`, 400 rows in the fuzz grid. R fits every one; wave-8 Julia refused them. The ranking in the gap map counts cells that share one refusal message.
+All are Gaussian, ML, `sigma ~ 1`, 400 rows in the fuzz grid. R fits every one; wave-8 Julia refused them. The ranking in the gap map counts cells that share one refusal message. The counts below are those of the committed cell list `2026-11-09-gaussian-sd-gaps-fuzz/cells.tsv` (23 refused Gaussian cells: 8 + 4 + 6 + 4 + 1, plus the group F cell, 24 in all); an earlier draft of this table gave C as 10 and D as 8 and summed to 32, which was wrong.
 
 | Group | Cells | Model | Julia refusal at wave 8 |
 | --- | --- | --- | --- |
 | A. `indep` with SD formulas | 8 | `(1 \| g) + (0 + x1 \| g) [+ …]`, `sd(g, coef(·)) ~ z` (q = 2, 3, 4; first, last, one, z) | `sd() supports random INTERCEPT terms only` |
 | B. `crossed` with SD formulas | 4 | `(1 + x1 \| g) + (1 \| g2)`, `sd(g, coef(·)) ~ …`, `sd(g2) ~ …` (q = 2) | same message |
-| C. labelled `(.. \| p \| g)` | 10 | q = 2, 3, 4 on `ordinary` and `crossed` | `unsupported random-effect term` |
-| D. q = 3, 4 correlated block, no SD | 8 (6 Gaussian) | `ordinary` and `crossed` | `supports (1 \| g), (0 + x \| g), (1 + x \| g)` |
+| C. labelled `(.. \| p \| g)` | 6 | q = 2, 3, 4 on `ordinary` and `crossed` | `unsupported random-effect term` |
+| D. q = 3, 4 correlated block, no SD | 4 | `ordinary` and `crossed` | `supports (1 \| g), (0 + x \| g), (1 + x \| g)` |
 | E. q = 2 block beside `(1 \| g2)`, no SD | 1 | `crossed`, unlabelled | `a correlated block must be the only random-effect term` |
 | F. mean RE + sigma RE + `sd()` | 1 | `(1 \| p \| g)` on mu and sigma, `sd(g) ~ z` | `sd() submodels cannot be combined with a random effect on sigma` |
 
@@ -31,6 +31,8 @@ R limits worth knowing before reading the ranking: R refuses an `sd()` formula o
 No group needs a new estimation algorithm. Groups E and B add one dense exact-marginal engine of the same kind as the existing dense engines.
 
 ## Pre-registration (written before any Julia result on the new datasets was read)
+
+Limit of this claim (added after independent review): the thresholds, the routes, the datasets and the R reference were committed together in one commit (500133cb9), so, unlike the REML note, the order cannot be verified from git history; it rests on this text. No threshold was widened afterwards.
 
 Informal smoke runs on the fuzz data (before this section was written): 13 cells fit in Julia with logLik within 1e-6 of R's reference values in the gap map (ordinary lab1 q2, q3, q4; crossed q2 none and `z`; indep q2 first, `z`, q3 `z`). That is the only result seen. The comparison below is on three new datasets and 15 models.
 
@@ -60,7 +62,7 @@ Deviation from the pre-registration text: the first R reference extraction misse
 | E, B. block beside intercepts | new dense engine `_fit_gaussian_corr_crossed`; optional `sd(g, coef(·))` per block coefficient and `sd(h)` per extra intercept; ML only; 5000-row cap | `src/gaussian_corr_crossed_sd.jl` |
 | A. indep with SD | `_LssComp` gains a per-row loading `w` (an independent slope is an intercept component weighted by `x`); `_drm_gaussian_indep_sd` matches `sd(g, coef(·))` targets to terms and calls `_fit_gaussian_lss_multi`; ML only | `src/gaussian_lss.jl`, `src/gaussian_corr_crossed_sd.jl` |
 
-One consequence beyond the 23 gap cells: a q = 3 or 4 block with `sd(g, coef(·))` formulas beside a `(1 | h)` term now fits (it used to be refused). R fits it as well; one check, `gsd_s1`, `(1 + x1 + x2 | g) + (1 | g2)` with `sd(g, coef = "x1") ~ z`: R and Julia logLik both -260.418857 (difference 1e-8).
+One consequence beyond the 23 gap cells: a q = 3 or 4 block with `sd(g, coef(·))` formulas beside a `(1 | h)` term now fits (it used to be refused). R fits it as well; one check, `gsd_s1`, `(1 + x1 + x2 | g) + (1 | g2)` with `sd(g, coef = "x1") ~ z`: R and Julia logLik both -260.418857 (difference 1e-8; this one check was run by hand and is not in `r_reference.tsv`, the compare TSV or any test).
 
 ## Agreement with R at the optimum (45 fits: 15 models x 3 datasets)
 
@@ -73,7 +75,7 @@ Julia 1.10.12 on Totoro, one thread per process, 20 processes at once, about 4 m
 | C, D ordinary (labelled q2, q3, labelled q4) | 9 | 1 | 8 | 3.8e-12 / 5.9e-12 | 2.0e-9 | n/a | 1.8e-9 | 8.4e-10 |
 | E crossed, no SD | 12 | 0 | 12 | 3.8e-12 / 7.9e-12 | 1.1e-9 | n/a | 1.8e-9 | 8.1e-10 |
 
-Thresholds were 1e-4, 0.01, 0.01, 0.05, 0.01, so every gap is at least seven orders of magnitude inside them. Boundary flags: one fit, `gsd_s3` `ord_q4_lab`, where R reports `is_converged() = FALSE` and `pdHess = FALSE` (non-finite SEs); its logLik difference is 3.3e-5, inside the threshold, and it is excluded from the pass count as pre-registered. No fit had an SD below 1e-3 or a correlation above 0.99 in either program. All four groups pass on all three datasets.
+Thresholds were 1e-4, 0.01, 0.01, 0.05, 0.01. The logLik, log-SD and correlation gaps are at least seven orders of magnitude inside them; the largest fixed-effect gap (2.0e-9 against 0.01) is about 6.7 orders inside and the largest SD-formula gap (1.6e-9 against 0.01) about 6.8. Boundary flags: one fit, `gsd_s3` `ord_q4_lab`, where R reports `is_converged() = FALSE` and `pdHess = FALSE` (non-finite SEs); its logLik difference is 3.3e-5, inside the threshold, and it is excluded from the pass count as pre-registered. No fit had an SD below 1e-3 or a correlation above 0.99 in either program. All four groups pass on all three datasets.
 
 The same routes on the original fuzz grid: all 23 Gaussian ordinary, indep and crossed ML cells that wave-8 Julia refused and R fits now fit, converged, with logLik within 5.9e-11 of R's (`2026-11-09-gaussian-sd-gaps-fuzz/results.tsv`, 13 to 33 s per cell on Totoro). The grid had 24 such rows in the gap map listing; the 24th is group F, below.
 
@@ -84,7 +86,7 @@ Update (2026-11-09, later): group F and the block-beside-a-slope row below now f
 | Cell | What now happens | Why it stays refused |
 | --- | --- | --- |
 | F. `gaussian|ordinary|lab0|q1|sd-z|cm1|ML`: mean `(1 \| p \| g)` with `sigma ~ 1 + (1 \| p \| g)` and `sd(g) ~ z` | `sd() submodels cannot be combined with a random effect on sigma. R drmTMB fits … ` | A mean SD formula together with the mean-sigma correlated intercept pair is a new marginal (two correlated effects, one with a covariate-dependent SD), not a reuse of the dense or Woodbury engines; the sigma-side Laplace route covers `sd(g, sigma)` only. Stop at this note |
-| REML on any new shape | the generic REML gate ("method = :REML is not implemented …") or, on the SD routes, "supports maximum likelihood only" | Owned by the Gaussian REML lane; this branch does not touch the REML gate, so none of these routes can relabel an ML fit as REML |
+| REML on a new shape | the generic REML gate ("method = :REML is not implemented …"), the q3/q4 block message ("fitted by maximum likelihood only … `method = :REML` is not implemented"), or, on the SD routes, "supports maximum likelihood only" | Owned by the Gaussian REML lane. The refused shapes cannot relabel an ML fit as REML. One exception, found in review: the single labelled q2 block `(1 + x \| p \| g)` is unwrapped to the ordinary correlated block and so fits under REML (a real restricted fit, no R comparison made) |
 | a block beside a slope term, `(1 + x \| g) + (0 + z \| h)` | "a correlated `(1 + x \| g)` block can only be combined with random intercepts" | Not in the gap map; no R comparison made |
 | crossed q = 3, 4 with `sd()` on the other grouping | not a gap | R refuses it ("can only target that block") |
 | a label shared by two terms | "the label `p` … is shared by N random-effect terms" | It ties correlations between terms; no R comparison made |

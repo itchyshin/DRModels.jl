@@ -165,8 +165,15 @@ end
     f_rel = bf(@formula(y ~ x + relmat(1 | id)), @formula(sigma ~ 1))
     f_rel_fit = drm(f_rel, Gaussian(); data = data_rel, K = Kmat, method = :REML)
     @test estimation_method(f_rel_fit) === :REML && isfinite(reml_loglik(f_rel_fit))
-    @test_throws ArgumentError drm(bf(@formula(y ~ x + relmat(1 | id)), @formula(sigma ~ x)),
-                                   Gaussian(); data = data_rel, K = Kmat, method = :REML)
+    # with K = identity, relmat(1 | id) is the ordinary (1 | id) model: the restricted logLik must equal that fit's
+    f_ord_fit = drm(bf(@formula(y ~ x + (1 | id)), @formula(sigma ~ 1)), Gaussian();
+                    data = (y = yr, x = xr, id = string.(idx)), method = :REML)
+    @test reml_loglik(f_rel_fit) ≈ reml_loglik(f_ord_fit) atol = 1e-6
+    err_rs = try
+        drm(bf(@formula(y ~ x + relmat(1 | id)), @formula(sigma ~ x)),
+            Gaussian(); data = data_rel, K = Kmat, method = :REML); nothing
+    catch e; e; end
+    @test err_rs isa ArgumentError && occursin("method = :REML is not implemented", err_rs.msg)
 
     # algorithm = :em is the conjugate-EM variant: no REML objective either.
     data_em = (y = y, x = x, species = species)

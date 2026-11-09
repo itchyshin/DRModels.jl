@@ -128,8 +128,13 @@ import ForwardDiff
         x2 = randn(60)
         yy = 1.0 .+ randn(10)[g] .+ 0.5 .* randn(60)
         d2 = (; y = yy, g = g, h = h, x = x2)
-        @test_throws ArgumentError drm(bf(@formula(y ~ 1 + x + (1 + x | g) + (1 | h)), @formula(sigma ~ 1)),
-                                       Gaussian(); data = d2, method = :REML)
+        err_cb = try
+            drm(bf(@formula(y ~ 1 + x + (1 + x | g) + (1 | h)), @formula(sigma ~ 1)),
+                Gaussian(); data = d2, method = :REML); nothing
+        catch e; e; end
+        @test err_cb isa ArgumentError
+        @test occursin("method = :REML is not implemented for a correlated", err_cb.msg) &&
+              occursin("beside another random-effect term", err_cb.msg)
         # An unknown method symbol errors.
         @test_throws ArgumentError drm(bf(@formula(y ~ 1), @formula(sigma ~ 1)),
                                        Gaussian(); data, method = :restricted)

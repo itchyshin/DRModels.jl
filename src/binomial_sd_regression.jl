@@ -2347,6 +2347,9 @@ function _drm_binomial_sd_regression(f::DrmFormula, fam::Binomial; data,
     ), f)
 end
 
+# Nats an unconverged restart must gain over a converged first fit to replace it (independent terms).
+const _BINOMIAL_INDEP_BIG_GAIN = 1.0
+
 function _fit_binomial_sd_regression(fam::Binomial, s, ntr, Xmu, Zgs, nmsds,
                                       gidx, G, nmmu, group, g_tol, target_blocks;
                                       nq::Int = _BINOMIAL_RANEF_AGHQ_K,
@@ -2429,7 +2432,11 @@ function _fit_binomial_sd_regression(fam::Binomial, s, ntr, Xmu, Zgs, nmsds,
     # fits restart unconditionally, as the Gamma sd-z two-field route does; intercept-only
     # SD formulas keep the usual trigger (fit near the boundary or not converged).
     # An alternative is accepted only on a clear objective gain, so a fit whose first
-    # optimum stands is unchanged. Correlated blocks are not touched.
+    # optimum stands is unchanged. An UNCONVERGED alternative replaces a CONVERGED first
+    # fit only when it gains more than `_BINOMIAL_INDEP_BIG_GAIN` nats: with the generic
+    # 1e-3 rule a restart turned converged fits into unconverged ones (q = 2 seed 11, gain
+    # 0.18; q = 3 seeds 6 and 27, gains 0.29 and 0.98), leaving a non-stationary point for
+    # the Hessian. Correlated blocks are not touched.
     restart_info = Ref{Any}((ran = false, winner = 0, gain = 0.0, flipped = false))
     if !correlated && q >= 2
         res = _q2_boundary_restarts(run_from, Float64[], res,
@@ -2442,7 +2449,7 @@ function _fit_binomial_sd_regression(fam::Binomial, s, ntr, Xmu, Zgs, nmsds,
             end,
             th -> minimum(minimum(_binomial_sd_scale(Zgs[j] * th[sd_ranges[j]])) for j in 1:q),
             drm_optim_converged; info = restart_info,
-            force = any(>(1), psd))
+            force = any(>(1), psd), big_gain = _BINOMIAL_INDEP_BIG_GAIN)
     end
     ri = restart_info[]
     thetahat = Optim.minimizer(res)

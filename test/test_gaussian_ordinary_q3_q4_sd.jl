@@ -132,7 +132,15 @@ end
         # unknown coefficient
         @test_throws ArgumentError drm(base(sdI, @formula(sd(id, coef(v)) ~ w)), Gaussian(); data = d)
         # REML
-        @test_throws ArgumentError drm(base(sdI, sdx), Gaussian(); data = d, method = :REML)
+        err_reml = try
+            drm(base(sdI, sdx), Gaussian(); data = d, method = :REML); nothing
+        catch e; e; end
+        @test err_reml isa ArgumentError && occursin("REML", err_reml.msg)
+        # the unstructured q3 block without sd() formulas names REML too
+        err_q3 = try
+            drm(bf(@formula(y ~ x + z + (1 + x + z | id)), @formula(sigma ~ 1)), Gaussian(); data = d, method = :REML); nothing
+        catch e; e; end
+        @test err_q3 isa ArgumentError && occursin("method = :REML is not implemented", err_q3.msg)
         # q5 block
         d5 = merge(d, (u = randn(length(d.y)), v = randn(length(d.y))))
         @test_throws ArgumentError drm(bf(@formula(y ~ x + z + (1 + x + z + u + v | id)),
@@ -143,7 +151,15 @@ end
         # an extra random INTERCEPT beside the block now fits (dense route, ML; agreement with R in
         # test_gaussian_sd_gaps.jl); an extra independent slope beside the block is still refused
         de = merge(d, (site = repeat(["a", "b"], length(d.y) ÷ 2),))
-        @test_throws Exception drm(bf(@formula(y ~ x + z + (1 + x + z | id) + (0 + x | site)),
-            @formula(sigma ~ 1), sdI, sdx), Gaussian(); data = de)
+        err_slope = try
+            drm(bf(@formula(y ~ x + z + (1 + x + z | id) + (0 + x | site)),
+                @formula(sigma ~ 1), sdI, sdx), Gaussian(); data = de); nothing
+        catch e; e; end
+        @test err_slope isa ArgumentError
+        @test occursin("beside a random slope term is not implemented", err_slope.msg)
+        # the intercept case beside a q3 block with sd() formulas fits (ML)
+        fi = drm(bf(@formula(y ~ x + z + (1 + x + z | id) + (1 | site)), @formula(sigma ~ 1), sdI, sdx),
+                 Gaussian(); data = de)
+        @test fi.converged && isfinite(fi.loglik)
     end
 end
