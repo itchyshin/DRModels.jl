@@ -136,13 +136,10 @@ import ForwardDiff
                                        Gaussian(); data, method = :REML)
         # (slope-only `(0 + x | g)` REML is admitted: test/test_gaussian_reml_routes.jl)
         dh = merge(data, (; h = repeat(1:4, outer = length(data.y) ÷ 4)))
-        err_cb = try
-            drm(bf(@formula(y ~ 1 + x + (1 + x | g) + (1 | h)), @formula(sigma ~ 1)),
-                Gaussian(); data = dh, method = :REML); nothing
-        catch e; e; end
-        @test err_cb isa ArgumentError
-        @test occursin("method = :REML is not implemented for a correlated", err_cb.msg) &&
-              occursin("beside another random-effect term", err_cb.msg)
+        # a block beside random INTERCEPTS on another grouping is admitted
+        # (test/test_gaussian_reml_routes2.jl); beside a slope term it stays refused.
+        @test_throws ArgumentError drm(bf(@formula(y ~ 1 + x + (1 + x | g) + (0 + x | h)), @formula(sigma ~ 1)),
+                                       Gaussian(); data = dh, method = :REML)
     end
 
     @testset "model-selection guard still refuses different mean structures" begin

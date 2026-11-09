@@ -212,9 +212,9 @@ end
     @testset "(A) refusals stay exactly what they were" begin
         fx = _gc_fixture(:spatial, ids, :gaussian)
         gdat = fx.data
-        # REML is not completed: the original refusal text, not an sd() message.
-        @test_throws r"only the intercept form is admitted" drm(_gc_bf(Gaussian(), :spatial, false, :none),
-            Gaussian(); data = gdat, coords, method = :REML)
+        # REML is completed for the Gaussian structured q2 cells (docs/dev-log/2026-11-09-gaussian-reml-routes2.md).
+        @test drm(_gc_bf(Gaussian(), :spatial, false, :none), Gaussian(); data = gdat, coords,
+                  method = :REML).estim_method === :REML
         # Labelled and bare is fitted for Poisson only (drmTMB 0.8.1 refuses it elsewhere).
         fp = _gc_fixture(:phylo, ids, :poisson)
         @test_throws ArgumentError drm(_gc_bf(NegBinomial2(), :phylo, true, :none), NegBinomial2();

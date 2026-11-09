@@ -311,6 +311,7 @@ above, and it does so by delegation rather than by a second engine.
 | Profile-likelihood CIs (`profile_result`, `confint(:profile)`) | **Tested** |
 | Parametric bootstrap (`bootstrap_ci`/`_summary`/`_result`, serial + threaded) | **Tested** |
 | REML for fixed-effect Gaussian location–scale and Gaussian mean `(1 \| g)`, slope-only `(0 + x \| g)`, one correlated intercept/slope `(1 + x \| g)`, several independent scalar terms (including crossed `(1 \| g) + (1 \| g2)`), `relmat(1 \| g)` / `animal(1 \| g)` and `phylo(1 + x \| g)` (constant `sigma`) | **Tested**; the new routes agree with drmTMB 0.8.1 `REML = TRUE` on three simulated datasets per route (logLik to 1e-4); the correlated-slope cell is a single restricted route |
+| REML for a Gaussian correlated block of 2 to 4 coefficients `(1 + x1 + x2 [+ x3] \| g)` (labelled or not) alone or beside crossed intercepts `+ (1 \| g2)`, and for `relmat` / `animal` / `spatial(1 \| g)` with `sd(g, <level>) ~ 1` or `~ z`, and the bare unlabelled `relmat` / `animal` / `spatial(1 + x \| g)` (constant `sigma`, no `sd()` formula on the blocks) | **Tested**; agrees with drmTMB 0.8.1 `REML = TRUE` on three simulated datasets per shape (logLik to 1e-4, `docs/dev-log/2026-11-09-gaussian-reml-routes2.md`); one dataset where R does not converge is excluded |
 | `reml_loglik` / `ml_loglik` / `estimation_method` accessors | **Tested** |
 | Epsilon-method bias correction (`bias_correct`) | **Tested** |
 | **χ̄² (chi-bar-square) boundary inference** (Self–Liang / Stram–Lee mixture) | **Tested** |
@@ -340,19 +341,27 @@ above, and it does so by delegation rather than by a second engine.
     `sigma ~ 1`) and the structured `sigma` intercept with an SD formula
     (`sigma ~ 1 + KIND(1 | g)`, `sd(g, KIND, sigma) ~ z`, fixed-effect mean; `beta_mu`
     and `beta_sigma` are integrated out in one joint Laplace approximation) also
-    admit REML, as native drmTMB does. Labelled `animal` / `relmat` / `spatial`
+    admit REML, as native drmTMB does. Also under REML (constant `sigma`, no `sd()`
+    formula): one correlated block of 3 or 4 coefficients `(1 + x + z [+ w] | g)`, a
+    correlated block of 2 to 4 coefficients beside random intercepts on other
+    groupings `(1 + x | g) + (1 | h)` (labelled or not), a structured intercept
+    `relmat` / `animal` / `spatial(1 | g)` with its own `sd(g, <level>) ~ …`, and the
+    bare unlabelled `relmat` / `animal` / `spatial(1 + x | g)` (completed to
+    `sd(·, coef(·)) ~ 1` for both coefficients, as under ML). Labelled `animal` / `relmat` / `spatial`
     q2 blocks and heteroscedastic `sigma` with those providers still refuse REML. Ordinary `sd()` q2/q3/q4 routes stay ML only
     (native refuses REML there too), as do the Gaussian shapes that fit by ML in
-    wave 9 (an unstructured q3/q4 block, a labelled q3/q4 block, a correlated block beside
-    random intercepts, and independent intercept and slope terms with `sd()`
+    wave 9 (an unstructured q3/q4 block with `sd()` formulas, a labelled q3/q4 block, a correlated block
+    with `sd()` formulas beside random intercepts, and independent intercept and slope terms with `sd()`
     formulas) and their wave-10 extensions (a block beside slope terms, two blocks,
-    a mean `sd(g)` formula with a `sigma` intercept) refuse `method = :REML` with a
+    a mean `sd(g)` formula with a `sigma` intercept): each refuses `method = :REML` with a
     message that says REML is not implemented. A single labelled q2 block
     `(1 + x | p | g)` is the ordinary correlated block once the label is removed, so
     it fits under REML like `(1 + x | g)`; no R comparison was run for that shape.
-    Still refused under REML on the Gaussian mean routes: `spatial(1 | g)` (its ML
-    logLik differs from drmTMB's on the reference data, so no restricted objective
-    is built), a correlated `(1 + x | g)` block beside any other random-effect term,
+    Still refused under REML on the Gaussian mean routes: the bare `spatial(1 | g)` (it
+    estimates the exponential range where drmTMB fixes it, so the two maximum
+    likelihoods differ by design; write `sd(g, spatial) ~ 1` for drmTMB's fixed-range
+    kernel), a correlated `(1 + x | g)` block beside a random slope term or on the same
+    grouping as another term,
     ordinary σ-RE (including ordinary `sd(g, sigma)`, which native drmTMB admits
     under REML), a `sigma` predictor with a multi-term mean, `meta_V()`, missing
     responses on the new routes, and other random-slope structures. Separate

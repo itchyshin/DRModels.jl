@@ -59,12 +59,11 @@ function _drm_gaussian_ordinary_q34_sd(f::DrmFormula, fam::Gaussian, sdpp, re, m
     members = Symbol[:intercept; vars]
     has_missing_response && throw(ArgumentError(
         "drm: Gaussian correlated-block SD regression requires observed responses; remove incomplete rows first."))
-    method === :REML && throw(ArgumentError(
-        "drm: Gaussian correlated-block SD regression supports maximum likelihood only " *
-        "(method = :REML is not implemented for it; use method = :ML)."))
     algorithm === :auto || throw(ArgumentError(
         "drm: `algorithm = :$algorithm` is not implemented for Gaussian correlated-block SD regression."))
     targets = _sd_target_parts(f)
+    reml = method === :REML
+    reml && _gaussian_block_reml_gate(targets, Xμ, Xσ, "a Gaussian correlated block `(1 + … | $grp)`")
     all(item -> item.target.level === :iid && item.target.group === grp &&
         item.target.dpar === :mu && item.target.block === nothing, targets) ||
         throw(ArgumentError("drm: Gaussian correlated-block SD regression requires ordinary " *
@@ -103,11 +102,31 @@ function _drm_gaussian_ordinary_q34_sd(f::DrmFormula, fam::Gaussian, sdpp, re, m
         end
     end
     return _fit_gaussian_ordinary_q34_sd(fam, y, Xμ, Xσ, U, Zgs, gidx, G, nmμ, nmσ,
-                                         nmsds, blocks, members, grp, g_tol)
+                                         nmsds, blocks, members, grp, g_tol; reml)
+end
+
+# Shared REML admission rule for the Gaussian correlated-block routes (single block q = 2..4,
+# and a block beside crossed intercepts). The restriction term is exact for every shape here
+# (the marginal is Gaussian-linear in `beta_mu`), but drmTMB 0.8.1 admits REML on these blocks
+# only without `sd()` formulas and with a constant residual scale (measured on the 3008-cell
+# gap map, 2026-11-09: every `sd-one` / `sd-z` / `sd-first` REML cell of these shapes is
+# refused by R), so the same two cases stay refused here rather than ship an untested route.
+function _gaussian_block_reml_gate(targets, Xμ, Xσ, what::AbstractString)
+    isempty(targets) || throw(ArgumentError(
+        "drm: method = :REML is not implemented for $what together with `sd()` formulas: " *
+        "drmTMB refuses this combination too, and no restricted objective is validated for it. " *
+        "Use method = :ML, or drop the `sd()` formulas for REML."))
+    size(Xσ, 2) == 1 || throw(ArgumentError(
+        "drm: method = :REML for $what requires a constant residual scale (`sigma ~ 1`); " *
+        "a `sigma` predictor is not validated against drmTMB there. Use `sigma ~ 1` or method = :ML."))
+    rank(Xμ) == size(Xμ, 2) || throw(ArgumentError(
+        "drm: method = :REML requires a full-rank `mu` fixed-effect design."))
+    return nothing
 end
 
 function _fit_gaussian_ordinary_q34_sd(fam::Gaussian, y, Xμ, Xσ, U, Zgs, gidx, G,
-                                       nmμ, nmσ, nmsds, blocks, members, grp, g_tol)
+                                       nmμ, nmσ, nmsds, blocks, members, grp, g_tol;
+                                       reml::Bool = false)
     n = length(y); q = size(U, 2)
     pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     ps = size.(Zgs, 2)
@@ -159,6 +178,29 @@ function _fit_gaussian_ordinary_q34_sd(fam::Gaussian, y, Xμ, Xσ, U, Zgs, gidx,
         end
         return tot + const_2pi
     end
+    # REML: nll_ML + ½ logdet(Xμ′V⁻¹Xμ) − ½ pμ log(2π), V = ⊕_g (S_g + (U_g L_g)(U_g L_g)′).
+    # X′V⁻¹X is the sum over groups of the stacked-QR restriction of Z̃_g = U_g L_g
+    # (`_reml_xtvinvx_qr`): PSD by construction, no Woodbury subtraction.
+    function nll_reml(θ)
+        val = nll(θ)
+        val >= 1e18 && return val
+        T = eltype(θ)
+        ησ = Xσ * θ[pμ+1:pμ+pσ]
+        Lc = _q34_corr_chol(θ[rθ], q)
+        sdg = [exp.(Zgs[k] * θ[rg[k]]) for k in 1:q]
+        XtVinvX = zeros(T, pμ, pμ)
+        for g in 1:G
+            r = rows[g]
+            isempty(r) && continue
+            L = Matrix{T}(undef, q, q)
+            for a in 1:q, c in 1:q
+                L[a, c] = sdg[a][g] * Lc[a, c]
+            end
+            XtVinvX .+= _reml_xtvinvx_qr(U[r, :] * L, exp.(-ησ[r]), Xμ[r, :])
+        end
+        return _reml_add_restriction(val, Symmetric(XtVinvX), pμ)
+    end
+    nll_opt = reml ? nll_reml : nll
     βμ0 = Xμ \ y; res0 = y - Xμ * βμ0
     θ0 = zeros(ntot)
     θ0[1:pμ] .= βμ0
@@ -180,14 +222,14 @@ function _fit_gaussian_ordinary_q34_sd(fam::Gaussian, y, Xμ, Xσ, U, Zgs, gidx,
     # untouched, so fits that already succeeded follow the identical path), and retry with
     # BackTracking if the default line search still asserts. The reported value, Hessian
     # and gradient check below use the raw `nll`.
-    res = _optimize_with_fallback(nll, θ0, g_tol;
+    res = _optimize_with_fallback(nll_opt, θ0, g_tol;
         opts = Optim.Options(g_tol = g_tol, x_abstol = NaN, x_reltol = NaN,
                              f_abstol = NaN, f_reltol = NaN))
     θ̂ = Optim.minimizer(res)
-    H = ForwardDiff.hessian(nll, θ̂)
+    H = ForwardDiff.hessian(nll_opt, θ̂)
     V = _vcov_from_hessian(H)
     converged = !Optim.iteration_limit_reached(res) &&
-        _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
+        _unitfree_converged(H, ForwardDiff.gradient(nll_opt, θ̂))
     block_list = Pair{Symbol,UnitRange{Int}}[:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ)]
     name_list = Pair{Symbol,Vector{String}}[:mu => nmμ, :sigma => nmσ]
     scales = Dict{Symbol,Vector{Float64}}(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
@@ -232,7 +274,9 @@ function _fit_gaussian_ordinary_q34_sd(fam::Gaussian, y, Xμ, Xσ, U, Zgs, gidx,
         push!(names_θ, "theta($(members[i]), $(members[j]))")
     end
     push!(block_list, :recov => rθ); push!(name_list, :recov => names_θ)
-    fit = DrmFit(fam, block_list, name_list, θ̂, V, -nll(θ̂), n, converged,
+    fit = DrmFit(fam, block_list, name_list, θ̂, V, -nll_opt(θ̂), n, converged,
                  Dict(:mu => Xμ * θ̂[1:pμ]), Dict(:mu => Vector{Float64}(y)), scales)
-    return _withiterations(_withnll(fit, nll), Optim.iterations(res))
+    fit = _withiterations(_withnll(fit, nll_opt), Optim.iterations(res))
+    reml && return _withreml(fit, -nll_reml(θ̂), -nll(θ̂))
+    return fit
 end

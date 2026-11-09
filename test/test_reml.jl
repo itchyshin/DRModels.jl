@@ -120,21 +120,17 @@ import ForwardDiff
 
     @testset "unsupported REML cells are rejected clearly" begin
         # Ordinary mean (1 | g) REML is #439 (`test/test_reml_ordinary_ranef.jl`).
-        # A correlated block beside another term and unknown method symbols stay rejected
-        # here (slope-only `(0 + x | g)` REML is test/test_gaussian_reml_routes.jl).
+        # A correlated block beside a random SLOPE term and unknown method symbols stay
+        # rejected here (a block beside random intercepts is admitted:
+        # test/test_gaussian_reml_routes2.jl; slope-only `(0 + x | g)` REML is test/test_gaussian_reml_routes.jl).
         Random.seed!(7)
         g = repeat(1:10, inner = 6)
         h = repeat(1:6, outer = 10)
         x2 = randn(60)
         yy = 1.0 .+ randn(10)[g] .+ 0.5 .* randn(60)
         d2 = (; y = yy, g = g, h = h, x = x2)
-        err_cb = try
-            drm(bf(@formula(y ~ 1 + x + (1 + x | g) + (1 | h)), @formula(sigma ~ 1)),
-                Gaussian(); data = d2, method = :REML); nothing
-        catch e; e; end
-        @test err_cb isa ArgumentError
-        @test occursin("method = :REML is not implemented for a correlated", err_cb.msg) &&
-              occursin("beside another random-effect term", err_cb.msg)
+        @test_throws ArgumentError drm(bf(@formula(y ~ 1 + x + (1 + x | g) + (0 + x | h)), @formula(sigma ~ 1)),
+                                       Gaussian(); data = d2, method = :REML)
         # An unknown method symbol errors.
         @test_throws ArgumentError drm(bf(@formula(y ~ 1), @formula(sigma ~ 1)),
                                        Gaussian(); data, method = :restricted)

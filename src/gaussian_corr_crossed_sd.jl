@@ -53,12 +53,19 @@ function _drm_gaussian_corr_crossed(f::DrmFormula, fam::Gaussian, split, re, sdp
     has_missing_response && throw(ArgumentError(
         "drm: a Gaussian correlated block beside other random terms requires observed " *
         "responses; remove incomplete rows first."))
-    method === :REML && throw(ArgumentError(
-        "drm: a Gaussian correlated block beside other random terms supports maximum " *
-        "likelihood only (`method = :REML` is not implemented for this shape)."))
     algorithm === :auto || throw(ArgumentError(
         "drm: `algorithm = :$algorithm` is not implemented for a Gaussian correlated block " *
         "beside other random terms (dense exact marginal only)."))
+    reml = method === :REML
+    # REML was checked against drmTMB for one block beside random INTERCEPTS only; every wider
+    # shape (two blocks, a block beside a slope term) keeps the maximum-likelihood-only refusal.
+    reml && (length(split[1]) == 1 && all(i -> _cc_term_kind(re[i][1])[1] === :intercept, split[2]) ||
+        throw(ArgumentError(
+            "drm: a Gaussian correlated block beside other random terms supports maximum " *
+            "likelihood only (`method = :REML` is not implemented for this shape; REML is available " *
+            "for one correlated block beside random intercepts on other groupings).")))
+    reml && _gaussian_block_reml_gate(_sd_target_parts(f), Xμ, Xσ,
+        "a Gaussian correlated block beside other random intercepts")
     bis, others = split
     block_grps = Symbol[re[b][2] for b in bis]
     dup = [g for g in unique(block_grps) if count(==(g), block_grps) > 1]
@@ -190,11 +197,11 @@ function _drm_gaussian_corr_crossed(f::DrmFormula, fam::Gaussian, split, re, sdp
                           ["($(e.mem === :intercept ? "1" : "0 + $(e.mem)") | $(e.grp))" for e in extras]), ", ")
         throw(ArgumentError("drm: `$what` names no random-effect term in the mean formula (terms: $terms)."))
     end
-    return _fit_gaussian_corr_crossed(fam, y, Xμ, Xσ, blocks_, extras, nmμ, nmσ, g_tol)
+    return _fit_gaussian_corr_crossed(fam, y, Xμ, Xσ, blocks_, extras, nmμ, nmσ, g_tol; reml)
 end
 
 function _fit_gaussian_corr_crossed(fam::Gaussian, y, Xμ, Xσ, blocks_, extras,
-                                    nmμ, nmσ, g_tol)
+                                    nmμ, nmσ, g_tol; reml::Bool = false)
     n = length(y)
     n ≤ 5000 || throw(ArgumentError("drm: a correlated block beside other random terms " *
         "assembles a dense $(n)×$(n) marginal covariance and is limited to 5000 rows."))
@@ -228,7 +235,10 @@ function _fit_gaussian_corr_crossed(fam::Gaussian, y, Xμ, Xσ, blocks_, extras,
     brows = [rowsof(bk.gidx, bk.G) for bk in blocks_]
     erows = [rowsof(e.gidx, e.G) for e in extras]
     const_2pi = 0.5 * n * log(2π)
-    function nll(θ)
+    # One dense objective for ML and REML. REML (Patterson-Thompson; exact because the marginal
+    # is Gaussian-linear in beta_mu) adds ½ logdet(Xμ′V⁻¹Xμ) − ½ pμ log(2π); with the Cholesky
+    # V = L L′, X′V⁻¹X = (L⁻¹X)′(L⁻¹X) is PSD by construction.
+    function nll_full(θ, restricted::Bool)
         T = eltype(θ)
         ημ = Xμ * θ[1:pμ]; ησ = Xσ * θ[pμ+1:pμ+pσ]
         Vm = zeros(T, n, n)
@@ -266,8 +276,13 @@ function _fit_gaussian_corr_crossed(fam::Gaussian, y, Xμ, Xσ, blocks_, extras,
         Vfac = cholesky(Symmetric(Vm); check = false)
         issuccess(Vfac) || return convert(T, 1e18)
         rr = y .- ημ
-        return 0.5 * (logdet(Vfac) + dot(rr, Vfac \ rr)) + const_2pi
+        val = 0.5 * (logdet(Vfac) + dot(rr, Vfac \ rr)) + const_2pi
+        restricted || return val
+        W = Vfac.L \ Xμ
+        return _reml_add_restriction(val, Symmetric(W' * W), pμ)
     end
+    nll(θ) = nll_full(θ, reml)
+    nll_ml(θ) = nll_full(θ, false)
     βμ0 = Xμ \ y; res0 = y - Xμ * βμ0
     ncomp = sum(bk.q for bk in blocks_) + length(extras)
     θ0 = zeros(ntot)
@@ -311,7 +326,9 @@ function _fit_gaussian_corr_crossed(fam::Gaussian, y, Xμ, Xσ, blocks_, extras,
     end
     fit = DrmFit(fam, block_list, name_list, θ̂, V, -nll(θ̂), n, converged,
                  Dict(:mu => Xμ * θ̂[1:pμ]), Dict(:mu => Vector{Float64}(y)), scales)
-    return _withiterations(_withnll(fit, nll), Optim.iterations(opt))
+    fit = _withiterations(_withnll(fit, nll), Optim.iterations(opt))
+    reml && return _withreml(fit, -nll(θ̂), -nll_ml(θ̂))
+    return fit
 end
 
 # Independent intercept and slope terms, `(1 | g) + (0 + x | g) [+ (0 + z | g)]`, each with
