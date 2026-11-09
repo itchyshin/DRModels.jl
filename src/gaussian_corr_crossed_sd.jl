@@ -62,8 +62,8 @@ function _drm_gaussian_corr_crossed(f::DrmFormula, fam::Gaussian, split, re, sdp
     reml && (length(split[1]) == 1 && all(i -> _cc_term_kind(re[i][1])[1] === :intercept, split[2]) ||
         throw(ArgumentError(
             "drm: a Gaussian correlated block beside other random terms supports maximum " *
-            "likelihood only (`method = :REML` is not implemented for this shape; REML is available " *
-            "for one correlated block beside random intercepts on other groupings).")))
+            "likelihood only: method = :REML is not implemented for this shape (REML is available " *
+            "for one correlated block beside random INTERCEPTS on other groupings).")))
     reml && _gaussian_block_reml_gate(_sd_target_parts(f), Xμ, Xσ,
         "a Gaussian correlated block beside other random intercepts")
     bis, others = split
