@@ -176,6 +176,19 @@ end
         @test occursin("failed fit", b["fit_failed_message"])
         @test isfinite(b["coefficients"][1])        # estimates still ship; only the loglik is withheld
     end
+    # a failed REML fit also ships NaN for `reml_loglik` (not the raw sentinel); a good one is unchanged
+    names = fieldnames(typeof(good))
+    as_reml(f, rl) = begin
+        vals = Any[getfield(f, k) for k in names]
+        vals[findfirst(==(:estim_method), names)] = :REML
+        vals[findfirst(==(:reml_loglik), names)] = rl
+        typeof(f).name.wrapper(vals...)
+    end
+    rg = flat(as_reml(good, good.loglik))
+    @test rg["reml_loglik"] == good.loglik
+    rb = flat(_failed_copy(as_reml(good, -1e18), -1e18))
+    @test haskey(rb, "reml_loglik") && isnan(rb["reml_loglik"])
+    @test rb["fit_failed"] === true
     # runaway positive value on a non-converged fit
     @test isnan(flat(_failed_copy(good, 3.6e76))["loglik"])
     # non-converged but plausible loglik: not failed, value unchanged

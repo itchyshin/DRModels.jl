@@ -1935,8 +1935,14 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
     # AIC/BIC cross-mean-structure caveat `_reml_infocrit_warn` already prints to
     # the Julia log — as `"warnings"`, since that log line never reaches R (#624).
     if fit.estim_method === :REML
-        isnan(fit.reml_loglik) ||
-            (out["reml_loglik"] = fit.reml_loglik)
+        # A failed REML fit ships NaN (present), like `loglik` / `ml_loglik` above,
+        # not the raw failure sentinel.
+        if _loglik_is_failed(fit.loglik, fit.converged)
+            out["reml_loglik"] = NaN
+        else
+            isnan(fit.reml_loglik) ||
+                (out["reml_loglik"] = _bridge_loglik(fit.reml_loglik, fit.converged))
+        end
         out["warnings"] = String[
             _reml_infocrit_warning_text("aic"),
             _reml_infocrit_warning_text("bic"),
