@@ -46,3 +46,22 @@ Verdict categories: (a) fits and agrees, (b) R does not converge (recorded, left
 ## Data and reference
 
 `test/fixtures/gaussian_reml_routes2/` (`gen_ref.R` regenerates it on Totoro from the refusal-fuzz covariates; `compare.jl` computes the agreement table). 36 R fits, 35 converged. R does not converge on `ord4`, seed 22 (convergence code 1, non-PD Hessian): excluded by rule 6.
+
+## Result
+
+Rule outcomes (35 converged R fits; evidence in `docs/dev-log/evidence/2026-11-09-gaussian-reml-routes2-agreement.tsv`): logLik at most 6e-12 absolute; mean coefficients at most 2.1e-7 R-SE; SDs at most 1.3e-9 relative; correlations at most 1.9e-9. Every shape passes every rule on every dataset where R converged. Julia SEs also match R SEs to four digits on `ord3`, `cross3` and `animal_sdz`.
+
+Verdicts per cell family:
+
+| Cell family | Verdict |
+| --- | --- |
+| Ordinary q = 3, 4 correlated block, REML (plain and labelled) | (a) fits and agrees |
+| Crossed q = 2, 3, 4 correlated blocks, REML (plain and labelled) | (a) fits and agrees |
+| animal / relmat / spatial `sd(g, structure) ~ 1` and `~ z`, REML | (a) fits and agrees |
+| Bare animal / relmat / spatial structured q = 2, REML | (a) fits and agrees (now completed with `sd() ~ 1` under REML) |
+| Bare `spatial(1 | g)` REML (rank 39) | Left refused: kernel difference by design (estimated range vs R's fixed range), not a defect; message points to `sd(g, spatial) ~ 1` |
+| REML plus `sd()` formula on ordinary or crossed correlated blocks | Left refused: drmTMB refuses it too |
+| Labelled structured q2 REML, sigma-side cells, non-Gaussian REML | Not attempted here |
+| `ord4` seed 22 (test dataset) | (b) R does not converge; excluded |
+
+Gap-map rerun (Julia 1.10, the 85 Gaussian REML cells whose Julia status could change): 19 cells flipped ERROR to FITS, each agreeing with the R logLik to the printed 10 digits; 0 regressions; 0 other changes. The full 3008-cell rerun was not done.
