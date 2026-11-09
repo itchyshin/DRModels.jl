@@ -55,3 +55,23 @@ Reference runs on Totoro: 136 cells (112 `indep`/`slope`, 24 crossed intercepts 
 ## Shapes outside the reference
 
 `(1 | g) + (0 + x | h)` (a slope on a different grouping factor than the intercept) now also reaches the same fitter on every family that takes this route. It uses the same per-component code as the same-factor case but has no drmTMB reference in this PR.
+
+## Gap-map rerun (all 3008 cells, Julia only)
+
+Harness `docs/dev-log/gap-map-wave10-20261109/` (branch `claude/gap-map-wave10-20261109`): `driver.py julia 8 300 cells_run.tsv` on Julia 1.10.12, Totoro, this branch; R side = the stored wave-8 drmTMB 0.8.1 results (not rerun); `classify.py`, then `compare10.py` with the wave-10 map (tip `0bfcde2bb`) as base. Tables in `docs/dev-log/2026-11-09-nongauss-indep-gap-map-rerun/`; in them `w8_*` columns are the base (wave-10 tip) and `w10_*` columns are this branch.
+
+| class | base | this branch |
+|---|---|---|
+| both-fit-agree | 260 | 309 |
+| both-fit-disagree | 54 | 54 |
+| R-only | 107 | 57 |
+| Julia-only | 43 | 59 |
+| both-refuse | 2538 | 2522 |
+| nonconverged | 5 | 6 |
+| crash (either side) | 0 | 0 |
+
+- **49 flips to agreement:** 48 R-only to both-fit-agree and 1 nonconverged to both-fit-agree (`gamma|indep|q2|sd-none`). By family: poisson 14 (11 indep, 2 crossed with `sd()`, 1 slope), nb2 10, binomial 6, lognormal 5, beta 4, tweedie 3, gamma 4 (incl. the nonconverged one), student 3 (2 crossed with `sd()`, 1 slope). No R-only cell of kind `indep`, `slope` or `crossed` (ML) is left.
+- **16 both-refuse to Julia-only** (gamma q3/q4, lognormal and student independent terms with `sd()`; drmTMB errors on all of them).
+- **2 R-only to nonconverged:** Binomial `sd-first` q2 and q4 (verdict (c) above). Julia now returns an honest `converged = false` fit where it refused before.
+- **No regression:** `got_worse.tsv` is empty and no previously fitting cell moved by more than 1e-6 in logLik. The 54 both-fit-disagree cells are unchanged (the older quadrature routes, verdict (e)).
+- A first full-suite run on Julia 1.10.12 found one regression of my own, fixed before this rerun and before the numbers above: `_indep_sd_shape` called `_split_ranef`, which throws its own message for `animal`/`relmat`/`spatial` slope forms, so the NB2 structured SD tests (9 files) errored instead of reaching their route; a missing grouping column surfaced as an `ErrorException` instead of `ArgumentError`.
