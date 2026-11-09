@@ -6,7 +6,7 @@
 # placed after `value = nll(theta_hat)` silently replaced the stored value with
 # the objective at a stencil point near theta_hat (typically 1e-6 to 1e-5 away,
 # once 28). This file guards every route that was measured to have that defect.
-using DRModels, Test, Random, LinearAlgebra, SparseArrays
+using DRModels, Test, Random, LinearAlgebra, SparseArrays, StableRNGs
 import Distributions
 using SpecialFunctions: loggamma
 
@@ -324,4 +324,34 @@ end
               DRModels.Binomial(); data, mesh, se = false, g_tol = 1e-5)
     _sll_check("Binomial mesh SD", fit)
 end
+end
+
+# The Binomial animal q2 inner mode solve used to return early when the Newton
+# step was below 1e-7 (relative), handing back the Cholesky factor at the
+# un-stepped mode. The Laplace value is second order in the mode error but
+# logdet(H) is first order, so the objective carried an error of about 1e-7
+# (measured 3.2e-7 on Julia 1.12.7). A warm start a few 1e-8 from the mode must
+# give the cold-start objective to well below that.
+@testset "Binomial animal q2 inner mode: no first-order logdet error" begin
+    rng = StableRNG(20261109)
+    G, m = 12, 10
+    gidx = repeat(1:G, inner = m)
+    x = repeat(collect(range(-1.0, 1.0; length = m)), outer = G)
+    R = 0.3 .^ abs.(reshape(1:G, :, 1) .- reshape(1:G, 1, :))
+    Q = sparse(inv(Symmetric(R)))
+    s = Float64.(rand(rng, length(x)) .< 0.5)
+    aux = (s = round.(Int, s), ntr = ones(Int, length(s)), logchoose = zeros(length(s)))
+    Xmu = hcat(ones(length(s)), x)
+    ones_G = ones(G, 1)
+    theta = [-0.1, 0.25, log(0.55), log(0.45), atanh(0.4)]
+    cold(; b0 = nothing) = DRModels._binomial_animal_q2_laplace(aux, s, ones(length(s)), Xmu,
+        ones_G, ones_G, gidx, Q, logdet(cholesky(Symmetric(Matrix(Q)))), x, theta; b0)
+    v0, b0, ok0 = cold()
+    @test ok0
+    for scale in (2e-9, 2e-8, 5e-8)
+        warm = b0 .+ scale .* randn(rng, length(b0))
+        v1, _, ok1 = cold(b0 = warm)
+        @test ok1
+        @test abs(v1 - v0) < 1e-10
+    end
 end
