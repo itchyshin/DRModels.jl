@@ -158,7 +158,7 @@ end
     A = readdlm(joinpath(wd, "binomial_animal_q2_boundary_A.tsv"), '\t', Float64; comments = true)
     data = (; y = Float64.(cols["y"]), x = Float64.(cols["x"]), z0 = Float64.(cols["z0"]),
             z1 = Float64.(cols["z1"]), group = String.(cols["group"]))
-    fm = bf(@formula(y ~ x + animal(1 + x | group)),
+    fm = bf(@formula(y ~ x + animal(1 + x | p | group)),
             @formula(sd(group, animal, coef(intercept)) ~ z0), @formula(sd(group, animal, coef(x)) ~ z1))
     fit = _quiet6(() -> drm(fm, DRModels.Binomial(); data, A, se = false))
     rec = fit.scales[:q2_restarts]
