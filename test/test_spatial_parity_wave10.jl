@@ -54,15 +54,15 @@ end
     @test loglikelihood(fit) > -554.2127 + 0.1
 end
 
-@testset "Poisson spatial q2 sd-z (labelled): the sign-flipped mode is found" begin
-    # simulated cell (G = 40 sites, 400 rows, seed 91015 of the wave-10 spatial-parity study):
-    # the default and second starts stopped at -651.5954; a tilted start of the two SD blocks
-    # reaches -651.4527
-    d = _sp_data(_SP_DIR, "data_poisson_spatial_q2_sdz_seed91015.csv")
-    f = bf(@formula(y ~ x1 + x2 + x3 + spatial(1 + x1 | p | g)),
+@testset "NB2 spatial q2 sd-z, independent form: stays at drmTMB's default fit" begin
+    # Simulated cell (seed 91010 of the wave-10 spatial-parity study). drmTMB 0.8.1's default start
+    # and the single Julia start both stop at -577.7702; a tilted start reaches -577.2513. The
+    # forced tilt starts are only for the labelled form (which drmTMB refuses), so the
+    # independent form must keep agreeing with drmTMB.
+    d = _sp_data(_SP_DIR, "data_nb2_spatial_indep_seed91010.csv")
+    f = bf(@formula(y ~ x1 + x2 + x3 + spatial(1 + x1 | g)), @formula(sigma ~ 1),
            @formula(sd(g, spatial, coef(intercept)) ~ z), @formula(sd(g, spatial, coef(x1)) ~ z))
-    fit = drm(f, Poisson(); data = d, coords = _SP_COORDS, se = false)
-    @test loglikelihood(fit) > -651.5954 + 0.1
-    # (the converged flag of this better mode is not asserted: its correlation sits on a ridge,
-    # atanh rho about 8.5, and the flag differs between Julia 1.10 and 1.12)
+    fit = drm(f, NegBinomial2(); data = d, coords = _SP_COORDS, se = false)
+    @test fit.converged
+    @test loglikelihood(fit) ≈ -577.7702 atol = 1e-4
 end

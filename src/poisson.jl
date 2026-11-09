@@ -1512,7 +1512,7 @@ function _drm_poisson_animal_intercept_slope_sd(f::DrmFormula, fam::Poisson,
                     for item in ordered]
     return _withformula(_fit_poisson_animal_intercept_slope_laplace(
         fam, y, Xmu, Zgs, gidx, Q, nmmu, nmsds, blocks, group, x, off,
-        g_tol; se, correlated, tilt_starts = true), f)
+        g_tol; se, correlated), f)
 end
 
 # Joint prior precision of the two unit-scale structured fields (b0, b1):
@@ -1612,7 +1612,7 @@ const _Q2_RHO_BOUND = 0.999999
 function _fit_poisson_animal_intercept_slope_laplace(fam, y, Xmu, Zgs, gidx, Q,
         nmmu, nmsds, blocks, group, x, off, g_tol;
         se::Bool = true, maxiter::Int = 250, correlated::Bool = false,
-        second_start::Bool = false, tilt_starts::Bool = false)
+        second_start::Bool = false)
     length(Zgs) == 2 || throw(ArgumentError("expected two Poisson animal SD designs"))
     qchol = cholesky(Symmetric(Q); check = false)
     issuccess(qchol) || throw(ArgumentError(
@@ -1670,29 +1670,6 @@ function _fit_poisson_animal_intercept_slope_laplace(fam, y, Xmu, Zgs, gidx, Q,
             result = result2
         else
             last_b .= b_first
-        end
-    end
-    if tilt_starts && any(Z -> size(Z, 2) > 1, Zgs)
-        # `sd-z` fits (wave-10 spatial parity): the likelihood in the SD coefficients has
-        # interior modes that differ by the sign of the z coefficients, and the default start
-        # can stop at a lower one (20 seeds: relmat 1, spatial 2 of 20, gains 0.08 to 0.14).
-        # Try the four two-block tilts under the acceptance rule of `_q2_boundary_restarts`: a
-        # start is kept only if it improves the objective by more than 1e-5; a converged fit
-        # is replaced by an unconverged one only for a gain above 1e-3; never worse than the
-        # first fit. A fit already at the best mode is unchanged.
-        conv(r) = begin
-            th = Optim.minimizer(r); g = zeros(length(th)); grad!(g, th)
-            _laplace_outer_converged(r, Optim.minimum(r), g, th, length(y), g_tol)
-        end
-        for h1 in (-1, 1), h0 in (-1, 1)
-            f_best, ok_best = Optim.minimum(result), conv(result)
-            b_best = copy(last_b)
-            last_b .= 0
-            r = run_from(_q2_alt_theta(theta0, ranges, Zgs, 0.4, 0.25, h1, h0))
-            gain, ok = f_best - Optim.minimum(r), conv(r)
-            accept = ok == ok_best ? gain > _Q2_RESTART_GAIN :
-                     ok ? gain > -_Q2_RESTART_GAIN : gain > _Q2_RESTART_BIG_GAIN
-            accept ? (result = r) : (last_b .= b_best)
         end
     end
     theta = Optim.minimizer(result)
@@ -1803,5 +1780,5 @@ function _drm_poisson_relmat_intercept_slope_sd(f::DrmFormula, fam::Poisson,
                     for item in ordered]
     return _withformula(_fit_poisson_animal_intercept_slope_laplace(
         fam, y, Xmu, Zgs, gidx, Q, nmmu, nmsds, blocks, group, x, off,
-        g_tol; se, correlated, tilt_starts = true), f)
+        g_tol; se, correlated), f)
 end

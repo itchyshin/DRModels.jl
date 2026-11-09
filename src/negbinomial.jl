@@ -1938,9 +1938,9 @@ function _fit_nb2_animal_intercept_slope_laplace(fam, y, Xmu, Xsigma, Zgs, gidx,
     end
     # Boundary restarts (see `_q2_boundary_restarts`): NB2 phylo seed 55 of the
     # scale-extension study stopped on the slope-SD ridge at the boundary.
-    # `force_restarts` (spatial routes) runs the alternative starts even from a converged,
-    # interior fit: the likelihood in the SD coefficients has a second interior mode and the
-    # default start can stop at the lower one (wave-10 gap map, NB2 spatial `sd-z`).
+    # `force_restarts` (labelled spatial `sd-z`) runs the two-block tilt starts even from a
+    # converged, interior fit: the likelihood in the SD coefficients has a second interior mode
+    # and the default start can stop at the lower one (wave-10 gap map, NB2 spatial `sd-z`).
     n_obs = length(y)
     converged_at(r) = begin
         th = Optim.minimizer(r); g = zeros(length(th)); grad!(g, th)
