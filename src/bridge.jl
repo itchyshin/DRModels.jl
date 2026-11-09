@@ -2977,13 +2977,17 @@ deliberately NOT repaired here: drmTMB's hurdle mean divides by `1 - P(0)` as
 well as scaling, and that route carries no bridge parity receipt yet.
 """
 function _bridge_fitted_marginal(fit::DrmFit)
-    fit_vals = fitted(fit)
+    # Built on the stored component mean, not `fitted(fit)`: `fitted` is E[Y] for
+    # the LogNormal, zero-inflated, hurdle and truncated fits, and the repair
+    # below (and the unrepaired fall-through) is the bridge's own contract.
+    haskey(fit.means, :mu) || return (fitted(fit), residuals(fit))
+    fit_vals = fit.means[:mu]
     fit_vals isa AbstractVector || return (fit_vals, residuals(fit))
-    (haskey(fit.scales, :zi) && haskey(fit.obs, :mu)) ||
-        return (fit_vals, residuals(fit))
+    plain_resid = fit.obs[:mu] .- fit_vals
+    (haskey(fit.scales, :zi) && haskey(fit.obs, :mu)) || return (fit_vals, plain_resid)
     pz = collect(float.(fit.scales[:zi]))
     mu = collect(float.(fit_vals))
-    length(pz) == length(mu) || return (fit_vals, residuals(fit))
+    length(pz) == length(mu) || return (fit_vals, plain_resid)
     marginal = (1 .- pz) .* mu
     return (marginal, collect(float.(fit.obs[:mu])) .- marginal)
 end

@@ -57,7 +57,7 @@ _zim_bridge(formula, family) =
         # i.e. the count-component mean, which is the `mu` dpar drmTMB wants
         direct = drm(bf(@formula(y ~ x), @formula(sigma ~ 1), @formula(zi ~ w)),
                      NegBinomial2(); data = _ZIM_DATA)
-        @test isapprox(mu, fitted(direct); atol = 1e-8)
+        @test isapprox(mu, direct.means[:mu]; atol = 1e-8)
     end
 
     @testset "(b) zero-inflated Poisson: the same repair" begin

@@ -152,10 +152,12 @@ end
         @test all(>(0), pp[:mu])
         @test all(pp[:sigma] .≈ σ̂)
         @test all(1 ./ pp[:sigma] .^ 2 .≈ r̂)           # NB2 size = 1/sigma^2
-        # fitted() reports the NB2 mean, NOT the truncated mean mu/(1 - P(0))
-        @test fitted(fit) ≈ μ̂
+        # fit.means[:mu] keeps the untruncated NB2 mean; fitted() is the truncated
+        # mean mu/(1 - P(0)), as drmTMB's fitted() (see test_fitted_semantics_r_parity.jl)
+        @test fit.means[:mu] ≈ μ̂
         p0 = [Distributions.pdf(Distributions.NegativeBinomial(r̂, r̂ / (r̂ + μ̂[i])), 0) for i in 1:n]
-        @test !isapprox(fitted(fit), μ̂ ./ (1 .- p0); rtol = 1e-3)
+        @test fitted(fit) ≈ μ̂ ./ (1 .- p0)
+        @test !isapprox(fitted(fit), μ̂; rtol = 1e-3)
     end
 
     @testset "residuals" begin
