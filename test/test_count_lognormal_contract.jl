@@ -81,8 +81,13 @@ end
         @test pp[:mu] ≈ exp.(coef(fit, :mu)[1] .+ coef(fit, :mu)[2] .* x)
         @test all(pl[:sigma] .≈ coef(fit, :sigma)[1])
         @test pp[:sigma] ≈ exp.(pl[:sigma])
-        @test fitted(fit) ≈ pp[:mu]
-        @test predict(fit, data) ≈ fitted(fit)
+        # fitted() is the arithmetic mean exp(mu + sigma^2/2) (drmTMB); the median
+        # exp(mu) is pp[:mu] and predict(type = :median); predict(:response) is
+        # the log-scale mu, as in drmTMB.
+        @test fitted(fit) ≈ pp[:mu] .* exp.(pp[:sigma] .^ 2 ./ 2)
+        @test predict(fit, data; type = :median) ≈ pp[:mu]
+        @test predict(fit, data) ≈ pl[:mu]
+        @test predict(fit, data; type = :mean) ≈ fitted(fit)
         @test residuals(fit) ≈ y .- fitted(fit)
 
         @test_throws ErrorException("LogNormal() requires strictly positive responses") drm(

@@ -80,17 +80,11 @@ const _R1121_FIXED_SE = [0.131946023699645, 0.0, 0.197919035549467,
         @test predict_parameters(fr, nd; se = true)[:mu].value ≈ η
     end
 
-    @testset "#1000 guard still refuses a factor-level subset" begin
-        # Without a cached schema the contrasts are rebuilt from `newdata`; a
-        # subset of levels gives [x, f: b], not the fitted [x, f: b, f: c].
+    @testset "a factor-level subset keeps the fitted contrasts" begin
+        # The training levels are recorded by `drm`, so a subset of levels is
+        # coded as [x, f: b, f: c] with the fitted reference level.
         sub = (; x = [0.0, 1.0], f = ["a", "b"])
-        @test_throws ArgumentError predict(fit, sub)
-        err = try
-            predict(fit, sub); nothing
-        catch e
-            e
-        end
-        @test err isa ArgumentError
-        @test !occursin("(Intercept)", sprint(showerror, err))
+        @test predict(fit, sub; type = :link) ≈ _X1121(sub) * coef(fit, :mu)
+        @test_throws ArgumentError predict(fit, (; x = [0.0], f = ["z"]))
     end
 end

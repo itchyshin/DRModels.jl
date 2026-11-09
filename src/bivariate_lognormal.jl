@@ -86,7 +86,8 @@ corpairs(fit)  # log-residual rho12
              K = nothing, A = nothing, coords = nothing, spatial_range = nothing,
              g_tol::Real = 1e-8, q4_g_tol::Real = 1e-3, q4_f_reltol::Real = 1e-7,
              q4_iterations::Int = 300,
-             q4_n_newton::Int = 40, q4_vcov::Bool = true, method::Symbol = :ML)
+             q4_n_newton::Int = 40, q4_vcov::Bool = true, method::Symbol = :ML,
+             missing = nothing)
     _require_formula_column_lengths(f, data)   # #1022: no ragged columns under @inbounds
     method === :ML ||
         throw(ArgumentError("drm: the bivariate lognormal route implements ML only " *
@@ -94,9 +95,12 @@ corpairs(fit)  # log-residual rho12
             "random effects to integrate out, and REML for the structured (phylo/" *
             "relmat/animal/spatial) cells is a later slice."))
     data = _drop_missing_predictor_rows(f, data)   # #1089: R's na.omit, with a count
+    data = _apply_bivariate_response_policy(f, data, missing)   # drmTMB's miss_control(response =): default "drop"
     cols = NamedTuple(pairs(data))
-    y1 = Vector{Float64}(getproperty(cols, f.response1))
-    y2 = Vector{Float64}(getproperty(cols, f.response2))
+    # `missing` and `NaN` both mark an unobserved cell (a `Union{Missing,Float64}` column
+    # used to fail the `Vector{Float64}` conversion when `missing = miss_control(response = "include")`).
+    y1, _ = _coerce_response_column(getproperty(cols, f.response1); name = String(f.response1))
+    y2, _ = _coerce_response_column(getproperty(cols, f.response2); name = String(f.response2))
     obs1 = _observed_response_mask(y1)
     obs2 = _observed_response_mask(y2)
 
@@ -151,6 +155,15 @@ function _lognormal_jacobian_shift(fam::LogNormal, gfit::DrmFit, y1, y2, obs1, o
                  gfit.estim_method, reml_ll, gfit.ml_loglik - jac, gfit.marginal,
                  gfit.phylo_penalty, gfit.penalty, gfit.iterations, gfit.phylo_scale,
                  gfit.uncertainty, gfit.geometry)
+end
+
+# Bivariate lognormal: the stored `means` are the log-scale locations (the fit is the
+# bivariate Gaussian on `log y`), but drmTMB's `fitted()` is `E[Y_k] = exp(mu_k + sigma_k^2 / 2)`
+# per response, the same rule as the univariate `LogNormal` row above.
+function fitted(fit::DrmFit{LogNormal})
+    haskey(fit.means, :mu1) && haskey(fit.scales, :sigma1) || return invoke(fitted, Tuple{DrmFit}, fit)
+    return Dict(k => exp.(fit.means[k] .+ fit.scales[s] .^ 2 ./ 2)
+                for (k, s) in ((:mu1, :sigma1), (:mu2, :sigma2)))
 end
 
 # Strictly-positive check on the observed cells of a bivariate lognormal response.

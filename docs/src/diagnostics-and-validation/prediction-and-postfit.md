@@ -39,6 +39,14 @@ nd = (; x = [-1.0, 0.0, 1.0])
 predict(fit, nd)                 # μ̂ at x = -1, 0, 1  (response scale)
 ```
 
+**Factors in `newdata`.** A factor is coded with the levels and contrasts of the
+data the model was fitted to, so `newdata` may hold any subset of the fitted
+levels, in any order, down to a single row. This holds for every family and for
+`predict_parameters`, as in drmTMB, whose `predict()` restores the fitted levels.
+A level the model never saw is an error that names the column, the level and the
+fitted levels (drmTMB: "unknown factor level"); it is never silently coded as the
+reference level.
+
 ### Standard errors (the delta method)
 
 Add `se = true` for delta-method standard errors — the glmmTMB `se.fit`

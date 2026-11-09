@@ -656,6 +656,15 @@ function _bridge_fit(bundle, fam, data; tree, K, A, Ainv = nothing,
     if haskey(options, :q4_vcov)
         kwargs[:q4_vcov] = Bool(options[:q4_vcov])
     end
+    # The R wrapper applies drmTMB's `miss_control(response = "drop")` itself: with the
+    # default it removes incomplete rows before marshalling, so any row that arrives here
+    # with a missing response was kept on purpose (`response = "include"`). Native `drm`
+    # now defaults a bivariate fit to the same "drop", so the bridge asks for "include"
+    # to leave the rows R sent untouched.
+    if bundle isa BivariateDrmFormula && (fam isa Gaussian || fam isa LogNormal || fam isa Student) &&
+       !haskey(kwargs, :missing)
+        kwargs[:missing] = miss_control(response = "include")
+    end
     # Error text only (nothing is added, dropped or defaulted): `drm` hands its kwargs
     # on to a family-specific fitter, so an option that fitter does not accept
     # surfaces as a bare MethodError. Name the offending option(s) instead, using
@@ -2977,13 +2986,17 @@ deliberately NOT repaired here: drmTMB's hurdle mean divides by `1 - P(0)` as
 well as scaling, and that route carries no bridge parity receipt yet.
 """
 function _bridge_fitted_marginal(fit::DrmFit)
-    fit_vals = fitted(fit)
+    # Built on the stored component mean, not `fitted(fit)`: `fitted` is E[Y] for
+    # the LogNormal, zero-inflated, hurdle and truncated fits, and the repair
+    # below (and the unrepaired fall-through) is the bridge's own contract.
+    haskey(fit.means, :mu) || return (fitted(fit), residuals(fit))
+    fit_vals = fit.means[:mu]
     fit_vals isa AbstractVector || return (fit_vals, residuals(fit))
-    (haskey(fit.scales, :zi) && haskey(fit.obs, :mu)) ||
-        return (fit_vals, residuals(fit))
+    plain_resid = fit.obs[:mu] .- fit_vals
+    (haskey(fit.scales, :zi) && haskey(fit.obs, :mu)) || return (fit_vals, plain_resid)
     pz = collect(float.(fit.scales[:zi]))
     mu = collect(float.(fit_vals))
-    length(pz) == length(mu) || return (fit_vals, residuals(fit))
+    length(pz) == length(mu) || return (fit_vals, plain_resid)
     marginal = (1 .- pz) .* mu
     return (marginal, collect(float.(fit.obs[:mu])) .- marginal)
 end

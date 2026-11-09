@@ -1,0 +1,18 @@
+{
+ "cells": 492,
+ "counts": {
+  "both-fit:agree": 270,
+  "Julia-only": 24,
+  "both-fit:both-differ": 21,
+  "crash-Julia": 22,
+  "R-only": 35,
+  "both-refuse": 55,
+  "R-only-no-Julia-syntax": 2,
+  "nonconverged": 5,
+  "both-fit:ll-agrees-fitted-differs": 56,
+  "crash-R": 1,
+  "both-fit:ll-differs-fitted-agrees": 1
+ },
+ "r_fits": 402,
+ "julia_fits": 372
+}

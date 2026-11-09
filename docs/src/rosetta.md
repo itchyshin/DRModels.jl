@@ -152,7 +152,10 @@ distributional parameters:
 - `predict(fit, newdata; type = :response)` returns `invlink(Xβ̂)` with
   random effects set to 0 (for the GLM-type families, `exp`/`logistic`/identity
   applied to `Xβ̂`; for ZeroOneBeta, `logistic(Xβ̂)`, the Beta-component mean
-  rather than the mixture mean); `type = :link` returns `Xβ̂`. Univariate
+  rather than the mixture mean; for `LogNormal`, the log-scale `μ`, as in
+  drmTMB); `type = :link` returns `Xβ̂`; `type = :mean` returns `E[Y]` at the new
+  rows (drmTMB's `type = "mean"`), and `type = :median` is the LogNormal
+  `exp(Xβ̂)`. Univariate
   gives a vector; bivariate gives `Dict(:mu1 => …, :mu2 => …)`. With a
   nonlinear link this is the prediction for an average group, not the mean
   averaged over groups.
@@ -176,10 +179,20 @@ distributional parameters:
   without `newdata`, adds the fitted random-effect modes to each fitted row.
   DRModels.jl's `fitted(fit)` is the population-level value with the random
   effects at zero on most routes, so compare `predict(fit, newdata)` across the
-  two packages, not `fitted`. Even without random effects the definitions differ
-  for some families: for LogNormal and zero-inflated, hurdle or truncated counts,
-  drmTMB's `fitted` is the unconditional response mean, while DRModels.jl's is
-  the inverse-link location (for LogNormal, the median `exp(Xβ̂)`).
+  two packages, not `fitted`. Without random effects the definitions agree:
+  for LogNormal and zero-inflated, hurdle or truncated counts both packages return
+  the unconditional response mean `E[Y]` (`exp(μ + σ²/2)`, `(1 - π) μ`,
+  `μ / (1 - P(0))`, `(1 - π) μ / (1 - P(0))`), and `predict(fit, newdata; type =
+  :mean)` is the same quantity at new rows. A bivariate `LogNormal` fit follows the
+  same rule per response (`Dict(:mu1 => …, :mu2 => …)`; drmTMB returns an `n × 2`
+  matrix), and its `predict(type = :response)` is the log-scale location.
+  `fit.means[:mu]` keeps the component mean.
+- Missing responses in a bivariate fit: both packages drop a row with either
+  response missing by default (drmTMB `miss_control(response = "drop")`, silent;
+  DRModels.jl warns with the count). `missing = miss_control(response = "include")`
+  keeps partly observed rows and fits the marginal likelihood of the observed
+  response in both. Before this default was aligned, DRModels.jl kept those rows
+  unasked and its logLik differed from drmTMB's by 15 to 30 units on the same data.
 
 drmTMB's exact R spelling for per-parameter prediction is not asserted here.
 The response-scale `predict` calls name the intended comparable operation; parity
