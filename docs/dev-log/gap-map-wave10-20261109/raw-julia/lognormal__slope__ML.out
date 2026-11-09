@@ -1,0 +1,6 @@
+S	1	lognormal|slope|lab0|q1|sd-none|cm0|ML
+R	1	lognormal|slope|lab0|q1|sd-none|cm0|ML	FITS				-639.0723755389	true	se_finite=true;npar=6	20.76	
+S	2	lognormal|slope|lab0|q1|sd-one|cm0|ML
+R	2	lognormal|slope|lab0|q1|sd-one|cm0|ML	FITS				-639.0723755389	true	se_finite=true;npar=6	2.03	
+S	3	lognormal|slope|lab0|q1|sd-z|cm0|ML
+R	3	lognormal|slope|lab0|q1|sd-z|cm0|ML	FITS				-637.5339039063	true	se_finite=true;npar=7	1.69	

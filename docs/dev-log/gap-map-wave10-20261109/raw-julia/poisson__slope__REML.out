@@ -1,0 +1,6 @@
+S	1	poisson|slope|lab0|q1|sd-none|cm0|REML
+R	1	poisson|slope|lab0|q1|sd-none|cm0|REML	ERROR	ErrorException	Poisson() supports `(1 | g)` or `(1 + x | g)` random effects on the mean	Poisson() supports `(1 | g)` or `(1 + x | g)` random effects on the mean			at=poisson.jl:406	9.70	
+S	2	poisson|slope|lab0|q1|sd-one|cm0|REML
+R	2	poisson|slope|lab0|q1|sd-one|cm0|REML	ERROR	ArgumentError	ArgumentError: Poisson `sd(group) ~ …` currently supports maximum likelihood only; the Cox–Reid correction is not implemented for SD-regression coefficients.	ArgumentError: Poisson `sd(group) ~ …` currently supports maximum likelihood only; the Cox–Reid correction is not implemented for SD-regression coefficients.				0.40	
+S	3	poisson|slope|lab0|q1|sd-z|cm0|REML
+R	3	poisson|slope|lab0|q1|sd-z|cm0|REML	ERROR	ArgumentError	ArgumentError: Poisson `sd(group) ~ …` currently supports maximum likelihood only; the Cox–Reid correction is not implemented for SD-regression coefficients.	ArgumentError: Poisson `sd(group) ~ …` currently supports maximum likelihood only; the Cox–Reid correction is not implemented for SD-regression coefficients.				0.05	

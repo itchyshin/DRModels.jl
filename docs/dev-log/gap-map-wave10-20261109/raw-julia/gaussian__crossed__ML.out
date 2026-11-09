@@ -1,0 +1,50 @@
+S	1	gaussian|crossed|lab0|q1|sd-none|cm0|ML
+R	1	gaussian|crossed|lab0|q1|sd-none|cm0|ML	FITS				-508.3911107050	true	se_finite=true;npar=7	27.63	
+S	2	gaussian|crossed|lab0|q1|sd-one|cm0|ML
+R	2	gaussian|crossed|lab0|q1|sd-one|cm0|ML	FITS				-508.3911107050	true	se_finite=true;npar=7	7.71	
+S	3	gaussian|crossed|lab0|q1|sd-z|cm0|ML
+R	3	gaussian|crossed|lab0|q1|sd-z|cm0|ML	FITS				-506.7110659871	true	se_finite=true;npar=9	6.72	
+S	4	gaussian|crossed|lab0|q2|sd-none|cm0|ML
+R	4	gaussian|crossed|lab0|q2|sd-none|cm0|ML	FITS				-486.2786670138	true	se_finite=true;npar=9	20.37	
+S	5	gaussian|crossed|lab1|q2|sd-none|cm0|ML
+R	5	gaussian|crossed|lab1|q2|sd-none|cm0|ML	FITS				-486.2786670138	true	se_finite=true;npar=9	2.15	
+S	6	gaussian|crossed|lab0|q2|sd-one|cm0|ML
+R	6	gaussian|crossed|lab0|q2|sd-one|cm0|ML	FITS				-486.2786670138	true	se_finite=true;npar=9	2.62	
+S	7	gaussian|crossed|lab1|q2|sd-one|cm0|ML
+R	7	gaussian|crossed|lab1|q2|sd-one|cm0|ML	FITS				-486.2786670138	true	se_finite=true;npar=9	2.35	
+S	8	gaussian|crossed|lab0|q2|sd-z|cm0|ML
+R	8	gaussian|crossed|lab0|q2|sd-z|cm0|ML	FITS				-484.2029209931	true	se_finite=true;npar=12	36.56	
+S	9	gaussian|crossed|lab1|q2|sd-z|cm0|ML
+R	9	gaussian|crossed|lab1|q2|sd-z|cm0|ML	FITS				-484.2029209931	true	se_finite=true;npar=12	5.05	
+S	10	gaussian|crossed|lab0|q2|sd-first|cm0|ML
+R	10	gaussian|crossed|lab0|q2|sd-first|cm0|ML	FITS				-484.4770839387	true	se_finite=true;npar=11	28.19	
+S	11	gaussian|crossed|lab1|q2|sd-first|cm0|ML
+R	11	gaussian|crossed|lab1|q2|sd-first|cm0|ML	FITS				-484.4770839387	true	se_finite=true;npar=11	2.88	
+S	12	gaussian|crossed|lab0|q2|sd-last|cm0|ML
+R	12	gaussian|crossed|lab0|q2|sd-last|cm0|ML	FITS				-485.9625039753	true	se_finite=true;npar=10	25.31	
+S	13	gaussian|crossed|lab1|q2|sd-last|cm0|ML
+R	13	gaussian|crossed|lab1|q2|sd-last|cm0|ML	FITS				-485.9625039753	true	se_finite=true;npar=10	3.11	
+S	14	gaussian|crossed|lab0|q3|sd-none|cm0|ML
+R	14	gaussian|crossed|lab0|q3|sd-none|cm0|ML	FITS				-474.6969946483	true	se_finite=true;npar=12	4.90	
+S	15	gaussian|crossed|lab1|q3|sd-none|cm0|ML
+R	15	gaussian|crossed|lab1|q3|sd-none|cm0|ML	FITS				-474.6969946483	true	se_finite=true;npar=12	4.48	
+S	16	gaussian|crossed|lab0|q3|sd-z|cm0|ML
+R	16	gaussian|crossed|lab0|q3|sd-z|cm0|ML	FITS				-472.8488636450	true	se_finite=true;npar=16	21.24	
+S	17	gaussian|crossed|lab1|q3|sd-z|cm0|ML
+R	17	gaussian|crossed|lab1|q3|sd-z|cm0|ML	FITS				-472.8488636450	true	se_finite=true;npar=16	7.35	
+S	18	gaussian|crossed|lab0|q3|sd-first|cm0|ML
+R	18	gaussian|crossed|lab0|q3|sd-first|cm0|ML	FITS				-473.5969416312	true	se_finite=true;npar=14	16.06	
+S	19	gaussian|crossed|lab1|q3|sd-first|cm0|ML
+R	19	gaussian|crossed|lab1|q3|sd-first|cm0|ML	FITS				-473.5969416312	true	se_finite=true;npar=14	4.54	
+S	20	gaussian|crossed|lab0|q4|sd-none|cm0|ML
+R	20	gaussian|crossed|lab0|q4|sd-none|cm0|ML	FITS				-450.8852967770	true	se_finite=true;npar=16	7.25	
+S	21	gaussian|crossed|lab1|q4|sd-none|cm0|ML
+R	21	gaussian|crossed|lab1|q4|sd-none|cm0|ML	FITS				-450.8852967770	true	se_finite=true;npar=16	7.20	
+S	22	gaussian|crossed|lab0|q4|sd-z|cm0|ML
+R	22	gaussian|crossed|lab0|q4|sd-z|cm0|ML	FITS				-448.5246274657	true	se_finite=true;npar=21	13.13	
+S	23	gaussian|crossed|lab1|q4|sd-z|cm0|ML
+R	23	gaussian|crossed|lab1|q4|sd-z|cm0|ML	FITS				-448.5246274657	true	se_finite=true;npar=21	13.40	
+S	24	gaussian|crossed|lab0|q4|sd-first|cm0|ML
+R	24	gaussian|crossed|lab0|q4|sd-first|cm0|ML	FITS				-450.3046683706	true	se_finite=true;npar=18	8.46	
+S	25	gaussian|crossed|lab1|q4|sd-first|cm0|ML
+R	25	gaussian|crossed|lab1|q4|sd-first|cm0|ML	FITS				-450.3046683706	true	se_finite=true;npar=18	8.37	

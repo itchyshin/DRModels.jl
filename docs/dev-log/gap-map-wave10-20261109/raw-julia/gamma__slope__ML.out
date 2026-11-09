@@ -1,0 +1,6 @@
+S	1	gamma|slope|lab0|q1|sd-none|cm0|ML
+R	1	gamma|slope|lab0|q1|sd-none|cm0|ML	ERROR	ErrorException	Gamma() supports `(1 | g)` or `(1 + x | g)` on the mean	Gamma() supports `(1 | g)` or `(1 + x | g)` on the mean			at=gamma.jl:212	11.57	
+S	2	gamma|slope|lab0|q1|sd-one|cm0|ML
+R	2	gamma|slope|lab0|q1|sd-one|cm0|ML	FITS				-617.8088379141	true	se_finite=true;npar=6	14.75	
+S	3	gamma|slope|lab0|q1|sd-z|cm0|ML
+R	3	gamma|slope|lab0|q1|sd-z|cm0|ML	FITS				-617.0390735554	true	se_finite=true;npar=7	11.90	

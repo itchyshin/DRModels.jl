@@ -1,0 +1,95 @@
+{
+ "julia_tip": "0bfcde2bb0ec534bd81d3a759a509722bb463efd",
+ "julia_branch": "claude/wave10-binomial-restarts-20261109",
+ "wave8_tip": "479bbf963",
+ "r_reference": "drmTMB 0.8.1 stored results from origin/claude/gap-map-wave8-20261108 (6a7c37c0f), not rerun",
+ "n_cells": 3008,
+ "outcome_table": {
+  "both-fit-agree": {
+   "wave8": 228,
+   "wave10": 260
+  },
+  "both-fit-disagree": {
+   "wave8": 54,
+   "wave10": 54
+  },
+  "R-only": {
+   "wave8": 139,
+   "wave10": 107
+  },
+  "Julia-only": {
+   "wave8": 23,
+   "wave10": 43
+  },
+  "both-refuse": {
+   "wave8": 2558,
+   "wave10": 2538
+  },
+  "crash-Julia": {
+   "wave8": 0,
+   "wave10": 0
+  },
+  "crash-R": {
+   "wave8": 0,
+   "wave10": 0
+  },
+  "nonconverged": {
+   "wave8": 5,
+   "wave10": 5
+  },
+  "inconclusive": {
+   "wave8": 1,
+   "wave10": 1
+  },
+  "Julia fits": {
+   "wave8": 305,
+   "wave10": 357
+  },
+  "R fits": {
+   "wave8": 427,
+   "wave10": 427
+  },
+  "total": {
+   "wave8": 3008,
+   "wave10": 3008
+  }
+ },
+ "transitions_changed": {
+  "R-only->both-fit-agree": 32,
+  "both-refuse->Julia-only": 20
+ },
+ "regressions": 0,
+ "julia_behind": {
+  "wave8": {
+   "refuses": 139,
+   "nonconverged": 5,
+   "timeout": 1
+  },
+  "wave10": {
+   "refuses": 107,
+   "nonconverged": 5,
+   "timeout": 1
+  }
+ },
+ "j_outcomes": {
+  "wave8": {
+   "FITS": 305,
+   "REFUSES": 2697,
+   "NONCONVERGED": 5,
+   "TIMEOUT": 1
+  },
+  "wave10": {
+   "FITS": 357,
+   "REFUSES": 2645,
+   "NONCONVERGED": 5,
+   "TIMEOUT": 1
+  }
+ },
+ "n_ll_disagree": {
+  "wave8": 54,
+  "wave10": 54
+ },
+ "crash_sides": {
+  "none": 3008
+ }
+}

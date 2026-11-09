@@ -1,0 +1,6 @@
+S	1	student|slope|lab0|q1|sd-none|cm0|ML
+R	1	student|slope|lab0|q1|sd-none|cm0|ML	ERROR	ErrorException	Student() supports `(1 | g)` or `(1 + x | g)` random effects on the mean	Student() supports `(1 | g)` or `(1 + x | g)` random effects on the mean			at=student.jl:186	6.72	
+S	2	student|slope|lab0|q1|sd-one|cm0|ML
+R	2	student|slope|lab0|q1|sd-one|cm0|ML	FITS				-526.8473529713	true	se_finite=true;npar=7	20.03	
+S	3	student|slope|lab0|q1|sd-z|cm0|ML
+R	3	student|slope|lab0|q1|sd-z|cm0|ML	FITS				-526.6575235396	true	se_finite=true;npar=8	15.88	

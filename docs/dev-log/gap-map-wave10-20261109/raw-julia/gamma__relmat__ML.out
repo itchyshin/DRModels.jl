@@ -1,0 +1,50 @@
+S	1	gamma|relmat|lab0|q1|sd-none|cm0|ML
+R	1	gamma|relmat|lab0|q1|sd-none|cm0|ML	FITS				-518.3608733033	true	se_finite=true;npar=6	17.08	
+S	2	gamma|relmat|lab0|q1|sd-one|cm0|ML
+R	2	gamma|relmat|lab0|q1|sd-one|cm0|ML	FITS				-518.3608733028	true	se_finite=true;npar=6	3.63	
+S	3	gamma|relmat|lab0|q1|sd-z|cm0|ML
+R	3	gamma|relmat|lab0|q1|sd-z|cm0|ML	FITS				-518.0454208866	true	se_finite=true;npar=7	0.54	
+S	4	gamma|relmat|lab0|q2|sd-none|cm0|ML
+R	4	gamma|relmat|lab0|q2|sd-none|cm0|ML	FITS				-503.2826433199	true	se_finite=true;npar=7	2.42	
+S	5	gamma|relmat|lab1|q2|sd-none|cm0|ML
+R	5	gamma|relmat|lab1|q2|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `relmat(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.07	
+S	6	gamma|relmat|lab0|q2|sd-one|cm0|ML
+R	6	gamma|relmat|lab0|q2|sd-one|cm0|ML	FITS				-503.2826433199	true	se_finite=true;npar=7	0.49	
+S	7	gamma|relmat|lab1|q2|sd-one|cm0|ML
+R	7	gamma|relmat|lab1|q2|sd-one|cm0|ML	FITS				-503.2702395861	true	se_finite=true;npar=8	1.06	
+S	8	gamma|relmat|lab0|q2|sd-z|cm0|ML
+R	8	gamma|relmat|lab0|q2|sd-z|cm0|ML	FITS				-501.0261060331	true	se_finite=true;npar=9	5.99	
+S	9	gamma|relmat|lab1|q2|sd-z|cm0|ML
+R	9	gamma|relmat|lab1|q2|sd-z|cm0|ML	FITS				-501.0224053888	true	se_finite=true;npar=10	9.27	
+S	10	gamma|relmat|lab0|q2|sd-first|cm0|ML
+R	10	gamma|relmat|lab0|q2|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `relmat(1 + x1 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(1 + x1 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.03	
+S	11	gamma|relmat|lab1|q2|sd-first|cm0|ML
+R	11	gamma|relmat|lab1|q2|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `relmat(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.00	
+S	12	gamma|relmat|lab0|q2|sd-last|cm0|ML
+R	12	gamma|relmat|lab0|q2|sd-last|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `relmat(1 + x1 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(1 + x1 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.00	
+S	13	gamma|relmat|lab1|q2|sd-last|cm0|ML
+R	13	gamma|relmat|lab1|q2|sd-last|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `relmat(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.00	
+S	14	gamma|relmat|lab0|q3|sd-none|cm0|ML
+R	14	gamma|relmat|lab0|q3|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `relmat(1 + x1 + x2 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(1 + x1 + x2 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.01	
+S	15	gamma|relmat|lab1|q3|sd-none|cm0|ML
+R	15	gamma|relmat|lab1|q3|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `relmat(:((1 + x1 + x2) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(:((1 + x1 + x2) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.00	
+S	16	gamma|relmat|lab0|q3|sd-z|cm0|ML
+R	16	gamma|relmat|lab0|q3|sd-z|cm0|ML	ERROR	ArgumentError	ArgumentError: Gamma structured SD regression requires exactly one random-effect SD formula.	ArgumentError: Gamma structured SD regression requires exactly one random-effect SD formula.				0.00	
+S	17	gamma|relmat|lab1|q3|sd-z|cm0|ML
+R	17	gamma|relmat|lab1|q3|sd-z|cm0|ML	ERROR	ArgumentError	ArgumentError: Gamma structured SD regression requires exactly one random-effect SD formula.	ArgumentError: Gamma structured SD regression requires exactly one random-effect SD formula.				0.00	
+S	18	gamma|relmat|lab0|q3|sd-first|cm0|ML
+R	18	gamma|relmat|lab0|q3|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `relmat(1 + x1 + x2 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(1 + x1 + x2 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.00	
+S	19	gamma|relmat|lab1|q3|sd-first|cm0|ML
+R	19	gamma|relmat|lab1|q3|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `relmat(:((1 + x1 + x2) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(:((1 + x1 + x2) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.00	
+S	20	gamma|relmat|lab0|q4|sd-none|cm0|ML
+R	20	gamma|relmat|lab0|q4|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `relmat(1 + x1 + x2 + x3 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(1 + x1 + x2 + x3 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.01	
+S	21	gamma|relmat|lab1|q4|sd-none|cm0|ML
+R	21	gamma|relmat|lab1|q4|sd-none|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `relmat(:((1 + x1 + x2 + x3) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(:((1 + x1 + x2 + x3) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.00	
+S	22	gamma|relmat|lab0|q4|sd-z|cm0|ML
+R	22	gamma|relmat|lab0|q4|sd-z|cm0|ML	ERROR	ArgumentError	ArgumentError: Gamma structured SD regression requires exactly one random-effect SD formula.	ArgumentError: Gamma structured SD regression requires exactly one random-effect SD formula.				0.00	
+S	23	gamma|relmat|lab1|q4|sd-z|cm0|ML
+R	23	gamma|relmat|lab1|q4|sd-z|cm0|ML	ERROR	ArgumentError	ArgumentError: Gamma structured SD regression requires exactly one random-effect SD formula.	ArgumentError: Gamma structured SD regression requires exactly one random-effect SD formula.				0.00	
+S	24	gamma|relmat|lab0|q4|sd-first|cm0|ML
+R	24	gamma|relmat|lab0|q4|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `relmat(1 + x1 + x2 + x3 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(1 + x1 + x2 + x3 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.00	
+S	25	gamma|relmat|lab1|q4|sd-first|cm0|ML
+R	25	gamma|relmat|lab1|q4|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: drm: `relmat(:((1 + x1 + x2 + x3) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(:((1 + x1 + x2 + x3) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.00	

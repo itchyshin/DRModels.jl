@@ -1,0 +1,6 @@
+S	1	gaussian|slope|lab0|q1|sd-none|cm0|ML
+R	1	gaussian|slope|lab0|q1|sd-none|cm0|ML	FITS				-514.1536925237	true	se_finite=true;npar=6	21.60	
+S	2	gaussian|slope|lab0|q1|sd-one|cm0|ML
+R	2	gaussian|slope|lab0|q1|sd-one|cm0|ML	FITS				-514.1536925237	true	se_finite=true;npar=6	2.05	
+S	3	gaussian|slope|lab0|q1|sd-z|cm0|ML
+R	3	gaussian|slope|lab0|q1|sd-z|cm0|ML	FITS				-513.0864950054	true	se_finite=true;npar=7	1.65	

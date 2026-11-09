@@ -1,0 +1,22 @@
+S	1	gaussian|indep|lab0|q2|sd-none|cm0|REML
+R	1	gaussian|indep|lab0|q2|sd-none|cm0|REML	FITS				-477.1134169885	true	se_finite=true;npar=7	36.79	
+S	2	gaussian|indep|lab0|q2|sd-one|cm0|REML
+R	2	gaussian|indep|lab0|q2|sd-one|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: independent intercept and slope terms with `sd()` formulas support maximum likelihood only (`method = :REML` is not implemented for this shape).	ArgumentError: drm: independent intercept and slope terms with `sd()` formulas support maximum likelihood only (`method = :REML` is not implemented for this shape).				1.21	
+S	3	gaussian|indep|lab0|q2|sd-z|cm0|REML
+R	3	gaussian|indep|lab0|q2|sd-z|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: independent intercept and slope terms with `sd()` formulas support maximum likelihood only (`method = :REML` is not implemented for this shape).	ArgumentError: drm: independent intercept and slope terms with `sd()` formulas support maximum likelihood only (`method = :REML` is not implemented for this shape).				0.02	
+S	4	gaussian|indep|lab0|q2|sd-first|cm0|REML
+R	4	gaussian|indep|lab0|q2|sd-first|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: independent intercept and slope terms with `sd()` formulas support maximum likelihood only (`method = :REML` is not implemented for this shape).	ArgumentError: drm: independent intercept and slope terms with `sd()` formulas support maximum likelihood only (`method = :REML` is not implemented for this shape).				0.00	
+S	5	gaussian|indep|lab0|q2|sd-last|cm0|REML
+R	5	gaussian|indep|lab0|q2|sd-last|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: independent intercept and slope terms with `sd()` formulas support maximum likelihood only (`method = :REML` is not implemented for this shape).	ArgumentError: drm: independent intercept and slope terms with `sd()` formulas support maximum likelihood only (`method = :REML` is not implemented for this shape).				0.00	
+S	6	gaussian|indep|lab0|q3|sd-none|cm0|REML
+R	6	gaussian|indep|lab0|q3|sd-none|cm0|REML	FITS				-455.7102696472	true	se_finite=true;npar=8	19.03	
+S	7	gaussian|indep|lab0|q3|sd-z|cm0|REML
+R	7	gaussian|indep|lab0|q3|sd-z|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: independent intercept and slope terms with `sd()` formulas support maximum likelihood only (`method = :REML` is not implemented for this shape).	ArgumentError: drm: independent intercept and slope terms with `sd()` formulas support maximum likelihood only (`method = :REML` is not implemented for this shape).				0.07	
+S	8	gaussian|indep|lab0|q3|sd-first|cm0|REML
+R	8	gaussian|indep|lab0|q3|sd-first|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: independent intercept and slope terms with `sd()` formulas support maximum likelihood only (`method = :REML` is not implemented for this shape).	ArgumentError: drm: independent intercept and slope terms with `sd()` formulas support maximum likelihood only (`method = :REML` is not implemented for this shape).				0.00	
+S	9	gaussian|indep|lab0|q4|sd-none|cm0|REML
+R	9	gaussian|indep|lab0|q4|sd-none|cm0|REML	FITS				-432.5183035433	true	se_finite=true;npar=9	27.60	
+S	10	gaussian|indep|lab0|q4|sd-z|cm0|REML
+R	10	gaussian|indep|lab0|q4|sd-z|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: independent intercept and slope terms with `sd()` formulas support maximum likelihood only (`method = :REML` is not implemented for this shape).	ArgumentError: drm: independent intercept and slope terms with `sd()` formulas support maximum likelihood only (`method = :REML` is not implemented for this shape).				0.07	
+S	11	gaussian|indep|lab0|q4|sd-first|cm0|REML
+R	11	gaussian|indep|lab0|q4|sd-first|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: independent intercept and slope terms with `sd()` formulas support maximum likelihood only (`method = :REML` is not implemented for this shape).	ArgumentError: drm: independent intercept and slope terms with `sd()` formulas support maximum likelihood only (`method = :REML` is not implemented for this shape).				0.00	

@@ -1,0 +1,22 @@
+S	1	tweedie|indep|lab0|q2|sd-none|cm0|ML
+R	1	tweedie|indep|lab0|q2|sd-none|cm0|ML	ERROR	ErrorException	Tweedie() supports multiple random effects only as crossed/nested intercepts, e.g. `(1 | g) + (1 | h)`	Tweedie() supports multiple random effects only as crossed/nested intercepts, e.g. `(1 | g) + (1 | h)`			at=tweedie.jl:195	8.01	
+S	2	tweedie|indep|lab0|q2|sd-one|cm0|ML
+R	2	tweedie|indep|lab0|q2|sd-one|cm0|ML	ERROR	ArgumentError	ArgumentError: Tweedie random-effect SD regression requires exactly one `sd(group) ~ …` formula.	ArgumentError: Tweedie random-effect SD regression requires exactly one `sd(group) ~ …` formula.				0.18	
+S	3	tweedie|indep|lab0|q2|sd-z|cm0|ML
+R	3	tweedie|indep|lab0|q2|sd-z|cm0|ML	ERROR	ArgumentError	ArgumentError: Tweedie random-effect SD regression requires exactly one `sd(group) ~ …` formula.	ArgumentError: Tweedie random-effect SD regression requires exactly one `sd(group) ~ …` formula.				0.01	
+S	4	tweedie|indep|lab0|q2|sd-first|cm0|ML
+R	4	tweedie|indep|lab0|q2|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: Tweedie SD regression requires exactly one ordinary mean random-effect term.	ArgumentError: Tweedie SD regression requires exactly one ordinary mean random-effect term.				0.01	
+S	5	tweedie|indep|lab0|q2|sd-last|cm0|ML
+R	5	tweedie|indep|lab0|q2|sd-last|cm0|ML	ERROR	ArgumentError	ArgumentError: Tweedie SD regression requires exactly one ordinary mean random-effect term.	ArgumentError: Tweedie SD regression requires exactly one ordinary mean random-effect term.				0.00	
+S	6	tweedie|indep|lab0|q3|sd-none|cm0|ML
+R	6	tweedie|indep|lab0|q3|sd-none|cm0|ML	ERROR	ErrorException	Tweedie() supports multiple random effects only as crossed/nested intercepts, e.g. `(1 | g) + (1 | h)`	Tweedie() supports multiple random effects only as crossed/nested intercepts, e.g. `(1 | g) + (1 | h)`			at=tweedie.jl:195	0.15	
+S	7	tweedie|indep|lab0|q3|sd-z|cm0|ML
+R	7	tweedie|indep|lab0|q3|sd-z|cm0|ML	ERROR	ArgumentError	ArgumentError: Tweedie random-effect SD regression requires exactly one `sd(group) ~ …` formula.	ArgumentError: Tweedie random-effect SD regression requires exactly one `sd(group) ~ …` formula.				0.06	
+S	8	tweedie|indep|lab0|q3|sd-first|cm0|ML
+R	8	tweedie|indep|lab0|q3|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: Tweedie SD regression requires exactly one ordinary mean random-effect term.	ArgumentError: Tweedie SD regression requires exactly one ordinary mean random-effect term.				0.00	
+S	9	tweedie|indep|lab0|q4|sd-none|cm0|ML
+R	9	tweedie|indep|lab0|q4|sd-none|cm0|ML	ERROR	ErrorException	Tweedie() supports multiple random effects only as crossed/nested intercepts, e.g. `(1 | g) + (1 | h)`	Tweedie() supports multiple random effects only as crossed/nested intercepts, e.g. `(1 | g) + (1 | h)`			at=tweedie.jl:195	0.15	
+S	10	tweedie|indep|lab0|q4|sd-z|cm0|ML
+R	10	tweedie|indep|lab0|q4|sd-z|cm0|ML	ERROR	ArgumentError	ArgumentError: Tweedie random-effect SD regression requires exactly one `sd(group) ~ …` formula.	ArgumentError: Tweedie random-effect SD regression requires exactly one `sd(group) ~ …` formula.				0.06	
+S	11	tweedie|indep|lab0|q4|sd-first|cm0|ML
+R	11	tweedie|indep|lab0|q4|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: Tweedie SD regression requires exactly one ordinary mean random-effect term.	ArgumentError: Tweedie SD regression requires exactly one ordinary mean random-effect term.				0.00	

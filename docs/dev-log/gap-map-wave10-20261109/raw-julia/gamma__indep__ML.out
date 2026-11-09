@@ -1,0 +1,22 @@
+S	1	gamma|indep|lab0|q2|sd-none|cm0|ML
+R	1	gamma|indep|lab0|q2|sd-none|cm0|ML	NONCONVERGED				-555.5960538101	false	se_finite=true;npar=7	55.49	
+S	2	gamma|indep|lab0|q2|sd-one|cm0|ML
+R	2	gamma|indep|lab0|q2|sd-one|cm0|ML	FITS				-546.3427321265	true	se_finite=true;npar=7	5.25	
+S	3	gamma|indep|lab0|q2|sd-z|cm0|ML
+R	3	gamma|indep|lab0|q2|sd-z|cm0|ML	FITS				-545.1214549594	true	se_finite=true;npar=9	3.14	
+S	4	gamma|indep|lab0|q2|sd-first|cm0|ML
+R	4	gamma|indep|lab0|q2|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: Gamma `sd(g)` currently requires exactly one ordinary independent random effect.	ArgumentError: Gamma `sd(g)` currently requires exactly one ordinary independent random effect.				0.03	
+S	5	gamma|indep|lab0|q2|sd-last|cm0|ML
+R	5	gamma|indep|lab0|q2|sd-last|cm0|ML	ERROR	ArgumentError	ArgumentError: Gamma `sd(g)` currently requires exactly one ordinary independent random effect.	ArgumentError: Gamma `sd(g)` currently requires exactly one ordinary independent random effect.				0.00	
+S	6	gamma|indep|lab0|q3|sd-none|cm0|ML
+R	6	gamma|indep|lab0|q3|sd-none|cm0|ML	FITS				-538.5389217905	true	se_finite=true;npar=8	24.04	
+S	7	gamma|indep|lab0|q3|sd-z|cm0|ML
+R	7	gamma|indep|lab0|q3|sd-z|cm0|ML	ERROR	ArgumentError	ArgumentError: Gamma random-effect SD regression requires exactly one SD target.	ArgumentError: Gamma random-effect SD regression requires exactly one SD target.				0.06	
+S	8	gamma|indep|lab0|q3|sd-first|cm0|ML
+R	8	gamma|indep|lab0|q3|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: Gamma `sd(g)` currently requires exactly one ordinary independent random effect.	ArgumentError: Gamma `sd(g)` currently requires exactly one ordinary independent random effect.				0.00	
+S	9	gamma|indep|lab0|q4|sd-none|cm0|ML
+R	9	gamma|indep|lab0|q4|sd-none|cm0|ML	FITS				-522.5045920158	true	se_finite=true;npar=9	5.12	
+S	10	gamma|indep|lab0|q4|sd-z|cm0|ML
+R	10	gamma|indep|lab0|q4|sd-z|cm0|ML	ERROR	ArgumentError	ArgumentError: Gamma random-effect SD regression requires exactly one SD target.	ArgumentError: Gamma random-effect SD regression requires exactly one SD target.				0.06	
+S	11	gamma|indep|lab0|q4|sd-first|cm0|ML
+R	11	gamma|indep|lab0|q4|sd-first|cm0|ML	ERROR	ArgumentError	ArgumentError: Gamma `sd(g)` currently requires exactly one ordinary independent random effect.	ArgumentError: Gamma `sd(g)` currently requires exactly one ordinary independent random effect.				0.00	

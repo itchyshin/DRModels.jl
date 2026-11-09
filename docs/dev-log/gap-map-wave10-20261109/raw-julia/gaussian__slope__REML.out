@@ -1,0 +1,6 @@
+S	1	gaussian|slope|lab0|q1|sd-none|cm0|REML
+R	1	gaussian|slope|lab0|q1|sd-none|cm0|REML	FITS				-522.5169635988	true	se_finite=true;npar=6	21.84	
+S	2	gaussian|slope|lab0|q1|sd-one|cm0|REML
+R	2	gaussian|slope|lab0|q1|sd-one|cm0|REML	FITS				-522.5169635988	true	se_finite=true;npar=6	3.13	
+S	3	gaussian|slope|lab0|q1|sd-z|cm0|REML
+R	3	gaussian|slope|lab0|q1|sd-z|cm0|REML	FITS				-521.5026390920	true	se_finite=true;npar=7	2.88	

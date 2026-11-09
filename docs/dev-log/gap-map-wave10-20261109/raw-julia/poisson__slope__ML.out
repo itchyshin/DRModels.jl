@@ -1,0 +1,6 @@
+S	1	poisson|slope|lab0|q1|sd-none|cm0|ML
+R	1	poisson|slope|lab0|q1|sd-none|cm0|ML	ERROR	ErrorException	Poisson() supports `(1 | g)` or `(1 + x | g)` random effects on the mean	Poisson() supports `(1 | g)` or `(1 + x | g)` random effects on the mean			at=poisson.jl:406	9.72	
+S	2	poisson|slope|lab0|q1|sd-one|cm0|ML
+R	2	poisson|slope|lab0|q1|sd-one|cm0|ML	FITS				-757.2574566610	true	se_finite=true;npar=5	10.30	
+S	3	poisson|slope|lab0|q1|sd-z|cm0|ML
+R	3	poisson|slope|lab0|q1|sd-z|cm0|ML	FITS				-756.0997443546	true	se_finite=true;npar=6	7.21	

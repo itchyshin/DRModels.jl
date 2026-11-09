@@ -1,0 +1,58 @@
+S	1	gaussian|ordinary|lab0|q1|sd-none|cm0|REML
+R	1	gaussian|ordinary|lab0|q1|sd-none|cm0|REML	FITS				-491.0673072838	true	se_finite=true;npar=6	22.72	
+S	2	gaussian|ordinary|lab0|q1|sd-one|cm0|REML
+R	2	gaussian|ordinary|lab0|q1|sd-one|cm0|REML	FITS				-491.0673072838	true	se_finite=true;npar=6	3.15	
+S	3	gaussian|ordinary|lab0|q1|sd-z|cm0|REML
+R	3	gaussian|ordinary|lab0|q1|sd-z|cm0|REML	FITS				-487.0145642271	true	se_finite=true;npar=7	2.87	
+S	4	gaussian|ordinary|lab0|q2|sd-none|cm0|REML
+R	4	gaussian|ordinary|lab0|q2|sd-none|cm0|REML	FITS				-476.3237699620	true	se_finite=true;npar=8	7.82	
+S	5	gaussian|ordinary|lab1|q2|sd-none|cm0|REML
+R	5	gaussian|ordinary|lab1|q2|sd-none|cm0|REML	FITS				-476.3237699620	true	se_finite=true;npar=8	0.08	
+S	6	gaussian|ordinary|lab0|q2|sd-one|cm0|REML
+R	6	gaussian|ordinary|lab0|q2|sd-one|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: Gaussian correlated-block SD regression supports maximum likelihood only.	ArgumentError: drm: Gaussian correlated-block SD regression supports maximum likelihood only.				1.76	
+S	7	gaussian|ordinary|lab1|q2|sd-one|cm0|REML
+R	7	gaussian|ordinary|lab1|q2|sd-one|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: Gaussian correlated-block SD regression supports maximum likelihood only.	ArgumentError: drm: Gaussian correlated-block SD regression supports maximum likelihood only.				0.00	
+S	8	gaussian|ordinary|lab0|q2|sd-z|cm0|REML
+R	8	gaussian|ordinary|lab0|q2|sd-z|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: Gaussian correlated-block SD regression supports maximum likelihood only.	ArgumentError: drm: Gaussian correlated-block SD regression supports maximum likelihood only.				0.01	
+S	9	gaussian|ordinary|lab1|q2|sd-z|cm0|REML
+R	9	gaussian|ordinary|lab1|q2|sd-z|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: Gaussian correlated-block SD regression supports maximum likelihood only.	ArgumentError: drm: Gaussian correlated-block SD regression supports maximum likelihood only.				0.00	
+S	10	gaussian|ordinary|lab0|q2|sd-first|cm0|REML
+R	10	gaussian|ordinary|lab0|q2|sd-first|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: Gaussian correlated-block SD regression supports maximum likelihood only.	ArgumentError: drm: Gaussian correlated-block SD regression supports maximum likelihood only.				0.00	
+S	11	gaussian|ordinary|lab1|q2|sd-first|cm0|REML
+R	11	gaussian|ordinary|lab1|q2|sd-first|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: Gaussian correlated-block SD regression supports maximum likelihood only.	ArgumentError: drm: Gaussian correlated-block SD regression supports maximum likelihood only.				0.00	
+S	12	gaussian|ordinary|lab0|q2|sd-last|cm0|REML
+R	12	gaussian|ordinary|lab0|q2|sd-last|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: Gaussian correlated-block SD regression supports maximum likelihood only.	ArgumentError: drm: Gaussian correlated-block SD regression supports maximum likelihood only.				0.00	
+S	13	gaussian|ordinary|lab1|q2|sd-last|cm0|REML
+R	13	gaussian|ordinary|lab1|q2|sd-last|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: Gaussian correlated-block SD regression supports maximum likelihood only.	ArgumentError: drm: Gaussian correlated-block SD regression supports maximum likelihood only.				0.00	
+S	14	gaussian|ordinary|lab0|q3|sd-none|cm0|REML
+R	14	gaussian|ordinary|lab0|q3|sd-none|cm0|REML	ERROR	ErrorException	DRModels.jl supports `(1 | g)`, `(0 + x | g)`, `(1 + x | g)` and the correlated blocks `(1 + x + z [+ w] | g)` (an intercept plus 2 to 3 slopes), which are fitted by maximum likelihood only and with no random effect on `sigma`	DRModels.jl supports `(1 | g)`, `(0 + x | g)`, `(1 + x | g)` and the correlated blocks `(1 + x + z [+ w] | g)` (an intercept plus 2 to 3 slopes), which are fitted by maximum likelihood only and with no random effect on `sigma`			at=gaussian_ranef.jl:455	0.01	
+S	15	gaussian|ordinary|lab1|q3|sd-none|cm0|REML
+R	15	gaussian|ordinary|lab1|q3|sd-none|cm0|REML	ERROR	ErrorException	DRModels.jl supports `(1 | g)`, `(0 + x | g)`, `(1 + x | g)` and the correlated blocks `(1 + x + z [+ w] | g)` (an intercept plus 2 to 3 slopes), which are fitted by maximum likelihood only and with no random effect on `sigma`	DRModels.jl supports `(1 | g)`, `(0 + x | g)`, `(1 + x | g)` and the correlated blocks `(1 + x + z [+ w] | g)` (an intercept plus 2 to 3 slopes), which are fitted by maximum likelihood only and with no random effect on `sigma`			at=gaussian_ranef.jl:455	0.00	
+S	16	gaussian|ordinary|lab0|q3|sd-z|cm0|REML
+R	16	gaussian|ordinary|lab0|q3|sd-z|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: Gaussian correlated-block SD regression supports maximum likelihood only.	ArgumentError: drm: Gaussian correlated-block SD regression supports maximum likelihood only.				0.00	
+S	17	gaussian|ordinary|lab1|q3|sd-z|cm0|REML
+R	17	gaussian|ordinary|lab1|q3|sd-z|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: Gaussian correlated-block SD regression supports maximum likelihood only.	ArgumentError: drm: Gaussian correlated-block SD regression supports maximum likelihood only.				0.00	
+S	18	gaussian|ordinary|lab0|q3|sd-first|cm0|REML
+R	18	gaussian|ordinary|lab0|q3|sd-first|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: Gaussian correlated-block SD regression supports maximum likelihood only.	ArgumentError: drm: Gaussian correlated-block SD regression supports maximum likelihood only.				0.00	
+S	19	gaussian|ordinary|lab1|q3|sd-first|cm0|REML
+R	19	gaussian|ordinary|lab1|q3|sd-first|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: Gaussian correlated-block SD regression supports maximum likelihood only.	ArgumentError: drm: Gaussian correlated-block SD regression supports maximum likelihood only.				0.00	
+S	20	gaussian|ordinary|lab0|q4|sd-none|cm0|REML
+R	20	gaussian|ordinary|lab0|q4|sd-none|cm0|REML	ERROR	ErrorException	DRModels.jl supports `(1 | g)`, `(0 + x | g)`, `(1 + x | g)` and the correlated blocks `(1 + x + z [+ w] | g)` (an intercept plus 2 to 3 slopes), which are fitted by maximum likelihood only and with no random effect on `sigma`	DRModels.jl supports `(1 | g)`, `(0 + x | g)`, `(1 + x | g)` and the correlated blocks `(1 + x + z [+ w] | g)` (an intercept plus 2 to 3 slopes), which are fitted by maximum likelihood only and with no random effect on `sigma`			at=gaussian_ranef.jl:455	0.02	
+S	21	gaussian|ordinary|lab1|q4|sd-none|cm0|REML
+R	21	gaussian|ordinary|lab1|q4|sd-none|cm0|REML	ERROR	ErrorException	DRModels.jl supports `(1 | g)`, `(0 + x | g)`, `(1 + x | g)` and the correlated blocks `(1 + x + z [+ w] | g)` (an intercept plus 2 to 3 slopes), which are fitted by maximum likelihood only and with no random effect on `sigma`	DRModels.jl supports `(1 | g)`, `(0 + x | g)`, `(1 + x | g)` and the correlated blocks `(1 + x + z [+ w] | g)` (an intercept plus 2 to 3 slopes), which are fitted by maximum likelihood only and with no random effect on `sigma`			at=gaussian_ranef.jl:455	0.00	
+S	22	gaussian|ordinary|lab0|q4|sd-z|cm0|REML
+R	22	gaussian|ordinary|lab0|q4|sd-z|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: Gaussian correlated-block SD regression supports maximum likelihood only.	ArgumentError: drm: Gaussian correlated-block SD regression supports maximum likelihood only.				0.00	
+S	23	gaussian|ordinary|lab1|q4|sd-z|cm0|REML
+R	23	gaussian|ordinary|lab1|q4|sd-z|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: Gaussian correlated-block SD regression supports maximum likelihood only.	ArgumentError: drm: Gaussian correlated-block SD regression supports maximum likelihood only.				0.00	
+S	24	gaussian|ordinary|lab0|q4|sd-first|cm0|REML
+R	24	gaussian|ordinary|lab0|q4|sd-first|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: Gaussian correlated-block SD regression supports maximum likelihood only.	ArgumentError: drm: Gaussian correlated-block SD regression supports maximum likelihood only.				0.00	
+S	25	gaussian|ordinary|lab1|q4|sd-first|cm0|REML
+R	25	gaussian|ordinary|lab1|q4|sd-first|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: Gaussian correlated-block SD regression supports maximum likelihood only.	ArgumentError: drm: Gaussian correlated-block SD regression supports maximum likelihood only.				0.00	
+S	26	gaussian|ordinary|lab0|q1|sd-none|cm1|REML
+R	26	gaussian|ordinary|lab0|q1|sd-none|cm1|REML	ERROR	ErrorException	unsupported random-effect term: `(:(1 | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect	unsupported random-effect term: `(:(1 | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect			at=gaussian_ranef.jl:462	0.40	
+S	27	gaussian|ordinary|lab0|q1|sd-z|cm1|REML
+R	27	gaussian|ordinary|lab0|q1|sd-z|cm1|REML	ERROR	ArgumentError	ArgumentError: drm: sd() submodels cannot be combined with a random effect on `sigma`. R drmTMB fits a mean `sd(g) ~ …` formula together with a `sigma ~ 1 + (1 | p | g)` random effect; that combined route is not implemented in DRModels.jl (use `sd(g, sigma) ~ …` for a sigma-side SD).	ArgumentError: drm: sd() submodels cannot be combined with a random effect on `sigma`. R drmTMB fits a mean `sd(g) ~ …` formula together with a `sigma ~ 1 + (1 | p | g)` random effect; that combined route is not implemented in DRModels.jl (use `sd(g, sigma) ~ …` for a sigma-side SD).				0.07	
+S	28	gaussian|ordinary|lab0|q2|sd-none|cm1|REML
+R	28	gaussian|ordinary|lab0|q2|sd-none|cm1|REML	ERROR	ErrorException	unsupported random-effect term: `(:((1 + x1) | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect	unsupported random-effect term: `(:((1 + x1) | p) | …)`. A label `(… | p | g)` is accepted only when one term carries it and `sigma` has no random effect			at=gaussian_ranef.jl:462	0.00	
+S	29	gaussian|ordinary|lab0|q2|sd-z|cm1|REML
+R	29	gaussian|ordinary|lab0|q2|sd-z|cm1|REML	ERROR	ArgumentError	ArgumentError: drm: sd() submodels cannot be combined with a random effect on `sigma`. R drmTMB fits a mean `sd(g) ~ …` formula together with a `sigma ~ 1 + (1 | p | g)` random effect; that combined route is not implemented in DRModels.jl (use `sd(g, sigma) ~ …` for a sigma-side SD).	ArgumentError: drm: sd() submodels cannot be combined with a random effect on `sigma`. R drmTMB fits a mean `sd(g) ~ …` formula together with a `sigma ~ 1 + (1 | p | g)` random effect; that combined route is not implemented in DRModels.jl (use `sd(g, sigma) ~ …` for a sigma-side SD).				0.00	

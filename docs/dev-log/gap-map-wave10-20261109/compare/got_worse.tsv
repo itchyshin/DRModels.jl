@@ -1,0 +1,4 @@
+cell_id	w8_class	w10_class	w8_j	w10_j	r_outcome	r_ll	w8_j_ll	w10_j_ll	w8_ll_diff	w10_ll_diff	w10_j_msg	rule
+binomial|indep|lab0|q2|sd-z|cm0|ML	both-fit-disagree	both-fit-disagree	FITS	FITS	FITS	-253.5291167629	-255.2241433763	-253.1450487707	1.695e+00	3.841e-01		ll-moved>1e-6(2.08)
+binomial|indep|lab0|q3|sd-z|cm0|ML	both-fit-disagree	both-fit-disagree	FITS	FITS	FITS	-253.5291171865	-254.5595964059	-253.1280180289	1.030e+00	4.011e-01		ll-moved>1e-6(1.43)
+binomial|indep|lab0|q4|sd-z|cm0|ML	both-fit-disagree	both-fit-disagree	FITS	FITS	FITS	-250.1383149095	-249.5579625795	-249.1444033443	5.804e-01	9.939e-01		ll-moved>1e-6(0.414)

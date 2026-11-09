@@ -1,0 +1,50 @@
+S	1	gaussian|relmat|lab0|q1|sd-none|cm0|REML
+R	1	gaussian|relmat|lab0|q1|sd-none|cm0|REML	FITS				-446.5208194531	true	se_finite=true;npar=6	31.94	
+S	2	gaussian|relmat|lab0|q1|sd-one|cm0|REML
+R	2	gaussian|relmat|lab0|q1|sd-one|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: Gaussian structured intercept SD regression supports maximum likelihood only.	ArgumentError: drm: Gaussian structured intercept SD regression supports maximum likelihood only.				0.41	
+S	3	gaussian|relmat|lab0|q1|sd-z|cm0|REML
+R	3	gaussian|relmat|lab0|q1|sd-z|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: Gaussian structured intercept SD regression supports maximum likelihood only.	ArgumentError: drm: Gaussian structured intercept SD regression supports maximum likelihood only.				0.02	
+S	4	gaussian|relmat|lab0|q2|sd-none|cm0|REML
+R	4	gaussian|relmat|lab0|q2|sd-none|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: `relmat(1 + x1 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(1 + x1 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.16	
+S	5	gaussian|relmat|lab1|q2|sd-none|cm0|REML
+R	5	gaussian|relmat|lab1|q2|sd-none|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: `relmat(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(:((1 + x1) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.07	
+S	6	gaussian|relmat|lab0|q2|sd-one|cm0|REML
+R	6	gaussian|relmat|lab0|q2|sd-one|cm0|REML	FITS				-419.4355765760	true	se_finite=true;npar=7	11.26	
+S	7	gaussian|relmat|lab1|q2|sd-one|cm0|REML
+R	7	gaussian|relmat|lab1|q2|sd-one|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: Gaussian `relmat(1 + x1 | p | g)` SD regression: method = :REML is not implemented for the labelled (correlated) `relmat` block; native drmTMB refuses it too. Use the unlabelled `relmat(1 + x1 | g)` or method = :ML.	ArgumentError: drm: Gaussian `relmat(1 + x1 | p | g)` SD regression: method = :REML is not implemented for the labelled (correlated) `relmat` block; native drmTMB refuses it too. Use the unlabelled `relmat(1 + x1 | g)` or method = :ML.				0.00	
+S	8	gaussian|relmat|lab0|q2|sd-z|cm0|REML
+R	8	gaussian|relmat|lab0|q2|sd-z|cm0|REML	FITS				-415.2466001677	true	se_finite=true;npar=9	13.86	
+S	9	gaussian|relmat|lab1|q2|sd-z|cm0|REML
+R	9	gaussian|relmat|lab1|q2|sd-z|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: Gaussian `relmat(1 + x1 | p | g)` SD regression: method = :REML is not implemented for the labelled (correlated) `relmat` block; native drmTMB refuses it too. Use the unlabelled `relmat(1 + x1 | g)` or method = :ML.	ArgumentError: drm: Gaussian `relmat(1 + x1 | p | g)` SD regression: method = :REML is not implemented for the labelled (correlated) `relmat` block; native drmTMB refuses it too. Use the unlabelled `relmat(1 + x1 | g)` or method = :ML.				0.00	
+S	10	gaussian|relmat|lab0|q2|sd-first|cm0|REML
+R	10	gaussian|relmat|lab0|q2|sd-first|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: Gaussian `relmat(1 + x1 | g)` needs one SD formula for the intercept and one for the slope (`sd(g, relmat, coef(intercept)) ~ …` and `sd(g, relmat, coef(x1)) ~ …`).	ArgumentError: drm: Gaussian `relmat(1 + x1 | g)` needs one SD formula for the intercept and one for the slope (`sd(g, relmat, coef(intercept)) ~ …` and `sd(g, relmat, coef(x1)) ~ …`).				0.00	
+S	11	gaussian|relmat|lab1|q2|sd-first|cm0|REML
+R	11	gaussian|relmat|lab1|q2|sd-first|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: Gaussian `relmat(1 + x1 | p | g)` needs one SD formula for the intercept and one for the slope (`sd(g, relmat, coef(intercept)) ~ …` and `sd(g, relmat, coef(x1)) ~ …`).	ArgumentError: drm: Gaussian `relmat(1 + x1 | p | g)` needs one SD formula for the intercept and one for the slope (`sd(g, relmat, coef(intercept)) ~ …` and `sd(g, relmat, coef(x1)) ~ …`).				0.00	
+S	12	gaussian|relmat|lab0|q2|sd-last|cm0|REML
+R	12	gaussian|relmat|lab0|q2|sd-last|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: Gaussian `relmat(1 + x1 | g)` needs one SD formula for the intercept and one for the slope (`sd(g, relmat, coef(intercept)) ~ …` and `sd(g, relmat, coef(x1)) ~ …`).	ArgumentError: drm: Gaussian `relmat(1 + x1 | g)` needs one SD formula for the intercept and one for the slope (`sd(g, relmat, coef(intercept)) ~ …` and `sd(g, relmat, coef(x1)) ~ …`).				0.00	
+S	13	gaussian|relmat|lab1|q2|sd-last|cm0|REML
+R	13	gaussian|relmat|lab1|q2|sd-last|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: Gaussian `relmat(1 + x1 | p | g)` needs one SD formula for the intercept and one for the slope (`sd(g, relmat, coef(intercept)) ~ …` and `sd(g, relmat, coef(x1)) ~ …`).	ArgumentError: drm: Gaussian `relmat(1 + x1 | p | g)` needs one SD formula for the intercept and one for the slope (`sd(g, relmat, coef(intercept)) ~ …` and `sd(g, relmat, coef(x1)) ~ …`).				0.00	
+S	14	gaussian|relmat|lab0|q3|sd-none|cm0|REML
+R	14	gaussian|relmat|lab0|q3|sd-none|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: `relmat(1 + x1 + x2 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(1 + x1 + x2 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.01	
+S	15	gaussian|relmat|lab1|q3|sd-none|cm0|REML
+R	15	gaussian|relmat|lab1|q3|sd-none|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: `relmat(:((1 + x1 + x2) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(:((1 + x1 + x2) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.00	
+S	16	gaussian|relmat|lab0|q3|sd-z|cm0|REML
+R	16	gaussian|relmat|lab0|q3|sd-z|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: `relmat(1 + x1 + x2 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(1 + x1 + x2 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.00	
+S	17	gaussian|relmat|lab1|q3|sd-z|cm0|REML
+R	17	gaussian|relmat|lab1|q3|sd-z|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: `relmat(:((1 + x1 + x2) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(:((1 + x1 + x2) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.00	
+S	18	gaussian|relmat|lab0|q3|sd-first|cm0|REML
+R	18	gaussian|relmat|lab0|q3|sd-first|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: `relmat(1 + x1 + x2 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(1 + x1 + x2 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.00	
+S	19	gaussian|relmat|lab1|q3|sd-first|cm0|REML
+R	19	gaussian|relmat|lab1|q3|sd-first|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: `relmat(:((1 + x1 + x2) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(:((1 + x1 + x2) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.00	
+S	20	gaussian|relmat|lab0|q4|sd-none|cm0|REML
+R	20	gaussian|relmat|lab0|q4|sd-none|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: `relmat(1 + x1 + x2 + x3 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(1 + x1 + x2 + x3 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.01	
+S	21	gaussian|relmat|lab1|q4|sd-none|cm0|REML
+R	21	gaussian|relmat|lab1|q4|sd-none|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: `relmat(:((1 + x1 + x2 + x3) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(:((1 + x1 + x2 + x3) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.00	
+S	22	gaussian|relmat|lab0|q4|sd-z|cm0|REML
+R	22	gaussian|relmat|lab0|q4|sd-z|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: `relmat(1 + x1 + x2 + x3 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(1 + x1 + x2 + x3 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.00	
+S	23	gaussian|relmat|lab1|q4|sd-z|cm0|REML
+R	23	gaussian|relmat|lab1|q4|sd-z|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: `relmat(:((1 + x1 + x2 + x3) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(:((1 + x1 + x2 + x3) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.00	
+S	24	gaussian|relmat|lab0|q4|sd-first|cm0|REML
+R	24	gaussian|relmat|lab0|q4|sd-first|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: `relmat(1 + x1 + x2 + x3 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(1 + x1 + x2 + x3 | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.00	
+S	25	gaussian|relmat|lab1|q4|sd-first|cm0|REML
+R	25	gaussian|relmat|lab1|q4|sd-first|cm0|REML	ERROR	ArgumentError	ArgumentError: drm: `relmat(:((1 + x1 + x2 + x3) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route	ArgumentError: drm: `relmat(:((1 + x1 + x2 + x3) | p) | g)` is not implemented on the univariate routes; only the intercept form is admitted on this route				0.00	
