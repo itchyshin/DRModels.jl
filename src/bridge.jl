@@ -777,6 +777,7 @@ end
 
 function _bridge_enable_priors_v2!(opts, form, fam, data, labels)
     uppercase(String(get(opts, :method, "ML"))) == "ML" || throw(ArgumentError("drm_bridge: v2 requires ML"))
+    _bridge_reject_duplicate_intercept_source(labels.formula_parts)
     records = opts[:prior_expected_v2]
     priors = _bridge_prepare_priors_v2(form, fam, data, labels, opts[:priors_v2], records)
     for k in (:prior_contract, :priors_v2, :prior_expected_v2)
@@ -1071,6 +1072,9 @@ struct _BridgeFormulaLabels
     # while the R source deliberately differs only by redundant parentheses.
     # Keep those labels per fitted formula parameter, never in a global map.
     function_labels::Dict{Symbol,Dict{String,String}}
+    # Preserve raw bridge input: StatsModels drops identical repeated terms
+    # before the v2 target resolver can inspect the resulting FormulaTerm.
+    formula_parts::Vector{String}
 end
 
 function _bridge_formula(formula, family::AbstractString, data; labels::Bool = false)
@@ -1163,8 +1167,51 @@ function _bridge_formula(formula, family::AbstractString, data; labels::Bool = f
 
     augmented = isempty(ctx.extra) ? data : merge(_bridge_ctx_cols!(ctx), NamedTuple(ctx.extra))
     return labels ? (bundle, augmented,
-                     _BridgeFormulaLabels(augmented, copy(ctx.labels), by_param)) :
+                     _BridgeFormulaLabels(augmented, copy(ctx.labels), by_param, String.(parts))) :
                     (bundle, augmented)
+end
+
+# A v2 SD request must not silently simplify repeated or algebraically
+# transformed random terms into one block. Inspect raw syntax without
+# evaluating it. Ordinary v1/no-prior calls never invoke this.
+function _bridge_reject_duplicate_intercept_source(parts)
+    seen = Set{Symbol}()
+    is_intercept_bar(e) = e isa Expr && e.head === :call && length(e.args) == 3 &&
+        e.args[1] === :| && e.args[2] isa Real && !(e.args[2] isa Bool) &&
+        e.args[2] == 1 && e.args[3] isa Symbol
+    # Descend through formula algebra only. Function arguments are fixed
+    # expressions in the bridge parser, where `|` can mean logical or
+    # bitwise OR, including an expression spelled `1 | site`.
+    formula_algebra = (:+, :-, :*, :&, :/, :^)
+    has_bar(e) = e isa Expr && (is_intercept_bar(e) ||
+        (e.head === :call && !isempty(e.args) && e.args[1] in formula_algebra && any(has_bar, e.args[2:end])))
+    function visit(e)
+        e isa Expr || return
+        has_bar(e) || return
+        if is_intercept_bar(e)
+            group = e.args[3]
+            group in seen && throw(ArgumentError("drm_bridge: v2 SD prior does not admit duplicated random intercept terms for $group"))
+            push!(seen, group)
+            return
+        end
+        # Subtracting fixed terms (including `- 1`) does not alter a random
+        # block. Removing a random term is refused before simplification.
+        if e.head === :call && length(e.args) == 3 && e.args[1] === :- && !has_bar(e.args[3])
+            visit(e.args[2])
+            return
+        end
+        e.head === :call && !isempty(e.args) && e.args[1] === :+ ||
+            throw(ArgumentError("drm_bridge: v2 SD prior does not admit random-effect algebra or transformed random terms"))
+        foreach(visit, e.args[2:end])
+    end
+    for part in parts
+        expr = Meta.parse(_bridge_translate_r_ops(part))
+        expr isa Expr && expr.head === :(=) && (expr = expr.args[2])
+        expr isa Expr && expr.head === :call && length(expr.args) == 3 && expr.args[1] === :~ ||
+            throw(ArgumentError("drm_bridge: could not parse formula specification"))
+        visit(expr.args[3])
+    end
+    return nothing
 end
 
 # Render one keyed part as a parsable string. Location-scale-scale entries
