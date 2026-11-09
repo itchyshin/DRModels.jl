@@ -159,6 +159,8 @@ formula give the same covariance as native drmTMB.
 | Binomial | `coords` with an `sd(site, spatial)` formula only; a bare `spatial(1 \| site)` is refused | **Tested**; this route keeps the older fixed range (mean pairwise distance, 1e-8 ridge) because drmTMB has no Binomial spatial route |
 | LogNormal, Tweedie | not accepted | `spatial` is refused by name |
 
+NegBinomial2 `spatial(1 + x \| p \| site)` (the labelled, correlated intercept-and-slope block) with an `sd(site, spatial, coef(·)) ~ z` formula per coefficient has no drmTMB 0.8.1 counterpart (drmTMB refuses the labelled form). The fit starts from the default point and from four tilts of both SD blocks and keeps the best optimum, because the likelihood has a second interior mode that differs by the sign of the z coefficient of the intercept SD. The independent form `spatial(1 + x \| site)` is not restarted: it agrees with drmTMB, whose default start stops at the same value.
+
 ### Non-Gaussian phylogenetic random intercept on the mean (sparse Laplace)
 
 A `phylo(1|species)` intercept on the mean for non-Gaussian families uses the

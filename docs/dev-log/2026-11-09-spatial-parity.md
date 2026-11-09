@@ -53,10 +53,6 @@ Acceptance:
    changed only if the evidence shows the same stuck-lower-mode pattern (a restart gains more
    than 1e-3 logLik on at least one seed).
 
-Part A, as pre-registered, was written for the NB2 route only. During the work the same-seed
-check (item 3) turned up the same pattern on the Poisson q = 2 routes, so the rule for them is
-the one in item 3: change a route only if a restart gains more than 1e-3 on at least one seed.
-
 ## Results (appended after the run; the rule above was not edited)
 
 ### Part B: Poisson fixed-range kernel
@@ -116,22 +112,43 @@ existing alternatives) gave the same logLik on every seed at a total ratio of 4.
 were dropped from the forced pass. The boundary rescue (existing alternatives, only when the
 first fit ends at a boundary or unconverged) runs as before.
 
+### What drmTMB 0.8.1 does on these cells
+
+- **Labelled NB2 spatial q = 2 (the reproduction cell) has no drmTMB fit.** drmTMB refuses it
+  ("NB2 structured `mu` effects currently support only the implemented labelled covariance
+  forms"; `2026-11-09-spatial-parity-evidence/ref_nb2.R`). The target -554.0242 is therefore the
+  better mode of Julia's own labelled likelihood (confirmed by a direct local optimisation from
+  the rounded coefficients, -554.024204). The claim that drmTMB reaches it with `multi_start = 8`
+  could not be reproduced: `multi_start` is not an argument of `drmTMB()` 0.8.1 and `control =
+  list(multi_start = 8)` is rejected as a reserved name. Unverified.
+- **The independent NB2 form (`spatial(1 + x1 | g)`) agrees with drmTMB today.** On the
+  reproduction data drmTMB gives -555.8854 and Julia -555.8854 (`ref_nb2_lab0.R`). On twenty
+  independent-form seeds the same four tilt starts would gain 0.519 (seed 91010) and 0.320
+  (seed 91018), but drmTMB's default start stops at the same lower values as the single Julia
+  start there (-577.7702 and -765.2868, `ref_nb2_seeds.R`). Forcing the restarts on that form
+  would put Julia above drmTMB, so they are applied to the labelled form only, and a test pins
+  the independent form to drmTMB's value.
+
 ### Same-seed check of the other structured sd-z q = 2 routes
 
 Probe: refit from four tilted copies of each fit's own SD coefficients (z coefficient of each
 block set to plus or minus 2 / max |z|) and report the best logLik gain. Same seeds and design,
 Poisson draws for the Poisson routes; relmat uses the same kernel matrix as `K`. Julia 1.12.6.
 
-| Route | Seeds with gain > 1e-3 before | Gains | After the change |
+| Route | Seeds with gain > 1e-3 before | Gains | Decision |
 |---|---|---|---|
-| NB2 spatial lab1 (this PR) | 2 of 20 | 0.667, 0.232 | 0 |
-| NB2 relmat lab1 | 0 of 20 | none | not changed |
-| Poisson spatial lab1 | 2 of 20 | 0.081 (91007), 0.143 (91015) | 0; both seeds reach the tilted mode, none worse |
-| Poisson relmat lab0 | 1 of 20 | 0.098 (91016) | 0; none worse |
+| NB2 spatial, labelled (this PR) | 2 of 20 | 0.667, 0.232 | restarts added |
+| NB2 spatial, independent | 2 of 20 | 0.519, 0.320 | not changed: drmTMB's default start stops at the same lower mode |
+| NB2 relmat, labelled | 0 of 20 | none | not changed |
+| Poisson spatial, labelled | 2 of 20 | 0.081 (91007), 0.143 (91015) | not changed, see below |
+| Poisson relmat, independent | 1 of 20 | 0.098 (91016) | not changed, see below |
 
-So the Poisson q = 2 fitter (spatial, relmat and, through the same code, animal) now also tries
-the four tilts for `sd-z` designs, kept only if the objective improves by more than 1e-6. No
-seed got worse and no converged flag changed (the timing in the probe files includes the probe's
-own local optimisations, so it is not a fit-time ratio). NB2 phylo and animal, Poisson phylo,
-and the correlated variants not listed were not probed. Poisson animal was not probed
-separately; it shares the relmat code path.
+Poisson: a variant of the Poisson q = 2 fitter that tries the same four tilts (kept only under
+the `_q2_boundary_restarts` acceptance rule) reached those higher values on all three seeds with
+none worse (`probe_tiltvariant_*.tsv`). It was not shipped. drmTMB 0.8.1's default start gives
+-651.5954 on seed 91015, equal to the unchanged Julia value, so the variant would move a cell
+that agrees with drmTMB away from it, and the better mode of that dataset has its correlation on
+a ridge (atanh rho about 8.5), where the converged flag differs between Julia 1.10.12 (false)
+and 1.12 (true). The fixture is kept (`poisson_spatial_q2_sdz_seed91015.csv`) so the variant can
+be revived if the project prefers the better mode to agreement with drmTMB's default fit. NB2 phylo
+and animal, Poisson phylo and animal, and the independent Poisson spatial form were not probed.
