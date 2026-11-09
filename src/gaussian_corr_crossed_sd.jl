@@ -38,12 +38,12 @@ function _drm_gaussian_corr_crossed(f::DrmFormula, fam::Gaussian, split, re, sdp
     has_missing_response && throw(ArgumentError(
         "drm: a Gaussian correlated block beside other random intercepts requires observed " *
         "responses; remove incomplete rows first."))
-    method === :REML && throw(ArgumentError(
-        "drm: a Gaussian correlated block beside other random intercepts supports maximum " *
-        "likelihood only (`method = :REML` is not implemented for this shape)."))
     algorithm === :auto || throw(ArgumentError(
         "drm: `algorithm = :$algorithm` is not implemented for a Gaussian correlated block " *
         "beside other random intercepts (dense exact marginal only)."))
+    reml = method === :REML
+    reml && _gaussian_block_reml_gate(_sd_target_parts(f), Xμ, Xσ,
+        "a Gaussian correlated block beside other random intercepts")
     bi, others = split
     (_, grp) = re[bi]
     vars = _re_multi_corr_vars(re[bi][1])
@@ -121,11 +121,12 @@ function _drm_gaussian_corr_crossed(f::DrmFormula, fam::Gaussian, split, re, sdp
                        nm = Vector{String}(nm), block = blk))
     end
     return _fit_gaussian_corr_crossed(fam, y, Xμ, Xσ, U, Zgs, gidx, G, extras, nmμ, nmσ,
-                                      nmsds, blocks, members, grp, g_tol)
+                                      nmsds, blocks, members, grp, g_tol; reml)
 end
 
 function _fit_gaussian_corr_crossed(fam::Gaussian, y, Xμ, Xσ, U, Zgs, gidx, G, extras,
-                                    nmμ, nmσ, nmsds, blocks, members, grp, g_tol)
+                                    nmμ, nmσ, nmsds, blocks, members, grp, g_tol;
+                                    reml::Bool = false)
     n = length(y); q = size(U, 2)
     n ≤ 5000 || throw(ArgumentError("drm: a correlated block beside other random intercepts " *
         "assembles a dense $(n)×$(n) marginal covariance and is limited to 5000 rows."))
@@ -155,7 +156,11 @@ function _fit_gaussian_corr_crossed(fam::Gaussian, y, Xμ, Xσ, U, Zgs, gidx, G,
                  r
              end for e in extras]
     const_2pi = 0.5 * n * log(2π)
-    function nll(θ)
+    const_pμ = 0.5 * pμ * log(2π)
+    # One dense objective for ML and REML. REML (Patterson-Thompson; exact because the marginal
+    # is Gaussian-linear in beta_mu) adds ½ logdet(Xμ′V⁻¹Xμ) − ½ pμ log(2π); with the Cholesky
+    # V = L L′, X′V⁻¹X = (L⁻¹X)′(L⁻¹X) is PSD by construction.
+    function nll_full(θ, restricted::Bool)
         T = eltype(θ)
         ημ = Xμ * θ[1:pμ]; ησ = Xσ * θ[pμ+1:pμ+pσ]
         Lc = _q34_corr_chol(θ[rθ], q)
@@ -185,8 +190,13 @@ function _fit_gaussian_corr_crossed(fam::Gaussian, y, Xμ, Xσ, U, Zgs, gidx, G,
         Vfac = cholesky(Symmetric(Vm); check = false)
         issuccess(Vfac) || return convert(T, 1e18)
         rr = y .- ημ
-        return 0.5 * (logdet(Vfac) + dot(rr, Vfac \ rr)) + const_2pi
+        val = 0.5 * (logdet(Vfac) + dot(rr, Vfac \ rr)) + const_2pi
+        restricted || return val
+        W = Vfac.L \ Xμ
+        return _reml_add_restriction(val, Symmetric(W' * W), pμ)
     end
+    nll(θ) = nll_full(θ, reml)
+    nll_ml(θ) = nll_full(θ, false)
     βμ0 = Xμ \ y; res0 = y - Xμ * βμ0
     ncomp = q + length(extras)
     θ0 = zeros(ntot)
@@ -224,7 +234,9 @@ function _fit_gaussian_corr_crossed(fam::Gaussian, y, Xμ, Xσ, U, Zgs, gidx, G,
     end
     fit = DrmFit(fam, block_list, name_list, θ̂, V, -nll(θ̂), n, converged,
                  Dict(:mu => Xμ * θ̂[1:pμ]), Dict(:mu => Vector{Float64}(y)), scales)
-    return _withiterations(_withnll(fit, nll), Optim.iterations(opt))
+    fit = _withiterations(_withnll(fit, nll), Optim.iterations(opt))
+    reml && return _withreml(fit, -nll(θ̂), -nll_ml(θ̂))
+    return fit
 end
 
 # Independent intercept and slope terms, `(1 | g) + (0 + x | g) [+ (0 + z | g)]`, each with

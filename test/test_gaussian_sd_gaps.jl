@@ -37,11 +37,13 @@ end
     catch e
         sprint(showerror, e)
     end
-    # REML is not implemented for the new routes and says so
-    @test occursin("method = :REML is not implemented", msg(f("(1 + x1 | g) + (1 | g2)"); method = :REML))
-    @test occursin("maximum likelihood only", msg(f("(1 + x2 + x3 | g)"); method = :REML))
-    @test occursin("maximum likelihood only",
+    # REML: the sd()-free correlated shapes now fit (docs/dev-log/2026-11-09-gaussian-reml-routes2.md);
+    # a correlated block with an sd() formula, or beside a slope term, still refuses and says so
+    @test msg(f("(1 + x1 | g) + (1 | g2)"); method = :REML) == ""
+    @test msg(f("(1 + x2 + x3 | g)"); method = :REML) == ""
+    @test occursin("together with `sd()` formulas",
                    msg(f("(1 + x1 | g) + (1 | g2)"; extra = (gsd_formula("sd(g2) ~ z2"),)); method = :REML))
+    @test occursin("method = :REML is not implemented", msg(f("(1 + x2 | g) + (0 + x3 | g2)"); method = :REML))
     @test occursin("maximum likelihood only",
                    msg(f("(1 | g) + (0 + x2 | g)"; extra = (gsd_formula("sd(g, coef(x2)) ~ z"),)); method = :REML))
     # a label shared by two terms ties their correlations: refused by name, not dropped

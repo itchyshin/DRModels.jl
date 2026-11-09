@@ -181,7 +181,10 @@ _default_q2_sd_families() = Dict{Symbol,Tuple}(   # a function: the family types
 )
 
 function _default_structured_q2_sd(f::DrmFormula, fam; method = nothing)
-    method === :REML && return f
+    # REML completes the default only for Gaussian animal / relmat / spatial: those unlabelled
+    # `kind(1 + x | g)` cells fit with `REML = TRUE` in drmTMB 0.8.1 and agree with the explicit
+    # `sd(…, coef(·)) ~ 1` spelling; every other family stays ML-only (no restricted objective).
+    method === :REML && !(fam isa Gaussian) && return f
     fam isa Binomial && fam.link !== :logit && return f
     (isempty(f.sd_targets) && isempty(_sd_target_parts(f)) && isempty(_sdphylo_parts(f))) || return f
     all(p -> first(p) in (:mu, :sigma), f.forms) || return f

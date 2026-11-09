@@ -1452,8 +1452,11 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         # `(1 | g)` on the Woodbury spine (#439). σ-RE, slopes, multi-ranef,
         # structured / phylo / meta, and non-Gaussian REML stay rejected.
         # The bivariate q=4 path has its own REML gate.
+        # `_re_kind` stops at q = 2; a q = 3, 4 correlated block `(1 + x + z | g)` is classified here.
+        _kind_reml(rl) = (mc = _re_multi_corr_vars(rl); mc !== nothing && length(mc) ≥ 2) ?
+                         :multicorr : _re_kind(rl)[1]
         ordinary_mean_intercept = length(re) == 1 &&
-            _re_kind(re[1][1])[1] === :intercept &&
+            _kind_reml(re[1][1]) === :intercept &&
             isempty(sigma_re) && structured === nothing && metav === nothing &&
             length(_collect_structured(rhs[:mu])) == 0
         # (c) #624 item (c): the Gaussian MEAN-ONLY `phylo(1 | species)` cell with an
@@ -1478,7 +1481,7 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
             algorithm in (:auto, :sparse_lbfgs)
         # (d) a single correlated Gaussian mean random slope `(1 + x | g)` with no sigma RE
         # (`_fit_correlated_ranef_gaussian(; reml = true)`, ML path unchanged).
-        corr_mean_slope = length(re) == 1 && _re_kind(re[1][1])[1] === :corr &&
+        corr_mean_slope = length(re) == 1 && _kind_reml(re[1][1]) === :corr &&
             isempty(sigma_re) && structured === nothing && metav === nothing &&
             length(_collect_structured(rhs[:mu])) == 0
         # (e) Gaussian-linear mean random effects with a constant residual scale, where the
@@ -1492,7 +1495,7 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         # No sigma predictor, sigma random effect, meta_V, or missing response (untested).
         reml_gauss_ok = isempty(sigma_re) && metav === nothing && size(Xσ, 2) == 1 &&
             !has_missing_response
-        re_kinds_reml = [_re_kind(rl)[1] for (rl, _) in re]
+        re_kinds_reml = [_kind_reml(rl) for (rl, _) in re]
         reml_scalar_slope = reml_gauss_ok && length(re) == 1 && re_kinds_reml[1] === :slope &&
             structured === nothing && length(_collect_structured(rhs[:mu])) == 0
         reml_multi_scalar = reml_gauss_ok && length(re) >= 2 &&
@@ -1503,18 +1506,30 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
             length(all_structured) == 1 && isempty(re)
         reml_phylo_slope = reml_gauss_ok && structured !== nothing && structured[1] === :phylo &&
             structured_slope !== nothing && length(all_structured) == 1 && isempty(re)
-        length(re) >= 2 && any(k -> k === :corr, re_kinds_reml) &&
-            throw(ArgumentError("drm: method = :REML is not implemented for a correlated `(1 + x | g)` " *
-                "block beside another random-effect term: this shape fits by maximum " *
-                "likelihood only (`method = :ML`), and no restricted objective is built for it. " *
-                "Use independent terms `(1 | g) + (0 + x | g)` or a single correlated block."))
+        # (f) one correlated block `(1 + x [+ z [+ w]] | g)` of q = 2..4 coefficients, alone (q = 3, 4 here; q = 2
+        # is (d)) or beside random intercepts on OTHER groupings `(1 | h)`: exact dense / per-group
+        # marginals whose ML fits agree with R, with the restriction riding on them. No `sd()`
+        # formula (those are refused in the routers with their own message).
+        reml_corr_multi = reml_gauss_ok && length(re) == 1 && re_kinds_reml[1] === :multicorr &&
+            structured === nothing && length(_collect_structured(rhs[:mu])) == 0
+        reml_corr_crossed = reml_gauss_ok && structured === nothing &&
+            length(_collect_structured(rhs[:mu])) == 0 && _corr_crossed_split(re) !== nothing
+        length(re) >= 2 && any(k -> k in (:corr, :multicorr), re_kinds_reml) && !reml_corr_crossed &&
+            throw(ArgumentError("drm: method = :REML is not implemented for a correlated " *
+                "`(1 + x | g)` block beside a random SLOPE term or on the same grouping as another " *
+                "term: those shapes fit by maximum likelihood only (`method = :ML`) or not at all. " *
+                "REML is available for a correlated block alone, or beside random INTERCEPTS " *
+                "`(1 | h)` on other groupings."))
         structured !== nothing && structured[1] === :spatial && isempty(re) && reml_gauss_ok &&
-            throw(ArgumentError("drm: method = :REML is not implemented for `spatial(1 | g)`: the " *
-                "ML fit of this route does not yet reproduce drmTMB's maximum likelihood on the " *
-                "reference data (logLik differs by about 0.9), so a restricted likelihood built on " *
-                "it would not agree with drmTMB(REML = TRUE) either. Use method = :ML."))
+            throw(ArgumentError("drm: method = :REML is not implemented for the bare `spatial(1 | g)`: " *
+                "this route estimates the exponential range, while drmTMB fixes it at the median " *
+                "pairwise distance, so the two maximum likelihoods differ (about 0.9 logLik on the " *
+                "reference data) and a restricted likelihood would not match drmTMB(REML = TRUE). " *
+                "For drmTMB's fixed-range kernel write `sd(g, spatial) ~ 1` beside the term " *
+                "(that route supports REML), or use method = :ML."))
         (ordinary_mean_intercept || corr_mean_slope || phylo_mean_only ||
          reml_scalar_slope || reml_multi_scalar || reml_dense_structured || reml_phylo_slope ||
+         reml_corr_multi || reml_corr_crossed ||
          (isempty(re) && isempty(sigma_re) && structured === nothing &&
           metav === nothing && length(_collect_structured(rhs[:mu])) == 0)) ||
             throw(ArgumentError("drm: method = :REML is not implemented for this model on the " *
@@ -1523,8 +1538,10 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
                 "sd() submodel, and meta_V() all land here). REML IS available for: the " *
                 "fixed-effect Gaussian location–scale model; a single Gaussian mean random " *
                 "intercept `(1 | g)`, slope `(0 + x | g)` or correlated slope `(1 + x | g)`, several independent " *
-                "scalar terms, `relmat(1 | g)` / `animal(1 | g)`, `phylo(1 + x | g)` (each with a constant " *
-                "residual scale); every sd() LSS route (`sd(g)`, `sd_phylo` dense and " *
+                "scalar terms, a correlated block of 3 or 4 coefficients `(1 + x + z | g)` alone or beside random " *
+                "intercepts on other groupings, `relmat(1 | g)` / `animal(1 | g)`, `phylo(1 + x | g)` (each with a " *
+                "constant residual scale and no sd() formula); `relmat` / `animal` / `spatial(1 | g)` with " *
+                "`sd(g, <level>) ~ …`; the bare unlabelled `relmat` / `animal` / `spatial(1 + x | g)`; every sd() LSS route (`sd(g)`, `sd_phylo` dense and " *
                 "sparse, and the multi-component sd() router); the bivariate structured " *
                 "routes (q=2 and q=4, both native and via drm_bridge); and Poisson `(1 | g)` " *
                 "and Poisson `phylo(1 | species)`. Use method = :ML (the default) for this " *
