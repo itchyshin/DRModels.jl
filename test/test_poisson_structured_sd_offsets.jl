@@ -1,4 +1,4 @@
-using DRModels, Test, Random, LinearAlgebra
+using DRModels, Test, Random, LinearAlgebra, StableRNGs
 import Distributions
 
 function _poisson_offset_sd_laplace_oracle(theta, y, Xmu, Zobs, gidx, Q;
@@ -76,7 +76,42 @@ end
     precision_fit = drm(formula, Poisson(); data, Ainv, se = false)
     @test precision_fit.converged
     @test precision_fit.loglik ≈ fit.loglik atol = 2e-5
-    @test fitted(precision_fit) ≈ fitted(fit)
+    # Two separately optimised fits of one flat likelihood agree to the
+    # optimiser tolerance, not to machine precision: the relative gap in the
+    # fitted values is 1e-12 to 2e-7 across datasets and Julia versions while
+    # the log-likelihoods agree to 1e-9.
+    @test fitted(precision_fit) ≈ fitted(fit) rtol = 1e-5
+end
+
+@testset "Poisson animal SD: A and Ainv optima agree to optimiser tolerance" begin
+    # StableRNG draw (identical on every Julia version) whose A-versus-Ainv
+    # fitted-value gap is about 5e-8 on 1.12 and 2e-8 on 1.10, above the
+    # default isapprox rtol of 1.5e-8.
+    rng = StableRNG(3)
+    G, m = 12, 12
+    group_index = repeat(1:G, inner = m)
+    group = ["animal_$g" for g in group_index]
+    z_group = repeat([0.0, 1.0], inner = G ÷ 2)
+    z = z_group[group_index]
+    x = randn(rng, G * m)
+    log_exposure = 0.25 .* sin.(range(0.0, 4.0; length = G * m))
+    R = 0.4 .^ abs.(reshape(1:G, :, 1) .- reshape(1:G, 1, :))
+    scale = collect(range(0.7, 1.6; length = G))
+    A = Diagonal(scale) * R * Diagonal(scale)
+    alpha = [log(0.4), 0.35]
+    latent = cholesky(Symmetric(R)).L * randn(rng, G)
+    eta = 0.1 .+ 0.2 .* x .+ log_exposure .+
+          exp.(alpha[1] .+ alpha[2] .* z_group)[group_index] .* latent[group_index]
+    y = Float64[rand(rng, Distributions.Poisson(exp(v))) for v in eta]
+    data = (; y, x, z, g = group, log_exposure)
+    formula = bf(@formula(y ~ x + offset(log_exposure) + animal(1 | g)),
+                 @formula(sd(g, animal) ~ z))
+    fit = drm(formula, Poisson(); data, A, se = false)
+    precision_fit = drm(formula, Poisson(); data, Ainv = inv(Symmetric(A)),
+                        se = false)
+    @test fit.converged && precision_fit.converged
+    @test precision_fit.loglik ≈ fit.loglik atol = 2e-5
+    @test fitted(precision_fit) ≈ fitted(fit) rtol = 1e-5
 end
 
 @testset "Poisson animal-slope SD regression includes row offsets" begin
