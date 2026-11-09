@@ -43,4 +43,29 @@ Not taken: Binomial `ordinary q3 sd-z` and `q4 sd-z` (non-converged and timeout;
 
 ## Verdicts
 
-Filled in below once the runs finish.
+R side rerun on Totoro (drmTMB 0.8.1, library `~/drm_campaign_20261108/Rlib`, one core, `nice`): every logLik reproduces the wave-10 map to 1e-9 (`test/fixtures/nongauss_corr/r_reference_drmTMB_0.8.1.csv`, script `run_r_nongauss_corr.R`). Julia: Julia 1.10.12, default settings, `data` as in the map.
+
+| Cell | R logLik | Julia logLik | Julia minus R | Verdict |
+| --- | --- | --- | --- | --- |
+| poisson ordinary q2 `sd-first` | -712.3057715513 | -712.3057715514 | -1e-10 | (a) fits, agrees |
+| poisson ordinary q2 `sd-last` | -711.3985694172 | -711.3985694171 | 1e-10 | (a) |
+| nb2 ordinary q2 `sd-first` | -696.3014043646 | -696.3014043646 | 0 | (a) |
+| nb2 ordinary q2 `sd-last` | -698.1310518253 | -698.1310518254 | -1e-10 | (a) |
+| lognormal ordinary q2 `sd-one` | -550.8682164308 | -550.8682164308 | 0 | (a) |
+| lognormal ordinary q2 `sd-z` | -549.4290610144 | -549.4290610144 | 0 | (a) |
+| lognormal ordinary q2 `sd-first` | -549.9083396264 | -549.9083396264 | 0 | (a) |
+| lognormal ordinary q2 `sd-last` | -550.4577955853 | -550.4577955853 | 0 | (a) |
+| binomial ordinary q3 `sd-none` | -253.5747241067 | -253.00244 | +0.572 | (a) by rule 2: Julia with `nq = 1` (Laplace) gives -253.57472, equal to R to 1e-5; the default 5-node rule and `nq = 9` (-253.00057) move toward -253.0. Integrator, not a worse optimum. Ships with the gap documented, not as agreement at 1e-4 |
+| binomial ordinary q4 `sd-none` | -253.3593431487 (not converged, `pdHess` FALSE) | -252.71318 (converged) | +0.646 | (b) R does not converge. Julia's default fit converges; recorded with no agreement claim. `nq = 1` at q = 4 stops at -239.34 (not converged), so the Laplace rule is not a usable comparison there |
+
+Cells (c) and (d): none. No cell needed boundary restarts (Julia never stopped below R) and none was too large.
+
+Julia-version note: the q = 3 Binomial fit reports `converged = true` on 1.10.12 and `false` on 1.12.6, and its logLik differs between the `~ 1`-explicit and bare forms by 1e-5 on 1.12.6 (at most 1e-6 on 1.10.12). The optimum has a flat direction (`rcond` about 1e-11, a pseudo-inverse warning). Tests do not assert the flag there and use 1e-4 for that comparison; this is evidence-based (observed gaps), not a widening to pass.
+
+## Behaviour changes and limits
+
+- Poisson labelled `(1 + x | p | g)` with one SD formula was refused and now fits (the labelled form is a Julia extension; drmTMB refuses it). `test/test_labelled_ordinary_q2_sd.jl` asserted the refusal and now asserts that the one-formula fit equals the explicit `~ 1` fit.
+- `simulate` and the parametric bootstrap are refused (clear message) for the one-formula Poisson/NB2 fits, because the post-fit marginal simulator is guarded on two SD targets. `predict` and `summary` work. Not extended here.
+- LogNormal q = 3, 4 and Poisson/NB2 q = 3, 4 stay refused, as in drmTMB.
+- Binomial bare q = 3, 4 is logit only; other links keep the old refusal.
+- Not run: R estimates and standard errors were not compared, only logLik and convergence flags.
