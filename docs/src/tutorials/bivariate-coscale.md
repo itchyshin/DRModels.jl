@@ -95,6 +95,11 @@ it is too small to support biological recovery or interval claims. It also sets
 an inferential analysis, use a design with enough species and replication, and
 retain the default `q4_vcov = true` when you need Wald uncertainty.
 
+The q=4 ML fit stops on a relative objective change, `q4_f_reltol` (default
+`1e-7`). On a flat q=4 ridge the default can stop up to about `1e-3` in
+log-likelihood short of the optimum. Pass `q4_f_reltol = 1e-12` to converge
+tightly, at a higher run time. REML q=4 ignores this keyword.
+
 The `:phylocov` coefficient block describes group-level covariance rather than
 a distributional predictor, so
 [`predict_parameters`](@ref) returns `:mu1`, `:mu2`, `:sigma1`, `:sigma2`, and
@@ -118,8 +123,12 @@ correlation matrix of `Σ_a`.
 The same q=4 model accepts level-indexed structured providers. Put
 `relmat(1 | id)`, `animal(1 | id)`, or `spatial(1 | site)` on **all four** axes
 and pass `K=…`, `A=…`, or `coords=…` respectively. Spatial uses a **fixed**
-range (`spatial_range`; default = the *median* positive pairwise site distance with a 1e-6
-ridge, which is drmTMB's native kernel), rather than estimating range jointly. `bootstrap_sigma_a` is available only for tree-based
+range, rather than estimating it jointly. Without `spatial_range` the kernel is
+`exp(-d / m) + 1e-6 I`, with `m` the *median* positive pairwise site distance,
+which is drmTMB's native kernel; `fit.ranef.spatial_range` records `m`. An
+explicit `spatial_range = ρ` builds `exp(-d / ρ) + 1e-8 I` instead. The same
+default applies to the q=2 `spatial(1 | site)` route on `mu1` and `mu2`. Before
+this default, these routes used the *mean* pairwise distance. `bootstrap_sigma_a` is available only for tree-based
 phylogenetic fits; calling it for the other structures raises an `ArgumentError`.
 
 ```julia
