@@ -40,7 +40,12 @@ function dense_binomial_animal_slope_iid_laplace(y, X, animal_index, iid_index,
             end
             rate *= 0.5
         end
-        rate > 1e-8 || error("independent animal-slope-plus-IID Laplace mode did not converge")
+        if rate <= 1e-8
+            # At the mode the Newton step is rounding noise and no trial
+            # decreases `joint`; that is convergence, not failure.
+            norm(step, Inf) < 1e-6 && break
+            error("independent animal-slope-plus-IID Laplace mode did not converge")
+        end
     end
     eta = eta_fixed + M * u
     p = 1.0 ./ (1.0 .+ exp.(-eta))
