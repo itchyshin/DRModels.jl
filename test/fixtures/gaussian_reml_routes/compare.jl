@@ -41,7 +41,7 @@ const REML_ROUTE_SHAPES = Dict(
 const REML_ROUTE_GROUPS = ["A slope" => ["slope"], "B multi" => ["indep2", "indep3", "indep4", "cross1"],
                            "C dense structured" => ["animal", "relmat"], "D phylo slope" => ["phylo2"]]
 
-function reml_route_fit(shape::String, seed::Int)
+function reml_route_fit(shape::String, seed::Int; tree = nothing)
     prefix, ycol, fstr, kwsym, _ = REML_ROUTE_SHAPES[shape]
     d = _cols("$(prefix)_s$(seed).csv")
     data = (; y = Float64.(d[ycol]), x1 = Float64.(d["x1"]), x2 = Float64.(d["x2"]), x3 = Float64.(d["x3"]),
@@ -53,7 +53,7 @@ function reml_route_fit(shape::String, seed::Int)
     elseif kwsym === :relmat
         (; K = Matrix{Float64}(readdlm(joinpath(_FXD, "A.csv"), ',', Float64)))
     elseif kwsym === :phylo
-        (; tree = strip(read(joinpath(_FXD, "tree.nwk"), String)))
+        (; tree = tree === nothing ? strip(read(joinpath(_FXD, "tree.nwk"), String)) : tree)
     else
         (;)
     end
@@ -70,7 +70,8 @@ function reml_route_compare(shape::String, seed::Int)
     mu_units = [abs(mu[j] - R(t).est) / R(t).se for (j, t) in enumerate(["mu:(Intercept)", "mu:x1", "mu:x2", "mu:x3"])]
     sds_j = vcat(exp.(th[DRModels._block_range(fit, :sigma)]), exp.(th[DRModels._block_range(fit, :resd)]))
     sds_r = [R("sigma").est; [R(t).est for t in REML_ROUTE_SHAPES[shape][5]]]
-    boundary = any(x -> x < REML_ROUTE_THRESH.boundary_rel * std(data.y), vcat(sds_j, sds_r))
+    # boundary is decided from R's SDs only: a Julia SD that collapses beside a non-zero R SD must fail the SD check, not skip it
+    boundary = any(x -> x < REML_ROUTE_THRESH.boundary_rel * std(data.y), sds_r)
     sd_rel = maximum(abs.(sds_j .- sds_r) ./ sds_r)
     return (shape = shape, seed = seed, ll_diff = abs(fit.loglik - first(ref).ll), mu_se_units = maximum(mu_units),
             sd_rel = sd_rel, boundary = boundary, converged = fit.converged, r_converged = first(ref).conv,
