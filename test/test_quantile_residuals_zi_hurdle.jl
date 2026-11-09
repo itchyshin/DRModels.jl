@@ -93,7 +93,7 @@ end
 
             # Exact: replaying the same uniforms (one draw per row, in row order)
             # through the brute-force mixture CDF reproduces every PIT value.
-            λ̂ = fitted(fit); p̂ = fit.scales[kind]
+            λ̂ = fit.means[:mu]; p̂ = fit.scales[kind]
             rsize = fam === :nb2 ? 1 ./ fit.scales[:sigma] .^ 2 : fill(nothing, n)
             urng = StableRNG(1)
             uref = map(1:n) do i
