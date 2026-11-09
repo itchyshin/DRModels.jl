@@ -115,6 +115,14 @@ function _fit_indep_re_laplace(fam, kind::Val, y, Xμ, Xσ, Xν, comps, nmμ, nm
             end
             step = ch \ grad
             norm(step) <= tol * (1 + norm(b)) && return b, true
+            # Rounding floor: once the predicted decrease (the Newton decrement) is below
+            # what `J0` can resolve, the line search below rejects every step (`Jt <= J0`
+            # is decided by rounding), halves it to nothing and loops to `maxiter`, which
+            # reported a failed inner solve at a benign point (Gamma `(1 | g) + (0 + x | g)`
+            # wave-10 cell: |step| stalled at 1.4e-8, |grad| at 2.6e-7). Take the step and stop.
+            if 0.5 * dot(grad, step) <= 1e-13 * (1 + abs(J0))
+                return b .- step, true
+            end
             α = 1.0; accepted = false
             while α >= 1e-10
                 trial = b .- α .* step

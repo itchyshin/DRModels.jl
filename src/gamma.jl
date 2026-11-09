@@ -896,6 +896,28 @@ function _fit_gamma_structured_sd_laplace(fam, y, Xmu, Xsigma, Zobs, Zg, gidx,
     gfinal = zeros(length(theta_hat)); grad!(gfinal, theta_hat)
     sigma_index = pmu + 1
     sigma_bound_tol = 1e-6
+    # Polish. The Fminbox L-BFGS can stop with a zero step (line search unable to move on
+    # the finite-difference gradient) just outside the reporting test of
+    # `_laplace_outer_converged`: Gamma phylo `sd-z` of the wave-10 gap map sat at R's
+    # log-likelihood to 1e-10 with |grad|/n = 1.01e-6 against the 1e-6 limit. When the test
+    # fails and no bound is active, take up to two Newton steps on the finite-difference
+    # Hessian and keep each only if the objective does not rise. The test is unchanged.
+    if !_laplace_outer_converged(result, nll_hat, gfinal, theta_hat, length(y), g_tol) &&
+       isfinite(nll_hat) && nll_hat < 1e17 &&
+       abs(theta_hat[sigma_index]) < 4 - 1e-3
+        for _ in 1:2
+            Hn = _finite_hessian(nll, theta_hat; h = _fd_hessian_step(length(y)))
+            chn = cholesky(Symmetric(Matrix(Hn)); check = false)
+            issuccess(chn) || break
+            trial = theta_hat .- (chn \ gfinal)
+            abs(trial[sigma_index]) < 4 - 1e-3 || break
+            f_trial = nll(trial)
+            (isfinite(f_trial) && f_trial <= nll_hat) || break
+            theta_hat, nll_hat = trial, f_trial
+            grad!(gfinal, theta_hat)
+            _laplace_outer_converged(result, nll_hat, gfinal, theta_hat, length(y), g_tol) && break
+        end
+    end
     at_lower_sigma_bound = theta_hat[sigma_index] <= -4 + sigma_bound_tol
     at_upper_sigma_bound = theta_hat[sigma_index] >= 4 - sigma_bound_tol
     gcheck = copy(gfinal)
