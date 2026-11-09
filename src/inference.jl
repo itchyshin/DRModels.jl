@@ -3934,15 +3934,21 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing,
                 throw(ArgumentError("spatial bootstrap coords must have one row per `$g` level (G = $G0)"))
             size(cmat, 2) >= 1 ||
                 throw(ArgumentError("spatial bootstrap coords need at least one coordinate column"))
-            ρ = exp(only(coef(fit, :range)))
-            isfinite(ρ) && ρ > 0 ||
-                throw(ArgumentError("spatial bootstrap requires a positive finite fitted range"))
-            D = [sqrt(sum(abs2, @view(cmat[k, :]) .- @view(cmat[l, :])))
-                 for k in 1:G0, l in 1:G0]
-            # Match the coordinate-spatial fitting routes exactly: the random
-            # effect SD is defined against exp(-distance / fitted range), with
-            # the same numerical diagonal jitter used during fitting.
-            (g, exp.(-D ./ ρ) + 1e-8I)
+            if any(b -> first(b) === :range, fit.blocks)
+                ρ = exp(only(coef(fit, :range)))
+                isfinite(ρ) && ρ > 0 ||
+                    throw(ArgumentError("spatial bootstrap requires a positive finite fitted range"))
+                D = [sqrt(sum(abs2, @view(cmat[k, :]) .- @view(cmat[l, :])))
+                     for k in 1:G0, l in 1:G0]
+                # Match the coordinate-spatial fitting routes exactly: the random
+                # effect SD is defined against exp(-distance / fitted range), with
+                # the same numerical diagonal jitter used during fitting.
+                (g, exp.(-D ./ ρ) + 1e-8I)
+            else
+                # Fits with no `:range` block (Poisson, Gamma and the other count routes)
+                # were fitted with drmTMB's fixed native kernel; draw from that one.
+                (g, _gaussian_spatial_sd_kernel(cmat, G0, g))
+            end
         else
             (g, _resolve_structured_matrix(structured[1], g, G0;
                                            K=K, A=A, tree=tree, coords=coords))

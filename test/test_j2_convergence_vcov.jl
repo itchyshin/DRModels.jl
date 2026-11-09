@@ -33,14 +33,8 @@ Base.iterate(::_J2ThrowingDict, s...) = nothing
     @test ok60 == true
     @test iters60 < 60
 
-    # coordinate-spatial Poisson mode (poisson.jl), same contract
-    ys = [0.0, 1, 2, 3, 4]
-    Cinv = Matrix(1.0I, 5, 5)
-    _, _, ok1 = DRModels._poisson_spatial_mode(ys, zeros(5), collect(1:5), Cinv, 1.0, zeros(5);
-                                               maxiter = 1)
-    @test ok1 == false                       # was `issuccess(Hch)` = true
-    _, _, okd = DRModels._poisson_spatial_mode(ys, zeros(5), collect(1:5), Cinv, 1.0, zeros(5))
-    @test okd == true
+    # (the coordinate-spatial Poisson inner mode that this testset also covered was removed
+    # in wave 10: that route now fits through the sparse Laplace spine above.)
 end
 
 @testset "#1047 EM: converged is the EM's own stop, not iterations < cap" begin

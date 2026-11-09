@@ -308,8 +308,8 @@ function _drm_poisson_fit(f::DrmFormula, fam::Poisson; data, tree = nothing, K =
         isaghq && _aghq_reject(fam, "a phylogenetic/structured random effect")
         # Phylo / relmat / animal / precomputed spatial share `_fit_poisson_general_laplace`
         # and admit opt-in Cox–Reid (#450). Probe Cell D is not a recovery headline —
-        # the docstring warning is the honesty ledger. Coordinate-spatial with
-        # jointly estimated ρ is a different fitter and stays rejected. AGHQ stays
+        # the docstring warning is the honesty ledger. Coordinate spatial uses the fixed
+        # native kernel and takes the same route (opt-in Cox–Reid included). AGHQ stays
         # rejected here (#448): 1-D Liu–Pierce is Poisson `(1 | g)` only.
         isempty(re) ||
             error("Poisson() structured effects cannot be combined with ordinary random effects yet")
@@ -340,14 +340,17 @@ function _drm_poisson_fit(f::DrmFormula, fam::Poisson; data, tree = nothing, K =
             return _withformula(_fit_poisson_phylo_laplace(fam, y, Xμ, labels, tree, nmμ, grp, g_tol;
                                                           se = se, reml = reml), f)
         elseif kind === :spatial && K === nothing && coords !== nothing
-            _require_finite_inputs(; coords=coords)
-            # Coordinate-based exponential-kernel spatial covariance with the range
-            # ρ ESTIMATED JOINTLY (#270): C(ρ) = exp(-d/ρ) from the site distances,
-            # ρ enters the outer parameter vector, and its gradient flows through
-            # C(ρ) → Q(ρ) → the Laplace marginal. The coordinate-spatial twin of the
-            # Gaussian `_fit_spatial_gaussian` path, on the Poisson Laplace spine.
-            reml && _reject_reml_route(fam, "coordinate-based spatial with jointly estimated range ρ")
-            return _withformula(_fit_poisson_spatial_coord(fam, y, Xμ, labels, coords, nmμ, grp, g_tol; se = se), f)
+            # Coordinate spatial intercept: drmTMB's FIXED-range kernel, exp(-d / r) + 1e-6 I with
+            # r the median positive pairwise distance (`drm_spatial_coords_precision`), exactly as
+            # the Gamma route (wave 8). The range is not a parameter, so the fit has the same
+            # parameters as drmTMB (beta, log sd) and the same logLik at the optimum. It used to
+            # estimate the range (a sixth parameter), which gained 1.23 logLik on the wave-10
+            # Poisson cell but is a different model from the one drmTMB fits.
+            _, Gsp = _group_index(labels)
+            Csp = _spatial_covariance_from_coords(grp, Gsp, coords, nothing)
+            return _withformula(_fit_poisson_relmat_laplace(fam, y, Xμ, Csp, labels, nmμ, grp, g_tol;
+                                                           se = se, reml = reml,
+                                                           normalize = true), f)
         elseif kind === :relmat || kind === :animal || kind === :spatial
             # General user-supplied PD covariance C on the mean intercept
             # (relatedness / animal model / PRECOMPUTED spatial). Reuses the phylo
@@ -1254,7 +1257,7 @@ end
 # user-supplied G×G PD covariance from the keyword args. `relmat`/`animal` take
 # the matrix directly (`K`/`A`); `spatial` accepts a precomputed covariance via
 # `K`, or — handled upstream in `drm(...)` before this is reached — site `coords`
-# for coordinate-based joint range estimation (#270). Reaching the `:spatial`
+# for the fixed-range native kernel. Reaching the `:spatial`
 # branch here means neither was supplied. Mirrors `_resolve_structured_matrix`
 # (gaussian_structured.jl) but for the count Laplace route.
 function _poisson_structured_cov(kind::Symbol, grp::Symbol, K, A, coords)
@@ -1268,7 +1271,7 @@ function _poisson_structured_cov(kind::Symbol, grp::Symbol, K, A, coords)
         K !== nothing && return _finite_user_matrix(K, "K")
         error("spatial(1 | $grp) for counts needs either a precomputed spatial covariance " *
               "via `K = …`, or site `coords = …` (a G×2 coordinate matrix) for coordinate-based " *
-              "exponential-kernel covariance with the range estimated jointly")
+              "exponential-kernel covariance with the range fixed at the median pairwise distance")
     end
 end
 
@@ -1524,206 +1527,6 @@ function _fit_poisson(fam::Poisson, y, Xμ, nmμ, g_tol; offset::AbstractVector{
         Optim.iterations(res))
     return nonexistent ? _withgeometry(fit, :count_mle_nonexistent) : fit
 end
-
-# ===========================================================================
-# Coordinate-based exponential-kernel spatial covariance for Poisson (#270)
-# ===========================================================================
-# spatial(1 | site) with site coordinates and the range ρ ESTIMATED JOINTLY.
-# The spatial correlation among the G sites is C(ρ) = exp(-d/ρ) (+ jitter) built
-# from pairwise site distances; the random intercept is b ~ N(0, σ_b² C(ρ)) on
-# log λ. The outer parameter vector is θ = [β_μ; log σ_b; log ρ], so ρ is a true
-# hyperparameter: its gradient flows through C(ρ) → the Laplace marginal.
-#
-# Unlike the verified large-p sparse-Laplace spine (`_fit_poisson_relmat_laplace`,
-# which freezes a precomputed precision Q and supplies a hand-derived O(p) gradient
-# for θ = [β; log σ_b] only), this path must differentiate the marginal w.r.t. ρ
-# as well. It does so the same way every other DRModels.jl non-Gaussian family fit does
-# (Poisson/NB2/Gamma GHQ paths and the Gaussian coordinate-spatial path
-# `_fit_spatial_gaussian`): the marginal NLL is written in AD-traceable operations
-# and ForwardDiff supplies the EXACT gradient (and the Hessian for the covariance).
-# Because the number of SITES G is the latent dimension here (one effect per site,
-# typically modest), a dense per-site inner mode and a dense G×G log-det are
-# acceptable and keep the whole marginal differentiable.
-#
-# The Laplace marginal matches the verified sparse path's convention exactly
-# (`_fit_poisson_general_laplace`): with the inner mode b̂ solving
-# ∂(data+prior)/∂b = 0 and H = σ_b⁻² C⁻¹ + diag(μ̂),
-#     NLL(θ) = Σ_i[μ̂_i − y_i η̂_i + log y_i!]            (data, at the mode)
-#            + ½ σ_b⁻² b̂ᵀ C⁻¹ b̂                         (prior quadratic)
-#            + G·log σ_b + ½ logdet C(ρ)                  (−½ logdet(σ_b² C))
-#            + ½ logdet H.                                 (Laplace curvature)
-# AD differentiates through the data/prior/log-det terms AND through b̂(θ) — for
-# that the implicit-function relation must hold on the AD (dual) numbers, so the
-# inner Newton solve is run to a tight step-norm tolerance on whatever element
-# type θ carries. The joint is strictly convex (convex Poisson data term + PD
-# prior), so Newton from a warm start lands at the dual-exact mode in a few steps.
-
-# AD-clean inner mode: minimise over b the joint negative log-density
-#   f(b) = Σ_i[exp(η0_i + b_{s_i}) − y_i(η0_i + b_{s_i})] + ½ σ_b⁻² bᵀ C⁻¹ b,
-# returning the mode b̂ and the Cholesky of H = σ_b⁻² C⁻¹ + diag(μ̂(b̂)). `Cinv` and
-# `η0` carry the active element type so the whole solve is differentiable. `gidx`
-# maps each observation to its site. Warm-started from `b0`.
-function _poisson_spatial_mode(y, η0, gidx, Cinv, invσ2, b0;
-                               maxiter::Int = 100, tol::Real = 1e-12)
-    T = promote_type(eltype(η0), eltype(Cinv), typeof(invσ2))
-    G = size(Cinv, 1)
-    b = T.(b0)
-    Hch = nothing
-    met_tol = false
-    last_sn = Inf
-    for _ in 1:maxiter
-        grad = invσ2 .* (Cinv * b)
-        diagH = zeros(T, G)
-        @inbounds for i in eachindex(y)
-            k = gidx[i]
-            μi = exp(clamp(η0[i] + b[k], -30.0, 30.0))
-            grad[k] += μi - y[i]
-            diagH[k] += μi
-        end
-        H = invσ2 .* Cinv + Diagonal(diagH)
-        Hch = cholesky(Symmetric(H); check = false)
-        issuccess(Hch) || return b, Hch, false
-        step = Hch \ grad
-        b = b .- step
-        last_sn = ForwardDiff.value(norm(step))
-        if last_sn <= tol * (1 + ForwardDiff.value(norm(b)))
-            met_tol = true
-            break
-        end
-    end
-    # Cap exhausted (#1024). `tol = 1e-12` can sit below the rounding floor of
-    # an ill-conditioned `Cinv`, so a last Newton step at the 1e-8 relative
-    # level still counts as the mode (the Laplace value error is O(step^2));
-    # anything larger means the loop ran out before reaching the mode.
-    if !met_tol && Hch !== nothing
-        met_tol = last_sn <= max(tol, 1e-8) * (1 + ForwardDiff.value(norm(b)))
-    end
-    (Hch === nothing || !met_tol) && return b, Hch, false
-    # Refresh μ̂ / H at the final b so the returned Cholesky is exactly H(b̂).
-    diagH = zeros(T, G)
-    @inbounds for i in eachindex(y)
-        k = gidx[i]
-        diagH[k] += exp(clamp(η0[i] + b[k], -30.0, 30.0))
-    end
-    H = invσ2 .* Cinv + Diagonal(diagH)
-    Hch = cholesky(Symmetric(H); check = false)
-    return b, Hch, issuccess(Hch)
-end
-
-# Coordinate-spatial Poisson Laplace marginal NLL at θ = [β_μ; log σ_b; log ρ],
-# with the inner mode warm-started from `bref` (a length-G buffer that the fit
-# updates across outer iterations). Returns the marginal NLL only; the gradient
-# and Hessian are taken by ForwardDiff over this function. `Ddist` is the G×G site
-# distance matrix; `jitter` keeps C(ρ) strictly PD.
-function _poisson_spatial_marginal(θ, y, Xμ, gidx, Ddist, lf, bref;
-                                   jitter::Float64 = 1e-8)
-    pμ = size(Xμ, 2)
-    G = size(Ddist, 1)
-    βμ = θ[1:pμ]
-    logσ = clamp(θ[pμ+1], -8.0, 3.0)
-    logρ = clamp(θ[pμ+2], -8.0, 8.0)
-    invσ2 = exp(-2 * logσ)
-    ρ = exp(logρ)
-    T = eltype(θ)
-    C = exp.(.-Ddist ./ ρ) .+ jitter .* Matrix(I, G, G)     # unit-diagonal spatial correlation
-    Cchol = cholesky(Symmetric(C); check = false)
-    issuccess(Cchol) || return convert(T, 1e18)
-    Cinv = inv(Cchol)
-    η0 = Xμ * βμ
-    b, Hch, ok = _poisson_spatial_mode(y, η0, gidx, Cinv, invσ2, bref)
-    if !ok
-        # The warm start `bref` is the mode of the PREVIOUS evaluation. After an extreme
-        # trial point (the first L-BFGS step can be tens of units long) it can sit so far
-        # from this point's mode that the capped Newton loop fails, and every later
-        # evaluation then fails too, because `bref` is only refreshed on success: the fit
-        # stopped at its start with objective 1e18 (Poisson spatial, wave-10 gap map).
-        # Retry once from the cold start b = 0, as the Gamma structured route does.
-        b, Hch, ok = _poisson_spatial_mode(y, η0, gidx, Cinv, invσ2, zeros(G))
-    end
-    ok || return convert(T, 1e18)
-    bref .= ForwardDiff.value.(b)                           # warm start for the next outer eval
-    data = zero(T)
-    @inbounds for i in eachindex(y)
-        ηi = clamp(η0[i] + b[gidx[i]], -30.0, 30.0)
-        data += exp(ηi) - y[i] * ηi + lf[i]
-    end
-    prior = 0.5 * invσ2 * dot(b, Cinv * b)
-    # −½ logdet(σ_b² C) = −½(2G logσ_b + logdet C) = −G logσ_b − ½ logdet C; the
-    # marginal carries +½ logdet C⁻¹ = −½ logdet C and +G logσ_b enters from the
-    # prior normaliser, matching `_fit_poisson_general_laplace` (val = … + q·logσ
-    # − ½ logdetQ + ½ logdet H, with logdetQ = logdet C⁻¹ = −logdet C).
-    return data + prior + G * logσ + 0.5 * logdet(Cchol) + 0.5 * logdet(Hch)
-end
-
-"""
-    _fit_poisson_spatial_coord(fam, y, Xμ, labels, coords, nmμ, grp, g_tol; se)
-
-Poisson `spatial(1 | grp)` fit with a coordinate-based exponential-kernel spatial
-covariance `C(ρ) = exp(-d/ρ)` and the range `ρ` **estimated jointly**. The
-site coordinates (`coords`, a `G×2` matrix, one row per group level in first-seen
-order) give the pairwise distances `d`; the random intercept is `b ~ N(0, σ_b² C(ρ))`
-on `log λ`. The outer parameter vector is `θ = [β_μ; log σ_b; log ρ]`, so `ρ` is a
-genuine hyperparameter whose gradient flows through `C(ρ)` into the Laplace
-marginal — not a fixed-range or profile-over-grid approximation.
-
-The marginal is the Poisson Laplace approximation (same convention as the verified
-sparse general-covariance path), written in AD-traceable operations so ForwardDiff
-supplies the exact outer gradient and the covariance Hessian. Recovered blocks:
-`:mu` (fixed effects), `:resd` (`log σ_b`), `:range` (`log ρ`).
-
-!!! note
-    The range `ρ` is only weakly identified from a single spatial realization;
-    `:resd` (the spatial SD) and the fixed effects are the robustly recoverable
-    pieces. For a precomputed spatial covariance, use `spatial(1 | grp)` with
-    `K = …` instead (the verified O(p) sparse path).
-"""
-function _fit_poisson_spatial_coord(fam::Poisson, y, Xμ, labels, coords, nmμ, grp,
-                                    g_tol; se::Bool = true)
-    _require_finite_inputs(; coords=coords)
-    n = length(y)
-    pμ = size(Xμ, 2)
-    gidx, G = _group_index(labels)
-    size(coords, 1) == G ||
-        error("spatial(1 | $grp) coords must have one row per group level (G = $G), got $(size(coords, 1))")
-    size(coords, 2) >= 1 ||
-        error("spatial(1 | $grp) coords must have ≥ 1 coordinate column")
-    Ddist = [sqrt(sum(abs2, @view(coords[k, :]) .- @view(coords[l, :]))) for k in 1:G, l in 1:G]
-    offdiag = [Ddist[k, l] for k in 1:G for l in 1:G if k != l]
-    meandist = isempty(offdiag) ? 1.0 : sum(offdiag) / length(offdiag)
-    lf = [_logfactorial(round(Int, yi)) for yi in y]
-
-    bref = zeros(G)                                          # inner-mode warm start (Float64 buffer)
-    nll(θ) = _poisson_spatial_marginal(θ, y, Xμ, gidx, Ddist, lf, bref)
-
-    θ0 = zeros(pμ + 2)
-    θ0[1:pμ] .= _poisson_fixed_start(y, Xμ)
-    θ0[pμ+1] = log(0.5)                                      # log σ_b
-    θ0[pμ+2] = log(meandist)                                 # log ρ ≈ mean pairwise distance
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol, iterations = 400);
-                         autodiff = :forward)
-    θ̂ = Optim.minimizer(res)
-    V = if se
-        try
-            _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂);
-                               context = "poisson spatial coordinates")
-        catch
-            fill(NaN, length(θ̂), length(θ̂))
-        end
-    else
-        fill(NaN, length(θ̂), length(θ̂))
-    end
-
-    blocks = [:mu => 1:pμ, :resd => (pμ+1):(pμ+1), :range => (pμ+2):(pμ+2)]
-    names = [:mu => nmμ, :resd => [String(grp)], :range => ["range"]]
-    means = Dict(:mu => exp.(Xμ * θ̂[1:pμ]))                 # population λ (b = 0)
-    obs = Dict(:mu => Vector{Float64}(y))
-    scales = Dict{Symbol,Vector{Float64}}()
-    fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nll(θ̂), n, drm_optim_converged(res), means, obs, scales)
-    _warn_at_clamp("spatial Poisson", ["random-effect log SD" => (θ̂[pμ+1:pμ+1], -8.0, 3.0),   # #959
-                                       "log range" => (θ̂[pμ+2:pμ+2], -8.0, 8.0)])
-    return _withiterations(_withnll(fit, nll), Optim.iterations(res))
-end
-
 
 # Independent animal intercept-and-slope q2 block with one SD formula per
 # coefficient: `y ~ x + animal(1 + x | g)`, `sd(g, animal, coef(intercept)) ~ z0`,

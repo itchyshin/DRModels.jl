@@ -60,32 +60,17 @@ end
     end
 end
 
-@testset "Poisson coordinate spatial: fits, converged, nests drmTMB's fixed-range model" begin
+@testset "Poisson coordinate spatial: fits, converged, at drmTMB's fixed-range optimum" begin
+    # Wave-10 spatial parity (docs/dev-log/2026-11-09-spatial-parity.md): the route no longer
+    # estimates the range; it uses drmTMB's fixed kernel exp(-d / median positive d) + 1e-6 I
+    # (5 parameters, drmTMB 0.8.1 logLik -675.6946875). The earlier 1e18-sentinel regression
+    # (a stale warm start after an extreme first line-search trial) belonged to the removed
+    # estimated-range marginal; the fixed-range route is the sparse relmat Laplace fit.
     d = _nct_data("data_poisson_spatial.csv")
     m = DelimitedFiles.readdlm(joinpath(_NCT_SHARED, "coords.csv"), ',', Any; skipstart = 1)
     coords = Dict(String(m[i, 1]) => [Float64(m[i, 2]), Float64(m[i, 3])] for i in 1:size(m, 1))
     fit = drm(bf(@formula(y ~ x1 + x2 + x3 + spatial(1 | g))), Poisson(); data = d, coords)
     @test fit.converged
-    @test isfinite(loglikelihood(fit))
-    # an extreme trial point must not poison the warm start of later evaluations
-    th0 = copy(fit.theta)
-    extreme = [0.057, 28.455, -8.204, -8.98, 2.49, -1.492]
-    @test fit.nll(extreme) < 1e17
-    @test fit.nll(th0) < 1e17
-    @test -fit.nll(th0) ≈ loglikelihood(fit) atol = 1e-8
-    # drmTMB 0.8.1 fixes the range at the median positive pairwise distance (R/drmTMB.R, dense
-    # `coords =` route) and estimates 5 parameters, logLik -675.6946875. Julia estimates the
-    # range as well (6 parameters). With the range fixed at the same value Julia's objective
-    # reaches R's logLik, so the free-range fit must sit at or above it.
-    labs = unique(d.g); G = length(labs)
-    M = reduce(vcat, [permutedims(coords[l]) for l in labs])
-    pos = [sqrt(sum(abs2, M[k, :] .- M[l, :])) for k in 1:G for l in 1:G if k != l]
-    medpos = let s = sort(pos), n = length(sort(pos))
-        isodd(n) ? s[(n + 1) ÷ 2] : (s[n ÷ 2] + s[n ÷ 2 + 1]) / 2
-    end
-    Optim = DRModels.Optim
-    r = Optim.optimize(t -> fit.nll([t; log(medpos)]), th0[1:5], Optim.LBFGS(),
-                       Optim.Options(g_tol = 1e-9, iterations = 500))
-    @test -Optim.minimum(r) ≈ -675.6946875075 atol = 1e-4
-    @test loglikelihood(fit) > -675.6946875075 + 1.0   # free range gains 1.23 here
+    @test length(fit.theta) == 5
+    @test loglikelihood(fit) ≈ -675.6946875075 atol = 1e-4
 end

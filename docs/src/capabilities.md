@@ -147,14 +147,14 @@ a raw covariance scale requires.
 
 ### Coordinate-spatial `spatial(1|site)` on non-Gaussian means
 
-Only Poisson estimates the spatial range, as the Gaussian route does. The other
-routes below fix the kernel at drmTMB's native `exp(-d / m) + 1e-6 I`, with `m`
+Only the Gaussian mean route estimates the spatial range. Every route below fixes
+the kernel at drmTMB's native `exp(-d / m) + 1e-6 I`, with `m`
 the median positive pairwise distance between sites, so the same data and
 formula give the same covariance as native drmTMB.
 
 | Family | Accepts | Status and boundary |
 |---|---|---|
-| Poisson | `coords`; range estimated on the Laplace route. With `sd(site, spatial) ~ z` the kernel is the fixed native `exp(-d / m) + 1e-6 I` instead | **Tested**; the SD fit agrees with drmTMB 0.8.1 (`test/test_struct_sd_counts.jl`). The bare Poisson `coords` fit can return NaN on some data (open, triaged elsewhere) |
+| Poisson | `coords` (native kernel, range fixed); optional `method = :REML` | **Tested**; agrees with drmTMB 0.8.1 on the wave-10 cell: log-likelihood to 2e-9, fixed effects within 1e-5 R standard errors, log SD to 2e-7 (`test/test_spatial_parity_wave10.jl`). Before wave 10 this route estimated the range, which gave a log-likelihood 1.23 higher and a sixth parameter; with `sd(site, spatial) ~ z` the SD fit also agrees with drmTMB 0.8.1 (`test/test_struct_sd_counts.jl`) |
 | Gamma | `coords` (native kernel, 1-D vector allowed) or a supplied `K`, not both; with or without `sd(site, spatial) ~ z` | **Tested**; a `coords` fit equals the same fit with the native kernel passed as `K` (log-likelihoods agree to 1e-12 on one simulated dataset) |
 | NegBinomial2 | a supplied `K` on `spatial(1 \| site)`; `coords` (native kernel) with `sd(site, spatial) ~ z` on `spatial(1 \| site)` or on a slope-only `spatial(0 + x \| site)` term | **Tested**; the intercept SD fit agrees with drmTMB 0.8.1. A bare `spatial(1 \| site)` with `coords` and no SD formula is still refused; a supplied `K` together with an `sd()` formula is refused, and that message calls the route a slope route even for `spatial(1 \| site)` |
 | Beta | a supplied `K` on `spatial(1 \| site)` (no SD formula); `coords` (native kernel) on a bare `spatial(1 \| site)` or `spatial(1 + x \| site)` (completed with constant coefficient SDs, as drmTMB 0.8.1 fits them) or with `sd(site, spatial) ~ z` or the independent `spatial(1 + x \| site)` block with one `sd(site, spatial, coef(·))` formula per coefficient | **Tested**; `K` is refused when an SD formula is present, and `sigma ~ 1` is required |
@@ -173,6 +173,8 @@ Each row was compared with drmTMB 0.8.1 on the committed 400-row gap-map dataset
 | LogNormal `(1 \| g) + (1 \| h)` with `sd(g)` and `sd(h)` | log y is Gaussian: the Gaussian route plus the Jacobian | **Tested**; the labelled `(1 + x \| g)` pair with two coefficient SDs is reached the same way but is not checked against drmTMB (no committed R reference cell and no test covers it) |
 | Student `(1 \| g) + (1 \| h)` with `sd(g)` and `sd(h)` | crossed sparse Laplace with a log-SD regression per factor; `sigma ~ 1`, `nu ~ 1` required | **Tested** |
 | Binomial `relmat(1 + x \| g)` with coefficient SDs | refused | R does not converge on these cells (`is_converged()` is FALSE, an SD at -10.7), so they stay refused |
+
+NegBinomial2 `spatial(1 + x \| p \| site)` (the labelled, correlated intercept-and-slope block) with an `sd(site, spatial, coef(·)) ~ z` formula per coefficient has no drmTMB 0.8.1 counterpart (drmTMB refuses the labelled form). The fit starts from the default point and from four tilts of both SD blocks and keeps the best optimum, because the likelihood has a second interior mode that differs by the sign of the z coefficient of the intercept SD. The independent form `spatial(1 + x \| site)` is not restarted: it agrees with drmTMB, whose default start stops at the same value.
 
 ### Non-Gaussian phylogenetic random intercept on the mean (sparse Laplace)
 

@@ -151,7 +151,11 @@ function _drm_count_phylo_spatial_q2_sd(f::DrmFormula, fam::Union{Poisson,NegBin
     else
         _, Xsigma, nmsigma = _design(f.response, sigma_rhs, data)
         _fit_nb2_animal_intercept_slope_laplace(fam, y, Xmu, Xsigma, Zgs, gidx, Q,
-            nmmu, nmsigma, nmsds, blocks, group, x, g_tol; se, correlated)
+            nmmu, nmsigma, nmsds, blocks, group, x, g_tol; se, correlated,
+            # Labelled (correlated) form only: drmTMB 0.8.1 refuses it, and on the independent form its
+            # default start stops at the same lower mode as the single Julia start (seeds 91010 and
+            # 91018 of the wave-10 study), so restarting there would put Julia above drmTMB.
+            force_restarts = kind === :spatial && correlated && any(Z -> size(Z, 2) > 1, Zgs))
     end
     return _withformula(fit, f)
 end
