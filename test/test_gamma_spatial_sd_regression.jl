@@ -137,3 +137,29 @@ end
     # coords are required: a clear error rather than a wrong kernel
     @test_throws ArgumentError DRModels._marginal_simulator_build(fit, data)
 end
+
+# The plain Gamma `spatial(1 | g)` + `coords` route keeps the shared coords validation and its
+# friendly shape error (it once went straight to the kernel and lost both).
+@testset "Gamma spatial plain route: coords shape error is friendly" begin
+    dir = joinpath(@__DIR__, "data", "gamma_spatial_sd_r_parity")
+    d, _ = DelimitedFiles.readdlm(joinpath(dir, "data.csv"), ','; header = true)
+    c, _ = DelimitedFiles.readdlm(joinpath(dir, "coords.csv"), ','; header = true)
+    data = (; y = Float64.(d[:, 1]), x = Float64.(d[:, 2]), g = String.(d[:, 3]))
+    coords = Matrix{Float64}(c[:, 2:3])
+    f = bf(@formula(y ~ x + spatial(1 | g)), @formula(sigma ~ 1))
+    short = coords[1:(end - 1), :]
+    err = try
+        drm(f, Gamma(); data, coords = short, se = false); nothing
+    catch e
+        e
+    end
+    @test err !== nothing
+    @test occursin("spatial coords must have $(size(coords, 1)) rows", sprint(showerror, err))
+    # a flattened (length 2G) vector reads as 2G-by-1 and trips the same row check
+    err2 = try
+        drm(f, Gamma(); data, coords = vec(coords), se = false); nothing
+    catch e
+        e
+    end
+    @test err2 !== nothing && occursin("spatial coords must have", sprint(showerror, err2))
+end

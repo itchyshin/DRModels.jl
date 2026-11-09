@@ -164,7 +164,7 @@ function _drm_gamma_fit(f::DrmFormula, fam::Gamma; data, tree = nothing, K = not
                 (K === nothing && A === nothing) || throw(ArgumentError(
                     "Gamma spatial effects use either `coords = …` or a precomputed `K = …`, not both."))
                 _, G = _group_index(labels)
-                _gaussian_spatial_sd_kernel(_gamma_coords_matrix(coords), G, grp)   # shared native kernel, as the SD route
+                _spatial_covariance_from_coords(grp, G, coords, nothing)   # shared coords validation + native kernel (default range)
             else
                 _poisson_structured_cov(kind, grp, K, A, coords)
             end
