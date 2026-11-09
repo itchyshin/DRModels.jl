@@ -1260,11 +1260,13 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
                 "supported — the residual scale takes FIXED-effect predictors here."))
         metav === nothing ||
             throw(ArgumentError("drm: sd() submodels cannot be combined with `meta_V(...)`."))
-        isempty(sigma_re) ||
-            throw(ArgumentError("drm: sd() submodels cannot be combined with a random effect " *
-                "on `sigma`. R drmTMB fits a mean `sd(g) ~ …` formula together with a " *
-                "`sigma ~ 1 + (1 | p | g)` random effect; that combined route is not " *
-                "implemented in DRModels.jl (use `sd(g, sigma) ~ …` for a sigma-side SD)."))
+        if !isempty(sigma_re)
+            # mean `sd(g) ~ …` with a sigma random intercept (independent, or the labelled
+            # correlated pair `(1 | p | g)`): the dense Laplace engine of `sd(g, sigma)`.
+            return _withformula(_drm_gaussian_mean_sd_sigma_re(f, fam, sdp, sdpp, re,
+                structured, structured_sigma, sigma_re, metav, has_missing_response,
+                y, Xμ, Xσ, nmμ, nmσ, data, K, A, coords, g_tol, method, algorithm, penalty), f)
+        end
         penalty === nothing ||
             throw(ArgumentError("drm: `penalty` is not wired for sd() submodel routes."))
         # q3/q4 ordinary correlated block with per-coefficient sd() formulas.

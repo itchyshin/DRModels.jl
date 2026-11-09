@@ -216,8 +216,10 @@ end
     # A mean random effect needs its own SD formula in this route.
     @test_throws ArgumentError drm(bf(@formula(y ~ x + (1 | id)), @formula(sigma ~ 1 + (0 + z | site)),
         @formula(sd(site, sigma, coef(z)) ~ v)), Gaussian(); data = d)
-    # Mean-side sd() with an unsupported sigma shape keeps its refusal.
-    @test_throws ArgumentError drm(bf(@formula(y ~ x + (1 | id)), @formula(sigma ~ 1 + (1 | site)),
+    # Mean-side sd() with a sigma random SLOPE and no sigma-side SD formula keeps its refusal
+    # (the sigma INTERCEPT without a sigma-side SD formula fits since wave 10:
+    # test_gaussian_sd_groupf.jl).
+    @test_throws ArgumentError drm(bf(@formula(y ~ x + (1 | id)), @formula(sigma ~ 1 + (0 + z | site)),
         @formula(sd(id) ~ w)), Gaussian(); data = d)
     # Dense engine size cap.
     big = _gjs_fixture(; seed = 20261105, n_id = 5, n_site = 700, n_each = 140)
