@@ -352,8 +352,17 @@ function _drm_binomial_fit(f::DrmFormula, fam::Binomial; data, tree = nothing,
             isva && _va_reject(fam, "crossed/multiple random intercepts")
             fam.link === :logit || throw(ArgumentError(
                 "Binomial links other than :logit are not yet supported for crossed random intercepts."))
+            if _has_indep_slopes(re)
+                isaghq && _aghq_reject(fam, "independent random slopes `(0 + x | g)` (Laplace only)")
+                return _withformula(_fit_indep_re_laplace(fam, Val(:binomial),
+                                                          collect(zip(s, ntr)), Xμ, nothing, nothing,
+                                                          _indep_slope_comps(re, data, length(s)),
+                                                          nmμ, String[], String[], g_tol), f)
+            end
             all(_re_kind(r[1])[1] === :intercept for r in re) ||
-                error("Binomial() supports multiple random effects only as crossed/nested intercepts, e.g. `(1 | g) + (1 | h)`")
+                error("Binomial() supports multiple random effects only as crossed/nested intercepts " *
+                      "`(1 | g) + (1 | h)` or independent intercepts and slopes `(1 | g) + (0 + x | g)`; " *
+                      "a correlated `(1 + x | g)` must be the only random-effect term")
             comps = map(re) do r
                 grp = r[2]; gidx, G = _group_index(getproperty(data, grp); col = grp)
                 (ones(length(s)), gidx, G, String(grp))
@@ -374,9 +383,18 @@ function _drm_binomial_fit(f::DrmFormula, fam::Binomial; data, tree = nothing,
             _binomial_check_slope_identifiable(xs, gidx, G, grp)
             return _withformula(_fit_binomial_corr_ranef(
                 fam, s, ntr, Xμ, xs, gidx, G, nmμ, grp, g_tol; nq = nq), f)
-        else
+        elseif rk === :slope                              # (0 + x | g) → TMB-convention Laplace (independent route)
             isva && _va_reject(fam, "an independent random slope `(0 + x | g)`")
-            error("Binomial() supports `(1 | g)` or `(1 + x | g)` on the mean")
+            isaghq && _aghq_reject(fam, "an independent random slope `(0 + x | g)` (Laplace only)")
+            fam.link === :logit || throw(ArgumentError(
+                "Binomial links other than :logit are not yet supported for independent random slopes."))
+            _require_finite_data_column(data, var)
+            return _withformula(_fit_indep_re_laplace(fam, Val(:binomial),
+                                                      collect(zip(s, ntr)), Xμ, nothing, nothing,
+                                                      _indep_slope_comps(re, data, length(s)),
+                                                      nmμ, String[], String[], g_tol), f)
+        else
+            error("Binomial() supports `(1 | g)`, `(0 + x | g)` or `(1 + x | g)` on the mean")
         end
     end
     isva && _va_reject(fam, "no random intercept (fixed-effects-only)")

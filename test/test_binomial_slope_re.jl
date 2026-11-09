@@ -37,8 +37,11 @@ import Distributions
     @test fit.converged
     @test all(0 .< fitted(fit) .< 1)                     # fitted mean success probabilities
 
-    # independent random slope (0 + x | g) is still out of scope
-    @test_throws ErrorException drm(bf(@formula(cbind(s, fail) ~ x + (0 + x | g))), Binomial(); data = data)
+    # independent random slope (0 + x | g) now fits (TMB-convention Laplace, test_nongauss_indep_routes.jl);
+    # a correlated block beside another term on the same factor is still refused
+    fit_ind = drm(bf(@formula(cbind(s, fail) ~ x + (0 + x | g))), Binomial(); data = data)
+    @test fit_ind.converged && isfinite(loglik(fit_ind))
+    @test_throws ErrorException drm(bf(@formula(cbind(s, fail) ~ x + (1 | g) + (1 + x | g))), Binomial(); data = data)
 
     # marginal = :VA has no public route for the correlated slope
     @test_throws ArgumentError drm(bf(@formula(cbind(s, fail) ~ x + (1 + x | g))), Binomial();

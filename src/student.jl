@@ -182,8 +182,13 @@ function _drm_student_fit(f::DrmFormula, fam::Student; data, g_tol::Real = 1e-8,
         elseif rk === :corr                               # (1 + x | g) → 2-D GHQ
             xs = Float64.(getproperty(data, var))
             return _withformula(_fit_student_corr_ranef(fam, y, Xμ, Xσ, Xν, xs, gidx, G, nmμ, nmσ, nmν, grp, g_tol), f)
+        elseif rk === :slope                              # (0 + x | g) → TMB-convention Laplace (independent route)
+            _require_finite_data_column(data, var)
+            return _withformula(_fit_indep_re_laplace(fam, Val(:student), y, Xμ, Xσ, Xν,
+                                                      _indep_slope_comps(re, data, length(y)),
+                                                      nmμ, nmσ, nmν, g_tol), f)
         else
-            error("Student() supports `(1 | g)` or `(1 + x | g)` random effects on the mean")
+            error("Student() supports `(1 | g)`, `(0 + x | g)` or `(1 + x | g)` random effects on the mean")
         end
     end
     return _withformula(_fit_student(fam, y, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol; offset = _offset_for_fit(fam, offset_term, data, size(Xμ, 1))), f)
@@ -201,6 +206,9 @@ function _drm_student_sd_regression(f::DrmFormula, fam::Student; data,
     isempty(_sdphylo_parts(f)) || throw(ArgumentError(
         "Student `sd(group, phylogenetic) ~ …` is not implemented by the ordinary random-intercept route."))
     targets = _sd_target_parts(f)
+    indep_shape = _indep_sd_shape(f)
+    indep_shape === nothing ||
+        return _drm_indep_sd_laplace(f, fam, Val(:student), indep_shape; data, g_tol)
     length(targets) == 1 || throw(ArgumentError(
         "Student random-effect SD regression currently requires exactly one `sd(group) ~ …` formula."))
     target = only(targets)

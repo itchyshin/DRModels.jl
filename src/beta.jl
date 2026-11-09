@@ -138,8 +138,16 @@ function _drm_beta_fit(f::DrmFormula, fam::Beta; data, tree = nothing, K = nothi
     if !isempty(re)                    # random effect on the logit mean → GHQ/Laplace or VA (#136)
         if length(re) > 1
             isva && _va_reject(fam, "crossed/multiple random intercepts")
+            if _has_indep_slopes(re)
+                isaghq && _aghq_reject(fam, "independent random slopes `(0 + x | g)` (Laplace only)")
+                return _withformula(_fit_indep_re_laplace(fam, Val(:beta), y, Xμ, Xσ, nothing,
+                                                          _indep_slope_comps(re, data, length(y)),
+                                                          nmμ, nmσ, String[], g_tol), f)
+            end
             all(_re_kind(r[1])[1] === :intercept for r in re) ||
-                error("Beta() supports multiple random effects only as crossed/nested intercepts, e.g. `(1 | g) + (1 | h)`")
+                error("Beta() supports multiple random effects only as crossed/nested intercepts " *
+                      "`(1 | g) + (1 | h)` or independent intercepts and slopes `(1 | g) + (0 + x | g)`; " *
+                      "a correlated `(1 + x | g)` must be the only random-effect term")
             comps = map(re) do r
                 grp = r[2]; gidx, G = _group_index(getproperty(data, grp); col = grp)
                 (ones(length(y)), gidx, G, String(grp))
@@ -160,8 +168,15 @@ function _drm_beta_fit(f::DrmFormula, fam::Beta; data, tree = nothing, K = nothi
             isva && _va_reject(fam, "a correlated random slope `(1 + x | g)`")
             _require_finite_data_column(data, var)
             return _withformula(_fit_beta_corr_ranef(fam, y, Xμ, Xσ, Float64.(getproperty(data, var)), gidx, G, nmμ, nmσ, grp, g_tol), f)
+        elseif rk === :slope            # (0 + x | g) → TMB-convention Laplace (independent route)
+            isva && _va_reject(fam, "an independent random slope `(0 + x | g)`")
+            isaghq && _aghq_reject(fam, "an independent random slope `(0 + x | g)` (Laplace only)")
+            _require_finite_data_column(data, var)
+            return _withformula(_fit_indep_re_laplace(fam, Val(:beta), y, Xμ, Xσ, nothing,
+                                                      _indep_slope_comps(re, data, length(y)),
+                                                      nmμ, nmσ, String[], g_tol), f)
         else
-            error("Beta() supports `(1 | g)` or `(1 + x | g)` on the mean, not `(0 + x | g)`")
+            error("Beta() supports `(1 | g)`, `(0 + x | g)` or `(1 + x | g)` on the mean")
         end
     end
     isva && _va_reject(fam, "no random intercept (fixed-effects-only)")

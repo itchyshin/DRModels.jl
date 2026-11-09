@@ -288,9 +288,12 @@ end
 @testset "two-field SD regression: neighbouring shapes stay refused" begin
     case = tf_case(:gamma, :samegroup)
     d = case.data
-    # only one SD formula on a same-group pair: no silent constant SD route
-    @test_throws ArgumentError drm(bf(@formula(y ~ x + (1 | g) + (0 + x | g)), @formula(sigma ~ 1),
+    # only one SD formula on a same-group pair: the other term keeps a constant SD, fitted by the shared
+    # independent-term Laplace route (`indep_slopes_laplace.jl`; was refused before wave 11)
+    fit_one = drm(bf(@formula(y ~ x + (1 | g) + (0 + x | g)), @formula(sigma ~ 1),
         @formula(sd(g, coef(x)) ~ w2)), DRModels.Gamma(); data = d)
+    @test isfinite(loglik(fit_one))
+    @test fit_one.converged
     # Gamma ordinary correlated (1 + x | g) with SDs (native drmTMB refuses it too)
     @test_throws ArgumentError drm(bf(@formula(y ~ x + (1 + x | g)), @formula(sigma ~ 1),
         @formula(sd(g, coef(intercept)) ~ w1), @formula(sd(g, coef(x)) ~ w2)),
