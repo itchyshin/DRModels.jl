@@ -113,6 +113,18 @@ _indep_mean(::Val{:tweedie}, η) = exp(η)
 _indep_nu_scale(::Val{:student}, ην) = 2 .+ exp.(ην)
 _indep_nu_scale(::Val{:tweedie}, ην) = _logit12.(ην)
 _indep_obsval(::Val, yv) = yv
+_indep_nu_block(::Val) = :nu
+_indep_sigma_block(::Val) = :sigma
+# Per-observation auxiliary linear predictors (ησ, ην) from θ. The default is the plain
+# design-times-coefficient pair every kind used so far; the ordinal kind overrides it.
+function _indep_aux_eta(kind::Val, yv, Xσ, Xν, θ, pμ, pσ, k0, ::Type{T}) where {T}
+    n = length(yv)
+    ησ = Xσ === nothing ? zeros(T, n) : Xσ * θ[pμ+1:pμ+pσ]
+    ην = Xν === nothing ? zeros(T, n) : Xν * θ[pμ+pσ+1:k0]
+    return ησ, ην
+end
+# Post-fit overrides of the stored means / scales (identity by default).
+_indep_post(kind::Val, yv, means, scales, ημ̂, θ̂, pμ, pσ) = (means, scales)
 _indep_obsval(::Val{:binomial}, yv) = [s / n for (s, n) in yv]
 _indep_famname(::Val{:gamma}) = "Gamma"
 _indep_famname(::Val{:student}) = "Student"
@@ -250,8 +262,8 @@ function _fit_indep_re_laplace(fam, kind::Val, y, Xμ, Xσ, Xν, comps, nmμ, nm
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
         lsg = vcat([Zs[k] * θ[sdoffs[k]+1:sdoffs[k+1]] for k in 1:K]...)   # log SD of every effect
         any(l -> abs(_indep_primal(l)) > 30, lsg) && return T(1e18)
-        η0 = Xμ * βμ; ησ = has_sigma ? Xσ * βσ : zeros(T, n)
-        ην = has_nu ? Xν * θ[pμ+pσ+1:k0] : zeros(T, n)
+        η0 = Xμ * βμ
+        ησ, ην = _indep_aux_eta(kind, yv, has_sigma ? Xσ : nothing, has_nu ? Xν : nothing, θ, pμ, pσ, k0, T)
         any(l -> abs(_indep_primal(l)) > 30, ησ) && return T(1e18)
         invs = exp.(-2 .* lsg)
         f0 = (_indep_primal.(η0), _indep_primal.(ησ), _indep_primal.(ην), _indep_primal.(invs))
@@ -314,8 +326,10 @@ function _fit_indep_re_laplace(fam, kind::Val, y, Xμ, Xσ, Xν, comps, nmμ, nm
     labels = [c[4] for c in comps]
     blocks = Pair{Symbol,UnitRange{Int}}[:mu => 1:pμ]
     names = Pair{Symbol,Vector{String}}[:mu => nmμ]
-    has_sigma && (push!(blocks, :sigma => (pμ+1):(pμ+pσ)); push!(names, :sigma => nmσ))
-    has_nu && (push!(blocks, :nu => (pμ+pσ+1):k0); push!(names, :nu => nmν))
+    sigblock = _indep_sigma_block(kind)                # `:sigma`, or `:cutpoints` for the ordinal kind
+    has_sigma && (push!(blocks, sigblock => (pμ+1):(pμ+pσ)); push!(names, sigblock => nmσ))
+    nublock = _indep_nu_block(kind)                    # `:nu`, or `:zi` / `:hu` for the zero-mass kinds
+    has_nu && (push!(blocks, nublock => (pμ+pσ+1):k0); push!(names, nublock => nmν))
     if has_sdreg                                       # one `:sd` block of all α_k, as the Gaussian multi route
         sdnames = String[]
         for k in 1:K
@@ -329,7 +343,8 @@ function _fit_indep_re_laplace(fam, kind::Val, y, Xμ, Xσ, Xν, comps, nmμ, nm
     ημ̂ = Xμ * θ̂[1:pμ]
     means = Dict(:mu => _indep_mean.(Ref(kind), ημ̂)); obs = Dict(:mu => _indep_obsval(kind, yv))   # population mean (b = 0)
     scales = has_sigma ? Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)])) : Dict{Symbol,Vector{Float64}}()
-    has_nu && (scales[:nu] = _indep_nu_scale(kind, Xν * θ̂[(pμ+pσ+1):k0]))
+    has_nu && (scales[nublock] = _indep_nu_scale(kind, Xν * θ̂[(pμ+pσ+1):k0]))
+    means, scales = _indep_post(kind, yv, means, scales, ημ̂, θ̂, pμ, pσ)
     fit = DrmFit(fam, blocks, names, θ̂, V, -nllhat, n, converged, means, obs, scales)
     return _withiterations(_withmarginal(_withnll(fit, nll), :Laplace), Optim.iterations(res))
 end

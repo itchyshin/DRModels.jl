@@ -2420,6 +2420,7 @@ function _marginal_simulator(fit::DrmFit, data; K=nothing, A=nothing, tree=nothi
                              tree1=nothing, tree2=nothing,
                              Ainv=nothing, coords=nothing)
     sim = _marginal_simulator_build(fit, data; K, A, Ainv, tree, tree1, tree2, coords)
+    sim === nothing && _refuse_multi_re_laplace(fit, "a simulation or bootstrap with fresh random effects")
     # `nothing` sends `bootstrap` to the CONDITIONAL `simulate`. On the Gaussian
     # `meta_V(...)` + random-effect route (`_fit_meta_gaussian_re`) that fallback
     # is a different model: `means[:mu]` is Xβ and `scales[:sigma]` is √(v + σ²),

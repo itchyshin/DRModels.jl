@@ -366,8 +366,13 @@ function _drm_poisson_fit(f::DrmFormula, fam::Poisson; data, tree = nothing, K =
     if !isempty(re)                                       # random intercept (1|g) → GHQ marginal
         isva && (haskey(rhs, :zi) || haskey(rhs, :hu)) &&
             _va_reject(fam, "`zi`/`hu` combined with a random effect")
-        (haskey(rhs, :zi) || haskey(rhs, :hu)) &&
-            error("Poisson() random effects cannot be combined with `zi`/`hu` yet")
+        if haskey(rhs, :zi) || haskey(rhs, :hu)
+            # One ordinary `(1 | g)` with `zi`: drmTMB's Laplace objective (`zi_re_laplace.jl`).
+            # Laplace is the only integrator on this route, so `:AGHQ` and REML are refused.
+            isaghq && _aghq_reject(fam, "`zi`/`hu` combined with a random effect (Laplace only)")
+            reml && _reject_reml_route(fam, "`zi`/`hu` combined with a random effect")
+            return _drm_zi_re_laplace(f, fam; data = data, g_tol = g_tol)
+        end
         if length(re) > 1                                 # (1|g)+(1|h)+… crossed/multiple intercepts → sparse Laplace
             isva && _va_reject(fam, "crossed/multiple random intercepts")
             reml && _reject_reml_route(fam, "crossed/multiple random intercepts")

@@ -77,6 +77,11 @@ function _drm_ordinary_laplace(f::DrmFormula, fam; data, tree = nothing,
 
     _lss_only_gaussian_guard(f, fam)
     rhs = Dict(f.forms)
+    # Poisson / NB2 `zi` or `hu` with a random intercept: same Laplace objective, own front end.
+    if fam isa Union{Poisson,NegBinomial2} && (haskey(rhs, :zi) || haskey(rhs, :hu)) &&
+       !isempty(_split_ranef(rhs[:mu])[2])
+        return _drm_zi_re_laplace(f, fam; data = data, g_tol = g_tol)
+    end
     has_sigma = _ordinary_laplace_has_sigma(fam)
     for (pname, r) in f.forms
         pname === :mu && continue

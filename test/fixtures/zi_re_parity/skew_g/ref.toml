@@ -1,0 +1,10 @@
+route = "skew_g"
+drmTMB_version = "0.8.1"
+R_version = "4.6.1"
+note = "SkewNormal, mean (1 | g), sigma ~ 1, nu ~ 1"
+tmb_names = ["beta_mu", "beta_mu", "beta_sigma", "beta_nu", "log_sd_mu"]
+names = ["mu_(Intercept)", "mu_x", "sigma_(Intercept)", "nu_(Intercept)", "resd_g"]
+loglik = -425.7751731412813
+max_grad = 2.256639e-10
+theta = [1.1206392943166792, 0.38915014044344448, -0.41625153787210145,  2.715552496196791, -0.797542668921838]
+se = [0.07844647082818143, 0.031200504530530651, 0.040427490751466989, 0.61478173183378892, 0.13270427892699166]

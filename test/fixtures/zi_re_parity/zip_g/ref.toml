@@ -1,0 +1,10 @@
+route = "zip_g"
+drmTMB_version = "0.8.1"
+R_version = "4.6.1"
+note = "zero-inflated Poisson, mean (1 | g), zi ~ 1"
+tmb_names = ["beta_mu", "beta_mu", "beta_zi", "log_sd_mu"]
+names = ["mu_(Intercept)", "mu_x", "zi_(Intercept)", "resd_g"]
+loglik = -422.95270749241746
+max_grad = 5.093703e-13
+theta = [0.32661849460822906, 0.35190160983989865, -0.94931640516591154, -0.76139099688867218]
+se = [0.12633731642161475, 0.059750090716465337, 0.23394624406008652, 0.23564441594112731]
