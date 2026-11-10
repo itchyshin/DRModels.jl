@@ -17,9 +17,9 @@
 # lifting of the mode as `_fit_indep_re_laplace` (whose observation terms it reuses); H is dense,
 # (K G) x (K G), which is small for site-level kernels.
 
-function _fit_student_structured_laplace(fam::Student, y, Xμ, Xσ, Xν, C, labels, slope,
+function _fit_student_structured_laplace(fam::Student, y, Xμ, Xσ, Xν, C, labels, slope, slope_name,
                                          nmμ, nmσ, nmν, grp, g_tol; se::Bool = true)
-    size(Xσ, 2) == 1 && size(Xν, 2) == 1 || throw(ArgumentError(
+    size(Xσ, 2) == 1 && size(Xν, 2) == 1 && all(==(1.0), Xσ) && all(==(1.0), Xν) || throw(ArgumentError(
         "Student `spatial(...)` on the mean requires `sigma ~ 1` and `nu ~ 1`; covariate `sigma` or `nu` " *
         "formulas are not implemented on this route."))
     Q, gidx = _general_cov_setup(C, labels; normalize = true)
@@ -146,7 +146,7 @@ function _fit_student_structured_laplace(fam::Student, y, Xμ, Xσ, Xν, C, labe
     V = se ? _vcov_from_hessian(ForwardDiff.hessian(nll, θ̂);
                                 context = "Laplace Student (coordinate spatial effect)") :
              fill(NaN, length(θ̂), length(θ̂))
-    sdlabels = K == 1 ? [String(grp)] : [String(grp), "$(grp):slope"]
+    sdlabels = K == 1 ? [String(grp)] : [String(grp), "$(grp):$(slope_name)"]
     blocks = Pair{Symbol,UnitRange{Int}}[:mu => 1:pμ, :sigma => (pμ+1):(pμ+1), :nu => (pμ+2):(pμ+2),
                                          :resd => (k0+1):(k0+K)]
     names = Pair{Symbol,Vector{String}}[:mu => nmμ, :sigma => nmσ, :nu => nmν, :resd => sdlabels]

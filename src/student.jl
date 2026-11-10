@@ -141,10 +141,13 @@ function _drm_student_fit(f::DrmFormula, fam::Student; data, g_tol::Real = 1e-8,
     end
     _lss_only_gaussian_guard(f, fam)   # #544: refuse, never silently drop, sd() parts
     rhs = Dict(f.forms)
-    sp_slope = _student_spatial_slope(rhs[:mu])   # `spatial(1 + x | g)`: `nothing` unless that form
+    # `spatial(1 + x | g)`: `nothing` unless that form. Only read when `coords` is given, so a forgotten `coords`
+    # keeps the refusal that `_split_ranef` raised for the slope form before this route existed.
+    sp_slope = coords === nothing ? nothing : _student_spatial_slope(rhs[:mu])
     fixed_mu, re, mv, st = _split_ranef(rhs[:mu]; allow_spatial_intercept_slope = sp_slope !== nothing)
     fixed_mu, offset_term = _extract_offset(fixed_mu)   # #938: offset(z), coefficient fixed at 1
-    if st !== nothing && st[1] === :spatial && mv === nothing && isempty(re) && coords !== nothing
+    if st !== nothing && st[1] === :spatial && mv === nothing && isempty(re) && coords !== nothing &&
+       length(_collect_structured(rhs[:mu])) == 1   # a second structured marker keeps its refusal below
         offset_term === nothing || _refuse_offset_route(fam, "a random, structured or `meta_V` term on the mean")
         for (pname, r) in f.forms
             pname === :mu && continue
@@ -159,7 +162,7 @@ function _drm_student_fit(f::DrmFormula, fam::Student; data, g_tol::Real = 1e-8,
         _, Gsp = _group_index(labels)
         Csp = _spatial_covariance_from_coords(st[2], Gsp, coords, nothing)
         slope = sp_slope === nothing ? nothing : getproperty(data, sp_slope)
-        return _withformula(_fit_student_structured_laplace(fam, y, Xμ, Xσ, Xν, Csp, labels, slope,
+        return _withformula(_fit_student_structured_laplace(fam, y, Xμ, Xσ, Xν, Csp, labels, slope, sp_slope,
                                                              nmμ, nmσ, nmν, st[2], g_tol; se = se), f)
     end
     offset_term === nothing || (isempty(re) && mv === nothing && st === nothing) ||
