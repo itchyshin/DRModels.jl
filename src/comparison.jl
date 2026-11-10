@@ -244,9 +244,9 @@ end
 function _map_compare_guard(a::DrmFit, b::DrmFit, verb::AbstractString)
     (a.estim_method === :MAP || b.estim_method === :MAP) || return nothing
     throw(ArgumentError(
-        "$verb: cannot compare penalized (MAP) fits — a `penalty = drm_phylo_penalty(...)` " *
-        "fit shrinks its variance components, so the likelihood-ratio statistic does not have " *
-        "the usual chi-square distribution. Refit both without `penalty` to test, or compare " *
+        "$verb: cannot compare penalized (MAP) fits — priors or penalties alter the objective, " *
+        "so the likelihood-ratio statistic does not have " *
+        "the usual chi-square distribution. Refit both without priors or penalties to test, or compare " *
         "the penalized fits on their own terms."))
 end
 
