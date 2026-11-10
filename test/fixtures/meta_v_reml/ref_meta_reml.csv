@@ -1,0 +1,10 @@
+"cell","key","est","se"
+"meta_reml","logLik",-39.2330685390437,NA
+"meta_reml","mu:(Intercept)",0.439609931105927,0.100875119091469
+"meta_reml","mu:x1",0.651658964786275,0.113484603006885
+"meta_reml","sigma:(Intercept)",-0.743859539309807,0.183223566978342
+"meta_re_reml","logLik",-36.3557593557499,NA
+"meta_re_reml","mu:(Intercept)",0.377405909078987,0.155787742090666
+"meta_re_reml","mu:x1",0.751503499615976,0.10218183123339
+"meta_re_reml","sigma:(Intercept)",-1.21838822186882,0.357106123733762
+"meta_re_reml","sd_g",0.372227232268826,NA
