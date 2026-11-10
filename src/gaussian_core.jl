@@ -2660,10 +2660,17 @@ at the MLE — drmTMB's `sigma()`.
 - Families with no separately fitted scale stored (e.g. Poisson, whose variance
   is fixed by the mean): returns an empty `Dict` — there is no free dispersion.
 
-For the BetaBinomial sigma-axis random-intercept route, this is the conditional
-plug-in scale at the fitted log-sigma random-effect modes. `ranef(fit)` exposes
-those modes; `predict_parameters()` reports the population-level sigma predictor
-and the separate `:sd` prediction for its random-effect SD.
+Random effects on sigma: the two engines store different things, and this returns what is stored.
+- Population-level (random effects set to zero), `exp.(Xσ·β̂_σ)`: the single Gaussian `sigma ~ ... + (1 | g)`
+  route, the same-group mean + sigma route, and the constant-SD sigma routes of
+  `src/sigma_ranef_blocks_laplace.jl` (LogNormal, Gamma, NegBinomial2 and BetaBinomial `sigma ~ ... + (1 | g)`;
+  Gaussian sigma `(0 + x | g)`, `(1 + x | g)`, `(1 | g) + (1 | h)`, and mean `(1 | g)` with sigma `(1 | h)` on a
+  different group). `fitted`, `residuals` (including quantile residuals, which are therefore not N(0, 1) when the
+  sigma random effects are large) and `simulate(...; re = :zero)` use these population values too.
+- Conditional plug-in scale at the fitted modes: the sd-formula engines (`sd(g, sigma) ~ ...`, e.g.
+  `gaussian_sigma_sd_laplace.jl`) and the BetaBinomial sigma-axis random-intercept route.
+  `ranef(fit)` exposes the modes; `predict_parameters()` reports the population-level sigma predictor and the
+  separate `:sd` prediction for its random-effect SD.
 
 For the population-level scale *coefficients* (on the working/log scale) use
 `coef(fit, :sigma)` instead.

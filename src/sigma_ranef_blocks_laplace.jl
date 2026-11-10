@@ -309,7 +309,7 @@ function _drm_sigma_ranef_laplace_family(f::DrmFormula, fam; data, g_tol, se, fi
     (isva || isaghq) && throw(ArgumentError("$famname(): a random effect on sigma is fitted by the Laplace " *
                                            "approximation only (`marginal = :LA`)."))
     all(_formula_response_observed_mask(f, data)) || throw(ArgumentError(
-        "$famname(): a random effect on sigma requires observed responses; remove incomplete rows first (`drm_listwise`)."))
+        "$famname(): a random effect on sigma requires observed responses (rows with a missing response are dropped before this point by the generic wrapper)."))
     y, Xμ, nmμ = _design(f.response, fixed_mu, data)
     _, Xσ, nmσ = _design(f.response, fixed_sigma, data)
     n = size(Xμ, 1)
@@ -357,6 +357,9 @@ end
 # named refusal when the combination is not one of the verified shapes.
 function _drm_gaussian_sigma_ranef_blocks(f::DrmFormula, fam::Gaussian, y, Xμ, Xσ, re, sigma_re,
                                           nmμ, nmσ, data, g_tol, se::Bool)
+    all(p -> first(p) in (:mu, :sigma), f.forms) || throw(ArgumentError(
+        "drm (Gaussian): a random effect on `sigma` beyond the single same-group intercept supports only `mu` and " *
+        "`sigma` formulas (no `sd()` formula or other distributional parameter)."))
     n = length(y)
     kinds_s = [_re_kind(t[1])[1] for t in sigma_re]
     blocks = []

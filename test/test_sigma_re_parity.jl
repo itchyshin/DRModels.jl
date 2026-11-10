@@ -184,3 +184,31 @@ end
     @test occursin("offset", msg(() -> drm(bf(@formula(y_nb ~ x1 + offset(x1)), @formula(sigma ~ x1 + (1 | g))), NegBinomial2(); data = SRE)))
     @test !isempty(msg(() -> drm(bf(@formula(y_nb ~ x1), @formula(sigma ~ x1 + (1 | g))), NegBinomial2(); data = SRE, marginal = :VA)))
 end
+
+# Missing responses: as on the other random-effect routes the rows are dropped with a warning, and the
+# result equals fitting the complete rows.
+@testset "sigma random effects: missing responses are dropped with a warning" begin
+    for (cell, col) in ((:gamma, :y_gam), (:gauss_two, :y_g))
+        f, fam = SRE_CELLS[cell]
+        miss = collect(1:17:320)
+        y = Vector{Union{Missing,Float64}}(getproperty(SRE, col)); y[miss] .= missing
+        dm = merge(SRE, NamedTuple{(col,)}((y,)))
+        keep = setdiff(1:320, miss)
+        dc = map(v -> v[keep], SRE)
+        fitm = @test_logs (:warn, r"dropped") match_mode = :any drm(f, fam; data = dm)
+        fitc = drm(f, fam; data = dc)
+        @test nobs(fitm) == length(keep)
+        @test abs(loglik(fitm) - loglik(fitc)) < 1e-6
+        @test coef(fitm) ≈ coef(fitc) atol = 1e-5
+    end
+end
+
+# Quantile residuals and fitted values on these fits are population-level: they use the stored population
+# mean and sigma (random effects set to zero), the convention of the single Gaussian sigma route.
+@testset "sigma random effects: stored mean and sigma are population-level" begin
+    fit = sre_fit(:gamma)
+    Xs = hcat(ones(320), SRE.x1)
+    @test fit.scales[:sigma] ≈ exp.(Xs * coef(fit, :sigma)) atol = 1e-10
+    @test fit.means[:mu] ≈ exp.(Xs * coef(fit, :mu)) atol = 1e-10
+    @test all(isfinite, residuals(fit; type = :quantile))
+end
