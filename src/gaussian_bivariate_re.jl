@@ -16,9 +16,22 @@
 # Not the structured q=2 route: that one shares one design and an intercept-only
 # sigma/rho, and builds a sparse Laplace problem. This route is dense per group.
 #
+# Post-fit conventions. `fit.means` holds X b only (no BLUPs), so `residuals(fit)` are MARGINAL
+# (y - X b), the same convention as the other bivariate routes; drmTMB's `residuals()` are
+# conditional on the fitted group effects. The BLUPs are in `ranef(fit)`. `simulate(fit; data)`
+# and the parametric bootstrap draw fresh group effects from `fit.ranef.Sigma_g`
+# (`_biv_ordinary_re_simulator`).
+#
 # REML integrates out the mu1/mu2 fixed effects: -loglik_REML = -loglik_ML(beta_hat)
 # + 0.5 logdet(X'V^-1 X) - 0.5 p log(2 pi), the same convention (and the same
 # vcov assembly) as `_fit_bivariate_residual_reml`.
+
+# Coefficient names of the 2x2 group covariance (log-Cholesky). `Sigma_g`, not `Sigma_a`:
+# `Sigma_a` belongs to the structured (phylo / relmat / animal / spatial) routes, and the
+# bridge and bootstrap code keys on it; keeping the names apart stops this fit being read as one.
+# The block itself stays `:phylocov` because the shared accessors (predict, confint, summary)
+# already treat that block as a group-covariance Cholesky block.
+_biv_re_group_names() = ["Sigma_g:L11", "Sigma_g:L21", "Sigma_g:L22"]
 
 # Pull one `(1 | tag | group)` term out of mu1 and mu2. Returns `(rhs', spec)` with
 # `spec = (tag, group)` or `nothing` (no ordinary term on either side). Anything
@@ -99,8 +112,13 @@ function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data,
                 c += Xi[i]' * Sy
                 H += Xi[i]' * Si * Xi[i]
             end
-            W = inv(Symmetric(Matrix(I, 2, 2) + L' * A * L))
-            logdetS += logdet(Symmetric(Matrix(I, 2, 2) + L' * A * L))
+            M2 = Matrix(I, 2, 2) + L' * A * L
+            # A wild line-search trial (log scale near -370) overflows exp(-ls) and makes M2
+            # non-finite. Report that trial as non-finite so the optimiser backs off, rather than
+            # letting `inv` throw and abort the fit (n of about 1200 and up).
+            all(isfinite, M2) || return (T(NaN), T(NaN), fill(T(NaN), pβ), Symmetric(fill(T(NaN), pβ, pβ)), L)
+            W = inv(Symmetric(M2))
+            logdetS += logdet(Symmetric(M2))
             Ls = L' * sy; LB = L' * B
             yVy -= dot(Ls, W * Ls)
             c -= LB' * (W * Ls)
@@ -109,7 +127,11 @@ function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data,
         return logdetS, yVy, c, Symmetric(H), L
     end
     ml_from(logdetS, yVy, c, H, β) = const_2pi + 0.5 * (logdetS + yVy - 2 * dot(β, c) + dot(β, H * β))
-    nll_full(θ) = (pf = pieces(θ[(pβ+1):end]); ml_from(pf[1], pf[2], pf[3], pf[4], θ[1:pβ]))
+    function nll_full(θ)
+        pf = pieces(θ[(pβ+1):end])
+        v = ml_from(pf[1], pf[2], pf[3], pf[4], θ[1:pβ])
+        return isfinite(v) ? v : oftype(v, Inf)     # non-finite trial: reject, do not throw
+    end
 
     β1 = X1 \ Vector{Float64}(y1); β2 = X2 \ Vector{Float64}(y2)
     φ0 = zeros(pφ0 + 3)
@@ -119,6 +141,7 @@ function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data,
     function nll_reml(φ)
         # (local names differ from the enclosing scope's: a shared name would be captured, not local)
         pr = pieces(φ)
+        isfinite(pr[1]) || return oftype(pr[1], Inf)   # non-finite trial: reject, do not throw
         chH = cholesky(pr[4]; check = false)
         issuccess(chH) || return oftype(pr[1], 1e18)   # X'V^-1 X numerically indefinite: reject the step
         bh = chH \ pr[3]
@@ -170,7 +193,7 @@ function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data,
     blocks = [:mu1 => rng(1), :mu2 => rng(2), :sigma1 => rng(3), :sigma2 => rng(4),
               :rho12 => rng(5), :phylocov => (offs[end]+1):(offs[end]+3)]
     names = [:mu1 => nm1, :mu2 => nm2, :sigma1 => nms1, :sigma2 => nms2, :rho12 => nmr,
-             :phylocov => _q2_phylocov_names()]
+             :phylocov => _biv_re_group_names()]
     means = Dict(:mu1 => X1 * θb[1:p1], :mu2 => X2 * θb[(p1+1):pβ])
     obs = Dict(:mu1 => Vector{Float64}(y1), :mu2 => Vector{Float64}(y2))
     scales = Dict(:sigma1 => exp.(ls1), :sigma2 => exp.(ls2), :rho12 => ρv)
@@ -180,4 +203,40 @@ function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data,
     re = (; effects = Dict(Symbol(grp) => U), Sigma_g = L * L', axes = (:mu1, :mu2),
           kind = :ordinary, tag = tag, group = grp, group_index = gidx)
     return _withiterations(_withranef(_withformula(_withnll(fit, nll_full), f), re), Optim.iterations(res))
+end
+
+# Fresh-draw simulator for `simulate(fit; data)` and the parametric bootstrap: per group a new
+# 2-vector u_g ~ N(0, Sigma_g) is added to mu1 and mu2, then the bivariate residual pair
+# (sigma1, sigma2, rho12 at each row). The draw has one row per fitted row, so `data` must be the
+# table the fit used with no row dropped (rows lost to missing values would make the draw
+# disagree with `data`); anything else is refused, never silently drawn without the group effect.
+_is_biv_ordinary_re_fit(fit) =
+    fit.formula isa BivariateDrmFormula && fit.ranef isa NamedTuple &&
+    get(fit.ranef, :kind, nothing) === :ordinary && haskey(fit.ranef, :Sigma_g)
+
+function _biv_ordinary_re_simulator(fit::DrmFit, data)
+    re = fit.ranef
+    grp = Symbol(re.group)
+    (data !== nothing && hasproperty(data, grp)) || throw(ArgumentError(
+        "simulate/bootstrap: this bivariate ordinary random-effect fit needs the fitting `data` " *
+        "(with the grouping column `$grp`) to redraw the group effects."))
+    col = getproperty(data, grp)
+    mu1, mu2 = fit.means[:mu1], fit.means[:mu2]
+    n = length(mu1)
+    length(col) == n || throw(ArgumentError(
+        "simulate/bootstrap: `data` has $(length(col)) rows but the fit used $n (rows with missing " *
+        "values are dropped at fit time). Pass the complete table the model was fitted to, or drop " *
+        "the incomplete rows first, so the group effects can be redrawn row for row."))
+    gidx, G = _group_index(col; col = grp)
+    gidx == re.group_index || throw(ArgumentError(
+        "simulate/bootstrap: the grouping column `$grp` of `data` does not match the fitted groups."))
+    σ1, σ2, ρ = fit.scales[:sigma1], fit.scales[:sigma2], fit.scales[:rho12]
+    F = eigen(Symmetric(Matrix{Float64}(re.Sigma_g)))
+    Lg = F.vectors * Diagonal(sqrt.(max.(F.values, 0.0)))     # Lg Lg' = Sigma_g, also on the boundary
+    return function (rng)
+        u = Lg * randn(rng, 2, G)
+        z1 = randn(rng, n); z2 = randn(rng, n)
+        return Dict(:mu1 => mu1 .+ u[1, gidx] .+ σ1 .* z1,
+                    :mu2 => mu2 .+ u[2, gidx] .+ σ2 .* (ρ .* z1 .+ sqrt.(1 .- ρ .^ 2) .* z2))
+    end
 end

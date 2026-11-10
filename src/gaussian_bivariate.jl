@@ -117,6 +117,22 @@ With no structured-effect marker, this is the residual-correlation model:
 `mu1`, `mu2`, `sigma1`, `sigma2`, and residual `rho12` each have their own fixed
 effect formula.
 
+With an ordinary `(1 | p | g)` written in BOTH `mu1` and `mu2` (same label and
+group), this fits a 2x2 group-level covariance (two SDs and a group correlation),
+kept separate from the residual `rho12`; `method = :ML` or `:REML`. It is a
+dense per-group likelihood (own route, file `gaussian_bivariate_re.jl`): `mu1`
+and `mu2` may have different fixed-effect designs, and `sigma1`, `sigma2`, `rho12`
+may have covariates. The group covariance is `fit.ranef.Sigma_g` and its
+log-Cholesky coefficients are the `Sigma_g:L11/L21/L22` entries of the
+`:phylocov` block. `tree`, `K`, `A`, `coords`, and `spatial_range` are refused on
+this route. `fit.means` holds `X b` only, so `residuals(fit)` are MARGINAL
+(`y - X b`), unlike drmTMB's `residuals()`, which are conditional on the fitted
+group effects; the group effects themselves are in `ranef(fit)`.
+`simulate(fit; data)` and `bootstrap_*` draw fresh group effects from
+`Sigma_g` and need the complete fitting `data` (no rows dropped). Random effects
+on `sigma1`/`sigma2`, `weights`, `V`, and incomplete response rows
+(`miss_control(response = "include")`) are refused.
+
 `q4_f_reltol` (default `1e-7`) is the relative objective change at which the q=4 ML
 optimiser stops (it ignores `q4_g_tol` near a flat ridge). The default can stop up to
 about `1e-3` in log-likelihood short of the optimum on flat q=4 ridges; use
@@ -188,6 +204,19 @@ fit = drm(
             "phylo/relmat/animal/spatial markers in the same bivariate model."))
         V === nothing || throw(ArgumentError(
             "drm: known sampling covariance `V` is not supported with the bivariate ordinary random-effect route."))
+        for (kw, val) in (:tree => tree, :K => K, :A => A, :coords => coords, :spatial_range => spatial_range)
+            val === nothing || throw(ArgumentError(
+                "drm: `$kw` belongs to the structured (phylo / relmat / animal / spatial) routes and is not " *
+                "used by the bivariate ordinary `(1 | p | g)` random-effect route; remove it " *
+                "(it would be silently ignored here)."))
+        end
+        for (kw, val, dflt) in ((:q4_g_tol, q4_g_tol, 1e-3), (:q4_f_reltol, q4_f_reltol, 1e-7),
+                                (:q4_iterations, q4_iterations, 300), (:q4_n_newton, q4_n_newton, 40),
+                                (:q4_vcov, q4_vcov, true))
+            val == dflt || throw(ArgumentError(
+                "drm: `$kw` tunes the structured q=4 routes and is not used by the bivariate ordinary " *
+                "`(1 | p | g)` random-effect route; remove it (it would be silently ignored here)."))
+        end
         return _fit_bivariate_ordinary_re(f, fam, data, fixed, ordinary_re;
                                           g_tol = Float64(g_tol), method = method)
     end

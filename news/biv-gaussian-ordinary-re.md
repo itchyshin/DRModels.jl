@@ -12,3 +12,13 @@
   unlabelled `(1 | g)` terms, `(1 + x | p | g)`, partly observed rows
   (`miss_control(response = "include")`), row `weights`, known `V`, and
   Student-t / lognormal bivariate families.
+
+  After independent review: the objective no longer throws when a line-search
+  trial overflows (the fit crashed with "matrix contains Infs or NaNs" at about
+  1200 rows, ML and REML); `simulate(fit; data)` and the parametric bootstrap now
+  draw fresh group effects from the fitted 2x2 group covariance (the bootstrap
+  used to refit group-free data, giving intervals that were far too narrow);
+  `tree`, `K`, `A`, `coords` and `spatial_range` are refused on this route; the
+  group-covariance coefficients are named `Sigma_g:L11/L21/L22` (the structured
+  routes keep `Sigma_a`). `residuals(fit)` are marginal (`y - X b`), not
+  conditional on the group effects as in drmTMB.
