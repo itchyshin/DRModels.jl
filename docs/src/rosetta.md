@@ -125,7 +125,7 @@ fit = drm(
 | build a covariate grid for prediction | `prediction_grid(reference; predictor = values, …)` |
 | `simulate(fit)` (fresh random effects, `re.form = NA`) | `simulate(fit; data)` (fresh random effects, `re = :marginal`; `re = :zero` sets them to zero; random-effect fits need `data`, except temporal fits can simulate their full marginal chain without it) |
 | `summary(fit)` | `summary(fit)` (prints the Wald coefficient table) |
-| `weights(fit)` | `weights(fit)`: the prior weights from `drm(...; weights = w)`, or `nothing` (fixed-effect ML routes only; other routes refuse `weights =`) |
+| `weights(fit)` | `weights(fit)`: the prior weights from `drm(...; weights = w)`, or `nothing` (fixed-effect ML routes, Gaussian or Poisson with one `(1 | g)`, Gaussian `meta_V`, and the residual bivariate Gaussian; other routes refuse `weights =`) |
 | `drm_control(maxit =, start =, multi_start =, se =)` | `control = DRMControl(maxit =, start =, multi_start =, se =)`; `maxit` / `start` / `multi_start` on fixed-effect routes, `se = false` on every route (`control_info(fit)` reports what it did) |
 | `obj$gr(opt$par)` / `sdreport()$cov.fixed` | `gradient(fit)` / `hessian(fit)` (negative log-likelihood, `coef(fit)` order and scale) |
 | `family(fit)` | `family(fit)` |
