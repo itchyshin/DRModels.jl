@@ -296,10 +296,9 @@ function _require_one_structured_marker(f::DrmFormula, fam)
         length(marks) > 1 || continue
         show1(m) = "`$(m[1])(… | $(m[2]))`"
         more = length(marks) > 2 ? " (and $(length(marks) - 2) more)" : ""
-        throw(ArgumentError("drm: two structured terms, $(show1(marks[1])) and $(show1(marks[2]))$more, " *
-            "are on `$p`, and the $(nameof(typeof(fam))) route fits only one structured term. A second " *
-            "one used to be dropped silently; it is refused instead. Keep one structured term, or use " *
-            "`Gaussian()`, whose mean can carry two (for example `phylo(1 | species) + relmat(1 | id)`)."))
+        throw(ArgumentError("drm: the $(nameof(typeof(fam))) route fits one structured term per formula, " *
+            "but `$p` has two: $(show1(marks[1])) and $(show1(marks[2]))$more. Keep one structured term, " *
+            "or use `Gaussian()`, whose mean can carry two (for example `phylo(1 | species) + relmat(1 | id)`)."))
     end
     return nothing
 end

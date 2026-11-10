@@ -40,7 +40,7 @@ end
         msg = _sm_refusal(thunk)
         @test msg !== nothing
         msg === nothing && return
-        @test occursin("two structured terms", msg)
+        @test occursin("one structured term per formula", msg)
         @test occursin(a, msg) && occursin(b, msg)
         @test occursin("Gaussian()", msg)             # says what to try
     end
@@ -82,10 +82,28 @@ end
         check(() -> drm(bf(@formula(k ~ x + phylo(1 | g) + phylo(1 | h))), CumulativeLogit();
                         data = d, tree = phy, se = false), "phylo(… | g)", "phylo(… | h)")
     end
+    @testset "Student, SkewNormal, Tweedie, truncated: two markers on mu (no keywords, so the marker check speaks)" begin
+        y_pos = y_cnt .+ 1
+        check(() -> drm(bf(@formula(y_gam ~ x + relmat(1 | g) + relmat(1 | h)), @formula(sigma ~ 1)), Student();
+                        data = d), "relmat(… | g)", "relmat(… | h)")
+        check(() -> drm(bf(@formula(y_gam ~ x + phylo(1 | g) + relmat(1 | h)), @formula(sigma ~ 1)), SkewNormal();
+                        data = d), "phylo(", "relmat(")
+        check(() -> drm(bf(@formula(y_gam ~ x + relmat(1 | g) + relmat(1 | h))), Tweedie();
+                        data = d), "relmat(… | g)", "relmat(… | h)")
+        check(() -> drm(bf(@formula(y_pos ~ x + relmat(1 | g) + relmat(1 | h))), TruncatedPoisson();
+                        data = (; d..., y_pos)), "relmat(… | g)", "relmat(… | h)")
+    end
+    @testset "labelled term names the group, not the label" begin
+        msg = _sm_refusal(() -> drm(bf(@formula(y_cnt ~ x + relmat(1 + x | p | g) + relmat(1 | h))), Poisson();
+                                    data = d, K = Kmat, se = false))
+        @test msg !== nothing
+        msg === nothing || (@test occursin("(… | g)", msg) && !occursin("| p)", msg))
+    end
     @testset "one structured term still fits" begin
         fit = drm(bf(@formula(y_cnt ~ x + relmat(1 | g))), Poisson(); data = d, K = Kmat, se = false)
-        @test fit.converged || isfinite(loglik(fit))
-        @test length(fit.theta) == 3
+        @test fit.converged
+        @test length(fit.theta) == 3                  # intercept, slope, log SD of the one structured term
+        @test haskey(re_sd(fit), :g)
     end
 end
 
@@ -112,4 +130,20 @@ end
              LogNormal(); data = dl, tree = phy, K = Canim)
     @test isfinite(loglik(fl))
     @test length(fl.theta) == 5
+end
+
+# One structured term on `sigma` and none on `mu` is a supported NB2 route; the guard must not touch it.
+# The expected log-likelihood was taken from the parent commit (guard absent).
+@testset "NB2 structured sigma (one marker, on sigma) is not refused" begin
+    Random.seed!(20261112)
+    G = 12; m = 8; n = G * m
+    M = randn(G, G); K = _sm_corr(M * M' / G + I)
+    id = repeat(1:G, inner = m); x = randn(n)
+    u = 0.5 .* (cholesky(Symmetric(K)).L * randn(G))
+    mu = exp.(0.5 .+ 0.3 .* x)
+    y = Float64.([rand(Dst.NegativeBinomial(5.0 * exp(u[id[i]]), 5.0 * exp(u[id[i]]) / (5.0 * exp(u[id[i]]) + mu[i]))) for i in 1:n])
+    fit = drm(bf(@formula(y ~ x), @formula(sigma ~ 1 + relmat(1 + x | id))), NegBinomial2();
+              data = (; y, x, id), K = K, se = false)
+    @test fit.converged
+    @test loglikelihood(fit) ≈ -156.90824338672078 atol = 1e-8
 end
