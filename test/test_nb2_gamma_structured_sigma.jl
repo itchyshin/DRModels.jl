@@ -89,7 +89,15 @@ end
 # Those (y, x) (and, for phylo, the tree and K drawn from the same stream) are therefore
 # committed (test/fixtures/rng_stable), so the fixtures are identical on every Julia
 # version. No tolerance changed.
-const _NSS_FROZEN = Set([(:nb2, :spatial, :A), (:gamma, :phylo, :B)])
+# `randperm`/`shuffle` are not stream-stable across Julia versions: on 1.13 the phylo tree
+# for NB2 shape B (seed 2026110803) is a different tree and the fit does not converge
+# (oracle max_grad 18.4, min_eig < 0), while the 1.12 draw fits cleanly; the shape A phylo
+# draw (seed + 100) is likewise a fit that does not converge on 1.13, and the shape A spatial
+# draw (seed + 100) does not converge on 1.12 (non-finite SEs; the 1.10.12 draw fits cleanly). Those (y, x) and
+# the tree and K drawn from the same stream are therefore committed
+# (test/fixtures/rng_stable), so the fixture is identical on every Julia version.
+# No tolerance changed.
+const _NSS_FROZEN = Set([(:nb2, :spatial, :A), (:gamma, :phylo, :B), (:nb2, :phylo, :B), (:nb2, :phylo, :A)])
 function _nss_frozen_yx(fam, provider, shape)
     lines = readlines(joinpath(@__DIR__, "fixtures", "rng_stable", "$(fam)_$(provider)_$(shape).tsv"))
     rows = [split(l, '\t') for l in lines[3:end]]
