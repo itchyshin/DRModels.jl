@@ -85,6 +85,7 @@ include("gaussian_multi_re_sparse.jl")  # #977: sparse QR + selected inverse for
 include("gaussian_ranef.jl")
 include("gaussian_rs_sigma_ranef.jl")  # #960: (1 + x | g) mean + sigma (1 | g), per-group 3-D Laplace
 include("gaussian_lss.jl")   # #544: location-scale-scale sd(g) ~ x on the (1|g) SD
+include("gaussian_ordinary_q34_sd.jl")  # q3/q4 ordinary correlated block + coef-specific sd()
 include("aghq_1d.jl")            # #448: 1-D Liu–Pierce AGHQ around `_gauss_hermite`
 include("adaptive_ghq.jl")       # #834: per-group q-dim AGHQ for the (1 + x | g) routes
 include("gaussian_meta.jl")
@@ -147,6 +148,7 @@ include("profile_q4_phylo.jl")   # Ayumi #2: profile-likelihood CIs for the q=4 
 include("bootstrap_q4_phylo.jl") # Ayumi #2: parametric bootstrap of the q=4 among-axis SDs (boundary-honest CIs)
 include("variational.jl")
 include("ordinary_laplace.jl")      # Arc 2: marginal = :Laplace on ordinary (1 | g) (TMB convention)
+include("gaussian_sigma_sd_laplace.jl")  # Gaussian sd(g, sigma): joint mu+sigma ordinary RE and structured sigma intercept, dense Laplace
 include("convergence_status.jl")  # FX3b: the three-valued twin status shared with drmTMB
 include("indep_slopes_laplace.jl")   # #960: Gamma/Student (1 | g) + (0 + x | g), TMB-convention Laplace
 include("summary.jl")

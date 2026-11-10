@@ -1055,9 +1055,19 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     # routed (or refused) in the sd() block below, never fitted as an intercept.
     allow_sd_structured_slope = any(item.target.level in (:animal, :relmat, :spatial)
                                     for item in _sd_target_parts(f))
+    # Independent two-field `animal|relmat(1 + x | g)` with two coefficient-specific
+    # `sd(g, <level>, coef(·)) ~ …` targets is admitted only with those targets.
+    q2_kind = nothing
+    for (kind_q2, fn_q2) in ((:animal, animal), (:relmat, relmat))
+        _animal_intercept_slope(rhs[:mu]; kind = fn_q2) !== nothing &&
+            any(item.target.level === kind_q2 for item in _sd_target_parts(f)) &&
+            (q2_kind = kind_q2)
+    end
     fixed_mu, re, metav, structured, structured_slope, temporal_term, structured_sd_slope =
         _split_ranef(rhs[:mu]; allow_phylo_slope = true, allow_temporal = true,
                      allow_animal_slope = allow_sd_structured_slope,
+                     allow_animal_intercept_slope = q2_kind === :animal,
+                     allow_relmat_intercept_slope = q2_kind === :relmat,
                      allow_relmat_slope = allow_sd_structured_slope,
                      allow_spatial_slope = allow_sd_structured_slope)   # (1|g), meta_V(v), relmat/animal/phylo/spatial(1|g), temporal(...)
     structured_sd_slope === nothing || temporal_term === nothing ||
@@ -1194,6 +1204,15 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     sdpp = _sdphylo_parts(f)
     sdp = _sd_parts(f)
     if !isempty(sdpp) || !isempty(sdp)
+        # Sigma-side SD targets (`sd(g, sigma) ~ …`): dense-Laplace engine for a
+        # sigma random effect (alone or beside a mean intercept) and for animal /
+        # relmat structured sigma intercepts. Dispatched before the shared refusals
+        # below, which forbid every sigma random effect on the mean-SD routes.
+        if any(item -> item.target.dpar === :sigma, _sd_target_parts(f))
+            return _withformula(_drm_gaussian_sigma_sd_laplace(f, fam, sdp, sdpp, re,
+                structured, structured_sigma, sigma_re, metav, has_missing_response,
+                y, Xμ, Xσ, nmμ, nmσ, data, K, A, coords, g_tol, method, algorithm), f)
+        end
         # Shared refusals for every sd() route (single or multi component).
         length(sdpp) ≤ 1 ||
             throw(ArgumentError("drm: one `sd(group, phylogenetic) ~ …` formula per model."))
@@ -1207,7 +1226,24 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
                 "on `sigma`."))
         penalty === nothing ||
             throw(ArgumentError("drm: `penalty` is not wired for sd() submodel routes."))
+        # q3/q4 ordinary correlated block with per-coefficient sd() formulas.
+        multi_corr = [_re_multi_corr_vars(rl) for (rl, _) in re]
+        # q = 2 `(1 + x | g)` joins only when it carries `coef()` SD targets and stands
+        # alone (native R admits one SD formula per coefficient); every other q2
+        # shape keeps its existing route and refusals.
+        q2_alone = length(re) == 1 && structured === nothing &&
+            !isempty(_sd_target_parts(f))
+        if any(v -> v !== nothing && (length(v) ≥ 2 || q2_alone), multi_corr)
+            return _withformula(_drm_gaussian_ordinary_q34_sd(f, fam, sdpp, re, multi_corr,
+                structured, structured_sigma, sigma_re, metav, has_missing_response,
+                y, Xμ, Xσ, nmμ, nmσ, data, g_tol, method, algorithm), f)
+        end
         re_kinds_sd = [_re_kind(rl) for (rl, _) in re]
+        if q2_kind !== nothing
+            return _withformula(_drm_gaussian_structured_q2_sd(f, fam, q2_kind, structured,
+                re, sigma_re, metav, structured_sigma, has_missing_response,
+                y, Xμ, Xσ, nmμ, nmσ, data, K, A, coords, g_tol, method, algorithm), f)
+        end
         if structured_sd_slope !== nothing
             isempty(sdpp) && length(sdp) == 1 && structured[1] in (:animal, :relmat, :spatial) ||
                 throw(ArgumentError("drm: a structured slope-only effect `$(structured[1])(0 + $(structured_sd_slope) | $(structured[2]))` " *
@@ -2453,7 +2489,7 @@ function predict(fit::DrmFit, newdata; type::Symbol = :response, se::Bool = fals
             any(item.target.level === :relmat for item in _sd_target_parts(f))
         allow_sd_spatial_slope = fit.family isa Union{Binomial,Gaussian,Gamma,NegBinomial2} &&
             any(item.target.level === :spatial for item in _sd_target_parts(f))
-        allow_gamma_animal_intercept_slope = fit.family isa Gamma &&
+        allow_gamma_animal_intercept_slope = fit.family isa Union{Gamma,Gaussian,Poisson,NegBinomial2} &&
             _animal_intercept_slope(Dict(f.forms)[:mu]) !== nothing
         allow_binomial_phylo_slope_only = fit.family isa Union{Binomial,Gamma} &&
             !isempty(_sdphylo_parts(f))
@@ -2465,6 +2501,8 @@ function predict(fit::DrmFit, newdata; type::Symbol = :response, se::Bool = fals
         fixed_mu, _, _, _ = _split_ranef(mean_rhs; allow_phylo_slope = true,
                                          allow_animal_slope = allow_sd_animal_slope,
                                          allow_relmat_slope = allow_sd_relmat_slope,
+                                         allow_relmat_intercept_slope = fit.family isa Union{Gaussian,Poisson,NegBinomial2} &&
+                                             _animal_intercept_slope(Dict(f.forms)[:mu]; kind = relmat) !== nothing,
                                          allow_spatial_slope = allow_sd_spatial_slope,
                                          allow_phylo_slope_only = allow_binomial_phylo_slope_only,
                                          allow_animal_intercept_slope =
@@ -2842,7 +2880,7 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
             any(item.target.level === :animal for item in _sd_target_parts(f))
         allow_sd_animal_slope |= fit.family isa Union{Poisson,NegBinomial2,Gaussian} && f isa DrmFormula &&
             any(item.target.level === :animal for item in _sd_target_parts(f))
-        allow_gamma_animal_intercept_slope = fit.family isa Gamma &&
+        allow_gamma_animal_intercept_slope = fit.family isa Union{Gamma,Gaussian,Poisson,NegBinomial2} &&
             _animal_intercept_slope(forms[p]) !== nothing
         allow_binomial_phylo_slope_only = fit.family isa Union{Binomial,Gamma} &&
             f isa DrmFormula && !isempty(_sdphylo_parts(f))
@@ -2860,6 +2898,8 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
         fixed_p, _, _, _ = _split_ranef(parameter_rhs; allow_phylo_slope = true,
                                        allow_animal_slope = allow_sd_animal_slope,
                                        allow_relmat_slope = allow_binomial_relmat_slope,
+                                       allow_relmat_intercept_slope = fit.family isa Union{Gaussian,Poisson,NegBinomial2} &&
+                                           _animal_intercept_slope(forms[p]; kind = relmat) !== nothing,
                                        allow_spatial_slope = allow_binomial_spatial_slope,
                                        allow_phylo_slope_only = allow_binomial_phylo_slope_only,
                                        allow_animal_intercept_slope =
