@@ -167,12 +167,13 @@ end
 
 @testset "sigma random effects: shapes that are not implemented refuse by name" begin
     msg(f) = try; f(); ""; catch e; sprint(showerror, e); end
-    # NB2: a mean random effect together with a sigma one
-    m = msg(() -> drm(bf(@formula(y_nb ~ x1 + (1 | g)), @formula(sigma ~ x1 + (1 | g2))), NegBinomial2(); data = SRE))
-    @test occursin("only", m) && occursin("sigma", m)
-    # Gamma / BetaBinomial: sigma slope; LogNormal: two sigma terms
-    @test !isempty(msg(() -> drm(bf(@formula(y_gam ~ x1), @formula(sigma ~ x1 + (0 + x1 | g))), Gamma(); data = SRE)))
-    @test !isempty(msg(() -> drm(bf(@formula(y_ln ~ x1), @formula(sigma ~ x1 + (1 | g) + (1 | g2))), LogNormal(); data = SRE)))
+    # Count / positive families: a mean random effect together with a sigma one, a sigma slope and two sigma
+    # terms keep the family's own refusal.
+    for (fm, fam) in ((bf(@formula(y_nb ~ x1 + (1 | g)), @formula(sigma ~ x1 + (1 | g2))), NegBinomial2()),
+                      (bf(@formula(y_gam ~ x1), @formula(sigma ~ x1 + (0 + x1 | g))), Gamma()),
+                      (bf(@formula(y_ln ~ x1), @formula(sigma ~ x1 + (1 | g) + (1 | g2))), LogNormal()))
+        @test occursin("only the mean formula may carry a random effect", msg(() -> drm(fm, fam; data = SRE)))
+    end
     # Gaussian: an intercept and a slope on one sigma group, a slope plus an intercept on another, two sigma terms plus a mean term
     for fm in (bf(@formula(y_g ~ x1), @formula(sigma ~ x1 + (1 | g) + (0 + x1 | g))),
                bf(@formula(y_g ~ x1), @formula(sigma ~ x1 + (0 + x1 | g) + (1 | g2))),

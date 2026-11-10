@@ -302,12 +302,9 @@ function _drm_sigma_ranef_laplace_family(f::DrmFormula, fam; data, g_tol, se, fi
     fixed_sigma, sre, mvs, sts = _split_ranef(sig)
     (isempty(sre) && mvs === nothing && sts === nothing) && return nothing
     all(p -> first(p) in (:mu, :sigma), f.forms) || return nothing
-    shape = "$famname `sigma ~ ... + (1 | g)` (one ordinary random intercept on sigma, fixed-effect mean, " *
-            "constant SD; checked against drmTMB 0.8.1)"
+    # Any other shape keeps the family's own refusal (`only the mean formula may carry a random effect`).
     (isempty(re) && mv === nothing && st === nothing && mvs === nothing && sts === nothing &&
-     length(sre) == 1 && _re_kind(sre[1][1])[1] === :intercept) || throw(ArgumentError(
-        "$famname(): only $shape is implemented for a random effect on sigma; a mean random effect " *
-        "together with a sigma one, sigma slopes, several sigma terms and structured sigma terms are not."))
+     length(sre) == 1 && _re_kind(sre[1][1])[1] === :intercept) || return nothing
     offset_term === nothing || throw(ArgumentError("$famname(): an offset is not supported with a random effect on sigma."))
     (isva || isaghq) && throw(ArgumentError("$famname(): a random effect on sigma is fitted by the Laplace " *
                                            "approximation only (`marginal = :LA`)."))
