@@ -70,6 +70,6 @@ end
     ref = _OR_REF("meta_off")
     fit = drm(bf(@formula(yi ~ x1 + offset(off) + meta_V(vi)), @formula(sigma ~ 1)), Gaussian(); data = _OR_D)
     _or_check(fit, ref)
-    @test fitted(fit) ≈ fitted(drm(bf(@formula(yi ~ x1 + offset(off) + meta_V(vi)), @formula(sigma ~ 1)),
-                                    Gaussian(); data = _OR_D)) rtol = 1e-12
+    X = hcat(ones(length(_OR_D.x1)), _OR_D.x1)
+    @test fitted(fit) ≈ X * fit.theta[1:2] .+ _OR_D.off rtol = 1e-10   # offset is in the fitted mean
 end
