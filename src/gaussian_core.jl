@@ -1759,12 +1759,10 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
             error("drm (Gaussian): simultaneous mean + `sigma` random effects support a " *
                   "single `sigma` random INTERCEPT `(1 | g)` — got $(length(sigma_re)) term(s)")
         mgrp = re[1][2]; sgrp = sigma_re[1][2]
+        # Different grouping factors: the per-group 2×2 block of the same-group route does not
+        # apply; the dense Laplace engine with one latent field per factor does (constant SDs).
         mgrp === sgrp ||
-            error("drm (Gaussian): simultaneous mean + `sigma` random effects are implemented " *
-                  "only when both share the SAME grouping factor (got `(1 | $mgrp)` on the " *
-                  "mean and `(1 | $sgrp)` on sigma) — the per-group 2×2 Laplace block this " *
-                  "route uses requires one group per observation shared by both axes; " *
-                  "different/crossed groups are not implemented (#745)")
+            return _drm_gaussian_sigma_ranef_blocks(f, fam, y, Xμ, Xσ, re, sigma_re, nmμ, nmσ, data, g_tol, true)
         # `has_missing_response` and `method === :REML` are already refused above
         # this point for ANY non-empty `re` — the generic missing-response guard
         # and the `if method === :REML` validator both throw before a formula
@@ -1781,8 +1779,10 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     if !isempty(sigma_re)                                      # random effect on log σ
         (isempty(re) && structured === nothing && metav === nothing) ||
             error("a random effect on `sigma` must be the only random structure (the mean must be fixed effects)")
+        # Beyond one `(1 | g)`: sigma slopes, two sigma groups (constant SDs, dense Laplace);
+        # shapes outside that list are refused by name inside.
         (length(sigma_re) == 1 && _re_kind(sigma_re[1][1])[1] === :intercept) ||
-            error("`sigma` random effects support a single random intercept `(1 | g)`")
+            return _drm_gaussian_sigma_ranef_blocks(f, fam, y, Xμ, Xσ, re, sigma_re, nmμ, nmσ, data, g_tol, true)
         sgrp = sigma_re[1][2]
         gidx, G = _group_index(getproperty(data, sgrp); col = sgrp)
         return _withformula(_fit_sigma_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, sgrp, g_tol;

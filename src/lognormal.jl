@@ -105,6 +105,10 @@ struct LogNormal end
         _refuse_offset_route(fam, "a random, structured or `meta_V` term on the mean")
     mv === nothing ||
         error("LogNormal() does not support meta_V markers")
+    let sigre = _drm_sigma_ranef_laplace_family(f, fam; data, g_tol, se = true, fixed_mu, re, mv, st,
+                                                offset_term = offset_term, isva = false, isaghq = marginal !== :LA)
+        sigre === nothing || return sigre
+    end
     for (pname, r) in f.forms          # only the mean may carry a random effect
         pname === :mu && continue
         _, re2, mv2, st2 = _split_ranef(r)
