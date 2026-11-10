@@ -5,7 +5,7 @@
 #   |loglik - R| <= 1e-4;  fixed effects <= 1e-3 R SE;  log SD <= 5e-3;  SEs <= 1e-3 relative.
 # Independent oracles (no R): integer weights equal replicated rows (a replicated row shares its group effect),
 # unit weights equal no weights, and every shape that is not wired keeps a refusal.
-using DRModels, Test, DelimitedFiles, LinearAlgebra
+using DRModels, Test, DelimitedFiles, LinearAlgebra, Random, QuadGK
 
 const _WR_DIR = joinpath(@__DIR__, "fixtures", "weights_re")
 
@@ -167,5 +167,84 @@ _wr_rep(d, w) = (idx = reduce(vcat, [fill(i, Int(w[i])) for i in eachindex(w)]);
         fb = bf(mu1 = @formula(y1 ~ x1 + (1 | p | g)), mu2 = @formula(y2 ~ x2 + (1 | p | g)),
                 sigma1 = @formula(sigma1 ~ 1), sigma2 = @formula(sigma2 ~ 1), rho12 = @formula(rho12 ~ 1))
         @test_throws ArgumentError drm(fb, Gaussian(); data = d, weights = d.w)
+    end
+end
+
+@testset "weights reach refit helpers (bootstrap, update) and edge weights" begin
+    d = _WR_D
+    n = length(d.y_g)
+    fb = bf(mu1 = @formula(y1 ~ x1), mu2 = @formula(y2 ~ x2), sigma1 = @formula(sigma1 ~ 1),
+            sigma2 = @formula(sigma2 ~ 1), rho12 = @formula(rho12 ~ 1))
+
+    @testset "bivariate bootstrap refits keep the weights" begin
+        fw = drm(fb, Gaussian(); data = d, weights = d.w)
+        @test DRModels._bootstrap_refit_kwargs(fw).weights == d.w
+        @test get(DRModels._bootstrap_bivariate_refit_kwargs(DRModels._bootstrap_refit_kwargs(fw)), :weights, nothing) == d.w
+        bs(fit) = bootstrap_result(fit; data = d, B = 6, rng = MersenneTwister(5), check_converged = false).summary
+        f0 = drm(fb, Gaussian(); data = d)
+        f1 = drm(fb, Gaussian(); data = d, weights = ones(n))
+        @test bs(f1) == bs(f0)            # unit weights = no weights, same seed
+        @test bs(fw) != bs(f0)            # real weights change the refits
+    end
+
+    @testset "update never refits a weighted model unweighted" begin
+        f = bf(@formula(y_g ~ x1 + (1 | g)), @formula(sigma ~ 1))
+        ffix = bf(@formula(y_g ~ x1), @formula(sigma ~ 1))
+        for (fm, fit) in ((ffix, drm(ffix, Gaussian(); data = d, weights = d.w)),
+                          (f, drm(f, Gaussian(); data = d, weights = d.w)))
+            @test_throws ArgumentError update(fit, fm; data = d)                       # stored weights, none given
+            up = update(fit, fm; data = d, weights = d.w)                               # explicit weights pass through
+            @test up.theta ≈ fit.theta rtol = 1e-6
+            @test weights(up) == d.w
+            @test weights(update(fit, fm; data = d, weights = nothing)) === nothing     # explicit opt-out is allowed
+        end
+        fu = drm(f, Gaussian(); data = d)
+        @test update(fu, f; data = d).theta ≈ fu.theta rtol = 1e-6                     # unweighted: unchanged
+    end
+
+    @testset "zero weights equal dropped rows, REML included; an all-zero group" begin
+        f = bf(@formula(y_g ~ x1 + (1 | g)), @formula(sigma ~ 1))
+        keep = findall(>(0), d.wz)
+        dk = NamedTuple{keys(d)}(map(c -> c[keep], values(d)))
+        for m in (:ML, :REML)
+            a = drm(f, Gaussian(); data = d, weights = d.wz, method = m)
+            b = drm(f, Gaussian(); data = dk, weights = d.w[keep], method = m)
+            @test loglikelihood(a) ≈ loglikelihood(b) atol = 1e-7
+            @test a.theta ≈ b.theta atol = 1e-5
+        end
+        wg = d.w .* (d.g .!= "g01")                          # every row of group g01 has weight 0
+        keepg = findall(>(0), wg)
+        dg = NamedTuple{keys(d)}(map(c -> c[keepg], values(d)))
+        a = drm(f, Gaussian(); data = d, weights = wg)
+        b = drm(f, Gaussian(); data = dg, weights = d.w[keepg])
+        @test loglikelihood(a) ≈ loglikelihood(b) atol = 1e-7
+        @test a.theta ≈ b.theta atol = 1e-5
+        fp = bf(@formula(y_pois ~ x1 + (1 | g)))
+        for kw in ((;), (; marginal = :Laplace))
+            a = drm(fp, Poisson(); data = d, weights = wg, kw...)
+            b = drm(fp, Poisson(); data = dg, weights = d.w[keepg], kw...)
+            @test loglikelihood(a) ≈ loglikelihood(b) atol = 1e-6
+            @test a.theta ≈ b.theta atol = 1e-4
+        end
+    end
+
+    @testset "large non-integer weights, Poisson default marginal vs brute-force quadrature" begin
+        wbig = d.w .* (1 .+ 19 .* (d.id .% 5 .== 0))
+        fp = bf(@formula(y_pois ~ x1 + (1 | g)))
+        fit = drm(fp, Poisson(); data = d, weights = wbig)
+        β = fit.theta[1:2]; σb = exp(fit.theta[3])
+        ll = 0.0
+        for gl in unique(d.g)
+            idx = findall(==(gl), d.g)
+            η0 = β[1] .+ β[2] .* d.x1[idx]
+            lf(b) = sum(wbig[idx] .* (d.y_pois[idx] .* (η0 .+ b) .- exp.(η0 .+ b))) -
+                    sum(wbig[idx] .* [sum(log, 1:Int(y); init = 0.0) for y in d.y_pois[idx]]) - b^2 / (2σb^2) - log(σb * sqrt(2π))
+            bs = range(-12σb, 12σb; length = 4001)
+            m = maximum(lf.(bs))
+            val, _ = quadgk(b -> exp(lf(b) - m), collect(range(-12σb, 12σb; length = 801))...; rtol = 1e-12, atol = 1e-14)
+            ll += m + log(val)
+        end
+        # measured gap 1.9e-4 on a logLik of -1497: the default marginal's finite-node quadrature with weights up to 38
+        @test loglikelihood(fit) ≈ ll atol = 1e-3
     end
 end
