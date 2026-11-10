@@ -3218,29 +3218,34 @@ function _gamma_animal_intercept_slope_sd_marginal_simulator(fit::DrmFit,
     end
 end
 
-# Independent two-field structured intercept-plus-slope (`animal(1 + x | g)` or
-# `relmat(1 + x | g)`) with one SD formula per coefficient, on the Poisson, NB2
-# and Gaussian routes. Draws b0, b1 ~ N(0, C) independently (C = A or K, RAW as
-# in the fit), then eta = eta_fixed + sd0[g] * b0[g] + x * sd1[g] * b1[g] and
-# y from the family at the fitted dispersion (Gaussian: fitted sigma).
+# Independent two-field structured intercept-plus-slope (`animal(1 + x | g)`,
+# `relmat(1 + x | g)`, `phylo(1 + x | g)` or `spatial(1 + x | g)`) with one SD
+# formula per coefficient, on the Poisson, NB2 and Gaussian routes. Draws
+# b0, b1 ~ N(0, C) independently (C = A or K, RAW as in the fit; for phylo and
+# spatial the fit's own kernel and row-to-level map, passed as `kernel =
+# (C, gidx, G)`), then eta = eta_fixed + sd0[g] * b0[g] + x * sd1[g] * b1[g]
+# and y from the family at the fitted dispersion (Gaussian: fitted sigma).
 function _structured_q2_sd_marginal_simulator(fit::DrmFit, data, matrix;
-                                              provider::Symbol, block)
+                                              provider::Symbol, block,
+                                              kernel = nothing)
     f = fit.formula
-    label = provider === :animal ? "animal" : "relmat"
-    targets = filter(item -> item.target.level === provider, _sd_target_parts(f))
+    label = String(provider)
+    level = _q2_target_level(provider)
+    targets = filter(item -> item.target.level === level, _sd_target_parts(f))
     length(targets) == 2 || throw(ArgumentError(
         "bootstrap: $(label) intercept-and-slope simulation needs two SD targets"))
     group, slope = block.group, block.slope
     ordered = [only(filter(item -> item.target.member === member, targets))
                for member in (:intercept, slope)]
-    matrix === nothing && throw(ArgumentError(
+    kernel === nothing && matrix === nothing && throw(ArgumentError(
         "bootstrap: supply the same covariance matrix (`" *
         (provider === :animal ? "A` or `Ainv" : "K") *
         "`) used to fit the $(label) intercept-and-slope model"))
     hasproperty(data, group) && hasproperty(data, slope) || throw(ArgumentError(
         "bootstrap: data are missing the $(label) grouping or slope column"))
-    gidx, G = _group_index(getproperty(data, group))
-    C = Matrix{Float64}(matrix)
+    gidx, G = kernel === nothing ? _group_index(getproperty(data, group)) :
+        (kernel[2], kernel[3])
+    C = Matrix{Float64}(kernel === nothing ? matrix : kernel[1])
     size(C) == (G, G) || throw(ArgumentError(
         "bootstrap: $(label) covariance matrix must match first-seen group order"))
     all(x -> isfinite(x) && x > 0, diag(C)) || throw(ArgumentError(
@@ -3266,9 +3271,14 @@ function _structured_q2_sd_marginal_simulator(fit::DrmFit, data, matrix;
     length(eta_fixed) == length(gidx) == length(x) || throw(ArgumentError(
         "bootstrap: $(label) prediction, grouping and slope lengths do not match"))
     xf = Float64.(x)
+    # Labelled `(1 + x | p | g)`: unit fields correlated with the fitted rho.
+    rho = hasproperty(block, :label) && block.label !== nothing ?
+        _Q2_RHO_BOUND * tanh(only(coef(fit, :recov))) : 0.0
     return function (rng)
-        b0 = scales[1] .* (factor.L * randn(rng, G))
-        b1 = scales[2] .* (factor.L * randn(rng, G))
+        z0 = factor.L * randn(rng, G)
+        z1 = factor.L * randn(rng, G)
+        b0 = scales[1] .* z0
+        b1 = scales[2] .* (rho .* z0 .+ sqrt(1 - rho^2) .* z1)
         eta = eta_fixed .+ b0[gidx] .+ xf .* b1[gidx]
         if fit.family isa Gaussian
             return eta .+ fit.scales[:sigma] .* randn(rng, length(eta))
@@ -3610,6 +3620,16 @@ function _sigma_only_marginal_simulator(fit::DrmFit, data)
     end
 end
 
+# `Ainv` -> covariance `A` for the simulators of routes whose fitter converts the
+# precision at entry (same helper, so the simulated kernel is the fitted one).
+function _simulate_ainv_to_A(fit::DrmFit, data, A, Ainv)
+    Ainv === nothing && return A
+    A === nothing || throw(ArgumentError(
+        "bootstrap: supply only one of `A` and `Ainv`"))
+    Acov, _ = _ainv_as_labelled_A(fit.formula, data, nothing, Ainv, nothing)
+    return Acov
+end
+
 function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing,
                                    Ainv=nothing, tree=nothing, tree1=nothing,
                                    tree2=nothing, coords=nothing)
@@ -3618,12 +3638,22 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing,
     _is_temporal_fit(fit) && return rng -> _temporal_simulate(fit, rng)
     fit.nll isa LocScaleObjective &&
         return _ls_marginal_simulator(fit, data; K, A, tree, coords)
+    # NB2/Gamma structured sigma fields (src/sigma_structured_laplace.jl)
+    if fit isa DrmFit && fit.formula isa DrmFormula && fit.family isa Union{NegBinomial2,Gamma} &&
+       (haskey(fit.scales, :sigma_random_effect_slope) || _ss_has_sigma_structured_sd(fit.formula))
+        # Gamma and NB2 take an animal precision `Ainv` at fit time by converting it to
+        # the labelled covariance `A = inv(Ainv)`; the simulator needs that same `A`.
+        A = _simulate_ainv_to_A(fit, data, A, Ainv)
+        return _sigma_struct_marginal_simulator(fit, data; K, A, tree, coords)
+    end
     if fit isa DrmFit && fit.formula isa DrmFormula &&
        fit.family isa Union{Poisson,NegBinomial2,Gaussian} &&
        haskey(Dict(fit.formula.forms), :mu) &&
        length(_sd_target_parts(fit.formula)) == 2
-        for (provider, block) in ((:animal, _animal_intercept_slope(Dict(fit.formula.forms)[:mu])),
-                                  (:relmat, _relmat_intercept_slope(Dict(fit.formula.forms)[:mu])))
+        for (provider, block) in ((:animal, _animal_intercept_slope(Dict(fit.formula.forms)[:mu];
+                                                                    allow_label = true)),
+                                  (:relmat, _relmat_intercept_slope(Dict(fit.formula.forms)[:mu];
+                                                                    allow_label = true)))
             block === nothing && continue
             matrix = if provider === :relmat
                 K
@@ -3641,6 +3671,47 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing,
             return _structured_q2_sd_marginal_simulator(
                 fit, data, matrix; provider, block)
         end
+        # phylo / coordinate-spatial q2: rebuild the fit's kernel and row map.
+        q2ps = _phylo_spatial_q2_block(fit.formula)
+        if q2ps !== nothing
+            kind, block = q2ps
+            hasproperty(data, block.group) || throw(ArgumentError(
+                "bootstrap: data are missing the $(kind) grouping column `$(block.group)`"))
+            # Same label resolution as `drm()` (#957): a Dict `coords` is
+            # matched to the site levels by name.
+            kcoords = kind === :spatial ?
+                _resolve_coords_labels(fit.formula, data, coords, nothing) : nothing
+            kernel = _structured_q2_kernel(kind, block.group, getproperty(data, block.group);
+                tree, K = nothing, A = nothing, coords = kcoords,
+                who = "bootstrap: `$(kind)(1 + $(block.slope) | $(block.group))` simulation")
+            return _structured_q2_sd_marginal_simulator(
+                fit, data, nothing; provider = kind, block, kernel)
+        end
+    end
+    # Ordinary correlated `(1 + x | g)` / labelled `(1 + x | p | g)` q2 (Poisson, NB2):
+    # the structured q2 simulator with the identity kernel and the fitted rho.
+    if fit isa DrmFit && fit.formula isa DrmFormula && fit.family isa Union{Poisson,NegBinomial2} &&
+       length(_sd_target_parts(fit.formula)) == 2
+        ob = _ordinary_q2_sd_block(fit.formula, fit.family)
+        if ob !== nothing
+            hasproperty(data, ob.group) || throw(ArgumentError(
+                "bootstrap: data are missing the grouping column `$(ob.group)`"))
+            gidx, G = _group_index(getproperty(data, ob.group))
+            return _structured_q2_sd_marginal_simulator(fit, data, nothing;
+                provider = :iid, block = (; group = ob.group, slope = ob.slope,
+                    label = something(ob.label, :correlated)),
+                kernel = (Matrix{Float64}(I, G, G), gidx, G))
+        end
+    end
+    if fit isa DrmFit && fit.formula isa DrmFormula &&
+       fit.family isa Union{Gamma,NegBinomial2} &&
+       count(item -> item.target.dpar === :mu, _sd_target_parts(fit.formula)) == 2 &&
+       length(_sd_target_parts(fit.formula)) == 2
+        A = _simulate_ainv_to_A(fit, data, A, Ainv)   # Gamma fit-time `Ainv` -> `A`
+        kc = fit.family isa Gamma && any(item -> item.target.level === :spatial, _sd_target_parts(fit.formula)) ?
+            _resolve_coords_labels(fit.formula, data, coords, nothing) : coords
+        sim = _twofield_sd_marginal_simulator(fit, data; K, A, tree, coords = kc)
+        sim === nothing || return sim
     end
     _is_gaussian_lss(fit) && return _lss_marginal_simulator(fit, data; tree)
     fit.formula isa DrmFormula || return nothing

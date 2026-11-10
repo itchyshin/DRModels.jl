@@ -43,7 +43,15 @@ _structured_re_lhs_text(lhs) = if lhs isa ConstantTerm
 # slope form on any route that did not opt in — throws, so no route can silently
 # fit the intercept-only model in place of what the formula says.
 function _check_phylo_re_lhs(lhs, grp::Symbol; allow_slope::Bool = false,
-                             allow_slope_only::Bool = false)
+                             allow_slope_only::Bool = false,
+                             allow_labelled_intercept_slope::Bool = false)
+    labelled = _structured_lhs_label(lhs)
+    if labelled !== nothing && allow_slope && allow_labelled_intercept_slope
+        lhs = labelled.inner
+        lhs isa FunctionTerm && lhs.f === (+) || throw(ArgumentError(
+            "drm: a labelled `phylo(... | $(labelled.label) | $grp)` term is only implemented as `phylo(1 + x | $(labelled.label) | $grp)`"))
+        allow_slope_only = false
+    end
     (lhs isa ConstantTerm && lhs.n == 1) && return nothing
     lhs_text = _structured_re_lhs_text(lhs)
     if lhs isa FunctionTerm && lhs.f === (+)
@@ -78,14 +86,31 @@ function _check_phylo_re_lhs(lhs, grp::Symbol; allow_slope::Bool = false,
         "and multi-slope forms are not implemented"))
 end
 
+# Labelled (correlated) structured intercept-plus-slope `kind(1 + x | p | g)`.
+# Julia parses `1 + x | p | g` left-associatively, so the structured term's lhs
+# is `|(1 + x, p)`. Returns `(inner, label)` for that shape, else `nothing`.
+function _structured_lhs_label(lhs)
+    lhs isa FunctionTerm && lhs.f === (|) && length(lhs.args) == 2 &&
+        lhs.args[2] isa Term || return nothing
+    return (; inner = lhs.args[1], label = lhs.args[2].sym)
+end
+
 # relmat and spatial structured slopes are explicit opt-ins: their family
 # routes must provide the coefficient loading and matching covariance. Animal
 # has a separate checker because it also supports intercept-plus-slope blocks.
 function _check_structured_re_lhs(kind::Symbol, lhs, grp::Symbol;
                                   allow_slope::Bool = false,
-                                  allow_intercept_slope::Bool = false)
+                                  allow_intercept_slope::Bool = false,
+                                  allow_labelled_intercept_slope::Bool = false)
+    labelled = _structured_lhs_label(lhs)
+    if kind in (:relmat, :spatial) && labelled !== nothing && allow_intercept_slope &&
+       allow_labelled_intercept_slope
+        lhs = labelled.inner
+        lhs isa FunctionTerm && lhs.f === (+) || throw(ArgumentError(
+            "drm: a labelled `$kind(... | $(labelled.label) | $grp)` term is only implemented as `relmat(1 + x | $(labelled.label) | $grp)`"))
+    end
     (lhs isa ConstantTerm && lhs.n == 1) && return nothing
-    if kind === :relmat && allow_intercept_slope &&
+    if kind in (:relmat, :spatial) && allow_intercept_slope &&
        lhs isa FunctionTerm && lhs.f === (+)
         constants = filter(t -> t isa ConstantTerm, lhs.args)
         variables = filter(t -> t isa Term, lhs.args)
@@ -113,7 +138,15 @@ end
 # opt-ins separate from relmat/spatial and from callers that require a single
 # structured intercept.
 function _check_animal_re_lhs(lhs, grp::Symbol; allow_slope::Bool = false,
-                              allow_intercept_slope::Bool = false)
+                              allow_intercept_slope::Bool = false,
+                              allow_labelled_intercept_slope::Bool = false)
+    labelled = _structured_lhs_label(lhs)
+    if labelled !== nothing && allow_intercept_slope && allow_labelled_intercept_slope
+        lhs = labelled.inner
+        lhs isa FunctionTerm && lhs.f === (+) || throw(ArgumentError(
+            "drm: a labelled `animal(... | $(labelled.label) | $grp)` term is only implemented as `animal(1 + x | $(labelled.label) | $grp)`"))
+        allow_slope = false
+    end
     (lhs isa ConstantTerm && lhs.n == 1) && return nothing
     if lhs isa FunctionTerm && lhs.f === (+)
         consts = filter(t -> t isa ConstantTerm, lhs.args)
@@ -135,36 +168,71 @@ end
 # Return the explicitly independent animal intercept-plus-slope member from a
 # structured marker. The current public Gamma route uses this to map two SD
 # formulas to the coefficient fields; unrelated animal routes remain unchanged.
-function _animal_intercept_slope(rhs; kind = animal)
+#
+# `allow_label = true` (opt-in, Poisson/NB2/Gaussian q2 SD routes only) also
+# recognises the labelled correlated form `kind(1 + x | p | g)`; the returned
+# `label` is the correlation label (`nothing` for the independent form).
+function _animal_intercept_slope(rhs; kind = animal, allow_label::Bool = false)
     terms = rhs isa Tuple ? rhs : (rhs,)
     for term in terms
         term isa FunctionTerm && term.f === kind || continue
         lhs = term.args[1].args[1]
+        labelled = _structured_lhs_label(lhs)
+        label = nothing
+        if labelled !== nothing
+            allow_label || continue
+            lhs, label = labelled.inner, labelled.label
+        end
         lhs isa FunctionTerm && lhs.f === (+) || continue
         consts = filter(x -> x isa ConstantTerm, lhs.args)
         vars = filter(x -> x isa Term, lhs.args)
         length(lhs.args) == 2 && length(consts) == 1 && consts[1].n == 1 &&
             length(vars) == 1 || continue
-        return (; group = term.args[1].args[2].sym, slope = vars[1].sym)
+        return (; group = term.args[1].args[2].sym, slope = vars[1].sym, label)
     end
     return nothing
 end
 
 # relmat analogue of `_animal_intercept_slope`: the independent intercept-plus-slope
 # `relmat(1 + x | g)` member, used by the Poisson relmat q2 SD route.
-function _relmat_intercept_slope(rhs)
-    terms = rhs isa Tuple ? rhs : (rhs,)
-    for term in terms
-        term isa FunctionTerm && term.f === relmat || continue
-        lhs = term.args[1].args[1]
-        lhs isa FunctionTerm && lhs.f === (+) || continue
-        consts = filter(x -> x isa ConstantTerm, lhs.args)
-        vars = filter(x -> x isa Term, lhs.args)
-        length(lhs.args) == 2 && length(consts) == 1 && consts[1].n == 1 &&
-            length(vars) == 1 || continue
-        return (; group = term.args[1].args[2].sym, slope = vars[1].sym)
+function _relmat_intercept_slope(rhs; allow_label::Bool = false)
+    return _animal_intercept_slope(rhs; kind = relmat, allow_label)
+end
+
+# Post-fit only (predict, predict_parameters, bridge label rendering, marginal
+# simulators): drop a structured intercept-plus-slope term
+# `animal|relmat|phylo|spatial(1 + x | g)` or its labelled form
+# `kind(1 + x | p | g)` when the fit carries the two matching coefficient SD
+# targets, i.e. when a fitted q2 SD route has already admitted it. The
+# population-level design is the remaining fixed part, so no family-specific
+# parser permission is needed (the label is a pure label, never a column).
+# Fitting code must keep using `_split_ranef` with explicit opt-ins.
+_postfit_q2_markers() = ((animal, :animal), (relmat, :relmat),
+                         (phylo, :phylogenetic), (spatial, :spatial))
+
+function _strip_fitted_q2_terms(fit, rhs)
+    f = hasproperty(fit, :formula) ? fit.formula : nothing
+    f isa DrmFormula || return rhs
+    targets = _sd_target_parts(f)
+    length(targets) >= 2 || return rhs
+    terms = rhs isa Tuple ? collect(rhs) : Any[rhs]
+    keep = Any[]
+    for t in terms
+        drop = false
+        for (marker, level) in _postfit_q2_markers()
+            t isa FunctionTerm && t.f === marker || continue
+            blk = _animal_intercept_slope(t; kind = marker, allow_label = true)
+            blk === nothing && continue
+            members = Set(item.target.member for item in targets
+                          if item.target.level === level && item.target.group === blk.group &&
+                             item.target.dpar === :mu)
+            drop = members == Set((:intercept, blk.slope))
+        end
+        drop || push!(keep, t)
     end
-    return nothing
+    length(keep) == length(terms) && return rhs
+    isempty(keep) && return ConstantTerm(1)
+    return length(keep) == 1 ? keep[1] : Tuple(keep)
 end
 
 # Split a μ right-hand side into its fixed part and any `(lhs | g)` terms.
@@ -209,7 +277,9 @@ function _split_ranef(rhs; allow_phylo_slope::Bool = false,
                       allow_relmat_slope::Bool = false,
                       allow_relmat_intercept_slope::Bool = false,
                       allow_spatial_slope::Bool = false,
-                      allow_temporal::Bool = false)
+                      allow_spatial_intercept_slope::Bool = false,
+                      allow_temporal::Bool = false,
+                      allow_labelled_intercept_slope::Bool = false)
     terms = rhs isa Tuple ? collect(rhs) : Any[rhs]
     fixed = Any[]
     re = Tuple{Any,Symbol}[]
@@ -233,7 +303,8 @@ function _split_ranef(rhs; allow_phylo_slope::Bool = false,
         elseif t isa FunctionTerm && t.f === relmat
             slope = _check_structured_re_lhs(:relmat, t.args[1].args[1],
                 t.args[1].args[2].sym; allow_slope = allow_relmat_slope,
-                allow_intercept_slope = allow_relmat_intercept_slope)
+                allow_intercept_slope = allow_relmat_intercept_slope,
+                allow_labelled_intercept_slope)
             if structured === nothing
                 structured = (:relmat, t.args[1].args[2].sym)
                 animal_slope = slope
@@ -244,7 +315,8 @@ function _split_ranef(rhs; allow_phylo_slope::Bool = false,
         elseif t isa FunctionTerm && t.f === animal
             slope = _check_animal_re_lhs(t.args[1].args[1], t.args[1].args[2].sym;
                 allow_slope = allow_animal_slope,
-                allow_intercept_slope = allow_animal_intercept_slope)
+                allow_intercept_slope = allow_animal_intercept_slope,
+                allow_labelled_intercept_slope)
             if structured === nothing
                 structured = (:animal, t.args[1].args[2].sym)
                 animal_slope = slope
@@ -255,7 +327,8 @@ function _split_ranef(rhs; allow_phylo_slope::Bool = false,
         elseif t isa FunctionTerm && t.f === phylo
             slope = _check_phylo_re_lhs(t.args[1].args[1], t.args[1].args[2].sym;
                                         allow_slope = allow_phylo_slope,
-                                        allow_slope_only = allow_phylo_slope_only)
+                                        allow_slope_only = allow_phylo_slope_only,
+                                        allow_labelled_intercept_slope)
             if structured === nothing
                 structured = (:phylo, t.args[1].args[2].sym)
                 structured_slope = slope
@@ -266,7 +339,9 @@ function _split_ranef(rhs; allow_phylo_slope::Bool = false,
             end
         elseif t isa FunctionTerm && t.f === spatial
             slope = _check_structured_re_lhs(:spatial, t.args[1].args[1],
-                t.args[1].args[2].sym; allow_slope = allow_spatial_slope)
+                t.args[1].args[2].sym; allow_slope = allow_spatial_slope,
+                allow_intercept_slope = allow_spatial_intercept_slope,
+                allow_labelled_intercept_slope)
             if structured === nothing
                 structured = (:spatial, t.args[1].args[2].sym)
                 animal_slope = slope
@@ -1127,7 +1202,11 @@ the fitted conditional mode.
 """
 function ranef(fit::DrmFit)
     if fit.ranef === nothing || fit.ranef isa PhyloTipVariance   # tip variances only, no modes
-        has_re_block = any(p -> first(p) in (:resd, :recov, :sd, :sd_phylo), fit.blocks)
+        # `sdtarget_*` blocks are the coefficient-specific SD-regression random
+        # effects; without stored modes they refuse exactly like `:sd` (#759),
+        # rather than returning an empty Dict that reads as "no random effects".
+        has_re_block = any(p -> first(p) in (:resd, :recov, :sd, :sd_phylo) ||
+                                startswith(String(first(p)), "sdtarget_"), fit.blocks)
         has_re_block && throw(ArgumentError("ranef: this fit has a random-effect block " *
             "but no stored conditional modes -- the non-Gaussian GLMM marginal route " *
             "(Gauss-Hermite quadrature / Laplace) does not retain a posterior mode. " *

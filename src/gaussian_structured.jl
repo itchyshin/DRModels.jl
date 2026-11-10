@@ -39,7 +39,7 @@ pass it as a table whose column names are the animal labels, or as a plain
 matrix together with `ids = [label of each row]`. Rows of `A` for labels that
 are not in the data are dropped; a level of `id` with no row in `A` is an
 `ArgumentError`. A plain matrix without `ids` is taken to be in order of first
-appearance of `id` in the data, and warns once per session. `ids` is accepted by
+appearance of `id` in the data, and warns on every call. `ids` is accepted by
 the Gaussian, Poisson, NegBinomial2, Gamma, Beta and ZeroOneBeta `drm` methods.
 """
 animal(x) = x
@@ -73,7 +73,7 @@ level). `coords` is matched to the data **by site label**: pass it as a plain
 matrix together with `ids = [site label of each row]`, or as a `Dict` keyed by site
 label. Coordinates for sites not in the data are dropped; a level of `site` with no
 coordinates is an `ArgumentError`. A plain matrix without `ids` is taken to be in order
-of first appearance of `site` in the data, and warns once per session. The spatial correlation `K(ρ) = exp(-d / ρ)` is built
+of first appearance of `site` in the data, and warns on every call. The spatial correlation `K(ρ) = exp(-d / ρ)` is built
 from pairwise distances and the range `ρ` is estimated jointly. Closed-form
 Gaussian marginal (K is rebuilt each evaluation since it depends on `ρ`).
 """

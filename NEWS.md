@@ -6,6 +6,8 @@ human-readable changelog.
 
 ## Development
 
+- **REML for the Gaussian structured q2 SD routes.** `drm(...; method = :REML)` now fits `kind(1 + x | g)` with one `sd(g, level, coef(...))` formula per coefficient for `phylo` (labelled or unlabelled, any fixed-effect `sigma`) and for unlabelled `animal` / `relmat` / `spatial` with `sigma ~ 1`, the cells native drmTMB admits under `REML = TRUE`. The mean coefficients are integrated out (restricted log-likelihood `ml + (p/2) log 2π − ½ log|X'V⁻¹X|`, the constant native drmTMB reports). Labelled `animal` / `relmat` / `spatial` and heteroscedastic `sigma` with those providers still refuse, as in native drmTMB. Ordinary `sd()` q2/q3/q4 and `sd(g, sigma)` routes stay maximum-likelihood only because native drmTMB refuses REML there too.
+
 ## v0.8.1
 
 - **Separation message for `CumulativeLogit()` and a boundary flag for Student `nu` (#1221, #969).** A fixed-effect `CumulativeLogit()` fit with (quasi-)complete separation now warns and names the affected coefficients, as `Binomial()` does. A `Student()` fit whose fitted `nu` reaches the Gaussian limit (1/nu < 1e-3) now warns at fit time and prints a `boundary (limit)` note under the `nu` block of `show`. Both are messages only: estimates, `vcov`, `stderror`, `converged` and `convergence_status` are unchanged.

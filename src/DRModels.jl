@@ -99,6 +99,8 @@ include("skewnormal.jl")
 include("poisson.jl")
 include("sparse_laplace_glmm.jl")
 include("negbinomial.jl")
+include("ordinary_q2_sd.jl")   # ordinary labelled (1 + x | p | g) Poisson/NB2 q2 with coef() SD formulas
+include("structured_q2_phylo_spatial.jl")   # phylo/spatial (1 + x | g) q2 with coef() SD formulas
 include("truncated_poisson.jl")   # zero-truncated Poisson + shared hurdle-Poisson spelling
 include("beta.jl")
 include("betabinomial.jl")
@@ -106,6 +108,7 @@ include("separation.jl")
 include("binomial.jl")
 include("binomial_sd_regression.jl")
 include("gamma.jl")
+include("twofield_sd_laplace.jl")  # Gamma/NB2 two mean fields, one SD formula each (same-group, crossed, ordinary+structured, relmat q2)
 include("lognormal.jl")
 include("bivariate_student.jl")  # drmTMB `biv_student()`: exact bivariate-t density,
                                  # ONE shared nu (logm2 link). Needs student.jl + gaussian_bivariate.jl.
@@ -149,6 +152,7 @@ include("bootstrap_q4_phylo.jl") # Ayumi #2: parametric bootstrap of the q=4 amo
 include("variational.jl")
 include("ordinary_laplace.jl")      # Arc 2: marginal = :Laplace on ordinary (1 | g) (TMB convention)
 include("gaussian_sigma_sd_laplace.jl")  # Gaussian sd(g, sigma): joint mu+sigma ordinary RE and structured sigma intercept, dense Laplace
+include("sigma_structured_laplace.jl")  # NB2/Gamma structured sigma: SD-formula intercept (Julia-only) and NB2 intercept+slope with fixed SDs
 include("convergence_status.jl")  # FX3b: the three-valued twin status shared with drmTMB
 include("indep_slopes_laplace.jl")   # #960: Gamma/Student (1 | g) + (0 + x | g), TMB-convention Laplace
 include("summary.jl")

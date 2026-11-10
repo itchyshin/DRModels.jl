@@ -465,6 +465,89 @@ function _laplace_outer_converged(res, nllhat, gfinal, θ, n::Int, g_tol)
     return norm(gfinal, Inf) / max(n, 1) <= _LAPLACE_OUTER_RELTOL
 end
 
+# Boundary restarts for the structured intercept-and-slope (q2) Laplace fitters.
+#
+# When a coefficient SD is weakly identified the Laplace likelihood in its SD
+# coefficients has a flat ridge running to the boundary (SD -> 0) and more than
+# one stationary point. L-BFGS from the single default start slides down the ridge
+# and stops at the boundary point, which is a genuine stationary point and so
+# reports convergence, although a better interior point exists. Examples (drmTMB
+# reaches the interior point from its own start, and the objective at its estimate
+# evaluated by Julia equals its log-likelihood to 1e-8): NB2 phylo seed 55 of the
+# scale-extension study, -1637.42187 against -1637.42077; Binomial phylo seed 5 and
+# spatial seed 28 of the weak-probe family, 0.015 and 0.008 below. The interior
+# optima have a slope SD that varies strongly across groups (|z1 coefficient| near
+# 2); every start with a constant slope SD (z1 coefficient 0) ends on the ridge.
+# Remedy: only when the first fit ends near the boundary (a fitted group SD below
+# `_Q2_BOUNDARY_SD`) or has not met the outer gradient test, run L-BFGS again from
+# the alternative starts in `_Q2_ALT_STARTS` (constant SDs, and slope SDs that rise
+# or fall by a factor e^2 across the range of each slope-SD predictor) and keep an
+# alternative only if (same convergence status) its objective is lower by more than
+# 1e-5; (alternative converged, incumbent not) its objective is no more than 1e-5
+# higher, the objective being noisy at that level near rho = +-1; (alternative
+# unconverged, incumbent converged) its objective is lower by more than 1e-3, so a
+# converged fit is not exchanged for a marginally lower unconverged point. A fit
+# whose first optimum is kept is returned with the warm-start buffer `last_b`
+# exactly as the first run left it: THIS helper never alters a fit it keeps. That is
+# not a claim about a whole route versus an earlier release: the separate noise-floor
+# acceptance in `_binomial_animal_q2_mode` changes the inner solve itself, and moved
+# Binomial "weak" coefficients by up to 0.28 on fits that never restart.
+# With `info = Ref{Any}()` the helper records what it did (`ran`, `winner`: 0 = the
+# default start, k = k-th entry of `_Q2_ALT_STARTS`, `gain` = objective decrease over
+# the first run, `flipped` = convergence status changed); it never affects the choice.
+#   run_from(theta0) -> Optim result      start_from(sd0, sd1, het) -> theta0
+#   sd_min(theta)    -> smallest fitted group SD      converged(result) -> Bool
+const _Q2_BOUNDARY_SD = 0.05
+const _Q2_ALT_STARTS = ((0.2, 0.1, 0), (0.7, 0.7, 0),
+                        (0.4, 0.22, -1), (0.4, 0.22, 1), (0.4, 0.05, -1), (0.4, 0.05, 1))
+const _Q2_RESTART_GAIN = 1e-5
+const _Q2_RESTART_BIG_GAIN = 1e-3   # what an unconverged alternative must gain over a converged fit
+
+# Alternative start: constant SDs `sd0`, `sd1` (log scale intercepts of the two SD
+# blocks); with `het = +-1` the non-intercept coefficients of the slope-SD block are
+# set to het * 2 / max|column|, so the slope SD varies by e^4 over the predictor range.
+# `Zs` are the group-level SD designs, `ranges` the theta ranges of the two blocks.
+function _q2_alt_theta(theta0, ranges, Zs, sd0, sd1, het)
+    th = copy(theta0)
+    th[ranges[1]] .= Zs[1] \ fill(log(sd0), size(Zs[1], 1))
+    th[ranges[2]] .= Zs[2] \ fill(log(sd1), size(Zs[2], 1))
+    if het != 0
+        for j in 2:size(Zs[2], 2)
+            th[ranges[2][j]] = het * 2 / max(maximum(abs, view(Zs[2], :, j)), eps())
+        end
+    end
+    return th
+end
+
+function _q2_boundary_restarts(run_from, last_b, result, start_from, sd_min, converged; info = nothing)
+    snapshot = copy(last_b)
+    first_ok = converged(result)
+    if first_ok && sd_min(Optim.minimizer(result)) >= _Q2_BOUNDARY_SD
+        last_b .= snapshot
+        info === nothing || (info[] = (ran = false, winner = 0, gain = 0.0, flipped = false))
+        return result
+    end
+    best, best_f, best_ok, best_b = result, Optim.minimum(result), first_ok, snapshot
+    first_f, winner = best_f, 0
+    for (k, (sd0, sd1, het)) in enumerate(_Q2_ALT_STARTS)
+        last_b .= 0
+        r = run_from(start_from(sd0, sd1, het))
+        f = Optim.minimum(r)
+        ok = converged(r)
+        gain = best_f - f
+        accept = ok == best_ok ? gain > _Q2_RESTART_GAIN :
+                 ok ? gain > -_Q2_RESTART_GAIN : gain > _Q2_RESTART_BIG_GAIN
+        if accept
+            best, best_f, best_ok, best_b = r, f, ok, copy(last_b)
+            winner = k
+        end
+    end
+    last_b .= best_b
+    info === nothing || (info[] = (ran = true, winner = winner, gain = first_f - best_f,
+                                   flipped = best_ok != first_ok))
+    return best
+end
+
 function _poisson_fixed_start(y, X)
     p = size(X, 2)
     β = zeros(p)
@@ -778,7 +861,9 @@ function _general_cov_setup(C::AbstractMatrix, labels; normalize::Bool = true)
     all(>(0), d) || error("covariance matrix must have a strictly positive diagonal")
     covariance = normalize ? Symmetric(Cf ./ (d * d')) : Symmetric(Cf)
     Rchol = cholesky(covariance; check = false)
-    issuccess(Rchol) || error("covariance matrix is not positive definite")
+    issuccess(Rchol) || error("covariance matrix is not positive definite (identical rows and columns, " *
+        "e.g. duplicated individuals, make it singular); merge or remove the duplicated individuals, " *
+        "or supply a positive-definite matrix")
     Q = sparse(Symmetric(inv(Rchol)))                   # dense precision, sparse-wrapped
     return Q, gidx
 end
@@ -2084,7 +2169,7 @@ function _fit_binomial_related_sd_laplace(fam, s, ntr, Xμ, Zobs, Zg, labels,
         _attach_conditional_structured!(
             scales, loading_hat .* b_hat[group_index], b_hat)
     else
-        scales[:cond_failed] = 1.0
+        _mark_cond_failed!(scales)
     end
     fit = DrmFit(fam, blocks, names, θhat, Matrix(V), -nll_hat, n,
                  converged, means, obs, scales)
@@ -3960,7 +4045,9 @@ function _fit_crossed_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, gi
                                             se::Bool = false,
                                             polish_iterations::Int = 0,
                                             recover_runoff::Bool = true,
-                                            extra_scales = Dict{Symbol,Vector{Float64}}())
+                                            extra_scales = Dict{Symbol,Vector{Float64}}(),
+                                            logsd0 = (log(0.4), log(0.4)),
+                                            alphaguess = nothing)
     pμ = size(Xμ, 2)
     last_b = zeros(G + Hh)
 
@@ -4004,10 +4091,12 @@ function _fit_crossed_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, gi
     θ0 = zeros(pμ + 3)
     θ0[1:pμ] .= θβ0
     θ0[pμ+1] = θσ0
-    θ0[pμ+2] = log(0.4)
-    θ0[pμ+3] = log(0.4)
+    θ0[pμ+2] = logsd0[1]
+    θ0[pμ+3] = logsd0[2]
     od = Optim.OnceDifferentiable(nll, grad!, θ0)
-    method = Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking())
+    method = alphaguess === nothing ?
+        Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking()) :
+        Optim.LBFGS(alphaguess = alphaguess, linesearch = Optim.LineSearches.BackTracking())
     res_fast = Optim.optimize(od, θ0, method, Optim.Options(g_tol = g_tol, iterations = 250))
     res = if polish_iterations > 0
         try

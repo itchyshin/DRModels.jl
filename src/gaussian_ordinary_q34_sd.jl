@@ -167,10 +167,21 @@ function _fit_gaussian_ordinary_q34_sd(fam::Gaussian, y, Xμ, Xσ, U, Zgs, gidx,
         scale_k = s0 / max(sqrt(sum(abs2, @view U[:, k]) / n), eps())
         θ0[rg[k]] .= Zgs[k] \ fill(log(scale_k + eps()), G)
     end
-    res = Optim.optimize(nll, θ0, Optim.LBFGS(),
-                         Optim.Options(g_tol = g_tol, x_abstol = NaN, x_reltol = NaN,
-                                       f_abstol = NaN, f_reltol = NaN);
-                         autodiff = :forward)
+    # The first L-BFGS step is the raw gradient (`InitialStatic`, length ~ 1e2-1e3 here,
+    # because the objective is a sum over n rows), so the line search probes points with
+    # `sigma` or the SD coefficients of order 1e2: `exp(-2 eta_sigma)` and the group
+    # information matrix overflow, the Cholesky of an Inf/NaN matrix "succeeds", and the
+    # objective or its AD gradient is NaN. HagerZhang then asserts
+    # `isfinite(phi_c) && isfinite(dphi_c)` and the fit is lost (36/300 seeds of the
+    # scale-300 campaign on Linux/x86; the same data fit on macOS/aarch64 only because the
+    # probe happened to hit the non-PD sentinel instead). Map non-finite probes to the 1e18
+    # sentinel inside the optimiser only (probes with a finite value and gradient are
+    # untouched, so fits that already succeeded follow the identical path), and retry with
+    # BackTracking if the default line search still asserts. The reported value, Hessian
+    # and gradient check below use the raw `nll`.
+    res = _optimize_with_fallback(nll, θ0, g_tol;
+        opts = Optim.Options(g_tol = g_tol, x_abstol = NaN, x_reltol = NaN,
+                             f_abstol = NaN, f_reltol = NaN))
     θ̂ = Optim.minimizer(res)
     H = ForwardDiff.hessian(nll, θ̂)
     V = _vcov_from_hessian(H)
@@ -184,6 +195,36 @@ function _fit_gaussian_ordinary_q34_sd(fam::Gaussian, y, Xμ, Xσ, U, Zgs, gidx,
         sdk = exp.(Zgs[k] * θ̂[rg[k]])
         scales[blocks[k]] = sdk[gidx]
         scales[Symbol(string(blocks[k]), "_group")] = sdk
+    end
+    # Conditional modes at θ̂ (closed form: the model is Gaussian). Group g has
+    # b_g = L z, z ~ N(0, I), L = diag(sd_g) Lc, so E[z | y_g] = M⁻¹ L'(U' diag(1/σ²) r)
+    # with M = I + L' A L, and the row contribution is U_i' L ẑ_g. Recorded as the
+    # per-coefficient unit-scale effects (Lc ẑ_g)_k (effect = sd_k[g] · mode_k[g], mode ~ N(0, R)).
+    let μhat = Xμ * θ̂[1:pμ], σhat = exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]),
+        Lc = _q34_corr_chol(θ̂[rθ], q), sdg = [exp.(Zgs[k] * θ̂[rg[k]]) for k in 1:q]
+        eta_re = zeros(n); modes = [zeros(G) for _ in 1:q]
+        for g in 1:G
+            A = zeros(q, q); b = zeros(q)
+            for i in rows[g]
+                si = 1 / σhat[i]^2; ri = y[i] - μhat[i]
+                for a in 1:q
+                    b[a] += U[i, a] * si * ri
+                    for c in 1:q
+                        A[a, c] += U[i, a] * si * U[i, c]
+                    end
+                end
+            end
+            L = [sdg[a][g] * Lc[a, c] for a in 1:q, c in 1:q]
+            zhat = (I + L' * A * L) \ (L' * b)
+            bg = L * zhat
+            for a in 1:q
+                modes[a][g] = (Lc * zhat)[a]
+            end
+            for i in rows[g]
+                eta_re[i] = dot(view(U, i, :), bg)
+            end
+        end
+        _attach_conditional_structured!(scales, eta_re, modes...)
     end
     names_θ = String[]
     for i in 1:q, j in 1:(i-1)

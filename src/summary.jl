@@ -140,7 +140,11 @@ end
 # nll >= 1e17 on the nll scale; loglik <= -1e15 is the same bar taken a couple of
 # decades more conservatively on the loglik scale, so no genuine fit is caught
 # (a real loglik of -1e15 would need ~1e14 observations at O(10) nats each).
-_sentinel_loglik(fit::DrmFit) = _loglik_is_sentinel(fit.loglik)
+#
+# The same rule as `loglik()` (`_loglik_is_failed`): the sentinel, a non-finite value, OR a runaway
+# magnitude (>= 1e15) on a fit with converged = false (a Gaussian q2 fit with a covariate scaled by
+# 1e6 stored +3.6e76, which would otherwise give the best-looking AIC and a huge LR statistic).
+_sentinel_loglik(fit::DrmFit) = _loglik_is_failed(fit.loglik, fit.converged)
 
 function _nondegenerate_fit(fit::DrmFit)
     _sentinel_loglik(fit) && return false
@@ -231,7 +235,7 @@ function Base.show(io::IO, ::MIME"text/plain", fit::DrmFit)
     fixed_map && println(io, "  MAP fit; standard errors are local penalized curvature, and z/p values are withheld.")
     status = convergence_status(fit)
     println(io, "  nobs = ", fit.nobs,
-                "   logLik = ", @sprintf("%.4f", fit.loglik),
+                "   logLik = ", @sprintf("%.4f", _display_loglik(fit)),
                 "   convergence_status = ", status,
                 "   converged = ", status === :converged)
     mnote = _marginal_note(fit)

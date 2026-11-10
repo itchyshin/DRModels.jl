@@ -93,7 +93,7 @@ end
 function _sentinel_compare_guard(reduced::DrmFit, full::DrmFit, verb::AbstractString)
     for (nm, f) in (("reduced", reduced), ("full", full))
         _sentinel_loglik(f) && throw(ArgumentError(
-            "$verb: the `$nm` fit is degenerate (loglik = $(loglik(f)), the failed-" *
+            "$verb: the `$nm` fit is degenerate (loglik = $(f.loglik), the failed-" *
             "objective sentinel or non-finite): the optimiser never reached a valid " *
             "likelihood, so a likelihood-ratio comparison is meaningless. Refit " *
             "(different start values / optimiser) before comparing."))

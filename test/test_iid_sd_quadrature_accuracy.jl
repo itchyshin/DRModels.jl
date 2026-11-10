@@ -57,8 +57,17 @@ function _exact_group_logint(ll, eta0, w, idx, τ)
     return fm + log(val)
 end
 
+# Julia 1.12 does not finish inferring `sum(_exact_group_logint(ll, ...) for g in ...)` when
+# it is the first compile: the compiler grows to 12-19 GB and gives no result after 25 min
+# (Julia 1.10: 3 s; compiling `_exact_group_logint` on its own takes 2 s on both). Calling
+# the per-group integral through `invokelatest` keeps it out of this method's inference, so
+# it compiles once, on its own, for the concrete closure type of each family.
 function _exact_marginal(ll, eta0, w, members, τ)
-    return sum(_exact_group_logint(ll, eta0, w, members[g], τ[g]) for g in eachindex(members))
+    s = 0.0
+    for g in eachindex(members)
+        s += Base.invokelatest(_exact_group_logint, ll, eta0, w, members[g], τ[g])::Float64
+    end
+    return s
 end
 
 # ---- fixtures (ports of helper-b31jo-oracle.R::b31jo_iid_fixture) -------------

@@ -69,8 +69,10 @@ struct Gamma end
 end
 
 function _drm_gamma_fit(f::DrmFormula, fam::Gamma; data, tree = nothing, K = nothing,
-             A = nothing, coords = nothing, g_tol::Real = 1e-8, se::Bool = true,
+             A = nothing, Ainv = nothing, coords = nothing, g_tol::Real = 1e-8, se::Bool = true,
              marginal::Symbol = :LA, method = nothing, ids = nothing)
+    f = _default_structured_q2_sd(f, fam)   # bare structured (1 + x | g): default `sd(…, coef(·)) ~ 1`
+    A, ids = _ainv_as_labelled_A(f, data, A, Ainv, ids)   # `Ainv` (precision) -> labelled covariance `A`
     _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, coords = coords)   # #1027 #1022 #1010
     _reject_method_as_marginal(fam, method)
     if !isempty(_sd_parts(f)) || !isempty(_sdphylo_parts(f))
@@ -465,10 +467,18 @@ function _drm_gamma_sd_regression(f::DrmFormula, fam::Gamma; data,
     marginal === :LA || throw(ArgumentError(
         "Gamma `sd(group) ~ …` currently supports `marginal = :LA` only."))
     nAGQ >= 1 || throw(ArgumentError("nAGQ must be ≥ 1; got $nAGQ"))
+    _ss_has_sigma_structured_sd(f) &&
+        return _drm_structured_sigma_sd_laplace(f, fam; data, tree, K, A, coords, g_tol, se)
     targets = _gamma_sd_targets(f)
+    twofield = _drm_twofield_sd_route(f, fam; data, tree, K, A, coords, g_tol, se)
+    twofield === nothing || return twofield
     if any(item -> item.target.level in (:relmat, :animal, :phylogenetic, :spatial), targets)
         return _drm_gamma_structured_sd_regression(f, fam; data, tree, K, A,
                                                 coords, g_tol, se)
+    end
+    if length(targets) == 2 && count(item -> item.target.dpar === :sigma, targets) == 1
+        # Joint mean + sigma ordinary intercepts, each with an SD formula (dense Laplace).
+        return _drm_joint_sigma_sd_laplace(f, fam; data, tree, K, A, coords, g_tol, se)
     end
     length(targets) == 1 || throw(ArgumentError(
         "Gamma random-effect SD regression requires exactly one SD target."))
@@ -922,7 +932,7 @@ function _fit_gamma_structured_sd_laplace(fam, y, Xmu, Xsigma, Zobs, Zg, gidx,
             _attach_conditional_structured!(
                 scales, loading_hat .* b_hat[gidx], b_hat)
         else
-            scales[:cond_failed] = 1.0
+            _mark_cond_failed!(scales)
         end
     end
     fit = DrmFit(fam, blocks, names, theta_hat, Matrix(V), -nll_hat, length(y),

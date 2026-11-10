@@ -297,8 +297,141 @@ function _ctl_preflight(scope::_ControlScope, f, fam)
         "`control = DRMControl(se = false)` works on every route."))
 end
 
+# ---------------------------------------------------------------------------
+# Unsupported keywords: a readable refusal instead of a raw MethodError
+# ---------------------------------------------------------------------------
+# A keyword a family route does not take (`method = :REML` on LogNormal, Student or
+# Tweedie; `tree`/`K`/`A`/`ids`/`coords` on a route with no structured provider)
+# used to reach the user as `MethodError: no method matching drm(...; method=...)`,
+# while the same call without the keyword gave a model-support message. Two entry
+# points close this, neither of which changes a call that works:
+#   * `@drm_entry` gives every public `drm` method a trailing `kwargs...` and checks
+#     it first (methods that already had one are left alone);
+#   * `_drm_run_controlled` turns the keyword `MethodError` a route's inner fitter
+#     raises for a keyword it does not declare into the same refusal.
+
+# What to try, per keyword. `R` is what drmTMB 0.8.1 does for the same request, from
+# the refusal-gap map (docs/dev-log/parity-crosswalk-evidence-20261107/fuzz-gap-map).
+function _kw_advice(key::Symbol, fam, accepted = Symbol[])
+    famn = string(nameof(typeof(fam)))
+    if key === :ids && (:A in accepted || :coords in accepted)
+        return "`ids` labels the rows of `A` or `coords`, and this route reads them in the order " *
+               "the group levels first appear in the data. Drop `ids` and pass `A` (or `coords`) " *
+               "in that order." * _kw_r_note(:A, fam)
+    elseif key === :method
+        r = fam isa Union{LogNormal,Student,Tweedie} ?
+            " drmTMB 0.8.1 does not fit REML = TRUE for this family either." : ""
+        return "this route is ML-only: drop `method` (ML is the default). REML exists only on " *
+               "the routes that document it (for example Gaussian)." * r
+    elseif key === :tree
+        return "`tree` is read by a `phylo(...)` term, and $famn has no phylogenetic route for " *
+               "this model. Drop `tree` and the `phylo(...)` term, or use a family with a " *
+               "phylogenetic route." * _kw_r_note(key, fam)
+    elseif key === :K
+        return "`K` is read by a `relmat(...)` term, and $famn has no relmat route for this " *
+               "model. Drop `K` and the `relmat(...)` term, or use a family with a relmat route." *
+               _kw_r_note(key, fam)
+    elseif key === :A || key === :Ainv || key === :ids
+        return "`A`/`Ainv`/`ids` are read by an `animal(...)` term, and $famn has no animal route " *
+               "for this model. Drop them and the `animal(...)` term, or use a family with an " *
+               "animal route." * _kw_r_note(key, fam)
+    elseif key === :coords
+        return "`coords` is read by a `spatial(...)` term, and $famn has no spatial route for " *
+               "this model. Drop `coords` and the `spatial(...)` term, or use a family with a " *
+               "spatial route." * _kw_r_note(key, fam)
+    end
+    if key === :se
+        return "`se` is not a keyword of this route. Use `control = DRMControl(se = false)`, " *
+               "which works on every route."
+    end
+    return "check the spelling, or drop it."
+end
+
+# What the refusal-gap map says drmTMB 0.8.1 does for a structured term of these families:
+# (family, structured kind) => (cells drmTMB fitted, cells run). The 50 cells per entry are the
+# random-effect SD-regression grid of docs/dev-log/parity-crosswalk-evidence-20261107/fuzz-gap-map/
+# gap_map.tsv; the grid does NOT cover every model (drmTMB fits a Student `nu ~ phylo(1 | id,
+# tree = tree)`, which no cell exercises), so a refusal outside it is "not verified against drmTMB".
+const _KW_R_GRID = Dict{Tuple{Symbol,Symbol},Tuple{Int,Int}}(
+    (:Student, :phylo) => (0, 50), (:Student, :relmat) => (0, 50),
+    (:Student, :animal) => (0, 50), (:Student, :spatial) => (2, 50),
+    (:LogNormal, :phylo) => (1, 50), (:LogNormal, :relmat) => (1, 50),
+    (:LogNormal, :animal) => (0, 50), (:LogNormal, :spatial) => (0, 50),
+    (:Tweedie, :phylo) => (3, 50), (:Tweedie, :relmat) => (3, 50),
+    (:Tweedie, :animal) => (0, 50), (:Tweedie, :spatial) => (0, 50),
+    (:Binomial, :phylo) => (8, 50), (:Binomial, :relmat) => (6, 50),
+    (:Binomial, :animal) => (7, 50), (:Binomial, :spatial) => (6, 50),
+)
+
+_kw_structured_kind(key::Symbol) =
+    key === :tree ? :phylo : key === :K ? :relmat :
+    key in (:A, :Ainv, :ids) ? :animal : key === :coords ? :spatial : nothing
+
+# Only claim what the grid shows; anything else says "not verified against drmTMB".
+function _kw_r_note(key::Symbol, fam)
+    kind = _kw_structured_kind(key)
+    fn = nameof(typeof(fam))
+    (kind === nothing || !haskey(_KW_R_GRID, (fn, kind))) &&
+        return " Not verified against drmTMB for this model."
+    fits, cells = _KW_R_GRID[(fn, kind)]
+    what = "`$(kind)(...)` $(fn) cells of the refusal-gap map (a random-effect SD-regression grid)"
+    return fits == 0 ?
+        " drmTMB 0.8.1 refused all $cells $what; the grid does not cover every model " *
+        "(drmTMB does fit a Student `nu ~ phylo(1 | id, tree = tree)`), so for other models " *
+        "this is not verified against drmTMB." :
+        " drmTMB 0.8.1 fitted $fits of the $cells $what, so for those models this is a gap " *
+        "on the Julia side; for other models it is not verified against drmTMB."
+end
+
+function _refuse_unsupported_kwargs(unknown, f, fam, accepted)
+    keys_ = collect(Symbol, unknown)
+    famn = string(nameof(typeof(fam)))
+    kind = f isa DrmFormula ? "" : " (multi-response route)"
+    accepted = collect(Symbol, accepted)
+    acc = join(("`$k`" for k in sort(accepted)), ", ")
+    lines = [string("`", k, "`: ", _kw_advice(k, fam, accepted)) for k in keys_]
+    throw(ArgumentError("drm: the $famn route$kind does not accept the keyword" *
+        (length(keys_) > 1 ? "s " : " ") * join(("`$k`" for k in keys_), ", ") *
+        ". It was refused before any fitting, not run with the keyword ignored. " *
+        join(lines, " ") * " Keywords this route accepts: $acc."))
+end
+
+# Keywords any method of `fn` accepts for `(f, fam)` (without the splat marker).
+function _accepted_kwargs(fn, f, fam)
+    ks = Symbol[]
+    for m in methods(fn, Tuple{typeof(f),typeof(fam)})
+        for k in Base.kwarg_decl(m)
+            endswith(string(k), "...") || push!(ks, k)
+        end
+    end
+    # `control` and `weights` are inserted into every public `drm` method by `@drm_entry`;
+    # an inner fitter's own signature does not list them, so read them off the public method.
+    for m in methods(drm, Tuple{typeof(f),typeof(fam)})
+        for k in Base.kwarg_decl(m)
+            k in (:control, :weights) && push!(ks, k)
+        end
+    end
+    return unique!(ks)
+end
+
+# Re-raise a keyword `MethodError` from a route's fitter as the refusal above. Anything
+# else (another MethodError, a different function, a keyword the fitter does declare) is
+# left alone.
+function _refuse_kwarg_methoderror(e::MethodError, f, fam)
+    e.f === Core.kwcall && length(e.args) >= 4 || return nothing
+    kw, fn, pf, pfam = e.args[1], e.args[2], e.args[3], e.args[4]
+    (kw isa NamedTuple && fn isa Function && pf === f && typeof(pfam) === typeof(fam)) || return nothing
+    nm = string(nameof(fn))
+    (nm == "drm" || startswith(nm, "_drm_")) || return nothing
+    accepted = _accepted_kwargs(fn, f, fam)
+    isempty(accepted) && return nothing
+    unknown = [k for k in keys(kw) if !(k in accepted)]
+    isempty(unknown) && return nothing
+    _refuse_unsupported_kwargs(unknown, f, fam, accepted)
+end
+
 # Run a `drm` method body under the control scope. Called by `@drm_entry`.
-function _drm_run_controlled(body::Function, f, fam, control, weights)
+function _drm_run_controlled_inner(body::Function, f, fam, control, weights)
     outer = _active_control_scope()
     if control === nothing && weights === nothing
         outer === nothing && return body()
@@ -316,6 +449,15 @@ function _drm_run_controlled(body::Function, f, fam, control, weights)
     _ctl_preflight(scope, f, fam)
     fit = task_local_storage(body, _CTL_KEY, scope)
     return _ctl_finish(fit, scope, fam)
+end
+
+function _drm_run_controlled(body::Function, f, fam, control, weights)
+    try
+        return _drm_run_controlled_inner(body, f, fam, control, weights)
+    catch e
+        e isa MethodError && _refuse_kwarg_methoderror(e, f, fam)
+        rethrow()
+    end
 end
 
 function _ctl_finish(fit, scope::_ControlScope, fam)
@@ -523,6 +665,15 @@ macro drm_entry(fdef)
     insert!(params.args, insert_at, Expr(:kw, :control, nothing))
     fname = _kwname(call.args[3])
     famname = _kwname(call.args[4])
+    # A method with no `kwargs...` of its own gets one, so an unsupported keyword
+    # reaches `_refuse_unsupported_kwargs` instead of failing dispatch with a MethodError.
+    extra_check = nothing
+    if splat === nothing
+        accepted = Tuple(vcat(names, [:control, :weights]))
+        push!(params.args, Expr(:..., :_drm_extra_kw))
+        extra_check = :(isempty(_drm_extra_kw) ||
+            _refuse_unsupported_kwargs(keys(_drm_extra_kw), $fname, $famname, $accepted))
+    end
     body = fdef.args[2]
     if :se in names
         # A route's own `se = false` keyword is the same request as
@@ -534,6 +685,7 @@ macro drm_entry(fdef)
         pre = nothing
     end
     fdef.args[2] = quote
+        $extra_check
         $pre
         return _drm_run_controlled($fname, $famname, control, weights) do
             $body

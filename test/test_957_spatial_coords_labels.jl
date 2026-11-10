@@ -4,7 +4,7 @@
 # thing to pass) then gave a different likelihood and a collapsed range with
 # `converged = true`. `coords` is now matched to the data by site label, as `A`
 # is: `ids = [label of each row]`, or a Dict keyed by site label. An unlabelled
-# matrix keeps the first-seen convention and warns once per session.
+# matrix keeps the first-seen convention and warns on every call.
 using DRModels
 using Test, Random, LinearAlgebra
 
@@ -41,10 +41,9 @@ using Test, Random, LinearAlgebra
     @test_throws ArgumentError drm(bf(@formula(y ~ x), @formula(sigma ~ 1)), Gaussian();
                                    data = d, ids = sites_sorted)
 
-    # an unlabelled matrix keeps the first-seen convention and warns once per session
-    DRModels._COORDS_WARNED[] = false
+    # an unlabelled matrix keeps the first-seen convention and warns on every call
     @test_logs (:warn, r"coords") drm(f, Gaussian(); data = d, coords = xy[visit, :])
-    @test_logs drm(f, Gaussian(); data = d, coords = xy[visit, :])      # second call is silent
+    @test_logs (:warn, r"coords") drm(f, Gaussian(); data = d, coords = xy[visit, :])  # a second call is not silent
 end
 
 @testset "#957: Poisson spatial coords matched by label" begin

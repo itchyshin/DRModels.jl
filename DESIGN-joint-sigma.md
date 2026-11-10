@@ -117,3 +117,34 @@ wrong size or not positive definite.
   one-block latent vector). Implemented, animal and relmat only.
 * Order used: engine and 6a first (oracle at 1e-4), then 6b as a
   parameterisation of the same engine.
+
+## Wave 2 (branch `claude/joint-sigma-wave2-20261107`)
+
+* **Family kernel.** `_gsl_joint` now takes a per-observation kernel
+  `_gsl_kernel(fam, y, lin, eta)` returning the negative log density and its
+  first and second derivatives in (mean linear predictor, log sigma). Gaussian
+  (identity mean), NB2 (log mean, size `exp(-2 eta)`), Gamma (log mean, shape
+  `exp(-2 eta)`). Kernels are checked against ForwardDiff.
+* **NB2 / Gamma joint** ordinary mean + sigma intercepts, each with an SD
+  formula, crossed or on one shared group (`_drm_joint_sigma_sd_laplace`, routed
+  from the NB2 and Gamma `sd()` dispatch when there are two targets, one on
+  sigma). Sigma slopes, missing SD formulas, zi and structured terms are refused,
+  as in drmTMB 0.8.1.
+* **Gaussian same-group joint** with SD formulas already worked through the 6a
+  engine (`ga == gb`); now tested.
+* **Correlated same-group pair** `y ~ x + (1 | p | g)`, `sigma ~ 1 + (1 | p | g)`
+  (no SD formulas; drmTMB refuses SD formulas here): the engine takes an optional
+  `rho` and a correlated standardised prior, theta gains `eta` with
+  `rho = tanh(eta)` (drmTMB `eta_cor_mu_sigma`). Blocks `:resd` (log SDs, as the
+  independent same-group route) and `:cor`.
+* **Phylo and spatial structured sigma** with an SD formula. The earlier note that
+  drmTMB refuses phylo here was wrong (the R level name is `"phylogenetic"`).
+  `sd(g, phylogenetic, sigma)` now parses as a sigma-side target; phylo uses the
+  tree correlation matrix with rows matched to tips by name; spatial uses the
+  native FIXED kernel `exp(-d / median distance) + 1e-6 I` (no range parameter).
+* **Non-unique inner mode.** Stress case 6a (200 x 200 crossed, sigma intercept)
+  has at least two PD inner modes at the same theta; the Laplace value depends on
+  the warm start. After optimisation the engine re-solves the mode from `v = 0`;
+  if the Laplace value differs from the optimiser's it warns and sets
+  `converged = false`. A "global joint mode" rule was tried and rejected: it picks
+  the narrow spike mode and the fit still fails. Not fixed; flagged.

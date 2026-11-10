@@ -271,7 +271,30 @@ function _drm_entry_guard(f::DrmFormula, fam, data; tree = nothing, K = nothing,
     _require_family_dpars(f, fam)
     _require_offset_supported(f, fam)
     _require_formula_column_lengths(f, data)
+    _require_sd_group_levels(f, data)
     _require_structured_keywords_used(f, fam; tree = tree, K = K, A = A, Ainv = Ainv, coords = coords)
+    return nothing
+end
+
+# ── red team (2026-11-08): `sd(g) ~ …` needs at least two groups ──────────────
+#
+# One group gives no between-group variation, so a random-effect SD cannot be
+# estimated. The Gaussian ordinary route used to fit this anyway (boundary
+# estimates +-8 on the log-SD scale, a singular-Hessian warning only) while
+# drmTMB refuses it, and the other families failed later with "group-level design
+# is rank deficient", which does not name the cause.
+function _require_sd_group_levels(f::DrmFormula, data)
+    for item in _sd_target_parts(f)
+        grp = item.target.group
+        col = _maybe_table_column(data, grp)
+        col isa AbstractVector || continue
+        nlev = length(unique(skipmissing(col)))
+        nlev >= 2 && continue
+        throw(ArgumentError("drm: `sd($grp) ~ …` models the SD of the random effects over the levels of " *
+            "`$grp`, but `$grp` has $(nlev == 0 ? "no observed level" : "only one level") in the data. " *
+            "At least two groups are needed to estimate a random-effect SD; check the grouping column, " *
+            "or drop the `sd()` formula and the random effect."))
+    end
     return nothing
 end
 
@@ -335,7 +358,8 @@ end
 # different, silently wrong fit. `A` is now matched by label when labels are
 # given, either as a table whose column names are the labels or as a plain
 # matrix plus `ids = …` (the label of each row). An unlabelled matrix keeps the
-# old first-appearance convention and warns once per session.
+# old first-appearance convention and warns on every call (a second call with a
+# differently ordered matrix must not be silent).
 
 _animal_group(f::DrmFormula) = _marker_group(f, animal)
 
@@ -368,6 +392,44 @@ function _animal_group_term(t, marker = animal)
 end
 
 """
+    _ainv_as_labelled_A(f, data, A, Ainv, ids) -> (A, ids)
+
+Gaussian and Gamma animal routes read the relatedness matrix `A` (covariance), not
+a precision. For `Ainv = …` (drmTMB's `animal(…, Ainv = Ainv)`; rows in the order
+of first appearance of the animal group in `data`, as for Poisson / NB2 / Binomial)
+return the covariance `A = Ainv⁻¹` with `ids` set to those first-seen levels, so
+the fitted model is exactly the one `A = inv(Ainv)` would give and no
+"unlabelled `A`" warning fires. `Ainv` is validated like the Poisson route:
+square, finite, symmetric, positive definite, one row per level. Without `Ainv`
+the inputs are returned unchanged.
+"""
+function _ainv_as_labelled_A(f::DrmFormula, data, A, Ainv, ids)
+    Ainv === nothing && return A, ids
+    A === nothing || throw(ArgumentError(
+        "drm: supply the animal relatedness as `A = …` or as the precision `Ainv = …`, not both."))
+    ids === nothing || throw(ArgumentError(
+        "drm: `ids = …` labels the rows of `A`; the rows of `Ainv` follow the order of " *
+        "first appearance of the animal group in the data."))
+    grp = _animal_group(f)
+    grp === nothing && throw(ArgumentError(
+        "drm: `Ainv = …` was supplied but the formula has no `animal(…)` term, so `Ainv` " *
+        "would be ignored. Add the marker to the formula or drop the `Ainv` argument."))
+    Ainv isa AbstractMatrix || throw(ArgumentError("drm: `Ainv` must be a numeric matrix."))
+    levels = unique(collect(_table_column(data, grp)))
+    G = length(levels)
+    size(Ainv) == (G, G) || throw(ArgumentError(
+        "drm: animal `Ainv` must be a $(G)×$(G) precision matrix ordered by the first-seen levels of `$(grp)`."))
+    M = Matrix{Float64}(Ainv)
+    all(isfinite, M) || throw(ArgumentError("drm: animal `Ainv` must contain only finite values."))
+    isapprox(M, M'; atol = 1e-8 * max(1.0, maximum(abs, M))) || throw(ArgumentError(
+        "drm: animal `Ainv` must be symmetric."))
+    ch = cholesky(Symmetric((M .+ M') ./ 2); check = false)
+    issuccess(ch) || throw(ArgumentError("drm: animal `Ainv` must be positive definite."))
+    Acov = Matrix(inv(ch))
+    return Matrix(Symmetric((Acov .+ Acov') ./ 2)), levels
+end
+
+"""
     _resolve_relatedness_labels(f, data, A, ids) -> A′
 
 Return `A` with its rows and columns in the order the fitters expect (the
@@ -393,10 +455,12 @@ function _resolve_relatedness_labels(f::DrmFormula, data, A, ids; coords = nothi
     grp = _animal_group(f)
     grp === nothing && return M      # no animal() term: the #1010 guard has already refused `A`
     if labels_A === nothing
+        # once per bootstrap_ci / profile call: its refits run under `_without_boundary_warnings`
+        get(task_local_storage(), :drm_quiet_boundary, false) === true && return M
         @warn "drm: `A` has no labels, so its rows and columns are taken to be the levels " *
               "of `$grp` in order of first appearance in the data. Pass `ids = …` (the " *
               "label of each row of `A`), or `A` as a table whose column names are the " *
-              "labels, to match `A` by label instead." maxlog = 1
+              "labels, to match `A` by label instead."
         return M
     end
     n = length(labels_A)
@@ -427,14 +491,11 @@ end
 # gave a different likelihood and a collapsed range with `converged = true`.
 # Same contract as `A`: labels come from `ids = …` (one per row of `coords`) or
 # from a Dict keyed by site label; an unlabelled matrix keeps the old convention
-# and warns once per session. `ids` labels `A` when the formula has an
+# and warns on every call. `ids` labels `A` when the formula has an
 # `animal()` term, otherwise `coords`.
 
-const _COORDS_WARNED = Ref(false)
-
 function _warn_unlabelled_coords(grp)
-    _COORDS_WARNED[] && return nothing
-    _COORDS_WARNED[] = true
+    get(task_local_storage(), :drm_quiet_boundary, false) === true && return nothing
     @warn "drm: `coords` has no labels, so its rows are taken to be the levels of `$grp` " *
           "in order of first appearance in the data. Pass `ids = …` (the site label of each " *
           "row of `coords`), or `coords` as a Dict keyed by site label, to match `coords` " *

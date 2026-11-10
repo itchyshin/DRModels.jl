@@ -2058,7 +2058,7 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
         "coef" => Dict(cnames .=> cvals),
         "vcov" => V,
         "vcov_names" => cnames,
-        "loglik" => loglik(fit),
+        "loglik" => fit.loglik,   # raw stored value: the R bridge keeps its pre-NaN contract
         "aic" => _is_fixed_prior_fit(fit) && fit.estim_method === :MAP ? NaN : aic(fit),
         "bic" => _is_fixed_prior_fit(fit) && fit.estim_method === :MAP ? NaN : bic(fit),
         "df" => dof(fit),
@@ -2431,6 +2431,11 @@ function _bridge_rendered_regression_blocks(fit, labels::_BridgeFormulaLabels)
         end
         # #938: an `offset(...)` term is held at coefficient 1, so it is no column.
         rhs = first(_extract_offset(rhs))
+        # A fitted structured q2 term (`kind(1 + x | g)` or labelled
+        # `kind(1 + x | p | g)` with its two coefficient SD targets) adds no
+        # mean columns; drop it so the label `p` is never read as data.
+        param === :mu && (rhs = _strip_fitted_q2_terms(fit, rhs))
+        param === :sigma && (rhs = _strip_sigma_struct_q2_terms(fit, rhs))   # NB2 structured sigma 1 + x term
         # Fitting has already admitted this family-specific animal SD route.
         # Label reconstruction only needs the matching animal-slope parser;
         # keeping this permission Binomial-specific breaks other fitted routes
@@ -2439,7 +2444,9 @@ function _bridge_rendered_regression_blocks(fit, labels::_BridgeFormulaLabels)
             _sd_target_parts(fit.formula) : Any[]
         animal_sd_slope = any(item -> item.target.level === :animal,
                               sd_targets_here)
-        animal_block = param === :mu ? _animal_intercept_slope(rhs) : nothing
+        q2_label_ok = fit.family isa Union{Gaussian,Poisson,NegBinomial2}
+        animal_block = param === :mu ?
+            _animal_intercept_slope(rhs; allow_label = q2_label_ok) : nothing
         animal_sd_targets = filter(item -> item.target.level === :animal,
                                    sd_targets_here)
         binomial_animal_q2 = fit.family isa Binomial &&
@@ -2454,7 +2461,7 @@ function _bridge_rendered_regression_blocks(fit, labels::_BridgeFormulaLabels)
         binomial_phylo_sd_slope_only = fit.family isa Union{Binomial,Gamma} &&
             !isempty(_sdphylo_parts(fit.formula))
         relmat_sd_q2 = param === :mu && fit.family isa Union{Poisson,Gaussian,NegBinomial2} &&
-            _relmat_intercept_slope(rhs) !== nothing
+            _relmat_intercept_slope(rhs; allow_label = true) !== nothing
         binomial_relmat_sd_slope_only = fit.family isa Union{Binomial,Poisson,Gaussian,Gamma,NegBinomial2} &&
             any(item.target.level === :relmat for item in sd_targets_here)
         gaussian_spatial_sd_slope_only = fit.family isa Union{Gaussian,Gamma,NegBinomial2} &&
@@ -2465,7 +2472,8 @@ function _bridge_rendered_regression_blocks(fit, labels::_BridgeFormulaLabels)
             allow_phylo_slope_only = binomial_phylo_sd_slope_only,
             allow_relmat_slope = binomial_relmat_sd_slope_only,
             allow_relmat_intercept_slope = relmat_sd_q2,
-            allow_spatial_slope = gaussian_spatial_sd_slope_only
+            allow_spatial_slope = gaussian_spatial_sd_slope_only,
+            allow_labelled_intercept_slope = q2_label_ok
         )
         rendered === nothing && continue
         raw, public = rendered
@@ -2680,7 +2688,8 @@ function _bridge_render_formula_block(form, param::Symbol, rhs,
         allow_phylo_slope_only::Bool = false,
         allow_relmat_slope::Bool = false,
         allow_relmat_intercept_slope::Bool = false,
-        allow_spatial_slope::Bool = false)
+        allow_spatial_slope::Bool = false,
+        allow_labelled_intercept_slope::Bool = false)
     response = if form isa DrmFormula
         form.response
     elseif form isa BivariateDrmFormula
@@ -2699,7 +2708,9 @@ function _bridge_render_formula_block(form, param::Symbol, rhs,
                            allow_relmat_slope = allow_relmat_slope,
                            allow_relmat_intercept_slope =
                                allow_relmat_intercept_slope,
-                           allow_spatial_slope = allow_spatial_slope))
+                           allow_spatial_slope = allow_spatial_slope,
+                           allow_labelled_intercept_slope =
+                               allow_labelled_intercept_slope))
     catch
         rhs
     end
@@ -2956,7 +2967,7 @@ function _bridge_q2_point_export(fit; family::AbstractString = "biv_gaussian",
             "correlation" => R,
             "residual_sd" => residual_sd,
             "residual_correlation" => Float64(first(fit.scales[:rho12])),
-            "loglik" => Float64(loglik(fit)),
+            "loglik" => Float64(fit.loglik),
             "converged" => fit.geometry === :ok && _converged_nondegenerate(fit),   # as the top-level key (FX3b)
             "claim_boundary" => boundary,
         )
@@ -3055,7 +3066,7 @@ function _bridge_dpars(fit::DrmFit)
     # Those are not response-distribution parameters and must not cross the
     # R bridge as fictitious dpars.
     for (k, v) in pairs(fit.scales)
-        (k in (:trials, :sd, :sd_group, :sd_group_index, :aghq_nodes) ||
+        (k in (:trials, :q2_restarts, :sd, :sd_group, :sd_group_index, :aghq_nodes) ||
          startswith(String(k), "sdtarget_") || startswith(String(k), "cond_")) && continue
         out[String(k)] = collect(float.(v))
     end

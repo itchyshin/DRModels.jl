@@ -111,7 +111,9 @@ _gq2_kw(kind, fx) = kind === :animal ? (; A = fx.C) : (; K = fx.C)
             @test_throws ArgumentError drm(formula, Gaussian();
                 data = merge(data, (; x = zeros(length(data.x)))), kw...)
             @test_throws Exception drm(formula, Gaussian(); data)          # no kernel
-            @test_throws ArgumentError drm(formula, Gaussian(); data, kw..., method = :REML)
+            # REML is admitted for this unlabelled, `sigma ~ 1` cell (oracle-checked in
+            # test_gaussian_structured_q2_reml.jl); it no longer refuses.
+            @test drm(formula, Gaussian(); data, kw..., method = :REML).estim_method === :REML
         end
     end
     fx = _gq2_fixture()
@@ -119,9 +121,16 @@ _gq2_kw(kind, fx) = kind === :animal ? (; A = fx.C) : (; K = fx.C)
     one = bf(@formula(y ~ x + animal(1 + x | g)), @formula(sigma ~ 1),
              @formula(sd(g, animal, coef(intercept)) ~ z0))
     @test_throws ArgumentError drm(one, Gaussian(); data = fx.data, A = fx.C)
-    # No SD formulas: old refusal preserved.
+    # No SD formulas (wave 9): the bare term is the native independent two-SD model, completed
+    # with `sd(g, animal, coef(·)) ~ 1` for both coefficients -- same fit as the explicit form.
+    # REML is not completed and keeps the old refusal.
+    bare = drm(bf(@formula(y ~ x + animal(1 + x | g))), Gaussian(); data = fx.data, A = fx.C)
+    expl = drm(bf(@formula(y ~ x + animal(1 + x | g)), @formula(sigma ~ 1),
+                  @formula(sd(g, animal, coef(intercept)) ~ 1), @formula(sd(g, animal, coef(x)) ~ 1)),
+               Gaussian(); data = fx.data, A = fx.C)
+    @test loglik(bare) == loglik(expl)
     @test_throws ArgumentError drm(bf(@formula(y ~ x + animal(1 + x | g))), Gaussian();
-                                   data = fx.data, A = fx.C)
+                                   data = fx.data, A = fx.C, method = :REML)
     # Wrong provider input.
     @test_throws ArgumentError drm(_gq2_formula(:animal), Gaussian(); data = fx.data,
                                    K = fx.C)

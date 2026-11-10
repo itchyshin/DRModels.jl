@@ -229,7 +229,7 @@ _srl_design(d, sigx) = (hcat(ones(length(d.y)), d.x),
             formula = "y ~ x + (1 | g); sigma ~ 1", family = "gaussian", data = dm,
             options = Dict{String,Any}("marginal" => "Laplace"))
         # A family whose `drm` method has no `marginal` keyword (Student gained one in #714).
-        @test_throws r"option `marginal` is not available for SkewNormal\(\)" drm_bridge(
+        @test_throws r"SkewNormal route does not accept the keyword `marginal`" drm_bridge(
             formula = "y ~ x", family = "skewnormal", data = dm,
             options = Dict{String,Any}("marginal" => "Laplace"))
         # Only "LA" and "Laplace" are forwarded. "VA" and "AGHQ" have no drmTMB
