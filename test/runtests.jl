@@ -105,7 +105,9 @@ function _shard_include(path::AbstractString)
     end
 end
 
-_n_test_files = length(_TEST_ORDER) + length(_discovered)
+# One hyphenated file (`test-fix-1303-skipped-category.jl`, #1303) is outside
+# the `test_*.jl` discovery pattern and is `_shard_include`d explicitly below.
+_n_test_files = length(_TEST_ORDER) + length(_discovered) + 1
 _n_selected = _SHARD === nothing ? _n_test_files :
     length(_shard_indices(_n_test_files, _SHARD[1], _SHARD[2]))
 println(_SHARD === nothing ?
@@ -173,6 +175,9 @@ end
 for f in _discovered
     _shard_include(f)
 end
+
+# #1303: hyphenated name, so the `test_*.jl` discovery loop above does not see it.
+_shard_include("test-fix-1303-skipped-category.jl")
 
 # Gated real-parity suite vs committed drmTMB fixtures (off by default).
 # Native `drm()` path (#17) plus `drm_bridge` marshalling path (#370).
