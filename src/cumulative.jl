@@ -26,7 +26,10 @@
     CumulativeLogit()
 
 Cumulative-logit (proportional-odds) ordinal family. The response is an ordered
-category coded `1, 2, …, K`. `Pr(y ≤ k) = logistic(θ_k − η)` with ordered
+category coded `1, 2, …, K`. Every code in `1:K` must be observed at least once;
+a skipped level is an `ArgumentError` naming the missing level(s) and the
+observed levels (drmTMB refuses that empty category too). `Pr(y ≤ k) =
+logistic(θ_k − η)` with ordered
 cutpoints `θ_1 < … < θ_{K-1}`; the single linear predictor `η` comes from the
 `mu` formula **with its intercept dropped** (cutpoints absorb it). No scale
 parameter. `coef(fit, :mu)` are the slopes; `coef(fit, :cutpoints)` are the raw
@@ -133,6 +136,39 @@ function _cumulative_cut_init(y, K, n)
     return δ0
 end
 
+# #1303. `K = maximum(y)` would otherwise reserve a cutpoint for a code that
+# never occurs and drive that increment to −Inf, collapsing two thresholds.
+# drmTMB's `validate_ordinal_codes` refuses the same hole: every category in
+# `1:K` must appear at least once, and the empty categories are named. Two
+# observed categories remain valid here when both codes occur.
+function _cumulative_require_observed_levels(response::Symbol,
+                                             yi::AbstractVector{<:Integer}, K::Integer)
+    observed = sort!(unique(yi))
+    length(observed) == K && first(observed) == 1 && return nothing
+    gaps = String[]
+    prev = 0
+    for v in observed
+        if v > prev + 1
+            lo = prev + 1
+            hi = v - 1
+            push!(gaps, lo == hi ? string(lo) : string(lo, ":", hi))
+        end
+        prev = v
+    end
+    if prev < K
+        lo = prev + 1
+        hi = Int(K)
+        push!(gaps, lo == hi ? string(lo) : string(lo, ":", hi))
+    end
+    msg = string(
+        "CumulativeLogit() requires every ordered category in 1:", K,
+        " to appear at least once in the fitted data. Response `", response,
+        "` has missing level(s): ", join(gaps, ", "),
+        " (observed levels: ", join(observed, ", "),
+        "). Drop unused levels or combine sparse categories before fitting.")
+    throw(ArgumentError(msg))
+end
+
 # FX3b: `se = false` is recorded on the fit (`DrmFit.uncertainty`), so
 # `convergence_status` does not read the skipped (NaN) covariance as a failure.
 @drm_entry function drm(f::DrmFormula, fam::CumulativeLogit; se::Bool = true, kwargs...)
@@ -214,6 +250,9 @@ function _drm_cumulative_fit(f::DrmFormula, fam::CumulativeLogit; data, tree = n
         error("CumulativeLogit() requires ordered integer categories coded 1, 2, …, K (K ≥ 2)")
     K = round(Int, maximum(y))
     yi = round.(Int, y)
+    # Before any route allocates `K - 1` cutpoints (#1303). Fixed effects,
+    # random intercepts/slopes, phylo and crossed intercepts all pass through here.
+    _cumulative_require_observed_levels(f.response, yi, K)
     if st !== nothing                  # phylo(1 | g) random intercept → sparse Laplace (#563 S8 follow-on)
         _, grp = st
         labels = getproperty(data, grp)
