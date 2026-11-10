@@ -1,0 +1,729 @@
+"cell","term","estimate","se","loglik","conv","pdhess","is_converged"
+"poisson|ordinary|lab0|q1|sd-none|cm0|ML","mu:(Intercept)",0.455578911807136,0.102012275340315,-744.695825473102,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-none|cm0|ML","mu:x1",0.450120796267075,0.0366806792652481,-744.695825473102,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-none|cm0|ML","mu:x2",0.318936876386207,0.0378832689791373,-744.695825473102,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-none|cm0|ML","mu:x3",-0.154376064227119,0.0385161522721322,-744.695825473102,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-none|cm0|ML","sd:mu:(1 | g)",0.580081035495249,0.0775889228555524,-744.695825473102,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","mu:(Intercept)",0.455578911806388,0.102012275340263,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","mu:x1",0.450120796267085,0.0366806792652501,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","mu:x2",0.318936876386194,0.0378832689791382,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","mu:x3",-0.154376064227124,0.038516152272132,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","sd(g, coef = ""(Intercept)""):(Intercept)",-0.544587468831126,0.133755317115731,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g01",0.580081035494582,NA,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g02",0.580081035494582,NA,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g03",0.580081035494582,NA,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g04",0.580081035494582,NA,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g05",0.580081035494582,NA,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g06",0.580081035494582,NA,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g07",0.580081035494582,NA,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g08",0.580081035494582,NA,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g09",0.580081035494582,NA,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g10",0.580081035494582,NA,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g11",0.580081035494582,NA,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g12",0.580081035494582,NA,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g13",0.580081035494582,NA,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g14",0.580081035494582,NA,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g15",0.580081035494582,NA,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g16",0.580081035494582,NA,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g17",0.580081035494582,NA,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g18",0.580081035494582,NA,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g19",0.580081035494582,NA,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g20",0.580081035494582,NA,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g21",0.580081035494582,NA,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g22",0.580081035494582,NA,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g23",0.580081035494582,NA,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g24",0.580081035494582,NA,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g25",0.580081035494582,NA,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g26",0.580081035494582,NA,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g27",0.580081035494582,NA,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g28",0.580081035494582,NA,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g29",0.580081035494582,NA,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g30",0.580081035494582,NA,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g31",0.580081035494582,NA,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g32",0.580081035494582,NA,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g33",0.580081035494582,NA,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g34",0.580081035494582,NA,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g35",0.580081035494582,NA,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g36",0.580081035494582,NA,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g37",0.580081035494582,NA,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g38",0.580081035494582,NA,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g39",0.580081035494582,NA,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g40",0.580081035494582,NA,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-one|cm0|ML","fitted:sd(g, coef = ""(Intercept)"")",0.580081035494582,NA,-744.695825473104,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","mu:(Intercept)",0.457485486718176,0.102064081229524,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","mu:x1",0.450293246653082,0.0366705713776604,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","mu:x2",0.319554422903627,0.0379429237395312,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","mu:x3",-0.154652564986752,0.0385225615471841,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd(g, coef = ""(Intercept)""):(Intercept)",-0.546046814737435,0.133889989862044,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd(g, coef = ""(Intercept)""):z",-0.0632054478948161,0.216829938935948,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g01",0.589653833515848,NA,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g02",0.617027696662081,NA,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g03",0.567159166697232,NA,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g04",0.591568182264714,NA,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g05",0.550853138005726,NA,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g06",0.605143779594317,NA,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g07",0.549070545487796,NA,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g08",0.569000485076697,NA,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g09",0.601233556372603,NA,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g10",0.593488746068794,NA,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g11",0.570847781413628,NA,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g12",0.587745679709918,NA,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g13",0.578297135438761,NA,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g14",0.574560385654174,NA,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g15",0.580174613943563,NA,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g16",0.545522647501032,NA,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g17",0.55985328679153,NA,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g18",0.558041569273162,NA,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g19",0.595415545105661,NA,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g20",0.552641517823869,NA,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g21",0.583947876802972,NA,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g22",0.565323806930216,NA,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g23",0.543757304757743,NA,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g24",0.599287929915798,NA,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g25",0.611056848805794,NA,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g26",0.615030959456576,NA,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g27",0.582058187801982,NA,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g28",0.607108417440294,NA,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g29",0.563494386493238,NA,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g30",0.561670886166281,NA,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g31",0.613040683807804,NA,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g32",0.572701075115844,NA,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g33",0.585843700799732,NA,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g34",0.597348599618395,NA,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g35",0.603185499429694,NA,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g36",0.609079433608243,NA,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g37",0.576425732562659,NA,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g38",0.554435703731065,NA,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g39",0.547293721542042,NA,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g40",0.55623571457715,NA,-744.653202299101,0,TRUE,TRUE
+"poisson|ordinary|lab0|q1|sd-z|cm0|ML","fitted:sd(g, coef = ""(Intercept)"")",0.579640644044116,NA,-744.653202299101,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-none|cm0|ML","mu:(Intercept)",0.361715273101232,0.0967857437278587,-702.125181922289,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-none|cm0|ML","mu:x1",0.442042696770098,0.0653267802786034,-702.125181922289,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-none|cm0|ML","mu:x2",0.271064975796456,0.0635276839087729,-702.125181922289,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-none|cm0|ML","mu:x3",-0.314269707366852,0.0616643880142023,-702.125181922289,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-none|cm0|ML","sigma:(Intercept)",-0.118545750424434,0.0750894924595401,-702.125181922289,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-none|cm0|ML","sigma",0.88821117868882,0.0666953266046334,-702.125181922289,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-none|cm0|ML","sd:mu:(1 | g)",0.440137465098006,0.0914386766110869,-702.125181922289,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","mu:(Intercept)",0.361715273101227,0.0967857437278812,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","mu:x1",0.4420426967701,0.0653267802786054,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","mu:x2",0.271064975796457,0.0635276839087744,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","mu:x3",-0.314269707366852,0.0616643880141999,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sigma:(Intercept)",-0.118545750424436,0.0750894924595318,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sd(g, coef = ""(Intercept)""):(Intercept)",-0.820668180185696,0.207750268636482,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sigma",0.888211178688818,0.0666953266046259,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g01",0.440137465098017,NA,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g02",0.440137465098017,NA,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g03",0.440137465098017,NA,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g04",0.440137465098017,NA,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g05",0.440137465098017,NA,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g06",0.440137465098017,NA,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g07",0.440137465098017,NA,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g08",0.440137465098017,NA,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g09",0.440137465098017,NA,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g10",0.440137465098017,NA,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g11",0.440137465098017,NA,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g12",0.440137465098017,NA,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g13",0.440137465098017,NA,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g14",0.440137465098017,NA,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g15",0.440137465098017,NA,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g16",0.440137465098017,NA,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g17",0.440137465098017,NA,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g18",0.440137465098017,NA,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g19",0.440137465098017,NA,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g20",0.440137465098017,NA,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g21",0.440137465098017,NA,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g22",0.440137465098017,NA,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g23",0.440137465098017,NA,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g24",0.440137465098017,NA,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g25",0.440137465098017,NA,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g26",0.440137465098017,NA,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g27",0.440137465098017,NA,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g28",0.440137465098017,NA,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g29",0.440137465098017,NA,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g30",0.440137465098017,NA,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g31",0.440137465098017,NA,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g32",0.440137465098017,NA,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g33",0.440137465098017,NA,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g34",0.440137465098017,NA,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g35",0.440137465098017,NA,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g36",0.440137465098017,NA,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g37",0.440137465098017,NA,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g38",0.440137465098017,NA,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g39",0.440137465098017,NA,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g40",0.440137465098017,NA,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-one|cm0|ML","fitted:sd(g, coef = ""(Intercept)"")",0.440137465098017,NA,-702.12518192229,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","mu:(Intercept)",0.370057099179626,0.0848040811057351,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","mu:x1",0.436921931607182,0.064447113477035,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","mu:x2",0.277467324786606,0.0633330693872715,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","mu:x3",-0.299816448120315,0.0618639809102576,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sigma:(Intercept)",-0.116919941104508,0.0747187794288754,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd(g, coef = ""(Intercept)""):(Intercept)",-1.18706943276973,0.435078405463743,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd(g, coef = ""(Intercept)""):z",1.11852149031003,0.605145253073507,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sigma",0.889656415222364,0.0664740414564838,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g01",0.140657071992759,NA,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g02",0.832544924423522,NA,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g03",0.105585856994724,NA,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g04",0.62495947119097,NA,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g05",0.352160147731027,NA,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g06",0.372950653148945,NA,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g07",0.198439699479397,NA,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g08",0.661855251010153,NA,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g09",0.41828635866806,NA,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g10",0.222561935767067,NA,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g11",0.933748692821334,NA,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g12",0.210154999105825,NA,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g13",0.590120483346147,NA,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g14",0.279959718850826,NA,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g15",0.469133051170472,NA,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g16",0.235701341691333,NA,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g17",0.786133878844861,NA,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g18",0.313991490249726,NA,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g19",0.394968569216016,NA,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g20",0.148961054246786,NA,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g21",0.442980762228941,NA,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g22",0.742310063202405,NA,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g23",0.187377480892777,NA,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g24",0.0996998682898653,NA,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g25",0.700929249787873,NA,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g26",0.526160643634975,NA,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g27",0.157755279332533,NA,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g28",0.29648772205922,NA,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g29",0.167068689753332,NA,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g30",0.332528629733785,NA,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g31",0.111819337262289,NA,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g32",0.118420823978371,NA,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g33",0.49682929478272,NA,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g34",0.12541204316765,NA,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g35",0.176931936693284,NA,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g36",0.26435308563428,NA,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g37",0.557223629559615,NA,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g38",0.881695942428851,NA,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g39",0.249616459722198,NA,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g40",0.132816003495781,NA,-698.237286859235,0,TRUE,TRUE
+"nb2|ordinary|lab0|q1|sd-z|cm0|ML","fitted:sd(g, coef = ""(Intercept)"")",0.376532289889767,NA,-698.237286859235,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-none|cm0|ML","mu:(Intercept)",0.474851288859616,0.0936843816891145,-574.282770930334,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-none|cm0|ML","mu:x1",0.37172729224129,0.0378525503642355,-574.282770930334,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-none|cm0|ML","mu:x2",0.370352289507642,0.0381447511095245,-574.282770930334,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-none|cm0|ML","mu:x3",-0.217514722996779,0.0365248541991468,-574.282770930334,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-none|cm0|ML","sigma:(Intercept)",-0.406926496922957,0.0346647219244779,-574.282770930334,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-none|cm0|ML","sigma",0.665693118995907,0.0230760668570315,-574.282770930334,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-none|cm0|ML","sd:mu:(1 | g)",0.552733359666989,0.0712008696853834,-574.282770930334,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","mu:(Intercept)",0.474851288859615,0.0936843816891179,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","mu:x1",0.37172729224129,0.0378525503642363,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","mu:x2",0.370352289507642,0.0381447511095248,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","mu:x3",-0.217514722996779,0.036524854199147,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sigma:(Intercept)",-0.406926496922957,0.0346647219244705,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sd(g, coef = ""(Intercept)""):(Intercept)",-0.592879564325524,0.128815944324916,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sigma",0.665693118995907,0.0230760668570266,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g01",0.55273335966699,NA,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g02",0.55273335966699,NA,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g03",0.55273335966699,NA,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g04",0.55273335966699,NA,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g05",0.55273335966699,NA,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g06",0.55273335966699,NA,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g07",0.55273335966699,NA,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g08",0.55273335966699,NA,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g09",0.55273335966699,NA,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g10",0.55273335966699,NA,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g11",0.55273335966699,NA,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g12",0.55273335966699,NA,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g13",0.55273335966699,NA,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g14",0.55273335966699,NA,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g15",0.55273335966699,NA,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g16",0.55273335966699,NA,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g17",0.55273335966699,NA,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g18",0.55273335966699,NA,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g19",0.55273335966699,NA,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g20",0.55273335966699,NA,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g21",0.55273335966699,NA,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g22",0.55273335966699,NA,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g23",0.55273335966699,NA,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g24",0.55273335966699,NA,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g25",0.55273335966699,NA,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g26",0.55273335966699,NA,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g27",0.55273335966699,NA,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g28",0.55273335966699,NA,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g29",0.55273335966699,NA,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g30",0.55273335966699,NA,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g31",0.55273335966699,NA,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g32",0.55273335966699,NA,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g33",0.55273335966699,NA,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g34",0.55273335966699,NA,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g35",0.55273335966699,NA,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g36",0.55273335966699,NA,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g37",0.55273335966699,NA,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g38",0.55273335966699,NA,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g39",0.55273335966699,NA,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g40",0.55273335966699,NA,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-one|cm0|ML","fitted:sd(g, coef = ""(Intercept)"")",0.55273335966699,NA,-574.282770930335,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","mu:(Intercept)",0.471971558571841,0.093720523994107,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","mu:x1",0.37107017112226,0.0378895174646646,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","mu:x2",0.369575806867315,0.0382410631059074,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","mu:x3",-0.21761497397616,0.0365689061919585,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sigma:(Intercept)",-0.406945615898762,0.0346632094811894,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd(g, coef = ""(Intercept)""):(Intercept)",-0.594704309210316,0.128890377534713,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd(g, coef = ""(Intercept)""):z",0.0747967466459828,0.211655062524633,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sigma",0.665680391746938,0.0230746188666444,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g01",0.594575506465172,NA,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g02",0.550668560445846,NA,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g03",0.513931482336908,NA,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g04",0.587772827011054,NA,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g05",0.515906570580197,NA,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g06",0.559182573330605,NA,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g07",0.538139984680155,NA,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g08",0.57001044193686,NA,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g09",0.590031694662196,NA,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g10",0.552784832822739,NA,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g11",0.542284180383817,NA,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g12",0.54856038997137,NA,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g13",0.583281002037101,NA,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g14",0.531982997422159,NA,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g15",0.529946362450334,NA,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g16",0.585522607171736,NA,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g17",0.52589645371635,NA,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g18",0.574400070828534,NA,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g19",0.557041807949006,NA,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g20",0.592299243359536,NA,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g21",0.519879547601333,NA,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g22",0.511963955489018,NA,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g23",0.581047978626754,NA,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g24",0.536079778399413,NA,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g25",0.527917524498392,NA,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g26",0.521877494832985,NA,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g27",0.563488817214965,NA,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g28",0.544368230779654,NA,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g29",0.517889249278056,NA,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g30",0.578823504086564,NA,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g31",0.561331565879991,NA,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g32",0.540208108532293,NA,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g33",0.546460290382121,NA,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g34",0.576607545688176,NA,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g35",0.534027459378567,NA,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g36",0.565654359074836,NA,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g37",0.523883120368503,NA,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g38",0.572201047029395,NA,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g39",0.56782822332089,NA,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g40",0.554909238238442,NA,-574.220270936423,0,TRUE,TRUE
+"gamma|ordinary|lab0|q1|sd-z|cm0|ML","fitted:sd(g, coef = ""(Intercept)"")",0.552266665706551,NA,-574.220270936423,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-none|cm0|ML","mu:(Intercept)",0.516996295445281,0.130812656299739,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-none|cm0|ML","mu:x1",0.188611127158255,0.106270926833532,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-none|cm0|ML","mu:x2",0.248848323537408,0.102181319819146,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-none|cm0|ML","mu:x3",-0.290042166211737,0.102261630166503,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-none|cm0|ML","sd:mu:(1 | g)",0.453843682696482,0.180670297477562,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","mu:(Intercept)",0.516996295445281,0.130812656299721,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","mu:x1",0.188611127158255,0.10627092683353,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","mu:x2",0.248848323537408,0.102181319819141,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","mu:x3",-0.290042166211737,0.102261630166504,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","sd(g, coef = ""(Intercept)""):(Intercept)",-0.790002451470743,0.398089263695789,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g01",0.453843682696482,NA,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g02",0.453843682696482,NA,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g03",0.453843682696482,NA,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g04",0.453843682696482,NA,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g05",0.453843682696482,NA,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g06",0.453843682696482,NA,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g07",0.453843682696482,NA,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g08",0.453843682696482,NA,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g09",0.453843682696482,NA,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g10",0.453843682696482,NA,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g11",0.453843682696482,NA,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g12",0.453843682696482,NA,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g13",0.453843682696482,NA,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g14",0.453843682696482,NA,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g15",0.453843682696482,NA,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g16",0.453843682696482,NA,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g17",0.453843682696482,NA,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g18",0.453843682696482,NA,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g19",0.453843682696482,NA,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g20",0.453843682696482,NA,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g21",0.453843682696482,NA,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g22",0.453843682696482,NA,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g23",0.453843682696482,NA,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g24",0.453843682696482,NA,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g25",0.453843682696482,NA,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g26",0.453843682696482,NA,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g27",0.453843682696482,NA,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g28",0.453843682696482,NA,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g29",0.453843682696482,NA,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g30",0.453843682696482,NA,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g31",0.453843682696482,NA,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g32",0.453843682696482,NA,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g33",0.453843682696482,NA,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g34",0.453843682696482,NA,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g35",0.453843682696482,NA,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g36",0.453843682696482,NA,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g37",0.453843682696482,NA,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g38",0.453843682696482,NA,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g39",0.453843682696482,NA,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g40",0.453843682696482,NA,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-one|cm0|ML","fitted:sd(g, coef = ""(Intercept)"")",0.453843682696482,NA,-256.145760618747,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","mu:(Intercept)",0.496995889016312,0.128000321565968,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","mu:x1",0.179885825195905,0.106450870848728,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","mu:x2",0.228594698949411,0.106526413405968,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","mu:x3",-0.282583091277734,0.103562043442075,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd(g, coef = ""(Intercept)""):(Intercept)",-1.04117036553095,1.37057332123609,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd(g, coef = ""(Intercept)""):z",0.857603771663331,2.08014292429128,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g01",0.411790117310175,NA,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g02",0.469868485441901,NA,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g03",0.377116604110234,NA,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g04",0.277188192320339,NA,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g05",0.585432704911956,NA,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g06",0.490994299593088,NA,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g07",0.265261727510633,NA,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g08",0.20373882540414,NA,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g09",0.17087293046648,NA,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g10",0.222471336184614,NA,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g11",0.289650884365658,NA,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g12",0.832296448052861,NA,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g13",0.156485103850478,NA,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g14",0.611754415997485,NA,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g15",0.639259580738161,NA,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g16",0.345362666847374,NA,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g17",0.560243527497377,NA,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g18",0.729419960264409,NA,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g19",0.449651643195113,NA,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g20",0.762215499859324,NA,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g21",0.149752082257123,NA,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g22",0.178555569086325,NA,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g23",0.253848417903053,NA,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g24",0.51306995404508,NA,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g25",0.242926184175213,NA,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g26",0.194972636948518,NA,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g27",0.302673913024584,NA,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g28",0.330502886355782,NA,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g29",0.668001408537783,NA,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g30",0.360890559737901,NA,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g31",0.796485563700781,NA,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g32",0.186583627756039,NA,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g33",0.212899151525653,NA,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g34",0.394072189638102,NA,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g35",0.163520849647018,NA,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g36",0.536138154683224,NA,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g37",0.316282471659787,NA,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g38",0.232473897002845,NA,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g39",0.430304662884367,NA,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g40",0.698035501154633,NA,-255.873216270291,0,TRUE,TRUE
+"binomial|ordinary|lab0|q1|sd-z|cm0|ML","fitted:sd(g, coef = ""(Intercept)"")",0.40032661589114,NA,-255.873216270291,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-none|cm0|ML","mu:(Intercept)",0.373017705007297,0.0991766351517595,124.915869321525,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-none|cm0|ML","mu:x1",0.361143526963518,0.0439613061012779,124.915869321525,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-none|cm0|ML","mu:x2",0.187442897055368,0.0419570589923817,124.915869321525,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-none|cm0|ML","mu:x3",-0.291654797086103,0.0457468335475322,124.915869321525,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-none|cm0|ML","sigma:(Intercept)",-0.849674223614229,0.0353722276234823,124.915869321525,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-none|cm0|ML","sigma",0.427554196323772,0.0151235443537395,124.915869321525,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-none|cm0|ML","sd:mu:(1 | g)",0.569820049218063,0.0779371438914678,124.915869321525,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","mu:(Intercept)",0.373017705007289,0.0991766351517594,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","mu:x1",0.361143526963521,0.043961306101278,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","mu:x2",0.187442897055362,0.0419570589923814,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","mu:x3",-0.291654797086106,0.0457468335475315,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sigma:(Intercept)",-0.849674223614232,0.0353722276234961,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sd(g, coef = ""(Intercept)""):(Intercept)",-0.562434671124483,0.136775011687309,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sigma",0.427554196323771,0.0151235443537454,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g01",0.569820049218055,NA,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g02",0.569820049218055,NA,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g03",0.569820049218055,NA,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g04",0.569820049218055,NA,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g05",0.569820049218055,NA,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g06",0.569820049218055,NA,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g07",0.569820049218055,NA,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g08",0.569820049218055,NA,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g09",0.569820049218055,NA,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g10",0.569820049218055,NA,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g11",0.569820049218055,NA,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g12",0.569820049218055,NA,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g13",0.569820049218055,NA,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g14",0.569820049218055,NA,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g15",0.569820049218055,NA,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g16",0.569820049218055,NA,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g17",0.569820049218055,NA,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g18",0.569820049218055,NA,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g19",0.569820049218055,NA,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g20",0.569820049218055,NA,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g21",0.569820049218055,NA,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g22",0.569820049218055,NA,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g23",0.569820049218055,NA,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g24",0.569820049218055,NA,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g25",0.569820049218055,NA,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g26",0.569820049218055,NA,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g27",0.569820049218055,NA,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g28",0.569820049218055,NA,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g29",0.569820049218055,NA,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g30",0.569820049218055,NA,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g31",0.569820049218055,NA,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g32",0.569820049218055,NA,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g33",0.569820049218055,NA,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g34",0.569820049218055,NA,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g35",0.569820049218055,NA,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g36",0.569820049218055,NA,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g37",0.569820049218055,NA,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g38",0.569820049218055,NA,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g39",0.569820049218055,NA,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g40",0.569820049218055,NA,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-one|cm0|ML","fitted:sd(g, coef = ""(Intercept)"")",0.569820049218055,NA,124.915869321526,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","mu:(Intercept)",0.307112107658724,0.0993569007489861,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","mu:x1",0.363864360625204,0.043919065898718,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","mu:x2",0.188711350070512,0.0418506845965372,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","mu:x3",-0.294611444776716,0.0457013142294947,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sigma:(Intercept)",-0.849977924834154,0.0353788292473667,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd(g, coef = ""(Intercept)""):(Intercept)",-0.605782119296821,0.141315322711787,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd(g, coef = ""(Intercept)""):z",0.370850083510808,0.236395907392012,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sigma",0.427424367308378,0.0151217737071668,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g01",0.718908060498303,NA,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g02",0.51051005009733,NA,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g03",0.464202351336908,NA,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g04",0.594400864724394,NA,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g05",0.376577201307843,NA,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g06",0.732711056546929,NA,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g07",0.422095163348169,NA,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g08",0.705365088777434,NA,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g09",0.679039716980347,NA,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g10",0.446877564949752,NA,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g11",0.54048353992081,NA,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g12",0.775730596304812,NA,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g13",0.692077242980324,NA,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g14",0.383807463294406,NA,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g15",0.482198794228893,NA,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g16",0.391176545921764,NA,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g17",0.473115011485446,NA,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g18",0.43019936775478,NA,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g19",0.583203391022064,NA,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g20",0.666247795189906,NA,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g21",0.561437292378611,NA,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g22",0.761117187294643,NA,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g23",0.572216858159083,NA,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g24",0.617444912618919,NA,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g25",0.629299821692014,NA,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g26",0.398687114538744,NA,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g27",0.50089293276122,NA,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g28",0.491456985111855,NA,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g29",0.653696850854835,NA,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g30",0.605813329318828,NA,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g31",0.746779069376402,NA,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g32",0.790624581981049,NA,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g33",0.641382344380931,NA,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g34",0.40634188566873,NA,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g35",0.530301774408724,NA,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g36",0.43845917244959,NA,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g37",0.550860794782445,NA,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g38",0.414143627992204,NA,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g39",0.520311815568415,NA,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g40",0.45545759013259,NA,126.136447559908,0,TRUE,TRUE
+"beta|ordinary|lab0|q1|sd-z|cm0|ML","fitted:sd(g, coef = ""(Intercept)"")",0.558891320203511,NA,126.136447559908,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-none|cm0|ML","mu:(Intercept)",0.323172558552729,0.082872439184243,-520.409508081102,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-none|cm0|ML","mu:x1",0.183133635431485,0.0461561458008391,-520.409508081102,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-none|cm0|ML","mu:x2",0.304142841452726,0.0458046906832998,-520.409508081102,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-none|cm0|ML","mu:x3",-0.194327572816597,0.0420185670980481,-520.409508081102,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-none|cm0|ML","sigma:(Intercept)",-0.296299800213307,0.0662959537004444,-520.409508081102,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-none|cm0|ML","nu:(Intercept)",2.02781259651225,0.639481559561652,-520.409508081102,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-none|cm0|ML","sigma",0.743564473813134,0.0492953159292108,-520.409508081102,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-none|cm0|ML","sd:mu:(1 | g)",0.455865827297298,0.0671286673942386,-520.409508081102,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-none|cm0|ML","fitted:nu",9.5974494821373,NA,-520.409508081102,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","mu:(Intercept)",0.323172558552729,0.0828724391842458,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","mu:x1",0.183133635431485,0.0461561458008797,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","mu:x2",0.304142841452727,0.0458046906833038,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","mu:x3",-0.194327572816597,0.0420185670980796,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sigma:(Intercept)",-0.296299800213309,0.0662959537031831,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","nu:(Intercept)",2.02781259651221,0.639481559606382,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sd(g, coef = ""(Intercept)""):(Intercept)",-0.785556751147475,0.14725531806637,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sigma",0.743564473813132,0.0492953159312471,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g01",0.455865827297298,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g02",0.455865827297298,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g03",0.455865827297298,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g04",0.455865827297298,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g05",0.455865827297298,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g06",0.455865827297298,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g07",0.455865827297298,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g08",0.455865827297298,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g09",0.455865827297298,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g10",0.455865827297298,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g11",0.455865827297298,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g12",0.455865827297298,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g13",0.455865827297298,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g14",0.455865827297298,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g15",0.455865827297298,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g16",0.455865827297298,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g17",0.455865827297298,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g18",0.455865827297298,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g19",0.455865827297298,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g20",0.455865827297298,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g21",0.455865827297298,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g22",0.455865827297298,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g23",0.455865827297298,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g24",0.455865827297298,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g25",0.455865827297298,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g26",0.455865827297298,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g27",0.455865827297298,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g28",0.455865827297298,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g29",0.455865827297298,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g30",0.455865827297298,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g31",0.455865827297298,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g32",0.455865827297298,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g33",0.455865827297298,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g34",0.455865827297298,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g35",0.455865827297298,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g36",0.455865827297298,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g37",0.455865827297298,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g38",0.455865827297298,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g39",0.455865827297298,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g40",0.455865827297298,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","fitted:nu",9.59744948213705,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-one|cm0|ML","fitted:sd(g, coef = ""(Intercept)"")",0.455865827297298,NA,-520.409508081104,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","mu:(Intercept)",0.329330909244965,0.0861328008328104,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","mu:x1",0.183299951823248,0.0461673163508597,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","mu:x2",0.304363711674401,0.0458030624642575,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","mu:x3",-0.194001095892078,0.0420571516505405,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sigma:(Intercept)",-0.296706246368765,0.066325384993421,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","nu:(Intercept)",2.02315276374613,0.638439737279208,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd(g, coef = ""(Intercept)""):(Intercept)",-0.787350848972184,0.147637501568145,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd(g, coef = ""(Intercept)""):z",-0.0666554223642591,0.259506681878211,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sigma",0.743262316300956,0.0492971592797628,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g01",0.45895400450062,NA,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g02",0.428626307496167,NA,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g03",0.439005986096307,NA,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g04",0.449637020541755,NA,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g05",0.460525497703157,NA,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g06",0.443531013864509,NA,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g07",0.473292711784539,NA,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g08",0.442017512490798,NA,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g09",0.452721474508643,NA,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g10",0.433044347352181,NA,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g11",0.446573581385982,NA,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g12",0.434527123930199,NA,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g13",0.474913301804642,NA,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g14",0.479808442067453,NA,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g15",0.445049697581326,NA,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g16",0.462102371817206,NA,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g17",0.454271627057387,NA,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g18",0.448102683083971,NA,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g19",0.425706017231819,NA,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g20",0.431566630588059,NA,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g21",0.468464046829066,NA,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g22",0.481451342440551,NA,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g23",0.457387873847817,NA,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g24",0.43009395637177,NA,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g25",0.437507925887991,NA,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g26",0.44050917577601,NA,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g27",0.48309986822871,NA,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g28",0.484754038693775,NA,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g29",0.478171147913297,NA,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g30",0.47653944084747,NA,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g31",0.486413873163547,NA,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g32",0.463684645267412,NA,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g33",0.466865464190544,NA,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g34",0.4360149776473,NA,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g35",0.42716366681282,NA,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g36",0.455827087445631,NA,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g37",0.470068103135376,NA,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g38",0.471677651851724,NA,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g39",0.465272336541512,NA,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g40",0.451176611686972,NA,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","fitted:nu",9.56212899579385,NA,-520.376426968204,0,TRUE,TRUE
+"student|ordinary|lab0|q1|sd-z|cm0|ML","fitted:sd(g, coef = ""(Intercept)"")",0.45540301468665,NA,-520.376426968204,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-none|cm0|ML","mu:(Intercept)",0.448744255795269,0.111271207117128,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-none|cm0|ML","mu:x1",0.384974331311832,0.0590500090085527,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-none|cm0|ML","mu:x2",0.293678193686933,0.0570363566867283,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-none|cm0|ML","mu:x3",-0.119644144604169,0.0556068054259474,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-none|cm0|ML","sigma:(Intercept)",0.197652161606416,0.0311415372032498,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-none|cm0|ML","nu:(Intercept)",0.184407841076844,0.101950089317696,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-none|cm0|ML","sigma",1.21853846563426,0.0379471609611403,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-none|cm0|ML","sd:mu:(1 | g)",0.596436250102201,0.094879638664719,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-none|cm0|ML","fitted:nu",1.54597175678523,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","mu:(Intercept)",0.448744255795268,0.111271207117131,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","mu:x1",0.384974331311832,0.0590500090085544,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","mu:x2",0.293678193686933,0.0570363566867277,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","mu:x3",-0.119644144604169,0.0556068054259463,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sigma:(Intercept)",0.197652161606417,0.0311415372032244,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","nu:(Intercept)",0.184407841076846,0.101950089317506,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sd(g, coef = ""(Intercept)""):(Intercept)",-0.516782916412518,0.159077585657162,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sigma",1.21853846563426,0.0379471609611093,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g01",0.596436250102201,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g02",0.596436250102201,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g03",0.596436250102201,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g04",0.596436250102201,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g05",0.596436250102201,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g06",0.596436250102201,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g07",0.596436250102201,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g08",0.596436250102201,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g09",0.596436250102201,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g10",0.596436250102201,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g11",0.596436250102201,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g12",0.596436250102201,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g13",0.596436250102201,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g14",0.596436250102201,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g15",0.596436250102201,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g16",0.596436250102201,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g17",0.596436250102201,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g18",0.596436250102201,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g19",0.596436250102201,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g20",0.596436250102201,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g21",0.596436250102201,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g22",0.596436250102201,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g23",0.596436250102201,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g24",0.596436250102201,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g25",0.596436250102201,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g26",0.596436250102201,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g27",0.596436250102201,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g28",0.596436250102201,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g29",0.596436250102201,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g30",0.596436250102201,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g31",0.596436250102201,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g32",0.596436250102201,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g33",0.596436250102201,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g34",0.596436250102201,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g35",0.596436250102201,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g36",0.596436250102201,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g37",0.596436250102201,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g38",0.596436250102201,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g39",0.596436250102201,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g40",0.596436250102201,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","fitted:nu",1.54597175678523,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-one|cm0|ML","fitted:sd(g, coef = ""(Intercept)"")",0.596436250102201,NA,-766.566780179054,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","mu:(Intercept)",0.445844736988265,0.111925340326275,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","mu:x1",0.385712806330301,0.0591047392826757,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","mu:x2",0.292998038056224,0.0570815868644903,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","mu:x3",-0.120114034993009,0.0556463594807492,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sigma:(Intercept)",0.197432723719927,0.0311419466748642,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","nu:(Intercept)",0.184057944672998,0.10194848769611,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd(g, coef = ""(Intercept)""):(Intercept)",-0.514466867987297,0.158747344238723,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd(g, coef = ""(Intercept)""):z",0.0616985292416962,0.246591755719612,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sigma",1.21827110146474,0.0379393336773431,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g01",0.567409895996326,NA,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g02",0.578284594787274,NA,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g03",0.571011881377488,NA,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g04",0.574636732589468,NA,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g05",0.600663244201227,NA,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g06",0.604476325784542,NA,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g07",0.606391934205585,NA,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g08",0.587505884255114,NA,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g09",0.623907910026662,NA,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g10",0.562049476082716,NA,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g11",0.631854335612021,NA,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g12",0.569208039494408,NA,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g13",0.618013743554128,NA,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g14",0.583799853478086,NA,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g15",0.633856705985419,NA,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g16",0.610241382193142,NA,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g17",0.589367712702788,NA,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g18",0.585649937373555,NA,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g19",0.608313613262427,NA,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g20",0.619972252565934,NA,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g21",0.598765732865905,NA,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g22",0.565617432881892,NA,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g23",0.629858290780461,NA,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g24",0.563830632206622,NA,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g25",0.594988674127091,NA,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g26",0.593109088911176,NA,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g27",0.62588509787575,NA,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g28",0.616061421524938,NA,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g29",0.62193696816714,NA,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g30",0.614115266933521,NA,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g31",0.572821439703966,NA,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g32",0.591235441355484,NA,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g33",0.635865421946535,NA,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g34",0.627868551508181,NA,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g35",0.602566768821996,NA,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g36",0.612175260296773,NA,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g37",0.5968742158199,NA,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g38",0.581955614047376,NA,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g39",0.576457778207028,NA,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g40",0.580117200618604,NA,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","fitted:nu",1.54588502076188,NA,-766.535660129343,0,TRUE,TRUE
+"tweedie|ordinary|lab0|q1|sd-z|cm0|ML","fitted:sd(g, coef = ""(Intercept)"")",0.598218043853216,NA,-766.535660129343,0,TRUE,TRUE
