@@ -66,7 +66,10 @@ const _STS_COORDS = joinpath(@__DIR__, "fixtures", "struct_sd_counts", "coords.c
             f = bf(@eval(@formula(y ~ x1 + $lhs + $second)), @formula(sigma ~ 1))
             err = try drm(f, Student(); data = dh, coords = coords); nothing catch e; e end
             @test err !== nothing
-            @test err !== nothing && occursin("structured markers", sprint(showerror, err))
+            # Refused either by this route ("structured markers") or, where the entry guard
+            # `_require_one_structured_marker` is present, by that guard ("one structured term per formula").
+            @test err !== nothing && (occursin("structured markers", sprint(showerror, err)) ||
+                                      occursin("one structured term per formula", sprint(showerror, err)))
         end
     end
 
