@@ -68,6 +68,18 @@ end
 _binomial_sd_scale(eta) = exp.(_softclamp.(eta, -12.0, 12.0, 3.0))
 _binomial_structured_sd_group_scale(Zg, alpha) = _binomial_sd_scale(Zg * alpha)
 
+# Partial correlation and innovation scale of one correlation parameter. The parameter is
+# soft-clamped at atanh(_Q2_RHO_BOUND) = atanh(0.999999) (drmTMB's correlation bound, as the
+# Poisson / NB2 / Gaussian q2 routes use; margin 3 as for the SD guard above): the identity
+# inside, so every fit with |rho| <= 0.999999 is unchanged, smooth and flat outside. Unbounded,
+# a correlation drifting to +-1 makes the group prior precision ~1/(1 - rho^2) and the Laplace
+# objective carries rounding noise of order 1e-4 once |eta| > ~12, which the line search takes
+# for progress (Julia 1.13.3, cell `binomial|corr|lab0|q2|sd-last`).
+function _binomial_bounded_partial(eta)
+    e = _softclamp(eta, -atanh(_Q2_RHO_BOUND), atanh(_Q2_RHO_BOUND), 3.0)
+    return tanh(e), _binomial_stable_sech(e)
+end
+
 # Lower-triangular Cholesky factor for a correlation matrix from row-major
 # partial correlations. For row i and column j<i, the partial parameter is
 # conditional on the preceding j-1 coordinates. This preserves the established
@@ -85,8 +97,9 @@ function _binomial_partial_correlation_cholesky(correlation_eta, q::Integer)
         residual = one(T)
         for j in 1:(i - 1)
             eta = correlation_eta[position]
-            L[i, j] = tanh(eta) * residual
-            residual *= _binomial_stable_sech(eta)
+            partial, innovation = _binomial_bounded_partial(eta)
+            L[i, j] = partial * residual
+            residual *= innovation
             position += 1
         end
         L[i, i] = residual
