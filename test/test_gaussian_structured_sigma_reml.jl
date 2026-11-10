@@ -71,12 +71,19 @@ function _gsr_oracle(fx, beta, gamma, alpha; reml::Bool)
         maximum(abs, g) < 1e-9 && break
         H = ForwardDiff.hessian(negjoint, w)
         step = H \ g
+        # Inside the quadratic basin take the full Newton step. The Armijo test below compares f values near
+        # 270 whose true decrease is under roundoff, so on some CPU/SIMD paths it rejects every step and the
+        # loop stalls at |g| ~ 1e-7; the Laplace value moves at first order in that gap (through log det H).
+        if maximum(abs, g) < 1e-4
+            w .-= step
+            continue
+        end
         t = 1.0; f0 = negjoint(w)
         while t > 1e-12 && negjoint(w .- t .* step) > f0; t /= 2; end
         w .-= t .* step
     end
     H = ForwardDiff.hessian(negjoint, w)
-    @assert maximum(abs, ForwardDiff.gradient(negjoint, w)) < 1e-6   # oracle's own mode, not a model tolerance
+    @assert maximum(abs, ForwardDiff.gradient(negjoint, w)) < 1e-8   # oracle's own mode, not a model tolerance
     nll = negjoint(w) + 0.5 * logdet(cholesky(Symmetric(H))) + 0.5 * ldK - (reml ? 0.5 * p * log(2π) : 0.0)
     return -nll
 end
