@@ -1506,8 +1506,8 @@ struct TruncatedNegBinomial2 end
         "TruncatedNegBinomial2() accepts `marginal = :Laplace` only (its random-intercept route); " *
         "got `marginal = :$marginal`."))
     if !isempty(_sd_parts(f)) || !isempty(_sdphylo_parts(f))
-        marginal === nothing || throw(ArgumentError(
-            "TruncatedNegBinomial2() `sd(...)` models do not take `marginal`."))
+        marginal === nothing ||
+            _refuse_unsupported_kwargs((:marginal,), f, fam, (:control, :data, :g_tol, :nAGQ, :se, :weights))
         nodes = nAGQ === nothing ? _SD_IID_AGHQ_K : nAGQ
         nodes >= 1 || throw(ArgumentError("nAGQ must be ≥ 1; got $nodes"))
         return _drm_truncated_negbin2_sd_regression(f, fam; data, g_tol, se,
@@ -1530,8 +1530,8 @@ struct TruncatedNegBinomial2 end
         pname === :mu && return _drm_zi_re_laplace(f, fam; data = data, g_tol = g_tol)
         error("TruncatedNegBinomial2() currently supports fixed effects only")
     end
-    marginal === nothing || throw(ArgumentError(
-        "TruncatedNegBinomial2(): `marginal` applies to the random-intercept route only; this model has no random effect."))
+    marginal === nothing ||
+        _refuse_unsupported_kwargs((:marginal,), f, fam, (:control, :data, :g_tol, :nAGQ, :se, :weights))
     # Refuse, never silently drop, a formula part this family does not consume.
     # Before this guard `drm(bf(y ~ x, sigma ~ 1, zi ~ w), TruncatedNegBinomial2())`
     # dropped `zi` from the likelihood without a word and fitted the plain

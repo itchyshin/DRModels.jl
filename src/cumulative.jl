@@ -225,8 +225,7 @@ function _drm_cumulative_fit(f::DrmFormula, fam::CumulativeLogit; data, tree = n
     rhs = Dict(f.forms)
     fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
     marginal === nothing || (length(re) > 1 && _has_indep_slopes(re) && st === nothing && mv === nothing) ||
-        throw(ArgumentError("CumulativeLogit(): `marginal = :$marginal` applies only to independent " *
-                            "random intercept and slope terms `(1 | g) + (0 + x | g)`; this model is fitted without it."))
+        _refuse_unsupported_kwargs((:marginal,), f, fam, (:control, :data, :g_tol, :se, :tree, :weights))
     fixed_mu, offset_term = _extract_offset(fixed_mu)   # #938: offset(z), coefficient fixed at 1
     offset_term === nothing || (isempty(re) && mv === nothing && st === nothing) ||
         _refuse_offset_route(fam, "a random, structured or `meta_V` term on the mean")

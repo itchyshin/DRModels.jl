@@ -125,8 +125,8 @@ end
                                    SkewNormal(); data = _zr_data("skew_g"))
     # `marginal` is accepted only where the route exists
     ds = _zr_data("skew_g")
-    @test_throws ArgumentError drm(bf(@formula(y ~ x), @formula(sigma ~ 1), @formula(nu ~ 1)), SkewNormal();
-                                   data = ds, marginal = :Laplace)
+    @test_throws r"SkewNormal route does not accept the keyword `marginal`" drm(
+        bf(@formula(y ~ x), @formula(sigma ~ 1), @formula(nu ~ 1)), SkewNormal(); data = ds, marginal = :Laplace)
     @test_throws ArgumentError drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1), @formula(nu ~ 1)), SkewNormal();
                                    data = ds, marginal = :AGHQ)
     @test_throws ArgumentError drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1 + (1 | g)), @formula(nu ~ 1)),

@@ -73,7 +73,8 @@ struct SkewNormal end
         "SkewNormal() accepts `marginal = :Laplace` only (its random-intercept route); " *
         "got `marginal = :$marginal`."))
     if !isempty(_sd_parts(f)) || !isempty(_sdphylo_parts(f))
-        marginal === nothing || throw(ArgumentError("SkewNormal() `sd(...)` models do not take `marginal`."))
+        marginal === nothing ||
+            _refuse_unsupported_kwargs((:marginal,), f, fam, (:control, :data, :g_tol, :nAGQ, :weights))
         nodes = nAGQ === nothing ? _RANEF1D_AGHQ_K : nAGQ
         nodes >= 1 || throw(ArgumentError("nAGQ must be ≥ 1; got $nodes"))
         return _drm_skewnormal_sd_regression(f, fam; data, g_tol, nAGQ = nodes)
@@ -94,8 +95,8 @@ struct SkewNormal end
     # One ordinary `(1 | g)` on the mean: drmTMB's Laplace objective (`zi_re_laplace.jl`); every
     # other random-effect shape stays refused (the route re-checks and names it).
     isempty(re) || return _drm_zi_re_laplace(f, fam; data = data, g_tol = g_tol)
-    marginal === nothing || throw(ArgumentError(
-        "SkewNormal(): `marginal` applies to the random-intercept route only; this model has no random effect."))
+    marginal === nothing ||
+        _refuse_unsupported_kwargs((:marginal,), f, fam, (:control, :data, :g_tol, :nAGQ, :weights))
     for (pname, r) in f.forms          # no parameter may carry a random effect
         pname === :mu && continue
         _, re2, mv2, st2 = _split_ranef(r)
