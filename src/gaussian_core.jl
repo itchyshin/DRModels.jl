@@ -3171,6 +3171,9 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
     type in (:response, :link) || error("predict_parameters: `type` must be :response or :link")
     forms = Dict(f.forms)
     nd = NamedTuple(pairs(newdata))
+    # Same label-response handling as `predict` (CumulativeLogit univariate fits only).
+    fit.family isa CumulativeLogit && f isa DrmFormula &&
+        (nd = _predict_ignore_label_response(nd, f.response))
     nrows = length(first(values(nd)))
     V = se ? vcov(fit) : nothing
     # A real LHS to dummy into `_design` for each parameter's RHS. The univariate

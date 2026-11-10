@@ -41,7 +41,7 @@ for (nm in names(cells)) {
   if (nm == "K_gauss_mu") add(nm, "fit_rows", d$id[ok], predict(fit))   # no newdata: the fitted rows
   if (nm == "K_gauss_sigma") add(nm, "newdata_full_with_NA", d$id, predict(fit, newdata = d))
 }
-# Ordinal response given as a label (ordered factor in R); predict_new passes the label column too.
+# Ordinal response given as a label (ordered factor in R); predict(fit, newdata) is called with the label column too.
 fit <- drmTMB(bf(y_ordf ~ x1), family = cumulative_logit(), data = d)
 fits[["I_ord_label"]] <- data.frame(cell = "I_ord_label", logLik = as.numeric(logLik(fit)), nobs = nobs(fit),
                                     term = names(fixef(fit)[["mu"]]), estimate = as.numeric(fixef(fit)[["mu"]]),

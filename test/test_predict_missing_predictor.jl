@@ -1,7 +1,7 @@
 # predict() on fits whose data have a missing predictor, and on an ordinal label response.
 #
 # Gap map v2 (g6e): `predict(fit, d)` with a missing predictor threw in Julia (5 K cells), and
-# `predict` / `predict_new` threw `Float64(::String)` on the ordinal label-response cell.
+# `predict` threw `Float64(::String)` on the ordinal label-response cell.
 #
 # What drmTMB 0.8.1 does (fixtures/predict_miss/reference.csv, refusals.csv; regenerate with
 # `Rscript test/fixtures/predict_miss/gen_fixtures.R`):
@@ -141,6 +141,16 @@ end
     _pm_check_pred(p, "I_ord_label", "fit_rows")             # R's predict(fit) is the same 160 values
     idx = [5, 1, 9]
     _pm_check_pred(predict(fit, (; y_ordf = _PM_D.y_ordf[idx], x1 = _PM_D.x1[idx])), "I_ord_label", "newdata_with_label")
+    # predict_parameters ignores a label response the same way, and agrees with a numeric response column
+    pp = predict_parameters(fit, d_all)
+    codes_all = [parse(Int, s[2:end]) for s in _PM_D.y_ordf]
+    pp_num = predict_parameters(fit, (; y_ordf = codes_all, x1 = _PM_D.x1))
+    @test keys(pp) == keys(pp_num)
+    for k in keys(pp)
+        @test all(isfinite, pp[k])
+        @test maximum(abs.(pp[k] .- pp_num[k])) <= 1e-12
+    end
+    @test maximum(abs.(pp[:mu] .- p)) <= 1e-12
     # newdata without the response column keeps working (unchanged behaviour)
     p0 = predict(fit, (; x1 = _PM_D.x1))
     @test maximum(abs.(p0 .- p)) <= 1e-12
