@@ -156,6 +156,7 @@ include("gaussian_sigma_sd_laplace.jl")  # Gaussian sd(g, sigma): joint mu+sigma
 include("sigma_structured_laplace.jl")  # NB2/Gamma structured sigma: SD-formula intercept (Julia-only) and NB2 intercept+slope with fixed SDs
 include("convergence_status.jl")  # FX3b: the three-valued twin status shared with drmTMB
 include("indep_slopes_laplace.jl")   # #960: Gamma/Student (1 | g) + (0 + x | g), TMB-convention Laplace
+include("student_structured.jl")   # Student spatial(1 | g) / spatial(1 + x | g) with coords, TMB-convention Laplace
 include("summary.jl")
 include("fit_derivatives.jl")  # #971 #994: gradient / hessian / control_info accessors
 include("r2.jl")             # R2 for the constant-sigma Gaussian case ONLY; refuses elsewhere
