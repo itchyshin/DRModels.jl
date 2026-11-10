@@ -1545,8 +1545,9 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     if method === :REML
         # REML (opt-in) is implemented for (a) the fixed-effect univariate
         # Gaussian location–scale cell and (b) a single mean random intercept
-        # `(1 | g)` on the Woodbury spine (#439). σ-RE, slopes, multi-ranef,
-        # structured / phylo / meta, and non-Gaussian REML stay rejected.
+        # `(1 | g)` on the Woodbury spine (#439), plus the shapes (c)-(g) below
+        # (including `meta_V(v)` with ordinary `(1 | g)` intercepts, (g)). σ-RE,
+        # structured / phylo + meta, and non-Gaussian REML stay rejected.
         # The bivariate q=4 path has its own REML gate.
         # `_re_kind` stops at q = 2; a q = 3, 4 correlated block `(1 + x + z | g)` is classified here.
         _kind_reml(rl) = (mc = _re_multi_corr_vars(rl); mc !== nothing && length(mc) ≥ 2) ?
@@ -1592,7 +1593,7 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         reml_gauss_ok = isempty(sigma_re) && metav === nothing && size(Xσ, 2) == 1 &&
             !has_missing_response
         re_kinds_reml = [_kind_reml(rl) for (rl, _) in re]
-        reml_gauss_ok_meta = isempty(sigma_re) && size(Xσ, 2) == 1 && !has_missing_response
+        reml_gauss_ok_meta = isempty(sigma_re) && size(Xσ, 2) == 1 && all(==(1.0), Xσ[:, 1]) && !has_missing_response   # a TRUE intercept-only sigma (`sigma ~ 0 + x` also has one column)
         reml_scalar_slope = reml_gauss_ok && length(re) == 1 && re_kinds_reml[1] === :slope &&
             structured === nothing && length(_collect_structured(rhs[:mu])) == 0
         reml_multi_scalar = reml_gauss_ok && length(re) >= 2 &&
