@@ -1,4 +1,5 @@
-using Test, DRModels, StatsModels
+using Test, DRModels
+using StatsModels: @formula
 
 @testset "Gamma SD prior rejects invalid selectors and parameters" begin
     for a in (1.0, 0.0, -1.0, NaN, Inf), b in (3.0,)
