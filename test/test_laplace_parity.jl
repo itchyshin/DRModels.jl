@@ -55,6 +55,21 @@ end
     _lp_check(id)
 end
 
+@testset "Poisson correlated block with a mean offset, c ~ x + offset(logb) + (1 + x | g)" begin
+    # Reference: drmTMB 0.8.1 (ML) on data_poisson_offset_corr.csv, made by gen_data_offset_corr.jl / gen_ref_offset_corr.R.
+    dir = joinpath(@__DIR__, "fixtures", "laplace_parity")
+    m, _ = readdlm(joinpath(dir, "data_poisson_offset_corr.csv"), ','; header = true)
+    d = (c = Float64.(m[:, 1]), x = Float64.(m[:, 2]), logb = Float64.(m[:, 3]), g = String.(m[:, 4]))
+    R, _ = readdlm(joinpath(dir, "r_reference_offset_corr.csv"), ','; header = true)
+    fit = drm(bf(@formula(c ~ x + offset(logb) + (1 + x | g))), DRModels.Poisson(); data = d, marginal = :Laplace)
+    @test fit.converged
+    @test fit.marginal === :Laplace
+    @test abs(loglikelihood(fit) - Float64(R[1, 4])) <= 1e-4
+    @test maximum(abs.(coef(fit, :mu) .- Float64.(R[1:2, 2])) ./ Float64.(R[1:2, 3])) <= 1e-3
+    @test maximum(abs.([coef(fit, :sd_intercept)[1], coef(fit, :sd_slope)[1]] .- log.(Float64.(R[3:4, 2])))) <= 5e-3
+    @test abs(coef(fit, :recov)[1] - atanh(Float64(R[5, 2]))) <= 5e-3
+end
+
 @testset "default behaviour is unchanged (matches the base commit values)" begin
     # Values recorded on f6dab1698 (this branch's base) with no keyword; the keyword must not touch them.
     base = Dict(

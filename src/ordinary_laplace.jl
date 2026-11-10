@@ -56,7 +56,8 @@ end
 # `marginal = :Laplace` on one ordinary correlated block `(1 + x | g)` (Poisson, NegBinomial2, Binomial; q = 2
 # for the counts, q = 2 to 4 for Binomial), constant SDs. The counts reuse the identity-kernel Laplace of
 # `ordinary_q2_sd.jl`; Binomial reuses the SD-regression group integral with a single adaptive node, which
-# is the Laplace approximation. Offsets, `meta_V`, `zi`/`hu` and a `sigma` formula stay refused.
+# is the Laplace approximation. A Poisson mean `offset(...)` is applied (it agrees with drmTMB 0.8.1, pinned in
+# `test_laplace_parity.jl`); NegBinomial2 and Binomial refuse offsets here. `meta_V`, `zi`/`hu` and a `sigma` formula stay refused.
 function _ordinary_corr_laplace(f::DrmFormula, fam, fixed_mu, lhs, group::Symbol;
                                 data, tree, K, A, coords, g_tol, se)
     (tree === nothing && K === nothing && A === nothing && coords === nothing) ||
