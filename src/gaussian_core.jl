@@ -1043,7 +1043,9 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
          !profile_ci && !phylo_coupled) ||
             throw(ArgumentError("drm: `control.optimizer` requires the ordinary Gaussian ML route (`algorithm = :auto`, no alternate integration, imputation or profiling)"))
     end
+    has_sd_prior = priors isa AbstractVector && any(p -> p isa SDGammaPrior, priors)
     if priors !== nothing && (_has_joint_mi(f) || method !== :ML || penalty !== nothing || algorithm !== :auto || marginal !== :LA || profile_ci || phylo_coupled || sparse !== nothing || impute !== nothing || missing !== nothing)
+        has_sd_prior && throw(ArgumentError("SD priors currently require ordinary Gaussian ML"))
         throw(ArgumentError("fixed-effect priors currently require ordinary fixed-effect Gaussian ML"))
     end
     if _has_joint_mi(f)
@@ -1079,12 +1081,16 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     fixed_sigma, sigma_re, _, structured_sigma = _split_ranef(rhs[:sigma])  # (1|g)→GHQ; structured_sigma = phylo(1|g) on σ
     prior_ri = priors !== nothing && length(re) == 1 && _re_kind(first(re)[1])[1] === :intercept
     if priors !== nothing && !((isempty(re) || prior_ri) && isempty(sigma_re) && metav === nothing && structured === nothing && structured_sigma === nothing && temporal_term === nothing && structured_slope === nothing && structured_sd_slope === nothing && isempty(_sd_parts(f)) && isempty(_sdphylo_parts(f)))
+        if has_sd_prior
+            throw(ArgumentError("SD priors currently support only one iid mean random intercept without other random or structured effects or SD submodels"))
+        end
         throw(ArgumentError("fixed-effect priors currently do not support random or structured effects"))
     end
-    if priors !== nothing && any(p -> p isa SDGammaPrior, priors) && any(ismissing, _table_column(data, f.response))
+    if has_sd_prior && any(ismissing, _table_column(data, f.response))
         throw(ArgumentError("SD priors require complete responses"))
     end
     if priors !== nothing && !all(_observed_response_mask(_table_column(data, f.response)))
+        has_sd_prior && throw(ArgumentError("SD priors currently require complete responses"))
         throw(ArgumentError("fixed-effect priors currently require complete responses"))
     end
     _require_profile_ci_used(profile_ci, structured_sigma)   # #1010
@@ -1122,9 +1128,9 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     response_observed = _observed_response_mask(y)
     has_missing_response = !all(response_observed)
     if priors !== nothing
-        has_missing_response && throw(ArgumentError("fixed-effect priors currently require complete responses"))
+        has_missing_response && throw(ArgumentError(has_sd_prior ? "SD priors currently require complete responses" : "fixed-effect priors currently require complete responses"))
         all(==(1), _ctl_weights(length(y))) || throw(ArgumentError("fixed-effect priors currently require unit weights"))
-        rank(Xμ) == size(Xμ, 2) && rank(Xσ) == size(Xσ, 2) || throw(ArgumentError("fixed-effect priors require full-rank design matrices"))
+        rank(Xμ) == size(Xμ, 2) && rank(Xσ) == size(Xσ, 2) || throw(ArgumentError(has_sd_prior ? "SD priors require full-rank design matrices" : "fixed-effect priors require full-rank design matrices"))
         names = [:mu => nmμ, :sigma => nmσ]
         intercepts = Dict(:mu => _fixed_intercept_index(f, :mu, fixed_mu, nmμ), :sigma => _fixed_intercept_index(f, :sigma, fixed_sigma, nmσ))
         priors isa AbstractVector && all(p -> p isa Union{FixedPrior,SDGammaPrior}, priors) || throw(ArgumentError("priors must be created by drm_priors"))
