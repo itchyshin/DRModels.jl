@@ -59,6 +59,12 @@ function tf_oracle(fam, y, eta0, Z, Sigma, sigma)
     return joint(b) + 0.5 * q * log(2π) - 0.5 * logdet(Symmetric(H))
 end
 
+# `tf_perm(rng, n)` is not stream-stable across Julia versions (1.13 returns a
+# different permutation for the same seed, which changed every fixture below and
+# broke the wrong-answer power checks). `rand(rng, n)` is stable, so build the
+# permutation from its order: the data is then identical on every Julia.
+tf_perm(rng, n) = sortperm(rand(rng, n))
+
 # indicator design for labels in a given level order
 tf_indicator(labels, levels) = Float64[labels[i] == levels[j] for i in eachindex(labels), j in eachindex(levels)]
 
@@ -85,11 +91,11 @@ function tf_case(fam::Symbol, shape::Symbol; seed = TF_RNG_SEED)
     a1, a2 = [log(0.5), 0.6], [log(0.35), -0.6]
     if shape === :samegroup
         G, m = 40, 10
-        lev = ["g$(i)" for i in randperm(rng, G)]
+        lev = ["g$(i)" for i in tf_perm(rng, G)]
         g = repeat(lev, inner = m)
         x = repeat(collect(range(-1.2, 1.2; length = m)), outer = G)
-        z1 = collect(range(-1.5, 1.5; length = G))[randperm(rng, G)]
-        z2 = collect(range(-1.5, 1.5; length = G))[randperm(rng, G)]
+        z1 = collect(range(-1.5, 1.5; length = G))[tf_perm(rng, G)]
+        z2 = collect(range(-1.5, 1.5; length = G))[tf_perm(rng, G)]
         gi = repeat(1:G, inner = m)
         b1 = exp.(a1[1] .+ a1[2] .* z1) .* randn(rng, G)
         b2 = exp.(a2[1] .+ a2[2] .* z2) .* randn(rng, G)
@@ -106,8 +112,8 @@ function tf_case(fam::Symbol, shape::Symbol; seed = TF_RNG_SEED)
         levg = ["g$(i)" for i in 1:G]; levh = ["h$(i)" for i in 1:H]
         gi = repeat(1:G, inner = n ÷ G); hi = rand(rng, 1:H, n)
         x = randn(rng, n)
-        z1 = collect(range(-1.5, 1.5; length = G))[randperm(rng, G)]
-        z2 = collect(range(-1.5, 1.5; length = H))[randperm(rng, H)]
+        z1 = collect(range(-1.5, 1.5; length = G))[tf_perm(rng, G)]
+        z2 = collect(range(-1.5, 1.5; length = H))[tf_perm(rng, H)]
         b1 = exp.(a1[1] .+ a1[2] .* z1) .* randn(rng, G)
         b2 = exp.(a2[1] .+ a2[2] .* z2) .* randn(rng, H)
         eta = 0.4 .+ 0.3 .* x .+ b1[gi] .+ b2[hi]
@@ -122,10 +128,10 @@ function tf_case(fam::Symbol, shape::Symbol; seed = TF_RNG_SEED)
     elseif shape in (:ordrelmat, :ordanimal)
         G, P, n = 25, 20, 500
         levg = ["g$(i)" for i in 1:G]; levp = ["p$(i)" for i in 1:P]
-        gi = rand(rng, 1:G, n); pi_ = repeat(1:P, inner = n ÷ P)[randperm(rng, n)]
+        gi = rand(rng, 1:G, n); pi_ = repeat(1:P, inner = n ÷ P)[tf_perm(rng, n)]
         x = randn(rng, n)
-        z1 = collect(range(-1.5, 1.5; length = G))[randperm(rng, G)]
-        z2 = collect(range(-1.5, 1.5; length = P))[randperm(rng, P)]
+        z1 = collect(range(-1.5, 1.5; length = G))[tf_perm(rng, G)]
+        z2 = collect(range(-1.5, 1.5; length = P))[tf_perm(rng, P)]
         Cp = tf_kernel(P)                     # in levp order
         b1 = exp.(a1[1] .+ a1[2] .* z1) .* randn(rng, G)
         b2 = exp.(a2[1] .+ a2[2] .* z2) .* (cholesky(Symmetric(Cp)).L * randn(rng, P))
@@ -153,8 +159,8 @@ function tf_case(fam::Symbol, shape::Symbol; seed = TF_RNG_SEED)
         lev = ["u$(i)" for i in 1:G]
         gi = repeat(1:G, inner = m)
         x = randn(rng, G * m)
-        z1 = collect(range(-1.5, 1.5; length = G))[randperm(rng, G)]
-        z2 = collect(range(-1.5, 1.5; length = G))[randperm(rng, G)]
+        z1 = collect(range(-1.5, 1.5; length = G))[tf_perm(rng, G)]
+        z2 = collect(range(-1.5, 1.5; length = G))[tf_perm(rng, G)]
         C = tf_kernel(G)
         Lc = cholesky(Symmetric(C)).L
         b1 = exp.(a1[1] .+ a1[2] .* z1) .* (Lc * randn(rng, G))
@@ -174,8 +180,8 @@ function tf_case(fam::Symbol, shape::Symbol; seed = TF_RNG_SEED)
         lev = ["u$(i)" for i in 1:G]
         gi = repeat(1:G, inner = m)
         x = randn(rng, G * m)
-        z1 = collect(range(-1.5, 1.5; length = G))[randperm(rng, G)]
-        z2 = collect(range(-1.5, 1.5; length = G))[randperm(rng, G)]
+        z1 = collect(range(-1.5, 1.5; length = G))[tf_perm(rng, G)]
+        z2 = collect(range(-1.5, 1.5; length = G))[tf_perm(rng, G)]
         C = shape === :corr ? Matrix(1.0I, G, G) : tf_kernel(G)
         Lc = cholesky(Symmetric(C)).L
         rho = 0.5
@@ -217,7 +223,7 @@ function tf_fit_oracle(fam, case, fit; perturb = :none)
         a = coef(fit, blocks[k])
         zz = (perturb === Symbol("rev", k)) ? reverse(z) : z
         tau = exp.(a[1] .+ a[2] .* zz)
-        pm = randperm(MersenneTwister(7), size(C, 1))
+        pm = tf_perm(MersenneTwister(7), size(C, 1))
         CC = (perturb === :kernelpos && !isdiag(C)) ? C[pm, pm] : C
         push!(Zs, w .* tf_indicator(labels, levels))
         push!(Sig, Diagonal(tau) * CC * Diagonal(tau))
@@ -230,7 +236,7 @@ function tf_fit_oracle(fam, case, fit; perturb = :none)
         perturb === :rho0 && (rho = 0.0)
         S1 = sqrt.(diag(Sig[1])); S2 = sqrt.(diag(Sig[2]))   # tau_k * sqrt(diag C)
         C = case.fields[1][3]
-        pm = randperm(MersenneTwister(7), size(C, 1))
+        pm = tf_perm(MersenneTwister(7), size(C, 1))
         perturb === :kernelpos && (C = C[pm, pm])
         t1 = S1 ./ sqrt.(diag(C)); t2 = S2 ./ sqrt.(diag(C))
         X12 = rho .* (Diagonal(t1) * C * Diagonal(t2))
