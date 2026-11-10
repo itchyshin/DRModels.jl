@@ -148,6 +148,12 @@ end
 _indep_primal(x::ForwardDiff.Dual) = _indep_primal(ForwardDiff.value(x))
 _indep_primal(x::Real) = Float64(x)
 
+# Largest |log SD| a group may take in the independent-term Laplace objective before the evaluation is
+# declared failed (returns the 1e18 sentinel). It was 30, which walled off a monotone ridge that drmTMB
+# follows to log SD of about -111 (Binomial `(1 | g) + (0 + x1 | g)` with `sd(g, coef(intercept)) ~ z`:
+# the intercept SD is zero except in the group with the largest z). exp(-2 * 300) is still finite.
+const _INDEP_LOGSD_GUARD = 300.0
+
 """
     _fit_indep_re_laplace(fam, kind, y, Xμ, Xσ, Xν, comps, nmμ, nmσ, nmν, g_tol) -> DrmFit
 
@@ -249,7 +255,7 @@ function _fit_indep_re_laplace(fam, kind::Val, y, Xμ, Xσ, Xν, comps, nmμ, nm
         T = eltype(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
         lsg = vcat([Zs[k] * θ[sdoffs[k]+1:sdoffs[k+1]] for k in 1:K]...)   # log SD of every effect
-        any(l -> abs(_indep_primal(l)) > 30, lsg) && return T(1e18)
+        any(l -> abs(_indep_primal(l)) > _INDEP_LOGSD_GUARD, lsg) && return T(1e18)
         η0 = Xμ * βμ; ησ = has_sigma ? Xσ * βσ : zeros(T, n)
         ην = has_nu ? Xν * θ[pμ+pσ+1:k0] : zeros(T, n)
         any(l -> abs(_indep_primal(l)) > 30, ησ) && return T(1e18)
