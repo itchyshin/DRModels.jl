@@ -1,16 +1,22 @@
 using DRModels, Test, Random, LinearAlgebra
 import Distributions
 
+# `randperm(rng, n)` is not stream-stable across Julia versions (1.13 returns a
+# different permutation for the same seed, which changed the whole fixture and
+# pushed the intercept-SD slope to a boundary optimum). `rand(rng, n)` is stable,
+# so a permutation built from its order keeps the data identical on every Julia.
+_nb2_animal_q2_perm(rng, n) = sortperm(rand(rng, n))
+
 function _nb2_animal_q2_fixture(; G = 48, m = 24, seed = 202611072, sigma = 0.45)
     rng = MersenneTwister(seed)
-    ids = ["animal_$(i)" for i in randperm(rng, G)]
+    ids = ["animal_$(i)" for i in _nb2_animal_q2_perm(rng, G)]
     R = 0.35 .^ abs.(reshape(1:G, :, 1) .- reshape(1:G, 1, :))
     scale = collect(range(0.7, 1.4; length = G))
     A = Diagonal(scale) * R * Diagonal(scale)
     group = repeat(ids, inner = m)
     gidx = repeat(1:G, inner = m)
-    z0group = ifelse.(randperm(rng, G) .<= G ÷ 2, -1.0, 1.0)
-    z1group = collect(range(-1.0, 1.0; length = G))[randperm(rng, G)]
+    z0group = ifelse.(_nb2_animal_q2_perm(rng, G) .<= G ÷ 2, -1.0, 1.0)
+    z1group = collect(range(-1.0, 1.0; length = G))[_nb2_animal_q2_perm(rng, G)]
     x = repeat(collect(range(-1.2, 1.2; length = m)), outer = G)
     alpha0 = [-0.9, 0.35]
     alpha1 = [-1.0, 0.45]
