@@ -1,4 +1,4 @@
-# zi_re_laplace.jl — one ordinary random intercept `(1 | g)` on the mean of the
+# zi_re_laplace.jl: one ordinary random intercept `(1 | g)` on the mean of the
 # zero-inflated / hurdle / zero-truncated count families and of SkewNormal, fitted by
 # drmTMB's objective: the TMB-convention Laplace marginal.
 #
@@ -114,6 +114,15 @@ _indep_fixed_start(::Val{:hnb}, fam, yv, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol)
 _indep_fixed_start(::Val{:skew}, fam, yv, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol) =
     _fit_skewnormal(fam, yv, Xμ, Xσ, Xν, nmμ, nmσ, nmν, g_tol).theta
 
+# The dense Laplace spine builds a q x q Hessian over all random-effect levels. Same limit and
+# wording as the other dense Laplace engines (`_GSL_MAX_LATENT`, gaussian_sigma_sd_laplace.jl).
+function _dense_laplace_guard(fam, q::Integer)
+    q <= _GSL_MAX_LATENT || throw(ArgumentError(
+        "drm ($(_family_label(fam))): this random-effect model uses a dense Laplace " *
+        "engine limited to $(_GSL_MAX_LATENT) latent coordinates (got $q)."))
+    return nothing
+end
+
 function _zi_re_reject(fam, what)
     throw(ArgumentError(
         "drm ($(_family_label(fam))): a random effect on the mean with zero inflation, a hurdle, " *
@@ -165,6 +174,7 @@ function _drm_zi_re_laplace(f::DrmFormula, fam; data, g_tol::Real = 1e-8)
     gidx, G = _group_index(getproperty(data, grp); col = grp)
     y, Xμ, nmμ = _design(f.response, fixed_mu, data)
     n = length(y)
+    _dense_laplace_guard(fam, G)
     comps = [(ones(n), gidx, G, String(grp))]
     has_sigma = !(fam isa Poisson)
     Xσ = nothing; nmσ = String[]
@@ -253,6 +263,7 @@ end
 # Independent intercept + slope terms `(1 | g) + (0 + x | g)` on the mean of a CumulativeLogit.
 function _fit_cumulative_indep_laplace(fam, y::Vector{Int}, Xμ, K, comps, nmμ, g_tol)
     nc = K - 1
+    _dense_laplace_guard(fam, sum(c[3] for c in comps))
     return _fit_indep_re_laplace(fam, Val(:cumlogit), y, Xμ, zeros(length(y), nc), nothing, comps,
                                  nmμ, ["theta$k" for k in 1:nc], String[], g_tol)
 end

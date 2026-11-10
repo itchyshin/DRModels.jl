@@ -116,3 +116,48 @@ if (want("cumul_gx")) {
   f <- drmTMB(bf(y ~ x + (1 | g) + (0 + x | g)), family = cumulative_logit(), data = d)
   write_ref("cumul_gx", f, c("mu_x", "cutpoints_theta1", "cutpoints_theta2", "cutpoints_theta3", "resd_g", "resd_g:x"), d, "CumulativeLogit, (1 | g) + (0 + x | g)")
 }
+
+# ---- non-constant zi / hu / sigma / nu formulas (same data generators, richer parameter formulas)
+if (want("zip_zix")) {
+  s <- grp(20261110, 30, 10, 0.5)
+  s$d$y <- stats::rpois(s$n, exp(s$eta)) * stats::rbinom(s$n, 1, stats::plogis(1.0 - 0.8 * s$d$x))
+  f <- drmTMB(bf(y ~ x + (1 | g), zi ~ x), family = stats::poisson(), data = s$d)
+  write_ref("zip_zix", f, c("mu_(Intercept)", "mu_x", "zi_(Intercept)", "zi_x", "resd_g"), s$d, "ZIP, zi ~ x")
+}
+if (want("zinb_sx_zx")) {
+  # seed 20261111 gave a drmTMB local optimum 1.08 logLik below the better mode DRModels.jl found
+  # (R's own objective at the Julia optimum is higher), so it is not a valid target; this seed
+  # has one mode both engines reach.
+  s <- grp(20261121, 40, 10, 0.5)
+  s$d$y <- stats::rnbinom(s$n, mu = exp(s$eta), size = exp(1 + 0.4 * s$d$x)) * stats::rbinom(s$n, 1, stats::plogis(1.0 - 0.8 * s$d$x))
+  f <- drmTMB(bf(y ~ x + (1 | g), sigma ~ x, zi ~ x), family = nbinom2(), data = s$d)
+  write_ref("zinb_sx_zx", f, c("mu_(Intercept)", "mu_x", "sigma_(Intercept)", "sigma_x", "zi_(Intercept)", "zi_x", "resd_g"), s$d, "ZINB, sigma ~ x, zi ~ x")
+}
+if (want("tnb_sx")) {
+  s <- grp(20261112, 30, 10, 0.5)
+  s$d$y <- rtnb(exp(s$eta), exp(1 + 0.4 * s$d$x))
+  f <- drmTMB(bf(y ~ x + (1 | g), sigma ~ x), family = truncated_nbinom2(), data = s$d)
+  write_ref("tnb_sx", f, c("mu_(Intercept)", "mu_x", "sigma_(Intercept)", "sigma_x", "resd_g"), s$d, "truncated NB2, sigma ~ x")
+}
+if (want("hnb_sx_hx")) {
+  s <- grp(20261113, 30, 10, 0.5)
+  s$d$y <- rtnb(exp(s$eta), exp(1 + 0.4 * s$d$x)) * stats::rbinom(s$n, 1, stats::plogis(0.8 + 0.6 * s$d$x))
+  f <- drmTMB(bf(y ~ x + (1 | g), sigma ~ x, hu ~ x), family = truncated_nbinom2(), data = s$d)
+  write_ref("hnb_sx_hx", f, c("mu_(Intercept)", "mu_x", "sigma_(Intercept)", "sigma_x", "hu_(Intercept)", "hu_x", "resd_g"), s$d, "hurdle NB2, sigma ~ x, hu ~ x")
+}
+if (want("skew_sx")) {
+  s <- grp(20261114, 40, 10, 0.5)
+  al <- 3; dl <- al / sqrt(1 + al^2)
+  z <- dl * abs(stats::rnorm(s$n)) + sqrt(1 - dl^2) * stats::rnorm(s$n)
+  s$d$y <- s$eta + exp(0.0 + 0.3 * s$d$x) * z
+  f <- drmTMB(bf(y ~ x + (1 | g), sigma ~ x, nu ~ 1), family = skew_normal(), data = s$d)
+  write_ref("skew_sx", f, c("mu_(Intercept)", "mu_x", "sigma_(Intercept)", "sigma_x", "nu_(Intercept)", "resd_g"), s$d, "SkewNormal, sigma ~ x, nu ~ 1")
+}
+if (want("skew_nx")) {
+  s <- grp(20261115, 40, 10, 0.5)
+  al <- 3; dl <- al / sqrt(1 + al^2)
+  z <- dl * abs(stats::rnorm(s$n)) + sqrt(1 - dl^2) * stats::rnorm(s$n)
+  s$d$y <- s$eta + 1.0 * z
+  f <- drmTMB(bf(y ~ x + (1 | g), sigma ~ 1, nu ~ x), family = skew_normal(), data = s$d)
+  write_ref("skew_nx", f, c("mu_(Intercept)", "mu_x", "sigma_(Intercept)", "nu_(Intercept)", "nu_x", "resd_g"), s$d, "SkewNormal, nu ~ x")
+}

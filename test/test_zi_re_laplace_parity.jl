@@ -146,3 +146,48 @@ end
     @test_throws ArgumentError bootstrap_summary(bf3; data = db, B = 2, rng = Random.Xoshiro(1))
     @test_throws ArgumentError residuals(bf3; type = :quantile)
 end
+
+@testset "non-constant zi / hu / sigma / nu formulas vs drmTMB 0.8.1 (Laplace)" begin
+    d = _zr_data("zip_zix")
+    _zr_check("zip_zix", drm(bf(@formula(y ~ x + (1 | g)), @formula(zi ~ x)), Poisson(); data = d))
+    d = _zr_data("zinb_sx_zx")
+    _zr_check("zinb_sx_zx", drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ x), @formula(zi ~ x)),
+                                NegBinomial2(); data = d))
+    d = _zr_data("tnb_sx")
+    _zr_check("tnb_sx", drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ x)), TruncatedNegBinomial2(); data = d))
+    d = _zr_data("hnb_sx_hx")
+    _zr_check("hnb_sx_hx", drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ x), @formula(hu ~ x)),
+                               TruncatedNegBinomial2(); data = d))
+    d = _zr_data("skew_sx")
+    _zr_check("skew_sx", drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ x), @formula(nu ~ 1)), SkewNormal(); data = d))
+    d = _zr_data("skew_nx")
+    _zr_check("skew_nx", drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1), @formula(nu ~ x)), SkewNormal(); data = d))
+end
+
+@testset "fresh-draw simulate for zinb, tnb, hnb, skew; nAGQ and size guards" begin
+    using Random, Statistics
+    cases = (("zinb_g", bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1), @formula(zi ~ 1)), NegBinomial2()),
+             ("tnb_g", bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), TruncatedNegBinomial2()),
+             ("hnb_g", bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1), @formula(hu ~ 1)), NegBinomial2()),
+             ("skew_g", bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1), @formula(nu ~ 1)), SkewNormal()))
+    for (route, f, fam) in cases
+        d = _zr_data(route); fit = drm(f, fam; data = d)
+        ys = [simulate(fit; data = d, rng = Random.Xoshiro(s)) for s in 1:30]
+        zshare(y) = count(==(0), y) / length(y)
+        @test abs(mean(zshare.(ys)) - zshare(d.y)) < 0.05
+        @test abs(mean(mean.(ys)) - mean(d.y)) < 0.2 * max(1.0, abs(mean(d.y)))
+        @test abs(mean(var.(ys)) / var(d.y) - 1) < 0.3
+    end
+    d = _zr_data("zip_g")
+    zf = bf(@formula(y ~ x + (1 | g)), @formula(zi ~ 1))
+    @test_throws ArgumentError drm(zf, Poisson(); data = d, nAGQ = 5)
+    @test_throws ArgumentError drm(zf, Poisson(); data = d, nAGQ = 5, marginal = :Laplace)
+    @test loglik(drm(zf, Poisson(); data = d)) ≈ -422.95270749241683 atol = 1e-6
+    # dense engine size limit (same limit as the other dense Laplace engines)
+    n = 1500
+    big = (y = Float64.(rand(Random.Xoshiro(1), 0:1, n)), x = randn(Random.Xoshiro(2), n),
+           a = string.("a", rand(Random.Xoshiro(3), 1:300, n)), b = string.("b", rand(Random.Xoshiro(4), 1:300, n)),
+           c = string.("c", rand(Random.Xoshiro(5), 1:300, n)))
+    err = try drm(bf(@formula(y ~ x + (1 | a) + (1 | b) + (1 | c))), Binomial(); data = big); nothing catch e; e end
+    @test err isa ArgumentError && occursin("limited to 600 latent coordinates", sprint(showerror, err))
+end

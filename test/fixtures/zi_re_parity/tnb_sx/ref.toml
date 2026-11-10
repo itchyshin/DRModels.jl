@@ -1,0 +1,10 @@
+route = "tnb_sx"
+drmTMB_version = "0.8.1"
+R_version = "4.6.1"
+note = "truncated NB2, sigma ~ x"
+tmb_names = ["beta_mu", "beta_mu", "beta_sigma", "beta_sigma", "log_sd_mu"]
+names = ["mu_(Intercept)", "mu_x", "sigma_(Intercept)", "sigma_x", "resd_g"]
+loglik = -488.4709355955884
+max_grad = 5.650169e-11
+theta = [0.53216001534197532, 0.44857452883933474, -0.53563430868433604, -0.24408678680818133, -1.0465786818535445]
+se = [0.1136017085039954, 0.073775258115656647, 0.19924045866529386, 0.15601654160819642, 0.27218450820710027]
