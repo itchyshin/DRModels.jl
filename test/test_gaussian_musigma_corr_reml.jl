@@ -70,7 +70,10 @@ function _gmc_oracle(d, Xμ, Xσ, α; restricted::Bool, βfixed = nothing)
         end
         step = (H + λ * I) \ g
         t = 1.0; f0 = F(w)
-        while !(F(w .- t .* step) <= f0 - 1e-4 * t * dot(g, step)) && t > 1e-12
+        # `+ 1e-12`: near the mode the predicted decrease (about |g|^2, below 1e-14) is under the rounding
+        # noise of F (about 5e-14 at F near 300), so a strict Armijo test rejects the exact Newton step and the
+        # loop stalls at |g| of 1e-8 to 6e-8 on Julia 1.10. The final |g| < 1e-8 assertion is unchanged.
+        while !(F(w .- t .* step) <= f0 - 1e-4 * t * dot(g, step) + 1e-12) && t > 1e-12
             t /= 2
         end
         w .-= t .* step
