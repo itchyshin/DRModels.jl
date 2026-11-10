@@ -831,7 +831,7 @@ end
 # θ = [β_μ; β_σ; log s_mu; log s_sigma; eta], rho = tanh(eta) (drmTMB `eta_cor_mu_sigma`).
 # Native drmTMB refuses this shape with SD formulas, so it is refused here too.
 function _drm_gaussian_musigma_corr(fam::Gaussian, f::DrmFormula, re, sigma_re, y, Xμ, Xσ,
-                                    nmμ, nmσ, data, g_tol)
+                                    nmμ, nmσ, data, g_tol; reml::Bool = false)
     what = "Gaussian correlated mean + sigma random intercepts `(1 | p | g)`"
     isempty(_sd_target_parts(f)) && isempty(_sdphylo_parts(f)) || throw(ArgumentError(
         "drm: $what cannot take `sd(...)` formulas (native drmTMB refuses this combination)."))
@@ -849,11 +849,191 @@ function _drm_gaussian_musigma_corr(fam::Gaussian, f::DrmFormula, re, sigma_re, 
     mgrp === sgrp || throw(ArgumentError(
         "drm: $what needs one grouping factor (got `$mgrp` in mu and `$sgrp` in sigma)."))
     gidx, G = _group_index(getproperty(data, mgrp); col = mgrp)
+    reml && return _fit_gaussian_musigma_corr_reml(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, mgrp, g_tol)
     Z1 = ones(G, 1)
     mean_spec = (gidx, G, Z1, ["(Intercept)"], mgrp, :resd)
     sigma_spec = (gidx, G, Z1, ["(Intercept)"], mgrp, ones(length(y)), nothing, :resd, :intercept)
     return _fit_gaussian_sigma_sd_laplace(fam, y, Xμ, Xσ, mean_spec, sigma_spec, nmμ, nmσ, g_tol;
                                           corr = true)
+end
+
+# ---------------------------------------------------------------------------------------------
+# REML for the correlated mean + sigma random-intercept pair `(1 | p | g)` in `mu` and `sigma`
+# (fixed-effect predictors only, no SD formula). Native drmTMB (`REML = TRUE`) moves beta_mu AND
+# beta_sigma into TMB's random block with flat priors, so the reported objective is ONE Laplace
+# approximation over w = (va, vb, beta_mu, beta_sigma),
+#
+#   nll_R(alpha) = F(w^) + 1/2 log det H(w^) + (G/2) log(1 - rho^2) - (p/2) log 2pi,
+#
+# with F the ML joint negative log density (correlated standardised prior), H = d2F/dw2 over ALL
+# of w, p = p_mu + p_sigma, and only alpha = (log s_mu, log s_sigma, atanh rho) outer. This is the
+# structured-sigma REML objective above with the correlated per-group prior, so it is an
+# APPROXIMATE restricted likelihood (the sigma integral is a Laplace one), as native reports.
+# ---------------------------------------------------------------------------------------------
+function _gmsc_joint_reml(y, Xμ, Xσ, g, G::Int, c, d, ρ, w; deriv::Bool)
+    n = length(y); pμ = size(Xμ, 2); pσ = size(Xσ, 2)
+    T = promote_type(typeof(c), typeof(d), typeof(ρ), eltype(w))
+    va = @view w[1:G]; vb = @view w[(G+1):(2G)]
+    rμ = (2G+1):(2G+pμ); rσ = (2G+pμ+1):(2G+pμ+pσ)
+    lin = Xμ * w[rμ]; eta = Xσ * w[rσ]
+    sr = 1 / (1 - ρ * ρ)
+    F = 0.5 * sr * (sum(abs2, va) - 2 * ρ * dot(va, vb) + sum(abs2, vb))
+    fa = Vector{T}(undef, n); fe = similar(fa); faa = similar(fa); fae = similar(fa); fee = similar(fa)
+    @inbounds for i in 1:n
+        f, a, e, aa, ae, ee = _gsl_kernel(Gaussian(), y[i], lin[i] + c * va[g[i]], eta[i] + d * vb[g[i]])
+        F += f; fa[i] = a; fe[i] = e; faa[i] = aa; fae[i] = ae; fee[i] = ee
+    end
+    deriv || return F, nothing, nothing
+    q = 2G + pμ + pσ
+    gr = zeros(T, q); H = zeros(T, q, q)
+    @inbounds for k in 1:G
+        gr[k] += sr * (va[k] - ρ * vb[k]); gr[G+k] += sr * (vb[k] - ρ * va[k])
+        H[k, k] += sr; H[G+k, G+k] += sr
+        H[k, G+k] -= ρ * sr; H[G+k, k] -= ρ * sr
+    end
+    @inbounds for i in 1:n
+        k = g[i]
+        gr[k] += c * fa[i]; gr[G+k] += d * fe[i]
+        H[k, k] += c * c * faa[i]; H[G+k, G+k] += d * d * fee[i]
+        x = c * d * fae[i]
+        H[k, G+k] += x; H[G+k, k] += x
+        for a in 1:pμ
+            h1 = c * faa[i] * Xμ[i, a]; h2 = d * fae[i] * Xμ[i, a]
+            H[k, 2G+a] += h1; H[2G+a, k] += h1
+            H[G+k, 2G+a] += h2; H[2G+a, G+k] += h2
+        end
+        for a in 1:pσ
+            h1 = c * fae[i] * Xσ[i, a]; h2 = d * fee[i] * Xσ[i, a]
+            H[k, 2G+pμ+a] += h1; H[2G+pμ+a, k] += h1
+            H[G+k, 2G+pμ+a] += h2; H[2G+pμ+a, G+k] += h2
+        end
+    end
+    gr[rμ] .= Xμ' * fa; gr[rσ] .= Xσ' * fe
+    H[rμ, rμ] .= Xμ' * (faa .* Xμ)
+    H[rσ, rσ] .= Xσ' * (fee .* Xσ)
+    Hμσ = Xμ' * (fae .* Xσ)
+    H[rμ, rσ] .= Hμσ; H[rσ, rμ] .= Hμσ'
+    return F, gr, H
+end
+
+function _fit_gaussian_musigma_corr_reml(fam::Gaussian, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol;
+                                         se::Bool = true)
+    n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2); p = pμ + pσ
+    q = 2G + p
+    q <= _GSL_MAX_LATENT || throw(ArgumentError(
+        "drm: Gaussian correlated mean + sigma random intercepts use a dense Laplace " *
+        "engine limited to $(_GSL_MAX_LATENT) latent coordinates (got $q under REML)."))
+    rank(Xμ) == pμ || throw(ArgumentError("drm: method = :REML requires a full-rank `mu` fixed-effect design."))
+    rμ = (2G+1):(2G+pμ); rσ = (2G+pμ+1):q
+    joint_at(α) = (w, deriv) -> _gmsc_joint_reml(y, Xμ, Xσ, gidx, G, exp(α[1]), exp(α[2]), tanh(α[3]), w;
+                                                 deriv = deriv)
+    β0 = Xμ \ y
+    sd0 = std(y - Xμ * β0) + eps()
+    w0 = zeros(q); w0[rμ] .= β0; w0[2G+pμ+1] = log(0.7 * sd0)
+
+    function laplace(α::AbstractVector{T}, what::Vector{Float64}) where {T}
+        joint = joint_at(α)
+        w = convert(Vector{T}, what)
+        if T <: ForwardDiff.Dual
+            _, g, H = joint(what, true)
+            Cn = cholesky(Symmetric(H); check = false)
+            issuccess(Cn) || return T(REML_NONPD_PENALTY)
+            w = what .- (Cn \ g)
+        end
+        F, _, H = joint(w, true)
+        C = cholesky(Symmetric(H); check = false)
+        issuccess(C) || return T(REML_NONPD_PENALTY)
+        return F + 0.5 * logdet(C) + 0.5 * G * log(1 - tanh(α[3])^2) - 0.5 * p * log(2π)
+    end
+
+    fg = function (α, b0, grad)
+        αf = Vector{Float64}(α)
+        joint = joint_at(αf)
+        start = iszero(b0) ? w0 : Vector{Float64}(b0)
+        w, ok = _gsl_mode(joint, start)
+        ok || ((w, ok) = _gsl_mode(joint, w0))
+        ok || return grad ? (1e18, fill(NaN, 3), zeros(q), false) : (1e18, zeros(q), false)
+        _, _, H = joint(w, true)
+        issuccess(cholesky(Symmetric(H); check = false)) ||
+            return grad ? (1e18, fill(NaN, 3), w, false) : (1e18, w, false)
+        val = laplace(αf, w)
+        grad || return (val, w, true)
+        gα = ForwardDiff.gradient(t -> laplace(t, w), αf)
+        return (val, gα, w, all(isfinite, gα))
+    end
+
+    α0 = [log(0.5 * sd0), log(0.3), 0.0]
+    what = "Gaussian correlated mean + sigma random intercepts (REML)"
+    α̂, nllhat, conv, _, nll, grad! = _ordinary_laplace_optimize(
+        fg, α0, n, q, g_tol; se = false, context = what)
+    joint̂ = joint_at(α̂)
+    ŵ, okw = _gsl_mode(joint̂, w0)
+    okw || (conv = false)
+    _, _, Ĥ = joint̂(ŵ, true)
+    Cĥ = cholesky(Symmetric(Ĥ); check = false)
+    issuccess(Cĥ) || (conv = false)
+    let (w2, ok2) = _gsl_mode(joint̂, vcat(zeros(2G), ŵ[(2G+1):q]))
+        if ok2 && issuccess(cholesky(Symmetric(joint̂(w2, true)[3]); check = false))
+            nll2 = laplace(α̂, w2)
+            if isfinite(nllhat) && abs(nll2 - nllhat) > 1e-6 * max(1.0, abs(nllhat))
+                @warn "drm: $what: the joint mode is not unique at the estimate; the fit is marked not converged."
+                conv = false
+            end
+        end
+    end
+    βμ = ŵ[rμ]; βσ = ŵ[rσ]
+    θ̂ = vcat(βμ, βσ, α̂)
+    V = fill(NaN, p + 3, p + 3)
+    if se && issuccess(Cĥ)
+        Hα = _finite_hessian_from_gradient(grad!, α̂; context = what)
+        if all(isfinite, Hα)
+            Vα = Matrix(_vcov_from_hessian(Hα))
+            J = ForwardDiff.jacobian(α̂) do t
+                _, g, H = _gmsc_joint_reml(y, Xμ, Xσ, gidx, G, exp(t[1]), exp(t[2]), tanh(t[3]), ŵ; deriv = true)
+                ŵ .- (cholesky(Symmetric(H)) \ g)
+            end
+            Hinv = Matrix(inv(Cĥ))
+            Jβ = J[(2G+1):q, :]
+            Cββ = Hinv[(2G+1):q, (2G+1):q] + Jβ * Vα * Jβ'
+            Cβα = Jβ * Vα
+            V = [Cββ Cβα; Cβα' Vα]
+            V = (V .+ V') ./ 2
+        end
+    end
+    c = exp(α̂[1]); d = exp(α̂[2]); ρ = tanh(α̂[3])
+    cv = fill(c, n); dv = fill(d, n)
+    ml_nll = let
+        jm = (v, deriv) -> _gsl_joint(fam, y, Xμ * βμ, Xσ * βσ, gidx, cv, gidx, dv, nothing,
+                                      @view(v[1:G]), @view(v[(G+1):2G]), G, G; deriv = deriv, rho = ρ)
+        vml, okm = _gsl_mode(jm, zeros(2G))
+        if okm
+            Fm, _, Hm = jm(vml, true)
+            Cm = cholesky(Symmetric(Hm); check = false)
+            issuccess(Cm) ? Fm + 0.5 * logdet(Cm) + 0.5 * G * log(1 - ρ^2) : NaN
+        else
+            NaN
+        end
+    end
+    ab = c .* ŵ[1:G]; bb = d .* ŵ[(G+1):2G]
+    eta_fixed = Xσ * βσ; mean_fixed = Xμ * βμ
+    means = Dict(:mu => mean_fixed .+ ab[gidx])
+    obs = Dict(:mu => Vector{Float64}(y))
+    scales = Dict{Symbol,Vector{Float64}}(
+        :sigma => exp.(eta_fixed .+ bb[gidx]),
+        :sigma_fixed => exp.(eta_fixed),
+        :sigma_random_effect => bb,
+        :sigma_group_index => Float64.(gidx),
+        :sd_group => fill(c, G),
+        :sd => fill(c, n),
+        :sd_group_index => Float64.(gidx))
+    blocks = Pair{Symbol,UnitRange{Int}}[:mu => 1:pμ, :sigma => (pμ+1):p, :resd => (p+1):(p+2), :cor => (p+3):(p+3)]
+    names = Pair{Symbol,Vector{String}}[:mu => nmμ, :sigma => nmσ,
+                                         :resd => [String(grp), "$(grp)_logsigma"],
+                                         :cor => ["cor(mu, sigma | $(grp))"]]
+    ranef = Dict{Symbol,Any}(Symbol(grp) => ab, Symbol(grp, "_logsigma") => bb)
+    fit = DrmFit(fam, blocks, names, θ̂, V, -nllhat, n, conv, means, obs, scales)
+    fit = _withmarginal(_withranef(fit, ranef), :Laplace)
+    return _withreml(fit, -nllhat, -ml_nll)
 end
 
 # Gaussian mean `sd(g) ~ …` beside a random intercept on `sigma` that has NO sd() formula of
