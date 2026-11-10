@@ -36,3 +36,29 @@ const _TWSE_SE_R = [0.1313717016, 0.06088331537, 0.06087826348, 0.05738492507, 0
     @test all(abs.(est .- _TWSE_EST_R) .<= 1e-3 .* _TWSE_SE_R)
     @test all(abs.(se ./ _TWSE_SE_R .- 1) .< 1e-3)
 end
+
+# A log SD that collapses to the floor (#1190 rule, as on the NB2 crossed route): the objective
+# is flat in that coordinate, so it is held fixed at the boundary, the Hessian of the remaining
+# coordinates is inverted, and the clamped coordinate gets a non-finite SE plus a boundary
+# warning. Data: `clamped_sd.csv`, simulated crossed Tweedie data (seed 8; mu = 0.3 + 0.4 x +
+# group-g effect, sd 0.35; NO effect of h; phi = 0.6, p = 1.6; n = 220, 12 g levels, 10 h
+# levels), a data set on which the h log SD runs below the -8 clamp. No R reference: this
+# pins the rule, not a number (R's SDs are unclamped).
+@testset "G7 Tweedie crossed intercepts: a clamped log SD is held fixed, the rest keep SEs" begin
+    m, h = DelimitedFiles.readdlm(joinpath(@__DIR__, "fixtures", "tweedie_crossed_se", "clamped_sd.csv"),
+                                  ',', Any; header = true)
+    h = String.(vec(h)); col(n) = m[:, findfirst(==(n), h)]
+    dat = (; y = Float64.(col("y")), x = Float64.(col("x")), g = Int.(col("g")), h = Int.(col("h")))
+    logger = Test.TestLogger(min_level = Base.CoreLogging.Warn)
+    fit = Base.CoreLogging.with_logger(logger) do
+        drm(bf(@formula(y ~ x + (1 | g) + (1 | h))), Tweedie(); data = dat)
+    end
+    est, se = coef(fit), stderror(fit)
+    @test est[5] <= -8                                  # the h log SD sits at its floor
+    @test any(r -> occursin("treated as fixed", r.message), logger.logs)
+    free = [1, 2, 3, 4, 6]                              # mu (2), sigma, log SD g, power
+    @test all(isfinite, se[free]) && all(>(0), se[free])
+    @test !isfinite(se[5])
+    # The free-coordinate SEs are the usual size (no blow-up from the flat direction).
+    @test all(se[free] .< 1.0)
+end

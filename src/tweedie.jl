@@ -1224,6 +1224,16 @@ function _fit_tweedie_crossed_laplace(fam::Tweedie, y, Xμ, comps, nmμ, nmσ, n
         return ok ? val : 1e18
     end
     ctx = "sparse-Laplace Tweedie (crossed random intercepts, joint Hessian)"
+    # The other crossed routes difference the exact gradient when nothing is clamped. Here the
+    # power has no analytic gradient (it is chosen by the outer Brent search), so the joint
+    # Hessian that includes it is value-based by construction. Follow the other routes'
+    # clamp rule: when a log SD or sigma sits at its clamp, say so (the value path is known to
+    # be noisy), then hold clamped log SDs fixed below (#1190). Sigma and the power window edge
+    # have no fix-and-report-the-rest precedent on the other routes, so they are only warned
+    # about (sigma) or left alone (power).
+    _se_hessian_path(theta; disp = (pμ + 1,), sd = (pμ + 2):(pμ + 3),
+                     disp_bound = _dispersion_clamp(Val(:tweedie_fixed))) === :value &&
+        _warn_value_hessian(ctx)
     V = fill(NaN, length(theta), length(theta))
     for tol in _SE_MODE_TOLS
         H = _finite_hessian(θ -> nll_joint(θ, tol), theta; h = _fd_hessian_step(n))
