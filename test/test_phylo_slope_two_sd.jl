@@ -172,9 +172,14 @@ end
                     data = (; yp, x, species), tree = phy, se = false)
         @test isfinite(fpois.loglik)
         @test length(fpois.formula.sd_targets) == 2
-        # REML: the structured mean marker is refused on the generic route (unchanged)
-        @test_throws ArgumentError drm(bf(@formula(y ~ x + phylo(1 + x | species))), Gaussian();
-                                       data = data, tree = phy, method = :REML)
+        # REML: `phylo(1 + x | species)` with a constant sigma fits since the Gaussian REML-routes
+        # wave (exact restricted likelihood; test_gaussian_reml_routes.jl checks it against R)
+        freml = drm(bf(@formula(y ~ x + phylo(1 + x | species))), Gaussian();
+                    data = data, tree = phy, method = :REML)
+        @test estimation_method(freml) === :REML && isfinite(reml_loglik(freml))
+        # ... but a sigma predictor with it is still refused under REML
+        @test_throws ArgumentError drm(bf(@formula(y ~ x + phylo(1 + x | species)), @formula(sigma ~ x)),
+                                       Gaussian(); data = data, tree = phy, method = :REML)
         # a second structured component, an ordinary RE, a sigma RE, sparse algorithms, missing y
         Kid = Matrix{Float64}(I, 16, 16)
         @test_throws ArgumentError drm(bf(@formula(y ~ x + phylo(1 + x | species) + relmat(1 | id))),

@@ -19,8 +19,11 @@ targets its coefficient SD with `sd(group, coef(x)) ~ predictor`; the slope
 loading is applied at each row. A supplied-A animal random intercept also
 supports `sd(group, animal) ~ predictors` with `sigma ~ 1`; the animal covariance
 is used as supplied (raw), as native drmTMB does. These SD routes
-require complete responses and fixed `sigma ~ 1`. Correlated SD blocks,
-phylogenetic SDs, and calibrated interval coverage remain unsupported.
+require complete responses and fixed `sigma ~ 1`. `sd(group, phylogenetic|relmat|spatial) ~ predictors`
+is also supported on the matching structured intercept, and an independent
+`animal|relmat|phylo|spatial(1 + x | group)` block takes one `sd(group, level, coef(·))`
+formula per coefficient. Correlated (labelled) SD blocks and calibrated interval coverage
+remain unsupported.
 Crossed random intercepts on the mean, such as `(1 | g) + (1 | h)`, use the
 sparse-Laplace engine when `sigma ~ 1`. A phylogenetic random intercept on the
 mean, `phylo(1 | species)`, also uses the sparse-Laplace engine, as do general
@@ -66,9 +69,10 @@ end
 function _drm_beta_fit(f::DrmFormula, fam::Beta; data, tree = nothing, K = nothing,
              A = nothing, coords = nothing, g_tol::Real = 1e-8, se::Bool = true,
              marginal::Symbol = :LA, method = nothing, ids = nothing)
+    f = _default_structured_q2_sd(f, fam; method)   # bare structured (1 + x | g): default `sd(…, coef(·)) ~ 1`
     _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, coords = coords)   # #1027 #1022 #1010
     _reject_method_as_marginal(fam, method)
-    if !isempty(_sd_parts(f))
+    if !isempty(_sd_parts(f)) || !isempty(_sdphylo_parts(f))
         A = _resolve_relatedness_labels(f, data, A, ids; coords = coords)   # #957: match `A` by label (SD routes too)
         coords = _resolve_coords_labels(f, data, coords, ids)   # #957
         return _drm_beta_sd_regression(f, fam; data, tree, K, A, coords,
@@ -172,13 +176,24 @@ function _drm_beta_sd_regression(f::DrmFormula, fam::Beta; data,
                                 nAGQ::Int = _SD_IID_AGHQ_K)
     marginal === :LA || throw(ArgumentError(
         "Beta `sd(group) ~ …` currently supports `marginal = :LA` only."))
-    (tree === nothing && K === nothing && coords === nothing) ||
-        throw(ArgumentError("Beta `sd(group) ~ …` accepts no `tree`, `K`, or `coords` input on this route."))
+    twofield = _drm_twofield_sd_route(f, fam; data, tree, K, A, coords, g_tol, se)
+    twofield === nothing || return twofield   # structured `kind(1 + x | g)` with two coef SD formulas
+    structured_targets = [t for t in _gamma_sd_targets(f)
+                          if t.target.level in (:relmat, :phylogenetic, :spatial)]
+    isempty(structured_targets) || return _drm_beta_structured_sd_regression(
+        f, fam, structured_targets; data, tree, K, A, coords, g_tol, se)
+    (tree === nothing && K === nothing && coords === nothing) || throw(ArgumentError(
+        "Beta ordinary `sd(group) ~ …` and `sd(group, animal) ~ …` take no `tree`, `K`, or `coords` input; " *
+        "use `sd(group, phylogenetic|relmat|spatial) ~ …` with the matching structured term."))
     isempty(_sdphylo_parts(f)) || throw(ArgumentError(
         "Beta `sd(group, phylogenetic) ~ …` is not implemented by the ordinary random-intercept route."))
     targets = _sd_target_parts(f)
     length(targets) == 1 || throw(ArgumentError(
-        "Beta random-effect SD regression requires exactly one `sd(group) ~ …` formula."))
+        "Beta random-effect SD regression requires exactly one `sd(group) ~ …` formula (ordinary, " *
+        "`animal`, or `phylogenetic`/`relmat`/`spatial`), or two coefficient formulas " *
+        "`sd(group, level, coef(intercept)) ~ …` and `sd(group, level, coef(x)) ~ …` for an independent " *
+        "`animal`/`relmat`/`phylo`/`spatial(1 + x | group)` block; correlated (labelled), three-or-more-coefficient, " *
+        "ordinary q2 and crossed SD shapes are not implemented."))
     target = only(targets)
     (target.target.level in (:iid, :animal) && target.target.dpar === :mu &&
      target.target.block === nothing) || throw(ArgumentError(
@@ -255,6 +270,72 @@ function _drm_beta_sd_regression(f::DrmFormula, fam::Beta; data,
     end
     return _withformula(_fit_beta_sd_regression(fam, y, Xmu, Xsigma, Zg,
         gidx, G, nmmu, nmsigma, nmsd, grp, g_tol; K = nAGQ, se, w), f)
+end
+
+# Beta intercept SD regression on a phylogenetic, related-matrix or coordinate
+# spatial covariance: `y ~ … + phylo|relmat|spatial(1 | g)` with
+# `sd(g, phylogenetic|relmat|spatial) ~ z`. The animal q1 Laplace objective is reused
+# with the kernel swapped (`K` enters RAW, as for animal; phylo/spatial use the
+# `_structured_q2_kernel` kernels). Kernel rows are re-ordered to the first-seen
+# order of the data groups, which is what `_general_cov_setup` assumes.
+function _drm_beta_structured_sd_regression(f::DrmFormula, fam::Beta, targets;
+                                            data, tree, K, A, coords,
+                                            g_tol::Real, se::Bool)
+    length(targets) == 1 && length(_gamma_sd_targets(f)) == 1 || throw(ArgumentError(
+        "Beta structured random-effect SD regression requires exactly one `sd(group, level) ~ …` formula."))
+    target = only(targets)
+    level = target.target.level
+    kind = level === :phylogenetic ? :phylo : level
+    sgrp, srhs = target.target.group, target.rhs
+    who = "Beta `sd($sgrp, $level)` SD regression"
+    (target.target.dpar === :mu && target.target.block === nothing &&
+     target.target.member in (nothing, :intercept)) || throw(ArgumentError(
+        "$who targets the structured mean intercept only."))
+    A === nothing || throw(ArgumentError("$who does not use `A`."))
+    rhs = Dict(f.forms)
+    fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
+    mv === nothing || throw(ArgumentError("$who cannot use meta_V()."))
+    isempty(re) && _collect_structured(rhs[:mu]) == [(kind, sgrp)] && st == (kind, sgrp) ||
+        throw(ArgumentError("$who requires exactly one matching `$kind(1 | $sgrp)` mean term and no other random effects."))
+    sigma_rhs = get(rhs, :sigma, nothing)
+    sigma_rhs isa ConstantTerm && sigma_rhs == ConstantTerm(1) || throw(ArgumentError(
+        "$who requires a fixed `sigma ~ 1` submodel."))
+    for (pname, _) in f.forms
+        pname in (:mu, :sigma, target.key) && continue
+        throw(ArgumentError("$who supports only `mu`, fixed `sigma ~ 1`, and one SD formula."))
+    end
+    all(_formula_response_observed_mask(f, data)) || throw(ArgumentError(
+        "$who requires observed responses; remove incomplete rows before fitting."))
+    fixed_mu, offset_term = _extract_offset(fixed_mu)
+    offset_term === nothing || throw(ArgumentError("$who does not yet support `offset(...)`."))
+    y, Xmu, nmmu = _design(f.response, fixed_mu, data)
+    _, Xsigma, nmsigma = _design(f.response, sigma_rhs, data)
+    all(yi -> 0 < yi < 1, y) || throw(ArgumentError(
+        "Beta() requires responses strictly in the open interval (0, 1)"))
+    labels = getproperty(data, sgrp)
+    C, gidx, G = if kind === :relmat
+        (tree === nothing && coords === nothing) || throw(ArgumentError(
+            "$who uses `K = …` only; do not also supply `tree` or `coords`."))
+        Kc = _poisson_structured_cov(:relmat, sgrp, K, nothing, nothing)
+        gi, Gk = _group_index(labels)
+        size(Kc) == (Gk, Gk) || throw(ArgumentError(
+            "$who: `K` must be $(Gk)×$(Gk), one row per `$sgrp` level in order of first appearance."))
+        Kc, gi, Gk
+    else
+        _structured_q2_kernel(kind, sgrp, labels; tree, K, A = nothing, coords, who)
+    end
+    Cchol = cholesky(Symmetric(Matrix{Float64}(C)); check = false)
+    issuccess(Cchol) || throw(ArgumentError("$who: the $kind kernel is not positive definite."))
+    Zg, nmsd = _sd_group_design(f.response, srhs, data, gidx, G, sgrp;
+                                schema_cache = f.schema_cache, schema_key = target.key)
+    size(Zg, 2) <= G && rank(Zg) == size(Zg, 2) || throw(ArgumentError(
+        "$who: the SD group-level design is rank deficient; use predictors that vary independently across groups."))
+    order = unique(gidx)
+    length(order) == G || throw(ArgumentError("$who needs at least one row for every group level."))
+    position = Dict(g => k for (k, g) in enumerate(order))
+    return _withformula(_fit_beta_animal_sd_regression(fam, y, Xmu, Xsigma,
+        Matrix{Float64}(Zg)[order, :], [position[g] for g in gidx],
+        Matrix{Float64}(C)[order, order], nmmu, nmsigma, nmsd, sgrp, g_tol; se), f)
 end
 
 # LBFGS can stop on its relative-objective test while the mode gradient is still

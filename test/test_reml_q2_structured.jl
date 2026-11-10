@@ -216,12 +216,18 @@ end
     G = 12
     coords = hcat(range(0.0, 1.0; length = G), sin.(range(0.0, pi; length = G)))
     Ddist = [sqrt(sum(abs2, coords[k, :] .- coords[l, :])) for k in 1:G, l in 1:G]
-    rho_mean = sum(Ddist) / (G^2 - G)          # the route's fixed-range rule
-    Ksp = exp.(-Ddist ./ rho_mean) + 1e-8 * I
+    # The route's fixed-range rule is drmTMB's native kernel (median positive distance,
+    # 1e-6 diagonal jitter); the earlier mean-distance / 1e-8 default is kept only behind
+    # `legacy_mean_range` and pinned below.
+    rho_mean = sum(Ddist) / (G^2 - G)
+    rho_med = median([Ddist[k, l] for k in 1:G for l in (k+1):G])
+    Ksp = exp.(-Ddist ./ rho_med) + 1e-6 * I
 
     # The matrix the route builds is EXACTLY this one, bit for bit, and
     # `spatial_range` overrides the default rule.
     @test DRModels._spatial_covariance_from_coords(:site, G, coords, nothing) == Ksp
+    @test DRModels._spatial_covariance_from_coords(:site, G, coords, nothing; legacy_mean_range = true) ==
+        exp.(-Ddist ./ rho_mean) + 1e-8 * I
     @test DRModels._spatial_covariance_from_coords(:site, G, coords, 0.5) ==
         exp.(-Ddist ./ 0.5) + 1e-8 * I
 
@@ -264,7 +270,7 @@ end
     # The FIXED range is the one free choice this cell makes and its default is
     # data-dependent, so it must be readable off the fit, not inferred -- the
     # same field the q=4 route records. A relmat fit has no range and says so.
-    @test fit_sp.ranef.spatial_range == rho_mean
+    @test fit_sp.ranef.spatial_range == rho_med
     @test drm(spatial_form, Gaussian(); data = dat, coords = coords,
               spatial_range = 0.5, g_tol = 2e-4).ranef.spatial_range == 0.5
 

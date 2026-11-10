@@ -683,8 +683,11 @@ function _fit_negbin2_sigma_sd_regression(fam::NegBinomial2, y, Xmu,
     theta0[1:pmu] .= Xmu \ fill(log(positive_mean), n)
     theta0[(pmu+1):(pmu+psigma)] .= Xsigma \ fill(-0.5, n)
     theta0[(pmu+psigma+pzi+1):end] .= Wsd \ fill(log(0.4), G)
-    result = Optim.optimize(nll, theta0, Optim.LBFGS(),
-                            Optim.Options(g_tol = g_tol); autodiff = :forward)
+    # HagerZhang asserts (`B > A`) on the near-flat plateau that the hard shape clamp
+    # above creates (|2 log sigma| > 8): about 2% of fuzz draws threw out of `drm()`
+    # (seeds 9, 94, 95 of test/fixtures/nb2_sigma_sd_line_search). Retry with
+    # BackTracking, which has no such assertion; `converged` stays honest.
+    result = _optimize_with_fallback(nll, theta0, g_tol)
     theta_hat = Optim.minimizer(result)
     V = se ? _vcov_from_hessian(ForwardDiff.hessian(nll, theta_hat)) :
              fill(NaN, length(theta_hat), length(theta_hat))

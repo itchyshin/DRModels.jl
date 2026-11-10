@@ -568,7 +568,7 @@ end
 # than depending on which branches happened to fire for a given fit.
 const _BRIDGE_KNOWN_OPTION_KEYS = Set((
     :g_tol, :algorithm, :method, :marginal, :se, :profile_ci, :phylo_coupled, :sparse,
-    :q4_g_tol, :q4_iterations, :q4_n_newton, :q4_vcov, :coef_labels, :priors, :prior_expected,
+    :q4_g_tol, :q4_f_reltol, :q4_iterations, :q4_n_newton, :q4_vcov, :coef_labels, :priors, :prior_expected,
 ))
 
 function _bridge_fit(bundle, fam, data; tree, K, A, Ainv = nothing,
@@ -646,6 +646,11 @@ function _bridge_fit(bundle, fam, data; tree, K, A, Ainv = nothing,
     if haskey(options, :q4_g_tol)
         kwargs[:q4_g_tol] = Float64(options[:q4_g_tol])
     end
+    if haskey(options, :q4_f_reltol)
+        kwargs[:q4_f_reltol] = Float64(options[:q4_f_reltol])
+        _bridge_check_q4_f_reltol_route(bundle, fam, kwargs[:q4_f_reltol],
+            Symbol(get(options, :method, :ML)))
+    end
     if haskey(options, :q4_iterations)
         kwargs[:q4_iterations] = Int(options[:q4_iterations])
     end
@@ -687,6 +692,27 @@ _bridge_has_sigma_phylo(bundle, fam) =
     bundle isa DrmFormula && fam isa Gaussian &&
     haskey(Dict(bundle.forms), :sigma) &&
     (s = _split_ranef(Dict(bundle.forms)[:sigma])[4]; s !== nothing && s[1] === :phylo)
+
+# `q4_f_reltol` is the stopping rule of the q=4 ML L-BFGS fit only. The q=4 REML fit and the
+# q=2 / residual-only bivariate routes accept the keyword but never read it, so a non-default
+# value there would silently do nothing. Like an unknown option key, it is refused by name
+# (the bridge fails closed rather than warning). The default value is always accepted.
+function _bridge_check_q4_f_reltol_route(bundle, fam, value::Float64, method::Symbol)
+    value == 1e-7 && return nothing
+    (bundle isa BivariateDrmFormula && (fam isa Gaussian || fam isa LogNormal)) || return nothing
+    marker = try
+        _bivariate_q4_marker(Dict(bundle.forms))[2]
+    catch
+        return nothing                       # a malformed formula is refused by `drm` itself
+    end
+    route = marker === nothing ? "the residual-only route" :
+        marker[1] === :structured_q2 ? "the q=2 structured route" :
+        method === :REML ? "the q=4 REML route" : nothing
+    route === nothing && return nothing
+    throw(ArgumentError("drm_bridge: option `q4_f_reltol` has no effect on $route (it is the " *
+        "stopping rule of the q=4 ML fit only); omit it, or use a q=4 structured formula " *
+        "with `method = \"ML\"`."))
+end
 
 function _bridge_is_bivariate_phylo_q4(bundle, fam, tree)
     return bundle isa BivariateDrmFormula && fam isa Gaussian && tree !== nothing
@@ -2042,6 +2068,17 @@ function _bridge_formula_from_expr(expr, ctx::_BridgeXlateCtx)
     return eval(Expr(:macrocall, Symbol("@formula"), LineNumberNode(0), expr))
 end
 
+# A failed fit must be visible across the R boundary: the stored sentinel (-1e18), a non-finite
+# value, or a runaway |ll| >= 1e15 on a non-converged fit is sent as NaN (R's `as.numeric(NaN)` is
+# `NaN`), the same rule as `loglik()` / `_loglik_is_failed`. A good fit round-trips unchanged.
+_bridge_loglik(loglik, converged) =
+    _loglik_is_failed(loglik, converged) ? NaN : loglik
+
+const _BRIDGE_FIT_FAILED_MESSAGE =
+    "DRM.jl reported a failed fit: the objective hit its failure sentinel, was non-finite, " *
+    "or ran away (|logLik| >= 1e15) without converging. The log-likelihood is withheld (NaN); " *
+    "do not use this fit."
+
 function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
         labels::Union{Nothing,_BridgeFormulaLabels} = nothing, coef_labels = nothing)
     cnames, cvals, raw_cnames, public_to_raw =
@@ -2058,7 +2095,11 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
         "coef" => Dict(cnames .=> cvals),
         "vcov" => V,
         "vcov_names" => cnames,
-        "loglik" => fit.loglik,   # raw stored value: the R bridge keeps its pre-NaN contract
+        # NaN (not the -1e18 sentinel) for a failed fit; the raw value stays on the DrmFit.
+        "loglik" => _bridge_loglik(fit.loglik, fit.converged),
+        "fit_failed" => _loglik_is_failed(fit.loglik, fit.converged),
+        "fit_failed_message" => _loglik_is_failed(fit.loglik, fit.converged) ?
+            _BRIDGE_FIT_FAILED_MESSAGE : "",
         "aic" => _is_fixed_prior_fit(fit) && fit.estim_method === :MAP ? NaN : aic(fit),
         "bic" => _is_fixed_prior_fit(fit) && fit.estim_method === :MAP ? NaN : bic(fit),
         "df" => dof(fit),
@@ -2078,7 +2119,7 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
         # fit had no signal that these were REML-restricted values — only a
         # Julia-side `@warn` that never crosses the boundary.
         "estim_method" => String(fit.estim_method),
-        "ml_loglik" => fit.ml_loglik,
+        "ml_loglik" => _loglik_is_failed(fit.loglik, fit.converged) ? NaN : fit.ml_loglik,
         "infocrit_basis" => _is_fixed_prior_fit(fit) && fit.estim_method === :MAP ? "unavailable" : fit.estim_method === :REML ? "reml" : "ml",
         # Optimiser iterations actually taken. -1 means the fitter does not record
         # it yet, which the R side must read as "unknown" -- NOT as zero. Before
@@ -2122,8 +2163,14 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
     # AIC/BIC cross-mean-structure caveat `_reml_infocrit_warn` already prints to
     # the Julia log — as `"warnings"`, since that log line never reaches R (#624).
     if fit.estim_method === :REML
-        isnan(fit.reml_loglik) ||
-            (out["reml_loglik"] = fit.reml_loglik)
+        # A failed REML fit ships NaN (present), like `loglik` / `ml_loglik` above,
+        # not the raw failure sentinel.
+        if _loglik_is_failed(fit.loglik, fit.converged)
+            out["reml_loglik"] = NaN
+        else
+            isnan(fit.reml_loglik) ||
+                (out["reml_loglik"] = _bridge_loglik(fit.reml_loglik, fit.converged))
+        end
         out["warnings"] = String[
             _reml_infocrit_warning_text("aic"),
             _reml_infocrit_warning_text("bic"),
@@ -2967,7 +3014,7 @@ function _bridge_q2_point_export(fit; family::AbstractString = "biv_gaussian",
             "correlation" => R,
             "residual_sd" => residual_sd,
             "residual_correlation" => Float64(first(fit.scales[:rho12])),
-            "loglik" => Float64(fit.loglik),
+            "loglik" => _bridge_loglik(Float64(fit.loglik), fit.converged),
             "converged" => fit.geometry === :ok && _converged_nondegenerate(fit),   # as the top-level key (FX3b)
             "claim_boundary" => boundary,
         )
@@ -3014,7 +3061,8 @@ function _bridge_q2_point_export(fit; family::AbstractString = "biv_gaussian",
         out["residual_correlation"] = Float64(fit.rho12)
     end
     if haskey(fit, :loglik)
-        out["loglik"] = Float64(fit.loglik)
+        out["loglik"] = _bridge_loglik(Float64(fit.loglik),
+            haskey(fit, :converged) ? Bool(fit.converged) : nothing)
     end
     return out
 end

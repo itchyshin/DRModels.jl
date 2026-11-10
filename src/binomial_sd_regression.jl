@@ -962,8 +962,14 @@ function _drm_binomial_animal_q2_sd_regression(f::DrmFormula, fam::Binomial;
     length(targets) == 2 || throw(ArgumentError(
         "Binomial animal q2 SD regression requires one intercept and one slope SD formula."))
     rhs = Dict(f.forms)
+    # Unlabelled `animal(1 + x | g)`: two independent fields (rho fixed 0). Labelled
+    # `animal(1 + x | p | g)`: one free cross-coefficient correlation. Native drmTMB
+    # 0.8.1 fits the two as different models (logLik differs by 1.4 on the wave-8 data).
+    correlated = something(_animal_intercept_slope(rhs[:mu]; allow_label = true),
+                           (; label = nothing)).label !== nothing
     fixed_mu, re, mv, structured, _, _, slope = _split_ranef(
-        rhs[:mu]; allow_animal_intercept_slope = true)
+        rhs[:mu]; allow_animal_intercept_slope = true,
+        allow_labelled_intercept_slope = correlated)
     slope === nothing && throw(ArgumentError(
         "Binomial animal q2 SD regression requires `animal(1 + x | group)`."))
     group = first(targets).target.group
@@ -1027,7 +1033,10 @@ function _drm_binomial_animal_q2_sd_regression(f::DrmFormula, fam::Binomial;
               for item in ordered]
     fit = _fit_binomial_animal_q2_laplace(fam, s, ntr, Xmu, Zgs[1],
         Zgs[2], gidx, Q, Float64.(x), nmμ, nmsds[1], nmsds[2],
-        blocks, group, g_tol; se)
+        blocks, group, g_tol; se, correlated,
+        # Same finite-difference step as the phylo/spatial q2 route (see the comment there):
+        # the inner-solve noise is amplified by the default step in the weak correlation SE.
+        hessian_step = 3e-3)
     return _withformula(fit, f)
 end
 
@@ -1203,7 +1212,8 @@ function _drm_binomial_related_sd_regression(f::DrmFormula, fam::Binomial;
     gidx, G = _group_index(labels)
     C = if level === :spatial
         coords isa AbstractDict && (coords = _resolve_coords_labels(f, data, coords, nothing))   # red team: label => coordinate Dict, as on the other families
-        _spatial_covariance_from_coords(descriptor.group, G, coords, nothing)
+        _spatial_covariance_from_coords(descriptor.group, G, coords, nothing;
+                                        legacy_mean_range = true)   # no drmTMB binomial spatial: see docs/dev-log/spatial-kernel-audit
     else
         covariance === nothing ? nothing : Matrix{Float64}(covariance)
     end
@@ -1275,7 +1285,7 @@ function _binomial_animal_q2_sd_marginal_simulator(fit::DrmFit{Binomial}, data,
         "bootstrap: Binomial animal q2 simulation is missing its intercept SD target"))
     rhs = Dict(f.forms)[:mu]
     fixed_mu, re, mv, structured, _, _, slope = _split_ranef(
-        rhs; allow_animal_intercept_slope = true)
+        rhs; allow_animal_intercept_slope = true, allow_labelled_intercept_slope = true)
     group = first(targets).target.group
     slope !== nothing && isempty(re) && mv === nothing &&
         structured == (:animal, group) || throw(ArgumentError(
@@ -1322,7 +1332,7 @@ function _binomial_animal_q2_sd_marginal_simulator(fit::DrmFit{Binomial}, data,
         throw(ArgumentError(
             "bootstrap: animal slope predictor `$slope` must be finite and have one value per response"))
     loading = Float64.(raw_loading)
-    rho = tanh(only(coef(fit, :recov)))
+    rho = haskey(fit.scales, :correlation) ? only(fit.scales[:correlation]) : 0.0   # unlabelled: independent fields
     eta_fixed = Vector{Float64}(predict(fit, data; type = :link))
     length(eta_fixed) == fit.nobs || throw(ArgumentError(
         "bootstrap: Binomial fixed predictions do not match fitted response rows"))
@@ -1408,7 +1418,7 @@ function _binomial_animal_q2_prediction_fit(fit::DrmFit{Binomial})
     length(targets) == 2 || return fit
     rhs = Dict(f.forms)[:mu]
     fixed_mu, re, mv, structured, _, _, slope = _split_ranef(
-        rhs; allow_animal_intercept_slope = true)
+        rhs; allow_animal_intercept_slope = true, allow_labelled_intercept_slope = true)
     slope === nothing && return fit
     group = first(targets).target.group
     structured == (:animal, group) && isempty(re) && mv === nothing ||
@@ -2417,7 +2427,33 @@ function _fit_binomial_sd_regression(fam::Binomial, s, ntr, Xmu, Zgs, nmsds,
         end
     end
     correlated && (theta0[corr_range] .= 0.0)
-    res = _optimize_with_fallback(nll, theta0, g_tol)
+    run_from(th0) = _optimize_with_fallback(nll, th0, g_tol)
+    res = run_from(theta0)
+    # Restarts for independent random effects (see `_q2_boundary_restarts`). With a
+    # covariate in an SD formula (`sd(g, coef(.)) ~ z`) the objective is a ridge in the
+    # SD coefficients: the single default start can stop at a smooth interior point,
+    # converged and with every SD well above the boundary, that lies 1 to 6 nats below
+    # a point the same objective scores higher (G12 of the wave-8 disagreement map;
+    # drmTMB reaches the higher one). The boundary trigger never fires there, so such
+    # fits restart unconditionally, as the Gamma sd-z two-field route does; intercept-only
+    # SD formulas keep the usual trigger (fit near the boundary or not converged).
+    # An alternative is accepted only on a clear objective gain, so a fit whose first
+    # optimum stands is unchanged. Correlated blocks are not touched.
+    restart_info = Ref{Any}((ran = false, winner = 0, gain = 0.0, flipped = false))
+    if !correlated && q >= 2
+        res = _q2_boundary_restarts(run_from, Float64[], res,
+            (sd0, sd1, het) -> begin
+                th = copy(theta0)
+                for j in 2:q
+                    th = _q2_alt_theta(th, sd_ranges[[1, j]], (Zgs[1], Zgs[j]), sd0, sd1, het)
+                end
+                th
+            end,
+            th -> minimum(minimum(_binomial_sd_scale(Zgs[j] * th[sd_ranges[j]])) for j in 1:q),
+            drm_optim_converged; info = restart_info,
+            force = any(>(1), psd))
+    end
+    ri = restart_info[]
     thetahat = Optim.minimizer(res)
     V = _vcov_or_nan(ForwardDiff.hessian(nll, thetahat))
     blocks = Pair{Symbol,UnitRange{Int}}[:mu => 1:pmu]
@@ -2440,6 +2476,7 @@ function _fit_binomial_sd_regression(fam::Binomial, s, ntr, Xmu, Zgs, nmsds,
     scales = Dict(:trials => Float64.(nint),
                   :sd_group_index => Float64.(gidx),
                   :aghq_nodes => [Float64(nq)])
+    (correlated || q < 2) || (scales[:q2_restarts] = [ri.ran ? 1.0 : 0.0, Float64(ri.winner), Float64(ri.gain), ri.flipped ? 1.0 : 0.0])
     if correlated
         eta_corr = @view thetahat[corr_range]
         pairwise_corr = _binomial_pairwise_correlations(eta_corr, q)

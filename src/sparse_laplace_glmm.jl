@@ -519,10 +519,11 @@ function _q2_alt_theta(theta0, ranges, Zs, sd0, sd1, het)
     return th
 end
 
-function _q2_boundary_restarts(run_from, last_b, result, start_from, sd_min, converged; info = nothing)
+function _q2_boundary_restarts(run_from, last_b, result, start_from, sd_min, converged; info = nothing,
+                               force::Bool = false)
     snapshot = copy(last_b)
     first_ok = converged(result)
-    if first_ok && sd_min(Optim.minimizer(result)) >= _Q2_BOUNDARY_SD
+    if !force && first_ok && sd_min(Optim.minimizer(result)) >= _Q2_BOUNDARY_SD
         last_b .= snapshot
         info === nothing || (info[] = (ran = false, winner = 0, gain = 0.0, flipped = false))
         return result

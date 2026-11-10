@@ -92,7 +92,7 @@ function _lss_only_gaussian_guard(f::DrmFormula, fam)
     (isempty(_sd_parts(f)) && isempty(_sdphylo_parts(f))) ||
         throw(ArgumentError("drm: random-effect `sd(group) ~ …` formulas are currently " *
             "supported for Gaussian LSS models and narrow ordinary IID routes in " *
-            "Binomial, Poisson, NegBinomial2, and Gamma (got $(nameof(typeof(fam))))."))
+            "Binomial, Poisson, NegBinomial2, Gamma, and Beta (got $(nameof(typeof(fam))))."))
     return nothing
 end
 
@@ -642,7 +642,9 @@ end
 # The range is FIXED, unlike the intercept-only `_fit_spatial_gaussian`, which
 # estimates it. Rows of `coords` follow the first-seen levels of the group.
 function _gaussian_spatial_sd_kernel(coords, G::Int, grp::Symbol)
-    cmat = Matrix{Float64}(coords)
+    # A 1-D transect may be a plain vector: read it as the G-by-1 column it means.
+    cmat = coords isa AbstractVector{<:Real} ? reshape(Float64.(coords), :, 1) :
+           Matrix{Float64}(coords)
     size(cmat, 1) == G ||
         throw(ArgumentError("coords must have $G rows (one per `$grp` level)"))
     all(isfinite, cmat) || throw(ArgumentError("coords must be finite"))
@@ -924,7 +926,7 @@ function _fit_structured_gaussian_q2_sd(fam::Gaussian, y, Xμ, Xσ, Zgs, gidx, G
         nll_prof(φ) = nll_full(vcat(zeros(eltype(φ), pμ), φ), true; profile = true)
         rφ = Optim.optimize(nll_prof, θ0[(pμ+1):end], Optim.LBFGS(), opts; autodiff = :forward)
         φ̂ = Optim.minimizer(rφ)
-        Vfaĉ = cholesky(Symmetric(build_V(vcat(zeros(pμ), φ̂))))
+        Vfaĉ = _pd_chol_or_throw(build_V(vcat(zeros(pμ), φ̂)), "the REML-optimum covariance V (GLS step)")
         β̂ = Symmetric(Xμ' * (Vfaĉ \ Xμ)) \ (Xμ' * (Vfaĉ \ y))
         # Same return shape as the unrestricted route: the full vector, finished by a
         # zero-step LBFGS (the gradient in β_μ vanishes at the GLS value).
@@ -1014,7 +1016,9 @@ struct _LssComp
     nm::Vector{String}
     K::Union{Nothing,Matrix{Float64},_LazyPhyloK}   # nothing = iid; matrix = phylo correlation; _LazyPhyloK = phylo, not yet materialised
     label::String
+    w::Union{Nothing,Vector{Float64}}                # per-row loading of an iid component (an independent slope `(0 + x | g)`); nothing = intercept
 end
+_LssComp(gidx, G, Zg, nm, K, label) = _LssComp(gidx, G, Zg, nm, K, label, nothing)
 
 function _fit_gaussian_lss_multi(fam::Gaussian, y, Xμ, Xσ, comps::Vector{_LssComp},
                                  nmμ, nmσ, g_tol; reml::Bool = false)
@@ -1039,7 +1043,7 @@ function _fit_gaussian_lss_multi(fam::Gaussian, y, Xμ, Xσ, comps::Vector{_LssC
                 # iid: Z Diagonal(σa²) Z' adds σa[g]² wherever rows share a group
                 @inbounds for j in 1:n, i in 1:n
                     if c.gidx[i] == c.gidx[j]
-                        Vm[i, j] += σa[c.gidx[i]]^2
+                        Vm[i, j] += σa[c.gidx[i]]^2 * (c.w === nothing ? 1.0 : c.w[i] * c.w[j])
                     end
                 end
             else
@@ -1069,7 +1073,7 @@ function _fit_gaussian_lss_multi(fam::Gaussian, y, Xμ, Xσ, comps::Vector{_LssC
             if c.K === nothing
                 @inbounds for j in 1:n, i in 1:n
                     if c.gidx[i] == c.gidx[j]
-                        Vm[i, j] += σa[c.gidx[i]]^2
+                        Vm[i, j] += σa[c.gidx[i]]^2 * (c.w === nothing ? 1.0 : c.w[i] * c.w[j])
                     end
                 end
             else
@@ -1254,7 +1258,10 @@ function _drm_gaussian_lss_multi(f::DrmFormula, fam::Gaussian, sdp, sdpp, re, re
                                  algorithm::Symbol = :auto, sparse = nothing)
     for (kind, _) in re_kinds
         kind === :intercept ||
-            throw(ArgumentError("drm: sd() supports random INTERCEPT terms only."))
+            throw(ArgumentError("drm: sd() with several random-effect terms supports random intercepts " *
+                "`(1 | g)` here. Independent slopes `(0 + x | g)` take `sd(g, coef(x)) ~ …` on ordinary " *
+                "groupings, and one correlated block `(1 + x | g)` beside random intercepts on other " *
+                "groupings is supported; this combination is not implemented."))
     end
     re_groups = Symbol[grp for (_, grp) in re]
     for (sgrp, _) in sdp

@@ -89,7 +89,7 @@ end
 # the J = ∂lc/∂φ_a chain rule. The engine's own Λ_to_lc (Float64-only `push!`)
 # is left UNTOUCHED; this is a private AD-safe twin used only inside the wrapper.
 function _fz_Λ_to_lc(Λ::AbstractMatrix{T}) where {T}
-    C = cholesky(Symmetric(Λ)).L
+    C = _pd_chol_or_throw(Λ, "the among-axis covariance Σ_a").L
     v = Vector{T}(undef, 10)
     k = 0
     for j in 1:4, i in j:4

@@ -12,6 +12,49 @@
 # barrier — not Inf — because LBFGS's HagerZhang line search asserts isfinite.
 const REML_NONPD_PENALTY = 1e8
 
+# Cholesky for a step that is NOT inside an optimiser objective (a post-fit summary such
+# as BLUPs, a user-supplied covariance checked at set-up, a simulator's prior factor).
+# A bare `cholesky` there throws a raw `PosDefException` ("matrix is not positive
+# definite; Cholesky factorization failed") that names neither the matrix nor the
+# remedy; this refuses with a message that does. Objective-side calls use
+# `cholesky(...; check = false)` + `issuccess` and return `REML_NONPD_PENALTY` instead.
+# Identical to `cholesky(Symmetric(A))` whenever that succeeds.
+function _pd_chol_or_throw(A::AbstractMatrix, what::AbstractString)
+    all(isfinite, A) ||
+        throw(ArgumentError("$what contains non-finite values, so it cannot be factorised."))
+    C = cholesky(Symmetric(A); check = false)
+    issuccess(C) ||
+        throw(ArgumentError("$what is not numerically positive definite (singular or " *
+            "near-singular, e.g. coincident levels, a collapsed variance component, or a " *
+            "non-PSD user matrix); check the matrix or drop the offending term."))
+    return C
+end
+
+# Post-fit BLUP step: V⁻¹ r from the fitted marginal covariance V at θ̂. The fit has
+# already converged, so a non-PD / non-finite V must not abort it: return a NaN vector
+# (every BLUP built from it is NaN, i.e. unavailable) and warn once per session.
+function _blup_vinv_r(Vh::AbstractMatrix, r::AbstractVector)
+    C = all(isfinite, Vh) ? cholesky(Symmetric(Vh); check = false) : nothing
+    if C === nothing || !issuccess(C)
+        # The warning fires once per session, so the durable record is the flag
+        # `_flag_blup_unavailable!` sets on the returned fit (`fit.scales[:cond_blup_unavailable]`).
+        get(task_local_storage(), :drm_quiet_boundary, false) === true ||
+            @warn "The fitted marginal covariance V at θ̂ is not numerically positive definite " *
+                  "(singular or near-singular, e.g. a collapsed variance component); the fit is " *
+                  "returned but its random-effect estimates (BLUPs) are NaN (unavailable)." maxlog = 1
+        return fill(NaN, length(r))
+    end
+    return C \ r
+end
+
+# Record on the fit's `scales` that the post-fit BLUP step fell back to NaN (a later fit in a
+# loop is otherwise indistinguishable once the one-time warning has fired). The `cond_` prefix
+# keeps the key out of the R-bridge dpars and `simulate(newdata)`, like `:cond_failed`.
+function _flag_blup_unavailable!(scales::AbstractDict, blup)
+    any(v -> any(isnan, v), values(blup)) && (scales[:cond_blup_unavailable] = [1.0])
+    return scales
+end
+
 # A structured marker's (`phylo`/`relmat`/`animal`/`spatial`) random-effect
 # left-hand side must be the literal intercept `1` on every univariate route:
 # `_split_ranef` (below) — the shared RHS splitter for every univariate family
@@ -279,7 +322,8 @@ function _split_ranef(rhs; allow_phylo_slope::Bool = false,
                       allow_spatial_slope::Bool = false,
                       allow_spatial_intercept_slope::Bool = false,
                       allow_temporal::Bool = false,
-                      allow_labelled_intercept_slope::Bool = false)
+                      allow_labelled_intercept_slope::Bool = false,
+                      unwrap_label::Bool = false)
     terms = rhs isa Tuple ? collect(rhs) : Any[rhs]
     fixed = Any[]
     re = Tuple{Any,Symbol}[]
@@ -297,7 +341,24 @@ function _split_ranef(rhs; allow_phylo_slope::Bool = false,
                     _TEMPORAL_SPELLING))
             temporal_term = tt
         elseif t isa FunctionTerm && t.f === (|)
-            push!(re, (_implicit_re_intercept(t.args[1]), t.args[2].sym))     # (re-lhs, grouping symbol)
+            lhs_t = t.args[1]
+            # `(lhs | p | g)`: a label on a block that is the only term carrying it
+            # ties nothing, so it is the unlabelled `(lhs | g)`. A label shared by
+            # several terms would tie their correlations; that is refused, not dropped.
+            if unwrap_label && lhs_t isa FunctionTerm && lhs_t.f === (|) &&
+               length(lhs_t.args) == 2 && lhs_t.args[2] isa Term
+                lab = lhs_t.args[2].sym
+                nlab = count(terms) do u
+                    u isa FunctionTerm && u.f === (|) && u.args[1] isa FunctionTerm &&
+                        u.args[1].f === (|) && length(u.args[1].args) == 2 &&
+                        u.args[1].args[2] isa Term && u.args[1].args[2].sym === lab
+                end
+                nlab == 1 || throw(ArgumentError("drm: the label `$lab` in `(… | $lab | g)` is " *
+                    "shared by $nlab random-effect terms; a shared label ties their " *
+                    "correlations and is not implemented on this route. Use one labelled block."))
+                lhs_t = lhs_t.args[1]
+            end
+            push!(re, (_implicit_re_intercept(lhs_t), t.args[2].sym))     # (re-lhs, grouping symbol)
         elseif t isa FunctionTerm && t.f === meta_V
             metav = t.args[1].sym
         elseif t isa FunctionTerm && t.f === relmat
@@ -391,11 +452,16 @@ function _re_kind(re_lhs)
     elseif re_lhs isa FunctionTerm && re_lhs.f === (+)
         consts = filter(t -> t isa ConstantTerm, re_lhs.args)
         vars = filter(t -> t isa Term, re_lhs.args)
-        length(vars) == 1 || error("DRModels.jl supports `(1 | g)`, `(0 + x | g)`, `(1 + x | g)`")
+        length(vars) == 1 || error("DRModels.jl supports `(1 | g)`, `(0 + x | g)`, `(1 + x | g)` and " *
+                                   "the correlated blocks `(1 + x + z [+ w] | g)` (an intercept plus 2 to 3 slopes), which are " *
+                                   "fitted by maximum likelihood only and with no random effect on `sigma`")
         v = vars[1].sym
         any(c -> c.n == 0, consts) && return (:slope, v)      # 0 + x  → slope only
         any(c -> c.n == 1, consts) && return (:corr, v)       # 1 + x  → correlated intercept+slope
     end
+    re_lhs isa FunctionTerm && re_lhs.f === (|) &&
+        error("unsupported random-effect term: `($re_lhs | …)`. A label `(… | p | g)` is accepted " *
+              "only when one term carries it and `sigma` has no random effect")
     error("unsupported random-effect term: `($re_lhs | …)`")
 end
 
@@ -1299,7 +1365,35 @@ function _multi_re_qr(Z̃::AbstractMatrix, sdinv::AbstractVector, r::AbstractVec
     return R, bhat, logdetM
 end
 
-function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol)
+# Patterson–Thompson restriction matrix X′V⁻¹X for V = D + Z̃Z̃′ from ONE stacked
+# least-squares problem (#1270 follow-up, Gaussian REML on the generic routes). With
+# A = [D^{-1/2}Z̃; I] and Xs = [D^{-1/2}X; 0], the residual E = Xs − A(A \ Xs) of
+# regressing Xs on A satisfies E′E = X′D⁻¹X − X′D⁻¹Z̃(I + Z̃′D⁻¹Z̃)⁻¹Z̃′D⁻¹X = X′V⁻¹X
+# exactly, and is PSD by construction (no Woodbury subtraction, so no cancellation as
+# σ_e → 0; the same reasoning as `_multi_re_qr`). Generic in the element type, so it
+# runs under ForwardDiff.
+function _reml_xtvinvx_qr(Z̃::AbstractMatrix, sdinv::AbstractVector, X::AbstractMatrix)
+    T = promote_type(eltype(Z̃), eltype(sdinv), eltype(X))
+    q = size(Z̃, 2)
+    A = [sdinv .* Z̃; Matrix{T}(I, q, q)]
+    Xs = [sdinv .* X; zeros(T, q, size(X, 2))]
+    E = Xs - A * (qr(A) \ Xs)
+    return Symmetric(E' * E)
+end
+
+# REML objective from an ML nll value and the restriction matrix: nll_ML + ½ logdet(X′V⁻¹X)
+# − ½ p log(2π). A non-PD or non-finite restriction gets the same large FINITE barrier as the
+# intercept route (HagerZhang asserts a finite objective).
+function _reml_add_restriction(nll_ml_val, XtVinvX, p::Int)
+    cholX = cholesky(XtVinvX; check = false)
+    issuccess(cholX) || return oftype(nll_ml_val, nll_ml_val + REML_NONPD_PENALTY)
+    ldX = logdet(cholX)
+    isfinite(ldX) || return oftype(nll_ml_val, nll_ml_val + REML_NONPD_PENALTY)
+    return nll_ml_val + 0.5 * ldX - 0.5 * p * log(2π)
+end
+
+function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ, g_tol;
+                                   reml::Bool = false)
     n = length(y); pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     K = length(comps)
     # #977: Z is kept sparse (one nonzero per component per row) and the Float64
@@ -1377,7 +1471,28 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
     for k in 1:K
         θ0[pμ+pσ+k] = log(s0 + eps())
     end
-    od = Optim.OnceDifferentiable(nll, grad!, θ0)
+    # REML (Gaussian, exact): nll_ML + ½ logdet(Xμ′V⁻¹Xμ) − ½ pμ log(2π), the restriction
+    # from the stacked QR of the same whitened design (`_reml_xtvinvx_qr`). Dense Z̃ and a
+    # ForwardDiff gradient: O((n + q)q²) per Dual probe, so REML refuses q above the dense
+    # Hessian cap rather than silently slowing down.
+    function nll_reml(θ)
+        val = nll(θ)
+        βσ = θ[pμ+1:pμ+pσ]
+        ησ = clamp.(Xσ * βσ, -30.0, 30.0)
+        σk = [exp(clamp(θ[pμ+pσ+k], -30.0, 30.0)) for k in 1:K]
+        Z̃ = _zdense() .* [σk[colcomp[c]] for c in 1:q]'
+        return _reml_add_restriction(val, _reml_xtvinvx_qr(Z̃, exp.(-ησ), Xμ), pμ)
+    end
+    if reml
+        q <= _MULTI_RE_DENSE_HESSIAN_MAXQ ||
+            throw(ArgumentError("drm: method = :REML on several random-effect terms supports at most " *
+                "$(_MULTI_RE_DENSE_HESSIAN_MAXQ) random-effect columns in total (got $q); use method = :ML."))
+        nll_opt = nll_reml
+        od = Optim.OnceDifferentiable(nll_reml, θ0; autodiff = :forward)
+    else
+        nll_opt = nll
+        od = Optim.OnceDifferentiable(nll, grad!, θ0)
+    end
     res = Optim.optimize(od, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol))
     θ̂ = Optim.minimizer(res)
     # vcov from the AD Hessian of `nll`. `nll` returns a flat 1e18 penalty when
@@ -1391,9 +1506,9 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
     # difference of the exact sparse analytic gradient (same guards below).
     V = let
         pen = oftype(sum(θ̂), 1e18)
-        Hθ = q <= _MULTI_RE_DENSE_HESSIAN_MAXQ ? ForwardDiff.hessian(nll, θ̂) :
+        Hθ = q <= _MULTI_RE_DENSE_HESSIAN_MAXQ ? ForwardDiff.hessian(nll_opt, θ̂) :
              _multi_re_fd_hessian(grad!, θ̂)
-        if nll(θ̂) >= pen || !all(isfinite, Hθ) || !isposdef(Symmetric(Hθ))
+        if nll_opt(θ̂) >= pen || !all(isfinite, Hθ) || !isposdef(Symmetric(Hθ))
             @warn "multi-RE Gaussian vcov: Hessian is not usable (near-singular " *
                   "capacitance or penalty leak); returning NaN standard errors."
             fill(NaN, length(θ̂), length(θ̂))
@@ -1432,7 +1547,10 @@ function _fit_multi_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ, nmσ
         end
         d
     end
-    return _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll, grad!), blup)
+    fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll, grad!), blup)
+    # Profile intervals reuse the ML nll (same convention as the `(1 | g)` REML route).
+    reml && return _withreml(fit, -nll_reml(θ̂), -nll(θ̂))
+    return fit
 end
 
 # Gauss–Hermite nodes/weights (Golub–Welsch) for ∫ h(x) e^{-x²} dx ≈ Σ wₖ h(xₖ).

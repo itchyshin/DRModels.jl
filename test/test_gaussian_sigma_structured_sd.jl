@@ -140,13 +140,12 @@ end
         @formula(sd(id, phylogenetic, sigma) ~ z)), Gaussian(); data = d)
     @test_throws ArgumentError drm(bf(@formula(y ~ x), @formula(sigma ~ 1 + spatial(1 | id)),
         @formula(sd(id, spatial, sigma) ~ z)), Gaussian(); data = d)
-    # Level / provider mismatch, missing matrix, REML, missing response.
+    # Level / provider mismatch, missing matrix, missing response (REML now fits: see
+    # test_gaussian_structured_sigma_reml.jl).
     @test_throws ArgumentError drm(bf(@formula(y ~ x), @formula(sigma ~ 1 + relmat(1 | id)),
         @formula(sd(id, animal, sigma) ~ z)), Gaussian(); data = d, K = K)
     @test_throws ArgumentError drm(bf(@formula(y ~ x), @formula(sigma ~ 1 + relmat(1 | id)),
         @formula(sd(id, relmat, sigma) ~ z)), Gaussian(); data = d)
-    @test_throws ArgumentError drm(bf(@formula(y ~ x), @formula(sigma ~ 1 + relmat(1 | id)),
-        @formula(sd(id, relmat, sigma) ~ z)), Gaussian(); data = d, K = K, method = :REML)
     y = copy(d.y); y[2] = NaN
     @test_throws ArgumentError drm(bf(@formula(y ~ x), @formula(sigma ~ 1 + relmat(1 | id)),
         @formula(sd(id, relmat, sigma) ~ z)), Gaussian(); data = (; d..., y), K = K)

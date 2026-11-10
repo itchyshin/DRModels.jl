@@ -152,8 +152,9 @@ end
     @test_throws ArgumentError drm(f_lss, Gaussian(); data = data_lss, tree = phy,
                                    method = :REML)
 
-    # relmat(1 | id): same closed-form family, but served by the dense
-    # structured fitter, which has no restricted objective.
+    # relmat(1 | id) with a constant sigma now fits under REML (dense structured fitter,
+    # Gaussian REML-routes wave; test_gaussian_reml_routes.jl checks it against R). A sigma
+    # predictor beside it is still refused (below).
     G = 6
     idx = repeat(1:G, inner = 4)
     m = length(idx)
@@ -162,8 +163,10 @@ end
     Kmat = Matrix{Float64}(I, G, G)
     data_rel = (y = yr, x = xr, id = idx)
     f_rel = bf(@formula(y ~ x + relmat(1 | id)), @formula(sigma ~ 1))
-    @test_throws ArgumentError drm(f_rel, Gaussian(); data = data_rel, K = Kmat,
-                                   method = :REML)
+    f_rel_fit = drm(f_rel, Gaussian(); data = data_rel, K = Kmat, method = :REML)
+    @test estimation_method(f_rel_fit) === :REML && isfinite(reml_loglik(f_rel_fit))
+    @test_throws ArgumentError drm(bf(@formula(y ~ x + relmat(1 | id)), @formula(sigma ~ x)),
+                                   Gaussian(); data = data_rel, K = Kmat, method = :REML)
 
     # algorithm = :em is the conjugate-EM variant: no REML objective either.
     data_em = (y = y, x = x, species = species)

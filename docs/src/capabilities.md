@@ -38,13 +38,13 @@ run separately.
 | NegBinomial2 | intercepts, slopes, crossed, and phylogenetic effects | **Tested**; dispersion cap on crossed and structured routes (see the note below the table) |
 | TruncatedNegBinomial2 | — | **Tested** fixed effects |
 | TruncatedPoisson | — | **Tested** fixed effects |
-| Beta | intercepts, slopes, crossed, and phylogenetic effects | **Tested**; crossed random effects have numerical tests but no complete worked analysis; precision cap on crossed and structured routes (see the note below the table) |
+| Beta | intercepts, slopes, crossed, and phylogenetic effects | **Tested**; crossed random effects have numerical tests but no complete worked analysis; `sd(g, level) ~ z` is available on `phylo`, `relmat`, `animal` and `spatial` intercepts (`sigma ~ 1`) and on independent `(1 + x \| g)` blocks with one `sd(g, level, coef(·))` formula per coefficient (seven datasets checked against committed drmTMB 0.8.1 reference values in `test/fixtures/beta_structured_sd/r_reference.csv`; the phylo q1 dataset has the intercept SD at its lower bound, so its SD estimates are not compared); precision cap on crossed and structured routes (see the note below the table) |
 | BetaBinomial | intercepts, slopes, crossed, and phylogenetic effects | **Tested**; constant `sigma` only; precision cap on crossed and structured routes (see the note below the table) |
 | Binomial | intercepts, correlated slopes, crossed, and phylogenetic effects | **Tested**; correlated `(1 + x \| g)` is admitted; independent `(0 + x \| g)` is refused |
 | Gamma | intercepts, slopes, crossed, and phylogenetic effects | **Tested**; crossed random effects have numerical tests but no complete worked analysis; shape cap on crossed and structured routes (see the note below the table) |
 | LogNormal | intercepts, slopes, phylogenetic, and known-matrix effects | **Tested**; `animal` and coordinate-spatial effects are refused |
 | ZeroOneBeta | mean (`mu`) random intercepts, `(1 \| g)` | **Tested**; `sigma`, `zoi` and `coi` stay fixed-effects-only; `coi` is not identified unless the data have both exact 0s and exact 1s |
-| Tweedie | intercepts and independent slopes | **Tested** |
+| Tweedie | intercepts, independent slopes, and a single `phylo(1 \| g)` or `relmat(1 \| g)` mean intercept (optionally with `sd(g, level) ~ z`) | Checked against drmTMB 0.8.1 on 10 pre-registered fits (5 simulated datasets, `sd(g, level) ~ 1` and `~ z`): 9 of 10 agree (largest coefficient difference 5.6e-7), and the tenth (phylo, `sd ~ z`) is R's worse optimum, 2.7 log-likelihood units below Julia's; R's standard error for the bare-`sd` intercept came back non-finite in the comparison, so the standard-error check is incomplete. Structured slopes and structured `q >= 2` blocks are refused, as in drmTMB 0.8.1 |
 | CumulativeLogit (ordinal) | intercepts, independent slopes, and phylogenetic effects | **Tested** |
 | Underdispersed counts (variance below the mean) | — | **Not available**: no Conway–Maxwell–Poisson or generalised Poisson family. Use glmmTMB's `compois()` or `genpois()` families |
 | Censored responses (left-, right- or interval-censored values) | — | **Not available** in any family; detection limits or censored survival times cannot be modelled here. Use a package with censored likelihoods, such as brms (`y \| cens(censored) ~ …`) or the survival package |
@@ -137,12 +137,27 @@ out the supported non-Gaussian phylogenetic mean models or the more specific
 phylogenetic location--scale routes below; those routes have their own family
 and inference boundaries.
 
-For a Beta `relmat()` comparison with native drmTMB, use a unit-diagonal
-`K`. Julia's Beta route rescales a supplied covariance matrix to its
-correlation matrix; native drmTMB retains the supplied covariance scale.
-The same non-unit-diagonal input therefore specifies different latent
-covariance models. This differs from Julia's closed-form Gaussian route
-above, which retains the supplied `K`.
+A Beta `relmat()` intercept uses the supplied `K` as given, as native drmTMB
+does and as Julia's closed-form Gaussian route above does: it is not rescaled to a
+correlation matrix. Fitting the same data with `K` and `2K` gives identical fixed
+effects and log-likelihood, and the random-effect SD shifts by `log(sqrt(2))`, as
+a raw covariance scale requires.
+
+### Coordinate-spatial `spatial(1|site)` on non-Gaussian means
+
+Only Poisson estimates the spatial range, as the Gaussian route does. The other
+routes below fix the kernel at drmTMB's native `exp(-d / m) + 1e-6 I`, with `m`
+the median positive pairwise distance between sites, so the same data and
+formula give the same covariance as native drmTMB.
+
+| Family | Accepts | Status and boundary |
+|---|---|---|
+| Poisson | `coords`; range estimated on the Laplace route | **Tested** |
+| Gamma | `coords` (native kernel, 1-D vector allowed) or a supplied `K`, not both; with or without `sd(site, spatial) ~ z` | **Tested**; a `coords` fit equals the same fit with the native kernel passed as `K` (log-likelihoods agree to 1e-12 on one simulated dataset) |
+| NegBinomial2 | a supplied `K` on `spatial(1 \| site)`; `coords` only for a slope-only `spatial(0 + x \| site)` term with its `sd(...)` formula | **Tested**; `coords` on an intercept is refused |
+| Beta | a supplied `K` on `spatial(1 \| site)` (no SD formula); `coords` (native kernel) with `sd(site, spatial) ~ z` or the independent `spatial(1 + x \| site)` block with one `sd(site, spatial, coef(·))` formula per coefficient | **Tested**; `K` is refused when an SD formula is present, and `sigma ~ 1` is required |
+| Binomial | `coords` with an `sd(site, spatial)` formula only; a bare `spatial(1 \| site)` is refused | **Tested**; this route keeps the older fixed range (mean pairwise distance, 1e-8 ridge) because drmTMB has no Binomial spatial route |
+| LogNormal, Tweedie | not accepted | `spatial` is refused by name |
 
 ### Non-Gaussian phylogenetic random intercept on the mean (sparse Laplace)
 
@@ -224,9 +239,10 @@ public formula route are **tested**.
 | Capability | Status |
 |---|---|
 | `bf(mu1=…, mu2=…, sigma1=…, sigma2=…, rho12=…)` with phylogeny | **Tested**; recovers fixed effects and `Σ_a` |
-| `relmat`, `animal`, and fixed-range `spatial` structured providers | **Tested**; spatial range is fixed (default: mean pairwise distance; drmTMB's default is the median, so set `spatial_range` when comparing) |
+| `relmat`, `animal`, and fixed-range `spatial` structured providers | **Tested**; spatial range is fixed (default: median positive pairwise distance with a 1e-6 ridge, drmTMB's native kernel; `spatial_range` overrides it) |
 | `vc(fit)`, `ranef(fit)`, and `coevolution_cor` summaries | **Tested**; `fit.ranef.Sigma_a` is ordered `mu1, mu2, sigma1, sigma2` |
 | Fixed-effect covariance and Wald standard errors (`q4_vcov=true`) | **Tested** |
+| `q4_f_reltol` (default `1e-7`) | The relative objective change at which the q=4 ML optimiser stops. The default can end up to about `1e-3` in log-likelihood short of the optimum on flat q=4 ridges; `q4_f_reltol = 1e-12` converges tightly at a higher run time. REML q=4 ignores it. The R bridge forwards it. |
 | Bootstrap intervals for coevolution correlations | **Tested for tree-based phylogeny**; non-tree structured providers return point summaries only |
 
 ## Structured q=2 bivariate Gaussian (mu1/mu2 only)
@@ -243,7 +259,7 @@ full R bridge workflow.
 |---|---|
 | `phylo(1\|species)` on `mu1` and `mu2`, with residual `rho12` | **Tested** through `drm()` and direct export |
 | `relmat(1\|id)` and `animal(1\|id)` on `mu1` and `mu2`, using known `K` / `A` | **Tested** |
-| Fixed-covariance spatial q2 fit | Available only in the documented fixed-covariance example; the range-estimating `spatial(...)` formula route is rejected |
+| `spatial(1\|site)` on `mu1` and `mu2`, using `coords` | **Tested**; the range is fixed, never estimated: `spatial_range` if given, else drmTMB's native kernel (median positive pairwise distance, 1e-6 ridge). An explicit `spatial_range` uses a 1e-8 ridge. The range in force is `fit.ranef.spatial_range` |
 
 ## Bivariate and paired responses (residual correlation)
 
@@ -279,7 +295,7 @@ above, and it does so by delegation rather than by a second engine.
 | Wald SEs + CIs (observed information) | **Tested** |
 | Profile-likelihood CIs (`profile_result`, `confint(:profile)`) | **Tested** |
 | Parametric bootstrap (`bootstrap_ci`/`_summary`/`_result`, serial + threaded) | **Tested** |
-| REML for fixed-effect Gaussian location–scale and Gaussian mean `(1 \| g)` or one correlated intercept/slope `(1 + x \| g)` | **Tested**; the correlated-slope cell is a single restricted route |
+| REML for fixed-effect Gaussian location–scale and Gaussian mean `(1 \| g)`, slope-only `(0 + x \| g)`, one correlated intercept/slope `(1 + x \| g)`, several independent scalar terms (including crossed `(1 \| g) + (1 \| g2)`), `relmat(1 \| g)` / `animal(1 \| g)` and `phylo(1 + x \| g)` (constant `sigma`) | **Tested**; the new routes agree with drmTMB 0.8.1 `REML = TRUE` on three simulated datasets per route (logLik to 1e-4); the correlated-slope cell is a single restricted route |
 | `reml_loglik` / `ml_loglik` / `estimation_method` accessors | **Tested** |
 | Epsilon-method bias correction (`bias_correct`) | **Tested** |
 | **χ̄² (chi-bar-square) boundary inference** (Self–Liang / Stram–Lee mixture) | **Tested** |
@@ -294,13 +310,33 @@ above, and it does so by delegation rather than by a second engine.
     Gaussian location–scale model; a single Gaussian mean intercept `(1 | g)`; one
     correlated Gaussian mean intercept/slope `(1 + x | g)` with no `sigma` random
     effect, structured term, `meta_V()`, crossed term, or additional random-effect
-    term; Location–Scale–Scale models (`sd(g) ~ z`, `sd(species, phylogenetic) ~ z`,
+    term; and, with a constant `sigma` and no `sigma` random effect, `meta_V()` or
+    missing response: slope-only `(0 + x | g)`, several independent scalar terms
+    (`(1 | g) + (0 + x | g)`, crossed `(1 | g) + (1 | g2)`; at most 200 random-effect
+    columns in total), one `relmat(1 | g)` or `animal(1 | g)`, and `phylo(1 + x | g)`
+    with two SDs (exact restricted likelihood; agrees with drmTMB 0.8.1 `REML = TRUE`
+    to 1e-4 on three simulated datasets per route); Location–Scale–Scale models (`sd(g) ~ z`, `sd(species, phylogenetic) ~ z`,
     and multi-component LSS); the bivariate q=4 location–scale engine; and the
     Gaussian `phylo(1 | g)`-on-`sigma` location–scale blocks (scale-only, separate,
     coupled), where both the `mu` and `sigma` fixed effects are integrated out with
-    the phylogenetic effects.
-    Ordinary σ-RE, independent slopes such as `(0 + x | g)`, other random-slope
-    structures remain refused on the Gaussian routes listed here. Separate
+    the phylogenetic effects. The structured intercept-and-slope SD blocks on the
+    mean (`KIND(1 + x | g)` with one `sd(g, KIND, coef(·))` formula per coefficient:
+    `phylo` labelled or not, unlabelled `animal` / `relmat` / `spatial` with
+    `sigma ~ 1`) and the structured `sigma` intercept with an SD formula
+    (`sigma ~ 1 + KIND(1 | g)`, `sd(g, KIND, sigma) ~ z`, fixed-effect mean; `beta_mu`
+    and `beta_sigma` are integrated out in one joint Laplace approximation) also
+    admit REML, as native drmTMB does. Labelled `animal` / `relmat` / `spatial`
+    q2 blocks and heteroscedastic `sigma` with those providers still refuse REML. Ordinary `sd()` q2/q3/q4 routes stay ML only
+    (native refuses REML there too), as do the Gaussian shapes that fit by ML in
+    wave 9 (an unstructured q3/q4 block, a labelled block, a correlated block beside
+    random intercepts, and independent intercept and slope terms with `sd()`
+    formulas): each refuses `method = :REML` by name.
+    Still refused under REML on the Gaussian mean routes: `spatial(1 | g)` (its ML
+    logLik differs from drmTMB's on the reference data, so no restricted objective
+    is built), a correlated `(1 + x | g)` block beside any other random-effect term,
+    ordinary σ-RE (including ordinary `sd(g, sigma)`, which native drmTMB admits
+    under REML), a `sigma` predictor with a multi-term mean, `meta_V()`, missing
+    responses on the new routes, and other random-slope structures. Separate
     opt-in Poisson Cox–Reid routes are described under [`Poisson`](@ref); their
     recovery evidence is limited and does not establish general non-Gaussian
     REML support. This is not AI-REML. The retained

@@ -176,6 +176,12 @@ For the bridge to work, DRModels.jl exposes a stable, marshalling-friendly surfa
   values, residuals, and fitted scale. Some advanced outputs are available only
   for the particular model types listed above; they are not a general guarantee
   of interval or coverage performance.
+- **Failed fits**: a fit whose log-likelihood is the failure sentinel
+  (`-1e18`), is non-finite, or runs away (`|logLik| >= 1e15`) without converging
+  crosses the bridge with `loglik = NaN` and `ml_loglik = NaN`, `fit_failed = true`
+  and a `fit_failed_message` that says the fit must not be used. A usable fit sends
+  `fit_failed = false` and an empty message. The raw value stays on the `DrmFit`
+  on the Julia side.
 
 For the Gaussian phylogenetic mean cell, the current `algorithm = :auto` route
 uses an all-node sparse L-BFGS fitter. That route
