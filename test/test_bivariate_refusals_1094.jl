@@ -1,5 +1,6 @@
-# #1094: bivariate Gaussian with an ordinary correlated random effect
-# `(1 | p | g)` is not supported (drmTMB fits it). The refusal must be an
+# #1094: bivariate Gaussian with an ordinary correlated random effect on a
+# sigma axis is not supported (drmTMB fits it; the mu1/mu2 form is now supported,
+# see test_bivariate_ordinary_re.jl). The refusal must be an
 # ArgumentError that names drmTMB, and `marginal =` on the bivariate method must
 # be an ArgumentError, not a bare MethodError.
 
@@ -20,13 +21,17 @@ using Random
               mu2 = @formula(y2 ~ 1 + Cult + (1 | p | Date)),
               sigma1 = @formula(sigma1 ~ 1), sigma2 = @formula(sigma2 ~ 1),
               rho12 = @formula(rho12 ~ 1))
+    f_re_sigma = bf(mu1 = @formula(y1 ~ 1 + Cult), mu2 = @formula(y2 ~ 1 + Cult),
+                    sigma1 = @formula(sigma1 ~ 1 + (1 | p | Date)),
+                    sigma2 = @formula(sigma2 ~ 1 + (1 | p | Date)),
+                    rho12 = @formula(rho12 ~ 1))
     f_fixed = bf(mu1 = @formula(y1 ~ 1 + Cult), mu2 = @formula(y2 ~ 1 + Cult),
                  sigma1 = @formula(sigma1 ~ 1), sigma2 = @formula(sigma2 ~ 1),
                  rho12 = @formula(rho12 ~ 1))
 
-    @testset "ordinary (1 | p | g) names drmTMB" begin
+    @testset "ordinary (1 | p | g) on sigma names drmTMB" begin
         err = try
-            drm(f_re, Gaussian(); data = data)
+            drm(f_re_sigma, Gaussian(); data = data)
             nothing
         catch e
             e
@@ -35,6 +40,11 @@ using Random
         msg = err === nothing ? "" : sprint(showerror, err)
         @test occursin("drmTMB", msg)
         @test occursin("bivariate q=4", msg)      # existing wording kept
+    end
+
+    @testset "ordinary (1 | p | g) on mu1 and mu2 now fits" begin
+        fit = drm(f_re, Gaussian(); data = data)
+        @test isfinite(DRModels.loglik(fit))
     end
 
     @testset "marginal= on the bivariate method is an ArgumentError" begin

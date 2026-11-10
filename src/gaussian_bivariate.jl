@@ -180,7 +180,17 @@ fit = drm(
     method in (:ML, :REML) ||
         throw(ArgumentError("drm: `method` must be :ML (default) or :REML (got :$method)"))
     rhs = Dict(f.forms)
+    rhs, ordinary_re = _extract_ordinary_biv_re(rhs)   # `(1 | p | g)` on mu1 and mu2
     fixed, structured_marker = _bivariate_q4_marker(rhs)
+    if ordinary_re !== nothing
+        structured_marker === nothing || throw(ArgumentError(
+            "drm: an ordinary `(1 | p | g)` random effect cannot be combined with structured " *
+            "phylo/relmat/animal/spatial markers in the same bivariate model."))
+        V === nothing || throw(ArgumentError(
+            "drm: known sampling covariance `V` is not supported with the bivariate ordinary random-effect route."))
+        return _fit_bivariate_ordinary_re(f, fam, data, fixed, ordinary_re;
+                                          g_tol = Float64(g_tol), method = method)
+    end
     # A8: known bivariate sampling covariance (drmTMB's meta_vcov_bivariate) is
     # consumed by the residual route only in this slice.
     V !== nothing && structured_marker !== nothing &&
