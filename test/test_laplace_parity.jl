@@ -55,6 +55,18 @@ end
     _lp_check(id)
 end
 
+@testset "boundary correlation: binomial|corr|lab0|q2|sd-last (Julia 1.13.3 regression)" begin
+    # drmTMB ends this fit with rho = -0.99999994 (a flat boundary ridge). Before the correlation-parameter clamp
+    # (`_binomial_bounded_partial`) the Laplace objective was rounding noise at |atanh rho| > ~12 and, on Julia 1.13.3,
+    # the optimiser ran there (not converged, logLik -255.17978, 887 iterations); 1.10.12 stopped at atanh rho = -8.29.
+    id = "binomial|corr|lab0|q2|sd-last|cm0|ML"
+    fit = lp_fit(id)
+    @test fit.converged
+    @test abs(loglik(fit) - _LP_REF[id].loglik) <= 1e-4
+    @test abs(only(fit.scales[:corpars])) > 0.99999          # at the boundary, as in drmTMB
+    @test abs(coef(fit, :recov)[end]) < 12                   # the optimiser did not run into the noise region
+end
+
 @testset "Poisson correlated block with a mean offset, c ~ x + offset(logb) + (1 + x | g)" begin
     # Reference: drmTMB 0.8.1 (ML) on data_poisson_offset_corr.csv, made by gen_data_offset_corr.jl / gen_ref_offset_corr.R.
     dir = joinpath(@__DIR__, "fixtures", "laplace_parity")
