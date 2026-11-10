@@ -439,7 +439,10 @@ unnamed extra positional argument is an error: a keyword-only refit would
 otherwise drop it and silently ignore the value.
 
 Prior `weights`: if the seed fit has weights, `update` requires an explicit `weights =`
-keyword (see above) and passes it to `drm`.
+keyword and passes it to `drm`. Use `weights = weights(fit)` with the same `data`; use
+`weights = nothing` to refit unweighted on purpose. If rows with a missing response were
+dropped from the seed fit, `weights(fit)` has one entry per kept row and is shorter than
+`data`, so pass the original full-length weight vector (one per row of `data`) instead.
 
 `data` must be supplied. A `DrmFit` does not retain its observations, nor the
 options that were only arguments to the original `drm` call: `K`, `A`, `tree`,
@@ -473,7 +476,9 @@ function update(fit::DrmFit, formula, args...; data, kwargs...)
     haskey(kwargs, :weights) || weights(fit) === nothing || throw(ArgumentError(
         "update: the fit was made with prior `weights`; pass `weights = weights(fit)` (same rows), " *
         "new weights for the new `data`, or `weights = nothing` to refit unweighted on purpose. " *
-        "It is never refitted unweighted silently."))
+        "It is never refitted unweighted silently. If rows with a missing response were dropped from " *
+        "the fit, `weights(fit)` has one entry per KEPT row and is shorter than `data`: pass the " *
+        "original full-length weight vector (one per row of `data`) instead."))
     stored = _update_stored_options(fit)
     # A caller who changes the estimator does not want the old MAP penalty.
     # Passing `penalty` explicitly still overrides that drop.

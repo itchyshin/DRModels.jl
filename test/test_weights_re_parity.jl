@@ -185,6 +185,22 @@ end
         f1 = drm(fb, Gaussian(); data = d, weights = ones(n))
         @test bs(f1) == bs(f0)            # unit weights = no weights, same seed
         @test bs(fw) != bs(f0)            # real weights change the refits
+        # Sensitive to the refit closure: replay the two replicates by hand (same seeds, same simulated
+        # data) and refit WITH and WITHOUT the weights. The bootstrap std_error of the first coefficient
+        # must equal the weighted replay, and the unweighted replay must differ from it.
+        br = bootstrap_result(fw; data = d, B = 2, rng = MersenneTwister(5), check_converged = false)
+        simfn = DRModels._marginal_simulator(fw, d; K = nothing, A = nothing, tree = nothing, coords = nothing)
+        function replay(w)
+            est = map(br.seeds) do sd
+                rr = MersenneTwister(sd)
+                ys = simfn === nothing ? simulate(fw; rng = rr, re = :zero) : simfn(rr)
+                datab = DRModels._bootstrap_data(fb, d, ys)
+                coef(drm(fb, Gaussian(); data = datab, weights = w))[1]
+            end
+            return abs(est[1] - est[2]) / sqrt(2)             # std of two draws
+        end
+        @test br.summary[1].std_error ≈ replay(d.w) rtol = 1e-6
+        @test abs(replay(nothing) - br.summary[1].std_error) > 1e-3 * br.summary[1].std_error
     end
 
     @testset "update never refits a weighted model unweighted" begin
@@ -229,22 +245,26 @@ end
     end
 
     @testset "large non-integer weights, Poisson default marginal vs brute-force quadrature" begin
-        wbig = d.w .* (1 .+ 19 .* (d.id .% 5 .== 0))
+        # Gap (fit minus brute-force quadgk of the weighted likelihood at the fitted parameters), measured
+        # on Totoro for max weight 1.97 / 9.4 / 37 / 71 / 187: -3.7e-5, -2.9e-4, -1.9e-4, -1.6e-4, -1.6e-4.
+        # It does not grow with the weights (finite-node adaptive quadrature), so 1e-3 is the largest
+        # measured gap (2.9e-4) with 3x headroom.
         fp = bf(@formula(y_pois ~ x1 + (1 | g)))
-        fit = drm(fp, Poisson(); data = d, weights = wbig)
-        β = fit.theta[1:2]; σb = exp(fit.theta[3])
-        ll = 0.0
-        for gl in unique(d.g)
-            idx = findall(==(gl), d.g)
-            η0 = β[1] .+ β[2] .* d.x1[idx]
-            lf(b) = sum(wbig[idx] .* (d.y_pois[idx] .* (η0 .+ b) .- exp.(η0 .+ b))) -
-                    sum(wbig[idx] .* [sum(log, 1:Int(y); init = 0.0) for y in d.y_pois[idx]]) - b^2 / (2σb^2) - log(σb * sqrt(2π))
-            bs = range(-12σb, 12σb; length = 4001)
-            m = maximum(lf.(bs))
-            val, _ = quadgk(b -> exp(lf(b) - m), collect(range(-12σb, 12σb; length = 801))...; rtol = 1e-12, atol = 1e-14)
-            ll += m + log(val)
+        for s in (1, 5, 20, 38, 100)
+            wbig = d.w .* (1 .+ (s - 1) .* (d.id .% 5 .== 0))
+            fit = drm(fp, Poisson(); data = d, weights = wbig)
+            β = fit.theta[1:2]; σb = exp(fit.theta[3])
+            ll = 0.0
+            for gl in unique(d.g)
+                idx = findall(==(gl), d.g)
+                η0 = β[1] .+ β[2] .* d.x1[idx]
+                lf(b) = sum(wbig[idx] .* (d.y_pois[idx] .* (η0 .+ b) .- exp.(η0 .+ b))) -
+                        sum(wbig[idx] .* [sum(log, 1:Int(y); init = 0.0) for y in d.y_pois[idx]]) - b^2 / (2σb^2) - log(σb * sqrt(2π))
+                m = maximum(lf.(range(-12σb, 12σb; length = 4001)))
+                val, _ = quadgk(b -> exp(lf(b) - m), collect(range(-12σb, 12σb; length = 801))...; rtol = 1e-12, atol = 1e-14)
+                ll += m + log(val)
+            end
+            @test loglikelihood(fit) ≈ ll atol = 1e-3
         end
-        # measured gap 1.9e-4 on a logLik of -1497: the default marginal's finite-node quadrature with weights up to 38
-        @test loglikelihood(fit) ≈ ll atol = 1e-3
     end
 end
