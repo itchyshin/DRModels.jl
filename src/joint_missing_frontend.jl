@@ -1023,7 +1023,7 @@ convergence_status(fit::JointFiniteDrmFit) = convergence_status(fit.prepared.fit
 _converged_nondegenerate(fit::JointFiniteDrmFit) = _converged_nondegenerate(fit.prepared.fit)
 niterations(fit::JointFiniteDrmFit) = niterations(fit.prepared.fit)
 family(::JointFiniteDrmFit) = Gaussian()
-fitted(fit::JointFiniteDrmFit) = fitted(fit.prepared.fit)
+fitted(fit::JointFiniteDrmFit; re::Symbol = :conditional) = fitted(fit.prepared.fit; re)
 joint_missing_summary(fit::JointFiniteDrmFit) = joint_missing_summary(fit.prepared)
 
 function _joint_finite_retained_prediction_plan(fit::JointFiniteDrmFit)

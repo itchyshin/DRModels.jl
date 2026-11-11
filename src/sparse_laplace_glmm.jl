@@ -2728,6 +2728,12 @@ function _fit_poisson_crossed_intercepts_laplace(fam::Poisson, y, Xμ, gidx, G, 
     means = Dict(:mu => exp.(Xμ * θ̂[1:pμ]))
     obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict{Symbol,Vector{Float64}}()
+    # fitted-row modes for `fitted(fit)` (conditional default): fresh mode solve at θ̂ (step tolerance 1e-8)
+    let (bm, _, _, okm) = _poisson_crossed_mode(y, Xμ * θ̂[1:pμ], gidx, G, hidx, Hh,
+                                                clamp.(θ̂[pμ+1:pμ+2], -8.0, 3.0);
+                                                b0 = zeros(G + Hh), tol = 1e-8)
+        okm ? _record_cond_fit!(scales, bm[gidx] .+ bm[G .+ hidx]) : (scales[:cond_fit_failed] = [1.0])
+    end
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
     _warn_laplace_clamp(fit)   # #959: say when a clamp is active
     return _withnll(fit, nll, grad!)
@@ -2928,6 +2934,12 @@ function _fit_poisson_crossed_laplace(fam::Poisson, y, Xμ, comps, nmμ, g_tol; 
     gfinal = zeros(length(θ̂))
     grad!(gfinal, θ̂)
     converged = _laplace_outer_converged(res, nllhat, gfinal, θ̂, n, g_tol)
+    # fitted-row modes for `fitted(fit)` (conditional default): fresh mode solve at θ̂ (step tolerance 1e-8)
+    let (bm, _, _, okm) = _poisson_laplace_mode(y, Xμ * θ̂[1:pμ], Z, compid,
+                                                clamp.(θ̂[pμ+1:pμ+K], -8.0, 3.0);
+                                                b0 = zeros(size(Z, 2)), tol = 1e-8)
+        okm ? _record_cond_fit!(scales, Z * bm) : (scales[:cond_fit_failed] = [1.0])
+    end
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
     _warn_laplace_clamp(fit)   # #959: say when a clamp is active
     return _withnll(fit, nll, grad!)
@@ -3966,6 +3978,12 @@ function _fit_crossed_mean_laplace(fam, kind, aux, n::Int, Xμ, gidx, G, hidx, H
     means = Dict(:mu => [_laplace_mean(kind, dot(@view(Xμ[i, :]), θ̂[1:pμ])) for i in 1:n])
     obs = Dict(:mu => [_laplace_obs(kind, aux, i) for i in 1:n])
     scales = Dict{Symbol,Vector{Float64}}()
+    # fitted-row modes for `fitted(fit)` (conditional default): fresh mode solve at θ̂ (step tolerance 1e-8)
+    let (bm, _, _, okm) = _crossed_mean_mode(kind, aux, Xμ * θ̂[1:pμ], gidx, G, hidx, Hh,
+                                             clamp.(θ̂[pμ+1:pμ+2], -8.0, 3.0);
+                                             b0 = zeros(G + Hh), tol = 1e-8)
+        okm ? _record_cond_fit!(scales, bm[gidx] .+ bm[G .+ hidx]) : (scales[:cond_fit_failed] = [1.0])
+    end
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
     _warn_laplace_clamp(fit)   # #959: say when a clamp is active
     return _withnll(fit, nll, grad!)
@@ -4200,6 +4218,12 @@ function _fit_crossed_mean_laplace_nuisance(fam, kind, aux_from, n::Int, Xμ, gi
     means = Dict(:mu => [_laplace_mean(kind, dot(@view(Xμ[i, :]), θ̂[1:pμ])) for i in 1:n])
     obs = Dict(:mu => [_laplace_obs(kind, auxhat, i) for i in 1:n])
     scales = merge(Dict(:sigma => fill(sigma_scale(θ̂[pμ+1]), n)), extra_scales)
+    # fitted-row modes for `fitted(fit)` (conditional default): fresh mode solve at θ̂ (step tolerance 1e-8)
+    let (bm, _, _, okm) = _crossed_mean_mode(kind, auxhat, Xμ * θ̂[1:pμ], gidx, G, hidx, Hh,
+                                             clamp.(θ̂[pμ+2:pμ+3], -8.0, 3.0);
+                                             b0 = zeros(G + Hh), tol = 1e-8)
+        okm ? _record_cond_fit!(scales, bm[gidx] .+ bm[G .+ hidx]) : (scales[:cond_fit_failed] = [1.0])
+    end
     fit = DrmFit(fam, blocks, names, θ̂, Matrix(V), -nllhat, n, converged, means, obs, scales)
     _warn_laplace_clamp(fit; logsigma = θ̂[pμ+1:pμ+1])   # #959: say when a clamp is active
     return _withnll(fit, nll, grad!)

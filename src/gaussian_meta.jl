@@ -186,6 +186,8 @@ function _fit_meta_gaussian_re(fam::Gaussian, y, Xμ, Xσ, vv, comps, nmμ, nmσ
     blup = let
         M, c̃, _, _, W = _pieces(θ̂)
         u = W * (cholesky(M) \ c̃)
+        # fitted-row modes for `fitted(fit)` (conditional default): row i loads one column per component
+        _record_cond_fit!(scales, sum(u[cols[k]] for k in 1:K))
         Dict(Symbol(comps[k][4]) => u[(offs[k]+1):offs[k+1]] for k in 1:K)
     end
     # `converged` is the GRADIENT criterion (the #609 lesson: Optim's OR of the

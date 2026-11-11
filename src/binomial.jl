@@ -168,7 +168,7 @@ predict_parameters(fit_sd, dat)[:sd]  # one fitted random-effect SD per row
 fit_relmat_sd = drm(bf(@formula(y ~ x + relmat(1 | id)),
                        @formula(sd(id, relmat) ~ z)),
                     Binomial(); data = dat, K = K)
-fitted(fit)        # fitted success probabilities on the response scale
+fitted(fit)        # fitted success probabilities on the response scale (adds the random-effect modes)
 
 # Experimental: Binomial random-intercept variational (ELBO) marginal.
 fit_va = drm(bf(@formula(y ~ x + (1 | g))), Binomial(); data = dat, marginal = :VA)
@@ -528,6 +528,7 @@ function _fit_binomial_ranef(fam::Binomial, s, ntr, Xμ, gidx, G, nmμ, grp, g_t
     names = [:mu => nmμ, :resd => [String(grp)]]
     means = Dict(:mu => _binomial_mean.(Ref(fam), Xμ * θ̂[1:pμ])); obs = Dict(:mu => s ./ ntr)
     scales = Dict(:trials => Float64.(nint))
+    _record_cond_fit_aghq!(scales, nll, θ̂, bcache, gidx, Zre)   # fitted-row modes for `fitted(fit)`
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))
@@ -589,6 +590,7 @@ function _fit_binomial_corr_ranef(fam::Binomial, s, ntr, Xμ, xs, gidx, G, nmμ,
     names = [:mu => nmμ, :recov => ["$(grp):L11", "$(grp):L22", "$(grp):L21"]]
     means = Dict(:mu => _binomial_mean.(Ref(fam), Xμ * θ̂[1:pμ])); obs = Dict(:mu => s ./ ntr)
     scales = Dict(:trials => Float64.(nint))
+    _record_cond_fit_aghq!(scales, nll, θ̂, bcache, gidx, Zre)   # fitted-row modes for `fitted(fit)`
     return _withiterations(
         _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll),
         Optim.iterations(res))

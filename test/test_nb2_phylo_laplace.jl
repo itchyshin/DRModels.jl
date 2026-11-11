@@ -26,7 +26,7 @@ import Distributions
     @test 0.5 < exp(-2 * coef(fit, :sigma)[1]) < 20.0
     @test re_sd(fit)[:species] > 0.05
     @test isfinite(loglik(fit))
-    @test all(fitted(fit) .> 0)
+    @test all(fitted(fit; re = :zero) .> 0)
 
     # Covariate dispersion on the phylo route is now supported (#164): a
     # non-constant `sigma` formula fits via the per-observation log-size path

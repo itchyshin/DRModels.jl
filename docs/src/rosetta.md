@@ -175,13 +175,18 @@ distributional parameters:
   product) while holding every other predictor at its reference (mean for numeric
   columns). It is pure data, so it composes directly:
   `predict_parameters(fit, prediction_grid(...))`.
-- **Fitted values differ.** drmTMB's `fitted(fit)`, like its `predict(fit)`
-  without `newdata`, adds the fitted random-effect modes to each fitted row.
-  DRModels.jl's `fitted(fit)` is the population-level value with the random
-  effects at zero on most routes, so compare `predict(fit, newdata)` across the
-  two packages, not `fitted`. Without random effects the definitions agree:
-  for LogNormal and zero-inflated, hurdle or truncated counts both packages return
-  the unconditional response mean `E[Y]` (`exp(μ + σ²/2)`, `(1 - π) μ`,
+- **Fitted values agree by default.** drmTMB's `fitted(fit)` adds the fitted
+  random-effect modes to each fitted row and returns the rows used in the fit.
+  DRModels.jl's `fitted(fit)` does the same: the default is `re = :conditional`,
+  and a fit with a missing response returns the used rows only. Pass
+  `fitted(fit; re = :zero)` for the population-level value with every random
+  effect at zero, which is what `predict(fit, newdata)` returns on the GLM-type
+  routes (and what `fitted(fit)` returned before the default changed). A route
+  that does not keep the modes needed for the conditional value refuses the
+  default with a message that names `re = :zero`; it never returns population
+  values under the conditional default. `residuals(fit)` is `y - fitted(fit)`
+  and takes the same `re` keyword. For LogNormal and zero-inflated, hurdle or
+  truncated counts both packages return the unconditional response mean `E[Y]` (`exp(μ + σ²/2)`, `(1 - π) μ`,
   `μ / (1 - P(0))`, `(1 - π) μ / (1 - P(0))`), and `predict(fit, newdata; type =
   :mean)` is the same quantity at new rows. A bivariate `LogNormal` fit follows the
   same rule per response (`Dict(:mu1 => …, :mu2 => …)`; drmTMB returns an `n × 2`

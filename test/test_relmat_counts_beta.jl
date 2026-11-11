@@ -96,7 +96,7 @@ end
     @test re_sd(fit)[:id] ≈ σb atol = 0.20           # variance component recovered
     @test exp(-2 * coef(fit, :sigma)[1]) ≈ φtrue rtol = 0.6   # precision in the right ballpark
     @test isfinite(loglik(fit))
-    @test all(0 .< fitted(fit) .< 1)
+    @test all(0 .< fitted(fit; re = :zero) .< 1)
 end
 
 # ---- Beta FD gate ≤ 1e-6 ---------------------------------------------------

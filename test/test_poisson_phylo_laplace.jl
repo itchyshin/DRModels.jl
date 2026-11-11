@@ -24,7 +24,7 @@ import Distributions
     @test coef(fit, :mu)[2] ≈ β[2] atol = 0.20
     @test re_sd(fit)[:species] > 0.05
     @test isfinite(loglik(fit))
-    @test all(fitted(fit) .> 0)
+    @test all(fitted(fit; re = :zero) .> 0)
 end
 
 @testset "Poisson phylo sparse Laplace gradient" begin

@@ -458,7 +458,7 @@ end
     @test bfit.converged && cfit.converged
     @test isapprox(bfit.loglik, cfit.loglik; atol = 1e-8)
     @test isapprox(coef(bfit), coef(cfit); atol = 1e-8)
-    @test all(0 .< fitted(bfit) .< 1)
+    @test all(0 .< fitted(bfit; re = :zero) .< 1)
 end
 
 @testset "binomial latent SD regression: independent fixed-parameter integral" begin

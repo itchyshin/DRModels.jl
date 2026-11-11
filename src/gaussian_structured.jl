@@ -336,6 +336,8 @@ function _fit_two_structured_gaussian(fam::Gaussian, y, Xμ, gidx1, G1, C1, gidx
         Dict(Symbol(grp1) => a1, Symbol(grp2) => a2)
     end
     _flag_blup_unavailable!(scales, blup)
+    haskey(scales, :cond_blup_unavailable) ||
+        _record_cond_fit!(scales, Z1 * blup[Symbol(grp1)] .+ Z2 * blup[Symbol(grp2)])   # fitted-row modes for `fitted(fit)`
     return _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n,
         drm_optim_converged(res), means, obs, scales), nll), blup)
 end
@@ -431,6 +433,8 @@ function _fit_phylo_slope_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, C, xs, n
         Dict(Symbol(grp) => a, Symbol("$(grp):$(var)") => b)
     end
     _flag_blup_unavailable!(scales, blup)
+    haskey(scales, :cond_blup_unavailable) ||
+        _record_cond_fit!(scales, Z * blup[Symbol(grp)] .+ Zx * blup[Symbol("$(grp):$(var)")])   # fitted-row modes for `fitted(fit)`
     fit = DrmFit(fam, blocks, names, θ̂, Vθ, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales)
     fit = _withranef(_withnll(fit, nll), blup)
     reml && return _withreml(fit, -nll_reml(θ̂), -nll(θ̂))
@@ -511,6 +515,7 @@ function _fit_structured_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ,
     obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
     # Conditional estimates (BLUPs) at θ̂: û_k = σ_k² K_k Z_kᵀ V⁻¹ r.
+    eta_rows = zeros(n)
     blup = let
         βμ = θ̂[1:pμ]; βσ = θ̂[(pμ+1):(pμ+pσ)]
         Vh = zeros(n, n)
@@ -527,11 +532,14 @@ function _fit_structured_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, comps, nmμ,
             σk² = exp(2 * θ̂[pμ+pσ+k])
             ZtVr = Zs[k]' * Vinvr
             K = comps[k][4]
-            out[Symbol(labels[k])] = K === nothing ? σk² .* ZtVr : σk² .* (K * ZtVr)
+            uk = K === nothing ? σk² .* ZtVr : σk² .* (K * ZtVr)
+            out[Symbol(labels[k])] = uk
+            eta_rows .+= Zs[k] * uk            # fitted-row modes (labels can repeat, so summed here)
         end
         out
     end
     _flag_blup_unavailable!(scales, blup)
+    haskey(scales, :cond_blup_unavailable) || _record_cond_fit!(scales, eta_rows)   # for `fitted(fit)`
     fit = DrmFit(fam, blocks, names, θ̂, Vθ, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales)
     return _withranef(_withnll(fit, nll), blup)
 end

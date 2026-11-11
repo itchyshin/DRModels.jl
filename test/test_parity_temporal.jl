@@ -41,18 +41,10 @@ include(joinpath(@__DIR__, "parity", "temporal_parity.jl"))
             for r in rows
                 @test r.pass
             end
-            # Article cells: drmTMB's CONDITIONAL fitted values (all rows).
-            # DRModels' fitted() is population-level, so add the modes back.
+            # Article cells: drmTMB's CONDITIONAL fitted values (all rows). DRModels'
+            # fitted() is conditional by default, so it is compared directly.
             if haskey(ex, "conditional")
-                g = ex["fit"]["group"]
-                ids = temporal_parity_data(ex["fit"]["data_file"]; group = g,
-                    time = _temporal_time_column(ex["fit"]["julia_formula"]),
-                    structure = ex["fit"]["structure"])[Symbol(g)]
-                re = ranef(fit)
-                cond = fitted(fit) .+ re[Symbol(g)]
-                for k in (Symbol("$(g)_iid"), Symbol("$(g)_phylo"))   # per-series modes
-                    haskey(re, k) && (cond = cond .+ re[k][indexin(ids, unique(ids))])
-                end
+                cond = fitted(fit)
                 ref = Float64.(ex["conditional"]["fitted"])
                 @test length(ref) == length(cond)
                 @test maximum(abs.(cond .- ref)) <= 1e-6
