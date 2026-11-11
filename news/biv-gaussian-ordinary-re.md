@@ -1,7 +1,8 @@
 - **Bivariate Gaussian with an ordinary correlated random intercept.**
   `bf(mu1 = y1 ~ x1 + (1 | p | g), mu2 = y2 ~ x2 + (1 | p | g), ...)` with
   `Gaussian()` now fits a 2x2 group-level covariance (two SDs and a group
-  correlation, reported in the `:phylocov` log-Cholesky block and
+  correlation, reported in the `:groupcov` log-Cholesky block (not `:phylocov`, which stays on the
+  phylogenetic routes) and
   `fit.ranef.Sigma_g`), kept separate from the residual `rho12`. mu1 and mu2
   may have different fixed-effect designs; `sigma1`, `sigma2` and `rho12` may
   have covariates; `method = :REML` is supported; rows with a missing response

@@ -29,8 +29,14 @@
 # Coefficient names of the 2x2 group covariance (log-Cholesky). `Sigma_g`, not `Sigma_a`:
 # `Sigma_a` belongs to the structured (phylo / relmat / animal / spatial) routes, and the
 # bridge and bootstrap code keys on it; keeping the names apart stops this fit being read as one.
-# The block itself stays `:phylocov` because the shared accessors (predict, confint, summary)
-# already treat that block as a group-covariance Cholesky block.
+# The block is named by `_BIV_RE_GROUP_BLOCK` (below), not `:phylocov`: nothing here is
+# phylogenetic, and `:phylocov` stays the name on the truly phylogenetic bivariate routes.
+
+# THE ONE PLACE that names the group-covariance coefficient block of this route (owner answer P15 = b,
+# 10 Nov 2026: rename on this route only; the name was left to the lane). To rename, edit this line.
+# `:recov` was not reused: on the univariate routes it holds [logL11, logL22, L21] named "g:L11" and
+# the shared extractors (vc, ranef, profile, simulate) parse it in that layout, not this one.
+const _BIV_RE_GROUP_BLOCK = :groupcov
 _biv_re_group_names() = ["Sigma_g:L11", "Sigma_g:L21", "Sigma_g:L22"]
 
 # Pull one `(1 | tag | group)` term out of mu1 and mu2. Returns `(rhs', spec)` with
@@ -191,9 +197,9 @@ function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data,
     end
 
     blocks = [:mu1 => rng(1), :mu2 => rng(2), :sigma1 => rng(3), :sigma2 => rng(4),
-              :rho12 => rng(5), :phylocov => (offs[end]+1):(offs[end]+3)]
+              :rho12 => rng(5), _BIV_RE_GROUP_BLOCK => (offs[end]+1):(offs[end]+3)]
     names = [:mu1 => nm1, :mu2 => nm2, :sigma1 => nms1, :sigma2 => nms2, :rho12 => nmr,
-             :phylocov => _biv_re_group_names()]
+             _BIV_RE_GROUP_BLOCK => _biv_re_group_names()]
     means = Dict(:mu1 => X1 * θb[1:p1], :mu2 => X2 * θb[(p1+1):pβ])
     obs = Dict(:mu1 => Vector{Float64}(y1), :mu2 => Vector{Float64}(y2))
     scales = Dict(:sigma1 => exp.(ls1), :sigma2 => exp.(ls2), :rho12 => ρv)

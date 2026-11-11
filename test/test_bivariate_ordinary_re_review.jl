@@ -44,7 +44,7 @@ using StableRNGs, Statistics
         @testset "naming: Sigma_g in code, names and ranef" begin
             @test haskey(fit.ranef, :Sigma_g)
             @test !haskey(fit.ranef, :Sigma_a)
-            @test Dict(fit.coefnames)[:phylocov] == ["Sigma_g:L11", "Sigma_g:L21", "Sigma_g:L22"]
+            @test Dict(fit.coefnames)[DRModels._BIV_RE_GROUP_BLOCK] == ["Sigma_g:L11", "Sigma_g:L21", "Sigma_g:L22"]
         end
 
         @testset "residuals are marginal (y - X b), not conditional on BLUPs" begin
@@ -137,7 +137,7 @@ using StableRNGs, Statistics
             @test 0.65 <= ratio <= 1.5
             # the group-SD coefficient must actually vary across refits (it collapsed
             # to a constant boundary value under the dropped-effect fallback)
-            lrow = first(r for r in br.summary if r.param === :phylocov && endswith(r.coef, "L11"))
+            lrow = first(r for r in br.summary if r.param === DRModels._BIV_RE_GROUP_BLOCK && endswith(r.coef, "L11"))
             @test lrow.std_error < 3.0 && lrow.upper - lrow.lower > 0.1
             # a missing-response row is dropped by the fit, so the data no longer line
             # up with the fit: refuse (never fall back to the group-free draw)
