@@ -2474,7 +2474,10 @@ function _fit_binomial_sd_regression(fam::Binomial, s, ntr, Xmu, Zgs, nmsds,
     pbar = clamp(sum(s) / max(sum(ntr), 1), 1e-3, 1 - 1e-3)
     theta0[1] = _binomial_start(fam, pbar)
     for j in 1:q
-        if is_constant[j]
+        # An intercept-only SD design (`sd(g, coef(x)) ~ 1`) starts at exactly the constant-SD
+        # value: `ones \ fill(log(0.5), G)` is one ulp off `log(0.5)`, and that ulp alone sent the
+        # q = 3 correlated fit down a different path from the bare `(1 + x1 + x2 | g)` spelling.
+        if is_constant[j] || (size(Zgs[j], 2) == 1 && all(isone, Zgs[j]))
             theta0[sd_ranges[j]] .= log(0.5)
         else
             theta0[sd_ranges[j]] .= Zgs[j] \ fill(log(0.5), G)

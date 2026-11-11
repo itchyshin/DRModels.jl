@@ -1,5 +1,10 @@
+using SpecialFunctions: loggamma
+
+"Supertype of supported distributional-model prior specifications."
+abstract type AbstractDrmPrior end
+
 "A normal or ridge penalty on coefficients of one distributional predictor."
-struct FixedPrior
+struct FixedPrior <: AbstractDrmPrior
     kind::Symbol
     dpar::Symbol
     coef::String
@@ -8,6 +13,45 @@ struct FixedPrior
     precision::Float64
     constant::Float64
 end
+
+"A Gamma density with respect to a named random-intercept SD."
+struct SDGammaPrior <: AbstractDrmPrior
+    dpar::Symbol
+    group::String
+    coef::String
+    shape::Float64
+    rate::Float64
+end
+
+"""`drm_prior_sd_gamma(; dpar, group, coef="(Intercept)", shape, rate)` specifies a Gamma density on the natural random-intercept SD (shape > 1, rate > 0)."""
+function drm_prior_sd_gamma(; dpar, group, coef="(Intercept)", shape, rate)
+    d = Symbol(dpar); g = String(group); c = String(coef)
+    d === :mu || throw(ArgumentError("SD Gamma prior requires dpar=mu"))
+    isempty(g) && throw(ArgumentError("SD Gamma prior requires an exact group name"))
+    c == "(Intercept)" || throw(ArgumentError("SD Gamma prior supports only coefficient (Intercept)"))
+    shape isa Real && isfinite(shape) && shape > 1 || throw(ArgumentError("SD Gamma prior shape must be finite and greater than 1"))
+    rate isa Real && isfinite(rate) && rate > 0 || throw(ArgumentError("SD Gamma prior rate must be finite and positive"))
+    a = Float64(shape); b = Float64(rate)
+    isfinite(a) && isfinite(b) && a > 1 && b > 0 || throw(ArgumentError("SD Gamma prior parameters are outside the representable range"))
+    return SDGammaPrior(d, g, c, a, b)
+end
+
+function _resolve_sd_prior(priors, grp, index)
+    sds = filter(p -> p isa SDGammaPrior, priors)
+    isempty(sds) && return nothing
+    length(sds) == 1 || throw(ArgumentError("duplicate or ambiguous SD Gamma priors"))
+    p = only(sds)
+    p.dpar === :mu || throw(ArgumentError("SD Gamma prior requires dpar=mu"))
+    p.coef == "(Intercept)" || throw(ArgumentError("SD Gamma prior supports only coefficient (Intercept)"))
+    isempty(p.group) && throw(ArgumentError("SD Gamma prior requires an exact group name"))
+    isfinite(p.shape) && p.shape > 1 || throw(ArgumentError("SD Gamma prior shape must be finite and greater than 1"))
+    isfinite(p.rate) && p.rate > 0 || throw(ArgumentError("SD Gamma prior rate must be finite and positive"))
+    grp !== nothing && p.group == String(grp) || throw(ArgumentError("SD Gamma prior group $(p.group) does not match the unique Gaussian mean random intercept"))
+    return (class=:random_effect_sd, dpar=:mu, group=p.group, block=:iid_intercept,
+            coef=p.coef, scale=:sd, shape=p.shape, rate=p.rate, index=index)
+end
+
+_sd_prior_value(row, theta) = row.rate * exp(theta[row.index]) - (row.shape - 1) * theta[row.index] - row.shape * log(row.rate) + loggamma(row.shape)
 
 function _fixed_prior(kind, dpar, coef, intercept, mean, precision, constant)
     d = Symbol(dpar); c = String(coef)
@@ -36,8 +80,9 @@ function drm_prior_ridge(; dpar, coef, lambda, intercept=nothing)
     _fixed_prior(:ridge, dpar, coef, intercept, 0, lambda, 0)
 end
 
-"""`drm_priors(p...)` collects fixed-effect priors for `drm(...; priors=...)`."""
+"""`drm_priors(p...)` collects fixed-effect and supported random-effect SD priors for `drm(...; priors=...)`."""
 drm_priors(p::FixedPrior...) = collect(p)
+drm_priors(p::AbstractDrmPrior...) = collect(p)
 
 function _resolve_fixed_priors(priors, names, intercepts)
     priors isa AbstractVector{<:FixedPrior} || throw(ArgumentError("priors must be created by drm_priors"))
@@ -77,6 +122,17 @@ function _fixed_intercept_index(f, dpar, rhs, names; cache=f.schema_cache)
     return i
 end
 
+function _reject_sd_missing_predictors(f, data, priors)
+    any(p -> p isa SDGammaPrior, priors) || return nothing
+    Tables.istable(data) || return nothing
+    cols = Tables.columntable(data)
+    for c in _predictor_columns(f)
+        haskey(cols, c) && any(ismissing, cols[c]) &&
+            throw(ArgumentError("SD priors require complete predictors (missing in $c)"))
+    end
+    return nothing
+end
+
 """
     resolve_priors(formula, family; data, priors)
 
@@ -92,20 +148,24 @@ function resolve_priors(f, fam; data, priors)
     isempty(_sd_parts(f)) && isempty(_sdphylo_parts(f)) || throw(ArgumentError("resolve_priors does not support SD formulas"))
     for response in _formula_responses(f)
         response === nothing && continue
+        any(p -> p isa SDGammaPrior, priors) && any(ismissing, _table_column(data, response)) && throw(ArgumentError("SD priors require complete responses"))
         all(_observed_response_mask(_table_column(data, response))) || throw(ArgumentError("resolve_priors requires complete responses"))
     end
+    _reject_sd_missing_predictors(f, data, priors)
     dat = fam isa Gaussian ? _drop_missing_predictor_rows(f, data) : data
     length(_table_column(dat, f.response)) == length(_table_column(data, f.response)) ||
         throw(ArgumentError("resolve_priors requires complete predictors"))
     forms = Dict(f.forms); dpars = fam isa Gaussian ? (:mu, :sigma) : (:mu,)
     names = Pair{Symbol,Vector{String}}[]; intercepts = Dict{Symbol,Union{Nothing,Int}}()
     cache = Ref(Dict{Symbol,Any}())
+    sd_group = nothing
     for d in dpars
         rhs, re, meta, structured, structured_slope, temporal_term, structured_sd_slope = _split_ranef(forms[d]; allow_temporal=true)
         allowed_re = fam isa Gaussian && d === :mu && length(re) == 1 && _re_kind(first(re)[1])[1] === :intercept
         (isempty(re) || allowed_re) && meta === nothing && structured === nothing && structured_slope === nothing && temporal_term === nothing && structured_sd_slope === nothing || throw(ArgumentError("resolve_priors supports only one Gaussian mean random intercept"))
         if allowed_re
             grp = first(re)[2]
+            sd_group = grp
             _group_index(_table_column(dat, grp); col=grp)
         end
         rhs, _ = _extract_offset(rhs)
@@ -114,5 +174,9 @@ function resolve_priors(f, fam; data, priors)
         push!(names, d => nms)
         intercepts[d] = _fixed_intercept_index(f, d, rhs, nms; cache=cache)
     end
-    _resolve_fixed_priors(priors, names, intercepts)
+    priors isa AbstractVector && all(p -> p isa Union{FixedPrior,SDGammaPrior}, priors) || throw(ArgumentError("priors must be created by drm_priors"))
+    fixed = FixedPrior[p for p in priors if p isa FixedPrior]
+    rows = _resolve_fixed_priors(fixed, names, intercepts)
+    sd = _resolve_sd_prior(priors, sd_group, sum(length(last(n)) for n in names) + 1)
+    sd === nothing ? rows : vcat(rows, [sd])
 end
