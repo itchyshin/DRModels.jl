@@ -2720,7 +2720,7 @@ end
 
 Model residuals. `type` selects the kind:
 
-- `:response` (default) — raw response residuals, `y − fitted(fit; re)` on the used
+- `:response` (default): raw response residuals, `y − fitted(fit; re)` on the used
   rows, so `residuals(fit)` has the length and the random-effect level of
   [`fitted`](@ref): with the default `re = :conditional` the fitted random-effect modes
   are removed (as drmTMB's `residuals()` does), and `re = :zero` gives the population-level
