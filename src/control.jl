@@ -267,12 +267,53 @@ function _ctl_simple_gaussian_re(f, fam)
     end
 end
 
+# Latent-term shapes whose fitter reads prior `weights` (#1219, drmTMB row log-likelihood
+# multipliers): a Gaussian or Poisson mean with ONE ordinary random intercept `(1 | g)`, and a
+# Gaussian mean with `meta_V(v)`; every other axis fixed-effect only. Anything else keeps the
+# refusal below. Each admitted fitter calls `_ctl_weights`, and `_ctl_finish` still refuses a
+# fit that did not read them.
+function _ctl_weights_latent_ok(f, fam)
+    if f isa BivariateDrmFormula          # residual-only bivariate Gaussian: no latent term anywhere
+        fam isa Gaussian || return false
+        try
+            for (_, rhs) in f.forms
+                _, re, mv, st = _split_ranef(rhs; allow_phylo_slope = true, allow_temporal = true)
+                (isempty(re) && mv === nothing && st === nothing) || return false
+            end
+            return true
+        catch
+            return false
+        end
+    end
+    f isa DrmFormula && (fam isa Gaussian || fam isa Poisson) || return false
+    try
+        isempty(_sd_parts(f)) && isempty(_sdphylo_parts(f)) || return false
+        for (axis, rhs) in f.forms
+            _, re, mv, st = _split_ranef(rhs; allow_phylo_slope = true, allow_temporal = true)
+            st === nothing || return false
+            if axis === :mu
+                if mv !== nothing
+                    fam isa Gaussian && isempty(re) || return false
+                else
+                    length(re) == 1 && _re_kind(re[1][1])[1] === :intercept || return false
+                end
+            else
+                (isempty(re) && mv === nothing) || return false
+            end
+        end
+        return true
+    catch
+        return false
+    end
+end
+
 function _ctl_preflight(scope::_ControlScope, f, fam)
     c = scope.control
     wants_optim = _ctl_optim_requested(c)
     wants_w = scope.weights !== nothing
     (wants_optim || wants_w) || return nothing
     _ctl_has_latent_terms(f) || return nothing
+    wants_w && !wants_optim && _ctl_weights_latent_ok(f, fam) && return nothing
     if c.optimizer !== :default && !wants_w && c.maxit === nothing &&
        c.start === nothing && c.multi_start == 1 && c.seed == 1 && c.jitter == 0.5 &&
        _ctl_simple_gaussian_re(f, fam)
@@ -289,12 +330,27 @@ function _ctl_preflight(scope::_ControlScope, f, fam)
     wants_w && push!(what, "`weights`")
     kind = f isa DrmFormula ? "a model with random, structured, `meta_V` or `sd()` terms" :
                               "a bivariate or multi-response model"
+    meta_mix = ""
+    if wants_w && f isa DrmFormula && fam isa Gaussian
+        try
+            for (axis, rhs) in f.forms
+                axis === :mu || continue
+                _, re_mu, mv_mu, st_mu = _split_ranef(rhs; allow_phylo_slope = true, allow_temporal = true)
+                (mv_mu !== nothing && (!isempty(re_mu) || st_mu !== nothing)) &&
+                (meta_mix = " `weights` together with `meta_V(...)` and a random effect on the mean is not " *
+                            "supported (drmTMB fits it, but no Julia implementation is checked against it). " *
+                            "Try `meta_V(...)` with `weights` and no random effect (ML or `method = :REML`), " *
+                            "or drop `weights`.")
+            end
+        catch
+        end
+    end
     throw(ArgumentError("drm: " * join(what, " and ") * " is supported only on the " *
         "fixed-effect routes of univariate families for now (#948, #994, #931). This is " *
         kind * " ($(typeof(fam))), so the fit was refused before it started, not run " *
         "with the field ignored. drmTMB's `drm_control(multi_start =)` does accept these " *
         "fields on mixed models; the gap here is tracked in #1219. " *
-        "`control = DRMControl(se = false)` works on every route."))
+        "`control = DRMControl(se = false)` works on every route." * meta_mix))
 end
 
 # ---------------------------------------------------------------------------
@@ -628,6 +684,14 @@ function _ctl_weights(n::Integer; supported::Bool = true, route::AbstractString 
         "the model uses $n rows. Give one weight per row of `data`."))
     s.used_weights = true
     return w
+end
+
+# `_ctl_weights`, but `nothing` (not `ones(n)`) when the user gave no weights, for the
+# routes whose unweighted arithmetic must stay byte-for-byte what it was.
+function _ctl_weights_or_nothing(n::Integer)
+    s = _active_control_scope()
+    (s === nothing || s.weights === nothing) && return nothing
+    return _ctl_weights(n)
 end
 
 # ---------------------------------------------------------------------------
