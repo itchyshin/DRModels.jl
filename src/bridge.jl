@@ -660,6 +660,15 @@ function _bridge_fit(bundle, fam, data; tree, K, A, Ainv = nothing,
     if haskey(options, :q4_vcov)
         kwargs[:q4_vcov] = Bool(options[:q4_vcov])
     end
+    # The R wrapper applies drmTMB's `miss_control(response = "drop")` itself: with the
+    # default it removes incomplete rows before marshalling, so any row that arrives here
+    # with a missing response was kept on purpose (`response = "include"`). Native `drm`
+    # now defaults a bivariate fit to the same "drop", so the bridge asks for "include"
+    # to leave the rows R sent untouched.
+    if bundle isa BivariateDrmFormula && (fam isa Gaussian || fam isa LogNormal || fam isa Student) &&
+       !haskey(kwargs, :missing)
+        kwargs[:missing] = miss_control(response = "include")
+    end
     # Error text only (nothing is added, dropped or defaulted): `drm` hands its kwargs
     # on to a family-specific fitter, so an option that fitter does not accept
     # surfaces as a bare MethodError. Name the offending option(s) instead, using
@@ -3138,7 +3147,7 @@ values unchanged for every fit except a zero-inflated count fit, whose mean is
 replaced by drmTMB's unconditional one (below).
 
 **Not drmTMB's values for every fit.** DRModels.jl's `fitted` is population
-level (`Xβ̂` on the response scale) for every model. drmTMB's `fitted()`, and
+level (`Xβ̂`, mapped to E[Y] since #1282) for every model. drmTMB's `fitted()`, and
 so its response residuals, adds the fitted modes whenever the mean has a
 random or structured effect: ordinary random effects, phylogenetic and
 covariance-block effects, and AR1 / OU `temporal()` paths (drmTMB 07d1612ea,
@@ -3150,7 +3159,8 @@ exception only in what else the payload carries: it also holds
 `conditional_structured` (`_attach_conditional_structured!`), from which drmTMB
 rebuilds the conditional mean; these two slots stay population level.
 
-DRModels.jl's `fitted(fit)` is `means[:mu]`, and for a zero-inflated Poisson or NB2
+DRModels.jl's `fit.means[:mu]` (which `fitted(fit)` returned before #1282; `fitted`
+now returns the mean E[Y], see below), and for a zero-inflated Poisson or NB2
 fit that slot deliberately holds the COUNT-COMPONENT mean `exp(Xmu*betahat)`,
 because `simulate`, `marginal_parameters` and [`_bridge_dpars`](@ref) all read
 the component mean from it. drmTMB's `fitted()` for `zi_poisson`/`zi_nbinom2`
@@ -3169,8 +3179,9 @@ bridge's `1.45376964, 1.21616037, 2.56362484` -- max absolute disagreement
 coefficient or likelihood check can see.
 
 Repaired HERE, on the bridge boundary, rather than in `means[:mu]`: DRModels.jl's
-own `fitted`, `residuals`, `simulate`, `marginal_parameters` and dpar table
-keep the component mean they are built on, and only drmTMB's contract surface
+`fit.means[:mu]`, `simulate`, `marginal_parameters` and dpar table keep the
+component mean they are built on (`fitted` and `residuals` are E[Y] and
+`y - E[Y]` since #1282, and the bridge reads `means[:mu]` directly), and only drmTMB's contract surface
 changes. Same shape as the `zero_one_beta` override in
 [`_bridge_dpars`](@ref).
 
@@ -3182,13 +3193,17 @@ deliberately NOT repaired here: drmTMB's hurdle mean divides by `1 - P(0)` as
 well as scaling, and that route carries no bridge parity receipt yet.
 """
 function _bridge_fitted_marginal(fit::DrmFit)
-    fit_vals = fitted(fit)
+    # Built on the stored component mean, not `fitted(fit)`: `fitted` is E[Y] for
+    # the LogNormal, zero-inflated, hurdle and truncated fits, and the repair
+    # below (and the unrepaired fall-through) is the bridge's own contract.
+    haskey(fit.means, :mu) || return (fitted(fit), residuals(fit))
+    fit_vals = fit.means[:mu]
     fit_vals isa AbstractVector || return (fit_vals, residuals(fit))
-    (haskey(fit.scales, :zi) && haskey(fit.obs, :mu)) ||
-        return (fit_vals, residuals(fit))
+    plain_resid = fit.obs[:mu] .- fit_vals
+    (haskey(fit.scales, :zi) && haskey(fit.obs, :mu)) || return (fit_vals, plain_resid)
     pz = collect(float.(fit.scales[:zi]))
     mu = collect(float.(fit_vals))
-    length(pz) == length(mu) || return (fit_vals, residuals(fit))
+    length(pz) == length(mu) || return (fit_vals, plain_resid)
     marginal = (1 .- pz) .* mu
     return (marginal, collect(float.(fit.obs[:mu])) .- marginal)
 end

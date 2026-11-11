@@ -1,0 +1,13 @@
+class	wave8	wave10
+both-fit-agree	260	357
+both-fit-disagree	54	55
+R-only	107	10
+Julia-only	43	83
+both-refuse	2538	2498
+crash-Julia	0	0
+crash-R	0	0
+nonconverged	5	4
+inconclusive	1	1
+Julia fits	357	495
+R fits	427	427
+total	3008	3008

@@ -154,9 +154,14 @@ end
         @test fl.theta ≈ fu.theta atol = 2e-3
     end
 
-    @testset "refusals stay explicit" begin
+    @testset "refusals stay explicit; one SD formula is accepted (Julia against Julia, no R reference)" begin
         one_sd = bf(@formula(yp ~ x + (1 + x | p | g)), @formula(sd(g, coef(intercept)) ~ z0))
-        @test_throws ArgumentError drm(one_sd, Poisson(); data, se = false)
+        # One SD formula is accepted since the non-Gaussian correlated-block change: the other
+        # coefficient keeps a constant SD (the explicit `~ 1` form is the same model).
+        both = bf(@formula(yp ~ x + (1 + x | p | g)), @formula(sd(g, coef(intercept)) ~ z0),
+                  @formula(sd(g, coef(x)) ~ 1))
+        @test loglikelihood(drm(one_sd, Poisson(); data, se = false)) ≈
+              loglikelihood(drm(both, Poisson(); data, se = false)) atol = 1e-6
         @test_throws ArgumentError drm(_lord_formula(:yp, Poisson()), Poisson();
                                        data, A = Aid, se = false)
         # Gamma ordinary correlated slopes stay refused (native drmTMB refuses them too).

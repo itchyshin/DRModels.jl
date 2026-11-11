@@ -254,6 +254,25 @@ function _binomial_label_inputs(f::DrmFormula, data, A, Ainv, coords, ids)
     return A, coords
 end
 
+# A bare correlated block of three or four coefficients, `(1 + x + z [+ w] | g)`, with no
+# `sd()` formula. drmTMB fits it as the correlated model with one constant SD per
+# coefficient, which is the SD-regression route with every coefficient SD left at its
+# default `~ 1`; the q = 2 block `(1 + x | g)` keeps its own two-dimensional route.
+function _binomial_bare_corr_block(f::DrmFormula, fam::Binomial)
+    fam.link === :logit || return false
+    all(p -> first(p) in (:mu, :sigma), f.forms) || return false
+    mu = get(Dict(f.forms), :mu, nothing)
+    mu === nothing && return false
+    try
+        _, re, mv, st = _split_ranef(mu)
+        mv === nothing && st === nothing && length(re) == 1 || return false
+        vars = _re_multi_corr_vars(re[1][1])
+        return vars !== nothing && length(vars) >= 2
+    catch
+        return false
+    end
+end
+
 # Outside SD-regression routes, Binomial admits `phylo` alone among the
 # structured markers. `relmat` is currently supported for the structured SD
 # regression route below, not for a general Binomial random-effect fit. Without
@@ -269,6 +288,7 @@ function _drm_binomial_fit(f::DrmFormula, fam::Binomial; data, tree = nothing,
              se::Bool = true, marginal::Symbol = :LA, method = nothing,
              nq::Int = _BINOMIAL_RANEF_AGHQ_K, priors = nothing, ids = nothing)
     f = _default_structured_q2_sd(f, fam)   # bare structured (1 + x | g): default `sd(…, coef(·)) ~ 1`
+    f = _default_structured_q1_sd(f, fam; method, K, coords)   # bare structured (1 | g): default `sd(g, kind) ~ 1`
     _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, Ainv = Ainv, coords = coords)   # #1027 #1022 #1010
     A, coords = _binomial_label_inputs(f, data, A, Ainv, coords, ids)   # red team: `ids = …` as on the other families
     if priors !== nothing
@@ -285,7 +305,8 @@ function _drm_binomial_fit(f::DrmFormula, fam::Binomial; data, tree = nothing,
     nq >= 1 || throw(ArgumentError("Binomial `nq` must be ≥ 1; got $nq"))
     fam.link !== :logit && marginal === :VA && throw(ArgumentError(
         "Binomial links other than :logit are not available with `marginal = :VA`."))
-    if !isempty(_sd_parts(f)) || !isempty(_sdphylo_parts(f))
+    if !isempty(_sd_parts(f)) || !isempty(_sdphylo_parts(f)) ||
+       (priors === nothing && marginal === :LA && _binomial_bare_corr_block(f, fam))
         return _drm_binomial_sd_regression(f, fam; data, tree, tree1, tree2,
             K, A, Ainv, coords, mesh, g_tol, se, marginal, method, nq)
     end
@@ -352,8 +373,17 @@ function _drm_binomial_fit(f::DrmFormula, fam::Binomial; data, tree = nothing,
             isva && _va_reject(fam, "crossed/multiple random intercepts")
             fam.link === :logit || throw(ArgumentError(
                 "Binomial links other than :logit are not yet supported for crossed random intercepts."))
+            if _has_indep_slopes(re)
+                isaghq && _aghq_reject(fam, "independent random slopes `(0 + x | g)` (Laplace only)")
+                return _withformula(_fit_indep_re_laplace(fam, Val(:binomial),
+                                                          collect(zip(s, ntr)), Xμ, nothing, nothing,
+                                                          _indep_slope_comps(re, data, length(s)),
+                                                          nmμ, String[], String[], g_tol), f)
+            end
             all(_re_kind(r[1])[1] === :intercept for r in re) ||
-                error("Binomial() supports multiple random effects only as crossed/nested intercepts, e.g. `(1 | g) + (1 | h)`")
+                error("Binomial() supports multiple random effects only as crossed/nested intercepts " *
+                      "`(1 | g) + (1 | h)` or independent intercepts and slopes `(1 | g) + (0 + x | g)`; " *
+                      "a correlated `(1 + x | g)` must be the only random-effect term")
             comps = map(re) do r
                 grp = r[2]; gidx, G = _group_index(getproperty(data, grp); col = grp)
                 (ones(length(s)), gidx, G, String(grp))
@@ -374,9 +404,18 @@ function _drm_binomial_fit(f::DrmFormula, fam::Binomial; data, tree = nothing,
             _binomial_check_slope_identifiable(xs, gidx, G, grp)
             return _withformula(_fit_binomial_corr_ranef(
                 fam, s, ntr, Xμ, xs, gidx, G, nmμ, grp, g_tol; nq = nq), f)
-        else
+        elseif rk === :slope                              # (0 + x | g) → TMB-convention Laplace (independent route)
             isva && _va_reject(fam, "an independent random slope `(0 + x | g)`")
-            error("Binomial() supports `(1 | g)` or `(1 + x | g)` on the mean")
+            isaghq && _aghq_reject(fam, "an independent random slope `(0 + x | g)` (Laplace only)")
+            fam.link === :logit || throw(ArgumentError(
+                "Binomial links other than :logit are not yet supported for independent random slopes."))
+            _require_finite_data_column(data, var)
+            return _withformula(_fit_indep_re_laplace(fam, Val(:binomial),
+                                                      collect(zip(s, ntr)), Xμ, nothing, nothing,
+                                                      _indep_slope_comps(re, data, length(s)),
+                                                      nmμ, String[], String[], g_tol), f)
+        else
+            error("Binomial() supports `(1 | g)`, `(0 + x | g)` or `(1 + x | g)` on the mean")
         end
     end
     isva && _va_reject(fam, "no random intercept (fixed-effects-only)")

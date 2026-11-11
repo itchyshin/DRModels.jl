@@ -136,6 +136,29 @@ function _cumulative_cut_init(y, K, n)
     return δ0
 end
 
+# drmTMB does not read a character response: it refuses a character response and an
+# unordered factor, and asks for an ordered factor or integer category scores. Here a
+# string or symbol response is a Julia-side convenience, recoded in sorted label order
+# to the integer codes 1..K the
+# route fits (gap map v2: `y ~ x1` with labels "o1".."o4" died with
+# `Float64(::String)`). Numeric codes pass through; any other element type is refused.
+function _cumulative_label_response(f::DrmFormula, data)
+    col = _maybe_table_column(data, f.response)
+    col isa AbstractVector || return data
+    all(x -> ismissing(x) || x isa Real, col) && return data
+    all(x -> ismissing(x) || x isa Union{AbstractString,Symbol}, col) || throw(ArgumentError(
+        "CumulativeLogit(): the response `$(f.response)` must be integer categories coded " *
+        "1, 2, …, K, or string/symbol labels that sort in category order; got element type " *
+        "$(nonmissingtype(eltype(col)))."))
+    labels = sort!(unique(string(x) for x in col if !ismissing(x)))
+    code = Dict(l => k for (k, l) in enumerate(labels))
+    @info "CumulativeLogit(): response `$(f.response)` has labels; coded 1..$(length(labels)) in " *
+          "sorted label order ($(join(labels, " < "))). Pass integer codes to choose another order."
+    coded = [ismissing(x) ? missing : code[string(x)] for x in col]
+    any(ismissing, coded) || (coded = Int.(coded))
+    return _replace_table_column(data, f.response, coded)
+end
+
 # #1303. `K = maximum(y)` would otherwise reserve a cutpoint for a code that
 # never occurs and drive that increment to −Inf, collapsing two thresholds.
 # drmTMB's `validate_ordinal_codes` refuses the same hole: every category in
@@ -178,6 +201,7 @@ end
 function _drm_cumulative_fit(f::DrmFormula, fam::CumulativeLogit; data, tree = nothing, g_tol::Real = 1e-8,
              se::Bool = true)
     _drm_entry_guard(f, fam, data; tree = tree)   # #1027 #1022 #1010
+    data = _cumulative_label_response(f, data)    # string/symbol labels -> codes 1..K
     # The response-mask wrapper rebuilds full-design outputs and does not yet
     # preserve this route's group-specific scale design. Refuse incomplete data
     # until that mapping is implemented rather than silently fitting a changed

@@ -1,0 +1,6 @@
+S	1	poisson|slope|lab0|q1|sd-none|cm0|ML
+R	1	poisson|slope|lab0|q1|sd-none|cm0|ML	FITS				-757.0855510932	true	se_finite=true;npar=5	21.03	
+S	2	poisson|slope|lab0|q1|sd-one|cm0|ML
+R	2	poisson|slope|lab0|q1|sd-one|cm0|ML	FITS				-757.2574566610	true	se_finite=true;npar=5	8.73	
+S	3	poisson|slope|lab0|q1|sd-z|cm0|ML
+R	3	poisson|slope|lab0|q1|sd-z|cm0|ML	FITS				-756.0997443546	true	se_finite=true;npar=6	8.60	

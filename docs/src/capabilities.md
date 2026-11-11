@@ -32,17 +32,17 @@ run separately.
 | Family | Mean-axis random effects | Status and boundary |
 |---|---|---|
 | Gaussian | intercepts, slopes, correlated, crossed, and structured effects | **Tested**; crossed fits are fast at moderate sizes but still slower than drmTMB at tens of thousands of rows (see [Working with large data](model-guides/large-data.md)) |
-| Student-t | intercepts and slopes | **Tested** |
+| Student-t | intercepts and slopes | **Tested**; independent `(1 \| g) + (0 + x \| g)` terms are checked against drmTMB 0.8.1 without `sd()` formulas; with `sd()` formulas they fit but drmTMB 0.8.1 errors on that shape, so there is no reference |
 | SkewNormal | — | **Tested** fixed effects; random effects are refused |
-| Poisson | intercepts, slopes, crossed, and phylogenetic effects | **Tested** |
-| NegBinomial2 | intercepts, slopes, crossed, and phylogenetic effects | **Tested**; dispersion cap on crossed and structured routes (see the note below the table) |
+| Poisson | intercepts, slopes, crossed, and phylogenetic effects | **Tested**; independent `(1 | g) + (0 + x | g)` terms (Laplace only; checked against drmTMB 0.8.1 on the committed gap-map data, `test/test_nongauss_indep_routes.jl`), with or without an `sd(g, coef(·)) ~ …` formula per term (the single-slope `sd()` cells still run the older quadrature routes and differ from drmTMB's Laplace logLik by up to 0.99); a correlated `(1 + x \| g)` block takes an `sd(g, coef(·))` formula on one or both coefficients (the other keeps a constant SD; logLik agrees with drmTMB 0.8.1 to 1e-9, `test/test_nongauss_corr_blocks.jl`) |
+| NegBinomial2 | intercepts, slopes, crossed, and phylogenetic effects | **Tested**; independent `(1 | g) + (0 + x | g)` terms (Laplace only; checked against drmTMB 0.8.1 on the committed gap-map data, `test/test_nongauss_indep_routes.jl`), with or without an `sd(g, coef(·)) ~ …` formula per term (the single-slope `sd()` cells still run the older quadrature routes and differ from drmTMB's Laplace logLik by up to 0.99); dispersion cap on crossed and structured routes (see the note below the table); an unlabelled correlated `(1 + x \| g)` block takes an SD formula on one coefficient as well as on both (logLik agrees with drmTMB 0.8.1 to 1e-9) |
 | TruncatedNegBinomial2 | — | **Tested** fixed effects |
 | TruncatedPoisson | — | **Tested** fixed effects |
-| Beta | intercepts, slopes, crossed, and phylogenetic effects | **Tested**; crossed random effects have numerical tests but no complete worked analysis; `sd(g, level) ~ z` is available on `phylo`, `relmat`, `animal` and `spatial` intercepts (`sigma ~ 1`) and on independent `(1 + x \| g)` blocks with one `sd(g, level, coef(·))` formula per coefficient (seven datasets checked against committed drmTMB 0.8.1 reference values in `test/fixtures/beta_structured_sd/r_reference.csv`; the phylo q1 dataset has the intercept SD at its lower bound, so its SD estimates are not compared); precision cap on crossed and structured routes (see the note below the table) |
+| Beta | intercepts, slopes, crossed, and phylogenetic effects | **Tested**; crossed random effects have numerical tests but no complete worked analysis; independent `(1 | g) + (0 + x | g)` terms (no `sd()` formula; drmTMB 0.8.1 errors with one); `sd(g, level) ~ z` is available on `phylo`, `relmat`, `animal` and `spatial` intercepts (`sigma ~ 1`) and on independent `(1 + x \| g)` blocks with one `sd(g, level, coef(·))` formula per coefficient (seven datasets checked against committed drmTMB 0.8.1 reference values in `test/fixtures/beta_structured_sd/r_reference.csv`; the phylo q1 dataset has the intercept SD at its lower bound, so its SD estimates are not compared); precision cap on crossed and structured routes (see the note below the table) |
 | BetaBinomial | intercepts, slopes, crossed, and phylogenetic effects | **Tested**; constant `sigma` only; precision cap on crossed and structured routes (see the note below the table) |
-| Binomial | intercepts, correlated slopes, crossed, and phylogenetic effects | **Tested**; correlated `(1 + x \| g)` is admitted; independent `(0 + x \| g)` is refused |
-| Gamma | intercepts, slopes, crossed, and phylogenetic effects | **Tested**; crossed random effects have numerical tests but no complete worked analysis; shape cap on crossed and structured routes (see the note below the table) |
-| LogNormal | intercepts, slopes, phylogenetic, and known-matrix effects | **Tested**; `animal` and coordinate-spatial effects are refused |
+| Binomial | intercepts, slopes, correlated slopes, crossed, and phylogenetic effects | **Tested**; correlated `(1 + x \| g)` is admitted; independent `(1 | g) + (0 + x | g)` terms (Laplace only; checked against drmTMB 0.8.1 on the committed gap-map data, `test/test_nongauss_indep_routes.jl`); an `sd()` formula on only some terms uses the same route (known bad cells: Binomial `sd-first` q = 2 and q = 4 stop 0.44 and 0.45 logLik below drmTMB with `converged = false`, and an `sd()` formula on every term, q = 2 to 4, differs from drmTMB by 0.03 to 0.99 logLik). A slope SD that goes to zero (the q = 4 cell) is a boundary, its SD criterion is waived, and drmTMB flags that cell itself; a bare q = 3 or 4 block `(1 + x + z [+ w] \| g)` is also admitted (logit; adaptive Gauss-Hermite, so its logLik is above drmTMB's Laplace value: q = 3 is 0.57 above, and a one-off `nq = 1` run gave a value equal to it to 1e-5, with `converged = false` and no test; the test pins Julia's own values; drmTMB's q = 4 fit is not converged) |
+| Gamma | intercepts, slopes, crossed, and phylogenetic effects | **Tested**; independent intercept and slope terms with an `sd()` formula per term (checked against drmTMB 0.8.1 for two terms; drmTMB errors on three or four, so those fits have no reference); crossed random effects have numerical tests but no complete worked analysis; shape cap on crossed and structured routes (see the note below the table) |
+| LogNormal | intercepts, slopes, phylogenetic, and known-matrix effects | **Tested**; independent `(1 \| g) + (0 + x \| g)` terms (exact Gaussian marginal of `log(y)`, agrees with drmTMB 0.8.1; the test asserts logLik within 1e-4, and the tighter gaps quoted in the design note come from `tools/nongauss_indep_compare.jl` output that is not committed); `animal` and coordinate-spatial effects are refused; a correlated `(1 + x \| g)` block takes SD formulas on one or both coefficients, q = 2 only (logLik agrees with drmTMB 0.8.1 to 1e-9) |
 | ZeroOneBeta | mean (`mu`) random intercepts, `(1 \| g)` | **Tested**; `sigma`, `zoi` and `coi` stay fixed-effects-only; `coi` is not identified unless the data have both exact 0s and exact 1s |
 | Tweedie | intercepts, independent slopes, and a single `phylo(1 \| g)` or `relmat(1 \| g)` mean intercept (optionally with `sd(g, level) ~ z`) | Checked against drmTMB 0.8.1 on 10 pre-registered fits (5 simulated datasets, `sd(g, level) ~ 1` and `~ z`): 9 of 10 agree (largest coefficient difference 5.6e-7), and the tenth (phylo, `sd ~ z`) is R's worse optimum, 2.7 log-likelihood units below Julia's; R's standard error for the bare-`sd` intercept came back non-finite in the comparison, so the standard-error check is incomplete. Structured slopes and structured `q >= 2` blocks are refused, as in drmTMB 0.8.1 |
 | CumulativeLogit (ordinal) | intercepts, independent slopes, and phylogenetic effects | **Tested** |
@@ -115,6 +115,8 @@ random effect: `sd(group) ~ z` or `sd(species, phylogenetic) ~ z`.
 | Correlated intercept and slope | **Tested** |
 | Multiple, crossed, or nested grouping factors | **Tested**; Gaussian crossed factors fit in about 0.3 s at 2,000 rows and 45 s at 20,000 rows on one synthetic design, still slower than drmTMB at tens of thousands of rows (see [Working with large data](model-guides/large-data.md)) |
 | Poisson crossed random effects | **Tested** with sparse Laplace integration |
+| Gaussian correlated 2-coefficient blocks beside random slope terms: `(1 + x \| g) + (0 + z \| h)`, two blocks `(1 + x \| g) + (1 + z \| h)`, a block beside `(1 \| h) + (0 + z \| h)`, with optional `sd(·, coef(·)) ~ …` formulas | **Tested** by exact dense maximum likelihood (ML only; 5,000-row cap) against drmTMB 0.8.1 at the optimum on 21 fits over three datasets. Refused by name: an `sd()` formula on a grouping that carries a block and another term (drmTMB refuses it), a 3- or 4-coefficient block beside a slope term (drmTMB's own fit does not converge), two blocks when either has 3 or more coefficients (not checked), two blocks on one grouping, and a label shared by two terms (drmTMB ignores it). |
+| Gaussian mean `sd(g) ~ …` with a `sigma` random intercept: independent `(1 \| g)` in `mu` and `sigma ~ 1 + (1 \| h)`, or the labelled pair `(1 \| p \| g)` in both | **Tested** by dense Laplace against drmTMB 0.8.1 (9 fits over three datasets, log-likelihood within 5e-9). ML only; `sigma` random slopes and REML are refused by name. |
 
 ### Structured random effects with a known relatedness matrix (closed-form Gaussian)
 
@@ -145,19 +147,34 @@ a raw covariance scale requires.
 
 ### Coordinate-spatial `spatial(1|site)` on non-Gaussian means
 
-Only Poisson estimates the spatial range, as the Gaussian route does. The other
-routes below fix the kernel at drmTMB's native `exp(-d / m) + 1e-6 I`, with `m`
+Only the Gaussian mean route estimates the spatial range. Every route below fixes
+the kernel at drmTMB's native `exp(-d / m) + 1e-6 I`, with `m`
 the median positive pairwise distance between sites, so the same data and
 formula give the same covariance as native drmTMB.
 
 | Family | Accepts | Status and boundary |
 |---|---|---|
-| Poisson | `coords`; range estimated on the Laplace route | **Tested** |
+| Poisson | `coords` (native kernel, range fixed); optional `method = :REML` | **Tested**; agrees with drmTMB 0.8.1 on the wave-10 cell: log-likelihood to 2e-9, fixed effects within 1e-5 R standard errors, log SD to 2e-7 (`test/test_spatial_parity_wave10.jl`). Before wave 10 this route estimated the range, which gave a log-likelihood 1.23 higher and a sixth parameter; with `sd(site, spatial) ~ z` the SD fit also agrees with drmTMB 0.8.1 (`test/test_struct_sd_counts.jl`) |
 | Gamma | `coords` (native kernel, 1-D vector allowed) or a supplied `K`, not both; with or without `sd(site, spatial) ~ z` | **Tested**; a `coords` fit equals the same fit with the native kernel passed as `K` (log-likelihoods agree to 1e-12 on one simulated dataset) |
-| NegBinomial2 | a supplied `K` on `spatial(1 \| site)`; `coords` only for a slope-only `spatial(0 + x \| site)` term with its `sd(...)` formula | **Tested**; `coords` on an intercept is refused |
-| Beta | a supplied `K` on `spatial(1 \| site)` (no SD formula); `coords` (native kernel) with `sd(site, spatial) ~ z` or the independent `spatial(1 + x \| site)` block with one `sd(site, spatial, coef(·))` formula per coefficient | **Tested**; `K` is refused when an SD formula is present, and `sigma ~ 1` is required |
-| Binomial | `coords` with an `sd(site, spatial)` formula only; a bare `spatial(1 \| site)` is refused | **Tested**; this route keeps the older fixed range (mean pairwise distance, 1e-8 ridge) because drmTMB has no Binomial spatial route |
+| NegBinomial2 | a supplied `K` on `spatial(1 \| site)`; `coords` (native kernel) with `sd(site, spatial) ~ z` on `spatial(1 \| site)` or on a slope-only `spatial(0 + x \| site)` term | **Tested**; the intercept SD fit agrees with drmTMB 0.8.1. A bare `spatial(1 \| site)` with `coords` and no SD formula is still refused; a supplied `K` together with an `sd()` formula is refused, and that message calls the route a slope route even for `spatial(1 \| site)` |
+| Beta | a supplied `K` on `spatial(1 \| site)` (no SD formula); `coords` (native kernel) on a bare `spatial(1 \| site)` or `spatial(1 + x \| site)` (completed with constant coefficient SDs, as drmTMB 0.8.1 fits them) or with `sd(site, spatial) ~ z` or the independent `spatial(1 + x \| site)` block with one `sd(site, spatial, coef(·))` formula per coefficient | **Tested**; `K` is refused when an SD formula is present, and `sigma ~ 1` is required |
+| Binomial | `coords` with an `sd(site, spatial)` formula, or a bare `spatial(1 \| site)` (completed to `sd(site, spatial) ~ 1`, as drmTMB 0.8.1 fits it; drmTMB flags that fit as not converged on the gap-map data) | **Tested**; this route keeps the older fixed range (mean pairwise distance, 1e-8 ridge) because drmTMB has no Binomial spatial route |
 | LogNormal, Tweedie | not accepted | `spatial` is refused by name |
+
+### Structured and positive-family SD cells added after the wave-10 gap map
+
+Each row was compared with drmTMB 0.8.1 on the committed 400-row gap-map datasets
+(`test/test_struct_sd_counts.jl`; log-likelihood to 1e-4, every coefficient to 1e-3 and 0.02 R-SE, SEs to 1%).
+
+| Cell | Route | Status and boundary |
+|---|---|---|
+| NegBinomial2 `phylo(1 \| g)` with `sd(g, phylogenetic) ~ z` | tip correlation of an ultrametric `tree`, dense Laplace; `sigma ~ 1` required | **Tested** |
+| Gamma `(1 \| g) + (0 + x \| g)` with one `sd(g, coef(.)) ~ z` formula | the other coefficient keeps a constant SD (the default `~ 1`); the two-field engine | **Tested** for Gamma only; Poisson and NB2 pairs are not covered here |
+| LogNormal `(1 \| g) + (1 \| h)` with `sd(g)` and `sd(h)` | log y is Gaussian: the Gaussian route plus the Jacobian | **Tested**; the labelled `(1 + x \| g)` pair with two coefficient SDs is reached the same way but is not checked against drmTMB (no committed R reference cell and no test covers it) |
+| Student `(1 \| g) + (1 \| h)` with `sd(g)` and `sd(h)` | crossed sparse Laplace with a log-SD regression per factor; `sigma ~ 1`, `nu ~ 1` required | **Tested** |
+| Binomial `relmat(1 + x \| g)` with coefficient SDs | refused | R does not converge on these cells (`is_converged()` is FALSE, an SD at -10.7), so they stay refused |
+
+NegBinomial2 `spatial(1 + x \| p \| site)` (the labelled, correlated intercept-and-slope block) with an `sd(site, spatial, coef(·)) ~ z` formula per coefficient has no drmTMB 0.8.1 counterpart (drmTMB refuses the labelled form). The fit starts from the default point and from four tilts of both SD blocks and keeps the best optimum, because the likelihood has a second interior mode that differs by the sign of the z coefficient of the intercept SD. The independent form `spatial(1 + x \| site)` is not restarted: it agrees with drmTMB, whose default start stops at the same value.
 
 ### Non-Gaussian phylogenetic random intercept on the mean (sparse Laplace)
 
@@ -296,6 +313,7 @@ above, and it does so by delegation rather than by a second engine.
 | Profile-likelihood CIs (`profile_result`, `confint(:profile)`) | **Tested** |
 | Parametric bootstrap (`bootstrap_ci`/`_summary`/`_result`, serial + threaded) | **Tested** |
 | REML for fixed-effect Gaussian location–scale and Gaussian mean `(1 \| g)`, slope-only `(0 + x \| g)`, one correlated intercept/slope `(1 + x \| g)`, several independent scalar terms (including crossed `(1 \| g) + (1 \| g2)`), `relmat(1 \| g)` / `animal(1 \| g)` and `phylo(1 + x \| g)` (constant `sigma`) | **Tested**; the new routes agree with drmTMB 0.8.1 `REML = TRUE` on three simulated datasets per route (logLik to 1e-4); the correlated-slope cell is a single restricted route |
+| REML for a Gaussian correlated block of 2 to 4 coefficients `(1 + x1 + x2 [+ x3] \| g)` (labelled or not) alone or beside crossed intercepts `+ (1 \| g2)`, and for `relmat` / `animal` / `spatial(1 \| g)` with `sd(g, <level>) ~ 1` or `~ z`, and the bare unlabelled `relmat` / `animal` / `spatial(1 + x \| g)` (constant `sigma`, no `sd()` formula on the blocks) | **Tested** for the ordinary, crossed and `sd(g, <level>)` shapes: agrees with drmTMB 0.8.1 `REML = TRUE` on three simulated datasets per shape (logLik to 1e-4), except ordinary q = 4 seed 22, where neither R nor Julia converges and the cell rests on two datasets. The labelled forms have an R comparison on one shape only (ordinary q = 3). The bare structured q = 2 cells have no R reference: they are completed to the explicit `sd() ~ 1` form and tested only for equality with it |
 | `reml_loglik` / `ml_loglik` / `estimation_method` accessors | **Tested** |
 | Epsilon-method bias correction (`bias_correct`) | **Tested** |
 | **χ̄² (chi-bar-square) boundary inference** (Self–Liang / Stram–Lee mixture) | **Tested** |
@@ -310,8 +328,8 @@ above, and it does so by delegation rather than by a second engine.
     Gaussian location–scale model; a single Gaussian mean intercept `(1 | g)`; one
     correlated Gaussian mean intercept/slope `(1 + x | g)` with no `sigma` random
     effect, structured term, `meta_V()`, crossed term, or additional random-effect
-    term; and, with a constant `sigma` and no `sigma` random effect, `meta_V()` or
-    missing response: slope-only `(0 + x | g)`, several independent scalar terms
+    term; and, with a constant `sigma` and no `sigma` random effect or `meta_V()`:
+    slope-only `(0 + x | g)`, several independent scalar terms
     (`(1 | g) + (0 + x | g)`, crossed `(1 | g) + (1 | g2)`; at most 200 random-effect
     columns in total), one `relmat(1 | g)` or `animal(1 | g)`, and `phylo(1 + x | g)`
     with two SDs (exact restricted likelihood; agrees with drmTMB 0.8.1 `REML = TRUE`
@@ -325,15 +343,27 @@ above, and it does so by delegation rather than by a second engine.
     `sigma ~ 1`) and the structured `sigma` intercept with an SD formula
     (`sigma ~ 1 + KIND(1 | g)`, `sd(g, KIND, sigma) ~ z`, fixed-effect mean; `beta_mu`
     and `beta_sigma` are integrated out in one joint Laplace approximation) also
-    admit REML, as native drmTMB does. Labelled `animal` / `relmat` / `spatial`
+    admit REML, as native drmTMB does. Also under REML (constant `sigma`, no `sd()`
+    formula): one correlated block of 3 or 4 coefficients `(1 + x + z [+ w] | g)`, a
+    correlated block of 2 to 4 coefficients beside random intercepts on other
+    groupings `(1 + x | g) + (1 | h)` (labelled or not), a structured intercept
+    `relmat` / `animal` / `spatial(1 | g)` with its own `sd(g, <level>) ~ …`, and the
+    bare unlabelled `relmat` / `animal` / `spatial(1 + x | g)` (completed to
+    `sd(·, coef(·)) ~ 1` for both coefficients, as under ML). Labelled `animal` / `relmat` / `spatial`
     q2 blocks and heteroscedastic `sigma` with those providers still refuse REML. Ordinary `sd()` q2/q3/q4 routes stay ML only
     (native refuses REML there too), as do the Gaussian shapes that fit by ML in
-    wave 9 (an unstructured q3/q4 block, a labelled block, a correlated block beside
-    random intercepts, and independent intercept and slope terms with `sd()`
-    formulas): each refuses `method = :REML` by name.
-    Still refused under REML on the Gaussian mean routes: `spatial(1 | g)` (its ML
-    logLik differs from drmTMB's on the reference data, so no restricted objective
-    is built), a correlated `(1 + x | g)` block beside any other random-effect term,
+    wave 9 (an unstructured q3/q4 block with `sd()` formulas, a labelled q3/q4 block, a correlated block
+    with `sd()` formulas beside random intercepts, and independent intercept and slope terms with `sd()`
+    formulas) and their wave-10 extensions (a block beside slope terms, two blocks,
+    a mean `sd(g)` formula with a `sigma` intercept): each refuses `method = :REML` with a
+    message that says REML is not implemented. A single labelled q2 block
+    `(1 + x | p | g)` is the ordinary correlated block once the label is removed, so
+    it fits under REML like `(1 + x | g)`; no R comparison was run for that shape.
+    Still refused under REML on the Gaussian mean routes: the bare `spatial(1 | g)` (it
+    estimates the exponential range where drmTMB fixes it, so the two maximum
+    likelihoods differ by design; write `sd(g, spatial) ~ 1` for drmTMB's fixed-range
+    kernel), a correlated `(1 + x | g)` block beside a random slope term or on the same
+    grouping as another term,
     ordinary σ-RE (including ordinary `sd(g, sigma)`, which native drmTMB admits
     under REML), a `sigma` predictor with a multi-term mean, `meta_V()`, missing
     responses on the new routes, and other random-slope structures. Separate
@@ -422,7 +452,11 @@ To avoid overclaiming, note these boundaries:
   Location–Scale–Scale `sd()` models are available. `drm` drops rows with a
   `missing` predictor, and rows with a missing response on the Gaussian `(1|g)`
   and `meta_V` routes, with a warning that gives the count (R's `na.omit`, as
-  drmTMB does; #1089). General multiple imputation outside the joint-model
+  drmTMB does; #1089). A bivariate fit (Gaussian, `LogNormal`, `Student`) drops a row
+  when either response is missing, with a counted warning, as drmTMB's default
+  `miss_control(response = "drop")` does; `missing = miss_control(response = "include")`
+  keeps partly observed rows and fits their observed-response marginal likelihood
+  (drmTMB implements `"include"` for the bivariate Gaussian only). General multiple imputation outside the joint-model
   routes and an `na.action` option to choose another behaviour are absent.
   See [Handling missing data](model-guides/missing-data.md) for what to do now.
 - **VA/ELBO:** experimental random-intercept VA is limited to `(1|g)` for
@@ -444,6 +478,21 @@ To avoid overclaiming, note these boundaries:
   Beta and beta-binomial cannot currently be requested through `drm()` and
   `bf()` for this model. Poisson and LogNormal versions are implemented but have
   not yet been tested as complete analyses.
+
+## Formula shapes that differ from R
+
+These came out of the second R-Julia gap map (2026-11-09). Each row was run against drmTMB 0.8.1.
+
+| R spelling | Julia | Status |
+| --- | --- | --- |
+| `(f \| g)`, `(1 + f \| g)`, `(0 + f \| g)` with a factor `f` | Refused with an `ArgumentError` (drmTMB refuses too). Use a numeric 0/1 column for one level. | **Tested** |
+| `zi ~ 1 + (1 \| g)`, `hu ~ … + (1 \| g)` | Refused with an `ArgumentError` (drmTMB refuses too). Put the random effect on `mu`. | **Tested** for `zi`; the `hu` refusal was checked by hand for NegBinomial2 and TruncatedNegBinomial2, not by a test |
+| `(1 + x \|\| g)` (double bar) | `@formula` cannot parse `\|\|`. Write `(1 \| g) + (0 + x \| g)`: same log-likelihood as drmTMB on the committed fixture. | **Tested** (spelling) |
+| `poly(x, 2)` | `@formula` has no `poly`. Write a function term such as `x + sq(x)` (same ML log-likelihood, different coefficients); the string route `engine = "julia"` reproduces R's orthogonal basis. | **Tested** (spelling) |
+| Ordinal response as labels (`"o1"`…`"o4"`) | `CumulativeLogit()` codes string or symbol labels 1..K in sorted label order; pass integer codes for another order. drmTMB refuses a character response and an unordered factor, so this is a Julia convenience, and the R reference uses an ordered factor with the same level order. | **Tested** |
+| Rows with a missing grouping label | Refused (#1112); `drm_listwise(formula, data)` drops them and then agrees with drmTMB, which drops those rows. | **Tested** |
+| `weights` with a missing response | Weights follow their rows; one weight per row of `data`. | **Tested** |
+| Cross-family pair containing `LogNormal()` | Refused with the list of supported families. drmTMB refuses every mixed-response pair, including the supported ones, so there is no R comparison for this refusal. | **Tested** |
 
 ---
 

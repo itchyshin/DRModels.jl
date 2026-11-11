@@ -1,30 +1,45 @@
 # Gaussian ordinary random effects that the single-block and single-component
-# routes refuse (design: docs/dev-log/2026-11-09-gaussian-sd-gaps.md):
+# routes refuse (design: docs/dev-log/2026-11-09-gaussian-sd-gaps.md and
+# docs/dev-log/2026-11-09-gaussian-sd-groupf.md):
 #
-#   1. a correlated block `(1 + x + .. | g)` (q = 2, 3, 4) beside one or more
-#      random intercepts on OTHER groupings, `(1 + x | g) + (1 | g2)`, with an
-#      optional `sd(g, coef(·)) ~ …` per block coefficient and `sd(g2) ~ …` per
-#      extra intercept;
+#   1. one or more correlated blocks `(1 + x | g)` (q = 2, 3, 4), each on its own
+#      grouping, beside independent random terms on any grouping: intercepts
+#      `(1 | h)` and slopes `(0 + z | h)`, e.g. `(1 + x | g) + (1 | h) + (0 + z | h)`,
+#      with an optional `sd(g, coef(·)) ~ …` per block coefficient and
+#      `sd(h[, coef(·)]) ~ …` per independent term;
 #   2. independent intercept and slope terms on one grouping,
 #      `(1 | g) + (0 + x | g)`, with `sd(g, coef(·)) ~ …` per term.
 #
 # Both are exact dense maximum likelihood of the Gaussian marginal
-#   y ~ N(X β, diag(σ²) + Σ_blocks U_g Σ_g U_g' + Σ_extra Z S Z'),
+#   y ~ N(X β, diag(σ²) + Σ_blocks U_g Σ_g U_g' + Σ_extra w w' ∘ (Z S Z')),
 # the same engine family as `_fit_gaussian_lss_multi` (case 2 reuses it with a
 # per-row slope loading) and `_fit_gaussian_ordinary_q34_sd` (case 1 reuses its
 # correlation map, so `theta` matches native drmTMB's `theta_re_cov`). No new
 # estimation algorithm: a dense n×n Cholesky and ForwardDiff, capped at 5000 rows.
 
-# Position of the one correlated block and of the extra random intercepts, or
-# `nothing` when `re` is not `(block) + (1 | h) + …` on distinct groupings.
+# Kind of one independent term's lhs: `(:intercept, nothing)` for `1`, `(:slope, x)`
+# for `0 + x`, `nothing` for anything else (a block, a label, an interaction).
+function _cc_term_kind(lhs)
+    lhs isa ConstantTerm && lhs.n == 1 && return (:intercept, nothing)
+    if lhs isa FunctionTerm && lhs.f === (+) && length(lhs.args) == 2
+        consts = filter(t -> t isa ConstantTerm, lhs.args)
+        vars = filter(t -> t isa Term, lhs.args)
+        length(consts) == 1 && length(vars) == 1 && only(consts).n == 0 &&
+            return (:slope, only(vars).sym)
+    end
+    return nothing
+end
+
+# Positions of the correlated blocks and of the independent terms, or `nothing`
+# when `re` is not "at least one block plus independent intercepts / slopes".
 function _corr_crossed_split(re)
     length(re) ≥ 2 || return nothing
     bi = findall(r -> _re_multi_corr_vars(r[1]) !== nothing, re)
-    length(bi) == 1 || return nothing
+    isempty(bi) && return nothing
     others = setdiff(collect(1:length(re)), bi)
-    all(i -> re[i][1] isa ConstantTerm && re[i][1].n == 1, others) || return nothing
-    allunique(Symbol[g for (_, g) in re]) || return nothing
-    return bi[1], others
+    (isempty(others) && length(bi) < 2) && return nothing     # a lone block keeps its own route
+    all(i -> _cc_term_kind(re[i][1]) !== nothing, others) || return nothing
+    return bi, others
 end
 
 function _drm_gaussian_corr_crossed(f::DrmFormula, fam::Gaussian, split, re, sdpp, sdp,
@@ -33,150 +48,226 @@ function _drm_gaussian_corr_crossed(f::DrmFormula, fam::Gaussian, split, re, sdp
                                     g_tol, method, algorithm)
     (isempty(sdpp) && structured === nothing && structured_sigma === nothing &&
      isempty(sigma_re) && metav === nothing) || throw(ArgumentError(
-        "drm: a Gaussian correlated block beside other random intercepts supports ordinary " *
+        "drm: a Gaussian correlated block beside other random terms supports ordinary " *
         "mean effects only (no structured, `sigma` or `meta_V` terms)."))
     has_missing_response && throw(ArgumentError(
-        "drm: a Gaussian correlated block beside other random intercepts requires observed " *
+        "drm: a Gaussian correlated block beside other random terms requires observed " *
         "responses; remove incomplete rows first."))
-    method === :REML && throw(ArgumentError(
-        "drm: a Gaussian correlated block beside other random intercepts supports maximum " *
-        "likelihood only (`method = :REML` is not implemented for this shape)."))
     algorithm === :auto || throw(ArgumentError(
         "drm: `algorithm = :$algorithm` is not implemented for a Gaussian correlated block " *
-        "beside other random intercepts (dense exact marginal only)."))
-    bi, others = split
-    (_, grp) = re[bi]
-    vars = _re_multi_corr_vars(re[bi][1])
-    q = 1 + length(vars)
-    q in (2, 3, 4) || throw(ArgumentError(
-        "drm: a correlated block supports 2 to 4 coefficients (got $q)."))
-    length(unique(vars)) == length(vars) || throw(ArgumentError(
-        "drm: repeated coefficient in `(1 + $(join(vars, " + ")) | $grp)`."))
-    members = Symbol[:intercept; vars]
-    other_grps = Symbol[re[i][2] for i in others]
+        "beside other random terms (dense exact marginal only)."))
+    reml = method === :REML
+    # REML was checked against drmTMB for one block beside random INTERCEPTS only; every wider
+    # shape (two blocks, a block beside a slope term) keeps the maximum-likelihood-only refusal.
+    reml && (length(split[1]) == 1 && all(i -> _cc_term_kind(re[i][1])[1] === :intercept, split[2]) ||
+        throw(ArgumentError(
+            "drm: a Gaussian correlated block beside other random terms supports maximum " *
+            "likelihood only: method = :REML is not implemented for this shape (REML is available " *
+            "for one correlated block beside random INTERCEPTS on other groupings).")))
+    reml && _gaussian_block_reml_gate(_sd_target_parts(f), Xμ, Xσ,
+        "a Gaussian correlated block beside other random intercepts")
+    bis, others = split
+    block_grps = Symbol[re[b][2] for b in bis]
+    dup = [g for g in unique(block_grps) if count(==(g), block_grps) > 1]
+    isempty(dup) || throw(ArgumentError(
+        "drm: two correlated blocks on the grouping `$(first(dup))` are not supported; put every " *
+        "coefficient of a grouping in one `(1 + x + … | $(first(dup)))` block."))
     targets = _sd_target_parts(f)
     all(item -> item.target.level === :iid && item.target.dpar === :mu &&
         item.target.block === nothing, targets) || throw(ArgumentError(
-        "drm: with a correlated block beside other random intercepts, `sd()` targets must be " *
+        "drm: with a correlated block beside other random terms, `sd()` targets must be " *
         "ordinary mean targets."))
     allowed = Set(vcat([:mu, :sigma], [item.key for item in targets]))
     all(first(pair) in allowed for pair in f.forms) || throw(ArgumentError(
         "drm: this route supports only `mu`, `sigma` and the SD formulas."))
-    block_targets = [item for item in targets if item.target.group === grp]
-    all(item -> item.target.member isa Symbol && item.target.member in members, block_targets) ||
-        throw(ArgumentError("drm: every `sd($grp, coef(…))` target on the correlated block must " *
-            "name one of its coefficients ($(join(members, ", ")))."))
-    chosen = [item.target.member for item in block_targets]
-    length(unique(chosen)) == length(chosen) || throw(ArgumentError(
-        "drm: each coefficient of the block takes at most one `sd($grp, coef(…))` formula."))
-    for item in targets
-        item.target.group === grp || item.target.group in other_grps || throw(ArgumentError(
-            "drm: `sd($(item.target.group))` names no random effect in the mean formula."))
-        (item.target.group in other_grps &&
-         !(item.target.member === nothing || item.target.member === :intercept)) &&
-            throw(ArgumentError("drm: `sd($(item.target.group), coef(…))` on a random intercept " *
-                "must be plain `sd($(item.target.group))` or `coef(intercept)`."))
-    end
     n = length(y)
-    gidx, G = _group_index(getproperty(data, grp); col = grp)
-    U = ones(Float64, n, q)
-    for (k, v) in enumerate(vars)
-        _require_finite_data_column(data, v)
-        U[:, k+1] = Float64.(getproperty(data, v))
+    # independent terms: (grouping, :intercept | slope variable)
+    ext = [(grp = re[i][2], mem = let k = _cc_term_kind(re[i][1]); k[1] === :intercept ? :intercept : k[2] end)
+           for i in others]
+    allunique([(e.grp, e.mem) for e in ext]) || throw(ArgumentError(
+        "drm: repeated random-effect term on one grouping in the mean formula."))
+    # block membership, to refuse overlaps and to match SD targets
+    blkinfo = map(bis) do b
+        vars = _re_multi_corr_vars(re[b][1])
+        q = 1 + length(vars)
+        q in (2, 3, 4) || throw(ArgumentError(
+            "drm: a correlated block supports 2 to 4 coefficients (got $q)."))
+        length(unique(vars)) == length(vars) || throw(ArgumentError(
+            "drm: repeated coefficient in `(1 + $(join(vars, " + ")) | $(re[b][2]))`."))
+        (grp = re[b][2], members = Symbol[:intercept; vars], q = q)
     end
-    Zgs = Matrix{Float64}[]; nmsds = Vector{String}[]; blocks = Symbol[]
-    for m in members
-        idx = findfirst(==(m), chosen)
-        if idx === nothing
-            push!(Zgs, ones(G, 1)); push!(nmsds, ["(Intercept)"])
-            push!(blocks, _sd_target_block((group = grp, level = :iid, member = m,
-                                            dpar = :mu, block = nothing); disambiguate = true))
-        else
-            item = block_targets[idx]
-            Zg, nm = _sd_group_design(f.response, item.rhs, data, gidx, G, grp;
-                                      schema_cache = f.schema_cache, schema_key = item.key)
-            size(Zg, 2) ≤ G && rank(Zg) == size(Zg, 2) || throw(ArgumentError(
-                "drm: Gaussian SD target `coef($m)` has a rank-deficient group-level design."))
-            push!(Zgs, Matrix{Float64}(Zg)); push!(nmsds, nm)
-            push!(blocks, _sd_target_block(item.target; disambiguate = true))
+    # Verified against drmTMB 0.8.1 for 2-coefficient blocks only (docs/dev-log/2026-11-09-gaussian-sd-groupf.md):
+    # two blocks, or a block beside a slope term, with a larger block are refused by name.
+    length(blkinfo) ≥ 2 && any(bk -> bk.q != 2, blkinfo) && throw(ArgumentError(
+        "drm: more than one correlated block is supported for 2-coefficient blocks `(1 + x | g)` only " *
+        "(checked against drmTMB for q = 2; larger blocks beside another block are not)."))
+    any(e -> e.mem !== :intercept, ext) && any(bk -> bk.q ≥ 3, blkinfo) && throw(ArgumentError(
+        "drm: a correlated block of 3 or 4 coefficients beside a random slope term is not " *
+        "implemented: drmTMB's own fit of this shape did not converge on the check data " *
+        "(docs/dev-log/2026-11-09-gaussian-sd-groupf.md). Keep it beside random intercepts, or use " *
+        "a 2-coefficient block."))
+    for e in ext, bk in blkinfo
+        e.grp === bk.grp && e.mem in bk.members && throw(ArgumentError(
+            "drm: overlapping random-effect terms on `$(e.grp)`: the coefficient `$(e.mem)` is in the " *
+            "correlated block and also a separate term. Use either the block or separate " *
+            "independent terms for it (drmTMB refuses the same overlap)."))
+    end
+    # R drmTMB refuses an sd() formula on a grouping that carries a block AND a separate term
+    for bk in blkinfo
+        shared = any(e -> e.grp === bk.grp, ext)
+        shared && any(item -> item.target.group === bk.grp, targets) && throw(ArgumentError(
+            "drm: an `sd($(bk.grp), …)` formula on a grouping that carries a correlated block and " *
+            "another random-effect term is not implemented (drmTMB refuses it: \"cannot yet " *
+            "combine another random-effect coefficient on the same group\")."))
+    end
+    used = Set{Int}()
+    blocks_ = NamedTuple[]
+    for bk in blkinfo
+        grp = bk.grp; q = bk.q; members = bk.members
+        hit_idx = [k for (k, item) in enumerate(targets) if item.target.group === grp]
+        block_targets = [targets[k] for k in hit_idx]
+        all(item -> item.target.member isa Symbol && item.target.member in members, block_targets) ||
+            throw(ArgumentError("drm: every `sd($grp, coef(…))` target on the correlated block must " *
+                "name one of its coefficients ($(join(members, ", ")))."))
+        union!(used, hit_idx)
+        chosen = [item.target.member for item in block_targets]
+        length(unique(chosen)) == length(chosen) || throw(ArgumentError(
+            "drm: each coefficient of the block takes at most one `sd($grp, coef(…))` formula."))
+        gidx, G = _group_index(getproperty(data, grp); col = grp)
+        U = ones(Float64, n, q)
+        for (k, v) in enumerate(members[2:end])
+            _require_finite_data_column(data, v)
+            U[:, k+1] = Float64.(getproperty(data, v))
         end
+        Zgs = Matrix{Float64}[]; nmsds = Vector{String}[]; keys_ = Symbol[]
+        for m in members
+            idx = findfirst(==(m), chosen)
+            if idx === nothing
+                push!(Zgs, ones(G, 1)); push!(nmsds, ["(Intercept)"])
+                push!(keys_, _sd_target_block((group = grp, level = :iid, member = m,
+                                               dpar = :mu, block = nothing); disambiguate = true))
+            else
+                item = block_targets[idx]
+                Zg, nm = _sd_group_design(f.response, item.rhs, data, gidx, G, grp;
+                                          schema_cache = f.schema_cache, schema_key = item.key)
+                size(Zg, 2) ≤ G && rank(Zg) == size(Zg, 2) || throw(ArgumentError(
+                    "drm: Gaussian SD target `coef($m)` has a rank-deficient group-level design."))
+                push!(Zgs, Matrix{Float64}(Zg)); push!(nmsds, nm)
+                push!(keys_, _sd_target_block(item.target; disambiguate = true))
+            end
+        end
+        push!(blocks_, (; grp, q, members, U, Zgs, gidx, G, nmsds, keys = keys_))
     end
     extras = NamedTuple[]
-    for h in other_grps
-        gi2, G2 = _group_index(getproperty(data, h); col = h)
-        hit = [item for item in targets if item.target.group === h]
-        length(hit) ≤ 1 || throw(ArgumentError("drm: one `sd($h) ~ …` formula per random intercept."))
-        if isempty(hit)
+    for e in ext
+        gi2, G2 = _group_index(getproperty(data, e.grp); col = e.grp)
+        hit_idx = [k for (k, item) in enumerate(targets)
+                   if item.target.group === e.grp &&
+                      (item.target.member === e.mem ||
+                       (item.target.member === nothing && e.mem === :intercept))]
+        length(hit_idx) ≤ 1 || throw(ArgumentError(
+            "drm: one `sd($(e.grp)$(e.mem === :intercept ? "" : ", coef($(e.mem))")) ~ …` formula per term."))
+        if isempty(hit_idx)
             Zg = ones(G2, 1); nm = ["(Intercept)"]
-            blk = _sd_target_block((group = h, level = :iid, member = nothing,
+            blk = _sd_target_block((group = e.grp, level = :iid,
+                                    member = e.mem === :intercept ? nothing : e.mem,
                                     dpar = :mu, block = nothing); disambiguate = true)
         else
-            Zg, nm = _sd_group_design(f.response, hit[1].rhs, data, gi2, G2, h;
-                                      schema_cache = f.schema_cache, schema_key = hit[1].key)
+            item = targets[hit_idx[1]]
+            union!(used, hit_idx)
+            Zg, nm = _sd_group_design(f.response, item.rhs, data, gi2, G2, e.grp;
+                                      schema_cache = f.schema_cache, schema_key = item.key)
             size(Zg, 2) ≤ G2 && rank(Zg) == size(Zg, 2) || throw(ArgumentError(
-                "drm: SD target `sd($h)` has a rank-deficient group-level design."))
-            blk = _sd_target_block(hit[1].target; disambiguate = true)
+                "drm: SD target `sd($(e.grp)$(e.mem === :intercept ? "" : ", coef($(e.mem))"))` has a rank-deficient group-level design."))
+            blk = _sd_target_block(item.target; disambiguate = true)
         end
-        push!(extras, (; grp = h, gidx = gi2, G = G2, Zg = Matrix{Float64}(Zg),
-                       nm = Vector{String}(nm), block = blk))
+        w = nothing
+        if e.mem !== :intercept
+            _require_finite_data_column(data, e.mem)
+            w = Float64.(getproperty(data, e.mem))
+        end
+        push!(extras, (; grp = e.grp, mem = e.mem, gidx = gi2, G = G2, Zg = Matrix{Float64}(Zg),
+                       nm = Vector{String}(nm), block = blk, w))
     end
-    return _fit_gaussian_corr_crossed(fam, y, Xμ, Xσ, U, Zgs, gidx, G, extras, nmμ, nmσ,
-                                      nmsds, blocks, members, grp, g_tol)
+    for (k, item) in enumerate(targets)
+        k in used && continue
+        tgt = item.target
+        what = tgt.member === nothing ? "sd($(tgt.group))" : "sd($(tgt.group), coef($(tgt.member)))"
+        terms = join(vcat(["(1 + … | $(b.grp))" for b in blocks_],
+                          ["($(e.mem === :intercept ? "1" : "0 + $(e.mem)") | $(e.grp))" for e in extras]), ", ")
+        throw(ArgumentError("drm: `$what` names no random-effect term in the mean formula (terms: $terms)."))
+    end
+    return _fit_gaussian_corr_crossed(fam, y, Xμ, Xσ, blocks_, extras, nmμ, nmσ, g_tol; reml)
 end
 
-function _fit_gaussian_corr_crossed(fam::Gaussian, y, Xμ, Xσ, U, Zgs, gidx, G, extras,
-                                    nmμ, nmσ, nmsds, blocks, members, grp, g_tol)
-    n = length(y); q = size(U, 2)
-    n ≤ 5000 || throw(ArgumentError("drm: a correlated block beside other random intercepts " *
+function _fit_gaussian_corr_crossed(fam::Gaussian, y, Xμ, Xσ, blocks_, extras,
+                                    nmμ, nmσ, g_tol; reml::Bool = false)
+    n = length(y)
+    n ≤ 5000 || throw(ArgumentError("drm: a correlated block beside other random terms " *
         "assembles a dense $(n)×$(n) marginal covariance and is limited to 5000 rows."))
     pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     off = pμ + pσ
-    rg = UnitRange{Int}[]
-    for Zg in Zgs
-        push!(rg, (off+1):(off+size(Zg, 2))); off += size(Zg, 2)
+    # parameter layout: [βμ; βσ; (SD coefficients of each coefficient, correlation θ) per block;
+    # SD coefficients of each independent term]
+    rg = Vector{UnitRange{Int}}[]; rθ = UnitRange{Int}[]
+    for bk in blocks_
+        r = UnitRange{Int}[]
+        for Zg in bk.Zgs
+            push!(r, (off+1):(off+size(Zg, 2))); off += size(Zg, 2)
+        end
+        push!(rg, r)
+        npair = bk.q * (bk.q - 1) ÷ 2
+        push!(rθ, (off+1):(off+npair)); off += npair
     end
-    npair = q * (q - 1) ÷ 2
-    rθ = (off+1):(off+npair); off += npair
     re_ = UnitRange{Int}[]
     for e in extras
         push!(re_, (off+1):(off+size(e.Zg, 2))); off += size(e.Zg, 2)
     end
     ntot = off
     n ≥ ntot || throw(ArgumentError("drm: only $n observations for $ntot parameters."))
-    rows = [Int[] for _ in 1:G]
-    for i in 1:n
-        push!(rows[gidx[i]], i)
+    rowsof(gidx, G) = begin
+        r = [Int[] for _ in 1:G]
+        for i in 1:n
+            push!(r[gidx[i]], i)
+        end
+        r
     end
-    erows = [begin
-                 r = [Int[] for _ in 1:e.G]
-                 for i in 1:n
-                     push!(r[e.gidx[i]], i)
-                 end
-                 r
-             end for e in extras]
+    brows = [rowsof(bk.gidx, bk.G) for bk in blocks_]
+    erows = [rowsof(e.gidx, e.G) for e in extras]
     const_2pi = 0.5 * n * log(2π)
-    function nll(θ)
+    # One dense objective for ML and REML. REML (Patterson-Thompson; exact because the marginal
+    # is Gaussian-linear in beta_mu) adds ½ logdet(Xμ′V⁻¹Xμ) − ½ pμ log(2π); with the Cholesky
+    # V = L L′, X′V⁻¹X = (L⁻¹X)′(L⁻¹X) is PSD by construction.
+    function nll_full(θ, restricted::Bool)
         T = eltype(θ)
         ημ = Xμ * θ[1:pμ]; ησ = Xσ * θ[pμ+1:pμ+pσ]
-        Lc = _q34_corr_chol(θ[rθ], q)
-        sdg = [exp.(Zgs[k] * θ[rg[k]]) for k in 1:q]
         Vm = zeros(T, n, n)
-        for g in 1:G
-            r = rows[g]
-            isempty(r) && continue
-            L = Matrix{T}(undef, q, q)
-            for a in 1:q, c in 1:q
-                L[a, c] = sdg[a][g] * Lc[a, c]
+        for (bi, bk) in enumerate(blocks_)
+            q = bk.q
+            Lc = _q34_corr_chol(θ[rθ[bi]], q)
+            sdg = [exp.(bk.Zgs[k] * θ[rg[bi][k]]) for k in 1:q]
+            for g in 1:bk.G
+                r = brows[bi][g]
+                isempty(r) && continue
+                L = Matrix{T}(undef, q, q)
+                for a in 1:q, c in 1:q
+                    L[a, c] = sdg[a][g] * Lc[a, c]
+                end
+                UL = bk.U[r, :] * L
+                Vm[r, r] .+= UL * UL'
             end
-            UL = U[r, :] * L
-            Vm[r, r] .+= UL * UL'
         end
         for (ei, e) in enumerate(extras)
             s2 = exp.(2 .* (e.Zg * θ[re_[ei]]))
             for h in 1:e.G
                 r = erows[ei][h]
                 isempty(r) && continue
-                Vm[r, r] .+= s2[h]
+                if e.w === nothing
+                    Vm[r, r] .+= s2[h]
+                else
+                    wr = e.w[r]
+                    Vm[r, r] .+= s2[h] .* (wr * wr')
+                end
             end
         end
         @inbounds for i in 1:n
@@ -185,20 +276,26 @@ function _fit_gaussian_corr_crossed(fam::Gaussian, y, Xμ, Xσ, U, Zgs, gidx, G,
         Vfac = cholesky(Symmetric(Vm); check = false)
         issuccess(Vfac) || return convert(T, 1e18)
         rr = y .- ημ
-        return 0.5 * (logdet(Vfac) + dot(rr, Vfac \ rr)) + const_2pi
+        val = 0.5 * (logdet(Vfac) + dot(rr, Vfac \ rr)) + const_2pi
+        restricted || return val
+        W = Vfac.L \ Xμ
+        return _reml_add_restriction(val, Symmetric(W' * W), pμ)
     end
+    nll(θ) = nll_full(θ, reml)
+    nll_ml(θ) = nll_full(θ, false)
     βμ0 = Xμ \ y; res0 = y - Xμ * βμ0
-    ncomp = q + length(extras)
+    ncomp = sum(bk.q for bk in blocks_) + length(extras)
     θ0 = zeros(ntot)
     θ0[1:pμ] .= βμ0
     s0 = std(res0) / sqrt(ncomp + 1)
     θ0[pμ+1] = log(s0 + eps())
-    for k in 1:q
-        scale_k = s0 / max(sqrt(sum(abs2, @view U[:, k]) / n), eps())
-        θ0[rg[k]] .= Zgs[k] \ fill(log(scale_k + eps()), G)
+    for (bi, bk) in enumerate(blocks_), k in 1:bk.q
+        scale_k = s0 / max(sqrt(sum(abs2, @view bk.U[:, k]) / n), eps())
+        θ0[rg[bi][k]] .= bk.Zgs[k] \ fill(log(scale_k + eps()), bk.G)
     end
     for (ei, e) in enumerate(extras)
-        θ0[re_[ei]] .= e.Zg \ fill(log(s0 + eps()), e.G)
+        scale_e = e.w === nothing ? s0 : s0 / max(sqrt(sum(abs2, e.w) / n), eps())
+        θ0[re_[ei]] .= e.Zg \ fill(log(scale_e + eps()), e.G)
     end
     opt = _optimize_with_fallback(nll, θ0, g_tol;
         opts = Optim.Options(g_tol = g_tol, x_abstol = NaN, x_reltol = NaN,
@@ -211,20 +308,27 @@ function _fit_gaussian_corr_crossed(fam::Gaussian, y, Xμ, Xσ, U, Zgs, gidx, G,
     block_list = Pair{Symbol,UnitRange{Int}}[:mu => 1:pμ, :sigma => (pμ+1):(pμ+pσ)]
     name_list = Pair{Symbol,Vector{String}}[:mu => nmμ, :sigma => nmσ]
     scales = Dict{Symbol,Vector{Float64}}(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
-    for k in 1:q
-        push!(block_list, blocks[k] => rg[k]); push!(name_list, blocks[k] => nmsds[k])
+    single = length(blocks_) == 1
+    for (bi, bk) in enumerate(blocks_)
+        for k in 1:bk.q
+            push!(block_list, bk.keys[k] => rg[bi][k]); push!(name_list, bk.keys[k] => bk.nmsds[k])
+        end
+        names_θ = String[]
+        for i in 1:bk.q, j in 1:(i-1)
+            push!(names_θ, single ? "theta($(bk.members[i]), $(bk.members[j]))" :
+                           "theta($(bk.members[i]), $(bk.members[j]) | $(bk.grp))")
+        end
+        key = single ? :recov : Symbol("recov_", bk.grp)
+        push!(block_list, key => rθ[bi]); push!(name_list, key => names_θ)
     end
-    names_θ = String[]
-    for i in 1:q, j in 1:(i-1)
-        push!(names_θ, "theta($(members[i]), $(members[j]))")
-    end
-    push!(block_list, :recov => rθ); push!(name_list, :recov => names_θ)
     for (ei, e) in enumerate(extras)
         push!(block_list, e.block => re_[ei]); push!(name_list, e.block => e.nm)
     end
     fit = DrmFit(fam, block_list, name_list, θ̂, V, -nll(θ̂), n, converged,
                  Dict(:mu => Xμ * θ̂[1:pμ]), Dict(:mu => Vector{Float64}(y)), scales)
-    return _withiterations(_withnll(fit, nll), Optim.iterations(opt))
+    fit = _withiterations(_withnll(fit, nll), Optim.iterations(opt))
+    reml && return _withreml(fit, -nll(θ̂), -nll_ml(θ̂))
+    return fit
 end
 
 # Independent intercept and slope terms, `(1 | g) + (0 + x | g) [+ (0 + z | g)]`, each with

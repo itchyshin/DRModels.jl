@@ -64,9 +64,11 @@ end
                 f, Tweedie(); data = data)
         end
 
-        # unsupported multiple / non-intercept random-effect shapes
-        @test_throws r"multiple random effects only as crossed/nested intercepts" drm(
-            bf(@formula(y ~ x + (1 | g) + (0 + x | h))), Tweedie(); data = data)
+        # unsupported multiple / non-intercept random-effect shapes. Independent intercepts and
+        # slopes `(1 | g) + (0 + x | h)` now fit (see test_nongauss_indep_routes.jl); a correlated
+        # block beside another term is still refused.
+        @test_throws r"a correlated `\(1 \+ x \| g\)` must be the only random-effect term" drm(
+            bf(@formula(y ~ x + (1 | g) + (1 + x | h))), Tweedie(); data = data)
         @test_throws r"require a constant `sigma` formula" drm(
             bf(@formula(y ~ x + (1 | g) + (1 | h)), @formula(sigma ~ x)), Tweedie(); data = data)
         @test_throws r"require a constant `nu` formula" drm(

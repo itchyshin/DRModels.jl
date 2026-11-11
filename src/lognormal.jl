@@ -87,8 +87,14 @@ struct LogNormal end
     end
 
     if !isempty(sd_targets)
-        length(sd_targets) == 1 || throw(ArgumentError(
-            "LogNormal SD regression currently requires one ordinary mean-effect `sd(group) ~ …` formula."))
+        corr_sd = _lognormal_corr_sd_block(f)
+        corr_sd === nothing || return _withformula(
+            _drm_lognormal_corr_sd(f, fam, data, g_tol, corr_sd), f)
+        # More than one SD formula (crossed `(1 | g) + (1 | h)` with `sd(g)` and `sd(h)`, or the
+        # labelled coefficient pair): log y is exactly Gaussian, so the whole fit is delegated
+        # to the public Gaussian dispatcher on log(y), which refuses what it does not cover.
+        length(sd_targets) == 1 || return _withformula(
+            _fit_lognormal_multi_sd(fam, f, data, g_tol), f)
         return _withformula(_drm_lognormal_sd_regression(f, fam, data, g_tol, only(sd_targets)), f)
     end
     _lss_only_gaussian_guard(f, fam)   # #544: refuse, never silently drop, sd() parts
@@ -121,9 +127,13 @@ struct LogNormal end
     all(isfinite, y) || error("LogNormal() requires finite, strictly positive responses")
     if !isempty(re)                    # random effect on the log-mean μ → GHQ
         if length(re) > 1              # crossed/multiple intercepts (#736)
-            all(_re_kind(r[1])[1] === :intercept for r in re) ||
+            # Independent intercepts + slopes `(1 | g) + (0 + x | g)`: `log(y)` is Gaussian, so the
+            # exact Gaussian multi-component marginal applies (same delegation as crossed intercepts).
+            all(_re_kind(r[1])[1] in (:intercept, :slope) for r in re) ||
                 error("LogNormal() supports multiple random effects only as crossed/nested " *
-                      "intercepts, e.g. `(1 | g) + (1 | h)`")
+                      "intercepts `(1 | g) + (1 | h)` or independent intercepts and slopes " *
+                      "`(1 | g) + (0 + x | g)`; a correlated `(1 + x | g)` must be the only " *
+                      "random-effect term")
             return _withformula(_fit_lognormal_crossed(fam, f, data, g_tol), f)
         end
         length(re) == 1 ||
@@ -217,6 +227,50 @@ function _fit_lognormal_sd_regression(fam::LogNormal, y, Xμ, Xσ, Zg, w, gidx, 
         Dict(:mu => exp.(fit_gaussian.means[:mu])), Dict(:mu => Float64.(y)), scales)
     fit = _withnll(fit, θ -> fit_gaussian.nll(θ) + jacobian)
     return _withiterations(_withranef(fit, fit_gaussian.ranef), fit_gaussian.iterations)
+end
+
+# Ordinary correlated `(1 + x | g)` with `sd(g, coef(·)) ~ …` formulas on one or both
+# coefficients. log(y) is Gaussian given the random effects, so this is the Gaussian
+# correlated-block SD fit on log(y) plus the LogNormal Jacobian, as for the independent
+# routes above. Two coefficients only: drmTMB refuses the q = 3, 4 LogNormal blocks.
+function _lognormal_corr_sd_block(f::DrmFormula)
+    mu = get(Dict(f.forms), :mu, nothing)
+    mu === nothing && return nothing
+    try
+        _, re, mv, st = _split_ranef(mu)
+        (mv === nothing && st === nothing && length(re) == 1) || return nothing
+        vars = _re_multi_corr_vars(re[1][1])
+        (vars !== nothing && length(vars) == 1) || return nothing
+        return (; re, vars)
+    catch
+        return nothing
+    end
+end
+
+function _drm_lognormal_corr_sd(f::DrmFormula, fam::LogNormal, data, g_tol, block)
+    rhs = Dict(f.forms)
+    sigma_rhs = get(rhs, :sigma, nothing)
+    sigma_rhs isa ConstantTerm && sigma_rhs == ConstantTerm(1) || throw(ArgumentError(
+        "LogNormal correlated `(1 + x | g)` SD regression currently requires fixed `sigma ~ 1`."))
+    isempty(_sdphylo_parts(f)) || throw(ArgumentError(
+        "LogNormal SD regression does not support structured SD formulas."))
+    fixed_mu, _, _, _ = _split_ranef(rhs[:mu])
+    y, Xμ, nmμ = _design(f.response, fixed_mu, data)
+    _, Xσ, nmσ = _design(f.response, sigma_rhs, data)
+    all(yi -> isfinite(yi) && yi > 0, y) || throw(ArgumentError(
+        "LogNormal() requires finite, strictly positive responses"))
+    logy = log.(y)
+    fit_gaussian = _drm_gaussian_ordinary_q34_sd(f, Gaussian(), Pair{Symbol,Any}[], block.re,
+        [block.vars], nothing, nothing, Symbol[], nothing, false, logy, Xμ, Xσ, nmμ, nmσ,
+        data, g_tol, :ML, :auto)
+    jacobian = sum(logy)
+    fit = DrmFit(fam, fit_gaussian.blocks, fit_gaussian.coefnames,
+        fit_gaussian.theta, fit_gaussian.vcov, fit_gaussian.loglik - jacobian,
+        fit_gaussian.nobs, fit_gaussian.converged,
+        Dict(:mu => exp.(fit_gaussian.means[:mu])), Dict(:mu => Float64.(y)),
+        copy(fit_gaussian.scales))
+    return _withiterations(_withnll(fit, θ -> fit_gaussian.nll(θ) + jacobian),
+                           fit_gaussian.iterations)
 end
 
 # Independent random slope on log(y) is an exact Gaussian LMM with loading x.
@@ -369,6 +423,16 @@ function _fit_lognormal_crossed(fam::LogNormal, f::DrmFormula, data, g_tol)
     return _lognormal_jacobian_shift(fam, gfit, y)
 end
 
+function _fit_lognormal_multi_sd(fam::LogNormal, f::DrmFormula, data, g_tol)
+    cols = NamedTuple(pairs(data))
+    y = Vector{Float64}(getproperty(cols, f.response))
+    all(yi -> isfinite(yi) && yi > 0, y) || throw(ArgumentError(
+        "LogNormal() requires finite, strictly positive responses"))
+    logdata = merge(cols, NamedTuple{(f.response,)}((log.(y),)))
+    gfit = drm(f, Gaussian(); data = logdata, g_tol = g_tol)
+    return _lognormal_jacobian_shift(fam, gfit, y)
+end
+
 # A `phylo(1 | group)` or `relmat(1 | group)` marker on the log-mean μ (#563
 # S8). `log(y)` is exactly Gaussian, so this delegates the WHOLE fit to the
 # public Gaussian dispatcher on a logged copy of the response — the same
@@ -394,8 +458,9 @@ end
 # the likelihood VALUE (and everything derived from it: aic/bic/deviance)
 # shifts by the Jacobian — mirrors `_lognormal_jacobian_shift` in
 # src/bivariate_lognormal.jl for the univariate case. The Gaussian fit's `means`
-# are on the LOG scale; `fitted` / `simulate` / `residuals` expect the
-# response-scale median `exp(.)` like the plain LogNormal route (#1102).
+# are on the LOG scale; `simulate` expects the response-scale
+# median `exp(.)` like the plain LogNormal route (#1102); since #1282 `fitted` and
+# `residuals` use E[Y] = exp(mu + sigma^2 / 2) (`means[:mu]` still holds the median).
 function _lognormal_jacobian_shift(fam::LogNormal, gfit::DrmFit, y::Vector{Float64})
     jac = sum(log, y)
     gnll = gfit.nll

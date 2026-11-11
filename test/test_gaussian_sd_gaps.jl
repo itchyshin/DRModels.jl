@@ -37,22 +37,26 @@ end
     catch e
         sprint(showerror, e)
     end
-    # REML is not implemented for the new routes and says so
-    @test occursin("method = :REML is not implemented", msg(f("(1 + x1 | g) + (1 | g2)"); method = :REML))
-    @test occursin("maximum likelihood only", msg(f("(1 + x2 + x3 | g)"); method = :REML))
-    @test occursin("maximum likelihood only",
+    # REML: the sd()-free correlated shapes now fit (docs/dev-log/2026-11-09-gaussian-reml-routes2.md);
+    # a correlated block with an sd() formula, or beside a slope term, still refuses and says so
+    @test msg(f("(1 + x1 | g) + (1 | g2)"); method = :REML) == ""
+    @test msg(f("(1 + x2 + x3 | g)"); method = :REML) == ""
+    @test occursin("together with `sd()` formulas",
                    msg(f("(1 + x1 | g) + (1 | g2)"; extra = (gsd_formula("sd(g2) ~ z2"),)); method = :REML))
+    @test occursin("method = :REML is not implemented", msg(f("(1 + x2 | g) + (0 + x3 | g2)"); method = :REML))
     @test occursin("maximum likelihood only",
                    msg(f("(1 | g) + (0 + x2 | g)"; extra = (gsd_formula("sd(g, coef(x2)) ~ z"),)); method = :REML))
     # a label shared by two terms ties their correlations: refused by name, not dropped
     @test occursin("shared by 2", msg(f("(1 + x2 | p | g) + (1 + x3 | p | g2)")))
-    # a correlated block beside a slope term
-    @test occursin("only be combined with random intercepts",
-                   msg(f("(1 + x2 | g) + (0 + x3 | g2)")))
+    # a 3-coefficient block beside a slope term: drmTMB's own fit does not converge, so it stays refused
+    # (the 2-coefficient case fits: test_gaussian_sd_groupf.jl)
+    @test occursin("did not converge",
+                   msg(f("(1 + x2 + x3 | g) + (0 + x1 | g2)")))
     # an SD formula naming a coefficient that is not a term
     @test occursin("not a random-effect term",
                    msg(f("(1 | g) + (0 + x2 | g)"; extra = (gsd_formula("sd(g, coef(x3)) ~ z"),))))
-    # mean SD formula together with a sigma random effect: the message names what R does
-    @test occursin("R drmTMB fits",
-                   msg(f("(1 | g)"; sigma = "sigma ~ 1 + (1 | g)", extra = (gsd_formula("sd(g) ~ z"),))))
+    # mean SD formula with a sigma random SLOPE stays refused (the sigma intercept fits:
+    # test_gaussian_sd_groupf.jl)
+    @test occursin("random intercepts",
+                   msg(f("(1 | g)"; sigma = "sigma ~ 1 + (0 + x2 | g)", extra = (gsd_formula("sd(g) ~ z"),))))
 end

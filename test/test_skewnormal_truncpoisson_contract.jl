@@ -132,10 +132,11 @@ end
         @test collect(keys(pp)) == [:mu]
         @test pp[:mu] ≈ λ
         @test all(>(0), pp[:mu])
-        # fitted() reports the Poisson parameter lambda, NOT the truncated mean
-        # lambda/(1 - exp(-lambda)); pinned so a change to either shows up here.
-        @test fitted(fit) ≈ λ
-        @test !isapprox(fitted(fit), λ ./ (1 .- exp.(-λ)); rtol = 1e-3)
+        # fit.means[:mu] keeps the Poisson parameter lambda; fitted() is the
+        # truncated mean lambda/(1 - exp(-lambda)), as for zero-truncated NB2 in drmTMB.
+        @test fit.means[:mu] ≈ λ
+        @test fitted(fit) ≈ λ ./ (1 .- exp.(-λ))
+        @test !isapprox(fitted(fit), λ; rtol = 1e-3)
     end
 
     @testset "simulate is strictly positive with the truncated mean" begin

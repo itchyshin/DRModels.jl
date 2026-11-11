@@ -730,8 +730,9 @@ function _binomial_animal_q2_mode(aux, s, ntr, Xmu, x, gidx, Qjoint,
         end
         value
     end
-    for _ in 1:maxiter
-        grad = Qjoint * b
+    # Gradient and Hessian of the joint objective at `bb`.
+    function newton_parts(bb)
+        grad = Qjoint * bb
         I = Vector{Int}(undef, 4length(s))
         J = similar(I)
         V = Vector{Float64}(undef, length(I))
@@ -739,7 +740,7 @@ function _binomial_animal_q2_mode(aux, s, ntr, Xmu, x, gidx, Qjoint,
             gi = gidx[i]
             j0, j1 = 2gi - 1, 2gi
             l0, l1 = load0[gi], load1[i]
-            eta = eta0[i] + l0 * b[j0] + l1 * b[j1]
+            eta = eta0[i] + l0 * bb[j0] + l1 * bb[j1]
             _, d1, d2, _ = _laplace_v123(Val(:binomial), aux, i, eta)
             grad[j0] += l0 * d1
             grad[j1] += l1 * d1
@@ -749,12 +750,24 @@ function _binomial_animal_q2_mode(aux, s, ntr, Xmu, x, gidx, Qjoint,
             I[k+3], J[k+3], V[k+3] = j1, j0, d2 * l0 * l1
             I[k+4], J[k+4], V[k+4] = j1, j1, d2 * l1^2
         end
-        H = Qjoint + sparse(I, J, V, 2G, 2G)
+        return grad, Qjoint + sparse(I, J, V, 2G, 2G)
+    end
+    for _ in 1:maxiter
+        grad, H = newton_parts(b)
         ch = cholesky(Symmetric(H); check = false)
         issuccess(ch) || return b, ch, false
         step = ch \ grad
         norm(step) <= tol * (1 + norm(b)) && return b, ch, true
-        norm(step) <= 1e-7 * (1 + norm(b)) && return b, ch, true
+        if norm(step) <= 1e-7 * (1 + norm(b))
+            # The Laplace value is second order in the mode error but logdet(H)
+            # is first order, so returning `ch` at the un-stepped `b` left an
+            # error of about 1e-7 in the objective. Take the Newton step (its
+            # error is quadratic) and refactor at the stepped mode.
+            b = b .- step
+            _, H = newton_parts(b)
+            ch = cholesky(Symmetric(H); check = false)
+            return b, ch, issuccess(ch)
+        end
         f0 = joint(b)
         amount, accepted = 1.0, false
         while amount >= 1e-5
@@ -2161,7 +2174,8 @@ function _drm_binomial_sd_regression(f::DrmFormula, fam::Binomial; data,
             "structured covariance inputs are not used."))
     isempty(_sdphylo_parts(f)) || throw(ArgumentError(
         "Binomial `sd(group, phylogenetic) ~ …` is not implemented by the ordinary random-effect route."))
-    isempty(targets) && throw(ArgumentError("Binomial SD regression needs at least one ordinary SD formula."))
+    bare_corr = isempty(targets) && _binomial_bare_corr_block(f, fam)
+    isempty(targets) && !bare_corr && throw(ArgumentError("Binomial SD regression needs at least one ordinary SD formula."))
     all(item -> item.target.level === :iid && item.target.dpar === :mu &&
                 item.target.block === nothing, targets) || throw(ArgumentError(
         "Binomial ordinary SD regression targets IID mean random-effect coefficients only."))
@@ -2178,11 +2192,17 @@ function _drm_binomial_sd_regression(f::DrmFormula, fam::Binomial; data,
     end
     correlated = length(re) == 1 && corr_members(re[1][1]) !== nothing
     if correlated
-        1 <= length(targets) <= length(corr_members(re[1][1])) || throw(ArgumentError(
+        (bare_corr ? 0 : 1) <= length(targets) <= length(corr_members(re[1][1])) || throw(ArgumentError(
             "Binomial correlated-block SD regression needs one SD formula per selected coefficient."))
     else
-        length(re) == length(targets) || throw(ArgumentError(
-            "Binomial SD regression requires one SD formula for each independent random-effect coefficient."))
+        if length(re) != length(targets)
+            # Some terms without a formula (constant SD): the shared independent-term Laplace route.
+            indep_shape = _indep_sd_shape(f)
+            indep_shape === nothing ||
+                return _drm_indep_sd_laplace(f, fam, Val(:binomial), indep_shape; data, g_tol)
+            throw(ArgumentError(
+                "Binomial SD regression requires one SD formula for each independent random-effect coefficient."))
+        end
     end
     all(_formula_response_observed_mask(f, data)) || throw(ArgumentError(
         "Binomial random-effect SD regression does not yet support missing responses; " *
@@ -2356,6 +2376,9 @@ function _drm_binomial_sd_regression(f::DrmFormula, fam::Binomial; data,
     ), f)
 end
 
+# Nats an unconverged restart must gain over a converged first fit to replace it (independent terms).
+const _BINOMIAL_INDEP_BIG_GAIN = 1.0
+
 function _fit_binomial_sd_regression(fam::Binomial, s, ntr, Xmu, Zgs, nmsds,
                                       gidx, G, nmmu, group, g_tol, target_blocks;
                                       nq::Int = _BINOMIAL_RANEF_AGHQ_K,
@@ -2420,7 +2443,10 @@ function _fit_binomial_sd_regression(fam::Binomial, s, ntr, Xmu, Zgs, nmsds,
     pbar = clamp(sum(s) / max(sum(ntr), 1), 1e-3, 1 - 1e-3)
     theta0[1] = _binomial_start(fam, pbar)
     for j in 1:q
-        if is_constant[j]
+        # An intercept-only SD design (`sd(g, coef(x)) ~ 1`) starts at exactly the constant-SD
+        # value: `ones \ fill(log(0.5), G)` is one ulp off `log(0.5)`, and that ulp alone sent the
+        # q = 3 correlated fit down a different path from the bare `(1 + x1 + x2 | g)` spelling.
+        if is_constant[j] || (size(Zgs[j], 2) == 1 && all(isone, Zgs[j]))
             theta0[sd_ranges[j]] .= log(0.5)
         else
             theta0[sd_ranges[j]] .= Zgs[j] \ fill(log(0.5), G)
@@ -2434,11 +2460,15 @@ function _fit_binomial_sd_regression(fam::Binomial, s, ntr, Xmu, Zgs, nmsds,
     # SD coefficients: the single default start can stop at a smooth interior point,
     # converged and with every SD well above the boundary, that lies 1 to 6 nats below
     # a point the same objective scores higher (G12 of the wave-8 disagreement map;
-    # drmTMB reaches the higher one). The boundary trigger never fires there, so such
+    # drmTMB reports a higher value, on an objective that differs by about 0.3 nats there). The boundary trigger never fires there, so such
     # fits restart unconditionally, as the Gamma sd-z two-field route does; intercept-only
     # SD formulas keep the usual trigger (fit near the boundary or not converged).
     # An alternative is accepted only on a clear objective gain, so a fit whose first
-    # optimum stands is unchanged. Correlated blocks are not touched.
+    # optimum stands is unchanged. An UNCONVERGED alternative replaces a CONVERGED first
+    # fit only when it gains more than `_BINOMIAL_INDEP_BIG_GAIN` nats: with the generic
+    # 1e-3 rule a restart turned converged fits into unconverged ones (q = 2 seed 11, gain
+    # 0.18; q = 3 seeds 6 and 27, gains 0.29 and 0.98), leaving a non-stationary point for
+    # the Hessian. Correlated blocks are not touched.
     restart_info = Ref{Any}((ran = false, winner = 0, gain = 0.0, flipped = false))
     if !correlated && q >= 2
         res = _q2_boundary_restarts(run_from, Float64[], res,
@@ -2451,7 +2481,7 @@ function _fit_binomial_sd_regression(fam::Binomial, s, ntr, Xmu, Zgs, nmsds,
             end,
             th -> minimum(minimum(_binomial_sd_scale(Zgs[j] * th[sd_ranges[j]])) for j in 1:q),
             drm_optim_converged; info = restart_info,
-            force = any(>(1), psd))
+            force = any(>(1), psd), big_gain = _BINOMIAL_INDEP_BIG_GAIN)
     end
     ri = restart_info[]
     thetahat = Optim.minimizer(res)

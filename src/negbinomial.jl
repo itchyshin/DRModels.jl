@@ -267,8 +267,16 @@ function _drm_negbinomial2_fit(f::DrmFormula, fam::NegBinomial2; data, tree = no
             error("NegBinomial2() random effects cannot be combined with `zi`/`hu` yet")
         if length(re) > 1
             isva && _va_reject(fam, "crossed/multiple random intercepts")
+            if _has_indep_slopes(re)
+                isaghq && _aghq_reject(fam, "independent random slopes `(0 + x | g)` (Laplace only)")
+                return _withformula(_fit_indep_re_laplace(fam, Val(:nb2), y, Xμ, Xσ, nothing,
+                                                          _indep_slope_comps(re, data, length(y)),
+                                                          nmμ, nmσ, String[], g_tol), f)
+            end
             all(_re_kind(r[1])[1] === :intercept for r in re) ||
-                error("NegBinomial2() supports multiple random effects only as crossed/nested intercepts, e.g. `(1 | g) + (1 | h)`")
+                error("NegBinomial2() supports multiple random effects only as crossed/nested intercepts " *
+                      "`(1 | g) + (1 | h)` or independent intercepts and slopes `(1 | g) + (0 + x | g)`; " *
+                      "a correlated `(1 + x | g)` must be the only random-effect term")
             comps = map(re) do r
                 grp = r[2]; gidx, G = _group_index(getproperty(data, grp); col = grp)
                 (ones(length(y)), gidx, G, String(grp))
@@ -289,8 +297,15 @@ function _drm_negbinomial2_fit(f::DrmFormula, fam::NegBinomial2; data, tree = no
         elseif rk === :corr                               # (1 + x | g) → 2-D GHQ
             isva && _va_reject(fam, "a correlated random slope `(1 + x | g)`")
             return _withformula(_fit_negbin2_corr_ranef(fam, y, Xμ, Xσ, Float64.(getproperty(data, var)), gidx, G, nmμ, nmσ, grp, g_tol), f)
+        elseif rk === :slope                              # (0 + x | g) → TMB-convention Laplace (independent route)
+            isva && _va_reject(fam, "an independent random slope `(0 + x | g)`")
+            isaghq && _aghq_reject(fam, "an independent random slope `(0 + x | g)` (Laplace only)")
+            _require_finite_data_column(data, var)
+            return _withformula(_fit_indep_re_laplace(fam, Val(:nb2), y, Xμ, Xσ, nothing,
+                                                      _indep_slope_comps(re, data, length(y)),
+                                                      nmμ, nmσ, String[], g_tol), f)
         else
-            error("NegBinomial2() supports (1|g) or (1+x|g) on the mean")
+            error("NegBinomial2() supports (1|g), (0+x|g) or (1+x|g) on the mean")
         end
     end
     isva && _va_reject(fam, "no random intercept (fixed-effects-only / zi / hu)")
@@ -333,6 +348,8 @@ function _drm_negbin2_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
     ordq2 = _ordinary_q2_sd_block(f, fam)
     ordq2 === nothing || return _drm_count_ordinary_q2_sd(f, fam, ordq2;
         data, tree, K, A, Ainv, coords, g_tol, se, nAGQ)
+    isempty(_sdphylo_parts(f)) || return _drm_negbin2_phylo_sd_regression(
+        f, fam; data, tree, K, A, Ainv, coords, g_tol, se, nAGQ)
     spatial_sd_target = any(t.target.level === :spatial for t in _sd_target_parts(f))
     (tree === nothing && (coords === nothing || spatial_sd_target)) ||
         throw(ArgumentError("NegBinomial2 `sd(group) ~ …` supports ordinary effects, " *
@@ -364,6 +381,11 @@ function _drm_negbin2_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
         twofield = _drm_twofield_sd_route(f, fam; data, tree, K, A, Ainv, coords, g_tol, se)
         twofield === nothing || return twofield
     end
+    if nAGQ === nothing
+        indep_shape = _indep_sd_shape(f)
+        indep_shape === nothing ||
+            return _drm_indep_sd_laplace(f, fam, Val(:nb2), indep_shape; data, g_tol)
+    end
     length(targets) == 1 || throw(ArgumentError(
         "NegBinomial2 random-effect SD regression requires exactly one `sd(group) ~ …` formula."))
     target = only(targets)
@@ -385,8 +407,6 @@ function _drm_negbin2_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
         kind, grp = st
         kind in (:animal, :relmat, :spatial) || throw(ArgumentError(
             "NegBinomial2 predictor-dependent SD currently supports only an animal or relmat intercept, or a coordinate spatial slope, among structured effects."))
-        kind === :spatial && animal_slope === nothing && throw(ArgumentError(
-            "NegBinomial2 spatial SD regression supports only the slope-only `spatial(0 + x | $grp)` term with `coords = …`."))
         isempty(re) || throw(ArgumentError(
             "NegBinomial2 $kind SD regression cannot yet be combined with ordinary random effects."))
         if kind === :animal
@@ -398,7 +418,7 @@ function _drm_negbin2_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
             (A === nothing && Ainv === nothing && K === nothing) || throw(ArgumentError(
                 "NegBinomial2 spatial slope SD regression uses `coords = …` only, not `K`, `A` or `Ainv`."))
             coords === nothing && throw(ArgumentError(
-                "spatial(0 + $animal_slope | $grp) needs `coords = …`"))
+                "spatial($(animal_slope === nothing ? "1" : "0 + $animal_slope") | $grp) needs `coords = …`"))
         else
             (A === nothing && Ainv === nothing) || throw(ArgumentError(
                 "NegBinomial2 relmat SD regression uses `K = …` only; do not also supply `A` or `Ainv`."))
@@ -529,6 +549,72 @@ function _drm_negbin2_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
         fit = _fit_negbin2_sd_regression(fam, y, Xmu, Xsigma, Zg,
             gidx, G, nmmu, nmsigma, nmsd, grp, g_tol; K = nodes, se, w)
     end
+    return _withformula(fit, f)
+end
+
+# NB2 intercept SD regression on a phylogenetic covariance: `y ~ … + phylo(1 | g)` with
+# `sd(g, phylogenetic) ~ z`. The animal q1 Laplace objective is reused with the tip
+# correlation matrix (`_structured_q2_kernel`, the native correlation scale) as the
+# covariance, as the Beta structured route does. Kernel rows are re-ordered to the
+# first-seen order of the data groups, which `_general_cov_setup` assumes.
+function _drm_negbin2_phylo_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
+                                          tree, K = nothing, A = nothing,
+                                          Ainv = nothing, coords = nothing,
+                                          g_tol::Real = 1e-8, se::Bool = true,
+                                          nAGQ::Union{Nothing,Int} = nothing)
+    who = "NegBinomial2 `sd(group, phylogenetic)` SD regression"
+    (K === nothing && A === nothing && Ainv === nothing && coords === nothing) || throw(ArgumentError(
+        "$who takes its covariance from `tree`; do not also supply `K`, `A`, `Ainv` or `coords`."))
+    nAGQ === nothing || throw(ArgumentError("nAGQ is not used by the sparse-Laplace phylogenetic SD route; omit it."))
+    sdpp = _sdphylo_parts(f)
+    length(sdpp) == 1 || throw(ArgumentError(
+        "$who requires exactly one `sd(group, phylogenetic) ~ …` formula."))
+    isempty(_sd_parts(f)) && isempty(_sd_target_parts(f)) || throw(ArgumentError(
+        "$who cannot yet be combined with other `sd(group)` formulas."))
+    sgrp, srhs = only(sdpp)
+    rhs = Dict(f.forms)
+    fixed_mu, re, mv, st = _split_ranef(rhs[:mu])
+    mv === nothing || throw(ArgumentError("$who cannot use meta_V()."))
+    st !== nothing && first(st) === :phylo || throw(ArgumentError(
+        "NegBinomial2 `sd($sgrp, phylogenetic)` requires `phylo(1 | $sgrp)` in the location formula."))
+    tree === nothing && throw(ArgumentError("phylo(1 | $sgrp) needs `tree = …`"))
+    isempty(re) || throw(ArgumentError(
+        "$who currently requires a phylogenetic random intercept without additional random effects."))
+    last(st) === sgrp || throw(ArgumentError(
+        "NegBinomial2 `sd($sgrp, phylogenetic)` must name the group in `phylo(1 | $(last(st)))`."))
+    sigma_rhs = get(rhs, :sigma, nothing)
+    sigma_rhs isa ConstantTerm && sigma_rhs == ConstantTerm(1) || throw(ArgumentError(
+        "$who requires a fixed `sigma ~ 1` submodel."))
+    (haskey(rhs, :zi) || haskey(rhs, :hu)) && throw(ArgumentError(
+        "$who cannot yet be combined with `zi` or `hu`."))
+    fixed_mu, offset_term = _extract_offset(fixed_mu)
+    offset_term === nothing || throw(ArgumentError("$who does not yet support `offset(...)`."))
+    for (pname, _) in f.forms
+        pname in (:mu, :sigma, Symbol("sdphy_", sgrp)) && continue
+        throw(ArgumentError("$who supports only `mu`, fixed `sigma ~ 1`, and one phylogenetic SD formula."))
+    end
+    all(_formula_response_observed_mask(f, data)) || throw(ArgumentError(
+        "$who requires observed responses; remove incomplete rows before fitting."))
+    y, Xmu, nmmu = _design(f.response, fixed_mu, data)
+    _, Xsigma, nmsigma = _design(f.response, sigma_rhs, data)
+    all(yi -> yi ≥ 0 && isinteger(yi), y) || throw(ArgumentError(
+        "NegBinomial2() requires non-negative integer counts as the response"))
+    labels = getproperty(data, sgrp)
+    C, leaf_index, _ = _structured_q2_kernel(:phylo, sgrp, labels; tree, K = nothing,
+        A = nothing, coords = nothing, who)
+    gidx, G = _group_index(labels)
+    tip_of = zeros(Int, G)
+    @inbounds for i in eachindex(gidx)
+        tip_of[gidx[i]] == 0 || tip_of[gidx[i]] == leaf_index[i] || error("phylogenetic group indexing changed unexpectedly")
+        tip_of[gidx[i]] = leaf_index[i]
+    end
+    Zg, nmsd = _sd_group_design(f.response, srhs, data, gidx, G, sgrp;
+                                schema_cache = f.schema_cache, schema_key = :sd_phylo)
+    size(Zg, 2) <= G && rank(Zg) == size(Zg, 2) || throw(ArgumentError(
+        "$who: the SD group-level design is rank deficient; use predictors that vary independently across groups."))
+    fit = _fit_nb2_animal_sd_laplace(fam, y, Xmu, Xsigma, Zg, gidx,
+        Matrix{Float64}(C)[tip_of, tip_of], labels, nmmu, nmsigma, nmsd, sgrp, g_tol;
+        se, normalize = false)
     return _withformula(fit, f)
 end
 
@@ -1877,7 +1963,8 @@ end
 
 function _fit_nb2_animal_intercept_slope_laplace(fam, y, Xmu, Xsigma, Zgs, gidx,
         Q, nmmu, nmsigma, nmsds, blocks, group, x, g_tol;
-        se::Bool = true, maxiter::Int = 250, correlated::Bool = false)
+        se::Bool = true, maxiter::Int = 250, correlated::Bool = false,
+        force_restarts::Bool = false)
     length(Zgs) == 2 || throw(ArgumentError("expected two NegBinomial2 animal SD designs"))
     size(Xsigma, 2) == 1 || throw(ArgumentError(
         "NegBinomial2 animal SD regression requires `sigma ~ 1`."))
@@ -1937,15 +2024,25 @@ function _fit_nb2_animal_intercept_slope_laplace(fam, y, Xmu, Xsigma, Zgs, gidx,
     end
     # Boundary restarts (see `_q2_boundary_restarts`): NB2 phylo seed 55 of the
     # scale-extension study stopped on the slope-SD ridge at the boundary.
+    # `force_restarts` (labelled spatial `sd-z`) runs the two-block tilt starts even from a
+    # converged, interior fit: the likelihood in the SD coefficients has a second interior mode
+    # and the default start can stop at the lower one (wave-10 gap map, NB2 spatial `sd-z`).
     n_obs = length(y)
+    converged_at(r) = begin
+        th = Optim.minimizer(r); g = zeros(length(th)); grad!(g, th)
+        _laplace_outer_converged(r, Optim.minimum(r), g, th, n_obs, g_tol)
+    end
+    sd_floor(th) = min(minimum(exp.(Zgs[1] * th[ranges[1]])), minimum(exp.(Zgs[2] * th[ranges[2]])))
     restarted = _q2_boundary_restarts(
         start -> first(run_lbfgs(start)), last_b, result,
         (sd0, sd1, het) -> _q2_alt_theta(theta0, ranges, Zgs, sd0, sd1, het),
-        th -> min(minimum(exp.(Zgs[1] * th[ranges[1]])), minimum(exp.(Zgs[2] * th[ranges[2]]))),
-        r -> begin
-            th = Optim.minimizer(r); g = zeros(length(th)); grad!(g, th)
-            _laplace_outer_converged(r, Optim.minimum(r), g, th, n_obs, g_tol)
-        end)
+        sd_floor, converged_at)
+    if force_restarts   # spatial `sd-z`: also try the two-block tilts from an interior fit
+        restarted = _q2_boundary_restarts(
+            start -> first(run_lbfgs(start)), last_b, restarted,
+            (sd0, sd1, het1, het0) -> _q2_alt_theta(theta0, ranges, Zgs, sd0, sd1, het1, het0),
+            sd_floor, converged_at; force = true, starts = _NB2_SPATIAL_ALT_STARTS)
+    end
     if restarted !== result
         result, theta, fmin = restarted, Optim.minimizer(restarted), Optim.minimum(restarted)
     end

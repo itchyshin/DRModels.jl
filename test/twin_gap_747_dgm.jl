@@ -4,7 +4,8 @@
 # truth (mu0, mu1, sd_g, s0, s1) = (0.2, 0.45, 0.5, -0.4, 0.25)) and 104
 # (unbalanced G = 10, sigma ~ x + x2). StableRNGs so the DATA is identical on
 # every Julia version and platform.
-using StableRNGs, StatsModels
+using StableRNGs
+using StatsModels: @formula
 
 function _tg747_draw(seed::Integer, kind::Symbol)
     rng = StableRNG(seed)

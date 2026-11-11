@@ -108,19 +108,18 @@ end
     @test fit_s.converged
     @test haskey(re_sd(fit_s), :id)
 
-    # spatial(1|id) with site coords → coordinate-based exponential-kernel covariance
-    # with the range estimated jointly (#270). Here just confirm coords-spatial is now
-    # a supported fit that returns the right blocks; convergence + recovery on a
-    # properly-simulated spatial dataset is asserted in test_spatial_coord_poisson.jl.
-    # (These coords are independent of the data-generating covariance, so there is no
-    # spatial signal and the range is unidentified — σ_b → 0 — which is correct.)
+    # spatial(1|id) with site coords → drmTMB's fixed-range kernel exp(-d / median positive d)
+    # (+ 1e-6 I): same parameters as drmTMB (beta, log SD), no range block. Here just confirm
+    # coords-spatial is a supported fit; convergence + recovery on a properly-simulated
+    # spatial dataset is asserted in test_spatial_coord_poisson.jl, and agreement with
+    # drmTMB 0.8.1 in test_spatial_parity_wave10.jl. (These coords are independent of the
+    # data-generating covariance, so there is no spatial signal and σ_b → 0.)
     coords = rand(G, 2) .* 5.0
     fit_c = drm(bf(@formula(y ~ x + spatial(1 | id))), Poisson();
                 data = (; y, x, id), coords = coords, se = false)
-    @test :range in first.(fit_c.blocks)
+    @test !(:range in first.(fit_c.blocks))
     @test haskey(re_sd(fit_c), :id)
     @test isfinite(loglik(fit_c))
-    @test isfinite(exp(coef(fit_c, :range)[1]))
 
     # relmat/animal without their matrix → clear error; spatial with neither K nor
     # coords → clear error.

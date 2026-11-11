@@ -625,8 +625,7 @@ function _ctl_weights(n::Integer; supported::Bool = true, route::AbstractString 
     supported || throw(ArgumentError("drm: prior `weights` are not supported on $route (#931)"))
     w = s.weights
     length(w) == n || throw(DimensionMismatch("drm: `weights` has $(length(w)) entries but " *
-        "the model uses $n rows. Give one weight per row of `data`; rows with a missing " *
-        "response are not yet supported together with `weights`."))
+        "the model uses $n rows. Give one weight per row of `data`."))
     s.used_weights = true
     return w
 end
@@ -684,9 +683,21 @@ macro drm_entry(fdef)
     else
         pre = nothing
     end
+    # `data` is a named keyword on some routes and travels inside `kwargs...` on others.
+    record = if :data in names
+        :(_record_factor_levels!($fname, data))
+    elseif splat !== nothing
+        # `insert!` above moved the splat, so find it again.
+        kwsplat = params.args[findfirst(a -> a isa Expr && a.head === :..., params.args)].args[1]
+        :(haskey($kwsplat, :data) && _record_factor_levels!($fname, $kwsplat[:data]))
+    else
+        # the extra-keyword splat added above is named `_drm_extra_kw`
+        :(haskey(_drm_extra_kw, :data) && _record_factor_levels!($fname, _drm_extra_kw[:data]))
+    end
     fdef.args[2] = quote
         $extra_check
         $pre
+        $record
         return _drm_run_controlled($fname, $famname, control, weights) do
             $body
         end

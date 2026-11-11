@@ -1,0 +1,22 @@
+S	1	poisson|indep|lab0|q2|sd-none|cm0|ML
+R	1	poisson|indep|lab0|q2|sd-none|cm0|ML	FITS				-716.2697508964	true	se_finite=true;npar=6	22.61	
+S	2	poisson|indep|lab0|q2|sd-one|cm0|ML
+R	2	poisson|indep|lab0|q2|sd-one|cm0|ML	FITS				-716.2697508964	true	se_finite=true;npar=6	1.96	
+S	3	poisson|indep|lab0|q2|sd-z|cm0|ML
+R	3	poisson|indep|lab0|q2|sd-z|cm0|ML	FITS				-715.1686292430	true	se_finite=true;npar=8	5.68	
+S	4	poisson|indep|lab0|q2|sd-first|cm0|ML
+R	4	poisson|indep|lab0|q2|sd-first|cm0|ML	FITS				-716.2676188324	true	se_finite=true;npar=7	4.53	
+S	5	poisson|indep|lab0|q2|sd-last|cm0|ML
+R	5	poisson|indep|lab0|q2|sd-last|cm0|ML	FITS				-715.1770854647	true	se_finite=true;npar=7	0.11	
+S	6	poisson|indep|lab0|q3|sd-none|cm0|ML
+R	6	poisson|indep|lab0|q3|sd-none|cm0|ML	FITS				-697.9830386999	true	se_finite=true;npar=7	0.39	
+S	7	poisson|indep|lab0|q3|sd-z|cm0|ML
+R	7	poisson|indep|lab0|q3|sd-z|cm0|ML	FITS				-695.0971893607	true	se_finite=true;npar=10	7.16	
+S	8	poisson|indep|lab0|q3|sd-first|cm0|ML
+R	8	poisson|indep|lab0|q3|sd-first|cm0|ML	FITS				-697.9103266573	true	se_finite=true;npar=8	0.32	
+S	9	poisson|indep|lab0|q4|sd-none|cm0|ML
+R	9	poisson|indep|lab0|q4|sd-none|cm0|ML	FITS				-686.3439479703	true	se_finite=true;npar=8	0.94	
+S	10	poisson|indep|lab0|q4|sd-z|cm0|ML
+R	10	poisson|indep|lab0|q4|sd-z|cm0|ML	FITS				-683.2526548835	true	se_finite=true;npar=12	10.66	
+S	11	poisson|indep|lab0|q4|sd-first|cm0|ML
+R	11	poisson|indep|lab0|q4|sd-first|cm0|ML	FITS				-686.2834727703	true	se_finite=true;npar=9	6.15	

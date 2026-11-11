@@ -151,7 +151,11 @@ function _drm_count_phylo_spatial_q2_sd(f::DrmFormula, fam::Union{Poisson,NegBin
     else
         _, Xsigma, nmsigma = _design(f.response, sigma_rhs, data)
         _fit_nb2_animal_intercept_slope_laplace(fam, y, Xmu, Xsigma, Zgs, gidx, Q,
-            nmmu, nmsigma, nmsds, blocks, group, x, g_tol; se, correlated)
+            nmmu, nmsigma, nmsds, blocks, group, x, g_tol; se, correlated,
+            # Labelled (correlated) form only: drmTMB 0.8.1 refuses it, and on the independent form its
+            # default start stops at the same lower mode as the single Julia start (seeds 91010 and
+            # 91018 of the wave-10 study), so restarting there would put Julia above drmTMB.
+            force_restarts = kind === :spatial && correlated && any(Z -> size(Z, 2) > 1, Zgs))
     end
     return _withformula(fit, f)
 end
@@ -170,15 +174,15 @@ end
 #
 # Only the shapes whose explicit `~ 1` form is a supported route are completed,
 # so no refusal can ever talk about SD formulas the user did not write: one
-# structured term and nothing else random, `sigma ~ 1`, ML (or Gaussian animal/relmat REML), no other SD
+# structured term and nothing else random, `sigma ~ 1`, ML (or Gaussian animal/relmat/spatial REML), no other SD
 # formula. The labelled (correlated) form is completed for Poisson only, the
 # one family where drmTMB 0.8.1 fits it without an SD formula. REML is completed
-# for the Gaussian animal and relmat terms only.
+# for the Gaussian animal, relmat and spatial terms only.
 _default_q2_sd_families() = Dict{Symbol,Tuple}(   # a function: the family types load after this file
     :animal  => (Gaussian, Poisson, NegBinomial2, Gamma, Beta),
     :relmat  => (Gaussian, Poisson, NegBinomial2, Gamma, Beta),
-    :spatial => (Gaussian, Poisson, NegBinomial2, Binomial, Gamma),
-    :phylo   => (Poisson, NegBinomial2, Binomial, Gamma),
+    :spatial => (Gaussian, Poisson, NegBinomial2, Binomial, Gamma, Beta),
+    :phylo   => (Poisson, NegBinomial2, Binomial, Gamma, Beta),
 )
 
 function _default_structured_q2_sd(f::DrmFormula, fam; method = nothing)
@@ -198,12 +202,12 @@ function _default_structured_q2_sd(f::DrmFormula, fam; method = nothing)
            term.f === animal ? :animal : :relmat
     any(T -> fam isa T, get(_default_q2_sd_families(), kind, ())) || return f
     # REML only where the explicit `~ 1` form has a REML route: the Gaussian
-    # animal and relmat intercept-and-slope SD routes (`method = :REML` is
+    # animal, relmat and spatial intercept-and-slope SD routes (`method = :REML` is
     # refused by every other family, whose own message then applies).
-    method === :REML && !(fam isa Gaussian && kind in (:animal, :relmat)) && return f
+    method === :REML && !(fam isa Gaussian && kind in (:animal, :relmat, :spatial)) && return f
     block = _animal_intercept_slope(term; kind = _q2_marker(kind), allow_label = true)
     block === nothing && return f
-    block.label === nothing || fam isa Poisson || return f
+    block.label === nothing || fam isa Poisson || (fam isa NegBinomial2 && kind === :phylo) || return f
     # Nothing else random on the mean (ordinary terms, meta_V, a second marker).
     rest = [t for t in terms if t !== term]
     rest_rhs = isempty(rest) ? ConstantTerm(1) : length(rest) == 1 ? rest[1] : Tuple(rest)
@@ -222,5 +226,64 @@ function _default_structured_q2_sd(f::DrmFormula, fam; method = nothing)
         targets[key] = (group = block.group, level = _q2_target_level(kind),
                         member = member, dpar = :mu, block = nothing)
     end
+    return DrmFormula(f.response, forms, f.response2, f.schema_cache, targets)
+end
+
+# ---------------------------------------------------------------------------
+# Default coefficient SD for a bare structured intercept `animal|relmat|spatial(1 | g)`.
+#
+# drmTMB 0.8.1 fits the bare term as the one-SD model, the same model as
+# `sd(g, kind) ~ 1` (identical log-likelihood on the refusal-gap data: Binomial
+# animal, relmat and spatial, Beta spatial; the spatial range is fixed at the
+# median positive distance, as the SD route does). The Binomial and Beta routes
+# had no bare route for these terms, only the explicit SD one, so a formula with
+# no SD formula is completed with `sd(g, kind) ~ 1`. Only the shapes whose explicit
+# form is a supported route are completed: one structured intercept term and
+# nothing else random on the mean, `sigma ~ 1` (Beta), ML.
+_default_q1_sd_families() = Dict{Symbol,Tuple}(   # a function: the family types load after this file
+    :animal  => (Binomial,),
+    :relmat  => (Binomial,),
+    :spatial => (Binomial, Beta),
+)
+
+function _default_structured_q1_sd(f::DrmFormula, fam; method = nothing, K = nothing, coords = nothing)
+    method === nothing || return f
+    fam isa Binomial && fam.link !== :logit && return f
+    (isempty(f.sd_targets) && isempty(_sd_target_parts(f)) && isempty(_sdphylo_parts(f))) || return f
+    all(p -> first(p) in (:mu, :sigma), f.forms) || return f
+    rhs = Dict(f.forms)
+    mu = get(rhs, :mu, nothing)
+    mu === nothing && return f
+    sig = get(rhs, :sigma, nothing)
+    (sig === nothing || sig == ConstantTerm(1)) || return f
+    terms = mu isa Tuple ? collect(mu) : Any[mu]
+    structured = [t for t in terms if t isa FunctionTerm && t.f in (animal, relmat, spatial)]
+    length(structured) == 1 || return f
+    term = only(structured)
+    kind = term.f === spatial ? :spatial : term.f === animal ? :animal : :relmat
+    any(T -> fam isa T, get(_default_q1_sd_families(), kind, ())) || return f
+    # The explicit `sd(g, spatial)` route reads `coords` and refuses a supplied `K`: a spatial term
+    # with `K` (or without `coords`) keeps its own route and message.
+    kind === :spatial && (coords === nothing || K !== nothing) && return f
+    # `(1 | g)` only: a slope or a label belongs to the q2 completion.
+    bar = term.args[1]
+    (bar isa FunctionTerm && length(bar.args) == 2 && bar.args[1] isa ConstantTerm &&
+        bar.args[1].n == 1 && bar.args[2] isa Term) || return f
+    group = bar.args[2].sym
+    rest = [t for t in terms if t !== term]
+    rest_rhs = isempty(rest) ? ConstantTerm(1) : length(rest) == 1 ? rest[1] : Tuple(rest)
+    clean = try
+        _, re, metav, st = _split_ranef(rest_rhs)
+        isempty(re) && metav === nothing && st === nothing
+    catch
+        false
+    end
+    clean || return f
+    forms = copy(f.forms)
+    targets = copy(f.sd_targets)
+    key = Symbol("__sd_target_1")
+    push!(forms, key => ConstantTerm(1))
+    targets[key] = (group = group, level = _q2_target_level(kind), member = nothing,
+                    dpar = :mu, block = nothing)
     return DrmFormula(f.response, forms, f.response2, f.schema_cache, targets)
 end

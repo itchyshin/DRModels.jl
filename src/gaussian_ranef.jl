@@ -353,9 +353,19 @@ function _split_ranef(rhs; allow_phylo_slope::Bool = false,
                         u.args[1].f === (|) && length(u.args[1].args) == 2 &&
                         u.args[1].args[2] isa Term && u.args[1].args[2].sym === lab
                 end
-                nlab == 1 || throw(ArgumentError("drm: the label `$lab` in `(… | $lab | g)` is " *
-                    "shared by $nlab random-effect terms; a shared label ties their " *
-                    "correlations and is not implemented on this route. Use one labelled block."))
+                if nlab != 1
+                    grps = Symbol[u.args[2].sym for u in terms
+                                  if u isa FunctionTerm && u.f === (|) && u.args[1] isa FunctionTerm &&
+                                     u.args[1].f === (|) && length(u.args[1].args) == 2 &&
+                                     u.args[1].args[2] isa Term && u.args[1].args[2].sym === lab]
+                    hint = allequal(grps) ?
+                        " drmTMB ignores such a label on one grouping and fits independent terms; " *
+                        "write `(1 + x | $(first(grps)))` for a correlated pair or " *
+                        "`(1 | $(first(grps))) + (0 + x | $(first(grps)))` for independent terms." : ""
+                    throw(ArgumentError("drm: the label `$lab` in `(… | $lab | g)` is " *
+                        "shared by $nlab random-effect terms; a shared label ties their " *
+                        "correlations and is not implemented on this route. Use one labelled block." * hint))
+                end
                 lhs_t = lhs_t.args[1]
             end
             push!(re, (_implicit_re_intercept(lhs_t), t.args[2].sym))     # (re-lhs, grouping symbol)
@@ -454,7 +464,8 @@ function _re_kind(re_lhs)
         vars = filter(t -> t isa Term, re_lhs.args)
         length(vars) == 1 || error("DRModels.jl supports `(1 | g)`, `(0 + x | g)`, `(1 + x | g)` and " *
                                    "the correlated blocks `(1 + x + z [+ w] | g)` (an intercept plus 2 to 3 slopes), which are " *
-                                   "fitted by maximum likelihood only and with no random effect on `sigma`")
+                                   "fitted by maximum likelihood only and with no random effect on `sigma` " *
+                                   "(so method = :REML is not implemented for the q3/q4 blocks)")
         v = vars[1].sym
         any(c -> c.n == 0, consts) && return (:slope, v)      # 0 + x  → slope only
         any(c -> c.n == 1, consts) && return (:corr, v)       # 1 + x  → correlated intercept+slope

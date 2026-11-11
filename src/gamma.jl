@@ -208,8 +208,14 @@ function _drm_gamma_fit(f::DrmFormula, fam::Gamma; data, tree = nothing, K = not
             isva && _va_reject(fam, "a correlated random slope `(1 + x | g)`")
             _require_finite_data_column(data, var)
             return _withformula(_fit_gamma_corr_ranef(fam, y, Xμ, Xσ, Float64.(getproperty(data, var)), gidx, G, nmμ, nmσ, grp, g_tol), f)
+        elseif rk === :slope           # (0 + x | g) → TMB-convention Laplace (independent route)
+            isva && _va_reject(fam, "an independent random slope `(0 + x | g)`")
+            _require_finite_data_column(data, var)
+            return _withformula(_fit_indep_re_laplace(fam, Val(:gamma), y, Xμ, Xσ, nothing,
+                                                      _indep_slope_comps(re, data, length(y)),
+                                                      nmμ, nmσ, String[], g_tol), f)
         else
-            error("Gamma() supports `(1 | g)` or `(1 + x | g)` on the mean")
+            error("Gamma() supports `(1 | g)`, `(0 + x | g)` or `(1 + x | g)` on the mean")
         end
     end
     isva && _va_reject(fam, "no random intercept (fixed-effects-only)")
@@ -483,6 +489,9 @@ function _drm_gamma_sd_regression(f::DrmFormula, fam::Gamma; data,
         # Joint mean + sigma ordinary intercepts, each with an SD formula (dense Laplace).
         return _drm_joint_sigma_sd_laplace(f, fam; data, tree, K, A, coords, g_tol, se)
     end
+    indep_shape = _indep_sd_shape(f)
+    indep_shape === nothing ||
+        return _drm_indep_sd_laplace(f, fam, Val(:gamma), indep_shape; data, g_tol)
     length(targets) == 1 || throw(ArgumentError(
         "Gamma random-effect SD regression requires exactly one SD target."))
     target = only(targets)
@@ -896,6 +905,28 @@ function _fit_gamma_structured_sd_laplace(fam, y, Xmu, Xsigma, Zobs, Zg, gidx,
     gfinal = zeros(length(theta_hat)); grad!(gfinal, theta_hat)
     sigma_index = pmu + 1
     sigma_bound_tol = 1e-6
+    # Polish. The Fminbox L-BFGS can stop with a zero step (line search unable to move on
+    # the finite-difference gradient) just outside the reporting test of
+    # `_laplace_outer_converged`: Gamma phylo `sd-z` of the wave-10 gap map sat at R's
+    # log-likelihood to 1e-10 with |grad|/n = 1.01e-6 against the 1e-6 limit. When the test
+    # fails and no bound is active, take up to two Newton steps on the finite-difference
+    # Hessian and keep each only if the objective does not rise. The test is unchanged.
+    if !_laplace_outer_converged(result, nll_hat, gfinal, theta_hat, length(y), g_tol) &&
+       isfinite(nll_hat) && nll_hat < 1e17 &&
+       abs(theta_hat[sigma_index]) < 4 - 1e-3
+        for _ in 1:2
+            Hn = _finite_hessian(nll, theta_hat; h = _fd_hessian_step(length(y)))
+            chn = cholesky(Symmetric(Matrix(Hn)); check = false)
+            issuccess(chn) || break
+            trial = theta_hat .- (chn \ gfinal)
+            abs(trial[sigma_index]) < 4 - 1e-3 || break
+            f_trial = nll(trial)
+            (isfinite(f_trial) && f_trial <= nll_hat) || break
+            theta_hat, nll_hat = trial, f_trial
+            grad!(gfinal, theta_hat)
+            _laplace_outer_converged(result, nll_hat, gfinal, theta_hat, length(y), g_tol) && break
+        end
+    end
     at_lower_sigma_bound = theta_hat[sigma_index] <= -4 + sigma_bound_tol
     at_upper_sigma_bound = theta_hat[sigma_index] >= 4 - sigma_bound_tol
     gcheck = copy(gfinal)
