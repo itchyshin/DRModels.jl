@@ -68,6 +68,25 @@ end
 _binomial_sd_scale(eta) = exp.(_softclamp.(eta, -12.0, 12.0, 3.0))
 _binomial_structured_sd_group_scale(Zg, alpha) = _binomial_sd_scale(Zg * alpha)
 
+# Partial correlation and innovation scale of one correlation parameter `eta` (atanh scale).
+# `eta` is soft-clamped with `_softclamp` at +-atanh(0.999999) = +-7.2543 and margin 3: the
+# identity (bit for bit) for |eta| <= 7.2543, then a smooth, monotone saturation at
+# +-10.254 (|rho| up to about 1 - 2.5e-9). The only purpose is to cut off the region where
+# the Laplace / AGHQ objective is rounding noise: once |eta| exceeds about 12 the group prior
+# precision is ~1/(1 - rho^2) ~ 1e10 and the objective carries noise of order 1e-4, which the
+# optimiser can accept as progress (Julia 1.13.3, cell `binomial|corr|lab0|q2|sd-last`).
+# It is NOT a 0.999999 bound: the q2 Poisson / NB2 / Gaussian routes scale, rho = 0.999999 *
+# tanh(eta), and drmTMB's Binomial q2 block uses plain tanh(eta) with no bound.
+# Reporting: the coefficient table and `:recov` keep the raw `eta` the optimiser holds, while
+# `:corpars`, the correlation in the likelihood and the bootstrap simulators use the clamped
+# value. They agree for |eta| <= 7.2543 and differ beyond it (raw eta = -8.29 is effective
+# -8.25; raw -13 is -10.13), where the objective is flat in `eta` anyway. Reported on purpose
+# rather than rewriting the stored coefficient, which would make `coef` disagree with `theta`.
+function _binomial_bounded_partial(eta)
+    e = _softclamp(eta, -atanh(_Q2_RHO_BOUND), atanh(_Q2_RHO_BOUND), 3.0)
+    return tanh(e), _binomial_stable_sech(e)
+end
+
 # Lower-triangular Cholesky factor for a correlation matrix from row-major
 # partial correlations. For row i and column j<i, the partial parameter is
 # conditional on the preceding j-1 coordinates. This preserves the established
@@ -85,8 +104,9 @@ function _binomial_partial_correlation_cholesky(correlation_eta, q::Integer)
         residual = one(T)
         for j in 1:(i - 1)
             eta = correlation_eta[position]
-            L[i, j] = tanh(eta) * residual
-            residual *= _binomial_stable_sech(eta)
+            partial, innovation = _binomial_bounded_partial(eta)
+            L[i, j] = partial * residual
+            residual *= innovation
             position += 1
         end
         L[i, i] = residual

@@ -2902,14 +2902,13 @@ function _binomial_sd_marginal_simulator(fit::DrmFit, data, re;
             q = length(effects)
             u = randn(rng, q, G)
             if q == 2
-                rho = tanh(only(correlation_eta))
-                innovation = _binomial_stable_sech(only(correlation_eta))
+                rho, innovation = _binomial_bounded_partial(only(correlation_eta))
                 b0 = group_sds[1] .* u[1, :]
                 b1 = group_sds[2] .* (rho .* u[1, :] .+ innovation .* u[2, :])
                 eta .+= b0[gidx] .+ loadings[2] .* b1[gidx]
             else
-                partials = tanh.(correlation_eta)
-                innovations = _binomial_stable_sech.(correlation_eta)
+                pairs = _binomial_bounded_partial.(correlation_eta)
+                partials, innovations = first.(pairs), last.(pairs)
                 p21, p31, p32 = partials
                 s21, s31, s32 = innovations
                 b0 = group_sds[1] .* u[1, :]
