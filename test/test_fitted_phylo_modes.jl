@@ -307,7 +307,7 @@ end
 # ---------------------------------------------------------------------------------------------------
 # the stored fit is untouched: bit-identical to the commit before the change (a6b12b0be)
 # ---------------------------------------------------------------------------------------------------
-@testset "stored fit values are bit-identical to the pre-change commit (P20a: no fitted parameter changed)" begin
+@testset "stored fit values equal those of the pre-change commit (P20a: no fitted parameter changed)" begin
     d = _pm_mr(_pm_data())
     cells = Dict(id => f for (id, f) in _PM_CELLS)
     # the values were captured with Julia 1.13.3 and 1.10.12; other Julia versions can differ in the last bits
@@ -317,15 +317,28 @@ end
     else
         lines = filter(!isempty, readlines(joinpath(_PM_DIR, "p20_prechange_fit_values_$tag.txt")))
         checked = String[]
+        # The values were captured on one machine (Totoro). Another CPU or BLAS build moves the last
+        # bits of an optimised fit (seen on the GitHub runners: theta by up to 3e-8, logLik by 1e-10),
+        # so the exact comparison is only meaningful on the capturing machine. Set
+        # DRM_BITIDENTICAL_CHECK=1 there to compare with `==`; elsewhere the same values are checked
+        # to 1e-6 (theta, vcov) and 1e-8 (logLik).
+        exact = get(ENV, "DRM_BITIDENTICAL_CHECK", "") == "1"
         for ln in lines
             parts = split(ln, '\t')
             occursin("FIT FAILED", ln) && continue
             id = String(parts[1])
             val(k) = eval(Meta.parse(split(first(filter(p -> startswith(p, k * "="), parts)), '='; limit = 2)[2]))
             fit = with_logger_quiet(() -> cells[id](d))
-            @test fit.theta == val("theta")
-            @test fit.loglik == val("loglik")
-            @test Matrix(fit.vcov) == val("vcov")
+            if exact
+                @test fit.theta == val("theta")
+                @test fit.loglik == val("loglik")
+                @test Matrix(fit.vcov) == val("vcov")
+            else
+                @test maximum(abs.(fit.theta .- val("theta"))) < 1e-6
+                @test abs(fit.loglik - val("loglik")) < 1e-8
+                V0 = val("vcov")
+                @test maximum(abs.(Matrix(fit.vcov) .- V0)) < 1e-6 * max(1.0, maximum(abs.(V0)))
+            end
             push!(checked, id)
         end
         @test length(checked) == 21
