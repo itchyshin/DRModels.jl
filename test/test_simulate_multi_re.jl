@@ -55,6 +55,11 @@ end
             @test isapprox(B, r_between; rtol = 0.08)
             # the default without `data` is still a clear refusal, never a b = 0 draw
             @test_throws ArgumentError simulate(fit)
+            # the refusal prints the exact call to use, and names the grouping columns (P12a)
+            msg = try; simulate(fit); "" ; catch e; sprint(showerror, e); end
+            @test occursin("simulate(fit; data = <the data frame you fitted with>)", msg)
+            @test occursin("simulate(fit; re = :zero)", msg)
+            @test occursin("grouping columns (g, g2", msg)
             # population-level draws carry no between-group signal, so they are less variable
             Z = simulate(fit; nsim = 200, re = :zero, rng = MersenneTwister(1))
             @test mean(var(Z; dims = 2)) < mean(var(S; dims = 2))
