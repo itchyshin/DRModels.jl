@@ -11,6 +11,7 @@ drm_formula
 DrmFormula
 BivariateDrmFormula
 offset
+poly
 ```
 
 ### Other names used in formulas

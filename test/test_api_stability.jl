@@ -58,6 +58,8 @@ const API_EXPERIMENTAL = [
     # what drm(...; control, weights) did (#994 per-start logLiks). The names
     # are this PR's proposal, not an owner decision, so not promised yet.
     "control_info", "DRMControlReport",
+    # `poly(x, d)` formula term (R's orthogonal basis); new, tier proposed by the author, not decided
+    "poly",
     # r2_constant_sigma (2026-09-06): EXPERIMENTAL on purpose. The value it
     # returns is settled -- it is the ordinary lm() R2 -- but its REFUSAL
     # BOUNDARIES are what a caller actually programs against, and those may widen:

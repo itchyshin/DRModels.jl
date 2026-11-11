@@ -697,6 +697,8 @@ function _design(response::Symbol, rhs, data; schema_cache = nothing, schema_key
         (store_schema && schema_cache !== nothing) && (schema_cache[][schema_key] = s)
         s
     end
+    # `poly(x, d)`: add the stored training basis (one per fit, shared by fit and `predict`).
+    reused_training_schema || _add_poly_schema!(sch, rhs, design_data, schema_cache, store_schema)
     # #1015: name the actual problem (a missing column, a missing value, a level
     # the training schema never saw) before `modelcols`, instead of reporting
     # every `modelcols` failure as an unseen factor level.
@@ -857,6 +859,7 @@ function _record_factor_levels!(f, data)
         f.schema_cache[][_FACTOR_LEVELS_KEY] = levs
     catch
     end
+    _record_poly_bases!(f, data)
     return nothing
 end
 
