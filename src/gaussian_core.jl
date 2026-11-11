@@ -415,6 +415,8 @@ _withranef(fit::DrmFit, re) = DrmFit(fit.family, fit.blocks, fit.coefnames, fit.
 # linear predictor. The `cond_` prefix keeps it out of the bridge dpars and out of
 # `simulate(newdata)`. A non-finite value is recorded as `:cond_fit_failed`, so the
 # conditional default refuses instead of returning NaN.
+const _COND_FIT_KEYS = (:cond_fit_eta_re, :cond_fit_failed, :cond_fit_stored)
+
 function _record_cond_fit!(scales::AbstractDict, eta::AbstractVector)
     if all(isfinite, eta)
         scales[:cond_fit_eta_re] = collect(Float64, eta)
@@ -429,8 +431,15 @@ end
 # conditional mode b̂_g (natural scale, tolerance 1e-10), and row i loads `Zre[i, :]`.
 function _record_cond_fit_aghq!(scales::AbstractDict, nll, θ̂, bcache::AbstractMatrix{Float64},
                                 gidx::AbstractVector{<:Integer}, Zre::AbstractMatrix)
-    nll(θ̂)
+    Threads.atomic_xchg!(_AGHQ_MODE_RESETS, 0)
+    val = nll(θ̂)
     q = size(bcache, 1)
+    # A group whose mode was not finite was reset to 0 inside the objective, and an infinite
+    # objective means a mode solve failed: either way the modes are not the fitted ones.
+    if _AGHQ_MODE_RESETS[] > 0 || !(val isa Real && isfinite(val))
+        scales[:cond_fit_failed] = [1.0]
+        return scales
+    end
     return _record_cond_fit!(scales, [sum(Zre[i, d] * bcache[d, gidx[i]] for d in 1:q)
                                       for i in eachindex(gidx)])
 end
@@ -2320,6 +2329,13 @@ function _with_full_response_rows(fit::DrmFit, f::DrmFormula, data)
     # family-specific fit metadata that is not a distributional parameter
     # (e.g. group-level SDs, group indices, and quadrature settings).
     scales = merge(fit.scales, scales)
+    if fit.ranef isa LocOnlyRanef && !haskey(scales, :cond_fit_eta_re)
+        # sparse / EM `phylo(1 | g)` keep the CONDITIONAL mean in `means[:mu]`, which the
+        # rebuild above replaces with the population prediction on every input row. Keep the
+        # modes as the link-scale gap between the two, on the used rows, for `fitted()`.
+        link = fit.family isa LogNormal ? log : identity
+        _record_cond_fit!(scales, link.(fit.means[:mu]) .- fit.ranef.mu_fixed)
+    end
     obs = _full_response_obs(f, data)
     return DrmFit(
         fit.family, fit.blocks, fit.coefnames, fit.theta, fit.vcov,
@@ -2635,7 +2651,7 @@ end
 function _fitted_component_mu(fit::DrmFit, re::Symbol, who::Symbol)
     mu = fit.means[:mu]
     ra = fit.ranef
-    if ra isa LocOnlyRanef
+    if ra isa LocOnlyRanef && !haskey(fit.scales, :cond_fit_eta_re)
         # sparse / EM Gaussian or LogNormal phylo(1 | g): `means[:mu]` already holds the
         # conditional mean; the fixed-effect linear predictor is kept in `mu_fixed`.
         re === :conditional && return mu
@@ -2726,7 +2742,8 @@ Model residuals. `type` selects the kind:
   are removed (as drmTMB's `residuals()` does), and `re = :zero` gives the population-level
   residuals `y − Xβ̂` that `residuals(fit)` returned before the default changed. A fit with
   a missing response has `nobs` residuals, not one per input row. `re` applies to
-  `type = :response` only.
+  `type = :response` only; `type = :quantile` with any `re` other than the default throws an
+  `ArgumentError`.
 - `:quantile` — standardised residuals. Outside `temporal()` fits these are
   randomized quantile residuals (Dunn & Smyth; DHARMa / glmmTMB style): for
   observation `i` with reference distribution `F_i`, `r_i = Φ⁻¹(u_i)`, where
@@ -2842,6 +2859,9 @@ function residuals(fit::DrmFit; type::Symbol = :response, rng = Random.default_r
         fv = fitted(fit; re)
         return Dict(k => fit.obs[k] .- fv[k] for k in keys(fit.means))
     elseif type === :quantile
+        re === :conditional || throw(ArgumentError(
+            "residuals: `re = :$re` only applies to `type = :response`; quantile residuals have one " *
+            "definition per route and do not take a random-effect level (leave `re` at its default)."))
         # homtoep: the observations of a series are jointly σ²R, so the
         # standardised residuals are the whitened L⁻¹ r (drmTMB's Pearson
         # residuals), not (y − μ̂)/σ.
@@ -2883,10 +2903,14 @@ function sigma(fit::DrmFit)
     # whole scale table, as before (e.g. `:zi`, `:nu`, `:sigma1`/`:sigma2`).
     sd_route = haskey(fit.scales, :sd_group) || haskey(fit.scales, :sd)
     ks = sort!(sd_route ? [k for k in keys(fit.scales) if k in (:sigma, :sigma1, :sigma2)] :
-                          [k for k in keys(fit.scales) if k !== :cond_blup_unavailable && k !== :cond_fit_eta_re && k !== :cond_fit_failed && k !== :cond_fit_stored])
+                          [k for k in keys(fit.scales) if k !== :cond_blup_unavailable && !(k in _COND_FIT_KEYS)])
     isempty(ks) && return Dict{Symbol,Vector{Float64}}()
     (length(ks) == 1 && ks[1] === :sigma) && return fit.scales[:sigma]
-    return (sd_route || haskey(fit.scales, :cond_blup_unavailable)) ? Dict(k => fit.scales[k] for k in ks) : fit.scales
+    (sd_route || haskey(fit.scales, :cond_blup_unavailable)) && return Dict(k => fit.scales[k] for k in ks)
+    # The `fitted()` record keys are internal: a fit that carries them returns its scale table
+    # without them, so `sigma(fit)` is the table it was before they existed.
+    return any(k -> haskey(fit.scales, k), _COND_FIT_KEYS) ?
+           filter(p -> !(first(p) in _COND_FIT_KEYS), fit.scales) : fit.scales
 end
 
 """

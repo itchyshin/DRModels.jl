@@ -37,8 +37,8 @@ function _fc_data()
     return (; cols...)
 end
 
-function _fc_reference()
-    m = readdlm(joinpath(_FC_DIR, "p17_fitted_r_reference.csv"), ',', Any; skipstart = 1)
+function _fc_reference(file = "p17_fitted_r_reference.csv")
+    m = readdlm(joinpath(_FC_DIR, file), ',', Any; skipstart = 1)
     ref = Dict{String,NamedTuple{(:cond, :pop),Tuple{Vector{Float64},Vector{Float64}}}}()
     for id in unique(String.(m[:, 1]))
         keep = String.(m[:, 1]) .== id
@@ -239,4 +239,199 @@ end
         # conditional residuals / sigma are the quantile residuals on this route
         @test residuals(fit) ./ exp(only(coef(fit, :sigma))) ≈ residuals(fit; type = :quantile)
     end
+end
+
+# ---------------------------------------------------------------------------------------------
+# Review fixes for #1324. R values: p17_fitted_review_reference.csv, from p17_fitted_review_r.R
+# (drmTMB 0.8.1, Totoro). The MR cells put a missing response on the rows where `y_gm` is NA.
+# ---------------------------------------------------------------------------------------------
+function _fc_mask(d, name)
+    na = ismissing.(d.y_gm)
+    y = getproperty(d, name)
+    return Union{Missing,Float64}[na[i] ? missing : Float64(y[i]) for i in eachindex(y)]
+end
+
+const _FC_TREE = strip(read(joinpath(_FC_DIR, "tree16.newick"), String))
+_fc_tree() = DRModels.augmented_phy(_FC_TREE)
+
+# (id, formula + family + keywords as a function of the data). Same models as the R script.
+const _FC_WIDE = [
+    ("W|beta|(1|g)", d -> drm(bf(@formula(y_beta ~ x1 + (1 | g)), @formula(sigma ~ 1)), DRModels.Beta(); data = d)),
+    ("W|gamma|(1|g)", d -> drm(bf(@formula(y_gam ~ x1 + (1 | g)), @formula(sigma ~ 1)), DRModels.Gamma(); data = d)),
+    ("W|nb2|(1|g)", d -> drm(bf(@formula(y_nb ~ x1 + (1 | g)), @formula(sigma ~ 1)), NegBinomial2(); data = d)),
+    ("W|student|(1|g)", d -> drm(bf(@formula(y_st ~ x1 + (1 | g)), @formula(sigma ~ 1), @formula(nu ~ 1)), Student(); data = d)),
+    ("W|tweedie|(1|g)", d -> drm(bf(@formula(y_tw ~ x1 + (1 | g)), @formula(sigma ~ 1), @formula(nu ~ 1)), Tweedie(); data = d)),
+    ("W|betabinomial|(1|g)", d -> drm(bf(@formula(cbind(s, fl) ~ x1 + (1 | g)), @formula(sigma ~ 1)), BetaBinomial(); data = d)),
+    ("W|cumul|(1|g)", d -> drm(bf(@formula(y_ord ~ x1 + (1 | g))), CumulativeLogit(); data = d)),
+    ("W|poisson|offset+(1|g)", d -> drm(bf(@formula(y_pois ~ x1 + offset(off) + (1 | g))), Poisson(); data = d)),
+    ("W|nb2|offset+(1|g)", d -> drm(bf(@formula(y_nb ~ x1 + offset(off) + (1 | g)), @formula(sigma ~ 1)), NegBinomial2(); data = d)),
+]
+
+_fc_mr(d) = merge(d, (y_g_m = _fc_mask(d, :y_g), y_ln_m = _fc_mask(d, :y_ln),
+                      y_pois_m = _fc_mask(d, :y_pois), y_gam_m = _fc_mask(d, :y_gam)))
+const _FC_MR = [
+    ("MR|gaussian|(1|g)", (d, kw...) -> drm(bf(@formula(y_g_m ~ x1 + (1 | g)), @formula(sigma ~ 1)), Gaussian(); data = d, kw...)),
+    ("MR|lognormal|(1|g)", (d, kw...) -> drm(bf(@formula(y_ln_m ~ x1 + (1 | g)), @formula(sigma ~ 1)), LogNormal(); data = d, kw...)),
+    ("MR|poisson|(1|g)", (d, kw...) -> drm(bf(@formula(y_pois_m ~ x1 + (1 | g))), Poisson(); data = d, kw...)),
+    ("MR|gamma|(1|g)", (d, kw...) -> drm(bf(@formula(y_gam_m ~ x1 + (1 | g)), @formula(sigma ~ 1)), DRModels.Gamma(); data = d, kw...)),
+    ("MR|poisson|(1|g)+(1|g2)+(1|h)", (d, kw...) -> drm(bf(@formula(y_pois_m ~ x1 + (1 | g) + (1 | g2) + (1 | h))), Poisson(); data = d, kw...)),
+    ("MR|gaussian|phylo(1|g)", (d, kw...) -> drm(bf(@formula(y_g_m ~ x1 + phylo(1 | g)), @formula(sigma ~ 1)), Gaussian(); data = d, tree = _fc_tree(), kw...)),
+    ("MR|lognormal|phylo(1|g)", (d, kw...) -> drm(bf(@formula(y_ln_m ~ x1 + phylo(1 | g)), @formula(sigma ~ 1)), LogNormal(); data = d, tree = _fc_tree(), kw...)),
+]
+
+# Where the two engines fit the SAME model to the same precision, the conditional values agree at the
+# bound used everywhere above (1e-6). The AGHQ routes here integrate with adaptive quadrature and
+# drmTMB uses the Laplace approximation, so the two FITS differ and so do the modes. Measured
+# (max |Julia - drmTMB| on `fitted(fit)`, and on the population value `fitted(fit; re = :zero)`):
+#
+#   cell              conditional    population (fit gap alone)
+#   Student           1.1e-9         2.4e-10       <- pinned at 1e-6 below (its group SD is at the boundary)
+#   BetaBinomial      1.5e-4         4.1e-5
+#   Beta              3.2e-4         3.0e-5
+#   Gamma             1.2e-3         3.8e-5
+#   NB2               3.0e-3         6.8e-4
+#   NB2 + offset      2.8e-3         8.0e-4
+#   Tweedie           9.8e-4         1.3e-4
+#   ordinal (1 | g)   5.1e-3         4.3e-4
+#   Poisson + offset  1.4e-4         1.5e-4
+#
+# The population gap shows the fits themselves differ; no bound is loosened for them. For those cells
+# the test checks what must hold on the Julia side alone: the conditional value is the population
+# value moved on the link scale by one number per group (the fitted mode), and the shift is finite.
+@testset "fitted(): more families, an offset and an ordinal fit against drmTMB" begin
+    d = _fc_data()
+    ref = _fc_reference("p17_fitted_review_reference.csv")
+    gi = indexin(d.g, unique(d.g))
+    for (id, fit_it) in _FC_WIDE
+        @testset "$id" begin
+            fit = fit_it(d)
+            cond = fitted(fit); pop = fitted(fit; re = :zero)
+            @test length(cond) == nobs(fit) == length(ref[id].cond)
+            @test all(isfinite, cond)
+            if id == "W|student|(1|g)"
+                @test maximum(abs.(cond .- ref[id].cond)) < _fc_tol(id)
+                @test maximum(abs.(pop .- ref[id].pop)) < _fc_tol(id)
+            else
+                # the recorded shift is one value per group, and it is what `fitted` adds on the link scale
+                eta = fit.scales[:cond_fit_eta_re]
+                for k in unique(gi)
+                    rows = gi .== k
+                    @test all(isapprox.(eta[rows], eta[findfirst(rows)]; atol = 1e-12))
+                end
+                @test maximum(abs.(cond .- pop)) > 1e-3
+                @test sign.(cond .- pop) == sign.(eta) || id == "W|cumul|(1|g)" || all(==(0), eta)
+            end
+        end
+    end
+end
+
+@testset "fitted(): a missing response on a random-effect fit (review of #1324)" begin
+    d = _fc_mr(_fc_data())
+    ref = _fc_reference("p17_fitted_review_reference.csv")
+    keep = .!ismissing.(d.y_g_m)
+    dc = map(v -> v[keep], d)                     # the same used rows, complete cases
+    dc = merge(dc, (y_g_m = Float64.(dc.y_g_m), y_ln_m = Float64.(dc.y_ln_m),
+                    y_pois_m = Float64.(dc.y_pois_m), y_gam_m = Float64.(dc.y_gam_m)))
+    for (id, fit_it) in _FC_MR
+        @testset "$id" begin
+            fit = fit_it(d)
+            fc = fit_it(dc)
+            cond = fitted(fit); zero = fitted(fit; re = :zero)
+            @test length(cond) == length(zero) == nobs(fit) == 144
+            # drmTMB. The two AGHQ cells below differ from drmTMB's Laplace fit by 2.1e-3 (Poisson) and
+            # 1.3e-3 (Gamma) for the reason given above the wide cells; they are checked against the fit
+            # on the complete cases instead (identical rows, identical model), not against R.
+            id in ("MR|poisson|(1|g)", "MR|gamma|(1|g)") ||
+                @test maximum(abs.(cond .- ref[id].cond)) < _fc_tol(id)
+            # the fit with the missing rows and the fit on the complete cases are one fit
+            @test maximum(abs.(cond .- fitted(fc))) < 1e-8
+            @test maximum(abs.(zero .- fitted(fc; re = :zero))) < 1e-8
+            # the modes really are in (the Gaussian phylogenetic SD is at its boundary on this data: no gap)
+            id == "MR|gaussian|phylo(1|g)" || @test maximum(abs.(cond .- zero)) > 1e-3
+            @test residuals(fit) ≈ residuals(fc) atol = 1e-8
+        end
+    end
+end
+
+@testset "fitted(): internal keys do not leak into user output (review of #1324)" begin
+    d = _fc_data()
+    for fit in (drm(bf(@formula(y_st ~ x1 + (1 | g)), @formula(sigma ~ 1), @formula(nu ~ 1)), Student(); data = d),
+                drm(bf(@formula(y_tw ~ x1 + (1 | g)), @formula(sigma ~ 1), @formula(nu ~ 1)), Tweedie(); data = d),
+                drm(bf(@formula(y_gam ~ x1 + (1 | g)), @formula(sigma ~ 1)), DRModels.Gamma(); data = d))
+        @test haskey(fit.scales, :cond_fit_eta_re)                  # the record exists ...
+        s = sigma(fit)
+        ks = s isa AbstractDict ? Set(keys(s)) : Set([:sigma])
+        @test !any(k -> startswith(String(k), "cond_"), ks)         # ... and is not in sigma(fit)
+        # the table is what the fit's own scales were before the record existed
+        old = Dict(k => v for (k, v) in fit.scales if !startswith(String(k), "cond_"))
+        s isa AbstractDict ? (@test s == old) : (@test s == old[:sigma])
+        @test !any(k -> startswith(String(k), "cond_"), keys(DRModels._bridge_dpars(fit)))
+    end
+end
+
+@testset "fitted(): a group mode that was reset is detected, not read as a fit (review of #1324)" begin
+    sc = Dict{Symbol,Vector{Float64}}()
+    bcache = zeros(1, 3)
+    # a clean objective evaluation records the modes
+    DRModels._record_cond_fit_aghq!(sc, θ -> 1.0, nothing, bcache, [1, 2, 3], ones(3, 1))
+    @test haskey(sc, :cond_fit_eta_re) && !haskey(sc, :cond_fit_failed)
+    # an objective that had to reset one group's mode to 0 marks the record failed
+    sc = Dict{Symbol,Vector{Float64}}()
+    DRModels._record_cond_fit_aghq!(sc, θ -> (Threads.atomic_add!(DRModels._AGHQ_MODE_RESETS, 1); 1.0),
+                                    nothing, bcache, [1, 2, 3], ones(3, 1))
+    @test haskey(sc, :cond_fit_failed) && !haskey(sc, :cond_fit_eta_re)
+    # an infinite objective (a failed mode solve) does too
+    sc = Dict{Symbol,Vector{Float64}}()
+    DRModels._record_cond_fit_aghq!(sc, θ -> Inf, nothing, bcache, [1, 2, 3], ones(3, 1))
+    @test haskey(sc, :cond_fit_failed)
+    # the objective really is infinite when a group's mode solve fails (what the record step reads)
+    members = [[1, 2], [3, 4]]
+    bc = zeros(1, 2)
+    v = DRModels._aghq_marginal_loglik((i, η) -> -Inf, members, zeros(4), ones(4, 1), fill(1.0, 1, 1),
+                                       DRModels._AGHQRule(1, 5), bc)
+    @test !isfinite(v)
+    # a fit whose record is failed refuses the conditional default and still gives re = :zero
+    d = _fc_data()
+    fit = drm(bf(@formula(y_pois ~ x1 + (1 | g))), Poisson(); data = d)
+    fit.scales[:cond_fit_failed] = [1.0]
+    err = try fitted(fit); nothing catch e; e end
+    @test err isa ArgumentError && occursin("mode solve failed", sprint(showerror, err))
+    @test fitted(fit; re = :zero) == fit.means[:mu]
+end
+
+@testset "residuals(type = :quantile) takes no `re` (review of #1324)" begin
+    d = _fc_data()
+    fit = drm(bf(@formula(y_g ~ x1 + (1 | g)), @formula(sigma ~ 1)), Gaussian(); data = d)
+    q = residuals(fit; type = :quantile, rng = StableRNG(1))
+    @test_throws ArgumentError residuals(fit; type = :quantile, re = :zero)
+    @test_throws ArgumentError residuals(fit; type = :quantile, re = :nope)
+    @test residuals(fit; type = :quantile, re = :conditional, rng = StableRNG(1)) == q   # unchanged values
+end
+
+@testset "fitted(): routes with no recorded modes refuse the conditional default" begin
+    d = _fc_data()
+    nr(f) = (err = try fitted(f); nothing catch e; e end; err isa ArgumentError && occursin("re = :zero", sprint(showerror, err)))
+    tree = _fc_tree()
+    # 1. dense phylo, animal and relmat on a Gaussian mean
+    K = Matrix{Float64}(I, 16, 16)
+    @test nr(drm(bf(@formula(y_g ~ x1 + animal(1 | g)), @formula(sigma ~ 1)), Gaussian(); data = d, A = K))
+    @test nr(drm(bf(@formula(y_g ~ x1 + phylo(1 | g)), @formula(sigma ~ 1)), Gaussian(); data = d, tree = tree, algorithm = :gls))
+    # 2. phylo Laplace for the count, binomial and continuous families
+    for (f, fam) in ((bf(@formula(y_pois ~ x1 + phylo(1 | g))), Poisson()),
+                     (bf(@formula(y_nb ~ x1 + phylo(1 | g)), @formula(sigma ~ 1)), NegBinomial2()),
+                     (bf(@formula(cbind(s, fl) ~ x1 + phylo(1 | g))), Binomial()),
+                     (bf(@formula(cbind(s, fl) ~ x1 + phylo(1 | g)), @formula(sigma ~ 1)), BetaBinomial()),
+                     (bf(@formula(y_gam ~ x1 + phylo(1 | g)), @formula(sigma ~ 1)), DRModels.Gamma()),
+                     (bf(@formula(y_beta ~ x1 + phylo(1 | g)), @formula(sigma ~ 1)), DRModels.Beta()))
+        fit = drm(f, fam; data = d, tree = tree, se = false)
+        @test nr(fit)
+        @test length(fitted(fit; re = :zero)) == nobs(fit)
+    end
+    # 4. ZeroOneBeta with a random intercept
+    zf = drm(bf(@formula(y_zoib ~ x1 + (1 | g)), @formula(sigma ~ 1), @formula(zoi ~ 1), @formula(coi ~ 1)),
+             ZeroOneBeta(); data = d)
+    @test nr(zf)
+    # 8. crossed random intercepts solved by adaptive quadrature (opt-in)
+    cf = drm(bf(@formula(y_pois ~ x1 + (1 | g2) + (1 | f2))), Poisson(); data = d, se = false, marginal = :AGHQ)
+    @test nr(cf)
 end
