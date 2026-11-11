@@ -2526,11 +2526,17 @@ effects. A fit without random effects returns the same vector under both setting
 Where a route does not keep the modes needed for the conditional value, the default
 throws an `ArgumentError` that names the route and points to `re = :zero`; it never
 returns a population-level value under the conditional default. The routes that do
-keep them are listed in the news note of the change.
+keep them are listed in the news note of the change; they include the single
+`relmat(1 | g)`, `animal(1 | g)` and dense `phylo(1 | g)` Gaussian fits and the
+`phylo(1 | g)` Laplace fits of Poisson, Binomial, BetaBinomial, NB2, Gamma and Beta,
+where the modes are the BLUPs or the inner Laplace modes at the fitted parameters.
 
 **Rows.** Only the rows used in the fit are returned, as in drmTMB: a row whose
 response is missing (`missing` / `NaN`) is not in the vector, so `length(fitted(fit))
-== nobs(fit)`. Rows dropped for a missing predictor were never in the fit.
+== nobs(fit)`. Rows dropped for a missing predictor were never in the fit. This is
+drmTMB's default missing-data policy ("drop"); its second policy ("include", full-length
+values with `NA` for the unused rows) is a planned follow-up and is not implemented here.
+`residuals(fit; type = :quantile)` and [`sigma`](@ref) return the same used rows.
 
 For the GLM-type families (Gaussian, Poisson, NegBinomial2, Gamma, Beta, Binomial) the
 population value is `g⁻¹(Xβ̂)`. The conditional value is `g⁻¹(Xβ̂ + Zb̂)`.
@@ -2741,7 +2747,8 @@ Model residuals. `type` selects the kind:
   [`fitted`](@ref): with the default `re = :conditional` the fitted random-effect modes
   are removed (as drmTMB's `residuals()` does), and `re = :zero` gives the population-level
   residuals `y − Xβ̂` that `residuals(fit)` returned before the default changed. A fit with
-  a missing response has `nobs` residuals, not one per input row. `re` applies to
+  a missing response has `nobs` residuals, not one per input row, for both types
+  (`type = :quantile` also returns the used rows only). `re` applies to
   `type = :response` only; `type = :quantile` with any `re` other than the default throws an
   `ArgumentError`.
 - `:quantile` — standardised residuals. Outside `temporal()` fits these are
@@ -2865,11 +2872,11 @@ function residuals(fit::DrmFit; type::Symbol = :response, rng = Random.default_r
         # homtoep: the observations of a series are jointly σ²R, so the
         # standardised residuals are the whitened L⁻¹ r (drmTMB's Pearson
         # residuals), not (y − μ̂)/σ.
-        _wald_withheld(fit) && return _homtoep_whiten(fit)
+        _wald_withheld(fit) && return _on_used_rows(fit, _homtoep_whiten(fit))
         # AR1 / OU (and the paired phylo() + OU fit): drmTMB's residual is
         # conditional on the fitted modes, (y − Xβ̂ − modes)/σ̂.
-        _is_temporal_fit(fit) && return _temporal_conditional_residuals(fit)
-        return _quantile_residuals(fit, rng)
+        _is_temporal_fit(fit) && return _on_used_rows(fit, _temporal_conditional_residuals(fit))
+        return _quantile_residuals(_used_rows_view(fit), rng)
     else
         throw(ArgumentError("residuals: `type` must be :response or :quantile (got :$type)"))
     end
@@ -2892,10 +2899,53 @@ plug-in scale at the fitted log-sigma random-effect modes. `ranef(fit)` exposes
 those modes; `predict_parameters()` reports the population-level sigma predictor
 and the separate `:sd` prediction for its random-effect SD.
 
+A fit with a missing response returns the scale of the rows used only (length `nobs(fit)`),
+as [`fitted`](@ref) does; the R bridge payload keeps one value per input row.
+
 For the population-level scale *coefficients* (on the working/log scale) use
 `coef(fit, :sigma)` instead.
 """
-function sigma(fit::DrmFit)
+sigma(fit::DrmFit) = _on_used_rows(fit, _sigma_all_rows(fit))
+
+# Rows used in the fit. A route that keeps one value per INPUT row marks a row with a missing
+# response by `NaN` in `fit.obs[:mu]`; drmTMB returns the used rows only (`nobs`). `_on_used_rows`
+# drops the other rows from a per-row vector (or from each per-row vector of a Dict), and leaves
+# anything that is not one value per input row untouched. The R bridge payload keeps all input rows
+# and calls `_sigma_all_rows` directly (`src/bridge.jl`).
+function _used_row_mask(fit::DrmFit)
+    haskey(fit.obs, :mu) || return nothing
+    ob = fit.obs[:mu]
+    ob isa AbstractVector || return nothing
+    any(isnan, ob) || return nothing
+    return .!isnan.(ob)
+end
+function _on_used_rows(fit::DrmFit, v::AbstractVector)
+    m = _used_row_mask(fit)
+    (m === nothing || length(v) != length(m)) && return v
+    return v[m]
+end
+function _on_used_rows(fit::DrmFit, d::AbstractDict)
+    _used_row_mask(fit) === nothing && return d
+    return Dict(k => _on_used_rows(fit, v) for (k, v) in d)
+end
+_on_used_rows(fit::DrmFit, x) = x
+
+# The same fit with every per-row vector of `means`, `obs` and `scales` cut to the rows used, so a
+# routine that loops over the rows (the quantile residuals) never meets a row with a missing response.
+# A vector that already has one value per used row (a route that kept the used rows only) is left as it is.
+# `fit` itself is returned when no response is missing.
+function _used_rows_view(fit::DrmFit)
+    m = _used_row_mask(fit)
+    m === nothing && return fit
+    cut(v) = v isa AbstractVector && length(v) == length(m) ? v[m] : v
+    cutd(d) = typeof(d)(k => cut(v) for (k, v) in d)
+    return DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta, fit.vcov, fit.loglik, fit.nobs,
+                  fit.converged, cutd(fit.means), cutd(fit.obs), cutd(fit.scales), fit.formula, fit.nll,
+                  fit.nllgrad, fit.ranef, fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal,
+                  fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale, fit.uncertainty, fit.geometry)
+end
+
+function _sigma_all_rows(fit::DrmFit)
     # A predictor-dependent random-effect SD fit (`sd(g) ~ ...`) also keeps
     # internal/context entries in `fit.scales` (direct random-effect SDs,
     # quadrature settings, Binomial trials). For those fits the public `sigma()`

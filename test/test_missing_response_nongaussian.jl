@@ -32,14 +32,15 @@ function _test_response_missing_parity(form, fam, data_missing, keep;
     @test fitted(fit_missing) ≈ fitted(fit_observed) atol = coef_atol rtol = coef_atol
     @test length(residuals(fit_missing)) == count(keep)
 
+    # sigma() returns the rows used too (P20c), so it lines up with fitted() and nobs
     scales = sigma(fit_missing)
     if scales isa AbstractDict
         @test all(
-            k === :ordinal_cuts || length(v) == length(keep)
+            k === :ordinal_cuts || length(v) == count(keep)
             for (k, v) in pairs(scales)
         )
     else
-        @test length(scales) == length(keep)
+        @test length(scales) == count(keep)
     end
     return fit_missing, fit_observed
 end

@@ -2151,7 +2151,7 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
         # these slots on its side (b34).
         "fitted" => _bridge_plain(fitted_vals),
         "residuals" => _bridge_plain(residual_vals),
-        "sigma" => _bridge_plain(sigma(fit)),
+        "sigma" => _bridge_plain(_sigma_all_rows(fit)),   # all input rows, as `fitted` above (`sigma(fit)` is used rows)
         "corpairs" => _bridge_plain(corpairs(fit)),
         "dpars" => _bridge_dpars(fit),
     )

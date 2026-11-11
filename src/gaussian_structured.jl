@@ -214,9 +214,29 @@ function _fit_structured_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, K, nmμ, 
     means = Dict(:mu => Xμ * θ̂[1:pμ])
     obs = Dict(:mu => Vector{Float64}(y))
     scales = Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)]))
+    _record_cond_fit!(scales, _structured_gaussian_modes(y, Xμ, Xσ, gidx, G, Kinv, θ̂, pμ, pσ)[gidx])   # for `fitted(fit)`
     fit = _withnll(DrmFit(fam, blocks, names, θ̂, V, -nll(θ̂), n, drm_optim_converged(res), means, obs, scales), nll)
     reml && return _withreml(fit, -nll_reml(θ̂), -nll(θ̂))
     return fit
+end
+
+# Conditional modes of the structured intercept at the fitted parameters of the dense
+# single-marker Gaussian route: the BLUP û = (σ_s⁻² K⁻¹ + ZᵀD⁻¹Z)⁻¹ ZᵀD⁻¹ (y - Xβ̂), with
+# D = diag(σ_e²) from the fitted sigma. This is the posterior mean (and mode) of the group
+# effects given β̂, σ_e and σ_s, the same quantity drmTMB reports as the random-effect modes.
+# NaN (so the conditional default refuses) when the system is not positive definite.
+function _structured_gaussian_modes(y, Xμ, Xσ, gidx, G, Kinv, θ̂, pμ, pσ)
+    ησ = Xσ * θ̂[(pμ+1):(pμ+pσ)]
+    σs² = exp(2 * θ̂[pμ+pσ+1])
+    r = y .- Xμ * θ̂[1:pμ]
+    S = zeros(G); C = zeros(G)
+    @inbounds for i in eachindex(y)
+        invD = exp(-2 * ησ[i]); k = gidx[i]
+        S[k] += invD; C[k] += r[i] * invD
+    end
+    Mfac = cholesky(Symmetric(Kinv ./ σs² + Diagonal(S)); check = false)
+    issuccess(Mfac) || return fill(NaN, G)
+    return Mfac \ C
 end
 
 # Row → level index for one structured marker on the dense Gaussian routes (the

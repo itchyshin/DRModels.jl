@@ -181,11 +181,22 @@ distributional parameters:
   and a fit with a missing response returns the used rows only. Pass
   `fitted(fit; re = :zero)` for the population-level value with every random
   effect at zero, which is what `predict(fit, newdata)` returns on the GLM-type
-  routes (and what `fitted(fit)` returned before the default changed). A route
-  that does not keep the modes needed for the conditional value refuses the
+  routes (and what `fitted(fit)` returned before the default changed). The
+  single `relmat(1 | g)`, `animal(1 | g)` and dense `phylo(1 | g)` Gaussian fits and the
+  `phylo(1 | g)` Laplace fits of Poisson, Binomial, BetaBinomial, NB2, Gamma and Beta
+  keep their modes, so `fitted(fit)` is conditional there. A route that does not keep
+  the modes needed for the conditional value (for example a `relmat` or `animal` count
+  fit, `ZeroOneBeta` with a random effect, bivariate fits with random effects,
+  a random effect on `sigma` when the mean depends on `sigma`, the crossed
+  adaptive-quadrature opt-in routes) refuses the
   default with a message that names `re = :zero`; it never returns population
   values under the conditional default. `residuals(fit)` is `y - fitted(fit)`
-  and takes the same `re` keyword. For LogNormal and zero-inflated, hurdle or
+  and takes the same `re` keyword. `residuals(fit; type = :quantile)` and
+  `sigma(fit)` also return the used rows only, so every per-row accessor has length
+  `nobs(fit)`. drmTMB has a second missing-data policy that returns full-length
+  values with `NA` for the unused rows; DRModels.jl matches the default (drop)
+  policy only, and the second one is a planned follow-up.
+  For LogNormal and zero-inflated, hurdle or
   truncated counts both packages return the unconditional response mean `E[Y]` (`exp(μ + σ²/2)`, `(1 - π) μ`,
   `μ / (1 - P(0))`, `(1 - π) μ / (1 - P(0))`), and `predict(fit, newdata; type =
   :mean)` is the same quantity at new rows. A bivariate `LogNormal` fit follows the

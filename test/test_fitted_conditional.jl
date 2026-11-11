@@ -162,12 +162,13 @@ end
         @test length(rv[:mu1]) == length(fv[:mu1])
     end
     @testset "a route that keeps no modes refuses the conditional default and never fakes it" begin
+        # A Poisson relmat (not one of the two phylo groups that keep their modes, P20a) keeps no modes.
         rng = StableRNG(20261110)
         G, m = 15, 4
         n = G * m
         K = [0.5^abs(i - j) for i in 1:G, j in 1:G]
-        dat = (; id = repeat(1:G, inner = m), x = randn(rng, n), y = randn(rng, n))
-        fit = drm(bf(@formula(y ~ x + relmat(1 | id)), @formula(sigma ~ 1)), Gaussian(); data = dat, K = K)
+        dat = (; id = repeat(1:G, inner = m), x = randn(rng, n), y = rand(rng, 0:6, n))
+        fit = drm(bf(@formula(y ~ x + relmat(1 | id))), Poisson(); data = dat, K = K)
         err = try fitted(fit); nothing catch e; e end
         @test err isa ArgumentError
         @test occursin("re = :zero", sprint(showerror, err))
@@ -411,22 +412,8 @@ end
 @testset "fitted(): routes with no recorded modes refuse the conditional default" begin
     d = _fc_data()
     nr(f) = (err = try fitted(f); nothing catch e; e end; err isa ArgumentError && occursin("re = :zero", sprint(showerror, err)))
-    tree = _fc_tree()
-    # 1. dense phylo, animal and relmat on a Gaussian mean
-    K = Matrix{Float64}(I, 16, 16)
-    @test nr(drm(bf(@formula(y_g ~ x1 + animal(1 | g)), @formula(sigma ~ 1)), Gaussian(); data = d, A = K))
-    @test nr(drm(bf(@formula(y_g ~ x1 + phylo(1 | g)), @formula(sigma ~ 1)), Gaussian(); data = d, tree = tree, algorithm = :gls))
-    # 2. phylo Laplace for the count, binomial and continuous families
-    for (f, fam) in ((bf(@formula(y_pois ~ x1 + phylo(1 | g))), Poisson()),
-                     (bf(@formula(y_nb ~ x1 + phylo(1 | g)), @formula(sigma ~ 1)), NegBinomial2()),
-                     (bf(@formula(cbind(s, fl) ~ x1 + phylo(1 | g))), Binomial()),
-                     (bf(@formula(cbind(s, fl) ~ x1 + phylo(1 | g)), @formula(sigma ~ 1)), BetaBinomial()),
-                     (bf(@formula(y_gam ~ x1 + phylo(1 | g)), @formula(sigma ~ 1)), DRModels.Gamma()),
-                     (bf(@formula(y_beta ~ x1 + phylo(1 | g)), @formula(sigma ~ 1)), DRModels.Beta()))
-        fit = drm(f, fam; data = d, tree = tree, se = false)
-        @test nr(fit)
-        @test length(fitted(fit; re = :zero)) == nobs(fit)
-    end
+    # 1. and 2. (Gaussian relmat / animal / dense phylo, and phylo Laplace for the six count and continuous
+    # families) keep their modes since P20a: see test_fitted_phylo_modes.jl.
     # 4. ZeroOneBeta with a random intercept
     zf = drm(bf(@formula(y_zoib ~ x1 + (1 | g)), @formula(sigma ~ 1), @formula(zoi ~ 1), @formula(coi ~ 1)),
              ZeroOneBeta(); data = d)
