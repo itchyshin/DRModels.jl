@@ -414,7 +414,7 @@ end
                     for (k, v) in s
                         v isa AbstractVector || continue
                         @test length(v) == length(sc[k])
-                        @test maximum(abs.(v .- sc[k])) < 1e-4
+                        @test maximum(abs.(v .- sc[k])) < 1e-6
                     end
                 end
             end
