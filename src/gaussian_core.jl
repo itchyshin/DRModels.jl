@@ -832,11 +832,26 @@ _has_table_column(data, name::Symbol) =
 # Reserved `schema_cache` key: the factor levels of the training data, by column.
 const _FACTOR_LEVELS_KEY = :__factor_levels__
 
+# A fit never writes to the formula object the user passed: `@drm_entry` replaces it by a copy with an
+# EMPTY schema cache (`_fit_formula`), and that copy is what the fit stores as `fit.formula`. The cache
+# (training schema per parameter, factor levels, `poly` bases) therefore belongs to the fit. A call that
+# re-enters `drm` with the very formula copy of the fit it is part of (the missing-response wrappers,
+# bivariate delegation) keeps it, so the control scope (keyed to the formula object) and the cache
+# stay shared inside one fit.
+const _FIT_FORMULA_KEY = :_drm_fit_formula
+function _fit_formula(f)
+    hasproperty(f, :schema_cache) || return f
+    get(task_local_storage(), _FIT_FORMULA_KEY, nothing) === f && return f
+    return _fresh_formula_cache(f)
+end
+_fresh_formula_cache(f::DrmFormula) =
+    DrmFormula(f.response, f.forms, f.response2, Ref(Dict{Symbol,Any}()), f.sd_targets)
+
 # Record, before a fit, the levels StatsModels would give every categorical
 # column the formula uses. Most non-Gaussian fitters build their designs without
 # the `schema_cache`, so this catalogue is all `predict` has to rebuild the
-# fitted contrasts from. It is written each fit, so a reused `bf` object follows
-# the latest data. Never throws: an unreadable table just records nothing.
+# fitted contrasts from. It is written into the fit's own copy of the formula
+# (`_fit_formula`), once per fit. Never throws: an unreadable table just records nothing.
 function _record_factor_levels!(f, data)
     hasproperty(f, :schema_cache) && hasproperty(f, :forms) || return nothing
     try

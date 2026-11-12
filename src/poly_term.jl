@@ -2,9 +2,11 @@
 #
 # `@formula(y ~ poly(x1, 2))` used to fail with `UndefVarError: poly` raised by the macro (the
 # function name is looked up in the caller's scope) before DRModels saw the model. `poly` is now
-# exported, so the term parses, and it is a STATEFUL formula term like R's: the basis is computed
-# from the fitting data and stored (as `alpha` and `norm2`, R's own names), so `predict(fit, newdata)`
-# rebuilds the TRAINING basis at the new rows instead of a basis of the new rows.
+# exported, so the term parses, and it is a STATEFUL formula term like R's: every fit computes the
+# basis from its own data and stores it in the fit (as `alpha` and `norm2`, R's own names), so
+# `predict(fit, newdata)` rebuilds that fit's TRAINING basis at the new rows instead of a basis of
+# the new rows. A `bf(...)` object holds no basis: reusing it for a second fit gives the same result
+# as a fresh one, as R recomputes `poly` on every call.
 #
 # Basis (R's `stats::poly(x, degree)`, `raw = FALSE`): three-term recurrence on the centred data,
 #   Z0 = 1,  Z1 = x - alpha1,  Z_{i+1} = (x - alpha_i) Z_i - (norm2_{i+1} / norm2_i) Z_{i-1},
@@ -15,8 +17,10 @@
 # Supported: `poly(column, integer degree >= 1)` on a fixed-effect formula (`mu` or any other
 # distributional parameter), alone or combined with other terms and interactions. Refused with a
 # message: a degree that is not a positive integer below the number of distinct values, an argument
-# other than a plain column, and a direct call outside a formula. `raw = TRUE`, several variables
-# and `coefs =` are not supported (write powers as function terms, or use the R bridge).
+# other than a plain column, and a direct call outside a formula. Only the positional form
+# `poly(x, d)` with a literal integer `d` is accepted: `@formula` itself rejects keyword arguments
+# (`raw = true`, `degree = 2`, `coefs = ...`) with its own parser error before DRModels runs, and
+# several variables are refused here (write powers as function terms, or use the R bridge).
 
 using StatsModels: AbstractTerm, FunctionTerm, ConstantTerm, Term, Schema
 import StatsModels: apply_schema, modelcols, width, terms, termvars
@@ -27,9 +31,13 @@ import StatsAPI: coefnames
 
 R's orthogonal polynomial basis, for use inside a `@formula`, e.g.
 `@formula(y ~ poly(x1, 2))`. The columns are those of `stats::poly(x1, 2)` and the coefficients
-are named `poly(x1, 2)1`, `poly(x1, 2)2`, so they match drmTMB's. The basis is stored with the fit
-and reused by `predict(fit, newdata)`. Only a plain column and a positive integer degree are
-supported. Calling `poly` outside a formula throws.
+are named `poly(x1, 2)1`, `poly(x1, 2)2`, so the main-term names match drmTMB's (interaction
+names use DRModels' `&`, as for every term). Every fit computes the basis from its own rows and
+stores it in the fit; `predict(fit, newdata)` uses the basis of that fit. Only `poly(column, d)`
+with a plain column and a literal positive integer degree is supported: `raw = true`,
+`degree = 2` and `coefs = ...` are rejected by `@formula` itself. Needs `using DRModels` (or
+write `DRModels.poly` in the formula after a plain `import DRModels`). Calling `poly` outside a
+formula throws.
 """
 poly(args...; kwargs...) = throw(ArgumentError(
     "`poly` is a formula term, not a function: write it inside a formula, " *
@@ -54,9 +62,8 @@ function _poly_args(t::FunctionTerm{typeof(poly)})
     ok = length(t.args) == 2 && t.args[1] isa Term && t.args[2] isa ConstantTerm
     ok || throw(ArgumentError(
         "poly(x, degree): `$(t.exorig)` is not supported. Use `poly(column, degree)` with a plain " *
-        "numeric column and an integer degree, e.g. `poly(x1, 2)`. A transformed argument, several " *
-        "variables, `raw = TRUE` and `coefs =` are not supported; write the powers as function " *
-        "terms instead."))
+        "numeric column and an integer degree, e.g. `poly(x1, 2)`. A transformed argument and several " *
+        "variables are not supported; write the powers as function terms instead."))
     deg = t.args[2].n
     (deg isa Integer || (deg isa AbstractFloat && isinteger(deg))) && deg >= 1 || throw(ArgumentError(
         "poly(x, degree): the degree in `$(t.exorig)` must be a positive integer."))
@@ -102,10 +109,11 @@ function apply_schema(t::FunctionTerm{typeof(poly)}, sch::Schema, Mod::Type)
     return b
 end
 
-# Reserved `schema_cache` key (as `_FACTOR_LEVELS_KEY`): the poly bases of the latest fit, by term key.
-# Most non-Gaussian fitters build their designs without the `schema_cache`, so, like the factor
-# levels, the basis is recorded once at the `drm` entry (`_record_factor_levels!`) and every later
-# design of that fit, fit-time and `predict`, reads this one stored basis.
+# Reserved `schema_cache` key (as `_FACTOR_LEVELS_KEY`): the poly bases of THIS fit, by term key.
+# The cache lives in the fit's own copy of the formula (`_fit_formula`), never in the user's `bf(...)`
+# object. Most non-Gaussian fitters build their designs without the `schema_cache`, so, like the factor
+# levels, the basis is recorded once at the `drm` entry (`_record_factor_levels!`) from the rows that
+# fit uses, and every later design of that fit, fit-time and `predict`, reads this one stored basis.
 const _POLY_BASES_KEY = :__poly_bases__
 
 # Complete rows as R's model frame would keep them: every column the formulas and the response
@@ -141,15 +149,13 @@ function _record_poly_bases!(f, data)
         isempty(found) && return nothing
         tbl = Tables.columntable(data)
         ok = _poly_complete_rows(f, tbl)
-        # First fit wins: a formula object keeps the basis of its first fit, because the stored
-        # coefficients of every earlier fit made with it (and its `predict`) rest on that basis.
-        # Build a new `bf(...)` to start a new basis.
-        old = get(f.schema_cache[], _POLY_BASES_KEY, nothing)
-        bases = old isa Dict{Term,PolyTerm} ? old : Dict{Term,PolyTerm}()
+        # The formula passed in is the fit's own copy (`_fit_formula`), so this dictionary is empty
+        # unless this very fit entered `drm` before (a wrapper re-entering on the observed rows,
+        # which rebuilds the same basis from the same complete rows).
+        bases = Dict{Term,PolyTerm}()
         for t in found
             try
                 sym, degree = _poly_args(t)
-                haskey(bases, _poly_key(sym, degree)) && continue
                 haskey(tbl, sym) || continue
                 col = tbl[sym]
                 col isa AbstractVector && nonmissingtype(eltype(col)) <: Real || continue

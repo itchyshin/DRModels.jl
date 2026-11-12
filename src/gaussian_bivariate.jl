@@ -28,6 +28,9 @@ end
 BivariateDrmFormula(response1::Symbol, response2::Symbol, forms::Vector{Pair{Symbol,Any}}) =
     BivariateDrmFormula(response1, response2, forms, Ref(Dict{Symbol,Any}()))
 
+_fresh_formula_cache(f::BivariateDrmFormula) =
+    BivariateDrmFormula(f.response1, f.response2, f.forms, Ref(Dict{Symbol,Any}()))
+
 _rhs_or_intercept(f) = f === nothing ? ConstantTerm(1) : f.rhs
 
 # Validate a bivariate placeholder formula's LHS. The σ1/σ2/ρ12 formulas carry a
