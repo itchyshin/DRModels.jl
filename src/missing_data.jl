@@ -104,7 +104,10 @@ function _drop_scope_weight_rows!(keep)
     s = _active_control_scope()
     (s === nothing || s.weights === nothing) && return nothing
     if length(s.weights) != length(keep)
-        s.weights_rows = length(keep)       # noted for routes that insist on one weight per data row
+        # Noted for routes that insist on one weight per data row. Keep the FIRST value: it is the
+        # row count of `data` itself. A later drop (missing response after missing predictors) sees
+        # a table that is already shorter and would overwrite it with a wrong count.
+        s.weights_rows == 0 && (s.weights_rows = length(keep))
         return nothing
     end
     s.weights = s.weights[keep]

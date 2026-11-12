@@ -116,13 +116,13 @@ function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data,
     # all scaled by pw[i]; the Woodbury sums below then equal the replicated-row likelihood.
     # Unit weights (the default) multiply by 1.0 and leave every number unchanged.
     let sc = _active_control_scope()
-        # Rows with a missing response were dropped before this point. Weights must be one per row of
-        # `data`, as in R, so a vector already cut to the kept rows is refused here: it is not aligned
-        # with the rows that were kept unless the caller cut it with exactly the same rule.
+        # Rows with a missing predictor or response were dropped before this point. Weights must be one
+        # per row of `data`, as in R, so a vector already cut to the kept rows is refused here: it is
+        # not aligned with the rows that were kept unless the caller cut it with exactly the same rule.
         (sc !== nothing && sc.weights !== nothing && sc.weights_rows > 0) &&
             throw(DimensionMismatch("drm: `weights` has $(length(sc.weights)) entries but `data` has " *
-                "$(sc.weights_rows) rows. Give one weight per row of `data`, including the rows with a " *
-                "missing response (they are dropped together with their weights)."))
+                "$(sc.weights_rows) rows. Give one weight per row of `data`, including any rows with a " *
+                "missing predictor or response value (they are dropped together with their weights)."))
     end
     pw = _ctl_weights(n)
     const_2pi = sum(pw) * log(2π)

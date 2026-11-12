@@ -12,6 +12,8 @@
 using DRModels
 using Test, DelimitedFiles, LinearAlgebra, Logging
 using StableRNGs
+import Random
+import Statistics
 
 include("biv_ordinary_re_helpers.jl")       # _bre_summ, _BRE_F0, _BRE_FC (shared, guarded)
 
@@ -215,6 +217,53 @@ end
     @test drm(_BRE_F0, Gaussian(); data = d2, weights = d.w).nobs == length(d.w)
 end
 
+@testset "pre-cut weights: the message gives the row count of `data` when predictor and response rows are both dropped" begin
+    d = _BRW_D
+    n = length(d.w)
+    obs = .!(ismissing.(d.y1m) .| ismissing.(d.y2m))
+    # two more rows lose a predictor value (rows that still have both responses)
+    xrows = findall(obs)[1:2]
+    x1m = Union{Missing,Float64}[i in xrows ? missing : v for (i, v) in enumerate(d.x1)]
+    dx = (; g = d.g, x1 = x1m, x2 = d.x2, y1m = d.y1m, y2m = d.y2m)
+    keep = obs .& .!ismissing.(x1m)
+    ncut = count(keep)
+    @test n - ncut > count(!, obs) > 0                       # both kinds of row are dropped
+    err = try
+        with_logger(NullLogger()) do
+            drm(_BRW_FM, Gaussian(); data = dx, weights = d.w[keep])
+        end
+        nothing
+    catch e
+        e
+    end
+    @test err isa DimensionMismatch
+    msg = sprint(showerror, err)
+    @test occursin("`weights` has $(ncut) entries but `data` has $(n) rows", msg)
+    @test occursin("missing predictor or response", msg)
+    # only predictor rows dropped: the same count, and the text does not claim a missing response
+    dp = (; g = d.g, x1 = x1m, x2 = d.x2, y1 = d.y1, y2 = d.y2)
+    kp = .!ismissing.(x1m)
+    err2 = try
+        with_logger(NullLogger()) do
+            drm(_BRE_F0, Gaussian(); data = dp, weights = d.w[kp])
+        end
+        nothing
+    catch e
+        e
+    end
+    @test err2 isa DimensionMismatch
+    @test occursin("`weights` has $(count(kp)) entries but `data` has $(n) rows", sprint(showerror, err2))
+    # full-length weights with both kinds of dropped row still fit, and equal the hand-cut fit
+    f_full = with_logger(NullLogger()) do
+        drm(_BRW_FM, Gaussian(); data = dx, weights = d.w)
+    end
+    dk = (; g = d.g[keep], x1 = Float64.(x1m[keep]), x2 = d.x2[keep],
+          y1m = Float64.(d.y1m[keep]), y2m = Float64.(d.y2m[keep]))
+    f_hand = drm(_BRW_FM, Gaussian(); data = dk, weights = d.w[keep])
+    @test f_full.nobs == ncut
+    @test f_full.loglik == f_hand.loglik && f_full.theta == f_hand.theta
+end
+
 @testset "invalid weights are refused before fitting" begin
     d = _BRW_D
     d2 = (; g = d.g, x1 = d.x1, x2 = d.x2, y1 = d.y1, y2 = d.y2)
@@ -275,6 +324,34 @@ end
     # Wald intervals on the REML fit are unaffected
     cw = confint(f_reml; method = :wald)
     @test all(r.lower < r.estimate < r.upper for r in cw)
+end
+
+@testset "bootstrap refits use the weights (replicates equal explicit weighted refits, not unweighted ones)" begin
+    # `bootstrap_result` reports the std of the replicate coefficients. Redo the replicates by hand from
+    # its seeds, once with the weights and once without. Only the weighted redo reproduces the report.
+    d = _BRW_D
+    d2 = (; g = d.g, x1 = d.x1, x2 = d.x2, y1 = d.y1, y2 = d.y2)
+    for meth in (:ML, :REML)
+        fit = drm(_BRE_F0, Gaussian(); data = d2, weights = d.w, method = meth)
+        br = with_logger(NullLogger()) do
+            DRModels.bootstrap_result(fit; data = d2, B = 6, rng = StableRNG(11))
+        end
+        @test br.used == 6
+        formula = DRModels._bootstrap_fit_formula(fit)
+        sim = DRModels._marginal_simulator(fit, d2)
+        function redo(w)
+            rows = map(br.seeds) do sd
+                datab = DRModels._bootstrap_data(formula, d2, sim(Random.MersenneTwister(sd)))
+                with_logger(NullLogger()) do
+                    DRModels.coef(drm(formula, Gaussian(); data = datab, weights = w, method = meth))
+                end
+            end
+            return sort([Statistics.std(getindex.(rows, j)) for j in eachindex(rows[1])])
+        end
+        reported = sort([r.std_error for r in br.summary])
+        @test redo(d.w) ≈ reported rtol = 1e-8
+        @test maximum(abs.(redo(nothing) ./ reported .- 1)) > 1e-2
+    end
 end
 
 @testset "weighted bootstrap runs end to end (ML and REML), no failed replicate" begin
