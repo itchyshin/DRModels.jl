@@ -209,10 +209,17 @@ function _fit_bivariate_sigma_re(f::BivariateDrmFormula, fam::Gaussian, data, fi
         end
         (best === nothing || Optim.minimum(r) < Optim.minimum(best)) && (best = r)
     end
+    # When every start fails the three errors are all kept in the message (the original stack traces are
+    # not: `ArgumentError` carries text only).
     best === nothing && throw(ArgumentError(
-        "drm: all $(length(starts)) starts of the bivariate sigma random-effect fit failed; the first " *
-        "error was: " * first(sprint(showerror, failed[1]), 200)))
-    isempty(failed) || @warn "drm: $(length(failed)) of $(length(starts)) starts of the bivariate sigma " *
+        "drm: all $(length(starts)) starts of the bivariate sigma random-effect fit failed. " *
+        join(("Start $k ($(starts[k][1]) / $(starts[k][2])): " * first(sprint(showerror, e), 200)
+              for (k, e) in enumerate(failed)), " ")))
+    # One warning per fit. Bootstrap and profile refits run under `_without_boundary_warnings`, which
+    # sets the task-local switch `:drm_quiet_boundary`; like the other warning-emitting routes, stay
+    # quiet there so a bootstrap does not repeat this warning B times.
+    isempty(failed) || get(task_local_storage(), :drm_quiet_boundary, false) === true ||
+        @warn "drm: $(length(failed)) of $(length(starts)) starts of the bivariate sigma " *
         "random-effect fit stopped with a numerical error ($(join(unique(nameof.(typeof.(failed))), ", "))); " *
         "the fit is the best of the other starts."
     res = best

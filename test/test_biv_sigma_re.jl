@@ -158,6 +158,48 @@ end
     @test !DRModels._sre_numerical_failure(BoundsError([1], 2))
 end
 
+@testset "all starts failing: the error carries the error of every start" begin
+    # Two identical responses make every start stop in the line search (an assertion on a non-finite
+    # value). No test hook is needed: this is a real data set on which the route cannot fit.
+    d = _bsr_data("ss16.csv")
+    d2 = merge(d, (; y2 = copy(d.y1)))
+    err = try
+        with_logger(NullLogger()) do
+            drm(_BSR_F0, Gaussian(); data = d2)
+        end
+        nothing
+    catch e
+        e
+    end
+    @test err isa ArgumentError
+    msg = sprint(showerror, err)
+    @test occursin("all 3 starts of the bivariate sigma random-effect fit failed", msg)
+    @test length(collect(eachmatch(r"Start [123] \(", msg))) == 3       # one error per start, not only the first
+    @test occursin("Start 1 (0.2 / 0.0): ", msg) && occursin("Start 3 (0.1 / -0.99): ", msg)
+    @test !occursin("the first error was", msg)
+end
+
+@testset "the start-failure warning is quiet inside refits (bootstrap, profile)" begin
+    d = _bsr_data("ss16.csv")
+    start_warnings(f) = begin
+        logger = Test.TestLogger(min_level = Logging.Warn)
+        with_logger(f, logger)
+        return count(l -> occursin("starts of the bivariate sigma", l.message), logger.logs)
+    end
+    # The Hessian warning at the boundary is a different warning and is not silenced by this switch.
+    # A plain fit warns about the failed starts (tested above); the same fit under the switch that
+    # bootstrap and profile refits use does not.
+    @test start_warnings(() -> drm(_BSR_F0, Gaussian(); data = d)) == 1
+    @test start_warnings(() -> DRModels._without_boundary_warnings(() -> drm(_BSR_F0, Gaussian(); data = d))) == 0
+    # A bootstrap on the same data repeats no start-failure warning. With this seed one to three
+    # replicate starts fail on Julia 1.10.12 and on 1.13.3 when the switch is off, so the check is
+    # not vacuous.
+    fit = with_logger(NullLogger()) do
+        drm(_BSR_F0, Gaussian(); data = d)
+    end
+    @test start_warnings(() -> DRModels.bootstrap_result(fit; data = d, B = 4, rng = StableRNG(5))) == 0
+end
+
 @testset "refusal text no longer calls the supported model unsupported" begin
     d = _bsr_data("sre_bal.csv")
     y1, y2 = @formula(y1 ~ x1), @formula(y2 ~ x2)
