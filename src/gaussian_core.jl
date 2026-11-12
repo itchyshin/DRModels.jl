@@ -3439,7 +3439,9 @@ Random effects (`re`, #1092):
   `coords` for a structured term, as in [`bootstrap_ci`](@ref)), because the
   fit does not keep the grouping columns. Without `data`, or for a
   random-effect structure the marginal simulator does not cover, `simulate`
-  throws an `ArgumentError` rather than fall back to `b = 0`.
+  throws an `ArgumentError` rather than fall back to `b = 0`. `data` must hold
+  the same rows in the same order as the data used for the fit. This is not
+  checked: rows in a different order give wrong draws without an error.
 - `re = :zero` draws with every random effect set to zero (population level),
   which was the only behaviour before #1092. It needs no `data`. drmTMB has no
   such mode; its `re.form = NULL` (conditional on the fitted modes) has no
