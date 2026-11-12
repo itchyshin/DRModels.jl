@@ -154,8 +154,8 @@ SkewNormal fixed-effect fits restart on their own. The slant can have two or thr
 local optima, so after the default start the fit also runs from four fixed starts
 and keeps one only when its log-likelihood is clearly higher. A converged fit is
 never exchanged for an unconverged one. A fit whose default start is already best
-is unchanged. The restarts use no random numbers, cost about
-four extra optimiser runs, and are skipped when `control` sets `start`,
+is unchanged. The restarts use no random numbers, multiply the
+run time of the fit by about 6, and are skipped when `control` sets `start`,
 `multi_start`, `maxit` or `optimizer`. This is a multi-start, not a global search.
 `fit.scales[:q2_restarts]` records what happened.
 

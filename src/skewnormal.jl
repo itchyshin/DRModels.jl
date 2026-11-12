@@ -63,7 +63,8 @@ fit_slope_sd = drm(bf(@formula(y ~ x + (0 + x | site)), @formula(sigma ~ 1),
     log-likelihood is clearly higher (by more than 1e-5) and a converged fit is
     never exchanged for an unconverged one, so a fit whose default start is
     already best is returned unchanged. There are no random numbers. This
-    costs about four extra optimiser runs. It is a multi-start, not a global search:
+    multiplies the run time of the fit by about 6 (a few milliseconds up to under
+    0.1 s on the sizes tried). It is a multi-start, not a global search:
     a still better optimum can exist. `fit.scales[:q2_restarts]` records
     `[ran, winning start (0 = default), log-likelihood gain, converged flag changed]`.
     The restarts are skipped when `control = DRMControl(start, multi_start, maxit,
