@@ -445,6 +445,12 @@ refit keyword: the fitted family is kept, and passing one is an error. An
 unnamed extra positional argument is an error: a keyword-only refit would
 otherwise drop it and silently ignore the value.
 
+Prior `weights`: if the seed fit has weights, `update` requires an explicit `weights =`
+keyword and passes it to `drm`. Use `weights = weights(fit)` with the same `data`; use
+`weights = nothing` to refit unweighted on purpose. If rows with a missing response were
+dropped from the seed fit, `weights(fit)` has one entry per kept row and is shorter than
+`data`, so pass the original full-length weight vector (one per row of `data`) instead.
+
 `data` must be supplied. A `DrmFit` does not retain its observations, nor the
 options that were only arguments to the original `drm` call: `K`, `A`, `tree`,
 `coords`, `algorithm`, `g_tol`, `profile_ci`, `phylo_coupled`, `sparse`,
@@ -470,6 +476,16 @@ function update(fit::DrmFit, formula, args...; data, kwargs...)
             "call `drm(formula, family; data = ...)` to fit a different family " *
             "(got family = $(repr(kwargs[:family])))."))
     end
+    # A fit made with prior `weights` must not be refitted unweighted by accident. The fit
+    # stores its weights but `update` takes new `data`, whose rows may differ, so the caller
+    # says which weights to use: `weights = weights(fit)` for the same rows, new weights for
+    # new rows, or `weights = nothing` to drop them on purpose.
+    haskey(kwargs, :weights) || weights(fit) === nothing || throw(ArgumentError(
+        "update: the fit was made with prior `weights`; pass `weights = weights(fit)` (same rows), " *
+        "new weights for the new `data`, or `weights = nothing` to refit unweighted on purpose. " *
+        "It is never refitted unweighted silently. If rows with a missing response were dropped from " *
+        "the fit, `weights(fit)` has one entry per KEPT row and is shorter than `data`: pass the " *
+        "original full-length weight vector (one per row of `data`) instead."))
     stored = _update_stored_options(fit)
     # A caller who changes the estimator does not want the old MAP penalty.
     # Passing `penalty` explicitly still overrides that drop.
