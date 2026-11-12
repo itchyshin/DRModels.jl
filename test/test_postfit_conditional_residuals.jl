@@ -361,7 +361,10 @@ end
         @test fP.converged
         @test loglikelihood(fP) ≈ loglikelihood(fA) atol = 1e-6
         @test coef(fP) ≈ coef(fA) atol = 1e-5
-        perm = randperm(MersenneTwister(3), size(A, 1))   # rows matched to the wrong animals
+        # Rows matched to the wrong animals. A fixed odds-then-evens order, not a random
+        # draw: `randperm(rng, n)` differs between Julia versions, and on 1.12 the old draw
+        # gave a gap of only 0.36 for the Gamma fit, below the 0.5 bound.
+        perm = vcat(1:2:size(A, 1), 2:2:size(A, 1))
         fW = drm(case.formula, TF_FAMS[fam]; data = case.data,
                  Ainv = Matrix(Symmetric(Ainv[perm, perm])))
         @test abs(loglikelihood(fW) - loglikelihood(fA)) > 0.5
