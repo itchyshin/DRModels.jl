@@ -130,11 +130,15 @@ function _variance_boundary(fit::DrmFit; ratio::Real = _VARIANCE_BOUNDARY_RATIO)
     )
 end
 
-# A boundary diagnostic must never break a fit, but a failure inside it must not
-# read as a clean fit either (#1003): rethrow interrupts, otherwise say which
-# diagnostic failed and why, then let the caller carry on with `nothing`.
+# A boundary diagnostic must not break a fit over an input shape it does not
+# understand, but a failure inside it must not read as a clean fit either (#1003).
+# Only the errors an unexpected fit shape produces (a missing key, an out-of-range
+# index, mismatched lengths) are downgraded to a warning; anything else is a bug in
+# the diagnostic or a resource error and propagates.
+const _BOUNDARY_SHAPE_ERRORS = Union{KeyError,BoundsError,DimensionMismatch}
+
 function _boundary_diagnostic_failed(name::AbstractString, err)
-    err isa InterruptException && rethrow(err)
+    err isa _BOUNDARY_SHAPE_ERRORS || rethrow(err)
     @warn "drm: the $(name) diagnostic failed and was skipped, so this fit has NOT " *
           "been checked for that boundary (absence of a warning is not a clean bill)." error =
         sprint(showerror, err)
