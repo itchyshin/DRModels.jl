@@ -70,6 +70,65 @@ function _extract_ordinary_biv_re(rhs, axes::Tuple{Symbol,Symbol} = (:mu1, :mu2)
     return rhs2, spec[axes[1]]
 end
 
+# Starting points for the group covariance. The default start (group SD 0.5, covariance 0.02) can slide to
+# Sigma_g = 0, a local optimum where the gradient in the log SD vanishes, while drmTMB finds a higher mode
+# with the group SDs away from 0 (about 3 percent of small data sets; reviewed on 240 + 100 data sets). Two
+# more starts with group SD 0.2 and a strongly correlated pair (+0.99, -0.99) reach that mode. This is not a
+# global search: a better optimum can exist that none of the three starts finds.
+const _BIV_RE_EXTRA_STARTS = ((0.2, 0.99), (0.2, -0.99))
+# An extra start replaces the default result only when it converged and its objective is lower by more than
+# this. The package has no multi-start threshold of its own (`DRMControl(multi_start)` keeps any lower
+# objective), so 1e-6 is used: far above optimiser noise, far below the gaps seen between modes (1.6e-4 and up).
+const _BIV_RE_START_GAIN = 1e-6
+
+# Errors that a start may raise from a wild line-search trial: they cost that start, not the fit.
+_biv_re_start_failure(err) =
+    err isa Union{AssertionError,ArgumentError,DomainError,LinearAlgebra.SingularException,
+                  LinearAlgebra.PosDefException,LinearAlgebra.LAPACKException}
+
+# Run the default start, then the extra starts (deterministic, in this order), and return the Optim result
+# to keep. `run(x)` optimises from `x`; the last three entries of `x0` are the log-Cholesky of Sigma_g.
+# Starts are compared on `obj` evaluated in Float64 at the returned minimiser, the value that is reported as
+# the log-likelihood, not on Optim's own minimum (computed with dual numbers, which can differ from the
+# Float64 value at a nearly singular point).
+# The default result is kept unless an extra start converged and is lower by more than `_BIV_RE_START_GAIN`,
+# so a fit already at its best optimum is returned unchanged. A start that fails is skipped. If the default
+# start fails, the best converged extra start is used (any finite one if none converged); if every start
+# fails, the default start's error is rethrown, as before.
+function _biv_re_best_start(run, obj, x0::AbstractVector)
+    value(r) = obj(Optim.minimizer(r))
+    res0 = nothing; err0 = nothing; v0 = NaN
+    try
+        res0 = run(x0); v0 = value(res0)
+    catch err
+        _biv_re_start_failure(err) || rethrow()
+        res0 = nothing; err0 = err
+    end
+    conv = nothing; vconv = NaN; anyfinite = nothing; vany = NaN
+    for (sd0, cr0) in _BIV_RE_EXTRA_STARTS
+        xs = copy(x0)
+        xs[(end-2):end] .= cov_to_lc(Matrix(Symmetric(sd0^2 .* [1.0 cr0; cr0 1.0])))
+        r = nothing; v = NaN
+        try
+            r = run(xs); v = value(r)
+        catch err
+            _biv_re_start_failure(err) || rethrow()
+            continue
+        end
+        isfinite(v) || continue
+        (anyfinite === nothing || v < vany) && (anyfinite = r; vany = v)
+        Optim.converged(r) || continue
+        (conv === nothing || v < vconv) && (conv = r; vconv = v)
+    end
+    if res0 === nothing
+        best = conv !== nothing ? conv : anyfinite
+        best === nothing && throw(err0)
+        return best
+    end
+    conv !== nothing && (!isfinite(v0) || vconv < v0 - _BIV_RE_START_GAIN) && return conv
+    return res0
+end
+
 function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data, fixed, spec;
                                     g_tol::Real, method::Symbol = :ML)
     tag, grp = spec
@@ -128,20 +187,19 @@ function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data,
             # M2 = I + L' A L is finite but numerically indefinite or singular (the `I` is lost to
             # rounding). `logdet` then throws a `DomainError` (negative determinant) or `inv` throws
             # a `SingularException`, and the fit aborts. M2 is positive definite in exact arithmetic,
-            # so reject such a trial instead. It gets a large finite constant value (flat, zero
-            # gradient; 2e18 here, which `ml_from` halves to about 1e18), as the sibling routes do, not
-            # NaN or Inf: the Hager-Zhang line search asserts a finite value and gradient while it
-            # brackets. Only the two cases that threw before are changed; every trial that was
-            # evaluated before is evaluated as before.
+            # so reject such a trial instead. The trial is reported as non-finite here (a NaN tuple) and
+            # the callers `nll_full` and `nll_reml` turn it into the one rejection value, a large finite
+            # constant 1e18 (flat, zero gradient), as the sibling routes do. Not NaN or Inf: the
+            # Hager-Zhang line search asserts a finite value and gradient while it brackets.
             local W
             try
                 ldM, sgM = logabsdet(Symmetric(M2))
-                sgM < 0 && return (convert(T, 2e18), zero(T), zeros(T, pβ), Symmetric(zeros(T, pβ, pβ)), L)
+                sgM < 0 && return (T(NaN), T(NaN), fill(T(NaN), pβ), Symmetric(fill(T(NaN), pβ, pβ)), L)
                 W = inv(Symmetric(M2))
                 logdetS += ldM + log(sgM)                          # = logdet(Symmetric(M2))
             catch err
                 err isa SingularException || rethrow()
-                return (convert(T, 2e18), zero(T), zeros(T, pβ), Symmetric(zeros(T, pβ, pβ)), L)
+                return (T(NaN), T(NaN), fill(T(NaN), pβ), Symmetric(fill(T(NaN), pβ, pβ)), L)
             end
             Ls = L' * sy; LB = L' * B
             yVy -= dot(Ls, W * Ls)
@@ -153,17 +211,15 @@ function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data,
     ml_from(logdetS, yVy, c, H, β) = const_2pi + 0.5 * (logdetS + yVy - 2 * dot(β, c) + dot(β, H * β))
     function nll_full(θ)
         pf = pieces(θ[(pβ+1):end])
+        isfinite(pf[1]) || return convert(eltype(θ), 1e18)   # rejected trial: the one rejection value
         # The weighted residual sum of squares can not be negative. At a trial with a huge, nearly
         # singular row precision the cancellation in `yVy - 2 b'c + b'H b` loses every digit and can
         # return a large negative number, which would look like a far better fit. Reject it (flat 1e18).
         pf[2] - 2 * dot(θ[1:pβ], pf[3]) + dot(θ[1:pβ], pf[4] * θ[1:pβ]) < 0 && return convert(eltype(θ), 1e18)
         v = ml_from(pf[1], pf[2], pf[3], pf[4], θ[1:pβ])
-        # Known limit: the older non-finite exits (here, and the NaN return of `pieces`) still return `Inf`,
-        # while the new rejections return the finite 1e18. A line search that gets 1e18 and then `Inf`
-        # makes Hager-Zhang throw `AssertionError: isfinite(phi_c) ...` (seed 7080, ML: trial 2 is 1e18,
-        # trial 3 is `Inf`). Returning 1e18 from every rejection avoids that, but it changes 8 of 211 fits
-        # that work today in the last digits (1e-11 in logLik), so it waits for the owner's decision.
-        return isfinite(v) ? v : oftype(v, Inf)     # non-finite trial: reject, do not throw
+        # Every rejected trial returns the same finite 1e18. Mixing 1e18 with `Inf` made the Hager-Zhang
+        # line search throw `AssertionError: isfinite(phi_c) ...` (seed 7080, ML: trial 2 was 1e18, trial 3 `Inf`).
+        return isfinite(v) ? v : oftype(v, 1e18)     # non-finite trial: reject, do not throw
     end
 
     β1 = X1 \ Vector{Float64}(y1); β2 = X2 \ Vector{Float64}(y2)
@@ -174,7 +230,7 @@ function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data,
     function nll_reml(φ)
         # (local names differ from the enclosing scope's: a shared name would be captured, not local)
         pr = pieces(φ)
-        isfinite(pr[1]) || return oftype(pr[1], Inf)   # non-finite trial: reject, do not throw
+        isfinite(pr[1]) || return oftype(pr[1], 1e18)   # non-finite trial: reject, do not throw
         chH = cholesky(pr[4]; check = false)
         issuccess(chH) || return oftype(pr[1], 1e18)   # X'V^-1 X numerically indefinite: reject the step
         bh = chH \ pr[3]
@@ -184,7 +240,9 @@ function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data,
     θ0 = vcat(β1, β2, φ0)
 
     if method === :REML
-        res = Optim.optimize(nll_reml, φ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+        res = _biv_re_best_start(nll_reml, φ0) do x
+            Optim.optimize(nll_reml, x, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+        end
         φ̂ = Optim.minimizer(res)
         pc = pieces(φ̂); β̂ = pc[4] \ pc[3]
         Vφ = _vcov_from_hessian(ForwardDiff.hessian(nll_reml, φ̂);
@@ -201,7 +259,9 @@ function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data,
         V[(pβ+1):npar, (pβ+1):npar] .= Vφ
         ll = -nll_reml(φ̂); ml_ll = -nll_full(θ̂)
     else
-        res = Optim.optimize(nll_full, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+        res = _biv_re_best_start(nll_full, θ0) do x
+            Optim.optimize(nll_full, x, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+        end
         θ̂ = Optim.minimizer(res)
         V = _vcov_from_hessian(ForwardDiff.hessian(nll_full, θ̂);
                                context = "bivariate Gaussian ordinary random-effect")
