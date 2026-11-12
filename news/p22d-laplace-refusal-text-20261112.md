@@ -1,0 +1,1 @@
+Fix: the error text for `marginal = :Laplace` on a route that has no Laplace option now lists Tweedie among the families that do (Poisson, Binomial, NegBinomial2, Gamma, Beta, Tweedie). Tweedie `(1 | g)` already accepted `marginal = :Laplace`; only the text was wrong. No fit changes.
