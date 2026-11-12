@@ -279,6 +279,26 @@ end
     end
 end
 
+@testset "bivariate Gaussian: a reused formula object follows each fit's own basis" begin
+    mkb = () -> bf(mu1 = @formula(y1 ~ poly(x, 2)), mu2 = @formula(y2 ~ x),
+                   sigma1 = @formula(sigma1 ~ 1), sigma2 = @formula(sigma2 ~ 1), rho12 = @formula(rho12 ~ 1))
+    bd(seed; shift, scale) = begin
+        d = _pr_data(seed; shift, scale); rng = Xoshiro(seed + 1000)
+        merge(d, (y1 = d.y, y2 = 0.2 .* d.x .+ 0.5 .* randn(rng, length(d.x))))
+    end
+    dA = bd(81; shift = 0.0, scale = 1.0); dB = bd(82; shift = 5.0, scale = 2.0)
+    nd = (x = [4.0, 5.0, 6.5],)
+    f = mkb()
+    fA = drm(f, Gaussian(); data = dA); pA = predict(fA, (x = [-1.0, 0.5],))
+    fB = drm(f, Gaussian(); data = dB)
+    fresh = drm(mkb(), Gaussian(); data = dB)
+    @test _pr_close(coef(fB), coef(fresh))
+    @test abs(loglik(fB) - loglik(fresh)) <= 1e-12 * (1 + abs(loglik(fresh)))
+    @test _pr_close(predict(fB, nd)[:mu1], predict(fresh, nd)[:mu1])
+    @test predict(fA, (x = [-1.0, 0.5],))[:mu1] == pA[:mu1]
+    @test isempty(f.schema_cache[])
+end
+
 @testset "R bridge: poly columns are built per call from that call's data" begin
     dA = _pr_data(71); dB = _pr_data(72; shift = 5.0, scale = 2.0)
     for d in (dA, dB, dA)
