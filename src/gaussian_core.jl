@@ -599,12 +599,13 @@ function _coerce_response_column(raw; name::AbstractString="response")
     y = Vector{Float64}(undef, length(raw))
     observed = Vector{Bool}(undef, length(raw))
     # Both arrays are written unconditionally on every row (no store sits
-    # inside an `if`), and the loop is bounds-checked. On Julia 1.12 (6 and 7)
-    # with an AVX-512 Zen CPU target (the host CPU of AMD EPYC 9004 and 9005
-    # machines) LLVM compiled the earlier form, an `@inbounds` loop with
+    # inside an `if`), and the loop is bounds-checked. On Julia 1.12 (6 and 7),
+    # seen on an AMD EPYC 9655 (Zen 5) and reproduced with `-C znver4`, the
+    # compiler turned the earlier form, an `@inbounds` loop with
     # `observed[i] = false` / `true` in the two branches, into masked byte
     # stores that left about half of `observed` wrong for a
-    # `Vector{Union{Missing,Int}}` response, so a fit silently used too few rows.
+    # `Vector{Union{Missing,Int}}` response (also `Int32`, `UInt64`), so a fit
+    # silently used too few rows. Other CPUs are untested.
     # `_check_response_coercion` below still verifies the result.
     for i in eachindex(raw)
         xi = raw[i]
@@ -632,10 +633,15 @@ function _check_response_coercion(raw, y, observed, name)
             observed[i] && isequal(y[i], Float64(xi))
         end
         ok || throw(ErrorException(
-            "drm: internal consistency check failed while reading response `$(name)` " *
-            "at row $(i): the observed-row mask or value does not match the data " *
-            "(Julia $(VERSION)). This is a bug in the compiled code, not in your data; " *
-            "please report it with your Julia version and CPU model (`Sys.cpu_info()[1].model`)."))
+            "drm: stopped while reading response `$(name)`: the check at row $(i) found that " *
+            "the observed-row mask or value does not match your data (Julia $(VERSION)). " *
+            "Your data are fine. The Julia compiler produced wrong machine code on this " *
+            "computer, and drm stopped so that no model is fitted to the wrong rows. " *
+            "To continue, use Julia 1.10 (LTS) or Julia 1.13, or start Julia with " *
+            "`-C generic`, or convert the response to " *
+            "a `Float64` column with `NaN` for missing values, for example " *
+            "`Float64.(coalesce.(y, NaN))`. Please report the problem with your Julia " *
+            "version and CPU model (`Sys.cpu_info()[1].model`)."))
     end
     return nothing
 end
