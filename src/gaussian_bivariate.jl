@@ -150,7 +150,9 @@ complete fitting `data`.
 The fit is the best of three starts for the group covariance (independent, and correlated
 +0.99 and -0.99); a start that stops with a numerical error is skipped with a warning, and the
 fit fails only if all three fail. The best of three starts is not a global search: on some small
-data sets a better mode exists that none of the three reaches (drmTMB can miss it too).
+data sets a better mode exists that none of the three reaches (drmTMB can miss it too). Example: on
+one small data set with 6 unbalanced groups, all three starts and drmTMB end at a group covariance of
+zero, while a better optimum with a log-likelihood 1.70 higher exists.
 
 `q4_f_reltol` (default `1e-7`) is the relative objective change at which the q=4 ML
 optimiser stops (it ignores `q4_g_tol` near a flat ridge). The default can stop up to
