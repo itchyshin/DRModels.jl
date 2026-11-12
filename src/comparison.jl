@@ -409,6 +409,10 @@ The weights multiply each row's log-likelihood (drmTMB semantics), so
 `loglik`, `aic`, `bic`, profiles and likelihood-ratio tests use the weighted
 likelihood. `nobs(fit)` still counts rows, zero-weight rows included.
 
+`weights` needs one value per row of `data` as passed to `drm`, on every route; rows dropped for a
+missing value take their weights with them. A vector of any other length, including one already cut to
+the kept rows (such as `weights(fit)` after rows were dropped), is refused with a `DimensionMismatch`.
+
 Prior weights are implemented on the fixed-effect ML routes of the univariate
 families. Any other route refuses `weights =` with an `ArgumentError`
 (#931; the family-by-family rollout to random-effect routes is tracked there).
