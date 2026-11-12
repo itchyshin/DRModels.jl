@@ -2429,7 +2429,25 @@ function _marginal_simulator(fit::DrmFit, data; K=nothing, A=nothing, tree=nothi
             "`meta_V(...)` + random-effect fit (pass the same `data` and `tree` / `K` / `A` " *
             "used to fit it); the conditional fallback would drop the random effect"))
     end
+    # P11c: Gamma and Binomial `(1 | g) + (0 + x | g)` have no fresh-draw simulator. Falling back to the
+    # conditional draw (random effects at zero) would collapse the variance-component interval without a
+    # message, so refuse until the fresh draw exists.
+    if sim === nothing && _is_no_fresh_draw_slope_fit(fit)
+        throw(ArgumentError("no fresh random-effect draw is implemented for $(nameof(typeof(fit.family)))() " *
+            "with `(1 | g) + (0 + x | g)`, so `bootstrap_summary` / `bootstrap` and the default " *
+            "`simulate(fit; data = data)` are refused: the conditional fallback (random effects set to zero) " *
+            "would collapse the variance-component interval without a message. " *
+            "`simulate(fit; data = data, re = :zero)` still draws responses with the random effects at zero."))
+    end
     return sim
+end
+
+function _is_no_fresh_draw_slope_fit(fit::DrmFit)
+    (fit.family isa Gamma || fit.family isa Binomial) && fit.formula isa DrmFormula || return false
+    rhs = Dict(fit.formula.forms)
+    haskey(rhs, :mu) || return false
+    _, re, metav, structured, _ = _split_ranef(rhs[:mu]; allow_phylo_slope = true)
+    return metav === nothing && structured === nothing && length(re) >= 2
 end
 
 function _is_meta_gaussian_re(fit::DrmFit)
