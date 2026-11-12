@@ -69,6 +69,65 @@ function _extract_ordinary_biv_re(rhs)
     return rhs2, spec[:mu1]
 end
 
+# Starting points for the group covariance. The default start (group SD 0.5, covariance 0.02) can slide to
+# Sigma_g = 0, a local optimum where the gradient in the log SD vanishes, while drmTMB finds a higher mode
+# with the group SDs away from 0 (about 3 percent of small data sets; reviewed on 240 + 100 data sets). Two
+# more starts with group SD 0.2 and a strongly correlated pair (+0.99, -0.99) reach that mode. This is not a
+# global search: a better optimum can exist that none of the three starts finds.
+const _BIV_RE_EXTRA_STARTS = ((0.2, 0.99), (0.2, -0.99))
+# An extra start replaces the default result only when it converged and its objective is lower by more than
+# this. The package has no multi-start threshold of its own (`DRMControl(multi_start)` keeps any lower
+# objective), so 1e-6 is used: far above optimiser noise, far below the gaps seen between modes (1.6e-4 and up).
+const _BIV_RE_START_GAIN = 1e-6
+
+# Errors that a start may raise from a wild line-search trial: they cost that start, not the fit.
+_biv_re_start_failure(err) =
+    err isa Union{AssertionError,ArgumentError,DomainError,LinearAlgebra.SingularException,
+                  LinearAlgebra.PosDefException,LinearAlgebra.LAPACKException}
+
+# Run the default start, then the extra starts (deterministic, in this order), and return the Optim result
+# to keep. `run(x)` optimises from `x`; the last three entries of `x0` are the log-Cholesky of Sigma_g.
+# Starts are compared on `obj` evaluated in Float64 at the returned minimiser, the value that is reported as
+# the log-likelihood, not on Optim's own minimum (computed with dual numbers, which can differ from the
+# Float64 value at a nearly singular point).
+# The default result is kept unless an extra start converged and is lower by more than `_BIV_RE_START_GAIN`,
+# so a fit already at its best optimum is returned unchanged. A start that fails is skipped. If the default
+# start fails, the best converged extra start is used (any finite one if none converged); if every start
+# fails, the default start's error is rethrown, as before.
+function _biv_re_best_start(run, obj, x0::AbstractVector)
+    value(r) = obj(Optim.minimizer(r))
+    res0 = nothing; err0 = nothing; v0 = NaN
+    try
+        res0 = run(x0); v0 = value(res0)
+    catch err
+        _biv_re_start_failure(err) || rethrow()
+        res0 = nothing; err0 = err
+    end
+    conv = nothing; vconv = NaN; anyfinite = nothing; vany = NaN
+    for (sd0, cr0) in _BIV_RE_EXTRA_STARTS
+        xs = copy(x0)
+        xs[(end-2):end] .= cov_to_lc(Matrix(Symmetric(sd0^2 .* [1.0 cr0; cr0 1.0])))
+        r = nothing; v = NaN
+        try
+            r = run(xs); v = value(r)
+        catch err
+            _biv_re_start_failure(err) || rethrow()
+            continue
+        end
+        isfinite(v) || continue
+        (anyfinite === nothing || v < vany) && (anyfinite = r; vany = v)
+        Optim.converged(r) || continue
+        (conv === nothing || v < vconv) && (conv = r; vconv = v)
+    end
+    if res0 === nothing
+        best = conv !== nothing ? conv : anyfinite
+        best === nothing && throw(err0)
+        return best
+    end
+    conv !== nothing && (!isfinite(v0) || vconv < v0 - _BIV_RE_START_GAIN) && return conv
+    return res0
+end
+
 function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data, fixed, spec;
                                     g_tol::Real, method::Symbol = :ML)
     tag, grp = spec
@@ -180,7 +239,9 @@ function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data,
     θ0 = vcat(β1, β2, φ0)
 
     if method === :REML
-        res = Optim.optimize(nll_reml, φ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+        res = _biv_re_best_start(nll_reml, φ0) do x
+            Optim.optimize(nll_reml, x, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+        end
         φ̂ = Optim.minimizer(res)
         pc = pieces(φ̂); β̂ = pc[4] \ pc[3]
         Vφ = _vcov_from_hessian(ForwardDiff.hessian(nll_reml, φ̂);
@@ -197,7 +258,9 @@ function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data,
         V[(pβ+1):npar, (pβ+1):npar] .= Vφ
         ll = -nll_reml(φ̂); ml_ll = -nll_full(θ̂)
     else
-        res = Optim.optimize(nll_full, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+        res = _biv_re_best_start(nll_full, θ0) do x
+            Optim.optimize(nll_full, x, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+        end
         θ̂ = Optim.minimizer(res)
         V = _vcov_from_hessian(ForwardDiff.hessian(nll_full, θ̂);
                                context = "bivariate Gaussian ordinary random-effect")

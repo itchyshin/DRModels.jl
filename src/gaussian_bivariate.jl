@@ -128,6 +128,10 @@ log-Cholesky coefficients are the `Sigma_g:L11/L21/L22` entries of the
 this route. `fit.means` holds `X b` only, so `residuals(fit)` are MARGINAL
 (`y - X b`), unlike drmTMB's `residuals()`, which are conditional on the fitted
 group effects; the group effects themselves are in `ranef(fit)`.
+The fit keeps the best of three starts for the group covariance (the default,
+and group SD 0.2 with correlation +0.99 or -0.99); the default result is kept
+unless another start converged with a log-likelihood higher by more than 1e-6.
+This is not a global search. `bootstrap_*` refits use the same three starts.
 `simulate(fit; data)` and `bootstrap_*` draw fresh group effects from
 `Sigma_g` and need the complete fitting `data` (no rows dropped). Random effects
 on `sigma1`/`sigma2`, `weights`, `V`, and incomplete response rows
