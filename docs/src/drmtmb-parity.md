@@ -81,6 +81,35 @@ R-versus-Julia parity through simulation recovery alone.
   with `phylo` are admitted by both and are covered by the phylo row above
   (#741, #742).
 
+## Comparison cells that are not parity targets
+
+Some cells of the drmTMB comparison grid cannot be closed by more code, because
+drmTMB has no valid fit to compare with, or because DRModels.jl refuses on
+purpose. These are recorded as follows (owner answers of 12 November 2026).
+
+- **Binomial `(1 | g)` and `(0 + x | g)` with `method = :REML` (2 cells): fenced.**
+  drmTMB fits a joint-Laplace REML that its own code labels `diagnostic_only`.
+  DRModels.jl is ML-only for Binomial by design and keeps its refusal. These
+  cells have no valid target.
+- **Binomial `spatial` with `sd(g) ~ z` at one and two coefficients (2 cells) and
+  Binomial `relmat` with two coefficients (3 cells): no valid drmTMB target.**
+  drmTMB's own fit stopped early or did not converge (a log SD near -10.7 on the
+  `relmat` cells), so there is nothing to agree with.
+- **Binomial `phylo` with a labelled two-coefficient block and `sd(g) ~ z` (1
+  cell): drmTMB did not converge.** The log-likelihood and the estimates agree.
+  The standard errors are not comparable on this boundary fit, and DRModels.jl's
+  intercept SE is inflated by its Hessian step.
+- **Missing grouping labels (2 cells): DRModels.jl is stricter by design.**
+  drmTMB drops the affected rows without a message. Its documentation describes
+  complete-case row dropping for responses and predictors, not for grouping
+  variables, so DRModels.jl keeps its refusal instead of following it.
+- **Models DRModels.jl fits and drmTMB refuses (25 cells of the second grid):
+  Julia-only, not parity cells.** Examples are mixed-response bivariate pairs,
+  `tweedie()` with a formula on `nu`, `truncated_poisson()`, offsets on the
+  truncated and hurdle count families, and fixed-effect-only bivariate Student
+  or log-normal with predictors on the scale or correlation. No drmTMB value
+  exists to compare against.
+
 ## Default marginal approximation
 
 drmTMB's native engine integrates every random effect with TMB's Laplace
