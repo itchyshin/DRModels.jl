@@ -3639,6 +3639,7 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing,
     _is_temporal_fit(fit) && return rng -> _temporal_simulate(fit, rng)
     # Bivariate Gaussian with an ordinary `(1 | p | g)`: fresh 2-vector group effect per group.
     _is_biv_ordinary_re_fit(fit) && return _biv_ordinary_re_simulator(fit, data)
+    _is_biv_sigma_re_fit(fit) && return _biv_sigma_re_simulator(fit, data)
     fit.nll isa LocScaleObjective &&
         return _ls_marginal_simulator(fit, data; K, A, tree, coords)
     # NB2/Gamma structured sigma fields (src/sigma_structured_laplace.jl)

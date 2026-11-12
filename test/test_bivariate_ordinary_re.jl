@@ -100,8 +100,9 @@ end
     @testset "unsupported variants stay refusals" begin
         mk(m1, m2, s1 = @formula(sigma1 ~ 1), s2 = @formula(sigma2 ~ 1)) =
             bf(mu1 = m1, mu2 = m2, sigma1 = s1, sigma2 = s2, rho12 = @formula(rho12 ~ 1))
-        # random effect on sigma1 and sigma2
-        @test_throws ArgumentError drm(mk(@formula(y1 ~ x1), @formula(y2 ~ x2),
+        # a random effect on the means together with one on sigma1 and sigma2 (the sigma-only pair now
+        # fits: test_biv_sigma_re.jl)
+        @test_throws ArgumentError drm(mk(@formula(y1 ~ x1 + (1 | p | g)), @formula(y2 ~ x2 + (1 | p | g)),
             @formula(sigma1 ~ 1 + (1 | p | g)), @formula(sigma2 ~ 1 + (1 | p | g))), Gaussian(); data = _D)
         # one-sided and unlabelled terms
         @test_throws ArgumentError drm(mk(@formula(y1 ~ x1 + (1 | p | g)), @formula(y2 ~ x2)), Gaussian(); data = _D)

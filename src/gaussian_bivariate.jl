@@ -129,9 +129,20 @@ this route. `fit.means` holds `X b` only, so `residuals(fit)` are MARGINAL
 (`y - X b`), unlike drmTMB's `residuals()`, which are conditional on the fitted
 group effects; the group effects themselves are in `ranef(fit)`.
 `simulate(fit; data)` and `bootstrap_*` draw fresh group effects from
-`Sigma_g` and need the complete fitting `data` (no rows dropped). Random effects
-on `sigma1`/`sigma2`, `weights`, `V`, and incomplete response rows
-(`miss_control(response = "include")`) are refused.
+`Sigma_g` and need the complete fitting `data` (no rows dropped). A random effect on
+the means AND one on `sigma1`/`sigma2` in the same model, `weights`, `V`, and
+incomplete response rows (`miss_control(response = "include")`) are refused.
+
+With an ordinary `(1 | p | g)` written in BOTH `sigma1` and `sigma2` (same label and
+group, for example `sigma1 = @formula(sigma1 ~ 1 + (1 | p | g))`) and no random effect
+on the means, this fits a 2x2 group covariance of the two log-sigma intercepts,
+estimated by the Laplace approximation as in drmTMB (own route, file
+`gaussian_bivariate_sigma_re.jl`); `method = :ML` only. The group covariance, its
+coefficient block and the `ranef` modes follow the mean route above. `fit.scales`
+holds `exp(Xs c)` without the group effects: the conditional scale of row `i` is
+`fit.scales[:sigma1][i] * exp(u[1, g_i])` with `u = fit.ranef.effects[group]`.
+`simulate(fit; data)` and `bootstrap_*` redraw the group effects and need the
+complete fitting `data`.
 
 `q4_f_reltol` (default `1e-7`) is the relative objective change at which the q=4 ML
 optimiser stops (it ignores `q4_g_tol` near a flat ridge). The default can stop up to
@@ -197,8 +208,12 @@ fit = drm(
         throw(ArgumentError("drm: `method` must be :ML (default) or :REML (got :$method)"))
     rhs = Dict(f.forms)
     rhs, ordinary_re = _extract_ordinary_biv_re(rhs)   # `(1 | p | g)` on mu1 and mu2
+    rhs, sigma_re = _extract_ordinary_biv_re(rhs, (:sigma1, :sigma2))   # `(1 | p | g)` on sigma1 and sigma2
+    ordinary_re !== nothing && sigma_re !== nothing && throw(ArgumentError(
+        "drm: a `(1 | p | g)` random effect on the means AND one on `sigma1`/`sigma2` in the same " *
+        "bivariate model is not supported in DRModels.jl yet; use one of the two."))
     fixed, structured_marker = _bivariate_q4_marker(rhs)
-    if ordinary_re !== nothing
+    if ordinary_re !== nothing || sigma_re !== nothing
         structured_marker === nothing || throw(ArgumentError(
             "drm: an ordinary `(1 | p | g)` random effect cannot be combined with structured " *
             "phylo/relmat/animal/spatial markers in the same bivariate model."))
@@ -217,6 +232,8 @@ fit = drm(
                 "drm: `$kw` tunes the structured q=4 routes and is not used by the bivariate ordinary " *
                 "`(1 | p | g)` random-effect route; remove it (it would be silently ignored here)."))
         end
+        sigma_re !== nothing && return _fit_bivariate_sigma_re(f, fam, data, fixed, sigma_re;
+                                                               g_tol = Float64(g_tol), method = method)
         return _fit_bivariate_ordinary_re(f, fam, data, fixed, ordinary_re;
                                           g_tol = Float64(g_tol), method = method)
     end
