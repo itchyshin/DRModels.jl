@@ -269,6 +269,7 @@ function _drm_binomial_fit(f::DrmFormula, fam::Binomial; data, tree = nothing,
              se::Bool = true, marginal::Symbol = :LA, method = nothing,
              nq::Int = _BINOMIAL_RANEF_AGHQ_K, priors = nothing, ids = nothing)
     f = _default_structured_q2_sd(f, fam)   # bare structured (1 + x | g): default `sd(…, coef(·)) ~ 1`
+    f = _default_structured_q1_sd(f, fam; method, K, coords)   # bare structured (1 | g): default `sd(g, kind) ~ 1`
     _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, Ainv = Ainv, coords = coords)   # #1027 #1022 #1010
     A, coords = _binomial_label_inputs(f, data, A, Ainv, coords, ids)   # red team: `ids = …` as on the other families
     if priors !== nothing
