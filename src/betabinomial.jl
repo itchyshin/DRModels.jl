@@ -91,6 +91,8 @@ function _drm_betabinomial_fit(f::DrmFormula, fam::BetaBinomial; data, tree = no
         return _drm_betabinomial_sigma_sd_regression(f, fam; data, g_tol, se, marginal)
     !isempty(sd_targets) &&
         return _drm_betabinomial_sd_regression(f, fam; data, g_tol, se, marginal)
+    _scalar_laplace_requested(marginal) &&     # P22c: TMB-convention Laplace, ordinary (1 | g)
+        return _drm_ordinary_laplace(f, fam; data = data, tree = tree, g_tol = g_tol, se = se)
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
         drm(f, fam; data = data_observed, tree = tree, g_tol = g_tol, se = se, marginal = marginal)
     end

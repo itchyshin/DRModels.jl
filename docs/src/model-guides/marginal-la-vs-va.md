@@ -86,9 +86,13 @@ fit = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1)), NegBinomial2();
 fit.marginal   # :Laplace
 ```
 
-On these five families (Poisson, Binomial, NegBinomial2, Gamma and Beta),
-`:Laplace` covers one ordinary `(1 | g)` on the mean (`sigma ~ 1` for the scale
-families), by maximum likelihood. `Student()` accepts it too for one ordinary
+On these six families (Poisson, Binomial, NegBinomial2, Gamma, Beta and
+BetaBinomial), `:Laplace` covers one ordinary `(1 | g)` on the mean (`sigma ~ 1`
+for the scale families), by maximum likelihood. `CumulativeLogit()` with one
+`(1 | g)` has no `:Laplace` option: it integrates by quadrature, so its
+log-likelihood and fitted values differ slightly from drmTMB's Laplace values
+(fitted values by up to about 5e-3 on test data). This is a known engine
+difference, not a fault. `Student()` accepts it too for one ordinary
 `(1 | g)` on the mean (`sigma` and `nu` may carry fixed-effect formulas). A
 Gaussian random intercept on `sigma`, `sigma ~ 1 + (1 | g)`, with a fixed-effect
 mean also accepts it. `LogNormal()` accepts the selector for one ordinary mean

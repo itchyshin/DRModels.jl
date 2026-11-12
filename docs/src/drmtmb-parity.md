@@ -118,15 +118,18 @@ stayed within about 5e-4 of it. A later Poisson `(1 | g)` comparison
   within 5e-11 and the estimates to within 5.4e-8 (relative); in the 2026-10-15
   Poisson comparison, the dataset checked agreed to 5.6e-9 in log-likelihood
   and 1e-11 in the estimates. `:Laplace` is accepted for one ordinary `(1 | g)`
-  on the mean of Poisson, Binomial, NegBinomial2, Gamma and Beta (with
-  `sigma ~ 1`) or Student, and for a Gaussian random intercept on `sigma`
+  on the mean of Poisson, Binomial, NegBinomial2, Gamma, Beta and BetaBinomial
+  (with `sigma ~ 1`) or Student, and for a Gaussian random intercept on `sigma`
   (`sigma ~ 1 + (1 | g)`, fixed-effect `sigma` covariates allowed) with a
   fixed-effect mean, by maximum likelihood. `LogNormal()` also accepts
   `:Laplace` for one ordinary mean random intercept: it returns the same exact
   single-node mode-centred quadrature fit as its default and records the
   requested label. Other LogNormal models refuse this selector. For families
   without a documented `:Laplace` route, use their default; a `marginal`
-  keyword is not accepted by every family. Crossed and structured
+  keyword is not accepted by every family. `CumulativeLogit()` with one
+  `(1 | g)` has no `:Laplace` option, so it differs slightly from drmTMB
+  (log-likelihood and fitted values; fitted values by up to about 5e-3 on test
+  data): a known engine difference. Crossed and structured
   non-Gaussian routes generally use Laplace by default, with exact Gaussian
   calculations for the delegated LogNormal routes.
 - **Match the integration rule for the comparison.** On the named adaptive-

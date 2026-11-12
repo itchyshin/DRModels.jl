@@ -1,6 +1,6 @@
 # ordinary_laplace.jl — opt-in `marginal = :Laplace` for an ordinary random
-# intercept `(1 | g)` on the mean of Poisson, Binomial, NegBinomial2, Gamma and
-# Beta (Arc 2, drmTMB same-target parity).
+# intercept `(1 | g)` on the mean of Poisson, Binomial, NegBinomial2, Gamma, Beta and
+# BetaBinomial (Arc 2, drmTMB same-target parity; BetaBinomial added in P22c).
 #
 # Why a separate route. The default `marginal = :LA` integrates an ordinary
 # `(1 | g)` by 32-node Gauss–Hermite quadrature per group (see the
@@ -97,12 +97,12 @@ function _ordinary_laplace_reject(fam, what)
     throw(ArgumentError(
         "marginal = :Laplace is not available for $(nameof(typeof(fam)))() with $what. " *
         "This route covers exactly one ordinary random intercept `(1 | g)` on the mean for " *
-        "Poisson, Binomial, NegBinomial2, Gamma and Beta (`sigma ~ 1` for the three scale " *
+        "Poisson, Binomial, NegBinomial2, Gamma, Beta and BetaBinomial (`sigma ~ 1` for the four scale " *
         "families), fitted by maximum likelihood. Omit `marginal` (the default `:LA`) for " *
         "other models."))
 end
 
-_ordinary_laplace_has_sigma(::Union{NegBinomial2,Gamma,Beta}) = true
+_ordinary_laplace_has_sigma(::Union{NegBinomial2,Gamma,Beta,BetaBinomial}) = true
 _ordinary_laplace_has_sigma(_) = false
 
 """
@@ -147,7 +147,7 @@ function _drm_ordinary_laplace(f::DrmFormula, fam; data, tree = nothing,
     # for the scale families of `_fit_scale_ordinary_laplace` (NegBinomial2, Gamma,
     # Beta); Binomial refuses it here rather than letting `_design` build it.
     fixed_mu, offset_term = _extract_offset(fixed_mu)
-    offset_term === nothing || !(fam isa Binomial) ||
+    offset_term === nothing || !(fam isa Union{Binomial,BetaBinomial}) ||
         _refuse_offset_route(fam, "`marginal = :Laplace`")
     mv === nothing || _ordinary_laplace_reject(fam, "a `meta_V` marker")
     st === nothing || _ordinary_laplace_reject(fam, "a phylogenetic/structured random effect")
@@ -182,6 +182,22 @@ function _drm_ordinary_laplace(f::DrmFormula, fam; data, tree = nothing,
         s, ntr = _binomial_response(f, data)
         _, Xμ, nmμ = _design(f.response, fixed_mu, data)
         fit = _fit_binomial_ordinary_laplace(fam, s, ntr, Xμ, gidx, G, nmμ, grp, g_tol; se = se)
+    elseif fam isa BetaBinomial
+        f.response2 === nothing &&
+            error("BetaBinomial() needs a two-column response: bf(cbind(successes, failures) ~ …)")
+        _require_finite_inputs(; response=(_table_column(data, f.response), string(f.response)),
+                               response_allow_missing=false)
+        _require_finite_inputs(; response=(_table_column(data, f.response2), string(f.response2)),
+                               response_allow_missing=false)
+        s = Float64.(getproperty(data, f.response))
+        fl = Float64.(getproperty(data, f.response2))
+        (all(si -> si ≥ 0 && isinteger(si), s) && all(fi -> fi ≥ 0 && isinteger(fi), fl)) ||
+            error("BetaBinomial() requires non-negative integer successes and failures")
+        _, Xμ, nmμ = _design(f.response, fixed_mu, data)
+        _, Xσ, nmσ = _design(f.response, get(rhs, :sigma, ConstantTerm(1)), data)
+        (size(Xσ, 2) == 1 && all(==(1.0), @view Xσ[:, 1])) ||
+            _ordinary_laplace_reject(fam, "a non-constant `sigma` formula")
+        fit = _fit_betabinomial_ordinary_laplace(fam, s, s .+ fl, Xμ, gidx, G, nmμ, nmσ, grp, g_tol; se = se)
     else
         y, Xμ, nmμ = _design(f.response, fixed_mu, data)
         if fam isa Poisson
@@ -533,6 +549,34 @@ function _fit_scale_ordinary_laplace(fam, y, Xμ, gidx, G, nmμ, nmσ, grp, g_to
     means = Dict(:mu => [_laplace_mean(kind, dot(@view(Xμ[i, :]), θ̂[1:pμ]) + offv[i]) for i in 1:n])
     obs = Dict(:mu => [_laplace_obs(kind, auxhat, i) for i in 1:n])
     scales = Dict(:sigma => fill(exp(θ̂[pμ+1]), n))
+    fit = DrmFit(fam, blocks, names, θ̂, V, -nllhat, n, conv, means, obs, scales)
+    return _withnll(fit, nll, grad!)
+end
+
+# ---- BetaBinomial: ordinary `(1 | g)` on the logit mean by the TMB Laplace (P22c) -------
+# Same objective and outer loop as the scale families above, with the sparse-Laplace
+# `:betabinomial_fixed` kernel and the overdispersion log sigma estimated jointly
+# (precision phi = exp(-2 log sigma), the convention of the default route). The default
+# `marginal = :LA` integrates the group effect by quadrature, so it differs from drmTMB's
+# Laplace value; this opt-in reproduces drmTMB.
+function _fit_betabinomial_ordinary_laplace(fam::BetaBinomial, s, ntr, Xμ, gidx, G, nmμ, nmσ, grp, g_tol;
+                                            se::Bool = true)
+    n = length(s); pμ = size(Xμ, 2)
+    Q = _ordinary_laplace_Q(G)
+    kind = Val(:betabinomial_fixed)
+    aux_from, θβ0, θσ0 = _betabinomial_laplace_setup(s, ntr, Xμ; raw_scales = true)
+    fg = (θ, b0, grad) -> _phylo_mean_laplace_nuisance_fg(
+        kind, aux_from, n, Xμ, gidx, Q, 0.0, θ; grad = grad, b0 = b0, raw_scales = true,
+        newton_tol = _ORDINARY_LAPLACE_NEWTON_TOL, offset = nothing)
+    θ0 = vcat(θβ0, θσ0, log(0.4))
+    ctx = "ordinary Laplace BetaBinomial (1 | $grp)"
+    θ̂, nllhat, conv, V, nll, grad! = _ordinary_laplace_optimize(fg, θ0, n, G, g_tol; se = se, context = ctx)
+    blocks = [:mu => 1:pμ, :sigma => (pμ+1):(pμ+1), :resd => (pμ+2):(pμ+2)]
+    names = [:mu => nmμ, :sigma => nmσ, :resd => [String(grp)]]
+    auxhat = aux_from(θ̂[pμ+1])
+    means = Dict(:mu => [_laplace_mean(kind, dot(@view(Xμ[i, :]), θ̂[1:pμ])) for i in 1:n])
+    obs = Dict(:mu => [_laplace_obs(kind, auxhat, i) for i in 1:n])
+    scales = Dict(:sigma => fill(exp(θ̂[pμ+1]), n), :trials => Float64.(round.(Int, ntr)))
     fit = DrmFit(fam, blocks, names, θ̂, V, -nllhat, n, conv, means, obs, scales)
     return _withnll(fit, nll, grad!)
 end

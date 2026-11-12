@@ -1,0 +1,10 @@
+route = "bb_3"
+drmTMB_version = "0.8.1"
+R_version = "4.6.1"
+note = "BetaBinomial, one (1 | g), sigma ~ 1"
+tmb_names = ["beta_mu", "beta_mu", "beta_sigma", "log_sd_mu"]
+names = ["mu_(Intercept)", "mu_x", "sigma_(Intercept)", "resd_g"]
+loglik = -1029.2061108690802
+max_grad = 3.103304e-09
+theta = [-0.22695516646071992, 0.52247050003611972, -1.4461113008672299, -0.77606856200337082]
+se = [0.073233539192858604, 0.036466197825207866, 0.073196768978660232, 0.12948949892339828]

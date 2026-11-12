@@ -2376,12 +2376,12 @@ end
 # fixed-effect start, and a moderate-precision log-σ start (matches
 # `_fit_betabinomial_ranef`'s φ ≈ 10 init). Constant-σ (overdispersion) only;
 # nonconstant-sigma beta-binomial is out of scope for #166.
-function _betabinomial_laplace_setup(s, ntr, Xμ)
+function _betabinomial_laplace_setup(s, ntr, Xμ; raw_scales::Bool = false)
     sint = round.(Int, s)
     nint = round.(Int, ntr)
     logchoose = [_logfactorial(nint[i]) - _logfactorial(sint[i]) - _logfactorial(nint[i] - sint[i]) for i in eachindex(sint)]
     function aux_from(logsigma)
-        φ = exp(clamp(-2 * logsigma, -8.0, 8.0))
+        φ = exp(raw_scales ? -2 * logsigma : clamp(-2 * logsigma, -8.0, 8.0))   # raw: the ordinary `:Laplace` route
         lgamma_nphi = [loggamma(nint[i] + φ) for i in eachindex(nint)]
         return (s = sint, ntr = nint, logchoose = logchoose, precision = φ,
                 lgamma_nphi = lgamma_nphi, lgammaφ = loggamma(φ), digammaφ = digamma(φ))
