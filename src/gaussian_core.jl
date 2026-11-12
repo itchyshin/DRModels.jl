@@ -598,17 +598,46 @@ function _coerce_response_column(raw; name::AbstractString="response")
     _require_finite_inputs(; response=(raw, name))
     y = Vector{Float64}(undef, length(raw))
     observed = Vector{Bool}(undef, length(raw))
-    @inbounds for i in eachindex(raw)
+    # Both arrays are written unconditionally on every row (no store sits
+    # inside an `if`), and the loop is bounds-checked. On Julia 1.12 (6 and 7)
+    # with an AVX-512 Zen CPU target (the host CPU of AMD EPYC 9004 and 9005
+    # machines) LLVM compiled the earlier form, an `@inbounds` loop with
+    # `observed[i] = false` / `true` in the two branches, into masked byte
+    # stores that left about half of `observed` wrong for a
+    # `Vector{Union{Missing,Int}}` response, so a fit silently used too few rows.
+    # `_check_response_coercion` below still verifies the result.
+    for i in eachindex(raw)
         xi = raw[i]
-        if _is_response_missing(xi)
-            y[i] = NaN
-            observed[i] = false
-        else
-            y[i] = Float64(xi)
-            observed[i] = true
-        end
+        miss = _is_response_missing(xi)
+        observed[i] = !miss
+        y[i] = miss ? NaN : Float64(xi)
     end
+    _check_response_coercion(raw, y, observed, name)
     return y, observed
+end
+
+# Independent re-check of `_coerce_response_column`: a read-only pass (no
+# stores) that recomputes, row by row, whether the raw cell is missing and what
+# its Float64 value is, and refuses a result that disagrees. It costs one pass
+# over the column. It exists because a compiler fault once produced a wrong
+# mask silently (see the comment above); a wrong mask must stop the fit.
+function _check_response_coercion(raw, y, observed, name)
+    length(y) == length(raw) && length(observed) == length(raw) ||
+        throw(ErrorException("drm: internal error coercing response `$(name)`: length mismatch"))
+    for i in eachindex(raw)
+        xi = raw[i]
+        ok = if _is_response_missing(xi)
+            !observed[i] && isnan(y[i])
+        else
+            observed[i] && isequal(y[i], Float64(xi))
+        end
+        ok || throw(ErrorException(
+            "drm: internal consistency check failed while reading response `$(name)` " *
+            "at row $(i): the observed-row mask or value does not match the data " *
+            "(Julia $(VERSION)). This is a bug in the compiled code, not in your data; " *
+            "please report it with your Julia version and CPU model (`Sys.cpu_info()[1].model`)."))
+    end
+    return nothing
 end
 
 _observed_response_mask(y) = .!isnan.(Vector{Float64}(y))
