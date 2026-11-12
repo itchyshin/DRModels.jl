@@ -273,6 +273,7 @@ function _ctl_preflight(scope::_ControlScope, f, fam)
     wants_w = scope.weights !== nothing
     (wants_optim || wants_w) || return nothing
     _ctl_has_latent_terms(f) || return nothing
+    wants_w && !wants_optim && _ctl_weights_biv_re_ok(f, fam) && return nothing
     if c.optimizer !== :default && !wants_w && c.maxit === nothing &&
        c.start === nothing && c.multi_start == 1 && c.seed == 1 && c.jitter == 0.5 &&
        _ctl_simple_gaussian_re(f, fam)

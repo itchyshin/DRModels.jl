@@ -69,6 +69,24 @@ function _extract_ordinary_biv_re(rhs)
     return rhs2, spec[:mu1]
 end
 
+# Does `f` have exactly the shape whose fitter reads prior `weights`: a bivariate Gaussian with ONE
+# labelled ordinary `(1 | p | g)` pair on mu1 and mu2 and no other latent term anywhere? Used by
+# `_ctl_preflight`; `_ctl_finish` still refuses a fit that did not read the weights.
+function _ctl_weights_biv_re_ok(f, fam)
+    f isa BivariateDrmFormula && fam isa Gaussian || return false
+    try
+        rhs, spec = _extract_ordinary_biv_re(Dict{Symbol,Any}(f.forms))
+        spec === nothing && return false
+        for (_, r) in rhs
+            _, re, mv, st = _split_ranef(r; allow_phylo_slope = true, allow_temporal = true)
+            (isempty(re) && mv === nothing && st === nothing) || return false
+        end
+        return true
+    catch
+        return false
+    end
+end
+
 function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data, fixed, spec;
                                     g_tol::Real, method::Symbol = :ML)
     tag, grp = spec
@@ -93,7 +111,12 @@ function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data,
               M[2, (p1+1):pβ] .= X2[i, :]
               M
           end for i in 1:n]
-    const_2pi = n * log(2π)
+    # drmTMB `weights`: row i's whole log-density is multiplied by pw[i] (the same as repeating the
+    # row pw[i] times, and an exact zero drops it). So S_i^-1, log det S_i and the 2 pi constant are
+    # all scaled by pw[i]; the Woodbury sums below then equal the replicated-row likelihood.
+    # Unit weights (the default) multiply by 1.0 and leave every number unchanged.
+    pw = _ctl_weights(n)
+    const_2pi = sum(pw) * log(2π)
 
     # Group-summed GLS pieces at variance parameters `φ` = (sigma1, sigma2, rho12 coefs, lc[3]).
     function pieces(φ)
@@ -109,8 +132,8 @@ function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data,
             for i in rows
                 ρ = RHO_GUARD * tanh(ηr[i]); om = 1 - ρ * ρ
                 e1 = exp(-ls1[i]); e2 = exp(-ls2[i])
-                Si = [e1*e1 -ρ*e1*e2; -ρ*e1*e2 e2*e2] ./ om      # S_i^-1
-                logdetS += 2 * ls1[i] + 2 * ls2[i] + log(om)
+                Si = pw[i] .* ([e1*e1 -ρ*e1*e2; -ρ*e1*e2 e2*e2] ./ om)      # pw_i * S_i^-1
+                logdetS += pw[i] * (2 * ls1[i] + 2 * ls2[i] + log(om))
                 yi = @view Y[i, :]
                 Sy = Si * yi
                 yVy += dot(yi, Sy)
@@ -190,7 +213,7 @@ function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data,
         A = zeros(2, 2); sy = zeros(2)
         for i in rows
             e1 = exp(-ls1[i]); e2 = exp(-ls2[i]); om = 1 - ρv[i]^2
-            Si = [e1*e1 -ρv[i]*e1*e2; -ρv[i]*e1*e2 e2*e2] ./ om
+            Si = pw[i] .* ([e1*e1 -ρv[i]*e1*e2; -ρv[i]*e1*e2 e2*e2] ./ om)
             A += Si; sy += Si * (Y[i, :] - Xi[i] * θb)
         end
         U[:, k] = L * (inv(Symmetric(I + L' * A * L)) * (L' * sy))

@@ -111,7 +111,7 @@ end
         # partly observed rows (missing = include) are not supported on this route
         @test_throws ArgumentError drm(mk(@formula(y1m ~ x1 + (1 | p | g)), @formula(y2m ~ x2 + (1 | p | g))),
                                        Gaussian(); data = _D, missing = miss_control(response = "include"))
-        # row weights (grouped likelihoods do not take them yet)
-        @test_throws ArgumentError drm(_F1, Gaussian(); data = _D, weights = fill(1.0, length(_D.y1)))
+        # row weights are supported (test_biv_re_weights.jl); invalid ones are still refused
+        @test_throws ArgumentError drm(_F1, Gaussian(); data = _D, weights = fill(-1.0, length(_D.y1)))
     end
 end
