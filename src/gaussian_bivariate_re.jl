@@ -160,9 +160,10 @@ function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data,
             # rounding). `logdet` then throws a `DomainError` (negative determinant) or `inv` throws
             # a `SingularException`, and the fit aborts. M2 is positive definite in exact arithmetic,
             # so reject such a trial instead. It gets a large finite constant value (flat, zero
-            # gradient), as the sibling routes do (`1e18`), not NaN or Inf: the Hager-Zhang line
-            # search asserts a finite value and gradient while it brackets. Only the two cases that
-            # threw before are changed; every trial that was evaluated before is evaluated as before.
+            # gradient; 2e18 here, which `ml_from` halves to about 1e18), as the sibling routes do, not
+            # NaN or Inf: the Hager-Zhang line search asserts a finite value and gradient while it
+            # brackets. Only the two cases that threw before are changed; every trial that was
+            # evaluated before is evaluated as before.
             local W
             try
                 ldM, sgM = logabsdet(Symmetric(M2))
@@ -188,6 +189,11 @@ function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data,
         # return a large negative number, which would look like a far better fit. Reject it (flat 1e18).
         pf[2] - 2 * dot(θ[1:pβ], pf[3]) + dot(θ[1:pβ], pf[4] * θ[1:pβ]) < 0 && return convert(eltype(θ), 1e18)
         v = ml_from(pf[1], pf[2], pf[3], pf[4], θ[1:pβ])
+        # Known limit: the older non-finite exits (here, and the NaN return of `pieces`) still return `Inf`,
+        # while the new rejections return the finite 1e18. A line search that gets 1e18 and then `Inf`
+        # makes Hager-Zhang throw `AssertionError: isfinite(phi_c) ...` (seed 7080, ML: trial 2 is 1e18,
+        # trial 3 is `Inf`). Returning 1e18 from every rejection avoids that, but it changes 8 of 211 fits
+        # that work today in the last digits (1e-11 in logLik), so it waits for the owner's decision.
         return isfinite(v) ? v : oftype(v, Inf)     # non-finite trial: reject, do not throw
     end
 
