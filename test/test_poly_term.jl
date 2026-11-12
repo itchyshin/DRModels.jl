@@ -70,6 +70,18 @@ end
     _pt_check("student",   drm(bf(@formula(y_st ~ poly(x1, 2)), @formula(sigma ~ 1)), Student(); data = d))
 end
 
+@testset "Gaussian REML with poly(x, 2): the restricted log-likelihood depends on the basis, so it needs R's" begin
+    d = _pt_data()
+    fit = drm(bf(@formula(y_g ~ poly(x1, 2)), @formula(sigma ~ 1)), Gaussian(); data = d, method = :REML)
+    ref = _PT_REF["gaussian_reml"]
+    @test is_converged(fit)
+    @test abs(loglik(fit) - ref["loglik"]) <= 1e-4
+    est, se = _pt_named(fit)
+    for (k, r, s) in zip(ref["names"], ref["theta"], ref["se"])
+        @test abs(est[k] - r) <= 1e-3 * s
+    end
+end
+
 @testset "missing response and missing predictor: the basis is built on the complete rows, as in R" begin
     d = _pt_data()
     fit = drm(bf(@formula(y_gm ~ poly(x1m, 2)), @formula(sigma ~ 1)), Gaussian(); data = d)

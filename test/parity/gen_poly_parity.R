@@ -37,6 +37,7 @@ nd <- data.frame(x1 = c(-1, 0, 0.5, 2))
 
 cells <- list(
   gaussian  = list(f = bf(y_g ~ poly(x1, 2), sigma ~ 1), fam = gaussian()),
+  gaussian_reml = list(f = bf(y_g ~ poly(x1, 2), sigma ~ 1), fam = gaussian(), reml = TRUE),
   gaussian_na = list(f = bf(y_gm ~ poly(x1m, 2), sigma ~ 1), fam = gaussian()),
   poisson   = list(f = bf(y_pois ~ poly(x1, 2)), fam = stats::poisson(link = "log")),
   binomial  = list(f = bf(y_bin ~ poly(x1, 2)), fam = stats::binomial(link = "logit")),
@@ -50,13 +51,21 @@ lines <- c(sprintf("drmTMB_version = \"%s\"", as.character(utils::packageVersion
            sprintf("R_version = \"%s\"", paste(R.version$major, R.version$minor, sep = ".")),
            sprintf("newdata_x1 = %s", fmt(nd$x1)))
 for (nm in names(cells)) {
-  fit <- drmTMB(cells[[nm]]$f, family = cells[[nm]]$fam, data = d)
-  par <- fit$opt$par
-  gr <- as.numeric(fit$obj$gr(par))
-  se <- tryCatch(sqrt(diag(fit$sdr$cov.fixed)), error = function(e) rep(NA_real_, length(par)))
+  fit <- drmTMB(cells[[nm]]$f, family = cells[[nm]]$fam, data = d, REML = isTRUE(cells[[nm]]$reml))
+  reml <- isTRUE(cells[[nm]]$reml)
   cf <- coef(fit)
   jn <- unlist(lapply(names(cf), function(p) paste0(p, "_", names(cf[[p]]))), use.names = FALSE)
-  stopifnot(isTRUE(all.equal(as.numeric(unlist(cf)), as.numeric(par), tolerance = 1e-10)))
+  gr <- as.numeric(fit$obj$gr(fit$opt$par))
+  if (reml) {
+    # REML integrates the mean coefficients out of opt$par: report coef(fit) and vcov(fit) instead
+    par <- unlist(cf)
+    se <- tryCatch(sqrt(diag(as.matrix(vcov(fit)))), error = function(e) rep(NA_real_, length(par)))
+    if (length(se) != length(par)) se <- rep(NA_real_, length(par))
+  } else {
+    par <- fit$opt$par
+    se <- tryCatch(sqrt(diag(fit$sdr$cov.fixed)), error = function(e) rep(NA_real_, length(par)))
+    stopifnot(isTRUE(all.equal(as.numeric(unlist(cf)), as.numeric(par), tolerance = 1e-10)))
+  }
   cat(sprintf("%-10s max|grad|=%.2e allSEfinite=%s ll=%.10f\n  names: %s\n  par: %s\n",
               nm, max(abs(gr)), all(is.finite(se)), as.numeric(logLik(fit)),
               paste(jn, collapse = " | "), paste(signif(par, 6), collapse = " ")))
