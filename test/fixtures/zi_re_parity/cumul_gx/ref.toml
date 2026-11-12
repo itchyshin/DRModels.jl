@@ -1,0 +1,10 @@
+route = "cumul_gx"
+drmTMB_version = "0.8.1"
+R_version = "4.6.1"
+note = "CumulativeLogit, (1 | g) + (0 + x | g)"
+tmb_names = ["beta_mu", "theta_ord", "theta_ord", "theta_ord", "log_sd_mu", "log_sd_mu"]
+names = ["mu_x", "cutpoints_theta1", "cutpoints_theta2", "cutpoints_theta3", "resd_g", "resd_g:x"]
+loglik = -631.12540399247791
+max_grad = 5.472787e-10
+theta = [0.63486565262700834, -1.063831008590219, 0.29554051100442669, 0.14013759194906983, -0.74362127762018926, -0.92609704885092126]
+se = [0.11534691827935027, 0.13412815103138195, 0.080605674901892119, 0.093706866157239513, 0.27054472181599626, 0.37212524177947914]

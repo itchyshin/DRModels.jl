@@ -1,0 +1,10 @@
+route = "binom3"
+drmTMB_version = "0.8.1"
+R_version = "4.6.1"
+note = "Binomial, three crossed random intercepts"
+tmb_names = ["beta_mu", "beta_mu", "log_sd_mu", "log_sd_mu", "log_sd_mu"]
+names = ["mu_(Intercept)", "mu_x", "resd_g", "resd_g2", "resd_h"]
+loglik = -553.47249087850639
+max_grad = 2.429168e-13
+theta = [-0.025038669280824873, 0.47742200288281478, -0.29252742661124476, -0.30747232850431627, -0.73520296350843883]
+se = [0.25902869663106209, 0.079037282899313097, 0.17829457354770797, 0.20173777625923719, 0.26348207617457009]
