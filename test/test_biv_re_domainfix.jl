@@ -9,8 +9,16 @@
 # number, is rejected the same way (d42, REML: it used to give a non-converged "fit" with logLik
 # 1.4e16 once the first rejection was in place).
 #
-# Data: test/fixtures/biv_re_domainfix/d{168,68,183,42}.csv (make_data.jl). Reference: reference.tsv,
-# written by make_reference.R in the same folder from a real drmTMB 0.8.1 run. Agreement bounds,
+# The value of a rejected trial matters too. It must be a finite constant (1e18): the Hager-Zhang line
+# search asserts `isfinite` while it brackets, so a rejected trial that returns `Inf` or `NaN` makes
+# it throw `AssertionError: isfinite(phi_c) ...` on some data. With every rejection value in this route
+# replaced by `Inf` (or by `NaN`), r7080 (REML) and r7083 (REML) crash on Julia 1.13.3 and r7084 (ML and
+# REML) crash on Julia 1.10.12 (the line-search version differs); with 1e18 all of them fit. The last
+# testset below pins that.
+#
+# Data: test/fixtures/biv_re_domainfix/d{168,68,183,42}.csv (make_data.jl) and r{7080,7083,7084}.csv
+# (make_data_rev.jl). Reference: reference.tsv (make_reference.R) and reference_rev.tsv
+# (make_reference_rev.R) in the same folder, from real drmTMB 0.8.1 runs. Agreement bounds,
 # fixed beforehand: |dLL| <= 1e-4; fixed effects within 1e-3 of the R SE; log SDs of the two group
 # effects and atanh of the group correlation within 5e-3. d42 (REML) has a group correlation of 1 in
 # drmTMB too, so there the correlation is only checked to exceed 0.9999 (its atanh is flat).
@@ -29,9 +37,8 @@ function _df_data(name)
     return (; cols...)
 end
 
-function _df_ref()
-    m, _ = readdlm(joinpath(_FIXD, "reference.tsv"), '\t', Any; header = true)
-    ref = Dict{String,Vector{Tuple{String,Float64,Float64}}}()
+function _df_ref(file, ref = Dict{String,Vector{Tuple{String,Float64,Float64}}}())
+    m, _ = readdlm(joinpath(_FIXD, file), '\t', Any; header = true)
     for r in eachrow(m)
         push!(get!(ref, String(r[1]), Tuple{String,Float64,Float64}[]),
               (String(r[3]), Float64(r[4]), r[5] == "NA" ? NaN : Float64(r[5])))
@@ -39,7 +46,7 @@ function _df_ref()
     return ref
 end
 
-const _DF_REF = _df_ref()
+const _DF_REF = _df_ref("reference_rev.tsv", _df_ref("reference.tsv"))
 _df_one(cell, name) = only(r for r in _DF_REF[cell] if r[1] == name)
 _df_rows(cell, prefixes...) = [r for r in _DF_REF[cell] if any(p -> startswith(r[1], p), prefixes)]
 
@@ -83,4 +90,15 @@ end
     @testset "d42 REML (negative-sum-of-squares trial; correlation 1 in drmTMB)" begin
         _df_check("d42_reml", _df_data("d42"), :REML; corr_pinned = false)
     end
+end
+
+@testset "bivariate ordinary (1 | p | g): a rejected trial returns a finite value (not Inf, not NaN)" begin
+    # With `Inf` or `NaN` as the rejection value r7080 REML and r7083 REML stop with an assertion from
+    # the line search on Julia 1.13.3, and r7084 (ML and REML) on Julia 1.10.12. ML on r7083 is the
+    # ordinary neighbour.
+    @testset "r7080 REML" begin _df_check("r7080_reml", _df_data("r7080"), :REML) end
+    @testset "r7083 REML" begin _df_check("r7083_reml", _df_data("r7083"), :REML) end
+    @testset "r7083 ML" begin _df_check("r7083_ml", _df_data("r7083"), :ML) end
+    @testset "r7084 REML" begin _df_check("r7084_reml", _df_data("r7084"), :REML) end
+    @testset "r7084 ML" begin _df_check("r7084_ml", _df_data("r7084"), :ML) end
 end
