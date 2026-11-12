@@ -3638,9 +3638,37 @@ end
 # is keyed by group, so only intercepts on DISTINCT groups are covered; a slope term, a
 # repeated group, an `sd(g) ~ ...` part or a ZeroOneBeta mean is not, and returns
 # `nothing` (the caller then refuses, as before).
+# Binomial / BetaBinomial draws need the trials per row. A fit from a route that did not
+# store them (`fit.scales[:trials]`) gets them from the response columns of `data`
+# (0/1 response: all ones; `cbind(successes, failures)`: their sum). Returns the fit
+# unchanged for other families or when the trials are stored, and `nothing` when the
+# trials cannot be rebuilt from `data` (the caller then refuses, naming `data =`).
+function _fit_with_simulate_trials(fit::DrmFit, data)
+    (fit.family isa Binomial || fit.family isa BetaBinomial) || return fit
+    haskey(fit.scales, :trials) && return fit
+    fit.formula isa DrmFormula || return nothing
+    tr = try
+        Vector{Float64}(_full_trials(fit.formula, data))
+    catch
+        return nothing
+    end
+    (length(tr) == fit.nobs && all(t -> isfinite(t) && t >= 1, tr)) || return nothing
+    scales = merge(fit.scales, Dict{Symbol,Vector{Float64}}(:trials => tr))
+    return DrmFit(
+        fit.family, fit.blocks, fit.coefnames, fit.theta, fit.vcov,
+        fit.loglik, fit.nobs, fit.converged, fit.means, fit.obs, scales,
+        fit.formula, fit.nll, fit.nllgrad, fit.ranef,
+        fit.estim_method, fit.reml_loglik, fit.ml_loglik, fit.marginal,
+        fit.phylo_penalty, fit.penalty, fit.iterations, fit.phylo_scale,
+        fit.uncertainty, fit.geometry,
+    )
+end
+
 function _ordinary_multi_marginal_simulator(fit::DrmFit, data, re)
     isempty(_sd_parts(fit.formula)) && isempty(_sdphylo_parts(fit.formula)) || return nothing
     fit.family isa ZeroOneBeta && return nothing
+    fit = _fit_with_simulate_trials(fit, data)
+    fit === nothing && return nothing
     groups = Symbol[g for (_, g) in re]
     length(unique(groups)) == length(groups) || return nothing
     all(t -> first(_re_kind(t[1])) === :intercept, re) || return nothing
