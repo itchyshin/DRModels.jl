@@ -666,7 +666,11 @@ function _design(response::Symbol, rhs, data; schema_cache = nothing, schema_key
     # Only rows that stay in the fit. A missing/NaN response is dropped later
     # (`_fit_observed_response_rows`, `_fit_fixed_gaussian_missing_response`);
     # a NaN predictor on that same row is dropped with it.
-    design_data = all(observed) ? data :
+    # A response column typed `Union{Missing,Float64}` is replaced even when every row is observed:
+    # StatsModels would otherwise build its dummy response as a CategoricalTerm whose levels are the
+    # fitted responses, and a later `modelcols` on rows with another response (a `0.0` filler) fails
+    # with `KeyError`.
+    design_data = (all(observed) && !(Missing <: eltype(raw_response))) ? data :
         _replace_table_column(data, response, ifelse.(observed, y_response, 0.0))
     design_data = _narrow_design_columns(rhs, design_data, response)
     ft = FormulaTerm(Term(response), rhs)
