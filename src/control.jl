@@ -630,6 +630,35 @@ function _ctl_weights(n::Integer; supported::Bool = true, route::AbstractString 
     return w
 end
 
+# Number of rows of `data` as the user passed it (before any row is dropped for a missing value), or
+# `nothing` when `data` is not a table.
+function _data_nrows(data)
+    Tables.istable(data) || return nothing
+    cols = Tables.columntable(data)
+    isempty(cols) && return nothing
+    return length(first(values(cols)))
+end
+
+"""
+    _check_weights_rows(weights, data)
+
+Prior `weights` give one value per row of `data` as passed to `drm`, as in drmTMB ("`weights` must
+have one value per row of `data`"). Rows dropped for a missing value take their weights with them
+(`_drop_scope_weight_rows!`). A vector already cut to the kept rows is refused: it fits the rows only if
+the user cut it correctly, and gives a wrong likelihood when it is misaligned. Called by `@drm_entry` for
+every route, before the route is chosen. A `weights` that is not a vector is left to
+`_check_prior_weights`.
+"""
+function _check_weights_rows(weights, data)
+    weights isa AbstractVector || return nothing
+    n = _data_nrows(data)
+    (n === nothing || length(weights) == n) && return nothing
+    throw(DimensionMismatch("drm: `weights` must have one value per row of `data`, but it has " *
+        "$(length(weights)) values and `data` has $n rows. A vector already cut to the rows " *
+        "without a missing value is not accepted. Give one weight per row of `data` as you pass it " *
+        "(rows with a missing value are dropped, and their weights with them)."))
+end
+
 # ---------------------------------------------------------------------------
 # @drm_entry: add `control` / `weights` to a public `drm` method
 # ---------------------------------------------------------------------------
@@ -694,10 +723,19 @@ macro drm_entry(fdef)
         # the extra-keyword splat added above is named `_drm_extra_kw`
         :(haskey(_drm_extra_kw, :data) && _record_factor_levels!($fname, _drm_extra_kw[:data]))
     end
+    # one weight per row of `data` on every route (`data` is found as for `record`)
+    wcheck = if :data in names
+        :(weights === nothing || _check_weights_rows(weights, data))
+    elseif splat !== nothing
+        :(weights === nothing || !haskey($kwsplat, :data) || _check_weights_rows(weights, $kwsplat[:data]))
+    else
+        :(weights === nothing || !haskey(_drm_extra_kw, :data) || _check_weights_rows(weights, _drm_extra_kw[:data]))
+    end
     fdef.args[2] = quote
         $extra_check
         $pre
         $record
+        $wcheck
         return _drm_run_controlled($fname, $famname, control, weights) do
             $body
         end
