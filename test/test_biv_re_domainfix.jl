@@ -13,7 +13,9 @@
 # search asserts `isfinite` while it brackets, so a rejected trial that returns `Inf` or `NaN` makes
 # it throw `AssertionError: isfinite(phi_c) ...` on some data. With every rejection value in this route
 # replaced by `Inf` (or by `NaN`), r7080 (REML) and r7083 (REML) crash on Julia 1.13.3 and r7084 (ML and
-# REML) crash on Julia 1.10.12 (the line-search version differs); with 1e18 all of them fit. The last
+# REML) crash on Julia 1.10.12 (the line-search version differs); with 1e18 all of them fit. r7080 (ML)
+# crashed in the version of the fix where only the newly added rejections returned 1e18 and the older
+# non-finite exits still returned `Inf`; it fits now that every rejection returns 1e18. The last
 # testset below pins that.
 #
 # Data: test/fixtures/biv_re_domainfix/d{168,68,183,42}.csv (make_data.jl) and r{7080,7083,7084}.csv
@@ -94,9 +96,11 @@ end
 
 @testset "bivariate ordinary (1 | p | g): a rejected trial returns a finite value (not Inf, not NaN)" begin
     # With `Inf` or `NaN` as the rejection value r7080 REML and r7083 REML stop with an assertion from
-    # the line search on Julia 1.13.3, and r7084 (ML and REML) on Julia 1.10.12. ML on r7083 is the
-    # ordinary neighbour.
+    # the line search on Julia 1.13.3, and r7084 (ML and REML) on Julia 1.10.12. r7080 ML stops the same
+    # way if some rejections return `Inf` and the others 1e18 (the state before the owner accepted
+    # one value for every rejection). ML on r7083 is the ordinary neighbour.
     @testset "r7080 REML" begin _df_check("r7080_reml", _df_data("r7080"), :REML) end
+    @testset "r7080 ML" begin _df_check("r7080_ml", _df_data("r7080"), :ML) end
     @testset "r7083 REML" begin _df_check("r7083_reml", _df_data("r7083"), :REML) end
     @testset "r7083 ML" begin _df_check("r7083_ml", _df_data("r7083"), :ML) end
     @testset "r7084 REML" begin _df_check("r7084_reml", _df_data("r7084"), :REML) end
