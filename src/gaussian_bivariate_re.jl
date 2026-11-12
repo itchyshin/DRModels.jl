@@ -115,6 +115,15 @@ function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data,
     # row pw[i] times, and an exact zero drops it). So S_i^-1, log det S_i and the 2 pi constant are
     # all scaled by pw[i]; the Woodbury sums below then equal the replicated-row likelihood.
     # Unit weights (the default) multiply by 1.0 and leave every number unchanged.
+    let sc = _active_control_scope()
+        # Rows with a missing response were dropped before this point. Weights must be one per row of
+        # `data`, as in R, so a vector already cut to the kept rows is refused here: it is not aligned
+        # with the rows that were kept unless the caller cut it with exactly the same rule.
+        (sc !== nothing && sc.weights !== nothing && sc.weights_rows > 0) &&
+            throw(DimensionMismatch("drm: `weights` has $(length(sc.weights)) entries but `data` has " *
+                "$(sc.weights_rows) rows. Give one weight per row of `data`, including the rows with a " *
+                "missing response (they are dropped together with their weights)."))
+    end
     pw = _ctl_weights(n)
     const_2pi = sum(pw) * log(2π)
 
@@ -263,6 +272,17 @@ end
 _is_biv_ordinary_re_fit(fit) =
     fit.formula isa BivariateDrmFormula && fit.ranef isa NamedTuple &&
     get(fit.ranef, :kind, nothing) === :ordinary && haskey(fit.ranef, :Sigma_g)
+
+# Profile likelihood on a REML fit would need the restricted objective, but `fit.nll` is the ML
+# likelihood: the profile would be an ML profile centred on the REML estimate. Refuse by name.
+function _refuse_reml_profile_biv_re(fit::DrmFit, entrypoint::AbstractString)
+    _is_biv_ordinary_re_fit(fit) && estimation_method(fit) === :REML && throw(ArgumentError(
+        "$entrypoint: likelihood profiles are not available for a REML fit of the bivariate " *
+        "`(1 | p | g)` route. The stored objective is the ML likelihood, so the profile would be an ML " *
+        "profile centred on the REML estimate. Use `method = :wald`, `bootstrap_ci` / " *
+        "`bootstrap_result`, or refit with `method = :ML` and profile that."))
+    return nothing
+end
 
 function _biv_ordinary_re_simulator(fit::DrmFit, data)
     re = fit.ranef

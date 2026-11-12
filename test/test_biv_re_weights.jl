@@ -11,6 +11,7 @@
 # compared with a bound of 1e-4.
 using DRModels
 using Test, DelimitedFiles, LinearAlgebra, Logging
+using StableRNGs
 
 include("biv_ordinary_re_helpers.jl")       # _bre_summ, _BRE_F0, _BRE_FC (shared, guarded)
 
@@ -189,9 +190,29 @@ end
     @test f_drop.loglik == f_pre.loglik && f_drop.theta == f_pre.theta
     @test_throws ArgumentError drm(_BRW_FM, Gaussian(); data = d, weights = d.w,
                                    missing = miss_control(response = "include"))
-    # Not tested on purpose: weights already cut to the kept rows. The shared helper
-    # `_drop_scope_weight_rows!` leaves a wrong-length vector for `_ctl_weights`, which then accepts one
-    # whose length happens to equal the kept row count (true on every route that uses the helper).
+    # Weights already cut to the kept rows are NOT accepted: one weight per row of `data`, as in R.
+    # (Before, a vector whose length equalled the kept row count was taken as aligned, silently.)
+    ncut = count(obs)
+    @test ncut < length(d.w)
+    err = try
+        with_logger(NullLogger()) do
+            drm(_BRW_FM, Gaussian(); data = d, weights = d.w[obs])
+        end
+        nothing
+    catch e
+        e
+    end
+    @test err isa DimensionMismatch
+    @test occursin("one weight per row of `data`", sprint(showerror, err))
+    @test occursin("$(ncut) entries", sprint(showerror, err))
+    # a vector cut at the front (not the kept rows) is refused the same way, never fitted
+    @test_throws DimensionMismatch with_logger(NullLogger()) do
+        drm(_BRW_FM, Gaussian(); data = d, weights = d.w[1:ncut])
+    end
+    # full length with missing rows still fits and equals the pre-dropped fit (above); no rows
+    # dropped and a full-length vector is unaffected
+    d2 = (; g = d.g, x1 = d.x1, x2 = d.x2, y1 = d.y1, y2 = d.y2)
+    @test drm(_BRE_F0, Gaussian(); data = d2, weights = d.w).nobs == length(d.w)
 end
 
 @testset "invalid weights are refused before fitting" begin
@@ -228,6 +249,46 @@ end
     kw = DRModels._bootstrap_bivariate_refit_kwargs((; weights = d.w))
     @test haskey(kw, :weights) && kw.weights == d.w
     @test !haskey(DRModels._bootstrap_bivariate_refit_kwargs(NamedTuple()), :weights)
+end
+
+@testset "profile likelihood: ML works, REML is refused (the stored objective is the ML one)" begin
+    d = _BRW_D
+    d2 = (; g = d.g, x1 = d.x1, x2 = d.x2, y1 = d.y1, y2 = d.y2)
+    f_ml = drm(_BRE_F0, Gaussian(); data = d2, weights = d.w)
+    f_reml = drm(_BRE_F0, Gaussian(); data = d2, weights = d.w, method = :REML)
+    @test estimation_method(f_reml) === :REML
+    # ML: the profile interval brackets the estimate (the objective is the right one)
+    ci = with_logger(NullLogger()) do
+        confint(f_ml; method = :profile, parm = :sigma1)
+    end
+    @test length(ci) == 1 && ci[1].lower < ci[1].estimate < ci[1].upper
+    # REML: refused by every profile entry point, with a message that names REML and the way out
+    for thunk in (() -> confint(f_reml; method = :profile),
+                  () -> confint(f_reml; method = :profile, parm = :sigma1),
+                  () -> profile_result(f_reml),
+                  () -> profile_curve(f_reml, 1))
+        err = try thunk(); nothing catch e e end
+        @test err isa ArgumentError
+        msg = sprint(showerror, err)
+        @test occursin("REML", msg) && occursin("method = :wald", msg) && occursin("method = :ML", msg)
+    end
+    # Wald intervals on the REML fit are unaffected
+    cw = confint(f_reml; method = :wald)
+    @test all(r.lower < r.estimate < r.upper for r in cw)
+end
+
+@testset "weighted bootstrap runs end to end (ML and REML), no failed replicate" begin
+    d = _BRW_D
+    d2 = (; g = d.g, x1 = d.x1, x2 = d.x2, y1 = d.y1, y2 = d.y2)
+    for meth in (:ML, :REML)
+        fit = drm(_BRE_F0, Gaussian(); data = d2, weights = d.w, method = meth)
+        br = with_logger(NullLogger()) do
+            DRModels.bootstrap_result(fit; data = d2, B = 6, rng = StableRNG(11))
+        end
+        @test br.used == 6
+        row = first(r for r in br.summary if r.param === :mu1)
+        @test isfinite(row.std_error) && row.std_error > 0
+    end
 end
 
 @testset "sigma-axis random effects with weights stay a clear refusal" begin

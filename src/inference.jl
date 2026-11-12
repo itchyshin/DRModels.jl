@@ -332,6 +332,7 @@ function profile_result(fit::DrmFit; level::Real=0.95, threads::Bool=false, parm
     _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("profile_result: likelihood profiles are not qualified for $(_prior_kind_label(fit)) fits"))
     level = _validate_ci_level(level; what="profile_result")
     _refuse_selected_optimizer_refit(fit, "profile_result")
+    _refuse_reml_profile_biv_re(fit, "profile_result")
     threads && _binomial_sd_threaded_profile_unsupported(fit) &&
         throw(ArgumentError("profile_result: threaded profiling is not supported for structured Binomial random-effect SD fits; " *
                             "use `threads = false`."))

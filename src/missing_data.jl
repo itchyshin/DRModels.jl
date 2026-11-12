@@ -102,7 +102,11 @@ end
 # `_ctl_weights` to refuse.
 function _drop_scope_weight_rows!(keep)
     s = _active_control_scope()
-    (s === nothing || s.weights === nothing || length(s.weights) != length(keep)) && return nothing
+    (s === nothing || s.weights === nothing) && return nothing
+    if length(s.weights) != length(keep)
+        s.weights_rows = length(keep)       # noted for routes that insist on one weight per data row
+        return nothing
+    end
     s.weights = s.weights[keep]
     return nothing
 end
