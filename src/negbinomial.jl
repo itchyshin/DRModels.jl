@@ -807,6 +807,7 @@ function _fit_negbin2_sigma_sd_regression(fam::NegBinomial2, y, Xmu,
     end
     sigma = exp.(eta_sigma .+ loading .* modes[gidx])
     scales = Dict{Symbol,Vector{Float64}}(:sigma => sigma,
+        :sigma_population => exp.(eta_sigma),   # sigma with the random effect set to zero (`simulate(re = :zero)`)
         :sigma_random_effect => modes, :sd_group => tau, :sd => tau[gidx],
         :sd_group_index => Float64.(gidx), :aghq_nodes => [Float64(K)])
     blocks = [:mu => (1:pmu), :sigma => ((pmu+1):(pmu+psigma))]
