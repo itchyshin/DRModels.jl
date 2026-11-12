@@ -3639,7 +3639,8 @@ end
 # repeated group, an `sd(g) ~ ...` part or a ZeroOneBeta mean is not, and returns
 # `nothing` (the caller then refuses, as before).
 # Binomial / BetaBinomial draws need the trials per row. A fit from a route that did not
-# store them (`fit.scales[:trials]`) gets them from the response columns of `data`
+# store them (`fit.scales[:trials]`, for example a fit saved by an earlier version) gets
+# them from the response columns of `data`
 # (0/1 response: all ones; `cbind(successes, failures)`: their sum). Returns the fit
 # unchanged for other families or when the trials are stored, and `nothing` when the
 # trials cannot be rebuilt from `data` (the caller then refuses, naming `data =`).
@@ -3647,12 +3648,16 @@ function _fit_with_simulate_trials(fit::DrmFit, data)
     (fit.family isa Binomial || fit.family isa BetaBinomial) || return fit
     haskey(fit.scales, :trials) && return fit
     fit.formula isa DrmFormula || return nothing
+    # The fitter's own parse of the response (`_binomial_response`), so the rebuild accepts
+    # exactly what the fit accepted: non-negative integer successes and failures (rows with
+    # zero trials included) or a 0/1 vector, and refuses everything else.
     tr = try
-        Vector{Float64}(_full_trials(fit.formula, data))
-    catch
+        Vector{Float64}(last(_binomial_response(fit.formula, data)))
+    catch err
+        err isa InterruptException && rethrow(err)
         return nothing
     end
-    (length(tr) == fit.nobs && all(t -> isfinite(t) && t >= 1, tr)) || return nothing
+    (length(tr) == fit.nobs && all(isfinite, tr)) || return nothing
     scales = merge(fit.scales, Dict{Symbol,Vector{Float64}}(:trials => tr))
     return DrmFit(
         fit.family, fit.blocks, fit.coefnames, fit.theta, fit.vcov,
