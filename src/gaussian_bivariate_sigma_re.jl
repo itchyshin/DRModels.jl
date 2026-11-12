@@ -105,6 +105,11 @@ function _sre_mode(fgh::F, z0::Vector{Float64}) where {F}
     return z, false
 end
 
+# Errors a start may raise from a wild line-search trial: they cost that start, not the fit.
+_sre_numerical_failure(err) =
+    err isa Union{AssertionError,ArgumentError,DomainError,LinearAlgebra.SingularException,
+                  LinearAlgebra.PosDefException,LinearAlgebra.LAPACKException}
+
 function _fit_bivariate_sigma_re(f::BivariateDrmFormula, fam::Gaussian, data, fixed, spec;
                                  g_tol::Real, method::Symbol = :ML)
     method === :ML || throw(ArgumentError(
@@ -187,13 +192,29 @@ function _fit_bivariate_sigma_re(f::BivariateDrmFormula, fam::Gaussian, data, fi
     # and 0.030, correlation 1, log-likelihood -377.3387). A start with a modest correlation slides to
     # Sigma_g = 0 instead (-377.3505 there), a worse local optimum; the strongly correlated starts
     # reach the boundary mode. The best finished start is kept.
+    # A start that stops with a numerical error (an assertion from the line search, a non-finite
+    # matrix) is skipped; the fit fails only when every start fails.
     best = nothing
-    for (sd0, cr0) in ((0.2, 0.0), (0.1, 0.99), (0.1, -0.99))
+    failed = Any[]
+    starts = ((0.2, 0.0), (0.1, 0.99), (0.1, -0.99))
+    for (sd0, cr0) in starts
         θs = copy(θ0)
         θs[(nfix+1):(nfix+3)] .= cov_to_lc(Matrix(Symmetric(sd0^2 .* [1.0 cr0; cr0 1.0])))
-        r = Optim.optimize(nll, θs, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+        r = try
+            Optim.optimize(nll, θs, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+        catch err
+            _sre_numerical_failure(err) || rethrow()
+            push!(failed, err)
+            continue
+        end
         (best === nothing || Optim.minimum(r) < Optim.minimum(best)) && (best = r)
     end
+    best === nothing && throw(ArgumentError(
+        "drm: all $(length(starts)) starts of the bivariate sigma random-effect fit failed; the first " *
+        "error was: " * first(sprint(showerror, failed[1]), 200)))
+    isempty(failed) || @warn "drm: $(length(failed)) of $(length(starts)) starts of the bivariate sigma " *
+        "random-effect fit stopped with a numerical error ($(join(unique(nameof.(typeof.(failed))), ", "))); " *
+        "the fit is the best of the other starts."
     res = best
     θ̂ = Optim.minimizer(res)
     ll = -nll(θ̂)

@@ -19,8 +19,8 @@ function _bsr_data(file)
     return (; [Symbol(n) => (n == "g" ? String.(m[:, j]) : Float64.(m[:, j])) for (j, n) in enumerate(String.(vec(h)))]...)
 end
 
-function _bsr_ref()
-    m, _ = readdlm(joinpath(_BSR_FIX, "reference.tsv"), '\t', Any; header = true)
+function _bsr_ref(file = "reference.tsv")
+    m, _ = readdlm(joinpath(_BSR_FIX, file), '\t', Any; header = true)
     ref = Dict{String,Vector{Tuple{String,Float64,Float64}}}()
     for r in eachrow(m)
         push!(get!(ref, String(r[1]), Tuple{String,Float64,Float64}[]),
@@ -40,6 +40,7 @@ function _bsr_sigma_ref()
 end
 
 const _BSR_REF = _bsr_ref()
+const _BSR_REF_STARTS = _bsr_ref("reference_starts.tsv")     # ss16: written by make_reference_starts.R
 const _BSR_SIG = _bsr_sigma_ref()
 _bsr_rows(cell, prefixes...) = [r for r in _BSR_REF[cell] if any(p -> startswith(r[1], p), prefixes)]
 _bsr_one(cell, name) = only(r for r in _BSR_REF[cell] if r[1] == name)
@@ -125,6 +126,74 @@ end
     gaps = sort(_BSR_SE_GAPS)
     @test maximum(gaps) <= 1e-2                              # SE gaps above 1e-2 would be flagged, not tolerated
     @info "biv sigma RE: standard error relative gaps" max = maximum(gaps) n_over_1e2 = count(>(1e-2), gaps) n = length(gaps)
+end
+
+@testset "a failing start does not lose the fit" begin
+    # ss16.csv (60 rows, 12 unbalanced groups): one or two of the three starts stop with an assertion
+    # from the line search (two on Julia 1.13.3, one on 1.10.12). Before, the first failure aborted the whole fit although drmTMB fits the data
+    # (logLik -150.7103) and the third start reaches the same optimum.
+    d = _bsr_data("ss16.csv")
+    ref = _BSR_REF_STARTS["ss16"]
+    one(name) = only(r for r in ref if r[1] == name)
+    rows(prefixes...) = [r for r in ref if any(p -> startswith(r[1], p), prefixes)]
+    fit = @test_logs (:warn, r"[12] of 3 starts of the bivariate sigma random-effect fit stopped with a numerical error \(AssertionError\)") match_mode = :any drm(_BSR_F0, Gaussian(); data = d)
+    @test fit.converged
+    @test abs(fit.loglik - one("logLik")[2]) <= 1e-4
+    @test fit.nobs == Int(one("nobs")[2])
+    coefs = vcat([rows(p) for p in ("beta_mu1", "beta_mu2", "beta_sigma1", "beta_sigma2", "beta_rho12")]...)
+    @test length(coefs) == 7
+    for (k, (nm, est, se)) in enumerate(coefs)
+        @test abs(fit.theta[k] - est) <= 1e-3 * se
+    end
+    sm = _bsr_summ(fit.theta[8:10])
+    sdref = rows("log_sd_sigma")
+    @test abs(sm[1] - sdref[1][2]) <= 5e-3
+    @test abs(sm[2] - sdref[2][2]) <= 5e-3
+    @test tanh(sm[3]) < -0.9999              # drmTMB is on the correlation = -1 boundary here too
+    # only numerical failures cost a start; a programming error still surfaces
+    @test DRModels._sre_numerical_failure(AssertionError("x"))
+    @test DRModels._sre_numerical_failure(ArgumentError("matrix contains Infs or NaNs"))
+    @test DRModels._sre_numerical_failure(DomainError(-1.0, "log"))
+    @test !DRModels._sre_numerical_failure(MethodError(sin, ()))
+    @test !DRModels._sre_numerical_failure(BoundsError([1], 2))
+end
+
+@testset "refusal text no longer calls the supported model unsupported" begin
+    d = _bsr_data("sre_bal.csv")
+    y1, y2 = @formula(y1 ~ x1), @formula(y2 ~ x2)
+    s1p, s2p = @formula(sigma1 ~ 1 + (1 | p | g)), @formula(sigma2 ~ 1 + (1 | p | g))
+    s1, s2 = @formula(sigma1 ~ 1), @formula(sigma2 ~ 1)
+    r = @formula(rho12 ~ 1)
+    msg(f, fam = Gaussian()) = try
+        drm(f, fam; data = d); ""
+    catch e
+        e isa ArgumentError || rethrow()
+        sprint(showerror, e)
+    end
+    cases = (
+        "slope on the means" => bf(mu1 = @formula(y1 ~ x1 + (1 + x1 | p | g)), mu2 = @formula(y2 ~ x2 + (1 + x2 | p | g)), sigma1 = s1, sigma2 = s2, rho12 = r),
+        "slope on the scales" => bf(mu1 = y1, mu2 = y2, sigma1 = @formula(sigma1 ~ 1 + (1 + x1 | p | g)), sigma2 = @formula(sigma2 ~ 1 + (1 + x2 | p | g)), rho12 = r),
+        "unlabelled on the scales" => bf(mu1 = y1, mu2 = y2, sigma1 = @formula(sigma1 ~ 1 + (1 | g)), sigma2 = @formula(sigma2 ~ 1 + (1 | g)), rho12 = r),
+    )
+    for (label, f) in cases
+        @testset "$label" begin
+            m = msg(f)
+            @test !isempty(m)
+            @test occursin("bivariate q=4", m) && occursin("drmTMB", m)          # wording kept for #1094
+            # the old text said this model is not supported and that drmTMB fits it
+            @test !occursin("with ordinary correlated random effects is not supported", m)
+            @test !occursin("drmTMB fits it", m)
+            # the new text names the one supported shape and what else is refused
+            @test occursin("intercept pair `(1 | p | g)`", m) && occursin("Gaussian family", m)
+            @test occursin("slope terms", m) && occursin("Student-t", m)
+        end
+    end
+    @testset "Student with the pair on the scales" begin
+        f = bf(mu1 = y1, mu2 = y2, sigma1 = s1p, sigma2 = s2p, rho12 = r, nu = @formula(nu ~ 1))
+        m = msg(f, Student())
+        @test !isempty(m) && occursin("Student-t", m) && occursin("Gaussian family", m)
+        @test !occursin("drmTMB fits it", m)
+    end
 end
 
 @testset "everything outside the supported shape stays a clear refusal" begin
