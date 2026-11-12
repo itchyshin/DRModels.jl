@@ -143,6 +143,6 @@ import Distributions
     @test length(predict_parameters(beta_fit, beta_data)[:sd]) == length(beta_data.y_beta)
     unsupported_marginal = bf(@formula(cbind(successes, failures) ~ x + (1 | g)),
                               @formula(sd(g) ~ z))
-    @test_throws ArgumentError drm(unsupported_marginal, Binomial(); data,
-                                   marginal = :Laplace)
+    # `marginal = :Laplace` now fits this shape (opt-in drmTMB parity route).
+    @test drm(unsupported_marginal, Binomial(); data, marginal = :Laplace).marginal === :Laplace
 end
