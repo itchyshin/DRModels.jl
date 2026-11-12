@@ -123,8 +123,24 @@ function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data,
             # non-finite. Report that trial as non-finite so the optimiser backs off, rather than
             # letting `inv` throw and abort the fit (n of about 1200 and up).
             all(isfinite, M2) || return (T(NaN), T(NaN), fill(T(NaN), pβ), Symmetric(fill(T(NaN), pβ, pβ)), L)
-            W = inv(Symmetric(M2))
-            logdetS += logdet(Symmetric(M2))
+            # A trial with |rho| at its guard and a tiny sigma makes `A` huge and nearly rank one, so
+            # M2 = I + L' A L is finite but numerically indefinite or singular (the `I` is lost to
+            # rounding). `logdet` then throws a `DomainError` (negative determinant) or `inv` throws
+            # a `SingularException`, and the fit aborts. M2 is positive definite in exact arithmetic,
+            # so reject such a trial instead. It gets a large finite constant value (flat, zero
+            # gradient), as the sibling routes do (`1e18`), not NaN or Inf: the Hager-Zhang line
+            # search asserts a finite value and gradient while it brackets. Only the two cases that
+            # threw before are changed; every trial that was evaluated before is evaluated as before.
+            local W
+            try
+                ldM, sgM = logabsdet(Symmetric(M2))
+                sgM < 0 && return (convert(T, 2e18), zero(T), zeros(T, pβ), Symmetric(zeros(T, pβ, pβ)), L)
+                W = inv(Symmetric(M2))
+                logdetS += ldM + log(sgM)                          # = logdet(Symmetric(M2))
+            catch err
+                err isa SingularException || rethrow()
+                return (convert(T, 2e18), zero(T), zeros(T, pβ), Symmetric(zeros(T, pβ, pβ)), L)
+            end
             Ls = L' * sy; LB = L' * B
             yVy -= dot(Ls, W * Ls)
             c -= LB' * (W * Ls)
@@ -135,6 +151,10 @@ function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data,
     ml_from(logdetS, yVy, c, H, β) = const_2pi + 0.5 * (logdetS + yVy - 2 * dot(β, c) + dot(β, H * β))
     function nll_full(θ)
         pf = pieces(θ[(pβ+1):end])
+        # The weighted residual sum of squares can not be negative. At a trial with a huge, nearly
+        # singular row precision the cancellation in `yVy - 2 b'c + b'H b` loses every digit and can
+        # return a large negative number, which would look like a far better fit. Reject it (flat 1e18).
+        pf[2] - 2 * dot(θ[1:pβ], pf[3]) + dot(θ[1:pβ], pf[4] * θ[1:pβ]) < 0 && return convert(eltype(θ), 1e18)
         v = ml_from(pf[1], pf[2], pf[3], pf[4], θ[1:pβ])
         return isfinite(v) ? v : oftype(v, Inf)     # non-finite trial: reject, do not throw
     end
@@ -151,6 +171,7 @@ function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data,
         chH = cholesky(pr[4]; check = false)
         issuccess(chH) || return oftype(pr[1], 1e18)   # X'V^-1 X numerically indefinite: reject the step
         bh = chH \ pr[3]
+        pr[2] - 2 * dot(bh, pr[3]) + dot(bh, pr[4] * bh) < 0 && return oftype(pr[1], 1e18)   # same: negative sum of squares
         return ml_from(pr[1], pr[2], pr[3], pr[4], bh) + logdet(chH) / 2 - 0.5 * pβ * log(2π)
     end
     θ0 = vcat(β1, β2, φ0)
