@@ -127,20 +127,19 @@ function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data,
             # M2 = I + L' A L is finite but numerically indefinite or singular (the `I` is lost to
             # rounding). `logdet` then throws a `DomainError` (negative determinant) or `inv` throws
             # a `SingularException`, and the fit aborts. M2 is positive definite in exact arithmetic,
-            # so reject such a trial instead. It gets a large finite constant value (flat, zero
-            # gradient; 2e18 here, which `ml_from` halves to about 1e18), as the sibling routes do, not
-            # NaN or Inf: the Hager-Zhang line search asserts a finite value and gradient while it
-            # brackets. Only the two cases that threw before are changed; every trial that was
-            # evaluated before is evaluated as before.
+            # so reject such a trial instead. The trial is reported as non-finite here (a NaN tuple) and
+            # the callers `nll_full` and `nll_reml` turn it into the one rejection value, a large finite
+            # constant 1e18 (flat, zero gradient), as the sibling routes do. Not NaN or Inf: the
+            # Hager-Zhang line search asserts a finite value and gradient while it brackets.
             local W
             try
                 ldM, sgM = logabsdet(Symmetric(M2))
-                sgM < 0 && return (convert(T, 2e18), zero(T), zeros(T, pβ), Symmetric(zeros(T, pβ, pβ)), L)
+                sgM < 0 && return (T(NaN), T(NaN), fill(T(NaN), pβ), Symmetric(fill(T(NaN), pβ, pβ)), L)
                 W = inv(Symmetric(M2))
                 logdetS += ldM + log(sgM)                          # = logdet(Symmetric(M2))
             catch err
                 err isa SingularException || rethrow()
-                return (convert(T, 2e18), zero(T), zeros(T, pβ), Symmetric(zeros(T, pβ, pβ)), L)
+                return (T(NaN), T(NaN), fill(T(NaN), pβ), Symmetric(fill(T(NaN), pβ, pβ)), L)
             end
             Ls = L' * sy; LB = L' * B
             yVy -= dot(Ls, W * Ls)
@@ -152,17 +151,15 @@ function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data,
     ml_from(logdetS, yVy, c, H, β) = const_2pi + 0.5 * (logdetS + yVy - 2 * dot(β, c) + dot(β, H * β))
     function nll_full(θ)
         pf = pieces(θ[(pβ+1):end])
+        isfinite(pf[1]) || return convert(eltype(θ), 1e18)   # rejected trial: the one rejection value
         # The weighted residual sum of squares can not be negative. At a trial with a huge, nearly
         # singular row precision the cancellation in `yVy - 2 b'c + b'H b` loses every digit and can
         # return a large negative number, which would look like a far better fit. Reject it (flat 1e18).
         pf[2] - 2 * dot(θ[1:pβ], pf[3]) + dot(θ[1:pβ], pf[4] * θ[1:pβ]) < 0 && return convert(eltype(θ), 1e18)
         v = ml_from(pf[1], pf[2], pf[3], pf[4], θ[1:pβ])
-        # Known limit: the older non-finite exits (here, and the NaN return of `pieces`) still return `Inf`,
-        # while the new rejections return the finite 1e18. A line search that gets 1e18 and then `Inf`
-        # makes Hager-Zhang throw `AssertionError: isfinite(phi_c) ...` (seed 7080, ML: trial 2 is 1e18,
-        # trial 3 is `Inf`). Returning 1e18 from every rejection avoids that, but it changes 8 of 211 fits
-        # that work today in the last digits (1e-11 in logLik), so it waits for the owner's decision.
-        return isfinite(v) ? v : oftype(v, Inf)     # non-finite trial: reject, do not throw
+        # Every rejected trial returns the same finite 1e18. Mixing 1e18 with `Inf` made the Hager-Zhang
+        # line search throw `AssertionError: isfinite(phi_c) ...` (seed 7080, ML: trial 2 was 1e18, trial 3 `Inf`).
+        return isfinite(v) ? v : oftype(v, 1e18)     # non-finite trial: reject, do not throw
     end
 
     β1 = X1 \ Vector{Float64}(y1); β2 = X2 \ Vector{Float64}(y2)
@@ -173,7 +170,7 @@ function _fit_bivariate_ordinary_re(f::BivariateDrmFormula, fam::Gaussian, data,
     function nll_reml(φ)
         # (local names differ from the enclosing scope's: a shared name would be captured, not local)
         pr = pieces(φ)
-        isfinite(pr[1]) || return oftype(pr[1], Inf)   # non-finite trial: reject, do not throw
+        isfinite(pr[1]) || return oftype(pr[1], 1e18)   # non-finite trial: reject, do not throw
         chH = cholesky(pr[4]; check = false)
         issuccess(chH) || return oftype(pr[1], 1e18)   # X'V^-1 X numerically indefinite: reject the step
         bh = chH \ pr[3]

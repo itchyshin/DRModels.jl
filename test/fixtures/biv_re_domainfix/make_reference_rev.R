@@ -1,14 +1,15 @@
 # Regenerates reference_rev.tsv: drmTMB 0.8.1 fits of the bivariate Gaussian with a correlated random
 # intercept pair (1 | p | g) on mu1 and mu2, on the three data sets made by make_data_rev.jl
-# (r7080.csv REML, r7083.csv REML and ML, r7084.csv REML and ML). On these cells DRModels.jl crashes in the
+# (r7080.csv REML and ML, r7083.csv REML and ML, r7084.csv REML and ML). On these cells DRModels.jl crashes in the
 # line search (AssertionError: isfinite(phi_c) ...) if a rejected trial returns Inf or NaN instead of 1e18
-# (7080 and 7083 REML on Julia 1.13.3, 7084 on Julia 1.10.12).
+# (7080 and 7083 REML on Julia 1.13.3, 7084 on Julia 1.10.12). r7080 ML crashed in an earlier version
+# of the fix, which returned Inf from some rejections and 1e18 from others (the same assertion).
 # Usage: Rscript make_reference_rev.R <dir with the r*.csv files> <out.tsv>
 args <- commandArgs(TRUE)
 suppressPackageStartupMessages(library(drmTMB))
 b0 <- bf(mu1 = y1 ~ x1 + (1 | p | g), mu2 = y2 ~ x2 + (1 | p | g), sigma1 = ~ 1, sigma2 = ~ 1, rho12 = ~ 1)
 out <- list()
-cells <- list(c(7080, 1), c(7083, 1), c(7083, 0), c(7084, 1), c(7084, 0))
+cells <- list(c(7080, 1), c(7080, 0), c(7083, 1), c(7083, 0), c(7084, 1), c(7084, 0))
 for (cl in cells) {
   s <- cl[1]; reml <- cl[2] == 1
   d <- read.csv(file.path(args[1], paste0("r", s, ".csv"))); d$g <- factor(d$g)
