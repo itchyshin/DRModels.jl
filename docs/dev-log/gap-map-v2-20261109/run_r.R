@@ -53,7 +53,11 @@ run_one <- function(id) {
   pa("nobs", tryCatch(as.character(nobs(fit)), error = function(e) "NA"))
   p <- probe(fitted(fit)); pp("fitted", p)
   if (p$ok) { v <- fin(p$v); pa("fit_n", length(v)); pa("fit_mean", fnum(mean(v))); pa("fit_sd", fnum(sd(v))) }
-  p <- probe(predict(fit)); pp("predict", p)
+  # Like for like with run_julia.jl, which calls predict(fit, d): population-level predictions for
+  # newdata = d. R's predict(fit) with no newdata returns the fitted rows and ALSO adds the fitted
+  # random effects, so it is not the same call (P9j). It is kept as an informational probe.
+  p <- probe(predict(fit, newdata = d)); pp("predict", p)
+  pp("predict_insample", probe(predict(fit)))
   if (p$ok) { v <- fin(p$v); pa("pred_mean", fnum(mean(v))) }
   idx <- c(5, 1, 9)
   pf <- probe(predict(fit, newdata = d[idx, , drop = FALSE])); pp("predict_new", pf)

@@ -1,0 +1,12 @@
+cell	R predict (old call predict(fit))	R predict (new call predict(fit, newdata = d))	Julia predict(fit, d)	flags old	flags new
+K|gaussian|NA in response	ok	ok	ok	predict-mean-differs	
+K|gaussian|NA in mu predictor	ok	ERR:New prediction data contains missing value for required predictor 	ERR:ArgumentError: predict: column `x1m` in `newdata` contains `missin	entry:predict:Julia-fails	
+K|gaussian|NA in sigma predictor	ok	ok	ok	predict-mean-differs	
+K|poisson|NA in response	ok	ok	ok	predict-mean-differs	
+K|poisson|NA in predictor	ok	ERR:New prediction data contains missing value for required predictor 	ERR:ArgumentError: drm: predictor `x1m` contains a non-finite value (m	entry:predict:Julia-fails	
+K|gaussian|NA in both + (1|g)	ok	ERR:New prediction data contains missing value for required predictor 	ERR:ArgumentError: predict: column `x1m` in `newdata` contains `missin	entry:predict:Julia-fails;entry:simulate:Julia-fails	entry:simulate:Julia-fails
+K|poisson|NA in both + (1|g)	ok	ERR:New prediction data contains missing value for required predictor 	ERR:ArgumentError: drm: predictor `x1m` contains a non-finite value (m	entry:predict:Julia-fails;entry:simulate:Julia-fails	entry:simulate:Julia-fails
+K|gaussian|NA in response + weights	ok	ok	ok	predict-mean-differs	
+K|gaussian|NA in response|R-include	ok	ok	ok		
+K|nb2|NA in predictor	ok	ERR:New prediction data contains missing value for required predictor 	ERR:ArgumentError: drm: predictor `x1m` contains a non-finite value (m	entry:predict:Julia-fails	
+K|gaussian|NA in response|REML	ok	ok	ok	predict-mean-differs	
