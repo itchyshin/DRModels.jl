@@ -129,9 +129,10 @@ this route. `fit.means` holds `X b` only, so `residuals(fit)` are MARGINAL
 (`y - X b`), unlike drmTMB's `residuals()`, which are conditional on the fitted
 group effects; the group effects themselves are in `ranef(fit)`.
 `simulate(fit; data)` and `bootstrap_*` draw fresh group effects from
-`Sigma_g` and need the complete fitting `data` (no rows dropped). Random effects
-on `sigma1`/`sigma2`, `weights`, `V`, and incomplete response rows
-(`miss_control(response = "include")`) are refused.
+`Sigma_g` and need the complete fitting `data` (no rows dropped). `weights` (one per
+row of `data`) multiply each row's whole log density, ML and REML, as in drmTMB; rows
+with a missing response drop with their weights. Random effects on `sigma1`/`sigma2`,
+`V`, and incomplete response rows (`miss_control(response = "include")`) are refused.
 
 `q4_f_reltol` (default `1e-7`) is the relative objective change at which the q=4 ML
 optimiser stops (it ignores `q4_g_tol` near a flat ridge). The default can stop up to
