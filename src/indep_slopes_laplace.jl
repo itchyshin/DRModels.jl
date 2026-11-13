@@ -330,6 +330,7 @@ function _fit_indep_re_laplace(fam, kind::Val, y, Xμ, Xσ, Xν, comps, nmμ, nm
     means = Dict(:mu => _indep_mean.(Ref(kind), ημ̂)); obs = Dict(:mu => _indep_obsval(kind, yv))   # population mean (b = 0)
     scales = has_sigma ? Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)])) : Dict{Symbol,Vector{Float64}}()
     has_nu && (scales[:nu] = _indep_nu_scale(kind, Xν * θ̂[(pμ+pσ+1):k0]))
+    kind isa Val{:binomial} && (scales[:trials] = Float64[t for (_, t) in yv])   # per-row trials, as every other Binomial route
     fit = DrmFit(fam, blocks, names, θ̂, V, -nllhat, n, converged, means, obs, scales)
     return _withiterations(_withmarginal(_withnll(fit, nll), :Laplace), Optim.iterations(res))
 end
