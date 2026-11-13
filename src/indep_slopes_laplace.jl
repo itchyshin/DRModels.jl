@@ -345,6 +345,11 @@ end
 
 function _indep_slope_comps(re, data, n::Int)
     _has_indep_slopes(re) || return nothing
+    return _indep_term_comps(re, data, n)
+end
+
+# The components of independent `(1 | g)` / `(0 + x | g)` terms, with or without a slope among them.
+function _indep_term_comps(re, data, n::Int)
     kinds = [_re_kind(r[1]) for r in re]
     return map(zip(re, kinds)) do ((_, grp), (kind, var))
         gidx, G = _group_index(getproperty(data, grp))
@@ -364,7 +369,7 @@ end
 
 # The shape this route takes: two or more independent terms `(1 | g)` / `(0 + x | g)` on the
 # mean, no structured or `meta_V` terms, and only ordinary mean `sd()` targets. `nothing` otherwise.
-function _indep_sd_shape(f::DrmFormula)
+function _indep_sd_shape(f::DrmFormula; min_terms::Int = 2)
     rhs = Dict(f.forms)
     haskey(rhs, :mu) || return nothing
     # A structured term (`animal`, `relmat`, `spatial`, ...) with a slope makes `_split_ranef` throw its own
@@ -376,7 +381,8 @@ function _indep_sd_shape(f::DrmFormula)
         return nothing
     end
     fixed_mu, re, mv, st = split
-    (mv === nothing && st === nothing && length(re) >= 2) || return nothing
+    (mv === nothing && st === nothing && length(re) >= min_terms) || return nothing
+    all(r -> _laplace_lhs_kind(r[1]) in (:intercept, :slope), re) || return nothing
     kinds = [_re_kind(r[1]) for r in re]
     all(k -> k[1] in (:intercept, :slope), kinds) || return nothing
     isempty(_sdphylo_parts(f)) || return nothing
@@ -492,4 +498,23 @@ function _drm_indep_sd_laplace(f::DrmFormula, fam, kind::Val, shape; data, g_tol
     end
     comps = _indep_sd_comps(f, shape, data, famname)
     return _withformula(_fit_indep_re_laplace(fam, kind, y, Xμ, Xσ, Xν, comps, nmμ, nmσ, nmν, g_tol), f)
+end
+
+# Opt-in `marginal = :Laplace` on the single-term and independent-term `sd()` routes (the
+# quadrature routes stay the default). Returns `nothing` unless the Laplace objective was asked for;
+# then one independent term or more, each `(1 | g)` or `(0 + x | g)`, with `sd(g, coef(.)) ~ ...`
+# formulas on the mean, are fitted by the dense TMB-convention Laplace of this file, which is the
+# objective drmTMB optimises. Every other `sd()` shape is refused rather than rerouted.
+function _laplace_sd_route(f::DrmFormula, fam, kind::Val, marginal; data, g_tol::Real = 1e-8,
+                           fallback::Bool = false)
+    _scalar_laplace_requested(marginal) || return nothing
+    fam isa Binomial && fam.link !== :logit && throw(ArgumentError(
+        "Binomial links other than :logit are not available with `marginal = :Laplace`."))
+    shape = _indep_sd_shape(f; min_terms = 1)
+    shape === nothing && fallback && return nothing     # the caller owns this shape
+    shape === nothing && throw(ArgumentError(
+        "drm ($(_indep_famname(kind))): `marginal = :Laplace` with `sd()` formulas covers independent " *
+        "intercept and numeric-slope terms `(1 | g)` / `(0 + x | g)` on the mean only. Use `marginal = :LA` " *
+        "(the default) for structured, correlated, or distributional-parameter SD formulas."))
+    return _drm_indep_sd_laplace(f, fam, kind, shape; data, g_tol)
 end
