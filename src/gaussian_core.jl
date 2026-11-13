@@ -1603,7 +1603,12 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     end
     phylo_coupled &&
         throw(ArgumentError("drm: `phylo_coupled` is an internal bridge option for Gaussian mu+sigma phylo fits (ML or REML)"))
-    if method === :REML
+    # Labelled `(1 | p | g)` in BOTH mu and sigma (one term each, nothing else): REML is served
+    # by `_fit_gaussian_musigma_corr_reml` at the dispatch below; the generic REML gate does not apply.
+    reml_musigma_corr = method === :REML && length(re) == 1 && length(sigma_re) == 1 &&
+        structured === nothing && metav === nothing && isempty(_collect_structured(rhs[:mu])) &&
+        _gsl_re_label(re[1][1]) !== nothing && _gsl_re_label(sigma_re[1][1]) !== nothing
+    if method === :REML && !reml_musigma_corr
         # REML (opt-in) is implemented for (a) the fixed-effect univariate
         # Gaussian location–scale cell and (b) a single mean random intercept
         # `(1 | g)` on the Woodbury spine (#439). σ-RE, slopes, multi-ranef,
@@ -1696,7 +1701,7 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
                 "fixed-effect Gaussian location–scale model; a single Gaussian mean random " *
                 "intercept `(1 | g)`, slope `(0 + x | g)` or correlated slope `(1 + x | g)`, several independent " *
                 "scalar terms, a correlated block of 3 or 4 coefficients `(1 + x + z | g)` alone or beside random " *
-                "intercepts on other groupings, `relmat(1 | g)` / `animal(1 | g)`, `phylo(1 + x | g)` (each with a " *
+                "intercepts on other groupings, the labelled pair `(1 | p | g)` in both mu and sigma (fixed-effect predictors, no sd() formula), `relmat(1 | g)` / `animal(1 | g)`, `phylo(1 + x | g)` (each with a " *
                 "constant residual scale and no sd() formula); `relmat` / `animal` / `spatial(1 | g)` with " *
                 "`sd(g, <level>) ~ …`; the bare unlabelled `relmat` / `animal` / `spatial(1 + x | g)`; every sd() LSS route (`sd(g)`, `sd_phylo` dense and " *
                 "sparse, and the multi-component sd() router); the bivariate structured " *
@@ -1808,7 +1813,8 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         # Labelled `(1 | p | g)` in both mu and sigma: correlated intercept pair.
         if any(t -> _gsl_re_label(t[1]) !== nothing, vcat(re, sigma_re))
             return _withformula(_drm_gaussian_musigma_corr(fam, f, re, sigma_re, y, Xμ, Xσ,
-                                                           nmμ, nmσ, data, g_tol), f)
+                                                           nmμ, nmσ, data, g_tol;
+                                                           reml = method === :REML), f)
         end
         mean_kind = length(re) == 1 ? _re_kind(re[1][1]) : (:multiple, nothing)
         mean_kind[1] in (:intercept, :corr) ||
@@ -1826,11 +1832,12 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
                   "mean and `(1 | $sgrp)` on sigma) — the per-group 2×2 Laplace block this " *
                   "route uses requires one group per observation shared by both axes; " *
                   "different/crossed groups are not implemented (#745)")
-        # `has_missing_response` and `method === :REML` are already refused above
-        # this point for ANY non-empty `re` — the generic missing-response guard
-        # and the `if method === :REML` validator both throw before a formula
-        # with a mean random effect can reach here, so this branch is ML/
-        # complete-response only by construction; no additional check needed.
+        # Rows with a missing response never reach this point on a `(… | g)` route: they are
+        # dropped first, with a warning (#1089, `_fit_observed_response_rows`), so the fit below
+        # sees complete responses. `method === :REML` is refused by the generic validator above EXCEPT for the
+        # labelled `(1 | p | g)` pair in both mu and sigma (`reml_musigma_corr`), which is
+        # served by the labelled branch just before this comment; every other shape here is
+        # ML/complete-response only by construction.
         gidx, G = _group_index(getproperty(data, mgrp); col = mgrp)
         if mean_kind[1] === :corr      # (1 + x | g) on the mean + (1 | g) on sigma (#960)
             xs = Float64.(getproperty(data, mean_kind[2]))
