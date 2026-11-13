@@ -85,7 +85,7 @@ R-versus-Julia parity through simulation recovery alone.
 
 Some cells of the drmTMB comparison grid cannot be closed by more code, because
 drmTMB has no valid fit to compare with, or because DRModels.jl refuses on
-purpose. These are recorded as follows (owner answers of 12 November 2026).
+purpose. These are recorded as follows.
 
 - **Binomial `(1 | g)` and `(0 + x | g)` with `method = :REML` (2 cells): fenced.**
   drmTMB fits a joint-Laplace REML that its own code labels `diagnostic_only`.
@@ -103,12 +103,16 @@ purpose. These are recorded as follows (owner answers of 12 November 2026).
   drmTMB drops the affected rows without a message. Its documentation describes
   complete-case row dropping for responses and predictors, not for grouping
   variables, so DRModels.jl keeps its refusal instead of following it.
-- **Models DRModels.jl fits and drmTMB refuses (25 cells of the second grid):
+- **Models DRModels.jl fits and drmTMB refuses (24 cells of the second grid):
   Julia-only, not parity cells.** Examples are mixed-response bivariate pairs,
   `tweedie()` with a formula on `nu`, `truncated_poisson()`, offsets on the
   truncated and hurdle count families, and fixed-effect-only bivariate Student
   or log-normal with predictors on the scale or correlation. No drmTMB value
-  exists to compare against.
+  exists to compare against. One of the 24 is a repeated random-effect term,
+  `(1 | g) + (1 | g)`: drmTMB refuses it, and DRModels.jl fits one term because
+  the formula machinery merges the repeat, so it is not a separate capability.
+  The bivariate log-normal model with a `(1 | p | g)` pair is not in this
+  count: both packages refuse it.
 
 ## Default marginal approximation
 
