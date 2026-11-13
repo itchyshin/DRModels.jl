@@ -227,6 +227,17 @@ function _marginal_note(fit::DrmFit)
     return "logLik (marginal :" * String(m) * ", " * desc * ")"
 end
 
+# `max|grad nll|` at the reported optimum, from the same producer `check_drm` uses (`max_abs_grad`,
+# `grad_source`). Nothing is printed when no gradient could be produced, and a failure here never
+# stops the fit from printing. Costs one gradient evaluation, only for fits whose optimiser did not converge.
+function _final_gradient_note(io::IO, fit::DrmFit)
+    g = try _check_max_abs_grad(fit) catch; return nothing end
+    (g.source in (:none, :unavailable) || !isfinite(g.magnitude)) && return nothing
+    println(io, "  final gradient: max|grad| = ", @sprintf("%.3e", g.magnitude),
+            g.source === :finite ? " (central finite difference)" : "")
+    return nothing
+end
+
 function Base.show(io::IO, ::MIME"text/plain", fit::DrmFit)
     se = _display_se(fit)
     fixed_map = _is_fixed_prior_fit(fit) && fit.estim_method === :MAP
@@ -243,6 +254,9 @@ function Base.show(io::IO, ::MIME"text/plain", fit::DrmFit)
     # #949: show the trusted accessor; say so when the raw optimiser flag disagrees.
     (fit.converged && status !== :converged) && println(io, "  (the optimiser stopped normally, " *
         "but convergence_status is ", status, " -- see `convergence_status`)")
+    # The final gradient norm of an optimiser that did not converge, so the reader sees how far from
+    # stationary the reported point is. Printed only then: a converged fit's output is unchanged.
+    fit.converged || _final_gradient_note(io, fit)
     _wald_withheld(fit) && println(io, "  Wald SEs withheld (homogeneous Toeplitz, as drmTMB): `sigma` is the " *
         "TOTAL within-series SD; use profile intervals for mean coefficients.")
     # #1193: no Wald SEs from an unconverged fit or a non-PD Hessian.
