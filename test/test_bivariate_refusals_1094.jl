@@ -21,15 +21,17 @@ using Random
               mu2 = @formula(y2 ~ 1 + Cult + (1 | p | Date)),
               sigma1 = @formula(sigma1 ~ 1), sigma2 = @formula(sigma2 ~ 1),
               rho12 = @formula(rho12 ~ 1))
+    # A labelled `(1 | p | Date)` pair on both scales now fits (test_biv_sigma_re.jl); the unlabelled
+    # form is still refused with the drmTMB wording.
     f_re_sigma = bf(mu1 = @formula(y1 ~ 1 + Cult), mu2 = @formula(y2 ~ 1 + Cult),
-                    sigma1 = @formula(sigma1 ~ 1 + (1 | p | Date)),
-                    sigma2 = @formula(sigma2 ~ 1 + (1 | p | Date)),
+                    sigma1 = @formula(sigma1 ~ 1 + (1 | Date)),
+                    sigma2 = @formula(sigma2 ~ 1 + (1 | Date)),
                     rho12 = @formula(rho12 ~ 1))
     f_fixed = bf(mu1 = @formula(y1 ~ 1 + Cult), mu2 = @formula(y2 ~ 1 + Cult),
                  sigma1 = @formula(sigma1 ~ 1), sigma2 = @formula(sigma2 ~ 1),
                  rho12 = @formula(rho12 ~ 1))
 
-    @testset "ordinary (1 | p | g) on sigma names drmTMB" begin
+    @testset "unlabelled (1 | g) on sigma names drmTMB" begin
         err = try
             drm(f_re_sigma, Gaussian(); data = data)
             nothing

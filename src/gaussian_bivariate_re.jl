@@ -42,10 +42,10 @@ _biv_re_group_names() = ["Sigma_g:L11", "Sigma_g:L21", "Sigma_g:L22"]
 # Pull one `(1 | tag | group)` term out of mu1 and mu2. Returns `(rhs', spec)` with
 # `spec = (tag, group)` or `nothing` (no ordinary term on either side). Anything
 # not exactly this shape is left in place so the existing refusal still fires.
-function _extract_ordinary_biv_re(rhs)
+function _extract_ordinary_biv_re(rhs, axes::Tuple{Symbol,Symbol} = (:mu1, :mu2))
     spec = Dict{Symbol,Any}()
     rhs2 = Dict{Symbol,Any}(rhs)
-    for p in (:mu1, :mu2)
+    for p in axes
         terms = rhs[p] isa Tuple ? collect(rhs[p]) : Any[rhs[p]]
         keep = Any[]
         for t in terms
@@ -62,11 +62,12 @@ function _extract_ordinary_biv_re(rhs)
             (rhs2[p] = isempty(keep) ? ConstantTerm(1) : length(keep) == 1 ? keep[1] : Tuple(keep))
     end
     isempty(spec) && return rhs, nothing
-    length(spec) == 2 && spec[:mu1] == spec[:mu2] || throw(ArgumentError(
-        "drm: the bivariate ordinary random effect must be written `(1 | p | g)` in BOTH mu1 and mu2 " *
+    length(spec) == 2 && spec[axes[1]] == spec[axes[2]] || throw(ArgumentError(
+        "drm: the bivariate ordinary random effect must be written `(1 | p | g)` in BOTH " *
+        "$(axes[1]) and $(axes[2]) " *
         "with the same label `p` and grouping factor `g` (a 2x2 group covariance). " *
         "One-sided or unlabelled `(1 | g)` terms are not supported in DRModels.jl yet."))
-    return rhs2, spec[:mu1]
+    return rhs2, spec[axes[1]]
 end
 
 # Starting points for the group covariance. The default start (group SD 0.5, covariance 0.02) can slide to
