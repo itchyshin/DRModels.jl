@@ -11,7 +11,7 @@
 #      not just a bare column reference, and gives the identical fit.
 #   4. Omitting the offset on the same DGP recovers a visibly biased intercept
 #      (the offset is not a no-op).
-#   5. `offset(...)` combined with a structured marker, `zi`, `hu`, a random slope or
+#   5. `offset(...)` combined with a structured marker, `hu`, a random slope or
 #      crossed effects is refused with a clear error rather than silently ignored.
 #      (`offset(...)` + ONE ordinary `(1 | g)` is admitted since #941 — see
 #      test_lane_n4_offset_slopes.jl.)
@@ -98,22 +98,20 @@ import Distributions
             data = (; y, x, log_exposure, g),
         )
         @test_throws ErrorException drm(
-            bf(@formula(y ~ x + offset(log_exposure)), @formula(zi ~ 1)), Poisson();
-            data = (; y, x, log_exposure),
-        )
-        @test_throws ErrorException drm(
             bf(@formula(y ~ x + offset(log_exposure)), @formula(hu ~ 1)), Poisson();
             data = (; y, x, log_exposure),
         )
     end
 
-    @testset "at most one offset(...) term" begin
+    @testset "several offset(...) terms are summed (drmTMB model.offset)" begin
         n = 50
         x = randn(n); log_e1 = randn(n); log_e2 = randn(n)
         y = Float64.(rand.(Distributions.Poisson.(exp.(0.1 .+ 0.2 .* x))))
-        @test_throws ErrorException drm(
-            bf(@formula(y ~ x + offset(log_e1) + offset(log_e2))), Poisson();
-            data = (; y, x, log_e1, log_e2),
-        )
+        s12 = log_e1 .+ log_e2
+        two = drm(bf(@formula(y ~ x + offset(log_e1) + offset(log_e2))), Poisson();
+                  data = (; y, x, log_e1, log_e2, s12))
+        one = drm(bf(@formula(y ~ x + offset(s12))), Poisson(); data = (; y, x, log_e1, log_e2, s12))
+        @test loglikelihood(two) ≈ loglikelihood(one) atol = 1e-8
+        @test two.theta ≈ one.theta atol = 1e-6
     end
 end

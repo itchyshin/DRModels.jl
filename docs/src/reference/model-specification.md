@@ -24,7 +24,7 @@ These exported names have no separate entry below:
   are the same function.
 - `offset(x)` inside the mean formula adds `x` to the linear predictor with its
   coefficient fixed at 1, as in R, for example
-  `@formula(y ~ x + offset(log_exposure))`; at most one offset term is allowed.
+  `@formula(y ~ x + offset(log_exposure))`; several offset terms are added, as in R.
   Every univariate family applies it on the fixed-effects mean. With random
   effects it is applied for `Poisson()` with one ordinary `(1 | g)`, for
   `NegBinomial2()` with one ordinary `(1 | g)` (`:LA` or `:Laplace`), and for

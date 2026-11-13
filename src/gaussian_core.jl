@@ -1118,8 +1118,8 @@ end
 
 # #938: strip a top-level `offset(...)` from the Gaussian mean and subtract it from
 # the response. Returns `(formula, kwargs, offset)`, the inputs unchanged (and
-# `nothing`) without an offset. Only the fixed-effects mean is covered: a random,
-# structured or `meta_V` term, an `sd()` part, a joint `mi()` model, missing
+# `nothing`) without an offset. Only the fixed-effects mean (with an optional
+# `meta_V(v)`) is covered: a random or structured term, an `sd()` part, a joint `mi()` model, missing
 # responses or a non-default `marginal` refuse it by name.
 # True when a right-hand side carries any `(… | g)` random-effect term.
 function _rhs_has_bar(rhs)
@@ -1136,8 +1136,14 @@ function _gaussian_offset_shift(f::DrmFormula, fam, kwargs)
     haskey(kwargs, :data) || return f, kwargs, nothing     # the missing-`data` error is raised downstream
     _has_joint_mi(f) && _refuse_offset_route(fam, "a joint `mi()` missing-predictor model")
     _, re, mv, st = _split_ranef(mu_rhs; allow_phylo_slope = true, allow_temporal = true)
-    (isempty(re) && mv === nothing && st === nothing) ||
-        _refuse_offset_route(fam, "a random, structured or `meta_V` term on the mean")
+    # `meta_V(v)` on its own is admitted: the known sampling variances do not involve
+    # the response, so the shifted-response fit is the same likelihood (drmTMB cell H|meta|offset).
+    (isempty(re) && st === nothing) ||
+        _refuse_offset_route(fam, "a random or structured term on the mean")
+    # `meta_V` + offset under REML is not verified against drmTMB, so it is refused here
+    # (plain `meta_V` REML is itself refused on the generic route).
+    mv === nothing || get(kwargs, :method, :ML) === :ML ||
+        _refuse_offset_route(fam, "`meta_V` with `method = :$(kwargs[:method])` (offsets with `meta_V` are ML only)")
     for (p, r) in f.forms
         p === :mu && continue
         _, re2, mv2, st2 = _split_ranef(r; allow_phylo_slope = true, allow_temporal = true)
