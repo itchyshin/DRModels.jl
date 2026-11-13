@@ -369,6 +369,14 @@ function _drm_negbin2_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
         data, tree, K, A, Ainv, coords, g_tol, se, nAGQ)
     isempty(_sdphylo_parts(f)) || return _drm_negbin2_phylo_sd_regression(
         f, fam; data, tree, K, A, Ainv, coords, g_tol, se, nAGQ)
+    # Same check as the no-`sd()` route: a second structured term would be dropped, so refuse it.
+    structured_all = _collect_structured(Dict(f.forms)[:mu])
+    length(structured_all) <= 1 || throw(ArgumentError(
+        "NegBinomial2() fits one structured random effect (`phylo`, `relmat`, `animal` or `spatial`) " *
+        "on the mean, but the formula has $(length(structured_all)): " *
+        join(("$k(1 | $gname)" for (k, gname) in structured_all), ", ") *
+        ". A second structured term is not implemented here (it would be dropped, not fitted), " *
+        "so it is refused. Keep one structured term, or use `Gaussian()`, which fits two."))
     spatial_sd_target = any(t.target.level === :spatial for t in _sd_target_parts(f))
     (tree === nothing && (coords === nothing || spatial_sd_target)) ||
         throw(ArgumentError("NegBinomial2 `sd(group) ~ …` supports ordinary effects, " *

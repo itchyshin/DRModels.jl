@@ -73,3 +73,39 @@ end
     @test isfinite(loglikelihood(fit1))
     @test length(re_sd(fit1)) == 1
 end
+
+# The same refusal must hold on the `sd()` route. Before the check there, `spatial(1 | g) +
+# spatial(1 | h)` with `sd(g, spatial) ~ z` and `coords` fitted the first term only (same logLik and
+# parameter count as the one-term fit) and dropped the second without a word.
+@testset "NB2 two structured terms are refused on the sd() route too" begin
+    rng = MersenneTwister(20261114)
+    G = 12; m = 10
+    g = repeat(1:G, inner = m); n = length(g)
+    h = [mod1(i * 5 + (i ÷ 7), G) for i in 1:n]
+    x = randn(rng, n); z = Float64.(g .% 2)
+    pos = rand(rng, G, 2) .* 6
+    Dm = [sqrt(sum(abs2, pos[k, :] .- pos[l, :])) for k in 1:G, l in 1:G]
+    C = exp.(-Dm ./ 2) + 1e-6 * I; dd = sqrt.(diag(C)); C = Matrix(Symmetric(C ./ (dd * dd')))
+    mu = exp.(0.3 .+ 0.3 .* x .+ 0.4 .* (cholesky(Symmetric(C)).L * randn(rng, G))[g])
+    y = Float64.([rand(rng, Distributions.NegativeBinomial(4.0, 4.0 / (4.0 + mi))) for mi in mu])
+    dat = (; y, x, z, g, h)
+    mk(rhs) = bf(eval(Meta.parse("@formula(y ~ x + $rhs)")), @formula(sigma ~ 1), @formula(sd(g, spatial) ~ z))
+    for (rhs, first_term, second_term) in (
+            ("spatial(1 | g) + spatial(1 | h)", "spatial(1 | g)", "spatial(1 | h)"),
+            ("spatial(0 + x | g) + spatial(1 | h)", "spatial(0 + x | g)", "spatial(1 | h)"))
+        err = try
+            drm(mk(rhs), NegBinomial2(); data = dat, se = false, coords = pos)
+            nothing
+        catch e
+            e
+        end
+        @test err isa ArgumentError
+        @test err isa ArgumentError && occursin("one structured random effect", err.msg)
+        @test err isa ArgumentError && occursin(second_term, err.msg)
+    end
+    # the one-term fits on this route still work
+    for rhs in ("spatial(1 | g)", "spatial(0 + x | g)")
+        fit1 = drm(mk(rhs), NegBinomial2(); data = dat, se = false, coords = pos)
+        @test isfinite(loglikelihood(fit1))
+    end
+end
