@@ -93,6 +93,35 @@ function _block_null_note(p::Symbol)
     return ()
 end
 
+# `:recov` holds a log-Cholesky triple on the default routes, but log SDs and atanh correlations on the
+# `marginal = :Laplace` routes (and partial correlations for three or more coefficients): the coefficient
+# names say which, so the heading and the null note must too.
+function _recov_layout(nms)
+    any(n -> endswith(n, ":L11"), nms) && return :cholesky
+    any(n -> occursin(":log_sd_", n), nms) && return :logsd_atanh
+    all(n -> endswith(n, ":atanh_rho") || occursin("atanh_partial_rho", n), nms) && return :atanh
+    return :cholesky
+end
+
+function _block_title(p::Symbol, nms)
+    if p === :recov
+        lay = _recov_layout(nms)
+        lay === :logsd_atanh && return "Random-effect SDs (log σ) and correlations (atanh)"
+        lay === :atanh && return "Random-effect correlation (atanh)"
+    end
+    return _block_title(p)
+end
+
+function _block_null_note(p::Symbol, nms)
+    if p === :recov
+        lay = _recov_layout(nms)
+        lay === :logsd_atanh && return ("H0: coefficient = 0 on the working scale",
+            "log σ = 0 ⇔ SD = 1 (unit-dependent); atanh ρ = 0 ⇔ ρ = 0")
+        lay === :atanh && return ("H0: atanh ρ = 0 ⇔ ρ = 0",)
+    end
+    return _block_null_note(p)
+end
+
 # Wald z and two-sided p for one coefficient, honouring two suppression rules:
 #   * a boundary / singular direction (Inf SE, issue #323.2) gets NaN — NOT the
 #     misleading z = est/Inf = 0, p = 2·Φ̄(0) = 1 that reads as a confident null.
@@ -284,10 +313,10 @@ function Base.show(io::IO, ::MIME"text/plain", fit::DrmFit)
 
     for ((p, r), (_, nms)) in zip(fit.blocks, fit.coefnames)
         println(io)
-        println(io, _block_title(p), ":")
+        println(io, _block_title(p, nms), ":")
         # One line per note, so nothing wraps in a 78-column code block (the book's
         # width; requested by the stats-hours lane 2026-09-06).
-        for note in (fixed_map ? String[] : _block_null_note(p))
+        for note in (fixed_map ? String[] : _block_null_note(p, nms))
             println(io, "  ", note)
         end
         # #969: flag the Student ν Gaussian-limit boundary under the `nu` block.
