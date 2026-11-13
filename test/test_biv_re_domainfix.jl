@@ -106,3 +106,55 @@ end
     @testset "r7084 REML" begin _df_check("r7084_reml", _df_data("r7084"), :REML) end
     @testset "r7084 ML" begin _df_check("r7084_ml", _df_data("r7084"), :ML) end
 end
+
+@testset "bivariate ordinary (1 | p | g): the rejection value alone, without the extra starts" begin
+    # The extra starts hide a wrong rejection value: a start that stops with the line-search assertion is
+    # skipped and another start returns a fit. So the rejection value is pinned in two ways that do not
+    # depend on the extra starts.
+    # (1) The ML objective stored in the fit returns exactly 1e18 at rejected trials.
+    fit = with_logger(NullLogger()) do
+        drm(_DF_F, Gaussian(); data = _df_data("r7080"), method = :ML)
+    end
+    θ = copy(fit.theta)
+    @test fit.nll(θ) == -fit.loglik
+    θbad = copy(θ); θbad[end-4] = -800.0         # log sigma of the second response at -800: exp(800) overflows
+    @test fit.nll(θbad) === 1e18
+    θnan = copy(θ); θnan[end-5] = NaN            # a NaN log sigma of the first response: the pieces are not finite
+    @test fit.nll(θnan) === 1e18
+    # (2) One start alone (the default start; the selection function replaced by a plain run, in a fresh
+    # Julia process so that nothing else in the test session is changed). The cells that crash with
+    # `AssertionError: isfinite(phi_c)` when a rejection returns `Inf` must fit, on either Julia version.
+    cells = (("r7080", :REML), ("r7080", :ML), ("r7083", :REML), ("r7083", :ML), ("r7084", :REML), ("r7084", :ML))
+    script = """
+    using DRModels, DelimitedFiles, Logging
+    DRModels._biv_re_best_start(run, obj, x0::AbstractVector) = run(x0)
+    fixd = $(repr(_FIXD))
+    f = bf(mu1 = @formula(y1 ~ x1 + (1 | p | g)), mu2 = @formula(y2 ~ x2 + (1 | p | g)),
+           sigma1 = @formula(sigma1 ~ 1), sigma2 = @formula(sigma2 ~ 1), rho12 = @formula(rho12 ~ 1))
+    for (name, method) in $(repr(cells))
+        m, h = readdlm(joinpath(fixd, name * ".csv"), ',', Any; header = true)
+        cols = Pair{Symbol,Any}[]
+        for (j, n) in enumerate(String.(vec(h)))
+            c = m[:, j]
+            push!(cols, Symbol(n) => n == "g" ? String.(c) : Float64.(c))
+        end
+        fit = with_logger(NullLogger()) do
+            drm(f, Gaussian(); data = (; cols...), method = method)
+        end
+        println("RESULT ", name, " ", method, " ", fit.converged, " ", repr(fit.loglik))
+    end
+    """
+    jl = Base.julia_cmd()
+    out = IOBuffer()
+    ok = success(pipeline(`$jl --project=$(Base.active_project()) --startup-file=no -e $script`; stdout = out, stderr = devnull))
+    @test ok
+    lines = [split(l) for l in split(String(take!(out)), '\n') if startswith(l, "RESULT")]
+    @test length(lines) == length(cells)
+    for (name, method) in cells
+        row = [l for l in lines if l[2] == name && l[3] == string(method)]
+        @test length(row) == 1
+        isempty(row) && continue
+        @test row[1][4] == "true"
+        @test abs(parse(Float64, row[1][5]) - _df_one("$(name)_$(lowercase(string(method)))", "logLik")[2]) <= 1e-4
+    end
+end
