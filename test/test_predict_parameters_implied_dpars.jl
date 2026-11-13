@@ -57,6 +57,35 @@ using Test, Random
         same_as_explicit(f1, f2, :coi)
     end
 
+    @testset "SkewNormal simulate with missing responses draws with the full nu vector" begin
+        # On main the stored `nu` had one entry per fitted row (nobs), so `simulate` read past its end
+        # for the dropped rows and returned wrong draws. Rebuild the draws by hand from `coef`.
+        ym = Vector{Union{Missing,Float64}}(yskew)
+        ym[[3, 17, 40, 41, 90]] .= missing
+        fm = @test_logs (:warn, r"missing/NaN response") drm(bf(@formula(ym ~ x), @formula(sigma ~ 1)),
+                                                             SkewNormal(); data = (; ym, x))
+        @test nobs(fm) == n - 5
+        sim = simulate(fm; rng = Random.Xoshiro(20261113))
+        @test length(sim) == n
+        h = Random.Xoshiro(20261113)
+        u0 = randn(h, n); v = randn(h, n)
+        mu = coef(fm, :mu)[1] .+ coef(fm, :mu)[2] .* x
+        sg = exp(only(coef(fm, :sigma))); al = only(coef(fm, :nu))
+        dl = al / sqrt(1 + al^2); om = sg / sqrt(1 - 2dl^2 / pi); xi = mu .- om * dl * sqrt(2 / pi)
+        by_hand = xi .+ om .* (dl .* abs.(u0) .+ sqrt(1 - dl^2) .* v)
+        @test sim ≈ by_hand rtol = 1e-10
+    end
+
+    @testset "the bridge newdata payload carries nu for Student and SkewNormal" begin
+        # `drm_bridge(...; newdata)` builds its `dpars_newdata` table from `predict_parameters`, so it
+        # gains `"nu"` (it was `["mu", "sigma"]`). The R package has no reader of this key.
+        for (fam, y) in (("student", ystud), ("skew_normal", yskew))
+            br = drm_bridge(; formula = "y ~ x; sigma ~ 1", family = fam, data = (; y, x), newdata = nd)
+            @test Set(keys(br["dpars_newdata"])) == Set(["mu", "nu", "sigma"])
+            @test all(length(v) == 3 for v in values(br["dpars_newdata"]))
+        end
+    end
+
     @testset "se = true carries the implied dpar too" begin
         f1 = drm(bf(@formula(ystud ~ x), @formula(sigma ~ 1)), Student(); data = d)
         p = predict_parameters(f1, nd; se = true)
