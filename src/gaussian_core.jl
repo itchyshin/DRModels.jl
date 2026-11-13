@@ -4024,8 +4024,18 @@ end
 function _has_sd_regression_block(fit)
     return any(fit.blocks) do (p, _)
         s = String(p)
-        p === :sd || p === :sd_phylo || startswith(s, "sd_") || startswith(s, "sdtarget_")
+        p === :sd || p === :sd_phylo || (startswith(s, "sd_") && !_is_constant_sd_block(fit, p)) ||
+            startswith(s, "sdtarget_")
     end
+end
+
+# `marginal = :Laplace` Poisson and NegBinomial2 `(1 + x | g)` store each constant log SD in a
+# one-coefficient block named `sd_intercept` / `sd_slope` (coefficient `g:log_sd_<member>`). That
+# is a constant SD, not an SD regression, so `vc` and `re_sd` read it (see `_correlated_block`).
+function _is_constant_sd_block(fit, p::Symbol)
+    p in (:sd_intercept, :sd_slope) || return false
+    nm = _block_coefnames(fit, p)
+    return nm !== nothing && length(nm) == 1 && occursin(":log_sd_", only(nm))
 end
 
 """
@@ -4088,16 +4098,12 @@ function re_sd(fit::DrmFit; scale::Symbol = :native, tree = nothing)
             for (j, nm) in enumerate(nms)
                 d[Symbol(nm)] = exp(fit.theta[r[j]])
             end
-        elseif p === :recov
-            # Same Cholesky decoding as vc(fit): l11 = intercept SD, and the
-            # slope SD is sqrt(cc^2 + l22^2) (the (2,2) entry of L*L').
-            a, b, cc = fit.theta[r]
-            l11 = exp(a); l22 = exp(b)
-            nm = first(cn[2] for cn in fit.coefnames if cn[1] === :recov)[1]   # "g:L11"
-            grp = split(nm, ":")[1]
-            d[Symbol(grp * "_intercept")] = l11
-            d[Symbol(grp * "_slope")] = sqrt(cc^2 + l22^2)
         end
+    end
+    blk = _correlated_block(fit, "re_sd")
+    if blk !== nothing
+        d[Symbol(blk.group * "_intercept")] = blk.sd1
+        d[Symbol(blk.group * "_slope")] = blk.sd2
     end
     scale === :native && return d
     (isempty(d) || fit.phylo_scale === :correlation) && return d

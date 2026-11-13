@@ -1324,14 +1324,10 @@ function vc(fit::DrmFit)
     if fit.ranef isa NamedTuple && haskey(fit.ranef, :Sigma_a)
         d[Symbol(fit.ranef.group)] = Matrix{Float64}(fit.ranef.Sigma_a)
     end
+    blk = _correlated_block(fit, "vc")
+    blk === nothing || (d[Symbol(blk.group)] = blk.Σ)
     for (p, r) in fit.blocks
-        if p === :recov
-            a, b, cc = fit.theta[r]
-            l11 = exp(a); l22 = exp(b)
-            Σ = [l11^2 cc*l11; cc*l11 cc^2+l22^2]
-            nm = first(cn[2] for cn in fit.coefnames if cn[1] === :recov)[1]   # "g:L11"
-            d[Symbol(split(nm, ":")[1])] = Σ
-        elseif p === :resd
+        if p === :resd
             nms = first(cn[2] for cn in fit.coefnames if cn[1] === :resd)
             for (j, nm) in enumerate(nms)
                 σ = exp(fit.theta[r[j]])
@@ -1340,6 +1336,57 @@ function vc(fit::DrmFit)
         end
     end
     return d
+end
+
+# The correlated intercept-plus-slope block of a fit, decoded for `vc` and `re_sd`:
+# `nothing` when the fit has none, else `(; group, Σ, sd1, sd2)`.
+#
+# Two parameter layouts reach this block, and the coefficient NAMES say which:
+#   * log-Cholesky `[log L11, log L22, L21]`, named `g:L11`, `g:L22`, `g:L21` (the default
+#     routes): Σ = L L′, sd1 = L11, sd2 = sqrt(L21² + L22²).
+#   * `[log SD, log SD, atanh ρ]` (the `marginal = :Laplace` routes). Binomial keeps all three
+#     in `:recov` (`g:log_sd_intercept`, `g:log_sd_x`, `g:atanh_rho`); Poisson and NegBinomial2
+#     keep the two log SDs in `:sd_intercept` / `:sd_slope` and the atanh ρ in `:recov`.
+#     SDs and ρ use the same transforms as the likelihood, so `vc` reports the model that was fitted:
+#     Binomial `_binomial_sd_scale` / `_binomial_bounded_partial`, count routes `exp` / 0.999999 tanh.
+# A block of three or more coefficients (Binomial `(1 + x + z | g)`, stored as log SDs and partial
+# correlations) has no 2×2 summary: it is refused rather than read as a Cholesky triple.
+function _correlated_block(fit::DrmFit, who::AbstractString)
+    ri = findfirst(pair -> first(pair) === :recov, fit.blocks)
+    ri === nothing && return nothing
+    r = last(fit.blocks[ri])
+    names = _block_coefnames(fit, :recov)
+    names === nothing && return nothing
+    group = String(first(split(first(names), ":")))
+    if length(r) == 3 && endswith(names[1], ":L11")
+        a, b, cc = fit.theta[r]
+        l11 = exp(a); l22 = exp(b)
+        return (; group, Σ = [l11^2 cc*l11; cc*l11 cc^2+l22^2], sd1 = l11, sd2 = sqrt(cc^2 + l22^2))
+    end
+    if any(n -> occursin("atanh_partial_rho", n), names)
+        throw(ArgumentError("$who: the correlated block of group `$group` has more than two " *
+            "coefficients and is stored as log SDs and partial correlations; there is no 2×2 " *
+            "summary. Use `coef(fit, :recov)` for the parameters."))
+    end
+    # The count routes keep each log SD in its own one-coefficient block.
+    sd_range(p) = (nm = _block_coefnames(fit, p); k = findfirst(pair -> first(pair) === p, fit.blocks);
+                   k !== nothing && nm !== nothing && length(nm) == 1 && occursin(":log_sd_", only(nm)) ?
+                   only(last(fit.blocks[k])) : nothing)
+    if length(r) == 3 && occursin(":log_sd_", names[1]) && occursin(":log_sd_", names[2]) &&
+       endswith(names[3], ":atanh_rho")
+        # Binomial: SDs and ρ as in the likelihood (smooth guard on log SD, clamped partial correlation).
+        sd1, sd2 = _binomial_sd_scale(fit.theta[r[1]]), _binomial_sd_scale(fit.theta[r[2]])
+        ρ = first(_binomial_bounded_partial(fit.theta[r[3]]))
+    elseif length(r) == 1 && endswith(names[1], ":atanh_rho") &&
+           sd_range(:sd_intercept) !== nothing && sd_range(:sd_slope) !== nothing
+        # Poisson / NegBinomial2: exp log SD, ρ = 0.999999 tanh(η) as in the likelihood.
+        sd1, sd2 = exp(fit.theta[sd_range(:sd_intercept)]), exp(fit.theta[sd_range(:sd_slope)])
+        ρ = _Q2_RHO_BOUND * tanh(fit.theta[r[1]])
+    else
+        throw(ArgumentError("$who: the correlated block of group `$group` has the coefficients " *
+            "$(join(names, ", ")), which this summary does not recognise. Use `coef(fit, :recov)`."))
+    end
+    return (; group, Σ = [sd1^2 ρ*sd1*sd2; ρ*sd1*sd2 sd2^2], sd1, sd2)
 end
 
 # Multiple independent scalar random-effect components (e.g. (1|g) + (1|h)).
