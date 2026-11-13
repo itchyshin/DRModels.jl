@@ -2849,6 +2849,16 @@ function _predict_data(nd::NamedTuple, responses::Symbol...)
     return merge(nd, NamedTuple(extras))
 end
 
+# Replace a non-numeric response column of `newdata` by a finite numeric dummy of the same
+# length (the response is not used by `predict`). Numeric and absent columns are untouched.
+function _predict_ignore_label_response(nd::NamedTuple, response::Symbol)
+    haskey(nd, response) || return nd
+    col = getproperty(nd, response)
+    col isa AbstractVector || return nd
+    any(x -> x isa Union{AbstractString,Symbol}, col) || return nd
+    return merge(nd, NamedTuple{(response,)}((zeros(length(col)),)))
+end
+
 function predict(fit::DrmFit, newdata; type::Symbol = :response, se::Bool = false)
     se && _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("predict: standard errors are not qualified for $(_prior_kind_label(fit)) fits"))
     f = fit.formula
@@ -2912,6 +2922,10 @@ function predict(fit::DrmFit, newdata; type::Symbol = :response, se::Bool = fals
         # #1006: an `offset(...)` the fitter applied (coefficient fixed at 1) is
         # stripped from the design and added to η, exactly as at fit time.
         fixed_mu, off = _predict_offset(fit, fixed_mu, nd, :mu)
+        # A label response (strings/symbols) in `newdata` is never read by `predict`; the
+        # CumulativeLogit fit accepted labels, so a table that still carries the label column
+        # (as drmTMB's ordered factor does) must not reach the numeric response reader.
+        fit.family isa CumulativeLogit && (nd = _predict_ignore_label_response(nd, f.response))
         ndr = _predict_data(nd, f.response)
         Xnew, η = _predict_design(fit, f.response, fixed_mu, ndr, :mu, f.schema_cache, off;
                                   drop_intercept = fit.family isa CumulativeLogit)
@@ -3199,6 +3213,9 @@ function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
     type in (:response, :link) || error("predict_parameters: `type` must be :response or :link")
     forms = Dict(f.forms)
     nd = NamedTuple(pairs(newdata))
+    # Same label-response handling as `predict` (CumulativeLogit univariate fits only).
+    fit.family isa CumulativeLogit && f isa DrmFormula &&
+        (nd = _predict_ignore_label_response(nd, f.response))
     nrows = length(first(values(nd)))
     V = se ? vcov(fit) : nothing
     # A real LHS to dummy into `_design` for each parameter's RHS. The univariate
