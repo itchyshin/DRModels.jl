@@ -1,6 +1,12 @@
 using DRModels, Test, Random, LinearAlgebra, Statistics
 import Distributions as Dist
 
+# True when the call raised the new refusal (any other outcome, including an error
+# about the unused `coords`, is a different matter).
+occurs_both(thunk) = try; thunk(); false; catch e
+    e isa ArgumentError && occursin("both `K = …` and `coords = …`", e.msg)
+end
+
 @testset "spatial() with both K and coords is refused by name" begin
     rng = MersenneTwister(20261113)
     G, m = 20, 5
@@ -62,10 +68,4 @@ import Distributions as Dist
         frel = bf(@formula(ycnt ~ x + relmat(1 | site)))
         @test !occurs_both(() -> drm(frel, Poisson(); data, K, coords, se = false))
     end
-end
-
-# True when the call raised the new refusal (any other outcome, including an error
-# about the unused `coords`, is a different matter).
-occurs_both(thunk) = try; thunk(); false; catch e
-    e isa ArgumentError && occursin("both `K = …` and `coords = …`", e.msg)
 end
