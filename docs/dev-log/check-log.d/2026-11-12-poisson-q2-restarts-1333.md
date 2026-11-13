@@ -1,0 +1,1 @@
+| 2026-11-12 | **Poisson animal q2 boundary restarts** (#1333) | Julia 1.10.13, BLAS 1 thread, `--check-bounds=yes`: `include("test/test_q2_sd_simulate.jl")` on `main` vs branch | ✅ branch 78/78; `main` 77/78 (fail: `q2 SD marginal simulator: Poisson animal`, `fit.converged` at line 64) | cursor-agent |
