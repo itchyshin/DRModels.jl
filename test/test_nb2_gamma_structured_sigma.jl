@@ -201,6 +201,13 @@ function _nss_oracle(fam, y, mu0, s0, fields)
             C = cholesky(Symmetric(H + lam * I); check = false); lam *= 10
         end
         step = C \ g
+        # Inside the quadratic basin take the full Newton step. The Armijo test below compares f values near
+        # 300 whose true decrease is under roundoff, so on some CPU/SIMD paths it rejects every step and the
+        # loop stalls at |g| ~ 1e-6 (gamma relmat, shape B); the Laplace value then moves by ~7e-8.
+        if maximum(abs, g) < 1e-4 && lam == 1e-3
+            u .-= step
+            continue
+        end
         t = 1.0; f0 = negjoint(u)
         while t > 1e-12 && negjoint(u .- t .* step) > f0 - 1e-4 * t * dot(g, step)
             t /= 2

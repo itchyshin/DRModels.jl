@@ -127,3 +127,18 @@ const _SLOW_BINOM_Q4 = get(ENV, "DRM_SLOW_TESTS", "0") == "1"
     @test length(simulated) == length(y)
     @test all(value -> value == 0.0 || value == 1.0, simulated)
 end
+
+@testset "correlation parameter clamp (_binomial_bounded_partial)" begin
+    # Identity, bit for bit, inside |eta| <= atanh(0.999999); finite and monotone beyond it, never past tanh(10.254).
+    edge = atanh(DRModels._Q2_RHO_BOUND)
+    for eta in (-edge, -3.3, -0.2, 0.0, 0.7, 5.0, edge)
+        @test DRModels._binomial_bounded_partial(eta) == (tanh(eta), DRModels._binomial_stable_sech(eta))
+    end
+    etas = collect(range(edge, 40.0; length = 200))
+    rho = first.(DRModels._binomial_bounded_partial.(etas))
+    sech = last.(DRModels._binomial_bounded_partial.(etas))
+    @test all(isfinite, rho) && all(isfinite, sech) && all(>(0), sech)
+    @test issorted(rho) && issorted(sech; rev = true)
+    @test maximum(rho) < 1 - 2e-9
+    @test DRModels._binomial_bounded_partial(-13.0) == (-DRModels._binomial_bounded_partial(13.0)[1], DRModels._binomial_bounded_partial(13.0)[2])
+end
