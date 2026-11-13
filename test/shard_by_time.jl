@@ -20,7 +20,7 @@
 #
 # Files in test/ that match test_*.jl but are absent from ASSIGN_FILE (new files
 # added after the assignment was computed) are NOT dropped: each goes to shard
-# `crc32c(file name) % N + 1`, a rule that depends on the name alone (identical
+# `fnv1a32(file name) % N + 1`, a rule that depends on the name alone (identical
 # on every Julia version), so adding a file never moves another file and a new
 # test file needs NO edit to the assignment file. Every file runs in exactly one
 # shard. A file named in the assignment but missing on disk (or excluded) is an
@@ -46,9 +46,17 @@ function _runtests_excludes()
     return [x.captures[1] for x in eachmatch(r"\"(test_[^\"]+\.jl)\"", m.captures[1])]
 end
 
-# Shard (1..N) for a file that the assignment does not list. Base.crc32c is a
-# fixed checksum, so the result is the same on every Julia version and platform.
-_unlisted_shard(name::AbstractString, N::Integer) = Int(Base.crc32c(name) % N) + 1
+# Shard (1..N) for a file that the assignment does not list: FNV-1a (32 bit) of
+# the file name's bytes, modulo N. Plain UInt32 arithmetic, so the result is the
+# same on every Julia version and platform (unlike `hash`).
+function _fnv1a32(name::AbstractString)
+    h = 0x811c9dc5
+    for b in codeunits(name)
+        h = (h ⊻ b) * 0x01000193
+    end
+    return h
+end
+_unlisted_shard(name::AbstractString, N::Integer) = Int(_fnv1a32(name) % UInt32(N)) + 1
 
 """
     shard_files(assign_path, k; slow = String[], mode = :all) -> Vector{String}

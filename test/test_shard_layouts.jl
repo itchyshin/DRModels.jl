@@ -46,6 +46,12 @@ end
         @test _sl_problems([["a.jl", "c.jl"]], ["a.jl"]).extra == ["c.jl"]
     end
 
+    @testset "unlisted-file hash is pinned (same on every Julia version)" begin
+        @test _ShardLayoutDriver._fnv1a32("test_a.jl") == 0x38b1fa8f
+        @test _ShardLayoutDriver._fnv1a32("test_new_feature.jl") == 0x1015326f
+        @test _ShardLayoutDriver._unlisted_shard("test_a.jl", 16) == 16
+    end
+
     @testset "CI layout: runtests.jl with DRM_TEST_SHARD=k/4" begin
         expected = filter(f -> occursin(r"^test[_-].*\.jl$", f) && !(f in excl),
                           readdir(dir))

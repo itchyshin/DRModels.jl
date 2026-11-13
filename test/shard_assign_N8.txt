@@ -1,4 +1,4 @@
-# FROZEN SNAPSHOT: do not add new test files here. test/shard_by_time.jl runs any test_*.jl file that is not listed, on shard crc32c(name) % N + 1. test/test_shard_layouts.jl checks every file runs exactly once.
+# FROZEN SNAPSHOT: do not add new test files here. test/shard_by_time.jl runs any test_*.jl file that is not listed, on shard fnv1a32(name) % N + 1. test/test_shard_layouts.jl checks every file runs exactly once.
 # Time-balanced (LPT) assignment for N=8 shards, recomputed 2026-11-08 on top of test-speed d64c28713.
 # Weights: per-file seconds from times_w3 (one full-suite measurement), test_crossed_tweedie.jl set to 22 s.
 # Wave-5 integration (2026-11-08): regenerated against the merged tree. Files unassigned in the earlier assignment were added greedily to the least-loaded shard.
