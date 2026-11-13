@@ -51,6 +51,8 @@ end
         ("(1 | g) + (1 | h)", "crossed or nested random intercepts"),
         ("(1 | g) + (1 | gh)", "crossed or nested random intercepts"),
         ("(1 | g) + (0 + z | g) + (1 | h)", "a mix of random intercepts and slopes"),
+        ("(0 + x | g) + (0 + z | g)", "independent random slopes without an intercept"),
+        ("(0 + x | g) + (0 + z | h)", "random slopes on different groups"),
     ]
     for fam in ("Gamma", "Binomial"), (terms, label) in shapes
         lhs = fam == "Gamma" ? "y" : "cbind(s, f)"
@@ -73,6 +75,9 @@ end
             # a crossed or mixed fit must not be described as the slope-with-intercept shape
             label == "an independent random slope with an intercept" ||
                 @test !occursin("an independent random slope with an intercept", msg)
+            # slope-only shapes have no intercept and must never be said to have one
+            occursin("slopes", label) && !occursin("with an intercept", label) &&
+                @test !occursin("with an intercept", msg)
         end
         # the escape in the message is offered exactly when it works for this fit
         works = try; length(simulate(fit; data = d, re = :zero, rng = Random.Xoshiro(1))) == length(d.x); catch; false; end

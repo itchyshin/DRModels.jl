@@ -2460,10 +2460,16 @@ function _no_fresh_draw_message(fit::DrmFit)
     groups = [grp for (_, grp) in re]
     shape = if all(==(:intercept), kinds)
         "crossed or nested random intercepts"
-    elseif length(unique(groups)) == 1 && all(in((:intercept, :slope)), kinds)
+    elseif length(unique(groups)) == 1 && all(in((:intercept, :slope)), kinds) && :intercept in kinds
         "an independent random slope with an intercept"
-    else
+    elseif length(unique(groups)) == 1 && all(==(:slope), kinds)
+        "independent random slopes without an intercept"
+    elseif all(==(:slope), kinds)
+        "random slopes on different groups"
+    elseif all(in((:intercept, :slope)), kinds)
         "a mix of random intercepts and slopes"
+    else
+        "a mix of random-effect terms"
     end
     fam = string(nameof(typeof(fit.family)), "()")
     escape = fit.family isa Gamma ?
