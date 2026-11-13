@@ -82,7 +82,9 @@ struct LogNormal end
             throw(ArgumentError("marginal = :Laplace is not available for LogNormal() with this " *
                 "model. It covers exactly one ordinary random intercept `(1 | g)` on the mean; " *
                 "omit `marginal` (the default `:LA`) for other models."))
-        fit = drm(f, fam; data = data, tree = tree, K = K, g_tol = g_tol, marginal = :LA)
+        fit = task_local_storage(_DESIGN_RANK_SKIP_KEY, true) do
+            drm(f, fam; data = data, tree = tree, K = K, g_tol = g_tol, marginal = :LA)
+        end
         return _withmarginal(fit, :Laplace)
     end
 

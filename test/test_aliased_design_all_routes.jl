@@ -78,4 +78,17 @@ _arank(ws) = filter(w -> occursin("rank-deficient", w), ws)
         @test !is_converged(fit)
         @test length(_arank(ws)) == 1
     end
+
+    @testset "LogNormal marginal = :Laplace warns once" begin
+        g = ["g" * string(1 + (i % 12)) for i in 1:N]
+        yl = exp.(0.2 .* yg .+ [0.3 * sin(i % 12) for i in 1:N])
+        d3 = merge(data, (; g, yl))
+        f = bf(@formula(yl ~ x1 + x2 + x3 + (1 | g)), @formula(sigma ~ 1))
+        for marg in (:LA, :Laplace)
+            fit, ws = _awarns(() -> drm(f, LogNormal(); data = d3, marginal = marg))
+            @test length(_arank(ws)) == 1
+            @test !is_converged(fit)
+            @test check_drm(fit).fixed_effect_rank_deficiency !== nothing
+        end
+    end
 end

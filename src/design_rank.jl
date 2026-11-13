@@ -58,6 +58,7 @@ end
 # Per-fit findings travel from the design hook to the `drm` entry wrapper through
 # task-local storage, so no fitter signature changes.
 const _DESIGN_RANK_KEY = :drm_design_rank_findings
+const _DESIGN_RANK_SKIP_KEY = :drm_design_rank_skip_precheck
 
 _design_rank_pending() = get(task_local_storage(), _DESIGN_RANK_KEY, nothing) !== nothing
 
@@ -101,6 +102,10 @@ end
 # a response with missing values (the route refits on the observed rows and checks them).
 # A full-rank design changes nothing: the pending record is only cleared.
 function _precheck_design_rank(f, fam, data)
+    # A route that calls `drm` again for the same data (LogNormal `marginal = :Laplace`) has
+    # already run the check in the outer call: the inner call leaves the pending record alone,
+    # so the warning is printed once and the inner fit consumes the record.
+    get(task_local_storage(), _DESIGN_RANK_SKIP_KEY, false) === true && return nothing
     delete!(task_local_storage(), _DESIGN_RANK_KEY)
     (f isa DrmFormula && !(fam isa Gaussian)) || return nothing
     designs = Tuple{Symbol,Matrix{Float64},Vector{String}}[]
