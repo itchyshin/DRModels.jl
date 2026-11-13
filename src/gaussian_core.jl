@@ -701,7 +701,11 @@ function _design(response::Symbol, rhs, data; schema_cache = nothing, schema_key
     # Only rows that stay in the fit. A missing/NaN response is dropped later
     # (`_fit_observed_response_rows`, `_fit_fixed_gaussian_missing_response`);
     # a NaN predictor on that same row is dropped with it.
-    design_data = all(observed) ? data :
+    # A response column typed `Union{Missing,Float64}` is replaced even when every row is observed:
+    # StatsModels would otherwise build its dummy response as a CategoricalTerm whose levels are the
+    # fitted responses, and a later `modelcols` on rows with another response (a `0.0` filler) fails
+    # with `KeyError`.
+    design_data = (all(observed) && !(Missing <: eltype(raw_response))) ? data :
         _replace_table_column(data, response, ifelse.(observed, y_response, 0.0))
     design_data = _narrow_design_columns(rhs, design_data, response)
     ft = FormulaTerm(Term(response), rhs)
@@ -732,6 +736,8 @@ function _design(response::Symbol, rhs, data; schema_cache = nothing, schema_key
         (store_schema && schema_cache !== nothing) && (schema_cache[][schema_key] = s)
         s
     end
+    # `poly(x, d)`: add the stored training basis (one per fit, shared by fit and `predict`).
+    reused_training_schema || _add_poly_schema!(sch, rhs, design_data, schema_cache, store_schema)
     # #1015: name the actual problem (a missing column, a missing value, a level
     # the training schema never saw) before `modelcols`, instead of reporting
     # every `modelcols` failure as an unseen factor level.
@@ -865,11 +871,26 @@ _has_table_column(data, name::Symbol) =
 # Reserved `schema_cache` key: the factor levels of the training data, by column.
 const _FACTOR_LEVELS_KEY = :__factor_levels__
 
+# A fit never writes to the formula object the user passed: `@drm_entry` replaces it by a copy with an
+# EMPTY schema cache (`_fit_formula`), and that copy is what the fit stores as `fit.formula`. The cache
+# (training schema per parameter, factor levels, `poly` bases) therefore belongs to the fit. A call that
+# re-enters `drm` with the very formula copy of the fit it is part of (the missing-response wrappers,
+# bivariate delegation) keeps it, so the control scope (keyed to the formula object) and the cache
+# stay shared inside one fit.
+const _FIT_FORMULA_KEY = :_drm_fit_formula
+function _fit_formula(f)
+    hasproperty(f, :schema_cache) || return f
+    get(task_local_storage(), _FIT_FORMULA_KEY, nothing) === f && return f
+    return _fresh_formula_cache(f)
+end
+_fresh_formula_cache(f::DrmFormula) =
+    DrmFormula(f.response, f.forms, f.response2, Ref(Dict{Symbol,Any}()), f.sd_targets)
+
 # Record, before a fit, the levels StatsModels would give every categorical
 # column the formula uses. Most non-Gaussian fitters build their designs without
 # the `schema_cache`, so this catalogue is all `predict` has to rebuild the
-# fitted contrasts from. It is written each fit, so a reused `bf` object follows
-# the latest data. Never throws: an unreadable table just records nothing.
+# fitted contrasts from. It is written into the fit's own copy of the formula
+# (`_fit_formula`), once per fit. Never throws: an unreadable table just records nothing.
 function _record_factor_levels!(f, data)
     hasproperty(f, :schema_cache) && hasproperty(f, :forms) || return nothing
     try
@@ -892,6 +913,7 @@ function _record_factor_levels!(f, data)
         f.schema_cache[][_FACTOR_LEVELS_KEY] = levs
     catch
     end
+    _record_poly_bases!(f, data)
     return nothing
 end
 
