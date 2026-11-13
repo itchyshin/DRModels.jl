@@ -127,3 +127,31 @@ end
         @test seen[k+1][(end-2):end] == DRModels.cov_to_lc(Matrix(Symmetric(sd0^2 .* [1.0 cr0; cr0 1.0])))
     end
 end
+
+@testset "bivariate ordinary (1 | p | g): a start that did not converge is never kept, even when its value is lower" begin
+    # Same double well as above, but the well at -1 is deeper (value -0.2; still shallow enough that the
+    # default start rolls into the well at +1). The -0.99 start is stopped by `iterations = 1`, so it
+    # ends short of the well but already at a value below the default result (0) by far more than the
+    # gain: it would win on value alone. Only the convergence requirement keeps it out. The
+    # runner is a real Optim run with a real iteration limit; `_biv_re_best_start` is the real selection.
+    best_start = DRModels._biv_re_best_start
+    gain = DRModels._BIV_RE_START_GAIN
+    obj = x -> min((x[end-1] - 1)^2, (x[end-1] + 1)^4 - 0.2) + sum(abs2, x[1:(end-3)]) + (x[end] + 3)^2
+    x0 = vcat([0.3, -0.2], DRModels.cov_to_lc(Matrix(Symmetric([0.25 0.02; 0.02 0.25]))))
+    runner(; iterations = 1000) = x -> DRModels.Optim.optimize(obj, x, DRModels.Optim.LBFGS(),
+        DRModels.Optim.Options(g_tol = 1e-8, iterations = iterations); autodiff = :forward)
+    slow(x) = x[end-1] < 0 ? runner(iterations = 1)(x) : runner()(x)
+    xs = vcat(x0[1:(end-3)], DRModels.cov_to_lc(Matrix(Symmetric(0.04 .* [1.0 -0.99; -0.99 1.0]))))
+    r_short = slow(xs)
+    r_default = runner()(x0)
+    # the premise: not converged, and clearly lower than the default result
+    @test !DRModels.Optim.converged(r_short)
+    @test obj(DRModels.Optim.minimizer(r_short)) < obj(DRModels.Optim.minimizer(r_default)) - 100 * gain
+    # the same start run to the end does win, so the value rule alone would pick the short run
+    @test DRModels.Optim.minimizer(best_start(runner(), obj, x0))[end-1] < -0.9
+    # the rule: the not converged start is skipped and the default result is returned unchanged
+    r = best_start(slow, obj, x0)
+    @test DRModels.Optim.minimizer(r) == DRModels.Optim.minimizer(r_default)
+    @test DRModels.Optim.minimizer(r)[end-1] > 0.9
+    @test DRModels.Optim.converged(r)
+end
