@@ -34,6 +34,8 @@ include:
 - cross-family and staged-pair tools (`mf_*`, `associate_pairs`,
   `latent_normal`, `association`, `PairAssociation`, and
   `integration_diagnostics`);
+- fixed-effect and random-effect SD prior specifications, including
+  `drm_priors()`, `drm_prior_sd_gamma()`, and `AbstractDrmPrior`;
 - penalised phylogenetic fits, bivariate meta-analysis, and the variational
   approximation selected by `marginal = :VA`;
 - joint models for missing predictors, including `mi()` and the prepared-model
