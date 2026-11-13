@@ -3636,6 +3636,10 @@ function _marginal_simulator_build(fit::DrmFit, data; K=nothing, A=nothing,
     # temporal(): `simulate` already draws the full marginal model (a fresh chain
     # per series and a fresh `(1 | id)` intercept), so it IS the marginal simulator.
     _is_temporal_fit(fit) && return rng -> _temporal_simulate(fit, rng)
+    # sigma random effects with constant SDs (src/sigma_ranef_blocks_laplace.jl)
+    let sim = _sigma_blocks_marginal_simulator(fit, data)
+        sim === nothing || return sim
+    end
     fit.nll isa LocScaleObjective &&
         return _ls_marginal_simulator(fit, data; K, A, tree, coords)
     # NB2/Gamma structured sigma fields (src/sigma_structured_laplace.jl)

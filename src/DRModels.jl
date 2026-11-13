@@ -153,6 +153,7 @@ include("bootstrap_q4_phylo.jl") # Ayumi #2: parametric bootstrap of the q=4 amo
 include("variational.jl")
 include("ordinary_laplace.jl")      # Arc 2: marginal = :Laplace on ordinary (1 | g) (TMB convention)
 include("gaussian_sigma_sd_laplace.jl")  # Gaussian sd(g, sigma): joint mu+sigma ordinary RE and structured sigma intercept, dense Laplace
+include("sigma_ranef_blocks_laplace.jl")  # sigma random effects with constant SDs: LogNormal/Gamma/NB2/BetaBinomial (1|g); Gaussian slopes, two groups, mean+sigma on different groups
 include("sigma_structured_laplace.jl")  # NB2/Gamma structured sigma: SD-formula intercept (Julia-only) and NB2 intercept+slope with fixed SDs
 include("convergence_status.jl")  # FX3b: the three-valued twin status shared with drmTMB
 include("indep_slopes_laplace.jl")   # #960: Gamma/Student (1 | g) + (0 + x | g), TMB-convention Laplace
