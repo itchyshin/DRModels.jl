@@ -573,6 +573,40 @@ function _quantile_residuals(fit::DrmFit, rng)
     return Distributions.quantile.(std_normal, u)
 end
 
+# Pearson residuals `(y - E[Y]) / sqrt(Var[Y])` from the fitted per-observation distribution
+# (`_conditional_dist`), for fixed-effect fits of the families whose drmTMB Pearson residual
+# is the same quantity. Everything else is refused by name.
+const _PEARSON_FAMILIES = (Gaussian, Poisson, NegBinomial2, Gamma, Beta)
+
+function _pearson_residuals(fit::DrmFit)
+    fam = fit.family
+    fname = string(nameof(typeof(fam)), "()")
+    haskey(fit.means, :mu) && !haskey(fit.scales, :sigma1) ||
+        throw(ArgumentError("residuals(type = :pearson) is univariate only; $fname with a " *
+            "bivariate response is not supported"))
+    any(fam isa F for F in _PEARSON_FAMILIES) ||
+        throw(ArgumentError("residuals(type = :pearson) is not implemented for $fname " *
+            "(supported: Gaussian, Poisson, NegBinomial2, Gamma, Beta, fixed-effect fits). " *
+            "drmTMB defines its Pearson residual differently for some other families, " *
+            "so no number is returned. Use type = :quantile or type = :response."))
+    (any(cn -> first(cn) === :resd, fit.coefnames) || any(p -> first(p) in
+        (:range, :temporal_phi, :temporal_decay, :temporal_pac), fit.blocks) ||
+        haskey(fit.scales, :zi) || haskey(fit.scales, :hu) || haskey(fit.scales, :nu) ||
+        fit.ranef !== nothing || _wald_withheld(fit) || _is_temporal_fit(fit)) &&
+        throw(ArgumentError("residuals(type = :pearson) is implemented for fixed-effect fits " *
+            "only; this $fname fit has a random effect, a structured or temporal term, a " *
+            "zero-inflation or hurdle part, or a known sampling covariance. " *
+            "Use type = :quantile or type = :response."))
+    y = fit.obs[:mu]
+    μ = fit.means[:mu]
+    gsis = _gamma_sigma_is_shape(fit)
+    return map(eachindex(y)) do i
+        d = _conditional_dist(fam, i; μ = μ, scales = fit.scales, obs = fit.obs,
+                              gamma_sigma_is_shape = gsis)
+        (y[i] - Distributions.mean(d)) / sqrt(Distributions.var(d))
+    end
+end
+
 # ZeroOneBeta atomic driver. Mixture: P(0) = zoi(1−coi) at the atom 0, P(1) = zoi·coi
 # at the atom 1, and the interior is (1−zoi)·Beta(μβφ,(1−μβ)φ) on (0,1). The CDF is
 #   F(0⁻)=0, F(0)=zoi(1−coi);

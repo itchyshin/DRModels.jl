@@ -2667,6 +2667,14 @@ The per-family parameter → distribution map lives in `_conditional_dist`
 (reused by future `simulate`/PIT checks). Tweedie and SkewNormal throw an
 `ArgumentError`.
 
+`type = :pearson` returns `(y − E[Y]) / √Var[Y]` with the mean and variance of the fitted
+distribution of each observation, as drmTMB's `residuals(fit, type = "pearson")`. It is
+implemented for fixed-effect Gaussian, Poisson, NegBinomial2, Gamma and Beta fits.
+Any other family or route (random effects, structured or temporal terms, zero
+inflation, hurdles, Student, LogNormal, Binomial, ordinal, bivariate) throws an
+`ArgumentError` that names it, because drmTMB's definition differs or has not been
+checked there. `type = :response` and `type = :quantile` are unchanged.
+
 `temporal()` fits (as drmTMB's Pearson residuals; for AR1 and OU, drmTMB's
 quantile residuals are the same numbers):
 
@@ -2704,8 +2712,10 @@ function residuals(fit::DrmFit; type::Symbol = :response, rng = Random.default_r
         # conditional on the fitted modes, (y − Xβ̂ − modes)/σ̂.
         _is_temporal_fit(fit) && return _temporal_conditional_residuals(fit)
         return _quantile_residuals(fit, rng)
+    elseif type === :pearson
+        return _pearson_residuals(fit)
     else
-        throw(ArgumentError("residuals: `type` must be :response or :quantile (got :$type)"))
+        throw(ArgumentError("residuals: `type` must be :response, :quantile or :pearson (got :$type)"))
     end
 end
 
