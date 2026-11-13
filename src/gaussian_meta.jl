@@ -58,7 +58,7 @@ function _fit_meta_gaussian(fam::Gaussian, y, Xμ, Xσ, vv, nmμ, nmσ, g_tol;
     function nll_reml(θ)
         T = eltype(θ)
         ησ = Xσ * θ[pμ+1:pμ+pσ]
-        w = [(pw === nothing ? 1.0 : pw[i]) / (vv[i] + exp(2 * ησ[i])) for i in 1:n]
+        w = [1 / (vv[i] + exp(2 * ησ[i])) for i in 1:n]
         XtWX = Symmetric(Matrix{T}(Xμ' * (w .* Xμ)))
         return _reml_add_restriction(nll(θ), XtWX, pμ)
     end
