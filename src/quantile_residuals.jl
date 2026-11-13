@@ -595,7 +595,8 @@ function _pearson_residuals(fit::DrmFit)
         fit.ranef !== nothing || _wald_withheld(fit) || _is_temporal_fit(fit)) &&
         throw(ArgumentError("residuals(type = :pearson) is implemented for fixed-effect fits " *
             "only; this $fname fit has a random effect, a structured or temporal term, a " *
-            "zero-inflation or hurdle part, or a known sampling covariance. " *
+            "zero-inflation or hurdle part, or a dense known sampling covariance or `meta_V` with a " *
+            "random effect. " *
             "Use type = :quantile or type = :response."))
     y = fit.obs[:mu]
     μ = fit.means[:mu]

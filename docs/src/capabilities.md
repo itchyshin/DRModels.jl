@@ -412,7 +412,7 @@ above, and it does so by delegation rather than by a second engine.
 | `fitted` / `residuals` / response-scale `predict` | **Tested** |
 | `predict_parameters` / `marginal_parameters` / `prediction_grid` / delta-method prediction SEs | **Tested** |
 | `simulate` / `check_drm` / Dunn–Smyth quantile residuals | **Tested** |
-| `residuals(fit; type = :pearson)` | **Tested** against drmTMB 0.8.1 (1e-6) for fixed-effect Gaussian, Poisson, NegBinomial2, Gamma and Beta fits: `(y - E[Y]) / sqrt(Var[Y])` from the fitted distribution. Every other family or route (random effects, structured or temporal terms, zero inflation, hurdles, Student, LogNormal, Binomial, ordinal, bivariate) is refused by name (`test/test_pearson_residuals.jl`) |
+| `residuals(fit; type = :pearson)` | **Tested** against drmTMB 0.8.1 (1e-6) for fixed-effect Gaussian, Poisson, NegBinomial2, Gamma and Beta fits: `(y - E[Y]) / sqrt(Var[Y])` from the fitted distribution; a diagonal `meta_V` without a random effect is supported and matches drmTMB; one entry per row of `data`, `NaN` at rows dropped for a missing response (drmTMB returns the kept rows only). Every other family or route (random effects, structured or temporal terms, zero inflation, hurdles, Student, LogNormal, Binomial, ordinal, bivariate) is refused by name (`test/test_pearson_residuals.jl`) |
 | Visualization data (`profile_curve` / `parameter_surface` / `corpairs_data`) | **Tested** |
 | Drawing (`drm_figure` / thin `plot_*`; Confidence Eye on `:profile`) | Optional with Makie and AlgebraOfGraphics; package checks cover the no-Makie fallback, not rendered figures |
 

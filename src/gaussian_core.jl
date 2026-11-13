@@ -2673,7 +2673,10 @@ implemented for fixed-effect Gaussian, Poisson, NegBinomial2, Gamma and Beta fit
 Any other family or route (random effects, structured or temporal terms, zero
 inflation, hurdles, Student, LogNormal, Binomial, ordinal, bivariate) throws an
 `ArgumentError` that names it, because drmTMB's definition differs or has not been
-checked there. `type = :response` and `type = :quantile` are unchanged.
+checked there. A diagonal `meta_V(v)` without a random effect is a fixed-effect fit and is
+supported. The result has one entry per row of `data`: rows dropped for a missing response
+are `NaN`, as for `:response` and `:quantile` (drmTMB returns the kept rows only).
+`type = :response` and `type = :quantile` are unchanged.
 
 `temporal()` fits (as drmTMB's Pearson residuals; for AR1 and OU, drmTMB's
 quantile residuals are the same numbers):
