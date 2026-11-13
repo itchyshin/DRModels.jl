@@ -52,13 +52,15 @@ end
             end
         end
         @test !(fit isa AssertionError)
-        fit isa DRModels.DrmFit || continue
-        @test abs(loglikelihood(fit) - R.ll) <= 1e-4
-        @test maximum(abs.(coef(fit, :mu) .- first.(R.mu)) ./ last.(R.mu)) <= 1e-3
-        @test abs(coef(fit, :sigma)[1] - R.logsigma) <= 5e-3
-        a, b, cc = coef(fit, :recov)                 # log L11, log L22, L21 (L = [L11 0; L21 L22])
-        sd0 = exp(a); sd1 = sqrt(cc^2 + exp(2b))
-        @test abs(log(sd0) - log(R.sd0)) <= 5e-3
-        @test abs(log(sd1) - log(R.sd1)) <= 5e-3
+        @test fit isa DRModels.DrmFit
+        if fit isa DRModels.DrmFit   # a failed fit is reported by the line above, not rethrown here
+            @test abs(loglikelihood(fit) - R.ll) <= 1e-4
+            @test maximum(abs.(coef(fit, :mu) .- first.(R.mu)) ./ last.(R.mu)) <= 1e-3
+            @test abs(coef(fit, :sigma)[1] - R.logsigma) <= 5e-3
+            a, b, cc = coef(fit, :recov)             # log L11, log L22, L21 (L = [L11 0; L21 L22])
+            sd0 = exp(a); sd1 = sqrt(cc^2 + exp(2b))
+            @test abs(log(sd0) - log(R.sd0)) <= 5e-3
+            @test abs(log(sd1) - log(R.sd1)) <= 5e-3
+        end
     end
 end
