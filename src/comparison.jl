@@ -413,6 +413,11 @@ likelihood. `nobs(fit)` still counts rows, zero-weight rows included.
 missing value take their weights with them. A vector of any other length, including one already cut to
 the kept rows (such as `weights(fit)` after rows were dropped), is refused with a `DimensionMismatch`.
 
+`weights(fit)` returns the weights of the rows the fit used. When rows were dropped for a missing value it
+has fewer entries than `data` has rows, so it cannot be passed back as `weights` (`update(fit, formula;
+data, weights = weights(fit))` is refused); pass the vector you gave to `drm`. Bootstrap refits do this for
+you.
+
 Prior weights are implemented on the fixed-effect ML routes of the univariate
 families. Any other route refuses `weights =` with an `ArgumentError`
 (#931; the family-by-family rollout to random-effect routes is tracked there).

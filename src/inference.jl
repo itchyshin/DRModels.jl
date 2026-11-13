@@ -2028,7 +2028,7 @@ function bootstrap_result(
     # and a REML seed are forwarded too. Otherwise the replicate is the default
     # :LA / ML fit and the interval describes a different estimator
     # (DRModels.jl#1038, #1025).
-    refit_options = _bootstrap_refit_kwargs(fit)
+    refit_options = _bootstrap_refit_kwargs(fit; data)
     # `drm(::BivariateDrmFormula, ::Gaussian; ...)` accepts `method` in
     # (:ML, :REML) and does not accept `algorithm` or `marginal`
     # (src/gaussian_bivariate.jl). Either of those keywords throws a
@@ -2161,7 +2161,7 @@ function bootstrap_result(
     coords !== nothing && (extra[:coords] = coords)
     # Repeat the seed fit's integrator and REML setting. :LA / ML are the
     # defaults, so only a different choice is forwarded (DRModels.jl#1038, #1025).
-    for (k, v) in pairs(_bootstrap_refit_kwargs(fit))
+    for (k, v) in pairs(_bootstrap_refit_kwargs(fit; data))
         extra[k] = v
     end
     binomial_nq = pop!(extra, :nq, nothing)
@@ -2240,7 +2240,7 @@ end
 # `:REML`. That route rejects any other method. A penalized MAP seed is
 # repeated by forwarding the stored `penalty` (the fitter does not take
 # `method = :MAP`).
-function _bootstrap_refit_kwargs(fit::DrmFit)
+function _bootstrap_refit_kwargs(fit::DrmFit; data = nothing)
     _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("bootstrap: $(_prior_kind_label(fit)) refits are not yet qualified"))
     kw = Pair{Symbol,Any}[]
     if _is_gaussian_lss(fit)
@@ -2276,8 +2276,26 @@ function _bootstrap_refit_kwargs(fit::DrmFit)
         push!(kw, :penalty => fit.penalty)
     end
     fit.marginal === :LA || push!(kw, :marginal => fit.marginal)
-    weights(fit) === nothing || push!(kw, :weights => weights(fit))   # #931: same weighted likelihood
+    w = _bootstrap_refit_weights(fit, data)
+    w === nothing || push!(kw, :weights => w)   # #931: same weighted likelihood
     return NamedTuple(kw)
+end
+
+# The weights a bootstrap refit passes to `drm`: one per row of the data the refit gets. `drm` needs one
+# weight per row of `data` (strict check in `@drm_entry`). The replicate data are the user's `data` with
+# the response mask restored, so they keep every row, and the fit's input weights (as the user passed
+# them) fit. If the user passed data already cut to the kept rows (`drm_listwise`), the weights stored with
+# the fit (`weights(fit)`, cut with the rows) fit instead. Any other length is passed on unchanged and
+# refused by `drm`, as for a user call.
+function _bootstrap_refit_weights(fit::DrmFit, data)
+    cut = weights(fit)
+    cut === nothing && return nothing
+    info = fit.control_info
+    full = info.input_weights === nothing ? cut : info.input_weights
+    n = data === nothing ? nothing : _data_nrows(data)
+    (n === nothing || n == length(full)) && return full
+    n == length(cut) && return cut
+    return full
 end
 
 # Estimator keywords the formula-based `bootstrap_result` forwards to `drm` for

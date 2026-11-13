@@ -121,3 +121,58 @@ end
         @test_throws ArgumentError drm(f, Gaussian(); data = d, weights = "w")
     end
 end
+
+# Post-fit routes that refit or re-evaluate with the stored weights. `weights(fit)` is the vector cut to the
+# kept rows. The bootstrap refit gets the user's data with every row, so it must forward the weights as the
+# user passed them (`control_info(fit).input_weights`). Before this was fixed, every replicate of
+# `bootstrap_summary` and `bootstrap_ci` on a weighted fit with a missing response failed with the
+# one-weight-per-row refusal.
+# Bootstrap of a fit with a missing response works on main for these routes (Student and Binomial fail
+# on main too, with an error that has nothing to do with weights, so they are not tested here).
+const _SW_BOOT_LABELS = ("Gaussian", "LogNormal", "Gamma", "Poisson", "NegBinomial2", "Beta")
+const _SW_LISTWISE_LABELS = ("Gaussian", "LogNormal", "Gamma", "Student", "Poisson", "NegBinomial2", "Beta", "Binomial")
+
+@testset "strict weights: post-fit refits on a weighted fit with missing values" begin
+    @testset "$lab: missing response, bootstrap_summary and bootstrap_ci" for lab in _SW_BOOT_LABELS
+        (group, _, fam, f, cols, blank) = only(c for c in _SW_CASES if c[2] == lab)
+        d, keep = _sw_build(cols, blank, :resp)
+        fit = _sw_quiet(() -> drm(f, fam; data = d, weights = _SW_W))
+        @test weights(fit) == _SW_W[keep]                       # the kept rows
+        @test control_info(fit).input_weights == _SW_W          # as passed
+        s = _sw_quiet(() -> bootstrap_summary(fit; data = d, B = 4, rng = MersenneTwister(11)))
+        @test !isempty(s)
+        ci = _sw_quiet(() -> bootstrap_ci(fit; data = d, B = 4, rng = MersenneTwister(11)))
+        @test !isempty(ci)
+    end
+
+    @testset "$lab: missing predictor, bootstrap on data cut by drm_listwise" for lab in _SW_LISTWISE_LABELS
+        # The data are already cut to the kept rows, so the refit gets the cut weights (`weights(fit)`).
+        (group, _, fam, f, cols, blank) = only(c for c in _SW_CASES if c[2] == lab)
+        d, keep = _sw_build(cols, blank, :pred)
+        fit = _sw_quiet(() -> drm(f, fam; data = d, weights = _SW_W))
+        @test weights(fit) == _SW_W[keep]
+        dl = _sw_cut(d, keep)
+        dl = merge(dl, (x = Float64.(dl.x),))
+        s = _sw_quiet(() -> bootstrap_summary(fit; data = dl, B = 4, rng = MersenneTwister(11)))
+        @test !isempty(s)
+    end
+
+    @testset "no missing value: the two weight vectors are the same" begin
+        d, _ = _sw_build((y = _SW.yg,), [:y], :none)
+        fit = _sw_quiet(() -> drm(bf(@formula(y ~ 1 + x), @formula(sigma ~ 1 + x)), Gaussian(); data = d, weights = _SW_W))
+        @test weights(fit) == control_info(fit).input_weights == _SW_W
+    end
+
+    @testset "update and profile" begin
+        d, keep = _sw_build((y = _SW.yg,), [:y], :resp)
+        f = bf(@formula(y ~ 1 + x), @formula(sigma ~ 1 + x))
+        fit = _sw_quiet(() -> drm(f, Gaussian(); data = d, weights = _SW_W))
+        # update with the weights as passed works; with `weights(fit)` (cut) it is refused like `drm`
+        up = _sw_quiet(() -> update(fit, f; data = d, weights = _SW_W))
+        @test loglik(up) == loglik(fit)
+        @test _sw_refused(() -> update(fit, f; data = d, weights = weights(fit)))
+        # the profile uses the stored objective, which holds the kept-row weights
+        pr = _sw_quiet(() -> profile_result(fit))
+        @test !isempty(pr.ci)
+    end
+end
