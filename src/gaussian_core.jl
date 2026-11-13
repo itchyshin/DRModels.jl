@@ -3498,7 +3498,9 @@ Random effects (`re`, #1092):
   `coords` for a structured term, as in [`bootstrap_ci`](@ref)), because the
   fit does not keep the grouping columns. Without `data`, or for a
   random-effect structure the marginal simulator does not cover, `simulate`
-  throws an `ArgumentError` rather than fall back to `b = 0`.
+  throws an `ArgumentError` rather than fall back to `b = 0`. `data` must hold
+  the same rows in the same order as the data used for the fit. This is not
+  checked: rows in a different order give wrong draws without an error.
 - `re = :zero` draws with every random effect set to zero (population level),
   which was the only behaviour before #1092. It needs no `data`. drmTMB has no
   such mode; its `re.form = NULL` (conditional on the fitted modes) has no
@@ -3589,16 +3591,38 @@ function _simulate_needs_marginal(fit::DrmFit)
     return false
 end
 
+# Names of the `(… | g)` grouping columns, for the `simulate(fit)` refusal text.
+# Best effort: returns "" when none can be read off the formula.
+function _simulate_group_hint(fit::DrmFit)
+    f = fit.formula
+    (f isa DrmFormula || f isa BivariateDrmFormula) || return ""
+    names = String[]
+    try
+        for (_, rhs) in f.forms
+            for t in (rhs isa Tuple ? rhs : (rhs,))
+                if t isa FunctionTerm && t.f === (|) && length(t.args) == 2
+                    g = string(t.args[2])
+                    g in names || push!(names, g)
+                end
+            end
+        end
+    catch
+        return ""
+    end
+    isempty(names) && return ""
+    return " (" * join(names, ", ") * ")"
+end
+
 # The default random-effect draw: the bootstrap's marginal simulator (#459,
 # #462). Refuse rather than draw at b = 0 when it cannot be built (#1092).
 function _simulate_marginal_draw(fit::DrmFit, data; K = nothing, A = nothing,
                                  tree = nothing, coords = nothing)
     data === nothing && throw(ArgumentError(
-        "simulate: this fit has random effects, and the default `re = :marginal` " *
-        "draws fresh ones for every replicate, which needs the data the model was " *
-        "fitted to: pass `data = ...` (and `tree` / `K` / `A` / `coords` for a " *
-        "structured term), or pass `re = :zero` to draw with the random effects " *
-        "set to zero"))
+        "simulate: this fit has random effects, and the fit does not keep the " *
+        "grouping columns$(_simulate_group_hint(fit)). Use " *
+        "`simulate(fit; data = <the data frame you fitted with>)` " *
+        "(add `tree` / `K` / `A` / `coords` for a structured term), or " *
+        "`simulate(fit; re = :zero)` to draw with the random effects set to zero"))
     sim = _marginal_simulator(fit, data; K, A, tree, coords)
     sim === nothing && throw(ArgumentError(
         "simulate: no marginal (fresh random effect) simulator is available for this " *
