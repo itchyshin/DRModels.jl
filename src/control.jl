@@ -221,6 +221,11 @@ mutable struct _ControlScope
     input_weights::Union{Nothing,Vector{Float64}}   # as passed, never cut (`weights` is cut with the rows)
 end
 
+# Ten-field form (before `input_weights`): the weights were never cut, so the input is the same vector.
+_ControlScope(control, weights, formula, used_optim, used_se, used_weights, start_nll, kept, runs, stage) =
+    _ControlScope(control, weights, formula, used_optim, used_se, used_weights, start_nll, kept, runs, stage,
+                  weights === nothing ? nothing : copy(weights))
+
 const _CTL_KEY = :DRModels_drm_control_scope
 
 _active_control_scope() = get(task_local_storage(), _CTL_KEY, nothing)
