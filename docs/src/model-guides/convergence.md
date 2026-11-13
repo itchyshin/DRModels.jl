@@ -68,6 +68,17 @@ approximation, but its likelihood-ratio calibration is still asymptotic and
 boundary likelihood-ratio limits can be nonstandard [Self and Liang
 (1987)](https://doi.org/10.1080/01621459.1987.10478472).
 
+On the independent-term Laplace route (`(1 | g) + (0 + x | g)` for the non-Gaussian
+families) the objective rejects any trial point whose log SD is below -30 or above
+30. If the best fit runs to the lower end, the SD is zero for every practical
+purpose and the likelihood is flat in that direction (drmTMB follows the same
+ridge much further out, to a log SD near -111). Such a fit is reported as
+`convergence_status(fit) === :boundary`, with a warning. The optimizer flag is
+`false` there, and the reported log-likelihood can be a little below drmTMB's.
+Do not read its Wald standard errors. To test the variance against zero use
+[`lrt_boundary`](@ref) (a 50:50 chi-bar-square mixture, not a plain chi-square);
+for an interval use a profile interval, `confint(fit; method = :profile)`.
+
 This advice applies to variance components estimated at zero. A Student-t
 shape parameter near its infinite-`nu` Gaussian limit is a different
 identification problem: the data may weakly distinguish large values of `nu`.

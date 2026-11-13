@@ -148,6 +148,13 @@ end
 _indep_primal(x::ForwardDiff.Dual) = _indep_primal(ForwardDiff.value(x))
 _indep_primal(x::Real) = Float64(x)
 
+# The objective returns its failure value when a random-effect log SD (or the log sigma) leaves
+# [-30, 30]. The value is kept at 30. A fit that ends within `_INDEP_WALL_TOL` of the LOWER end has an
+# SD that is zero for every practical purpose: it is reported as a boundary fit (see
+# `convergence_status`), not as an interior optimum.
+const _INDEP_LOGSD_GUARD = 30.0
+const _INDEP_WALL_TOL = 1.0
+
 """
     _fit_indep_re_laplace(fam, kind, y, Xμ, Xσ, Xν, comps, nmμ, nmσ, nmν, g_tol) -> DrmFit
 
@@ -249,10 +256,10 @@ function _fit_indep_re_laplace(fam, kind::Val, y, Xμ, Xσ, Xν, comps, nmμ, nm
         T = eltype(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
         lsg = vcat([Zs[k] * θ[sdoffs[k]+1:sdoffs[k+1]] for k in 1:K]...)   # log SD of every effect
-        any(l -> abs(_indep_primal(l)) > 30, lsg) && return T(1e18)
+        any(l -> abs(_indep_primal(l)) > _INDEP_LOGSD_GUARD, lsg) && return T(1e18)
         η0 = Xμ * βμ; ησ = has_sigma ? Xσ * βσ : zeros(T, n)
         ην = has_nu ? Xν * θ[pμ+pσ+1:k0] : zeros(T, n)
-        any(l -> abs(_indep_primal(l)) > 30, ησ) && return T(1e18)
+        any(l -> abs(_indep_primal(l)) > _INDEP_LOGSD_GUARD, ησ) && return T(1e18)
         invs = exp.(-2 .* lsg)
         f0 = (_indep_primal.(η0), _indep_primal.(ησ), _indep_primal.(ην), _indep_primal.(invs))
         b̂, ok = inner_mode(f0..., last_b)
@@ -330,6 +337,15 @@ function _fit_indep_re_laplace(fam, kind::Val, y, Xμ, Xσ, Xν, comps, nmμ, nm
     means = Dict(:mu => _indep_mean.(Ref(kind), ημ̂)); obs = Dict(:mu => _indep_obsval(kind, yv))   # population mean (b = 0)
     scales = has_sigma ? Dict(:sigma => exp.(Xσ * θ̂[(pμ+1):(pμ+pσ)])) : Dict{Symbol,Vector{Float64}}()
     has_nu && (scales[:nu] = _indep_nu_scale(kind, Xν * θ̂[(pμ+pσ+1):k0]))
+    lsg_hat = vcat([Zs[k] * θ̂[sdoffs[k]+1:sdoffs[k+1]] for k in 1:K]...)
+    if nllhat < 1e17 && minimum(lsg_hat) <= -(_INDEP_LOGSD_GUARD - _INDEP_WALL_TOL)
+        scales[:cond_logsd_wall] = [minimum(lsg_hat)]
+        @warn "A random-effect log SD reached the lower search bound ($(-_INDEP_LOGSD_GUARD)): the fitted SD is " *
+              "effectively zero, so this is a boundary fit (`convergence_status(fit)` is `:boundary`) and " *
+              "Wald standard errors are not reliable. To test that variance against zero use " *
+              "`lrt_boundary` (50:50 chi-bar mixture); for an interval use a profile interval " *
+              "(`confint(fit; method = :profile)`)."
+    end
     fit = DrmFit(fam, blocks, names, θ̂, V, -nllhat, n, converged, means, obs, scales)
     return _withiterations(_withmarginal(_withnll(fit, nll), :Laplace), Optim.iterations(res))
 end
