@@ -178,12 +178,12 @@ function _drm_student_fit(f::DrmFormula, fam::Student; data, g_tol::Real = 1e-8,
     y, Xμ, nmμ = _design(f.response, fixed_mu, data)
     _, Xσ, nmσ = _design(f.response, get(rhs, :sigma, ConstantTerm(1)), data)
     _, Xν, nmν = _design(f.response, get(rhs, :nu, ConstantTerm(1)), data)
-    if laplace && !(length(re) == 1 && _re_kind(re[1][1])[1] === :intercept)
+    if laplace && !(length(re) == 1 && _re_kind(re[1][1])[1] in (:intercept, :slope))
         throw(ArgumentError("marginal = :Laplace is not available for Student() with " *
             (isempty(re) ? "no random effect (fixed-effects-only)" :
              length(re) > 1 ? "crossed/multiple random effects (already fitted by Laplace by default)" :
-             "a random slope `(1 + x | g)`") *
-            ". This route covers exactly one ordinary random intercept `(1 | g)` on the mean; " *
+             "a correlated block `(1 + x | g)`") *
+            ". This route covers exactly one ordinary random intercept `(1 | g)` or independent slope `(0 + x | g)` on the mean; " *
             "omit `marginal` (the default `:LA`) for other models."))
     end
     if length(re) > 1                                     # crossed intercepts → Laplace (#725)
@@ -281,6 +281,8 @@ end
 # explicit refusals until their Student likelihoods are reviewed.
 function _drm_student_sd_regression(f::DrmFormula, fam::Student; data,
                                     g_tol::Real, se::Bool, marginal::Symbol)
+    laplace_fit = _laplace_sd_route(f, fam, Val(:student), marginal; data, g_tol)
+    laplace_fit === nothing || return laplace_fit
     marginal === :LA || throw(ArgumentError(
         "Student `sd(group) ~ …` currently supports `marginal = :LA` only."))
     isempty(_sdphylo_parts(f)) || throw(ArgumentError(
