@@ -343,8 +343,8 @@ function _fit_indep_re_laplace(fam, kind::Val, y, Xμ, Xσ, Xν, comps, nmμ, nm
         @warn "A random-effect log SD reached the lower search bound ($(-_INDEP_LOGSD_GUARD)): the fitted SD is " *
               "effectively zero, so this is a boundary fit (`convergence_status(fit)` is `:boundary`) and " *
               "Wald standard errors are not reliable. To test that variance against zero use " *
-              "`lrt_boundary` (50:50 chi-bar mixture); for an interval use a profile interval " *
-              "(`confint(fit; method = :profile)`)."
+              "`lrt_boundary(fit, reduced)` with a reduced fit that drops the term (50:50 chi-bar " *
+              "mixture). Profile intervals may not converge at the wall."
     end
     fit = DrmFit(fam, blocks, names, θ̂, V, -nllhat, n, converged, means, obs, scales)
     return _withiterations(_withmarginal(_withnll(fit, nll), :Laplace), Optim.iterations(res))

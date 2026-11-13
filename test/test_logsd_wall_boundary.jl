@@ -33,3 +33,43 @@ end
     ok = drm(bf(@formula(y ~ x1 + x2 + x3 + (1 | g) + (0 + x1 | g))), Binomial(:logit); data = d)
     @test !haskey(ok.scales, :cond_logsd_wall)
 end
+
+@testset "log-SD wall: lrt_boundary runs on a wall fit (the tool the warning names)" begin
+    d = _lsw_data()
+    f = bf(@formula(y ~ x1 + x2 + x3 + (1 | g) + (0 + x1 | g)), @formula(sd(g, coef(intercept)) ~ z))
+    fit = with_logger(Logging.NullLogger()) do
+        drm(f, Binomial(:logit); data = d)
+    end
+    # Reduced fit: drop the intercept-SD term, keep an independent term (same marginal approximation).
+    red = drm(bf(@formula(y ~ x1 + x2 + x3 + (0 + x1 | g))), Binomial(:logit); data = d)
+    @test red.marginal === fit.marginal
+    t = lrt_boundary(fit, red; q = 1)
+    @test isfinite(t.statistic) && t.statistic > 0
+    @test t.statistic ≈ 2 * (loglikelihood(fit) - loglikelihood(red))
+    @test 0 < t.pvalue < 1
+end
+
+@testset "log-SD wall: the boundary marker does not reach sigma()" begin
+    d = _lsw_data()
+    f = bf(@formula(y ~ x1 + x2 + x3 + (1 | g) + (0 + x1 | g)), @formula(sd(g, coef(intercept)) ~ z))
+    fit = with_logger(Logging.NullLogger()) do
+        drm(f, Binomial(:logit); data = d)
+    end
+    @test haskey(fit.scales, :cond_logsd_wall)
+    # `sigma()` of a flagged fit equals `sigma()` of the same fit without the marker.
+    plain = deepcopy(fit); delete!(plain.scales, :cond_logsd_wall)
+    @test typeof(sigma(fit)) == typeof(sigma(plain))
+    @test sigma(fit) == sigma(plain)
+    # A family with a sigma keeps returning the plain vector when the marker is set.
+    h(i) = mod(sin(12.9898i) * 43758.5453, 1)
+    G = 12; m = 8; gi = repeat(1:G, inner = m); x = [2 * h(i) - 1 for i in 1:G*m]
+    y = [4.0 * (1 + 0.3x[i] + 0.4 * (h(1000 + gi[i]) - 0.5)) * (0.5 + h(2000 + i)) for i in 1:G*m]
+    gfit = with_logger(Logging.NullLogger()) do
+        drm(bf(@formula(y ~ x + (1 | g) + (0 + x | g))), Gamma(); data = (; y, x, g = ["g$(k)" for k in gi]))
+    end
+    before = sigma(gfit)
+    @test before isa Vector{Float64}
+    gfit.scales[:cond_logsd_wall] = [-30.0]
+    @test sigma(gfit) isa Vector{Float64}
+    @test sigma(gfit) == before
+end

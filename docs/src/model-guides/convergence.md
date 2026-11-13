@@ -76,8 +76,11 @@ ridge much further out, to a log SD near -111). Such a fit is reported as
 `convergence_status(fit) === :boundary`, with a warning. The optimizer flag is
 `false` there, and the reported log-likelihood can be a little below drmTMB's.
 Do not read its Wald standard errors. To test the variance against zero use
-[`lrt_boundary`](@ref) (a 50:50 chi-bar-square mixture, not a plain chi-square);
-for an interval use a profile interval, `confint(fit; method = :profile)`.
+[`lrt_boundary`](@ref) with a reduced fit that drops the term (a 50:50
+chi-bar-square mixture, not a plain chi-square). The reduced fit must use the same
+marginal approximation as the full fit: drop the term but keep another
+independent term, as in `(0 + x | g)` alone. A profile interval,
+`confint(fit; method = :profile)`, may not converge on a fit at the wall.
 
 This advice applies to variance components estimated at zero. A Student-t
 shape parameter near its infinite-`nu` Gaussian limit is a different
