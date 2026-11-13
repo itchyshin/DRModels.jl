@@ -376,7 +376,10 @@ end
     mv(f) = drm(f, Gaussian(); data = d2)
     @test_throws ArgumentError mv(bf(@formula(y ~ x + meta_V(v) + (0 + x | study)), @formula(sigma ~ 1)))
     @test_throws ArgumentError mv(bf(@formula(y ~ x + meta_V(v) + (1 + x | study)), @formula(sigma ~ 1)))
-    @test_throws ArgumentError drm(bf(@formula(y ~ x + meta_V(v) + (1 | study)), @formula(sigma ~ 1)),
+    # REML with `(1 | study)` and a constant sigma is now supported (test_meta_v_reml.jl); the neighbours stay refused.
+    @test_throws ArgumentError drm(bf(@formula(y ~ x + meta_V(v) + (1 | study)), @formula(sigma ~ x)),
+        Gaussian(); data = d, method = :REML)
+    @test_throws ArgumentError drm(bf(@formula(y ~ x + meta_V(v) + (0 + x | study)), @formula(sigma ~ 1)),
         Gaussian(); data = d, method = :REML)
     @test_throws ArgumentError drm(bf(@formula(y ~ x + meta_V(v) + (1 | study)), @formula(sigma ~ 1)),
         Gaussian(); data = d, algorithm = :sparse)
