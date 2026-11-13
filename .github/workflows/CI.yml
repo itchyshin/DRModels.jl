@@ -175,8 +175,10 @@ jobs:
           test "${{ needs.test.result }}" = "success"
 
   # Julia 1.12 focused check. INFORMATIONAL: it is deliberately NOT in the
-  # `needs` of `ci-ok`, so a failure here shows a red check but blocks no merge.
-  # Whether it should block is the owner's decision (see the PR text).
+  # `needs` of `ci-ok`, and the job has `continue-on-error: true`, so a failure
+  # here neither blocks a merge nor turns the check-runs red for merge-strict's
+  # all-checks-green gate. A failure is NOT to be ignored: whoever sees a red
+  # step in this job must report it as a GitHub issue (owner decision P32).
   #
   # Why it exists: Julia 1.12.6 and 1.12.7 compile a loop in
   # `_coerce_response_column` wrongly on some CPUs (AMD Zen 4 and Zen 5), so a
@@ -210,6 +212,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true' && github.event_name != 'schedule'
     runs-on: ubuntu-latest
+    continue-on-error: true
     timeout-minutes: 30
     env:
       JULIA_NUM_THREADS: '1'
