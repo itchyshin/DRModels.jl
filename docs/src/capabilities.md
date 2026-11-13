@@ -78,13 +78,16 @@ are refused by name. On a few data sets with a boundary zero-inflation or
 dispersion estimate the fit reports `converged = false`; it then stands below or
 beside drmTMB's value and should not be read as a match. The reverse also happens:
 `converged = true` is not a guarantee that the fit sits at the best mode on
-zero-heavy or separated data. In a check of 120 simulated data sets, a zero-inflated
+zero-heavy or separated data. In a check of 120 simulated data sets, 6 fits ended
+outside the agreement rule with drmTMB (all report `converged = false`), and two more
+stop at a lower local mode and still report `converged = true`: a zero-inflated
 NB2 set whose drmTMB fit is separated (zero-inflation coefficients beyond 10 in size)
-and a zero-inflated Poisson set stop at a lower local mode and still report
-`converged = true`. On the Poisson set the default fit ends at a log-likelihood of
--90.4, while fits started near drmTMB's estimate reach values between -84 and -74
-(drmTMB itself reports -81.3, or -77.7 with `multi_start = 10`). On such data, compare
-the fit with drmTMB before you trust it.
+and a zero-inflated Poisson set. On the Poisson set the default fit ends at a
+log-likelihood of -90.4, while fits started near drmTMB's estimate reach values
+between -84 and -74. drmTMB's first fit on that set reaches about -81 (-80.8 in a
+rerun, flagged not converged), or -77.7 with `multi_start = 10`. On such data, compare
+the fit with drmTMB before you trust it. The Poisson set is in
+[#1371](https://github.com/itchyshin/DRModels.jl/issues/1371), which tracks the cause.
 
 **Beta boundary modifiers** `zoi` / `coi` (zero-/one-inflation): the
 `ZeroOneBeta()` family handles the boundary mass; **Tested** when the data

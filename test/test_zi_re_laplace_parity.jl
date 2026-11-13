@@ -6,7 +6,7 @@
 # drmTMB uses, through the shared spine of `src/indep_slopes_laplace.jl` with the new observation
 # terms of `src/zi_re_laplace.jl`. References: `test/fixtures/zi_re_parity/<route>/` written by
 # `test/parity/gen_zi_re_parity.R` (drmTMB 0.8.1; max|grad| < 1e-6, all SEs finite; numbers and
-# simulated data only). Bounds are the lane's and are never loosened:
+# simulated data only). The bounds are fixed and are never loosened:
 #   logLik 1e-4 (absolute) | fixed effects 1e-3 R SE | log SD 5e-3 | SEs 1e-3 relative.
 using DRModels, Test, TOML
 
