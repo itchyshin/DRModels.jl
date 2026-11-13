@@ -68,6 +68,25 @@ end
 _binomial_sd_scale(eta) = exp.(_softclamp.(eta, -12.0, 12.0, 3.0))
 _binomial_structured_sd_group_scale(Zg, alpha) = _binomial_sd_scale(Zg * alpha)
 
+# Partial correlation and innovation scale of one correlation parameter `eta` (atanh scale).
+# `eta` is soft-clamped with `_softclamp` at +-atanh(0.999999) = +-7.2543 and margin 3: the
+# identity (bit for bit) for |eta| <= 7.2543, then a smooth, monotone saturation at
+# +-10.254 (|rho| up to about 1 - 2.5e-9). The only purpose is to cut off the region where
+# the Laplace / AGHQ objective is rounding noise: once |eta| exceeds about 12 the group prior
+# precision is ~1/(1 - rho^2) ~ 1e10 and the objective carries noise of order 1e-4, which the
+# optimiser can accept as progress (Julia 1.13.3, cell `binomial|corr|lab0|q2|sd-last`).
+# It is NOT a 0.999999 bound: the q2 Poisson / NB2 / Gaussian routes scale, rho = 0.999999 *
+# tanh(eta), and drmTMB's Binomial q2 block uses plain tanh(eta) with no bound.
+# Reporting: the coefficient table and `:recov` keep the raw `eta` the optimiser holds, while
+# `:corpars`, the correlation in the likelihood and the bootstrap simulators use the clamped
+# value. They agree for |eta| <= 7.2543 and differ beyond it (raw eta = -8.29 is effective
+# -8.25; raw -13 is -10.13), where the objective is flat in `eta` anyway. Reported on purpose
+# rather than rewriting the stored coefficient, which would make `coef` disagree with `theta`.
+function _binomial_bounded_partial(eta)
+    e = _softclamp(eta, -atanh(_Q2_RHO_BOUND), atanh(_Q2_RHO_BOUND), 3.0)
+    return tanh(e), _binomial_stable_sech(e)
+end
+
 # Lower-triangular Cholesky factor for a correlation matrix from row-major
 # partial correlations. For row i and column j<i, the partial parameter is
 # conditional on the preceding j-1 coordinates. This preserves the established
@@ -85,8 +104,9 @@ function _binomial_partial_correlation_cholesky(correlation_eta, q::Integer)
         residual = one(T)
         for j in 1:(i - 1)
             eta = correlation_eta[position]
-            L[i, j] = tanh(eta) * residual
-            residual *= _binomial_stable_sech(eta)
+            partial, innovation = _binomial_bounded_partial(eta)
+            L[i, j] = partial * residual
+            residual *= innovation
             position += 1
         end
         L[i, i] = residual
@@ -2055,6 +2075,26 @@ function _drm_binomial_phylo_ordinary_sd_regression(f::DrmFormula, fam::Binomial
     return _withformula(_withiterations(_withnll(fit, nll), Optim.iterations(res)), f)
 end
 
+# One ordinary correlated block `(1 + x | g)` on the mean (no structured term) whose `sd()` targets
+# are all ordinary mean coefficients: the shape `marginal = :Laplace` takes as a one-node group integral.
+function _binomial_ordinary_corr_sd(f::DrmFormula)
+    rhs = Dict(f.forms)
+    haskey(rhs, :mu) || return false
+    split = try
+        _split_ranef(rhs[:mu])
+    catch err
+        err isa ArgumentError || rethrow()
+        return false
+    end
+    _, re, mv, st = split
+    (mv === nothing && st === nothing && length(re) == 1) || return false
+    _laplace_lhs_kind(re[1][1]) === :corr || return false
+    isempty(_sdphylo_parts(f)) || return false
+    targets = _sd_target_parts(f)
+    return !isempty(targets) && all(item -> item.target.level === :iid && item.target.dpar === :mu &&
+                                            item.target.block === nothing, targets)
+end
+
 function _drm_binomial_sd_regression(f::DrmFormula, fam::Binomial; data,
                                      tree = nothing, tree1 = nothing,
                                      tree2 = nothing, K = nothing, A = nothing,
@@ -2064,6 +2104,17 @@ function _drm_binomial_sd_regression(f::DrmFormula, fam::Binomial; data,
                                      se::Bool = true, marginal::Symbol = :LA,
                                      method = nothing, nq::Int = _BINOMIAL_RANEF_AGHQ_K)
     _reject_method_as_marginal(fam, method)
+    if _scalar_laplace_requested(marginal)
+        # Independent terms: the dense TMB-convention Laplace. One ordinary correlated block
+        # `(1 + x | g)` with SD formulas: the same group integral with a single adaptive node,
+        # which is the Laplace approximation (the node count is the only difference to the default).
+        laplace_fit = _laplace_sd_route(f, fam, Val(:binomial), marginal; data, g_tol,
+                                        fallback = _binomial_ordinary_corr_sd(f))
+        laplace_fit === nothing || return laplace_fit
+        return _withmarginal(_drm_binomial_sd_regression(f, fam; data, tree, tree1, tree2, K, A, Ainv,
+                                                         coords, mesh, g_tol, se, marginal = :LA,
+                                                         method, nq = 1), :Laplace)
+    end
     marginal === :LA || throw(ArgumentError(
         "Binomial `sd(group) ~ …` currently supports `marginal = :LA` " *
             "only: one ordinary grouping variable uses adaptive Gauss-Hermite quadrature, " *
@@ -2443,7 +2494,10 @@ function _fit_binomial_sd_regression(fam::Binomial, s, ntr, Xmu, Zgs, nmsds,
     pbar = clamp(sum(s) / max(sum(ntr), 1), 1e-3, 1 - 1e-3)
     theta0[1] = _binomial_start(fam, pbar)
     for j in 1:q
-        if is_constant[j]
+        # An intercept-only SD design (`sd(g, coef(x)) ~ 1`) starts at exactly the constant-SD
+        # value: `ones \ fill(log(0.5), G)` is one ulp off `log(0.5)`, and that ulp alone sent the
+        # q = 3 correlated fit down a different path from the bare `(1 + x1 + x2 | g)` spelling.
+        if is_constant[j] || (size(Zgs[j], 2) == 1 && all(isone, Zgs[j]))
             theta0[sd_ranges[j]] .= log(0.5)
         else
             theta0[sd_ranges[j]] .= Zgs[j] \ fill(log(0.5), G)

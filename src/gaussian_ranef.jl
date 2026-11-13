@@ -783,6 +783,11 @@ function _re_lbfgs_with_restart(nll, θ0::AbstractVector, θ0_restart::AbstractV
     return finish(res, :primary)
 end
 
+_sd_prior_stationary(score) = all(isfinite, score) && maximum(abs, score) <= 1e-6
+# Reject a numerically zero or overflowing variance even when a nearly flat
+# Gamma density makes the score alone look small. This is not an optimizer bound.
+_sd_prior_interior(eta) = isfinite(eta) && 0 < exp(2eta) < Inf && isfinite(exp(-2eta))
+
 # Gaussian location–scale with one random intercept (1 | g) on the mean.
 # θ = [β_μ; β_σ (log σ); log σ_b].
 # `reml=true` (#439) keeps β_μ in θ and adds the Patterson–Thompson term
@@ -799,7 +804,8 @@ a single intercept only — σ-RE, slopes, and multi-ranef stay rejected.
 Worked example: `test/test_reml_ordinary_ranef.jl` (not in the default suite yet).
 """
 function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ, grp, g_tol;
-                             reml::Bool = false, prior_rows = nothing, prior_w = nothing)
+                             reml::Bool = false, prior_rows = nothing, sd_prior = nothing, sd_specs = nothing,
+                             prior_w = nothing)
     n = length(y)
     pμ, pσ = size(Xμ, 2), size(Xσ, 2)
     # `prior_w` (drmTMB `weights`): row i's log-density is multiplied by prior_w[i]. For the
@@ -882,7 +888,11 @@ function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ,
         return nll_ml_θ + 0.5 * ldX - const_pμ
     end
 
-    nll = prior_rows === nothing ? (reml ? nll_reml : nll_ml) : θ -> nll_ml(θ) + _fixed_prior_value(prior_rows, θ)
+    nll = if sd_prior !== nothing
+        θ -> nll_ml(θ) + _fixed_prior_value(prior_rows, θ) + _sd_prior_value(sd_prior, θ)
+    else
+        prior_rows === nothing ? (reml ? nll_reml : nll_ml) : θ -> nll_ml(θ) + _fixed_prior_value(prior_rows, θ)
+    end
 
     βμ0 = Xμ \ y
     res0 = y - Xμ * βμ0
@@ -1013,11 +1023,13 @@ function _fit_ranef_gaussian(fam::Gaussian, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ,
     # unchanged. Guard: test/test_ranef_varying_scale_convergence.jl and the
     # scaled-predictor bootstrap in test/test_triage_g_twin_inputs.jl.
     # #1114: a non-finite Hessian also means not converged.
+    score = ForwardDiff.gradient(nll, θ̂)
     converged = hess_finite && !Optim.iteration_limit_reached(res) &&
-        _unitfree_converged(H, ForwardDiff.gradient(nll, θ̂))
+        _unitfree_converged(H, score) &&
+        (sd_prior === nothing || (_sd_prior_interior(θ̂[end]) && _sd_prior_stationary(score)))
     # Profile intervals reuse the ML Woodbury nll (same convention as FE REML).
     fit = _withranef(_withnll(DrmFit(fam, blocks, names, θ̂, V, -(prior_rows === nothing ? nll(θ̂) : nll_ml(θ̂)), n, converged, means, obs, scales), prior_rows === nothing ? nll_ml : nll), re)
-    prior_rows === nothing || (fit = _with_fixed_priors(fit, prior_rows, nll_ml))
+    sd_prior !== nothing ? (fit = _with_sd_priors(fit, prior_rows, sd_prior, nll_ml, sd_specs)) : (prior_rows === nothing || (fit = _with_fixed_priors(fit, prior_rows, nll_ml)))
     if reml
         return _withreml(fit, -nll_reml(θ̂), -nll_ml(θ̂))
     end

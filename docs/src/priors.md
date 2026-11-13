@@ -1,4 +1,4 @@
-# Fixed-effect priors
+# Coefficient and random-intercept SD priors
 
 This interface is experimental while its supported routes are being validated.
 
@@ -40,9 +40,9 @@ unpenalized. A normal prior with mean zero and standard deviation two has the
 same quadratic term, but includes its density constant.
 
 Gaussian models may also contain one independent random intercept in the mean
-formula, for example `bf(@formula(y ~ x + (1 | site)))`. Priors still apply
-only to the fixed coefficients of `mu` and `sigma`; the random-intercept SD is
-estimated without a prior. The default `:LA` Gaussian route integrates the
+formula, for example `bf(@formula(y ~ x + (1 | site)))`. Fixed-effect priors
+apply to coefficients of `mu` and `sigma`; an SD prior is optional, as shown
+below. The default `:LA` Gaussian route integrates the
 intercept exactly and adds the fixed-effect priors once to the marginal
 negative log-likelihood. Explicit `marginal = :Laplace` is not supported for
 a mean random intercept.
@@ -72,3 +72,40 @@ automatic frequentist covariance nor a full posterior interval. Likelihood
 ratio tests, AIC/BIC, confidence intervals, likelihood profiles and bootstrap
 refits are refused for these fits. Prediction standard errors and simulation are
 not yet qualified.
+
+## Gamma prior on a random-intercept SD
+
+A Gaussian ML model with one unlabelled iid random intercept in `mu` can use a
+Gamma density on that group's natural standard deviation. Supply its exact
+name and inspect the resolved target before fitting:
+
+```julia
+sd_prior = drm_prior_sd_gamma(dpar = "mu", group = "site",
+                              coef = "(Intercept)", shape = 2, rate = 3)
+priors = drm_priors(sd_prior,
+                    drm_prior_normal(dpar = "mu", coef = "x", mean = 0, sd = 2))
+resolve_priors(group_form, Gaussian(); data = grouped, priors = priors)
+fit = drm(group_form, Gaussian(); data = grouped, priors = priors)
+```
+
+`shape` must be finite and greater than one, and `rate` must be finite and
+positive. The Gamma density is with respect to the SD itself; it does not add
+a log-SD Jacobian. The normalized penalty is added once for the shared SD,
+not once per group. The fit is penalized ML, or SD-scale MAP: `loglik(fit)`
+remains the data log likelihood at the penalized estimate. The fixed and SD
+penalties and total objective are stored separately in `fit.penalty`.
+`update` repeats the prior unless explicitly replaced or dropped by changing
+the estimator.
+
+This route requires complete observations, unit weights and a unique iid
+mean random intercept; random slopes, multiple or structured blocks and REML
+are outside this slice. Write the random intercept only once in the formula.
+Currently, Julia's `@formula` collapses repeated identical terms such as
+`(1 | site) + (1 | site)` before the prior target is checked. The resolver
+therefore cannot reject that spelling as a duplicate; drmTMB in R rejects it.
+This difference remains unresolved.
+
+Confidence intervals, likelihood comparisons, AIC,
+BIC and uncertainty-dependent prediction or simulation are refused for active
+priors. An unpenalized comparison requires unpenalized refits. Choosing the
+prior depends on the response units: changing units requires changing its rate.

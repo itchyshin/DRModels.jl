@@ -13,6 +13,10 @@
 
 using Distributions: Chisq, ccdf
 import StatsAPI: weights
+# `lrtest` is StatsModels' function: DRModels adds methods to it (on `DrmFit` only) and
+# re-exports the same name, so `using DRModels, StatsModels; lrtest(...)` is not an
+# ambiguous binding on Julia 1.12 and later.
+import StatsModels: lrtest
 
 """
     lrtest(reduced::DrmFit, full::DrmFit) -> NamedTuple
@@ -21,6 +25,10 @@ Likelihood-ratio test for two **nested**, **ML**-fitted models, mirroring
 drmTMB's `anova(reduced, full)`. `reduced` must be a special case of `full`
 (fewer parameters); both must be fit by maximum likelihood (DRModels.jl's default —
 REML likelihoods are not comparable across fixed-effect structures).
+
+This is a method of `StatsModels.lrtest`, the same function (`DRModels.lrtest ===
+StatsModels.lrtest`), so `using DRModels, StatsModels` and an unqualified `lrtest(...)`
+work together. The method applies to `DrmFit` pairs only.
 
 Returns a `NamedTuple` `(; statistic, dof, pvalue)`:
 
@@ -244,9 +252,9 @@ end
 function _map_compare_guard(a::DrmFit, b::DrmFit, verb::AbstractString)
     (a.estim_method === :MAP || b.estim_method === :MAP) || return nothing
     throw(ArgumentError(
-        "$verb: cannot compare penalized (MAP) fits — a `penalty = drm_phylo_penalty(...)` " *
-        "fit shrinks its variance components, so the likelihood-ratio statistic does not have " *
-        "the usual chi-square distribution. Refit both without `penalty` to test, or compare " *
+        "$verb: cannot compare penalized (MAP) fits — priors or penalties alter the objective, " *
+        "so the likelihood-ratio statistic does not have " *
+        "the usual chi-square distribution. Refit both without priors or penalties to test, or compare " *
         "the penalized fits on their own terms."))
 end
 

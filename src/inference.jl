@@ -223,7 +223,7 @@ Mirrors drmTMB's `confint(fit, method = "wald" | "profile")`.
 function confint(
     fit::DrmFit; level::Real=0.95, method::Symbol=:wald, threads::Bool=false, parm=nothing
 )
-    _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("confint: intervals are not qualified for fixed-prior MAP fits; covariance is local penalized curvature"))
+    _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("confint: intervals are not qualified for $(_prior_kind_label(fit)) MAP fits; covariance is local penalized curvature"))
     level = _validate_ci_level(level; what="confint")
     method === :wald && _wald_withheld(fit) && throw(ArgumentError("confint: Homogeneous Toeplitz " *
         "mean-coefficient Wald intervals are not yet qualified; mean-coefficient likelihood " *
@@ -329,7 +329,7 @@ mutable shared warm-start state; ordinary independent Binomial quadrature routes
 are not subject to that restriction.
 """
 function profile_result(fit::DrmFit; level::Real=0.95, threads::Bool=false, parm=nothing)
-    _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("profile_result: likelihood profiles are not qualified for fixed-prior fits"))
+    _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("profile_result: likelihood profiles are not qualified for $(_prior_kind_label(fit)) fits"))
     level = _validate_ci_level(level; what="profile_result")
     _refuse_selected_optimizer_refit(fit, "profile_result")
     threads && _binomial_sd_threaded_profile_unsupported(fit) &&
@@ -2241,7 +2241,7 @@ end
 # repeated by forwarding the stored `penalty` (the fitter does not take
 # `method = :MAP`).
 function _bootstrap_refit_kwargs(fit::DrmFit)
-    _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("bootstrap: fixed-prior refits are not yet qualified"))
+    _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("bootstrap: $(_prior_kind_label(fit)) refits are not yet qualified"))
     kw = Pair{Symbol,Any}[]
     if _is_gaussian_lss(fit)
         method = estimation_method(fit)
@@ -2907,14 +2907,13 @@ function _binomial_sd_marginal_simulator(fit::DrmFit, data, re;
             q = length(effects)
             u = randn(rng, q, G)
             if q == 2
-                rho = tanh(only(correlation_eta))
-                innovation = _binomial_stable_sech(only(correlation_eta))
+                rho, innovation = _binomial_bounded_partial(only(correlation_eta))
                 b0 = group_sds[1] .* u[1, :]
                 b1 = group_sds[2] .* (rho .* u[1, :] .+ innovation .* u[2, :])
                 eta .+= b0[gidx] .+ loadings[2] .* b1[gidx]
             else
-                partials = tanh.(correlation_eta)
-                innovations = _binomial_stable_sech.(correlation_eta)
+                pairs = _binomial_bounded_partial.(correlation_eta)
+                partials, innovations = first.(pairs), last.(pairs)
                 p21, p31, p32 = partials
                 s21, s31, s32 = innovations
                 b0 = group_sds[1] .* u[1, :]
@@ -4638,7 +4637,7 @@ function check_drm(fit::DrmFit; grad_tol::Real=1e-3)
     (snw === nothing || !snw.near_zero) || @warn "check_drm: " * _skew_normal_nu_wald_message(snw)
     frd === nothing || @warn "check_drm: " * _design_rank_message(frd.blocks)
     # drmTMB emits the equivalent advisory from `check_penalized_fit()`.
-    fixed_prior && @warn "check_drm: fixed-prior MAP fit — standard errors describe local penalized curvature; data log-likelihood and prior contribution are separate."
+    fixed_prior && @warn "check_drm: $(_prior_kind_label(fit)) MAP fit — standard errors describe local penalized curvature; data log-likelihood and prior contribution are separate."
     penalized && !fixed_prior && @warn "check_drm: penalized (MAP) fit — standard errors come from the penalized " *
         "curvature and are credible-interval-shaped, not frequentist. `loglik` is the UNPENALIZED " *
         "data log-likelihood; the penalty is `fit.phylo_penalty`. `lrtest`/`anova` across " *

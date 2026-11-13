@@ -1,0 +1,410 @@
+"cell","term","estimate","se","loglik","conv","pdhess","is_converged"
+"binomial|corr|lab0|q2|sd-none|cm0|ML","mu:(Intercept)",0.510975446780779,0.134975225566918,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-none|cm0|ML","mu:x1",0.192533644790422,0.130364198723042,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-none|cm0|ML","mu:x2",0.254500773452566,0.104749045981995,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-none|cm0|ML","mu:x3",-0.293948264546445,0.104148670916945,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-none|cm0|ML","sd:mu:(1 + x1 | g):(Intercept)",0.481999692041138,0.186697007781794,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-none|cm0|ML","sd:mu:(1 + x1 | g):x1",0.334878392452809,0.239086484425682,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-none|cm0|ML","cor:mu:cor((Intercept),x1 | g)",-0.765255062433638,0.706401072474957,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","mu:(Intercept)",0.510975446780779,0.134975225566917,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","mu:x1",0.192533644790422,0.130364198723055,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","mu:x2",0.254500773452566,0.104749045981984,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","mu:x3",-0.293948264546445,0.104148670916951,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd(g, coef = ""(Intercept)""):(Intercept)",-0.729811803850542,0.387338437896716,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd(g, coef = ""x1""):(Intercept)",-1.09398782066383,0.713950167623949,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g01",0.481999692041138,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g02",0.481999692041138,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g03",0.481999692041138,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g04",0.481999692041138,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g05",0.481999692041138,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g06",0.481999692041138,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g07",0.481999692041138,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g08",0.481999692041138,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g09",0.481999692041138,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g10",0.481999692041138,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g11",0.481999692041138,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g12",0.481999692041138,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g13",0.481999692041138,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g14",0.481999692041138,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g15",0.481999692041138,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g16",0.481999692041138,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g17",0.481999692041138,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g18",0.481999692041138,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g19",0.481999692041138,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g20",0.481999692041138,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g21",0.481999692041138,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g22",0.481999692041138,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g23",0.481999692041138,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g24",0.481999692041138,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g25",0.481999692041138,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g26",0.481999692041138,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g27",0.481999692041138,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g28",0.481999692041138,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g29",0.481999692041138,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g30",0.481999692041138,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g31",0.481999692041138,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g32",0.481999692041138,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g33",0.481999692041138,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g34",0.481999692041138,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g35",0.481999692041138,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g36",0.481999692041138,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g37",0.481999692041138,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g38",0.481999692041138,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g39",0.481999692041138,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g40",0.481999692041138,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g01",0.334878392452811,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g02",0.334878392452811,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g03",0.334878392452811,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g04",0.334878392452811,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g05",0.334878392452811,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g06",0.334878392452811,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g07",0.334878392452811,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g08",0.334878392452811,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g09",0.334878392452811,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g10",0.334878392452811,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g11",0.334878392452811,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g12",0.334878392452811,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g13",0.334878392452811,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g14",0.334878392452811,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g15",0.334878392452811,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g16",0.334878392452811,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g17",0.334878392452811,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g18",0.334878392452811,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g19",0.334878392452811,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g20",0.334878392452811,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g21",0.334878392452811,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g22",0.334878392452811,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g23",0.334878392452811,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g24",0.334878392452811,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g25",0.334878392452811,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g26",0.334878392452811,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g27",0.334878392452811,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g28",0.334878392452811,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g29",0.334878392452811,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g30",0.334878392452811,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g31",0.334878392452811,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g32",0.334878392452811,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g33",0.334878392452811,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g34",0.334878392452811,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g35",0.334878392452811,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g36",0.334878392452811,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g37",0.334878392452811,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g38",0.334878392452811,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g39",0.334878392452811,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g40",0.334878392452811,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","cor:mu:cor((Intercept),x1 | g)",-0.765255062433633,0.706401072475251,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","fitted:sd(g, coef = ""(Intercept)"")",0.481999692041138,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-one|cm0|ML","fitted:sd(g, coef = ""x1"")",0.334878392452811,NA,-255.213211735546,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","mu:(Intercept)",0.49494541146629,0.136025929607817,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","mu:x1",0.189864875457723,0.129312046864014,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","mu:x2",0.23941340508743,0.107771823246591,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","mu:x3",-0.290344712719455,0.104317273453966,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd(g, coef = ""(Intercept)""):(Intercept)",-0.787369545045283,0.547019739284891,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd(g, coef = ""(Intercept)""):z",0.511624954791045,0.978879372753612,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g01",0.498805307370806,NA,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g02",0.539653564002034,NA,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g03",0.473305709347172,NA,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g04",0.393893772305788,NA,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g05",0.615302041341914,NA,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g06",0.553999931279272,NA,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g07",0.383693509802747,NA,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g08",0.327805688368485,NA,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g09",0.295146637955294,NA,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g10",0.345466395007301,NA,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g11",0.404365202687547,NA,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g12",0.759006763731329,NA,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g13",0.280058344958659,NA,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g14",0.631659478150192,NA,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g15",0.648451767634,NA,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g16",0.449109685062146,NA,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g17",0.59936819627601,NA,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g18",0.701554899910008,NA,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g19",0.52567870986484,NA,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g20",0.720205317382683,NA,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g21",0.27280596161169,NA,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g22",0.302992934822764,NA,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g23",0.37375739302235,NA,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g24",0.56872768815121,NA,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g25",0.364078581654089,NA,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g26",0.319316841104475,NA,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g27",0.415115009783916,NA,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g28",0.437479552771718,NA,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g29",0.665690470091668,NA,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g30",0.461048997464504,NA,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g31",0.739351545050611,NA,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g32",0.311047820800241,NA,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g33",0.336520206560538,NA,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g34",0.485888258585525,NA,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g35",0.287503528579863,NA,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g36",0.583846973632146,NA,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g37",0.42615059407338,NA,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g38",0.354650412523952,NA,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g39",0.512065748173436,NA,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g40",0.683387453145144,NA,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","sd:mu:(1 + x1 | g):x1",0.329180116492109,0.239672544289864,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","cor:mu:cor((Intercept),x1 | g)",-0.777550569462953,0.756967681956605,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-first|cm0|ML","fitted:sd(g, coef = ""(Intercept)"")",0.476198922351036,NA,-255.017599846174,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","mu:(Intercept)",0.49550247049348,0.13683321249067,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","mu:x1",0.188353881382224,0.134460340316499,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","mu:x2",0.239241313911362,0.107774692772955,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","mu:x3",-0.290280459558049,0.104283064060396,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd(g, coef = ""(Intercept)""):(Intercept)",-0.783191193037713,0.544711407149719,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd(g, coef = ""(Intercept)""):z",0.498054663724602,1.01744517629015,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd(g, coef = ""x1""):(Intercept)",-1.1222733107566,0.797868854475933,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd(g, coef = ""x1""):z",-0.033120460513093,0.815412501671111,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g01",0.499675312639842,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g02",0.53946737336875,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g03",0.474791605808905,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g04",0.397059891499537,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g05",0.612953226992203,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g06",0.553423522567417,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g07",0.387046896278686,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g08",0.332054222334078,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g09",0.299805285811551,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g10",0.349457099342526,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g11",0.407331925287179,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g12",0.75191158933834,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g13",0.284875056821277,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g14",0.628810472694179,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g15",0.645077949112268,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g16",0.451147101416001,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g17",0.597495866871292,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g18",0.696449270201443,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g19",0.52586316819218,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g20",0.714466578391072,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g21",0.277691121491726,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g22",0.30756131982934,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g23",0.377286407229924,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g24",0.567740720663703,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g25",0.367772056691474,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g26",0.323680530071337,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g27",0.417869699030917,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g28",0.439770143261605,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g29",0.661766269012621,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g30",0.462818384182539,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g31",0.732949998626889,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g32",0.31551800429104,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g33",0.340644544006366,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g34",0.487074577525185,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g35",0.292244842265667,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g36",0.58242830807842,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g37",0.428680087486589,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g38",0.358497637580274,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g39",0.512602031767535,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g40",0.678886319716175,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g01",0.323609412042999,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g02",0.321964668613424,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g03",0.324710572853828,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g04",0.328594226868183,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g05",0.319241985021584,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g06",0.321418280550865,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g07",0.329152813525665,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g08",0.332524330766725,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g09",0.334791173000449,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g10",0.331396671884326,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g11",0.328036588156583,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g12",0.314933500719625,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g13",0.335930382509815,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g14",0.31870021747164,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g15",0.318159369324819,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g16",0.325815480635809,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g17",0.319784673537571,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g18",0.316542325713661,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g19",0.322511985496566,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g20",0.316005139603118,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g21",0.3365014401066,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g22",0.334223017801417,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g23",0.329712349740468,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g24",0.320872819732641,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g25",0.330272837126773,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g26",0.333089598319429,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g27",0.327479895782158,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g28",0.326369343623661,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g29",0.317619439020854,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g30",0.325262557577565,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g31",0.315468865120797,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g32",0.333655826786498,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g33",0.331960022497673,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g34",0.324159524872203,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g35",0.335360294022639,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g36",0.320328284585177,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g37",0.326924148138934,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g38",0.330834277301501,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g39",0.32306023277922,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g40",0.317080425002127,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","cor:mu:cor((Intercept),x1 | g)",-0.78752774846181,0.812045603466902,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","fitted:sd(g, coef = ""(Intercept)"")",0.477066160444451,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-z|cm0|ML","fitted:sd(g, coef = ""x1"")",0.32560147495589,NA,-255.016750808264,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","mu:(Intercept)",0.51344373837929,0.135439976425981,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","mu:x1",0.171058581165656,0.121185353043191,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","mu:x2",0.246300941880272,0.103521605690444,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","mu:x3",-0.291482975473053,0.103560243718819,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd(g, coef = ""x1""):(Intercept)",-1.33996830756195,0.908484690775673,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd(g, coef = ""x1""):z",-0.359499546390105,1.0426378881217,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g01",0.245491276208688,NA,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g02",0.232282380600281,NA,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g03",0.254711914679588,NA,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g04",0.289798043708743,NA,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g05",0.21182795632158,NA,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g06",0.228039284628905,NA,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g07",0.295190276515359,NA,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g08",0.329717226785641,NA,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g09",0.354950695987828,NA,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g10",0.317781376239966,NA,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g11",0.284504310673136,NA,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g12",0.182780764238779,NA,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g13",0.368282624084189,NA,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g14",0.207958500765932,NA,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g15",0.204159728450387,NA,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g16",0.264278879810743,NA,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g17",0.215769410310771,NA,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g18",0.193174716753884,NA,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g19",0.236604427281626,NA,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g20",0.189645999421507,NA,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g21",0.375135208809327,NA,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g22",0.348466821213122,NA,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g23",0.300682841864833,NA,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g24",0.223873697177013,NA,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g25",0.306277606631152,NA,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g26",0.335852230405495,NA,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g27",0.279307278115882,NA,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g28",0.269196281003566,NA,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g29",0.200430348206107,NA,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g30",0.259451304652667,NA,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g31",0.186181741073313,NA,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g32",0.342101387203764,NA,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g33",0.323694291111175,NA,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g34",0.250059099015114,NA,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g35",0.361555215339105,NA,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g36",0.219784202398571,NA,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g37",0.274205179611954,NA,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g38",0.311976472424974,NA,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g39",0.241006893698069,NA,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd:sd(g, coef = ""x1""):sd(g, coef = ""x1""):g40",0.196769092450001,NA,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","sd:mu:(1 + x1 | g):(Intercept)",0.485760771857452,0.185832765232946,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","cor:mu:cor((Intercept),x1 | g)",-0.99999994395711,0.00109355928487085,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q2|sd-last|cm0|ML","fitted:sd(g, coef = ""x1"")",0.267823924646819,NA,-255.179955883395,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","mu:(Intercept)",0.543527117675627,0.152404038059263,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","mu:x1",0.195149341618933,0.133666903603576,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","mu:x2",0.287208208222342,0.131553277864197,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","mu:x3",-0.285346781152569,0.105887474944511,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd(g, coef = ""(Intercept)""):(Intercept)",-0.569973816368834,0.386886248122873,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd(g, coef = ""(Intercept)""):z",0.172435881560611,0.607240978650385,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g01",0.583317416943218,NA,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g02",0.598999096519831,NA,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g03",0.573091712825995,NA,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g04",0.538692927702466,NA,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g05",0.626077658429715,NA,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g06",0.604319454031623,NA,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g07",0.533950338422358,NA,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g08",0.506358866935428,NA,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g09",0.488761274085365,NA,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g10",0.515393853543209,NA,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g11",0.543477641036932,NA,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g12",0.671972451018021,NA,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g13",0.48019316343483,NA,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g14",0.631638529877343,NA,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g15",0.637248793426478,NA,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g16",0.563045267927949,NA,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g17",0.620565744241334,NA,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g18",0.65438034324624,NA,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g19",0.593725578810836,NA,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g20",0.660192601386506,NA,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g21",0.475965599210068,NA,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g22",0.493102490509832,NA,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g23",0.529249502341379,NA,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g24",0.609687067381058,NA,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g25",0.524590051869267,NA,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g26",0.501900942929523,NA,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g27",0.548304852574948,NA,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g28",0.558088283504041,NA,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g29",0.642908887781687,NA,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g30",0.568046280680897,NA,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g31",0.666056484464834,NA,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g32",0.497482265963101,NA,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g33",0.510856386576133,NA,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g34",0.578181958899812,NA,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g35",0.484458277220535,NA,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g36",0.615102356298237,NA,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g37",0.553174939788933,NA,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g38",0.51997162265198,NA,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g39",0.588498488532514,NA,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g40",0.648619255544144,NA,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:mu:(1 + x1 + x2 | g):x1",0.359440742034135,0.239159957592611,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","sd:mu:(1 + x1 + x2 | g):x2",0.341315799477993,0.197954651172353,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","cor:mu:cor((Intercept),x1 | g)",-0.700213639260432,0.571930789566767,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","cor:mu:cor((Intercept),x2 | g)",0.967084023735396,0.200588407940842,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","cor:mu:cor(x1,x2 | g)",-0.495499907965282,10580.544438088,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q3|sd-first|cm0|ML","fitted:sd(g, coef = ""(Intercept)"")",0.568491217714215,NA,-253.527678257891,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","mu:(Intercept)",0.550793587798477,0.153661057646015,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","mu:x1",0.202320881138297,0.135552900825563,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","mu:x2",0.290392142967776,0.132508739414543,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","mu:x3",-0.28671323407275,0.112337254057144,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd(g, coef = ""(Intercept)""):(Intercept)",-0.582035348165759,0.423066473409466,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd(g, coef = ""(Intercept)""):z",0.224526356592114,0.689366774668201,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g01",0.581737626948557,NA,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g02",0.602183399762467,NA,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g03",0.568494244435751,NA,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g04",0.524471969501591,NA,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g05",0.637868985480056,NA,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g06",0.60915711431227,NA,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g07",0.518467742154093,NA,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g08",0.483858630909967,NA,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g09",0.462079100958917,NA,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g10",0.495130380789552,NA,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g11",0.530545730096984,NA,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g12",0.699416410060296,NA,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g13",0.451559770591253,NA,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g14",0.645255964640665,NA,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g15",0.652728490304336,NA,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g16",0.55555235038141,NA,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g17",0.630566573474358,NA,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g18",0.675669310708082,NA,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g19",0.595289521257388,NA,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g20",0.683494044675838,NA,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g21",0.44639025213979,NA,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g22",0.46743030750295,NA,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g23",0.51253225202829,NA,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g24",0.616211589465306,NA,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g25",0.506664712211,NA,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g26",0.478319350656737,NA,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g27",0.536689829185023,NA,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g28",0.549192310552596,NA,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g29",0.66028755316077,NA,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g30",0.561986044021189,NA,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g31",0.691409394660476,NA,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g32",0.472843484846825,NA,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g33",0.489462059991133,NA,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g34",0.575077814466848,NA,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g35",0.456789155764474,NA,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g36",0.623347760487134,NA,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g37",0.542905081335772,NA,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g38",0.500864344797732,NA,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g39",0.588474564822997,NA,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:sd(g, coef = ""(Intercept)""):sd(g, coef = ""(Intercept)""):g40",0.667934155372567,NA,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:mu:(1 + x1 + x2 + x3 | g):x1",0.385757113617625,0.222857409414367,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:mu:(1 + x1 + x2 + x3 | g):x2",0.346669569829663,0.198325157859102,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","sd:mu:(1 + x1 + x2 + x3 | g):x3",0.16031865145015,0.219262513681744,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","cor:mu:cor((Intercept),x1 | g)",-0.599356087036905,0.559518042864072,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","cor:mu:cor((Intercept),x2 | g)",0.999990554567074,0.0037112253611773,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","cor:mu:cor((Intercept),x3 | g)",-0.0868802639220723,1697.62152976319,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","cor:mu:cor(x1,x2 | g)",-0.595914961636241,0.755044933052094,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","cor:mu:cor(x1,x3 | g)",0.849527451213041,432.190343026566,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","cor:mu:cor(x2,x3 | g)",-0.0826046533556894,6813.49187656132,-253.29093689867,0,TRUE,TRUE
+"binomial|corr|lab0|q4|sd-first|cm0|ML","fitted:sd(g, coef = ""(Intercept)"")",0.563708484472836,NA,-253.29093689867,0,TRUE,TRUE
+"poisson|corr|lab0|q2|sd-none|cm0|ML","mu:(Intercept)",0.436923572759936,0.0898288285152974,-712.443404013173,0,TRUE,TRUE
+"poisson|corr|lab0|q2|sd-none|cm0|ML","mu:x1",0.315369607003851,0.079792511720888,-712.443404013173,0,TRUE,TRUE
+"poisson|corr|lab0|q2|sd-none|cm0|ML","mu:x2",0.299851076164523,0.039868979301405,-712.443404013173,0,TRUE,TRUE
+"poisson|corr|lab0|q2|sd-none|cm0|ML","mu:x3",-0.155011480853813,0.0398435266809716,-712.443404013173,0,TRUE,TRUE
+"poisson|corr|lab0|q2|sd-none|cm0|ML","sd:mu:(1 + x1 | g):(Intercept)",0.485355292927611,0.0734142480610206,-712.443404013173,0,TRUE,TRUE
+"poisson|corr|lab0|q2|sd-none|cm0|ML","sd:mu:(1 + x1 | g):x1",0.40127440025814,0.0688878457053871,-712.443404013173,0,TRUE,TRUE
+"poisson|corr|lab0|q2|sd-none|cm0|ML","cor:mu:cor((Intercept),x1 | g)",0.592038135215188,0.168947175776523,-712.443404013173,0,TRUE,TRUE
+"nb2|corr|lab0|q2|sd-none|cm0|ML","mu:(Intercept)",0.336306599353064,0.0952727355080611,-699.829080732021,0,TRUE,TRUE
+"nb2|corr|lab0|q2|sd-none|cm0|ML","mu:x1",0.420508341452509,0.083091607233912,-699.829080732021,0,TRUE,TRUE
+"nb2|corr|lab0|q2|sd-none|cm0|ML","mu:x2",0.265355031597246,0.0637084598315007,-699.829080732021,0,TRUE,TRUE
+"nb2|corr|lab0|q2|sd-none|cm0|ML","mu:x3",-0.300045688847499,0.0630159612980301,-699.829080732021,0,TRUE,TRUE
+"nb2|corr|lab0|q2|sd-none|cm0|ML","sigma:(Intercept)",-0.184034533932028,0.0862903164579004,-699.829080732021,0,TRUE,TRUE
+"nb2|corr|lab0|q2|sd-none|cm0|ML","sigma",0.831907074308245,0.0717855247056245,-699.829080732021,0,TRUE,TRUE
+"nb2|corr|lab0|q2|sd-none|cm0|ML","sd:mu:(1 + x1 | g):(Intercept)",0.408191188482276,0.0970571754806211,-699.829080732021,0,TRUE,TRUE
+"nb2|corr|lab0|q2|sd-none|cm0|ML","sd:mu:(1 + x1 | g):x1",0.290058253162401,0.101720852970538,-699.829080732021,0,TRUE,TRUE
+"nb2|corr|lab0|q2|sd-none|cm0|ML","cor:mu:cor((Intercept),x1 | g)",0.347480625327617,0.455362742653172,-699.829080732021,0,TRUE,TRUE

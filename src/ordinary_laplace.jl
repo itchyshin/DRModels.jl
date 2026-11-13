@@ -41,6 +41,58 @@
 _scalar_laplace_requested(marginal) =
     marginal isa Symbol && Symbol(uppercase(String(marginal))) === :LAPLACE
 
+# Kind of a random-effect term's left-hand side without `_re_kind`'s errors on three or more coefficients:
+# `:intercept`, `:slope` (`0 + x`), `:corr` (`1 + x [+ z [+ w]]`) or `:other`.
+function _laplace_lhs_kind(lhs)
+    lhs isa ConstantTerm && return lhs.n == 1 ? :intercept : :other
+    (lhs isa FunctionTerm && lhs.f === (+)) || return :other
+    consts = filter(t -> t isa ConstantTerm, lhs.args)
+    vars = filter(t -> t isa Term, lhs.args)
+    length(consts) + length(vars) == length(lhs.args) && length(consts) == 1 && !isempty(vars) || return :other
+    consts[1].n == 1 && return :corr
+    return length(vars) == 1 ? :slope : :other
+end
+
+# `marginal = :Laplace` on one ordinary correlated block `(1 + x | g)` (Poisson, NegBinomial2, Binomial; q = 2
+# for the counts, q = 2 to 4 for Binomial), constant SDs. The counts reuse the identity-kernel Laplace of
+# `ordinary_q2_sd.jl`; Binomial reuses the SD-regression group integral with a single adaptive node, which
+# is the Laplace approximation. A Poisson mean `offset(...)` is applied (it agrees with drmTMB 0.8.1, pinned in
+# `test_laplace_parity.jl`); NegBinomial2 and Binomial refuse offsets here. `meta_V`, `zi`/`hu` and a `sigma` formula stay refused.
+function _ordinary_corr_laplace(f::DrmFormula, fam, fixed_mu, lhs, group::Symbol;
+                                data, tree, K, A, coords, g_tol, se)
+    (tree === nothing && K === nothing && A === nothing && coords === nothing) ||
+        _ordinary_laplace_reject(fam, "structured covariance inputs")
+    if fam isa Binomial
+        fixed_mu, off = _extract_offset(fixed_mu)
+        off === nothing || _refuse_offset_route(fam, "`marginal = :Laplace`")
+        vars = [t.sym for t in lhs.args if t isa Term]
+        any(t -> t isa ConstantTerm && t.n == 1, lhs.args) && 2 <= length(vars) + 1 <= 4 ||
+            _ordinary_laplace_reject(fam, "`$lhs` (up to four coefficients `(1 + x1 + x2 + x3 | g)` are covered)")
+        s, ntr = _binomial_response(f, data)
+        _, Xμ, nmμ = _design(f.response, fixed_mu, data)
+        gidx, G = _group_index(getproperty(data, group); col = group)
+        n = length(s)
+        Zre = ones(n, length(vars) + 1)
+        for (j, v) in enumerate(vars)
+            x = getproperty(data, v)
+            x isa AbstractVector{<:Real} && all(isfinite, x) || _ordinary_laplace_reject(fam,
+                "a non-numeric or non-finite random-slope predictor `$v`")
+            Zre[:, j + 1] = Float64.(x)
+            _binomial_check_slope_identifiable(Float64.(x), gidx, G, group)
+        end
+        members = [:intercept; vars]
+        Zgs = [ones(G, 1) for _ in members]
+        nmsds = [["$(group):log_sd_$m"] for m in members]
+        blocks = Symbol[Symbol("sdconst_", m) for m in members]
+        fit = _fit_binomial_sd_regression(fam, s, ntr, Xμ, Zgs, nmsds, gidx, G, nmμ, group, g_tol, blocks;
+                                          nq = 1, Zre = Zre, correlated = true)
+        return _withformula(_withmarginal(fit, :Laplace), f)
+    end
+    block = _ordinary_q2_block(Dict(f.forms)[:mu])
+    block === nothing && _ordinary_laplace_reject(fam, "`$lhs` (only the two-coefficient block `(1 + x | g)` is covered)")
+    return _withmarginal(_drm_count_ordinary_q2_sd(f, fam, block; data, tree, K, A, Ainv = nothing, coords, g_tol, se, plain = true), :Laplace)
+end
+
 function _ordinary_laplace_reject(fam, what)
     throw(ArgumentError(
         "marginal = :Laplace is not available for $(nameof(typeof(fam)))() with $what. " *
@@ -99,12 +151,28 @@ function _drm_ordinary_laplace(f::DrmFormula, fam; data, tree = nothing,
         _refuse_offset_route(fam, "`marginal = :Laplace`")
     mv === nothing || _ordinary_laplace_reject(fam, "a `meta_V` marker")
     st === nothing || _ordinary_laplace_reject(fam, "a phylogenetic/structured random effect")
+    # Independent intercept-plus-slope terms already take the dense TMB-convention Laplace by default.
+    if length(re) > 1 && _has_indep_slopes(re) && !(fam isa Binomial && fam.link !== :logit)
+        return drm(f, fam; data = data, tree = tree, K = K, A = A, coords = coords,
+                   g_tol = g_tol, se = se, method = method)
+    end
     length(re) == 1 || _ordinary_laplace_reject(fam,
         isempty(re) ? "no random effect (fixed-effects-only)" : "crossed/multiple random effects")
     # Render the term as the user wrote it: a FunctionTerm such as `1 + x`
     # prints as `:(1 + x)`, so show its original expression instead.
     lhs = re[1][1]
     lhs_text = hasproperty(lhs, :exorig) ? string(lhs.exorig) : string(lhs)
+    # A single independent slope `(0 + x | g)` already takes the dense TMB-convention Laplace route
+    # (`indep_slopes_laplace.jl`) by default, so the explicit keyword is the same fit.
+    if _laplace_lhs_kind(lhs) === :slope && haskey(rhs, :mu) && !(fam isa Binomial && fam.link !== :logit)
+        return drm(f, fam; data = data, tree = tree, K = K, A = A, coords = coords,
+                   g_tol = g_tol, se = se, method = method)
+    end
+    # A correlated block `(1 + x | g)` with constant SDs: the same model as `sd(.) ~ 1` on every coefficient,
+    # fitted with the group integral of the SD-regression routes (see `_ordinary_corr_laplace`).
+    if _laplace_lhs_kind(lhs) === :corr && fam isa Union{Poisson,NegBinomial2,Binomial} && re[1][2] isa Symbol
+        return _ordinary_corr_laplace(f, fam, fixed_mu, lhs, re[1][2]; data, tree, K, A, coords, g_tol, se)
+    end
     lhs isa ConstantTerm && lhs.n == 1 ||
         _ordinary_laplace_reject(fam, "`($lhs_text | $(re[1][2]))` (only `(1 | g)` is covered)")
     grp = re[1][2]
