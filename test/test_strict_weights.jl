@@ -157,6 +157,26 @@ const _SW_LISTWISE_LABELS = ("Gaussian", "LogNormal", "Gamma", "Student", "Poiss
         @test !isempty(s)
     end
 
+    # The two testsets above only check that a bootstrap returns something. They would still pass if the
+    # refits silently dropped the weights (the replicates would then be unweighted fits). This pins what the
+    # bootstrap passes to every refit: the weights, and the right vector for the data the refit gets.
+    @testset "$lab: bootstrap refits are weighted, with the vector that fits the refit data" for lab in _SW_BOOT_LABELS
+        (group, _, fam, f, cols, blank) = only(c for c in _SW_CASES if c[2] == lab)
+        d, keep = _sw_build(cols, blank, :resp)
+        fit = _sw_quiet(() -> drm(f, fam; data = d, weights = _SW_W))
+        kw = DRModels._bootstrap_refit_kwargs(fit; data = d)        # data with every row: the input weights
+        @test haskey(kw, :weights)
+        @test kw.weights == _SW_W
+        unweighted = _sw_quiet(() -> drm(f, fam; data = d))
+        @test !haskey(DRModels._bootstrap_refit_kwargs(unweighted; data = d), :weights)
+        dp, keepp = _sw_build(cols, blank, :pred)
+        fitp = _sw_quiet(() -> drm(f, fam; data = dp, weights = _SW_W))
+        dl = _sw_cut(dp, keepp); dl = merge(dl, (x = Float64.(dl.x),))
+        kwl = DRModels._bootstrap_refit_kwargs(fitp; data = dl)     # data already cut to the kept rows: the cut weights
+        @test haskey(kwl, :weights)
+        @test kwl.weights == _SW_W[keepp]
+    end
+
     @testset "no missing value: the two weight vectors are the same" begin
         d, _ = _sw_build((y = _SW.yg,), [:y], :none)
         fit = _sw_quiet(() -> drm(bf(@formula(y ~ 1 + x), @formula(sigma ~ 1 + x)), Gaussian(); data = d, weights = _SW_W))
