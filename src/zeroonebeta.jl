@@ -48,6 +48,23 @@ fit_phy = drm(bf(@formula(y ~ x + phylo(1 | species)), @formula(sigma ~ 1),
 """
 struct ZeroOneBeta end
 
+# `marginal` on `ZeroOneBeta`: `:LA` (the default, any case) keeps every route as it was; `:Laplace` is admitted
+# for exactly one ordinary random intercept `(1 | g)` on the mean (fixed-effect `sigma`, `zoi` and `coi` formulas
+# may be present) and is fitted as the adaptive quadrature at one node, which is the Laplace approximation drmTMB
+# uses. Returns `true` for `:Laplace`; anything else is refused by name.
+function _zeroonebeta_marginal(marginal::Symbol)
+    t = Symbol(uppercase(String(marginal)))
+    t === :LA && return false
+    t === :LAPLACE && return true
+    throw(ArgumentError(
+        "drm (ZeroOneBeta): `marginal = :$marginal` is not available for ZeroOneBeta(). " *
+        "Use the default `marginal = :LA` or `marginal = :Laplace` (one random intercept `(1 | g)`)."))
+end
+
+_zeroonebeta_laplace_reject(what) = throw(ArgumentError(
+    "marginal = :Laplace is not available for ZeroOneBeta() with $what. This route covers exactly one " *
+    "ordinary random intercept `(1 | g)` on the mean. Omit `marginal` (the default `:LA`) for other models."))
+
 # FX3b: `se = false` is recorded on the fit (`DrmFit.uncertainty`), so
 # `convergence_status` does not read the skipped (NaN) covariance as a failure.
 @drm_entry function drm(f::DrmFormula, fam::ZeroOneBeta; se::Bool = true, kwargs...)
@@ -56,11 +73,14 @@ end
 
 function _drm_zeroonebeta_fit(f::DrmFormula, fam::ZeroOneBeta; data, tree = nothing, K = nothing,
              A = nothing, coords = nothing, g_tol::Real = 1e-8, se::Bool = true, ids = nothing,
-             nAGQ::Union{Nothing,Int} = nothing)
+             nAGQ::Union{Nothing,Int} = nothing, marginal::Symbol = :LA)
+    laplace = _zeroonebeta_marginal(marginal)
     _drm_entry_guard(f, fam, data; tree = tree, K = K, A = A, coords = coords)   # #1027 #1022 #1010
     missing_fit = _fit_observed_response_rows(f, data) do data_observed
-        drm(f, fam; data = data_observed, tree = tree, K = K, A = A,
-            coords = coords, g_tol = g_tol, se = se, nAGQ = nAGQ, ids = ids)
+        laplace ? drm(f, fam; data = data_observed, tree = tree, K = K, A = A,
+                      coords = coords, g_tol = g_tol, se = se, nAGQ = nAGQ, ids = ids, marginal = :Laplace) :
+                  drm(f, fam; data = data_observed, tree = tree, K = K, A = A,
+                      coords = coords, g_tol = g_tol, se = se, nAGQ = nAGQ, ids = ids)
     end
     missing_fit !== nothing && return missing_fit
     A = _resolve_relatedness_labels(f, data, A, ids)   # #957: match `A` by label
@@ -73,6 +93,15 @@ function _drm_zeroonebeta_fit(f::DrmFormula, fam::ZeroOneBeta; data, tree = noth
     mv === nothing ||
         error("ZeroOneBeta() does not support meta_V markers")
     sd_targets = _sd_target_parts(f)
+    if laplace
+        isempty(sd_targets) || _zeroonebeta_laplace_reject("an `sd(group) ~ ...` formula")
+        offset_term === nothing || _zeroonebeta_laplace_reject("an `offset(...)`")
+        st === nothing || _zeroonebeta_laplace_reject("a phylogenetic/structured random effect")
+        nAGQ === nothing || _zeroonebeta_laplace_reject("`nAGQ`")
+        length(re) == 1 || _zeroonebeta_laplace_reject(isempty(re) ? "no random effect (there is nothing to integrate)" :
+                                                       "crossed or multiple random effects")
+        _re_kind(re[1][1])[1] === :intercept || _zeroonebeta_laplace_reject("a random slope or correlated block")
+    end
     if !isempty(sd_targets)
         nodes = nAGQ === nothing ? _SD_IID_AGHQ_K : nAGQ
         nodes >= 1 || throw(ArgumentError("nAGQ must be ≥ 1; got $nodes"))
@@ -125,6 +154,8 @@ function _drm_zeroonebeta_fit(f::DrmFormula, fam::ZeroOneBeta; data, tree = noth
         rk === :intercept ||
             error("ZeroOneBeta() supports `(1 | g)` on the mean, not `(0 + x | g)` or `(1 + x | g)`")
         gidx, G = _group_index(getproperty(data, grp); col = grp)
+        laplace && return _withformula(_withmarginal(
+            _fit_zeroonebeta_ranef(fam, y, Xμ, Xσ, Xz, Xc, gidx, G, nmμ, nmσ, nmz, nmc, grp, g_tol; nq = 1), :Laplace), f)
         return _withformula(
             _fit_zeroonebeta_ranef(fam, y, Xμ, Xσ, Xz, Xc, gidx, G, nmμ, nmσ, nmz, nmc, grp, g_tol), f)
     end

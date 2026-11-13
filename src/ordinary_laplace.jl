@@ -194,10 +194,17 @@ function _drm_ordinary_laplace(f::DrmFormula, fam; data, tree = nothing,
                                                 se = se, offset = off)
         else
             _, Xσ, nmσ = _design(f.response, get(rhs, :sigma, ConstantTerm(1)), data)
-            (size(Xσ, 2) == 1 && all(==(1.0), @view Xσ[:, 1])) ||
-                _ordinary_laplace_reject(fam, "a non-constant `sigma` formula")
-            fit = _fit_scale_ordinary_laplace(fam, y, Xμ, gidx, G, nmμ, nmσ, grp, g_tol; se = se,
-                                              offset = _offset_for_fit(fam, offset_term, data, length(y)))
+            if size(Xσ, 2) == 1 && all(==(1.0), @view Xσ[:, 1])
+                fit = _fit_scale_ordinary_laplace(fam, y, Xμ, gidx, G, nmμ, nmσ, grp, g_tol; se = se,
+                                                  offset = _offset_for_fit(fam, offset_term, data, length(y)))
+            else
+                # Fixed-effect covariates on `sigma`: the sparse kernel holds one dispersion, so the group
+                # integral is the existing adaptive quadrature at one node, which is the Laplace approximation.
+                offset_term === nothing || _refuse_offset_route(fam, "`marginal = :Laplace` with a `sigma` formula")
+                fit = fam isa NegBinomial2 ? _fit_negbin2_ranef(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol; K = 1) :
+                      fam isa Gamma ? _fit_gamma_ranef(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol; K = 1) :
+                      _fit_beta_ranef(fam, y, Xμ, Xσ, gidx, G, nmμ, nmσ, grp, g_tol; K = 1)
+            end
         end
     end
     return _withformula(_withmarginal(fit, :Laplace), f)
