@@ -402,8 +402,10 @@ The weights multiply each row's log-likelihood (drmTMB semantics), so
 likelihood. `nobs(fit)` still counts rows, zero-weight rows included.
 
 Prior weights are implemented on the fixed-effect ML routes of the univariate
-families. Any other route refuses `weights =` with an `ArgumentError`
-(#931; the family-by-family rollout to random-effect routes is tracked there).
+families and on the bivariate Gaussian with a `(1 | p | g)` random-intercept pair
+(ML and REML; see `test/test_biv_re_weights.jl`). Any other route refuses `weights =`
+with an `ArgumentError` (#931; the family-by-family rollout to random-effect routes is
+tracked there).
 
 Before #931 step (b), this accessor returned `ones(nobs(fit))` for every fit,
 which looked like weights had been used.
@@ -462,6 +464,14 @@ function update(fit::DrmFit, formula, args...; data, kwargs...)
             "call `drm(formula, family; data = ...)` to fit a different family " *
             "(got family = $(repr(kwargs[:family])))."))
     end
+    # A weighted bivariate `(1 | p | g)` fit must not be refitted unweighted by accident: `update`
+    # takes new `data`, so the caller says which weights go with it (`weights = weights(fit)` for
+    # the same rows, new weights for new rows, or `weights = nothing` on purpose).
+    _is_biv_ordinary_re_fit(fit) && weights(fit) !== nothing && !haskey(kwargs, :weights) &&
+        throw(ArgumentError(
+            "update: the fit was made with prior `weights`; pass `weights = weights(fit)` (same rows), " *
+            "new weights for the new `data`, or `weights = nothing` to refit unweighted on purpose. " *
+            "It is never refitted unweighted silently."))
     stored = _update_stored_options(fit)
     # A caller who changes the estimator does not want the old MAP penalty.
     # Passing `penalty` explicitly still overrides that drop.

@@ -133,9 +133,14 @@ and group SD 0.2 with correlation +0.99 or -0.99); the default result is kept
 unless another start converged with a log-likelihood higher by more than 1e-6.
 This is not a global search. `bootstrap_*` refits use the same three starts.
 `simulate(fit; data)` and `bootstrap_*` draw fresh group effects from
-`Sigma_g` and need the complete fitting `data` (no rows dropped). Random effects
-on `sigma1`/`sigma2`, `weights`, `V`, and incomplete response rows
-(`miss_control(response = "include")`) are refused.
+`Sigma_g` and need the complete fitting `data` (no rows dropped). `weights` (one per
+row of `data`) multiply each row's whole log density, ML and REML, as in drmTMB; rows
+with a missing response drop with their weights, so the vector must have one entry per
+row of `data`, missing rows included (a vector already cut to the kept rows is refused).
+`confint(fit; method = :profile)` is refused on a REML fit of this route, because the
+stored objective is the ML likelihood; use `method = :wald`, the bootstrap, or an ML fit.
+Random effects on `sigma1`/`sigma2`,
+`V`, and incomplete response rows (`miss_control(response = "include")`) are refused.
 
 `q4_f_reltol` (default `1e-7`) is the relative objective change at which the q=4 ML
 optimiser stops (it ignores `q4_g_tol` near a flat ridge). The default can stop up to
