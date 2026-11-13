@@ -172,11 +172,12 @@ end
 
 # Correlation near the boundary. On these two datasets drmTMB 0.8.1 converges (REML log-likelihood -235.221 and
 # -443.4403, eta_cor -10 and 10.91) while this route does not reach a usable optimum: the correlation runs to
-# the edge, the objective is almost flat there, and the standard errors are not finite. The ML route on the
-# same data fails too (it is the shared engine, not this slice). The contract tested here is honesty, not
-# agreement: the fit is not reported as converged, no failure sentinel is shown as a log-likelihood, and the
-# standard errors are not finite numbers. If the optimiser is later fixed, the first two assertions of each
-# branch still hold.
+# the edge and the objective is almost flat there. The ML route on the same data fails too (it is the shared
+# engine, not this slice). The contract tested here is honesty, not agreement: the fit is not reported as
+# converged, no failure sentinel is shown as a log-likelihood, and the displayed standard errors are withheld
+# (NaN) rather than made up. The outcome differs by Julia version (1.13.3: a finite log-likelihood on b4;
+# 1.10.12: the failure value on both), so each branch states only what must hold in every case. If the
+# optimiser is later fixed, the converged branch takes over.
 @testset "REML (1 | p | g) near the correlation boundary: an honest failure, never a sentinel logLik" begin
     for case in ("b2", "b4")
         raw, hdr = readdlm(joinpath(_GMC_DIR, "data_$(case).csv"), ','; header = true)
@@ -195,7 +196,7 @@ end
             @test isfinite(ll) && all(isfinite, stderror(fit))   # a real fit is allowed
         else
             @test string(convergence_status(fit)) != "converged"
-            @test !all(isfinite, stderror(fit))                  # Inf, never a made-up finite SE
+            @test all(isnan, coeftable(fit).cols[2])             # Wald SEs are withheld (NaN) on a failed fit
         end
         @test !(is_converged(fit) && isnan(ll))
     end
