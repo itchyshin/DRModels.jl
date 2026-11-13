@@ -549,31 +549,45 @@ it is preferred over an approximated count.
 
 # Coverage by family
 
-Reports `Optim.iterations(res)` from the LBFGS run that produced `θ̂` for:
+Reports `Optim.iterations(res)` from the **accepted final** outer `Optim.optimize`
+result that produced `θ̂`, not the sum of earlier stages, for:
 `Gaussian` (both the plain ML fixed-effects fit and the Cox–Reid REML
 fixed-effects fit), `Student`, `SkewNormal`, `Poisson`, `NegBinomial2`,
 `TruncatedNegBinomial2`, `Beta`, `BetaBinomial`, `Binomial`, `Gamma`,
 `LogNormal`, `ZeroOneBeta`, `Tweedie`, `CumulativeLogit` — for their fixed-effects
-fit and, where the family has one, its scalar `(1 | g)` random-intercept,
-correlated `(1 + x | g)`, zero-inflated (`zi`), hurdle (`hu`), and (Poisson only)
-AGHQ / coordinate-spatial-range variants. The bivariate residual routes
-(`Gaussian`/`Gaussian`, `Student`/`Student`, `LogNormal`/`LogNormal`) report counts
-the same way; `LogNormal`'s bivariate fit borrows the Gaussian-on-log-y
-optimiser run wholesale (only the reported likelihood is Jacobian-shifted), so
-it carries that run's iteration count rather than re-deriving one.
-`fit_mixed_family`'s cross-family latent-`rho` route reports its own optimiser
-run too, but through the returned `NamedTuple`'s `iterations` field — that route
-does not produce a `DrmFit`, so `niterations` does not apply to it.
+fit and, where the family has one *and the fitter attaches a count*, its scalar
+`(1 | g)` random-intercept, correlated `(1 + x | g)`, zero-inflated (`zi`),
+hurdle (`hu`), and (Poisson only) AGHQ / coordinate-spatial-range variants.
+The default method on counted `_ctl_optimize` routes is LBFGS. It is not the
+only method: `DRMControl(optimizer = :bfgs)` selects BFGS on qualified routes
+(#1136); the fixed-effect `Beta` route may replace the initial result with an
+accepted Newton polish; and two counted Laplace fitters start at BFGS and may
+restart on LBFGS (Gamma/Student independent slopes, Gaussian random-slope mean
+plus sigma random intercept). `niterations` reports the accepted final stage
+only, which is not LBFGS-origin on those last two routes. Some structured
+Gamma/Beta/sparse-Laplace SD routes wrap LBFGS in `Fminbox`; the attached
+count is still that box-constrained run. The bivariate
+residual routes (`Gaussian`/`Gaussian`, `Student`/`Student`,
+`LogNormal`/`LogNormal`) report counts the same way; `LogNormal`'s bivariate
+fit borrows the Gaussian-on-log-y optimiser run wholesale (only the reported
+likelihood is Jacobian-shifted), so it carries that run's iteration count
+rather than re-deriving one. `fit_mixed_family`'s cross-family latent-`rho`
+route reports its own optimiser run too, but through the returned
+`NamedTuple`'s `iterations` field — that route does not produce a `DrmFit`, so
+`niterations` does not apply to it.
 
-Returns `-1` (no single outer LBFGS call to attribute the count to, or no recorded
-count): Gaussian's `meta_V`, `phylo`/`relmat`/`animal`/`spatial`, and
-multi-random-effect routes (the Cox–Reid REML *random-intercept* route, e.g.
+Returns `-1` (no single outer counted `Optim.optimize` attached, or no recorded
+count): Gaussian's `meta_V`, `phylo`/`relmat`/`animal`/`spatial`,
+multi-random-effect routes, and the Gaussian mean `(1 | g)` Woodbury route
+(that last still runs LBFGS or selected BFGS, but does not attach
+`Optim.iterations`; when `control` was supplied, `control_info(fit)` records
+the method and stages). The Cox–Reid REML *random-intercept* route, e.g.
 Poisson `(1 | g)` with `method = :REML`, also stays `-1` — its reported `θ̂`
-comes from a secondary restricted refit, not the counted LBFGS run, so
-attributing that run's count to it would be a mismatch, not a full count); the
-bivariate Gaussian `phylo`/structured (q2/q4) sparse-Laplace routes; and every
+comes from a secondary restricted refit, not the counted run, so
+attributing that run's count to it would be a mismatch, not a full count. The
+bivariate Gaussian `phylo`/structured (q2/q4) sparse-Laplace routes, and every
 family's `phylo`/`relmat`/`animal`/coordinate-spatial random-effect routes other
-than Poisson's spatial-range fit above. These share the sparse augmented-state
+than Poisson's spatial-range fit above, share the sparse augmented-state
 Laplace engine (`src/sparse_*.jl`, `src/*_phylo.jl`) rather than a single
 top-level `Optim.optimize` call, so there is no one iteration count to report
 honestly; do not infer non-iteration (e.g. "closed form") from `-1` on these
