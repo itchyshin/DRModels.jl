@@ -17,7 +17,7 @@ a **known correlation matrix** `C`:
 | Marker | Correlation `C` | Source |
 |---|---|---|
 | `phylo(1 \| species)` | phylogenetic (Brownian) | a tree |
-| `spatial(1 \| site)` | `exp(-d / ρ)` | coordinates + estimated range `ρ` |
+| `spatial(1 \| site)` | `exp(-d / ρ)` | coordinates + range `ρ` fixed at the median distance |
 | `animal(1 \| id)` | additive-genetic | a pedigree `A` |
 | `relmat(1 \| id)` | arbitrary supplied | a matrix `K` |
 

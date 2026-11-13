@@ -18,9 +18,9 @@ using Test, Random, LinearAlgebra
     @test fit.converged
 
     # Independent small-model oracle: the marginal bootstrap draw must use the
-    # fitted coordinate-spatial range, not an identity matrix or a fixed K.
-    ρfit = exp(only(coef(fit, :range)))
-    Cfit = exp.(-D ./ ρfit) + 1e-8I
+    # coordinate-spatial kernel (drmTMB's fixed median-distance range), not an identity matrix.
+    Dpos = [D[i, j] for i in 1:G for j in (i + 1):G if D[i, j] > 0]
+    Cfit = exp.(-D ./ median(Dpos)) + 1e-6I
     seed = 699
     oracle_rng = MersenneTwister(seed)
     ustar = only(values(re_sd(fit))) .* (cholesky(Symmetric(Cfit)).L * randn(oracle_rng, G))

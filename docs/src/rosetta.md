@@ -95,7 +95,7 @@ fit = drm(
 | Relatedness matrix | `y ~ x + relmat(1 \| id)`, `K = K` | `@formula(y ~ x + relmat(1 \| id))`, `K = K` |
 | Animal model | `y ~ x + animal(1 \| id)`, `A = A` | `@formula(y ~ x + animal(1 \| id))`, `A = A` |
 | Phylogenetic | `y ~ x + phylo(1 \| species)`, `tree = tree` | `@formula(y ~ x + phylo(1 \| species))`, `tree = tree` |
-| Spatial | `y ~ x + spatial(1 \| site)`, `coords = xy` (range fixed at the median pairwise distance) | `@formula(y ~ x + spatial(1 \| site))`, `coords = xy` (Gaussian mean: range estimated, a different model; every non-Gaussian route fixes it as drmTMB does) |
+| Spatial | `y ~ x + spatial(1 \| site)`, `coords = xy` (range fixed at the median pairwise distance) | `@formula(y ~ x + spatial(1 \| site))`, `coords = xy` (range fixed at the median pairwise distance, as drmTMB, on every route) |
 | Meta-analysis (univariate) | `gaussian()` + `meta_V(v)` | `Gaussian()` + `meta_V(v)` |
 | Meta-analysis (bivariate, known sampling covariance) | `meta_V(V = meta_vcov_bivariate(...))` **inside** `mu1` | `meta_vcov_bivariate(...)` passed as `drm(...; V = V)` — see [meta-analysis](model-guides/meta-analysis.md) |
 

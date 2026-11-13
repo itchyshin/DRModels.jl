@@ -979,7 +979,7 @@ end
 # `coords` is stated exactly once. The range is `spatial_range` when supplied,
 # else drmTMB's native kernel (median positive pairwise distance, 1e-6 ridge, as
 # `_gaussian_spatial_sd_kernel`). An explicit `spatial_range`, and the retired
-# mean-distance rule behind `legacy_mean_range = true` (Binomial only), use a 1e-8
+# mean-distance rule behind `legacy_mean_range = true` (no fitting route uses it), use a 1e-8
 # ridge to keep the kernel positive definite at near-coincident sites. Row k of `coords` is the k-th
 # level of `grp` in `_group_index` order (stable FIRST-SEEN order in the data),
 # which is the same contract the q=4 route has always had.
