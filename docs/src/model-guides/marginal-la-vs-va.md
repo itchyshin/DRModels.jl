@@ -65,7 +65,7 @@ does not establish a general accuracy ranking. Use `:Laplace` when matching
 drmTMB's integration rule.
 
 `Binomial(link = :probit)` and `Binomial(link = :cloglog)` accept `marginal = :Laplace` for one `(1 | g)` or one
-correlated block `(1 + x | g)`; the default `:LA` log-likelihood sits 0.002 to 0.03 above drmTMB's there.
+correlated block `(1 + x | g)`; the default `:LA` log-likelihood sits 0.008 to 0.03 above drmTMB's there.
 
 The gap used to be larger. Before version 0.7.2, `:LA` integrated an ordinary
 `(1 | g)` on a fixed 32-node grid on the prior scale. On ten test datasets with a
