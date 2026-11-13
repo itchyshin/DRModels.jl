@@ -98,4 +98,9 @@ end
     w1 = exp(-2 * coef(f1, :sigma)[1])
     @test vcov(f1)[1:2, 1:2] ≈ inv(w1 .* (X' * X)) rtol = 1e-10
     @test maximum(abs.(vcov(f1)[1:2, 3])) < 1e-12
+    # ... and it is the plug-in covariance bit for bit: the mean block is the formula without the
+    # extra term and the cross block is exactly zero, not rounding noise
+    wv = exp.(-2 .* fill(coef(f1, :sigma)[1], 24))
+    @test vcov(f1)[1:2, 1:2] == DRModels._vcov_from_gram(X' * (wv .* X); context = "Gaussian REML (mean WLS)")
+    @test all(iszero, vcov(f1)[1:2, 3])
 end

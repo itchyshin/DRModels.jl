@@ -2433,9 +2433,15 @@ function _fit_fixed_gaussian_reml(fam::Gaussian, y, Xμ, Xσ, nmμ, nmσ, g_tol)
     Vμ = _vcov_from_gram(Xμ' * (w .* Xμ); context = "Gaussian REML (mean WLS)")
     # J is formed before the Hessian call: the closures above share the name `w`, and the
     # Hessian leaves dual numbers in it.
-    J = Matrix{Float64}(undef, pμ, pσ)
-    for k in 1:pσ
-        J[:, k] = -2 .* (Vμ * (Xμ' * (w .* Xσ[:, k] .* r̂)))
+    # A constant sigma (one constant column) has J exactly zero: at the GLS optimum Xμ' (w .* r) = 0,
+    # so skip the product and keep the plug-in covariance bit for bit (rounding would otherwise
+    # leave entries near 1e-15 in the cross block).
+    const_sigma = pσ == 1 && all(==(Xσ[1, 1]), @view Xσ[:, 1])
+    J = zeros(Float64, pμ, pσ)
+    if !const_sigma
+        for k in 1:pσ
+            J[:, k] = -2 .* (Vμ * (Xμ' * (w .* Xσ[:, k] .* r̂)))
+        end
     end
     Hσ = ForwardDiff.hessian(nll_reml, βσ̂)
     Vσ = _vcov_from_hessian(Hσ; context = "Gaussian REML (scale)")
