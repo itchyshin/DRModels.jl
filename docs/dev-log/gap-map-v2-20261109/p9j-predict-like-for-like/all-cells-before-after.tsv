@@ -1,0 +1,26 @@
+cell	class_old	class_new	pred_agree_old	pred_agree_new	flags_old	flags_new
+C|poisson|(1|g)+offset	both-fit	both-fit	False	True	entry:simulate:Julia-fails	entry:simulate:Julia-fails
+D|binomial01|(1|g)|link=probit	both-fit	both-fit	False	True	entry:simulate:Julia-fails	entry:simulate:Julia-fails
+D|binomial-cbind|(1+x1|g)|link=probit	both-fit	both-fit	False	True	predict-mean-differs;entry:simulate:Julia-fails	entry:simulate:Julia-fails
+D|binomial-cbind|(1+x1|g)|link=cloglog	both-fit	both-fit	False	True	predict-mean-differs;entry:simulate:Julia-fails	entry:simulate:Julia-fails
+H|meta|response with NA	both-fit	both-fit	False	True	predict-mean-differs	
+I|cumul|mu=x1+(1|g)	both-fit	both-fit	False	True	entry:simulate:Julia-fails	entry:simulate:Julia-fails
+I|cumul|mu=x1+(1|g)+(1|g2)	both-fit	both-fit	False	True	R:is_converged=FALSE;Julia:se_nonfinite;entry:simulate:Julia-fails	R:is_converged=FALSE;Julia:se_nonfinite;entry:simulate:Julia-fails
+J|poisson|(1|g)+(1|g2)+(1|h)	both-fit	both-fit	False	True	entry:simulate:Julia-fails	entry:simulate:Julia-fails
+J|gamma|mu=(1|g)|sigma=x1	both-fit	both-fit	False	True	entry:simulate:Julia-fails	entry:simulate:Julia-fails
+J|beta|mu=(1|g)|sigma=x1	both-fit	both-fit	False	True	entry:simulate:Julia-fails	entry:simulate:Julia-fails
+J|zob|mu=(1|g)|sigma=x1	both-fit	both-fit	False	True	entry:simulate:Julia-fails	entry:simulate:Julia-fails
+J|gaussian|group=unbalanced with singletons gu	both-fit	both-fit	False	True	entry:simulate:Julia-fails	entry:simulate:Julia-fails
+J|poisson|group=numeric code gn	both-fit	both-fit	False	True	entry:simulate:Julia-fails	entry:simulate:Julia-fails
+J|gaussian|slopes on two different groups	both-fit	both-fit	False	True	entry:simulate:Julia-fails	entry:simulate:Julia-fails
+K|gaussian|NA in response	both-fit	both-fit	False	True	predict-mean-differs	
+K|gaussian|NA in mu predictor	both-fit	both-fit	None	None	entry:predict:Julia-fails	
+K|gaussian|NA in sigma predictor	both-fit	both-fit	False	True	predict-mean-differs	
+K|poisson|NA in response	both-fit	both-fit	False	True	predict-mean-differs	
+K|poisson|NA in predictor	both-fit	both-fit	None	None	entry:predict:Julia-fails	
+K|gaussian|NA in both + (1|g)	both-fit	both-fit	None	None	entry:predict:Julia-fails;entry:simulate:Julia-fails	entry:simulate:Julia-fails
+K|poisson|NA in both + (1|g)	both-fit	both-fit	None	None	entry:predict:Julia-fails;entry:simulate:Julia-fails	entry:simulate:Julia-fails
+K|nb2|NA in predictor	both-fit	both-fit	None	None	entry:predict:Julia-fails	
+K|gaussian|NA in response|REML	both-fit	both-fit	False	True	predict-mean-differs	
+M|poisson|mu=x1+(1|g)|entry-points	both-fit	both-fit	False	True	entry:simulate:Julia-fails;entry:simulate3:Julia-fails	entry:simulate:Julia-fails;entry:simulate3:Julia-fails
+M|cumul|mu=x1+(1|g)|entry-points	both-fit	both-fit	False	True	entry:simulate:Julia-fails;entry:simulate3:Julia-fails	entry:simulate:Julia-fails;entry:simulate3:Julia-fails
