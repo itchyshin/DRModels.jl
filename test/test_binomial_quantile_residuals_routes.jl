@@ -1,7 +1,8 @@
 # Binomial `residuals(fit; type = :quantile)` on two routes that used to throw:
 #   1. a fit with missing responses (InexactError: the dropped rows carry a NaN
 #      proportion that was rounded to an integer count), and
-#   2. `(1 | g) + (0 + x | g)` (KeyError :trials: that route kept no trial counts).
+#   2. `(1 | g) + (0 + x | g)` and crossed `(1 | g) + (1 | h)` (KeyError :trials:
+#      those routes kept no trial counts).
 # The first follows the Poisson / Gamma convention: one entry per data row, NaN at
 # the rows dropped for a missing response. Values are checked against an
 # independent randomized-PIT computation with the same RNG stream.
@@ -58,6 +59,25 @@ miss = [i % 9 == 0 for i in 1:n]
     fitr = drm(bf(@formula(y ~ x + (1 | g))), Binomial(); data = (; y = ym, x, g))
     rr = residuals(fitr; type = :quantile, rng = MersenneTwister(3))
     @test length(rr) == n && findall(isnan, rr) == findall(miss)
+
+    # BetaBinomial shares the discrete driver
+    fitb = drm(bf(@formula(cbind(s, f) ~ x)), BetaBinomial(); data = (; s = sm, f = fm, x))
+    rb = residuals(fitb; type = :quantile, rng = MersenneTwister(4))
+    @test length(rb) == n && findall(isnan, rb) == findall(miss)
+end
+
+@testset "Binomial quantile residuals: crossed (1 | g) + (1 | h)" begin
+    h = string.("h", [1 + (7i % 4) for i in 1:n])
+    ntr = [2 + i % 5 for i in 1:n]
+    sg = [min(ntr[i], round(Int, ntr[i] * (0.5 + 0.4 * sin(2i) * (x[i] > 0 ? 1 : -1)))) for i in 1:n]
+    data = (; s = Float64.(sg), f = Float64.(ntr .- sg), x, g, h)
+    for kw in ((;), (; marginal = :AGHQ))
+        fit = drm(bf(@formula(cbind(s, f) ~ x + (1 | g) + (1 | h))), Binomial(); data = data, kw...)
+        @test fit.scales[:trials] == Float64.(ntr)
+        r = residuals(fit; type = :quantile, rng = MersenneTwister(6))
+        @test length(r) == n && all(isfinite, r)
+        @test same(r, hand_binomial_qr(fitted(fit), ntr, sg, MersenneTwister(6)))
+    end
 end
 
 @testset "Binomial quantile residuals: (1 | g) + (0 + x | g), Laplace" begin
