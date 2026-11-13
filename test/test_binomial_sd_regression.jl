@@ -541,8 +541,10 @@ end
                                         @formula(sd(g) ~ x)))
     @test_throws ArgumentError route(bf(@formula(cbind(s, fail) ~ x + (1 | g)),
                                         @formula(sigma ~ x), @formula(sd(g) ~ z)))
-    @test_throws ArgumentError route(bf(@formula(cbind(s, fail) ~ x + (1 | g)),
-                                        @formula(sd(g) ~ z)); marginal = :Laplace)
+    # `marginal = :Laplace` now fits this shape (opt-in drmTMB parity route).
+    laplace_fit = route(bf(@formula(cbind(s, fail) ~ x + (1 | g)),
+                           @formula(sd(g) ~ z)); marginal = :Laplace)
+    @test laplace_fit.marginal === :Laplace
 
     wrong_dpar = bf(@formula(cbind(s, fail) ~ x + (1 | g)),
                     @formula(sd(g) ~ z))

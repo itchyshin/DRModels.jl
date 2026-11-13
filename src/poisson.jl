@@ -461,6 +461,8 @@ function _drm_poisson_sd_regression(f::DrmFormula, fam::Poisson; data,
     reml && throw(ArgumentError(
         "Poisson `sd(group) ~ …` currently supports maximum likelihood only; " *
         "the Cox–Reid correction is not implemented for SD-regression coefficients."))
+    laplace_fit = _laplace_sd_route(f, fam, Val(:poisson), marginal; data, g_tol)
+    laplace_fit === nothing || return laplace_fit
     marginal === :LA || throw(ArgumentError(
         "Poisson `sd(group) ~ …` currently supports `marginal = :LA` only."))
     nAGQ === nothing || nAGQ >= 1 || throw(ArgumentError("nAGQ must be ≥ 1; got $nAGQ"))
@@ -1760,6 +1762,24 @@ function _fit_poisson_animal_intercept_slope_laplace(fam, y, Xmu, Zgs, gidx, Q,
             last_b .= b_first
         end
     end
+    # Boundary restarts (see `_q2_boundary_restarts`): the default start can stop
+    # short of the interior optimum or on a flat ridge when SD coefficients
+    # collapse (same helper as Binomial/Gamma q2 SD-z routes; issue pending).
+    restart_info = Ref{Any}((ran = false, winner = 0, gain = 0.0, flipped = false))
+    result = _q2_boundary_restarts(run_from, last_b, result,
+        (sd0, sd1, het) -> _q2_alt_theta(theta0, ranges, Zgs, sd0, sd1, het),
+        th -> min(minimum(exp.(Zgs[1] * th[ranges[1]])),
+                  minimum(exp.(Zgs[2] * th[ranges[2]]))),
+        r -> begin
+            th = Optim.minimizer(r); g = zeros(length(th)); grad!(g, th)
+            _laplace_outer_converged(r, Optim.minimum(r), g, th, length(y), g_tol)
+        end; info = restart_info)
+    ri = restart_info[]
+    (ri.gain > _Q2_RESTART_GAIN || ri.flipped) &&
+        @info "drm: Poisson animal q2 boundary restart changed the accepted optimum " *
+              "(objective gain $(round(ri.gain; sigdigits = 3)), converged flipped = $(ri.flipped), " *
+              "winning start $(ri.winner) of $(length(_Q2_ALT_STARTS)); 0 = default start). " *
+              "See `fit.scales[:q2_restarts]`."
     theta = Optim.minimizer(result)
     nll_hat = nll(theta)
     gf = zeros(length(theta)); grad!(gf, theta)
@@ -1782,6 +1802,7 @@ function _fit_poisson_animal_intercept_slope_laplace(fam, y, Xmu, Zgs, gidx, Q,
     scales[blocks[2]] = sd1[gidx]
     scales[Symbol(string(blocks[1]), "_group")] = sd0
     scales[Symbol(string(blocks[2]), "_group")] = sd1
+    scales[:q2_restarts] = [ri.ran ? 1.0 : 0.0, Float64(ri.winner), Float64(ri.gain), ri.flipped ? 1.0 : 0.0]
     # Conditional modes at theta_hat (fresh inner solve), so `residuals(type = :quantile)`
     # can condition on them as drmTMB's does. `fitted()` reads `scales[:cond_eta_re]` too (conditional default).
     _, bhat, okhat = _poisson_animal_intercept_slope_laplace(

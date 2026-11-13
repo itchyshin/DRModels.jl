@@ -473,6 +473,8 @@ function _drm_gamma_sd_regression(f::DrmFormula, fam::Gamma; data,
                                  coords = nothing, g_tol::Real = 1e-8,
                                  se::Bool = true, marginal::Symbol = :LA,
                                  nAGQ::Int = _SD_IID_AGHQ_K)
+    laplace_fit = _laplace_sd_route(f, fam, Val(:gamma), marginal; data, g_tol)
+    laplace_fit === nothing || return laplace_fit
     marginal === :LA || throw(ArgumentError(
         "Gamma `sd(group) ~ …` currently supports `marginal = :LA` only."))
     nAGQ >= 1 || throw(ArgumentError("nAGQ must be ≥ 1; got $nAGQ"))
