@@ -402,13 +402,19 @@ function _drm_poisson_fit(f::DrmFormula, fam::Poisson; data, tree = nothing, K =
                 "drm (Poisson): `method = :REML` is not available with `marginal = :AGHQ`. " *
                 "The restricted (Cox–Reid) correction is not wired to the AGHQ marginal this slice. " *
                 "Use `method = :ML` (the default) with `marginal = :AGHQ`, or `method = :REML` with `marginal = :LA`."))
+            # Prior `weights` are read by the default marginal and by `marginal = :Laplace`
+            # only; the VA ELBO, the `nAGQ` AGHQ route and the Cox-Reid restriction refuse them.
+            (isva || isaghq || reml) && _ctl_weights(length(y); supported = false,
+                route = "the Poisson `(1 | g)` route with `" *
+                        (isva ? "marginal = :VA" : isaghq ? "marginal = :AGHQ" : "method = :REML") * "`")
             isva && return _withformula(_withmarginal(
                 _fit_poisson_ranef_va(fam, y, Xμ, gidx, G, nmμ, grp, g_tol), :VA), f)
             isaghq && return _withformula(_withmarginal(
                 _fit_poisson_ranef_aghq(fam, y, Xμ, gidx, G, nmμ, grp, g_tol; nAGQ = nAGQ,
                                         offset = off), :AGHQ), f)
             return _withformula(
-                _fit_poisson_ranef(fam, y, Xμ, gidx, G, nmμ, grp, g_tol; reml = reml, offset = off), f)
+                _fit_poisson_ranef(fam, y, Xμ, gidx, G, nmμ, grp, g_tol; reml = reml, offset = off,
+                                   prior_w = _ctl_weights_or_nothing(length(y))), f)
         elseif rk === :corr                               # (1 + x | g) → 2-D GHQ (NOT AGHQ)
             isva && _va_reject(fam, "a correlated random slope `(1 + x | g)`")
             isaghq && _aghq_reject(fam, "a correlated random slope `(1 + x | g)` (12² tensor GHQ is not AGHQ)")
@@ -1298,8 +1304,9 @@ end
 # ML stays the default: Cox–Reid OVER-corrects once clusters are plentiful (+4.38% at
 # G=40 against −12.37% for ML at G=10).
 function _fit_poisson_ranef(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol; reml::Bool = false, K::Int = _RANEF1D_AGHQ_K,
-                           offset::AbstractVector{<:Real} = zeros(length(y)))
+                           offset::AbstractVector{<:Real} = zeros(length(y)), prior_w = nothing)
     n = length(y); pμ = size(Xμ, 2)
+    pw = prior_w === nothing ? nothing : Vector{Float64}(prior_w)   # drmTMB `weights`: row log-lik multipliers
     off = Float64.(offset)                               # #941: offset() coefficient fixed at 1
     members = [Int[] for _ in 1:G]
     for i in 1:n
@@ -1310,7 +1317,9 @@ function _fit_poisson_ranef(fam::Poisson, y, Xμ, gidx, G, nmμ, grp, g_tol; rem
     function nll(θ)
         βμ = θ[1:pμ]; σb = exp(θ[pμ+1])
         η0 = Xμ * βμ .+ off
-        ll = (i, η) -> (ηc = clamp(η, -30.0, 30.0); y[i] * ηc - exp(ηc) - lf[i])
+        ll = pw === nothing ?
+            (i, η) -> (ηc = clamp(η, -30.0, 30.0); y[i] * ηc - exp(ηc) - lf[i]) :
+            (i, η) -> (ηc = clamp(η, -30.0, 30.0); pw[i] * (y[i] * ηc - exp(ηc) - lf[i]))
         L = reshape([σb], 1, 1)
         return -_aghq_marginal_loglik(ll, members, η0, Zre, L, rule, bcache)
     end

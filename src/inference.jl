@@ -2301,10 +2301,15 @@ _bootstrap_estimator(fit::DrmFit) = (estimation_method(fit), fit.marginal)
 _bootstrap_estimator(fit) = (:unknown, :unknown)
 
 # Keywords the bivariate Gaussian bootstrap refit may pass to `drm`.
-# `method` is included only when the seed kwargs contain it. `marginal` is
+# `method` and `weights` are included only when the seed kwargs contain them. `marginal` is
 # left off, because that method does not accept it.
 function _bootstrap_bivariate_refit_kwargs(refit_options)
-    haskey(refit_options, :method) ? (; method = refit_options.method) : NamedTuple()
+    kw = Pair{Symbol,Any}[]
+    haskey(refit_options, :method) && push!(kw, :method => refit_options.method)
+    # Prior weights are part of the likelihood: every replicate refit uses them, as the
+    # univariate path does (`_bootstrap_refit_kwargs`).
+    haskey(refit_options, :weights) && push!(kw, :weights => refit_options.weights)
+    return NamedTuple(kw)
 end
 
 _is_gaussian_lss(fit::DrmFit) = fit.family isa Gaussian &&

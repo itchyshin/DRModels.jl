@@ -25,7 +25,8 @@ or with ordinary `(1 | g)` intercepts and a constant `σ`.
 """
 meta_V(v) = v     # identity stub; the marker is intercepted during formula parsing
 
-function _fit_meta_gaussian(fam::Gaussian, y, Xμ, Xσ, vv, nmμ, nmσ, g_tol; reml::Bool = false)
+function _fit_meta_gaussian(fam::Gaussian, y, Xμ, Xσ, vv, nmμ, nmσ, g_tol;
+                            reml::Bool = false, prior_w = nothing)
     n = length(y)
     # #1014: same rule as the random-effect route below. A negative variance
     # used to be absorbed by σ² and the fit reported as converged.
@@ -34,6 +35,10 @@ function _fit_meta_gaussian(fam::Gaussian, y, Xμ, Xσ, vv, nmμ, nmσ, g_tol; r
             "($(length(vv)) given for $n rows)"))
     _require_meta_V_variances(vv, "…")
     pμ, pσ = size(Xμ, 2), size(Xσ, 2)
+    # drmTMB `weights`: row i's log-density (including the known variance) is multiplied by
+    # prior_w[i]. `nothing` leaves the unweighted arithmetic untouched.
+    pw = prior_w === nothing ? nothing : Vector{Float64}(prior_w)
+    sw = pw === nothing ? n : sum(pw)
     function nll(θ)
         βμ = θ[1:pμ]; βσ = θ[pμ+1:pμ+pσ]
         ημ = Xμ * βμ; ησ = Xσ * βσ                 # ησ = log σ_i
@@ -41,9 +46,9 @@ function _fit_meta_gaussian(fam::Gaussian, y, Xμ, Xσ, vv, nmμ, nmσ, g_tol; r
         @inbounds for i in 1:n
             var = vv[i] + exp(2 * ησ[i])           # known sampling var + heterogeneity σ²
             r = y[i] - ημ[i]
-            s += log(var) + r * r / var
+            s += (pw === nothing ? 1.0 : pw[i]) * (log(var) + r * r / var)
         end
-        return 0.5 * s + 0.5 * n * log(2π)
+        return 0.5 * s + 0.5 * sw * log(2π)
     end
     βμ0 = Xμ \ y
     # REML (opt-in): drmTMB puts β_μ in TMB's random block with a flat prior, so the
@@ -53,7 +58,7 @@ function _fit_meta_gaussian(fam::Gaussian, y, Xμ, Xσ, vv, nmμ, nmσ, g_tol; r
     function nll_reml(θ)
         T = eltype(θ)
         ησ = Xσ * θ[pμ+1:pμ+pσ]
-        w = [1 / (vv[i] + exp(2 * ησ[i])) for i in 1:n]
+        w = [(pw === nothing ? 1.0 : pw[i]) / (vv[i] + exp(2 * ησ[i])) for i in 1:n]
         XtWX = Symmetric(Matrix{T}(Xμ' * (w .* Xμ)))
         return _reml_add_restriction(nll(θ), XtWX, pμ)
     end

@@ -1640,6 +1640,12 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     end
     phylo_coupled &&
         throw(ArgumentError("drm: `phylo_coupled` is an internal bridge option for Gaussian mu+sigma phylo fits (ML or REML)"))
+    # `meta_V` with prior `weights` fits by ML only. Refused by name here, ahead of the REML
+    # validator below, so the answer stays right whether or not `meta_V` REML is implemented:
+    # a weighted meta-analysis needs a weighted X' Omega^-1 X restriction term.
+    method === :REML && metav !== nothing && _ctl_weights_or_nothing(length(y)) !== nothing &&
+        throw(ArgumentError("drm: `weights` together with `meta_V` and method = :REML is not implemented. " *
+            "Use method = :ML for a weighted `meta_V` fit, or drop `weights` to use REML."))
     if method === :REML
         # REML (opt-in) is implemented for (a) the fixed-effect univariate
         # Gaussian location–scale cell and (b) a single mean random intercept
@@ -2073,7 +2079,8 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         _require_finite_data_column(data, metav; label="meta_V($(metav))")
         vv = Float64.(getproperty(data, metav))    # known sampling variances
         return _withformula(_fit_meta_gaussian(fam, y, Xμ, Xσ, vv, nmμ, nmσ, g_tol;
-                                               reml = method === :REML), f)
+                                               reml = method === :REML,
+                                               prior_w = _ctl_weights_or_nothing(length(y))), f)
     end
     if isempty(re)
         if has_missing_response
@@ -2116,8 +2123,11 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
         kind === :intercept || _require_finite_data_column(data, var)
         w = kind === :intercept ? ones(length(y)) : Float64.(getproperty(data, var))
         reml_here = method === :REML
+        # drmTMB `weights` (row log-lik multipliers) are read only for a single ordinary
+        # `(1 | g)` intercept; `_ctl_preflight` admits no other random-effect shape.
+        prior_w = kind === :intercept ? _ctl_weights_or_nothing(length(y)) : nothing
         return _withformula(_fit_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, w, nmμ, nmσ, grp, g_tol;
-                                               reml = reml_here), f)
+                                               reml = reml_here, prior_w = prior_w), f)
     end
     comps = map(zip(re, re_kinds)) do ((_, grp), (kind, var))  # multiple scalar components
         kind === :intercept || _require_finite_data_column(data, var)
