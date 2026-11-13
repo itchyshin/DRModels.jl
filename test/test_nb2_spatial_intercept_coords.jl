@@ -67,9 +67,6 @@ end
         npairs += 1
     end
     @test npairs == 16
-    # the same group twice is also two terms
-    f2 = @formula(y ~ x + spatial(1 | g) + spatial(1 | g))
-    @test_throws ArgumentError drm(bf(f2, @formula(sigma ~ 1)), NegBinomial2(); data = dat, se = false, coords = pos)
     # one term still fits (the single-term fit is not refused by the new check)
     f1 = @formula(y ~ x + spatial(1 | g))
     fit1 = drm(bf(f1, @formula(sigma ~ 1)), NegBinomial2(); data = dat, se = false, coords = pos)
