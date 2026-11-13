@@ -195,7 +195,11 @@ distributional parameters:
   routes (and what `fitted(fit)` returned before the default changed). The
   single `relmat(1 | g)`, `animal(1 | g)` and dense `phylo(1 | g)` Gaussian fits and the
   `phylo(1 | g)` Laplace fits of Poisson, Binomial, BetaBinomial, NB2, Gamma and Beta
-  keep their modes, so `fitted(fit)` is conditional there. A route that does not keep
+  keep their modes, so `fitted(fit)` is conditional there. So do the zero-inflated
+  Poisson, zero-inflated NB2 and zero-truncated NB2 fits with one `(1 | g)` and the
+  `CumulativeLogit` fit with `(1 | g) + (0 + x | g)`: `fitted(fit)` is
+  `(1 - zi) * mu`, `mu / (1 - P(0))` or the expected category score, with the modes
+  in `mu` or in the linear predictor, as drmTMB's `fitted()`. A route that does not keep
   the modes needed for the conditional value (for example a `relmat` or `animal` count
   fit, `ZeroOneBeta` with a random effect, bivariate fits with random effects,
   a random effect on `sigma` when the mean depends on `sigma`, the crossed
