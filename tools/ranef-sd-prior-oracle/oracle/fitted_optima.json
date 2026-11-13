@@ -1,0 +1,1004 @@
+{
+  "created_utc": "2026-11-09T13:37:29.887092+00:00",
+  "objective": "normalized ML plus Gamma density in SD measure; groupwise determinant-lemma scalar",
+  "coordinates": [
+    "beta0",
+    "beta1",
+    "alpha",
+    "gamma",
+    "eta=log(tau)"
+  ],
+  "initial_method": "SciPy BFGS with objective numerical derivatives, all starts retained",
+  "eligibility": "positive definite Hessian, minimum/maximum eigenvalue >=1e-6, full score infinity norm <=1e-6",
+  "versions": {
+    "python": "3.13.2",
+    "numpy": "2.3.3",
+    "scipy": "1.16.2"
+  },
+  "fits": [
+    {
+      "case": 0,
+      "shape": 2.0,
+      "rate": 3.0,
+      "attempts": [
+        {
+          "start": [
+            0.8,
+            0.3,
+            -0.1,
+            0.12,
+            -0.35
+          ],
+          "status": 2,
+          "success": false,
+          "message": "Desired error not necessarily achieved due to precision loss.",
+          "iterations": 14,
+          "evaluations": 126,
+          "coordinates": [
+            1.6862350144183251,
+            0.7988730027170423,
+            -1.214267966045539,
+            1.3258046016544245,
+            -1.5798969901512014
+          ],
+          "objective": 4.872430234059355
+        },
+        {
+          "start": [
+            1.2,
+            0.55,
+            -0.3,
+            0.2,
+            -1.2
+          ],
+          "status": 2,
+          "success": false,
+          "message": "Desired error not necessarily achieved due to precision loss.",
+          "iterations": 15,
+          "evaluations": 174,
+          "coordinates": [
+            1.686235005419041,
+            0.7988729940391068,
+            -1.214267950808463,
+            1.3258045940124712,
+            -1.5798969623989338
+          ],
+          "objective": 4.872430234059362
+        },
+        {
+          "start": [
+            0.5,
+            0.7,
+            0.1,
+            -0.15,
+            -0.7
+          ],
+          "status": 2,
+          "success": false,
+          "message": "Desired error not necessarily achieved due to precision loss.",
+          "iterations": 18,
+          "evaluations": 192,
+          "coordinates": [
+            1.6862350170164175,
+            0.798873003297297,
+            -1.2142679581608489,
+            1.32580460142298,
+            -1.5798969585824376
+          ],
+          "objective": 4.872430234059351
+        },
+        {
+          "start": [
+            1.4,
+            -0.1,
+            -0.4,
+            0.3,
+            0.25
+          ],
+          "status": 2,
+          "success": false,
+          "message": "Desired error not necessarily achieved due to precision loss.",
+          "iterations": 21,
+          "evaluations": 461,
+          "coordinates": [
+            1.6862350023544497,
+            0.7988729889800311,
+            -1.2142679593980465,
+            1.32580455755371,
+            -1.579896976234198
+          ],
+          "objective": 4.872430234059365
+        },
+        {
+          "start": [
+            1.0,
+            0.4,
+            -0.2,
+            0.05,
+            -2.0
+          ],
+          "status": 2,
+          "success": false,
+          "message": "Desired error not necessarily achieved due to precision loss.",
+          "iterations": 19,
+          "evaluations": 180,
+          "coordinates": [
+            1.6862350105861033,
+            0.7988729937738029,
+            -1.214267957604804,
+            1.3258045583489657,
+            -1.5798969994983723
+          ],
+          "objective": 4.87243023405936
+        },
+        {
+          "start": [
+            -0.4,
+            1.2,
+            0.6,
+            -0.5,
+            0.7
+          ],
+          "status": 2,
+          "success": false,
+          "message": "Desired error not necessarily achieved due to precision loss.",
+          "iterations": 22,
+          "evaluations": 516,
+          "coordinates": [
+            1.686235010232286,
+            0.7988730015419168,
+            -1.2142679621580732,
+            1.3258045991187133,
+            -1.579897004166226
+          ],
+          "objective": 4.872430234059355
+        }
+      ],
+      "selected_attempt": 2,
+      "refinement": {
+        "method": "trust-exact, groupwise objective, dense analytical gradient and Hessian",
+        "status": 0,
+        "success": true,
+        "message": "Optimization terminated successfully.",
+        "iterations": 1,
+        "objective": 4.872430234059339
+      },
+      "coordinates": [
+        1.6862350458983295,
+        0.7988730282860639,
+        -1.2142679713391031,
+        1.3258046224881581,
+        -1.5798969784842107
+      ],
+      "objective": 4.87243023405934,
+      "data_nll": 4.871768875416937,
+      "penalty": 0.0006613586424042417,
+      "independent_groupwise_objective": 4.872430234059339,
+      "score_inf_norm": 2.0761170560490427e-14,
+      "hessian_min_eigenvalue": 3.1773551074088293,
+      "hessian_max_eigenvalue": 138.20054950014142,
+      "hessian_eigenvalue_ratio": 0.02299090067949099,
+      "parameter_comparison_eligible": true
+    },
+    {
+      "case": 1,
+      "shape": 2.0,
+      "rate": 3.0,
+      "attempts": [
+        {
+          "start": [
+            0.8,
+            0.3,
+            -0.1,
+            0.12,
+            -0.35
+          ],
+          "status": 2,
+          "success": false,
+          "message": "Desired error not necessarily achieved due to precision loss.",
+          "iterations": 12,
+          "evaluations": 378,
+          "coordinates": [
+            1.6803840243527686,
+            0.8001895208904828,
+            -1.2240625992046745,
+            1.34514046312744,
+            -1.7479452390671575
+          ],
+          "objective": 4.447459419831718
+        },
+        {
+          "start": [
+            1.2,
+            0.55,
+            -0.3,
+            0.2,
+            -1.2
+          ],
+          "status": 2,
+          "success": false,
+          "message": "Desired error not necessarily achieved due to precision loss.",
+          "iterations": 13,
+          "evaluations": 233,
+          "coordinates": [
+            1.6803840097615546,
+            0.8001895110493602,
+            -1.2240625730490002,
+            1.3451404929518864,
+            -1.747945249290139
+          ],
+          "objective": 4.447459419831723
+        },
+        {
+          "start": [
+            0.5,
+            0.7,
+            0.1,
+            -0.15,
+            -0.7
+          ],
+          "status": 2,
+          "success": false,
+          "message": "Desired error not necessarily achieved due to precision loss.",
+          "iterations": 16,
+          "evaluations": 132,
+          "coordinates": [
+            1.6803840077759877,
+            0.8001895102644809,
+            -1.2240625864627588,
+            1.3451404815175871,
+            -1.7479452369133692
+          ],
+          "objective": 4.447459419831725
+        },
+        {
+          "start": [
+            1.4,
+            -0.1,
+            -0.4,
+            0.3,
+            0.25
+          ],
+          "status": 2,
+          "success": false,
+          "message": "Desired error not necessarily achieved due to precision loss.",
+          "iterations": 18,
+          "evaluations": 354,
+          "coordinates": [
+            1.6803840001758708,
+            0.8001895038866105,
+            -1.2240625845701252,
+            1.3451404939963505,
+            -1.747945222586984
+          ],
+          "objective": 4.447459419831733
+        },
+        {
+          "start": [
+            1.0,
+            0.4,
+            -0.2,
+            0.05,
+            -2.0
+          ],
+          "status": 2,
+          "success": false,
+          "message": "Desired error not necessarily achieved due to precision loss.",
+          "iterations": 17,
+          "evaluations": 251,
+          "coordinates": [
+            1.680384021752244,
+            0.800189523790199,
+            -1.2240626052562829,
+            1.3451405524137796,
+            -1.7479452565759945
+          ],
+          "objective": 4.447459419831711
+        },
+        {
+          "start": [
+            -0.4,
+            1.2,
+            0.6,
+            -0.5,
+            0.7
+          ],
+          "status": 2,
+          "success": false,
+          "message": "Desired error not necessarily achieved due to precision loss.",
+          "iterations": 19,
+          "evaluations": 278,
+          "coordinates": [
+            1.680384009839034,
+            0.8001895122110172,
+            -1.2240625962795426,
+            1.3451405138682728,
+            -1.747945243485419
+          ],
+          "objective": 4.447459419831723
+        }
+      ],
+      "selected_attempt": 4,
+      "refinement": {
+        "method": "trust-exact, groupwise objective, dense analytical gradient and Hessian",
+        "status": 0,
+        "success": true,
+        "message": "Optimization terminated successfully.",
+        "iterations": 1,
+        "objective": 4.4474594198316915
+      },
+      "coordinates": [
+        1.6803840551140425,
+        0.8001895535526589,
+        -1.224062609203232,
+        1.3451405625584958,
+        -1.7479452388032426
+      ],
+      "objective": 4.447459419831693,
+      "data_nll": 4.3743446348694075,
+      "penalty": 0.07311478496228618,
+      "independent_groupwise_objective": 4.4474594198316915,
+      "score_inf_norm": 3.219646771412954e-14,
+      "hessian_min_eigenvalue": 3.28446965701205,
+      "hessian_max_eigenvalue": 178.87771088690607,
+      "hessian_eigenvalue_ratio": 0.018361536720964796,
+      "parameter_comparison_eligible": true
+    },
+    {
+      "case": 2,
+      "shape": 2.0,
+      "rate": 3.0,
+      "attempts": [
+        {
+          "start": [
+            0.8,
+            0.3,
+            -0.1,
+            0.12,
+            -0.35
+          ],
+          "status": 2,
+          "success": false,
+          "message": "Desired error not necessarily achieved due to precision loss.",
+          "iterations": 14,
+          "evaluations": 120,
+          "coordinates": [
+            1.4762375547896038,
+            0.7497271870431761,
+            -1.1588728247864033,
+            1.2099159326268032,
+            -0.8232533425546094
+          ],
+          "objective": 7.311799771426285
+        },
+        {
+          "start": [
+            1.2,
+            0.55,
+            -0.3,
+            0.2,
+            -1.2
+          ],
+          "status": 2,
+          "success": false,
+          "message": "Desired error not necessarily achieved due to precision loss.",
+          "iterations": 21,
+          "evaluations": 558,
+          "coordinates": [
+            1.4762376203720249,
+            0.7497272383252741,
+            -1.1588729565872873,
+            1.2099160646253537,
+            -0.8232533071423697
+          ],
+          "objective": 7.311799771426285
+        },
+        {
+          "start": [
+            0.5,
+            0.7,
+            0.1,
+            -0.15,
+            -0.7
+          ],
+          "status": 2,
+          "success": false,
+          "message": "Desired error not necessarily achieved due to precision loss.",
+          "iterations": 16,
+          "evaluations": 462,
+          "coordinates": [
+            1.476237587292983,
+            0.7497271915413738,
+            -1.158872833747012,
+            1.2099159012906102,
+            -0.8232533332128811
+          ],
+          "objective": 7.311799771426264
+        },
+        {
+          "start": [
+            1.4,
+            -0.1,
+            -0.4,
+            0.3,
+            0.25
+          ],
+          "status": 2,
+          "success": false,
+          "message": "Desired error not necessarily achieved due to precision loss.",
+          "iterations": 16,
+          "evaluations": 132,
+          "coordinates": [
+            1.476237577289209,
+            0.7497272156633293,
+            -1.1588729689089992,
+            1.209916047023116,
+            -0.8232533457255441
+          ],
+          "objective": 7.31179977142631
+        },
+        {
+          "start": [
+            1.0,
+            0.4,
+            -0.2,
+            0.05,
+            -2.0
+          ],
+          "status": 2,
+          "success": false,
+          "message": "Desired error not necessarily achieved due to precision loss.",
+          "iterations": 18,
+          "evaluations": 408,
+          "coordinates": [
+            1.4762374823574886,
+            0.7497271169927759,
+            -1.1588727717314498,
+            1.2099156367094055,
+            -0.8232533992184002
+          ],
+          "objective": 7.311799771426493
+        },
+        {
+          "start": [
+            -0.4,
+            1.2,
+            0.6,
+            -0.5,
+            0.7
+          ],
+          "status": 2,
+          "success": false,
+          "message": "Desired error not necessarily achieved due to precision loss.",
+          "iterations": 20,
+          "evaluations": 372,
+          "coordinates": [
+            1.4762375969331776,
+            0.7497272086518092,
+            -1.1588729028158289,
+            1.2099159358059968,
+            -0.8232533282359715
+          ],
+          "objective": 7.311799771426263
+        }
+      ],
+      "selected_attempt": 5,
+      "refinement": {
+        "method": "trust-exact, groupwise objective, dense analytical gradient and Hessian",
+        "status": 2,
+        "success": false,
+        "message": "A bad approximation caused failure to predict improvement.",
+        "iterations": 17,
+        "objective": 7.311799771426259
+      },
+      "coordinates": [
+        1.476237595241234,
+        0.7497272103093651,
+        -1.1588729003101632,
+        1.2099159373877617,
+        -0.8232533286877436
+      ],
+      "objective": 7.311799771426271,
+      "data_nll": 7.368767678552793,
+      "penalty": -0.05696790712652122,
+      "independent_groupwise_objective": 7.311799771426259,
+      "score_inf_norm": 3.5825128885669244e-07,
+      "hessian_min_eigenvalue": 3.077063570285051,
+      "hessian_max_eigenvalue": 54.49441120789248,
+      "hessian_eigenvalue_ratio": 0.05646567238879345,
+      "parameter_comparison_eligible": true
+    },
+    {
+      "case": 0,
+      "shape": 2.5,
+      "rate": 1.7,
+      "attempts": [
+        {
+          "start": [
+            0.8,
+            0.3,
+            -0.1,
+            0.12,
+            -0.35
+          ],
+          "status": 2,
+          "success": false,
+          "message": "Desired error not necessarily achieved due to precision loss.",
+          "iterations": 14,
+          "evaluations": 318,
+          "coordinates": [
+            1.6821928659974705,
+            0.7953929014576164,
+            -1.2159323235544657,
+            1.3203183049950302,
+            -1.3885252244055617
+          ],
+          "objective": 6.478771231038315
+        },
+        {
+          "start": [
+            1.2,
+            0.55,
+            -0.3,
+            0.2,
+            -1.2
+          ],
+          "status": 2,
+          "success": false,
+          "message": "Desired error not necessarily achieved due to precision loss.",
+          "iterations": 17,
+          "evaluations": 360,
+          "coordinates": [
+            1.6821928547853051,
+            0.7953928880623126,
+            -1.2159322692523635,
+            1.320318245127631,
+            -1.3885252983913074
+          ],
+          "objective": 6.478771231038333
+        },
+        {
+          "start": [
+            0.5,
+            0.7,
+            0.1,
+            -0.15,
+            -0.7
+          ],
+          "status": 2,
+          "success": false,
+          "message": "Desired error not necessarily achieved due to precision loss.",
+          "iterations": 20,
+          "evaluations": 258,
+          "coordinates": [
+            1.6821928742340484,
+            0.7953929034308765,
+            -1.2159323370988069,
+            1.3203183219096093,
+            -1.388525267618244
+          ],
+          "objective": 6.478771231038312
+        },
+        {
+          "start": [
+            1.4,
+            -0.1,
+            -0.4,
+            0.3,
+            0.25
+          ],
+          "status": 2,
+          "success": false,
+          "message": "Desired error not necessarily achieved due to precision loss.",
+          "iterations": 16,
+          "evaluations": 510,
+          "coordinates": [
+            1.682192854841208,
+            0.7953928883311135,
+            -1.2159323360722256,
+            1.3203182956078963,
+            -1.3885252634097374
+          ],
+          "objective": 6.478771231038323
+        },
+        {
+          "start": [
+            1.0,
+            0.4,
+            -0.2,
+            0.05,
+            -2.0
+          ],
+          "status": 2,
+          "success": false,
+          "message": "Desired error not necessarily achieved due to precision loss.",
+          "iterations": 17,
+          "evaluations": 114,
+          "coordinates": [
+            1.682192867566938,
+            0.7953929012248535,
+            -1.2159323180520116,
+            1.3203183180690552,
+            -1.3885252670155401
+          ],
+          "objective": 6.478771231038317
+        },
+        {
+          "start": [
+            -0.4,
+            1.2,
+            0.6,
+            -0.5,
+            0.7
+          ],
+          "status": 2,
+          "success": false,
+          "message": "Desired error not necessarily achieved due to precision loss.",
+          "iterations": 18,
+          "evaluations": 366,
+          "coordinates": [
+            1.682192856813283,
+            0.795392892615178,
+            -1.2159323233454349,
+            1.3203183152311957,
+            -1.3885252693605614
+          ],
+          "objective": 6.478771231038319
+        }
+      ],
+      "selected_attempt": 2,
+      "refinement": {
+        "method": "trust-exact, groupwise objective, dense analytical gradient and Hessian",
+        "status": 2,
+        "success": false,
+        "message": "A bad approximation caused failure to predict improvement.",
+        "iterations": 17,
+        "objective": 6.47877123103831
+      },
+      "coordinates": [
+        1.682192874313185,
+        0.7953929043326103,
+        -1.2159323368812014,
+        1.3203183219311914,
+        -1.3885252676307867
+      ],
+      "objective": 6.478771231038313,
+      "data_nll": 5.013818165227231,
+      "penalty": 1.4649530658110825,
+      "independent_groupwise_objective": 6.47877123103831,
+      "score_inf_norm": 4.471914301085178e-07,
+      "hessian_min_eigenvalue": 3.2094006192328695,
+      "hessian_max_eigenvalue": 105.52005008913952,
+      "hessian_eigenvalue_ratio": 0.03041507861796582,
+      "parameter_comparison_eligible": true
+    },
+    {
+      "case": 1,
+      "shape": 2.5,
+      "rate": 1.7,
+      "attempts": [
+        {
+          "start": [
+            0.8,
+            0.3,
+            -0.1,
+            0.12,
+            -0.35
+          ],
+          "status": 2,
+          "success": false,
+          "message": "Desired error not necessarily achieved due to precision loss.",
+          "iterations": 15,
+          "evaluations": 516,
+          "coordinates": [
+            1.676357272448021,
+            0.7969577481007685,
+            -1.2259878524049321,
+            1.3384508325449265,
+            -1.546246986078926
+          ],
+          "objective": 6.179115983041639
+        },
+        {
+          "start": [
+            1.2,
+            0.55,
+            -0.3,
+            0.2,
+            -1.2
+          ],
+          "status": 2,
+          "success": false,
+          "message": "Desired error not necessarily achieved due to precision loss.",
+          "iterations": 15,
+          "evaluations": 138,
+          "coordinates": [
+            1.6763572777110407,
+            0.7969577537177592,
+            -1.2259878642143445,
+            1.338450841854749,
+            -1.5462469749095968
+          ],
+          "objective": 6.179115983041636
+        },
+        {
+          "start": [
+            0.5,
+            0.7,
+            0.1,
+            -0.15,
+            -0.7
+          ],
+          "status": 2,
+          "success": false,
+          "message": "Desired error not necessarily achieved due to precision loss.",
+          "iterations": 18,
+          "evaluations": 144,
+          "coordinates": [
+            1.6763572670215812,
+            0.7969577417573963,
+            -1.225987853226242,
+            1.3384508028581334,
+            -1.5462469581088385
+          ],
+          "objective": 6.179115983041646
+        },
+        {
+          "start": [
+            1.4,
+            -0.1,
+            -0.4,
+            0.3,
+            0.25
+          ],
+          "status": 2,
+          "success": false,
+          "message": "Desired error not necessarily achieved due to precision loss.",
+          "iterations": 15,
+          "evaluations": 493,
+          "coordinates": [
+            1.6763572810514964,
+            0.7969577524043523,
+            -1.2259878769802082,
+            1.338450862376258,
+            -1.546246918550022
+          ],
+          "objective": 6.179115983041636
+        },
+        {
+          "start": [
+            1.0,
+            0.4,
+            -0.2,
+            0.05,
+            -2.0
+          ],
+          "status": 2,
+          "success": false,
+          "message": "Desired error not necessarily achieved due to precision loss.",
+          "iterations": 19,
+          "evaluations": 156,
+          "coordinates": [
+            1.6763572767349773,
+            0.7969577506688734,
+            -1.2259878643980928,
+            1.338450822631047,
+            -1.5462469448576992
+          ],
+          "objective": 6.179115983041634
+        },
+        {
+          "start": [
+            -0.4,
+            1.2,
+            0.6,
+            -0.5,
+            0.7
+          ],
+          "status": 2,
+          "success": false,
+          "message": "Desired error not necessarily achieved due to precision loss.",
+          "iterations": 21,
+          "evaluations": 198,
+          "coordinates": [
+            1.676357274535914,
+            0.7969577496938186,
+            -1.2259878765189942,
+            1.338450830226652,
+            -1.5462469424827043
+          ],
+          "objective": 6.179115983041636
+        }
+      ],
+      "selected_attempt": 4,
+      "refinement": {
+        "method": "trust-exact, groupwise objective, dense analytical gradient and Hessian",
+        "status": 0,
+        "success": true,
+        "message": "Optimization terminated successfully.",
+        "iterations": 1,
+        "objective": 6.179115983041615
+      },
+      "coordinates": [
+        1.6763573158873941,
+        0.7969577842266644,
+        -1.2259878750672661,
+        1.3384508698151263,
+        -1.5462469523200961
+      ],
+      "objective": 6.1791159830416165,
+      "data_nll": 4.539455031402765,
+      "penalty": 1.6396609516388516,
+      "independent_groupwise_objective": 6.179115983041615,
+      "score_inf_norm": 3.2085445411667024e-14,
+      "hessian_min_eigenvalue": 3.110416780449707,
+      "hessian_max_eigenvalue": 132.89934511843862,
+      "hessian_eigenvalue_ratio": 0.02340430479681998,
+      "parameter_comparison_eligible": true
+    },
+    {
+      "case": 2,
+      "shape": 2.5,
+      "rate": 1.7,
+      "attempts": [
+        {
+          "start": [
+            0.8,
+            0.3,
+            -0.1,
+            0.12,
+            -0.35
+          ],
+          "status": 2,
+          "success": false,
+          "message": "Desired error not necessarily achieved due to precision loss.",
+          "iterations": 15,
+          "evaluations": 402,
+          "coordinates": [
+            1.4841177482985817,
+            0.7585107534831937,
+            -1.167688921352365,
+            1.2247618482651463,
+            -0.647731759613192
+          ],
+          "objective": 8.217738136906728
+        },
+        {
+          "start": [
+            1.2,
+            0.55,
+            -0.3,
+            0.2,
+            -1.2
+          ],
+          "status": 2,
+          "success": false,
+          "message": "Desired error not necessarily achieved due to precision loss.",
+          "iterations": 17,
+          "evaluations": 361,
+          "coordinates": [
+            1.484117815929534,
+            0.7585107820796392,
+            -1.1676889053095683,
+            1.2247618937234113,
+            -0.6477318657900982
+          ],
+          "objective": 8.21773813690669
+        },
+        {
+          "start": [
+            0.5,
+            0.7,
+            0.1,
+            -0.15,
+            -0.7
+          ],
+          "status": 2,
+          "success": false,
+          "message": "Desired error not necessarily achieved due to precision loss.",
+          "iterations": 16,
+          "evaluations": 180,
+          "coordinates": [
+            1.484117949965854,
+            0.7585108455010786,
+            -1.16768888130943,
+            1.22476199836274,
+            -0.6477317558570987
+          ],
+          "objective": 8.217738136906782
+        },
+        {
+          "start": [
+            1.4,
+            -0.1,
+            -0.4,
+            0.3,
+            0.25
+          ],
+          "status": 2,
+          "success": false,
+          "message": "Desired error not necessarily achieved due to precision loss.",
+          "iterations": 16,
+          "evaluations": 324,
+          "coordinates": [
+            1.4841177357815274,
+            0.7585107289206413,
+            -1.1676888925999558,
+            1.2247618031838527,
+            -0.6477319165043397
+          ],
+          "objective": 8.217738136906775
+        },
+        {
+          "start": [
+            1.0,
+            0.4,
+            -0.2,
+            0.05,
+            -2.0
+          ],
+          "status": 2,
+          "success": false,
+          "message": "Desired error not necessarily achieved due to precision loss.",
+          "iterations": 20,
+          "evaluations": 276,
+          "coordinates": [
+            1.48411776667353,
+            0.7585107584482509,
+            -1.1676888370262317,
+            1.22476180692028,
+            -0.6477319271940624
+          ],
+          "objective": 8.217738136906762
+        },
+        {
+          "start": [
+            -0.4,
+            1.2,
+            0.6,
+            -0.5,
+            0.7
+          ],
+          "status": 2,
+          "success": false,
+          "message": "Desired error not necessarily achieved due to precision loss.",
+          "iterations": 19,
+          "evaluations": 401,
+          "coordinates": [
+            1.4841179367253028,
+            0.7585108432559515,
+            -1.1676888908472285,
+            1.2247619756164503,
+            -0.6477318166254727
+          ],
+          "objective": 8.217738136906744
+        }
+      ],
+      "selected_attempt": 1,
+      "refinement": {
+        "method": "trust-exact, groupwise objective, dense analytical gradient and Hessian",
+        "status": 2,
+        "success": false,
+        "message": "A bad approximation caused failure to predict improvement.",
+        "iterations": 15,
+        "objective": 8.21773813690668
+      },
+      "coordinates": [
+        1.4841178269933912,
+        0.7585108028496749,
+        -1.1676889264141583,
+        1.2247619232785132,
+        -0.6477318243004081
+      ],
+      "objective": 8.217738136906688,
+      "data_nll": 7.398535096923005,
+      "penalty": 0.8192030399836832,
+      "independent_groupwise_objective": 8.21773813690668,
+      "score_inf_norm": 4.143665077727121e-08,
+      "hessian_min_eigenvalue": 3.1160838630447882,
+      "hessian_max_eigenvalue": 49.288445541653346,
+      "hessian_eigenvalue_ratio": 0.06322138644870441,
+      "parameter_comparison_eligible": true
+    }
+  ]
+}
