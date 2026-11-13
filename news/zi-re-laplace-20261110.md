@@ -17,6 +17,9 @@
 - **Binomial with three or more crossed random intercepts** `(1 | g) + (1 | h) + (1 | k)`
   fits by the dense Laplace route (drmTMB's objective). Two components keep their own
   sparse route, unchanged. `marginal = :AGHQ` with three components is refused by name.
+  These fits are tagged `marginal = :Laplace`; `update(fit, formula; data)` and an explicit
+  `marginal = :Laplace` call return the same fit. With exactly two crossed intercepts
+  the explicit `:Laplace` keyword is still refused, as before.
 - **CumulativeLogit with independent random terms** `(1 | g) + (0 + x | g)` fits by the
   same Laplace route, with the cutpoints as ordinary parameters, so their standard errors
   are reported (the crossed-intercept route reports none). It matches drmTMB 0.8.1 at the
