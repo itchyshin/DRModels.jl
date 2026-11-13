@@ -17,7 +17,7 @@
 #             parity-crosswalk-evidence-20261107/metamorphic/README.md in the drmTMB repository)
 #   scale_y   Gaussian y -> k y: beta k, log sigma + log k, SD intercepts + log k, logLik - n log k;
 #             Gamma likewise with only beta0 + log k
-#   predict   predict(fit, training data) == fitted(fit); predict_parameters == fit.scales; row-permutation
+#   predict   predict(fit, training data) == fitted(fit; re = :zero); predict_parameters == fit.scales; row-permutation
 #             equivariant
 #   swap      `(x + 1 | g)` is the same model as `(1 + x | g)` (q2 only)
 #   reml      Gaussian structured q2 with method = :REML: perm, relabel and v-shift leave the REML logLik unchanged
@@ -334,7 +334,7 @@ function p_scale_y(b::Base0; k = 3.0)
 end
 function p_predict(b::Base0)
     fit = b.fit; d = b.data
-    mx = maxabs(predict(fit, d), fitted(fit))
+    mx = maxabs(predict(fit, d), fitted(fit; re = :zero))
     pp = predict_parameters(fit, d; se = false)
     ms = 0.0
     for (nm, _) in fit.blocks

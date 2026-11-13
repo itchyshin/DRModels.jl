@@ -315,6 +315,10 @@ Sum over groups of `_aghq_group_logint`. `bcache` (`q × G`, Float64) holds each
 group's last mode and is updated in place as a warm start; it affects only the
 iteration count, not the converged value (mode tolerance 1e-10).
 """
+# Number of group modes reset to 0 because they were not finite. `_record_cond_fit_aghq!` reads
+# it around one objective evaluation: a reset group would silently get its population value.
+const _AGHQ_MODE_RESETS = Threads.Atomic{Int}(0)
+
 function _aghq_marginal_loglik(ll, members, η0, Zre, L, rule::_AGHQRule, bcache::AbstractMatrix{Float64})
     tot = nothing
     for (gi, idx) in enumerate(members)
@@ -324,6 +328,7 @@ function _aghq_marginal_loglik(ll, members, η0, Zre, L, rule::_AGHQRule, bcache
             bcache[:, gi] .= bhat
         else
             bcache[:, gi] .= 0.0
+            Threads.atomic_add!(_AGHQ_MODE_RESETS, 1)   # `fitted()` must not read this group's mode as a fit
         end
         tot = tot === nothing ? v : tot + v
     end

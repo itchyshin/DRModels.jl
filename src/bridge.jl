@@ -2151,7 +2151,7 @@ function _bridge_flatten(fit; family::AbstractString, newdata = nothing,
         # these slots on its side (b34).
         "fitted" => _bridge_plain(fitted_vals),
         "residuals" => _bridge_plain(residual_vals),
-        "sigma" => _bridge_plain(sigma(fit)),
+        "sigma" => _bridge_plain(_sigma_all_rows(fit)),   # all input rows, as `fitted` above (`sigma(fit)` is used rows)
         "corpairs" => _bridge_plain(corpairs(fit)),
         "dpars" => _bridge_dpars(fit),
     )
@@ -3146,8 +3146,10 @@ end
 values unchanged for every fit except a zero-inflated count fit, whose mean is
 replaced by drmTMB's unconditional one (below).
 
-**Not drmTMB's values for every fit.** DRModels.jl's `fitted` is population
-level (`Xβ̂`, mapped to E[Y] since #1282) for every model. drmTMB's `fitted()`, and
+**Not drmTMB's values for every fit.** The payload is population level (`Xβ̂`,
+mapped to E[Y] since #1282) for every model, i.e. `fitted(fit; re = :zero)`.
+The native `fitted(fit)` is conditional by default (it adds the modes, as drmTMB's
+does); this function does not call it, so the payload is unchanged. drmTMB's `fitted()`, and
 so its response residuals, adds the fitted modes whenever the mean has a
 random or structured effect: ordinary random effects, phylogenetic and
 covariance-block effects, and AR1 / OU `temporal()` paths (drmTMB 07d1612ea,
@@ -3196,9 +3198,9 @@ function _bridge_fitted_marginal(fit::DrmFit)
     # Built on the stored component mean, not `fitted(fit)`: `fitted` is E[Y] for
     # the LogNormal, zero-inflated, hurdle and truncated fits, and the repair
     # below (and the unrepaired fall-through) is the bridge's own contract.
-    haskey(fit.means, :mu) || return (fitted(fit), residuals(fit))
+    haskey(fit.means, :mu) || return (fitted(fit; re = :zero), residuals(fit; re = :zero))
     fit_vals = fit.means[:mu]
-    fit_vals isa AbstractVector || return (fit_vals, residuals(fit))
+    fit_vals isa AbstractVector || return (fit_vals, residuals(fit; re = :zero))
     plain_resid = fit.obs[:mu] .- fit_vals
     (haskey(fit.scales, :zi) && haskey(fit.obs, :mu)) || return (fit_vals, plain_resid)
     pz = collect(float.(fit.scales[:zi]))

@@ -106,7 +106,7 @@ end
     @test coef(fit, :sigma)[2] ≈ -0.5 * βσ[2] atol = 0.30  # the heteroscedastic σ slope (log σ = -0.5 log size)
     @test re_sd(fit)[:species] > 0.10
     @test isfinite(loglik(fit))
-    @test all(fitted(fit) .> 0)
+    @test all(fitted(fit; re = :zero) .> 0)
 
     # Loose public-path FD sanity (the tight ≤1e-6 gate is the dedicated _fg gate
     # above; here the inner mode is at the fit's default tolerance, matching the

@@ -139,10 +139,10 @@ using Distributions: TDist, Normal, cdf, quantile
         # NaN responses are dropped with a counted warning (#1089), not refused;
         yNaN = copy(y); yNaN[1] = NaN
         fm = @test_logs (:warn, r"missing/NaN response") drm(form, Student(); data = (; y = yNaN, x))
-        # the dropped row stays in the full-length outputs (NaN residual) but not in nobs
+        # fitted() and residuals() return the rows used (as drmTMB does), so the dropped row is absent
         @test nobs(fm) == n - 1
-        @test length(fitted(fm)) == n
-        @test isnan(residuals(fm)[1]) && all(isfinite, residuals(fm)[2:end])
+        @test length(fitted(fm)) == n - 1
+        @test length(residuals(fm)) == n - 1 && all(isfinite, residuals(fm))
         @test isfinite(loglik(fm))
     end
 end

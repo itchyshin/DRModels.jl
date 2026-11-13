@@ -42,7 +42,7 @@ end
     @test coef(fit, :mu)[2] ≈ β[2] atol = 0.15          # slope (RE-independent)
     @test re_sd(fit)[:site] ≈ σb atol = 0.20            # spatial SD recovered
     @test isfinite(loglik(fit))
-    @test all(fitted(fit) .> 0)
+    @test all(fitted(fit; re = :zero) .> 0)
 end
 
 @testset "Poisson spatial coords: same fit as the K = native kernel route" begin
