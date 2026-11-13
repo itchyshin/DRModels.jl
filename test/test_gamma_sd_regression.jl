@@ -45,8 +45,11 @@ end
                           @formula(sd(g) ~ z))
     @test_throws ArgumentError drm(correlated_slope, Gamma(); data)
 
+    # `marginal = :Laplace` now fits this shape (test_laplace_parity.jl); a shape it does not cover
+    # (here a correlated slope with an `sd()` formula) names the default integrator in its refusal.
+    @test drm(base, Gamma(); data, marginal = :Laplace).marginal === :Laplace
     laplace_error = try
-        drm(base, Gamma(); data, marginal = :Laplace)
+        drm(correlated_slope, Gamma(); data, marginal = :Laplace)
         nothing
     catch err
         err

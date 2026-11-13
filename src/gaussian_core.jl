@@ -469,7 +469,8 @@ _withmap(fit::DrmFit, pen_value::Real, spec) = DrmFit(fit.family, fit.blocks, fi
     :MAP, fit.reml_loglik, fit.ml_loglik, fit.marginal, Float64(pen_value), spec, fit.iterations, fit.phylo_scale,
     fit.uncertainty, fit.geometry)
 
-_is_fixed_prior_fit(fit::DrmFit) = fit.penalty isa NamedTuple && haskey(fit.penalty, :kind) && fit.penalty.kind === :fixed_priors
+_is_fixed_prior_fit(fit::DrmFit) = fit.penalty isa NamedTuple && haskey(fit.penalty, :kind) && fit.penalty.kind in (:fixed_priors, :sd_priors)
+_prior_kind_label(fit::DrmFit) = fit.penalty.kind === :sd_priors ? "SD-prior" : "fixed-prior"
 
 function _with_fixed_priors(fit::DrmFit, rows, data_nll)
     active = !all(r -> r.kind === :ridge && r.precision == 0, rows)
@@ -480,6 +481,18 @@ function _with_fixed_priors(fit::DrmFit, rows, data_nll)
         fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula,
         fit.nll, grad!, fit.ranef, active ? :MAP : :ML, fit.reml_loglik,
         fit.ml_loglik, fit.marginal, NaN, meta, fit.iterations, fit.phylo_scale,
+        fit.uncertainty, fit.geometry)
+end
+
+function _with_sd_priors(fit::DrmFit, rows, sdrow, data_nll, specs)
+    meta = (kind=:sd_priors, rows=rows, sd_row=sdrow, data_nll=data_nll,
+            specs=copy(specs), fixed_penalty=_fixed_prior_value(rows, fit.theta),
+            sd_penalty=_sd_prior_value(sdrow, fit.theta), objective=fit.nll(fit.theta))
+    grad! = (g, theta) -> (g .= ForwardDiff.gradient(fit.nll, theta))
+    DrmFit(fit.family, fit.blocks, fit.coefnames, fit.theta, fit.vcov, fit.loglik,
+        fit.nobs, fit.converged, fit.means, fit.obs, fit.scales, fit.formula,
+        fit.nll, grad!, fit.ranef, :MAP, fit.reml_loglik, fit.ml_loglik,
+        fit.marginal, fit.phylo_penalty, meta, fit.iterations, fit.phylo_scale,
         fit.uncertainty, fit.geometry)
 end
 
@@ -1152,7 +1165,9 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
          !profile_ci && !phylo_coupled) ||
             throw(ArgumentError("drm: `control.optimizer` requires the ordinary Gaussian ML route (`algorithm = :auto`, no alternate integration, imputation or profiling)"))
     end
+    has_sd_prior = priors isa AbstractVector && any(p -> p isa SDGammaPrior, priors)
     if priors !== nothing && (_has_joint_mi(f) || method !== :ML || penalty !== nothing || algorithm !== :auto || marginal !== :LA || profile_ci || phylo_coupled || sparse !== nothing || impute !== nothing || missing !== nothing)
+        has_sd_prior && throw(ArgumentError("SD priors currently require ordinary Gaussian ML"))
         throw(ArgumentError("fixed-effect priors currently require ordinary fixed-effect Gaussian ML"))
     end
     if _has_joint_mi(f)
@@ -1164,6 +1179,7 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     end
     (impute === nothing && missing === nothing) ||
         throw(ArgumentError("drm: `impute` and `missing` controls currently require an additive mi(x) joint-model formula; they are not ignored on other routes"))
+    priors === nothing || _reject_sd_missing_predictors(f, data, priors)
     original_rows = priors === nothing ? 0 : length(_table_column(data, f.response))
     data = _drop_missing_predictor_rows(f, data)   # #1089: R's na.omit, with a count
     priors !== nothing && length(_table_column(data, f.response)) != original_rows &&
@@ -1204,9 +1220,16 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     fixed_sigma, sigma_re, _, structured_sigma = _split_ranef(rhs[:sigma])  # (1|g)→GHQ; structured_sigma = phylo(1|g) on σ
     prior_ri = priors !== nothing && length(re) == 1 && _re_kind(first(re)[1])[1] === :intercept
     if priors !== nothing && !((isempty(re) || prior_ri) && isempty(sigma_re) && metav === nothing && structured === nothing && structured_sigma === nothing && temporal_term === nothing && structured_slope === nothing && structured_sd_slope === nothing && isempty(_sd_parts(f)) && isempty(_sdphylo_parts(f)))
+        if has_sd_prior
+            throw(ArgumentError("SD priors currently support only one iid mean random intercept without other random or structured effects or SD submodels"))
+        end
         throw(ArgumentError("fixed-effect priors currently do not support random or structured effects"))
     end
+    if has_sd_prior && any(ismissing, _table_column(data, f.response))
+        throw(ArgumentError("SD priors require complete responses"))
+    end
     if priors !== nothing && !all(_observed_response_mask(_table_column(data, f.response)))
+        has_sd_prior && throw(ArgumentError("SD priors currently require complete responses"))
         throw(ArgumentError("fixed-effect priors currently require complete responses"))
     end
     _require_profile_ci_used(profile_ci, structured_sigma)   # #1010
@@ -1244,16 +1267,19 @@ function _drm_gaussian_fit(f::DrmFormula, fam::Gaussian; data, K = nothing, A = 
     response_observed = _observed_response_mask(y)
     has_missing_response = !all(response_observed)
     if priors !== nothing
-        has_missing_response && throw(ArgumentError("fixed-effect priors currently require complete responses"))
+        has_missing_response && throw(ArgumentError(has_sd_prior ? "SD priors currently require complete responses" : "fixed-effect priors currently require complete responses"))
         all(==(1), _ctl_weights(length(y))) || throw(ArgumentError("fixed-effect priors currently require unit weights"))
-        rank(Xμ) == size(Xμ, 2) && rank(Xσ) == size(Xσ, 2) || throw(ArgumentError("fixed-effect priors require full-rank design matrices"))
+        rank(Xμ) == size(Xμ, 2) && rank(Xσ) == size(Xσ, 2) || throw(ArgumentError(has_sd_prior ? "SD priors require full-rank design matrices" : "fixed-effect priors require full-rank design matrices"))
         names = [:mu => nmμ, :sigma => nmσ]
         intercepts = Dict(:mu => _fixed_intercept_index(f, :mu, fixed_mu, nmμ), :sigma => _fixed_intercept_index(f, :sigma, fixed_sigma, nmσ))
-        rows = _resolve_fixed_priors(priors, names, intercepts)
+        priors isa AbstractVector && all(p -> p isa Union{FixedPrior,SDGammaPrior}, priors) || throw(ArgumentError("priors must be created by drm_priors"))
+        fixed = FixedPrior[p for p in priors if p isa FixedPrior]
+        rows = _resolve_fixed_priors(fixed, names, intercepts)
+        sdrow = _resolve_sd_prior(priors, prior_ri ? only(re)[2] : nothing, length(nmμ) + length(nmσ) + 1)
         if prior_ri
             (_, grp) = only(re)
             gidx, G = _group_index(getproperty(data, grp); col=grp)
-            return _withformula(_fit_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, ones(length(y)), nmμ, nmσ, grp, g_tol; prior_rows=rows), f)
+            return _withformula(_fit_ranef_gaussian(fam, y, Xμ, Xσ, gidx, G, ones(length(y)), nmμ, nmσ, grp, g_tol; prior_rows=rows, sd_prior=sdrow, sd_specs=sdrow === nothing ? nothing : priors), f)
         end
         return _withformula(_fit_fixed_gaussian(fam, y, Xμ, Xσ, nmμ, nmσ, g_tol; prior_rows=rows), f)
     end
@@ -2782,7 +2808,7 @@ function _predict_data(nd::NamedTuple, responses::Symbol...)
 end
 
 function predict(fit::DrmFit, newdata; type::Symbol = :response, se::Bool = false)
-    se && _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("predict: standard errors are not qualified for fixed-prior fits"))
+    se && _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("predict: standard errors are not qualified for $(_prior_kind_label(fit)) fits"))
     f = fit.formula
     f === nothing && error("predict: this fit did not retain its formula")
     type in (:response, :link, :mean, :median) ||
@@ -3125,7 +3151,7 @@ predict_parameters(fit, data; type = :link)[:mu]   # == Xβ̂ (predict link scal
 """
 function predict_parameters(fit::DrmFit, newdata; type::Symbol = :response,
                             se::Bool = false)
-    se && _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("predict_parameters: standard errors are not qualified for fixed-prior fits"))
+    se && _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("predict_parameters: standard errors are not qualified for $(_prior_kind_label(fit)) fits"))
     f = fit.formula
     f === nothing && error("predict_parameters: this fit did not retain its formula")
     type in (:response, :link) || error("predict_parameters: `type` must be :response or :link")
@@ -3455,7 +3481,7 @@ parameters. Omit it to draw for the training design. Temporal fits refuse
 function simulate(fit::DrmFit; nsim::Integer = 1, rng = default_rng(), newdata = nothing,
                   re::Symbol = :marginal, data = nothing, K = nothing, A = nothing,
                   tree = nothing, coords = nothing)
-    _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("simulate: simulation from a fixed-prior fit is not yet qualified"))
+    _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("simulate: simulation from a $(_prior_kind_label(fit)) fit is not yet qualified"))
     nsim >= 1 || throw(ArgumentError("simulate requires nsim >= 1, got $nsim"))
     re in (:marginal, :zero) || throw(ArgumentError(
         "simulate: `re` must be :marginal (fresh random effects, the default) or " *
@@ -3932,7 +3958,7 @@ comparing models that differ in **variance structure only** (same mean structure
 a one-time warning is emitted. Use ML for cross-mean-structure selection.
 """
 function aic(fit::DrmFit)
-    _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("aic is unavailable for fixed-prior MAP fits"))
+    _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("aic is unavailable for $(_prior_kind_label(fit)) MAP fits"))
     _va_infocrit_guard(fit, "aic")
     _reml_infocrit_warn(fit, "aic")
     _sentinel_infocrit_nan(fit, "aic") && return NaN
@@ -3948,7 +3974,7 @@ On a **REML** fit this carries the same variance-only-comparison caveat as
 [`aic`](@ref) and emits a one-time warning.
 """
 function bic(fit::DrmFit)
-    _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("bic is unavailable for fixed-prior MAP fits"))
+    _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError("bic is unavailable for $(_prior_kind_label(fit)) MAP fits"))
     _va_infocrit_guard(fit, "bic")
     _reml_infocrit_warn(fit, "bic")
     _sentinel_infocrit_nan(fit, "bic") && return NaN
