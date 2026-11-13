@@ -26,7 +26,10 @@
     CumulativeLogit()
 
 Cumulative-logit (proportional-odds) ordinal family. The response is an ordered
-category coded `1, 2, …, K`. `Pr(y ≤ k) = logistic(θ_k − η)` with ordered
+category coded `1, 2, …, K`. Every code in `1:K` must be observed at least once;
+a skipped level is an `ArgumentError` naming the missing level(s) and the
+observed levels (drmTMB refuses that empty category too). `Pr(y ≤ k) =
+logistic(θ_k − η)` with ordered
 cutpoints `θ_1 < … < θ_{K-1}`; the single linear predictor `η` comes from the
 `mu` formula **with its intercept dropped** (cutpoints absorb it). No scale
 parameter. `coef(fit, :mu)` are the slopes; `coef(fit, :cutpoints)` are the raw
@@ -156,6 +159,39 @@ function _cumulative_label_response(f::DrmFormula, data)
     return _replace_table_column(data, f.response, coded)
 end
 
+# #1303. `K = maximum(y)` would otherwise reserve a cutpoint for a code that
+# never occurs and drive that increment to −Inf, collapsing two thresholds.
+# drmTMB's `validate_ordinal_codes` refuses the same hole: every category in
+# `1:K` must appear at least once, and the empty categories are named. Two
+# observed categories remain valid here when both codes occur.
+function _cumulative_require_observed_levels(response::Symbol,
+                                             yi::AbstractVector{<:Integer}, K::Integer)
+    observed = sort!(unique(yi))
+    length(observed) == K && first(observed) == 1 && return nothing
+    gaps = String[]
+    prev = 0
+    for v in observed
+        if v > prev + 1
+            lo = prev + 1
+            hi = v - 1
+            push!(gaps, lo == hi ? string(lo) : string(lo, ":", hi))
+        end
+        prev = v
+    end
+    if prev < K
+        lo = prev + 1
+        hi = Int(K)
+        push!(gaps, lo == hi ? string(lo) : string(lo, ":", hi))
+    end
+    msg = string(
+        "CumulativeLogit() requires every ordered category in 1:", K,
+        " to appear at least once in the fitted data. Response `", response,
+        "` has missing level(s): ", join(gaps, ", "),
+        " (observed levels: ", join(observed, ", "),
+        "). Drop unused levels or combine sparse categories before fitting.")
+    throw(ArgumentError(msg))
+end
+
 # FX3b: `se = false` is recorded on the fit (`DrmFit.uncertainty`), so
 # `convergence_status` does not read the skipped (NaN) covariance as a failure.
 @drm_entry function drm(f::DrmFormula, fam::CumulativeLogit; se::Bool = true, kwargs...)
@@ -238,6 +274,9 @@ function _drm_cumulative_fit(f::DrmFormula, fam::CumulativeLogit; data, tree = n
         error("CumulativeLogit() requires ordered integer categories coded 1, 2, …, K (K ≥ 2)")
     K = round(Int, maximum(y))
     yi = round.(Int, y)
+    # Before any route allocates `K - 1` cutpoints (#1303). Fixed effects,
+    # random intercepts/slopes, phylo and crossed intercepts all pass through here.
+    _cumulative_require_observed_levels(f.response, yi, K)
     if st !== nothing                  # phylo(1 | g) random intercept → sparse Laplace (#563 S8 follow-on)
         _, grp = st
         labels = getproperty(data, grp)
@@ -897,15 +936,21 @@ function _fit_cumulative_crossed_laplace(fam::CumulativeLogit, y::Vector{Int}, X
     length(comps) == 2 || error("_fit_cumulative_crossed_laplace requires two random-intercept components")
     n = length(y); pμ = size(Xμ, 2); nc = K - 1
     θβ0 = zeros(pμ)
+    # Warm start for the inner mean-coefficient fit: cold-starting at β = 0 with
+    # cutpoints far from zero can stall (#953: -107 vs -81.5 at the nested-model
+    # cutpoints), so each inner fit starts from the last converged β.
+    βwarm = Ref(copy(θβ0))
 
     function inner_fit(δ::Vector{<:Real}; polish_iterations::Int = 0)
         cuts = _cumulative_cuts(δ)
         aux = (y = y, cuts = cuts, K = K, nc = nc)
-        return _fit_crossed_mean_laplace(
+        fit = _fit_crossed_mean_laplace(
             fam, Val(:cumlogit_fixed), aux, n, Xμ,
             comps[1][2], comps[1][3], comps[2][2], comps[2][3], nmμ,
             [comps[1][4], comps[2][4]], g_tol;
-            θβ0 = θβ0, se = false, polish_iterations = polish_iterations)
+            θβ0 = βwarm[], se = false, polish_iterations = polish_iterations)
+        fit.converged && (βwarm[] = copy(fit.theta[1:pμ]))
+        return fit
     end
 
     obj(δ) = -inner_fit(δ).loglik
@@ -922,6 +967,7 @@ function _fit_cumulative_crossed_laplace(fam::CumulativeLogit, y::Vector{Int}, X
         try
             f1 = _fit_cumulative_ranef(fam, y, Xμ, K, c[2], c[3], nmμ, c[4], g_tol)
             push!(starts, f1.theta[(pμ+1):(pμ+nc)])
+            βwarm[] = copy(f1.theta[1:pμ])
         catch
             # a failed one-component fit only loses a candidate start
         end

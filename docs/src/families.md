@@ -279,7 +279,8 @@ fitzob = drm(bf(@formula(y ~ x), @formula(sigma ~ 1), @formula(zoi ~ 1), @formul
 
 ### Cumulative-logit — `CumulativeLogit()`
 
-Ordered categories coded `1, 2, …, K` (Likert ratings, severity classes):
+Ordered categories coded `1, 2, …, K`, with every code in that range observed
+(Likert ratings, severity classes):
 `Pr(y ≤ k) = logistic(θ_k − η)` with ordered cutpoints. The single linear
 predictor comes from the `mu` formula **with its intercept dropped** (the
 cutpoints absorb the level), so `coef(fit, :mu)` is the slope.
