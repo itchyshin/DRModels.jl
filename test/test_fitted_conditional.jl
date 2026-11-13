@@ -263,6 +263,7 @@ const _FC_WIDE = [
     ("W|student|(1|g)", d -> drm(bf(@formula(y_st ~ x1 + (1 | g)), @formula(sigma ~ 1), @formula(nu ~ 1)), Student(); data = d)),
     ("W|tweedie|(1|g)", d -> drm(bf(@formula(y_tw ~ x1 + (1 | g)), @formula(sigma ~ 1), @formula(nu ~ 1)), Tweedie(); data = d)),
     ("W|betabinomial|(1|g)", d -> drm(bf(@formula(cbind(s, fl) ~ x1 + (1 | g)), @formula(sigma ~ 1)), BetaBinomial(); data = d)),
+    ("W|binomial|(1|g)", d -> drm(bf(@formula(y_bin ~ x1 + (1 | g))), Binomial(); data = d)),
     ("W|cumul|(1|g)", d -> drm(bf(@formula(y_ord ~ x1 + (1 | g))), CumulativeLogit(); data = d)),
     ("W|poisson|offset+(1|g)", d -> drm(bf(@formula(y_pois ~ x1 + offset(off) + (1 | g))), Poisson(); data = d)),
     ("W|nb2|offset+(1|g)", d -> drm(bf(@formula(y_nb ~ x1 + offset(off) + (1 | g)), @formula(sigma ~ 1)), NegBinomial2(); data = d)),
@@ -293,6 +294,7 @@ const _FC_MR = [
 #   NB2               3.0e-3         6.8e-4
 #   NB2 + offset      2.8e-3         8.0e-4
 #   Tweedie           9.8e-4         1.3e-4
+#   Binomial (0/1)   5.2e-3         3.7e-4
 #   ordinal (1 | g)   5.1e-3         4.3e-4
 #   Poisson + offset  1.4e-4         1.5e-4
 #
@@ -301,7 +303,9 @@ const _FC_MR = [
 # value moved on the link scale by one number per group (the fitted mode), and the shift is finite.
 @testset "fitted(): more families, an offset and an ordinal fit against drmTMB" begin
     d = _fc_data()
-    ref = _fc_reference("p17_fitted_review_reference.csv")
+    # the Binomial cell has its own R script and file (p17_fitted_binomial_r.R)
+    ref = merge(_fc_reference("p17_fitted_review_reference.csv"),
+                _fc_reference("p17_fitted_binomial_reference.csv"))
     gi = indexin(d.g, unique(d.g))
     for (id, fit_it) in _FC_WIDE
         @testset "$id" begin
