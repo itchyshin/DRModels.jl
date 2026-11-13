@@ -445,6 +445,14 @@ refit keyword: the fitted family is kept, and passing one is an error. An
 unnamed extra positional argument is an error: a keyword-only refit would
 otherwise drop it and silently ignore the value.
 
+Prior `weights`: if the seed fit has weights, `update` requires an explicit `weights =`
+keyword and passes it to `drm`. The recommended form is one weight per row of `data`: keep
+your original weight vector and pass it, or pass new weights for new `data`; use
+`weights = nothing` to refit unweighted on purpose. When no row was dropped from the seed
+fit, `weights = weights(fit)` is that vector. If rows with a missing value were dropped,
+`weights(fit)` has one entry per kept row and is shorter than `data`, so it is not one
+weight per row of `data`; pass the original vector instead.
+
 `data` must be supplied. A `DrmFit` does not retain its observations, nor the
 options that were only arguments to the original `drm` call: `K`, `A`, `tree`,
 `coords`, `algorithm`, `g_tol`, `profile_ci`, `phylo_coupled`, `sparse`,
@@ -470,6 +478,17 @@ function update(fit::DrmFit, formula, args...; data, kwargs...)
             "call `drm(formula, family; data = ...)` to fit a different family " *
             "(got family = $(repr(kwargs[:family])))."))
     end
+    # A fit made with prior `weights` must not be refitted unweighted by accident. The fit
+    # stores its weights but `update` takes new `data`, whose rows may differ, so the caller
+    # says which weights to use: `weights = weights(fit)` for the same rows, new weights for
+    # new rows, or `weights = nothing` to drop them on purpose.
+    haskey(kwargs, :weights) || weights(fit) === nothing || throw(ArgumentError(
+        "update: the fit was made with prior `weights`; pass `weights =` explicitly: one weight per " *
+        "row of `data` (recommended), or `weights = nothing` to refit unweighted on purpose. " *
+        "It is never refitted unweighted silently. When no row was dropped from the fit, " *
+        "`weights = weights(fit)` is that vector. If rows with a missing value were dropped, " *
+        "`weights(fit)` has one entry per KEPT row and is shorter than `data`: pass the " *
+        "original vector (one per row of `data`) instead."))
     stored = _update_stored_options(fit)
     # A caller who changes the estimator does not want the old MAP penalty.
     # Passing `penalty` explicitly still overrides that drop.
