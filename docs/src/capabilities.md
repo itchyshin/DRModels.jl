@@ -492,7 +492,7 @@ These came out of the second R-Julia gap map (2026-11-09). Each row was run agai
 | `poly(x, 2)` | `@formula` has no `poly`. Write a function term such as `x + sq(x)` (same ML log-likelihood, different coefficients); the string route `engine = "julia"` reproduces R's orthogonal basis. | **Tested** (spelling) |
 | Ordinal response as labels (`"o1"`…`"o4"`) | `CumulativeLogit()` codes string or symbol labels 1..K in sorted label order; pass integer codes for another order. drmTMB refuses a character response and an unordered factor, so this is a Julia convenience, and the R reference uses an ordered factor with the same level order. | **Tested** |
 | Rows with a missing grouping label | Refused (#1112); `drm_listwise(formula, data)` drops them and then agrees with drmTMB, which drops those rows. | **Tested** |
-| `weights` with a missing response | Weights follow their rows; one weight per row of `data`. | **Tested** |
+| `weights` with a missing response or predictor | Weights follow their rows; one weight per row of `data` as passed, on every route. A vector already cut to the kept rows, or any other length, is refused with a `DimensionMismatch`, as drmTMB does. | **Tested** (`test/test_strict_weights.jl`) |
 | Cross-family pair containing `LogNormal()` | Refused with the list of supported families. drmTMB refuses every mixed-response pair, including the supported ones, so there is no R comparison for this refusal. | **Tested** |
 
 ---

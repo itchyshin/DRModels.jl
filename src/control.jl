@@ -150,7 +150,10 @@ Fields:
 - `se::Symbol`: `:computed`, `:skipped` (the Hessian was not computed) or
   `:discarded` (the route computed it, and the wrapper dropped it because
   `se = false`).
-- `weights`: the prior weights, or `nothing`.
+- `weights`: the prior weights, or `nothing`. After rows were dropped for a missing value this is
+  the vector cut to the kept rows.
+- `input_weights`: the prior weights as the user passed them, one per row of `data`, or `nothing`.
+  Refits (bootstrap) use it so that the weights match the data they are given.
 - `requested_optimizer` / `actual_optimizer`: the request and the method run
   on the selected stage (`:unrecorded` when this route does not expose its
   optimizer to this report).
@@ -175,7 +178,12 @@ struct DRMControlReport
     optimizer_runs::Tuple
     selected_optimizer_stage::Symbol
     native_controls::NamedTuple
+    input_weights::Union{Nothing,Vector{Float64}}
 end
+
+# Eleven-field form (before `input_weights`): the weights were never cut, so the input is the same vector.
+DRMControlReport(c, lls, kept, agree, se, weights, req, act, runs, stage, native) =
+    DRMControlReport(c, lls, kept, agree, se, weights, req, act, runs, stage, native, weights)
 
 _ctl_control_snapshot(c::DRMControl) =
     DRMControl(; maxit = c.maxit, start = c.start === nothing ? nothing : copy(c.start),
@@ -210,7 +218,13 @@ mutable struct _ControlScope
     kept::Int
     optimizer_runs::Vector{NamedTuple}
     selected_optimizer_stage::Symbol
+    input_weights::Union{Nothing,Vector{Float64}}   # as passed, never cut (`weights` is cut with the rows)
 end
+
+# Ten-field form (before `input_weights`): the weights were never cut, so the input is the same vector.
+_ControlScope(control, weights, formula, used_optim, used_se, used_weights, start_nll, kept, runs, stage) =
+    _ControlScope(control, weights, formula, used_optim, used_se, used_weights, start_nll, kept, runs, stage,
+                  weights === nothing ? nothing : copy(weights))
 
 const _CTL_KEY = :DRModels_drm_control_scope
 
@@ -444,8 +458,10 @@ function _drm_run_controlled_inner(body::Function, f, fam, control, weights)
     control === nothing && (control = DRMControl())
     control isa DRMControl ||
         throw(ArgumentError("drm: `control` must be a `DRMControl(...)`; got $(typeof(control))"))
-    scope = _ControlScope(control, _check_prior_weights(weights), f,
-                          false, false, false, Float64[], 0, NamedTuple[], :none)
+    wchecked = _check_prior_weights(weights)
+    scope = _ControlScope(control, wchecked, f,
+                          false, false, false, Float64[], 0, NamedTuple[], :none,
+                          wchecked === nothing ? nothing : copy(wchecked))
     _ctl_preflight(scope, f, fam)
     fit = task_local_storage(body, _CTL_KEY, scope)
     return _ctl_finish(fit, scope, fam)
@@ -503,7 +519,8 @@ function _ctl_finish(fit, scope::_ControlScope, fam)
     report = DRMControlReport(_ctl_control_snapshot(c), copy(lls), scope.kept, agree, se,
                               scope.weights === nothing ? nothing : copy(scope.weights),
                               c.optimizer, actual, Tuple(scope.optimizer_runs),
-                              scope.selected_optimizer_stage, _ctl_native_controls(c))
+                              scope.selected_optimizer_stage, _ctl_native_controls(c),
+                              scope.input_weights === nothing ? nothing : copy(scope.input_weights))
     return _withcontrolinfo(fit, V, report)
 end
 
@@ -630,6 +647,35 @@ function _ctl_weights(n::Integer; supported::Bool = true, route::AbstractString 
     return w
 end
 
+# Number of rows of `data` as the user passed it (before any row is dropped for a missing value), or
+# `nothing` when `data` is not a table.
+function _data_nrows(data)
+    Tables.istable(data) || return nothing
+    cols = Tables.columntable(data)
+    isempty(cols) && return nothing
+    return length(first(values(cols)))
+end
+
+"""
+    _check_weights_rows(weights, data)
+
+Prior `weights` give one value per row of `data` as passed to `drm`, as in drmTMB ("`weights` must
+have one value per row of `data`"). Rows dropped for a missing value take their weights with them
+(`_drop_scope_weight_rows!`). A vector already cut to the kept rows is refused: it fits the rows only if
+the user cut it correctly, and gives a wrong likelihood when it is misaligned. Called by `@drm_entry` for
+every route, before the route is chosen. A `weights` that is not a vector is left to
+`_check_prior_weights`.
+"""
+function _check_weights_rows(weights, data)
+    weights isa AbstractVector || return nothing
+    n = _data_nrows(data)
+    (n === nothing || length(weights) == n) && return nothing
+    throw(DimensionMismatch("drm: `weights` must have one value per row of `data`, but it has " *
+        "$(length(weights)) values and `data` has $n rows. A vector already cut to the rows " *
+        "without a missing value is not accepted. Give one weight per row of `data` as you pass it " *
+        "(rows with a missing value are dropped, and their weights with them)."))
+end
+
 # ---------------------------------------------------------------------------
 # @drm_entry: add `control` / `weights` to a public `drm` method
 # ---------------------------------------------------------------------------
@@ -694,10 +740,19 @@ macro drm_entry(fdef)
         # the extra-keyword splat added above is named `_drm_extra_kw`
         :(haskey(_drm_extra_kw, :data) && _record_factor_levels!($fname, _drm_extra_kw[:data]))
     end
+    # one weight per row of `data` on every route (`data` is found as for `record`)
+    wcheck = if :data in names
+        :(weights === nothing || _check_weights_rows(weights, data))
+    elseif splat !== nothing
+        :(weights === nothing || !haskey($kwsplat, :data) || _check_weights_rows(weights, $kwsplat[:data]))
+    else
+        :(weights === nothing || !haskey(_drm_extra_kw, :data) || _check_weights_rows(weights, _drm_extra_kw[:data]))
+    end
     fdef.args[2] = quote
         $extra_check
         $pre
         $record
+        $wcheck
         return _drm_run_controlled($fname, $famname, control, weights) do
             $body
         end
