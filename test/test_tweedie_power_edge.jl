@@ -42,6 +42,9 @@ _tweedie_edge_fit(dat) = drm(bf(@formula(y ~ x + (1 | g) + (1 | h))), Tweedie();
     msgs = [string(r.message) for r in logger.logs if r.level == Logging.Warn]
     @test count(m -> occursin("end of its search interval", m), msgs) == 1
     @test any(m -> occursin("not an interior estimate", m), msgs)
+    @test any(m -> occursin("within 1.0e-5 of an end", m), msgs)           # the rule is in p, 1e-5
+    @test any(m -> occursin("no option to fix the power", m) && occursin("Poisson()", m) &&
+                   occursin("Gamma()", m), msgs)                           # what to do next
     # the estimate itself is unchanged (still the window end, not moved or clamped)
     @test 1 + 1 / (1 + exp(-η)) ≈ 1.0025 atol = 1e-4
 end
@@ -56,4 +59,13 @@ end
     @test abs(only(coef(fit, :nu))) < 5
     @test fit.geometry === :ok
     @test !any(r -> occursin("search interval", string(r.message)), logger.logs)
+end
+
+@testset "the edge rule is 1e-5 in p, not in the logit coordinate" begin
+    lo = DRModels._logit12(-6.0); hi = DRModels._logit12(6.0)
+    @test DRModels._tweedie_power_at_bound(lo + 5e-6)
+    @test DRModels._tweedie_power_at_bound(hi - 5e-6)
+    @test !DRModels._tweedie_power_at_bound(lo + 2e-5)
+    @test !DRModels._tweedie_power_at_bound(hi - 2e-5)
+    @test !DRModels._tweedie_power_at_bound(1.5)
 end

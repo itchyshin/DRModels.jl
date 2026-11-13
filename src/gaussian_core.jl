@@ -281,7 +281,8 @@ struct DrmFit{F}
     # `:ok` (the default), `:count_mle_nonexistent` when the Poisson / NB2
     # fixed-effect cone screen found no finite MLE (#1109), or
     # `:binomial_separation` when the fixed-effect binomial screen found
-    # (quasi-)complete separation (#1186). This is the twin
+    # (quasi-)complete separation (#1186), or `:power_at_bound` when the crossed
+    # Tweedie power ended at an end of its search interval. This is the twin
     # `convergence_status` geometry step (FX3b). It is kept apart from `vcov` so
     # the verdict is the same whether or not standard errors were computed. Set
     # by `_withgeometry`.

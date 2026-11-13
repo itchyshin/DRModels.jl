@@ -1184,23 +1184,31 @@ _laplace_nuisance_d2(::Val{:tweedie_fixed}, aux, i, η) =
     ForwardDiff.derivative(ls -> _laplace_d2(Val(:tweedie_fixed), (y = aux.y, p = aux.p, logsigma = ls), i, η),
                            aux.logsigma)
 
-# The crossed route searches the power on the logit-(1,2) scale inside [-6, 6]. A search that
-# ends within `_TWEEDIE_POWER_EDGE_TOL` of either end has found the boundary of the window, not
-# an interior optimum, so the estimate is not an interior estimate. Such a fit is flagged
+# The crossed route searches the power on the logit-(1,2) scale inside [-6, 6], that is p inside
+# (_logit12(-6), _logit12(6)). A fitted power within `_TWEEDIE_POWER_EDGE_TOL` of either end,
+# measured in p itself, is the end of the window, not an interior optimum. The tolerance is the one
+# the sister R package uses for the same warning (1e-5 in p). Such a fit is flagged
 # (`geometry = :power_at_bound`, which `convergence_status` reads as `:degenerate`, as it does for
 # every crossed Tweedie fit, whose `nu` variance is NaN) and warned about once.
 # The window, the search and the estimate are not changed.
 const _TWEEDIE_POWER_SEARCH_BOUND = 6.0
-const _TWEEDIE_POWER_EDGE_TOL = 1e-3
-_tweedie_power_at_bound(ηp::Real) = abs(ηp) >= _TWEEDIE_POWER_SEARCH_BOUND - _TWEEDIE_POWER_EDGE_TOL
+const _TWEEDIE_POWER_EDGE_TOL = 1e-5
+function _tweedie_power_at_bound(p̂::Real)
+    lo = _logit12(-_TWEEDIE_POWER_SEARCH_BOUND); hi = _logit12(_TWEEDIE_POWER_SEARCH_BOUND)
+    return p̂ - lo <= _TWEEDIE_POWER_EDGE_TOL || hi - p̂ <= _TWEEDIE_POWER_EDGE_TOL
+end
 
 function _flag_tweedie_power_bound(fit::DrmFit, p̂::Real)
     if get(task_local_storage(), :drm_quiet_boundary, false) !== true
         lo = _logit12(-_TWEEDIE_POWER_SEARCH_BOUND); hi = _logit12(_TWEEDIE_POWER_SEARCH_BOUND)
         @warn "drm (Tweedie, crossed random effects): the estimated power p = " * string(round(p̂; digits = 5)) *
-              " is at the end of its search interval (" * string(round(lo; digits = 5)) * ", " *
-              string(round(hi; digits = 5)) * "), so it is a bound, not an interior estimate. " *
-              "The other estimates are conditional on that power. `fit.geometry` is :power_at_bound."
+              " is within " * string(_TWEEDIE_POWER_EDGE_TOL) * " of an end of its search interval (" *
+              string(round(lo; digits = 5)) * ", " * string(round(hi; digits = 5)) *
+              "), so it is a bound, not an interior estimate. " *
+              "The other estimates are conditional on that power. `fit.geometry` is :power_at_bound. " *
+              "`drm` has no option to fix the power or to widen the interval. A power near the lower " *
+              "end means the response behaves like scaled Poisson counts; near the upper end, like a " *
+              "Gamma response. If that fits your data, refit with `Poisson()` or `Gamma()` instead."
     end
     return _withgeometry(fit, :power_at_bound)
 end
@@ -1247,5 +1255,5 @@ function _fit_tweedie_crossed_laplace(fam::Tweedie, y, Xμ, comps, nmμ, nmσ, n
     scales = merge(fit.scales, Dict(:nu => fill(p̂, n)))
     out = DrmFit(fam, blocks, names, theta, V, fit.loglik, fit.nobs, fit.converged,
                  fit.means, fit.obs, scales)
-    return _tweedie_power_at_bound(Optim.minimizer(res)) ? _flag_tweedie_power_bound(out, p̂) : out
+    return _tweedie_power_at_bound(p̂) ? _flag_tweedie_power_bound(out, p̂) : out
 end
