@@ -63,4 +63,23 @@ using DRModels, Test, DelimitedFiles, LinearAlgebra, Logging
         @test_throws ArgumentError re_sd(f)
         @test_throws ArgumentError vc(f)
     end
+
+    @testset "Gaussian sd(g) ~ 1 (one SD per group) and sd(g) ~ z" begin
+        Gg, m = 25, 8
+        gg = repeat(["g" * string(i) for i in 1:Gg], inner = m)
+        xg = [sin(1.7i) for i in 1:(Gg * m)]
+        zg = repeat([cos(2.3k) for k in 1:Gg], inner = m)
+        ug = [0.7 * sin(5.1k) for k in 1:Gg]
+        yg = [1.0 + 0.5 * xg[i] + ug[(i - 1) ÷ m + 1] + 0.6 * sin(3.7i + 0.4) for i in eachindex(xg)]
+        dg = (; y = yg, x = xg, z = zg, g = gg)
+        f1 = quiet(() -> drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1), @formula(sd(g) ~ 1)),
+                             Gaussian(); data = dg))
+        @test length(coef(f1, :sd)) == 1
+        @test re_sd(f1)[:g] ≈ exp(only(coef(f1, :sd)))
+        @test vc(f1)[:g][1, 1] ≈ exp(only(coef(f1, :sd)))^2
+        f2 = quiet(() -> drm(bf(@formula(y ~ x + (1 | g)), @formula(sd(g) ~ z)), Gaussian(); data = dg))
+        @test length(coef(f2, :sd)) == 2
+        @test_throws ArgumentError re_sd(f2)
+        @test_throws ArgumentError vc(f2)
+    end
 end
