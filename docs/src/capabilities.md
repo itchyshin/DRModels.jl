@@ -78,8 +78,8 @@ are refused by name. On a few data sets with a boundary zero-inflation or
 dispersion estimate the fit reports `converged = false`; it then stands below or
 beside drmTMB's value and should not be read as a match. The reverse also happens:
 `converged = true` is not a guarantee that the fit sits at the best mode on
-zero-heavy or separated data. In a check of 120 simulated data sets, 6 fits ended
-outside the agreement rule with drmTMB (all report `converged = false`), and two more
+zero-heavy or separated data. In a check of 120 simulated data sets, a few fits
+still ended below drmTMB's log-likelihood (they report `converged = false`), and two more
 stop at a lower local mode and still report `converged = true`: a zero-inflated
 NB2 set whose drmTMB fit is separated (zero-inflation coefficients beyond 10 in size)
 and a zero-inflated Poisson set. On the Poisson set the default fit ends at a
