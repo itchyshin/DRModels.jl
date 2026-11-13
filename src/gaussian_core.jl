@@ -2684,7 +2684,10 @@ at the MLE — drmTMB's `sigma()`.
   (`exp.(Xσ·β̂_σ)` on the response scale; for meta-analysis `√(vᵢ + τ²)`).
 - Bivariate co-scale: `Dict(:sigma1 => …, :sigma2 => …)`.
 - Families with no separately fitted scale stored (e.g. Poisson, whose variance
-  is fixed by the mean): returns an empty `Dict` — there is no free dispersion.
+  is fixed by the mean, and Binomial and CumulativeLogit): returns an empty
+  `Dict` — there is no free dispersion. Per-row context stored with the fit (the
+  Binomial trials, the cumulative-logit linear predictor and cut points) is never
+  returned. Beta-binomial returns its `σ_i` vector.
 
 For the BetaBinomial sigma-axis random-intercept route, this is the conditional
 plug-in scale at the fitted log-sigma random-effect modes. `ranef(fit)` exposes
@@ -2701,11 +2704,16 @@ function sigma(fit::DrmFit)
     # contract is the fitted residual scale only. Every other fit returns its
     # whole scale table, as before (e.g. `:zi`, `:nu`, `:sigma1`/`:sigma2`).
     sd_route = haskey(fit.scales, :sd_group) || haskey(fit.scales, :sd)
+    # `fit.scales` also keeps per-row context that is not a scale: Binomial and
+    # Beta-binomial trials, and the cumulative-logit linear predictor and cut
+    # points. They never appear in `sigma()`.
+    context_keys = (:cond_blup_unavailable, :trials, :ordinal_eta, :ordinal_cuts)
+    has_context = any(k -> haskey(fit.scales, k), context_keys)
     ks = sort!(sd_route ? [k for k in keys(fit.scales) if k in (:sigma, :sigma1, :sigma2)] :
-                          [k for k in keys(fit.scales) if k !== :cond_blup_unavailable])
+                          [k for k in keys(fit.scales) if !(k in context_keys)])
     isempty(ks) && return Dict{Symbol,Vector{Float64}}()
     (length(ks) == 1 && ks[1] === :sigma) && return fit.scales[:sigma]
-    return (sd_route || haskey(fit.scales, :cond_blup_unavailable)) ? Dict(k => fit.scales[k] for k in ks) : fit.scales
+    return (sd_route || has_context) ? Dict(k => fit.scales[k] for k in ks) : fit.scales
 end
 
 """
