@@ -169,7 +169,8 @@ mean. `comps` is a vector of `(w, gidx, G, label)` (the Gaussian multi-RE
 convention; `w` is the slope covariate or ones). θ = [β_μ; β_σ; (β_ν;) log σ_k].
 Blocks `:mu`, `:sigma`, (`:nu`,) `:resd`. Tagged `marginal = :Laplace`.
 """
-function _fit_indep_re_laplace(fam, kind::Val, y, Xμ, Xσ, Xν, comps, nmμ, nmσ, nmν, g_tol)
+function _fit_indep_re_laplace(fam, kind::Val, y, Xμ, Xσ, Xν, comps, nmμ, nmσ, nmν, g_tol;
+                               start = nothing)
     n = length(y); yv = _indep_response(kind, y)
     has_nu = Xν !== nothing
     has_sigma = Xσ !== nothing                         # Poisson and Binomial have no dispersion
@@ -303,6 +304,10 @@ function _fit_indep_re_laplace(fam, kind::Val, y, Xμ, Xσ, Xν, comps, nmμ, nm
     for k in 1:K
         sw = all(==(1.0), W[k]) ? 1.0 : max(std(W[k]), 1e-8)
         θ0[sdoffs[k]+1] = base - log(sw)
+    end
+    if start !== nothing                               # caller-supplied start (the zero-mass multi-start)
+        length(start) == length(θ0) || throw(ArgumentError("start has length $(length(start)), expected $(length(θ0))"))
+        θ0 .= Float64.(start)
     end
     # BFGS first: on the near-flat slope-variance ridge L-BFGS stalled at a 1e18 line-search
     # probe (simulated growth data) while BFGS reaches drmTMB's optimum in 5–25 iterations.

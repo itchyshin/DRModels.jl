@@ -75,6 +75,20 @@ end
                             SkewNormal(); data = d))
 end
 
+# Zero-inflated NB2 data on which the fixed-effects start of the Laplace fit sits on the zero-inflation
+# boundary (logit about -30, flat likelihood). Before the interior restarts of `zi_re_laplace.jl` the fit
+# stalled there with `converged = false`, 8.3 (`zinb_r3`) and 10.3 (`zinb_r6`) log-likelihood units below
+# drmTMB. References come from `test/parity/gen_zi_re_parity.R` (routes `zinb_r3`, `zinb_r6`).
+@testset "ZINB (1 | g) with the fixed-effects start on the zero-inflation boundary vs drmTMB 0.8.1" begin
+    for route in ("zinb_r3", "zinb_r6")
+        d = _zr_data(route)
+        fit = drm(bf(@formula(y ~ x + (1 | g)), @formula(sigma ~ 1), @formula(zi ~ 1)), NegBinomial2(); data = d)
+        _zr_check(route, fit)
+        # the zero-inflation coefficient is interior, not parked at the clamp
+        @test abs(coef(fit, :zi)[1]) < 5
+    end
+end
+
 @testset "Binomial with three crossed random intercepts vs drmTMB 0.8.1 (Laplace)" begin
     d = _zr_data("binom3")
     _zr_check("binom3", drm(bf(@formula(y ~ x + (1 | g) + (1 | g2) + (1 | h))), Binomial(); data = d))

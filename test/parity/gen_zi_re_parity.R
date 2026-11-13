@@ -161,3 +161,21 @@ if (want("skew_nx")) {
   f <- drmTMB(bf(y ~ x + (1 | g), sigma ~ 1, nu ~ x), family = skew_normal(), data = s$d)
   write_ref("skew_nx", f, c("mu_(Intercept)", "mu_x", "sigma_(Intercept)", "nu_(Intercept)", "nu_x", "resd_g"), s$d, "SkewNormal, nu ~ x")
 }
+
+# ---- two zero-inflated NB2 data sets on which the fixed-effects start sat on the zero-inflation
+# boundary (logit about -30), so the Laplace fit stalled 8 to 10 log-likelihood units below drmTMB
+# before the interior restarts of `src/zi_re_laplace.jl` (regression targets; set 3: 25 unbalanced
+# groups, group SD 0.9; set 6: 40 groups of 6, group SD 1.2, slope 0.8).
+zinb_r <- function(route, seed, G, m, sd_g, bx) {
+  set.seed(seed)
+  sz <- if (m == 0) sample(2:20, G, TRUE) else rep(m, G)
+  g <- rep(seq_len(G), times = sz); n <- length(g); x <- stats::rnorm(n)
+  eta <- 0.4 + bx * x + stats::rnorm(G, 0, sd_g)[g]
+  d <- data.frame(g = paste0("g", g), x = x)
+  d$y <- stats::rnbinom(n, mu = exp(eta), size = 3) * stats::rbinom(n, 1, 0.75)
+  f <- drmTMB(bf(y ~ x + (1 | g), sigma ~ 1, zi ~ 1), family = nbinom2(), data = d)
+  write_ref(route, f, c("mu_(Intercept)", "mu_x", "sigma_(Intercept)", "zi_(Intercept)", "resd_g"), d,
+            "zero-inflated NB2, mean (1 | g), sigma ~ 1, zi ~ 1 (start on the zero-inflation boundary)")
+}
+if (want("zinb_r3")) zinb_r("zinb_r3", 7303, 25, 0, 0.9, 0.4)
+if (want("zinb_r6")) zinb_r("zinb_r6", 7603, 40, 6, 1.2, 0.8)

@@ -24,3 +24,10 @@
   same Laplace route, with the cutpoints as ordinary parameters, so their standard errors
   are reported (the crossed-intercept route reports none). It matches drmTMB 0.8.1 at the
   same bounds. Independent terms with `sd(...)` formulas are refused by name.
+- **Zero-inflated, hurdle and truncated NB2 `(1 | g)` fits that stalled now retry from interior
+  starts.** The first start is the fixed-effects fit, which can sit on the zero-inflation boundary
+  or at the Poisson limit; the fit then stalled up to 10 logLik units below drmTMB (ZINB) or
+  returned `NaN`. A fit that did not converge, has no finite logLik or has a zero-mass linear
+  predictor of 15 or more is refitted from up to three interior starts, and the refit replaces it
+  only if its logLik is higher. A fit that no start rescues keeps `converged = false`. On 120
+  simulated sets (30 per family, drmTMB 0.8.1) the fits with no finite logLik went from 10 to 0.

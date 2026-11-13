@@ -77,13 +77,13 @@ binomial-type responses — see the
 Pick the family from the *shape* of the response; the
 [Choosing response families](distribution-families.md) guide has the full
 decision table and worked examples. The fifteen response-family constructors
-are listed below; SkewNormal is an advanced fixed-effect route:
+are listed below; SkewNormal is an advanced route (fixed effects, or one `(1 | g)` on the mean):
 
 | Family | Response | Mean link | `sigma` slot / extras |
 |---|---|---|---|
 | [`Gaussian`](@ref) | real-valued, symmetric | identity | residual SD `σ` (log) |
 | [`Student`](@ref) | real-valued, heavy tails | identity | scale `σ` + d.o.f. `nu` |
-| [`SkewNormal`](@ref) | real-valued, asymmetric (fixed effects only) | identity on mean `μ` | scale `σ` + slant `nu` (identity) |
+| [`SkewNormal`](@ref) | real-valued, asymmetric (fixed effects, or one `(1 \| g)`) | identity on mean `μ` | scale `σ` + slant `nu` (identity) |
 | [`LogNormal`](@ref) | positive, multiplicative | identity on `log y` | SD of `log y` |
 | [`Gamma`](@ref) | positive, continuous | log | CV → shape `α = 1/σ²` |
 | [`Tweedie`](@ref) | positive **with exact zeros** | log | √dispersion `σ` + power `nu` ∈ (1,2) |
@@ -128,6 +128,10 @@ correlated `(1 + x | g)` mean effect but refuses an independent `(0 + x | g)`
 term; enough within-group information is needed to identify the correlated
 effect. The [capability matrix](../capabilities.md) records which independent
 or correlated slope forms each family admits.
+One ordinary random intercept `(1 | g)` on the mean also works with the count
+modifiers (`Poisson()` + `zi`, `NegBinomial2()` + `zi` or `hu`, `TruncatedNegBinomial2()` with
+or without `hu`) and with `SkewNormal()`; these fit by the Laplace approximation, as drmTMB
+does. `Binomial()` takes three or more crossed random intercepts by a dense Laplace route.
 `LogNormal()` ordinary mean random-intercept fits use a single mode-centred
 Gauss–Hermite node, which is exact because the response is Gaussian on
 `log(y)`. Its crossed and structured routes delegate to Gaussian fitters.
@@ -147,7 +151,7 @@ dispersion; and `Binomial()` has no dispersion formula.
 
 [`CumulativeLogit`](@ref) (ordinal) carries an ordinary random intercept
 `(1 | g)` or an *independent* random slope `(0 + x | g)` on `mu` via the same
-Gauss–Hermite scheme, and an intercept-only `phylo(1 | species)` through the
+Gauss–Hermite scheme, the independent pair `(1 | g) + (0 + x | g)` by a Laplace route, and an intercept-only `phylo(1 | species)` through the
 same sparse Laplace engine; the correlated form `(1 + x | g)` and the other
 structured effects (`relmat` / `animal` / `spatial`) are not implemented yet.
 

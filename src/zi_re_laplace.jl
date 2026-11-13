@@ -139,7 +139,7 @@ Entry for `Poisson()` + `zi`, `NegBinomial2()` + `zi` / `hu`, `TruncatedNegBinom
 (with or without `hu`) and `SkewNormal()` when `mu` carries one `(1 | g)`. Validates the
 admitted shape and calls `_fit_indep_re_laplace` with the matching observation kind.
 """
-function _drm_zi_re_laplace(f::DrmFormula, fam; data, g_tol::Real = 1e-8)
+function _drm_zi_re_laplace(f::DrmFormula, fam; data, g_tol::Real = 1e-8, start = nothing)
     rhs = Dict(f.forms)
     haskey(rhs, :zi) && haskey(rhs, :hu) &&
         error("`zi` and `hu` cannot both be specified (zero-inflation vs hurdle)")
@@ -201,8 +201,50 @@ function _drm_zi_re_laplace(f::DrmFormula, fam; data, g_tol::Real = 1e-8)
     end
     # The truncated-NB2 + hu spelling is the NegBinomial2 hurdle (see the fixed-effects entry).
     fitfam = (fam isa TruncatedNegBinomial2 && haskey(rhs, :hu)) ? NegBinomial2() : fam
-    fit = _fit_indep_re_laplace(fitfam, kind, y, Xμ, Xσ, Xν, comps, nmμ, nmσ, nmν, g_tol)
+    run = st -> _fit_indep_re_laplace(fitfam, kind, y, Xμ, Xσ, Xν, comps, nmμ, nmσ, nmν, g_tol; start = st)
+    fit = run(start)
+    start === nothing && kind isa Union{Val{:zip},Val{:zinb},Val{:tnb},Val{:hnb}} &&
+        (fit = _zi_re_restarts(fit, run, kind, y, Xμ, Xσ, Xν))
     return _withformula(fit, f)
+end
+
+# Interior restarts. The start of these kinds is the family's fixed-effects fit (random effect
+# ignored), and that fit can sit on a boundary: the zero-mass logit at about -30 (the likelihood is
+# flat in that coordinate) or a dispersion at its limit (an overdispersed count explained by the
+# dispersion alone). The Laplace objective is then flat or not finite at the start, and the fit
+# stalls there with a log-likelihood up to 10 units below drmTMB (ZINB, two seeds of the review) or
+# NaN. A fit that did not converge, has no finite log-likelihood, or whose zero-mass linear
+# predictor reached 15 or more in absolute value is refitted from interior starts: mean block by
+# least squares on log(y + 0.5), log sigma = log(0.5), log(1), log(0.3), zero-mass intercept
+# 0, -1, 1, random-effect log SD log(0.3). At most three refits, and only these fits pay for them.
+# A refit replaces the first fit only if its log-likelihood is higher (or equal and it converged).
+# The converged flag is never changed: a fit that no start rescues stays `converged = false`.
+const _ZI_RE_RESTART_STARTS = ((0.5, 0.0), (1.0, -1.0), (0.3, 1.0))   # (sigma, zero-mass intercept)
+const _ZI_RE_BOUNDARY_ETA = 15.0
+
+function _zi_re_restarts(fit::DrmFit, run, kind::Val, y, Xμ, Xσ, Xν)
+    pμ = size(Xμ, 2); pσ = Xσ === nothing ? 0 : size(Xσ, 2); pν = Xν === nothing ? 0 : size(Xν, 2)
+    νr = (pμ + pσ + 1):(pμ + pσ + pν)
+    at_boundary(ft) = pν > 0 && maximum(abs, Xν * ft.theta[νr]) >= _ZI_RE_BOUNDARY_ETA
+    ok(ft) = ft.converged && isfinite(ft.loglik) && ft.loglik > -1e17 && !at_boundary(ft)
+    ok(fit) && return fit
+    βμ = Xμ \ log.(Float64.(y) .+ 0.5)
+    best = fit
+    for (σ0, z0) in _ZI_RE_RESTART_STARTS
+        st = zeros(length(fit.theta))
+        st[1:pμ] .= βμ
+        pσ > 0 && (st[pμ+1] = log(σ0))
+        pν > 0 && (st[pμ+pσ+1] = z0)
+        st[end] = log(0.3)
+        cand = try run(st) catch err; err isa InterruptException && rethrow(); nothing end
+        cand === nothing && continue
+        lc = isfinite(cand.loglik) ? cand.loglik : -Inf; lb = isfinite(best.loglik) ? best.loglik : -Inf
+        better = lc > lb + 1e-8 || (abs(lc - lb) <= 1e-8 && cand.converged && !best.converged)
+        confirmed = ok(cand) || (cand.converged && abs(lc - lb) <= 1e-6)
+        better && (best = cand)
+        confirmed && break
+    end
+    return best
 end
 
 # ---------------------------------------------------------------------------
