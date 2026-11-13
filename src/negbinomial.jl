@@ -337,6 +337,8 @@ function _drm_negbin2_sd_regression(f::DrmFormula, fam::NegBinomial2; data,
                                     g_tol::Real = 1e-8,
                                     se::Bool = true, marginal::Symbol = :LA,
                                     nAGQ::Union{Nothing,Int} = nothing)
+    laplace_fit = _laplace_sd_route(f, fam, Val(:nb2), marginal; data, g_tol)
+    laplace_fit === nothing || return laplace_fit
     marginal === :LA || throw(ArgumentError(
         "NegBinomial2 `sd(group) ~ …` currently supports `marginal = :LA` only."))
     if _ss_has_sigma_structured_sd(f)

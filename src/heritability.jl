@@ -593,7 +593,7 @@ end
 function _emit_ratio(fit::DrmFit, focal::Int, denom::Vector{Int}; level, method,
                      resid::Int = 0, omega::Vector{Int} = Int[])
     _is_fixed_prior_fit(fit) && fit.estim_method === :MAP && throw(ArgumentError(
-        "variance-ratio intervals are not qualified for fixed-prior MAP fits; covariance is local curvature"))
+        "variance-ratio intervals are not qualified for $(_prior_kind_label(fit)) MAP fits; covariance is local curvature"))
     if method === :delta
         r = _ratio_delta(fit, focal, denom; level = level, resid = resid, omega = omega)
         st = _ratio_status(fit, isfinite(r.se) ? :ok : :vcov_unavailable)
