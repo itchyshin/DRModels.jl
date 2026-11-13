@@ -82,7 +82,8 @@ zero-heavy or separated data. In a check of 120 simulated data sets, a zero-infl
 NB2 set whose drmTMB fit is separated (zero-inflation coefficients beyond 10 in size)
 and a zero-inflated Poisson set stop at a lower local mode and still report
 `converged = true`. On the Poisson set the default fit ends at a log-likelihood of
--90.4, while a fit started from drmTMB's estimate reaches -79.2. On such data, compare
+-90.4, while fits started near drmTMB's estimate reach values between -84 and -74
+(drmTMB itself reports -81.3, or -77.7 with `multi_start = 10`). On such data, compare
 the fit with drmTMB before you trust it.
 
 **Beta boundary modifiers** `zoi` / `coi` (zero-/one-inflation): the
