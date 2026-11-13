@@ -161,6 +161,14 @@ function _drm_ordinary_laplace(f::DrmFormula, fam; data, tree = nothing,
         return drm(f, fam; data = data, tree = tree, K = K, A = A, coords = coords,
                    g_tol = g_tol, se = se, method = method)
     end
+    # Three or more crossed intercepts `(1 | g) + (1 | h) + (1 | k)` for Binomial: the default route is the dense
+    # TMB-convention Laplace spine and tags its fit `:Laplace`, so `update()` (which repeats the stored tag) and an
+    # explicit `marginal = :Laplace` call must reach that same fit. Exactly two crossed intercepts keep the
+    # explicit refusal below (their default fit is tagged `:LA`).
+    if length(re) > 2 && fam isa Binomial && all(r -> _laplace_lhs_kind(r[1]) === :intercept, re)
+        return drm(f, fam; data = data, tree = tree, K = K, A = A, coords = coords,
+                   g_tol = g_tol, se = se, method = method)
+    end
     length(re) == 1 || _ordinary_laplace_reject(fam,
         isempty(re) ? "no random effect (fixed-effects-only)" : "crossed/multiple random effects")
     # Render the term as the user wrote it: a FunctionTerm such as `1 + x`
