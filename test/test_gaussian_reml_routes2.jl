@@ -62,7 +62,7 @@ end
     bare = drm(bf(DRModels.@formula(y ~ x1 + x2 + x3 + spatial(1 | g)), s1), Gaussian(); data = spdata, coords = coords,
                method = :REML)
     @test bare.converged
-    @test bare.loglik ≈ sp.loglik atol = 1e-3
+    @test bare.loglik ≈ sp.loglik atol = 1e-6
     # a labelled structured q2 block: refused by the structured-term check, which runs before the
     # method is read, so this is the same refusal under ML and does not exercise a REML gate
     m5 = try

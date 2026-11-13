@@ -132,9 +132,8 @@ mean fixed-effect designs, and intercept-only `sigma1`, `sigma2`, and `rho12`.
 `spatial(1 | group)` supplies a covariance exactly as `relmat`/`animal` do: the
 exponential kernel `exp(-d / rho)` at a FIXED range `rho` (keyword
 `spatial_range`, else drmTMB's native kernel: the median positive pairwise
-distance with a 1e-6 diagonal ridge), the same rule the q=4 structured route uses. It does NOT estimate the range jointly the way
-the univariate spatial route (`_fit_spatial_gaussian`) does, so the two are not
-the same model and must not be compared as one. The range in force is recorded
+distance with a 1e-6 diagonal ridge), the same rule the q=4 structured route and the
+univariate spatial route use. The range is never estimated. The range in force is recorded
 as `fit.ranef.spatial_range`.
 
 Row `k` of `coords` is the `k`-th level of `group` **in the order the levels

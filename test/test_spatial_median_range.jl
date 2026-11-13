@@ -54,3 +54,16 @@ end
         @test exp(only(coef(fit, :sd))) ≈ r["sd:mu:spatial(1 | g)"] atol = 1e-4
     end
 end
+
+@testset "coef(fit, :range) says the range is fixed" begin
+    data, coords, _ = _smr_load()
+    fit = drm(bf(@formula(y ~ x + spatial(1 | g)), @formula(sigma ~ 1)), Gaussian(); data, coords)
+    err = try coef(fit, :range); nothing catch e e end
+    @test err isa ArgumentError
+    @test occursin("fixed at the median positive pairwise distance", sprint(showerror, err))
+    # A fit with no spatial term keeps the generic message.
+    plain = drm(bf(@formula(y ~ x)), Gaussian(); data)
+    err2 = try coef(plain, :range); nothing catch e e end
+    @test err2 isa ArgumentError
+    @test !occursin("fixed at the median", sprint(showerror, err2))
+end

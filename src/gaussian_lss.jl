@@ -639,8 +639,8 @@ end
 # Matches native drmTMB (`drm_spatial_coords_precision`): exponential
 # correlation exp(-d / range) with range = the median positive pairwise
 # distance (maximum if the median is not positive), plus 1e-6 on the diagonal.
-# The range is FIXED, unlike the intercept-only `_fit_spatial_gaussian`, which
-# estimates it. Rows of `coords` follow the first-seen levels of the group.
+# The range is FIXED, on the intercept-only route too (it is never estimated).
+# Rows of `coords` follow the first-seen levels of the group.
 function _gaussian_spatial_sd_kernel(coords, G::Int, grp::Symbol)
     # A 1-D transect may be a plain vector: read it as the G-by-1 column it means.
     cmat = coords isa AbstractVector{<:Real} ? reshape(Float64.(coords), :, 1) :
