@@ -45,3 +45,28 @@ end
         @test all(isfinite, coef(fit))
     end
 end
+
+# The polish step of `_optimize_corr_ranef`. After the retry (finite sentinel + BackTracking) has not met
+# the gradient tolerance, the fit is polished with the default line search and the better of the two
+# results is kept. This ill-conditioned objective is one where BackTracking L-BFGS stops at its iteration
+# limit far from the minimum, while the default line search reaches it, so a version without the polish
+# step returns a clearly worse, unconverged result. The objective throws the line-search AssertionError
+# on its first call only, to force the retry path.
+@testset "_optimize_corr_ranef polishes an unconverged retry" begin
+    Optim = DRModels.Optim
+    illc(θ) = sum(10.0^i * θ[i]^2 for i in eachindex(θ)) + sum(θ .^ 4)
+    θ0 = ones(12); g_tol = 1e-8
+    ncalls = Ref(0)
+    nll = θ -> (ncalls[] += 1; ncalls[] == 1 && throw(AssertionError("B > A")); illc(θ))
+    res = DRModels._optimize_corr_ranef(nll, θ0, g_tol, zeros(2))
+    # the retry alone (what the code would return without the polish step)
+    retry = Optim.optimize(DRModels._safe_objective(illc), θ0,
+        Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking()), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    @test !DRModels.drm_optim_converged(retry)
+    @test Optim.minimum(retry) > 1.0
+    @test DRModels.drm_optim_converged(res)
+    @test Optim.minimum(res) < 1e-10
+    # no AssertionError: the first attempt is returned unchanged
+    plain = Optim.optimize(illc, θ0, Optim.LBFGS(), Optim.Options(g_tol = g_tol); autodiff = :forward)
+    @test Optim.minimizer(DRModels._optimize_corr_ranef(illc, θ0, g_tol, zeros(2))) == Optim.minimizer(plain)
+end
